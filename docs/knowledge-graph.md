@@ -1,0 +1,200 @@
+# Knowledge Graph
+
+The knowledge graph integrates bookmarks, entities, and their semantic relationships into a structured system that supports retrieval, navigation, inference, and future automation.
+
+## Overview
+
+The graph models:
+- Nodes: bookmarks and entities
+- Edges: explicit or inferred relationships
+- Backlinks: reverse edges enabling discovery of all references to a concept
+
+Its goal is to provide a durable, canonical representation of how information connects across the system.
+
+## Node Types
+
+### Bookmarks
+
+Bookmarks represent captured knowledge items and may include:
+- content
+- tags
+- hints
+- mentions
+
+A bookmark becomes a graph node when it includes at least one mention referencing an entity.
+
+### Entities
+
+Entities are canonical concepts provided by registries or defined locally.
+
+They serve as stable identifiers, allowing:
+- cross-bookmark connection
+- unambiguous reference
+- semantic navigation across the dataset
+
+## Edges
+
+Edges describe relationships between nodes. They are typed and directional.
+
+### Bookmark → Entity
+
+When a bookmark contains a mention such as `@ui.best-practice`, an edge is formed:
+
+```
+bookmark[id] → entity[ui.best-practice]
+```
+
+### Entity → Entity
+
+Entities may reference each other through:
+- hierarchy
+- aliases
+- conceptual relationships
+
+External registries may provide structured links.
+
+### Backlinks
+
+Backlinks are reverse edges allowing quick lookup of all bookmarks referencing a specific entity.
+
+```
+entity[slug] → [bookmark_id, bookmark_id, ...]
+```
+
+## Graph Structure Diagram
+
+```mermaid
+graph TD
+
+  B1[Bookmark A]
+  B2[Bookmark B]
+  E1[Entity: ui.best-practice]
+  E2[Entity: stripe.api.checkout]
+
+  B1 -->|mentions| E1
+  B1 -->|mentions| E2
+  B2 -->|mentions| E1
+  E1 -->|related| E2
+```
+
+## Purpose of the Graph
+
+### Semantic Retrieval
+
+Querying by mentions, entity hierarchy, or related concepts becomes possible.
+Examples:
+- `mention:stripe.api.*`
+- bookmarks connected to a deprecated entity
+- cross-entity exploration
+
+### Inference
+
+The graph can support:
+- clustering of related bookmarks
+- suggestion of new entities
+- entity promotion based on repeated hints
+- detection of emerging themes
+
+### Navigation
+
+The graph powers:
+- backlink navigation
+- entity summaries
+- concept-based exploration
+
+## Graph Consistency
+
+### Identity Stability
+
+Entities must maintain stable IDs across:
+- registry updates
+- merges
+- version upgrades
+
+### Namespace Isolation
+
+Conflicts are prevented by using structured namespaces such as:
+- `ui.*`
+- `stripe.api.*`
+- `internal.product.*`
+
+### Versioning
+
+Entities may evolve over time.
+
+Rules include:
+- maintain backward compatibility when possible
+- expose deprecation status
+- track alias history
+
+## Integrating Mentions
+
+Mentions anchor bookmarks to entities and form the core connective tissue of the graph.
+
+Rules:
+- mentions never auto-generate tags
+- mentions do not influence classification
+- unresolved mentions create local entities
+
+## Representing Relationships
+
+### Strong vs Soft Connections
+
+- **Strong**: explicitly defined (mention, alias, parent-child).
+- **Soft**: model-inferred from content similarity or frequent co-occurrence.
+
+### Typed Edges
+
+Edges are described with a type field, such as:
+- `mention`
+- `alias_of`
+- `parent_of`
+- `related_to`
+- `inferred_cluster`
+
+## Storage Model
+
+### On-Disk Structure
+
+Lightweight storage includes:
+- entity index
+- backlinks table
+- edge list
+
+### Example Backlink Entry
+
+```
+{
+  "entity": "ui.best-practice",
+  "bookmarks": ["bk123", "bk914", "bk002"]
+}
+```
+
+## Graph Usage by Agents
+
+Agents may:
+- pull all bookmarks referencing a concept
+- build entity summaries
+- construct embeddings per entity
+- use graph neighborhoods for context expansion
+
+### Example Workflow
+
+1. User queries `@stripe.api.checkout`.
+2. System fetches the entity definition and backlinks.
+3. Related entities form secondary context.
+4. Agents assemble a coherent summary or perform an action.
+
+## Future Extensions
+
+**Entity-level embeddings**
+Representing entities via aggregate embeddings of linked bookmarks.
+
+**Multi-registry merging**
+Combining entity definitions from separate providers with conflict resolution.
+
+**Temporal graph**
+Tracking how relationships evolve over time.
+
+**Graph-based recommendations**
+Suggesting tags, hints, or potential entities based on structural patterns.

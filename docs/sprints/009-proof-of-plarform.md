@@ -1,0 +1,265 @@
+# Sprint 9 Goal: "Proof of Platform"
+
+By the end of this sprint:
+
+1. **Reference Integrations:** An official **Browser Extension** and **Raycast Script** are released, proving the API works end-to-end, including **mention-aware ingestion**, **entity resolution**, and **graph updates**.
+2. **Stress Tested:** The system is verified to handle **100,000+ bookmarks**, **millions of mentions**, large **multiregistry entity sets**, and dense **knowledge graph edges** without UI or API lag.
+3. **Documentation:** The `docs/` folder is converted into a user-facing static website, now including the new **Mentions**, **Entity Schema**, and **Knowledge Graph** docs, with end-to-end examples and query demonstrations.
+
+---
+
+## 1. Core/Infra Team (The Stress Testers)
+
+**Focus:** Reliability, Graph Integrity, and Long-Running Stability.
+**Why:** Users leave `ch serve` running for weeks. Memory leaks, unstable entity indexes, or graph inconsistencies will break trust.
+
+### Task 1.1: The "Million Bookmark + Entity Graph" Simulation
+
+- Create a test harness that ingests:
+  - 100k synthetic text records
+  - 10k images
+  - **simulated mentions referencing ~5k synthetic entities across multiple namespaces**
+- Monitor:
+  - steady-state RAM usage (<500MB target)
+  - SQLite WAL file growth characteristics
+  - FTS indexing throughput during ingestion
+  - **entity index growth**
+  - **backlinks table density and fragmentation**
+- Action: Tune SQLite pragmas (`mmap_size`, `cache_size`, `wal_autocheckpoint`, `page_size`) based on results.
+
+### Task 1.2: `ch housekeeping` Command
+
+Implement a maintenance command.
+
+Actions:
+
+- `VACUUM` and `wal_checkpoint` the SQLite DB
+- Prune `jobs` history >30 days
+- Rotate logs
+- **Rebuild or compact backlinks and entity index when fragmentation exceeds thresholds**
+- Validate integrity of:
+  - dangling entity references
+  - orphaned mentions
+  - inconsistent graph edges
+
+### Task 1.3: The "One-Line" Installer
+
+Finalize `install.sh`.
+
+Logic:
+
+- Detect OS and architecture
+- Fetch binary from GitHub Releases
+- Validate checksum
+- Install to `$PATH`
+- Setup `systemd` or `launchd` service
+- **Initialize local entity registry**
+- **Create graph tables (entity index, backlinks)**
+- Ensure migrations run automatically on first launch
+
+---
+
+## 2. Ingestion/AI Team (The Tuner)
+
+**Focus:** Quality of intelligence and correctness of semantic identity.
+**Why:** Pipelines must produce stable semantic references (mentions → entities → graph edges).
+
+### Task 2.1: Prompt Eval Suite
+
+- Build a test set of 50 complex inputs across modalities.
+- Validate:
+  - summaries
+  - tags
+  - **mention extraction correctness**
+  - **entity resolution behavior (local vs registry)**
+  - absence of hallucinated entities
+- Measure stability of mentions across model providers.
+
+### Task 2.2: Deduplication Logic (`text.exact`)
+
+- Use SHA256 content hashing to detect duplicates.
+- Logic:
+  - If duplicate detected, **merge mentions into existing bookmark**
+  - Update backlinks accordingly
+  - Preserve provenance chain
+
+### Task 2.3: Model Agnosticism Check
+
+- Ensure `text.short` and mention extractor behave consistently across models.
+- Validate with:
+  - `gpt-4o`
+  - `llama3`
+  - optional OSS models
+- Add config presets for each.
+- Verify stability of:
+  - **mention syntax**
+  - **entity ID mapping**
+  - **avoiding accidental new entity creation**
+
+---
+
+## 3. Search/Retrieval Team (The Integrator)
+
+**Focus:** Consuming the API for real tools.
+**Why:** This sprint proves that mention- and entity-aware APIs are usable and performant.
+
+### Task 3.1: The Chrome Extension (MVP)
+
+Build minimal JS extension.
+
+Function:
+
+- Click icon → Capture tab URL/selection → `POST /analyze`
+- Extension UI shows:
+  - detected mentions
+  - resolved entities
+  - brief semantic summary
+- Validate:
+  - CORS headers
+  - mention-aware ingestion
+  - entity metadata returned from the API
+
+### Task 3.2: The Raycast/Alfred Script
+
+Write bash/python script using `curl`.
+
+Function:
+
+- "Search Context" command
+- Calls:
+  - `GET /bookmarks?q=mention:ui.*`
+  - `GET /bookmarks?q=mention:stripe.api.checkout`
+- Copies Markdown link to clipboard
+
+Validation:
+
+- mention-based queries under 200ms
+- graph-aware ranking does not regress performance
+- entity → bookmark → entity traversal paths remain stable
+
+---
+
+## 4. Registry/Ecosystem Team (The Teacher)
+
+**Focus:** Developer Portal, Documentation, and Registry Usability.
+**Why:** Mentions, entities, and graph semantics must be documented thoroughly and consistently.
+
+### Task 4.1: Static Doc Site
+
+Deploy a Hugo/Docusaurus site.
+
+Content includes:
+
+- Installation guide
+- Getting Started
+- **mentions.md**
+- **schema-entity.md**
+- **knowledge-graph.md**
+- Registry Protocol
+- Plugin guides
+- Example registries providing entities
+- Entity lifecycle and versioning
+- Query examples using `mention:`
+
+### Task 4.2: Error Code Catalog
+
+Standardize error messages.
+
+Examples:
+
+- `CH_ERR_ENTITY_NOT_FOUND`
+- `CH_ERR_MENTION_SYNTAX_INVALID`
+- `CH_ERR_ENTITY_ALIAS_CONFLICT`
+- `CH_ERR_GRAPH_CORRUPT`
+
+Terminal output links directly to the docs.
+
+### Task 4.3: Community Registry Submission Flow
+
+Create GitHub Issue template:
+
+- Taxonomy registries
+- **Entity registries (canonical concepts, APIs, ontologies)**
+- Mixed registries
+- Experimental registries
+
+Provide guidance for:
+
+- namespacing
+- versioning
+- alias management
+- translation support
+
+---
+
+## The Integration Check (The Demo)
+
+Scenario: The "New User" Experience with Semantic Identity Enabled.
+
+1. **Installation:**
+   A clean VM runs:
+   ```
+   curl ... | bash
+   ```
+   Check:
+   - service starts
+   - **entity tables initialized**
+   - graph indexes exist
+
+2. **Integration:**
+   User installs the Chrome Extension.
+
+3. **Usage:**
+   User browses 50 pages, clicking "Save to Context".
+   Check:
+   - background worker processes jobs
+   - **mentions extracted from text, URL, metadata**
+   - **entities resolved or created as local entities**
+   - **graph edges generated (bookmark → entity)**
+
+4. **Retrieval:**
+   User opens Raycast, types:
+   ```
+   context: @ui.best-practice
+   ```
+   Check:
+   - mention-based search returns correct bookmarks
+   - entity metadata included
+   - responses <200ms
+
+5. **Maintenance:**
+   Overnight run.
+   Check:
+   - stable RAM
+   - no WAL ballooning
+   - graph queries remain below latency thresholds
+   - `ch housekeeping` compacts entity index and backlinks
+
+---
+
+## Risks to Watch For
+
+- **WAL Growth:** Backlink writes are frequent; WAL tuning required.
+- **Entity Explosion:** Unchecked mention extraction may create unnecessary local entities.
+- **Graph Corruption:** Partial ingestion must not create orphaned edges.
+- **Registry Alias Conflicts:** Multi-source registries may define overlapping entities.
+- **CORS Requirements:** Browser extension must handle entity/mention payloads.
+- **Documentation Drift:** Entity and mention schemas must remain synchronized.
+
+---
+
+## Post-Sprint 9: Version 1.0.0 Release
+
+After this sprint, the system is:
+
+1. **Feature Complete**
+   Multimodal ingestion, mentions, entities, knowledge graph, query language, registry sync.
+
+2. **Stable**
+   Migrations validated, graph integrity verified, long-running workers tested.
+
+3. **Extensible**
+   Plugins, registries, pipelines, custom entity providers.
+
+4. **Documented**
+   Full static site launched with semantic identity and graph documentation.
