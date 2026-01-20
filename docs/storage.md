@@ -244,7 +244,6 @@ Pros: simple, inspectable
 Cons: full scans for mention queries
 
 Expectations:
-
 - store `mentions` and `plugins` JSON fields inside each file
 - plugin-specific state remains outside core storage
 - optional in-memory backlink index may improve repeated queries
@@ -254,14 +253,12 @@ Expectations:
 Pros: fast, reliable, ideal for mention + entity graph behavior
 
 Recommended tables:
-
 ```
 bookmarks (JSON columns allowed)
 bookmark_mentions (bookmark_id, entity_id)
 ```
 
 Additional expectations:
-
 - plugin metadata stored inside JSON field `plugins`
 - entity backlinks indexed
 - plugin-defined bookmark types stored in `type` column
@@ -269,16 +266,55 @@ Additional expectations:
 ### Postgres
 
 Use JSONB + GIN for:
-
 - mentions
 - plugin metadata
 
 Use join table for backlink index when needed.
 
+### LEANN (experimental, highly efficient)
+
+**[LEANN](https://github.com/yichuan-w/LEANN)** is a graph-based RAG system with 97% storage efficiency through on-demand embedding recomputation.
+
+Pros:
+- **97% storage savings** vs traditional vector DBs (no pre-computed embeddings)
+- Faster query performance via graph-based selective traversal
+- Local-first, 100% private (zero telemetry)
+- Multimodal support (text + vision via ColQwen)
+- Built-in MCP integration for live data sources
+
+Cons:
+- Slower index build (graph construction)
+- Experimental, less mature ecosystem than SQLite/Postgres
+- Requires separate installation and configuration
+
+**Integration approach:**
+- **Hybrid storage**: LEANN for vector/similarity search, SQLite for entities/backlinks
+- **Backend plugin**: ContextHelp plugin wraps LEANN as storage interface
+- **MCP connector**: ContextHelp queries LEANN via MCP for data sources
+
+**Configuration:**
+```yaml
+storage:
+  type: leann
+  path: ~/.local/share/contexthelp/leann
+  options:
+    recompute: true  # Enable on-demand embedding generation
+    graph_degree: 32
+    build_complexity: 64
+    compact: true
+    backend: hnsw  # or diskann
+```
+
+**Data separation:**
+- **LEANN**: Stores chunks, embeddings (recomputed on demand), similarity index
+- **ContextHelp (SQLite)**: Stores bookmarks, mentions, entities, backlinks, plugin metadata
+- **Query flow**: Metadata/mentions/graph → SQLite; Similarity → LEANN; Merge → ContextHelp
+
+See [LEANN Integration Documentation](./leann-integration.md) for complete details.
+
 ### Custom Backends
 
 Must support:
-
 - mentions
 - backlink lookups
 - plugin metadata persistence

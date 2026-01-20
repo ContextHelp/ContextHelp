@@ -19,6 +19,11 @@ High-level system overview: ingestion, pipelines, registries, storage, APIs, age
 Global design orientation and philosophical principles behind ContextHelp.
 Explains cross-cutting concerns, shaping forces, system boundaries, and long-term evolution.
 
+### **leann-integration.md** (New)
+
+Integration guide for [LEANN](https://github.com/yichuan-w/LEANN) — a local-first RAG system with 97% storage efficiency.
+Covers storage backend configuration, hybrid storage strategies, MCP integration, and performance considerations.
+
 ### **decentralization.md**
 
 How ContextHelp operates without central servers, how registries interact, trust boundaries, merging strategies, worldview layering, and local-first guarantees.
@@ -47,7 +52,7 @@ The storage layer:
 - bookmark schema
 - mentions storage
 - entity index and backlinks
-- storage backends (JSON, SQLite, Postgres, plugin-defined)
+- storage backends (JSON, SQLite, Postgres, LEANN, plugin-defined)
 - job tables and outbox pattern
 - indexes, FTS, concurrency patterns
 - update guarantees and invariants
@@ -501,7 +506,8 @@ If you're new:
 2. Continue with **pipelines.md**, **storage.md**, and **jobs-and-ingestion.md**.
 3. Explore semantics: **mentions.md**, **schema-entity.md**, **schema-bookmark.md**, **knowledge-graph.md**.
 4. Learn about extensibility in **plugins.md** and **plugins-api.md**.
-5. Use **api-cli.md**, **api-rest.md**, or **api-grpc.md** based on integration needs.
+5. For efficient storage: Review **leann-integration.md** (97% storage savings).
+6. Use **api-cli.md**, **api-rest.md**, or **api-grpc.md** based on integration needs.
 
 If you're contributing:
 

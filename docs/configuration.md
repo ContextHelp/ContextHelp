@@ -183,11 +183,66 @@ Defines where and how bookmarks and jobs are persisted.
 
 ```yaml
 storage:
-  type: sqlite | postgres | json | plugin-<name>
+  type: sqlite | postgres | json | leann | plugin-<name>
   path: <path-or-connection-string>
   concurrency: safe | local
   options: {}
 ```
+
+## LEANN Storage Configuration
+
+LEANN provides graph-based RAG with 97% storage efficiency. Recommended for large corpora or storage-constrained environments.
+
+```yaml
+storage:
+  type: leann
+  path: ~/.local/share/contexthelp/leann
+  concurrency: safe
+  options:
+    # LEANN-specific options
+    recompute: true              # Enable on-demand embedding generation
+    graph_degree: 32             # Graph degree for index construction
+    build_complexity: 64          # Build complexity for index
+    compact: true                # Use compact storage (CSR format)
+    backend: hnsw                # or diskann for larger indices
+
+    # ContextHelp integration
+    metadata_fields:
+      - tags
+      - mentions
+      - hints
+      - decisions
+      - pipeline
+```
+
+**Hybrid storage (LEANN + SQLite):**
+
+```yaml
+storage:
+  # Primary: SQLite for bookmarks, entities, backlinks
+  type: sqlite
+  path: ~/.local/share/contexthelp/bookmarks.db
+  concurrency: safe
+
+# Vector backend: LEANN for similarity search
+vector_backend:
+  type: leann
+  path: ~/.local/share/contexthelp/leann-vector
+  options:
+    recompute: true
+    backend: hnsw
+
+# Query behavior
+query:
+  vector_provider: leann
+  merge_strategy: weighted  # or rrf, reciprocal_rank_fusion
+  weights:
+    metadata: 0.3
+    mentions: 0.4
+    vector_similarity: 0.3
+```
+
+See [LEANN Integration Documentation](./leann-integration.md) for complete details.
 
 ### Backends
 
@@ -196,6 +251,7 @@ storage:
 | `json` | Simple, portable, single-user. Not concurrency-safe. |
 | `sqlite` | Recommended default. WAL mode for safe concurrent reads. |
 | `postgres` | For advanced multi-user or server deployments. |
+| `leann` | Graph-based RAG with 97% storage efficiency. See [LEANN Integration](./leann-integration.md). |
 | `plugin-<name>` | Storage provided by a plugin (remote KV, vector DB, etc.). |
 
 Plugins can register new backend types dynamically.
