@@ -49,6 +49,16 @@ See `docs/branding.md` for naming conventions and `docs/architecture.md` for det
 
 ---
 
+## Quick Start
+
+**Installation:** See [INSTALL.md](./INSTALL.md) for detailed installation instructions.
+
+**Usage:** After installation, check the [Quick Start Guide](./docs/quickstart-cli.md) to begin using ContextHelp.
+
+**Documentation:** Browse the complete documentation in [docs/README.md](./docs/README.md).
+
+---
+
 ## Key Features
 
 - **Universal Capture Layer (Every Interface)**

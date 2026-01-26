@@ -1,0 +1,399 @@
+# ContextHelp Plugin Configuration Examples
+# This file demonstrates various plugin configurations
+# Copy sections to your main config.yaml as needed
+
+version: 1
+
+################################################################################
+# Base Configuration (Required)
+################################################################################
+
+storage:
+  type: sqlite
+  path: ~/.local/share/contexthelp/bookmarks.db
+  concurrency: safe
+
+ingestion:
+  mode: jobs
+  auto_start_worker: true
+
+queue:
+  backend: sqlite
+  workers: 4
+  retry_limit: 3
+
+pipelines:
+  enabled:
+    - text.short
+    - text.long
+    - url.generic
+    - url.repo
+    - image.ui
+    - image.landing
+  defaults:
+    text: text.long
+    url: url.generic
+    image: image.landing
+
+server:
+  http:
+    port: 7700
+    public: false
+  grpc:
+    port: 7701
+
+ai_providers:
+  openai:
+    key: ${OPENAI_API_KEY}
+    model: gpt-4o
+
+privacy:
+  telemetry: false
+
+################################################################################
+# Plugin Configurations
+################################################################################
+
+plugins:
+  load:
+    # ============================================================
+    # Alias Plugin
+    # Define command shortcuts for frequently used operations
+    # ============================================================
+    - name: alias-plugin
+      config:
+        definitions:
+          # List all URLs
+          urls: "list --type url"
+
+          # List all text bookmarks
+          texts: "list --type text"
+
+          # Quick OSS inbox analysis
+          oss-inbox: "analyze --type text --hints '#OSS #inbox'"
+
+          # Weekly review
+          weekly: "surface --time-window 7d --limit 20"
+
+          # Monthly retrospective
+          monthly: "surface --time-window 30d --limit 50"
+
+          # Search by tags
+          by-tag: "find --filter 'tags:'"
+
+          # Recent items
+          recent: "list --sort created_at --limit 10"
+
+    # ============================================================
+    # RSS Feed Plugin
+    # Monitor and fetch RSS/Atom feeds
+    # ============================================================
+    - name: rss-feed
+      config:
+        # Default refresh interval (1 hour)
+        default_interval_seconds: 3600
+
+        # Pipeline for processing feed items
+        default_item_pipeline: text.long
+
+        # Maximum items to fetch per feed
+        max_items_per_feed: 100
+
+        # Keep items for 90 days
+        retention_days: 90
+
+        # Feed-specific overrides
+        feeds:
+          # Tech news: refresh more frequently
+          - url: "https://news.ycombinator.com/rss"
+            interval_seconds: 1800  # 30 minutes
+            pipeline: text.short
+            tags:
+              - tech
+              - news
+
+          # Blog: refresh daily
+          - url: "https://blog.example.com/feed.xml"
+            interval_seconds: 86400  # 24 hours
+            pipeline: text.long
+            tags:
+              - blog
+              - learning
+
+    # ============================================================
+    # Notifications Plugin
+    # Alert on important events
+    # ============================================================
+    - name: notifications
+      config:
+        enabled: true
+
+        # Keep 5000 notifications in history
+        max_history: 5000
+
+        # Notification channels
+        channels:
+          # CLI notifications (always on)
+          cli:
+            - levels:
+                - info
+                - warning
+                - error
+
+          # Webhook for important events
+          webhook:
+            - url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+              levels:
+                - update
+                - info
+              # Optional: Custom headers
+              headers:
+                X-Notification-Source: "contexthelp"
+              # Optional: Filter by tags
+              tag_filter:
+                include:
+                  - "urgent.*"
+                  - "price-drop.*"
+
+          # Email notifications (requires SMTP plugin)
+          # email:
+          #   - to: "you@example.com"
+          #     levels:
+          #       - error
+          #       - critical
+
+        # Custom notification rules
+        rules:
+          # Price drops: notify via all channels
+          - type_match: "price_drop"
+            channels:
+              - cli
+              - webhook
+            template: "Price dropped on {{title}}: {{old_price}} → {{new_price}}"
+
+          # New feed items: CLI only
+          - type_match: "feed_update"
+            channels:
+              - cli
+            template: "New items in {{feed_title}}"
+
+          # Errors: escalate
+          - type_match: "error"
+            channels:
+              - cli
+              - webhook
+            min_severity: error
+
+    # ============================================================
+    # Price Monitor Plugin
+    # Track price changes on e-commerce sites
+    # ============================================================
+    - name: price-monitor
+      config:
+        # Default alert threshold (5% change)
+        default_threshold_percent: 5
+
+        # Check interval (daily)
+        check_interval_seconds: 86400
+
+        # Price extraction patterns
+        patterns:
+          # Amazon
+          - match: "amazon[.]com/.+"
+            extract_regex: "\\$([0-9]+[.][0-9]{2})"
+            threshold_percent: 10
+            currency: USD
+
+          # Best Buy
+          - match: "bestbuy[.]com/.+"
+            extract_regex: "\\$([0-9,]+[.][0-9]{2})"
+            threshold_percent: 8
+            currency: USD
+
+          # Generic e-commerce (fallback)
+          - match: ".*"
+            extract_selector: ".price, .sale-price, [itemprop='price']"
+            threshold_percent: 5
+
+        # Price history
+        history:
+          # Keep price history for 1 year
+          retention_days: 365
+
+          # Sample prices daily
+          sample_interval_seconds: 86400
+
+        # Notifications
+        notify_on_drop: true
+        notify_on_rise: false
+
+    # ============================================================
+    # GitHub Plugin
+    # Enhance GitHub repository analysis
+    # ============================================================
+    - name: github-plugin
+      config:
+        # GitHub API token (optional, increases rate limit)
+        token: ${GITHUB_TOKEN}
+
+        # Auto-extract repository metadata
+        extract_metadata: true
+
+        # Features to extract
+        features:
+          - stars
+          - forks
+          - issues
+          - pull_requests
+          - last_commit
+          - languages
+          - topics
+
+        # Watch for updates
+        watch_repositories: true
+
+        # Refresh interval for watched repos (12 hours)
+        watch_interval_seconds: 43200
+
+        # Auto-tag repositories
+        auto_tag:
+          # Tag by language
+          by_language: true
+
+          # Tag by topics
+          by_topics: true
+
+          # Tag by organization
+          by_org: true
+
+    # ============================================================
+    # Readability Plugin
+    # Extract clean article text from web pages
+    # ============================================================
+    - name: readability-plugin
+      config:
+        # Use Mozilla Readability algorithm
+        algorithm: mozilla
+
+        # Keep images in extracted content
+        include_images: true
+
+        # Include metadata
+        extract_metadata:
+          - author
+          - published_date
+          - description
+
+        # Minimum text length to process
+        min_text_length: 100
+
+        # Strip elements
+        strip_elements:
+          - script
+          - style
+          - nav
+          - footer
+
+    # ============================================================
+    # Archive Plugin
+    # Save permanent copies of web content
+    # ============================================================
+    - name: archive-plugin
+      config:
+        # Archive backend
+        backend: local  # or wayback, archive_is
+
+        # Local archive settings
+        local:
+          # Storage path
+          path: ~/.local/share/contexthelp/archives
+
+          # Format: html | pdf | markdown
+          format: html
+
+          # Keep screenshots
+          screenshot: true
+
+          # Compression
+          compress: true
+
+        # Auto-archive settings
+        auto_archive:
+          enabled: true
+
+          # Archive on bookmark creation
+          on_create: true
+
+          # Archive on refresh
+          on_refresh: false
+
+          # URL patterns to auto-archive
+          patterns:
+            - ".*news[.].*"
+            - ".*blog[.].*"
+            - ".*medium[.]com.*"
+
+    # ============================================================
+    # Export Plugin
+    # Export bookmarks to various formats
+    # ============================================================
+    - name: export-plugin
+      config:
+        # Default export format
+        default_format: json
+
+        # Supported formats
+        formats:
+          - json
+          - yaml
+          - markdown
+          - html
+          - csv
+
+        # Export directory
+        export_dir: ~/Downloads/contexthelp-exports
+
+        # Include in exports
+        include:
+          - content
+          - metadata
+          - tags
+          - mentions
+          - backlinks
+
+        # Schedule automatic exports
+        scheduled_exports:
+          # Daily JSON export
+          - format: json
+            schedule: "0 2 * * *"  # 2 AM daily
+            filename: "backup-{{date}}.json"
+            compress: true
+
+          # Weekly Markdown export
+          - format: markdown
+            schedule: "0 3 * * 0"  # 3 AM Sunday
+            filename: "weekly-export-{{date}}.md"
+
+################################################################################
+# Custom Plugin Storage Extensions
+# Plugins can extend storage with custom fields (JSON backend only)
+################################################################################
+
+# Note: This section is for documentation only
+# Plugin storage is automatically managed by the plugin system
+#
+# Example of what plugins might store:
+# - RSS feeds: feed_url, last_fetched, item_count
+# - Price monitor: current_price, price_history, last_checked
+# - Archive: archive_path, archive_format, archived_at
+
+################################################################################
+# Plugin Inter-Communication
+# Some plugins can communicate with each other
+################################################################################
+
+# Example: Price Monitor can trigger Notifications
+# - Price Monitor detects a price drop
+# - Emits a "price_drop" event
+# - Notifications plugin listens for "price_drop"
+# - Sends notification via configured channels

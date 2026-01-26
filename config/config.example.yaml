@@ -1,0 +1,495 @@
+# ContextHelp Complete Configuration Example
+# This file demonstrates all available configuration options for both dPKMS and ctxt
+# Copy this file to ~/.config/contexthelp/config.yaml and customize as needed
+#
+# Documentation:
+# - docs/ctxt/configuration.md
+# - docs/configuration-structure.md
+
+# Configuration schema version (required)
+version: 1
+
+################################################################################
+# dPKMS Configuration (Substrate Layer)
+# Handles storage, jobs, registries, and core infrastructure
+################################################################################
+
+storage:
+  # Storage backend type
+  # Options: sqlite | postgres | json | leann | plugin-<name>
+  type: sqlite
+
+  # Path or connection string for the storage backend
+  # Supports tilde expansion for home directory
+  path: ~/.local/share/contexthelp/bookmarks.db
+
+  # Concurrency mode
+  # - safe: Multi-process safe with locking (recommended)
+  # - local: Single-process only (faster, but not concurrent-safe)
+  concurrency: safe
+
+  # Backend-specific options (empty for SQLite defaults)
+  options: {}
+
+# Ingestion Configuration
+# Controls how incoming work (e.g., `ch analyze`) is persisted and executed
+ingestion:
+  # Execution mode
+  # - jobs: Transactional outbox pattern (recommended for reliability)
+  # - inline: Synchronous execution (simpler, but no retry/resume)
+  mode: jobs
+
+  # Auto-start worker when running `ch serve`
+  auto_start_worker: true
+
+# Queue Configuration
+# Defines job scheduling, retries, and concurrency
+queue:
+  # Queue backend type
+  # Options: sqlite | memory | redis | plugin-<name>
+  backend: sqlite
+
+  # Number of concurrent workers
+  workers: 4
+
+  # Maximum retry attempts for failed jobs
+  retry_limit: 3
+
+  # Backend-specific options
+  options: {}
+
+# Registry Configuration
+# External sources of taxonomy, weights, or bookmarks
+registries:
+  enabled:
+    # Local taxonomy registry (file-based)
+    - name: local-taxonomy
+      url: file://~/.config/contexthelp/taxonomy/
+      type: taxonomy
+      # No auth required for local registries
+
+    # External UX patterns taxonomy with authentication
+    - name: uxpatterns
+      url: https://api.uxpatterns.io
+      type: taxonomy
+      auth:
+        # Use environment variable for sensitive tokens
+        token: ${CH_REGISTRY_TOKEN_UXPATTERNS}
+
+    # Growth weights registry
+    - name: growth-weights
+      url: https://weights.growth.dev
+      type: weights
+      # Optional: Add auth if required
+      # auth:
+      #   token: ${CH_REGISTRY_TOKEN_GROWTH}
+
+    # Example: Shared bookmarks registry
+    # - name: team-bookmarks
+    #   url: https://bookmarks.company.internal
+    #   type: bookmarks
+    #   auth:
+    #     token: ${CH_REGISTRY_TOKEN_TEAM}
+
+# Pipeline Configuration
+# Controls pipeline availability and default routing
+pipelines:
+  # List of enabled pipelines
+  # Plugins may add additional pipelines dynamically
+  enabled:
+    - text.short       # Short text analysis (tweets, notes)
+    - text.long        # Long-form text analysis (articles, docs)
+    - url.generic      # Generic web page analysis
+    - url.repo         # Code repository analysis
+    - image.ui         # UI/UX screenshot analysis
+    - image.landing    # Landing page screenshot analysis
+    # - audio.transcript  # Audio transcription
+    # - video.frame      # Video frame extraction
+
+  # Default pipeline per content type
+  # Used when no explicit pipeline is specified
+  defaults:
+    text: text.long
+    url: url.generic
+    image: image.landing
+
+# Agent Profiles
+# Define scoped semantic and retrieval worldviews
+# Each agent has customized registries, pipelines, and tag filters
+agents:
+  # UX Critic profile: Focus on design and growth
+  ux_critic:
+    # Use specific registries for this agent
+    registries:
+      - local-taxonomy
+      - uxpatterns
+
+    # Use specific weight sources
+    weights:
+      - growth-weights
+
+    # Restrict to specific pipelines
+    pipelines:
+      - image.landing
+      - text.long
+
+    # Tag-based filtering
+    tags:
+      # Only include items matching these patterns
+      include:
+        - "ui.*"
+        - "ux.*"
+        - "design.*"
+      # Exclude items matching these patterns
+      exclude:
+        - "growth.*"
+        - "marketing.*"
+
+  # Research profile: Comprehensive analysis
+  research:
+    registries:
+      - local-taxonomy
+      - uxpatterns
+
+    # Allow all pipelines
+    pipelines:
+      - "*"
+
+    # No tag filtering (include everything)
+
+  # Founder profile: Business and growth focus
+  # founder:
+  #   registries:
+  #     - growth-weights
+  #   pipelines:
+  #     - text.long
+  #     - url.generic
+  #   tags:
+  #     include:
+  #       - "business.*"
+  #       - "growth.*"
+  #       - "strategy.*"
+  #     exclude:
+  #       - "technical.*"
+
+# Server Configuration
+# HTTP and gRPC API server settings
+server:
+  # HTTP/REST API
+  http:
+    # Port number for HTTP server
+    port: 7700
+
+    # Public access (false = localhost only, true = all interfaces)
+    public: false
+
+    # Optional: Enable CORS
+    # cors:
+    #   enabled: true
+    #   allowed_origins:
+    #     - http://localhost:3000
+    #   allowed_methods:
+    #     - GET
+    #     - POST
+
+  # gRPC API
+  grpc:
+    # Port number for gRPC server
+    port: 7701
+
+# Internationalization (i18n) Configuration
+# Localization and translation settings
+i18n:
+  # Enable i18n features
+  enabled: true
+
+  # Preferred languages (in order of preference)
+  # ISO 639-1 language codes
+  preferred_languages:
+    - fr  # French
+    - en  # English
+
+  # Automatically translate content on ingestion
+  auto_translate: true
+
+  # Skip translation when using `ch analyze` by default
+  # Can be overridden with --translate flag
+  skip_on_analyze_default: false
+
+  # Translate summaries
+  translate_summaries: true
+
+  # Translate section headings
+  translate_sections: true
+
+  # Translate tags
+  translate_tags: true
+
+  # Translation provider
+  # Options: openai | anthropic | local | plugin-<name>
+  provider: openai
+
+# Privacy Configuration
+# Global privacy and security settings
+privacy:
+  # Disable telemetry (recommended for privacy)
+  telemetry: false
+
+  # Allow external (non-local) pipelines
+  # Set to false to restrict to local pipelines only
+  allow_external_pipelines: false
+
+# Refresh Configuration
+# Auto-refresh bookmarks and fetch new content
+refresh:
+  # Enable refresh system
+  enabled: true
+
+  # Minimum interval between refreshes (prevents excessive refreshing)
+  min_interval_seconds: 300  # 5 minutes
+
+  # Default interval for bookmarks without specific rules
+  default_interval_seconds: 86400  # 24 hours
+
+  # Per-pattern refresh rules
+  # Evaluated in order; first match wins
+  rules:
+    # GitHub repositories: refresh twice daily, no auto-fetch
+    - match: "github.com/.+"
+      interval_seconds: 43200  # 12 hours
+      fetch_new: false
+
+    # YouTube channels: refresh hourly, auto-fetch new videos
+    - match: "youtube.com/channel/.+"
+      interval_seconds: 3600  # 1 hour
+      fetch_new: true
+      item_pipeline: url.generic
+
+    # RSS feeds: refresh every 2 hours, auto-fetch new items
+    - match: "feeds[.]example[.]com/.+"
+      interval_seconds: 7200  # 2 hours
+      fetch_new: true
+
+    # News sites: refresh frequently
+    # - match: "news[.]ycombinator[.]com"
+    #   interval_seconds: 1800  # 30 minutes
+    #   fetch_new: false
+
+################################################################################
+# ctxt Configuration (Brain Layer)
+# Handles AI processing, pipelines, profiles, and semantic analysis
+################################################################################
+
+# AI Provider Configuration
+# Configure AI/LLM providers for processing
+ai_providers:
+  # OpenAI configuration
+  openai:
+    # API key from environment variable (recommended)
+    key: ${OPENAI_API_KEY}
+
+    # Default model to use
+    model: gpt-4o
+
+    # Optional: Model-specific settings
+    # max_tokens: 4096
+    # temperature: 0.7
+
+  # Anthropic configuration
+  anthropic:
+    key: ${ANTHROPIC_API_KEY}
+    model: claude-sonnet-4
+    # max_tokens: 4096
+
+  # Local LLM via Ollama
+  local:
+    # Ollama server URL
+    ollama_url: http://localhost:11434
+
+    # Model name in Ollama
+    model: llama3
+
+    # Optional: Set timeout for local models
+    # timeout: 60s
+
+# Profile Definitions (ctxt-specific)
+# User/role-based lenses for analysis and retrieval
+profiles:
+  # Founder profile: Business-focused
+  founder:
+    # Active registries for this profile
+    registries:
+      - uxpatterns
+      - growth-weights
+
+    # Weight sources
+    weights:
+      - growth-weights
+
+    # Allowed pipelines
+    pipelines:
+      - text.long
+      - url.generic
+
+    # Tag filtering
+    tags:
+      include:
+        - "business.*"
+        - "growth.*"
+      exclude:
+        - "technical.*"
+
+  # Engineer profile: Technical focus
+  engineer:
+    registries:
+      - local-taxonomy
+
+    # Allow all pipelines
+    pipelines:
+      - "*"
+
+    tags:
+      include:
+        - "technical.*"
+        - "code.*"
+        - "architecture.*"
+      # Boost certain tags in ranking
+      boost:
+        - "architecture.*"
+        - "performance.*"
+
+################################################################################
+# Plugin Configuration
+# Extensibility layer for adding custom functionality
+################################################################################
+
+plugins:
+  # List of plugins to load
+  load:
+    # Alias plugin: Define command shortcuts
+    - name: alias-plugin
+      config:
+        definitions:
+          # Define custom aliases
+          urls: "list --type url"
+          oss-inbox: "analyze --type text --hints '#OSS #inbox'"
+          weekly-review: "surface --time-window 7d --limit 20"
+
+    # RSS Feed plugin: Fetch and monitor RSS feeds
+    - name: rss-feed
+      config:
+        # Default refresh interval for RSS feeds
+        default_interval_seconds: 3600  # 1 hour
+
+        # Default pipeline for RSS items
+        default_item_pipeline: text.long
+
+        # Optional: Maximum items per feed
+        # max_items_per_feed: 100
+
+    # Notifications plugin: Alert on events
+    - name: notifications
+      config:
+        enabled: true
+
+        # Maximum notification history to retain
+        max_history: 5000
+
+        # Notification channels
+        channels:
+          # CLI notifications
+          cli:
+            - levels:
+                - info
+                - warning
+                - error
+
+          # Webhook notifications
+          webhook:
+            - url: "https://hooks.example.com/context"
+              levels:
+                - update
+                - info
+              # Optional: Authentication
+              # auth:
+              #   type: bearer
+              #   token: ${WEBHOOK_AUTH_TOKEN}
+
+        # Notification rules (optional)
+        rules:
+          # Example: Price drop notifications
+          - type_match: "price_drop"
+            channels:
+              - cli
+              - webhook
+
+    # Price Monitor plugin: Track price changes
+    - name: price-monitor
+      config:
+        # Default threshold for price change alerts (percentage)
+        default_threshold_percent: 5
+
+        # URL patterns and price extraction
+        patterns:
+          # Amazon products
+          - match: "amazon[.]com/.+"
+            extract_regex: "\\$([0-9]+[.][0-9]{2})"
+            threshold_percent: 10
+
+          # Generic e-commerce
+          # - match: "shop[.].*"
+          #   extract_regex: "\\$([0-9,]+[.][0-9]{2})"
+          #   threshold_percent: 5
+
+################################################################################
+# Advanced Configuration (Optional)
+################################################################################
+
+# Logging Configuration
+logging:
+  # Log level: debug | info | warn | error
+  level: info
+
+  # Output format: console | json
+  format: console
+
+  # Output destination: stdout | stderr | file
+  output: stdout
+
+  # File logging (if output: file)
+  # file:
+  #   path: ~/.local/share/contexthelp/logs/app.log
+  #   max_size: 100  # MB
+  #   max_age: 30    # days
+  #   max_backups: 10
+  #   compress: true
+
+# Monitoring Configuration
+monitoring:
+  # Prometheus metrics
+  metrics:
+    enabled: false
+    # port: 9091
+    # path: /metrics
+
+  # Profiling endpoint (development only)
+  profiling:
+    enabled: false
+    # port: 6060
+
+# Development Settings (disable in production)
+development:
+  # Debug SQL queries
+  debug_sql: false
+
+  # Debug job processing
+  debug_jobs: false
+
+  # Debug pipeline execution
+  debug_pipelines: false
+
+  # Hot reload configuration changes
+  hot_reload: false
+
+  # Use mock AI responses (for testing without API calls)
+  mock_ai: false

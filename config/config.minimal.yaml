@@ -1,0 +1,111 @@
+# ContextHelp Minimal Configuration
+# This file contains the bare minimum required configuration to get started
+# Copy to ~/.config/contexthelp/config.yaml and customize as needed
+
+# Configuration version (required)
+version: 1
+
+################################################################################
+# Storage (Required)
+################################################################################
+
+storage:
+  # SQLite is recommended for most users
+  type: sqlite
+
+  # Path to database file (will be created if it doesn't exist)
+  path: ~/.local/share/contexthelp/bookmarks.db
+
+  # Use safe concurrency mode
+  concurrency: safe
+
+################################################################################
+# Ingestion (Required)
+################################################################################
+
+ingestion:
+  # Use jobs mode for reliability
+  mode: jobs
+
+  # Auto-start worker with `ch serve`
+  auto_start_worker: true
+
+################################################################################
+# Queue (Required)
+################################################################################
+
+queue:
+  # Use SQLite-based queue (same as storage)
+  backend: sqlite
+
+  # Number of concurrent workers
+  workers: 4
+
+  # Retry failed jobs up to 3 times
+  retry_limit: 3
+
+################################################################################
+# Pipelines (Required)
+################################################################################
+
+pipelines:
+  # Enable basic pipelines
+  enabled:
+    - text.short
+    - text.long
+    - url.generic
+
+  # Set defaults
+  defaults:
+    text: text.long
+    url: url.generic
+
+################################################################################
+# Server (Optional but recommended)
+################################################################################
+
+server:
+  http:
+    port: 7700
+    public: false
+  grpc:
+    port: 7701
+
+################################################################################
+# Privacy (Recommended)
+################################################################################
+
+privacy:
+  # Disable telemetry for privacy
+  telemetry: false
+
+################################################################################
+# AI Providers (Required for semantic analysis)
+################################################################################
+
+ai_providers:
+  # Configure at least one provider
+  openai:
+    key: ${OPENAI_API_KEY}
+    model: gpt-4o
+
+  # Or use local LLM
+  # local:
+  #   ollama_url: http://localhost:11434
+  #   model: llama3
+
+################################################################################
+# Optional: Basic i18n
+################################################################################
+
+i18n:
+  enabled: false
+  preferred_languages:
+    - en
+
+################################################################################
+# Optional: Refresh configuration
+################################################################################
+
+refresh:
+  enabled: false

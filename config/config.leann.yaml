@@ -1,0 +1,340 @@
+# ContextHelp LEANN Storage Integration Configuration
+# This file demonstrates LEANN integration for efficient vector storage
+# See docs/integrations/leann-integration.md for details
+#
+# LEANN provides:
+# - 97% storage efficiency through on-demand embedding recomputation
+# - Graph-based RAG with selective retrieval
+# - Multimodal support (text + vision)
+# - Local-first, privacy-preserving architecture
+
+version: 1
+
+################################################################################
+# Strategy 1: LEANN as Primary Storage Backend
+# Use LEANN for all vector storage with on-demand recomputation
+################################################################################
+
+storage:
+  # Use LEANN as storage backend
+  type: leann
+
+  # Path to LEANN index directory
+  path: ~/.local/share/contexthelp/leann
+
+  # Safe concurrency mode
+  concurrency: safe
+
+  # LEANN-specific options
+  options:
+    # Enable on-demand embedding generation (key feature for storage savings)
+    recompute: true
+
+    # Graph construction parameters
+    # Higher degree = better recall, more memory
+    graph_degree: 32
+
+    # Build complexity for index construction
+    # Higher = better quality, slower build
+    build_complexity: 64
+
+    # Use compact storage (CSR format)
+    # Reduces memory footprint
+    compact: true
+
+    # Backend algorithm
+    # Options: hnsw (faster, more memory) | diskann (slower, less memory)
+    backend: hnsw
+
+    # ContextHelp integration: metadata fields to index
+    metadata_fields:
+      - tags          # Tag filtering in vector search
+      - mentions      # Entity-based filtering
+      - hints         # User hints
+      - decisions     # Decision tracking
+      - pipeline      # Pipeline metadata
+      - created_at    # Temporal filtering
+      - updated_at
+
+# Ingestion and queue use in-memory or lightweight backends
+ingestion:
+  mode: jobs
+  auto_start_worker: true
+
+queue:
+  backend: memory  # Lightweight queue for LEANN backend
+  workers: 4
+  retry_limit: 3
+
+# Rest of configuration remains standard
+pipelines:
+  enabled:
+    - text.short
+    - text.long
+    - url.generic
+    - url.repo
+    - image.ui
+    - image.landing
+  defaults:
+    text: text.long
+    url: url.generic
+    image: image.landing
+
+ai_providers:
+  openai:
+    key: ${OPENAI_API_KEY}
+    model: gpt-4o
+
+server:
+  http:
+    port: 7700
+    public: false
+  grpc:
+    port: 7701
+
+privacy:
+  telemetry: false
+
+################################################################################
+# Strategy 2: Hybrid Storage (SQLite + LEANN)
+# SQLite for metadata, entities, backlinks
+# LEANN for vector similarity search
+################################################################################
+
+# Uncomment to use hybrid approach:
+#
+# storage:
+#   # Primary: SQLite for knowledge objects, entities, backlinks
+#   type: sqlite
+#   path: ~/.local/share/contexthelp/bookmarks.db
+#   concurrency: safe
+#
+# # Vector backend: LEANN for similarity search
+# vector_backend:
+#   type: leann
+#   path: ~/.local/share/contexthelp/leann-vector
+#   options:
+#     recompute: true
+#     graph_degree: 32
+#     build_complexity: 64
+#     compact: true
+#     backend: hnsw
+#     metadata_fields:
+#       - tags
+#       - mentions
+#       - pipeline
+#
+# # Query behavior: how to merge results
+# query:
+#   # Use LEANN for vector similarity
+#   vector_provider: leann
+#
+#   # Result merging strategy
+#   # Options: weighted | rrf (reciprocal rank fusion) | reciprocal_rank_fusion
+#   merge_strategy: weighted
+#
+#   # Weights for result ranking
+#   weights:
+#     metadata: 0.3            # SQLite metadata matches
+#     mentions: 0.4            # Entity/mention matches
+#     vector_similarity: 0.3   # LEANN semantic similarity
+
+################################################################################
+# Strategy 3: LEANN as MCP Server
+# Connect to LEANN's data sources via Model Context Protocol
+################################################################################
+
+# Uncomment to enable LEANN MCP integration:
+#
+# knowledge_sources:
+#   # LEANN email RAG
+#   - name: leann_emails
+#     type: mcp
+#     # Command to start LEANN MCP server
+#     server_command: "python -m apps.email_rag"
+#     config:
+#       # Path to LEANN email index
+#       index_path: ~/.local/share/leann/emails
+#       # Email source (apple_mail, gmail, outlook)
+#       source: apple_mail
+#     # ContextHelp enrichment
+#     enrichment:
+#       # Pipeline to process email content
+#       pipeline: text.long
+#       # Extract @mentions from emails
+#       extract_mentions: true
+#       # Resolve entities (people, companies)
+#       resolve_entities: true
+#       # Create backlinks
+#       backlink: true
+#
+#   # LEANN browser history RAG
+#   - name: leann_browser
+#     type: mcp
+#     server_command: "python -m apps.browser_rag"
+#     config:
+#       index_path: ~/.local/share/leann/browser
+#       # Chrome profile to index
+#       chrome_profile: Default
+#     enrichment:
+#       pipeline: url.generic
+#       extract_mentions: true
+#       resolve_entities: true
+#       backlink: true
+#
+#   # LEANN ChatGPT history RAG
+#   - name: leann_chatgpt
+#     type: mcp
+#     server_command: "python -m apps.chatgpt_rag"
+#     config:
+#       index_path: ~/.local/share/leann/chatgpt
+#       # Authentication (if required)
+#       # session_token: ${CHATGPT_SESSION_TOKEN}
+#     enrichment:
+#       pipeline: text.long
+#       extract_mentions: true
+#       backlink: true
+
+################################################################################
+# LEANN Performance Tuning
+################################################################################
+
+# For large corpora (100K+ documents)
+# storage:
+#   type: leann
+#   path: ~/.local/share/contexthelp/leann-large
+#   options:
+#     recompute: true
+#     graph_degree: 48        # Increase for better recall
+#     build_complexity: 128   # Increase for better quality
+#     compact: true
+#     backend: diskann        # Use DiskANN for memory efficiency
+
+# For storage-constrained environments (laptops, edge devices)
+# storage:
+#   type: leann
+#   path: ~/.local/share/contexthelp/leann-compact
+#   options:
+#     recompute: true
+#     graph_degree: 16        # Reduce for memory savings
+#     build_complexity: 32    # Reduce for faster builds
+#     compact: true           # Always use compact mode
+#     backend: hnsw
+#     # Additional pruning
+#     prune_threshold: 0.8    # Prune low-quality edges
+
+# For multimodal workloads (text + images)
+# storage:
+#   type: leann
+#   path: ~/.local/share/contexthelp/leann-multimodal
+#   options:
+#     recompute: true
+#     graph_degree: 32
+#     build_complexity: 64
+#     compact: true
+#     backend: hnsw
+#     # Enable vision embedding (requires ColQwen)
+#     multimodal: true
+#     vision_model: colqwen
+
+################################################################################
+# LEANN Migration Settings
+################################################################################
+
+# Gradual migration from existing vector backend to LEANN
+# migration:
+#   enabled: true
+#   # Migration strategy
+#   strategy: gradual  # or bulk
+#   # Batch size for gradual migration
+#   batch_size: 1000
+#   # Verify results match between backends
+#   verify_results: true
+#   # Fallback to old backend on errors
+#   fallback_enabled: true
+#   # Migration schedule (cron format)
+#   schedule: "0 3 * * *"  # 3 AM daily
+
+################################################################################
+# LEANN Maintenance
+################################################################################
+
+# Periodic index rebuilding for optimal performance
+# maintenance:
+#   leann:
+#     # Rebuild index periodically
+#     rebuild_schedule: "0 4 * * 0"  # 4 AM Sunday
+#
+#     # Verify index integrity
+#     verify_schedule: "0 5 * * *"  # 5 AM daily
+#
+#     # Cleanup orphaned nodes
+#     cleanup_schedule: "0 6 * * 0"  # 6 AM Sunday
+#
+#     # Auto-optimize on size threshold
+#     optimize_threshold_mb: 1000
+
+################################################################################
+# Advanced: LEANN Plugin for Data Source Connectors
+################################################################################
+
+# Example plugin to wrap LEANN data sources
+# plugins:
+#   load:
+#     - name: leann-connector
+#       config:
+#         # Enable LEANN data source pipelines
+#         pipelines:
+#           - leann.browser_history
+#           - leann.emails
+#           - leann.chatgpt
+#
+#         # LEANN installation path
+#         leann_path: ~/.local/share/leann
+#
+#         # Data sources to sync
+#         sources:
+#           browser_history:
+#             enabled: true
+#             sync_interval_seconds: 3600  # 1 hour
+#             pipeline: url.generic
+#
+#           emails:
+#             enabled: true
+#             sync_interval_seconds: 1800  # 30 minutes
+#             pipeline: text.long
+#
+#           chatgpt:
+#             enabled: false
+#             sync_interval_seconds: 3600
+#             pipeline: text.long
+
+################################################################################
+# Troubleshooting LEANN
+################################################################################
+
+# Enable debug logging for LEANN
+logging:
+  level: debug
+
+  # LEANN-specific logging
+  components:
+    leann:
+      level: debug
+      # Log index operations
+      log_operations: true
+      # Log query performance
+      log_queries: true
+      # Log recomputation events
+      log_recompute: true
+
+# Development settings for LEANN testing
+development:
+  # Verify LEANN results match traditional backends
+  verify_leann_results: true
+
+  # Compare query performance
+  benchmark_queries: true
+
+  # Log storage statistics
+  log_storage_stats: true
