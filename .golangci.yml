@@ -1,0 +1,157 @@
+# golangci-lint configuration for ContextHelp
+# See https://golangci-lint.run/usage/configuration/
+
+run:
+  timeout: 5m
+  tests: true
+  build-tags:
+    - integration
+    - e2e
+  skip-dirs:
+    - vendor
+    - .git
+    - .github
+    - docs
+    - test/fixtures
+  modules-download-mode: readonly
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  sort-results: true
+
+linters:
+  enable:
+    # Default linters
+    - errcheck      # Check for unchecked errors
+    - gosimple      # Simplify code
+    - govet         # Vet examines Go source code
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Advanced static analysis
+    - typecheck     # Type check Go code
+    - unused        # Check for unused constants, variables, functions
+
+    # Additional recommended linters
+    - gofmt         # Check code formatting
+    - goimports     # Check import statements
+    - misspell      # Find commonly misspelled words
+    - unconvert     # Remove unnecessary type conversions
+    - unparam       # Find unused function parameters
+    - gosec         # Security-focused linter
+    - revive        # Fast, configurable, extensible linter
+    - goconst       # Find repeated strings that could be constants
+    - gocyclo       # Check function complexity
+    - dupl          # Code clone detection
+    - prealloc      # Find slice declarations that could be preallocated
+    - gocritic      # Extensible Go source code linter
+    - errorlint     # Find code that will cause problems with error wrapping
+    - nilerr        # Find code that returns nil even if error is not nil
+
+  disable:
+    - exhaustive    # Too strict for switches
+    - funlen        # Function length check (too opinionated)
+    - lll           # Line length (handled by gofmt)
+    - wsl           # Whitespace linter (too opinionated)
+    - nlreturn      # Return statement checks (too strict)
+    - gomnd         # Magic number detection (too many false positives)
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+    exclude-functions:
+      - (io.Closer).Close
+      - (net/http.ResponseWriter).Write
+
+  govet:
+    check-shadowing: true
+    enable-all: true
+
+  gofmt:
+    simplify: true
+
+  goimports:
+    local-prefixes: github.com/ideacrafterslabs/contexthelp
+
+  gocyclo:
+    min-complexity: 15
+
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+
+  misspell:
+    locale: US
+    ignore-words:
+      - contexthelp
+      - dpkms
+
+  gosec:
+    severity: medium
+    confidence: medium
+    excludes:
+      - G104  # Audit errors not checked (covered by errcheck)
+      - G304  # File path provided as taint input (needed for flexibility)
+
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - checkPrivateReceivers
+          - sayRepetitiveInsteadOfStutters
+      - name: package-comments
+      - name: var-naming
+      - name: indent-error-flow
+      - name: error-return
+      - name: error-strings
+      - name: receiver-naming
+      - name: increment-decrement
+      - name: error-naming
+      - name: context-as-argument
+      - name: context-keys-type
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+    disabled-checks:
+      - commentFormatting
+      - whyNoLint
+
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: true
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  exclude-rules:
+    # Exclude test files from certain checks
+    - path: _test\.go
+      linters:
+        - dupl
+        - gosec
+        - goconst
+
+    # Exclude generated code
+    - path: (.*)/generated/(.*)\.go
+      linters:
+        - all
+
+    # Allow complex main functions
+    - path: cmd/
+      linters:
+        - gocyclo
+
+    # Allow globals in tests
+    - path: _test\.go
+      text: "G101:"  # Potential hardcoded credentials
+
+  # Show all issues
+  exclude:
+    # Don't exclude default issues

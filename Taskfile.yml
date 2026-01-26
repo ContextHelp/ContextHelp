@@ -1,0 +1,357 @@
+version: '3'
+
+# Taskfile for ContextHelp
+# Install: https://taskfile.dev/installation/
+# Usage: task <command>
+
+vars:
+  BINARY_DPKMS: ./bin/dpkms
+  BINARY_CTXT: ./bin/ctxt
+  MAIN_DPKMS: ./cmd/dpkms
+  MAIN_CTXT: ./cmd/ctxt
+  DB_PATH: ./data/sqlite/contexthelp.db
+  MIGRATION_PATH: ./data/migrations
+
+env:
+  GO111MODULE: on
+  CGO_ENABLED: 1
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  # Development tasks
+  dev:
+    desc: Run development mode with hot reload
+    deps: [build]
+    cmds:
+      - |
+        echo "Starting ContextHelp in development mode..."
+        trap 'kill 0' EXIT
+        air -c .air.toml || go run {{.MAIN_DPKMS}} serve &
+        sleep 2
+        echo "Development server running. Press Ctrl+C to stop."
+        wait
+
+  run:dpkms:
+    desc: Run dPKMS server
+    deps: [build:dpkms]
+    cmds:
+      - "{{.BINARY_DPKMS}} serve"
+
+  run:ctxt:
+    desc: Run ctxt CLI (interactive)
+    deps: [build:ctxt]
+    cmds:
+      - "{{.BINARY_CTXT}}"
+
+  # Build tasks
+  build:
+    desc: Build both binaries
+    deps: [build:dpkms, build:ctxt]
+
+  build:dpkms:
+    desc: Build dPKMS binary
+    cmds:
+      - mkdir -p bin
+      - go build -v -o {{.BINARY_DPKMS}} {{.MAIN_DPKMS}}
+    sources:
+      - "{{.MAIN_DPKMS}}/**/*.go"
+      - internal/dpkms/**/*.go
+      - pkg/dpkms/**/*.go
+    generates:
+      - "{{.BINARY_DPKMS}}"
+
+  build:ctxt:
+    desc: Build ctxt binary
+    cmds:
+      - mkdir -p bin
+      - go build -v -o {{.BINARY_CTXT}} {{.MAIN_CTXT}}
+    sources:
+      - "{{.MAIN_CTXT}}/**/*.go"
+      - internal/ctxt/**/*.go
+      - pkg/ctxt/**/*.go
+    generates:
+      - "{{.BINARY_CTXT}}"
+
+  build:prod:
+    desc: Build optimized production binaries
+    cmds:
+      - mkdir -p bin
+      - |
+        go build -v -ldflags="-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}}" \
+          -o {{.BINARY_DPKMS}} {{.MAIN_DPKMS}}
+      - |
+        go build -v -ldflags="-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}}" \
+          -o {{.BINARY_CTXT}} {{.MAIN_CTXT}}
+    vars:
+      VERSION:
+        sh: git describe --tags --always --dirty
+      COMMIT:
+        sh: git rev-parse HEAD
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf bin/
+      - rm -rf dist/
+      - go clean -cache -testcache -modcache
+
+  # Testing tasks
+  test:
+    desc: Run all tests
+    cmds:
+      - go test -v -race -cover ./...
+
+  test:unit:
+    desc: Run unit tests only
+    cmds:
+      - go test -v -short -race -cover ./...
+
+  test:integration:
+    desc: Run integration tests
+    cmds:
+      - go test -v -race -tags=integration ./test/integration/...
+
+  test:e2e:
+    desc: Run end-to-end tests
+    cmds:
+      - go test -v -race -tags=e2e ./test/e2e/...
+
+  test:coverage:
+    desc: Generate test coverage report
+    cmds:
+      - go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "Coverage report generated: coverage.html"
+      - go tool cover -func=coverage.out
+
+  test:watch:
+    desc: Run tests in watch mode
+    cmds:
+      - |
+        echo "Watching for changes... Press Ctrl+C to stop."
+        fswatch -o . -e ".*" -i "\\.go$" | xargs -n1 -I{} go test -short ./...
+
+  test:race:
+    desc: Run tests with race detector
+    cmds:
+      - go test -v -race ./...
+
+  test:bench:
+    desc: Run benchmarks
+    cmds:
+      - go test -v -bench=. -benchmem ./...
+
+  # Code quality tasks
+  lint:
+    desc: Run linters
+    cmds:
+      - golangci-lint run --timeout=5m
+
+  lint:fix:
+    desc: Run linters and auto-fix issues
+    cmds:
+      - golangci-lint run --fix --timeout=5m
+
+  fmt:
+    desc: Format code
+    cmds:
+      - go fmt ./...
+      - goimports -w -local github.com/ideacrafterslabs/contexthelp .
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  security:
+    desc: Run security scans
+    cmds:
+      - govulncheck ./...
+      - gosec -quiet ./...
+
+  # CI tasks (match GitHub Actions)
+  ci:
+    desc: Run all CI checks locally
+    deps: [ci:lint, ci:security, ci:test, ci:build]
+
+  ci:lint:
+    desc: CI lint checks
+    cmds:
+      - task: lint
+      - task: fmt
+      - task: vet
+
+  ci:security:
+    desc: CI security checks
+    cmds:
+      - task: security
+
+  ci:test:
+    desc: CI test suite
+    cmds:
+      - task: test:unit
+      - task: test:coverage
+
+  ci:build:
+    desc: CI build check
+    cmds:
+      - task: build
+
+  # Database tasks
+  db:migrate:up:
+    desc: Run database migrations
+    cmds:
+      - migrate -path {{.MIGRATION_PATH}} -database "sqlite3://{{.DB_PATH}}" up
+
+  db:migrate:down:
+    desc: Rollback database migrations
+    cmds:
+      - migrate -path {{.MIGRATION_PATH}} -database "sqlite3://{{.DB_PATH}}" down 1
+
+  db:migrate:create:
+    desc: Create new migration (usage: task db:migrate:create -- name)
+    cmds:
+      - migrate create -ext sql -dir {{.MIGRATION_PATH}} -seq {{.CLI_ARGS}}
+
+  db:reset:
+    desc: Reset database (drop all tables and re-run migrations)
+    cmds:
+      - rm -f {{.DB_PATH}}
+      - task: db:migrate:up
+
+  db:seed:
+    desc: Seed database with test data
+    cmds:
+      - go run ./scripts/seed.go
+
+  # Docker tasks
+  services:up:
+    desc: Start Docker services (Postgres, Redis, Qdrant)
+    cmds:
+      - docker-compose -f docker-compose.dev.yml up -d
+      - echo "Waiting for services to be ready..."
+      - sleep 5
+      - docker-compose -f docker-compose.dev.yml ps
+
+  services:down:
+    desc: Stop Docker services
+    cmds:
+      - docker-compose -f docker-compose.dev.yml down
+
+  services:logs:
+    desc: View Docker service logs
+    cmds:
+      - docker-compose -f docker-compose.dev.yml logs -f
+
+  services:restart:
+    desc: Restart Docker services
+    cmds:
+      - docker-compose -f docker-compose.dev.yml restart
+
+  services:clean:
+    desc: Stop services and remove volumes
+    cmds:
+      - docker-compose -f docker-compose.dev.yml down -v
+
+  # Dependency tasks
+  deps:
+    desc: Download Go dependencies
+    cmds:
+      - go mod download
+      - go mod tidy
+      - go mod verify
+
+  deps:update:
+    desc: Update Go dependencies
+    cmds:
+      - go get -u ./...
+      - go mod tidy
+
+  deps:vendor:
+    desc: Vendor dependencies
+    cmds:
+      - go mod vendor
+
+  # Installation tasks
+  install:
+    desc: Install binaries to GOPATH
+    deps: [build]
+    cmds:
+      - go install {{.MAIN_DPKMS}}
+      - go install {{.MAIN_CTXT}}
+      - echo "Binaries installed to $(go env GOPATH)/bin"
+
+  install:tools:
+    desc: Install development tools
+    cmds:
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - go install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+      - go install golang.org/x/vuln/cmd/govulncheck@latest
+      - go install github.com/securego/gosec/v2/cmd/gosec@latest
+      - echo "Development tools installed"
+
+  # Documentation tasks
+  docs:serve:
+    desc: Serve documentation locally
+    cmds:
+      - |
+        if command -v mdbook >/dev/null 2>&1; then
+          cd docs && mdbook serve
+        else
+          echo "mdbook not installed. Serving with Python..."
+          cd docs && python3 -m http.server 8000
+        fi
+
+  docs:build:
+    desc: Build documentation
+    cmds:
+      - |
+        if command -v mdbook >/dev/null 2>&1; then
+          cd docs && mdbook build
+        else
+          echo "mdbook not installed. Skipping build."
+        fi
+
+  # Release tasks
+  release:prepare:
+    desc: Prepare release (update version, changelog)
+    cmds:
+      - echo "Preparing release..."
+      - git describe --tags --abbrev=0 || echo "No tags found"
+      - echo "Update CHANGELOG.md and version files"
+      - echo "Then run: git tag -a v0.x.0 -m 'Release v0.x.0'"
+
+  release:build:
+    desc: Build release artifacts
+    deps: [build:prod]
+    cmds:
+      - mkdir -p dist
+      - tar -czf dist/contexthelp-$(git describe --tags).tar.gz -C bin .
+      - echo "Release artifacts created in dist/"
+
+  # Utility tasks
+  version:
+    desc: Show version information
+    cmds:
+      - echo "Git tag: $(git describe --tags --always --dirty)"
+      - echo "Git commit: $(git rev-parse HEAD)"
+      - echo "Go version: $(go version)"
+
+  verify:
+    desc: Verify installation
+    cmds:
+      - echo "=== Verifying installation ==="
+      - go version
+      - task --version || echo "Task not found"
+      - golangci-lint --version || echo "golangci-lint not found"
+      - migrate -version || echo "migrate not found"
+      - govulncheck -version || echo "govulncheck not found"
+      - echo "=== Database ==="
+      - ls -lh {{.DB_PATH}} || echo "Database not found (run: task db:migrate:up)"
+      - echo "=== Binaries ==="
+      - ls -lh bin/ || echo "Binaries not found (run: task build)"
