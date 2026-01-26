@@ -1,6 +1,18 @@
-# Sprint 6 Goal: "Production Polish & Multimedia"
+# Skeleton 6 Goal: "Production Polish & Multimedia"
 
-By the end of this sprint:
+## Package Focus
+
+**Primary Package:** dPKMS (60%) + ctxt (40%)
+
+Production readiness requires solid infrastructure (migrations, backups) and rich pipelines (audio/video transcription).
+
+**Package Breakdown:**
+- **dPKMS:** Migration system, backup/restore, schema evolution, graph stability
+- **ctxt:** Audio pipeline, video pipeline, error handling, CLI UX polish, ranking explainability
+
+---
+
+By the end of this skeleton:
 
 1. **Multimedia:** Users can ingest Audio/Video files (transcription) with full mention extraction and entity resolution support across modalities.
 2. **Stability:** Database schema migrations are automated; backups and restores are supported; entity and graph schema evolution is safe.
@@ -8,7 +20,7 @@ By the end of this sprint:
 
 ---
 
-## 1. Core/Infra Team (The Custodian)
+## 1. dPKMS Infrastructure Team (The Custodian)
 
 **Focus:** Data safety, lifecycle management, schema evolution for mentions, entities, and the knowledge graph.
 **Why:** The introduction of semantic identity (mentions → entities → graph) requires new tables and guarantees that cannot risk user data.
@@ -20,13 +32,13 @@ By the end of this sprint:
 - Required migrations:
   - new `mentions` column in bookmarks
   - new `entities` table with canonical fields
-  - new `backlinks` table for entity–bookmark edges
+  - new `backlinks` table for entity–knowledge object edges
   - new indexes for mention filtering and entity lookup
-- Action: Transition automatically from Sprint 5 schema to v1.0 schema when needed.
+- Action: Transition automatically from Skeleton 5 schema to v1.0 schema when needed.
 
 ### Task 1.2: Backup and Restore Commands
 
-- Implement `ch config backup --out ./backup.zip`.
+- Implement `ctxt config backup --out ./backup.zip`.
 - Backup must include:
   - SQLite DB
   - configuration files
@@ -37,7 +49,7 @@ By the end of this sprint:
 
 ### Task 1.3: Update and Version Check
 
-- Implement `ch version --check`.
+- Implement `ctxt version --check`.
 - Check release metadata to warn about:
   - entity schema updates
   - graph schema updates
@@ -46,7 +58,7 @@ By the end of this sprint:
 
 ---
 
-## 2. Ingestion/AI Team (The Transcriber)
+## 2. ctxt Ingestion Team (The Transcriber)
 
 **Focus:** Full multimodal ingestion with transcription, mention extraction, and entity resolution.
 **Constraint:** Avoid bundling heavy system libraries; rely on shell-outs or lightweight adapters.
@@ -87,7 +99,7 @@ By the end of this sprint:
 
 ---
 
-## 3. Search/Retrieval Team (The Explainer)
+## 3. dPKMS Search Team & ctxt Retrieval Team (The Explainer)
 
 **Focus:** Ranking transparency, polished CLI UX, and explicit accounting for semantic identity signals.
 **Why:** Mentions and entity graph edges must contribute meaningfully to ranking and must be visible in explainability output.
@@ -101,7 +113,7 @@ By the end of this sprint:
   - recency boost
   - entity alignment contribution
   - graph relevance contribution
-- Expose via `ch list --explain`.
+- Expose via `ctxt list --explain`.
 
 ### Task 3.2: Terminal UI Polish
 
@@ -122,7 +134,7 @@ By the end of this sprint:
 
 ---
 
-## 4. Registry/Ecosystem Team (The Publisher)
+## 4. dPKMS Registry Team (The Publisher)
 
 **Focus:** Official registry publication, multilingual output, and entity-aware registry capability negotiation.
 **Why:** The semantic identity layer requires reliable, canonical entity definitions.
@@ -161,7 +173,7 @@ By the end of this sprint:
 **Scenario:** Multimedia ingestion with mention extraction and graph updates.
 
 1. Ingest:
-   `ch analyze --file "vlog_draft.mp3" --hints "#youtube #draft"`
+   `ctxt analyze --file "vlog_draft.mp3" --hints "#youtube #draft"`
    Result:
    - audio pipeline transcribes
    - text goes to `text.long`
@@ -170,7 +182,7 @@ By the end of this sprint:
    - graph edges created
 
 2. Search:
-   `ch list --q "video ideas" --explain`
+   `ctxt list --q "video ideas" --explain`
    Result:
    - well-formatted table output
    - explanation shows:
@@ -194,3 +206,20 @@ By the end of this sprint:
 
 - **Graph consistency:**
   Validate entity definitions and aliases from registries to avoid cycles or corruption.
+---
+
+## See Also
+
+**Package Boundaries:**
+- [CROSS-PACKAGE-CONTRACTS.md](CROSS-PACKAGE-CONTRACTS.md) - dPKMS ↔ ctxt integration points
+- [../branding.md](../branding.md) - Naming conventions (dPKMS vs ctxt vs ContextHelp)
+- [../dpkms-or-ctxt.md](../dpkms-or-ctxt.md) - Package placement guide
+
+**Configuration:**
+- [CONFIGURATION-STRUCTURE.md](CONFIGURATION-STRUCTURE.md) - Config file organization
+- [../ctxt/configuration.md](../ctxt/configuration.md) - Focus profiles & preferences
+
+**Architecture:**
+- [../architecture.md](../architecture.md) - System architecture overview
+- [../../ROADMAP.md](../../ROADMAP.md) - Living skeleton roadmap
+- [README.md](README.md) - Sprint documentation index

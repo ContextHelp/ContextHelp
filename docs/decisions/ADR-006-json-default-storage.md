@@ -1,20 +1,21 @@
 # ADR-006 – JSON Filesystem as the Default Storage Backend with Pluggable Options
 
-> **Status:** Accepted
+> **Status:** Superseded
 > **Date:** 2025-10-05
 > **Author:** @jadb
+> **Applies to:** dPKMS
 > **Supersedes:** None
-> **Superseded by:** None
+> **Superseded by:** Storage Strategy Updated (see dpkms/storage.md)
 
 ---
 
 ## Context
 
-ContextHelp requires a local-first, offline-capable storage layer that is reliable, cross-platform, and easy to distribute. The engine ingests diverse content types (text, URLs, images, audio transcripts, video transcripts, metadata) and generates structured bookmarks enriched with tags, summaries, sections, decisions, and AI-derived fields.
+The dPKMS package requires a local-first, offline-capable storage layer that is reliable, cross-platform, and easy to distribute. The engine ingests diverse content types (text, URLs, images, audio transcripts, video transcripts, metadata) and generates structured bookmarks enriched with tags, summaries, sections, decisions, and AI-derived fields.
 
 Key constraints include:
 
-- **Local-first architecture:** Users must be able to run ContextHelp entirely offline.
+- **Local-first architecture:** Users must be able to run dPKMS entirely offline.
 - **Transparency & Introspection:** In early development stages, developers and power users need to manually inspect, edit, or version-control their data without specialized DB tools.
 - **Portability:** The CLI and server must run on macOS, Linux, and Windows with zero external runtime dependencies.
 - **Concurrency model:** Pipelines write via a job system; ingestion requires safe access, though early single-user scale is low.
@@ -44,7 +45,13 @@ Goals optimized:
 
 ## Decision
 
-**We will use a JSON Filesystem-based engine as the default storage backend for ContextHelp to prioritize transparency and ease of development, while exposing a pluggable storage interface that enables SQLite (and others) as optional adapters for production-scale use.**
+**We will use a JSON Filesystem-based engine as the default storage backend for dPKMS to prioritize transparency and ease of development, while exposing a pluggable storage interface that enables SQLite (and others) as optional adapters for production-scale use.**
+
+---
+
+## Status Update
+
+**This ADR has been superseded.** The current default storage backend is **SQLite with WAL mode** (see `dpkms/storage.md`). This ADR is retained for historical reference, but JSON filesystem storage is no longer the default.
 
 ---
 
@@ -58,13 +65,13 @@ Goals optimized:
 - **Bootstrapping speed:** Allows rapid iteration on the data schema before locking it down with SQL migrations.
 - **Sufficient for MVP:** Since complex Registry relationships do not yet exist, complex relational queries are not yet required.
 
-### Why not SQLite as the default (yet)
+### Why not SQLite as the default (yet) - Original Rationale
 
 - **CGO Overhead:** SQLite often requires CGO (or modernc transpilation), which adds friction to the build pipeline.
 - **Opaque Data:** Binary files require specific tools to inspect. Debugging schema issues is slower.
 - **Complexity:** Relational schemas and migrations are overkill for the initial single-user prototype phase.
 
-However, SQLite is maintained as a **first-class optional backend** for users who need FTS5, higher concurrency, or larger datasets.
+**Note:** SQLite is now the default backend (see status update above). The original rationale above is retained for historical context.
 
 ### Why not Postgres as the default
 

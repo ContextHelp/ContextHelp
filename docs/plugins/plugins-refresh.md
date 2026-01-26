@@ -10,7 +10,7 @@ The plugin provides scheduled refresh and fetch operations using configurable ru
 
 The Refresh Plugin enables:
 
-- **Auto-refreshing** existing bookmarks (documentation, repos, API specs)
+- **Auto-refreshing** existing knowledge objects (documentation, repos, API specs)
 - **Auto-fetching** new items from content-producing sources:
   - Podcast feeds
   - YouTube channels & playlists
@@ -45,14 +45,14 @@ ContextHelp, with the Refresh Plugin, becomes an **always-fresh context engine**
 
 ## Features
 
-- Scheduled refresh of existing bookmarks
+- Scheduled refresh of existing knowledge objects
 - Scheduled fetching of new items from feed-like sources
 - Regex-based source matching rules
 - Interval-based scheduling (`--refresh daily`, `--refresh 3600`)
 - Minimum refresh interval (default: 5 minutes)
 - Backoff and retry handling
 - Full CLI, REST, gRPC integration
-- Bookmark-level override policies
+- Knowledge object-level override policies
 - First-class handling of semantic updates:
   - mentions
   - entity resolution
@@ -89,7 +89,7 @@ refresh:
       fetch_new: true
 ```
 
-### Bookmark-Level Overrides
+### Knowledge Object-Level Overrides
 
 ```
 "refresh": {

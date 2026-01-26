@@ -54,7 +54,7 @@ ContextHelp Bookmark Creation
   ↓
 Extract mentions & entities (ContextHelp)
   ↓
-Generate bookmark metadata
+Generate knowledge object metadata
   ↓
 Store in LEANN:
   - Metadata + tags → LEANN metadata
@@ -67,7 +67,7 @@ Backlink index → ContextHelp backlink table (SQLite)
 
 **Data separation:**
 - **LEANN**: Stores chunks, embeddings (recomputed), search index
-- **ContextHelp**: Stores bookmarks, mentions, entities, backlinks, plugin metadata
+- **ContextHelp**: Stores knowledge objects, mentions, entities, backlinks, plugin metadata
 - **Hybrid**: ContextHelp queries LEANN for similarity, then merges with local graph data
 
 ---
@@ -137,12 +137,12 @@ func (p *LeannConnectorPlugin) Register(ctx plugin.PluginContext) {
     })
 }
 
-func (p *LeannConnectorPlugin) FetchBrowserHistory(ctx Context, input Input) (Bookmark, error) {
+func (p *LeannConnectorPlugin) FetchBrowserHistory(ctx Context, input Input) (KnowledgeObject, error) {
     // Call LEANN to fetch browser history
     history := leann.GetBrowserHistory()
-    
-    // Transform to ContextHelp bookmark
-    return Bookmark{
+
+    // Transform to ContextHelp knowledge object
+    return KnowledgeObject{
         Title:   history.Title,
         URL:      history.URL,
         Type:     "web_history",
@@ -188,9 +188,9 @@ storage:
 
 ```yaml
 storage:
-  # Primary: SQLite for bookmarks, entities, backlinks
+  # Primary: SQLite for knowledge objects, entities, backlinks
   type: sqlite
-  path: ~/.local/share/contexthelp/bookmarks.db
+  path: ~/.local/share/contexthelp/objects.db
 
 # Vector backend: LEANN for similarity search
 vector_backend:
@@ -247,8 +247,8 @@ When ContextHelp uses LEANN as storage backend:
 flowchart TD
     A[User Query] --> B[Parse AST]
     B --> C{Query Type?}
-    
-    C -->|Metadata| D[Query SQLite: bookmarks, entities, mentions]
+
+    C -->|Metadata| D[Query SQLite: knowledge objects, entities, mentions]
     C -->|FTS| D
     C -->|Mentions| D
     C -->|Graph| E[Traverse backlink index]
@@ -283,10 +283,10 @@ flowchart TD
 pip install leann
 
 # 2. Export existing embeddings (if any)
-ch export --format json --include embeddings > bookmarks_with_embeddings.json
+ctxt export --format json --include embeddings > objects_with_embeddings.json
 
 # 3. Import to LEANN (optional, for comparison)
-python -m leann.import --input bookmarks_with_embeddings.json --output leann-comparison
+python -m leann.import --input objects_with_embeddings.json --output leann-comparison
 
 # 4. Update ContextHelp config to use LEANN
 cat >> ~/.config/contexthelp/config.yaml <<EOF
@@ -298,10 +298,10 @@ storage:
 EOF
 
 # 5. Restart ContextHelp
-ch restart
+dpkms serve
 
 # 6. Rebuild LEANN index (will recompute embeddings on-demand)
-ch rebuild-index --backend leann
+ctxt rebuild-index --backend leann
 ```
 
 ### Backward Compatibility
@@ -328,7 +328,7 @@ storage:
 ### Storage Efficiency
 
 **Traditional vector DB:**
-- 1M bookmarks × 500 embeddings × 1536 floats × 4 bytes = 3GB
+- 1M knowledge objects × 500 embeddings × 1536 floats × 4 bytes = 3GB
 - Index overhead ~1GB
 - **Total: ~4GB**
 
@@ -362,7 +362,7 @@ storage:
 
 ### CPU/Memory
 
-**Scenario:** 1M bookmarks, 50 concurrent queries
+**Scenario:** 1M knowledge objects, 50 concurrent queries
 
 | Backend | CPU (queries/s) | Memory (idle) | Memory (peak) |
 |---------|-----------------|----------------|----------------|
@@ -389,19 +389,19 @@ import "contexthelp/core/storage"
 
 type LeannBackend struct {
     index *leann.Index
-    localStorage storage.BookmarkStore  // For entities/backlinks
+    localStorage storage.ObjectStore  // For entities/backlinks
 }
 
-// Implement storage.BookmarkStore interface
-func (b *LeannBackend) Save(bookmark Bookmark) error {
+// Implement storage.ObjectStore interface
+func (b *LeannBackend) Save(obj KnowledgeObject) error {
     // Save metadata to LEANN
-    b.index.AddDocument(bookmark.Content, bookmark.Metadata)
-    
+    b.index.AddDocument(obj.Content, obj.Metadata)
+
     // Save entities/backlinks to local SQLite
-    return b.localStorage.Save(bookmark)
+    return b.localStorage.Save(obj)
 }
 
-func (b *LeannBackend) Search(query Query) ([]Bookmark, error) {
+func (b *LeannBackend) Search(query Query) ([]KnowledgeObject, error) {
     // Parse query
     metadataQuery, similarityQuery := parseQuery(query)
     
@@ -481,18 +481,18 @@ func RegisterBackend(registry storage.BackendRegistry) {
 // storage/leann_backend_test.go
 func TestLeannBackend_SaveAndSearch(t *testing.T) {
     backend := NewLeannBackend(testConfig)
-    bookmark := createTestBookmark("test content", ["@react/hooks"])
-    
-    err := backend.Save(bookmark)
+    obj := createTestObject("test content", ["@react/hooks"])
+
+    err := backend.Save(obj)
     require.NoError(t, err)
-    
+
     results, err := backend.Search(Query{
         Text: "react hooks",
         Mentions: []string{"@react/hooks"},
     })
     require.NoError(t, err)
     require.Len(t, results, 1)
-    require.Equal(t, results[0].ID, bookmark.ID)
+    require.Equal(t, results[0].ID, obj.ID)
 }
 ```
 
@@ -501,24 +501,24 @@ func TestLeannBackend_SaveAndSearch(t *testing.T) {
 ```go
 // integration/leann_e2e_test.go
 func TestLeannIntegration_FullWorkflow(t *testing.T) {
-    // 1. Ingest bookmark
-    bookmark, err := ch.Analyze("https://example.com/article", WithStorage("leann"))
+    // 1. Ingest knowledge object
+    obj, err := ctxt.Analyze("https://example.com/article", WithStorage("leann"))
     require.NoError(t, err)
-    
+
     // 2. Query by metadata
-    results, err := ch.Search("type:url", WithStorage("leann"))
+    results, err := ctxt.Search("type:url", WithStorage("leann"))
     require.NoError(t, err)
-    require.Contains(t, results, bookmark)
-    
+    require.Contains(t, results, obj)
+
     // 3. Query by similarity
-    results, err = ch.Search("similar content", WithStorage("leann"))
+    results, err = ctxt.Search("similar content", WithStorage("leann"))
     require.NoError(t, err)
     require.Greater(t, len(results), 0)
-    
+
     // 4. Verify backlinks
-    backlinks, err := ch.Backlinks("@react/hooks")
+    backlinks, err := ctxt.Backlinks("@react/hooks")
     require.NoError(t, err)
-    require.Contains(t, backlinks, bookmark.ID)
+    require.Contains(t, backlinks, obj.ID)
 }
 ```
 
@@ -551,7 +551,7 @@ func BenchmarkChromaSearch(b *testing.B) {
 
 ### Issue: LEANN index build is slow
 
-**Symptoms:** `ch rebuild-index` takes hours
+**Symptoms:** `ctxt rebuild-index` takes hours
 
 **Cause:** Large corpus with complex graph building
 
@@ -575,36 +575,36 @@ storage:
 **Solutions:**
 ```bash
 # 1. Reduce batch size
-ch rebuild-index --backend leann --batch-size 1000
+ctxt rebuild-index --backend leann --batch-size 1000
 
 # 2. Use disk-based backend
-ch rebuild-index --backend leann --backend diskann
+ctxt rebuild-index --backend leann --backend diskann
 
 # 3. Enable compact mode
-ch rebuild-index --backend leann --compact
+ctxt rebuild-index --backend leann --compact
 ```
 
 ### Issue: Slow queries after updates
 
-**Symptoms:** Queries slow after adding new bookmarks
+**Symptoms:** Queries slow after adding new knowledge objects
 
 **Cause:** Graph structure changes, traversal paths inefficient
 
 **Solutions:**
 ```bash
 # 1. Rebuild index periodically
-ch rebuild-index --backend leann --force
+ctxt rebuild-index --backend leann --force
 
 # 2. Use HNSW (faster rebuilds)
-ch rebuild-index --backend leann --backend hnsw
+ctxt rebuild-index --backend leann --backend hnsw
 
 # 3. Increase graph degree for better connectivity
-ch config set storage.options.graph_degree 48
+ctxt config set storage.options.graph_degree 48
 ```
 
 ### Issue: MCP connection fails
 
-**Symptoms:** `ch search` cannot connect to LEANN MCP server
+**Symptoms:** `ctxt find` cannot connect to LEANN MCP server
 
 **Cause:** MCP server not running or authentication issues
 
@@ -617,10 +617,10 @@ python -m leann.mcp_server --test-connection
 ls -la ~/.local/share/leann/
 
 # 3. Verify MCP command in config
-ch config show knowledge_sources
+ctxt config show knowledge_sources
 
 # 4. Check MCP server logs
-journalctl -u contexthelp -f
+journalctl -u dpkms -f
 ```
 
 ---

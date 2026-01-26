@@ -1,342 +1,359 @@
-# Proposal: ContextHelp — A Decentralized Context Engine for Human and Agent Intelligence
+# Proposal: dPKMS + `ctxt` — A Decentralized Knowledge Substrate and an Agentic Context Brain
 
 ## Overview
 
-ContextHelp is a decentralized, local-first engine that transforms raw multimodal content into structured, contextualized knowledge. It is designed to give humans and AI agents the one thing they universally lack: **personal, private, task-relevant context**.
+This proposal introduces a two-package architecture:
 
-By ingesting content, enriching it through pipelines, aligning it with registry-defined taxonomies and entities, building a knowledge graph, and exposing it through configurable agent profiles, ContextHelp becomes the foundational substrate for context-aware computation.
+- **dPKMS** — a decentralized, local-first **knowledge substrate** for durable storage, encryption, identity, indexing, registries, federation, and safe execution.
+- **`ctxt`** — an agentic **context brain** that uses dPKMS capabilities to ingest, enrich, compose, and surface knowledge just-in-time through human-friendly interfaces.
 
-This proposal outlines the vision, architecture, use cases, and roadmap for ContextHelp, now enhanced with a **semantic identity layer** powered by **Mentions** and **Entities**.
+Together, they transform raw multimodal inputs into structured, contextualized knowledge that humans and AI agents can reliably use as **private, task-relevant context**.
+
+This design explicitly separates:
+- **mechanics** (dPKMS: safe execution + data guarantees)
+from
+- **meaning** (`ctxt`: intelligence + behavior + workflows)
 
 ---
 
 ## Problem Statement
 
-Modern AI agents—even the most advanced—operate largely without access to the user’s personal context.
+Modern AI agents—even highly capable ones—operate without the user’s personal context.
 
-They lack visibility into:
+They lack reliable access to:
 
-- What the user reads
-- What the user saves
-- How the user classifies information
-- Which canonical concepts they rely on
-- How their domain knowledge is structured
-- What vocabulary, frameworks, and entities they reference
-- How content connects across time, tasks, and domains
+- What the user reads and captures
+- What the user believes matters (and why)
+- Which concepts are canonical in the user’s world
+- How knowledge connects across time, projects, and decisions
+- What vocabulary, frameworks, and entities the user references
+- Which sources are trusted, current, or outdated
 
-Without context, agents must reason in a vacuum.
-Without structure, personal knowledge remains fragmented.
-Without identity, meaning cannot anchor itself in reusable concepts.
-Without a graph, relationships remain implicit and undiscoverable.
+Without context, agents reason in a vacuum.
+Without structure, knowledge remains fragmented.
+Without identity, meaning can’t anchor to stable concepts.
+Without traceability, outputs can’t be trusted.
+Without durability, nothing can run autonomously.
 
-Existing PKM apps store data, but they do not bridge the gap between **unstructured personal knowledge**, **semantic identity**, **entity-aware reasoning**, and **graph-driven retrieval**.
+Existing PKM tools store information, but they don’t provide a **sovereign, verifiable, federated substrate** that agentic systems can safely build on.
 
-ContextHelp fills that gap.
+This proposal fills that gap.
 
 ---
 
 ## Vision
 
-**ContextHelp becomes the personal and organizational “context layer” that powers intelligent agents.**
+### dPKMS becomes the “Context Operating System”
+A stable substrate that guarantees:
 
-- A local-first, privacy-first engine
-- A decentralized ecosystem of registries (taxonomies, entities, bookmark sources, weights)
-- A unified pipeline system for multimodal AI enrichment
-- A programmable substrate for agent worldviews
-- A consistent interface for CLI, REST, and gRPC access
-- A **semantic identity layer powered by mentions and canonical entities**
-- A **knowledge graph connecting concepts, content, and meaning**
+- local-first storage and portability
+- privacy, encryption, and ownership
+- versioned provenance and reversibility
+- registry subscriptions and federation
+- safe background execution (jobs + pipelines)
+- a queryable semantic graph of knowledge
+
+### `ctxt` becomes the daily context brain
+An agentic interface that delivers:
+
+- capture without thinking
+- automatic enrichment pipelines
+- search that forgives uncertainty
+- focus profiles (role/project lenses)
+- just-in-time resurfacing
+- one-command composition into briefs, plans, drafts, and decisions
+- controlled sharing and publishing when desired
 
 The outcome:
-Agents that understand *your* universe, not a generic one.
+Humans and agents that operate inside *your* world, not a generic one.
 
 ---
 
-## Core Concepts
+## Core Non-Negotiables (System Principles)
 
-### 1. Pipelines
+- Formless
+- Frictionless
+- Polyglot
+- Sovereign
+- Accessible
+- Trusted
+- Federated
+- Self-authenticating
+- Verifiable
+- Interoperable
+- Atomic
+- Discoverable
+- Evergreen
+- Actionable
+- Extensible
+- Durable
+- Fast
 
-Modular, event-driven processing graphs that transform raw content into structured knowledge.
+These guide architectural decisions without requiring every deployment to enable every capability.
+
+---
+
+# Architecture: Two Packages, Clean Boundaries
+
+## 1) dPKMS (The Substrate)
+
+dPKMS is the execution and data layer.
+It is designed to be **agent-ready**, not agent-opinionated.
+
+### What dPKMS provides
+
+- **Storage + Indexing**
+  Local-first database, attachments, FTS + vectors + graph adjacency indexes, and stable IDs.
+
+- **Knowledge Objects + Graph Model**
+  Structured objects, canonical entities, mentions, and edges that remain queryable and portable.
+
+- **Jobs + Pipelines Runtime**
+  A safe pipeline runtime plus a transactional job queue (local outbox pattern) supporting retries, resumability, and deterministic replay.
+
+- **Encryption + Key Management**
+  Encryption at rest and in transit, with pluggable key strategies.
+
+- **Authentication + Authorization**
+  Support for private-by-default workspaces, registries, scoped collaboration, and permission checks.
+
+- **Registries + Federation**
+  Decentralized registries for taxonomies, entity definitions, workflows, and shared packs with subscription and synchronization primitives.
+
+- **Self-Authenticating Capabilities (Optional)**
+  Signing and verification for bundles, registries, and revisions so trust can travel with the data.
+
+- **Export / Import Contract**
+  Portable bundles preserving IDs, provenance, edges, and attachments.
+
+### What dPKMS does *not* do
+- decide which enrichments matter
+- choose models or writing style
+- generate briefs or plans
+- decide what to surface or notify
+- enforce a worldview
+
+dPKMS runs work **correctly**.
+It does not decide what work is **valuable**.
+
+---
+
+## 2) `ctxt` (The Context Brain)
+
+`ctxt` is the agentic product layer.
+It builds human workflows on top of dPKMS capabilities.
+
+### What `ctxt` provides
+
+- **Universal Capture**
+  CLI/TUI/REPL commands, browser extension entrypoints, mobile capture, offline-first dumping.
+
+- **Multimodal Enrichment Pipelines**
+  Recipes for summarization, entity extraction, decision detection, task extraction, translation hooks, and structured decomposition.
+
+- **Meaningful Defaults**
+  “Capture first, structure later” behavior with background enrichment and graceful degradation.
+
+- **Focus Profiles (Role / Project Lenses)**
+  Founder vs Engineer vs Research vs “Project X” profiles that shape ranking, surfacing, templates, and outputs.
+
+- **Just-In-Time Surfacing**
+  Relevant knowledge resurfacing based on active work, projects, time windows, people, and recent activity.
+
+- **Composition Engine**
+  One-command generation of briefs, plans, meeting packets, drafts, checklists, and publish-ready artifacts.
+
+- **Safe Agent Behavior**
+  Propose → dry-run → apply workflows with audits, scope controls, and reversibility.
+
+`ctxt` decides which jobs and pipelines are worth running.
+dPKMS guarantees they run safely.
+
+---
+
+# Key Concepts (Shared Vocabulary)
+
+## Pipelines
+Modular processing graphs that transform raw inputs into structured knowledge objects.
 
 Examples:
+- `ingest.text.short`
+- `ingest.url.generic`
+- `ingest.image.ocr`
+- `ingest.audio.transcribe`
+- `refresh.stale`
 
-- `text.short`, `text.long`
-- `url.generic`, `url.repo`
-- `image.landing`, `image.ocr`
-- `audio.transcript`
-- `video.analysis`
-
-Pipelines support:
-
-- LLM reasoning
-- OCR and metadata extraction
-- embeddings
-- **mention extraction and entity resolution**
-- Decomposition into sections, tags, decisions, summaries
+dPKMS provides the runtime.
+`ctxt` provides the recipes.
 
 ---
 
-### 2. Registries
-
-Registries provide structured meaning through external definitions.
-
-Types:
-
-- **Taxonomy Registries** — controlled vocabularies, tag definitions
-- **Entity Registries** — canonical concepts, API surfaces, domain ontologies
-- **Bookmark Registries** — shared knowledge sources
-- **Weights Registries** — scoring, heuristics
-
-Registry providers:
-
-- Can be static, hosted, self-hosted, authenticated, or commercial
-- Implement an open Registry Protocol
-- Are composable, decentralized, and user-selectable
-
-Users (or teams) choose the registries they trust.
+## Knowledge Objects (Successor to “Bookmarks”)
+Each processed item becomes a structured object with:
+- summaries and sections
+- atomic notes
+- tags and classifications
+- decisions and tasks
+- mentions (`@...`) + canonical entities
+- provenance and version history
+- embeddings and retrieval metadata
 
 ---
 
-### 3. Bookmark Schema
+## Mentions & Canonical Entities
+Mentions like:
+- `@ui.best-practice`
+- `@stripe.api.checkout`
+- `@component.form.input`
 
-Represents enriched input:
+Reference stable entities with:
+- titles, descriptions, aliases
+- translations / localized labels
+- namespaces and versions
+- registry or local ownership
 
-- metadata
-- structured sections
-- tags
-- decisions and rationales
-- hints
-- **mentions referencing canonical entities**
-- provenance
-- pipeline used
-- registry influences
-
-Bookmarks form the user’s **semantic knowledge graph**, stored locally and optionally enriched by registries.
-
----
-
-### 4. Mentions & Entities
-
-Mentions (`@ui.best-practice`, `@stripe.api.checkout`, `@component.form.input`) allow users and pipelines to reference **canonical concepts** with durable identity.
-
-Entities:
-
-- are defined locally or by registries
-- provide stable semantic anchors
-- include titles, descriptions, aliases, translations, metadata
-- are versioned and namespace-aware
-
-Mentions create **edges** between bookmarks and entities, enabling:
-
-- semantic navigation
+This creates durable semantic anchors for:
+- navigation
 - linking
 - filtering
 - reasoning
-- summarization
-
-They form the backbone of contextual understanding.
+- composition
 
 ---
 
-### 5. Knowledge Graph
-
-The knowledge graph connects:
-
-- bookmarks → entities
-- entities → entities
-- clusters and inferred relationships
-- backlinks and semantic neighborhoods
+## Knowledge Graph
+Graph edges connect:
+- object ↔ entity
+- entity ↔ entity
+- object ↔ object (optional)
 
 This enables:
-
-- semantic browsing
-- backlink navigation
-- concept-driven summarization
 - entity-based retrieval
-- graph-powered agent reasoning
-- emerging concept detection
-
-It becomes the backbone of ContextHelp’s semantic navigation and retrieval engine.
-
----
-
-### 6. Agent Profiles
-
-Each agent views a curated, scoped subset of the user's knowledge.
-
-An agent profile defines:
-
-- active pipelines
-- subscribed registries
-- which entities matter to the agent
-- retrieval preferences
-- worldview shaping heuristics
-
-Agents become **role-based**, **domain-aware**, and **semantically aligned** with the user’s conceptual universe.
+- graph-aware reranking
+- semantic neighborhoods
+- concept evolution over time
+- agent reasoning grounded in receipts
 
 ---
 
-### 7. Local-First Engine
+## Registries
+Registries distribute structured meaning:
+- taxonomies
+- entity definitions
+- weights and heuristics
+- shared knowledge packs
+- workflows and recipes
 
-ContextHelp operates without requiring cloud access.
+Registries may be:
+- local or remote
+- private or public
+- authenticated or paid
+- signed and verifiable (optional)
 
-Key properties:
-
-- data never leaves the device unless explicitly allowed
-- registries are optional
-- offline mode is fully supported
-- storage backends: JSON, SQLite, Postgres
-- concurrency-safe, event-driven core
-
----
-
-### 8. Developer Interfaces
-
-Available interfaces:
-
-- **CLI (`ch`)** — ingestion, retrieval, serving
-- **REST API** — frontend and automation
-- **gRPC API** — high-performance agent runtimes
-
-All interfaces support **mention-based querying**, **entity lookup**, and **graph navigation**.
+Users choose what to trust.
 
 ---
 
-## Why Now?
+# Interfaces
 
-Three converging forces make ContextHelp timely:
+## dPKMS Interfaces
+- library API (core contract)
+- optional daemon API (HTTP/gRPC) for local clients
+- plugin API (capabilities + permissions)
 
-1. **Rise of AI agents** — They require durable personal context.
-2. **Explosion of multimodal content** — Abundant but unstructured.
-3. **Demand for digital sovereignty** — Users want control of their context and identity.
-
-ContextHelp solves all three with a decentralized, extensible architecture enhanced by **entities + mentions + knowledge graph semantics**.
-
----
-
-## Primary Use Cases
-
-### **For Individuals**
-
-- Personal knowledge graphing
-- Entity-aware research workflows
-- Concept-driven writing assistance
-- Learning systems that adapt to user vocabulary
-
-### **For Teams**
-
-- Shared conceptual ontologies
-- Semantic governance
-- Context-aware internal assistants
-- Consistent tagging + mention conventions
-
-### **For Developers**
-
-- Build context-driven agents
-- Use entity schemas for domain alignment
-- Integrate context into dashboards, BI tools, codebases
+## `ctxt` Interfaces
+- CLI (`ctxt`)
+- optional TUI
+- optional browser extension and mobile entrypoints
+- REST/gRPC for automations and agents
 
 ---
 
-## Technical Architecture Overview
+# Primary Use Cases
 
-1. Input → Pipeline Inference
-2. Pipeline Execution (LLM reasoning, **mention extraction**, metadata)
-3. Registry-Based Semantic Alignment (taxonomies + entities)
-4. Bookmark Creation
-5. **Knowledge Graph Updates**
-6. Retrieval (filtering by tags, mentions, entities)
-7. Agent-Scoped Access
-8. CLI/API Consumption
+## Individuals
+- capture anything without organizing
+- build a personal knowledge graph automatically
+- retrieve knowledge even under uncertainty
+- write faster using contextual composition
+- maintain evergreen knowledge without gardening
 
-Each step is modular, testable, and replaceable.
-See `docs/architecture.md` for details.
+## Teams
+- shared canonical entities and taxonomies
+- controlled collaboration and publishing
+- consistent mention conventions
+- subscribed knowledge packs and workflows
 
----
-
-## Decentralization Model
-
-ContextHelp defines the **protocol**, not the network.
-
-Features:
-
-- registries are peer-like and independent
-- selective subscription
-- worldview composition per agent or user
-- no central authority
-- compatible with private/commercial registries
-- supports local-only, hosted, and distributed options
-
-ContextHelp acts as the **sovereign client** of a semantic ecosystem.
+## Developers
+- agent runtimes with private context
+- stable entity schema for domain alignment
+- federated retrieval across knowledge sources
+- plugin-driven integration into tools and codebases
 
 ---
 
-## Roadmap
+# Roadmap (Two-Track)
 
-### Phase 1 — Core Engine (MVP)
+## Phase 1 — dPKMS Core Substrate (MVP)
+- SQLite storage + attachments
+- jobs queue (outbox pattern)
+- pipeline runtime primitives
+- entities + mentions + graph core
+- export/import bundle contract
+- basic query API
 
-- Go runtime
-- Pipelines (text, URL, basic image)
-- Local JSON storage
-- CLI: analyze, list
-- Basic registry support
-- **Introduce mentions, entity schema, and graph core**
+## Phase 2 — `ctxt` CLI Brain (MVP)
+- `ctxt add`, `ctxt find`, `ctxt open`
+- ingestion recipes for text + URL
+- structured objects + mentions
+- composition: “make brief”
+- focus profiles (basic)
 
-### Phase 2 — Full Pipelines + Registries
+## Phase 3 — Federation + Registries
+- registry protocol v1
+- subscription + sync behavior
+- federated retrieval + reranking
+- permissioned sharing model
 
-- Expanded multimodal pipelines
-- Taxonomy + Entity registries
-- Registry protocol v1
-- Bookmark schema v1 (with mentions)
-- SQLite/Postgres storage
-- Graph building + backlink indexing
+## Phase 4 — Verifiability + Signing
+- optional signature support for bundles and registries
+- trust policies
+- tamper-evident revision trails
 
-### Phase 3 — Agents + API
-
-- Agent profiles
-- Knowledge graph subsystem
-- REST + gRPC APIs
-- Multi-registry harmonization
-- Entity resolution improvements
-
-### Phase 4 — Ecosystem Extensions
-
-- Plugin framework
-- Paid/private registries
-- Embedding search
-- Graph visualization layer
-- Optional cloud sync
+## Phase 5 — Agentic Surfacing + Evergreen Ops
+- resurfacing engine (just-in-time knowledge)
+- refresh policies + staleness detection
+- deeper composition workflows
+- performance hardening
 
 ---
 
-## Why ContextHelp Will Matter
+# Why This Matters
 
 As AI systems become more autonomous, **context becomes the new compute**.
 
-ContextHelp:
+This architecture makes context:
+- owned
+- durable
+- queryable
+- verifiable
+- federated
+- and usable by humans and agents
 
-- restores user sovereignty
-- empowers agents with personal, conceptual knowledge
-- introduces the missing semantic identity layer via **entities**
-- enables decentralized semantic ecosystems
-- connects content with meaning through the **knowledge graph**
-- establishes a new foundation for personal AI infrastructure
-
-It is not just a tool — it is a **platform for contextual cognition**.
+It is not just a tool.
+It is a substrate + brain for contextual cognition.
 
 ---
 
 ## Call for Participation
 
-We are seeking early collaborators and contributors who are passionate about:
+We are seeking collaborators interested in:
 
-- AI agents
-- decentralized architectures
-- knowledge graphs
-- semantic identity models
-- multimodal pipelines
-- open protocols
+- agentic systems and workflows
+- local-first, sovereign computing
+- knowledge graphs and semantic identity
+- encryption, signatures, and trust models
+- open registry protocols
+- multimodal enrichment pipelines
 
-ContextHelp will be open source under AGPL-3.0.
-
-If this resonates with your vision of the future, you're invited to help shape it.
+The project will be open source under **AGPL-3.0**.

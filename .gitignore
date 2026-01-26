@@ -1,0 +1,343 @@
+# ContextHelp .gitignore
+# Prevents accidental commit of secrets and sensitive data
+
+#############################################################################
+# Environment Files (CRITICAL - Contains API Keys and Secrets)
+#############################################################################
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+.env.test
+
+# Backup environment files
+.env.backup
+.env.bak
+*.env
+
+#############################################################################
+# Configuration Files with Secrets
+#############################################################################
+# User configuration files (may contain real secrets)
+config.yaml
+config.local.yaml
+config.production.yaml
+config.dev.yaml
+~/.config/contexthelp/config.yaml
+
+# Plugin configurations (may contain API keys)
+plugins/*/config.yaml
+plugins/*/secrets/
+plugins/*/.env
+
+#############################################################################
+# Authentication & Credentials (CRITICAL)
+#############################################################################
+# Token storage
+.config/ctxt/auth/
+.config/ctxt/tokens/
+.config/dpkms/auth/
+*.token
+*.tokens
+tokens.json
+tokens.db
+
+# Keyring and private keys
+.config/ctxt/keyring/
+.config/dpkms/keyring/
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# SSH keys
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# GPG keys
+*.gpg
+*.asc
+secring.gpg
+
+# OAuth tokens
+oauth_tokens/
+.oauth/
+
+# Session files
+.session
+sessions/
+
+#############################################################################
+# Database Files (May Contain Sensitive User Data)
+#############################################################################
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# Database backups
+*.db.backup
+*.sql.gz
+*.dump
+
+# Specific database directories
+data/
+db/
+database/
+.local/share/contexthelp/
+
+# PostgreSQL files
+.pgpass
+pg_service.conf
+
+#############################################################################
+# Build Artifacts
+#############################################################################
+# Compiled binaries
+bin/
+dist/
+build/
+out/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go build cache
+.go/
+go.work
+go.work.sum
+
+# Binary output from go build
+ctxt
+dpkms
+/ctxt
+/dpkms
+
+#############################################################################
+# Test Files and Coverage
+#############################################################################
+*.test
+*.out
+coverage.txt
+coverage.html
+*.cover
+.coverage/
+
+# Test databases
+test.db
+test.sqlite
+*_test.db
+
+#############################################################################
+# Log Files (May Contain Secrets in Error Messages)
+#############################################################################
+*.log
+logs/
+*.log.*
+log/
+
+# Application logs
+ctxt.log
+dpkms.log
+app.log
+error.log
+debug.log
+
+# Audit logs
+audit/
+audit.log
+
+#############################################################################
+# Temporary Files
+#############################################################################
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+.*.swp
+
+# Cache directories
+cache/
+.cache/
+.local/cache/
+
+#############################################################################
+# OS-Specific Files
+#############################################################################
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.directory
+.Trash-*
+
+#############################################################################
+# IDE and Editor Files
+#############################################################################
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# JetBrains (GoLand, IntelliJ)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+#############################################################################
+# Development and Debug Files
+#############################################################################
+# Debug dumps
+*.dump
+core
+*.core
+
+# Profiling data
+*.pprof
+*.prof
+cpu.prof
+mem.prof
+profile.out
+
+# Delve debugger
+__debug_bin
+
+#############################################################################
+# Docker and Container Files
+#############################################################################
+# Docker volumes (may contain data)
+docker-compose.override.yml
+.docker/
+
+# Container secrets
+secrets/
+.secrets/
+
+#############################################################################
+# Package Manager Files
+#############################################################################
+# Vendored dependencies (track go.mod/go.sum instead)
+vendor/
+
+# Node.js (if using for tooling)
+node_modules/
+package-lock.json
+yarn.lock
+
+#############################################################################
+# Documentation Build Artifacts
+#############################################################################
+_site/
+.jekyll-cache/
+.sass-cache/
+
+#############################################################################
+# Backup Files
+#############################################################################
+*.backup
+*.old
+*.orig
+*.rej
+
+# Encrypted backups (still shouldn't be in git)
+*.encrypted
+*.enc
+
+#############################################################################
+# Registry and Remote Data
+#############################################################################
+# Registry cache
+.registry-cache/
+registries/cache/
+
+# Downloaded registry data
+.registries/
+
+#############################################################################
+# Plugin Development
+#############################################################################
+# Plugin build artifacts
+plugins/*/bin/
+plugins/*/dist/
+
+# Plugin test data
+plugins/*/testdata/secrets/
+
+#############################################################################
+# AI and ML Model Files (Large Files)
+#############################################################################
+*.model
+*.onnx
+*.pt
+*.pth
+models/
+embeddings/
+
+#############################################################################
+# Custom Exceptions (Keep These)
+#############################################################################
+# Keep example files (they don't contain real secrets)
+!.env.example
+!config/config.example.yaml
+!config/config.minimal.yaml
+!config/config.plugins.yaml
+!config/config.leann.yaml
+
+# Keep documentation
+!docs/**/*.md
+!*.md
+
+# Keep test fixtures (if they're safe)
+!testdata/**/*.yaml
+!testdata/**/*.json
+
+#############################################################################
+# User-Specific Ignores
+#############################################################################
+# Allow users to add their own ignores without modifying this file
+.gitignore.local

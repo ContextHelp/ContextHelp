@@ -242,7 +242,7 @@ query:
     vector_similarity: 0.3
 ```
 
-See [LEANN Integration Documentation](./leann-integration.md) for complete details.
+See [LEANN Integration Documentation](../integrations/leann-integration.md) for complete details.
 
 ### Backends
 
@@ -251,7 +251,7 @@ See [LEANN Integration Documentation](./leann-integration.md) for complete detai
 | `json` | Simple, portable, single-user. Not concurrency-safe. |
 | `sqlite` | Recommended default. WAL mode for safe concurrent reads. |
 | `postgres` | For advanced multi-user or server deployments. |
-| `leann` | Graph-based RAG with 97% storage efficiency. See [LEANN Integration](./leann-integration.md). |
+| `leann` | Graph-based RAG with 97% storage efficiency. See [LEANN Integration](../integrations/leann-integration.md). |
 | `plugin-<name>` | Storage provided by a plugin (remote KV, vector DB, etc.). |
 
 Plugins can register new backend types dynamically.

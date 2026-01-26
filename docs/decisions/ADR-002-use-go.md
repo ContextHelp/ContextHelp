@@ -1,8 +1,9 @@
 # ADR-002 – Use Go as the Primary Implementation Language for ContextHelp
 
-> **Status:** Proposed
+> **Status:** Accepted
 > **Date:** 2025-10-05
 > **Author:** @jadb
+> **Applies to:** dPKMS, ctxt
 > **Supersedes:** None
 > **Superseded by:** None
 

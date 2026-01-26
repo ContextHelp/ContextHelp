@@ -16,7 +16,7 @@ Plugins may:
 - register custom pipelines
 - attach pre/post ingestion hooks
 - enqueue jobs
-- define custom bookmark types
+- define custom knowledge object types
 - store plugin-specific metadata
 - manage their own state (JSON files)
 - inject behavior into CLI/REST/gRPC output
@@ -28,7 +28,7 @@ Plugins **cannot**:
 
 - modify core database schema
 - override core security rules
-- alter core bookmark schema fields
+- alter core knowledge object schema fields
 - modify or intercept internal system files
 - access registers or storage without permission
 
@@ -69,7 +69,7 @@ Plugins declare:
   "entrypoint": "code.so",
   "hooks": ["post_ingest", "post_refresh", "on_cli_start"],
   "pipelines": ["feed.fetch", "feed.parse", "feed.ingest_items"],
-  "bookmark_types": ["feed", "feed_item"],
+  "object_types": ["feed", "feed_item"],
   "permissions": {
     "network": true,
     "filesystem": true
@@ -83,7 +83,7 @@ Manifest governs:
 - security permissions
 - allowed hooks
 - declared pipelines
-- declared bookmark types
+- declared knowledge object types
 
 ---
 
@@ -136,16 +136,16 @@ plugin.Config() -> map[string]interface{}
 plugin.ConfigTyped(&struct) -> error
 ```
 
-Bookmark-level plugin config:
+Knowledge object-level plugin config:
 
 ```
-bookmark.plugins.<pluginName>
+object.plugins.<pluginName>
 ```
 
 Access:
 
 ```
-plugin.BookmarkConfig(bookmark, "rss_feed") -> interface{}
+plugin.ObjectConfig(object, "rss_feed") -> interface{}
 ```
 
 ---
@@ -174,19 +174,19 @@ func PreIngest(input IngestInput) IngestInput
 
 ## 6.2. post_ingest
 
-Run after ingestion and bookmark creation.
+Run after ingestion and knowledge object creation.
 
 Use cases:
 
 - RSS plugin: detect feed entries and enqueue jobs
 - Price monitor: extract price and track changes
 - Notification plugin: emit notifications
-- Enrich bookmark metadata
+- Enrich knowledge object metadata
 
 Signature:
 
 ```
-func PostIngest(b Bookmark) error
+func PostIngest(obj KnowledgeObject) error
 ```
 
 ---
@@ -222,7 +222,7 @@ Use cases:
 Signature:
 
 ```
-func PostRefresh(original Bookmark, refreshed Bookmark) error
+func PostRefresh(original KnowledgeObject, refreshed KnowledgeObject) error
 ```
 
 ---

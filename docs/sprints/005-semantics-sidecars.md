@@ -1,15 +1,27 @@
-# Sprint 5 Goal: "Semantics & Sidecars"
+# Skeleton 5 Goal: "Semantics & Sidecars"
 
-By the end of this sprint:
+## Package Focus
 
-1. **Semantic Search:** Users can search for concepts (e.g., "fruit") and find relevant bookmarks (e.g., "apple") even if the literal keyword does not appear, using entity-driven semantics.
+**Balanced:** dPKMS (50%) + ctxt (50%)
+
+Semantic search requires both packages equally: ctxt generates embeddings and defines plugins, dPKMS stores vectors and enables hybrid retrieval.
+
+**Package Breakdown:**
+- **dPKMS:** Plugin loader, vector storage, RRF implementation, entity graph integration
+- **ctxt:** Embedding client, pipeline vector integration, semantic augmentation, plugin definitions
+
+---
+
+By the end of this skeleton:
+
+1. **Semantic Search:** Users can search for concepts (e.g., "fruit") and find relevant knowledge objects (e.g., "apple") even if the literal keyword does not appear, using entity-driven semantics.
 2. **Plugins:** A developer can write a separate Go binary that ContextHelp loads to add a custom command, pipeline step, or semantic augmentation sidecar.
 3. **Hybrid Reranking:** Search results combine Keyword (FTS), Vector (Embeddings), and Mention/Entity alignment through Reciprocal Rank Fusion (RRF).
 4. **Semantic Identity Integration:** Pipelines and plugins must support mentions (`@concept.id`) and entity resolution. Plugins can safely contribute suggestions, aliases, or metadata to the knowledge graph without modifying core identity rules.
 
 ---
 
-## 1. Core/Infra Team (The Host)
+## 1. dPKMS Infrastructure Team (The Host)
 
 Focus: The Plugin System (ADR-012).
 
@@ -67,7 +79,7 @@ Enhancements:
 
 ---
 
-## 2. Ingestion/AI Team (The Embedder)
+## 2. ctxt Ingestion Team (The Embedder)
 
 Focus: Vector Generation, Mention Extraction, Entity Resolution.
 
@@ -109,7 +121,7 @@ New processing order:
 Add or refine:
 
 - `vectors` table for embedding storage
-- `mentions[]` array in bookmark schema
+- `mentions[]` array in knowledge_object schema
 - `entity_index` table
 - `backlinks` table (initial implementation for graph edges)
 
@@ -120,7 +132,7 @@ Store vectors as:
 
 ---
 
-## 3. Search/Retrieval Team (The Mathematician)
+## 3. dPKMS Search Team & ctxt Retrieval Team (The Mathematician)
 
 Focus: Vector Search, Entity Filtering, and Advanced Reranking.
 
@@ -149,7 +161,7 @@ Behavior:
 
 - Extract query-time mentions
 - Resolve query mention → canonical entity
-- Retrieve linked bookmarks via backlinks and mention table
+- Retrieve linked knowledge objects via backlinks and mention table
 - Combine with FTS and vector results
 
 ### Task 3.3: Reciprocal Rank Fusion (RRF)
@@ -167,12 +179,12 @@ Score = `1 / (k + FTS_Rank) + 1 / (k + Vector_Rank)`
 
 Extend with:
 
-- `+ mentionBoost` when the bookmark contains an explicit mention that maps to the target entity
+- `+ mentionBoost` when the knowledge object contains an explicit mention that maps to the target entity
 - `+ entityAffinityScore` based on graph adjacency
 
 ---
 
-## 4. Registry/Ecosystem Team (The Polisher)
+## 4. dPKMS Registry Team (The Polisher)
 
 Focus: Weighting, Internationalization, and Entity Registries.
 
@@ -302,3 +314,20 @@ Result: Bookmark ranked at top due to explicit entity alignment.
 - Backlink creation must validate entity existence.
 - Plugin-generated edges must respect namespace constraints.
 - Corruption risks increase if plugins emit malformed edges.
+---
+
+## See Also
+
+**Package Boundaries:**
+- [CROSS-PACKAGE-CONTRACTS.md](CROSS-PACKAGE-CONTRACTS.md) - dPKMS ↔ ctxt integration points
+- [../branding.md](../branding.md) - Naming conventions (dPKMS vs ctxt vs ContextHelp)
+- [../dpkms-or-ctxt.md](../dpkms-or-ctxt.md) - Package placement guide
+
+**Configuration:**
+- [CONFIGURATION-STRUCTURE.md](CONFIGURATION-STRUCTURE.md) - Config file organization
+- [../ctxt/configuration.md](../ctxt/configuration.md) - Focus profiles & preferences
+
+**Architecture:**
+- [../architecture.md](../architecture.md) - System architecture overview
+- [../../ROADMAP.md](../../ROADMAP.md) - Living skeleton roadmap
+- [README.md](README.md) - Sprint documentation index

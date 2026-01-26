@@ -1,6 +1,18 @@
-# Sprint 4 Goal: "Interfaces & Independence"
+# Skeleton 4 Goal: "Interfaces & Independence"
 
-By the end of this sprint:
+## Package Focus
+
+**Primary Package:** dPKMS (60%) + ctxt (40%)
+
+This skeleton makes dPKMS accessible via REST/gRPC APIs, while ctxt adds agent profiles for scoped worldviews. More infrastructure work than intelligence work.
+
+**Package Breakdown:**
+- **dPKMS:** REST server, gRPC server, entity-aware endpoints, registry sync, offline caching
+- **ctxt:** Agent profile configuration, pipeline agent-awareness, CLI wrappers for new APIs
+
+---
+
+By the end of this skeleton:
 1. Developers can talk to ContextHelp via **HTTP/REST** or **gRPC** (not just CLI).
 2. Users can define **Agents** that restrict search results to specific worldviews.
 3. Registries can be **Synced** locally for offline use (ADR-009).
@@ -9,19 +21,19 @@ By the end of this sprint:
 
 ---
 
-## 1. Core/Infra Team (The Server)
+## 1. dPKMS Infrastructure Team (The Server)
 
 **Focus:** The API Surface (REST & gRPC), expanded to support entity, mention, and graph operations, while exposing extension hooks defined by the plugin contract.
 **Why:** Interfaces must expose structured semantic navigation *and* remain plugin-extendable.
 
-### Task 1.1: The Unified Server (`ch serve`)
+### Task 1.1: The Unified Server (`dpkms serve`)
 
 - Run:
   - Worker (Ingestion)
   - HTTP REST server
   - gRPC server
   - Plugin-injected interface hooks (e.g., middleware, pre/post handlers)
-- Deliverable: Running `ch serve` opens:
+- Deliverable: Running `dpkms serve` opens:
   - port 7700 (HTTP)
   - port 7701 (gRPC)
 - Ensure:
@@ -70,7 +82,7 @@ Generate Go bindings and ensure server startup includes dynamic plugin service r
 
 ---
 
-## 2. Ingestion/AI Team (The Logic)
+## 2. ctxt Ingestion Team (The Logic)
 
 **Focus:** Agent Profiles, Worldviews, Mention Extraction, Entity Resolution, and Plugin-Safe Semantic Extensions.
 **Why:** Semantic identity must be consistent, deterministic, and extensible.
@@ -122,7 +134,7 @@ Unresolved mentions become local placeholder entities with:
 - canonical namespace
 - promotion rules
 
-### Task 2.5: `ch analyze --wait`
+### Task 2.5: `ctxt analyze --wait`
 
 CLI polls job until finished.
 
@@ -130,14 +142,14 @@ Also surface pending plugin notifications (if Notification Plugin installed).
 
 ---
 
-## 3. Search/Retrieval Team (The Filter)
+## 3. dPKMS Search Team & ctxt Retrieval Team (The Filter)
 
 **Focus:** Mention-Aware Search, Agent Scoping, Graph Navigation, and Plugin-Safe Query Extensions.
 **Why:** Retrieval must fully understand semantic identity and entity graph structure.
 
 ### Task 3.1: Scoped Search
 
-`ListBookmarks` accepts an `AgentID`.
+`ListKnowledgeObjects` accepts an `AgentID`.
 
 Worldview restricts:
 
@@ -177,7 +189,7 @@ Plugins may register their own vector backends.
 
 ---
 
-## 4. Registry/Ecosystem Team (The Sync)
+## 4. dPKMS Registry Team (The Sync)
 
 **Focus:** Local Sync (ADR-009), expanded to include entity sync, alias resolution, and plugin-defined registry enrichers.
 **Why:** Offline mention resolution requires registry-backed data.
@@ -192,7 +204,7 @@ Stores:
 - aliases
 - plugin-provided metadata extensions
 
-### Task 4.2: Sync Logic (`ch registry sync`)
+### Task 4.2: Sync Logic (`ctxt registry sync`)
 
 - Download registry JSON
 - Upsert:
@@ -217,7 +229,7 @@ Stores:
 **Setup**
 
 - Create Agent “Designer” using “UXPatterns” registry
-- Run `ch registry sync uxpatterns`
+- Run `ctxt registry sync uxpatterns`
 - Disconnect network
 
 **Action**
@@ -240,7 +252,7 @@ POST http://localhost:7700/analyze
 ch list --agent Designer --query 'mention:ui.accessibility.*'
 ```
 
-Returns the bookmark via entity graph traversal.
+Returns the knowledge object via entity graph traversal.
 
 ---
 
@@ -252,3 +264,20 @@ Returns the bookmark via entity graph traversal.
 - **Resolution Conflicts:** Multiple registries defining same entity require deterministic precedence.
 - **Local Entity Pollution:** Too many unresolved mentions may degrade graph quality without promotion workflows.
 - **Plugin Safety:** Plugins must not override or shadow core identity resolution unless explicitly permitted.
+---
+
+## See Also
+
+**Package Boundaries:**
+- [CROSS-PACKAGE-CONTRACTS.md](CROSS-PACKAGE-CONTRACTS.md) - dPKMS ↔ ctxt integration points
+- [../branding.md](../branding.md) - Naming conventions (dPKMS vs ctxt vs ContextHelp)
+- [../dpkms-or-ctxt.md](../dpkms-or-ctxt.md) - Package placement guide
+
+**Configuration:**
+- [CONFIGURATION-STRUCTURE.md](CONFIGURATION-STRUCTURE.md) - Config file organization
+- [../ctxt/configuration.md](../ctxt/configuration.md) - Focus profiles & preferences
+
+**Architecture:**
+- [../architecture.md](../architecture.md) - System architecture overview
+- [../../ROADMAP.md](../../ROADMAP.md) - Living skeleton roadmap
+- [README.md](README.md) - Sprint documentation index

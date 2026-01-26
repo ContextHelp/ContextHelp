@@ -1,6 +1,13 @@
-# ContextHelp – Detailed Design Documentation
+# dPKMS + `ctxt` – Detailed Design Documentation
 
-This document consolidates the full set of detailed design documents that complement the minimal ADR set. It provides a comprehensive engineering blueprint for the ContextHelp engine, including architecture, pipelines, jobs, storage, registries, plugins, query language, ranking, configuration, I18N/L10N, APIs, security, and testing.
+This document consolidates the full set of detailed design documents for the **two-package architecture**:
+
+- **dPKMS** — decentralized knowledge substrate (storage, jobs, security, federation)
+- **`ctxt`** — agentic context brain (capture, enrichment, surfacing, composition)
+
+It provides a comprehensive engineering blueprint including architecture, pipelines, jobs, storage, registries, plugins, query language, ranking, configuration, I18N/L10N, APIs, security, and testing.
+
+This design separates **mechanics** (dPKMS) from **meaning** (`ctxt`).
 
 ---
 
@@ -8,64 +15,122 @@ This document consolidates the full set of detailed design documents that comple
 
 ## Purpose
 
-Describes the system’s structure, execution model, and major components. Expands on ADR-001, ADR-002, ADR-003.
+Describes the two-package system structure, execution model, and major components. Expands on ADR-001, ADR-002, ADR-003.
 
 ## System Overview
 
-ContextHelp is a **local-first knowledge engine** with optional decentralized registry integration. It operates in:
+The system consists of two packages:
 
-- **CLI mode**
-- **Background worker** (`ch serve`)
-- **HTTP/gRPC API server** mode
+**dPKMS** — A local-first knowledge substrate providing:
+- Durable storage with pluggable backends
+- Transactional job queue and pipeline runtime
+- Semantic identity (entities + mentions + graph)
+- Encryption, authentication, authorization
+- Federated registries and scatter–gather retrieval
+- Export/import portability contract
 
-It processes content through pipelines, stores structured knowledge, and enables multi-source retrieval with ranking and deduplication.
+**`ctxt`** — An agentic context brain providing:
+- Universal capture (CLI, TUI, browser, mobile)
+- Multimodal enrichment recipes
+- Focus profiles (role/project lenses)
+- Just-in-time surfacing
+- Composition engine (briefs, plans, drafts)
+- Safe agent execution workflows
+
+**Execution Modes:**
+- `ctxt` CLI (primary user interface)
+- `dpkms serve` (background worker daemon)
+- HTTP/gRPC API server (for integrations)
+- Plugin-extended modes
 
 ## High-Level Component Diagram
 
-Core components:
-
-- CLI
+**dPKMS Components:**
+- Storage Layer (SQLite/Postgres, pluggable)
 - Job System (Transactional Outbox)
-- Pipeline Engine
-- Storage Layer (SQLite by default, pluggable)
-- Search Layer (Metadata + FTS + optional vectors)
-- Reranker
-- Registry Connectors
-- Plugin System
+- Pipeline Runtime (Deterministic + Capability-Scoped)
+- Query Engine (AST-based)
+- Graph Index (Objects ↔ Entities)
+- Registry Connectors (Federated)
+- Encryption & Auth
+- Plugin System (dPKMS layer)
 
-## Write Path
+**`ctxt` Components:**
+- Capture Layer (CLI, TUI, Browser, Mobile)
+- Enrichment Recipes (Multimodal Pipelines)
+- Focus Profiles (Role/Project Lenses)
+- Surfacing Engine (Just-In-Time)
+- Composition Engine (Briefs, Plans, Drafts)
+- Search UX
+- Plugin System (`ctxt` layer)
 
-1. User runs `ch analyze`.
-2. Engine **creates a Job** in `jobs` table (Pending).
-3. CLI returns Job ID.
-4. Worker picks up Pending jobs.
-5. Worker executes pipeline steps.
-6. Worker commits results to bookmarks table.
-7. Job marked Completed.
+## Write Path (Ingestion)
 
-## Read Path
+1. User runs `ctxt add <content>`.
+2. `ctxt` normalizes input and infers type/pipeline.
+3. `ctxt` applies focus profile context.
+4. dPKMS **creates a Job** in `jobs` table (Pending).
+5. `ctxt` returns immediately (async).
+6. dPKMS worker picks up Pending jobs.
+7. dPKMS executes pipeline steps (via `ctxt` enrichment recipes).
+8. dPKMS commits results to knowledge objects table.
+9. dPKMS updates graph index (mentions, entities, edges).
+10. Job marked Completed.
 
-1. Query parsed → AST.
-2. AST compiled into a Query Plan.
-3. Query Plan dispatches search to:
-   - Local metadata search
-   - Local FTS search
-   - Optional vector store
+## Read Path (Retrieval)
+
+1. User runs `ctxt find <query>`.
+2. `ctxt` applies focus profile context.
+3. dPKMS parses query → AST.
+4. dPKMS compiles AST → Query Plan.
+5. Query Plan dispatches to:
+   - Local metadata search (SQL)
+   - Local FTS search (FTS5)
+   - Vector search (optional)
+   - Graph traversal (entity-aware)
    - Registry connectors (parallel scatter)
-4. Results merged.
-5. Reranker normalizes, dedupes, and returns final list.
+6. dPKMS merges results.
+7. dPKMS reranks and deduplicates.
+8. `ctxt` applies profile filtering and boost.
+9. `ctxt` formats and displays results.
+
+## Composition Path
+
+1. User runs `ctxt make brief --from <ids>`.
+2. `ctxt` selects template based on profile and type.
+3. `ctxt` gathers context (objects + graph neighbors).
+4. dPKMS retrieves objects, entities, edges.
+5. `ctxt` assembles atomic nodes following graph.
+6. `ctxt` applies template and generates output.
+7. `ctxt` attaches provenance metadata.
+8. User receives traceable, verifiable brief.
 
 ## Plugin Integration Points
 
-Plugins may extend:
+**dPKMS Plugin Points:**
+- Storage backends
+- Encryption providers
+- Query operators
+- Registry connectors
+- Graph algorithms
+- Job types
+- Pipeline runtime hooks
 
-- Pipelines
-- AI Providers
-- Storage Drivers
-- CLI Commands
-- Registry Connectors
-- Query Operators
-- Background Observers (screen watcher etc.)
+**`ctxt` Plugin Points:**
+- Capture interfaces
+- Enrichment recipes
+- Pipeline steps
+- Focus profiles
+- Surfacing rules
+- Composition templates
+- CLI commands
+- Output formatters
+
+**Cross-Layer Plugin Points:**
+- AI providers (used by both)
+- Background observers (screen watcher, etc.)
+- Notification handlers
+- Export/import formats
 
 ---
 
@@ -73,11 +138,32 @@ Plugins may extend:
 
 ## Purpose
 
-Describes pipeline architecture, composition, extensibility, and guarantees (ADR-004, ADR-005).
+Describes the two-layer pipeline architecture:
+- **dPKMS Pipeline Runtime** (execution substrate)
+- **`ctxt` Enrichment Recipes** (opinionated workflows)
 
-## Pipeline Composition Model
+Covers composition, extensibility, and guarantees (ADR-004, ADR-005).
 
-Each pipeline consists of a **sequence of PipelineStep objects**. Pipelines transform raw input into structured bookmarks.
+## Two-Layer Pipeline Model
+
+**Layer 1: dPKMS Pipeline Runtime**
+
+Provides the execution substrate:
+- Step isolation and typed I/O
+- Capability enforcement
+- Caching and idempotency
+- Structured logging
+- Deterministic replay
+
+**Layer 2: `ctxt` Enrichment Recipes**
+
+Provides opinionated processing workflows:
+- Multimodal ingestion recipes
+- AI-driven enrichment steps
+- Profile-aware pipeline selection
+- Progressive enrichment strategies
+
+Pipelines transform raw input into structured knowledge objects.
 
 ## PipelineStep Interface
 
@@ -87,15 +173,41 @@ Each step must implement:
 - `Execute(ctx, input) → (output, error)`
 - `Retryable() bool`
 
-## Pipeline Categories
+## Pipeline Categories (`ctxt` Recipes)
 
-- `text.short`
-- `text.long`
-- `url.generic`
-- `url.repository`
-- `image.landing`
-- `audio.transcription`
-- `video.transcription`
+**Text Pipelines:**
+- `text.short` — Quick summarization, entity extraction, tag assignment
+- `text.long` — Deep analysis, section decomposition, decision extraction
+
+**URL Pipelines:**
+- `url.generic` — Fetch, clean HTML, extract article content
+- `url.repository` — Clone repo, parse README, extract structure
+- `url.article` — Article extraction with reader mode
+- `url.pdf` — Download and process PDF
+
+**Image Pipelines:**
+- `image.ocr` — OCR text extraction
+- `image.landing` — Screenshot analysis, UI pattern detection
+- `image.diagram` — Diagram understanding, entity extraction
+
+**Audio Pipelines:**
+- `audio.transcription` — Speech-to-text, speaker detection
+- `audio.podcast` — Podcast processing with chapters
+
+**Video Pipelines:**
+- `video.transcription` — Frame sampling + audio transcription
+- `video.analysis` — Scene detection, visual understanding
+
+**Document Pipelines:**
+- `document.pdf` — Text extraction, structure parsing
+- `document.markdown` — Parse and decompose Markdown
+- `document.code` — Code snippet analysis
+
+**Specialized Pipelines:**
+- `feed.item` — RSS/Atom item processing
+- `price.monitor` — Price tracking and alerts
+- `task.extraction` — Task and action item detection
+- `decision.extraction` — Decision point identification
 
 ## Custom Pipelines
 
@@ -171,50 +283,108 @@ Worker:
 
 ## Purpose
 
-Describes storage layer, schema, and pluggable backends (ADR-006, ADR-022, ADR-024).
+Describes the dPKMS storage layer, schema, and pluggable backends (ADR-006, ADR-022, ADR-024).
 
 ## Default Backend: SQLite
 
-- WAL mode enabled
+**Why SQLite:**
+- WAL mode for concurrency
 - Zero-install footprint
-- Adequate performance for local-first workloads
-- Strong FTS support
+- Excellent local-first performance
+- Strong FTS5 support
+- Reliable and battle-tested
+- Perfect for sovereign storage
+
+**Configuration:**
+- `PRAGMA journal_mode=WAL`
+- `PRAGMA synchronous=NORMAL`
+- `PRAGMA cache_size=-64000` (64MB)
+- `PRAGMA foreign_keys=ON`
 
 ## Pluggable Storage Architecture
 
-Drivers implement:
+Storage drivers implement dPKMS capability contracts:
 
-- `BookmarkStore`
-- `JobStore`
-- `TagStore`
-- Optional `VectorStore`
+**Core Store Interfaces:**
+- `ObjectStore` — Knowledge objects (successor to BookmarkStore)
+- `JobStore` — Job queue operations
+- `GraphStore` — Entity and edge storage
+- `EntityStore` — Canonical entity definitions
+- `VectorStore` — Optional embedding storage
 
-## Bookmark Schema
+## Knowledge Object Schema (Successor to "Bookmarks")
 
-Includes:
+Core fields:
 
-- id
-- type, subtype
-- raw content
-- extracted summaries
-- sections
-- tags (canonical label, weight, polarity, influencedBy)
-- hints
-- decisions
-- pipeline
-- source
-- createdAt
-- updatedAt
+- `id` — UUID, stable across exports
+- `type, subtype` — Classification
+- `raw_content` — Original input
+- `content_type` — MIME type
+- `metadata` — JSON extensible metadata
+- `summaries` — JSON array of summaries
+- `sections` — JSON array of decomposed sections
+- `tags` — JSON array with weights and sources
+- `mentions` — JSON array of `@entity.slug` references
+- `decisions` — JSON array of extracted decisions
+- `tasks` — JSON array of actionable items
+- `embeddings` — Vector representation (BLOB)
+- `pipeline` — Which pipeline processed this
+- `source` — Origin URL/file/clipboard
+- `registry_influences` — Which registries affected enrichment
+- `created_at, updated_at` — Timestamps
+- `fts_indexed, vector_indexed` — Index tracking flags
+
+## Additional Tables
+
+**Entities:**
+- `id` (canonical slug)
+- `title, description`
+- `aliases` (JSON array)
+- `translations` (JSON map)
+- `metadata` (JSON)
+- `namespace, version`
+- `registry_source`
+
+**Graph Edges:**
+- `id` (UUID)
+- `from_type, from_id`
+- `to_type, to_id`
+- `edge_type` (mentions, related, derives_from)
+- `weight`
+- `metadata` (JSON)
+
+**Jobs:** (see jobs-and-ingestion.md)
+
+**Registry Snapshots:** (see registries.md)
+
+**Revisions:** Version history tracking
 
 ## Index Strategy
 
-- Metadata indexes on type, tag, createdAt, pipeline
-- FTS indexes on text fields
-- Optional vector index
+**Metadata Indexes:**
+- `type, subtype`
+- `tags` (JSON index)
+- `created_at, updated_at`
+- `pipeline, source`
+
+**FTS Indexes:**
+- FTS5 virtual table on summaries, sections, raw_content
+- Porter stemming + Unicode61 tokenization
+
+**Vector Indexes:**
+- Optional pluggable vector backend
+- Supports similarity search
+
+**Graph Indexes:**
+- Adjacency indexes on edges table
+- Bidirectional traversal support
 
 ## Migrations
 
-- Managed via SQL migrations in a `migrations/` directory.
+- Managed via SQL migrations in `migrations/` directory
+- Stable ID preservation across versions
+- Reversible migration paths with rollback support
+- Version tracking in schema_version table
 
 ---
 
@@ -646,22 +816,41 @@ Ensures correctness, reliability, and safety.
 
 # Summary
 
-This consolidated design documentation includes:
+This consolidated design documentation covers the **two-package architecture**:
 
-- architecture.md
-- pipelines.md
-- jobs-and-ingestion.md
-- storage.md
-- query-language-spec.md
-- ranking-and-reranking.md
-- registries.md
-- plugins.md
-- configuration.md
-- i18n-and-l10n.md
-- api-cli.md
-- api-rest.md
-- api-grpc.md
-- security.md
-- testing.md
+## dPKMS (Substrate)
 
-Together these form the **complete engineering blueprint** for ContextHelp.
+Provides mechanical guarantees:
+- **storage.md** — Durable, sovereign, local-first storage
+- **jobs-and-ingestion.md** — Transactional job queue
+- **pipelines.md** (runtime layer) — Safe pipeline execution
+- **query-language-spec.md** — AST-based query engine
+- **ranking-and-reranking.md** — Federated result merging
+- **registries.md** — Decentralized knowledge distribution
+- **security.md** — Encryption, auth, integrity
+- **testing.md** — Correctness and reliability
+
+## `ctxt` (Agentic Brain)
+
+Provides meaningful behaviors:
+- **architecture.md** (capture layer) — Universal frictionless capture
+- **pipelines.md** (recipes layer) — Multimodal enrichment
+- **api-cli.md** — Daily-use interface
+- **api-rest.md** — Integration endpoints
+- **api-grpc.md** — Agent runtime APIs
+- **i18n-and-l10n.md** — Polyglot support
+- **configuration.md** — Focus profiles and preferences
+
+## Shared
+
+Cross-cutting concerns:
+- **plugins.md** — Extensibility for both layers
+- **architecture.md** (semantic identity) — Entities + mentions + graph
+- **configuration.md** (polymorphic config) — Plugin and provider config
+
+Together these form the **complete engineering blueprint** for the dPKMS + `ctxt` system.
+
+**Key Insight:**
+- dPKMS runs work **correctly**
+- `ctxt` decides which work is **valuable**
+- Together they provide **context-as-a-service** for humans and agents

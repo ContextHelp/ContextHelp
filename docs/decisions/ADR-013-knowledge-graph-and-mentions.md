@@ -3,6 +3,7 @@
 > **Status:** Proposed
 > **Date:** 2025-12-08
 > **Author:** @jadb
+> **Applies to:** dPKMS, ctxt
 > **Supersedes:** None
 > **Superseded by:** N/A
 
@@ -142,7 +143,7 @@ Entities would exist, but no user-facing reference mechanism would bind bookmark
 ## Implementation Notes
 
 - Add `mentions` array to bookmark schema.
-- Create `schema-entity.md` defining canonical entities.
+- Create `dpkms/schema-entity.md` defining canonical entities.
 - Add mention extraction + resolution pipeline step before tagging.
 - Add entity index + backlink table to storage.
 - Extend query language (`mention:slug`, wildcards).
@@ -169,10 +170,10 @@ Testing:
 
 ## References
 
-- **mentions.md** – foundational description of mention semantics
-- **knowledge-graph.md** – structure and usage of the new graph layer
-- **schema-entity.md** – canonical entity model
-- **schema-bookmark.md** – updated bookmark schema
+- **dpkms/mentions.md** – foundational description of mention semantics
+- **dpkms/knowledge-graph.md** – structure and usage of the new graph layer
+- **dpkms/schema-entity.md** – canonical entity model
+- **ctxt/schema-object.md** – updated bookmark schema (knowledge objects)
 - **query-language-spec.md** – mention operators
 - ADR-010 – use extended RSQL
 - ADR-004 – step-based pipeline architecture enabling mention extraction

@@ -1,522 +1,288 @@
-# ContextHelp Documentation Guide
+# Documentation Guide
 
-Welcome to the **ContextHelp** documentation folder.
-This directory contains all technical, architectural, conceptual, and specification documents that describe how the system works, how it is extended, and how developers interact with it.
+Welcome to the **dPKMS + `ctxt`** documentation.
 
-Because ContextHelp is a **large, modular, decentralized context engine**, the docs are organized by domain.
-Use this guide to understand what each document covers and where to go next.
+This project consists of two packages with distinct concerns:
 
----
+- **dPKMS** — Decentralized knowledge substrate (mechanics: storage, jobs, security, federation)
+- **`ctxt`** — Agentic context brain (meaning: capture, enrichment, surfacing, composition)
 
-## 📚 Core Architecture
-
-### **architecture.md**
-
-High-level system overview: ingestion, pipelines, registries, storage, APIs, agents, plugins, providers, caching decorators, search stack, semantic layers, mentions, entities, and decentralized worldview assembly.
-
-### **design.md**
-
-Global design orientation and philosophical principles behind ContextHelp.
-Explains cross-cutting concerns, shaping forces, system boundaries, and long-term evolution.
-
-### **leann-integration.md** (New)
-
-Integration guide for [LEANN](https://github.com/yichuan-w/LEANN) — a local-first RAG system with 97% storage efficiency.
-Covers storage backend configuration, hybrid storage strategies, MCP integration, and performance considerations.
-
-### **decentralization.md**
-
-How ContextHelp operates without central servers, how registries interact, trust boundaries, merging strategies, worldview layering, and local-first guarantees.
-
-### **registries.md**
-
-End-to-end documentation for registry interaction:
-- taxonomy registries
-- bookmark registries
-- entity registries
-- weights registries
-- registry priorities, syncing, conflict resolution, namespace rules
-- local-only vs remote registry mode
-
-### **registry-protocol.md**
-
-Formal protocol (wire-level and conceptual) for any service wishing to expose itself as a ContextHelp registry, including entity definitions, alias resolution, syncing, and metadata surfaces.
-
-### **registry-syncing-and-retrieval.md**
-
-Describes how registries are fetched, cached, versioned, merged, prioritized, and queried. Covers fallback behavior, multi-source ordering, and entity conflict resolution.
-
-### **storage.md**
-
-The storage layer:
-- bookmark schema
-- mentions storage
-- entity index and backlinks
-- storage backends (JSON, SQLite, Postgres, LEANN, plugin-defined)
-- job tables and outbox pattern
-- indexes, FTS, concurrency patterns
-- update guarantees and invariants
-
-### **jobs-and-ingestion.md**
-
-Deep dive into ingestion internals:
-- job creation (transactional outbox)
-- job_steps table
-- worker orchestration
-- crash recovery
-- retry logic
-- idempotency
-
-### **queue.md**
-
-Queue characteristics:
-- job state machine
-- FIFO vs priority queues
-- safe retries, backoff, leasing
-- worker semantics and locking strategies
+Together they provide **context-as-a-service** for humans and AI agents.
 
 ---
 
-## 🧠 Knowledge & Semantics
+## 📖 Quick Start
 
-### **hints.md**
+**New to the project?**
+1. Read [architecture.md](architecture.md) - System-wide architecture
+2. Read [design.md](design.md) - Consolidated design documentation
+3. Review [dpkms-or-ctxt.md](dpkms-or-ctxt.md) - Package placement guide
 
-User-provided semantic hints (#ui, #inspiration, #bad) and how they influence:
-- pipelines
-- tagging
-- weighting
-- interpretation
-- worldview shaping
-Clarifies the separation of hints, tags, and mentions.
+**Looking for specific capabilities?**
+- [featureset.md](featureset.md) - Complete feature overview
 
-### **tags.md**
-
-AI-generated tags, their weights, polarity, and relation to taxonomies. Includes provenance and registry mapping, and distinctions from mentions and hints.
-
-### **mentions.md**
-
-Defines the canonical reference system:
-- @syntax rules
-- entity lookup
-- aliasing
-- stable identity
-- storage rules
-- backlinks
-- unresolved vs resolved entities
-- integration in pipelines across modalities
-
-### **schema-bookmark.md**
-
-Canonical bookmark schema:
-- metadata
-- sections
-- decisions
-- provenance
-- embeddings (optional)
-- translations
-- hints, tags, mentions
-- pipeline metadata
-- plugin metadata namespace
-
-### **schema-taxonomy.md**
-
-Structure for taxonomy definition files:
-- tag hierarchies
-- categories
-- controlled vocabulary rules
-- translation fields
-- differentiation between taxonomy labels and canonical entities
-
-### **schema-entity.md**
-
-Schema for canonical entities:
-- id
-- title
-- description
-- metadata
-- aliases
-- translations
-- versioning rules
-- registry provenance
-
-### **schema-registry.md**
-
-Defines how registries expose:
-- taxonomies
-- entity definitions
-- tag expansions
-- bookmarks
-- sync metadata
-
-### **schema-tag.md**
-
-Tag schema specification:
-- label
-- polarity
-- influences
-- hierarchy
-- weights
-- provenance
-- coexistence and boundaries with mentions
-
-### **knowledge-graph.md**
-
-Documentation of the knowledge graph:
-- bookmark → entity edges
-- entity → entity relations
-- backlinks
-- inferred clusters
-- graph traversal rules
-- usage patterns for agents and retrieval
+**Want to understand terminology?**
+- [glossary.md](glossary.md) - Shared vocabulary
 
 ---
 
-## 🔄 Pipelines
-
-### **pipelines.md**
-
-Conceptual overview:
-- inference system
-- multimodal pipelines
-- mention extraction and entity resolution
-- step-based pipeline architecture
-- plugin extensions
-- execution lifecycle
-- pipeline-level and global event hooks
-
-### **pipelines-reference.md**
-
-Details for each built-in pipeline:
-- text.short, text.long
-- url.article, url.repo, url.generic
-- image.landing, image.ocr, image.component
-- audio, video
-- I/O schemas
-- mention extraction per modality
-
----
-
-## 🔍 Search, Querying & Ranking
-
-### **query-language-spec.md**
-
-Specification of the query language:
-- grammar (BNF-style)
-- AST structure
-- operators (AND, OR, NOT)
-- fields (tag:, mention:, type:, lang:, created:, pipeline:)
-- wildcard rules
-- FTS translation
-- mention-aware graph lookups
-
-### **ranking-and-reranking.md**
-
-Retrieval strategies:
-- scatter–gather
-- deduplication
-- weighted normalization
-- Reciprocal Rank Fusion (RRF)
-- registry-weighted scoring
-- semantic clustering
-
----
-
-## ⚙️ Configuration & Extensibility
-
-### **configuration.md**
-
-Covers:
-- storage backends
-- pipeline configuration
-- LLM/embedding providers
-- registries
-- agents
-- localization preferences
-- plugin configuration
-- polymorphic configuration blocks
-- enabling/disabling mention features
-
-### **plugins.md**
-
-High-level plugin guide:
-- plugin model
-- configuration
-- lifecycle hooks
-- extending CLI and APIs
-- creating pipelines
-- registry providers
-- custom metadata
-- event listeners
-- mention and graph augmentation rules
-
-### **plugins-api.md**
-
-Formal Plugin Interface Contract:
-- lifecycle hooks
-- permission system
-- CLI/REST/gRPC extension rules
-- pipeline extension API
-- job scheduling API
-- refresh API
-- search operator extensions
-- storage boundaries
-- forbidden operations
-- stability guarantees
-
-### **plugins-refresh.md**
-
-Plugin specification for refresh-style workflows:
-- periodic ingestion
-- refresh policies
-- fetch-new behavior
-- integration with job scheduling
-- plugin safety rules
-
-### **plugins-notifications.md**
-
-Notification subsystem implemented as a plugin:
-- channels
-- routing
-- persistence
-- inter-plugin API
-- CLI surface integration
-
-### **plugins-sample-price-monitor.md**
-
-A reference plugin used for tests:
-- regex-based price monitoring
-- alerting via notifications plugin
-- refresh rule coordination
-- user-defined thresholds
-- bookmark-level metadata
-
----
-
-## 🌐 APIs
-
-### **api-cli.md**
-
-Full CLI reference:
-- analyze
-- list
-- jobs
-- edit
-- delete
-- serve
-- cache
-- query examples
-- plugin-injected commands
-- mention resolution and retrieval
-
-### **api-rest.md**
-
-REST API reference:
-- ingestion endpoints
-- job management
-- bookmark querying
-- pagination
-- registry operations
-- entity lookup
-- related entity traversal
-- mention-aware search fields
-
-### **api-grpc.md**
-
-gRPC API:
-- service definitions
-- streaming endpoints
-- high-performance agent integration
-- entity metadata and graph queries
-
----
-
-## 🌍 Localization & Internationalization
-
-### **l10n-i18n.md**
-
-Covers:
-- localization plugins
-- schema-level translation fields
-- registry-provided translations
-- language negotiation
-- multi-language bookmark workflows
-
----
-
-## 🛡️ Privacy, Security & Permissions
-
-### **privacy.md**
-
-Local-first guarantees:
-- no data leaves device unless explicitly allowed
-- registry and plugin access policies
-- sensitive metadata handling
-
-### **security.md**
-
-Threat model:
-- registry authenticity
-- plugin permission enforcement
-- sandbox rules
-- signature validation
-- entity spoofing protection
-
----
-
-## 🔬 Testing & Quality
-
-### **testing.md**
-
-Comprehensive strategy:
-- unit tests
-- integration tests
-- end-to-end tests
-- ingestion crash recovery tests
-- plugin tests
-- query engine tests
-- mention resolution tests
-- graph correctness tests
-
----
-
-## 🧩 Personas, Use Cases & Stories
-
-### **personas-end-users.md**
-
-Personas:
-- researchers
-- engineers
-- analysts
-- creators
-- students
-
-### **personas-user-roles.md**
-
-User roles:
-- end users
-- developers
-- plugin authors
-- registry maintainers
-- enterprise operators
-
-### **user-stories.md**
-
-Scenario-based documentation demonstrating use of:
-- mentions
-- entities
-- plugins
-- pipelines
-- refresh workflows
-- retrieval queries
-
----
-
-## 🗂️ Additional Documents
-
-Depending on development stage:
-
-- **proposal.md** — Vision-level document.
-- **caching.md** — Caching decorators.
-- **sprints/** — Iteration planning.
-- **decisions/** — Architectural Decision Records (ADRs).
-
----
-
-## 📁 Directory Structure
+## 📁 Documentation Structure
 
 ```
-docs
-├── api-cli.md
-├── api-grpc.md
-├── api-rest.md
-├── architecture.md
-├── caching.md
-├── configuration.md
-├── decentralization.md
-├── decisions
-│   ├── ADR-001-local-first-and-decentralized.md
-│   ├── ADR-002-use-go.md
-│   ├── ADR-003-separate-read-write-paths.md
-│   ├── ADR-004-step-based-pipeline.md
-│   ├── ADR-005-decorator-pattern-for-ai.md
-│   ├── ADR-006-json-default-storage.md
-│   ├── ADR-007-transactional-outbox-ingestion.md
-│   ├── ADR-008-remote-knowledge-registry-protocol.md
-│   ├── ADR-009-multi-source-retrieval-optional-sync.md
-│   ├── ADR-010-use-extended-rsql.md
-│   ├── ADR-011-use-multi-source-reranker.md
-│   ├── ADR-012-use-plugins-to-extend-any-layer.md
-│   ├── ADR-013-knowledge-graph-and-mentions.md
-│   ├── README.md
-│   └── TEMPLATE.md
-├── design.md
-├── hints.md
-├── jobs-and-ingestion.md
-├── knowledge-graph.md
-├── l10n-i18n.md
-├── mentions.md
-├── personas-end-users.md
-├── personas-user-roles.md
-├── pipelines-reference.md
-├── pipelines.md
-├── plugins-api.md
-├── plugins-notifications.md
-├── plugins-refresh.md
-├── plugins-sample-price-monitor.md
-├── plugins.md
-├── privacy.md
-├── query-language-spec.md
-├── queue.md
-├── ranking-and-reranking.md
-├── README.md
-├── registries.md
-├── registry-protocol.md
-├── registry-syncing-and-retrieval.md
-├── schema-bookmark.md
-├── schema-entity.md
-├── schema-registry.md
-├── schema-tag.md
-├── schema-taxonomy.md
-├── security.md
-├── sprints
-│   ├── 000-shared-kernel.md
-│   ├── 001-echo-loop.md
-│   ├── 002-real-data-and-queries.md
-│   ├── 003-beyont-text.md
-│   ├── 004-interface-and-independence.md
-│   ├── 005-semantics-sidecars.md
-│   ├── 006-polish-and-multimedia.md
-│   ├── 007-sovereign-and-scalable.md
-│   ├── 008-trust-and-automation.md
-│   └── 009-proof-of-plarform.md
-├── storage.md
-├── tags.md
-├── testing.md
-├── user-roles.md
-└── user-stories.md
+docs/
+├── README.md                      # This file
+├── architecture.md                # System architecture (both packages)
+├── design.md                      # Consolidated design doc
+├── glossary.md                    # Terminology
+├── dpkms-or-ctxt.md               # Package placement guide
+├── featureset.md                  # Complete feature set
+│
+├── dpkms/                         # dPKMS substrate documentation
+│   ├── README.md                  # dPKMS overview
+│   ├── non-negotiables.md         # Design principles
+│   ├── featureset.md              # dPKMS-specific features
+│   ├── storage.md                 # Storage layer
+│   ├── jobs-and-ingestion.md      # Job queue
+│   ├── query-language-spec.md     # Query engine
+│   ├── knowledge-graph.md         # Graph index
+│   ├── mentions.md                # Mention system
+│   ├── schema-entity.md           # Entity schema
+│   ├── registries.md              # Registry system
+│   ├── registry-protocol.md       # Registry protocol
+│   ├── security.md                # Security model
+│   ├── privacy.md                 # Privacy guarantees
+│   └── ...                        # More substrate docs
+│
+├── ctxt/                          # ctxt brain documentation
+│   ├── README.md                  # ctxt overview
+│   ├── non-negotiables.md         # Design principles
+│   ├── featureset.md              # ctxt-specific features
+│   ├── api-cli.md                 # CLI reference
+│   ├── pipelines.md               # Enrichment recipes
+│   ├── pipelines-reference.md     # Pipeline catalog
+│   ├── schema-object.md           # Knowledge object schema
+│   ├── tags.md                    # Tag semantics
+│   ├── configuration.md           # Profiles & preferences
+│   ├── user-stories.md            # User stories
+│   ├── user-story.md              # Narrative example
+│   └── ...                        # More brain docs
+│
+├── plugins/                       # Plugin system (cross-cutting)
+│   ├── README.md                  # Plugin overview
+│   ├── plugins.md                 # Plugin architecture
+│   ├── plugins-api.md             # Plugin API contract
+│   ├── plugins-notifications.md   # Notification plugin
+│   ├── plugins-refresh.md         # Refresh plugin
+│   └── examples/
+│       └── plugins-sample-price-monitor.md
+│
+├── api/                           # External APIs
+│   ├── README.md                  # API overview
+│   ├── api-rest.md                # REST API reference
+│   └── api-grpc.md                # gRPC API reference
+│
+├── integrations/                  # External integrations
+│   ├── README.md                  # Integration overview
+│   ├── leann-integration.md       # LEANN integration
+│   ├── glm-pov.md                 # GLM integration
+│   └── gemini-pov.md              # Gemini integration
+│
+├── security/                      # Security & secrets management
+│   ├── README.md                  # Security documentation index
+│   ├── secrets-validation-and-log-sanitization.md  # Comprehensive guide
+│   ├── security-model.md          # Threat model & guarantees
+│   ├── secret-management.md       # Lifecycle & best practices
+│   └── configuration-security.md  # Securing configuration files
+│
+├── decisions/                     # Architectural Decision Records
+│   └── ADR-*.md                   # Individual ADRs
+│
+└── sprints/                       # Sprint planning docs
+    └── 00*.md                     # Sprint documents
 ```
 
 ---
 
-## 🎯 How to Navigate
+## 🎯 Documentation by Role
 
-If you're new:
+### For End Users
+Start here to understand what the system does:
+- [architecture.md](architecture.md) - What the system is
+- [ctxt/user-story.md](ctxt/user-story.md) - Daily usage narrative
+- [ctxt/api-cli.md](ctxt/api-cli.md) - CLI commands
+- [featureset.md](featureset.md) - What's possible
 
-1. Start with **proposal.md** and **architecture.md**.
-2. Continue with **pipelines.md**, **storage.md**, and **jobs-and-ingestion.md**.
-3. Explore semantics: **mentions.md**, **schema-entity.md**, **schema-bookmark.md**, **knowledge-graph.md**.
-4. Learn about extensibility in **plugins.md** and **plugins-api.md**.
-5. For efficient storage: Review **leann-integration.md** (97% storage savings).
-6. Use **api-cli.md**, **api-rest.md**, or **api-grpc.md** based on integration needs.
+### For Developers
+Building with or extending the system:
+- [architecture.md](architecture.md) - System architecture
+- [dpkms/README.md](dpkms/README.md) - Substrate layer
+- [ctxt/README.md](ctxt/README.md) - Brain layer
+- [plugins/plugins-api.md](plugins/plugins-api.md) - Plugin development
+- [api/api-rest.md](api/api-rest.md) - REST API
+- [api/api-grpc.md](api/api-grpc.md) - gRPC API
 
-If you're contributing:
+### For Contributors
+Contributing to the codebase:
+- [design.md](design.md) - Design philosophy
+- [decisions/](decisions/) - Architectural decisions (ADRs)
+- [dpkms/testing.md](dpkms/testing.md) - Testing strategy
+- [dpkms/non-negotiables.md](dpkms/non-negotiables.md) - dPKMS principles
+- [ctxt/non-negotiables.md](ctxt/non-negotiables.md) - ctxt principles
 
-- Start with **CONTRIBUTING.md** (root project).
-- Read **configuration.md**, **testing.md**, **plugins-api.md**, and relevant ADRs.
+### For Registry Maintainers
+Building decentralized knowledge registries:
+- [dpkms/registries.md](dpkms/registries.md) - Registry overview
+- [dpkms/registry-protocol.md](dpkms/registry-protocol.md) - Protocol spec
+- [dpkms/registry-syncing-and-retrieval.md](dpkms/registry-syncing-and-retrieval.md) - Sync mechanisms
+- [dpkms/schema-registry.md](dpkms/schema-registry.md) - Registry schema
+- [dpkms/schema-entity.md](dpkms/schema-entity.md) - Entity definitions
+
+### For System Integrators
+Integrating with external systems:
+- [integrations/](integrations/) - Integration examples
+- [api/api-rest.md](api/api-rest.md) - REST endpoints
+- [api/api-grpc.md](api/api-grpc.md) - gRPC services
+- [plugins/plugins.md](plugins/plugins.md) - Plugin architecture
+
+### For Security & DevOps Teams
+Managing secrets, compliance, and secure deployments:
+- [security/README.md](security/README.md) - Security documentation overview
+- [security/secrets-validation-and-log-sanitization.md](security/secrets-validation-and-log-sanitization.md) - How to detect and protect secrets
+- [security/security-model.md](security/security-model.md) - Threat model and guarantees
+- [security/secret-management.md](security/secret-management.md) - Rotation, incident response, and best practices
+- [security/configuration-security.md](security/configuration-security.md) - Securing configuration files
+- [environment-variables.md#security](environment-variables.md#security) - Secure environment variable handling
+- [scaling.md](scaling.md) - Deployment security patterns
 
 ---
 
-## 📩 Questions?
+## 🧭 Documentation by Topic
 
-Discussion, RFCs, and design proposals are welcome via issues or PRs.
-This documentation set evolves continuously — contributions are encouraged.
+### Core Concepts
+- [architecture.md](architecture.md) - Two-package architecture
+- [dpkms-or-ctxt.md](dpkms-or-ctxt.md) - Which package owns what
+- [glossary.md](glossary.md) - Terminology guide
+
+### Storage & Data
+- [dpkms/storage.md](dpkms/storage.md) - Storage backends
+- [dpkms/jobs-and-ingestion.md](dpkms/jobs-and-ingestion.md) - Job queue
+- [dpkms/queue.md](dpkms/queue.md) - Queue implementation
+- [ctxt/schema-object.md](ctxt/schema-object.md) - Knowledge objects
+
+### Semantic Identity
+- [dpkms/knowledge-graph.md](dpkms/knowledge-graph.md) - Graph index
+- [dpkms/mentions.md](dpkms/mentions.md) - Mention system
+- [dpkms/schema-entity.md](dpkms/schema-entity.md) - Entity schema
+- [ctxt/tags.md](ctxt/tags.md) - Tag semantics
+- [ctxt/schema-tag.md](ctxt/schema-tag.md) - Tag schema
+
+### Enrichment & Pipelines
+- [ctxt/pipelines.md](ctxt/pipelines.md) - Enrichment recipes
+- [ctxt/pipelines-reference.md](ctxt/pipelines-reference.md) - Pipeline catalog
+- [ctxt/hints.md](ctxt/hints.md) - User hints
+
+### Search & Retrieval
+- [dpkms/query-language-spec.md](dpkms/query-language-spec.md) - Query language
+- [dpkms/ranking-and-reranking.md](dpkms/ranking-and-reranking.md) - Result ranking
+- [dpkms/caching.md](dpkms/caching.md) - Caching strategies
+
+### Federation & Registries
+- [dpkms/registries.md](dpkms/registries.md) - Registry system
+- [dpkms/registry-protocol.md](dpkms/registry-protocol.md) - Protocol spec
+- [dpkms/registry-syncing-and-retrieval.md](dpkms/registry-syncing-and-retrieval.md) - Sync
+- [dpkms/decentralization.md](dpkms/decentralization.md) - Decentralization model
+
+### Security & Privacy
+- [security/README.md](security/README.md) - Security documentation index
+- [security/secrets-validation-and-log-sanitization.md](security/secrets-validation-and-log-sanitization.md) - Complete guide to secrets and log sanitization
+- [security/security-model.md](security/security-model.md) - Threat model and security guarantees
+- [security/secret-management.md](security/secret-management.md) - Secret lifecycle and best practices
+- [security/configuration-security.md](security/configuration-security.md) - Securing configuration files
+- [dpkms/security.md](dpkms/security.md) - dPKMS security model
+- [dpkms/privacy.md](dpkms/privacy.md) - Privacy guarantees
+
+### Extensibility
+- [plugins/plugins.md](plugins/plugins.md) - Plugin architecture
+- [plugins/plugins-api.md](plugins/plugins-api.md) - Plugin API
+- [plugins/examples/](plugins/examples/) - Plugin examples
+
+### Configuration & Profiles
+- [ctxt/configuration.md](ctxt/configuration.md) - Focus profiles
+- [ctxt/l10n-i18n.md](ctxt/l10n-i18n.md) - Localization
+
+### User Experience
+- [ctxt/user-stories.md](ctxt/user-stories.md) - User stories
+- [ctxt/user-story.md](ctxt/user-story.md) - Usage narrative
+- [ctxt/personas-end-users.md](ctxt/personas-end-users.md) - Personas
+- [ctxt/user-roles.md](ctxt/user-roles.md) - User roles
+
+### Quality & Testing
+- [dpkms/testing.md](dpkms/testing.md) - Testing strategy
+
+---
+
+## 🔑 Key Principles
+
+### dPKMS (Substrate)
+- **Sovereign** - Full ownership, no vendor lock-in
+- **Durable** - Crash-safe, resumable operations
+- **Verifiable** - Provenance and receipts
+- **Federated** - Decentralized knowledge distribution
+- **Fast** - Instant-feeling at scale
+
+See [dpkms/non-negotiables.md](dpkms/non-negotiables.md)
+
+### `ctxt` (Brain)
+- **Frictionless** - Zero-resistance capture
+- **Accessible** - Same brain, every interface
+- **Formless** - Accepts reality as-is
+- **Polyglot** - Multilingual knowledge
+- **Actionable** - Insight creates movement
+
+See [ctxt/non-negotiables.md](ctxt/non-negotiables.md)
+
+---
+
+## 💡 Common Questions
+
+**Q: Where does X belong - dPKMS or ctxt?**
+A: See [dpkms-or-ctxt.md](dpkms-or-ctxt.md)
+
+**Q: How do I extend the system?**
+A: See [plugins/plugins-api.md](plugins/plugins-api.md)
+
+**Q: What's the query language?**
+A: See [dpkms/query-language-spec.md](dpkms/query-language-spec.md)
+
+**Q: How do registries work?**
+A: See [dpkms/registries.md](dpkms/registries.md)
+
+**Q: How do I use the CLI?**
+A: See [ctxt/api-cli.md](ctxt/api-cli.md)
+
+**Q: What are focus profiles?**
+A: See [ctxt/configuration.md](ctxt/configuration.md)
+
+---
+
+## 📝 Contributing to Documentation
+
+Documentation contributions are welcome! When adding or updating docs:
+
+1. **Determine package ownership** - Use [dpkms-or-ctxt.md](dpkms-or-ctxt.md) to place docs correctly
+2. **Update relevant READMEs** - Keep subdirectory indexes current
+3. **Cross-reference appropriately** - Link between related docs
+4. **Follow structure** - Maintain the organization shown above
+5. **Update this README** - Add new docs to the appropriate section
+
+---
+
+## 🗺️ Related Documentation
+
+- **Root project docs** - `../README.md`, `../PROPOSAL.md`, `../ROADMAP.md`
+- **Decisions** - [decisions/](decisions/) - ADRs documenting key choices
+- **Sprints** - [sprints/](sprints/) - Iteration planning and history
+
+---
+
+This documentation evolves continuously. Contributions, questions, and improvements are encouraged.

@@ -3,6 +3,7 @@
 > **Status:** Accepted
 > **Date:** 2025-10-05
 > **Author:** @jadb
+> **Applies to:** dPKMS, ctxt
 > **Supersedes:** None
 > **Superseded by:** None
 
@@ -158,6 +159,7 @@ Goals optimized for:
 - ADR-003 – Separate Read & Write Paths
 - ADR-009 – Multi-Source Retrieval Architecture
 - ContextHelp Query Language Draft
+- **ADR-014 – Two-Package Architecture (dPKMS + ctxt)**
 - Internal analysis of Microsoft Kernel Memory query model
 
 ---

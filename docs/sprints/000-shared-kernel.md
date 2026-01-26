@@ -1,46 +1,56 @@
-# The Shared Kernel
+# The Shared Kernel (Skeleton 0)
 
-### 1. The Storage Contract (SQL Schema)
+## Package Focus
 
-**Owner:** Core Team + Search Team
+**Primary Package:** dPKMS (100%)
+
+This skeleton establishes the foundational contracts that enable dPKMS and ctxt to evolve independently. All work in Skeleton 0 defines **interfaces and schemas** that both packages will use, but the implementation is entirely within dPKMS.
+
+**Why dPKMS-focused:** The substrate must exist before the brain can function. Storage, jobs, and entity infrastructure are pure dPKMS concerns.
+
+---
+
+### 1. The Storage Contract (SQL Schema) — dPKMS
+
+**Owner:** dPKMS Infrastructure Team
 
 **Why:** All teams require a stable, guaranteed schema — ingestion must write into it, search must query from it, registries must sync into it, and the graph builder must rely on it.
 
-**Deliverable:** `migrations/001_initial_schema.sql`
+**Deliverable:** `dpkms/migrations/001_initial_schema.sql`
 
-The storage contract defines the *immutable minimum* required for ContextHelp to function.
+The storage contract defines the *immutable minimum* required for ContextHelp (dPKMS substrate) to function.
 It now includes the semantic identity layer — **entities**, **mentions**, and **graph backlinks** — ensuring every subsystem works against the same foundation.
 
-The `bookmarks` table and related tables must define:
+The `knowledge_objects` table and related tables must define:
 
 - how `tags` are stored (`JSONB`, array, or association table)
 - how **mentions** are stored (array of canonical entity IDs, or association table)
 - how raw content is captured (`TEXT`, blob, or external pointer)
 - how entity references are persisted
   - **entities table** — canonical definitions
-  - **entity_backlinks table** — bookmark → entity relationships
+  - **entity_backlinks table** — knowledge_object → entity relationships
 
 These tables must also be present at minimum:
 
 - **`entities`** — local or registry-synced canonical entities (id, title, aliases, metadata)
-- **`entity_backlinks`** — each mention produces an edge linking bookmark → entity
+- **`entity_backlinks`** — each mention produces an edge linking knowledge_object → entity
 
-This set of tables defines the **semantic substrate** of the system and cannot be optional for any deployment.
+This set of tables defines the **semantic substrate** of dPKMS and cannot be optional for any deployment.
 
 ---
 
-### 2. The Domain Model (Go Structs)
+### 2. The Domain Model (Go Structs) — dPKMS
 
-**Owner:** Core Team
+**Owner:** dPKMS Infrastructure Team
 
 **Why:** Typed domain structs ensure consistency across ingestion, search, registries, plugins, and the knowledge graph. Teams cannot implement pipelines, storage, or registry logic until these types are stable.
 
-**Deliverable:** `pkg/domain/types.go`
+**Deliverable:** `dpkms/pkg/domain/types.go`
 
 Required core types:
 
 ```go
-type Bookmark struct {
+type KnowledgeObject struct {
     ID         string
     Raw        string
     Tags       []Tag
@@ -80,36 +90,36 @@ Once this file is finalized, all teams can work independently using mocks.
 
 ---
 
-### 3. The Interface Definitions (Go Interfaces)
+### 3. The Interface Definitions (Go Interfaces) — dPKMS
 
-**Owner:** Architecture Lead / All Leads
+**Owner:** Architecture Lead / dPKMS Team
 
 **Why:** Clear boundaries allow parallel development. Each team can implement or mock the interfaces they depend on. Interfaces must explicitly support mentions, entities, backlinks, and registry-driven resolution.
 
-**Deliverable:** `pkg/ports/interfaces.go`
+**Deliverable:** `dpkms/pkg/ports/interfaces.go`
 
 Example boundaries:
 
 ```go
-// Pipelines enqueue ingestion jobs.
+// PipelineRunner enqueues ingestion jobs (dPKMS runtime).
 type PipelineRunner interface {
     Enqueue(ctx context.Context, job domain.Job) (string, error)
 }
 
-// Storage backend handles bookmark + entity persistence.
+// Storage backend handles knowledge_object + entity persistence (dPKMS).
 type Storage interface {
-    WriteBookmark(ctx context.Context, b domain.Bookmark) error
+    WriteKnowledgeObject(ctx context.Context, obj domain.KnowledgeObject) error
     GetPendingJobs(ctx context.Context) ([]domain.Job, error)
 
-    // Semantic identity layer
+    // Semantic identity layer (dPKMS graph)
     UpsertEntity(ctx context.Context, e domain.Entity) error
-    AddBacklink(ctx context.Context, entityID, bookmarkID string) error
+    AddBacklink(ctx context.Context, entityID, objectID string) error
 
-    // Mention/entity queries may use this later
+    // Mention/entity queries (dPKMS query engine)
     GetEntity(ctx context.Context, id string) (domain.Entity, error)
 }
 
-// Registries provide taxonomies + canonical entities.
+// RegistryClient provides taxonomies + canonical entities (dPKMS federation).
 type RegistryClient interface {
     FetchTaxonomy(url string) (domain.Taxonomy, error)
     FetchEntities(url string) ([]domain.Entity, error)
@@ -121,29 +131,49 @@ type RegistryClient interface {
 
 These interfaces enable:
 
-- ingestion pipelines to perform mention extraction + entity resolution
-- storage layer to maintain a persistent semantic graph
-- registries to supply canonical metadata, aliases, and translations
-- search to query entities and mentions using a stable storage contract
+- **ctxt pipelines** to perform mention extraction + entity resolution
+- **dPKMS storage** layer to maintain a persistent semantic graph
+- **dPKMS registries** to supply canonical metadata, aliases, and translations
+- **dPKMS search** to query entities and mentions using a stable storage contract
 
-They are the interoperability layer across the entire platform.
+They are the interoperability layer across the entire ContextHelp platform.
 
 ---
 
 ### The Workflow Result
 
-Completing **Sprint 0** establishes the foundation for all future work:
+Completing **Skeleton 0** establishes the foundation for all future work:
 
-- **Ingestion Team**
-  Uses `Storage` + `RegistryClient` interfaces to implement pipelines, mention extraction, and entity resolution. Can test against mocks with no DB running.
+- **ctxt Ingestion Team**
+  Uses `Storage` + `RegistryClient` interfaces (from dPKMS) to implement pipeline definitions, mention extraction logic, and entity resolution workflows. Can test against mocks with no DB running.
 
-- **Search Team**
+- **dPKMS Search Team**
   Builds mention-aware filtering, entity-aware queries, graph-powered lookups, and AST translation using the finalized schema.
 
-- **Registry Team**
+- **dPKMS Registry Team**
   Implements taxonomy and entity syncing, alias resolution, and registry merging using stable interfaces.
 
-- **Core Team**
-  Extends CLI, REST, and gRPC with mention filters, entity lookups, and graph-based retrieval, confident the shared kernel guarantees consistency.
+- **ctxt CLI Team**
+  Builds `ctxt analyze`, `ctxt list`, `ctxt search` commands that leverage dPKMS capabilities (mention filters, entity lookups, graph-based retrieval).
 
-The Shared Kernel ensures all teams work on top of **the same semantic and structural guarantees**, enabling the platform to evolve cleanly without cross-team blocking.
+- **dPKMS Infrastructure Team**
+  Provides `dpkms serve` daemon and underlying infrastructure guarantees.
+
+The Shared Kernel ensures all teams work on top of **the same semantic and structural guarantees**, enabling ContextHelp to evolve cleanly without cross-team blocking.
+---
+
+## See Also
+
+**Package Boundaries:**
+- [CROSS-PACKAGE-CONTRACTS.md](CROSS-PACKAGE-CONTRACTS.md) - dPKMS ↔ ctxt integration points
+- [../branding.md](../branding.md) - Naming conventions (dPKMS vs ctxt vs ContextHelp)
+- [../dpkms-or-ctxt.md](../dpkms-or-ctxt.md) - Package placement guide
+
+**Configuration:**
+- [CONFIGURATION-STRUCTURE.md](CONFIGURATION-STRUCTURE.md) - Config file organization
+- [../ctxt/configuration.md](../ctxt/configuration.md) - Focus profiles & preferences
+
+**Architecture:**
+- [../architecture.md](../architecture.md) - System architecture overview
+- [../../ROADMAP.md](../../ROADMAP.md) - Living skeleton roadmap
+- [README.md](README.md) - Sprint documentation index

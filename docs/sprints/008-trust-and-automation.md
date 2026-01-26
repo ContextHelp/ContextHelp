@@ -1,16 +1,28 @@
-# Sprint 8 Goal: "Safe Automation and Trusted Semantic Identity"
+# Skeleton 8 Goal: "Safe Automation and Trusted Semantic Identity"
 
-By the end of this sprint:
+## Package Focus
+
+**Primary Package:** dPKMS (70%) + ctxt (30%)
+
+Trust and safety are primarily infrastructure concerns: permissions, sandboxing, graph integrity.
+
+**Package Breakdown:**
+- **dPKMS:** Plugin manifest enforcement, capability layer, entity integrity guard, graph safety validator
+- **ctxt:** Watcher interface, clipboard/directory watchers, semantic watcher hooks
+
+---
+
+By the end of this skeleton:
 
 1. **Security:** Plugins execute under a strict permission and capability model, enforced via `manifest.yaml` and runtime validation.
 2. **Automation:** The engine supports background watchers (clipboard, directory, refresh-driven) that enqueue ingestion safely without core modifications.
-3. **Connectivity:** Search output and bookmark introspection support entity-aware related-item browsing through the Knowledge Graph.
+3. **Connectivity:** Search output and knowledge object introspection support entity-aware related-item browsing through the Knowledge Graph.
 4. **Semantic Identity:** Mentions, entities, aliases, and provenance are first-class trust primitives.
 5. **Graph Safety:** The Knowledge Graph is protected against spoofing, namespace attacks, and semantic drift.
 
 ---
 
-## 1. Core/Infra Team (The Sheriff)
+## 1. dPKMS Infrastructure Team (The Sheriff)
 
 Focus: Plugin sandboxing, permissions, provenance, and graph safety.
 
@@ -37,7 +49,7 @@ Rules:
 
 - `entity.write` and `entity.alias` are privileged.
 - Permissions must be explicitly granted before plugin activation.
-- During `ch serve` startup:
+- During `dpkms serve` startup:
   - Detect permission changes.
   - Halt execution and request user/admin confirmation.
 
@@ -61,7 +73,7 @@ Return `PermissionDenied` for unauthorized actions.
 Extend the logging system to ensure:
 
 - All secrets (LLM keys, embedding keys, registry tokens, Authorization headers) are scrubbed from:
-  - `ch jobs logs`
+  - `ctxt jobs logs`
   - stderr/stdout
   - plugin-produced logs
 
@@ -91,7 +103,7 @@ Before linking or updating graph edges:
 
 ---
 
-## 2. Ingestion/AI Team (The Watcher)
+## 2. ctxt Ingestion Team (The Watcher)
 
 Focus: Background ingestion, semantic extraction, and safe automation.
 
@@ -141,7 +153,7 @@ Allow watchers to perform lightweight pre-semantic checks:
 
 ---
 
-## 3. Search/Retrieval Team (The Graph)
+## 3. dPKMS Search Team & ctxt Retrieval Team (The Graph)
 
 Focus: Entity-aware retrieval, related content, and graph integrity.
 
@@ -157,7 +169,7 @@ Ensure every pipeline capable of producing textual or structured content perform
   - external registries
   - placeholder creation for unresolved entities
 - Storage of:
-  - bookmark mentions
+  - knowledge object mentions
   - entity backlinks
   - provenance metadata
 
@@ -172,7 +184,7 @@ related:<bookmark-id>
 Execution:
 
 1. Identify entities referenced by the target bookmark.
-2. Return other bookmarks with overlapping entities.
+2. Return other knowledge objects with overlapping entities.
 3. Rank by shared-entity weight.
 
 ### Task 3.3: "See Also" in CLI Output
@@ -186,7 +198,7 @@ ch show <id>
 Display:
 
 - entities referenced by the bookmark
-- top related bookmarks (via graph)
+- top related knowledge objects (via graph)
 - provenance of entities
 
 ### Task 3.4: Entity-Aware Querying
@@ -211,7 +223,7 @@ Validate edges before insertion:
 
 ---
 
-## 4. Registry/Ecosystem Team (The Librarian)
+## 4. dPKMS Registry Team (The Librarian)
 
 Focus: Registry discovery, entity provenance, trust levels, and safe namespace management.
 
@@ -230,7 +242,7 @@ Define a root registry:
 
 Used for discovery, not automatic subscription.
 
-### Task 4.2: `ch registry search <topic>`
+### Task 4.2: `ctxt registry search <topic>`
 
 Allow users to discover registries by:
 
@@ -331,3 +343,20 @@ Mitigation: document per-platform setup and fallback modes.
 Malicious content may attempt to flood graph with bogus or adversarial links.
 
 Mitigation: entity validator, edge gating, alias verification, and permission-controlled mutation.
+---
+
+## See Also
+
+**Package Boundaries:**
+- [CROSS-PACKAGE-CONTRACTS.md](CROSS-PACKAGE-CONTRACTS.md) - dPKMS ↔ ctxt integration points
+- [../branding.md](../branding.md) - Naming conventions (dPKMS vs ctxt vs ContextHelp)
+- [../dpkms-or-ctxt.md](../dpkms-or-ctxt.md) - Package placement guide
+
+**Configuration:**
+- [CONFIGURATION-STRUCTURE.md](CONFIGURATION-STRUCTURE.md) - Config file organization
+- [../ctxt/configuration.md](../ctxt/configuration.md) - Focus profiles & preferences
+
+**Architecture:**
+- [../architecture.md](../architecture.md) - System architecture overview
+- [../../ROADMAP.md](../../ROADMAP.md) - Living skeleton roadmap
+- [README.md](README.md) - Sprint documentation index

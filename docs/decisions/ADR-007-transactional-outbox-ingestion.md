@@ -3,6 +3,7 @@
 > **Status:** Accepted
 > **Date:** 2025-10-05
 > **Author:** @jadb
+> **Applies to:** dPKMS
 > **Supersedes:** None
 > **Superseded by:** None
 
@@ -18,7 +19,7 @@ ContextHelp processes diverse content inputs (text, URLs, images, audio, video) 
 - may be interrupted by system shutdowns
 - may require retries or partial re-execution
 
-Until now, the CLI (`ch analyze`) executed pipelines synchronously. If the process crashed or stalled mid-execution:
+Until now, the CLI (`ctxt analyze`) executed pipelines synchronously. If the process crashed or stalled mid-execution:
 
 - the partially processed item would be lost
 - no bookmark would be created
@@ -39,7 +40,7 @@ Constraints:
 
 Affected subsystems:
 
-- CLI (`analyze`)
+- CLI (`ctxt analyze`)
 - Pipelines (all types)
 - Storage layer
 - Queue/worker subsystem
@@ -52,7 +53,7 @@ The goal is to ensure **durable, resumable, auditable ingestion** across all pip
 
 ## Decision
 
-**Ingestion will be implemented using a transactional outbox pattern: `ch analyze` writes a job to a persistent `jobs` table, and a background worker processes pending jobs reliably until completion.**
+**Ingestion will be implemented using a transactional outbox pattern: `ctxt analyze` writes a job to a persistent `jobs` table, and a background worker (`dpkms serve`) processes pending jobs reliably until completion.**
 
 ---
 
@@ -121,7 +122,7 @@ Rejected because:
 ### Positive
 
 - **Highly reliable ingestion** even under failure conditions.
-- **Non-blocking CLI** → `ch analyze` becomes instant.
+- **Non-blocking CLI** → `ctxt analyze` becomes instant.
 - **Foundation for background/parallel work**.
 - **Deterministic and auditable execution** with `job_steps`.
 - **Supports plugin-defined jobs** without architectural changes.
@@ -130,13 +131,13 @@ Rejected because:
 
 - Increased implementation complexity for job orchestration.
 - Storage schema expands to include `jobs` and `job_steps`.
-- Worker becomes a long-running process (`ch serve`) that must be managed.
+- Worker becomes a long-running process (`dpkms serve`) that must be managed.
 
 ### Neutral / Considerations
 
 - Performance impact minimal since SQLite WAL supports fast writes.
 - Testing matrix grows (pending → running → completed → retry → failed).
-- Users may expect job introspection; CLI must expose `ch jobs list`, etc.
+- Users may expect job introspection; CLI must expose `ctxt jobs list` and `dpkms jobs list`, etc.
 
 ---
 
@@ -146,14 +147,14 @@ Rejected because:
   - `jobs (id, type, payload, status, retries, created_at, updated_at, last_error)`
   - `job_steps (id, job_id, step, status, started_at, finished_at, logs)`
 
-- Modify `ch analyze`:
+- Modify `ctxt analyze`:
   - Detect input type
   - Normalize input
   - Write job to DB
   - Return Job ID
   - Optionally support `--wait` to block until completed
 
-- Implement `ch serve` (worker):
+- Implement `dpkms serve` (worker):
   - WAL-safe SQLite single-writer mode
   - Poll pending jobs
   - Execute pipelines
@@ -177,6 +178,7 @@ Rejected because:
 - ADR-003: Separation of Write Path vs Read Path
 - ADR-004: Step-Based Pipeline Architecture
 - ADR-012: Plugin Extensibility Across All Layers
+- **ADR-014 – Two-Package Architecture (dPKMS + ctxt)**
 - Microsoft Kernel Memory's ingestion approach (ContentStorageService + OperationRecord)
 - Martin Fowler: Transactional Outbox Pattern
 - SQLite WAL documentation

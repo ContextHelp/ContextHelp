@@ -34,7 +34,9 @@ The gRPC surface area is divided into logical services:
 |--------|----------------|
 | `AnalyzeService` | Ingestion via job-based pipelines |
 | `JobService` | Query, retry, manage job lifecycle |
-| `BookmarkService` | Search, list, update, delete bookmarks |
+| `ObjectService` | Search, list, update, delete knowledge objects |
+| `ProfileService` | Manage focus profiles |
+| `CompositionService` | Generate briefs, plans, summaries, drafts |
 | `RegistryService` | Discover registries and capabilities |
 | `EntityService` | Resolve entities, list mentions, navigate backlinks |
 | `SuggestionService` | Tag and hint suggestions (optional) |
@@ -53,17 +55,19 @@ graph LR
   A[Clients<br/>UIs, Agents, Plugins] --> B[gRPC Endpoint]
   B --> C[AnalyzeService]
   B --> D[JobService]
-  B --> E[BookmarkService]
-  B --> F[RegistryService]
-  B --> G[EntityService]
-  B --> H[SuggestionService]
+  B --> E[ObjectService]
+  B --> F[ProfileService]
+  B --> G[CompositionService]
+  B --> H[RegistryService]
+  B --> I2[EntityService]
+  B --> J[SuggestionService]
   B --> P[Plugin Services<br/>Dynamic, per-plugin]
 
-  E --> I[(Local Storage)]
-  F --> J[(Registries)]
-  G --> J
-  G --> I
-  P --> I
+  E --> K[(Local Storage)]
+  H --> L[(Registries)]
+  I2 --> L
+  I2 --> K
+  P --> K
 ```
 
 ### Protobuf Package
@@ -122,15 +126,16 @@ message AnalyzeRequest {
   string type = 1;                     // text, url, image, audio, video, other
   string content = 2;                  // raw text, URL, base64 data, etc.
   repeated string hints = 3;           // user hints (#tags, freeform cues)
-  string pipeline = 4;                 // optional explicit pipeline
-  string language = 5;                 // optional declared input language
-  bool skip_translation = 6;           // override i18n plugins for this call
+  string profile = 4;                  // focus profile (founder, engineer, research, etc.)
+  string pipeline = 5;                 // optional explicit pipeline
+  string language = 6;                 // optional declared input language
+  bool skip_translation = 7;           // override i18n plugins for this call
 
   // Canonical entity IDs or slugs already known to the caller.
-  repeated string mentions = 7;
+  repeated string mentions = 8;
 
   // Plugins may attach metadata to influence plugin-defined pipelines.
-  map<string, string> plugin_metadata = 8;
+  map<string, string> plugin_metadata = 9;
 }
 ```
 
@@ -158,7 +163,7 @@ message Job {
   string pipeline = 7;
   repeated JobStep steps = 8;
 
-  string result_bookmark_id = 9;
+  string result_object_id = 9;
   string error = 10;
 
   // Plugins may attach additional state (e.g., price_monitor, rss_feed)
@@ -180,12 +185,12 @@ message JobStep {
 
 ---
 
-## Bookmark and Mention Messages
+## Knowledge Object and Mention Messages
 
-### Bookmark
+### KnowledgeObject
 
 ```protobuf
-message Bookmark {
+message KnowledgeObject {
   string id = 1;
 
   google.protobuf.Timestamp created_at = 2;
@@ -200,29 +205,30 @@ message Bookmark {
   string raw = 8;
 
   string language = 9;
+  string profile = 10;                       // focus profile used during ingestion
 
-  repeated Tag tags = 10;
-  repeated string hints = 11;
+  repeated Tag tags = 11;
+  repeated string hints = 12;
 
-  string pipeline = 12;
-  string source = 13;
+  string pipeline = 13;
+  string source = 14;
 
-  uint32 views = 14;
-  uint32 matches = 15;
+  uint32 views = 15;
+  uint32 matches = 16;
 
-  map<string, Translation> translations = 16;
+  map<string, Translation> translations = 17;
 
-  repeated Section sections = 17;
-  repeated Decision decisions = 18;
+  repeated Section sections = 18;
+  repeated Decision decisions = 19;
 
-  repeated RegistryReference registry_refs = 19;
+  repeated RegistryReference registry_refs = 20;
 
-  repeated string mentions = 20;
-  repeated EntityRef entities = 21;
+  repeated string mentions = 21;
+  repeated EntityRef entities = 22;
 
   // Namespaced plugin fields:
-  // bookmark.plugins.<pluginName>.* becomes:
-  map<string, string> plugin_metadata = 22;
+  // object.plugins.<pluginName>.* becomes:
+  map<string, string> plugin_metadata = 23;
 }
 ```
 
@@ -311,9 +317,42 @@ message Entity {
 ```protobuf
 message EntityBacklink {
   string entity_id = 1;
-  string bookmark_id = 2;
-  string bookmark_title = 3;
-  string bookmark_summary = 4;
+  string object_id = 2;
+  string object_title = 3;
+  string object_summary = 4;
+}
+```
+
+---
+
+## Focus Profile Messages
+
+```protobuf
+message Profile {
+  string name = 1;
+  string description = 2;
+  bool enabled = 3;
+  map<string, string> config = 4;
+}
+```
+
+---
+
+## Composition Messages
+
+```protobuf
+message ComposeRequest {
+  string type = 1;                     // brief, plan, summary, draft
+  string profile = 2;
+  SearchRequest filters = 3;
+  map<string, string> options = 4;
+}
+
+message ComposeResponse {
+  string id = 1;
+  string type = 2;
+  string content = 3;
+  map<string, string> metadata = 4;
 }
 ```
 
@@ -350,8 +389,10 @@ message SearchRequest {
 
   bool mentions_only = 16;
 
+  string profile = 17;
+
   // Plugins may extend filtering via namespaced keys.
-  map<string, string> plugin_filters = 17;
+  map<string, string> plugin_filters = 18;
 }
 ```
 
@@ -431,14 +472,31 @@ service JobService {
 }
 ```
 
-### BookmarkService
+### ObjectService
 
 ```protobuf
-service BookmarkService {
+service ObjectService {
   rpc Search(SearchRequest) returns (SearchResponse);
-  rpc Get(GetBookmarkRequest) returns (Bookmark);
-  rpc Update(UpdateBookmarkRequest) returns (Bookmark);
-  rpc Delete(DeleteBookmarkRequest) returns (DeleteBookmarkResponse);
+  rpc Get(GetObjectRequest) returns (KnowledgeObject);
+  rpc Update(UpdateObjectRequest) returns (KnowledgeObject);
+  rpc Delete(DeleteObjectRequest) returns (DeleteObjectResponse);
+}
+```
+
+### ProfileService
+
+```protobuf
+service ProfileService {
+  rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
+  rpc GetProfile(GetProfileRequest) returns (Profile);
+}
+```
+
+### CompositionService
+
+```protobuf
+service CompositionService {
+  rpc Compose(ComposeRequest) returns (ComposeResponse);
 }
 ```
 
@@ -522,11 +580,13 @@ Same as before; plugins may also define streaming endpoints.
 
 ## Summary
 
-This updated gRPC API now explicitly supports:
+This gRPC API explicitly supports:
 
+- **focus profiles** for contextualized behavior
+- **composition endpoints** for generating briefs, plans, and summaries
 - **plugin-defined RPC services**
-- **plugin-defined bookmark types**
-- **plugin metadata on jobs and bookmarks**
+- **plugin-defined knowledge object types**
+- **plugin metadata on jobs and knowledge objects**
 - **plugin-defined filters**
 - **plugin-influenced ingestion through metadata**
 - **non-core notification & alert surfacing**

@@ -1,7 +1,3 @@
-You are correct. In the effort to categorize the stories into functional groups (like "Agents" or "Registries"), I inadvertently compressed several specific configuration interactions back into high-level summaries.
-
-To ensure **zero loss of fidelity** from our previous analysis, here is the corrected, fully expanded master list. It integrates all 14 configuration stories explicitly alongside the rest of the system functionality.
-
 ### **Installation & System Lifecycle**
 1. As a Developer I want to install the CLI binary via a package manager or shell script
 2. As a User I want to generate shell completion scripts (Bash, Zsh, Fish) for faster command entry
@@ -71,23 +67,32 @@ To ensure **zero loss of fidelity** from our previous analysis, here is the corr
 48. As a User I want to subscribe to "Weights Registries" to adjust how the engine scores content relevance
 49. As a User I want to load a Registry from a local file path for offline usage
 50. As a Registry Maintainer I want to validate my Registry definition file against the protocol schema
+51. As a User I want to define trust policies for registries (allowlist/denylist/signature requirements) before subscribing or applying updates
+52. As a User I want to pin or freeze important entities/definitions to a specific version to prevent semantic drift from registry updates
+53. As a User I want to run a “dry-run” registry update to preview semantic changes before applying them locally
+54. As a User I want to export and import signed knowledge packs (bundles) so I can share or archive verifiable context snapshots
 
 ### **Agents & Context Profiles**
-51. As an Agent Developer I want to define Agent Profiles in the config file (Registries, Weights, Tags)
-52. As an Agent Developer I want to manage Agent Profiles programmatically via the CLI (`ch agent add/remove`)
-53. As a User I want to query data masquerading as a specific Agent (`--agent`) to see their worldview
-54. As a Security Architect I want to enforce a "Deny by Default" policy for Agent tag access
-55. As an Agent Developer I want to assign specific pipelines to an Agent Profile to restrict capabilities
+55. As an Agent Developer I want to define Agent Profiles in the config file (Registries, Weights, Tags)
+56. As an Agent Developer I want to manage Agent Profiles programmatically via the CLI (`ch agent add/remove`)
+57. As a User I want to query data masquerading as a specific Agent (`--agent`) to see their worldview
+58. As a Security Architect I want to enforce a "Deny by Default" policy for Agent tag access
+59. As an Agent Developer I want to assign specific pipelines to an Agent Profile to restrict capabilities
 
 ### **API & Integration**
-56. As a System Integrator I want to run a local REST API server to query context from web apps
-57. As a High-Performance Developer I want to access the engine via gRPC for low-latency agent lookup
-58. As a Scripter I want CLI commands to output pure JSON (`--json`) for piping into tools like `jq`
-59. As an API Consumer I want to request a specific Agent's context window via an API parameter
+60. As a System Integrator I want to run a local REST API server to query context from web apps
+61. As a High-Performance Developer I want to access the engine via gRPC for low-latency agent lookup
+62. As a Scripter I want CLI commands to output pure JSON (`--json`) for piping into tools like `jq`
+63. As an API Consumer I want to request a specific Agent's context window via an API parameter
 
 ### **Localization (I18N)**
-60. As a User I want to define my preferred language order for content consumption
-61. As a User I want summaries and tags to be automatically translated into my preferred language
-62. As a User I want to filter search results to show only content in its original source language
-63. As a User I want to manually override the language detection during ingestion (`--lang`)
-64. As a Plugin Developer I want to extend the schema to store translation maps without breaking the core engine
+64. As a User I want to define my preferred language order for content consumption
+65. As a User I want summaries and tags to be automatically translated into my preferred language
+66. As a User I want to filter search results to show only content in its original source language
+67. As a User I want to manually override the language detection during ingestion (`--lang`)
+68. As a Plugin Developer I want to extend the schema to store translation maps without breaking the core engine
+
+### **Trust, Integrity & Federation (Added)**
+69. As a User I want to rotate encryption keys safely without losing access to my stored knowledge
+70. As a User I want to sync my knowledge store across my own devices (local-first replication) without requiring a central server
+71. As a User I want to see why a result was ranked highly (explain scoring: weights, graph signals, provenance, recency)

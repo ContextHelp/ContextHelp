@@ -23,8 +23,8 @@ Plugins can safely add new behaviors by relying on:
 - **plugin event hooks**
 - **plugin-defined pipelines**
 - **plugin-owned storage**
-- **plugin-owned bookmark metadata**
-- **plugin-defined bookmark types**
+- **plugin-owned knowledge object metadata**
+- **plugin-defined knowledge object types**
 - **job enqueue API**
 - **refresh configuration API**
 - **inter-plugin services**
@@ -62,13 +62,13 @@ Plugins must operate strictly through sanctioned APIs, events, and namespaces.
 A plugin can independently provide any of the following capabilities:
 
 - new pipelines or pipeline steps
-- new bookmark types
+- new knowledge object types
 - new query operators or AST visitors
 - new scoring/reranking logic
 - new translation or localization engines
 - new storage backends
 - new registry providers
-- new agent profile extensions
+- new focus profile extensions
 - new background tasks
 - new CLI or API routes
 - new analysis flows
@@ -106,7 +106,7 @@ A plugin must declare:
 - event subscriptions
 - optional CLI/API contributions
 - pipeline registrations
-- bookmark type declarations
+- knowledge object type declarations
 
 ---
 
@@ -143,12 +143,12 @@ without any core schema changes.
 
 ---
 
-## Plugin Metadata Namespace in Bookmarks
+## Plugin Metadata Namespace in Knowledge Objects
 
 Plugins store metadata under:
 
 ```
-bookmark.plugins.<pluginName>
+object.plugins.<pluginName>
 ```
 
 Example:
@@ -171,9 +171,9 @@ This guarantees that plugin data remains isolated and conflict-free.
 
 ---
 
-## Plugin-Defined Bookmark Types
+## Plugin-Defined Knowledge Object Types
 
-Plugins may introduce new bookmark types:
+Plugins may introduce new knowledge object types:
 
 - `feed`
 - `feed_item`
@@ -185,7 +185,7 @@ The plugin declares these types during registration.
 
 Core guarantees:
 
-- bookmark type registration is dynamic
+- knowledge object type registration is dynamic
 - plugins may override pipeline inference for their types
 - queries may filter on plugin types via `type:<name>`
 
@@ -238,10 +238,10 @@ Jobs remain isolated and traceable.
 
 ## Plugin Integration with Refresh System
 
-Plugins may require refresh behavior for certain bookmarks:
+Plugins may require refresh behavior for certain knowledge objects:
 
 ```
-refresh.ConfigureForBookmark(bookmarkID, {
+refresh.ConfigureForObject(objectID, {
   enabled: true,
   interval_seconds: 3600,
   fetch_new: true
@@ -291,12 +291,12 @@ Plugins subscribe to engine events.
 - `pipeline.error`
 - `pipeline.complete`
 
-### Bookmark Events
+### Knowledge Object Events
 
-- `bookmark.create.before`
-- `bookmark.create.after`
-- `bookmark.update.before`
-- `bookmark.update.after`
+- `object.create.before`
+- `object.create.after`
+- `object.update.before`
+- `object.update.after`
 
 ### Job Events
 
@@ -319,11 +319,11 @@ Plugins subscribe to engine events.
 - `api.response.before`
 - `api.response.after`
 
-### Agent Events
+### Focus Profile Events
 
-- `agent.worldview.prepare`
-- `agent.query.before`
-- `agent.query.after`
+- `profile.prepare`
+- `profile.query.before`
+- `profile.query.after`
 
 Plugins use these to extend system behavior deterministically.
 

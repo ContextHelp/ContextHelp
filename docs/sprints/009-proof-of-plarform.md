@@ -1,19 +1,31 @@
-# Sprint 9 Goal: "Proof of Platform"
+# Skeleton 9 Goal: "Proof of Platform"
 
-By the end of this sprint:
+## Package Focus
+
+**Primary Package:** dPKMS (60%) + ctxt (40%)
+
+Final validation requires stress testing infrastructure and proving external integrations work.
+
+**Package Breakdown:**
+- **dPKMS:** Stress testing, housekeeping, entity/graph validation, migration stability
+- **ctxt:** Browser extension, Raycast script, prompt evaluation, model agnosticism
+
+---
+
+By the end of this skeleton:
 
 1. **Reference Integrations:** An official **Browser Extension** and **Raycast Script** are released, proving the API works end-to-end, including **mention-aware ingestion**, **entity resolution**, and **graph updates**.
-2. **Stress Tested:** The system is verified to handle **100,000+ bookmarks**, **millions of mentions**, large **multiregistry entity sets**, and dense **knowledge graph edges** without UI or API lag.
+2. **Stress Tested:** The system is verified to handle **100,000+ knowledge objects**, **millions of mentions**, large **multiregistry entity sets**, and dense **knowledge graph edges** without UI or API lag.
 3. **Documentation:** The `docs/` folder is converted into a user-facing static website, now including the new **Mentions**, **Entity Schema**, and **Knowledge Graph** docs, with end-to-end examples and query demonstrations.
 
 ---
 
-## 1. Core/Infra Team (The Stress Testers)
+## 1. dPKMS Infrastructure Team (The Stress Testers)
 
 **Focus:** Reliability, Graph Integrity, and Long-Running Stability.
-**Why:** Users leave `ch serve` running for weeks. Memory leaks, unstable entity indexes, or graph inconsistencies will break trust.
+**Why:** Users leave `dpkms serve` running for weeks. Memory leaks, unstable entity indexes, or graph inconsistencies will break trust.
 
-### Task 1.1: The "Million Bookmark + Entity Graph" Simulation
+### Task 1.1: The "Million Knowledge Object + Entity Graph" Simulation
 
 - Create a test harness that ingests:
   - 100k synthetic text records
@@ -27,7 +39,7 @@ By the end of this sprint:
   - **backlinks table density and fragmentation**
 - Action: Tune SQLite pragmas (`mmap_size`, `cache_size`, `wal_autocheckpoint`, `page_size`) based on results.
 
-### Task 1.2: `ch housekeeping` Command
+### Task 1.2: `dpkms housekeeping` Command
 
 Implement a maintenance command.
 
@@ -59,7 +71,7 @@ Logic:
 
 ---
 
-## 2. Ingestion/AI Team (The Tuner)
+## 2. ctxt Ingestion Team (The Tuner)
 
 **Focus:** Quality of intelligence and correctness of semantic identity.
 **Why:** Pipelines must produce stable semantic references (mentions → entities → graph edges).
@@ -98,7 +110,7 @@ Logic:
 
 ---
 
-## 3. Search/Retrieval Team (The Integrator)
+## 3. dPKMS Search Team & ctxt Retrieval Team (The Integrator)
 
 **Focus:** Consuming the API for real tools.
 **Why:** This sprint proves that mention- and entity-aware APIs are usable and performant.
@@ -135,11 +147,11 @@ Validation:
 
 - mention-based queries under 200ms
 - graph-aware ranking does not regress performance
-- entity → bookmark → entity traversal paths remain stable
+- entity → knowledge_object → entity traversal paths remain stable
 
 ---
 
-## 4. Registry/Ecosystem Team (The Teacher)
+## 4. dPKMS Registry Team (The Teacher)
 
 **Focus:** Developer Portal, Documentation, and Registry Usability.
 **Why:** Mentions, entities, and graph semantics must be documented thoroughly and consistently.
@@ -215,7 +227,7 @@ Scenario: The "New User" Experience with Semantic Identity Enabled.
    - background worker processes jobs
    - **mentions extracted from text, URL, metadata**
    - **entities resolved or created as local entities**
-   - **graph edges generated (bookmark → entity)**
+   - **graph edges generated (knowledge_object → entity)**
 
 4. **Retrieval:**
    User opens Raycast, types:
@@ -233,7 +245,7 @@ Scenario: The "New User" Experience with Semantic Identity Enabled.
    - stable RAM
    - no WAL ballooning
    - graph queries remain below latency thresholds
-   - `ch housekeeping` compacts entity index and backlinks
+   - `dpkms housekeeping` compacts entity index and backlinks
 
 ---
 
@@ -250,7 +262,7 @@ Scenario: The "New User" Experience with Semantic Identity Enabled.
 
 ## Post-Sprint 9: Version 1.0.0 Release
 
-After this sprint, the system is:
+After this skeleton, the system is:
 
 1. **Feature Complete**
    Multimodal ingestion, mentions, entities, knowledge graph, query language, registry sync.
@@ -263,3 +275,20 @@ After this sprint, the system is:
 
 4. **Documented**
    Full static site launched with semantic identity and graph documentation.
+---
+
+## See Also
+
+**Package Boundaries:**
+- [CROSS-PACKAGE-CONTRACTS.md](CROSS-PACKAGE-CONTRACTS.md) - dPKMS ↔ ctxt integration points
+- [../branding.md](../branding.md) - Naming conventions (dPKMS vs ctxt vs ContextHelp)
+- [../dpkms-or-ctxt.md](../dpkms-or-ctxt.md) - Package placement guide
+
+**Configuration:**
+- [CONFIGURATION-STRUCTURE.md](CONFIGURATION-STRUCTURE.md) - Config file organization
+- [../ctxt/configuration.md](../ctxt/configuration.md) - Focus profiles & preferences
+
+**Architecture:**
+- [../architecture.md](../architecture.md) - System architecture overview
+- [../../ROADMAP.md](../../ROADMAP.md) - Living skeleton roadmap
+- [README.md](README.md) - Sprint documentation index

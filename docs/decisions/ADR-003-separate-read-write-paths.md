@@ -3,6 +3,7 @@
 > **Status:** Accepted
 > **Date:** 2025-10-05
 > **Author:** @jadb
+> **Applies to:** dPKMS, ctxt
 > **Supersedes:** N/A
 > **Superseded by:** N/A
 
@@ -26,7 +27,7 @@ Industry systems handling knowledge ingestion—including Microsoft’s Kernel M
 This ADR defines the architectural separation between the **Write Path** (ingestion → enqueue job → return job ID) and the **Read Path** (search/retrieval over consistent bookmark data only).
 
 This decision impacts:
-- CLI (`ch analyze`, `ch serve`)
+- CLI (`ctxt analyze`, `dpkms serve`)
 - Pipelines
 - Storage/migrations
 - Worker/queue system
@@ -39,7 +40,7 @@ The goal is to maximize reliability, reduce user-facing latency, and create a ro
 
 ## Decision
 
-**ContextHelp will separate ingestion (Write Path) from retrieval (Read Path) using a transactional outbox job system. `ch analyze` will only enqueue a job; a worker process will execute pipelines and write bookmarks when the job completes.**
+**ContextHelp will separate ingestion (Write Path) from retrieval (Read Path) using a transactional outbox job system. `ctxt analyze` will only enqueue a job; a worker process will execute pipelines and write bookmarks when the job completes.**
 
 ---
 
@@ -103,7 +104,7 @@ Rejected:
 
 ### Positive
 - **Crash-safe ingestion** with full recovery and retries.
-- **Instant feedback** for users running `ch analyze`.
+- **Instant feedback** for users running `ctxt analyze`.
 - **Consistent bookmark database**—no half-processed data.
 - **Extensible job engine** enabling:
   - background metadata jobs
@@ -113,7 +114,7 @@ Rejected:
 - **Cleaner architecture:** read path is purely retrieval; write path is controlled and deterministic.
 
 ### Negative
-- Requires a **job runner** (`ch serve`) to be running for ingestion to complete.
+- Requires a **job runner** (`dpkms serve`) to be running for ingestion to complete.
 - Adds **schema complexity** (`jobs`, `job_steps` tables).
 - Requires **rerun logic and idempotency** in pipelines.
 - CLI may need a `--wait` flag to support synchronous workflows.
@@ -132,15 +133,15 @@ Rejected:
   - `jobs` (id, status, type, created_at, started_at, completed_at, retries, payload JSON)
   - `job_steps` (optional: per-step traces, logs, error details)
 
-- `ch analyze`:
+- `ctxt analyze`:
   - parse input → infer pipeline → serialize payload → insert into `jobs` as `Pending` → return job ID.
 
-- `ch serve` (or embedded worker):
+- `dpkms serve` (or embedded worker):
   - poll for `Pending` jobs → mark as `Running` → execute pipeline → write bookmark → mark `Completed` or `Failed`.
 
 - Pipelines must be **idempotent** and can use `job_steps` for intermediate state tracking.
 
-- Retrieval path (`ch list`, REST/gRPC search) only queries the `bookmarks` table.
+- Retrieval path (`ctxt list`, REST/gRPC search) only queries the `bookmarks` table.
 
 - Test cases:
   - simulate crash after job creation

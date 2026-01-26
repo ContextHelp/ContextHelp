@@ -1,8 +1,9 @@
 # ADR-011 – Introduce a Dedicated Reranker Layer for Multi-Source Result Merging
 
-> **Status:** Proposed
+> **Status:** Accepted
 > **Date:** 2025-10-05
 > **Author:** @jadb
+> **Applies to:** dPKMS, ctxt
 > **Supersedes:** None
 > **Superseded by:** None
 

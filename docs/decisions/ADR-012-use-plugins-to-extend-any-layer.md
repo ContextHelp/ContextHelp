@@ -1,8 +1,9 @@
 # ADR-012 – Plugins Are First-Class and May Extend Any Layer (Revised & Expanded)
 
-> **Status:** Proposed
+> **Status:** Accepted
 > **Date:** 2025-10-05 (Revised 2025-12-09)
 > **Author:** @jadb
+> **Applies to:** dPKMS, ctxt
 > **Supersedes:** None
 > **Superseded by:** None
 
@@ -361,6 +362,7 @@ No core DB migrations are required.
 - ADR-008 – Registry protocol
 - ADR-009 – Multi-source retrieval
 - ADR-010 – Query language
+- **ADR-014 – Two-Package Architecture (dPKMS + ctxt)**
 - Plugin architecture patterns (VSCode, Raycast, Obsidian)
 
 ---

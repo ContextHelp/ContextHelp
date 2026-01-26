@@ -1,15 +1,27 @@
-# Sprint 7 Goal: "Sovereignty & Scale"
+# Skeleton 7 Goal: "Sovereignty & Scale"
 
-By the end of this sprint:
+## Package Focus
+
+**Balanced:** dPKMS (50%) + ctxt (50%)
+
+Sovereignty requires offline AI (ctxt) and scalable infrastructure (dPKMS) working in harmony.
+
+**Package Breakdown:**
+- **dPKMS:** Performance profiling, vector optimization, entity/graph isolation, offline mode enforcement
+- **ctxt:** Ollama integration, local model support, mention extraction stability, developer tooling
+
+---
+
+By the end of this skeleton:
 
 1. **True Offline AI:** Users can connect Ollama or LocalAI to run pipelines without an internet connection.
-2. **Vector Scalability:** Retrieval migrates from brute-force scans to optimized vector storage (`sqlite-vec` or HNSW), enabling 100k+ bookmarks and large entity graphs.
+2. **Vector Scalability:** Retrieval migrates from brute-force scans to optimized vector storage (`sqlite-vec` or HNSW), enabling 100k+ knowledge objects and large entity graphs.
 3. **Developer Experience (DX):** Tooling is released to help third parties build Plugins and Registries without touching core.
 4. **Semantic Sovereignty:** Entity resolution, namespace governance, alias handling, and graph stability remain deterministic across offline, mixed-registry, and multi-plugin environments.
 
 ---
 
-## 1. Core/Infra Team (The Optimizer)
+## 1. dPKMS Infrastructure Team (The Optimizer)
 
 Focus: Performance tuning, offline governance, graph stability, and predictable execution even under heavy semantic workloads.
 Why: The addition of entities, mentions, backlinks, and registry-driven semantics requires stricter guarantees on write paths, graph integrity, and resolution logic.
@@ -36,7 +48,7 @@ Why: The addition of entities, mentions, backlinks, and registry-driven semantic
 
 ### Task 1.3: The "Strict Offline" Flag
 
-Implement `ch config --offline`.
+Implement `ctxt config --offline`.
 
 Behavior:
 
@@ -59,7 +71,7 @@ Behavior:
 
 ---
 
-## 2. Ingestion/AI Team (The Localist)
+## 2. ctxt Ingestion Team (The Localist)
 
 Focus: Local models, mention extraction, entity resolution, and stable semantics in offline or constrained environments.
 Why: Semantic extraction must not depend on cloud models.
@@ -101,7 +113,7 @@ Across:
 
 ---
 
-## 3. Search/Retrieval Team (The Architect)
+## 3. dPKMS Search Team & ctxt Retrieval Team (The Architect)
 
 Focus: Hybrid retrieval combining vectors, graph traversal, and semantic ranking.
 Why: Queries involving `mention:` or entity expansions require integrating graph neighbors and embeddings.
@@ -134,7 +146,7 @@ Tasks:
 
 Ranking enhancements:
 
-- Boost bookmarks referencing the queried entity.
+- Boost knowledge objects referencing the queried entity.
 - Graph expansion:
   - via backlinks
   - via alias-linked entities
@@ -143,12 +155,12 @@ Ranking enhancements:
 
 ---
 
-## 4. Registry/Ecosystem Team (The Enabler)
+## 4. dPKMS Registry Team (The Enabler)
 
 Focus: Tooling for building registries and plugins + deterministic entity governance across multiple registries.
 Why: Registries now define taxonomies, entities, aliases, and metadata that drive semantic identity.
 
-### Task 4.1: Registry Linter (`ch dev validate-registry`)
+### Task 4.1: Registry Linter (`ctxt dev validate-registry`)
 
 Validate:
 
@@ -160,7 +172,7 @@ Validate:
 - taxonomy cross-references
 - reserved ID prefixes
 
-### Task 4.2: Plugin Scaffolding (`ch dev init-plugin`)
+### Task 4.2: Plugin Scaffolding (`ctxt dev init-plugin`)
 
 Generate scaffolding that includes:
 
@@ -209,7 +221,7 @@ Why: Semantic drift must be impossible without user intent.
 
 Optimize:
 
-- bookmark → entity edges
+- knowledge_object → entity edges
 - entity → entity inferred edges
 - query-time graph expansion
 
@@ -293,3 +305,20 @@ Conflicts must:
 - Large-scale reindexing operations requiring pause/resume.
 - Multi-registry conflicts causing semantic drift.
 - Graph index pressure slowing ingestion or resolution.
+---
+
+## See Also
+
+**Package Boundaries:**
+- [CROSS-PACKAGE-CONTRACTS.md](CROSS-PACKAGE-CONTRACTS.md) - dPKMS ↔ ctxt integration points
+- [../branding.md](../branding.md) - Naming conventions (dPKMS vs ctxt vs ContextHelp)
+- [../dpkms-or-ctxt.md](../dpkms-or-ctxt.md) - Package placement guide
+
+**Configuration:**
+- [CONFIGURATION-STRUCTURE.md](CONFIGURATION-STRUCTURE.md) - Config file organization
+- [../ctxt/configuration.md](../ctxt/configuration.md) - Focus profiles & preferences
+
+**Architecture:**
+- [../architecture.md](../architecture.md) - System architecture overview
+- [../../ROADMAP.md](../../ROADMAP.md) - Living skeleton roadmap
+- [README.md](README.md) - Sprint documentation index

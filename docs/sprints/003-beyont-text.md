@@ -1,6 +1,18 @@
-# Sprint 3 Goal: "Beyond Text: Modalities, Mentions & Merging"
+# Skeleton 3 Goal: "Beyond Text: Modalities, Mentions & Merging"
 
-By the end of this sprint, a user should be able to:
+## Package Focus
+
+**Balanced:** dPKMS (50%) + ctxt (50%)
+
+This skeleton introduces semantic identity (mentions + entities + graph). ctxt extracts mentions from multimodal content, dPKMS resolves entities and maintains the knowledge graph.
+
+**Package Breakdown:**
+- **dPKMS:** FTS5 migration, entity storage, backlink index, graph queries, job recovery
+- **ctxt:** URL pipeline, image/OCR pipeline, mention extraction, entity resolution integration
+
+---
+
+By the end of this skeleton, a user should be able to:
 
 1. Ingest a **URL**, have the engine fetch the HTML, convert it to Markdown, extract mentions, resolve entities, populate backlinks, and summarize it.
 2. Ingest an **Image**, extract text via OCR, detect mentions within the OCR output, resolve them to canonical entities (registry or local placeholders), and enrich the resulting bookmark.
@@ -8,7 +20,7 @@ By the end of this sprint, a user should be able to:
 
 ---
 
-## 1. Core/Infra Team (The Foundation)
+## 1. dPKMS Infrastructure Team (The Foundation)
 
 **Focus:** Full-Text Search (FTS), Job Resilience, and Mention-Aware + Entity-Aware Storage.
 
@@ -40,12 +52,12 @@ To enable this, storage must index mentions, store resolved entities, and mainta
 
 ### Task 1.3: Mention + Entity Storage Integration
 
-- Add `mentions[]` and `entities[]` fields to bookmark persistence.
+- Add `mentions[]` and `entities[]` fields to knowledge object persistence.
 - Add `bookmark_entity_edges` table for backlinks.
 - Ensure entity IDs remain stable across ingestion cycles.
 - Migration scripts must populate backlinks when mentions resolve.
 
-### Task 1.4: `ch jobs logs <id>`
+### Task 1.4: `ctxt jobs logs <id>`
 
 - Expose pipeline execution step-by-step:
   - fetch
@@ -58,7 +70,7 @@ To enable this, storage must index mentions, store resolved entities, and mainta
 
 ---
 
-## 2. Ingestion/AI Team (The Heavy Lifters)
+## 2. ctxt Ingestion Team (The Heavy Lifters)
 
 **Focus:** URL & Image Pipelines + Mention Extraction + Entity Resolution + Knowledge Graph Integration.
 
@@ -100,7 +112,7 @@ Every modality must support:
 
 ---
 
-## 3. Search/Retrieval Team (The Reranker)
+## 3. dPKMS Search Team & ctxt Retrieval Team (The Reranker)
 
 **Focus:** Mention-Aware + Entity-Aware Search, Reranking, and Multi-Source Merge (ADR-011).
 
@@ -114,7 +126,7 @@ Queries now operate at three semantic layers:
 
 - Define a unified `SearchResult` struct across local and remote searches.
 - Enhance dedupe logic:
-  - bookmarks referencing the same entity should merge into one logical result
+  - knowledge objects referencing the same entity should merge into one logical result
   - local results outrank registry ones (Local > Registry)
 - Add entity-aware scoring:
   - direct mention match > inferred match via backlinks
@@ -134,7 +146,7 @@ Queries now operate at three semantic layers:
 
 ---
 
-## 4. Registry/Ecosystem Team (The Provider)
+## 4. dPKMS Registry Team (The Provider)
 
 **Focus:** Multi-Source Mention + Entity Semantics.
 
@@ -162,7 +174,7 @@ Remote results must integrate seamlessly into local entity graphs.
   - local bookmarks
   - registry bookmarks
   - entity-linked relationships
-- Dedup by entity identity, not just by bookmark ID.
+- Dedup by entity identity, not just by knowledge object ID.
 
 ---
 
@@ -185,7 +197,7 @@ Remote results must integrate seamlessly into local entity graphs.
    ```
    - OCR extracts: “Follow @ui.best-practice guidelines”
    - mention resolved
-   - bookmark enriched; graph updated
+   - knowledge object enriched; graph updated
 
 3. **Search:**
    ```
@@ -206,3 +218,20 @@ Remote results must integrate seamlessly into local entity graphs.
 - **Entity drift:** Registry and local entity definitions may diverge—stable namespaces required.
 - **Search performance:** Mention + graph joins must remain performant under large graphs.
 - **Backlink explosion:** Entity with high inbound references must not degrade query latency.
+---
+
+## See Also
+
+**Package Boundaries:**
+- [CROSS-PACKAGE-CONTRACTS.md](CROSS-PACKAGE-CONTRACTS.md) - dPKMS ↔ ctxt integration points
+- [../branding.md](../branding.md) - Naming conventions (dPKMS vs ctxt vs ContextHelp)
+- [../dpkms-or-ctxt.md](../dpkms-or-ctxt.md) - Package placement guide
+
+**Configuration:**
+- [CONFIGURATION-STRUCTURE.md](CONFIGURATION-STRUCTURE.md) - Config file organization
+- [../ctxt/configuration.md](../ctxt/configuration.md) - Focus profiles & preferences
+
+**Architecture:**
+- [../architecture.md](../architecture.md) - System architecture overview
+- [../../ROADMAP.md](../../ROADMAP.md) - Living skeleton roadmap
+- [README.md](README.md) - Sprint documentation index

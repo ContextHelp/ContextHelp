@@ -1,8 +1,9 @@
 # ADR-001 – Local-First and Decentralized Architecture
 
-> **Status:** Proposed
+> **Status:** Accepted
 > **Date:** 2025-10-05
 > **Author:** @jadb
+> **Applies to:** dPKMS, ctxt
 > **Supersedes:** —
 > **Superseded by:** —
 
@@ -137,6 +138,7 @@ Future considerations:
 ## References
 
 - ContextHelp Architecture Overview
+- **ADR-014 – Two-Package Architecture (dPKMS + ctxt)**
 - Registry Protocol Specification (draft)
 - ADR-009 – Multi-Source Retrieval Default
 - Local-First Software Principles: https://www.inkandswitch.com/local-first/

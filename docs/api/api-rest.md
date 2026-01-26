@@ -14,8 +14,8 @@ Plugins may extend the API through documented extension points without modifying
 - Entities, mentions, hints, and tags are independent semantic layers.
 - I18N/L10N optional and plugin-driven but exposed consistently.
 - Plugins may:
-  - add new bookmark types
-  - attach plugin metadata to bookmarks
+  - add new knowledge object types
+  - attach plugin metadata to knowledge objects
   - inject supplemental data into REST responses
   - define new endpoints under `/plugins/*`
 
@@ -79,7 +79,7 @@ Common error codes:
 Mentions appear in three places:
 
 - In **ingestion**, via user-supplied `@entities`.
-- In **bookmarks**, via a `mentions` array of canonical entity IDs.
+- In **knowledge objects**, via a `mentions` array of canonical entity IDs.
 - In **querying**, via mention operators in `q` expressions (`mention==ui.best-practice`, `mention==stripe.api.*`).
 
 Mentions do not influence hints or tags and are resolved through the Entity Registry.
@@ -95,10 +95,13 @@ Core endpoints:
 - `GET /jobs`
 - `GET /jobs/{id}`
 - `POST /jobs/{id}/retry`
-- `GET /bookmarks`
-- `GET /bookmarks/{id}`
-- `PATCH /bookmarks/{id}`
-- `DELETE /bookmarks/{id}`
+- `GET /objects`
+- `GET /objects/{id}`
+- `PATCH /objects/{id}`
+- `DELETE /objects/{id}`
+- `GET /profiles`
+- `GET /profiles/{name}`
+- `POST /compose`
 - `GET /registries`
 - `GET /registries/{id}`
 - `GET /entities`
@@ -167,6 +170,7 @@ Supported for both core and plugin-defined bookmark types.
   "content": "Fix signup flow friction",
   "hints": ["#ux", "#bad"],
   "mentions": ["@ui.best-practice", "@stripe.api.checkout"],
+  "profile": "founder",
   "pipeline": "auto",
   "language": "en",
   "skipTranslation": false,
@@ -223,7 +227,7 @@ Query Parameters:
         "hints": ["#ux", "#bad"],
         "mentions": ["@ui.best-practice"]
       },
-      "resultBookmarkId": "bm_abc",
+      "resultObjectId": "obj_abc",
       "plugins": {
         "rss_feed": {
           "derivedItems": 2
@@ -241,11 +245,11 @@ Plugins may attach job metadata.
 
 ---
 
-## Bookmarks
+## Knowledge Objects
 
-Bookmarks include **tags**, **hints**, **mentions**, and **plugin metadata**.
+Knowledge objects include **tags**, **hints**, **mentions**, and **plugin metadata**.
 
-### `GET /bookmarks`
+### `GET /objects`
 
 Supports:
 
@@ -278,6 +282,7 @@ Core:
 - `type`
 - `tag`
 - `mention`
+- `profile`
 - `pipeline`
 - `after`, `before`
 - `limit`
@@ -293,9 +298,9 @@ Plugin:
 
 ```json
 {
-  "bookmarks": [
+  "objects": [
     {
-      "id": "bm_abc",
+      "id": "obj_abc",
       "createdAt": "2025-01-01T12:00:02Z",
       "type": "text",
       "subtype": "text.short",
@@ -344,13 +349,95 @@ Plugins may surface alerts or supplemental data in responses.
 
 ---
 
+## Focus Profiles
+
+### `GET /profiles`
+
+List available focus profiles.
+
+#### Response
+
+```json
+{
+  "profiles": [
+    {
+      "name": "founder",
+      "description": "Founder worldview for strategic decisions",
+      "enabled": true
+    },
+    {
+      "name": "engineer",
+      "description": "Engineering worldview for technical depth",
+      "enabled": true
+    },
+    {
+      "name": "research",
+      "description": "Research worldview for comprehensive analysis",
+      "enabled": true
+    }
+  ]
+}
+```
+
+### `GET /profiles/{name}`
+
+Get profile details including configuration.
+
+---
+
+## Composition
+
+### `POST /compose`
+
+Generate compositions (briefs, plans, summaries, drafts) from knowledge objects.
+
+#### Request
+
+```json
+{
+  "type": "brief",
+  "profile": "founder",
+  "filters": {
+    "mention": ["@ui.best-practice"],
+    "tag": ["ux.signup"],
+    "since": "2025-01-01T00:00:00Z"
+  },
+  "options": {
+    "format": "markdown",
+    "includeLinks": true
+  }
+}
+```
+
+#### Response
+
+```json
+{
+  "id": "comp_xyz",
+  "type": "brief",
+  "content": "# Executive Brief\n\n...",
+  "metadata": {
+    "objectsUsed": 15,
+    "generatedAt": "2025-01-26T12:00:00Z"
+  }
+}
+```
+
+---
+
 ## Entities & Mentions
 
 ### `GET /entities`
 
-...
+List and search entities.
 
-(unchanged — plugins do not write entities)
+### `GET /entities/{slug}`
+
+Get entity details including aliases, translations, and backlinks.
+
+### `GET /entities/{slug}/related`
+
+Get related entities through graph connections.
 
 ---
 
@@ -358,9 +445,11 @@ Plugins may surface alerts or supplemental data in responses.
 
 ### `GET /registries`
 
-...
+List configured registries.
 
-(unchanged — plugins do not modify registry protocol)
+### `GET /registries/{id}`
+
+Get registry details and capabilities.
 
 ---
 
@@ -385,7 +474,7 @@ All plugin-defined REST endpoints must live under:
 Examples:
 
 - `/plugins/rss_feed/items`
-- `/plugins/price_monitor/history/{bookmarkId}`
+- `/plugins/price_monitor/history/{objectId}`
 - `/plugins/notifications/pending`
 
 Plugin routes must not conflict with core routes.
@@ -435,21 +524,33 @@ flowchart TD
 Applies uniformly:
 
 - `language` on ingestion specifies raw input language.
-- `origLang` filters bookmarks.
-- `preferLang` asks for transformed summaries/titles.
+- `origLang` filters knowledge objects by original language.
+- `preferLang` requests transformed summaries/titles in preferred language.
 - `translate=none` disables translation entirely.
 - Plugins may provide additional translation metadata.
+
+## Focus Profile Behavior
+
+Focus profiles influence:
+
+- Pipeline selection during ingestion
+- Reranking weights during retrieval
+- Composition style and emphasis
+- Entity resolution priorities
+- Tag weighting and filtering
 
 ---
 
 ## Summary
 
-The REST API now supports:
+The REST API supports:
 
 - mention-aware ingestion and retrieval
 - editable mentions
-- entity resolution
-- plugin-defined bookmark types
+- entity resolution and graph navigation
+- focus profiles for contextualized behavior
+- composition endpoints (briefs, plans, summaries)
+- plugin-defined knowledge object types
 - plugin-owned metadata
 - `/plugins/*` namespace for plugin endpoints
 - plugin-augmented responses (alerts, metadata, diagnostics)

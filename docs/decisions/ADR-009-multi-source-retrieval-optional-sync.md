@@ -1,8 +1,9 @@
 # ADR-009 – Multi-Source Retrieval as the Default, with Optional Per-Registry Sync
 
-> **Status:** Proposed
+> **Status:** Accepted
 > **Date:** 2025-10-05
 > **Author:** @jadb
+> **Applies to:** dPKMS, ctxt
 > **Supersedes:** None
 > **Superseded by:** None
 
@@ -158,7 +159,9 @@ Therefore, sync is available per-registry but not required.
 
 - Registry sync command:
   ```
-  ch registry sync <registry>
+  ctxt registry sync <registry>
+  or
+  dpkms registry sync <registry>
   ```
 - Sync metadata stored in `registry_snapshots` table.
 
@@ -171,6 +174,7 @@ Therefore, sync is available per-registry but not required.
 - ADR-001 – Local-First Architecture
 - ADR-010 – Query Language (RSQL-based)
 - ADR-011 – Reranking Layer
+- **ADR-014 – Two-Package Architecture (dPKMS + ctxt)**
 - Microsoft Kernel Memory scatter/gather indexing patterns
 - Elastic / Meilisearch federated search designs
 - Decentralized system patterns (ActivityPub, IPFS, matrix search federation)
