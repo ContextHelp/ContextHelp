@@ -275,6 +275,18 @@ The project follows the Living Skeleton methodology: build working end-to-end pa
 - Clear phase progression (exit criteria, no skipping)
 - Placeholder tracking and systematic replacement
 
+### **ADR-031 – Nodes and context.help cloud Boundary (Accepted)**
+Defines the boundary between OSS nodes (enforcement + protocols) and the hosted offering (org lifecycle, admin UI, billing, marketplace), including the required Node Admin API surface.
+
+### **ADR-032 – Entitlements and Metering as Policy Predicates (Accepted)**
+Defines subscriptions, credits, and paywalls as pluggable policy checks (not storage features), enabling paid registries and extensions without embedding billing logic into OSS nodes.
+
+### **ADR-033 – Team RBAC as an Additive Layer Over Scopes (Accepted)**
+Adds a team-friendly RBAC layer for humans that compiles down to the existing scope/policy enforcement, preserving least-privilege for tokens and agents.
+
+### **ADR-034 – Registry Packaging: Index Sync and JIT Resolution (Accepted)**
+Standardizes thin sync (index/schema) plus just-in-time pulls for full content, with explicit local copy constraints (`none` | `index` | `content`).
+
 ---
 
 ## Purpose of This Directory

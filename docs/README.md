@@ -7,7 +7,7 @@ This project consists of two packages with distinct concerns:
 - **dPKMS** — Decentralized knowledge substrate (mechanics: storage, jobs, security, federation)
 - **`ctxt`** — Agentic context brain (meaning: capture, enrichment, surfacing, composition)
 
-Together they provide **context-as-a-service** for humans and AI agents.
+Together they provide **context-as-a-service** for humans and AI agents (self-hosted nodes, or via **context.help cloud**).
 
 ---
 
@@ -97,6 +97,23 @@ docs/
 ├── decisions/                     # Architectural Decision Records
 │   └── ADR-*.md                   # Individual ADRs
 │
+├── cloud/                         # context.help cloud (hosted service)
+│   ├── README.md                  # Cloud overview
+│   ├── domains.md                 # Cloud-owned domain index
+│   ├── node-enrollment.md         # Attaching nodes to the cloud
+│   ├── admin-access.md            # Org + node access management
+│   └── billing-and-credits.md     # Subscriptions + credits model
+│
+├── marketplace/                   # Registry + plugin marketplace
+│   └── README.md                  # Marketplace overview
+│
+├── policy/                        # Entitlements, metering, receipts
+│   ├── entitlements-and-metering.md
+│   └── receipts-and-traceability.md
+│
+├── registries/                    # Publisher-facing registry docs
+│   └── publishing.md              # Build a registry (thin sync + JIT pull)
+│
 └── sprints/                       # Sprint planning docs
     └── 00*.md                     # Sprint documents
 ```
@@ -136,6 +153,20 @@ Building decentralized knowledge registries:
 - [dpkms/registry-syncing-and-retrieval.md](dpkms/registry-syncing-and-retrieval.md) - Sync mechanisms
 - [dpkms/schema-registry.md](dpkms/schema-registry.md) - Registry schema
 - [dpkms/schema-entity.md](dpkms/schema-entity.md) - Entity definitions
+
+### For Publishers
+Publishing paid registries and extensions:
+- [registries/publishing.md](registries/publishing.md) - Registry packaging (thin sync + JIT pull)
+- [policy/entitlements-and-metering.md](policy/entitlements-and-metering.md) - Subscriptions, credits, and gating
+- [policy/receipts-and-traceability.md](policy/receipts-and-traceability.md) - Receipts, provenance, and watermarking
+- [marketplace/README.md](marketplace/README.md) - Marketplace concepts
+
+### For Cloud Admins
+Using **context.help cloud** for teams:
+- [cloud/README.md](cloud/README.md) - Cloud overview
+- [cloud/node-enrollment.md](cloud/node-enrollment.md) - Node enrollment and trust
+- [cloud/admin-access.md](cloud/admin-access.md) - Access management (org -> nodes)
+- [cloud/billing-and-credits.md](cloud/billing-and-credits.md) - Billing and credits
 
 ### For System Integrators
 Integrating with external systems:

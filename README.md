@@ -8,7 +8,9 @@ ContextHelp transforms raw multimodal content into structured, contextualized kn
 
 It ingests text, URLs, images, audio, and video through **ctxt pipelines**; processes them via the **dPKMS runtime**; normalizes meaning using **dPKMS registries** (taxonomies, entities, tags, weights); stores them as structured **knowledge objects** in **dPKMS storage**; and exposes them to agents through the **ctxt CLI** and **dPKMS APIs** (REST, gRPC).
 
-ContextHelp provides not just storage, but a **semantic identity layer** (mentions + entities) and a **knowledge graph** (dPKMS) connecting content and concepts. It is the foundational "context layer" for personal and organizational AI — a system that captures, enriches, and retrieves knowledge in the user's preferred language(s), fully under their control, without depending on any cloud services.
+ContextHelp provides not just storage, but a **semantic identity layer** (mentions + entities) and a **knowledge graph** (dPKMS) connecting content and concepts. It is the foundational "context layer" for personal and organizational AI — a system that captures, enriches, and retrieves knowledge in the user's preferred language(s), fully under their control.
+
+ContextHelp is self-hostable by default, and can optionally be used via **context.help cloud** for teams that don't want to run infrastructure.
 
 ---
 
@@ -83,7 +85,7 @@ See `docs/branding.md` for naming conventions and `docs/architecture.md` for det
   Private-by-default workspaces with explicit permissions for publishing, subscribing, and collaboration at the level of collections, objects, entities, and views.
 
 - **Decentralized Registries**
-  Subscribe to external or local registries for taxonomies, entity definitions, tag labels, weight systems, shared knowledge packs, or workflows — with optional authentication or paid access.
+  Subscribe to external or local registries for taxonomies, entity definitions, tag labels, weight systems, shared knowledge packs, or workflows — with optional authentication or paid access (including index-only sync + just-in-time pulls for licensed content).
 
 - **Advanced Query Language (AST-Based)**
   Supports boolean logic, filters, ranges, nested expressions, provenance constraints, and graph-aware operators; translates cleanly into SQL, FTS, vector queries, and traversal queries.

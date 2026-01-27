@@ -11,6 +11,8 @@ Registries:
 
 ContextHelp queries multiple registries in parallel and may optionally mirror registry content locally. Registries now support **entities** as first-class semantic units used for canonical mentions (`@entity.slug`).
 
+Registries may also support **thin sync** (index/schema replication) with **just-in-time (JIT) pulls** for full content. This enables paid or licensed registries to improve retrieval without permitting bulk replication.
+
 ---
 
 ## Capabilities
@@ -42,6 +44,9 @@ Registries MUST expose a capabilities document:
     "entities": true,
     "bookmarks": true,
     "weights": true,
+    "dataAccess": {
+      "localCopy": "index"
+    },
     "sync": {
       "enabled": true,
       "mode": "delta",
@@ -57,6 +62,7 @@ Registries MUST expose a capabilities document:
 - `entities`: supports `/entities` (NEW)
 - `bookmarks`: supports `/bookmarks`
 - `weights`: supports `/weights`
+- `dataAccess.localCopy`: `"none" | "index" | "content"` (legal/contract constraint)
 - `sync.enabled`: registry allows local synchronization
 - `sync.mode`: `"full" | "delta" | "schema-only"`
 - `sync.interval`: sync hint or cron-like string
@@ -185,6 +191,24 @@ Registries may expose federated knowledge items (never user-private data).
 ```
 
 Bookmarks now support `mentions[]` referencing registry entities.
+
+---
+
+## JIT Content Resolution (Optional)
+
+Registries that do not allow bulk content replication can still improve retrieval by:
+
+- returning **index-level** bookmark items from `GET /bookmarks` (headers, tags, mentions, safe abstracts)
+- providing a **JIT resolver** for full content
+
+### `GET /bookmarks/{id}`
+
+Returns a richer representation for a single item.
+
+Notes:
+- May require authentication and/or entitlements (paid registries)
+- May be metered (credits/quota)
+- Should include provenance metadata when available
 
 ---
 

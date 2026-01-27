@@ -16,6 +16,9 @@ This directory contains documentation for external APIs — the programmatic int
 - Format: Protocol Buffers
 - Features: Streaming support, efficient binary protocol
 
+### Node Admin API
+- [node-admin-api.md](node-admin-api.md) - Admin surface for nodes (used by context.help cloud)
+
 ## API Architecture
 
 Both APIs are served by **`dpkms serve`** and provide access to both **ctxt** (intelligence) and **dPKMS** (substrate) capabilities:

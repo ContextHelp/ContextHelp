@@ -189,10 +189,27 @@ type RegistryClient interface {
     FetchTaxonomy(ctx context.Context, url string) (Taxonomy, error)
     FetchEntities(ctx context.Context, url string) ([]Entity, error)
     Sync(ctx context.Context, url string) error
+
+    // Optional: just-in-time resolution for registries that do not allow
+    // bulk content replication (index-only sync + JIT pull).
+    ResolveObject(ctx context.Context, url string, objectID string) (KnowledgeObject, error)
 }
 ```
 
 ---
+
+### 4.1 Policy Hooks (Entitlements + Metering + Receipts)
+
+**Contract:**
+- dPKMS enforces authorization and policy at API and registry boundaries (scopes/RBAC, entitlements, quotas)
+- dPKMS emits audit + metering events and can attach signed receipts to responses
+- ctxt remains policy-agnostic at the UI layer (it can display reasons/receipts, but does not decide)
+
+**Examples of enforcement points (dPKMS-owned):**
+- registry sync (index/schema)
+- registry JIT pulls (full content/chunks)
+- export endpoints (bulk-leak surface)
+- plugin install/enable (licensed extensions)
 
 ### 5. Search & Query (ctxt → dPKMS)
 

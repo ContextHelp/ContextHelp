@@ -91,7 +91,7 @@ Registries advertise capabilities:
 {
   "supportsSync": true,
   "syncModes": ["schema", "partial", "full", "delta"],
-  "allowLocalCopy": true
+  "localCopy": "content"
 }
 ```
 
@@ -122,7 +122,7 @@ ContextHelp uses this metadata to:
 - disk growth
 - requires conflict resolution
 - may become stale without scheduled sync
-- cannot sync content with redistribution restrictions
+- cannot sync full content when redistribution is restricted (use index/schema sync + JIT pull instead)
 
 ---
 
@@ -274,7 +274,7 @@ Users can enforce modes like:
   "syncModes": ["schema", "partial", "full"],
   "maxPageSize": 200,
   "rateLimits": { "requestsPerMinute": 60 },
-  "allowLocalCopy": true,
+  "localCopy": "index",
   "provides": {
     "tags": true,
     "entities": true,
@@ -287,7 +287,7 @@ Users can enforce modes like:
 Key additions:
 
 - **provides.entities** → required for mention resolution
-- **allowLocalCopy** → legal/safety constraint
+- **localCopy** → legal/safety constraint (`none` | `index` | `content`)
 - **provides.taxonomy** → tag + entity alignment
 
 ---
@@ -335,14 +335,26 @@ Mentions may also appear directly in free-text filters.
 Registries specify redistribution and privacy constraints. If a registry declares:
 
 ```
-"allowLocalCopy": false
+"localCopy": "none"
 ```
 
 then:
 
-- syncing is disabled
+- syncing is disabled (including index/schema sync)
 - multi-source retrieval is used exclusively
 - entity definitions remain remote-only
+
+If a registry declares:
+
+```
+"localCopy": "index"
+```
+
+then:
+
+- index/schema sync is allowed
+- full content sync is disallowed
+- full content must be fetched just-in-time (gated by policy/entitlements)
 
 ContextHelp must enforce these constraints.
 

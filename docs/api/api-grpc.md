@@ -40,6 +40,7 @@ The gRPC surface area is divided into logical services:
 | `RegistryService` | Discover registries and capabilities |
 | `EntityService` | Resolve entities, list mentions, navigate backlinks |
 | `SuggestionService` | Tag and hint suggestions (optional) |
+| `NodeAdminService` (optional) | Node enrollment and admin operations (used by context.help cloud) |
 | **`PluginService` (reserved)** | Plugin-defined RPCs mounted dynamically |
 
 Plugins MAY register additional RPC services under the namespace:
@@ -525,6 +526,34 @@ service EntityService {
 ```protobuf
 service SuggestionService {
   rpc SuggestTags(TagSuggestionRequest) returns (TagSuggestionResponse);
+}
+```
+
+### NodeAdminService (Optional)
+
+The primary admin surface is the HTTP Node Admin API (`/admin/v1`).
+
+This gRPC service is reserved for parity and high-throughput administration.
+If implemented, it should mirror `docs/api/node-admin-api.md`.
+
+Recommended namespace:
+
+```protobuf
+package contexthelp.admin.v1;
+```
+
+Service sketch:
+
+```protobuf
+service NodeAdminService {
+  rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+
+  rpc Attach(AttachRequest) returns (AttachResponse);
+  rpc Detach(DetachRequest) returns (DetachResponse);
+
+  rpc ListAuditEvents(ListAuditEventsRequest) returns (ListAuditEventsResponse);
+  rpc ListMeteringEvents(ListMeteringEventsRequest) returns (ListMeteringEventsResponse);
 }
 ```
 

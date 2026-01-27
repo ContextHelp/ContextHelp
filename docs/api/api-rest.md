@@ -74,6 +74,13 @@ Common error codes:
 - Plugins may add new routes under:
   - `/plugins/{pluginName}/...`
 
+## Reserved Routes
+
+- `/admin/v1/*` is reserved for the **Node Admin API** (used by context.help cloud and other admin clients).
+- `/plugins/*` is reserved for plugin-defined routes.
+
+The Node Admin API is documented separately in `docs/api/node-admin-api.md`.
+
 ## Mention Semantics in the REST Layer
 
 Mentions appear in three places:

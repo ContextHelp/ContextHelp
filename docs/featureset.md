@@ -47,7 +47,9 @@ a centralized authority.
 Subscribe to external or local registries for taxonomies, entity definitions,
 localized labels and aliases, weights, shared knowledge packs, and workflows —
 with optional authentication, paid access, trust policies, and controlled import
-rules.
+rules. Registries may support **index-only replication** (thin sync) with
+**just-in-time pulls** for full content, enabling subscriptions and credit-based
+metering without forcing bulk redistribution.
 
 ## Federated Query + Scatter–Gather Retrieval (Across Sources)
 Query across local storage plus multiple registries, merge results with hybrid

@@ -105,6 +105,10 @@ This is where `ctxt` starts feeling agentic.
 - [ ] deterministic merging + local overrides
 - [ ] registry provenance visible in objects
 - [ ] federated query against local + registries
+- [ ] paid registries supported (auth + entitlement checks)
+- [ ] "thin sync" as a first-class mode (index/schema sync without content replication)
+- [ ] just-in-time pull for full content (resolve endpoints gated by policy/entitlements)
+- [ ] metering hooks for registry access (credits, quotas, export gating)
 
 ---
 
@@ -167,3 +171,8 @@ This is where `ctxt` starts feeling agentic.
 - [ ] gRPC streaming for ingestion and retrieval
 - [ ] advanced ACL models where needed
 - [ ] audit trails for compliance environments
+
+**Non-OSS track (context.help cloud):**
+- [ ] multi-tenant admin interface for orgs and nodes (access management)
+- [ ] SSO/SCIM onboarding and lifecycle management
+- [ ] billing/credits + marketplace surfaces for paid registries and extensions

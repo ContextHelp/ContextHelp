@@ -20,6 +20,24 @@ This document explains the naming conventions used throughout ContextHelp and cl
 
 ---
 
+## context.help
+
+**context.help** is the project homepage.
+
+- **URL:** https://context.help
+- **Usage:** When referring to the website, docs hub, and the hosted offering entry point
+
+---
+
+## context.help cloud
+
+**context.help cloud** is the hosted service for users and teams who do not want to self-host.
+
+- **Provides:** managed nodes, multi-tenant admin UI, org access management, SSO/SCIM, billing/credits, marketplace
+- **Does not change:** the self-hosted-first architecture; nodes still run the same core protocols and policy enforcement
+
+---
+
 ## dPKMS
 
 **dPKMS** (lowercase "d", uppercase "PKMS") is the **execution substrate** package.

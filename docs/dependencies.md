@@ -32,6 +32,14 @@ For each non-Charmbracelet dependency, we evaluate:
 - Full SQLite 3.x feature support
 - 2-3 days integration (schema setup, WAL mode, migrations)
 
+**Concurrency Strategy:**
+- Use WAL mode (Write-Ahead Logging) for concurrent access
+- Multiple connections via `database/sql` connection pool
+- N concurrent readers + 1 writer (SQLite WAL guarantees)
+- Connection pool tuning for optimal concurrency
+- No blocking issues for local-first workloads
+- Additional 1 day for connection pool configuration and testing
+
 **Alternatives:**
 
 1. **Popular:** `github.com/mattn/go-sqlite3` (~8k stars)
@@ -40,23 +48,41 @@ For each non-Charmbracelet dependency, we evaluate:
 
 2. **Complementary:** `crawshaw.io/sqlite`
    - Connection pool built-in
-   - Better concurrency control
+   - Better concurrency primitives (this is the "SQLite non-blocking" solution)
    - Requires CGo
 
 3. **Why modernc.org/sqlite wins:**
    - CGo-free = simpler builds
    - dPKMS must be portable
-   - Performance adequate for local-first workloads
+   - WAL mode provides adequate concurrency
+   - Can achieve similar performance to crawshaw.io with proper pooling
 
 #### Configuration: YAML/TOML Parser
 
-**Selected (Charmbracelet):** None available, use stdlib or minimal library
+**Selected:** `github.com/ilyakaznacheev/cleanenv` (~1.6k stars)
 
 **Why:**
-- Configuration loading is simple
+- Struct-tag based validation (declarative approach)
+- Simple, minimal API
+- Built-in env var mapping
+- Perfect for dPKMS: one config struct, zero boilerplate
 - 1 day integration
 
-**Options:**
+**Example:**
+```go
+type Config struct {
+    DBPath string `yaml:"db_path" env:"DPKMS_DB_PATH" env-default:"./dpkms.db"`
+    Port   int    `yaml:"port" env:"DPKMS_PORT" env-default:"8080"`
+}
+// Load with: cleanenv.ReadConfig("config.yaml", &cfg)
+```
+
+**Optional Addition:** `github.com/joho/godotenv` (~8k stars)
+- Load `.env` files for profile-specific overrides
+- 0.5 days integration
+- Use with cleanenv for `.env` + YAML support
+
+**Alternatives:**
 
 1. **Popular:** `github.com/spf13/viper` (~27k stars)
    - Watch files, env vars, remote config
@@ -64,43 +90,44 @@ For each non-Charmbracelet dependency, we evaluate:
    - 3-4 days (complex API)
 
 2. **Complementary:** `github.com/knadh/koanf` (~2.7k stars)
-   - Minimal, composable
+   - More composable than viper
    - Clean separation of providers
    - 2 days integration
+   - Choose if you need 3+ config sources or file watching
 
-3. **Lightweight:** `gopkg.in/yaml.v3` + manual structs (~4k stars)
-   - Stdlib approach
-   - Perfect for dPKMS: simple, predictable
-   - 1 day integration
-
-**Recommendation:** Use `koanf` for flexibility without bloat.
+3. **Why cleanenv wins:**
+   - Simplest for single YAML + env vars pattern
+   - Validation built-in
+   - Less code to maintain
 
 #### Migrations
 
-**Selected:** `github.com/golang-migrate/migrate` (~15k stars)
+**Selected:** `github.com/pressly/goose` (~6.5k stars)
 
 **Why:**
-- Industry standard
-- Supports SQLite, Postgres, custom drivers
-- CLI tool + library
+- Simpler API than golang-migrate
+- Embedded migrations (better for compiled binaries)
+- Excellent for plugin-extensible schemas
+- Supports both SQL and Go migrations
 - 2 days integration (define migration format, test up/down)
 
 **Alternatives:**
 
-1. **Popular:** (already selected)
-
-2. **Complementary:** `github.com/pressly/goose` (~6.5k stars)
-   - Simpler API
-   - Embedded migrations
-   - Better for plugin-extensible schemas
+1. **Popular:** `github.com/golang-migrate/migrate` (~15k stars)
+   - Industry standard, more features
+   - More complex API
    - 2 days integration
+   - Choose if you need advanced features (multi-DB transactions, complex rollbacks)
 
-3. **Lightweight:** Custom migration runner (100-200 LOC)
+2. **Lightweight:** Custom migration runner (100-200 LOC)
    - Apply SQL files in order
    - 1 day implementation
-   - Loses versioning guarantees
+   - Loses versioning guarantees, not recommended
 
-**Recommendation:** Use `goose` for simplicity and plugin compatibility.
+3. **Why goose wins:**
+   - Simpler for our use case
+   - Better embedded migration support
+   - Plugin system will benefit from goose's flexibility
 
 #### UUID Generation
 
@@ -112,6 +139,41 @@ For each non-Charmbracelet dependency, we evaluate:
 - 0.5 days (import + use)
 
 **No alternatives needed** - this is the standard.
+
+#### Caching: In-Memory Cache
+
+**Selected:** `github.com/allegro/bigcache` (~7.5k stars)
+
+**Why:**
+- Zero GC overhead (off-heap storage)
+- Fast concurrent access
+- Perfect for caching: parsed documents, API responses, FTS results
+- Simple API
+- 2-3 days integration (cache policies, TTL, invalidation)
+
+**Use Cases:**
+- Cache OpenAI API responses (expensive)
+- Cache parsed document content
+- Cache FTS query results
+- Cache embedding lookups
+
+**Alternatives:**
+
+1. **Complementary:** `github.com/dgraph-io/ristretto` (~5.5k stars)
+   - Cost-based admission policy (more intelligent eviction)
+   - Better for mixed workload sizes
+   - 3-4 days (tuning admission/eviction policies)
+   - Choose if you need fine-grained cache control
+
+2. **Lightweight:** `github.com/jellydator/ttlcache` (~900 stars)
+   - Simple TTL-based cache
+   - 1-2 days
+   - Less feature-rich
+
+3. **Why bigcache wins:**
+   - Zero GC impact (critical for Go performance)
+   - Simple API for common use cases
+   - Battle-tested at scale (Allegro production use)
 
 ---
 
@@ -162,6 +224,33 @@ For each non-Charmbracelet dependency, we evaluate:
    - 0.5 days integration
 
 **Recommendation:** Use `charmbracelet/log` for consistency.
+
+**Why not `rs/zerolog`?** (~10k stars)
+- zerolog is faster (zero-allocation)
+- Better for high-throughput servers
+- JSON output focused (less beautiful terminal output)
+- Our use case: CLI tool prioritizes UX over raw performance
+- Could reconsider for dPKMS server component if performance critical
+
+#### Development Tool: Hot Reload
+
+**Selected:** `github.com/cosmtrek/air` (~17k stars)
+
+**Why:**
+- Auto-rebuild on file changes
+- Excellent developer experience
+- Watch Go files, config files, templates
+- 0.5 days (create `.air.toml` config)
+
+**Note:** Development tool only, not a production dependency
+
+**Configuration Example:**
+```toml
+[build]
+  cmd = "go build -o ./tmp/dpkms ./cmd/dpkms"
+  include_ext = ["go", "yaml"]
+  exclude_dir = ["tmp", "vendor"]
+```
 
 ### ctxt
 
@@ -318,29 +407,46 @@ huh.NewForm(
 
 #### HTTP Client (Registry Fetching)
 
-**Selected (stdlib):** `net/http` + custom retry logic
+**Selected:** `github.com/go-resty/resty` (~10k stars)
 
 **Why:**
-- Stdlib sufficient
-- Add timeout, retry middleware
-- 2 days (retry logic, auth headers, caching)
+- Fluent API (cleaner than stdlib)
+- Retry logic built-in (exponential backoff)
+- Timeout handling
+- Debug logging
+- 1.5 days integration (configure retry, auth, caching)
+
+**Saves 0.5 days vs. custom implementation**
+
+**Example:**
+```go
+client := resty.New().
+    SetRetryCount(3).
+    SetTimeout(30 * time.Second)
+
+resp, err := client.R().
+    SetHeader("Authorization", token).
+    Get("https://registry.example.com/packages")
+```
 
 **Alternatives:**
 
-1. **Popular:** `github.com/go-resty/resty` (~10k stars)
-   - Fluent API
-   - Retry built-in
-   - 1.5 days
+1. **Stdlib:** `net/http` + custom retry
+   - More control, more code
+   - 2 days (retry logic, auth headers, caching)
+   - Choose if you need very specific retry behavior
 
 2. **Complementary:** `github.com/hashicorp/go-retryablehttp` (~2k stars)
    - Minimal wrapper around stdlib
    - Exponential backoff
    - 1 day
+   - More lightweight than resty
 
-3. **Why stdlib + custom wins:**
-   - Fewer dependencies
-   - dPKMS needs fine-grained control
-   - Can always add resty later
+3. **Why resty wins:**
+   - Time savings (0.5 days)
+   - Cleaner code
+   - Well-maintained, battle-tested
+   - Easy to add later if starting with stdlib
 
 ### ctxt
 
@@ -394,6 +500,35 @@ huh.NewForm(
    - Built for terminal display
    - ctxt outputs to terminals primarily
 
+#### Fuzzy String Matching
+
+**Selected:** `github.com/hbollon/go-edlib` (~480 stars)
+
+**Why:**
+- Edit distance algorithms (Levenshtein, Jaro-Winkler, etc.)
+- Unicode-compatible string comparison
+- Useful for: typo-tolerant search, fuzzy tag matching
+- 2 days integration (integrate with FTS queries)
+
+**Use Cases:**
+- Typo tolerance in search: "dpkm" → "dpkms"
+- Fuzzy tag matching: "machinelearnig" → "machinelearning"
+- Similar document detection
+
+**Alternatives:**
+
+1. **Custom implementation:** Levenshtein algorithm (~50 LOC)
+   - 1 day
+   - Limited to one algorithm
+   - go-edlib provides multiple algorithms
+
+2. **Why go-edlib wins:**
+   - Multiple algorithms for different use cases
+   - Well-tested
+   - Small dependency
+
+**Note:** Optional enhancement, not critical for MVP
+
 ---
 
 ## Phase 3: Beyond Text
@@ -430,28 +565,66 @@ huh.NewForm(
 
 #### URL Fetching & HTML Parsing
 
-**Selected:** `github.com/PuerkitoBio/goquery` (~14k stars)
+**Selected:** Dual-library approach
+
+**1. Web Crawler:** `github.com/gocolly/colly` (~23k stars)
 
 **Why:**
-- jQuery-like API for Go
-- Built on `golang.org/x/net/html`
-- Easy DOM traversal
+- Structured crawling framework
+- Built-in rate limiting, robots.txt compliance
+- Automatic link following
+- Concurrent scraping
+- 3-4 days (crawler rules, queue management)
+
+**Use Cases:**
+- Multi-page documentation ingestion
+- Recursive website crawling
+- Sitemap following
+
+**Example:**
+```go
+c := colly.NewCollector(
+    colly.AllowedDomains("docs.example.com"),
+)
+c.OnHTML("a[href]", func(e *colly.HTMLElement) {
+    e.Request.Visit(e.Attr("href"))
+})
+```
+
+**2. HTML Parser:** `github.com/PuerkitoBio/goquery` (~14k stars)
+
+**Why:**
+- jQuery-like selectors
+- Precise content extraction
+- Used internally by colly
 - 2 days (selectors, content extraction)
+
+**Use Cases:**
+- Single-page content extraction
+- Fine-grained DOM manipulation
+- Custom parsing logic
+
+**Total Integration:** 5-6 days for complete crawler + parser
 
 **Alternatives:**
 
-1. **Popular:** (already selected)
-
-2. **Complementary:** `github.com/playwright-community/playwright-go`
-   - Full browser automation
-   - Overkill for text extraction
+1. **Browser automation:** `github.com/playwright-community/playwright-go`
+   - Full browser (handles JS rendering)
+   - Overkill for static content
    - 5-7 days (browser management, resource overhead)
+   - Choose if target sites require JavaScript execution
 
-3. **Lightweight:** `golang.org/x/net/html` (stdlib)
+2. **Stdlib only:** `golang.org/x/net/html`
    - Manual tree walking
+   - No crawler features
    - 3 days (more verbose)
+   - Not recommended
 
-**Recommendation:** Use `goquery` for simplicity.
+**Why dual approach wins:**
+- colly handles crawling concerns (rate limits, robots.txt)
+- goquery handles parsing (clean, expressive selectors)
+- colly uses goquery-compatible APIs internally
+- Best of both worlds
 
 #### HTML to Markdown Conversion
 
@@ -575,28 +748,50 @@ huh.NewForm(
 
 #### Vector Database Interface
 
-**Selected:** Plugin interface (no default implementation)
+**Selected:** `github.com/philippgille/chromem-go` (~1k stars, rapidly growing)
 
 **Why:**
-- Users choose: local (sqlite-vec) vs cloud (Pinecone, Weaviate)
-- 3-4 days (plugin interface definition, example impl)
+- Pure Go embeddable vector database (no CGo, no build complexity)
+- Chroma-compatible API (familiar to AI engineers)
+- Built-in persistence to disk
+- HNSW index for similarity search
+- 4-5 days integration (configure persistence, query interface)
 
-**Reference Implementations:**
+**Example:**
+```go
+db := chromem.NewDB()
+collection := db.CreateCollection("documents", nil, nil)
+collection.Add(ctx, embeddings, documents, ids)
+results := collection.Query(ctx, queryEmbedding, 10)
+```
 
-1. **Local:** `github.com/asg017/sqlite-vec` (~4k stars)
+**Alternatives:**
+
+1. **SQLite-based:** `github.com/asg017/sqlite-vec` (~4k stars)
    - SQLite extension for vectors
-   - HNSW index
+   - Requires CGo-free compilation tricks OR building C extension
+   - Better for unified SQL + vector queries
    - 4-5 days (compile extension, query integration)
+   - Choose if deep SQLite integration is priority
 
 2. **Cloud:** `github.com/pinecone-io/go-pinecone` (~300 stars)
-   - Pinecone SDK
+   - Pinecone cloud SDK
+   - Network dependency (violates local-first)
    - 3 days (API integration)
+   - Plugin option for cloud deployments
 
-3. **Embedded:** `github.com/chewxy/hnsw` (~480 stars)
-   - Pure Go HNSW index
-   - 5-6 days (index management, persistence)
+3. **Pure Go HNSW:** `github.com/chewxy/hnsw` (~480 stars)
+   - Lower-level HNSW library
+   - More manual persistence
+   - 5-6 days (index management, persistence layer)
 
-**Recommendation:** Provide `sqlite-vec` as default, plugin interface for alternatives.
+**Why chromem-go wins:**
+- Zero CGo = simpler builds (aligns with modernc.org/sqlite choice)
+- Batteries-included (persistence, collections, metadata)
+- Easy to start, easy to deploy
+- Plugin interface allows swapping to sqlite-vec later if needed
+
+**Plugin Interface:** Still provide abstraction for alternative backends
 
 #### Plugin System
 
@@ -727,6 +922,52 @@ huh.NewForm(
    - 1 day
 
 **Recommendation:** Start with `ledongthuc/pdf`, upgrade to unipdf if needed.
+
+#### Observability: Metrics
+
+**Selected:** `github.com/prometheus/client_golang` (~5.5k stars)
+
+**Why:**
+- Industry standard for metrics
+- Expose `/metrics` endpoint for monitoring
+- Track: query latency, cache hits, document counts, ingestion rates
+- Integrates with Prometheus/Grafana
+- 3-4 days (instrumentation, metrics definition, endpoint)
+
+**Key Metrics:**
+```go
+// Query performance
+queryDuration := prometheus.NewHistogram(...)
+cacheHitRate := prometheus.NewCounter(...)
+
+// Storage metrics
+documentCount := prometheus.NewGauge(...)
+storageSize := prometheus.NewGauge(...)
+
+// Pipeline metrics
+ingestionRate := prometheus.NewCounter(...)
+pipelineErrors := prometheus.NewCounter(...)
+```
+
+**Alternatives:**
+
+1. **OpenTelemetry:** `go.opentelemetry.io/otel`
+   - More complex, supports tracing + metrics
+   - 5-7 days
+   - Choose if you need distributed tracing
+
+2. **Custom metrics:** Log-based metrics
+   - Parse logs for metrics
+   - 1-2 days
+   - Not recommended (less tooling support)
+
+**Why Prometheus wins:**
+- Industry standard
+- Rich ecosystem (Grafana dashboards)
+- Simple HTTP endpoint
+- Production-ready
+
+**Note:** Optional for MVP, critical for production deployment
 
 ---
 
@@ -965,19 +1206,19 @@ go build -tags with_vectors # Full build
 
 ## Total Effort Estimate by Phase
 
-| Phase | dPKMS Days | ctxt Days | Total |
-|-------|------------|-----------|-------|
-| 0: Shared Kernel | 7 | 0 | 7 |
-| 1: Echo Loop | 8 | 4 | 12 |
-| 2: Real Data | 10 | 8 | 18 |
-| 3: Beyond Text | 8 | 9 | 17 |
-| 4: Interfaces | 12 | 4 | 16 |
-| 5: Semantics | 14 | 5 | 19 |
-| 6: Polish | 3 | 15 | 18 |
-| 7: Sovereign | 2 | 12 | 14 |
-| 8: Trust | 10 | 4 | 14 |
-| 9: Proof | 7 | 15 | 22 |
-| **Total** | **81** | **76** | **157** |
+| Phase | dPKMS Days | ctxt Days | Total | Notes |
+|-------|------------|-----------|-------|-------|
+| 0: Shared Kernel | 9 | 0 | 9 | +2d (caching, cleanenv, WAL tuning) |
+| 1: Echo Loop | 9 | 4 | 13 | +1d (air setup) |
+| 2: Real Data | 9 | 10 | 19 | -0.5d (resty), +2d (fuzzy search) |
+| 3: Beyond Text | 8 | 12 | 20 | +3d (colly integration) |
+| 4: Interfaces | 12 | 4 | 16 | No change |
+| 5: Semantics | 14 | 5 | 19 | No change (chromem-go same effort as sqlite-vec) |
+| 6: Polish | 7 | 15 | 22 | +4d (prometheus metrics) |
+| 7: Sovereign | 2 | 12 | 14 | No change |
+| 8: Trust | 10 | 4 | 14 | No change |
+| 9: Proof | 7 | 15 | 22 | No change |
+| **Total** | **87** | **81** | **168** | +11 days (+7%) |
 
 **Note:** These are integration days, not total implementation. Assumes clean interfaces and iterative development.
 
@@ -1036,5 +1277,52 @@ govulncheck ./...
 
 ---
 
-**Last Updated:** 2026-01-26
-**Version:** 1.0
+## Changelog
+
+### Version 1.1 (2026-01-27)
+
+**Major Changes:**
+
+1. **SQLite Concurrency Clarification**
+   - Added explicit WAL mode strategy
+   - Documented connection pooling approach
+   - Clarified that modernc.org/sqlite is non-blocking with proper configuration
+   - Removed misleading bbolt suggestion
+
+2. **Configuration: Switched to cleanenv**
+   - Changed from koanf to cleanenv for simpler struct-tag based config
+   - Added godotenv as optional companion for .env file support
+   - Rationale: Simpler for single YAML + env vars pattern
+
+3. **Migrations: Switched to goose**
+   - Changed from golang-migrate to goose
+   - Rationale: Simpler API, better embedded migrations
+
+4. **Added Critical Missing Dependencies:**
+   - **Caching:** Added bigcache (Phase 0) - was completely missing!
+   - **Hot Reload:** Added air dev tool (Phase 1)
+   - **HTTP Client:** Changed from stdlib to resty (saves 0.5 days)
+   - **Fuzzy Search:** Added go-edlib (Phase 2)
+   - **Web Crawler:** Added colly alongside goquery (Phase 3)
+   - **Metrics:** Added prometheus client (Phase 6)
+
+5. **Vector Database: Switched to chromem-go**
+   - Changed from sqlite-vec to chromem-go as default
+   - Rationale: Pure Go (no CGo), simpler builds, batteries-included
+   - sqlite-vec remains as alternative for deep SQLite integration
+
+6. **Effort Estimates Updated:**
+   - Total increased from 157 to 168 days (+7%)
+   - More realistic with additional tooling
+   - Includes proper caching, observability, dev tools
+
+**Comparison with awesome-go:**
+- Validated choices against community standards
+- Added missing categories (caching, metrics, dev tools)
+- Prioritized CGo-free options where possible
+- Maintained Charmbracelet preference for CLI/TUI
+
+---
+
+**Last Updated:** 2026-01-27
+**Version:** 1.1

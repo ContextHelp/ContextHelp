@@ -89,6 +89,24 @@ flowchart TD
 
 ---
 
+## Nodes + context.help cloud
+
+ContextHelp runs as one or more **nodes**. A node may be self-hosted or managed via **context.help cloud**.
+
+### Cloud scope (non-OSS)
+- Org + user lifecycle, SSO/SCIM
+- Multi-node access management (one org, many nodes)
+- Billing/credits and marketplace for paid registries and extensions
+
+### Node scope (OSS)
+- Policy enforcement (permissions/RBAC, entitlements, quotas)
+- Registry protocol client (thin sync + just-in-time pull)
+- Audit + metering event emission
+
+See `docs/cloud/README.md` and `docs/decisions/ADR-031-nodes-and-cloud-boundary.md`.
+
+---
+
 ## Core Principles
 
 ### dPKMS Principles (Substrate)
