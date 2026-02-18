@@ -63,20 +63,38 @@ func init() {
 }
 
 func runConfigShow(cmd *cobra.Command, args []string) error {
-	// TODO: Implement actual config show logic
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, cfg)
+	}
+
 	fmt.Println("Configuration:")
 	fmt.Println()
-	fmt.Println("storage:")
-	fmt.Println("  type: sqlite")
-	fmt.Printf("  path: %s\n", cfg.Storage.Path)
+	fmt.Printf("  Config file:  %s\n", config.GetConfigPath())
 	fmt.Println()
-	fmt.Println("server:")
-	fmt.Printf("  port: %d\n", cfg.Server.Port)
-	fmt.Printf("  grpc_port: %d\n", cfg.Server.GRPCPort)
-	fmt.Printf("  workers: %d\n", cfg.Server.Workers)
+	fmt.Println("  storage:")
+	fmt.Printf("    type:       %s\n", cfg.Storage.Type)
+	fmt.Printf("    path:       %s\n", cfg.Storage.Path)
 	fmt.Println()
-	fmt.Println("profile:")
-	fmt.Printf("  default: %s\n", cfg.Profile.Default)
+	fmt.Println("  server:")
+	fmt.Printf("    port:       %d\n", cfg.Server.Port)
+	fmt.Printf("    grpc_port:  %d\n", cfg.Server.GRPCPort)
+	fmt.Printf("    workers:    %d\n", cfg.Server.Workers)
+	fmt.Println()
+	fmt.Println("  profile:")
+	fmt.Printf("    default:    %s\n", cfg.Profile.Default)
+	fmt.Println()
+	if len(cfg.Registries) > 0 {
+		fmt.Println("  registries:")
+		for _, r := range cfg.Registries {
+			fmt.Printf("    - %s (%s)\n", r.Name, r.URL)
+		}
+		fmt.Println()
+	}
+	if cfg.I18n.Enabled {
+		fmt.Println("  i18n:")
+		fmt.Printf("    enabled:    true\n")
+		fmt.Printf("    languages:  %v\n", cfg.I18n.PreferredLanguages)
+	}
 
 	return nil
 }
@@ -88,16 +106,15 @@ func runConfigPath(cmd *cobra.Command, args []string) error {
 }
 
 func runConfigValidate(cmd *cobra.Command, args []string) error {
-	// TODO: Implement actual validation logic
 	fmt.Println("Validating configuration...")
 
 	_, err := config.Load(cfgFile)
 	if err != nil {
-		fmt.Printf("✗ Configuration is invalid: %v\n", err)
+		fmt.Printf("  ✗ Configuration is invalid: %v\n", err)
 		return err
 	}
 
-	fmt.Println("✓ Configuration is valid")
+	fmt.Println("  ✓ Configuration is valid")
 	return nil
 }
 
