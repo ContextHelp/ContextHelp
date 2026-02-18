@@ -8,7 +8,7 @@ import (
 )
 
 var entitiesCmd = &cobra.Command{
-	Use:   "entities",
+	Use:   "entity",
 	Short: "Query and inspect entities",
 	Long: `Query and inspect canonical entities (concepts).
 
@@ -17,16 +17,16 @@ knowledge objects using the @entity.slug notation.
 
 Examples:
   # List all entities
-  ctxt entities list
+  ctxt entity list
 
   # Show entity details
-  ctxt entities show ui.best-practice
+  ctxt entity show ui.best-practice
 
   # Search for entities
-  ctxt entities search "checkout"
+  ctxt entity search "checkout"
 
   # Show entity backlinks
-  ctxt entities backlinks ui.best-practice`,
+  ctxt entity backlink ui.best-practice`,
 }
 
 var entitiesListCmd = &cobra.Command{
@@ -50,7 +50,7 @@ var entitiesSearchCmd = &cobra.Command{
 }
 
 var entitiesBacklinksCmd = &cobra.Command{
-	Use:   "backlinks <slug>",
+	Use:   "backlink <slug>",
 	Short: "Show entity backlinks",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runEntitiesBacklinks,

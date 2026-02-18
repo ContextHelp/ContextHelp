@@ -8,7 +8,7 @@ import (
 )
 
 var jobsCmd = &cobra.Command{
-	Use:   "jobs",
+	Use:   "job",
 	Short: "Inspect and manage ingestion jobs",
 	Long: `Manage ingestion jobs in the job queue.
 
@@ -21,19 +21,19 @@ Jobs have the following states:
 
 Examples:
   # List all jobs
-  ctxt jobs list
+  ctxt job list
 
   # Check status of a specific job
-  ctxt jobs status job_12345678
+  ctxt job status job_12345678
 
   # View logs for a job
-  ctxt jobs logs job_12345678
+  ctxt job log job_12345678
 
   # Retry a failed job
-  ctxt jobs retry job_12345678
+  ctxt job retry job_12345678
 
   # Cancel a pending or running job
-  ctxt jobs cancel job_12345678`,
+  ctxt job cancel job_12345678`,
 }
 
 var jobsListCmd = &cobra.Command{
@@ -52,7 +52,7 @@ var jobsStatusCmd = &cobra.Command{
 }
 
 var jobsLogsCmd = &cobra.Command{
-	Use:   "logs <job-id>",
+	Use:   "log <job-id>",
 	Short: "View logs for a specific job",
 	Long:  `Display execution logs for a specific job.`,
 	Args:  cobra.ExactArgs(1),
