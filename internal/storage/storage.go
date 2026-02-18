@@ -56,6 +56,7 @@ type JobStore interface {
 	Complete(ctx context.Context, id string, resultID string) error
 	Fail(ctx context.Context, id string, errMsg string) error
 	Retry(ctx context.Context, id string) error
+	Cancel(ctx context.Context, id string) error
 	RecoverStale(ctx context.Context, timeout int64) (int, error)
 }
 

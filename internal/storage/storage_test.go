@@ -78,6 +78,7 @@ func (m *mockJobStore) Complete(ctx context.Context, id string, resultID string)
 }
 func (m *mockJobStore) Fail(ctx context.Context, id string, errMsg string) error { return nil }
 func (m *mockJobStore) Retry(ctx context.Context, id string) error               { return nil }
+func (m *mockJobStore) Cancel(ctx context.Context, id string) error              { return nil }
 func (m *mockJobStore) RecoverStale(ctx context.Context, timeout int64) (int, error) {
 	return 0, nil
 }

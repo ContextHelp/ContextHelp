@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -254,6 +255,55 @@ func (s *Service) ListReminders(ctx context.Context, activeOnly bool) ([]*storag
 
 func (s *Service) DismissReminder(ctx context.Context, id string) error {
 	return s.Store.Reminders().Dismiss(ctx, id)
+}
+
+// CancelJob cancels a pending or running job.
+func (s *Service) CancelJob(ctx context.Context, id string) error {
+	return s.Store.Jobs().Cancel(ctx, id)
+}
+
+// SearchEntities searches entities by slug/title prefix matching.
+func (s *Service) SearchEntities(ctx context.Context, query string, limit int) ([]*storage.Entity, error) {
+	all, err := s.Store.Entities().List(ctx, storage.EntityFilter{Limit: 1000})
+	if err != nil {
+		return nil, err
+	}
+	q := strings.ToLower(query)
+	var results []*storage.Entity
+	for _, e := range all {
+		if strings.Contains(strings.ToLower(e.Slug), q) ||
+			strings.Contains(strings.ToLower(e.Title), q) {
+			results = append(results, e)
+			if len(results) >= limit {
+				break
+			}
+		}
+	}
+	return results, nil
+}
+
+// Compose generates a markdown composition from knowledge objects.
+// This is a fallback implementation that concatenates objects.
+func (s *Service) Compose(ctx context.Context, objects []*storage.KnowledgeObject, compositionType string) (string, error) {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("# %s\n\n", compositionType))
+	b.WriteString(fmt.Sprintf("Generated from %d knowledge objects.\n\n", len(objects)))
+
+	for _, obj := range objects {
+		b.WriteString(fmt.Sprintf("## %s\n", obj.ID))
+		if len(obj.Summaries) > 0 {
+			b.WriteString(obj.Summaries[0])
+			b.WriteString("\n\n")
+		} else if obj.RawContent != "" {
+			content := obj.RawContent
+			if len(content) > 500 {
+				content = content[:500] + "..."
+			}
+			b.WriteString(content)
+			b.WriteString("\n\n")
+		}
+	}
+	return b.String(), nil
 }
 
 func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error) {

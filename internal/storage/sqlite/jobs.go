@@ -181,6 +181,21 @@ func (s *JobStore) Retry(ctx context.Context, id string) error {
 	return nil
 }
 
+func (s *JobStore) Cancel(ctx context.Context, id string) error {
+	now := time.Now().Format(time.RFC3339)
+	result, err := s.db.ExecContext(ctx,
+		"UPDATE jobs SET status = 'cancelled', updated_at = ? WHERE id = ? AND status IN ('pending', 'running')",
+		now, id)
+	if err != nil {
+		return fmt.Errorf("cancel job: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("job %s not found or not cancellable", id)
+	}
+	return nil
+}
+
 func (s *JobStore) RecoverStale(ctx context.Context, timeoutSeconds int64) (int, error) {
 	cutoff := time.Now().Add(-time.Duration(timeoutSeconds) * time.Second).Format(time.RFC3339)
 	now := time.Now().Format(time.RFC3339)
