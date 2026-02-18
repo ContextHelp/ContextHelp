@@ -3,9 +3,7 @@
 
 title = "ContextHelp Gitleaks Configuration"
 
-[extend]
-# Uncomment to use default gitleaks rules plus custom ones below
-# useDefault = true
+# extend section is at end of file
 
 #############################################################################
 # Custom Rules for ContextHelp

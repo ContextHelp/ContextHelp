@@ -116,8 +116,6 @@ go.work
 go.work.sum
 
 # Binary output from go build
-ctxt
-dpkms
 /ctxt
 /dpkms
 
