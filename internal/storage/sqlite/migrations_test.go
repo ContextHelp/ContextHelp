@@ -19,7 +19,7 @@ func TestMigrateFromScratch(t *testing.T) {
 	}
 
 	// Verify all tables exist.
-	tables := []string{"objects", "entities", "edges", "jobs", "schema_version"}
+	tables := []string{"objects", "entities", "edges", "jobs", "feeds", "feed_items", "batches", "schema_version"}
 	for _, table := range tables {
 		var name string
 		err := d.db.QueryRow(
@@ -55,8 +55,8 @@ func TestSchemaVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query version: %v", err)
 	}
-	if version != 1 {
-		t.Errorf("version: got %d, want 1", version)
+	if version != len(migrations) {
+		t.Errorf("version: got %d, want %d", version, len(migrations))
 	}
 }
 

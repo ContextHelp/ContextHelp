@@ -22,6 +22,9 @@ type Driver struct {
 	steps      *StepStore
 	registries *RegistryStore
 	reminders  *ReminderStore
+	feeds      *FeedStore
+	feedItems  *FeedItemStore
+	batches    *BatchStore
 }
 
 // New creates a new SQLite driver for the given database path.
@@ -53,6 +56,9 @@ func New(path string) (*Driver, error) {
 	d.steps = &StepStore{db: db}
 	d.registries = &RegistryStore{db: db}
 	d.reminders = &ReminderStore{db: db}
+	d.feeds = &FeedStore{db: db}
+	d.feedItems = &FeedItemStore{db: db}
+	d.batches = &BatchStore{db: db}
 	return d, nil
 }
 
@@ -72,6 +78,9 @@ func (d *Driver) Pipelines() storage.PipelineStore  { return d.pipelines }
 func (d *Driver) Steps() storage.StepStore          { return d.steps }
 func (d *Driver) Registries() storage.RegistryStore { return d.registries }
 func (d *Driver) Reminders() storage.ReminderStore  { return d.reminders }
+func (d *Driver) Feeds() storage.FeedStore           { return d.feeds }
+func (d *Driver) FeedItems() storage.FeedItemStore   { return d.feedItems }
+func (d *Driver) Batches() storage.BatchStore        { return d.batches }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)

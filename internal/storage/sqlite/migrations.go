@@ -10,6 +10,9 @@ import (
 //go:embed migrations/001_initial.sql
 var migration001 string
 
+//go:embed migrations/002_feeds_and_batches.sql
+var migration002 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -17,6 +20,7 @@ type migration struct {
 
 var migrations = []migration{
 	{Version: 1, SQL: migration001},
+	{Version: 2, SQL: migration002},
 }
 
 func (d *Driver) Migrate(ctx context.Context) error {
