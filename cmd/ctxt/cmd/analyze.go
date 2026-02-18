@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	gohttp "net/http"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -40,7 +43,7 @@ func init() {
 	rootCmd.AddCommand(analyzeCmd)
 
 	// Input flags
-	analyzeCmd.Flags().String("type", "auto", "input type (text|url|image|audio|video|feed|auto)")
+	analyzeCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")
 	analyzeCmd.Flags().String("file", "", "read input from file")
 
 	// Metadata flags
@@ -56,6 +59,9 @@ func init() {
 	analyzeCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")
 	analyzeCmd.Flags().Bool("wait", false, "block until job completes")
 
+	// Server connection
+	analyzeCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+
 	// Bind flags to viper
 	viper.BindPFlag("analyze.type", analyzeCmd.Flags().Lookup("type"))
 	viper.BindPFlag("analyze.file", analyzeCmd.Flags().Lookup("file"))
@@ -66,25 +72,23 @@ func init() {
 	viper.BindPFlag("analyze.translate", analyzeCmd.Flags().Lookup("translate"))
 	viper.BindPFlag("analyze.raw", analyzeCmd.Flags().Lookup("raw"))
 	viper.BindPFlag("analyze.wait", analyzeCmd.Flags().Lookup("wait"))
+	viper.BindPFlag("server.url", analyzeCmd.Flags().Lookup("server"))
 }
 
 func runAnalyze(cmd *cobra.Command, args []string) error {
 	var content string
 
-	// Determine input source
+	// Determine input source.
 	file := viper.GetString("analyze.file")
 	if file != "" {
-		// Read from file
 		data, err := os.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("failed to read file: %w", err)
 		}
 		content = string(data)
 	} else if len(args) > 0 {
-		// Use argument
 		content = args[0]
 	} else {
-		// Read from stdin
 		stat, _ := os.Stdin.Stat()
 		if (stat.Mode() & os.ModeCharDevice) == 0 {
 			data, err := io.ReadAll(os.Stdin)
@@ -97,28 +101,47 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// TODO: Implement actual analyze logic
-	// For now, just print what we would do
-	fmt.Println("Would analyze content with configuration:")
-	fmt.Printf("  Type: %s\n", viper.GetString("analyze.type"))
-	fmt.Printf("  Profile: %s\n", viper.GetString("profile.default"))
-	fmt.Printf("  Pipeline: %s\n", viper.GetString("analyze.pipeline"))
-	fmt.Printf("  Hints: %s\n", viper.GetString("analyze.hints"))
-	fmt.Printf("  Mentions: %s\n", viper.GetString("analyze.mentions"))
-	fmt.Printf("  Language: %s\n", viper.GetString("analyze.lang"))
-	fmt.Printf("  Raw mode: %v\n", viper.GetBool("analyze.raw"))
-	fmt.Printf("  Wait: %v\n", viper.GetBool("analyze.wait"))
-	fmt.Printf("\nContent preview: %s\n", content[:min(len(content), 100)])
+	// Determine server URL.
+	serverURL := viper.GetString("server.url")
+	if serverURL == "" {
+		serverURL = "http://localhost:8080"
+	}
 
-	// Return job ID
-	fmt.Println("\nJob ID: job_12345678")
+	// Build request body.
+	reqBody := map[string]string{
+		"content":  content,
+		"type":     viper.GetString("analyze.type"),
+		"pipeline": viper.GetString("analyze.pipeline"),
+		"source":   "cli",
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+
+	// POST to dpkms.
+	resp, err := gohttp.Post(serverURL+"/api/v1/analyze", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("request to dpkms: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != gohttp.StatusAccepted && resp.StatusCode != gohttp.StatusOK {
+		return fmt.Errorf("dpkms returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
+
+	fmt.Printf("Job ID: %s\n", result["job_id"])
 
 	return nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

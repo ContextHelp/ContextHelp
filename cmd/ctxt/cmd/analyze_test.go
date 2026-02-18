@@ -1,45 +1,65 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
+// startMockDPKMS starts a mock dpkms server that accepts analyze requests.
+func startMockDPKMS(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/analyze" && r.Method == http.MethodPost {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			json.NewEncoder(w).Encode(map[string]string{"job_id": "job_12345678"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+}
+
 func TestAnalyzeWithArgument(t *testing.T) {
-	out, err := executeCommand("analyze", "test insight")
+	srv := startMockDPKMS(t)
+	defer srv.Close()
+
+	out, err := executeCommand("analyze", "test insight", "--server", srv.URL)
 	if err != nil {
 		t.Fatalf("analyze with argument should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Job ID: job_12345678") {
 		t.Error("output should contain job ID")
 	}
-	if !strings.Contains(out, "Content preview: test insight") {
-		t.Error("output should show content preview")
-	}
 }
 
 func TestAnalyzeWithFile(t *testing.T) {
+	srv := startMockDPKMS(t)
+	defer srv.Close()
+
 	dir := t.TempDir()
 	f := filepath.Join(dir, "input.txt")
 	if err := os.WriteFile(f, []byte("file content here"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	out, err := executeCommand("analyze", "--file", f)
+	out, err := executeCommand("analyze", "--file", f, "--server", srv.URL)
 	if err != nil {
 		t.Fatalf("analyze with --file should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Job ID:") {
 		t.Error("output should contain job ID")
 	}
-	if !strings.Contains(out, "Content preview: file content here") {
-		t.Error("output should preview file content")
-	}
 }
 
 func TestAnalyzeWithFlags(t *testing.T) {
+	srv := startMockDPKMS(t)
+	defer srv.Close()
+
 	out, err := executeCommand("analyze", "content",
 		"--type", "url",
 		"--hints", "#ux #bug",
@@ -48,17 +68,18 @@ func TestAnalyzeWithFlags(t *testing.T) {
 		"--lang", "fr",
 		"--raw",
 		"--wait",
+		"--server", srv.URL,
 	)
 	if err != nil {
 		t.Fatalf("analyze with flags should succeed: %v", err)
 	}
-	if !strings.Contains(out, "Type: url") {
-		t.Error("output should reflect --type flag")
+	if !strings.Contains(out, "Job ID:") {
+		t.Error("output should contain job ID")
 	}
 }
 
 func TestAnalyzeNoInputError(t *testing.T) {
-	// When stdin is a terminal (no pipe) and no args/file, should error
+	// When stdin is a terminal (no pipe) and no args/file, should error.
 	_, err := executeCommand("analyze")
 	if err == nil {
 		t.Error("analyze with no input should fail")

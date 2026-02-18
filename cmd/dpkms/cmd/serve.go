@@ -1,13 +1,24 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"net"
+	gohttp "net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/ideacrafterslabs/ctxt/internal/jobs"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/search"
+	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 var serveCmd = &cobra.Command{
@@ -59,44 +70,111 @@ func init() {
 
 func runServe(cmd *cobra.Command, args []string) error {
 	port := viper.GetInt("server.port")
-	grpcPort := viper.GetInt("server.grpc_port")
 	workers := viper.GetInt("server.workers")
 	public := viper.GetBool("server.public")
-	profile := viper.GetString("profile.default")
 
-	fmt.Println("Starting dPKMS server...")
-	fmt.Println()
-	fmt.Printf("Data directory:     %s\n", cfg.Storage.Path)
-	fmt.Printf("HTTP port:          %d\n", port)
-	fmt.Printf("gRPC port:          %d\n", grpcPort)
-	fmt.Printf("Worker threads:     %d\n", workers)
-	fmt.Printf("Public access:      %v\n", public)
-	if profile != "" {
-		fmt.Printf("Default profile:    %s\n", profile)
+	// 1. Init storage.
+	storageType := cfg.Storage.Type
+	if storageType == "" {
+		storageType = "sqlite"
 	}
-	fmt.Println()
+	storagePath := cfg.Storage.Path
+	if storagePath == "" {
+		storagePath = "dpkms.db"
+	}
 
-	// TODO: Implement actual server startup
-	fmt.Println("✓ Storage initialized")
-	fmt.Println("✓ Job queue initialized")
-	fmt.Println("✓ Pipeline runtime initialized")
-	fmt.Printf("✓ HTTP server listening on :%d\n", port)
-	fmt.Printf("✓ gRPC server listening on :%d\n", grpcPort)
-	fmt.Printf("✓ Worker pool started (%d workers)\n", workers)
+	driver, err := storageutil.NewDriver(storageType, storagePath)
+	if err != nil {
+		return fmt.Errorf("init storage: %w", err)
+	}
+	if err := driver.Init(context.Background()); err != nil {
+		return fmt.Errorf("init storage: %w", err)
+	}
+	fmt.Println("Storage initialized")
+
+	// 2. Init queue.
+	queue := jobs.NewQueue(driver.Jobs())
+	fmt.Println("Job queue initialized")
+
+	// 3. Init pipeline registry.
+	pipes := pipeline.DefaultRegistry()
+	fmt.Println("Pipeline runtime initialized")
+
+	// 4. Init search engine.
+	engine := search.NewEngine(driver)
+
+	// 5. Init service layer.
+	svc := service.New(driver, queue, pipes, engine)
+
+	// 6. Build HTTP router.
+	router := httpserver.NewRouter(svc)
+
+	// 7. Determine bind address.
+	bind := "127.0.0.1"
+	if public {
+		bind = "0.0.0.0"
+	}
+	addr := fmt.Sprintf("%s:%d", bind, port)
+
+	// 8. Create HTTP server.
+	httpSrv := &gohttp.Server{
+		Addr:    addr,
+		Handler: router,
+	}
+
+	// 9. Init worker pool.
+	pool := jobs.NewWorkerPool(queue, pipes, driver, workers)
+
+	// 10. Start everything via errgroup.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	// HTTP server.
+	g.Go(func() error {
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			return fmt.Errorf("listen: %w", err)
+		}
+		fmt.Printf("HTTP server listening on %s\n", addr)
+		if err := httpSrv.Serve(ln); err != nil && err != gohttp.ErrServerClosed {
+			return err
+		}
+		return nil
+	})
+
+	// Worker pool.
+	g.Go(func() error {
+		fmt.Printf("Worker pool started (%d workers)\n", workers)
+		return pool.Start(ctx)
+	})
+
+	// Wait for shutdown signal.
+	g.Go(func() error {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		select {
+		case <-sigChan:
+			fmt.Println()
+			fmt.Println("Shutting down gracefully...")
+		case <-ctx.Done():
+		}
+		cancel()
+		httpSrv.Shutdown(context.Background())
+		return nil
+	})
+
 	fmt.Println()
 	fmt.Println("dPKMS is ready. Press Ctrl+C to stop.")
 
-	// Wait for interrupt signal
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
+	if err := g.Wait(); err != nil {
+		return err
+	}
 
-	fmt.Println()
-	fmt.Println("Shutting down gracefully...")
-	fmt.Println("✓ Worker pool stopped")
-	fmt.Println("✓ HTTP server stopped")
-	fmt.Println("✓ gRPC server stopped")
-	fmt.Println("✓ Storage closed")
+	// Cleanup.
+	driver.Close(context.Background())
+	fmt.Println("Storage closed")
 
 	return nil
 }
