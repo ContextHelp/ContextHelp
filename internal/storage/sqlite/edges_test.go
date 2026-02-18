@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func makeEdge(id, fromID, toID string) *storage.Edge {
@@ -69,4 +71,41 @@ func TestDeleteByObject(t *testing.T) {
 	if len(edges) != 0 {
 		t.Errorf("expected 0 edges, got %d", len(edges))
 	}
+}
+
+func TestDeleteEdge(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e-del-1", "obj-1", "ui.layout")))
+
+	err := d.Edges().Delete(ctx, "e-del-1")
+	require.NoError(t, err)
+
+	edges, err := d.Edges().ListFrom(ctx, "object", "obj-1")
+	require.NoError(t, err)
+	assert.Empty(t, edges)
+}
+
+func TestDeleteEdgeNotFound(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	err := d.Edges().Delete(ctx, "nonexistent-edge")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestDeleteEdgeTwice(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e-twice-1", "obj-1", "ui.layout")))
+
+	err := d.Edges().Delete(ctx, "e-twice-1")
+	require.NoError(t, err)
+
+	err = d.Edges().Delete(ctx, "e-twice-1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
 }

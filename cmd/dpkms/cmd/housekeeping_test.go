@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHousekeepingVacuum(t *testing.T) {
@@ -58,6 +62,41 @@ func TestHousekeepingPruneMissingBeforeError(t *testing.T) {
 	if err == nil {
 		t.Error("prune without --before should fail (required flag)")
 	}
+}
+
+func TestHousekeepingPruneWithBeforeFlag(t *testing.T) {
+	// Pipe "n" to stdin so fmt.Scanln doesn't hang
+	oldStdin := os.Stdin
+	r, w, _ := os.Pipe()
+	_, err := w.WriteString("n\n")
+	require.NoError(t, err)
+	w.Close()
+	os.Stdin = r
+	defer func() { os.Stdin = oldStdin }()
+
+	out, err := executeCommand("housekeeping", "prune", "--before", "2024-01-01")
+	require.NoError(t, err, "prune with --before should succeed")
+	assert.Contains(t, out, "2024-01-01", "output should contain the date")
+	assert.Contains(t, out, "Scanning database", "output should show scanning step")
+	assert.Contains(t, out, "Proceed with deletion", "output should prompt for confirmation")
+	assert.Contains(t, out, "Pruning cancelled", "output should confirm cancellation")
+}
+
+func TestHousekeepingPruneConfirmYes(t *testing.T) {
+	// Pipe "y" to stdin to confirm deletion
+	oldStdin := os.Stdin
+	r, w, _ := os.Pipe()
+	_, err := w.WriteString("y\n")
+	require.NoError(t, err)
+	w.Close()
+	os.Stdin = r
+	defer func() { os.Stdin = oldStdin }()
+
+	out, err := executeCommand("housekeeping", "prune", "--before", "2024-01-01")
+	require.NoError(t, err, "prune with --before and confirmation should succeed")
+	assert.Contains(t, out, "2024-01-01", "output should contain the date")
+	assert.Contains(t, out, "Pruning completed successfully", "output should confirm completion")
+	assert.Contains(t, out, "Deleted", "output should report deleted items")
 }
 
 func TestHousekeepingHelp(t *testing.T) {

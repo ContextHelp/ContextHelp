@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install test lint fmt help
+.PHONY: all build build-ctxt build-dpkms clean install test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -56,7 +56,40 @@ clean:
 ## test: Run tests
 test:
 	@echo "Running tests..."
-	go test -v -race -cover ./...
+	go test -race -count=1 -cover ./...
+
+## test-unit: Run unit tests only
+test-unit:
+	@echo "Running unit tests..."
+	go test -race -count=1 ./cmd/... ./internal/...
+
+## test-integration: Run integration tests
+test-integration:
+	@echo "Running integration tests..."
+	go test -race -count=1 ./test/integration/...
+
+## test-smoke: Run binary smoke tests
+test-smoke:
+	@echo "Running smoke tests..."
+	go test -tags=smoke ./test/smoke/...
+
+## test-all: Run all test tiers
+test-all: test-unit test-integration test-smoke
+
+## test-cover: Generate coverage report
+test-cover:
+	@echo "Running tests with coverage..."
+	go test -race -coverprofile=coverage.out ./...
+
+## test-gate: Run all tests and print coverage summary
+test-gate: test-all
+	@echo ""
+	@echo "Coverage summary:"
+	@go test -race -coverprofile=coverage.out ./internal/... ./cmd/... 2>&1 | grep -E 'coverage:|FAIL'
+	@echo ""
+	@go tool cover -func=coverage.out | grep total:
+	@echo ""
+	@echo "✓ Test gate passed"
 
 ## lint: Run linters
 lint:

@@ -3,7 +3,12 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadDefaults(t *testing.T) {
@@ -221,4 +226,59 @@ func TestLoadWithI18n(t *testing.T) {
 	if len(cfg.I18n.PreferredLanguages) != 2 {
 		t.Errorf("expected 2 languages, got %d", len(cfg.I18n.PreferredLanguages))
 	}
+}
+
+func TestEnsureConfigDirError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-based permission test not reliable on Windows")
+	}
+
+	tmp := t.TempDir()
+	readonlyDir := filepath.Join(tmp, "readonly")
+	require.NoError(t, os.MkdirAll(readonlyDir, 0755))
+
+	// Lock the directory so MkdirAll cannot create children
+	require.NoError(t, os.Chmod(readonlyDir, 0444))
+	t.Cleanup(func() {
+		os.Chmod(readonlyDir, 0755) // restore so TempDir cleanup can remove it
+	})
+
+	// Point CTXT_CONFIG to a path that requires creating a subdir inside the read-only dir
+	t.Setenv(EnvConfigPath, filepath.Join(readonlyDir, "subdir", "config.yaml"))
+
+	err := EnsureConfigDir()
+	assert.Error(t, err, "EnsureConfigDir should fail when parent directory is read-only")
+}
+
+func TestEnsureConfigDirCreatesDirectory(t *testing.T) {
+	tmp := t.TempDir()
+	configDir := filepath.Join(tmp, "newdir")
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	t.Setenv(EnvConfigPath, configFile)
+
+	err := EnsureConfigDir()
+	require.NoError(t, err, "EnsureConfigDir should succeed for a writable temp path")
+
+	info, statErr := os.Stat(configDir)
+	require.NoError(t, statErr, "config directory should exist after EnsureConfigDir")
+	assert.True(t, info.IsDir(), "config path should be a directory")
+}
+
+func TestGetConfigPathDefault(t *testing.T) {
+	// Ensure the env var is unset so we exercise the default path
+	t.Setenv(EnvConfigPath, "")
+
+	path := GetConfigPath()
+	assert.NotEmpty(t, path, "GetConfigPath should return a non-empty path when env is unset")
+	assert.True(t, strings.HasSuffix(path, DefaultConfigFileName),
+		"path should end with %s, got %s", DefaultConfigFileName, path)
+}
+
+func TestGetConfigPathEnvOverride(t *testing.T) {
+	custom := "/tmp/custom/config.yaml"
+	t.Setenv(EnvConfigPath, custom)
+
+	path := GetConfigPath()
+	assert.Equal(t, custom, path, "GetConfigPath should return the exact env value")
 }

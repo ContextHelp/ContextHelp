@@ -1,10 +1,14 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -87,4 +91,32 @@ func TestRequestID(t *testing.T) {
 	if reqID == "" {
 		t.Error("X-Request-ID header is missing")
 	}
+}
+
+func TestHealthEndpointUnhealthy(t *testing.T) {
+	// Create a dedicated driver (not shared) so we can close it without
+	// interfering with other tests. We skip the t.Cleanup auto-close by
+	// building the bundle manually.
+	driver := storageutil.NewTestDriver(t)
+	q := jobs.NewQueue(driver.Jobs())
+	pipes := pipeline.DefaultRegistry()
+	engine := search.NewEngine(driver)
+	svc := service.New(driver, q, pipes, engine)
+	ts := httptest.NewServer(NewRouter(svc))
+	defer ts.Close()
+
+	// Close the storage driver so that Health() returns an error.
+	err := svc.Store.Close(context.Background())
+	require.NoError(t, err)
+
+	resp, err := http.Get(ts.URL + "/health")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+
+	var env ErrorEnvelope
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&env))
+	assert.Equal(t, "UNHEALTHY", env.Error.Code)
+	assert.NotEmpty(t, env.Error.Message)
 }

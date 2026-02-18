@@ -1,6 +1,11 @@
 package search
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestParseSimpleComparison(t *testing.T) {
 	node, err := Parse("type==article")
@@ -156,4 +161,30 @@ func TestParseError(t *testing.T) {
 	if err == nil {
 		t.Error("expected parse error")
 	}
+}
+
+// --- New error-path tests below ---
+
+func TestParseEmptyInput(t *testing.T) {
+	_, err := Parse("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected field")
+}
+
+func TestParseUnterminatedQuotedString(t *testing.T) {
+	_, err := Parse(`type=="hello`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unterminated string")
+}
+
+func TestParseMissingValueAfterOperator(t *testing.T) {
+	_, err := Parse("type==")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected value")
+}
+
+func TestParseUnbalancedParentheses(t *testing.T) {
+	_, err := Parse("(type==article")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected ')'")
 }

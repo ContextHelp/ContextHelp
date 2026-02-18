@@ -3,6 +3,9 @@ package search
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func mustParse(t *testing.T, input string) Node {
@@ -120,4 +123,129 @@ func TestCompileUnknownField(t *testing.T) {
 	if !strings.Contains(err.Error(), "unknown field") {
 		t.Errorf("error: got %q", err)
 	}
+}
+
+// --- New coverage-gap tests below ---
+
+func TestCompileSimilarEq(t *testing.T) {
+	sql, args, err := Compile(mustParse(t, "similar==keyword"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "objects_fts")
+	assert.Contains(t, sql, "MATCH")
+	assert.Equal(t, []any{"keyword"}, args)
+}
+
+func TestCompileSimilarNonEqError(t *testing.T) {
+	node := ComparisonNode{Field: "similar", Operator: OpNeq, Value: "keyword"}
+	_, _, err := Compile(node)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "similar field only supports == operator")
+}
+
+func TestSqlOperatorMapping(t *testing.T) {
+	tests := []struct {
+		op      Operator
+		wantSQL string
+	}{
+		{OpEq, "="},
+		{OpNeq, "!="},
+		{OpGt, ">"},
+		{OpGte, ">="},
+		{OpLt, "<"},
+		{OpLte, "<="},
+		{OpIn, "IN"},
+		{OpOut, "NOT IN"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.op.String(), func(t *testing.T) {
+			got, err := sqlOperator(tt.op)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSQL, got)
+		})
+	}
+}
+
+func TestSqlOperatorUnknown(t *testing.T) {
+	_, err := sqlOperator(Operator(99))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown operator")
+}
+
+func TestCompileDirectIn(t *testing.T) {
+	sql, args, err := Compile(mustParse(t, "type=in=(article,note)"))
+	require.NoError(t, err)
+	assert.Equal(t, "type IN (?,?)", sql)
+	assert.Equal(t, []any{"article", "note"}, args)
+}
+
+func TestCompileDirectOut(t *testing.T) {
+	sql, args, err := Compile(mustParse(t, "type=out=(article)"))
+	require.NoError(t, err)
+	assert.Equal(t, "type NOT IN (?)", sql)
+	assert.Equal(t, []any{"article"}, args)
+}
+
+func TestCompileDirectInNonSliceError(t *testing.T) {
+	// Manually construct a ComparisonNode with OpIn but a string value instead
+	// of []string to exercise the error path.
+	node := ComparisonNode{Field: "type", Operator: OpIn, Value: "not-a-slice"}
+	_, _, err := Compile(node)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "IN/OUT requires []string value")
+}
+
+func TestCompileTagEq(t *testing.T) {
+	sql, args, err := Compile(mustParse(t, "tag==performance"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "EXISTS")
+	assert.Contains(t, sql, "json_each")
+	assert.Contains(t, sql, "label")
+	assert.Equal(t, []any{"performance"}, args)
+}
+
+func TestCompileTagNeq(t *testing.T) {
+	sql, args, err := Compile(mustParse(t, "tag!=performance"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "NOT EXISTS")
+	assert.Contains(t, sql, "json_each")
+	assert.Equal(t, []any{"performance"}, args)
+}
+
+func TestCompileTagIn(t *testing.T) {
+	sql, args, err := Compile(mustParse(t, "tag=in=(a,b)"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "EXISTS")
+	assert.Contains(t, sql, "json_each")
+	assert.Contains(t, sql, "IN (?,?)")
+	assert.Equal(t, []any{"a", "b"}, args)
+}
+
+func TestCompileTagUnsupportedOperator(t *testing.T) {
+	node := ComparisonNode{Field: "tag", Operator: OpGt, Value: "perf"}
+	_, _, err := Compile(node)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported operator")
+}
+
+func TestCompileMentionEq(t *testing.T) {
+	sql, args, err := Compile(mustParse(t, "mention==@entity.slug"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "edges")
+	assert.Contains(t, sql, "mentions")
+	assert.Contains(t, sql, "to_id = ?")
+	assert.Equal(t, []any{"@entity.slug"}, args)
+}
+
+func TestCompileMentionNonEqError(t *testing.T) {
+	node := ComparisonNode{Field: "mention", Operator: OpNeq, Value: "@entity.slug"}
+	_, _, err := Compile(node)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mention field only supports == operator")
+}
+
+func TestCompileUnknownNodeType(t *testing.T) {
+	// Passing nil exercises the default branch in compileNode.
+	_, _, err := Compile(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown node type")
 }

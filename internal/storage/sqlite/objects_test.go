@@ -2,10 +2,13 @@ package sqlite
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func makeObject(id, typ string) *storage.KnowledgeObject {
@@ -140,4 +143,72 @@ func TestDeleteNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nonexistent delete")
 	}
+}
+
+func TestListBySQL_SimpleWhere(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	require.NoError(t, d.Objects().Create(ctx, makeObject("art-1", "article")))
+	require.NoError(t, d.Objects().Create(ctx, makeObject("art-2", "article")))
+	require.NoError(t, d.Objects().Create(ctx, makeObject("note-1", "note")))
+
+	objs, total, err := d.Objects().ListBySQL(ctx, "type = ?", []any{"article"}, 0, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Len(t, objs, 2)
+	for _, o := range objs {
+		assert.Equal(t, "article", o.Type)
+	}
+}
+
+func TestListBySQL_Empty(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	objs, total, err := d.Objects().ListBySQL(ctx, "type = ?", []any{"nonexistent"}, 0, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 0, total)
+	assert.Len(t, objs, 0)
+}
+
+func TestListBySQL_Pagination(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		obj := makeObject(fmt.Sprintf("page-%d", i), "article")
+		// Stagger creation times so ordering is deterministic.
+		obj.CreatedAt = time.Now().Add(time.Duration(i) * time.Second).Truncate(time.Second)
+		obj.UpdatedAt = obj.CreatedAt
+		require.NoError(t, d.Objects().Create(ctx, obj))
+	}
+
+	objs, total, err := d.Objects().ListBySQL(ctx, "", nil, 2, 1)
+	require.NoError(t, err)
+	assert.Equal(t, 5, total)
+	assert.Len(t, objs, 2)
+}
+
+func TestListBySQL_JSONExtract(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj1 := makeObject("meta-1", "article")
+	obj1.Metadata = map[string]any{"key": "val"}
+	require.NoError(t, d.Objects().Create(ctx, obj1))
+
+	obj2 := makeObject("meta-2", "article")
+	obj2.Metadata = map[string]any{"key": "other"}
+	require.NoError(t, d.Objects().Create(ctx, obj2))
+
+	obj3 := makeObject("meta-3", "article")
+	obj3.Metadata = map[string]any{"different": "field"}
+	require.NoError(t, d.Objects().Create(ctx, obj3))
+
+	objs, total, err := d.Objects().ListBySQL(ctx, "json_extract(metadata, '$.key') = ?", []any{"val"}, 0, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	assert.Len(t, objs, 1)
+	assert.Equal(t, "meta-1", objs[0].ID)
 }

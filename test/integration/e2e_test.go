@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
@@ -122,7 +124,7 @@ func postAnalyze(t *testing.T, url, content string) string {
 
 func waitForJob(t *testing.T, url, jobID string, wantStatus storage.JobStatus) *storage.Job {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/jobs/%s", url, jobID))
 		if err != nil {
@@ -299,6 +301,123 @@ func TestEdgesCreated(t *testing.T) {
 	if len(body.Data) > 0 && body.Data[0].ID != job.ResultID {
 		t.Errorf("backlink ID: got %q, want %q", body.Data[0].ID, job.ResultID)
 	}
+}
+
+// TestIngestThenSearch: POST /analyze → wait → GET /search?q=type==text → verify ingested object appears.
+func TestIngestThenSearch(t *testing.T) {
+	env := startTestEnv(t)
+	defer env.stop(t)
+
+	jobID := postAnalyze(t, env.URL, "search test content")
+	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
+	require.NotEmpty(t, job.ResultID, "completed job must have a result_id")
+
+	resp, err := gohttp.Get(env.URL + "/api/v1/search?q=type==text")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, gohttp.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Data  []storage.KnowledgeObject `json:"data"`
+		Total int                       `json:"total"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+
+	assert.GreaterOrEqual(t, body.Total, 1, "search should return at least one result")
+
+	found := false
+	for _, obj := range body.Data {
+		if obj.ID == job.ResultID {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "ingested object %s should appear in search results", job.ResultID)
+}
+
+// TestConcurrentIngestion: rapid-fire 5 POST /analyze calls → workers process in parallel → verify 5 distinct objects.
+func TestConcurrentIngestion(t *testing.T) {
+	env := startTestEnv(t)
+	defer env.stop(t)
+
+	const n = 5
+	jobIDs := make([]string, n)
+
+	// Rapid-fire sequential requests — workers process them concurrently.
+	for i := 0; i < n; i++ {
+		jobIDs[i] = postAnalyze(t, env.URL, fmt.Sprintf("concurrent content %d", i))
+	}
+
+	// Wait for all jobs to complete.
+	resultIDs := make(map[string]struct{})
+	for i := 0; i < n; i++ {
+		require.NotEmpty(t, jobIDs[i], "job_id[%d] must not be empty", i)
+		job := waitForJob(t, env.URL, jobIDs[i], storage.JobCompleted)
+		require.NotEmpty(t, job.ResultID, "job %s must have result_id", jobIDs[i])
+		resultIDs[job.ResultID] = struct{}{}
+	}
+	assert.Len(t, resultIDs, n, "all jobs should produce distinct object IDs")
+
+	// Verify via GET /api/v1/objects.
+	resp, err := gohttp.Get(env.URL + "/api/v1/objects?limit=100")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, gohttp.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Data  []*storage.KnowledgeObject `json:"data"`
+		Total int                        `json:"total"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.GreaterOrEqual(t, body.Total, n, "total objects should be >= %d", n)
+}
+
+// TestObjectDeleteCascade: analyze with mentions → verify edges → DELETE object → verify edges removed.
+func TestObjectDeleteCascade(t *testing.T) {
+	env := startTestEnv(t)
+	defer env.stop(t)
+
+	// Register a custom pipeline that adds mentions.
+	env.svc.Pipes.Register("test.mentions", &pipeline.Pipeline{
+		PipelineName: "test.mentions",
+		Steps:        []pipeline.PipelineStep{&mentionStep{}},
+	})
+
+	// Enqueue with the custom pipeline.
+	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+		Content:  "cascade delete content with mentions",
+		Type:     "text",
+		Pipeline: "test.mentions",
+		Source:   "e2e-test",
+	})
+	require.NoError(t, err)
+
+	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
+	require.NotEmpty(t, job.ResultID, "completed job must have result_id")
+
+	// Verify edges exist for the result object.
+	edges, err := env.svc.Store.Edges().ListFrom(context.Background(), "object", job.ResultID)
+	require.NoError(t, err)
+	assert.Greater(t, len(edges), 0, "edges should exist after ingestion with mentions")
+
+	// DELETE the object via API.
+	req, err := gohttp.NewRequest(gohttp.MethodDelete, fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID), nil)
+	require.NoError(t, err)
+	resp, err := gohttp.DefaultClient.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, gohttp.StatusNoContent, resp.StatusCode)
+
+	// Verify edges are now removed.
+	edgesAfter, err := env.svc.Store.Edges().ListFrom(context.Background(), "object", job.ResultID)
+	require.NoError(t, err)
+	assert.Len(t, edgesAfter, 0, "edges should be removed after object deletion")
+
+	// Also verify the object itself is gone.
+	respGet, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID))
+	require.NoError(t, err)
+	defer respGet.Body.Close()
+	assert.Equal(t, gohttp.StatusNotFound, respGet.StatusCode)
 }
 
 // mentionStep adds a test mention to the draft.

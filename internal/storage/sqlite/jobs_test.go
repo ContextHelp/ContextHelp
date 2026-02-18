@@ -2,10 +2,13 @@ package sqlite
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func makeJob(id string) *storage.Job {
@@ -188,4 +191,37 @@ func TestRecoverStale(t *testing.T) {
 	if got.Status != storage.JobPending {
 		t.Errorf("status: got %q, want pending", got.Status)
 	}
+}
+
+func TestMarshalJSON_Nil(t *testing.T) {
+	result := marshalJSON(nil)
+	assert.Equal(t, "null", result)
+}
+
+func TestMarshalJSON_NestedMap(t *testing.T) {
+	input := map[string]any{"a": map[string]int{"b": 1}}
+	result := marshalJSON(input)
+
+	// Verify valid JSON by unmarshalling.
+	var parsed map[string]any
+	err := json.Unmarshal([]byte(result), &parsed)
+	require.NoError(t, err)
+	assert.Contains(t, parsed, "a")
+}
+
+func TestMarshalJSON_RoundTrip(t *testing.T) {
+	input := map[string]any{
+		"name":  "test",
+		"count": float64(42),
+		"nested": map[string]any{
+			"inner": "value",
+		},
+	}
+
+	marshalled := marshalJSON(input)
+
+	var roundTripped map[string]any
+	err := json.Unmarshal([]byte(marshalled), &roundTripped)
+	require.NoError(t, err)
+	assert.Equal(t, input, roundTripped)
 }

@@ -10,6 +10,8 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestService(t *testing.T) *Service {
@@ -270,4 +272,69 @@ func TestEntityBacklinks(t *testing.T) {
 	if objs[0].ID != "obj-1" {
 		t.Errorf("ID: got %q", objs[0].ID)
 	}
+}
+
+func seedEntities(t *testing.T, ctx context.Context, svc *Service) {
+	t.Helper()
+	now := time.Now().Truncate(time.Second)
+	entities := []*storage.Entity{
+		{Slug: "@ui.layout", Title: "UI Layout", Namespace: "ui", CreatedAt: now, UpdatedAt: now},
+		{Slug: "@ui.color", Title: "UI Color", Namespace: "ui", CreatedAt: now, UpdatedAt: now},
+		{Slug: "@api.auth", Title: "API Auth", Namespace: "api", CreatedAt: now, UpdatedAt: now},
+	}
+	for _, e := range entities {
+		require.NoError(t, svc.Store.Entities().Upsert(ctx, e))
+	}
+}
+
+func TestListEntities(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	seedEntities(t, ctx, svc)
+
+	got, err := svc.ListEntities(ctx, storage.EntityFilter{})
+	require.NoError(t, err)
+	assert.Len(t, got, 3)
+
+	// Results are ordered by slug ASC.
+	slugs := make([]string, len(got))
+	for i, e := range got {
+		slugs[i] = e.Slug
+	}
+	assert.Equal(t, []string{"@api.auth", "@ui.color", "@ui.layout"}, slugs)
+}
+
+func TestListEntitiesFilterByNamespace(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	seedEntities(t, ctx, svc)
+
+	got, err := svc.ListEntities(ctx, storage.EntityFilter{Namespace: "ui"})
+	require.NoError(t, err)
+	assert.Len(t, got, 2)
+
+	for _, e := range got {
+		assert.Equal(t, "ui", e.Namespace)
+	}
+}
+
+func TestListEntitiesWithLimit(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	seedEntities(t, ctx, svc)
+
+	got, err := svc.ListEntities(ctx, storage.EntityFilter{Limit: 1})
+	require.NoError(t, err)
+	assert.Len(t, got, 1)
+	// First entity by slug ASC is @api.auth.
+	assert.Equal(t, "@api.auth", got[0].Slug)
+}
+
+func TestListEntitiesEmpty(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	got, err := svc.ListEntities(ctx, storage.EntityFilter{})
+	require.NoError(t, err)
+	assert.Empty(t, got)
 }

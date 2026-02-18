@@ -1,6 +1,11 @@
 package search
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestLexSimple(t *testing.T) {
 	tokens, err := Lex("type==article")
@@ -130,4 +135,28 @@ func TestLexError(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for standalone ==")
 	}
+}
+
+// --- New edge-case tests below ---
+
+func TestLexWhitespaceOnly(t *testing.T) {
+	tokens, err := Lex("   \t  ")
+	require.NoError(t, err)
+	require.Len(t, tokens, 1)
+	assert.Equal(t, TokenEOF, tokens[0].Type)
+}
+
+func TestLexFieldWithDots(t *testing.T) {
+	tokens, err := Lex("metadata.key==value")
+	require.NoError(t, err)
+
+	// Expect: FIELD("metadata.key"), OP("=="), VALUE("value"), EOF
+	require.Len(t, tokens, 4)
+	assert.Equal(t, TokenField, tokens[0].Type)
+	assert.Equal(t, "metadata.key", tokens[0].Value)
+	assert.Equal(t, TokenOp, tokens[1].Type)
+	assert.Equal(t, "==", tokens[1].Value)
+	assert.Equal(t, TokenValue, tokens[2].Type)
+	assert.Equal(t, "value", tokens[2].Value)
+	assert.Equal(t, TokenEOF, tokens[3].Type)
 }
