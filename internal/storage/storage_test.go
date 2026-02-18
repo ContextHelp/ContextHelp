@@ -18,6 +18,9 @@ func (m *mockDriver) Pipelines() PipelineStore         { return &mockPipelineSto
 func (m *mockDriver) Steps() StepStore                 { return &mockStepStore{} }
 func (m *mockDriver) Registries() RegistryStore        { return &mockRegistryStore{} }
 func (m *mockDriver) Reminders() ReminderStore         { return &mockReminderStore{} }
+func (m *mockDriver) Feeds() FeedStore                 { return &mockFeedStore{} }
+func (m *mockDriver) FeedItems() FeedItemStore         { return &mockFeedItemStore{} }
+func (m *mockDriver) Batches() BatchStore              { return &mockBatchStore{} }
 func (m *mockDriver) Health(ctx context.Context) error { return nil }
 
 type mockObjectStore struct{}
@@ -126,6 +129,28 @@ func (m *mockReminderStore) List(ctx context.Context, activeOnly bool) ([]*Syste
 	return nil, 0, nil
 }
 func (m *mockReminderStore) Dismiss(ctx context.Context, id string) error { return nil }
+
+type mockFeedStore struct{}
+
+func (m *mockFeedStore) Create(ctx context.Context, feed *Feed) error          { return nil }
+func (m *mockFeedStore) Get(ctx context.Context, id string) (*Feed, error)     { return nil, nil }
+func (m *mockFeedStore) GetByURL(ctx context.Context, url string) (*Feed, error) { return nil, nil }
+func (m *mockFeedStore) List(ctx context.Context, filter FeedFilter) ([]*Feed, error) { return nil, nil }
+func (m *mockFeedStore) Update(ctx context.Context, feed *Feed) error          { return nil }
+func (m *mockFeedStore) Delete(ctx context.Context, id string) error           { return nil }
+
+type mockFeedItemStore struct{}
+
+func (m *mockFeedItemStore) Create(ctx context.Context, item *FeedItem) error { return nil }
+func (m *mockFeedItemStore) ExistsByGUID(ctx context.Context, feedID, guid string) (bool, error) {
+	return false, nil
+}
+
+type mockBatchStore struct{}
+
+func (m *mockBatchStore) Create(ctx context.Context, batch *Batch) error        { return nil }
+func (m *mockBatchStore) Get(ctx context.Context, id string) (*Batch, error)    { return nil, nil }
+func (m *mockBatchStore) Update(ctx context.Context, batch *Batch) error        { return nil }
 
 func TestStorageDriverInterfaceSatisfaction(t *testing.T) {
 	var d StorageDriver = &mockDriver{}

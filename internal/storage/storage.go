@@ -14,6 +14,9 @@ type StorageDriver interface {
 	Steps() StepStore
 	Registries() RegistryStore
 	Reminders() ReminderStore
+	Feeds() FeedStore
+	FeedItems() FeedItemStore
+	Batches() BatchStore
 	Health(ctx context.Context) error
 }
 
@@ -90,4 +93,27 @@ type ReminderStore interface {
 	Get(ctx context.Context, id string) (*SystemReminder, error)
 	List(ctx context.Context, activeOnly bool) ([]*SystemReminder, int, error)
 	Dismiss(ctx context.Context, id string) error
+}
+
+// FeedStore persists and retrieves feed subscriptions.
+type FeedStore interface {
+	Create(ctx context.Context, feed *Feed) error
+	Get(ctx context.Context, id string) (*Feed, error)
+	GetByURL(ctx context.Context, url string) (*Feed, error)
+	List(ctx context.Context, filter FeedFilter) ([]*Feed, error)
+	Update(ctx context.Context, feed *Feed) error
+	Delete(ctx context.Context, id string) error
+}
+
+// FeedItemStore persists and retrieves feed items.
+type FeedItemStore interface {
+	Create(ctx context.Context, item *FeedItem) error
+	ExistsByGUID(ctx context.Context, feedID, guid string) (bool, error)
+}
+
+// BatchStore persists and retrieves batch import operations.
+type BatchStore interface {
+	Create(ctx context.Context, batch *Batch) error
+	Get(ctx context.Context, id string) (*Batch, error)
+	Update(ctx context.Context, batch *Batch) error
 }

@@ -248,3 +248,74 @@ type PipelineFilter struct {
 	IncludeArchived bool
 	OnlyArchived    bool
 }
+
+// Feed represents an RSS/Atom/JSON Feed subscription.
+type Feed struct {
+	ID           string     `json:"id"`
+	URL          string     `json:"url"`
+	Title        string     `json:"title"`
+	Description  string     `json:"description"`
+	SiteURL      string     `json:"site_url"`
+	Format       string     `json:"format"`         // rss2.0, atom1.0, json1.1
+	Status       string     `json:"status"`          // active, paused, error, suspended, gone
+	SyncInterval string     `json:"sync_interval"`
+	ETag         string     `json:"etag"`
+	LastModified string     `json:"last_modified"`
+	LastSync     *time.Time `json:"last_sync,omitempty"`
+	ErrorCount   int        `json:"error_count"`
+	LastError    string     `json:"last_error"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+// FeedItem tracks an ingested item from a feed.
+type FeedItem struct {
+	ID         string    `json:"id"`
+	FeedID     string    `json:"feed_id"`
+	GUID       string    `json:"guid"`
+	Link       string    `json:"link"`
+	ObjectID   string    `json:"object_id"`
+	IngestedAt time.Time `json:"ingested_at"`
+}
+
+// FeedFilter specifies criteria for listing feeds.
+type FeedFilter struct {
+	Status string
+	Limit  int
+	Offset int
+}
+
+// Batch represents a batch import operation.
+type Batch struct {
+	ID           string       `json:"id"`
+	Format       string       `json:"format"`
+	TotalRecords int          `json:"total_records"`
+	Completed    int          `json:"completed"`
+	Failed       int          `json:"failed"`
+	Status       string       `json:"status"` // processing, completed, partial, dry_run_complete
+	Errors       []BatchError `json:"errors,omitempty"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+}
+
+// BatchError records a per-line error in batch import.
+type BatchError struct {
+	Line  int    `json:"line"`
+	Error string `json:"error"`
+}
+
+// BatchFilter specifies criteria for listing batches.
+type BatchFilter struct {
+	Status string
+	Limit  int
+	Offset int
+}
+
+// ImportRecord represents a single record in a batch import file.
+type ImportRecord struct {
+	Content  string         `json:"content"`
+	Type     string         `json:"type,omitempty"`
+	Tags     []string       `json:"tags,omitempty"`
+	Source   string         `json:"source,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
