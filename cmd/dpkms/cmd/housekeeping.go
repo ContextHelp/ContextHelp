@@ -1,11 +1,42 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+func openDB() (*sqlite.Driver, func(), error) {
+	storageType := cfg.Storage.Type
+	if storageType == "" {
+		storageType = "sqlite"
+	}
+	if storageType != "sqlite" {
+		return nil, nil, fmt.Errorf("housekeeping only supports sqlite storage (got %s)", storageType)
+	}
+	storagePath := cfg.Storage.Path
+	if storagePath == "" {
+		return nil, nil, fmt.Errorf("storage path not configured")
+	}
+
+	driver, err := sqlite.New(storagePath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open database: %w", err)
+	}
+	ctx := context.Background()
+	if err := driver.Init(ctx); err != nil {
+		driver.Close(ctx)
+		return nil, nil, fmt.Errorf("init database: %w", err)
+	}
+	cleanup := func() { driver.Close(context.Background()) }
+	return driver, cleanup, nil
+}
 
 var housekeepingCmd = &cobra.Command{
 	Use:   "housekeeping",
@@ -76,75 +107,104 @@ func init() {
 }
 
 func runVacuum(cmd *cobra.Command, args []string) error {
-	// TODO: Implement actual vacuum logic
-	fmt.Println("Running VACUUM on database...")
-	fmt.Println()
-	fmt.Println("Database file:     ", cfg.Storage.Path)
-	fmt.Println("Size before:       ", "125.4 MB")
-	fmt.Println()
-	fmt.Println("Vacuuming...")
-	fmt.Println()
-	fmt.Println("Size after:        ", "98.2 MB")
-	fmt.Println("Space reclaimed:   ", "27.2 MB (21.7%)")
-	fmt.Println()
-	fmt.Println("✓ Vacuum completed successfully")
+	driver, cleanup, err := openDB()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
+	fmt.Println("Running VACUUM on database...")
+	fmt.Printf("Database: %s\n\n", cfg.Storage.Path)
+
+	if _, err := driver.DB().ExecContext(context.Background(), "VACUUM"); err != nil {
+		return fmt.Errorf("vacuum: %w", err)
+	}
+
+	fmt.Println("Vacuum completed")
 	return nil
 }
 
 func runReindex(cmd *cobra.Command, args []string) error {
-	// TODO: Implement actual reindex logic
-	fmt.Println("Rebuilding search indexes...")
-	fmt.Println()
-	fmt.Println("Database file:     ", cfg.Storage.Path)
-	fmt.Println()
-	fmt.Println("Reindexing FTS...")
-	fmt.Println("  Indexed 1,234 objects")
-	fmt.Println()
-	fmt.Println("Reindexing vectors...")
-	fmt.Println("  Indexed 1,234 embeddings")
-	fmt.Println()
-	fmt.Println("Reindexing graph...")
-	fmt.Println("  Indexed 567 entities")
-	fmt.Println("  Indexed 3,456 edges")
-	fmt.Println()
-	fmt.Println("✓ Reindexing completed successfully")
+	driver, cleanup, err := openDB()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
+	fmt.Println("Rebuilding search indexes...")
+	fmt.Printf("Database: %s\n\n", cfg.Storage.Path)
+
+	ctx := context.Background()
+	db := driver.DB()
+
+	if _, err := db.ExecContext(ctx, "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')"); err != nil {
+		fmt.Fprintf(os.Stderr, "  warning: FTS rebuild: %v\n", err)
+	} else {
+		fmt.Println("  FTS indexes rebuilt")
+	}
+
+	if _, err := db.ExecContext(ctx, "PRAGMA optimize"); err != nil {
+		fmt.Fprintf(os.Stderr, "  warning: optimize: %v\n", err)
+	}
+
+	fmt.Println("\nReindexing completed")
 	return nil
 }
 
 func runCompact(cmd *cobra.Command, args []string) error {
-	// TODO: Implement actual compact logic
-	fmt.Println("Compacting database...")
-	fmt.Println()
-	fmt.Println("Database file:     ", cfg.Storage.Path)
-	fmt.Println("Size before:       ", "125.4 MB")
-	fmt.Println()
-	fmt.Println("Analyzing...")
-	fmt.Println("Defragmenting...")
-	fmt.Println("Optimizing indexes...")
-	fmt.Println()
-	fmt.Println("Size after:        ", "110.8 MB")
-	fmt.Println("Reduction:         ", "14.6 MB (11.6%)")
-	fmt.Println()
-	fmt.Println("✓ Compaction completed successfully")
+	driver, cleanup, err := openDB()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
+	fmt.Println("Compacting database...")
+	fmt.Printf("Database: %s\n\n", cfg.Storage.Path)
+
+	ctx := context.Background()
+	db := driver.DB()
+
+	if _, err := db.ExecContext(ctx, "PRAGMA optimize"); err != nil {
+		return fmt.Errorf("optimize: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, "VACUUM"); err != nil {
+		return fmt.Errorf("vacuum: %w", err)
+	}
+
+	fmt.Println("Compaction completed")
 	return nil
 }
 
 func runPrune(cmd *cobra.Command, args []string) error {
 	before := viper.GetString("housekeeping.before")
+	beforeTime, err := time.Parse("2006-01-02", before)
+	if err != nil {
+		return fmt.Errorf("invalid date format (expected YYYY-MM-DD): %w", err)
+	}
 
-	// TODO: Implement actual prune logic
-	fmt.Printf("Pruning data before: %s\n", before)
-	fmt.Println()
-	fmt.Println("Scanning database...")
-	fmt.Println()
-	fmt.Println("Found:")
-	fmt.Println("  234 knowledge objects")
-	fmt.Println("  567 job records")
-	fmt.Println("  89 revisions")
-	fmt.Println()
+	driver, cleanup, err := openDB()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+
+	filter := storage.ObjectFilter{
+		Before: &beforeTime,
+		Limit:  10000,
+	}
+	objects, total, err := driver.Objects().List(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("list objects: %w", err)
+	}
+
+	if total == 0 {
+		fmt.Printf("No objects found before %s.\n", before)
+		return nil
+	}
+
+	fmt.Printf("Found %d objects before %s.\n", total, before)
 	fmt.Print("Proceed with deletion? (y/N): ")
 	var response string
 	fmt.Scanln(&response)
@@ -152,13 +212,15 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		fmt.Println("Pruning cancelled.")
 		return nil
 	}
-	fmt.Println()
-	fmt.Println("Deleting old data...")
-	fmt.Println()
-	fmt.Println("✓ Pruning completed successfully")
-	fmt.Println("  Deleted 234 knowledge objects")
-	fmt.Println("  Deleted 567 job records")
-	fmt.Println("  Deleted 89 revisions")
 
+	deleted := 0
+	for _, obj := range objects {
+		if err := driver.Objects().Delete(ctx, obj.ID); err != nil {
+			fmt.Fprintf(os.Stderr, "  warning: delete %s: %v\n", obj.ID, err)
+			continue
+		}
+		deleted++
+	}
+	fmt.Printf("\nPruned %d objects\n", deleted)
 	return nil
 }

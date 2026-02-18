@@ -1,20 +1,44 @@
 package cmd
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 func TestOpen(t *testing.T) {
-	out, err := executeCommand("open", "obj_12345678")
+	db := setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	obj := &storage.KnowledgeObject{
+		ID:        "obj_12345678",
+		Type:      "url",
+		Subtype:   "article",
+		Pipeline:  "url.article",
+		Source:    "https://example.com/ux-signup",
+		Tags:      []storage.Tag{{Label: "ux"}, {Label: "onboarding"}},
+		Mentions:  []string{"@ui.best-practice", "@ux.onboarding"},
+		Summaries: []string{"Best UX practices for signup flows"},
+		Decisions: []storage.Decision{{Title: "Use progressive disclosure", Status: "accepted", Impact: "high"}},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := db.Driver.Objects().Create(ctx, obj); err != nil {
+		t.Fatalf("seed object: %v", err)
+	}
+
+	out, err := db.exec("open", "obj_12345678")
 	if err != nil {
 		t.Fatalf("open should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Knowledge Object: obj_12345678") {
 		t.Error("output should show object ID")
 	}
-	if !strings.Contains(out, "Title:") {
-		t.Error("output should contain Title field")
+	if !strings.Contains(out, "Type:") {
+		t.Error("output should contain Type field")
 	}
 	if !strings.Contains(out, "Tags:") {
 		t.Error("output should contain Tags field")

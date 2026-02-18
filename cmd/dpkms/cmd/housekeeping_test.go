@@ -1,58 +1,58 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHousekeepingVacuum(t *testing.T) {
-	out, err := executeCommand("housekeeping", "vacuum")
+	db := setupTestDB(t)
+
+	out, err := db.run("housekeeping", "vacuum")
 	if err != nil {
 		t.Fatalf("housekeeping vacuum should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Running VACUUM on database") {
 		t.Error("output should describe vacuum operation")
 	}
-	if !strings.Contains(out, "Vacuum completed successfully") {
+	if !strings.Contains(out, "Vacuum completed") {
 		t.Error("output should confirm success")
 	}
 }
 
 func TestHousekeepingReindex(t *testing.T) {
-	out, err := executeCommand("housekeeping", "reindex")
+	db := setupTestDB(t)
+
+	out, err := db.run("housekeeping", "reindex")
 	if err != nil {
 		t.Fatalf("housekeeping reindex should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Rebuilding search indexes") {
 		t.Error("output should describe reindex operation")
 	}
-	if !strings.Contains(out, "Reindexing FTS") {
-		t.Error("output should mention FTS reindexing")
-	}
-	if !strings.Contains(out, "Reindexing vectors") {
-		t.Error("output should mention vector reindexing")
-	}
-	if !strings.Contains(out, "Reindexing graph") {
-		t.Error("output should mention graph reindexing")
-	}
-	if !strings.Contains(out, "Reindexing completed successfully") {
+	if !strings.Contains(out, "Reindexing completed") {
 		t.Error("output should confirm success")
 	}
 }
 
 func TestHousekeepingCompact(t *testing.T) {
-	out, err := executeCommand("housekeeping", "compact")
+	db := setupTestDB(t)
+
+	out, err := db.run("housekeeping", "compact")
 	if err != nil {
 		t.Fatalf("housekeeping compact should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Compacting database") {
 		t.Error("output should describe compact operation")
 	}
-	if !strings.Contains(out, "Compaction completed successfully") {
+	if !strings.Contains(out, "Compaction completed") {
 		t.Error("output should confirm success")
 	}
 }
@@ -64,8 +64,31 @@ func TestHousekeepingPruneMissingBeforeError(t *testing.T) {
 	}
 }
 
-func TestHousekeepingPruneWithBeforeFlag(t *testing.T) {
-	// Pipe "n" to stdin so fmt.Scanln doesn't hang
+func TestHousekeepingPruneNoObjects(t *testing.T) {
+	db := setupTestDB(t)
+
+	out, err := db.run("housekeeping", "prune", "--before", "2024-01-01")
+	require.NoError(t, err, "prune with no matching objects should succeed")
+	assert.Contains(t, out, "No objects found before 2024-01-01")
+}
+
+func TestHousekeepingPruneWithConfirmNo(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	// Seed an old object
+	obj := &storage.KnowledgeObject{
+		ID:        "obj_old_1",
+		Type:      "text",
+		CreatedAt: time.Date(2023, 6, 1, 0, 0, 0, 0, time.UTC),
+		UpdatedAt: now,
+	}
+	if err := db.Driver.Objects().Create(ctx, obj); err != nil {
+		t.Fatalf("seed object: %v", err)
+	}
+
+	// Pipe "n" to stdin
 	oldStdin := os.Stdin
 	r, w, _ := os.Pipe()
 	_, err := w.WriteString("n\n")
@@ -74,16 +97,28 @@ func TestHousekeepingPruneWithBeforeFlag(t *testing.T) {
 	os.Stdin = r
 	defer func() { os.Stdin = oldStdin }()
 
-	out, err := executeCommand("housekeeping", "prune", "--before", "2024-01-01")
-	require.NoError(t, err, "prune with --before should succeed")
-	assert.Contains(t, out, "2024-01-01", "output should contain the date")
-	assert.Contains(t, out, "Scanning database", "output should show scanning step")
-	assert.Contains(t, out, "Proceed with deletion", "output should prompt for confirmation")
-	assert.Contains(t, out, "Pruning cancelled", "output should confirm cancellation")
+	out, err := db.run("housekeeping", "prune", "--before", "2024-01-01")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Found 1 objects before 2024-01-01")
+	assert.Contains(t, out, "Pruning cancelled")
 }
 
-func TestHousekeepingPruneConfirmYes(t *testing.T) {
-	// Pipe "y" to stdin to confirm deletion
+func TestHousekeepingPruneWithConfirmYes(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	obj := &storage.KnowledgeObject{
+		ID:        "obj_old_2",
+		Type:      "text",
+		CreatedAt: time.Date(2023, 6, 1, 0, 0, 0, 0, time.UTC),
+		UpdatedAt: now,
+	}
+	if err := db.Driver.Objects().Create(ctx, obj); err != nil {
+		t.Fatalf("seed object: %v", err)
+	}
+
+	// Pipe "y" to stdin
 	oldStdin := os.Stdin
 	r, w, _ := os.Pipe()
 	_, err := w.WriteString("y\n")
@@ -92,11 +127,9 @@ func TestHousekeepingPruneConfirmYes(t *testing.T) {
 	os.Stdin = r
 	defer func() { os.Stdin = oldStdin }()
 
-	out, err := executeCommand("housekeeping", "prune", "--before", "2024-01-01")
-	require.NoError(t, err, "prune with --before and confirmation should succeed")
-	assert.Contains(t, out, "2024-01-01", "output should contain the date")
-	assert.Contains(t, out, "Pruning completed successfully", "output should confirm completion")
-	assert.Contains(t, out, "Deleted", "output should report deleted items")
+	out, err := db.run("housekeeping", "prune", "--before", "2024-01-01")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Pruned 1 objects")
 }
 
 func TestHousekeepingHelp(t *testing.T) {

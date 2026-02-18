@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -77,14 +79,37 @@ func init() {
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
-	// TODO: Implement actual registry list logic
-	fmt.Println("Registries:")
-	fmt.Println()
-	fmt.Println("Name         | URL                                  | Status")
-	fmt.Println("-------------|--------------------------------------|--------")
-	fmt.Println("uxpatterns   | https://uxpatterns.example.com       | Active")
-	fmt.Println("devtools     | https://devtools.registry.io         | Active")
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
+	ctx := context.Background()
+	registries, total, err := svc.ListRegistries(ctx)
+	if err != nil {
+		return fmt.Errorf("list registries: %w", err)
+	}
+
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, map[string]any{"registries": registries, "total": total})
+	}
+
+	fmt.Printf("Registries (%d)\n\n", total)
+	if total == 0 {
+		fmt.Println("  No registries configured.")
+		fmt.Println("  Add one with: ctxt registry add <name> <url>")
+		return nil
+	}
+	headers := []string{"URL", "Last Fetched"}
+	var rows [][]string
+	for _, r := range registries {
+		rows = append(rows, []string{
+			r.RegistryURL,
+			r.LastFetched.Format("2006-01-02 15:04"),
+		})
+	}
+	printTable(os.Stdout, headers, rows)
 	return nil
 }
 
@@ -92,62 +117,101 @@ func runRegistryAdd(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	url := args[1]
 
-	// TODO: Implement actual registry add logic
-	fmt.Printf("Adding registry: %s\n", name)
-	fmt.Printf("URL: %s\n", url)
-	fmt.Println()
-	fmt.Println("Fetching registry metadata...")
-	fmt.Println("✓ Registry added successfully")
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
+	ctx := context.Background()
+	fmt.Printf("Adding registry %s (%s)...\n", name, url)
+	if err := svc.FetchRegistry(ctx, url); err != nil {
+		return fmt.Errorf("fetch registry: %w", err)
+	}
+	fmt.Println("Registry added and metadata cached")
 	return nil
 }
 
 func runRegistryRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	_ = name
 
-	// TODO: Implement actual registry remove logic
-	fmt.Printf("Removing registry: %s\n", name)
-	fmt.Println("✓ Registry removed successfully")
-
+	fmt.Println("Registry removal not yet implemented.")
+	fmt.Println("Remove registry configuration manually:")
+	fmt.Println("  ctxt config edit")
 	return nil
 }
 
 func runRegistryInfo(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	// TODO: Implement actual registry info logic
-	fmt.Printf("Registry: %s\n\n", name)
-	fmt.Println("URL:         https://uxpatterns.example.com")
-	fmt.Println("Type:        Multi-purpose")
-	fmt.Println("Version:     0.2.1")
-	fmt.Println("Last Sync:   2025-01-26 08:00:00")
-	fmt.Println()
-	fmt.Println("Capabilities:")
-	fmt.Println("  - Tags and taxonomy")
-	fmt.Println("  - Entity resolution")
-	fmt.Println("  - Federated search")
-	fmt.Println("  - Knowledge objects")
-	fmt.Println()
-	fmt.Println("Statistics:")
-	fmt.Println("  Entities:  1,234")
-	fmt.Println("  Tags:      567")
-	fmt.Println("  Objects:   8,901")
+	var registryURL string
+	for _, r := range cfg.Registries {
+		if r.Name == name {
+			registryURL = r.URL
+			break
+		}
+	}
+	if registryURL == "" {
+		return fmt.Errorf("registry %q not found in config", name)
+	}
 
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+	cache, err := svc.Store.Registries().GetCachedManifest(ctx, registryURL)
+	if err != nil {
+		return fmt.Errorf("get registry cache: %w", err)
+	}
+
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, cache)
+	}
+
+	fmt.Printf("Registry: %s\n\n", name)
+	fmt.Printf("URL:          %s\n", cache.RegistryURL)
+	fmt.Printf("Last Fetched: %s\n", cache.LastFetched.Format("2006-01-02 15:04:05"))
+	if cache.ETag != "" {
+		fmt.Printf("ETag:         %s\n", cache.ETag)
+	}
+	if cache.Manifest != nil {
+		fmt.Printf("Name:         %s\n", cache.Manifest.Name)
+		fmt.Printf("Version:      %s\n", cache.Manifest.Version)
+		fmt.Printf("Description:  %s\n", cache.Manifest.Description)
+		fmt.Printf("Steps:        %d\n", len(cache.Manifest.Steps))
+	}
 	return nil
 }
 
 func runRegistrySync(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	// TODO: Implement actual registry sync logic
-	fmt.Printf("Syncing registry: %s\n", name)
-	fmt.Println()
-	fmt.Println("Fetching metadata...")
-	fmt.Println("Updating entities...")
-	fmt.Println("Updating tags...")
-	fmt.Println()
-	fmt.Println("✓ Registry synced successfully")
-	fmt.Println("  Updated: 45 entities, 12 tags")
+	var registryURL string
+	for _, r := range cfg.Registries {
+		if r.Name == name {
+			registryURL = r.URL
+			break
+		}
+	}
+	if registryURL == "" {
+		return fmt.Errorf("registry %q not found in config", name)
+	}
 
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+	fmt.Printf("Syncing registry %s...\n", name)
+	if err := svc.UpdateRegistry(ctx, registryURL); err != nil {
+		return fmt.Errorf("sync registry: %w", err)
+	}
+	fmt.Println("Registry synced")
 	return nil
 }

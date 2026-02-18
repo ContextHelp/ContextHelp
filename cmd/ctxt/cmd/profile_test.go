@@ -13,14 +13,8 @@ func TestProfileList(t *testing.T) {
 	if !strings.Contains(out, "Focus Profiles:") {
 		t.Error("output should contain 'Focus Profiles:'")
 	}
-	if !strings.Contains(out, "founder") {
-		t.Error("output should list founder profile")
-	}
-	if !strings.Contains(out, "engineer") {
-		t.Error("output should list engineer profile")
-	}
-	if !strings.Contains(out, "research") {
-		t.Error("output should list research profile")
+	if !strings.Contains(out, "Default profile:") {
+		t.Error("output should show default profile info")
 	}
 }
 
@@ -31,12 +25,6 @@ func TestProfileShow(t *testing.T) {
 	}
 	if !strings.Contains(out, "Profile: founder") {
 		t.Error("output should show profile name")
-	}
-	if !strings.Contains(out, "Boost Tags:") {
-		t.Error("output should contain Boost Tags section")
-	}
-	if !strings.Contains(out, "Boost Entities:") {
-		t.Error("output should contain Boost Entities section")
 	}
 }
 
@@ -55,9 +43,6 @@ func TestProfileCreate(t *testing.T) {
 	if !strings.Contains(out, "Creating profile: myproject") {
 		t.Error("output should confirm profile creation")
 	}
-	if !strings.Contains(out, "created successfully") {
-		t.Error("output should confirm success")
-	}
 }
 
 func TestProfileCreateNoNameError(t *testing.T) {
@@ -75,9 +60,6 @@ func TestProfileDelete(t *testing.T) {
 	if !strings.Contains(out, "Deleting profile: old-project") {
 		t.Error("output should confirm profile deletion")
 	}
-	if !strings.Contains(out, "deleted successfully") {
-		t.Error("output should confirm success")
-	}
 }
 
 func TestProfileSetDefault(t *testing.T) {
@@ -87,9 +69,6 @@ func TestProfileSetDefault(t *testing.T) {
 	}
 	if !strings.Contains(out, "Setting default profile to: founder") {
 		t.Error("output should confirm default profile change")
-	}
-	if !strings.Contains(out, "Default profile updated") {
-		t.Error("output should confirm success")
 	}
 }
 

@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -38,20 +41,39 @@ func init() {
 }
 
 func runFind(cmd *cobra.Command, args []string) error {
-	query := args[0]
+	query := strings.Join(args, " ")
+	limit := viper.GetInt("find.limit")
 
-	// TODO: Implement actual find logic
-	fmt.Printf("Searching for: %s\n", query)
-	fmt.Printf("Profile: %s\n", viper.GetString("profile.default"))
-	fmt.Printf("Limit: %d\n\n", viper.GetInt("find.limit"))
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
-	fmt.Println("Search Results:")
-	fmt.Println()
-	fmt.Println("Score | Title                                    | Type")
-	fmt.Println("------|------------------------------------------|---------")
-	fmt.Println("0.95  | Authentication patterns and best...      | url")
-	fmt.Println("0.87  | Implementing secure login flows          | text")
-	fmt.Println("0.82  | JWT vs Session-based auth comparison     | url")
+	ctx := context.Background()
+	objects, err := svc.FindByText(ctx, query, limit)
+	if err != nil {
+		return fmt.Errorf("find: %w", err)
+	}
 
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, map[string]any{
+			"objects": objects,
+			"total":   len(objects),
+			"query":   query,
+		})
+	}
+
+	fmt.Printf("Search: %q (%d results)\n\n", query, len(objects))
+	headers := []string{"ID", "Type", "Created"}
+	var rows [][]string
+	for _, obj := range objects {
+		rows = append(rows, []string{
+			obj.ID,
+			obj.Type,
+			obj.CreatedAt.Format("2006-01-02 15:04"),
+		})
+	}
+	printTable(os.Stdout, headers, rows)
 	return nil
 }

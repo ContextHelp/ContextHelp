@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -76,24 +79,59 @@ func init() {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	// TODO: Implement actual list logic
-	fmt.Println("Knowledge Objects:")
-	fmt.Println()
-	fmt.Printf("Filters: type=%s, tag=%s, mention=%s\n",
-		viper.GetString("list.type"),
-		viper.GetString("list.tag"),
-		viper.GetString("list.mention"))
-	fmt.Printf("Sort: %s %s, Limit: %d, Offset: %d\n\n",
-		viper.GetString("list.sort"),
-		viper.GetString("list.dir"),
-		viper.GetInt("list.limit"),
-		viper.GetInt("list.start"))
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
-	fmt.Println("ID        | Type | Title                           | Created")
-	fmt.Println("----------|------|----------------------------------|--------------------")
-	fmt.Println("obj_001   | url  | Best UX practices for signup    | 2025-01-26 09:00:00")
-	fmt.Println("obj_002   | text | Fix onboarding flow issues      | 2025-01-26 09:30:00")
-	fmt.Println("obj_003   | img  | Landing page screenshot         | 2025-01-26 10:00:00")
+	ctx := context.Background()
 
+	// If RSQL query is provided, use search engine
+	if q := viper.GetString("list.q"); q != "" {
+		limit := viper.GetInt("list.limit")
+		offset := viper.GetInt("list.start")
+		objects, total, err := svc.SearchObjects(ctx, q, limit, offset)
+		if err != nil {
+			return fmt.Errorf("search: %w", err)
+		}
+		return printObjectResults(objects, total)
+	}
+
+	filter := buildObjectFilter()
+	objects, total, err := svc.ListObjects(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("list objects: %w", err)
+	}
+	return printObjectResults(objects, total)
+}
+
+func printObjectResults(objects []*storage.KnowledgeObject, total int) error {
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, map[string]any{
+			"objects": objects,
+			"total":   total,
+		})
+	}
+
+	fmt.Printf("Knowledge Objects (%d total)\n\n", total)
+	headers := []string{"ID", "Type", "Title", "Created"}
+	var rows [][]string
+	for _, obj := range objects {
+		title := obj.ID
+		if len(obj.Summaries) > 0 {
+			title = obj.Summaries[0]
+			if len(title) > 40 {
+				title = title[:37] + "..."
+			}
+		}
+		rows = append(rows, []string{
+			obj.ID,
+			obj.Type,
+			title,
+			obj.CreatedAt.Format("2006-01-02 15:04"),
+		})
+	}
+	printTable(os.Stdout, headers, rows)
 	return nil
 }

@@ -1,46 +1,79 @@
 package cmd
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 func TestList(t *testing.T) {
-	out, err := executeCommand("list")
+	db := setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	for _, id := range []string{"obj_001", "obj_002", "obj_003"} {
+		obj := &storage.KnowledgeObject{
+			ID:        id,
+			Type:      "text",
+			Summaries: []string{"Summary for " + id},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		if err := db.Driver.Objects().Create(ctx, obj); err != nil {
+			t.Fatalf("seed object: %v", err)
+		}
+	}
+
+	out, err := db.exec("list")
 	if err != nil {
 		t.Fatalf("list should succeed: %v", err)
 	}
-	if !strings.Contains(out, "Knowledge Objects:") {
-		t.Error("output should contain 'Knowledge Objects:'")
+	if !strings.Contains(out, "Knowledge Objects") {
+		t.Error("output should contain 'Knowledge Objects'")
 	}
 	if !strings.Contains(out, "obj_001") {
-		t.Error("output should contain sample object IDs")
+		t.Error("output should contain object IDs")
 	}
 }
 
 func TestListWithFilters(t *testing.T) {
-	out, err := executeCommand("list", "--type", "url", "--tag", "ux", "--mention", "@ui.best-practice")
+	db := setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	obj := &storage.KnowledgeObject{
+		ID:        "obj_url_1",
+		Type:      "url",
+		Tags:      []storage.Tag{{Label: "ux"}},
+		Mentions:  []string{"@ui.best-practice"},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := db.Driver.Objects().Create(ctx, obj); err != nil {
+		t.Fatalf("seed object: %v", err)
+	}
+
+	out, err := db.exec("list", "--type", "url")
 	if err != nil {
 		t.Fatalf("list with filters should succeed: %v", err)
 	}
-	if !strings.Contains(out, "type=url") {
-		t.Error("output should reflect type filter")
-	}
-	if !strings.Contains(out, "tag=ux") {
-		t.Error("output should reflect tag filter")
+	if !strings.Contains(out, "obj_url_1") {
+		t.Error("output should contain filtered object")
 	}
 }
 
 func TestListWithDisplayFlags(t *testing.T) {
-	out, err := executeCommand("list", "--limit", "10", "--sort", "match", "--dir", "asc")
+	db := setupTestDB(t)
+
+	out, err := db.exec("list", "--limit", "10", "--sort", "recent", "--dir", "asc")
 	if err != nil {
 		t.Fatalf("list with display flags should succeed: %v", err)
 	}
-	if !strings.Contains(out, "match") {
-		t.Error("output should reflect sort setting")
-	}
-	if !strings.Contains(out, "asc") {
-		t.Error("output should reflect dir setting")
+	if !strings.Contains(out, "Knowledge Objects") {
+		t.Error("output should contain header")
 	}
 }
 

@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -40,25 +43,59 @@ func init() {
 func runOpen(cmd *cobra.Command, args []string) error {
 	objectID := args[0]
 
-	// TODO: Implement actual open logic
-	fmt.Printf("Knowledge Object: %s\n\n", objectID)
-	fmt.Println("Title:    Best UX practices for signup flows")
-	fmt.Println("Type:     url")
-	fmt.Println("Pipeline: url.article")
-	fmt.Println("Created:  2025-01-26 09:00:00")
-	fmt.Println("Source:   https://example.com/ux-signup")
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+	obj, err := svc.GetObject(ctx, objectID)
+	if err != nil {
+		return fmt.Errorf("get object: %w", err)
+	}
+
+	if isJSONOutput() || viper.GetBool("open.raw") {
+		return outputJSON(os.Stdout, obj)
+	}
+
+	fmt.Printf("Knowledge Object: %s\n\n", obj.ID)
+	fmt.Printf("Type:      %s\n", obj.Type)
+	if obj.Subtype != "" {
+		fmt.Printf("Subtype:   %s\n", obj.Subtype)
+	}
+	fmt.Printf("Pipeline:  %s\n", obj.Pipeline)
+	fmt.Printf("Created:   %s\n", obj.CreatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Printf("Updated:   %s\n", obj.UpdatedAt.Format("2006-01-02 15:04:05"))
+	if obj.Source != "" {
+		fmt.Printf("Source:    %s\n", obj.Source)
+	}
 	fmt.Println()
-	fmt.Println("Tags:     ux, onboarding, best-practice")
-	fmt.Println("Mentions: @ui.best-practice, @ux.onboarding")
+
+	if len(obj.Tags) > 0 {
+		var labels []string
+		for _, t := range obj.Tags {
+			labels = append(labels, t.Label)
+		}
+		fmt.Printf("Tags:      %s\n", strings.Join(labels, ", "))
+	}
+	if len(obj.Mentions) > 0 {
+		fmt.Printf("Mentions:  %s\n", strings.Join(obj.Mentions, ", "))
+	}
 	fmt.Println()
-	fmt.Println("Summary:")
-	fmt.Println("  This article discusses proven patterns for creating effective")
-	fmt.Println("  signup flows that balance user experience with security requirements.")
-	fmt.Println()
-	fmt.Println("Decisions:")
-	fmt.Println("  - Use progressive disclosure for optional fields")
-	fmt.Println("  - Implement passwordless authentication options")
-	fmt.Println("  - Provide clear error messages and validation feedback")
+
+	if len(obj.Summaries) > 0 {
+		fmt.Println("Summary:")
+		fmt.Printf("  %s\n", obj.Summaries[0])
+		fmt.Println()
+	}
+
+	if len(obj.Decisions) > 0 {
+		fmt.Println("Decisions:")
+		for _, d := range obj.Decisions {
+			fmt.Printf("  - %s [%s, %s]\n", d.Title, d.Status, d.Impact)
+		}
+	}
 
 	return nil
 }

@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -77,67 +79,71 @@ func init() {
 }
 
 func runProfileList(cmd *cobra.Command, args []string) error {
-	// TODO: Implement actual profile list logic
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, map[string]any{
+			"default": cfg.Profile.Default,
+		})
+	}
+
 	fmt.Println("Focus Profiles:")
 	fmt.Println()
-	fmt.Println("Name       | Default | Description")
-	fmt.Println("-----------|---------|---------------------------------------------")
-	fmt.Println("founder    | *       | Strategic and business-focused lens")
-	fmt.Println("engineer   |         | Technical and implementation-focused lens")
-	fmt.Println("research   |         | Deep analysis and learning-focused lens")
-
+	defaultProfile := cfg.Profile.Default
+	if defaultProfile == "" {
+		defaultProfile = "(none)"
+	}
+	fmt.Printf("  Default profile: %s\n", defaultProfile)
+	fmt.Println()
+	fmt.Println("  Configure profiles in your config file:")
+	fmt.Printf("  %s\n", config.GetConfigPath())
 	return nil
 }
 
 func runProfileShow(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	// TODO: Implement actual profile show logic
-	fmt.Printf("Profile: %s\n\n", name)
-	fmt.Println("Description: Strategic and business-focused lens")
-	fmt.Println()
-	fmt.Println("Boost Tags:")
-	fmt.Println("  - growth: 1.5")
-	fmt.Println("  - metrics: 1.3")
-	fmt.Println("  - strategy: 1.4")
-	fmt.Println()
-	fmt.Println("Boost Entities:")
-	fmt.Println("  - @business.model: 1.3")
-	fmt.Println("  - @growth.strategy: 1.5")
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, map[string]any{
+			"name":       name,
+			"is_default": cfg.Profile.Default == name,
+		})
+	}
 
+	fmt.Printf("Profile: %s\n\n", name)
+	if cfg.Profile.Default == name {
+		fmt.Println("  (default profile)")
+	}
+	fmt.Println()
+	fmt.Println("  Profile details are stored in config file.")
+	fmt.Println("  Edit: ctxt config edit")
 	return nil
 }
 
 func runProfileCreate(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	configPath, _ := cmd.Flags().GetString("config")
-
-	// TODO: Implement actual profile create logic
 	fmt.Printf("Creating profile: %s\n", name)
-	if configPath != "" {
-		fmt.Printf("Using config from: %s\n", configPath)
-	}
-	fmt.Println("Profile created successfully.")
-
+	fmt.Println()
+	fmt.Println("Profile storage not yet implemented.")
+	fmt.Println("Add profile configuration manually:")
+	fmt.Println("  ctxt config edit")
 	return nil
 }
 
 func runProfileDelete(cmd *cobra.Command, args []string) error {
 	name := args[0]
-
-	// TODO: Implement actual profile delete logic
 	fmt.Printf("Deleting profile: %s\n", name)
-	fmt.Println("Profile deleted successfully.")
-
+	fmt.Println()
+	fmt.Println("Profile storage not yet implemented.")
+	fmt.Println("Remove profile configuration manually:")
+	fmt.Println("  ctxt config edit")
 	return nil
 }
 
 func runProfileSetDefault(cmd *cobra.Command, args []string) error {
 	name := args[0]
-
-	// TODO: Implement actual set default logic
 	fmt.Printf("Setting default profile to: %s\n", name)
-	fmt.Println("Default profile updated.")
-
+	fmt.Println()
+	fmt.Println("Profile storage not yet implemented.")
+	fmt.Println("Set default profile manually in config:")
+	fmt.Println("  ctxt config edit")
 	return nil
 }

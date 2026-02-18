@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -95,65 +98,146 @@ func init() {
 }
 
 func runJobsList(cmd *cobra.Command, args []string) error {
-	// TODO: Implement actual job list logic
-	state := viper.GetString("jobs.state")
-	limit := viper.GetInt("jobs.limit")
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
-	fmt.Printf("Listing jobs (state: %s, limit: %d)\n\n", state, limit)
-	fmt.Println("ID             | State     | Pipeline    | Created")
-	fmt.Println("---------------|-----------|-------------|--------------------")
-	fmt.Println("job_12345678   | Completed | text.short  | 2025-01-26 10:00:00")
-	fmt.Println("job_87654321   | Running   | url.generic | 2025-01-26 10:05:00")
-	fmt.Println("job_11111111   | Pending   | image.ocr   | 2025-01-26 10:10:00")
+	ctx := context.Background()
+	filter := storage.JobFilter{
+		Status: storage.JobStatus(viper.GetString("jobs.state")),
+		Limit:  viper.GetInt("jobs.limit"),
+	}
+	jobs, total, err := svc.ListJobs(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("list jobs: %w", err)
+	}
 
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, map[string]any{"jobs": jobs, "total": total})
+	}
+
+	fmt.Printf("Jobs (%d total)\n\n", total)
+	headers := []string{"ID", "Type", "Status", "Pipeline", "Created"}
+	var rows [][]string
+	for _, j := range jobs {
+		rows = append(rows, []string{
+			j.ID,
+			j.Type,
+			string(j.Status),
+			j.Pipeline,
+			j.CreatedAt.Format("2006-01-02 15:04"),
+		})
+	}
+	printTable(os.Stdout, headers, rows)
 	return nil
 }
 
 func runJobsStatus(cmd *cobra.Command, args []string) error {
 	jobID := args[0]
 
-	// TODO: Implement actual job status logic
-	fmt.Printf("Job Status: %s\n\n", jobID)
-	fmt.Println("State:      Running")
-	fmt.Println("Pipeline:   url.generic")
-	fmt.Println("Progress:   3/5 steps")
-	fmt.Println("Created:    2025-01-26 10:05:00")
-	fmt.Println("Started:    2025-01-26 10:05:01")
-	fmt.Println("Updated:    2025-01-26 10:05:15")
-	fmt.Println("\nCurrent Step: fetch_content")
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
+	ctx := context.Background()
+	job, err := svc.GetJob(ctx, jobID)
+	if err != nil {
+		return fmt.Errorf("get job: %w", err)
+	}
+
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, job)
+	}
+
+	fmt.Printf("Job: %s\n\n", job.ID)
+	fmt.Printf("Type:       %s\n", job.Type)
+	fmt.Printf("Status:     %s\n", job.Status)
+	fmt.Printf("Pipeline:   %s\n", job.Pipeline)
+	fmt.Printf("Created:    %s\n", job.CreatedAt.Format("2006-01-02 15:04:05"))
+	if job.StartedAt != nil {
+		fmt.Printf("Started:    %s\n", job.StartedAt.Format("2006-01-02 15:04:05"))
+	}
+	if job.CompletedAt != nil {
+		fmt.Printf("Completed:  %s\n", job.CompletedAt.Format("2006-01-02 15:04:05"))
+	}
+	fmt.Printf("Retries:    %d/%d\n", job.RetryCount, job.MaxRetries)
+	if job.Error != "" {
+		fmt.Printf("\nError: %s\n", job.Error)
+	}
+	if job.ResultID != "" {
+		fmt.Printf("\nResult: %s\n", job.ResultID)
+	}
 	return nil
 }
 
 func runJobsLogs(cmd *cobra.Command, args []string) error {
 	jobID := args[0]
 
-	// TODO: Implement actual job logs logic
-	fmt.Printf("Job Logs: %s\n\n", jobID)
-	fmt.Println("[10:05:01] Starting pipeline: url.generic")
-	fmt.Println("[10:05:02] Step 1/5: validate_input - OK")
-	fmt.Println("[10:05:03] Step 2/5: fetch_content - IN_PROGRESS")
-	fmt.Println("[10:05:15] Fetching URL: https://example.com")
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
+	ctx := context.Background()
+	job, err := svc.GetJob(ctx, jobID)
+	if err != nil {
+		return fmt.Errorf("get job: %w", err)
+	}
+
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, map[string]any{
+			"job_id": job.ID,
+			"status": job.Status,
+			"error":  job.Error,
+		})
+	}
+
+	fmt.Printf("Logs for job %s (status: %s)\n\n", job.ID, job.Status)
+	if job.Error != "" {
+		fmt.Println(job.Error)
+	} else {
+		fmt.Println("No log output available.")
+	}
 	return nil
 }
 
 func runJobsRetry(cmd *cobra.Command, args []string) error {
 	jobID := args[0]
 
-	// TODO: Implement actual job retry logic
-	fmt.Printf("Retrying job: %s\n", jobID)
-	fmt.Println("Job reset to pending state and queued for execution.")
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
+	ctx := context.Background()
+	if err := svc.RetryJob(ctx, jobID); err != nil {
+		return fmt.Errorf("retry job: %w", err)
+	}
+
+	fmt.Printf("Job %s queued for retry\n", jobID)
 	return nil
 }
 
 func runJobsCancel(cmd *cobra.Command, args []string) error {
 	jobID := args[0]
 
-	// TODO: Implement actual job cancel logic
-	fmt.Printf("Cancelling job: %s\n", jobID)
-	fmt.Println("Job marked as cancelled.")
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
+	ctx := context.Background()
+	if err := svc.CancelJob(ctx, jobID); err != nil {
+		return fmt.Errorf("cancel job: %w", err)
+	}
+
+	fmt.Printf("Job %s cancelled\n", jobID)
 	return nil
 }

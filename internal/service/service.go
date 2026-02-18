@@ -257,6 +257,34 @@ func (s *Service) DismissReminder(ctx context.Context, id string) error {
 	return s.Store.Reminders().Dismiss(ctx, id)
 }
 
+// FindByText searches knowledge objects by text matching on summaries and raw content.
+func (s *Service) FindByText(ctx context.Context, query string, limit int) ([]*storage.KnowledgeObject, error) {
+	all, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{Limit: 10000})
+	if err != nil {
+		return nil, err
+	}
+	q := strings.ToLower(query)
+	var results []*storage.KnowledgeObject
+	for _, obj := range all {
+		for _, summary := range obj.Summaries {
+			if strings.Contains(strings.ToLower(summary), q) {
+				results = append(results, obj)
+				break
+			}
+		}
+		if len(results) > 0 && results[len(results)-1] == obj {
+			continue
+		}
+		if strings.Contains(strings.ToLower(obj.RawContent), q) {
+			results = append(results, obj)
+		}
+		if len(results) >= limit {
+			break
+		}
+	}
+	return results, nil
+}
+
 // CancelJob cancels a pending or running job.
 func (s *Service) CancelJob(ctx context.Context, id string) error {
 	return s.Store.Jobs().Cancel(ctx, id)
@@ -286,11 +314,11 @@ func (s *Service) SearchEntities(ctx context.Context, query string, limit int) (
 // This is a fallback implementation that concatenates objects.
 func (s *Service) Compose(ctx context.Context, objects []*storage.KnowledgeObject, compositionType string) (string, error) {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("# %s\n\n", compositionType))
-	b.WriteString(fmt.Sprintf("Generated from %d knowledge objects.\n\n", len(objects)))
+	fmt.Fprintf(&b, "# %s\n\n", compositionType)
+	fmt.Fprintf(&b, "Generated from %d knowledge objects.\n\n", len(objects))
 
 	for _, obj := range objects {
-		b.WriteString(fmt.Sprintf("## %s\n", obj.ID))
+		fmt.Fprintf(&b, "## %s\n", obj.ID)
 		if len(obj.Summaries) > 0 {
 			b.WriteString(obj.Summaries[0])
 			b.WriteString("\n\n")

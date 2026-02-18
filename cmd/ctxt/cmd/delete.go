@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -58,31 +61,67 @@ func init() {
 }
 
 func runDelete(cmd *cobra.Command, args []string) error {
-	// TODO: Implement actual delete logic
 	id := viper.GetString("delete.id")
 	tag := viper.GetString("delete.tag")
 	mention := viper.GetString("delete.mention")
+	typ := viper.GetString("delete.type")
 	deleteAll := viper.GetBool("delete.all")
 	skipConfirmation := viper.GetBool("delete.yes")
 
-	// Build filter description
-	var filter string
-	if id != "" {
-		filter = fmt.Sprintf("ID: %s", id)
-	} else if tag != "" {
-		filter = fmt.Sprintf("Tag: %s", tag)
-	} else if mention != "" {
-		filter = fmt.Sprintf("Mention: %s", mention)
-	} else if deleteAll {
-		filter = "ALL objects"
-	} else {
-		return fmt.Errorf("no filter specified")
+	if id == "" && tag == "" && mention == "" && typ == "" && !deleteAll {
+		return fmt.Errorf("no filter specified; use --id, --tag, --mention, --type, or --all")
 	}
 
-	fmt.Printf("This will delete knowledge objects matching: %s\n", filter)
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
+	ctx := context.Background()
+
+	// If deleting by specific ID, just delete it directly
+	if id != "" {
+		if !skipConfirmation {
+			fmt.Printf("Delete object %s? (y/N): ", id)
+			var response string
+			fmt.Scanln(&response)
+			if response != "y" && response != "Y" {
+				fmt.Println("Deletion cancelled.")
+				return nil
+			}
+		}
+		if err := svc.DeleteObject(ctx, id); err != nil {
+			return fmt.Errorf("delete: %w", err)
+		}
+		fmt.Printf("Deleted %s\n", id)
+		return nil
+	}
+
+	// Otherwise, list matching objects first
+	filter := storage.ObjectFilter{
+		Type:    typ,
+		Tag:     tag,
+		Mention: mention,
+		Limit:   1000,
+	}
+	if deleteAll {
+		filter = storage.ObjectFilter{Limit: 10000}
+	}
+
+	objects, total, err := svc.ListObjects(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("list objects: %w", err)
+	}
+
+	if total == 0 {
+		fmt.Println("No matching objects found.")
+		return nil
+	}
+
+	fmt.Printf("Found %d objects to delete.\n", total)
 	if !skipConfirmation {
-		fmt.Print("\nAre you sure? (y/N): ")
+		fmt.Print("Proceed? (y/N): ")
 		var response string
 		fmt.Scanln(&response)
 		if response != "y" && response != "Y" {
@@ -91,8 +130,14 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Println("\nDeleting objects...")
-	fmt.Println("✓ 3 objects deleted successfully")
-
+	deleted := 0
+	for _, obj := range objects {
+		if err := svc.DeleteObject(ctx, obj.ID); err != nil {
+			fmt.Fprintf(os.Stderr, "  warning: failed to delete %s: %v\n", obj.ID, err)
+			continue
+		}
+		deleted++
+	}
+	fmt.Printf("%d objects deleted\n", deleted)
 	return nil
 }

@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -58,32 +62,55 @@ func init() {
 func runMake(cmd *cobra.Command, args []string) error {
 	compositionType := args[0]
 
-	// TODO: Implement actual make logic
-	fmt.Printf("Generating %s composition\n\n", compositionType)
-	fmt.Printf("Profile: %s\n", viper.GetString("profile.default"))
-	fmt.Printf("Mention: %s\n", viper.GetString("make.mention"))
-	fmt.Printf("Tags: %s\n", viper.GetString("make.tag"))
-	fmt.Printf("Since: %s\n\n", viper.GetString("make.since"))
+	switch compositionType {
+	case "brief", "plan", "summary", "draft":
+	default:
+		return fmt.Errorf("unknown composition type: %s (expected brief|plan|summary|draft)", compositionType)
+	}
 
-	// Sample output
-	fmt.Println("=" + string(make([]byte, 60)) + "=")
-	fmt.Printf("%s Composition\n", compositionType)
-	fmt.Println("=" + string(make([]byte, 60)) + "=")
-	fmt.Println()
-	fmt.Println("## Summary")
-	fmt.Println()
-	fmt.Println("Based on recent knowledge objects related to UX and onboarding...")
-	fmt.Println()
-	fmt.Println("## Key Points")
-	fmt.Println()
-	fmt.Println("1. Authentication flow improvements identified")
-	fmt.Println("2. Progressive disclosure patterns recommended")
-	fmt.Println("3. Mobile-first design considerations documented")
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+
+	filter := storage.ObjectFilter{
+		Tag:     viper.GetString("make.tag"),
+		Mention: viper.GetString("make.mention"),
+		Limit:   100,
+	}
+	if since := viper.GetString("make.since"); since != "" {
+		if t, err := time.Parse("2006-01-02", since); err == nil {
+			filter.After = &t
+		}
+	}
+
+	objects, _, err := svc.ListObjects(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("list objects: %w", err)
+	}
+
+	if len(objects) == 0 {
+		fmt.Println("No matching objects found for composition.")
+		return nil
+	}
+
+	result, err := svc.Compose(ctx, objects, compositionType)
+	if err != nil {
+		return fmt.Errorf("compose: %w", err)
+	}
 
 	outputFile := viper.GetString("make.output-file")
 	if outputFile != "" {
-		fmt.Printf("\nSaving to: %s\n", outputFile)
+		if err := os.WriteFile(outputFile, []byte(result), 0644); err != nil {
+			return fmt.Errorf("write file: %w", err)
+		}
+		fmt.Printf("Composition written to %s\n", outputFile)
+		return nil
 	}
 
+	fmt.Print(result)
 	return nil
 }

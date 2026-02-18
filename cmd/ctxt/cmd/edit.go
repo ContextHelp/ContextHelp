@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"strings"
+	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -71,14 +75,8 @@ func runEdit(cmd *cobra.Command, args []string) error {
 	if tags := viper.GetString("edit.tags"); tags != "" {
 		updates["tags"] = tags
 	}
-	if hints := viper.GetString("edit.hints"); hints != "" {
-		updates["hints"] = hints
-	}
 	if mentions := viper.GetString("edit.mentions"); mentions != "" {
 		updates["mentions"] = mentions
-	}
-	if decisions := viper.GetString("edit.decisions"); decisions != "" {
-		updates["decisions"] = decisions
 	}
 	if subtype := viper.GetString("edit.subtype"); subtype != "" {
 		updates["subtype"] = subtype
@@ -88,14 +86,55 @@ func runEdit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no fields to update")
 	}
 
-	// TODO: Implement actual edit logic
-	fmt.Printf("Updating knowledge object: %s\n\n", id)
-	fmt.Println("Changes:")
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+	obj, err := svc.GetObject(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get object: %w", err)
+	}
+
+	// Apply updates
+	if v, ok := updates["title"]; ok {
+		obj.Summaries = []string{v}
+	}
+	if v, ok := updates["summary"]; ok {
+		if len(obj.Summaries) > 0 {
+			obj.Summaries[0] = v
+		} else {
+			obj.Summaries = []string{v}
+		}
+	}
+	if v, ok := updates["tags"]; ok {
+		var tags []storage.Tag
+		for _, label := range strings.Split(v, ",") {
+			label = strings.TrimSpace(label)
+			if label != "" {
+				tags = append(tags, storage.Tag{Label: label, Source: "manual"})
+			}
+		}
+		obj.Tags = tags
+	}
+	if v, ok := updates["mentions"]; ok {
+		obj.Mentions = strings.Fields(v)
+	}
+	if v, ok := updates["subtype"]; ok {
+		obj.Subtype = v
+	}
+
+	obj.UpdatedAt = time.Now().Truncate(time.Second)
+
+	if err := svc.UpdateObject(ctx, obj); err != nil {
+		return fmt.Errorf("update object: %w", err)
+	}
+
+	fmt.Printf("Updated %s\n", id)
 	for field, value := range updates {
 		fmt.Printf("  %s: %s\n", field, value)
 	}
-	fmt.Println()
-	fmt.Println("✓ Knowledge object updated successfully")
-
 	return nil
 }

@@ -1,63 +1,85 @@
 package cmd
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 func TestMakeBrief(t *testing.T) {
-	out, err := executeCommand("make", "brief")
+	db := setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	obj := &storage.KnowledgeObject{
+		ID:        "obj_make_1",
+		Type:      "text",
+		Summaries: []string{"Summary of best practices"},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := db.Driver.Objects().Create(ctx, obj); err != nil {
+		t.Fatalf("seed object: %v", err)
+	}
+
+	out, err := db.exec("make", "brief")
 	if err != nil {
 		t.Fatalf("make brief should succeed: %v", err)
 	}
-	if !strings.Contains(out, "Generating brief composition") {
-		t.Error("output should indicate brief generation")
+	if !strings.Contains(out, "# brief") {
+		t.Error("output should contain composition heading")
 	}
-	if !strings.Contains(out, "## Summary") {
-		t.Error("output should contain Summary section")
-	}
-	if !strings.Contains(out, "## Key Points") {
-		t.Error("output should contain Key Points section")
+	if !strings.Contains(out, "obj_make_1") {
+		t.Error("output should reference the source object")
 	}
 }
 
 func TestMakePlan(t *testing.T) {
-	out, err := executeCommand("make", "plan")
+	db := setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	obj := &storage.KnowledgeObject{
+		ID:        "obj_plan_1",
+		Type:      "text",
+		Summaries: []string{"Plan content"},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := db.Driver.Objects().Create(ctx, obj); err != nil {
+		t.Fatalf("seed object: %v", err)
+	}
+
+	out, err := db.exec("make", "plan")
 	if err != nil {
 		t.Fatalf("make plan should succeed: %v", err)
 	}
-	if !strings.Contains(out, "Generating plan composition") {
-		t.Error("output should indicate plan generation")
+	if !strings.Contains(out, "# plan") {
+		t.Error("output should contain plan heading")
 	}
 }
 
-func TestMakeSummary(t *testing.T) {
-	out, err := executeCommand("make", "summary")
+func TestMakeNoObjects(t *testing.T) {
+	db := setupTestDB(t)
+
+	out, err := db.exec("make", "summary")
 	if err != nil {
-		t.Fatalf("make summary should succeed: %v", err)
+		t.Fatalf("make with no objects should succeed: %v", err)
 	}
-	if !strings.Contains(out, "Generating summary composition") {
-		t.Error("output should indicate summary generation")
+	if !strings.Contains(out, "No matching objects found") {
+		t.Error("output should indicate no matching objects")
 	}
 }
 
-func TestMakeDraft(t *testing.T) {
-	out, err := executeCommand("make", "draft")
-	if err != nil {
-		t.Fatalf("make draft should succeed: %v", err)
-	}
-	if !strings.Contains(out, "Generating draft composition") {
-		t.Error("output should indicate draft generation")
-	}
-}
+func TestMakeUnknownTypeError(t *testing.T) {
+	db := setupTestDB(t)
 
-func TestMakeWithFilters(t *testing.T) {
-	out, err := executeCommand("make", "brief", "--tag", "ux,onboarding", "--mention", "@project.signup", "--since", "2025-01-01")
-	if err != nil {
-		t.Fatalf("make with filters should succeed: %v", err)
-	}
-	if !strings.Contains(out, "Generating brief composition") {
-		t.Error("output should indicate brief generation")
+	_, err := db.exec("make", "invalid_type")
+	if err == nil {
+		t.Error("make with unknown type should fail")
 	}
 }
 
