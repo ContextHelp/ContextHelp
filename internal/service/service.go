@@ -168,11 +168,60 @@ func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest)
 }
 
 func (s *Service) GetPipeline(ctx context.Context, name string) (*storage.Pipeline, error) {
-	return s.Store.Pipelines().Get(ctx, name)
+	// Check database first (user-created pipelines).
+	p, err := s.Store.Pipelines().Get(ctx, name)
+	if err == nil {
+		return p, nil
+	}
+
+	// Fall back to in-memory built-in registry.
+	bp, bpErr := s.Pipes.Get(name)
+	if bpErr != nil {
+		return nil, err // return original storage error
+	}
+	return builtInToStorage(name, bp), nil
 }
 
 func (s *Service) ListPipelines(ctx context.Context, filter storage.PipelineFilter) ([]*storage.Pipeline, int, error) {
-	return s.Store.Pipelines().List(ctx, filter)
+	// Fetch user-created pipelines from storage.
+	dbPipelines, count, err := s.Store.Pipelines().List(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Track database pipeline names to avoid duplicates.
+	seen := make(map[string]bool, len(dbPipelines))
+	for _, p := range dbPipelines {
+		seen[p.Name] = true
+	}
+
+	// Prepend built-in pipelines that match the filter.
+	for _, name := range s.Pipes.List() {
+		if seen[name] {
+			continue
+		}
+		if filter.Name != "" && !strings.Contains(name, filter.Name) {
+			continue
+		}
+		bp, _ := s.Pipes.Get(name)
+		dbPipelines = append([]*storage.Pipeline{builtInToStorage(name, bp)}, dbPipelines...)
+		count++
+	}
+
+	return dbPipelines, count, nil
+}
+
+func builtInToStorage(name string, p *pipeline.Pipeline) *storage.Pipeline {
+	stepRefs := make([]storage.StepRef, len(p.Steps))
+	for i, s := range p.Steps {
+		stepRefs[i] = storage.StepRef{Name: s.Name()}
+	}
+	return &storage.Pipeline{
+		Name:        name,
+		Description: p.Description,
+		Steps:       stepRefs,
+		IsBuiltIn:   true,
+	}
 }
 
 func (s *Service) DeletePipeline(ctx context.Context, name string) error {
