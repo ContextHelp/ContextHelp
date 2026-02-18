@@ -38,8 +38,8 @@ func TestCtxtHelp(t *testing.T) {
 
 	subcommands := []string{
 		"analyze", "list", "find", "open", "edit", "delete",
-		"make", "jobs", "profile", "config", "registry",
-		"entities", "completion",
+		"make", "job", "profile", "config", "registry",
+		"entity", "completion",
 	}
 	for _, sub := range subcommands {
 		assert.Contains(t, out, sub, "help output should list subcommand %q", sub)

@@ -6,9 +6,9 @@ import (
 )
 
 func TestEntitiesList(t *testing.T) {
-	out, err := executeCommand("entities", "list")
+	out, err := executeCommand("entity", "list")
 	if err != nil {
-		t.Fatalf("entities list should succeed: %v", err)
+		t.Fatalf("entity list should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Entities") {
 		t.Error("output should contain entities header")
@@ -19,9 +19,9 @@ func TestEntitiesList(t *testing.T) {
 }
 
 func TestEntitiesShow(t *testing.T) {
-	out, err := executeCommand("entities", "show", "ui.best-practice")
+	out, err := executeCommand("entity", "show", "ui.best-practice")
 	if err != nil {
-		t.Fatalf("entities show should succeed: %v", err)
+		t.Fatalf("entity show should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Entity: ui.best-practice") {
 		t.Error("output should show entity slug")
@@ -41,16 +41,16 @@ func TestEntitiesShow(t *testing.T) {
 }
 
 func TestEntitiesShowNoSlugError(t *testing.T) {
-	_, err := executeCommand("entities", "show")
+	_, err := executeCommand("entity", "show")
 	if err == nil {
-		t.Error("entities show without slug should fail")
+		t.Error("entity show without slug should fail")
 	}
 }
 
 func TestEntitiesSearch(t *testing.T) {
-	out, err := executeCommand("entities", "search", "checkout")
+	out, err := executeCommand("entity", "search", "checkout")
 	if err != nil {
-		t.Fatalf("entities search should succeed: %v", err)
+		t.Fatalf("entity search should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Searching entities for: checkout") {
 		t.Error("output should show search query")
@@ -61,16 +61,16 @@ func TestEntitiesSearch(t *testing.T) {
 }
 
 func TestEntitiesSearchNoQueryError(t *testing.T) {
-	_, err := executeCommand("entities", "search")
+	_, err := executeCommand("entity", "search")
 	if err == nil {
-		t.Error("entities search without query should fail")
+		t.Error("entity search without query should fail")
 	}
 }
 
 func TestEntitiesBacklinks(t *testing.T) {
-	out, err := executeCommand("entities", "backlinks", "ui.best-practice")
+	out, err := executeCommand("entity", "backlink", "ui.best-practice")
 	if err != nil {
-		t.Fatalf("entities backlinks should succeed: %v", err)
+		t.Fatalf("entity backlink should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Backlinks for entity: ui.best-practice") {
 		t.Error("output should show entity slug")
@@ -84,20 +84,20 @@ func TestEntitiesBacklinks(t *testing.T) {
 }
 
 func TestEntitiesBacklinksNoSlugError(t *testing.T) {
-	_, err := executeCommand("entities", "backlinks")
+	_, err := executeCommand("entity", "backlink")
 	if err == nil {
-		t.Error("entities backlinks without slug should fail")
+		t.Error("entity backlink without slug should fail")
 	}
 }
 
 func TestEntitiesHelp(t *testing.T) {
-	out, err := executeCommand("entities", "--help")
+	out, err := executeCommand("entity", "--help")
 	if err != nil {
-		t.Fatalf("entities --help should succeed: %v", err)
+		t.Fatalf("entity --help should succeed: %v", err)
 	}
-	for _, subcmd := range []string{"list", "show", "search", "backlinks"} {
+	for _, subcmd := range []string{"list", "show", "search", "backlink"} {
 		if !strings.Contains(out, subcmd) {
-			t.Errorf("entities help should list subcommand %q", subcmd)
+			t.Errorf("entity help should list subcommand %q", subcmd)
 		}
 	}
 }

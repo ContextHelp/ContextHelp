@@ -6,9 +6,9 @@ import (
 )
 
 func TestJobsList(t *testing.T) {
-	out, err := executeCommand("jobs", "list")
+	out, err := executeCommand("job", "list")
 	if err != nil {
-		t.Fatalf("jobs list should succeed: %v", err)
+		t.Fatalf("job list should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Listing jobs") {
 		t.Error("output should contain listing header")
@@ -22,9 +22,9 @@ func TestJobsList(t *testing.T) {
 }
 
 func TestJobsStatus(t *testing.T) {
-	out, err := executeCommand("jobs", "status", "job_12345678")
+	out, err := executeCommand("job", "status", "job_12345678")
 	if err != nil {
-		t.Fatalf("jobs status should succeed: %v", err)
+		t.Fatalf("job status should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Job Status: job_12345678") {
 		t.Error("output should show job ID")
@@ -41,16 +41,16 @@ func TestJobsStatus(t *testing.T) {
 }
 
 func TestJobsStatusNoIDError(t *testing.T) {
-	_, err := executeCommand("jobs", "status")
+	_, err := executeCommand("job", "status")
 	if err == nil {
-		t.Error("jobs status without ID should fail")
+		t.Error("job status without ID should fail")
 	}
 }
 
 func TestJobsLogs(t *testing.T) {
-	out, err := executeCommand("jobs", "logs", "job_12345678")
+	out, err := executeCommand("job", "log", "job_12345678")
 	if err != nil {
-		t.Fatalf("jobs logs should succeed: %v", err)
+		t.Fatalf("job log should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Job Logs: job_12345678") {
 		t.Error("output should show job ID")
@@ -61,16 +61,16 @@ func TestJobsLogs(t *testing.T) {
 }
 
 func TestJobsLogsNoIDError(t *testing.T) {
-	_, err := executeCommand("jobs", "logs")
+	_, err := executeCommand("job", "log")
 	if err == nil {
-		t.Error("jobs logs without ID should fail")
+		t.Error("job log without ID should fail")
 	}
 }
 
 func TestJobsRetry(t *testing.T) {
-	out, err := executeCommand("jobs", "retry", "job_12345678")
+	out, err := executeCommand("job", "retry", "job_12345678")
 	if err != nil {
-		t.Fatalf("jobs retry should succeed: %v", err)
+		t.Fatalf("job retry should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Retrying job: job_12345678") {
 		t.Error("output should confirm retry")
@@ -81,16 +81,16 @@ func TestJobsRetry(t *testing.T) {
 }
 
 func TestJobsRetryNoIDError(t *testing.T) {
-	_, err := executeCommand("jobs", "retry")
+	_, err := executeCommand("job", "retry")
 	if err == nil {
-		t.Error("jobs retry without ID should fail")
+		t.Error("job retry without ID should fail")
 	}
 }
 
 func TestJobsCancel(t *testing.T) {
-	out, err := executeCommand("jobs", "cancel", "job_12345678")
+	out, err := executeCommand("job", "cancel", "job_12345678")
 	if err != nil {
-		t.Fatalf("jobs cancel should succeed: %v", err)
+		t.Fatalf("job cancel should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Cancelling job: job_12345678") {
 		t.Error("output should confirm cancellation")
@@ -101,20 +101,20 @@ func TestJobsCancel(t *testing.T) {
 }
 
 func TestJobsCancelNoIDError(t *testing.T) {
-	_, err := executeCommand("jobs", "cancel")
+	_, err := executeCommand("job", "cancel")
 	if err == nil {
-		t.Error("jobs cancel without ID should fail")
+		t.Error("job cancel without ID should fail")
 	}
 }
 
 func TestJobsHelp(t *testing.T) {
-	out, err := executeCommand("jobs", "--help")
+	out, err := executeCommand("job", "--help")
 	if err != nil {
-		t.Fatalf("jobs --help should succeed: %v", err)
+		t.Fatalf("job --help should succeed: %v", err)
 	}
-	for _, subcmd := range []string{"list", "status", "logs", "retry", "cancel"} {
+	for _, subcmd := range []string{"list", "status", "log", "retry", "cancel"} {
 		if !strings.Contains(out, subcmd) {
-			t.Errorf("jobs help should list subcommand %q", subcmd)
+			t.Errorf("job help should list subcommand %q", subcmd)
 		}
 	}
 }
