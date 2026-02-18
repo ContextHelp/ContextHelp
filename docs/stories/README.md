@@ -33,6 +33,29 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0007** | [feed-ingestion-and-sync](./ingestion/US-0007-feed-ingestion-and-sync.md) | ctxt | Knowledge Workers |
 | **US-0008** | [batch-import-from-file](./ingestion/US-0008-batch-import-from-file.md) | ctxt, dpkms (self-hosted), dpkms cloud | Maintainers, Operations |
 
+#### Importer Stories (US-0300 to US-0317)
+
+| ID | Story | System Types | Personas |
+|----|-------|-------------|----------|
+| **US-0300** | [importer-extension-interface](./ingestion/US-0300-importer-extension-interface.md) | dpkms (self-hosted), dpkms cloud, ctxt | Platform Integrators, Maintainers |
+| **US-0301** | [import-chrome-bookmarks](./ingestion/US-0301-import-chrome-bookmarks.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0302** | [import-edge-bookmarks](./ingestion/US-0302-import-edge-bookmarks.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0303** | [import-firefox-bookmarks](./ingestion/US-0303-import-firefox-bookmarks.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0304** | [import-safari-bookmarks](./ingestion/US-0304-import-safari-bookmarks.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0305** | [import-google-drive](./ingestion/US-0305-import-google-drive.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0306** | [import-onedrive](./ingestion/US-0306-import-onedrive.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0307** | [import-notion](./ingestion/US-0307-import-notion.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0308** | [import-dropbox](./ingestion/US-0308-import-dropbox.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0309** | [import-slack](./ingestion/US-0309-import-slack.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0310** | [import-discord](./ingestion/US-0310-import-discord.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0311** | [import-obsidian-vault](./ingestion/US-0311-import-obsidian-vault.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0312** | [import-logseq-graph](./ingestion/US-0312-import-logseq-graph.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0313** | [import-evernote-enex](./ingestion/US-0313-import-evernote-enex.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0314** | [import-pinboard-bookmarks](./ingestion/US-0314-import-pinboard-bookmarks.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0315** | [import-raindrop-bookmarks](./ingestion/US-0315-import-raindrop-bookmarks.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0316** | [import-twitter-archive](./ingestion/US-0316-import-twitter-archive.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+| **US-0317** | [import-linkedin-export](./ingestion/US-0317-import-linkedin-export.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
+
 ### Enrichment & Processing (US-0009 to US-0050)
 
 #### Core Enrichment (US-0009 to US-0015)
@@ -220,6 +243,7 @@ Links to related stories
 - **US-0042 to US-0045** — Plugins & Extensions
 - **US-0046 to US-0060** — Advanced Features
 - **US-0061+** — Multimodal Search
+- **US-0300 to US-0317** — Importer Interface and Source Importers
 
 ---
 
