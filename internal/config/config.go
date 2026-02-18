@@ -44,6 +44,9 @@ type Config struct {
 
 	// I18n configuration
 	I18n I18nConfig `mapstructure:"i18n"`
+
+	// Providers configuration
+	Providers ProvidersConfig `mapstructure:"providers"`
 }
 
 // StorageConfig represents storage configuration
@@ -84,6 +87,27 @@ type I18nConfig struct {
 	PreferredLanguages []string `mapstructure:"preferred_languages"`
 	AutoTranslate      bool     `mapstructure:"auto_translate"`
 	TranslateTags      bool     `mapstructure:"translate_tags"`
+}
+
+// ProvidersConfig controls backend selection for each provider type.
+type ProvidersConfig struct {
+	Video         ProviderBackendConfig `mapstructure:"video"`
+	Document      ProviderBackendConfig `mapstructure:"document"`
+	OCR           ProviderBackendConfig `mapstructure:"ocr"`
+	Transcription ProviderBackendConfig `mapstructure:"transcription"`
+	Vision        ProviderBackendConfig `mapstructure:"vision"`
+	Diarization   ProviderBackendConfig `mapstructure:"diarization"`
+}
+
+// ProviderBackendConfig selects which backend to use for a provider.
+type ProviderBackendConfig struct {
+	Backend string `mapstructure:"backend"`
+	// Model overrides the default model for LLM-based providers (vision, transcription via ollama).
+	Model string `mapstructure:"model,omitempty"`
+	// Endpoint overrides the default API endpoint (e.g. Ollama URL).
+	Endpoint string `mapstructure:"endpoint,omitempty"`
+	// Language sets a default language hint (e.g. for OCR, transcription).
+	Language string `mapstructure:"language,omitempty"`
 }
 
 // Load loads the configuration from file and environment variables
@@ -157,6 +181,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("i18n.preferred_languages", []string{"en"})
 	v.SetDefault("i18n.auto_translate", false)
 	v.SetDefault("i18n.translate_tags", false)
+
+	// Provider defaults — "auto" probes for tools, falls back to stub
+	v.SetDefault("providers.video.backend", "auto")
+	v.SetDefault("providers.document.backend", "auto")
+	v.SetDefault("providers.ocr.backend", "auto")
+	v.SetDefault("providers.transcription.backend", "auto")
+	v.SetDefault("providers.vision.backend", "auto")
+	v.SetDefault("providers.vision.endpoint", "http://localhost:11434")
+	v.SetDefault("providers.vision.model", "llava")
+	v.SetDefault("providers.diarization.backend", "auto")
 }
 
 // bindEnvVars binds environment variables to configuration keys

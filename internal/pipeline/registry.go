@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
 )
 
 type registry struct {
@@ -153,6 +154,77 @@ func DefaultRegistry() Registry {
 			steps.NewFormatDetector(),
 			steps.NewAudioTranscriber(),
 			steps.NewSpeakerDiarizer(false),
+			steps.NewTimestampAligner(),
+			steps.NewSectioner(),
+			steps.NewTagger(),
+			steps.NewEmbeddingGenerator(),
+		},
+	})
+
+	return r
+}
+
+// ConfiguredRegistry returns a registry using real providers resolved by the factory.
+func ConfiguredRegistry(f *providers.Factory) Registry {
+	r := NewRegistry()
+
+	// Text pipelines don't need providers.
+	r.Register("text.short", &Pipeline{
+		PipelineName: "text.short",
+		Description:  "Short text pipeline (< 500 chars)",
+		Steps: []PipelineStep{
+			steps.NewTypeDetector(),
+			steps.NewTagger(),
+		},
+	})
+
+	r.Register("text.long", &Pipeline{
+		PipelineName: "text.long",
+		Description:  "Long text pipeline (>= 500 chars)",
+		Steps: []PipelineStep{
+			steps.NewTypeDetector(),
+			steps.NewSectioner(),
+			steps.NewTagger(),
+		},
+	})
+
+	// Image pipelines — inject OCR and Vision providers.
+	r.Register("image.ocr", &Pipeline{
+		PipelineName: "image.ocr",
+		Description:  "Image OCR extraction pipeline",
+		Steps: []PipelineStep{
+			steps.NewFileReader(),
+			steps.NewFormatDetector(),
+			steps.NewOCRExtractor(steps.WithOCRProvider(f.OCR())),
+			steps.NewTextCleaner(),
+			steps.NewTagger(),
+			steps.NewEmbeddingGenerator(),
+		},
+	})
+
+	r.Register("image.analysis", &Pipeline{
+		PipelineName: "image.analysis",
+		Description:  "Image vision analysis pipeline",
+		Steps: []PipelineStep{
+			steps.NewFileReader(),
+			steps.NewFormatDetector(),
+			steps.NewOCRExtractor(steps.WithOCRProvider(f.OCR())),
+			steps.NewVisionAnalyzer(steps.WithVisionProvider(f.Vision())),
+			steps.NewTextCleaner(),
+			steps.NewTagger(),
+			steps.NewEmbeddingGenerator(),
+		},
+	})
+
+	// Audio pipeline — inject Transcription and Diarization providers.
+	r.Register("audio.transcribe", &Pipeline{
+		PipelineName: "audio.transcribe",
+		Description:  "Audio transcription pipeline",
+		Steps: []PipelineStep{
+			steps.NewFileReader(),
+			steps.NewFormatDetector(),
+			steps.NewAudioTranscriber(steps.WithTranscriptionProvider(f.Transcription())),
+			steps.NewSpeakerDiarizer(false, steps.WithDiarizationProvider(f.Diarization())),
 			steps.NewTimestampAligner(),
 			steps.NewSectioner(),
 			steps.NewTagger(),
