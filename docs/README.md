@@ -19,6 +19,7 @@ Together they provide **context-as-a-service** for humans and AI agents (self-ho
 3. Read [architecture.md](architecture.md) - System-wide architecture
 4. Read [design.md](design.md) - Consolidated design documentation
 5. Review [dpkms-or-ctxt.md](dpkms-or-ctxt.md) - Package placement guide
+6. Read [manual/README.md](manual/README.md) - Persona and workflow user manual
 
 **Looking for specific capabilities?**
 - [featureset.md](featureset.md) - Complete feature overview
@@ -42,6 +43,15 @@ docs/
 ├── glossary.md                    # Terminology
 ├── dpkms-or-ctxt.md               # Package placement guide
 ├── featureset.md                  # Complete feature set
+├── manual/                        # Persona and workflow user manual
+│   ├── README.md                  # Manual index
+│   ├── personas/                  # Persona quickstarts
+│   ├── workflows/                 # Task-oriented workflows
+│   ├── admin-extensibility/       # Admin, pipelines, plugins
+│   ├── operations/                # Operations runbook
+│   ├── reference/                 # API, query, config references
+│   ├── troubleshooting/           # FAQ and issue playbooks
+│   └── appendix/                  # Story/persona indexes and maturity
 │
 ├── Getting Started
 │   ├── developer-quickstart.md    # Developer onboarding
@@ -247,6 +257,7 @@ docs/
 Start here to understand what the system does:
 - [developer-quickstart.md](developer-quickstart.md) - Get started quickly
 - [cli-quickstart.md](cli-quickstart.md) - CLI quickstart
+- [manual/README.md](manual/README.md) - User manual by persona and workflow
 - [architecture.md](architecture.md) - What the system is
 - [ctxt/user-story.md](ctxt/user-story.md) - Daily usage narrative
 - [ctxt/api-cli.md](ctxt/api-cli.md) - CLI commands
@@ -412,6 +423,7 @@ Managing secrets, compliance, and secure deployments:
 
 ### User Experience
 - [stories/](stories/) - User stories by category
+- [manual/README.md](manual/README.md) - User manual by persona and workflow
 - [ctxt/user-stories.md](ctxt/user-stories.md) - User stories
 - [ctxt/user-story.md](ctxt/user-story.md) - Usage narrative
 - [ctxt/user-story-github-pr-insights.md](ctxt/user-story-github-pr-insights.md) - Specific use case
