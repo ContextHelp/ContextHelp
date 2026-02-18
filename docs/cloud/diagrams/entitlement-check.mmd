@@ -1,0 +1,78 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#10b981"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#10b981"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant User
+    participant Node as OSS Node
+    participant EntitlementSvc as Entitlement Provider<br/>(Cloud)
+    participant Registry as Paid Registry
+    participant MeteringSvc as Metering Service
+
+    Note over User,MeteringSvc: Entitlement Check & Metering Flow
+
+    User->>Node: ctxt search --registry premium<br/>"advanced patterns"
+
+    Node->>Node: Check local policy:<br/>Is registry access gated?
+
+    alt Access requires entitlement
+        Node->>EntitlementSvc: GET /api/v1/entitlements/check<br/>?user_id=user-123<br/>&resource=registry:premium<br/>&operation=read
+
+        activate EntitlementSvc
+
+        EntitlementSvc->>EntitlementSvc: Check user subscription
+        EntitlementSvc->>EntitlementSvc: Check credit balance
+
+        alt User has access
+            EntitlementSvc-->>Node: 200 OK<br/>{<br/>  "granted": true,<br/>  "credits_remaining": 45,<br/>  "expires_at": "..."<br/>}
+        else User lacks access
+            EntitlementSvc-->>Node: 403 Forbidden<br/>{<br/>  "granted": false,<br/>  "reason": "insufficient_credits"<br/>}
+            Node-->>User: ❌ Access denied:<br/>insufficient credits
+            Note over Node: Flow ends here
+        end
+
+        deactivate EntitlementSvc
+    end
+
+    Node->>Registry: GET /bookmarks?q=advanced+patterns<br/>Authorization: Bearer ...
+
+    Registry-->>Node: 200 OK (results)
+
+    Node->>MeteringSvc: POST /api/v1/metering/events<br/>{<br/>  "user_id": "user-123",<br/>  "resource": "registry:premium",<br/>  "operation": "read",<br/>  "quantity": 1,<br/>  "timestamp": "..."<br/>}
+
+    activate MeteringSvc
+    MeteringSvc->>MeteringSvc: Record usage
+    MeteringSvc->>MeteringSvc: Decrement user credits
+    MeteringSvc-->>Node: 200 OK
+    deactivate MeteringSvc
+
+    Node-->>User: Display results
+
+    Note over User,MeteringSvc: OSS node enforces policy.<br/>Cloud handles billing logic.
+```

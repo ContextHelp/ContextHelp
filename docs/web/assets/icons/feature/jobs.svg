@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
+  <!-- Jobs/Queue Icon - Stacked Bars with Play Indicator -->
+
+  <!-- Queue items (stacked bars) -->
+  <rect x="3" y="5" width="14" height="3" rx="1.5" stroke="#ffc247" stroke-width="2"/>
+  <rect x="3" y="10.5" width="14" height="3" rx="1.5" stroke="#ffc247" stroke-width="2"/>
+  <rect x="3" y="16" width="14" height="3" rx="1.5" stroke="#ffc247" stroke-width="2"/>
+
+  <!-- Play indicator (processing) -->
+  <polygon points="19,9 19,15 22,12" fill="#ffc247"/>
+</svg>

@@ -1,0 +1,84 @@
+graph LR
+    subgraph Models["Deployment Model Comparison"]
+        direction LR
+
+        subgraph Web2Cloud["Web2: Cloud<br/>(Managed)"]
+            WC1["✓ 99.99% availability"]
+            WC2["✓✓ Zero ops"]
+            WC3["✓ Enterprise auth"]
+            WC4["✓ Team features"]
+            WC5["⚠ Cloud provider locked"]
+            WC6["$$$ High cost"]
+        end
+
+        subgraph Web2SelfHost["Web2: Self-Hosted"]
+            WS1["✓ Full control"]
+            WS2["✓✓ Privacy"]
+            WS3["✓ Data residency"]
+            WS4["⚠ Your ops burden"]
+            WS5["✓ Portability"]
+            WS6["$ Low cost"]
+        end
+
+        subgraph Web3IPFS["Web3: IPFS"]
+            IP1["✓✓ P2P resilience"]
+            IP2["✓✓ Censorship-proof"]
+            IP3["✓ Community pinning"]
+            IP4["⚠ Setup complexity"]
+            IP5["⚠ Data residency uncertain"]
+            IP6["$ Pinning fees"]
+        end
+
+        subgraph Web3BC["Web3: Blockchain"]
+            BC1["✓✓ Immutable proof"]
+            BC2["✓✓ Verifiable"]
+            BC3["✓ Monetizable"]
+            BC4["⚠⚠ High complexity"]
+            BC5["⚠ Gas/fees"]
+            BC6["$$ Transaction costs"]
+        end
+
+        subgraph Hybrid["Hybrid: Multi-Stack"]
+            HY1["✓✓ Ultimate resilience"]
+            HY2["✓✓ True sovereignty"]
+            HY3["✓ Can recover from any"]
+            HY4["⚠⚠ Max complexity"]
+            HY5["✓✓ No single point of failure"]
+            HY6["$$$ All costs combined"]
+        end
+    end
+
+    style WC1 fill:#c8e6c9
+    style WC2 fill:#c8e6c9
+    style WC3 fill:#c8e6c9
+    style WC4 fill:#c8e6c9
+    style WC5 fill:#ffccbc
+    style WC6 fill:#ffccbc
+
+    style WS1 fill:#c8e6c9
+    style WS2 fill:#c8e6c9
+    style WS3 fill:#c8e6c9
+    style WS4 fill:#ffccbc
+    style WS5 fill:#c8e6c9
+    style WS6 fill:#c8e6c9
+
+    style IP1 fill:#b3e5fc
+    style IP2 fill:#b3e5fc
+    style IP3 fill:#b3e5fc
+    style IP4 fill:#ffccbc
+    style IP5 fill:#ffccbc
+    style IP6 fill:#ffe0b2
+
+    style BC1 fill:#ffe0b2
+    style BC2 fill:#ffe0b2
+    style BC3 fill:#ffe0b2
+    style BC4 fill:#ffccbc
+    style BC5 fill:#ffccbc
+    style BC6 fill:#ffccbc
+
+    style HY1 fill:#f3e5f5
+    style HY2 fill:#f3e5f5
+    style HY3 fill:#f3e5f5
+    style HY4 fill:#ffccbc
+    style HY5 fill:#f3e5f5
+    style HY6 fill:#ffccbc

@@ -1,0 +1,115 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#4A90E2"
+    primaryTextColor: "#fff"
+    primaryBorderColor: "#2E5C8A"
+    lineColor: "#6B7280"
+    secondaryColor: "#10B981"
+    tertiaryColor: "#F59E0B"
+---
+flowchart TB
+    %% Framework Free Registry (Central Hub)
+    subgraph FreeRegistry["🌐 Framework Community - Free Registry"]
+        Registry[(Shared Skills & Patterns<br/>Open Source Registry)]
+        FrameworkCore[Framework Core Team]
+        FrameworkCore -.->|maintains| Registry
+    end
+
+    %% Subject Matter Experts (SMEs)
+    subgraph SMEs["💎 Subject Matter Experts - Premium Services"]
+        FrontendExpert["👨‍💻 Frontend Expert<br/>(React/Design Systems)"]
+        BackendExpert["👩‍💻 Backend Expert<br/>(APIs/Databases)"]
+        MarketingExpert["📊 Marketing Expert<br/>(SEO/Growth)"]
+    end
+
+    %% Business 1
+    subgraph Business1["🏢 Business 1: Tech Startup"]
+        B1Team1["Team Alpha"]
+        B1Team2["Team Beta"]
+
+        subgraph B1Team1
+            B1Dev1["Developer 1<br/>🤖 w/ AI Agent"]
+            B1Dev2["Developer 2<br/>👤 No Agent"]
+        end
+
+        subgraph B1Team2
+            B1Dev3["Developer 3<br/>🤖 w/ AI Agent"]
+            B1Designer["Designer<br/>🤖 w/ AI Agent"]
+        end
+    end
+
+    %% Business 2
+    subgraph Business2["🏪 Business 2: E-commerce Co"]
+        B2Team1["Team Marketing"]
+        B2Team2["Team Engineering"]
+
+        subgraph B2Team1
+            B2Marketer1["Marketer 1<br/>🤖 w/ AI Agent"]
+            B2Marketer2["Marketer 2<br/>👤 No Agent"]
+        end
+
+        subgraph B2Team2
+            B2Dev1["Developer 1<br/>👤 No Agent"]
+            B2Dev2["Developer 2<br/>🤖 w/ AI Agent"]
+        end
+    end
+
+    %% Vibe Coder
+    subgraph VibeCoder["🎨 Independent Vibe Coder"]
+        VCDev["Indie Developer<br/>🤖 w/ Multiple Agents"]
+        VCCommunities["Member of:"]
+        VCCom1["React Community"]
+        VCCom2["Indie Hackers"]
+        VCCom3["Design Systems"]
+    end
+
+    %% Connections: Free Registry to SMEs
+    Registry -->|"📥 pulls patterns"| FrontendExpert
+    Registry -->|"📥 pulls patterns"| BackendExpert
+    FrontendExpert -->|"📤 contributes"| Registry
+    BackendExpert -->|"📤 contributes"| Registry
+
+    %% Connections: SMEs to Businesses
+    FrontendExpert ==>|"💰 Premium Consulting"| B1Team2
+    BackendExpert ==>|"💰 Premium Consulting"| B1Team1
+    MarketingExpert ==>|"💰 Premium Consulting"| B2Team1
+    FrontendExpert ==>|"💰 Premium Support"| B2Team2
+
+    %% Connections: Free Registry to Businesses
+    Registry -->|"🆓 free access"| B1Dev1
+    Registry -->|"🆓 free access"| B1Dev3
+    Registry -->|"🆓 free access"| B2Dev2
+    Registry -->|"🆓 free access"| B2Marketer1
+
+    %% Connections: Free Registry to Vibe Coder
+    Registry -->|"🆓 free access"| VCDev
+    VCDev -->|"📤 contributes"| Registry
+
+    %% Vibe Coder to Communities
+    VCDev -.->|participates| VCCom1
+    VCDev -.->|participates| VCCom2
+    VCDev -.->|participates| VCCom3
+    VCCom1 -.->|shares knowledge| Registry
+    VCCom3 -.->|shares knowledge| Registry
+
+    %% Cross-pollination between communities and SMEs
+    VCCom1 -.->|collaborates| FrontendExpert
+    MarketingExpert -.->|knowledge sharing| VCCom2
+
+    %% Styling
+    classDef expertClass fill:#F59E0B,stroke:#D97706,stroke-width:3px,color:#fff
+    classDef businessClass fill:#3B82F6,stroke:#2563EB,stroke-width:2px,color:#fff
+    classDef agentClass fill:#10B981,stroke:#059669,stroke-width:2px,color:#fff
+    classDef noAgentClass fill:#94A3B8,stroke:#64748B,stroke-width:1px,color:#000
+    classDef registryClass fill:#8B5CF6,stroke:#7C3AED,stroke-width:3px,color:#fff
+    classDef vibeClass fill:#EC4899,stroke:#DB2777,stroke-width:2px,color:#fff
+
+    class FrontendExpert,BackendExpert,MarketingExpert expertClass
+    class Registry,FrameworkCore registryClass
+    class B1Dev1,B1Dev3,B1Designer,B2Marketer1,B2Dev2 agentClass
+    class B1Dev2,B2Marketer2,B2Dev1 noAgentClass
+    class VCDev vibeClass
+```

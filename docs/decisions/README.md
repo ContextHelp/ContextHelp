@@ -287,6 +287,150 @@ Adds a team-friendly RBAC layer for humans that compiles down to the existing sc
 ### **ADR-034 – Registry Packaging: Index Sync and JIT Resolution (Accepted)**
 Standardizes thin sync (index/schema) plus just-in-time pulls for full content, with explicit local copy constraints (`none` | `index` | `content`).
 
+### **ADR-035 – Docling as Optional Document Parsing Backend (Accepted)**
+Docling (IBM Research, MIT license) is not adopted as a core dependency due to heavyweight footprint (PyTorch, ~6GB RAM) and scope mismatch (parser vs. knowledge substrate). Instead, it may be offered as an optional plugin for high-fidelity document structure extraction (tables, layout, OCR). Default path uses lightweight Go-native parsers.
+
+### **ADR-036 – SurfSense Evaluated and Not Adopted (Accepted)**
+SurfSense (Apache-2.0, self-hosted AI research assistant) is not adopted due to fundamental architecture mismatch (multi-service Python/TypeScript web app vs. local-first Go CLI), zero overlap with ctxt's core differentiators (knowledge graph, constrained generation, plugin system, RSQL), and heavyweight dependency requirements (PostgreSQL + Redis + Celery). Specific patterns (hybrid search RRF, chunking strategy, connector OAuth flows) noted as reference material.
+
+### **ADR-037 – Agent-Aware Adaptive Memory and Multi-Agent Coordination (Proposed)**
+ContextHelp will implement an agent-aware adaptive memory coordination layer enabling multi-agent workflows to share memory through event-driven protocols, adapt memory encoding by agent role, track decision causality, and maintain consistency across distributed agent execution.
+
+**Problem Solved:**
+- Multi-agent systems 40-50% slower than necessary (redundant reasoning)
+- No visibility into agent decision rationale
+- Memory redundancy (3x per-agent footprint)
+- No cross-agent learning or validation
+
+**Solution:**
+- Event-driven memory synchronization with subscriptions
+- Task-specific retention and memory encoding strategies
+- Reasoning traces capturing causality chains
+- TTL-based and ack-based consistency protocols
+
+**Impact:**
+- 40-60% speedup for research→planning→execution workflows
+- 50%+ memory efficiency gain
+- 30-40% decision quality improvement (from AMA research)
+- Foundation for next-gen multi-agent products
+
+**Roadmap:**
+- Phase 1 (Q1 2026): Design & documentation
+- Phase 2 (Q2-Q3 2026, Phase 3 roadmap): Foundation (events, profiles, traces)
+- Phase 3 (Q3-Q4 2026+, Phase 4 roadmap): Consistency & optimization
+
+### **ADR-038 – SuperMemory Evaluated and Not Adopted (Accepted)**
+SuperMemory (MIT, AI memory API platform) is not adopted due to fundamental problem-space mismatch (cloud-first AI agent memory API vs. local-first personal knowledge substrate), hard Cloudflare infrastructure lock-in, and zero overlap with ctxt's core differentiators. Specific concepts (memory decay/intelligent forgetting, memory versioning with updates/extends/derives relationships, MCP server pattern, MemoryBench evaluation framework) noted as reference material.
+
+### **ADR-039 – MLPMemory Evaluated and Not Adopted (for Current Phases) (Accepted)**
+MLPMemory (Oct 2025 research: parametric memory via neural weight compression for 2.5× faster inference) is not adopted due to fundamental problem mismatch (optimizes single-agent inference latency vs. our multi-agent coordination latency), architectural conflicts (frozen knowledge incompatible with real-time ingestion), and philosophical misalignment (neural weights vs. explicit knowledge graphs, centralized pretraining vs. local-first operation).
+
+**Key insight:** MLPMemory solves a different problem in a different layer. Our bottleneck is agent coordination (40-60% speedup via ADR-037 AMA), not inference (2.5× speedup via neural compression). Reconsider only in Phase 4+ if building LLM-based agents and inference becomes top-5 issue.
+
+**Related:** ADR-037 (our actual focus: multi-agent coordination), ADR-001 (local-first philosophy), ADR-013 (knowledge graphs)
+
+### **ADR-040 – HEMA: Long-Context Conversation Coherence Architecture (Proposed)**
+HEMA (Hippocampus-Inspired Extended Memory Architecture, Apr 2025) proposes dual-memory system for maintaining coherence in 300+ turn conversations via compact narrative memory + episodic vector memory. **Highly applicable** for enterprise chatbot scenarios (Slack, Teams, Discord) and messaging bots (WhatsApp, Telegram).
+
+**Problem addressed:** Over long conversations, current approach loses narrative coherence even with full context available. Users expect bots to remember conversation thread without re-specifying context.
+
+**Use cases requiring HEMA:**
+- Enterprise Slack/Teams/Discord bots (50-200 turn channels)
+- Personal WhatsApp/Telegram bots (long-lived sessions)
+- Iterative search refinement (20-100 turn searches)
+
+**Implementation timing:**
+- Phases 1-2: Document and design (this ADR)
+- Phase 3 (Q3-Q4 2026+): Implement when prioritizing chatbot/messaging integrations
+- Expected improvements: 46-point factual recall gain, 1.6-point coherence gain (from paper)
+
+**Related:** ADR-037 (agent coordination), ADR-039 (inference optimization), ADR-018 (safe execution)
+
+### **ADR-041 – MeMo (Associative Memory LMs) Evaluated and Not Adopted (Accepted)**
+MeMo (Zanzotto et al., ACL Findings 2025) proposes explicit associative memory for language models using Correlation Matrix Memories (CMMs) with algebraic forgetting. Not adopted: wrong level of abstraction (token-level vs. knowledge-object-level), synthetic-only evaluation with no real-language evidence, incompatible stack (Python/PyTorch), and non-commercial license (CC BY-NC-SA 4.0). ctxt already provides transparent, editable, forgettable memory through SQLite + structured schemas + graph. Research area (explicit memory architectures) noted for monitoring.
+
+### **ADR-042 – Cognitive Memory in LLMs: Taxonomy Evaluation and Applicability (Proposed)**
+Comprehensive taxonomy of memory mechanisms in LLMs (text-based, KV-cache, parameters, hidden-state) that provides framework for understanding design space. **Partially adopted** as validation and roadmap guidance.
+
+**Applicability:**
+- ✅ **Text-based memory:** Directly applicable (our primary approach)
+- ❌ **KV-cache:** Not applicable (we don't run LLM inference)
+- ❌ **Parameters:** Not applicable (we don't fine-tune)
+- ⚠️ **Hidden-state:** Partially (handled by HEMA ADR-040)
+
+**Key insight:** Taxonomy confirms we're using correct approach (text-based + multi-strategy retrieval). Identifies three gaps:
+1. **Conflict resolution** (detect contradictions in knowledge)
+2. **Multi-pass refinement** (enable iterative query refinement)
+3. **Cognitive efficiency** (heat-based archival for unbounded growth)
+
+**Implementation:** Gap 1-2 in Phase 3; Gap 3 in Phase 4.
+
+**Expected benefits:** Better knowledge integrity, improved search UX, operational scalability.
+
+**Related:** ADR-037 (Agent Coordination), ADR-040 (HEMA), ADR-013 (Knowledge Graph), ADR-021 (Storage)
+
+### **ADR-044 – ContextualRetriever: Context-Aware Retrieval for Conversational Search (Proposed)**
+ContextualRetriever (EMNLP 2025) implements context-aware embeddings for multi-turn conversational search, addressing ADR-042 Gap #2 (multi-pass refinement) through learned understanding of implicit queries within conversation context.
+
+**Problem solved:** Iterative search refinement loses context; users must re-specify full constraints each turn. Implicit references ("that one", "from before") become ambiguous.
+
+**Innovation:** Context-aware embeddings + Conversational Contrastive Learning (CCL) + Intent-Guided Learning (IGL) enable retrieval to understand user intent from conversation without explicit query rewriting.
+
+**Performance:**
+- Failed retrievals reduced: 49% (retrieval only), 67% (with reranking)
+- Latency: Same as baseline (no extra inference overhead)
+- Benchmarks: TREC-CAsT, TopiOCQA, QReCC
+
+**Use cases:**
+- ✅ Iterative search refinement (knowledge workers)
+- ✅ Multi-turn composition (humans building briefs)
+- ✅ Agent reasoning (follow-up questions with implicit context)
+
+**Implementation:** Phase 3 (depends on HEMA ADR-040 + ADR-042 foundations)
+
+**Expected benefits:** Better UX for multi-turn search, handles topic drift, no latency cost, integrates with existing multi-strategy ranking.
+
+**Related:** ADR-042 (fills Gap #2), ADR-040 (HEMA conversation infrastructure), ADR-037 (agent reasoning)
+
+### **ADR-047 – Contextual Normalization for RAG Not Adopted (Accepted)**
+C-Norm (Chen et al., Oct 2025; withdrawn from ICLR 2026) proposes training-free delimiter optimization for RAG context formatting using attention-guided scoring. **Not adopted:** the problem it solves (arbitrary formatting of concatenated raw passages) doesn't exist in dPKMS, which uses structured decomposition (atomic sections, entities, mentions) and template-based composition. Tested only on small models (7B, 1.5B) with marginal gains (1-3%). Useful takeaway: delimiter choice can collapse accuracy 81%→10%, validating our architectural choice to control formatting end-to-end.
+
+**Related:** ADR-017 (Composition), ADR-028 (Atomic Notes), ADR-045 (ICR²), ADR-046 (Chunking) — same "wrong architecture" pattern
+
+### **ADR-045 – ICR²: In-Context Retrieval and Reasoning Not Adopted (Accepted)**
+ICR² (Qiu et al., ACL 2025 Findings, Apple ML Research) proposes techniques for improving long-context LLM retrieval by fine-tuning models and probing attention heads. **Not adopted:** dPKMS does explicit multi-strategy retrieval (FTS5, vector, graph, RSQL), not in-context LLM retrieval. The paper's finding that confounding passages cause up to 51% performance drop directly validates our architecture's choice of precision retrieval over context-stuffing.
+
+**Related:** ADR-022 (Hybrid Search), ADR-046 (Chunking), ADR-039 (MLPMemory) — same "wrong layer" pattern
+
+### **ADR-046 – Advanced Chunking Strategies for RAG Not Adopted (Accepted)**
+Merola & Singh (ECIR 2025 Workshop) compare late chunking vs. contextual retrieval for preserving document context in RAG. **Not adopted:** dPKMS uses structured decomposition (sections, entities, mentions) — not fixed-size chunking — so the context-loss problem doesn't exist. Useful takeaway: rank fusion (4:1 dense:BM25) consistently helps across embedding models, validating our existing RRF approach. Embedding model choice matters more than chunking strategy.
+
+**Related:** ADR-022 (Hybrid Search), ADR-028 (Atomic Notes), ADR-044 (ContextualRetriever), ADR-047 (C-Norm) — same "inapplicable architecture" pattern
+
+### **ADR-048 – Visual SSL Scaling: Informative for Image Similarity Search (Accepted)**
+Fan et al. (Meta FAIR/NYU, Apr 2025) demonstrate vision-only SSL matches CLIP at 7B parameters with better scaling. **Not directly adopted** (we consume VLMs via API, not raw encoders), but **establishes a design principle for first-class image support:**
+
+**Key insight:** Image knowledge objects should carry **dual embeddings** — text (from VLM description) and visual (from vision encoder) — enabling both "search by description" and "find visually similar images." The existing embeddings schema (`model TEXT NOT NULL`) already supports this without changes.
+
+**Enables future feature:**
+- `ctxt search --similar-to image.png` — visual similarity search across knowledge base
+- Image-to-image retrieval for diagrams, screenshots, whiteboards
+
+**Model selection guidance:** Prefer models trained on document/chart-heavy data (+13.6% OCR/Chart improvement from text-filtered training). Implementation waits for `image.*` pipelines (US-0003) and visual embedding API availability.
+
+**Related:** ADR-026 (Multimodal), ADR-022 (Hybrid Search), ADR-021 (Multi-Backend), US-0003 (Image OCR), US-0051 (Semantic Search)
+
+### **ADR-043 – BEAM/LIGHT: Long-Term Memory Techniques Partially Adopted (Accepted)**
+BEAM/LIGHT (Tavakoli et al., ICLR 2026) benchmarks 10 cognitive memory abilities across 100K–10M token conversations and provides LIGHT, a three-component memory framework (episodic + working + scratchpad). Full system not adopted (requires 32B model per turn, Python/GPU stack). **Three techniques adopted:**
+
+1. **Per-query noise filtering** as reranking step — empirically validated -8.3% degradation without it at 10M tokens. Implementable via constrained generation (`LMQL in("yes","no")` per candidate). Phase 3.
+2. **LIGHT scratchpad design** supersedes HEMA compact memory (ADR-040) — four memory categories, threshold compression, relevance filtering. Phase 3.
+3. **Retrieval budget k=15** as evidence-based default — k=20 degrades from noise, k=5 loses 6-8%. Immediate.
+
+**Key validation:** Contradiction resolution confirmed as unsolved (0-5% across all methods), validates ADR-042 Gap 1. BEAM's 10-ability taxonomy noted as evaluation framework for ctxt search quality.
+
+**Related:** ADR-040 (HEMA, scratchpad upgrade), ADR-042 (contradiction resolution validation), ADR-022 (hybrid search), ADR-011 (reranking)
+
 ---
 
 ## Purpose of This Directory

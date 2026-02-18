@@ -14,15 +14,21 @@ Together they provide **context-as-a-service** for humans and AI agents (self-ho
 ## 📖 Quick Start
 
 **New to the project?**
-1. Read [architecture.md](architecture.md) - System-wide architecture
-2. Read [design.md](design.md) - Consolidated design documentation
-3. Review [dpkms-or-ctxt.md](dpkms-or-ctxt.md) - Package placement guide
+1. Read [developer-quickstart.md](developer-quickstart.md) - Developer onboarding
+2. Read [cli-quickstart.md](cli-quickstart.md) - CLI quickstart
+3. Read [architecture.md](architecture.md) - System-wide architecture
+4. Read [design.md](design.md) - Consolidated design documentation
+5. Review [dpkms-or-ctxt.md](dpkms-or-ctxt.md) - Package placement guide
 
 **Looking for specific capabilities?**
 - [featureset.md](featureset.md) - Complete feature overview
 
 **Want to understand terminology?**
 - [glossary.md](glossary.md) - Shared vocabulary
+
+**Need to configure the system?**
+- [configuration-structure.md](configuration-structure.md) - Configuration file structure
+- [environment-variables/README.md](environment-variables/README.md) - Environment variables
 
 ---
 
@@ -37,62 +43,122 @@ docs/
 ├── dpkms-or-ctxt.md               # Package placement guide
 ├── featureset.md                  # Complete feature set
 │
+├── Getting Started
+│   ├── developer-quickstart.md    # Developer onboarding
+│   ├── cli-quickstart.md          # CLI quickstart guide
+│   └── cross-package-contracts.md  # Interface contracts
+│
+├── Development
+│   ├── development.md              # Development workflow
+│   ├── development-infrastructure.md  # Dev environment setup
+│   ├── dependencies.md            # Dependency management
+│   ├── cli-implementation.md      # CLI implementation details
+│   ├── configuration-structure.md # Configuration file structure
+│   ├── ci-cd.md                   # CI/CD pipeline
+│   ├── git-hooks.md               # Git hooks configuration
+│   ├── branding.md                # Brand guidelines
+│   └── quick-wins-strategy.md      # Quick wins strategy
+│
+├── Environment Variables
+│   └── environment-variables/
+│       ├── README.md              # Environment variables overview
+│       ├── core.md                # Core settings
+│       ├── storage.md             # Storage configuration
+│       ├── api.md                 # API settings
+│       ├── pipelines.md           # Pipeline configuration
+│       ├── registries.md          # Registry configuration
+│       ├── workers.md             # Worker settings
+│       ├── ai-providers.md        # AI provider settings
+│       ├── services.md            # Service configuration
+│       ├── development.md         # Development settings
+│       └── security.md            # Security settings
+│
 ├── dpkms/                         # dPKMS substrate documentation
 │   ├── README.md                  # dPKMS overview
 │   ├── non-negotiables.md         # Design principles
 │   ├── featureset.md              # dPKMS-specific features
 │   ├── storage.md                 # Storage layer
 │   ├── jobs-and-ingestion.md      # Job queue
+│   ├── queue.md                   # Queue implementation
 │   ├── query-language-spec.md     # Query engine
 │   ├── knowledge-graph.md         # Graph index
 │   ├── mentions.md                # Mention system
 │   ├── schema-entity.md           # Entity schema
+│   ├── schema-registry.md         # Registry schema
 │   ├── registries.md              # Registry system
 │   ├── registry-protocol.md       # Registry protocol
+│   ├── registry-syncing-and-retrieval.md  # Sync mechanisms
 │   ├── security.md                # Security model
 │   ├── privacy.md                 # Privacy guarantees
-│   └── ...                        # More substrate docs
+│   ├── decentralization.md        # Decentralization model
+│   ├── caching.md                 # Caching strategies
+│   ├── embeddings.md              # Embedding support
+│   ├── ranking-and-reranking.md    # Result ranking
+│   ├── testing.md                 # Testing strategy
+│   ├── domains.md                 # Domain management
+│   └── personas/                  # dPKMS personas
+│       └── README.md
 │
 ├── ctxt/                          # ctxt brain documentation
 │   ├── README.md                  # ctxt overview
 │   ├── non-negotiables.md         # Design principles
 │   ├── featureset.md              # ctxt-specific features
 │   ├── api-cli.md                 # CLI reference
+│   ├── tui.md                     # TUI reference
+│   ├── webui.md                   # Web UI reference
 │   ├── pipelines.md               # Enrichment recipes
 │   ├── pipelines-reference.md     # Pipeline catalog
 │   ├── schema-object.md           # Knowledge object schema
+│   ├── schema-tag.md              # Tag schema
+│   ├── schema-taxonomy.md         # Taxonomy schema
 │   ├── tags.md                    # Tag semantics
 │   ├── configuration.md           # Profiles & preferences
+│   ├── hints.md                   # User hints
+│   ├── interface-mappings.md      # Interface mappings
+│   ├── domains.md                 # Domain-specific features
 │   ├── user-stories.md            # User stories
 │   ├── user-story.md              # Narrative example
-│   └── ...                        # More brain docs
+│   ├── user-story-github-pr-insights.md  # Specific use case
+│   ├── user-roles.md              # User roles
+│   ├── personas-end-users.md      # End user personas
+│   ├── personas-user-roles.md     # User role personas
+│   ├── l10n-i18n.md              # Localization
+│   └── testing.md                # Testing strategy
 │
 ├── plugins/                       # Plugin system (cross-cutting)
 │   ├── README.md                  # Plugin overview
 │   ├── plugins.md                 # Plugin architecture
 │   ├── plugins-api.md             # Plugin API contract
+│   ├── plugin-isolation.md        # Plugin isolation
 │   ├── plugins-notifications.md   # Notification plugin
 │   ├── plugins-refresh.md         # Refresh plugin
-│   └── examples/
-│       └── plugins-sample-price-monitor.md
+│   ├── plugins-github-pr-review-watcher.md  # PR review plugin
+│   └── examples/                  # Plugin examples
 │
 ├── api/                           # External APIs
 │   ├── README.md                  # API overview
 │   ├── api-rest.md                # REST API reference
-│   └── api-grpc.md                # gRPC API reference
+│   ├── api-grpc.md                # gRPC API reference
+│   └── node-admin-api.md          # Node admin API
 │
 ├── integrations/                  # External integrations
 │   ├── README.md                  # Integration overview
-│   ├── leann-integration.md       # LEANN integration
-│   ├── glm-pov.md                 # GLM integration
-│   └── gemini-pov.md              # Gemini integration
+│   └── leann-integration.md       # LEANN integration
 │
 ├── security/                      # Security & secrets management
 │   ├── README.md                  # Security documentation index
 │   ├── secrets-validation-and-log-sanitization.md  # Comprehensive guide
 │   ├── security-model.md          # Threat model & guarantees
 │   ├── secret-management.md       # Lifecycle & best practices
-│   └── configuration-security.md  # Securing configuration files
+│   ├── configuration-security.md  # Securing configuration files
+│   ├── log-sanitization.md        # Log sanitization
+│   ├── validation.md             # Security validation
+│   └── model/                     # Security model docs
+│       ├── README.md
+│       ├── threat.md              # Threat modeling
+│       ├── boundaries.md          # Security boundaries
+│       ├── compliance.md          # Compliance requirements
+│       └── controls.md            # Security controls
 │
 ├── decisions/                     # Architectural Decision Records
 │   └── ADR-*.md                   # Individual ADRs
@@ -114,8 +180,63 @@ docs/
 ├── registries/                    # Publisher-facing registry docs
 │   └── publishing.md              # Build a registry (thin sync + JIT pull)
 │
-└── sprints/                       # Sprint planning docs
-    └── 00*.md                     # Sprint documents
+├── deployment/                    # Deployment documentation
+│   ├── README.md                  # Deployment overview
+│   ├── 00-START-HERE.md           # Deployment guide
+│   ├── WEB2-WEB3-HYBRID.md        # Hybrid deployment
+│   ├── COMPARISON-MATRIX.md      # Deployment comparisons
+│   ├── DEPLOYMENT-SCENARIOS.md   # Deployment scenarios
+│   └── SYNC-ORCHESTRATION.md     # Sync orchestration
+│
+├── personas/                      # Personas documentation
+│   ├── README.md                  # Personas overview
+│   ├── agents-llms-tools.md       # AI agent personas
+│   ├── knowledge-workers.md       # Knowledge worker personas
+│   ├── maintainers.md            # Maintainer personas
+│   ├── operations.md             # Operations personas
+│   └── platform-integrators.md   # Platform integrator personas
+│
+├── stories/                       # User stories
+│   ├── README.md                  # Stories overview
+│   ├── admin/                     # Admin stories
+│   ├── agents/                    # Agent stories
+│   ├── composition/              # Composition stories
+│   ├── enrichment/               # Enrichment stories
+│   ├── ingestion/                # Ingestion stories
+│   ├── operations/                # Operations stories
+│   ├── plugins/                   # Plugin stories
+│   └── search/                    # Search stories
+│
+├── blog/                          # Blog posts
+│   ├── preamble.md                # Blog preamble
+│   ├── pkms-pick-a-mess.md        # Blog post
+│   ├── few-standards-many-vendors.md  # Blog post
+│   └── taming-ms-model-stupidity.md    # Blog post
+│
+├── diagrams/                      # Documentation diagrams
+│   └── ecosystem-overview.*        # Ecosystem visualizations
+│
+├── web/                           # context.help marketing site
+│   ├── README.md                  # Web docs index
+│   ├── messaging.md               # Messaging and copy
+│   ├── target-audience.md         # Personas and JTBD
+│   ├── design-system.md           # Visual direction
+│   ├── stack.md                   # Web stack
+│   ├── landing-page-copy.md       # Landing page copy
+│   ├── brand-guidelines.md        # Brand guidelines
+│   ├── logo-concepts.md           # Logo concepts
+│   ├── drafts/                    # Draft content
+│   └── assets/                    # Web assets
+│       ├── favicon/
+│       ├── icons/
+│       │   └── feature/
+│       ├── logo/
+│       └── social/
+│
+├── sprints/                       # Sprint planning docs
+│   └── 00*.md                     # Sprint documents
+│
+└── scaling.md                     # Scaling documentation
 ```
 
 ---
@@ -124,9 +245,12 @@ docs/
 
 ### For End Users
 Start here to understand what the system does:
+- [developer-quickstart.md](developer-quickstart.md) - Get started quickly
+- [cli-quickstart.md](cli-quickstart.md) - CLI quickstart
 - [architecture.md](architecture.md) - What the system is
 - [ctxt/user-story.md](ctxt/user-story.md) - Daily usage narrative
 - [ctxt/api-cli.md](ctxt/api-cli.md) - CLI commands
+- [ctxt/tui.md](ctxt/tui.md) - TUI reference
 - [featureset.md](featureset.md) - What's possible
 
 ### For Developers
@@ -140,11 +264,19 @@ Building with or extending the system:
 
 ### For Contributors
 Contributing to the codebase:
+- [developer-quickstart.md](developer-quickstart.md) - Developer onboarding
+- [cli-quickstart.md](cli-quickstart.md) - CLI quickstart
+- [development.md](development.md) - Development workflow
+- [development-infrastructure.md](development-infrastructure.md) - Dev environment setup
 - [design.md](design.md) - Design philosophy
 - [decisions/](decisions/) - Architectural decisions (ADRs)
 - [dpkms/testing.md](dpkms/testing.md) - Testing strategy
+- [ctxt/testing.md](ctxt/testing.md) - Testing strategy
 - [dpkms/non-negotiables.md](dpkms/non-negotiables.md) - dPKMS principles
 - [ctxt/non-negotiables.md](ctxt/non-negotiables.md) - ctxt principles
+- [git-hooks.md](git-hooks.md) - Git hooks configuration
+- [ci-cd.md](ci-cd.md) - CI/CD pipeline
+- [dependencies.md](dependencies.md) - Dependency management
 
 ### For Registry Maintainers
 Building decentralized knowledge registries:
@@ -168,6 +300,18 @@ Using **context.help cloud** for teams:
 - [cloud/admin-access.md](cloud/admin-access.md) - Access management (org -> nodes)
 - [cloud/billing-and-credits.md](cloud/billing-and-credits.md) - Billing and credits
 
+### For Web and Marketing
+Website and positioning:
+- [web/README.md](web/README.md) - Web docs index
+- [web/messaging.md](web/messaging.md) - Messaging and copy
+- [web/target-audience.md](web/target-audience.md) - Target audience
+- [web/design-system.md](web/design-system.md) - Web design direction
+- [web/stack.md](web/stack.md) - Web stack
+- [web/landing-page-copy.md](web/landing-page-copy.md) - Landing page content
+- [web/brand-guidelines.md](web/brand-guidelines.md) - Brand guidelines
+- [web/logo-concepts.md](web/logo-concepts.md) - Logo concepts
+- [branding.md](branding.md) - Overall brand guidelines
+
 ### For System Integrators
 Integrating with external systems:
 - [integrations/](integrations/) - Integration examples
@@ -182,8 +326,12 @@ Managing secrets, compliance, and secure deployments:
 - [security/security-model.md](security/security-model.md) - Threat model and guarantees
 - [security/secret-management.md](security/secret-management.md) - Rotation, incident response, and best practices
 - [security/configuration-security.md](security/configuration-security.md) - Securing configuration files
-- [environment-variables.md#security](environment-variables.md#security) - Secure environment variable handling
-- [scaling.md](scaling.md) - Deployment security patterns
+- [security/log-sanitization.md](security/log-sanitization.md) - Log sanitization
+- [security/validation.md](security/validation.md) - Security validation
+- [security/model/](security/model/) - Security model (threat, boundaries, compliance, controls)
+- [environment-variables/security.md](environment-variables/security.md) - Secure environment variable handling
+- [deployment/](deployment/) - Deployment security patterns
+- [scaling.md](scaling.md) - Scaling documentation
 
 ---
 
@@ -193,19 +341,37 @@ Managing secrets, compliance, and secure deployments:
 - [architecture.md](architecture.md) - Two-package architecture
 - [dpkms-or-ctxt.md](dpkms-or-ctxt.md) - Which package owns what
 - [glossary.md](glossary.md) - Terminology guide
+- [cross-package-contracts.md](cross-package-contracts.md) - Interface contracts
+- [domains.md](domains.md) - Domain concepts
+
+### Development & Setup
+- [developer-quickstart.md](developer-quickstart.md) - Developer onboarding
+- [cli-quickstart.md](cli-quickstart.md) - CLI quickstart
+- [development.md](development.md) - Development workflow
+- [development-infrastructure.md](development-infrastructure.md) - Dev environment setup
+- [dependencies.md](dependencies.md) - Dependency management
+- [cli-implementation.md](cli-implementation.md) - CLI implementation
+- [configuration-structure.md](configuration-structure.md) - Config structure
+- [git-hooks.md](git-hooks.md) - Git hooks
+- [ci-cd.md](ci-cd.md) - CI/CD pipeline
+- [branding.md](branding.md) - Brand guidelines
 
 ### Storage & Data
 - [dpkms/storage.md](dpkms/storage.md) - Storage backends
 - [dpkms/jobs-and-ingestion.md](dpkms/jobs-and-ingestion.md) - Job queue
 - [dpkms/queue.md](dpkms/queue.md) - Queue implementation
 - [ctxt/schema-object.md](ctxt/schema-object.md) - Knowledge objects
+- [dpkms/embeddings.md](dpkms/embeddings.md) - Embedding support
+- [dpkms/caching.md](dpkms/caching.md) - Caching strategies
 
 ### Semantic Identity
 - [dpkms/knowledge-graph.md](dpkms/knowledge-graph.md) - Graph index
 - [dpkms/mentions.md](dpkms/mentions.md) - Mention system
 - [dpkms/schema-entity.md](dpkms/schema-entity.md) - Entity schema
+- [dpkms/schema-registry.md](dpkms/schema-registry.md) - Registry schema
 - [ctxt/tags.md](ctxt/tags.md) - Tag semantics
 - [ctxt/schema-tag.md](ctxt/schema-tag.md) - Tag schema
+- [ctxt/schema-taxonomy.md](ctxt/schema-taxonomy.md) - Taxonomy schema
 
 ### Enrichment & Pipelines
 - [ctxt/pipelines.md](ctxt/pipelines.md) - Enrichment recipes
@@ -238,17 +404,40 @@ Managing secrets, compliance, and secure deployments:
 - [plugins/examples/](plugins/examples/) - Plugin examples
 
 ### Configuration & Profiles
+- [configuration-structure.md](configuration-structure.md) - Configuration file structure
+- [environment-variables/README.md](environment-variables/README.md) - Environment variables overview
+- [environment-variables/core.md](environment-variables/core.md) - Core settings
 - [ctxt/configuration.md](ctxt/configuration.md) - Focus profiles
 - [ctxt/l10n-i18n.md](ctxt/l10n-i18n.md) - Localization
 
 ### User Experience
+- [stories/](stories/) - User stories by category
 - [ctxt/user-stories.md](ctxt/user-stories.md) - User stories
 - [ctxt/user-story.md](ctxt/user-story.md) - Usage narrative
+- [ctxt/user-story-github-pr-insights.md](ctxt/user-story-github-pr-insights.md) - Specific use case
 - [ctxt/personas-end-users.md](ctxt/personas-end-users.md) - Personas
 - [ctxt/user-roles.md](ctxt/user-roles.md) - User roles
+- [personas/](personas/) - Comprehensive personas documentation
 
 ### Quality & Testing
 - [dpkms/testing.md](dpkms/testing.md) - Testing strategy
+- [ctxt/testing.md](ctxt/testing.md) - Testing strategy
+- [security/validation.md](security/validation.md) - Security validation
+
+### Deployment & Operations
+- [deployment/](deployment/) - Deployment scenarios and strategies
+- [scaling.md](scaling.md) - Scaling documentation
+- [stories/operations/](stories/operations/) - Operations stories
+- [personas/operations.md](personas/operations.md) - Operations personas
+
+### Brand & Marketing
+- [branding.md](branding.md) - Brand guidelines
+- [web/](web/) - Web documentation and assets
+- [blog/](blog/) - Blog posts
+
+### Personas & Stakeholders
+- [personas/](personas/) - Comprehensive personas documentation
+- [stories/](stories/) - User stories by category
 
 ---
 
@@ -279,6 +468,9 @@ See [ctxt/non-negotiables.md](ctxt/non-negotiables.md)
 **Q: Where does X belong - dPKMS or ctxt?**
 A: See [dpkms-or-ctxt.md](dpkms-or-ctxt.md)
 
+**Q: How do I get started?**
+A: See [developer-quickstart.md](developer-quickstart.md) and [cli-quickstart.md](cli-quickstart.md)
+
 **Q: How do I extend the system?**
 A: See [plugins/plugins-api.md](plugins/plugins-api.md)
 
@@ -289,10 +481,16 @@ A: See [dpkms/query-language-spec.md](dpkms/query-language-spec.md)
 A: See [dpkms/registries.md](dpkms/registries.md)
 
 **Q: How do I use the CLI?**
-A: See [ctxt/api-cli.md](ctxt/api-cli.md)
+A: See [ctxt/api-cli.md](ctxt/api-cli.md) and [cli-implementation.md](cli-implementation.md)
 
 **Q: What are focus profiles?**
 A: See [ctxt/configuration.md](ctxt/configuration.md)
+
+**Q: How do I configure the system?**
+A: See [configuration-structure.md](configuration-structure.md) and [environment-variables/](environment-variables/)
+
+**Q: How do I deploy?**
+A: See [deployment/](deployment/) for deployment scenarios and strategies
 
 ---
 

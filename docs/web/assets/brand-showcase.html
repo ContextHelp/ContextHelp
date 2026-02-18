@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>context.help Brand Showcase</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #fdfcf9;
+      color: #1a2332;
+      line-height: 1.6;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 3rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+
+    h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin: 3rem 0 1.5rem;
+      letter-spacing: -0.02em;
+      color: #1a2332;
+    }
+
+    h3 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 2rem 0 1rem;
+      color: #4a5568;
+    }
+
+    .tagline {
+      font-size: 1.25rem;
+      color: #4a5568;
+      margin-bottom: 3rem;
+    }
+
+    .section {
+      margin-bottom: 4rem;
+    }
+
+    .logo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .logo-card {
+      background: white;
+      border: 1px solid #e8e6dc;
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 2px 8px rgba(26, 35, 50, 0.08);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .logo-card.dark {
+      background: #1a2332;
+      color: #fdfcf9;
+    }
+
+    .logo-display {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 80px;
+      width: 100%;
+    }
+
+    .logo-label {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #4a5568;
+      text-align: center;
+    }
+
+    .logo-card.dark .logo-label {
+      color: #b0aea5;
+    }
+
+    .icon-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .icon-card {
+      background: white;
+      border: 1px solid #e8e6dc;
+      border-radius: 8px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .icon-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(26, 35, 50, 0.12);
+    }
+
+    .icon-display {
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .icon-display img {
+      width: 100%;
+      height: 100%;
+    }
+
+    .icon-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #1a2332;
+      text-align: center;
+    }
+
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+
+    .color-card {
+      border: 1px solid #e8e6dc;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(26, 35, 50, 0.08);
+    }
+
+    .color-swatch {
+      height: 80px;
+    }
+
+    .color-info {
+      padding: 1rem;
+      background: white;
+    }
+
+    .color-name {
+      font-weight: 600;
+      font-size: 1rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .color-hex {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.875rem;
+      color: #4a5568;
+    }
+
+    .demo-backgrounds {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+
+    .demo-bg-light {
+      background: #fdfcf9;
+      padding: 3rem;
+      border: 1px solid #e8e6dc;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .demo-bg-dark {
+      background: #1a2332;
+      padding: 3rem;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    code {
+      background: #f6f8fa;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.875rem;
+      color: #1a2332;
+    }
+
+    .usage-example {
+      background: #f6f8fa;
+      border: 1px solid #e1e4e8;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin: 1rem 0;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.875rem;
+      overflow-x: auto;
+    }
+
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 2rem;
+      }
+
+      .demo-backgrounds {
+        grid-template-columns: 1fr;
+      }
+
+      .logo-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>context.help Brand Showcase</h1>
+      <p class="tagline">Visual identity, logos, icons, and color system</p>
+    </header>
+
+    <!-- Logo Variants -->
+    <section class="section">
+      <h2>Logo Variants</h2>
+
+      <div class="logo-grid">
+        <div class="logo-card">
+          <div class="logo-display">
+            <img src="logo/context-help-logo-full.svg" alt="Full Logo" style="max-width: 100%;">
+          </div>
+          <div class="logo-label">Full Logo (Icon + Wordmark + Tagline)<br><code>context-help-logo-full.svg</code></div>
+        </div>
+
+        <div class="logo-card">
+          <div class="logo-display">
+            <img src="logo/context-help-logo-compact.svg" alt="Compact Logo" style="max-width: 100%;">
+          </div>
+          <div class="logo-label">Compact Logo (Icon + Wordmark)<br><code>context-help-logo-compact.svg</code></div>
+        </div>
+
+        <div class="logo-card">
+          <div class="logo-display">
+            <img src="logo/context-help-logo-stacked.svg" alt="Stacked Logo" style="max-width: 100%;">
+          </div>
+          <div class="logo-label">Stacked Logo (Vertical)<br><code>context-help-logo-stacked.svg</code></div>
+        </div>
+
+        <div class="logo-card">
+          <div class="logo-display">
+            <img src="logo/context-help-icon.svg" alt="Icon Light" width="80" height="80">
+          </div>
+          <div class="logo-label">Icon Only (Light Background)<br><code>context-help-icon.svg</code></div>
+        </div>
+
+        <div class="logo-card dark">
+          <div class="logo-display">
+            <img src="logo/context-help-icon-dark.svg" alt="Icon Dark" width="80" height="80">
+          </div>
+          <div class="logo-label">Icon Only (Dark Background)<br><code>context-help-icon-dark.svg</code></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Background Demos -->
+    <section class="section">
+      <h2>Background Demonstrations</h2>
+      <h3>Logo on Different Backgrounds</h3>
+
+      <div class="demo-backgrounds">
+        <div class="demo-bg-light">
+          <img src="logo/context-help-logo-compact.svg" alt="Logo on light" style="max-width: 100%;">
+        </div>
+        <div class="demo-bg-dark">
+          <img src="logo/context-help-logo-compact.svg" alt="Logo on dark" style="max-width: 100%; filter: brightness(0) invert(1);">
+        </div>
+      </div>
+    </section>
+
+    <!-- Feature Icons -->
+    <section class="section">
+      <h2>Feature Icons</h2>
+      <p>24×24px icons with 2px stroke weight, following brand guidelines.</p>
+
+      <div class="icon-grid">
+        <div class="icon-card">
+          <div class="icon-display">
+            <img src="icons/feature/pipeline.svg" alt="Pipeline">
+          </div>
+          <div class="icon-name">Pipeline</div>
+        </div>
+
+        <div class="icon-card">
+          <div class="icon-display">
+            <img src="icons/feature/knowledge-graph.svg" alt="Knowledge Graph">
+          </div>
+          <div class="icon-name">Knowledge Graph</div>
+        </div>
+
+        <div class="icon-card">
+          <div class="icon-display">
+            <img src="icons/feature/registry.svg" alt="Registry">
+          </div>
+          <div class="icon-name">Registry</div>
+        </div>
+
+        <div class="icon-card">
+          <div class="icon-display">
+            <img src="icons/feature/entity.svg" alt="Entity">
+          </div>
+          <div class="icon-name">Entity</div>
+        </div>
+
+        <div class="icon-card">
+          <div class="icon-display">
+            <img src="icons/feature/jobs.svg" alt="Jobs">
+          </div>
+          <div class="icon-name">Jobs</div>
+        </div>
+
+        <div class="icon-card">
+          <div class="icon-display">
+            <img src="icons/feature/storage.svg" alt="Storage">
+          </div>
+          <div class="icon-name">Storage</div>
+        </div>
+
+        <div class="icon-card">
+          <div class="icon-display">
+            <img src="icons/feature/sovereignty.svg" alt="Sovereignty">
+          </div>
+          <div class="icon-name">Sovereignty</div>
+        </div>
+
+        <div class="icon-card">
+          <div class="icon-display">
+            <img src="icons/feature/plugin.svg" alt="Plugin">
+          </div>
+          <div class="icon-name">Plugin</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Color Palette -->
+    <section class="section">
+      <h2>Color Palette</h2>
+
+      <h3>Primary Colors</h3>
+      <div class="color-grid">
+        <div class="color-card">
+          <div class="color-swatch" style="background-color: #1a2332;"></div>
+          <div class="color-info">
+            <div class="color-name">Deep Navy</div>
+            <div class="color-hex">#1a2332</div>
+          </div>
+        </div>
+
+        <div class="color-card">
+          <div class="color-swatch" style="background-color: #00d9ff;"></div>
+          <div class="color-info">
+            <div class="color-name">Bright Cyan</div>
+            <div class="color-hex">#00d9ff</div>
+          </div>
+        </div>
+
+        <div class="color-card">
+          <div class="color-swatch" style="background-color: #fdfcf9;"></div>
+          <div class="color-info">
+            <div class="color-name">Warm White</div>
+            <div class="color-hex">#fdfcf9</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Secondary Colors</h3>
+      <div class="color-grid">
+        <div class="color-card">
+          <div class="color-swatch" style="background-color: #4a5568;"></div>
+          <div class="color-info">
+            <div class="color-name">Slate Gray</div>
+            <div class="color-hex">#4a5568</div>
+          </div>
+        </div>
+
+        <div class="color-card">
+          <div class="color-swatch" style="background-color: #3dd68c;"></div>
+          <div class="color-info">
+            <div class="color-name">Mint Green</div>
+            <div class="color-hex">#3dd68c</div>
+          </div>
+        </div>
+
+        <div class="color-card">
+          <div class="color-swatch" style="background-color: #ffc247;"></div>
+          <div class="color-info">
+            <div class="color-name">Amber</div>
+            <div class="color-hex">#ffc247</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Semantic Colors</h3>
+      <div class="color-grid">
+        <div class="color-card">
+          <div class="color-swatch" style="background-color: #10b981;"></div>
+          <div class="color-info">
+            <div class="color-name">Success</div>
+            <div class="color-hex">#10b981</div>
+          </div>
+        </div>
+
+        <div class="color-card">
+          <div class="color-swatch" style="background-color: #f59e0b;"></div>
+          <div class="color-info">
+            <div class="color-name">Warning</div>
+            <div class="color-hex">#f59e0b</div>
+          </div>
+        </div>
+
+        <div class="color-card">
+          <div class="color-swatch" style="background-color: #ef4444;"></div>
+          <div class="color-info">
+            <div class="color-name">Error</div>
+            <div class="color-hex">#ef4444</div>
+          </div>
+        </div>
+
+        <div class="color-card">
+          <div class="color-swatch" style="background-color: #6366f1;"></div>
+          <div class="color-info">
+            <div class="color-name">Info</div>
+            <div class="color-hex">#6366f1</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Usage Examples -->
+    <section class="section">
+      <h2>Usage Examples</h2>
+
+      <h3>HTML</h3>
+      <div class="usage-example">
+&lt;!-- Hero section with full logo --&gt;
+&lt;img src="/assets/logo/context-help-logo-full.svg"
+     alt="context.help"
+     width="280"
+     height="48"&gt;
+
+&lt;!-- Navigation with compact logo --&gt;
+&lt;img src="/assets/logo/context-help-logo-compact.svg"
+     alt="context.help"
+     width="230"
+     height="48"&gt;
+
+&lt;!-- Favicon --&gt;
+&lt;link rel="icon"
+      type="image/svg+xml"
+      href="/assets/logo/context-help-icon.svg"&gt;
+      </div>
+
+      <h3>Dark Mode Support</h3>
+      <div class="usage-example">
+&lt;picture&gt;
+  &lt;source srcset="/assets/logo/context-help-icon-dark.svg"
+          media="(prefers-color-scheme: dark)"&gt;
+  &lt;img src="/assets/logo/context-help-icon.svg"
+       alt="context.help"&gt;
+&lt;/picture&gt;
+      </div>
+
+      <h3>CSS Custom Properties</h3>
+      <div class="usage-example">
+:root {
+  /* Primary */
+  --color-navy: #1a2332;
+  --color-cyan: #00d9ff;
+  --color-white: #fdfcf9;
+
+  /* Secondary */
+  --color-slate: #4a5568;
+  --color-mint: #3dd68c;
+  --color-amber: #ffc247;
+
+  /* Semantic */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #6366f1;
+}
+      </div>
+    </section>
+
+    <footer style="margin-top: 4rem; padding-top: 2rem; border-top: 1px solid #e8e6dc; text-align: center; color: #4a5568;">
+      <p>context.help Brand Showcase • Version 1.0.0</p>
+      <p style="margin-top: 0.5rem;">See <code>docs/web/brand-guidelines.md</code> for complete guidelines</p>
+    </footer>
+  </div>
+</body>
+</html>

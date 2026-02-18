@@ -107,6 +107,173 @@ See `docs/cloud/README.md` and `docs/decisions/ADR-031-nodes-and-cloud-boundary.
 
 ---
 
+## Deployment: Web2/Web3 Hybrid Model
+
+The system is **deployment-agnostic**. The same dPKMS + ctxt node runs on any infrastructure, with pluggable storage and networking.
+
+### Storage Drivers (Pluggable)
+
+The system is indifferent to where data persists:
+
+- **SQLite** (local machine) — Default, zero-install, high performance for <1M objects
+- **PostgreSQL** (cloud) — Multi-user, replication, high availability
+- **IPFS** (P2P network) — Content-addressed, peer-pinned, DHT-discoverable
+- **Arweave** (permanent) — Immutable archive, permanent storage
+- **Blockchain** (Solana/Ethereum) — Metadata anchoring, proof-of-authorship, smart contracts
+
+### Network Transports (Pluggable)
+
+The system is indifferent to how nodes communicate:
+
+- **HTTP** (cloud APIs) — REST/gRPC for centralized or cloud deployments
+- **libp2p** (P2P networks) — Kademlia DHT for decentralized node discovery and sync
+- **RPC** (blockchain) — Connection to settlement layers for on-chain settlement
+- **Registry Protocol** (federated) — Works identically on any backend
+
+### Five Deployment Models
+
+#### 1. Web2: Managed Cloud (Recommended for Teams)
+```
+Users → SSO/SCIM (cloud identity) → Managed nodes (hosted) → PostgreSQL
+```
+- **Best for:** Teams wanting zero ops
+- **Data location:** context.help cloud (encrypted)
+- **Availability:** 99.99% uptime
+- **Cost:** $15-50/user/month
+- **Ops burden:** None (handled by cloud provider)
+
+#### 2. Web2: Self-Hosted (Recommended for Privacy)
+```
+User machine → dPKMS node (OSS) → SQLite or self-managed Postgres
+```
+- **Best for:** Privacy-first individuals, data residency requirements
+- **Data location:** User's control (local disk, cloud VM, on-prem)
+- **Availability:** User's responsibility
+- **Cost:** Free (your hardware)
+- **Ops burden:** User's responsibility
+
+#### 3. Web3: IPFS (Recommended for Communities)
+```
+P2P nodes → IPFS cluster → DHT discovery → Pinning service
+```
+- **Best for:** Decentralized communities, censorship-resistance
+- **Data location:** IPFS cluster (replicated, peer-pinned)
+- **Availability:** P2P resilience (no single point of failure)
+- **Cost:** Pinning fees (~$0.01/GB/month)
+- **Permanence:** Requires active community pinning
+
+#### 4. Web3: Blockchain (Recommended for Verifiable)
+```
+Nodes → Blockchain anchor (Solana/Ethereum) → Arweave (archival) → Smart contracts
+```
+- **Best for:** Immutable proof, verifiable publishing, monetizable registries
+- **Data location:** Off-chain (encrypted) + on-chain metadata
+- **Availability:** Blockchain consensus
+- **Cost:** Per-transaction fees (~$0.01-0.50/anchor)
+- **Permanence:** Forever (immutable on-chain)
+
+#### 5. Hybrid: Multi-Stack (Recommended for Enterprises)
+```
+Single node → Local (hot) + Cloud (compliance) + IPFS (redundancy) + Arweave (archive) + Blockchain (proof)
+```
+- **Best for:** Enterprises needing maximum resilience
+- **Data location:** All targets simultaneously
+- **Availability:** No single point of failure
+- **Cost:** Sum of all targets
+- **Resilience:** Can recover from any single target failure
+
+### Hybrid Sync Guarantee
+
+A single dPKMS + ctxt node can write once, asynchronously replicate to multiple targets, and serve reads from any target with automatic failover.
+
+**Write Path:**
+```
+User adds content
+    ↓
+Write to local SQLite (immediate)
+    ↓
+Create async outbox jobs:
+├─ Sync to PostgreSQL (if cloud enabled)
+├─ Pin to IPFS cluster (if P2P enabled)
+├─ Archive to Arweave (if archival enabled)
+└─ Anchor to blockchain (if settlement enabled)
+    ↓
+Each job completes independently
+    ↓
+Content is now in all configured targets
+```
+
+**Read Path:**
+```
+User queries
+    ↓
+Query local SQLite (fast)
+    ↓
+In parallel (if configured):
+├─ Query cloud PostgreSQL
+├─ Query IPFS DHT
+├─ Query blockchain events
+└─ Query registered pinners
+    ↓
+Merge + deduplicate results
+    ↓
+Rerank by profile weight
+    ↓
+Return with provenance
+```
+
+If any target fails, reads continue using others. If all targets fail, local SQLite is your recovery point.
+
+### Core Property: Deterministic Sync
+
+All syncing is deterministic:
+- Same data in local SQLite == cloud PostgreSQL == IPFS == Arweave == blockchain metadata
+- Can migrate between models without data loss
+- Can restore from any target with identical result
+- Zero vendor lock-in by design
+
+### Migration Paths
+
+**Web2 Cloud → Web3 Hybrid:**
+```
+1. Export from cloud: ctxt export --format=bundle
+2. Install local node + configure hybrid targets
+3. Import: dpkms import bundle.tar.gz
+4. Configure IPFS + blockchain targets
+5. Jobs sync in background
+```
+
+**Web3 IPFS → Web2 Cloud:**
+```
+1. Export from IPFS: dpkms export --from=ipfs-driver
+2. Set up cloud node
+3. Import: dpkms import bundle.tar.gz
+4. Sync complete, data intact
+```
+
+**Solo Local → Team Hybrid:**
+```
+1. Keep local SQLite (personal copy)
+2. Add cloud node (team collaboration)
+3. Configure hybrid sync (local ↔ cloud ↔ IPFS)
+4. Team members join via cloud identity
+5. Central registries for consistency
+6. Local customization per member
+```
+
+### Implementation Phases
+
+| Phase | Timeline | Components |
+|-------|----------|-----------|
+| **Phase 1** | MVP (exists) | SQLite storage, HTTP transport, Registry protocol |
+| **Phase 2** | 3-6 months | PostgreSQL driver, managed cloud service, Docker packaging |
+| **Phase 3** | 6-12 months | IPFS driver, libp2p transport, Solana integration |
+| **Phase 4** | 12+ months | Arweave driver, Ethereum integration, smart contracts, marketplaces |
+
+**Full specification:** See `docs/deployment/WEB2-WEB3-HYBRID.md`
+
+---
+
 ## Core Principles
 
 ### dPKMS Principles (Substrate)

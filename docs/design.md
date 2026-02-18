@@ -81,14 +81,16 @@ The system consists of two packages:
 
 1. User runs `ctxt find <query>`.
 2. `ctxt` applies focus profile context.
-3. dPKMS parses query → AST.
-4. dPKMS compiles AST → Query Plan.
+3. dPKMS detects query type (structured RSQL vs natural language).
+4. **Branching:**
+   - **If RSQL (agent/deterministic path):** Parse RSQL → AST → Query Plan (SQL-based metadata execution)
+   - **If NLQ (human/semantic path):** Semantic normalizer → Intent analysis → Direct Query Plan (multi-strategy)
 5. Query Plan dispatches to:
-   - Local metadata search (SQL)
-   - Local FTS search (FTS5)
-   - Vector search (optional)
-   - Graph traversal (entity-aware)
-   - Registry connectors (parallel scatter)
+   - Local metadata search (SQL) — structured filters
+   - Local FTS search (FTS5) — keyword/phrase matching
+   - Vector search (optional) — semantic similarity
+   - Graph traversal (entity-aware) — relationship discovery
+   - Registry connectors (parallel scatter) — federated search
 6. dPKMS merges results.
 7. dPKMS reranks and deduplicates.
 8. `ctxt` applies profile filtering and boost.
@@ -110,11 +112,14 @@ The system consists of two packages:
 **dPKMS Plugin Points:**
 - Storage backends
 - Encryption providers
-- Query operators
+- Query operators (RSQL extensions)
+- Query strategies (FTS, Vector, Graph, Metadata, Registry)
+- NLQ Normalizers (intent classification, strategy selection)
 - Registry connectors
 - Graph algorithms
 - Job types
 - Pipeline runtime hooks
+- Reranking algorithms
 
 **`ctxt` Plugin Points:**
 - Capture interfaces
@@ -125,9 +130,10 @@ The system consists of two packages:
 - Composition templates
 - CLI commands
 - Output formatters
+- Query schema providers
 
 **Cross-Layer Plugin Points:**
-- AI providers (used by both)
+- AI providers (used for NLQ normalization, enrichment, ranking)
 - Background observers (screen watcher, etc.)
 - Notification handlers
 - Export/import formats
@@ -216,6 +222,20 @@ Plugins may register:
 - New pipeline step types
 - Entire pipelines
 - Conditional branching logic
+
+## AI Step Providers and Constrained Generation
+
+When enrichment steps call AI models for structured extraction, constrained generation eliminates post-processing errors:
+
+- **Tag Assignment** — constrained to registry vocabulary set (no ambiguous or out-of-vocabulary tags)
+- **Mention/Entity Extraction** — regex-constrained to `@namespace.slug` format (always valid references)
+- **Decision/Task Extraction** — dataclass/enum constraints on impact (LOW/MEDIUM/HIGH) and status (OPEN/RESOLVED/SUPERSEDED)
+- **Pipeline Selector at Ingestion** — closed-set constraint over all registered pipeline names (always routes to valid handler)
+- **Inline Branching** — alters extracted fields based on intermediate model decision without extra round-trip
+
+**Constraint Enforcement:**
+- **Local models only** (llama.cpp, HuggingFace) via LMQL token-level logit masking provide full hard constraints.
+- **API-hosted models** (OpenAI, Anthropic) use `type: instructor` (Pydantic retry-on-schema-failure) or `type: outlines` (regex/schema guided sampling).
 
 ## Execution Guarantees
 
@@ -392,7 +412,88 @@ Core fields:
 
 ## Purpose
 
-Defines RSQL-based query language with ContextHelp extensions (ADR-010).
+Defines dual-path query architecture: RSQL for agents/deterministic queries, NLQ for humans/semantic queries (ADR-010).
+
+## Dual-Path Query Architecture
+
+### Path 1: Structured RSQL (Agent/Deterministic)
+
+Used by agents and systems requiring explicit, reproducible queries.
+
+**Advantages:**
+- Deterministic results (same query always produces same result order)
+- Explicit intent (query is self-documenting)
+- Single-strategy execution (SQL-based metadata filtering)
+- Cacheable and auditeable
+
+**Example:** `mentions=="user errors";type=in=summary,decision;created_at>2025-01-01`
+
+### Path 2: Natural Language (Human/Semantic)
+
+Used by humans and contexts requiring natural query expression.
+
+**NLQ Normalization Process:**
+
+1. User inputs: `"how does the system handle user errors"`
+2. Semantic Normalizer (AI-backed) performs:
+   - **Intent Classification:** Detects intent type (relationship, summary, temporal, similarity, discovery)
+   - **Entity Extraction:** Identifies entities and context ("system", "user errors")
+   - **Strategy Selection:** Determines optimal query strategy mix based on intent:
+     - Relationship queries → Graph traversal primary
+     - Semantic/pattern queries → Vector search primary
+     - Keyword/mention queries → FTS primary
+     - Temporal/filtered queries → Metadata filters
+   - **Context Injection:** Applies focus profile constraints
+3. Normalizer emits **Direct Query Plan** (multi-strategy parallel execution):
+   ```
+   [
+     { strategy: "graph", intent: "traverse mentions of 'user errors'" },
+     { strategy: "vector", intent: "semantically similar to error handling patterns" },
+     { strategy: "metadata", filter: { type: { in: ["concept", "decision"] } } }
+   ]
+   ```
+4. Query Plan executes strategies in parallel, results merged and reranked.
+
+#### LMQL-Constrained Normalization (Optional)
+
+For locally-hosted models, LMQL replaces the free-form AI call with single-pass multi-slot constrained extraction.
+The normalizer can enforce:
+- **Intent** — closed set of 6 intent types (relationship, summary, temporal, similarity, discovery, metadata-filter)
+- **Entities** — regex-constrained to `@namespace.slug` format with automatic validation
+- **Strategy Selection** — yes/no per strategy (graph, vector, fts, metadata) with inter-slot constraints
+
+This eliminates post-hoc validation and ensures output is always parseable. For API-hosted models (OpenAI, Anthropic), use `type: instructor` with Pydantic dataclass constraints as the fallback, or `type: outlines` for regex-constrained generation.
+
+**Important:** Full token-level constraint enforcement requires locally-hosted backends. API-hosted models fall back to prompt-engineering hints only.
+
+**Intent Pattern Examples:**
+
+| Natural Language | Detected Intent | Primary Strategy | Secondary |
+|---|---|---|---|
+| "what are insights on X" | Semantic summary | Vector (similarity) | Metadata (type=summary) |
+| "how does A handle B" | Relationship pattern | Graph (traversal) | Vector (pattern matching) |
+| "find recent decisions about X" | Temporal entity | Metadata (date filter) | FTS (keyword) |
+| "show related work on X" | Similarity discovery | Vector (embeddings) | Graph (relationships) |
+
+**Agent Query Support:**
+
+Agents have two modes:
+
+1. **Structured Mode (Recommended):** Use RSQL for deterministic queries
+   - Agent receives `/query-schema` endpoint: list of queryable properties, operators, examples
+   - Agent constructs explicit RSQL: `type==article;tags=in=recommended;created_at>2025-01-01`
+   - Deterministic, cacheable, audit-friendly
+
+2. **Natural Mode (Fallback):** Ask in natural language, system translates
+   - Agent asks: `"show me recent recommended articles"`
+   - System translates via normalizer → multi-strategy execution
+   - Useful for ad-hoc queries but less reproducible
+
+**Recommended Agent Pattern:**
+- Agent receives query schema and intent examples on startup
+- Agent constructs RSQL for primary/deterministic queries
+- Agent may use NLQ for refinement or clarification follow-ups
+- System logs both agent intent (NLQ) and execution query (RSQL/plan) for transparency
 
 ## RSQL Core Operators
 
@@ -426,13 +527,29 @@ Nodes:
 - ValueNode
 - FieldNode
 
-## Query Plan Mapping
+## Query Plan Compilation & Execution
 
-- Metadata → SQL
-- FTS → SQLite FTS query
-- Vectors → vector store search
-- Registries → remote `/search` queries
-- Reranker merges results
+### RSQL Path (Structured)
+- RSQL → AST (parser)
+- AST → Query Plan (compiler)
+- Single-strategy dispatch (primarily SQL metadata filtering)
+
+### NLQ Path (Semantic)
+- NLQ → Intent + Entities (normalizer)
+- Intent → Multi-Strategy Query Plan (direct, no AST)
+- Parallel execution of optimal strategies
+
+### Query Plan Execution (Both Paths)
+
+Each Query Plan may dispatch to multiple strategies in parallel:
+
+- **Metadata Strategy** → SQL queries on object properties
+- **FTS Strategy** → SQLite FTS5 queries on full-text content
+- **Vector Strategy** → Vector store similarity search (optional)
+- **Graph Strategy** → Entity-aware graph traversal
+- **Registry Strategy** → Remote `/search` queries to federated registries
+
+Result merging and reranking unifies outputs across strategies.
 
 ---
 
@@ -452,6 +569,16 @@ Different sources produce incompatible scores; results must be unified.
 - Weighted Sum Ranking
 - SoftMax normalization
 - Plugin-provided ranking methods
+
+### AI-Backed Reranking
+
+LMQL can express batch scoring in a single multi-slot constrained pass where each result's relevance score is constrained (int 0–10 or categorical label), and cross-variable constraints can enforce monotonic ranking across the batch. This allows a single query to score and rank all results without iterating over items.
+
+For API-hosted models, a cross-encoder reranking model (fine-tuned for relevance) can score batches efficiently, though it requires a separate HTTP call per batch rather than token-level constraint enforcement.
+
+**Constraint Enforcement:**
+- **Local models only** (LMQL) provide full token-level constraint enforcement and batch scoring in a single pass.
+- **API-hosted models** use cross-encoder embeddings or pairwise LLM comparison as reranking fallback.
 
 ## Deduplication Strategy
 
@@ -543,6 +670,41 @@ Defines plugin model and lifecycle (ADR-012).
 - Translation provider
 - Alias/command enhancer
 
+### AI Provider Plugin Example: LMQL Provider
+
+An AI provider plugin registers constrained extraction capabilities:
+
+**Plugin Responsibilities:**
+- Implement `EnrichmentProvider` interface (execute AI step with structured output)
+- Implement `ClassifierClient` interface (normalize NLQ intent/entities/strategy-selection)
+- Register config schema extension for `type: lmql` in polymorphic config loader
+
+**Plugin Manifest (YAML):**
+```yaml
+apiVersion: dpkms/v1
+kind: Plugin
+metadata:
+  name: lmql-provider
+  version: 0.1.0
+spec:
+  pluginPath: ./plugins/lmql-provider.so
+  permissions:
+    subprocess: true
+    network: localhost:8080
+  configSchema:
+    type: object
+    properties:
+      type: { const: "lmql" }
+      backend: { enum: ["local", "api-fallback"] }
+      model: { type: string }
+      endpoint: { type: string, format: "url" }
+      fallback: { $ref: "#/definitions/aiProviderConfig" }
+```
+
+**Alternative AI provider plugins:**
+- `instructor` — Pydantic-based schema validation with automatic retry on schema failure
+- `outlines` — Regex or JSON schema-constrained token generation
+
 ## Plugin Interface
 
 Plugins expose:
@@ -610,9 +772,23 @@ storage:
   type: sqlite
   path: ./data/db.sqlite
 
+# Required for NLQ (Natural Language Query) support
+aiProvider:
+  type: openai
+  model: gpt-4
+  apiKey: ${CH_OPENAI_API_KEY}
+
+# Optional: for semantic/vector search
 embeddingProvider:
   type: openai
   model: text-embedding-3-large
+
+# Optional: NLQ Normalizer configuration
+nlqNormalizer:
+  enabled: true
+  provider: ${aiProvider}  # uses configured AI provider
+  intentPatterns: ./config/intent-patterns.yaml
+  strategy_selection: adaptive  # or fixed
 
 registries:
   - name: uxpatterns
@@ -622,6 +798,37 @@ plugins:
   - type: plugin
     plugin: ./plugins/screensuggester.so
 ```
+
+## AI Provider Options
+
+The `aiProvider` (and per-step `enrichmentProvider`) config block dispatches on the `type` key.
+
+| `type` | Runtime | Constraint enforcement | Notes |
+|---|---|---|---|
+| `openai` | OpenAI Chat API | Prompt-engineering only | Default |
+| `anthropic` | Anthropic Messages API | Prompt-engineering only | |
+| `ollama` | Local Ollama server | Full token-level (LMQL) | Requires local model |
+| `lmql` | LMQL Python runtime | Full token-level | Local models only |
+| `instructor` | Instructor + Pydantic | Schema-guided retry | API-hosted models |
+| `outlines` | Outlines library | Regex/schema constrained | Local models preferred |
+
+**LMQL config example:**
+
+```yaml
+aiProvider:
+  type: lmql
+  backend: local
+  model: llama3
+  endpoint: http://localhost:8080
+  fallback:
+    type: openai
+    model: gpt-4o
+    apiKey: ${CH_OPENAI_API_KEY}
+```
+
+**Important:** LMQL token-level logit masking operates only against locally-hosted backends.
+When `backend: api-fallback`, LMQL degrades to prompt-engineering hints with no hard enforcement.
+For API-hosted constrained extraction, prefer `type: instructor` or `type: outlines`.
 
 ## Environment Overrides
 
@@ -690,26 +897,31 @@ Specifies CLI interface.
 
 ## Commands
 
-- `ch analyze`
-- `ch analyze --lang <code> --translate none`
-- `ch list`
-- `ch search "<query>"`
-- `ch jobs list`
-- `ch jobs status <id>`
-- `ch sync <registry>`
-- `ch serve`
+- `ch analyze` — Ingest and process content
+- `ch analyze --lang <code> --translate none` — Override language detection
+- `ch list` — List recent objects
+- `ch search "<query>"` — Search (auto-detects RSQL or NLQ)
+  - RSQL example: `ch search "type==article;tags=in=recommended"`
+  - NLQ example: `ch search "show me recent recommended articles"`
+- `ch query-schema` — List queryable properties and operators (for agents)
+- `ch jobs list` — List background jobs
+- `ch jobs status <id>` — Get job status
+- `ch jobs retry <id>` — Retry failed job
+- `ch sync <registry>` — Sync a federated registry
+- `ch serve` — Start background daemon
 
 ## Flags
 
-- `--type`
-- `--hints`
-- `--file`
-- `--no-track`
-- `--sort`
-- `--after`
-- `--before`
-- `--orig-lang`
-- `--prefer-lang`
+- `--type` — Hint content type (overrides detection)
+- `--hints` — Provide pipeline hints
+- `--file` — Read from file instead of stdin
+- `--no-track` — Don't create job/bookmark (useful for testing)
+- `--sort` — Sort results (relevance, date, custom)
+- `--after` — Results after timestamp
+- `--before` — Results before timestamp
+- `--orig-lang` — Original language (for translation hints)
+- `--prefer-lang` — Preferred output language
+- `--query-mode` — Force query type (rsql or nlq)
 
 ---
 
@@ -721,25 +933,42 @@ Defines HTTP API.
 
 ## Endpoints
 
-- `POST /analyze`
-- `GET /jobs`
-- `GET /jobs/{id}`
-- `GET /bookmarks`
-- `GET /search?q=...&lang=...&translate=...`
-- `GET /registries`
-- `POST /sync/{registry}`
+**Ingestion:**
+- `POST /analyze` — Process and index content
 
-## Query Parameters
+**Retrieval:**
+- `GET /search?q=...` — Search (auto-detects RSQL or NLQ)
+- `GET /query-schema` — List queryable properties and operators (for agents)
 
-- `type`
-- `tag`
-- `pipeline`
-- `sort`
-- `after`
-- `before`
-- `lang`
-- `origLang`
-- `translate`
+**Object Management:**
+- `GET /objects` — List objects
+- `GET /objects/{id}` — Get specific object
+- `DELETE /objects/{id}` — Delete object
+
+**Job Management:**
+- `GET /jobs` — List jobs
+- `GET /jobs/{id}` — Get job status
+- `POST /jobs/{id}/retry` — Retry failed job
+
+**Registry Management:**
+- `GET /registries` — List configured registries
+- `POST /registries/{name}/sync` — Sync a registry
+
+## Query Parameters (Search)
+
+- `q` — Query (RSQL or natural language)
+- `query_mode` — Force type (rsql, nlq, auto)
+- `type` — Filter by object type
+- `tag` — Filter by tags
+- `pipeline` — Filter by pipeline
+- `sort` — Sort order (relevance, date, custom)
+- `after` — Results after timestamp
+- `before` — Results before timestamp
+- `lang` — Output language
+- `origLang` — Original language hint
+- `translate` — Translation mode (auto, none, force)
+- `limit` — Results per page
+- `offset` — Pagination offset
 
 ---
 

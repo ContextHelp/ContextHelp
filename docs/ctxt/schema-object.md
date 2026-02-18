@@ -152,7 +152,31 @@ Semantic summary of content.
 
 ### sections
 
-List of semistructured content segments.
+List of structured content segments with heading levels and embedded atomic notes.
+
+```json
+[
+  {
+    "title": "Architecture Overview",
+    "content": "The system uses a two-layer pipeline model...",
+    "level": 2,
+    "notes": [
+      {
+        "content": "Pipeline execution is idempotent and deterministic",
+        "source_location": "paragraph 2",
+        "confidence": 0.9,
+        "tags": ["architecture"]
+      }
+    ]
+  }
+]
+```
+
+Fields:
+- `title` — Section title or heading (required)
+- `content` — Section content (required)
+- `level` — Heading level 1-6 (required)
+- `notes` — Atomic notes extracted from this section (required, may be empty)
 
 ### content
 
@@ -166,9 +190,76 @@ Pipeline-defined structured data.
 
 AI-generated semantic labels aligned with registries.
 
+Each tag is a structured object:
+
+```json
+[
+  {
+    "label": "ux.issue.signup",
+    "namespace": "uxpatterns",
+    "confidence": 0.92,
+    "weight": 0.88
+  }
+]
+```
+
+Fields:
+- `label` — Tag label (required)
+- `namespace` — Taxonomy namespace from registry (optional)
+- `confidence` — Confidence in tag assignment, 0.0-1.0 (required)
+- `weight` — Importance weight (optional)
+
 ### decisions
 
-Structured evaluative insights.
+Structured decision extractions from content.
+
+Each decision is a structured object:
+
+```json
+[
+  {
+    "what_was_decided": "Use PostgreSQL for the primary datastore",
+    "rationale": "Need strong ACID guarantees and complex query support",
+    "impact": "HIGH",
+    "status": "RESOLVED",
+    "stakeholders": ["@person.sarah", "@person.mike"],
+    "timestamp": "2025-01-15T00:00:00Z",
+    "confidence": 0.92,
+    "alternatives_considered": ["MongoDB", "DynamoDB"]
+  }
+]
+```
+
+Fields:
+- `what_was_decided` — Clear statement of the decision (required)
+- `rationale` — Why this decision was made (optional)
+- `impact` — Severity/scope: `LOW`, `MEDIUM`, or `HIGH` (required)
+- `status` — Lifecycle state: `OPEN`, `RESOLVED`, or `SUPERSEDED` (required)
+- `stakeholders` — People or entities involved (required, may be empty)
+- `timestamp` — When decision was made (optional)
+- `confidence` — Confidence this is actually a decision, 0.0-1.0 (required)
+- `alternatives_considered` — Other options considered (required, may be empty)
+
+### questions
+
+Open questions or areas needing clarification extracted from content.
+
+```json
+[
+  {
+    "question": "Should we support real-time sync?",
+    "context": "Multiple stakeholders raised this during architecture review",
+    "potential_answers": ["WebSockets", "SSE", "Polling"],
+    "confidence": 0.85
+  }
+]
+```
+
+Fields:
+- `question` — The open question (required)
+- `context` — Why this question matters (optional)
+- `potential_answers` — Possible answers if any are suggested (required, may be empty)
+- `confidence` — Confidence this is a real question, 0.0-1.0 (required)
 
 ### hints
 
@@ -184,13 +275,38 @@ Mentions are **canonical references to stable entities** and form the backbone o
 
 ### Structure
 
+Each mention is a structured object with type information and confidence:
+
 ```json
 [
-  "ui.best-practice",
-  "stripe.api.checkout",
-  "ux.signup-flow"
+  {
+    "text": "Anthropic",
+    "mention_type": "Organization",
+    "namespace": "organization",
+    "slug": "anthropic",
+    "confidence": 0.95,
+    "canonical_name": "Anthropic"
+  },
+  {
+    "text": "mobile app redesign",
+    "mention_type": "Project",
+    "namespace": "project",
+    "slug": "mobile-app-redesign",
+    "confidence": 0.88,
+    "canonical_name": null
+  }
 ]
 ```
+
+Fields:
+- `text` — Original mention text as it appears in content (required)
+- `mention_type` — Type of entity: `Entity`, `Person`, `Concept`, `Location`, `Product`, `Organization`, `Event`, `Project`, `System` (required)
+- `namespace` — Entity namespace matching the type (required)
+- `slug` — Entity slug in kebab-case (required)
+- `confidence` — Confidence in mention extraction, 0.0-1.0 (required)
+- `canonical_name` — Canonical entity name if resolved (optional)
+
+The full mention reference format is `@namespace.slug` (e.g., `@person.jane-doe`, `@organization.anthropic`).
 
 ### Guarantees
 
@@ -291,10 +407,19 @@ Diagnostics and pipeline traces.
   "title": "Signup Flow Issue",
   "summary": "The signup flow has friction.",
   "tags": [
-    { "label": "ux.issue.signup", "weight": 0.88 }
+    { "label": "ux.issue.signup", "namespace": "uxpatterns", "confidence": 0.92, "weight": 0.88 }
   ],
   "hints": ["#ux", "#bad"],
-  "mentions": ["ux.signup-flow"],
+  "mentions": [
+    {
+      "text": "signup flow",
+      "mention_type": "Concept",
+      "namespace": "concept",
+      "slug": "signup-flow",
+      "confidence": 0.85,
+      "canonical_name": null
+    }
+  ],
 
   "plugins": {
     "price_monitor": {
@@ -326,7 +451,19 @@ Diagnostics and pipeline traces.
   "summary": "The hero section lacks clarity and value hierarchy.",
 
   "sections": [
-    { "name": "hero", "summary": "Weak value prop." }
+    {
+      "title": "Hero Section",
+      "content": "The hero section lacks clarity and value hierarchy.",
+      "level": 2,
+      "notes": [
+        {
+          "content": "CTA is unclear and buried below the fold",
+          "source_location": "hero section",
+          "confidence": 0.88,
+          "tags": ["ux", "cta"]
+        }
+      ]
+    }
   ],
 
   "content": {
@@ -335,19 +472,41 @@ Diagnostics and pipeline traces.
   },
 
   "tags": [
-    { "label": "ui.hero.antipattern", "weight": 0.92 }
+    { "label": "ui.hero.antipattern", "namespace": "uxpatterns", "confidence": 0.95, "weight": 0.92 }
   ],
 
   "decisions": [
     {
-      "section": "hero",
-      "rating": "bad",
-      "reason": "Unclear CTA"
+      "what_was_decided": "Hero section CTA needs redesign",
+      "rationale": "Unclear call-to-action reduces conversion",
+      "impact": "HIGH",
+      "status": "OPEN",
+      "stakeholders": [],
+      "timestamp": null,
+      "confidence": 0.85,
+      "alternatives_considered": ["Keep current CTA", "Remove CTA entirely"]
     }
   ],
 
   "hints": ["#ui", "#bad"],
-  "mentions": ["ui.best-practice", "ux.cta.weakness"],
+  "mentions": [
+    {
+      "text": "best practice",
+      "mention_type": "Concept",
+      "namespace": "concept",
+      "slug": "ui-best-practice",
+      "confidence": 0.80,
+      "canonical_name": null
+    },
+    {
+      "text": "CTA weakness",
+      "mention_type": "Concept",
+      "namespace": "concept",
+      "slug": "cta-weakness",
+      "confidence": 0.75,
+      "canonical_name": null
+    }
+  ],
 
   "related": [
     { "id": "d9c3f8e", "score": 0.74 }

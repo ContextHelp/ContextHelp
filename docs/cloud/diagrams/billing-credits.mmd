@@ -1,0 +1,110 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#f59e0b"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#f59e0b"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant User
+    participant Cloud as context.help Cloud
+    participant Billing as Billing Service
+    participant Payment as Payment Provider<br/>(Stripe)
+    participant Node as User's Node
+
+    Note over User,Node: Billing & Credits Flow
+
+    User->>Cloud: Browse marketplace
+
+    User->>Cloud: Subscribe to premium registry<br/>(Plan: $50/month)
+
+    Cloud->>Billing: Create subscription<br/>user: user-123<br/>plan: premium-registry
+
+    Billing->>Payment: Create subscription<br/>customer: cus_abc<br/>price: price_premium
+
+    Payment-->>Billing: Subscription created<br/>sub_xyz123
+
+    Billing->>Billing: Allocate initial credits:<br/>100 credits/month
+
+    Billing->>Cloud: Subscription active<br/>Credits: 100
+
+    Cloud-->>User: ✓ Subscription active
+
+    Note over User,Node: User consumes credits via node
+
+    User->>Node: ctxt search --registry premium<br/>"patterns"
+
+    Node->>Cloud: Check entitlements
+    Cloud-->>Node: Granted (95 credits remaining)
+
+    Node->>Node: Execute operation
+
+    Node->>Cloud: POST /metering/events<br/>{quantity: 5 credits}
+
+    Cloud->>Billing: Record usage<br/>5 credits consumed
+
+    Billing->>Billing: Update balance:<br/>100 → 95 credits
+
+    Note over User,Node: Monthly billing cycle
+
+    Payment->>Billing: Webhook: invoice.payment_succeeded
+
+    Billing->>Billing: Reset credit balance:<br/>95 → 100 credits (new cycle)
+
+    Billing->>Cloud: Update user credits
+
+    Cloud->>Node: Sync entitlements<br/>(if node online)
+
+    Note over User,Node: Overage scenario
+
+    User->>Node: Heavy usage this month
+
+    Node->>Cloud: Check entitlements
+    Cloud-->>Node: Granted (2 credits remaining)
+
+    User->>Node: Large operation<br/>(needs 10 credits)
+
+    Node->>Cloud: Check entitlements
+    Cloud-->>Node: Denied (insufficient credits)
+
+    Node-->>User: ❌ Insufficient credits<br/>2 remaining, 10 required
+
+    User->>Cloud: Purchase credit top-up<br/>(+50 credits for $10)
+
+    Cloud->>Billing: Add credits: +50
+
+    Billing-->>Cloud: Credits: 52
+
+    Cloud->>Node: Sync entitlements
+
+    User->>Node: Retry operation
+
+    Node->>Cloud: Check entitlements
+    Cloud-->>Node: Granted (52 credits)
+
+    Node->>Node: Execute operation
+    Node-->>User: ✓ Success
+```

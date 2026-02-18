@@ -1,0 +1,74 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#6366f1"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#6366f1"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant Admin as Org Admin
+    participant Cloud as context.help Cloud
+    participant Node as Self-Hosted Node
+    participant OIDC as OIDC Provider
+
+    Note over Admin,OIDC: Node Enrollment Flow
+
+    Node->>Node: Generate or load<br/>long-lived identity key
+
+    Admin->>Cloud: Request node enrollment<br/>for org: acme-corp
+
+    Cloud->>Cloud: Generate enrollment token<br/>scoped to org: acme-corp
+
+    Cloud-->>Admin: Enrollment token:<br/>tok_enroll_abc123xyz
+
+    Admin->>Node: Configure node with<br/>enrollment token
+
+    Node->>Cloud: POST /api/v1/nodes/enroll<br/>Authorization: Bearer tok_enroll_abc123xyz<br/>{<br/>  "node_id": "node-5678",<br/>  "public_key": "...",<br/>  "org_id": "acme-corp"<br/>}
+
+    activate Cloud
+
+    Cloud->>Cloud: Validate enrollment token
+    Cloud->>Cloud: Verify org scope
+
+    Cloud->>Cloud: Create node record in org
+
+    Cloud->>Cloud: Sign configuration payload:<br/>{<br/>  "node_id": "node-5678",<br/>  "org_id": "acme-corp",<br/>  "issuer": "https://auth.context.help",<br/>  "allowed_claims": [...],<br/>  "audit_endpoint": "...",<br/>  "metering_endpoint": "..."<br/>}
+
+    Cloud-->>Node: 201 Created<br/>{<br/>  "status": "enrolled",<br/>  "config": {...},<br/>  "signature": "..."<br/>}
+
+    deactivate Cloud
+
+    Node->>Node: Verify signature
+    Node->>Node: Store trust configuration locally
+
+    Node->>Node: Start emitting:<br/>- Status heartbeats<br/>- Audit events<br/>- Metering data
+
+    Node->>Cloud: POST /api/v1/nodes/status<br/>{<br/>  "node_id": "node-5678",<br/>  "status": "healthy",<br/>  "version": "1.2.3"<br/>}
+
+    Cloud-->>Node: 200 OK
+
+    Note over Admin,OIDC: Node enrolled and trusted.<br/>Org admin can manage via cloud dashboard.
+```

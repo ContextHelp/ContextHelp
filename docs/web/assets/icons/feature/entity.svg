@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
+  <!-- Entity Icon - @ Symbol with Node Accent -->
+
+  <!-- @ symbol -->
+  <path d="M12 2 A10 10 0 0 1 22 12 A10 10 0 0 1 17 20" stroke="#1a2332" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <circle cx="12" cy="12" r="5" stroke="#1a2332" stroke-width="2"/>
+  <circle cx="12" cy="12" r="2" fill="#1a2332"/>
+  <line x1="17" y1="12" x2="17" y2="20" stroke="#1a2332" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Node accent (top-right) -->
+  <circle cx="19" cy="6" r="2.5" fill="#00d9ff"/>
+</svg>

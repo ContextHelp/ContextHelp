@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>context.help – The platform for context curators</title>
+    <meta name="description" content="Publish curated context as a living registry. Systems pull what they need, just-in-time. Sovereign, traceable, and built for workflows—not inboxes.">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- GSAP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'sans': ['Space Grotesk', 'sans-serif'],
+                        'mono': ['IBM Plex Mono', 'monospace'],
+                    },
+                    colors: {
+                        // 37signals-inspired palette with neon purple
+                        'neon': '#A855F7', // Bright purple/violet
+                        'neon-dark': '#7C3AED',
+                        'ink': '#000000',
+                        'paper': '#FFFFFF',
+                        'border': '#000000',
+                        'muted': '#737373',
+                    },
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* 37signals-inspired brutalist design */
+        * {
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            background: #FFFFFF;
+            color: #000000;
+        }
+
+        /* Crisp borders - 37signals style */
+        .border-brutal {
+            border: 3px solid #000000;
+        }
+
+        .border-brutal-thin {
+            border: 2px solid #000000;
+        }
+
+        /* Neon glow effect for accents */
+        .glow-neon {
+            box-shadow: 0 0 20px rgba(168, 85, 247, 0.5);
+        }
+
+        .glow-neon-strong {
+            box-shadow: 0 0 30px rgba(168, 85, 247, 0.8);
+        }
+
+        /* 37signals-style buttons - bold and simple */
+        .btn-primary {
+            border: 3px solid #000000;
+            background: #A855F7;
+            color: #000000;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: all 0.1s ease;
+            box-shadow: 5px 5px 0 #000000;
+        }
+
+        .btn-primary:hover {
+            transform: translate(2px, 2px);
+            box-shadow: 3px 3px 0 #000000;
+        }
+
+        .btn-primary:active {
+            transform: translate(5px, 5px);
+            box-shadow: 0 0 0 #000000;
+        }
+
+        .btn-secondary {
+            border: 3px solid #000000;
+            background: #FFFFFF;
+            color: #000000;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: all 0.1s ease;
+            box-shadow: 5px 5px 0 #000000;
+        }
+
+        .btn-secondary:hover {
+            transform: translate(2px, 2px);
+            box-shadow: 3px 3px 0 #000000;
+            background: #A855F7;
+        }
+
+        .btn-secondary:active {
+            transform: translate(5px, 5px);
+            box-shadow: 0 0 0 #000000;
+        }
+
+        /* Bento grid cards */
+        .bento-card {
+            border: 3px solid #000000;
+            background: #FFFFFF;
+            transition: transform 0.1s ease;
+        }
+
+        .bento-card:hover {
+            transform: translate(-3px, -3px);
+            box-shadow: 3px 3px 0 #000000;
+        }
+
+        /* Text shimmer effect */
+        .text-shimmer {
+            background: linear-gradient(90deg, #000000 0%, #A855F7 50%, #000000 100%);
+            background-size: 200% auto;
+            color: transparent;
+            background-clip: text;
+            -webkit-background-clip: text;
+            animation: shimmer 3s linear infinite;
+        }
+
+        @keyframes shimmer {
+            to {
+                background-position: 200% center;
+            }
+        }
+
+        /* Spotlight effect */
+        .spotlight {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .spotlight::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.3), transparent);
+            animation: spotlight 3s ease-in-out infinite;
+        }
+
+        @keyframes spotlight {
+            0%, 100% { left: -100%; }
+            50% { left: 100%; }
+        }
+
+        /* Scrollbar - 37signals minimal */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #FFFFFF;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #000000;
+            border: 2px solid #FFFFFF;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #A855F7;
+        }
+
+        /* Selection */
+        ::selection {
+            background: #A855F7;
+            color: #000000;
+        }
+
+        /* Terminal/ASCII elements */
+        .terminal {
+            font-family: 'IBM Plex Mono', monospace;
+            border: 3px solid #000000;
+            background: #000000;
+            color: #A855F7;
+        }
+
+        /* Card hover lift - simplified */
+        .card-lift {
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+
+        .card-lift:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: 4px 4px 0 #000000;
+        }
+
+        /* Feature grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        /* Neon border accent */
+        .border-neon {
+            border: 3px solid #A855F7;
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
+        }
+
+        /* Bold section headers - 37signals style */
+        h1, h2, h3 {
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        /* Fade in for animations */
+        .fade-in {
+            opacity: 0;
+        }
+    </style>
+</head>
+<body class="font-sans">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-50 bg-paper border-b-3 border-ink shadow-sm">
+        <nav class="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="font-mono text-lg font-bold uppercase tracking-tight">
+                context.help
+            </div>
+            <div class="hidden md:flex items-center gap-10">
+                <a href="#features" class="text-base font-bold hover:text-neon transition-colors">Features</a>
+                <a href="#use-cases" class="text-base font-bold hover:text-neon transition-colors">Use cases</a>
+                <a href="#faq" class="text-base font-bold hover:text-neon transition-colors">FAQ</a>
+            </div>
+            <a href="#cta" class="btn-primary px-6 py-3 text-sm inline-block">
+                Get Early Access
+            </a>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="relative pt-20 pb-24 md:pt-32 md:pb-40 overflow-hidden">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="max-w-5xl mx-auto text-center">
+                <div class="mb-6 fade-in hero-label">
+                    <span class="inline-block font-mono text-xs uppercase tracking-widest font-bold px-4 py-2 border-brutal-thin bg-neon">
+                        Platform for Curators
+                    </span>
+                </div>
+
+                <!-- Social proof counter -->
+                <div class="mb-8 fade-in hero-social">
+                    <p class="font-mono text-sm">
+                        Join <strong class="text-neon font-bold">1,247</strong> people on the waitlist
+                    </p>
+                </div>
+
+                <h1 class="text-7xl md:text-8xl lg:text-9xl font-bold leading-[0.95] mb-10 fade-in hero-title">
+                    The platform for<br/>
+                    <span class="text-shimmer">context curators</span>
+                </h1>
+
+                <p class="text-2xl md:text-3xl font-bold leading-tight mb-12 max-w-4xl mx-auto fade-in hero-subtitle">
+                    Build queryable registries. Set access rules. Charge for resolutions.<br/>
+                    <span class="text-neon">Your context, your rules, your revenue.</span>
+                </p>
+
+                <div class="flex flex-col sm:flex-row gap-5 justify-center mb-4 fade-in hero-cta">
+                    <button class="btn-primary px-12 py-5 text-lg">
+                        Get Early Access
+                    </button>
+                    <a href="#features" class="btn-secondary px-12 py-5 text-lg">
+                        See How It Works
+                    </a>
+                </div>
+
+                <p class="text-sm text-muted font-mono fade-in hero-subtext">
+                    Q2 2026 launch · Early adopter pricing · No credit card
+                </p>
+            </div>
+        </div>
+
+        <!-- Decorative ASCII corner -->
+        <div class="absolute top-10 right-10 font-mono text-xs opacity-10 hidden lg:block">
+            <pre>┌──────────┐
+│ REGISTRY │
+└──────────┘</pre>
+        </div>
+    </section>
+
+    <!-- Problem Section - Bento Grid -->
+    <section class="py-24 md:py-32 bg-paper">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-5xl md:text-7xl font-bold leading-tight mb-6">
+                    Knowledge gets <span class="text-neon">trapped</span><br/>
+                    in broken formats
+                </h2>
+            </div>
+
+            <!-- Bento Grid Layout -->
+            <div class="grid md:grid-cols-2 gap-6 max-w-6xl mx-auto">
+                <!-- Large card -->
+                <div class="problem-card md:col-span-2 bento-card p-10">
+                    <div class="font-mono text-xs uppercase tracking-widest font-bold mb-4 text-neon">The Core Problem</div>
+                    <h3 class="text-3xl md:text-4xl font-bold mb-4">
+                        The tools we have treat knowledge like documents for humans to read, not feeds for systems to resolve.
+                    </h3>
+                </div>
+
+                <!-- Regular cards -->
+                <div class="problem-card bento-card p-8 card-lift">
+                    <div class="font-mono text-xs uppercase tracking-widest font-bold mb-4">Notion / Wikis</div>
+                    <p class="text-lg font-medium leading-relaxed">
+                        Agents can't query by entity or taxonomy — they just scrape HTML
+                    </p>
+                </div>
+
+                <div class="problem-card bento-card p-8 card-lift">
+                    <div class="font-mono text-xs uppercase tracking-widest font-bold mb-4">Slack / Discord</div>
+                    <p class="text-lg font-medium leading-relaxed">
+                        Gone in 48 hours, no semantic index
+                    </p>
+                </div>
+
+                <div class="problem-card bento-card p-8 card-lift">
+                    <div class="font-mono text-xs uppercase tracking-widest font-bold mb-4">Years of Expertise</div>
+                    <p class="text-lg font-medium leading-relaxed">
+                        No way to package it so systems can actually use it
+                    </p>
+                </div>
+
+                <div class="problem-card bento-card p-8 card-lift">
+                    <div class="font-mono text-xs uppercase tracking-widest font-bold mb-4">Integration</div>
+                    <p class="text-lg font-medium leading-relaxed">
+                        Bulk dumps defeat just-in-time resolution
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Early Waitlist CTA -->
+    <section class="py-16 md:py-20 bg-neon">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <h3 class="text-3xl md:text-4xl font-bold text-ink mb-6">
+                Want to fix this?
+            </h3>
+            <p class="text-xl font-bold mb-8 text-ink">
+                Join the waitlist to get first access when we launch Q2 2026
+            </p>
+
+            <!-- Email signup -->
+            <form class="max-w-2xl mx-auto mb-4">
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <input
+                        type="email"
+                        placeholder="your@email.com"
+                        class="flex-1 px-8 py-6 border-brutal bg-paper text-ink font-mono text-lg focus:outline-none focus:ring-4 focus:ring-ink"
+                        required
+                    />
+                    <button
+                        type="submit"
+                        class="px-12 py-6 border-brutal bg-ink text-paper font-bold uppercase text-lg whitespace-nowrap hover:bg-paper hover:text-ink transition-colors"
+                    >
+                        Get Early Access
+                    </button>
+                </div>
+            </form>
+
+            <p class="text-sm text-ink font-mono">
+                No credit card · Unsubscribe anytime
+            </p>
+        </div>
+    </section>
+
+    <!-- Features - Simple Cards -->
+    <section id="features" class="py-24 md:py-32 bg-ink text-paper">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="text-center mb-20">
+                <div class="inline-block font-mono text-xs uppercase tracking-widest font-bold px-4 py-2 border-2 border-neon bg-neon text-ink mb-6">
+                    How It Works
+                </div>
+                <h2 class="text-5xl md:text-6xl font-bold">Three simple steps</h2>
+            </div>
+
+            <div class="space-y-6">
+                <!-- Step 1 -->
+                <div class="feature-card border-brutal bg-paper text-ink p-10">
+                    <div class="flex items-start gap-8">
+                        <div class="text-6xl font-bold text-neon">1</div>
+                        <div class="flex-1">
+                            <h3 class="text-3xl md:text-4xl font-bold mb-4">Curate your registry</h3>
+                            <p class="text-xl leading-relaxed mb-6">
+                                Structure entities, taxonomies, edges, and safe summaries. Publish structured context that agents can query and resolve.
+                            </p>
+                            <div class="inline-block font-mono text-sm border-2 border-ink px-4 py-2 bg-neon">
+                                entities → taxonomies → edges → summaries
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="feature-card border-brutal bg-paper text-ink p-10">
+                    <div class="flex items-start gap-8">
+                        <div class="text-6xl font-bold text-neon">2</div>
+                        <div class="flex-1">
+                            <h3 class="text-3xl md:text-4xl font-bold mb-4">Define policy and access</h3>
+                            <p class="text-xl leading-relaxed mb-6">
+                                Self-hosted or cloud-managed. Systems sync the index—not full bodies. You control distribution without vendor lock-in.
+                            </p>
+                            <div class="flex gap-3 flex-wrap">
+                                <span class="font-mono text-sm border-2 border-ink px-4 py-2">Self-hosted</span>
+                                <span class="font-mono text-sm border-2 border-ink px-4 py-2">Cloud-managed</span>
+                                <span class="font-mono text-sm border-2 border-ink px-4 py-2">Quotas</span>
+                                <span class="font-mono text-sm border-2 border-ink px-4 py-2">Access rules</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="feature-card border-brutal bg-paper text-ink p-10">
+                    <div class="flex items-start gap-8">
+                        <div class="text-6xl font-bold text-neon">3</div>
+                        <div class="flex-1">
+                            <h3 class="text-3xl md:text-4xl font-bold mb-4">Let systems pull just-in-time</h3>
+                            <p class="text-xl leading-relaxed mb-6">
+                                Agents pull specific entities, edges, or summaries—just what's needed. Your context integrates into workflows, not inboxes.
+                            </p>
+                            <div class="inline-block font-mono text-sm border-2 border-neon px-4 py-2 bg-neon">
+                                JIT Resolution → No Bulk Dumps
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Benefits - Bento Style -->
+    <section class="py-24 md:py-32">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-5xl md:text-6xl font-bold mb-6">Why context.help</h2>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-6">
+                <div class="benefit-card bento-card p-8 spotlight">
+                    <div class="text-5xl mb-6">→</div>
+                    <h3 class="text-2xl font-bold mb-4">Systems pull what they need</h3>
+                    <p class="text-lg leading-relaxed text-muted">
+                        Index-level sync means agents get fresh context without you exposing everything upfront.
+                    </p>
+                </div>
+
+                <div class="benefit-card bento-card p-8 spotlight">
+                    <div class="text-5xl mb-6">✱</div>
+                    <h3 class="text-2xl font-bold mb-4">You set the rules</h3>
+                    <p class="text-lg leading-relaxed text-muted">
+                        You define who can access what, how much they can pull, and when.
+                    </p>
+                </div>
+
+                <div class="benefit-card bento-card p-8 spotlight">
+                    <div class="text-5xl mb-6">◉</div>
+                    <h3 class="text-2xl font-bold mb-4">Traceable by design</h3>
+                    <p class="text-lg leading-relaxed text-muted">
+                        Every resolution carries receipts and provenance. Audit exactly who pulled what.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Use Cases -->
+    <section id="use-cases" class="py-24 md:py-32 bg-neon">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-5xl md:text-6xl font-bold text-ink mb-6">Who curates context?</h2>
+            </div>
+
+            <div class="space-y-6">
+                <div class="use-case-card border-brutal bg-paper p-10 card-lift">
+                    <h3 class="text-3xl font-bold mb-4">Community curators</h3>
+                    <p class="text-xl leading-relaxed">
+                        You run a Discord, forum, or online community and want to make the best insights queryable by agents—not just archived for humans.
+                    </p>
+                </div>
+
+                <div class="use-case-card border-brutal bg-paper p-10 card-lift">
+                    <h3 class="text-3xl font-bold mb-4">Domain experts</h3>
+                    <p class="text-xl leading-relaxed">
+                        You've built deep expertise (OWASP patterns, SOC 2 templates, design systems) and want to package it as a registry that systems can resolve against.
+                    </p>
+                </div>
+
+                <div class="use-case-card border-brutal bg-paper p-10 card-lift">
+                    <h3 class="text-3xl font-bold mb-4">Internal knowledge leads</h3>
+                    <p class="text-xl leading-relaxed">
+                        You maintain wikis and docs. You're tired of agents scraping instead of querying. And teams copy-pasting instead of integrating.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Monetization -->
+    <section class="py-24 md:py-32 border-t-3 border-b-3 border-ink">
+        <div class="max-w-5xl mx-auto px-6 text-center">
+            <h2 class="text-5xl md:text-7xl font-bold mb-8">
+                Turn expertise into revenue
+            </h2>
+            <p class="text-2xl font-bold leading-relaxed mb-16 max-w-3xl mx-auto">
+                Charge subscriptions, meter usage, sell extensions
+            </p>
+
+            <div class="grid md:grid-cols-3 gap-6">
+                <div class="border-brutal p-8 bg-paper">
+                    <div class="font-mono text-sm font-bold mb-3 text-neon">01</div>
+                    <h3 class="text-2xl font-bold mb-3">Subscriptions</h3>
+                    <p class="text-base">Charge for access to your curated context</p>
+                </div>
+                <div class="border-brutal p-8 bg-paper">
+                    <div class="font-mono text-sm font-bold mb-3 text-neon">02</div>
+                    <h3 class="text-2xl font-bold mb-3">Metered usage</h3>
+                    <p class="text-base">Orgs pay for what their systems actually use</p>
+                </div>
+                <div class="border-brutal p-8 bg-paper">
+                    <div class="font-mono text-sm font-bold mb-3 text-neon">03</div>
+                    <h3 class="text-2xl font-bold mb-3">Extensions</h3>
+                    <p class="text-base">Sell plugins, pipelines, and templates</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="py-24 md:py-32">
+        <div class="max-w-4xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-5xl md:text-6xl font-bold">Common questions</h2>
+            </div>
+
+            <div class="space-y-4">
+                <details class="faq-item group border-brutal p-8 bg-paper cursor-pointer">
+                    <summary class="text-2xl font-bold list-none flex justify-between items-center">
+                        Is this for individuals or teams?
+                        <span class="text-4xl font-mono group-open:rotate-45 transition-transform">+</span>
+                    </summary>
+                    <p class="mt-6 text-lg leading-relaxed text-muted">
+                        Both. Individuals can curate and publish registries. Orgs subscribe and set the rules for how their systems can query your registry—whether they self-host or use context.help cloud.
+                    </p>
+                </details>
+
+                <details class="faq-item group border-brutal p-8 bg-paper cursor-pointer">
+                    <summary class="text-2xl font-bold list-none flex justify-between items-center">
+                        Do I have to self-host?
+                        <span class="text-4xl font-mono group-open:rotate-45 transition-transform">+</span>
+                    </summary>
+                    <p class="mt-6 text-lg leading-relaxed text-muted">
+                        Nope. You can use context.help cloud if you don't want to manage infrastructure. Self-hosting is an option for teams that need it—not a requirement.
+                    </p>
+                </details>
+
+                <details class="faq-item group border-brutal p-8 bg-paper cursor-pointer">
+                    <summary class="text-2xl font-bold list-none flex justify-between items-center">
+                        What if my context gets stolen?
+                        <span class="text-4xl font-mono group-open:rotate-45 transition-transform">+</span>
+                    </summary>
+                    <p class="mt-6 text-lg leading-relaxed text-muted">
+                        Index-first distribution means systems get safe summaries by default—not full content. You set quotas to prevent bulk scraping. Every resolution creates a receipt.
+                    </p>
+                </details>
+
+                <details class="faq-item group border-brutal p-8 bg-paper cursor-pointer">
+                    <summary class="text-2xl font-bold list-none flex justify-between items-center">
+                        Can agents integrate this?
+                        <span class="text-4xl font-mono group-open:rotate-45 transition-transform">+</span>
+                    </summary>
+                    <p class="mt-6 text-lg leading-relaxed text-muted">
+                        Yes. That's the point. Registries expose resolver-native APIs. Agents can query, filter, and pull context based on task, policy, and preference graphs.
+                    </p>
+                </details>
+
+                <details class="faq-item group border-brutal p-8 bg-paper cursor-pointer">
+                    <summary class="text-2xl font-bold list-none flex justify-between items-center">
+                        When will this be available?
+                        <span class="text-4xl font-mono group-open:rotate-45 transition-transform">+</span>
+                    </summary>
+                    <p class="mt-6 text-lg leading-relaxed text-muted">
+                        We're launching in Q2 2026. Join the waitlist to get early access and help shape the product.
+                    </p>
+                </details>
+            </div>
+        </div>
+    </section>
+
+    <!-- Early Adopter Benefits -->
+    <section class="py-24 md:py-32 border-t-3 border-ink">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-5xl md:text-6xl font-bold mb-6">Early adopters get</h2>
+                <p class="text-xl md:text-2xl font-bold text-neon">Limited founding member slots available</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="bento-card p-8 text-center">
+                    <div class="text-5xl mb-4">🚀</div>
+                    <h3 class="text-xl font-bold mb-3">First Access</h3>
+                    <p class="text-base text-muted">Beta invites rolling out March 2026</p>
+                </div>
+
+                <div class="bento-card p-8 text-center">
+                    <div class="text-5xl mb-4">💰</div>
+                    <h3 class="text-xl font-bold mb-3">50% Off Forever</h3>
+                    <p class="text-base text-muted">Lock in early adopter pricing for life</p>
+                </div>
+
+                <div class="bento-card p-8 text-center">
+                    <div class="text-5xl mb-4">🎯</div>
+                    <h3 class="text-xl font-bold mb-3">Shape the Product</h3>
+                    <p class="text-base text-muted">Direct line to founders + priority features</p>
+                </div>
+
+                <div class="bento-card p-8 text-center">
+                    <div class="text-5xl mb-4">⭐</div>
+                    <h3 class="text-xl font-bold mb-3">Founding Member</h3>
+                    <p class="text-base text-muted">Exclusive badge + recognition</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section id="cta" class="py-24 md:py-40 bg-ink text-paper relative overflow-hidden">
+        <div class="absolute inset-0 opacity-5">
+            <div class="font-mono text-xs leading-relaxed select-none">
+                <pre class="absolute top-10 left-10">┌──────────┐
+│ REGISTRY │
+└──────────┘</pre>
+                <pre class="absolute bottom-10 right-10">┌─────────┐
+│ CONTEXT │
+└─────────┘</pre>
+            </div>
+        </div>
+
+        <div class="max-w-4xl mx-auto px-6 text-center relative z-10">
+            <h2 class="text-6xl md:text-8xl font-bold mb-8">
+                Get early access
+            </h2>
+
+            <!-- Benefit bullets -->
+            <div class="mb-12 max-w-2xl mx-auto text-left">
+                <div class="space-y-3 text-lg font-bold">
+                    <div class="flex items-start gap-3">
+                        <span class="text-neon text-2xl">✓</span>
+                        <span>Get first access when we launch (Q2 2026)</span>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <span class="text-neon text-2xl">✓</span>
+                        <span>Lock in 50% off forever (early adopter pricing)</span>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <span class="text-neon text-2xl">✓</span>
+                        <span>Help shape the product roadmap</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Email signup -->
+            <form class="max-w-2xl mx-auto mb-8">
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <input
+                        type="email"
+                        placeholder="your@email.com"
+                        class="flex-1 px-8 py-6 border-brutal bg-paper text-ink font-mono text-lg focus:outline-none focus:ring-4 focus:ring-neon"
+                        required
+                    />
+                    <button
+                        type="submit"
+                        class="btn-primary px-12 py-6 text-lg whitespace-nowrap"
+                    >
+                        Get Early Access
+                    </button>
+                </div>
+            </form>
+
+            <p class="text-sm text-muted font-mono">
+                No credit card · Unsubscribe anytime
+            </p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-16 bg-paper border-t-3 border-ink">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="grid md:grid-cols-4 gap-12 mb-12">
+                <div>
+                    <div class="font-mono text-base font-bold mb-4 uppercase">
+                        context.help
+                    </div>
+                    <p class="text-sm text-muted">
+                        The platform for context curators.
+                    </p>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold mb-4 uppercase tracking-wider">Product</h3>
+                    <ul class="space-y-3 text-sm">
+                        <li><a href="#" class="text-muted hover:text-ink font-medium transition-colors">Features</a></li>
+                        <li><a href="#" class="text-muted hover:text-ink font-medium transition-colors">Use cases</a></li>
+                        <li><a href="#" class="text-muted hover:text-ink font-medium transition-colors">Pricing</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold mb-4 uppercase tracking-wider">Resources</h3>
+                    <ul class="space-y-3 text-sm">
+                        <li><a href="#" class="text-muted hover:text-ink font-medium transition-colors">Documentation</a></li>
+                        <li><a href="#" class="text-muted hover:text-ink font-medium transition-colors">API</a></li>
+                        <li><a href="#" class="text-muted hover:text-ink font-medium transition-colors">Blog</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold mb-4 uppercase tracking-wider">Company</h3>
+                    <ul class="space-y-3 text-sm">
+                        <li><a href="#" class="text-muted hover:text-ink font-medium transition-colors">About</a></li>
+                        <li><a href="#" class="text-muted hover:text-ink font-medium transition-colors">Contact</a></li>
+                        <li><a href="#" class="text-muted hover:text-ink font-medium transition-colors">Privacy</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="pt-8 border-t-2 border-ink flex flex-col md:flex-row justify-between items-center gap-4">
+                <p class="text-sm font-mono">© 2026 context.help</p>
+                <div class="flex gap-8 font-mono text-sm font-bold">
+                    <a href="#" class="hover:text-neon transition-colors">Twitter</a>
+                    <a href="#" class="hover:text-neon transition-colors">GitHub</a>
+                    <a href="#" class="hover:text-neon transition-colors">Discord</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- GSAP Animations -->
+    <script>
+        gsap.registerPlugin(ScrollTrigger);
+
+        // Hero staggered reveal
+        gsap.timeline()
+            .to('.hero-label', { opacity: 1, duration: 0.3 })
+            .to('.hero-social', { opacity: 1, duration: 0.3 }, '-=0.1')
+            .to('.hero-title', { opacity: 1, y: 0, duration: 0.5 }, '-=0.1')
+            .to('.hero-subtitle', { opacity: 1, duration: 0.4 }, '-=0.2')
+            .to('.hero-cta', { opacity: 1, y: 0, duration: 0.4 }, '-=0.1')
+            .to('.hero-subtext', { opacity: 1, duration: 0.3 });
+
+        // Problem cards
+        gsap.utils.toArray('.problem-card').forEach((card, i) => {
+            gsap.from(card, {
+                scrollTrigger: {
+                    trigger: card,
+                    start: 'top 85%',
+                },
+                opacity: 0,
+                y: 30,
+                duration: 0.4,
+                ease: 'power2.out',
+                delay: i * 0.08
+            });
+        });
+
+        // Feature cards
+        gsap.utils.toArray('.feature-card').forEach((card, i) => {
+            gsap.from(card, {
+                scrollTrigger: {
+                    trigger: card,
+                    start: 'top 80%',
+                },
+                opacity: 0,
+                x: -40,
+                duration: 0.5,
+                ease: 'power2.out',
+                delay: i * 0.1
+            });
+        });
+
+        // Benefit cards
+        gsap.utils.toArray('.benefit-card').forEach((card, i) => {
+            gsap.from(card, {
+                scrollTrigger: {
+                    trigger: card,
+                    start: 'top 80%',
+                },
+                opacity: 0,
+                scale: 0.95,
+                duration: 0.5,
+                ease: 'back.out(1.1)',
+                delay: i * 0.1
+            });
+        });
+
+        // Use case cards
+        gsap.utils.toArray('.use-case-card').forEach((card, i) => {
+            gsap.from(card, {
+                scrollTrigger: {
+                    trigger: card,
+                    start: 'top 80%',
+                },
+                opacity: 0,
+                y: 30,
+                duration: 0.5,
+                ease: 'power2.out',
+                delay: i * 0.08
+            });
+        });
+
+        // FAQ items
+        gsap.utils.toArray('.faq-item').forEach((item, i) => {
+            gsap.from(item, {
+                scrollTrigger: {
+                    trigger: item,
+                    start: 'top 85%',
+                },
+                opacity: 0,
+                y: 20,
+                duration: 0.3,
+                ease: 'power2.out',
+                delay: i * 0.05
+            });
+        });
+
+        // Smooth scroll
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    window.scrollTo({
+                        top: target.offsetTop - 80,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

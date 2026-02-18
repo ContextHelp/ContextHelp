@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- Neural Network Graph Icon - Dark Background Version -->
+
+  <!-- Connecting lines (Slate Gray) -->
+  <line x1="24" y1="8" x2="24" y2="16" stroke="#4a5568" stroke-width="2" stroke-linecap="round"/>
+  <line x1="8" y1="24" x2="16" y2="24" stroke="#4a5568" stroke-width="2" stroke-linecap="round"/>
+  <line x1="40" y1="24" x2="32" y2="24" stroke="#4a5568" stroke-width="2" stroke-linecap="round"/>
+  <line x1="16" y1="38" x2="20.5" y2="29.5" stroke="#4a5568" stroke-width="2" stroke-linecap="round"/>
+  <line x1="32" y1="38" x2="27.5" y2="29.5" stroke="#4a5568" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Center glow effect (brighter for dark backgrounds) -->
+  <circle cx="24" cy="24" r="9" fill="#00d9ff" opacity="0.3"/>
+
+  <!-- Outer nodes -->
+  <circle cx="24" cy="8" r="3.5" fill="#00d9ff" stroke="#00d9ff" stroke-width="1.5"/>
+  <circle cx="8" cy="24" r="3.5" fill="#00d9ff" stroke="#00d9ff" stroke-width="1.5"/>
+  <circle cx="40" cy="24" r="3.5" fill="#00d9ff" stroke="#00d9ff" stroke-width="1.5"/>
+  <circle cx="16" cy="38" r="3.5" fill="#3dd68c" stroke="#3dd68c" stroke-width="1.5"/>
+  <circle cx="32" cy="38" r="3.5" fill="#3dd68c" stroke="#3dd68c" stroke-width="1.5"/>
+
+  <!-- Center node (Warm White for dark backgrounds) -->
+  <circle cx="24" cy="24" r="6" fill="#fdfcf9"/>
+</svg>

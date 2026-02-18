@@ -1,0 +1,78 @@
+sequenceDiagram
+    actor User
+    participant Node as dPKMS Node
+    participant SQLite as Local SQLite
+    participant Outbox as Job Outbox
+    participant Cloud as Cloud Sync<br/>PostgreSQL
+    participant IPFS as IPFS Cluster
+    participant Arweave as Arweave Network
+    participant Blockchain as Solana/Ethereum
+
+    User->>Node: ctxt add "content"
+    activate Node
+
+    Node->>Node: Create KnowledgeObject
+    Node->>SQLite: Write locally
+    activate SQLite
+    SQLite-->>Node: ✓ Stored
+    deactivate SQLite
+
+    Note over Node,Blockchain: Async Outbox Jobs Created
+
+    Node->>Outbox: Enqueue SyncToCloud
+    Node->>Outbox: Enqueue PinToIPFS
+    Node->>Outbox: Enqueue ArchiveToArweave
+    Node->>Outbox: Enqueue AnchorToBlockchain
+
+    deactivate Node
+
+    par Parallel Execution
+        rect rgb(200, 230, 201)
+        Outbox->>Cloud: 1. Serialize + Compress
+        Cloud->>Cloud: Verify checksum
+        Cloud-->>Outbox: ✓ Synced
+        end
+
+        rect rgb(179, 229, 252)
+        Outbox->>IPFS: 2. Package as CAR
+        IPFS->>IPFS: Add + Pin
+        IPFS->>IPFS: Publish to DHT
+        IPFS-->>Outbox: ✓ CID: Qm...
+        end
+
+        rect rgb(255, 204, 188)
+        Outbox->>Arweave: 3. Bundle with others
+        Arweave->>Arweave: Submit to bundler
+        Arweave-->>Outbox: ✓ TX: ArXXX
+        end
+
+        rect rgb(255, 224, 178)
+        Outbox->>Blockchain: 4. Create commit
+        Blockchain->>Blockchain: Sign with keypair
+        Blockchain->>Blockchain: Submit transaction
+        Blockchain-->>Outbox: ✓ Signature: 0x...
+        end
+    end
+
+    Outbox->>SQLite: Mark jobs completed
+    Note over SQLite: Object is now in:<br/>✓ Local SQLite<br/>✓ Cloud DB<br/>✓ IPFS Network<br/>✓ Arweave (permanent)<br/>✓ Blockchain (anchored)
+
+    rect rgb(232, 245, 233)
+    Note over User,Blockchain: READ PATH (Retrieval)
+    User->>Node: ctxt find "query"
+    activate Node
+    Node->>SQLite: 1. Search local FTS5
+    SQLite-->>Node: Local results
+    par Parallel Retrieval
+        Node->>Cloud: 2a. Search cloud DB
+        Cloud-->>Node: Cloud results
+        Node->>IPFS: 2b. DHT lookup
+        IPFS-->>Node: IPFS results
+        Node->>Blockchain: 2c. Query events
+        Blockchain-->>Node: On-chain results
+    end
+    Node->>Node: 3. Merge + Deduplicate
+    Node->>Node: 4. Rerank by profile
+    Node-->>User: Ranked results with provenance
+    deactivate Node
+    end

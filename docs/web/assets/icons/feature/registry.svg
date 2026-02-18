@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
+  <!-- Registry Icon - Distributed Network -->
+
+  <!-- Dashed lines to satellite nodes (federation) -->
+  <line x1="12" y1="12" x2="6" y2="6" stroke="#00d9ff" stroke-width="2" stroke-dasharray="2 2"/>
+  <line x1="12" y1="12" x2="18" y2="6" stroke="#00d9ff" stroke-width="2" stroke-dasharray="2 2"/>
+  <line x1="12" y1="12" x2="6" y2="18" stroke="#00d9ff" stroke-width="2" stroke-dasharray="2 2"/>
+  <line x1="12" y1="12" x2="18" y2="18" stroke="#00d9ff" stroke-width="2" stroke-dasharray="2 2"/>
+
+  <!-- Satellite nodes -->
+  <circle cx="6" cy="6" r="2" stroke="#00d9ff" stroke-width="2"/>
+  <circle cx="18" cy="6" r="2" stroke="#00d9ff" stroke-width="2"/>
+  <circle cx="6" cy="18" r="2" stroke="#00d9ff" stroke-width="2"/>
+  <circle cx="18" cy="18" r="2" stroke="#00d9ff" stroke-width="2"/>
+
+  <!-- Central node (filled, larger) -->
+  <circle cx="12" cy="12" r="3" fill="#00d9ff"/>
+</svg>

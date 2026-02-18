@@ -1,0 +1,80 @@
+graph TB
+    subgraph "Scenario A: Solo Developer (Web2 Local)"
+        A1["User's Laptop/Desktop"]
+        A2["dPKMS + ctxt Node"]
+        A3["SQLite DB<br/>(Local)"]
+        A4["USB Backup<br/>(Manual)"]
+        A1 --> A2
+        A2 --> A3
+        A2 -.->|Weekly| A4
+    end
+
+    subgraph "Scenario B: Team (Web2 Cloud)"
+        B1["Team Members"]
+        B2["SSO/SCIM<br/>(Cloud Identity)"]
+        B3["dPKMS Nodes<br/>(Cloud-Managed)"]
+        B4["PostgreSQL Cluster<br/>(HA, Replicas)"]
+        B5["S3 Backups<br/>(Automated)"]
+        B6["Audit Logs<br/>(Immutable)"]
+        B1 --> B2
+        B2 --> B3
+        B3 --> B4
+        B3 --> B5
+        B3 --> B6
+    end
+
+    subgraph "Scenario C: Community (Web3 P2P)"
+        C1["Community Nodes<br/>(IPFS + libp2p)"]
+        C2["DHT<br/>(Peer Discovery)"]
+        C3["IPFS Cluster<br/>(Content Pinning)"]
+        C4["Arweave<br/>(Archival)"]
+        C5["Registry on IPFS<br/>(Community-Curated)"]
+        C1 --> C2
+        C1 --> C3
+        C3 --> C4
+        C2 --> C5
+    end
+
+    subgraph "Scenario D: Enterprise (Hybrid)"
+        D1["Enterprise Users"]
+        D2["Cloud Nodes<br/>(PostgreSQL Master)"]
+        D3["Self-Hosted Replicas<br/>(Private Network)"]
+        D4["IPFS Cluster<br/>(Replication)"]
+        D5["Arweave<br/>(Archive)"]
+        D6["Solana/Ethereum<br/>(Proof-of-Update)"]
+        D7["Hardware Wallet<br/>(Cold Storage)"]
+        D1 --> D2
+        D1 --> D3
+        D2 --> D4
+        D2 --> D5
+        D2 --> D6
+        D6 --> D7
+        D3 -.->|Sync| D2
+        D4 -.->|Replicate| D2
+    end
+
+    style A1 fill:#e1f5ff
+    style A2 fill:#fff3e0
+    style A3 fill:#f3e5f5
+    style A4 fill:#e8f5e9
+
+    style B1 fill:#e1f5ff
+    style B2 fill:#c8e6c9
+    style B3 fill:#fff3e0
+    style B4 fill:#f3e5f5
+    style B5 fill:#e8f5e9
+    style B6 fill:#ffccbc
+
+    style C1 fill:#e1f5ff
+    style C2 fill:#b3e5fc
+    style C3 fill:#f3e5f5
+    style C4 fill:#ffccbc
+    style C5 fill:#fff3e0
+
+    style D1 fill:#e1f5ff
+    style D2 fill:#c8e6c9
+    style D3 fill:#e8f5e9
+    style D4 fill:#b3e5fc
+    style D5 fill:#ffccbc
+    style D6 fill:#ffe0b2
+    style D7 fill:#ffd54f

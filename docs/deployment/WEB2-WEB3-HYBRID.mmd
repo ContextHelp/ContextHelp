@@ -1,0 +1,131 @@
+graph TB
+    subgraph "User Layer"
+        CLI["CLI: ctxt add/find/make"]
+        TUI["TUI: Interactive"]
+        API["REST/gRPC API"]
+    end
+
+    subgraph "dPKMS + ctxt Core (Single Node)"
+        Storage["Storage Abstraction Layer"]
+        Pipeline["Pipeline Runtime"]
+        Jobs["Job System + Outbox"]
+        Query["Query Engine"]
+        Registry["Registry Client"]
+    end
+
+    subgraph "Storage Drivers (Pluggable)"
+        SQLite["SQLite (Local)"]
+        Postgres["PostgreSQL (Cloud)"]
+        IPFS["IPFS (P2P)"]
+        Arweave["Arweave (Archive)"]
+        Blockchain["Blockchain (Metadata)"]
+    end
+
+    subgraph "Network Transports (Pluggable)"
+        HTTP["HTTP Transport<br/>(Web2)"]
+        LibP2P["libp2p Transport<br/>(Web3 P2P)"]
+        RPC["RPC Transport<br/>(Blockchain)"]
+        RegistryProto["Registry Protocol<br/>(Federated)"]
+    end
+
+    subgraph "Web2 Cloud Infrastructure"
+        CloudDB[("PostgreSQL Cluster<br/>(HA, Replicas)")]
+        S3["S3/Cloud Storage<br/>(Attachments)"]
+        CloudAuth["OAuth2/SCIM<br/>(Identity)"]
+    end
+
+    subgraph "Web3 IPFS Infrastructure"
+        DHT["DHT<br/>(Peer Discovery)"]
+        Cluster["IPFS Cluster<br/>(Pinning)"]
+        Pinning["Pinning Service<br/>(nft.storage, estuary)"]
+    end
+
+    subgraph "Web3 Blockchain Infrastructure"
+        Solana["Solana Mainnet<br/>(Settlement)"]
+        Ethereum["Ethereum Mainnet<br/>(Settlement)"]
+        SmartContract["Smart Contracts<br/>(Registry, ACL)"]
+    end
+
+    subgraph "Archival & Permanent Storage"
+        ArweaveNetwork["Arweave Network<br/>(Permanent, Immutable)"]
+        Bundler["Bundler Service<br/>(Cost Optimization)"]
+    end
+
+    %% Core connections
+    CLI --> Storage
+    TUI --> Storage
+    API --> Storage
+
+    Storage --> SQLite
+    Storage --> Postgres
+    Storage --> IPFS
+    Storage --> Arweave
+    Storage --> Blockchain
+
+    Pipeline --> Query
+    Pipeline --> Jobs
+    Query --> Storage
+    Registry --> Storage
+
+    %% Network transports
+    Storage --> HTTP
+    Storage --> LibP2P
+    Storage --> RPC
+    Registry --> RegistryProto
+
+    %% Web2 Cloud
+    Postgres --> CloudDB
+    HTTP --> CloudAuth
+    HTTP --> S3
+
+    %% Web3 IPFS
+    IPFS --> Cluster
+    Cluster --> DHT
+    Cluster --> Pinning
+    LibP2P --> DHT
+
+    %% Web3 Blockchain
+    Blockchain --> RPC
+    RPC --> Solana
+    RPC --> Ethereum
+    SmartContract -.->|Registry Metadata| Solana
+    SmartContract -.->|Registry Metadata| Ethereum
+
+    %% Archival
+    Arweave --> Bundler
+    Bundler --> ArweaveNetwork
+
+    %% Sync Jobs
+    Jobs -.->|Async Outbox| CloudDB
+    Jobs -.->|Async Outbox| Cluster
+    Jobs -.->|Async Outbox| Bundler
+    Jobs -.->|Async Outbox| Solana
+
+    style CLI fill:#e1f5ff
+    style TUI fill:#e1f5ff
+    style API fill:#e1f5ff
+    style Storage fill:#fff3e0
+    style Pipeline fill:#fff3e0
+    style Jobs fill:#fff3e0
+    style Query fill:#fff3e0
+    style Registry fill:#fff3e0
+    style SQLite fill:#f3e5f5
+    style Postgres fill:#f3e5f5
+    style IPFS fill:#f3e5f5
+    style Arweave fill:#f3e5f5
+    style Blockchain fill:#f3e5f5
+    style HTTP fill:#e8f5e9
+    style LibP2P fill:#e8f5e9
+    style RPC fill:#e8f5e9
+    style RegistryProto fill:#e8f5e9
+    style CloudDB fill:#c8e6c9
+    style S3 fill:#c8e6c9
+    style CloudAuth fill:#c8e6c9
+    style DHT fill:#b3e5fc
+    style Cluster fill:#b3e5fc
+    style Pinning fill:#b3e5fc
+    style Solana fill:#ffe0b2
+    style Ethereum fill:#ffe0b2
+    style SmartContract fill:#ffe0b2
+    style ArweaveNetwork fill:#ffccbc
+    style Bundler fill:#ffccbc

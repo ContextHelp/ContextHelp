@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>context.help – The platform for context curators</title>
+    <meta name="description" content="Publish curated context as a living registry. Systems pull what they need, just-in-time. Sovereign, traceable, and built for workflows—not inboxes.">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- GSAP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'sans': ['Space Grotesk', 'sans-serif'],
+                        'mono': ['IBM Plex Mono', 'monospace'],
+                    },
+                    colors: {
+                        // Theme-independent colors (same in light/dark)
+                        'brand-orange': '#FF6B35',
+                        'brand-purple': '#5D4CDB',
+                        'brand-green': '#00CC88',
+                        'brand-black': '#0A0A0A',
+                        'brand-white': '#FAFAFA',
+                        'brand-gray': '#8F8F8F',
+                    },
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Custom styles - Brutalist + Technical */
+        * {
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            background: #FAFAFA;
+            color: #0A0A0A;
+        }
+
+        /* ASCII Decorations from E2B */
+        .ascii-border {
+            border: 2px solid #0A0A0A;
+            position: relative;
+        }
+
+        .ascii-border::before {
+            content: '***';
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: #FAFAFA;
+            padding: 0 8px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+        }
+
+        .bracket-label::before {
+            content: '[';
+            margin-right: 0.3em;
+        }
+
+        .bracket-label::after {
+            content: ']';
+            margin-left: 0.3em;
+        }
+
+        /* Beehiiv-style bold buttons */
+        .btn-brutal {
+            border: 3px solid #0A0A0A;
+            box-shadow: 4px 4px 0 #0A0A0A;
+            transition: all 0.15s ease;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .btn-brutal:hover {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 #0A0A0A;
+        }
+
+        .btn-brutal:active {
+            transform: translate(4px, 4px);
+            box-shadow: 0 0 0 #0A0A0A;
+        }
+
+        /* Hover effects from E2B */
+        .card-lift {
+            transition: transform 0.15s ease;
+        }
+
+        @media (min-width: 992px) {
+            .card-lift:hover {
+                transform: translate(-4px, -4px);
+            }
+        }
+
+        /* Dotted background pattern */
+        .dotted-bg {
+            background-image: radial-gradient(circle, #0A0A0A 1px, transparent 1px);
+            background-size: 20px 20px;
+            opacity: 0.05;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #FAFAFA;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #0A0A0A;
+        }
+
+        /* Typography emphasis */
+        strong {
+            font-weight: 700;
+        }
+
+        /* Section dividers */
+        .divider {
+            width: 100%;
+            height: 2px;
+            background: #0A0A0A;
+            position: relative;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '===';
+            position: absolute;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            background: #FAFAFA;
+            padding: 0 8px;
+            top: -8px;
+        }
+
+        .divider::before {
+            left: 20px;
+        }
+
+        .divider::after {
+            right: 20px;
+        }
+
+        /* Animated elements */
+        .fade-in {
+            opacity: 0;
+        }
+
+        /* Terminal box style */
+        .terminal-box {
+            border: 2px solid #0A0A0A;
+            background: #FAFAFA;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        /* Selection style */
+        ::selection {
+            background: #FF6B35;
+            color: #FAFAFA;
+        }
+    </style>
+</head>
+<body class="font-sans">
+
+    <!-- Fixed Header -->
+    <header class="fixed top-0 left-0 right-0 z-50 bg-brand-white border-b-2 border-brand-black">
+        <nav class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="font-mono text-sm font-bold uppercase tracking-tight">
+                <span>context.help</span>
+            </div>
+            <div class="hidden md:flex items-center gap-8">
+                <a href="#how-it-works" class="text-sm font-medium hover:text-brand-orange transition-colors uppercase tracking-wide">How it works</a>
+                <a href="#use-cases" class="text-sm font-medium hover:text-brand-orange transition-colors uppercase tracking-wide">Use cases</a>
+                <a href="#faq" class="text-sm font-medium hover:text-brand-orange transition-colors uppercase tracking-wide">FAQ</a>
+            </div>
+            <button class="px-5 py-2 bg-brand-black text-brand-white btn-brutal">
+                Join Waitlist
+            </button>
+        </nav>
+    </header>
+
+    <!-- Dotted background overlay -->
+    <div class="fixed inset-0 dotted-bg pointer-events-none"></div>
+
+    <!-- Hero Section -->
+    <section class="relative pt-32 pb-20 md:pt-48 md:pb-32 overflow-hidden">
+        <div class="max-w-7xl mx-auto px-6 relative z-10">
+            <div class="max-w-5xl">
+                <div class="mb-6 fade-in hero-label">
+                    <span class="font-mono text-xs uppercase tracking-widest font-bold bracket-label text-brand-orange">PLATFORM</span>
+                </div>
+
+                <h1 class="text-6xl md:text-7xl lg:text-8xl font-bold leading-[0.9] mb-8 fade-in hero-title">
+                    The platform for<br/>
+                    <span class="text-brand-orange">context curators</span>.
+                </h1>
+
+                <p class="text-xl md:text-2xl font-medium leading-snug mb-12 max-w-3xl fade-in hero-subtitle">
+                    Build registries that agents query and systems integrate. <strong>You set the rules they follow.</strong>
+                </p>
+
+                <div class="flex flex-col sm:flex-row gap-4 mb-6 fade-in hero-cta">
+                    <button class="px-10 py-5 bg-brand-orange text-brand-white btn-brutal text-lg">
+                        Join the Waitlist
+                    </button>
+                    <button class="px-10 py-5 bg-brand-white text-brand-black btn-brutal text-lg">
+                        See How It Works
+                    </button>
+                </div>
+
+                <p class="text-sm text-brand-gray font-mono fade-in hero-subtext">
+                    >>> Get early access. No credit card. Unsubscribe anytime.
+                </p>
+            </div>
+
+            <!-- ASCII Terminal Decoration -->
+            <div class="hidden lg:block absolute top-40 right-10 fade-in hero-terminal">
+                <div class="terminal-box p-6 w-80">
+                    <div class="text-xs leading-relaxed">
+                        <div class="mb-4 font-bold">$ registry status</div>
+                        <div class="text-brand-gray">
+                            <div>┌─────────────────────┐</div>
+                            <div>│ NODE: #001          │</div>
+                            <div>├─────────────────────┤</div>
+                            <div>│ Entities:    1,247  │</div>
+                            <div>│ Edges:       3,892  │</div>
+                            <div>│ Resolvers:      42  │</div>
+                            <div>│ Status:     ACTIVE  │</div>
+                            <div>└─────────────────────┘</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Problem Section -->
+    <section class="py-20 md:py-32 relative">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <div class="divider mb-12"></div>
+                <h2 class="text-4xl md:text-6xl font-bold leading-tight mb-6">
+                    Knowledge gets <span class="text-brand-orange">TRAPPED</span><br/>
+                    in formats systems can't use.
+                </h2>
+                <p class="text-xl md:text-2xl font-medium max-w-3xl mx-auto">
+                    Context disappears into documents agents can't query.
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="problem-card ascii-border p-8 bg-brand-white card-lift">
+                    <div class="font-mono text-xs uppercase tracking-widest font-bold text-brand-purple mb-4 bracket-label">Notion / Wikis</div>
+                    <p class="text-lg leading-relaxed">
+                        You publish to Notion or wikis—but <strong>agents can't query by entity or taxonomy, only scrape HTML</strong>
+                    </p>
+                </div>
+
+                <div class="problem-card ascii-border p-8 bg-brand-white card-lift">
+                    <div class="font-mono text-xs uppercase tracking-widest font-bold text-brand-purple mb-4 bracket-label">Slack / Discord</div>
+                    <p class="text-lg leading-relaxed">
+                        You share insights in Slack or Discord—<strong>gone in 48 hours, no semantic index</strong>
+                    </p>
+                </div>
+
+                <div class="problem-card ascii-border p-8 bg-brand-white card-lift">
+                    <div class="font-mono text-xs uppercase tracking-widest font-bold text-brand-purple mb-4 bracket-label">Expertise</div>
+                    <p class="text-lg leading-relaxed">
+                        You build up years of expertise—but there's <strong>no way to package it so systems can actually use it</strong>
+                    </p>
+                </div>
+
+                <div class="problem-card ascii-border p-8 bg-brand-white card-lift">
+                    <div class="font-mono text-xs uppercase tracking-widest font-bold text-brand-purple mb-4 bracket-label">Integration</div>
+                    <p class="text-lg leading-relaxed">
+                        You want teams to integrate your context—but <strong>bulk dumps defeat JIT resolution</strong>
+                    </p>
+                </div>
+            </div>
+
+            <div class="mt-16 text-center">
+                <p class="text-xl md:text-2xl font-bold max-w-4xl mx-auto border-l-4 border-brand-orange pl-6 text-left">
+                    The tools we have treat knowledge like documents for humans to read, not feeds for systems to resolve.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" class="py-20 md:py-32 bg-brand-black text-brand-white relative overflow-hidden">
+        <div class="max-w-6xl mx-auto px-6 relative z-10">
+            <div class="text-center mb-20">
+                <div class="font-mono text-xs uppercase tracking-widest font-bold text-brand-orange mb-4 bracket-label">Process</div>
+                <h2 class="text-5xl md:text-6xl font-bold">How context.help works</h2>
+            </div>
+
+            <div class="space-y-16">
+                <!-- Step 1 -->
+                <div class="how-step grid md:grid-cols-12 gap-8 items-start">
+                    <div class="md:col-span-2">
+                        <div class="w-20 h-20 border-4 border-brand-orange bg-brand-black text-brand-orange flex items-center justify-center text-4xl font-bold">
+                            1
+                        </div>
+                    </div>
+                    <div class="md:col-span-10">
+                        <h3 class="text-3xl md:text-4xl font-bold mb-4">Curate your registry</h3>
+                        <p class="text-xl text-brand-white/80 leading-relaxed mb-6">
+                            Structure entities, taxonomies, edges, and safe summaries. Publish structured context that agents can query and resolve—not static docs they have to scrape.
+                        </p>
+                        <div class="font-mono text-sm bg-brand-white/10 border border-brand-white/20 px-4 py-3 inline-block">
+                            entities → taxonomies → edges → summaries
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="how-step grid md:grid-cols-12 gap-8 items-start">
+                    <div class="md:col-span-2">
+                        <div class="w-20 h-20 border-4 border-brand-green bg-brand-black text-brand-green flex items-center justify-center text-4xl font-bold">
+                            2
+                        </div>
+                    </div>
+                    <div class="md:col-span-10">
+                        <h3 class="text-3xl md:text-4xl font-bold mb-4">Define policy and access</h3>
+                        <p class="text-xl text-brand-white/80 leading-relaxed mb-6">
+                            Your registry can be self-hosted or cloud-managed. <strong class="text-brand-white">Systems sync the index—not full bodies—so you control distribution without vendor lock-in.</strong> Set quotas and access rules to protect your work.
+                        </p>
+                        <div class="flex gap-3 flex-wrap">
+                            <span class="font-mono text-sm bg-brand-white/10 border border-brand-white/20 px-4 py-2">Self-hosted</span>
+                            <span class="font-mono text-sm bg-brand-white/10 border border-brand-white/20 px-4 py-2">Cloud-managed</span>
+                            <span class="font-mono text-sm bg-brand-white/10 border border-brand-white/20 px-4 py-2">Quotas</span>
+                            <span class="font-mono text-sm bg-brand-white/10 border border-brand-white/20 px-4 py-2">Access rules</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="how-step grid md:grid-cols-12 gap-8 items-start">
+                    <div class="md:col-span-2">
+                        <div class="w-20 h-20 border-4 border-brand-purple bg-brand-black text-brand-purple flex items-center justify-center text-4xl font-bold">
+                            3
+                        </div>
+                    </div>
+                    <div class="md:col-span-10">
+                        <h3 class="text-3xl md:text-4xl font-bold mb-4">Let systems pull JiT</h3>
+                        <p class="text-xl text-brand-white/80 leading-relaxed mb-6">
+                            <strong class="text-brand-white">Agents pull specific entities, edges, or summaries—just what's needed for the task at hand.</strong> Your context integrates into workflows, pipelines, and preference graphs—not inboxes.
+                        </p>
+                        <div class="font-mono text-sm bg-brand-green/20 border border-brand-green px-4 py-3 inline-block text-brand-green">
+                            JIT Resolution >>> No Bulk Dumps
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Benefits -->
+    <section class="py-20 md:py-32 border-t-2 border-b-2 border-brand-black relative">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <div class="font-mono text-xs uppercase tracking-widest font-bold text-brand-orange mb-4 bracket-label">Benefits</div>
+                <h2 class="text-4xl md:text-5xl font-bold">Why context.help</h2>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="benefit-card ascii-border p-8 bg-brand-white card-lift">
+                    <div class="text-6xl mb-6 font-mono text-brand-orange">→→→</div>
+                    <h3 class="text-2xl font-bold mb-4">Systems pull what they need</h3>
+                    <p class="leading-relaxed text-brand-gray">
+                        No bulk replication. No scraping entire databases. Index-level sync means agents get fresh context without you exposing everything upfront.
+                    </p>
+                </div>
+
+                <div class="benefit-card ascii-border p-8 bg-brand-white card-lift">
+                    <div class="text-6xl mb-6 font-mono text-brand-green">***</div>
+                    <h3 class="text-2xl font-bold mb-4">You set the rules</h3>
+                    <p class="leading-relaxed text-brand-gray">
+                        Self-host your registry anywhere, or use context.help cloud. You define who can access what, how much they can pull, and when.
+                    </p>
+                </div>
+
+                <div class="benefit-card ascii-border p-8 bg-brand-white card-lift">
+                    <div class="text-6xl mb-6 font-mono text-brand-purple">@@@</div>
+                    <h3 class="text-2xl font-bold mb-4">Traceable by design</h3>
+                    <p class="leading-relaxed text-brand-gray">
+                        Every resolution carries receipts and provenance. Know where your context went, which agents used it, and what it contributed to.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Use Cases -->
+    <section id="use-cases" class="py-20 md:py-32">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <div class="divider mb-12"></div>
+                <div class="font-mono text-xs uppercase tracking-widest font-bold text-brand-orange mb-4 bracket-label">Use Cases</div>
+                <h2 class="text-4xl md:text-5xl font-bold">Who curates context?</h2>
+            </div>
+
+            <div class="space-y-6">
+                <div class="use-case-card border-l-8 border-brand-orange bg-brand-white p-8 card-lift">
+                    <h3 class="text-2xl md:text-3xl font-bold mb-3">Community curators</h3>
+                    <p class="text-lg leading-relaxed">
+                        You run a Discord, forum, or online community and want to <strong>make the best insights queryable by agents</strong>—not just archived for humans to search later.
+                    </p>
+                </div>
+
+                <div class="use-case-card border-l-8 border-brand-purple bg-brand-white p-8 card-lift">
+                    <h3 class="text-2xl md:text-3xl font-bold mb-3">Domain experts</h3>
+                    <p class="text-lg leading-relaxed">
+                        You've built deep expertise in a niche—OWASP security patterns, SOC 2 compliance templates, or a design system taxonomy—and want to package it as <strong>a registry that systems can resolve against</strong>, not just a doc site.
+                    </p>
+                </div>
+
+                <div class="use-case-card border-l-8 border-brand-green bg-brand-white p-8 card-lift">
+                    <h3 class="text-2xl md:text-3xl font-bold mb-3">Internal knowledge leads</h3>
+                    <p class="text-lg leading-relaxed">
+                        You maintain the wiki, write the docs, keep Notion organized. You're tired of agents scraping instead of querying. And teams copy-pasting instead of integrating.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Monetization -->
+    <section class="py-20 md:py-32 bg-brand-orange text-brand-white relative overflow-hidden">
+        <div class="max-w-5xl mx-auto px-6 text-center relative z-10">
+            <h2 class="text-4xl md:text-6xl font-bold mb-8">
+                Turn expertise into REVENUE
+            </h2>
+            <p class="text-xl md:text-2xl font-medium leading-relaxed mb-12 max-w-3xl mx-auto">
+                When you publish a registry on context.help, you can charge subscriptions, meter JIT resolutions, and sell extensions that build on your registry.
+            </p>
+            <div class="grid md:grid-cols-3 gap-6 text-left">
+                <div class="bg-brand-white text-brand-black p-6 border-2 border-brand-black">
+                    <div class="font-mono text-xs font-bold mb-2 uppercase tracking-widest">01</div>
+                    <h3 class="text-xl font-bold mb-2">Subscriptions</h3>
+                    <p class="text-sm">Charge for access to your curated context</p>
+                </div>
+                <div class="bg-brand-white text-brand-black p-6 border-2 border-brand-black">
+                    <div class="font-mono text-xs font-bold mb-2 uppercase tracking-widest">02</div>
+                    <h3 class="text-xl font-bold mb-2">Metered usage</h3>
+                    <p class="text-sm">Orgs pay for what their systems actually use</p>
+                </div>
+                <div class="bg-brand-white text-brand-black p-6 border-2 border-brand-black">
+                    <div class="font-mono text-xs font-bold mb-2 uppercase tracking-widest">03</div>
+                    <h3 class="text-xl font-bold mb-2">Extensions</h3>
+                    <p class="text-sm">Sell plugins, pipelines, and templates</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="py-20 md:py-32">
+        <div class="max-w-4xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <div class="font-mono text-xs uppercase tracking-widest font-bold text-brand-orange mb-4 bracket-label">FAQ</div>
+                <h2 class="text-4xl md:text-5xl font-bold">Common questions</h2>
+            </div>
+
+            <div class="space-y-6">
+                <details class="faq-item group bg-brand-white border-2 border-brand-black p-6 cursor-pointer">
+                    <summary class="text-xl font-bold list-none flex justify-between items-center">
+                        Is this for individuals or teams?
+                        <span class="text-3xl font-mono group-open:rotate-45 transition-transform">+</span>
+                    </summary>
+                    <p class="mt-4 leading-relaxed text-brand-gray">
+                        Both. Individuals can curate and publish registries. Orgs subscribe and set the rules for how their systems can query your registry—whether they self-host or use context.help cloud.
+                    </p>
+                </details>
+
+                <details class="faq-item group bg-brand-white border-2 border-brand-black p-6 cursor-pointer">
+                    <summary class="text-xl font-bold list-none flex justify-between items-center">
+                        Do I have to self-host?
+                        <span class="text-3xl font-mono group-open:rotate-45 transition-transform">+</span>
+                    </summary>
+                    <p class="mt-4 leading-relaxed text-brand-gray">
+                        Nope. You can use context.help cloud if you don't want to manage infrastructure. Self-hosting is an option for teams that need it—not a requirement.
+                    </p>
+                </details>
+
+                <details class="faq-item group bg-brand-white border-2 border-brand-black p-6 cursor-pointer">
+                    <summary class="text-xl font-bold list-none flex justify-between items-center">
+                        What if my context gets stolen or misused?
+                        <span class="text-3xl font-mono group-open:rotate-45 transition-transform">+</span>
+                    </summary>
+                    <p class="mt-4 leading-relaxed text-brand-gray">
+                        Index-first distribution means systems get safe summaries by default—not full content. You set quotas to prevent bulk scraping. And every resolution creates a receipt, so you can audit exactly who pulled what, when.
+                    </p>
+                </details>
+
+                <details class="faq-item group bg-brand-white border-2 border-brand-black p-6 cursor-pointer">
+                    <summary class="text-xl font-bold list-none flex justify-between items-center">
+                        Can agents integrate this with existing workflows?
+                        <span class="text-3xl font-mono group-open:rotate-45 transition-transform">+</span>
+                    </summary>
+                    <p class="mt-4 leading-relaxed text-brand-gray">
+                        Yes. That's the point. Registries expose resolver-native APIs. Agents can query, filter, and pull context based on task, policy, and preference graphs—not just dump everything into RAG.
+                    </p>
+                </details>
+
+                <details class="faq-item group bg-brand-white border-2 border-brand-black p-6 cursor-pointer">
+                    <summary class="text-xl font-bold list-none flex justify-between items-center">
+                        When will this be available?
+                        <span class="text-3xl font-mono group-open:rotate-45 transition-transform">+</span>
+                    </summary>
+                    <p class="mt-4 leading-relaxed text-brand-gray">
+                        We're launching in Q2 2026. Join the waitlist to get early access and help shape the product.
+                    </p>
+                </details>
+            </div>
+        </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="py-20 md:py-32 bg-brand-black text-brand-white relative overflow-hidden">
+        <div class="absolute inset-0 opacity-10">
+            <div class="font-mono text-xs leading-relaxed select-none">
+                <pre class="absolute top-10 left-10">
+┌──────────┐
+│ REGISTRY │
+└──────────┘
+                </pre>
+                <pre class="absolute bottom-10 right-10">
+┌─────────┐
+│ CONTEXT │
+└─────────┘
+                </pre>
+                <pre class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
+>>>>>>>>>>>
+<<<<<<<<<<<
+>>>>>>>>>>>
+                </pre>
+            </div>
+        </div>
+
+        <div class="max-w-4xl mx-auto px-6 text-center relative z-10">
+            <div class="font-mono text-xs uppercase tracking-widest font-bold text-brand-orange mb-6 bracket-label">Get Started</div>
+            <h2 class="text-5xl md:text-7xl font-bold mb-8">
+                GET EARLY ACCESS
+            </h2>
+            <p class="text-xl md:text-2xl font-medium leading-relaxed mb-12 max-w-2xl mx-auto text-brand-white/90">
+                Join the waitlist to get first access when we launch, help shape how systems discover and resolve context, and secure early adopter pricing.
+            </p>
+
+            <!-- Email signup form -->
+            <form class="max-w-2xl mx-auto mb-8">
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <input
+                        type="email"
+                        placeholder="your@email.com"
+                        class="flex-1 px-6 py-5 border-2 border-brand-white bg-transparent text-brand-white placeholder:text-brand-white/50 font-mono text-lg focus:outline-none focus:border-brand-orange"
+                        required
+                    />
+                    <button
+                        type="submit"
+                        class="px-10 py-5 bg-brand-orange text-brand-white btn-brutal text-lg whitespace-nowrap"
+                    >
+                        Join Waitlist
+                    </button>
+                </div>
+            </form>
+
+            <p class="text-sm text-brand-white/60 font-mono">
+                >>> No credit card required. Unsubscribe anytime.
+            </p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-16 bg-brand-white border-t-2 border-brand-black">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="grid md:grid-cols-4 gap-12 mb-12">
+                <div>
+                    <div class="font-mono text-sm font-bold mb-4 uppercase">
+                        context.help
+                    </div>
+                    <p class="text-sm text-brand-gray">
+                        The platform for context curators.
+                    </p>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold mb-4 uppercase tracking-wider">Product</h3>
+                    <ul class="space-y-3 text-sm">
+                        <li><a href="#" class="text-brand-gray hover:text-brand-black transition-colors">How it works</a></li>
+                        <li><a href="#" class="text-brand-gray hover:text-brand-black transition-colors">Use cases</a></li>
+                        <li><a href="#" class="text-brand-gray hover:text-brand-black transition-colors">Pricing</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold mb-4 uppercase tracking-wider">Resources</h3>
+                    <ul class="space-y-3 text-sm">
+                        <li><a href="#" class="text-brand-gray hover:text-brand-black transition-colors">Documentation</a></li>
+                        <li><a href="#" class="text-brand-gray hover:text-brand-black transition-colors">API</a></li>
+                        <li><a href="#" class="text-brand-gray hover:text-brand-black transition-colors">Blog</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold mb-4 uppercase tracking-wider">Company</h3>
+                    <ul class="space-y-3 text-sm">
+                        <li><a href="#" class="text-brand-gray hover:text-brand-black transition-colors">About</a></li>
+                        <li><a href="#" class="text-brand-gray hover:text-brand-black transition-colors">Contact</a></li>
+                        <li><a href="#" class="text-brand-gray hover:text-brand-black transition-colors">Privacy</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="pt-8 border-t-2 border-brand-black flex flex-col md:flex-row justify-between items-center gap-4">
+                <p class="text-sm font-mono">© 2026 context.help. All rights reserved.</p>
+                <div class="flex gap-8 font-mono text-sm">
+                    <a href="#" class="text-brand-gray hover:text-brand-black transition-colors">Twitter</a>
+                    <a href="#" class="text-brand-gray hover:text-brand-black transition-colors">GitHub</a>
+                    <a href="#" class="text-brand-gray hover:text-brand-black transition-colors">Discord</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- GSAP Animations -->
+    <script>
+        gsap.registerPlugin(ScrollTrigger);
+
+        // Hero staggered reveal
+        const heroTimeline = gsap.timeline({
+            defaults: { ease: 'power3.out' }
+        });
+
+        heroTimeline
+            .to('.hero-label', { opacity: 1, duration: 0.4 })
+            .to('.hero-title', { opacity: 1, y: 0, duration: 0.6 }, '-=0.2')
+            .to('.hero-subtitle', { opacity: 1, duration: 0.5 }, '-=0.3')
+            .to('.hero-cta', { opacity: 1, y: 0, duration: 0.5 }, '-=0.2')
+            .to('.hero-subtext', { opacity: 1, duration: 0.4 }, '-=0.3')
+            .to('.hero-terminal', { opacity: 1, x: 0, duration: 0.8 }, '-=0.6');
+
+        // Problem cards
+        gsap.utils.toArray('.problem-card').forEach((card, i) => {
+            gsap.from(card, {
+                scrollTrigger: {
+                    trigger: card,
+                    start: 'top 85%',
+                },
+                opacity: 0,
+                y: 40,
+                duration: 0.5,
+                ease: 'power2.out',
+                delay: i * 0.1
+            });
+        });
+
+        // How it works steps
+        gsap.utils.toArray('.how-step').forEach((step, i) => {
+            gsap.from(step, {
+                scrollTrigger: {
+                    trigger: step,
+                    start: 'top 80%',
+                },
+                opacity: 0,
+                x: -50,
+                duration: 0.7,
+                ease: 'power3.out',
+                delay: i * 0.15
+            });
+        });
+
+        // Benefit cards
+        gsap.utils.toArray('.benefit-card').forEach((card, i) => {
+            gsap.from(card, {
+                scrollTrigger: {
+                    trigger: card,
+                    start: 'top 80%',
+                },
+                opacity: 0,
+                scale: 0.95,
+                duration: 0.6,
+                ease: 'back.out(1.2)',
+                delay: i * 0.12
+            });
+        });
+
+        // Use case cards
+        gsap.utils.toArray('.use-case-card').forEach((card, i) => {
+            gsap.from(card, {
+                scrollTrigger: {
+                    trigger: card,
+                    start: 'top 80%',
+                },
+                opacity: 0,
+                x: -60,
+                duration: 0.7,
+                ease: 'power3.out',
+                delay: i * 0.1
+            });
+        });
+
+        // FAQ items
+        gsap.utils.toArray('.faq-item').forEach((item, i) => {
+            gsap.from(item, {
+                scrollTrigger: {
+                    trigger: item,
+                    start: 'top 85%',
+                },
+                opacity: 0,
+                y: 20,
+                duration: 0.4,
+                ease: 'power2.out',
+                delay: i * 0.08
+            });
+        });
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    window.scrollTo({
+                        top: target.offsetTop - 80,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
