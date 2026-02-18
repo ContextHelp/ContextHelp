@@ -1,0 +1,100 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#f59e0b"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#f59e0b"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant User
+    participant CLI as ctxt CLI
+    participant JobStore as Job Store
+    participant Worker
+    participant PluginPipeline as Plugin Pipeline<br/>(feed.fetch)
+    participant RSSPlugin as RSS Feed Plugin
+    participant Registry
+
+    Note over User,Registry: Plugin-Defined Pipeline Flow<br/>(RSS Feed Example)
+
+    User->>CLI: ctxt analyze --type feed<br/>"https://blog.example.com/rss"
+
+    CLI->>JobStore: CREATE job<br/>pipeline='feed.fetch'<br/>payload={url: '...'}
+
+    Worker->>JobStore: CLAIM job
+
+    Worker->>PluginPipeline: Execute feed.fetch pipeline
+    activate PluginPipeline
+
+    PluginPipeline->>RSSPlugin: Task: FetchFeedDocument
+    activate RSSPlugin
+    RSSPlugin->>RSSPlugin: HTTP GET feed URL
+    RSSPlugin-->>PluginPipeline: Raw RSS XML
+    deactivate RSSPlugin
+
+    PluginPipeline->>RSSPlugin: Task: ParseFeedMetadata
+    activate RSSPlugin
+    RSSPlugin->>RSSPlugin: Parse RSS XML
+    RSSPlugin-->>PluginPipeline: Feed metadata:<br/>{title, link, description}
+    deactivate RSSPlugin
+
+    PluginPipeline->>RSSPlugin: Task: ParseFeedItems
+    activate RSSPlugin
+    RSSPlugin->>RSSPlugin: Extract items from feed
+    RSSPlugin-->>PluginPipeline: Feed items: [item1, item2, ...]
+    deactivate RSSPlugin
+
+    PluginPipeline->>PluginPipeline: Create bookmark for feed<br/>(type: 'feed')
+
+    PluginPipeline->>JobStore: Enqueue follow-up jobs<br/>for each feed item
+    loop For each feed item
+        PluginPipeline->>JobStore: CREATE job<br/>pipeline='feed.ingest_item'<br/>payload={item, parent_feed}
+    end
+
+    deactivate PluginPipeline
+
+    PluginPipeline-->>Worker: Feed bookmark +<br/>N follow-up jobs
+
+    Worker->>JobStore: WRITE feed bookmark
+    Worker->>JobStore: MARK job completed
+
+    Note over Worker,JobStore: Worker continues to process<br/>feed item jobs independently
+
+    Worker->>JobStore: CLAIM next job<br/>(feed.ingest_item)
+
+    Worker->>PluginPipeline: Execute feed.ingest_item
+    activate PluginPipeline
+
+    PluginPipeline->>RSSPlugin: Extract article content
+    PluginPipeline->>Registry: Resolve mentions/tags
+    PluginPipeline->>PluginPipeline: Create bookmark for article<br/>(linked to parent feed)
+
+    deactivate PluginPipeline
+
+    Worker->>JobStore: WRITE article bookmark
+    Worker->>JobStore: MARK job completed
+
+    Note over User,Registry: Plugin creates arbitrary pipelines<br/>without core modification
+```

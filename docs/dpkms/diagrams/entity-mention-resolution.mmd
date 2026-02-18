@@ -1,0 +1,72 @@
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#3dd68c"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#3dd68c"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant User
+    participant Node as ContextHelp Node
+    participant LocalEntity as Local Entity Store
+    participant SyncedEntity as Synced Entities
+    participant Registry as Entity Registry
+    participant GraphDB as Knowledge Graph
+
+    Note over User,GraphDB: Entity & Mention Resolution Flow
+
+    User->>Node: Search with mention:<br/>"@ui.best-practice examples"
+
+    Node->>Node: Parse query<br/>Extract mention: @ui.best-practice
+
+    Node->>LocalEntity: SELECT * FROM entities<br/>WHERE id='ui.best-practice'<br/>OR 'ui.best-practice' IN aliases
+
+    alt Entity found locally
+        LocalEntity-->>Node: Entity definition
+    else Not found locally
+        Node->>SyncedEntity: SELECT * FROM synced_entities<br/>WHERE id='ui.best-practice'
+        alt Entity in synced registry
+            SyncedEntity-->>Node: Entity definition
+        else Not in synced registry
+            Node->>Registry: GET /entities/ui.best-practice
+            activate Registry
+            Registry-->>Node: 200 OK<br/>{<br/>  "id": "ui.best-practice",<br/>  "title": "UI Best Practice",<br/>  "aliases": ["ux.best-practice"]<br/>}
+            deactivate Registry
+            Node->>LocalEntity: Cache entity definition
+        end
+    end
+
+    Node->>GraphDB: SELECT bookmark_id<br/>FROM mentions<br/>WHERE entity_id='ui.best-practice'
+    GraphDB-->>Node: List of bookmark IDs<br/>that mention this entity
+
+    Node->>Registry: GET /entities/ui.best-practice/related
+    activate Registry
+    Registry-->>Node: Related entities:<br/>["ux.accessibility", "ux.signup-flow"]
+    deactivate Registry
+
+    Node->>Node: Expand search with:<br/>- Direct mentions<br/>- Related entities<br/>- Entity backlinks
+
+    Node->>Node: Execute expanded query
+    Node-->>User: Results enriched by<br/>entity graph traversal

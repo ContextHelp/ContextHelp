@@ -1,0 +1,84 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#10b981"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#10b981"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant User
+    participant CLI as ctxt CLI
+    participant JobStore as Job Store (SQLite)
+    participant Worker as Background Worker
+    participant Pipeline
+    participant LocalDB as Local Storage
+
+    Note over User,LocalDB: Job Lifecycle Flow
+
+    User->>CLI: ctxt analyze "https://example.com"
+
+    CLI->>CLI: Parse input<br/>Infer type: url.generic
+
+    CLI->>JobStore: BEGIN TRANSACTION
+    CLI->>JobStore: INSERT INTO jobs<br/>(job_id, status='pending',<br/>payload, pipeline='url.generic')
+    CLI->>JobStore: COMMIT
+    JobStore-->>CLI: Job created: job-1234
+
+    CLI-->>User: ✓ Queued for analysis<br/>(job-1234)
+
+    Note over Worker: Worker polling loop
+
+    Worker->>JobStore: SELECT * FROM jobs<br/>WHERE status='pending'<br/>ORDER BY created_at<br/>LIMIT 1 FOR UPDATE
+
+    JobStore-->>Worker: Job job-1234
+
+    Worker->>JobStore: UPDATE jobs<br/>SET status='running',<br/>locked_at=NOW()
+
+    Worker->>Pipeline: Execute pipeline('url.generic', payload)
+    activate Pipeline
+
+    Pipeline->>Pipeline: Task 1: Fetch URL
+    Pipeline->>Pipeline: Task 2: Extract metadata
+    Pipeline->>Pipeline: Task 3: Mention extraction
+    Pipeline->>Pipeline: Task 4: Tag alignment
+    Pipeline->>Pipeline: Task 5: Entity resolution
+
+    alt Pipeline succeeds
+        Pipeline-->>Worker: Bookmark data
+        Worker->>LocalDB: INSERT INTO bookmarks
+        Worker->>JobStore: UPDATE jobs<br/>SET status='completed'
+    else Pipeline fails (retryable)
+        Pipeline-->>Worker: Error: network timeout
+        Worker->>JobStore: UPDATE jobs<br/>SET status='pending',<br/>retry_count=retry_count+1
+    else Pipeline fails (permanent)
+        Pipeline-->>Worker: Error: invalid URL
+        Worker->>JobStore: UPDATE jobs<br/>SET status='failed',<br/>error='invalid URL'
+    end
+
+    deactivate Pipeline
+
+    Note over Worker: Continue polling for next job
+```

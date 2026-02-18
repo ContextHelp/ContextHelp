@@ -1,0 +1,66 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#10b981"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#10b981"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant Node as ContextHelp Node
+    participant Registry as External Registry
+    participant LocalDB as Local Storage
+
+    Note over Node,LocalDB: Full Registry Sync Flow
+
+    Node->>Registry: GET /capabilities
+    Registry-->>Node: {"sync": {"enabled": true, "mode": "full"}}
+
+    Node->>Node: Check last sync version
+
+    Node->>Registry: GET /sync/snapshot
+    activate Registry
+    Note right of Registry: Returns complete snapshot:<br/>- taxonomy<br/>- entities<br/>- bookmarks<br/>- weights
+    Registry-->>Node: 200 OK (full snapshot + version)
+    deactivate Registry
+
+    Node->>LocalDB: BEGIN TRANSACTION
+
+    Node->>LocalDB: DELETE FROM synced_taxonomy<br/>WHERE registry='uxpatterns'
+    Node->>LocalDB: DELETE FROM synced_entities<br/>WHERE registry='uxpatterns'
+    Node->>LocalDB: DELETE FROM synced_bookmarks<br/>WHERE registry='uxpatterns'
+    Node->>LocalDB: DELETE FROM synced_weights<br/>WHERE registry='uxpatterns'
+
+    Node->>LocalDB: INSERT synced_taxonomy
+    Node->>LocalDB: INSERT synced_entities
+    Node->>LocalDB: INSERT synced_bookmarks
+    Node->>LocalDB: INSERT synced_weights
+
+    Node->>LocalDB: UPDATE registry_metadata<br/>SET last_sync_version='2025-01-14'
+
+    Node->>LocalDB: COMMIT TRANSACTION
+
+    Note over Node: Sync complete.<br/>Local queries now include<br/>synced registry data.
+```

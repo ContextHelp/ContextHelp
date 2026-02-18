@@ -1,0 +1,94 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#3dd68c"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#3dd68c"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant Worker
+    participant Pipeline
+    participant Plugins as Plugin Hooks
+    participant AI as AI Service
+    participant Registry
+    participant EntityResolver as Entity Resolver
+    participant JobSteps as Job Steps Log
+
+    Note over Worker,JobSteps: Pipeline Execution Flow
+
+    Worker->>Pipeline: Execute(context)
+
+    Pipeline->>JobSteps: CREATE step<br/>name='preprocessing',<br/>status='running'
+
+    Pipeline->>Pipeline: Parse hints from input
+    Pipeline->>Pipeline: Infer type/subtype
+
+    Pipeline->>JobSteps: UPDATE step='preprocessing'<br/>status='completed'
+
+    loop For each task in pipeline
+        Pipeline->>JobSteps: CREATE step<br/>name=task.name,<br/>status='running'
+
+        Pipeline->>Plugins: Emit BeforePipelineTask(task)
+        Plugins-->>Pipeline: Continue
+
+        alt Task requires AI
+            Pipeline->>AI: Enrich content<br/>(summarize, classify, extract)
+            AI-->>Pipeline: AI response
+        end
+
+        alt Task is mention extraction
+            Pipeline->>Pipeline: Extract @mentions from text
+            Pipeline->>EntityResolver: Resolve mentions
+            activate EntityResolver
+            EntityResolver->>Registry: GET /entities/{id}
+            Registry-->>EntityResolver: Entity definition
+            EntityResolver-->>Pipeline: Resolved entities +<br/>unresolved mentions
+            deactivate EntityResolver
+        end
+
+        alt Task is tag alignment
+            Pipeline->>Registry: GET /taxonomy
+            Registry-->>Pipeline: Tag definitions
+            Pipeline->>Registry: GET /weights
+            Registry-->>Pipeline: Tag weights
+            Pipeline->>Pipeline: Normalize and weight tags
+        end
+
+        Pipeline->>Plugins: Emit AfterPipelineTask(task, result)
+        Plugins-->>Pipeline: Plugin metadata updates
+
+        Pipeline->>JobSteps: UPDATE step<br/>status='completed',<br/>log='...'
+    end
+
+    Pipeline->>Pipeline: Assemble bookmark from<br/>all task outputs
+
+    Pipeline->>Plugins: Emit PostPipelineExecute(bookmark)
+    Plugins-->>Pipeline: Additional plugin data
+
+    Pipeline-->>Worker: Final bookmark +<br/>optional follow-up jobs
+
+    Note over Worker,JobSteps: Pipeline complete.<br/>Worker writes bookmark<br/>and marks job completed.
+```

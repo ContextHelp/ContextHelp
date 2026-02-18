@@ -1,0 +1,71 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#6366f1"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#6366f1"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant User
+    participant Node as ContextHelp Node
+    participant LocalDB as Local Storage
+    participant SyncedReg as Synced Registry Data
+    participant RegA as Registry A (Remote)
+    participant RegB as Registry B (Remote)
+
+    Note over User,RegB: Multi-Source Retrieval Flow
+
+    User->>Node: ctxt search "ui hero patterns"
+
+    Node->>Node: Parse query → AST
+    Node->>Node: Generate query plan
+
+    par Query Local
+        Node->>LocalDB: SELECT FROM bookmarks<br/>WHERE match(...)
+        LocalDB-->>Node: Local results (set A)
+    and Query Synced Registries
+        Node->>SyncedReg: SELECT FROM synced_bookmarks<br/>WHERE match(...)
+        SyncedReg-->>Node: Synced results (set B)
+    and Query Remote Registry A
+        Node->>RegA: GET /bookmarks?q=ui+hero+patterns
+        activate RegA
+        RegA-->>Node: 200 OK (results set C)
+        deactivate RegA
+    and Query Remote Registry B
+        Node->>RegB: GET /bookmarks?q=ui+hero+patterns
+        activate RegB
+        RegB-->>Node: 200 OK (results set D)
+        deactivate RegB
+    end
+
+    Node->>Node: Merge results (A ∪ B ∪ C ∪ D)
+    Node->>Node: Deduplicate by ID/URL
+    Node->>Node: Apply reranking:<br/>- Reciprocal rank fusion<br/>- Registry weights<br/>- Recency scoring<br/>- Entity signal strength
+
+    Node-->>User: Unified result set (ranked)
+
+    Note over User,RegB: Results appear as single coherent system<br/>despite multiple sources
+```

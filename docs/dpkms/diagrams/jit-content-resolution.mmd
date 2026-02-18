@@ -1,0 +1,75 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#6366f1"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#6366f1"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant User
+    participant Node as ContextHelp Node
+    participant Registry as Paid Registry
+    participant AuthService as Auth Service
+    participant EntitlementSvc as Entitlement Service
+
+    Note over User,EntitlementSvc: Just-In-Time (JIT) Content Resolution Flow<br/>(For Paid/Licensed Registries)
+
+    User->>Node: ctxt search "advanced patterns"
+
+    Node->>Registry: GET /bookmarks?q=advanced+patterns
+    activate Registry
+    Note right of Registry: Registry allows index sync<br/>but not full content replication<br/>("localCopy": "index")
+    Registry-->>Node: 200 OK<br/>Index-level results:<br/>{<br/>  "items": [<br/>    {<br/>      "id": "adv-001",<br/>      "title": "...",<br/>      "summary": "...",<br/>      "tags": [...],<br/>      "fullContentAvailable": true<br/>    }<br/>  ]<br/>}
+    deactivate Registry
+
+    Node-->>User: Display search results<br/>(headers + summaries)
+
+    User->>Node: ctxt show adv-001<br/>(request full content)
+
+    Node->>Node: Check local cache
+
+    alt Content not cached
+        Node->>AuthService: Validate user credentials
+        AuthService-->>Node: Valid session token
+
+        Node->>EntitlementSvc: Check user entitlements<br/>for registry content
+        EntitlementSvc-->>Node: Entitlement: GRANTED<br/>(credits available)
+
+        Node->>Registry: GET /bookmarks/adv-001
+        activate Registry
+        Note right of Registry: Requires authentication<br/>May be metered/credited
+        Registry-->>Node: 200 OK<br/>Full content with metadata
+        deactivate Registry
+
+        Node->>EntitlementSvc: Report usage<br/>(decrement credits)
+
+        Node->>Node: Cache full content locally<br/>(with TTL/expiry)
+    end
+
+    Node-->>User: Display full content
+
+    Note over User,EntitlementSvc: This enables paid registries to:<br/>- Improve retrieval (index available)<br/>- Protect content (no bulk sync)<br/>- Meter usage (credits per access)
+```

@@ -1,0 +1,75 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#00d9ff"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#00d9ff"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant Node as ContextHelp Node
+    participant Registry as External Registry
+
+    Note over Node,Registry: Registry Capabilities Discovery Flow
+
+    Node->>Registry: GET /capabilities
+    activate Registry
+    Registry-->>Node: 200 OK
+    Note right of Registry: {<br/>  "name": "uxpatterns",<br/>  "version": "2025-01-12",<br/>  "capabilities": {<br/>    "taxonomy": true,<br/>    "entities": true,<br/>    "bookmarks": true,<br/>    "weights": true,<br/>    "dataAccess": {<br/>      "localCopy": "index"<br/>    },<br/>    "sync": {<br/>      "enabled": true,<br/>      "mode": "delta"<br/>    }<br/>  }<br/>}
+    deactivate Registry
+
+    Node->>Node: Parse capabilities
+    Node->>Node: Determine supported features
+
+    alt Supports Taxonomy
+        Node->>Registry: GET /taxonomy
+        activate Registry
+        Registry-->>Node: 200 OK (taxonomy data)
+        deactivate Registry
+    end
+
+    alt Supports Entities
+        Node->>Registry: GET /entities
+        activate Registry
+        Registry-->>Node: 200 OK (entity definitions)
+        deactivate Registry
+    end
+
+    alt Supports Bookmarks
+        Node->>Registry: GET /bookmarks?limit=10
+        activate Registry
+        Registry-->>Node: 200 OK (bookmark items)
+        deactivate Registry
+    end
+
+    alt Supports Weights
+        Node->>Registry: GET /weights
+        activate Registry
+        Registry-->>Node: 200 OK (tag/entity weights)
+        deactivate Registry
+    end
+
+    Node->>Node: Store registry metadata<br/>and capabilities
+```

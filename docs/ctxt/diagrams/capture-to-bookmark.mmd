@@ -1,0 +1,90 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#3dd68c"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#3dd68c"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant User
+    participant Interface as Capture Interface<br/>(CLI/TUI/Browser/Mobile)
+    participant JobStore as Job Store
+    participant Worker as Background Worker
+    participant Pipeline
+    participant AI as AI Service
+    participant Registry
+    participant LocalDB as Local Storage
+
+    Note over User,LocalDB: End-to-End: Capture to Bookmark
+
+    User->>Interface: Capture content:<br/>"Great UX example @ui.best-practice #good"
+
+    Interface->>Interface: Parse hints: [#good]<br/>Parse mentions: [@ui.best-practice]
+
+    Interface->>JobStore: CREATE job {<br/>  type: 'text.short',<br/>  content: '...',<br/>  hints: ['#good'],<br/>  mentions: ['@ui.best-practice']<br/>}
+
+    Interface-->>User: ✓ Captured
+
+    Note over Worker: Background processing begins
+
+    Worker->>JobStore: CLAIM job
+
+    Worker->>Pipeline: Execute text.short pipeline
+    activate Pipeline
+
+    Pipeline->>AI: Summarize content
+    AI-->>Pipeline: "Excellent signup flow pattern"
+
+    Pipeline->>AI: Extract tags
+    AI-->>Pipeline: Suggested tags:<br/>['ui.signup', 'ux.flow']
+
+    Pipeline->>Registry: GET /taxonomy
+    Registry-->>Pipeline: Tag definitions
+
+    Pipeline->>Pipeline: Normalize tags:<br/>ui.signup → ui.signup-flow
+
+    Pipeline->>Registry: GET /weights
+    Registry-->>Pipeline: Weights for tags
+
+    Pipeline->>Pipeline: Apply hint influence:<br/>#good → boost positive tags
+
+    Pipeline->>Registry: GET /entities/ui.best-practice
+    Registry-->>Pipeline: Entity definition
+
+    Pipeline->>Pipeline: Assemble bookmark:<br/>{<br/>  type: 'text',<br/>  subtype: 'text.short',<br/>  summary: '...',<br/>  tags: ['ui.signup-flow', 'ux.flow'],<br/>  mentions: ['ui.best-practice'],<br/>  content: '...',<br/>  metadata: {...}<br/>}
+
+    deactivate Pipeline
+
+    Pipeline-->>Worker: Final bookmark
+
+    Worker->>LocalDB: INSERT INTO bookmarks
+    Worker->>LocalDB: INSERT INTO mentions<br/>(link bookmark → entity)
+    Worker->>LocalDB: UPDATE knowledge_graph
+
+    Worker->>JobStore: UPDATE job status='completed'
+
+    Note over User,LocalDB: Bookmark now available in all interfaces<br/>Searchable, linked to entities, graph-connected
+```

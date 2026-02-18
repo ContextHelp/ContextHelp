@@ -1,0 +1,66 @@
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#1a2332"
+    primaryTextColor: "#fdfcf9"
+    primaryBorderColor: "#4a5568"
+    lineColor: "#4a5568"
+    secondaryColor: "#fdfcf9"
+    secondaryTextColor: "#1a2332"
+    secondaryBorderColor: "#4a5568"
+    tertiaryColor: "#f59e0b"
+    tertiaryTextColor: "#1a2332"
+    tertiaryBorderColor: "#4a5568"
+    noteBkgColor: "#fdfcf9"
+    noteTextColor: "#1a2332"
+    noteBorderColor: "#4a5568"
+    actorBkg: "#1a2332"
+    actorTextColor: "#fdfcf9"
+    actorLineColor: "#4a5568"
+    signalColor: "#1a2332"
+    signalTextColor: "#1a2332"
+    labelBoxBkgColor: "#fdfcf9"
+    labelBoxBorderColor: "#4a5568"
+    labelTextColor: "#1a2332"
+    loopTextColor: "#1a2332"
+    activationBkgColor: "#f59e0b"
+    activationBorderColor: "#4a5568"
+---
+sequenceDiagram
+    participant Node as ContextHelp Node
+    participant Registry as External Registry
+    participant LocalDB as Local Storage
+
+    Note over Node,LocalDB: Delta Registry Sync Flow
+
+    Node->>LocalDB: SELECT last_sync_version<br/>FROM registry_metadata<br/>WHERE name='uxpatterns'
+    LocalDB-->>Node: version='2025-01-12'
+
+    Node->>Registry: GET /sync/changes?since=2025-01-12
+    activate Registry
+    Note right of Registry: Returns delta:<br/>{<br/>  "version": "2025-01-14",<br/>  "added": [...],<br/>  "updated": [...],<br/>  "removed": [...]<br/>}
+    Registry-->>Node: 200 OK (delta changes)
+    deactivate Registry
+
+    Node->>LocalDB: BEGIN TRANSACTION
+
+    loop For each added item
+        Node->>LocalDB: INSERT INTO synced_bookmarks
+    end
+
+    loop For each updated item
+        Node->>LocalDB: UPDATE synced_bookmarks<br/>WHERE id=...
+    end
+
+    loop For each removed item
+        Node->>LocalDB: DELETE FROM synced_bookmarks<br/>WHERE id=...
+    end
+
+    Node->>LocalDB: UPDATE registry_metadata<br/>SET last_sync_version='2025-01-14'
+
+    Node->>LocalDB: COMMIT TRANSACTION
+
+    Note over Node: Incremental sync complete.<br/>Lower bandwidth, faster updates.
+```
