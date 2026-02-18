@@ -114,9 +114,37 @@ Each story can be implemented on one or more of these deployment models:
 |----|-------|-------------|----------|
 | **US-0027** | [configure-ai-provider](./admin/US-0027-configure-ai-provider.md) | dpkms (self-hosted), dpkms cloud | Maintainers, Operations |
 | **US-0028** | [register-custom-pipeline](./admin/US-0028-register-custom-pipeline.md) | dpkms (self-hosted) | Platform Integrators, Maintainers |
-| **US-0029** | [install-and-enable-plugin](./admin/US-0029-install-and-enable-plugin.md) | dpkms (self-hosted) | Platform Integrators, Operations |
-| **US-0030** | [set-up-focus-profiles](./admin/US-0030-set-up-focus-profiles.md) | ctxt | Knowledge Workers, Maintainers |
-| **US-0031** | [configure-encryption-and-secrets](./admin/US-0031-configure-encryption-and-secrets.md) | dpkms (self-hosted) | Operations, Maintainers |
+| **US-0029** | [install-and-enable-plugin](./admin/US-0029-install-and-enable-plugin.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Operations |
+| **US-0030** | [set-up-focus-profiles](./admin/US-0030-set-up-focus-profiles.md) | dpkms cloud | ctxt | Knowledge Workers, Maintainers |
+| **US-0031** | [configure-encryption-and-secrets](./admin/US-0031-configure-encryption-and-secrets.md) | dpkms (self-hosted), dpkms cloud | Security Engineers, Operations |
+| **US-0032** | [monitor-job-queue-health](./operations/US-0032-monitor-job-queue-health.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
+| **US-0033** | [debug-failed-enrichment-job](./operations/US-0033-debug-failed-enrichment-job.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers | Knowledge Workers |
+| **US-0034** | [export-and-backup-all-knowledge](./operations/US-0034-export-and-backup-all-knowledge.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
+| **US-0035** | [migrate-storage-backend](./operations/US-0035-migrate-storage-backend.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
+| **US-0036** | [scale-worker-pool-for-load](./operations/US-0036-scale-worker-pool-for-load.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
+| **US-0037** | [monitor-job-job-health](./operations/US-0037-monitor-job-job-health.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
+
+---
+
+### Pipeline Management (US-0101 to US-0113)
+
+| ID | Story | System Types | Personas |
+|----|-------|-------------|----------|
+| **US-0101** | [create-custom-pipeline](./pipelines/US-0101-create-custom-pipeline.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
+| **US-0102** | [list-and-filter-pipelines](./pipelines/US-0102-list-and-filter-pipelines.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
+| **US-0103** | [show-pipeline-details](./pipelines/US-0103-show-pipeline-details.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
+| **US-0104** | [delete-custom-pipeline](./pipelines/US-0104-delete-custom-pipeline.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
+| **US-0105** | [archive-pipeline](./pipelines/US-0105-archive-pipeline.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
+| **US-0106** | [enqueue-content-via-dpkms.md](./pipelines/US-0106-enqueue-content-via-dpkms.md) | dpkms (self-hosted), dpkms cloud | Knowledge Workers, Platform Integrators |
+| **US-0107** | [discover-local-steps](./pipelines/US-0107-discover-local-steps.md) | dpkms (self-hosted), dpkms cloud | Maintainers, Plugin Developers |
+| **US-0108** | [install-step-from-registry](./pipelines/US-0108-install-step-from-registry.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
+| **US-0109** | [fetch-registry-manifest](./pipelines/US-0109-fetch-registry-manifest.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers, Registry Operators |
+| **US-0110** | [check-registry-updates](./pipelines/US-0110-check-registry-updates.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
+| **US-0111** | [configure-registry-autoupdate.md](./pipelines/US-0111-configure-registry-autoupdate.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers, Registry Operators |
+| **US-0112** | [configure-sandbox-per-pipeline.md](./pipelines/US-0112-configure-sandbox-per-pipeline.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
+| **US-0113** | [ctxt-analyze-api-client.md](./pipelines/US-0113-ctxt-analyze-api-client.md) | dpkms (self-hosted), dpkms cloud | Knowledge Workers, Platform Integrators |
+
+---
 
 ### Monitoring & Operations (US-0032 to US-0036)
 
