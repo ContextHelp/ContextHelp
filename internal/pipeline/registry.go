@@ -3,6 +3,7 @@ package pipeline
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 )
@@ -42,6 +43,50 @@ func (r *registry) List() []string {
 }
 
 func (r *registry) SelectPipeline(content string) string {
+	lower := strings.ToLower(content)
+
+	// Image formats
+	for _, ext := range []string{".png", ".jpg", ".jpeg", ".webp", ".tiff", ".tif", ".bmp", ".gif"} {
+		if strings.HasSuffix(lower, ext) {
+			return "image.ocr"
+		}
+	}
+
+	// Audio formats
+	for _, ext := range []string{".mp3", ".wav", ".ogg", ".flac", ".m4a"} {
+		if strings.HasSuffix(lower, ext) {
+			return "audio.transcribe"
+		}
+	}
+
+	// Video formats
+	for _, ext := range []string{".mp4", ".mov", ".avi", ".mkv", ".webm"} {
+		if strings.HasSuffix(lower, ext) {
+			return "video.full"
+		}
+	}
+
+	// Document formats
+	if strings.HasSuffix(lower, ".pdf") {
+		return "doc.pdf"
+	}
+	for _, ext := range []string{".md", ".markdown"} {
+		if strings.HasSuffix(lower, ext) {
+			return "doc.markdown"
+		}
+	}
+	for _, ext := range []string{".go", ".py", ".js", ".ts", ".rs", ".java", ".rb", ".cpp", ".c", ".cs"} {
+		if strings.HasSuffix(lower, ext) {
+			return "doc.code"
+		}
+	}
+	for _, ext := range []string{".docx", ".doc", ".odt", ".rtf", ".epub"} {
+		if strings.HasSuffix(lower, ext) {
+			return "doc.office"
+		}
+	}
+
+	// Default: text pipelines by length
 	if len(content) < 500 {
 		return "text.short"
 	}
@@ -68,6 +113,50 @@ func DefaultRegistry() Registry {
 			steps.NewTypeDetector(),
 			steps.NewSectioner(),
 			steps.NewTagger(),
+		},
+	})
+
+	// Image pipelines
+	r.Register("image.ocr", &Pipeline{
+		PipelineName: "image.ocr",
+		Description:  "Image OCR extraction pipeline",
+		Steps: []PipelineStep{
+			steps.NewFileReader(),
+			steps.NewFormatDetector(),
+			steps.NewOCRExtractor(),
+			steps.NewTextCleaner(),
+			steps.NewTagger(),
+			steps.NewEmbeddingGenerator(),
+		},
+	})
+
+	r.Register("image.analysis", &Pipeline{
+		PipelineName: "image.analysis",
+		Description:  "Image vision analysis pipeline",
+		Steps: []PipelineStep{
+			steps.NewFileReader(),
+			steps.NewFormatDetector(),
+			steps.NewOCRExtractor(),
+			steps.NewVisionAnalyzer(),
+			steps.NewTextCleaner(),
+			steps.NewTagger(),
+			steps.NewEmbeddingGenerator(),
+		},
+	})
+
+	// Audio pipeline
+	r.Register("audio.transcribe", &Pipeline{
+		PipelineName: "audio.transcribe",
+		Description:  "Audio transcription pipeline",
+		Steps: []PipelineStep{
+			steps.NewFileReader(),
+			steps.NewFormatDetector(),
+			steps.NewAudioTranscriber(),
+			steps.NewSpeakerDiarizer(false),
+			steps.NewTimestampAligner(),
+			steps.NewSectioner(),
+			steps.NewTagger(),
+			steps.NewEmbeddingGenerator(),
 		},
 	})
 

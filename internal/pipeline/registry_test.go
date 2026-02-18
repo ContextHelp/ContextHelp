@@ -63,20 +63,58 @@ func TestDefaultRegistry(t *testing.T) {
 	r := DefaultRegistry()
 	names := r.List()
 
-	hasShort, hasLong := false, false
+	required := []string{
+		"text.short", "text.long",
+		"image.ocr", "image.analysis",
+		"audio.transcribe",
+	}
+	nameSet := make(map[string]bool)
 	for _, n := range names {
-		if n == "text.short" {
-			hasShort = true
-		}
-		if n == "text.long" {
-			hasLong = true
+		nameSet[n] = true
+	}
+	for _, req := range required {
+		if !nameSet[req] {
+			t.Errorf("missing pipeline %q", req)
 		}
 	}
+}
 
-	if !hasShort {
-		t.Error("missing text.short")
+func TestSelectPipelineMedia(t *testing.T) {
+	r := NewRegistry()
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"/tmp/photo.png", "image.ocr"},
+		{"/tmp/photo.JPG", "image.ocr"},
+		{"/tmp/photo.jpeg", "image.ocr"},
+		{"/tmp/photo.webp", "image.ocr"},
+		{"/tmp/photo.tiff", "image.ocr"},
+		{"/tmp/photo.bmp", "image.ocr"},
+		{"/tmp/photo.gif", "image.ocr"},
+		{"/tmp/song.mp3", "audio.transcribe"},
+		{"/tmp/song.wav", "audio.transcribe"},
+		{"/tmp/song.ogg", "audio.transcribe"},
+		{"/tmp/song.flac", "audio.transcribe"},
+		{"/tmp/song.m4a", "audio.transcribe"},
+		{"/tmp/clip.mp4", "video.full"},
+		{"/tmp/clip.mov", "video.full"},
+		{"/tmp/clip.avi", "video.full"},
+		{"/tmp/clip.mkv", "video.full"},
+		{"/tmp/clip.webm", "video.full"},
+		{"/tmp/doc.pdf", "doc.pdf"},
+		{"/tmp/doc.md", "doc.markdown"},
+		{"/tmp/doc.markdown", "doc.markdown"},
+		{"/tmp/main.go", "doc.code"},
+		{"/tmp/script.py", "doc.code"},
+		{"/tmp/app.js", "doc.code"},
+		{"/tmp/report.docx", "doc.office"},
+		{"/tmp/book.epub", "doc.office"},
 	}
-	if !hasLong {
-		t.Error("missing text.long")
+	for _, tt := range tests {
+		got := r.SelectPipeline(tt.input)
+		if got != tt.want {
+			t.Errorf("SelectPipeline(%q) = %q, want %q", tt.input, got, tt.want)
+		}
 	}
 }
