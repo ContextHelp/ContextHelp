@@ -32,9 +32,10 @@ type Draft = KnowledgeObject
 
 // Section represents a structural section of a knowledge object.
 type Section struct {
-	Title   string `json:"title"`
-	Content string `json:"content"`
-	Order   int    `json:"order"`
+	Title    string         `json:"title"`
+	Content  string         `json:"content"`
+	Order    int            `json:"order"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // Tag represents a label attached to a knowledge object.
