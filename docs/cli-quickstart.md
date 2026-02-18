@@ -120,16 +120,16 @@ Monitor and control ingestion jobs:
 
 ```bash
 # List all jobs
-./bin/ctxt jobs list
+./bin/ctxt job list
 
 # Check job status
-./bin/ctxt jobs status job_12345678
+./bin/ctxt job status job_12345678
 
 # View job logs
-./bin/ctxt jobs logs job_12345678
+./bin/ctxt job log job_12345678
 
 # Retry failed job
-./bin/ctxt jobs retry job_12345678
+./bin/ctxt job retry job_12345678
 ```
 
 ### 4. Query Knowledge
@@ -217,16 +217,16 @@ Query and inspect canonical entities:
 
 ```bash
 # List entities
-./bin/ctxt entities list
+./bin/ctxt entity list
 
 # Show entity details
-./bin/ctxt entities show ui.best-practice
+./bin/ctxt entity show ui.best-practice
 
 # Search entities
-./bin/ctxt entities search "checkout"
+./bin/ctxt entity search "checkout"
 
 # Show backlinks
-./bin/ctxt entities backlinks ui.best-practice
+./bin/ctxt entity backlink ui.best-practice
 ```
 
 ## Shell Completion
@@ -400,7 +400,7 @@ mkdir -p ~/.local/share/contexthelp
 
 # Command-specific help
 ./bin/ctxt analyze --help
-./bin/ctxt jobs --help
+./bin/ctxt job --help
 ./bin/dpkms serve --help
 ```
 

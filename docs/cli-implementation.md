@@ -176,9 +176,9 @@ ctxt analyze --file screenshot.png --type image
 ctxt analyze https://example.com --wait
 
 # Manage jobs
-ctxt jobs list
-ctxt jobs status job_12345678
-ctxt jobs retry job_12345678
+ctxt job list
+ctxt job status job_12345678
+ctxt job retry job_12345678
 
 # Query knowledge
 ctxt list --tag ux,onboarding --limit 10
@@ -205,9 +205,9 @@ ctxt registry add uxpatterns https://uxpatterns.example.com
 ctxt registry sync uxpatterns
 
 # Entities
-ctxt entities list
-ctxt entities show ui.best-practice
-ctxt entities backlinks ui.best-practice
+ctxt entity list
+ctxt entity show ui.best-practice
+ctxt entity backlink ui.best-practice
 ```
 
 ### dpkms Commands

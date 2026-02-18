@@ -1,0 +1,4 @@
+interface:
+  display_name: "ctxt Knowledge Retrieval"
+  short_description: "Guide agents to retrieve and share ctxt knowledge"
+  default_prompt: "Use ctxt workflows to ingest context, retrieve deterministically, and publish reusable agent memory with provenance."

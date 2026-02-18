@@ -63,7 +63,7 @@ go build -o dpkms cmd/dpkms/main.go
 | Command | Purpose |
 |--------|---------|
 | `ctxt analyze` | Enqueue an ingestion job |
-| `ctxt jobs` | Inspect/manage ingestion jobs |
+| `ctxt job` | Inspect/manage ingestion jobs |
 | `ctxt list` | Query knowledge objects (local + registries) |
 | `ctxt find` | Semantic search across knowledge |
 | `ctxt open` | Display knowledge object details |
@@ -73,7 +73,7 @@ go build -o dpkms cmd/dpkms/main.go
 | `ctxt make` | Generate compositions (briefs, plans) |
 | `ctxt config` | Configuration operations |
 | `ctxt registry` | Manage registries |
-| `ctxt entities` | Query and inspect entities |
+| `ctxt entity` | Query and inspect entities |
 | `ctxt version` | Show version info |
 
 ### `dpkms` Commands (Infrastructure)
@@ -167,18 +167,18 @@ ctxt analyze https://amazon.com/product \
 
 ---
 
-## `ctxt jobs`
+## `ctxt job`
 
 Inspect and control ingestion jobs.
 
 ### Commands
 
 ```bash
-ctxt jobs list
-ctxt jobs status <id>
-ctxt jobs logs <id>
-ctxt jobs retry <id>
-ctxt jobs cancel <id>
+ctxt job list
+ctxt job status <id>
+ctxt job log <id>
+ctxt job retry <id>
+ctxt job cancel <id>
 ```
 
 ### States
@@ -464,16 +464,16 @@ Registries now expose entities, aliases, translations, and concept metadata.
 
 ---
 
-## `ctxt entities`
+## `ctxt entity`
 
 Query and inspect entities (canonical concepts).
 
 ### Examples
 
 ```bash
-ctxt entities list
-ctxt entities show ui.best-practice
-ctxt entities search "checkout"
+ctxt entity list
+ctxt entity show ui.best-practice
+ctxt entity search "checkout"
 ```
 
 ### Features
@@ -483,7 +483,7 @@ ctxt entities search "checkout"
 - Show backlinks
 
 ```bash
-ctxt entities backlinks ui.best-practice
+ctxt entity backlink ui.best-practice
 ```
 
 Plugins may augment output (e.g. entity-related plugin metadata).

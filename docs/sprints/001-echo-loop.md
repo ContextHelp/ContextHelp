@@ -37,8 +37,8 @@ Even though mentions/entities aren't implemented yet, **the knowledge_objects sc
   - Implement `AcquireNextJob()` (SQL SELECT ... FOR UPDATE / locking logic).
   - Implement `UpdateJobStatus()` (Pending → Running → Completed).
 
-* **Task 1.3: `ctxt jobs` CLI (ctxt wrapper around dPKMS)**
-  - Implement `ctxt jobs list` so we can debug if pipeline execution is working.
+* **Task 1.3: `ctxt job` CLI (ctxt wrapper around dPKMS)**
+  - Implement `ctxt job list` so we can debug if pipeline execution is working.
 
 ---
 
@@ -142,7 +142,7 @@ Registries will later include **entity definitions**, but Skeleton 1 should only
 - ✅ Echo pipeline definition executes via dPKMS runtime
 - ✅ `ctxt list` retrieves results from dPKMS storage
 - ✅ `ctxt open` displays structured JSON output
-- ✅ `ctxt jobs list` shows job status
+- ✅ `ctxt job list` shows job status
 - ✅ Pipeline output includes `mentions: []` contract
 
 **Cross-Package Validation:**

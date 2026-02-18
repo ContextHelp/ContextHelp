@@ -137,7 +137,7 @@ Rejected because:
 
 - Performance impact minimal since SQLite WAL supports fast writes.
 - Testing matrix grows (pending → running → completed → retry → failed).
-- Users may expect job introspection; CLI must expose `ctxt jobs list` and `dpkms jobs list`, etc.
+- Users may expect job introspection; CLI must expose `ctxt job list` and `dpkms jobs list`, etc.
 
 ---
 

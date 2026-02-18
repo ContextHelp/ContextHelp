@@ -39,7 +39,7 @@ This document defines the boundaries and contracts between dPKMS (substrate) and
 - `ctxt analyze` - Capture input
 - `ctxt list` - Search and list
 - `ctxt open` - View knowledge object
-- `ctxt jobs` - Monitor jobs (wrapper around dPKMS job queue)
+- `ctxt job` - Monitor jobs (wrapper around dPKMS job queue)
 
 ---
 
@@ -317,7 +317,7 @@ profiles:
 - `ctxt analyze` → `POST /jobs` (via dPKMS library)
 - `ctxt list` → `GET /knowledge-objects` (via dPKMS library)
 - `ctxt open` → `GET /knowledge-objects/{id}`
-- `ctxt jobs` → `GET /jobs`
+- `ctxt job` → `GET /jobs`
 - `ctxt registry sync` → `POST /registries/sync`
 
 ---

@@ -73,7 +73,7 @@ Return `PermissionDenied` for unauthorized actions.
 Extend the logging system to ensure:
 
 - All secrets (LLM keys, embedding keys, registry tokens, Authorization headers) are scrubbed from:
-  - `ctxt jobs logs`
+  - `ctxt job log`
   - stderr/stdout
   - plugin-produced logs
 

@@ -1063,7 +1063,7 @@ ctxt make plan --topic "project X"
 
 # Manage
 ctxt status
-ctxt jobs list
+ctxt job list
 ctxt sync <registry>
 
 # Focus

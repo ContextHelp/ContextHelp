@@ -57,7 +57,7 @@ To enable this, storage must index mentions, store resolved entities, and mainta
 - Ensure entity IDs remain stable across ingestion cycles.
 - Migration scripts must populate backlinks when mentions resolve.
 
-### Task 1.4: `ctxt jobs logs <id>`
+### Task 1.4: `ctxt job log <id>`
 
 - Expose pipeline execution step-by-step:
   - fetch
