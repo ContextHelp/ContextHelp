@@ -24,7 +24,7 @@ func TestServeStartsAndStops(t *testing.T) {
 	queue := jobs.NewQueue(driver.Jobs())
 	pipes := pipeline.DefaultRegistry()
 	engine := search.NewEngine(driver)
-	svc := service.New(driver, queue, pipes, engine)
+	svc := service.New(driver, queue, pipes, engine, "")
 
 	router := httpserver.NewRouter(svc)
 

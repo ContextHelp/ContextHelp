@@ -43,6 +43,30 @@ func NewRouter(svc *service.Service) chi.Router {
 		r.Get("/entities", ListEntities(svc))
 		r.Get("/entities/{slug}", GetEntity(svc))
 		r.Get("/entities/{slug}/backlinks", EntityBacklinks(svc))
+
+		// Pipelines
+		r.Post("/pipelines", CreatePipeline(svc))
+		r.Get("/pipelines", ListPipelines(svc))
+		r.Get("/pipelines/{name}", GetPipeline(svc))
+		r.Delete("/pipelines/{name}", DeletePipeline(svc))
+		r.Post("/pipelines/{name}/archive", ArchivePipeline(svc))
+		r.Post("/pipelines/{name}/unarchive", UnarchivePipeline(svc))
+		r.Post("/pipelines/enqueue", Enqueue(svc))
+
+		// Steps
+		r.Get("/steps", ListSteps(svc))
+		r.Get("/steps/{name}", GetStep(svc))
+		r.Post("/steps/install", InstallStep(svc))
+		r.Delete("/steps/{name}", UninstallStep(svc))
+
+		// Registries
+		r.Post("/steps/registries/fetch", FetchRegistry(svc))
+		r.Post("/steps/registries/{url}/update", UpdateRegistry(svc))
+		r.Get("/steps/registries", ListRegistries(svc))
+
+		// System
+		r.Get("/system/reminders", ListReminders(svc))
+		r.Post("/system/reminders/{id}/dismiss", DismissReminder(svc))
 	})
 
 	return r

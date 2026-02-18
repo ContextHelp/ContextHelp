@@ -139,3 +139,111 @@ type JobFilter struct {
 	Limit  int
 	Offset int
 }
+
+// Pipeline represents an ingestion pipeline configuration.
+type Pipeline struct {
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Steps       []StepRef      `json:"steps"`
+	IsBuiltIn   bool           `json:"is_built_in"`
+	Archived    bool           `json:"archived"`
+	Sandbox     *SandboxConfig `json:"sandbox,omitempty"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+}
+
+// StepRef references a step with its configuration.
+type StepRef struct {
+	Name   string         `json:"name"`
+	Config map[string]any `json:"config,omitempty"`
+}
+
+// SandboxConfig defines isolation settings for pipeline execution.
+type SandboxConfig struct {
+	Enabled        bool                     `json:"enabled"`
+	ResourceLimits *ResourceLimitsConfig    `json:"resource_limits,omitempty"`
+	Network        bool                     `json:"network"`
+	Filesystem     *FilesystemSandboxConfig `json:"filesystem,omitempty"`
+	IsolationLevel string                   `json:"isolation_level"` // "process" or "container"
+}
+
+// ResourceLimitsConfig defines resource constraints for sandboxed execution.
+type ResourceLimitsConfig struct {
+	MaxMemory string `json:"max_memory"` // e.g., "512MB"
+	MaxCPU    string `json:"max_cpu"`    // e.g., "2.0"
+	Timeout   string `json:"timeout"`    // e.g., "30s"
+}
+
+// FilesystemSandboxConfig defines filesystem access restrictions.
+type FilesystemSandboxConfig struct {
+	ReadOnly     bool `json:"read_only"`
+	WriteAllowed bool `json:"write_allowed"`
+}
+
+// RegisteredStep represents an installed step available for pipelines.
+type RegisteredStep struct {
+	Name        string        `json:"name"`
+	Source      string        `json:"source"` // "builtin", "local:<path>", "registry:<url>"
+	Path        string        `json:"path"`
+	Metadata    *StepMetadata `json:"metadata"`
+	InstalledAt time.Time     `json:"installed_at"`
+	UpdatedAt   time.Time     `json:"updated_at"`
+}
+
+// StepMetadata contains information extracted from SKILL.md.
+type StepMetadata struct {
+	Name           string         `json:"name"`
+	Description    string         `json:"description"`
+	License        string         `json:"license"`
+	Version        string         `json:"version"`
+	Author         string         `json:"author"`
+	ConfigSchema   map[string]any `json:"config_schema,omitempty"`
+	SupportedLangs []string       `json:"supported_languages,omitempty"`
+}
+
+// RegistryManifest represents a registry's step manifest.
+type RegistryManifest struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Version     string         `json:"version"`
+	Steps       []ManifestStep `json:"steps"`
+	Supports    map[string]any `json:"supports,omitempty"`
+}
+
+// ManifestStep describes a step available in a registry.
+type ManifestStep struct {
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	License string `json:"license"`
+	Version string `json:"version"`
+}
+
+// RegistryCache stores fetched registry manifests with update tracking.
+type RegistryCache struct {
+	RegistryURL string            `json:"registry_url"`
+	Manifest    *RegistryManifest `json:"manifest"`
+	LastFetched time.Time         `json:"last_fetched"`
+	ETag        string            `json:"etag"`
+	AutoUpdate  bool              `json:"auto_update"`
+}
+
+// SystemReminder represents a notification for the user.
+type SystemReminder struct {
+	ID        string    `json:"id"`
+	Type      string    `json:"type"` // "update", "alert", "info"
+	Title     string    `json:"title"`
+	Message   string    `json:"message"`
+	Source    string    `json:"source"`
+	ActionURL string    `json:"action_url,omitempty"`
+	Dismissed bool      `json:"dismissed"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// PipelineFilter specifies criteria for listing pipelines.
+type PipelineFilter struct {
+	Name            string
+	IncludeArchived bool
+	OnlyArchived    bool
+}

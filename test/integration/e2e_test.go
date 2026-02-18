@@ -38,7 +38,7 @@ func startTestEnv(t *testing.T) *testEnv {
 	queue := jobs.NewQueue(driver.Jobs())
 	pipes := pipeline.DefaultRegistry()
 	engine := search.NewEngine(driver)
-	svc := service.New(driver, queue, pipes, engine)
+	svc := service.New(driver, queue, pipes, engine, "")
 	router := httpserver.NewRouter(svc)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

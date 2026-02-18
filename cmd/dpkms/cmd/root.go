@@ -43,9 +43,11 @@ func init() {
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/contexthelp/config.yaml)")
 	rootCmd.PersistentFlags().String("data-dir", "", "data directory override")
+	rootCmd.PersistentFlags().String("server-url", "http://localhost:8080", "dpkms server URL")
 
 	// Bind flags to viper
 	viper.BindPFlag("storage.path", rootCmd.PersistentFlags().Lookup("data-dir"))
+	viper.BindPFlag("server.url", rootCmd.PersistentFlags().Lookup("server-url"))
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -65,6 +67,10 @@ func initConfig() {
 	if err := config.EnsureDataDir(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure data directory: %v\n", err)
 	}
+
+	// Initialize API client
+	serverURL := viper.GetString("server.url")
+	initPipelineClient(serverURL)
 }
 
 // SetVersionInfo sets version information for the CLI

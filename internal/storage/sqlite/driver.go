@@ -12,12 +12,16 @@ import (
 
 // Driver implements storage.StorageDriver for SQLite.
 type Driver struct {
-	db       *sql.DB
-	path     string
-	objects  *ObjectStore
-	entities *EntityStore
-	edges    *EdgeStore
-	jobs     *JobStore
+	db         *sql.DB
+	path       string
+	objects    *ObjectStore
+	entities   *EntityStore
+	edges      *EdgeStore
+	jobs       *JobStore
+	pipelines  *PipelineStore
+	steps      *StepStore
+	registries *RegistryStore
+	reminders  *ReminderStore
 }
 
 // New creates a new SQLite driver for the given database path.
@@ -45,6 +49,10 @@ func New(path string) (*Driver, error) {
 	d.entities = &EntityStore{db: db}
 	d.edges = &EdgeStore{db: db}
 	d.jobs = &JobStore{db: db}
+	d.pipelines = &PipelineStore{db: db}
+	d.steps = &StepStore{db: db}
+	d.registries = &RegistryStore{db: db}
+	d.reminders = &ReminderStore{db: db}
 	return d, nil
 }
 
@@ -56,10 +64,14 @@ func (d *Driver) Close(_ context.Context) error {
 	return d.db.Close()
 }
 
-func (d *Driver) Objects() storage.ObjectStore   { return d.objects }
-func (d *Driver) Entities() storage.EntityStore { return d.entities }
-func (d *Driver) Edges() storage.EdgeStore       { return d.edges }
-func (d *Driver) Jobs() storage.JobStore         { return d.jobs }
+func (d *Driver) Objects() storage.ObjectStore      { return d.objects }
+func (d *Driver) Entities() storage.EntityStore     { return d.entities }
+func (d *Driver) Edges() storage.EdgeStore          { return d.edges }
+func (d *Driver) Jobs() storage.JobStore            { return d.jobs }
+func (d *Driver) Pipelines() storage.PipelineStore  { return d.pipelines }
+func (d *Driver) Steps() storage.StepStore          { return d.steps }
+func (d *Driver) Registries() storage.RegistryStore { return d.registries }
+func (d *Driver) Reminders() storage.ReminderStore  { return d.reminders }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)

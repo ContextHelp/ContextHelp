@@ -21,7 +21,7 @@ Custom pipelines must be defined declaratively, validated, stored persistently, 
 
 ## Acceptance Criteria
 
-- **Pipeline can be created from config file** (PKL, JSON, YAML, or TOML)
+- **Pipeline can be created from config file** (JSON, YAML, or TOML)
 - **Step names are validated** against registered steps (built-in, local, or registry)
 - **Pipeline config is stored in database** with metadata and creation timestamp
 - **Built-in pipeline names are protected** from being overwritten (e.g., `text.*`)
@@ -34,40 +34,35 @@ Custom pipelines must be defined declaratively, validated, stored persistently, 
 
 ### Pipeline Config Format
 
-Pipelines are defined in PKL, JSON, YAML, or TOML format:
+Pipelines are defined in JSON, YAML, or TOML format.
 
-**PKL Example:**
-```pkl
-name = "legal-doc-pipeline"
-description = "Specialized pipeline for legal document analysis"
+**YAML Example:**
+```yaml
+name: legal-doc-pipeline
+description: Specialized pipeline for legal document analysis
 
-sandbox {
-  enabled = true
-  isolation_level = "container"
-  resource_limits {
-    max_memory = "1GB"
-    max_cpu = "100%"
-    timeout = "60s"
-  }
-  network = false
-  filesystem {
-    read_only = ["assets/"]
-    write_allowed = false
-  }
-}
+sandbox:
+  enabled: true
+  isolation_level: container
+  resource_limits:
+    max_memory: 1GB
+    max_cpu: "100%"
+    timeout: 60s
+  network: false
+  filesystem:
+    read_only:
+      - assets/
+    write_allowed: false
 
-steps = new List(
-  Step { type = "type_detector" },
-  Step { 
-    type = "legal_classifier" 
-    config = new { model = "legal-v2" }
-  },
-  Step { type = "tagger" },
-  Step { 
-    type = "citation_extractor" 
-    config = new { format = "bluebook" }
-  }
-)
+steps:
+  - type: type_detector
+  - type: legal_classifier
+    config:
+      model: legal-v2
+  - type: tagger
+  - type: citation_extractor
+    config:
+      format: bluebook
 ```
 
 ### API Endpoint
@@ -148,14 +143,14 @@ steps = new List(
 ### CLI Command
 
 ```bash
-# Create from PKL file
-dpkms pipeline create legal-doc-pipeline ./legal-doc-pipeline.pkl
-
 # Create from YAML file
 dpkms pipeline create legal-doc-pipeline ./legal-doc-pipeline.yaml
 
 # Create from JSON file
 dpkms pipeline create legal-doc-pipeline ./legal-doc-pipeline.json
+
+# Create from TOML file
+dpkms pipeline create legal-doc-pipeline ./legal-doc-pipeline.toml
 ```
 
 ### Validation Logic
@@ -185,9 +180,9 @@ CREATE TABLE IF NOT EXISTS pipelines (
 
 ## E2E Test Checklist
 
-- [ ] Create pipeline from PKL config file with valid steps
 - [ ] Create pipeline from YAML config file with valid steps
 - [ ] Create pipeline from JSON config file with valid steps
+- [ ] Create pipeline from TOML config file with valid steps
 - [ ] Verify pipeline is stored in database with correct metadata
 - [ ] Verify pipeline is immediately available for enqueue
 - [ ] Attempt to create pipeline with invalid step name → error returned

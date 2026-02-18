@@ -8,13 +8,17 @@ import (
 // mockDriver verifies that a concrete type can satisfy StorageDriver.
 type mockDriver struct{}
 
-func (m *mockDriver) Init(ctx context.Context) error          { return nil }
-func (m *mockDriver) Close(ctx context.Context) error         { return nil }
-func (m *mockDriver) Objects() ObjectStore                    { return &mockObjectStore{} }
-func (m *mockDriver) Entities() EntityStore                   { return &mockEntityStore{} }
-func (m *mockDriver) Edges() EdgeStore                        { return &mockEdgeStore{} }
-func (m *mockDriver) Jobs() JobStore                          { return &mockJobStore{} }
-func (m *mockDriver) Health(ctx context.Context) error        { return nil }
+func (m *mockDriver) Init(ctx context.Context) error   { return nil }
+func (m *mockDriver) Close(ctx context.Context) error  { return nil }
+func (m *mockDriver) Objects() ObjectStore             { return &mockObjectStore{} }
+func (m *mockDriver) Entities() EntityStore            { return &mockEntityStore{} }
+func (m *mockDriver) Edges() EdgeStore                 { return &mockEdgeStore{} }
+func (m *mockDriver) Jobs() JobStore                   { return &mockJobStore{} }
+func (m *mockDriver) Pipelines() PipelineStore         { return &mockPipelineStore{} }
+func (m *mockDriver) Steps() StepStore                 { return &mockStepStore{} }
+func (m *mockDriver) Registries() RegistryStore        { return &mockRegistryStore{} }
+func (m *mockDriver) Reminders() ReminderStore         { return &mockReminderStore{} }
+func (m *mockDriver) Health(ctx context.Context) error { return nil }
 
 type mockObjectStore struct{}
 
@@ -53,7 +57,7 @@ func (m *mockEdgeStore) ListFrom(ctx context.Context, fromType, fromID string) (
 func (m *mockEdgeStore) ListTo(ctx context.Context, toType, toID string) ([]*Edge, error) {
 	return nil, nil
 }
-func (m *mockEdgeStore) Delete(ctx context.Context, id string) error            { return nil }
+func (m *mockEdgeStore) Delete(ctx context.Context, id string) error               { return nil }
 func (m *mockEdgeStore) DeleteByObject(ctx context.Context, objectID string) error { return nil }
 
 type mockJobStore struct{}
@@ -74,6 +78,54 @@ func (m *mockJobStore) Retry(ctx context.Context, id string) error              
 func (m *mockJobStore) RecoverStale(ctx context.Context, timeout int64) (int, error) {
 	return 0, nil
 }
+
+type mockPipelineStore struct{}
+
+func (m *mockPipelineStore) Create(ctx context.Context, pipeline *Pipeline) error    { return nil }
+func (m *mockPipelineStore) Get(ctx context.Context, name string) (*Pipeline, error) { return nil, nil }
+func (m *mockPipelineStore) List(ctx context.Context, filter PipelineFilter) ([]*Pipeline, int, error) {
+	return nil, 0, nil
+}
+func (m *mockPipelineStore) Update(ctx context.Context, pipeline *Pipeline) error { return nil }
+func (m *mockPipelineStore) Delete(ctx context.Context, name string) error        { return nil }
+func (m *mockPipelineStore) Archive(ctx context.Context, name string) error       { return nil }
+func (m *mockPipelineStore) Unarchive(ctx context.Context, name string) error     { return nil }
+
+type mockStepStore struct{}
+
+func (m *mockStepStore) Create(ctx context.Context, step *RegisteredStep) error { return nil }
+func (m *mockStepStore) Get(ctx context.Context, name string) (*RegisteredStep, error) {
+	return nil, nil
+}
+func (m *mockStepStore) List(ctx context.Context, source string) ([]*RegisteredStep, int, error) {
+	return nil, 0, nil
+}
+func (m *mockStepStore) Unregister(ctx context.Context, name string) error      { return nil }
+func (m *mockStepStore) Update(ctx context.Context, step *RegisteredStep) error { return nil }
+
+type mockRegistryStore struct{}
+
+func (m *mockRegistryStore) CacheManifest(ctx context.Context, cache *RegistryCache) error {
+	return nil
+}
+func (m *mockRegistryStore) GetCachedManifest(ctx context.Context, url string) (*RegistryCache, error) {
+	return nil, nil
+}
+func (m *mockRegistryStore) UpdateETag(ctx context.Context, url, etag string) error { return nil }
+func (m *mockRegistryStore) List(ctx context.Context) ([]*RegistryCache, int, error) {
+	return nil, 0, nil
+}
+
+type mockReminderStore struct{}
+
+func (m *mockReminderStore) Create(ctx context.Context, reminder *SystemReminder) error { return nil }
+func (m *mockReminderStore) Get(ctx context.Context, id string) (*SystemReminder, error) {
+	return nil, nil
+}
+func (m *mockReminderStore) List(ctx context.Context, activeOnly bool) ([]*SystemReminder, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReminderStore) Dismiss(ctx context.Context, id string) error { return nil }
 
 func TestStorageDriverInterfaceSatisfaction(t *testing.T) {
 	var d StorageDriver = &mockDriver{}

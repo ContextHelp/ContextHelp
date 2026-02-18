@@ -32,7 +32,7 @@ Users need a detailed view to:
 - **Show full pipeline configuration** including all steps with configs
 - **Display sandbox settings** (isolation level, resource limits, network access, filesystem rules)
 - **Show metadata** (creation/updated times, built-in status, archive status)
-- **Support multiple output formats** (text, JSON, YAML, PKL)
+- **Support multiple output formats** (text, JSON, YAML, TOML)
 - **Return 404 for non-existent pipeline name**
 - **Human-readable text output** with clear formatting
 
@@ -114,8 +114,8 @@ dpkms pipeline show legal-doc-pipeline --format json
 # Output as YAML
 dpkms pipeline show legal-doc-pipeline --format yaml
 
-# Output as PKL
-dpkms pipeline show legal-doc-pipeline --format pkl
+# Output as TOML
+dpkms pipeline show legal-doc-pipeline --format toml
 ```
 
 **Text Output:**
@@ -178,32 +178,39 @@ Sandbox:
 }
 ```
 
-**PKL Output:**
-```pkl
+**TOML Output:**
+```toml
 name = "legal-doc-pipeline"
 description = "Specialized pipeline for legal document analysis"
 
-steps = new List(
-  Step { type = "type_detector", config = new {} },
-  Step { type = "legal_classifier", config = new { model = "legal-v2" } },
-  Step { type = "tagger", config = new {} },
-  Step { type = "citation_extractor", config = new { format = "bluebook" } }
-)
+[[steps]]
+type = "type_detector"
 
-sandbox {
-  enabled = true
-  isolation_level = "container"
-  resource_limits {
-    max_memory = "1GB"
-    max_cpu = "100%"
-    timeout = "60s"
-  }
-  network = false
-  filesystem {
-    read_only = new List("assets/")
-    write_allowed = false
-  }
-}
+[[steps]]
+type = "legal_classifier"
+[steps.config]
+model = "legal-v2"
+
+[[steps]]
+type = "tagger"
+
+[[steps]]
+type = "citation_extractor"
+[steps.config]
+format = "bluebook"
+
+[sandbox]
+enabled = true
+isolation_level = "container"
+
+[sandbox.resource_limits]
+max_memory = "1GB"
+max_cpu = "100%"
+timeout = "60s"
+
+[sandbox.filesystem]
+read_only = ["assets/"]
+write_allowed = false
 
 is_builtin = false
 archived = false
@@ -243,10 +250,10 @@ WHERE name = ?
 - Clean YAML formatting
 - Appropriate for config files
 
-**PKL:**
-- Native PKL syntax
-- Can be saved directly as config file
-
+**TOML:**
+- Simple key-value syntax
+- Easy to read and edit
+```
 ## E2E Test Checklist
 
 - [ ] Show existing custom pipeline returns full configuration
@@ -256,6 +263,7 @@ WHERE name = ?
 - [ ] Text output is human-readable and well-formatted
 - [ ] JSON output is valid JSON with all fields
 - [ ] YAML output is valid YAML with correct structure
+- [ ] TOML output is valid TOML with correct structure
 - [ ] All steps with their configs are displayed
 - [ ] Sandbox configuration is completely displayed
 - [ ] Metadata (timestamps, flags) are accurate

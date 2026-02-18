@@ -59,6 +59,7 @@ func init() {
 	serveCmd.Flags().Int("workers", 4, "number of worker threads")
 	serveCmd.Flags().Bool("public", false, "allow remote connections")
 	serveCmd.Flags().String("profile", "", "default focus profile")
+	serveCmd.Flags().String("steps-path", "", "path to external steps directory")
 
 	// Bind flags to viper
 	viper.BindPFlag("server.port", serveCmd.Flags().Lookup("port"))
@@ -66,6 +67,7 @@ func init() {
 	viper.BindPFlag("server.workers", serveCmd.Flags().Lookup("workers"))
 	viper.BindPFlag("server.public", serveCmd.Flags().Lookup("public"))
 	viper.BindPFlag("profile.default", serveCmd.Flags().Lookup("profile"))
+	viper.BindPFlag("steps.path", serveCmd.Flags().Lookup("steps-path"))
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
@@ -103,29 +105,36 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 4. Init search engine.
 	engine := search.NewEngine(driver)
 
-	// 5. Init service layer.
-	svc := service.New(driver, queue, pipes, engine)
+	// 5. Get steps path.
+	stepsPath := viper.GetString("steps.path")
+	if stepsPath == "" {
+		homeDir, _ := os.UserHomeDir()
+		stepsPath = homeDir + "/.config/contexthelp/steps"
+	}
 
-	// 6. Build HTTP router.
+	// 6. Init service layer.
+	svc := service.New(driver, queue, pipes, engine, stepsPath)
+
+	// 7. Build HTTP router.
 	router := httpserver.NewRouter(svc)
 
-	// 7. Determine bind address.
+	// 8. Determine bind address.
 	bind := "127.0.0.1"
 	if public {
 		bind = "0.0.0.0"
 	}
 	addr := fmt.Sprintf("%s:%d", bind, port)
 
-	// 8. Create HTTP server.
+	// 9. Create HTTP server.
 	httpSrv := &gohttp.Server{
 		Addr:    addr,
 		Handler: router,
 	}
 
-	// 9. Init worker pool.
+	// 10. Init worker pool.
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers)
 
-	// 10. Start everything via errgroup.
+	// 11. Start everything via errgroup.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

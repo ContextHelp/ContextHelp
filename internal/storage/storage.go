@@ -10,6 +10,10 @@ type StorageDriver interface {
 	Entities() EntityStore
 	Edges() EdgeStore
 	Jobs() JobStore
+	Pipelines() PipelineStore
+	Steps() StepStore
+	Registries() RegistryStore
+	Reminders() ReminderStore
 	Health(ctx context.Context) error
 }
 
@@ -50,4 +54,40 @@ type JobStore interface {
 	Fail(ctx context.Context, id string, errMsg string) error
 	Retry(ctx context.Context, id string) error
 	RecoverStale(ctx context.Context, timeout int64) (int, error)
+}
+
+// PipelineStore persists and retrieves pipelines.
+type PipelineStore interface {
+	Create(ctx context.Context, pipeline *Pipeline) error
+	Get(ctx context.Context, name string) (*Pipeline, error)
+	List(ctx context.Context, filter PipelineFilter) ([]*Pipeline, int, error)
+	Update(ctx context.Context, pipeline *Pipeline) error
+	Delete(ctx context.Context, name string) error
+	Archive(ctx context.Context, name string) error
+	Unarchive(ctx context.Context, name string) error
+}
+
+// StepStore persists and retrieves registered steps.
+type StepStore interface {
+	Create(ctx context.Context, step *RegisteredStep) error
+	Get(ctx context.Context, name string) (*RegisteredStep, error)
+	List(ctx context.Context, source string) ([]*RegisteredStep, int, error)
+	Unregister(ctx context.Context, name string) error
+	Update(ctx context.Context, step *RegisteredStep) error
+}
+
+// RegistryStore caches registry manifests.
+type RegistryStore interface {
+	CacheManifest(ctx context.Context, cache *RegistryCache) error
+	GetCachedManifest(ctx context.Context, url string) (*RegistryCache, error)
+	UpdateETag(ctx context.Context, url, etag string) error
+	List(ctx context.Context) ([]*RegistryCache, int, error)
+}
+
+// ReminderStore persists and retrieves system reminders.
+type ReminderStore interface {
+	Create(ctx context.Context, reminder *SystemReminder) error
+	Get(ctx context.Context, id string) (*SystemReminder, error)
+	List(ctx context.Context, activeOnly bool) ([]*SystemReminder, int, error)
+	Dismiss(ctx context.Context, id string) error
 }

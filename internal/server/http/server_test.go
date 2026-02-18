@@ -28,7 +28,7 @@ func newTestServerBundle(t *testing.T) *testServerBundle {
 	q := jobs.NewQueue(driver.Jobs())
 	pipes := pipeline.DefaultRegistry()
 	engine := search.NewEngine(driver)
-	svc := service.New(driver, q, pipes, engine)
+	svc := service.New(driver, q, pipes, engine, "")
 	return &testServerBundle{
 		Server: httptest.NewServer(NewRouter(svc)),
 		svc:    svc,
@@ -95,13 +95,13 @@ func TestRequestID(t *testing.T) {
 
 func TestHealthEndpointUnhealthy(t *testing.T) {
 	// Create a dedicated driver (not shared) so we can close it without
-	// interfering with other tests. We skip the t.Cleanup auto-close by
-	// building the bundle manually.
+	// interfering with other tests. We skip to t.Cleanup auto-close by
+	// building to bundle manually.
 	driver := storageutil.NewTestDriver(t)
 	q := jobs.NewQueue(driver.Jobs())
 	pipes := pipeline.DefaultRegistry()
 	engine := search.NewEngine(driver)
-	svc := service.New(driver, q, pipes, engine)
+	svc := service.New(driver, q, pipes, engine, "")
 	ts := httptest.NewServer(NewRouter(svc))
 	defer ts.Close()
 
