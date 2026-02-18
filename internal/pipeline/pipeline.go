@@ -19,10 +19,14 @@ type Pipeline struct {
 	Steps        []PipelineStep
 }
 
+// SelectorFunc is a function that selects a pipeline name for the given content.
+type SelectorFunc func(content string) string
+
 // Registry manages named pipelines.
 type Registry interface {
 	Register(name string, p *Pipeline) error
 	Get(name string) (*Pipeline, error)
 	List() []string
 	SelectPipeline(content string) string
+	SetSelectors(fn SelectorFunc)
 }

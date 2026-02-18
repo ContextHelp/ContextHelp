@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -18,7 +18,7 @@ func newTestService(t *testing.T) *Service {
 	t.Helper()
 	driver := storageutil.NewTestDriver(t)
 	q := jobs.NewQueue(driver.Jobs())
-	pipes := pipeline.DefaultRegistry()
+	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
 	return New(driver, q, pipes, engine, "")
 }

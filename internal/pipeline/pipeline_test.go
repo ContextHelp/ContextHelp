@@ -49,6 +49,7 @@ func (m *mockRegistry) SelectPipeline(content string) string {
 	}
 	return "text.long"
 }
+func (m *mockRegistry) SetSelectors(_ SelectorFunc) {}
 
 func TestRegistryInterface(t *testing.T) {
 	var r Registry = &mockRegistry{pipelines: make(map[string]*Pipeline)}

@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
@@ -101,7 +101,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// 3. Init pipeline registry with configured providers.
 	factory := providers.NewFactory(cfg.Providers)
-	pipes := pipeline.ConfiguredRegistry(factory)
+	pipes := builtins.ConfiguredRegistry(factory)
 	fmt.Println("Pipeline runtime initialized")
 
 	// 4. Init search engine.

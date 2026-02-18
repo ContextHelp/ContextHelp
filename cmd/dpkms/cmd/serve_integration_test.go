@@ -12,7 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -22,7 +22,7 @@ import (
 func TestServeStartsAndStops(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	queue := jobs.NewQueue(driver.Jobs())
-	pipes := pipeline.DefaultRegistry()
+	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
 	svc := service.New(driver, queue, pipes, engine, "")
 

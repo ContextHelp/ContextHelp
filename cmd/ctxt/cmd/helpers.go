@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -41,7 +41,7 @@ func newService() (*service.Service, func(), error) {
 	}
 
 	queue := jobs.NewQueue(driver.Jobs())
-	pipes := pipeline.DefaultRegistry()
+	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
 
 	svc := service.New(driver, queue, pipes, engine, "")

@@ -4,18 +4,19 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
-	"github.com/ideacrafterslabs/ctxt/internal/providers"
 )
 
 type registry struct {
 	pipelines map[string]*Pipeline
+	selector  SelectorFunc
 }
 
 // NewRegistry creates an empty pipeline registry.
 func NewRegistry() Registry {
-	return &registry{pipelines: make(map[string]*Pipeline)}
+	return &registry{
+		pipelines: make(map[string]*Pipeline),
+		selector:  defaultSelector,
+	}
 }
 
 func (r *registry) Register(name string, p *Pipeline) error {
@@ -44,6 +45,17 @@ func (r *registry) List() []string {
 }
 
 func (r *registry) SelectPipeline(content string) string {
+	return r.selector(content)
+}
+
+// SetSelectors replaces the pipeline selection function.
+func (r *registry) SetSelectors(fn SelectorFunc) {
+	r.selector = fn
+}
+
+// defaultSelector is the fallback when no selectors have been configured.
+// It uses a simple text-length heuristic.
+func defaultSelector(content string) string {
 	lower := strings.ToLower(content)
 
 	// Image formats
@@ -92,145 +104,4 @@ func (r *registry) SelectPipeline(content string) string {
 		return "text.short"
 	}
 	return "text.long"
-}
-
-// DefaultRegistry returns a registry pre-loaded with built-in pipelines.
-func DefaultRegistry() Registry {
-	r := NewRegistry()
-
-	r.Register("text.short", &Pipeline{
-		PipelineName: "text.short",
-		Description:  "Short text pipeline (< 500 chars)",
-		Steps: []PipelineStep{
-			steps.NewTypeDetector(),
-			steps.NewTagger(),
-		},
-	})
-
-	r.Register("text.long", &Pipeline{
-		PipelineName: "text.long",
-		Description:  "Long text pipeline (>= 500 chars)",
-		Steps: []PipelineStep{
-			steps.NewTypeDetector(),
-			steps.NewSectioner(),
-			steps.NewTagger(),
-		},
-	})
-
-	// Image pipelines
-	r.Register("image.ocr", &Pipeline{
-		PipelineName: "image.ocr",
-		Description:  "Image OCR extraction pipeline",
-		Steps: []PipelineStep{
-			steps.NewFileReader(),
-			steps.NewFormatDetector(),
-			steps.NewOCRExtractor(),
-			steps.NewTextCleaner(),
-			steps.NewTagger(),
-			steps.NewEmbeddingGenerator(),
-		},
-	})
-
-	r.Register("image.analysis", &Pipeline{
-		PipelineName: "image.analysis",
-		Description:  "Image vision analysis pipeline",
-		Steps: []PipelineStep{
-			steps.NewFileReader(),
-			steps.NewFormatDetector(),
-			steps.NewOCRExtractor(),
-			steps.NewVisionAnalyzer(),
-			steps.NewTextCleaner(),
-			steps.NewTagger(),
-			steps.NewEmbeddingGenerator(),
-		},
-	})
-
-	// Audio pipeline
-	r.Register("audio.transcribe", &Pipeline{
-		PipelineName: "audio.transcribe",
-		Description:  "Audio transcription pipeline",
-		Steps: []PipelineStep{
-			steps.NewFileReader(),
-			steps.NewFormatDetector(),
-			steps.NewAudioTranscriber(),
-			steps.NewSpeakerDiarizer(false),
-			steps.NewTimestampAligner(),
-			steps.NewSectioner(),
-			steps.NewTagger(),
-			steps.NewEmbeddingGenerator(),
-		},
-	})
-
-	return r
-}
-
-// ConfiguredRegistry returns a registry using real providers resolved by the factory.
-func ConfiguredRegistry(f *providers.Factory) Registry {
-	r := NewRegistry()
-
-	// Text pipelines don't need providers.
-	r.Register("text.short", &Pipeline{
-		PipelineName: "text.short",
-		Description:  "Short text pipeline (< 500 chars)",
-		Steps: []PipelineStep{
-			steps.NewTypeDetector(),
-			steps.NewTagger(),
-		},
-	})
-
-	r.Register("text.long", &Pipeline{
-		PipelineName: "text.long",
-		Description:  "Long text pipeline (>= 500 chars)",
-		Steps: []PipelineStep{
-			steps.NewTypeDetector(),
-			steps.NewSectioner(),
-			steps.NewTagger(),
-		},
-	})
-
-	// Image pipelines — inject OCR and Vision providers.
-	r.Register("image.ocr", &Pipeline{
-		PipelineName: "image.ocr",
-		Description:  "Image OCR extraction pipeline",
-		Steps: []PipelineStep{
-			steps.NewFileReader(),
-			steps.NewFormatDetector(),
-			steps.NewOCRExtractor(steps.WithOCRProvider(f.OCR())),
-			steps.NewTextCleaner(),
-			steps.NewTagger(),
-			steps.NewEmbeddingGenerator(),
-		},
-	})
-
-	r.Register("image.analysis", &Pipeline{
-		PipelineName: "image.analysis",
-		Description:  "Image vision analysis pipeline",
-		Steps: []PipelineStep{
-			steps.NewFileReader(),
-			steps.NewFormatDetector(),
-			steps.NewOCRExtractor(steps.WithOCRProvider(f.OCR())),
-			steps.NewVisionAnalyzer(steps.WithVisionProvider(f.Vision())),
-			steps.NewTextCleaner(),
-			steps.NewTagger(),
-			steps.NewEmbeddingGenerator(),
-		},
-	})
-
-	// Audio pipeline — inject Transcription and Diarization providers.
-	r.Register("audio.transcribe", &Pipeline{
-		PipelineName: "audio.transcribe",
-		Description:  "Audio transcription pipeline",
-		Steps: []PipelineStep{
-			steps.NewFileReader(),
-			steps.NewFormatDetector(),
-			steps.NewAudioTranscriber(steps.WithTranscriptionProvider(f.Transcription())),
-			steps.NewSpeakerDiarizer(false, steps.WithDiarizationProvider(f.Diarization())),
-			steps.NewTimestampAligner(),
-			steps.NewSectioner(),
-			steps.NewTagger(),
-			steps.NewEmbeddingGenerator(),
-		},
-	})
-
-	return r
 }

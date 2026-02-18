@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -13,7 +14,7 @@ import (
 func TestProcessJob(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	q := NewQueue(driver.Jobs())
-	pipes := pipeline.DefaultRegistry()
+	pipes := builtins.Registry()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -139,7 +140,7 @@ func TestProcessJobFailure(t *testing.T) {
 func TestWorkerPoolShutdown(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	q := NewQueue(driver.Jobs())
-	pipes := pipeline.DefaultRegistry()
+	pipes := builtins.Registry()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	pool := NewWorkerPool(q, pipes, driver, 2)

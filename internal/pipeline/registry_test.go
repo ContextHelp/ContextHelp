@@ -59,26 +59,6 @@ func TestSelectPipelineLong(t *testing.T) {
 	}
 }
 
-func TestDefaultRegistry(t *testing.T) {
-	r := DefaultRegistry()
-	names := r.List()
-
-	required := []string{
-		"text.short", "text.long",
-		"image.ocr", "image.analysis",
-		"audio.transcribe",
-	}
-	nameSet := make(map[string]bool)
-	for _, n := range names {
-		nameSet[n] = true
-	}
-	for _, req := range required {
-		if !nameSet[req] {
-			t.Errorf("missing pipeline %q", req)
-		}
-	}
-}
-
 func TestSelectPipelineMedia(t *testing.T) {
 	r := NewRegistry()
 	tests := []struct {
