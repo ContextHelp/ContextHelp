@@ -2,6 +2,7 @@ package builtins
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -12,10 +13,11 @@ import (
 // Def is a declarative pipeline definition.
 type Def struct {
 	Description string
-	Extensions  []string              // file extensions this pipeline handles
-	ContentTest func(string) bool     // optional content-based selector
-	Steps       []string              // step names, resolved to constructors at build time
-	Providers   []string              // provider types needed: "ocr", "vision", "transcription", "diarization"
+	Extensions  []string                       // file extensions this pipeline handles
+	ContentTest func(string) bool              // optional content-based selector
+	Steps       []string                       // step names, resolved to constructors at build time
+	Providers   []string                       // provider types needed: "ocr", "vision", "transcription", "diarization"
+	Overrides   map[string]pipeline.StepOverride // per-step contract overrides, keyed by step name
 }
 
 // Package-level registry populated by init() calls.
@@ -83,7 +85,8 @@ func resolveStep(name string, f *providers.Factory) (pipeline.PipelineStep, erro
 }
 
 // buildPipeline constructs a Pipeline from a Def, optionally injecting providers.
-func buildPipeline(name string, d Def, f *providers.Factory) (*pipeline.Pipeline, error) {
+// If strict is true, unsatisfied capabilities cause an error; otherwise they are pruned.
+func buildPipeline(name string, d Def, f *providers.Factory, strict bool) (*pipeline.Pipeline, error) {
 	pipelineSteps := make([]pipeline.PipelineStep, 0, len(d.Steps))
 	for _, stepName := range d.Steps {
 		s, err := resolveStep(stepName, f)
@@ -92,6 +95,34 @@ func buildPipeline(name string, d Def, f *providers.Factory) (*pipeline.Pipeline
 		}
 		pipelineSteps = append(pipelineSteps, s)
 	}
+
+	// Capability check: prune or reject steps with unsatisfied capabilities.
+	caps := CapabilitiesFromFactory(f)
+	unsatisfied := pipeline.ValidateCapabilities(pipelineSteps, caps)
+	if len(unsatisfied) > 0 {
+		if strict {
+			return nil, fmt.Errorf("pipeline %q: steps at indices %v require unavailable capabilities", name, unsatisfied)
+		}
+		for _, idx := range unsatisfied {
+			log.Printf("builtins: pipeline %q: pruning step %q (missing capability)", name, pipelineSteps[idx].Name())
+		}
+		pipelineSteps = pipeline.RemoveIndices(pipelineSteps, unsatisfied)
+	}
+
+	// Apply per-step contract overrides.
+	if len(d.Overrides) > 0 {
+		for i, s := range pipelineSteps {
+			if o, ok := d.Overrides[s.Name()]; ok {
+				pipelineSteps[i] = pipeline.ApplyOverride(s, o)
+			}
+		}
+	}
+
+	// Composability check: verify data flow between steps.
+	if err := pipeline.ValidateComposability(pipelineSteps); err != nil {
+		return nil, fmt.Errorf("pipeline %q: %w", name, err)
+	}
+
 	return &pipeline.Pipeline{
 		PipelineName: name,
 		Description:  d.Description,
@@ -146,21 +177,29 @@ func selectPipeline(selectors []selector, content string) string {
 }
 
 // Registry builds a pipeline.Registry from all registered defs (no providers).
+// Steps with unsatisfied capabilities are pruned silently.
 func Registry() pipeline.Registry {
-	return buildRegistry(nil)
+	return buildRegistry(nil, false)
 }
 
 // ConfiguredRegistry builds a pipeline.Registry with real providers injected.
+// Steps with unsatisfied capabilities are pruned silently.
 func ConfiguredRegistry(f *providers.Factory) pipeline.Registry {
-	return buildRegistry(f)
+	return buildRegistry(f, false)
 }
 
-func buildRegistry(f *providers.Factory) pipeline.Registry {
+// ConfiguredRegistryStrict builds a pipeline.Registry that rejects pipelines
+// with unsatisfied capabilities instead of pruning them.
+func ConfiguredRegistryStrict(f *providers.Factory) pipeline.Registry {
+	return buildRegistry(f, true)
+}
+
+func buildRegistry(f *providers.Factory, strict bool) pipeline.Registry {
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()
 
 	for name, d := range defs {
-		p, err := buildPipeline(name, d, f)
+		p, err := buildPipeline(name, d, f, strict)
 		if err != nil {
 			panic(fmt.Sprintf("builtins: %v", err))
 		}

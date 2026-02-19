@@ -3,6 +3,8 @@ package builtins
 import (
 	"strings"
 	"testing"
+
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 )
 
 func TestAllDefsRegistered(t *testing.T) {
@@ -117,8 +119,9 @@ func TestPipelineStepsMatchDef(t *testing.T) {
 			t.Errorf("Get(%q): %v", name, err)
 			continue
 		}
-		if len(p.Steps) != len(d.Steps) {
-			t.Errorf("%q: step count: got %d, want %d", name, len(p.Steps), len(d.Steps))
+		// Step count may be less than def due to capability pruning (no factory = no providers).
+		if len(p.Steps) > len(d.Steps) {
+			t.Errorf("%q: step count: got %d, want <= %d", name, len(p.Steps), len(d.Steps))
 			continue
 		}
 		if p.Description != d.Description {
@@ -132,6 +135,29 @@ func TestDefsHaveDescriptions(t *testing.T) {
 		if d.Description == "" {
 			t.Errorf("pipeline %q has empty description", name)
 		}
+	}
+}
+
+func TestAllPipelinesValidateComposability(t *testing.T) {
+	r := Registry()
+	for _, name := range r.List() {
+		p, err := r.Get(name)
+		if err != nil {
+			t.Errorf("Get(%q): %v", name, err)
+			continue
+		}
+		if err := pipeline.ValidateComposability(p.Steps); err != nil {
+			t.Errorf("pipeline %q composability: %v", name, err)
+		}
+	}
+}
+
+func TestStrictModeRejectsIncapable(t *testing.T) {
+	// With nil factory and strict mode, pipelines requiring capabilities should fail.
+	d := Defs()["image.ocr"]
+	_, err := buildPipeline("image.ocr", d, nil, true)
+	if err == nil {
+		t.Error("expected error in strict mode with nil factory for image.ocr")
 	}
 }
 
