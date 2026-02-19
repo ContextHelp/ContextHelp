@@ -4,12 +4,22 @@ import (
 	"context"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-type Sectioner struct{}
+type Sectioner struct {
+	pipeline.BaseContract
+}
 
-func NewSectioner() *Sectioner { return &Sectioner{} }
+func NewSectioner() *Sectioner {
+	return &Sectioner{
+		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Requires: []string{"RawContent"},
+			Produces: []string{"Sections"},
+		}),
+	}
+}
 
 func (s *Sectioner) Name() string { return "sectioner" }
 

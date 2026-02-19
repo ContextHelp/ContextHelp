@@ -5,12 +5,22 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-type TextCleaner struct{}
+type TextCleaner struct {
+	pipeline.BaseContract
+}
 
-func NewTextCleaner() *TextCleaner { return &TextCleaner{} }
+func NewTextCleaner() *TextCleaner {
+	return &TextCleaner{
+		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Requires: []string{"RawContent"},
+			Produces: []string{"RawContent"},
+		}),
+	}
+}
 
 func (s *TextCleaner) Name() string { return "text_cleaner" }
 

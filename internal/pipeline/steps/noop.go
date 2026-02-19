@@ -3,12 +3,19 @@ package steps
 import (
 	"context"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-type Noop struct{}
+type Noop struct {
+	pipeline.BaseContract
+}
 
-func NewNoop() *Noop { return &Noop{} }
+func NewNoop() *Noop {
+	return &Noop{
+		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{}),
+	}
+}
 
 func (n *Noop) Name() string { return "noop" }
 

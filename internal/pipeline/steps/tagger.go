@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -25,10 +26,19 @@ var stopWords = map[string]bool{
 }
 
 type Tagger struct {
+	pipeline.BaseContract
 	maxTags int
 }
 
-func NewTagger() *Tagger { return &Tagger{maxTags: 10} }
+func NewTagger() *Tagger {
+	return &Tagger{
+		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Requires: []string{"RawContent"},
+			Produces: []string{"Tags"},
+		}),
+		maxTags: 10,
+	}
+}
 
 func (t *Tagger) Name() string { return "tagger" }
 

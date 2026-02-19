@@ -4,12 +4,22 @@ import (
 	"context"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-type TypeDetector struct{}
+type TypeDetector struct {
+	pipeline.BaseContract
+}
 
-func NewTypeDetector() *TypeDetector { return &TypeDetector{} }
+func NewTypeDetector() *TypeDetector {
+	return &TypeDetector{
+		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Requires: []string{"RawContent"},
+			Produces: []string{"Type", "Subtype"},
+		}),
+	}
+}
 
 func (d *TypeDetector) Name() string { return "typedetect" }
 

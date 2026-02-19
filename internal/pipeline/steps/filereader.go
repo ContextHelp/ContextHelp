@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 type FileReader struct {
+	pipeline.BaseContract
 	maxFileSize int64 // bytes; 0 means no limit
 }
 
@@ -19,7 +21,14 @@ func WithMaxFileSize(max int64) FileReaderOption {
 }
 
 func NewFileReader(opts ...FileReaderOption) *FileReader {
-	fr := &FileReader{maxFileSize: 50 * 1024 * 1024} // default 50MB
+	fr := &FileReader{
+		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Requires:     []string{"Source"},
+			Produces:     []string{"RawContent", "Metadata"},
+			Capabilities: []string{"io"},
+		}),
+		maxFileSize: 50 * 1024 * 1024, // default 50MB
+	}
 	for _, opt := range opts {
 		opt(fr)
 	}

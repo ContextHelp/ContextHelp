@@ -7,12 +7,22 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-type FormatDetector struct{}
+type FormatDetector struct {
+	pipeline.BaseContract
+}
 
-func NewFormatDetector() *FormatDetector { return &FormatDetector{} }
+func NewFormatDetector() *FormatDetector {
+	return &FormatDetector{
+		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Requires: []string{"RawContent"},
+			Produces: []string{"ContentType", "Type", "Subtype", "Metadata"},
+		}),
+	}
+}
 
 func (s *FormatDetector) Name() string { return "format_detector" }
 
