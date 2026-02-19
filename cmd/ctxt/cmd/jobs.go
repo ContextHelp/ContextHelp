@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -125,13 +127,30 @@ func runJobsList(cmd *cobra.Command, args []string) error {
 		rows = append(rows, []string{
 			j.ID,
 			j.Type,
-			string(j.Status),
+			statusStyle(string(j.Status)),
 			j.Pipeline,
 			j.CreatedAt.Format("2006-01-02 15:04"),
 		})
 	}
 	printTable(os.Stdout, headers, rows)
 	return nil
+}
+
+func statusStyle(status string) string {
+	var color lipgloss.Color
+	switch strings.ToLower(status) {
+	case "completed":
+		color = lipgloss.Color("2")
+	case "failed":
+		color = lipgloss.Color("1")
+	case "running", "processing":
+		color = lipgloss.Color("3")
+	case "pending":
+		color = lipgloss.Color("8")
+	default:
+		color = lipgloss.Color("7")
+	}
+	return lipgloss.NewStyle().Foreground(color).Render(status)
 }
 
 func runJobsStatus(cmd *cobra.Command, args []string) error {

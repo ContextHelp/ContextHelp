@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
-	"text/tabwriter"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
@@ -62,14 +62,37 @@ func outputJSON(w io.Writer, v any) error {
 }
 
 // printTable writes a text table with headers and rows to w.
+var (
+	tableHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#FFFFFF")).
+				Background(lipgloss.Color("#5C5CFF")).
+				Padding(0, 1)
+
+	tableCellStyle = lipgloss.NewStyle().Padding(0, 1)
+)
+
 func printTable(w io.Writer, headers []string, rows [][]string) {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, strings.Join(headers, "\t"))
-	fmt.Fprintln(tw, strings.Repeat("-\t", len(headers)))
-	for _, row := range rows {
-		fmt.Fprintln(tw, strings.Join(row, "\t"))
+	if len(rows) == 0 {
+		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		fmt.Fprintf(w, "%s\n", emptyStyle.Render("No results"))
+		return
 	}
-	tw.Flush()
+
+	borderColor := lipgloss.Color("238")
+	t := table.New().
+		Headers(headers...).
+		Rows(rows...).
+		Border(lipgloss.RoundedBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(borderColor)).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == table.HeaderRow {
+				return tableHeaderStyle
+			}
+			return tableCellStyle
+		})
+
+	fmt.Fprintln(w, t.Render())
 }
 
 // buildObjectFilter reads common filter flags from viper and returns an ObjectFilter.

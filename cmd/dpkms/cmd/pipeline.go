@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/printer"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -421,10 +422,16 @@ func printJSON(v any) error {
 }
 
 func printTable(pipelines []*storage.Pipeline) error {
-	fmt.Println("NAME\tDESCRIPTION\tSTEPS\tARCHIVED")
-	for _, p := range pipelines {
-		fmt.Printf("%s\t%s\t%d\t%t\n", p.Name, p.Description, len(p.Steps), p.Archived)
+	ps := make([]printer.Pipeline, len(pipelines))
+	for i, p := range pipelines {
+		ps[i] = printer.Pipeline{
+			Name:        p.Name,
+			Description: p.Description,
+			Steps:       len(p.Steps),
+			Archived:    p.Archived,
+		}
 	}
+	printer.PrintPipelines(ps)
 	return nil
 }
 
@@ -441,26 +448,37 @@ func printPipelineDetails(p *storage.Pipeline) error {
 }
 
 func printStepTable(steps []*storage.RegisteredStep) error {
-	fmt.Println("NAME\tSOURCE\tVERSION")
-	for _, s := range steps {
+	ss := make([]printer.Step, len(steps))
+	for i, s := range steps {
 		version := "1.0.0"
-		if s.Metadata != nil {
+		if s.Metadata != nil && s.Metadata.Version != "" {
 			version = s.Metadata.Version
 		}
-		fmt.Printf("%s\t%s\t%s\n", s.Name, s.Source, version)
+		ss[i] = printer.Step{
+			Name:    s.Name,
+			Source:  s.Source,
+			Version: version,
+		}
 	}
+	printer.PrintSteps(ss)
 	return nil
 }
 
 func printRegistryTable(registries []*storage.RegistryCache) error {
-	fmt.Println("URL\tVERSION\tAUTO-UPDATE\tLAST FETCHED")
-	for _, r := range registries {
+	rs := make([]printer.Registry, len(registries))
+	for i, r := range registries {
 		version := "unknown"
-		if r.Manifest != nil {
+		if r.Manifest != nil && r.Manifest.Version != "" {
 			version = r.Manifest.Version
 		}
-		fmt.Printf("%s\t%s\t%t\t%s\n", r.RegistryURL, version, r.AutoUpdate, r.LastFetched.Format(time.RFC3339))
+		rs[i] = printer.Registry{
+			URL:         r.RegistryURL,
+			Version:     version,
+			AutoUpdate:  r.AutoUpdate,
+			LastFetched: r.LastFetched.Format("2006-01-02 15:04"),
+		}
 	}
+	printer.PrintRegistries(rs)
 	return nil
 }
 
