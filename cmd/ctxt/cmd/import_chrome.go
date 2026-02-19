@@ -8,7 +8,7 @@ import (
 	gohttp "net/http"
 	"strings"
 
-	chromeimporter "github.com/ideacrafterslabs/ctxt/internal/importer/chrome"
+	bookmarksimporter "github.com/ideacrafterslabs/ctxt/internal/importer/bookmarks"
 	"github.com/spf13/cobra"
 )
 
@@ -50,7 +50,7 @@ func runImportChrome(cmd *cobra.Command, args []string) error {
 	}
 	serverURL = strings.TrimRight(serverURL, "/")
 
-	bookmarks, err := chromeimporter.ParseBookmarksFile(file)
+	bookmarks, err := bookmarksimporter.ParseBookmarksFile(file)
 	if err != nil {
 		return err
 	}
