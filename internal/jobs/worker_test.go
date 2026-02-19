@@ -188,7 +188,9 @@ func TestStaleRecovery(t *testing.T) {
 }
 
 // mentionStep is a test step that adds a mention to the draft.
-type mentionStep struct{}
+type mentionStep struct {
+	pipeline.BaseContract
+}
 
 func (s *mentionStep) Name() string { return "test-mention" }
 func (s *mentionStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {

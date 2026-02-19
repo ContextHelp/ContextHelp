@@ -309,6 +309,7 @@ func parseCPULimit(limit string) uint64 {
 }
 
 type ExternalStep struct {
+	pipeline.BaseContract
 	name    string
 	path    string
 	config  map[string]any
