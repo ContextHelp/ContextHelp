@@ -29,6 +29,9 @@ func (m *mockObjectStore) Create(ctx context.Context, obj *KnowledgeObject) erro
 func (m *mockObjectStore) Get(ctx context.Context, id string) (*KnowledgeObject, error) {
 	return nil, nil
 }
+func (m *mockObjectStore) GetByContentHash(ctx context.Context, hash string) (*KnowledgeObject, error) {
+	return nil, nil
+}
 func (m *mockObjectStore) List(ctx context.Context, filter ObjectFilter) ([]*KnowledgeObject, int, error) {
 	return nil, 0, nil
 }
@@ -36,6 +39,9 @@ func (m *mockObjectStore) Update(ctx context.Context, obj *KnowledgeObject) erro
 func (m *mockObjectStore) Delete(ctx context.Context, id string) error            { return nil }
 func (m *mockObjectStore) ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error) {
 	return nil, 0, nil
+}
+func (m *mockObjectStore) Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error) {
+	return "", nil
 }
 
 type mockEntityStore struct{}
@@ -133,12 +139,14 @@ func (m *mockReminderStore) Dismiss(ctx context.Context, id string) error { retu
 
 type mockFeedStore struct{}
 
-func (m *mockFeedStore) Create(ctx context.Context, feed *Feed) error          { return nil }
-func (m *mockFeedStore) Get(ctx context.Context, id string) (*Feed, error)     { return nil, nil }
+func (m *mockFeedStore) Create(ctx context.Context, feed *Feed) error            { return nil }
+func (m *mockFeedStore) Get(ctx context.Context, id string) (*Feed, error)       { return nil, nil }
 func (m *mockFeedStore) GetByURL(ctx context.Context, url string) (*Feed, error) { return nil, nil }
-func (m *mockFeedStore) List(ctx context.Context, filter FeedFilter) ([]*Feed, error) { return nil, nil }
-func (m *mockFeedStore) Update(ctx context.Context, feed *Feed) error          { return nil }
-func (m *mockFeedStore) Delete(ctx context.Context, id string) error           { return nil }
+func (m *mockFeedStore) List(ctx context.Context, filter FeedFilter) ([]*Feed, error) {
+	return nil, nil
+}
+func (m *mockFeedStore) Update(ctx context.Context, feed *Feed) error { return nil }
+func (m *mockFeedStore) Delete(ctx context.Context, id string) error  { return nil }
 
 type mockFeedItemStore struct{}
 
@@ -149,9 +157,9 @@ func (m *mockFeedItemStore) ExistsByGUID(ctx context.Context, feedID, guid strin
 
 type mockBatchStore struct{}
 
-func (m *mockBatchStore) Create(ctx context.Context, batch *Batch) error        { return nil }
-func (m *mockBatchStore) Get(ctx context.Context, id string) (*Batch, error)    { return nil, nil }
-func (m *mockBatchStore) Update(ctx context.Context, batch *Batch) error        { return nil }
+func (m *mockBatchStore) Create(ctx context.Context, batch *Batch) error     { return nil }
+func (m *mockBatchStore) Get(ctx context.Context, id string) (*Batch, error) { return nil, nil }
+func (m *mockBatchStore) Update(ctx context.Context, batch *Batch) error     { return nil }
 
 func TestStorageDriverInterfaceSatisfaction(t *testing.T) {
 	var d StorageDriver = &mockDriver{}

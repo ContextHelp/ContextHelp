@@ -21,6 +21,9 @@ type KnowledgeObject struct {
 	Source             string         `json:"source,omitempty"`
 	RegistryInfluences []string       `json:"registry_influences,omitempty"`
 	Plugins            map[string]any `json:"plugins,omitempty"`
+	ContentHash        string         `json:"content_hash,omitempty"`
+	ReinforcementCount int            `json:"reinforcement_count,omitempty"`
+	LastReinforcedAt   *time.Time     `json:"last_reinforced_at,omitempty"`
 	CreatedAt          time.Time      `json:"created_at"`
 	UpdatedAt          time.Time      `json:"updated_at"`
 	FTSIndexed         bool           `json:"fts_indexed"`
@@ -256,8 +259,8 @@ type Feed struct {
 	Title        string     `json:"title"`
 	Description  string     `json:"description"`
 	SiteURL      string     `json:"site_url"`
-	Format       string     `json:"format"`         // rss2.0, atom1.0, json1.1
-	Status       string     `json:"status"`          // active, paused, error, suspended, gone
+	Format       string     `json:"format"` // rss2.0, atom1.0, json1.1
+	Status       string     `json:"status"` // active, paused, error, suspended, gone
 	SyncInterval string     `json:"sync_interval"`
 	ETag         string     `json:"etag"`
 	LastModified string     `json:"last_modified"`

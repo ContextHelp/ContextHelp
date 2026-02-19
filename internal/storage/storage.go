@@ -24,10 +24,12 @@ type StorageDriver interface {
 type ObjectStore interface {
 	Create(ctx context.Context, obj *KnowledgeObject) error
 	Get(ctx context.Context, id string) (*KnowledgeObject, error)
+	GetByContentHash(ctx context.Context, hash string) (*KnowledgeObject, error)
 	List(ctx context.Context, filter ObjectFilter) ([]*KnowledgeObject, int, error)
 	Update(ctx context.Context, obj *KnowledgeObject) error
 	Delete(ctx context.Context, id string) error
 	ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error)
+	Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error)
 }
 
 // EntityStore persists and retrieves named entities.
