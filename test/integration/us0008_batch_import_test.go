@@ -21,7 +21,9 @@ import (
 // Batch-processing pipeline step
 // ---------------------------------------------------------------------------
 
-type batchProcessorStep struct{}
+type batchProcessorStep struct {
+	pipeline.BaseContract
+}
 
 func (s *batchProcessorStep) Name() string { return "test-batch-processor" }
 func (s *batchProcessorStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
@@ -33,7 +35,9 @@ func (s *batchProcessorStep) Run(_ context.Context, draft *storage.KnowledgeObje
 }
 
 // failingBatchStep always fails (for partial-success tests).
-type failingBatchStep struct{}
+type failingBatchStep struct {
+	pipeline.BaseContract
+}
 
 func (s *failingBatchStep) Name() string { return "test-batch-fail" }
 func (s *failingBatchStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {

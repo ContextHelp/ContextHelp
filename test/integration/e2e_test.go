@@ -422,7 +422,9 @@ func TestObjectDeleteCascade(t *testing.T) {
 }
 
 // mentionStep adds a test mention to the draft.
-type mentionStep struct{}
+type mentionStep struct {
+	pipeline.BaseContract
+}
 
 func (s *mentionStep) Name() string { return "test-mention" }
 func (s *mentionStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {

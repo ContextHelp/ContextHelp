@@ -24,6 +24,7 @@ import (
 
 // videoProcessorStep simulates video processing for testing.
 type videoProcessorStep struct {
+	pipeline.BaseContract
 	transcript string
 	scenes     int
 }
@@ -51,6 +52,7 @@ func (s *videoProcessorStep) Run(_ context.Context, draft *storage.KnowledgeObje
 
 // videoTypeSetterStep sets the object Type and Subtype for video content.
 type videoTypeSetterStep struct {
+	pipeline.BaseContract
 	format string
 }
 
@@ -63,6 +65,7 @@ func (s *videoTypeSetterStep) Run(_ context.Context, draft *storage.KnowledgeObj
 
 // videoErrorStep simulates a processing error (corrupt, unsupported, etc.).
 type videoErrorStep struct {
+	pipeline.BaseContract
 	errMsg string
 }
 
@@ -73,6 +76,7 @@ func (s *videoErrorStep) Run(_ context.Context, _ *storage.KnowledgeObject) (*st
 
 // videoTimeoutStep simulates a step that takes too long and respects context cancellation.
 type videoTimeoutStep struct {
+	pipeline.BaseContract
 	delay time.Duration
 }
 
@@ -88,6 +92,7 @@ func (s *videoTimeoutStep) Run(ctx context.Context, draft *storage.KnowledgeObje
 
 // videoFrameOCRStep simulates OCR text extraction from video frames.
 type videoFrameOCRStep struct {
+	pipeline.BaseContract
 	ocrText string
 }
 
@@ -107,6 +112,7 @@ func (s *videoFrameOCRStep) Run(_ context.Context, draft *storage.KnowledgeObjec
 
 // videoStepRecorder records step names in metadata for verifying step order.
 type videoStepRecorder struct {
+	pipeline.BaseContract
 	stepName string
 }
 
@@ -123,6 +129,7 @@ func (s *videoStepRecorder) Run(_ context.Context, draft *storage.KnowledgeObjec
 
 // videoConfigurableStep simulates a step whose behavior varies by config in metadata.
 type videoConfigurableStep struct {
+	pipeline.BaseContract
 	name       string
 	configKey  string
 	configVal  any
@@ -537,6 +544,7 @@ func TestUS0005_FileSizeLimitEnforced(t *testing.T) {
 
 // videoSizeLimitStep simulates a step that rejects files exceeding a size limit.
 type videoSizeLimitStep struct {
+	pipeline.BaseContract
 	maxBytes int64
 }
 

@@ -24,6 +24,7 @@ import (
 
 // transcribeStep simulates audio transcription for testing.
 type transcribeStep struct {
+	pipeline.BaseContract
 	transcript string
 	language   string
 }
@@ -44,6 +45,7 @@ func (s *transcribeStep) Run(_ context.Context, draft *storage.KnowledgeObject) 
 
 // audioMetaStep simulates audio metadata extraction.
 type audioMetaStep struct {
+	pipeline.BaseContract
 	format   string
 	duration float64 // seconds
 	size     int
@@ -64,6 +66,7 @@ func (s *audioMetaStep) Run(_ context.Context, draft *storage.KnowledgeObject) (
 
 // audioTimestampStep simulates timestamped section creation.
 type audioTimestampStep struct {
+	pipeline.BaseContract
 	segments []struct {
 		start   float64
 		end     float64
@@ -117,6 +120,7 @@ func (s *audioTimestampStep) Run(_ context.Context, draft *storage.KnowledgeObje
 
 // diarizeStep simulates speaker diarization.
 type diarizeStep struct {
+	pipeline.BaseContract
 	enabled bool
 }
 
@@ -135,6 +139,7 @@ func (s *diarizeStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 
 // audioValidationStep rejects unsupported audio formats.
 type audioValidationStep struct {
+	pipeline.BaseContract
 	supported map[string]bool
 }
 
@@ -151,7 +156,9 @@ func (s *audioValidationStep) Run(_ context.Context, draft *storage.KnowledgeObj
 }
 
 // corruptAudioStep simulates detection of corrupt audio data.
-type corruptAudioStep struct{}
+type corruptAudioStep struct {
+	pipeline.BaseContract
+}
 
 func (s *corruptAudioStep) Name() string { return "test-corrupt-audio-check" }
 func (s *corruptAudioStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
@@ -163,6 +170,7 @@ func (s *corruptAudioStep) Run(_ context.Context, draft *storage.KnowledgeObject
 
 // audioSizeLimitStep rejects content exceeding a byte limit.
 type audioSizeLimitStep struct {
+	pipeline.BaseContract
 	maxBytes int
 }
 
@@ -176,6 +184,7 @@ func (s *audioSizeLimitStep) Run(_ context.Context, draft *storage.KnowledgeObje
 
 // audioDurationLimitStep rejects audio exceeding a duration limit.
 type audioDurationLimitStep struct {
+	pipeline.BaseContract
 	maxSeconds float64
 }
 
@@ -193,6 +202,7 @@ func (s *audioDurationLimitStep) Run(_ context.Context, draft *storage.Knowledge
 
 // languageHintStep stores a language hint in metadata.
 type languageHintStep struct {
+	pipeline.BaseContract
 	language string
 }
 
@@ -207,6 +217,7 @@ func (s *languageHintStep) Run(_ context.Context, draft *storage.KnowledgeObject
 
 // audioProviderStep simulates a configurable transcription provider.
 type audioProviderStep struct {
+	pipeline.BaseContract
 	provider string
 }
 

@@ -125,7 +125,9 @@ func (m *mockFeedServer) URL(path string) string {
 // Feed-processing pipeline step (simulates feed item ingestion)
 // ---------------------------------------------------------------------------
 
-type feedItemStep struct{}
+type feedItemStep struct {
+	pipeline.BaseContract
+}
 
 func (s *feedItemStep) Name() string { return "test-feed-item" }
 func (s *feedItemStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {

@@ -23,6 +23,7 @@ import (
 
 // docTypeSetterStep sets the object Type and Subtype for document content.
 type docTypeSetterStep struct {
+	pipeline.BaseContract
 	format string
 }
 
@@ -35,6 +36,7 @@ func (s *docTypeSetterStep) Run(_ context.Context, draft *storage.KnowledgeObjec
 
 // docHierarchicalSectionStep simulates hierarchical section extraction from a document.
 type docHierarchicalSectionStep struct {
+	pipeline.BaseContract
 	sections []storage.Section
 }
 
@@ -46,6 +48,7 @@ func (s *docHierarchicalSectionStep) Run(_ context.Context, draft *storage.Knowl
 
 // docImageExtractorStep simulates extraction of embedded images as child objects.
 type docImageExtractorStep struct {
+	pipeline.BaseContract
 	imageCount int
 }
 
@@ -66,6 +69,7 @@ func (s *docImageExtractorStep) Run(_ context.Context, draft *storage.KnowledgeO
 
 // docTableExtractorStep simulates extraction of tables as structured Markdown.
 type docTableExtractorStep struct {
+	pipeline.BaseContract
 	tables []string
 }
 
@@ -87,6 +91,7 @@ func (s *docTableExtractorStep) Run(_ context.Context, draft *storage.KnowledgeO
 
 // docErrorStep simulates a document processing error.
 type docErrorStep struct {
+	pipeline.BaseContract
 	errMsg string
 }
 
@@ -97,6 +102,7 @@ func (s *docErrorStep) Run(_ context.Context, _ *storage.KnowledgeObject) (*stor
 
 // docCodeParserStep simulates code parsing into function/class-level sections.
 type docCodeParserStep struct {
+	pipeline.BaseContract
 	language string
 	sections []storage.Section
 }
@@ -113,6 +119,7 @@ func (s *docCodeParserStep) Run(_ context.Context, draft *storage.KnowledgeObjec
 
 // docAnnotationExtractorStep simulates extraction of TODO/FIXME annotations.
 type docAnnotationExtractorStep struct {
+	pipeline.BaseContract
 	annotations []storage.Section
 }
 
@@ -128,6 +135,7 @@ func (s *docAnnotationExtractorStep) Run(_ context.Context, draft *storage.Knowl
 
 // docSizeLimitStep simulates a size-check step for documents.
 type docSizeLimitStep struct {
+	pipeline.BaseContract
 	maxBytes int64
 }
 
@@ -145,6 +153,7 @@ func (s *docSizeLimitStep) Run(_ context.Context, draft *storage.KnowledgeObject
 
 // docDepthConfigStep simulates configurable decomposition depth.
 type docDepthConfigStep struct {
+	pipeline.BaseContract
 	depth    int
 	sections []storage.Section
 }
@@ -164,6 +173,7 @@ func (s *docDepthConfigStep) Run(_ context.Context, draft *storage.KnowledgeObje
 
 // docEdgeCreatorStep simulates creating parent-child edges by populating Mentions.
 type docEdgeCreatorStep struct {
+	pipeline.BaseContract
 	childMentions []string
 }
 

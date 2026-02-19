@@ -24,6 +24,7 @@ import (
 
 // ocrStep simulates OCR extraction for testing.
 type ocrStep struct {
+	pipeline.BaseContract
 	confidence float64
 	text       string
 }
@@ -44,6 +45,7 @@ func (s *ocrStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*stora
 
 // imageMetaStep simulates image metadata extraction.
 type imageMetaStep struct {
+	pipeline.BaseContract
 	format string
 	width  int
 	height int
@@ -66,6 +68,7 @@ func (s *imageMetaStep) Run(_ context.Context, draft *storage.KnowledgeObject) (
 
 // imageValidationStep rejects unsupported formats.
 type imageValidationStep struct {
+	pipeline.BaseContract
 	supported map[string]bool
 }
 
@@ -91,7 +94,9 @@ func (s *imageValidationStep) Run(_ context.Context, draft *storage.KnowledgeObj
 }
 
 // corruptImageStep simulates detection of corrupt image data.
-type corruptImageStep struct{}
+type corruptImageStep struct {
+	pipeline.BaseContract
+}
 
 func (s *corruptImageStep) Name() string { return "test-corrupt-check" }
 func (s *corruptImageStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
@@ -103,6 +108,7 @@ func (s *corruptImageStep) Run(_ context.Context, draft *storage.KnowledgeObject
 
 // sizeLimitStep rejects content exceeding a byte limit.
 type sizeLimitStep struct {
+	pipeline.BaseContract
 	maxBytes int
 }
 
@@ -116,6 +122,7 @@ func (s *sizeLimitStep) Run(_ context.Context, draft *storage.KnowledgeObject) (
 
 // lowConfidenceTagStep adds a "needs-review" tag when OCR confidence is low.
 type lowConfidenceTagStep struct {
+	pipeline.BaseContract
 	threshold float64
 }
 
@@ -135,7 +142,9 @@ func (s *lowConfidenceTagStep) Run(_ context.Context, draft *storage.KnowledgeOb
 }
 
 // gifFrameStep simulates GIF first-frame extraction.
-type gifFrameStep struct{}
+type gifFrameStep struct {
+	pipeline.BaseContract
+}
 
 func (s *gifFrameStep) Name() string { return "test-gif-frame" }
 func (s *gifFrameStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
@@ -149,6 +158,7 @@ func (s *gifFrameStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*
 
 // failOnceStep fails on the first call, succeeds on subsequent calls.
 type failOnceStep struct {
+	pipeline.BaseContract
 	called bool
 }
 
@@ -163,6 +173,7 @@ func (s *failOnceStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*
 
 // ocrProviderStep simulates a configurable OCR provider.
 type ocrProviderStep struct {
+	pipeline.BaseContract
 	provider string
 }
 
