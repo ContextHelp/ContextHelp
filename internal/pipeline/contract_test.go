@@ -1,6 +1,12 @@
 package pipeline
 
-import "testing"
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+)
 
 func TestCanonicalizeAlias(t *testing.T) {
 	tests := []struct{ input, want string }{
@@ -59,4 +65,85 @@ func TestEmptyBaseContract(t *testing.T) {
 	if got.Requires != nil || got.Produces != nil || got.Capabilities != nil {
 		t.Errorf("empty contract should have nil slices: %+v", got)
 	}
+}
+
+// --- composability tests ---
+
+func TestValidateComposability_Valid(t *testing.T) {
+	steps := []PipelineStep{
+		&stubStep{name: "a", contract: StepContract{Requires: []string{"RawContent"}, Produces: []string{"Type"}}},
+		&stubStep{name: "b", contract: StepContract{Requires: []string{"Type"}, Produces: []string{"Tags"}}},
+	}
+	if err := ValidateComposability(steps); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateComposability_SeedState(t *testing.T) {
+	steps := []PipelineStep{
+		&stubStep{name: "a", contract: StepContract{Requires: []string{"RawContent", "Source", "Pipeline"}, Produces: []string{"Type"}}},
+	}
+	if err := ValidateComposability(steps); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateComposability_MissingRequires(t *testing.T) {
+	steps := []PipelineStep{
+		&stubStep{name: "a", contract: StepContract{Requires: []string{"RawContent"}, Produces: []string{"Type"}}},
+		&stubStep{name: "b", contract: StepContract{Requires: []string{"Sections"}, Produces: []string{"Tags"}}},
+	}
+	err := ValidateComposability(steps)
+	if err == nil {
+		t.Fatal("expected error for missing Sections requirement")
+	}
+	if !strings.Contains(err.Error(), "Sections") {
+		t.Errorf("error should mention missing key: %v", err)
+	}
+	if !strings.Contains(err.Error(), "step 1") {
+		t.Errorf("error should mention step index: %v", err)
+	}
+}
+
+func TestValidateComposability_MetadataPrefix(t *testing.T) {
+	steps := []PipelineStep{
+		&stubStep{name: "a", contract: StepContract{Requires: []string{"RawContent"}, Produces: []string{"Metadata"}}},
+		&stubStep{name: "b", contract: StepContract{Requires: []string{"Metadata.ocr_confidence"}, Produces: []string{"Tags"}}},
+	}
+	if err := ValidateComposability(steps); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateComposability_EmptyContracts(t *testing.T) {
+	steps := []PipelineStep{
+		&stubStep{name: "a", contract: StepContract{}},
+		&stubStep{name: "b", contract: StepContract{}},
+	}
+	if err := ValidateComposability(steps); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateComposability_AliasResolution(t *testing.T) {
+	steps := []PipelineStep{
+		&stubStep{name: "a", contract: StepContract{Requires: []string{"text"}, Produces: []string{"tags"}}},
+	}
+	if err := ValidateComposability(steps); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// --- test helper ---
+
+type stubStep struct {
+	BaseContract
+	name     string
+	contract StepContract
+}
+
+func (s *stubStep) Name() string          { return s.name }
+func (s *stubStep) Contract() StepContract { return s.contract }
+func (s *stubStep) Run(_ context.Context, d *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	return d, nil
 }
