@@ -182,6 +182,70 @@ func TestRemoveIndices(t *testing.T) {
 	}
 }
 
+// --- override tests ---
+
+func TestApplyOverride_AddRequires(t *testing.T) {
+	base := &stubStep{name: "a", contract: StepContract{
+		Requires: []string{"RawContent"},
+		Produces: []string{"Tags"},
+	}}
+	wrapped := ApplyOverride(base, StepOverride{AddRequires: []string{"ContentType"}})
+	c := wrapped.Contract()
+	if !equalSorted(c.Requires, []string{"RawContent", "ContentType"}) {
+		t.Errorf("Requires: %v", c.Requires)
+	}
+	if wrapped.Name() != "a" {
+		t.Errorf("Name: %q", wrapped.Name())
+	}
+}
+
+func TestApplyOverride_DropRequires(t *testing.T) {
+	base := &stubStep{name: "a", contract: StepContract{
+		Requires: []string{"RawContent", "ContentType"},
+		Produces: []string{"Tags"},
+	}}
+	wrapped := ApplyOverride(base, StepOverride{DropRequires: []string{"ContentType"}})
+	c := wrapped.Contract()
+	if !equalSorted(c.Requires, []string{"RawContent"}) {
+		t.Errorf("Requires: %v", c.Requires)
+	}
+}
+
+func TestApplyOverride_AddProduces(t *testing.T) {
+	base := &stubStep{name: "a", contract: StepContract{
+		Requires: []string{"RawContent"},
+		Produces: []string{"Tags"},
+	}}
+	wrapped := ApplyOverride(base, StepOverride{AddProduces: []string{"Metadata"}})
+	c := wrapped.Contract()
+	if !equalSorted(c.Produces, []string{"Tags", "Metadata"}) {
+		t.Errorf("Produces: %v", c.Produces)
+	}
+}
+
+func TestApplyOverride_PreservesCapabilities(t *testing.T) {
+	base := &stubStep{name: "a", contract: StepContract{
+		Capabilities: []string{"ocr"},
+	}}
+	wrapped := ApplyOverride(base, StepOverride{AddRequires: []string{"Source"}})
+	c := wrapped.Contract()
+	if !equalSorted(c.Capabilities, []string{"ocr"}) {
+		t.Errorf("Capabilities: %v", c.Capabilities)
+	}
+}
+
+func TestApplyOverride_Empty(t *testing.T) {
+	base := &stubStep{name: "a", contract: StepContract{
+		Requires: []string{"RawContent"},
+		Produces: []string{"Tags"},
+	}}
+	wrapped := ApplyOverride(base, StepOverride{})
+	c := wrapped.Contract()
+	if !equalSorted(c.Requires, []string{"RawContent"}) || !equalSorted(c.Produces, []string{"Tags"}) {
+		t.Errorf("empty override should not change contract: %+v", c)
+	}
+}
+
 // --- test helper ---
 
 type stubStep struct {
@@ -194,4 +258,23 @@ func (s *stubStep) Name() string          { return s.name }
 func (s *stubStep) Contract() StepContract { return s.contract }
 func (s *stubStep) Run(_ context.Context, d *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	return d, nil
+}
+
+func equalSorted(a, b []string) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	am := make(map[string]bool, len(a))
+	for _, s := range a {
+		am[s] = true
+	}
+	for _, s := range b {
+		if !am[s] {
+			return false
+		}
+	}
+	return true
 }
