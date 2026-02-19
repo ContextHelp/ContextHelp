@@ -190,6 +190,135 @@ func TestListBySQL_Pagination(t *testing.T) {
 	assert.Len(t, objs, 2)
 }
 
+func TestMergeTags(t *testing.T) {
+	t.Run("basic merge", func(t *testing.T) {
+		existing := []storage.Tag{{Label: "go", Weight: 1.0}}
+		incoming := []storage.Tag{{Label: "rust", Weight: 0.8}}
+		result := mergeTags(existing, incoming)
+		assert.Len(t, result, 2)
+		assert.Equal(t, "go", result[0].Label)
+		assert.Equal(t, "rust", result[1].Label)
+	})
+
+	t.Run("dedup by label keeps first", func(t *testing.T) {
+		existing := []storage.Tag{{Label: "go", Weight: 1.0, Source: "manual"}}
+		incoming := []storage.Tag{{Label: "go", Weight: 0.5, Source: "auto"}}
+		result := mergeTags(existing, incoming)
+		assert.Len(t, result, 1)
+		assert.Equal(t, 1.0, result[0].Weight)
+		assert.Equal(t, "manual", result[0].Source)
+	})
+
+	t.Run("empty existing", func(t *testing.T) {
+		result := mergeTags(nil, []storage.Tag{{Label: "new"}})
+		assert.Len(t, result, 1)
+	})
+
+	t.Run("empty incoming", func(t *testing.T) {
+		result := mergeTags([]storage.Tag{{Label: "old"}}, nil)
+		assert.Len(t, result, 1)
+	})
+
+	t.Run("both empty", func(t *testing.T) {
+		result := mergeTags(nil, nil)
+		assert.Empty(t, result)
+	})
+}
+
+func TestMergeStrings(t *testing.T) {
+	t.Run("basic merge", func(t *testing.T) {
+		result := mergeStrings([]string{"a", "b"}, []string{"c"})
+		assert.Equal(t, []string{"a", "b", "c"}, result)
+	})
+
+	t.Run("dedup", func(t *testing.T) {
+		result := mergeStrings([]string{"a", "b"}, []string{"b", "c"})
+		assert.Equal(t, []string{"a", "b", "c"}, result)
+	})
+
+	t.Run("all duplicates", func(t *testing.T) {
+		result := mergeStrings([]string{"a", "b"}, []string{"a", "b"})
+		assert.Equal(t, []string{"a", "b"}, result)
+	})
+
+	t.Run("empty existing", func(t *testing.T) {
+		result := mergeStrings(nil, []string{"a"})
+		assert.Equal(t, []string{"a"}, result)
+	})
+
+	t.Run("empty incoming", func(t *testing.T) {
+		result := mergeStrings([]string{"a"}, nil)
+		assert.Equal(t, []string{"a"}, result)
+	})
+
+	t.Run("both empty", func(t *testing.T) {
+		result := mergeStrings(nil, nil)
+		assert.Empty(t, result)
+	})
+}
+
+func TestGetByContentHash(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj := makeObject("hash-1", "article")
+	obj.ContentHash = "abc123"
+	require.NoError(t, d.Objects().Create(ctx, obj))
+
+	t.Run("found", func(t *testing.T) {
+		got, err := d.Objects().GetByContentHash(ctx, "abc123")
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, "hash-1", got.ID)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		got, err := d.Objects().GetByContentHash(ctx, "nonexistent")
+		assert.Error(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("empty hash returns nil", func(t *testing.T) {
+		got, err := d.Objects().GetByContentHash(ctx, "")
+		assert.NoError(t, err)
+		assert.Nil(t, got)
+	})
+}
+
+func TestReinforce(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj := makeObject("reinf-1", "article")
+	obj.ContentHash = "reinf-hash"
+	obj.ReinforcementCount = 1
+	obj.Tags = []storage.Tag{{Label: "original", Weight: 1.0}}
+	obj.Mentions = []string{"@alice"}
+	require.NoError(t, d.Objects().Create(ctx, obj))
+
+	t.Run("increments count and merges", func(t *testing.T) {
+		merge := &storage.KnowledgeObject{
+			Tags:     []storage.Tag{{Label: "new-tag", Weight: 0.5}},
+			Mentions: []string{"@bob"},
+		}
+		id, err := d.Objects().Reinforce(ctx, "reinf-hash", merge)
+		require.NoError(t, err)
+		assert.Equal(t, "reinf-1", id)
+
+		got, err := d.Objects().Get(ctx, "reinf-1")
+		require.NoError(t, err)
+		assert.Equal(t, 2, got.ReinforcementCount)
+		assert.Len(t, got.Tags, 2)
+		assert.Len(t, got.Mentions, 2)
+		assert.NotNil(t, got.LastReinforcedAt)
+	})
+
+	t.Run("empty hash errors", func(t *testing.T) {
+		_, err := d.Objects().Reinforce(ctx, "", &storage.KnowledgeObject{})
+		assert.Error(t, err)
+	})
+}
+
 func TestListBySQL_JSONExtract(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()

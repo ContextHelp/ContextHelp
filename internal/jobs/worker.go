@@ -8,8 +8,11 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"strings"
+
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // WorkerPool runs pipeline jobs from the queue.
@@ -93,8 +96,32 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	}
 
 	draft.UpdatedAt = time.Now()
+	draft.ContentHash = storageutil.ContentHash(draft.RawContent, draft.Source)
+
+	existing, err := p.store.Objects().GetByContentHash(ctx, draft.ContentHash)
+	if err == nil && existing != nil {
+		existingID, err := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
+		if err != nil {
+			p.queue.Fail(ctx, job.ID, fmt.Sprintf("reinforce: %s", err))
+			return
+		}
+		p.queue.Complete(ctx, job.ID, existingID)
+		return
+	}
+
+	draft.ReinforcementCount = 1
 
 	if err := p.store.Objects().Create(ctx, draft); err != nil {
+		// Unique constraint race: another worker inserted the same hash concurrently.
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			existingID, rerr := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
+			if rerr != nil {
+				p.queue.Fail(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr))
+				return
+			}
+			p.queue.Complete(ctx, job.ID, existingID)
+			return
+		}
 		p.queue.Fail(ctx, job.ID, fmt.Sprintf("store: %s", err))
 		return
 	}
