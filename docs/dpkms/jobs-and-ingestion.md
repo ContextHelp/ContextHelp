@@ -162,13 +162,23 @@ Failure semantics:
 - **Retryable** errors → return to `pending`
 - **Permanent** errors → mark job as `failed`
 
-### Step 5: Write Bookmark or Plugin Output
+### Step 5: Dedup Check and Write
 
-If all steps succeed:
+After pipeline execution, the worker computes a **content hash** (SHA-256 of normalized content + source) and checks for an existing bookmark with the same hash.
 
-- A bookmark is written
-- OR plugin-defined job output is written (e.g., feed metadata updates)
-- Pipelines must produce consistent, idempotent results
+**Duplicate found** — the worker **reinforces** the existing bookmark:
+- Merges new tags and mentions (dedup by label/string, first-seen wins)
+- Increments `reinforcement_count`
+- Updates `last_reinforced_at`
+- Completes the job with the existing bookmark's ID
+
+**No duplicate** — the worker creates a new bookmark:
+- Sets `content_hash`, `reinforcement_count = 1`
+- Writes bookmark and mention edges (ADR-049)
+
+**Concurrent race** — if two workers process the same content simultaneously, the unique index on `content_hash` prevents duplicate creation. The second worker catches the constraint violation and falls back to reinforcement.
+
+This ensures idempotent ingestion: re-ingesting the same content strengthens the signal rather than creating duplicates.
 
 ### Step 6: Mark Completed
 
@@ -343,10 +353,11 @@ The jobs and ingestion system provides:
 
 - **Safety** (crash tolerance, durable writes)
 - **Determinism** (idempotent pipelines and replayable jobs)
+- **Deduplication** (content-hash based, with reinforcement tracking on re-ingestion)
 - **Extensibility** (plugins can enqueue jobs and define pipelines)
 - **Observability** (job_steps logs, worker inspection)
 - **Isolation** (plugin jobs never interfere with core jobs)
-- **Scalability** (multi-worker support)
+- **Scalability** (multi-worker support with concurrent race handling)
 - **Correctness** (clear separation of write/read paths)
 
 It is the backbone of ContextHelp's ingestion and the enabling layer for a rich plugin ecosystem, ensuring all ingestion—core or plugin-driven—remains robust, predictable, and safe.

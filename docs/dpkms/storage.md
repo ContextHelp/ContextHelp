@@ -44,8 +44,12 @@ The storage subsystem now handles:
   - hints
   - **mentions**
   - **plugin metadata blocks**
+  - **content hash** (SHA-256 for deduplication)
+  - **reinforcement count** and **last reinforced timestamp**
 - Maintaining the **entity–bookmark backlink index**
 - Maintaining jobs and ingestion traces
+- **Content-hash deduplication** — detecting duplicate content via normalized hash lookup
+- **Reinforcement tracking** — merging metadata and incrementing encounter count on re-ingestion
 - Supporting mention-based filtering and query evaluation
 - Supporting plugin-defined bookmark types and metadata
 - Ensuring plugin state remains isolated, deterministic, and user-controlled
@@ -121,9 +125,13 @@ Raw Input
  → Mention Extraction
  → Entity Resolution
  → Plugin Hooks
- → Bookmark Creation
+ → Content-Hash Dedup Check
+   → Match found: Reinforce (merge tags/mentions, increment count)
+   → No match: Bookmark Creation
  → Backlink Index Update
 ```
+
+The dedup check uses a SHA-256 hash of normalized content + source. If a match exists, the worker reinforces the existing bookmark (merging new tags and mentions) rather than creating a duplicate. A partial unique index on `content_hash` enforces integrity, and concurrent races are handled via constraint-violation fallback.
 
 Only ingestion workers modify persistent state.
 
@@ -329,6 +337,7 @@ Adds support for:
 
 - plugin metadata read/write
 - plugin-defined bookmark types
+- content-hash deduplication and reinforcement
 
 ### Save
 
@@ -338,6 +347,21 @@ Save:
 - mentions
 - plugin metadata
 - backlink entries
+- content hash (computed from normalized raw content + source)
+- reinforcement count (initialized to 1)
+
+### GetByContentHash
+
+Lookup by content hash for dedup detection. Returns `nil` for empty hash to guard against matching pre-migration rows.
+
+### Reinforce
+
+Atomic (transactional) operation that:
+
+- merges tags and mentions from new ingestion into existing bookmark
+- increments `reinforcement_count`
+- updates `last_reinforced_at`
+- returns existing bookmark ID
 
 ### Update
 
@@ -544,6 +568,7 @@ Imports must:
 The Storage layer now provides:
 
 - deterministic ingestion including mention persistence
+- **content-hash deduplication** with reinforcement tracking
 - entity → bookmark backlink indexing
 - full support for plugin metadata inside bookmarks
 - stable support for plugin-defined bookmark types
