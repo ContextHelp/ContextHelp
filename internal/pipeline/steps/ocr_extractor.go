@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 type OCRExtractor struct {
+	pipeline.BaseContract
 	provider            providers.OCRProvider
 	confidenceThreshold float64
 }
@@ -25,6 +27,11 @@ func WithOCRConfidenceThreshold(t float64) OCRExtractorOption {
 
 func NewOCRExtractor(opts ...OCRExtractorOption) *OCRExtractor {
 	o := &OCRExtractor{
+		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Requires:     []string{"RawContent", "ContentType"},
+			Produces:     []string{"RawContent", "Sections", "Metadata"},
+			Capabilities: []string{"ocr"},
+		}),
 		provider:            providers.NewStubOCRProvider(),
 		confidenceThreshold: 0.60,
 	}

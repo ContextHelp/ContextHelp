@@ -4,16 +4,25 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 type VisionAnalyzer struct {
+	pipeline.BaseContract
 	provider providers.VisionProvider
 }
 
 func NewVisionAnalyzer(opts ...func(*VisionAnalyzer)) *VisionAnalyzer {
-	v := &VisionAnalyzer{provider: providers.NewStubVisionProvider()}
+	v := &VisionAnalyzer{
+		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Requires:     []string{"RawContent", "ContentType"},
+			Produces:     []string{"Sections", "Metadata"},
+			Capabilities: []string{"vision"},
+		}),
+		provider: providers.NewStubVisionProvider(),
+	}
 	for _, opt := range opts {
 		opt(v)
 	}

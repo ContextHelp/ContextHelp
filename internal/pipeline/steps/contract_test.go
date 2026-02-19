@@ -62,6 +62,54 @@ func TestFormatDetectorContract(t *testing.T) {
 	assertCapabilities(t, "format_detector", c, nil)
 }
 
+func TestOCRExtractorContract(t *testing.T) {
+	s := NewOCRExtractor()
+	c := s.Contract()
+	assertRequires(t, "ocr_extractor", c, []string{"RawContent", "ContentType"})
+	assertProduces(t, "ocr_extractor", c, []string{"RawContent", "Sections", "Metadata"})
+	assertCapabilities(t, "ocr_extractor", c, []string{"ocr"})
+}
+
+func TestVisionAnalyzerContract(t *testing.T) {
+	s := NewVisionAnalyzer()
+	c := s.Contract()
+	assertRequires(t, "vision_analyzer", c, []string{"RawContent", "ContentType"})
+	assertProduces(t, "vision_analyzer", c, []string{"Sections", "Metadata"})
+	assertCapabilities(t, "vision_analyzer", c, []string{"vision"})
+}
+
+func TestAudioTranscriberContract(t *testing.T) {
+	s := NewAudioTranscriber()
+	c := s.Contract()
+	assertRequires(t, "audio_transcriber", c, []string{"Source", "ContentType"})
+	assertProduces(t, "audio_transcriber", c, []string{"RawContent", "Metadata"})
+	assertCapabilities(t, "audio_transcriber", c, []string{"transcription"})
+}
+
+func TestSpeakerDiarizerContract(t *testing.T) {
+	s := NewSpeakerDiarizer(false)
+	c := s.Contract()
+	assertRequires(t, "speaker_diarizer", c, []string{"RawContent", "Metadata"})
+	assertProduces(t, "speaker_diarizer", c, []string{"Metadata", "Sections"})
+	assertCapabilities(t, "speaker_diarizer", c, []string{"diarization"})
+}
+
+func TestTimestampAlignerContract(t *testing.T) {
+	s := NewTimestampAligner()
+	c := s.Contract()
+	assertRequires(t, "timestamp_aligner", c, []string{"Metadata"})
+	assertProduces(t, "timestamp_aligner", c, []string{"Sections"})
+	assertCapabilities(t, "timestamp_aligner", c, nil)
+}
+
+func TestEmbeddingGeneratorContract(t *testing.T) {
+	s := NewEmbeddingGenerator()
+	c := s.Contract()
+	assertRequires(t, "embedding_generator", c, []string{"RawContent"})
+	assertProduces(t, "embedding_generator", c, []string{"Embeddings", "VectorIndexed"})
+	assertCapabilities(t, "embedding_generator", c, nil)
+}
+
 // --- helpers ---
 
 func assertRequires(t *testing.T, name string, c pipeline.StepContract, want []string) {

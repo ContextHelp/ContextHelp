@@ -3,17 +3,24 @@ package steps
 import (
 	"context"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 type SpeakerDiarizer struct {
+	pipeline.BaseContract
 	provider providers.DiarizationProvider
 	enabled  bool
 }
 
 func NewSpeakerDiarizer(enabled bool, opts ...func(*SpeakerDiarizer)) *SpeakerDiarizer {
 	s := &SpeakerDiarizer{
+		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Requires:     []string{"RawContent", "Metadata"},
+			Produces:     []string{"Metadata", "Sections"},
+			Capabilities: []string{"diarization"},
+		}),
 		provider: providers.NewStubDiarizationProvider(),
 		enabled:  enabled,
 	}

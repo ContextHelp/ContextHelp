@@ -4,13 +4,23 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-type TimestampAligner struct{}
+type TimestampAligner struct {
+	pipeline.BaseContract
+}
 
-func NewTimestampAligner() *TimestampAligner { return &TimestampAligner{} }
+func NewTimestampAligner() *TimestampAligner {
+	return &TimestampAligner{
+		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Requires: []string{"Metadata"},
+			Produces: []string{"Sections"},
+		}),
+	}
+}
 
 func (s *TimestampAligner) Name() string { return "timestamp_aligner" }
 

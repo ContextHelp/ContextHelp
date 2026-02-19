@@ -4,16 +4,25 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 type AudioTranscriber struct {
+	pipeline.BaseContract
 	provider providers.TranscriptionProvider
 }
 
 func NewAudioTranscriber(opts ...func(*AudioTranscriber)) *AudioTranscriber {
-	a := &AudioTranscriber{provider: providers.NewStubTranscriptionProvider()}
+	a := &AudioTranscriber{
+		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Requires:     []string{"Source", "ContentType"},
+			Produces:     []string{"RawContent", "Metadata"},
+			Capabilities: []string{"transcription"},
+		}),
+		provider: providers.NewStubTranscriptionProvider(),
+	}
 	for _, opt := range opts {
 		opt(a)
 	}
