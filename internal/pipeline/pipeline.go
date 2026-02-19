@@ -9,6 +9,7 @@ import (
 // PipelineStep is a single transformation that enriches a draft.
 type PipelineStep interface {
 	Name() string
+	Contract() StepContract
 	Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error)
 }
 

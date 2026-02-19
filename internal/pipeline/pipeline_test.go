@@ -7,7 +7,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-type noopStep struct{}
+type noopStep struct {
+	BaseContract
+}
 
 func (n *noopStep) Name() string { return "noop" }
 func (n *noopStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
@@ -18,6 +20,10 @@ func TestPipelineStepInterface(t *testing.T) {
 	var s PipelineStep = &noopStep{}
 	if s.Name() != "noop" {
 		t.Errorf("Name: got %q", s.Name())
+	}
+	c := s.Contract()
+	if c.Requires != nil || c.Produces != nil || c.Capabilities != nil {
+		t.Errorf("noop contract should be empty: %+v", c)
 	}
 }
 
