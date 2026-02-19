@@ -134,6 +134,54 @@ func TestValidateComposability_AliasResolution(t *testing.T) {
 	}
 }
 
+// --- capability validation tests ---
+
+func TestValidateCapabilities_AllPresent(t *testing.T) {
+	steps := []PipelineStep{
+		&stubStep{name: "a", contract: StepContract{Capabilities: []string{"ocr"}}},
+		&stubStep{name: "b", contract: StepContract{Capabilities: []string{"vision"}}},
+	}
+	caps := CapabilitySet{"ocr": true, "vision": true}
+	unsatisfied := ValidateCapabilities(steps, caps)
+	if len(unsatisfied) != 0 {
+		t.Errorf("expected no unsatisfied, got %v", unsatisfied)
+	}
+}
+
+func TestValidateCapabilities_MissingCap(t *testing.T) {
+	steps := []PipelineStep{
+		&stubStep{name: "a", contract: StepContract{Capabilities: []string{"ocr"}}},
+		&stubStep{name: "b", contract: StepContract{}},
+		&stubStep{name: "c", contract: StepContract{Capabilities: []string{"vision"}}},
+	}
+	caps := CapabilitySet{"ocr": true}
+	unsatisfied := ValidateCapabilities(steps, caps)
+	if len(unsatisfied) != 1 || unsatisfied[0] != 2 {
+		t.Errorf("expected [2], got %v", unsatisfied)
+	}
+}
+
+func TestValidateCapabilities_NoCaps(t *testing.T) {
+	steps := []PipelineStep{
+		&stubStep{name: "a", contract: StepContract{}},
+	}
+	unsatisfied := ValidateCapabilities(steps, CapabilitySet{})
+	if len(unsatisfied) != 0 {
+		t.Errorf("expected no unsatisfied, got %v", unsatisfied)
+	}
+}
+
+func TestRemoveIndices(t *testing.T) {
+	a := &stubStep{name: "a"}
+	b := &stubStep{name: "b"}
+	c := &stubStep{name: "c"}
+	steps := []PipelineStep{a, b, c}
+	result := RemoveIndices(steps, []int{1})
+	if len(result) != 2 || result[0].Name() != "a" || result[1].Name() != "c" {
+		t.Errorf("unexpected result: %v", result)
+	}
+}
+
 // --- test helper ---
 
 type stubStep struct {
