@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/ideacrafterslabs/ctxt/tree/main/docs
+    about: Browse the documentation before opening an issue
+  - name: Architecture Decision Records
+    url: https://github.com/ideacrafterslabs/ctxt/tree/main/docs/decisions
+    about: Review ADRs to understand design decisions
