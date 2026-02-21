@@ -48,6 +48,12 @@ linters:
     - errorlint     # Find code that will cause problems with error wrapping
     - nilerr        # Find code that returns nil even if error is not nil
 
+    # SQL/IO safety linters
+    - bodyclose     # Ensure HTTP response body is closed
+    - rowserrcheck  # Check whether Err of rows is checked
+    - sqlclosecheck # Ensure sql.Rows and sql.Stmt are closed
+    - noctx         # Ensure context is passed to requests
+
   disable:
     - exhaustive    # Too strict for switches
     - funlen        # Function length check (too opinionated)
