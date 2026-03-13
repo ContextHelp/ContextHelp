@@ -5,13 +5,13 @@ import (
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
-	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/providers/vision"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 type VisionAnalyzer struct {
 	pipeline.BaseContract
-	provider providers.VisionProvider
+	provider vision.Provider
 }
 
 func NewVisionAnalyzer(opts ...func(*VisionAnalyzer)) *VisionAnalyzer {
@@ -21,7 +21,7 @@ func NewVisionAnalyzer(opts ...func(*VisionAnalyzer)) *VisionAnalyzer {
 			Produces:     []string{"Sections", "Metadata"},
 			Capabilities: []string{"vision"},
 		}),
-		provider: providers.NewStubVisionProvider(),
+		provider: vision.NewStubProvider(),
 	}
 	for _, opt := range opts {
 		opt(v)
@@ -29,7 +29,7 @@ func NewVisionAnalyzer(opts ...func(*VisionAnalyzer)) *VisionAnalyzer {
 	return v
 }
 
-func WithVisionProvider(p providers.VisionProvider) func(*VisionAnalyzer) {
+func WithVisionProvider(p vision.Provider) func(*VisionAnalyzer) {
 	return func(v *VisionAnalyzer) { v.provider = p }
 }
 

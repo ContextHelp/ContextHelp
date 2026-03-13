@@ -1,15 +1,15 @@
-package providers
+package vision
 
 import (
 	"testing"
 )
 
-func TestParseVisionResponse(t *testing.T) {
+func TestParseResponse(t *testing.T) {
 	response := `This image shows a cat sitting on a desk next to a laptop. The cat is orange and white.
 
 Labels: cat, desk, laptop, orange, white`
 
-	desc, labels := parseVisionResponse(response)
+	desc, labels := parseResponse(response)
 	if desc == "" {
 		t.Error("description is empty")
 	}
@@ -21,9 +21,9 @@ Labels: cat, desk, laptop, orange, white`
 	}
 }
 
-func TestParseVisionResponseNoLabels(t *testing.T) {
+func TestParseResponseNoLabels(t *testing.T) {
 	response := "A scenic mountain landscape with snow-capped peaks."
-	desc, labels := parseVisionResponse(response)
+	desc, labels := parseResponse(response)
 	if desc != response {
 		t.Errorf("description: got %q", desc)
 	}
@@ -32,8 +32,8 @@ func TestParseVisionResponseNoLabels(t *testing.T) {
 	}
 }
 
-func TestOllamaVisionProviderName(t *testing.T) {
-	p := NewOllamaVisionProvider("http://localhost:11434", "llava")
+func TestOllamaProviderName(t *testing.T) {
+	p := NewOllamaProvider("http://localhost:11434", "llava")
 	if p.Name() != "ollama" {
 		t.Errorf("Name: got %q", p.Name())
 	}

@@ -1,10 +1,15 @@
 package providers
 
 import (
+	"context"
 	"log"
+	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/providers/vision"
 )
 
 // Factory resolves the best available provider for each type based on configuration.
@@ -82,15 +87,39 @@ func (f *Factory) Transcription() TranscriptionProvider {
 	}
 }
 
-// Vision returns the best available VisionProvider.
-func (f *Factory) Vision() VisionProvider {
+// Vision returns the best available vision.Provider.
+func (f *Factory) Vision() vision.Provider {
 	switch f.cfg.Vision.Backend {
 	case "ollama":
 		return f.newOllamaVision()
+	case "openai":
+		return f.newOpenAIVision()
+	case "anthropic":
+		return f.newAnthropicVision()
+	case "gemini":
+		return f.newGeminiVision()
+	case "openrouter":
+		return f.newOpenRouterVision()
 	case "stub":
-		return NewStubVisionProvider()
+		return vision.NewStubProvider()
 	default: // "auto"
-		return f.newOllamaVision()
+		if p := f.tryOllamaVision(); p != nil {
+			return p
+		}
+		if os.Getenv("OPENAI_API_KEY") != "" {
+			return f.newOpenAIVision()
+		}
+		if os.Getenv("ANTHROPIC_API_KEY") != "" {
+			return f.newAnthropicVision()
+		}
+		if os.Getenv("GEMINI_API_KEY") != "" {
+			return f.newGeminiVision()
+		}
+		if os.Getenv("OPENROUTER_API_KEY") != "" {
+			return f.newOpenRouterVision()
+		}
+		log.Println("providers: no vision backend found, using stub")
+		return vision.NewStubProvider()
 	}
 }
 
@@ -243,27 +272,75 @@ func (f *Factory) newOllamaTranscription() TranscriptionProvider {
 	return NewStubTranscriptionProvider()
 }
 
-// --- Ollama (vision) ---
+// --- Vision providers ---
 
-func (f *Factory) newOllamaVision() VisionProvider {
-	endpoint := f.cfg.Vision.Endpoint
-	if endpoint == "" {
-		endpoint = "http://localhost:11434"
+func (f *Factory) ollamaVisionEndpoint() string {
+	if f.cfg.Vision.Endpoint != "" {
+		return f.cfg.Vision.Endpoint
 	}
+	return "http://localhost:11434"
+}
+
+// tryOllamaVision probes the Ollama endpoint. Returns nil if unreachable.
+func (f *Factory) tryOllamaVision() vision.Provider {
+	endpoint := f.ollamaVisionEndpoint()
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(strings.TrimRight(endpoint, "/") + "/api/tags")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	resp.Body.Close()
 	model := f.cfg.Vision.Model
 	if model == "" {
 		model = "llava"
 	}
-	return NewOllamaVisionProvider(endpoint, model)
+	return vision.NewOllamaProvider(endpoint, model)
+}
+
+func (f *Factory) newOllamaVision() vision.Provider {
+	model := f.cfg.Vision.Model
+	if model == "" {
+		model = "llava"
+	}
+	return vision.NewOllamaProvider(f.ollamaVisionEndpoint(), model)
+}
+
+func (f *Factory) newOpenAIVision() vision.Provider {
+	return vision.NewOpenAIProvider(f.cfg.Vision.Model)
+}
+
+func (f *Factory) newAnthropicVision() vision.Provider {
+	return vision.NewAnthropicProvider(f.cfg.Vision.Model)
+}
+
+func (f *Factory) newGeminiVision() vision.Provider {
+	return vision.NewGeminiProvider(f.cfg.Vision.Model)
+}
+
+func (f *Factory) newOpenRouterVision() vision.Provider {
+	return vision.NewOpenRouterProvider(f.cfg.Vision.Model)
 }
 
 // --- Pyannote ---
 
 func (f *Factory) tryPyannote() DiarizationProvider {
-	if _, err := LookupTool("pyannote"); err != nil {
-		return nil
+	// Try standard binary names.
+	for _, name := range []string{"pyannote-audio", "pyannote"} {
+		if path, err := LookupTool(name); err == nil {
+			return NewPyannoteDiarizationProvider(path)
+		}
 	}
-	return NewPyannoteDiarizationProvider()
+
+	// Try python module.
+	if _, err := LookupTool("python3"); err == nil {
+		// Quick check if module is importable.
+		res, err := RunCommand(context.Background(), "python3", "-c", "import pyannote.audio; print('ok')")
+		if err == nil && strings.TrimSpace(res.Stdout) == "ok" {
+			return NewPyannoteDiarizationProvider("python3", "-m", "pyannote.audio")
+		}
+	}
+
+	return nil
 }
 
 func (f *Factory) mustPyannote() DiarizationProvider {

@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help docs docs-dev docker-build docker-up docker-down docker-logs docker-dev docker-docs
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help docs docs-dev docker-build docker-up docker-down docker-logs docker-dev docker-docs
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -22,6 +22,10 @@ DPKMS_MAIN := cmd/dpkms/main.go
 
 # Default target
 all: build
+
+## deps: Install media processing dependencies (pdftotext, whisper, pyannote)
+deps: build-dpkms
+	$(DPKMS_BINARY) install-deps
 
 ## build: Build both ctxt and dpkms binaries
 build: build-ctxt build-dpkms

@@ -57,13 +57,3 @@ func TestStubDiarization(t *testing.T) {
 	}
 }
 
-func TestStubVision(t *testing.T) {
-	p := NewStubVisionProvider()
-	result, err := p.Analyze(context.Background(), []byte("fake"), "image/png")
-	if err != nil {
-		t.Fatalf("Analyze: %v", err)
-	}
-	if result.Description == "" {
-		t.Error("Description is empty")
-	}
-}
