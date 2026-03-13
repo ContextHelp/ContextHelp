@@ -15,6 +15,105 @@ Get up and running with **dPKMS + `ctxt`** development in under 5 minutes.
 - **golangci-lint** — Fast linter ([Install](https://golangci-lint.run/usage/install/))
 - **Docker** — For optional services (Postgres, Redis, Qdrant)
 
+### Media Processing Dependencies
+
+Without these, the system falls back to stubs that return placeholder data.
+
+**FFmpeg** — Video frame extraction, audio extraction, format probing
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Ubuntu/Debian
+sudo apt install ffmpeg
+
+# Verify
+ffmpeg -version && ffprobe -version
+```
+
+**Tesseract** — OCR for images and video frames
+
+```bash
+# macOS
+brew install tesseract
+
+# Ubuntu/Debian
+sudo apt install tesseract-ocr
+
+# Additional language packs (optional, default is English)
+brew install tesseract-lang          # macOS (all languages)
+sudo apt install tesseract-ocr-fra   # Ubuntu (French, etc.)
+
+# Verify
+tesseract --version
+```
+
+**Whisper** — Audio and video transcription
+
+```bash
+# macOS (whisper.cpp via Homebrew)
+brew install whisper-cpp
+
+# Or via pip (slower but easier)
+pip install openai-whisper
+
+# Verify
+whisper-cpp --help
+# or
+whisper --help
+```
+
+**pdftotext** — PDF text extraction (faster than pure-Go fallback)
+
+```bash
+# macOS
+brew install poppler
+
+# Ubuntu/Debian
+sudo apt install poppler-utils
+
+# Verify
+pdftotext -v
+```
+
+**pyannote** — Speaker diarization (who said what in audio/video)
+
+```bash
+# Requires Python 3.8+ and a Hugging Face token
+pip install pyannote.audio
+
+# Verify
+python -c "import pyannote.audio; print('ok')"
+```
+
+**Ollama** — Local LLM, vision analysis, and embeddings
+
+```bash
+# macOS / Linux
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull required models
+ollama pull llava          # Vision analysis
+ollama pull nomic-embed-text  # Embeddings
+ollama pull llama3         # LLM (tagging, summaries)
+
+# Verify
+ollama list
+```
+
+#### What runs without optional dependencies
+
+| Feature | Without deps | With deps |
+|---------|-------------|-----------|
+| Video frame extraction | stub (no frames) | FFmpeg |
+| Image OCR | stub (placeholder text) | Tesseract |
+| Audio/video transcription | stub (placeholder text) | Whisper |
+| PDF text extraction | pure-Go (golib) | pdftotext |
+| Speaker diarization | stub | pyannote |
+| Vision analysis | stub | Ollama + llava |
+| Embeddings | stub | Ollama + nomic-embed-text |
+
 ---
 
 ## Quick Setup (Automated)
