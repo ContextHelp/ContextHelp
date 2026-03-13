@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
@@ -26,7 +27,7 @@ func TestServeStartsAndStops(t *testing.T) {
 	engine := search.NewEngine(driver)
 	svc := service.New(driver, queue, pipes, engine, "", nil)
 
-	router := httpserver.NewRouter(svc)
+	router := httpserver.NewRouter(svc, false, nil)
 
 	// Find a free port.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -41,7 +42,7 @@ func TestServeStartsAndStops(t *testing.T) {
 		Handler: router,
 	}
 
-	pool := jobs.NewWorkerPool(queue, pipes, driver, 1, nil)
+	pool := jobs.NewWorkerPool(queue, pipes, driver, 1, nil, config.JobsConfig{PollInterval: 50 * time.Millisecond, StaleTimeout: 30 * time.Minute, MaxRetries: 3, MaxHops: 5})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

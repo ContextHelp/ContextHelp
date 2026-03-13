@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
@@ -40,7 +41,7 @@ func startTestEnv(t *testing.T) *testEnv {
 	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
 	svc := service.New(driver, queue, pipes, engine, "", nil)
-	router := httpserver.NewRouter(svc)
+	router := httpserver.NewRouter(svc, false, nil)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -49,7 +50,7 @@ func startTestEnv(t *testing.T) *testEnv {
 	addr := ln.Addr().String()
 
 	httpSrv := &gohttp.Server{Handler: router}
-	pool := jobs.NewWorkerPool(queue, pipes, driver, 2, nil)
+	pool := jobs.NewWorkerPool(queue, pipes, driver, 2, nil, config.JobsConfig{PollInterval: 50 * time.Millisecond, StaleTimeout: 30 * time.Minute, MaxRetries: 3, MaxHops: 5})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)

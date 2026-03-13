@@ -11,13 +11,12 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
-
-const maxHops = 5
 
 // WorkerPool runs pipeline jobs from the queue.
 type WorkerPool struct {
@@ -28,18 +27,22 @@ type WorkerPool struct {
 	workers      int
 	staleTimeout time.Duration
 	pollInterval time.Duration
+	maxHops      int
+	maxRetries   int
 }
 
 // NewWorkerPool creates a worker pool.
-func NewWorkerPool(queue *Queue, pipelines pipeline.Registry, store storage.StorageDriver, workers int, bus events.Bus) *WorkerPool {
+func NewWorkerPool(queue *Queue, pipelines pipeline.Registry, store storage.StorageDriver, workers int, bus events.Bus, cfg config.JobsConfig) *WorkerPool {
 	return &WorkerPool{
 		queue:        queue,
 		pipelines:    pipelines,
 		store:        store,
 		bus:          bus,
 		workers:      workers,
-		staleTimeout: 30 * time.Minute,
-		pollInterval: 500 * time.Millisecond,
+		staleTimeout: cfg.StaleTimeout,
+		pollInterval: cfg.PollInterval,
+		maxHops:      cfg.MaxHops,
+		maxRetries:   cfg.MaxRetries,
 	}
 }
 
@@ -116,7 +119,7 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 		return nil, err
 	}
 
-	for hop := 1; hop < maxHops; hop++ {
+	for hop := 1; hop < p.maxHops; hop++ {
 		if draft.Metadata == nil {
 			break
 		}
@@ -237,7 +240,7 @@ func (p *WorkerPool) fanOutItems(ctx context.Context, draft *storage.KnowledgeOb
 			Payload:    content,
 			Pipeline:   "feed.ingest",
 			Source:     source,
-			MaxRetries: 3,
+			MaxRetries: p.maxRetries,
 			CreatedAt:  now,
 			UpdatedAt:  now,
 		}

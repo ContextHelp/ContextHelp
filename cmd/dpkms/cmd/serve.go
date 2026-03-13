@@ -18,8 +18,10 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
+	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
 
 var serveCmd = &cobra.Command{
@@ -61,6 +63,7 @@ func init() {
 	serveCmd.Flags().Bool("public", false, "allow remote connections")
 	serveCmd.Flags().String("profile", "", "default focus profile")
 	serveCmd.Flags().String("steps-path", "", "path to external steps directory")
+	serveCmd.Flags().Bool("dev", false, "enable CORS for Vite dev server (http://localhost:5173)")
 
 	// Bind flags to viper
 	viper.BindPFlag("server.port", serveCmd.Flags().Lookup("port"))
@@ -69,6 +72,7 @@ func init() {
 	viper.BindPFlag("server.public", serveCmd.Flags().Lookup("public"))
 	viper.BindPFlag("profile.default", serveCmd.Flags().Lookup("profile"))
 	viper.BindPFlag("steps.path", serveCmd.Flags().Lookup("steps-path"))
+	viper.BindPFlag("server.dev", serveCmd.Flags().Lookup("dev"))
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
@@ -117,8 +121,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 6. Init service layer.
 	svc := service.New(driver, queue, pipes, engine, stepsPath, nil)
 
+	// 6b. Init watcher manager.
+	watchMgr := watcher.NewManager(driver.Watches(), svc)
+
 	// 7. Build HTTP router.
-	router := httpserver.NewRouter(svc)
+	devCORS := viper.GetBool("server.dev")
+	router := httpserver.NewRouter(svc, devCORS, watchMgr)
 
 	// 8. Determine bind address.
 	bind := "127.0.0.1"
@@ -134,7 +142,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// 10. Init worker pool.
-	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus)
+	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
 
 	// 11. Start everything via errgroup.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -159,6 +167,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 	g.Go(func() error {
 		fmt.Printf("Worker pool started (%d workers)\n", workers)
 		return pool.Start(ctx)
+	})
+
+	// Watcher manager.
+	g.Go(func() error {
+		fmt.Println("Watcher manager started")
+		return watchMgr.Start(ctx)
+	})
+
+	// Cookie bridge (for browser extension).
+	cookieCache := wsserver.NewCookieCache()
+	cookieBridge := wsserver.NewCookieBridgeServer(cookieCache)
+	g.Go(func() error {
+		fmt.Println("Cookie bridge listening on ws://127.0.0.1:9377")
+		return cookieBridge.Start(ctx)
 	})
 
 	// Wait for shutdown signal.

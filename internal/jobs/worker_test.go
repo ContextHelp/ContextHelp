@@ -5,11 +5,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/stretchr/testify/assert"
 )
+
+// defaultTestJobsCfg returns a JobsConfig with fast poll for tests.
+func defaultTestJobsCfg() config.JobsConfig {
+	return config.JobsConfig{
+		PollInterval: 50 * time.Millisecond,
+		StaleTimeout: 30 * time.Minute,
+		MaxRetries:   3,
+		MaxHops:      5,
+	}
+}
 
 func TestProcessJob(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
@@ -23,8 +35,7 @@ func TestProcessJob(t *testing.T) {
 	job.Pipeline = "text.short"
 	q.Enqueue(ctx, job)
 
-	pool := NewWorkerPool(q, pipes, driver, 1, nil)
-	pool.pollInterval = 50 * time.Millisecond
+	pool := NewWorkerPool(q, pipes, driver, 1, nil, defaultTestJobsCfg())
 
 	// Run pool in background, cancel after processing.
 	go func() {
@@ -75,8 +86,7 @@ func TestProcessJobCreatesEdges(t *testing.T) {
 	job.Pipeline = "test.mentions"
 	q.Enqueue(ctx, job)
 
-	pool := NewWorkerPool(q, pipes, driver, 1, nil)
-	pool.pollInterval = 50 * time.Millisecond
+	pool := NewWorkerPool(q, pipes, driver, 1, nil, defaultTestJobsCfg())
 
 	go func() {
 		for {
@@ -116,8 +126,7 @@ func TestProcessJobFailure(t *testing.T) {
 	job.Pipeline = "nonexistent"
 	q.Enqueue(ctx, job)
 
-	pool := NewWorkerPool(q, pipes, driver, 1, nil)
-	pool.pollInterval = 50 * time.Millisecond
+	pool := NewWorkerPool(q, pipes, driver, 1, nil, defaultTestJobsCfg())
 
 	go func() {
 		for {
@@ -143,8 +152,7 @@ func TestWorkerPoolShutdown(t *testing.T) {
 	pipes := builtins.Registry()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	pool := NewWorkerPool(q, pipes, driver, 2, nil)
-	pool.pollInterval = 50 * time.Millisecond
+	pool := NewWorkerPool(q, pipes, driver, 2, nil, defaultTestJobsCfg())
 
 	done := make(chan struct{})
 	go func() {
@@ -185,6 +193,18 @@ func TestStaleRecovery(t *testing.T) {
 	if got.Status != storage.JobPending {
 		t.Errorf("status: got %q", got.Status)
 	}
+}
+
+func TestWorkerPoolUsesConfigPollInterval(t *testing.T) {
+	jobCfg := config.JobsConfig{
+		PollInterval: 100 * time.Millisecond,
+		StaleTimeout: 30 * time.Minute,
+		MaxRetries:   3,
+		MaxHops:      5,
+	}
+	pool := NewWorkerPool(nil, nil, nil, 1, nil, jobCfg)
+	assert.Equal(t, 100*time.Millisecond, pool.pollInterval)
+	assert.Equal(t, 5, pool.maxHops)
 }
 
 // mentionStep is a test step that adds a mention to the draft.
