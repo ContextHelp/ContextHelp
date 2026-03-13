@@ -29,6 +29,7 @@ type Driver struct {
 	detectors  *DetectorStore
 	blobs      storage.BlobStore
 	proximity  *ProximityStore
+	watches    *WatchStore
 }
 
 // New creates a new SQLite driver for the given database path.
@@ -66,6 +67,7 @@ func New(path string) (*Driver, error) {
 	d.detectors = &DetectorStore{db: db}
 	d.blobs = blobstub.New()
 	d.proximity = &ProximityStore{db: db}
+	d.watches = &WatchStore{db: db}
 	return d, nil
 }
 
@@ -88,12 +90,15 @@ func (d *Driver) Pipelines() storage.PipelineStore  { return d.pipelines }
 func (d *Driver) Steps() storage.StepStore          { return d.steps }
 func (d *Driver) Registries() storage.RegistryStore { return d.registries }
 func (d *Driver) Reminders() storage.ReminderStore  { return d.reminders }
-func (d *Driver) Feeds() storage.FeedStore           { return d.feeds }
-func (d *Driver) FeedItems() storage.FeedItemStore   { return d.feedItems }
-func (d *Driver) Batches() storage.BatchStore          { return d.batches }
-func (d *Driver) Detectors() storage.DetectorStore { return d.detectors }
-func (d *Driver) Blobs() storage.BlobStore         { return d.blobs }
+func (d *Driver) Feeds() storage.FeedStore          { return d.feeds }
+func (d *Driver) FeedItems() storage.FeedItemStore  { return d.feedItems }
+func (d *Driver) Batches() storage.BatchStore       { return d.batches }
+func (d *Driver) Detectors() storage.DetectorStore  { return d.detectors }
+func (d *Driver) Blobs() storage.BlobStore          { return d.blobs }
 func (d *Driver) Proximity() storage.ProximityStore { return d.proximity }
+func (d *Driver) Watches() storage.WatchStore       { return d.watches }
+func (d *Driver) Aliases() storage.AliasStore       { return &aliasStore{db: d.db} }
+func (d *Driver) AuditLog() storage.AuditStore      { return &auditStore{db: d.db} }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)

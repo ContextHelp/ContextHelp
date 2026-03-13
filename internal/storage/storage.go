@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"time"
+
 )
 
 // StorageDriver is the top-level interface for all persistence operations.
@@ -24,7 +25,72 @@ type StorageDriver interface {
 	Detectors() DetectorStore
 	Blobs() BlobStore
 	Proximity() ProximityStore
+	Watches() WatchStore
+	Aliases() AliasStore
+	AuditLog() AuditStore
 	Health(ctx context.Context) error
+}
+
+// Alias represents a human-readable name that resolves to a knowledge object ID.
+type Alias struct {
+	Alias     string    `json:"alias"`
+	ObjectID  string    `json:"object_id"`
+	Scope     string    `json:"scope"`   // "global" | "profile"
+	Profile   string    `json:"profile"` // empty for global
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// AliasFilter restricts alias listing results.
+type AliasFilter struct {
+	ObjectID string
+	Scope    string
+	Profile  string
+}
+
+// AliasStore persists and retrieves object aliases.
+type AliasStore interface {
+	// Create stores a new alias. Returns error if the alias+scope+profile triple already exists.
+	Create(ctx context.Context, a *Alias) error
+	// Resolve returns the object ID for the given alias, considering global scope and
+	// the provided profile scope. Returns ("", ErrNotFound) if no match.
+	Resolve(ctx context.Context, alias, profile string) (string, error)
+	// List returns all aliases matching the filter.
+	List(ctx context.Context, filter AliasFilter) ([]*Alias, error)
+	// Delete removes the alias with the given alias+scope+profile triple.
+	Delete(ctx context.Context, alias, scope, profile string) error
+}
+
+// AuditEntry is one immutable record in the audit log.
+type AuditEntry struct {
+	ID        string         `json:"id"`
+	EventType string         `json:"event_type"`
+	ObjectID  string         `json:"object_id"`
+	Actor     string         `json:"actor"`
+	Payload   map[string]any `json:"payload"`
+	CreatedAt time.Time      `json:"created_at"`
+}
+
+// AuditFilter restricts audit log queries.
+type AuditFilter struct {
+	ObjectID  string
+	EventType string
+	Actor     string
+	After     time.Time
+	Before    time.Time
+	Limit     int
+	Offset    int
+}
+
+// AuditStore is an append-only store for audit log entries.
+// There are intentionally no Update or Delete methods.
+type AuditStore interface {
+	// Append inserts a new entry. Returns error on failure; never modifies existing entries.
+	Append(ctx context.Context, entry *AuditEntry) error
+	// List returns entries matching the filter, ordered by created_at ascending.
+	List(ctx context.Context, filter AuditFilter) ([]*AuditEntry, int, error)
+	// GetObjectHistory returns all entries for a specific object, ordered by created_at ascending.
+	GetObjectHistory(ctx context.Context, objectID string) ([]*AuditEntry, error)
 }
 
 // BlobStore manages external binary content.
@@ -180,4 +246,18 @@ type ProximityStore interface {
 
 	// Stats returns aggregate statistics about the proximity index.
 	Stats(ctx context.Context) (*ProximityStats, error)
+}
+
+// WatchStore persists and retrieves filesystem watch configurations and file records.
+type WatchStore interface {
+	CreateWatch(ctx context.Context, w *WatchConfig) error
+	GetWatch(ctx context.Context, id string) (*WatchConfig, error)
+	ListWatches(ctx context.Context, status string) ([]*WatchConfig, error)
+	UpdateWatch(ctx context.Context, w *WatchConfig) error
+	DeleteWatch(ctx context.Context, id string) error
+
+	UpsertFileRecord(ctx context.Context, r *WatchFileRecord) error
+	GetFileRecord(ctx context.Context, watchID, filePath string) (*WatchFileRecord, error)
+	DeleteFileRecord(ctx context.Context, watchID, filePath string) error
+	ListFileRecords(ctx context.Context, watchID string) ([]*WatchFileRecord, error)
 }

@@ -23,19 +23,22 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		return fmt.Errorf("create object: %w", err)
 	}
 
+	if obj.Status == "" {
+		obj.Status = "active"
+	}
 	_, err = s.db.ExecContext(ctx, `INSERT INTO objects (
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, embeddings, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, nil, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.Format(time.RFC3339), obj.UpdatedAt.Format(time.RFC3339),
-		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed),
+		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed), obj.Status, obj.InboxNote,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
@@ -52,7 +55,7 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed
+		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note
 	FROM objects WHERE id = ?`, id)
 	return scanObject(row)
 }
@@ -66,7 +69,7 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed
+		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note
 	FROM objects WHERE content_hash = ? LIMIT 1`, hash)
 	return scanObject(row)
 }
@@ -74,6 +77,16 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	var conditions []string
 	var args []any
+
+	// Status filter: default to "active" to avoid breaking existing callers.
+	statusVal := filter.Status
+	if statusVal == "" {
+		statusVal = "active"
+	}
+	if statusVal != "all" {
+		conditions = append(conditions, "status = ?")
+		args = append(args, statusVal)
+	}
 
 	if filter.Type != "" {
 		conditions = append(conditions, "type = ?")
@@ -128,7 +141,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed
+		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note
 	FROM objects %s ORDER BY %s %s`, where, sortCol, dir)
 
 	if filter.Limit > 0 {
@@ -166,14 +179,14 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		metadata=?, summaries=?, sections=?, tags=?, mentions=?,
 		decisions=?, tasks=?, pipeline=?, source=?,
 		registry_influences=?, plugins=?, content_hash=?, reinforcement_count=?, last_reinforced_at=?,
-		updated_at=?, fts_indexed=?, vector_indexed=?
+		updated_at=?, fts_indexed=?, vector_indexed=?, status=?, inbox_note=?
 	WHERE id=?`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.Format(time.RFC3339),
-		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed),
+		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed), obj.Status, obj.InboxNote,
 		obj.ID,
 	)
 	if err != nil {
@@ -319,7 +332,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed
+		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note
 	FROM objects`
 	if where != "" {
 		query += " WHERE " + where
@@ -366,7 +379,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed,
+		&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -397,7 +410,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed,
+		&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
@@ -503,7 +516,7 @@ func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.Knowle
 		       o.metadata, o.summaries, o.sections, o.tags, o.mentions,
 		       o.decisions, o.tasks, o.pipeline, o.source,
 		       o.registry_influences, o.plugins, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
-		       o.created_at, o.updated_at, o.fts_indexed, o.vector_indexed,
+		       o.created_at, o.updated_at, o.fts_indexed, o.vector_indexed, o.status, o.inbox_note,
 		       oe.embedding
 		FROM objects o
 		INNER JOIN object_embeddings oe ON o.id = oe.id
@@ -530,7 +543,7 @@ func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.Knowle
 			&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 			&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 			&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-			&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed,
+			&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
 			&embeddingBlob,
 		); err != nil {
 			return nil, fmt.Errorf("scan embedding row: %w", err)
