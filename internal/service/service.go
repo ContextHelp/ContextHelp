@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/ideacrafterslabs/ctxt/internal/citation"
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -32,15 +34,21 @@ type Service struct {
 	Discovery *steps.StepDiscovery
 	Executor  *steps.StepExecutor
 	Bus       events.Bus
+	Cfg       config.Config
 }
 
 // New creates a new service instance.
-func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus) *Service {
+func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus, cfg ...config.Config) *Service {
 	discovery := steps.NewStepDiscovery(store, stepsPath)
 	executor := steps.NewStepExecutor(store, stepsPath)
 
 	if bus == nil {
 		bus = events.NewLocalBus()
+	}
+
+	var c config.Config
+	if len(cfg) > 0 {
+		c = cfg[0]
 	}
 
 	return &Service{
@@ -51,6 +59,7 @@ func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry
 		Discovery: discovery,
 		Executor:  executor,
 		Bus:       bus,
+		Cfg:       c,
 	}
 }
 
@@ -72,6 +81,25 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	jobSource := req.Source
 	if detectedType == "url" {
 		jobSource = strings.TrimSpace(req.Content)
+	}
+
+	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).
+	dup, err := s.checkDuplicates(ctx, req.KnownHash, nil, s.Cfg.Duplicates)
+	if err != nil {
+		return "", fmt.Errorf("analyze: duplicate check: %w", err)
+	}
+	if dup != nil {
+		switch s.Cfg.Duplicates.Policy {
+		case "drop":
+			// Return the existing object's ID — no new job enqueued.
+			return dup.Existing.ID, nil
+		case "warn":
+			fmt.Fprintf(os.Stderr, "warning: duplicate detected (%s): existing object %s\n",
+				dup.Kind, dup.Existing.ID)
+			// Fall through — continue ingestion.
+		case "keep":
+			// Fall through silently.
+		}
 	}
 
 	job := &storage.Job{

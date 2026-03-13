@@ -9,10 +9,11 @@ import (
 
 // AnalyzeRequest represents a request to analyze content.
 type AnalyzeRequest struct {
-	Content  string `json:"content"`
-	Type     string `json:"type"`
-	Pipeline string `json:"pipeline,omitempty"`
-	Source   string `json:"source,omitempty"`
+	Content   string `json:"content"`
+	Type      string `json:"type"`
+	Pipeline  string `json:"pipeline,omitempty"`
+	Source    string `json:"source,omitempty"`
+	KnownHash string `json:"known_hash,omitempty"` // pre-computed content hash; skips re-hashing
 }
 
 // CreatePipelineRequest represents a request to create a custom pipeline.

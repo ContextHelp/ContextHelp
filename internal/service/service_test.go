@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
@@ -21,6 +22,48 @@ func newTestService(t *testing.T) *Service {
 	pipes := pipeline.DefaultRegistry()
 	engine := search.NewEngine(driver)
 	return New(driver, q, pipes, engine, "", nil)
+}
+
+func TestAnalyzeDuplicateDrop(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	// First ingestion.
+	req := AnalyzeRequest{Content: "hello duplicate world", Type: "text"}
+	jobID1, err := svc.Analyze(ctx, req)
+	require.NoError(t, err)
+	require.NotEmpty(t, jobID1)
+
+	// Simulate pipeline completing: create an object with a known hash.
+	hash := "sha256:test-hash-drop"
+	obj := &storage.KnowledgeObject{
+		ID:          "obj-drop-1",
+		Type:        "text",
+		ContentHash: hash,
+		RawContent:  "hello duplicate world",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+
+	// Override config to use drop policy and point hash at known object.
+	svc.Cfg.Duplicates = config.DuplicatesConfig{
+		Policy:              "drop",
+		CheckExact:          true,
+		SimilarityThreshold: 0.95,
+	}
+
+	// Second ingestion with same hash — should return existing object ID, not a new job.
+	req2 := AnalyzeRequest{Content: "hello duplicate world", Type: "text", KnownHash: hash}
+	result, err := svc.Analyze(ctx, req2)
+	require.NoError(t, err)
+	assert.Equal(t, "obj-drop-1", result, "drop policy should return existing object ID")
+
+	// Confirm only one object exists.
+	objs, total, err := svc.Store.Objects().List(ctx, storage.ObjectFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, 1, total, "only one object should exist after drop dedup")
+	assert.Equal(t, "obj-drop-1", objs[0].ID)
 }
 
 func TestAnalyze(t *testing.T) {
