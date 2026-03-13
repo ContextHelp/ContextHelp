@@ -24,13 +24,13 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 
 	_, err = s.db.ExecContext(ctx, `INSERT INTO objects (
-		id, type, subtype, raw_content, content_type,
+		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, embeddings, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, nil, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
@@ -48,7 +48,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 
 func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT
-		id, type, subtype, raw_content, content_type,
+		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
@@ -62,7 +62,7 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		return nil, nil
 	}
 	row := s.db.QueryRowContext(ctx, `SELECT
-		id, type, subtype, raw_content, content_type,
+		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
@@ -124,7 +124,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 	}
 
 	query := fmt.Sprintf(`SELECT
-		id, type, subtype, raw_content, content_type,
+		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
@@ -162,13 +162,13 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 
 	result, err := s.db.ExecContext(ctx, `UPDATE objects SET
-		type=?, subtype=?, raw_content=?, content_type=?,
+		type=?, subtype=?, raw_content=?, content_type=?, text_content=?,
 		metadata=?, summaries=?, sections=?, tags=?, mentions=?,
 		decisions=?, tasks=?, pipeline=?, source=?,
 		registry_influences=?, plugins=?, content_hash=?, reinforcement_count=?, last_reinforced_at=?,
 		updated_at=?, fts_indexed=?, vector_indexed=?
 	WHERE id=?`,
-		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
+		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
@@ -301,7 +301,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 	}
 
 	query := `SELECT
-		id, type, subtype, raw_content, content_type,
+		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
@@ -348,7 +348,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 	)
 
 	err := row.Scan(
-		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
+		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
@@ -379,7 +379,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 	)
 
 	err := rows.Scan(
-		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
+		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
@@ -485,7 +485,7 @@ func (s *ObjectStore) upsertEmbedding(ctx context.Context, id string, vec []floa
 // ListWithEmbeddings returns all objects that have a stored embedding blob.
 func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT o.id, o.type, o.subtype, o.raw_content, o.content_type,
+		SELECT o.id, o.type, o.subtype, o.raw_content, o.content_type, o.text_content,
 		       o.metadata, o.summaries, o.sections, o.tags, o.mentions,
 		       o.decisions, o.tasks, o.pipeline, o.source,
 		       o.registry_influences, o.plugins, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
@@ -512,7 +512,7 @@ func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.Knowle
 			embeddingBlob                                       []byte
 		)
 		if err := rows.Scan(
-			&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
+			&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 			&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 			&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 			&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,

@@ -8,6 +8,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	blobstub "github.com/ideacrafterslabs/ctxt/internal/storage/blob/stub"
 )
 
 // Driver implements storage.StorageDriver for SQLite.
@@ -26,7 +27,8 @@ type Driver struct {
 	feedItems  *FeedItemStore
 	batches    *BatchStore
 	detectors  *DetectorStore
-	blobs      *BlobStore
+	blobs      storage.BlobStore
+	proximity  *ProximityStore
 }
 
 // New creates a new SQLite driver for the given database path.
@@ -62,9 +64,13 @@ func New(path string) (*Driver, error) {
 	d.feedItems = &FeedItemStore{db: db}
 	d.batches = &BatchStore{db: db}
 	d.detectors = &DetectorStore{db: db}
-	d.blobs = &BlobStore{}
+	d.blobs = blobstub.New()
+	d.proximity = &ProximityStore{db: db}
 	return d, nil
 }
+
+// SetBlobs allows injection of a custom BlobStore implementation.
+func (d *Driver) SetBlobs(bs storage.BlobStore) { d.blobs = bs }
 
 func (d *Driver) Init(ctx context.Context) error {
 	return d.Migrate(ctx)
@@ -87,6 +93,7 @@ func (d *Driver) FeedItems() storage.FeedItemStore   { return d.feedItems }
 func (d *Driver) Batches() storage.BatchStore          { return d.batches }
 func (d *Driver) Detectors() storage.DetectorStore { return d.detectors }
 func (d *Driver) Blobs() storage.BlobStore         { return d.blobs }
+func (d *Driver) Proximity() storage.ProximityStore { return d.proximity }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)

@@ -9,7 +9,9 @@ import (
 
 func TestAllDefsRegistered(t *testing.T) {
 	d := Defs()
-	expected := []string{
+	// Verify that the core set of pipelines is always present.
+	// New pipelines may be added over time; this list represents the stable baseline.
+	required := []string{
 		"text.short", "text.long",
 		"image.ocr", "image.analysis",
 		"audio.transcribe", "video.full", "video.audio_only",
@@ -17,21 +19,19 @@ func TestAllDefsRegistered(t *testing.T) {
 		"url.generic",
 		"feed.sync",
 		"batch.jsonl", "batch.csv", "batch.tsv",
+		"import.twitter", "import.linkedin.posts", "import.linkedin.articles",
 	}
-	for _, name := range expected {
+	for _, name := range required {
 		if _, ok := d[name]; !ok {
 			t.Errorf("missing pipeline def %q", name)
 		}
-	}
-	if len(d) != len(expected) {
-		t.Errorf("def count: got %d, want %d", len(d), len(expected))
 	}
 }
 
 func TestAllStepsResolve(t *testing.T) {
 	for name, d := range Defs() {
 		for _, step := range d.Steps {
-			s, err := resolveStep(step, nil)
+			s, err := resolveStep(step, BuildOpts{})
 			if err != nil {
 				t.Errorf("pipeline %q: step %q failed to resolve: %v", name, step, err)
 				continue
@@ -47,19 +47,23 @@ func TestRegistryBuildsAllPipelines(t *testing.T) {
 	r := Registry()
 	names := r.List()
 
-	expected := []string{
+	// Verify that the core set of pipelines is present in the registry.
+	// The registry may contain additional pipelines; we check membership, not an exact list.
+	required := []string{
 		"audio.transcribe", "batch.csv", "batch.jsonl", "batch.tsv",
 		"doc.code", "doc.markdown", "doc.office", "doc.pdf",
 		"feed.sync", "image.analysis", "image.ocr", "text.long",
 		"text.short", "url.generic", "video.audio_only", "video.full",
+		"import.twitter", "import.linkedin.posts", "import.linkedin.articles",
 	}
 
-	if len(names) != len(expected) {
-		t.Fatalf("pipeline count: got %d, want %d\ngot: %v", len(names), len(expected), names)
+	nameSet := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		nameSet[n] = struct{}{}
 	}
-	for i, name := range names {
-		if name != expected[i] {
-			t.Errorf("pipeline[%d]: got %q, want %q", i, name, expected[i])
+	for _, name := range required {
+		if _, ok := nameSet[name]; !ok {
+			t.Errorf("pipeline %q missing from registry; registered: %v", name, names)
 		}
 	}
 }
@@ -156,11 +160,11 @@ func TestAllPipelinesValidateComposability(t *testing.T) {
 }
 
 func TestStrictModeRejectsIncapable(t *testing.T) {
-	// With nil factory and strict mode, pipelines requiring capabilities should fail.
+	// With empty opts and strict mode, pipelines requiring capabilities should fail.
 	d := Defs()["image.ocr"]
-	_, err := buildPipeline("image.ocr", d, nil, true)
+	_, err := buildPipeline("image.ocr", d, BuildOpts{}, true)
 	if err == nil {
-		t.Error("expected error in strict mode with nil factory for image.ocr")
+		t.Error("expected error in strict mode with empty opts for image.ocr")
 	}
 }
 

@@ -31,3 +31,13 @@ func CapabilitiesFromFactory(f *providers.Factory) pipeline.CapabilitySet {
 
 	return caps
 }
+
+// CapabilitiesFromOpts builds a CapabilitySet from BuildOpts, including
+// provider capabilities and blob-externalize if a BlobStore is configured.
+func CapabilitiesFromOpts(opts BuildOpts) pipeline.CapabilitySet {
+	caps := CapabilitiesFromFactory(opts.Factory)
+	if opts.BlobStore != nil {
+		caps["blob-externalize"] = true
+	}
+	return caps
+}

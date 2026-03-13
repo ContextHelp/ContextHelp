@@ -8,6 +8,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // Def is a declarative pipeline definition.
@@ -43,6 +44,9 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"entity_extractor":  func() pipeline.PipelineStep { return steps.NewEntityExtractor() },
 	"timestamp_aligner": func() pipeline.PipelineStep { return steps.NewTimestampAligner() },
 	"noop":              func() pipeline.PipelineStep { return steps.NewNoop() },
+	// Dropbox pipeline steps.
+	"dropbox_fetcher":  func() pipeline.PipelineStep { return steps.NewDropboxFetcher() },
+	"dropbox_enqueuer": func() pipeline.PipelineStep { return steps.NewDropboxEnqueuer() },
 	// Feed pipeline steps.
 	"feed_fetcher":      func() pipeline.PipelineStep { return steps.NewFeedFetcher() },
 	"feed_parser":       func() pipeline.PipelineStep { return steps.NewFeedParser() },
@@ -56,6 +60,10 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	// Video pipeline steps.
 	"scene_detector":    func() pipeline.PipelineStep { return steps.NewSceneDetector() },
 	"timeline_assembler": func() pipeline.PipelineStep { return steps.NewTimelineAssembler() },
+	// Slack import pipeline steps.
+	"slack_parser":   func() pipeline.PipelineStep { return steps.NewSlackParser() },
+	// Discord import pipeline steps.
+	"discord_parser": func() pipeline.PipelineStep { return steps.NewDiscordParser() },
 	// Document pipeline steps.
 	"markdown_parser":     func() pipeline.PipelineStep { return steps.NewMarkdownParser() },
 	"heading_splitter":    func() pipeline.PipelineStep { return steps.NewHeadingSplitter() },
@@ -64,6 +72,28 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"function_extractor":  func() pipeline.PipelineStep { return steps.NewFunctionExtractor() },
 	"comment_extractor":   func() pipeline.PipelineStep { return steps.NewCommentExtractor() },
 	"table_extractor":     func() pipeline.PipelineStep { return steps.NewTableExtractor() },
+	// Social media archive steps.
+	"twitter_archive_parser":   func() pipeline.PipelineStep { return steps.NewTwitterArchiveParser() },
+	"linkedin_posts_parser":    func() pipeline.PipelineStep { return steps.NewLinkedInPostsParser() },
+	"linkedin_articles_parser": func() pipeline.PipelineStep { return steps.NewLinkedInArticlesParser() },
+	// Email pipeline steps.
+	"email_parser":   func() pipeline.PipelineStep { return steps.NewEmailParser() },
+	"email_filter":   func() pipeline.PipelineStep { return newDefaultEmailFilter() },
+	"email_enqueuer": func() pipeline.PipelineStep { return steps.NewEmailEnqueuer() },
+}
+
+// blobStepConstructors maps step names to blob-store-aware constructors.
+var blobStepConstructors = map[string]func(storage.BlobStore, int64) pipeline.PipelineStep{
+	"externalize_content": func(bs storage.BlobStore, threshold int64) pipeline.PipelineStep {
+		return steps.NewExternalizer(bs, threshold)
+	},
+}
+
+// BuildOpts carries optional dependencies for registry construction.
+type BuildOpts struct {
+	Factory       *providers.Factory
+	BlobStore     storage.BlobStore
+	BlobThreshold int64
 }
 
 // providerStepConstructors maps step names to provider-aware constructors.
@@ -106,11 +136,16 @@ var providerStepConstructors = map[string]func(*providers.Factory) pipeline.Pipe
 	},
 }
 
-// resolveStep builds a PipelineStep from a step name, optionally using a Factory for provider-aware steps.
-func resolveStep(name string, f *providers.Factory) (pipeline.PipelineStep, error) {
-	if f != nil {
+// resolveStep builds a PipelineStep from a step name, using BuildOpts for provider/blob-aware steps.
+func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
+	if opts.Factory != nil {
 		if ctor, ok := providerStepConstructors[name]; ok {
-			return ctor(f), nil
+			return ctor(opts.Factory), nil
+		}
+	}
+	if opts.BlobStore != nil {
+		if ctor, ok := blobStepConstructors[name]; ok {
+			return ctor(opts.BlobStore, opts.BlobThreshold), nil
 		}
 	}
 	if ctor, ok := stepConstructors[name]; ok {
@@ -142,10 +177,10 @@ func resolveStep(name string, f *providers.Factory) (pipeline.PipelineStep, erro
 
 // buildPipeline constructs a Pipeline from a Def, optionally injecting providers.
 // If strict is true, unsatisfied capabilities cause an error; otherwise they are pruned.
-func buildPipeline(name string, d Def, f *providers.Factory, strict bool) (*pipeline.Pipeline, error) {
+func buildPipeline(name string, d Def, opts BuildOpts, strict bool) (*pipeline.Pipeline, error) {
 	pipelineSteps := make([]pipeline.PipelineStep, 0, len(d.Steps))
 	for _, stepName := range d.Steps {
-		s, err := resolveStep(stepName, f)
+		s, err := resolveStep(stepName, opts)
 		if err != nil {
 			return nil, fmt.Errorf("pipeline %q: %w", name, err)
 		}
@@ -153,7 +188,7 @@ func buildPipeline(name string, d Def, f *providers.Factory, strict bool) (*pipe
 	}
 
 	// Capability check: prune or reject steps with unsatisfied capabilities.
-	caps := CapabilitiesFromFactory(f)
+	caps := CapabilitiesFromOpts(opts)
 	unsatisfied := pipeline.ValidateCapabilities(pipelineSteps, caps)
 	if len(unsatisfied) > 0 {
 		if strict {
@@ -235,27 +270,32 @@ func selectPipeline(selectors []selector, content string) string {
 // Registry builds a pipeline.Registry from all registered defs (no providers).
 // Steps with unsatisfied capabilities are pruned silently.
 func Registry() pipeline.Registry {
-	return buildRegistry(nil, false)
+	return buildRegistry(BuildOpts{}, false)
 }
 
 // ConfiguredRegistry builds a pipeline.Registry with real providers injected.
 // Steps with unsatisfied capabilities are pruned silently.
 func ConfiguredRegistry(f *providers.Factory) pipeline.Registry {
-	return buildRegistry(f, false)
+	return buildRegistry(BuildOpts{Factory: f}, false)
+}
+
+// ConfiguredRegistryWithOpts builds a pipeline.Registry with full BuildOpts (providers + blob store).
+func ConfiguredRegistryWithOpts(opts BuildOpts) pipeline.Registry {
+	return buildRegistry(opts, false)
 }
 
 // ConfiguredRegistryStrict builds a pipeline.Registry that rejects pipelines
 // with unsatisfied capabilities instead of pruning them.
 func ConfiguredRegistryStrict(f *providers.Factory) pipeline.Registry {
-	return buildRegistry(f, true)
+	return buildRegistry(BuildOpts{Factory: f}, true)
 }
 
-func buildRegistry(f *providers.Factory, strict bool) pipeline.Registry {
+func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()
 
 	for name, d := range defs {
-		p, err := buildPipeline(name, d, f, strict)
+		p, err := buildPipeline(name, d, opts, strict)
 		if err != nil {
 			panic(fmt.Sprintf("builtins: %v", err))
 		}
@@ -269,6 +309,16 @@ func buildRegistry(f *providers.Factory, strict bool) pipeline.Registry {
 	}))
 
 	return r
+}
+
+// newDefaultEmailFilter creates an EmailFilter using the built-in default ruleset.
+// It panics on invalid regex (which indicates a coding error, not a runtime error).
+func newDefaultEmailFilter() pipeline.PipelineStep {
+	f, err := steps.NewEmailFilter(steps.DefaultRuleset())
+	if err != nil {
+		panic(fmt.Sprintf("builtins: email_filter: %v", err))
+	}
+	return f
 }
 
 // Defs returns a copy of the registered pipeline definitions (for testing/inspection).

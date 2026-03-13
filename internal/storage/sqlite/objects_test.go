@@ -341,3 +341,85 @@ func TestListBySQL_JSONExtract(t *testing.T) {
 	assert.Len(t, objs, 1)
 	assert.Equal(t, "meta-1", objs[0].ID)
 }
+
+func TestVectorSearch_ReturnsRankedResults(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	// Object A has embedding close to query direction.
+	objA := makeObject("vec-a", "item")
+	objA.Embeddings = []float32{1, 0, 0}
+	require.NoError(t, d.Objects().Create(ctx, objA))
+
+	// Object B has embedding orthogonal to query.
+	objB := makeObject("vec-b", "item")
+	objB.Embeddings = []float32{0, 1, 0}
+	require.NoError(t, d.Objects().Create(ctx, objB))
+
+	// Object C has embedding in opposite direction.
+	objC := makeObject("vec-c", "item")
+	objC.Embeddings = []float32{-1, 0, 0}
+	require.NoError(t, d.Objects().Create(ctx, objC))
+
+	// Query vector aligns with A.
+	query := []float32{1, 0, 0}
+	results, err := d.Objects().VectorSearch(ctx, query, storage.ObjectFilter{Limit: 3})
+	require.NoError(t, err)
+	require.Len(t, results, 3)
+
+	// A should rank first (cosine = 1.0).
+	assert.Equal(t, "vec-a", results[0].ID)
+	// C should rank last (cosine = -1.0).
+	assert.Equal(t, "vec-c", results[2].ID)
+
+	// Scores should be attached in metadata.
+	assert.InDelta(t, 1.0, results[0].Metadata["score"].(float64), 0.001)
+}
+
+func TestVectorSearch_FiltersByType(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	objA := makeObject("cat-v", "category")
+	objA.Embeddings = []float32{1, 0, 0}
+	require.NoError(t, d.Objects().Create(ctx, objA))
+
+	objB := makeObject("item-v", "item")
+	objB.Embeddings = []float32{1, 0, 0}
+	require.NoError(t, d.Objects().Create(ctx, objB))
+
+	results, err := d.Objects().VectorSearch(ctx, []float32{1, 0, 0}, storage.ObjectFilter{Type: "category", Limit: 10})
+	require.NoError(t, err)
+	assert.Len(t, results, 1)
+	assert.Equal(t, "cat-v", results[0].ID)
+}
+
+func TestVectorSearch_EmptyVectorError(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	_, err := d.Objects().VectorSearch(ctx, nil, storage.ObjectFilter{})
+	assert.Error(t, err)
+}
+
+func TestVectorSearch_RespectsLimit(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		obj := makeObject(fmt.Sprintf("lim-%d", i), "item")
+		obj.Embeddings = []float32{1, 0, 0}
+		require.NoError(t, d.Objects().Create(ctx, obj))
+	}
+
+	results, err := d.Objects().VectorSearch(ctx, []float32{1, 0, 0}, storage.ObjectFilter{Type: "item", Limit: 2})
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+}
+
+func TestCosineSimilarity(t *testing.T) {
+	assert.InDelta(t, 1.0, cosineSimilarity([]float32{1, 0, 0}, []float32{1, 0, 0}), 0.0001)
+	assert.InDelta(t, 0.0, cosineSimilarity([]float32{1, 0, 0}, []float32{0, 1, 0}), 0.0001)
+	assert.InDelta(t, -1.0, cosineSimilarity([]float32{1, 0, 0}, []float32{-1, 0, 0}), 0.0001)
+	assert.InDelta(t, 0.0, cosineSimilarity([]float32{0, 0, 0}, []float32{1, 0, 0}), 0.0001)
+}

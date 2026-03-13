@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"testing"
+	"time"
 )
 
 // mockDriver verifies that a concrete type can satisfy StorageDriver.
@@ -23,8 +24,9 @@ func (m *mockDriver) Feeds() FeedStore                 { return &mockFeedStore{}
 func (m *mockDriver) FeedItems() FeedItemStore         { return &mockFeedItemStore{} }
 func (m *mockDriver) Batches() BatchStore              { return &mockBatchStore{} }
 func (m *mockDriver) Detectors() DetectorStore         { return &mockDetectorStore{} }
-func (m *mockDriver) Blobs() BlobStore                 { return &mockBlobStore{} }
-func (m *mockDriver) Health(ctx context.Context) error { return nil }
+func (m *mockDriver) Blobs() BlobStore                    { return &mockBlobStore{} }
+func (m *mockDriver) Proximity() ProximityStore            { return &mockProximityStore{} }
+func (m *mockDriver) Health(ctx context.Context) error    { return nil }
 
 type mockBlobStore struct{}
 
@@ -205,6 +207,25 @@ func (m *mockDetectorStore) Update(_ context.Context, _ *DetectorRecord) error {
 func (m *mockDetectorStore) Delete(_ context.Context, _ string) error          { return nil }
 func (m *mockDetectorStore) Enable(_ context.Context, _ string) error          { return nil }
 func (m *mockDetectorStore) Disable(_ context.Context, _ string) error         { return nil }
+
+type mockProximityStore struct{}
+
+func (m *mockProximityStore) GetNeighbors(_ context.Context, _ string, _ int) ([]*ProximityScore, error) {
+	return nil, nil
+}
+func (m *mockProximityStore) GetNeighborsAbove(_ context.Context, _ string, _ float64) ([]*ProximityScore, error) {
+	return nil, nil
+}
+func (m *mockProximityStore) Get(_ context.Context, _, _ string) (*ProximityScore, error) {
+	return nil, nil
+}
+func (m *mockProximityStore) Put(_ context.Context, _ *ProximityScore) error { return nil }
+func (m *mockProximityStore) PutBatch(_ context.Context, _ []*ProximityScore) error { return nil }
+func (m *mockProximityStore) Delete(_ context.Context, _ string) error { return nil }
+func (m *mockProximityStore) FindStale(_ context.Context, _ time.Time, _ int) ([]string, error) {
+	return nil, nil
+}
+func (m *mockProximityStore) Stats(_ context.Context) (*ProximityStats, error) { return nil, nil }
 
 func TestStorageDriverInterfaceSatisfaction(t *testing.T) {
 	var d StorageDriver = &mockDriver{}

@@ -74,6 +74,12 @@ func NewRouter(svc *service.Service) chi.Router {
 		r.Post("/import", CreateImport(svc))
 		r.Get("/import/{id}", GetImport(svc))
 
+		// Importers
+		r.Post("/importers/dropbox/run", RunDropboxImport(svc))
+		r.Post("/importers/slack/run", RunSlackImport(svc))
+		r.Post("/importers/discord/run", RunDiscordImport(svc))
+		r.Get("/importers/runs/{id}", GetImporterRun(svc))
+
 		// System
 		r.Get("/system/reminders", ListReminders(svc))
 		r.Post("/system/reminders/{id}/dismiss", DismissReminder(svc))

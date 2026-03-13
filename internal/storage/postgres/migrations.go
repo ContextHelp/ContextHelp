@@ -203,6 +203,9 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
 	return nil, fmt.Errorf("not implemented")
 }
+func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	return nil, fmt.Errorf("not implemented")
+}
 
 func (s *EntityStore) Upsert(ctx context.Context, entity *storage.Entity) error {
 	return fmt.Errorf("not implemented")

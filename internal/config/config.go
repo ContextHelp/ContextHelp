@@ -48,6 +48,37 @@ type Config struct {
 
 	// Providers configuration
 	Providers ProvidersConfig `mapstructure:"providers"`
+
+	// Retrieval configuration
+	Retrieval RetrievalConfig `mapstructure:"retrieval"`
+}
+
+// RetrievalConfig controls progressive retrieval behaviour.
+type RetrievalConfig struct {
+	Method                 string     `mapstructure:"method" yaml:"method" json:"method"` // "rag" or "llm"
+	EnableSufficiencyCheck bool       `mapstructure:"enable_sufficiency_check" yaml:"enable_sufficiency_check" json:"enable_sufficiency_check"`
+	LLMProfile             string     `mapstructure:"llm_profile" yaml:"llm_profile" json:"llm_profile"`
+	Categories             TierConfig `mapstructure:"categories" yaml:"categories" json:"categories"`
+	Items                  TierConfig `mapstructure:"items" yaml:"items" json:"items"`
+	Resources              TierConfig `mapstructure:"resources" yaml:"resources" json:"resources"`
+}
+
+// TierConfig controls a single retrieval tier.
+type TierConfig struct {
+	Enabled bool `mapstructure:"enabled" yaml:"enabled" json:"enabled"`
+	TopK    int  `mapstructure:"top_k" yaml:"top_k" json:"top_k"`
+}
+
+// DefaultRetrievalConfig returns sensible defaults for retrieval.
+func DefaultRetrievalConfig() RetrievalConfig {
+	return RetrievalConfig{
+		Method:                 "rag",
+		EnableSufficiencyCheck: true,
+		LLMProfile:             "default",
+		Categories:             TierConfig{Enabled: true, TopK: 10},
+		Items:                  TierConfig{Enabled: true, TopK: 20},
+		Resources:              TierConfig{Enabled: true, TopK: 5},
+	}
 }
 
 // StorageConfig represents storage configuration
