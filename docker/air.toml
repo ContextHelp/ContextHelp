@@ -1,0 +1,21 @@
+root = "."
+tmp_dir = ".air"
+
+[build]
+  cmd = "CGO_ENABLED=1 go build -o ./tmp/dpkms ./cmd/dpkms"
+  bin = "./tmp/dpkms serve --config docker/config.yaml --public"
+  include_ext = ["go", "yaml", "sql"]
+  exclude_dir  = ["vendor", "web", "docs", "tmp", "bin", ".git"]
+  delay        = 500
+
+[log]
+  time = true
+
+[color]
+  main    = "magenta"
+  watcher = "cyan"
+  build   = "yellow"
+  runner  = "green"
+
+[misc]
+  clean_on_exit = true

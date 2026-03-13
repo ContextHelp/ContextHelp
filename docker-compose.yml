@@ -1,0 +1,146 @@
+# docker-compose.yml
+# Usage:
+#   dev:  docker compose --profile dev up
+#   prod: docker compose --profile prod up -d
+
+name: ctxt
+
+x-dpkms-common: &dpkms-common
+  image: ctxt/dpkms:${TAG:-latest}
+  restart: unless-stopped
+  environment:
+    CH_STORAGE_TYPE: sqlite
+    CTXT_DATA_DIR: /data/dpkms.db
+    CTXT_BLOB_BACKEND: local
+    DPKMS_WORKERS: ${DPKMS_WORKERS:-4}
+
+services:
+
+  # ── Base dpkms (prod profile, built image) ──────────────────────────────
+  dpkms:
+    <<: *dpkms-common
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        VERSION: ${VERSION:-dev}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    container_name: ctxt-dpkms
+    volumes:
+      - ctxt_data:/data
+      - ctxt_blobs:/data/blobs
+    networks:
+      - ctxt
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - prod
+
+  # ── Dev dpkms (hot-reload via air) ──────────────────────────────────────
+  dpkms-dev:
+    image: golang:1.24-alpine
+    container_name: ctxt-dpkms-dev
+    working_dir: /app
+    command: >
+      sh -c "apk add --no-cache gcc musl-dev sqlite-dev &&
+             go install github.com/air-verse/air@latest &&
+             air -c docker/air.toml"
+    volumes:
+      - .:/app
+      - go_cache:/root/go/pkg/mod
+      - ctxt_dev_data:/data
+    ports:
+      - "8080:8080"   # HTTP API
+      - "9090:9090"   # gRPC
+      - "9377:9377"   # WebSocket (future)
+    environment:
+      CH_STORAGE_TYPE: sqlite
+      CTXT_DATA_DIR: /data/dpkms.db
+      CTXT_BLOB_BACKEND: local
+      DPKMS_WORKERS: ${DPKMS_WORKERS:-2}
+      CH_PUBLIC: "true"
+      CGO_ENABLED: "1"
+      GOOS: linux
+    networks:
+      - ctxt
+    profiles:
+      - dev
+
+  # ── Vite dev server ──────────────────────────────────────────────────────
+  ui-dev:
+    image: node:22-alpine
+    container_name: ctxt-ui-dev
+    working_dir: /app/web/ui
+    command: >
+      sh -c "corepack enable &&
+             ([ -f pnpm-lock.yaml ] && pnpm install || npm install) &&
+             ([ -f pnpm-lock.yaml ] && pnpm dev --host 0.0.0.0 ||
+              npm run dev -- --host 0.0.0.0)"
+    volumes:
+      - ./web/ui:/app/web/ui
+      - node_modules:/app/web/ui/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8080
+    networks:
+      - ctxt
+    profiles:
+      - dev
+
+  # ── Caddy reverse proxy (prod only) ─────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: ctxt-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    depends_on:
+      dpkms:
+        condition: service_healthy
+    networks:
+      - ctxt
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    profiles:
+      - prod
+
+volumes:
+  ctxt_data:
+    name: ctxt_data
+  ctxt_blobs:
+    name: ctxt_blobs
+  ctxt_dev_data:
+    name: ctxt_dev_data
+  caddy_data:
+    name: caddy_data
+  caddy_config:
+    name: caddy_config
+  go_cache:
+    name: ctxt_go_cache
+  node_modules:
+    name: ctxt_node_modules
+
+networks:
+  ctxt:
+    name: ctxt
+    driver: bridge
