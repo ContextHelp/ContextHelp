@@ -237,15 +237,29 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	mergedMentions := mergeStrings(obj.Mentions, mergeData.Mentions)
 	mergedMentionsJSON, _ := json.Marshal(mergedMentions)
 
-	_, err = tx.ExecContext(ctx, `
+	// Optionally update content if we now have more data (e.g. from text to url fetch)
+	contentUpdate := ""
+	contentArgs := []any{now, string(mergedTagsJSON), string(mergedMentionsJSON), now}
+	if mergeData.RawContent != "" && mergeData.RawContent != hash {
+		contentUpdate = ", raw_content = ?, text_content = ?"
+		contentArgs = append(contentArgs, mergeData.RawContent, mergeData.TextContent)
+	}
+	contentArgs = append(contentArgs, hash)
+
+	query := fmt.Sprintf(`
 		UPDATE objects SET
 			reinforcement_count = reinforcement_count + 1,
 			last_reinforced_at = ?,
 			tags = ?,
 			mentions = ?,
-			updated_at = ?
+			updated_at = ?,
+			fts_indexed = 0,
+			vector_indexed = 0
+			%s
 		WHERE content_hash = ?
-	`, now, string(mergedTagsJSON), string(mergedMentionsJSON), now, hash)
+	`, contentUpdate)
+
+	_, err = tx.ExecContext(ctx, query, contentArgs...)
 	if err != nil {
 		return "", fmt.Errorf("reinforce: update: %w", err)
 	}

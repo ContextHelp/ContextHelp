@@ -40,10 +40,12 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"filereader":        func() pipeline.PipelineStep { return steps.NewFileReader() },
 	"formatdetector":    func() pipeline.PipelineStep { return steps.NewFormatDetector() },
 	"textcleaner":       func() pipeline.PipelineStep { return steps.NewTextCleaner() },
+	"html_cleaner":      func() pipeline.PipelineStep { return steps.NewHTMLCleaner() },
 	"embedding":         func() pipeline.PipelineStep { return steps.NewEmbeddingGenerator(nil) },
 	"entity_extractor":  func() pipeline.PipelineStep { return steps.NewEntityExtractor() },
 	"timestamp_aligner": func() pipeline.PipelineStep { return steps.NewTimestampAligner() },
 	"noop":              func() pipeline.PipelineStep { return steps.NewNoop() },
+	"url_fetcher":       func() pipeline.PipelineStep { return steps.NewURLFetcher() },
 	// Dropbox pipeline steps.
 	"dropbox_fetcher":  func() pipeline.PipelineStep { return steps.NewDropboxFetcher() },
 	"dropbox_enqueuer": func() pipeline.PipelineStep { return steps.NewDropboxEnqueuer() },
@@ -248,6 +250,10 @@ func buildSelectors() []selector {
 func selectPipeline(selectors []selector, content string) string {
 	lower := strings.ToLower(content)
 
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return "url.generic"
+	}
+
 	// Extension-based matching.
 	for _, sel := range selectors {
 		for _, ext := range sel.Extensions {
@@ -262,6 +268,10 @@ func selectPipeline(selectors []selector, content string) string {
 		if sel.ContentTest != nil && sel.ContentTest(content) {
 			return sel.PipelineName
 		}
+	}
+
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return "url.generic"
 	}
 
 	return "text.short"

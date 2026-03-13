@@ -57,18 +57,30 @@ func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry
 // Analyze enqueues a content analysis job and returns the job ID.
 func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, error) {
 	now := time.Now().Truncate(time.Second)
+
+	// Auto-detect type if it's "text" but content looks like a URL.
+	detectedType := req.Type
+	if detectedType == "text" && strings.HasPrefix(strings.TrimSpace(req.Content), "http") {
+		detectedType = "url"
+	}
+
 	pipelineName := req.Pipeline
 	if pipelineName == "" {
 		pipelineName = s.Pipes.SelectPipeline(req.Content)
 	}
 
+	jobSource := req.Source
+	if detectedType == "url" {
+		jobSource = strings.TrimSpace(req.Content)
+	}
+
 	job := &storage.Job{
 		ID:         uuid.New().String(),
-		Type:       "ingest:" + req.Type,
+		Type:       "ingest:" + detectedType,
 		Status:     storage.JobPending,
 		Payload:    req.Content,
 		Pipeline:   pipelineName,
-		Source:     req.Source,
+		Source:     jobSource,
 		MaxRetries: 3,
 		CreatedAt:  now,
 		UpdatedAt:  now,

@@ -26,10 +26,12 @@ func (d *TypeDetector) Name() string { return "typedetect" }
 func (d *TypeDetector) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	content := strings.TrimSpace(draft.RawContent)
 
-	if strings.HasPrefix(content, "http://") || strings.HasPrefix(content, "https://") {
-		draft.Type = "url"
-	} else {
-		draft.Type = "text"
+	if draft.Type == "" || draft.Type == "text" {
+		if strings.HasPrefix(content, "http://") || strings.HasPrefix(content, "https://") {
+			draft.Type = "url"
+		} else {
+			draft.Type = "text"
+		}
 	}
 
 	if len(content) < 500 {
