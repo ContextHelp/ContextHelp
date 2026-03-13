@@ -1,23 +1,48 @@
 package http
 
 import (
+	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/ui"
+	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
 
 // NewRouter creates the HTTP router with all routes and middleware.
-func NewRouter(svc *service.Service) chi.Router {
+// devCORS enables CORS for http://localhost:5173 (Vite dev server).
+// mgr is optional (nil-safe); nil disables live watch management but keeps CRUD.
+func NewRouter(svc *service.Service, devCORS bool, mgr *watcher.Manager) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
 	r.Use(Recoverer)
+	r.Use(CORS(devCORS))
 
 	r.Get("/health", Health(svc))
+	r.Get("/manifest.json", ManifestJSON())
 
-	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+	// GET /ui → redirect to /ui/
+	r.Get("/ui", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui/", http.StatusMovedPermanently)
+	})
+
+	// GET /ui/* → serve embedded SPA assets
+	distFS, err := fs.Sub(ui.FS, "dist")
+	if err != nil {
+		panic("ui: failed to sub embedded FS: " + err.Error())
+	}
+	fileServer := http.FileServer(http.FS(distFS))
+	r.Handle("/ui/*", http.StripPrefix("/ui", fileServer))
+
+	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, "/ui/") {
+			http.ServeFileFS(w, req, distFS, "index.html")
+			return
+		}
 		WriteError(w, http.StatusNotFound, "NOT_FOUND", "resource not found")
 	})
 
@@ -84,6 +109,36 @@ func NewRouter(svc *service.Service) chi.Router {
 		// System
 		r.Get("/system/reminders", ListReminders(svc))
 		r.Post("/system/reminders/{id}/dismiss", DismissReminder(svc))
+
+		// Watches
+		r.Post("/watches", CreateWatch(svc, mgr))
+		r.Get("/watches", ListWatches(svc))
+		r.Get("/watches/{id}", GetWatch(svc))
+		r.Patch("/watches/{id}", UpdateWatch(svc, mgr))
+		r.Delete("/watches/{id}", DeleteWatch(svc, mgr))
+		r.Post("/watches/{id}/pause", PauseWatch(mgr))
+		r.Post("/watches/{id}/resume", ResumeWatch(mgr))
+		r.Get("/watches/{id}/files", ListWatchFiles(svc))
+
+		// Inbox
+		r.Post("/inbox", CaptureInbox(svc))
+		r.Get("/inbox", ListInbox(svc))
+		r.Post("/inbox/{id}/triage", TriageInbox(svc))
+		r.Post("/inbox/{id}/discard", DiscardInbox(svc))
+
+		// SSE event stream (real-time updates)
+		r.Get("/events", HandleSSE(svc))
+
+		// Suggestions (autosuggest plugin)
+		r.Get("/suggestions", ListSuggestions(svc))
+		r.Post("/suggestions/{id}/approve", ApproveSuggestion(svc))
+		r.Post("/suggestions/{id}/reject", RejectSuggestion(svc))
+
+		// Capture (browser extension)
+		r.Post("/capture/page", CapturePage(svc))
+		r.Post("/capture/selection", CaptureSelection(svc))
+		r.Post("/capture/element", CaptureElement(svc))
+		r.Get("/capture/recent", ListRecentCaptures(svc))
 	})
 
 	return r

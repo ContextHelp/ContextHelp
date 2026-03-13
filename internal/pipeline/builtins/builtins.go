@@ -138,6 +138,12 @@ var providerStepConstructors = map[string]func(*providers.Factory) pipeline.Pipe
 	},
 }
 
+// RegisterExtraStep adds a pre-built step (e.g. from a plugin) to the step registry.
+// It can be referenced by name in pipeline definitions.
+func RegisterExtraStep(name string, step pipeline.PipelineStep) {
+	stepConstructors[name] = func() pipeline.PipelineStep { return step }
+}
+
 // resolveStep builds a PipelineStep from a step name, using BuildOpts for provider/blob-aware steps.
 func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
 	if opts.Factory != nil {

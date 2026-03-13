@@ -17,6 +17,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/plugin"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
@@ -25,13 +26,14 @@ import (
 
 // Service coordinates all business operations.
 type Service struct {
-	Store     storage.StorageDriver
-	Queue     *jobs.Queue
-	Pipes     pipeline.Registry
-	Search    *search.Engine
-	Discovery *steps.StepDiscovery
-	Executor  *steps.StepExecutor
-	Bus       events.Bus
+	Store          storage.StorageDriver
+	Queue          *jobs.Queue
+	Pipes          pipeline.Registry
+	Search         *search.Engine
+	Discovery      *steps.StepDiscovery
+	Executor       *steps.StepExecutor
+	Bus            events.Bus
+	PluginRegistry *plugin.Registry
 }
 
 // New creates a new service instance.
@@ -96,7 +98,15 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 }
 
 // GetObject retrieves a knowledge object by ID.
-func (s *Service) GetObject(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
+// If a PluginRegistry is set, the id is first resolved through any registered AliasResolvers.
+func (s *Service) GetObject(ctx context.Context, idOrAlias string) (*storage.KnowledgeObject, error) {
+	id := idOrAlias
+	if s.PluginRegistry != nil {
+		resolved, err := s.PluginRegistry.ResolveID(ctx, idOrAlias, "")
+		if err == nil {
+			id = resolved
+		}
+	}
 	return s.Store.Objects().Get(ctx, id)
 }
 
