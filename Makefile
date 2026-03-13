@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help
+.PHONY: all build build-ctxt build-dpkms clean install test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help docs docs-dev docker-build docker-up docker-down docker-logs docker-dev docker-docs
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -127,6 +127,51 @@ version:
 	@echo "Version:    $(VERSION)"
 	@echo "Build Time: $(BUILD_TIME)"
 	@echo "Git Commit: $(GIT_COMMIT)"
+
+## docs: Build documentation site
+docs:
+	@echo "Building docs..."
+	@cd docs/public && pnpm build
+	@echo "✓ Docs built to docs/public/dist"
+
+## docs-dev: Start documentation dev server
+docs-dev:
+	@echo "Starting docs dev server..."
+	@cd docs/public && pnpm dev
+
+## docker-build: Build dpkms Docker image
+docker-build:
+	@echo "Building dpkms Docker image..."
+	docker compose -f docker/docker-compose.yml build
+	@echo "✓ Docker image built"
+
+## docker-up: Start dpkms container
+docker-up:
+	@echo "Starting dpkms container..."
+	docker compose -f docker/docker-compose.yml up -d
+	@echo "✓ dpkms running at http://localhost:8080"
+
+## docker-down: Stop dpkms container
+docker-down:
+	@echo "Stopping dpkms container..."
+	docker compose -f docker/docker-compose.yml down
+	@echo "✓ Container stopped"
+
+## docker-logs: View dpkms container logs
+docker-logs:
+	docker compose -f docker/docker-compose.yml logs -f
+
+## docker-dev: Start dpkms in dev mode with source mount
+docker-dev:
+	@echo "Starting dpkms dev container..."
+	docker compose -f docker/docker-compose.yml --profile dev up -d dpkms-dev
+	@echo "✓ dpkms-dev running at http://localhost:8081"
+
+## docker-docs: Start docs dev server in Docker
+docker-docs:
+	@echo "Starting docs container..."
+	docker compose -f docker/docker-compose.yml --profile docs up -d docs
+	@echo "✓ Docs running at http://localhost:4321/docs"
 
 ## help: Show this help message
 help:

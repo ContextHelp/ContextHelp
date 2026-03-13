@@ -1,0 +1,107 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ctxt-postgres
+    environment:
+      POSTGRES_USER: ctxt
+      POSTGRES_PASSWORD: ctxt
+      POSTGRES_DB: ctxt
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ctxt -d ctxt"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - postgres
+    restart: unless-stopped
+
+  dpkms:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dpkms
+    image: ctxt/dpkms:latest
+    container_name: dpkms
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      - dpkms-data:/data
+    environment:
+      - DPKMS_WORKERS=${DPKMS_WORKERS:-4}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  dpkms-postgres:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dpkms
+    image: ctxt/dpkms:latest
+    container_name: dpkms-postgres
+    ports:
+      - "8082:8080"
+      - "9092:9090"
+    environment:
+      - DPKMS_WORKERS=${DPKMS_WORKERS:-4}
+      - DPKMS_STORAGE_TYPE=postgres
+      - DPKMS_STORAGE_PATH=postgres://ctxt:ctxt@postgres:5432/ctxt?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - postgres
+    restart: unless-stopped
+
+  dpkms-dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dpkms
+    image: ctxt/dpkms:dev
+    container_name: dpkms-dev
+    ports:
+      - "8081:8080"
+      - "9091:9090"
+    volumes:
+      - dpkms-dev-data:/data
+      - ../:/app/src:ro
+    environment:
+      - DPKMS_WORKERS=2
+    profiles:
+      - dev
+    restart: unless-stopped
+
+  docs:
+    image: node:20-alpine
+    container_name: ctxt-docs
+    working_dir: /app
+    ports:
+      - "4321:4321"
+    volumes:
+      - ../docs/public:/app
+      - ../docs/manual:/manual:ro
+    environment:
+      - CI=true
+    command: sh -c "corepack enable && pnpm install && pnpm dev --host 0.0.0.0"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:4321"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    profiles:
+      - docs
+    restart: unless-stopped
+
+volumes:
+  dpkms-data:
+  dpkms-dev-data:
+  postgres-data:

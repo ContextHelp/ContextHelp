@@ -1,0 +1,38 @@
+FROM golang:1.24-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o /dpkms ./cmd/dpkms
+
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata sqlite
+
+RUN adduser -D -u 1000 dpkms
+
+WORKDIR /app
+
+COPY --from=builder /dpkms /app/dpkms
+COPY docker/config.yaml /app/config.yaml
+
+RUN mkdir -p /data && chown -R dpkms:dpkms /data /app
+
+USER dpkms
+
+ENV DPKMS_DATA_DIR=/data
+ENV DPKMS_WORKERS=4
+
+EXPOSE 8080 9090
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -q --spider http://127.0.0.1:8080/health || exit 1
+
+ENTRYPOINT ["/app/dpkms"]
+CMD ["serve", "--config", "/app/config.yaml", "--public"]
