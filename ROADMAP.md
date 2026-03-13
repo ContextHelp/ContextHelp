@@ -116,11 +116,13 @@ This is where `ctxt` starts feeling agentic.
 
 **Goal:** Search becomes forgiving under uncertainty.
 
-- [ ] pluggable vector backend
+- [ ] pluggable vector backend (sqlite-vec default)
+- [ ] pgvector backend (pairs with Skeleton 10 Postgres)
+- [ ] Qdrant backend (external vector DB option)
 - [ ] hybrid query execution (AST filters + FTS + vector)
 - [ ] scatter–gather merge + reranking (RRF)
 - [ ] graph-informed expansion
-- [ ] “why ranked” explain scoring output
+- [ ] "why ranked" explain scoring output
 
 ---
 
@@ -167,6 +169,7 @@ This is where `ctxt` starts feeling agentic.
 **Goal:** Support growth without sacrificing the local-first core.
 
 - [ ] Postgres backend (multi-user)
+- [ ] rqlite backend (HA SQLite without Postgres)
 - [ ] distributed workers (optional external queue)
 - [ ] gRPC streaming for ingestion and retrieval
 - [ ] advanced ACL models where needed
