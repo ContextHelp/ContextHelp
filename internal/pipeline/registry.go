@@ -21,6 +21,11 @@ func NewRegistry() Registry {
 	}
 }
 
+// DefaultRegistry is an alias for NewRegistry for use in tests and service wiring.
+func DefaultRegistry() Registry {
+	return NewRegistry()
+}
+
 func (r *registry) Register(name string, p *Pipeline) error {
 	if _, exists := r.pipelines[name]; exists {
 		return fmt.Errorf("pipeline %q already registered", name)

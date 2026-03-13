@@ -12,6 +12,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/citation"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -389,6 +390,138 @@ func (s *Service) ComposeWithCitations(ctx context.Context, objects []*storage.K
 		SourceIDs:   sourceIDs,
 		GeneratedAt: time.Now(),
 	}, nil
+}
+
+// --- Feed methods ---
+
+// CreateFeed creates a new feed subscription.
+func (s *Service) CreateFeed(ctx context.Context, url string) (*storage.Feed, error) {
+	feed := &storage.Feed{
+		ID:        "feed_" + uuid.New().String()[:8],
+		URL:       url,
+		Status:    "active",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := s.Store.Feeds().Create(ctx, feed); err != nil {
+		return nil, fmt.Errorf("create feed: %w", err)
+	}
+	return feed, nil
+}
+
+// ListFeeds returns all feed subscriptions matching the filter.
+func (s *Service) ListFeeds(ctx context.Context, filter storage.FeedFilter) ([]*storage.Feed, error) {
+	return s.Store.Feeds().List(ctx, filter)
+}
+
+// SyncFeed enqueues a sync job for a feed.
+func (s *Service) SyncFeed(ctx context.Context, id string) (string, error) {
+	feed, err := s.Store.Feeds().Get(ctx, id)
+	if err != nil {
+		return "", fmt.Errorf("feed not found: %w", err)
+	}
+	jobID, err := s.Analyze(ctx, AnalyzeRequest{
+		Content:  feed.URL,
+		Type:     "url",
+		Pipeline: "feed.sync",
+		Source:   "feed:" + id,
+	})
+	if err != nil {
+		return "", fmt.Errorf("enqueue sync job: %w", err)
+	}
+	return jobID, nil
+}
+
+// DeleteFeed removes a feed subscription.
+func (s *Service) DeleteFeed(ctx context.Context, id string) error {
+	if _, err := s.Store.Feeds().Get(ctx, id); err != nil {
+		return fmt.Errorf("feed not found: %w", err)
+	}
+	return s.Store.Feeds().Delete(ctx, id)
+}
+
+// --- Batch import methods ---
+
+// CreateBatch creates a new batch import operation.
+func (s *Service) CreateBatch(ctx context.Context, content, format string) (*storage.Batch, error) {
+	batch := &storage.Batch{
+		ID:        "batch_" + uuid.New().String()[:8],
+		Format:    format,
+		Status:    "processing",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := s.Store.Batches().Create(ctx, batch); err != nil {
+		return nil, fmt.Errorf("create batch: %w", err)
+	}
+	return batch, nil
+}
+
+// GetBatch retrieves a batch import operation by ID.
+func (s *Service) GetBatch(ctx context.Context, id string) (*storage.Batch, error) {
+	return s.Store.Batches().Get(ctx, id)
+}
+
+// --- Detector methods ---
+
+// DetectorCreateRequest carries parameters for creating a detector.
+type DetectorCreateRequest struct {
+	Kind         storage.DetectorKind
+	Name         string
+	PipelineName string
+	Pattern      string
+	Priority     int
+}
+
+// CreateDetector creates a new pipeline detector.
+func (s *Service) CreateDetector(ctx context.Context, req DetectorCreateRequest) (*storage.DetectorRecord, error) {
+	d := &storage.DetectorRecord{
+		ID:           "det_" + uuid.New().String()[:8],
+		Kind:         req.Kind,
+		Name:         req.Name,
+		PipelineName: req.PipelineName,
+		Pattern:      req.Pattern,
+		Priority:     req.Priority,
+		Enabled:      true,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	if err := s.Store.Detectors().Create(ctx, d); err != nil {
+		return nil, fmt.Errorf("create detector: %w", err)
+	}
+	return d, nil
+}
+
+// ListDetectors returns all detectors matching the filter.
+func (s *Service) ListDetectors(ctx context.Context, filter storage.DetectorFilter) ([]*storage.DetectorRecord, error) {
+	detectors, _, err := s.Store.Detectors().List(ctx, filter)
+	return detectors, err
+}
+
+// DeleteDetector removes a detector.
+func (s *Service) DeleteDetector(ctx context.Context, id string) error {
+	return s.Store.Detectors().Delete(ctx, id)
+}
+
+// EnableDetector enables a detector.
+func (s *Service) EnableDetector(ctx context.Context, id string) error {
+	return s.Store.Detectors().Enable(ctx, id)
+}
+
+// DisableDetector disables a detector.
+func (s *Service) DisableDetector(ctx context.Context, id string) error {
+	return s.Store.Detectors().Disable(ctx, id)
+}
+
+// --- Semantic search ---
+
+// SemanticSearch performs vector similarity search using the provided embedding provider.
+func (s *Service) SemanticSearch(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider) ([]*storage.KnowledgeObject, error) {
+	vec, err := ep.Embed(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("embed query: %w", err)
+	}
+	return s.Store.Objects().VectorSearch(ctx, vec, storage.ObjectFilter{Limit: limit})
 }
 
 func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error) {
