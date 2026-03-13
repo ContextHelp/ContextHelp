@@ -1,0 +1,42 @@
+{
+    # Global options
+    email {$ACME_EMAIL:admin@example.com}
+}
+
+{$DOMAIN:localhost} {
+    # Reverse proxy to dpkms
+    reverse_proxy dpkms:8080
+
+    # Compress responses
+    encode gzip
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    # Health endpoint passthrough (no auth)
+    handle /health {
+        reverse_proxy dpkms:8080
+    }
+
+    # API routes
+    handle /api/* {
+        reverse_proxy dpkms:8080
+    }
+
+    # UI (static files served by dpkms at /ui)
+    handle /* {
+        reverse_proxy dpkms:8080
+    }
+
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+}
