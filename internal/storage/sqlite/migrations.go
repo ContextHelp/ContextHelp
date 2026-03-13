@@ -28,6 +28,9 @@ var migration006 string
 //go:embed migrations/007_text_content.sql
 var migration007 string
 
+//go:embed migrations/008_watches.sql
+var migration008 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -41,6 +44,7 @@ var migrations = []migration{
 	{Version: 5, SQL: migration005},
 	{Version: 6, SQL: migration006},
 	{Version: 7, SQL: migration007},
+	{Version: 8, SQL: migration008},
 }
 
 func (d *Driver) Migrate(ctx context.Context) error {
