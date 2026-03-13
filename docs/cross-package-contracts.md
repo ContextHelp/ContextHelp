@@ -364,5 +364,6 @@ Some plugins span both:
 | Reranking | ctxt | uses dPKMS results | `Reranker` |
 | CLI Commands | ctxt | calls dPKMS APIs | N/A |
 | Worker Daemon | dPKMS | executes jobs | N/A |
+| Event Bus | dPKMS | central event pub/sub | CloudEvents v1.0 |
 
 This contract ensures clean separation and enables independent evolution of both packages.

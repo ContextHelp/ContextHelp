@@ -95,7 +95,13 @@ func (s *Service) ListObjects(ctx context.Context, filter storage.ObjectFilter) 
 
 // UpdateObject updates a knowledge object.
 func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject) error {
-	return s.Store.Objects().Update(ctx, obj)
+	if err := s.Store.Objects().Update(ctx, obj); err != nil {
+		return err
+	}
+	if ev, err := events.NewEvent("service.objects", "object.updated", map[string]string{"id": obj.ID}); err == nil {
+		_ = s.Bus.Publish(ctx, ev)
+	}
+	return nil
 }
 
 // DeleteObject deletes a knowledge object and its edges.
@@ -103,7 +109,13 @@ func (s *Service) DeleteObject(ctx context.Context, id string) error {
 	if err := s.Store.Edges().DeleteByObject(ctx, id); err != nil {
 		return err
 	}
-	return s.Store.Objects().Delete(ctx, id)
+	if err := s.Store.Objects().Delete(ctx, id); err != nil {
+		return err
+	}
+	if ev, err := events.NewEvent("service.objects", "object.deleted", map[string]string{"id": id}); err == nil {
+		_ = s.Bus.Publish(ctx, ev)
+	}
+	return nil
 }
 
 // SearchObjects executes an RSQL query and returns matching objects.

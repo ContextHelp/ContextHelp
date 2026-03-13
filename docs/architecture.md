@@ -26,6 +26,7 @@ The system consists of two primary packages, each with distinct subsystems:
 - Storage Layer (Local-First, Pluggable Backends)
 - Indexing Layer (FTS + Vectors + Graph Adjacency)
 - Job System (Transactional Outbox)
+- **Event Bus (CloudEvents v1.0 Integration)**
 - Pipeline Runtime (Deterministic + Capability-Scoped)
 - **Mentions Layer & Entity Resolver**
 - Knowledge Graph (Objects ↔ Entities ↔ Entities)

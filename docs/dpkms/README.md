@@ -23,6 +23,7 @@ dPKMS provides the **mechanical guarantees** that make the system sovereign, dur
 ### Core Substrate
 - [storage.md](storage.md) - Storage layer, backends, schema
 - [jobs-and-ingestion.md](jobs-and-ingestion.md) - Transactional job queue
+- [events.md](events.md) - CloudEvents-based event bus
 - [query-language-spec.md](query-language-spec.md) - AST-based query engine
 - [caching.md](caching.md) - Caching strategies
 
