@@ -53,7 +53,7 @@ func newService() (*service.Service, func(), error) {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load detectors: %v\n", err)
 	}
 
-	svc := service.New(driver, queue, pipes, engine, "")
+	svc := service.New(driver, queue, pipes, engine, "", nil)
 	cleanup := func() { driver.Close(context.Background()) }
 	return svc, cleanup, nil
 }

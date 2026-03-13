@@ -235,7 +235,7 @@ func (s *audioProviderStep) Run(_ context.Context, draft *storage.KnowledgeObjec
 // ---------------------------------------------------------------------------
 
 func registerAudioPipeline(env *testEnv, steps ...pipeline.PipelineStep) {
-	env.svc.Pipes.Register("audio.transcribe", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("audio.transcribe", &pipeline.Pipeline{
 		PipelineName: "audio.transcribe",
 		Description:  "Audio transcription pipeline for testing",
 		Steps:        steps,
@@ -358,7 +358,7 @@ func TestUS0004_SupportedFormats(t *testing.T) {
 			defer env.stop(t)
 
 			pipelineName := fmt.Sprintf("audio.%s", tc.format)
-			env.svc.Pipes.Register(pipelineName, &pipeline.Pipeline{
+			env.svc.Pipes.Upsert(pipelineName, &pipeline.Pipeline{
 				PipelineName: pipelineName,
 				Steps: []pipeline.PipelineStep{
 					&audioMetaStep{format: tc.format, duration: 45.0, size: 128000},
@@ -406,7 +406,7 @@ func TestUS0004_UnsupportedFormatRejects(t *testing.T) {
 
 			supported := map[string]bool{"mp3": true, "wav": true, "ogg": true, "flac": true, "m4a": true, "webm": true}
 			pipelineName := fmt.Sprintf("audio.reject.%s", tc.format)
-			env.svc.Pipes.Register(pipelineName, &pipeline.Pipeline{
+			env.svc.Pipes.Upsert(pipelineName, &pipeline.Pipeline{
 				PipelineName: pipelineName,
 				Steps: []pipeline.PipelineStep{
 					&audioMetaStep{format: tc.format, duration: 30.0, size: 64000},
@@ -434,7 +434,7 @@ func TestUS0004_CorruptAudioReturnsError(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("audio.corrupt", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("audio.corrupt", &pipeline.Pipeline{
 		PipelineName: "audio.corrupt",
 		Steps: []pipeline.PipelineStep{
 			&corruptAudioStep{},
@@ -460,7 +460,7 @@ func TestUS0004_FileSizeLimitEnforced(t *testing.T) {
 	defer env.stop(t)
 
 	maxBytes := 200 // Use a small limit for testing instead of 500MB.
-	env.svc.Pipes.Register("audio.sizelimit", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("audio.sizelimit", &pipeline.Pipeline{
 		PipelineName: "audio.sizelimit",
 		Steps: []pipeline.PipelineStep{
 			&audioSizeLimitStep{maxBytes: maxBytes},
@@ -487,7 +487,7 @@ func TestUS0004_DurationLimitEnforced(t *testing.T) {
 	defer env.stop(t)
 
 	fourHours := 4 * 60 * 60.0 // 14400 seconds
-	env.svc.Pipes.Register("audio.durationlimit", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("audio.durationlimit", &pipeline.Pipeline{
 		PipelineName: "audio.durationlimit",
 		Steps: []pipeline.PipelineStep{
 			&audioMetaStep{format: "mp3", duration: fourHours + 1, size: 1024},
@@ -556,7 +556,7 @@ func TestUS0004_TimestampedSections(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("audio.timestamps", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("audio.timestamps", &pipeline.Pipeline{
 		PipelineName: "audio.timestamps",
 		Steps: []pipeline.PipelineStep{
 			&audioMetaStep{format: "wav", duration: 20.0, size: 128000},
@@ -605,7 +605,7 @@ func TestUS0004_DiarizationEnabled(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("audio.diarize.on", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("audio.diarize.on", &pipeline.Pipeline{
 		PipelineName: "audio.diarize.on",
 		Steps: []pipeline.PipelineStep{
 			&audioMetaStep{format: "mp3", duration: 120.0, size: 512000},
@@ -642,7 +642,7 @@ func TestUS0004_DiarizationDisabled(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("audio.diarize.off", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("audio.diarize.off", &pipeline.Pipeline{
 		PipelineName: "audio.diarize.off",
 		Steps: []pipeline.PipelineStep{
 			&audioMetaStep{format: "mp3", duration: 60.0, size: 256000},
@@ -679,7 +679,7 @@ func TestUS0004_LanguageHint(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("audio.lang", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("audio.lang", &pipeline.Pipeline{
 		PipelineName: "audio.lang",
 		Steps: []pipeline.PipelineStep{
 			&audioMetaStep{format: "mp3", duration: 30.0, size: 128000},
@@ -817,7 +817,7 @@ func TestUS0004_WorkerCrashRetry(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("audio.crashretry", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("audio.crashretry", &pipeline.Pipeline{
 		PipelineName: "audio.crashretry",
 		Steps: []pipeline.PipelineStep{
 			&audioMetaStep{format: "mp3", duration: 10.0, size: 64000},
@@ -866,7 +866,7 @@ func TestUS0004_TranscriptionProviderConfigurable(t *testing.T) {
 			defer env.stop(t)
 
 			pipelineName := fmt.Sprintf("audio.provider.%s", tc.provider)
-			env.svc.Pipes.Register(pipelineName, &pipeline.Pipeline{
+			env.svc.Pipes.Upsert(pipelineName, &pipeline.Pipeline{
 				PipelineName: pipelineName,
 				Steps: []pipeline.PipelineStep{
 					&audioMetaStep{format: "mp3", duration: 15.0, size: 64000},

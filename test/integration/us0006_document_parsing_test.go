@@ -192,7 +192,7 @@ func TestUS0006_PDFReturnsJobID(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.pdf", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.pdf", &pipeline.Pipeline{
 		PipelineName: "document.pdf",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "pdf"},
@@ -225,7 +225,7 @@ func TestUS0006_JobCompletesWithHierarchicalSections(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.pdf", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.pdf", &pipeline.Pipeline{
 		PipelineName: "document.pdf",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "pdf"},
@@ -274,7 +274,7 @@ func TestUS0006_PDFEmbeddedImagesAsChildObjects(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.pdf_images", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.pdf_images", &pipeline.Pipeline{
 		PipelineName: "document.pdf_images",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "pdf"},
@@ -317,7 +317,7 @@ func TestUS0006_PDFTablesExtracted(t *testing.T) {
 
 	markdownTable := "| Name | Score |\n|------|-------|\n| Alice | 95 |\n| Bob | 87 |"
 
-	env.svc.Pipes.Register("document.pdf_tables", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.pdf_tables", &pipeline.Pipeline{
 		PipelineName: "document.pdf_tables",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "pdf"},
@@ -365,7 +365,7 @@ func TestUS0006_PasswordProtectedPDFRejected(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.pdf_protected", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.pdf_protected", &pipeline.Pipeline{
 		PipelineName: "document.pdf_protected",
 		Steps: []pipeline.PipelineStep{
 			&docErrorStep{errMsg: "password-protected PDF: decryption key required"},
@@ -390,7 +390,7 @@ func TestUS0006_MarkdownHeadingHierarchy(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.markdown", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.markdown", &pipeline.Pipeline{
 		PipelineName: "document.markdown",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "markdown"},
@@ -438,7 +438,7 @@ func TestUS0006_MarkdownCodeBlocksExtracted(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.markdown_code", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.markdown_code", &pipeline.Pipeline{
 		PipelineName: "document.markdown_code",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "markdown"},
@@ -482,7 +482,7 @@ func TestUS0006_GoCodeParsedToFunctions(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.go", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.go", &pipeline.Pipeline{
 		PipelineName: "document.go",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "go"},
@@ -530,7 +530,7 @@ func TestUS0006_PythonCodeParsedToClasses(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.python", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.python", &pipeline.Pipeline{
 		PipelineName: "document.python",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "python"},
@@ -579,7 +579,7 @@ func TestUS0006_CodeTODOAnnotationsExtracted(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.annotated", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.annotated", &pipeline.Pipeline{
 		PipelineName: "document.annotated",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "go"},
@@ -635,7 +635,7 @@ func TestUS0006_UnsupportedLanguageFallback(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.unknown_lang", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.unknown_lang", &pipeline.Pipeline{
 		PipelineName: "document.unknown_lang",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "brainfuck"},
@@ -680,7 +680,7 @@ func TestUS0006_DOCXParsedLikePDF(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.docx", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.docx", &pipeline.Pipeline{
 		PipelineName: "document.docx",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "docx"},
@@ -738,7 +738,7 @@ func TestUS0006_CorruptFileReturnsError(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.corrupt", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.corrupt", &pipeline.Pipeline{
 		PipelineName: "document.corrupt",
 		Steps: []pipeline.PipelineStep{
 			&docErrorStep{errMsg: "corrupt document: invalid PDF header, expected %PDF-"},
@@ -765,7 +765,7 @@ func TestUS0006_FileSizeLimitEnforced(t *testing.T) {
 
 	const maxDocBytes = 100 * 1024 * 1024 // 100MB
 
-	env.svc.Pipes.Register("document.size_check", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.size_check", &pipeline.Pipeline{
 		PipelineName: "document.size_check",
 		Steps: []pipeline.PipelineStep{
 			&docSizeLimitStep{maxBytes: maxDocBytes},
@@ -790,7 +790,7 @@ func TestUS0006_MultipartUploadReturns202(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.pdf", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.pdf", &pipeline.Pipeline{
 		PipelineName: "document.pdf",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "pdf"},
@@ -823,7 +823,7 @@ func TestUS0006_SectionLevelSearch(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.searchable", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.searchable", &pipeline.Pipeline{
 		PipelineName: "document.searchable",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "pdf"},
@@ -878,7 +878,7 @@ func TestUS0006_HierarchyTraversableViaAPI(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("document.hierarchy", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("document.hierarchy", &pipeline.Pipeline{
 		PipelineName: "document.hierarchy",
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "pdf"},
@@ -965,7 +965,7 @@ func TestUS0006_DecompositionDepthConfigurable(t *testing.T) {
 			defer env.stop(t)
 
 			pipelineName := fmt.Sprintf("document.depth_%d", tc.depth)
-			env.svc.Pipes.Register(pipelineName, &pipeline.Pipeline{
+			env.svc.Pipes.Upsert(pipelineName, &pipeline.Pipeline{
 				PipelineName: pipelineName,
 				Steps: []pipeline.PipelineStep{
 					&docTypeSetterStep{format: "pdf"},

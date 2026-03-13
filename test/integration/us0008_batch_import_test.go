@@ -104,7 +104,7 @@ func TestUS0008_JSONLImportReturnsBatchID(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -126,7 +126,7 @@ func TestUS0008_CSVImportDefaultMapping(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -144,7 +144,7 @@ func TestUS0008_CSVCustomColumnMapping(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -169,7 +169,7 @@ func TestUS0008_TSVImport(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -198,7 +198,7 @@ func TestUS0008_MarkdownDirectoryScan(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -224,7 +224,7 @@ func TestUS0008_OPMLCreatesFeedSubscriptions(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -278,7 +278,7 @@ func TestUS0008_ImportStatusProgress(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -317,7 +317,7 @@ func TestUS0008_DryRunValidatesOnly(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -381,7 +381,7 @@ func TestUS0008_FanoutCreatesJobs(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -422,7 +422,7 @@ func TestUS0008_PartialSuccessHandling(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&failingBatchStep{}},
 	})
@@ -467,7 +467,7 @@ func TestUS0008_BatchReportErrors(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&failingBatchStep{}},
 	})
@@ -513,7 +513,7 @@ func TestUS0008_ChildObjectsLinkedViaEdges(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -549,7 +549,7 @@ func TestUS0008_BatchSizeLimitEnforced(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -594,7 +594,7 @@ func TestUS0008_ConcurrencyLimitRespected(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -643,7 +643,7 @@ func TestUS0008_MultipartUploadReturns202(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -664,7 +664,7 @@ func TestUS0008_ImportStatusViaAPI(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -697,7 +697,7 @@ func TestUS0008_JSONLMissingContentRejected(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -738,7 +738,7 @@ func TestUS0008_CSVNoHeaderHandled(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
@@ -768,7 +768,7 @@ func TestUS0008_BatchObjectsCreatedViaService(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("batch.import", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("batch.import", &pipeline.Pipeline{
 		PipelineName: "batch.import",
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})

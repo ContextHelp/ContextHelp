@@ -67,6 +67,7 @@ func NewRouter(svc *service.Service) chi.Router {
 		// Feeds
 		r.Post("/feeds", CreateFeed(svc))
 		r.Get("/feeds", ListFeeds(svc))
+		r.Post("/feeds/sync", SyncAllFeeds(svc))
 		r.Post("/feeds/{id}/sync", SyncFeed(svc))
 		r.Delete("/feeds/{id}", DeleteFeed(svc))
 

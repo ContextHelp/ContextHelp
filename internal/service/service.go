@@ -2,14 +2,19 @@ package service
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/ideacrafterslabs/ctxt/internal/citation"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
@@ -26,12 +31,17 @@ type Service struct {
 	Search    *search.Engine
 	Discovery *steps.StepDiscovery
 	Executor  *steps.StepExecutor
+	Bus       events.Bus
 }
 
 // New creates a new service instance.
-func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string) *Service {
+func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus) *Service {
 	discovery := steps.NewStepDiscovery(store, stepsPath)
 	executor := steps.NewStepExecutor(store, stepsPath)
+
+	if bus == nil {
+		bus = events.NewLocalBus()
+	}
 
 	return &Service{
 		Store:     store,
@@ -40,6 +50,7 @@ func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry
 		Search:    engine,
 		Discovery: discovery,
 		Executor:  executor,
+		Bus:       bus,
 	}
 }
 
@@ -65,6 +76,9 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
 		return "", err
+	}
+	if ev, err := events.NewEvent("service.analyze", "job.enqueued", job); err == nil {
+		_ = s.Bus.Publish(ctx, ev)
 	}
 	return job.ID, nil
 }
@@ -218,6 +232,9 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
 		return "", err
+	}
+	if ev, err := events.NewEvent("service.analyze", "job.enqueued", job); err == nil {
+		_ = s.Bus.Publish(ctx, ev)
 	}
 	return job.ID, nil
 }
@@ -395,10 +412,11 @@ func (s *Service) ComposeWithCitations(ctx context.Context, objects []*storage.K
 // --- Feed methods ---
 
 // CreateFeed creates a new feed subscription.
-func (s *Service) CreateFeed(ctx context.Context, url string) (*storage.Feed, error) {
+func (s *Service) CreateFeed(ctx context.Context, url, format string) (*storage.Feed, error) {
 	feed := &storage.Feed{
 		ID:        "feed_" + uuid.New().String()[:8],
 		URL:       url,
+		Format:    format,
 		Status:    "active",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -414,22 +432,162 @@ func (s *Service) ListFeeds(ctx context.Context, filter storage.FeedFilter) ([]*
 	return s.Store.Feeds().List(ctx, filter)
 }
 
-// SyncFeed enqueues a sync job for a feed.
+// SyncFeed fetches a feed and enqueues per-item ingestion jobs.
 func (s *Service) SyncFeed(ctx context.Context, id string) (string, error) {
 	feed, err := s.Store.Feeds().Get(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("feed not found: %w", err)
 	}
-	jobID, err := s.Analyze(ctx, AnalyzeRequest{
+
+	// Enqueue a pipeline-based sync job as fallback (for status tracking).
+	fallbackJobID, _ := s.Analyze(ctx, AnalyzeRequest{
 		Content:  feed.URL,
 		Type:     "url",
 		Pipeline: "feed.sync",
 		Source:   "feed:" + id,
 	})
+
+	// Fetch feed content; on failure return the fallback job ID.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feed.URL, nil)
 	if err != nil {
-		return "", fmt.Errorf("enqueue sync job: %w", err)
+		return fallbackJobID, nil
 	}
-	return jobID, nil
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fallbackJobID, nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotModified {
+		return fallbackJobID, nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fallbackJobID, nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fallbackJobID, nil
+	}
+
+	// Parse feed items.
+	items, err := parseFeedItems(string(body))
+	if err != nil {
+		return fallbackJobID, nil
+	}
+
+	// Enqueue per-item jobs.
+	for _, item := range items {
+		content, _ := item["content"].(string)
+		link, _ := item["link"].(string)
+		if content == "" {
+			content = link
+		}
+		if content == "" {
+			continue
+		}
+		s.Analyze(ctx, AnalyzeRequest{ //nolint:errcheck
+			Content:  content,
+			Type:     "feed_item",
+			Pipeline: "feed.ingest",
+			Source:   feed.URL,
+		})
+	}
+	return fallbackJobID, nil
+}
+
+// parseFeedItems parses RSS, Atom, or JSON Feed content and returns items.
+func parseFeedItems(content string) ([]map[string]any, error) {
+	trimmed := strings.TrimSpace(content)
+	switch {
+	case strings.HasPrefix(trimmed, "{"):
+		var doc struct {
+			Items []struct {
+				ID          string `json:"id"`
+				URL         string `json:"url"`
+				Title       string `json:"title"`
+				ContentHTML string `json:"content_html"`
+				ContentText string `json:"content_text"`
+			} `json:"items"`
+		}
+		if err := json.Unmarshal([]byte(content), &doc); err != nil {
+			return nil, err
+		}
+		items := make([]map[string]any, 0, len(doc.Items))
+		for _, it := range doc.Items {
+			body := it.ContentHTML
+			if body == "" {
+				body = it.ContentText
+			}
+			items = append(items, map[string]any{"guid": it.ID, "title": it.Title, "link": it.URL, "content": body})
+		}
+		return items, nil
+	case strings.Contains(trimmed, "<rss"):
+		var root struct {
+			Channel struct {
+				Items []struct {
+					GUID        string `xml:"guid"`
+					Title       string `xml:"title"`
+					Link        string `xml:"link"`
+					Description string `xml:"description"`
+				} `xml:"item"`
+			} `xml:"channel"`
+		}
+		if err := xml.Unmarshal([]byte(content), &root); err != nil {
+			return nil, err
+		}
+		items := make([]map[string]any, 0, len(root.Channel.Items))
+		for _, it := range root.Channel.Items {
+			items = append(items, map[string]any{"guid": it.GUID, "title": it.Title, "link": it.Link, "content": it.Description})
+		}
+		return items, nil
+	case strings.Contains(trimmed, "<feed"):
+		var feed struct {
+			Entries []struct {
+				ID      string `xml:"id"`
+				Title   string `xml:"title"`
+				Summary string `xml:"summary"`
+				Content string `xml:"content"`
+				Links   []struct {
+					Href string `xml:"href,attr"`
+				} `xml:"link"`
+			} `xml:"entry"`
+		}
+		if err := xml.Unmarshal([]byte(content), &feed); err != nil {
+			return nil, err
+		}
+		items := make([]map[string]any, 0, len(feed.Entries))
+		for _, e := range feed.Entries {
+			body := e.Content
+			if body == "" {
+				body = e.Summary
+			}
+			link := ""
+			if len(e.Links) > 0 {
+				link = e.Links[0].Href
+			}
+			items = append(items, map[string]any{"guid": e.ID, "title": e.Title, "link": link, "content": body})
+		}
+		return items, nil
+	}
+	return nil, fmt.Errorf("unrecognized feed format")
+}
+
+// SyncAllFeeds enqueues sync jobs for all active feeds.
+func (s *Service) SyncAllFeeds(ctx context.Context) ([]string, error) {
+	feeds, err := s.Store.Feeds().List(ctx, storage.FeedFilter{Status: "active"})
+	if err != nil {
+		return nil, fmt.Errorf("list feeds: %w", err)
+	}
+	var jobIDs []string
+	for _, f := range feeds {
+		jobID, err := s.SyncFeed(ctx, f.ID)
+		if err != nil {
+			continue
+		}
+		jobIDs = append(jobIDs, jobID)
+	}
+	return jobIDs, nil
 }
 
 // DeleteFeed removes a feed subscription.
@@ -442,18 +600,196 @@ func (s *Service) DeleteFeed(ctx context.Context, id string) error {
 
 // --- Batch import methods ---
 
-// CreateBatch creates a new batch import operation.
+const maxBatchRecords = 10000
+
+// CreateBatch creates a new batch import operation and enqueues per-record jobs.
 func (s *Service) CreateBatch(ctx context.Context, content, format string) (*storage.Batch, error) {
+	// Handle OPML specially: create feed subscriptions instead of knowledge objects.
+	if format == "opml" {
+		return s.createBatchFromOPML(ctx, content)
+	}
+
+	records, parseErrors := s.parseBatchRecords(content, format)
+	if len(records)+len(parseErrors) > maxBatchRecords {
+		return nil, fmt.Errorf("batch size %d exceeds limit of %d", len(records)+len(parseErrors), maxBatchRecords)
+	}
+
 	batch := &storage.Batch{
-		ID:        "batch_" + uuid.New().String()[:8],
-		Format:    format,
-		Status:    "processing",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:           "batch_" + uuid.New().String()[:8],
+		Format:       format,
+		TotalRecords: len(records) + len(parseErrors),
+		Failed:       len(parseErrors),
+		Errors:       parseErrors,
+		Status:       "processing",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 	if err := s.Store.Batches().Create(ctx, batch); err != nil {
 		return nil, fmt.Errorf("create batch: %w", err)
 	}
+
+	// Enqueue a job for each valid record.
+	for _, rec := range records {
+		if rec.Content == "" {
+			batch.Failed++
+			batch.Errors = append(batch.Errors, storage.BatchError{Error: "missing content"})
+			continue
+		}
+		jobID, err := s.Analyze(ctx, AnalyzeRequest{
+			Content:  rec.Content,
+			Type:     rec.Type,
+			Pipeline: "batch.import",
+			Source:   rec.Source,
+		})
+		if err != nil {
+			batch.Failed++
+			batch.Errors = append(batch.Errors, storage.BatchError{Error: err.Error()})
+			continue
+		}
+		_ = s.Store.Edges().Create(ctx, &storage.Edge{
+			ID:        uuid.New().String(),
+			FromType:  "batch",
+			FromID:    batch.ID,
+			ToType:    "job",
+			ToID:      jobID,
+			EdgeType:  "batch_contains",
+			CreatedAt: time.Now(),
+		})
+	}
+
+	if batch.Failed == 0 {
+		batch.Status = "completed"
+	} else if batch.Failed < batch.TotalRecords {
+		batch.Status = "partial"
+	} else {
+		batch.Status = "failed"
+	}
+	batch.Completed = batch.TotalRecords - batch.Failed
+	batch.UpdatedAt = time.Now()
+	_ = s.Store.Batches().Update(ctx, batch)
+
+	return batch, nil
+}
+
+// parseBatchRecords parses JSONL, CSV, or TSV content into ImportRecords.
+func (s *Service) parseBatchRecords(content, format string) ([]storage.ImportRecord, []storage.BatchError) {
+	var records []storage.ImportRecord
+	var errs []storage.BatchError
+
+	switch format {
+	case "jsonl", "":
+		for i, line := range strings.Split(strings.TrimSpace(content), "\n") {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			var rec storage.ImportRecord
+			if err := json.Unmarshal([]byte(line), &rec); err != nil {
+				errs = append(errs, storage.BatchError{Line: i + 1, Error: err.Error()})
+				continue
+			}
+			records = append(records, rec)
+		}
+	case "csv", "tsv":
+		r := csv.NewReader(strings.NewReader(content))
+		if format == "tsv" {
+			r.Comma = '\t'
+		}
+		rows, err := r.ReadAll()
+		if err != nil {
+			errs = append(errs, storage.BatchError{Line: 0, Error: err.Error()})
+			return records, errs
+		}
+		if len(rows) < 2 {
+			return records, errs
+		}
+		header := rows[0]
+		colIdx := make(map[string]int)
+		for i, h := range header {
+			colIdx[strings.TrimSpace(strings.ToLower(h))] = i
+		}
+		for i, row := range rows[1:] {
+			rec := storage.ImportRecord{}
+			if idx, ok := colIdx["content"]; ok && idx < len(row) {
+				rec.Content = row[idx]
+			}
+			if idx, ok := colIdx["type"]; ok && idx < len(row) {
+				rec.Type = row[idx]
+			}
+			if idx, ok := colIdx["source"]; ok && idx < len(row) {
+				rec.Source = row[idx]
+			}
+			if rec.Content == "" {
+				errs = append(errs, storage.BatchError{Line: i + 2, Error: "missing content"})
+				continue
+			}
+			records = append(records, rec)
+		}
+	}
+	return records, errs
+}
+
+// opmlOutline is used for XML parsing of OPML files.
+type opmlOutline struct {
+	Type    string        `xml:"type,attr"`
+	Text    string        `xml:"text,attr"`
+	XMLUrl  string        `xml:"xmlUrl,attr"`
+	Outlines []opmlOutline `xml:"outline"`
+}
+
+type opmlBody struct {
+	Outlines []opmlOutline `xml:"outline"`
+}
+
+type opmlDoc struct {
+	Body opmlBody `xml:"body"`
+}
+
+// createBatchFromOPML parses OPML and creates feed subscriptions.
+func (s *Service) createBatchFromOPML(ctx context.Context, content string) (*storage.Batch, error) {
+	var doc opmlDoc
+	if err := xml.Unmarshal([]byte(content), &doc); err != nil {
+		return nil, fmt.Errorf("invalid OPML: %w", err)
+	}
+
+	var feedURLs []string
+	var collectFeeds func(outlines []opmlOutline)
+	collectFeeds = func(outlines []opmlOutline) {
+		for _, o := range outlines {
+			if o.XMLUrl != "" {
+				feedURLs = append(feedURLs, o.XMLUrl)
+			}
+			collectFeeds(o.Outlines)
+		}
+	}
+	collectFeeds(doc.Body.Outlines)
+
+	batch := &storage.Batch{
+		ID:           "batch_" + uuid.New().String()[:8],
+		Format:       "opml",
+		TotalRecords: len(feedURLs),
+		Status:       "processing",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	if err := s.Store.Batches().Create(ctx, batch); err != nil {
+		return nil, fmt.Errorf("create batch: %w", err)
+	}
+
+	for _, url := range feedURLs {
+		if _, err := s.CreateFeed(ctx, url, "rss"); err != nil {
+			batch.Failed++
+			batch.Errors = append(batch.Errors, storage.BatchError{Error: err.Error()})
+		} else {
+			batch.Completed++
+		}
+	}
+	batch.Status = "completed"
+	if batch.Failed > 0 {
+		batch.Status = "partial"
+	}
+	batch.UpdatedAt = time.Now()
+	_ = s.Store.Batches().Update(ctx, batch)
+
 	return batch, nil
 }
 

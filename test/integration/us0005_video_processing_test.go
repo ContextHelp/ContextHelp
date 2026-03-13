@@ -153,7 +153,7 @@ func TestUS0005_VideoFileReturnsJobID(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("video.full", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.full", &pipeline.Pipeline{
 		PipelineName: "video.full",
 		Steps: []pipeline.PipelineStep{
 			&videoTypeSetterStep{format: "mp4"},
@@ -184,7 +184,7 @@ func TestUS0005_JobCompletesWithTimestampedSections(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("video.full", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.full", &pipeline.Pipeline{
 		PipelineName: "video.full",
 		Steps: []pipeline.PipelineStep{
 			&videoTypeSetterStep{format: "mp4"},
@@ -226,7 +226,7 @@ func TestUS0005_TranscriptInRawContent(t *testing.T) {
 	defer env.stop(t)
 
 	transcript := "This is the full lecture transcript covering all topics discussed in the video."
-	env.svc.Pipes.Register("video.full", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.full", &pipeline.Pipeline{
 		PipelineName: "video.full",
 		Steps: []pipeline.PipelineStep{
 			&videoTypeSetterStep{format: "mp4"},
@@ -260,7 +260,7 @@ func TestUS0005_VideoMetadataStored(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("video.full", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.full", &pipeline.Pipeline{
 		PipelineName: "video.full",
 		Steps: []pipeline.PipelineStep{
 			&videoTypeSetterStep{format: "mp4"},
@@ -317,7 +317,7 @@ func TestUS0005_FullPipelineStepOrder(t *testing.T) {
 		steps = append(steps, &videoStepRecorder{stepName: name})
 	}
 
-	env.svc.Pipes.Register("video.full", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.full", &pipeline.Pipeline{
 		PipelineName: "video.full",
 		Steps:        steps,
 	})
@@ -376,7 +376,7 @@ func TestUS0005_AudioOnlyPipelineSkipsVisual(t *testing.T) {
 		steps = append(steps, &videoStepRecorder{stepName: name})
 	}
 
-	env.svc.Pipes.Register("video.audio_only", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.audio_only", &pipeline.Pipeline{
 		PipelineName: "video.audio_only",
 		Steps:        steps,
 	})
@@ -432,7 +432,7 @@ func TestUS0005_SupportedFormats(t *testing.T) {
 			defer env.stop(t)
 
 			pipelineName := fmt.Sprintf("video.%s", tc.format)
-			env.svc.Pipes.Register(pipelineName, &pipeline.Pipeline{
+			env.svc.Pipes.Upsert(pipelineName, &pipeline.Pipeline{
 				PipelineName: pipelineName,
 				Steps: []pipeline.PipelineStep{
 					&videoTypeSetterStep{format: tc.format},
@@ -468,7 +468,7 @@ func TestUS0005_UnsupportedCodecRejectsGracefully(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("video.unsupported_codec", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.unsupported_codec", &pipeline.Pipeline{
 		PipelineName: "video.unsupported_codec",
 		Steps: []pipeline.PipelineStep{
 			&videoErrorStep{errMsg: "unsupported codec: rv40 (RealVideo 4.0)"},
@@ -493,7 +493,7 @@ func TestUS0005_CorruptVideoReturnsError(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("video.corrupt", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.corrupt", &pipeline.Pipeline{
 		PipelineName: "video.corrupt",
 		Steps: []pipeline.PipelineStep{
 			&videoErrorStep{errMsg: "corrupt video: unable to read container header"},
@@ -520,7 +520,7 @@ func TestUS0005_FileSizeLimitEnforced(t *testing.T) {
 
 	const maxVideoBytes = 2 * 1024 * 1024 * 1024 // 2GB
 
-	env.svc.Pipes.Register("video.size_check", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.size_check", &pipeline.Pipeline{
 		PipelineName: "video.size_check",
 		Steps: []pipeline.PipelineStep{
 			// Simulate a size-check step that rejects oversized content.
@@ -568,7 +568,7 @@ func TestUS0005_ProcessingTimeoutEnforced(t *testing.T) {
 
 	// Use a step that blocks longer than the job would normally allow,
 	// but we use context cancellation to simulate timeout behavior.
-	env.svc.Pipes.Register("video.timeout", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.timeout", &pipeline.Pipeline{
 		PipelineName: "video.timeout",
 		Steps: []pipeline.PipelineStep{
 			// This step returns an error simulating a timeout.
@@ -594,7 +594,7 @@ func TestUS0005_MultipartUploadReturns202(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("video.full", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.full", &pipeline.Pipeline{
 		PipelineName: "video.full",
 		Steps: []pipeline.PipelineStep{
 			&videoTypeSetterStep{format: "mp4"},
@@ -626,7 +626,7 @@ func TestUS0005_ChunkedUploadFlow(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("video.chunked", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.chunked", &pipeline.Pipeline{
 		PipelineName: "video.chunked",
 		Steps: []pipeline.PipelineStep{
 			&videoTypeSetterStep{format: "mp4"},
@@ -665,7 +665,7 @@ func TestUS0005_TranscriptTextSearchable(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("video.searchable", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.searchable", &pipeline.Pipeline{
 		PipelineName: "video.searchable",
 		Steps: []pipeline.PipelineStep{
 			&videoTypeSetterStep{format: "mp4"},
@@ -713,7 +713,7 @@ func TestUS0005_FrameOCRTextSearchable(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("video.ocr", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.ocr", &pipeline.Pipeline{
 		PipelineName: "video.ocr",
 		Steps: []pipeline.PipelineStep{
 			&videoTypeSetterStep{format: "mp4"},
@@ -763,7 +763,7 @@ func TestUS0005_FrameSamplingIntervalConfigurable(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("video.custom_sampling", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.custom_sampling", &pipeline.Pipeline{
 		PipelineName: "video.custom_sampling",
 		Steps: []pipeline.PipelineStep{
 			&videoTypeSetterStep{format: "mp4"},
@@ -805,7 +805,7 @@ func TestUS0005_SceneDetectionThresholdConfigurable(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("video.custom_threshold", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("video.custom_threshold", &pipeline.Pipeline{
 		PipelineName: "video.custom_threshold",
 		Steps: []pipeline.PipelineStep{
 			&videoTypeSetterStep{format: "mp4"},

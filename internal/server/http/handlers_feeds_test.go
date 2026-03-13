@@ -89,10 +89,13 @@ func TestListFeeds(t *testing.T) {
 		t.Errorf("status: got %d, want 200", resp.StatusCode)
 	}
 
-	var feeds []*storage.Feed
-	json.NewDecoder(resp.Body).Decode(&feeds)
-	if len(feeds) != 2 {
-		t.Errorf("expected 2 feeds, got %d", len(feeds))
+	var body struct {
+		Feeds []*storage.Feed `json:"feeds"`
+		Total int             `json:"total"`
+	}
+	json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Feeds) != 2 {
+		t.Errorf("expected 2 feeds, got %d", len(body.Feeds))
 	}
 }
 

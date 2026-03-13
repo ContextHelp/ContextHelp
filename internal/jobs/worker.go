@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -23,17 +24,19 @@ type WorkerPool struct {
 	queue        *Queue
 	pipelines    pipeline.Registry
 	store        storage.StorageDriver
+	bus          events.Bus
 	workers      int
 	staleTimeout time.Duration
 	pollInterval time.Duration
 }
 
 // NewWorkerPool creates a worker pool.
-func NewWorkerPool(queue *Queue, pipelines pipeline.Registry, store storage.StorageDriver, workers int) *WorkerPool {
+func NewWorkerPool(queue *Queue, pipelines pipeline.Registry, store storage.StorageDriver, workers int, bus events.Bus) *WorkerPool {
 	return &WorkerPool{
 		queue:        queue,
 		pipelines:    pipelines,
 		store:        store,
+		bus:          bus,
 		workers:      workers,
 		staleTimeout: 30 * time.Minute,
 		pollInterval: 500 * time.Millisecond,
@@ -141,6 +144,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	draft, err := p.processWithHops(ctx, job)
 	if err != nil {
 		p.queue.Fail(ctx, job.ID, err.Error())
+		p.emitFailed(ctx, job.ID, err.Error())
 		return
 	}
 
@@ -152,9 +156,11 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		existingID, err := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
 		if err != nil {
 			p.queue.Fail(ctx, job.ID, fmt.Sprintf("reinforce: %s", err))
+			p.emitFailed(ctx, job.ID, fmt.Sprintf("reinforce: %s", err))
 			return
 		}
 		p.queue.Complete(ctx, job.ID, existingID)
+		p.emitCompleted(ctx, job.ID, existingID)
 		return
 	}
 
@@ -166,12 +172,15 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 			existingID, rerr := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
 			if rerr != nil {
 				p.queue.Fail(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr))
+				p.emitFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr))
 				return
 			}
 			p.queue.Complete(ctx, job.ID, existingID)
+			p.emitCompleted(ctx, job.ID, existingID)
 			return
 		}
 		p.queue.Fail(ctx, job.ID, fmt.Sprintf("store: %s", err))
+		p.emitFailed(ctx, job.ID, fmt.Sprintf("store: %s", err))
 		return
 	}
 
@@ -191,6 +200,77 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	}
 
 	p.queue.Complete(ctx, job.ID, draft.ID)
+	p.emitCompleted(ctx, job.ID, draft.ID)
+
+	// Fan out per-item jobs if the pipeline staged items for enqueueing.
+	p.fanOutItems(ctx, draft)
+}
+
+// fanOutItems enqueues per-item jobs from Metadata["items_to_enqueue"].
+func (p *WorkerPool) fanOutItems(ctx context.Context, draft *storage.KnowledgeObject) {
+	if draft.Metadata == nil {
+		return
+	}
+	rawItems, ok := draft.Metadata["items_to_enqueue"]
+	if !ok {
+		return
+	}
+	items, ok := rawItems.([]map[string]any)
+	if !ok || len(items) == 0 {
+		return
+	}
+	now := time.Now().Truncate(time.Second)
+	for _, item := range items {
+		content, _ := item["content"].(string)
+		link, _ := item["link"].(string)
+		if content == "" {
+			content = link
+		}
+		if content == "" {
+			continue
+		}
+		source, _ := item["source"].(string)
+		job := &storage.Job{
+			ID:         uuid.New().String(),
+			Type:       "ingest:feed_item",
+			Status:     storage.JobPending,
+			Payload:    content,
+			Pipeline:   "feed.ingest",
+			Source:     source,
+			MaxRetries: 3,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		}
+		if err := p.queue.Enqueue(ctx, job); err != nil {
+			log.Printf("jobs: fanOut enqueue: %v", err)
+		}
+	}
+}
+
+func (p *WorkerPool) emitCompleted(ctx context.Context, jobID, resultID string) {
+	if p.bus == nil {
+		return
+	}
+	ev, err := events.NewEvent("worker.pool", "job.completed", map[string]string{
+		"job_id":    jobID,
+		"result_id": resultID,
+	})
+	if err == nil {
+		_ = p.bus.Publish(ctx, ev)
+	}
+}
+
+func (p *WorkerPool) emitFailed(ctx context.Context, jobID, reason string) {
+	if p.bus == nil {
+		return
+	}
+	ev, err := events.NewEvent("worker.pool", "job.failed", map[string]string{
+		"job_id": jobID,
+		"error":  reason,
+	})
+	if err == nil {
+		_ = p.bus.Publish(ctx, ev)
+	}
 }
 
 func (p *WorkerPool) recoverStaleLoop(ctx context.Context) error {

@@ -15,7 +15,8 @@ import (
 func CreateFeed(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			URL string `json:"url"`
+			URL    string `json:"url"`
+			Format string `json:"format"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
@@ -30,7 +31,7 @@ func CreateFeed(svc *service.Service) http.HandlerFunc {
 			return
 		}
 
-		feed, err := svc.CreateFeed(r.Context(), req.URL)
+		feed, err := svc.CreateFeed(r.Context(), req.URL, req.Format)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
@@ -50,7 +51,10 @@ func ListFeeds(svc *service.Service) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
-		WriteJSON(w, http.StatusOK, feeds)
+		WriteJSON(w, http.StatusOK, map[string]any{
+			"feeds": feeds,
+			"total": len(feeds),
+		})
 	}
 }
 
@@ -68,6 +72,18 @@ func SyncFeed(svc *service.Service) http.HandlerFunc {
 			return
 		}
 		WriteJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
+	}
+}
+
+// SyncAllFeeds triggers sync for all active feeds.
+func SyncAllFeeds(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		jobIDs, err := svc.SyncAllFeeds(r.Context())
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			return
+		}
+		WriteJSON(w, http.StatusAccepted, map[string]any{"job_ids": jobIDs, "count": len(jobIDs)})
 	}
 }
 

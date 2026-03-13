@@ -20,7 +20,7 @@ func newTestService(t *testing.T) *Service {
 	q := jobs.NewQueue(driver.Jobs())
 	pipes := pipeline.DefaultRegistry()
 	engine := search.NewEngine(driver)
-	return New(driver, q, pipes, engine, "")
+	return New(driver, q, pipes, engine, "", nil)
 }
 
 func TestAnalyze(t *testing.T) {

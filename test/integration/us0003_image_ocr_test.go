@@ -191,7 +191,7 @@ func (s *ocrProviderStep) Run(_ context.Context, draft *storage.KnowledgeObject)
 // ---------------------------------------------------------------------------
 
 func registerImagePipeline(env *testEnv, steps ...pipeline.PipelineStep) {
-	env.svc.Pipes.Register("image.analysis", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("image.analysis", &pipeline.Pipeline{
 		PipelineName: "image.analysis",
 		Description:  "Image OCR pipeline for testing",
 		Steps:        steps,
@@ -318,7 +318,7 @@ func TestUS0003_SupportedFormats(t *testing.T) {
 			defer env.stop(t)
 
 			pipelineName := fmt.Sprintf("image.%s", tc.format)
-			env.svc.Pipes.Register(pipelineName, &pipeline.Pipeline{
+			env.svc.Pipes.Upsert(pipelineName, &pipeline.Pipeline{
 				PipelineName: pipelineName,
 				Steps: []pipeline.PipelineStep{
 					&imageMetaStep{format: tc.format, width: 640, height: 480, size: 1024},
@@ -354,7 +354,7 @@ func TestUS0003_GIFFirstFrameOnly(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("image.gif", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("image.gif", &pipeline.Pipeline{
 		PipelineName: "image.gif",
 		Steps: []pipeline.PipelineStep{
 			&imageMetaStep{format: "gif", width: 320, height: 240, size: 4096},
@@ -402,7 +402,7 @@ func TestUS0003_UnsupportedFormatRejectsGracefully(t *testing.T) {
 
 			supported := map[string]bool{"png": true, "jpg": true, "webp": true, "tiff": true, "bmp": true, "gif": true}
 			pipelineName := fmt.Sprintf("image.reject.%s", tc.format)
-			env.svc.Pipes.Register(pipelineName, &pipeline.Pipeline{
+			env.svc.Pipes.Upsert(pipelineName, &pipeline.Pipeline{
 				PipelineName: pipelineName,
 				Steps: []pipeline.PipelineStep{
 					&imageMetaStep{format: tc.format, width: 100, height: 100, size: 512},
@@ -430,7 +430,7 @@ func TestUS0003_CorruptImageReturnsError(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("image.corrupt", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("image.corrupt", &pipeline.Pipeline{
 		PipelineName: "image.corrupt",
 		Steps: []pipeline.PipelineStep{
 			&corruptImageStep{},
@@ -456,7 +456,7 @@ func TestUS0003_FileSizeLimitEnforced(t *testing.T) {
 	defer env.stop(t)
 
 	maxBytes := 100 // Use a small limit for testing instead of 50MB.
-	env.svc.Pipes.Register("image.sizelimit", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("image.sizelimit", &pipeline.Pipeline{
 		PipelineName: "image.sizelimit",
 		Steps: []pipeline.PipelineStep{
 			&sizeLimitStep{maxBytes: maxBytes},
@@ -525,7 +525,7 @@ func TestUS0003_LowConfidenceFlaggedForReview(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("image.lowconf", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("image.lowconf", &pipeline.Pipeline{
 		PipelineName: "image.lowconf",
 		Steps: []pipeline.PipelineStep{
 			&imageMetaStep{format: "png", width: 200, height: 200, size: 512},
@@ -706,7 +706,7 @@ func TestUS0003_WorkerCrashRetry(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Register("image.crashretry", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("image.crashretry", &pipeline.Pipeline{
 		PipelineName: "image.crashretry",
 		Steps: []pipeline.PipelineStep{
 			&imageMetaStep{format: "png", width: 100, height: 100, size: 256},
@@ -755,7 +755,7 @@ func TestUS0003_OCRProviderConfigurable(t *testing.T) {
 			defer env.stop(t)
 
 			pipelineName := fmt.Sprintf("image.provider.%s", tc.provider)
-			env.svc.Pipes.Register(pipelineName, &pipeline.Pipeline{
+			env.svc.Pipes.Upsert(pipelineName, &pipeline.Pipeline{
 				PipelineName: pipelineName,
 				Steps: []pipeline.PipelineStep{
 					&imageMetaStep{format: "png", width: 100, height: 100, size: 256},

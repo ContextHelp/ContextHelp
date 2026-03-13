@@ -19,7 +19,6 @@ var (
 	gitCommit string
 )
 
-// rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "dpkms",
 	Short: "dPKMS - Decentralized knowledge substrate",
@@ -32,7 +31,6 @@ ContextHelp's knowledge management capabilities.`,
 	SilenceErrors: true,
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
 func Execute() error {
 	return rootCmd.Execute()
 }
@@ -50,7 +48,6 @@ func init() {
 	viper.BindPFlag("server.url", rootCmd.PersistentFlags().Lookup("server-url"))
 }
 
-// initConfig reads in config file and ENV variables if set.
 func initConfig() {
 	var err error
 	cfg, err = config.Load(cfgFile)

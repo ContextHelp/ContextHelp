@@ -24,7 +24,7 @@ func TestServeStartsAndStops(t *testing.T) {
 	queue := jobs.NewQueue(driver.Jobs())
 	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
-	svc := service.New(driver, queue, pipes, engine, "")
+	svc := service.New(driver, queue, pipes, engine, "", nil)
 
 	router := httpserver.NewRouter(svc)
 
@@ -41,7 +41,7 @@ func TestServeStartsAndStops(t *testing.T) {
 		Handler: router,
 	}
 
-	pool := jobs.NewWorkerPool(queue, pipes, driver, 1)
+	pool := jobs.NewWorkerPool(queue, pipes, driver, 1, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

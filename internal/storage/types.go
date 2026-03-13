@@ -307,9 +307,9 @@ type FeedFilter struct {
 
 // Batch represents a batch import operation.
 type Batch struct {
-	ID           string       `json:"id"`
+	ID           string       `json:"batch_id"`
 	Format       string       `json:"format"`
-	TotalRecords int          `json:"total_records"`
+	TotalRecords int          `json:"total"`
 	Completed    int          `json:"completed"`
 	Failed       int          `json:"failed"`
 	Status       string       `json:"status"` // processing, completed, partial, dry_run_complete

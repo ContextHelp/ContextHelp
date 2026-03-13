@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -14,14 +15,19 @@ func CreateImport(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Content string `json:"content"`
-			Format  string `json:"format"` // "jsonl" or "csv"
+			Data    string `json:"data"`
+			Format  string `json:"format"` // "jsonl", "csv", "tsv", "markdown", "opml"
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
 			return
 		}
+		// Accept either "content" or "data" field.
 		if req.Content == "" {
-			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "content is required")
+			req.Content = req.Data
+		}
+		if req.Content == "" {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "content or data is required")
 			return
 		}
 		if req.Format == "" {
@@ -30,11 +36,17 @@ func CreateImport(svc *service.Service) http.HandlerFunc {
 
 		batch, err := svc.CreateBatch(r.Context(), req.Content, req.Format)
 		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			code := http.StatusInternalServerError
+			if strings.Contains(err.Error(), "exceeds limit") {
+				code = http.StatusRequestEntityTooLarge
+			} else if strings.Contains(err.Error(), "invalid") {
+				code = http.StatusBadRequest
+			}
+			WriteError(w, code, "INVALID_REQUEST", err.Error())
 			return
 		}
 
-		WriteJSON(w, http.StatusCreated, batch)
+		WriteJSON(w, http.StatusAccepted, batch)
 	}
 }
 

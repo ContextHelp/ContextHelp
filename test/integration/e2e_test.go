@@ -39,7 +39,7 @@ func startTestEnv(t *testing.T) *testEnv {
 	queue := jobs.NewQueue(driver.Jobs())
 	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
-	svc := service.New(driver, queue, pipes, engine, "")
+	svc := service.New(driver, queue, pipes, engine, "", nil)
 	router := httpserver.NewRouter(svc)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -49,7 +49,7 @@ func startTestEnv(t *testing.T) *testEnv {
 	addr := ln.Addr().String()
 
 	httpSrv := &gohttp.Server{Handler: router}
-	pool := jobs.NewWorkerPool(queue, pipes, driver, 2)
+	pool := jobs.NewWorkerPool(queue, pipes, driver, 2, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
@@ -263,7 +263,7 @@ func TestEdgesCreated(t *testing.T) {
 	defer env.stop(t)
 
 	// Register a custom pipeline that adds mentions.
-	env.svc.Pipes.Register("test.mentions", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("test.mentions", &pipeline.Pipeline{
 		PipelineName: "test.mentions",
 		Steps:        []pipeline.PipelineStep{&mentionStep{}},
 	})
@@ -379,7 +379,7 @@ func TestObjectDeleteCascade(t *testing.T) {
 	defer env.stop(t)
 
 	// Register a custom pipeline that adds mentions.
-	env.svc.Pipes.Register("test.mentions", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("test.mentions", &pipeline.Pipeline{
 		PipelineName: "test.mentions",
 		Steps:        []pipeline.PipelineStep{&mentionStep{}},
 	})

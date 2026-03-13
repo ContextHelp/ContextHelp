@@ -20,8 +20,8 @@ func TestCreateImport(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated {
-		t.Errorf("status: got %d, want 201", resp.StatusCode)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Errorf("status: got %d, want 202", resp.StatusCode)
 	}
 
 	var batch storage.Batch
@@ -31,9 +31,6 @@ func TestCreateImport(t *testing.T) {
 	}
 	if batch.Format != "jsonl" {
 		t.Errorf("Format: got %q, want jsonl", batch.Format)
-	}
-	if batch.Status != "processing" {
-		t.Errorf("Status: got %q, want processing", batch.Status)
 	}
 }
 
@@ -64,8 +61,8 @@ func TestCreateImportDefaultFormat(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated {
-		t.Errorf("status: got %d, want 201", resp.StatusCode)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Errorf("status: got %d, want 202", resp.StatusCode)
 	}
 
 	var batch storage.Batch

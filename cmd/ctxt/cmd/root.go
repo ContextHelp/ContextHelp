@@ -19,7 +19,6 @@ var (
 	gitCommit string
 )
 
-// rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "ctxt",
 	Short: "ContextHelp - Your agentic context brain",
@@ -32,7 +31,6 @@ designed to augment both human and agent workflows.`,
 	SilenceErrors: true,
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
 func Execute() error {
 	return rootCmd.Execute()
 }
@@ -50,7 +48,6 @@ func init() {
 	viper.BindPFlag("output.format", rootCmd.PersistentFlags().Lookup("output"))
 }
 
-// initConfig reads in config file and ENV variables if set.
 func initConfig() {
 	var err error
 	cfg, err = config.Load(cfgFile)

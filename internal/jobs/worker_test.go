@@ -23,7 +23,7 @@ func TestProcessJob(t *testing.T) {
 	job.Pipeline = "text.short"
 	q.Enqueue(ctx, job)
 
-	pool := NewWorkerPool(q, pipes, driver, 1)
+	pool := NewWorkerPool(q, pipes, driver, 1, nil)
 	pool.pollInterval = 50 * time.Millisecond
 
 	// Run pool in background, cancel after processing.
@@ -75,7 +75,7 @@ func TestProcessJobCreatesEdges(t *testing.T) {
 	job.Pipeline = "test.mentions"
 	q.Enqueue(ctx, job)
 
-	pool := NewWorkerPool(q, pipes, driver, 1)
+	pool := NewWorkerPool(q, pipes, driver, 1, nil)
 	pool.pollInterval = 50 * time.Millisecond
 
 	go func() {
@@ -116,7 +116,7 @@ func TestProcessJobFailure(t *testing.T) {
 	job.Pipeline = "nonexistent"
 	q.Enqueue(ctx, job)
 
-	pool := NewWorkerPool(q, pipes, driver, 1)
+	pool := NewWorkerPool(q, pipes, driver, 1, nil)
 	pool.pollInterval = 50 * time.Millisecond
 
 	go func() {
@@ -143,7 +143,7 @@ func TestWorkerPoolShutdown(t *testing.T) {
 	pipes := builtins.Registry()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	pool := NewWorkerPool(q, pipes, driver, 2)
+	pool := NewWorkerPool(q, pipes, driver, 2, nil)
 	pool.pollInterval = 50 * time.Millisecond
 
 	done := make(chan struct{})

@@ -55,10 +55,11 @@ func (m *mockRegistry) SelectPipeline(content string) string {
 	}
 	return "text.long"
 }
-func (m *mockRegistry) SetSelectors(_ SelectorFunc)  {}
-func (m *mockRegistry) RegisterDetector(_ Detector)  {}
-func (m *mockRegistry) Detect(in DetectInput) string { return m.SelectPipeline(in.Source) }
-func (m *mockRegistry) Detectors() []Detector        { return nil }
+func (m *mockRegistry) Upsert(name string, p *Pipeline) { m.pipelines[name] = p }
+func (m *mockRegistry) SetSelectors(_ SelectorFunc)     {}
+func (m *mockRegistry) RegisterDetector(_ Detector)     {}
+func (m *mockRegistry) Detect(in DetectInput) string    { return m.SelectPipeline(in.Source) }
+func (m *mockRegistry) Detectors() []Detector           { return nil }
 
 func TestRegistryInterface(t *testing.T) {
 	var r Registry = &mockRegistry{pipelines: make(map[string]*Pipeline)}

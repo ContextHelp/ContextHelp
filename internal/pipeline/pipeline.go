@@ -26,6 +26,7 @@ type SelectorFunc func(content string) string
 // Registry manages named pipelines.
 type Registry interface {
 	Register(name string, p *Pipeline) error
+	Upsert(name string, p *Pipeline)
 	Get(name string) (*Pipeline, error)
 	List() []string
 	SelectPipeline(content string) string

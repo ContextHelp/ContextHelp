@@ -162,7 +162,7 @@ func TestUS0007_SubscribeRSSReturnsMetadata(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -185,7 +185,7 @@ func TestUS0007_SubscribeAtomFormat(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -206,7 +206,7 @@ func TestUS0007_SubscribeJSONFeed(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -227,7 +227,7 @@ func TestUS0007_ListSubscriptions(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -269,7 +269,7 @@ func TestUS0007_SyncAllFeeds(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -298,7 +298,7 @@ func TestUS0007_SyncSpecificFeed(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -331,7 +331,7 @@ func TestUS0007_RemoveSubscription(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -373,7 +373,7 @@ func TestUS0007_ConditionalGetETag(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -417,7 +417,7 @@ func TestUS0007_DeduplicationByGUID(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -474,7 +474,7 @@ func TestUS0007_FanoutCreatesJobs(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -525,7 +525,7 @@ func TestUS0007_FeedItemKnowledgeObject(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -562,7 +562,7 @@ func TestUS0007_UnreachableFeedSetsError(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -603,7 +603,7 @@ func TestUS0007_Feed410GonePermanent(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -644,7 +644,7 @@ func TestUS0007_Feed429RespectsRetryAfter(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -690,7 +690,7 @@ func TestUS0007_POSTFeedsReturns201(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -729,7 +729,7 @@ func TestUS0007_SyncReturns202(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})
@@ -762,7 +762,7 @@ func TestUS0007_DeleteReturns204(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Register("feed.ingest", &pipeline.Pipeline{
+	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
 		PipelineName: "feed.ingest",
 		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
 	})

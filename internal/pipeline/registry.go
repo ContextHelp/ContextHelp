@@ -34,6 +34,10 @@ func (r *registry) Register(name string, p *Pipeline) error {
 	return nil
 }
 
+func (r *registry) Upsert(name string, p *Pipeline) {
+	r.pipelines[name] = p
+}
+
 func (r *registry) Get(name string) (*Pipeline, error) {
 	p, ok := r.pipelines[name]
 	if !ok {

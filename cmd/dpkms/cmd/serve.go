@@ -115,7 +115,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// 6. Init service layer.
-	svc := service.New(driver, queue, pipes, engine, stepsPath)
+	svc := service.New(driver, queue, pipes, engine, stepsPath, nil)
 
 	// 7. Build HTTP router.
 	router := httpserver.NewRouter(svc)
@@ -134,7 +134,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// 10. Init worker pool.
-	pool := jobs.NewWorkerPool(queue, pipes, driver, workers)
+	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus)
 
 	// 11. Start everything via errgroup.
 	ctx, cancel := context.WithCancel(context.Background())

@@ -28,7 +28,7 @@ func newTestServerBundle(t *testing.T) *testServerBundle {
 	q := jobs.NewQueue(driver.Jobs())
 	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
-	svc := service.New(driver, q, pipes, engine, "")
+	svc := service.New(driver, q, pipes, engine, "", nil)
 	return &testServerBundle{
 		Server: httptest.NewServer(NewRouter(svc)),
 		svc:    svc,
@@ -101,7 +101,7 @@ func TestHealthEndpointUnhealthy(t *testing.T) {
 	q := jobs.NewQueue(driver.Jobs())
 	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
-	svc := service.New(driver, q, pipes, engine, "")
+	svc := service.New(driver, q, pipes, engine, "", nil)
 	ts := httptest.NewServer(NewRouter(svc))
 	defer ts.Close()
 
