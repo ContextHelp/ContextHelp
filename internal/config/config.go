@@ -26,8 +26,14 @@ const (
 	EnvDPKMSWorkers = "DPKMS_WORKERS"
 )
 
+// currentSchemaVersion is the latest config schema version.
+const currentSchemaVersion = 1
+
 // Config represents the application configuration
 type Config struct {
+	// Version is the schema version. Used for migrations.
+	Version int `mapstructure:"version" yaml:"version"`
+
 	// Storage configuration
 	Storage StorageConfig `mapstructure:"storage"`
 
@@ -51,6 +57,24 @@ type Config struct {
 
 	// Retrieval configuration
 	Retrieval RetrievalConfig `mapstructure:"retrieval"`
+
+	// Jobs controls worker pool behaviour.
+	Jobs JobsConfig `mapstructure:"jobs"`
+
+	// Pipelines holds per-pipeline provider overrides and routing rules.
+	Pipelines PipelinesConfig `mapstructure:"pipelines"`
+
+	// Conventions enforces naming rules across the system.
+	Conventions ConventionsConfig `mapstructure:"conventions"`
+
+	// Secrets configures the secrets backend.
+	Secrets SecretsConfig `mapstructure:"secrets"`
+
+	// Watch configures the filesystem watcher.
+	Watch WatchConfig `mapstructure:"watch"`
+
+	// Inbox configures the default inbox for new content.
+	Inbox InboxConfig `mapstructure:"inbox"`
 }
 
 // RetrievalConfig controls progressive retrieval behaviour.
@@ -124,7 +148,20 @@ type ServerConfig struct {
 
 // ProfileConfig represents profile configuration
 type ProfileConfig struct {
-	Default string `mapstructure:"default"`
+	Default  string                  `mapstructure:"default" yaml:"default"`
+	Profiles map[string]FocusProfile `mapstructure:"profiles" yaml:"profiles"`
+}
+
+// FocusProfile is a named configuration preset for a specific role or project.
+type FocusProfile struct {
+	// Description is a human-readable label shown in ctxt profile list.
+	Description string `mapstructure:"description" yaml:"description"`
+	// Tags is the default tag set pre-populated when this profile is active.
+	Tags []string `mapstructure:"tags" yaml:"tags"`
+	// MentionNamespaces constrains which @namespaces are surfaced in results.
+	MentionNamespaces []string `mapstructure:"mention_namespaces" yaml:"mention_namespaces"`
+	// RerankBoosts maps entity types to a boost factor (1.0 = no boost).
+	RerankBoosts map[string]float64 `mapstructure:"rerank_boosts" yaml:"rerank_boosts"`
 }
 
 // RegistryConfig represents a registry configuration
@@ -216,7 +253,32 @@ func Load(cfgFile string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	// Run migrations if needed.
+	if cfg.Version < currentSchemaVersion {
+		if migrate(&cfg) {
+			// Best-effort write-back: ignore errors (config path may be read-only).
+			cfgPath := v.ConfigFileUsed()
+			if cfgPath != "" {
+				_ = WriteBack(&cfg, cfgPath)
+			}
+		}
+	}
+
 	return &cfg, nil
+}
+
+// migrate applies schema migrations to cfg in-place and returns true if
+// any migration was applied (caller should write back).
+func migrate(cfg *Config) bool {
+	changed := false
+
+	if cfg.Version < 1 {
+		// v0 → v1: no structural changes; just stamp the version.
+		cfg.Version = 1
+		changed = true
+	}
+
+	return changed
 }
 
 // setDefaults sets default configuration values
@@ -264,6 +326,32 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.llm.backend", "auto")
 	v.SetDefault("providers.llm.endpoint", "http://localhost:11434")
 	v.SetDefault("providers.llm.model", "")
+
+	// Schema version
+	v.SetDefault("version", 0)
+
+	// Jobs defaults (reproduce current hardcoded values)
+	v.SetDefault("jobs.poll_interval", 500*time.Millisecond)
+	v.SetDefault("jobs.stale_timeout", 30*time.Minute)
+	v.SetDefault("jobs.max_retries", 3)
+	v.SetDefault("jobs.max_hops", 5)
+
+	// Pipelines defaults
+	v.SetDefault("pipelines.overrides", map[string]any{})
+
+	// Conventions defaults
+	v.SetDefault("conventions.enforce_mention_namespaces", "off")
+
+	// Secrets defaults
+	v.SetDefault("secrets.backend", "env")
+	v.SetDefault("secrets.keychain_service", "ctxt")
+
+	// Watch defaults
+	v.SetDefault("watch.enabled", false)
+	v.SetDefault("watch.debounce", 500*time.Millisecond)
+
+	// Inbox defaults — leave path empty (resolved at runtime)
+	v.SetDefault("inbox.pipeline", "text.short")
 }
 
 // bindEnvVars binds environment variables to configuration keys
@@ -289,6 +377,14 @@ func bindEnvVars(v *viper.Viper) {
 	v.BindEnv("server.workers", EnvDPKMSWorkers)
 	v.BindEnv("server.public", "CH_PUBLIC")
 	v.BindEnv("profile.default", EnvProfile)
+
+	v.BindEnv("jobs.poll_interval", "DPKMS_POLL_INTERVAL")
+	v.BindEnv("jobs.stale_timeout", "DPKMS_STALE_TIMEOUT")
+	v.BindEnv("jobs.max_retries", "DPKMS_MAX_RETRIES")
+	v.BindEnv("jobs.max_hops", "DPKMS_MAX_HOPS")
+	v.BindEnv("secrets.backend", "CTXT_SECRETS_BACKEND")
+	v.BindEnv("secrets.age_file", "CTXT_AGE_FILE")
+	v.BindEnv("secrets.age_identity_file", "CTXT_AGE_IDENTITY")
 }
 
 // GetConfigPath returns the configuration file path being used
@@ -328,4 +424,84 @@ func EnsureDataDir() error {
 	}
 
 	return os.MkdirAll(dataDir, 0755)
+}
+
+// JobsConfig controls worker pool runtime parameters.
+type JobsConfig struct {
+	// PollInterval is how often idle workers poll for new jobs. Min 50ms.
+	PollInterval time.Duration `mapstructure:"poll_interval" yaml:"poll_interval"`
+	// StaleTimeout is how long a running job can be silent before it is
+	// considered stale and eligible for recovery.
+	StaleTimeout time.Duration `mapstructure:"stale_timeout" yaml:"stale_timeout"`
+	// MaxRetries is the default retry limit for fan-out jobs.
+	MaxRetries int `mapstructure:"max_retries" yaml:"max_retries"`
+	// MaxHops is the maximum number of pipeline hops a job can take.
+	MaxHops int `mapstructure:"max_hops" yaml:"max_hops"`
+}
+
+// PipelinesConfig holds per-pipeline overrides and global routing config.
+type PipelinesConfig struct {
+	// Overrides maps pipeline name to a per-pipeline override.
+	Overrides map[string]PipelineOverride `mapstructure:"overrides" yaml:"overrides"`
+}
+
+// PipelineOverride allows customising a single named pipeline.
+type PipelineOverride struct {
+	// Providers overrides individual provider backends for this pipeline only.
+	// Keys match ProvidersConfig field names in lowercase: "llm", "vision", etc.
+	Providers map[string]ProviderBackendConfig `mapstructure:"providers" yaml:"providers"`
+	// SkipSteps is an ordered list of step names to remove from the pipeline.
+	SkipSteps []string `mapstructure:"skip_steps" yaml:"skip_steps"`
+	// ExtraSteps is an ordered list of step names appended after existing steps.
+	ExtraSteps []string `mapstructure:"extra_steps" yaml:"extra_steps"`
+}
+
+// ConventionsConfig enforces naming rules across the system.
+type ConventionsConfig struct {
+	// EnforceMentionNamespaces controls @namespace validation.
+	// Valid values: "off" (default), "warn", "error".
+	EnforceMentionNamespaces string `mapstructure:"enforce_mention_namespaces" yaml:"enforce_mention_namespaces"`
+	// AllowedMentionNamespaces is the set of valid @namespace prefixes.
+	// Empty means all namespaces are allowed.
+	AllowedMentionNamespaces []string `mapstructure:"allowed_mention_namespaces" yaml:"allowed_mention_namespaces"`
+	// TagVocabulary is the canonical set of tags. When non-empty, tags outside
+	// this set trigger fuzzy suggestions.
+	TagVocabulary []string `mapstructure:"tag_vocabulary" yaml:"tag_vocabulary"`
+}
+
+// SecretsConfig controls where API keys and other secrets are read from.
+type SecretsConfig struct {
+	// Backend selects the secrets provider.
+	// Valid values: "env" (default), "keychain", "age-file".
+	Backend string `mapstructure:"backend" yaml:"backend"`
+	// AgeFile is the path to an age-encrypted YAML secrets file.
+	// Only used when Backend == "age-file".
+	AgeFile string `mapstructure:"age_file" yaml:"age_file"`
+	// AgeIdentityFile is the path to the age identity (private key) file.
+	AgeIdentityFile string `mapstructure:"age_identity_file" yaml:"age_identity_file"`
+	// KeychainService is the macOS/Linux keychain service name.
+	// Defaults to "ctxt".
+	KeychainService string `mapstructure:"keychain_service" yaml:"keychain_service"`
+}
+
+// WatchConfig configures the filesystem watcher.
+type WatchConfig struct {
+	// Enabled activates the watcher on startup.
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// Paths is the list of directories to watch.
+	Paths []string `mapstructure:"paths" yaml:"paths"`
+	// Debounce is how long to wait after a change before processing.
+	Debounce time.Duration `mapstructure:"debounce" yaml:"debounce"`
+	// Patterns is a list of glob patterns to include (e.g. "*.md").
+	Patterns []string `mapstructure:"patterns" yaml:"patterns"`
+}
+
+// InboxConfig configures the default inbox for new content.
+type InboxConfig struct {
+	// Path is the directory to use as the inbox. Defaults to ~/ctxt-inbox.
+	Path string `mapstructure:"path" yaml:"path"`
+	// Pipeline is the pipeline to use for inbox items. Defaults to "text.short".
+	Pipeline string `mapstructure:"pipeline" yaml:"pipeline"`
+	// Tags are auto-applied tags for inbox items.
+	Tags []string `mapstructure:"tags" yaml:"tags"`
 }
