@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 )
@@ -9,6 +10,7 @@ import (
 type registry struct {
 	pipelines map[string]*Pipeline
 	selector  SelectorFunc
+	detectors []Detector
 }
 
 // NewRegistry creates an empty pipeline registry.
@@ -45,12 +47,38 @@ func (r *registry) List() []string {
 }
 
 func (r *registry) SelectPipeline(content string) string {
-	return r.selector(content)
+	return r.Detect(DetectInput{Source: content, Sniff: content})
 }
 
 // SetSelectors replaces the pipeline selection function.
 func (r *registry) SetSelectors(fn SelectorFunc) {
 	r.selector = fn
+}
+
+// RegisterDetector appends a detector to the selection chain.
+func (r *registry) RegisterDetector(d Detector) {
+	r.detectors = append(r.detectors, d)
+}
+
+// Detect runs registered detectors in order, falling back to the selector.
+func (r *registry) Detect(in DetectInput) string {
+	for _, d := range r.detectors {
+		name, err := d.Detect(in)
+		if err == nil {
+			return name
+		}
+		if err != ErrDelegate {
+			log.Printf("pipeline: detector error (delegating): %v", err)
+		}
+	}
+	return r.selector(in.Source)
+}
+
+// Detectors returns a copy of the registered detectors slice.
+func (r *registry) Detectors() []Detector {
+	out := make([]Detector, len(r.detectors))
+	copy(out, r.detectors)
+	return out
 }
 
 // defaultSelector is the fallback when no selectors have been configured.

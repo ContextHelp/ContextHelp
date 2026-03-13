@@ -71,7 +71,8 @@ func (d *Driver) Registries() storage.RegistryStore { return d.registries }
 func (d *Driver) Reminders() storage.ReminderStore  { return d.reminders }
 func (d *Driver) Feeds() storage.FeedStore          { return d.feeds }
 func (d *Driver) FeedItems() storage.FeedItemStore  { return d.feedItems }
-func (d *Driver) Batches() storage.BatchStore       { return d.batches }
+func (d *Driver) Batches() storage.BatchStore          { return d.batches }
+func (d *Driver) Detectors() storage.DetectorStore     { panic("postgres: Detectors not implemented") }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)

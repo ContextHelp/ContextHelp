@@ -17,3 +17,12 @@ type CreatePipelineRequest struct {
 	Steps       string                 `json:"steps"`
 	Sandbox     *storage.SandboxConfig `json:"sandbox,omitempty"`
 }
+
+// DetectorCreateRequest represents a request to create a detector configuration.
+type DetectorCreateRequest struct {
+	Kind         storage.DetectorKind `json:"kind"`
+	Name         string               `json:"name"`
+	PipelineName string               `json:"pipeline_name"`
+	Pattern      string               `json:"pattern"`
+	Priority     int                  `json:"priority"`
+}

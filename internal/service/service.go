@@ -381,6 +381,80 @@ func (s *Service) SemanticSearch(ctx context.Context, query string, limit int, e
 	return out, nil
 }
 
+// CreateFeed creates a new feed subscription with status=active.
+func (s *Service) CreateFeed(ctx context.Context, url string) (*storage.Feed, error) {
+	now := time.Now().Truncate(time.Second)
+	feed := &storage.Feed{
+		ID:        uuid.New().String(),
+		URL:       url,
+		Status:    "active",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := s.Store.Feeds().Create(ctx, feed); err != nil {
+		return nil, fmt.Errorf("create feed: %w", err)
+	}
+	return feed, nil
+}
+
+// ListFeeds returns all feed subscriptions matching the filter.
+func (s *Service) ListFeeds(ctx context.Context, filter storage.FeedFilter) ([]*storage.Feed, error) {
+	return s.Store.Feeds().List(ctx, filter)
+}
+
+// DeleteFeed deletes a feed subscription by ID.
+func (s *Service) DeleteFeed(ctx context.Context, id string) error {
+	if _, err := s.Store.Feeds().Get(ctx, id); err != nil {
+		return fmt.Errorf("not found: %w", err)
+	}
+	return s.Store.Feeds().Delete(ctx, id)
+}
+
+// SyncFeed enqueues a feed.sync job for the given feed ID.
+func (s *Service) SyncFeed(ctx context.Context, feedID string) (string, error) {
+	feed, err := s.Store.Feeds().Get(ctx, feedID)
+	if err != nil {
+		return "", fmt.Errorf("not found: %w", err)
+	}
+	now := time.Now().Truncate(time.Second)
+	job := &storage.Job{
+		ID:         uuid.New().String(),
+		Type:       "feed:sync",
+		Status:     storage.JobPending,
+		Payload:    feed.URL,
+		Pipeline:   "feed.sync",
+		Source:     feed.URL,
+		MaxRetries: 3,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := s.Queue.Enqueue(ctx, job); err != nil {
+		return "", err
+	}
+	return job.ID, nil
+}
+
+// CreateBatch creates a new batch import record.
+func (s *Service) CreateBatch(ctx context.Context, content, format string) (*storage.Batch, error) {
+	now := time.Now().Truncate(time.Second)
+	batch := &storage.Batch{
+		ID:        uuid.New().String(),
+		Format:    format,
+		Status:    "processing",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := s.Store.Batches().Create(ctx, batch); err != nil {
+		return nil, fmt.Errorf("create batch: %w", err)
+	}
+	return batch, nil
+}
+
+// GetBatch retrieves a batch import by ID.
+func (s *Service) GetBatch(ctx context.Context, id string) (*storage.Batch, error) {
+	return s.Store.Batches().Get(ctx, id)
+}
+
 // CancelJob cancels a pending or running job.
 func (s *Service) CancelJob(ctx context.Context, id string) error {
 	return s.Store.Jobs().Cancel(ctx, id)
@@ -453,4 +527,48 @@ func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error
 	}
 
 	return result, nil
+}
+
+// CreateDetector persists a new detector configuration.
+func (s *Service) CreateDetector(ctx context.Context, req DetectorCreateRequest) (*storage.DetectorRecord, error) {
+	now := time.Now().Truncate(time.Second)
+	d := &storage.DetectorRecord{
+		ID:           uuid.New().String(),
+		Kind:         req.Kind,
+		Name:         req.Name,
+		PipelineName: req.PipelineName,
+		Pattern:      req.Pattern,
+		Priority:     req.Priority,
+		Enabled:      true,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if d.Priority == 0 {
+		d.Priority = 100
+	}
+	if err := s.Store.Detectors().Create(ctx, d); err != nil {
+		return nil, fmt.Errorf("create detector: %w", err)
+	}
+	return d, nil
+}
+
+// ListDetectors returns detectors matching the filter.
+func (s *Service) ListDetectors(ctx context.Context, filter storage.DetectorFilter) ([]*storage.DetectorRecord, error) {
+	ds, _, err := s.Store.Detectors().List(ctx, filter)
+	return ds, err
+}
+
+// DeleteDetector removes a detector by ID.
+func (s *Service) DeleteDetector(ctx context.Context, id string) error {
+	return s.Store.Detectors().Delete(ctx, id)
+}
+
+// EnableDetector enables a detector by ID.
+func (s *Service) EnableDetector(ctx context.Context, id string) error {
+	return s.Store.Detectors().Enable(ctx, id)
+}
+
+// DisableDetector disables a detector by ID.
+func (s *Service) DisableDetector(ctx context.Context, id string) error {
+	return s.Store.Detectors().Disable(ctx, id)
 }

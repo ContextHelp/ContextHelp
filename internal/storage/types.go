@@ -322,3 +322,33 @@ type ImportRecord struct {
 	Source   string         `json:"source,omitempty"`
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
+
+// DetectorKind classifies how a Detector matches content.
+type DetectorKind string
+
+const (
+	DetectorKindExtension   DetectorKind = "extension"
+	DetectorKindURLPattern  DetectorKind = "url_pattern"
+	DetectorKindContentTest DetectorKind = "content_test"
+)
+
+// DetectorRecord is a persisted detector configuration.
+type DetectorRecord struct {
+	ID           string       `json:"id"`
+	Kind         DetectorKind `json:"kind"`
+	Name         string       `json:"name"`          // human label
+	PipelineName string       `json:"pipeline_name"` // which pipeline it routes to
+	Pattern      string       `json:"pattern"`       // extension (.pdf), URL regex, or content snippet
+	Priority     int          `json:"priority"`      // lower = higher priority (default 100)
+	Enabled      bool         `json:"enabled"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+}
+
+// DetectorFilter for listing.
+type DetectorFilter struct {
+	Kind    DetectorKind
+	Enabled *bool // nil = all, true = enabled only, false = disabled only
+	Limit   int
+	Offset  int
+}

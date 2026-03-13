@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"regexp"
+	"sort"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -44,9 +48,47 @@ func newService() (*service.Service, func(), error) {
 	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
 
+	// Load persisted detectors into the pipeline registry.
+	if err := loadDetectors(ctx, driver, pipes); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load detectors: %v\n", err)
+	}
+
 	svc := service.New(driver, queue, pipes, engine, "")
 	cleanup := func() { driver.Close(context.Background()) }
 	return svc, cleanup, nil
+}
+
+// loadDetectors reads enabled detectors from the DB and registers them with the registry.
+func loadDetectors(ctx context.Context, driver storage.StorageDriver, pipes interface {
+	RegisterDetector(d pipeline.Detector)
+}) error {
+	t := true
+	records, _, err := driver.Detectors().List(ctx, storage.DetectorFilter{Enabled: &t})
+	if err != nil {
+		return err
+	}
+
+	// Sort by priority ascending (lower number = higher priority).
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].Priority < records[j].Priority
+	})
+
+	for _, rec := range records {
+		switch rec.Kind {
+		case storage.DetectorKindExtension:
+			pipes.RegisterDetector(pipeline.NewExtensionDetector(map[string]string{
+				rec.Pattern: rec.PipelineName,
+			}))
+		case storage.DetectorKindURLPattern:
+			pat, err := regexp.Compile(rec.Pattern)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: detector %s has invalid pattern %q: %v\n", rec.ID, rec.Pattern, err)
+				continue
+			}
+			pipes.RegisterDetector(pipeline.NewURLPatternDetector(rec.PipelineName, pat))
+		}
+	}
+	return nil
 }
 
 // isJSONOutput returns true when --output is "json".

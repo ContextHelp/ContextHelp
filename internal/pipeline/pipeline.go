@@ -30,4 +30,7 @@ type Registry interface {
 	List() []string
 	SelectPipeline(content string) string
 	SetSelectors(fn SelectorFunc)
+	RegisterDetector(d Detector)
+	Detect(in DetectInput) string
+	Detectors() []Detector
 }

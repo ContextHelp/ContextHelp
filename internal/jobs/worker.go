@@ -2,18 +2,21 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
-	"strings"
-
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
+
+const maxHops = 5
 
 // WorkerPool runs pipeline jobs from the queue.
 type WorkerPool struct {
@@ -72,11 +75,29 @@ func (p *WorkerPool) workerLoop(ctx context.Context) error {
 	}
 }
 
-func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
+// runSteps executes all steps in a pipeline on draft, skipping any step that
+// returns ErrDelegate and failing on any other error.
+func (p *WorkerPool) runSteps(ctx context.Context, pipe *pipeline.Pipeline, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	var err error
+	for _, step := range pipe.Steps {
+		draft, err = step.Run(ctx, draft)
+		if err != nil {
+			if errors.Is(err, pipeline.ErrDelegate) {
+				log.Printf("jobs: step %q delegated, skipping", step.Name())
+				continue
+			}
+			return nil, fmt.Errorf("step %s: %w", step.Name(), err)
+		}
+	}
+	return draft, nil
+}
+
+// processWithHops runs the initial pipeline and follows any hop requests
+// (draft.Metadata["next_pipeline"]) up to maxHops total runs.
+func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*storage.KnowledgeObject, error) {
 	pipe, err := p.pipelines.Get(job.Pipeline)
 	if err != nil {
-		p.queue.Fail(ctx, job.ID, fmt.Sprintf("pipeline: %s", err))
-		return
+		return nil, fmt.Errorf("pipeline: %w", err)
 	}
 
 	draft := &storage.KnowledgeObject{
@@ -87,12 +108,40 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		CreatedAt:  time.Now(),
 	}
 
-	for _, step := range pipe.Steps {
-		draft, err = step.Run(ctx, draft)
-		if err != nil {
-			p.queue.Fail(ctx, job.ID, fmt.Sprintf("step %s: %s", step.Name(), err))
-			return
+	draft, err = p.runSteps(ctx, pipe, draft)
+	if err != nil {
+		return nil, err
+	}
+
+	for hop := 1; hop < maxHops; hop++ {
+		if draft.Metadata == nil {
+			break
 		}
+		next, ok := draft.Metadata["next_pipeline"].(string)
+		if !ok || next == "" {
+			break
+		}
+		delete(draft.Metadata, "next_pipeline")
+
+		nextPipe, err := p.pipelines.Get(next)
+		if err != nil {
+			log.Printf("jobs: hop pipeline %q not found, stopping hops", next)
+			break
+		}
+		draft, err = p.runSteps(ctx, nextPipe, draft)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return draft, nil
+}
+
+func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
+	draft, err := p.processWithHops(ctx, job)
+	if err != nil {
+		p.queue.Fail(ctx, job.ID, err.Error())
+		return
 	}
 
 	draft.UpdatedAt = time.Now()

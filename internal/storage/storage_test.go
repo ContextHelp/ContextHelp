@@ -21,6 +21,7 @@ func (m *mockDriver) Reminders() ReminderStore         { return &mockReminderSto
 func (m *mockDriver) Feeds() FeedStore                 { return &mockFeedStore{} }
 func (m *mockDriver) FeedItems() FeedItemStore         { return &mockFeedItemStore{} }
 func (m *mockDriver) Batches() BatchStore              { return &mockBatchStore{} }
+func (m *mockDriver) Detectors() DetectorStore         { return &mockDetectorStore{} }
 func (m *mockDriver) Health(ctx context.Context) error { return nil }
 
 type mockObjectStore struct{}
@@ -163,6 +164,20 @@ type mockBatchStore struct{}
 func (m *mockBatchStore) Create(ctx context.Context, batch *Batch) error     { return nil }
 func (m *mockBatchStore) Get(ctx context.Context, id string) (*Batch, error) { return nil, nil }
 func (m *mockBatchStore) Update(ctx context.Context, batch *Batch) error     { return nil }
+
+type mockDetectorStore struct{}
+
+func (m *mockDetectorStore) Create(_ context.Context, _ *DetectorRecord) error { return nil }
+func (m *mockDetectorStore) Get(_ context.Context, _ string) (*DetectorRecord, error) {
+	return nil, nil
+}
+func (m *mockDetectorStore) List(_ context.Context, _ DetectorFilter) ([]*DetectorRecord, int, error) {
+	return nil, 0, nil
+}
+func (m *mockDetectorStore) Update(_ context.Context, _ *DetectorRecord) error { return nil }
+func (m *mockDetectorStore) Delete(_ context.Context, _ string) error          { return nil }
+func (m *mockDetectorStore) Enable(_ context.Context, _ string) error          { return nil }
+func (m *mockDetectorStore) Disable(_ context.Context, _ string) error         { return nil }
 
 func TestStorageDriverInterfaceSatisfaction(t *testing.T) {
 	var d StorageDriver = &mockDriver{}

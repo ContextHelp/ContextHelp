@@ -17,6 +17,7 @@ type StorageDriver interface {
 	Feeds() FeedStore
 	FeedItems() FeedItemStore
 	Batches() BatchStore
+	Detectors() DetectorStore
 	Health(ctx context.Context) error
 }
 
@@ -120,4 +121,15 @@ type BatchStore interface {
 	Create(ctx context.Context, batch *Batch) error
 	Get(ctx context.Context, id string) (*Batch, error)
 	Update(ctx context.Context, batch *Batch) error
+}
+
+// DetectorStore persists and retrieves detector configurations.
+type DetectorStore interface {
+	Create(ctx context.Context, d *DetectorRecord) error
+	Get(ctx context.Context, id string) (*DetectorRecord, error)
+	List(ctx context.Context, filter DetectorFilter) ([]*DetectorRecord, int, error)
+	Update(ctx context.Context, d *DetectorRecord) error
+	Delete(ctx context.Context, id string) error
+	Enable(ctx context.Context, id string) error
+	Disable(ctx context.Context, id string) error
 }
