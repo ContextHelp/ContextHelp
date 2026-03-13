@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -26,7 +27,7 @@ Types:
   draft   - Generate publish-ready draft
 
 Examples:
-  # Generate a brief
+  # Generate a brief with inline citations (default)
   ctxt make brief --tag ux,onboarding
 
   # Generate a plan with specific mentions
@@ -36,7 +37,13 @@ Examples:
   ctxt make summary --since 2025-01-01
 
   # Generate draft and save to file
-  ctxt make draft --tag launch --output launch-plan.md`,
+  ctxt make draft --tag launch --output launch-plan.md
+
+  # Export as JSON (includes structured citations)
+  ctxt make brief --tag launch --export json
+
+  # Disable citations
+  ctxt make brief --tag launch --no-citations`,
 	Args: cobra.ExactArgs(1),
 	RunE: runMake,
 }
@@ -52,11 +59,17 @@ func init() {
 	// Output flags
 	makeCmd.Flags().StringP("output-file", "o", "", "write to file")
 
+	// Citation flags
+	makeCmd.Flags().Bool("no-citations", false, "disable inline [ref:ID] citations")
+	makeCmd.Flags().String("export", "markdown", "output format: markdown or json")
+
 	// Bind flags to viper
 	viper.BindPFlag("make.mention", makeCmd.Flags().Lookup("mention"))
 	viper.BindPFlag("make.tag", makeCmd.Flags().Lookup("tag"))
 	viper.BindPFlag("make.since", makeCmd.Flags().Lookup("since"))
 	viper.BindPFlag("make.output-file", makeCmd.Flags().Lookup("output-file"))
+	viper.BindPFlag("make.no-citations", makeCmd.Flags().Lookup("no-citations"))
+	viper.BindPFlag("make.export", makeCmd.Flags().Lookup("export"))
 }
 
 func runMake(cmd *cobra.Command, args []string) error {
@@ -66,6 +79,13 @@ func runMake(cmd *cobra.Command, args []string) error {
 	case "brief", "plan", "summary", "draft":
 	default:
 		return fmt.Errorf("unknown composition type: %s (expected brief|plan|summary|draft)", compositionType)
+	}
+
+	exportFormat := viper.GetString("make.export")
+	switch exportFormat {
+	case "markdown", "json", "":
+	default:
+		return fmt.Errorf("unknown export format: %s (expected markdown or json)", exportFormat)
 	}
 
 	svc, cleanup, err := newService()
@@ -97,20 +117,45 @@ func runMake(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	result, err := svc.Compose(ctx, objects, compositionType)
-	if err != nil {
-		return fmt.Errorf("compose: %w", err)
+	noCitations := viper.GetBool("make.no-citations")
+
+	var output string
+
+	if noCitations || exportFormat == "" {
+		// Plain composition without citation markers.
+		result, err := svc.Compose(ctx, objects, compositionType)
+		if err != nil {
+			return fmt.Errorf("compose: %w", err)
+		}
+		output = result
+	} else {
+		// Citation-enriched composition (default path).
+		result, err := svc.ComposeWithCitations(ctx, objects, compositionType)
+		if err != nil {
+			return fmt.Errorf("compose: %w", err)
+		}
+
+		if exportFormat == "json" {
+			b, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return fmt.Errorf("marshal: %w", err)
+			}
+			output = string(b)
+		} else {
+			// markdown (default)
+			output = result.Content
+		}
 	}
 
 	outputFile := viper.GetString("make.output-file")
 	if outputFile != "" {
-		if err := os.WriteFile(outputFile, []byte(result), 0644); err != nil {
+		if err := os.WriteFile(outputFile, []byte(output), 0644); err != nil {
 			return fmt.Errorf("write file: %w", err)
 		}
 		fmt.Printf("Composition written to %s\n", outputFile)
 		return nil
 	}
 
-	fmt.Print(result)
+	fmt.Print(output)
 	return nil
 }

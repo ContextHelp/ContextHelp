@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -18,7 +18,7 @@ func newTestService(t *testing.T) *Service {
 	t.Helper()
 	driver := storageutil.NewTestDriver(t)
 	q := jobs.NewQueue(driver.Jobs())
-	pipes := builtins.Registry()
+	pipes := pipeline.DefaultRegistry()
 	engine := search.NewEngine(driver)
 	return New(driver, q, pipes, engine, "")
 }
@@ -337,4 +337,133 @@ func TestListEntitiesEmpty(t *testing.T) {
 	got, err := svc.ListEntities(ctx, storage.EntityFilter{})
 	require.NoError(t, err)
 	assert.Empty(t, got)
+}
+
+// ---------------------------------------------------------------------------
+// Compose / ComposeWithCitations
+// ---------------------------------------------------------------------------
+
+func seedObjectsForCompose(t *testing.T, ctx context.Context, svc *Service) []*storage.KnowledgeObject {
+	t.Helper()
+	now := time.Now().Truncate(time.Second)
+	objs := []*storage.KnowledgeObject{
+		{
+			ID:        "o-abc123",
+			Type:      "decision",
+			Summaries: []string{"Defer infrastructure refactor"},
+			Source:    "engineering-meeting.pdf",
+			Mentions:  []string{"@team.alice"},
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		{
+			ID:        "o-def456",
+			Type:      "note",
+			Summaries: []string{"Market timing analysis"},
+			Source:    "slack-#engineering",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+	for _, obj := range objs {
+		require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	}
+	return objs
+}
+
+func TestCompose_BasicOutput(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	objs := seedObjectsForCompose(t, ctx, svc)
+
+	result, err := svc.Compose(ctx, objs, "brief")
+	require.NoError(t, err)
+	assert.Contains(t, result, "brief")
+	assert.Contains(t, result, "o-abc123")
+	assert.Contains(t, result, "o-def456")
+}
+
+func TestCompose_EmptyObjects(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	result, err := svc.Compose(ctx, nil, "brief")
+	require.NoError(t, err)
+	assert.Contains(t, result, "brief")
+}
+
+func TestComposeWithCitations_ReturnsCitationResult(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	objs := seedObjectsForCompose(t, ctx, svc)
+
+	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	// Content should include object IDs as inline citations.
+	assert.Contains(t, result.Content, "o-abc123")
+	assert.Contains(t, result.Content, "o-def456")
+}
+
+func TestComposeWithCitations_IncludesReferenceTable(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	objs := seedObjectsForCompose(t, ctx, svc)
+
+	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
+	require.NoError(t, err)
+	// Reference table must be appended.
+	assert.Contains(t, result.Content, "## References")
+	assert.Contains(t, result.Content, "| ID | Type | Summary | Source | Created |")
+}
+
+func TestComposeWithCitations_CitationsSlice(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	objs := seedObjectsForCompose(t, ctx, svc)
+
+	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
+	require.NoError(t, err)
+	// At least one citation should be present in the structured slice.
+	assert.NotEmpty(t, result.Citations)
+}
+
+func TestComposeWithCitations_EntitiesEnriched(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	objs := seedObjectsForCompose(t, ctx, svc)
+
+	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
+	require.NoError(t, err)
+	// The first citation (o-abc123) has @team.alice mention.
+	var found bool
+	for _, c := range result.Citations {
+		for _, ent := range c.Entities {
+			if ent == "@team.alice" {
+				found = true
+			}
+		}
+	}
+	assert.True(t, found, "expected @team.alice in enriched entities")
+}
+
+func TestComposeWithCitations_SourceIDs(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	objs := seedObjectsForCompose(t, ctx, svc)
+
+	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
+	require.NoError(t, err)
+	assert.Contains(t, result.SourceIDs, "o-abc123")
+	assert.Contains(t, result.SourceIDs, "o-def456")
+}
+
+func TestComposeWithCitations_CompositionType(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	objs := seedObjectsForCompose(t, ctx, svc)
+
+	result, err := svc.ComposeWithCitations(ctx, objs, "plan")
+	require.NoError(t, err)
+	assert.Equal(t, "plan", result.Type)
 }

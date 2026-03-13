@@ -1,6 +1,11 @@
 package service
 
-import "github.com/ideacrafterslabs/ctxt/internal/storage"
+import (
+	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/citation"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+)
 
 // AnalyzeRequest represents a request to analyze content.
 type AnalyzeRequest struct {
@@ -18,11 +23,17 @@ type CreatePipelineRequest struct {
 	Sandbox     *storage.SandboxConfig `json:"sandbox,omitempty"`
 }
 
-// DetectorCreateRequest represents a request to create a detector configuration.
-type DetectorCreateRequest struct {
-	Kind         storage.DetectorKind `json:"kind"`
-	Name         string               `json:"name"`
-	PipelineName string               `json:"pipeline_name"`
-	Pattern      string               `json:"pattern"`
-	Priority     int                  `json:"priority"`
+// CompositionResult is the structured output of ComposeWithCitations.
+type CompositionResult struct {
+	// Type is the requested composition type (brief, plan, summary, draft).
+	Type string `json:"type"`
+	// Content is the full markdown body including inline [ref:ID] markers
+	// and an appended reference table.
+	Content string `json:"content"`
+	// Citations is the parsed list of inline citations found in Content.
+	Citations []citation.Citation `json:"citations"`
+	// SourceIDs are the IDs of every object used as input.
+	SourceIDs []string `json:"source_ids"`
+	// GeneratedAt records when the composition was produced.
+	GeneratedAt time.Time `json:"generated_at"`
 }

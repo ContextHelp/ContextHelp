@@ -4,16 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/ideacrafterslabs/ctxt/internal/citation"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
-	pipelinesteps "github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
-	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -171,60 +169,11 @@ func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest)
 }
 
 func (s *Service) GetPipeline(ctx context.Context, name string) (*storage.Pipeline, error) {
-	// Check database first (user-created pipelines).
-	p, err := s.Store.Pipelines().Get(ctx, name)
-	if err == nil {
-		return p, nil
-	}
-
-	// Fall back to in-memory built-in registry.
-	bp, bpErr := s.Pipes.Get(name)
-	if bpErr != nil {
-		return nil, err // return original storage error
-	}
-	return builtInToStorage(name, bp), nil
+	return s.Store.Pipelines().Get(ctx, name)
 }
 
 func (s *Service) ListPipelines(ctx context.Context, filter storage.PipelineFilter) ([]*storage.Pipeline, int, error) {
-	// Fetch user-created pipelines from storage.
-	dbPipelines, count, err := s.Store.Pipelines().List(ctx, filter)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Track database pipeline names to avoid duplicates.
-	seen := make(map[string]bool, len(dbPipelines))
-	for _, p := range dbPipelines {
-		seen[p.Name] = true
-	}
-
-	// Prepend built-in pipelines that match the filter.
-	for _, name := range s.Pipes.List() {
-		if seen[name] {
-			continue
-		}
-		if filter.Name != "" && !strings.Contains(name, filter.Name) {
-			continue
-		}
-		bp, _ := s.Pipes.Get(name)
-		dbPipelines = append([]*storage.Pipeline{builtInToStorage(name, bp)}, dbPipelines...)
-		count++
-	}
-
-	return dbPipelines, count, nil
-}
-
-func builtInToStorage(name string, p *pipeline.Pipeline) *storage.Pipeline {
-	stepRefs := make([]storage.StepRef, len(p.Steps))
-	for i, s := range p.Steps {
-		stepRefs[i] = storage.StepRef{Name: s.Name()}
-	}
-	return &storage.Pipeline{
-		Name:        name,
-		Description: p.Description,
-		Steps:       stepRefs,
-		IsBuiltIn:   true,
-	}
+	return s.Store.Pipelines().List(ctx, filter)
 }
 
 func (s *Service) DeletePipeline(ctx context.Context, name string) error {
@@ -337,124 +286,6 @@ func (s *Service) FindByText(ctx context.Context, query string, limit int) ([]*s
 	return results, nil
 }
 
-// SemanticSearch finds objects by vector cosine similarity.
-// It embeds the query using the provided EmbeddingProvider, then loads all
-// stored embeddings and ranks them in memory.
-func (s *Service) SemanticSearch(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider) ([]*storage.KnowledgeObject, error) {
-	queryVec, err := ep.Embed(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("embed query: %w", err)
-	}
-	if len(queryVec) == 0 {
-		return nil, fmt.Errorf("embedding provider returned empty vector")
-	}
-
-	rows, err := s.Store.Objects().ListWithEmbeddings(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	type scored struct {
-		obj   *storage.KnowledgeObject
-		score float64
-	}
-	var results []scored
-	for _, row := range rows {
-		if len(row.Embeddings) == 0 {
-			continue
-		}
-		score := pipelinesteps.CosineSimilarity(queryVec, row.Embeddings)
-		results = append(results, scored{row, score})
-	}
-
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].score > results[j].score
-	})
-
-	out := make([]*storage.KnowledgeObject, 0, limit)
-	for i, r := range results {
-		if i >= limit {
-			break
-		}
-		out = append(out, r.obj)
-	}
-	return out, nil
-}
-
-// CreateFeed creates a new feed subscription with status=active.
-func (s *Service) CreateFeed(ctx context.Context, url string) (*storage.Feed, error) {
-	now := time.Now().Truncate(time.Second)
-	feed := &storage.Feed{
-		ID:        uuid.New().String(),
-		URL:       url,
-		Status:    "active",
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	if err := s.Store.Feeds().Create(ctx, feed); err != nil {
-		return nil, fmt.Errorf("create feed: %w", err)
-	}
-	return feed, nil
-}
-
-// ListFeeds returns all feed subscriptions matching the filter.
-func (s *Service) ListFeeds(ctx context.Context, filter storage.FeedFilter) ([]*storage.Feed, error) {
-	return s.Store.Feeds().List(ctx, filter)
-}
-
-// DeleteFeed deletes a feed subscription by ID.
-func (s *Service) DeleteFeed(ctx context.Context, id string) error {
-	if _, err := s.Store.Feeds().Get(ctx, id); err != nil {
-		return fmt.Errorf("not found: %w", err)
-	}
-	return s.Store.Feeds().Delete(ctx, id)
-}
-
-// SyncFeed enqueues a feed.sync job for the given feed ID.
-func (s *Service) SyncFeed(ctx context.Context, feedID string) (string, error) {
-	feed, err := s.Store.Feeds().Get(ctx, feedID)
-	if err != nil {
-		return "", fmt.Errorf("not found: %w", err)
-	}
-	now := time.Now().Truncate(time.Second)
-	job := &storage.Job{
-		ID:         uuid.New().String(),
-		Type:       "feed:sync",
-		Status:     storage.JobPending,
-		Payload:    feed.URL,
-		Pipeline:   "feed.sync",
-		Source:     feed.URL,
-		MaxRetries: 3,
-		CreatedAt:  now,
-		UpdatedAt:  now,
-	}
-	if err := s.Queue.Enqueue(ctx, job); err != nil {
-		return "", err
-	}
-	return job.ID, nil
-}
-
-// CreateBatch creates a new batch import record.
-func (s *Service) CreateBatch(ctx context.Context, content, format string) (*storage.Batch, error) {
-	now := time.Now().Truncate(time.Second)
-	batch := &storage.Batch{
-		ID:        uuid.New().String(),
-		Format:    format,
-		Status:    "processing",
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	if err := s.Store.Batches().Create(ctx, batch); err != nil {
-		return nil, fmt.Errorf("create batch: %w", err)
-	}
-	return batch, nil
-}
-
-// GetBatch retrieves a batch import by ID.
-func (s *Service) GetBatch(ctx context.Context, id string) (*storage.Batch, error) {
-	return s.Store.Batches().Get(ctx, id)
-}
-
 // CancelJob cancels a pending or running job.
 func (s *Service) CancelJob(ctx context.Context, id string) error {
 	return s.Store.Jobs().Cancel(ctx, id)
@@ -504,6 +335,62 @@ func (s *Service) Compose(ctx context.Context, objects []*storage.KnowledgeObjec
 	return b.String(), nil
 }
 
+// ComposeWithCitations generates a markdown composition from knowledge objects
+// with inline [ref:ID] citation markers and an appended reference table.
+//
+// The fallback implementation injects citation markers after each object's
+// content snippet. When an AI provider is wired up it should emit markers
+// itself; this layer then parses and validates them regardless of origin.
+func (s *Service) ComposeWithCitations(ctx context.Context, objects []*storage.KnowledgeObject, compositionType string) (*CompositionResult, error) {
+	cctx := citation.NewCompositionContext(objects)
+
+	// Collect source IDs.
+	sourceIDs := make([]string, 0, len(objects))
+	for _, obj := range objects {
+		sourceIDs = append(sourceIDs, obj.ID)
+	}
+
+	// Build citation-annotated body.
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s\n\n", compositionType)
+	fmt.Fprintf(&b, "Generated from %d knowledge objects.\n\n", len(objects))
+
+	for _, obj := range objects {
+		fmt.Fprintf(&b, "## %s\n", obj.ID)
+		if len(obj.Summaries) > 0 {
+			fmt.Fprintf(&b, "%s [ref:%s]\n\n", obj.Summaries[0], obj.ID)
+		} else if obj.RawContent != "" {
+			content := obj.RawContent
+			if len(content) > 500 {
+				content = content[:500] + "..."
+			}
+			fmt.Fprintf(&b, "%s [ref:%s]\n\n", content, obj.ID)
+		} else {
+			fmt.Fprintf(&b, "[ref:%s]\n\n", obj.ID)
+		}
+	}
+
+	body := b.String()
+
+	// Parse citations from generated content.
+	citations := citation.ParseCitations(body)
+
+	// Enrich citations with entity mentions.
+	citation.EnrichCitationsWithEntities(citations, cctx.ObjectMap)
+
+	// Append reference table.
+	refTable := citation.BuildReferenceTable(citations, cctx.ObjectMap)
+	content := body + refTable
+
+	return &CompositionResult{
+		Type:        compositionType,
+		Content:     content,
+		Citations:   citations,
+		SourceIDs:   sourceIDs,
+		GeneratedAt: time.Now(),
+	}, nil
+}
+
 func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error) {
 	var steps []map[string]any
 	if err := json.Unmarshal([]byte(stepsJSON), &steps); err != nil {
@@ -527,48 +414,4 @@ func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error
 	}
 
 	return result, nil
-}
-
-// CreateDetector persists a new detector configuration.
-func (s *Service) CreateDetector(ctx context.Context, req DetectorCreateRequest) (*storage.DetectorRecord, error) {
-	now := time.Now().Truncate(time.Second)
-	d := &storage.DetectorRecord{
-		ID:           uuid.New().String(),
-		Kind:         req.Kind,
-		Name:         req.Name,
-		PipelineName: req.PipelineName,
-		Pattern:      req.Pattern,
-		Priority:     req.Priority,
-		Enabled:      true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-	if d.Priority == 0 {
-		d.Priority = 100
-	}
-	if err := s.Store.Detectors().Create(ctx, d); err != nil {
-		return nil, fmt.Errorf("create detector: %w", err)
-	}
-	return d, nil
-}
-
-// ListDetectors returns detectors matching the filter.
-func (s *Service) ListDetectors(ctx context.Context, filter storage.DetectorFilter) ([]*storage.DetectorRecord, error) {
-	ds, _, err := s.Store.Detectors().List(ctx, filter)
-	return ds, err
-}
-
-// DeleteDetector removes a detector by ID.
-func (s *Service) DeleteDetector(ctx context.Context, id string) error {
-	return s.Store.Detectors().Delete(ctx, id)
-}
-
-// EnableDetector enables a detector by ID.
-func (s *Service) EnableDetector(ctx context.Context, id string) error {
-	return s.Store.Detectors().Enable(ctx, id)
-}
-
-// DisableDetector disables a detector by ID.
-func (s *Service) DisableDetector(ctx context.Context, id string) error {
-	return s.Store.Detectors().Disable(ctx, id)
 }
