@@ -49,7 +49,7 @@ func TestComputeOverlap(t *testing.T) {
 }
 
 func TestPyannoteProviderName(t *testing.T) {
-	p := NewPyannoteDiarizationProvider()
+	p := NewPyannoteDiarizationProvider("pyannote")
 	if p.Name() != "pyannote" {
 		t.Errorf("Name: got %q", p.Name())
 	}

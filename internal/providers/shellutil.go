@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -54,18 +56,34 @@ var installHints = map[string]map[string]string{
 	},
 }
 
-// LookupTool checks whether a CLI tool is available on PATH.
+// LookupTool checks whether a CLI tool is available on PATH or common local paths.
 // Returns the full path or a ToolNotInstalledError with install hints.
 func LookupTool(name string) (string, error) {
-	path, err := exec.LookPath(name)
-	if err != nil {
-		hint := ""
-		if hints, ok := installHints[name]; ok {
-			hint = hints[runtime.GOOS]
-		}
-		return "", &ToolNotInstalledError{Tool: name, Hint: hint}
+	// 1. Try standard PATH
+	if path, err := exec.LookPath(name); err == nil {
+		return path, nil
 	}
-	return path, nil
+
+	// 2. Try common local paths
+	home, _ := os.UserHomeDir()
+	commonPaths := []string{
+		"/opt/homebrew/bin",
+		"/usr/local/bin",
+		filepath.Join(home, ".local", "bin"),
+	}
+
+	for _, p := range commonPaths {
+		fullPath := filepath.Join(p, name)
+		if _, err := os.Stat(fullPath); err == nil {
+			return fullPath, nil
+		}
+	}
+
+	hint := ""
+	if hints, ok := installHints[name]; ok {
+		hint = hints[runtime.GOOS]
+	}
+	return "", &ToolNotInstalledError{Tool: name, Hint: hint}
 }
 
 // CommandResult holds the output of a shell command.

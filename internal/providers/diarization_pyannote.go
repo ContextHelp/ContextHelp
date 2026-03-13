@@ -10,17 +10,26 @@ import (
 )
 
 // PyannoteDiarizationProvider shells out to pyannote CLI.
-type PyannoteDiarizationProvider struct{}
+type PyannoteDiarizationProvider struct {
+	cmd  string
+	args []string
+}
 
-func NewPyannoteDiarizationProvider() *PyannoteDiarizationProvider {
-	return &PyannoteDiarizationProvider{}
+func NewPyannoteDiarizationProvider(cmd string, args ...string) *PyannoteDiarizationProvider {
+	return &PyannoteDiarizationProvider{
+		cmd:  cmd,
+		args: args,
+	}
 }
 
 func (p *PyannoteDiarizationProvider) Name() string { return "pyannote" }
 
 func (p *PyannoteDiarizationProvider) Diarize(ctx context.Context, audioPath string, segments []TranscriptSegment) (*DiarizedResult, error) {
 	// Run pyannote-audio CLI which outputs RTTM format.
-	result, err := RunCommand(ctx, "pyannote", "--input", audioPath)
+	args := append([]string{}, p.args...)
+	args = append(args, "--input", audioPath)
+
+	result, err := RunCommand(ctx, p.cmd, args...)
 	if err != nil {
 		return nil, fmt.Errorf("pyannote: %w", err)
 	}
