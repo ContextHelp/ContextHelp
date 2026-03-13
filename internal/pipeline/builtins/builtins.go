@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
@@ -82,6 +83,8 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"email_parser":   func() pipeline.PipelineStep { return steps.NewEmailParser() },
 	"email_filter":   func() pipeline.PipelineStep { return newDefaultEmailFilter() },
 	"email_enqueuer": func() pipeline.PipelineStep { return steps.NewEmailEnqueuer() },
+	// Dedup step: registered with nil store (passthrough mode); store is injected at runtime.
+	"dedup": func() pipeline.PipelineStep { return steps.NewDedupStep(nil, config.DuplicatesConfig{}) },
 }
 
 // blobStepConstructors maps step names to blob-store-aware constructors.
@@ -338,4 +341,20 @@ func Defs() map[string]Def {
 		cp[k] = v
 	}
 	return cp
+}
+
+// InjectDedupStep inserts the dedup step after the embedding step in a pipeline
+// definition when near-duplicate checking is enabled.
+func InjectDedupStep(stepNames []string, cfg config.DuplicatesConfig) []string {
+	if !cfg.CheckSimilar {
+		return stepNames
+	}
+	out := make([]string, 0, len(stepNames)+1)
+	for _, s := range stepNames {
+		out = append(out, s)
+		if s == "embedding" {
+			out = append(out, "dedup")
+		}
+	}
+	return out
 }

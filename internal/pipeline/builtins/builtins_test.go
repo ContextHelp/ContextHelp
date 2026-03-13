@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 )
 
@@ -175,4 +176,39 @@ func TestMustRegisterPanicsOnDuplicate(t *testing.T) {
 		}
 	}()
 	MustRegister("text.short", Def{Description: "duplicate"})
+}
+
+func TestInjectDedupStep(t *testing.T) {
+	stepNames := []string{"typedetector", "embedding", "tagger"}
+
+	// CheckSimilar disabled: no injection.
+	out := InjectDedupStep(stepNames, config.DuplicatesConfig{CheckSimilar: false})
+	if len(out) != len(stepNames) {
+		t.Errorf("expected %d steps (no injection), got %d", len(stepNames), len(out))
+	}
+
+	// CheckSimilar enabled: dedup inserted after embedding.
+	out = InjectDedupStep(stepNames, config.DuplicatesConfig{CheckSimilar: true})
+	want := []string{"typedetector", "embedding", "dedup", "tagger"}
+	if len(out) != len(want) {
+		t.Fatalf("expected %d steps after injection, got %d: %v", len(want), len(out), out)
+	}
+	for i, s := range want {
+		if out[i] != s {
+			t.Errorf("step[%d]: got %q, want %q", i, out[i], s)
+		}
+	}
+}
+
+func TestDedupStepRegistered(t *testing.T) {
+	s, err := resolveStep("dedup", BuildOpts{})
+	if err != nil {
+		t.Fatalf("dedup step should be registered: %v", err)
+	}
+	if s == nil {
+		t.Fatal("dedup step resolved to nil")
+	}
+	if s.Name() != "dedup" {
+		t.Errorf("name: got %q, want dedup", s.Name())
+	}
 }
