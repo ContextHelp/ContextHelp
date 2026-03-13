@@ -134,6 +134,12 @@ func NewRouter(svc *service.Service, devCORS bool, mgr *watcher.Manager) chi.Rou
 		r.Post("/suggestions/{id}/approve", ApproveSuggestion(svc))
 		r.Post("/suggestions/{id}/reject", RejectSuggestion(svc))
 
+		// Aliases (aliasing plugin)
+		r.Post("/aliases", CreateAlias(svc))
+		r.Get("/aliases", ListAliases(svc))
+		r.Get("/aliases/{alias}", ResolveAlias(svc))
+		r.Delete("/aliases/{alias}", DeleteAlias(svc))
+
 		// Capture (browser extension)
 		r.Post("/capture/page", CapturePage(svc))
 		r.Post("/capture/selection", CaptureSelection(svc))

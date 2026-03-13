@@ -346,3 +346,12 @@ embeddings/
 #############################################################################
 # Allow users to add their own ignores without modifying this file
 .gitignore.local
+
+# Web UI build artifacts
+web/ui/dist/
+web/ui/node_modules/
+!internal/ui/dist/.gitkeep
+
+# Browser extension build artifacts
+extensions/browser/.output/
+extensions/browser/node_modules/

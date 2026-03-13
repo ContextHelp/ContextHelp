@@ -178,6 +178,14 @@ docker-ps:
 docker-shell:
 	docker exec -it ctxt-dpkms sh
 
+## build-ui: Build web UI assets and copy into internal/ui/dist
+build-ui:
+	cd web/ui && npm ci && npm run build
+	rm -rf internal/ui/dist
+	cp -r web/ui/dist internal/ui/dist
+
+.PHONY: build-ui
+
 ## help: Show this help message
 help:
 	@echo "ContextHelp Build System"

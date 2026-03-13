@@ -144,10 +144,11 @@ ContextHelp provides two command-line binaries:
 
 ### `ctxt` (User-Facing Commands)
 
-- `ctxt analyze` — capture and enqueue content for processing
+- `ctxt <content>` — (Default) capture and enqueue content from arguments, stdin, or clipboard
+- `ctxt analyze` — capture and enqueue content for processing (supports clipboard fallback)
 - `ctxt list` — query knowledge objects using filters or the query language
-- `ctxt find` — semantic search across local and federated knowledge
-- `ctxt open` — view structured knowledge object details
+- `ctxt find <query>` — semantic search (supports clipboard fallback)
+- `ctxt open <id>` — view knowledge object details (supports clipboard fallback)
 - `ctxt jobs` — inspect ingestion jobs and their status
 - `ctxt profile` — manage focus profiles (Founder, Engineer, Research, etc.)
 - `ctxt make` — generate compositions (briefs, plans, summaries)

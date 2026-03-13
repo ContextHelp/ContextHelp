@@ -20,15 +20,19 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "ctxt",
+	Use:   "ctxt [content]",
 	Short: "ContextHelp - Your agentic context brain",
 	Long: `ctxt is the user-facing interface for ContextHelp.
 
 ContextHelp provides universal capture, semantic search, and intelligent
 composition of your knowledge. It's local-first, offline-capable, and
-designed to augment both human and agent workflows.`,
+designed to augment both human and agent workflows.
+
+If called without a subcommand, it defaults to 'analyze', capturing content 
+from arguments, stdin, or the clipboard.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	RunE:          RunAnalyze,
 }
 
 func Execute() error {

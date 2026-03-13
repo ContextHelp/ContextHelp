@@ -4,30 +4,34 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var findCmd = &cobra.Command{
-	Use:   "find <query>",
+	Use:   "find [query]",
 	Short: "Semantic search across knowledge",
 	Long: `Perform semantic search across local and federated knowledge.
 
 Uses embeddings and AI-powered reranking to find relevant content.
 
+If no query is provided, it will check stdin and then the clipboard.
+
 Examples:
   # Basic search
   ctxt find "authentication best practices"
+
+  # Use clipboard content for search
+  ctxt find
 
   # Search with profile context
   ctxt find "signup flow" --profile growth
 
   # Limit results
   ctxt find "onboarding" --limit 10`,
-	Args: cobra.MinimumNArgs(1),
 	RunE: runFind,
 }
 
@@ -44,7 +48,15 @@ func init() {
 }
 
 func runFind(cmd *cobra.Command, args []string) error {
-	query := strings.Join(args, " ")
+	query, source, err := cli.GetInput(args)
+	if err != nil {
+		return err
+	}
+
+	if source == "clipboard" {
+		fmt.Fprintf(os.Stderr, "Searching for clipboard content: %q\n", query)
+	}
+
 	limit := viper.GetInt("find.limit")
 
 	svc, cleanup, err := newService()

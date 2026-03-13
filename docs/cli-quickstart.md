@@ -92,26 +92,33 @@ This starts:
 
 ### 2. Analyze Content
 
-Analyze various types of content:
+Capture and analyze various types of content from arguments, stdin, or the clipboard.
+
+**If no subcommand is provided, `ctxt` defaults to `analyze`.**
 
 ```bash
-# Analyze text from command line
-echo "Fix the signup flow to reduce friction" | ./bin/ctxt analyze --type text
+# Analyze text directly (default behavior)
+./bin/ctxt "Fix the signup flow to reduce friction"
 
-# Analyze text with metadata
-echo "UX improvements needed" | ./bin/ctxt analyze \
-  --type text \
+# Analyze from clipboard (if argument and stdin are empty)
+./bin/ctxt
+
+# Analyze text from piped stdin
+echo "UX improvements needed" | ./bin/ctxt
+
+# Analyze with metadata using the explicit 'analyze' subcommand
+./bin/ctxt analyze \
   --hints "#ux #critical" \
   --mentions "@ui.best-practice"
 
 # Analyze a URL
-./bin/ctxt analyze https://example.com/article
+./bin/ctxt "https://example.com/article"
 
-# Analyze an image
-./bin/ctxt analyze --file screenshot.png --type image
+# Analyze an image using a file
+./bin/ctxt --file screenshot.png --type image
 
 # Wait for job completion
-./bin/ctxt analyze "Important note" --wait
+./bin/ctxt "Important note" --wait
 ```
 
 ### 3. Manage Jobs

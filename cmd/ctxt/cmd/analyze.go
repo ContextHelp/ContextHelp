@@ -8,6 +8,7 @@ import (
 	gohttp "net/http"
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -23,6 +24,7 @@ Content can be provided as:
   - Command argument: ctxt analyze "some text"
   - Stdin: echo "text" | ctxt analyze
   - File: ctxt analyze --file path/to/file.txt
+  - Clipboard: ctxt analyze (if no argument, stdin, or file is provided)
 
 Examples:
   # Analyze text with hints and mentions
@@ -34,49 +36,53 @@ Examples:
   # Analyze a URL with a focus profile
   ctxt analyze https://example.com --type url --profile growth
 
+  # Use clipboard content
+  ctxt analyze
+
   # Wait for job completion
-  ctxt analyze https://example.com --wait`,
-	RunE: runAnalyze,
+  ctxt analyze --wait`,
+	RunE: RunAnalyze,
 }
 
 func init() {
 	rootCmd.AddCommand(analyzeCmd)
 
-	// Input flags
-	analyzeCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")
-	analyzeCmd.Flags().String("file", "", "read input from file")
+	// Input flags (Persistent on rootCmd so they work as default command)
+	rootCmd.PersistentFlags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")
+	rootCmd.PersistentFlags().String("file", "", "read input from file")
 
 	// Metadata flags
-	analyzeCmd.Flags().String("hints", "", "influence tagging (e.g., \"#ux #bug\")")
-	analyzeCmd.Flags().String("mentions", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
+	rootCmd.PersistentFlags().String("hints", "", "influence tagging (e.g., \"#ux #bug\")")
+	rootCmd.PersistentFlags().String("mentions", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
 
 	// Pipeline flags
-	analyzeCmd.Flags().String("pipeline", "", "force specific pipeline")
-	analyzeCmd.Flags().String("lang", "", "input language override")
-	analyzeCmd.Flags().String("translate", "", "translation mode (none to skip)")
+	rootCmd.PersistentFlags().String("pipeline", "", "force specific pipeline")
+	rootCmd.PersistentFlags().String("lang", "", "input language override")
+	rootCmd.PersistentFlags().String("translate", "", "translation mode (none to skip)")
 
 	// Execution flags
-	analyzeCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")
-	analyzeCmd.Flags().Bool("wait", false, "block until job completes")
+	rootCmd.PersistentFlags().Bool("raw", false, "disable AI; store raw knowledge object")
+	rootCmd.PersistentFlags().Bool("wait", false, "block until job completes")
 
 	// Server connection
-	analyzeCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	rootCmd.PersistentFlags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 
 	// Bind flags to viper
-	viper.BindPFlag("analyze.type", analyzeCmd.Flags().Lookup("type"))
-	viper.BindPFlag("analyze.file", analyzeCmd.Flags().Lookup("file"))
-	viper.BindPFlag("analyze.hints", analyzeCmd.Flags().Lookup("hints"))
-	viper.BindPFlag("analyze.mentions", analyzeCmd.Flags().Lookup("mentions"))
-	viper.BindPFlag("analyze.pipeline", analyzeCmd.Flags().Lookup("pipeline"))
-	viper.BindPFlag("analyze.lang", analyzeCmd.Flags().Lookup("lang"))
-	viper.BindPFlag("analyze.translate", analyzeCmd.Flags().Lookup("translate"))
-	viper.BindPFlag("analyze.raw", analyzeCmd.Flags().Lookup("raw"))
-	viper.BindPFlag("analyze.wait", analyzeCmd.Flags().Lookup("wait"))
-	viper.BindPFlag("server.url", analyzeCmd.Flags().Lookup("server"))
+	viper.BindPFlag("analyze.type", rootCmd.PersistentFlags().Lookup("type"))
+	viper.BindPFlag("analyze.file", rootCmd.PersistentFlags().Lookup("file"))
+	viper.BindPFlag("analyze.hints", rootCmd.PersistentFlags().Lookup("hints"))
+	viper.BindPFlag("analyze.mentions", rootCmd.PersistentFlags().Lookup("mentions"))
+	viper.BindPFlag("analyze.pipeline", rootCmd.PersistentFlags().Lookup("pipeline"))
+	viper.BindPFlag("analyze.lang", rootCmd.PersistentFlags().Lookup("lang"))
+	viper.BindPFlag("analyze.translate", rootCmd.PersistentFlags().Lookup("translate"))
+	viper.BindPFlag("analyze.raw", rootCmd.PersistentFlags().Lookup("raw"))
+	viper.BindPFlag("analyze.wait", rootCmd.PersistentFlags().Lookup("wait"))
+	viper.BindPFlag("server.url", rootCmd.PersistentFlags().Lookup("server"))
 }
 
-func runAnalyze(cmd *cobra.Command, args []string) error {
+func RunAnalyze(cmd *cobra.Command, args []string) error {
 	var content string
+	var source string
 
 	// Determine input source.
 	file := viper.GetString("analyze.file")
@@ -86,19 +92,17 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to read file: %w", err)
 		}
 		content = string(data)
-	} else if len(args) > 0 {
-		content = args[0]
+		source = "file"
 	} else {
-		stat, _ := os.Stdin.Stat()
-		if (stat.Mode() & os.ModeCharDevice) == 0 {
-			data, err := io.ReadAll(os.Stdin)
-			if err != nil {
-				return fmt.Errorf("failed to read stdin: %w", err)
-			}
-			content = string(data)
-		} else {
-			return fmt.Errorf("no input provided (use argument, --file, or stdin)")
+		var err error
+		content, source, err = cli.GetInput(args)
+		if err != nil {
+			return err
 		}
+	}
+
+	if source == "clipboard" {
+		fmt.Fprintf(os.Stderr, "Using content from clipboard...\n")
 	}
 
 	// Determine server URL.
@@ -112,7 +116,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		"content":  content,
 		"type":     viper.GetString("analyze.type"),
 		"pipeline": viper.GetString("analyze.pipeline"),
-		"source":   "cli",
+		"source":   fmt.Sprintf("cli:%s", source),
 	}
 
 	body, err := json.Marshal(reqBody)

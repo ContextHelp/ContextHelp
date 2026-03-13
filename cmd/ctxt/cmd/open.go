@@ -6,27 +6,27 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var openCmd = &cobra.Command{
-	Use:   "open <id>",
+	Use:   "open [id]",
 	Short: "Display knowledge object details",
 	Long: `Display detailed information about a knowledge object.
 
-Includes content, metadata, mentions, resolved entities, and plugin data.
+If no ID is provided, it will check the clipboard for an ID.
 
 Examples:
   # View object details
   ctxt open obj_12345678
 
-  # View raw object data
-  ctxt open obj_12345678 --raw
+  # View object using ID from clipboard
+  ctxt open
 
-  # Output as JSON
-  ctxt open obj_12345678 --output json`,
-	Args: cobra.ExactArgs(1),
+  # View raw object data
+  ctxt open obj_12345678 --raw`,
 	RunE: runOpen,
 }
 
@@ -41,7 +41,14 @@ func init() {
 }
 
 func runOpen(cmd *cobra.Command, args []string) error {
-	objectID := args[0]
+	objectID, source, err := cli.GetInput(args)
+	if err != nil {
+		return err
+	}
+
+	if source == "clipboard" {
+		fmt.Fprintf(os.Stderr, "Opening object ID from clipboard: %q\n", objectID)
+	}
 
 	svc, cleanup, err := newService()
 	if err != nil {

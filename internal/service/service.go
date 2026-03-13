@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/ideacrafterslabs/ctxt/internal/citation"
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -34,10 +36,11 @@ type Service struct {
 	Executor       *steps.StepExecutor
 	Bus            events.Bus
 	PluginRegistry *plugin.Registry
+	Conventions    config.ConventionsConfig
 }
 
 // New creates a new service instance.
-func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus) *Service {
+func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus, conventions config.ConventionsConfig) *Service {
 	discovery := steps.NewStepDiscovery(store, stepsPath)
 	executor := steps.NewStepExecutor(store, stepsPath)
 
@@ -46,14 +49,59 @@ func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry
 	}
 
 	return &Service{
-		Store:     store,
-		Queue:     queue,
-		Pipes:     pipes,
-		Search:    engine,
-		Discovery: discovery,
-		Executor:  executor,
-		Bus:       bus,
+		Store:       store,
+		Queue:       queue,
+		Pipes:       pipes,
+		Search:      engine,
+		Discovery:   discovery,
+		Executor:    executor,
+		Bus:         bus,
+		Conventions: conventions,
 	}
+}
+
+// validateMentionNamespaces checks that all @mentions use an allowed namespace.
+// Returns a slice of invalid mentions.
+func (s *Service) validateMentionNamespaces(mentions []string) []string {
+	if s.Conventions.EnforceMentionNamespaces == "off" || len(s.Conventions.AllowedMentionNamespaces) == 0 {
+		return nil
+	}
+	allowed := make(map[string]bool, len(s.Conventions.AllowedMentionNamespaces))
+	for _, ns := range s.Conventions.AllowedMentionNamespaces {
+		allowed[ns] = true
+	}
+	var bad []string
+	for _, m := range mentions {
+		// @namespace.slug — extract namespace part.
+		ns := m
+		if idx := strings.Index(m, "."); idx > 0 {
+			ns = m[:idx]
+		}
+		if !allowed[ns] {
+			bad = append(bad, m)
+		}
+	}
+	return bad
+}
+
+// WarnInvalidMentionNamespaces checks mentions against conventions and warns or errors.
+// This is called by commands that accept hints/mentions before enqueueing.
+func (s *Service) WarnInvalidMentionNamespaces(mentions []string) error {
+	if s.Conventions.EnforceMentionNamespaces == "off" || len(mentions) == 0 {
+		return nil
+	}
+	bad := s.validateMentionNamespaces(mentions)
+	if len(bad) == 0 {
+		return nil
+	}
+	msg := fmt.Sprintf("invalid mention namespaces: %v", bad)
+	switch s.Conventions.EnforceMentionNamespaces {
+	case "error":
+		return fmt.Errorf("%s", msg)
+	case "warn":
+		fmt.Fprintf(os.Stderr, "warning: %s\n", msg)
+	}
+	return nil
 }
 
 // Analyze enqueues a content analysis job and returns the job ID.

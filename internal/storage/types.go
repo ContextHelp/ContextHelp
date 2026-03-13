@@ -39,6 +39,8 @@ type KnowledgeObject struct {
 	RegistryInfluences []string       `json:"registry_influences,omitempty"`
 	Plugins            map[string]any `json:"plugins,omitempty"`
 	ContentHash        string         `json:"content_hash,omitempty"`
+	Status             string         `json:"status,omitempty"`      // "active" | "inbox" | "discarded"
+	InboxNote          string         `json:"inbox_note,omitempty"`
 	ReinforcementCount int            `json:"reinforcement_count,omitempty"`
 	LastReinforcedAt   *time.Time     `json:"last_reinforced_at,omitempty"`
 	CreatedAt          time.Time      `json:"created_at"`
@@ -116,6 +118,7 @@ type ObjectFilter struct {
 	Offset   int
 	Sort     string // "created_at", "updated_at"
 	Dir      string // "asc", "desc"
+	Status   string // "" → default to "active"; "inbox"; "discarded"; "all"
 }
 
 // EntityFilter specifies criteria for listing entities.
@@ -398,4 +401,28 @@ type ProximityStats struct {
 	HighProximity   int64   `json:"high_proximity"`   // score >= 0.7
 	MediumProximity int64   `json:"medium_proximity"` // score 0.4–0.7
 	LowProximity    int64   `json:"low_proximity"`    // score 0.2–0.4
+}
+
+// WatchConfig is the persisted configuration for a directory watch.
+type WatchConfig struct {
+	ID               string    `json:"id"`
+	Path             string    `json:"path"`
+	Mode             string    `json:"mode"`              // "generic" | "obsidian" | "logseq"
+	IncludePatterns  []string  `json:"include_patterns"`
+	ExcludePatterns  []string  `json:"exclude_patterns"`
+	DebounceMS       int       `json:"debounce_ms"`
+	Status           string    `json:"status"`            // "active" | "paused"
+	PipelineOverride string    `json:"pipeline_override"`
+	LastError        string    `json:"last_error"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// WatchFileRecord tracks the last-known state of a file under a watch.
+type WatchFileRecord struct {
+	WatchID     string    `json:"watch_id"`
+	FilePath    string    `json:"file_path"`
+	ObjectID    string    `json:"object_id"`
+	ContentHash string    `json:"content_hash"`
+	LastSeen    time.Time `json:"last_seen"`
 }

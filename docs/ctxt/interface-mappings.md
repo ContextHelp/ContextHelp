@@ -7,10 +7,11 @@ This document maps each non-negotiable principle to concrete implementations acr
 **Principle:** Zero-resistance capture and retrieval. No rituals, no decisions, no "where does this go?" moments.
 
 ### CLI Implementation
-- `ctxt add` accepts input from stdin, args, or prompts
+- `ctxt [content]` defaults to `analyze`, capturing from arguments, stdin, or clipboard
 - No required flags for basic capture
-- Piping support: `echo "note" | ctxt add`
-- Single command retrieval: `ctxt search <query>`
+- Piping support: `echo "note" | ctxt`
+- Automatic clipboard fallback if no content provided
+- Single command retrieval: `ctxt find <query>`
 
 ### TUI Implementation
 - Instant search with `/` — no navigation required

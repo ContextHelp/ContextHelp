@@ -30,7 +30,7 @@ func newTestServerBundle(t *testing.T) *testServerBundle {
 	engine := search.NewEngine(driver)
 	svc := service.New(driver, q, pipes, engine, "", nil)
 	return &testServerBundle{
-		Server: httptest.NewServer(NewRouter(svc)),
+		Server: httptest.NewServer(NewRouter(svc, false, nil)),
 		svc:    svc,
 	}
 }
@@ -102,7 +102,7 @@ func TestHealthEndpointUnhealthy(t *testing.T) {
 	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
 	svc := service.New(driver, q, pipes, engine, "", nil)
-	ts := httptest.NewServer(NewRouter(svc))
+	ts := httptest.NewServer(NewRouter(svc, false, nil))
 	defer ts.Close()
 
 	// Close the storage driver so that Health() returns an error.

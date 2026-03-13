@@ -29,8 +29,6 @@ flowchart LR
     F --> G[Search & Query Interfaces]
 ```
 
-Plugins may inject additional behaviors before/after CLI execution (such as notifications) using documented extension hooks.
-
 ---
 
 ## Installation
@@ -62,11 +60,12 @@ go build -o dpkms cmd/dpkms/main.go
 
 | Command | Purpose |
 |--------|---------|
-| `ctxt analyze` | Enqueue an ingestion job |
+| `ctxt <content>` | (Default) Enqueue content for ingestion (args, stdin, or clipboard) |
+| `ctxt analyze` | Enqueue an ingestion job (supports clipboard fallback) |
 | `ctxt job` | Inspect/manage ingestion jobs |
 | `ctxt list` | Query knowledge objects (local + registries) |
-| `ctxt find` | Semantic search across knowledge |
-| `ctxt open` | Display knowledge object details |
+| `ctxt find <query>` | Semantic search (supports clipboard fallback) |
+| `ctxt open <id>` | Display knowledge object details (supports clipboard fallback) |
 | `ctxt delete` | Remove knowledge objects |
 | `ctxt edit` | Modify knowledge object metadata |
 | `ctxt profile` | Manage focus profiles |
@@ -84,14 +83,6 @@ go build -o dpkms cmd/dpkms/main.go
 | `dpkms housekeeping` | Database maintenance and optimization |
 | `dpkms version` | Show version info |
 
-### Plugin-Defined Commands
-
-Plugins may register:
-
-- New commands (e.g. `ctxt feed`, `ctxt price`, `ctxt notify`)
-- New flags on existing commands
-- Pre/post output injectors (e.g. pending notifications)
-
 ---
 
 ## `ctxt analyze`
@@ -99,21 +90,25 @@ Plugins may register:
 Enqueue content into the ingestion queue.
 This does **not** run pipelines directly; the worker handles execution.
 
+**If no content is provided as an argument or via piped stdin, `ctxt` (and `ctxt analyze`) will check the system clipboard.**
+
 ### Usage
 
 ```bash
-ctxt analyze [options]
+ctxt <content> <options>
+# or explicitly:
+ctxt analyze <content> <options>
 ```
 
 ### Options
 
 | Flag | Description |
 |------|-------------|
-| `--type <text|url|image|audio|video|feed|auto>` | Input type override (plugins may add types) |
+| `--type <text|url|image|audio|video|feed|auto>` | Input type override |
 | `--hints "<#hint #hint>"` | Influence tagging |
 | `--mentions "<@slug1 @slug2>"` | Explicit mentions to attach |
 | `--file <path>` | Read input from file |
-| `--profile <name>` | Use focus profile (e.g., Founder, Engineer, Research) |
+| `--profile <name>` | Use focus profile |
 | `--pipeline <name>` | Force pipeline |
 | `--lang <code>` | Input language override |
 | `--translate none` | Skip translations |
@@ -131,38 +126,26 @@ Plugins such as the Refresh Plugin and RSS Feed Plugin may add:
 | `--fetch-new` | For feed-like sources, auto-fetch new items |
 | `--no-fetch-new` | Disable auto-fetch |
 
-### Domain Plugin Flags (Example)
-
-Plugins may attach additional ingestion options, for example:
-
-| Flag | Description |
-|------|-------------|
-| `--price-monitor` | Enable price monitoring on this item |
-| `--price-threshold <percent>` | Alert threshold |
-
-These flags exist only if the respective plugin is installed.
-
 ### Notes
 
 - Returns a **Job ID**.
 - With `--wait`, returns the resulting **Knowledge Object ID**.
 - Plugins may intercept or extend `ctxt analyze` behavior via lifecycle hooks.
-- Knowledge object type may be plugin-defined (e.g. `feed`, `feed_item`, `price_track`).
 
 ### Examples
 
 ```bash
-echo "Fix signup flow" \
-  | ctxt analyze --type text --hints "#ux #bad" --mentions "@ui.best-practice"
+# Default behavior: capture clipboard
+ctxt
 
-ctxt analyze --file screenshot.png --type image --mentions "@ui.layout @ux.onboarding"
+# Direct argument
+ctxt "Fix signup flow" --hints "#ux"
 
-ctxt analyze https://example.com --type url --profile growth
+# Piped stdin
+echo "UX improvements needed" | ctxt --mentions "@ui.best-practice"
 
-ctxt analyze https://example.com/feed.xml --type feed --fetch-new --refresh 3600
-
-ctxt analyze https://amazon.com/product \
-  --price-monitor --price-threshold 10
+# Explicit command with file
+ctxt analyze --file screenshot.png --type image
 ```
 
 ---
@@ -181,34 +164,24 @@ ctxt job retry <id>
 ctxt job cancel <id>
 ```
 
-### States
-
-- Pending
-- Running
-- Completed
-- Failed
-- Cancelled
-
-Plugins may register custom job types (e.g. `refresh`, `fetch_new_items`).
-
 ---
 
 ## `ctxt list`
 
 Query knowledge objects across local storage and registries.
-Supports tags, hints, mentions, entities, plugin-defined object types, and AST query language.
+Supports tags, hints, mentions, entities, and AST query language.
 
 ### Usage
 
 ```bash
-ctxt list [filters] [options]
+ctxt list <filters> <options>
 ```
 
 ### Filters
 
 | Flag | Description |
 |------|-------------|
-| `--type <type>` | Filter by knowledge object type (core or plugin-defined) |
+| `--type <type>` | Filter by knowledge object type |
 | `--tag <t1,t2>` | Filter by tags |
 | `--hint <#h1,#h2>` | Filter by hints |
 | `--mention <@slug>` | Filter by mention |
@@ -220,8 +193,6 @@ ctxt list [filters] [options]
 | `--profile <name>` | Focus profile filter |
 | `--q "<query>"` | AST-based query |
 
-Plugins may add custom filters (e.g. `--price-drop`, `--feed-new`).
-
 ### Options
 
 | Flag | Description |
@@ -230,7 +201,6 @@ Plugins may add custom filters (e.g. `--price-drop`, `--feed-new`).
 | `--start <offset>` | Pagination |
 | `--sort <view|match|recent|weight|score>` | Sorting |
 | `--dir <asc|desc>` | Sort direction |
-| `--no-track` | Skip match tracking |
 | `--json` | JSON output |
 | `--yaml` | YAML output |
 
@@ -240,10 +210,12 @@ Plugins may add custom filters (e.g. `--price-drop`, `--feed-new`).
 
 Semantic search across local and federated knowledge.
 
+**If no query is provided, `ctxt find` will check the system clipboard.**
+
 ### Usage
 
 ```bash
-ctxt find <query> [options]
+ctxt find <query> <options>
 ```
 
 ### Options
@@ -259,7 +231,9 @@ ctxt find <query> [options]
 
 ## `ctxt open`
 
-Display knowledge object details including mentions, resolved entities, plugin metadata, feed metadata, and price tracking metadata.
+Display knowledge object details including mentions, resolved entities, and metadata.
+
+**If no ID is provided, `ctxt open` will check the system clipboard for an object ID.**
 
 ```bash
 ctxt open <id>
@@ -271,8 +245,6 @@ Options:
 - `--json`
 - `--yaml`
 
-Plugins may extend output sections (e.g. price history, feed item metadata).
-
 ---
 
 ## `ctxt delete`
@@ -282,7 +254,7 @@ Delete knowledge objects using IDs or filters.
 ### Usage
 
 ```bash
-ctxt delete [filters] [options]
+ctxt delete <filters> <options>
 ```
 
 ### Filters
@@ -295,10 +267,8 @@ ctxt delete [filters] [options]
 | `--hint <#h>` | Delete by hint |
 | `--mention <@slug>` | Delete by mention |
 | `--type <type>` | Delete by type |
-| `--subtype <sub>` | Delete by subtype |
+| `--subtype <subtype>` | Delete by subtype |
 | `--all` | Delete all |
-
-Plugins may register deletion helpers (e.g. delete all feed items).
 
 ---
 
@@ -307,7 +277,7 @@ Plugins may register deletion helpers (e.g. delete all feed items).
 Modify knowledge object metadata.
 
 ```bash
-ctxt edit --id <id> [fields]
+ctxt edit --id <id> <fields>
 ```
 
 Editable fields:
@@ -319,16 +289,13 @@ Editable fields:
 | `--tags <t1,t2>` | Replace tag list |
 | `--hints "<#h1 #h2>"` | Replace hints |
 | `--mentions "<@m1 @m2>"` | Replace mentions |
-| `--decisions <json>` | Replace decisions |
 | `--subtype <name>` | Update subtype |
-
-Plugins may expose additional editable fields (e.g. refresh interval, price thresholds).
 
 ---
 
 ## `ctxt profile`
 
-Manage focus profiles (Founder, Engineer, Research, custom).
+Manage focus profiles.
 
 ### Commands
 
@@ -349,7 +316,7 @@ Generate compositions from knowledge objects.
 ### Usage
 
 ```bash
-ctxt make <type> [options]
+ctxt make <type> <options>
 ```
 
 ### Types
@@ -378,7 +345,7 @@ ctxt make <type> [options]
 Start REST API, gRPC API, and the background job worker.
 
 ```bash
-dpkms serve [options]
+dpkms serve <options>
 ```
 
 ### Options
@@ -391,24 +358,6 @@ dpkms serve [options]
 | `--public` | Allow remote connections |
 | `--config <path>` | Custom config file |
 | `--workers <n>` | Number of worker threads |
-
-Plugins may attach:
-
-- request interceptors
-- response decorators
-- CLI output injectors
-- background tasks (e.g. queued notifications)
-
-```mermaid
-flowchart TB
-    A[dpkms serve] --> B[REST API]
-    A --> C[gRPC API]
-    A --> D[Background Worker]
-    D --> E[Mention Extraction]
-    E --> F[Entity Resolution]
-    F --> G[Knowledge Object Creation]
-    A --> H[Plugin Event Hooks]
-```
 
 ---
 
@@ -438,12 +387,6 @@ ctxt config validate
 ctxt config edit
 ```
 
-Plugins may define configuration namespaces under:
-
-```
-plugins.<pluginName>
-```
-
 ---
 
 ## `ctxt registry`
@@ -460,8 +403,6 @@ ctxt registry info <name>
 ctxt registry sync <name>
 ```
 
-Registries now expose entities, aliases, translations, and concept metadata.
-
 ---
 
 ## `ctxt entity`
@@ -472,21 +413,10 @@ Query and inspect entities (canonical concepts).
 
 ```bash
 ctxt entity list
-ctxt entity show ui.best-practice
-ctxt entity search "checkout"
+ctxt entity show <slug>
+ctxt entity search "<query>"
+ctxt entity backlink <slug>
 ```
-
-### Features
-
-- Show entity metadata
-- Show aliases and translations
-- Show backlinks
-
-```bash
-ctxt entity backlink ui.best-practice
-```
-
-Plugins may augment output (e.g. entity-related plugin metadata).
 
 ---
 
@@ -498,38 +428,6 @@ Display engine and protocol version.
 ctxt version
 dpkms version
 ```
-
-Example output:
-
-```
-ContextHelp v0.4.0
-ctxt v0.4.0 (brain)
-dPKMS v0.4.0 (substrate)
-Registry Protocol v0.2.1
-Build: 2025-01-18T14:41:55Z
-```
-
----
-
-## Plugin-Defined Commands
-
-Plugins may register additional commands dynamically.
-
-Examples:
-
-```
-ctxt feed list
-ctxt feed items <feed-id>
-ctxt feed refresh <feed-id>
-
-ctxt price history <id>
-ctxt price alerts
-
-ctxt notify pending
-ctxt notify clear
-```
-
-These commands follow the same flag/format conventions as core commands.
 
 ---
 
@@ -546,19 +444,6 @@ These commands follow the same flag/format conventions as core commands.
 | 6 | Agent configuration error |
 | 7 | Job execution error |
 
-Plugins may define additional exit codes within their namespace.
-
----
-
-## Scriptability Notes
-
-- Every command supports JSON/YAML output.
-- `ctxt analyze` is asynchronous by default (use `--wait` for synchronous).
-- `dpkms serve` runs in the foreground (use systemd/supervisor for daemon).
-- Deterministic given stable config + input.
-- Offline by default unless registries are enabled.
-- Plugins may extend CLI output (e.g. notification injection).
-
 ---
 
 ## Environment Variables
@@ -570,27 +455,3 @@ Plugins may define additional exit codes within their namespace.
 | `CTXT_PROFILE` | Default focus profile |
 | `DPKMS_DATA_DIR` | dPKMS data directory override |
 | `DPKMS_WORKERS` | Number of worker threads |
-| `CH_REGISTRY_TOKEN_*` | Registry auth tokens |
-| `CH_DISABLE_TELEMETRY` | Disable telemetry |
-
-Plugins may define additional environment variables under:
-
-```
-CH_PLUGIN_<NAME>_*
-```
-
----
-
-## Completion Scripts
-
-```bash
-ctxt completion bash
-ctxt completion zsh
-ctxt completion fish
-
-dpkms completion bash
-dpkms completion zsh
-dpkms completion fish
-```
-
-Plugins may extend completion rules for their custom commands and flags.
