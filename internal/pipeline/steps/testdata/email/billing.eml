@@ -1,0 +1,17 @@
+From: billing@stripe.com
+To: customer@example.com
+Subject: Invoice #INV-001234 for $99.00
+Message-Id: <inv-001234@stripe.com>
+Date: Wed, 03 Jan 2024 08:00:00 +0000
+Content-Type: text/plain; charset=utf-8
+
+Dear Customer,
+
+Your invoice INV-001234 for $99.00 is attached.
+
+Amount Due: $99.00
+Due Date: 2024-01-15
+
+Thank you for your business.
+
+Stripe Billing

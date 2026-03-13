@@ -1,0 +1,20 @@
+From alice@example.com Mon Jan 01 10:00:00 2024
+From: alice@example.com
+To: bob@example.com
+Subject: First Message
+Message-Id: <mbox-001@example.com>
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Content-Type: text/plain
+
+Body of the first message.
+
+From charlie@example.com Tue Jan 02 11:00:00 2024
+From: charlie@example.com
+To: bob@example.com
+Subject: Second Message
+Message-Id: <mbox-002@example.com>
+Date: Tue, 02 Jan 2024 11:00:00 +0000
+Content-Type: text/plain
+
+Body of the second message.
+

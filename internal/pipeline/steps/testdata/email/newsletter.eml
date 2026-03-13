@@ -1,0 +1,19 @@
+From: Newsletter Bot <newsletter@substack.com>
+To: reader@example.com
+Subject: Weekly Digest Issue #42
+Message-Id: <digest-042@substack.com>
+Date: Tue, 02 Jan 2024 09:00:00 +0000
+List-Id: <weekly-digest.substack.com>
+Content-Type: multipart/alternative; boundary="boundary-001"
+
+--boundary-001
+Content-Type: text/plain; charset=utf-8
+
+This week in technology: AI advances, Go 1.22 released, and more.
+
+--boundary-001
+Content-Type: text/html; charset=utf-8
+
+<html><body><h1>Weekly Digest</h1><p>This week in technology.</p></body></html>
+
+--boundary-001--

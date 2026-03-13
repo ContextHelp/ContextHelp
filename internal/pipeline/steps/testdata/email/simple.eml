@@ -1,0 +1,9 @@
+From: Alice Smith <alice@example.com>
+To: Bob Jones <bob@example.org>
+Subject: Hello World
+Message-Id: <test-001@example.com>
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Content-Type: text/plain; charset=utf-8
+
+This is a simple test email message.
+It has two lines of body text.
