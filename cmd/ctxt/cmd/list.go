@@ -115,6 +115,9 @@ func printObjectResults(objects []*storage.KnowledgeObject, total int) error {
 	}
 
 	fmt.Printf("Knowledge Objects (%d total)\n\n", total)
+	// Objects with a known duplicate are annotated with "(duplicate of <id>)".
+	// The duplicate_of field is set by the dedup pipeline step or by the "warn"/"keep"
+	// policy when near-duplicate detection (duplicates.check_similar) is enabled.
 	headers := []string{"ID", "Type", "Title", "Created"}
 	var rows [][]string
 	for _, obj := range objects {
@@ -124,6 +127,10 @@ func printObjectResults(objects []*storage.KnowledgeObject, total int) error {
 			if len(title) > 40 {
 				title = title[:37] + "..."
 			}
+		}
+		dupOf, _ := obj.Metadata["duplicate_of"].(string)
+		if dupOf != "" {
+			title += " (duplicate of " + dupOf + ")"
 		}
 		rows = append(rows, []string{
 			obj.ID,

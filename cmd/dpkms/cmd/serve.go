@@ -104,15 +104,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	queue := jobs.NewQueue(driver.Jobs())
 	fmt.Println("Job queue initialized")
 
-	// 3. Init pipeline registry with configured providers and per-pipeline overrides.
+	// 3. Init pipeline registry with configured providers.
 	factory := providers.NewFactory(cfg.Providers)
-	pipes := builtins.ConfiguredRegistryWithPipelineOverrides(
-		factory,
-		cfg.Providers,
-		cfg.Pipelines,
-		nil, // blob store wired separately if needed
-		cfg.Storage.Blob.Threshold,
-	)
+	pipes := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
+		Factory:       factory,
+		BlobThreshold: cfg.Storage.Blob.Threshold,
+	})
 	fmt.Println("Pipeline runtime initialized")
 
 	// 4. Init search engine.
@@ -127,7 +124,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// 6. Init service layer.
 	bus := events.NewLocalBus()
-	svc := service.New(driver, queue, pipes, engine, stepsPath, bus, cfg.Conventions)
+	svc := service.New(driver, queue, pipes, engine, stepsPath, bus, *cfg)
 
 	// 6b. Init watcher manager.
 	watchMgr := watcher.NewManager(driver.Watches(), svc)

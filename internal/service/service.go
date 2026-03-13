@@ -35,12 +35,12 @@ type Service struct {
 	Discovery      *steps.StepDiscovery
 	Executor       *steps.StepExecutor
 	Bus            events.Bus
+	Cfg            config.Config
 	PluginRegistry *plugin.Registry
-	Conventions    config.ConventionsConfig
 }
 
 // New creates a new service instance.
-func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus, conventions config.ConventionsConfig) *Service {
+func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus, cfg ...config.Config) *Service {
 	discovery := steps.NewStepDiscovery(store, stepsPath)
 	executor := steps.NewStepExecutor(store, stepsPath)
 
@@ -48,60 +48,21 @@ func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry
 		bus = events.NewLocalBus()
 	}
 
+	var c config.Config
+	if len(cfg) > 0 {
+		c = cfg[0]
+	}
+
 	return &Service{
-		Store:       store,
-		Queue:       queue,
-		Pipes:       pipes,
-		Search:      engine,
-		Discovery:   discovery,
-		Executor:    executor,
-		Bus:         bus,
-		Conventions: conventions,
+		Store:     store,
+		Queue:     queue,
+		Pipes:     pipes,
+		Search:    engine,
+		Discovery: discovery,
+		Executor:  executor,
+		Bus:       bus,
+		Cfg:       c,
 	}
-}
-
-// validateMentionNamespaces checks that all @mentions use an allowed namespace.
-// Returns a slice of invalid mentions.
-func (s *Service) validateMentionNamespaces(mentions []string) []string {
-	if s.Conventions.EnforceMentionNamespaces == "off" || len(s.Conventions.AllowedMentionNamespaces) == 0 {
-		return nil
-	}
-	allowed := make(map[string]bool, len(s.Conventions.AllowedMentionNamespaces))
-	for _, ns := range s.Conventions.AllowedMentionNamespaces {
-		allowed[ns] = true
-	}
-	var bad []string
-	for _, m := range mentions {
-		// @namespace.slug — extract namespace part.
-		ns := m
-		if idx := strings.Index(m, "."); idx > 0 {
-			ns = m[:idx]
-		}
-		if !allowed[ns] {
-			bad = append(bad, m)
-		}
-	}
-	return bad
-}
-
-// WarnInvalidMentionNamespaces checks mentions against conventions and warns or errors.
-// This is called by commands that accept hints/mentions before enqueueing.
-func (s *Service) WarnInvalidMentionNamespaces(mentions []string) error {
-	if s.Conventions.EnforceMentionNamespaces == "off" || len(mentions) == 0 {
-		return nil
-	}
-	bad := s.validateMentionNamespaces(mentions)
-	if len(bad) == 0 {
-		return nil
-	}
-	msg := fmt.Sprintf("invalid mention namespaces: %v", bad)
-	switch s.Conventions.EnforceMentionNamespaces {
-	case "error":
-		return fmt.Errorf("%s", msg)
-	case "warn":
-		fmt.Fprintf(os.Stderr, "warning: %s\n", msg)
-	}
-	return nil
 }
 
 // Analyze enqueues a content analysis job and returns the job ID.
@@ -122,6 +83,25 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	jobSource := req.Source
 	if detectedType == "url" {
 		jobSource = strings.TrimSpace(req.Content)
+	}
+
+	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).
+	dup, err := s.checkDuplicates(ctx, req.KnownHash, nil, s.Cfg.Duplicates)
+	if err != nil {
+		return "", fmt.Errorf("analyze: duplicate check: %w", err)
+	}
+	if dup != nil {
+		switch s.Cfg.Duplicates.Policy {
+		case "drop":
+			// Return the existing object's ID — no new job enqueued.
+			return dup.Existing.ID, nil
+		case "warn":
+			fmt.Fprintf(os.Stderr, "warning: duplicate detected (%s): existing object %s\n",
+				dup.Kind, dup.Existing.ID)
+			// Fall through — continue ingestion.
+		case "keep":
+			// Fall through silently.
+		}
 	}
 
 	job := &storage.Job{
@@ -146,15 +126,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 }
 
 // GetObject retrieves a knowledge object by ID.
-// If a PluginRegistry is set, the id is first resolved through any registered AliasResolvers.
-func (s *Service) GetObject(ctx context.Context, idOrAlias string) (*storage.KnowledgeObject, error) {
-	id := idOrAlias
-	if s.PluginRegistry != nil {
-		resolved, err := s.PluginRegistry.ResolveID(ctx, idOrAlias, "")
-		if err == nil {
-			id = resolved
-		}
-	}
+func (s *Service) GetObject(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
 	return s.Store.Objects().Get(ctx, id)
 }
 

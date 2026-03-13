@@ -13,8 +13,9 @@ type AnalyzeRequest struct {
 	Type        string `json:"type"`
 	Pipeline    string `json:"pipeline,omitempty"`
 	Source      string `json:"source,omitempty"`
-	SourceTitle string `json:"source_title,omitempty"` // human-readable title of source page
-	AuthState   string `json:"auth_state,omitempty"`  // opaque token from cookie bridge
+	KnownHash   string `json:"known_hash,omitempty"`   // pre-computed content hash; skips re-hashing
+	SourceTitle string `json:"source_title,omitempty"` // human-readable title of source (e.g. page title)
+	AuthState   string `json:"auth_state,omitempty"`   // opaque auth state token (browser extension)
 }
 
 // CreatePipelineRequest represents a request to create a custom pipeline.

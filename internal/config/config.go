@@ -75,6 +75,24 @@ type Config struct {
 
 	// Inbox configures the default inbox for new content.
 	Inbox InboxConfig `mapstructure:"inbox"`
+
+	// Duplicates controls duplicate detection policy.
+	Duplicates DuplicatesConfig `mapstructure:"duplicates"`
+}
+
+// DuplicatesConfig controls duplicate and near-duplicate detection behaviour at ingest time.
+type DuplicatesConfig struct {
+	// Policy determines what happens when a duplicate is found.
+	// Valid values: "warn" (default), "drop", "keep".
+	Policy string `mapstructure:"policy"`
+	// SimilarityThreshold is the cosine similarity cutoff for near-duplicate detection.
+	// Range: 0.0–1.0. Default: 0.95.
+	SimilarityThreshold float64 `mapstructure:"similarity_threshold"`
+	// CheckExact enables content-hash exact-match deduplication. Default: true.
+	CheckExact bool `mapstructure:"check_exact"`
+	// CheckSimilar enables vector-embedding near-duplicate detection. Default: false.
+	// Requires embeddings to have been computed (pipeline embedding step must run first).
+	CheckSimilar bool `mapstructure:"check_similar"`
 }
 
 // RetrievalConfig controls progressive retrieval behaviour.
@@ -352,6 +370,12 @@ func setDefaults(v *viper.Viper) {
 
 	// Inbox defaults — leave path empty (resolved at runtime)
 	v.SetDefault("inbox.pipeline", "text.short")
+
+	// Duplicates defaults
+	v.SetDefault("duplicates.policy", "warn")
+	v.SetDefault("duplicates.similarity_threshold", 0.95)
+	v.SetDefault("duplicates.check_exact", true)
+	v.SetDefault("duplicates.check_similar", false)
 }
 
 // bindEnvVars binds environment variables to configuration keys

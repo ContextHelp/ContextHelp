@@ -83,6 +83,8 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"email_parser":   func() pipeline.PipelineStep { return steps.NewEmailParser() },
 	"email_filter":   func() pipeline.PipelineStep { return newDefaultEmailFilter() },
 	"email_enqueuer": func() pipeline.PipelineStep { return steps.NewEmailEnqueuer() },
+	// Dedup step: registered with nil store (passthrough mode); store is injected at runtime.
+	"dedup": func() pipeline.PipelineStep { return steps.NewDedupStep(nil, config.DuplicatesConfig{}) },
 }
 
 // blobStepConstructors maps step names to blob-store-aware constructors.
@@ -137,12 +139,6 @@ var providerStepConstructors = map[string]func(*providers.Factory) pipeline.Pipe
 	"office_extractor": func(f *providers.Factory) pipeline.PipelineStep {
 		return steps.NewOfficeExtractor(steps.WithOfficeDocumentProvider(f.Document()))
 	},
-}
-
-// RegisterExtraStep adds a pre-built step (e.g. from a plugin) to the step registry.
-// It can be referenced by name in pipeline definitions.
-func RegisterExtraStep(name string, step pipeline.PipelineStep) {
-	stepConstructors[name] = func() pipeline.PipelineStep { return step }
 }
 
 // resolveStep builds a PipelineStep from a step name, using BuildOpts for provider/blob-aware steps.
@@ -347,103 +343,18 @@ func Defs() map[string]Def {
 	return cp
 }
 
-// mergeProviderOverride merges a per-pipeline Providers override onto base.
-// Only non-empty Backend fields in override replace the base value.
-func mergeProviderOverride(base config.ProvidersConfig, override map[string]config.ProviderBackendConfig) config.ProvidersConfig {
-	merged := base
-	for key, ov := range override {
-		if ov.Backend == "" {
-			continue
-		}
-		switch key {
-		case "llm":
-			merged.LLM = ov
-		case "vision":
-			merged.Vision = ov
-		case "ocr":
-			merged.OCR = ov
-		case "transcription":
-			merged.Transcription = ov
-		case "diarization":
-			merged.Diarization = ov
-		case "embedding":
-			merged.Embedding = ov
-		case "document":
-			merged.Document = ov
-		case "video":
-			merged.Video = ov
+// InjectDedupStep inserts the dedup step after the embedding step in a pipeline
+// definition when near-duplicate checking is enabled.
+func InjectDedupStep(stepNames []string, cfg config.DuplicatesConfig) []string {
+	if !cfg.CheckSimilar {
+		return stepNames
+	}
+	out := make([]string, 0, len(stepNames)+1)
+	for _, s := range stepNames {
+		out = append(out, s)
+		if s == "embedding" {
+			out = append(out, "dedup")
 		}
 	}
-	return merged
-}
-
-// ConfiguredRegistryWithPipelineOverrides builds a Registry where per-pipeline
-// overrides in cfg replace provider backends for that pipeline only.
-func ConfiguredRegistryWithPipelineOverrides(
-	baseFactory *providers.Factory,
-	baseCfg config.ProvidersConfig,
-	pipelinesCfg config.PipelinesConfig,
-	blobStore storage.BlobStore,
-	blobThreshold int64,
-) pipeline.Registry {
-	return buildRegistryWithOverrides(baseFactory, baseCfg, pipelinesCfg, blobStore, blobThreshold, false)
-}
-
-func buildRegistryWithOverrides(
-	baseFactory *providers.Factory,
-	baseCfg config.ProvidersConfig,
-	pipelinesCfg config.PipelinesConfig,
-	blobStore storage.BlobStore,
-	blobThreshold int64,
-	strict bool,
-) pipeline.Registry {
-	r := pipeline.NewRegistry()
-	sels := buildSelectors()
-
-	for name, d := range defs {
-		opts := BuildOpts{
-			Factory:       baseFactory,
-			BlobStore:     blobStore,
-			BlobThreshold: blobThreshold,
-		}
-
-		// Apply per-pipeline overrides if present.
-		if ov, ok := pipelinesCfg.Overrides[name]; ok {
-			// Provider override.
-			if len(ov.Providers) > 0 && baseFactory != nil {
-				mergedCfg := mergeProviderOverride(baseCfg, ov.Providers)
-				opts.Factory = providers.NewFactory(mergedCfg)
-			}
-			// Step filtering.
-			if len(ov.SkipSteps) > 0 {
-				filtered := make([]string, 0, len(d.Steps))
-				skipSet := make(map[string]bool, len(ov.SkipSteps))
-				for _, s := range ov.SkipSteps {
-					skipSet[s] = true
-				}
-				for _, s := range d.Steps {
-					if !skipSet[s] {
-						filtered = append(filtered, s)
-					}
-				}
-				d.Steps = filtered
-			}
-			// Extra steps appended.
-			d.Steps = append(d.Steps, ov.ExtraSteps...)
-		}
-
-		p, err := buildPipeline(name, d, opts, strict)
-		if err != nil {
-			panic(fmt.Sprintf("builtins: %v", err))
-		}
-		if err := r.Register(name, p); err != nil {
-			panic(fmt.Sprintf("builtins: %v", err))
-		}
-	}
-
-	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {
-		return selectPipeline(sels, content)
-	}))
-
-	return r
+	return out
 }

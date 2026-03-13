@@ -284,6 +284,67 @@ func TestGetConfigPathEnvOverride(t *testing.T) {
 	assert.Equal(t, custom, path, "GetConfigPath should return the exact env value")
 }
 
+func TestDuplicatesValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr bool
+	}{
+		{
+			name: "valid warn policy",
+			cfg:  Config{Duplicates: DuplicatesConfig{Policy: "warn", SimilarityThreshold: 0.95}},
+		},
+		{
+			name: "valid drop policy",
+			cfg:  Config{Duplicates: DuplicatesConfig{Policy: "drop", SimilarityThreshold: 0.80}},
+		},
+		{
+			name: "valid keep policy",
+			cfg:  Config{Duplicates: DuplicatesConfig{Policy: "keep", SimilarityThreshold: 0.99}},
+		},
+		{
+			name:    "invalid policy",
+			cfg:     Config{Duplicates: DuplicatesConfig{Policy: "delete", SimilarityThreshold: 0.95}},
+			wantErr: true,
+		},
+		{
+			name:    "threshold too high",
+			cfg:     Config{Duplicates: DuplicatesConfig{Policy: "warn", SimilarityThreshold: 1.01}},
+			wantErr: true,
+		},
+		{
+			name:    "threshold negative",
+			cfg:     Config{Duplicates: DuplicatesConfig{Policy: "warn", SimilarityThreshold: -0.1}},
+			wantErr: true,
+		},
+		{
+			name: "empty policy defaults to warn (pass)",
+			cfg:  Config{Duplicates: DuplicatesConfig{Policy: "", SimilarityThreshold: 0.95}},
+			// empty policy treated as "warn" by validator
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestDuplicatesDefaults(t *testing.T) {
+	cfg, err := Load("")
+	require.NoError(t, err)
+	assert.Equal(t, "warn", cfg.Duplicates.Policy)
+	assert.Equal(t, 0.95, cfg.Duplicates.SimilarityThreshold)
+	assert.True(t, cfg.Duplicates.CheckExact)
+	assert.False(t, cfg.Duplicates.CheckSimilar)
+}
+
 func TestBlobConfigDefaults(t *testing.T) {
 	cfg, err := Load("")
 	if err != nil {
