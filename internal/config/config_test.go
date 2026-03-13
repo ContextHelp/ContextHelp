@@ -284,6 +284,15 @@ func TestGetConfigPathEnvOverride(t *testing.T) {
 	assert.Equal(t, custom, path, "GetConfigPath should return the exact env value")
 }
 
+func TestDuplicatesDefaults(t *testing.T) {
+	cfg, err := Load("")
+	require.NoError(t, err)
+	assert.Equal(t, "warn", cfg.Duplicates.Policy)
+	assert.Equal(t, 0.95, cfg.Duplicates.SimilarityThreshold)
+	assert.True(t, cfg.Duplicates.CheckExact)
+	assert.False(t, cfg.Duplicates.CheckSimilar)
+}
+
 func TestBlobConfigDefaults(t *testing.T) {
 	cfg, err := Load("")
 	if err != nil {
