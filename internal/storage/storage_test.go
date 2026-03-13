@@ -43,6 +43,9 @@ func (m *mockObjectStore) ListBySQL(ctx context.Context, where string, args []an
 func (m *mockObjectStore) Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error) {
 	return "", nil
 }
+func (m *mockObjectStore) ListWithEmbeddings(ctx context.Context) ([]*KnowledgeObject, error) {
+	return nil, nil
+}
 
 type mockEntityStore struct{}
 

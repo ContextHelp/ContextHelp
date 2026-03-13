@@ -3,8 +3,10 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -37,6 +39,9 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
+	}
+	if err := s.upsertEmbedding(ctx, obj.ID, obj.Embeddings); err != nil {
+		return fmt.Errorf("create object embedding: %w", err)
 	}
 	return nil
 }
@@ -177,6 +182,9 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	n, _ := result.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("object %s not found", obj.ID)
+	}
+	if err := s.upsertEmbedding(ctx, obj.ID, obj.Embeddings); err != nil {
+		return fmt.Errorf("update object embedding: %w", err)
 	}
 	return nil
 }
@@ -458,4 +466,88 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// upsertEmbedding stores a float32 slice as a BLOB in object_embeddings.
+// It is a no-op when the slice is empty.
+func (s *ObjectStore) upsertEmbedding(ctx context.Context, id string, vec []float32) error {
+	if len(vec) == 0 {
+		return nil
+	}
+	blob := float32SliceToBlob(vec)
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO object_embeddings(id, embedding, dimensions) VALUES(?,?,?)
+		 ON CONFLICT(id) DO UPDATE SET embedding=excluded.embedding, dimensions=excluded.dimensions`,
+		id, blob, len(vec))
+	return err
+}
+
+// ListWithEmbeddings returns all objects that have a stored embedding blob.
+func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT o.id, o.type, o.subtype, o.raw_content, o.content_type,
+		       o.metadata, o.summaries, o.sections, o.tags, o.mentions,
+		       o.decisions, o.tasks, o.pipeline, o.source,
+		       o.registry_influences, o.plugins, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
+		       o.created_at, o.updated_at, o.fts_indexed, o.vector_indexed,
+		       oe.embedding
+		FROM objects o
+		INNER JOIN object_embeddings oe ON o.id = oe.id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list with embeddings: %w", err)
+	}
+	defer rows.Close()
+
+	var objects []*storage.KnowledgeObject
+	for rows.Next() {
+		var obj storage.KnowledgeObject
+		var (
+			metadataJSON, summariesJSON, sectionsJSON, tagsJSON string
+			mentionsJSON, decisionsJSON, tasksJSON              string
+			influencesJSON, pluginsJSON                         string
+			createdAt, updatedAt                                string
+			ftsIndexed, vectorIndexed                           int
+			lastReinforcedAt                                    sql.NullString
+			embeddingBlob                                       []byte
+		)
+		if err := rows.Scan(
+			&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
+			&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
+			&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
+			&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
+			&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed,
+			&embeddingBlob,
+		); err != nil {
+			return nil, fmt.Errorf("scan embedding row: %w", err)
+		}
+		unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
+			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+			createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt)
+		obj.Embeddings = blobToFloat32Slice(embeddingBlob)
+		objects = append(objects, &obj)
+	}
+	return objects, rows.Err()
+}
+
+// float32SliceToBlob encodes []float32 as little-endian bytes.
+func float32SliceToBlob(v []float32) []byte {
+	buf := make([]byte, len(v)*4)
+	for i, f := range v {
+		binary.LittleEndian.PutUint32(buf[i*4:], math.Float32bits(f))
+	}
+	return buf
+}
+
+// blobToFloat32Slice decodes little-endian bytes to []float32.
+func blobToFloat32Slice(b []byte) []float32 {
+	if len(b)%4 != 0 {
+		return nil
+	}
+	v := make([]float32, len(b)/4)
+	for i := range v {
+		bits := binary.LittleEndian.Uint32(b[i*4:])
+		v[i] = math.Float32frombits(bits)
+	}
+	return v
 }

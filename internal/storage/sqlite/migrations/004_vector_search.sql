@@ -1,10 +1,13 @@
--- sqlite-vec virtual table for vector similarity search
--- Requires sqlite-vec extension to be loaded
+-- Embedding storage using BLOB for vector data
+-- Cosine similarity is computed in application code
 
-CREATE VIRTUAL TABLE IF NOT EXISTS objects_vec USING vec0(
-    id TEXT PRIMARY KEY,
-    embedding FLOAT[1536]  -- OpenAI ada-002 dimension; adjust as needed
+CREATE TABLE IF NOT EXISTS object_embeddings (
+    id          TEXT PRIMARY KEY,
+    embedding   BLOB NOT NULL,
+    dimensions  INTEGER NOT NULL,
+    model       TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (id) REFERENCES objects(id) ON DELETE CASCADE
 );
 
--- Index for faster vector lookups by id
-CREATE INDEX IF NOT EXISTS idx_objects_vec_id ON objects_vec(id);
+CREATE INDEX IF NOT EXISTS idx_object_embeddings_id ON object_embeddings(id);

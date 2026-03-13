@@ -2,6 +2,7 @@ package providers
 
 import (
 	"log"
+	"os"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
@@ -106,6 +107,46 @@ func (f *Factory) Diarization() DiarizationProvider {
 		}
 		log.Println("providers: no diarization backend found, using stub")
 		return NewStubDiarizationProvider()
+	}
+}
+
+// LLM returns the best available LLMProvider.
+func (f *Factory) LLM() LLMProvider {
+	switch f.cfg.LLM.Backend {
+	case "openai":
+		return NewOpenAILLMProvider(f.cfg.LLM.Model)
+	case "anthropic":
+		return NewAnthropicLLMProvider(f.cfg.LLM.Model)
+	case "ollama":
+		return NewOllamaLLMProvider(f.cfg.LLM.Endpoint, f.cfg.LLM.Model)
+	case "stub":
+		return NewStubLLMProvider()
+	default: // "auto" or empty
+		// Try env vars in priority order.
+		if os.Getenv("ANTHROPIC_API_KEY") != "" {
+			return NewAnthropicLLMProvider(f.cfg.LLM.Model)
+		}
+		if os.Getenv("OPENAI_API_KEY") != "" {
+			return NewOpenAILLMProvider(f.cfg.LLM.Model)
+		}
+		// Fall back to Ollama (local).
+		endpoint := f.cfg.LLM.Endpoint
+		if endpoint == "" {
+			endpoint = "http://localhost:11434"
+		}
+		return NewOllamaLLMProvider(endpoint, f.cfg.LLM.Model)
+	}
+}
+
+// Embedding returns the best available EmbeddingProvider.
+func (f *Factory) Embedding() EmbeddingProvider {
+	switch f.cfg.Embedding.Backend {
+	case "ollama":
+		return NewOllamaEmbeddingProvider(f.cfg.Embedding.Endpoint, f.cfg.Embedding.Model)
+	case "stub":
+		return NewStubEmbeddingProvider()
+	default: // "auto" or empty
+		return NewOllamaEmbeddingProvider(f.cfg.Embedding.Endpoint, f.cfg.Embedding.Model)
 	}
 }
 

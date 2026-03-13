@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	pipelinesteps "github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -332,6 +335,50 @@ func (s *Service) FindByText(ctx context.Context, query string, limit int) ([]*s
 		}
 	}
 	return results, nil
+}
+
+// SemanticSearch finds objects by vector cosine similarity.
+// It embeds the query using the provided EmbeddingProvider, then loads all
+// stored embeddings and ranks them in memory.
+func (s *Service) SemanticSearch(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider) ([]*storage.KnowledgeObject, error) {
+	queryVec, err := ep.Embed(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("embed query: %w", err)
+	}
+	if len(queryVec) == 0 {
+		return nil, fmt.Errorf("embedding provider returned empty vector")
+	}
+
+	rows, err := s.Store.Objects().ListWithEmbeddings(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	type scored struct {
+		obj   *storage.KnowledgeObject
+		score float64
+	}
+	var results []scored
+	for _, row := range rows {
+		if len(row.Embeddings) == 0 {
+			continue
+		}
+		score := pipelinesteps.CosineSimilarity(queryVec, row.Embeddings)
+		results = append(results, scored{row, score})
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].score > results[j].score
+	})
+
+	out := make([]*storage.KnowledgeObject, 0, limit)
+	for i, r := range results {
+		if i >= limit {
+			break
+		}
+		out = append(out, r.obj)
+	}
+	return out, nil
 }
 
 // CancelJob cancels a pending or running job.

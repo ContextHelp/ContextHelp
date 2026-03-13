@@ -39,7 +39,8 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"filereader":        func() pipeline.PipelineStep { return steps.NewFileReader() },
 	"formatdetector":    func() pipeline.PipelineStep { return steps.NewFormatDetector() },
 	"textcleaner":       func() pipeline.PipelineStep { return steps.NewTextCleaner() },
-	"embedding":         func() pipeline.PipelineStep { return steps.NewEmbeddingGenerator() },
+	"embedding":         func() pipeline.PipelineStep { return steps.NewEmbeddingGenerator(nil) },
+	"entity_extractor":  func() pipeline.PipelineStep { return steps.NewEntityExtractor() },
 	"timestamp_aligner": func() pipeline.PipelineStep { return steps.NewTimestampAligner() },
 	"noop":              func() pipeline.PipelineStep { return steps.NewNoop() },
 }
@@ -57,6 +58,15 @@ var providerStepConstructors = map[string]func(*providers.Factory) pipeline.Pipe
 	},
 	"speaker_diarizer": func(f *providers.Factory) pipeline.PipelineStep {
 		return steps.NewSpeakerDiarizer(false, steps.WithDiarizationProvider(f.Diarization()))
+	},
+	"tagger": func(f *providers.Factory) pipeline.PipelineStep {
+		return steps.NewTaggerWithLLM(f.LLM())
+	},
+	"sectioner": func(f *providers.Factory) pipeline.PipelineStep {
+		return steps.NewSectionerWithLLM(f.LLM())
+	},
+	"entity_extractor": func(f *providers.Factory) pipeline.PipelineStep {
+		return steps.NewEntityExtractorWithLLM(f.LLM())
 	},
 }
 

@@ -200,6 +200,9 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *storage.KnowledgeObject) (string, error) {
 	return "", fmt.Errorf("not implemented")
 }
+func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
+	return nil, fmt.Errorf("not implemented")
+}
 
 func (s *EntityStore) Upsert(ctx context.Context, entity *storage.Entity) error {
 	return fmt.Errorf("not implemented")

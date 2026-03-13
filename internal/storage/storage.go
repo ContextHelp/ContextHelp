@@ -30,6 +30,7 @@ type ObjectStore interface {
 	Delete(ctx context.Context, id string) error
 	ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error)
 	Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error)
+	ListWithEmbeddings(ctx context.Context) ([]*KnowledgeObject, error)
 }
 
 // EntityStore persists and retrieves named entities.

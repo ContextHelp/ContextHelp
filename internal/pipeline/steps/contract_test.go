@@ -103,7 +103,7 @@ func TestTimestampAlignerContract(t *testing.T) {
 }
 
 func TestEmbeddingGeneratorContract(t *testing.T) {
-	s := NewEmbeddingGenerator()
+	s := NewEmbeddingGenerator(nil)
 	c := s.Contract()
 	assertRequires(t, "embedding_generator", c, []string{"RawContent"})
 	assertProduces(t, "embedding_generator", c, []string{"Embeddings", "VectorIndexed"})

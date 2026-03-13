@@ -97,6 +97,8 @@ type ProvidersConfig struct {
 	Transcription ProviderBackendConfig `mapstructure:"transcription"`
 	Vision        ProviderBackendConfig `mapstructure:"vision"`
 	Diarization   ProviderBackendConfig `mapstructure:"diarization"`
+	LLM           ProviderBackendConfig `mapstructure:"llm"`
+	Embedding     ProviderBackendConfig `mapstructure:"embedding"`
 }
 
 // ProviderBackendConfig selects which backend to use for a provider.
@@ -191,6 +193,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.vision.endpoint", "http://localhost:11434")
 	v.SetDefault("providers.vision.model", "llava")
 	v.SetDefault("providers.diarization.backend", "auto")
+	v.SetDefault("providers.llm.backend", "auto")
+	v.SetDefault("providers.llm.endpoint", "http://localhost:11434")
+	v.SetDefault("providers.llm.model", "")
 }
 
 // bindEnvVars binds environment variables to configuration keys

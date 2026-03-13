@@ -5,11 +5,13 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 type Sectioner struct {
 	pipeline.BaseContract
+	llm providers.LLMProvider
 }
 
 func NewSectioner() *Sectioner {
@@ -21,9 +23,16 @@ func NewSectioner() *Sectioner {
 	}
 }
 
+// NewSectionerWithLLM creates a Sectioner that uses an LLM to generate section summaries.
+func NewSectionerWithLLM(llm providers.LLMProvider) *Sectioner {
+	s := NewSectioner()
+	s.llm = llm
+	return s
+}
+
 func (s *Sectioner) Name() string { return "sectioner" }
 
-func (s *Sectioner) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+func (s *Sectioner) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	content := draft.RawContent
 
 	// Split on markdown headings (## ...).
@@ -69,6 +78,28 @@ func (s *Sectioner) Run(_ context.Context, draft *storage.KnowledgeObject) (*sto
 			Content: strings.TrimSpace(content),
 			Order:   0,
 		}}
+	}
+
+	// If an LLM is available and the content is substantial, generate a summary
+	// for each section that lacks one.
+	if s.llm != nil && len(draft.RawContent) >= 200 {
+		for i, sec := range sections {
+			body := sec.Content
+			if len(body) < 50 {
+				continue
+			}
+			if len(body) > 1000 {
+				body = body[:1000]
+			}
+			prompt := "Write a one-sentence summary of the following text. Return only the summary, no explanation.\n\nText:\n" + body
+			if summary, err := s.llm.Generate(ctx, prompt); err == nil {
+				if sections[i].Metadata == nil {
+					sections[i].Metadata = make(map[string]any)
+				}
+				sections[i].Metadata["summary"] = strings.TrimSpace(summary)
+			}
+			// On failure, leave Summary empty and continue.
+		}
 	}
 
 	draft.Sections = sections
