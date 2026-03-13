@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
@@ -125,7 +126,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// 6. Init service layer.
-	svc := service.New(driver, queue, pipes, engine, stepsPath, nil)
+	bus := events.NewLocalBus()
+	svc := service.New(driver, queue, pipes, engine, stepsPath, bus, cfg.Conventions)
 
 	// 6b. Init watcher manager.
 	watchMgr := watcher.NewManager(driver.Watches(), svc)
