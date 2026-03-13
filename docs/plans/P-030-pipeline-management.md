@@ -112,7 +112,7 @@ This plan organizes work into 3 parallel tracks:
 
 **Track F: CLI Commands**
 - `dpkms pipeline` command and subcommands
-- Config file parsers (PKL, JSON, YAML, TOML)
+- Config file parsers (JSON, YAML, TOML)
 - Integration with step subcommands
 - `ctxt analyze` refactored as API client
 
@@ -125,8 +125,7 @@ This plan organizes work into 3 parallel tracks:
 ### Key Dependencies
 
 - **New packages:**
-  - `github.com/apple/pkl-go` — PKL parser
-  - `github.com/BurntSushi/toml` — TOML parser
+  - `github.com/pelletier/go-toml/v2` — TOML parser
   - `github.com/docker/docker` — Docker client for container isolation
 
 - **Existing packages used:**
@@ -281,7 +280,7 @@ POST   /api/v1/system/reminders/{id}/dismiss # Dismiss reminder
 ### Track D: Service Layer
 
 - **D1: CreatePipeline**
-  - Validate pipeline config format (PKL/JSON/YAML/TOML)
+  - Validate pipeline config format (JSON/YAML/TOML)
   - Validate step names against registered steps
   - Parse sandbox configuration
   - Create Pipeline struct
@@ -394,10 +393,9 @@ POST   /api/v1/system/reminders/{id}/dismiss # Dismiss reminder
 - `step registry autoupdate <url> [--enable|--disable]` — Configure auto-update
 
 - **F4: Config file parsers**
-- PKL parser (`github.com/apple/pkl-go`)
 - JSON parser (encoding/json)
 - YAML parser (`gopkg.in/yaml.v3`)
-- TOML parser (`github.com/BurntSushi/toml`)
+- TOML parser (`github.com/pelletier/go-toml/v2`)
 - Unified PipelineConfig struct
   - Validation against StepMetadata.config_schema if available
 
@@ -476,12 +474,8 @@ POST   /api/v1/system/reminders/{id}/dismiss # Dismiss reminder
 ### New Dependencies
 ```go
 // Storage
-github.com/apple/pkl-go
-github.com/BurntSushi/toml
+github.com/pelletier/go-toml/v2
 gopkg.in/yaml.v3  // already used
-
-// Sandbox
-github.com/docker/docker
 ```
 
 ### Configuration
@@ -513,7 +507,7 @@ DPKMS_SANDBOX_DEFAULT_TIMEOUT=30s
 
 ## Success Criteria
 
-- [ ] Custom pipelines can be created from config files (PKL/JSON/YAML/TOML)
+- [ ] Custom pipelines can be created from config files (JSON/YAML/TOML)
 - [ ] Pipelines are stored persistently in SQLite
 - [ ] Built-in pipelines are protected from modification/deletion
 - [ ] Steps can be discovered from local filesystem
