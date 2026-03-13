@@ -22,9 +22,19 @@ import (
 	"github.com/spf13/viper"
 )
 
+// sessionSvc holds the service instance for the duration of a `ctxt shell` session.
+// When non-nil, newService() returns it directly, avoiding ~50ms SQLite reinit per command.
+// Set by shell.go; cleared when the shell exits.
+var sessionSvc *service.Service
+
 // newService creates a Service wired to the configured storage backend.
 // Returns the service and a cleanup function that must be deferred.
+// When called from within a `ctxt shell` session (sessionSvc != nil), returns
+// the session-scoped service with a no-op cleanup to avoid double-close.
 func newService() (*service.Service, func(), error) {
+	if sessionSvc != nil {
+		return sessionSvc, func() {}, nil
+	}
 	storageType := cfg.Storage.Type
 	if storageType == "" {
 		storageType = "sqlite"

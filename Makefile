@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help docs docs-dev docker-build docker-up docker-down docker-logs docker-dev docker-docs
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -143,39 +143,40 @@ docs-dev:
 	@echo "Starting docs dev server..."
 	@cd docs/public && pnpm dev
 
-## docker-build: Build dpkms Docker image
+## docker-build: Build production runtime image
 docker-build:
-	@echo "Building dpkms Docker image..."
-	docker compose -f docker/docker-compose.yml build
-	@echo "✓ Docker image built"
+	@echo "Building ctxt runtime image..."
+	docker compose build dpkms
+	@echo "✓ Image built: ctxt/dpkms:latest"
 
-## docker-up: Start dpkms container
-docker-up:
-	@echo "Starting dpkms container..."
-	docker compose -f docker/docker-compose.yml up -d
-	@echo "✓ dpkms running at http://localhost:8080"
-
-## docker-down: Stop dpkms container
-docker-down:
-	@echo "Stopping dpkms container..."
-	docker compose -f docker/docker-compose.yml down
-	@echo "✓ Container stopped"
-
-## docker-logs: View dpkms container logs
-docker-logs:
-	docker compose -f docker/docker-compose.yml logs -f
-
-## docker-dev: Start dpkms in dev mode with source mount
+## docker-dev: Start dev environment (hot-reload API + Vite UI)
 docker-dev:
-	@echo "Starting dpkms dev container..."
-	docker compose -f docker/docker-compose.yml --profile dev up -d dpkms-dev
-	@echo "✓ dpkms-dev running at http://localhost:8081"
+	@echo "Starting ctxt dev environment..."
+	docker compose --profile dev up
 
-## docker-docs: Start docs dev server in Docker
-docker-docs:
-	@echo "Starting docs container..."
-	docker compose -f docker/docker-compose.yml --profile docs up -d docs
-	@echo "✓ Docs running at http://localhost:4321/docs"
+## docker-prod: Start production stack in background (Caddy + dpkms)
+docker-prod:
+	@echo "Starting ctxt production stack..."
+	docker compose --profile prod up -d
+	@echo "✓ Running. Check status: make docker-ps"
+
+## docker-down: Stop all ctxt containers
+docker-down:
+	@echo "Stopping ctxt containers..."
+	docker compose --profile dev --profile prod down
+	@echo "✓ Stopped"
+
+## docker-logs: Tail logs from all running ctxt containers
+docker-logs:
+	docker compose logs -f
+
+## docker-ps: Show status of all ctxt containers
+docker-ps:
+	docker compose ps
+
+## docker-shell: Open a shell in the running dpkms container
+docker-shell:
+	docker exec -it ctxt-dpkms sh
 
 ## help: Show this help message
 help:
