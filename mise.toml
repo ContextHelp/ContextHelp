@@ -1,0 +1,8 @@
+# .mise.toml
+[hooks]
+enter = "scripts/motd.sh"
+
+[tools]
+age = "latest"
+fnox = "latest"
+go = "latest"
