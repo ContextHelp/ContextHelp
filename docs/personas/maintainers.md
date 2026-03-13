@@ -93,11 +93,13 @@
 Maintainers interact with the system through these key stories:
 
 ### Configuration & Schema
+- [US-0006](../stories/ingestion/US-0006-document-parsing-and-decomposition.md) — Document Parsing and Decomposition (schema design)
 - [US-0027](../stories/admin/US-0027-configure-ai-provider.md) — Configure AI Provider (hot-reload support)
 - [US-0028](../stories/admin/US-0028-register-custom-pipeline.md) — Register Custom Pipeline
 
 ### Plugin Management
 - [US-0029](../stories/admin/US-0029-install-and-enable-plugin.md) — Install and Enable Plugin
+- [US-0300](../stories/ingestion/US-0300-importer-extension-interface.md) — Importer Extension Interface (plugin contract design)
 - [US-0042](../stories/plugins/US-0042-implement-custom-enrichment-plugin.md) — Implement Custom Enrichment Plugin
 - [US-0043](../stories/plugins/US-0043-implement-custom-ai-provider-plugin.md) — Implement Custom AI Provider Plugin
 

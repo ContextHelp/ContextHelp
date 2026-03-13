@@ -238,6 +238,12 @@ func (p *Plugin) Register(ctx HostContext) error {
 
 Platform integrators interact with the system through these key stories:
 
+### Platform Capture Integration
+- [US-0202](../stories/capture/US-0202-github-capture.md) — GitHub Capture (API integration example)
+
+### Extension Development
+- [US-0300](../stories/ingestion/US-0300-importer-extension-interface.md) — Importer Extension Interface (build custom importers)
+
 ### Constraint & AI Integration
 - [US-0014](../stories/enrichment/US-0014-constrain-extraction-with-lmql.md) — Constrain Extraction with LMQL (understand token-level constraints)
 - [US-0050](../stories/enrichment/US-0050-extract-code-metrics-and-complexity.md) — Extract Code Metrics and Complexity (domain-specific extraction)

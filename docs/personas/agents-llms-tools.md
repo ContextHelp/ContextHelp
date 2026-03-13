@@ -129,6 +129,12 @@
 
 Agents interact with the system through these key stories:
 
+### Capture Integration
+- [US-0203](../stories/capture/US-0203-arxiv-capture.md) — ArXiv Capture (paper metadata extraction)
+- [US-0205](../stories/capture/US-0205-wikipedia-capture.md) — Wikipedia Capture (structured article extraction)
+- [US-0206](../stories/capture/US-0206-osint-entity-aggregation.md) — OSINT Entity Aggregation (entity resolution)
+- [US-0210](../stories/capture/US-0210-cross-platform-entity-resolution.md) — Cross-Platform Entity Resolution (identity matching)
+
 ### Discovery & Bootstrap
 - [US-0037](../stories/agents/US-0037-agent-discovers-query-schema.md) — Agent Discovers Query Schema
 - [US-0038](../stories/agents/US-0038-agent-constructs-rsql-query.md) — Agent Constructs RSQL Query
@@ -156,6 +162,7 @@ Agents interact with the system through these key stories:
 - [US-0021](../stories/search/US-0021-search-with-result-explanation.md) — Search with Result Explanation
 - [US-0051](../stories/search/US-0051-semantic-search-with-embeddings.md) — Semantic Search with Embeddings
 - [US-0052](../stories/search/US-0052-graph-based-entity-search.md) — Graph-Based Entity Search
+- [US-0061](../stories/search/US-0061-visual-similarity-search.md) — Visual Similarity Search (multimodal search)
 
 ### Composition & Assembly
 - [US-0024](../stories/composition/US-0024-compose-with-graph-traversal.md) — Compose with Graph Traversal

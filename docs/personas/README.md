@@ -9,6 +9,7 @@ This directory contains detailed profiles of the primary personas interacting wi
 | **Maintainers, Collaborators, Contributors** | [`maintainers.md`](./maintainers.md) | Project leadership & core team | Architecture, plugins, schema evolution |
 | **Agents, LLMs, Tools** | [`agents-llms-tools.md`](./agents-llms-tools.md) | Autonomous systems | Structured queries, constrained enrichment, composition APIs |
 | **Knowledge Workers / Context-Seeking Professionals** | [`knowledge-workers.md`](./knowledge-workers.md) | Humans (researchers, PMs, engineers) | Natural search, capture, composition via CLI/TUI |
+| **Researchers & OSINT Analysts** | [`researchers-osint.md`](./researchers-osint.md) | Intelligence gatherers, competitive analysts | Authenticated capture, entity resolution, provenance tracking |
 | **Platform Integrators** | [`platform-integrators.md`](./platform-integrators.md) | Third-party developers | Plugin development, custom backends, white-label |
 | **Operations / DevOps** | [`operations.md`](./operations.md) | Production deployment & monitoring | Infrastructure, scaling, secrets, backups |
 

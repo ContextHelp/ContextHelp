@@ -395,6 +395,9 @@ Operations teams interact with the system through these key stories:
 - [US-0029](../stories/admin/US-0029-install-and-enable-plugin.md) — Install and Enable Plugin (permission management)
 - [US-0031](../stories/admin/US-0031-configure-encryption-and-secrets.md) — Configure Encryption and Secrets (key management, HSM)
 
+### Monitoring & Watch
+- [US-0208](../stories/capture/US-0208-temporal-watch.md) — Temporal Watch (change detection and alerting)
+
 ### Batch Processing
 - [US-0008](../stories/ingestion/US-0008-batch-import-from-file.md) — Batch Import from File (bulk ingestion)
 - [US-0015](../stories/enrichment/US-0015-batch-enrichment-with-progress.md) — Batch Enrichment with Progress (track large jobs)
@@ -409,6 +412,25 @@ Operations teams interact with the system through these key stories:
 
 ### Scaling & Performance
 - [US-0036](../stories/operations/US-0036-scale-worker-pool-for-load.md) — Scale Worker Pool for Load (parallel processing)
+
+### Import Operations
+- [US-0301](../stories/ingestion/US-0301-import-chrome-bookmarks.md) — Import Chrome Bookmarks
+- [US-0302](../stories/ingestion/US-0302-import-edge-bookmarks.md) — Import Edge Bookmarks
+- [US-0303](../stories/ingestion/US-0303-import-firefox-bookmarks.md) — Import Firefox Bookmarks
+- [US-0304](../stories/ingestion/US-0304-import-safari-bookmarks.md) — Import Safari Bookmarks
+- [US-0305](../stories/ingestion/US-0305-import-google-drive.md) — Import Google Drive
+- [US-0306](../stories/ingestion/US-0306-import-onedrive.md) — Import OneDrive
+- [US-0307](../stories/ingestion/US-0307-import-notion.md) — Import Notion
+- [US-0308](../stories/ingestion/US-0308-import-dropbox.md) — Import Dropbox
+- [US-0309](../stories/ingestion/US-0309-import-slack.md) — Import Slack
+- [US-0310](../stories/ingestion/US-0310-import-discord.md) — Import Discord
+- [US-0311](../stories/ingestion/US-0311-import-obsidian-vault.md) — Import Obsidian Vault
+- [US-0312](../stories/ingestion/US-0312-import-logseq-graph.md) — Import Logseq Graph
+- [US-0313](../stories/ingestion/US-0313-import-evernote-enex.md) — Import Evernote ENEX
+- [US-0314](../stories/ingestion/US-0314-import-pinboard-bookmarks.md) — Import Pinboard Bookmarks
+- [US-0315](../stories/ingestion/US-0315-import-raindrop-bookmarks.md) — Import Raindrop Bookmarks
+- [US-0316](../stories/ingestion/US-0316-import-twitter-archive.md) — Import Twitter Archive
+- [US-0317](../stories/ingestion/US-0317-import-linkedin-export.md) — Import LinkedIn Export
 
 ---
 
