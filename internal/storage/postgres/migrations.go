@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 func (d *Driver) Migrate(ctx context.Context) error {
@@ -116,34 +114,99 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			url TEXT NOT NULL UNIQUE,
 			title TEXT DEFAULT '',
 			description TEXT DEFAULT '',
-			last_fetched TIMESTAMP,
+			site_url TEXT DEFAULT '',
+			format TEXT DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'active',
+			sync_interval TEXT NOT NULL DEFAULT '1h',
 			etag TEXT DEFAULT '',
-			active BOOLEAN DEFAULT TRUE,
+			last_modified TEXT DEFAULT '',
+			last_sync TIMESTAMP,
+			error_count INTEGER NOT NULL DEFAULT 0,
+			last_error TEXT DEFAULT '',
 			created_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS feed_items (
 			id TEXT PRIMARY KEY,
-			feed_id TEXT NOT NULL,
+			feed_id TEXT NOT NULL REFERENCES feeds(id),
 			guid TEXT NOT NULL,
-			title TEXT DEFAULT '',
 			link TEXT DEFAULT '',
-			content TEXT DEFAULT '',
-			published_at TIMESTAMP,
-			fetched_at TIMESTAMP NOT NULL,
-			FOREIGN KEY (feed_id) REFERENCES feeds(id)
+			object_id TEXT DEFAULT '',
+			ingested_at TIMESTAMP NOT NULL,
+			UNIQUE (feed_id, guid)
 		)`,
 		`CREATE TABLE IF NOT EXISTS batches (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'pending',
+			status TEXT NOT NULL DEFAULT 'processing',
 			total INTEGER DEFAULT 0,
 			processed INTEGER DEFAULT 0,
 			failed INTEGER DEFAULT 0,
-			config JSONB DEFAULT '{}',
+			config JSONB DEFAULT '[]',
 			created_at TIMESTAMP NOT NULL,
-			updated_at TIMESTAMP NOT NULL,
-			completed_at TIMESTAMP
+			updated_at TIMESTAMP NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS detectors (
+			id           TEXT PRIMARY KEY,
+			kind         TEXT NOT NULL,
+			name         TEXT NOT NULL,
+			pipeline_name TEXT NOT NULL,
+			pattern      TEXT NOT NULL DEFAULT '',
+			priority     INTEGER NOT NULL DEFAULT 100,
+			enabled      BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at   TIMESTAMP NOT NULL,
+			updated_at   TIMESTAMP NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS object_proximity (
+			object_a    TEXT NOT NULL,
+			object_b    TEXT NOT NULL,
+			score       REAL NOT NULL,
+			semantic    REAL NOT NULL DEFAULT 0,
+			temporal    REAL NOT NULL DEFAULT 0,
+			entity      REAL NOT NULL DEFAULT 0,
+			origin      REAL NOT NULL DEFAULT 0,
+			behavioral  REAL NOT NULL DEFAULT 0,
+			computed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (object_a, object_b),
+			CHECK (object_a < object_b)
+		)`,
+		`CREATE TABLE IF NOT EXISTS watches (
+			id               TEXT PRIMARY KEY,
+			path             TEXT NOT NULL UNIQUE,
+			mode             TEXT NOT NULL DEFAULT 'generic',
+			include_patterns JSONB DEFAULT '[]',
+			exclude_patterns JSONB DEFAULT '[]',
+			debounce_ms      INTEGER NOT NULL DEFAULT 500,
+			status           TEXT NOT NULL DEFAULT 'active',
+			pipeline_override TEXT DEFAULT '',
+			last_error       TEXT DEFAULT '',
+			created_at       TIMESTAMP NOT NULL,
+			updated_at       TIMESTAMP NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS watch_file_records (
+			watch_id     TEXT NOT NULL REFERENCES watches(id) ON DELETE CASCADE,
+			file_path    TEXT NOT NULL,
+			object_id    TEXT DEFAULT '',
+			content_hash TEXT DEFAULT '',
+			last_seen    TIMESTAMP NOT NULL,
+			PRIMARY KEY (watch_id, file_path)
+		)`,
+		`CREATE TABLE IF NOT EXISTS aliases (
+			alias       TEXT NOT NULL,
+			object_id   TEXT NOT NULL,
+			scope       TEXT NOT NULL DEFAULT 'global',
+			profile     TEXT NOT NULL DEFAULT '',
+			created_at  TIMESTAMP NOT NULL,
+			updated_at  TIMESTAMP NOT NULL,
+			PRIMARY KEY (alias, scope, profile)
+		)`,
+		`CREATE TABLE IF NOT EXISTS audit_log (
+			id          TEXT PRIMARY KEY,
+			event_type  TEXT NOT NULL,
+			object_id   TEXT NOT NULL DEFAULT '',
+			actor       TEXT NOT NULL DEFAULT 'system',
+			payload     JSONB NOT NULL DEFAULT '{}',
+			created_at  TIMESTAMP NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_type, from_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_type, to_id)`,
@@ -154,6 +217,24 @@ func (d *Driver) Migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_feed_items_guid ON feed_items(guid)`,
 		`CREATE INDEX IF NOT EXISTS idx_objects_hash ON objects(content_hash)`,
 		`CREATE INDEX IF NOT EXISTS idx_objects_embedding ON objects USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`,
+		`CREATE INDEX IF NOT EXISTS idx_feeds_status ON feeds(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_feed_items_feed_id ON feed_items(feed_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_feed_items_guid ON feed_items(feed_id, guid)`,
+		`CREATE INDEX IF NOT EXISTS idx_batches_status ON batches(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_detectors_kind ON detectors(kind)`,
+		`CREATE INDEX IF NOT EXISTS idx_detectors_enabled ON detectors(enabled)`,
+		`CREATE INDEX IF NOT EXISTS idx_detectors_priority ON detectors(priority)`,
+		`CREATE INDEX IF NOT EXISTS idx_proximity_a_score ON object_proximity(object_a, score DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_proximity_b_score ON object_proximity(object_b, score DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_proximity_score ON object_proximity(score DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_proximity_computed ON object_proximity(computed_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_watches_status ON watches(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_wfr_watch_id ON watch_file_records(watch_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_aliases_object_id ON aliases(object_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_aliases_scope_profile ON aliases(scope, profile)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_object_id ON audit_log(object_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_event_type ON audit_log(event_type)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_log(created_at)`,
 	}
 
 	for i, m := range migrations {
@@ -164,6 +245,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 	return nil
 }
 
+// Store type declarations. Implementations are in separate files.
 type ObjectStore struct{ db *sql.DB }
 type EntityStore struct{ db *sql.DB }
 type EdgeStore struct{ db *sql.DB }
@@ -175,191 +257,3 @@ type ReminderStore struct{ db *sql.DB }
 type FeedStore struct{ db *sql.DB }
 type FeedItemStore struct{ db *sql.DB }
 type BatchStore struct{ db *sql.DB }
-
-func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*storage.KnowledgeObject, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
-	return nil, 0, fmt.Errorf("not implemented")
-}
-func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *ObjectStore) Delete(ctx context.Context, id string) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*storage.KnowledgeObject, int, error) {
-	return nil, 0, fmt.Errorf("not implemented")
-}
-func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *storage.KnowledgeObject) (string, error) {
-	return "", fmt.Errorf("not implemented")
-}
-func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (s *EntityStore) Upsert(ctx context.Context, entity *storage.Entity) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *EntityStore) Get(ctx context.Context, slug string) (*storage.Entity, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]*storage.Entity, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *EntityStore) Resolve(ctx context.Context, mention string) (*storage.Entity, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (s *EdgeStore) Create(ctx context.Context, edge *storage.Edge) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *EdgeStore) ListFrom(ctx context.Context, fromType, fromID string) ([]*storage.Edge, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *EdgeStore) ListTo(ctx context.Context, toType, toID string) ([]*storage.Edge, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *EdgeStore) Delete(ctx context.Context, id string) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *EdgeStore) DeleteByObject(ctx context.Context, objectID string) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *JobStore) Create(ctx context.Context, job *storage.Job) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *JobStore) Get(ctx context.Context, id string) (*storage.Job, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *JobStore) List(ctx context.Context, filter storage.JobFilter) ([]*storage.Job, int, error) {
-	return nil, 0, fmt.Errorf("not implemented")
-}
-func (s *JobStore) AcquireNext(ctx context.Context) (*storage.Job, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *JobStore) Complete(ctx context.Context, id string, resultID string) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *JobStore) Fail(ctx context.Context, id string, errMsg string) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *JobStore) Retry(ctx context.Context, id string) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *JobStore) Cancel(ctx context.Context, id string) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *JobStore) RecoverStale(ctx context.Context, timeout int64) (int, error) {
-	return 0, fmt.Errorf("not implemented")
-}
-
-func (s *PipelineStore) Create(ctx context.Context, pipeline *storage.Pipeline) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *PipelineStore) Get(ctx context.Context, name string) (*storage.Pipeline, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *PipelineStore) List(ctx context.Context, filter storage.PipelineFilter) ([]*storage.Pipeline, int, error) {
-	return nil, 0, fmt.Errorf("not implemented")
-}
-func (s *PipelineStore) Update(ctx context.Context, pipeline *storage.Pipeline) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *PipelineStore) Delete(ctx context.Context, name string) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *PipelineStore) Archive(ctx context.Context, name string) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *PipelineStore) Unarchive(ctx context.Context, name string) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *StepStore) Create(ctx context.Context, step *storage.RegisteredStep) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *StepStore) Get(ctx context.Context, name string) (*storage.RegisteredStep, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *StepStore) List(ctx context.Context, source string) ([]*storage.RegisteredStep, int, error) {
-	return nil, 0, fmt.Errorf("not implemented")
-}
-func (s *StepStore) Unregister(ctx context.Context, name string) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *StepStore) Update(ctx context.Context, step *storage.RegisteredStep) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *RegistryStore) CacheManifest(ctx context.Context, cache *storage.RegistryCache) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *RegistryStore) GetCachedManifest(ctx context.Context, url string) (*storage.RegistryCache, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *RegistryStore) UpdateETag(ctx context.Context, url, etag string) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *RegistryStore) List(ctx context.Context) ([]*storage.RegistryCache, int, error) {
-	return nil, 0, fmt.Errorf("not implemented")
-}
-
-func (s *ReminderStore) Create(ctx context.Context, reminder *storage.SystemReminder) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *ReminderStore) Get(ctx context.Context, id string) (*storage.SystemReminder, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *ReminderStore) List(ctx context.Context, activeOnly bool) ([]*storage.SystemReminder, int, error) {
-	return nil, 0, fmt.Errorf("not implemented")
-}
-func (s *ReminderStore) Dismiss(ctx context.Context, id string) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *FeedStore) Create(ctx context.Context, feed *storage.Feed) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *FeedStore) Get(ctx context.Context, id string) (*storage.Feed, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *FeedStore) GetByURL(ctx context.Context, url string) (*storage.Feed, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *FeedStore) List(ctx context.Context, filter storage.FeedFilter) ([]*storage.Feed, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *FeedStore) Update(ctx context.Context, feed *storage.Feed) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *FeedStore) Delete(ctx context.Context, id string) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *FeedItemStore) Create(ctx context.Context, item *storage.FeedItem) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *FeedItemStore) ExistsByGUID(ctx context.Context, feedID, guid string) (bool, error) {
-	return false, fmt.Errorf("not implemented")
-}
-
-func (s *BatchStore) Create(ctx context.Context, batch *storage.Batch) error {
-	return fmt.Errorf("not implemented")
-}
-func (s *BatchStore) Get(ctx context.Context, id string) (*storage.Batch, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (s *BatchStore) Update(ctx context.Context, batch *storage.Batch) error {
-	return fmt.Errorf("not implemented")
-}

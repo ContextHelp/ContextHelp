@@ -303,6 +303,62 @@ func ConfiguredRegistryStrict(f *providers.Factory) pipeline.Registry {
 	return buildRegistry(BuildOpts{Factory: f}, true)
 }
 
+// ConfiguredRegistryWithPipelineOverrides builds a registry where each pipeline
+// can override individual provider backends via PipelinesConfig.Overrides.
+func ConfiguredRegistryWithPipelineOverrides(
+	base *providers.Factory,
+	baseCfg config.ProvidersConfig,
+	pipelinesCfg config.PipelinesConfig,
+	blobStore storage.BlobStore,
+	blobThreshold int64,
+) pipeline.Registry {
+	r := pipeline.NewRegistry()
+	selectors := buildSelectors()
+
+	for name, d := range defs {
+		opts := BuildOpts{Factory: base, BlobStore: blobStore, BlobThreshold: blobThreshold}
+
+		if override, ok := pipelinesCfg.Overrides[name]; ok && len(override.Providers) > 0 {
+			merged := baseCfg
+			for role, bc := range override.Providers {
+				switch role {
+				case "llm":
+					merged.LLM = bc
+				case "embedding":
+					merged.Embedding = bc
+				case "ocr":
+					merged.OCR = bc
+				case "vision":
+					merged.Vision = bc
+				case "transcription":
+					merged.Transcription = bc
+				case "diarization":
+					merged.Diarization = bc
+				case "video":
+					merged.Video = bc
+				case "document":
+					merged.Document = bc
+				}
+			}
+			opts.Factory = providers.NewFactory(merged)
+		}
+
+		p, err := buildPipeline(name, d, opts, false)
+		if err != nil {
+			panic(fmt.Sprintf("builtins: %v", err))
+		}
+		if err := r.Register(name, p); err != nil {
+			panic(fmt.Sprintf("builtins: %v", err))
+		}
+	}
+
+	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {
+		return selectPipeline(selectors, content)
+	}))
+
+	return r
+}
+
 func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()

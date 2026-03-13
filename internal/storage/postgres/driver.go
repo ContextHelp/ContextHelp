@@ -8,6 +8,7 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	blobstub "github.com/ideacrafterslabs/ctxt/internal/storage/blob/stub"
 )
 
 type Driver struct {
@@ -24,6 +25,12 @@ type Driver struct {
 	feeds      *FeedStore
 	feedItems  *FeedItemStore
 	batches    *BatchStore
+	detectors  *DetectorStore
+	blobs      storage.BlobStore
+	proximity  *ProximityStore
+	watches    *WatchStore
+	aliases    *AliasStore
+	auditLog   *AuditStore
 }
 
 func New(connStr string) (*Driver, error) {
@@ -47,6 +54,12 @@ func New(connStr string) (*Driver, error) {
 	d.feeds = &FeedStore{db: db}
 	d.feedItems = &FeedItemStore{db: db}
 	d.batches = &BatchStore{db: db}
+	d.detectors = &DetectorStore{db: db}
+	d.blobs = blobstub.New()
+	d.proximity = &ProximityStore{db: db}
+	d.watches = &WatchStore{db: db}
+	d.aliases = &AliasStore{db: db}
+	d.auditLog = &AuditStore{db: db}
 	return d, nil
 }
 
@@ -71,10 +84,16 @@ func (d *Driver) Registries() storage.RegistryStore { return d.registries }
 func (d *Driver) Reminders() storage.ReminderStore  { return d.reminders }
 func (d *Driver) Feeds() storage.FeedStore          { return d.feeds }
 func (d *Driver) FeedItems() storage.FeedItemStore  { return d.feedItems }
-func (d *Driver) Batches() storage.BatchStore          { return d.batches }
-func (d *Driver) Detectors() storage.DetectorStore  { panic("postgres: Detectors not implemented") }
-func (d *Driver) Blobs() storage.BlobStore           { panic("postgres: Blobs not implemented") }
-func (d *Driver) Proximity() storage.ProximityStore  { panic("postgres: Proximity not implemented") }
+func (d *Driver) Batches() storage.BatchStore       { return d.batches }
+func (d *Driver) Detectors() storage.DetectorStore  { return d.detectors }
+func (d *Driver) Blobs() storage.BlobStore          { return d.blobs }
+func (d *Driver) Proximity() storage.ProximityStore { return d.proximity }
+func (d *Driver) Watches() storage.WatchStore       { return d.watches }
+func (d *Driver) Aliases() storage.AliasStore       { return d.aliases }
+func (d *Driver) AuditLog() storage.AuditStore      { return d.auditLog }
+
+// SetBlobs allows injection of a custom BlobStore implementation.
+func (d *Driver) SetBlobs(bs storage.BlobStore) { d.blobs = bs }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)
