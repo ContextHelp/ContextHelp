@@ -26,6 +26,7 @@ type Driver struct {
 	feedItems  *FeedItemStore
 	batches    *BatchStore
 	detectors  *DetectorStore
+	blobs      *BlobStore
 }
 
 // New creates a new SQLite driver for the given database path.
@@ -61,6 +62,7 @@ func New(path string) (*Driver, error) {
 	d.feedItems = &FeedItemStore{db: db}
 	d.batches = &BatchStore{db: db}
 	d.detectors = &DetectorStore{db: db}
+	d.blobs = &BlobStore{}
 	return d, nil
 }
 
@@ -83,7 +85,8 @@ func (d *Driver) Reminders() storage.ReminderStore  { return d.reminders }
 func (d *Driver) Feeds() storage.FeedStore           { return d.feeds }
 func (d *Driver) FeedItems() storage.FeedItemStore   { return d.feedItems }
 func (d *Driver) Batches() storage.BatchStore          { return d.batches }
-func (d *Driver) Detectors() storage.DetectorStore     { return d.detectors }
+func (d *Driver) Detectors() storage.DetectorStore { return d.detectors }
+func (d *Driver) Blobs() storage.BlobStore         { return d.blobs }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)

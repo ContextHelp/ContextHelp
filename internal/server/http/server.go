@@ -64,6 +64,16 @@ func NewRouter(svc *service.Service) chi.Router {
 		r.Post("/steps/registries/{url}/update", UpdateRegistry(svc))
 		r.Get("/steps/registries", ListRegistries(svc))
 
+		// Feeds
+		r.Post("/feeds", CreateFeed(svc))
+		r.Get("/feeds", ListFeeds(svc))
+		r.Post("/feeds/{id}/sync", SyncFeed(svc))
+		r.Delete("/feeds/{id}", DeleteFeed(svc))
+
+		// Import
+		r.Post("/import", CreateImport(svc))
+		r.Get("/import/{id}", GetImport(svc))
+
 		// System
 		r.Get("/system/reminders", ListReminders(svc))
 		r.Post("/system/reminders/{id}/dismiss", DismissReminder(svc))

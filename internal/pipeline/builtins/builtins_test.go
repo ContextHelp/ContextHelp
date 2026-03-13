@@ -12,9 +12,11 @@ func TestAllDefsRegistered(t *testing.T) {
 	expected := []string{
 		"text.short", "text.long",
 		"image.ocr", "image.analysis",
-		"audio.transcribe", "video.full",
+		"audio.transcribe", "video.full", "video.audio_only",
 		"doc.pdf", "doc.markdown", "doc.code", "doc.office",
 		"url.generic",
+		"feed.sync",
+		"batch.jsonl", "batch.csv", "batch.tsv",
 	}
 	for _, name := range expected {
 		if _, ok := d[name]; !ok {
@@ -46,9 +48,10 @@ func TestRegistryBuildsAllPipelines(t *testing.T) {
 	names := r.List()
 
 	expected := []string{
-		"audio.transcribe", "doc.code", "doc.markdown", "doc.office",
-		"doc.pdf", "image.analysis", "image.ocr", "text.long",
-		"text.short", "url.generic", "video.full",
+		"audio.transcribe", "batch.csv", "batch.jsonl", "batch.tsv",
+		"doc.code", "doc.markdown", "doc.office", "doc.pdf",
+		"feed.sync", "image.analysis", "image.ocr", "text.long",
+		"text.short", "url.generic", "video.audio_only", "video.full",
 	}
 
 	if len(names) != len(expected) {

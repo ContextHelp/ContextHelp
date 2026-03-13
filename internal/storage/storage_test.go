@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"io"
 	"testing"
 )
 
@@ -22,7 +23,30 @@ func (m *mockDriver) Feeds() FeedStore                 { return &mockFeedStore{}
 func (m *mockDriver) FeedItems() FeedItemStore         { return &mockFeedItemStore{} }
 func (m *mockDriver) Batches() BatchStore              { return &mockBatchStore{} }
 func (m *mockDriver) Detectors() DetectorStore         { return &mockDetectorStore{} }
+func (m *mockDriver) Blobs() BlobStore                 { return &mockBlobStore{} }
 func (m *mockDriver) Health(ctx context.Context) error { return nil }
+
+type mockBlobStore struct{}
+
+func (m *mockBlobStore) Put(_ context.Context, _ string, _ io.Reader, _ BlobMeta) error {
+	return nil
+}
+func (m *mockBlobStore) Get(_ context.Context, key string) (io.ReadCloser, BlobMeta, error) {
+	return nil, BlobMeta{}, nil
+}
+func (m *mockBlobStore) Delete(_ context.Context, _ string) error         { return nil }
+func (m *mockBlobStore) Exists(_ context.Context, _ string) (bool, error) { return false, nil }
+func (m *mockBlobStore) List(_ context.Context, _ string) ([]BlobInfo, error) {
+	return nil, nil
+}
+func (m *mockBlobStore) URL(_ context.Context, _ string) (string, error) { return "", nil }
+
+func TestBlobStoreInterfaceSatisfaction(t *testing.T) {
+	var s BlobStore = &mockBlobStore{}
+	if s == nil {
+		t.Fatal("mockBlobStore should satisfy BlobStore")
+	}
+}
 
 type mockObjectStore struct{}
 
@@ -45,6 +69,9 @@ func (m *mockObjectStore) Reinforce(ctx context.Context, hash string, mergeData 
 	return "", nil
 }
 func (m *mockObjectStore) ListWithEmbeddings(ctx context.Context) ([]*KnowledgeObject, error) {
+	return nil, nil
+}
+func (m *mockObjectStore) VectorSearch(ctx context.Context, vector []float32, filter ObjectFilter) ([]*KnowledgeObject, error) {
 	return nil, nil
 }
 

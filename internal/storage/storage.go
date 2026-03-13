@@ -1,6 +1,10 @@
 package storage
 
-import "context"
+import (
+	"context"
+	"io"
+	"time"
+)
 
 // StorageDriver is the top-level interface for all persistence operations.
 type StorageDriver interface {
@@ -18,7 +22,19 @@ type StorageDriver interface {
 	FeedItems() FeedItemStore
 	Batches() BatchStore
 	Detectors() DetectorStore
+	Blobs() BlobStore
+	Proximity() ProximityStore
 	Health(ctx context.Context) error
+}
+
+// BlobStore manages external binary content.
+type BlobStore interface {
+	Put(ctx context.Context, key string, data io.Reader, meta BlobMeta) error
+	Get(ctx context.Context, key string) (io.ReadCloser, BlobMeta, error)
+	Delete(ctx context.Context, key string) error
+	Exists(ctx context.Context, key string) (bool, error)
+	List(ctx context.Context, prefix string) ([]BlobInfo, error)
+	URL(ctx context.Context, key string) (string, error)
 }
 
 // ObjectStore persists and retrieves knowledge objects.
@@ -32,6 +48,9 @@ type ObjectStore interface {
 	ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error)
 	Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error)
 	ListWithEmbeddings(ctx context.Context) ([]*KnowledgeObject, error)
+	// VectorSearch returns the top-K objects ranked by cosine similarity to
+	// the given vector, optionally filtered by ObjectFilter fields.
+	VectorSearch(ctx context.Context, vector []float32, filter ObjectFilter) ([]*KnowledgeObject, error)
 }
 
 // EntityStore persists and retrieves named entities.
@@ -132,4 +151,33 @@ type DetectorStore interface {
 	Delete(ctx context.Context, id string) error
 	Enable(ctx context.Context, id string) error
 	Disable(ctx context.Context, id string) error
+}
+
+// ProximityStore persists and retrieves precomputed object proximity scores.
+type ProximityStore interface {
+	// GetNeighbors returns up to limit neighbors for objectID, sorted by score descending.
+	GetNeighbors(ctx context.Context, objectID string, limit int) ([]*ProximityScore, error)
+
+	// GetNeighborsAbove returns all neighbors whose score is >= threshold.
+	GetNeighborsAbove(ctx context.Context, objectID string, threshold float64) ([]*ProximityScore, error)
+
+	// Get returns the proximity score for a specific pair. objectA and objectB
+	// are normalised to canonical (a < b) order internally.
+	Get(ctx context.Context, objectA, objectB string) (*ProximityScore, error)
+
+	// Put stores or updates a single proximity score.
+	Put(ctx context.Context, score *ProximityScore) error
+
+	// PutBatch stores or updates multiple proximity scores in a single transaction.
+	PutBatch(ctx context.Context, scores []*ProximityScore) error
+
+	// Delete removes all proximity records that involve objectID.
+	Delete(ctx context.Context, objectID string) error
+
+	// FindStale returns up to limit object IDs whose proximity was last computed
+	// before cutoff, ordered by computed_at ascending.
+	FindStale(ctx context.Context, cutoff time.Time, limit int) ([]string, error)
+
+	// Stats returns aggregate statistics about the proximity index.
+	Stats(ctx context.Context) (*ProximityStats, error)
 }

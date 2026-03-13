@@ -2,12 +2,29 @@ package storage
 
 import "time"
 
+// BlobMeta describes metadata for a stored blob.
+type BlobMeta struct {
+	ContentType string            `json:"content_type"`
+	Size        int64             `json:"size"`
+	ContentHash string            `json:"content_hash"`
+	Filename    string            `json:"filename,omitempty"`
+	Properties  map[string]string `json:"properties,omitempty"`
+}
+
+// BlobInfo describes a blob in a listing.
+type BlobInfo struct {
+	Key       string    `json:"key"`
+	Size      int64     `json:"size"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // KnowledgeObject is the central data structure representing an ingested piece of knowledge.
 type KnowledgeObject struct {
 	ID                 string         `json:"id"`
 	Type               string         `json:"type"`
 	Subtype            string         `json:"subtype,omitempty"`
 	RawContent         string         `json:"raw_content"`
+	TextContent        string         `json:"text_content,omitempty"`
 	ContentType        string         `json:"content_type,omitempty"`
 	Metadata           map[string]any `json:"metadata,omitempty"`
 	Summaries          []string       `json:"summaries,omitempty"`
@@ -351,4 +368,34 @@ type DetectorFilter struct {
 	Enabled *bool // nil = all, true = enabled only, false = disabled only
 	Limit   int
 	Offset  int
+}
+
+// ProximityFactors holds per-dimension proximity scores or weights.
+type ProximityFactors struct {
+	Semantic   float64 `json:"semantic"`
+	Temporal   float64 `json:"temporal"`
+	Entity     float64 `json:"entity"`
+	Origin     float64 `json:"origin"`
+	Behavioral float64 `json:"behavioral"`
+}
+
+// ProximityScore represents the computed proximity between two knowledge objects.
+// ObjectA < ObjectB is enforced to ensure canonical ordering.
+type ProximityScore struct {
+	ObjectA    string           `json:"object_a"`
+	ObjectB    string           `json:"object_b"`
+	Score      float64          `json:"score"`
+	Factors    ProximityFactors `json:"factors"`
+	Weights    ProximityFactors `json:"weights"`
+	ComputedAt time.Time        `json:"computed_at"`
+}
+
+// ProximityStats summarises aggregate statistics about the proximity index.
+type ProximityStats struct {
+	TotalPairs      int64   `json:"total_pairs"`
+	AvgScore        float64 `json:"avg_score"`
+	MaxScore        float64 `json:"max_score"`
+	HighProximity   int64   `json:"high_proximity"`   // score >= 0.7
+	MediumProximity int64   `json:"medium_proximity"` // score 0.4–0.7
+	LowProximity    int64   `json:"low_proximity"`    // score 0.2–0.4
 }

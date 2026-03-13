@@ -43,6 +43,27 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"entity_extractor":  func() pipeline.PipelineStep { return steps.NewEntityExtractor() },
 	"timestamp_aligner": func() pipeline.PipelineStep { return steps.NewTimestampAligner() },
 	"noop":              func() pipeline.PipelineStep { return steps.NewNoop() },
+	// Feed pipeline steps.
+	"feed_fetcher":      func() pipeline.PipelineStep { return steps.NewFeedFetcher() },
+	"feed_parser":       func() pipeline.PipelineStep { return steps.NewFeedParser() },
+	"item_deduplicator": func() pipeline.PipelineStep { return steps.NewItemDeduplicator(nil) },
+	"item_enqueuer":     func() pipeline.PipelineStep { return steps.NewItemEnqueuer() },
+	// Batch pipeline steps.
+	"jsonl_parser":     func() pipeline.PipelineStep { return steps.NewJSONLParser() },
+	"csv_parser":       func() pipeline.PipelineStep { return steps.NewCSVParser() },
+	"record_validator": func() pipeline.PipelineStep { return steps.NewRecordValidator() },
+	"batch_enqueuer":   func() pipeline.PipelineStep { return steps.NewBatchEnqueuer() },
+	// Video pipeline steps.
+	"scene_detector":    func() pipeline.PipelineStep { return steps.NewSceneDetector() },
+	"timeline_assembler": func() pipeline.PipelineStep { return steps.NewTimelineAssembler() },
+	// Document pipeline steps.
+	"markdown_parser":     func() pipeline.PipelineStep { return steps.NewMarkdownParser() },
+	"heading_splitter":    func() pipeline.PipelineStep { return steps.NewHeadingSplitter() },
+	"code_block_extractor": func() pipeline.PipelineStep { return steps.NewCodeBlockExtractor() },
+	"language_detector":   func() pipeline.PipelineStep { return steps.NewLanguageDetector() },
+	"function_extractor":  func() pipeline.PipelineStep { return steps.NewFunctionExtractor() },
+	"comment_extractor":   func() pipeline.PipelineStep { return steps.NewCommentExtractor() },
+	"table_extractor":     func() pipeline.PipelineStep { return steps.NewTableExtractor() },
 }
 
 // providerStepConstructors maps step names to provider-aware constructors.
@@ -68,6 +89,21 @@ var providerStepConstructors = map[string]func(*providers.Factory) pipeline.Pipe
 	"entity_extractor": func(f *providers.Factory) pipeline.PipelineStep {
 		return steps.NewEntityExtractorWithLLM(f.LLM())
 	},
+	"audio_extractor": func(f *providers.Factory) pipeline.PipelineStep {
+		return steps.NewAudioExtractor(steps.WithVideoProvider(f.Video()))
+	},
+	"frame_sampler": func(f *providers.Factory) pipeline.PipelineStep {
+		return steps.NewFrameSampler(steps.WithFrameSamplerVideoProvider(f.Video()))
+	},
+	"frame_ocr": func(f *providers.Factory) pipeline.PipelineStep {
+		return steps.NewFrameOCR(steps.WithFrameOCRProvider(f.OCR()))
+	},
+	"pdf_extractor": func(f *providers.Factory) pipeline.PipelineStep {
+		return steps.NewPDFExtractor(steps.WithDocumentProvider(f.Document()))
+	},
+	"office_extractor": func(f *providers.Factory) pipeline.PipelineStep {
+		return steps.NewOfficeExtractor(steps.WithOfficeDocumentProvider(f.Document()))
+	},
 }
 
 // resolveStep builds a PipelineStep from a step name, optionally using a Factory for provider-aware steps.
@@ -90,6 +126,16 @@ func resolveStep(name string, f *providers.Factory) (pipeline.PipelineStep, erro
 		return steps.NewAudioTranscriber(), nil
 	case "speaker_diarizer":
 		return steps.NewSpeakerDiarizer(false), nil
+	case "audio_extractor":
+		return steps.NewAudioExtractor(), nil
+	case "frame_sampler":
+		return steps.NewFrameSampler(), nil
+	case "frame_ocr":
+		return steps.NewFrameOCR(), nil
+	case "pdf_extractor":
+		return steps.NewPDFExtractor(), nil
+	case "office_extractor":
+		return steps.NewOfficeExtractor(), nil
 	}
 	return nil, fmt.Errorf("builtins: unknown step %q", name)
 }

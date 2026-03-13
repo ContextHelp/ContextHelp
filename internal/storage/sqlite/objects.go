@@ -530,6 +530,89 @@ func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.Knowle
 	return objects, rows.Err()
 }
 
+// VectorSearch fetches all objects with embeddings, computes cosine similarity
+// against vector, applies any ObjectFilter constraints, and returns the top-K
+// results in descending similarity order.
+func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	if len(vector) == 0 {
+		return nil, fmt.Errorf("vector search: empty query vector")
+	}
+
+	candidates, err := s.ListWithEmbeddings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("vector search: %w", err)
+	}
+
+	type scored struct {
+		obj   *storage.KnowledgeObject
+		score float64
+	}
+
+	var results []scored
+	for _, obj := range candidates {
+		if filter.Type != "" && obj.Type != filter.Type {
+			continue
+		}
+		if filter.Subtype != "" && obj.Subtype != filter.Subtype {
+			continue
+		}
+		if filter.Pipeline != "" && obj.Pipeline != filter.Pipeline {
+			continue
+		}
+		if len(obj.Embeddings) == 0 {
+			continue
+		}
+		score := cosineSimilarity(vector, obj.Embeddings)
+		results = append(results, scored{obj: obj, score: score})
+	}
+
+	// Sort descending by similarity (insertion sort; results slice is typically small).
+	for i := 1; i < len(results); i++ {
+		key := results[i]
+		j := i - 1
+		for j >= 0 && results[j].score < key.score {
+			results[j+1] = results[j]
+			j--
+		}
+		results[j+1] = key
+	}
+
+	limit := filter.Limit
+	if limit <= 0 || limit > len(results) {
+		limit = len(results)
+	}
+
+	out := make([]*storage.KnowledgeObject, limit)
+	for i := 0; i < limit; i++ {
+		out[i] = results[i].obj
+		if out[i].Metadata == nil {
+			out[i].Metadata = make(map[string]any)
+		}
+		out[i].Metadata["score"] = results[i].score
+	}
+	return out, nil
+}
+
+// cosineSimilarity returns the cosine similarity between two vectors.
+// Returns 0 when either vector has zero magnitude.
+func cosineSimilarity(a, b []float32) float64 {
+	n := len(a)
+	if n > len(b) {
+		n = len(b)
+	}
+	var dot, normA, normB float64
+	for i := 0; i < n; i++ {
+		fa, fb := float64(a[i]), float64(b[i])
+		dot += fa * fb
+		normA += fa * fa
+		normB += fb * fb
+	}
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
+}
+
 // float32SliceToBlob encodes []float32 as little-endian bytes.
 func float32SliceToBlob(v []float32) []byte {
 	buf := make([]byte, len(v)*4)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -51,8 +52,35 @@ type Config struct {
 
 // StorageConfig represents storage configuration
 type StorageConfig struct {
-	Type string `mapstructure:"type"`
+	Type string     `mapstructure:"type"`
+	Path string     `mapstructure:"path"`
+	Blob BlobConfig `mapstructure:"blob"`
+}
+
+// BlobConfig holds configuration for the blob storage backend.
+type BlobConfig struct {
+	Backend   string          `mapstructure:"backend"`
+	Threshold int64           `mapstructure:"threshold"`
+	Local     BlobLocalConfig `mapstructure:"local"`
+	S3        BlobS3Config    `mapstructure:"s3"`
+}
+
+// BlobLocalConfig configures the local filesystem blob backend.
+type BlobLocalConfig struct {
 	Path string `mapstructure:"path"`
+}
+
+// BlobS3Config configures the S3-compatible blob backend.
+type BlobS3Config struct {
+	Endpoint      string        `mapstructure:"endpoint"`
+	Region        string        `mapstructure:"region"`
+	Bucket        string        `mapstructure:"bucket"`
+	Prefix        string        `mapstructure:"prefix"`
+	AccessKey     string        `mapstructure:"access_key"`
+	SecretKey     string        `mapstructure:"secret_key"`
+	UsePathStyle  bool          `mapstructure:"use_path_style"`
+	PresignExpiry time.Duration `mapstructure:"presign_expiry"`
+	MaxRetries    int           `mapstructure:"max_retries"`
 }
 
 // ServerConfig represents server configuration
@@ -169,6 +197,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("storage.type", "sqlite")
 	v.SetDefault("storage.path", filepath.Join(dataDir, "db.sqlite"))
 
+	// Blob storage defaults
+	v.SetDefault("storage.blob.backend", "local")
+	v.SetDefault("storage.blob.threshold", int64(65536))
+	v.SetDefault("storage.blob.local.path", filepath.Join(dataDir, "blobs"))
+	v.SetDefault("storage.blob.s3.region", "us-east-1")
+	v.SetDefault("storage.blob.s3.use_path_style", false)
+	v.SetDefault("storage.blob.s3.presign_expiry", time.Hour)
+	v.SetDefault("storage.blob.s3.max_retries", 3)
+
 	// Server defaults
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.grpc_port", 9090)
@@ -206,6 +243,16 @@ func bindEnvVars(v *viper.Viper) {
 	// Explicit bindings for common overrides
 	v.BindEnv("storage.type", "CH_STORAGE_TYPE")
 	v.BindEnv("storage.path", EnvDataDir)
+
+	// Blob storage env var bindings
+	v.BindEnv("storage.blob.backend", "CTXT_BLOB_BACKEND")
+	v.BindEnv("storage.blob.threshold", "CTXT_BLOB_THRESHOLD")
+	v.BindEnv("storage.blob.s3.endpoint", "CTXT_BLOB_S3_ENDPOINT")
+	v.BindEnv("storage.blob.s3.region", "CTXT_BLOB_S3_REGION")
+	v.BindEnv("storage.blob.s3.bucket", "CTXT_BLOB_S3_BUCKET")
+	v.BindEnv("storage.blob.s3.prefix", "CTXT_BLOB_S3_PREFIX")
+	v.BindEnv("storage.blob.s3.access_key", "CTXT_BLOB_S3_ACCESS_KEY")
+	v.BindEnv("storage.blob.s3.secret_key", "CTXT_BLOB_S3_SECRET_KEY")
 	v.BindEnv("server.port", "CH_SERVER_PORT")
 	v.BindEnv("server.grpc_port", "CH_GRPC_PORT")
 	v.BindEnv("server.workers", EnvDPKMSWorkers)

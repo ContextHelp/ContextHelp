@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -281,4 +282,26 @@ func TestGetConfigPathEnvOverride(t *testing.T) {
 
 	path := GetConfigPath()
 	assert.Equal(t, custom, path, "GetConfigPath should return the exact env value")
+}
+
+func TestBlobConfigDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Storage.Blob.Backend != "local" {
+		t.Errorf("blob backend: got %q, want %q", cfg.Storage.Blob.Backend, "local")
+	}
+	if cfg.Storage.Blob.Threshold != 65536 {
+		t.Errorf("blob threshold: got %d, want %d", cfg.Storage.Blob.Threshold, 65536)
+	}
+	if cfg.Storage.Blob.S3.Region != "us-east-1" {
+		t.Errorf("s3 region: got %q, want %q", cfg.Storage.Blob.S3.Region, "us-east-1")
+	}
+	if cfg.Storage.Blob.S3.MaxRetries != 3 {
+		t.Errorf("s3 max_retries: got %d, want %d", cfg.Storage.Blob.S3.MaxRetries, 3)
+	}
+	if cfg.Storage.Blob.S3.PresignExpiry != time.Hour {
+		t.Errorf("s3 presign_expiry: got %v, want %v", cfg.Storage.Blob.S3.PresignExpiry, time.Hour)
+	}
 }
