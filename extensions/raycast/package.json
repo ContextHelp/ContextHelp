@@ -1,0 +1,84 @@
+{
+  "name": "ctxt",
+  "title": "ctxt Knowledge",
+  "description": "Capture, search, and compose with ctxt",
+  "icon": "extension-icon.png",
+  "author": "contexthelp",
+  "categories": ["Productivity"],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "capture",
+      "title": "Capture to ctxt",
+      "description": "Capture content to knowledge store",
+      "mode": "view"
+    },
+    {
+      "name": "search",
+      "title": "Search Knowledge",
+      "description": "Search your knowledge store",
+      "mode": "view"
+    },
+    {
+      "name": "recent",
+      "title": "Recent Captures",
+      "description": "View recent knowledge objects",
+      "mode": "view"
+    },
+    {
+      "name": "compose",
+      "title": "Compose Brief or Plan",
+      "description": "Generate a brief or plan",
+      "mode": "view"
+    },
+    {
+      "name": "jobs",
+      "title": "Job Queue",
+      "description": "Monitor processing jobs",
+      "mode": "view"
+    }
+  ],
+  "deeplinks": [
+    { "link": "capture", "command": "capture" },
+    { "link": "search", "command": "search" }
+  ],
+  "preferences": [
+    {
+      "name": "serverUrl",
+      "title": "Server URL",
+      "type": "textfield",
+      "default": "http://127.0.0.1:8080",
+      "description": "dpkms server URL",
+      "required": false
+    },
+    {
+      "name": "apiToken",
+      "title": "API Token",
+      "type": "password",
+      "default": "",
+      "description": "Optional API token (future)",
+      "required": false
+    },
+    {
+      "name": "defaultProfile",
+      "title": "Default Profile",
+      "type": "textfield",
+      "default": "",
+      "description": "Default focus profile",
+      "required": false
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.0.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.0",
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "lint": "ray lint"
+  }
+}
