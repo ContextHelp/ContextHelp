@@ -22,23 +22,26 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	_, err = s.db.ExecContext(ctx, `INSERT INTO objects (
 		id, type, subtype, raw_content, content_type,
 		metadata, summaries, sections, tags, mentions,
-		decisions, tasks, pipeline, source,
+		decisions, tasks, embedding, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed
+		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note
 	) VALUES (
 		$1, $2, $3, $4, $5,
 		$6, $7, $8, $9, $10,
-		$11, $12, $13, $14,
-		$15, $16, $17, $18, $19,
-		$20, $21, $22, $23
+		$11, $12, $13, $14, $15,
+		$16, $17, $18, $19, $20,
+		$21, $22, $23, $24, $25, $26
 	)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
-		f.decisions, f.tasks, obj.Pipeline, obj.Source,
+		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
-		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed,
+		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("create object: %w", err)
+	}
+	return nil
 }
 
 func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
@@ -153,17 +156,17 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	result, err := s.db.ExecContext(ctx, `UPDATE objects SET
 		type=$1, subtype=$2, raw_content=$3, content_type=$4,
 		metadata=$5, summaries=$6, sections=$7, tags=$8, mentions=$9,
-		decisions=$10, tasks=$11, pipeline=$12, source=$13,
-		registry_influences=$14, plugins=$15, content_hash=$16,
-		reinforcement_count=$17, last_reinforced_at=$18,
-		updated_at=$19, fts_indexed=$20, vector_indexed=$21
-	WHERE id=$22`,
+		decisions=$10, tasks=$11, embedding=$12, pipeline=$13, source=$14,
+		registry_influences=$15, plugins=$16, content_hash=$17,
+		reinforcement_count=$18, last_reinforced_at=$19,
+		updated_at=$20, fts_indexed=$21, vector_indexed=$22, status=$23, inbox_note=$24
+	WHERE id=$25`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
-		f.decisions, f.tasks, obj.Pipeline, obj.Source,
+		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash,
 		obj.ReinforcementCount, f.lastReinforcedAt,
-		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed,
+		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
 		obj.ID,
 	)
 	if err != nil {
@@ -386,7 +389,7 @@ const objectSelectCols = `SELECT
 	metadata, summaries, sections, tags, mentions,
 	decisions, tasks, pipeline, source,
 	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-	created_at, updated_at, fts_indexed, vector_indexed`
+	created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note`
 
 func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 	var obj storage.KnowledgeObject
@@ -401,7 +404,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed,
+		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -427,7 +430,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed,
+		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
@@ -452,7 +455,7 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed,
+		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
 		&embStr,
 	)
 	if err != nil {
@@ -479,7 +482,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed,
+		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
 		&score,
 	)
 	if err != nil {
@@ -515,12 +518,52 @@ type objectFields struct {
 	metadata, summaries, sections, tags string
 	mentions, decisions, tasks          string
 	influences, plugins                 string
+	embedding                           *string
 	lastReinforcedAt                    sql.NullTime
 }
 
 func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	var f objectFields
 	var firstErr error
+
+	// Normalize nil slices/maps to empty JSON arrays/objects to avoid JSONB null.
+	metadata := obj.Metadata
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	plugins := obj.Plugins
+	if plugins == nil {
+		plugins = map[string]any{}
+	}
+	summaries := obj.Summaries
+	if summaries == nil {
+		summaries = []string{}
+	}
+	sections := obj.Sections
+	if sections == nil {
+		sections = []storage.Section{}
+	}
+	tags := obj.Tags
+	if tags == nil {
+		tags = []storage.Tag{}
+	}
+	mentions := obj.Mentions
+	if mentions == nil {
+		mentions = []string{}
+	}
+	decisions := obj.Decisions
+	if decisions == nil {
+		decisions = []storage.Decision{}
+	}
+	tasks := obj.Tasks
+	if tasks == nil {
+		tasks = []storage.Task{}
+	}
+	influences := obj.RegistryInfluences
+	if influences == nil {
+		influences = []string{}
+	}
+
 	marshal := func(name string, v any) string {
 		if firstErr != nil {
 			return ""
@@ -532,19 +575,37 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 		}
 		return string(b)
 	}
-	f.metadata = marshal("metadata", obj.Metadata)
-	f.summaries = marshal("summaries", obj.Summaries)
-	f.sections = marshal("sections", obj.Sections)
-	f.tags = marshal("tags", obj.Tags)
-	f.mentions = marshal("mentions", obj.Mentions)
-	f.decisions = marshal("decisions", obj.Decisions)
-	f.tasks = marshal("tasks", obj.Tasks)
-	f.influences = marshal("influences", obj.RegistryInfluences)
-	f.plugins = marshal("plugins", obj.Plugins)
+	f.metadata = marshal("metadata", metadata)
+	f.summaries = marshal("summaries", summaries)
+	f.sections = marshal("sections", sections)
+	f.tags = marshal("tags", tags)
+	f.mentions = marshal("mentions", mentions)
+	f.decisions = marshal("decisions", decisions)
+	f.tasks = marshal("tasks", tasks)
+	f.influences = marshal("influences", influences)
+	f.plugins = marshal("plugins", plugins)
+	if len(obj.Embeddings) > 0 {
+		s := encodePgVector(obj.Embeddings)
+		f.embedding = &s
+	}
 	if obj.LastReinforcedAt != nil {
 		f.lastReinforcedAt = sql.NullTime{Time: *obj.LastReinforcedAt, Valid: true}
 	}
 	return f, firstErr
+}
+
+// encodePgVector encodes a float32 slice into pgvector literal format "[v1,v2,...]".
+func encodePgVector(v []float32) string {
+	var b strings.Builder
+	b.WriteByte('[')
+	for i, f := range v {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		fmt.Fprintf(&b, "%g", f)
+	}
+	b.WriteByte(']')
+	return b.String()
 }
 
 // parsePgVector parses a pgvector string like "[0.1,0.2,0.3]" into []float32.

@@ -87,7 +87,7 @@ func (s *PipelineStore) List(ctx context.Context, filter storage.PipelineFilter)
 		}
 		pipelines = append(pipelines, p)
 	}
-	return pipelines, total, nil
+	return pipelines, total, rows.Err()
 }
 
 func (s *PipelineStore) Update(ctx context.Context, pipeline *storage.Pipeline) error {

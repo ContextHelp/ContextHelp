@@ -75,7 +75,7 @@ func (s *StepStore) List(ctx context.Context, source string) ([]*storage.Registe
 		}
 		steps = append(steps, step)
 	}
-	return steps, total, nil
+	return steps, total, rows.Err()
 }
 
 func (s *StepStore) Unregister(ctx context.Context, name string) error {

@@ -80,7 +80,7 @@ func (s *DetectorStore) List(ctx context.Context, filter storage.DetectorFilter)
 		}
 		detectors = append(detectors, d)
 	}
-	return detectors, total, nil
+	return detectors, total, rows.Err()
 }
 
 func (s *DetectorStore) Update(ctx context.Context, d *storage.DetectorRecord) error {

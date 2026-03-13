@@ -64,7 +64,7 @@ func (s *ReminderStore) List(ctx context.Context, activeOnly bool) ([]*storage.S
 		}
 		reminders = append(reminders, r)
 	}
-	return reminders, total, nil
+	return reminders, total, rows.Err()
 }
 
 func (s *ReminderStore) Dismiss(ctx context.Context, id string) error {

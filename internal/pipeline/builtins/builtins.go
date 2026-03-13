@@ -338,6 +338,8 @@ func ConfiguredRegistryWithPipelineOverrides(
 					merged.Video = bc
 				case "document":
 					merged.Document = bc
+				default:
+					log.Printf("builtins: pipeline %q: unknown provider role %q in override (ignored)", name, role)
 				}
 			}
 			opts.Factory = providers.NewFactory(merged)

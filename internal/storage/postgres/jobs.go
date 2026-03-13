@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -102,7 +103,7 @@ func (s *JobStore) AcquireNext(ctx context.Context) (*storage.Job, error) {
 
 	j, err := scanJob(row)
 	if err != nil {
-		if err.Error() == "job not found" {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("acquire next: %w", err)
@@ -195,7 +196,7 @@ func scanJob(row *sql.Row) (*storage.Job, error) {
 		&j.CreatedAt, &j.UpdatedAt, &startedAt, &completedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("job not found")
+			return nil, sql.ErrNoRows
 		}
 		return nil, fmt.Errorf("scan job: %w", err)
 	}

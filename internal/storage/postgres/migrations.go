@@ -33,7 +33,9 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL,
 			fts_indexed BOOLEAN DEFAULT FALSE,
-			vector_indexed BOOLEAN DEFAULT FALSE
+			vector_indexed BOOLEAN DEFAULT FALSE,
+			status TEXT NOT NULL DEFAULT 'active',
+			inbox_note TEXT DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS entities (
 			slug TEXT PRIMARY KEY,
@@ -142,7 +144,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			total INTEGER DEFAULT 0,
 			processed INTEGER DEFAULT 0,
 			failed INTEGER DEFAULT 0,
-			config JSONB DEFAULT '[]',
+			errors JSONB DEFAULT '[]',
 			created_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
@@ -213,13 +215,11 @@ func (d *Driver) Migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type)`,
 		`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_pipelines_archived ON pipelines(archived)`,
-		`CREATE INDEX IF NOT EXISTS idx_feed_items_feed ON feed_items(feed_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_feed_items_guid ON feed_items(guid)`,
 		`CREATE INDEX IF NOT EXISTS idx_objects_hash ON objects(content_hash)`,
 		`CREATE INDEX IF NOT EXISTS idx_objects_embedding ON objects USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`,
 		`CREATE INDEX IF NOT EXISTS idx_feeds_status ON feeds(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_feed_items_feed_id ON feed_items(feed_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_feed_items_guid ON feed_items(feed_id, guid)`,
+		`CREATE INDEX IF NOT EXISTS idx_feed_items_feed_guid ON feed_items(feed_id, guid)`,
 		`CREATE INDEX IF NOT EXISTS idx_batches_status ON batches(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_detectors_kind ON detectors(kind)`,
 		`CREATE INDEX IF NOT EXISTS idx_detectors_enabled ON detectors(enabled)`,

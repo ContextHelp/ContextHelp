@@ -74,7 +74,7 @@ func (s *RegistryStore) List(ctx context.Context) ([]*storage.RegistryCache, int
 		}
 		registries = append(registries, r)
 	}
-	return registries, total, nil
+	return registries, total, rows.Err()
 }
 
 func scanRegistryCache(row interface{ Scan(...any) error }) (*storage.RegistryCache, error) {
