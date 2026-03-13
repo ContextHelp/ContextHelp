@@ -103,9 +103,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 	queue := jobs.NewQueue(driver.Jobs())
 	fmt.Println("Job queue initialized")
 
-	// 3. Init pipeline registry with configured providers.
+	// 3. Init pipeline registry with configured providers and per-pipeline overrides.
 	factory := providers.NewFactory(cfg.Providers)
-	pipes := builtins.ConfiguredRegistry(factory)
+	pipes := builtins.ConfiguredRegistryWithPipelineOverrides(
+		factory,
+		cfg.Providers,
+		cfg.Pipelines,
+		nil, // blob store wired separately if needed
+		cfg.Storage.Blob.Threshold,
+	)
 	fmt.Println("Pipeline runtime initialized")
 
 	// 4. Init search engine.

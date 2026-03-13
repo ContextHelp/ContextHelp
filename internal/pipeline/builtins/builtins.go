@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
@@ -344,4 +345,105 @@ func Defs() map[string]Def {
 		cp[k] = v
 	}
 	return cp
+}
+
+// mergeProviderOverride merges a per-pipeline Providers override onto base.
+// Only non-empty Backend fields in override replace the base value.
+func mergeProviderOverride(base config.ProvidersConfig, override map[string]config.ProviderBackendConfig) config.ProvidersConfig {
+	merged := base
+	for key, ov := range override {
+		if ov.Backend == "" {
+			continue
+		}
+		switch key {
+		case "llm":
+			merged.LLM = ov
+		case "vision":
+			merged.Vision = ov
+		case "ocr":
+			merged.OCR = ov
+		case "transcription":
+			merged.Transcription = ov
+		case "diarization":
+			merged.Diarization = ov
+		case "embedding":
+			merged.Embedding = ov
+		case "document":
+			merged.Document = ov
+		case "video":
+			merged.Video = ov
+		}
+	}
+	return merged
+}
+
+// ConfiguredRegistryWithPipelineOverrides builds a Registry where per-pipeline
+// overrides in cfg replace provider backends for that pipeline only.
+func ConfiguredRegistryWithPipelineOverrides(
+	baseFactory *providers.Factory,
+	baseCfg config.ProvidersConfig,
+	pipelinesCfg config.PipelinesConfig,
+	blobStore storage.BlobStore,
+	blobThreshold int64,
+) pipeline.Registry {
+	return buildRegistryWithOverrides(baseFactory, baseCfg, pipelinesCfg, blobStore, blobThreshold, false)
+}
+
+func buildRegistryWithOverrides(
+	baseFactory *providers.Factory,
+	baseCfg config.ProvidersConfig,
+	pipelinesCfg config.PipelinesConfig,
+	blobStore storage.BlobStore,
+	blobThreshold int64,
+	strict bool,
+) pipeline.Registry {
+	r := pipeline.NewRegistry()
+	sels := buildSelectors()
+
+	for name, d := range defs {
+		opts := BuildOpts{
+			Factory:       baseFactory,
+			BlobStore:     blobStore,
+			BlobThreshold: blobThreshold,
+		}
+
+		// Apply per-pipeline overrides if present.
+		if ov, ok := pipelinesCfg.Overrides[name]; ok {
+			// Provider override.
+			if len(ov.Providers) > 0 && baseFactory != nil {
+				mergedCfg := mergeProviderOverride(baseCfg, ov.Providers)
+				opts.Factory = providers.NewFactory(mergedCfg)
+			}
+			// Step filtering.
+			if len(ov.SkipSteps) > 0 {
+				filtered := make([]string, 0, len(d.Steps))
+				skipSet := make(map[string]bool, len(ov.SkipSteps))
+				for _, s := range ov.SkipSteps {
+					skipSet[s] = true
+				}
+				for _, s := range d.Steps {
+					if !skipSet[s] {
+						filtered = append(filtered, s)
+					}
+				}
+				d.Steps = filtered
+			}
+			// Extra steps appended.
+			d.Steps = append(d.Steps, ov.ExtraSteps...)
+		}
+
+		p, err := buildPipeline(name, d, opts, strict)
+		if err != nil {
+			panic(fmt.Sprintf("builtins: %v", err))
+		}
+		if err := r.Register(name, p); err != nil {
+			panic(fmt.Sprintf("builtins: %v", err))
+		}
+	}
+
+	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {
+		return selectPipeline(sels, content)
+	}))
+
+	return r
 }
