@@ -248,8 +248,10 @@ func (p *WorkerPool) fanOutItems(ctx context.Context, draft *storage.KnowledgeOb
 			log.Printf("jobs: fanOut enqueue: %v", err)
 			continue
 		}
-		if ev, err := events.NewEvent("worker.pool.fanout", "job.enqueued", job); err == nil {
-			_ = p.bus.Publish(ctx, ev)
+		if p.bus != nil {
+			if ev, err := events.NewEvent("worker.pool.fanout", "job.enqueued", job); err == nil {
+				_ = p.bus.Publish(ctx, ev)
+			}
 		}
 	}
 }

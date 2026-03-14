@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 )
 
@@ -13,7 +14,7 @@ func NewDriver(typ, path string) (storage.StorageDriver, error) {
 	case "sqlite":
 		return sqlite.New(path)
 	case "postgres":
-		return nil, fmt.Errorf("postgres backend not yet implemented")
+		return postgres.New(path)
 	default:
 		return nil, fmt.Errorf("unknown storage type: %s", typ)
 	}

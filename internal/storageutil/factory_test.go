@@ -1,6 +1,7 @@
 package storageutil
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,12 +19,16 @@ func TestNewDriverSQLite(t *testing.T) {
 }
 
 func TestNewDriverPostgres(t *testing.T) {
-	_, err := NewDriver("postgres", "")
-	if err == nil {
-		t.Fatal("expected error for postgres")
+	dsn := os.Getenv("POSTGRES_URL")
+	if dsn == "" {
+		t.Skip("POSTGRES_URL not set; skipping postgres driver test")
 	}
-	if !strings.Contains(err.Error(), "not yet implemented") {
-		t.Errorf("error: got %q", err)
+	driver, err := NewDriver("postgres", dsn)
+	if err != nil {
+		t.Fatalf("new postgres driver: %v", err)
+	}
+	if driver == nil {
+		t.Fatal("driver is nil")
 	}
 }
 
