@@ -8,6 +8,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"hop.top/uri"
 )
 
 // ---------------------------------------------------------------------------
@@ -233,8 +234,11 @@ func TestEnrichCitationsWithEntities(t *testing.T) {
 	now := time.Now()
 	objMap := map[string]*storage.KnowledgeObject{
 		"o-abc123": {
-			ID:        "o-abc123",
-			Mentions:  []string{"@team.alice", "@project.api"},
+			ID: "o-abc123",
+			MentionURIs: []uri.URI{
+				{Scheme: "ctxt", Space: "entity", ID: "team/alice"},
+				{Scheme: "ctxt", Space: "entity", ID: "project/api"},
+			},
 			CreatedAt: now,
 			UpdatedAt: now,
 		},
@@ -243,21 +247,21 @@ func TestEnrichCitationsWithEntities(t *testing.T) {
 		{IDs: []string{"o-abc123"}},
 	}
 	citation.EnrichCitationsWithEntities(cits, objMap)
-	assert.Equal(t, []string{"@team.alice", "@project.api"}, cits[0].Entities)
+	assert.Equal(t, []string{"ctxt://entity/team/alice", "ctxt://entity/project/api"}, cits[0].Entities)
 }
 
 func TestEnrichCitationsWithEntities_MultipleCitations(t *testing.T) {
 	now := time.Now()
 	objMap := map[string]*storage.KnowledgeObject{
-		"o-aaa": {ID: "o-aaa", Mentions: []string{"@team.alice"}, CreatedAt: now, UpdatedAt: now},
-		"o-bbb": {ID: "o-bbb", Mentions: []string{"@team.bob"}, CreatedAt: now, UpdatedAt: now},
+		"o-aaa": {ID: "o-aaa", MentionURIs: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "team/alice"}}, CreatedAt: now, UpdatedAt: now},
+		"o-bbb": {ID: "o-bbb", MentionURIs: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "team/bob"}}, CreatedAt: now, UpdatedAt: now},
 	}
 	cits := []citation.Citation{
 		{IDs: []string{"o-aaa", "o-bbb"}},
 	}
 	citation.EnrichCitationsWithEntities(cits, objMap)
-	assert.Contains(t, cits[0].Entities, "@team.alice")
-	assert.Contains(t, cits[0].Entities, "@team.bob")
+	assert.Contains(t, cits[0].Entities, "ctxt://entity/team/alice")
+	assert.Contains(t, cits[0].Entities, "ctxt://entity/team/bob")
 }
 
 func TestEnrichCitationsWithEntities_MissingObject(t *testing.T) {

@@ -124,14 +124,14 @@ func TemporalProximity(a, b *storage.KnowledgeObject) float64 {
 
 // EntityProximity computes Jaccard similarity between the entity mention sets of two objects.
 func EntityProximity(a, b *storage.KnowledgeObject) float64 {
-	setA := make(map[string]bool, len(a.Mentions))
-	for _, m := range a.Mentions {
-		setA[m] = true
+	setA := make(map[string]bool, len(a.MentionURIs))
+	for _, u := range a.MentionURIs {
+		setA[u.String()] = true
 	}
 
-	setB := make(map[string]bool, len(b.Mentions))
-	for _, m := range b.Mentions {
-		setB[m] = true
+	setB := make(map[string]bool, len(b.MentionURIs))
+	for _, u := range b.MentionURIs {
+		setB[u.String()] = true
 	}
 
 	intersection := 0

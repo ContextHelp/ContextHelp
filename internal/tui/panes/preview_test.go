@@ -10,6 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/tui/panes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"hop.top/uri"
 )
 
 func TestPreviewPaneObjectLoaded(t *testing.T) {
@@ -21,7 +22,7 @@ func TestPreviewPaneObjectLoaded(t *testing.T) {
 		Type:      "text",
 		Summaries: []string{"This is a summary."},
 		Tags:      []storage.Tag{{Label: "go", Weight: 0.9}},
-		Mentions:  []string{"@infra.db"},
+		MentionURIs: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "infra/db"}},
 		Sections:  []storage.Section{{Title: "Intro", Content: "Hello"}},
 	}
 
@@ -40,7 +41,7 @@ func TestPreviewPaneSubviewToggle(t *testing.T) {
 		ID:        "obj2",
 		Summaries: []string{"Summary text"},
 		Tags:      []storage.Tag{{Label: "design", Weight: 0.8}},
-		Mentions:  []string{"@ui.form"},
+		MentionURIs: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "ui/form"}},
 		Sections:  []storage.Section{{Title: "Sec1", Content: "Section content"}},
 	}
 	pp.SetObject(obj)
@@ -54,7 +55,7 @@ func TestPreviewPaneSubviewToggle(t *testing.T) {
 	// Toggle to mentions view with 'm'
 	updated, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	view = updated.View(80, 24)
-	assert.Contains(t, view, "@ui.form")
+	assert.Contains(t, view, "ctxt://entity/ui/form")
 
 	// Toggle to sections view with 's'
 	updated, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})

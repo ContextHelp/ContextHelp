@@ -166,10 +166,12 @@ func (p *PreviewPane) renderTags() string {
 }
 
 func (p *PreviewPane) renderMentions() string {
-	if len(p.object.Mentions) == 0 {
+	if len(p.object.MentionURIs) == 0 {
 		return "(no mentions)"
 	}
-	return strings.Join(p.object.Mentions, "\n")
+	strs := make([]string, len(p.object.MentionURIs))
+	for i, u := range p.object.MentionURIs { strs[i] = u.String() }
+	return strings.Join(strs, "\n")
 }
 
 func (p *PreviewPane) renderSections() string {

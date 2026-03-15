@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"hop.top/uri"
 )
 
 func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) error {
@@ -211,13 +212,15 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	}
 
 	json.Unmarshal(tagsJSON, &obj.Tags)
-	json.Unmarshal(mentionsJSON, &obj.Mentions)
+	var mentionStrs []string
+	json.Unmarshal(mentionsJSON, &mentionStrs)
+	obj.MentionURIs = stringsToMentionURIs(mentionStrs)
 
 	now := time.Now().UTC()
 	merged := mergeTags(obj.Tags, mergeData.Tags)
 	mergedTagsJSON, _ := json.Marshal(merged)
-	mergedMentions := mergeStrings(obj.Mentions, mergeData.Mentions)
-	mergedMentionsJSON, _ := json.Marshal(mergedMentions)
+	mergedMentionStrs := mergeStrings(mentionURIsToStrings(obj.MentionURIs), mentionURIsToStrings(mergeData.MentionURIs))
+	mergedMentionsJSON, _ := json.Marshal(mergedMentionStrs)
 
 	if mergeData.RawContent != "" && mergeData.RawContent != hash {
 		_, err = tx.ExecContext(ctx, `UPDATE objects SET
@@ -503,7 +506,9 @@ func unmarshalObjectFields(obj *storage.KnowledgeObject,
 	json.Unmarshal(summariesJSON, &obj.Summaries)
 	json.Unmarshal(sectionsJSON, &obj.Sections)
 	json.Unmarshal(tagsJSON, &obj.Tags)
-	json.Unmarshal(mentionsJSON, &obj.Mentions)
+	var mentionStrs []string
+	json.Unmarshal(mentionsJSON, &mentionStrs)
+	obj.MentionURIs = stringsToMentionURIs(mentionStrs)
 	json.Unmarshal(decisionsJSON, &obj.Decisions)
 	json.Unmarshal(tasksJSON, &obj.Tasks)
 	json.Unmarshal(influencesJSON, &obj.RegistryInfluences)
@@ -547,7 +552,8 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	if tags == nil {
 		tags = []storage.Tag{}
 	}
-	mentions := obj.Mentions
+	mentionURIs := obj.MentionURIs
+	mentions := mentionURIsToStrings(mentionURIs)
 	if mentions == nil {
 		mentions = []string{}
 	}
@@ -653,4 +659,22 @@ func mergeStrings(existing, newSlice []string) []string {
 		}
 	}
 	return result
+}
+
+func mentionURIsToStrings(uris []uri.URI) []string {
+	s := make([]string, len(uris))
+	for i, u := range uris {
+		s[i] = u.String()
+	}
+	return s
+}
+
+func stringsToMentionURIs(ss []string) []uri.URI {
+	uris := make([]uri.URI, 0, len(ss))
+	for _, s := range ss {
+		if u, err := uri.Parse(s); err == nil {
+			uris = append(uris, *u)
+		}
+	}
+	return uris
 }

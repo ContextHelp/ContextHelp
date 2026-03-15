@@ -17,16 +17,16 @@ func TestEntityExtractorLiteralMentions(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 	want := map[string]bool{
-		"project.signup-redesign": true,
-		"person.alice":            true,
-		"org.acme":                true,
+		"ctxt://entity/project/signup-redesign": true,
+		"ctxt://entity/person/alice":            true,
+		"ctxt://entity/org/acme":                true,
 	}
-	if len(got.Mentions) != len(want) {
-		t.Fatalf("expected %d mentions, got %d: %v", len(want), len(got.Mentions), got.Mentions)
+	if len(got.MentionURIs) != len(want) {
+		t.Fatalf("expected %d mentions, got %d: %v", len(want), len(got.MentionURIs), got.MentionURIs)
 	}
-	for _, m := range got.Mentions {
-		if !want[m] {
-			t.Errorf("unexpected mention %q", m)
+	for _, u := range got.MentionURIs {
+		if !want[u.String()] {
+			t.Errorf("unexpected mention %q", u.String())
 		}
 	}
 }
@@ -40,8 +40,8 @@ func TestEntityExtractorDeduplicates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(got.Mentions) != 1 {
-		t.Errorf("expected 1 deduplicated mention, got %d: %v", len(got.Mentions), got.Mentions)
+	if len(got.MentionURIs) != 1 {
+		t.Errorf("expected 1 deduplicated mention, got %d: %v", len(got.MentionURIs), got.MentionURIs)
 	}
 }
 
@@ -54,8 +54,8 @@ func TestEntityExtractorNoMentions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(got.Mentions) != 0 {
-		t.Errorf("expected 0 mentions, got %d: %v", len(got.Mentions), got.Mentions)
+	if len(got.MentionURIs) != 0 {
+		t.Errorf("expected 0 mentions, got %d: %v", len(got.MentionURIs), got.MentionURIs)
 	}
 }
 
@@ -69,7 +69,7 @@ func TestEntityExtractorInvalidFormatIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(got.Mentions) != 1 || got.Mentions[0] != "project.real-thing" {
-		t.Errorf("expected only 'project.real-thing', got %v", got.Mentions)
+	if len(got.MentionURIs) != 1 || got.MentionURIs[0].String() != "ctxt://entity/project/real-thing" {
+		t.Errorf("expected only 'ctxt://entity/project/real-thing', got %v", got.MentionURIs)
 	}
 }

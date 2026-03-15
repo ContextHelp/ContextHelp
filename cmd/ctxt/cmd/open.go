@@ -86,8 +86,10 @@ func runOpen(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Printf("Tags:      %s\n", strings.Join(labels, ", "))
 	}
-	if len(obj.Mentions) > 0 {
-		fmt.Printf("Mentions:  %s\n", strings.Join(obj.Mentions, ", "))
+	if len(obj.MentionURIs) > 0 {
+		mentionStrs := make([]string, len(obj.MentionURIs))
+		for i, u := range obj.MentionURIs { mentionStrs[i] = u.String() }
+		fmt.Printf("Mentions:  %s\n", strings.Join(mentionStrs, ", "))
 	}
 	fmt.Println()
 

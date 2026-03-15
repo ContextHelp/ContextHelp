@@ -8,6 +8,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"hop.top/uri"
 )
 
 // mentionRe matches @namespace.slug references in text.
@@ -26,7 +27,7 @@ func NewEntityExtractor() *EntityExtractor {
 	return &EntityExtractor{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"Mentions"},
+			Produces: []string{"MentionURIs"},
 		}),
 	}
 }
@@ -78,6 +79,20 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 		// On LLM failure, fall back to heuristic mentions already collected.
 	}
 
-	draft.Mentions = mentions
+	uris := make([]uri.URI, len(mentions))
+	for i, m := range mentions {
+		uris[i] = slugToMentionURI(m)
+	}
+	draft.MentionURIs = uris
 	return draft, nil
+}
+
+// slugToMentionURI converts an extracted slug to a ctxt:// URI.
+func slugToMentionURI(slug string) uri.URI {
+	slug = strings.TrimPrefix(slug, "@")
+	parts := strings.SplitN(slug, ".", 2)
+	if len(parts) == 2 {
+		return uri.URI{Scheme: "ctxt", Space: "entity", ID: parts[0] + "/" + parts[1]}
+	}
+	return uri.URI{Scheme: "ctxt", Space: "entity", ID: slug}
 }

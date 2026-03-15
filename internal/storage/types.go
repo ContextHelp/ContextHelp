@@ -1,6 +1,10 @@
 package storage
 
-import "time"
+import (
+	"time"
+
+	"hop.top/uri"
+)
 
 // BlobMeta describes metadata for a stored blob.
 type BlobMeta struct {
@@ -30,7 +34,7 @@ type KnowledgeObject struct {
 	Summaries          []string       `json:"summaries,omitempty"`
 	Sections           []Section      `json:"sections,omitempty"`
 	Tags               []Tag          `json:"tags,omitempty"`
-	Mentions           []string       `json:"mentions,omitempty"`
+	MentionURIs        []uri.URI      `json:"mention_uris,omitempty"`
 	Decisions          []Decision     `json:"decisions,omitempty"`
 	Tasks              []Task         `json:"tasks,omitempty"`
 	Embeddings         []float32      `json:"embeddings,omitempty"`

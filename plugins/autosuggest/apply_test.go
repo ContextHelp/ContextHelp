@@ -7,6 +7,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"hop.top/uri"
 )
 
 func TestApplyGenerate_AddsTags(t *testing.T) {
@@ -27,16 +28,16 @@ func TestApplyGenerate_AddsTags(t *testing.T) {
 	assert.Contains(t, labels, "architecture")
 	assert.Contains(t, labels, "existing")
 	assert.Equal(t, 3, len(obj.Tags), "no duplicate tags")
-	assert.Contains(t, obj.Mentions, "eng.backend")
+	assert.Contains(t, obj.MentionURIs, uri.URI{Scheme: "ctxt", Space: "entity", ID: "eng/backend"})
 }
 
 func TestApplyGenerate_DeduplicatesMentions(t *testing.T) {
 	obj := &storage.KnowledgeObject{
-		ID:       "obj_gen_002",
-		Mentions: []string{"eng.frontend"},
+		ID:          "obj_gen_002",
+		MentionURIs: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "eng/frontend"}},
 	}
 	require.NoError(t, autosuggest.ApplyGenerate(obj, nil, []string{"eng.frontend", "eng.backend"}))
-	assert.Equal(t, 2, len(obj.Mentions))
+	assert.Equal(t, 2, len(obj.MentionURIs))
 }
 
 func TestApplySelect_StoresPending(t *testing.T) {

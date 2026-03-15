@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"hop.top/uri"
 )
 
 func TestList(t *testing.T) {
@@ -48,7 +49,7 @@ func TestListWithFilters(t *testing.T) {
 		ID:        "obj_url_1",
 		Type:      "url",
 		Tags:      []storage.Tag{{Label: "ux"}},
-		Mentions:  []string{"@ui.best-practice"},
+		MentionURIs: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "ui/best-practice"}},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}

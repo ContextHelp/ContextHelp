@@ -2,8 +2,10 @@ package autosuggest
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"hop.top/uri"
 )
 
 const pendingMetaKey = "plugin.autosuggest.pending"
@@ -34,17 +36,28 @@ func ApplyGenerate(obj *storage.KnowledgeObject, tags []string, mentions []strin
 		existing[label] = true
 	}
 
-	// Merge mentions.
-	existingM := make(map[string]bool, len(obj.Mentions))
-	for _, m := range obj.Mentions {
-		existingM[m] = true
+	// Merge mentions: convert string mention (namespace.slug) to uri.URI and deduplicate.
+	existingM := make(map[string]bool, len(obj.MentionURIs))
+	for _, u := range obj.MentionURIs {
+		existingM[u.ID] = true
 	}
 	for _, mention := range mentions {
-		if mention == "" || existingM[mention] {
+		mention = strings.TrimPrefix(mention, "@")
+		if mention == "" {
 			continue
 		}
-		obj.Mentions = append(obj.Mentions, mention)
-		existingM[mention] = true
+		parts := strings.SplitN(mention, ".", 2)
+		var id string
+		if len(parts) == 2 {
+			id = parts[0] + "/" + parts[1]
+		} else {
+			id = mention
+		}
+		if existingM[id] {
+			continue
+		}
+		obj.MentionURIs = append(obj.MentionURIs, uri.URI{Scheme: "ctxt", Space: "entity", ID: id})
+		existingM[id] = true
 	}
 
 	return nil

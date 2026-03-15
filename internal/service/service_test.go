@@ -13,6 +13,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"hop.top/uri"
 )
 
 func newTestService(t *testing.T) *Service {
@@ -395,7 +396,7 @@ func seedObjectsForCompose(t *testing.T, ctx context.Context, svc *Service) []*s
 			Type:      "decision",
 			Summaries: []string{"Defer infrastructure refactor"},
 			Source:    "engineering-meeting.pdf",
-			Mentions:  []string{"@team.alice"},
+			MentionURIs: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "team/alice"}},
 			CreatedAt: now,
 			UpdatedAt: now,
 		},
@@ -478,16 +479,16 @@ func TestComposeWithCitations_EntitiesEnriched(t *testing.T) {
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
 	require.NoError(t, err)
-	// The first citation (o-abc123) has @team.alice mention.
+	// The first citation (o-abc123) has team/alice mention URI.
 	var found bool
 	for _, c := range result.Citations {
 		for _, ent := range c.Entities {
-			if ent == "@team.alice" {
+			if ent == "ctxt://entity/team/alice" {
 				found = true
 			}
 		}
 	}
-	assert.True(t, found, "expected @team.alice in enriched entities")
+	assert.True(t, found, "expected ctxt://entity/team/alice in enriched entities")
 }
 
 func TestComposeWithCitations_SourceIDs(t *testing.T) {

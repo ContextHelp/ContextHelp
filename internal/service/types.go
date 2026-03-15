@@ -5,6 +5,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/citation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"hop.top/uri"
 )
 
 // AnalyzeRequest represents a request to analyze content.
@@ -43,12 +44,13 @@ type CompositionResult struct {
 
 // InboxCaptureRequest carries data for a fast-path inbox capture.
 type InboxCaptureRequest struct {
-	Content   string
-	Type      string
-	Source    string
-	InboxNote string
-	Hints     string
-	Mentions  []string
+	Content     string
+	Type        string
+	Source      string
+	InboxNote   string
+	Hints       string
+	Mentions    []string
+	MentionURIs []uri.URI
 }
 
 // InboxFilter specifies criteria for listing inbox items.

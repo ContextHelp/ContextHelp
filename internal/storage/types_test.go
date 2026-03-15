@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"hop.top/uri"
 )
 
 func TestKnowledgeObjectJSONRoundTrip(t *testing.T) {
@@ -18,7 +20,7 @@ func TestKnowledgeObjectJSONRoundTrip(t *testing.T) {
 		Summaries:   []string{"summary one"},
 		Sections:    []Section{{Title: "Intro", Content: "text", Order: 0}},
 		Tags:        []Tag{{Label: "design", Weight: 1.5, Source: "auto"}},
-		Mentions:    []string{"@ui.layout"},
+		MentionURIs: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "ui/layout"}},
 		Decisions:   []Decision{{Title: "Use SQLite", Status: "accepted", Impact: "high"}},
 		Tasks:       []Task{{Title: "Write tests", Status: "open"}},
 		Pipeline:    "text.long",

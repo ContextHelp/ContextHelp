@@ -11,6 +11,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.19.0
 	gopkg.in/yaml.v3 v3.0.1
+	hop.top/uri v0.0.0-00010101000000-000000000000
 	modernc.org/sqlite v1.46.0
 )
 
@@ -89,3 +90,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
+
+replace hop.top/uri => /Users/jadb/.w/ideacrafterslabs/uri/hops/main
