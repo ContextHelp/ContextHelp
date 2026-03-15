@@ -10,7 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ideacrafterslabs/ctxt/internal/service"
-	"hop.top/uri"
+	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 )
 
 // CaptureInbox handles POST /api/v1/inbox.
@@ -45,20 +45,7 @@ func CaptureInbox(svc *service.Service) http.HandlerFunc {
 			Source:    req.Source,
 			InboxNote: req.InboxNote,
 			Hints:     req.Hints,
-			Mentions: req.Mentions,
-		MentionURIs: func() []uri.URI {
-			uris := make([]uri.URI, 0, len(req.Mentions))
-			for _, m := range req.Mentions {
-				m = strings.TrimPrefix(m, "@")
-				parts := strings.SplitN(m, ".", 2)
-				if len(parts) == 2 {
-					uris = append(uris, uri.URI{Scheme: "ctxt", Space: "entity", ID: parts[0] + "/" + parts[1]})
-				} else {
-					uris = append(uris, uri.URI{Scheme: "ctxt", Space: "entity", ID: m})
-				}
-			}
-			return uris
-		}(),
+			Mentions:  mentions.ParseSlice(req.Mentions),
 		}
 		obj, err := svc.CaptureToInbox(r.Context(), captureReq)
 		if err != nil {

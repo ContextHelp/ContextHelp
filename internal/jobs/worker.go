@@ -188,7 +188,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	}
 
 	// Write edges for mentions (ADR-049).
-	for _, mention := range draft.MentionURIs {
+	for _, mention := range draft.Mentions {
 		edge := &storage.Edge{
 			ID:        uuid.New().String(),
 			FromType:  "object",

@@ -49,8 +49,7 @@ type InboxCaptureRequest struct {
 	Source      string
 	InboxNote   string
 	Hints       string
-	Mentions    []string
-	MentionURIs []uri.URI
+	Mentions []uri.URI
 }
 
 // InboxFilter specifies criteria for listing inbox items.

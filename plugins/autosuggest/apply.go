@@ -2,10 +2,9 @@ package autosuggest
 
 import (
 	"encoding/json"
-	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"hop.top/uri"
 )
 
 const pendingMetaKey = "plugin.autosuggest.pending"
@@ -18,7 +17,7 @@ type pendingPayload struct {
 
 // ApplyGenerate directly appends suggested tags and mentions to obj, deduplicating.
 // The caller is responsible for persisting the updated object.
-func ApplyGenerate(obj *storage.KnowledgeObject, tags []string, mentions []string) error {
+func ApplyGenerate(obj *storage.KnowledgeObject, tags []string, mentionSlugs []string) error {
 	// Merge tags.
 	existing := make(map[string]bool, len(obj.Tags))
 	for _, t := range obj.Tags {
@@ -36,28 +35,16 @@ func ApplyGenerate(obj *storage.KnowledgeObject, tags []string, mentions []strin
 		existing[label] = true
 	}
 
-	// Merge mentions: convert string mention (namespace.slug) to uri.URI and deduplicate.
-	existingM := make(map[string]bool, len(obj.MentionURIs))
-	for _, u := range obj.MentionURIs {
-		existingM[u.ID] = true
+	// Merge mentions: parse incoming strings (either @slug or ctxt:// form) and deduplicate.
+	existingM := make(map[string]bool, len(obj.Mentions))
+	for _, u := range obj.Mentions {
+		existingM[u.String()] = true
 	}
-	for _, mention := range mentions {
-		mention = strings.TrimPrefix(mention, "@")
-		if mention == "" {
-			continue
+	for _, u := range mentions.ParseSlice(mentionSlugs) {
+		if !existingM[u.String()] {
+			obj.Mentions = append(obj.Mentions, u)
+			existingM[u.String()] = true
 		}
-		parts := strings.SplitN(mention, ".", 2)
-		var id string
-		if len(parts) == 2 {
-			id = parts[0] + "/" + parts[1]
-		} else {
-			id = mention
-		}
-		if existingM[id] {
-			continue
-		}
-		obj.MentionURIs = append(obj.MentionURIs, uri.URI{Scheme: "ctxt", Space: "entity", ID: id})
-		existingM[id] = true
 	}
 
 	return nil

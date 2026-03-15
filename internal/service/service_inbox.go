@@ -5,14 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"hop.top/uri"
 )
 
 // CaptureToInbox stores content as an inbox item without enqueuing a job.
@@ -28,20 +26,6 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 		objType = "text"
 	}
 
-	mentionURIs := req.MentionURIs
-	if len(mentionURIs) == 0 && len(req.Mentions) > 0 {
-		mentionURIs = make([]uri.URI, 0, len(req.Mentions))
-		for _, m := range req.Mentions {
-			m = strings.TrimPrefix(m, "@")
-			parts := strings.SplitN(m, ".", 2)
-			if len(parts) == 2 {
-				mentionURIs = append(mentionURIs, uri.URI{Scheme: "ctxt", Space: "entity", ID: parts[0] + "/" + parts[1]})
-			} else {
-				mentionURIs = append(mentionURIs, uri.URI{Scheme: "ctxt", Space: "entity", ID: m})
-			}
-		}
-	}
-
 	obj := &storage.KnowledgeObject{
 		ID:          id,
 		Type:        objType,
@@ -50,7 +34,7 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 		ContentHash: hash,
 		Status:      "inbox",
 		InboxNote:   req.InboxNote,
-		MentionURIs: mentionURIs,
+		Mentions:    req.Mentions,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}

@@ -74,7 +74,7 @@ func TestDeleteByMentionWithYes(t *testing.T) {
 	obj := &storage.KnowledgeObject{
 		ID:        "obj_mention",
 		Type:      "text",
-		MentionURIs: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "project/archived"}},
+		Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "project/archived"}},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}

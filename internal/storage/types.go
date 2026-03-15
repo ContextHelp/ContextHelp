@@ -34,7 +34,7 @@ type KnowledgeObject struct {
 	Summaries          []string       `json:"summaries,omitempty"`
 	Sections           []Section      `json:"sections,omitempty"`
 	Tags               []Tag          `json:"tags,omitempty"`
-	MentionURIs        []uri.URI      `json:"mention_uris,omitempty"`
+	Mentions           []uri.URI      `json:"mentions,omitempty"`
 	Decisions          []Decision     `json:"decisions,omitempty"`
 	Tasks              []Task         `json:"tasks,omitempty"`
 	Embeddings         []float32      `json:"embeddings,omitempty"`

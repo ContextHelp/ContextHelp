@@ -21,7 +21,7 @@ func TestOpen(t *testing.T) {
 		Pipeline:  "url.article",
 		Source:    "https://example.com/ux-signup",
 		Tags:      []storage.Tag{{Label: "ux"}, {Label: "onboarding"}},
-		MentionURIs: []uri.URI{
+		Mentions: []uri.URI{
 			{Scheme: "ctxt", Space: "entity", ID: "ui/best-practice"},
 			{Scheme: "ctxt", Space: "entity", ID: "ux/onboarding"},
 		},

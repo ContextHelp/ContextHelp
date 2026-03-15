@@ -21,10 +21,10 @@ func TestEntityExtractorLiteralMentions(t *testing.T) {
 		"ctxt://entity/person/alice":            true,
 		"ctxt://entity/org/acme":                true,
 	}
-	if len(got.MentionURIs) != len(want) {
-		t.Fatalf("expected %d mentions, got %d: %v", len(want), len(got.MentionURIs), got.MentionURIs)
+	if len(got.Mentions) != len(want) {
+		t.Fatalf("expected %d mentions, got %d: %v", len(want), len(got.Mentions), got.Mentions)
 	}
-	for _, u := range got.MentionURIs {
+	for _, u := range got.Mentions {
 		if !want[u.String()] {
 			t.Errorf("unexpected mention %q", u.String())
 		}
@@ -40,8 +40,8 @@ func TestEntityExtractorDeduplicates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(got.MentionURIs) != 1 {
-		t.Errorf("expected 1 deduplicated mention, got %d: %v", len(got.MentionURIs), got.MentionURIs)
+	if len(got.Mentions) != 1 {
+		t.Errorf("expected 1 deduplicated mention, got %d: %v", len(got.Mentions), got.Mentions)
 	}
 }
 
@@ -54,8 +54,8 @@ func TestEntityExtractorNoMentions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(got.MentionURIs) != 0 {
-		t.Errorf("expected 0 mentions, got %d: %v", len(got.MentionURIs), got.MentionURIs)
+	if len(got.Mentions) != 0 {
+		t.Errorf("expected 0 mentions, got %d: %v", len(got.Mentions), got.Mentions)
 	}
 }
 
@@ -69,7 +69,22 @@ func TestEntityExtractorInvalidFormatIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(got.MentionURIs) != 1 || got.MentionURIs[0].String() != "ctxt://entity/project/real-thing" {
-		t.Errorf("expected only 'ctxt://entity/project/real-thing', got %v", got.MentionURIs)
+	if len(got.Mentions) != 1 || got.Mentions[0].String() != "ctxt://entity/project/real-thing" {
+		t.Errorf("expected only 'ctxt://entity/project/real-thing', got %v", got.Mentions)
+	}
+}
+
+func TestEntityExtractorMultiDotSlug(t *testing.T) {
+	step := NewEntityExtractor()
+	// @stripe.api.checkout should become ctxt://entity/stripe/api/checkout (all dots → slashes)
+	draft := &storage.KnowledgeObject{
+		RawContent: "Integrate with @stripe.api.checkout for payments.",
+	}
+	got, err := step.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(got.Mentions) != 1 || got.Mentions[0].String() != "ctxt://entity/stripe/api/checkout" {
+		t.Errorf("expected 'ctxt://entity/stripe/api/checkout', got %v", got.Mentions)
 	}
 }

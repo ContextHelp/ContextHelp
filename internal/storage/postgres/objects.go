@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"hop.top/uri"
 )
 
@@ -214,12 +215,12 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	json.Unmarshal(tagsJSON, &obj.Tags)
 	var mentionStrs []string
 	json.Unmarshal(mentionsJSON, &mentionStrs)
-	obj.MentionURIs = stringsToMentionURIs(mentionStrs)
+	obj.Mentions = mentions.ParseSlice(mentionStrs)
 
 	now := time.Now().UTC()
 	merged := mergeTags(obj.Tags, mergeData.Tags)
 	mergedTagsJSON, _ := json.Marshal(merged)
-	mergedMentionStrs := mergeStrings(mentionURIsToStrings(obj.MentionURIs), mentionURIsToStrings(mergeData.MentionURIs))
+	mergedMentionStrs := mergeStrings(mentionsToStrings(obj.Mentions), mentionsToStrings(mergeData.Mentions))
 	mergedMentionsJSON, _ := json.Marshal(mergedMentionStrs)
 
 	if mergeData.RawContent != "" && mergeData.RawContent != hash {
@@ -508,7 +509,7 @@ func unmarshalObjectFields(obj *storage.KnowledgeObject,
 	json.Unmarshal(tagsJSON, &obj.Tags)
 	var mentionStrs []string
 	json.Unmarshal(mentionsJSON, &mentionStrs)
-	obj.MentionURIs = stringsToMentionURIs(mentionStrs)
+	obj.Mentions = mentions.ParseSlice(mentionStrs)
 	json.Unmarshal(decisionsJSON, &obj.Decisions)
 	json.Unmarshal(tasksJSON, &obj.Tasks)
 	json.Unmarshal(influencesJSON, &obj.RegistryInfluences)
@@ -552,8 +553,7 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	if tags == nil {
 		tags = []storage.Tag{}
 	}
-	mentionURIs := obj.MentionURIs
-	mentions := mentionURIsToStrings(mentionURIs)
+	mentions := mentionsToStrings(obj.Mentions)
 	if mentions == nil {
 		mentions = []string{}
 	}
@@ -661,20 +661,10 @@ func mergeStrings(existing, newSlice []string) []string {
 	return result
 }
 
-func mentionURIsToStrings(uris []uri.URI) []string {
+func mentionsToStrings(uris []uri.URI) []string {
 	s := make([]string, len(uris))
 	for i, u := range uris {
 		s[i] = u.String()
 	}
 	return s
-}
-
-func stringsToMentionURIs(ss []string) []uri.URI {
-	uris := make([]uri.URI, 0, len(ss))
-	for _, s := range ss {
-		if u, err := uri.Parse(s); err == nil {
-			uris = append(uris, *u)
-		}
-	}
-	return uris
 }

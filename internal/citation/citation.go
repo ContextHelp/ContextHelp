@@ -155,7 +155,7 @@ func EnrichCitationsWithEntities(citations []Citation, objectMap map[string]*sto
 			if obj == nil {
 				continue
 			}
-			for _, u := range obj.MentionURIs {
+			for _, u := range obj.Mentions {
 				citations[i].Entities = append(citations[i].Entities, u.String())
 			}
 		}

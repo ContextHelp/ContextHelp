@@ -396,7 +396,7 @@ func seedObjectsForCompose(t *testing.T, ctx context.Context, svc *Service) []*s
 			Type:      "decision",
 			Summaries: []string{"Defer infrastructure refactor"},
 			Source:    "engineering-meeting.pdf",
-			MentionURIs: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "team/alice"}},
+			Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "team/alice"}},
 			CreatedAt: now,
 			UpdatedAt: now,
 		},

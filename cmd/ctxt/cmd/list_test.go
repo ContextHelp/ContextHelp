@@ -49,7 +49,7 @@ func TestListWithFilters(t *testing.T) {
 		ID:        "obj_url_1",
 		Type:      "url",
 		Tags:      []storage.Tag{{Label: "ux"}},
-		MentionURIs: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "ui/best-practice"}},
+		Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "ui/best-practice"}},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}

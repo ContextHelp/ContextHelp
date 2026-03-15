@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"hop.top/uri"
 )
 
 var editCmd = &cobra.Command{
@@ -121,18 +121,7 @@ func runEdit(cmd *cobra.Command, args []string) error {
 		obj.Tags = tags
 	}
 	if v, ok := updates["mentions"]; ok {
-		rawMentions := strings.Fields(v)
-		uris := make([]uri.URI, 0, len(rawMentions))
-		for _, m := range rawMentions {
-			m = strings.TrimPrefix(m, "@")
-			parts := strings.SplitN(m, ".", 2)
-			if len(parts) == 2 {
-				uris = append(uris, uri.URI{Scheme: "ctxt", Space: "entity", ID: parts[0] + "/" + parts[1]})
-			} else {
-				uris = append(uris, uri.URI{Scheme: "ctxt", Space: "entity", ID: m})
-			}
-		}
-		obj.MentionURIs = uris
+		obj.Mentions = mentions.ParseSlice(strings.Fields(v))
 	}
 	if v, ok := updates["subtype"]; ok {
 		obj.Subtype = v

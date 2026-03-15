@@ -8,12 +8,12 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"hop.top/uri"
+	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 )
 
 // mentionRe matches @namespace.slug references in text.
 // The leading (?:^|[\s(]) ensures we don't match email addresses (user@host).
-var mentionRe = regexp.MustCompile(`(?:^|[\s(,;])@([a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*)`)
+var mentionRe = regexp.MustCompile(`(?:^|[\s(,;])@([a-z][a-z0-9_-]*(?:\.[a-z][a-z0-9_-]*)+)`)
 
 // EntityExtractor extracts @namespace.slug mentions from content.
 // It first scans for literal @mentions in the text (heuristic), then
@@ -27,7 +27,7 @@ func NewEntityExtractor() *EntityExtractor {
 	return &EntityExtractor{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"MentionURIs"},
+			Produces: []string{"Mentions"},
 		}),
 	}
 }
@@ -44,14 +44,14 @@ func (e *EntityExtractor) Name() string { return "entity_extractor" }
 
 func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	seen := make(map[string]bool)
-	var mentions []string
+	var slugs []string
 
 	// 1. Heuristic: scan for literal @namespace.slug tokens.
 	for _, m := range mentionRe.FindAllStringSubmatch(draft.RawContent, -1) {
 		slug := m[1] // capture group 1: namespace.slug without leading @
 		if !seen[slug] {
 			seen[slug] = true
-			mentions = append(mentions, slug)
+			slugs = append(slugs, slug)
 		}
 	}
 
@@ -72,27 +72,13 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 				token = strings.TrimPrefix(token, "@")
 				if mentionRe.MatchString(" @"+token) && !seen[token] {
 					seen[token] = true
-					mentions = append(mentions, token)
+					slugs = append(slugs, token)
 				}
 			}
 		}
-		// On LLM failure, fall back to heuristic mentions already collected.
+		// On LLM failure, fall back to heuristic slugs already collected.
 	}
 
-	uris := make([]uri.URI, len(mentions))
-	for i, m := range mentions {
-		uris[i] = slugToMentionURI(m)
-	}
-	draft.MentionURIs = uris
+	draft.Mentions = mentions.ParseSlice(slugs)
 	return draft, nil
-}
-
-// slugToMentionURI converts an extracted slug to a ctxt:// URI.
-func slugToMentionURI(slug string) uri.URI {
-	slug = strings.TrimPrefix(slug, "@")
-	parts := strings.SplitN(slug, ".", 2)
-	if len(parts) == 2 {
-		return uri.URI{Scheme: "ctxt", Space: "entity", ID: parts[0] + "/" + parts[1]}
-	}
-	return uri.URI{Scheme: "ctxt", Space: "entity", ID: slug}
 }

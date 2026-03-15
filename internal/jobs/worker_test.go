@@ -215,6 +215,6 @@ type mentionStep struct {
 
 func (s *mentionStep) Name() string { return "test-mention" }
 func (s *mentionStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	draft.MentionURIs = []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "test/entity"}}
+	draft.Mentions = []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "test/entity"}}
 	return draft, nil
 }
