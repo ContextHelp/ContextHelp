@@ -8,7 +8,7 @@ They power retrieval, agent reasoning, semantic clustering, graph analysis, fede
 
 A Bookmark is a deterministic, JSON-serializable object produced by pipelines. All fields follow strict semantics to ensure stability across runs, machines, registries, agents, and plugins.
 
-Below is the conceptual structure including the new `mentions` field and the new `plugins` metadata namespace:
+Below is the conceptual structure including the `mention_uris` field and the `plugins` metadata namespace:
 
 ```json
 {
@@ -34,7 +34,7 @@ Below is the conceptual structure including the new `mentions` field and the new
   "tags": [],
   "decisions": [],
   "hints": [],
-  "mentions": [],
+  "mention_uris": [],
 
   "related": [],
   "registry": {},
@@ -308,38 +308,26 @@ Mentions are **canonical references to stable entities** and form the backbone o
 
 ### Structure
 
-Each mention is a structured object with type information and confidence:
+Mentions are stored as a flat list of typed URIs under `mention_uris`:
 
 ```json
-[
-  {
-    "text": "Anthropic",
-    "mention_type": "Organization",
-    "namespace": "organization",
-    "slug": "anthropic",
-    "confidence": 0.95,
-    "canonical_name": "Anthropic"
-  },
-  {
-    "text": "mobile app redesign",
-    "mention_type": "Project",
-    "namespace": "project",
-    "slug": "mobile-app-redesign",
-    "confidence": 0.88,
-    "canonical_name": null
-  }
+"mention_uris": [
+  "ctxt://entity/organization/anthropic",
+  "ctxt://entity/project/mobile-app-redesign"
 ]
 ```
 
-Fields:
-- `text` — Original mention text as it appears in content (required)
-- `mention_type` — Type of entity: `Entity`, `Person`, `Concept`, `Location`, `Product`, `Organization`, `Event`, `Project`, `System` (required)
-- `namespace` — Entity namespace matching the type (required)
-- `slug` — Entity slug in kebab-case (required)
-- `confidence` — Confidence in mention extraction, 0.0-1.0 (required)
-- `canonical_name` — Canonical entity name if resolved (optional)
+The URI format is `ctxt://entity/<namespace>/<slug>`. The human-readable input form `@namespace.slug` (e.g., `@organization.anthropic`) is accepted at API ingestion boundaries and converted to URIs internally by the pipeline.
 
-The full mention reference format is `@namespace.slug` (e.g., `@person.jane-doe`, `@organization.anthropic`).
+### Input form (API ingestion)
+
+When submitting to `POST /analyze` or `POST /inbox`, use the legacy `mentions` field with `@`-prefixed slugs:
+
+```json
+"mentions": ["@organization.anthropic", "@project.mobile-app-redesign"]
+```
+
+The pipeline converts these to `ctxt://entity/...` URIs automatically.
 
 ### Guarantees
 
@@ -445,15 +433,8 @@ Diagnostics and pipeline traces.
     { "label": "ux.issue.signup", "namespace": "uxpatterns", "confidence": 0.92, "weight": 0.88 }
   ],
   "hints": ["#ux", "#bad"],
-  "mentions": [
-    {
-      "text": "signup flow",
-      "mention_type": "Concept",
-      "namespace": "concept",
-      "slug": "signup-flow",
-      "confidence": 0.85,
-      "canonical_name": null
-    }
+  "mention_uris": [
+    "ctxt://entity/concept/signup-flow"
   ],
 
   "plugins": {
@@ -527,23 +508,9 @@ Diagnostics and pipeline traces.
   ],
 
   "hints": ["#ui", "#bad"],
-  "mentions": [
-    {
-      "text": "best practice",
-      "mention_type": "Concept",
-      "namespace": "concept",
-      "slug": "ui-best-practice",
-      "confidence": 0.80,
-      "canonical_name": null
-    },
-    {
-      "text": "CTA weakness",
-      "mention_type": "Concept",
-      "namespace": "concept",
-      "slug": "cta-weakness",
-      "confidence": 0.75,
-      "canonical_name": null
-    }
+  "mention_uris": [
+    "ctxt://entity/concept/ui-best-practice",
+    "ctxt://entity/concept/cta-weakness"
   ],
 
   "related": [

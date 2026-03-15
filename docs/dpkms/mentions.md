@@ -62,14 +62,16 @@ Plugins may register additional extraction steps, but they must not alter base m
 
 ## Storage Semantics
 
-Mentions are stored on the bookmark as a flat list:
+Mentions are stored on the bookmark as a typed URI list under the `mention_uris` field:
 
 ```json
-"mentions": [
-  "ui.best-practice",
-  "stripe.api.checkout"
+"mention_uris": [
+  "ctxt://entity/ui/best-practice",
+  "ctxt://entity/stripe/api.checkout"
 ]
 ```
+
+The URI format is `ctxt://entity/<namespace>/<slug>`, derived from the `@namespace.slug` input form by splitting on the first `.` and converting to a `ctxt://` URI.
 
 Guarantees:
 
@@ -78,6 +80,8 @@ Guarantees:
 - Unresolved entities remain stored literally
 - Resolution is performed lazily, not during extraction
 - Plugins may add new mentions, but cannot mutate canonical ones
+
+> **API ingestion:** The `POST /analyze` and `POST /inbox` endpoints accept the legacy `mentions` field as `[]string` of `@namespace.slug` strings for backward compatibility. The pipeline converts them to `mention_uris` URIs internally.
 
 A lightweight **entity → bookmarks** reverse index (backlinks) supports graph queries and plugin lookups.
 

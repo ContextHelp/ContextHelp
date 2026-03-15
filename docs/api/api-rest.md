@@ -85,8 +85,8 @@ The Node Admin API is documented separately in `docs/api/node-admin-api.md`.
 
 Mentions appear in three places:
 
-- In **ingestion**, via user-supplied `@entities`.
-- In **knowledge objects**, via a `mentions` array of canonical entity IDs.
+- In **ingestion**, via user-supplied `@entities` in the `mentions` field (legacy `[]string` accepted for backward compatibility).
+- In **knowledge objects**, via a `mention_uris` array of `ctxt://entity/<namespace>/<slug>` URIs.
 - In **querying**, via mention operators in `q` expressions (`mention==ui.best-practice`, `mention==stripe.api.*`).
 
 Mentions do not influence hints or tags and are resolved through the Entity Registry.
@@ -191,6 +191,7 @@ Supported for both core and plugin-defined bookmark types.
 
 Notes:
 
+- The `mentions` field accepts `@namespace.slug` strings for backward compatibility. The pipeline converts them to `ctxt://entity/namespace/slug` URIs stored as `mention_uris`.
 - Mentions are **not resolved here**; resolution happens in the pipeline.
 - Plugins may hook ingestion via `plugins.<pluginName>` blocks.
 - Plugins may inject additional processing steps via configured hooks.
@@ -234,6 +235,7 @@ Query Parameters:
         "hints": ["#ux", "#bad"],
         "mentions": ["@ui.best-practice"]
       },
+      "mention_uris": ["ctxt://entity/ui/best-practice"],
       "resultObjectId": "obj_abc",
       "plugins": {
         "rss_feed": {
@@ -322,9 +324,9 @@ Plugin:
         }
       ],
       "hints": ["#ux", "#bad"],
-      "mentions": [
-        "ui.best-practice",
-        "stripe.api.checkout"
+      "mention_uris": [
+        "ctxt://entity/ui/best-practice",
+        "ctxt://entity/stripe/api.checkout"
       ],
       "plugins": {
         "price_monitor": {
