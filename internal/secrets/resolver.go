@@ -13,6 +13,15 @@ type Resolver interface {
 	Set(key, value string) error
 }
 
+// Lister is an optional interface for backends that support key enumeration.
+// Not all backends can list stored keys — check for this interface before calling Keys().
+// Backends that implement Lister: age-file, gh-secrets.
+// Backends that do not: env, keychain, 1password.
+type Lister interface {
+	// Keys returns the names of all secrets stored in this backend.
+	Keys() ([]string, error)
+}
+
 // ErrNotFound is returned when a secret is not found in any backend.
 type ErrNotFound struct {
 	Key string

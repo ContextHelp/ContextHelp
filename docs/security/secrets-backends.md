@@ -36,6 +36,8 @@ ctxt analyze myfile.md
 
 `Set()` is not supported — the env backend is read-only.
 
+**`ctxt secret list`:** Key enumeration not supported. Shows backend name only. To see what env vars are set, inspect your shell environment directly.
+
 ---
 
 ### `keychain`
@@ -66,6 +68,13 @@ secret-tool store --label "ctxt/OPENAI_API_KEY" service ctxt account OPENAI_API_
 ```bash
 security find-generic-password -s ctxt -a OPENAI_API_KEY -w   # macOS
 secret-tool lookup service ctxt account OPENAI_API_KEY         # Linux
+```
+
+**`ctxt secret list`:** Key enumeration not supported — the keychain API does not expose a safe list operation. `ctxt secret list` shows the service name and guidance. To see stored keys:
+
+```bash
+security dump-keychain | grep -A1 'svce.*ctxt'   # macOS
+secret-tool search service ctxt                   # Linux
 ```
 
 ---
@@ -103,6 +112,15 @@ rm /tmp/secrets.yaml
 ```
 
 `Set()` is not supported — edit the plaintext file and re-encrypt.
+
+**`ctxt secret list`:** ✓ Key enumeration supported. Decrypts the age file and lists all key names:
+
+```bash
+ctxt secret list
+# Secrets backend: age-file
+#   OPENAI_API_KEY
+#   ANTHROPIC_API_KEY
+```
 
 **Verify decryption:**
 
@@ -146,6 +164,12 @@ op read "op://MyVault/OPENAI_API_KEY/password"
 
 `Set()` is not supported — manage items via the 1Password app or `op` CLI directly.
 
+**`ctxt secret list`:** Key enumeration not supported — the `op read` command requires knowing the key name upfront. `ctxt secret list` shows the vault name and guidance. To list items:
+
+```bash
+op item list --vault MyVault
+```
+
 ---
 
 ### `gh-secrets`
@@ -181,6 +205,17 @@ gh secret set OPENAI_API_KEY --body "sk-..." --repo owner/repo
 ```bash
 gh secret list --repo owner/repo
 ```
+
+**`ctxt secret list`:** ✓ Key enumeration supported. Calls `gh secret list` and shows the names of all secrets in the repository:
+
+```bash
+ctxt secret list
+# Secrets backend: gh-secrets
+#   OPENAI_API_KEY
+#   ANTHROPIC_API_KEY
+```
+
+Note: GitHub secrets are write-only — `ctxt secret list` shows names only, not values. `ctxt secret get` falls back to environment variables.
 
 ---
 
@@ -225,16 +260,16 @@ ctxt --output json secret list
 # → {"backend":"keychain","keychain_service":"ctxt",...}
 ```
 
-**Read-only backends** (`env`, `age-file`, `1password`) return a clear error on `set`. **`ctxt secret list`** shows backend config metadata — it does not enumerate stored key names (most backends don't support key listing).
+**Read-only backends** (`env`, `age-file`, `1password`) return a clear error on `set`. **`ctxt secret list`** enumerates keys for backends that support it (`age-file`, `gh-secrets`); for others it shows config metadata and guidance on how to inspect keys using native tools.
 
 ---
 
 ## Backend Comparison
 
-| Backend      | `Get()` | `Set()` | Requires          | Best for                        |
-|-------------|---------|---------|-------------------|---------------------------------|
-| `env`       | ✓       | ✗       | —                 | Simple setups, CI               |
-| `keychain`  | ✓       | ✓       | OS keychain       | Developer laptops               |
-| `age-file`  | ✓       | ✗       | `age`, `age-keygen` | Encrypted file per machine    |
-| `1password` | ✓       | ✗       | `op` CLI, account | Teams sharing a vault           |
-| `gh-secrets`| env fallback | ✓  | `gh` CLI, repo    | Syncing secrets into GitHub CI  |
+| Backend      | `get` | `set` | `list` (key enumeration) | Requires            | Best for                       |
+|-------------|-------|-------|--------------------------|---------------------|-------------------------------|
+| `env`        | ✓     | ✗     | ✗ — inspect shell env    | —                   | Simple setups, CI             |
+| `keychain`   | ✓     | ✓     | ✗ — use `security dump-keychain` | OS keychain  | Developer laptops             |
+| `age-file`   | ✓     | ✗     | ✓ — decrypts and lists keys | `age`, `age-keygen` | Encrypted file per machine |
+| `1password`  | ✓     | ✗     | ✗ — use `op item list`   | `op` CLI, account   | Teams sharing a vault         |
+| `gh-secrets` | env fallback | ✓ | ✓ — calls `gh secret list` | `gh` CLI, repo | Syncing secrets into GitHub CI |

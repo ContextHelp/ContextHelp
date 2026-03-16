@@ -47,7 +47,7 @@ var secretSetCmd = &cobra.Command{
 
 var secretListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "Show active secrets backend configuration",
+	Short: "List secrets (or show backend config if enumeration not supported)",
 	RunE:  runSecretList,
 }
 
@@ -100,9 +100,36 @@ func runSecretList(cmd *cobra.Command, args []string) error {
 		backend = "env"
 	}
 
+	r, err := secrets.NewResolver(cfg.Secrets)
+	if err != nil {
+		return fmt.Errorf("secret list: %w", err)
+	}
+
+	// If the backend supports key enumeration, list the keys.
+	if lister, ok := r.(secrets.Lister); ok {
+		keys, err := lister.Keys()
+		if err != nil {
+			return fmt.Errorf("secret list: %w", err)
+		}
+		if isJSONOutput() {
+			return outputJSON(os.Stdout, map[string]any{"backend": backend, "keys": keys})
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Secrets backend: %s\n", backend)
+		if len(keys) == 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "  (no secrets stored)")
+		} else {
+			for _, k := range keys {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", k)
+			}
+		}
+		return nil
+	}
+
+	// Backend does not support key enumeration — show config metadata and guidance.
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, map[string]any{
 			"backend":           backend,
+			"enumerable":        false,
 			"keychain_service":  cfg.Secrets.KeychainService,
 			"age_file":          cfg.Secrets.AgeFile,
 			"age_identity_file": cfg.Secrets.AgeIdentityFile,
@@ -113,23 +140,18 @@ func runSecretList(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Secrets backend: %s\n", backend)
 	switch backend {
+	case "env":
+		fmt.Fprintln(cmd.OutOrStdout(), "  Key enumeration not supported — set env vars manually.")
 	case "keychain":
 		svc := cfg.Secrets.KeychainService
 		if svc == "" {
 			svc = "ctxt"
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "  service: %s\n", svc)
-	case "age-file":
-		fmt.Fprintf(cmd.OutOrStdout(), "  age_file: %s\n", cfg.Secrets.AgeFile)
-		fmt.Fprintf(cmd.OutOrStdout(), "  identity_file: %s\n", cfg.Secrets.AgeIdentityFile)
+		fmt.Fprintln(cmd.OutOrStdout(), "  Key enumeration not supported — use: security dump-keychain | grep acct")
 	case "1password":
 		fmt.Fprintf(cmd.OutOrStdout(), "  vault: %s\n", cfg.Secrets.OnePasswordVault)
-	case "gh-secrets":
-		repo := cfg.Secrets.GHRepo
-		if repo == "" {
-			repo = "(current repo)"
-		}
-		fmt.Fprintf(cmd.OutOrStdout(), "  repo: %s\n", repo)
+		fmt.Fprintln(cmd.OutOrStdout(), "  Key enumeration not supported — use: op item list --vault <vault>")
 	}
 	return nil
 }

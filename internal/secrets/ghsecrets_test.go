@@ -26,3 +26,9 @@ func TestGHSecretsResolverGetMissingReturnsError(t *testing.T) {
 	_, err := r.Get("THIS_ENV_VAR_DOES_NOT_EXIST_XYZ_GH")
 	assert.Error(t, err)
 }
+
+func TestGHSecretsResolverImplementsLister(t *testing.T) {
+	r := NewGHSecretsResolver("owner/repo")
+	_, ok := any(r).(Lister)
+	assert.True(t, ok, "GHSecretsResolver should implement Lister")
+}

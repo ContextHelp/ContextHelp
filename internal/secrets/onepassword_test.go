@@ -24,3 +24,9 @@ func TestOnePasswordURIFormat(t *testing.T) {
 	uri := r.itemURI("MY_API_KEY")
 	assert.Equal(t, "op://MyVault/MY_API_KEY/password", uri)
 }
+
+func TestOnePasswordResolverDoesNotImplementLister(t *testing.T) {
+	r := NewOnePasswordResolver("MyVault")
+	_, ok := any(r).(Lister)
+	assert.False(t, ok, "OnePasswordResolver should not implement Lister")
+}

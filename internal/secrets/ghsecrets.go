@@ -28,6 +28,26 @@ func (r *GHSecretsResolver) Get(key string) (string, error) {
 	return "", ErrNotFound{Key: key}
 }
 
+// Keys lists secret names from GitHub Actions via `gh secret list`.
+// Implements Lister.
+func (r *GHSecretsResolver) Keys() ([]string, error) {
+	args := []string{"secret", "list", "--json", "name", "--jq", ".[].name"}
+	if r.repo != "" {
+		args = append(args, "--repo", r.repo)
+	}
+	out, err := exec.Command("gh", args...).Output()
+	if err != nil {
+		return nil, fmt.Errorf("secrets: gh secret list: %w", err)
+	}
+	var keys []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			keys = append(keys, line)
+		}
+	}
+	return keys, nil
+}
+
 // Set stores the secret in GitHub Actions repository secrets via `gh secret set`.
 func (r *GHSecretsResolver) Set(key, value string) error {
 	args := []string{"secret", "set", key, "--body", value}

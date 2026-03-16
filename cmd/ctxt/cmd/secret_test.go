@@ -53,3 +53,15 @@ func TestSecretList(t *testing.T) {
 		t.Errorf("secret list should show backend info, got: %q", out)
 	}
 }
+
+func TestSecretListEnvBackendNoKeyEnumeration(t *testing.T) {
+	// env backend does not implement Lister — list should show metadata, not keys.
+	out, err := executeCommand("secret", "list")
+	if err != nil {
+		t.Fatalf("secret list should succeed: %v", err)
+	}
+	// Should not claim to enumerate keys
+	if strings.Contains(out, "keys:") {
+		t.Errorf("env backend list should not show key enumeration, got: %q", out)
+	}
+}

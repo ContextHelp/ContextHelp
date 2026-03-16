@@ -34,3 +34,9 @@ func TestErrNotFoundMessage(t *testing.T) {
 	err := ErrNotFound{Key: "MY_KEY"}
 	assert.Contains(t, err.Error(), "MY_KEY")
 }
+
+func TestEnvResolverDoesNotImplementLister(t *testing.T) {
+	r := NewEnvResolver()
+	_, ok := any(r).(Lister)
+	assert.False(t, ok, "EnvResolver should not implement Lister")
+}

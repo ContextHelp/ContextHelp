@@ -71,3 +71,17 @@ func (r *AgeFileResolver) Get(key string) (string, error) {
 func (r *AgeFileResolver) Set(key, value string) error {
 	return fmt.Errorf("secrets: AgeFileResolver.Set() not implemented; edit the age file manually")
 }
+
+// Keys decrypts the age file and returns the names of all stored secrets.
+// Implements Lister.
+func (r *AgeFileResolver) Keys() ([]string, error) {
+	kv, err := r.decryptAll()
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(kv))
+	for k := range kv {
+		keys = append(keys, k)
+	}
+	return keys, nil
+}
