@@ -378,6 +378,26 @@ func TestBlobConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestProfileSearchStrategyOverride(t *testing.T) {
+	cfg, err := loadFromYAML(t, `
+version: 1
+profile:
+  profiles:
+    research:
+      description: Research mode
+      search_strategy:
+        mode: vector
+        rrf:
+          fts_weight: 0.2
+          vector_weight: 0.8
+`)
+	require.NoError(t, err)
+	p := cfg.Profile.Profiles["research"]
+	assert.Equal(t, "vector", p.SearchStrategy.Mode)
+	assert.InDelta(t, 0.2, p.SearchStrategy.RRF.FTSWeight, 0.001)
+	assert.InDelta(t, 0.8, p.SearchStrategy.RRF.VectorWeight, 0.001)
+}
+
 func TestSearchConfigDefaults(t *testing.T) {
 	cfg, err := loadFromYAML(t, `version: 1`)
 	require.NoError(t, err)

@@ -98,6 +98,20 @@ type DuplicatesConfig struct {
 	CheckSimilar bool `mapstructure:"check_similar"`
 }
 
+// ProfileSearchStrategy overrides global search settings for a specific profile.
+// Zero values mean "inherit from global config".
+type ProfileSearchStrategy struct {
+	// Mode overrides search.default_mode for this profile.
+	// Valid values: "" (inherit) | "fts" | "vector" | "hybrid".
+	Mode string `mapstructure:"mode" yaml:"mode"`
+	// RRF overrides RRF parameters. Zero values inherit from global.
+	RRF RRFConfig `mapstructure:"rrf" yaml:"rrf"`
+	// CandidatePool overrides pool sizes. Zero values inherit from global.
+	CandidatePool CandidatePoolConfig `mapstructure:"candidate_pool" yaml:"candidate_pool"`
+	// MinScore overrides the minimum score threshold. Negative means inherit.
+	MinScore float64 `mapstructure:"min_score" yaml:"min_score"`
+}
+
 // SearchConfig controls hybrid search behaviour.
 type SearchConfig struct {
 	// DefaultMode selects the search strategy used when no flag is passed.
@@ -221,6 +235,9 @@ type FocusProfile struct {
 	MentionNamespaces []string `mapstructure:"mention_namespaces" yaml:"mention_namespaces"`
 	// RerankBoosts maps entity types to a boost factor (1.0 = no boost).
 	RerankBoosts map[string]float64 `mapstructure:"rerank_boosts" yaml:"rerank_boosts"`
+	// SearchStrategy overrides global search config for this profile.
+	// Zero/empty fields inherit from the global search config.
+	SearchStrategy ProfileSearchStrategy `mapstructure:"search_strategy" yaml:"search_strategy"`
 }
 
 // RegistryConfig represents a registry configuration
