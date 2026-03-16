@@ -5,37 +5,31 @@ import (
 	"testing"
 )
 
-func TestVersion(t *testing.T) {
-	out, err := executeCommand("version")
+func TestVersionFlag(t *testing.T) {
+	SetVersionInfo("1.2.3", "2026-03-15_10:00:00", "abc1234")
+	defer SetVersionInfo("", "", "")
+
+	out, err := executeCommand("-v")
 	if err != nil {
-		t.Fatalf("version should succeed: %v", err)
+		t.Fatalf("-v should succeed: %v", err)
 	}
-	if !strings.Contains(out, "ContextHelp CLI") {
-		t.Error("version output should contain 'ContextHelp CLI'")
+	if !strings.Contains(out, "ctxt version 1.2.3") {
+		t.Errorf("output should contain 'ctxt version 1.2.3', got: %s", out)
 	}
-	if !strings.Contains(out, "ctxt version:") {
-		t.Error("version output should contain 'ctxt version:'")
-	}
-	if !strings.Contains(out, "Component:") {
-		t.Error("version output should contain 'Component:'")
-	}
-	if !strings.Contains(out, "Registry Protocol:") {
-		t.Error("version output should contain 'Registry Protocol:'")
+	if !strings.Contains(out, "(2026-03-15)") {
+		t.Errorf("output should contain '(2026-03-15)', got: %s", out)
 	}
 }
 
-func TestVersionInfo(t *testing.T) {
-	SetVersionInfo("1.0.0", "2025-01-01", "abc123")
+func TestVersionFlagLong(t *testing.T) {
+	SetVersionInfo("0.1.0-dirty", "2026-03-15_10:00:00", "abc1234")
 	defer SetVersionInfo("", "", "")
 
-	out, err := executeCommand("version")
+	out, err := executeCommand("--version")
 	if err != nil {
-		t.Fatalf("version should succeed: %v", err)
+		t.Fatalf("--version should succeed: %v", err)
 	}
-	if !strings.Contains(out, "1.0.0") {
-		t.Error("version output should contain set version")
-	}
-	if !strings.Contains(out, "abc123") {
-		t.Error("version output should contain set git commit")
+	if !strings.Contains(out, "ctxt version 0.1.0-dirty (2026-03-15)") {
+		t.Errorf("output format mismatch, got: %s", out)
 	}
 }

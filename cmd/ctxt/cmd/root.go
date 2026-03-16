@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
@@ -32,7 +34,13 @@ If called without a subcommand, it defaults to 'analyze', capturing content
 from arguments, stdin, or the clipboard.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	RunE:          RunAnalyze,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if ok, _ := cmd.Flags().GetBool("version"); ok {
+			printVersion(cmd)
+			return nil
+		}
+		return RunAnalyze(cmd, args)
+	},
 }
 
 func Execute() error {
@@ -46,10 +54,26 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/contexthelp/config.yaml)")
 	rootCmd.PersistentFlags().String("profile", "", "focus profile to use")
 	rootCmd.PersistentFlags().String("output", "text", "output format (text|json|yaml)")
+	rootCmd.Flags().BoolP("version", "v", false, "print version and exit")
 
 	// Bind flags to viper
 	viper.BindPFlag("profile.default", rootCmd.PersistentFlags().Lookup("profile"))
 	viper.BindPFlag("output.format", rootCmd.PersistentFlags().Lookup("output"))
+}
+
+func printVersion(cmd *cobra.Command) {
+	date := strings.SplitN(buildTime, "_", 2)[0]
+	if viper.GetString("output.format") == "json" {
+		out, _ := json.Marshal(map[string]string{
+			"name":       "ctxt",
+			"version":    version,
+			"date":       date,
+			"git_commit": gitCommit,
+		})
+		fmt.Fprintln(cmd.OutOrStdout(), string(out))
+		return
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "ctxt version %s (%s)\n", version, date)
 }
 
 func initConfig() {
