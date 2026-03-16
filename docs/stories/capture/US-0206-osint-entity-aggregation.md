@@ -349,11 +349,11 @@ osint:
 - [ ] CLI: Profile includes platform presence summary with artifact counts per platform
 - [ ] CLI: Profile includes chronological timeline of captured activity
 - [ ] CLI: Profile includes key topics extracted from aggregate content
-- [ ] CLI: `ctxt osint profile @person.jane-doe --format json` returns valid JSON
-- [ ] CLI: `ctxt osint profile @person.jane-doe --format markdown` returns formatted Markdown
-- [ ] CLI: `ctxt osint build @person.jane-doe --sources x,github` returns job ID within 1 second
+- [ ] CLI: `ctxt osint profile @person.jane-doe --format json` sends `format=json` as a parameter and returns valid JSON
+- [ ] CLI: `ctxt osint profile @person.jane-doe --format markdown` sends `format=markdown` as a parameter and returns formatted Markdown
+- [ ] CLI: `ctxt osint build @person.jane-doe --sources x,github` sends `sources: ["x", "github"]` in the `POST /api/v1/osint/build` request payload and returns job ID within 1 second
 - [ ] CLI: Build job transitions from `pending` to `completed` and profile reflects new artifacts
-- [ ] CLI: `ctxt osint diff @person.jane-doe --since 7d` returns only changes within the time window
+- [ ] CLI: `ctxt osint diff @person.jane-doe --since 7d` sends `since=7d` as a query parameter in the `GET /api/v1/osint/diff` request and returns only changes within the time window
 - [ ] CLI: `ctxt osint list --type person` lists all entities with OSINT profiles
 - [ ] Matching: Artifacts from different platforms linked to same entity via name + bio heuristics
 - [ ] Matching: Linked URL in bio (e.g., X bio links to GitHub) produces high-confidence match
@@ -364,9 +364,10 @@ osint:
 - [ ] Pipeline: CrossPlatformMatcher correctly groups artifacts by source platform
 - [ ] Pipeline: ProfileComposer generates unified sections from multi-platform data
 - [ ] Pipeline: TimelineBuilder sorts artifacts chronologically and produces coherent timeline
-- [ ] REST API: `GET /api/v1/osint/profile/{slug}` returns 200 with full profile JSON
-- [ ] REST API: `POST /api/v1/osint/build/{slug}` returns 202 with job ID
-- [ ] REST API: `GET /api/v1/osint/diff/{slug}?since=7d` returns 200 with change list
+- [ ] REST API: `POST /api/v1/osint/build/{slug}` request payload contains `sources` array and `depth` field
+- [ ] REST API: `POST /api/v1/osint/build/{slug}` returns 202 with `job_id`, `entity`, and `status: pending`; job is persisted and retrievable
+- [ ] REST API: `GET /api/v1/osint/profile/{slug}` returns 200 with full profile JSON including `platforms`, `timeline`, `key_topics`, and `total_artifacts`
+- [ ] REST API: `GET /api/v1/osint/diff/{slug}?since=7d` returns 200 with `changes` array and `total_changes`
 - [ ] Rate Limiting: Build operations respect per-platform rate limits
 - [ ] Empty Profile: Entity with no captured artifacts returns empty profile with guidance message
 - [ ] Resilience: Source adapter failure for one platform does not block other platforms in build

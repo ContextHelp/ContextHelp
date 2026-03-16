@@ -56,7 +56,6 @@ Now, `dpkms pipeline enqueue` is:
   "pipeline": "custom-pipeline", // optional, defaults to auto-selected
   "source": "cli" // or "dpkms" or custom
 }
-}
 ```
 
 **Response:**
@@ -95,7 +94,7 @@ Now, `dpkms pipeline enqueue` is:
   "error": {
     "code": "CONFLICT",
     "message": "Pipeline 'custom-pipeline' is archived and cannot be used"
-}
+  }
 }
 ```
 
@@ -190,13 +189,24 @@ resp, _ := http.Post(serverURL+"/api/v1/pipelines/enqueue", "application/json", 
 
 ## E2E Test Checklist
 
-- [ ] Enqueue with auto-selected pipeline → job created with correct pipeline
-- [ ] Enqueue with specific pipeline → job created with specified pipeline
-- [ ] Enqueue URL content → type detected correctly as "url"
-- [ ] Enqueue file content → type detected as "markdown"
-- [ ] Enqueue image content → type detected as "image"
-- [ ] Pipeline not found → 404 error returned
-- [ ] Archived pipeline selected → 409 error returned
+- [ ] `dpkms pipeline enqueue "..."` → request body contains `content` field matching input
+- [ ] `dpkms pipeline enqueue "..." --pipeline legal-doc-pipeline` → request body contains
+  `"pipeline": "legal-doc-pipeline"`
+- [ ] `dpkms pipeline enqueue "..." --type url` → request body contains `"type": "url"`
+- [ ] `dpkms pipeline enqueue "..." --type markdown` → request body contains
+  `"type": "markdown"`
+- [ ] Request body always contains `"source": "cli"` when invoked from CLI
+- [ ] Enqueue with auto-selected pipeline (no `--pipeline`) → request body has `"pipeline": ""`
+  or omits field; server selects correct pipeline; job record in DB has correct pipeline name
+- [ ] Enqueue with `--pipeline legal-doc-pipeline` → job record in DB has
+  `pipeline="legal-doc-pipeline"`
+- [ ] Verify job record stored in DB: `SELECT * FROM jobs WHERE id=?` returns row with correct
+  `type`, `status="pending"`, `payload`, `pipeline`, `source` fields
+- [ ] Enqueue URL content → type detected correctly as "url"; job `type="ingest:url"` in DB
+- [ ] Enqueue file content → type detected as "markdown"; job `type="ingest:markdown"` in DB
+- [ ] Enqueue image content → type detected as "image"; job `type="ingest:image"` in DB
+- [ ] Pipeline not found → 404 error returned; no job record created in DB
+- [ ] Archived pipeline selected → 409 error returned; no job record created in DB
 - [ ] Job ID is returned for tracking
 - [ ] `ctxt analyze` refactored correctly to call enqueue endpoint
 - [ ] CLI maintains same interface (no breaking changes)
@@ -213,7 +223,7 @@ resp, _ := http.Post(serverURL+"/api/v1/pipelines/enqueue", "application/json", 
 - [US-0110](./US-0110-check-registry-updates.md) - Check for updates
 - [US-0111](./US-0111-configure-registry-autoupdate.md) - Configure auto-update
 - [US-0112](./US-0112-configure-sandbox-per-pipeline.md) - Configure sandbox
-- [US-0113](./US-0113-ctxt-analyze-api-client.md) - ctxt uses dpkms API (this story)
+- [US-0113](./US-0113-ctxt-analyze-api-client.md) - ctxt analyze as enqueue API client
 
 ## Related ADRs
 

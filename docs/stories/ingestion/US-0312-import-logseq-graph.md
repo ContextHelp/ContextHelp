@@ -63,13 +63,16 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Test Checklist
 
-- [ ] Import run succeeds with representative source fixture.
-- [ ] Dry-run reports expected item counts and no job enqueue.
-- [ ] Incremental sync only imports changed/new records.
-- [ ] Re-running same source data does not create duplicates.
-- [ ] Auth errors are returned with actionable guidance.
-- [ ] Network/transient errors trigger retry behavior and proper reporting.
-- [ ] Import summary matches observed enqueued job count.
+- [ ] CLI: `ctxt import logseq --path ~/logseq --profile default` sends `"importer_key": "logseq"`, `"path"`, and `"profile": "default"` in the request payload; server creates a run record with all three fields — GET /api/v1/importers/runs/{run_id} confirms.
+- [ ] CLI: `--server` flag value is included in the request payload when provided; server records the target server endpoint in the run record.
+- [ ] Import run succeeds with representative Logseq graph fixture; produced KnowledgeObjects contain journal/page content, block trees, and page refs.
+- [ ] Stored KnowledgeObjects have provenance metadata: `source=logseq`, `external_id` derived from block UUID or page name, and `import_timestamp` set to ingest time.
+- [ ] Dry-run: `--dry-run` flag sends `"dry_run": true` in the server request payload; no jobs enqueued — GET /api/v1/importers/runs/{run_id} confirms `enqueued=0` and reports expected item counts.
+- [ ] Incremental sync: uses file mtime and block UUID tracking; second run with unchanged graph imports zero new records — `skipped` count equals previous `imported` count.
+- [ ] Re-running same source data does not create duplicates; dedup table row count unchanged.
+- [ ] Auth errors (unreadable graph directory or permission denied) are returned with actionable guidance and `error_type=auth`.
+- [ ] Network/transient errors (if syncing via a remote path) trigger retry behavior; run report shows `error_type=transient` for retried items.
+- [ ] Import summary `scanned + skipped + failed = total`; `imported` count matches observed enqueued job count — GET /api/v1/importers/runs/{run_id} confirms all counters.
 
 ---
 

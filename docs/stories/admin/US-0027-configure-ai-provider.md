@@ -163,55 +163,6 @@ func (m *ConfigManager) GetProvider() AIProvider {
 }
 ```
 
-### REST API: Configuration Endpoints
-
-```
-GET /admin/config/ai-provider
-→ 200 OK
-{
-  "type": "openai",
-  "model": "gpt-4o",
-  "provider_health": "healthy",
-  "last_health_check": "2025-01-18T10:30:45Z"
-}
-
-PUT /admin/config/ai-provider
-Content-Type: application/json
-
-{
-  "type": "lmql",
-  "backend": "local",
-  "model": "llama3",
-  "endpoint": "http://localhost:8080"
-}
-
-→ 200 OK
-{
-  "status": "reconfigured",
-  "new_config": {...},
-  "applied_at": "2025-01-18T10:30:46Z"
-}
-```
-
-### Health Check Endpoint
-
-```
-GET /admin/health/ai-provider
-→ 200 OK
-{
-  "provider": "openai",
-  "status": "healthy",
-  "rate_limit": {
-    "requests_per_minute": 100,
-    "current_usage": 42,
-    "remaining": 58
-  },
-  "latency_p99_ms": 1234,
-  "error_rate": 0.001,
-  "last_error": null
-}
-```
-
 ### Cost Tracking
 
 ```go
@@ -241,28 +192,42 @@ func (c *CostTracker) RecordCall(tokens int, costUSD float64) {
 
 ## E2E Test Checklist
 
-- [ ] Config: OpenAI provider configured via env vars
-- [ ] Config: OpenAI provider configured via YAML
-- [ ] Config: Anthropic provider configured
-- [ ] Config: LMQL provider with fallback configured
-- [ ] Provider: Enrichment step uses configured provider
-- [ ] Provider: NLQ normalizer uses configured provider
-- [ ] HotReload: Change provider config without restart
-- [ ] HotReload: Active enrichment jobs continue to completion
-- [ ] HotReload: New jobs use new provider configuration
-- [ ] Health: Health check endpoint returns provider status
-- [ ] Health: Health check detects rate limit exceeded
-- [ ] Health: Health check detects provider down (returns unhealthy)
-- [ ] Fallback: LMQL provider falls back to OpenAI on error
-- [ ] Cost: Cost tracker records tokens and USD cost
-- [ ] Metrics: Prometheus metrics available for cost and usage
-- [ ] Retry: Provider retry policy applies on transient failures
+### Config via Environment Variables
+- [ ] EnvVar: `CH_AI_PROVIDER_TYPE=openai` sets provider type in loaded config
+- [ ] EnvVar: `CH_AI_OPENAI_MODEL` sets model field (verify `cfg.Providers.LLM.Model` contains value)
+- [ ] EnvVar: `CH_AI_PROVIDER_TYPE=anthropic` + `CH_AI_ANTHROPIC_MODEL` → provider type + model stored in config
+- [ ] EnvVar: `CH_AI_PROVIDER_TYPE=lmql` + `CH_AI_LMQL_ENDPOINT` → endpoint stored in config
+
+### Config via YAML File
+- [ ] YAML: `providers.llm.backend` field written to config file is read back correctly
+- [ ] YAML: `providers.llm.model` field persists across process restarts
+- [ ] YAML: `providers.llm.endpoint` field persists (Ollama/LMQL endpoint)
+- [ ] YAML: Fallback provider config round-trips through YAML marshal/unmarshal without data loss
+
+### Provider Selection (Server-Side Receipt)
+- [ ] Server: `dpkms serve` reads `providers.llm.backend` from config and initialises correct factory backend
+- [ ] Server: `dpkms serve --profile <name>` sets `profile.default` via viper; server uses that profile
+- [ ] Server: POST `/api/v1/pipelines/enqueue` with `{"type":"text","pipeline":"text.short"}` → server records
+  `job.Pipeline = "text.short"` in storage (verify via GET `/api/v1/jobs/{id}`)
+- [ ] Server: `GET /health` returns `{"status":"ok"}` when provider backend is reachable
+
+### Per-Pipeline Provider Overrides
+- [ ] Override: YAML `pipelines.overrides.<name>.providers.llm.backend` loaded into `PipelinesConfig`
+- [ ] Override: Jobs routed to overridden pipeline use the overridden provider (verify via job metadata)
+
+### Error / Fallback
+- [ ] Error: Invalid `CH_AI_PROVIDER_TYPE` value → config.Load returns validation error (no silent default)
+- [ ] Fallback: When primary LLM backend is unavailable, fallback backend field in config is non-empty
+
+### Retry / Rate Limit
+- [ ] Retry: `retryPolicy.maxAttempts` field survives YAML round-trip
+- [ ] RateLimit: `rateLimit.requestsPerMinute` field survives YAML round-trip
 
 ---
 
 ## Related Stories
 
-- [constrain-extraction-with-lmql](../enrichment/constrain-extraction-with-lmql.md) — LMQL-specific configuration
-- [batch-enrichment-with-progress](../enrichment/batch-enrichment-with-progress.md) — Provider used at scale
-- [natural-language-search](../search/natural-language-search.md) — NLQ normalizer uses provider
-- [monitor-job-queue-health](../operations/monitor-job-queue-health.md) — Provider metrics monitoring
+- [US-0014](../enrichment/US-0014-constrain-extraction-with-lmql.md) — LMQL-specific configuration
+- [US-0015](../enrichment/US-0015-batch-enrichment-with-progress.md) — Provider used at scale
+- [US-0016](../search/US-0016-natural-language-search.md) — NLQ normalizer uses provider
+- [US-0032](../operations/US-0032-monitor-job-queue-health.md) — Provider metrics monitoring

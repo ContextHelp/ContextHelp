@@ -474,10 +474,12 @@ linkedin:
 - [ ] Anti-Scraping: Rate limiting (HTTP 429) triggers exponential backoff
 - [ ] Anti-Scraping: Random delay between requests prevents pattern detection
 - [ ] Provenance: Raw HTML snapshot stored alongside structured data
+- [ ] REST API: `POST /api/v1/analyze` request payload contains `source_type: url`, `source_url`, `auth_method: cookie_bridge`, and `options` object with `capture_experience`, `capture_education`, `capture_skills`, and `capture_recommendations` fields
+- [ ] REST API: `POST /api/v1/analyze` returns 202 with `job_id` and `object_id`
+- [ ] Storage: Completed profile object stored with `source.auth_method: cookie_bridge`, `metadata.platform: linkedin.com`, `metadata.headline`, `metadata.experience_count`, and `metadata.skills_count` (verifiable via `GET /api/v1/objects/<id>`)
 - [ ] Search: Profile headline searchable via `ctxt search "CEO at Microsoft"`
 - [ ] Search: Experience content searchable via `ctxt search "cloud infrastructure"`
 - [ ] Search: Skills searchable via `ctxt search "distributed systems"`
-- [ ] REST API: POST /api/v1/analyze with LinkedIn URL returns 202
 - [ ] Error: Invalid LinkedIn URL returns descriptive error
 - [ ] Error: Non-existent profile returns clear "profile not found" error
 - [ ] Pipeline: `social.linkedin.profile` completes all 7 steps in correct order

@@ -163,15 +163,21 @@ dpkms system reminders dismiss <id>
 
 - [ ] Local steps directory is scanned on startup
 - [ ] All SKILL.md files are parsed and registered
-- [ ] Step metadata is stored correctly in database
+- [ ] Verify step metadata stored in DB: `SELECT * FROM steps WHERE name=?` returns row with
+  correct `name`, `source`, `metadata`, `path`, `installed_at` fields
 - [ ] Steps with valid SKILL.md format are registered
 - [ ] Duplicate step names are detected and handled (newest wins or error)
 - [ ] Invalid SKILL.md format returns parsing error
-
+- [ ] `dpkms pipeline step list` → request sent to steps list endpoint; response matches DB
+  records in `steps` table
+- [ ] `dpkms pipeline step list --source builtin` → request contains `source=builtin` query
+  param; response includes only steps with `source="builtin"` in DB
+- [ ] `dpkms pipeline step show <name>` → request sent to step detail endpoint; response fields
+  match DB record for that step name
 - [ ] Registry manifest fetch works (GET returns manifest)
-- [ ] Registry manifest is cached with ETag
+- [ ] Registry manifest is cached with ETag; verify ETag stored in `registry_cache` table
 - [ ] System reminders are created for new versions
-- [ ] Download and install steps from registry
+- [ ] Download and install steps from registry; verify step record created in DB after install
 
 ## Related Stories
 

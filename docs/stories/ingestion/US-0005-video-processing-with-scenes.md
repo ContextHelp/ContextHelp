@@ -327,19 +327,21 @@ video:
 
 ## E2E Test Checklist
 
-- [ ] CLI: `ctxt add --file lecture.mp4` returns job ID within 2 seconds
+- [ ] CLI: `ctxt add --file lecture.mp4` returns job ID within 2 seconds; server creates job record with `source_type=video` and `pipeline=video.full`
 - [ ] CLI: Job status transitions from `pending` -> `processing` -> `completed`
-- [ ] CLI: Completed object contains timestamped Sections aligned to scene boundaries
-- [ ] CLI: Full transcript stored in RawContent, video metadata stored in Metadata
-- [ ] Pipeline: `video.full` runs all 11 steps in correct order
-- [ ] Pipeline: `video.audio_only` skips FrameSampler, SceneDetector, FrameOCR, TimelineAssembler
+- [ ] CLI: Completed object contains timestamped Sections aligned to scene boundaries — GET /objects/{object_id} confirms each Section has `start`, `end`, and `metadata.scene_type` fields
+- [ ] CLI: Full transcript stored in RawContent, video metadata (`duration_seconds`, `resolution`, `fps`, `format`) stored in Metadata — GET /objects/{object_id} confirms all four keys present
+- [ ] CLI: `ctxt add --file meeting.mov --pipeline video.audio_only` sends `"pipeline": "video.audio_only"` in the request payload; stored object's pipeline field equals `"video.audio_only"`
+- [ ] CLI: `ctxt add --file sprint-review.mp4 --profile engineering --project mobile-app` sends `"profile": "engineering"` and `"project": "mobile-app"` in the server request payload; stored object Metadata contains both fields
+- [ ] Pipeline: `video.full` runs all 11 steps in correct order — stored object pipeline.steps_completed contains all 11 step names
+- [ ] Pipeline: `video.audio_only` skips FrameSampler, SceneDetector, FrameOCR, TimelineAssembler — stored object pipeline.steps_completed excludes those four names
 - [ ] Format: MP4, MOV, WEBM files accepted and processed correctly
 - [ ] Format: Unsupported codec (e.g., VP9 without ffmpeg support) returns clear error
 - [ ] Error: Corrupt video file rejected with descriptive error message
 - [ ] Error: File exceeding `maxFileSize` (default 2GB) rejected before processing starts
 - [ ] Error: Processing timeout (default 30 min) cancels job and reports timeout error
-- [ ] REST API: Multipart upload returns 202 + job ID
-- [ ] REST API: Chunked upload flow (init, chunks, complete) works for large files
+- [ ] REST API: Multipart upload with `pipeline=video.full` and `profile=engineering` returns 202 + job ID; server records both fields; GET /objects/{object_id} confirms them in stored object
+- [ ] REST API: Chunked upload flow (init, chunks, complete) works for large files; final complete request receives 202 with job ID
 - [ ] Search: Transcript text searchable via `ctxt search "caching layer"`
 - [ ] Search: OCR text from frames searchable via `ctxt search "Redis Primary"`
 - [ ] Config: Custom `frameSamplingInterval` changes keyframe extraction rate

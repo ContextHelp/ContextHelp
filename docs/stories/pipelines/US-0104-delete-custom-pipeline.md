@@ -27,7 +27,6 @@ Users need the ability to:
 - **Custom pipelines can be deleted** but built-in pipelines are protected
 - **Archive status is separate from deletion**
 - **Built-in pipelines cannot be deleted** (protected names starting with `text.*`)
-- **Duplicate names are rejected** with error message
 - **Delete is permanent** - no undo, requires recreation
 - **Archive is reversible** - can be unarchived to restore
 - **Confirmation prompt** for delete operations requiring explicit confirmation
@@ -48,7 +47,7 @@ X-Confirmation: true/false (default: false for safety)
 
 **Response Examples:**
 
-**Success (204):**
+**Success (200):**
 ```json
 {
   "message": "Pipeline 'legal-doc-pipeline' deleted successfully"
@@ -127,12 +126,22 @@ When deleting a pipeline, consider:
 
 ## E2E Test Checklist
 
+- [ ] `dpkms pipeline remove <name>` (with confirmation) → request sent to
+  `DELETE /api/v1/pipelines/{name}` with `X-Confirmation: true` header
+- [ ] `dpkms pipeline remove <name> --no-confirm` → request sent with `X-Confirmation: true`
+  header (skips prompt, still sends confirmation header)
+- [ ] `dpkms pipeline remove <name> --force` → request sent with `X-Confirmation: true` header
+- [ ] Delete without confirmation prompt accepted → request sent with `X-Confirmation: false`
+  (or header absent) → server rejects if confirmation required
 - [ ] Delete custom pipeline returns 200 with success message
+- [ ] Verify pipeline record removed from DB: `SELECT * FROM pipelines WHERE name=?` returns
+  no rows after successful delete
 - [ ] Delete built-in pipeline returns 403 protected error
+- [ ] Verify built-in pipeline record unchanged in DB after rejected delete attempt
 - [ ] Delete non-existent pipeline returns 404 not found error
 - [ ] Delete pipeline currently in use returns 409 conflict error
-- [ ] Archive command sets archived flag correctly
-- [ ] Unarchive command makes pipeline available again
+- [ ] Archive command sets archived flag correctly; verify `archived=1` in DB
+- [ ] Unarchive command makes pipeline available again; verify `archived=0` in DB
 
 ## Related Stories
 

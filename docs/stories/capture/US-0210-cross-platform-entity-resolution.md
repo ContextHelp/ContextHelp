@@ -619,14 +619,14 @@ entity_resolution:
 
 ## E2E Test Checklist
 
-- [ ] CLI: `ctxt entity candidates @person.jane-doe` shows potential matches with confidence scores
-- [ ] CLI: `ctxt entity merge @slug1 @slug2` merges entities and reports consolidated backlinks
-- [ ] CLI: `ctxt entity merge @slug1 @slug2 @slug3` merges multiple entities in one command
-- [ ] CLI: `ctxt entity graph @entity.slug` shows full entity graph with platform presences
-- [ ] CLI: `ctxt entity graph @entity.slug --format json` returns valid JSON graph
-- [ ] CLI: `ctxt entity reject @slug1 @slug2` prevents future auto-linking of the pair
-- [ ] CLI: `ctxt entity candidates --unresolved` lists all pending review candidates
-- [ ] CLI: `ctxt entity history @entity.slug` shows chronological resolution events
+- [ ] CLI: `ctxt entity candidates @person.jane-doe` calls `GET /api/v1/entities/{slug}/candidates` and shows potential matches with confidence scores
+- [ ] CLI: `ctxt entity candidates --unresolved --min-confidence 0.60` sends `status=pending_review&min_confidence=0.60` as query parameters in the request
+- [ ] CLI: `ctxt entity merge @slug1 @slug2` sends `canonical` and `targets` array in the `POST /api/v1/entities/merge` request payload and reports consolidated backlinks
+- [ ] CLI: `ctxt entity merge @slug1 @slug2 @slug3` sends all three slugs in the `targets` array in the request payload
+- [ ] CLI: `ctxt entity graph @entity.slug` calls `GET /api/v1/entities/{slug}/graph` and shows full entity graph with platform presences
+- [ ] CLI: `ctxt entity graph @entity.slug --format json` sends `format=json` as a query parameter and returns valid JSON graph
+- [ ] CLI: `ctxt entity reject @slug1 @slug2` sends `entity_a` and `entity_b` in the `POST /api/v1/entities/reject` request payload and prevents future auto-linking of the pair
+- [ ] CLI: `ctxt entity history @entity.slug` calls `GET /api/v1/entities/{slug}/history` and shows chronological resolution events
 - [ ] Auto-Detection: New entity from X triggers resolution check against existing LinkedIn/GitHub entities
 - [ ] Auto-Detection: Matching linked URL (X bio -> GitHub) produces high confidence (>= 0.90)
 - [ ] Auto-Detection: Name + organization match produces medium confidence (>= 0.75)
@@ -635,18 +635,19 @@ entity_resolution:
 - [ ] Scoring: Linked URL match gets highest weight in confidence calculation
 - [ ] Scoring: Bio keyword overlap of >= 3 keywords contributes to confidence
 - [ ] Scoring: Multiple matching signals produce higher confidence than single signals
-- [ ] Graph: `same_as` edges are created between merged entity slugs
+- [ ] Graph: `same_as` edges are created between merged entity slugs and are persisted (verifiable via `GET /api/v1/entities/{slug}/graph` which lists them in `same_as` array)
 - [ ] Graph: All backlinks from target entity are consolidated to canonical entity
 - [ ] Graph: Searches for merged entity return consolidated results from all platforms
-- [ ] Rejection: Rejected pairs are excluded from future candidate matching
+- [ ] Rejection: `POST /api/v1/entities/reject` creates a rejection record persisted in storage; rejected pairs are excluded from future candidate matching
 - [ ] Pipeline: `enrich.entity_resolution` runs automatically after entity extraction
 - [ ] Pipeline: Auto-merge respects `maxAutoMergePerRun` safety limit
 - [ ] Pipeline: `requireMultiSignal: true` prevents auto-merge on single-signal matches
-- [ ] REST API: `GET /api/v1/entities/{slug}/candidates` returns candidates with scores
-- [ ] REST API: `POST /api/v1/entities/merge` merges entities and returns consolidation count
-- [ ] REST API: `POST /api/v1/entities/reject` creates rejection record
-- [ ] REST API: `GET /api/v1/entities/{slug}/graph` returns entity graph with platform data
-- [ ] REST API: `GET /api/v1/entities/{slug}/history` returns resolution history
+- [ ] REST API: `GET /api/v1/entities/{slug}/candidates` returns candidates with `confidence`, `matched_on`, and `status` fields
+- [ ] REST API: `GET /api/v1/entities/candidates?status=pending_review&min_confidence=0.60` filters by both parameters correctly
+- [ ] REST API: `POST /api/v1/entities/merge` request payload contains `canonical` and `targets` array; returns `backlinks_consolidated` and `same_as_edges_created` counts
+- [ ] REST API: `POST /api/v1/entities/reject` request payload contains `entity_a` and `entity_b`; returns confirmation with `status: rejected`
+- [ ] REST API: `GET /api/v1/entities/{slug}/graph` returns entity graph including `same_as` array, `platforms` object, and `total_artifacts`
+- [ ] REST API: `GET /api/v1/entities/{slug}/history` returns resolution history with `action`, `target`, `confidence`, `method`, and `timestamp` per event
 - [ ] De-duplication: After merge, `ctxt search` returns unified results (no duplicate entities)
 - [ ] Resilience: Pipeline failure does not corrupt existing entity relationships
 - [ ] Resilience: Concurrent resolution of same entity pair is handled without duplicate edges

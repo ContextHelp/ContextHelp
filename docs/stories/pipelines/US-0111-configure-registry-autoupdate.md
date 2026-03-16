@@ -129,23 +129,34 @@ DPKMS_REGISTRY_{}_AUTO_UPDATE=true
 
 ## E2E Test Checklist
 
+- [ ] `dpkms pipeline step registry autoupdate <url> --enable` → request contains `url` and
+  `auto_update=true` (or equivalent flag) in payload; verify `auto_update=1` in
+  `registry_cache` table for that URL
+- [ ] `dpkms pipeline step registry autoupdate <url> --disable` → request contains `url` and
+  `auto_update=false`; verify `auto_update=0` in `registry_cache` table
+- [ ] `dpkms pipeline step registry autoupdate` (no args) → request shows current status;
+  response reflects `auto_update` field from `registry_cache` DB row
+- [ ] `dpkms pipeline step registry list` → response includes `auto_update` status per
+  registry; values match `registry_cache` table rows
+- [ ] `dpkms pipeline step registry update <url>` → request contains `url`; cache row's
+  `last_fetched` updated in DB after successful fetch
 - [ ] Registry is added to config
 - [ ] Check registry returns cached manifest with all steps and ETag
-- [ ] New version detected → system reminder created
-- [ ] Manual update flag is respected (no auto-update unless enabled)
+- [ ] New version detected → system reminder created; verify `system_reminders` row with
+  correct `type`, `source`, `action_url`
+- [ ] Manual update flag is respected (no auto-update unless enabled); `auto_update=0` in DB
+  means scheduled checks do not update
 - [ ] System reminders list returns ordered by created_at DESC
-- [ ] System reminders dismissed flags are correct
+- [ ] System reminders dismissed flags are correct in DB
 - [ ] High priority reminder has oldest created_at
 - [ ] Low priority reminder shows updated_at
 - [ ] Action URLs are clickable
-
-- [ ] Disable auto-update for specific registry → registry cache auto_update flag = 0
-- [ ] Re-enable → registry cache auto_update flag = 1
-
+- [ ] Disable auto-update for specific registry → `auto_update=0` in `registry_cache`
+- [ ] Re-enable → `auto_update=1` in `registry_cache`
+- [ ] Auto-update flag persists in database across server restarts
 - [ ] Check registry unavailable → error handling works correctly
 - [ ] New version detected → system reminder created with message
-- [ ] Auto-update flag persists in database
-- [ ] Manual update trigger updates cache
+- [ ] Manual update trigger updates `last_fetched` and `etag` in `registry_cache`
 - [ ] System reminders can be created, dismissed
 
 ## Related Stories
@@ -154,7 +165,6 @@ DPKMS_REGISTRY_{}_AUTO_UPDATE=true
 - [US-0108](./US-0108-install-step-from-registry.md) - Install from registry
 - [US-0109](./US-0109-fetch-registry-manifest.md) - Get available steps from registry
 - [US-0110](./US-0110-check-registry-updates.md) - Check for updates
-- [US-0111](./US-0111-configure-registry-autoupdate.md) - Configure auto-update
 - [US-0112](./US-0112-configure-sandbox-per-pipeline.md) - Configure sandbox
 - [US-0113](./US-0113-ctxt-analyze-api-client.md) - ctxt as API client
 

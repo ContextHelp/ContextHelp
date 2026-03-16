@@ -30,6 +30,7 @@ This story establishes the core importer interface and lifecycle for registratio
 - [ ] Error classification is standardized (auth, rate_limit, malformed_input, transient, internal).
 - [ ] Importer execution is observable via logs/metrics and run IDs.
 - [ ] CLI and API can execute any registered importer by key.
+- [ ] Registered importers are discoverable via `GET /api/v1/importers` and listed with correct key and metadata.
 
 ---
 
@@ -61,11 +62,16 @@ This story establishes the core importer interface and lifecycle for registratio
 
 ## E2E Test Checklist
 
-- [ ] Register a mock importer and verify it appears in list/discovery output.
-- [ ] Run mock importer via CLI and API with same outcome.
-- [ ] Validate checkpoint resume behavior after forced interruption.
-- [ ] Validate standardized error types are surfaced.
-- [ ] Verify run summaries and metrics are emitted for success and failure cases.
+- [ ] Register a mock importer and verify it appears in GET /api/v1/importers list with correct key and metadata.
+- [ ] CLI: `ctxt import <importer-key> --profile default --server http://host` sends `"importer_key"`, `"profile"`, and `"server"` in the request payload to the server; stored run record reflects all three fields.
+- [ ] API: `POST /api/v1/importers/{key}/run` with `{"profile": "default", "dry_run": false}` creates a run record — GET /api/v1/importers/runs/{run_id} confirms `importer_key`, `profile`, and `status` fields in the stored run.
+- [ ] CLI and API produce the same stored run structure (same fields, same schema) when invoked with identical parameters.
+- [ ] Dry-run: `--dry-run` flag sends `"dry_run": true` in the server request payload; no jobs are enqueued — GET /api/v1/importers/runs/{run_id} confirms `status=dry_run_complete` and `enqueued=0`.
+- [ ] Checkpoint resume: after forced interruption, re-running the importer sends the persisted checkpoint in the request payload; server resumes from the last checkpoint position — run report shows previously imported items as skipped.
+- [ ] Standardized error types are surfaced: auth error, rate_limit, malformed_input, transient, internal errors each appear in run report with the correct `error_type` field.
+- [ ] Run summaries include `scanned`, `imported`, `skipped`, `failed` counters — GET /api/v1/importers/runs/{run_id} confirms all four fields present and non-negative.
+- [ ] Metrics/logs emitted for success case: run ID appears in structured log output with outcome=success.
+- [ ] Metrics/logs emitted for failure case: run ID appears in structured log output with outcome=failed and non-empty error detail.
 
 ---
 

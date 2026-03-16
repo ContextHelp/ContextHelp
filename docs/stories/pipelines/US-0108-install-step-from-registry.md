@@ -102,10 +102,20 @@ dpkms pipeline step uninstall <name>
 
 ### E2E Test Checklist
 
+- [ ] `dpkms pipeline step install <name> --registry <url>` → request contains both `name`
+  and `registry` fields in payload (or as path/query params)
+- [ ] `dpkms pipeline step install <name>` (no `--registry`) → request uses default configured
+  registry URL
+- [ ] `dpkms pipeline step install <name> <path> <local-path>` → request body contains
+  `name`, `path`, and `local_path` fields
 - [ ] Fetch manifest from known registry → returns valid manifest
 - [ ] Download step from valid manifest → files created, step registered
-- [ ] System reminder created if version different from cached
-- [ ] Install step appears in step list with correct metadata
+- [ ] Verify step record created in DB after install: `SELECT * FROM steps WHERE name=?`
+  returns row with correct `source` (e.g., `"registry:<url>"`), `path`, `metadata`
+- [ ] System reminder created if version different from cached; verify reminder row in
+  `system_reminders` table
+- [ ] Install step appears in step list with correct metadata; response matches DB record
+- [ ] `dpkms pipeline step uninstall <name>` → step record removed from DB
 - [ ] Installing step from registry that doesn't exist → returns 404
 - [ ] Step with invalid SKILL.md format → parsing fails with error
 

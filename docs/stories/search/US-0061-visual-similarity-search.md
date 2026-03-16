@@ -355,49 +355,93 @@ ctxt admin backfill --status
 
 ## E2E Test Checklist
 
+### CLI → Server Payload
+
+- [ ] `ctxt search --image diagram.png` sends image bytes (or temp path) in multipart/form-data
+      to `POST /search/by-image`; server receives non-empty `image` field
+- [ ] `ctxt search --image obj-123` sends `object_id=obj-123` in JSON body; server receives and
+      resolves to stored visual embedding (no re-encoding)
+- [ ] `ctxt search --image photo.png "auth flow"` sends both `image` and `query="auth flow"` in
+      request; server receives both fields
+- [ ] `ctxt search --image photo.png --type decision` sends `filters.type=decision` in request
+      payload; server receives and applies type filter
+- [ ] `ctxt search --image photo.png --tag architecture` sends `filters.tags=["architecture"]` in
+      request payload; server receives and applies tag filter
+- [ ] `ctxt search --image photo.png --profile engineering` sends `filters.profile=engineering` in
+      request payload; server receives and applies profile filter
+- [ ] `ctxt search --image photo.png --limit 5` sends `limit=5` in request payload; server
+      receives it and returns ≤5 results
+
+### Server-Side Receipt and Storage
+
+- [ ] Server stores visual embedding in `embeddings` table with correct `model` identifier upon
+      `ctxt add image.png`; row verifiable via DB query
+- [ ] Server stores text embedding (from VLM description) as separate `embeddings` row for same
+      `object_id`; both rows present after ingestion
+- [ ] `query_understanding.description` in response is populated server-side (non-empty string)
+- [ ] `query_understanding.ocr_text` in response reflects OCR extracted from query image
+- [ ] `query_understanding.entities_detected` in response reflects entities resolved server-side
+- [ ] `strategies_used` field in response lists all strategies server actually executed
+- [ ] `query_time_ms` field in response is populated with server-measured duration
+
+### Flags Coverage
+
+- [ ] `--image <path>` — image bytes present in request payload; server processes image
+- [ ] `--image <obj-id>` — `object_id` present in request payload; no re-upload
+- [ ] `--type <type>` — `filters.type` present in request payload; results match type
+- [ ] `--tag <tag>` — `filters.tags` present in request payload; results match tag
+- [ ] `--profile <name>` — `filters.profile` present in request payload; results filtered
+- [ ] `--limit <n>` — `limit` present in request payload; result count ≤ n
+- [ ] No undocumented flags silently ignored: unknown flag returns error
+
 ### Cross-Modal (Image → All Knowledge)
 
 - [ ] `ctxt search --image diagram.png` returns text notes related to diagram content
 - [ ] `ctxt search --image diagram.png` returns decisions related to diagram content
 - [ ] `ctxt search --image diagram.png` returns entities shown in diagram
-- [ ] Results include match source annotations (fts, vector, graph, visual)
-- [ ] VLM-generated description is used for text-based strategies
+- [ ] Results include `match_sources` annotations (fts, vector_text, graph, visual)
+- [ ] VLM-generated description is used for text-based strategies (vector_text, graph)
 - [ ] OCR-extracted text is used for FTS strategy
 - [ ] Entities detected in image description are resolved and used for graph strategy
 
 ### Visual Similarity (Image → Similar Images)
 
-- [ ] `ctxt add image.png` stores both text and visual embeddings
-- [ ] Visual embedding stored with correct model identifier
+- [ ] `ctxt add image.png` stores both text and visual embeddings (both rows in `embeddings` table)
+- [ ] Visual embedding stored with correct model identifier (e.g., `dinov2-vitl14`)
 - [ ] `ctxt search --image photo.png --type image` returns visually similar images
 - [ ] Results ranked by cosine similarity, highest first
-- [ ] `ctxt search --image obj-123` uses stored visual embedding (no re-encoding)
+- [ ] `ctxt search --image obj-123` uses stored visual embedding (no re-encoding); server
+      confirms via `object_id` path in request
 
 ### Combined and Filtered
 
-- [ ] `ctxt search --image photo.png "auth flow"` merges visual + text via RRF
-- [ ] `ctxt search --image photo.png --tag architecture` applies tag filter
+- [ ] `ctxt search --image photo.png "auth flow"` merges visual + text via RRF; response
+      `strategies_used` includes both visual and text strategies
+- [ ] `ctxt search --image photo.png --tag architecture` applies tag filter; all results carry
+      `architecture` tag
 - [ ] `ctxt search --image photo.png --type decision` returns only decisions
-- [ ] Returns within 2 seconds for 10K objects
+- [ ] Returns within 2 seconds for 10K objects (P99)
 
 ### Fallback
 
-- [ ] Without visual embedding provider: cross-modal text search still works, visual similarity skipped with info message
-- [ ] Without VLM provider: error — cannot understand image content
+- [ ] Without visual embedding provider: cross-modal text search still works; response
+      `strategies_used` omits `visual`; info message returned to client
+- [ ] Without VLM provider: error returned — cannot understand image content
 
 ### APIs
 
-- [ ] POST /search/by-image with multipart image returns mixed-type results
-- [ ] POST /search/by-image with object_id reference works
-- [ ] Response includes `query_understanding` (description, OCR, entities)
-- [ ] gRPC SearchByImage returns equivalent results
+- [ ] `POST /search/by-image` multipart: server receives `image` field; returns mixed-type results
+- [ ] `POST /search/by-image` JSON with `object_id`: server returns results using stored embedding
+- [ ] Response `query_understanding` contains `description`, `ocr_text`, `entities_detected`
+- [ ] gRPC `SearchByImage` returns equivalent results to REST for same input
 
 ### Backfill and Maintenance
 
-- [ ] `ctxt admin backfill --type visual-embeddings` processes existing image objects
-- [ ] Progress reporting works (`--status`)
-- [ ] Plugin: custom visual embedding provider loads and works
-- [ ] Multi-format: PNG, JPEG, WebP, TIFF, SVG (rasterized)
+- [ ] `ctxt admin backfill --type visual-embeddings` processes existing image objects; DB row
+      count of visual embeddings increases
+- [ ] `ctxt admin backfill --status` returns progress (processed/total count)
+- [ ] Plugin: custom visual embedding provider loads and `EmbedImage` called by server
+- [ ] Multi-format ingestion: PNG, JPEG, WebP, TIFF, SVG (rasterized) all produce embeddings
 
 ---
 

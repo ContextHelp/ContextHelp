@@ -26,11 +26,11 @@ Each story can be implemented on one or more of these deployment models:
 |----|-------|-------------|----------|
 | **US-0001** | [text-capture-minimal-friction](./ingestion/US-0001-text-capture-minimal-friction.md) | ctxt | Knowledge Workers |
 | **US-0002** | [url-capture-and-extraction](./ingestion/US-0002-url-capture-and-extraction.md) | ctxt | Knowledge Workers |
-| **US-0003** | [image-ocr-and-analysis](./ingestion/US-0003-image-ocr-and-analysis.md) | ctxt | Knowledge Workers |
-| **US-0004** | [audio-transcription-and-indexing](./ingestion/US-0004-audio-transcription-and-indexing.md) | ctxt | Knowledge Workers |
-| **US-0005** | [video-processing-with-scenes](./ingestion/US-0005-video-processing-with-scenes.md) | ctxt | Knowledge Workers |
-| **US-0006** | [document-parsing-and-decomposition](./ingestion/US-0006-document-parsing-and-decomposition.md) | ctxt | Knowledge Workers |
-| **US-0007** | [feed-ingestion-and-sync](./ingestion/US-0007-feed-ingestion-and-sync.md) | ctxt | Knowledge Workers |
+| **US-0003** | [image-ocr-and-analysis](./ingestion/US-0003-image-ocr-and-analysis.md) | ctxt, dpkms (self-hosted) | Knowledge Workers, Agents/LLMs |
+| **US-0004** | [audio-transcription-and-indexing](./ingestion/US-0004-audio-transcription-and-indexing.md) | ctxt, dpkms (self-hosted) | Knowledge Workers |
+| **US-0005** | [video-processing-with-scenes](./ingestion/US-0005-video-processing-with-scenes.md) | ctxt, dpkms (self-hosted) | Knowledge Workers, Agents/LLMs |
+| **US-0006** | [document-parsing-and-decomposition](./ingestion/US-0006-document-parsing-and-decomposition.md) | ctxt, dpkms (self-hosted) | Knowledge Workers, Maintainers |
+| **US-0007** | [feed-ingestion-and-sync](./ingestion/US-0007-feed-ingestion-and-sync.md) | ctxt, dpkms (self-hosted) | Knowledge Workers, Operations |
 | **US-0008** | [batch-import-from-file](./ingestion/US-0008-batch-import-from-file.md) | ctxt, dpkms (self-hosted), dpkms cloud | Maintainers, Operations |
 
 #### Importer Stories (US-0300 to US-0317)
@@ -56,6 +56,22 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0316** | [import-twitter-archive](./ingestion/US-0316-import-twitter-archive.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
 | **US-0317** | [import-linkedin-export](./ingestion/US-0317-import-linkedin-export.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Operations, Maintainers |
 
+### Platform Capture (US-0200 to US-0210)
+
+| ID | Story | System Types | Personas |
+|----|-------|-------------|----------|
+| **US-0200** | [browser-cookie-bridge](./capture/US-0200-browser-cookie-bridge.md) | ctxt | Knowledge Workers, Researchers & OSINT Analysts |
+| **US-0201** | [x-twitter-capture](./capture/US-0201-x-twitter-capture.md) | ctxt | Knowledge Workers, Researchers & OSINT Analysts |
+| **US-0202** | [github-capture](./capture/US-0202-github-capture.md) | ctxt | Knowledge Workers, Platform Integrators, Researchers & OSINT Analysts |
+| **US-0203** | [arxiv-capture](./capture/US-0203-arxiv-capture.md) | ctxt | Knowledge Workers, Researchers & OSINT Analysts, Agents/LLMs |
+| **US-0204** | [linkedin-capture](./capture/US-0204-linkedin-capture.md) | ctxt | Knowledge Workers, Researchers & OSINT Analysts |
+| **US-0205** | [wikipedia-capture](./capture/US-0205-wikipedia-capture.md) | ctxt | Knowledge Workers, Researchers & OSINT Analysts, Agents/LLMs |
+| **US-0206** | [osint-entity-aggregation](./capture/US-0206-osint-entity-aggregation.md) | ctxt, dpkms (self-hosted) | Researchers & OSINT Analysts, Agents/LLMs |
+| **US-0207** | [web-tab-capture](./capture/US-0207-web-tab-capture.md) | ctxt | Knowledge Workers, Researchers & OSINT Analysts |
+| **US-0208** | [temporal-watch](./capture/US-0208-temporal-watch.md) | ctxt, dpkms (self-hosted) | Researchers & OSINT Analysts, Operations |
+| **US-0209** | [authenticated-web-fetch](./capture/US-0209-authenticated-web-fetch.md) | ctxt, dpkms (self-hosted) | Knowledge Workers, Researchers & OSINT Analysts |
+| **US-0210** | [cross-platform-entity-resolution](./capture/US-0210-cross-platform-entity-resolution.md) | dpkms (self-hosted), dpkms cloud | Researchers & OSINT Analysts, Agents/LLMs |
+
 ### Enrichment & Processing (US-0009 to US-0050)
 
 #### Core Enrichment (US-0009 to US-0015)
@@ -74,13 +90,13 @@ Each story can be implemented on one or more of these deployment models:
 
 | ID | Story | System Types | Personas |
 |----|-------|-------------|----------|
-| **US-0046** | [extract-relationships-between-entities](./enrichment/US-0046-extract-relationships-between-entities.md) | dpkms (self-hosted), dpkms cloud | Agents/LLMs |
-| **US-0047** | [extract-temporal-information](./enrichment/US-0047-extract-temporal-information.md) | dpkms (self-hosted), dpkms cloud | Agents/LLMs, Knowledge Workers |
-| **US-0048** | [detect-sentiment-and-tone](./enrichment/US-0048-detect-sentiment-and-tone.md) | dpkms (self-hosted), dpkms cloud | Agents/LLMs, Knowledge Workers |
-| **US-0049** | [classify-content-with-taxonomy](./enrichment/US-0049-classify-content-with-taxonomy.md) | dpkms (self-hosted), dpkms cloud | Agents/LLMs |
+| **US-0046** | [extract-relationships-between-entities](./enrichment/US-0046-extract-relationships-between-entities.md) | dpkms (self-hosted) | Agents/LLMs, Knowledge Workers |
+| **US-0047** | [extract-temporal-information](./enrichment/US-0047-extract-temporal-information.md) | dpkms (self-hosted) | Agents/LLMs, Knowledge Workers |
+| **US-0048** | [detect-sentiment-and-tone](./enrichment/US-0048-detect-sentiment-and-tone.md) | dpkms (self-hosted) | Agents/LLMs, Knowledge Workers |
+| **US-0049** | [classify-content-with-taxonomy](./enrichment/US-0049-classify-content-with-taxonomy.md) | dpkms (self-hosted) | Agents/LLMs, Platform Integrators |
 | **US-0050** | [extract-code-metrics-and-complexity](./enrichment/US-0050-extract-code-metrics-and-complexity.md) | dpkms (self-hosted) | Agents/LLMs, Platform Integrators |
 
-### Search & Retrieval (US-0016 to US-0055)
+### Search & Retrieval (US-0016 to US-0055, US-0061)
 
 #### Core Search (US-0016 to US-0021)
 
@@ -88,7 +104,7 @@ Each story can be implemented on one or more of these deployment models:
 |----|-------|-------------|----------|
 | **US-0016** | [natural-language-search](./search/US-0016-natural-language-search.md) | ctxt | Knowledge Workers, Agents/LLMs |
 | **US-0017** | [structured-rsql-query](./search/US-0017-structured-rsql-query.md) | ctxt, dpkms (self-hosted), dpkms cloud | Agents/LLMs, Maintainers |
-| **US-0018** | [multi-strategy-search-execution](./search/US-0018-multi-strategy-search-execution.md) | dpkms (self-hosted), dpkms cloud | Agents/LLMs |
+| **US-0018** | [multi-strategy-search-execution](./search/US-0018-multi-strategy-search-execution.md) | ctxt, dpkms (self-hosted), dpkms cloud | Agents/LLMs, Knowledge Workers |
 | **US-0019** | [federated-registry-search](./search/US-0019-federated-registry-search.md) | dpkms (self-hosted), dpkms cloud | Agents/LLMs, Knowledge Workers |
 | **US-0020** | [apply-focus-profile-to-search](./search/US-0020-apply-focus-profile-to-search.md) | ctxt | Knowledge Workers |
 | **US-0021** | [search-with-result-explanation](./search/US-0021-search-with-result-explanation.md) | ctxt, dpkms (self-hosted), dpkms cloud | Knowledge Workers, Agents/LLMs |
@@ -102,6 +118,12 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0053** | [cross-profile-search-aggregation](./search/US-0053-cross-profile-search-aggregation.md) | ctxt | Knowledge Workers |
 | **US-0054** | [saved-search-and-alerts](./search/US-0054-saved-search-and-alerts.md) | ctxt | Knowledge Workers |
 | **US-0055** | [search-history-and-recommendations](./search/US-0055-search-history-and-recommendations.md) | ctxt | Knowledge Workers |
+
+#### Multimodal Search (US-0061+)
+
+| ID | Story | System Types | Personas |
+|----|-------|-------------|----------|
+| **US-0061** | [visual-similarity-search](./search/US-0061-visual-similarity-search.md) | ctxt, dpkms | Knowledge Workers, Agents/LLMs |
 
 ### Composition & Assembly (US-0022 to US-0060)
 
@@ -125,27 +147,15 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0059** | [compose-recommendation-document](./composition/US-0059-compose-recommendation-document.md) | ctxt | Knowledge Workers |
 | **US-0060** | [compose-with-custom-template](./composition/US-0060-compose-with-custom-template.md) | ctxt | Knowledge Workers |
 
-#### Multimodal Search (US-0061+)
-
-| ID | Story | System Types | Personas |
-|----|-------|-------------|----------|
-| **US-0061** | [visual-similarity-search](./search/US-0061-visual-similarity-search.md) | ctxt, dpkms | Knowledge Workers, Agents/LLMs |
-
 ### Configuration & Administration (US-0027 to US-0031)
 
 | ID | Story | System Types | Personas |
 |----|-------|-------------|----------|
 | **US-0027** | [configure-ai-provider](./admin/US-0027-configure-ai-provider.md) | dpkms (self-hosted), dpkms cloud | Maintainers, Operations |
-| **US-0028** | [register-custom-pipeline](./admin/US-0028-register-custom-pipeline.md) | dpkms (self-hosted) | Platform Integrators, Maintainers |
+| **US-0028** | [register-custom-pipeline](./admin/US-0028-register-custom-pipeline.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
 | **US-0029** | [install-and-enable-plugin](./admin/US-0029-install-and-enable-plugin.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Operations |
-| **US-0030** | [set-up-focus-profiles](./admin/US-0030-set-up-focus-profiles.md) | dpkms cloud | ctxt | Knowledge Workers, Maintainers |
-| **US-0031** | [configure-encryption-and-secrets](./admin/US-0031-configure-encryption-and-secrets.md) | dpkms (self-hosted), dpkms cloud | Security Engineers, Operations |
-| **US-0032** | [monitor-job-queue-health](./operations/US-0032-monitor-job-queue-health.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
-| **US-0033** | [debug-failed-enrichment-job](./operations/US-0033-debug-failed-enrichment-job.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers | Knowledge Workers |
-| **US-0034** | [export-and-backup-all-knowledge](./operations/US-0034-export-and-backup-all-knowledge.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
-| **US-0035** | [migrate-storage-backend](./operations/US-0035-migrate-storage-backend.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
-| **US-0036** | [scale-worker-pool-for-load](./operations/US-0036-scale-worker-pool-for-load.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
-| **US-0037** | [monitor-job-job-health](./operations/US-0037-monitor-job-job-health.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
+| **US-0030** | [set-up-focus-profiles](./admin/US-0030-set-up-focus-profiles.md) | ctxt | Knowledge Workers, Maintainers |
+| **US-0031** | [configure-encryption-and-secrets](./admin/US-0031-configure-encryption-and-secrets.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
 
 ---
 
@@ -174,10 +184,10 @@ Each story can be implemented on one or more of these deployment models:
 | ID | Story | System Types | Personas |
 |----|-------|-------------|----------|
 | **US-0032** | [monitor-job-queue-health](./operations/US-0032-monitor-job-queue-health.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
-| **US-0033** | [debug-failed-enrichment-job](./operations/US-0033-debug-failed-enrichment-job.md) | dpkms (self-hosted) | Operations, Maintainers |
+| **US-0033** | [debug-failed-enrichment-job](./operations/US-0033-debug-failed-enrichment-job.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
 | **US-0034** | [export-and-backup-all-knowledge](./operations/US-0034-export-and-backup-all-knowledge.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
-| **US-0035** | [migrate-storage-backend](./operations/US-0035-migrate-storage-backend.md) | dpkms (self-hosted) | Operations, Maintainers |
-| **US-0036** | [scale-worker-pool-for-load](./operations/US-0036-scale-worker-pool-for-load.md) | dpkms (self-hosted) | Operations |
+| **US-0035** | [migrate-storage-backend](./operations/US-0035-migrate-storage-backend.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
+| **US-0036** | [scale-worker-pool-for-load](./operations/US-0036-scale-worker-pool-for-load.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
 
 ### Agent Integration (US-0037 to US-0041)
 
@@ -193,10 +203,10 @@ Each story can be implemented on one or more of these deployment models:
 
 | ID | Story | System Types | Personas |
 |----|-------|-------------|----------|
-| **US-0042** | [implement-custom-enrichment-plugin](./plugins/US-0042-implement-custom-enrichment-plugin.md) | dpkms (self-hosted) | Platform Integrators, Maintainers |
-| **US-0043** | [implement-custom-ai-provider-plugin](./plugins/US-0043-implement-custom-ai-provider-plugin.md) | dpkms (self-hosted) | Platform Integrators, Maintainers |
-| **US-0044** | [implement-registry-adapter-plugin](./plugins/US-0044-implement-registry-adapter-plugin.md) | dpkms (self-hosted) | Platform Integrators |
-| **US-0045** | [implement-custom-ranking-algorithm](./plugins/US-0045-implement-custom-ranking-algorithm.md) | dpkms (self-hosted) | Platform Integrators |
+| **US-0042** | [implement-custom-enrichment-plugin](./plugins/US-0042-implement-custom-enrichment-plugin.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
+| **US-0043** | [implement-custom-ai-provider-plugin](./plugins/US-0043-implement-custom-ai-provider-plugin.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
+| **US-0044** | [implement-registry-adapter-plugin](./plugins/US-0044-implement-registry-adapter-plugin.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators |
+| **US-0045** | [implement-custom-ranking-algorithm](./plugins/US-0045-implement-custom-ranking-algorithm.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators |
 
 ---
 
@@ -241,8 +251,10 @@ Links to related stories
 - **US-0032 to US-0036** — Operations
 - **US-0037 to US-0041** — Agent Integration
 - **US-0042 to US-0045** — Plugins & Extensions
-- **US-0046 to US-0060** — Advanced Features
-- **US-0061+** — Multimodal Search
+- **US-0046 to US-0060** — Advanced Features (enrichment, search, composition)
+- **US-0061+** — Multimodal Search (grouped under Search & Retrieval)
+- **US-0101 to US-0113** — Pipeline Management
+- **US-0200 to US-0210** — Platform Capture (cookie bridge, social media, academic, OSINT, temporal watch)
 - **US-0300 to US-0317** — Importer Interface and Source Importers
 
 ---
@@ -260,6 +272,18 @@ Admin → Enrichment → Agent Integration
 
 Operations ← Enrichment
   US-0032        US-0015
+
+Pipeline Management (US-0101-0113):
+  US-0101 (create) → US-0106 (enqueue) → US-0113 (ctxt client)
+  US-0107 (discover steps) → US-0108 (install) → US-0109 (fetch manifest)
+  US-0109 → US-0110 (check updates) → US-0111 (auto-update)
+  US-0101 → US-0112 (sandbox config)
+  US-0101 → US-0102 (list) → US-0103 (show) → US-0104/0105 (delete/archive)
+
+Importer Stories (US-0300-0317):
+  US-0300 (interface contract) → US-0301 to US-0317 (source-specific importers)
+  US-0008 (batch import) → US-0300 (foundation for fan-out and batch tracking)
+  US-0106 (enqueue) → US-0300 (unified enqueue endpoint used by all importers)
 ```
 
 ---
@@ -268,11 +292,11 @@ Operations ← Enrichment
 
 | Persona | dpkms (self-hosted) | dpkms cloud | ctxt |
 |---------|-------------------|-------------|------|
-| **Maintainers** | US-0008, US-0015, US-0027-0035 | US-0015, US-0027, US-0032, US-0034 | US-0030 |
-| **Agents/LLMs** | US-0009-0014, US-0018-0019, US-0024, US-0037-0041, US-0046-0050 | US-0009-0012, US-0018-0019, US-0024, US-0037-0040, US-0046-0051 | US-0016 |
-| **Knowledge Workers** | US-0001-0007, US-0009-0012, US-0019-0021 | US-0008 | US-0001-0007, US-0016, US-0020-0021, US-0022-0026, US-0030, US-0047-0048, US-0053-0055, US-0056-0060 |
-| **Platform Integrators** | US-0013-0014, US-0028-0029, US-0041-0045, US-0050 | — | — |
-| **Operations** | US-0008, US-0015, US-0029, US-0032-0036 | US-0015, US-0027, US-0032, US-0034 | — |
+| **Maintainers** | US-0006, US-0008, US-0015, US-0027-0035 | US-0015, US-0027, US-0032, US-0034 | US-0030 |
+| **Agents/LLMs** | US-0003, US-0005, US-0009-0014, US-0018-0019, US-0024, US-0037-0041, US-0046-0050 | US-0009-0012, US-0018-0019, US-0024, US-0037-0040 | US-0003, US-0005, US-0016 |
+| **Knowledge Workers** | US-0003-0007, US-0009-0012, US-0019-0021, US-0046-0048 | US-0008 | US-0001-0007, US-0016, US-0020-0021, US-0022-0026, US-0030, US-0053-0055, US-0056-0060 |
+| **Platform Integrators** | US-0013-0014, US-0028-0029, US-0041-0045, US-0049-0050, US-0101-0113 | US-0101-0113 | — |
+| **Operations** | US-0007, US-0008, US-0015, US-0029, US-0032-0036 | US-0015, US-0027, US-0032, US-0034 | — |
 
 ---
 
@@ -301,13 +325,29 @@ Operations ← Enrichment
 
 ## Story Status
 
-**Fully Documented (11):**
-- US-0001, US-0002, US-0009, US-0014, US-0016, US-0022, US-0027, US-0037, US-0038
+**Fully Documented (40):**
+- US-0001, US-0002, US-0009, US-0010, US-0011, US-0012, US-0013, US-0014, US-0015, US-0016, US-0022, US-0023, US-0024, US-0025, US-0026, US-0027, US-0028, US-0029, US-0030, US-0031, US-0032, US-0033, US-0034, US-0035, US-0036, US-0037, US-0038, US-0039, US-0040, US-0041, US-0046, US-0047, US-0048, US-0049, US-0050, US-0056, US-0057, US-0058, US-0059, US-0060
 
-**Scaffolded - Ready for Implementation (50):**
-- US-0003 to US-0008, US-0010 to US-0013, US-0015, US-0017 to US-0021, US-0023 to US-0026, US-0028 to US-0036, US-0039 to US-0045, US-0046 to US-0060
+**Expanded E2E + Narrative - Search Category (11):**
+- US-0017, US-0018, US-0019, US-0020, US-0021 (core search)
+- US-0051, US-0052, US-0053, US-0054, US-0055 (advanced search)
+
+**Expanded E2E + Narrative - Ingestion Category (6):**
+- US-0003, US-0004, US-0005, US-0006, US-0007, US-0008 (ingestion core, full implementation notes + E2E)
+
+**Importer Stories - Fully Documented (18):**
+- US-0300 to US-0317
+
+**Fully Documented - Plugins Category (4):**
+- US-0042, US-0043, US-0044, US-0045
 
 **Fully Documented - Multimodal (1):**
 - US-0061
 
-**Total: 61 stories across 9 categories**
+**Pipeline Management - Fully Documented (13):**
+- US-0101 to US-0113
+
+**Platform Capture - Fully Documented (11):**
+- US-0200, US-0201, US-0202, US-0203, US-0204, US-0205, US-0206, US-0207, US-0208, US-0209, US-0210
+
+**Total: 103 stories across 12 categories**

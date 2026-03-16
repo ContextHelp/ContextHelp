@@ -27,7 +27,7 @@ Three capture modes address different use cases: full-page capture for articles 
 - [ ] Right-click selected text -> "Capture selection to ctxt" sends selection + source URL to ctxt
 - [ ] Right-click any element -> "Capture element" sends element outerHTML + screenshot + source URL
 - [ ] All captures include: source URL, page title, capture timestamp, and authentication state
-- [ ] Full page capture uses the `web.authenticated` pipeline (readability extraction)
+- [ ] Full page capture uses the `web.page` pipeline (readability extraction on pre-fetched HTML)
 - [ ] Selection capture routes to `web.selection` pipeline
 - [ ] Element capture routes to `web.element` pipeline and stores both HTML and screenshot
 - [ ] Extension popup shows the 10 most recent captures with status indicators (pending, completed, failed)
@@ -48,7 +48,7 @@ Three capture modes address different use cases: full-page capture for articles 
 
 # Capture a URL (equivalent to full page capture)
 ctxt capture https://example.com/article
-# -> routes to web.authenticated pipeline
+# -> routes to web.page pipeline
 
 # Capture raw text with source attribution
 ctxt capture --text "Selected paragraph content here" \
@@ -65,7 +65,7 @@ ctxt capture --html "<table>...</table>" \
   "job_id": "j-web-cap-3f1a2b",
   "object_id": "o-web-d4e5f6",
   "status": "pending_enrichment",
-  "pipeline": "web.authenticated",
+  "pipeline": "web.page",
   "source": "https://example.com/article"
 }
 
@@ -94,7 +94,7 @@ Content-Type: application/json
   "job_id": "j-web-cap-3f1a2b",
   "object_id": "o-web-d4e5f6",
   "status": "pending_enrichment",
-  "pipeline": "web.authenticated"
+  "pipeline": "web.page"
 }
 
 # Selection capture (from extension right-click)
@@ -171,7 +171,7 @@ GET /api/v1/capture/recent?limit=10
 
 ### Pipeline Steps
 
-**web.authenticated** (full page capture):
+**web.page** (full page capture from browser extension — HTML pre-fetched by extension):
 ```
 HTMLReceiver -> ReadabilityConverter -> MetadataExtractor -> Sectioner -> Tagger -> EmbeddingGenerator
 ```
@@ -328,7 +328,7 @@ func (s *SourceAttacherStep) Run(ctx context.Context,
 3. For element capture, extension renders a canvas snapshot of the element as a PNG screenshot
 4. Extension sends payload to localhost ctxt API with source URL, title, timestamp, and auth state
 5. API server validates the payload and selects the appropriate pipeline:
-   - Full page -> `web.authenticated` (readability extraction, sectioning, tagging)
+   - Full page -> `web.page` (readability extraction on pre-fetched HTML, sectioning, tagging)
    - Selection -> `web.selection` (cleaning, source attribution, tagging)
    - Element -> `web.element` (HTML parsing, screenshot storage, tagging)
 6. Job is created in the `jobs` table with status `pending` and job ID returned immediately
@@ -359,7 +359,7 @@ extension/
 ```yaml
 # In configuration.yaml
 pipelines:
-  web.authenticated:
+  web.page:
     steps:
       - html_receiver
       - readability_converter
@@ -463,7 +463,9 @@ capture:
 - [ ] Extension: Keyboard shortcut (Cmd+Shift+C) captures current tab as full page
 - [ ] Extension: Popup shows 10 most recent captures with correct status indicators
 - [ ] Extension: Captures from authenticated pages include auth state in metadata
-- [ ] Pipeline: Full page capture routes to `web.authenticated` and produces readability-extracted content
+- [ ] CLI: `ctxt capture --text "..." --source-url <url> --source-title "..."` sends all three fields (`text`, `source_url`, `source_title`) in the request payload
+- [ ] CLI: `ctxt capture --html "..." --source-url <url> --screenshot <path>` sends `outer_html`, `source_url`, and screenshot binary in the request payload
+- [ ] Pipeline: Full page capture routes to `web.page` and produces readability-extracted content
 - [ ] Pipeline: Selection capture routes to `web.selection` and preserves source attribution
 - [ ] Pipeline: Element capture routes to `web.element` and stores both HTML and screenshot
 - [ ] Pipeline: Short selection (< 280 chars) tagged as `selection_type: short`
@@ -473,10 +475,12 @@ capture:
 - [ ] Element: Generic element extracts text content from outerHTML
 - [ ] Screenshot: Element screenshot stored as blob and linked via `screenshot_blob_id`
 - [ ] Screenshot: Missing screenshot does not cause pipeline failure
-- [ ] REST API: `POST /api/v1/capture/page` returns 202 with job ID
-- [ ] REST API: `POST /api/v1/capture/selection` returns 202 with job ID
-- [ ] REST API: `POST /api/v1/capture/element` accepts multipart form with metadata + screenshot
+- [ ] REST API: `POST /api/v1/capture/page` request payload contains `url`, `title`, `html`, `timestamp`, `auth_state`, and `domain_cookies_present` fields; returns 202 with job ID
+- [ ] REST API: `POST /api/v1/capture/selection` request payload contains `text`, `html`, `source_url`, `source_title`, `timestamp`, and `char_count` fields; returns 202 with job ID
+- [ ] REST API: `POST /api/v1/capture/element` multipart request contains `metadata` part (with `outer_html`, `tag_name`, `css_selector`, `source_url`, `source_title`, `timestamp`) and `screenshot` binary part; returns 202 with job ID
 - [ ] REST API: `GET /api/v1/capture/recent?limit=10` returns most recent captures with status
+- [ ] Storage: Completed page object stored with `metadata.source_url`, `metadata.capture_auth_state`, and `source.capture_method: browser_extension` (verifiable via `GET /api/v1/objects/<id>`)
+- [ ] Storage: Completed element object stored with `metadata.tag_name`, `metadata.css_selector`, `metadata.has_screenshot`, and `metadata.screenshot_blob_id` (verifiable via `GET /api/v1/objects/<id>`)
 - [ ] Search: Captured page content is searchable via `ctxt search "text from captured page"`
 - [ ] Search: Captured selection is searchable via `ctxt search "selected text"`
 - [ ] Offline: Extension queues captures locally when ctxt is unreachable

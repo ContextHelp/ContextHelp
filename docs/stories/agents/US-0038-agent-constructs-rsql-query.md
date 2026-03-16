@@ -45,44 +45,40 @@ GET /query-schema
     {
       "name": "type",
       "type": "enum",
-      "values": ["text", "url", "image", "video", "document", "decision", "task"],
+      "values": ["text", "url", "image", "video", "document", "decision", "task", "concept"],
       "description": "object type classification"
     },
     {
       "name": "tags",
       "type": "string_array",
-      "indexing": "json",
-      "description": "user-defined tags with weights"
+      "indexing_strategy": "json",
+      "description": "user-defined tags"
     },
     {
       "name": "created_at",
       "type": "timestamp",
-      "indexing": "indexed",
-      "description": "creation timestamp"
+      "indexed": true,
+      "description": "creation timestamp (ISO 8601)"
     },
     {
       "name": "mentions",
       "type": "string_array",
-      "pattern": "@namespace.slug",
-      "description": "extracted entity mentions"
+      "pattern": "@[a-z0-9]+\\.[a-z0-9-]+",
+      "description": "extracted entity mentions (@namespace.slug format)"
     },
     {
       "name": "pipeline",
-      "type": "string",
+      "type": "enum",
       "values": [
         "text.short", "text.long",
         "url.article", "url.repository",
         "image.ocr", "image.diagram",
         "audio.transcription",
         "video.transcription",
-        "document.pdf", "document.markdown"
+        "document.pdf", "document.markdown",
+        "feed.item"
       ],
       "description": "processing pipeline used"
-    },
-    {
-      "name": "created_at",
-      "type": "timestamp",
-      "description": "creation date"
     }
   ],
   "operators": [
@@ -284,19 +280,26 @@ def execute_with_retry(query, max_attempts=3):
 
 ## E2E Test Checklist
 
-- [ ] Agent: GET /query-schema returns valid schema with properties, operators, examples
-- [ ] Agent: Constructs RSQL for "find recent articles" intent
-- [ ] Agent: Constructs RSQL for "find decisions by person X" intent
-- [ ] Query: RSQL execution returns results in deterministic order
-- [ ] Query: Same RSQL executed twice → identical results (deterministic)
-- [ ] Query: Results include all metadata (pipeline, source, created_at)
-- [ ] Query: Empty results handled gracefully (no error)
-- [ ] Query: Complex query with AND/OR operators works correctly
-- [ ] Caching: Second query for same RSQL uses cache (verified by latency)
-- [ ] Retry: Failed query retried with exponential backoff
-- [ ] Error Handling: Invalid RSQL returns 400 Bad Request with error message
-- [ ] Performance: Query latency <500ms (P99) for local storage
-- [ ] Performance: Query latency <2s (P99) with federated registries
+- [ ] Schema: Agent sends GET /query-schema on startup; request includes `Accept: application/json` header; response body contains `properties`, `operators`, `examples` fields
+- [ ] Schema: Agent validates that the `type` property in the schema includes `"article"` before constructing a type-based query
+- [ ] Request: When executing a query, agent sends GET /search with both `q=<rsql>` and `query_mode=rsql` parameters present in the request URL
+- [ ] Request: URL-encoded RSQL value in `q` parameter matches the RSQL string constructed by the agent (verified server-side by echoed `query` field in response)
+- [ ] Request: `query_mode` parameter value is exactly `"rsql"` (not empty, not `"nlq"`)
+- [ ] Agent: Constructs RSQL `type==article;tags=in=recommended;created_at>2025-01-01` for "find recent recommended articles" intent
+- [ ] Agent: Constructs RSQL `type==decision;mentions=in=@person.alice,@person.bob` for "find decisions by person X" intent
+- [ ] Response: Server echoes `query` field in response body matching the submitted RSQL string
+- [ ] Response: Server echoes `query_mode` field as `"rsql"` in response body
+- [ ] Response: Results array items each contain `id`, `type`, `pipeline`, `source`, `created_at` metadata fields
+- [ ] Response: `took_ms` field present in response body
+- [ ] Determinism: Same RSQL submitted twice returns identical result order and IDs (server-side ordering is stable)
+- [ ] Empty Results: RSQL with no matches returns 200 with `total=0` and empty `results` array (no 404, no error)
+- [ ] AND/OR: RSQL using `;` (AND) and `,` (OR) operators evaluated correctly; results match only documents satisfying the full expression
+- [ ] Storage: Object returned in results is retrievable via GET /objects/{id} with same metadata (server-side persistence validated)
+- [ ] Caching: Agent does not re-send HTTP request for same RSQL within TTL (cache hit confirmed by absence of new server-side request log entry)
+- [ ] Retry: On transient 5xx response, agent retries with exponential backoff (1s, 2s, 4s); successful on third attempt
+- [ ] Error: Invalid RSQL (unknown property) returns HTTP 400 with non-empty error body
+- [ ] Performance: Query round-trip latency <500ms (P99) against local SQLite storage
+- [ ] Performance: Query round-trip latency <2s (P99) with federated registries enabled
 
 ---
 

@@ -29,7 +29,7 @@ Archived pipelines cannot be:
 ## Acceptance Criteria
 
 - **Custom pipelines can be archived**
-- **Built-in pipelines can be archived** (though protected from deletion)
+- **Built-in pipelines cannot be archived** (protected from both deletion and archiving)
 - **Archive is reversible** — can be unarchived to restore
 - **Archive prevents pipeline use** - jobs fail gracefully with "pipeline not found" error
 - **Archive sets archived flag but keeps record**
@@ -53,7 +53,7 @@ Archived pipelines cannot be:
 
 **Response Examples:**
 
-**Success (204):**
+**Success (200):**
 ```json
 {
   "message": "Pipeline 'legal-doc-pipeline' archived successfully"
@@ -75,8 +75,8 @@ Archived pipelines cannot be:
 {
   "error": {
     "code": "NOT_FOUND",
-  "message": "Pipeline 'legal-doc-pipeline' not found"
-}
+    "message": "Pipeline 'legal-doc-pipeline' not found"
+  }
 }
 ```
 
@@ -120,13 +120,21 @@ When a pipeline is archived:
 
 ### E2E Test Checklist
 
+- [ ] `dpkms pipeline archive <name>` → request sent to
+  `POST /api/v1/pipelines/{name}/archive` with empty JSON body `{}`
+- [ ] `dpkms pipeline unarchive <name>` → request sent to
+  `POST /api/v1/pipelines/{name}/unarchive` (or equivalent endpoint)
 - [ ] Archive custom pipeline returns 200 with success message
+- [ ] Verify `archived=1` in DB after archive: `SELECT archived FROM pipelines WHERE name=?`
 - [ ] Archive built-in pipeline returns 403 protected error
+- [ ] Verify built-in pipeline `archived` field unchanged in DB after rejected attempt
 - [ ] Archive non-existent pipeline returns 404 not found error
 - [ ] Archive pipeline already archived returns 200 with message
 - [ ] Unarchive command makes pipeline available again
+- [ ] Verify `archived=0` in DB after unarchive: `SELECT archived FROM pipelines WHERE name=?`
 - [ ] Archive command sets archived flag correctly
-- [ ] Verify archived pipeline cannot be used (SelectPipeline returns error)
+- [ ] Verify archived pipeline cannot be used: enqueue request with archived pipeline name
+  → 409 error; `SelectPipeline()` returns error
 
 ## Related Stories
 

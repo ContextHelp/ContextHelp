@@ -175,7 +175,6 @@ Sandbox:
   "created_at": "2025-02-18T10:00:00Z",
   "updated_at": "2025-02-18T10:00:00Z"
 }
-}
 ```
 
 **TOML Output:**
@@ -256,10 +255,17 @@ WHERE name = ?
 ```
 ## E2E Test Checklist
 
+- [ ] `dpkms pipeline show <name>` → request sent to `GET /api/v1/pipelines/{name}` (no extra params)
+- [ ] `dpkms pipeline show <name> --format json` → request contains `format=json` query param
+- [ ] `dpkms pipeline show <name> --format yaml` → request contains `format=yaml` query param
+- [ ] `dpkms pipeline show <name> --format toml` → request contains `format=toml` query param
 - [ ] Show existing custom pipeline returns full configuration
 - [ ] Show built-in pipeline returns full configuration
 - [ ] Show archived pipeline returns full configuration
 - [ ] Request non-existent pipeline returns 404
+- [ ] Verify response fields match DB record: `steps`, `sandbox`, `is_builtin`, `archived`,
+  `created_at`, `updated_at` all sourced from `pipelines` table row
+- [ ] Verify all step configs (`config` sub-objects) are present in response, not just step types
 - [ ] Text output is human-readable and well-formatted
 - [ ] JSON output is valid JSON with all fields
 - [ ] YAML output is valid YAML with correct structure

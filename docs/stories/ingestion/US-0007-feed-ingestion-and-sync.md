@@ -284,24 +284,26 @@ feeds:
 
 ## E2E Test Checklist
 
-- [ ] CLI: `ctxt feed add <rss_url>` creates subscription and returns feed metadata
-- [ ] CLI: `ctxt feed add <atom_url>` correctly detects Atom 1.0 format
-- [ ] CLI: `ctxt feed add <json_feed_url>` correctly detects JSON Feed 1.1 format
+- [ ] CLI: `ctxt feed add <rss_url>` sends the URL in the request payload to the server; server creates a feed record — GET /feeds confirms a row with matching `url` and `status=active`
+- [ ] CLI: `ctxt feed add <rss_url>` returns feed metadata including `feed_id`, `url`, `title`, `format`, `status`, and `sync_interval`
+- [ ] CLI: `ctxt feed add <rss_url> --interval 30m` sends `"sync_interval": "30m"` in the server request payload; stored feed record has `sync_interval=30m` — GET /feeds/{id} confirms the field
+- [ ] CLI: `ctxt feed add <atom_url>` correctly detects Atom 1.0 format; stored feed record `format` field equals `"atom1.0"`
+- [ ] CLI: `ctxt feed add <json_feed_url>` correctly detects JSON Feed 1.1 format; stored feed record `format` field equals `"json1.1"`
 - [ ] CLI: `ctxt feed list` displays all subscriptions with correct status and last-sync time
 - [ ] CLI: `ctxt feed sync` triggers sync for all active feeds and reports new item counts
-- [ ] CLI: `ctxt feed sync --url <url>` syncs only the specified feed
-- [ ] CLI: `ctxt feed remove <url>` removes subscription; existing items remain searchable
-- [ ] Sync: Conditional GET with ETag/Last-Modified avoids re-downloading unchanged feeds
-- [ ] Dedup: Items already ingested (by GUID) are not re-enqueued on subsequent syncs
-- [ ] Fanout: Each new feed item creates a separate ingestion job with correct pipeline
-- [ ] KnowledgeObject: Created objects have Type="feed_item", correct Source, and feed metadata
-- [ ] Error: Unreachable feed URL sets feed status to "error" with descriptive message
-- [ ] Error: Feed returning 410 Gone permanently marks feed as "gone"
-- [ ] Error: Feed returning 429 respects Retry-After header and delays next sync
-- [ ] REST API: `POST /feeds` with valid URL returns 201 with feed details
-- [ ] REST API: `GET /feeds` returns list of all subscriptions
+- [ ] CLI: `ctxt feed sync --url <url>` sends the feed URL in the server request payload and syncs only the specified feed
+- [ ] CLI: `ctxt feed remove <url>` removes subscription; GET /feeds confirms the feed is gone; existing items remain searchable
+- [ ] Sync: Conditional GET with ETag/Last-Modified avoids re-downloading unchanged feeds; stored feed record `etag` and `last_modified` updated after sync
+- [ ] Dedup: Items already ingested (by GUID) are not re-enqueued on subsequent syncs; `feed_items` table row count unchanged for duplicate sync
+- [ ] Fanout: Each new feed item creates a separate ingestion job with correct pipeline; server-side job count equals number of new items reported
+- [ ] KnowledgeObject: Created objects have `Type="feed_item"`, correct `Source`, and feed metadata (`feed_url`, `feed_id`, `published_at`) present in stored object Metadata
+- [ ] Error: Unreachable feed URL sets feed status to `"error"` with descriptive message — GET /feeds/{id} confirms `status=error` and non-empty `last_error`
+- [ ] Error: Feed returning 410 Gone permanently marks feed as `"gone"` — GET /feeds/{id} confirms `status=gone`
+- [ ] Error: Feed returning 429 respects Retry-After header and delays next sync; stored feed record carries `retry_after` metadata
+- [ ] REST API: `POST /feeds` with `{"url": "...", "sync_interval": "1h"}` returns 201 with feed details; server stores both fields — GET /feeds/{id} confirms `sync_interval`
+- [ ] REST API: `GET /feeds` returns list of all subscriptions including `sync_interval`, `last_sync`, `items_total` per feed
 - [ ] REST API: `POST /feeds/{id}/sync` triggers sync and returns 202 with sync job ID
-- [ ] REST API: `DELETE /feeds/{id}` removes subscription and returns 204
+- [ ] REST API: `DELETE /feeds/{id}` removes subscription and returns 204; subsequent GET /feeds/{id} returns 404
 
 ---
 

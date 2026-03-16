@@ -66,7 +66,6 @@ GET /api/v1/steps/registries/fetch?url=https://example.com/registry/MANIFEST.yam
   },
   "etag": "abc123def"
 }
-}
 ```
 
 **Response (error):**
@@ -101,27 +100,19 @@ dpkms pipeline step registry show --url https://example.com/registry
 ### Storage Operations
 
 ```sql
--- Cache manifest in registry_cache table
-SELECT manifest, etag, last_fetched, auto_update
-FROM registry_cache
-WHERE registry_url = ?
-
 -- Get cache
 SELECT manifest, etag, last_fetched, auto_update
 FROM registry_cache
 WHERE registry_url = ?
-```
 
--- Update or invalidate cache
+-- Update or insert cache entry after fetch
 INSERT OR REPLACE INTO registry_cache (registry_url, manifest, etag, last_fetched)
 VALUES (?, ?, ?, ?)
-```
 
 -- Invalidate cache (for manual update)
 UPDATE registry_cache
 SET last_fetched = NULL
 WHERE registry_url = ?
-```
 ```
 
 ### ETag Change Detection
@@ -142,14 +133,22 @@ Create entry in system_reminders:
 
 ### E2E Test Checklist
 
+- [ ] `dpkms pipeline step registry fetch <url>` → request sent to
+  `GET /api/v1/steps/registries/fetch?url=<url>` with `url` query param matching CLI arg
+- [ ] `dpkms pipeline step registry update <url>` → request sent to fetch endpoint with
+  `url` query param; cache invalidated before re-fetch
 - [ ] Fetch manifest returns valid manifest with all steps
 - [ ] Registry unavailable → error with connection details
-- [ ] ETag returned, manifest saved to cache
-- [ ] New version detected → system reminder created with appropriate message
+- [ ] ETag returned, manifest saved to cache; verify `registry_cache` table row has correct
+  `etag`, `manifest`, `last_fetched` fields after fetch
+- [ ] Subsequent fetch with unchanged ETag → no DB update (same `last_fetched` or no new row)
+- [ ] New version detected → system reminder created with appropriate message; verify
+  `system_reminders` table row with `type="registry_update"` and correct `source` URL
 - [ ] Version comparison works correctly (same, newer, older)
 - [ ] All step packages are extracted and validated correctly
-- [ ] Registry cache is cleared when manual update triggered
-- [ ] Manual update flag respected (no auto-update unless enabled)
+- [ ] Registry cache is cleared when manual update triggered: `last_fetched` reset in DB
+- [ ] Manual update flag respected (no auto-update unless enabled); `auto_update` field in
+  `registry_cache` remains unchanged after manual fetch
 
 ## Related Stories
 

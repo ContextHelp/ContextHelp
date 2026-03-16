@@ -101,16 +101,20 @@ Content-Type: application/json
 
 ## E2E Test Checklist
 
-- [ ] CLI: URL provided via `--url` flag
-- [ ] Fetch: Content fetched successfully
-- [ ] Type Detection: Correct pipeline selected for URL type
-- [ ] Content Extraction: HTML cleaned, text extracted
-- [ ] Source: Original URL stored in object
-- [ ] Async: Returns immediately without blocking
-- [ ] Enrichment: Content summarized and indexed within 30s
-- [ ] Error Handling: 404 URL handled gracefully with error message
-- [ ] Error Handling: Timeout (>30s fetch) handled gracefully
-- [ ] Repository: GitHub repo content extracted and indexed
+- [ ] CLI: `ctxt add --url https://example.com/article` sends `"source_url": "https://example.com/article"` and `"source_type": "url"` in the request payload to the server
+- [ ] CLI: `ctxt add --url https://github.com/org/repo --type url.repository` sends `"type_hint": "url.repository"` in the server request payload
+- [ ] CLI: Response includes job ID and `"pipeline"` field matching the detected type (e.g., `"url.article"`)
+- [ ] Fetch: Content fetched successfully; server confirms receipt of `source_url` in stored object's Source field
+- [ ] Type Detection: Correct pipeline selected for URL type; stored object's `pipeline` field matches the detected type
+- [ ] Content Extraction: HTML cleaned, text extracted; stored object's RawContent contains extracted text (not raw HTML)
+- [ ] Source: Original URL stored in object's Source field — GET /objects/{object_id} confirms `"source_url"` matches input
+- [ ] Async: CLI returns immediately without blocking; job transitions `pending` → `completed` in background
+- [ ] Enrichment: Content summarized and indexed within 30s; stored object has non-empty sections/summary
+- [ ] Error Handling: 404 URL handled gracefully with error message; job status set to `failed` with descriptive reason
+- [ ] Error Handling: Timeout (>30s fetch) handled gracefully; job status set to `failed` with timeout reason
+- [ ] Repository: GitHub repo content extracted and indexed; stored object type reflects `url.repository` pipeline
+- [ ] REST API: `POST /analyze` with `{"source_type": "url", "source_url": "...", "type_hint": "url.article"}` returns 202 + job ID
+- [ ] REST API: Server stores all submitted fields — GET /objects/{object_id} confirms `source_url` and selected pipeline in stored object
 
 ---
 

@@ -319,27 +319,62 @@ The engineering team made critical decisions regarding the migration from a mono
 
 ## E2E Test Checklist
 
-- [ ] CLI: `ctxt make brief --from o-abc123` returns valid brief JSON
-- [ ] CLI: Brief includes all template sections
-- [ ] CLI: Brief includes provenance (source objects, timestamps)
-- [ ] CLI: Brief generation completes within 5 seconds
-- [ ] Template: Multiple templates produce correctly formatted output
-- [ ] Template: Custom template overrides default
-- [ ] Profile: Brief with `--profile engineering` emphasizes technical content
-- [ ] Export: Markdown export produces valid markdown
-- [ ] Export: PDF export creates readable PDF file
-- [ ] Entities: Brief includes entities/mentions from source objects
-- [ ] Graph: Brief includes related objects discovered via graph traversal
-- [ ] Query: `--tag urgent --days 7` generates brief from query results
-- [ ] REST API: POST /compositions/brief returns 200 + brief JSON
-- [ ] REST API: Brief JSON includes all required fields (sections, provenance)
+### CLI → Server payload propagation
+- [ ] `--from o-abc123,o-def456` sends `object_ids: ["o-abc123","o-def456"]` in POST body
+- [ ] `--template executive` sends `template: "executive"` in POST body
+- [ ] `--profile engineering` sends `profile: "engineering"` in POST body
+- [ ] `--tag urgent --days 7` sends `tag: "urgent"` and `days: 7` (or equivalent date range) in POST body
+- [ ] `--export pdf` sends `export_format: "pdf"` in POST body (or equivalent header)
+- [ ] `--export html` sends `export_format: "html"` in POST body
+- [ ] `--export plain` sends `export_format: "plain"` in POST body
+- [ ] Omitting `--template` sends `template: "default"` (or no `template` key defaulting server-side)
+
+### Server-side receipt and storage
+- [ ] POST /compositions/brief persists brief; subsequent GET /compositions/brief/{brief_id} returns same record
+- [ ] Stored brief record contains `object_ids`, `template`, `profile` as originally submitted
+- [ ] `brief_id` in response is stable and unique across requests with different inputs
+- [ ] Brief provenance stored: primary_objects and related_objects retrievable from stored record
+- [ ] Brief sections stored: count and IDs match template definition
+
+### CLI output validation
+- [ ] `ctxt make brief --from o-abc123` exits 0 and returns valid brief JSON
+- [ ] Brief response includes all template sections for the requested template
+- [ ] Brief response includes `provenance` with source objects and timestamps
+- [ ] Brief generation completes within 5 seconds
+
+### Template behaviour
+- [ ] `--template executive` response contains only executive-template section IDs
+- [ ] `--template technical` response contains only technical-template section IDs
+- [ ] `--template chronological` response contains chronological-template section IDs
+- [ ] Default template used when `--template` omitted
+
+### Profile behaviour
+- [ ] `--profile engineering` response emphasizes technical sections (verified via section content or ordering)
+
+### Export formats
+- [ ] `--export pdf` produces a non-empty binary (PDF magic bytes `%PDF`)
+- [ ] `--export html` produces valid HTML document
+- [ ] `--export plain` produces plain-text with no markdown syntax
+- [ ] Default output (no `--export`) is valid markdown
+
+### Query-driven brief
+- [ ] `--tag urgent --days 7` generates brief from query results (at least one object resolved)
+- [ ] Brief from query includes provenance listing each resolved object
+
+### Content correctness
+- [ ] Brief includes entities/mentions extracted from source objects
+- [ ] Brief includes related objects discovered via graph traversal
+- [ ] Each section lists source object IDs in provenance block
 
 ---
 
 ## Related Stories
 
-- [text-capture-minimal-friction](../ingestion/text-capture-minimal-friction.md) — Source content for brief
-- [extract-entities-and-mentions](../enrichment/extract-entities-and-mentions.md) — Extracted entities in brief
-- [extract-decisions-and-tasks](../enrichment/extract-decisions-and-tasks.md) — Decisions in brief
-- [natural-language-search](../search/natural-language-search.md) — Query source objects for brief
-- [compose-with-graph-traversal](./compose-with-graph-traversal.md) — Use graph neighbors
+- [US-0001: text-capture-minimal-friction](../ingestion/US-0001-text-capture-minimal-friction.md) — Source content for brief
+- [US-0009: extract-entities-and-mentions](../enrichment/US-0009-extract-entities-and-mentions.md) — Extracted entities in brief
+- [US-0010: extract-decisions-and-tasks](../enrichment/US-0010-extract-decisions-and-tasks.md) — Decisions in brief
+- [US-0016: natural-language-search](../search/US-0016-natural-language-search.md) — Query source objects for brief
+- [US-0024: compose-with-graph-traversal](./US-0024-compose-with-graph-traversal.md) — Use graph neighbors
+- [US-0025: export-brief-to-markdown-pdf](./US-0025-export-brief-to-markdown-pdf.md) — Export generated brief
+- [US-0026: share-composition-with-team](./US-0026-share-composition-with-team.md) — Share generated brief
+- [US-0060: compose-with-custom-template](./US-0060-compose-with-custom-template.md) — Use custom template for brief

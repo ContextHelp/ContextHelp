@@ -204,17 +204,28 @@ ORDER BY
 ## E2E Test Checklist
 
 - [ ] List active pipelines shows only non-archived pipelines
-- [ ] `--with-archive` includes archived pipelines
-- [ ] `--only-archive` shows only archived pipelines
-- [ ] `--name` filter correctly matches pipeline names
-- [ ] Built-in pipelines are identified with flag
+- [ ] `--with-archive` → request contains `include_archived=true` query param; response includes
+  archived pipelines
+- [ ] `--only-archive` → request contains `only_archived=true` query param; response contains
+  only archived pipelines
+- [ ] `--name legal` → request contains `name=legal` query param; only matching pipelines returned
+- [ ] `--format json` → request contains `format=json` query param; response is JSON
+- [ ] `--format yaml` → request contains `format=yaml` query param; response is YAML
+- [ ] Default (no flags) → request omits `include_archived` and `only_archived` params;
+  only active pipelines returned
+- [ ] Verify results match DB state: active pipelines in response correspond to
+  `SELECT * FROM pipelines WHERE archived=0` records
+- [ ] Verify archived pipelines in `--with-archive` response match
+  `SELECT * FROM pipelines` (all records)
+- [ ] Built-in pipelines are identified with flag (`is_builtin=true` in response)
 - [ ] Step count is accurate for each pipeline
 - [ ] Output format text shows table correctly
 - [ ] Output format json returns full pipeline objects
 - [ ] Output format yaml returns valid YAML
 - [ ] Sorting places built-in before custom pipelines
 - [ ] Empty list returns appropriate message
-- [ ] Filter combinations work correctly (e.g., `--name legal --only-archive`)
+- [ ] Filter combinations work correctly (e.g., `--name legal --only-archive` → both params
+  present in request)
 
 ## Related Stories
 

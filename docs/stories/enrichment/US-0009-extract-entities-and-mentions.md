@@ -1,4 +1,4 @@
-# Story: Extract Entities and Mentions
+# US-0009: Extract Entities and Mentions
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Knowledge Workers](../../personas/knowledge-workers.md)
@@ -204,6 +204,15 @@ object(o-abc123)
 
 ## E2E Test Checklist
 
+- [ ] CLI: `ctxt enrich <object_id> --step extract-entities-and-mentions` exits 0
+- [ ] CLI: `--ai-provider lmql` flag is present in the request payload sent to server (verified via request capture or server log)
+- [ ] CLI: `--max-entities <n>` flag is present in the request payload as `max_entities` field
+- [ ] CLI: `--step extract-entities-and-mentions` flag is present in the request payload as `step` field
+- [ ] Server: POST `/enrich/{object_id}/extract-mentions` receives `step`, `ai_provider`, and `max_entities` in request body
+- [ ] Server: Response contains `object_id`, `mentions` array, `entities_created`, `entities_linked`, and `graph_edges_added`
+- [ ] Storage: GET `/objects/{object_id}` returns object with `mentions` field populated as a non-empty JSON array
+- [ ] Storage: `enrichment.extraction_method` field on stored object matches the `ai_provider` value sent in request
+- [ ] Storage: `enrichment.entities_extracted_at` timestamp is set on the stored object after enrichment completes
 - [ ] Extract: Input with clear entity names → all entities identified
 - [ ] Extract: Unknown entities → created as new canonical entities
 - [ ] Extract: Duplicate mentions → linked to same canonical entity
@@ -221,7 +230,7 @@ object(o-abc123)
 
 ## Related Stories
 
-- [text-capture-minimal-friction](../ingestion/text-capture-minimal-friction.md) — Trigger for extraction
-- [assign-tags-from-vocabulary](./assign-tags-from-vocabulary.md) — Tag assignment step
-- [generate-brief-from-objects](../composition/generate-brief-from-objects.md) — Use entities in composition
-- [compose-with-graph-traversal](../composition/compose-with-graph-traversal.md) — Traverse entity relationships
+- [US-0001](../ingestion/US-0001-text-capture-minimal-friction.md) — Trigger for extraction
+- [US-0011](./US-0011-assign-tags-from-vocabulary.md) — Tag assignment step
+- [US-0022](../composition/US-0022-generate-brief-from-objects.md) — Use entities in composition
+- [US-0024](../composition/US-0024-compose-with-graph-traversal.md) — Traverse entity relationships

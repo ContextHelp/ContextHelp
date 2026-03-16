@@ -413,22 +413,25 @@ sectioner:
 
 ## E2E Test Checklist
 
-- [ ] CLI: `ctxt add --file meeting.mp3` returns job ID within 1 second
+- [ ] CLI: `ctxt add --file meeting.mp3` returns job ID within 1 second; server creates job record with `source_type=audio`
 - [ ] CLI: Job status transitions from `pending` to `completed` within 120 seconds for a short recording
 - [ ] CLI: Retrieved object contains full transcript text in RawContent
-- [ ] CLI: `ctxt add --file voice-note.wav --type audio` selects the `audio.transcribe` pipeline
+- [ ] CLI: `ctxt add --file voice-note.wav --type audio` sends `"type_hint": "audio"` in the server request payload; stored object's pipeline equals `"audio.transcribe"`
+- [ ] CLI: `ctxt add --file interview.ogg --lang fr` sends `"language": "fr"` in the server request payload (within the options field); stored object Metadata contains `"transcription_language": "fr"` (or the detected language)
+- [ ] CLI: `ctxt add --file standup.m4a --diarize` sends `"diarize": true` in the server request payload; stored object Metadata contains `"speaker_count"` and `"speakers"` keys
+- [ ] CLI: `ctxt add --file standup.m4a --profile engineering --project mobile-app` sends `"profile": "engineering"` and `"project": "mobile-app"` in the server request payload; stored object Metadata contains both fields
 - [ ] Format: MP3, WAV, OGG, FLAC, M4A, WEBM files all processed successfully
 - [ ] Format: Unsupported format (e.g., AIFF, WMA) returns descriptive error without crash
 - [ ] Format: Corrupt/truncated audio file returns error with clear message
 - [ ] Size: File exceeding 500MB limit is rejected with size limit error
 - [ ] Duration: Audio exceeding 4-hour limit is rejected with duration limit error
 - [ ] Transcript: Extracted text is searchable via `ctxt search "words from meeting"`
-- [ ] Timestamps: Sections contain start/end time metadata
-- [ ] Diarization: With `--diarize`, speaker labels appear in Sections and Metadata
-- [ ] Diarization: Without `--diarize`, pipeline completes without speaker attribution
-- [ ] Language: `--lang fr` hint improves transcription of French audio
-- [ ] REST API: Multipart upload via `POST /analyze` returns 202 + job ID
-- [ ] REST API: `GET /objects/{object_id}` returns enriched object with transcript
+- [ ] Timestamps: Sections contain start/end time metadata — GET /objects/{object_id} confirms Section Metadata has `start_time` and `end_time` keys
+- [ ] Diarization: With `--diarize`, speaker labels appear in Sections and Metadata; stored object Metadata `speaker_count` > 0
+- [ ] Diarization: Without `--diarize`, pipeline completes without speaker attribution; no `speaker_count` in Metadata
+- [ ] Language: `--lang fr` hint is received by server and stored; transcription provider uses the supplied language code
+- [ ] REST API: Multipart upload via `POST /analyze` with `options={"language":"en","diarize":true}` returns 202 + job ID; server persists both options
+- [ ] REST API: `GET /objects/{object_id}` returns enriched object with transcript, timestamped Sections, and audio metadata (`audio_format`, `audio_duration_seconds`) all populated
 - [ ] Async: User can immediately query for the object before transcription completes
 - [ ] Resilience: Worker crash during transcription step causes automatic job retry
 

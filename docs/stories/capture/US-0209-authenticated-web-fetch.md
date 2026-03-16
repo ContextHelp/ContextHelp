@@ -537,16 +537,17 @@ capture:
 
 ## E2E Test Checklist
 
-- [ ] CLI: `ctxt capture <url> --auth browser` fetches content using browser cookies and returns job ID
-- [ ] CLI: Capture without `--auth` defaults to unauthenticated fetch
-- [ ] CLI: `ctxt capture cookies --check <domain>` reports cookie freshness accurately
-- [ ] CLI: `ctxt capture domains` lists all configured domain patterns
+- [ ] CLI: `ctxt capture <url> --auth browser` sends `auth: browser` in the `POST /api/v1/capture/url` request payload and returns job ID
+- [ ] CLI: `ctxt capture <url> --auth api-key --api-key-header "X-Api-Key"` sends `auth: api-key` and `auth_config.header: X-Api-Key` in the request payload
+- [ ] CLI: Capture without `--auth` sends no auth field and defaults to unauthenticated fetch
+- [ ] CLI: `ctxt capture cookies --check <domain>` sends `domain` query parameter to `GET /api/v1/capture/cookies` and reports cookie freshness accurately
+- [ ] CLI: `ctxt capture domains` calls `GET /api/v1/capture/domains` and lists all configured domain patterns
 - [ ] Auth: Browser cookies are successfully extracted from Chrome cookie store
 - [ ] Auth: Browser cookies are successfully extracted from Firefox cookie store
 - [ ] Auth: Missing cookies trigger fallback to unauthenticated fetch with warning
 - [ ] Auth: Stale cookies (beyond `cookieMaxAge`) trigger warning but still attempt fetch
 - [ ] Auth: API key auth injects the correct header with secret value
-- [ ] Auth: Authentication method is recorded in object metadata
+- [ ] Auth: Authentication method is recorded in object metadata (`auth_method: cookie`, `api-key`, or `none`)
 - [ ] Readability: Navigation, ads, and page chrome are stripped from captured content
 - [ ] Readability: Article title, byline, and excerpt are extracted and stored
 - [ ] Readability: Fallback to basic HTML text extraction when readability fails
@@ -555,13 +556,14 @@ capture:
 - [ ] Rate Limiting: Requests respect per-domain rate limits
 - [ ] Rate Limiting: Default rate limit applies to unconfigured domains
 - [ ] Domain Config: Wildcard patterns (e.g., `*.company.com`) match subdomains correctly
+- [ ] REST API: `POST /api/v1/capture/url` request payload contains `url`, `auth`, and (when applicable) `auth_config` with `header` and `secret_ref` fields; returns 202 with `job_id`, `object_id`, `auth_method`, and `cookie_fresh`
+- [ ] REST API: `GET /api/v1/capture/cookies?domain=X` returns freshness info including `cookies_found`, `cookie_age`, `max_age`, and `fresh` fields
+- [ ] REST API: `GET /api/v1/capture/domains` returns domain configurations
+- [ ] Storage: Completed object stored with `metadata.auth_method`, `metadata.http_status`, `metadata.article_title`, `metadata.article_byline`, and `source.capture_method: authenticated_fetch` (verifiable via `GET /api/v1/objects/<id>`)
 - [ ] Error: HTTP 401/403 returns clear error suggesting cookie refresh
 - [ ] Error: HTTP 404 returns descriptive error without crash
 - [ ] Error: Timeout (> 30s) is handled gracefully with error message
 - [ ] Error: Response exceeding `maxResponseSize` is rejected
-- [ ] REST API: `POST /api/v1/capture/url` with auth returns 202 + job ID
-- [ ] REST API: `GET /api/v1/capture/cookies?domain=X` returns freshness info
-- [ ] REST API: `GET /api/v1/capture/domains` returns domain configurations
 - [ ] Search: Captured authenticated content is searchable via `ctxt search`
 - [ ] Async: Capture returns immediately; enrichment completes within 30 seconds
 - [ ] Resilience: 5xx responses are retried up to `retryAttempts` times with backoff

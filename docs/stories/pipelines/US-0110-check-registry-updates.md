@@ -166,16 +166,26 @@ When auto-update is enabled:
 
 ## E2E Test Checklist
 
+- [ ] `dpkms system reminders list --active` → request contains `active=true` query param;
+  response includes only reminders with `dismissed=false` in DB
+- [ ] `dpkms system reminders list` (no flag) → request omits `active` param; response
+  includes all reminders regardless of dismissed status
+- [ ] `dpkms system reminders list --source <url>` → request contains `source=<url>` query
+  param; response matches `SELECT * FROM system_reminders WHERE source=?`
+- [ ] `dpkms system reminders dismiss <id>` → request sent to dismiss endpoint with reminder
+  ID; verify `dismissed=1` in `system_reminders` table for that ID
 - [ ] Fetch manifest returns valid manifest with ETag
-- [ ] Registry cache is cleared on manual update → manifest saved with new ETag
-- [ ] New version detected → system reminder created with appropriate message
+- [ ] Registry cache is cleared on manual update → manifest saved with new ETag in DB
+- [ ] New version detected → system reminder created; verify `system_reminders` row with
+  correct `type`, `title`, `source`, `action_url`, `dismissed=0`
 - [ ] Version comparison works correctly
 - [ ] All step packages extracted and validated
 - [ ] Registry cache is cleared when manual update triggered
-- [ ] Manual update flag respected (no auto-update unless enabled)
-
-- [ ] System reminders list returns reminders ordered by created_at DESC
-- [ ] System reminders dismissed flags are correct
+- [ ] Manual update flag respected (no auto-update unless enabled); `auto_update` unchanged
+  in `registry_cache`
+- [ ] System reminders list returns reminders ordered by created_at DESC; verify ordering
+  matches DB query `ORDER BY created_at DESC`
+- [ ] System reminders dismissed flags are correct in DB after dismiss operation
 - [ ] High priority reminder has oldest created_at
 - [ ] Low priority reminder shows updated_at
 - [ ] Action URLs are clickable
@@ -185,7 +195,6 @@ When auto-update is enabled:
 - [US-0107](./US-0107-discover-local-steps.md) - Discover steps on system
 - [US-0108](./US-0108-install-step-from-registry.md) - Install from registry
 - [US-0109](./US-0109-fetch-registry-manifest.md) - Get available steps from registry
-- [US-0110](./US-0110-check-registry-updates.md) - Check for updates
 - [US-0111](./US-0111-configure-registry-autoupdate.md) - Configure auto-update
 - [US-0112](./US-0112-configure-sandbox-per-pipeline.md) - Configure sandbox
 - [US-0113](./US-0113-ctxt-analyze-api-client.md) - ctxt as API client

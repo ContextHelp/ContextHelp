@@ -53,7 +53,6 @@ Now, `dpkms pipeline enqueue` is:
   "pipeline": "custom-pipeline", // optional, defaults to auto-selected
   "source": "cli" // or "dpkms" or custom
 }
-}
 ```
 
 **Response:**
@@ -180,20 +179,30 @@ server:
 
 ## E2E Test Checklist
 
-- [ ] Enqueue with auto-selected pipeline → job created with correct pipeline
-- [ ] Enqueue with specific pipeline → job created with specified pipeline
-- [ ] Enqueue URL content → type detected correctly as "url"
-- [ ] Enqueue file content → type detected as "markdown"
-- [ ] Pipeline not found → 404 error returned
-- [ ] Archived pipeline selected → 409 error returned
+- [ ] `ctxt analyze "..."` → request sent to `POST /api/v1/pipelines/enqueue` (not old
+  `/api/v1/analyze`); request body contains `"content"` matching input
+- [ ] `ctxt analyze "..."` → request body contains `"source": "cli"`
+- [ ] `ctxt analyze "..." --type url` → request body contains `"type": "url"`
+- [ ] `ctxt analyze "..." --pipeline legal-doc-pipeline` → request body contains
+  `"pipeline": "legal-doc-pipeline"`
+- [ ] `ctxt analyze "..."` (no `--pipeline`) → request body has `"pipeline": ""` or omitted;
+  server auto-selects pipeline
+- [ ] Enqueue with auto-selected pipeline → job record in DB has correct
+  `pipeline` (auto-selected) and `source="cli"`
+- [ ] Enqueue with `--pipeline legal-doc-pipeline` → job record in DB has
+  `pipeline="legal-doc-pipeline"` and `source="cli"`
+- [ ] Enqueue URL content → type detected correctly as "url"; job `type="ingest:url"` in DB
+- [ ] Enqueue file content → type detected as "markdown"; job `type="ingest:markdown"` in DB
+- [ ] Pipeline not found → 404 error returned; no job record created in DB
+- [ ] Archived pipeline selected → 409 error returned; no job record created in DB
 - [ ] Job ID is returned for tracking
-- [ ] `ctxt analyze` refactored correctly to call enqueue endpoint
+- [ ] `ctxt analyze` refactored correctly to call enqueue endpoint (verify no call to old
+  `/api/v1/analyze` or direct Queue.Enqueue)
 - [ ] CLI maintains same interface (no breaking changes)
-- [ ] Enqueue command fails with helpful error (uses old direct queue API)
 
 ## Related Stories
 
-- [US-0101](./US-0101-create-custom-pipeline.md) - Create pipelines to enqueue (this story)
+- [US-0101](./US-0101-create-custom-pipeline.md) - Create custom pipelines for enqueue
 - [US-0102](./US-0102-list-and-filter-pipelines.md) - List pipelines to find pipeline to enqueue
 - [US-0103](./US-0103-show-pipeline-details.md) - View pipeline configuration (includes sandbox)
 - [US-0106](./US-0106-enqueue-content-via-dpkms.md) - Enqueue (only method, enforces sandbox)
@@ -203,7 +212,6 @@ server:
 - [US-0110](./US-0110-check-registry-updates.md) - Check for updates
 - [US-0111](./US-0111-configure-registry-autoupdate.md) - Configure auto-update
 - [US-0112](./US-0112-configure-sandbox-per-pipeline.md) - Configure sandbox
-- [US-0113](./US-0113-ctxt-analyze-api-client.md) - ctxt as API client
 
 ## Related ADRs
 

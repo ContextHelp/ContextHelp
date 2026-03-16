@@ -350,13 +350,15 @@ social:
 
 - [ ] CLI: `ctxt capture https://x.com/username` returns job ID within 2 seconds
 - [ ] CLI: `ctxt capture https://x.com/username/status/123` returns job ID within 2 seconds
+- [ ] CLI: `ctxt capture https://x.com/username/status/123 --no-thread` sends `options.detect_thread: false` in the request payload to the server
+- [ ] CLI: `ctxt capture https://x.com/username --pipeline social.x.profile` sends the specified pipeline in the request payload
 - [ ] Profile: Bio, location, follower count, and recent posts captured correctly
 - [ ] Profile: Pinned post included in captured profile
 - [ ] Post: Single post text, timestamp, and engagement counts captured
 - [ ] Post: Media attachments (images) downloaded and linked as child objects
 - [ ] Thread: Self-reply chain detected and full thread captured in order
 - [ ] Thread: Thread position markers (1/N) applied to Sections
-- [ ] Thread: `--no-thread` flag captures only the target post
+- [ ] Thread: `--no-thread` flag captures only the target post (no thread sections in stored object)
 - [ ] Quoted: Quoted posts captured as separate linked KnowledgeObjects
 - [ ] Entity: X user entity created with handle, display name, and profile URL
 - [ ] Entity: Same user captured twice resolves to the same entity (idempotent)
@@ -366,9 +368,11 @@ social:
 - [ ] Rate Limit: Rapid successive captures trigger backoff without crashing
 - [ ] Rate Limit: Rate-limited response (HTTP 429) causes exponential backoff and retry
 - [ ] Provenance: Raw HTML snapshot stored alongside structured data
+- [ ] REST API: `POST /api/v1/analyze` request payload contains `source_type: url`, `source_url`, `auth_method: cookie_bridge`, and `options` object with `detect_thread`, `capture_media`, and `capture_quoted` fields
+- [ ] REST API: `POST /api/v1/analyze` returns 202 with `job_id` and `object_id`
+- [ ] Storage: Completed object stored with correct `metadata.platform`, `metadata.author_handle`, `metadata.thread_length`, and `source.auth_method` (verifiable via `GET /api/v1/objects/<id>`)
 - [ ] Search: Thread content searchable via `ctxt search "gradient descent"`
 - [ ] Search: Profile bio searchable via `ctxt search "Director of AI"`
-- [ ] REST API: POST /api/v1/analyze with X URL returns 202
 - [ ] Error: Invalid X URL (e.g., https://x.com/) returns descriptive error
 - [ ] Error: Deleted post returns clear "content not found" error
 - [ ] Pipeline: `social.x.post` completes all 7 steps in correct order

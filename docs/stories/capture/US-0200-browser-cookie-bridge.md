@@ -415,8 +415,9 @@ capture:
 - [ ] Extension: DOM element capture sends the targeted element's outer HTML
 - [ ] Cookies: Extension detects login on configured domain and syncs cookies to daemon
 - [ ] Cookies: `ctxt cookie list` shows stored domains with correct expiry timestamps
+- [ ] Cookies: `ctxt cookie list --domain github.com` flag is sent to the server and returns only github.com cookies (not all domains)
 - [ ] Cookies: `ctxt cookie clear github.com` removes only github.com cookies
-- [ ] Cookies: `ctxt cookie clear --all` removes all cookies across all domains
+- [ ] Cookies: `ctxt cookie clear --all` flag is present in the request and removes all cookies across all domains
 - [ ] Cookies: `ctxt cookie check <domain>` correctly reports valid/expired sessions
 - [ ] Security: Cookies stored encrypted at rest (raw values not readable in cookies.db)
 - [ ] Security: Domain scoping enforced -- github.com cookies never sent to twitter.com
@@ -427,9 +428,13 @@ capture:
 - [ ] Fetch: Expired cookies trigger re-sync notification to extension
 - [ ] Pipeline: `web.authenticated` pipeline completes all steps successfully
 - [ ] Pipeline: ReadabilityConverter extracts article content, strips navigation/ads
-- [ ] REST API: `POST /api/v1/analyze` with browser_capture source returns 202
-- [ ] REST API: `POST /api/v1/cookies` stores cookies and returns confirmation
-- [ ] REST API: `DELETE /api/v1/cookies/<domain>` removes cookies
+- [ ] REST API: `POST /api/v1/analyze` request payload contains `source_type: url`, `auth_method: cookie_bridge`, and `capture_mode: full_page`
+- [ ] REST API: `POST /api/v1/analyze` with `source_type: browser_capture` request payload contains `source_url`, `capture_mode`, `content`, and `cookies_domain` fields
+- [ ] REST API: `POST /api/v1/analyze` returns 202 with `job_id` and `object_id`
+- [ ] REST API: `POST /api/v1/cookies` request payload contains `domain` and `cookies[]` array with `name`, `value`, `domain`, `expires`, `secure`, `httpOnly` fields; response confirms `cookies_stored` count
+- [ ] REST API: `POST /api/v1/cookies` stored cookies are retrievable via `GET /api/v1/cookies` and appear in the response `domains` list
+- [ ] REST API: `DELETE /api/v1/cookies/<domain>` removes cookies and subsequent `GET /api/v1/cookies` no longer lists the domain
+- [ ] Storage: Captured object stored with `source.auth_method: cookie_bridge` and `source.auth_domain` in metadata (verifiable via `GET /api/v1/objects/<id>`)
 - [ ] Resilience: Daemon restart preserves cookie store (persistent SQLite)
 - [ ] Resilience: Extension reconnects to daemon after WebSocket disconnect
 

@@ -183,15 +183,24 @@ CREATE TABLE IF NOT EXISTS pipelines (
 - [ ] Create pipeline from YAML config file with valid steps
 - [ ] Create pipeline from JSON config file with valid steps
 - [ ] Create pipeline from TOML config file with valid steps
-- [ ] Verify pipeline is stored in database with correct metadata
-- [ ] Verify pipeline is immediately available for enqueue
+- [ ] Verify request payload contains `name`, `description`, `steps` array, and `sandbox` object
+- [ ] Verify `name` in request payload matches CLI argument
+- [ ] Verify `steps` array in request payload contains correct step types and configs
+- [ ] Verify `sandbox` object in request payload contains all specified fields
+  (enabled, isolation_level, resource_limits, network, filesystem)
+- [ ] Verify pipeline record stored in DB: query `pipelines` table, confirm `name`, `steps`,
+  `sandbox`, `created_at`, `updated_at` fields present and correct
+- [ ] Verify `is_builtin=0` for newly created custom pipeline in DB
+- [ ] Verify `archived=0` for newly created pipeline in DB
+- [ ] Verify pipeline is immediately available for enqueue (GET /api/v1/pipelines/{name} → 200)
 - [ ] Attempt to create pipeline with invalid step name → error returned
 - [ ] Attempt to create pipeline with protected name prefix → error returned
 - [ ] Attempt to create pipeline with duplicate name → error returned
 - [ ] Create pipeline with invalid sandbox config → validation error returned
-- [ ] Create pipeline with resource limits → limits stored correctly
+- [ ] Create pipeline with resource limits → limits stored correctly in DB
+  (`json_extract(sandbox, '$.resource_limits.max_memory')` matches input)
 - [ ] Verify step names are case-sensitive
-- [ ] Verify sandbox configuration is parsed and stored as JSON
+- [ ] Verify sandbox configuration is parsed and stored as JSON blob in DB
 
 ## Related Stories
 

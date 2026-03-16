@@ -216,26 +216,70 @@ message RankExplanation {
 
 ## E2E Test Checklist
 
-- [ ] CLI: `ctxt find "what are insights on X"` → results in <2s
-- [ ] Intent: Query intent correctly classified for each example type
-- [ ] Entities: Extracted entities formatted as `@type.slug`
-- [ ] Strategy: Relationship queries primarily use graph, semantic queries primarily use vector
-- [ ] Results: All results ranked, each result includes explanation
-- [ ] Ranking: Results ordered by relevance score descending
-- [ ] Profile Filter: With `--profile engineering`, non-relevant results deprioritized
-- [ ] Ambiguity: Ambiguous query returns results + asks for clarification
-- [ ] Latency: Local search <2s, with registries <5s (P99)
-- [ ] Iteration: Refined query (`"from last month"`) reuses context from previous query
-- [ ] LMQL: Local model normalizer produces valid structured output (hard constraints)
-- [ ] Instructor: API model normalizer succeeds with retry on schema failure
-- [ ] Multi-modal: Same query via CLI, REST, gRPC → identical results
+### CLI → Server Payload
+
+- [ ] `ctxt find "what are insights on X"` sends `query_mode=nlq` in request to server
+- [ ] `ctxt find "..." --profile security` sends `profile=security` in request payload; server
+      receives and applies it
+- [ ] `ctxt find "..." --days 7` sends `days=7` (or equivalent date-range param) in request
+      payload; server receives and uses it for temporal filtering
+- [ ] `ctxt search "..."` alias sends identical payload as `ctxt find "..."`
+
+### Server-Side Receipt and Storage
+
+- [ ] Server receives `query_mode` field and routes to NLQ normalizer (not RSQL path)
+- [ ] Server receives `profile` param; result set differs from no-profile baseline (server applies
+      filter, not client)
+- [ ] Server receives `days` param; returned results all fall within the requested window
+- [ ] Server stores query in search history (verifiable via history endpoint or DB row)
+- [ ] `rank.explain` in response populated server-side with per-strategy scores
+
+### Flags Coverage
+
+- [ ] `--profile <name>` — asserted in payload + server applies boost/filter
+- [ ] `--days <n>` — asserted in payload + results bounded to window
+- [ ] No undocumented flags silently ignored: unknown flag returns error
+
+### Intent and Strategy
+
+- [ ] Intent correctly classified for each documented example type
+- [ ] Extracted entities formatted as `@type.slug`
+- [ ] Relationship queries primarily use graph strategy; payload contains `strategies: ["graph", ...]`
+- [ ] Semantic queries primarily use vector strategy; payload contains `strategies: ["vector", ...]`
+
+### Results
+
+- [ ] All results ranked; each result includes `rank.explain` with per-strategy scores
+- [ ] Results ordered by relevance score descending
+- [ ] With `--profile engineering`, non-relevant results deprioritized vs. no-profile baseline
+- [ ] Ambiguous query returns results + clarification prompt
+- [ ] Refined query (`"from last month"`) reuses context from previous query
+
+### Latency
+
+- [ ] Local search <2s (P99)
+- [ ] With federated registries <5s (P99)
+
+### Normalizer
+
+- [ ] LMQL local model normalizer produces valid structured output (hard constraints)
+- [ ] API model normalizer (instructor) succeeds with retry on schema failure
+
+### Interface Parity
+
+- [ ] Same query via CLI, REST (`GET /search?q=...&query_mode=nlq`), and gRPC → identical result
+      sets and explanations
 
 ---
 
 ## Related Stories
 
-- [structured-rsql-query](./structured-rsql-query.md) — Deterministic structured queries
-- [multi-strategy-search-execution](./multi-strategy-search-execution.md) — Strategy selection logic
-- [apply-focus-profile-to-search](./apply-focus-profile-to-search.md) — Profile-based filtering
-- [federated-registry-search](./federated-registry-search.md) — External knowledge sources
-- [text-capture-minimal-friction](../ingestion/text-capture-minimal-friction.md) — Content to search
+- [US-0017](./US-0017-structured-rsql-query.md) — Structured RSQL Query (deterministic structured queries; contrast with NLQ)
+- [US-0018](./US-0018-multi-strategy-search-execution.md) — Multi-Strategy Search Execution (strategy selection logic driven by NLQ intent)
+- [US-0019](./US-0019-federated-registry-search.md) — Federated Registry Search (NLQ queries can be federated)
+- [US-0020](./US-0020-apply-focus-profile-to-search.md) — Apply Focus Profile to Search (profile filter applied to NLQ results)
+- [US-0021](./US-0021-search-with-result-explanation.md) — Search with Result Explanation (`rank.explain` present in NLQ results)
+- [US-0051](./US-0051-semantic-search-with-embeddings.md) — Semantic Search with Embeddings (vector strategy used by NLQ)
+- [US-0052](./US-0052-graph-based-entity-search.md) — Graph-Based Entity Search (graph strategy used by NLQ)
+- [US-0061](./US-0061-visual-similarity-search.md) — Visual Similarity Search (complementary query modality: image vs. text)
+- [US-0001](../ingestion/US-0001-text-capture-minimal-friction.md) — Text Capture (content to search)

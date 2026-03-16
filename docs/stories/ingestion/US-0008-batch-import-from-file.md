@@ -356,23 +356,24 @@ import:
 
 ## E2E Test Checklist
 
-- [ ] CLI: `ctxt import --file data.jsonl` returns batch_id and begins processing
-- [ ] CLI: `ctxt import --file data.csv --format csv` correctly parses CSV with default column mapping
-- [ ] CLI: `ctxt import --file data.csv --map-content body --map-tags labels` applies custom column mapping
-- [ ] CLI: `ctxt import --file data.tsv --format tsv` correctly parses TSV records
-- [ ] CLI: `ctxt import --dir ~/notes/ --format markdown` recursively scans and imports Markdown files
-- [ ] CLI: `ctxt import --file feeds.opml --format opml` creates feed subscriptions (not knowledge objects)
-- [ ] CLI: `ctxt import status <batch_id>` shows correct total/completed/failed counters
-- [ ] CLI: `ctxt import --file data.jsonl --dry-run` validates without ingesting; reports errors
-- [ ] Fanout: Each valid record creates a separate ingestion job with correct pipeline
-- [ ] Partial success: Invalid records are skipped; valid records are still ingested
-- [ ] Batch report: Failed records include line number and descriptive error message
-- [ ] Edges: Child KnowledgeObjects are linked to parent batch object via `batch_contains` edges
-- [ ] Size limit: Batch exceeding `maxBatchSize` is rejected with a clear error message
+- [ ] CLI: `ctxt import --file data.jsonl` sends `"format": "jsonl"` and the file content in the request payload; server creates batch record — GET /import/{batch_id} confirms `format=jsonl` and non-zero `total_records`
+- [ ] CLI: `ctxt import --file data.csv --format csv` sends `"format": "csv"` in the server request payload; stored batch record has `format=csv`
+- [ ] CLI: `ctxt import --file data.csv --map-content body --map-tags labels` sends `"column_mapping": {"content": "body", "tags": "labels"}` in the server request payload; server applies the mapping — produced KnowledgeObjects use the mapped columns
+- [ ] CLI: `ctxt import --file data.tsv --format tsv` sends `"format": "tsv"` in the server request payload; correctly parses TSV records
+- [ ] CLI: `ctxt import --dir ~/notes/ --format markdown` sends `"format": "markdown"` and directory path in the server request payload; recursively scans and imports Markdown files
+- [ ] CLI: `ctxt import --file feeds.opml --format opml` sends `"format": "opml"` in the server request payload; creates feed subscriptions (not knowledge objects) — GET /feeds confirms new subscriptions
+- [ ] CLI: `ctxt import --file data.jsonl --dry-run` sends `"dry_run": true` in the server request payload; server performs validation only — GET /import/{batch_id} confirms `status=dry_run_complete` and no jobs enqueued
+- [ ] CLI: `ctxt import status <batch_id>` shows correct total/completed/failed counters matching server-side batch record
+- [ ] Fanout: Each valid record creates a separate ingestion job with correct pipeline; server-side job count equals `total_records` minus invalid count
+- [ ] Partial success: Invalid records are skipped; valid records are still ingested; GET /import/{batch_id} shows `failed` count matching number of invalid records
+- [ ] Batch report: Failed records include line number and descriptive error message — GET /import/{batch_id} `errors` array contains `line` and `error` fields
+- [ ] Edges: Child KnowledgeObjects are linked to parent batch object via `batch_contains` edges — graph traversal from batch_id returns all child object IDs
+- [ ] Size limit: Batch exceeding `maxBatchSize` is rejected with a clear error message before any records are processed
 - [ ] Concurrency: No more than `maxConcurrentJobs` run simultaneously from one batch
-- [ ] REST API: `POST /import` with multipart file upload returns 202 with batch_id
-- [ ] REST API: `GET /import/{batch_id}` returns progress with total/completed/failed/errors
-- [ ] JSONL: Record missing "content" field is rejected with validation error
+- [ ] REST API: `POST /import` with multipart file upload and `format=jsonl` returns 202 with batch_id; server stores format and file details — GET /import/{batch_id} confirms both
+- [ ] REST API: `POST /import` with `column_mapping={"content":"url","tags":"tags"}` stores the mapping; produced objects use mapped columns
+- [ ] REST API: `GET /import/{batch_id}` returns progress with `total`, `completed`, `failed`, and `errors` fields all populated
+- [ ] JSONL: Record missing "content" field is rejected with validation error; reflected in GET /import/{batch_id} errors list
 - [ ] CSV: File with no header row handled when `hasHeader: false` is configured
 
 ---

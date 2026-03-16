@@ -434,6 +434,7 @@ github:
 - [ ] CLI: `ctxt capture https://github.com/org/repo/pull/123` returns job ID within 2 seconds
 - [ ] CLI: `ctxt capture https://github.com/org/repo/issues/456` returns job ID within 2 seconds
 - [ ] CLI: `ctxt capture https://github.com/user` returns job ID within 2 seconds
+- [ ] CLI: `ctxt config set github.token <token>` stores the token and subsequent captures include PAT auth (verifiable by rate limit reported as 5000 req/hr)
 - [ ] Repo: README content captured and decomposed into sections
 - [ ] Repo: Topics, language stats, and contributor list captured in metadata
 - [ ] Repo: Repository entity created with `@github.org/repo` identifier
@@ -456,9 +457,11 @@ github:
 - [ ] Rate Limit: Rate limit reserve prevents exhausting the full allocation
 - [ ] Entity: Repository, user, and org entities created correctly
 - [ ] Entity: Same user captured twice resolves to same entity (idempotent)
+- [ ] REST API: `POST /api/v1/analyze` request payload for a PR contains `source_type: url`, `source_url`, `auth_method: github_pat`, and `options` object with `capture_comments`, `capture_diff`, and `summarize_diff` fields
+- [ ] REST API: `POST /api/v1/analyze` returns 202 with `job_id` and `object_id`
+- [ ] Storage: Completed PR object stored with `source.auth_method: github_pat`, `metadata.pr_number`, `metadata.files_changed`, `metadata.reviewers`, and `metadata.ci_status` (verifiable via `GET /api/v1/objects/<id>`)
 - [ ] Search: PR description searchable via `ctxt search "radix tree router"`
 - [ ] Search: Issue comments searchable via `ctxt search "race condition in handler"`
-- [ ] REST API: POST /api/v1/analyze with GitHub URL returns 202
 - [ ] Error: Invalid GitHub URL returns descriptive error
 - [ ] Error: Non-existent repo/PR/issue returns 404-based error message
 - [ ] Pipeline: All four pipelines complete their steps in correct order

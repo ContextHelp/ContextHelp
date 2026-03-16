@@ -360,20 +360,27 @@ def get_schema_cached(api_url):
 
 ## E2E Test Checklist
 
+- [ ] Request: GET /query-schema request is sent with `Accept: application/json` header
 - [ ] Endpoint: GET /query-schema returns 200 OK
-- [ ] Endpoint: Response includes version field
-- [ ] Endpoint: Response includes all required properties (type, tags, created_at, etc.)
-- [ ] Endpoint: Response includes all RSQL operators
-- [ ] Endpoint: Response includes practical examples
-- [ ] Endpoint: Properties have descriptions and examples
-- [ ] Endpoint: Operators have usage and examples
-- [ ] Endpoint: Schema version matches documented version
-- [ ] Timeout: Request completes within 5 seconds
-- [ ] Agent: Can cache schema locally
-- [ ] Agent: Can validate RSQL against schema
-- [ ] Agent: Can list queryable properties to user
-- [ ] Versioning: Schema version changes when new properties added
-- [ ] gRPC: GetQuerySchema returns equivalent data to REST endpoint
+- [ ] Endpoint: Response `Content-Type` header is `application/json`
+- [ ] Endpoint: Response body includes `version` field matching documented value ("1.0")
+- [ ] Endpoint: Response body includes `lastUpdated` field in ISO 8601 format
+- [ ] Endpoint: Response body includes `properties` array with all required fields: `type`, `tags`, `created_at`, `mentions`, `pipeline`
+- [ ] Endpoint: Each property object includes `name`, `type`, `indexed`, `description` fields
+- [ ] Endpoint: Response body includes `operators` array covering all documented operators: `==`, `!=`, `<`, `>`, `<=`, `>=`, `=in=`, `=out=`, `;`, `,`
+- [ ] Endpoint: Each operator object includes `symbol`, `name`, `usage`, `example`, `supported_types` fields
+- [ ] Endpoint: Response body includes `examples` array, each entry containing `intent`, `rsql`, `explanation`
+- [ ] Endpoint: Response body includes `constraints` object with `max_query_length`, `max_results`, `timeout_ms`
+- [ ] Endpoint: Response body includes `deprecations` array (may be empty)
+- [ ] Endpoint: Schema `version` field changes when new properties are added (server-side versioning validated)
+- [ ] Timeout: Server responds within 5 seconds (validated against `constraints.timeout_ms`)
+- [ ] Agent: Sends GET /query-schema on startup before constructing any query
+- [ ] Agent: Caches schema locally; second call within TTL does not issue a new HTTP request
+- [ ] Agent: After TTL expiry, agent re-fetches schema from server
+- [ ] Agent: Can validate RSQL string against schema (rejects query with unknown property)
+- [ ] Agent: Can enumerate queryable properties from response (produces list of `name`+`type` pairs)
+- [ ] gRPC: GetQuerySchema RPC returns equivalent `version`, `properties`, `operators`, `examples`, and `constraints` as REST endpoint
+- [ ] Error: Agent falls back to cached schema when server is unreachable (no panic, stale schema used)
 
 ---
 

@@ -470,14 +470,15 @@ watch:
 
 ## E2E Test Checklist
 
-- [ ] CLI: `ctxt watch add https://x.com/username --interval 24h` creates a watch and returns watch ID
-- [ ] CLI: `ctxt watch add @entity.slug --interval 12h` creates an entity watch monitoring all known sources
+- [ ] CLI: `ctxt watch add https://x.com/username --interval 24h` sends `target_url` and `interval: 24h` in the `POST /api/v1/watches` request payload; creates a watch and returns watch ID
+- [ ] CLI: `ctxt watch add @entity.slug --interval 12h` sends `target_entity` and `interval: 12h` in the `POST /api/v1/watches` request payload; creates an entity watch monitoring all known sources
+- [ ] CLI: `ctxt watch add <url> --interval 6h --threshold 0.05` sends `alert_threshold: 0.05` in the `POST /api/v1/watches` request payload
 - [ ] CLI: `ctxt watch list` shows all active watches with correct metadata
 - [ ] CLI: `ctxt watch history <target>` shows chronological snapshot timeline
-- [ ] CLI: `ctxt watch diff <target> --v1 <id1> --v2 <id2>` shows unified text diff
-- [ ] CLI: `ctxt watch pause <id>` pauses a watch and `ctxt watch resume <id>` resumes it
+- [ ] CLI: `ctxt watch diff <target> --v1 <id1> --v2 <id2>` sends `v1` and `v2` as query parameters in the `GET /api/v1/watches/{id}/diff` request and shows unified text diff
+- [ ] CLI: `ctxt watch pause <id>` sends `status: paused` in the `PATCH /api/v1/watches/{id}` request payload; `ctxt watch resume <id>` sends `status: active`
 - [ ] CLI: `ctxt watch delete <id>` deletes watch but preserves captured snapshots
-- [ ] CLI: `ctxt watch check <id> --now` triggers immediate check
+- [ ] CLI: `ctxt watch check <id> --now` sends a `POST /api/v1/watches/{id}/check` request and triggers immediate check
 - [ ] Scheduler: Active watches are checked at their configured interval
 - [ ] Scheduler: Paused watches are not checked
 - [ ] Scheduler: Concurrent watch checks respect `maxConcurrent` limit
@@ -492,10 +493,11 @@ watch:
 - [ ] Alert: Deleted content always triggers an alert regardless of threshold
 - [ ] Snapshots: Each snapshot stored as versioned KnowledgeObject with temporal edges
 - [ ] Snapshots: Snapshot count respects `maxSnapshots` limit with archival of oldest
-- [ ] REST API: `POST /api/v1/watches` creates a watch and returns 201
+- [ ] REST API: `POST /api/v1/watches` request payload contains `target_url` (or `target_entity`), `interval`, and `alert_threshold`; returns 201 with watch record including `id`, `status: active`, and `next_check`
+- [ ] REST API: Watch record persisted in storage -- `GET /api/v1/watches` lists the created watch with correct `interval` and `alert_threshold`
 - [ ] REST API: `GET /api/v1/watches` returns list of watches with filtering
-- [ ] REST API: `GET /api/v1/watches/{id}/history` returns snapshot timeline
-- [ ] REST API: `GET /api/v1/watches/{id}/diff?v1=X&v2=Y` returns diff between snapshots
+- [ ] REST API: `GET /api/v1/watches/{id}/history` returns snapshot timeline with `content_hash`, `change_type`, and `diff_summary` per snapshot
+- [ ] REST API: `GET /api/v1/watches/{id}/diff?v1=X&v2=Y` returns diff between snapshots with `diff` text and `change_percentage`
 - [ ] REST API: `PATCH /api/v1/watches/{id}` updates watch status (pause/resume)
 - [ ] REST API: `DELETE /api/v1/watches/{id}` deletes watch
 - [ ] Rate Limiting: Watch checks respect per-domain rate limits

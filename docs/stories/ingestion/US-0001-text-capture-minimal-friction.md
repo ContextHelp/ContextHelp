@@ -1,4 +1,4 @@
-# Story: Text Capture with Minimal Friction
+# US-0001: Text Capture with Minimal Friction
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)
@@ -26,6 +26,7 @@ Knowledge workers constantly encounter insights, decisions, and important inform
 - [ ] User can optionally apply focus profile at capture time (`--profile engineering`)
 - [ ] System returns job ID for tracking async progress
 - [ ] Captured text appears in knowledge base within 30 seconds (enriched) or immediately (indexed)
+- [ ] Submitted `profile` and `project` values are persisted in the stored object's Metadata and are retrievable via `GET /objects/{object_id}`
 
 ---
 
@@ -151,12 +152,16 @@ storage:
 - [ ] CLI: `ctxt add "test insight"` returns job ID within 1 second
 - [ ] CLI: Job status transitions from `pending` → `completed` within 30 seconds
 - [ ] CLI: Retrieved object contains extracted summary, entities, tags
-- [ ] CLI: With `--profile engineering`, object is tagged appropriately
+- [ ] CLI: `ctxt add "text" --profile engineering` sends `"profile": "engineering"` in the request payload to the server
+- [ ] CLI: `ctxt add "text" --profile engineering --project mobile-app` sends both `"profile": "engineering"` and `"project": "mobile-app"` in the server request payload
+- [ ] CLI: With `--profile engineering`, stored object Metadata includes profile reference and object is tagged appropriately
+- [ ] CLI: With `--project mobile-app`, stored object Metadata includes `"project": "mobile-app"`
 - [ ] TUI: Modal accepts input, returns to main screen, shows toast notification
 - [ ] Browser: Context menu appears, popup allows profile selection, confirmation sent
-- [ ] REST API: POST /analyze with JSON body returns 202 + job ID
+- [ ] REST API: POST /analyze with `{"content": "...", "profile": "engineering", "project": "mobile-app"}` returns 202 + job ID
+- [ ] REST API: Server receives and persists `profile` and `project` fields — GET /objects/{object_id} confirms both fields in stored object
 - [ ] REST API: GET /jobs/{job_id} shows completion status
-- [ ] REST API: GET /objects/{object_id} returns enriched object
+- [ ] REST API: GET /objects/{object_id} returns enriched object with all submitted fields present
 - [ ] Async: User can immediately search for content after capture (before enrichment)
 - [ ] Multi-modal: Capture same text via CLI, TUI, REST, gRPC → identical objects
 - [ ] Resilience: Worker crash during enrichment → job retried automatically
@@ -165,7 +170,7 @@ storage:
 
 ## Related Stories
 
-- [extract-entities-and-mentions](../enrichment/extract-entities-and-mentions.md) — Entity extraction pipeline step
-- [assign-tags-from-vocabulary](../enrichment/assign-tags-from-vocabulary.md) — Tag assignment enrichment
-- [apply-focus-profile-to-search](../search/apply-focus-profile-to-search.md) — Using profiles at query time
-- [natural-language-search](../search/natural-language-search.md) — Searching captured content
+- [US-0009](../enrichment/US-0009-extract-entities-and-mentions.md) — Entity extraction pipeline step
+- [US-0011](../enrichment/US-0011-assign-tags-from-vocabulary.md) — Tag assignment enrichment
+- [US-0020](../search/US-0020-apply-focus-profile-to-search.md) — Using profiles at query time
+- [US-0016](../search/US-0016-natural-language-search.md) — Searching captured content

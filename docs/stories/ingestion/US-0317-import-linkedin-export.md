@@ -63,13 +63,17 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Test Checklist
 
-- [ ] Import run succeeds with representative source fixture.
-- [ ] Dry-run reports expected item counts and no job enqueue.
-- [ ] Incremental sync only imports changed/new records.
-- [ ] Re-running same source data does not create duplicates.
-- [ ] Auth errors are returned with actionable guidance.
-- [ ] Network/transient errors trigger retry behavior and proper reporting.
-- [ ] Import summary matches observed enqueued job count.
+- [ ] CLI: `ctxt import linkedin --file ./linkedin-export.zip --profile default` sends `"importer_key": "linkedin"`, `"file"` path, and `"profile": "default"` in the request payload; server creates a run record with all three fields — GET /api/v1/importers/runs/{run_id} confirms.
+- [ ] CLI: `--server` flag value is included in the request payload when provided; server records the target server endpoint in the run record.
+- [ ] Import run succeeds with representative LinkedIn export fixture; produced KnowledgeObjects contain post/article content, profile metadata, and activity IDs.
+- [ ] Stored KnowledgeObjects have provenance metadata: `source=linkedin`, `external_id` matching the LinkedIn activity ID, and `import_timestamp` set to ingest time.
+- [ ] Dry-run: `--dry-run` flag sends `"dry_run": true` in the server request payload; no jobs enqueued — GET /api/v1/importers/runs/{run_id} confirms `enqueued=0` and reports expected item counts.
+- [ ] Incremental sync: uses export timestamps and activity IDs; second run with same export and unchanged activities imports zero new records — `skipped` count equals previous `imported` count.
+- [ ] Re-running same source data does not create duplicates; dedup table row count unchanged.
+- [ ] Auth errors (invalid archive file or expired OAuth credentials) are returned with actionable guidance and `error_type=auth`.
+- [ ] Rate-limit errors (429) in API mode trigger retry behavior; run report shows `error_type=rate_limit` for affected items.
+- [ ] Network/transient errors trigger retry behavior; run report shows `error_type=transient` for retried items.
+- [ ] Import summary `scanned + skipped + failed = total`; `imported` count matches observed enqueued job count — GET /api/v1/importers/runs/{run_id} confirms all counters.
 
 ---
 

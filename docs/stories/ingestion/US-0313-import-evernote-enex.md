@@ -63,13 +63,16 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Test Checklist
 
-- [ ] Import run succeeds with representative source fixture.
-- [ ] Dry-run reports expected item counts and no job enqueue.
-- [ ] Incremental sync only imports changed/new records.
-- [ ] Re-running same source data does not create duplicates.
-- [ ] Auth errors are returned with actionable guidance.
-- [ ] Network/transient errors trigger retry behavior and proper reporting.
-- [ ] Import summary matches observed enqueued job count.
+- [ ] CLI: `ctxt import evernote --file ./notes.enex --profile default` sends `"importer_key": "evernote"`, `"file"` path, and `"profile": "default"` in the request payload; server creates a run record with all three fields — GET /api/v1/importers/runs/{run_id} confirms.
+- [ ] CLI: `--server` flag value is included in the request payload when provided; server records the target server endpoint in the run record.
+- [ ] Import run succeeds with representative Evernote ENEX fixture; produced KnowledgeObjects contain note title, content, notebook name, and tags.
+- [ ] Stored KnowledgeObjects have provenance metadata: `source=evernote`, `external_id` matching the note GUID from the ENEX file, and `import_timestamp` set to ingest time.
+- [ ] Dry-run: `--dry-run` flag sends `"dry_run": true` in the server request payload; no jobs enqueued — GET /api/v1/importers/runs/{run_id} confirms `enqueued=0` and reports expected item counts.
+- [ ] Incremental sync: uses note GUID and updated timestamp; second run with same ENEX file and unchanged notes imports zero new records — `skipped` count equals previous `imported` count.
+- [ ] Re-running same source data does not create duplicates; dedup table row count unchanged.
+- [ ] Auth errors (invalid or unreadable ENEX file) are returned with actionable guidance and `error_type=auth`.
+- [ ] Malformed ENEX XML returns `error_type=malformed_input` with descriptive message; valid notes in the same file are still processed.
+- [ ] Import summary `scanned + skipped + failed = total`; `imported` count matches observed enqueued job count — GET /api/v1/importers/runs/{run_id} confirms all counters.
 
 ---
 

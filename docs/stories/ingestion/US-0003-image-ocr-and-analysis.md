@@ -346,10 +346,11 @@ image:
 
 ## E2E Test Checklist
 
-- [ ] CLI: `ctxt add --file photo.png` returns job ID within 1 second
+- [ ] CLI: `ctxt add --file photo.png` returns job ID within 1 second; server receives file and creates job record
 - [ ] CLI: Job status transitions from `pending` to `completed` within 60 seconds
 - [ ] CLI: Retrieved object contains OCR-extracted text in Sections
-- [ ] CLI: `ctxt add --file screenshot.jpg --type image.analysis` selects the `image.analysis` pipeline
+- [ ] CLI: `ctxt add --file screenshot.jpg --type image.analysis` sends `"type_hint": "image.analysis"` in the request payload; stored object's pipeline field equals `"image.analysis"`
+- [ ] CLI: `ctxt add --file whiteboard.jpg --profile engineering --project mobile-app` sends `"profile": "engineering"` and `"project": "mobile-app"` in the server request payload; stored object Metadata contains both fields
 - [ ] Format: PNG, JPG, WEBP, TIFF, BMP images all processed successfully
 - [ ] Format: GIF input extracts text from the first frame only
 - [ ] Format: Unsupported format (e.g., SVG, RAW) returns descriptive error without crash
@@ -357,9 +358,9 @@ image:
 - [ ] Size: File exceeding 50MB limit is rejected with size limit error
 - [ ] OCR: Extracted text is searchable via `ctxt search "text from image"`
 - [ ] OCR: Low-confidence result is flagged with `needs-review` tag
-- [ ] Metadata: Image dimensions, format, and file size stored in object Metadata
-- [ ] REST API: Multipart upload via `POST /analyze` returns 202 + job ID
-- [ ] REST API: `GET /objects/{object_id}` returns enriched object with OCR text
+- [ ] Metadata: Image dimensions, format, and file size stored in object Metadata — GET /objects/{object_id} confirms `image_width`, `image_height`, `image_format`, `file_size_bytes` keys present
+- [ ] REST API: Multipart upload via `POST /analyze` with `source_type=image` and `type_hint=image.ocr` returns 202 + job ID; server records both fields
+- [ ] REST API: `GET /objects/{object_id}` returns enriched object with OCR text in Sections, pipeline name, and image metadata all populated
 - [ ] Async: User can immediately query for the object before enrichment completes
 - [ ] Resilience: Worker crash during OCR step causes automatic job retry
 

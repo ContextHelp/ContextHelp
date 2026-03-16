@@ -420,12 +420,15 @@ document:
 
 ## E2E Test Checklist
 
-- [ ] CLI: `ctxt add --file report.pdf` returns job ID within 2 seconds
+- [ ] CLI: `ctxt add --file report.pdf` returns job ID within 2 seconds; server creates job record with detected pipeline (`doc.pdf`)
 - [ ] CLI: Job status transitions from `pending` -> `processing` -> `completed`
-- [ ] PDF: 42-page PDF produces parent object with hierarchical Sections matching heading structure
-- [ ] PDF: Embedded images extracted as child KnowledgeObjects with `has_image` edges
+- [ ] CLI: `ctxt add --file main.go --pipeline doc.code` sends `"pipeline": "doc.code"` in the request payload; stored object's pipeline field equals `"doc.code"`
+- [ ] CLI: `ctxt add --file design-spec.docx --profile engineering --project mobile-app` sends `"profile": "engineering"` and `"project": "mobile-app"` in the server request payload; stored object Metadata contains both fields
+- [ ] PDF: 42-page PDF produces parent object with hierarchical Sections matching heading structure; GET /objects/{object_id} confirms section depth and parent_section linkages
+- [ ] PDF: Embedded images extracted as child KnowledgeObjects with `has_image` edges — GET /objects/{object_id} confirms `children` array contains image entries with `relationship: "embedded_image"`
 - [ ] PDF: Tables extracted and stored as structured Markdown within Sections
 - [ ] PDF: Password-protected PDF rejected with clear error message
+- [ ] PDF: Stored object Metadata contains `format`, `pages`, `author`, `title`, `language` keys
 - [ ] Markdown: Heading hierarchy preserved (h1 > h2 > h3 nesting) in Section tree
 - [ ] Markdown: Fenced code blocks extracted with language annotation
 - [ ] Code: Go file parsed into function-level Sections with signatures and doc comments
@@ -435,7 +438,7 @@ document:
 - [ ] Office: DOCX file parsed and decomposed similarly to PDF
 - [ ] Error: Corrupt file rejected with descriptive error message
 - [ ] Error: File exceeding `maxFileSize` (default 100MB) rejected before processing starts
-- [ ] REST API: Multipart upload returns 202 + job ID
+- [ ] REST API: Multipart upload with `pipeline=doc.pdf` and `profile=engineering` returns 202 + job ID; server stores both fields — GET /objects/{object_id} confirms pipeline and profile in stored object
 - [ ] Search: Section-level search returns specific function or heading, not entire document
 - [ ] Hierarchy: Child objects linked to parent via graph edges, traversable via API
 

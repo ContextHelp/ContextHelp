@@ -463,7 +463,7 @@ arxiv:
 - [ ] CLI: `ctxt capture https://arxiv.org/abs/2401.12345` returns job ID within 2 seconds
 - [ ] CLI: `ctxt capture arxiv:2401.12345` shorthand syntax works
 - [ ] CLI: `ctxt capture https://arxiv.org/pdf/2401.12345` PDF URL variant works
-- [ ] CLI: `ctxt capture arxiv:2401.12345 --version v2` captures specific version
+- [ ] CLI: `ctxt capture arxiv:2401.12345 --version v2` sends `options.version: v2` in the request payload to the server
 - [ ] Metadata: Title, authors, abstract, categories extracted from arXiv API
 - [ ] Metadata: Submission date and last-updated date captured
 - [ ] Metadata: BibTeX citation generated and stored in metadata
@@ -478,9 +478,11 @@ arxiv:
 - [ ] Entity: Same author in multiple papers resolves to same entity
 - [ ] Entity: Organization entities created for author affiliations
 - [ ] Tags: arXiv categories mapped to human-readable tags
+- [ ] REST API: `POST /api/v1/analyze` request payload contains `source_type: arxiv`, `source_url`, and `options` object with `version`, `extract_citations`, `extract_bibtex`, and `decompose_sections` fields
+- [ ] REST API: `POST /api/v1/analyze` returns 202 with `job_id` and `object_id`
+- [ ] Storage: Completed object stored with `metadata.arxiv_id`, `metadata.bibtex`, `metadata.citation_count_extracted`, `metadata.version`, `source.arxiv_id`, and `source.pdf_url` (verifiable via `GET /api/v1/objects/<id>`)
 - [ ] Search: Abstract searchable via `ctxt search "scaling laws language models"`
 - [ ] Search: Section-level search returns specific paper section, not entire paper
-- [ ] REST API: POST /api/v1/analyze with arXiv source returns 202
 - [ ] Rate Limit: Rapid successive captures respect arXiv 3-second interval
 - [ ] Error: Invalid arXiv ID returns clear "paper not found" error
 - [ ] Error: Retracted paper handled gracefully with retraction notice

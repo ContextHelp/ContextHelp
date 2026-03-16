@@ -1,4 +1,4 @@
-# Story: Constrain Extraction with LMQL
+# US-0014: Constrain Extraction with LMQL
 
 **System Types:** dpkms (self-hosted)
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Platform Integrators](../../personas/platform-integrators.md)
@@ -295,6 +295,15 @@ ch_fallback_success_rate{from="lmql",to="instructor"}
 
 ## E2E Test Checklist
 
+- [ ] Config: `aiProvider.type: lmql` and `aiProvider.endpoint` are present in the config file sent to the server on startup
+- [ ] Config: `aiProvider.fallback.type` (e.g., `instructor`) is present in the config when a fallback is configured
+- [ ] CLI: Enrichment command with `--ai-provider lmql` sends `ai_provider: "lmql"` in the request payload (verified via request capture or server log)
+- [ ] CLI: Enrichment command with `--ai-provider instructor` sends `ai_provider: "instructor"` in the request payload
+- [ ] Server: Enrichment request body contains `step` and `ai_provider` fields for every LMQL-backed enrichment call
+- [ ] Server: Response contains extraction results matching the schema for the requested step (entities, decisions, or tags)
+- [ ] Storage: GET `/objects/{object_id}` after LMQL enrichment returns object with the relevant enrichment field populated (`mentions`, `enrichment.decisions`, or `tags`)
+- [ ] Storage: `enrichment.extraction_method` on the stored object equals `"lmql"` when LMQL was used
+- [ ] Storage: `enrichment.extraction_method` on the stored object equals `"instructor"` when the fallback was used
 - [ ] LMQL: Local LLM server running at configured endpoint
 - [ ] LMQL: Entity extraction succeeds without post-processing
 - [ ] LMQL: All extracted entities match `@type.slug` format
@@ -302,7 +311,7 @@ ch_fallback_success_rate{from="lmql",to="instructor"}
 - [ ] LMQL: Tag assignment constrained to vocabulary set
 - [ ] LMQL: No invalid outputs produced (hard constraints enforce)
 - [ ] LMQL: Execution completes within timeout
-- [ ] Fallback: If LMQL unavailable, falls back to instructor
+- [ ] Fallback: If LMQL unavailable, falls back to instructor (verified by taking LMQL endpoint offline)
 - [ ] Fallback: Instructor retries on schema validation failure
 - [ ] Fallback: Fallback results are still valid (but with less guarantees)
 - [ ] Determinism: Same input + same LMQL model → same output
@@ -314,8 +323,8 @@ ch_fallback_success_rate{from="lmql",to="instructor"}
 
 ## Related Stories
 
-- [extract-entities-and-mentions](./extract-entities-and-mentions.md) — Extraction pipeline
-- [assign-tags-from-vocabulary](./assign-tags-from-vocabulary.md) — Tag assignment with constraints
-- [configure-ai-provider](../admin/configure-ai-provider.md) — LMQL provider configuration
-- [agent-uses-constrained-enrichment](../agents/agent-uses-constrained-enrichment.md) — Agent perspective
-- [natural-language-search](../search/natural-language-search.md) — NLQ normalization with LMQL
+- [US-0009](./US-0009-extract-entities-and-mentions.md) — Extraction pipeline
+- [US-0011](./US-0011-assign-tags-from-vocabulary.md) — Tag assignment with constraints
+- [US-0027](../admin/US-0027-configure-ai-provider.md) — LMQL provider configuration
+- [US-0041](../agents/US-0041-agent-uses-constrained-enrichment.md) — Agent perspective
+- [US-0016](../search/US-0016-natural-language-search.md) — NLQ normalization with LMQL

@@ -613,7 +613,7 @@ wikipedia:
 
 - [ ] CLI: `ctxt capture https://en.wikipedia.org/wiki/Article_Name` returns job ID within 2 seconds
 - [ ] CLI: `ctxt capture wiki:Article_Name` shorthand syntax works
-- [ ] CLI: `ctxt capture wiki:Article_Name --lang fr` captures French article
+- [ ] CLI: `ctxt capture wiki:Article_Name --lang fr` sends `options.language: fr` in the request payload to the server
 - [ ] CLI: `ctxt capture https://www.wikidata.org/wiki/Q44030644` captures Wikidata entity
 - [ ] Content: Lead section captured as summary section before first heading
 - [ ] Content: Section hierarchy matches Wikipedia heading structure (h2, h3, h4)
@@ -627,15 +627,17 @@ wikipedia:
 - [ ] Entity: Subject entities created for people, organizations, and concepts
 - [ ] Entity: Wikidata QID stored in metadata for cross-language linking
 - [ ] Language: English article captured by default
-- [ ] Language: Non-English articles (French, German) captured with `--lang` flag
-- [ ] Language: Available language links stored in metadata
+- [ ] Language: Non-English articles (French, German) captured with `--lang` flag and stored with correct `source.language`
+- [ ] Language: Available language links stored in `metadata.available_languages`
 - [ ] Redirect: Redirect pages followed automatically to canonical article
 - [ ] Disambiguation: Disambiguation pages detected and return error with alternative list
 - [ ] Wikidata: Entity captured with labels, descriptions, and key properties
+- [ ] REST API: `POST /api/v1/analyze` request payload contains `source_type: wikipedia`, `source_url`, and `options` object with `language`, `extract_infobox`, `extract_references`, `extract_categories`, and `follow_redirects` fields
+- [ ] REST API: `POST /api/v1/analyze` returns 202 with `job_id` and `object_id`
+- [ ] Storage: Completed object stored with `metadata.wikidata_qid`, `metadata.language`, `metadata.categories_count`, `metadata.infobox`, `source.page_id`, and `source.revision_id` (verifiable via `GET /api/v1/objects/<id>`)
 - [ ] Search: Article content searchable via `ctxt search "self-attention mechanism"`
 - [ ] Search: Section-level search returns specific section, not entire article
 - [ ] Search: Infobox values searchable (e.g., `ctxt search "introduced 2017"`)
-- [ ] REST API: POST /api/v1/analyze with Wikipedia source returns 202
 - [ ] Error: Non-existent article returns clear "article not found" error
 - [ ] Error: Invalid Wikipedia URL returns descriptive error
 - [ ] Rate Limit: Rapid captures respect rate limits without errors

@@ -211,16 +211,28 @@ func (sd *SandboxDocker) Apply(
 
 ## E2E Test Checklist
 
-- [ ] Create pipeline with sandbox enabled=true, isolation_level=container → validates Docker dependency
-- [ ] Create pipeline with sandbox enabled=false, isolation_level=process → validates process isolation
-- [ ] Create pipeline with sandbox enabled=false → validates no sandbox isolation (same as default)
-- [ ] Create pipeline with invalid resource limits → validation error
-- [ ] Create pipeline with network=true → validation error (network not allowed)
-- [ ] Verify sandbox configuration is persisted correctly in database
-
-- **CLI commands work correctly**
-- [ ] `dpkms pipeline show` shows sandbox settings
-- [ ] `dpkms pipeline archive` updates archive status
+- [ ] Create pipeline with sandbox config → request payload contains `sandbox` object with all
+  specified fields: `enabled`, `isolation_level`, `resource_limits`, `network`, `filesystem`
+- [ ] Verify `resource_limits.max_memory` value in request payload matches CLI/config input
+- [ ] Verify `resource_limits.max_cpu` value in request payload matches CLI/config input
+- [ ] Verify `resource_limits.timeout` value in request payload matches CLI/config input
+- [ ] Verify `filesystem.read_only` array in request payload matches CLI/config input
+- [ ] Verify `filesystem.write_allowed` value in request payload matches CLI/config input
+- [ ] Create pipeline with sandbox enabled=true, isolation_level=container → validates Docker
+  dependency; sandbox config stored as JSON blob in `pipelines.sandbox` column
+- [ ] Create pipeline with sandbox enabled=false, isolation_level=process → validates process
+  isolation; `sandbox` JSON blob stored in DB with `enabled=false`
+- [ ] Create pipeline with sandbox enabled=false → validates no sandbox isolation (same as
+  default); `sandbox` field null or `{enabled:false}` in DB
+- [ ] Create pipeline with invalid resource limits → validation error; no record created in DB
+- [ ] Create pipeline with network=true → validation error (network not allowed in sandboxed
+  pipeline); no record created in DB
+- [ ] Verify sandbox configuration is persisted correctly in DB:
+  `json_extract(sandbox, '$.isolation_level')`, `json_extract(sandbox, '$.network')`, etc.
+  all match input values
+- [ ] `dpkms pipeline show <name>` → response includes complete `sandbox` object; all fields
+  match DB stored value
+- [ ] `dpkms pipeline archive <name>` → `archived=1` in DB; sandbox config unchanged
 - [ ] Auto-update flag is respected (default false, can be enabled with config or via CLI)
 
 ## Related Stories
@@ -234,7 +246,6 @@ func (sd *SandboxDocker) Apply(
 - [US-0109](./US-0109-fetch-registry-manifest.md) - Fetch manifest (get available steps)
 - [US-0110](./US-0110-check-registry-updates.md) - Check for updates
 - [US-0111](./US-0111-configure-registry-autoupdate.md) - Configure auto-update
-- [US-0112](./US-0112-configure-sandbox-per-pipeline.md) - Configure sandbox
 - [US-0113](./US-0113-ctxt-analyze-api-client.md) - ctxt as API client
 
 ## Related ADRs
