@@ -99,6 +99,9 @@ type ObjectStore interface {
 	// VectorSearch returns the top-K objects ranked by cosine similarity to
 	// the given vector, optionally filtered by ObjectFilter fields.
 	VectorSearch(ctx context.Context, vector []float32, filter ObjectFilter) ([]*KnowledgeObject, error)
+	// FTSSearch queries the objects_fts FTS5 virtual table using SQLite FTS5 MATCH syntax.
+	// Returns results ranked by FTS5 bm25 score, filtered by ObjectFilter.
+	FTSSearch(ctx context.Context, query string, filter ObjectFilter) ([]*KnowledgeObject, error)
 }
 
 // EntityStore persists and retrieves named entities.

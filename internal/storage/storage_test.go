@@ -79,6 +79,9 @@ func (m *mockObjectStore) ListWithEmbeddings(ctx context.Context) ([]*KnowledgeO
 func (m *mockObjectStore) VectorSearch(ctx context.Context, vector []float32, filter ObjectFilter) ([]*KnowledgeObject, error) {
 	return nil, nil
 }
+func (m *mockObjectStore) FTSSearch(ctx context.Context, query string, filter ObjectFilter) ([]*KnowledgeObject, error) {
+	return nil, nil
+}
 
 type mockEntityStore struct{}
 

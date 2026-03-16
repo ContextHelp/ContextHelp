@@ -97,6 +97,9 @@ func (m *mockObjectStore2) VectorSearch(_ context.Context, _ []float32, f storag
 	}
 	return out, nil
 }
+func (m *mockObjectStore2) FTSSearch(_ context.Context, _ string, f storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	return nil, nil
+}
 
 // mockEmbedding returns a fixed embedding vector.
 type mockEmbedding struct{}

@@ -634,6 +634,80 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 	return out, nil
 }
 
+// FTSSearch queries the objects_fts FTS5 virtual table and returns matching objects
+// ranked by bm25 relevance score. bm25() returns negative values in SQLite FTS5;
+// ORDER BY score (ascending) gives best matches first.
+func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	if query == "" {
+		return nil, fmt.Errorf("fts search: empty query")
+	}
+
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	q := `
+		SELECT o.id, o.type, o.subtype, o.raw_content, o.content_type, o.text_content,
+		       o.metadata, o.summaries, o.sections, o.tags, o.mentions,
+		       o.decisions, o.tasks, o.pipeline, o.source,
+		       o.registry_influences, o.plugins, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
+		       o.created_at, o.updated_at, o.fts_indexed, o.vector_indexed, o.status, o.inbox_note,
+		       bm25(objects_fts) AS score
+		FROM objects_fts
+		JOIN objects o ON objects_fts.id = o.id
+		WHERE objects_fts MATCH ?`
+	args := []any{query}
+
+	if filter.Type != "" {
+		q += " AND o.type = ?"
+		args = append(args, filter.Type)
+	}
+
+	q += " ORDER BY score LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("fts search: %w", err)
+	}
+	defer rows.Close()
+
+	var results []*storage.KnowledgeObject
+	for rows.Next() {
+		var obj storage.KnowledgeObject
+		var (
+			metadataJSON, summariesJSON, sectionsJSON, tagsJSON string
+			mentionsJSON, decisionsJSON, tasksJSON              string
+			influencesJSON, pluginsJSON                         string
+			createdAt, updatedAt                                string
+			ftsIndexed, vectorIndexed                           int
+			lastReinforcedAt                                    sql.NullString
+			score                                               float64
+		)
+		err := rows.Scan(
+			&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
+			&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
+			&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
+			&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
+			&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
+			&score,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("fts search scan: %w", err)
+		}
+		unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
+			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+			createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt)
+		if obj.Metadata == nil {
+			obj.Metadata = make(map[string]any)
+		}
+		obj.Metadata["fts_score"] = score
+		results = append(results, &obj)
+	}
+	return results, rows.Err()
+}
+
 // cosineSimilarity returns the cosine similarity between two vectors.
 // Returns 0 when either vector has zero magnitude.
 func cosineSimilarity(a, b []float32) float64 {

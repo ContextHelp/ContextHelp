@@ -418,6 +418,34 @@ func TestVectorSearch_RespectsLimit(t *testing.T) {
 	assert.Len(t, results, 2)
 }
 
+func TestFTSSearch(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj1 := makeObject("fts-1", "article")
+	obj1.Summaries = []string{"authentication best practices guide"}
+	obj1.RawContent = "Use bcrypt for password hashing"
+	require.NoError(t, d.Objects().Create(ctx, obj1))
+
+	obj2 := makeObject("fts-2", "article")
+	obj2.Summaries = []string{"database indexing strategies"}
+	obj2.RawContent = "Composite indexes improve query performance"
+	require.NoError(t, d.Objects().Create(ctx, obj2))
+
+	// Rebuild FTS content table index.
+	_, err := d.db.ExecContext(ctx, "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")
+	require.NoError(t, err)
+
+	results, err := d.Objects().FTSSearch(ctx, "authentication", storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "fts-1", results[0].ID)
+
+	results, err = d.Objects().FTSSearch(ctx, "kubernetes", storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err)
+	assert.Empty(t, results)
+}
+
 func TestCosineSimilarity(t *testing.T) {
 	assert.InDelta(t, 1.0, cosineSimilarity([]float32{1, 0, 0}, []float32{1, 0, 0}), 0.0001)
 	assert.InDelta(t, 0.0, cosineSimilarity([]float32{1, 0, 0}, []float32{0, 1, 0}), 0.0001)

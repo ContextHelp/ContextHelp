@@ -387,6 +387,11 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 	return objects, rows.Err()
 }
 
+// FTSSearch is not implemented for the postgres backend.
+func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	return nil, fmt.Errorf("FTSSearch: not implemented for postgres backend")
+}
+
 // objectSelectCols is the SELECT column list (no trailing FROM).
 const objectSelectCols = `SELECT
 	id, type, subtype, raw_content, content_type,
