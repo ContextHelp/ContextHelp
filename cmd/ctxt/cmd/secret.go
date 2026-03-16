@@ -148,7 +148,6 @@ func runSecretList(cmd *cobra.Command, args []string) error {
 			svc = "ctxt"
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "  service: %s\n", svc)
-		fmt.Fprintln(cmd.OutOrStdout(), "  Key enumeration not supported — use: security dump-keychain | grep acct")
 	case "1password":
 		fmt.Fprintf(cmd.OutOrStdout(), "  vault: %s\n", cfg.Secrets.OnePasswordVault)
 		fmt.Fprintln(cmd.OutOrStdout(), "  Key enumeration not supported — use: op item list --vault <vault>")

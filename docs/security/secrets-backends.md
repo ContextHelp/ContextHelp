@@ -70,11 +70,13 @@ security find-generic-password -s ctxt -a OPENAI_API_KEY -w   # macOS
 secret-tool lookup service ctxt account OPENAI_API_KEY         # Linux
 ```
 
-**`ctxt secret list`:** Key enumeration not supported — the keychain API does not expose a safe list operation. `ctxt secret list` shows the service name and guidance. To see stored keys:
+**`ctxt secret list`:** ✓ Key enumeration supported. Parses `security dump-keychain` (macOS) or `secret-tool search` (Linux), filtering by service name. Only shows keys stored under the configured service — no other keychain entries are exposed:
 
 ```bash
-security dump-keychain | grep -A1 'svce.*ctxt'   # macOS
-secret-tool search service ctxt                   # Linux
+ctxt secret list
+# Secrets backend: keychain
+#   OPENAI_API_KEY
+#   ANTHROPIC_API_KEY
 ```
 
 ---
@@ -260,7 +262,7 @@ ctxt --output json secret list
 # → {"backend":"keychain","keychain_service":"ctxt",...}
 ```
 
-**Read-only backends** (`env`, `age-file`, `1password`) return a clear error on `set`. **`ctxt secret list`** enumerates keys for backends that support it (`age-file`, `gh-secrets`); for others it shows config metadata and guidance on how to inspect keys using native tools.
+**Read-only backends** (`env`, `age-file`, `1password`) return a clear error on `set`. **`ctxt secret list`** enumerates keys for backends that support it (`keychain`, `age-file`, `gh-secrets`); for `env` and `1password` it shows config metadata and guidance on how to inspect keys using native tools.
 
 ---
 
@@ -269,7 +271,7 @@ ctxt --output json secret list
 | Backend      | `get` | `set` | `list` (key enumeration) | Requires            | Best for                       |
 |-------------|-------|-------|--------------------------|---------------------|-------------------------------|
 | `env`        | ✓     | ✗     | ✗ — inspect shell env    | —                   | Simple setups, CI             |
-| `keychain`   | ✓     | ✓     | ✗ — use `security dump-keychain` | OS keychain  | Developer laptops             |
+| `keychain`   | ✓     | ✓     | ✓ — parses `security dump-keychain` | OS keychain  | Developer laptops          |
 | `age-file`   | ✓     | ✗     | ✓ — decrypts and lists keys | `age`, `age-keygen` | Encrypted file per machine |
 | `1password`  | ✓     | ✗     | ✗ — use `op item list`   | `op` CLI, account   | Teams sharing a vault         |
 | `gh-secrets` | env fallback | ✓ | ✓ — calls `gh secret list` | `gh` CLI, repo | Syncing secrets into GitHub CI |
