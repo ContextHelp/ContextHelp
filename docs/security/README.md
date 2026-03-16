@@ -6,6 +6,7 @@ This directory contains comprehensive documentation on security features and bes
 
 ### Core Security Documentation
 
+- **[Secrets Backends](./secrets-backends.md)** - Configure where ctxt reads API keys from: env, keychain, age-file, 1Password, or GitHub secrets
 - **[Secrets Validation & Log Sanitization](./secrets-validation-and-log-sanitization.md)** - Complete guide to detecting, validating, and protecting secrets in code, configuration, and logs
 - **[Security Model](./security-model.md)** - Detailed threat model, attack vectors, and security guarantees
 - **[Secret Management Best Practices](./secret-management.md)** - Recommended approaches for handling secrets in ContextHelp
