@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -134,11 +135,43 @@ func runRegistryAdd(cmd *cobra.Command, args []string) error {
 
 func runRegistryRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	_ = name
 
-	fmt.Println("Registry removal not yet implemented.")
-	fmt.Println("Remove registry configuration manually:")
-	fmt.Println("  ctxt config edit")
+	var registryURL string
+	for _, r := range cfg.Registries {
+		if r.Name == name {
+			registryURL = r.URL
+			break
+		}
+	}
+	if registryURL == "" {
+		return fmt.Errorf("registry %q not found in config", name)
+	}
+
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+	if err := svc.RemoveRegistry(ctx, registryURL); err != nil {
+		return fmt.Errorf("remove registry cache: %w", err)
+	}
+
+	// Remove from config
+	updated := cfg.Registries[:0]
+	for _, r := range cfg.Registries {
+		if r.Name != name {
+			updated = append(updated, r)
+		}
+	}
+	cfg.Registries = updated
+
+	if err := config.WriteBack(cfg, configPath()); err != nil {
+		return fmt.Errorf("failed to update config: %w", err)
+	}
+
+	fmt.Printf("Removed registry: %s\n", name)
 	return nil
 }
 

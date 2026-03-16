@@ -5,7 +5,19 @@ import (
 	"io"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
+
+// Alias represents a human-readable name that resolves to a knowledge object ID.
+// The canonical definition lives in pkg/pluginapi.
+type Alias = pluginapi.Alias
+
+// AliasFilter restricts alias listing results.
+type AliasFilter = pluginapi.AliasFilter
+
+// AliasStore persists and retrieves object aliases.
+// The canonical definition lives in pkg/pluginapi.
+type AliasStore = pluginapi.AliasStore
 
 // StorageDriver is the top-level interface for all persistence operations.
 type StorageDriver interface {
@@ -29,36 +41,6 @@ type StorageDriver interface {
 	Aliases() AliasStore
 	AuditLog() AuditStore
 	Health(ctx context.Context) error
-}
-
-// Alias represents a human-readable name that resolves to a knowledge object ID.
-type Alias struct {
-	Alias     string    `json:"alias"`
-	ObjectID  string    `json:"object_id"`
-	Scope     string    `json:"scope"`   // "global" | "profile"
-	Profile   string    `json:"profile"` // empty for global
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// AliasFilter restricts alias listing results.
-type AliasFilter struct {
-	ObjectID string
-	Scope    string
-	Profile  string
-}
-
-// AliasStore persists and retrieves object aliases.
-type AliasStore interface {
-	// Create stores a new alias. Returns error if the alias+scope+profile triple already exists.
-	Create(ctx context.Context, a *Alias) error
-	// Resolve returns the object ID for the given alias, considering global scope and
-	// the provided profile scope. Returns ("", ErrNotFound) if no match.
-	Resolve(ctx context.Context, alias, profile string) (string, error)
-	// List returns all aliases matching the filter.
-	List(ctx context.Context, filter AliasFilter) ([]*Alias, error)
-	// Delete removes the alias with the given alias+scope+profile triple.
-	Delete(ctx context.Context, alias, scope, profile string) error
 }
 
 // AuditEntry is one immutable record in the audit log.
@@ -175,6 +157,7 @@ type RegistryStore interface {
 	GetCachedManifest(ctx context.Context, url string) (*RegistryCache, error)
 	UpdateETag(ctx context.Context, url, etag string) error
 	List(ctx context.Context) ([]*RegistryCache, int, error)
+	Delete(ctx context.Context, url string) error
 }
 
 // ReminderStore persists and retrieves system reminders.

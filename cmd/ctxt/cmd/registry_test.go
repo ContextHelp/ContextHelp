@@ -48,12 +48,10 @@ func TestRegistryAddNoArgsError(t *testing.T) {
 }
 
 func TestRegistryRemove(t *testing.T) {
-	out, err := executeCommand("registry", "remove", "uxpatterns")
-	if err != nil {
-		t.Fatalf("registry remove should succeed: %v", err)
-	}
-	if !strings.Contains(out, "Registry removal not yet implemented") {
-		t.Error("output should indicate not yet implemented")
+	db := setupTestDB(t)
+	_, err := db.exec("registry", "remove", "nonexistent")
+	if err == nil {
+		t.Error("registry remove for unknown registry should fail")
 	}
 }
 

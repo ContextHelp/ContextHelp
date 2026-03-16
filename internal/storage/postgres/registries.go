@@ -77,6 +77,14 @@ func (s *RegistryStore) List(ctx context.Context) ([]*storage.RegistryCache, int
 	return registries, total, rows.Err()
 }
 
+func (s *RegistryStore) Delete(ctx context.Context, url string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM registry_cache WHERE registry_url = $1`, url)
+	if err != nil {
+		return fmt.Errorf("delete registry: %w", err)
+	}
+	return nil
+}
+
 func scanRegistryCache(row interface{ Scan(...any) error }) (*storage.RegistryCache, error) {
 	var r storage.RegistryCache
 	var manifestJSON []byte

@@ -161,6 +161,7 @@ func (m *mockRegistryStore) UpdateETag(ctx context.Context, url, etag string) er
 func (m *mockRegistryStore) List(ctx context.Context) ([]*RegistryCache, int, error) {
 	return nil, 0, nil
 }
+func (m *mockRegistryStore) Delete(ctx context.Context, url string) error { return nil }
 
 type mockReminderStore struct{}
 

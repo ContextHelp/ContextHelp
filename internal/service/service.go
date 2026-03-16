@@ -322,6 +322,10 @@ func (s *Service) ListRegistries(ctx context.Context) ([]*storage.RegistryCache,
 	return s.Store.Registries().List(ctx)
 }
 
+func (s *Service) RemoveRegistry(ctx context.Context, url string) error {
+	return s.Store.Registries().Delete(ctx, url)
+}
+
 func (s *Service) ListReminders(ctx context.Context, activeOnly bool) ([]*storage.SystemReminder, int, error) {
 	return s.Store.Reminders().List(ctx, activeOnly)
 }
