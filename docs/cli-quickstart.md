@@ -153,8 +153,12 @@ Search and query your knowledge base:
 # Filter by type
 ./bin/ctxt list --type url
 
-# Semantic search
+# Hybrid search (FTS + vector, default)
 ./bin/ctxt find "authentication best practices"
+
+# FTS-only or vector-only
+./bin/ctxt find "authentication" --fts
+./bin/ctxt find "authentication" --semantic
 
 # View object details
 ./bin/ctxt open obj_12345678

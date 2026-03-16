@@ -953,7 +953,11 @@ func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep 
 		return nil, fmt.Errorf("hybrid search fts leg: %w", ftsRes.err)
 	}
 	if vecRes.err != nil {
-		return nil, fmt.Errorf("hybrid search vector leg: %w", vecRes.err)
+		if !cfg.FallbackToFTS {
+			return nil, fmt.Errorf("hybrid search vector leg: %w", vecRes.err)
+		}
+		// Vector leg failed but FallbackToFTS is true — degrade to FTS-only.
+		vecRes.results = nil
 	}
 
 	scores := map[string]float64{}

@@ -21,7 +21,7 @@ ctxt version                         # verify client
 1. Ingest      →  ctxt analyze / POST /analyze
 2. Poll        →  ctxt job status <id> / GET /jobs/{id}  (gate on "completed")
 3. Retrieve    →  ctxt list --q "<rsql>" / GET /objects?q=  (deterministic first)
-4. Fallback    →  ctxt find "<nlq>" / GET /objects  (semantic only if step 3 insufficient)
+4. Fallback    →  ctxt find "<nlq>" / GET /objects  (hybrid FTS+vector; --fts or --semantic for single-mode)
 5. Compose     →  ctxt make ... / POST /compose
 ```
 

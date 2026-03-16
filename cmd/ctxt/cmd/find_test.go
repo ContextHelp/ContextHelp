@@ -7,7 +7,19 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 )
+
+func rebuildFTSForTest(t *testing.T, db *testDB) {
+	t.Helper()
+	d, ok := db.Driver.(*sqlite.Driver)
+	if !ok {
+		t.Fatal("driver must be *sqlite.Driver")
+	}
+	if _, err := d.DB().ExecContext(context.Background(), "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')"); err != nil {
+		t.Fatalf("fts rebuild: %v", err)
+	}
+}
 
 func TestFind(t *testing.T) {
 	db := setupTestDB(t)
@@ -24,12 +36,13 @@ func TestFind(t *testing.T) {
 	if err := db.Driver.Objects().Create(ctx, obj); err != nil {
 		t.Fatalf("seed object: %v", err)
 	}
+	rebuildFTSForTest(t, db)
 
-	out, err := db.exec("find", "authentication best practices")
+	out, err := db.exec("find", "authentication")
 	if err != nil {
 		t.Fatalf("find should succeed: %v", err)
 	}
-	if !strings.Contains(out, "Search:") {
+	if !strings.Contains(out, "Search [") {
 		t.Error("output should contain search header")
 	}
 	if !strings.Contains(out, "obj_find_1") {
@@ -56,11 +69,13 @@ func TestFindWithLimit(t *testing.T) {
 		}
 	}
 
+	rebuildFTSForTest(t, db)
+
 	out, err := db.exec("find", "onboarding", "--limit", "2")
 	if err != nil {
 		t.Fatalf("find with --limit should succeed: %v", err)
 	}
-	if !strings.Contains(out, "Search:") {
+	if !strings.Contains(out, "Search [") {
 		t.Error("output should contain search header")
 	}
 }
@@ -94,5 +109,20 @@ func TestFindHelp(t *testing.T) {
 	}
 	if !strings.Contains(out, "search") {
 		t.Error("find help should describe search functionality")
+	}
+}
+
+func TestFindCmd_HybridFlag(t *testing.T) {
+	f := findCmd.Flags().Lookup("hybrid")
+	if f == nil {
+		t.Fatal("--hybrid flag must be registered")
+	}
+}
+
+func TestFindCmd_FlagOverrides(t *testing.T) {
+	for _, name := range []string{"rrf-k", "fts-weight", "vector-weight", "fts-pool", "vector-pool", "min-score"} {
+		if f := findCmd.Flags().Lookup(name); f == nil {
+			t.Errorf("--%s flag must be registered", name)
+		}
 	}
 }

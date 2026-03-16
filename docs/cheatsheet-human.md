@@ -132,8 +132,11 @@ ctxt open <object_id> --output json  # full structured view
 ## Search
 
 ```bash
-ctxt find "checkout conversion anomalies"            # semantic (exploration)
+ctxt find "checkout conversion anomalies"            # hybrid FTS+vector (default)
 ctxt find "incident patterns" --profile eng --limit 10
+ctxt find "auth flow" --fts                          # FTS-only
+ctxt find "checkout flow" --semantic                 # vector-only
+ctxt find "indexing" --fts-weight 0.3 --vector-weight 0.7  # override RRF weights
 ctxt list --q "type==url;tag=in=(checkout,pricing)"  # structured (deterministic)
 ctxt list --mention @project.checkout-redesign
 ```

@@ -121,6 +121,23 @@ profiles:
   research:
     registries: [local-taxonomy, uxpatterns]
     pipelines: ["*"]
+    search_strategy:
+      mode: vector          # override default_mode for this profile
+      rrf:
+        fts_weight: 0.2
+        vector_weight: 0.8
+
+search:
+  default_mode: hybrid      # "fts" | "vector" | "hybrid" (default: hybrid)
+  rrf:
+    k: 60                   # RRF rank constant (default: 60)
+    fts_weight: 0.5         # weight for FTS leg (default: 0.5)
+    vector_weight: 0.5      # weight for vector leg (default: 0.5)
+  candidate_pool:
+    fts: 50                 # candidates fetched from FTS leg (default: 50)
+    vector: 50              # candidates fetched from vector leg (default: 50)
+  min_score: 0.0            # discard results below this RRF score (default: 0.0 = off)
+  fallback_to_fts: true     # degrade to FTS-only when embedding provider unavailable
 
 i18n:
   enabled: true

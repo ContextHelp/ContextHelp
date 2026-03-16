@@ -92,6 +92,23 @@ agents:
   research:
     registries: [local-taxonomy]
     pipelines: ["*"]
+    search_strategy:
+      mode: vector
+      rrf:
+        fts_weight: 0.2
+        vector_weight: 0.8
+
+search:
+  default_mode: hybrid
+  rrf:
+    k: 60
+    fts_weight: 0.5
+    vector_weight: 0.5
+  candidate_pool:
+    fts: 50
+    vector: 50
+  min_score: 0.0
+  fallback_to_fts: true
 
 server:
   http:
