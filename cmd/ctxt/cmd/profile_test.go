@@ -6,7 +6,8 @@ import (
 )
 
 func TestProfileList(t *testing.T) {
-	out, err := executeCommand("profile", "list")
+	db := setupTestDB(t)
+	out, err := db.exec("profile", "list")
 	if err != nil {
 		t.Fatalf("profile list should succeed: %v", err)
 	}
@@ -18,62 +19,113 @@ func TestProfileList(t *testing.T) {
 	}
 }
 
-func TestProfileShow(t *testing.T) {
-	out, err := executeCommand("profile", "show", "founder")
+func TestProfileCreateAndShow(t *testing.T) {
+	db := setupTestDB(t)
+
+	out, err := db.exec("profile", "create", "myproject")
+	if err != nil {
+		t.Fatalf("profile create should succeed: %v", err)
+	}
+	if !strings.Contains(out, "Created profile: myproject") {
+		t.Errorf("output should confirm profile creation, got: %q", out)
+	}
+
+	out, err = db.exec("profile", "show", "myproject")
 	if err != nil {
 		t.Fatalf("profile show should succeed: %v", err)
 	}
-	if !strings.Contains(out, "Profile: founder") {
+	if !strings.Contains(out, "Profile: myproject") {
 		t.Error("output should show profile name")
 	}
 }
 
+func TestProfileShowNotFound(t *testing.T) {
+	db := setupTestDB(t)
+	_, err := db.exec("profile", "show", "nonexistent")
+	if err == nil {
+		t.Error("profile show for nonexistent profile should fail")
+	}
+}
+
 func TestProfileShowNoNameError(t *testing.T) {
-	_, err := executeCommand("profile", "show")
+	db := setupTestDB(t)
+	_, err := db.exec("profile", "show")
 	if err == nil {
 		t.Error("profile show without name should fail")
 	}
 }
 
-func TestProfileCreate(t *testing.T) {
-	out, err := executeCommand("profile", "create", "myproject")
+func TestProfileCreateAlreadyExists(t *testing.T) {
+	db := setupTestDB(t)
+	_, err := db.exec("profile", "create", "myproject")
 	if err != nil {
-		t.Fatalf("profile create should succeed: %v", err)
+		t.Fatalf("first create should succeed: %v", err)
 	}
-	if !strings.Contains(out, "Creating profile: myproject") {
-		t.Error("output should confirm profile creation")
-	}
-}
 
-func TestProfileCreateNoNameError(t *testing.T) {
-	_, err := executeCommand("profile", "create")
+	_, err = db.exec("profile", "create", "myproject")
 	if err == nil {
-		t.Error("profile create without name should fail")
+		t.Error("creating duplicate profile should fail")
 	}
 }
 
 func TestProfileDelete(t *testing.T) {
-	out, err := executeCommand("profile", "delete", "old-project")
+	db := setupTestDB(t)
+
+	_, err := db.exec("profile", "create", "old-project")
+	if err != nil {
+		t.Fatalf("create should succeed: %v", err)
+	}
+
+	out, err := db.exec("profile", "delete", "old-project")
 	if err != nil {
 		t.Fatalf("profile delete should succeed: %v", err)
 	}
-	if !strings.Contains(out, "Deleting profile: old-project") {
-		t.Error("output should confirm profile deletion")
+	if !strings.Contains(out, "Deleted profile: old-project") {
+		t.Errorf("output should confirm profile deletion, got: %q", out)
+	}
+
+	_, err = db.exec("profile", "show", "old-project")
+	if err == nil {
+		t.Error("profile show for deleted profile should fail")
 	}
 }
 
 func TestProfileSetDefault(t *testing.T) {
-	out, err := executeCommand("profile", "set-default", "founder")
+	db := setupTestDB(t)
+
+	_, err := db.exec("profile", "create", "founder")
+	if err != nil {
+		t.Fatalf("create should succeed: %v", err)
+	}
+
+	out, err := db.exec("profile", "set-default", "founder")
 	if err != nil {
 		t.Fatalf("profile set-default should succeed: %v", err)
 	}
-	if !strings.Contains(out, "Setting default profile to: founder") {
-		t.Error("output should confirm default profile change")
+	if !strings.Contains(out, "Set default profile to: founder") {
+		t.Errorf("output should confirm default profile change, got: %q", out)
+	}
+
+	out, err = db.exec("profile", "show", "founder")
+	if err != nil {
+		t.Fatalf("show should succeed: %v", err)
+	}
+	if !strings.Contains(out, "(default profile)") {
+		t.Error("output should indicate profile is default")
+	}
+
+	out, err = db.exec("profile", "set-default")
+	if err != nil {
+		t.Fatalf("profile set-default (clear) should succeed: %v", err)
+	}
+	if !strings.Contains(out, "Cleared default profile") {
+		t.Errorf("output should confirm clearing default profile, got: %q", out)
 	}
 }
 
 func TestProfileHelp(t *testing.T) {
-	out, err := executeCommand("profile", "--help")
+	db := setupTestDB(t)
+	out, err := db.exec("profile", "--help")
 	if err != nil {
 		t.Fatalf("profile --help should succeed: %v", err)
 	}
