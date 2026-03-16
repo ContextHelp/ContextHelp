@@ -496,7 +496,7 @@ type ConventionsConfig struct {
 // SecretsConfig controls where API keys and other secrets are read from.
 type SecretsConfig struct {
 	// Backend selects the secrets provider.
-	// Valid values: "env" (default), "keychain", "age-file".
+	// Valid values: "env" (default), "keychain", "age-file", "1password", "gh-secrets".
 	Backend string `mapstructure:"backend" yaml:"backend"`
 	// AgeFile is the path to an age-encrypted YAML secrets file.
 	// Only used when Backend == "age-file".
@@ -506,6 +506,13 @@ type SecretsConfig struct {
 	// KeychainService is the macOS/Linux keychain service name.
 	// Defaults to "ctxt".
 	KeychainService string `mapstructure:"keychain_service" yaml:"keychain_service"`
+	// OnePasswordVault is the 1Password vault name to read secrets from.
+	// Only used when Backend == "1password". Requires `op` CLI.
+	OnePasswordVault string `mapstructure:"onepassword_vault" yaml:"onepassword_vault"`
+	// GHRepo is the GitHub repository (owner/repo) for the gh-secrets backend.
+	// Only used when Backend == "gh-secrets". Defaults to current repo if empty.
+	// Requires `gh` CLI. Get() falls back to env; Set() writes to GitHub Actions secrets.
+	GHRepo string `mapstructure:"gh_repo" yaml:"gh_repo"`
 }
 
 // WatchConfig configures the filesystem watcher.

@@ -52,6 +52,13 @@ func Validate(c *Config) []ValidationError {
 		}
 	}
 
+	switch c.Secrets.Backend {
+	case "", "env", "keychain", "age-file", "1password", "gh-secrets":
+		// valid
+	default:
+		errs = append(errs, ValidationError{Field: "secrets.backend", Message: fmt.Sprintf("unknown backend %q; must be one of env, keychain, age-file, 1password, gh-secrets", c.Secrets.Backend)})
+	}
+
 	return errs
 }
 

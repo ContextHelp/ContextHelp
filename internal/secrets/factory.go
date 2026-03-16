@@ -25,6 +25,13 @@ func NewResolver(cfg config.SecretsConfig) (Resolver, error) {
 			return nil, fmt.Errorf("secrets: age-file backend requires secrets.age_identity_file to be set")
 		}
 		return NewAgeFileResolver(cfg.AgeFile, cfg.AgeIdentityFile), nil
+	case "1password":
+		if cfg.OnePasswordVault == "" {
+			return nil, fmt.Errorf("secrets: 1password backend requires secrets.onepassword_vault to be set")
+		}
+		return NewOnePasswordResolver(cfg.OnePasswordVault), nil
+	case "gh-secrets":
+		return NewGHSecretsResolver(cfg.GHRepo), nil
 	default:
 		return nil, fmt.Errorf("secrets: unknown backend %q", cfg.Backend)
 	}

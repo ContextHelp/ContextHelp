@@ -43,3 +43,28 @@ func TestNewResolverKeychain(t *testing.T) {
 	require.NoError(t, err)
 	assert.IsType(t, &KeychainResolver{}, r)
 }
+
+func TestNewResolverOnePasswordMissingVault(t *testing.T) {
+	_, err := NewResolver(config.SecretsConfig{Backend: "1password"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "vault")
+}
+
+func TestNewResolverOnePassword(t *testing.T) {
+	r, err := NewResolver(config.SecretsConfig{Backend: "1password", OnePasswordVault: "MyVault"})
+	require.NoError(t, err)
+	assert.IsType(t, &OnePasswordResolver{}, r)
+}
+
+func TestNewResolverGHSecrets(t *testing.T) {
+	r, err := NewResolver(config.SecretsConfig{Backend: "gh-secrets", GHRepo: "owner/repo"})
+	require.NoError(t, err)
+	assert.IsType(t, &GHSecretsResolver{}, r)
+}
+
+func TestNewResolverGHSecretsNoRepo(t *testing.T) {
+	// Empty repo is valid (gh CLI detects current repo).
+	r, err := NewResolver(config.SecretsConfig{Backend: "gh-secrets"})
+	require.NoError(t, err)
+	assert.IsType(t, &GHSecretsResolver{}, r)
+}
