@@ -31,11 +31,13 @@ func GetInput(args []string) (string, string, error) {
 		if err != nil {
 			return "", "", fmt.Errorf("failed to read stdin: %w", err)
 		}
-		return string(data), "stdin", nil
+		if content := strings.TrimSpace(string(data)); content != "" {
+			return content, "stdin", nil
+		}
 	}
 
-	// 3. Check clipboard (only if TTY)
-	if clipboard.Unsupported {
+	// 3. Check clipboard (only if TTY and not disabled)
+	if clipboard.Unsupported || os.Getenv("CTXT_NO_CLIPBOARD") != "" {
 		return "", "", fmt.Errorf("no input provided and clipboard is unsupported on this platform")
 	}
 

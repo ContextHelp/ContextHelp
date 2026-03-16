@@ -10,6 +10,13 @@ import (
 	"github.com/spf13/pflag"
 )
 
+func TestMain(m *testing.M) {
+	// Disable clipboard access for all tests — avoids non-deterministic behaviour
+	// when tests run with clipboard content present.
+	os.Setenv("CTXT_NO_CLIPBOARD", "1")
+	os.Exit(m.Run())
+}
+
 // resetAllFlags resets all flags on a command and its subcommands to defaults.
 func resetAllFlags(cmd *cobra.Command) {
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
@@ -39,7 +46,8 @@ func executeCommand(args ...string) (string, error) {
 	// Reset all flags to their defaults to avoid state leakage between tests.
 	resetAllFlags(rootCmd)
 
-	// Capture os.Stdout
+	// Capture os.Stdout — drain concurrently to avoid pipe-buffer deadlock
+	// when commands emit large output (e.g. bash completion scripts).
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
@@ -47,12 +55,19 @@ func executeCommand(args ...string) (string, error) {
 	rootCmd.SetArgs(args)
 	rootCmd.SetOut(w)
 	rootCmd.SetErr(w)
+
+	done := make(chan []byte, 1)
+	go func() {
+		data, _ := io.ReadAll(r)
+		done <- data
+	}()
+
 	err := rootCmd.Execute()
 
 	w.Close()
 	os.Stdout = oldStdout
 
-	out, _ := io.ReadAll(r)
+	out := <-done
 	return string(out), err
 }
 

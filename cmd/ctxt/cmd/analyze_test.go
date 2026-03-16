@@ -79,7 +79,7 @@ func TestAnalyzeWithFlags(t *testing.T) {
 }
 
 func TestAnalyzeNoInputError(t *testing.T) {
-	// When stdin is a terminal (no pipe) and no args/file, should error.
+	// When no args/file and no clipboard, should error.
 	_, err := executeCommand("analyze")
 	if err == nil {
 		t.Error("analyze with no input should fail")

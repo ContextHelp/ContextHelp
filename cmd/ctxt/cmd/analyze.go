@@ -116,8 +116,9 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		"content":  content,
 		"type":     viper.GetString("analyze.type"),
 		"pipeline": viper.GetString("analyze.pipeline"),
-		"source":   fmt.Sprintf("cli:%s", source),
+		"source":   "cli",
 	}
+	_ = source
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {
