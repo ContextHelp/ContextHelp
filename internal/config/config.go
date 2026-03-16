@@ -479,6 +479,36 @@ func bindEnvVars(v *viper.Viper) {
 	v.BindEnv("secrets.age_identity_file", "CTXT_AGE_IDENTITY")
 }
 
+// ResolveSearchConfig merges global search config with a profile-level override.
+// Profile fields with zero values inherit from global.
+func ResolveSearchConfig(global SearchConfig, profile ProfileSearchStrategy) SearchConfig {
+	out := global
+	if profile.Mode != "" {
+		out.DefaultMode = profile.Mode
+	}
+	if profile.RRF.K != 0 {
+		out.RRF.K = profile.RRF.K
+	}
+	if profile.RRF.FTSWeight != 0 {
+		out.RRF.FTSWeight = profile.RRF.FTSWeight
+	}
+	if profile.RRF.VectorWeight != 0 {
+		out.RRF.VectorWeight = profile.RRF.VectorWeight
+	}
+	if profile.CandidatePool.FTS != 0 {
+		out.CandidatePool.FTS = profile.CandidatePool.FTS
+	}
+	if profile.CandidatePool.Vector != 0 {
+		out.CandidatePool.Vector = profile.CandidatePool.Vector
+	}
+	if profile.MinScore < 0 {
+		// negative sentinel = inherit (do nothing)
+	} else if profile.MinScore > 0 {
+		out.MinScore = profile.MinScore
+	}
+	return out
+}
+
 // GetConfigPath returns the configuration file path being used
 func GetConfigPath() string {
 	if cfgPath := os.Getenv(EnvConfigPath); cfgPath != "" {

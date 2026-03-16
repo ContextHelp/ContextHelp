@@ -378,6 +378,26 @@ func TestBlobConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestResolveSearchConfig(t *testing.T) {
+	global := SearchConfig{
+		DefaultMode:   "hybrid",
+		RRF:           RRFConfig{K: 60, FTSWeight: 0.5, VectorWeight: 0.5},
+		CandidatePool: CandidatePoolConfig{FTS: 50, Vector: 50},
+		MinScore:      0.0,
+		FallbackToFTS: true,
+	}
+	profile := ProfileSearchStrategy{
+		Mode: "vector",
+		RRF:  RRFConfig{FTSWeight: 0.2, VectorWeight: 0.8},
+	}
+	resolved := ResolveSearchConfig(global, profile)
+	assert.Equal(t, "vector", resolved.DefaultMode)
+	assert.Equal(t, 60, resolved.RRF.K)          // inherited
+	assert.InDelta(t, 0.2, resolved.RRF.FTSWeight, 0.001)    // overridden
+	assert.InDelta(t, 0.8, resolved.RRF.VectorWeight, 0.001)  // overridden
+	assert.Equal(t, 50, resolved.CandidatePool.FTS) // inherited
+}
+
 func TestProfileSearchStrategyOverride(t *testing.T) {
 	cfg, err := loadFromYAML(t, `
 version: 1
