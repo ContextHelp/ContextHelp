@@ -28,6 +28,23 @@ ctxt version                         # verify client
 **DO:** poll before compose. **DON'T:** compose immediately after ingest.
 **DO:** use RSQL for repeatable queries. **DON'T:** rely on semantic search for deterministic workflows.
 
+### Inbox Triage (deferred-capture path)
+
+Items captured via mobile share, PWA, or human quick-dump land in inbox with `status=inbox`.
+An agent may triage them to kick off pipeline processing:
+
+```bash
+ctxt inbox list --output json        # enumerate pending items
+ctxt inbox triage <id>               # → {"job_id":"<id>"} — then poll as normal
+ctxt inbox discard <id>              # mark noise
+ctxt inbox clear                     # bulk-discard all
+
+# REST equivalents
+GET  /api/v1/inbox
+POST /api/v1/inbox/{id}/triage       # body: {"pipeline":"<name>"}  (optional)
+POST /api/v1/inbox/{id}/discard
+```
+
 ---
 
 ## Ingest
@@ -191,6 +208,8 @@ Save artifact path **and** the source object IDs used — required for audit rep
 | `tags` | []`{label, weight, source}` | assigned tags |
 | `mentions` | []string | `@namespace.slug` references |
 | `decisions` | []`{title, status, impact}` | extracted decisions |
+| `status` | string | `inbox`, `active`, `discarded` |
+| `inbox_note` | string | capture-time note (inbox items only) |
 | `pipeline` | string | pipeline that processed this object |
 | `source` | string | origin (URL, file path) |
 | `created_at` | ISO 8601 | ingestion timestamp |

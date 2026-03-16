@@ -115,3 +115,20 @@ func (s *Service) DiscardInbox(ctx context.Context, id string) error {
 	obj.UpdatedAt = time.Now().Truncate(time.Second)
 	return s.Store.Objects().Update(ctx, obj)
 }
+
+// ClearInbox discards all current inbox items, returning the count cleared.
+func (s *Service) ClearInbox(ctx context.Context) (int, error) {
+	items, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{Status: "inbox", Limit: 10000})
+	if err != nil {
+		return 0, fmt.Errorf("clear inbox list: %w", err)
+	}
+	now := time.Now().Truncate(time.Second)
+	for _, obj := range items {
+		obj.Status = "discarded"
+		obj.UpdatedAt = now
+		if err := s.Store.Objects().Update(ctx, obj); err != nil {
+			return 0, fmt.Errorf("clear inbox update %s: %w", obj.ID, err)
+		}
+	}
+	return len(items), nil
+}

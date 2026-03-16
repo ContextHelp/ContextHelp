@@ -62,6 +62,7 @@ go build -o dpkms cmd/dpkms/main.go
 |--------|---------|
 | `ctxt <content>` | (Default) Enqueue content for ingestion (args, stdin, or clipboard) |
 | `ctxt analyze` | Enqueue an ingestion job (supports clipboard fallback) |
+| `ctxt inbox` | Manage inbox items (list, triage, discard, clear) |
 | `ctxt job` | Inspect/manage ingestion jobs |
 | `ctxt list` | Query knowledge objects (local + registries) |
 | `ctxt find <query>` | Semantic search (supports clipboard fallback) |
@@ -146,6 +147,63 @@ echo "UX improvements needed" | ctxt --mentions "@ui.best-practice"
 
 # Explicit command with file
 ctxt analyze --file screenshot.png --type image
+```
+
+---
+
+## `ctxt inbox`
+
+Manage inbox items — captured content parked for a triage decision before entering the pipeline.
+
+Inbox items are created when content is captured via `ctxt analyze` with the `--inbox` flag, the
+PWA Web Share Target, or any other capture path that defers pipeline scheduling.
+
+### Commands
+
+```bash
+ctxt inbox list                      # list pending inbox items
+ctxt inbox triage <id>               # promote to active and enqueue for processing
+ctxt inbox triage <id> --pipeline <name>  # triage with a specific pipeline
+ctxt inbox discard <id>              # mark item as discarded
+ctxt inbox clear                     # discard all inbox items
+```
+
+### `inbox list` Options
+
+| Flag | Description |
+|------|-------------|
+| `--limit <n>` | Max results (default: 50) |
+| `--offset <n>` | Pagination offset |
+| `--before <RFC3339>` | Created before |
+| `--after <RFC3339>` | Created after |
+| `--output json` | JSON output |
+
+### `inbox triage` Options
+
+| Flag | Description |
+|------|-------------|
+| `--pipeline <name>` | Pipeline to use (default: auto-detect from content) |
+
+### Notes
+
+- `triage` promotes the item to `active` status, then enqueues a job. Returns the **Job ID**.
+- `discard` marks the item as `discarded`; it is excluded from all future queries.
+- `clear` discards all current inbox items in one shot and prints the count cleared.
+
+### Examples
+
+```bash
+# See what's waiting
+ctxt inbox list
+
+# Triage a specific item
+ctxt inbox triage 4a3b1c2d --pipeline text.long
+
+# Discard noise
+ctxt inbox discard 9f8e7d6c
+
+# Nuke everything
+ctxt inbox clear
 ```
 
 ---
