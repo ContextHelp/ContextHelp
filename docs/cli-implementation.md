@@ -202,7 +202,9 @@ ctxt config validate
 # Registries
 ctxt registry list
 ctxt registry add uxpatterns https://uxpatterns.example.com
+ctxt registry info uxpatterns
 ctxt registry sync uxpatterns
+ctxt registry remove uxpatterns
 
 # Entities
 ctxt entity list

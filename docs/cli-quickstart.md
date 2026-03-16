@@ -216,6 +216,9 @@ Work with knowledge registries:
 
 # Sync registry
 ./bin/ctxt registry sync uxpatterns
+
+# Remove registry
+./bin/ctxt registry remove uxpatterns
 ```
 
 ### 8. Work with Entities
