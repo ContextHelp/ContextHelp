@@ -53,6 +53,20 @@ func TestHybridSearch_FTSOnly_WhenNoEmbeddingProvider(t *testing.T) {
 	assert.Equal(t, "hs-1", results[0].ID)
 }
 
+func TestFindByText_UsesFTS(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	obj := makeSearchObject("fbt-1", []string{"microservices resilience patterns"}, "")
+	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	rebuildFTS(t, svc)
+
+	results, err := svc.FindByText(ctx, "resilience", 10)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "fbt-1", results[0].ID)
+}
+
 func TestHybridSearch_ErrorWhenNoProvider_FallbackDisabled(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

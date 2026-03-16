@@ -336,31 +336,9 @@ func (s *Service) DismissReminder(ctx context.Context, id string) error {
 }
 
 // FindByText searches knowledge objects by text matching on summaries and raw content.
+// FindByText searches knowledge objects using FTS5 full-text search.
 func (s *Service) FindByText(ctx context.Context, query string, limit int) ([]*storage.KnowledgeObject, error) {
-	all, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{Limit: 10000})
-	if err != nil {
-		return nil, err
-	}
-	q := strings.ToLower(query)
-	var results []*storage.KnowledgeObject
-	for _, obj := range all {
-		for _, summary := range obj.Summaries {
-			if strings.Contains(strings.ToLower(summary), q) {
-				results = append(results, obj)
-				break
-			}
-		}
-		if len(results) > 0 && results[len(results)-1] == obj {
-			continue
-		}
-		if strings.Contains(strings.ToLower(obj.RawContent), q) {
-			results = append(results, obj)
-		}
-		if len(results) >= limit {
-			break
-		}
-	}
-	return results, nil
+	return s.Store.Objects().FTSSearch(ctx, query, storage.ObjectFilter{Limit: limit})
 }
 
 // CancelJob cancels a pending or running job.
