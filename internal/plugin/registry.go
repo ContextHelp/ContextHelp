@@ -3,7 +3,7 @@ package plugin
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 )
@@ -36,7 +36,7 @@ func (r *Registry) InitAll(ctx context.Context, cfgs map[string]map[string]inter
 		if err := p.Init(ctx, cfg, deps); err != nil {
 			return fmt.Errorf("plugin %q init: %w", p.Name(), err)
 		}
-		log.Printf("plugin: %s %s initialised", p.Name(), p.Version())
+		slog.Debug("plugin initialised", "name", p.Name(), "version", p.Version())
 	}
 	return nil
 }
@@ -88,7 +88,7 @@ func (r *Registry) ResolveID(ctx context.Context, idOrAlias, profile string) (st
 func (r *Registry) CloseAll(ctx context.Context) {
 	for _, p := range r.plugins {
 		if err := p.Close(ctx); err != nil {
-			log.Printf("plugin: %s close error: %v", p.Name(), err)
+			slog.Warn("plugin close error", "name", p.Name(), "err", err)
 		}
 	}
 }

@@ -83,13 +83,15 @@ go build -o dpkms cmd/dpkms/main.go
 | `dpkms serve` | Start background worker + REST/gRPC APIs |
 | `dpkms housekeeping` | Database maintenance and optimization |
 
-### Version Flag
+### Version and Verbose Flags
 
-Both CLIs expose `--version` as a root flag (not a subcommand):
+Both CLIs expose `--version` (`-v`) as a root flag and `--verbose` (`-V`) as a persistent flag:
 
 ```bash
-ctxt --version
-dpkms --version
+ctxt --version   # or: ctxt -v
+dpkms --version  # or: dpkms -v
+
+ctxt --verbose search "foo"   # or: ctxt -V search "foo"
 ```
 
 Output format: `<binary> version <semver> (<YYYY-MM-DD>)`. See [docs/conventions/version-output.md](../conventions/version-output.md).

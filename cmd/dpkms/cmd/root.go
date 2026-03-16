@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -31,6 +32,11 @@ the storage, job queue, pipeline runtime, and API server that powers
 ContextHelp's knowledge management capabilities.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		verbose, _ := cmd.PersistentFlags().GetBool("verbose")
+		logger.Init(verbose)
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if ok, _ := cmd.Flags().GetBool("version"); ok {
 			printVersion(cmd)
@@ -51,6 +57,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/contexthelp/config.yaml)")
 	rootCmd.PersistentFlags().String("data-dir", "", "data directory override")
 	rootCmd.PersistentFlags().String("server-url", "http://localhost:8080", "dpkms server URL")
+	rootCmd.PersistentFlags().BoolP("verbose", "V", false, "enable verbose output")
 	rootCmd.Flags().BoolP("version", "v", false, "print version and exit")
 
 	// Bind flags to viper

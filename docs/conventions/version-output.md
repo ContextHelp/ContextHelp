@@ -2,11 +2,14 @@
 
 All ecosystem CLI tools (`ctxt`, `dpkms`, `exo`, `xray`) follow this convention.
 
-## Flag
+## Flags
 
-- Short: `-v`
-- Long: `--version`
-- Location: root command flag (not a subcommand)
+| Short | Long | Description |
+|-------|------|-------------|
+| `-v` | `--version` | Print version and exit (root flag only) |
+| `-V` | `--verbose` | Enable verbose/debug output (persistent) |
+
+> `-v` is `--version` (not `--verbose`). `-V` (uppercase) is `--verbose`.
 
 ## Text Format
 

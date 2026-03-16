@@ -2,7 +2,7 @@ package providers
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -47,7 +47,7 @@ func (f *Factory) Video() VideoProvider {
 		if p := f.tryFFmpeg(); p != nil {
 			return p
 		}
-		log.Println("providers: no video backend found, using stub")
+		slog.Debug("providers: no video backend found, using stub")
 		return NewStubVideoProvider()
 	}
 }
@@ -78,7 +78,7 @@ func (f *Factory) OCR() OCRProvider {
 		if p := f.tryTesseract(); p != nil {
 			return p
 		}
-		log.Println("providers: no OCR backend found, using stub")
+		slog.Debug("providers: no OCR backend found, using stub")
 		return NewStubOCRProvider()
 	}
 }
@@ -96,7 +96,7 @@ func (f *Factory) Transcription() TranscriptionProvider {
 		if p := f.tryWhisper(); p != nil {
 			return p
 		}
-		log.Println("providers: no transcription backend found, using stub")
+		slog.Debug("providers: no transcription backend found, using stub")
 		return NewStubTranscriptionProvider()
 	}
 }
@@ -132,7 +132,7 @@ func (f *Factory) Vision() vision.Provider {
 		if f.apiKey("OPENROUTER_API_KEY") != "" {
 			return f.newOpenRouterVision()
 		}
-		log.Println("providers: no vision backend found, using stub")
+		slog.Debug("providers: no vision backend found, using stub")
 		return vision.NewStubProvider()
 	}
 }
@@ -148,7 +148,7 @@ func (f *Factory) Diarization() DiarizationProvider {
 		if p := f.tryPyannote(); p != nil {
 			return p
 		}
-		log.Println("providers: no diarization backend found, using stub")
+		slog.Debug("providers: no diarization backend found, using stub")
 		return NewStubDiarizationProvider()
 	}
 }
@@ -209,7 +209,7 @@ func (f *Factory) mustFFmpeg() VideoProvider {
 	if p := f.tryFFmpeg(); p != nil {
 		return p
 	}
-	log.Println("providers: ffmpeg requested but not found, using stub")
+	slog.Debug("providers: ffmpeg requested but not found, using stub")
 	return NewStubVideoProvider()
 }
 
@@ -232,7 +232,7 @@ func (f *Factory) mustPdftotext() DocumentProvider {
 	if p := f.tryPdftotext(); p != nil {
 		return p
 	}
-	log.Println("providers: pdftotext requested but not found, using stub")
+	slog.Debug("providers: pdftotext requested but not found, using stub")
 	return NewStubDocumentProvider()
 }
 
@@ -253,7 +253,7 @@ func (f *Factory) mustTesseract() OCRProvider {
 	if p := f.tryTesseract(); p != nil {
 		return p
 	}
-	log.Println("providers: tesseract requested but not found, using stub")
+	slog.Debug("providers: tesseract requested but not found, using stub")
 	return NewStubOCRProvider()
 }
 
@@ -273,7 +273,7 @@ func (f *Factory) mustWhisper() TranscriptionProvider {
 	if p := f.tryWhisper(); p != nil {
 		return p
 	}
-	log.Println("providers: whisper-cli requested but not found, using stub")
+	slog.Debug("providers: whisper-cli requested but not found, using stub")
 	return NewStubTranscriptionProvider()
 }
 
@@ -282,7 +282,7 @@ func (f *Factory) mustWhisper() TranscriptionProvider {
 func (f *Factory) newOllamaTranscription() TranscriptionProvider {
 	// Ollama doesn't natively support audio transcription yet,
 	// so this falls back to stub with a warning.
-	log.Println("providers: ollama transcription not yet supported, using stub")
+	slog.Debug("providers: ollama transcription not yet supported, using stub")
 	return NewStubTranscriptionProvider()
 }
 
@@ -361,6 +361,6 @@ func (f *Factory) mustPyannote() DiarizationProvider {
 	if p := f.tryPyannote(); p != nil {
 		return p
 	}
-	log.Println("providers: pyannote requested but not found, using stub")
+	slog.Debug("providers: pyannote requested but not found, using stub")
 	return NewStubDiarizationProvider()
 }

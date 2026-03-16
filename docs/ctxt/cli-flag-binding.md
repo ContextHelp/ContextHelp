@@ -89,7 +89,8 @@ This table shows how CLI flags map to Viper configuration keys. Viper uses dot n
 |------------|-----------|-----------------|------|-------------|
 | `-c` | `--config` | _(special)_ | string | Path to config file (bypasses default search) |
 | | `--profile` | `ctxt.profiles.default` | string | Active focus profile |
-| `-v` | `--verbose` | `ctxt.cli.verbose` | bool | Enable verbose output |
+| `-v` | `--version` | _(special)_ | bool | Print version and exit |
+| `-V` | `--verbose` | `ctxt.cli.verbose` | bool | Enable verbose output |
 | | `--output` | `ctxt.cli.output_format` | string | Output format (text, json, yaml) |
 | | `--color` | `ctxt.cli.color` | string | Color mode (auto, always, never) |
 | | `--no-color` | `ctxt.cli.color` | bool | Disable color (sets color=never) |

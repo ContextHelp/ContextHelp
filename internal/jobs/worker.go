@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -89,7 +89,7 @@ func (p *WorkerPool) runSteps(ctx context.Context, pipe *pipeline.Pipeline, draf
 		draft, err = step.Run(ctx, draft)
 		if err != nil {
 			if errors.Is(err, pipeline.ErrDelegate) {
-				log.Printf("jobs: step %q delegated, skipping", step.Name())
+				slog.Debug("jobs: step delegated, skipping", "step", step.Name())
 				continue
 			}
 			return nil, fmt.Errorf("step %s: %w", step.Name(), err)
@@ -131,7 +131,7 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 
 		nextPipe, err := p.pipelines.Get(next)
 		if err != nil {
-			log.Printf("jobs: hop pipeline %q not found, stopping hops", next)
+			slog.Debug("jobs: hop pipeline not found, stopping hops", "pipeline", next)
 			break
 		}
 		draft, err = p.runSteps(ctx, nextPipe, draft)
@@ -245,7 +245,7 @@ func (p *WorkerPool) fanOutItems(ctx context.Context, draft *storage.KnowledgeOb
 			UpdatedAt:  now,
 		}
 		if err := p.queue.Enqueue(ctx, job); err != nil {
-			log.Printf("jobs: fanOut enqueue: %v", err)
+			slog.Warn("jobs: fanOut enqueue failed", "err", err)
 			continue
 		}
 		if p.bus != nil {
