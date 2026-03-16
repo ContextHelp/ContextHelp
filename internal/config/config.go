@@ -78,6 +78,9 @@ type Config struct {
 
 	// Duplicates controls duplicate detection policy.
 	Duplicates DuplicatesConfig `mapstructure:"duplicates"`
+
+	// Search controls hybrid query execution behaviour.
+	Search SearchConfig `mapstructure:"search"`
 }
 
 // DuplicatesConfig controls duplicate and near-duplicate detection behaviour at ingest time.
@@ -93,6 +96,44 @@ type DuplicatesConfig struct {
 	// CheckSimilar enables vector-embedding near-duplicate detection. Default: false.
 	// Requires embeddings to have been computed (pipeline embedding step must run first).
 	CheckSimilar bool `mapstructure:"check_similar"`
+}
+
+// SearchConfig controls hybrid search behaviour.
+type SearchConfig struct {
+	// DefaultMode selects the search strategy used when no flag is passed.
+	// Valid values: "fts" | "vector" | "hybrid". Default: "hybrid".
+	DefaultMode string `mapstructure:"default_mode" yaml:"default_mode"`
+
+	// RRF controls Reciprocal Rank Fusion parameters.
+	RRF RRFConfig `mapstructure:"rrf" yaml:"rrf"`
+
+	// CandidatePool controls how many results each leg fetches before merge.
+	CandidatePool CandidatePoolConfig `mapstructure:"candidate_pool" yaml:"candidate_pool"`
+
+	// MinScore discards merged results below this RRF score. Default: 0.0 (off).
+	MinScore float64 `mapstructure:"min_score" yaml:"min_score"`
+
+	// FallbackToFTS controls behaviour when embedding provider is unavailable.
+	// If true (default), hybrid degrades to FTS-only. If false, returns error.
+	FallbackToFTS bool `mapstructure:"fallback_to_fts" yaml:"fallback_to_fts"`
+}
+
+// RRFConfig controls Reciprocal Rank Fusion parameters.
+type RRFConfig struct {
+	// K is the rank constant (default 60). Higher values reduce the impact of top ranks.
+	K int `mapstructure:"k" yaml:"k"`
+	// FTSWeight is the weight applied to FTS leg scores (default 0.5).
+	FTSWeight float64 `mapstructure:"fts_weight" yaml:"fts_weight"`
+	// VectorWeight is the weight applied to vector leg scores (default 0.5).
+	VectorWeight float64 `mapstructure:"vector_weight" yaml:"vector_weight"`
+}
+
+// CandidatePoolConfig controls how many candidates each leg returns before merge.
+type CandidatePoolConfig struct {
+	// FTS is the max candidates from the FTS leg. Default: 50.
+	FTS int `mapstructure:"fts" yaml:"fts"`
+	// Vector is the max candidates from the vector leg. Default: 50.
+	Vector int `mapstructure:"vector" yaml:"vector"`
 }
 
 // RetrievalConfig controls progressive retrieval behaviour.
@@ -376,6 +417,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("duplicates.similarity_threshold", 0.95)
 	v.SetDefault("duplicates.check_exact", true)
 	v.SetDefault("duplicates.check_similar", false)
+
+	// Search defaults
+	v.SetDefault("search.default_mode", "hybrid")
+	v.SetDefault("search.rrf.k", 60)
+	v.SetDefault("search.rrf.fts_weight", 0.5)
+	v.SetDefault("search.rrf.vector_weight", 0.5)
+	v.SetDefault("search.candidate_pool.fts", 50)
+	v.SetDefault("search.candidate_pool.vector", 50)
+	v.SetDefault("search.min_score", 0.0)
+	v.SetDefault("search.fallback_to_fts", true)
 }
 
 // bindEnvVars binds environment variables to configuration keys

@@ -12,6 +12,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// loadFromYAML is a test helper that writes yaml content to a temp file and loads it.
+func loadFromYAML(t *testing.T, yaml string) (*Config, error) {
+	t.Helper()
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte(yaml), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+	return Load(cfgPath)
+}
+
 func TestLoadDefaults(t *testing.T) {
 	cfg, err := Load("")
 	if err != nil {
@@ -365,4 +376,17 @@ func TestBlobConfigDefaults(t *testing.T) {
 	if cfg.Storage.Blob.S3.PresignExpiry != time.Hour {
 		t.Errorf("s3 presign_expiry: got %v, want %v", cfg.Storage.Blob.S3.PresignExpiry, time.Hour)
 	}
+}
+
+func TestSearchConfigDefaults(t *testing.T) {
+	cfg, err := loadFromYAML(t, `version: 1`)
+	require.NoError(t, err)
+	assert.Equal(t, "hybrid", cfg.Search.DefaultMode)
+	assert.Equal(t, 60, cfg.Search.RRF.K)
+	assert.InDelta(t, 0.5, cfg.Search.RRF.FTSWeight, 0.001)
+	assert.InDelta(t, 0.5, cfg.Search.RRF.VectorWeight, 0.001)
+	assert.Equal(t, 50, cfg.Search.CandidatePool.FTS)
+	assert.Equal(t, 50, cfg.Search.CandidatePool.Vector)
+	assert.InDelta(t, 0.0, cfg.Search.MinScore, 0.001)
+	assert.True(t, cfg.Search.FallbackToFTS)
 }
