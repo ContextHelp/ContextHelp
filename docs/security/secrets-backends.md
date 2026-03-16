@@ -169,7 +169,7 @@ gh auth login
 **Push a secret to GitHub:**
 
 ```bash
-# Via ctxt (once ctxt secret set is implemented)
+# Via ctxt
 ctxt secret set OPENAI_API_KEY sk-...
 
 # Or directly via gh CLI
@@ -197,6 +197,35 @@ CTXT_SECRETS_BACKEND=keychain ctxt analyze myfile.md
 ## For Plugin Authors
 
 Plugins that need API keys should read them through the `secrets.Resolver` rather than calling `os.Getenv` directly. The resolver is available via the providers factory passed to pipeline steps. Direct `os.Getenv` calls bypass backend configuration and will not work when users have configured non-env backends.
+
+---
+
+## CLI Interface (`ctxt secret`)
+
+All backends are accessible through the `ctxt secret` command group:
+
+```bash
+# Retrieve a secret from the active backend
+ctxt secret get OPENAI_API_KEY
+
+# Store a secret (backend must support Set())
+ctxt secret set OPENAI_API_KEY sk-...
+
+# Show the active backend and its config metadata
+ctxt secret list
+```
+
+JSON output is supported for `get` and `list`:
+
+```bash
+ctxt --output json secret get OPENAI_API_KEY
+# → {"key":"OPENAI_API_KEY","value":"sk-..."}
+
+ctxt --output json secret list
+# → {"backend":"keychain","keychain_service":"ctxt",...}
+```
+
+**Read-only backends** (`env`, `age-file`, `1password`) return a clear error on `set`. **`ctxt secret list`** shows backend config metadata — it does not enumerate stored key names (most backends don't support key listing).
 
 ---
 

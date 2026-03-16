@@ -74,7 +74,7 @@ go build -o dpkms cmd/dpkms/main.go
 | `ctxt config` | Configuration operations |
 | `ctxt registry` | Manage registries |
 | `ctxt entity` | Query and inspect entities |
-| `ctxt version` | Show version info |
+| `ctxt secret` | Manage secrets (get, set, list backend) |
 
 ### `dpkms` Commands (Infrastructure)
 
@@ -82,7 +82,17 @@ go build -o dpkms cmd/dpkms/main.go
 |--------|---------|
 | `dpkms serve` | Start background worker + REST/gRPC APIs |
 | `dpkms housekeeping` | Database maintenance and optimization |
-| `dpkms version` | Show version info |
+
+### Version Flag
+
+Both CLIs expose `--version` as a root flag (not a subcommand):
+
+```bash
+ctxt --version
+dpkms --version
+```
+
+Output format: `<binary> version <semver> (<YYYY-MM-DD>)`. See [docs/conventions/version-output.md](../conventions/version-output.md).
 
 ---
 
@@ -478,13 +488,41 @@ ctxt entity backlink <slug>
 
 ---
 
-## `ctxt version` / `dpkms version`
+## `ctxt secret`
 
-Display engine and protocol version.
+Read and write secrets from the configured backend.
+
+The active backend is set via `secrets.backend` in the config file. Supported backends: `env`, `keychain`, `age-file`, `1password`, `gh-secrets`. See [secrets-backends](../security/secrets-backends.md) for setup.
+
+### Commands
 
 ```bash
-ctxt version
-dpkms version
+ctxt secret get <key>        # Print secret value to stdout
+ctxt secret set <key> <val>  # Store secret in the active backend
+ctxt secret list             # Show active backend and its config
+```
+
+### Notes
+
+- `secret get` exits non-zero if the key is not found.
+- `secret set` with the `env` or `age-file` backend fails with a clear error — these backends are read-only.
+- `--output json` is supported for `get` (`{"key":"...","value":"..."}`) and `list`.
+- Passing a secret value on the command line exposes it in shell history. For sensitive values, prefer the backend's native tooling (e.g. `security add-generic-password` for keychain).
+
+### Examples
+
+```bash
+# Get a secret from the active backend
+ctxt secret get OPENAI_API_KEY
+
+# Store a secret (keychain backend required)
+ctxt secret set OPENAI_API_KEY sk-...
+
+# Show which backend is active and its config
+ctxt secret list
+
+# Machine-readable output
+ctxt --output json secret get OPENAI_API_KEY
 ```
 
 ---

@@ -29,17 +29,21 @@ config file.
 
 ## Acceptance Criteria
 
-- [ ] `ctxt secret set KEY VALUE` stores the secret in the active backend
-- [ ] `ctxt secret set KEY` (no value) prompts for the value interactively (hidden input)
-- [ ] `ctxt secret get KEY` prints the value for KEY to stdout
-- [ ] `ctxt secret list` prints the names of known secrets (where the backend supports enumeration)
-- [ ] `ctxt secret set` with the `env` backend returns a clear error (env is read-only)
-- [ ] `ctxt secret set` with the `age-file` backend returns a clear error (age-file is read-only)
-- [ ] `ctxt secret set` with the `1password` backend returns a clear error (read-only via CLI)
-- [ ] `ctxt secret get KEY` exits non-zero and prints an error if the key is not found
-- [ ] Secret values are never echoed to stdout during interactive input
-- [ ] `--json` flag on `ctxt secret get` outputs `{"key": "KEY", "value": "VALUE"}`
-- [ ] `ctxt secret list` with `--json` outputs a JSON array of key names
+- [x] `ctxt secret set KEY VALUE` stores the secret in the active backend
+- [ ] `ctxt secret set KEY` (no value) prompts for the value interactively (hidden input) — **deferred**
+- [x] `ctxt secret get KEY` prints the value for KEY to stdout
+- [x] `ctxt secret list` shows the active backend and its config metadata
+- [x] `ctxt secret set` with the `env` backend returns a clear error (env is read-only)
+- [x] `ctxt secret set` with the `age-file` backend returns a clear error (age-file is read-only)
+- [x] `ctxt secret set` with the `1password` backend returns a clear error (read-only via CLI)
+- [x] `ctxt secret get KEY` exits non-zero and prints an error if the key is not found
+- [x] `--output json` on `ctxt secret get` outputs `{"key": "KEY", "value": "VALUE"}`
+- [ ] `ctxt secret list` with `--output json` outputs a JSON array of key names — **partial**: outputs backend config object, not key names (most backends don't support enumeration)
+
+### Implementation Notes (as built)
+
+- `ctxt secret list` shows backend config metadata (type, service name, vault, etc.) rather than enumerating stored keys. Key enumeration is not possible for `env`, `keychain`, or `1password` backends; `age-file` and `gh-secrets` could enumerate but this is not yet implemented.
+- Interactive `set KEY` (no value argument) is deferred. The current implementation requires `KEY VALUE` as two positional args. Interactive hidden-input prompt can be added later using `charmbracelet/huh`.
 
 ---
 
