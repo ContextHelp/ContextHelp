@@ -14,9 +14,13 @@ The plugin system is **cross-cutting** — plugins can extend both dPKMS (substr
 - [plugins.md](plugins.md) - Plugin system overview and architecture
 - [plugins-api.md](plugins-api.md) - Plugin API contract and interfaces
 
+### Bundled Plugins
+- [plugins-aliasing.md](plugins-aliasing.md) - Aliasing plugin: human-readable names for knowledge objects
+
 ### Plugin Examples
 - [plugins-notifications.md](plugins-notifications.md) - Notification plugin example
 - [plugins-refresh.md](plugins-refresh.md) - Refresh policy plugin example
+- [plugins-github-pr-review-watcher.md](plugins-github-pr-review-watcher.md) - GitHub PR review watcher plugin
 - [examples/plugins-sample-price-monitor.md](examples/plugins-sample-price-monitor.md) - Price monitoring plugin
 
 ## Plugin Capabilities
