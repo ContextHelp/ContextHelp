@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -916,6 +917,105 @@ func (s *Service) SemanticSearch(ctx context.Context, query string, limit int, e
 		return nil, fmt.Errorf("embed query: %w", err)
 	}
 	return s.Store.Objects().VectorSearch(ctx, vec, storage.ObjectFilter{Limit: limit})
+}
+
+// HybridSearch runs FTS and vector search concurrently, merges results with
+// Reciprocal Rank Fusion (RRF), and returns the top-limit objects.
+// If ep is nil and cfg.FallbackToFTS is true, degrades to FTS-only.
+// If ep is nil and cfg.FallbackToFTS is false, returns an error.
+func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]*storage.KnowledgeObject, error) {
+	k := cfg.RRF.K
+	if k <= 0 {
+		k = 60
+	}
+
+	ftsPool := cfg.CandidatePool.FTS
+	if ftsPool <= 0 {
+		ftsPool = 50
+	}
+
+	type legResult struct {
+		results []*storage.KnowledgeObject
+		err     error
+	}
+
+	ftsCh := make(chan legResult, 1)
+	go func() {
+		res, err := s.Store.Objects().FTSSearch(ctx, query, storage.ObjectFilter{Limit: ftsPool})
+		ftsCh <- legResult{res, err}
+	}()
+
+	vecCh := make(chan legResult, 1)
+	if ep != nil {
+		vecPool := cfg.CandidatePool.Vector
+		if vecPool <= 0 {
+			vecPool = 50
+		}
+		go func() {
+			vec, err := ep.Embed(ctx, query)
+			if err != nil {
+				vecCh <- legResult{nil, err}
+				return
+			}
+			res, err := s.Store.Objects().VectorSearch(ctx, vec, storage.ObjectFilter{Limit: vecPool})
+			vecCh <- legResult{res, err}
+		}()
+	} else {
+		if !cfg.FallbackToFTS {
+			<-ftsCh // drain
+			return nil, fmt.Errorf("hybrid search: no embedding provider and fallback_to_fts is false")
+		}
+		vecCh <- legResult{nil, nil}
+	}
+
+	ftsRes := <-ftsCh
+	vecRes := <-vecCh
+
+	if ftsRes.err != nil {
+		return nil, fmt.Errorf("hybrid search fts leg: %w", ftsRes.err)
+	}
+	if vecRes.err != nil {
+		return nil, fmt.Errorf("hybrid search vector leg: %w", vecRes.err)
+	}
+
+	scores := map[string]float64{}
+	byID := map[string]*storage.KnowledgeObject{}
+
+	addLeg := func(results []*storage.KnowledgeObject, weight float64) {
+		for rank, obj := range results {
+			scores[obj.ID] += weight * (1.0 / float64(k+rank+1))
+			byID[obj.ID] = obj
+		}
+	}
+
+	addLeg(ftsRes.results, cfg.RRF.FTSWeight)
+	addLeg(vecRes.results, cfg.RRF.VectorWeight)
+
+	type scored struct {
+		id    string
+		score float64
+	}
+	var merged []scored
+	for id, score := range scores {
+		if score >= cfg.MinScore {
+			merged = append(merged, scored{id, score})
+		}
+	}
+	sort.Slice(merged, func(i, j int) bool { return merged[i].score > merged[j].score })
+
+	if limit > len(merged) {
+		limit = len(merged)
+	}
+	out := make([]*storage.KnowledgeObject, limit)
+	for i := 0; i < limit; i++ {
+		obj := byID[merged[i].id]
+		if obj.Metadata == nil {
+			obj.Metadata = make(map[string]any)
+		}
+		obj.Metadata["rrf_score"] = merged[i].score
+		out[i] = obj
+	}
+	return out, nil
 }
 
 func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error) {
