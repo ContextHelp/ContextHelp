@@ -20,7 +20,7 @@ func TestCapabilitiesFromFactory_StubsOnly(t *testing.T) {
 		Vision:        config.ProviderBackendConfig{Backend: "stub"},
 		Transcription: config.ProviderBackendConfig{Backend: "stub"},
 		Diarization:   config.ProviderBackendConfig{Backend: "stub"},
-	})
+	}, nil)
 	caps := CapabilitiesFromFactory(f)
 	if !caps["io"] {
 		t.Error("io capability should always be present")
@@ -33,7 +33,7 @@ func TestCapabilitiesFromFactory_StubsOnly(t *testing.T) {
 }
 
 func TestCapabilitiesFromFactory_IOAlwaysPresent(t *testing.T) {
-	f := providers.NewFactory(config.ProvidersConfig{})
+	f := providers.NewFactory(config.ProvidersConfig{}, nil)
 	caps := CapabilitiesFromFactory(f)
 	if !caps["io"] {
 		t.Error("io capability should always be present")

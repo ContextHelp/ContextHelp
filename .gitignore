@@ -255,6 +255,8 @@ docker-compose.override.yml
 # Container secrets
 secrets/
 .secrets/
+# Allow the internal/secrets Go package (code only, no actual secrets)
+!internal/secrets/
 
 #############################################################################
 # Package Manager Files

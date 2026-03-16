@@ -18,6 +18,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
+	"github.com/ideacrafterslabs/ctxt/internal/secrets"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -105,7 +106,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	fmt.Println("Job queue initialized")
 
 	// 3. Init pipeline registry with configured providers.
-	factory := providers.NewFactory(cfg.Providers)
+	secretsResolver, err := secrets.NewResolver(cfg.Secrets)
+	if err != nil {
+		return fmt.Errorf("init secrets: %w", err)
+	}
+	factory := providers.NewFactory(cfg.Providers, secretsResolver)
 	pipes := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
 		Factory:       factory,
 		BlobThreshold: cfg.Storage.Blob.Threshold,

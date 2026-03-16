@@ -342,7 +342,7 @@ func ConfiguredRegistryWithPipelineOverrides(
 					log.Printf("builtins: pipeline %q: unknown provider role %q in override (ignored)", name, role)
 				}
 			}
-			opts.Factory = providers.NewFactory(merged)
+			opts.Factory = providers.NewFactory(merged, nil)
 		}
 
 		p, err := buildPipeline(name, d, opts, false)

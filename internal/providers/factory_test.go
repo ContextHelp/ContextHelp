@@ -15,7 +15,7 @@ func TestFactoryStubBackends(t *testing.T) {
 		Vision:        config.ProviderBackendConfig{Backend: "stub"},
 		Diarization:   config.ProviderBackendConfig{Backend: "stub"},
 	}
-	f := NewFactory(cfg)
+	f := NewFactory(cfg, nil)
 
 	if f.Video().Name() != "stub" {
 		t.Errorf("Video: got %q", f.Video().Name())
@@ -47,7 +47,7 @@ func TestFactoryAutoFallback(t *testing.T) {
 		Vision:        config.ProviderBackendConfig{Backend: "auto"},
 		Diarization:   config.ProviderBackendConfig{Backend: "auto"},
 	}
-	f := NewFactory(cfg)
+	f := NewFactory(cfg, nil)
 
 	// These should never be nil — auto falls back to stub.
 	if f.Video() == nil {
@@ -74,7 +74,7 @@ func TestFactoryAutoDocument(t *testing.T) {
 	cfg := config.ProvidersConfig{
 		Document: config.ProviderBackendConfig{Backend: "auto"},
 	}
-	f := NewFactory(cfg)
+	f := NewFactory(cfg, nil)
 	// auto for document should always return golib (pure Go, always available).
 	if f.Document().Name() != "golib" {
 		t.Errorf("auto document: got %q, want golib", f.Document().Name())
@@ -85,7 +85,7 @@ func TestFactoryGolibDocument(t *testing.T) {
 	cfg := config.ProvidersConfig{
 		Document: config.ProviderBackendConfig{Backend: "golib"},
 	}
-	f := NewFactory(cfg)
+	f := NewFactory(cfg, nil)
 	if f.Document().Name() != "golib" {
 		t.Errorf("golib document: got %q", f.Document().Name())
 	}
@@ -95,7 +95,7 @@ func TestFactoryAutoVision(t *testing.T) {
 	cfg := config.ProvidersConfig{
 		Vision: config.ProviderBackendConfig{Backend: "auto"},
 	}
-	f := NewFactory(cfg)
+	f := NewFactory(cfg, nil)
 	// auto for vision defaults to ollama.
 	if f.Vision().Name() != "ollama" {
 		t.Errorf("auto vision: got %q, want ollama", f.Vision().Name())
@@ -112,7 +112,7 @@ func TestFactoryFFmpegIfAvailable(t *testing.T) {
 	cfg := config.ProvidersConfig{
 		Video: config.ProviderBackendConfig{Backend: "auto"},
 	}
-	f := NewFactory(cfg)
+	f := NewFactory(cfg, nil)
 	if f.Video().Name() != "ffmpeg" {
 		t.Errorf("auto video with ffmpeg installed: got %q, want ffmpeg", f.Video().Name())
 	}
@@ -125,7 +125,7 @@ func TestFactoryTesseractIfAvailable(t *testing.T) {
 	cfg := config.ProvidersConfig{
 		OCR: config.ProviderBackendConfig{Backend: "auto"},
 	}
-	f := NewFactory(cfg)
+	f := NewFactory(cfg, nil)
 	if f.OCR().Name() != "tesseract" {
 		t.Errorf("auto OCR with tesseract installed: got %q, want tesseract", f.OCR().Name())
 	}

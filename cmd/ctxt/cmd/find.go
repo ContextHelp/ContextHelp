@@ -68,7 +68,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	if viper.GetBool("find.semantic") {
-		factory := providers.NewFactory(cfg.Providers)
+		factory := providers.NewFactory(cfg.Providers, nil)
 		ep := factory.Embedding()
 		results, serr := svc.SemanticSearch(ctx, query, limit, ep)
 		if serr != nil {

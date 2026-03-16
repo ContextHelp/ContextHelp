@@ -10,16 +10,30 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/providers/vision"
+	"github.com/ideacrafterslabs/ctxt/internal/secrets"
 )
 
 // Factory resolves the best available provider for each type based on configuration.
 type Factory struct {
-	cfg config.ProvidersConfig
+	cfg     config.ProvidersConfig
+	secrets secrets.Resolver
 }
 
 // NewFactory creates a Factory from the providers configuration.
-func NewFactory(cfg config.ProvidersConfig) *Factory {
-	return &Factory{cfg: cfg}
+// If resolver is nil, EnvResolver is used (backward-compatible default).
+func NewFactory(cfg config.ProvidersConfig, resolver secrets.Resolver) *Factory {
+	if resolver == nil {
+		resolver = secrets.NewEnvResolver()
+	}
+	return &Factory{cfg: cfg, secrets: resolver}
+}
+
+// apiKey fetches a secret by key via the resolver, falling back to os.Getenv.
+func (f *Factory) apiKey(key string) string {
+	if v, err := f.secrets.Get(key); err == nil {
+		return v
+	}
+	return os.Getenv(key)
 }
 
 // Video returns the best available VideoProvider.
@@ -106,16 +120,16 @@ func (f *Factory) Vision() vision.Provider {
 		if p := f.tryOllamaVision(); p != nil {
 			return p
 		}
-		if os.Getenv("OPENAI_API_KEY") != "" {
+		if f.apiKey("OPENAI_API_KEY") != "" {
 			return f.newOpenAIVision()
 		}
-		if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		if f.apiKey("ANTHROPIC_API_KEY") != "" {
 			return f.newAnthropicVision()
 		}
-		if os.Getenv("GEMINI_API_KEY") != "" {
+		if f.apiKey("GEMINI_API_KEY") != "" {
 			return f.newGeminiVision()
 		}
-		if os.Getenv("OPENROUTER_API_KEY") != "" {
+		if f.apiKey("OPENROUTER_API_KEY") != "" {
 			return f.newOpenRouterVision()
 		}
 		log.Println("providers: no vision backend found, using stub")
@@ -152,10 +166,10 @@ func (f *Factory) LLM() LLMProvider {
 		return NewStubLLMProvider()
 	default: // "auto" or empty
 		// Try env vars in priority order.
-		if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		if f.apiKey("ANTHROPIC_API_KEY") != "" {
 			return NewAnthropicLLMProvider(f.cfg.LLM.Model)
 		}
-		if os.Getenv("OPENAI_API_KEY") != "" {
+		if f.apiKey("OPENAI_API_KEY") != "" {
 			return NewOpenAILLMProvider(f.cfg.LLM.Model)
 		}
 		// Fall back to Ollama (local).

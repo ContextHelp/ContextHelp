@@ -13,7 +13,7 @@ func TestPipelineProviderOverride(t *testing.T) {
 	// Base config uses stub LLM everywhere.
 	baseCfg := config.ProvidersConfig{}
 	baseCfg.LLM.Backend = "stub"
-	baseFactory := providers.NewFactory(baseCfg)
+	baseFactory := providers.NewFactory(baseCfg, nil)
 
 	// Override url.generic to use anthropic LLM.
 	pipelinesCfg := config.PipelinesConfig{
