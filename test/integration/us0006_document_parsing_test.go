@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"hop.top/uri"
+
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -174,7 +176,7 @@ func (s *docDepthConfigStep) Run(_ context.Context, draft *storage.KnowledgeObje
 // docEdgeCreatorStep simulates creating parent-child edges by populating Mentions.
 type docEdgeCreatorStep struct {
 	pipeline.BaseContract
-	childMentions []string
+	childMentions []uri.URI
 }
 
 func (s *docEdgeCreatorStep) Name() string { return "test-doc-edge-creator" }
@@ -279,7 +281,11 @@ func TestUS0006_PDFEmbeddedImagesAsChildObjects(t *testing.T) {
 		Steps: []pipeline.PipelineStep{
 			&docTypeSetterStep{format: "pdf"},
 			&docImageExtractorStep{imageCount: 3},
-			&docEdgeCreatorStep{childMentions: []string{"@image.figure1", "@image.figure2", "@image.figure3"}},
+			&docEdgeCreatorStep{childMentions: []uri.URI{
+				{Scheme: "ctxt", Space: "entity", ID: "image/figure1"},
+				{Scheme: "ctxt", Space: "entity", ID: "image/figure2"},
+				{Scheme: "ctxt", Space: "entity", ID: "image/figure3"},
+			}},
 		},
 	})
 
@@ -885,7 +891,10 @@ func TestUS0006_HierarchyTraversableViaAPI(t *testing.T) {
 			&docHierarchicalSectionStep{sections: []storage.Section{
 				{Title: "Chapter 1", Content: "Parent chapter", Order: 0},
 			}},
-			&docEdgeCreatorStep{childMentions: []string{"@section.chapter1-subsection1", "@section.chapter1-subsection2"}},
+			&docEdgeCreatorStep{childMentions: []uri.URI{
+				{Scheme: "ctxt", Space: "entity", ID: "section/chapter1-subsection1"},
+				{Scheme: "ctxt", Space: "entity", ID: "section/chapter1-subsection2"},
+			}},
 		},
 	})
 

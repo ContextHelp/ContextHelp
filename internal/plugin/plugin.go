@@ -3,24 +3,14 @@ package plugin
 import (
 	"context"
 
-	"github.com/ideacrafterslabs/ctxt/internal/events"
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // Plugin is the interface every plugin must satisfy.
-type Plugin interface {
-	// Name returns the unique plugin identifier (matches config key).
-	Name() string
-	// Version returns the plugin's semver string.
-	Version() string
-	// Init is called once at startup with the plugin's config block and shared deps.
-	Init(ctx context.Context, cfg map[string]interface{}, deps Deps) error
-	// PipelineSteps returns zero or more pipeline steps to register.
-	PipelineSteps() []pipeline.PipelineStep
-	// Close is called on graceful shutdown.
-	Close(ctx context.Context) error
-}
+// This is a type alias for pluginapi.Plugin so external plugins and internal
+// code use the same type.
+type Plugin = pluginapi.Plugin
 
 // PostIngestHook is implemented by plugins that want to run after an object is created.
 type PostIngestHook interface {
@@ -29,15 +19,9 @@ type PostIngestHook interface {
 }
 
 // AliasResolver is implemented by plugins that can resolve aliases to object IDs.
-type AliasResolver interface {
-	Plugin
-	// ResolveID resolves an alias (or passes through an ID unchanged).
-	// Returns the canonical object ID or the input unchanged if not an alias.
-	ResolveID(ctx context.Context, idOrAlias, profile string) (string, error)
-}
+// This is a type alias for pluginapi.AliasResolver.
+type AliasResolver = pluginapi.AliasResolver
 
 // Deps carries shared dependencies injected at plugin init.
-type Deps struct {
-	Bus   events.Bus
-	Store storage.StorageDriver
-}
+// This is a type alias for pluginapi.Deps.
+type Deps = pluginapi.Deps

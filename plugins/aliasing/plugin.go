@@ -6,15 +6,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
-	"github.com/ideacrafterslabs/ctxt/internal/plugin"
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
-// Plugin is the plugin.Plugin + plugin.AliasResolver implementation.
+// Plugin is the pluginapi.Plugin + pluginapi.AliasResolver implementation.
 type Plugin struct {
 	cfg   AliasConfig
-	store storage.AliasStore
+	store pluginapi.AliasStore
 }
 
 // New returns an uninitialised Plugin for registration.
@@ -23,7 +21,7 @@ func New() *Plugin { return &Plugin{} }
 func (p *Plugin) Name() string    { return "aliasing" }
 func (p *Plugin) Version() string { return "1.0.0" }
 
-func (p *Plugin) Init(_ context.Context, raw map[string]interface{}, deps plugin.Deps) error {
+func (p *Plugin) Init(_ context.Context, raw map[string]interface{}, deps pluginapi.Deps) error {
 	cfg, err := ConfigFromMap(raw)
 	if err != nil {
 		return fmt.Errorf("aliasing: config: %w", err)
@@ -36,11 +34,11 @@ func (p *Plugin) Init(_ context.Context, raw map[string]interface{}, deps plugin
 }
 
 // PipelineSteps returns nothing — aliasing is not a pipeline step.
-func (p *Plugin) PipelineSteps() []pipeline.PipelineStep { return nil }
+func (p *Plugin) PipelineSteps() []pluginapi.PipelineStep { return nil }
 
 func (p *Plugin) Close(_ context.Context) error { return nil }
 
-// ResolveID implements plugin.AliasResolver.
+// ResolveID implements pluginapi.AliasResolver.
 func (p *Plugin) ResolveID(ctx context.Context, idOrAlias, profile string) (string, error) {
 	if !p.cfg.Enabled || p.store == nil {
 		return idOrAlias, nil
@@ -60,11 +58,11 @@ func (p *Plugin) SetAliasOp(ctx context.Context, alias, objectID, scope, profile
 }
 
 // ListAliases lists aliases matching the filter.
-func (p *Plugin) ListAliases(ctx context.Context, objectID string) ([]*storage.Alias, error) {
+func (p *Plugin) ListAliases(ctx context.Context, objectID string) ([]*pluginapi.Alias, error) {
 	if p.store == nil {
 		return nil, nil
 	}
-	return p.store.List(ctx, storage.AliasFilter{ObjectID: objectID})
+	return p.store.List(ctx, pluginapi.AliasFilter{ObjectID: objectID})
 }
 
 // RemoveAlias deletes an alias.

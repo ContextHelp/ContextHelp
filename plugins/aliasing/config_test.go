@@ -3,7 +3,7 @@ package aliasing_test
 import (
 	"testing"
 
-	"github.com/ideacrafterslabs/ctxt/plugins/aliasing"
+	"github.com/ideacrafterslabs/ctxt-plugin-aliasing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

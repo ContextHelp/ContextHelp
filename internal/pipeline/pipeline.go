@@ -1,17 +1,13 @@
 package pipeline
 
 import (
-	"context"
-
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // PipelineStep is a single transformation that enriches a draft.
-type PipelineStep interface {
-	Name() string
-	Contract() StepContract
-	Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error)
-}
+// The canonical definition lives in pkg/pluginapi; this alias keeps all
+// internal packages working without change.
+type PipelineStep = pluginapi.PipelineStep
 
 // Pipeline is an ordered sequence of steps.
 type Pipeline struct {

@@ -4,24 +4,22 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ideacrafterslabs/ctxt/internal/plugin"
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/plugins/aliasing"
+	"github.com/ideacrafterslabs/ctxt-plugin-aliasing"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// mockStorageDriverForAliasing is a minimal StorageDriver that just provides AliasStore.
-type mockStorageDriverForAliasing struct {
+// mockStorageDriver is a minimal StorageDriver that just provides AliasStore.
+type mockStorageDriver struct {
 	aliasStore *mockAliasStore
-	storage.StorageDriver // embed for unused methods
 }
 
-func (m *mockStorageDriverForAliasing) Aliases() storage.AliasStore { return m.aliasStore }
+func (m *mockStorageDriver) Aliases() pluginapi.AliasStore { return m.aliasStore }
 
-func pluginDepsWithStore(store *mockAliasStore) plugin.Deps {
-	return plugin.Deps{
-		Store: &mockStorageDriverForAliasing{aliasStore: store},
+func pluginDepsWithStore(store *mockAliasStore) pluginapi.Deps {
+	return pluginapi.Deps{
+		Store: &mockStorageDriver{aliasStore: store},
 	}
 }
 

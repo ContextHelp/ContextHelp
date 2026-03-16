@@ -133,7 +133,10 @@ func TestSyncFeed(t *testing.T) {
 
 	// Create a feed.
 	body := bytes.NewBufferString(`{"url":"https://example.com/feed.xml"}`)
-	resp, _ := http.Post(ts.URL+"/api/v1/feeds", "application/json", body)
+	resp, err := http.Post(ts.URL+"/api/v1/feeds", "application/json", body)
+	if err != nil {
+		t.Fatalf("create feed: %v", err)
+	}
 	defer resp.Body.Close()
 
 	var feed storage.Feed

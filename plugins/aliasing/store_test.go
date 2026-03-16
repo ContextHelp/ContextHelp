@@ -6,18 +6,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/plugins/aliasing"
+	"github.com/ideacrafterslabs/ctxt-plugin-aliasing"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // mockAliasStore is an in-memory implementation for tests.
 type mockAliasStore struct {
-	aliases []*storage.Alias
+	aliases []*pluginapi.Alias
 }
 
-func (m *mockAliasStore) Create(_ context.Context, a *storage.Alias) error {
+func (m *mockAliasStore) Create(_ context.Context, a *pluginapi.Alias) error {
 	m.aliases = append(m.aliases, a)
 	return nil
 }
@@ -37,8 +37,8 @@ func (m *mockAliasStore) Resolve(_ context.Context, alias, profile string) (stri
 	return "", fmt.Errorf("not found")
 }
 
-func (m *mockAliasStore) List(_ context.Context, f storage.AliasFilter) ([]*storage.Alias, error) {
-	var out []*storage.Alias
+func (m *mockAliasStore) List(_ context.Context, f pluginapi.AliasFilter) ([]*pluginapi.Alias, error) {
+	var out []*pluginapi.Alias
 	for _, a := range m.aliases {
 		if f.ObjectID != "" && a.ObjectID != f.ObjectID {
 			continue
@@ -49,7 +49,7 @@ func (m *mockAliasStore) List(_ context.Context, f storage.AliasFilter) ([]*stor
 }
 
 func (m *mockAliasStore) Delete(_ context.Context, alias, scope, profile string) error {
-	var filtered []*storage.Alias
+	var filtered []*pluginapi.Alias
 	for _, a := range m.aliases {
 		if a.Alias != alias || a.Scope != scope || a.Profile != profile {
 			filtered = append(filtered, a)
@@ -64,7 +64,7 @@ func TestSetAlias_CreatesRecord(t *testing.T) {
 	now := time.Now()
 	err := aliasing.SetAlias(context.Background(), store, "my-doc", "obj_001", "global", "", now)
 	require.NoError(t, err)
-	aliases, err := store.List(context.Background(), storage.AliasFilter{ObjectID: "obj_001"})
+	aliases, err := store.List(context.Background(), pluginapi.AliasFilter{ObjectID: "obj_001"})
 	require.NoError(t, err)
 	require.Len(t, aliases, 1)
 	assert.Equal(t, "my-doc", aliases[0].Alias)

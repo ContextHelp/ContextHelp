@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
+	"hop.top/uri"
+
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -429,6 +431,6 @@ type mentionStep struct {
 
 func (s *mentionStep) Name() string { return "test-mention" }
 func (s *mentionStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	draft.Mentions = []string{"@test.entity"}
+	draft.Mentions = []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "test"}}
 	return draft, nil
 }

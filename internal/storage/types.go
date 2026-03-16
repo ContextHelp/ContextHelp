@@ -3,8 +3,27 @@ package storage
 import (
 	"time"
 
-	"hop.top/uri"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
+
+// KnowledgeObject is the central data structure representing an ingested piece of knowledge.
+// The canonical definition lives in pkg/pluginapi; this alias keeps all internal packages working.
+type KnowledgeObject = pluginapi.KnowledgeObject
+
+// Draft is a KnowledgeObject being progressively enriched (ADR-053).
+type Draft = pluginapi.KnowledgeObject
+
+// Section represents a structural section of a knowledge object.
+type Section = pluginapi.Section
+
+// Tag represents a label attached to a knowledge object.
+type Tag = pluginapi.Tag
+
+// Decision represents an extracted decision from content.
+type Decision = pluginapi.Decision
+
+// Task represents an extracted task from content.
+type Task = pluginapi.Task
 
 // BlobMeta describes metadata for a stored blob.
 type BlobMeta struct {
@@ -20,68 +39,6 @@ type BlobInfo struct {
 	Key       string    `json:"key"`
 	Size      int64     `json:"size"`
 	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// KnowledgeObject is the central data structure representing an ingested piece of knowledge.
-type KnowledgeObject struct {
-	ID                 string         `json:"id"`
-	Type               string         `json:"type"`
-	Subtype            string         `json:"subtype,omitempty"`
-	RawContent         string         `json:"raw_content"`
-	TextContent        string         `json:"text_content,omitempty"`
-	ContentType        string         `json:"content_type,omitempty"`
-	Metadata           map[string]any `json:"metadata,omitempty"`
-	Summaries          []string       `json:"summaries,omitempty"`
-	Sections           []Section      `json:"sections,omitempty"`
-	Tags               []Tag          `json:"tags,omitempty"`
-	Mentions           []uri.URI      `json:"mentions,omitempty"`
-	Decisions          []Decision     `json:"decisions,omitempty"`
-	Tasks              []Task         `json:"tasks,omitempty"`
-	Embeddings         []float32      `json:"embeddings,omitempty"`
-	Pipeline           string         `json:"pipeline,omitempty"`
-	Source             string         `json:"source,omitempty"`
-	RegistryInfluences []string       `json:"registry_influences,omitempty"`
-	Plugins            map[string]any `json:"plugins,omitempty"`
-	ContentHash        string         `json:"content_hash,omitempty"`
-	Status             string         `json:"status,omitempty"`      // "active" | "inbox" | "discarded"
-	InboxNote          string         `json:"inbox_note,omitempty"`
-	ReinforcementCount int            `json:"reinforcement_count,omitempty"`
-	LastReinforcedAt   *time.Time     `json:"last_reinforced_at,omitempty"`
-	CreatedAt          time.Time      `json:"created_at"`
-	UpdatedAt          time.Time      `json:"updated_at"`
-	FTSIndexed         bool           `json:"fts_indexed"`
-	VectorIndexed      bool           `json:"vector_indexed"`
-}
-
-// Draft is a KnowledgeObject being progressively enriched (ADR-053).
-type Draft = KnowledgeObject
-
-// Section represents a structural section of a knowledge object.
-type Section struct {
-	Title    string         `json:"title"`
-	Content  string         `json:"content"`
-	Order    int            `json:"order"`
-	Metadata map[string]any `json:"metadata,omitempty"`
-}
-
-// Tag represents a label attached to a knowledge object.
-type Tag struct {
-	Label  string  `json:"label"`
-	Weight float64 `json:"weight,omitempty"`
-	Source string  `json:"source,omitempty"`
-}
-
-// Decision represents an extracted decision from content.
-type Decision struct {
-	Title  string `json:"title"`
-	Status string `json:"status"`
-	Impact string `json:"impact"`
-}
-
-// Task represents an extracted task from content.
-type Task struct {
-	Title  string `json:"title"`
-	Status string `json:"status"`
 }
 
 // Entity represents a named entity in the knowledge graph.
