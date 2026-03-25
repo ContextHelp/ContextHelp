@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -44,6 +45,9 @@ from arguments, stdin, or the clipboard.`,
 		if ok, _ := cmd.Flags().GetBool("version"); ok {
 			printVersion(cmd)
 			return nil
+		}
+		if len(args) == 1 && strings.HasPrefix(args[0], "ctxt://") {
+			return dispatchURI(cmd, args[0])
 		}
 		return RunAnalyze(cmd, args)
 	},
@@ -107,4 +111,29 @@ func SetVersionInfo(v, bt, gc string) {
 	version = v
 	buildTime = bt
 	gitCommit = gc
+}
+
+// dispatchURI handles ctxt:// URIs passed directly as an argument (e.g. from
+// OS URL handler after `ctxt uri register`).
+//
+// Routing:
+//   - ctxt://<objectID>         → ctxt open <objectID>
+//   - ctxt://search/<query>     → ctxt find <query>
+func dispatchURI(cmd *cobra.Command, raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid ctxt:// URI %q: %w", raw, err)
+	}
+
+	switch {
+	case u.Host == "search":
+		query := strings.TrimPrefix(u.Path, "/")
+		return runFind(cmd, []string{query})
+	default:
+		objectID := u.Host
+		if objectID == "" {
+			return fmt.Errorf("empty object ID in URI %q", raw)
+		}
+		return runOpen(cmd, []string{objectID})
+	}
 }

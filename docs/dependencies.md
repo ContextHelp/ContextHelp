@@ -1316,6 +1316,12 @@ govulncheck ./...
    - More realistic with additional tooling
    - Includes proper caching, observability, dev tools
 
+7. **URI scheme registration: Added hop.top/hdl**
+   - Self-owned package at `hop.top/hdl`
+   - Replaces manual OS-specific code (LSSetDefaultHandlerForURLScheme, xdg-mime, registry)
+   - Used by `ctxt uri register` to make `ctxt://` links OS-clickable
+   - Phase 9 (T-0158)
+
 **Comparison with awesome-go:**
 - Validated choices against community standards
 - Added missing categories (caching, metrics, dev tools)

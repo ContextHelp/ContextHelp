@@ -153,6 +153,7 @@ ContextHelp provides two command-line binaries:
 - `ctxt profile` — manage focus profiles (Founder, Engineer, Research, etc.)
 - `ctxt make` — generate compositions (briefs, plans, summaries)
 - `ctxt registry` — manage registry subscriptions
+- `ctxt uri register` — register `ctxt://` as a clickable OS URL scheme
 
 ### `dpkms` (Infrastructure Commands)
 

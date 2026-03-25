@@ -75,6 +75,7 @@ go build -o dpkms cmd/dpkms/main.go
 | `ctxt registry` | Manage registries |
 | `ctxt entity` | Query and inspect entities |
 | `ctxt secret` | Manage secrets (get, set, list backend) |
+| `ctxt uri` | Manage ctxt:// URI scheme OS registration |
 
 ### `dpkms` Commands (Infrastructure)
 
@@ -525,6 +526,52 @@ ctxt secret list
 
 # Machine-readable output
 ctxt --output json secret get OPENAI_API_KEY
+```
+
+---
+
+## `ctxt uri`
+
+Register the `ctxt://` URI scheme with the OS so clickable links open ctxt.
+
+### Subcommands
+
+```bash
+ctxt uri register                         # Register ctxt:// with OS (runtime)
+ctxt uri snippet --platform <platform>    # Print static config snippet
+```
+
+Supported platforms for `snippet`: `macos`, `ios`, `linux`, `windows`.
+
+### OS dispatch
+
+After `ctxt uri register`, clicking a `ctxt://` link invokes:
+
+```
+ctxt ctxt://<objectID>          → ctxt open <objectID>
+ctxt ctxt://search/<query>      → ctxt find <query>
+```
+
+### Platform notes
+
+| Platform | Mechanism |
+|----------|-----------|
+| macOS | `LSSetDefaultHandlerForURLScheme` via bundle ID `com.ideacrafterslabs.ctxt` |
+| Linux | `xdg-mime` + `.desktop` file |
+| Windows | HKCU registry entry |
+| iOS / bundles | Use `ctxt uri snippet --platform ios` — must be in `Info.plist` |
+
+### Examples
+
+```bash
+# Register on current machine (requires ctxt installed)
+ctxt uri register
+
+# Print macOS plist snippet for app bundle packaging
+ctxt uri snippet --platform macos
+
+# Print Linux .desktop file
+ctxt uri snippet --platform linux
 ```
 
 ---

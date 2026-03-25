@@ -75,6 +75,17 @@ export CTXT_PROFILE=founder
 export DPKMS_WORKERS=8
 ```
 
+## Register ctxt:// URI Scheme (Optional)
+
+Make `ctxt://` links clickable system-wide — clicking one opens ctxt:
+
+```bash
+ctxt uri register
+```
+
+After registration, `ctxt://obj_12345678` opens that object and `ctxt://search/my+query` runs a search.
+For packaging (app bundles, plist, `.desktop`), use `ctxt uri snippet --platform <platform>`.
+
 ## Usage
 
 ### 1. Start the dPKMS Server (Optional)

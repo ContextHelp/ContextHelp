@@ -319,6 +319,8 @@ Mentions are stored as a flat list of typed URIs under `mention_uris`:
 
 The URI format is `ctxt://entity/<namespace>/<slug>`. The human-readable input form `@namespace.slug` (e.g., `@organization.anthropic`) is accepted at API ingestion boundaries and converted to URIs internally by the pipeline.
 
+`ctxt://` URIs are also OS-clickable after running `ctxt uri register` — clicking opens the object or triggers a search directly in ctxt. See [api-cli.md §ctxt uri](api-cli.md#ctxt-uri).
+
 ### Input form (API ingestion)
 
 When submitting to `POST /analyze` or `POST /inbox`, use the legacy `mentions` field with `@`-prefixed slugs:
