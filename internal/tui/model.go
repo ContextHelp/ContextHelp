@@ -22,22 +22,24 @@ const (
 
 // Model is the root Bubble Tea application model.
 type Model struct {
-	width, height int
-	activePane    PaneID
-	search        *panes.SearchPane
-	preview       *panes.PreviewPane
-	graph         *panes.GraphPane
-	captureModal  *modals.CaptureModal
-	composeModal  *modals.ComposeModal
-	jobCount      int
-	profile       string
-	adapter       ServiceAdapter
-	theme         Theme
-	keys          KeyMap
-	jobs          []*storage.Job
-	help          help.Model
-	showHelp      bool
-	errorMsg      string
+	width, height   int
+	activePane      PaneID
+	search          *panes.SearchPane
+	preview         *panes.PreviewPane
+	graph           *panes.GraphPane
+	captureModal    *modals.CaptureModal
+	composeModal    *modals.ComposeModal
+	jobCount        int
+	profile         string
+	adapter         ServiceAdapter
+	theme           Theme
+	keys            KeyMap
+	jobs            []*storage.Job
+	help            help.Model
+	showHelp        bool
+	errorMsg        string
+	initialQuery    string
+	initialObjectID string
 }
 
 // New constructs the root model. cfg may be nil (uses zero-value defaults).
@@ -63,10 +65,18 @@ func New(adapter ServiceAdapter, cfg *config.Config) Model {
 	}
 }
 
-// Init implements tea.Model. Starts the job poller immediately.
+// Init implements tea.Model. Starts the job poller and fires any initial
+// query/object load requested via RunWithOpts.
 func (m Model) Init() tea.Cmd {
 	m.search.Focus()
-	return PollJobsCmd(m.adapter)
+	cmds := []tea.Cmd{PollJobsCmd(m.adapter)}
+	if m.initialQuery != "" {
+		cmds = append(cmds, SearchCmd(m.adapter, m.initialQuery))
+	}
+	if m.initialObjectID != "" {
+		cmds = append(cmds, LoadObjectCmd(m.adapter, m.initialObjectID))
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update implements tea.Model.

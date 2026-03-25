@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/logger"
+	"github.com/ideacrafterslabs/ctxt/internal/tui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -117,23 +118,48 @@ func SetVersionInfo(v, bt, gc string) {
 // OS URL handler after `ctxt uri register`).
 //
 // Routing:
-//   - ctxt://<objectID>         → ctxt open <objectID>
-//   - ctxt://search/<query>     → ctxt find <query>
+//   - ctxt://<objectID>         → open <objectID>
+//   - ctxt://search/<query>     → find <query>
+//
+// The ui.handler config key (default "cli") controls the presentation layer:
+//   - "cli"  → prints to stdout via runOpen / runFind
+//   - "tui"  → opens the interactive terminal interface focused on the result
 func dispatchURI(cmd *cobra.Command, raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return fmt.Errorf("invalid ctxt:// URI %q: %w", raw, err)
 	}
 
+	handler := "cli"
+	if cfg != nil && cfg.URI.Handler != "" {
+		handler = cfg.URI.Handler
+	}
+
 	switch {
 	case u.Host == "search":
 		query := strings.TrimPrefix(u.Path, "/")
+		if handler == "tui" {
+			return dispatchURIViaTUI(tui.StartOpts{InitialQuery: query})
+		}
 		return runFind(cmd, []string{query})
 	default:
 		objectID := u.Host
 		if objectID == "" {
 			return fmt.Errorf("empty object ID in URI %q", raw)
 		}
+		if handler == "tui" {
+			return dispatchURIViaTUI(tui.StartOpts{InitialObjectID: objectID})
+		}
 		return runOpen(cmd, []string{objectID})
 	}
+}
+
+// dispatchURIViaTUI opens the TUI with the given start options.
+func dispatchURIViaTUI(opts tui.StartOpts) error {
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	return tui.RunWithOpts(tui.NewRealAdapter(svc), cfg, opts)
 }

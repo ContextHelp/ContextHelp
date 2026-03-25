@@ -81,6 +81,17 @@ type Config struct {
 
 	// Search controls hybrid query execution behaviour.
 	Search SearchConfig `mapstructure:"search"`
+
+	// URI controls ctxt:// URL scheme dispatch behaviour.
+	URI URIConfig `mapstructure:"uri"`
+}
+
+// URIConfig controls how ctxt:// URIs are handled by the OS URL handler.
+type URIConfig struct {
+	// Handler selects the UI used when a ctxt:// link is opened.
+	// Valid values: "cli" (default) | "tui".
+	// "cli" prints to stdout; "tui" opens the interactive terminal interface.
+	Handler string `mapstructure:"handler" yaml:"handler"`
 }
 
 // DuplicatesConfig controls duplicate and near-duplicate detection behaviour at ingest time.

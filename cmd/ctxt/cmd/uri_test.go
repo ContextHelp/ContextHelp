@@ -91,3 +91,24 @@ func TestRootSubcommandsIncludesURI(t *testing.T) {
 		t.Error("root help should list uri subcommand")
 	}
 }
+
+func TestDispatchURISearchRouting(t *testing.T) {
+	// ctxt://search/<query> should route to find, not produce a parse/routing error.
+	db := setupTestDB(t)
+	_, err := db.exec("ctxt://search/golang")
+	// find may return "no results" or succeed — either is fine.
+	if err != nil && strings.Contains(err.Error(), "invalid ctxt:// URI") {
+		t.Errorf("search URI should not produce a parse error, got: %v", err)
+	}
+}
+
+func TestDispatchURIHandlerDefaultCLI(t *testing.T) {
+	// With no config (default handler="cli"), ctxt://<id> routes to runOpen.
+	// runOpen on a missing object returns a storage error, not a routing error.
+	db := setupTestDB(t)
+	cfg = nil
+	_, err := db.exec("ctxt://obj_cli_test")
+	if err != nil && strings.Contains(err.Error(), "invalid ctxt:// URI") {
+		t.Errorf("CLI handler dispatch should not produce a parse error: %v", err)
+	}
+}
