@@ -1,6 +1,6 @@
 module github.com/ideacrafterslabs/ctxt
 
-go 1.25.6
+go 1.26.1
 
 require (
 	github.com/go-chi/chi/v5 v5.2.5
@@ -94,4 +94,3 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-replace hop.top/uri => /Users/jadb/.w/ideacrafterslabs/uri/hops/main
