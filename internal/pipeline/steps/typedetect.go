@@ -6,6 +6,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/taxonomy"
 )
 
 type TypeDetector struct {
@@ -26,18 +27,18 @@ func (d *TypeDetector) Name() string { return "typedetect" }
 func (d *TypeDetector) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	content := strings.TrimSpace(draft.RawContent)
 
-	if draft.Type == "" || draft.Type == "text" {
+	if draft.Type == "" || draft.Type == taxonomy.TypeText {
 		if strings.HasPrefix(content, "http://") || strings.HasPrefix(content, "https://") {
-			draft.Type = "url"
+			draft.Type = taxonomy.TypeURL
 		} else {
-			draft.Type = "text"
+			draft.Type = taxonomy.TypeText
 		}
 	}
 
 	if len(content) < 500 {
-		draft.Subtype = "short"
+		draft.Subtype = taxonomy.SubtypeTextShort
 	} else {
-		draft.Subtype = "long"
+		draft.Subtype = taxonomy.SubtypeTextLong
 	}
 
 	return draft, nil
