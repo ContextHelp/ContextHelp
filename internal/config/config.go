@@ -84,6 +84,9 @@ type Config struct {
 
 	// URI controls ctxt:// URL scheme dispatch behaviour.
 	URI URIConfig `mapstructure:"uri"`
+
+	// Backup configures the backup command.
+	Backup BackupConfig `mapstructure:"backup" yaml:"backup"`
 }
 
 // URIConfig controls how ctxt:// URIs are handled by the OS URL handler.
@@ -187,6 +190,13 @@ func DefaultRetrievalConfig() RetrievalConfig {
 		Items:                  TierConfig{Enabled: true, TopK: 20},
 		Resources:              TierConfig{Enabled: true, TopK: 5},
 	}
+}
+
+// BackupConfig holds settings for the backup command.
+type BackupConfig struct {
+	// Dir is the directory where backup archives are written.
+	// Defaults to the current working directory if empty.
+	Dir string `mapstructure:"dir" yaml:"dir"`
 }
 
 // StorageConfig represents storage configuration

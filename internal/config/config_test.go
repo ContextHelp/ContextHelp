@@ -430,3 +430,10 @@ func TestSearchConfigDefaults(t *testing.T) {
 	assert.InDelta(t, 0.0, cfg.Search.MinScore, 0.001)
 	assert.True(t, cfg.Search.FallbackToFTS)
 }
+
+func TestBackupConfigDefaults(t *testing.T) {
+	cfg := Config{}
+	if cfg.Backup.Dir != "" {
+		t.Fatalf("expected empty backup dir, got %q", cfg.Backup.Dir)
+	}
+}
