@@ -3,6 +3,7 @@ package plugin_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/plugin"
@@ -53,6 +54,46 @@ func TestRegistry_RegisterWithManifest(t *testing.T) {
 func TestRegistry_Manifest_notFound(t *testing.T) {
 	r := plugin.NewRegistry()
 	require.Nil(t, r.Manifest("nonexistent"))
+}
+
+// stubOutputGenerator is a minimal OutputGenerator for registry tests.
+type stubOutputGenerator struct {
+	stubPlugin
+	generatorName string
+}
+
+func (g *stubOutputGenerator) GeneratorName() string { return g.generatorName }
+func (g *stubOutputGenerator) Accepts(_ pluginapi.KnowledgeObject) bool { return true }
+func (g *stubOutputGenerator) Generate(_ context.Context, _ pluginapi.KnowledgeObject, _ pluginapi.OutputOptions) ([]byte, error) {
+	return []byte("rendered"), nil
+}
+
+func TestRegistry_OutputGenerators_Empty(t *testing.T) {
+	r := plugin.NewRegistry()
+	r.Register(&stubPlugin{name: "plain"})
+	require.Empty(t, r.OutputGenerators())
+	require.Nil(t, r.FindOutputGenerator("any"))
+}
+
+func TestRegistry_FindOutputGenerator(t *testing.T) {
+	r := plugin.NewRegistry()
+	gen := &stubOutputGenerator{
+		stubPlugin:    stubPlugin{name: "mdexport"},
+		generatorName: "obsidian-md",
+	}
+	r.Register(gen)
+
+	found := r.FindOutputGenerator("obsidian-md")
+	require.NotNil(t, found)
+	require.Equal(t, "obsidian-md", found.GeneratorName())
+
+	out, err := found.Generate(context.Background(), pluginapi.KnowledgeObject{
+		ID: "obj_1", CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}, pluginapi.OutputOptions{})
+	require.NoError(t, err)
+	require.Equal(t, []byte("rendered"), out)
+
+	require.Nil(t, r.FindOutputGenerator("notion-export"))
 }
 
 func TestRegistry_Enforcer(t *testing.T) {

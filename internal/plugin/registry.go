@@ -106,6 +106,28 @@ func (r *Registry) ResolveID(ctx context.Context, idOrAlias, profile string) (st
 	return idOrAlias, nil
 }
 
+// OutputGenerators returns all plugins implementing OutputGenerator.
+func (r *Registry) OutputGenerators() []pluginapi.OutputGenerator {
+	var out []pluginapi.OutputGenerator
+	for _, p := range r.plugins {
+		if g, ok := p.(pluginapi.OutputGenerator); ok {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// FindOutputGenerator returns the first generator whose GeneratorName matches name,
+// or nil if none is registered.
+func (r *Registry) FindOutputGenerator(name string) pluginapi.OutputGenerator {
+	for _, g := range r.OutputGenerators() {
+		if g.GeneratorName() == name {
+			return g
+		}
+	}
+	return nil
+}
+
 // CloseAll shuts down all plugins gracefully.
 func (r *Registry) CloseAll(ctx context.Context) {
 	for _, p := range r.plugins {
