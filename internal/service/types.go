@@ -17,6 +17,7 @@ type AnalyzeRequest struct {
 	KnownHash   string `json:"known_hash,omitempty"`   // pre-computed content hash; skips re-hashing
 	SourceTitle string `json:"source_title,omitempty"` // human-readable title of source (e.g. page title)
 	AuthState   string `json:"auth_state,omitempty"`   // opaque auth state token (browser extension)
+	Raw         bool   `json:"raw,omitempty"`          // skip AI enrichment; store object immediately in raw state
 }
 
 // CreatePipelineRequest represents a request to create a custom pipeline.

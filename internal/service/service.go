@@ -25,6 +25,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // Service coordinates all business operations.
@@ -67,6 +68,8 @@ func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry
 }
 
 // Analyze enqueues a content analysis job and returns the job ID.
+// When req.Raw is true, skips AI enrichment and stores the object immediately
+// with Status "raw"; returns the object ID (not a job ID).
 func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, error) {
 	now := time.Now().Truncate(time.Second)
 
@@ -76,14 +79,35 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		detectedType = "url"
 	}
 
-	pipelineName := req.Pipeline
-	if pipelineName == "" {
-		pipelineName = s.Pipes.SelectPipeline(req.Content)
-	}
-
 	jobSource := req.Source
 	if detectedType == "url" {
 		jobSource = strings.TrimSpace(req.Content)
+	}
+
+	// Raw mode: bypass pipeline entirely; persist as-is.
+	if req.Raw {
+		obj := &storage.KnowledgeObject{
+			ID:          uuid.New().String(),
+			Type:        detectedType,
+			RawContent:  req.Content,
+			Source:      jobSource,
+			ContentHash: storageutil.ContentHash(req.Content, jobSource),
+			Status:      "raw",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		if err := s.Store.Objects().Create(ctx, obj); err != nil {
+			return "", fmt.Errorf("analyze raw: store: %w", err)
+		}
+		if ev, err := events.NewEvent("service.analyze", "object.raw_stored", obj); err == nil {
+			_ = s.Bus.Publish(ctx, ev)
+		}
+		return obj.ID, nil
+	}
+
+	pipelineName := req.Pipeline
+	if pipelineName == "" {
+		pipelineName = s.Pipes.SelectPipeline(req.Content)
 	}
 
 	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).

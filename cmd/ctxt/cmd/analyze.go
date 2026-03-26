@@ -126,12 +126,21 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		serverURL = "http://localhost:8080"
 	}
 
+	// Resolve --raw flag (present on both analyzeCmd and rootCmd).
+	rawMode := false
+	if f := cmd.Flags().Lookup("raw"); f != nil && f.Changed {
+		rawMode, _ = cmd.Flags().GetBool("raw")
+	} else {
+		rawMode = viper.GetBool("analyze.raw")
+	}
+
 	// Build request body.
-	reqBody := map[string]string{
+	reqBody := map[string]any{
 		"content":  content,
 		"type":     flagString(cmd, "type", "analyze.type"),
 		"pipeline": flagString(cmd, "pipeline", "analyze.pipeline"),
 		"source":   "cli",
+		"raw":      rawMode,
 	}
 	_ = source
 

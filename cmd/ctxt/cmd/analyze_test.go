@@ -78,6 +78,32 @@ func TestAnalyzeWithFlags(t *testing.T) {
 	}
 }
 
+func TestAnalyzeRawFlagSentInRequest(t *testing.T) {
+	var capturedBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/analyze" && r.Method == http.MethodPost {
+			json.NewDecoder(r.Body).Decode(&capturedBody)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			json.NewEncoder(w).Encode(map[string]string{"job_id": "raw-job-1"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	out, err := executeCommand("analyze", "some raw content", "--raw", "--server", srv.URL)
+	if err != nil {
+		t.Fatalf("analyze --raw should succeed: %v", err)
+	}
+	if !strings.Contains(out, "Job ID:") {
+		t.Error("output should contain job ID")
+	}
+	if raw, ok := capturedBody["raw"].(bool); !ok || !raw {
+		t.Errorf("expected raw=true in request body, got: %v", capturedBody["raw"])
+	}
+}
+
 func TestAnalyzeNoInputError(t *testing.T) {
 	// When no args/file and no clipboard, should error.
 	_, err := executeCommand("analyze")
