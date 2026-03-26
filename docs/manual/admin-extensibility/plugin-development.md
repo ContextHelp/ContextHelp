@@ -87,8 +87,16 @@ dpkms pipeline archive <pipeline-name>
 
 ### Runtime capability mismatch
 
-- Re-check declared capabilities and isolation assumptions.
-- Validate behavior under minimal privilege.
+Steps whose required capabilities are unavailable are silently pruned at startup
+with a log line:
+
+```
+builtins: pipeline "X": pruning step "Y" (missing capability)
+```
+
+See [`../../architecture/pipeline-capabilities.md`](../../architecture/pipeline-capabilities.md)
+for the full capability reference, how each one is probed, and a diagnostic
+checklist.
 
 ### Version drift
 
