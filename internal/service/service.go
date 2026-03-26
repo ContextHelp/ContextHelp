@@ -1187,6 +1187,83 @@ func (s *Service) DisableDetector(ctx context.Context, id string) error {
 	return s.Store.Detectors().Disable(ctx, id)
 }
 
+// --- Saved Search (US-0054) ---
+
+// SavedSearchCreateRequest carries parameters for creating a saved search.
+type SavedSearchCreateRequest struct {
+	Name      string
+	Query     string
+	ProfileID string
+	AlertOn   string
+	Notify    string
+}
+
+// CreateSavedSearch persists a named saved search.
+// Returns error if the name already exists (UNIQUE constraint).
+func (s *Service) CreateSavedSearch(ctx context.Context, req SavedSearchCreateRequest) (*storage.SavedSearch, error) {
+	now := time.Now().Truncate(time.Second)
+	ss := &storage.SavedSearch{
+		ID:        "ss_" + uuid.New().String()[:8],
+		Name:      req.Name,
+		Query:     req.Query,
+		ProfileID: req.ProfileID,
+		AlertOn:   req.AlertOn,
+		Notify:    req.Notify,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := s.Store.SavedSearches().Create(ctx, ss); err != nil {
+		return nil, fmt.Errorf("create saved search: %w", err)
+	}
+	return ss, nil
+}
+
+// GetSavedSearch returns a saved search by name, or nil if not found.
+func (s *Service) GetSavedSearch(ctx context.Context, name string) (*storage.SavedSearch, error) {
+	return s.Store.SavedSearches().GetByName(ctx, name)
+}
+
+// ListSavedSearches returns saved searches matching the filter.
+func (s *Service) ListSavedSearches(ctx context.Context, filter storage.SavedSearchFilter) ([]*storage.SavedSearch, error) {
+	return s.Store.SavedSearches().List(ctx, filter)
+}
+
+// UpdateSavedSearch persists field changes to an existing saved search.
+func (s *Service) UpdateSavedSearch(ctx context.Context, ss *storage.SavedSearch) error {
+	ss.UpdatedAt = time.Now().Truncate(time.Second)
+	return s.Store.SavedSearches().Update(ctx, ss)
+}
+
+// DeleteSavedSearch removes a saved search by name.
+func (s *Service) DeleteSavedSearch(ctx context.Context, name string) error {
+	return s.Store.SavedSearches().Delete(ctx, name)
+}
+
+// --- Search History (US-0055) ---
+
+// AppendSearchHistory records one search query execution.
+func (s *Service) AppendSearchHistory(ctx context.Context, query, profileID, strategies string, resultCount int) error {
+	e := &storage.SearchHistoryEntry{
+		ID:             "sh_" + uuid.New().String()[:8],
+		Query:          query,
+		ProfileID:      profileID,
+		StrategiesUsed: strategies,
+		ResultCount:    resultCount,
+		SearchedAt:     time.Now().Truncate(time.Second),
+	}
+	return s.Store.SearchHistory().Append(ctx, e)
+}
+
+// ListSearchHistory returns search history entries matching the filter.
+func (s *Service) ListSearchHistory(ctx context.Context, filter storage.SearchHistoryFilter) ([]*storage.SearchHistoryEntry, error) {
+	return s.Store.SearchHistory().List(ctx, filter)
+}
+
+// ClearSearchHistory removes all history entries for a profile.
+func (s *Service) ClearSearchHistory(ctx context.Context, profileID string) error {
+	return s.Store.SearchHistory().ClearByProfile(ctx, profileID)
+}
+
 // --- Semantic search ---
 
 // SemanticSearch performs vector similarity search using the provided embedding provider.

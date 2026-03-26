@@ -509,3 +509,39 @@ type VectorHit struct {
 	ID    string  `json:"id"`
 	Score float64 `json:"score"`
 }
+
+// SavedSearch is a persisted named search query with optional alert config (US-0054).
+type SavedSearch struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`       // unique human-readable identifier
+	Query     string    `json:"query"`      // RSQL or NLQ query text
+	ProfileID string    `json:"profile_id"` // optional focus profile
+	AlertOn   string    `json:"alert_on"`   // "" | "new-results"
+	Notify    string    `json:"notify"`     // notification channel: "" | "email" | ...
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// SavedSearchFilter restricts saved search listing.
+type SavedSearchFilter struct {
+	ProfileID string
+	Limit     int
+	Offset    int
+}
+
+// SearchHistoryEntry is one record in the search history log (US-0055).
+type SearchHistoryEntry struct {
+	ID              string    `json:"id"`
+	Query           string    `json:"query"`
+	ProfileID       string    `json:"profile_id"`
+	StrategiesUsed  string    `json:"strategies_used"`  // comma-separated strategy names
+	ResultCount     int       `json:"result_count"`
+	SearchedAt      time.Time `json:"searched_at"`
+}
+
+// SearchHistoryFilter restricts search history queries.
+type SearchHistoryFilter struct {
+	ProfileID string
+	Limit     int
+	Offset    int
+}
