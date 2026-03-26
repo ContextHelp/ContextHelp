@@ -277,6 +277,44 @@ After this skeleton, the system is:
    Full static site launched with semantic identity and graph documentation.
 ---
 
+## Task 3c.1: Pre-Commit Secret Scanning (gitleaks)
+
+Protect repository from accidental credential leaks.
+
+### Implementation
+
+- **`.gitleaks.toml`** — custom rules + allow-list:
+  - standard patterns: OpenAI, Anthropic, AWS, GitHub, Slack, JWT, PG connection strings
+  - CTXT-specific rules: `CTXT_API_KEY`, `CTXT_SECRET/TOKEN/PASSWORD/SIGNING_KEY`,
+    `CTXT_DB_*`, `CTXT_[PROVIDER]_API_KEY`
+  - allow-list: `.env.example`, `config.example.yaml`, `testdata/`, `docs/`, placeholder values,
+    `${VAR}` references, CTXT_* vars set to empty/placeholder
+  - extends gitleaks default ruleset (`useDefault = true`)
+
+- **`make security-scan`** — runs `gitleaks detect --source . --config .gitleaks.toml`;
+  fails CI-style if gitleaks not installed
+
+- **`make install-hooks`** — writes `.git/hooks/pre-commit` running
+  `gitleaks protect --staged --config .gitleaks.toml`; soft-fail with warning if gitleaks absent
+
+- **CI (`secret-scan` job)** — uses `gitleaks/gitleaks-action@v2` on every push + PR;
+  `fetch-depth: 0` for full history scan; gates `build` job alongside `lint`, `security`, `test`
+
+### Usage
+
+```
+# Local setup (one-time)
+brew install gitleaks
+make install-hooks
+
+# Manual full-history scan
+make security-scan
+
+# CI: automatic on every push/PR via .github/workflows/ci.yml
+```
+
+---
+
 ## See Also
 
 **Package Boundaries:**

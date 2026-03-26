@@ -106,6 +106,34 @@ regex = '''(?i)(api[_-]?key|secret|password|token)\s*=\s*[a-zA-Z0-9_\-]{20,}'''
 tags = ["env-var"]
 
 #############################################################################
+# CTXT-Specific Rules
+#############################################################################
+
+[[rules]]
+id = "ctxt-api-key"
+description = "CTXT API Key"
+regex = '''CTXT_API_KEY\s*[:=]\s*['"]?[a-zA-Z0-9_\-]{20,}['"]?'''
+tags = ["ctxt", "api-key"]
+
+[[rules]]
+id = "ctxt-secret"
+description = "CTXT Secret or Token"
+regex = '''CTXT_(SECRET|TOKEN|PASSWORD|AUTH_TOKEN|SIGNING_KEY)\s*[:=]\s*['"]?[a-zA-Z0-9_\-\.]{16,}['"]?'''
+tags = ["ctxt", "secret"]
+
+[[rules]]
+id = "ctxt-db-dsn"
+description = "CTXT Database DSN with credentials"
+regex = '''CTXT_DB(?:_DSN|_URL|_PASSWORD|_PASS)\s*[:=]\s*['"]?[^\s'"]{8,}['"]?'''
+tags = ["ctxt", "database"]
+
+[[rules]]
+id = "ctxt-provider-key"
+description = "CTXT provider API key variable"
+regex = '''CTXT_[A-Z0-9_]+_(?:API_KEY|SECRET|TOKEN)\s*[:=]\s*['"]?[a-zA-Z0-9_\-]{16,}['"]?'''
+tags = ["ctxt", "provider", "api-key"]
+
+#############################################################################
 # Allowlist - Files and Patterns to Ignore
 #############################################################################
 
@@ -142,6 +170,10 @@ regexes = [
 
   # Allow common test/placeholder passwords
   '''(password|secret|token|key)[:=]\s*['"]?(test|example|placeholder|changeme|dummy)['"]?''',
+
+  # Allow CTXT_* env vars that reference other env vars or are empty/placeholder
+  '''CTXT_[A-Z0-9_]+=\s*["']?\$\{?[A-Z_]+\}?["']?''',
+  '''CTXT_[A-Z0-9_]+=\s*["']?(your|my|example|test|demo|changeme|<[^>]+>|)["']?$''',
 ]
 
 # Commits to exclude from scanning (if any)

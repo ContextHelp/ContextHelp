@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -185,6 +185,26 @@ build-ui:
 	cp -r web/ui/dist internal/ui/dist
 
 .PHONY: build-ui
+
+## security-scan: Run gitleaks secret scanning on entire repo history
+security-scan:
+	@echo "Running gitleaks secret scan..."
+	@if command -v gitleaks >/dev/null 2>&1; then \
+		gitleaks detect --source . --config .gitleaks.toml --verbose; \
+	else \
+		echo "gitleaks not installed. Install with:"; \
+		echo "  brew install gitleaks"; \
+		echo "  or: https://github.com/gitleaks/gitleaks#installing"; \
+		exit 1; \
+	fi
+
+## install-hooks: Install git pre-commit hook running gitleaks protect --staged
+install-hooks:
+	@echo "Installing git hooks..."
+	@mkdir -p .git/hooks
+	@printf '#!/bin/sh\n# Pre-commit hook: secret scanning via gitleaks\nif ! command -v gitleaks >/dev/null 2>&1; then\n  echo "WARNING: gitleaks not found; skipping secret scan."\n  echo "Install: brew install gitleaks"\n  exit 0\nfi\ngitleaks protect --staged --config .gitleaks.toml --verbose\n' > .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "✓ pre-commit hook installed (.git/hooks/pre-commit)"
 
 ## help: Show this help message
 help:
