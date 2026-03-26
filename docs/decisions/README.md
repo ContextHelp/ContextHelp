@@ -420,6 +420,21 @@ Fan et al. (Meta FAIR/NYU, Apr 2025) demonstrate vision-only SSL matches CLIP at
 
 **Related:** ADR-026 (Multimodal), ADR-022 (Hybrid Search), ADR-021 (Multi-Backend), US-0003 (Image OCR), US-0051 (Semantic Search)
 
+### **ADR-062 – Information/Knowledge Lifecycle Model (Proposed)**
+Formal lifecycle model distinguishing perishable information (short shelf life, relevance decays
+over time) from durable knowledge (persistent, earned through repeated interaction and
+corroboration). Introduces three object tiers (`information | consolidating | knowledge`),
+a configurable exponential decay model with TTL defaults per pipeline type, an
+interaction-driven confidence growth model, and tier-aware behaviour across resurfacing,
+export, thin sync, and graph edge confidence. Adds `ctxt inbox --stale` as a user-facing
+triage surface for expired/decaying objects.
+
+**Schema additions:** `object_tier`, `expires_at`, `decay_score`, `interaction_count`,
+`source_count` on `objects`. Edge `weight` semantics formalised.
+
+**Amends:** ADR-016 (resurfacing), ADR-020 (export), ADR-034 (thin sync), ADR-042 (Gap 3),
+ADR-049 (edge weight semantics).
+
 ### **ADR-043 – BEAM/LIGHT: Long-Term Memory Techniques Partially Adopted (Accepted)**
 BEAM/LIGHT (Tavakoli et al., ICLR 2026) benchmarks 10 cognitive memory abilities across 100K–10M token conversations and provides LIGHT, a three-component memory framework (episodic + working + scratchpad). Full system not adopted (requires 32B model per turn, Python/GPU stack). **Three techniques adopted:**
 

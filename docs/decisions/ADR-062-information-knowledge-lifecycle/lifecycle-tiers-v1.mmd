@@ -1,0 +1,58 @@
+---
+title: Information/Knowledge Lifecycle Tiers (ADR-062)
+---
+stateDiagram-v2
+    [*] --> information : ingest (default)
+    [*] --> knowledge   : ingest via tier_override pipeline\n(decision, entity)
+
+    information --> information      : decay_score decreases over time\n(λ = ln(2) / half_life_hours)
+
+    information --> consolidating    : interaction_count ≥ 3\nAND source_count ≥ 2
+
+    consolidating --> consolidating  : decay paused\ninteraction_count still grows
+
+    consolidating --> knowledge      : interaction_count ≥ 10\nAND source_count ≥ 3\nAND age ≥ 48h\nOR user explicit confirm
+
+    knowledge --> knowledge          : no TTL; no decay\nconfidence grows via edge weight
+
+    information --> stale            : expires_at < now\nOR decay_score < 0.3
+
+    consolidating --> stale          : user explicit demote
+
+    stale --> information            : user: extend TTL
+    stale --> knowledge              : user: promote (ctxt promote <id>)
+    stale --> [*]                    : user: discard (ctxt inbox --stale --discard)
+
+    note right of information
+        object_tier = information
+        expires_at = ingest_time + TTL
+        decay_score in [0.05, 1.0]
+        resurfaced only if decay_score > 0.3
+        export: excluded from minimal mode
+        thin_sync: local_copy = index
+    end note
+
+    note right of consolidating
+        object_tier = consolidating
+        expires_at = NULL (TTL lifted)
+        decay_score paused
+        resurfaced (slight penalty)
+        export: included except minimal
+        thin_sync: local_copy = index
+    end note
+
+    note right of knowledge
+        object_tier = knowledge
+        expires_at = NULL
+        decay_score = N/A
+        always resurfaced (no penalty)
+        export: always included
+        thin_sync: local_copy = content
+    end note
+
+    note right of stale
+        decay_score < 0.3 OR expired
+        excluded from resurfacing queue
+        visible in: ctxt inbox --stale
+        awaiting user decision
+    end note
