@@ -14,6 +14,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/graph"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // EntityIndexEntry is the minimal record returned by a registry's /entities/index endpoint.
@@ -36,7 +37,7 @@ type SyncResult struct {
 	RegistryURL string
 	SyncMode    config.RegistrySyncMode
 	Upserted    int
-	Skipped     int            // full records not overwritten
+	Skipped     int              // full records not overwritten
 	Conflicts   []ConflictReport // non-empty when multi-registry disagreements were resolved
 	Errors      []error
 }
@@ -273,6 +274,112 @@ func (s *Syncer) MultiSync(ctx context.Context, cfg MultiSyncConfig) (*MultiSync
 		out.Merged++
 	}
 
+	return out, nil
+}
+
+// SyncPluginProvider drains a PluginRegistryProvider via FetchEntities pagination
+// and writes entities to the store under the same rules as HTTP sync.
+// mode controls thin vs full storage. providerID is used in logs and SyncResult.RegistryURL.
+func (s *Syncer) SyncPluginProvider(
+	ctx context.Context,
+	provider pluginapi.PluginRegistryProvider,
+	mode config.RegistrySyncMode,
+) (*SyncResult, error) {
+	meta, err := provider.Metadata(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("plugin registry provider metadata: %w", err)
+	}
+	providerID := "plugin://" + meta.Name
+
+	if mode == "" {
+		mode = config.RegistrySyncModeFull
+	}
+	result := &SyncResult{RegistryURL: providerID, SyncMode: mode}
+
+	var cursor string
+	for {
+		entities, next, fetchErr := provider.FetchEntities(ctx, cursor)
+		if fetchErr != nil {
+			return nil, fmt.Errorf("plugin registry %s: fetch entities: %w", meta.Name, fetchErr)
+		}
+
+		now := time.Now().Truncate(time.Second)
+		for _, pe := range entities {
+			e := &storage.Entity{
+				Slug:        pe.Slug,
+				Title:       pe.Title,
+				Description: pe.Description,
+				Namespace:   pe.Namespace,
+				Aliases:     pe.Aliases,
+				VersionHash: pe.VersionHash,
+				RegistryURL: providerID,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			if err := s.guard.ValidateAndGuard(ctx, e, "registry.plugin-sync"); err != nil {
+				slog.WarnContext(ctx, "plugin registry sync: entity integrity rejected",
+					"slug", e.Slug, "provider", meta.Name, "err", err)
+				result.Errors = append(result.Errors, fmt.Errorf("integrity guard %s: %w", e.Slug, err))
+				result.Skipped++
+				continue
+			}
+			if mode == config.RegistrySyncModeThin {
+				if err := s.store.UpsertThin(ctx, e); err != nil {
+					result.Errors = append(result.Errors, fmt.Errorf("upsert thin %s: %w", e.Slug, err))
+					continue
+				}
+			} else {
+				e.ContentStatus = storage.ContentStatusFull
+				if err := s.store.Upsert(ctx, e); err != nil {
+					result.Errors = append(result.Errors, fmt.Errorf("upsert %s: %w", e.Slug, err))
+					continue
+				}
+			}
+			result.Upserted++
+		}
+
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	return result, nil
+}
+
+// MultiSyncWithPlugins syncs HTTP registries and plugin-backed registries uniformly.
+// HTTP registries are synced first (via MultiSync); plugin providers are appended.
+// Results from all sources are combined into a single MultiSyncResult.
+func (s *Syncer) MultiSyncWithPlugins(
+	ctx context.Context,
+	cfg MultiSyncConfig,
+	providers []pluginapi.PluginRegistryProvider,
+) (*MultiSyncResult, error) {
+	out, err := s.MultiSync(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	mode := config.RegistrySyncModeFull
+	if len(cfg.Registries) > 0 && cfg.Registries[0].SyncMode != "" {
+		mode = cfg.Registries[0].SyncMode
+	}
+
+	for _, p := range providers {
+		res, syncErr := s.SyncPluginProvider(ctx, p, mode)
+		if syncErr != nil {
+			meta, _ := p.Metadata(ctx)
+			slog.WarnContext(ctx, "plugin registry sync failed",
+				"provider", meta.Name, "err", syncErr)
+			out.PerRegistry = append(out.PerRegistry, &SyncResult{
+				RegistryURL: "plugin://" + meta.Name,
+				SyncMode:    mode,
+				Errors:      []error{syncErr},
+			})
+			continue
+		}
+		out.PerRegistry = append(out.PerRegistry, res)
+		out.Merged += res.Upserted
+	}
 	return out, nil
 }
 

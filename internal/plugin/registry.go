@@ -94,6 +94,17 @@ func (r *Registry) AliasResolvers() []AliasResolver {
 	return out
 }
 
+// RegistryProviders returns all plugins implementing pluginapi.PluginRegistryProvider.
+func (r *Registry) RegistryProviders() []pluginapi.PluginRegistryProvider {
+	var out []pluginapi.PluginRegistryProvider
+	for _, p := range r.plugins {
+		if rp, ok := p.(pluginapi.PluginRegistryProvider); ok {
+			out = append(out, rp)
+		}
+	}
+	return out
+}
+
 // ResolveID tries each registered AliasResolver in order, returning on first success.
 // Falls back to returning the input unchanged.
 func (r *Registry) ResolveID(ctx context.Context, idOrAlias, profile string) (string, error) {

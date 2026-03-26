@@ -3,16 +3,27 @@ package pluginapi
 
 // Permission constants for plugin manifests.
 const (
-	PermReadObjects    = "read_objects"
-	PermWriteObjects   = "write_objects"
-	PermCallLLM        = "call_llm"
-	PermNetwork        = "network"
-	PermFilesystem     = "filesystem"
-	PermClipboard      = "clipboard"
-	PermRefresh        = "refresh"
-	PermNotifications  = "notifications"
-	PermEntityWrite    = "entity.write"
-	PermEntityAlias    = "entity.alias"
+	PermReadObjects   = "read_objects"
+	PermWriteObjects  = "write_objects"
+	PermCallLLM       = "call_llm"
+	PermNetwork       = "network"
+	PermFilesystem    = "filesystem"
+	PermClipboard     = "clipboard"
+	PermRefresh       = "refresh"
+	PermNotifications = "notifications"
+	PermEntityWrite   = "entity.write"
+	PermEntityAlias   = "entity.alias"
+	PermRegistryRead  = "registry.read"
+)
+
+// PluginType classifies the primary role of a plugin.
+// A plugin manifest may omit this field; it is treated as a general plugin.
+// Recognised values: registry_provider.
+type PluginType string
+
+const (
+	// PluginTypeRegistryProvider marks a plugin that implements PluginRegistryProvider.
+	PluginTypeRegistryProvider PluginType = "registry_provider"
 )
 
 // PrivilegedPermissions are permissions requiring explicit user confirmation
@@ -30,9 +41,13 @@ type PluginManifest struct {
 	Version string `yaml:"version"`
 	// Description is a human-readable summary.
 	Description string `yaml:"description,omitempty"`
+	// Type classifies the plugin's primary role. Optional; omit for general plugins.
+	// Currently supported: "registry_provider".
+	Type PluginType `yaml:"type,omitempty"`
 	// Permissions lists all capabilities the plugin requires.
 	// Valid values: read_objects, write_objects, call_llm, network,
-	// filesystem, clipboard, refresh, notifications, entity.write, entity.alias.
+	// filesystem, clipboard, refresh, notifications, entity.write, entity.alias,
+	// registry.read.
 	Permissions []string `yaml:"permissions"`
 }
 
@@ -96,6 +111,7 @@ var allKnownPermissions = []string{
 	PermNetwork, PermFilesystem, PermClipboard,
 	PermRefresh, PermNotifications,
 	PermEntityWrite, PermEntityAlias,
+	PermRegistryRead,
 }
 
 func isKnownPermission(p string) bool {

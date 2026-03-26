@@ -1,0 +1,6 @@
+- namespace: ai
+  title: Artificial Intelligence
+  description: AI/ML concepts and models
+- namespace: infra
+  title: Infrastructure
+  description: Cloud and infrastructure tooling
