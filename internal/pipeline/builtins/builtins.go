@@ -89,6 +89,9 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"email_enqueuer": func() pipeline.PipelineStep { return steps.NewEmailEnqueuer() },
 	// Dedup step: registered with nil store (passthrough mode); store is injected at runtime.
 	"dedup": func() pipeline.PipelineStep { return steps.NewDedupStep(nil, config.DuplicatesConfig{}) },
+	// Graph enrichment: detects "alternative" relationships and creates proximity edges.
+	// Registered with nil stores (passthrough mode); stores are injected at runtime.
+	"alternative_detector": func() pipeline.PipelineStep { return steps.NewAlternativeDetector() },
 }
 
 // blobStepConstructors maps step names to blob-store-aware constructors.
