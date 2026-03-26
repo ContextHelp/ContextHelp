@@ -149,6 +149,16 @@ func NewRouter(svc *service.Service, devCORS bool, mgr *watcher.Manager) chi.Rou
 		r.Post("/capture/selection", CaptureSelection(svc))
 		r.Post("/capture/element", CaptureElement(svc))
 		r.Get("/capture/recent", ListRecentCaptures(svc))
+
+		// Saved searches (US-0054)
+		r.Post("/saved-searches", CreateSavedSearch(svc))
+		r.Get("/saved-searches", ListSavedSearches(svc))
+		r.Get("/saved-searches/{name}", GetSavedSearch(svc))
+		r.Delete("/saved-searches/{name}", DeleteSavedSearch(svc))
+
+		// Search history (US-0055)
+		r.Get("/search-history", ListSearchHistory(svc))
+		r.Delete("/search-history", ClearSearchHistory(svc))
 	})
 
 	return r

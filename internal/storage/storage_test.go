@@ -34,6 +34,8 @@ func (m *mockDriver) Resurfacing() ResurfacingQueueStore     { return &mockResur
 func (m *mockDriver) Entitlements() EntitlementStore         { return &mockEntitlementStore{} }
 func (m *mockDriver) Metering() MeteringStore                { return &mockMeteringStore{} }
 func (m *mockDriver) Vectors() VectorStore                   { return &mockVectorStore{} }
+func (m *mockDriver) SavedSearches() SavedSearchStore        { return &mockSavedSearchStore{} }
+func (m *mockDriver) SearchHistory() SearchHistoryStore      { return &mockSearchHistoryStore{} }
 func (m *mockDriver) Health(ctx context.Context) error       { return nil }
 
 type mockVectorStore struct{}
@@ -401,3 +403,25 @@ func (m *mockMeteringStore) List(
 ) ([]*MeteringEvent, error) {
 	return nil, nil
 }
+
+type mockSavedSearchStore struct{}
+
+func (m *mockSavedSearchStore) Create(_ context.Context, _ *SavedSearch) error           { return nil }
+func (m *mockSavedSearchStore) GetByName(_ context.Context, _ string) (*SavedSearch, error) {
+	return nil, nil
+}
+func (m *mockSavedSearchStore) List(_ context.Context, _ SavedSearchFilter) ([]*SavedSearch, error) {
+	return nil, nil
+}
+func (m *mockSavedSearchStore) Update(_ context.Context, _ *SavedSearch) error { return nil }
+func (m *mockSavedSearchStore) Delete(_ context.Context, _ string) error       { return nil }
+
+type mockSearchHistoryStore struct{}
+
+func (m *mockSearchHistoryStore) Append(_ context.Context, _ *SearchHistoryEntry) error { return nil }
+func (m *mockSearchHistoryStore) List(
+	_ context.Context, _ SearchHistoryFilter,
+) ([]*SearchHistoryEntry, error) {
+	return nil, nil
+}
+func (m *mockSearchHistoryStore) ClearByProfile(_ context.Context, _ string) error { return nil }
