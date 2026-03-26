@@ -1,0 +1,21 @@
+[
+  {
+    "type": "message",
+    "user": "U001",
+    "username": "alice",
+    "text": "Hello team! Check out this new design.",
+    "ts": "1736946000.000001",
+    "reactions": [{"name": "thumbsup", "count": 3}],
+    "files": []
+  },
+  {
+    "type": "message",
+    "user": "U002",
+    "username": "bob",
+    "text": "Looks great! @alice nice work.",
+    "ts": "1736946060.000002",
+    "thread_ts": "1736946000.000001",
+    "reactions": [],
+    "files": [{"name": "screenshot.png", "id": "F001"}]
+  }
+]
