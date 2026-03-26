@@ -13,15 +13,24 @@ import (
 // FeedFetcher fetches the raw content of an RSS/Atom/JSON Feed from a URL.
 type FeedFetcher struct {
 	pipeline.BaseContract
-	client *http.Client
+	bridge *ClientBridge
 }
 
 // FeedFetcherOption configures a FeedFetcher.
 type FeedFetcherOption func(*FeedFetcher)
 
 // WithHTTPClient sets a custom HTTP client for the fetcher.
+// Deprecated: prefer WithFeedClientBridge for full bridge configuration.
+// Kept for backward compatibility.
 func WithHTTPClient(c *http.Client) FeedFetcherOption {
-	return func(f *FeedFetcher) { f.client = c }
+	return func(f *FeedFetcher) {
+		f.bridge = NewClientBridge(WithBridgeHTTPClient(c))
+	}
+}
+
+// WithFeedClientBridge replaces the ClientBridge used by the fetcher.
+func WithFeedClientBridge(b *ClientBridge) FeedFetcherOption {
+	return func(f *FeedFetcher) { f.bridge = b }
 }
 
 // NewFeedFetcher creates a FeedFetcher with optional configuration.
@@ -31,7 +40,7 @@ func NewFeedFetcher(opts ...FeedFetcherOption) *FeedFetcher {
 			Requires: []string{"Source"},
 			Produces: []string{"RawContent", "Metadata"},
 		}),
-		client: http.DefaultClient,
+		bridge: NewClientBridge(),
 	}
 	for _, opt := range opts {
 		opt(f)
@@ -42,17 +51,17 @@ func NewFeedFetcher(opts ...FeedFetcherOption) *FeedFetcher {
 func (s *FeedFetcher) Name() string { return "feed_fetcher" }
 
 func (s *FeedFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	url := draft.Source
-	if url == "" {
+	rawURL := draft.Source
+	if rawURL == "" {
 		return nil, fmt.Errorf("feed_fetcher: no source URL")
 	}
 
 	if draft.Metadata == nil {
 		draft.Metadata = make(map[string]any)
 	}
-	draft.Metadata["feed_url"] = url
+	draft.Metadata["feed_url"] = rawURL
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("feed_fetcher: build request: %w", err)
 	}
@@ -65,9 +74,9 @@ func (s *FeedFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (
 		req.Header.Set("If-Modified-Since", lm)
 	}
 
-	resp, err := s.client.Do(req)
+	resp, err := s.bridge.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("feed_fetcher: fetch %s: %w", url, err)
+		return nil, fmt.Errorf("feed_fetcher: fetch %s: %w", rawURL, err)
 	}
 	defer resp.Body.Close()
 
@@ -81,7 +90,7 @@ func (s *FeedFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("feed_fetcher: unexpected status %d for %s", resp.StatusCode, url)
+		return nil, fmt.Errorf("feed_fetcher: unexpected status %d for %s", resp.StatusCode, rawURL)
 	}
 
 	body, err := io.ReadAll(resp.Body)
