@@ -101,6 +101,7 @@ type KnowledgeObject struct {
 	UpdatedAt          time.Time      `json:"updated_at"`
 	FTSIndexed         bool           `json:"fts_indexed"`
 	VectorIndexed      bool           `json:"vector_indexed"`
+	ProfileID          string         `json:"profile_id,omitempty"` // owning profile; empty = global
 }
 
 // Draft is an alias for KnowledgeObject being progressively enriched.
