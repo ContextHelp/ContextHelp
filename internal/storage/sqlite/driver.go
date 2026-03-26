@@ -33,6 +33,7 @@ type Driver struct {
 	attachments  *AttachmentStore
 	resurfacing  *ResurfacingQueueStore
 	entitlements *entitlementStore
+	metering     *MeteringStore
 }
 
 // New creates a new SQLite driver for the given database path.
@@ -74,6 +75,7 @@ func New(path string) (*Driver, error) {
 	d.attachments = &AttachmentStore{db: db}
 	d.resurfacing = &ResurfacingQueueStore{db: db}
 	d.entitlements = &entitlementStore{db: db}
+	d.metering = &MeteringStore{db: db}
 	return d, nil
 }
 
@@ -108,6 +110,7 @@ func (d *Driver) AuditLog() storage.AuditStore               { return &auditStor
 func (d *Driver) Attachments() storage.AttachmentStore       { return d.attachments }
 func (d *Driver) Resurfacing() storage.ResurfacingQueueStore { return d.resurfacing }
 func (d *Driver) Entitlements() storage.EntitlementStore     { return d.entitlements }
+func (d *Driver) Metering() storage.MeteringStore            { return d.metering }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)

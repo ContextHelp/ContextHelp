@@ -32,6 +32,7 @@ func (m *mockDriver) AuditLog() AuditStore                   { return &mockAudit
 func (m *mockDriver) Attachments() AttachmentStore           { return &mockAttachmentStore{} }
 func (m *mockDriver) Resurfacing() ResurfacingQueueStore     { return &mockResurfacingQueueStore{} }
 func (m *mockDriver) Entitlements() EntitlementStore         { return &mockEntitlementStore{} }
+func (m *mockDriver) Metering() MeteringStore                { return &mockMeteringStore{} }
 func (m *mockDriver) Health(ctx context.Context) error       { return nil }
 
 type mockBlobStore struct{}
@@ -374,5 +375,19 @@ func (m *mockEntitlementStore) Get(_ context.Context, _ string) (*RegistryEntitl
 	return nil, nil
 }
 func (m *mockEntitlementStore) List(_ context.Context) ([]*RegistryEntitlement, error) {
+	return nil, nil
+}
+
+type mockMeteringStore struct{}
+
+func (m *mockMeteringStore) Record(_ context.Context, _ *MeteringEvent) error { return nil }
+func (m *mockMeteringStore) Aggregate(
+	_ context.Context, _ MeteringFilter,
+) ([]*MeteringAggregate, error) {
+	return nil, nil
+}
+func (m *mockMeteringStore) List(
+	_ context.Context, _ MeteringFilter,
+) ([]*MeteringEvent, error) {
 	return nil, nil
 }

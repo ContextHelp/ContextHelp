@@ -1435,6 +1435,50 @@ func (s *Service) ReindexVectors(ctx context.Context, ep providers.EmbeddingProv
 	return indexed, failed, nil
 }
 
+// RecordMeteringEvent records a metering event for a paid registry access.
+// registryName is the human-readable registry name (from config.RegistryConfig.Name).
+// If the store call fails the error is returned; quota enforcement is advisory.
+func (s *Service) RecordMeteringEvent(
+	ctx context.Context,
+	registryName string,
+	eventType storage.MeteringEventType,
+	namespace string,
+) error {
+	event := &storage.MeteringEvent{
+		ID:           uuid.New().String(),
+		RegistryName: registryName,
+		EventType:    eventType,
+		Namespace:    namespace,
+		Count:        1,
+		OccurredAt:   time.Now().UTC(),
+	}
+	return s.Store.Metering().Record(ctx, event)
+}
+
+// RegistryUsageSummary returns aggregated metering counts per event type for
+// the given registry in the current billing period. periodStart == zero means
+// all-time.
+func (s *Service) RegistryUsageSummary(
+	ctx context.Context,
+	registryName string,
+	periodStart time.Time,
+) ([]*storage.MeteringAggregate, error) {
+	f := storage.MeteringFilter{
+		RegistryName: registryName,
+		After:        periodStart,
+	}
+	return s.Store.Metering().Aggregate(ctx, f)
+}
+
+// AllRegistriesUsageSummary returns aggregated metering counts for all registries.
+func (s *Service) AllRegistriesUsageSummary(
+	ctx context.Context,
+	periodStart time.Time,
+) ([]*storage.MeteringAggregate, error) {
+	f := storage.MeteringFilter{After: periodStart}
+	return s.Store.Metering().Aggregate(ctx, f)
+}
+
 func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error) {
 	var steps []map[string]any
 	if err := json.Unmarshal([]byte(stepsJSON), &steps); err != nil {
