@@ -132,12 +132,21 @@ func TestHousekeepingPruneWithConfirmYes(t *testing.T) {
 	assert.Contains(t, out, "Pruned 1 objects")
 }
 
+func TestHousekeepingRunDryRun(t *testing.T) {
+	db := setupTestDB(t)
+
+	out, err := db.run("housekeeping", "run", "--dry-run")
+	require.NoError(t, err, "housekeeping run --dry-run should succeed")
+	assert.Contains(t, out, "dry-run")
+	assert.Contains(t, out, "Housekeeping Summary")
+}
+
 func TestHousekeepingHelp(t *testing.T) {
 	out, err := executeCommand("housekeeping", "--help")
 	if err != nil {
 		t.Fatalf("housekeeping --help should succeed: %v", err)
 	}
-	for _, subcmd := range []string{"vacuum", "reindex", "compact", "prune"} {
+	for _, subcmd := range []string{"vacuum", "reindex", "compact", "prune", "run"} {
 		if !strings.Contains(out, subcmd) {
 			t.Errorf("housekeeping help should list subcommand %q", subcmd)
 		}
