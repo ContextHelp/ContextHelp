@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -34,7 +35,7 @@ func (s *SavedSearchStore) GetByName(ctx context.Context, name string) (*storage
 		SELECT id, name, query, profile_id, alert_on, notify, created_at, updated_at
 		FROM saved_searches WHERE name = ?`, name)
 	ss, err := scanSavedSearch(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	return ss, err
