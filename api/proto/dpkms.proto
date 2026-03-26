@@ -1,0 +1,183 @@
+syntax = "proto3";
+
+package dpkms.v1;
+
+option go_package = "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb";
+
+import "google/protobuf/timestamp.proto";
+
+// ─── Shared types ────────────────────────────────────────────────────────────
+
+message KnowledgeObject {
+  string id            = 1;
+  string type          = 2;
+  string source        = 3;
+  string raw_content   = 4;
+  string text_content  = 5;
+  string pipeline      = 6;
+  string profile_id    = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message Entity {
+  string slug          = 1;
+  string title         = 2;
+  string description   = 3;
+  string namespace     = 4;
+  repeated string aliases = 5;
+  string content_status = 6;
+}
+
+message Job {
+  string id           = 1;
+  string type         = 2;
+  string status       = 3;
+  string payload      = 4;
+  string pipeline     = 5;
+  string source       = 6;
+  string result_id    = 7;
+  string error        = 8;
+  int32  retry_count  = 9;
+  int32  max_retries  = 10;
+  google.protobuf.Timestamp created_at  = 11;
+  google.protobuf.Timestamp updated_at  = 12;
+  google.protobuf.Timestamp started_at  = 13;
+  google.protobuf.Timestamp completed_at = 14;
+}
+
+// ─── AnalyzeService ──────────────────────────────────────────────────────────
+
+service AnalyzeService {
+  // Enqueue ingest job; returns job ID.
+  rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
+}
+
+message AnalyzeRequest {
+  string content      = 1;
+  string type         = 2;
+  string pipeline     = 3;
+  string source       = 4;
+  string source_title = 5;
+  bool   raw          = 6;
+}
+
+message AnalyzeResponse {
+  string job_id = 1;
+}
+
+// ─── JobService ──────────────────────────────────────────────────────────────
+
+service JobService {
+  // Get a single job by ID.
+  rpc GetJob(GetJobRequest) returns (Job);
+
+  // List jobs with optional filter.
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+
+  // WatchJob streams status updates until the job reaches a terminal state.
+  rpc WatchJob(WatchJobRequest) returns (stream JobStatusUpdate);
+}
+
+message GetJobRequest {
+  string id = 1;
+}
+
+message ListJobsRequest {
+  string status = 1; // pending | running | completed | failed
+  int32  limit  = 2;
+  int32  offset = 3;
+}
+
+message ListJobsResponse {
+  repeated Job jobs  = 1;
+  int32        total = 2;
+}
+
+message WatchJobRequest {
+  string id = 1;
+}
+
+message JobStatusUpdate {
+  string job_id   = 1;
+  string status   = 2;
+  string error    = 3;
+  string result_id = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+// ─── QueryService ─────────────────────────────────────────────────────────────
+
+service QueryService {
+  // Search knowledge objects.
+  rpc Search(SearchRequest) returns (SearchResponse);
+
+  // List knowledge objects.
+  rpc ListObjects(ListObjectsRequest) returns (ListObjectsResponse);
+
+  // Get a single knowledge object.
+  rpc GetObject(GetObjectRequest) returns (KnowledgeObject);
+}
+
+message SearchRequest {
+  string query      = 1;
+  string profile_id = 2;
+  int32  limit      = 3;
+  int32  offset     = 4;
+}
+
+message SearchResponse {
+  repeated KnowledgeObject objects = 1;
+  int32                    total   = 2;
+}
+
+message ListObjectsRequest {
+  string type       = 1;
+  string pipeline   = 2;
+  string profile_id = 3;
+  int32  limit      = 4;
+  int32  offset     = 5;
+}
+
+message ListObjectsResponse {
+  repeated KnowledgeObject objects = 1;
+  int32                    total   = 2;
+}
+
+message GetObjectRequest {
+  string id = 1;
+}
+
+// ─── EntityService ────────────────────────────────────────────────────────────
+
+service EntityService {
+  rpc ListEntities(ListEntitiesRequest) returns (ListEntitiesResponse);
+  rpc GetEntity(GetEntityRequest) returns (Entity);
+  rpc GetEntityBacklinks(GetEntityBacklinksRequest) returns (GetEntityBacklinksResponse);
+}
+
+message ListEntitiesRequest {
+  string namespace = 1;
+  int32  limit     = 2;
+  int32  offset    = 3;
+}
+
+message ListEntitiesResponse {
+  repeated Entity entities = 1;
+  int32           total    = 2;
+}
+
+message GetEntityRequest {
+  string slug = 1;
+}
+
+message GetEntityBacklinksRequest {
+  string slug   = 1;
+  int32  limit  = 2;
+  int32  offset = 3;
+}
+
+message GetEntityBacklinksResponse {
+  repeated KnowledgeObject objects = 1;
+  int32                    total   = 2;
+}

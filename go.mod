@@ -32,6 +32,8 @@ require (
 	github.com/yuin/goldmark v1.7.16
 	golang.org/x/crypto v0.45.0
 	golang.org/x/term v0.37.0
+	google.golang.org/grpc v1.68.0
+	google.golang.org/protobuf v1.34.2
 )
 
 require (
@@ -44,6 +46,8 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
+	golang.org/x/net v0.47.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
 )
 
 require (

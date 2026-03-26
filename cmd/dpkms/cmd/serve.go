@@ -22,6 +22,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
+	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -83,6 +84,7 @@ func init() {
 
 func runServe(cmd *cobra.Command, args []string) error {
 	port := viper.GetInt("server.port")
+	grpcPort := viper.GetInt("server.grpc_port")
 	workers := viper.GetInt("server.workers")
 	public := viper.GetBool("server.public")
 	reminderInterval := viper.GetDuration("server.reminder_interval")
@@ -156,6 +158,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Handler: router,
 	}
 
+	// 9b. Create gRPC server.
+	grpcBind := fmt.Sprintf("%s:%d", bind, grpcPort)
+	grpcSrv := grpcserver.New(grpcBind, svc)
+
 	// 10. Init worker pool.
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
 
@@ -176,6 +182,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		return nil
+	})
+
+	// gRPC server.
+	g.Go(func() error {
+		fmt.Printf("gRPC server listening on %s\n", grpcBind)
+		return grpcSrv.Start(ctx)
 	})
 
 	// Worker pool.
@@ -244,6 +256,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 		cancel()
 		httpSrv.Shutdown(context.Background())
+		// gRPC server stops via ctx cancellation in grpcSrv.Start.
 		return nil
 	})
 
