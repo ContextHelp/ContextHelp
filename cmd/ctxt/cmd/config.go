@@ -42,8 +42,14 @@ var configPathCmd = &cobra.Command{
 
 var configValidateCmd = &cobra.Command{
 	Use:   "validate",
-	Short: "Validate configuration",
-	RunE:  runConfigValidate,
+	Short: "Validate configuration and optionally scan for plaintext secrets",
+	Long: `Validate configuration and optionally scan for plaintext secrets.
+
+Checks that the configuration file is well-formed, then scans string fields for
+values that look like plaintext API keys or passwords.
+
+Exit code 1 when validation errors or secret warnings are found.`,
+	RunE: runConfigValidate,
 }
 
 var configEditCmd = &cobra.Command{
@@ -60,6 +66,10 @@ func init() {
 	configCmd.AddCommand(configPathCmd)
 	configCmd.AddCommand(configValidateCmd)
 	configCmd.AddCommand(configEditCmd)
+
+	// Flags for validate subcommand
+	configValidateCmd.Flags().Bool("check-secrets", true,
+		"scan config fields for plaintext secrets and warn")
 }
 
 func runConfigShow(cmd *cobra.Command, args []string) error {
@@ -108,14 +118,35 @@ func runConfigPath(cmd *cobra.Command, args []string) error {
 func runConfigValidate(cmd *cobra.Command, args []string) error {
 	fmt.Println("Validating configuration...")
 
-	_, err := config.Load(cfgFile)
-	if err != nil {
+	// Re-load to get a fresh validation result (cfg may have been loaded early).
+	// If load fails, report error; otherwise use cfg (already loaded by initConfig)
+	// to avoid the migration write-back corrupting a temporary test file.
+	if _, err := config.Load(cfgFile); err != nil {
 		fmt.Printf("  ✗ Configuration is invalid: %v\n", err)
 		return err
 	}
 
 	fmt.Println("  ✓ Configuration is valid")
-	return nil
+
+	checkSecrets, _ := cmd.Flags().GetBool("check-secrets")
+	if !checkSecrets {
+		return nil
+	}
+
+	// Use cfg (loaded by initConfig before migration write-back can affect the
+	// file) rather than re-loading, which risks seeing the post-migration YAML
+	// that may have field-name differences due to missing yaml struct tags.
+	warnings := config.ScanSecrets(cfg)
+	if len(warnings) == 0 {
+		fmt.Println("  ✓ No plaintext secrets detected")
+		return nil
+	}
+
+	fmt.Printf("  ✗ %d plaintext secret(s) detected:\n", len(warnings))
+	for _, w := range warnings {
+		fmt.Printf("      field: %s  value: %s  reason: %s\n", w.Field, w.Hint, w.Reason)
+	}
+	return fmt.Errorf("plaintext secrets found in configuration")
 }
 
 func runConfigEdit(cmd *cobra.Command, args []string) error {
