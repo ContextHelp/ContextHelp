@@ -40,11 +40,14 @@ var migration010 string
 //go:embed migrations/011_audit_log.sql
 var migration011 string
 
-// migration012 (012_mention_uris.sql) is intentionally excluded until objects.go
-// is updated to reference the renamed column.
+//go:embed migrations/012_mention_uris.sql
+var migration012 string
 
 //go:embed migrations/013_entity_thin_sync.sql
 var migration013 string
+
+//go:embed migrations/014_remind_at.sql
+var migration014 string
 
 type migration struct {
 	Version int
@@ -63,8 +66,9 @@ var migrations = []migration{
 	{Version: 9, SQL: migration009},
 	{Version: 10, SQL: migration010},
 	{Version: 11, SQL: migration011},
-	// version 12 (mention_uris rename) is skipped — objects.go not yet updated
+	{Version: 12, SQL: migration012},
 	{Version: 13, SQL: migration013},
+	{Version: 14, SQL: migration014},
 }
 
 func (d *Driver) Migrate(ctx context.Context) error {

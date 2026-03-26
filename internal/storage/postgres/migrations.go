@@ -35,7 +35,9 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			fts_indexed BOOLEAN DEFAULT FALSE,
 			vector_indexed BOOLEAN DEFAULT FALSE,
 			status TEXT NOT NULL DEFAULT 'active',
-			inbox_note TEXT DEFAULT ''
+			inbox_note TEXT DEFAULT '',
+			remind_at TIMESTAMP,
+			reminded_at TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS entities (
 			slug          TEXT PRIMARY KEY,

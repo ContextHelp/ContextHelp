@@ -390,6 +390,31 @@ Why: Profiles (Skeleton 7 roadmap) need a mechanism to resurface knowledge based
 
 ---
 
+## Task 6: User Productivity
+
+### Task 6.2: Lightweight Reminders on Knowledge Objects (T-0131)
+
+Add per-object reminders surfaced as desktop notifications from `dpkms serve`.
+
+Schema:
+- `remind_at DATETIME` — when to notify (nullable)
+- `reminded_at DATETIME` — set after notification sent (nullable)
+
+CLI:
+- `ctxt remind <id> <time-expr>` — set reminder; supports "tomorrow 9am",
+  "in 2h", "2026-04-01 10:00", weekday names
+- `ctxt remind --clear <id>` — remove reminder
+- `ctxt reminders` — list all pending reminders
+
+Serve:
+- `dpkms serve --reminder-interval <dur>` (default 1m) starts a goroutine
+  polling `remind_at <= now AND reminded_at IS NULL`
+- macOS: `osascript` display notification
+- Linux: `notify-send`
+- After delivery: sets `reminded_at`
+
+---
+
 ## Risks to Watch For
 
 - Local LLM hardware variance (timeouts, memory).

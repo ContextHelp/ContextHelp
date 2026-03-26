@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -17,6 +18,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/remind"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
@@ -66,6 +68,7 @@ func init() {
 	serveCmd.Flags().String("profile", "", "default focus profile")
 	serveCmd.Flags().String("steps-path", "", "path to external steps directory")
 	serveCmd.Flags().Bool("dev", false, "enable CORS for Vite dev server (http://localhost:5173)")
+	serveCmd.Flags().Duration("reminder-interval", time.Minute, "how often to check for due reminders")
 
 	// Bind flags to viper
 	viper.BindPFlag("server.port", serveCmd.Flags().Lookup("port"))
@@ -75,12 +78,14 @@ func init() {
 	viper.BindPFlag("profile.default", serveCmd.Flags().Lookup("profile"))
 	viper.BindPFlag("steps.path", serveCmd.Flags().Lookup("steps-path"))
 	viper.BindPFlag("server.dev", serveCmd.Flags().Lookup("dev"))
+	viper.BindPFlag("server.reminder_interval", serveCmd.Flags().Lookup("reminder-interval"))
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
 	port := viper.GetInt("server.port")
 	workers := viper.GetInt("server.workers")
 	public := viper.GetBool("server.public")
+	reminderInterval := viper.GetDuration("server.reminder_interval")
 
 	// 1. Init storage.
 	storageType := cfg.Storage.Type
@@ -183,6 +188,40 @@ func runServe(cmd *cobra.Command, args []string) error {
 	g.Go(func() error {
 		fmt.Println("Watcher manager started")
 		return watchMgr.Start(ctx)
+	})
+
+	// Reminder checker.
+	reminderBackend := &remind.ServiceBackend{
+		ListDue: func(ctx context.Context, now time.Time) ([]*remind.DueReminder, error) {
+			objs, err := svc.ListDueReminders(ctx, now)
+			if err != nil {
+				return nil, err
+			}
+			dues := make([]*remind.DueReminder, 0, len(objs))
+			for _, o := range objs {
+				var title string
+				if len(o.Summaries) > 0 {
+					title = o.Summaries[0]
+					if len(title) > 60 {
+						title = title[:57] + "..."
+					}
+				} else {
+					title = o.ID
+				}
+				dues = append(dues, &remind.DueReminder{
+					ID:       o.ID,
+					Title:    title,
+					RemindAt: *o.RemindAt,
+				})
+			}
+			return dues, nil
+		},
+		MarkDone: svc.MarkReminded,
+	}
+	checker := remind.NewChecker(reminderBackend, reminderInterval)
+	g.Go(func() error {
+		fmt.Printf("Reminder checker started (interval: %s)\n", reminderInterval)
+		return checker.Run(ctx)
 	})
 
 	// Cookie bridge (for browser extension).

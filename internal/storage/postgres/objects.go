@@ -26,19 +26,22 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, embedding, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note
+		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+		remind_at, reminded_at
 	) VALUES (
 		$1, $2, $3, $4, $5,
 		$6, $7, $8, $9, $10,
 		$11, $12, $13, $14, $15,
 		$16, $17, $18, $19, $20,
-		$21, $22, $23, $24, $25, $26
+		$21, $22, $23, $24, $25, $26,
+		$27, $28
 	)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
+		f.remindAt, f.remindedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
@@ -161,14 +164,16 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions=$10, tasks=$11, embedding=$12, pipeline=$13, source=$14,
 		registry_influences=$15, plugins=$16, content_hash=$17,
 		reinforcement_count=$18, last_reinforced_at=$19,
-		updated_at=$20, fts_indexed=$21, vector_indexed=$22, status=$23, inbox_note=$24
-	WHERE id=$25`,
+		updated_at=$20, fts_indexed=$21, vector_indexed=$22, status=$23, inbox_note=$24,
+		remind_at=$25, reminded_at=$26
+	WHERE id=$27`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash,
 		obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
+		f.remindAt, f.remindedAt,
 		obj.ID,
 	)
 	if err != nil {
@@ -398,7 +403,8 @@ const objectSelectCols = `SELECT
 	metadata, summaries, sections, tags, mentions,
 	decisions, tasks, pipeline, source,
 	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-	created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note`
+	created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+	remind_at, reminded_at`
 
 func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 	var obj storage.KnowledgeObject
@@ -406,7 +412,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
 		influencesJSON, pluginsJSON                         []byte
-		lastReinforcedAt                                    sql.NullTime
+		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 	)
 	err := row.Scan(
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
@@ -414,6 +420,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
+		&remindAt, &remindedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -422,7 +429,8 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		return nil, fmt.Errorf("scan object: %w", err)
 	}
 	unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON, lastReinforcedAt)
+		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+		lastReinforcedAt, remindAt, remindedAt)
 	return &obj, nil
 }
 
@@ -432,7 +440,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
 		influencesJSON, pluginsJSON                         []byte
-		lastReinforcedAt                                    sql.NullTime
+		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 	)
 	err := rows.Scan(
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
@@ -440,12 +448,14 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
+		&remindAt, &remindedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
 	}
 	unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON, lastReinforcedAt)
+		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+		lastReinforcedAt, remindAt, remindedAt)
 	return &obj, nil
 }
 
@@ -456,7 +466,7 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
 		influencesJSON, pluginsJSON                         []byte
-		lastReinforcedAt                                    sql.NullTime
+		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		embStr                                              sql.NullString
 	)
 	err := rows.Scan(
@@ -465,13 +475,15 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
+		&remindAt, &remindedAt,
 		&embStr,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("scan object+embedding: %w", err)
 	}
 	unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON, lastReinforcedAt)
+		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+		lastReinforcedAt, remindAt, remindedAt)
 	vec := parsePgVector(embStr.String)
 	return &obj, vec, nil
 }
@@ -483,7 +495,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
 		influencesJSON, pluginsJSON                         []byte
-		lastReinforcedAt                                    sql.NullTime
+		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		score                                               float64
 	)
 	err := rows.Scan(
@@ -492,13 +504,15 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
+		&remindAt, &remindedAt,
 		&score,
 	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("scan object+score: %w", err)
 	}
 	unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON, lastReinforcedAt)
+		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+		lastReinforcedAt, remindAt, remindedAt)
 	return &obj, score, nil
 }
 
@@ -506,7 +520,7 @@ func unmarshalObjectFields(obj *storage.KnowledgeObject,
 	metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 	mentionsJSON, decisionsJSON, tasksJSON,
 	influencesJSON, pluginsJSON []byte,
-	lastReinforcedAt sql.NullTime,
+	lastReinforcedAt, remindAt, remindedAt sql.NullTime,
 ) {
 	json.Unmarshal(metadataJSON, &obj.Metadata)
 	json.Unmarshal(summariesJSON, &obj.Summaries)
@@ -523,6 +537,14 @@ func unmarshalObjectFields(obj *storage.KnowledgeObject,
 		t := lastReinforcedAt.Time
 		obj.LastReinforcedAt = &t
 	}
+	if remindAt.Valid {
+		t := remindAt.Time
+		obj.RemindAt = &t
+	}
+	if remindedAt.Valid {
+		t := remindedAt.Time
+		obj.RemindedAt = &t
+	}
 }
 
 type objectFields struct {
@@ -530,7 +552,7 @@ type objectFields struct {
 	mentions, decisions, tasks          string
 	influences, plugins                 string
 	embedding                           *string
-	lastReinforcedAt                    sql.NullTime
+	lastReinforcedAt, remindAt, remindedAt sql.NullTime
 }
 
 func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
@@ -601,6 +623,12 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	}
 	if obj.LastReinforcedAt != nil {
 		f.lastReinforcedAt = sql.NullTime{Time: *obj.LastReinforcedAt, Valid: true}
+	}
+	if obj.RemindAt != nil {
+		f.remindAt = sql.NullTime{Time: *obj.RemindAt, Valid: true}
+	}
+	if obj.RemindedAt != nil {
+		f.remindedAt = sql.NullTime{Time: *obj.RemindedAt, Valid: true}
 	}
 	return f, firstErr
 }

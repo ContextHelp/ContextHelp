@@ -100,6 +100,19 @@ func (m *mockObjectStore2) VectorSearch(_ context.Context, _ []float32, f storag
 func (m *mockObjectStore2) FTSSearch(_ context.Context, _ string, f storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
 }
+func (m *mockObjectStore2) SetReminder(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+func (m *mockObjectStore2) ClearReminder(_ context.Context, _ string) error { return nil }
+func (m *mockObjectStore2) ListDueReminders(_ context.Context, _ time.Time) ([]*storage.KnowledgeObject, error) {
+	return nil, nil
+}
+func (m *mockObjectStore2) MarkReminded(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+func (m *mockObjectStore2) ListPendingReminders(_ context.Context) ([]*storage.KnowledgeObject, error) {
+	return nil, nil
+}
 
 // mockEmbedding returns a fixed embedding vector.
 type mockEmbedding struct{}
