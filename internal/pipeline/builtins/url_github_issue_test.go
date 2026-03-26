@@ -16,7 +16,7 @@ func TestURLGitHubIssueDetector(t *testing.T) {
 		{"https://github.com/org/repo/issues/999", "url.github.issue"},
 		// Not a GitHub issue URL.
 		{"https://github.com/foo/bar/pull/42", "url.generic"},
-		{"https://github.com/foo/bar", "url.generic"},
+		{"https://github.com/foo/bar", "url.repo"},
 		{"https://github.com/foo/bar/issues", "url.generic"},
 		{"https://example.com/issues/42", "url.generic"},
 	}
