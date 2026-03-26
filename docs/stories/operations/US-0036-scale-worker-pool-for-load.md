@@ -128,3 +128,16 @@ This means in-flight jobs are not lost; they complete before shutdown.
 - [US-0032](./US-0032-monitor-job-queue-health.md) — Observe queue depth driving scale decision
 - [US-0033](./US-0033-debug-failed-enrichment-job.md) — Failures under load may need retry
 - [US-0035](./US-0035-migrate-storage-backend.md) — Post-migration worker tuning
+
+---
+
+## Personas
+
+- [Operations](../../personas/operations.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

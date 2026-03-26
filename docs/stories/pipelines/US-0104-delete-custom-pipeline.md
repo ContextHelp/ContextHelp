@@ -154,3 +154,17 @@ When deleting a pipeline, consider:
 
 - [ADR-004](../../decisions/ADR-004-step-based-pipeline.md) - Step-based pipeline architecture (existing)
 - [ADR-049](../../decisions/ADR-049-edges-table-for-mentions.md) - Edges for mentions (existing)
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Integrators](../../personas/platform-integrators.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+[us0104_delete_pipeline_test.go](../../../test/integration/us0104_delete_pipeline_test.go)

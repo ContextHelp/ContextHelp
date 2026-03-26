@@ -93,3 +93,17 @@ A staff engineer may operate across security, backend, and infrastructure profil
 - [US-0020](./US-0020-apply-focus-profile-to-search.md) — Apply Focus Profile to Search (single-profile variant; prerequisite)
 - [US-0018](./US-0018-multi-strategy-search-execution.md) — Multi-Strategy Search Execution (RRF merge reused for multi-profile aggregation)
 - [US-0030](../admin/US-0030-set-up-focus-profiles.md) — Set Up Focus Profiles (admin story that creates profiles)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

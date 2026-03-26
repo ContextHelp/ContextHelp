@@ -122,3 +122,17 @@ GET /enrich/batch/{batch_job_id}/progress
 - [US-0009](./US-0009-extract-entities-and-mentions.md) — Entity extraction step used in batch
 - [US-0011](./US-0011-assign-tags-from-vocabulary.md) — Tag assignment step used in batch
 - [US-0014](./US-0014-constrain-extraction-with-lmql.md) — LMQL provider used by batch steps
+
+---
+
+## Personas
+
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

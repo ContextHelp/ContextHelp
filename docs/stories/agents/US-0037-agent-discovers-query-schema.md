@@ -389,3 +389,16 @@ def get_schema_cached(api_url):
 - [agent-constructs-rsql-query](./agent-constructs-rsql-query.md) — Using schema to build queries
 - [structured-rsql-query](../search/structured-rsql-query.md) — RSQL query execution
 - [natural-language-search](../search/natural-language-search.md) — NLQ as alternative to RSQL
+
+---
+
+## Personas
+
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

@@ -166,3 +166,17 @@ plugins:
 - [US-0028](US-0028-register-custom-pipeline.md) — custom pipelines reference installed steps
 - [US-0042](../plugins/US-0042-implement-custom-enrichment-plugin.md) — plugin authoring
 - [US-0027](US-0027-configure-ai-provider.md) — AI provider config consumed by steps
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+- [Operations](../../personas/operations.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

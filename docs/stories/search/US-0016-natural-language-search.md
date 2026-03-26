@@ -283,3 +283,17 @@ message RankExplanation {
 - [US-0052](./US-0052-graph-based-entity-search.md) — Graph-Based Entity Search (graph strategy used by NLQ)
 - [US-0061](./US-0061-visual-similarity-search.md) — Visual Similarity Search (complementary query modality: image vs. text)
 - [US-0001](../ingestion/US-0001-text-capture-minimal-friction.md) — Text Capture (content to search)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

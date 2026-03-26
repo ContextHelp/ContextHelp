@@ -135,3 +135,16 @@ Content-Type: application/json
 - [US-0023: generate-plan-from-decisions](./US-0023-generate-plan-from-decisions.md) — Plan from decisions assessed for impact
 - [US-0056: compose-decision-timeline](./US-0056-compose-decision-timeline.md) — Timeline of decisions to assess
 - [US-0059: compose-recommendation-document](./US-0059-compose-recommendation-document.md) — Impact informs recommendations
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

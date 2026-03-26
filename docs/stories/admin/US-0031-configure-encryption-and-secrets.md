@@ -157,3 +157,17 @@ secrets:
 - [US-0027](US-0027-configure-ai-provider.md) — AI provider config consumes secrets
 - [US-0062](US-0062-manage-secrets-via-cli.md) — `ctxt secret set/get/list` CLI commands
 - [US-0034](../operations/US-0034-export-and-backup-all-knowledge.md) — backup should exclude plaintext secrets
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+- [Operations](../../personas/operations.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

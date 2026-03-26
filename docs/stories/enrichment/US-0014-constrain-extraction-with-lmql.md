@@ -328,3 +328,17 @@ ch_fallback_success_rate{from="lmql",to="instructor"}
 - [US-0027](../admin/US-0027-configure-ai-provider.md) — LMQL provider configuration
 - [US-0041](../agents/US-0041-agent-uses-constrained-enrichment.md) — Agent perspective
 - [US-0016](../search/US-0016-natural-language-search.md) — NLQ normalization with LMQL
+
+---
+
+## Personas
+
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

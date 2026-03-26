@@ -101,3 +101,17 @@ Keyword search fails when the query and the document use different words for the
 - [US-0021](./US-0021-search-with-result-explanation.md) — Search with Result Explanation (`rank.explain.vector_similarity` populated here)
 - [US-0061](./US-0061-visual-similarity-search.md) — Visual Similarity Search (extends text embeddings to visual embeddings)
 - [US-0009](../enrichment/US-0009-extract-entities-and-mentions.md) — Extract Entities and Mentions (enrichment that complements semantic search)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

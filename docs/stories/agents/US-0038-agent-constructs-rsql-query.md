@@ -309,3 +309,16 @@ def execute_with_retry(query, max_attempts=3):
 - [natural-language-search](../search/natural-language-search.md) — NLQ alternative for comparison
 - [structured-rsql-query](../search/structured-rsql-query.md) — RSQL syntax and operators
 - [multi-strategy-search-execution](../search/multi-strategy-search-execution.md) — Query execution details
+
+---
+
+## Personas
+
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

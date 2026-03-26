@@ -83,3 +83,16 @@ The importer must support both initial backfill and repeat sync runs. It should 
 - [US-0106](../pipelines/US-0106-enqueue-content-via-dpkms.md) — Unified enqueue API
 - [US-0300](./US-0300-importer-extension-interface.md) — Importer extension contract
 - [Importer Plan](../../plans/2026-02-18-importer-raindrop-plan.md) — Source-specific plan
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

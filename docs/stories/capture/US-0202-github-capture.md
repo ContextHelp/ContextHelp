@@ -477,3 +477,17 @@ github:
 - [US-0013](../enrichment/US-0013-detect-and-extract-code-snippets.md) -- Code snippet extraction from PR diffs
 - [US-0050](../enrichment/US-0050-extract-code-metrics-and-complexity.md) -- Code metrics from captured repository content
 - [US-0201](./US-0201-x-twitter-capture.md) -- Similar platform-specific capture pattern for X/Twitter
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

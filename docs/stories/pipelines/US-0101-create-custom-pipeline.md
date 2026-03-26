@@ -215,3 +215,17 @@ CREATE TABLE IF NOT EXISTS pipelines (
 - [US-0112](./US-0112-configure-sandbox-per-pipeline.md) - Configure sandbox settings
 - [US-0113](./US-0113-ctxt-analyze-api-client.md) - ctxt uses dpkms API
 - [US-0028](../admin/US-0028-register-custom-pipeline.md) - Original custom pipeline story (superseded)
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Integrators](../../personas/platform-integrators.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+[us0101_create_pipeline_test.go](../../../test/integration/us0101_create_pipeline_test.go)

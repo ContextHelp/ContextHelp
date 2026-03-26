@@ -155,3 +155,16 @@ def compose_brief(api_url, query, template, output_format="markdown",
 - [agent-constructs-rsql-query](./US-0038-agent-constructs-rsql-query.md) — Build the RSQL query used in the compose request
 - [generate-brief-from-objects](../composition/US-0022-generate-brief-from-objects.md) — Human-facing composition counterpart
 - [compose-with-graph-traversal](../composition/US-0024-compose-with-graph-traversal.md) — Advanced composition using entity relationships
+
+---
+
+## Personas
+
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

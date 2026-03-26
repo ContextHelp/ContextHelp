@@ -136,3 +136,16 @@ Content-Type: application/json
 - [US-0024: compose-with-graph-traversal](./US-0024-compose-with-graph-traversal.md) — Graph traversal for indirect stakeholders
 - [US-0026: share-composition-with-team](./US-0026-share-composition-with-team.md) — Share the stakeholder analysis
 - [US-0059: compose-recommendation-document](./US-0059-compose-recommendation-document.md) — Stakeholders inform recommendation audience
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

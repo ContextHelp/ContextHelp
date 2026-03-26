@@ -136,3 +136,16 @@ GET /health
 - [US-0036](./US-0036-scale-worker-pool-for-load.md) — Scale workers when queue backs up
 - [US-0027](../admin/US-0027-configure-ai-provider.md) — AI provider health affects job success
 - [US-0009](../enrichment/US-0009-extract-entities-and-mentions.md) — Enrichment jobs monitored here
+
+---
+
+## Personas
+
+- [Operations](../../personas/operations.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

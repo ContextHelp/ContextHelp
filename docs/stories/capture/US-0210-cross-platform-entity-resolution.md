@@ -662,3 +662,17 @@ entity_resolution:
 - [US-0046](../enrichment/US-0046-extract-relationships-between-entities.md) -- Relationship extraction between entities
 - [US-0052](../search/US-0052-graph-based-entity-search.md) -- Graph-based entity search (uses same_as edges)
 - [US-0024](../composition/US-0024-compose-with-graph-traversal.md) -- Graph traversal for composition
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

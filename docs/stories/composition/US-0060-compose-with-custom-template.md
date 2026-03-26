@@ -169,3 +169,16 @@ DELETE /templates/{name}
 - [US-0025: export-brief-to-markdown-pdf](./US-0025-export-brief-to-markdown-pdf.md) — Export output shaped by custom template
 - [US-0059: compose-recommendation-document](./US-0059-compose-recommendation-document.md) — Recommendation document using custom template
 - [US-0028: register-custom-pipeline](../admin/US-0028-register-custom-pipeline.md) — Parallel extensibility pattern (pipelines)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

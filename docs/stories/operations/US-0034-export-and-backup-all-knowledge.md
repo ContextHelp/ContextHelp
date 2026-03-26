@@ -130,3 +130,16 @@ prune:    SELECT * FROM objects WHERE created_at < $before  (confirm)
 - [US-0035](./US-0035-migrate-storage-backend.md) — Migrate to a different backend after export
 - [US-0032](./US-0032-monitor-job-queue-health.md) — Confirm queue is idle before backup
 - [US-0027](../admin/US-0027-configure-ai-provider.md) — Config location for storage path
+
+---
+
+## Personas
+
+- [Operations](../../personas/operations.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

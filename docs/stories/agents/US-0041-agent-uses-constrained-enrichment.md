@@ -137,3 +137,16 @@ See [constrain-extraction-with-lmql](../enrichment/US-0014-constrain-extraction-
 - [constrain-extraction-with-lmql](../enrichment/US-0014-constrain-extraction-with-lmql.md) — Underlying constraint enforcement mechanism
 - [extract-entities-and-mentions](../enrichment/US-0009-extract-entities-and-mentions.md) — Unconstrained entity extraction counterpart
 - [assign-tags-from-vocabulary](../enrichment/US-0011-assign-tags-from-vocabulary.md) — Tag vocabulary assignment counterpart
+
+---
+
+## Personas
+
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

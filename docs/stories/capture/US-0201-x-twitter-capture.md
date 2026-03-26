@@ -387,3 +387,17 @@ social:
 - [US-0009](../enrichment/US-0009-extract-entities-and-mentions.md) -- Entity extraction from tweet content
 - [US-0204](./US-0204-linkedin-capture.md) -- Similar social platform capture pattern for LinkedIn
 - [US-0205](./US-0205-wikipedia-capture.md) -- Reference capture for linking mentioned concepts
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

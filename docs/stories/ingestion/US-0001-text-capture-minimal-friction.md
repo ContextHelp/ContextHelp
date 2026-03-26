@@ -174,3 +174,17 @@ storage:
 - [US-0011](../enrichment/US-0011-assign-tags-from-vocabulary.md) — Tag assignment enrichment
 - [US-0020](../search/US-0020-apply-focus-profile-to-search.md) — Using profiles at query time
 - [US-0016](../search/US-0016-natural-language-search.md) — Searching captured content
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

@@ -172,3 +172,17 @@ Fields written by the step (`Tags`, `Metadata`, `Sections`, etc.) are serialised
 - [US-0101](../pipelines/US-0101-create-custom-pipeline.md) - Create custom pipeline
 - [US-0106](../pipelines/US-0106-enqueue-content-via-dpkms.md) - Enqueue content via dpkms
 - [US-0108](../pipelines/US-0108-install-step-from-registry.md) - Install step from registry
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Integrators](../../personas/platform-integrators.md)
+- [OSS Go Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/contributors/oss-go-developer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

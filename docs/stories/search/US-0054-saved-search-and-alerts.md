@@ -107,3 +107,17 @@ Recurring searches are common: "any new security decisions," "new content about 
 - [US-0017](./US-0017-structured-rsql-query.md) — Structured RSQL Query (RSQL queries can be saved)
 - [US-0020](./US-0020-apply-focus-profile-to-search.md) — Apply Focus Profile to Search (profile stored with saved search)
 - [US-0055](./US-0055-search-history-and-recommendations.md) — Search History and Recommendations (history records include saved search runs)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

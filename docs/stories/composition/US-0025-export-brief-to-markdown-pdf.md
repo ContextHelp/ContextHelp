@@ -119,3 +119,16 @@ GET /compositions/brief/{id}/exports
 - [US-0022: generate-brief-from-objects](./US-0022-generate-brief-from-objects.md) — Brief to export
 - [US-0026: share-composition-with-team](./US-0026-share-composition-with-team.md) — Share exported brief
 - [US-0060: compose-with-custom-template](./US-0060-compose-with-custom-template.md) — Custom template affects export content
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

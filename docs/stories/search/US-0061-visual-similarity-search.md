@@ -462,3 +462,17 @@ ctxt admin backfill --status
 - [ADR-021](../../decisions/) — Multi-Backend Storage (pluggable vector backends)
 - [ADR-011](../../decisions/) — Multi-Source Reranker (RRF merge across modalities)
 - [ADR-005](../../decisions/) — Decorator Pattern for AI Providers (VLM as provider)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

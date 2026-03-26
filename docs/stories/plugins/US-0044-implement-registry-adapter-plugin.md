@@ -171,3 +171,17 @@ plugins:
 - [US-0029](../admin/US-0029-install-and-enable-plugin.md) - Install and enable plugin
 - [US-0016](../search/US-0016-natural-language-search.md) - Natural language search (uses
   alias resolution for `@entity` mentions)
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Integrators](../../personas/platform-integrators.md)
+- [OSS Go Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/contributors/oss-go-developer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

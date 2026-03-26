@@ -385,3 +385,17 @@ import:
 - [US-0009: Extract Entities and Mentions](../enrichment/US-0009-extract-entities-and-mentions.md) -- Imported records are enriched with entity extraction
 - [US-0015: Batch Enrichment with Progress](../enrichment/US-0015-batch-enrichment-with-progress.md) -- Progress tracking pattern shared with batch enrichment
 - [US-0034: Export and Backup All Knowledge](../operations/US-0034-export-and-backup-all-knowledge.md) -- Export produces JSONL that can be re-imported
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+[us0008_batch_import_test.go](../../../test/integration/us0008_batch_import_test.go)

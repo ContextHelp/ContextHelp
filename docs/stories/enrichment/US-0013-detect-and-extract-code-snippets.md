@@ -113,3 +113,17 @@ Content-Type: application/json
 
 - [US-0009](./US-0009-extract-entities-and-mentions.md) — Entity extraction step
 - [US-0050](./US-0050-extract-code-metrics-and-complexity.md) — Code metrics derived from extracted snippets
+
+---
+
+## Personas
+
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

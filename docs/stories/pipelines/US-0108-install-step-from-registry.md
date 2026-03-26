@@ -130,3 +130,17 @@ dpkms pipeline step uninstall <name>
 - [US-0111](./US-0111-configure-registry-autoupdate.md) - Configure auto-update
 - [US-0112](./US-0112-configure-sandbox-per-pipeline.md) - Configure sandbox
 - [US-0113](./US-0113-ctxt-analyze-api-client.md) - ctxt as API client
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Integrators](../../personas/platform-integrators.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

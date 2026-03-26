@@ -234,3 +234,17 @@ object(o-abc123)
 - [US-0011](./US-0011-assign-tags-from-vocabulary.md) — Tag assignment step
 - [US-0022](../composition/US-0022-generate-brief-from-objects.md) — Use entities in composition
 - [US-0024](../composition/US-0024-compose-with-graph-traversal.md) — Traverse entity relationships
+
+---
+
+## Personas
+
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

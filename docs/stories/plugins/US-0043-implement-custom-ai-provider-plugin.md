@@ -171,3 +171,17 @@ pipelines:
 - [US-0101](../pipelines/US-0101-create-custom-pipeline.md) - Create custom pipeline
 - [US-0106](../pipelines/US-0106-enqueue-content-via-dpkms.md) - Enqueue content via dpkms
 - [US-0027](../admin/US-0027-configure-ai-provider.md) - Configure AI provider (built-in)
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Integrators](../../personas/platform-integrators.md)
+- [OSS Go Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/contributors/oss-go-developer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

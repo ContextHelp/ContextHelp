@@ -445,3 +445,17 @@ sectioner:
 - [US-0009](../enrichment/US-0009-extract-entities-and-mentions.md) -- Entity extraction from transcript text
 - [US-0010](../enrichment/US-0010-extract-decisions-and-tasks.md) -- Decision/task extraction from meeting transcripts
 - [US-0011](../enrichment/US-0011-assign-tags-from-vocabulary.md) -- Tag assignment from transcript content
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+[us0004_audio_transcription_test.go](../../../test/integration/us0004_audio_transcription_test.go)

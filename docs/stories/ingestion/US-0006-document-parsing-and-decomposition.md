@@ -453,3 +453,17 @@ document:
 - [US-0012](../enrichment/US-0012-generate-summaries-and-sections.md) -- Sectioner step shared with enrichment pipeline
 - [US-0013](../enrichment/US-0013-detect-and-extract-code-snippets.md) -- Code snippet extraction enrichment complements `doc.code` pipeline
 - [US-0050](../enrichment/US-0050-extract-code-metrics-and-complexity.md) -- Code metrics enrichment uses AST data produced by `doc.code` pipeline
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+[us0006_document_parsing_test.go](../../../test/integration/us0006_document_parsing_test.go)

@@ -143,3 +143,16 @@ Content-Type: application/json
 - [US-0058: compose-impact-assessment](./US-0058-compose-impact-assessment.md) — Impact data grounds recommendations
 - [US-0026: share-composition-with-team](./US-0026-share-composition-with-team.md) — Share the recommendation document
 - [US-0060: compose-with-custom-template](./US-0060-compose-with-custom-template.md) — Custom template for recommendation output
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

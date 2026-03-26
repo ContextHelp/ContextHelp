@@ -205,3 +205,17 @@ When auto-update is enabled:
 - [ADR-057](../../decisions/ADR-057-registry-update-notification-model.md) - Registry update notification model (this ADR)
 - [ADR-058](../../decisions/ADR-058-external-step-execution-protocol.md) - External step execution protocol
 - [ADR-056](../../decisions/ADR-056-unified-enqueue-api.md) - Unified enqueue API (this ADR defines)
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Integrators](../../personas/platform-integrators.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+[us0110_reminders_test.go](../../../test/integration/us0110_reminders_test.go)

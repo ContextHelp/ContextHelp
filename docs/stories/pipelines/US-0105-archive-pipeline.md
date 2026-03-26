@@ -147,3 +147,17 @@ When a pipeline is archived:
 ## Related ADRs
 
 - [ADR-004](../../decisions/ADR-004-step-based-pipeline.md) - Step-based pipeline architecture (existing)
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Integrators](../../personas/platform-integrators.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+[us0105_archive_pipeline_test.go](../../../test/integration/us0105_archive_pipeline_test.go)

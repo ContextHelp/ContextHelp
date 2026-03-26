@@ -148,3 +148,16 @@ Content-Type: application/json
 - [US-0025: export-brief-to-markdown-pdf](./US-0025-export-brief-to-markdown-pdf.md) — Export generated plan
 - [US-0026: share-composition-with-team](./US-0026-share-composition-with-team.md) — Share generated plan
 - [US-0058: compose-impact-assessment](./US-0058-compose-impact-assessment.md) — Assess impact of decisions in plan
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

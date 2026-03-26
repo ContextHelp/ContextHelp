@@ -98,3 +98,17 @@ Knowledge is often distributed across multiple registries: a team registry, an o
 - [US-0016](./US-0016-natural-language-search.md) — Natural Language Search (NLQ queries can be federated)
 - [US-0018](./US-0018-multi-strategy-search-execution.md) — Multi-Strategy Search Execution (RRF merge used across registries)
 - [US-0020](./US-0020-apply-focus-profile-to-search.md) — Apply Focus Profile to Search (profile applied after federation merge)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

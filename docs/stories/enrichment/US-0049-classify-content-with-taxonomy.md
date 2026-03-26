@@ -114,3 +114,17 @@ Content-Type: application/json
 
 - [US-0011](./US-0011-assign-tags-from-vocabulary.md) — Flat tag assignment (complementary to taxonomy)
 - [US-0014](./US-0014-constrain-extraction-with-lmql.md) — LMQL constraint enforcement
+
+---
+
+## Personas
+
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

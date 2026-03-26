@@ -229,3 +229,17 @@ resp, _ := http.Post(serverURL+"/api/v1/pipelines/enqueue", "application/json", 
 
 - [ADR-056](../../decisions/ADR-056-unified-enqueue-api.md) - Unified enqueue API (this ADR defines)
 - [ADR-004](../../decisions/ADR-004-step-based-pipeline.md) - Step-based pipeline architecture
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Integrators](../../personas/platform-integrators.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+[us0106_enqueue_test.go](../../../test/integration/us0106_enqueue_test.go)

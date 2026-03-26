@@ -106,3 +106,17 @@ Content-Type: application/json
 - [US-0009](./US-0009-extract-entities-and-mentions.md) — Entity extraction step
 - [US-0014](./US-0014-constrain-extraction-with-lmql.md) — LMQL constraint enforcement
 - [US-0001](../ingestion/US-0001-text-capture-minimal-friction.md) — Trigger for tag assignment
+
+---
+
+## Personas
+
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

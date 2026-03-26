@@ -374,3 +374,17 @@ image:
 - [US-0061](../search/US-0061-visual-similarity-search.md) -- Multimodal search across image content
 - [US-0009](../enrichment/US-0009-extract-entities-and-mentions.md) -- Entity extraction from OCR text
 - [US-0011](../enrichment/US-0011-assign-tags-from-vocabulary.md) -- Tag assignment from extracted content
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+[us0003_image_ocr_test.go](../../../test/integration/us0003_image_ocr_test.go)

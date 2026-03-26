@@ -240,3 +240,17 @@ ORDER BY
 - [US-0111](./US-0111-configure-registry-autoupdate.md) - Configure auto-update
 - [US-0112](./US-0112-configure-sandbox-per-pipeline.md) - Configure sandbox
 - [US-0028](../admin/US-0028-register-custom-pipeline.md) - Original custom pipeline story (superseded)
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Integrators](../../personas/platform-integrators.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+[us0102_list_pipelines_test.go](../../../test/integration/us0102_list_pipelines_test.go)

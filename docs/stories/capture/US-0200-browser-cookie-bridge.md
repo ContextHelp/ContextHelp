@@ -448,3 +448,17 @@ capture:
 - [US-0204](./US-0204-linkedin-capture.md) -- LinkedIn capture requires cookie bridge (no public API)
 - [US-0001](../ingestion/US-0001-text-capture-minimal-friction.md) -- Base capture flow and async job pattern
 - [US-0031](../admin/US-0031-configure-encryption-and-secrets.md) -- Encryption configuration shared with cookie store
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

@@ -131,3 +131,16 @@ Content-Type: application/json
 - [US-0046: extract-relationships-between-entities](../enrichment/US-0046-extract-relationships-between-entities.md) — Source of graph edges
 - [US-0052: graph-based-entity-search](../search/US-0052-graph-based-entity-search.md) — Entity-oriented graph search
 - [US-0058: compose-impact-assessment](./US-0058-compose-impact-assessment.md) — Second-order effects via graph traversal
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

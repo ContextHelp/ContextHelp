@@ -500,3 +500,17 @@ arxiv:
 - [US-0002](../ingestion/US-0002-url-capture-and-extraction.md) -- Base URL capture; arXiv extends with academic-specific parsing
 - [US-0205](./US-0205-wikipedia-capture.md) -- Reference capture for linking mentioned concepts from Wikipedia
 - [US-0202](./US-0202-github-capture.md) -- Code repository capture for linking papers to implementations
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

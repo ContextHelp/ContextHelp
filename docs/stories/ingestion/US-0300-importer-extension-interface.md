@@ -81,3 +81,16 @@ This story establishes the core importer interface and lifecycle for registratio
 - [US-0107](../pipelines/US-0107-discover-local-steps.md) — Discovery model reference
 - [US-0108](../pipelines/US-0108-install-step-from-registry.md) — Registry installation patterns
 - [US-0301](./US-0301-import-chrome-bookmarks.md) — First concrete importer on this interface
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

@@ -94,3 +94,17 @@ Agents and maintainers often need precise, repeatable queries: "all decisions cr
 - [US-0018](./US-0018-multi-strategy-search-execution.md) — Multi-Strategy Search Execution (RSQL uses metadata strategy)
 - [US-0020](./US-0020-apply-focus-profile-to-search.md) — Apply Focus Profile to Search (profile filter combines with RSQL)
 - [US-0038](../agents/US-0038-agent-constructs-rsql-query.md) — Agent Constructs RSQL Query (agent-facing counterpart)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

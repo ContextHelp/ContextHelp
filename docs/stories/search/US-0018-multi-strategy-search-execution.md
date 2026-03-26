@@ -103,3 +103,17 @@ No single search strategy covers all cases: keyword search misses semantic equiv
 - [US-0051](./US-0051-semantic-search-with-embeddings.md) — Semantic Search with Embeddings (vector strategy detail)
 - [US-0052](./US-0052-graph-based-entity-search.md) — Graph-Based Entity Search (graph strategy detail)
 - [US-0061](./US-0061-visual-similarity-search.md) — Visual Similarity Search (visual strategy added to pipeline)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

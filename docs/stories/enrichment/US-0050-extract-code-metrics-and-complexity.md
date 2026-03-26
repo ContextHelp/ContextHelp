@@ -118,3 +118,17 @@ Content-Type: application/json
 
 - [US-0013](./US-0013-detect-and-extract-code-snippets.md) — Prerequisite: code snippet detection
 - [US-0009](./US-0009-extract-entities-and-mentions.md) — Entity extraction step
+
+---
+
+## Personas
+
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

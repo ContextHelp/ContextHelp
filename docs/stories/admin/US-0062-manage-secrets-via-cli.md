@@ -149,3 +149,17 @@ Not all backends support enumeration. Return a static informational message for 
 
 - [US-0031](US-0031-configure-encryption-and-secrets.md) — configure the secrets backend
 - [US-0027](US-0027-configure-ai-provider.md) — AI provider config consumes secrets
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+- [Operations](../../personas/operations.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

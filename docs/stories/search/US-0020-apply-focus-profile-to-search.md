@@ -94,3 +94,17 @@ The same query ("authentication decisions") means different things to a security
 - [US-0021](./US-0021-search-with-result-explanation.md) — Search with Result Explanation (`rank.explain.profile_boost` populated here)
 - [US-0030](../admin/US-0030-set-up-focus-profiles.md) — Set Up Focus Profiles (admin story that creates profiles)
 - [US-0053](./US-0053-cross-profile-search-aggregation.md) — Cross-Profile Search Aggregation (multi-profile variant)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

@@ -127,3 +127,16 @@ RetryJob(ctx, id):
 - [US-0032](./US-0032-monitor-job-queue-health.md) — Discover failed jobs via queue view
 - [US-0027](../admin/US-0027-configure-ai-provider.md) — Fix AI provider config before retry
 - [US-0009](../enrichment/US-0009-extract-entities-and-mentions.md) — Enrichment job details
+
+---
+
+## Personas
+
+- [Operations](../../personas/operations.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

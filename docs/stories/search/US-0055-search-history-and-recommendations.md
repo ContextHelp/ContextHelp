@@ -103,3 +103,17 @@ Users often repeat searches or forget what they searched last session. Every sea
 - [US-0017](./US-0017-structured-rsql-query.md) — Structured RSQL Query (RSQL searches also recorded in history)
 - [US-0020](./US-0020-apply-focus-profile-to-search.md) — Apply Focus Profile to Search (profile recorded per history entry)
 - [US-0054](./US-0054-saved-search-and-alerts.md) — Saved Search and Alerts (complementary: persisted named queries vs. anonymous history)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

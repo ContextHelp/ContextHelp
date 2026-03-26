@@ -142,3 +142,17 @@ Content-Type: application/json
 - [US-0001](../ingestion/US-0001-text-capture-minimal-friction.md) — `--profile` flag at capture
 - [US-0016](../search/US-0016-basic-keyword-search.md) — profile applied at search time
 - [US-0027](US-0027-configure-ai-provider.md) — provider config may be profile-scoped
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+- [Operations](../../personas/operations.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

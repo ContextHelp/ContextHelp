@@ -579,3 +579,17 @@ capture:
 - [US-0031](../admin/US-0031-configure-encryption-and-secrets.md) -- Secrets management for API keys
 - [US-0012](../enrichment/US-0012-generate-summaries-and-sections.md) -- Summarization of captured articles
 - [US-0011](../enrichment/US-0011-assign-tags-from-vocabulary.md) -- Tag assignment from extracted content
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

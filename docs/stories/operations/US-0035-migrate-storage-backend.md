@@ -127,3 +127,16 @@ storage:
 - [US-0034](./US-0034-export-and-backup-all-knowledge.md) — Export/backup before migration
 - [US-0036](./US-0036-scale-worker-pool-for-load.md) — Tune workers post-migration
 - [US-0027](../admin/US-0027-configure-ai-provider.md) — Reconfigure providers post-migration
+
+---
+
+## Personas
+
+- [Operations](../../personas/operations.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

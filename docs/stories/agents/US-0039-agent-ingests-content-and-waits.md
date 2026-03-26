@@ -151,3 +151,16 @@ def ingest_and_wait(api_url, content, source_type, profile=None,
 - [agent-uses-constrained-enrichment](./US-0041-agent-uses-constrained-enrichment.md) — Trigger targeted enrichment on an ingested object
 - [url-capture-and-extraction](../ingestion/US-0002-url-capture-and-extraction.md) — Human-facing ingestion counterpart
 - [batch-enrichment-with-progress](../enrichment/US-0015-batch-enrichment-with-progress.md) — Batch ingestion with job monitoring
+
+---
+
+## Personas
+
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

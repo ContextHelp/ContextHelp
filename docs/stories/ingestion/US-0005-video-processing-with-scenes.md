@@ -356,3 +356,17 @@ video:
 - [US-0061](../search/US-0061-visual-similarity-search.md) -- Multimodal search enables searching video frames by visual similarity
 - [US-0001](./US-0001-text-capture-minimal-friction.md) -- Base capture flow and async job pattern
 - [US-0012](../enrichment/US-0012-generate-summaries-and-sections.md) -- Sectioner step shared with text summarization enrichment
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+[us0005_video_processing_test.go](../../../test/integration/us0005_video_processing_test.go)

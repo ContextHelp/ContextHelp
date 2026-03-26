@@ -177,3 +177,17 @@ plugins:
 - [US-0029](../admin/US-0029-install-and-enable-plugin.md) - Install and enable plugin
 - [US-0018](../search/US-0018-multi-strategy-search-execution.md) - Multi-strategy search
 - [US-0021](../search/US-0021-search-with-result-explanation.md) - Search result explanation
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Integrators](../../personas/platform-integrators.md)
+- [OSS Go Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/contributors/oss-go-developer.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

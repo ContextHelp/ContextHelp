@@ -136,3 +136,16 @@ DELETE /compositions/{id}/shares/{share_id}
 - [US-0025: export-brief-to-markdown-pdf](./US-0025-export-brief-to-markdown-pdf.md) — Export before sharing
 - [US-0056: compose-decision-timeline](./US-0056-compose-decision-timeline.md) — Share decision timelines
 - [US-0059: compose-recommendation-document](./US-0059-compose-recommendation-document.md) — Share recommendation documents
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

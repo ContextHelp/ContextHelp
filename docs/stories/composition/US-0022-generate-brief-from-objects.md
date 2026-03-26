@@ -378,3 +378,16 @@ The engineering team made critical decisions regarding the migration from a mono
 - [US-0025: export-brief-to-markdown-pdf](./US-0025-export-brief-to-markdown-pdf.md) — Export generated brief
 - [US-0026: share-composition-with-team](./US-0026-share-composition-with-team.md) — Share generated brief
 - [US-0060: compose-with-custom-template](./US-0060-compose-with-custom-template.md) — Use custom template for brief
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

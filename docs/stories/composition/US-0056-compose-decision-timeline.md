@@ -136,3 +136,16 @@ Content-Type: application/json
 - [US-0023: generate-plan-from-decisions](./US-0023-generate-plan-from-decisions.md) — Plan from decisions in the timeline
 - [US-0026: share-composition-with-team](./US-0026-share-composition-with-team.md) — Share the composed timeline
 - [US-0058: compose-impact-assessment](./US-0058-compose-impact-assessment.md) — Assess impact of decisions in timeline
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

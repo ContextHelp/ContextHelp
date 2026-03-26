@@ -314,3 +314,17 @@ feeds:
 - [US-0008: Batch Import from File](./US-0008-batch-import-from-file.md) -- OPML import creates feed subscriptions in bulk
 - [US-0009: Extract Entities and Mentions](../enrichment/US-0009-extract-entities-and-mentions.md) -- Entities extracted from feed item content
 - [US-0012: Generate Summaries and Sections](../enrichment/US-0012-generate-summaries-and-sections.md) -- Feed items are summarized during enrichment
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+[us0007_feed_ingestion_test.go](../../../test/integration/us0007_feed_ingestion_test.go)

@@ -231,3 +231,17 @@ func (c *CostTracker) RecordCall(tokens int, costUSD float64) {
 - [US-0015](../enrichment/US-0015-batch-enrichment-with-progress.md) — Provider used at scale
 - [US-0016](../search/US-0016-natural-language-search.md) — NLQ normalizer uses provider
 - [US-0032](../operations/US-0032-monitor-job-queue-health.md) — Provider metrics monitoring
+
+---
+
+## Personas
+
+- [Maintainers](../../personas/maintainers.md)
+- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+- [Operations](../../personas/operations.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

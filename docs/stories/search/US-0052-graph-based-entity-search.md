@@ -102,3 +102,17 @@ Structured knowledge is stored as a graph: each knowledge object can mention ent
 - [US-0021](./US-0021-search-with-result-explanation.md) — Search with Result Explanation (`rank.explain.graph_match` populated here)
 - [US-0009](../enrichment/US-0009-extract-entities-and-mentions.md) — Extract Entities and Mentions (enrichment that creates graph edges)
 - [US-0061](./US-0061-visual-similarity-search.md) — Visual Similarity Search (graph strategy used for entities detected in images)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

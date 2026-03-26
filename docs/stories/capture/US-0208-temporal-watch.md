@@ -514,3 +514,17 @@ watch:
 - [US-0054](../search/US-0054-saved-search-and-alerts.md) -- Saved search and alerts (related alerting pattern)
 - [US-0002](../ingestion/US-0002-url-capture-and-extraction.md) -- URL capture (base fetch functionality)
 - [US-0047](../enrichment/US-0047-extract-temporal-information.md) -- Temporal information extraction
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

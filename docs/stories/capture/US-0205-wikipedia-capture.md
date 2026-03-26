@@ -656,3 +656,17 @@ wikipedia:
 - [US-0046](../enrichment/US-0046-extract-relationships-between-entities.md) -- Relationship extraction between entities mentioned in articles
 - [US-0049](../enrichment/US-0049-classify-content-with-taxonomy.md) -- Wikipedia categories contribute to taxonomy classification
 - [US-0200](./US-0200-browser-cookie-bridge.md) -- Uses same pipeline architecture despite not needing authentication
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

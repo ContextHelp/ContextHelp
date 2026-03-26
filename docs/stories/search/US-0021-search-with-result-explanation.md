@@ -92,3 +92,17 @@ Relevance ranking is invisible by default. A result at position 3 may be there b
 - [US-0018](./US-0018-multi-strategy-search-execution.md) — Multi-Strategy Search Execution (per-strategy scores populate `rank.explain`)
 - [US-0020](./US-0020-apply-focus-profile-to-search.md) — Apply Focus Profile to Search (`profile_boost` is one explanation field)
 - [US-0061](./US-0061-visual-similarity-search.md) — Visual Similarity Search (`match_sources` annotations complement `rank.explain`)
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Researchers / OSINT](../../personas/researchers-osint.md)
+- [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.

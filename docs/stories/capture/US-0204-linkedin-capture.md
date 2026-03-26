@@ -495,3 +495,17 @@ linkedin:
 - [US-0009](../enrichment/US-0009-extract-entities-and-mentions.md) -- Entity extraction from profile content
 - [US-0046](../enrichment/US-0046-extract-relationships-between-entities.md) -- Relationship extraction between professional entities
 - [US-0047](../enrichment/US-0047-extract-temporal-information.md) -- Temporal extraction from career timelines
+
+---
+
+## Personas
+
+- [Knowledge Workers](../../personas/knowledge-workers.md)
+- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+
+---
+
+## E2E Tests
+
+> Not yet implemented.
