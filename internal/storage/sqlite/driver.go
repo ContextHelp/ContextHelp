@@ -5,17 +5,23 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "modernc.org/sqlite"
+	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	blobstub "github.com/ideacrafterslabs/ctxt/internal/storage/blob/stub"
 )
 
+// DefaultVectorDimension is used when no dimension is specified.
+// Matches OpenAI text-embedding-3-small and many open embedding models.
+const DefaultVectorDimension = 1536
+
 // Driver implements storage.StorageDriver for SQLite.
 type Driver struct {
-	db          *sql.DB
-	path        string
-	objects     *ObjectStore
+	db              *sql.DB
+	path            string
+	vectorDimension int
+	objects         *ObjectStore
 	entities    *EntityStore
 	edges       *EdgeStore
 	jobs        *JobStore
@@ -34,11 +40,13 @@ type Driver struct {
 	resurfacing  *ResurfacingQueueStore
 	entitlements *entitlementStore
 	metering     *MeteringStore
+	vectors      *VecStore
 }
 
 // New creates a new SQLite driver for the given database path.
 func New(path string) (*Driver, error) {
-	db, err := sql.Open("sqlite", path)
+	sqlite_vec.Auto()
+	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
@@ -56,7 +64,7 @@ func New(path string) (*Driver, error) {
 		}
 	}
 
-	d := &Driver{db: db, path: path}
+	d := &Driver{db: db, path: path, vectorDimension: DefaultVectorDimension}
 	d.objects = &ObjectStore{db: db}
 	d.entities = &EntityStore{db: db}
 	d.edges = &EdgeStore{db: db}
@@ -76,6 +84,7 @@ func New(path string) (*Driver, error) {
 	d.resurfacing = &ResurfacingQueueStore{db: db}
 	d.entitlements = &entitlementStore{db: db}
 	d.metering = &MeteringStore{db: db}
+	d.vectors = &VecStore{db: db}
 	return d, nil
 }
 
@@ -111,6 +120,7 @@ func (d *Driver) Attachments() storage.AttachmentStore       { return d.attachme
 func (d *Driver) Resurfacing() storage.ResurfacingQueueStore { return d.resurfacing }
 func (d *Driver) Entitlements() storage.EntitlementStore     { return d.entitlements }
 func (d *Driver) Metering() storage.MeteringStore            { return d.metering }
+func (d *Driver) Vectors() storage.VectorStore               { return d.vectors }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -19,7 +19,7 @@ func TestSQLiteSnapshot(t *testing.T) {
 	dst := filepath.Join(dstDir, "snapshot.db")
 
 	// Create a minimal SQLite DB.
-	db, err := sql.Open("sqlite", src)
+	db, err := sql.Open("sqlite3", src)
 	if err != nil {
 		t.Fatalf("create source db: %v", err)
 	}
