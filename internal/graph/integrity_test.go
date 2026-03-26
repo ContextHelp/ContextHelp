@@ -123,6 +123,9 @@ func (s *stubEdgeStore) DeleteByObject(_ context.Context, objectID string) error
 	s.edges = kept
 	return nil
 }
+func (s *stubEdgeStore) RelatedObjectIDs(_ context.Context, objectID string, depth, limit int) ([]string, error) {
+	return nil, nil
+}
 func (s *stubEdgeStore) CountMentionsTo(_ context.Context, toType, toID string) (int, error) {
 	n := 0
 	for _, e := range s.edges {
