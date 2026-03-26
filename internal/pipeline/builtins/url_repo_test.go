@@ -19,9 +19,9 @@ func TestURLRepoRegistered(t *testing.T) {
 func TestURLRepoSelectedForRepoURLs(t *testing.T) {
 	r := Registry()
 
+	// GitHub URLs are intentionally excluded: url.github.repo is more specific
+	// and will match them when that pipeline is registered.
 	match := []string{
-		"https://github.com/foo/bar",
-		"https://github.com/foo/bar/",
 		"https://github.com/foo/bar.git",
 		"https://gitlab.com/foo/bar",
 		"https://gitlab.com/foo/bar/",
