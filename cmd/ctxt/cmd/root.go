@@ -10,6 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/logger"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
+	internalversion "github.com/ideacrafterslabs/ctxt/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -68,6 +69,7 @@ func init() {
 	rootCmd.PersistentFlags().String("output", "text", "output format (text|json|yaml)")
 	rootCmd.PersistentFlags().BoolP("verbose", "V", false, "enable verbose output")
 	rootCmd.Flags().BoolP("version", "v", false, "print version and exit")
+	rootCmd.Flags().Bool("check", false, "check for a newer release (use with -v)")
 
 	// Bind flags to viper
 	viper.BindPFlag("profile.default", rootCmd.PersistentFlags().Lookup("profile"))
@@ -76,18 +78,36 @@ func init() {
 }
 
 func printVersion(cmd *cobra.Command) {
+	check, _ := cmd.Flags().GetBool("check")
 	date := strings.SplitN(buildTime, "_", 2)[0]
+
 	if viper.GetString("output.format") == "json" {
-		out, _ := json.Marshal(map[string]string{
+		payload := map[string]string{
 			"name":       "ctxt",
 			"version":    version,
 			"date":       date,
 			"git_commit": gitCommit,
-		})
+		}
+		if check {
+			r := internalversion.Check(version, nil)
+			if r.FetchErr != nil {
+				payload["update_check"] = "error: " + r.FetchErr.Error()
+			} else if r.UpToDate {
+				payload["update_check"] = "up_to_date"
+			} else {
+				payload["update_check"] = r.Latest
+			}
+		}
+		out, _ := json.Marshal(payload)
 		fmt.Fprintln(cmd.OutOrStdout(), string(out))
 		return
 	}
+
 	fmt.Fprintf(cmd.OutOrStdout(), "ctxt version %s (%s)\n", version, date)
+	if check {
+		r := internalversion.Check(version, nil)
+		fmt.Fprintln(cmd.OutOrStdout(), internalversion.FormatResult(r))
+	}
 }
 
 func initConfig() {
@@ -113,6 +133,12 @@ func SetVersionInfo(v, bt, gc string) {
 	version = v
 	buildTime = bt
 	gitCommit = gc
+}
+
+// SetVersionFetcher overrides the HTTP fetcher used by --check.
+// Intended for tests only.
+func SetVersionFetcher(f internalversion.Fetcher) {
+	internalversion.DefaultFetcher = f
 }
 
 // dispatchURI handles ctxt:// URIs passed directly as an argument (e.g. from
