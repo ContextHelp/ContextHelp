@@ -52,6 +52,9 @@ var migration014 string
 type migration struct {
 	Version int
 	SQL     string
+	// fn is an optional Go-level migration for cases where SQL alone is
+	// insufficient (e.g. idempotent ALTER TABLE on upgraded DBs).
+	fn func(ctx context.Context, d *Driver) error
 }
 
 var migrations = []migration{
@@ -67,8 +70,96 @@ var migrations = []migration{
 	{Version: 10, SQL: migration010},
 	{Version: 11, SQL: migration011},
 	{Version: 12, SQL: migration012},
-	{Version: 13, SQL: migration013},
-	{Version: 14, SQL: migration014},
+	// Migration 013 uses a Go fn because some databases (upgraded from an
+	// earlier numbering scheme) already have version 13 recorded but with
+	// different content (remind_at instead of entity_thin_sync columns).
+	{Version: 13, fn: migrate013EntityThinSync},
+	// Migration 014 uses a Go fn because some databases (upgraded from an
+	// earlier numbering scheme) already have remind_at/reminded_at applied
+	// as part of their old migration 013. The fn checks before altering.
+	{Version: 14, fn: migrate014RemindAt},
+}
+
+// migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
+// skipping any column that already exists (idempotent for upgraded DBs).
+func migrate013EntityThinSync(ctx context.Context, d *Driver) error {
+	existing := map[string]bool{}
+	rows, err := d.db.QueryContext(ctx, "SELECT name FROM pragma_table_info('entities')")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return err
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, col := range []struct{ name, def string }{
+		{"content_status", "TEXT NOT NULL DEFAULT 'full'"},
+		{"version_hash", "TEXT NOT NULL DEFAULT ''"},
+		{"registry_url", "TEXT NOT NULL DEFAULT ''"},
+	} {
+		if existing[col.name] {
+			continue
+		}
+		if _, err := d.db.ExecContext(ctx,
+			"ALTER TABLE entities ADD COLUMN "+col.name+" "+col.def,
+		); err != nil {
+			return err
+		}
+	}
+
+	if _, err := d.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_entities_content_status ON entities(content_status)`); err != nil {
+		return err
+	}
+	_, err = d.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_entities_registry_url ON entities(registry_url)`)
+	return err
+}
+
+// migrate014RemindAt adds remind_at / reminded_at columns and index to objects,
+// skipping any column that already exists (idempotent).
+func migrate014RemindAt(ctx context.Context, d *Driver) error {
+	existing := map[string]bool{}
+	rows, err := d.db.QueryContext(ctx, "SELECT name FROM pragma_table_info('objects')")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return err
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, col := range []struct{ name, def string }{
+		{"remind_at", "TEXT DEFAULT NULL"},
+		{"reminded_at", "TEXT DEFAULT NULL"},
+	} {
+		if existing[col.name] {
+			continue
+		}
+		if _, err := d.db.ExecContext(ctx,
+			"ALTER TABLE objects ADD COLUMN "+col.name+" "+col.def,
+		); err != nil {
+			return err
+		}
+	}
+
+	_, err = d.db.ExecContext(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_objects_remind_at ON objects(remind_at)
+		    WHERE remind_at IS NOT NULL`)
+	return err
 }
 
 func (d *Driver) Migrate(ctx context.Context) error {
@@ -86,11 +177,25 @@ func (d *Driver) Migrate(ctx context.Context) error {
 		return fmt.Errorf("read schema version: %w", err)
 	}
 
+	// Repair: some databases were upgraded from an earlier numbering scheme
+	// where migration 013 was "remind_at" instead of "entity_thin_sync".
+	// Those DBs have schema_version=13 but lack content_status/version_hash/
+	// registry_url. Apply the thin-sync columns now if they are missing.
+	if current >= 13 {
+		if err := migrate013EntityThinSync(ctx, d); err != nil {
+			return fmt.Errorf("repair entity thin sync columns: %w", err)
+		}
+	}
+
 	for _, m := range migrations {
 		if m.Version <= current {
 			continue
 		}
-		if _, err := d.db.ExecContext(ctx, m.SQL); err != nil {
+		if m.fn != nil {
+			if err := m.fn(ctx, d); err != nil {
+				return fmt.Errorf("apply migration %d: %w", m.Version, err)
+			}
+		} else if _, err := d.db.ExecContext(ctx, m.SQL); err != nil {
 			return fmt.Errorf("apply migration %d: %w", m.Version, err)
 		}
 		if _, err := d.db.ExecContext(ctx,
