@@ -108,6 +108,10 @@ func (m *mockEntityStore) List(ctx context.Context, filter EntityFilter) ([]*Ent
 func (m *mockEntityStore) Resolve(ctx context.Context, mention string) (*Entity, error) {
 	return nil, nil
 }
+func (m *mockEntityStore) UpsertThin(ctx context.Context, entity *Entity) error { return nil }
+func (m *mockEntityStore) SetContentStatus(ctx context.Context, slug string, status ContentStatus) error {
+	return nil
+}
 
 type mockEdgeStore struct{}
 
