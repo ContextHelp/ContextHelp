@@ -87,6 +87,17 @@ type Config struct {
 
 	// Backup configures the backup command.
 	Backup BackupConfig `mapstructure:"backup" yaml:"backup"`
+
+	// Privacy controls user-facing privacy preferences.
+	Privacy PrivacyConfig `mapstructure:"privacy" yaml:"privacy"`
+}
+
+// PrivacyConfig holds privacy-related preferences.
+type PrivacyConfig struct {
+	// Telemetry enables anonymous usage telemetry.
+	// Default: false (local-first, privacy-respecting).
+	// Override via CH_DISABLE_TELEMETRY=true env var or set this to false.
+	Telemetry bool `mapstructure:"telemetry" yaml:"telemetry"`
 }
 
 // URIConfig controls how ctxt:// URIs are handled by the OS URL handler.
@@ -465,6 +476,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("search.candidate_pool.vector", 50)
 	v.SetDefault("search.min_score", 0.0)
 	v.SetDefault("search.fallback_to_fts", true)
+
+	// Privacy defaults — telemetry off by default (local-first)
+	v.SetDefault("privacy.telemetry", false)
 }
 
 // bindEnvVars binds environment variables to configuration keys

@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/logger"
+	"github.com/ideacrafterslabs/ctxt/internal/telemetry"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
 	internalversion "github.com/ideacrafterslabs/ctxt/internal/version"
 	"github.com/spf13/cobra"
@@ -18,6 +19,7 @@ import (
 var (
 	cfgFile string
 	cfg     *config.Config
+	tel     telemetry.Telemetry
 
 	// Version information
 	version   string
@@ -126,6 +128,9 @@ func initConfig() {
 	if err := config.EnsureDataDir(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure data directory: %v\n", err)
 	}
+
+	// Initialise telemetry (respects CH_DISABLE_TELEMETRY + privacy.telemetry).
+	tel = telemetry.New(cfg)
 }
 
 // SetVersionInfo sets version information for the CLI
