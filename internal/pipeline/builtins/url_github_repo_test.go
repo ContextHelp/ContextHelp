@@ -24,8 +24,8 @@ func TestURLGitHubRepoDetector(t *testing.T) {
 		},
 		{
 			url:  "https://github.com/foo/bar/issues/1",
-			want: "url.generic",
-			desc: "issue URL should NOT match url.github.repo",
+			want: "url.github.issue",
+			desc: "issue URL routes to url.github.issue (more specific)",
 		},
 		{
 			url:  "https://github.com/foo/bar/pulls",
