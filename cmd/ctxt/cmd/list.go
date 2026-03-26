@@ -52,6 +52,7 @@ func init() {
 	listCmd.Flags().String("after", "", "created after (ISO date)")
 	listCmd.Flags().String("orig-lang", "", "original language code")
 	listCmd.Flags().String("q", "", "AST-based query")
+	listCmd.Flags().String("status", "", "filter by status (active|inbox|discarded|raw|all)")
 
 	// Display flags
 	listCmd.Flags().Int("limit", 50, "maximum results")
@@ -71,6 +72,7 @@ func init() {
 	viper.BindPFlag("list.after", listCmd.Flags().Lookup("after"))
 	viper.BindPFlag("list.orig-lang", listCmd.Flags().Lookup("orig-lang"))
 	viper.BindPFlag("list.q", listCmd.Flags().Lookup("q"))
+	viper.BindPFlag("list.status", listCmd.Flags().Lookup("status"))
 	viper.BindPFlag("list.limit", listCmd.Flags().Lookup("limit"))
 	viper.BindPFlag("list.start", listCmd.Flags().Lookup("start"))
 	viper.BindPFlag("list.sort", listCmd.Flags().Lookup("sort"))

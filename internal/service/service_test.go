@@ -96,6 +96,43 @@ func TestAnalyze(t *testing.T) {
 	}
 }
 
+func TestAnalyzeRawFlagSkipsEnrichment(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	id, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content: "raw content no AI",
+		Type:    "text",
+		Source:  "test",
+		Raw:     true,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, id)
+
+	// Must be stored as a KnowledgeObject directly, not as a job.
+	obj, err := svc.Store.Objects().Get(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, obj)
+
+	assert.Equal(t, "raw", obj.Status, "status must be raw")
+	assert.Equal(t, "raw content no AI", obj.RawContent)
+	assert.Empty(t, obj.Summaries, "no summaries expected — no AI enrichment")
+	assert.Empty(t, obj.Tags, "no tags expected — no AI enrichment")
+	assert.Empty(t, obj.Embeddings, "no embeddings expected — no AI enrichment")
+
+	// No job must have been enqueued.
+	jobs, total, err := svc.ListJobs(ctx, storage.JobFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, 0, total, "no jobs enqueued for raw ingestion")
+	assert.Empty(t, jobs)
+
+	// Object must appear in status=raw filter.
+	objs, count, err := svc.Store.Objects().List(ctx, storage.ObjectFilter{Status: "raw"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+	assert.Equal(t, id, objs[0].ID)
+}
+
 func TestGetObject(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

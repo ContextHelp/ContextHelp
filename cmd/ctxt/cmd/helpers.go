@@ -155,6 +155,7 @@ func buildObjectFilter() storage.ObjectFilter {
 		Tag:      viper.GetString("list.tag"),
 		Mention:  viper.GetString("list.mention"),
 		Pipeline: viper.GetString("list.pipeline"),
+		Status:   viper.GetString("list.status"),
 		Limit:    viper.GetInt("list.limit"),
 		Offset:   viper.GetInt("list.start"),
 		Sort:     viper.GetString("list.sort"),
