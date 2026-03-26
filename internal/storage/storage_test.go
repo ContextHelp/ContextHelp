@@ -29,6 +29,7 @@ func (m *mockDriver) Proximity() ProximityStore            { return &mockProximi
 func (m *mockDriver) Watches() WatchStore                  { return &mockWatchStore{} }
 func (m *mockDriver) Aliases() AliasStore                  { return &mockAliasStore{} }
 func (m *mockDriver) AuditLog() AuditStore                 { return &mockAuditLogStore{} }
+func (m *mockDriver) Resurfacing() ResurfacingQueueStore   { return &mockResurfacingQueueStore{} }
 func (m *mockDriver) Health(ctx context.Context) error    { return nil }
 
 type mockBlobStore struct{}
@@ -331,3 +332,22 @@ func (m *mockAuditLogStore) List(_ context.Context, _ AuditFilter) ([]*AuditEntr
 func (m *mockAuditLogStore) GetObjectHistory(_ context.Context, _ string) ([]*AuditEntry, error) {
 	return nil, nil
 }
+
+type mockResurfacingQueueStore struct{}
+
+func (m *mockResurfacingQueueStore) Upsert(_ context.Context, _ *ResurfacingEntry) error {
+	return nil
+}
+func (m *mockResurfacingQueueStore) List(
+	_ context.Context, _ ResurfacingFilter,
+) ([]*ResurfacingEntry, error) {
+	return nil, nil
+}
+func (m *mockResurfacingQueueStore) MarkSurfaced(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+func (m *mockResurfacingQueueStore) Dismiss(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+func (m *mockResurfacingQueueStore) DeleteByProfile(_ context.Context, _ string) error { return nil }
+func (m *mockResurfacingQueueStore) DeleteByObject(_ context.Context, _ string) error  { return nil }

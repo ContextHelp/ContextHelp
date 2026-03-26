@@ -95,6 +95,9 @@ type Config struct {
 	// Set via --offline flag or config key offline.enabled.
 	// Default: false.
 	Offline OfflineConfig `mapstructure:"offline" yaml:"offline"`
+
+	// Resurfacing controls the background resurfacing queue.
+	Resurfacing ResurfacingConfig `mapstructure:"resurfacing" yaml:"resurfacing"`
 }
 
 // OfflineConfig controls strict offline (air-gapped) operation mode.
@@ -106,6 +109,18 @@ type Config struct {
 type OfflineConfig struct {
 	// Enabled activates strict offline mode. Default: false.
 	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+}
+
+// ResurfacingConfig controls the background resurfacing queue process.
+type ResurfacingConfig struct {
+	// Enabled activates the background scoring loop. Default: true.
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// MaxItems is the maximum items returned by ctxt resurface. Default: 10.
+	MaxItems int `mapstructure:"max_items" yaml:"max_items"`
+	// MinScore discards candidates below this score. Default: 0.4.
+	MinScore float64 `mapstructure:"min_score" yaml:"min_score"`
+	// RunInterval is how often the background job re-scores. Default: 1h.
+	RunInterval time.Duration `mapstructure:"run_interval" yaml:"run_interval"`
 }
 
 // PrivacyConfig holds privacy-related preferences.
@@ -532,6 +547,12 @@ func setDefaults(v *viper.Viper) {
 
 	// Offline mode — disabled by default; enable for air-gapped environments.
 	v.SetDefault("offline.enabled", false)
+
+	// Resurfacing defaults
+	v.SetDefault("resurfacing.enabled", true)
+	v.SetDefault("resurfacing.max_items", 10)
+	v.SetDefault("resurfacing.min_score", 0.4)
+	v.SetDefault("resurfacing.run_interval", time.Hour)
 }
 
 // bindEnvVars binds environment variables to configuration keys

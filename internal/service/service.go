@@ -489,6 +489,31 @@ func (s *Service) DismissReminder(ctx context.Context, id string) error {
 	return s.Store.Reminders().Dismiss(ctx, id)
 }
 
+// ─── Resurfacing queue ────────────────────────────────────────────────────────
+
+// ListResurfacing returns top-N unseen resurfacing candidates for the given profile.
+// Results are ordered by score descending.
+func (s *Service) ListResurfacing(
+	ctx context.Context, profileID string, limit int, minScore float64,
+) ([]*storage.ResurfacingEntry, error) {
+	return s.Store.Resurfacing().List(ctx, storage.ResurfacingFilter{
+		ProfileID:  profileID,
+		UnseenOnly: true,
+		MinScore:   minScore,
+		Limit:      limit,
+	})
+}
+
+// MarkResurfaced marks an entry as shown to the user.
+func (s *Service) MarkResurfaced(ctx context.Context, id string) error {
+	return s.Store.Resurfacing().MarkSurfaced(ctx, id, time.Now())
+}
+
+// DismissResurfacing dismisses an entry so it no longer appears.
+func (s *Service) DismissResurfacing(ctx context.Context, id string) error {
+	return s.Store.Resurfacing().Dismiss(ctx, id, time.Now())
+}
+
 // FindByText searches knowledge objects by text matching on summaries and raw content.
 // FindByText searches knowledge objects using FTS5 full-text search.
 func (s *Service) FindByText(ctx context.Context, query string, limit int) ([]*storage.KnowledgeObject, error) {

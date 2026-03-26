@@ -45,6 +45,7 @@ type StorageDriver interface {
 	Watches() WatchStore
 	Aliases() AliasStore
 	AuditLog() AuditStore
+	Resurfacing() ResurfacingQueueStore
 	Health(ctx context.Context) error
 }
 
@@ -275,4 +276,40 @@ type WatchStore interface {
 	GetFileRecord(ctx context.Context, watchID, filePath string) (*WatchFileRecord, error)
 	DeleteFileRecord(ctx context.Context, watchID, filePath string) error
 	ListFileRecords(ctx context.Context, watchID string) ([]*WatchFileRecord, error)
+}
+
+// ResurfacingEntry is one candidate in the resurfacing queue.
+type ResurfacingEntry struct {
+	ID          string     `json:"id"`
+	ObjectID    string     `json:"object_id"`
+	ProfileID   string     `json:"profile_id"`
+	Score       float64    `json:"score"`
+	Reason      string     `json:"reason"`
+	SurfacedAt  *time.Time `json:"surfaced_at,omitempty"`
+	DismissedAt *time.Time `json:"dismissed_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// ResurfacingFilter restricts resurfacing queue queries.
+type ResurfacingFilter struct {
+	ProfileID  string
+	UnseenOnly bool // surfaced_at IS NULL AND dismissed_at IS NULL
+	MinScore   float64
+	Limit      int
+}
+
+// ResurfacingQueueStore manages the resurfacing candidate queue.
+type ResurfacingQueueStore interface {
+	// Upsert inserts or replaces an entry (keyed on object_id + profile_id).
+	Upsert(ctx context.Context, e *ResurfacingEntry) error
+	// List returns entries matching the filter, ordered by score desc.
+	List(ctx context.Context, f ResurfacingFilter) ([]*ResurfacingEntry, error)
+	// MarkSurfaced sets surfaced_at = now for the given entry id.
+	MarkSurfaced(ctx context.Context, id string, now time.Time) error
+	// Dismiss sets dismissed_at = now for the given entry id.
+	Dismiss(ctx context.Context, id string, now time.Time) error
+	// DeleteByProfile removes all entries for a profile.
+	DeleteByProfile(ctx context.Context, profileID string) error
+	// DeleteByObject removes all entries for an object.
+	DeleteByObject(ctx context.Context, objectID string) error
 }

@@ -27,9 +27,10 @@ type Driver struct {
 	feedItems  *FeedItemStore
 	batches    *BatchStore
 	detectors  *DetectorStore
-	blobs      storage.BlobStore
-	proximity  *ProximityStore
-	watches    *WatchStore
+	blobs       storage.BlobStore
+	proximity   *ProximityStore
+	watches     *WatchStore
+	resurfacing *ResurfacingQueueStore
 }
 
 // New creates a new SQLite driver for the given database path.
@@ -68,6 +69,7 @@ func New(path string) (*Driver, error) {
 	d.blobs = blobstub.New()
 	d.proximity = &ProximityStore{db: db}
 	d.watches = &WatchStore{db: db}
+	d.resurfacing = &ResurfacingQueueStore{db: db}
 	return d, nil
 }
 
@@ -97,8 +99,9 @@ func (d *Driver) Detectors() storage.DetectorStore  { return d.detectors }
 func (d *Driver) Blobs() storage.BlobStore          { return d.blobs }
 func (d *Driver) Proximity() storage.ProximityStore { return d.proximity }
 func (d *Driver) Watches() storage.WatchStore       { return d.watches }
-func (d *Driver) Aliases() storage.AliasStore       { return &aliasStore{db: d.db} }
-func (d *Driver) AuditLog() storage.AuditStore      { return &auditStore{db: d.db} }
+func (d *Driver) Aliases() storage.AliasStore                    { return &aliasStore{db: d.db} }
+func (d *Driver) AuditLog() storage.AuditStore                   { return &auditStore{db: d.db} }
+func (d *Driver) Resurfacing() storage.ResurfacingQueueStore     { return d.resurfacing }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)
