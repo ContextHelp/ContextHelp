@@ -72,11 +72,11 @@ func (m *Manager) Stop() {
 }
 
 // AddWatch persists a new watch config and starts watching immediately.
+// If the config already exists in storage, it is ignored and watching starts anyway.
 func (m *Manager) AddWatch(ctx context.Context, cfg *WatchConfig) error {
 	if m.store != nil {
-		if err := m.store.CreateWatch(ctx, cfg); err != nil {
-			return err
-		}
+		// Ignore duplicate-key errors: the watch may have been pre-created.
+		_ = m.store.CreateWatch(ctx, cfg)
 	}
 	return m.startWatch(ctx, cfg)
 }

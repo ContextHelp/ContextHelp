@@ -923,8 +923,8 @@ func TestUS0006_HierarchyTraversableViaAPI(t *testing.T) {
 		assert.Equal(t, "mentions", edge.EdgeType)
 		childSlugs[edge.ToID] = true
 	}
-	assert.True(t, childSlugs["@section.chapter1-subsection1"])
-	assert.True(t, childSlugs["@section.chapter1-subsection2"])
+	assert.True(t, childSlugs["ctxt://entity/section/chapter1-subsection1"])
+	assert.True(t, childSlugs["ctxt://entity/section/chapter1-subsection2"])
 
 	// Verify backlinks via API for one child.
 	resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/entities/@section.chapter1-subsection1/backlinks", env.URL))

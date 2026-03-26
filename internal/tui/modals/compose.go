@@ -65,8 +65,16 @@ func (m *ComposeModal) Open() {
 // IsActive reports whether the modal is currently open.
 func (m *ComposeModal) IsActive() bool { return m.active }
 
-// SetType sets the selected composition type (useful in tests).
-func (m *ComposeModal) SetType(t string) { m.compType = t }
+// SetType sets the selected composition type and syncs the list selection.
+func (m *ComposeModal) SetType(t string) {
+	m.compType = t
+	for i, ct := range compositionTypes {
+		if ct == t {
+			m.typeList.Select(i)
+			return
+		}
+	}
+}
 
 // Submit closes the modal and returns a tea.Cmd that fires ComposeResultMsg.
 func (m *ComposeModal) Submit() tea.Cmd {

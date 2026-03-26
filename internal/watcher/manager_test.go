@@ -134,10 +134,11 @@ func TestWatchLoop_DeleteFile_CallsDeleteObject(t *testing.T) {
 	driver.Watches().CreateWatch(ctx, cfg)
 
 	// Pre-seed a file record so the watcher knows the object ID to delete.
+	// ContentHash matches "# Hello" so processFile skips it (no re-ingest).
 	notePath := filepath.Join(dir, "note.md")
 	driver.Watches().UpsertFileRecord(ctx, &storage.WatchFileRecord{
 		WatchID: "w1", FilePath: notePath,
-		ObjectID: "obj-123", ContentHash: "abc",
+		ObjectID: "obj-123", ContentHash: "01c8de44e04d2f7a304f50963545a2aff58c33e9c44a1f33fdcb978fb224cb74",
 		LastSeen: time.Now(),
 	})
 
