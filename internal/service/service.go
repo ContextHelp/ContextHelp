@@ -23,6 +23,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/plugin"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
+	"github.com/ideacrafterslabs/ctxt/internal/ranking"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -1211,10 +1212,10 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 		vecRes.results = nil
 	}
 
-	// Per-signal score maps (keyed by object ID).
-	ftsScores    := map[string]float64{}
-	vecScores    := map[string]float64{}
-	byID         := map[string]*storage.KnowledgeObject{}
+	// Build per-leg RRF scores and collect candidates for the reranker.
+	ftsScores := map[string]float64{}
+	vecScores  := map[string]float64{}
+	byID       := map[string]*storage.KnowledgeObject{}
 
 	addLeg := func(results []*storage.KnowledgeObject, weight float64, dest map[string]float64) {
 		for rank, obj := range results {
@@ -1226,93 +1227,48 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 	addLeg(ftsRes.results, cfg.RRF.FTSWeight, ftsScores)
 	addLeg(vecRes.results, cfg.RRF.VectorWeight, vecScores)
 
-	// --- mention + entity proximity signals ---
-	// mentionBoost: normalize outbound mention count (0..1) → small additive bonus.
-	// backlink depth: direct inbound edges score higher than 2-hop connections.
-	//
-	// Weight constants (not configurable yet; kept small to preserve RRF ordering).
-	const (
-		mentionBoostWeight = 0.05 // per outbound mention (capped at 1.0 total)
-		directBacklinkW    = 0.08 // direct inbound edge (depth-1)
-		hopBacklinkW       = 0.03 // 2-hop connection (depth-2)
-	)
-
-	mentionScores := map[string]float64{}
-	graphScores   := map[string]float64{}
-
-	// Collect direct-backlink counts for all candidates (single round-trip each).
-	// 2-hop: objects that share at least one entity with a direct-backlink neighbour.
-	directNeighbours := map[string]struct{}{} // IDs of objects with ≥1 direct inbound edge
-
+	// Build candidate map for the reranker.
+	candidates := make(map[string]ranking.Candidate, len(byID))
 	for id, obj := range byID {
-		// Outbound mention count bonus.
-		if n := len(obj.Mentions); n > 0 {
-			bonus := float64(n) * mentionBoostWeight
-			if bonus > 1.0 {
-				bonus = 1.0
-			}
-			mentionScores[id] = bonus
-		}
-
-		// Inbound mention count (backlinks to this object as an entity target).
-		inbound, err := s.Store.Edges().CountMentionsTo(ctx, "object", id)
-		if err == nil && inbound > 0 {
-			graphScores[id] += directBacklinkW
-			directNeighbours[id] = struct{}{}
+		candidates[id] = ranking.Candidate{
+			Object:   obj,
+			FTSScore: ftsScores[id],
+			VecScore: vecScores[id],
 		}
 	}
 
-	// 2-hop boost: candidates whose outbound mentions overlap with a direct neighbour's mentions.
-	if len(directNeighbours) > 0 {
-		// Build entity URI set for all direct neighbours.
-		neighbourEntitySet := map[string]struct{}{}
-		for id := range directNeighbours {
-			for _, m := range byID[id].Mentions {
-				neighbourEntitySet[m.String()] = struct{}{}
-			}
-		}
-		// Boost non-direct candidates sharing an entity URI.
-		for id, obj := range byID {
-			if _, isDirect := directNeighbours[id]; isDirect {
-				continue
-			}
-			for _, m := range obj.Mentions {
-				if _, shared := neighbourEntitySet[m.String()]; shared {
-					graphScores[id] += hopBacklinkW
-					break
-				}
-			}
-		}
+	// Resolve reranker weight config (fall back to package defaults when zero).
+	rc := cfg.Reranker
+	weights := ranking.WeightConfig{
+		MentionBoost:    rc.MentionBoostPerMention,
+		MaxMentionBoost: rc.MaxMentionBoost,
+		DirectBacklink:  rc.DirectBacklinkBoost,
+		HopBacklink:     rc.HopBacklinkBoost,
 	}
-	// --- end signals ---
+	if weights.MentionBoost == 0 {
+		weights = ranking.DefaultWeights()
+	}
 
-	type scored struct {
-		id    string
-		total float64
+	reranker := ranking.New(s.Store.Edges(), weights)
+	ranked, err := reranker.Rerank(ctx, candidates, cfg.MinScore)
+	if err != nil {
+		return nil, fmt.Errorf("hybrid search rerank: %w", err)
 	}
-	var merged []scored
-	for id := range byID {
-		total := ftsScores[id] + vecScores[id] + mentionScores[id] + graphScores[id]
-		if total >= cfg.MinScore {
-			merged = append(merged, scored{id, total})
-		}
-	}
-	sort.Slice(merged, func(i, j int) bool { return merged[i].total > merged[j].total })
 
-	if limit > len(merged) {
-		limit = len(merged)
+	if limit > len(ranked) {
+		limit = len(ranked)
 	}
 	out := make([]HybridResult, limit)
 	for i := 0; i < limit; i++ {
-		id := merged[i].id
+		r := ranked[i]
 		out[i] = HybridResult{
-			Object: byID[id],
+			Object: r.Object,
 			Breakdown: ScoreBreakdown{
-				FTS:            ftsScores[id],
-				Vector:         vecScores[id],
-				MentionBoost:   mentionScores[id],
-				GraphRelevance: graphScores[id],
-				Total:          merged[i].total,
+				FTS:            r.FTS,
+				Vector:         r.Vector,
+				MentionBoost:   r.MentionBoost,
+				GraphRelevance: r.GraphRelevance,
+				Total:          r.Total,
 			},
 		}
 	}

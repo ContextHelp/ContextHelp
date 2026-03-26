@@ -186,6 +186,26 @@ type SearchConfig struct {
 	// FallbackToFTS controls behaviour when embedding provider is unavailable.
 	// If true (default), hybrid degrades to FTS-only. If false, returns error.
 	FallbackToFTS bool `mapstructure:"fallback_to_fts" yaml:"fallback_to_fts"`
+
+	// Reranker controls signal weights applied after RRF merge.
+	Reranker RerankerConfig `mapstructure:"reranker" yaml:"reranker"`
+}
+
+// RerankerConfig holds pluggable weight constants for the default Reranker.
+// All values are additive bonuses on top of the RRF score.
+type RerankerConfig struct {
+	// MentionBoostPerMention is added per outbound mention on a result.
+	// Default: 0.05.
+	MentionBoostPerMention float64 `mapstructure:"mention_boost_per_mention" yaml:"mention_boost_per_mention"`
+	// MaxMentionBoost is the ceiling for the total outbound mention bonus.
+	// Default: 1.0.
+	MaxMentionBoost float64 `mapstructure:"max_mention_boost" yaml:"max_mention_boost"`
+	// DirectBacklinkBoost is applied when a result has ≥1 direct inbound edge.
+	// Default: 0.08.
+	DirectBacklinkBoost float64 `mapstructure:"direct_backlink_boost" yaml:"direct_backlink_boost"`
+	// HopBacklinkBoost is applied for 2-hop entity proximity connections.
+	// Default: 0.03.
+	HopBacklinkBoost float64 `mapstructure:"hop_backlink_boost" yaml:"hop_backlink_boost"`
 }
 
 // RRFConfig controls Reciprocal Rank Fusion parameters.
@@ -541,6 +561,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("search.candidate_pool.vector", 50)
 	v.SetDefault("search.min_score", 0.0)
 	v.SetDefault("search.fallback_to_fts", true)
+
+	// Reranker signal weight defaults.
+	v.SetDefault("search.reranker.mention_boost_per_mention", 0.05)
+	v.SetDefault("search.reranker.max_mention_boost", 1.0)
+	v.SetDefault("search.reranker.direct_backlink_boost", 0.08)
+	v.SetDefault("search.reranker.hop_backlink_boost", 0.03)
 
 	// Privacy defaults — telemetry off by default (local-first)
 	v.SetDefault("privacy.telemetry", false)
