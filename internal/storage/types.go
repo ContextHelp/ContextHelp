@@ -203,13 +203,34 @@ type StepMetadata struct {
 	SupportedLangs []string       `json:"supported_languages,omitempty"`
 }
 
+// RegistryCapabilities declares optional features supported by a registry.
+// Used in the capability handshake to warn clients before using unsupported features.
+type RegistryCapabilities struct {
+	EntitySync   bool `json:"entity_sync"`   // registry exposes /entities/index
+	Taxonomy     bool `json:"taxonomy"`      // registry exposes /taxonomy
+	Translations bool `json:"translations"`  // registry includes i18n labels/descriptions
+}
+
 // RegistryManifest represents a registry's step manifest.
 type RegistryManifest struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Version     string         `json:"version"`
-	Steps       []ManifestStep `json:"steps"`
-	Supports    map[string]any `json:"supports,omitempty"`
+	Name             string               `json:"name"`
+	Description      string               `json:"description"`
+	Version          string               `json:"version"`
+	MinClientVersion string               `json:"min_client_version,omitempty"`
+	Capabilities     RegistryCapabilities `json:"capabilities,omitempty"`
+	Steps            []ManifestStep       `json:"steps"`
+	Supports         map[string]any       `json:"supports,omitempty"`
+	// Taxonomy is the embedded namespace list (used by the default bundled registry).
+	Taxonomy []RegistryTaxonomyEntry `json:"taxonomy,omitempty"`
+}
+
+// RegistryTaxonomyEntry is a localised namespace/tag node in a registry manifest.
+type RegistryTaxonomyEntry struct {
+	Namespace    string            `json:"namespace"`
+	Title        string            `json:"title"`
+	Description  string            `json:"description"`
+	Labels       map[string]string `json:"labels,omitempty"`       // locale → label
+	Descriptions map[string]string `json:"descriptions,omitempty"` // locale → description
 }
 
 // ManifestStep describes a step available in a registry.
