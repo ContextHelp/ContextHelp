@@ -363,6 +363,7 @@ func ConfiguredRegistryWithPipelineOverrides(
 		}
 	}
 
+	r.RegisterDetector(GitHubPRDetector())
 	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {
 		return selectPipeline(selectors, content)
 	}))
@@ -384,6 +385,7 @@ func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 		}
 	}
 
+	r.RegisterDetector(GitHubPRDetector())
 	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {
 		return selectPipeline(selectors, content)
 	}))
