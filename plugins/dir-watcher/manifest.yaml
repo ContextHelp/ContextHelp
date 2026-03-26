@@ -1,0 +1,9 @@
+apiVersion: v1
+name: dir-watcher
+version: 1.0.0
+description: >
+  Directory watcher (file drop) — polls a directory for new files and emits
+  each new file as a KnowledgeObject via the event bus.
+permissions:
+  - filesystem
+  - write_objects
