@@ -27,9 +27,10 @@ func (m *mockDriver) Detectors() DetectorStore         { return &mockDetectorSto
 func (m *mockDriver) Blobs() BlobStore                    { return &mockBlobStore{} }
 func (m *mockDriver) Proximity() ProximityStore            { return &mockProximityStore{} }
 func (m *mockDriver) Watches() WatchStore                  { return &mockWatchStore{} }
-func (m *mockDriver) Aliases() AliasStore                  { return &mockAliasStore{} }
-func (m *mockDriver) AuditLog() AuditStore                 { return &mockAuditLogStore{} }
-func (m *mockDriver) Health(ctx context.Context) error    { return nil }
+func (m *mockDriver) Aliases() AliasStore                      { return &mockAliasStore{} }
+func (m *mockDriver) AuditLog() AuditStore                     { return &mockAuditLogStore{} }
+func (m *mockDriver) Attachments() AttachmentStore             { return &mockAttachmentStore{} }
+func (m *mockDriver) Health(ctx context.Context) error         { return nil }
 
 type mockBlobStore struct{}
 
@@ -331,3 +332,16 @@ func (m *mockAuditLogStore) List(_ context.Context, _ AuditFilter) ([]*AuditEntr
 func (m *mockAuditLogStore) GetObjectHistory(_ context.Context, _ string) ([]*AuditEntry, error) {
 	return nil, nil
 }
+
+type mockAttachmentStore struct{}
+
+func (m *mockAttachmentStore) SaveAttachment(_ context.Context, _, _, _ string, _ []byte) (string, error) {
+	return "", nil
+}
+func (m *mockAttachmentStore) GetAttachment(_ context.Context, _ string) (*Attachment, error) {
+	return nil, nil
+}
+func (m *mockAttachmentStore) ListAttachments(_ context.Context, _ string) ([]Attachment, error) {
+	return nil, nil
+}
+func (m *mockAttachmentStore) DeleteAttachment(_ context.Context, _ string) error { return nil }
