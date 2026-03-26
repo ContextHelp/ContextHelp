@@ -202,6 +202,28 @@ Add `govulncheck` + `nancy` to CI; block merges on CRITICAL/HIGH findings.
 5. CRITICAL (CVSS ≥ 9.0) or HIGH (CVSS ≥ 7.0) suppressions need maintainer
    sign-off in the tracking issue.
 
+### Task 3c.4: Container Security Scanning (Trivy)
+
+Integrate trivy image scanning into CI and release pipeline.
+
+Scope:
+
+- **PR gate** — trivy config scan on `Dockerfile` for misconfigs; fail on CRITICAL
+- **PR gate** — trivy filesystem scan on source tree; fail on CRITICAL (unfixed only)
+- **Nightly cron** — trivy image scan of `ghcr.io/.../ctxt-dpkms:latest` for new CVEs;
+  fail nightly job on CRITICAL findings; upload SARIF to GitHub Security tab
+- **Release gate** — `trivy-release-gate` job must pass before `goreleaser` runs;
+  blocks publish on CRITICAL Dockerfile misconfigs or source CVEs
+- **Local** — `make trivy-scan` runs config + image scan (image optional if not built)
+
+Files:
+
+- `.github/workflows/trivy.yml` — standalone workflow (PR + nightly jobs)
+- `.github/workflows/release.yml` — `trivy-release-gate` job added as `needs` dep
+- `Makefile` — `trivy-scan` target
+
+SARIF results surface in **Security → Code scanning alerts** tab on GitHub.
+
 ---
 
 ## 4. dPKMS Registry Team (The Teacher)
