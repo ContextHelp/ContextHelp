@@ -1,0 +1,133 @@
+{
+  "name": "ContextHelp Default",
+  "description": "Bundled taxonomy of common namespaces shipped with ctxt.",
+  "version": "1.0.0",
+  "min_client_version": "0.1.0",
+  "capabilities": {
+    "entity_sync": false,
+    "taxonomy": true,
+    "translations": true
+  },
+  "taxonomy": [
+    {
+      "namespace": "tech",
+      "title": "Technology",
+      "description": "Software, hardware, and infrastructure concepts.",
+      "labels": { "en": "Technology", "fr": "Technologie", "es": "Tecnología", "de": "Technologie" },
+      "descriptions": {
+        "en": "Software, hardware, and infrastructure concepts.",
+        "fr": "Concepts logiciels, matériels et d'infrastructure.",
+        "es": "Conceptos de software, hardware e infraestructura.",
+        "de": "Software-, Hardware- und Infrastrukturkonzepte."
+      }
+    },
+    {
+      "namespace": "lang",
+      "title": "Programming Language",
+      "description": "Programming and markup languages.",
+      "labels": { "en": "Programming Language", "fr": "Langage de programmation", "es": "Lenguaje de programación", "de": "Programmiersprache" },
+      "descriptions": {
+        "en": "Programming and markup languages.",
+        "fr": "Langages de programmation et de balisage.",
+        "es": "Lenguajes de programación y marcado.",
+        "de": "Programmier- und Auszeichnungssprachen."
+      }
+    },
+    {
+      "namespace": "tool",
+      "title": "Tool",
+      "description": "Developer tools, CLIs, IDEs, and utilities.",
+      "labels": { "en": "Tool", "fr": "Outil", "es": "Herramienta", "de": "Werkzeug" },
+      "descriptions": {
+        "en": "Developer tools, CLIs, IDEs, and utilities.",
+        "fr": "Outils de développement, CLI, IDE et utilitaires.",
+        "es": "Herramientas de desarrollador, CLI, IDE y utilidades.",
+        "de": "Entwicklerwerkzeuge, CLIs, IDEs und Hilfsprogramme."
+      }
+    },
+    {
+      "namespace": "person",
+      "title": "Person",
+      "description": "Named individuals relevant to knowledge objects.",
+      "labels": { "en": "Person", "fr": "Personne", "es": "Persona", "de": "Person" },
+      "descriptions": {
+        "en": "Named individuals relevant to knowledge objects.",
+        "fr": "Individus nommés pertinents aux objets de connaissance.",
+        "es": "Individuos nombrados relevantes para los objetos de conocimiento.",
+        "de": "Benannte Personen, die für Wissensobjekte relevant sind."
+      }
+    },
+    {
+      "namespace": "org",
+      "title": "Organization",
+      "description": "Companies, projects, and institutions.",
+      "labels": { "en": "Organization", "fr": "Organisation", "es": "Organización", "de": "Organisation" },
+      "descriptions": {
+        "en": "Companies, projects, and institutions.",
+        "fr": "Entreprises, projets et institutions.",
+        "es": "Empresas, proyectos e instituciones.",
+        "de": "Unternehmen, Projekte und Institutionen."
+      }
+    },
+    {
+      "namespace": "project",
+      "title": "Project",
+      "description": "Named efforts, initiatives, or codebases.",
+      "labels": { "en": "Project", "fr": "Projet", "es": "Proyecto", "de": "Projekt" },
+      "descriptions": {
+        "en": "Named efforts, initiatives, or codebases.",
+        "fr": "Efforts nommés, initiatives ou bases de code.",
+        "es": "Esfuerzos nombrados, iniciativas o bases de código.",
+        "de": "Benannte Bemühungen, Initiativen oder Codebasen."
+      }
+    },
+    {
+      "namespace": "ui",
+      "title": "UI / UX",
+      "description": "Interface patterns, accessibility, and design systems.",
+      "labels": { "en": "UI / UX", "fr": "Interface", "es": "Interfaz", "de": "Oberfläche" },
+      "descriptions": {
+        "en": "Interface patterns, accessibility, and design systems.",
+        "fr": "Modèles d'interface, accessibilité et systèmes de conception.",
+        "es": "Patrones de interfaz, accesibilidad y sistemas de diseño.",
+        "de": "Schnittstellenmuster, Barrierefreiheit und Designsysteme."
+      }
+    },
+    {
+      "namespace": "workflow",
+      "title": "Workflow",
+      "description": "Processes, pipelines, and repeatable procedures.",
+      "labels": { "en": "Workflow", "fr": "Flux de travail", "es": "Flujo de trabajo", "de": "Arbeitsablauf" },
+      "descriptions": {
+        "en": "Processes, pipelines, and repeatable procedures.",
+        "fr": "Processus, pipelines et procédures répétables.",
+        "es": "Procesos, tuberías y procedimientos repetibles.",
+        "de": "Prozesse, Pipelines und wiederholbare Verfahren."
+      }
+    },
+    {
+      "namespace": "content",
+      "title": "Content",
+      "description": "Strategies, formats, and media types for knowledge content.",
+      "labels": { "en": "Content", "fr": "Contenu", "es": "Contenido", "de": "Inhalt" },
+      "descriptions": {
+        "en": "Strategies, formats, and media types for knowledge content.",
+        "fr": "Stratégies, formats et types de médias pour le contenu.",
+        "es": "Estrategias, formatos y tipos de medios para el contenido.",
+        "de": "Strategien, Formate und Medientypen für Wissensinhalte."
+      }
+    },
+    {
+      "namespace": "concept",
+      "title": "Concept",
+      "description": "Abstract ideas, paradigms, and theoretical constructs.",
+      "labels": { "en": "Concept", "fr": "Concept", "es": "Concepto", "de": "Konzept" },
+      "descriptions": {
+        "en": "Abstract ideas, paradigms, and theoretical constructs.",
+        "fr": "Idées abstraites, paradigmes et constructions théoriques.",
+        "es": "Ideas abstractas, paradigmas y construcciones teóricas.",
+        "de": "Abstrakte Ideen, Paradigmen und theoretische Konstrukte."
+      }
+    }
+  ]
+}

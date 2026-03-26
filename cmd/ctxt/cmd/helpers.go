@@ -65,6 +65,12 @@ func newService() (*service.Service, func(), error) {
 
 	svc := service.New(driver, queue, pipes, engine, "", nil, *cfg)
 	cleanup := func() { driver.Close(context.Background()) }
+
+	// Ensure bundled default registry is always present in the cache.
+	if err := svc.EnsureDefaultRegistry(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load default registry: %v\n", err)
+	}
+
 	return svc, cleanup, nil
 }
 

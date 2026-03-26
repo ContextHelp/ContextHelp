@@ -88,6 +88,18 @@ var registrySubmitCmd = &cobra.Command{
 	RunE:  runRegistrySubmit,
 }
 
+var registryCapabilitiesCmd = &cobra.Command{
+	Use:   "capabilities <name>",
+	Short: "Show capability handshake for a registry",
+	Long: `Show what features a registry supports and whether the client version is compatible.
+
+Examples:
+  ctxt registry capabilities default
+  ctxt registry capabilities uxpatterns`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistryCapabilities,
+}
+
 var registryLoginCmd = &cobra.Command{
 	Use:   "login <name>",
 	Short: "Store an auth token for a registry in the OS keychain",
@@ -123,6 +135,7 @@ func init() {
 	registryCmd.AddCommand(registrySubmitCmd)
 	registryCmd.AddCommand(registryLoginCmd)
 	registryCmd.AddCommand(registryLogoutCmd)
+	registryCmd.AddCommand(registryCapabilitiesCmd)
 
 	// Flags for sync subcommand
 	registrySyncCmd.Flags().Bool("dry-run", false,
@@ -471,6 +484,121 @@ func registryExistsInConfig(name string) bool {
 		}
 	}
 	return false
+}
+
+// runRegistryCapabilities fetches the cached manifest for name and runs the
+// capability handshake, printing any version or feature warnings.
+func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
+	name := args[0]
+
+	// Resolve URL: "default" maps to the bundled sentinel URL.
+	registryURL := registry.DefaultRegistryURL
+	if name != "default" {
+		for _, r := range cfg.Registries {
+			if r.Name == name {
+				registryURL = r.URL
+				break
+			}
+		}
+		if registryURL == registry.DefaultRegistryURL {
+			return fmt.Errorf("registry %q not found in config", name)
+		}
+	}
+
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+	warnings, err := svc.CheckRegistryCapabilities(ctx, registryURL, version,
+		"entity_sync", "taxonomy", "translations",
+	)
+	if err != nil {
+		return fmt.Errorf("capability check: %w", err)
+	}
+
+	cache, err := svc.Store.Registries().GetCachedManifest(ctx, registryURL)
+	if err != nil {
+		return fmt.Errorf("get registry: %w", err)
+	}
+
+	type capResult struct {
+		Name         string            `json:"name"`
+		URL          string            `json:"url"`
+		Version      string            `json:"version"`
+		MinClient    string            `json:"min_client_version,omitempty"`
+		Capabilities map[string]bool   `json:"capabilities"`
+		Warnings     []map[string]string `json:"warnings,omitempty"`
+	}
+
+	var caps map[string]bool
+	var mVersion, mMinClient string
+	if cache.Manifest != nil {
+		caps = map[string]bool{
+			"entity_sync":  cache.Manifest.Capabilities.EntitySync,
+			"taxonomy":     cache.Manifest.Capabilities.Taxonomy,
+			"translations": cache.Manifest.Capabilities.Translations,
+		}
+		mVersion = cache.Manifest.Version
+		mMinClient = cache.Manifest.MinClientVersion
+	}
+
+	var warnMaps []map[string]string
+	for _, w := range warnings {
+		warnMaps = append(warnMaps, map[string]string{
+			"feature": w.Feature,
+			"message": w.Message,
+		})
+	}
+
+	result := capResult{
+		Name:         name,
+		URL:          registryURL,
+		Version:      mVersion,
+		MinClient:    mMinClient,
+		Capabilities: caps,
+		Warnings:     warnMaps,
+	}
+
+	if isJSONOutput() {
+		return outputJSON(cmd.OutOrStdout(), result)
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Registry: %s\n", name)
+	fmt.Fprintf(cmd.OutOrStdout(), "URL:      %s\n", registryURL)
+	if mVersion != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "Version:  %s\n", mVersion)
+	}
+	if mMinClient != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "Requires ctxt >= %s\n", mMinClient)
+	}
+	fmt.Fprintln(cmd.OutOrStdout())
+
+	if len(caps) > 0 {
+		headers := []string{"Capability", "Supported"}
+		var rows [][]string
+		for _, k := range []string{"entity_sync", "taxonomy", "translations"} {
+			v := "no"
+			if caps[k] {
+				v = "yes"
+			}
+			rows = append(rows, []string{k, v})
+		}
+		printTable(cmd.OutOrStdout(), headers, rows)
+	}
+
+	if len(warnings) > 0 {
+		fmt.Fprintln(cmd.OutOrStdout())
+		fmt.Fprintln(cmd.OutOrStdout(), "Warnings:")
+		for _, w := range warnings {
+			fmt.Fprintf(cmd.OutOrStdout(), "  [%s] %s\n", w.Feature, w.Message)
+		}
+	} else {
+		fmt.Fprintln(cmd.OutOrStdout(), "\nNo capability warnings.")
+	}
+	return nil
 }
 
 // readToken prompts the user for a token read from stdin.

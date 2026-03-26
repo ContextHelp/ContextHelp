@@ -1183,6 +1183,44 @@ func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep 
 	return out, nil
 }
 
+// EnsureDefaultRegistry caches the bundled default registry manifest if no cache entry
+// exists for DefaultRegistryURL yet. Safe to call on every startup; idempotent.
+func (s *Service) EnsureDefaultRegistry(ctx context.Context) error {
+	_, err := s.Store.Registries().GetCachedManifest(ctx, registrysync.DefaultRegistryURL)
+	if err == nil {
+		return nil // already cached
+	}
+
+	cache, err := registrysync.DefaultRegistryCache()
+	if err != nil {
+		return fmt.Errorf("load default registry: %w", err)
+	}
+	if err := s.Store.Registries().CacheManifest(ctx, cache); err != nil {
+		return fmt.Errorf("cache default registry: %w", err)
+	}
+	return nil
+}
+
+// CheckRegistryCapabilities returns capability warnings for the named registry.
+// clientVersion should be the running ctxt version (e.g. "0.5.0" or "dev").
+// requiredFeatures is a subset of: "entity_sync", "taxonomy", "translations".
+func (s *Service) CheckRegistryCapabilities(
+	ctx context.Context,
+	registryURL string,
+	clientVersion string,
+	requiredFeatures ...string,
+) ([]registrysync.CapabilityWarning, error) {
+	cache, err := s.Store.Registries().GetCachedManifest(ctx, registryURL)
+	if err != nil {
+		return nil, fmt.Errorf("get registry manifest: %w", err)
+	}
+	if cache.Manifest == nil {
+		return nil, nil
+	}
+	warnings := registrysync.CheckCapabilities(cache.Manifest, clientVersion, requiredFeatures...)
+	return warnings, nil
+}
+
 func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error) {
 	var steps []map[string]any
 	if err := json.Unmarshal([]byte(stepsJSON), &steps); err != nil {
