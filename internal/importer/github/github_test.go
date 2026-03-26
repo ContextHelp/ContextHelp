@@ -29,7 +29,7 @@ func serveJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// TestStarredPagination tests that the importer follows Link-header pagination
+// TestStarredPagination tests that the client follows Link-header pagination
 // for the starred list endpoint.
 func TestStarredPagination(t *testing.T) {
 	page1 := makeRepos("user/repo-a", "user/repo-b")
@@ -51,19 +51,13 @@ func TestStarredPagination(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	imp, err := New(Config{
-		Token:    "fake-token",
+	client := NewClient(nil, srv.URL, "fake-token")
+	repos, err := client.Fetch(context.Background(), FetchOptions{
 		Username: "testuser",
-		Lists:    []string{ListStarred},
-		BaseURL:  srv.URL,
+		Lists:    []ListType{ListStarred},
 	})
 	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	repos, err := imp.Import(context.Background())
-	if err != nil {
-		t.Fatalf("Import: %v", err)
+		t.Fatalf("Fetch: %v", err)
 	}
 	if len(repos) != 3 {
 		t.Fatalf("expected 3 repos, got %d", len(repos))
@@ -95,19 +89,13 @@ func TestDeduplication(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	imp, err := New(Config{
-		Token:    "fake-token",
+	client := NewClient(nil, srv.URL, "fake-token")
+	repos, err := client.Fetch(context.Background(), FetchOptions{
 		Username: "testuser",
-		Lists:    []string{ListStarred, ListWatched},
-		BaseURL:  srv.URL,
+		Lists:    []ListType{ListStarred, ListWatched},
 	})
 	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	repos, err := imp.Import(context.Background())
-	if err != nil {
-		t.Fatalf("Import: %v", err)
+		t.Fatalf("Fetch: %v", err)
 	}
 
 	seen := make(map[string]int)
@@ -129,22 +117,7 @@ func TestDeduplication(t *testing.T) {
 	}
 }
 
-// TestMissingTokenReturnsError checks that New returns an error with no token.
-func TestMissingTokenReturnsError(t *testing.T) {
-	// Ensure env var is not set.
-	orig := os.Getenv("GITHUB_TOKEN")
-	_ = os.Unsetenv("GITHUB_TOKEN")
-	defer func() { _ = os.Setenv("GITHUB_TOKEN", orig) }()
-
-	_, err := New(Config{
-		Username: "testuser",
-	})
-	if err == nil {
-		t.Fatal("expected error when token is missing, got nil")
-	}
-}
-
-// TestTokenFallbackFromEnv checks that GITHUB_TOKEN env is used when cfg.Token is empty.
+// TestTokenFallbackFromEnv checks that GITHUB_TOKEN env is used when token is empty.
 func TestTokenFallbackFromEnv(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer env-token" {
@@ -155,21 +128,23 @@ func TestTokenFallbackFromEnv(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	orig := os.Getenv("GITHUB_TOKEN")
 	_ = os.Setenv("GITHUB_TOKEN", "env-token")
-	defer os.Unsetenv("GITHUB_TOKEN")
+	defer func() {
+		if orig != "" {
+			_ = os.Setenv("GITHUB_TOKEN", orig)
+		} else {
+			_ = os.Unsetenv("GITHUB_TOKEN")
+		}
+	}()
 
-	imp, err := New(Config{
+	client := NewClient(nil, srv.URL, "")
+	repos, err := client.Fetch(context.Background(), FetchOptions{
 		Username: "testuser",
-		Lists:    []string{ListStarred},
-		BaseURL:  srv.URL,
+		Lists:    []ListType{ListStarred},
 	})
 	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	repos, err := imp.Import(context.Background())
-	if err != nil {
-		t.Fatalf("Import: %v", err)
+		t.Fatalf("Fetch: %v", err)
 	}
 	if len(repos) != 0 {
 		t.Errorf("expected 0 repos, got %d", len(repos))
@@ -189,19 +164,13 @@ func TestContributedSearch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	imp, err := New(Config{
-		Token:    "fake-token",
+	client := NewClient(nil, srv.URL, "fake-token")
+	repos, err := client.Fetch(context.Background(), FetchOptions{
 		Username: "testuser",
-		Lists:    []string{ListContributed},
-		BaseURL:  srv.URL,
+		Lists:    []ListType{ListContributed},
 	})
 	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	repos, err := imp.Import(context.Background())
-	if err != nil {
-		t.Fatalf("Import: %v", err)
+		t.Fatalf("Fetch: %v", err)
 	}
 	if len(repos) != 2 {
 		t.Fatalf("expected 2 repos, got %d", len(repos))

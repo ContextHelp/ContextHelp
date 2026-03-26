@@ -26,12 +26,12 @@ type apiSearchResult struct {
 }
 
 // fetchPaginated follows Link-header pagination for list endpoints.
-func (g *GitHubImporter) fetchPaginated(ctx context.Context, firstURL string, source string) ([]ImportedRepo, error) {
+func (c *Client) fetchPaginated(ctx context.Context, firstURL string, source ListType) ([]ImportedRepo, error) {
 	var repos []ImportedRepo
 	url := firstURL
 
 	for url != "" {
-		raw, nextURL, err := g.getPage(ctx, url)
+		raw, nextURL, err := c.getPage(ctx, url)
 		if err != nil {
 			return nil, fmt.Errorf("fetch %s: %w", source, err)
 		}
@@ -49,12 +49,12 @@ func (g *GitHubImporter) fetchPaginated(ctx context.Context, firstURL string, so
 }
 
 // fetchSearchPaginated follows Link-header pagination for the search endpoint.
-func (g *GitHubImporter) fetchSearchPaginated(ctx context.Context, firstURL string, source string) ([]ImportedRepo, error) {
+func (c *Client) fetchSearchPaginated(ctx context.Context, firstURL string, source ListType) ([]ImportedRepo, error) {
 	var repos []ImportedRepo
 	url := firstURL
 
 	for url != "" {
-		raw, nextURL, err := g.getPage(ctx, url)
+		raw, nextURL, err := c.getPage(ctx, url)
 		if err != nil {
 			return nil, fmt.Errorf("fetch %s: %w", source, err)
 		}
@@ -72,16 +72,18 @@ func (g *GitHubImporter) fetchSearchPaginated(ctx context.Context, firstURL stri
 }
 
 // getPage performs a single GET, handles rate limiting, and returns (body, nextURL, error).
-func (g *GitHubImporter) getPage(ctx context.Context, url string) ([]byte, string, error) {
+func (c *Client) getPage(ctx context.Context, url string) ([]byte, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+g.cfg.Token)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := g.client.Do(req)
+	resp, err := c.hc.Do(req)
 	if err != nil {
 		return nil, "", err
 	}
@@ -100,7 +102,7 @@ func (g *GitHubImporter) getPage(ctx context.Context, url string) ([]byte, strin
 					case <-time.After(wait):
 					}
 					// Retry the same page after sleeping.
-					return g.getPage(ctx, url)
+					return c.getPage(ctx, url)
 				}
 			}
 		}
@@ -144,7 +146,7 @@ func parseLinkNext(header string) string {
 }
 
 // toImported converts an apiRepo to an ImportedRepo.
-func toImported(r apiRepo, source string) ImportedRepo {
+func toImported(r apiRepo, source ListType) ImportedRepo {
 	return ImportedRepo{
 		URL:         r.HTMLURL,
 		FullName:    r.FullName,
