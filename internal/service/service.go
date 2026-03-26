@@ -1086,6 +1086,25 @@ func (s *Service) SemanticSearch(ctx context.Context, query string, limit int, e
 // If ep is nil and cfg.FallbackToFTS is true, degrades to FTS-only.
 // If ep is nil and cfg.FallbackToFTS is false, returns an error.
 func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]*storage.KnowledgeObject, error) {
+	results, err := s.HybridSearchExplain(ctx, query, limit, ep, cfg)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*storage.KnowledgeObject, len(results))
+	for i, r := range results {
+		obj := r.Object
+		if obj.Metadata == nil {
+			obj.Metadata = make(map[string]any)
+		}
+		obj.Metadata["rrf_score"] = r.Breakdown.Total
+		out[i] = obj
+	}
+	return out, nil
+}
+
+// HybridSearchExplain is like HybridSearch but returns per-result score breakdowns
+// so callers can explain why each result ranked where it did.
+func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]HybridResult, error) {
 	k := cfg.RRF.K
 	if k <= 0 {
 		k = 60
@@ -1144,18 +1163,20 @@ func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep 
 		vecRes.results = nil
 	}
 
-	scores := map[string]float64{}
-	byID := map[string]*storage.KnowledgeObject{}
+	// Per-signal score maps (keyed by object ID).
+	ftsScores    := map[string]float64{}
+	vecScores    := map[string]float64{}
+	byID         := map[string]*storage.KnowledgeObject{}
 
-	addLeg := func(results []*storage.KnowledgeObject, weight float64) {
+	addLeg := func(results []*storage.KnowledgeObject, weight float64, dest map[string]float64) {
 		for rank, obj := range results {
-			scores[obj.ID] += weight * (1.0 / float64(k+rank+1))
+			dest[obj.ID] += weight * (1.0 / float64(k+rank+1))
 			byID[obj.ID] = obj
 		}
 	}
 
-	addLeg(ftsRes.results, cfg.RRF.FTSWeight)
-	addLeg(vecRes.results, cfg.RRF.VectorWeight)
+	addLeg(ftsRes.results, cfg.RRF.FTSWeight, ftsScores)
+	addLeg(vecRes.results, cfg.RRF.VectorWeight, vecScores)
 
 	// --- mention + entity proximity signals ---
 	// mentionBoost: normalize outbound mention count (0..1) → small additive bonus.
@@ -1163,10 +1184,13 @@ func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep 
 	//
 	// Weight constants (not configurable yet; kept small to preserve RRF ordering).
 	const (
-		mentionBoostWeight = 0.05  // per outbound mention (capped at 1.0 total)
-		directBacklinkW    = 0.08  // direct inbound edge (depth-1)
-		hopBacklinkW       = 0.03  // 2-hop connection (depth-2)
+		mentionBoostWeight = 0.05 // per outbound mention (capped at 1.0 total)
+		directBacklinkW    = 0.08 // direct inbound edge (depth-1)
+		hopBacklinkW       = 0.03 // 2-hop connection (depth-2)
 	)
+
+	mentionScores := map[string]float64{}
+	graphScores   := map[string]float64{}
 
 	// Collect direct-backlink counts for all candidates (single round-trip each).
 	// 2-hop: objects that share at least one entity with a direct-backlink neighbour.
@@ -1179,13 +1203,13 @@ func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep 
 			if bonus > 1.0 {
 				bonus = 1.0
 			}
-			scores[id] += bonus
+			mentionScores[id] = bonus
 		}
 
 		// Inbound mention count (backlinks to this object as an entity target).
 		inbound, err := s.Store.Edges().CountMentionsTo(ctx, "object", id)
 		if err == nil && inbound > 0 {
-			scores[id] += directBacklinkW
+			graphScores[id] += directBacklinkW
 			directNeighbours[id] = struct{}{}
 		}
 	}
@@ -1206,7 +1230,7 @@ func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep 
 			}
 			for _, m := range obj.Mentions {
 				if _, shared := neighbourEntitySet[m.String()]; shared {
-					scores[id] += hopBacklinkW
+					graphScores[id] += hopBacklinkW
 					break
 				}
 			}
@@ -1216,27 +1240,33 @@ func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep 
 
 	type scored struct {
 		id    string
-		score float64
+		total float64
 	}
 	var merged []scored
-	for id, score := range scores {
-		if score >= cfg.MinScore {
-			merged = append(merged, scored{id, score})
+	for id := range byID {
+		total := ftsScores[id] + vecScores[id] + mentionScores[id] + graphScores[id]
+		if total >= cfg.MinScore {
+			merged = append(merged, scored{id, total})
 		}
 	}
-	sort.Slice(merged, func(i, j int) bool { return merged[i].score > merged[j].score })
+	sort.Slice(merged, func(i, j int) bool { return merged[i].total > merged[j].total })
 
 	if limit > len(merged) {
 		limit = len(merged)
 	}
-	out := make([]*storage.KnowledgeObject, limit)
+	out := make([]HybridResult, limit)
 	for i := 0; i < limit; i++ {
-		obj := byID[merged[i].id]
-		if obj.Metadata == nil {
-			obj.Metadata = make(map[string]any)
+		id := merged[i].id
+		out[i] = HybridResult{
+			Object: byID[id],
+			Breakdown: ScoreBreakdown{
+				FTS:            ftsScores[id],
+				Vector:         vecScores[id],
+				MentionBoost:   mentionScores[id],
+				GraphRelevance: graphScores[id],
+				Total:          merged[i].total,
+			},
 		}
-		obj.Metadata["rrf_score"] = merged[i].score
-		out[i] = obj
 	}
 	return out, nil
 }

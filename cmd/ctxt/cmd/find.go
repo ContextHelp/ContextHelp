@@ -9,6 +9,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -42,7 +43,10 @@ Examples:
   ctxt find "signup flow" --profile growth
 
   # Limit results
-  ctxt find "onboarding" --limit 10`,
+  ctxt find "onboarding" --limit 10
+
+  # Show score breakdown per result
+  ctxt find "onboarding" --explain`,
 	RunE: runFind,
 }
 
@@ -61,6 +65,7 @@ func init() {
 	findCmd.Flags().Int("fts-pool", 0, "FTS candidate pool size override")
 	findCmd.Flags().Int("vector-pool", 0, "vector candidate pool size override")
 	findCmd.Flags().Float64("min-score", -1, "minimum RRF score threshold override (-1 = use config)")
+	findCmd.Flags().Bool("explain", false, "show per-signal score breakdown for each result")
 
 	viper.BindPFlag("find.limit", findCmd.Flags().Lookup("limit"))
 	viper.BindPFlag("find.semantic", findCmd.Flags().Lookup("semantic"))
@@ -130,6 +135,13 @@ func runFind(cmd *cobra.Command, args []string) error {
 		mode = "hybrid"
 	}
 
+	explain, _ := cmd.Flags().GetBool("explain")
+
+	// --explain only applies to hybrid mode; it prints per-signal score breakdowns.
+	if explain && mode == "hybrid" {
+		return runFindExplain(cmd, ctx, svc, query, limit, mode, searchCfg)
+	}
+
 	var results []*storage.KnowledgeObject
 
 	switch mode {
@@ -175,6 +187,49 @@ func runFind(cmd *cobra.Command, args []string) error {
 		})
 	}
 	printTable(os.Stdout, headers, rows)
+	return nil
+}
+
+// runFindExplain executes a hybrid search and prints per-result score breakdowns.
+func runFindExplain(cmd *cobra.Command, ctx context.Context, svc *service.Service, query string, limit int, mode string, searchCfg config.SearchConfig) error {
+	factory := providers.NewFactory(cfg.Providers, nil)
+	ep := factory.Embedding()
+
+	explainResults, err := svc.HybridSearchExplain(ctx, query, limit, ep, searchCfg)
+	if err != nil {
+		return fmt.Errorf("find explain (%s): %w", mode, err)
+	}
+
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, map[string]any{
+			"results": explainResults,
+			"total":   len(explainResults),
+			"query":   query,
+			"mode":    mode,
+		})
+	}
+
+	fmt.Printf("Search [%s] --explain: %q (%d results)\n\n", mode, query, len(explainResults))
+
+	if len(explainResults) == 0 {
+		return nil
+	}
+
+	for i, r := range explainResults {
+		obj := r.Object
+		b := r.Breakdown
+		label := obj.ID
+		if len(obj.Summaries) > 0 && obj.Summaries[0] != "" {
+			label = obj.Summaries[0]
+			if len(label) > 60 {
+				label = label[:57] + "..."
+			}
+		}
+		fmt.Printf("%d. %s (%s)\n", i+1, label, obj.ID)
+		fmt.Printf("   total=%.4f  fts=%.4f  vector=%.4f  mention=%.4f  graph=%.4f\n",
+			b.Total, b.FTS, b.Vector, b.MentionBoost, b.GraphRelevance)
+		fmt.Println()
+	}
 	return nil
 }
 

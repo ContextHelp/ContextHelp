@@ -77,6 +77,26 @@ type InboxQueueFilter struct {
 	Offset  int
 }
 
+// ScoreBreakdown holds per-signal scores explaining why a result ranked where it did.
+type ScoreBreakdown struct {
+	// FTS is the Reciprocal Rank Fusion contribution from the full-text search leg.
+	FTS float64 `json:"fts"`
+	// Vector is the RRF contribution from the vector similarity leg.
+	Vector float64 `json:"vector"`
+	// MentionBoost is the additive bonus from outbound mention count.
+	MentionBoost float64 `json:"mention_boost"`
+	// GraphRelevance is the additive bonus from inbound backlinks (direct + 2-hop).
+	GraphRelevance float64 `json:"graph_relevance"`
+	// Total is the sum of all signal contributions.
+	Total float64 `json:"total"`
+}
+
+// HybridResult pairs a KnowledgeObject with its score breakdown.
+type HybridResult struct {
+	Object    *storage.KnowledgeObject `json:"object"`
+	Breakdown ScoreBreakdown           `json:"score_breakdown"`
+}
+
 // InboxQueueItem is a row in the combined inbox queue view.
 // Represents either a job (pending/failed) or a raw object.
 type InboxQueueItem struct {

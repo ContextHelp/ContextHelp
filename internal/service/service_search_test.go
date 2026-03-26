@@ -77,3 +77,74 @@ func TestHybridSearch_ErrorWhenNoProvider_FallbackDisabled(t *testing.T) {
 	_, err := svc.HybridSearch(ctx, "anything", 10, nil, cfg)
 	require.Error(t, err)
 }
+
+func TestHybridSearchExplain_ReturnsBreakdown(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	obj := makeSearchObject("exp-1", []string{"observability tracing distributed systems"}, "")
+	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	rebuildFTS(t, svc)
+
+	cfg := config.SearchConfig{
+		DefaultMode:   "hybrid",
+		RRF:           config.RRFConfig{K: 60, FTSWeight: 0.5, VectorWeight: 0.5},
+		CandidatePool: config.CandidatePoolConfig{FTS: 20, Vector: 20},
+		FallbackToFTS: true,
+	}
+
+	results, err := svc.HybridSearchExplain(ctx, "observability", 10, nil, cfg)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+
+	r := results[0]
+	assert.Equal(t, "exp-1", r.Object.ID)
+
+	// FTS leg should have contributed (no vector provider — fallback mode).
+	assert.Greater(t, r.Breakdown.FTS, 0.0)
+	// Vector leg should be zero — no embedding provider.
+	assert.Equal(t, 0.0, r.Breakdown.Vector)
+	// Total must equal sum of all signals.
+	wantTotal := r.Breakdown.FTS + r.Breakdown.Vector + r.Breakdown.MentionBoost + r.Breakdown.GraphRelevance
+	assert.InDelta(t, wantTotal, r.Breakdown.Total, 1e-9)
+}
+
+func TestHybridSearchExplain_ErrorWhenNoProvider_FallbackDisabled(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	cfg := config.SearchConfig{
+		DefaultMode:   "hybrid",
+		FallbackToFTS: false,
+	}
+	_, err := svc.HybridSearchExplain(ctx, "anything", 10, nil, cfg)
+	require.Error(t, err)
+}
+
+func TestHybridSearchExplain_TotalMatchesHybridSearchRRFScore(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	obj := makeSearchObject("cmp-1", []string{"event sourcing CQRS architecture patterns"}, "")
+	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	rebuildFTS(t, svc)
+
+	cfg := config.SearchConfig{
+		DefaultMode:   "hybrid",
+		RRF:           config.RRFConfig{K: 60, FTSWeight: 0.5, VectorWeight: 0.5},
+		CandidatePool: config.CandidatePoolConfig{FTS: 20, Vector: 20},
+		FallbackToFTS: true,
+	}
+
+	plain, err := svc.HybridSearch(ctx, "event sourcing", 10, nil, cfg)
+	require.NoError(t, err)
+	require.Len(t, plain, 1)
+
+	explained, err := svc.HybridSearchExplain(ctx, "event sourcing", 10, nil, cfg)
+	require.NoError(t, err)
+	require.Len(t, explained, 1)
+
+	// The rrf_score stored in Metadata by HybridSearch must equal the explain total.
+	rrfScore, ok := plain[0].Metadata["rrf_score"].(float64)
+	require.True(t, ok, "rrf_score must be float64")
+	assert.InDelta(t, rrfScore, explained[0].Breakdown.Total, 1e-9)
+}
