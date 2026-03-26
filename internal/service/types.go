@@ -67,3 +67,33 @@ type TriageRequest struct {
 	Hints    string
 	Mentions []string
 }
+
+// InboxQueueFilter specifies criteria for the combined inbox queue view.
+type InboxQueueFilter struct {
+	Pending bool
+	Failed  bool
+	Raw     bool
+	Limit   int
+	Offset  int
+}
+
+// InboxQueueItem is a row in the combined inbox queue view.
+// Represents either a job (pending/failed) or a raw object.
+type InboxQueueItem struct {
+	// ID is the job ID or object ID depending on Kind.
+	ID string `json:"id"`
+	// Kind is "job" or "object".
+	Kind string `json:"kind"`
+	// Status is job status ("pending", "running", "failed") or object status ("raw").
+	Status string `json:"status"`
+	// Type is the content type (e.g., "text", "url", "image").
+	Type string `json:"type"`
+	// Source is the content origin (URL, filename, etc).
+	Source string `json:"source"`
+	// Pipeline is the pipeline name if set.
+	Pipeline string `json:"pipeline"`
+	// CreatedAt is when the item was created.
+	CreatedAt time.Time `json:"created_at"`
+	// Error holds the failure message for failed jobs.
+	Error string `json:"error,omitempty"`
+}

@@ -116,6 +116,103 @@ func (s *Service) DiscardInbox(ctx context.Context, id string) error {
 	return s.Store.Objects().Update(ctx, obj)
 }
 
+// ListInboxQueue returns a combined view of pending/running/failed jobs and raw objects.
+// Controlled by InboxQueueFilter; defaults (all false) returns all three categories.
+func (s *Service) ListInboxQueue(ctx context.Context, f InboxQueueFilter) ([]*InboxQueueItem, int, error) {
+	showAll := !f.Pending && !f.Failed && !f.Raw
+
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	var items []*InboxQueueItem
+
+	// Pending/running jobs.
+	if showAll || f.Pending {
+		jobs, _, err := s.Store.Jobs().List(ctx, storage.JobFilter{Status: storage.JobPending, Limit: limit})
+		if err != nil {
+			return nil, 0, fmt.Errorf("list pending jobs: %w", err)
+		}
+		for _, j := range jobs {
+			items = append(items, jobToQueueItem(j))
+		}
+		running, _, err := s.Store.Jobs().List(ctx, storage.JobFilter{Status: storage.JobRunning, Limit: limit})
+		if err != nil {
+			return nil, 0, fmt.Errorf("list running jobs: %w", err)
+		}
+		for _, j := range running {
+			items = append(items, jobToQueueItem(j))
+		}
+	}
+
+	// Failed jobs.
+	if showAll || f.Failed {
+		failed, _, err := s.Store.Jobs().List(ctx, storage.JobFilter{Status: storage.JobFailed, Limit: limit})
+		if err != nil {
+			return nil, 0, fmt.Errorf("list failed jobs: %w", err)
+		}
+		for _, j := range failed {
+			items = append(items, jobToQueueItem(j))
+		}
+	}
+
+	// Raw objects.
+	if showAll || f.Raw {
+		objs, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{Status: "raw", Limit: limit})
+		if err != nil {
+			return nil, 0, fmt.Errorf("list raw objects: %w", err)
+		}
+		for _, o := range objs {
+			items = append(items, objectToQueueItem(o))
+		}
+	}
+
+	total := len(items)
+	// Apply offset/limit to combined result set.
+	if f.Offset > 0 {
+		if f.Offset >= len(items) {
+			return []*InboxQueueItem{}, 0, nil
+		}
+		items = items[f.Offset:]
+	}
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+
+	return items, total, nil
+}
+
+func jobToQueueItem(j *storage.Job) *InboxQueueItem {
+	// Extract content type from job type ("ingest:text" → "text").
+	objType := j.Type
+	if idx := len("ingest:"); len(j.Type) > idx && j.Type[:idx] == "ingest:" {
+		objType = j.Type[idx:]
+	}
+	return &InboxQueueItem{
+		ID:        j.ID,
+		Kind:      "job",
+		Status:    string(j.Status),
+		Type:      objType,
+		Source:    j.Source,
+		Pipeline:  j.Pipeline,
+		CreatedAt: j.CreatedAt,
+		Error:     j.Error,
+	}
+}
+
+func objectToQueueItem(o *storage.KnowledgeObject) *InboxQueueItem {
+	return &InboxQueueItem{
+		ID:        o.ID,
+		Kind:      "object",
+		Status:    o.Status,
+		Type:      o.Type,
+		Source:    o.Source,
+		Pipeline:  o.Pipeline,
+		CreatedAt: o.CreatedAt,
+	}
+}
+
 // ClearInbox discards all current inbox items, returning the count cleared.
 func (s *Service) ClearInbox(ctx context.Context) (int, error) {
 	items, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{Status: "inbox", Limit: 10000})

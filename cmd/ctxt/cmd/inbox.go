@@ -72,6 +72,9 @@ func init() {
 	inboxListCmd.Flags().Int("offset", 0, "pagination offset")
 	inboxListCmd.Flags().String("before", "", "created before (RFC3339)")
 	inboxListCmd.Flags().String("after", "", "created after (RFC3339)")
+	inboxListCmd.Flags().Bool("pending", false, "show only pending/running jobs")
+	inboxListCmd.Flags().Bool("failed", false, "show only failed jobs")
+	inboxListCmd.Flags().Bool("raw", false, "show only unenriched raw objects")
 
 	inboxTriageCmd.Flags().String("pipeline", "", "pipeline to use (default: auto-detect)")
 }
@@ -85,22 +88,64 @@ func runInboxList(cmd *cobra.Command, _ []string) error {
 
 	limit, _ := cmd.Flags().GetInt("limit")
 	offset, _ := cmd.Flags().GetInt("offset")
+	pending, _ := cmd.Flags().GetBool("pending")
+	failed, _ := cmd.Flags().GetBool("failed")
+	raw, _ := cmd.Flags().GetBool("raw")
 
+	// Queue view: --pending/--failed/--raw queries jobs+raw objects.
+	if pending || failed || raw {
+		qf := service.InboxQueueFilter{
+			Pending: pending,
+			Failed:  failed,
+			Raw:     raw,
+			Limit:   limit,
+			Offset:  offset,
+		}
+		items, total, err := svc.ListInboxQueue(context.Background(), qf)
+		if err != nil {
+			return fmt.Errorf("list inbox queue: %w", err)
+		}
+		if isJSONOutput() {
+			return outputJSON(os.Stdout, map[string]any{"items": items, "total": total})
+		}
+		fmt.Printf("Inbox queue (%d total)\n\n", total)
+		headers := []string{"ID", "Kind", "Status", "Type", "Source", "Pipeline", "Created"}
+		var rows [][]string
+		for _, item := range items {
+			source := item.Source
+			if len(source) > 35 {
+				source = source[:32] + "..."
+			}
+			rows = append(rows, []string{
+				item.ID,
+				item.Kind,
+				item.Status,
+				item.Type,
+				source,
+				item.Pipeline,
+				item.CreatedAt.Format("2006-01-02 15:04"),
+			})
+		}
+		printTable(os.Stdout, headers, rows)
+		return nil
+	}
+
+	// Traditional inbox view (no queue flags set).
 	filter := service.InboxFilter{Limit: limit, Offset: offset}
 
-	items, total, err := svc.ListInbox(context.Background(), filter)
+	objs, total, err := svc.ListInbox(context.Background(), filter)
 	if err != nil {
 		return fmt.Errorf("list inbox: %w", err)
 	}
 
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, map[string]any{"items": items, "total": total})
+		return outputJSON(os.Stdout, map[string]any{"items": objs, "total": total})
 	}
 
 	fmt.Printf("Inbox (%d total)\n\n", total)
 	headers := []string{"ID", "Type", "Source", "Note", "Created"}
 	var rows [][]string
-	for _, obj := range items {
+	for _, obj := range objs {
 		note := obj.InboxNote
 		if len(note) > 30 {
 			note = note[:27] + "..."

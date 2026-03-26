@@ -16,12 +16,21 @@ The plugin system is **cross-cutting** — plugins can extend both dPKMS (substr
 
 ### Bundled Plugins
 - [plugins-aliasing.md](plugins-aliasing.md) - Aliasing plugin: human-readable names for knowledge objects
+- [plugins-audit-log.md](plugins-audit-log.md) - Audit log plugin: immutable append-only record of object mutations
+
+### Plugin Patterns
+- [patterns-url-adapter-post-processor.md](patterns-url-adapter-post-processor.md) - URL adapter +
+  post-processor patterns: interface contracts, annotated examples, composition guide
 
 ### Plugin Examples
 - [plugins-notifications.md](plugins-notifications.md) - Notification plugin example
 - [plugins-refresh.md](plugins-refresh.md) - Refresh policy plugin example
 - [plugins-github-pr-review-watcher.md](plugins-github-pr-review-watcher.md) - GitHub PR review watcher plugin
 - [examples/plugins-sample-price-monitor.md](examples/plugins-sample-price-monitor.md) - Price monitoring plugin
+
+### Annotated Walkthroughs
+- [examples/plugins-example-github-annotated.md](examples/plugins-example-github-annotated.md) -
+  Step-by-step tutorial: GitHub PR watcher from scratch, inline design annotations
 
 ## Plugin Capabilities
 

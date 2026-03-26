@@ -948,6 +948,7 @@ git push --force --tags
 - [ADR-019: Encryption Architecture](docs/decisions/ADR-019-encryption-and-privacy.md)
 - [ADR-023: Authentication Model](docs/decisions/ADR-023-authentication-authorization-model.md)
 - [Security Design](docs/dpkms/security.md)
+- [Compliance — GDPR, SOC 2, erasure, dependency assessment](docs/operations/compliance.md)
 
 ### External Resources
 

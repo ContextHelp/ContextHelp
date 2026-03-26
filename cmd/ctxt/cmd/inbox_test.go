@@ -9,6 +9,22 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
+func seedRawObject(t *testing.T, db *testDB, id, content string) {
+	t.Helper()
+	now := time.Now().Truncate(time.Second)
+	obj := &storage.KnowledgeObject{
+		ID:         id,
+		Type:       "text",
+		RawContent: content,
+		Status:     "raw",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := db.Driver.Objects().Create(context.Background(), obj); err != nil {
+		t.Fatalf("seed raw object: %v", err)
+	}
+}
+
 func seedInboxItem(t *testing.T, db *testDB, id, content string) {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
@@ -117,5 +133,75 @@ func TestInboxHelp(t *testing.T) {
 		if !strings.Contains(out, sub) {
 			t.Errorf("inbox help should list subcommand %s", sub)
 		}
+	}
+}
+
+func TestInboxListRawFlag(t *testing.T) {
+	db := setupTestDB(t)
+	seedRawObject(t, db, "raw_obj_01", "unenriched content")
+
+	out, err := db.exec("inbox", "list", "--raw")
+	if err != nil {
+		t.Fatalf("inbox list --raw should succeed: %v", err)
+	}
+	if !strings.Contains(out, "raw_obj_01") {
+		t.Errorf("output should contain raw object ID, got: %s", out)
+	}
+	if !strings.Contains(out, "raw") {
+		t.Errorf("output should show raw status, got: %s", out)
+	}
+}
+
+func TestInboxListPendingFlag(t *testing.T) {
+	db := setupTestDB(t)
+	seedJob(t, db, "job_pend_01", "ingest:text", "text.short", storage.JobPending)
+
+	out, err := db.exec("inbox", "list", "--pending")
+	if err != nil {
+		t.Fatalf("inbox list --pending should succeed: %v", err)
+	}
+	if !strings.Contains(out, "job_pend_01") {
+		t.Errorf("output should contain pending job ID, got: %s", out)
+	}
+	if !strings.Contains(out, "pending") {
+		t.Errorf("output should show pending status, got: %s", out)
+	}
+}
+
+func TestInboxListFailedFlag(t *testing.T) {
+	db := setupTestDB(t)
+	seedJob(t, db, "job_fail_01", "ingest:url", "url.generic", storage.JobFailed)
+
+	out, err := db.exec("inbox", "list", "--failed")
+	if err != nil {
+		t.Fatalf("inbox list --failed should succeed: %v", err)
+	}
+	if !strings.Contains(out, "job_fail_01") {
+		t.Errorf("output should contain failed job ID, got: %s", out)
+	}
+}
+
+func TestInboxListQueueEmpty(t *testing.T) {
+	db := setupTestDB(t)
+
+	out, err := db.exec("inbox", "list", "--raw")
+	if err != nil {
+		t.Fatalf("inbox list --raw on empty db should succeed: %v", err)
+	}
+	if !strings.Contains(out, "0 total") && !strings.Contains(out, "No results") {
+		t.Errorf("output should indicate empty result, got: %s", out)
+	}
+}
+
+func TestInboxListQueueHeader(t *testing.T) {
+	db := setupTestDB(t)
+	seedRawObject(t, db, "raw_hdr_01", "header test")
+
+	out, err := db.exec("inbox", "list", "--raw")
+	if err != nil {
+		t.Fatalf("inbox list --raw should succeed: %v", err)
+	}
+	if !strings.Contains(out, "Inbox queue") {
+		t.Errorf("output should contain Inbox queue header, got: %s", out)
 	}
 }
