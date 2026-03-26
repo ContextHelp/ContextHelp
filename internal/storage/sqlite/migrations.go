@@ -49,6 +49,9 @@ var migration013 string
 //go:embed migrations/014_remind_at.sql
 var migration014 string
 
+//go:embed migrations/015_profile_scoped_objects.sql
+var migration015 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -78,6 +81,7 @@ var migrations = []migration{
 	// earlier numbering scheme) already have remind_at/reminded_at applied
 	// as part of their old migration 013. The fn checks before altering.
 	{Version: 14, fn: migrate014RemindAt},
+	{Version: 15, SQL: migration015},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

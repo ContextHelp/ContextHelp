@@ -18,7 +18,8 @@ func NewEngine(store storage.StorageDriver) *Engine {
 }
 
 // Search parses an RSQL query, compiles it to SQL, and executes it.
-func (e *Engine) Search(ctx context.Context, query string, limit, offset int) ([]*storage.KnowledgeObject, int, error) {
+// profileID, when non-empty, restricts results to objects owned by that profile.
+func (e *Engine) Search(ctx context.Context, query string, limit, offset int, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
 	ast, err := Parse(query)
 	if err != nil {
 		return nil, 0, fmt.Errorf("parse error: %w", err)
@@ -27,6 +28,17 @@ func (e *Engine) Search(ctx context.Context, query string, limit, offset int) ([
 	where, args, err := Compile(ast)
 	if err != nil {
 		return nil, 0, fmt.Errorf("compile error: %w", err)
+	}
+
+	// Prepend profile scope when provided.
+	if len(profileID) > 0 && profileID[0] != "" {
+		scope := "profile_id = ?"
+		if where != "" {
+			where = scope + " AND (" + where + ")"
+		} else {
+			where = scope
+		}
+		args = append([]any{profileID[0]}, args...)
 	}
 
 	return e.store.Objects().ListBySQL(ctx, where, args, limit, offset)

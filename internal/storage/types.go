@@ -83,18 +83,19 @@ type Edge struct {
 
 // ObjectFilter specifies criteria for listing knowledge objects.
 type ObjectFilter struct {
-	Type     string
-	Subtype  string
-	Tag      string
-	Mention  string
-	Pipeline string
-	After    *time.Time
-	Before   *time.Time
-	Limit    int
-	Offset   int
-	Sort     string // "created_at", "updated_at"
-	Dir      string // "asc", "desc"
-	Status   string // "" → default to "active"; "inbox"; "discarded"; "all"
+	Type      string
+	Subtype   string
+	Tag       string
+	Mention   string
+	Pipeline  string
+	ProfileID string // non-empty → restrict to this profile; empty → global objects only
+	After     *time.Time
+	Before    *time.Time
+	Limit     int
+	Offset    int
+	Sort      string // "created_at", "updated_at"
+	Dir       string // "asc", "desc"
+	Status    string // "" → default to "active"; "inbox"; "discarded"; "all"
 }
 
 // EntityFilter specifies criteria for listing entities.

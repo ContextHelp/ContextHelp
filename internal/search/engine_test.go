@@ -12,11 +12,17 @@ import (
 
 func seedObject(t *testing.T, driver storage.StorageDriver, id, typ string, tags []storage.Tag) {
 	t.Helper()
+	seedObjectWithProfile(t, driver, id, typ, tags, "")
+}
+
+func seedObjectWithProfile(t *testing.T, driver storage.StorageDriver, id, typ string, tags []storage.Tag, profileID string) {
+	t.Helper()
 	now := time.Now().Truncate(time.Second)
 	obj := &storage.KnowledgeObject{
 		ID:        id,
 		Type:      typ,
 		Tags:      tags,
+		ProfileID: profileID,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -174,5 +180,94 @@ func TestSearchInvalidQuery(t *testing.T) {
 	_, _, err := engine.Search(ctx, "==bad", 10, 0)
 	if err == nil {
 		t.Error("expected error for invalid query")
+	}
+}
+
+// TestProfileIsolation verifies profile A cannot see profile B objects.
+func TestProfileIsolation(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	engine := NewEngine(driver)
+	ctx := context.Background()
+
+	// obj-a belongs to profile "alice", obj-b to "bob", obj-g is global ("").
+	seedObjectWithProfile(t, driver, "obj-a", "note", nil, "alice")
+	seedObjectWithProfile(t, driver, "obj-b", "note", nil, "bob")
+	seedObjectWithProfile(t, driver, "obj-g", "note", nil, "")
+
+	// Alice's scoped search should return only obj-a.
+	results, total, err := engine.Search(ctx, "type==note", 10, 0, "alice")
+	if err != nil {
+		t.Fatalf("search alice: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("alice total: got %d, want 1", total)
+	}
+	if len(results) != 1 || results[0].ID != "obj-a" {
+		t.Errorf("alice results: got %v", results)
+	}
+
+	// Bob's scoped search should return only obj-b.
+	results, total, err = engine.Search(ctx, "type==note", 10, 0, "bob")
+	if err != nil {
+		t.Fatalf("search bob: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("bob total: got %d, want 1", total)
+	}
+	if len(results) != 1 || results[0].ID != "obj-b" {
+		t.Errorf("bob results: got %v", results)
+	}
+
+	// Unscoped search returns all three.
+	results, total, err = engine.Search(ctx, "type==note", 10, 0)
+	if err != nil {
+		t.Fatalf("search global: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("global total: got %d, want 3", total)
+	}
+	_ = results
+}
+
+// TestSearchRelated verifies related: returns objects sharing mention targets.
+func TestSearchRelated(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	engine := NewEngine(driver)
+	ctx := context.Background()
+
+	seedObject(t, driver, "obj-1", "article", nil)
+	seedObject(t, driver, "obj-2", "article", nil)
+	seedObject(t, driver, "obj-3", "article", nil) // no shared mentions
+
+	// obj-1 and obj-2 both mention @arch.decision; obj-3 mentions something else.
+	mkEdge := func(id, fromID, toID string) *storage.Edge {
+		return &storage.Edge{
+			ID:        id,
+			FromType:  "object",
+			FromID:    fromID,
+			ToType:    "entity",
+			ToID:      toID,
+			EdgeType:  "mentions",
+			Weight:    1.0,
+			CreatedAt: time.Now(),
+		}
+	}
+	driver.Edges().Create(ctx, mkEdge("e1", "obj-1", "@arch.decision"))
+	driver.Edges().Create(ctx, mkEdge("e2", "obj-2", "@arch.decision"))
+	driver.Edges().Create(ctx, mkEdge("e3", "obj-3", "@other.thing"))
+
+	// related:@arch.decision should return obj-2 (related to obj-1 via shared target).
+	results, _, err := engine.Search(ctx, "related==@arch.decision", 10, 0)
+	if err != nil {
+		t.Fatalf("search related: %v", err)
+	}
+	if len(results) == 0 {
+		t.Error("expected at least one related result")
+	}
+	// obj-3 must NOT appear (no shared mention target).
+	for _, r := range results {
+		if r.ID == "obj-3" {
+			t.Errorf("obj-3 should not be in related results")
+		}
 	}
 }

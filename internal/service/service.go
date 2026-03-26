@@ -187,8 +187,9 @@ func (s *Service) DeleteObject(ctx context.Context, id string) error {
 }
 
 // SearchObjects executes an RSQL query and returns matching objects.
-func (s *Service) SearchObjects(ctx context.Context, query string, limit, offset int) ([]*storage.KnowledgeObject, int, error) {
-	return s.Search.Search(ctx, query, limit, offset)
+// profileID, when non-empty, restricts results to the named profile's objects.
+func (s *Service) SearchObjects(ctx context.Context, query string, limit, offset int, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
+	return s.Search.Search(ctx, query, limit, offset, profileID...)
 }
 
 // GetJob retrieves a job by ID.

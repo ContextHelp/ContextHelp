@@ -47,6 +47,11 @@ func compileComparison(n ComparisonNode) (string, []any, error) {
 		return compileMention(n)
 	}
 
+	// Related field: objects sharing mention targets.
+	if n.Field == "related" {
+		return compileRelated(n)
+	}
+
 	// Similar field: FTS5 MATCH.
 	if n.Field == "similar" {
 		return compileSimilar(n)
@@ -124,6 +129,27 @@ func compileMention(n ComparisonNode) (string, []any, error) {
 	}
 	return "id IN (SELECT from_id FROM edges WHERE from_type = 'object' AND to_type = 'entity' AND edge_type = 'mentions' AND to_id = ?)",
 		[]any{n.Value}, nil
+}
+
+// compileRelated returns objects that share at least one mention target with the
+// given entity slug. The query finds all objects that mention the same entity
+// as the seed entity does (i.e. via shared to_id in the edges table).
+func compileRelated(n ComparisonNode) (string, []any, error) {
+	if n.Operator != OpEq {
+		return "", nil, fmt.Errorf("related field only supports == operator")
+	}
+	sql := `id IN (
+		SELECT DISTINCT e2.from_id
+		FROM edges e1
+		JOIN edges e2 ON e1.to_id = e2.to_id
+		WHERE e1.from_type = 'object'
+		  AND e1.from_id = (SELECT from_id FROM edges WHERE from_type = 'object' AND to_type = 'entity' AND to_id = ? LIMIT 1)
+		  AND e2.from_type = 'object'
+		  AND e2.from_id != e1.from_id
+		  AND e1.edge_type = 'mentions'
+		  AND e2.edge_type = 'mentions'
+	)`
+	return sql, []any{n.Value}, nil
 }
 
 func compileSimilar(n ComparisonNode) (string, []any, error) {

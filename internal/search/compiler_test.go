@@ -243,6 +243,21 @@ func TestCompileMentionNonEqError(t *testing.T) {
 	assert.Contains(t, err.Error(), "mention field only supports == operator")
 }
 
+func TestCompileRelatedEq(t *testing.T) {
+	sql, args, err := Compile(mustParse(t, "related==@arch.decision"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "edges")
+	assert.Contains(t, sql, "to_id")
+	assert.Equal(t, []any{"@arch.decision"}, args)
+}
+
+func TestCompileRelatedNonEqError(t *testing.T) {
+	node := ComparisonNode{Field: "related", Operator: OpNeq, Value: "@arch.decision"}
+	_, _, err := Compile(node)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "related field only supports == operator")
+}
+
 func TestCompileUnknownNodeType(t *testing.T) {
 	// Passing nil exercises the default branch in compileNode.
 	_, _, err := Compile(nil)
