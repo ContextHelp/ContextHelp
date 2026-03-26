@@ -63,8 +63,9 @@ func TestSyncer_ThinMode_StoresThinStubs(t *testing.T) {
 	syncer := registry.New(store)
 
 	result, err := syncer.Sync(context.Background(), config.RegistryConfig{
-		URL:      srv.URL,
-		SyncMode: config.RegistrySyncModeThin,
+		URL:        srv.URL,
+		SyncMode:   config.RegistrySyncModeThin,
+		TrustLevel: config.RegistryTrustLevelTrusted,
 	})
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -95,8 +96,9 @@ func TestSyncer_FullMode_StoresFullRecords(t *testing.T) {
 	syncer := registry.New(store)
 
 	result, err := syncer.Sync(context.Background(), config.RegistryConfig{
-		URL:      srv.URL,
-		SyncMode: config.RegistrySyncModeFull,
+		URL:        srv.URL,
+		SyncMode:   config.RegistrySyncModeFull,
+		TrustLevel: config.RegistryTrustLevelTrusted,
 	})
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -124,7 +126,10 @@ func TestSyncer_DefaultMode_TreatsAsFull(t *testing.T) {
 	syncer := registry.New(store)
 
 	// Empty SyncMode should default to full.
-	result, err := syncer.Sync(context.Background(), config.RegistryConfig{URL: srv.URL})
+	result, err := syncer.Sync(context.Background(), config.RegistryConfig{
+		URL:        srv.URL,
+		TrustLevel: config.RegistryTrustLevelTrusted,
+	})
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -147,5 +152,77 @@ func TestSyncer_RegistryError_ReturnsError(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for 404 response, got nil")
+	}
+}
+
+func TestSyncer_UntrustedRegistry_QueuesNotWrites(t *testing.T) {
+	entries := []registry.EntityIndexEntry{
+		{Slug: "ai.bert", Title: "BERT", Namespace: "ai", VersionHash: "v1"},
+	}
+	srv := makeTestServer(entries)
+	defer srv.Close()
+
+	store := &stubEntityStore{}
+	syncer := registry.New(store)
+
+	result, err := syncer.Sync(context.Background(), config.RegistryConfig{
+		URL:        srv.URL,
+		SyncMode:   config.RegistrySyncModeFull,
+		TrustLevel: config.RegistryTrustLevelUntrusted,
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	// Entity should be queued for approval, not written.
+	if result.Upserted != 0 {
+		t.Errorf("Upserted: got %d, want 0 (untrusted)", result.Upserted)
+	}
+	if result.Skipped != 1 {
+		t.Errorf("Skipped: got %d, want 1", result.Skipped)
+	}
+	if len(store.full) != 0 {
+		t.Errorf("no entities should be written for untrusted registry")
+	}
+
+	// Trust gate should have 1 pending approval.
+	pending := syncer.TrustGateState().PendingApprovals()
+	if len(pending) != 1 {
+		t.Fatalf("pending approvals: got %d, want 1", len(pending))
+	}
+	if pending[0].Entity.Slug != "ai.bert" {
+		t.Errorf("pending slug: got %q", pending[0].Entity.Slug)
+	}
+}
+
+func TestSyncer_SandboxedRegistry_BlocksNoQueue(t *testing.T) {
+	entries := []registry.EntityIndexEntry{
+		{Slug: "ai.bert", Title: "BERT", Namespace: "ai", VersionHash: "v1"},
+	}
+	srv := makeTestServer(entries)
+	defer srv.Close()
+
+	store := &stubEntityStore{}
+	syncer := registry.New(store)
+
+	result, err := syncer.Sync(context.Background(), config.RegistryConfig{
+		URL:        srv.URL,
+		SyncMode:   config.RegistrySyncModeFull,
+		TrustLevel: config.RegistryTrustLevelSandboxed,
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if result.Upserted != 0 {
+		t.Errorf("Upserted: got %d, want 0 (sandboxed)", result.Upserted)
+	}
+	if result.Skipped != 1 {
+		t.Errorf("Skipped: got %d, want 1", result.Skipped)
+	}
+	// Sandboxed: no pending approvals (hard block).
+	pending := syncer.TrustGateState().PendingApprovals()
+	if len(pending) != 0 {
+		t.Errorf("sandboxed should not queue, got %d pending", len(pending))
 	}
 }

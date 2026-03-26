@@ -136,6 +136,28 @@ Examples:
 	RunE: runRegistryUsage,
 }
 
+var registrySearchCmd = &cobra.Command{
+	Use:   "search <query>",
+	Short: "Search the registry index for relevant namespaces and registries",
+	Long: `Query the remote registry index (reference registry) for registries
+matching a topic, namespace prefix, or tag.
+
+Examples:
+  # Find registries related to AI topics
+  ctxt registry search ai
+
+  # Find registries by namespace prefix
+  ctxt registry search frontend
+
+  # Output as JSON
+  ctxt registry search react --json
+
+  # Use a custom index URL
+  ctxt registry search devops --index-url https://myorg.example.com/registry-index.json`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistrySearch,
+}
+
 var registryLoginCmd = &cobra.Command{
 	Use:   "login <name>",
 	Short: "Store an auth token for a registry in the OS keychain",
@@ -174,6 +196,11 @@ func init() {
 	registryCmd.AddCommand(registryCapabilitiesCmd)
 	registryCmd.AddCommand(registryEntitlementsCmd)
 	registryCmd.AddCommand(registryUsageCmd)
+	registryCmd.AddCommand(registrySearchCmd)
+
+	// Flags for search subcommand
+	registrySearchCmd.Flags().String("index-url", registry.DefaultIndexURL,
+		"URL of the registry index to search")
 
 	// Flags for usage subcommand
 	registryUsageCmd.Flags().Int("days", 0,
@@ -786,6 +813,78 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Fprintln(cmd.OutOrStdout(), "\nNo capability warnings.")
 	}
+	return nil
+}
+
+// runRegistrySearch queries the remote registry index and prints matching registries.
+func runRegistrySearch(cmd *cobra.Command, args []string) error {
+	query := args[0]
+
+	indexURL, err := cmd.Flags().GetString("index-url")
+	if err != nil {
+		return fmt.Errorf("index-url flag: %w", err)
+	}
+
+	ctx := context.Background()
+	idx, err := registry.FetchIndex(ctx, nil, indexURL)
+	if err != nil {
+		return fmt.Errorf("fetch registry index: %w", err)
+	}
+
+	results := registry.SearchIndex(idx, query)
+
+	if isJSONOutput() {
+		type jsonResult struct {
+			Name        string   `json:"name"`
+			URL         string   `json:"url"`
+			Description string   `json:"description"`
+			Namespaces  []string `json:"namespaces,omitempty"`
+			Tags        []string `json:"tags,omitempty"`
+			TrustLevel  string   `json:"trust_level,omitempty"`
+			EntityCount int      `json:"entity_count,omitempty"`
+			Version     string   `json:"version,omitempty"`
+		}
+		out := make([]jsonResult, 0, len(results))
+		for _, r := range results {
+			out = append(out, jsonResult{
+				Name:        r.Entry.Name,
+				URL:         r.Entry.URL,
+				Description: r.Entry.Description,
+				Namespaces:  r.Entry.Namespaces,
+				Tags:        r.Entry.Tags,
+				TrustLevel:  r.Entry.TrustLevel,
+				EntityCount: r.Entry.EntityCount,
+				Version:     r.Entry.Version,
+			})
+		}
+		return outputJSON(cmd.OutOrStdout(), map[string]any{
+			"query":   query,
+			"results": out,
+			"total":   len(out),
+		})
+	}
+
+	if len(results) == 0 {
+		fmt.Fprintf(cmd.OutOrStdout(), "No registries found matching %q.\n", query)
+		fmt.Fprintln(cmd.OutOrStdout(), "Try a broader query or visit: "+indexURL)
+		return nil
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Registry search results for %q (%d found):\n\n", query, len(results))
+
+	headers := []string{"Name", "URL", "Namespaces", "Tags", "Trust", "Entities"}
+	rows := make([][]string, 0, len(results))
+	for _, r := range results {
+		rows = append(rows, []string{
+			r.Entry.Name,
+			r.Entry.URL,
+			strings.Join(r.Entry.Namespaces, ", "),
+			strings.Join(r.Entry.Tags, ", "),
+			r.Entry.TrustLevel,
+			fmt.Sprintf("%d", r.Entry.EntityCount),
+		})
+	}
+	printTable(cmd.OutOrStdout(), headers, rows)
 	return nil
 }
 
