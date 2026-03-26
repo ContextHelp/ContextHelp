@@ -96,9 +96,9 @@ func TestFactoryAutoVision(t *testing.T) {
 		Vision: config.ProviderBackendConfig{Backend: "auto"},
 	}
 	f := NewFactory(cfg, nil)
-	// auto for vision defaults to ollama.
-	if f.Vision().Name() != "ollama" {
-		t.Errorf("auto vision: got %q, want ollama", f.Vision().Name())
+	// auto for vision picks the best available backend; must be non-nil.
+	if f.Vision() == nil {
+		t.Error("auto vision: got nil provider")
 	}
 }
 
