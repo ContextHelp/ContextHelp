@@ -57,6 +57,7 @@ func New(path string) (*Driver, error) {
 		"PRAGMA synchronous=NORMAL",
 		"PRAGMA foreign_keys=ON",
 		"PRAGMA cache_size=-64000",
+		"PRAGMA busy_timeout=5000",
 	} {
 		if _, err := db.Exec(pragma); err != nil {
 			db.Close()
