@@ -1,0 +1,41 @@
+{
+  "guild": {"id": "1234567890", "name": "Test Guild"},
+  "channel": {"id": "9876543210", "type": "0", "categoryId": "111", "category": "General", "name": "general"},
+  "dateRange": {"after": null, "before": null},
+  "exportedAt": "2026-01-20T00:00:00+00:00",
+  "messages": [
+    {
+      "id": "1000000000000000001",
+      "type": "Default",
+      "timestamp": "2026-01-15T10:00:00+00:00",
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "Hello Discord!",
+      "author": {"id": "200000000000000001", "name": "alice", "discriminator": "0001", "nickname": "alice", "isBot": false},
+      "attachments": [],
+      "embeds": [],
+      "stickers": [],
+      "reactions": [{"emoji": {"id": null, "name": "👍", "code": "thumbsup"}, "count": 2}],
+      "mentions": [],
+      "reference": null
+    },
+    {
+      "id": "1000000000000000002",
+      "type": "Default",
+      "timestamp": "2026-01-15T10:05:00+00:00",
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "Reply to alice",
+      "author": {"id": "200000000000000002", "name": "bob", "discriminator": "0002", "nickname": "bob", "isBot": false},
+      "attachments": [{"id": "att1", "url": "https://cdn.discord.com/img.png", "fileName": "img.png", "fileSizeBytes": 1024}],
+      "embeds": [],
+      "stickers": [],
+      "reactions": [],
+      "mentions": [],
+      "reference": {"messageId": "1000000000000000001", "channelId": "9876543210", "guildId": "1234567890"}
+    }
+  ],
+  "messageCount": 2
+}
