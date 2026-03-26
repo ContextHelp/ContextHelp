@@ -435,17 +435,47 @@ const (
 	RegistrySyncModeThin RegistrySyncMode = "thin"
 )
 
+// RegistryTrustLevel defines how much authority a registry has over the local graph.
+//
+//   - trusted   — may define entities, aliases, and overwrite local entities.
+//   - untrusted — may be queried for lookup but entity writes require user approval.
+//   - sandboxed — isolated; no writes to the local graph at all; lookup only.
+type RegistryTrustLevel string
+
+const (
+	// RegistryTrustLevelTrusted grants full write access to the local graph.
+	RegistryTrustLevelTrusted RegistryTrustLevel = "trusted"
+	// RegistryTrustLevelUntrusted allows lookup but entities need approval before write.
+	RegistryTrustLevelUntrusted RegistryTrustLevel = "untrusted"
+	// RegistryTrustLevelSandboxed read-only; no graph writes regardless of approval.
+	RegistryTrustLevelSandboxed RegistryTrustLevel = "sandboxed"
+)
+
 // RegistryConfig represents a registry configuration
 type RegistryConfig struct {
 	Name     string             `mapstructure:"name"      yaml:"name"`
 	URL      string             `mapstructure:"url"       yaml:"url"`
 	Auth     RegistryAuthConfig `mapstructure:"auth,omitempty" yaml:"auth,omitempty"`
 	SyncMode RegistrySyncMode   `mapstructure:"sync_mode" yaml:"sync_mode"`
+	// TrustLevel controls what the registry is allowed to do to the local graph.
+	// Default (empty) is treated as "untrusted".
+	// Valid values: "trusted" | "untrusted" | "sandboxed".
+	TrustLevel RegistryTrustLevel `mapstructure:"trust_level,omitempty" yaml:"trust_level,omitempty"`
 	// EntitlementURL is the endpoint to call before sync to verify access.
 	// When empty, no entitlement check is performed.
 	// Typically populated at runtime from the registry manifest; can also be
 	// declared explicitly in config for override scenarios.
 	EntitlementURL string `mapstructure:"entitlement_url,omitempty" yaml:"entitlement_url,omitempty"`
+}
+
+// EffectiveTrustLevel returns the trust level with a safe default of untrusted.
+func (r RegistryConfig) EffectiveTrustLevel() RegistryTrustLevel {
+	switch r.TrustLevel {
+	case RegistryTrustLevelTrusted, RegistryTrustLevelUntrusted, RegistryTrustLevelSandboxed:
+		return r.TrustLevel
+	default:
+		return RegistryTrustLevelUntrusted
+	}
 }
 
 // PluginConfig represents a plugin configuration

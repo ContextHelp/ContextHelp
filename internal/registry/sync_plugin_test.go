@@ -104,7 +104,11 @@ func TestSyncer_MultiSyncWithPlugins_AddsProviderResults(t *testing.T) {
 	syncer := registry.New(store)
 
 	cfg := registry.MultiSyncConfig{
-		Registries: []config.RegistryConfig{{URL: srv.URL, SyncMode: config.RegistrySyncModeFull}},
+		Registries: []config.RegistryConfig{{
+			URL:        srv.URL,
+			SyncMode:   config.RegistrySyncModeFull,
+			TrustLevel: config.RegistryTrustLevelTrusted,
+		}},
 	}
 
 	result, err := syncer.MultiSyncWithPlugins(context.Background(), cfg,

@@ -77,6 +77,7 @@ type Syncer struct {
 	registryStore     storage.RegistryStore
 	entitlements      storage.EntitlementStore
 	guard             *graph.EntityIntegrityGuard
+	trustGate         *TrustGate
 	client            *http.Client
 	requireSignatures bool
 }
@@ -84,10 +85,16 @@ type Syncer struct {
 // New returns a Syncer backed by the given entity store.
 func New(store storage.EntityStore) *Syncer {
 	return &Syncer{
-		store:  store,
-		guard:  graph.NewEntityIntegrityGuard(),
-		client: &http.Client{Timeout: 30 * time.Second},
+		store:     store,
+		guard:     graph.NewEntityIntegrityGuard(),
+		trustGate: NewTrustGate(),
+		client:    &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+// TrustGate returns the Syncer's TrustGate for inspecting pending approvals.
+func (s *Syncer) TrustGateState() *TrustGate {
+	return s.trustGate
 }
 
 // WithEntitlements attaches an entitlement store so the syncer can check and
@@ -167,6 +174,12 @@ func (s *Syncer) Sync(ctx context.Context, cfg config.RegistryConfig) (*SyncResu
 			slog.WarnContext(ctx, "registry sync: entity integrity rejected",
 				"slug", e.Slug, "registry", cfg.URL, "err", err)
 			result.Errors = append(result.Errors, fmt.Errorf("integrity guard %s: %w", e.Slug, err))
+			result.Skipped++
+			continue
+		}
+
+		// Trust gate: enforce per-registry trust level before writing.
+		if _, err := s.trustGate.CheckWrite(ctx, e, cfg.URL, cfg.EffectiveTrustLevel()); err != nil {
 			result.Skipped++
 			continue
 		}
