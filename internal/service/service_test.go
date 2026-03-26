@@ -68,6 +68,42 @@ func TestAnalyzeDuplicateDrop(t *testing.T) {
 	assert.Equal(t, "obj-drop-1", objs[0].ID)
 }
 
+// TestAnalyzeDuplicateDropAutoHash tests that Analyze auto-computes the content hash
+// when KnownHash is not provided, enabling exact dedup without requiring callers to
+// pre-compute the hash. This validates the auto-hash wiring added to the Analyze path.
+func TestAnalyzeDuplicateDropAutoHash(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	const content = "auto hash dedup test content"
+	const source = ""
+
+	// Compute the hash that Analyze will derive internally.
+	expectedHash := storageutil.ContentHash(content, source)
+
+	// Create an object with that hash to simulate a pre-existing ingestion.
+	obj := &storage.KnowledgeObject{
+		ID:          "obj-auto-hash-1",
+		Type:        "text",
+		ContentHash: expectedHash,
+		RawContent:  content,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+
+	// Enable exact dedup with drop policy.
+	svc.Cfg.Duplicates = config.DuplicatesConfig{
+		Policy:     "drop",
+		CheckExact: true,
+	}
+
+	// Second analyze with same content but NO KnownHash — should auto-compute and match.
+	result, err := svc.Analyze(ctx, AnalyzeRequest{Content: content, Type: "text"})
+	require.NoError(t, err)
+	assert.Equal(t, "obj-auto-hash-1", result, "auto-hash dedup should return existing object ID")
+}
+
 func TestAnalyze(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

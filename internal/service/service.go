@@ -113,7 +113,12 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	}
 
 	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).
-	dup, err := s.checkDuplicates(ctx, req.KnownHash, nil, s.Cfg.Duplicates)
+	// Auto-compute content hash when not pre-supplied by the caller.
+	hashForDedup := req.KnownHash
+	if hashForDedup == "" && s.Cfg.Duplicates.CheckExact {
+		hashForDedup = storageutil.ContentHash(req.Content, jobSource)
+	}
+	dup, err := s.checkDuplicates(ctx, hashForDedup, nil, s.Cfg.Duplicates)
 	if err != nil {
 		return "", fmt.Errorf("analyze: duplicate check: %w", err)
 	}

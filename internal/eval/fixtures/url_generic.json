@@ -1,0 +1,29 @@
+[
+  {
+    "id": "url-001",
+    "pipeline": "url.generic",
+    "input": "https://go.dev/blog/go1.22",
+    "expect": {
+      "pipeline_selected": "url.generic",
+      "no_hallucinated_mentions": true
+    }
+  },
+  {
+    "id": "url-002",
+    "pipeline": "url.generic",
+    "input": "https://docs.anthropic.com/en/docs/about-claude/models",
+    "expect": {
+      "pipeline_selected": "url.generic",
+      "no_hallucinated_mentions": true
+    }
+  },
+  {
+    "id": "url-003",
+    "pipeline": "url.generic",
+    "input": "https://kubernetes.io/docs/concepts/overview/",
+    "expect": {
+      "pipeline_selected": "url.generic",
+      "no_hallucinated_mentions": true
+    }
+  }
+]
