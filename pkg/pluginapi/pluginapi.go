@@ -95,6 +95,8 @@ type KnowledgeObject struct {
 	InboxNote          string         `json:"inbox_note,omitempty"`
 	ReinforcementCount int            `json:"reinforcement_count,omitempty"`
 	LastReinforcedAt   *time.Time     `json:"last_reinforced_at,omitempty"`
+	RemindAt           *time.Time     `json:"remind_at,omitempty"`
+	RemindedAt         *time.Time     `json:"reminded_at,omitempty"`
 	CreatedAt          time.Time      `json:"created_at"`
 	UpdatedAt          time.Time      `json:"updated_at"`
 	FTSIndexed         bool           `json:"fts_indexed"`

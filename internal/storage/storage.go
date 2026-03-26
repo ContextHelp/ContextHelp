@@ -96,6 +96,16 @@ type ObjectStore interface {
 	ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error)
 	Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error)
 	ListWithEmbeddings(ctx context.Context) ([]*KnowledgeObject, error)
+	// SetReminder sets remind_at on the object identified by id.
+	SetReminder(ctx context.Context, id string, at time.Time) error
+	// ClearReminder removes remind_at (and reminded_at) from the object.
+	ClearReminder(ctx context.Context, id string) error
+	// ListDueReminders returns objects where remind_at <= now and reminded_at IS NULL.
+	ListDueReminders(ctx context.Context, now time.Time) ([]*KnowledgeObject, error)
+	// MarkReminded sets reminded_at to now for the given object.
+	MarkReminded(ctx context.Context, id string, now time.Time) error
+	// ListPendingReminders returns all objects with a non-null remind_at.
+	ListPendingReminders(ctx context.Context) ([]*KnowledgeObject, error)
 	// VectorSearch returns the top-K objects ranked by cosine similarity to
 	// the given vector, optionally filtered by ObjectFilter fields.
 	VectorSearch(ctx context.Context, vector []float32, filter ObjectFilter) ([]*KnowledgeObject, error)

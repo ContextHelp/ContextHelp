@@ -82,6 +82,19 @@ func (m *mockObjectStore) VectorSearch(ctx context.Context, vector []float32, fi
 func (m *mockObjectStore) FTSSearch(ctx context.Context, query string, filter ObjectFilter) ([]*KnowledgeObject, error) {
 	return nil, nil
 }
+func (m *mockObjectStore) SetReminder(ctx context.Context, id string, at time.Time) error {
+	return nil
+}
+func (m *mockObjectStore) ClearReminder(ctx context.Context, id string) error { return nil }
+func (m *mockObjectStore) ListDueReminders(ctx context.Context, now time.Time) ([]*KnowledgeObject, error) {
+	return nil, nil
+}
+func (m *mockObjectStore) MarkReminded(ctx context.Context, id string, now time.Time) error {
+	return nil
+}
+func (m *mockObjectStore) ListPendingReminders(ctx context.Context) ([]*KnowledgeObject, error) {
+	return nil, nil
+}
 
 type mockEntityStore struct{}
 
