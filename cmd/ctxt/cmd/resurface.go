@@ -1,0 +1,197 @@
+package cmd
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/resurfacing"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
+
+var resurfaceCmd = &cobra.Command{
+	Use:   "resurface",
+	Short: "Show top resurfacing candidates for the active profile",
+	Long: `Print knowledge objects most relevant to the active profile right now.
+
+Candidates are scored by entity overlap, tag overlap, and recency decay.
+Run ctxt resurface refresh to re-score before showing results.
+
+Examples:
+  ctxt resurface
+  ctxt resurface --limit 5
+  ctxt resurface refresh
+  ctxt resurface dismiss <entry-id>
+  ctxt resurface --output json`,
+	RunE: runResurfaceShow,
+}
+
+var resurfaceRefreshCmd = &cobra.Command{
+	Use:   "refresh",
+	Short: "Re-score all objects and update the resurfacing queue",
+	RunE:  runResurfaceRefresh,
+}
+
+var resurfaceDismissCmd = &cobra.Command{
+	Use:   "dismiss <entry-id>",
+	Short: "Dismiss a resurfacing entry",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runResurfaceDismiss,
+}
+
+func init() {
+	rootCmd.AddCommand(resurfaceCmd)
+	resurfaceCmd.AddCommand(resurfaceRefreshCmd)
+	resurfaceCmd.AddCommand(resurfaceDismissCmd)
+
+	resurfaceCmd.Flags().IntP("limit", "n", 0, "max items to show (0 = use config default)")
+	resurfaceCmd.Flags().Float64("min-score", 0, "minimum score threshold (0 = use config default)")
+}
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+func activeProfileName() string {
+	if cfg != nil && cfg.Profile.Default != "" {
+		return cfg.Profile.Default
+	}
+	return viper.GetString("profile.default")
+}
+
+func activeProfile() (string, config.FocusProfile, bool) {
+	name := activeProfileName()
+	if name == "" || cfg == nil {
+		return "", config.FocusProfile{}, false
+	}
+	p, ok := cfg.Profile.Profiles[name]
+	return name, p, ok
+}
+
+func resurfacingCfg() config.ResurfacingConfig {
+	if cfg != nil {
+		return cfg.Resurfacing
+	}
+	return config.ResurfacingConfig{
+		Enabled:     true,
+		MaxItems:    10,
+		MinScore:    0.4,
+		RunInterval: time.Hour,
+	}
+}
+
+// ─── commands ────────────────────────────────────────────────────────────────
+
+func runResurfaceShow(cmd *cobra.Command, _ []string) error {
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+	rcfg := resurfacingCfg()
+
+	limit, _ := cmd.Flags().GetInt("limit")
+	if limit <= 0 {
+		limit = rcfg.MaxItems
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+
+	minScore, _ := cmd.Flags().GetFloat64("min-score")
+	if minScore <= 0 {
+		minScore = rcfg.MinScore
+	}
+
+	profileName := activeProfileName()
+
+	entries, err := svc.ListResurfacing(ctx, profileName, limit, minScore)
+	if err != nil {
+		return fmt.Errorf("list resurfacing: %w", err)
+	}
+
+	// Mark as surfaced.
+	for _, e := range entries {
+		_ = svc.MarkResurfaced(ctx, e.ID)
+	}
+
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, map[string]any{
+			"profile": profileName,
+			"items":   entries,
+			"total":   len(entries),
+		})
+	}
+
+	if len(entries) == 0 {
+		fmt.Println("No resurfacing candidates.")
+		if profileName == "" {
+			fmt.Println("Tip: set a default profile with: ctxt profile set-default <name>")
+			fmt.Println("     Then run: ctxt resurface refresh")
+		}
+		return nil
+	}
+
+	fmt.Printf("Resurfacing candidates for profile %q (%d)\n\n", profileName, len(entries))
+	headers := []string{"Entry ID", "Object ID", "Score", "Reason"}
+	rows := make([][]string, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, []string{
+			truncate(e.ID, 12),
+			truncate(e.ObjectID, 16),
+			fmt.Sprintf("%.2f", e.Score),
+			e.Reason,
+		})
+	}
+	printTable(os.Stdout, headers, rows)
+	return nil
+}
+
+func runResurfaceRefresh(_ *cobra.Command, _ []string) error {
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+	rcfg := resurfacingCfg()
+
+	profileName, profile, ok := activeProfile()
+	if !ok && profileName != "" {
+		return fmt.Errorf("active profile %q not found in config", profileName)
+	}
+
+	job := resurfacing.NewJob(svc.Store, rcfg)
+	if err := job.RunOnce(ctx, profileName, profile); err != nil {
+		return fmt.Errorf("resurfacing refresh: %w", err)
+	}
+
+	fmt.Fprintf(os.Stdout, "Resurfacing queue refreshed for profile %q\n", profileName)
+	return nil
+}
+
+func runResurfaceDismiss(_ *cobra.Command, args []string) error {
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+	if err := svc.DismissResurfacing(ctx, args[0]); err != nil {
+		return fmt.Errorf("dismiss: %w", err)
+	}
+	fmt.Fprintf(os.Stdout, "Entry %s dismissed\n", args[0])
+	return nil
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}
