@@ -217,6 +217,29 @@ func (s *Service) ListEntities(ctx context.Context, filter storage.EntityFilter)
 	return s.Store.Entities().List(ctx, filter)
 }
 
+// RelatedObjects returns objects related to objectID by traversing shared
+// mention-target edges up to depth hops (capped at 3). Results are limited to
+// limit items (0 = default of 10). The seed object is never included.
+func (s *Service) RelatedObjects(ctx context.Context, objectID string, depth, limit int) ([]*storage.KnowledgeObject, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	ids, err := s.Store.Edges().RelatedObjectIDs(ctx, objectID, depth, limit)
+	if err != nil {
+		return nil, fmt.Errorf("related objects: %w", err)
+	}
+
+	objs := make([]*storage.KnowledgeObject, 0, len(ids))
+	for _, id := range ids {
+		obj, err := s.Store.Objects().Get(ctx, id)
+		if err != nil {
+			continue // skip missing/deleted objects
+		}
+		objs = append(objs, obj)
+	}
+	return objs, nil
+}
+
 // EntityBacklinks returns objects that mention the given entity.
 // slug may be in @namespace.id mention format or ctxt:// URI format.
 func (s *Service) EntityBacklinks(ctx context.Context, slug string) ([]*storage.KnowledgeObject, error) {

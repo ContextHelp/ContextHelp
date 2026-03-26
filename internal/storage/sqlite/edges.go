@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -83,6 +84,92 @@ func (s *EdgeStore) CountMentionsTo(ctx context.Context, toType, toID string) (i
 		return 0, fmt.Errorf("count mentions to: %w", err)
 	}
 	return count, nil
+}
+
+// RelatedObjectIDs returns object IDs reachable from objectID by traversing
+// shared mention-target edges up to depth hops. depth must be >= 1 and is
+// capped at 3 to prevent runaway traversal. The seed objectID is never
+// included in the result. limit caps the total returned IDs (0 = no cap).
+func (s *EdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth, limit int) ([]string, error) {
+	if depth < 1 {
+		depth = 1
+	}
+	if depth > 3 {
+		depth = 3
+	}
+
+	// frontier = current set of object IDs to expand; visited prevents revisiting.
+	frontier := map[string]struct{}{objectID: {}}
+	visited := map[string]struct{}{objectID: {}}
+	var result []string
+
+	for hop := 0; hop < depth; hop++ {
+		if len(frontier) == 0 {
+			break
+		}
+
+		// Collect mention targets for all frontier objects.
+		placeholders := make([]string, 0, len(frontier))
+		args := make([]any, 0, len(frontier))
+		for id := range frontier {
+			placeholders = append(placeholders, "?")
+			args = append(args, id)
+		}
+
+		// Find shared-target neighbours: objects that share any mention target
+		// with any object in the current frontier.
+		query := fmt.Sprintf(`
+			SELECT DISTINCT e2.from_id
+			FROM edges e1
+			JOIN edges e2 ON e1.to_id = e2.to_id
+			WHERE e1.from_type = 'object'
+			  AND e1.from_id IN (%s)
+			  AND e1.edge_type = 'mentions'
+			  AND e2.from_type = 'object'
+			  AND e2.edge_type = 'mentions'`,
+			joinPlaceholders(len(frontier)),
+		)
+
+		rows, err := s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("related objects hop %d: %w", hop+1, err)
+		}
+
+		nextFrontier := map[string]struct{}{}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan related id: %w", err)
+			}
+			if _, seen := visited[id]; seen {
+				continue
+			}
+			visited[id] = struct{}{}
+			nextFrontier[id] = struct{}{}
+			result = append(result, id)
+			if limit > 0 && len(result) >= limit {
+				rows.Close()
+				return result, nil
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("related objects rows: %w", err)
+		}
+
+		frontier = nextFrontier
+	}
+
+	return result, nil
+}
+
+func joinPlaceholders(n int) string {
+	s := make([]string, n)
+	for i := range s {
+		s[i] = "?"
+	}
+	return strings.Join(s, ",")
 }
 
 func scanEdges(rows *sql.Rows) ([]*storage.Edge, error) {

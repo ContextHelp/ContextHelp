@@ -131,9 +131,11 @@ func compileMention(n ComparisonNode) (string, []any, error) {
 		[]any{n.Value}, nil
 }
 
-// compileRelated returns objects that share at least one mention target with the
-// given entity slug. The query finds all objects that mention the same entity
-// as the seed entity does (i.e. via shared to_id in the edges table).
+// compileRelated returns objects that share at least one mention target with any
+// object that mentions the given entity slug. For each object e1 that mentions
+// the entity, it finds all other objects e2 that share any common mention
+// target (to_id) with e1. The entity slug itself is excluded from the join
+// condition so e2 ranges over ALL shared targets, not just the seed entity.
 func compileRelated(n ComparisonNode) (string, []any, error) {
 	if n.Operator != OpEq {
 		return "", nil, fmt.Errorf("related field only supports == operator")
@@ -143,10 +145,11 @@ func compileRelated(n ComparisonNode) (string, []any, error) {
 		FROM edges e1
 		JOIN edges e2 ON e1.to_id = e2.to_id
 		WHERE e1.from_type = 'object'
-		  AND e1.from_id = (SELECT from_id FROM edges WHERE from_type = 'object' AND to_type = 'entity' AND to_id = ? LIMIT 1)
+		  AND e1.to_type = 'entity'
+		  AND e1.to_id = ?
+		  AND e1.edge_type = 'mentions'
 		  AND e2.from_type = 'object'
 		  AND e2.from_id != e1.from_id
-		  AND e1.edge_type = 'mentions'
 		  AND e2.edge_type = 'mentions'
 	)`
 	return sql, []any{n.Value}, nil

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -547,4 +548,67 @@ func TestComposeWithCitations_CompositionType(t *testing.T) {
 	result, err := svc.ComposeWithCitations(ctx, objs, "plan")
 	require.NoError(t, err)
 	assert.Equal(t, "plan", result.Type)
+}
+
+func TestRelatedObjects(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	// Seed three objects.
+	for _, id := range []string{"ro-1", "ro-2", "ro-3"} {
+		require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+			ID: id, Type: "note", CreatedAt: now, UpdatedAt: now,
+		}))
+	}
+
+	// ro-1 and ro-2 both mention "entity-X"; ro-3 mentions "entity-Y" only.
+	mkEdge := func(id, from, to string) *storage.Edge {
+		return &storage.Edge{
+			ID:       id, FromType: "object", FromID: from,
+			ToType: "entity", ToID: to, EdgeType: "mentions",
+			Weight: 1.0, CreatedAt: now,
+		}
+	}
+	require.NoError(t, svc.Store.Edges().Create(ctx, mkEdge("re1", "ro-1", "entity-X")))
+	require.NoError(t, svc.Store.Edges().Create(ctx, mkEdge("re2", "ro-2", "entity-X")))
+	require.NoError(t, svc.Store.Edges().Create(ctx, mkEdge("re3", "ro-3", "entity-Y")))
+
+	related, err := svc.RelatedObjects(ctx, "ro-1", 1, 0)
+	require.NoError(t, err)
+
+	require.Len(t, related, 1)
+	assert.Equal(t, "ro-2", related[0].ID)
+}
+
+func TestRelatedObjectsDefaultLimit(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	// Seed seed + 12 related objects sharing entity-X.
+	require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		ID: "seed", Type: "note", CreatedAt: now, UpdatedAt: now,
+	}))
+	for i := 0; i < 12; i++ {
+		id := fmt.Sprintf("peer-%02d", i)
+		require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+			ID: id, Type: "note", CreatedAt: now, UpdatedAt: now,
+		}))
+		require.NoError(t, svc.Store.Edges().Create(ctx, &storage.Edge{
+			ID:       "e-" + id, FromType: "object", FromID: id,
+			ToType: "entity", ToID: "entity-X", EdgeType: "mentions",
+			Weight: 1.0, CreatedAt: now,
+		}))
+	}
+	require.NoError(t, svc.Store.Edges().Create(ctx, &storage.Edge{
+		ID:       "e-seed", FromType: "object", FromID: "seed",
+		ToType: "entity", ToID: "entity-X", EdgeType: "mentions",
+		Weight: 1.0, CreatedAt: now,
+	}))
+
+	// limit=0 triggers the default of 10.
+	related, err := svc.RelatedObjects(ctx, "seed", 1, 0)
+	require.NoError(t, err)
+	assert.LessOrEqual(t, len(related), 10)
 }

@@ -130,6 +130,9 @@ func (m *mockEdgeStore) DeleteByObject(ctx context.Context, objectID string) err
 func (m *mockEdgeStore) CountMentionsTo(ctx context.Context, toType, toID string) (int, error) {
 	return 0, nil
 }
+func (m *mockEdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth, limit int) ([]string, error) {
+	return nil, nil
+}
 
 type mockJobStore struct{}
 
