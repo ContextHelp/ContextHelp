@@ -357,10 +357,15 @@ const (
 
 // RegistryConfig represents a registry configuration
 type RegistryConfig struct {
-	Name     string           `mapstructure:"name"      yaml:"name"`
-	URL      string           `mapstructure:"url"       yaml:"url"`
+	Name     string             `mapstructure:"name"      yaml:"name"`
+	URL      string             `mapstructure:"url"       yaml:"url"`
 	Auth     RegistryAuthConfig `mapstructure:"auth,omitempty" yaml:"auth,omitempty"`
-	SyncMode RegistrySyncMode `mapstructure:"sync_mode" yaml:"sync_mode"`
+	SyncMode RegistrySyncMode   `mapstructure:"sync_mode" yaml:"sync_mode"`
+	// EntitlementURL is the endpoint to call before sync to verify access.
+	// When empty, no entitlement check is performed.
+	// Typically populated at runtime from the registry manifest; can also be
+	// declared explicitly in config for override scenarios.
+	EntitlementURL string `mapstructure:"entitlement_url,omitempty" yaml:"entitlement_url,omitempty"`
 }
 
 // PluginConfig represents a plugin configuration

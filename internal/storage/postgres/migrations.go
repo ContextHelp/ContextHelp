@@ -242,6 +242,13 @@ func (d *Driver) Migrate(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_audit_object_id ON audit_log(object_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_event_type ON audit_log(event_type)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_log(created_at)`,
+		`CREATE TABLE IF NOT EXISTS registry_entitlements (
+			registry_name TEXT PRIMARY KEY,
+			plan          TEXT NOT NULL,
+			namespaces    TEXT NOT NULL,
+			expires_at    TIMESTAMP,
+			fetched_at    TIMESTAMP NOT NULL DEFAULT NOW()
+		)`,
 	}
 
 	for i, m := range migrations {
