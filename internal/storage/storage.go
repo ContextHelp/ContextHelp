@@ -101,6 +101,8 @@ type ObjectStore interface {
 	ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error)
 	Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error)
 	ListWithEmbeddings(ctx context.Context) ([]*KnowledgeObject, error)
+	// ListWithoutEmbeddings returns objects that have no stored embedding blob.
+	ListWithoutEmbeddings(ctx context.Context) ([]*KnowledgeObject, error)
 	// SetReminder sets remind_at on the object identified by id.
 	SetReminder(ctx context.Context, id string, at time.Time) error
 	// ClearReminder removes remind_at (and reminded_at) from the object.
@@ -139,6 +141,8 @@ type EdgeStore interface {
 	ListTo(ctx context.Context, toType, toID string) ([]*Edge, error)
 	Delete(ctx context.Context, id string) error
 	DeleteByObject(ctx context.Context, objectID string) error
+	// CountMentionsTo returns the number of object→entity edges pointing at toID.
+	CountMentionsTo(ctx context.Context, toType, toID string) (int, error)
 }
 
 // JobStore persists and retrieves jobs.

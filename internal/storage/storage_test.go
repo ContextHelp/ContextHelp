@@ -76,6 +76,9 @@ func (m *mockObjectStore) Reinforce(ctx context.Context, hash string, mergeData 
 func (m *mockObjectStore) ListWithEmbeddings(ctx context.Context) ([]*KnowledgeObject, error) {
 	return nil, nil
 }
+func (m *mockObjectStore) ListWithoutEmbeddings(ctx context.Context) ([]*KnowledgeObject, error) {
+	return nil, nil
+}
 func (m *mockObjectStore) VectorSearch(ctx context.Context, vector []float32, filter ObjectFilter) ([]*KnowledgeObject, error) {
 	return nil, nil
 }
@@ -99,6 +102,10 @@ func (m *mockObjectStore) ListPendingReminders(ctx context.Context) ([]*Knowledg
 type mockEntityStore struct{}
 
 func (m *mockEntityStore) Upsert(ctx context.Context, entity *Entity) error { return nil }
+func (m *mockEntityStore) UpsertThin(ctx context.Context, entity *Entity) error { return nil }
+func (m *mockEntityStore) SetContentStatus(ctx context.Context, slug string, status ContentStatus) error {
+	return nil
+}
 func (m *mockEntityStore) Get(ctx context.Context, slug string) (*Entity, error) {
 	return nil, nil
 }
@@ -120,6 +127,9 @@ func (m *mockEdgeStore) ListTo(ctx context.Context, toType, toID string) ([]*Edg
 }
 func (m *mockEdgeStore) Delete(ctx context.Context, id string) error               { return nil }
 func (m *mockEdgeStore) DeleteByObject(ctx context.Context, objectID string) error { return nil }
+func (m *mockEdgeStore) CountMentionsTo(ctx context.Context, toType, toID string) (int, error) {
+	return 0, nil
+}
 
 type mockJobStore struct{}
 
