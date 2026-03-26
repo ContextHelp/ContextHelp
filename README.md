@@ -4,13 +4,69 @@
 - **dPKMS** (substrate) - Safe execution, storage, graph, federation
 - **ctxt** (brain) - Intelligence, pipelines, composition, surfacing
 
-ContextHelp transforms raw multimodal content into structured, contextualized knowledge consumable by humans and AI agents alike.
+ContextHelp is a **semantic layer, not a replacement**. It augments Obsidian, Notion, Pocket, and similar
+tools by adding stable entity identities, a queryable knowledge graph, and AI-ready retrieval on top of your
+existing content — without asking you to abandon what already works.
 
-It ingests text, URLs, images, audio, and video through **ctxt pipelines**; processes them via the **dPKMS runtime**; normalizes meaning using **dPKMS registries** (taxonomies, entities, tags, weights); stores them as structured **knowledge objects** in **dPKMS storage**; and exposes them to agents through the **ctxt CLI** and **dPKMS APIs** (REST, gRPC).
+It ingests text, URLs, images, audio, and video through **ctxt pipelines**; processes them via the **dPKMS
+runtime**; normalizes meaning using **dPKMS registries** (taxonomies, entities, tags, weights); stores them as
+structured **knowledge objects** in **dPKMS storage**; and exposes them to agents through the **ctxt CLI** and
+**dPKMS APIs** (REST, gRPC).
 
-ContextHelp provides not just storage, but a **semantic identity layer** (mentions + entities) and a **knowledge graph** (dPKMS) connecting content and concepts. It is the foundational "context layer" for personal and organizational AI — a system that captures, enriches, and retrieves knowledge in the user's preferred language(s), fully under their control.
+ContextHelp provides not just storage, but a **semantic identity layer** (mentions + entities) and a
+**knowledge graph** (dPKMS) connecting content and concepts. It is the foundational "context layer" for
+personal and organizational AI — a system that captures, enriches, and retrieves knowledge in the user's
+preferred language(s), fully under their control.
 
-ContextHelp is self-hostable by default, and can optionally be used via **context.help cloud** for teams that don't want to run infrastructure.
+ContextHelp is self-hostable by default, and can optionally be used via **context.help cloud** for teams
+that don't want to run infrastructure.
+
+---
+
+## DNS for Concepts
+
+The **dPKMS registry** system works like DNS, but for knowledge:
+
+- DNS maps `stripe.com` → IP address; dPKMS maps `@stripe.api` → canonical knowledge object
+- Just as you subscribe to DNS resolvers, you subscribe to knowledge registries
+- Registries resolve `@stripe.api` to a canonical entity with stable ID, aliases, tags, and relationships
+- Any content mentioning `@stripe.api` automatically backlinks to that canonical entity
+- Teams can share registries; communities can publish them; you can run your own
+
+```
+# DNS analogy
+stripe.com  →  93.184.216.34          (hostname → IP)
+
+# dPKMS registries
+@stripe.api →  entity:payment/stripe  (concept → canonical knowledge)
+              aliases: ["Stripe", "stripe-api"]
+              tags: [payments, api, saas]
+              related: [@stripe.webhooks, @stripe.elements]
+```
+
+This is what makes ctxt different from "RAG on your notes" — structured concept identity, not just fuzzy
+text similarity.
+
+---
+
+## When NOT to Use ContextHelp
+
+ContextHelp is deliberately scoped. It is **not** the right tool if:
+
+- **You want a note-taking app** — use Obsidian or Notion. ContextHelp has no rich editor.
+- **You need real-time collaboration** — use Confluence or Notion. ContextHelp is local-first, async by
+  design.
+- **Your notes don't have semantic complexity** — daily journals, to-do lists, and simple bookmarks don't
+  benefit from entity resolution. The setup cost won't pay off.
+- **You want zero-configuration** — Pocket and Raindrop are ready in 30 seconds. ContextHelp requires
+  configuration (registries, pipelines, profiles).
+- **You're looking for cloud-synced mobile notes** — ContextHelp's primary interface is CLI. Mobile is a
+  plugin, not a first-class surface.
+- **Your AI agent usage is occasional** — the value of a structured knowledge graph compounds over time.
+  Light AI usage doesn't justify the overhead.
+
+Use ContextHelp when you have **complex, interconnected knowledge** and need AI agents to reason over it
+precisely — not when you need a simpler tool to do a simpler job.
 
 ---
 

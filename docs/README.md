@@ -453,7 +453,48 @@ Managing secrets, compliance, and secure deployments:
 
 ---
 
-## 🔑 Key Principles
+## Positioning
+
+### Semantic layer, not replacement
+
+ContextHelp augments existing tools — does not replace them:
+
+| You keep using | ContextHelp adds |
+|----------------|-----------------|
+| Obsidian / Notion / Logseq | Stable entity identities, queryable graph, AI-ready retrieval |
+| Pocket / Raindrop | Semantic enrichment, mention extraction, pipeline normalization |
+| ripgrep / Spotlight | Hybrid search (symbolic + vector), entity-aware filters |
+
+Not a new place to write notes — a semantic layer that transforms content you already have.
+
+### DNS for Concepts
+
+Registries map concept identifiers to canonical knowledge the way DNS maps hostnames to IPs:
+
+```
+DNS:     stripe.com   →  93.184.216.34
+dPKMS:   @stripe.api  →  entity:payment/stripe  (stable ID, aliases, tags, relationships)
+```
+
+- Subscribe to registries like DNS resolvers
+- Content mentioning `@stripe.api` auto-backlinks to its canonical entity
+- Agents can be precise: *"read everything linked to `@project.specs`"* — no fuzzy guessing
+- Teams share registries; communities publish them; run your own
+
+See [dpkms/registries.md](dpkms/registries.md), [dpkms/mentions.md](dpkms/mentions.md).
+
+### When NOT to use ContextHelp
+
+- **Want a note-taking app** → Obsidian or Notion (no rich editor here)
+- **Need real-time collaboration** → Confluence or Notion (local-first, async by design)
+- **Simple notes, no semantic complexity** → journals, to-dos, basic bookmarks don't need entity resolution
+- **Want zero-configuration** → Pocket/Raindrop start in 30s; ContextHelp requires setup
+- **Occasional AI usage** → graph value compounds over time; light AI use doesn't justify the overhead
+- **Primary interface is mobile** → CLI-first; mobile is a plugin, not a first-class surface
+
+---
+
+## Key Principles
 
 ### dPKMS (Substrate)
 - **Sovereign** - Full ownership, no vendor lock-in
