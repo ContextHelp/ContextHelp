@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -95,14 +95,27 @@ test-gate: test-all
 	@echo ""
 	@echo "✓ Test gate passed"
 
-## lint: Run linters
-lint:
+## lint: Run linters (golangci-lint + gosec)
+lint: gosec
 	@echo "Running linters..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run; \
 	else \
 		echo "golangci-lint not installed. Install with:"; \
 		echo "  go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
+		exit 1; \
+	fi
+
+## gosec: Run gosec static security analysis (fails on medium+ severity)
+gosec:
+	@echo "Running gosec security scan..."
+	@if command -v gosec >/dev/null 2>&1; then \
+		gosec -conf .gosec.yaml -severity medium -confidence medium \
+			-exclude G104,G304,G307 \
+			-fmt text ./...; \
+	else \
+		echo "gosec not installed. Install with:"; \
+		echo "  go install github.com/securego/gosec/v2/cmd/gosec@latest"; \
 		exit 1; \
 	fi
 

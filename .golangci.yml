@@ -94,11 +94,14 @@ linters-settings:
       - dpkms
 
   gosec:
+    # Config file with project-specific exclusions and per-path overrides
+    config: .gosec.yaml
     severity: medium
     confidence: medium
     excludes:
       - G104  # Audit errors not checked (covered by errcheck)
       - G304  # File path provided as taint input (needed for flexibility)
+      - G307  # Defer on method returning error (well-known pattern)
 
   revive:
     rules:
