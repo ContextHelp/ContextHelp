@@ -181,6 +181,30 @@ type PostIngestHook interface {
 	PostIngest(ctx context.Context, obj *KnowledgeObject) error
 }
 
+// ─── Output generator contract ────────────────────────────────────────────────
+
+// OutputOptions carries rendering preferences passed to an OutputGenerator.
+type OutputOptions struct {
+	// Destination is an optional filesystem path hint (e.g. vault directory).
+	// Generators that write files use this as a base path.
+	// Empty means the caller handles writing the returned bytes itself.
+	Destination string
+	// Extra holds generator-specific settings sourced from plugin config.
+	Extra map[string]any
+}
+
+// OutputGenerator is implemented by plugins that can render a KnowledgeObject
+// to a specific output format (e.g. Obsidian Markdown, Notion export).
+type OutputGenerator interface {
+	Plugin
+	// Name returns the format identifier matched against --format (e.g. "obsidian-md").
+	GeneratorName() string
+	// Accepts reports whether this generator can handle obj.
+	Accepts(obj KnowledgeObject) bool
+	// Generate renders obj and returns the formatted bytes.
+	Generate(ctx context.Context, obj KnowledgeObject, opts OutputOptions) ([]byte, error)
+}
+
 // AliasResolver is implemented by plugins that can resolve aliases to object IDs.
 type AliasResolver interface {
 	Plugin

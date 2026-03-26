@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -35,9 +36,11 @@ func init() {
 
 	// Display flags
 	openCmd.Flags().Bool("raw", false, "show raw object data")
+	openCmd.Flags().String("format", "", "output-generator plugin name (e.g. obsidian-md)")
 
 	// Bind flags to viper
 	viper.BindPFlag("open.raw", openCmd.Flags().Lookup("raw"))
+	viper.BindPFlag("open.format", openCmd.Flags().Lookup("format"))
 }
 
 func runOpen(cmd *cobra.Command, args []string) error {
@@ -60,6 +63,23 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	obj, err := svc.GetObject(ctx, objectID)
 	if err != nil {
 		return fmt.Errorf("get object: %w", err)
+	}
+
+	// Delegate to output-generator plugin when --format is specified.
+	if format := viper.GetString("open.format"); format != "" {
+		gen := findOutputGenerator(svc.PluginRegistry, format)
+		if gen == nil {
+			return fmt.Errorf("no output-generator plugin loaded for format %q", format)
+		}
+		if !gen.Accepts(*obj) {
+			return fmt.Errorf("plugin %q does not accept objects of type %q", format, obj.Type)
+		}
+		out, err := gen.Generate(ctx, *obj, pluginapi.OutputOptions{})
+		if err != nil {
+			return fmt.Errorf("generate %q: %w", format, err)
+		}
+		_, err = os.Stdout.Write(out)
+		return err
 	}
 
 	if isJSONOutput() || viper.GetBool("open.raw") {

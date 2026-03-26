@@ -15,10 +15,12 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
+	"github.com/ideacrafterslabs/ctxt/internal/plugin"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/spf13/viper"
 )
 
@@ -151,6 +153,15 @@ func printTable(w io.Writer, headers []string, rows [][]string) {
 		})
 
 	fmt.Fprintln(w, t.Render())
+}
+
+// findOutputGenerator looks up a generator by format name from the plugin registry.
+// Returns nil if reg is nil or no matching generator is found.
+func findOutputGenerator(reg *plugin.Registry, format string) pluginapi.OutputGenerator {
+	if reg == nil {
+		return nil
+	}
+	return reg.FindOutputGenerator(format)
 }
 
 // buildObjectFilter reads common filter flags from viper and returns an ObjectFilter.
