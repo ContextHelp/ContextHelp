@@ -46,6 +46,9 @@ type Config struct {
 	// Registries configuration
 	Registries []RegistryConfig `mapstructure:"registries"`
 
+	// RegistriesGlobal holds registry-wide settings that apply to all registries.
+	RegistriesGlobal RegistriesGlobalConfig `mapstructure:"registries_global" yaml:"registries_global"`
+
 	// Plugins configuration
 	Plugins []PluginConfig `mapstructure:"plugins"`
 
@@ -98,6 +101,67 @@ type Config struct {
 
 	// Resurfacing controls the background resurfacing queue.
 	Resurfacing ResurfacingConfig `mapstructure:"resurfacing" yaml:"resurfacing"`
+
+	// Audit controls SIEM-ready audit log export and forwarding.
+	Audit AuditConfig `mapstructure:"audit" yaml:"audit"`
+
+	// Security configures security alerting hooks.
+	Security SecurityConfig `mapstructure:"security" yaml:"security"`
+}
+
+// AuditConfig controls SIEM-ready audit log export and real-time forwarding.
+type AuditConfig struct {
+	// Syslog forwards each audit event to a remote syslog receiver.
+	Syslog AuditSyslogConfig `mapstructure:"syslog" yaml:"syslog"`
+	// Webhook POSTs each audit event as JSON to a configurable URL.
+	Webhook AuditWebhookConfig `mapstructure:"webhook" yaml:"webhook"`
+}
+
+// AuditSyslogConfig holds syslog forwarding settings.
+type AuditSyslogConfig struct {
+	// Enabled activates syslog forwarding. Default: false.
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// Protocol is the transport: "udp", "tcp", or "tls". Default: "udp".
+	Protocol string `mapstructure:"protocol" yaml:"protocol"`
+	// Address is host:port of the syslog receiver. Default: "localhost:514".
+	Address string `mapstructure:"address" yaml:"address"`
+	// Facility is the syslog facility name (e.g. "local0"). Default: "local0".
+	Facility string `mapstructure:"facility" yaml:"facility"`
+}
+
+// AuditWebhookConfig holds webhook delivery settings.
+type AuditWebhookConfig struct {
+	// Enabled activates webhook delivery. Default: false.
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// URL is the HTTP/HTTPS endpoint that receives POST requests.
+	URL string `mapstructure:"url" yaml:"url"`
+}
+
+// SecurityConfig holds security alerting hook settings.
+type SecurityConfig struct {
+	Alerts SecurityAlertsConfig `mapstructure:"alerts" yaml:"alerts"`
+}
+
+// SecurityAlertsConfig holds threshold and delivery config for security alerts.
+type SecurityAlertsConfig struct {
+	// AuthFailureThreshold is the max auth failures per principal in 60s before alerting.
+	// Default: 3.
+	AuthFailureThreshold int `mapstructure:"auth_failure_threshold" yaml:"auth_failure_threshold"`
+	// ACLDenialThreshold is the max ACL denials per principal in 60s before alerting.
+	// Default: 10.
+	ACLDenialThreshold int `mapstructure:"acl_denial_threshold" yaml:"acl_denial_threshold"`
+	// WebhookURL is an optional endpoint for webhook alerts (empty = disabled).
+	WebhookURL string `mapstructure:"webhook_url" yaml:"webhook_url"`
+	// SMTP holds optional SMTP delivery config.
+	SMTP SecuritySMTPConfig `mapstructure:"smtp" yaml:"smtp"`
+}
+
+// SecuritySMTPConfig holds SMTP delivery settings for security alerts.
+type SecuritySMTPConfig struct {
+	Host string `mapstructure:"host" yaml:"host"`
+	Port int    `mapstructure:"port" yaml:"port"`
+	From string `mapstructure:"from" yaml:"from"`
+	To   string `mapstructure:"to" yaml:"to"`
 }
 
 // OfflineConfig controls strict offline (air-gapped) operation mode.
@@ -259,6 +323,14 @@ type BackupConfig struct {
 	// Dir is the directory where backup archives are written.
 	// Defaults to the current working directory if empty.
 	Dir string `mapstructure:"dir" yaml:"dir"`
+
+	// EncryptByDefault enables AES-256-GCM encryption for every backup
+	// when true.  Equivalent to always passing --encrypt to `ctxt config backup`.
+	// Passphrase is sourced from the same priority chain as the --encrypt flow:
+	//   1. CTXT_BACKUP_PASSPHRASE env var
+	//   2. OS keychain (ctxt.backup / passphrase)
+	//   3. Interactive prompt
+	EncryptByDefault bool `mapstructure:"encrypt_by_default" yaml:"encrypt_by_default"`
 }
 
 // StorageConfig represents storage configuration
@@ -321,6 +393,14 @@ type FocusProfile struct {
 	// SearchStrategy overrides global search config for this profile.
 	// Zero/empty fields inherit from the global search config.
 	SearchStrategy ProfileSearchStrategy `mapstructure:"search_strategy" yaml:"search_strategy"`
+}
+
+// RegistriesGlobalConfig holds registry-wide settings that apply to all registries.
+type RegistriesGlobalConfig struct {
+	// RequireSignatures requires that every registry must declare a public_key and
+	// that each sync response carries a valid Ed25519 signature.
+	// Default: false (registries without a public_key are still allowed).
+	RequireSignatures bool `mapstructure:"require_signatures" yaml:"require_signatures"`
 }
 
 // RegistryAuthType enumerates supported auth mechanisms.
@@ -583,11 +663,19 @@ func setDefaults(v *viper.Viper) {
 	// Offline mode — disabled by default; enable for air-gapped environments.
 	v.SetDefault("offline.enabled", false)
 
+	// Registries global — require_signatures is off by default (permissive).
+	v.SetDefault("registries_global.require_signatures", false)
+
 	// Resurfacing defaults
 	v.SetDefault("resurfacing.enabled", true)
 	v.SetDefault("resurfacing.max_items", 10)
 	v.SetDefault("resurfacing.min_score", 0.4)
 	v.SetDefault("resurfacing.run_interval", time.Hour)
+
+	// Security alerting defaults
+	v.SetDefault("security.alerts.auth_failure_threshold", 3)
+	v.SetDefault("security.alerts.acl_denial_threshold", 10)
+	v.SetDefault("security.alerts.smtp.port", 587)
 }
 
 // bindEnvVars binds environment variables to configuration keys

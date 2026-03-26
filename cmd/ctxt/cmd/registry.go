@@ -329,6 +329,18 @@ func runRegistryInfo(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Version:      %s\n", cache.Manifest.Version)
 		fmt.Printf("Description:  %s\n", cache.Manifest.Description)
 		fmt.Printf("Steps:        %d\n", len(cache.Manifest.Steps))
+		if cache.Manifest.PublicKey != "" {
+			fmt.Printf("Public Key:   %s\n", cache.Manifest.PublicKey)
+		}
+	}
+	// Trust status.
+	trustStatus := string(cache.TrustStatus)
+	if trustStatus == "" {
+		trustStatus = "unknown"
+	}
+	fmt.Printf("Trust Status: %s\n", trustStatus)
+	if cache.KeyFingerprint != "" {
+		fmt.Printf("Key Fingerprint: %s\n", cache.KeyFingerprint)
 	}
 	return nil
 }

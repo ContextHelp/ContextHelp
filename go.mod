@@ -29,6 +29,8 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/peterh/liner v1.2.2
 	github.com/yuin/goldmark v1.7.16
+	golang.org/x/crypto v0.45.0
+	golang.org/x/term v0.37.0
 )
 
 require (
@@ -40,7 +42,6 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
-	golang.org/x/crypto v0.45.0 // indirect
 )
 
 require (

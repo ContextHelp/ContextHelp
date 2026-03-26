@@ -4,9 +4,12 @@
 package registry
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -70,10 +73,12 @@ type MultiSyncResult struct {
 
 // Syncer performs registry syncs against the entity store.
 type Syncer struct {
-	store        storage.EntityStore
-	entitlements storage.EntitlementStore
-	guard        *graph.EntityIntegrityGuard
-	client       *http.Client
+	store             storage.EntityStore
+	registryStore     storage.RegistryStore
+	entitlements      storage.EntitlementStore
+	guard             *graph.EntityIntegrityGuard
+	client            *http.Client
+	requireSignatures bool
 }
 
 // New returns a Syncer backed by the given entity store.
@@ -89,6 +94,20 @@ func New(store storage.EntityStore) *Syncer {
 // persist entitlements before sync when the registry manifest declares one.
 func (s *Syncer) WithEntitlements(es storage.EntitlementStore) *Syncer {
 	s.entitlements = es
+	return s
+}
+
+// WithRegistryStore attaches a RegistryStore so the syncer can read cached
+// manifests for public key material and update trust status after each sync.
+func (s *Syncer) WithRegistryStore(rs storage.RegistryStore) *Syncer {
+	s.registryStore = rs
+	return s
+}
+
+// WithRequireSignatures sets whether unsigned registries (those without a
+// public_key in their manifest) are rejected. Default: false.
+func (s *Syncer) WithRequireSignatures(require bool) *Syncer {
+	s.requireSignatures = require
 	return s
 }
 
@@ -126,7 +145,7 @@ func (s *Syncer) Sync(ctx context.Context, cfg config.RegistryConfig) (*SyncResu
 
 	result := &SyncResult{RegistryURL: cfg.URL, SyncMode: mode}
 
-	entries, err := s.fetchEntityIndex(ctx, cfg.URL)
+	entries, err := s.fetchAndVerifyEntityIndex(ctx, cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("fetch entity index from %s: %w", cfg.URL, err)
 	}
@@ -223,7 +242,7 @@ func (s *Syncer) MultiSync(ctx context.Context, cfg MultiSyncConfig) (*MultiSync
 
 	for _, regCfg := range cfg.Registries {
 		trust := cfg.TrustScores[regCfg.URL]
-		entries, fetchErr := s.fetchEntityIndex(ctx, regCfg.URL)
+		entries, fetchErr := s.fetchAndVerifyEntityIndex(ctx, regCfg.URL)
 		if fetchErr != nil {
 			slog.WarnContext(ctx, "multi-sync: registry unreachable",
 				"registry", regCfg.URL, "err", fetchErr)
@@ -423,6 +442,103 @@ func (s *Syncer) fetchEntityIndex(ctx context.Context, registryURL string) ([]En
 
 	var entries []EntityIndexEntry
 	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+		return nil, fmt.Errorf("decode entity index: %w", err)
+	}
+	return entries, nil
+}
+
+// fetchAndVerifyEntityIndex fetches the entity index and, when the registry
+// declares a public_key in its cached manifest, verifies the Ed25519 signature
+// of the response body. On verification failure the sync is aborted.
+//
+// When requireSignatures is true and the registry has no public_key,
+// ErrSignatureRequired is returned.
+func (s *Syncer) fetchAndVerifyEntityIndex(ctx context.Context, registryURL string) ([]EntityIndexEntry, error) {
+	// Determine whether we need to verify signatures.
+	var publicKey string
+	var cachedManifest *storage.RegistryCache
+	if s.registryStore != nil {
+		var err error
+		cachedManifest, err = s.registryStore.GetCachedManifest(ctx, registryURL)
+		if err == nil && cachedManifest != nil && cachedManifest.Manifest != nil {
+			publicKey = cachedManifest.Manifest.PublicKey
+		}
+	}
+
+	// If require_signatures is on and there is no public key, refuse to sync.
+	if s.requireSignatures && publicKey == "" {
+		return nil, ErrSignatureRequired
+	}
+
+	// If there is no public key declared, skip verification entirely.
+	if publicKey == "" {
+		return s.fetchEntityIndex(ctx, registryURL)
+	}
+
+	// --- Verified path ---
+	indexURL := registryURL + "/entities/index"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, indexURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("registry returned HTTP %d", resp.StatusCode)
+	}
+
+	// Buffer the body so we can both verify and decode it.
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read entity index body: %w", err)
+	}
+
+	// Try Content-Signature header first; fall back to .sig sidecar.
+	var sigBody []byte
+	if resp.Header.Get("Content-Signature") == "" {
+		sigBody, _ = FetchSigSidecar(s.client, indexURL+".sig")
+	}
+
+	// Compute fingerprint for logging even if verification fails.
+	fingerprint, _ := KeyFingerprint(publicKey)
+
+	verifyErr := VerifyResponseSignature(registryURL, publicKey, body, resp, sigBody)
+	if verifyErr != nil {
+		// Update trust status to failed if we have a registry store.
+		if s.registryStore != nil && cachedManifest != nil {
+			cachedManifest.TrustStatus = storage.RegistryTrustFailed
+			cachedManifest.KeyFingerprint = fingerprint
+			_ = s.registryStore.CacheManifest(ctx, cachedManifest)
+		}
+		var missing ErrSignatureMissing
+		if errors.As(verifyErr, &missing) {
+			// Missing sig on a declared-key registry → abort sync.
+			slog.ErrorContext(ctx, "registry sync: signature missing",
+				"registry", registryURL, "fingerprint", fingerprint)
+			return nil, verifyErr
+		}
+		slog.ErrorContext(ctx, "registry sync: signature verification failed",
+			"registry", registryURL, "fingerprint", fingerprint, "err", verifyErr)
+		return nil, verifyErr
+	}
+
+	// Update trust status to verified.
+	if s.registryStore != nil && cachedManifest != nil {
+		cachedManifest.TrustStatus = storage.RegistryTrustVerified
+		cachedManifest.KeyFingerprint = fingerprint
+		_ = s.registryStore.CacheManifest(ctx, cachedManifest)
+	}
+	slog.DebugContext(ctx, "registry sync: signature verified",
+		"registry", registryURL, "fingerprint", fingerprint)
+
+	var entries []EntityIndexEntry
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&entries); err != nil {
 		return nil, fmt.Errorf("decode entity index: %w", err)
 	}
 	return entries, nil

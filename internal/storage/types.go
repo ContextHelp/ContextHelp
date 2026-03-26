@@ -226,7 +226,23 @@ type RegistryManifest struct {
 	EntitlementURL string `json:"entitlement_url,omitempty"`
 	// Taxonomy is the embedded namespace list (used by the default bundled registry).
 	Taxonomy []RegistryTaxonomyEntry `json:"taxonomy,omitempty"`
+	// PublicKey is the hex-encoded Ed25519 public key used to verify registry
+	// update signatures. When non-empty, the syncer will verify the
+	// Content-Signature header (or .sig sidecar) on each sync response.
+	PublicKey string `json:"public_key,omitempty"`
 }
+
+// RegistryTrustStatus summarises the signature-verification state of a cached registry.
+type RegistryTrustStatus string
+
+const (
+	// RegistryTrustUnknown means no public key is declared — verification was skipped.
+	RegistryTrustUnknown RegistryTrustStatus = "unknown"
+	// RegistryTrustVerified means the last sync response passed Ed25519 verification.
+	RegistryTrustVerified RegistryTrustStatus = "verified"
+	// RegistryTrustFailed means the last sync response failed Ed25519 verification.
+	RegistryTrustFailed RegistryTrustStatus = "failed"
+)
 
 // RegistryTaxonomyEntry is a localised namespace/tag node in a registry manifest.
 type RegistryTaxonomyEntry struct {
@@ -247,11 +263,15 @@ type ManifestStep struct {
 
 // RegistryCache stores fetched registry manifests with update tracking.
 type RegistryCache struct {
-	RegistryURL string            `json:"registry_url"`
-	Manifest    *RegistryManifest `json:"manifest"`
-	LastFetched time.Time         `json:"last_fetched"`
-	ETag        string            `json:"etag"`
-	AutoUpdate  bool              `json:"auto_update"`
+	RegistryURL    string              `json:"registry_url"`
+	Manifest       *RegistryManifest   `json:"manifest"`
+	LastFetched    time.Time           `json:"last_fetched"`
+	ETag           string              `json:"etag"`
+	AutoUpdate     bool                `json:"auto_update"`
+	// TrustStatus records the outcome of the last signature verification attempt.
+	TrustStatus    RegistryTrustStatus `json:"trust_status,omitempty"`
+	// KeyFingerprint is the SHA-256 fingerprint (hex) of the registry's declared public key.
+	KeyFingerprint string              `json:"key_fingerprint,omitempty"`
 }
 
 // RegistryEntitlement stores the entitlement record returned by a registry's
