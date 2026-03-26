@@ -98,6 +98,36 @@ type Config struct {
 
 	// Resurfacing controls the background resurfacing queue.
 	Resurfacing ResurfacingConfig `mapstructure:"resurfacing" yaml:"resurfacing"`
+
+	// Security configures security alerting hooks.
+	Security SecurityConfig `mapstructure:"security" yaml:"security"`
+}
+
+// SecurityConfig holds security alerting hook settings.
+type SecurityConfig struct {
+	Alerts SecurityAlertsConfig `mapstructure:"alerts" yaml:"alerts"`
+}
+
+// SecurityAlertsConfig holds threshold and delivery config for security alerts.
+type SecurityAlertsConfig struct {
+	// AuthFailureThreshold is the max auth failures per principal in 60s before alerting.
+	// Default: 3.
+	AuthFailureThreshold int `mapstructure:"auth_failure_threshold" yaml:"auth_failure_threshold"`
+	// ACLDenialThreshold is the max ACL denials per principal in 60s before alerting.
+	// Default: 10.
+	ACLDenialThreshold int `mapstructure:"acl_denial_threshold" yaml:"acl_denial_threshold"`
+	// WebhookURL is an optional endpoint for webhook alerts (empty = disabled).
+	WebhookURL string `mapstructure:"webhook_url" yaml:"webhook_url"`
+	// SMTP holds optional SMTP delivery config.
+	SMTP SecuritySMTPConfig `mapstructure:"smtp" yaml:"smtp"`
+}
+
+// SecuritySMTPConfig holds SMTP delivery settings for security alerts.
+type SecuritySMTPConfig struct {
+	Host string `mapstructure:"host" yaml:"host"`
+	Port int    `mapstructure:"port" yaml:"port"`
+	From string `mapstructure:"from" yaml:"from"`
+	To   string `mapstructure:"to" yaml:"to"`
 }
 
 // OfflineConfig controls strict offline (air-gapped) operation mode.
@@ -588,6 +618,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("resurfacing.max_items", 10)
 	v.SetDefault("resurfacing.min_score", 0.4)
 	v.SetDefault("resurfacing.run_interval", time.Hour)
+
+	// Security alerting defaults
+	v.SetDefault("security.alerts.auth_failure_threshold", 3)
+	v.SetDefault("security.alerts.acl_denial_threshold", 10)
+	v.SetDefault("security.alerts.smtp.port", 587)
 }
 
 // bindEnvVars binds environment variables to configuration keys
