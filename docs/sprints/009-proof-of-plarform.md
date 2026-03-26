@@ -149,6 +149,35 @@ Validation:
 - graph-aware ranking does not regress performance
 - entity → knowledge_object → entity traversal paths remain stable
 
+### Task 3c.2: Dependency Vulnerability Scanning (T-0147)
+
+Add `govulncheck` + `nancy` to CI; block merges on CRITICAL/HIGH findings.
+
+**Tools:**
+- `govulncheck` — official Go vuln scanner; call-graph-aware (vuln.go.dev).
+  Only reports reachable vulnerabilities → low false-positive rate.
+- `nancy` — Sonatype OSS Index scanner; broader CVE coverage; pipe
+  `go list -json -deps ./...` output to `nancy sleuth`.
+
+**Triggers:**
+- Every PR targeting `main` / `develop`
+- Nightly cron (`0 3 * * *` UTC)
+
+**Artifacts:**
+- `.github/workflows/vuln-scan.yml` — dedicated workflow (2 jobs: `govulncheck`,
+  `nancy`); both jobs required for merge.
+- `Makefile` target `vuln-scan` — local dev invocation (`make vuln-scan`).
+- `.nancy-ignore` — suppression file; process documented in file header.
+
+**Suppression process (summary):**
+1. Run `make vuln-scan`; note finding ID.
+2. Open tracking issue; confirm reachable code path.
+3. Prefer upgrading dep over suppressing.
+4. If suppression unavoidable: add ID to `.nancy-ignore` with date, issue URL,
+   rationale, 90-day review-by date.
+5. CRITICAL (CVSS ≥ 9.0) or HIGH (CVSS ≥ 7.0) suppressions need maintainer
+   sign-off in the tracking issue.
+
 ---
 
 ## 4. dPKMS Registry Team (The Teacher)

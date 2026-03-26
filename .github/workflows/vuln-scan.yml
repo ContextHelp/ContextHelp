@@ -1,0 +1,88 @@
+name: Vulnerability Scan
+
+# Runs on every PR and nightly at 03:00 UTC.
+# Fails the build on CRITICAL (CVSS >= 9.0) or HIGH (CVSS >= 7.0) findings.
+#
+# Tools
+# -----
+# govulncheck -- official Go vulnerability scanner; checks reachable call-graph
+#                against the Go vulnerability database (vuln.go.dev).
+#                Ignores unreachable vulnerabilities -> low false-positive rate.
+#
+# nancy      -- Sonatype OSS Index scanner; checks go list -json output against
+#                the Sonatype OSS Index (broader CVE coverage than Go vuln DB).
+#                False positives possible; use .nancy-ignore to suppress after
+#                review (see suppression process documented in .nancy-ignore).
+#
+# Suppression process (summary)
+# ------------------------------
+# 1. Identify finding ID from job output.
+# 2. Open tracking issue; confirm the vulnerable path is reachable.
+# 3. Prefer upgrading the dep. If unavoidable, add ID to .nancy-ignore with
+#    date, issue URL, rationale, and a 90-day review-by date.
+# 4. CRITICAL/HIGH suppressions require maintainer sign-off in the issue.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  schedule:
+    # Nightly at 03:00 UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.23'
+
+jobs:
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        # Exit code 3 = vulnerabilities found in reachable code paths.
+        # govulncheck only reports on reachable code; all findings are actionable.
+        run: govulncheck ./...
+
+  nancy:
+    name: nancy (Sonatype OSS Index)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install nancy
+        run: go install github.com/sonatype-nexus-community/nancy@latest
+
+      - name: Run nancy
+        # Pipe go list output to nancy sleuth.
+        # --exclude-vulnerability-file suppresses entries in .nancy-ignore.
+        # nancy exits non-zero if any non-suppressed vulnerability is found.
+        run: go list -json -deps ./... | nancy sleuth --exclude-vulnerability-file .nancy-ignore
+
+      - name: Upload nancy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nancy-report-${{ github.run_id }}
+          path: .nancy-ignore
+          retention-days: 30
