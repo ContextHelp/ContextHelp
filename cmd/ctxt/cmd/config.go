@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
+	"github.com/ideacrafterslabs/ctxt/internal/bundle"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -79,6 +81,42 @@ Exit code 0 when no findings; 1 when any finding is present (CI-safe).`,
 	RunE: runConfigLint,
 }
 
+var configBackupCmd = &cobra.Command{
+	Use:   "backup",
+	Short: "Export a signed config bundle (.zip + .sig)",
+	Long: `Export configuration files as a signed Ed25519 bundle.
+
+Produces two files in the output directory:
+  ctxt-config-bundle-<timestamp>.zip     — config files + embedded public key
+  ctxt-config-bundle-<timestamp>.zip.sig — Ed25519 signature over the zip
+
+The public key is embedded in the bundle manifest for self-contained verification.
+
+Requires a keypair generated with 'ctxt key init'.
+
+Examples:
+  ctxt config backup
+  ctxt config backup --output /tmp/my-backup`,
+	RunE: runConfigBackup,
+}
+
+var configRestoreCmd = &cobra.Command{
+	Use:   "restore <bundle.zip>",
+	Short: "Restore configuration from a bundle",
+	Args:  cobra.ExactArgs(1),
+	Long: `Restore configuration from a previously exported bundle.
+
+With --verify, the Ed25519 signature is verified before any files are written.
+The signature file is expected alongside the zip: <bundle>.zip.sig
+
+Without --verify, the bundle is extracted without signature checking.
+
+Examples:
+  ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --verify
+  ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip`,
+	RunE: runConfigRestore,
+}
+
 func init() {
 	rootCmd.AddCommand(configCmd)
 
@@ -88,6 +126,8 @@ func init() {
 	configCmd.AddCommand(configValidateCmd)
 	configCmd.AddCommand(configEditCmd)
 	configCmd.AddCommand(configLintCmd)
+	configCmd.AddCommand(configBackupCmd)
+	configCmd.AddCommand(configRestoreCmd)
 
 	// Flags for validate subcommand
 	configValidateCmd.Flags().Bool("check-secrets", true,
@@ -96,6 +136,16 @@ func init() {
 	// Flags for lint subcommand
 	configLintCmd.Flags().Bool("fix", false,
 		"auto-apply safe fixes (e.g. chmod 600 on world-readable config file)")
+
+	// Flags for backup subcommand
+	configBackupCmd.Flags().String("output", "",
+		"output directory for bundle files (default: current directory)")
+
+	// Flags for restore subcommand
+	configRestoreCmd.Flags().Bool("verify", false,
+		"verify Ed25519 signature before restoring (recommended)")
+	configRestoreCmd.Flags().Bool("dry-run", false,
+		"verify and list bundle contents without writing any files")
 }
 
 func runConfigShow(cmd *cobra.Command, args []string) error {
@@ -237,4 +287,114 @@ func runConfigLint(cmd *cobra.Command, args []string) error {
 	}
 
 	return fmt.Errorf("lint: %d error(s), %d warning(s) found", errCount, warnCount)
+}
+
+func runConfigBackup(cmd *cobra.Command, _ []string) error {
+	outDir, _ := cmd.Flags().GetString("output")
+	if outDir == "" {
+		// Fall back to config backup.dir, then cwd.
+		outDir = cfg.Backup.Dir
+		if outDir == "" {
+			var err error
+			outDir, err = os.Getwd()
+			if err != nil {
+				return fmt.Errorf("config backup: resolve output dir: %w", err)
+			}
+		}
+	}
+
+	configPath := config.GetConfigPath()
+	configDir := filepath.Dir(configPath)
+
+	// Load private key from OS keychain.
+	privKey, err := bundle.LoadPrivateKey()
+	if err != nil {
+		return fmt.Errorf("config backup: %w\nRun 'ctxt key init' to generate a signing key.", err)
+	}
+
+	result, err := bundle.Build(bundle.BuildOpts{
+		ConfigDir:  configDir,
+		Files:      []string{filepath.Base(configPath)},
+		OutputDir:  outDir,
+		PrivateKey: privKey,
+		PublicKey:  bundle.PublicFromPrivate(privKey),
+	})
+	if err != nil {
+		return fmt.Errorf("config backup: %w", err)
+	}
+
+	if isJSONOutput() {
+		return outputJSON(cmd.OutOrStdout(), map[string]string{
+			"zip":         result.ZipPath,
+			"sig":         result.SigPath,
+			"fingerprint": result.Fingerprint,
+		})
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Config bundle created\n")
+	fmt.Fprintf(cmd.OutOrStdout(), "  bundle:      %s\n", result.ZipPath)
+	fmt.Fprintf(cmd.OutOrStdout(), "  signature:   %s\n", result.SigPath)
+	fmt.Fprintf(cmd.OutOrStdout(), "  fingerprint: %s\n", result.Fingerprint)
+	fmt.Fprintf(cmd.OutOrStdout(), "\nVerify with: ctxt config restore --verify %s\n", result.ZipPath)
+	return nil
+}
+
+func runConfigRestore(cmd *cobra.Command, args []string) error {
+	zipPath := args[0]
+	verify, _ := cmd.Flags().GetBool("verify")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+	sigPath := zipPath + ".sig"
+
+	if verify || dryRun {
+		result, err := bundle.VerifyAndOpen(bundle.VerifyOpts{
+			ZipPath: zipPath,
+			SigPath: sigPath,
+		})
+		if err != nil {
+			return fmt.Errorf("config restore: verification failed: %w", err)
+		}
+
+		fmt.Fprintf(cmd.OutOrStdout(), "Signature verified\n")
+		fmt.Fprintf(cmd.OutOrStdout(), "  fingerprint:    %s\n", result.Manifest.Fingerprint)
+		fmt.Fprintf(cmd.OutOrStdout(), "  schema_version: %d\n", result.Manifest.SchemaVersion)
+		fmt.Fprintf(cmd.OutOrStdout(), "  created_at:     %s\n",
+			result.Manifest.CreatedAt.Format("2006-01-02 15:04:05 UTC"))
+		fmt.Fprintf(cmd.OutOrStdout(), "  files:\n")
+		for name := range result.Files {
+			fmt.Fprintf(cmd.OutOrStdout(), "    - %s\n", name)
+		}
+
+		if dryRun {
+			fmt.Fprintf(cmd.OutOrStdout(), "\ndry-run: no files written\n")
+			return nil
+		}
+
+		return writeRestoredFiles(cmd, result.Files)
+	}
+
+	// No --verify: extract without signature check (warn user).
+	fmt.Fprintf(cmd.ErrOrStderr(),
+		"Warning: restoring without signature verification. Use --verify to verify integrity.\n")
+
+	files, err := bundle.ExtractOnly(zipPath)
+	if err != nil {
+		return fmt.Errorf("config restore: %w", err)
+	}
+	return writeRestoredFiles(cmd, files)
+}
+
+// writeRestoredFiles writes bundle file contents to the config directory.
+func writeRestoredFiles(cmd *cobra.Command, files map[string][]byte) error {
+	configPath := config.GetConfigPath()
+	configDir := filepath.Dir(configPath)
+	for name, data := range files {
+		dst := filepath.Join(configDir, name)
+		if err := os.WriteFile(dst, data, 0600); err != nil {
+			return fmt.Errorf("config restore: write %s: %w", name, err)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "  restored: %s\n", dst)
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "\nRestart ctxt for changes to take effect.\n")
+	return nil
 }
