@@ -351,6 +351,106 @@ func (s *Service) RemoveRegistry(ctx context.Context, url string) error {
 	return s.Store.Registries().Delete(ctx, url)
 }
 
+// RegistryDiffEntry describes a single would-be change from a registry sync.
+type RegistryDiffEntry struct {
+	Action   string // "add", "update", "remove"
+	Kind     string // "entity", "taxonomy", "alias", "step"
+	Name     string
+	OldValue string // version or empty
+	NewValue string // version or empty
+}
+
+// DiffRegistrySync fetches the remote manifest for url and diffs it against
+// the locally cached manifest. Writes nothing to storage. Returns the list of
+// would-be changes and a human-readable summary header.
+func (s *Service) DiffRegistrySync(ctx context.Context, url string) ([]RegistryDiffEntry, error) {
+	// Fetch remote without caching.
+	remote, err := s.Discovery.FetchRemoteManifest(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("fetch remote manifest: %w", err)
+	}
+
+	// Load local cached manifest (may not exist yet).
+	var localSteps map[string]string // name → version
+	cache, err := s.Store.Registries().GetCachedManifest(ctx, url)
+	if err == nil && cache != nil && cache.Manifest != nil {
+		localSteps = make(map[string]string, len(cache.Manifest.Steps))
+		for _, step := range cache.Manifest.Steps {
+			localSteps[step.Name] = step.Version
+		}
+	} else {
+		localSteps = make(map[string]string)
+	}
+
+	// Build remote steps index.
+	remoteSteps := make(map[string]string, len(remote.Steps))
+	for _, step := range remote.Steps {
+		remoteSteps[step.Name] = step.Version
+	}
+
+	var diffs []RegistryDiffEntry
+
+	// Additions and updates.
+	for _, step := range remote.Steps {
+		if localVer, exists := localSteps[step.Name]; !exists {
+			diffs = append(diffs, RegistryDiffEntry{
+				Action:   "add",
+				Kind:     classifyStepKind(step.Name),
+				Name:     step.Name,
+				NewValue: step.Version,
+			})
+		} else if localVer != step.Version {
+			diffs = append(diffs, RegistryDiffEntry{
+				Action:   "update",
+				Kind:     classifyStepKind(step.Name),
+				Name:     step.Name,
+				OldValue: localVer,
+				NewValue: step.Version,
+			})
+		}
+	}
+
+	// Removals.
+	for name, ver := range localSteps {
+		if _, exists := remoteSteps[name]; !exists {
+			diffs = append(diffs, RegistryDiffEntry{
+				Action:   "remove",
+				Kind:     classifyStepKind(name),
+				Name:     name,
+				OldValue: ver,
+			})
+		}
+	}
+
+	// Stable sort: action → kind → name.
+	sort.Slice(diffs, func(i, j int) bool {
+		if diffs[i].Action != diffs[j].Action {
+			return diffs[i].Action < diffs[j].Action
+		}
+		if diffs[i].Kind != diffs[j].Kind {
+			return diffs[i].Kind < diffs[j].Kind
+		}
+		return diffs[i].Name < diffs[j].Name
+	})
+
+	return diffs, nil
+}
+
+// classifyStepKind returns a human-readable category for a step name.
+func classifyStepKind(name string) string {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.Contains(lower, "entity") || strings.Contains(lower, "entities"):
+		return "entity"
+	case strings.Contains(lower, "taxonomy") || strings.Contains(lower, "taxon"):
+		return "taxonomy"
+	case strings.Contains(lower, "alias"):
+		return "alias"
+	default:
+		return "step"
+	}
+}
+
 func (s *Service) ListReminders(ctx context.Context, activeOnly bool) ([]*storage.SystemReminder, int, error) {
 	return s.Store.Reminders().List(ctx, activeOnly)
 }

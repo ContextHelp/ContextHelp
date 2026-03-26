@@ -211,6 +211,32 @@ func (sd *StepDiscovery) parseSkillFile(path string) (*storage.StepMetadata, err
 	return metadata, nil
 }
 
+// FetchRemoteManifest fetches a registry manifest from url without caching it.
+// Used by dry-run to diff remote vs local state without writing to storage.
+func (sd *StepDiscovery) FetchRemoteManifest(ctx context.Context, url string) (*storage.RegistryManifest, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := sd.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch manifest: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch manifest: status %d", resp.StatusCode)
+	}
+
+	var manifest storage.RegistryManifest
+	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
+		return nil, fmt.Errorf("decode manifest: %w", err)
+	}
+
+	return &manifest, nil
+}
+
 func (sd *StepDiscovery) FetchRegistryManifest(ctx context.Context, url string) (*storage.RegistryManifest, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
