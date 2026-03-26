@@ -45,6 +45,7 @@ type StorageDriver interface {
 	Watches() WatchStore
 	Aliases() AliasStore
 	AuditLog() AuditStore
+	Attachments() AttachmentStore
 	Health(ctx context.Context) error
 }
 
@@ -275,4 +276,27 @@ type WatchStore interface {
 	GetFileRecord(ctx context.Context, watchID, filePath string) (*WatchFileRecord, error)
 	DeleteFileRecord(ctx context.Context, watchID, filePath string) error
 	ListFileRecords(ctx context.Context, watchID string) ([]*WatchFileRecord, error)
+}
+
+// Attachment holds binary content (e.g. images, PDFs) linked to a KnowledgeObject.
+type Attachment struct {
+	ID        string    `json:"id"`
+	ObjectID  string    `json:"object_id"`
+	Filename  string    `json:"filename"`
+	MimeType  string    `json:"mime_type"`
+	SizeBytes int64     `json:"size_bytes"`
+	Data      []byte    `json:"data,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// AttachmentStore persists and retrieves binary attachments linked to knowledge objects.
+type AttachmentStore interface {
+	// SaveAttachment stores binary data and returns the new attachment ID.
+	SaveAttachment(ctx context.Context, objectID, filename, mimeType string, data []byte) (string, error)
+	// GetAttachment retrieves an attachment by its ID, including binary data.
+	GetAttachment(ctx context.Context, attachmentID string) (*Attachment, error)
+	// ListAttachments returns all attachments for a knowledge object (data omitted).
+	ListAttachments(ctx context.Context, objectID string) ([]Attachment, error)
+	// DeleteAttachment removes an attachment by ID.
+	DeleteAttachment(ctx context.Context, attachmentID string) error
 }

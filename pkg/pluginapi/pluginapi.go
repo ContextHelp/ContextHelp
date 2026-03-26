@@ -102,6 +102,7 @@ type KnowledgeObject struct {
 	FTSIndexed         bool           `json:"fts_indexed"`
 	VectorIndexed      bool           `json:"vector_indexed"`
 	ProfileID          string         `json:"profile_id,omitempty"` // owning profile; empty = global
+	AttachmentIDs      []string       `json:"attachment_ids,omitempty"`
 }
 
 // Draft is an alias for KnowledgeObject being progressively enriched.

@@ -52,6 +52,9 @@ var migration014 string
 //go:embed migrations/015_profile_scoped_objects.sql
 var migration015 string
 
+//go:embed migrations/016_attachments.sql
+var migration016 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -82,6 +85,7 @@ var migrations = []migration{
 	// as part of their old migration 013. The fn checks before altering.
 	{Version: 14, fn: migrate014RemindAt},
 	{Version: 15, SQL: migration015},
+	{Version: 16, SQL: migration016},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

@@ -62,7 +62,31 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id
 	FROM objects WHERE id = ?`, id)
-	return scanObject(row)
+	obj, err := scanObject(row)
+	if err != nil {
+		return nil, err
+	}
+	obj.AttachmentIDs, err = s.listAttachmentIDs(ctx, id)
+	return obj, err
+}
+
+// listAttachmentIDs returns the IDs of all attachments for objectID.
+func (s *ObjectStore) listAttachmentIDs(ctx context.Context, objectID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id FROM attachments WHERE object_id = ? ORDER BY created_at ASC`, objectID)
+	if err != nil {
+		return nil, fmt.Errorf("list attachment ids: %w", err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*storage.KnowledgeObject, error) {
