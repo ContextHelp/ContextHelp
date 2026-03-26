@@ -1,0 +1,53 @@
+[
+  {
+    "id": "ts-001",
+    "pipeline": "text.short",
+    "input": "GraphQL is a query language for APIs and a runtime for fulfilling those queries.",
+    "expect": {
+      "min_tags": 1,
+      "tag_contains": ["graphql"],
+      "no_hallucinated_mentions": true
+    }
+  },
+  {
+    "id": "ts-002",
+    "pipeline": "text.short",
+    "input": "Rust memory safety model prevents data races at compile time without a garbage collector.",
+    "expect": {
+      "min_tags": 3,
+      "tag_contains": ["memory"],
+      "no_hallucinated_mentions": true
+    }
+  },
+  {
+    "id": "ts-003",
+    "pipeline": "text.short",
+    "input": "The @project.ctxt system captures knowledge objects and links them via @concept.entities.",
+    "expect": {
+      "min_tags": 1,
+      "min_mentions": 2,
+      "mention_contains": ["project.ctxt", "concept.entities"],
+      "no_hallucinated_mentions": false
+    }
+  },
+  {
+    "id": "ts-004",
+    "pipeline": "text.short",
+    "input": "Docker containers share the host kernel, making them lightweight compared to VMs.",
+    "expect": {
+      "min_tags": 1,
+      "tag_contains": ["docker"],
+      "no_hallucinated_mentions": true
+    }
+  },
+  {
+    "id": "ts-005",
+    "pipeline": "text.short",
+    "input": "React hooks like useState and useEffect replaced class-based lifecycle methods.",
+    "expect": {
+      "min_tags": 1,
+      "tag_contains": ["react"],
+      "no_hallucinated_mentions": true
+    }
+  }
+]

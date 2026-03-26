@@ -1,0 +1,22 @@
+[
+  {
+    "id": "img-001",
+    "pipeline": "image.ocr",
+    "input": "testdata/sample_text.png",
+    "is_file": true,
+    "expect": {
+      "pipeline_selected": "image.ocr",
+      "no_hallucinated_mentions": true
+    }
+  },
+  {
+    "id": "img-002",
+    "pipeline": "image.ocr",
+    "input": "screenshot.jpg",
+    "is_file": true,
+    "expect": {
+      "pipeline_selected": "image.ocr",
+      "no_hallucinated_mentions": true
+    }
+  }
+]
