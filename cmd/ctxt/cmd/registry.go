@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/apierror"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -100,6 +102,29 @@ Examples:
 	RunE: runRegistryCapabilities,
 }
 
+var registryUsageCmd = &cobra.Command{
+	Use:   "usage [name]",
+	Short: "Show metering usage for registries",
+	Long: `Show metering event counts per registry for the current billing period.
+
+Without arguments, shows all registries. Pass a registry name to filter.
+
+Examples:
+  # Show all registry usage
+  ctxt registry usage
+
+  # Show usage for a specific registry
+  ctxt registry usage example-paid
+
+  # Output as JSON
+  ctxt registry usage --json
+
+  # Show usage for a custom period (days back from now)
+  ctxt registry usage --days 30`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runRegistryUsage,
+}
+
 var registryLoginCmd = &cobra.Command{
 	Use:   "login <name>",
 	Short: "Store an auth token for a registry in the OS keychain",
@@ -136,6 +161,11 @@ func init() {
 	registryCmd.AddCommand(registryLoginCmd)
 	registryCmd.AddCommand(registryLogoutCmd)
 	registryCmd.AddCommand(registryCapabilitiesCmd)
+	registryCmd.AddCommand(registryUsageCmd)
+
+	// Flags for usage subcommand
+	registryUsageCmd.Flags().Int("days", 0,
+		"period in days back from now (0 = all time)")
 
 	// Flags for sync subcommand
 	registrySyncCmd.Flags().Bool("dry-run", false,
@@ -481,6 +511,77 @@ func runRegistrySubmit(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println("See CONTRIBUTING.md for bundle format requirements:")
 	fmt.Println("  https://github.com/ideacrafterslabs/registry/blob/main/CONTRIBUTING.md")
+	return nil
+}
+
+// runRegistryUsage prints metering usage totals per registry per event type.
+func runRegistryUsage(cmd *cobra.Command, args []string) error {
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	days, err := cmd.Flags().GetInt("days")
+	if err != nil {
+		return fmt.Errorf("days flag: %w", err)
+	}
+
+	var periodStart time.Time
+	if days > 0 {
+		periodStart = time.Now().UTC().AddDate(0, 0, -days)
+	}
+
+	ctx := context.Background()
+
+	var registryName string
+	if len(args) > 0 {
+		registryName = args[0]
+	}
+
+	var aggs []*storage.MeteringAggregate
+	if registryName != "" {
+		aggs, err = svc.RegistryUsageSummary(ctx, registryName, periodStart)
+	} else {
+		aggs, err = svc.AllRegistriesUsageSummary(ctx, periodStart)
+	}
+	if err != nil {
+		return fmt.Errorf("usage summary: %w", err)
+	}
+
+	type usageRow struct {
+		RegistryName string `json:"registry_name"`
+		EventType    string `json:"event_type"`
+		Count        int    `json:"count"`
+	}
+
+	rows := make([]usageRow, 0, len(aggs))
+	for _, a := range aggs {
+		rows = append(rows, usageRow{
+			RegistryName: a.RegistryName,
+			EventType:    string(a.EventType),
+			Count:        a.Total,
+		})
+	}
+
+	if isJSONOutput() {
+		return outputJSON(cmd.OutOrStdout(), map[string]any{
+			"usage":        rows,
+			"period_start": periodStart,
+		})
+	}
+
+	if len(rows) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "No metering events recorded.")
+		return nil
+	}
+
+	headers := []string{"Registry", "Event Type", "Count"}
+	tableRows := make([][]string, 0, len(rows))
+	for _, r := range rows {
+		tableRows = append(tableRows, []string{r.RegistryName, r.EventType, fmt.Sprintf("%d", r.Count)})
+	}
+	printTable(cmd.OutOrStdout(), headers, tableRows)
 	return nil
 }
 

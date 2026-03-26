@@ -47,7 +47,19 @@ type StorageDriver interface {
 	AuditLog() AuditStore
 	Attachments() AttachmentStore
 	Resurfacing() ResurfacingQueueStore
+	Metering() MeteringStore
 	Health(ctx context.Context) error
+}
+
+// MeteringStore persists and queries metering events for paid registry access.
+type MeteringStore interface {
+	// Record appends one metering event.
+	Record(ctx context.Context, event *MeteringEvent) error
+	// Aggregate returns summed counts grouped by registry_name+event_type,
+	// optionally filtered by the provided MeteringFilter.
+	Aggregate(ctx context.Context, filter MeteringFilter) ([]*MeteringAggregate, error)
+	// List returns raw events matching the filter.
+	List(ctx context.Context, filter MeteringFilter) ([]*MeteringEvent, error)
 }
 
 // AuditEntry is one immutable record in the audit log.

@@ -425,3 +425,48 @@ type WatchFileRecord struct {
 	ContentHash string    `json:"content_hash"`
 	LastSeen    time.Time `json:"last_seen"`
 }
+
+// MeteringEventType enumerates the events tracked for paid registry access.
+type MeteringEventType string
+
+const (
+	MeteringEventEntityResolve  MeteringEventType = "entity_resolve"
+	MeteringEventContentPull    MeteringEventType = "content_pull"
+	MeteringEventTaxonomySync   MeteringEventType = "taxonomy_sync"
+)
+
+// MeteringEvent records one billable access for a registry.
+type MeteringEvent struct {
+	ID           string            `json:"id"`
+	RegistryName string            `json:"registry_name"`
+	EventType    MeteringEventType `json:"event_type"`
+	Namespace    string            `json:"namespace,omitempty"`
+	Count        int               `json:"count"`
+	OccurredAt   time.Time         `json:"occurred_at"`
+}
+
+// MeteringFilter restricts metering queries.
+type MeteringFilter struct {
+	RegistryName string
+	EventType    MeteringEventType
+	After        time.Time
+	Before       time.Time
+}
+
+// MeteringAggregate is the aggregated count per registry+event_type for a period.
+type MeteringAggregate struct {
+	RegistryName string            `json:"registry_name"`
+	EventType    MeteringEventType `json:"event_type"`
+	Total        int               `json:"total"`
+}
+
+// QuotaConfig declares soft (warn) and hard (limit) quota thresholds.
+// Limit == 0 means unlimited.
+type QuotaConfig struct {
+	// Limit is the hard cap; 0 = unlimited.
+	Limit int `json:"limit" yaml:"limit"`
+	// WarnAt is the count at which a warning is emitted (0 = default 80% of Limit).
+	WarnAt int `json:"warn_at" yaml:"warn_at"`
+	// ResetsAt is an informational reset timestamp (e.g. billing period end).
+	ResetsAt time.Time `json:"resets_at" yaml:"resets_at"`
+}

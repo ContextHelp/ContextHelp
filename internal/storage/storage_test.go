@@ -31,6 +31,7 @@ func (m *mockDriver) Aliases() AliasStore                    { return &mockAlias
 func (m *mockDriver) AuditLog() AuditStore                   { return &mockAuditLogStore{} }
 func (m *mockDriver) Attachments() AttachmentStore           { return &mockAttachmentStore{} }
 func (m *mockDriver) Resurfacing() ResurfacingQueueStore     { return &mockResurfacingQueueStore{} }
+func (m *mockDriver) Metering() MeteringStore                { return &mockMeteringStore{} }
 func (m *mockDriver) Health(ctx context.Context) error       { return nil }
 
 type mockBlobStore struct{}
@@ -365,3 +366,17 @@ func (m *mockResurfacingQueueStore) Dismiss(_ context.Context, _ string, _ time.
 }
 func (m *mockResurfacingQueueStore) DeleteByProfile(_ context.Context, _ string) error { return nil }
 func (m *mockResurfacingQueueStore) DeleteByObject(_ context.Context, _ string) error  { return nil }
+
+type mockMeteringStore struct{}
+
+func (m *mockMeteringStore) Record(_ context.Context, _ *MeteringEvent) error { return nil }
+func (m *mockMeteringStore) Aggregate(
+	_ context.Context, _ MeteringFilter,
+) ([]*MeteringAggregate, error) {
+	return nil, nil
+}
+func (m *mockMeteringStore) List(
+	_ context.Context, _ MeteringFilter,
+) ([]*MeteringEvent, error) {
+	return nil, nil
+}

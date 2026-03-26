@@ -42,6 +42,8 @@ func (m *mockStore) Watches() storage.WatchStore                      { return n
 func (m *mockStore) Aliases() storage.AliasStore                      { return nil }
 func (m *mockStore) AuditLog() storage.AuditStore                     { return nil }
 func (m *mockStore) Attachments() storage.AttachmentStore             { return nil }
+func (m *mockStore) Resurfacing() storage.ResurfacingQueueStore       { return nil }
+func (m *mockStore) Metering() storage.MeteringStore                  { return nil }
 func (m *mockStore) Health(_ context.Context) error                   { return nil }
 
 // mockObjectStore2 is a simple in-memory object store for tests.
