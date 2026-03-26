@@ -90,6 +90,22 @@ type Config struct {
 
 	// Privacy controls user-facing privacy preferences.
 	Privacy PrivacyConfig `mapstructure:"privacy" yaml:"privacy"`
+
+	// Offline forces local-only operation: no registry sync, no LLM/embedding API calls.
+	// Set via --offline flag or config key offline.enabled.
+	// Default: false.
+	Offline OfflineConfig `mapstructure:"offline" yaml:"offline"`
+}
+
+// OfflineConfig controls strict offline (air-gapped) operation mode.
+// When Enabled is true:
+//   - Registry sync jobs are queued but not executed.
+//   - Unresolved mentions create local stub entities.
+//   - LLM and embedding API calls are skipped; pipelines degrade gracefully.
+//   - Plugins that require network access are denied.
+type OfflineConfig struct {
+	// Enabled activates strict offline mode. Default: false.
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
 }
 
 // PrivacyConfig holds privacy-related preferences.
@@ -513,6 +529,9 @@ func setDefaults(v *viper.Viper) {
 
 	// Privacy defaults — telemetry off by default (local-first)
 	v.SetDefault("privacy.telemetry", false)
+
+	// Offline mode — disabled by default; enable for air-gapped environments.
+	v.SetDefault("offline.enabled", false)
 }
 
 // bindEnvVars binds environment variables to configuration keys

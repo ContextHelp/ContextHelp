@@ -1,0 +1,151 @@
+# GoReleaser configuration for ctxt + dpkms
+# Produces signed binaries for macOS (arm64/amd64) and Linux (amd64).
+# Triggered by CI on version tags (see .github/workflows/release.yml).
+
+version: 2
+
+project_name: contexthelp
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod verify
+
+builds:
+  - id: ctxt
+    binary: ctxt
+    main: ./cmd/ctxt
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    # Exclude linux/arm64 — added when runner support stabilises.
+    ignore:
+      - goos: linux
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+      - -X main.GitCommit={{.ShortCommit}}
+
+  - id: dpkms
+    binary: dpkms
+    main: ./cmd/dpkms
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: linux
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+      - -X main.GitCommit={{.ShortCommit}}
+
+archives:
+  - id: ctxt-archive
+    builds: [ctxt]
+    name_template: "ctxt_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+
+  - id: dpkms-archive
+    builds: [dpkms]
+    name_template: "dpkms_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+signs:
+  - artifacts: checksum
+    args:
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+    # Only sign when GPG_FINGERPRINT is set (skip in dry-run / snapshot).
+    if: '{{ if .Env.GPG_FINGERPRINT }}true{{ end }}'
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: "^feat"
+      order: 0
+    - title: Bug Fixes
+      regexp: "^fix"
+      order: 1
+    - title: Performance
+      regexp: "^perf"
+      order: 2
+    - title: Other
+      order: 99
+
+release:
+  github:
+    owner: ideacrafterslabs
+    name: ctxt
+  draft: false
+  prerelease: auto
+  name_template: "{{ .Tag }}"
+  header: |
+    ## ContextHelp {{ .Tag }}
+
+    Install via Homebrew (coming soon) or download below.
+  footer: |
+    **Full Changelog**: https://github.com/ideacrafterslabs/ctxt/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+# Homebrew tap — formulae auto-generated on release.
+brews:
+  - name: ctxt
+    ids: [ctxt-archive]
+    repository:
+      owner: ideacrafterslabs
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/ideacrafterslabs/ctxt"
+    description: "ContextHelp CLI — local-first agentic context brain"
+    license: "AGPL-3.0"
+    install: |
+      bin.install "ctxt"
+    test: |
+      system "#{bin}/ctxt", "--version"

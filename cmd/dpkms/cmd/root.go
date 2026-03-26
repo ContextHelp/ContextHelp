@@ -60,12 +60,14 @@ func init() {
 	rootCmd.PersistentFlags().String("data-dir", "", "data directory override")
 	rootCmd.PersistentFlags().String("server-url", "http://localhost:8080", "dpkms server URL")
 	rootCmd.PersistentFlags().BoolP("verbose", "V", false, "enable verbose output")
+	rootCmd.PersistentFlags().Bool("offline", false, "disable all network calls (registry sync, LLM/embedding APIs); forces local-only operation")
 	rootCmd.Flags().BoolP("version", "v", false, "print version and exit")
 	rootCmd.Flags().Bool("check", false, "check for a newer release (use with -v)")
 
 	// Bind flags to viper
 	viper.BindPFlag("storage.path", rootCmd.PersistentFlags().Lookup("data-dir"))
 	viper.BindPFlag("server.url", rootCmd.PersistentFlags().Lookup("server-url"))
+	viper.BindPFlag("offline.enabled", rootCmd.PersistentFlags().Lookup("offline"))
 }
 
 func printVersion(cmd *cobra.Command) {
