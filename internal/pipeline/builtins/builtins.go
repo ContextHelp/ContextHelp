@@ -44,6 +44,7 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"html_cleaner":      func() pipeline.PipelineStep { return steps.NewHTMLCleaner() },
 	"embedding":         func() pipeline.PipelineStep { return steps.NewEmbeddingGenerator(nil) },
 	"entity_extractor":  func() pipeline.PipelineStep { return steps.NewEntityExtractor() },
+	"entity_resolver":   func() pipeline.PipelineStep { return steps.NewEntityResolver() },
 	"timestamp_aligner": func() pipeline.PipelineStep { return steps.NewTimestampAligner() },
 	"noop":              func() pipeline.PipelineStep { return steps.NewNoop() },
 	"url_fetcher":       func() pipeline.PipelineStep { return steps.NewURLFetcher() },
