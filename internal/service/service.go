@@ -1357,6 +1357,33 @@ func (s *Service) CheckRegistryCapabilities(
 	return warnings, nil
 }
 
+// SearchRemoteBookmarks queries all configured registries for bookmarks matching
+// query using parallel scatter/gather. Per-registry timeout is enforced by ctx
+// (callers should set a deadline). Failed registries are logged and skipped
+// (graceful degradation). Returns merged, de-duplicated KnowledgeObject candidates
+// from all reachable registries; the slice is nil when no registries are configured.
+func (s *Service) SearchRemoteBookmarks(
+	ctx context.Context,
+	query string,
+	timeout time.Duration,
+) ([]*storage.KnowledgeObject, []registrysync.SourceResult, error) {
+	urls := make([]string, 0, len(s.Cfg.Registries))
+	for _, r := range s.Cfg.Registries {
+		if r.URL != "" {
+			urls = append(urls, r.URL)
+		}
+	}
+
+	if len(urls) == 0 {
+		return nil, nil, nil
+	}
+
+	client := registrysync.NewBookmarkSearchClient(timeout)
+	raw := registrysync.ScatterGather(ctx, client, urls, query)
+	merged := registrysync.MergeResults(raw)
+	return merged, raw, nil
+}
+
 // ReindexVectors re-embeds all active knowledge objects that currently lack an
 // embedding vector. Returns the count of objects successfully re-embedded and the
 // count that failed (non-fatal per object; caller receives the aggregate counts).
