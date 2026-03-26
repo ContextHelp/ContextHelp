@@ -1,0 +1,10 @@
+apiVersion: v1
+name: content-monitor
+version: 1.0.0
+description: >
+  URL content change monitor — fetches one or more URLs on a schedule, detects
+  content changes via SHA-256 hashing, and emits a KnowledgeObject diff event
+  when content changes are detected.
+permissions:
+  - network
+  - write_objects

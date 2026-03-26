@@ -1,0 +1,9 @@
+apiVersion: v1
+name: rss-feed
+version: 1.0.0
+description: >
+  Scheduled RSS/Atom feed ingestion — fetches one or more feeds on a configurable
+  interval and emits each item as a KnowledgeObject via the event bus.
+permissions:
+  - network
+  - write_objects
