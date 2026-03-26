@@ -34,6 +34,14 @@ ctxt list --mention @project.checkout-redesign
 ctxt list --q "mention:project.checkout-redesign"
 ```
 
+### Related objects (graph traversal)
+
+Find objects that share mention targets with a given entity (1-hop neighbourhood):
+
+```bash
+ctxt list --q "related==@arch.decision"
+```
+
 ### Time-bounded retrieval
 
 ```bash

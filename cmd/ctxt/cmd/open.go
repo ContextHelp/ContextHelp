@@ -108,5 +108,23 @@ func runOpen(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// See Also: related objects via shared mention targets (depth=1, max 5).
+	related, err := svc.RelatedObjects(ctx, obj.ID, 1, 5)
+	if err == nil && len(related) > 0 {
+		fmt.Println()
+		fmt.Println("See Also:")
+		for _, r := range related {
+			label := r.ID
+			if len(r.Summaries) > 0 && r.Summaries[0] != "" {
+				summary := r.Summaries[0]
+				if len(summary) > 60 {
+					summary = summary[:57] + "..."
+				}
+				label = fmt.Sprintf("%s  %s", r.ID, summary)
+			}
+			fmt.Printf("  %s\n", label)
+		}
+	}
+
 	return nil
 }

@@ -139,6 +139,8 @@ ctxt find "checkout flow" --semantic                 # vector-only
 ctxt find "indexing" --fts-weight 0.3 --vector-weight 0.7  # override RRF weights
 ctxt list --q "type==url;tag=in=(checkout,pricing)"  # structured (deterministic)
 ctxt list --mention @project.checkout-redesign
+ctxt list --q "related==@arch.decision"              # graph traversal (shared mention targets)
+ctxt open obj_12345678                               # See Also section shows related objects
 ```
 
 ---

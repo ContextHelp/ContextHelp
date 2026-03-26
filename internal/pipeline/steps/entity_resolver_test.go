@@ -94,6 +94,10 @@ func (s *stubEdgeStore) CountMentionsTo(_ context.Context, _, _ string) (int, er
 	return 0, nil
 }
 
+func (s *stubEdgeStore) RelatedObjectIDs(_ context.Context, _ string, _, _ int) ([]string, error) {
+	return nil, nil
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 func mustURI(t *testing.T, s string) uri.URI {

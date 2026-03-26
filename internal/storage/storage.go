@@ -143,6 +143,11 @@ type EdgeStore interface {
 	DeleteByObject(ctx context.Context, objectID string) error
 	// CountMentionsTo returns the number of object→entity edges pointing at toID.
 	CountMentionsTo(ctx context.Context, toType, toID string) (int, error)
+	// RelatedObjectIDs returns object IDs reachable from objectID by traversing
+	// shared mention targets up to depth hops. depth=1 means objects that share
+	// at least one mention target with objectID; depth=2 extends one more hop.
+	// The seed objectID is never included in the result.
+	RelatedObjectIDs(ctx context.Context, objectID string, depth, limit int) ([]string, error)
 }
 
 // JobStore persists and retrieves jobs.

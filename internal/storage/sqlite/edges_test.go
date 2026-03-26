@@ -109,3 +109,85 @@ func TestDeleteEdgeTwice(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
+
+// TestRelatedObjectIDsDepth1 verifies direct neighbours via shared mention target.
+func TestRelatedObjectIDsDepth1(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	// obj-1 and obj-2 both mention "entity-A"; obj-3 mentions only "entity-B".
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e1", "obj-1", "entity-A")))
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e2", "obj-2", "entity-A")))
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e3", "obj-3", "entity-B")))
+
+	ids, err := d.Edges().RelatedObjectIDs(ctx, "obj-1", 1, 0)
+	require.NoError(t, err)
+
+	assert.Contains(t, ids, "obj-2", "obj-2 shares entity-A with obj-1")
+	for _, id := range ids {
+		assert.NotEqual(t, "obj-1", id, "seed must not appear in results")
+		assert.NotEqual(t, "obj-3", id, "obj-3 has no shared target with obj-1")
+	}
+}
+
+// TestRelatedObjectIDsDepth2 verifies 2-hop traversal.
+func TestRelatedObjectIDsDepth2(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	// obj-1 → entity-A; obj-2 → entity-A, entity-B; obj-3 → entity-B only.
+	// Depth 1 from obj-1: finds obj-2 (shares entity-A).
+	// Depth 2 from obj-1: also finds obj-3 (shares entity-B with obj-2).
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e1", "obj-1", "entity-A")))
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e2", "obj-2", "entity-A")))
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e3", "obj-2", "entity-B")))
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e4", "obj-3", "entity-B")))
+
+	ids, err := d.Edges().RelatedObjectIDs(ctx, "obj-1", 2, 0)
+	require.NoError(t, err)
+
+	assert.Contains(t, ids, "obj-2")
+	assert.Contains(t, ids, "obj-3")
+	for _, id := range ids {
+		assert.NotEqual(t, "obj-1", id)
+	}
+}
+
+// TestRelatedObjectIDsLimit verifies the limit parameter is respected.
+func TestRelatedObjectIDsLimit(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	// obj-1 shares entity-A with obj-2, obj-3, obj-4.
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e1", "obj-1", "entity-A")))
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e2", "obj-2", "entity-A")))
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e3", "obj-3", "entity-A")))
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e4", "obj-4", "entity-A")))
+
+	ids, err := d.Edges().RelatedObjectIDs(ctx, "obj-1", 1, 2)
+	require.NoError(t, err)
+	assert.LessOrEqual(t, len(ids), 2)
+}
+
+// TestRelatedObjectIDsNoRelations verifies empty result when no shared targets.
+func TestRelatedObjectIDsNoRelations(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e1", "obj-1", "entity-A")))
+	require.NoError(t, d.Edges().Create(ctx, makeEdge("e2", "obj-2", "entity-B")))
+
+	ids, err := d.Edges().RelatedObjectIDs(ctx, "obj-1", 1, 0)
+	require.NoError(t, err)
+	assert.Empty(t, ids)
+}
+
+// TestRelatedObjectIDsDepthCap verifies depth > 3 is clamped to 3.
+func TestRelatedObjectIDsDepthCap(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	// Should not error with depth=99.
+	_, err := d.Edges().RelatedObjectIDs(ctx, "obj-1", 99, 0)
+	require.NoError(t, err)
+}

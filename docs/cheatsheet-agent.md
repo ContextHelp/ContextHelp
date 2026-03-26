@@ -114,6 +114,7 @@ GET /objects?q=<rsql>&limit=N
 | `source` | origin URL or file path |
 | `tag` | supports `==`, `!=`, `=in=` |
 | `mention` | supports `==` only (`@namespace.slug`) |
+| `related` | graph traversal: objects sharing mention targets (`related==@ns.slug`) |
 | `similar` | FTS match (`similar=="keyword"`) |
 | `created_at` | ISO 8601 date/datetime |
 | `updated_at` | ISO 8601 date/datetime |
