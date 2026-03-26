@@ -92,6 +92,8 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	// Graph enrichment: detects "alternative" relationships and creates proximity edges.
 	// Registered with nil stores (passthrough mode); stores are injected at runtime.
 	"alternative_detector": func() pipeline.PipelineStep { return steps.NewAlternativeDetector() },
+	// Dependency enrichment step.
+	"dependency_enricher": func() pipeline.PipelineStep { return steps.NewDependencyEnricher() },
 }
 
 // blobStepConstructors maps step names to blob-store-aware constructors.

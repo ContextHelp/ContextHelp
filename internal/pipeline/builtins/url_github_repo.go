@@ -19,6 +19,7 @@ func init() {
 			"tagger",
 			"entity_extractor",
 			"entity_resolver",
+			"dependency_enricher",
 			"embedding",
 		},
 	})

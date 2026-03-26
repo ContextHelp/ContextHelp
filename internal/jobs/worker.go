@@ -234,12 +234,16 @@ func (p *WorkerPool) fanOutItems(ctx context.Context, draft *storage.KnowledgeOb
 			continue
 		}
 		source, _ := item["source"].(string)
+		itemPipeline, _ := item["pipeline"].(string)
+		if itemPipeline == "" {
+			itemPipeline = "feed.ingest"
+		}
 		job := &storage.Job{
 			ID:         uuid.New().String(),
 			Type:       "ingest:feed_item",
 			Status:     storage.JobPending,
 			Payload:    content,
-			Pipeline:   "feed.ingest",
+			Pipeline:   itemPipeline,
 			Source:     source,
 			MaxRetries: p.maxRetries,
 			CreatedAt:  now,
