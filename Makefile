@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell trivy-scan
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -177,6 +177,25 @@ docker-ps:
 ## docker-shell: Open a shell in the running dpkms container
 docker-shell:
 	docker exec -it ctxt-dpkms sh
+
+## trivy-scan: Scan Dockerfile for misconfigs and image for CVEs (requires trivy)
+TRIVY_IMAGE ?= ghcr.io/$(shell git remote get-url origin 2>/dev/null | sed 's|.*github.com[:/]||;s|\.git$$||' | tr '[:upper:]' '[:lower:]')/ctxt-dpkms:latest
+trivy-scan:
+	@echo "Running trivy config scan on Dockerfile..."
+	@if ! command -v trivy >/dev/null 2>&1; then \
+		echo "trivy not installed. Install: https://aquasecurity.github.io/trivy/latest/getting-started/installation/"; \
+		exit 1; \
+	fi
+	trivy config --exit-code 1 --severity CRITICAL Dockerfile
+	@echo "✓ Dockerfile config scan passed"
+	@if docker image inspect $(TRIVY_IMAGE) >/dev/null 2>&1; then \
+		echo "Running trivy image scan on $(TRIVY_IMAGE)..."; \
+		trivy image --exit-code 1 --severity CRITICAL $(TRIVY_IMAGE); \
+		echo "✓ Image CVE scan passed"; \
+	else \
+		echo "Image $(TRIVY_IMAGE) not found locally; skipping image scan."; \
+		echo "Run 'make docker-build' first, or set TRIVY_IMAGE=<image> explicitly."; \
+	fi
 
 ## build-ui: Build web UI assets and copy into internal/ui/dist
 build-ui:
