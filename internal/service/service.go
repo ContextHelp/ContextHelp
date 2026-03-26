@@ -572,7 +572,9 @@ func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) 
 	}
 
 	syncer := registrysync.New(s.Store.Entities()).
-		WithEntitlements(s.Store.Entitlements())
+		WithEntitlements(s.Store.Entitlements()).
+		WithRegistryStore(s.Store.Registries()).
+		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures)
 	result, err := syncer.Sync(ctx, cfg)
 	if err != nil {
 		return 0, fmt.Errorf("sync registry entities: %w", err)
@@ -609,7 +611,9 @@ func (s *Service) SyncAllRegistriesWithReconciliation(
 		strategy = registrysync.MergeLastWriteWins
 	}
 
-	syncer := registrysync.New(s.Store.Entities())
+	syncer := registrysync.New(s.Store.Entities()).
+		WithRegistryStore(s.Store.Registries()).
+		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures)
 	multi := registrysync.MultiSyncConfig{
 		Registries:  s.Cfg.Registries,
 		Strategy:    strategy,

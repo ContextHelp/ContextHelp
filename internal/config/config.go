@@ -46,6 +46,9 @@ type Config struct {
 	// Registries configuration
 	Registries []RegistryConfig `mapstructure:"registries"`
 
+	// RegistriesGlobal holds registry-wide settings that apply to all registries.
+	RegistriesGlobal RegistriesGlobalConfig `mapstructure:"registries_global" yaml:"registries_global"`
+
 	// Plugins configuration
 	Plugins []PluginConfig `mapstructure:"plugins"`
 
@@ -323,6 +326,14 @@ type FocusProfile struct {
 	SearchStrategy ProfileSearchStrategy `mapstructure:"search_strategy" yaml:"search_strategy"`
 }
 
+// RegistriesGlobalConfig holds registry-wide settings that apply to all registries.
+type RegistriesGlobalConfig struct {
+	// RequireSignatures requires that every registry must declare a public_key and
+	// that each sync response carries a valid Ed25519 signature.
+	// Default: false (registries without a public_key are still allowed).
+	RequireSignatures bool `mapstructure:"require_signatures" yaml:"require_signatures"`
+}
+
 // RegistryAuthType enumerates supported auth mechanisms.
 type RegistryAuthType string
 
@@ -582,6 +593,9 @@ func setDefaults(v *viper.Viper) {
 
 	// Offline mode — disabled by default; enable for air-gapped environments.
 	v.SetDefault("offline.enabled", false)
+
+	// Registries global — require_signatures is off by default (permissive).
+	v.SetDefault("registries_global.require_signatures", false)
 
 	// Resurfacing defaults
 	v.SetDefault("resurfacing.enabled", true)
