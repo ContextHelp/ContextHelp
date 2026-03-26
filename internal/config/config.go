@@ -259,6 +259,14 @@ type BackupConfig struct {
 	// Dir is the directory where backup archives are written.
 	// Defaults to the current working directory if empty.
 	Dir string `mapstructure:"dir" yaml:"dir"`
+
+	// EncryptByDefault enables AES-256-GCM encryption for every backup
+	// when true.  Equivalent to always passing --encrypt to `ctxt config backup`.
+	// Passphrase is sourced from the same priority chain as the --encrypt flow:
+	//   1. CTXT_BACKUP_PASSPHRASE env var
+	//   2. OS keychain (ctxt.backup / passphrase)
+	//   3. Interactive prompt
+	EncryptByDefault bool `mapstructure:"encrypt_by_default" yaml:"encrypt_by_default"`
 }
 
 // StorageConfig represents storage configuration

@@ -140,6 +140,10 @@ func init() {
 	// Flags for backup subcommand
 	configBackupCmd.Flags().String("output", "",
 		"output directory for bundle files (default: current directory)")
+	configBackupCmd.Flags().Bool("encrypt", false,
+		"encrypt the bundle with AES-256-GCM + Argon2id (overrides backup.encrypt_by_default)")
+	configBackupCmd.Flags().String("passphrase", "",
+		"passphrase for --encrypt (not recommended for scripts; prefer env var or keychain)")
 
 	// Flags for restore subcommand
 	configRestoreCmd.Flags().Bool("verify", false,
@@ -303,6 +307,12 @@ func runConfigBackup(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Determine whether encryption is requested.
+	encryptFlag, _ := cmd.Flags().GetBool("encrypt")
+	encrypt := encryptFlag || cfg.Backup.EncryptByDefault
+
+	passphraseFlag, _ := cmd.Flags().GetString("passphrase")
+
 	configPath := config.GetConfigPath()
 	configDir := filepath.Dir(configPath)
 
@@ -323,18 +333,34 @@ func runConfigBackup(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("config backup: %w", err)
 	}
 
+	// Optionally encrypt the bundle in-place.
+	if encrypt {
+		pass, err := bundle.ResolvePassphrase(passphraseFlag, true)
+		if err != nil {
+			return fmt.Errorf("config backup: resolve passphrase: %w", err)
+		}
+		if err := bundle.EncryptBundleFile(result.ZipPath, pass); err != nil {
+			return fmt.Errorf("config backup: encrypt: %w", err)
+		}
+	}
+
 	if isJSONOutput() {
-		return outputJSON(cmd.OutOrStdout(), map[string]string{
+		m := map[string]interface{}{
 			"zip":         result.ZipPath,
 			"sig":         result.SigPath,
 			"fingerprint": result.Fingerprint,
-		})
+			"encrypted":   encrypt,
+		}
+		return outputJSON(cmd.OutOrStdout(), m)
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Config bundle created\n")
 	fmt.Fprintf(cmd.OutOrStdout(), "  bundle:      %s\n", result.ZipPath)
 	fmt.Fprintf(cmd.OutOrStdout(), "  signature:   %s\n", result.SigPath)
 	fmt.Fprintf(cmd.OutOrStdout(), "  fingerprint: %s\n", result.Fingerprint)
+	if encrypt {
+		fmt.Fprintf(cmd.OutOrStdout(), "  encrypted:   yes (AES-256-GCM + Argon2id)\n")
+	}
 	fmt.Fprintf(cmd.OutOrStdout(), "\nVerify with: ctxt config restore --verify %s\n", result.ZipPath)
 	return nil
 }
@@ -343,6 +369,18 @@ func runConfigRestore(cmd *cobra.Command, args []string) error {
 	zipPath := args[0]
 	verify, _ := cmd.Flags().GetBool("verify")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+	// Auto-detect and decrypt encrypted bundles before any further processing.
+	decryptedPath, wasEncrypted, err := maybeDecryptBundleFile(zipPath)
+	if err != nil {
+		return fmt.Errorf("config restore: decrypt: %w", err)
+	}
+	if wasEncrypted {
+		// decryptedPath is a temp file; clean up after restore.
+		defer os.Remove(decryptedPath)
+		zipPath = decryptedPath
+		fmt.Fprintf(cmd.OutOrStdout(), "  decrypted:   yes\n")
+	}
 
 	sigPath := zipPath + ".sig"
 
@@ -382,6 +420,43 @@ func runConfigRestore(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("config restore: %w", err)
 	}
 	return writeRestoredFiles(cmd, files)
+}
+
+// maybeDecryptBundleFile reads the file at path; if it is an encrypted bundle,
+// it prompts for the passphrase, decrypts to a temp file, and returns the temp
+// path plus wasEncrypted=true.  Returns the original path unchanged when the
+// bundle is not encrypted.
+func maybeDecryptBundleFile(path string) (outPath string, wasEncrypted bool, err error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", false, fmt.Errorf("read bundle: %w", err)
+	}
+	if !bundle.IsEncryptedBundle(data) {
+		return path, false, nil
+	}
+
+	pass, err := bundle.ResolvePassphrase("", false)
+	if err != nil {
+		return "", false, fmt.Errorf("resolve passphrase: %w", err)
+	}
+
+	plain, err := bundle.DecryptBundle(data, pass)
+	if err != nil {
+		return "", false, err
+	}
+
+	// Write plaintext zip to a temp file alongside the original.
+	tmp, err := os.CreateTemp(filepath.Dir(path), "ctxt-restore-*.zip")
+	if err != nil {
+		return "", false, fmt.Errorf("create temp file: %w", err)
+	}
+	if _, err := tmp.Write(plain); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return "", false, fmt.Errorf("write temp file: %w", err)
+	}
+	tmp.Close()
+	return tmp.Name(), true, nil
 }
 
 // writeRestoredFiles writes bundle file contents to the config directory.
