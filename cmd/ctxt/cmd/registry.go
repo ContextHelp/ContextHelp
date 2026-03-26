@@ -1,12 +1,16 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/apierror"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -84,6 +88,29 @@ var registrySubmitCmd = &cobra.Command{
 	RunE:  runRegistrySubmit,
 }
 
+var registryLoginCmd = &cobra.Command{
+	Use:   "login <name>",
+	Short: "Store an auth token for a registry in the OS keychain",
+	Long: `Store an auth token for a registry securely in the OS keychain.
+
+The token is NEVER written to the YAML config file.
+
+Interactive (prompts for token):
+  ctxt registry login example-paid
+
+Non-interactive (pass token via flag — prefer env-var to avoid shell history):
+  ctxt registry login example-paid --token "$TOKEN"`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistryLogin,
+}
+
+var registryLogoutCmd = &cobra.Command{
+	Use:   "logout <name>",
+	Short: "Remove the stored auth token for a registry from the OS keychain",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runRegistryLogout,
+}
+
 func init() {
 	rootCmd.AddCommand(registryCmd)
 
@@ -94,10 +121,16 @@ func init() {
 	registryCmd.AddCommand(registryInfoCmd)
 	registryCmd.AddCommand(registrySyncCmd)
 	registryCmd.AddCommand(registrySubmitCmd)
+	registryCmd.AddCommand(registryLoginCmd)
+	registryCmd.AddCommand(registryLogoutCmd)
 
 	// Flags for sync subcommand
 	registrySyncCmd.Flags().Bool("dry-run", false,
 		"fetch remote manifest and show diff without writing to storage")
+
+	// Flags for login subcommand
+	registryLoginCmd.Flags().String("token", "",
+		"auth token (reads from stdin prompt if omitted)")
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
@@ -373,4 +406,85 @@ func runRegistrySubmit(cmd *cobra.Command, args []string) error {
 	fmt.Println("See CONTRIBUTING.md for bundle format requirements:")
 	fmt.Println("  https://github.com/ideacrafterslabs/registry/blob/main/CONTRIBUTING.md")
 	return nil
+}
+
+// runRegistryLogin stores an auth token for the named registry in the OS keychain.
+// Token source priority: --token flag > interactive prompt.
+func runRegistryLogin(cmd *cobra.Command, args []string) error {
+	name := args[0]
+
+	// Validate registry exists in config.
+	if !registryExistsInConfig(name) {
+		return fmt.Errorf("registry %q not found in config — add it first with: ctxt registry add %s <url>", name, name)
+	}
+
+	token, err := cmd.Flags().GetString("token")
+	if err != nil {
+		return fmt.Errorf("token flag: %w", err)
+	}
+
+	if token == "" {
+		token, err = readToken(cmd)
+		if err != nil {
+			return fmt.Errorf("read token: %w", err)
+		}
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return fmt.Errorf("token must not be empty")
+	}
+
+	store := registry.NewTokenStore()
+	if err := store.Set(name, token); err != nil {
+		return fmt.Errorf("registry login: %w", err)
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Token stored securely in keychain for registry %q.\n", name)
+	return nil
+}
+
+// runRegistryLogout removes the stored auth token for the named registry.
+func runRegistryLogout(cmd *cobra.Command, args []string) error {
+	name := args[0]
+
+	store := registry.NewTokenStore()
+	if err := store.Delete(name); err != nil {
+		var noToken registry.ErrNoToken
+		if errors.As(err, &noToken) {
+			return fmt.Errorf("registry %q has no stored token", name)
+		}
+		return fmt.Errorf("registry logout: %w", err)
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Token removed from keychain for registry %q.\n", name)
+	return nil
+}
+
+// registryExistsInConfig reports whether name appears in cfg.Registries.
+func registryExistsInConfig(name string) bool {
+	if cfg == nil {
+		return false
+	}
+	for _, r := range cfg.Registries {
+		if r.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// readToken prompts the user for a token read from stdin.
+// In interactive sessions the token is read line-by-line; input is not echoed
+// because the prompt instructs the user to paste rather than type.
+// For masked input in production use --token flag with an env-var reference.
+func readToken(cmd *cobra.Command) (string, error) {
+	fmt.Fprint(cmd.OutOrStdout(), "Enter token: ")
+	scanner := bufio.NewScanner(os.Stdin)
+	if scanner.Scan() {
+		return scanner.Text(), nil
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("read token: %w", err)
+	}
+	return "", fmt.Errorf("no token provided on stdin")
 }

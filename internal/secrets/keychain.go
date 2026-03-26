@@ -124,3 +124,22 @@ func (r *KeychainResolver) Set(key, value string) error {
 	}
 	return nil
 }
+
+// Delete removes the secret identified by key from the OS keychain.
+// macOS: uses `security delete-generic-password`.
+// Linux: uses `secret-tool clear`.
+func (r *KeychainResolver) Delete(key string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("security", "delete-generic-password",
+			"-s", r.service, "-a", key)
+	default: // linux
+		cmd = exec.Command("secret-tool", "clear",
+			"service", r.service, "account", key)
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("secrets: keychain delete %q: %w — %s", key, err, string(out))
+	}
+	return nil
+}

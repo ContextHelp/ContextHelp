@@ -6,6 +6,61 @@ import (
 	"testing"
 )
 
+// --- login / logout tests ---
+
+func TestRegistryLoginNoArgsError(t *testing.T) {
+	_, err := executeCommand("registry", "login")
+	if err == nil {
+		t.Error("registry login without name should fail")
+	}
+}
+
+func TestRegistryLoginUnknownRegistry(t *testing.T) {
+	_, err := executeCommand("registry", "login", "nonexistent-registry")
+	if err == nil {
+		t.Error("registry login for unknown registry should fail")
+	}
+	if !strings.Contains(err.Error(), "not found in config") {
+		t.Errorf("expected 'not found in config' error, got: %v", err)
+	}
+}
+
+func TestRegistryLoginHelp(t *testing.T) {
+	out, err := executeCommand("registry", "login", "--help")
+	if err != nil {
+		t.Fatalf("registry login --help should succeed: %v", err)
+	}
+	if !strings.Contains(out, "--token") {
+		t.Error("registry login help should mention --token flag")
+	}
+}
+
+func TestRegistryLogoutNoArgsError(t *testing.T) {
+	_, err := executeCommand("registry", "logout")
+	if err == nil {
+		t.Error("registry logout without name should fail")
+	}
+}
+
+func TestRegistryLogoutNotStored(t *testing.T) {
+	_, err := executeCommand("registry", "logout", "nonexistent-registry-logout")
+	if err == nil {
+		t.Error("registry logout for unknown token should fail")
+	}
+}
+
+func TestRegistryHelpShowsLoginLogout(t *testing.T) {
+	out, err := executeCommand("registry", "--help")
+	if err != nil {
+		t.Fatalf("registry --help should succeed: %v", err)
+	}
+	for _, subcmd := range []string{"login", "logout"} {
+		if !strings.Contains(out, subcmd) {
+			t.Errorf("registry help should list subcommand %q", subcmd)
+		}
+	}
+}
+
 func TestRegistryList(t *testing.T) {
 	db := setupTestDB(t)
 
