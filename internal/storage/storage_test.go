@@ -31,6 +31,7 @@ func (m *mockDriver) Aliases() AliasStore                    { return &mockAlias
 func (m *mockDriver) AuditLog() AuditStore                   { return &mockAuditLogStore{} }
 func (m *mockDriver) Attachments() AttachmentStore           { return &mockAttachmentStore{} }
 func (m *mockDriver) Resurfacing() ResurfacingQueueStore     { return &mockResurfacingQueueStore{} }
+func (m *mockDriver) Entitlements() EntitlementStore         { return &mockEntitlementStore{} }
 func (m *mockDriver) Health(ctx context.Context) error       { return nil }
 
 type mockBlobStore struct{}
@@ -365,3 +366,13 @@ func (m *mockResurfacingQueueStore) Dismiss(_ context.Context, _ string, _ time.
 }
 func (m *mockResurfacingQueueStore) DeleteByProfile(_ context.Context, _ string) error { return nil }
 func (m *mockResurfacingQueueStore) DeleteByObject(_ context.Context, _ string) error  { return nil }
+
+type mockEntitlementStore struct{}
+
+func (m *mockEntitlementStore) Upsert(_ context.Context, _ *RegistryEntitlement) error { return nil }
+func (m *mockEntitlementStore) Get(_ context.Context, _ string) (*RegistryEntitlement, error) {
+	return nil, nil
+}
+func (m *mockEntitlementStore) List(_ context.Context) ([]*RegistryEntitlement, error) {
+	return nil, nil
+}
