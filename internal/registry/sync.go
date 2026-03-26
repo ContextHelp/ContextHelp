@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/graph"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -41,6 +43,7 @@ type SyncResult struct {
 // Syncer performs registry syncs against the entity store.
 type Syncer struct {
 	store  storage.EntityStore
+	guard  *graph.EntityIntegrityGuard
 	client *http.Client
 }
 
@@ -48,8 +51,16 @@ type Syncer struct {
 func New(store storage.EntityStore) *Syncer {
 	return &Syncer{
 		store:  store,
+		guard:  graph.NewEntityIntegrityGuard(),
 		client: &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+// WithNamespaces loads a namespace→registry mapping into the integrity guard so
+// that entities from unknown namespaces are rejected during sync.
+func (s *Syncer) WithNamespaces(ns map[string]string) *Syncer {
+	s.guard.LoadNamespaces(ns)
+	return s
 }
 
 // Sync fetches the remote registry according to cfg.SyncMode and stores results.
@@ -82,6 +93,15 @@ func (s *Syncer) Sync(ctx context.Context, cfg config.RegistryConfig) (*SyncResu
 			RegistryURL: cfg.URL,
 			CreatedAt:   now,
 			UpdatedAt:   now,
+		}
+
+		// Integrity guard: reject malformed or spoofed entities before write.
+		if err := s.guard.ValidateAndGuard(ctx, e, "registry.sync"); err != nil {
+			slog.WarnContext(ctx, "registry sync: entity integrity rejected",
+				"slug", e.Slug, "registry", cfg.URL, "err", err)
+			result.Errors = append(result.Errors, fmt.Errorf("integrity guard %s: %w", e.Slug, err))
+			result.Skipped++
+			continue
 		}
 
 		if mode == config.RegistrySyncModeThin {
