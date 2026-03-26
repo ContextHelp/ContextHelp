@@ -11,6 +11,9 @@ type LLMProvider interface {
 // NewStubLLMProvider returns a stub that returns a canned response.
 func NewStubLLMProvider() LLMProvider { return &stubLLMProvider{} }
 
+// StubLLMProvider is an exported alias so capability checks can type-assert against it.
+type StubLLMProvider = stubLLMProvider
+
 type stubLLMProvider struct{}
 
 func (s *stubLLMProvider) Name() string { return "stub" }

@@ -42,13 +42,16 @@ func CapabilitiesFromFactory(f *providers.Factory) pipeline.CapabilitySet {
 	ensureToolPath()
 	caps := make(pipeline.CapabilitySet)
 
+	// io is always available (filesystem access is not provider-dependent).
+	caps["io"] = true
+
 	if f == nil {
 		return caps
 	}
 
-	// io is always available (filesystem access).
-	caps["io"] = true
-
+	if _, isStub := f.LLM().(*providers.StubLLMProvider); !isStub {
+		caps["llm"] = true
+	}
 	if _, isStub := f.OCR().(*providers.StubOCRProvider); !isStub {
 		caps["ocr"] = true
 	}

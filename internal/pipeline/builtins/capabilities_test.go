@@ -9,8 +9,14 @@ import (
 
 func TestCapabilitiesFromFactory_NilFactory(t *testing.T) {
 	caps := CapabilitiesFromFactory(nil)
-	if len(caps) != 0 {
-		t.Errorf("nil factory should return empty caps, got %v", caps)
+	// io is always available regardless of factory; provider-backed caps are not.
+	if !caps["io"] {
+		t.Error("io capability should always be present even with nil factory")
+	}
+	for _, name := range []string{"ocr", "vision", "transcription", "diarization", "llm"} {
+		if caps[name] {
+			t.Errorf("%s should not be available with nil factory", name)
+		}
 	}
 }
 
