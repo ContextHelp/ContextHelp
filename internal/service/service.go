@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -22,6 +20,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/plugin"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -216,7 +215,12 @@ func (s *Service) ListEntities(ctx context.Context, filter storage.EntityFilter)
 }
 
 // EntityBacklinks returns objects that mention the given entity.
+// slug may be in @namespace.id mention format or ctxt:// URI format.
 func (s *Service) EntityBacklinks(ctx context.Context, slug string) ([]*storage.KnowledgeObject, error) {
+	// Normalize slug to the edge storage format (ctxt:// URI string).
+	if u, ok := mentions.Parse(slug); ok {
+		slug = u.String()
+	}
 	edges, err := s.Store.Edges().ListTo(ctx, "entity", slug)
 	if err != nil {
 		return nil, err
@@ -593,68 +597,24 @@ func (s *Service) ListFeeds(ctx context.Context, filter storage.FeedFilter) ([]*
 	return s.Store.Feeds().List(ctx, filter)
 }
 
-// SyncFeed fetches a feed and enqueues per-item ingestion jobs.
+// SyncFeed enqueues a feed.sync pipeline job to fetch and process feed items.
+// Deduplication and item enqueueing are handled by the pipeline steps.
 func (s *Service) SyncFeed(ctx context.Context, id string) (string, error) {
 	feed, err := s.Store.Feeds().Get(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("feed not found: %w", err)
 	}
 
-	// Enqueue a pipeline-based sync job as fallback (for status tracking).
-	fallbackJobID, _ := s.Analyze(ctx, AnalyzeRequest{
+	jobID, err := s.Analyze(ctx, AnalyzeRequest{
 		Content:  feed.URL,
 		Type:     "url",
 		Pipeline: "feed.sync",
 		Source:   "feed:" + id,
 	})
-
-	// Fetch feed content; on failure return the fallback job ID.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feed.URL, nil)
 	if err != nil {
-		return fallbackJobID, nil
+		return "", fmt.Errorf("sync feed: %w", err)
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fallbackJobID, nil
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotModified {
-		return fallbackJobID, nil
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fallbackJobID, nil
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fallbackJobID, nil
-	}
-
-	// Parse feed items.
-	items, err := parseFeedItems(string(body))
-	if err != nil {
-		return fallbackJobID, nil
-	}
-
-	// Enqueue per-item jobs.
-	for _, item := range items {
-		content, _ := item["content"].(string)
-		link, _ := item["link"].(string)
-		if content == "" {
-			content = link
-		}
-		if content == "" {
-			continue
-		}
-		s.Analyze(ctx, AnalyzeRequest{ //nolint:errcheck
-			Content:  content,
-			Type:     "feed_item",
-			Pipeline: "feed.ingest",
-			Source:   feed.URL,
-		})
-	}
-	return fallbackJobID, nil
+	return jobID, nil
 }
 
 // parseFeedItems parses RSS, Atom, or JSON Feed content and returns items.

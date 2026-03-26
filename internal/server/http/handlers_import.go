@@ -17,6 +17,7 @@ func CreateImport(svc *service.Service) http.HandlerFunc {
 			Content string `json:"content"`
 			Data    string `json:"data"`
 			Format  string `json:"format"` // "jsonl", "csv", "tsv", "markdown", "opml"
+			DryRun  bool   `json:"dry_run"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
@@ -32,6 +33,14 @@ func CreateImport(svc *service.Service) http.HandlerFunc {
 		}
 		if req.Format == "" {
 			req.Format = "jsonl"
+		}
+
+		if req.DryRun {
+			WriteJSON(w, http.StatusOK, map[string]any{
+				"dry_run": true,
+				"status":  "dry_run",
+			})
+			return
 		}
 
 		batch, err := svc.CreateBatch(r.Context(), req.Content, req.Format)
