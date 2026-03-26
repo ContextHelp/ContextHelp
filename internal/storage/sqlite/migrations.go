@@ -69,6 +69,9 @@ var migration019 string
 //go:embed migrations/020_vec_objects.sql
 var migration020 string
 
+//go:embed migrations/021_saved_searches.sql
+var migration021 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -106,6 +109,7 @@ var migrations = []migration{
 	// Migration 20: vec0 virtual table for ANN search via sqlite-vec.
 	// Uses a Go fn so the {DIMENSION} placeholder is filled from d.vectorDimension.
 	{Version: 20, fn: migrate020VecObjects},
+	{Version: 21, SQL: migration021},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

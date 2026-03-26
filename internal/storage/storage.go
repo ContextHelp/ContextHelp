@@ -50,6 +50,8 @@ type StorageDriver interface {
 	Entitlements() EntitlementStore
 	Metering() MeteringStore
 	Vectors() VectorStore
+	SavedSearches() SavedSearchStore
+	SearchHistory() SearchHistoryStore
 	Health(ctx context.Context) error
 }
 
@@ -369,4 +371,28 @@ type ResurfacingQueueStore interface {
 	DeleteByProfile(ctx context.Context, profileID string) error
 	// DeleteByObject removes all entries for an object.
 	DeleteByObject(ctx context.Context, objectID string) error
+}
+
+// SavedSearchStore persists and retrieves named saved searches (US-0054).
+type SavedSearchStore interface {
+	// Create inserts a new saved search. Returns error if name already exists.
+	Create(ctx context.Context, s *SavedSearch) error
+	// GetByName returns a saved search by its unique name, or nil if not found.
+	GetByName(ctx context.Context, name string) (*SavedSearch, error)
+	// List returns saved searches matching the filter, ordered by created_at desc.
+	List(ctx context.Context, f SavedSearchFilter) ([]*SavedSearch, error)
+	// Update persists field changes to an existing saved search.
+	Update(ctx context.Context, s *SavedSearch) error
+	// Delete removes a saved search by name.
+	Delete(ctx context.Context, name string) error
+}
+
+// SearchHistoryStore persists and retrieves the search query log (US-0055).
+type SearchHistoryStore interface {
+	// Append records one search query execution.
+	Append(ctx context.Context, e *SearchHistoryEntry) error
+	// List returns history entries matching the filter, ordered by searched_at desc.
+	List(ctx context.Context, f SearchHistoryFilter) ([]*SearchHistoryEntry, error)
+	// ClearByProfile removes all history entries for a profile.
+	ClearByProfile(ctx context.Context, profileID string) error
 }
