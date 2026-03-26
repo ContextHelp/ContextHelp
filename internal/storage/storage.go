@@ -2,11 +2,16 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
+
+// ErrEntityDefinitionUnavailable is returned when a thin entity's full definition
+// has not yet been pulled from the source registry.
+var ErrEntityDefinitionUnavailable = errors.New("entity definition unavailable: pull required")
 
 // Alias represents a human-readable name that resolves to a knowledge object ID.
 // The canonical definition lives in pkg/pluginapi.
@@ -107,6 +112,11 @@ type ObjectStore interface {
 // EntityStore persists and retrieves named entities.
 type EntityStore interface {
 	Upsert(ctx context.Context, entity *Entity) error
+	// UpsertThin stores an index-only stub (slug, title, namespace, version_hash, registry_url).
+	// Sets content_status = 'thin'. Does NOT overwrite a 'full' record.
+	UpsertThin(ctx context.Context, entity *Entity) error
+	// SetContentStatus updates the content_status column for a single entity.
+	SetContentStatus(ctx context.Context, slug string, status ContentStatus) error
 	Get(ctx context.Context, slug string) (*Entity, error)
 	List(ctx context.Context, filter EntityFilter) ([]*Entity, error)
 	Resolve(ctx context.Context, mention string) (*Entity, error)

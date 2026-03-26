@@ -41,16 +41,31 @@ type BlobInfo struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// ContentStatus indicates how much of an entity's content is locally stored.
+// 'full'         — complete definition present; default for locally-authored entities.
+// 'thin'         — index-only stub synced from a registry in thin mode (slug/title/namespace only).
+// 'pending_pull' — a pull has been requested but not yet completed.
+type ContentStatus string
+
+const (
+	ContentStatusFull        ContentStatus = "full"
+	ContentStatusThin        ContentStatus = "thin"
+	ContentStatusPendingPull ContentStatus = "pending_pull"
+)
+
 // Entity represents a named entity in the knowledge graph.
 type Entity struct {
-	Slug        string         `json:"slug"`
-	Title       string         `json:"title"`
-	Description string         `json:"description,omitempty"`
-	Namespace   string         `json:"namespace,omitempty"`
-	Aliases     []string       `json:"aliases,omitempty"`
-	Metadata    map[string]any `json:"metadata,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	Slug          string        `json:"slug"`
+	Title         string        `json:"title"`
+	Description   string        `json:"description,omitempty"`
+	Namespace     string        `json:"namespace,omitempty"`
+	Aliases       []string      `json:"aliases,omitempty"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
+	ContentStatus ContentStatus `json:"content_status,omitempty"`
+	VersionHash   string        `json:"version_hash,omitempty"`
+	RegistryURL   string        `json:"registry_url,omitempty"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
 }
 
 // Edge represents a relationship between two nodes in the knowledge graph (ADR-049).
@@ -84,9 +99,10 @@ type ObjectFilter struct {
 
 // EntityFilter specifies criteria for listing entities.
 type EntityFilter struct {
-	Namespace string
-	Limit     int
-	Offset    int
+	Namespace     string
+	ContentStatus ContentStatus // if non-empty, filter by content_status
+	Limit         int
+	Offset        int
 }
 
 // JobStatus represents the state of a job.

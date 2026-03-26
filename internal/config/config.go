@@ -272,10 +272,21 @@ type FocusProfile struct {
 	SearchStrategy ProfileSearchStrategy `mapstructure:"search_strategy" yaml:"search_strategy"`
 }
 
+// RegistrySyncMode controls how much content is fetched during a registry sync.
+// "full" (default) fetches complete entity definitions.
+// "thin" fetches only the entity index (IDs, slugs, titles, version hashes) and taxonomy.
+type RegistrySyncMode string
+
+const (
+	RegistrySyncModeFull RegistrySyncMode = "full"
+	RegistrySyncModeThin RegistrySyncMode = "thin"
+)
+
 // RegistryConfig represents a registry configuration
 type RegistryConfig struct {
-	Name string `mapstructure:"name"`
-	URL  string `mapstructure:"url"`
+	Name     string           `mapstructure:"name"      yaml:"name"`
+	URL      string           `mapstructure:"url"       yaml:"url"`
+	SyncMode RegistrySyncMode `mapstructure:"sync_mode" yaml:"sync_mode"`
 }
 
 // PluginConfig represents a plugin configuration

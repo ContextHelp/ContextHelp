@@ -1,0 +1,151 @@
+package registry_test
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+)
+
+// stubEntityStore is an in-memory EntityStore for testing.
+type stubEntityStore struct {
+	full []storage.Entity
+	thin []storage.Entity
+}
+
+func (s *stubEntityStore) Upsert(_ context.Context, e *storage.Entity) error {
+	s.full = append(s.full, *e)
+	return nil
+}
+
+func (s *stubEntityStore) UpsertThin(_ context.Context, e *storage.Entity) error {
+	s.thin = append(s.thin, *e)
+	return nil
+}
+
+func (s *stubEntityStore) SetContentStatus(_ context.Context, _ string, _ storage.ContentStatus) error {
+	return nil
+}
+
+func (s *stubEntityStore) Get(_ context.Context, _ string) (*storage.Entity, error) {
+	return nil, nil
+}
+
+func (s *stubEntityStore) List(_ context.Context, _ storage.EntityFilter) ([]*storage.Entity, error) {
+	return nil, nil
+}
+
+func (s *stubEntityStore) Resolve(_ context.Context, _ string) (*storage.Entity, error) {
+	return nil, nil
+}
+
+func makeTestServer(entries []registry.EntityIndexEntry) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(entries)
+	}))
+}
+
+func TestSyncer_ThinMode_StoresThinStubs(t *testing.T) {
+	entries := []registry.EntityIndexEntry{
+		{Slug: "ai.bert", Title: "BERT", Namespace: "ai", VersionHash: "v1"},
+		{Slug: "ai.gpt", Title: "GPT", Namespace: "ai", VersionHash: "v2"},
+	}
+	srv := makeTestServer(entries)
+	defer srv.Close()
+
+	store := &stubEntityStore{}
+	syncer := registry.New(store)
+
+	result, err := syncer.Sync(context.Background(), config.RegistryConfig{
+		URL:      srv.URL,
+		SyncMode: config.RegistrySyncModeThin,
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if result.Upserted != 2 {
+		t.Errorf("Upserted: got %d, want 2", result.Upserted)
+	}
+	if len(store.thin) != 2 {
+		t.Errorf("thin store count: got %d, want 2", len(store.thin))
+	}
+	if len(store.full) != 0 {
+		t.Errorf("full store should be empty in thin mode, got %d", len(store.full))
+	}
+	if store.thin[0].RegistryURL != srv.URL {
+		t.Errorf("RegistryURL: got %q, want %q", store.thin[0].RegistryURL, srv.URL)
+	}
+}
+
+func TestSyncer_FullMode_StoresFullRecords(t *testing.T) {
+	entries := []registry.EntityIndexEntry{
+		{Slug: "ai.bert", Title: "BERT", Namespace: "ai", VersionHash: "v1"},
+	}
+	srv := makeTestServer(entries)
+	defer srv.Close()
+
+	store := &stubEntityStore{}
+	syncer := registry.New(store)
+
+	result, err := syncer.Sync(context.Background(), config.RegistryConfig{
+		URL:      srv.URL,
+		SyncMode: config.RegistrySyncModeFull,
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if result.Upserted != 1 {
+		t.Errorf("Upserted: got %d, want 1", result.Upserted)
+	}
+	if len(store.full) != 1 {
+		t.Errorf("full store count: got %d, want 1", len(store.full))
+	}
+	if len(store.thin) != 0 {
+		t.Errorf("thin store should be empty in full mode, got %d", len(store.thin))
+	}
+}
+
+func TestSyncer_DefaultMode_TreatsAsFull(t *testing.T) {
+	entries := []registry.EntityIndexEntry{
+		{Slug: "ai.bert", Title: "BERT", Namespace: "ai"},
+	}
+	srv := makeTestServer(entries)
+	defer srv.Close()
+
+	store := &stubEntityStore{}
+	syncer := registry.New(store)
+
+	// Empty SyncMode should default to full.
+	result, err := syncer.Sync(context.Background(), config.RegistryConfig{URL: srv.URL})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if result.SyncMode != config.RegistrySyncModeFull {
+		t.Errorf("SyncMode: got %q, want %q", result.SyncMode, config.RegistrySyncModeFull)
+	}
+}
+
+func TestSyncer_RegistryError_ReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	store := &stubEntityStore{}
+	syncer := registry.New(store)
+	_, err := syncer.Sync(context.Background(), config.RegistryConfig{
+		URL:      srv.URL,
+		SyncMode: config.RegistrySyncModeThin,
+	})
+	if err == nil {
+		t.Error("expected error for 404 response, got nil")
+	}
+}

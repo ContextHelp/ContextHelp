@@ -18,6 +18,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/citation"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
+	registrysync "github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/plugin"
@@ -488,6 +489,103 @@ func (s *Service) SearchEntities(ctx context.Context, query string, limit int) (
 		}
 	}
 	return results, nil
+}
+
+// SyncRegistryEntities syncs entity index from a configured registry.
+// Uses the registry's sync_mode (thin or full). Returns count of upserted entities.
+func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) (int, error) {
+	var cfg config.RegistryConfig
+	for _, r := range s.Cfg.Registries {
+		if r.URL == registryURL {
+			cfg = r
+			break
+		}
+	}
+	if cfg.URL == "" {
+		cfg = config.RegistryConfig{URL: registryURL, SyncMode: config.RegistrySyncModeFull}
+	}
+
+	syncer := registrysync.New(s.Store.Entities())
+	result, err := syncer.Sync(ctx, cfg)
+	if err != nil {
+		return 0, fmt.Errorf("sync registry entities: %w", err)
+	}
+	return result.Upserted, nil
+}
+
+// PullEntity promotes a thin entity to full by fetching its complete definition
+// from its source registry. Returns ErrEntityDefinitionUnavailable if not thin.
+func (s *Service) PullEntity(ctx context.Context, slug string) (*storage.Entity, error) {
+	entity, err := s.Store.Entities().Get(ctx, slug)
+	if err != nil {
+		return nil, fmt.Errorf("get entity: %w", err)
+	}
+
+	if entity.ContentStatus == storage.ContentStatusFull {
+		// Already full — nothing to do.
+		return entity, nil
+	}
+
+	if entity.RegistryURL == "" {
+		return nil, fmt.Errorf("entity %q has no registry_url; cannot pull", slug)
+	}
+
+	// Mark as pending so concurrent callers can detect an in-progress pull.
+	if err := s.Store.Entities().SetContentStatus(ctx, slug, storage.ContentStatusPendingPull); err != nil {
+		return nil, fmt.Errorf("set pending_pull: %w", err)
+	}
+
+	// Fetch full definition from registry.
+	fullEntity, err := s.fetchRemoteEntityDefinition(ctx, entity.RegistryURL, slug)
+	if err != nil {
+		// Restore thin status on failure so the entity remains usable.
+		_ = s.Store.Entities().SetContentStatus(ctx, slug, storage.ContentStatusThin)
+		return nil, fmt.Errorf("fetch entity definition: %w", err)
+	}
+
+	fullEntity.Slug = entity.Slug
+	fullEntity.VersionHash = entity.VersionHash
+	fullEntity.RegistryURL = entity.RegistryURL
+	fullEntity.ContentStatus = storage.ContentStatusFull
+	fullEntity.CreatedAt = entity.CreatedAt
+	fullEntity.UpdatedAt = time.Now().Truncate(time.Second)
+
+	if err := s.Store.Entities().Upsert(ctx, fullEntity); err != nil {
+		_ = s.Store.Entities().SetContentStatus(ctx, slug, storage.ContentStatusThin)
+		return nil, fmt.Errorf("store full entity: %w", err)
+	}
+
+	return fullEntity, nil
+}
+
+// fetchRemoteEntityDefinition calls GET <registryURL>/entities/<slug> and decodes
+// the full entity definition.
+func (s *Service) fetchRemoteEntityDefinition(ctx context.Context, registryURL, slug string) (*storage.Entity, error) {
+	url := registryURL + "/entities/" + slug
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, storage.ErrEntityDefinitionUnavailable
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("registry returned HTTP %d", resp.StatusCode)
+	}
+
+	var entity storage.Entity
+	if err := json.NewDecoder(resp.Body).Decode(&entity); err != nil {
+		return nil, fmt.Errorf("decode entity: %w", err)
+	}
+	return &entity, nil
 }
 
 // Compose generates a markdown composition from knowledge objects.
