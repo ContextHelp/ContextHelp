@@ -286,8 +286,6 @@ const (
 
 // RegistryAuthConfig holds auth metadata for a registry.
 // Tokens are NEVER stored here — they live in the OS keychain.
-// The token field accepts env-var references (${VAR}) as a hint only;
-// the canonical store is always the keychain via `ctxt registry login`.
 type RegistryAuthConfig struct {
 	// Type selects the auth mechanism: bearer | api_key | oauth2.
 	Type RegistryAuthType `mapstructure:"type" yaml:"type"`
@@ -296,11 +294,22 @@ type RegistryAuthConfig struct {
 	HeaderName string `mapstructure:"header_name,omitempty" yaml:"header_name,omitempty"`
 }
 
+// RegistrySyncMode controls how much content is fetched during a registry sync.
+// "full" (default) fetches complete entity definitions.
+// "thin" fetches only the entity index (IDs, slugs, titles, version hashes) and taxonomy.
+type RegistrySyncMode string
+
+const (
+	RegistrySyncModeFull RegistrySyncMode = "full"
+	RegistrySyncModeThin RegistrySyncMode = "thin"
+)
+
 // RegistryConfig represents a registry configuration
 type RegistryConfig struct {
-	Name string             `mapstructure:"name"`
-	URL  string             `mapstructure:"url"`
-	Auth RegistryAuthConfig `mapstructure:"auth,omitempty" yaml:"auth,omitempty"`
+	Name     string           `mapstructure:"name"      yaml:"name"`
+	URL      string           `mapstructure:"url"       yaml:"url"`
+	Auth     RegistryAuthConfig `mapstructure:"auth,omitempty" yaml:"auth,omitempty"`
+	SyncMode RegistrySyncMode `mapstructure:"sync_mode" yaml:"sync_mode"`
 }
 
 // PluginConfig represents a plugin configuration

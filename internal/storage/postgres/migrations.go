@@ -38,15 +38,20 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			inbox_note TEXT DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS entities (
-			slug TEXT PRIMARY KEY,
-			title TEXT DEFAULT '',
-			description TEXT DEFAULT '',
-			namespace TEXT DEFAULT '',
-			aliases JSONB DEFAULT '[]',
-			metadata JSONB DEFAULT '{}',
-			created_at TIMESTAMP NOT NULL,
-			updated_at TIMESTAMP NOT NULL
+			slug          TEXT PRIMARY KEY,
+			title         TEXT DEFAULT '',
+			description   TEXT DEFAULT '',
+			namespace     TEXT DEFAULT '',
+			aliases       JSONB DEFAULT '[]',
+			metadata      JSONB DEFAULT '{}',
+			content_status TEXT NOT NULL DEFAULT 'full',
+			version_hash  TEXT NOT NULL DEFAULT '',
+			registry_url  TEXT NOT NULL DEFAULT '',
+			created_at    TIMESTAMP NOT NULL,
+			updated_at    TIMESTAMP NOT NULL
 		)`,
+		`CREATE INDEX IF NOT EXISTS idx_entities_content_status ON entities(content_status)`,
+		`CREATE INDEX IF NOT EXISTS idx_entities_registry_url ON entities(registry_url)`,
 		`CREATE TABLE IF NOT EXISTS edges (
 			id TEXT PRIMARY KEY,
 			from_type TEXT NOT NULL,

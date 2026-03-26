@@ -68,6 +68,10 @@ func NewRouter(svc *service.Service, devCORS bool, mgr *watcher.Manager) chi.Rou
 		r.Get("/entities", ListEntities(svc))
 		r.Get("/entities/{slug}", GetEntity(svc))
 		r.Get("/entities/{slug}/backlinks", EntityBacklinks(svc))
+		// Thin sync: promote a thin entity to full on demand.
+		r.Post("/entities/{slug}/pull", PullEntity(svc))
+		// Thin sync: trigger entity index sync for a registry.
+		r.Post("/entities/registry-sync", SyncRegistryEntities(svc))
 
 		// Pipelines
 		r.Post("/pipelines", CreatePipeline(svc))
