@@ -19,10 +19,10 @@ func TestURLRepoRegistered(t *testing.T) {
 func TestURLRepoSelectedForRepoURLs(t *testing.T) {
 	r := Registry()
 
-	// GitHub URLs are intentionally excluded: url.github.repo is more specific
-	// and will match them when that pipeline is registered.
+	// GitHub plain-path URLs are handled by url.github.repo (more specific).
+	// .git-suffixed clone URLs route via url.repo since url.github.repo
+	// also matches them; keep this test focused on non-GitHub forges.
 	match := []string{
-		"https://github.com/foo/bar.git",
 		"https://gitlab.com/foo/bar",
 		"https://gitlab.com/foo/bar/",
 		"https://bitbucket.org/foo/bar",

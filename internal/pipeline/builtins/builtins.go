@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -238,6 +239,8 @@ type selector struct {
 }
 
 // buildSelectors returns a list of selectors from the registered defs.
+// URL-pattern selectors are sorted by pattern length descending so that
+// more-specific patterns (longer strings) are tried before general ones.
 func buildSelectors() []selector {
 	sels := make([]selector, 0, len(defs))
 	for name, d := range defs {
@@ -250,6 +253,20 @@ func buildSelectors() []selector {
 			})
 		}
 	}
+	// Sort URL-pattern selectors: fewer alternations (|) = more specific = higher priority.
+	// Tie-break by longer pattern string (more anchors/constraints).
+	sort.SliceStable(sels, func(i, j int) bool {
+		pi, pj := sels[i].URLPattern, sels[j].URLPattern
+		if pi == nil || pj == nil {
+			return pi != nil // non-nil before nil
+		}
+		altsI := strings.Count(pi.String(), "|")
+		altsJ := strings.Count(pj.String(), "|")
+		if altsI != altsJ {
+			return altsI < altsJ // fewer alternations = more specific
+		}
+		return len(pi.String()) > len(pj.String()) // longer = more specific
+	})
 	return sels
 }
 

@@ -2,7 +2,8 @@ package builtins
 
 import "regexp"
 
-// githubRepoPattern matches GitHub repository root URLs only (no sub-paths).
+// githubRepoPattern matches GitHub repository root web URLs (no sub-paths, no .git suffix).
+// .git-suffixed URLs are git clone URLs handled by url.repo, not web browser URLs.
 var githubRepoPattern = regexp.MustCompile(`^https://github\.com/[^/]+/[^/]+/?$`)
 
 func init() {
