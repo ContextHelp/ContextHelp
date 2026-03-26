@@ -3,6 +3,7 @@ package builtins
 import (
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -15,10 +16,11 @@ import (
 // Def is a declarative pipeline definition.
 type Def struct {
 	Description string
-	Extensions  []string                       // file extensions this pipeline handles
-	ContentTest func(string) bool              // optional content-based selector
-	Steps       []string                       // step names, resolved to constructors at build time
-	Providers   []string                       // provider types needed: "ocr", "vision", "transcription", "diarization"
+	Extensions  []string                         // file extensions this pipeline handles
+	URLPattern  *regexp.Regexp                   // optional URL pattern; matched before url.generic fallback
+	ContentTest func(string) bool                // optional content-based selector
+	Steps       []string                         // step names, resolved to constructors at build time
+	Providers   []string                         // provider types needed: "ocr", "vision", "transcription", "diarization"
 	Overrides   map[string]pipeline.StepOverride // per-step contract overrides, keyed by step name
 }
 
@@ -227,10 +229,11 @@ func buildPipeline(name string, d Def, opts BuildOpts, strict bool) (*pipeline.P
 	}, nil
 }
 
-// selector pairs a pipeline name with its extension and content-test criteria.
+// selector pairs a pipeline name with its extension, URL pattern, and content-test criteria.
 type selector struct {
 	PipelineName string
 	Extensions   []string
+	URLPattern   *regexp.Regexp
 	ContentTest  func(string) bool
 }
 
@@ -238,10 +241,11 @@ type selector struct {
 func buildSelectors() []selector {
 	sels := make([]selector, 0, len(defs))
 	for name, d := range defs {
-		if len(d.Extensions) > 0 || d.ContentTest != nil {
+		if len(d.Extensions) > 0 || d.URLPattern != nil || d.ContentTest != nil {
 			sels = append(sels, selector{
 				PipelineName: name,
 				Extensions:   d.Extensions,
+				URLPattern:   d.URLPattern,
 				ContentTest:  d.ContentTest,
 			})
 		}
@@ -250,11 +254,19 @@ func buildSelectors() []selector {
 }
 
 // selectPipeline picks the best pipeline for the given content string using
-// extension matching first, then content tests, then the default fallback.
+// URL pattern matching first, then extension matching, then content tests,
+// then the url.generic fallback for any HTTP/S URL.
 func selectPipeline(selectors []selector, content string) string {
 	lower := strings.ToLower(content)
+	isURL := strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
 
-	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+	// URL pattern matching: runs before the url.generic catch-all.
+	if isURL {
+		for _, sel := range selectors {
+			if sel.URLPattern != nil && sel.URLPattern.MatchString(content) {
+				return sel.PipelineName
+			}
+		}
 		return "url.generic"
 	}
 
@@ -272,10 +284,6 @@ func selectPipeline(selectors []selector, content string) string {
 		if sel.ContentTest != nil && sel.ContentTest(content) {
 			return sel.PipelineName
 		}
-	}
-
-	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
-		return "url.generic"
 	}
 
 	return "text.short"

@@ -17,7 +17,7 @@ func TestAllDefsRegistered(t *testing.T) {
 		"image.ocr", "image.analysis",
 		"audio.transcribe", "video.full", "video.audio_only",
 		"doc.pdf", "doc.markdown", "doc.code", "doc.office",
-		"url.generic",
+		"url.generic", "url.repo",
 		"feed.sync",
 		"batch.jsonl", "batch.csv", "batch.tsv",
 		"import.twitter", "import.linkedin.posts", "import.linkedin.articles",
@@ -54,7 +54,7 @@ func TestRegistryBuildsAllPipelines(t *testing.T) {
 		"audio.transcribe", "batch.csv", "batch.jsonl", "batch.tsv",
 		"doc.code", "doc.markdown", "doc.office", "doc.pdf",
 		"feed.sync", "image.analysis", "image.ocr", "text.long",
-		"text.short", "url.generic", "video.audio_only", "video.full",
+		"text.short", "url.generic", "url.repo", "video.audio_only", "video.full",
 		"import.twitter", "import.linkedin.posts", "import.linkedin.articles",
 	}
 
