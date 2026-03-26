@@ -272,10 +272,35 @@ type FocusProfile struct {
 	SearchStrategy ProfileSearchStrategy `mapstructure:"search_strategy" yaml:"search_strategy"`
 }
 
+// RegistryAuthType enumerates supported auth mechanisms.
+type RegistryAuthType string
+
+const (
+	// RegistryAuthBearer uses an HTTP Bearer token.
+	RegistryAuthBearer RegistryAuthType = "bearer"
+	// RegistryAuthAPIKey uses a static API key header.
+	RegistryAuthAPIKey RegistryAuthType = "api_key"
+	// RegistryAuthOAuth2 uses an OAuth2 access token.
+	RegistryAuthOAuth2 RegistryAuthType = "oauth2"
+)
+
+// RegistryAuthConfig holds auth metadata for a registry.
+// Tokens are NEVER stored here — they live in the OS keychain.
+// The token field accepts env-var references (${VAR}) as a hint only;
+// the canonical store is always the keychain via `ctxt registry login`.
+type RegistryAuthConfig struct {
+	// Type selects the auth mechanism: bearer | api_key | oauth2.
+	Type RegistryAuthType `mapstructure:"type" yaml:"type"`
+	// HeaderName overrides the HTTP header used for api_key auth.
+	// Defaults to "X-API-Key". Ignored for bearer and oauth2 types.
+	HeaderName string `mapstructure:"header_name,omitempty" yaml:"header_name,omitempty"`
+}
+
 // RegistryConfig represents a registry configuration
 type RegistryConfig struct {
-	Name string `mapstructure:"name"`
-	URL  string `mapstructure:"url"`
+	Name string             `mapstructure:"name"`
+	URL  string             `mapstructure:"url"`
+	Auth RegistryAuthConfig `mapstructure:"auth,omitempty" yaml:"auth,omitempty"`
 }
 
 // PluginConfig represents a plugin configuration
