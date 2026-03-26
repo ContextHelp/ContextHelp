@@ -3,7 +3,9 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -58,4 +60,22 @@ func (q *Queue) List(ctx context.Context, filter storage.JobFilter) ([]*storage.
 
 func (q *Queue) RecoverStale(ctx context.Context, timeoutSeconds int64) (int, error) {
 	return q.store.RecoverStale(ctx, timeoutSeconds)
+}
+
+// EnqueueIngestJob creates and enqueues an ingest job without requiring callers
+// to import internal/storage directly.
+func (q *Queue) EnqueueIngestJob(ctx context.Context, jobType, payload, pipeline, source string, maxRetries int) error {
+	now := time.Now().Truncate(time.Second)
+	job := &storage.Job{
+		ID:         uuid.New().String(),
+		Type:       jobType,
+		Status:     storage.JobPending,
+		Payload:    payload,
+		Pipeline:   pipeline,
+		Source:     source,
+		MaxRetries: maxRetries,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	return q.Enqueue(ctx, job)
 }

@@ -9,10 +9,6 @@ import (
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/google/uuid"
-
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // ReleaseWatcher polls GitHub for new releases and enqueues pipeline jobs.
@@ -140,19 +136,7 @@ func (w *ReleaseWatcher) fetchLatest(ctx context.Context, client *http.Client, t
 
 // enqueue adds a pipeline job for a newly detected release.
 func (w *ReleaseWatcher) enqueue(ctx context.Context, repo string, rel *ghRelease) error {
-	now := time.Now().Truncate(time.Second)
-	job := &storage.Job{
-		ID:         uuid.New().String(),
-		Type:       "ingest:github_release",
-		Status:     storage.JobPending,
-		Payload:    rel.HTMLURL,
-		Pipeline:   "github.release",
-		Source:     rel.HTMLURL,
-		MaxRetries: w.maxRetries(),
-		CreatedAt:  now,
-		UpdatedAt:  now,
-	}
-	return w.Queue.Enqueue(ctx, job)
+	return w.Queue.EnqueueIngestJob(ctx, "ingest:github_release", rel.HTMLURL, "github.release", rel.HTMLURL, w.maxRetries())
 }
 
 func (w *ReleaseWatcher) maxRetries() int {
