@@ -81,7 +81,7 @@ func TestEntityBacklinks(t *testing.T) {
 	ts.svc.Store.Edges().Create(ctx, &storage.Edge{
 		ID:       "edge-1",
 		FromType: "object", FromID: "obj-1",
-		ToType: "entity", ToID: "@ui.layout",
+		ToType: "entity", ToID: "ctxt://entity/ui/layout",
 		EdgeType: "mentions", Weight: 1.0, CreatedAt: now,
 	})
 
