@@ -250,7 +250,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_API_URL: http://localhost:8080
+      VITE_API_URL: http://dpkms-dev:8080
     networks:
       - ctxt
     profiles:
