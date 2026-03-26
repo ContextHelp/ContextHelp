@@ -91,10 +91,11 @@ Emitted by the service layer and worker pool.
 | `job.failed` | `worker.pool` | `{"job_id": "...", "error": "..."}` | A job failed after retries. |
 
 ### Object Events
-Emitted by the service layer when objects are manually managed.
+Emitted by the worker pool and service layer on ObjectStore mutations.
 
 | Event Type | Source | Payload | Trigger |
 | :--- | :--- | :--- | :--- |
+| `object.created` | `worker.pool` | `{"id": "..."}` | A new knowledge object is persisted after pipeline processing. |
 | `object.updated` | `service.objects` | `{"id": "..."}` | An existing knowledge object is updated. |
 | `object.deleted` | `service.objects` | `{"id": "..."}` | A knowledge object is deleted. |
 

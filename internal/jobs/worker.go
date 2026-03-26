@@ -202,6 +202,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		p.store.Edges().Create(ctx, edge)
 	}
 
+	p.emitObjectCreated(ctx, draft.ID)
 	p.queue.Complete(ctx, job.ID, draft.ID)
 	p.emitCompleted(ctx, job.ID, draft.ID)
 
@@ -276,6 +277,18 @@ func (p *WorkerPool) emitFailed(ctx context.Context, jobID, reason string) {
 	ev, err := events.NewEvent("worker.pool", "job.failed", map[string]string{
 		"job_id": jobID,
 		"error":  reason,
+	})
+	if err == nil {
+		_ = p.bus.Publish(ctx, ev)
+	}
+}
+
+func (p *WorkerPool) emitObjectCreated(ctx context.Context, objectID string) {
+	if p.bus == nil {
+		return
+	}
+	ev, err := events.NewEvent("worker.pool", "object.created", map[string]string{
+		"id": objectID,
 	})
 	if err == nil {
 		_ = p.bus.Publish(ctx, ev)
