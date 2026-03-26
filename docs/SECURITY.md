@@ -829,6 +829,9 @@ echo "export CH_REGISTRY_TOKEN_UXPATTERNS='new_token_...'" >> ~/.bashrc
 
 ## 🚨 Incident Response
 
+> Full runbook (detection signals, immediate/follow-up actions, post-incident checklists):
+> **[docs/operations/incident-response.md](operations/incident-response.md)**
+
 ### If You Suspect a Secret Has Been Compromised
 
 **Immediate Actions (within 1 hour):**
