@@ -20,8 +20,8 @@ func TestURLGitHubReleaseDetector(t *testing.T) {
 	}{
 		{"https://github.com/foo/bar/releases/tag/v1.2.3", "url.github.release"},
 		{"https://github.com/foo/bar/releases", "url.github.release"},
-		{"https://github.com/foo/bar/pull/42", "url.generic"},
-		{"https://github.com/foo/bar", "url.repo"},
+		{"https://github.com/foo/bar/pull/42", "url.github.pr"},
+		{"https://github.com/foo/bar", "url.github.repo"},
 	}
 
 	for _, tt := range tests {

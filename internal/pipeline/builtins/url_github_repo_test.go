@@ -34,8 +34,8 @@ func TestURLGitHubRepoDetector(t *testing.T) {
 		},
 		{
 			url:  "https://github.com/foo/bar/releases",
-			want: "url.generic",
-			desc: "releases URL should NOT match url.github.repo",
+			want: "url.github.release",
+			desc: "releases URL routes to url.github.release (more specific)",
 		},
 		{
 			url:  "https://gitlab.com/foo/bar",
