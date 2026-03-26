@@ -363,6 +363,10 @@ func ConfiguredRegistryWithPipelineOverrides(
 		}
 	}
 
+	// URL-pattern detectors: registered before the selector so they take priority
+	// over url.generic. Order matters: more specific patterns first.
+	r.RegisterDetector(githubReleaseDetector())
+
 	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {
 		return selectPipeline(selectors, content)
 	}))
@@ -383,6 +387,10 @@ func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 			panic(fmt.Sprintf("builtins: %v", err))
 		}
 	}
+
+	// URL-pattern detectors: registered before the selector so they take priority
+	// over url.generic. Order matters: more specific patterns first.
+	r.RegisterDetector(githubReleaseDetector())
 
 	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {
 		return selectPipeline(selectors, content)
