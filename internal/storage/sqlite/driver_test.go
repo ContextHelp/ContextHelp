@@ -20,7 +20,7 @@ func newTestDriverDim(t testing.TB, dim int) *Driver {
 	if err != nil {
 		t.Fatalf("new driver: %v", err)
 	}
-	d.vectorDimension = dim
+	d.SetVectorDimension(dim)
 	if err := d.Init(context.Background()); err != nil {
 		t.Fatalf("init driver: %v", err)
 	}
