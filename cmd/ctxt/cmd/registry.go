@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/apierror"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -100,6 +101,17 @@ Examples:
 	RunE: runRegistryCapabilities,
 }
 
+var registryEntitlementsCmd = &cobra.Command{
+	Use:   "entitlements",
+	Short: "List active entitlements per registry",
+	Long: `List entitlement records fetched from registries that declare an /entitlements endpoint.
+
+Examples:
+  ctxt registry entitlements
+  ctxt registry entitlements --json`,
+	RunE: runRegistryEntitlements,
+}
+
 var registryLoginCmd = &cobra.Command{
 	Use:   "login <name>",
 	Short: "Store an auth token for a registry in the OS keychain",
@@ -136,6 +148,7 @@ func init() {
 	registryCmd.AddCommand(registryLoginCmd)
 	registryCmd.AddCommand(registryLogoutCmd)
 	registryCmd.AddCommand(registryCapabilitiesCmd)
+	registryCmd.AddCommand(registryEntitlementsCmd)
 
 	// Flags for sync subcommand
 	registrySyncCmd.Flags().Bool("dry-run", false,
@@ -678,4 +691,47 @@ func readToken(cmd *cobra.Command) (string, error) {
 		return "", fmt.Errorf("read token: %w", err)
 	}
 	return "", fmt.Errorf("no token provided on stdin")
+}
+
+// runRegistryEntitlements lists active entitlement records stored locally.
+func runRegistryEntitlements(cmd *cobra.Command, _ []string) error {
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+	entitlements, err := svc.Store.Entitlements().List(ctx)
+	if err != nil {
+		return fmt.Errorf("list entitlements: %w", err)
+	}
+
+	if isJSONOutput() {
+		return outputJSON(cmd.OutOrStdout(), map[string]any{"entitlements": entitlements})
+	}
+
+	if len(entitlements) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "No entitlement records found.")
+		fmt.Fprintln(cmd.OutOrStdout(), "Entitlements are fetched automatically on sync when a registry declares an /entitlements endpoint.")
+		return nil
+	}
+
+	headers := []string{"Registry", "Plan", "Namespaces", "Expires", "Fetched"}
+	rows := make([][]string, 0, len(entitlements))
+	for _, e := range entitlements {
+		expires := "never"
+		if !e.ExpiresAt.IsZero() {
+			expires = e.ExpiresAt.Format("2006-01-02")
+		}
+		rows = append(rows, []string{
+			e.RegistryName,
+			e.Plan,
+			strings.Join(e.Namespaces, ", "),
+			expires,
+			e.FetchedAt.Format(time.RFC3339),
+		})
+	}
+	printTable(cmd.OutOrStdout(), headers, rows)
+	return nil
 }

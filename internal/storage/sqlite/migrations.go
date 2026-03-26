@@ -58,6 +58,9 @@ var migration016 string
 //go:embed migrations/017_resurfacing_queue.sql
 var migration017 string
 
+//go:embed migrations/018_registry_entitlements.sql
+var migration018 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -90,6 +93,7 @@ var migrations = []migration{
 	{Version: 15, SQL: migration015},
 	{Version: 16, SQL: migration016},
 	{Version: 17, SQL: migration017},
+	{Version: 18, SQL: migration018},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

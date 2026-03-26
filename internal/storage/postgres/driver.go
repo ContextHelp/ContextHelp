@@ -29,10 +29,11 @@ type Driver struct {
 	blobs      storage.BlobStore
 	proximity  *ProximityStore
 	watches    *WatchStore
-	aliases     *AliasStore
-	auditLog    *AuditStore
-	attachments *AttachmentStore
-	resurfacing *ResurfacingQueueStore
+	aliases      *AliasStore
+	auditLog     *AuditStore
+	attachments  *AttachmentStore
+	resurfacing  *ResurfacingQueueStore
+	entitlements *EntitlementStore
 }
 
 func New(connStr string) (*Driver, error) {
@@ -64,6 +65,7 @@ func New(connStr string) (*Driver, error) {
 	d.auditLog = &AuditStore{db: db}
 	d.attachments = &AttachmentStore{}
 	d.resurfacing = &ResurfacingQueueStore{}
+	d.entitlements = &EntitlementStore{db: db}
 	return d, nil
 }
 
@@ -97,6 +99,7 @@ func (d *Driver) Aliases() storage.AliasStore                { return d.aliases 
 func (d *Driver) AuditLog() storage.AuditStore               { return d.auditLog }
 func (d *Driver) Attachments() storage.AttachmentStore       { return d.attachments }
 func (d *Driver) Resurfacing() storage.ResurfacingQueueStore { return d.resurfacing }
+func (d *Driver) Entitlements() storage.EntitlementStore     { return d.entitlements }
 
 // SetBlobs allows injection of a custom BlobStore implementation.
 func (d *Driver) SetBlobs(bs storage.BlobStore) { d.blobs = bs }

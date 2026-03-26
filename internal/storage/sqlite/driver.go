@@ -30,8 +30,9 @@ type Driver struct {
 	blobs       storage.BlobStore
 	proximity   *ProximityStore
 	watches     *WatchStore
-	attachments *AttachmentStore
-	resurfacing *ResurfacingQueueStore
+	attachments  *AttachmentStore
+	resurfacing  *ResurfacingQueueStore
+	entitlements *entitlementStore
 }
 
 // New creates a new SQLite driver for the given database path.
@@ -72,6 +73,7 @@ func New(path string) (*Driver, error) {
 	d.watches = &WatchStore{db: db}
 	d.attachments = &AttachmentStore{db: db}
 	d.resurfacing = &ResurfacingQueueStore{db: db}
+	d.entitlements = &entitlementStore{db: db}
 	return d, nil
 }
 
@@ -105,6 +107,7 @@ func (d *Driver) Aliases() storage.AliasStore                { return &aliasStor
 func (d *Driver) AuditLog() storage.AuditStore               { return &auditStore{db: d.db} }
 func (d *Driver) Attachments() storage.AttachmentStore       { return d.attachments }
 func (d *Driver) Resurfacing() storage.ResurfacingQueueStore { return d.resurfacing }
+func (d *Driver) Entitlements() storage.EntitlementStore     { return d.entitlements }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)

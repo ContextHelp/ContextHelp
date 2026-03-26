@@ -548,6 +548,9 @@ func (s *Service) SearchEntities(ctx context.Context, query string, limit int) (
 
 // SyncRegistryEntities syncs entity index from a configured registry.
 // Uses the registry's sync_mode (thin or full). Returns count of upserted entities.
+// When the registry manifest declares an entitlement_url, the entitlement is
+// fetched and stored before any sync occurs; ErrEntitlementRequired is returned
+// if the registry denies access.
 func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) (int, error) {
 	var cfg config.RegistryConfig
 	for _, r := range s.Cfg.Registries {
@@ -560,7 +563,16 @@ func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) 
 		cfg = config.RegistryConfig{URL: registryURL, SyncMode: config.RegistrySyncModeFull}
 	}
 
-	syncer := registrysync.New(s.Store.Entities())
+	// Populate EntitlementURL from cached manifest if not already set.
+	if cfg.EntitlementURL == "" {
+		if cache, err := s.Store.Registries().GetCachedManifest(ctx, registryURL); err == nil &&
+			cache != nil && cache.Manifest != nil && cache.Manifest.EntitlementURL != "" {
+			cfg.EntitlementURL = cache.Manifest.EntitlementURL
+		}
+	}
+
+	syncer := registrysync.New(s.Store.Entities()).
+		WithEntitlements(s.Store.Entitlements())
 	result, err := syncer.Sync(ctx, cfg)
 	if err != nil {
 		return 0, fmt.Errorf("sync registry entities: %w", err)

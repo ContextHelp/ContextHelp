@@ -47,6 +47,7 @@ type StorageDriver interface {
 	AuditLog() AuditStore
 	Attachments() AttachmentStore
 	Resurfacing() ResurfacingQueueStore
+	Entitlements() EntitlementStore
 	Health(ctx context.Context) error
 }
 
@@ -192,6 +193,13 @@ type RegistryStore interface {
 	UpdateETag(ctx context.Context, url, etag string) error
 	List(ctx context.Context) ([]*RegistryCache, int, error)
 	Delete(ctx context.Context, url string) error
+}
+
+// EntitlementStore persists and retrieves registry entitlement records.
+type EntitlementStore interface {
+	Upsert(ctx context.Context, e *RegistryEntitlement) error
+	Get(ctx context.Context, registryName string) (*RegistryEntitlement, error)
+	List(ctx context.Context) ([]*RegistryEntitlement, error)
 }
 
 // ReminderStore persists and retrieves system reminders.

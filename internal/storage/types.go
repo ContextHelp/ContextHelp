@@ -221,6 +221,9 @@ type RegistryManifest struct {
 	Capabilities     RegistryCapabilities `json:"capabilities,omitempty"`
 	Steps            []ManifestStep       `json:"steps"`
 	Supports         map[string]any       `json:"supports,omitempty"`
+	// EntitlementURL is the endpoint to call before sync to check access.
+	// When empty, no entitlement check is performed.
+	EntitlementURL string `json:"entitlement_url,omitempty"`
 	// Taxonomy is the embedded namespace list (used by the default bundled registry).
 	Taxonomy []RegistryTaxonomyEntry `json:"taxonomy,omitempty"`
 }
@@ -249,6 +252,16 @@ type RegistryCache struct {
 	LastFetched time.Time         `json:"last_fetched"`
 	ETag        string            `json:"etag"`
 	AutoUpdate  bool              `json:"auto_update"`
+}
+
+// RegistryEntitlement stores the entitlement record returned by a registry's
+// /entitlements endpoint. Namespaces contains glob patterns (e.g. "ai.*").
+type RegistryEntitlement struct {
+	RegistryName string    `json:"registry_name"`
+	Plan         string    `json:"plan"`
+	Namespaces   []string  `json:"namespaces"`
+	ExpiresAt    time.Time `json:"expires_at,omitempty"`
+	FetchedAt    time.Time `json:"fetched_at"`
 }
 
 // SystemReminder represents a notification for the user.

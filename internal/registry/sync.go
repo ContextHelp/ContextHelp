@@ -69,9 +69,10 @@ type MultiSyncResult struct {
 
 // Syncer performs registry syncs against the entity store.
 type Syncer struct {
-	store  storage.EntityStore
-	guard  *graph.EntityIntegrityGuard
-	client *http.Client
+	store        storage.EntityStore
+	entitlements storage.EntitlementStore
+	guard        *graph.EntityIntegrityGuard
+	client       *http.Client
 }
 
 // New returns a Syncer backed by the given entity store.
@@ -81,6 +82,13 @@ func New(store storage.EntityStore) *Syncer {
 		guard:  graph.NewEntityIntegrityGuard(),
 		client: &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+// WithEntitlements attaches an entitlement store so the syncer can check and
+// persist entitlements before sync when the registry manifest declares one.
+func (s *Syncer) WithEntitlements(es storage.EntitlementStore) *Syncer {
+	s.entitlements = es
+	return s
 }
 
 // WithNamespaces loads a namespace→registry mapping into the integrity guard so
@@ -96,11 +104,23 @@ func (s *Syncer) WithNamespaces(ns map[string]string) *Syncer {
 //   - full: fetches /entities/index and /taxonomy; stores full stubs
 //     (caller is expected to fetch full definitions separately via PullEntity).
 //
+// When cfg.EntitlementURL is set and an entitlement store is attached via
+// WithEntitlements, an entitlement check is performed before any sync occurs.
+// Returns ErrEntitlementRequired when the registry denies access.
+//
 // Returns a SyncResult describing what was written.
 func (s *Syncer) Sync(ctx context.Context, cfg config.RegistryConfig) (*SyncResult, error) {
 	mode := cfg.SyncMode
 	if mode == "" {
 		mode = config.RegistrySyncModeFull
+	}
+
+	// Entitlement pre-check: call /entitlements if declared in manifest and store is wired.
+	if cfg.EntitlementURL != "" && s.entitlements != nil {
+		checker := NewEntitlementChecker(s.entitlements)
+		if _, err := checker.FetchAndStore(ctx, cfg.Name, cfg.EntitlementURL, ""); err != nil {
+			return nil, fmt.Errorf("entitlement check for %s: %w", cfg.Name, err)
+		}
 	}
 
 	result := &SyncResult{RegistryURL: cfg.URL, SyncMode: mode}
