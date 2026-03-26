@@ -5,6 +5,11 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
+# CGo is required for mattn/go-sqlite3 + sqlite-vec extension.
+# FTS5 support requires the fts5 build tag with mattn/go-sqlite3.
+export CGO_ENABLED := 1
+BUILD_TAGS := -tags fts5
+
 # Build flags
 LDFLAGS := -ldflags "\
 	-X main.Version=$(VERSION) \
@@ -34,21 +39,21 @@ build: build-ctxt build-dpkms
 build-ctxt:
 	@echo "Building ctxt..."
 	@mkdir -p $(BUILD_DIR)
-	go build $(LDFLAGS) -o $(CTXT_BINARY) $(CTXT_MAIN)
+	go build $(BUILD_TAGS) $(LDFLAGS) -o $(CTXT_BINARY) $(CTXT_MAIN)
 	@echo "✓ Built: $(CTXT_BINARY)"
 
 ## build-dpkms: Build the dpkms binary
 build-dpkms:
 	@echo "Building dpkms..."
 	@mkdir -p $(BUILD_DIR)
-	go build $(LDFLAGS) -o $(DPKMS_BINARY) $(DPKMS_MAIN)
+	go build $(BUILD_TAGS) $(LDFLAGS) -o $(DPKMS_BINARY) $(DPKMS_MAIN)
 	@echo "✓ Built: $(DPKMS_BINARY)"
 
 ## install: Install both binaries to $GOPATH/bin
 install: build
 	@echo "Installing binaries..."
-	go install $(LDFLAGS) ./cmd/ctxt
-	go install $(LDFLAGS) ./cmd/dpkms
+	go install $(BUILD_TAGS) $(LDFLAGS) ./cmd/ctxt
+	go install $(BUILD_TAGS) $(LDFLAGS) ./cmd/dpkms
 	@echo "✓ Installed to $(shell go env GOPATH)/bin"
 
 ## clean: Remove build artifacts
@@ -60,17 +65,17 @@ clean:
 ## test: Run tests
 test:
 	@echo "Running tests..."
-	go test -race -count=1 -cover ./...
+	go test $(BUILD_TAGS) -race -count=1 -cover ./...
 
 ## test-unit: Run unit tests only
 test-unit:
 	@echo "Running unit tests..."
-	go test -race -count=1 ./cmd/... ./internal/...
+	go test $(BUILD_TAGS) -race -count=1 ./cmd/... ./internal/...
 
 ## test-integration: Run integration tests
 test-integration:
 	@echo "Running integration tests..."
-	go test -race -count=1 ./test/integration/...
+	go test $(BUILD_TAGS) -race -count=1 ./test/integration/...
 
 ## test-smoke: Run binary smoke tests
 test-smoke:

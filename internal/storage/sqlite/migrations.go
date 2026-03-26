@@ -4,6 +4,8 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -64,6 +66,9 @@ var migration018 string
 //go:embed migrations/019_metering_events.sql
 var migration019 string
 
+//go:embed migrations/020_vec_objects.sql
+var migration020 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -98,6 +103,9 @@ var migrations = []migration{
 	{Version: 17, SQL: migration017},
 	{Version: 18, SQL: migration018},
 	{Version: 19, SQL: migration019},
+	// Migration 20: vec0 virtual table for ANN search via sqlite-vec.
+	// Uses a Go fn so the {DIMENSION} placeholder is filled from d.vectorDimension.
+	{Version: 20, fn: migrate020VecObjects},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -227,4 +235,17 @@ func (d *Driver) Migrate(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// migrate020VecObjects creates the vec0 virtual table for sqlite-vec ANN search.
+// The {DIMENSION} placeholder is replaced with d.vectorDimension so the table
+// matches the embedding model in use.
+func migrate020VecObjects(ctx context.Context, d *Driver) error {
+	dim := d.vectorDimension
+	if dim <= 0 {
+		dim = DefaultVectorDimension
+	}
+	ddl := strings.ReplaceAll(migration020, "{DIMENSION}", strconv.Itoa(dim))
+	_, err := d.db.ExecContext(ctx, ddl)
+	return err
 }

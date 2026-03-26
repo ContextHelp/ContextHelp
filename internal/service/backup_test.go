@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 )
@@ -24,7 +24,7 @@ func TestBackupCreatesArchive(t *testing.T) {
 	}
 
 	// Create a minimal SQLite DB.
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		t.Fatalf("create db: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestBackupFailsOnUnwritableOutputDir(t *testing.T) {
 	dbPath := filepath.Join(dir, "test.db")
 
 	// Create a minimal SQLite DB.
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		t.Fatalf("create db: %v", err)
 	}

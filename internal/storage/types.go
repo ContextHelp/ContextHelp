@@ -503,3 +503,9 @@ type QuotaConfig struct {
 	// ResetsAt is an informational reset timestamp (e.g. billing period end).
 	ResetsAt time.Time `json:"resets_at" yaml:"resets_at"`
 }
+
+// VectorHit is a single result returned by VectorStore.Search.
+type VectorHit struct {
+	ID    string  `json:"id"`
+	Score float64 `json:"score"`
+}

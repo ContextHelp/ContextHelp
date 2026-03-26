@@ -49,7 +49,20 @@ type StorageDriver interface {
 	Resurfacing() ResurfacingQueueStore
 	Entitlements() EntitlementStore
 	Metering() MeteringStore
+	Vectors() VectorStore
 	Health(ctx context.Context) error
+}
+
+// VectorStore persists and queries ANN (approximate nearest neighbour) embeddings.
+type VectorStore interface {
+	// Upsert inserts or replaces a vector for the given object ID.
+	Upsert(ctx context.Context, id string, vector []float32) error
+	// Search returns the top-K nearest neighbours by L2/cosine distance.
+	Search(ctx context.Context, vector []float32, topK int) ([]VectorHit, error)
+	// Delete removes the vector for the given object ID.
+	Delete(ctx context.Context, id string) error
+	// Count returns the total number of indexed vectors.
+	Count(ctx context.Context) (int, error)
 }
 
 // MeteringStore persists and queries metering events for paid registry access.

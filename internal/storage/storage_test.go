@@ -33,7 +33,17 @@ func (m *mockDriver) Attachments() AttachmentStore           { return &mockAttac
 func (m *mockDriver) Resurfacing() ResurfacingQueueStore     { return &mockResurfacingQueueStore{} }
 func (m *mockDriver) Entitlements() EntitlementStore         { return &mockEntitlementStore{} }
 func (m *mockDriver) Metering() MeteringStore                { return &mockMeteringStore{} }
+func (m *mockDriver) Vectors() VectorStore                   { return &mockVectorStore{} }
 func (m *mockDriver) Health(ctx context.Context) error       { return nil }
+
+type mockVectorStore struct{}
+
+func (m *mockVectorStore) Upsert(_ context.Context, _ string, _ []float32) error { return nil }
+func (m *mockVectorStore) Search(_ context.Context, _ []float32, _ int) ([]VectorHit, error) {
+	return nil, nil
+}
+func (m *mockVectorStore) Delete(_ context.Context, _ string) error { return nil }
+func (m *mockVectorStore) Count(_ context.Context) (int, error)     { return 0, nil }
 
 type mockBlobStore struct{}
 

@@ -103,6 +103,7 @@ func (d *Driver) Attachments() storage.AttachmentStore       { return d.attachme
 func (d *Driver) Resurfacing() storage.ResurfacingQueueStore { return d.resurfacing }
 func (d *Driver) Entitlements() storage.EntitlementStore     { return d.entitlements }
 func (d *Driver) Metering() storage.MeteringStore            { return d.metering }
+func (d *Driver) Vectors() storage.VectorStore               { return &vectorStoreStub{} }
 
 // SetBlobs allows injection of a custom BlobStore implementation.
 func (d *Driver) SetBlobs(bs storage.BlobStore) { d.blobs = bs }
