@@ -110,6 +110,30 @@ Logic:
 
 ---
 
+## 3c. Infrastructure / Security Hardening
+
+### Task 3c.3: Static Security Analysis with gosec
+
+Add `gosec` to CI and lint pipeline; fail on medium+ severity.
+
+**Artifacts:**
+- `.gosec.yaml` — project-specific rule exclusions and per-path overrides
+- `.golangci.yml` `linters-settings.gosec` — references `.gosec.yaml`; severity: medium
+- `Makefile` `gosec` target — standalone `gosec -severity medium` scan; `lint` depends on it
+- `.github/workflows/ci.yml` `security` job — dedicated gosec step; SARIF uploaded to GitHub
+  Security tab; fails PR on any medium+ finding
+
+**Excluded rules (with rationale):**
+- `G104` — duplicate of errcheck; avoid double-reporting
+- `G304` — file-path from variable required for config/import paths; callers validate
+- `G307` — defer-on-error-returning-method is well-known; handled at close site
+
+**Test file relaxations:**
+- `G101` severity lowered to `low` in `_test.go` — test fixtures contain intentional
+  credential-like strings
+
+---
+
 ## 3. dPKMS Search Team & ctxt Retrieval Team (The Integrator)
 
 **Focus:** Consuming the API for real tools.

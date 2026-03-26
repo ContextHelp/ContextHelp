@@ -1,0 +1,40 @@
+# gosec configuration for ctxt / dPKMS
+# See https://github.com/securego/gosec#configuration
+
+global:
+  # Fail on medium+ severity
+  severity: medium
+  confidence: medium
+  # Show detailed findings
+  show-ignored: false
+  # Nosec annotation support
+  nosec: true
+  nosec-tag: "#nosec"
+
+# Rule exclusions with rationale
+exclude:
+  # G104: Errors unhandled — covered by errcheck linter; avoid double-reporting
+  - G104
+  # G304: File path from variable — required for config/import flexibility;
+  #       callers validate paths before use
+  - G304
+  # G307: Deferring a method which returns an error — well-known pattern;
+  #       errors handled at close site
+  - G307
+
+# Per-path overrides
+rules:
+  # Test files: relax credential and file-path rules (test fixtures, not prod)
+  - id: G101
+    severity: low
+    path: "_test\\.go$"
+  - id: G304
+    severity: low
+    path: "_test\\.go$"
+
+# Paths to exclude from scanning entirely
+exclude-dir:
+  - vendor
+  - .git
+  - docs
+  - test/fixtures
