@@ -2,10 +2,13 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -217,4 +220,113 @@ func (s *mentionStep) Name() string { return "test-mention" }
 func (s *mentionStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	draft.Mentions = []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "test/entity"}}
 	return draft, nil
+}
+
+func TestWorkerPoolEmitsObjectCreated(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := NewQueue(driver.Jobs())
+	pipes := builtins.Registry()
+	bus := events.NewLocalBus()
+
+	var mu sync.Mutex
+	var received []events.Event
+	bus.Subscribe("object.created", func(_ context.Context, e events.Event) error {
+		mu.Lock()
+		received = append(received, e)
+		mu.Unlock()
+		return nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	job := makeJob("job-oc-1")
+	job.Payload = "object created event test content"
+	job.Pipeline = "text.short"
+	q.Enqueue(ctx, job)
+
+	pool := NewWorkerPool(q, pipes, driver, 1, bus, defaultTestJobsCfg())
+
+	go func() {
+		for {
+			got, _ := q.Get(ctx, "job-oc-1")
+			if got != nil && got.Status == storage.JobCompleted {
+				cancel()
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+	pool.Start(ctx)
+
+	// Allow async handlers to run.
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	count := len(received)
+	var objectID string
+	if count > 0 {
+		var payload map[string]string
+		if err := json.Unmarshal(received[0].Data, &payload); err == nil {
+			objectID = payload["id"]
+		}
+	}
+	mu.Unlock()
+
+	if count != 1 {
+		t.Errorf("object.created events: got %d, want 1", count)
+	}
+	if objectID == "" {
+		t.Error("object.created event missing id in payload")
+	}
+	if count > 0 && received[0].Source != "worker.pool" {
+		t.Errorf("source: got %q, want %q", received[0].Source, "worker.pool")
+	}
+}
+
+func TestWorkerPoolNoObjectCreatedOnFailure(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := NewQueue(driver.Jobs())
+	pipes := pipeline.NewRegistry() // empty — pipeline not found → job fails
+	bus := events.NewLocalBus()
+
+	var mu sync.Mutex
+	var received []events.Event
+	bus.Subscribe("object.created", func(_ context.Context, e events.Event) error {
+		mu.Lock()
+		received = append(received, e)
+		mu.Unlock()
+		return nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	job := makeJob("job-oc-fail")
+	job.Pipeline = "nonexistent"
+	q.Enqueue(ctx, job)
+
+	pool := NewWorkerPool(q, pipes, driver, 1, bus, defaultTestJobsCfg())
+
+	go func() {
+		for {
+			got, _ := q.Get(ctx, "job-oc-fail")
+			if got != nil && got.Status == storage.JobFailed {
+				cancel()
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+	pool.Start(ctx)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	count := len(received)
+	mu.Unlock()
+
+	if count != 0 {
+		t.Errorf("object.created events on failure: got %d, want 0", count)
+	}
 }
