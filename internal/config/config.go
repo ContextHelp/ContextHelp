@@ -522,6 +522,10 @@ func setDefaults(v *viper.Viper) {
 	// Watch defaults
 	v.SetDefault("watch.enabled", false)
 	v.SetDefault("watch.debounce", 500*time.Millisecond)
+	v.SetDefault("watch.clipboard.enabled", false)
+	v.SetDefault("watch.clipboard.poll_interval", 2*time.Second)
+	v.SetDefault("watch.clipboard.min_length", 80)
+	v.SetDefault("watch.clipboard.auto_ingest", true)
 
 	// Inbox defaults — leave path empty (resolved at runtime)
 	v.SetDefault("inbox.pipeline", "text.short")
@@ -726,12 +730,29 @@ type SecretsConfig struct {
 type WatchConfig struct {
 	// Enabled activates the watcher on startup.
 	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
-	// Paths is the list of directories to watch.
+	// Dirs is the list of directories to watch (supersedes Paths).
+	Dirs []string `mapstructure:"dirs" yaml:"dirs"`
+	// Paths is the legacy list of directories to watch (kept for backwards compat).
 	Paths []string `mapstructure:"paths" yaml:"paths"`
 	// Debounce is how long to wait after a change before processing.
 	Debounce time.Duration `mapstructure:"debounce" yaml:"debounce"`
 	// Patterns is a list of glob patterns to include (e.g. "*.md").
 	Patterns []string `mapstructure:"patterns" yaml:"patterns"`
+	// Clipboard configures the clipboard watcher.
+	Clipboard ClipboardWatchConfig `mapstructure:"clipboard" yaml:"clipboard"`
+}
+
+// ClipboardWatchConfig configures passive clipboard monitoring.
+type ClipboardWatchConfig struct {
+	// Enabled activates clipboard polling. CTXT_NO_CLIPBOARD=1 overrides to off.
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// PollInterval is how often to sample the clipboard. Defaults to 2s.
+	PollInterval time.Duration `mapstructure:"poll_interval" yaml:"poll_interval"`
+	// MinLength is the minimum rune count for plain-text content to qualify.
+	// Defaults to 80.
+	MinLength int `mapstructure:"min_length" yaml:"min_length"`
+	// AutoIngest enqueues detected content without user prompt.
+	AutoIngest bool `mapstructure:"auto_ingest" yaml:"auto_ingest"`
 }
 
 // InboxConfig configures the default inbox for new content.
