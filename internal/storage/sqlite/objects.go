@@ -16,7 +16,9 @@ import (
 )
 
 type ObjectStore struct {
-	db *sql.DB
+	db     *sql.DB
+	vec    *VecStore // optional ANN index; nil = brute-force fallback
+	vecDim int       // configured ANN dimension; 0 means unknown/disabled
 }
 
 func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) error {
@@ -49,6 +51,11 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	if err := s.upsertEmbedding(ctx, obj.ID, obj.Embeddings); err != nil {
 		return fmt.Errorf("create object embedding: %w", err)
+	}
+	if s.vec != nil && s.vecDim > 0 && len(obj.Embeddings) == s.vecDim {
+		if err := s.vec.Upsert(ctx, obj.ID, obj.Embeddings); err != nil {
+			return fmt.Errorf("create object vec index: %w", err)
+		}
 	}
 	return nil
 }
@@ -235,6 +242,11 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	if err := s.upsertEmbedding(ctx, obj.ID, obj.Embeddings); err != nil {
 		return fmt.Errorf("update object embedding: %w", err)
+	}
+	if s.vec != nil && s.vecDim > 0 && len(obj.Embeddings) == s.vecDim {
+		if err := s.vec.Upsert(ctx, obj.ID, obj.Embeddings); err != nil {
+			return fmt.Errorf("update object vec index: %w", err)
+		}
 	}
 	return nil
 }
@@ -678,14 +690,71 @@ func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.Knowle
 	return objects, rows.Err()
 }
 
-// VectorSearch fetches all objects with embeddings, computes cosine similarity
-// against vector, applies any ObjectFilter constraints, and returns the top-K
-// results in descending similarity order.
+// VectorSearch returns the top-K objects ranked by vector similarity.
+//
+// When an ANN index (vec field) is available, it delegates to the sqlite-vec
+// KNN query (O(log n)) and hydrates the small result set individually.
+// When no ANN index is wired (e.g. unit tests using small vectors), it falls
+// back to a full scan of object_embeddings with in-process cosine similarity.
 func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	if len(vector) == 0 {
 		return nil, fmt.Errorf("vector search: empty query vector")
 	}
 
+	if s.vec != nil && s.vecDim > 0 && len(vector) == s.vecDim {
+		return s.vectorSearchANN(ctx, vector, filter)
+	}
+	return s.vectorSearchBruteForce(ctx, vector, filter)
+}
+
+// vectorSearchANN uses the sqlite-vec KNN index for O(log n) approximate search.
+// It over-fetches by a factor of annOverfetch to allow post-filtering by type/subtype/pipeline.
+func (s *ObjectStore) vectorSearchANN(ctx context.Context, vector []float32, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	const annOverfetch = 10
+
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	topK := limit * annOverfetch
+
+	hits, err := s.vec.Search(ctx, vector, topK)
+	if err != nil {
+		return nil, fmt.Errorf("vector search ann: %w", err)
+	}
+
+	var out []*storage.KnowledgeObject
+	for _, h := range hits {
+		if len(out) >= limit {
+			break
+		}
+		obj, err := s.Get(ctx, h.ID)
+		if err != nil {
+			// Object may have been deleted between index and fetch; skip.
+			continue
+		}
+		if filter.Type != "" && obj.Type != filter.Type {
+			continue
+		}
+		if filter.Subtype != "" && obj.Subtype != filter.Subtype {
+			continue
+		}
+		if filter.Pipeline != "" && obj.Pipeline != filter.Pipeline {
+			continue
+		}
+		if obj.Metadata == nil {
+			obj.Metadata = make(map[string]any)
+		}
+		// Convert L2 distance to a [0,1] similarity-like score for API compatibility.
+		obj.Metadata["score"] = 1.0 / (1.0 + float64(h.Score))
+		out = append(out, obj)
+	}
+	return out, nil
+}
+
+// vectorSearchBruteForce is the legacy O(n) fallback used when no ANN index is
+// wired (e.g. unit tests with non-standard embedding dimensions).
+func (s *ObjectStore) vectorSearchBruteForce(ctx context.Context, vector []float32, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	candidates, err := s.ListWithEmbeddings(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("vector search: %w", err)

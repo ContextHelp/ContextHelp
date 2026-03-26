@@ -65,7 +65,8 @@ func New(path string) (*Driver, error) {
 	}
 
 	d := &Driver{db: db, path: path, vectorDimension: DefaultVectorDimension}
-	d.objects = &ObjectStore{db: db}
+	d.vectors = &VecStore{db: db}
+	d.objects = &ObjectStore{db: db, vec: d.vectors, vecDim: DefaultVectorDimension}
 	d.entities = &EntityStore{db: db}
 	d.edges = &EdgeStore{db: db}
 	d.jobs = &JobStore{db: db}
@@ -84,12 +85,19 @@ func New(path string) (*Driver, error) {
 	d.resurfacing = &ResurfacingQueueStore{db: db}
 	d.entitlements = &entitlementStore{db: db}
 	d.metering = &MeteringStore{db: db}
-	d.vectors = &VecStore{db: db}
 	return d, nil
 }
 
 // SetBlobs allows injection of a custom BlobStore implementation.
 func (d *Driver) SetBlobs(bs storage.BlobStore) { d.blobs = bs }
+
+// SetVectorDimension reconfigures the ANN dimension before Init is called.
+// Must be called before Init; updating after migration has no effect on the
+// already-created vec_objects virtual table.
+func (d *Driver) SetVectorDimension(dim int) {
+	d.vectorDimension = dim
+	d.objects.vecDim = dim
+}
 
 func (d *Driver) Init(ctx context.Context) error {
 	return d.Migrate(ctx)
