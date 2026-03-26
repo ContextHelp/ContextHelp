@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/apierror"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -68,6 +69,13 @@ var registrySyncCmd = &cobra.Command{
 	RunE:  runRegistrySync,
 }
 
+var registrySubmitCmd = &cobra.Command{
+	Use:   "submit <bundle-path>",
+	Short: "Submit a bundle to the community registry (prints PR instructions)",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runRegistrySubmit,
+}
+
 func init() {
 	rootCmd.AddCommand(registryCmd)
 
@@ -77,6 +85,7 @@ func init() {
 	registryCmd.AddCommand(registryRemoveCmd)
 	registryCmd.AddCommand(registryInfoCmd)
 	registryCmd.AddCommand(registrySyncCmd)
+	registryCmd.AddCommand(registrySubmitCmd)
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
@@ -246,5 +255,56 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("sync registry: %w", err)
 	}
 	fmt.Println("Registry synced")
+	return nil
+}
+
+// runRegistrySubmit validates a local registry bundle and prints PR instructions.
+// No network call is made; this is a guided stub for community submission.
+func runRegistrySubmit(cmd *cobra.Command, args []string) error {
+	bundlePath := args[0]
+
+	info, err := os.Stat(bundlePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			apiErr := apierror.New(apierror.CodeRegistryBundleMissing,
+				"bundle path does not exist: "+bundlePath, err)
+			if isJSONOutput() {
+				return outputJSON(cmd.OutOrStdout(), apiErr.JSONBody())
+			}
+			return apiErr
+		}
+		return fmt.Errorf("stat bundle: %w", err)
+	}
+
+	if info.IsDir() {
+		// Expect at least a manifest.json inside.
+		manifestPath := bundlePath + "/manifest.json"
+		if _, serr := os.Stat(manifestPath); serr != nil {
+			apiErr := apierror.New(apierror.CodeRegistryInvalidBundle,
+				"bundle directory missing manifest.json", serr)
+			if isJSONOutput() {
+				return outputJSON(cmd.OutOrStdout(), apiErr.JSONBody())
+			}
+			return apiErr
+		}
+	}
+
+	result := map[string]any{
+		"bundle":      bundlePath,
+		"valid":       true,
+		"next_steps":  "Open a pull request at https://github.com/ideacrafterslabs/registry with your bundle.",
+		"pr_template": "https://github.com/ideacrafterslabs/registry/blob/main/CONTRIBUTING.md",
+	}
+
+	if isJSONOutput() {
+		return outputJSON(cmd.OutOrStdout(), result)
+	}
+
+	fmt.Printf("Bundle validated: %s\n\n", bundlePath)
+	fmt.Println("To submit to the community registry, open a PR at:")
+	fmt.Println("  https://github.com/ideacrafterslabs/registry")
+	fmt.Println()
+	fmt.Println("See CONTRIBUTING.md for bundle format requirements:")
+	fmt.Println("  https://github.com/ideacrafterslabs/registry/blob/main/CONTRIBUTING.md")
 	return nil
 }

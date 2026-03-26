@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -103,9 +104,41 @@ func TestRegistryHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("registry --help should succeed: %v", err)
 	}
-	for _, subcmd := range []string{"list", "add", "remove", "info", "sync"} {
+	for _, subcmd := range []string{"list", "add", "remove", "info", "sync", "submit"} {
 		if !strings.Contains(out, subcmd) {
 			t.Errorf("registry help should list subcommand %q", subcmd)
 		}
+	}
+}
+
+func TestRegistrySubmitMissingBundle(t *testing.T) {
+	_, err := executeCommand("registry", "submit", "/nonexistent/bundle/path")
+	if err == nil {
+		t.Fatal("submit with missing bundle should fail")
+	}
+	if !strings.Contains(err.Error(), "CTXT-4004") {
+		t.Errorf("expected CTXT-4004 code, got: %v", err)
+	}
+}
+
+func TestRegistrySubmitNoArgs(t *testing.T) {
+	_, err := executeCommand("registry", "submit")
+	if err == nil {
+		t.Error("registry submit with no args should fail")
+	}
+}
+
+func TestRegistrySubmitValidDir(t *testing.T) {
+	dir := t.TempDir()
+	// Write a manifest.json so validation passes.
+	if werr := os.WriteFile(dir+"/manifest.json", []byte(`{"name":"test"}`), 0o600); werr != nil {
+		t.Fatalf("write manifest: %v", werr)
+	}
+	out, err := executeCommand("registry", "submit", dir)
+	if err != nil {
+		t.Fatalf("submit with valid dir should succeed: %v", err)
+	}
+	if !strings.Contains(out, "github.com/ideacrafterslabs/registry") {
+		t.Errorf("output should include registry URL, got: %s", out)
 	}
 }
