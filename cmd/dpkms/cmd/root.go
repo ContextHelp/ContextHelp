@@ -30,8 +30,9 @@ var rootCmd = &cobra.Command{
 dPKMS (Decentralized Personal Knowledge Management Substrate) provides
 the storage, job queue, pipeline runtime, and API server that powers
 ContextHelp's knowledge management capabilities.`,
-	SilenceUsage:  true,
-	SilenceErrors: true,
+	SilenceUsage:              true,
+	SilenceErrors:             true,
+	SuggestionsMinimumDistance: 2,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		verbose, _ := cmd.PersistentFlags().GetBool("verbose")
 		logger.Init(verbose)

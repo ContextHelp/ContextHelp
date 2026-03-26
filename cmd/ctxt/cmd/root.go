@@ -33,10 +33,11 @@ ContextHelp provides universal capture, semantic search, and intelligent
 composition of your knowledge. It's local-first, offline-capable, and
 designed to augment both human and agent workflows.
 
-If called without a subcommand, it defaults to 'analyze', capturing content 
+If called without a subcommand, it defaults to 'analyze', capturing content
 from arguments, stdin, or the clipboard.`,
-	SilenceUsage:  true,
-	SilenceErrors: true,
+	SilenceUsage:              true,
+	SilenceErrors:             true,
+	SuggestionsMinimumDistance: 2,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		verbose, _ := cmd.PersistentFlags().GetBool("verbose")
 		logger.Init(verbose)

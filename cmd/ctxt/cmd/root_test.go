@@ -107,3 +107,12 @@ func TestRootSubcommands(t *testing.T) {
 		}
 	}
 }
+
+func TestRootSuggestionsEnabled(t *testing.T) {
+	if rootCmd.DisableSuggestions {
+		t.Error("cobra suggestions must not be disabled on rootCmd")
+	}
+	if rootCmd.SuggestionsMinimumDistance != 2 {
+		t.Errorf("SuggestionsMinimumDistance want 2, got %d", rootCmd.SuggestionsMinimumDistance)
+	}
+}

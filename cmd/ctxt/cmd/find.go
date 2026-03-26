@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -158,6 +159,12 @@ func runFind(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Search [%s]: %q (%d results)\n\n", mode, query, len(results))
+
+	if len(results) == 0 {
+		printFindSuggestions(cmd, ctx, svc, query)
+		return nil
+	}
+
 	headers := []string{"ID", "Type", "Created"}
 	var rows [][]string
 	for _, obj := range results {
@@ -169,4 +176,48 @@ func runFind(cmd *cobra.Command, args []string) error {
 	}
 	printTable(os.Stdout, headers, rows)
 	return nil
+}
+
+// printFindSuggestions runs a prefix FTS query and prints "Did you mean?" hints.
+// Uses the first word of the original query as the prefix stem.
+func printFindSuggestions(cmd *cobra.Command, ctx context.Context, svc interface {
+	FindByText(context.Context, string, int) ([]*storage.KnowledgeObject, error)
+}, query string) {
+	// Build prefix query from first word.
+	firstWord := query
+	if idx := strings.IndexByte(query, ' '); idx > 0 {
+		firstWord = query[:idx]
+	}
+	if firstWord == "" {
+		return
+	}
+	prefixQuery := firstWord + " *"
+	suggestions, err := svc.FindByText(ctx, prefixQuery, 3)
+	if err != nil || len(suggestions) == 0 {
+		return
+	}
+
+	// Collect unique summaries/IDs to surface as hints (max 3).
+	var hints []string
+	seen := make(map[string]bool)
+	for _, obj := range suggestions {
+		label := obj.ID
+		if len(obj.Summaries) > 0 && obj.Summaries[0] != "" {
+			label = obj.Summaries[0]
+			if len(label) > 60 {
+				label = label[:57] + "..."
+			}
+		}
+		if !seen[label] {
+			hints = append(hints, label)
+			seen[label] = true
+		}
+	}
+	if len(hints) == 0 {
+		return
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Did you mean:\n")
+	for _, h := range hints {
+		fmt.Fprintf(cmd.OutOrStdout(), "  • %s\n", h)
+	}
 }
