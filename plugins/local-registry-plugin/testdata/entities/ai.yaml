@@ -1,0 +1,11 @@
+- slug: bert
+  title: BERT
+  description: Bidirectional Encoder Representations from Transformers
+  namespace: ai
+  aliases: [google-bert]
+  version_hash: v1
+- slug: gpt4
+  title: GPT-4
+  description: OpenAI GPT-4 language model
+  namespace: ai
+  version_hash: v1

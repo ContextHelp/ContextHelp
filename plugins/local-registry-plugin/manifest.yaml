@@ -1,0 +1,8 @@
+apiVersion: v1
+name: local-registry
+version: 1.0.0
+description: Local filesystem registry — reads entities from a directory of YAML files.
+type: registry_provider
+permissions:
+  - filesystem
+  - registry.read
