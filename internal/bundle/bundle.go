@@ -278,6 +278,13 @@ type VerifyOpts struct {
 	// PublicKey overrides the key embedded in the manifest (optional).
 	// When nil, the key embedded in manifest.json is used.
 	PublicKey ed25519.PublicKey
+	// KeysDir enables rotation-chain verification when set.
+	// If the bundle's signing key is not the current key, the rotation log is
+	// consulted to confirm the fingerprint is part of a valid chain.
+	KeysDir string
+	// CurrentFingerprint is the fingerprint of the current active key.
+	// Used only when KeysDir is set.
+	CurrentFingerprint string
 }
 
 // VerifyResult holds the opened bundle after successful verification.
@@ -345,6 +352,22 @@ func VerifyAndOpen(opts VerifyOpts) (VerifyResult, error) {
 
 	if err := Verify(zipBytes, sigBytes, pubKey); err != nil {
 		return VerifyResult{}, err
+	}
+
+	// Rotation-chain check: if a keysDir is provided and the bundle was signed
+	// by an older key, verify the chain still leads to the current key.
+	if opts.KeysDir != "" && opts.CurrentFingerprint != "" &&
+		manifest.Fingerprint != opts.CurrentFingerprint {
+		ok, err := FingerprintInChain(opts.KeysDir, manifest.Fingerprint, opts.CurrentFingerprint)
+		if err != nil {
+			return VerifyResult{}, fmt.Errorf("bundle: rotation chain lookup: %w", err)
+		}
+		if !ok {
+			return VerifyResult{}, fmt.Errorf(
+				"bundle: signing key %s is not in the rotation chain for current key %s",
+				manifest.Fingerprint, opts.CurrentFingerprint,
+			)
+		}
 	}
 
 	return VerifyResult{Manifest: manifest, Files: files}, nil
