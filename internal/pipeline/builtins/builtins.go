@@ -27,21 +27,12 @@ type Def struct {
 // Package-level registry populated by init() calls.
 var defs = map[string]Def{}
 
-// detectorDefs holds URL-pattern detectors registered via MustRegisterDetector.
-var detectorDefs []pipeline.Detector
-
 // MustRegister adds a pipeline definition. Panics on duplicate name.
 func MustRegister(name string, d Def) {
 	if _, exists := defs[name]; exists {
 		panic(fmt.Sprintf("builtins: duplicate pipeline %q", name))
 	}
 	defs[name] = d
-}
-
-// MustRegisterDetector appends a Detector to the package-level detector list.
-// Detectors are applied in registration order before the selector.
-func MustRegisterDetector(d pipeline.Detector) {
-	detectorDefs = append(detectorDefs, d)
 }
 
 // stepConstructors maps step names to zero-arg constructors.
@@ -372,10 +363,6 @@ func ConfiguredRegistryWithPipelineOverrides(
 		}
 	}
 
-	for _, d := range detectorDefs {
-		r.RegisterDetector(d)
-	}
-
 	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {
 		return selectPipeline(selectors, content)
 	}))
@@ -395,10 +382,6 @@ func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 		if err := r.Register(name, p); err != nil {
 			panic(fmt.Sprintf("builtins: %v", err))
 		}
-	}
-
-	for _, d := range detectorDefs {
-		r.RegisterDetector(d)
 	}
 
 	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {

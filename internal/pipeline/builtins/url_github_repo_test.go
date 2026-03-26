@@ -39,8 +39,8 @@ func TestURLGitHubRepoDetector(t *testing.T) {
 		},
 		{
 			url:  "https://gitlab.com/foo/bar",
-			want: "url.generic",
-			desc: "gitlab URL should NOT match url.github.repo",
+			want: "url.repo",
+			desc: "gitlab URL should NOT match url.github.repo (routes to url.repo)",
 		},
 	}
 
