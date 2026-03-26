@@ -142,3 +142,33 @@ func TestRegistrySubmitValidDir(t *testing.T) {
 		t.Errorf("output should include registry URL, got: %s", out)
 	}
 }
+
+// --- dry-run tests ---
+
+func TestRegistrySyncDryRunFlagExists(t *testing.T) {
+	out, err := executeCommand("registry", "sync", "--help")
+	if err != nil {
+		t.Fatalf("registry sync --help should succeed: %v", err)
+	}
+	if !strings.Contains(out, "dry-run") {
+		t.Error("registry sync --help should document --dry-run flag")
+	}
+}
+
+func TestRegistrySyncDryRunUnknownRegistry(t *testing.T) {
+	// dry-run on unknown registry → "not found in config" before any network call
+	_, err := executeCommand("registry", "sync", "--dry-run", "nonexistent")
+	if err == nil {
+		t.Error("registry sync --dry-run for nonexistent registry should fail")
+	}
+	if !strings.Contains(err.Error(), "not found in config") {
+		t.Errorf("expected 'not found in config' error, got: %v", err)
+	}
+}
+
+func TestRegistrySyncDryRunNoArgsError(t *testing.T) {
+	_, err := executeCommand("registry", "sync", "--dry-run")
+	if err == nil {
+		t.Error("registry sync --dry-run without name should fail")
+	}
+}

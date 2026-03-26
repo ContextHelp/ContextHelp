@@ -7,6 +7,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/apierror"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -30,6 +31,9 @@ Examples:
 
   # Sync registry metadata
   ctxt registry sync uxpatterns
+
+  # Preview changes without writing (dry-run)
+  ctxt registry sync --dry-run uxpatterns
 
   # Remove a registry
   ctxt registry remove uxpatterns`,
@@ -65,8 +69,12 @@ var registryInfoCmd = &cobra.Command{
 var registrySyncCmd = &cobra.Command{
 	Use:   "sync <name>",
 	Short: "Sync registry metadata",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRegistrySync,
+	Long: `Sync registry metadata from the remote source.
+
+With --dry-run, fetches the remote manifest and shows a diff of would-be
+additions, updates, and removals without writing anything to storage.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistrySync,
 }
 
 var registrySubmitCmd = &cobra.Command{
@@ -86,6 +94,10 @@ func init() {
 	registryCmd.AddCommand(registryInfoCmd)
 	registryCmd.AddCommand(registrySyncCmd)
 	registryCmd.AddCommand(registrySubmitCmd)
+
+	// Flags for sync subcommand
+	registrySyncCmd.Flags().Bool("dry-run", false,
+		"fetch remote manifest and show diff without writing to storage")
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
@@ -232,6 +244,11 @@ func runRegistryInfo(cmd *cobra.Command, args []string) error {
 func runRegistrySync(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
+	dryRun, err := cmd.Flags().GetBool("dry-run")
+	if err != nil {
+		return fmt.Errorf("dry-run flag: %w", err)
+	}
+
 	var registryURL string
 	for _, r := range cfg.Registries {
 		if r.Name == name {
@@ -250,11 +267,60 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 	defer cleanup()
 
 	ctx := context.Background()
+
+	if dryRun {
+		return runRegistrySyncDryRun(cmd, ctx, svc, name, registryURL)
+	}
+
 	fmt.Printf("Syncing registry %s...\n", name)
 	if err := svc.UpdateRegistry(ctx, registryURL); err != nil {
 		return fmt.Errorf("sync registry: %w", err)
 	}
 	fmt.Println("Registry synced")
+	return nil
+}
+
+// runRegistrySyncDryRun fetches the remote manifest, diffs against local state,
+// and prints a table of would-be changes. Writes nothing to storage.
+func runRegistrySyncDryRun(
+	cmd *cobra.Command,
+	ctx context.Context,
+	svc *service.Service,
+	name, registryURL string,
+) error {
+	fmt.Printf("Dry-run: fetching remote manifest for %s...\n\n", name)
+
+	diffs, err := svc.DiffRegistrySync(ctx, registryURL)
+	if err != nil {
+		return fmt.Errorf("diff registry: %w", err)
+	}
+
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, map[string]any{
+			"registry": name,
+			"url":      registryURL,
+			"dry_run":  true,
+			"changes":  diffs,
+			"total":    len(diffs),
+		})
+	}
+
+	if len(diffs) == 0 {
+		fmt.Printf("No changes detected for registry %q.\n", name)
+		fmt.Println("(nothing to sync)")
+		return nil
+	}
+
+	fmt.Printf("Would-be changes for registry %q (%d total):\n\n", name, len(diffs))
+
+	headers := []string{"Action", "Kind", "Name", "From", "To"}
+	rows := make([][]string, 0, len(diffs))
+	for _, d := range diffs {
+		rows = append(rows, []string{d.Action, d.Kind, d.Name, d.OldValue, d.NewValue})
+	}
+	printTable(os.Stdout, headers, rows)
+
+	fmt.Println("\nNo changes applied (dry-run).")
 	return nil
 }
 
