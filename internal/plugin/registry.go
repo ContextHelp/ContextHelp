@@ -6,15 +6,19 @@ import (
 	"log/slog"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // Registry holds registered plugins and coordinates their lifecycle.
 type Registry struct {
-	plugins []Plugin
+	plugins   []Plugin
+	manifests map[string]*pluginapi.PluginManifest
 }
 
 // NewRegistry creates an empty Registry.
-func NewRegistry() *Registry { return &Registry{} }
+func NewRegistry() *Registry {
+	return &Registry{manifests: make(map[string]*pluginapi.PluginManifest)}
+}
 
 // Register adds a plugin. Panics on duplicate name.
 func (r *Registry) Register(p Plugin) {
@@ -24,6 +28,24 @@ func (r *Registry) Register(p Plugin) {
 		}
 	}
 	r.plugins = append(r.plugins, p)
+}
+
+// RegisterWithManifest adds a plugin together with its validated manifest.
+// The manifest is stored and used to enforce capability checks at runtime.
+// Panics on duplicate name.
+func (r *Registry) RegisterWithManifest(p Plugin, m *pluginapi.PluginManifest) {
+	r.Register(p)
+	r.manifests[p.Name()] = m
+}
+
+// Manifest returns the manifest for a plugin by name, or nil if not registered.
+func (r *Registry) Manifest(name string) *pluginapi.PluginManifest {
+	return r.manifests[name]
+}
+
+// Enforcer returns a CapabilityEnforcer for the named plugin.
+func (r *Registry) Enforcer(pluginName string) *CapabilityEnforcer {
+	return NewCapabilityEnforcer(pluginName, r.manifests[pluginName])
 }
 
 // InitAll initialises all registered plugins.
