@@ -159,6 +159,39 @@ See [CROSS-PACKAGE-CONTRACTS.md](CROSS-PACKAGE-CONTRACTS.md) for detailed bounda
 
 ---
 
+### Skeleton 10: Federation & Commerce
+**Goal:** Paid registries, thin sync, JIT content pull, and metering.
+
+**Deliverables:**
+- Registry auth tokens (keychain-backed)
+- Entitlement check and enforcement
+- Metering hooks + `ctxt registry usage`
+- Thin sync mode (index without full content)
+- JIT content pull (lazy resolution)
+- Export gating for restricted content
+
+📄 [010-federation-and-commerce.md](010-federation-and-commerce.md)
+
+---
+
+### Skeleton 11: Enterprise Scale
+**Goal:** Multi-user backends, distributed workers, ACL, audit, and cloud platform.
+
+**Deliverables:**
+- Postgres backend (pgvector + pg_trgm)
+- rqlite backend (HA SQLite)
+- gRPC streaming (ingest, search, job events)
+- External queue adapters (Redis Streams, NATS)
+- Advanced ACL model (per-resource rules)
+- Append-only audit trail
+- Multi-tenant admin UI (non-OSS)
+- SSO / SCIM onboarding (non-OSS)
+- Billing, credits, and marketplace (non-OSS)
+
+📄 [011-enterprise-scale.md](011-enterprise-scale.md)
+
+---
+
 ## Supporting Documentation
 
 ### Cross-Package Contracts

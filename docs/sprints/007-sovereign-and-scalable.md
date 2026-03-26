@@ -155,6 +155,47 @@ Ranking enhancements:
 
 ---
 
+## 3c. ctxt Security Hardening Team (The Guardian)
+
+Focus: Dev-time security tooling and runtime configuration guardrails.
+Why: Sprint 008 delivers runtime crypto and trust. This sprint delivers the dev-side counterpart: catching secrets before they leave the machine, and giving operators the tools to validate their configuration is safe.
+
+### Task 3c.1: Telemetry Opt-Out (`CH_DISABLE_TELEMETRY`)
+
+- Implement a no-op telemetry stub that reads `CH_DISABLE_TELEMETRY=true` (or `telemetry: false` in config) and silently disables all usage reporting.
+- If telemetry is ever added in future, this flag must already exist and be honoured.
+- Add to production deployment checklist in SECURITY.md.
+- Config key:
+  ```yaml
+  privacy:
+    telemetry: false   # default: false (disabled by default, local-first principle)
+  ```
+- Document in `ctxt --help` output: `CH_DISABLE_TELEMETRY=true disables all telemetry`.
+
+### Task 3c.2: `ctxt config validate --check-secrets`
+
+- Scan the loaded config for potential plaintext secrets:
+  - Any value matching known key patterns (`sk-`, `sk-ant-`, `eyJ`, `ghp_`, `token`, `password`, `secret`, `key`) that is not an `${ENV_VAR}` reference.
+  - Warn (not error) on each finding with field path and sanitised value.
+- Exit code: 0 if clean, 1 if warnings found (for CI use).
+- Output example:
+  ```
+  WARN  ai_providers.openai.key: looks like a plaintext secret (sk-proj-***)
+        Use ${OPENAI_API_KEY} instead.
+  ```
+
+### Task 3c.3: `ctxt config lint`
+
+- Full config file linter combining:
+  - Schema validation (required fields, type checks)
+  - Secret scan (Task 3c.2 logic)
+  - Permission checks: warn if config file is world-readable (`chmod 600` recommendation)
+  - Deprecated key detection (warn on old field names)
+- `--fix` flag: auto-applies safe fixes (file permissions, deprecated key migration).
+- Integrate into `ctxt config validate` as a superset.
+
+---
+
 ## 4. dPKMS Registry Team (The Enabler)
 
 Focus: Tooling for building registries and plugins + deterministic entity governance across multiple registries.
@@ -260,6 +301,57 @@ Conflicts must:
 - be visible to users
 - not break ingestion
 - not merge entities unpredictably
+
+---
+
+## 6. ctxt Profiles Team (The Resurfacer)
+
+Focus: Situational relevance — making the right knowledge appear at the right time without manual search.
+Why: Profiles (Skeleton 7 roadmap) need a mechanism to resurface knowledge based on what a user is working on now, not just what they've searched for.
+
+### Task 6.1: Resurfacing Queue
+
+- Implement a background process that periodically evaluates knowledge objects against the **active profile's focus areas**.
+- Scoring signals:
+  - entity overlap with recently ingested objects
+  - tag overlap with recent search queries
+  - recency of the object (decay function)
+  - explicit user hints on the profile (`hints:` field)
+- Store resurfacing candidates in a `resurfacing_queue` table:
+  ```sql
+  CREATE TABLE resurfacing_queue (
+    id           TEXT PRIMARY KEY,
+    object_id    TEXT NOT NULL REFERENCES knowledge_objects(id),
+    profile_id   TEXT NOT NULL,
+    score        REAL NOT NULL,
+    reason       TEXT NOT NULL,   -- human-readable why (e.g., "entity:stripe.api overlap")
+    surfaced_at  DATETIME,        -- null = not yet shown
+    dismissed_at DATETIME,        -- null = not yet dismissed
+    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  ```
+- CLI: `ctxt resurface` — prints top N unshown items for the active profile.
+- Config:
+  ```yaml
+  profiles:
+    active: research
+    resurfacing:
+      enabled: true
+      max_items: 10
+      min_score: 0.4
+      run_interval: 1h
+  ```
+
+### Task 6.2: Lightweight Reminders
+
+- Allow knowledge objects to carry a `remind_at` timestamp (set via `ctxt remind <id> <duration>` or at ingest time with `--remind-in 7d`).
+- On startup and at configurable interval, `dpkms serve` checks for due reminders and prints them to stderr (or emits a desktop notification via `osascript` on macOS / `notify-send` on Linux).
+- Storage: add `remind_at DATETIME` column to `knowledge_objects`.
+- CLI:
+  - `ctxt remind <id> 7d` — sets a reminder 7 days from now.
+  - `ctxt reminders` — lists all pending reminders.
+  - `ctxt remind --clear <id>` — removes a reminder.
+- No external service dependency; all state is local.
 
 ---
 

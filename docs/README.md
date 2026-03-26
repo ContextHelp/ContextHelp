@@ -4,8 +4,8 @@ Welcome to the **dPKMS + `ctxt`** documentation.
 
 This project consists of two packages with distinct concerns:
 
-- **dPKMS** — Decentralized knowledge substrate (mechanics: storage, jobs, security, federation)
-- **`ctxt`** — Agentic context brain (meaning: capture, enrichment, surfacing, composition)
+- **dPKMS** — Decentralized Personal Knowledge System (mechanics: storage, jobs, security, federation)
+- **ctxt** — Agentic context brain (meaning: capture, enrichment, surfacing, composition)
 
 Together they provide **context-as-a-service** for humans and AI agents (self-hosted nodes, or via **context.help cloud**).
 

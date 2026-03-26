@@ -32,7 +32,7 @@ This document provides an overview of the development infrastructure for Context
 
 **5-minute onboarding guide:**
 - Prerequisites check
-- Automated setup with `dev-setup.sh`
+- Automated setup with `scripts/dev-setup.sh`
 - First development session
 - Common commands reference
 - Quick troubleshooting
@@ -230,7 +230,7 @@ This document provides an overview of the development infrastructure for Context
 
 ## Development Scripts
 
-### Setup Script (`dev-setup.sh`)
+### Setup Script (`scripts/dev-setup.sh`)
 
 **Purpose:** Automated development environment setup
 
@@ -276,7 +276,7 @@ This document provides an overview of the development infrastructure for Context
 - Enforces code quality
 - Fast feedback loop
 
-**Installation:** Automatic via `dev-setup.sh`
+**Installation:** Automatic via `scripts/dev-setup.sh`
 
 ---
 
@@ -285,7 +285,7 @@ This document provides an overview of the development infrastructure for Context
 ### 1. Local-First Development
 
 - **SQLite default:** No external services required
-- **Zero-config start:** Run `./dev-setup.sh` and you're ready
+- **Zero-config start:** Run `./scripts/dev-setup.sh` and you're ready
 - **Offline capable:** All tests work without network
 - **Fast iteration:** Hot reload in development mode
 
@@ -536,7 +536,7 @@ All aligned with ContextHelp's two-package architecture and local-first principl
 For developers new to the project:
 
 1. **Read:** [developer-quickstart.md](developer-quickstart.md)
-2. **Setup:** Run `./dev-setup.sh`
+2. **Setup:** Run `./scripts/dev-setup.sh`
 3. **Explore:** Run `task --list`
 4. **Contribute:** Follow [development.md](development.md)
 

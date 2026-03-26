@@ -1,0 +1,72 @@
+flowchart TD
+      %% Entry points
+      HTTP_INBOX["POST /api/v1/inbox
+      handlers_inbox.go"]
+      HTTP_ANALYZE["POST /analyze
+      handlers_capture.go"]
+      CLI_EDIT["ctxt edit
+      cmd/edit.go"]
+
+      %% Parsing
+      PARSE["mentions.ParseSlice([]string)
+      internal/mentions/mentions.go
+      @n.a.b → ctxt://entity/n/a/b
+      ctxt://… → passthrough"]
+
+      %% Service / job
+      SVC["service.CaptureToInbox()
+      service.Analyze()
+      internal/service/"]
+      JOB["Job enqueued
+      internal/jobs/worker.go"]
+
+      %% Pipeline
+      REGEX["Regex scan
+      @ns.slug tokens
+      entity_extractor.go"]
+      LLM["LLM augmentation
+      (optional)
+      entity_extractor.go"]
+      SLUGS["[]string slugs"]
+      PARSE2["mentions.ParseSlice()
+      → draft.Mentions"]
+
+      %% Storage
+      OBJ_STORE["objects table
+      mentions JSON column
+      sqlite / postgres"]
+      EDGE_STORE["edges table
+      from=object → to=entity
+      edge_type='mentions'
+      worker.go"]
+
+      %% Consumers
+      PROXIMITY["EntityProximity()
+      Jaccard on Mentions sets
+      proximity.go"]
+      CITATION["EnrichCitationsWithEntities()
+      citation.go"]
+      TUI["PreviewPane.renderMentions()
+      tui/panes/preview.go"]
+
+      %% Flow
+      HTTP_INBOX -->|"mentions []string"| PARSE
+      HTTP_ANALYZE -->|"mentions []string"| PARSE
+      CLI_EDIT -->|"mentions []string"| PARSE
+
+      PARSE -->|"[]uri.URI"| SVC
+      SVC -->|"KnowledgeObject.Mentions"| OBJ_STORE
+      SVC --> JOB
+
+      JOB --> REGEX
+      REGEX --> SLUGS
+      LLM -.->|"if configured"| SLUGS
+      SLUGS --> PARSE2
+      PARSE2 -->|"draft.Mentions"| OBJ_STORE
+      PARSE2 -->|"mention.String()"| EDGE_STORE
+
+      OBJ_STORE --> PROXIMITY
+      OBJ_STORE --> CITATION
+      OBJ_STORE --> TUI
+      EDGE_STORE -.->|"graph queries
+      backlinks"| PROXIMITY

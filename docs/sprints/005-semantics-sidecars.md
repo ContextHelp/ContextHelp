@@ -85,7 +85,43 @@ Focus: Vector Generation, Mention Extraction, Entity Resolution.
 
 New Responsibility: Semantic identity (mentions and resolved entities) must be determined before vectors are generated, ensuring stable entity-aware embedding representation.
 
-### Task 2.1: `EmbeddingClient` Interface
+### Task 2.0: `url.repo` Pipeline
+
+- Implement a **Git repository-aware** URL pipeline triggered when a URL matches `github.com/*/*` (or any hosted git forge pattern).
+- Detection: `url.repo` detector runs before `url.generic`; if pattern matches, use this pipeline.
+- Pipeline steps:
+  1. Fetch repository metadata (README, description, topics/tags, license, language, stars) via public API (no auth required for public repos).
+  2. Extract mentions from README text.
+  3. Resolve mentions to entities.
+  4. Generate a short summary using `text.short`.
+  5. Store with type `url.repo` for later filtering.
+- Config keys:
+  ```yaml
+  pipelines:
+    url.repo:
+      enabled: true
+      fetch_readme: true
+      max_readme_chars: 8000
+  ```
+- Fallback: if API fetch fails (rate limit, private repo), fall back to `url.generic` and log the downgrade.
+
+### Task 2.1: Raw Mode Ingestion (`--raw` flag)
+
+- Add `--raw` flag to `ctxt analyze` (and all ingestion entry points).
+- Behaviour when `--raw` is set:
+  - Skip all AI enrichment steps (no LLM calls, no embedding generation, no mention extraction).
+  - Store the object immediately in a `raw` state with only the source content preserved.
+  - Mark the job as `completed` with a `raw=true` metadata field.
+  - Object appears in `ctxt inbox --raw`.
+- Useful for: bulk imports, offline capture, cost control.
+- Enrichment can be triggered later with `ctxt enrich <id>` (stub in this sprint; full implementation in Sprint 007).
+- Config default:
+  ```yaml
+  ingestion:
+    default_raw: false  # set true to make raw the default globally
+  ```
+
+### Task 2.2: `EmbeddingClient` Interface
 
 Implement:
 
@@ -97,7 +133,7 @@ Implement:
   3. Chunking
   4. Embedding
 
-### Task 2.2: Pipeline Update (`text.long`, `url.generic`)
+### Task 2.3: Pipeline Update (`text.long`, `url.generic`)
 
 New processing order:
 
@@ -116,7 +152,7 @@ New processing order:
    - vectors
    - backlink updates
 
-### Task 2.3: Storage Schema Update
+### Task 2.4: Storage Schema Update
 
 Add or refine:
 

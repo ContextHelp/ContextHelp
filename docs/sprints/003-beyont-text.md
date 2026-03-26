@@ -80,6 +80,19 @@ Every modality must support:
 - entity resolution (registry + local placeholder)
 - edge creation in the knowledge graph
 
+### Task 2.0: `ctxt inbox` Command
+
+- Implement `ctxt inbox` to show all knowledge objects in a **raw or pending state**.
+- "Pending" = job exists but has not reached `completed` status.
+- "Raw" = object was ingested with `--raw` flag (no enrichment yet; see Skeleton 4 `url.repo` gap).
+- Output: table with columns `ID | Type | Status | Title | Created`.
+- Filter flags:
+  - `--pending` — show only objects awaiting pipeline completion
+  - `--failed` — show only objects whose job failed
+  - `--raw` — show only unenriched raw objects
+- Default (no flag): show all in-progress or failed items (the "needs attention" inbox).
+- Implementation note: queries both `jobs` and `knowledge_objects` tables; left-joins on `object_id`.
+
 ### Task 2.1: `url.generic` Pipeline
 
 - Implement `HTMLFetcher`.

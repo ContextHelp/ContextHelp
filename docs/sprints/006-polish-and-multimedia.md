@@ -47,6 +47,27 @@ By the end of this skeleton:
   - knowledge graph tables and entity indexes
 - Restore command should validate schema compatibility before writing.
 
+### Task 1.2b: Backup Encryption
+
+- Add `--encrypt` flag to `ctxt config backup`:
+  ```
+  ctxt config backup --out ./backup.zip --encrypt
+  ```
+- Encryption uses AES-256-GCM with a key derived from a passphrase via Argon2id.
+- Passphrase sourced from (in priority order):
+  1. `--passphrase` flag (not recommended for scripts)
+  2. `CTXT_BACKUP_PASSPHRASE` environment variable
+  3. OS keychain entry `ctxt.backup.passphrase` (if present)
+  4. Interactive prompt (fallback)
+- The encrypted bundle is a self-describing format: header contains salt, nonce, Argon2id params (time, memory, threads), and a version byte. No passphrase is stored.
+- `ctxt config restore` automatically detects encrypted bundles and prompts for passphrase.
+- `--encrypt` defaults to `false`; can be set globally:
+  ```yaml
+  backup:
+    encrypt_by_default: true
+  ```
+- Unencrypted bundles remain valid and importable; encryption is opt-in for v1.0, recommended in production checklist.
+
 ### Task 1.3: Update and Version Check
 
 - Implement `ctxt version --check`.

@@ -119,20 +119,27 @@ Define a plugin-extensible abstraction:
 
 Allow watchers to be provided by plugins without core changes.
 
-### Task 2.2: Clipboard Watcher (Reference)
+### Task 2.2: Clipboard Watcher
 
-- Poll clipboard contents.
-- If content changes and matches ingestion heuristics (URL, text, code block), enqueue a job.
+- Poll clipboard at configurable interval (default: 2s).
+- Enqueue job if content hash differs from last captured hash and passes heuristics:
+  valid URL, fenced code block, or length >= `min_length` (default: 80 chars).
+- Annotate jobs with `origin=watcher/clipboard`.
+- Dedup state persisted in `watcher-state.json` (hashes only, never plaintext).
+- Raw clipboard content never written to logs.
+- `CTXT_NO_CLIPBOARD=1` env var disables unconditionally.
 - Configurable via:
 
-```
+```yaml
 watchers:
   clipboard:
-    enabled: true
-    auto_ingest: false
+    enabled: false
+    poll_interval: 2s
+    min_length: 80
+    auto_ingest: true
 ```
 
-- Pass raw content into pipelines for mention extraction and entity resolution.
+- Story: [US-0211](../stories/capture/US-0211-passive-clipboard-watcher.md)
 
 ### Task 2.3: Directory Watcher
 
@@ -142,6 +149,21 @@ watchers:
   - OCR if needed
   - mention extraction
   - entity resolution
+
+### Task 2.5: Screen Monitor Watcher
+
+- Capture screenshot at configurable interval (default: 30s).
+- Focus modes: `active_window`, `full`, or explicit `{x,y,w,h}` region.
+- Dedup via perceptual hash (dHash) + OCR text hash — skip frames with < 15% visual change
+  or identical OCR output to last ingested frame.
+- Submit to `image.ocr` pipeline; discard if OCR text < `min_ocr_length` (default: 120 chars).
+- Annotate jobs with `origin=watcher/screen`.
+- `exclude_apps` list (macOS): skip capture when a listed app is frontmost.
+- Screenshots never persisted to disk — held in memory only.
+- On macOS: request Screen Recording permission gracefully; fail with setup guide if denied.
+- Disabled by default; requires explicit config opt-in + interactive confirmation on first enable.
+- `CTXT_NO_SCREEN=1` env var disables unconditionally.
+- Story: [US-0212](../stories/capture/US-0212-screen-monitor.md)
 
 ### Task 2.4: Semantic Watcher Hooks
 
@@ -286,6 +308,64 @@ ch show entity <slug>
 
 ---
 
+## 5. dPKMS Crypto Team (The Notary)
+
+Focus: Portable, verifiable trust — signed bundles, signed registry updates, key management.
+Why: Skeleton 8 roadmap requires trust that *travels*: bundles exported to another machine must be verifiable; registry updates must be tamper-evident; key rotation must be possible without losing trust history.
+
+### Task 5.1: Signed Bundles (Export + Import Verify)
+
+- Extend `ctxt config backup` to produce a **signed bundle** (`.zip` with detached `.sig`).
+- Signing: Ed25519 keypair stored in `~/.config/ctxt/keys/signing.key` (private) and `signing.pub` (public).
+- On first run, `ctxt key init` generates the keypair if absent.
+- On export:
+  - Compute SHA-256 digest of the archive.
+  - Sign with local private key.
+  - Write `bundle.sig` alongside the archive.
+- On import (`ctxt config restore --verify`):
+  - Load the public key from the bundle header.
+  - Verify the `.sig` against the archive digest.
+  - Reject if signature missing or invalid (unless `--skip-verify` is explicitly passed).
+- The public key is embedded in the bundle manifest to enable self-contained verification.
+
+### Task 5.2: Signed Registry Updates
+
+- Registries may include a `public_key` field in their root manifest.
+- On each sync, if the registry declares a public key:
+  - Verify the `Content-Signature` response header (detached Ed25519 signature over the response body) OR verify a `.sig` file served alongside the manifest.
+  - If verification fails: abort sync, log error with registry URL and expected key fingerprint.
+- Unsigned registries continue to work unless the user sets:
+  ```yaml
+  registries:
+    require_signatures: true
+  ```
+- CLI: `ctxt registry show <name>` displays trust status and key fingerprint.
+
+### Task 5.3: Dry-Run Registry Updates
+
+- Add `--dry-run` flag to `ctxt registry sync`:
+  ```
+  ctxt registry sync --dry-run
+  ```
+- Behaviour: fetches remote manifest and diffs against local state but **writes nothing**.
+- Output: table of would-be additions, updates, and removals (entities, taxonomy entries, aliases).
+- Useful for: auditing before accepting a registry update, CI checks.
+
+### Task 5.4: Key Rotation Support
+
+- `ctxt key rotate` command:
+  1. Generates a new Ed25519 keypair.
+  2. Creates a **transition record** signed by both old and new key:
+     ```json
+     { “old_key”: “<fingerprint>”, “new_key”: “<fingerprint>”, “timestamp”: “...”, “signatures”: { “old”: “...”, “new”: “...” } }
+     ```
+  3. Stores the transition record in `~/.config/ctxt/keys/rotation_log.json`.
+  4. Archives the old private key to `signing.key.bak.<timestamp>` (never deleted automatically).
+- Import verification respects the rotation log: bundles signed by a previously valid key are still accepted if the rotation chain is intact.
+- Warn users if `signing.key` is older than 365 days.
+
+---
+
 ## The Integration Check (The Demo)
 
 Scenario: “Automated Researcher with Trusted Semantic Identity”
@@ -334,9 +414,10 @@ Mitigation: enforce namespace ownership and provenance constraints.
 
 ### OS Permission Requirements
 
-Clipboard and directory watchers may require OS-level permissions.
+Clipboard, directory, and screen watchers may require OS-level permissions.
+Screen Recording (macOS) requires explicit user grant via System Settings.
 
-Mitigation: document per-platform setup and fallback modes.
+Mitigation: document per-platform setup; fail gracefully with setup guide if denied.
 
 ### Graph Poisoning
 

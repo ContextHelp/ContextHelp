@@ -91,7 +91,42 @@ Search output must display the empty mentions field so that later sprints can bu
 
 ---
 
-### 4. dPKMS Registry Team (The Connector)
+### 4. dPKMS Storage Team (The File Keeper)
+
+**Focus:** Attachment and blob storage — binary files alongside knowledge objects.
+
+**Why:** The system must persist files (PDFs, images, audio) durably from day one. Later pipelines (OCR, transcription) depend on this contract existing before they need it.
+
+* **Task 4.1: `AttachmentStore` Interface and SQLite Implementation**
+  - Define `AttachmentStore` interface in `internal/storage/storage.go`:
+    - `SaveAttachment(objectID, filename, mimeType string, data []byte) (string, error)`
+    - `GetAttachment(attachmentID string) (*Attachment, error)`
+    - `ListAttachments(objectID string) ([]Attachment, error)`
+    - `DeleteAttachment(attachmentID string) error`
+  - Add `attachments` table to schema:
+    ```sql
+    CREATE TABLE attachments (
+      id          TEXT PRIMARY KEY,
+      object_id   TEXT NOT NULL REFERENCES knowledge_objects(id),
+      filename    TEXT NOT NULL,
+      mime_type   TEXT NOT NULL,
+      size_bytes  INTEGER NOT NULL,
+      data        BLOB NOT NULL,
+      created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX idx_attachments_object_id ON attachments(object_id);
+    ```
+  - SQLite implementation in `internal/storage/sqlite/attachments.go`.
+  - Postgres stub in `internal/storage/postgres/attachments.go` returning `ErrNotImplemented`.
+
+* **Task 4.2: Wire attachment IDs into `KnowledgeObject`**
+  - Add `AttachmentIDs []string` field to the `KnowledgeObject` struct.
+  - Populate on read from `LIST attachments WHERE object_id = ?`.
+  - Include in `ctxt open <id>` JSON output.
+
+---
+
+### 5. dPKMS Registry Team (The Connector)
 
 **Focus:** Local File Loading in dPKMS.
 **Constraint:** Do not build the HTTP client yet. Focus on internal logic of "What is a Registry?"
@@ -99,13 +134,13 @@ Search output must display the empty mentions field so that later sprints can bu
 **New Consideration:**
 Registries will later include **entity definitions**, but Skeleton 1 should only prepare the folder/module boundaries—not implement entities yet.
 
-* **Task 4.1: The Local Registry Loader — dPKMS**
+* **Task 5.1: The Local Registry Loader — dPKMS**
   - Create a `dpkms/pkg/registry` module.
   - Implement loading a `taxonomy.json` file from disk.
   - Validate JSON against registry schema.
   - **Prepare module structure to later add `entities.json` without disrupting layout.**
 
-* **Task 4.2: The "Enricher" Stub — ctxt/dPKMS integration**
+* **Task 5.2: The "Enricher" Stub — ctxt/dPKMS integration**
   - Create the function `EnrichTags(tags []string)` in ctxt.
   - For now, only confirm that tags exist in local JSON (loaded from dPKMS registry).
   - *Integration Point:* Provide this function to ctxt Ingestion Team so the "Echo Pipeline" can try validating a fake tag.

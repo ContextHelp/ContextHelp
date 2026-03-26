@@ -7,10 +7,12 @@ Get up and running with **dPKMS + `ctxt`** development in under 5 minutes.
 ## Prerequisites
 
 ### Required
-- **Go 1.23+** — [Download](https://go.dev/dl/)
+
+- **Go 1.26.1+** — [Download](https://go.dev/dl/)
 - **Git** — For version control
 
 ### Optional (but recommended)
+
 - **Task** — Modern task runner ([Install](https://taskfile.dev/installation/))
 - **golangci-lint** — Fast linter ([Install](https://golangci-lint.run/usage/install/))
 - **Docker** — For optional services (Postgres, Redis, Qdrant)
@@ -126,7 +128,7 @@ git clone https://github.com/ideacrafterslabs/ctxt.git
 cd ctxt
 
 # Run automated setup script
-./dev-setup.sh
+./scripts/dev-setup.sh
 
 # Build both binaries
 make build
@@ -242,7 +244,7 @@ The dPKMS server will start on:
 
 ## Development Workflow
 
-### Using Task (Recommended)
+### Using `task` (Recommended)
 
 ```bash
 # List all available tasks
