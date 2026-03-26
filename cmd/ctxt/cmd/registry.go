@@ -140,6 +140,10 @@ func init() {
 	// Flags for sync subcommand
 	registrySyncCmd.Flags().Bool("dry-run", false,
 		"fetch remote manifest and show diff without writing to storage")
+	registrySyncCmd.Flags().Bool("reconcile", false,
+		"sync all configured registries with multi-registry entity reconciliation")
+	registrySyncCmd.Flags().String("merge-strategy", "last-write-wins",
+		"merge strategy for entity conflicts: last-write-wins or trust-score")
 
 	// Flags for login subcommand
 	registryLoginCmd.Flags().String("token", "",
@@ -294,6 +298,14 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("dry-run flag: %w", err)
 	}
+	reconcile, err := cmd.Flags().GetBool("reconcile")
+	if err != nil {
+		return fmt.Errorf("reconcile flag: %w", err)
+	}
+	mergeStrategy, err := cmd.Flags().GetString("merge-strategy")
+	if err != nil {
+		return fmt.Errorf("merge-strategy flag: %w", err)
+	}
 
 	var registryURL string
 	for _, r := range cfg.Registries {
@@ -318,11 +330,62 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 		return runRegistrySyncDryRun(cmd, ctx, svc, name, registryURL)
 	}
 
+	if reconcile {
+		return runRegistrySyncReconcile(cmd, ctx, svc, registry.MergeStrategy(mergeStrategy))
+	}
+
 	fmt.Printf("Syncing registry %s...\n", name)
 	if err := svc.UpdateRegistry(ctx, registryURL); err != nil {
 		return fmt.Errorf("sync registry: %w", err)
 	}
 	fmt.Println("Registry synced")
+	return nil
+}
+
+// runRegistrySyncReconcile syncs all configured registries with multi-registry
+// entity reconciliation and prints the conflict report.
+func runRegistrySyncReconcile(
+	cmd *cobra.Command,
+	ctx context.Context,
+	svc *service.Service,
+	strategy registry.MergeStrategy,
+) error {
+	fmt.Printf("Syncing all registries with reconciliation (strategy: %s)...\n", strategy)
+
+	result, err := svc.SyncAllRegistriesWithReconciliation(ctx, strategy, nil)
+	if err != nil {
+		return fmt.Errorf("reconcile sync: %w", err)
+	}
+
+	if isJSONOutput() {
+		return outputJSON(cmd.OutOrStdout(), map[string]any{
+			"merged":             result.Merged,
+			"conflicts":          result.Conflicts,
+			"offline_registries": result.OfflineRegistries,
+		})
+	}
+
+	fmt.Printf("Entities merged: %d\n", result.Merged)
+
+	if len(result.OfflineRegistries) > 0 {
+		fmt.Fprintf(cmd.OutOrStdout(), "\nOffline registries (cached values preserved):\n")
+		for _, url := range result.OfflineRegistries {
+			fmt.Fprintf(cmd.OutOrStdout(), "  OFFLINE  %s\n", url)
+		}
+	}
+
+	if len(result.Conflicts) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "\nNo entity conflicts detected.")
+		return nil
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "\nConflicts resolved (%d):\n\n", len(result.Conflicts))
+	headers := []string{"Slug", "Field", "Winner", "Strategy"}
+	rows := make([][]string, 0, len(result.Conflicts))
+	for _, c := range result.Conflicts {
+		rows = append(rows, []string{c.Slug, c.Field, c.Winner, string(c.Strategy)})
+	}
+	printTable(cmd.OutOrStdout(), headers, rows)
 	return nil
 }
 

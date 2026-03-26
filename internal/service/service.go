@@ -568,6 +568,53 @@ func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) 
 	return result.Upserted, nil
 }
 
+// SyncAllRegistriesResult is the output of SyncAllRegistriesWithReconciliation.
+type SyncAllRegistriesResult struct {
+	// Merged is the total number of entities written after reconciliation.
+	Merged int
+	// Conflicts lists per-field disagreements across registries.
+	Conflicts []registrysync.ConflictReport
+	// OfflineRegistries lists registry URLs that were unreachable.
+	OfflineRegistries []string
+}
+
+// SyncAllRegistriesWithReconciliation syncs all configured registries, reconciles
+// conflicting entity definitions using the given merge strategy, and returns a
+// conflict report. Offline-first: unreachable registries are skipped; local cache
+// is preserved.
+//
+// strategy: "last-write-wins" (default) or "trust-score".
+// trustScores: optional map of registry URL → 0.0–1.0; only used with trust-score.
+func (s *Service) SyncAllRegistriesWithReconciliation(
+	ctx context.Context,
+	strategy registrysync.MergeStrategy,
+	trustScores map[string]float64,
+) (*SyncAllRegistriesResult, error) {
+	if len(s.Cfg.Registries) == 0 {
+		return &SyncAllRegistriesResult{}, nil
+	}
+	if strategy == "" {
+		strategy = registrysync.MergeLastWriteWins
+	}
+
+	syncer := registrysync.New(s.Store.Entities())
+	multi := registrysync.MultiSyncConfig{
+		Registries:  s.Cfg.Registries,
+		Strategy:    strategy,
+		TrustScores: trustScores,
+	}
+	result, err := syncer.MultiSync(ctx, multi)
+	if err != nil {
+		return nil, fmt.Errorf("multi-registry sync: %w", err)
+	}
+
+	return &SyncAllRegistriesResult{
+		Merged:            result.Merged,
+		Conflicts:         result.Conflicts,
+		OfflineRegistries: result.OfflineRegistries,
+	}, nil
+}
+
 // PullEntity promotes a thin entity to full by fetching its complete definition
 // from its source registry. Returns ErrEntityDefinitionUnavailable if not thin.
 func (s *Service) PullEntity(ctx context.Context, slug string) (*storage.Entity, error) {
