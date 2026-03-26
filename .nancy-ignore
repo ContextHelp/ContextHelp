@@ -1,0 +1,26 @@
+# .nancy-ignore — Sonatype OSS Index vulnerability suppressions
+#
+# FORMAT: one CVE / SONATYPE ID per line, optionally followed by a comment.
+# IDs come from nancy output (e.g. "CVE-2021-12345" or "sonatype-2021-1234").
+# Entries here suppress matching findings in `nancy sleuth` so the build does not
+# fail on known-acceptable risks.
+#
+# SUPPRESSION PROCESS
+# -------------------
+# 1. Run `make vuln-scan` (or the CI job) — note the finding ID(s).
+# 2. Open a tracking issue: "vuln: suppress <ID> — <reason>".
+# 3. Gather evidence:
+#    a. Is the vulnerable code path reachable in our binary?  (govulncheck
+#       already filters unreachable callgraphs; nancy does not — so manual
+#       review is required here.)
+#    b. Is a fix available? If yes, prefer upgrading the dependency over
+#       suppressing.
+#    c. CVSS score ≥ 7.0 (HIGH) or ≥ 9.0 (CRITICAL) — suppression requires
+#       explicit sign-off from a maintainer in the tracking issue.
+# 4. Add the ID below with: date, tracking issue URL, and a one-line rationale.
+# 5. Set a review-by date (max 90 days). Re-evaluate at that point.
+#
+# EXAMPLE (do not uncomment — illustrative only):
+# CVE-2021-44228  # log4shell — not in Go; false positive. Issue #42. Review: 2026-06-01
+#
+# --- active suppressions (none yet) ---

@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks vuln-scan
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -94,6 +94,22 @@ test-gate: test-all
 	@go tool cover -func=coverage.out | grep total:
 	@echo ""
 	@echo "✓ Test gate passed"
+
+## vuln-scan: Run govulncheck + nancy dependency vulnerability scans
+vuln-scan:
+	@echo "Running govulncheck..."
+	@if ! command -v govulncheck >/dev/null 2>&1; then \
+		echo "Installing govulncheck..."; \
+		go install golang.org/x/vuln/cmd/govulncheck@latest; \
+	fi
+	govulncheck ./...
+	@echo "Running nancy (Sonatype OSS Index)..."
+	@if ! command -v nancy >/dev/null 2>&1; then \
+		echo "Installing nancy..."; \
+		go install github.com/sonatype-nexus-community/nancy@latest; \
+	fi
+	go list -json -deps ./... | nancy sleuth --exclude-vulnerability-file .nancy-ignore
+	@echo "✓ Vulnerability scan complete"
 
 ## lint: Run linters
 lint:
