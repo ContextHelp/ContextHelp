@@ -178,6 +178,10 @@ func Build(opts BuildOpts) (BuildResult, error) {
 	zipPath := filepath.Join(opts.OutputDir, baseName+".zip")
 	sigPath := zipPath + ".sig"
 
+	if err := os.MkdirAll(opts.OutputDir, 0755); err != nil {
+		return BuildResult{}, fmt.Errorf("bundle: mkdir output dir: %w", err)
+	}
+
 	fp := fingerprint(opts.PublicKey)
 
 	// Build zip in memory first so we sign the exact bytes.
