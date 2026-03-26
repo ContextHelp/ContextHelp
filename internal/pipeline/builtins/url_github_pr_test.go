@@ -27,8 +27,8 @@ func TestURLGitHubPRDetector(t *testing.T) {
 		{"https://github.com/foo/bar/pull/1", "url.github.pr"},
 		{"https://github.com/org/repo/pull/9999", "url.github.pr"},
 		// Not PR URLs.
-		{"https://github.com/foo/bar/issues/42", "url.generic"},
-		{"https://github.com/foo/bar", "url.repo"},
+		{"https://github.com/foo/bar/issues/42", "url.github.issue"},
+		{"https://github.com/foo/bar", "url.github.repo"},
 		{"https://github.com/foo/bar/tree/main", "url.generic"},
 		{"https://example.com/page", "url.generic"},
 	}
