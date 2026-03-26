@@ -36,8 +36,35 @@ type SyncResult struct {
 	RegistryURL string
 	SyncMode    config.RegistrySyncMode
 	Upserted    int
-	Skipped     int // full records not overwritten
+	Skipped     int            // full records not overwritten
+	Conflicts   []ConflictReport // non-empty when multi-registry disagreements were resolved
 	Errors      []error
+}
+
+// MultiSyncConfig carries options for a multi-registry sync.
+type MultiSyncConfig struct {
+	// Registries is the ordered list of registry configs to sync.
+	// Priority: Local > first entry > last entry (unless overridden by TrustScores).
+	Registries []config.RegistryConfig
+	// Strategy is the merge strategy to apply when registries disagree.
+	// Defaults to MergeLastWriteWins when empty.
+	Strategy MergeStrategy
+	// TrustScores maps registry URL to a 0.0–1.0 trust score.
+	// Only used when Strategy == MergeTrustScore.
+	TrustScores map[string]float64
+}
+
+// MultiSyncResult is the combined outcome of syncing multiple registries.
+type MultiSyncResult struct {
+	// PerRegistry contains per-registry sync results (including offline results).
+	PerRegistry []*SyncResult
+	// Merged is the total number of entities written after reconciliation.
+	Merged int
+	// Conflicts is the union of all field-level conflicts across all entities.
+	Conflicts []ConflictReport
+	// OfflineRegistries lists registry URLs that were unreachable; their cached
+	// local values were used instead.
+	OfflineRegistries []string
 }
 
 // Syncer performs registry syncs against the entity store.
@@ -121,6 +148,132 @@ func (s *Syncer) Sync(ctx context.Context, cfg config.RegistryConfig) (*SyncResu
 	}
 
 	return result, nil
+}
+
+// SyncWithOfflineFallback wraps Sync with offline-first semantics.
+// When the remote registry is unreachable, the existing local cached entities
+// are retained and marked as offline-sourced in the result.
+// If the registry is reachable, it behaves identically to Sync.
+//
+// Returns (result, true, nil) when online; (result, false, nil) when offline
+// and local cache was used; (nil, false, err) on unrecoverable error.
+func (s *Syncer) SyncWithOfflineFallback(
+	ctx context.Context,
+	cfg config.RegistryConfig,
+) (*SyncResult, bool, error) {
+	result, err := s.Sync(ctx, cfg)
+	if err == nil {
+		return result, true, nil
+	}
+
+	// Registry unreachable: surface warning; use local cache (no-write).
+	slog.WarnContext(ctx, "registry unreachable; using cached local entities",
+		"registry", cfg.URL, "err", err)
+
+	offlineResult := &SyncResult{
+		RegistryURL: cfg.URL,
+		SyncMode:    cfg.SyncMode,
+		Errors: []error{
+			fmt.Errorf("registry unreachable (offline mode): %w", err),
+		},
+	}
+	return offlineResult, false, nil
+}
+
+// MultiSync syncs multiple registries, reconciles conflicting entity definitions,
+// and writes the merged result to the entity store.
+//
+// Priority rules:
+//  1. Local entities (existing content_status=full) are never downgraded.
+//  2. Among remote registries: strategy resolves per-field conflicts.
+//  3. Unreachable registries: cached local values are kept; registry is listed in
+//     MultiSyncResult.OfflineRegistries.
+func (s *Syncer) MultiSync(ctx context.Context, cfg MultiSyncConfig) (*MultiSyncResult, error) {
+	strategy := cfg.Strategy
+	if strategy == "" {
+		strategy = MergeLastWriteWins
+	}
+
+	out := &MultiSyncResult{}
+
+	// Phase 1: fetch entity index from each registry (offline-tolerant).
+	// slug → list of candidates from all reachable registries.
+	allCandidates := make(map[string][]RegistryEntity)
+
+	for _, regCfg := range cfg.Registries {
+		trust := cfg.TrustScores[regCfg.URL]
+		entries, fetchErr := s.fetchEntityIndex(ctx, regCfg.URL)
+		if fetchErr != nil {
+			slog.WarnContext(ctx, "multi-sync: registry unreachable",
+				"registry", regCfg.URL, "err", fetchErr)
+			out.OfflineRegistries = append(out.OfflineRegistries, regCfg.URL)
+			out.PerRegistry = append(out.PerRegistry, &SyncResult{
+				RegistryURL: regCfg.URL,
+				SyncMode:    regCfg.SyncMode,
+				Errors:      []error{fmt.Errorf("offline: %w", fetchErr)},
+			})
+			continue
+		}
+
+		now := time.Now().Truncate(time.Second)
+		perReg := &SyncResult{RegistryURL: regCfg.URL, SyncMode: regCfg.SyncMode}
+		for _, entry := range entries {
+			e := &storage.Entity{
+				Slug:        entry.Slug,
+				Title:       entry.Title,
+				Namespace:   entry.Namespace,
+				VersionHash: entry.VersionHash,
+				RegistryURL: regCfg.URL,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			if err := s.guard.ValidateAndGuard(ctx, e, "registry.multi-sync"); err != nil {
+				slog.WarnContext(ctx, "multi-sync: integrity rejected",
+					"slug", e.Slug, "registry", regCfg.URL, "err", err)
+				perReg.Errors = append(perReg.Errors, fmt.Errorf("integrity guard %s: %w", e.Slug, err))
+				perReg.Skipped++
+				continue
+			}
+			candidate := RegistryEntity{
+				Entity:      e,
+				RegistryURL: regCfg.URL,
+				UpdatedAt:   now,
+				TrustScore:  trust,
+			}
+			allCandidates[entry.Slug] = append(allCandidates[entry.Slug], candidate)
+		}
+		out.PerRegistry = append(out.PerRegistry, perReg)
+	}
+
+	// Phase 2: reconcile and write.
+	mode := cfg.Registries[0].SyncMode
+	if mode == "" {
+		mode = config.RegistrySyncModeFull
+	}
+
+	for slug, candidates := range allCandidates {
+		rec := Reconcile(slug, candidates, strategy)
+		out.Conflicts = append(out.Conflicts, rec.Conflicts...)
+
+		e := rec.Merged
+		if mode == config.RegistrySyncModeThin {
+			if err := s.store.UpsertThin(ctx, e); err != nil {
+				slog.WarnContext(ctx, "multi-sync: upsert thin failed",
+					"slug", slug, "err", err)
+				continue
+			}
+		} else {
+			e.ContentStatus = storage.ContentStatusFull
+			if err := s.store.Upsert(ctx, e); err != nil {
+				slog.WarnContext(ctx, "multi-sync: upsert failed",
+					"slug", slug, "err", err)
+				continue
+			}
+		}
+		out.Merged++
+	}
+
+	return out, nil
 }
 
 // fetchEntityIndex calls GET <registryURL>/entities/index and decodes the JSON array.
