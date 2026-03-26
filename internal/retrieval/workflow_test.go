@@ -113,6 +113,9 @@ func (m *mockObjectStore2) MarkReminded(_ context.Context, _ string, _ time.Time
 func (m *mockObjectStore2) ListPendingReminders(_ context.Context) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
 }
+func (m *mockObjectStore2) ListWithoutEmbeddings(_ context.Context) ([]*storage.KnowledgeObject, error) {
+	return nil, nil
+}
 
 // mockEmbedding returns a fixed embedding vector.
 type mockEmbedding struct{}

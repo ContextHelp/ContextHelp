@@ -304,6 +304,25 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 	return objects, total, rows.Err()
 }
 
+// ListWithoutEmbeddings returns active objects that have no stored embedding.
+func (s *ObjectStore) ListWithoutEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
+	rows, err := s.db.QueryContext(ctx, objectSelectCols+` FROM objects WHERE embedding IS NULL AND status = 'active'`)
+	if err != nil {
+		return nil, fmt.Errorf("list without embeddings: %w", err)
+	}
+	defer rows.Close()
+
+	var objects []*storage.KnowledgeObject
+	for rows.Next() {
+		obj, err := scanObjectRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		objects = append(objects, obj)
+	}
+	return objects, rows.Err()
+}
+
 func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
 	rows, err := s.db.QueryContext(ctx, objectSelectCols+`, embedding FROM objects WHERE embedding IS NOT NULL`)
 	if err != nil {

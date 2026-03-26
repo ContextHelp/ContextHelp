@@ -1157,6 +1157,63 @@ func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep 
 	addLeg(ftsRes.results, cfg.RRF.FTSWeight)
 	addLeg(vecRes.results, cfg.RRF.VectorWeight)
 
+	// --- mention + entity proximity signals ---
+	// mentionBoost: normalize outbound mention count (0..1) → small additive bonus.
+	// backlink depth: direct inbound edges score higher than 2-hop connections.
+	//
+	// Weight constants (not configurable yet; kept small to preserve RRF ordering).
+	const (
+		mentionBoostWeight = 0.05  // per outbound mention (capped at 1.0 total)
+		directBacklinkW    = 0.08  // direct inbound edge (depth-1)
+		hopBacklinkW       = 0.03  // 2-hop connection (depth-2)
+	)
+
+	// Collect direct-backlink counts for all candidates (single round-trip each).
+	// 2-hop: objects that share at least one entity with a direct-backlink neighbour.
+	directNeighbours := map[string]struct{}{} // IDs of objects with ≥1 direct inbound edge
+
+	for id, obj := range byID {
+		// Outbound mention count bonus.
+		if n := len(obj.Mentions); n > 0 {
+			bonus := float64(n) * mentionBoostWeight
+			if bonus > 1.0 {
+				bonus = 1.0
+			}
+			scores[id] += bonus
+		}
+
+		// Inbound mention count (backlinks to this object as an entity target).
+		inbound, err := s.Store.Edges().CountMentionsTo(ctx, "object", id)
+		if err == nil && inbound > 0 {
+			scores[id] += directBacklinkW
+			directNeighbours[id] = struct{}{}
+		}
+	}
+
+	// 2-hop boost: candidates whose outbound mentions overlap with a direct neighbour's mentions.
+	if len(directNeighbours) > 0 {
+		// Build entity URI set for all direct neighbours.
+		neighbourEntitySet := map[string]struct{}{}
+		for id := range directNeighbours {
+			for _, m := range byID[id].Mentions {
+				neighbourEntitySet[m.String()] = struct{}{}
+			}
+		}
+		// Boost non-direct candidates sharing an entity URI.
+		for id, obj := range byID {
+			if _, isDirect := directNeighbours[id]; isDirect {
+				continue
+			}
+			for _, m := range obj.Mentions {
+				if _, shared := neighbourEntitySet[m.String()]; shared {
+					scores[id] += hopBacklinkW
+					break
+				}
+			}
+		}
+	}
+	// --- end signals ---
+
 	type scored struct {
 		id    string
 		score float64
@@ -1220,6 +1277,42 @@ func (s *Service) CheckRegistryCapabilities(
 	}
 	warnings := registrysync.CheckCapabilities(cache.Manifest, clientVersion, requiredFeatures...)
 	return warnings, nil
+}
+
+// ReindexVectors re-embeds all active knowledge objects that currently lack an
+// embedding vector. Returns the count of objects successfully re-embedded and the
+// count that failed (non-fatal per object; caller receives the aggregate counts).
+func (s *Service) ReindexVectors(ctx context.Context, ep providers.EmbeddingProvider) (indexed int, failed int, err error) {
+	pending, err := s.Store.Objects().ListWithoutEmbeddings(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("reindex-vectors: list pending: %w", err)
+	}
+
+	for _, obj := range pending {
+		text := obj.RawContent
+		if text == "" && len(obj.Summaries) > 0 {
+			text = obj.Summaries[0]
+		}
+		if text == "" {
+			failed++
+			continue
+		}
+
+		vec, embedErr := ep.Embed(ctx, text)
+		if embedErr != nil || len(vec) == 0 {
+			failed++
+			continue
+		}
+
+		obj.Embeddings = vec
+		obj.VectorIndexed = true
+		if updateErr := s.Store.Objects().Update(ctx, obj); updateErr != nil {
+			failed++
+			continue
+		}
+		indexed++
+	}
+	return indexed, failed, nil
 }
 
 func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error) {

@@ -74,6 +74,17 @@ func (s *EdgeStore) DeleteByObject(ctx context.Context, objectID string) error {
 	return nil
 }
 
+// CountMentionsTo returns the count of edges pointing to the given node (toType, toID).
+func (s *EdgeStore) CountMentionsTo(ctx context.Context, toType, toID string) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM edges WHERE to_type = ? AND to_id = ?`, toType, toID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count mentions to: %w", err)
+	}
+	return count, nil
+}
+
 func scanEdges(rows *sql.Rows) ([]*storage.Edge, error) {
 	var edges []*storage.Edge
 	for rows.Next() {

@@ -553,6 +553,55 @@ func (s *ObjectStore) upsertEmbedding(ctx context.Context, id string, vec []floa
 	return err
 }
 
+// ListWithoutEmbeddings returns all active objects that have no stored embedding blob.
+func (s *ObjectStore) ListWithoutEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT o.id, o.type, o.subtype, o.raw_content, o.content_type, o.text_content,
+		       o.metadata, o.summaries, o.sections, o.tags, o.mentions,
+		       o.decisions, o.tasks, o.pipeline, o.source,
+		       o.registry_influences, o.plugins, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
+		       o.created_at, o.updated_at, o.fts_indexed, o.vector_indexed, o.status, o.inbox_note,
+		       o.remind_at, o.reminded_at
+		FROM objects o
+		LEFT JOIN object_embeddings oe ON o.id = oe.id
+		WHERE oe.id IS NULL AND o.status = 'active'
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list without embeddings: %w", err)
+	}
+	defer rows.Close()
+
+	var objects []*storage.KnowledgeObject
+	for rows.Next() {
+		var obj storage.KnowledgeObject
+		var (
+			metadataJSON, summariesJSON, sectionsJSON, tagsJSON string
+			mentionsJSON, decisionsJSON, tasksJSON              string
+			influencesJSON, pluginsJSON                         string
+			createdAt, updatedAt                                string
+			ftsIndexed, vectorIndexed                           int
+			lastReinforcedAt                                    sql.NullString
+			remindAt, remindedAt                                sql.NullString
+		)
+		if err := rows.Scan(
+			&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
+			&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
+			&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
+			&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
+			&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
+			&remindAt, &remindedAt,
+		); err != nil {
+			return nil, fmt.Errorf("list without embeddings scan: %w", err)
+		}
+		unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
+			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+			createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
+			remindAt, remindedAt)
+		objects = append(objects, &obj)
+	}
+	return objects, rows.Err()
+}
+
 // ListWithEmbeddings returns all objects that have a stored embedding blob.
 func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
 	rows, err := s.db.QueryContext(ctx, `

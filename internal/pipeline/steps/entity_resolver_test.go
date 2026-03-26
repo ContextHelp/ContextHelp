@@ -90,6 +90,10 @@ func (s *stubEdgeStore) Delete(_ context.Context, _ string) error { return nil }
 
 func (s *stubEdgeStore) DeleteByObject(_ context.Context, _ string) error { return nil }
 
+func (s *stubEdgeStore) CountMentionsTo(_ context.Context, _, _ string) (int, error) {
+	return 0, nil
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 func mustURI(t *testing.T, s string) uri.URI {
