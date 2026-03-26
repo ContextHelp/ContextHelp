@@ -80,10 +80,7 @@ func TestUS0020_FocusProfileAllObjectsWhenNoProfile(t *testing.T) {
 }
 
 // TestUS0020_FocusProfileViaHTTPSearchQuery verifies the HTTP search endpoint
-// returns a 200 response and does not error when a profile parameter is present.
-// Profile-scoped filtering via HTTP is exercised via the service layer directly
-// (TestUS0020_FocusProfileRestrictsSearchScope); the HTTP handler currently
-// applies the RSQL filter without profile scoping.
+// parses the profile query param and scopes results to that profile.
 func TestUS0020_FocusProfileViaHTTPSearchQuery(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
@@ -95,19 +92,22 @@ func TestUS0020_FocusProfileViaHTTPSearchQuery(t *testing.T) {
 		ID: "fp-http-1", Type: "article", ProfileID: "ops",
 		CreatedAt: now, UpdatedAt: now,
 	}))
+	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		ID: "fp-http-2", Type: "article", ProfileID: "dev",
+		CreatedAt: now, UpdatedAt: now,
+	}))
 
-	// HTTP search endpoint must respond 200 (no crash or 5xx) when
-	// profile parameter is supplied.
+	// HTTP search with profile=ops must only return "ops" objects.
 	resp := doGet(t, env.URL+"/api/v1/search?q=type==article&profile=ops")
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
 
 	var body searchResponse
 	decodeJSON(t, resp.Body, &body)
-	// At least the one ingested object must be visible (global search, no
-	// HTTP-level profile scoping in current implementation).
 	assert.True(t, containsID(body.Data, "fp-http-1"),
-		"ingested article must appear in search results")
+		"ops article must appear when profile=ops")
+	assert.False(t, containsID(body.Data, "fp-http-2"),
+		"dev article must not appear when profile=ops")
 }
 
 // TestUS0020_FocusProfileNoMatchReturnsEmpty verifies that a profile with no

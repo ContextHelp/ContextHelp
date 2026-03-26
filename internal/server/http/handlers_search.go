@@ -17,8 +17,14 @@ func Search(svc *service.Service) http.HandlerFunc {
 
 		limit := parseIntDefault(r.URL.Query().Get("limit"), 20)
 		offset := parseIntDefault(r.URL.Query().Get("offset"), 0)
+		profile := r.URL.Query().Get("profile")
 
-		results, total, err := svc.SearchObjects(r.Context(), q, limit, offset)
+		var profileArgs []string
+		if profile != "" {
+			profileArgs = []string{profile}
+		}
+
+		results, total, err := svc.SearchObjects(r.Context(), q, limit, offset, profileArgs...)
 		if err != nil {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 			return
