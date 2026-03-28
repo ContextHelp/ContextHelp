@@ -31,6 +31,7 @@
 - Design enrichment recipes (`pipelines.md`) for each content type
 - Define AI-backed steps (tag assignment, entity extraction, decision extraction)
 - Balance progressive enrichment with deterministic guarantees
+- Maintain domain-specific scraper rule coverage for high-value sites without hardcoding every fix
 
 ### Query Language Evolution
 - Extend RSQL operators and AST node types (`query-language-spec.md`)
@@ -102,6 +103,7 @@ Maintainers interact with the system through these key stories:
 - [US-0300](../stories/ingestion/US-0300-importer-extension-interface.md) — Importer Extension Interface (plugin contract design)
 - [US-0042](../stories/plugins/US-0042-implement-custom-enrichment-plugin.md) — Implement Custom Enrichment Plugin
 - [US-0043](../stories/plugins/US-0043-implement-custom-ai-provider-plugin.md) — Implement Custom AI Provider Plugin
+- [US-0114](../stories/pipelines/US-0114-configure-domain-scraper-rules.md) — Configure Domain Scraper Rules
 
 ### Operations & Monitoring
 - [US-0008](../stories/ingestion/US-0008-batch-import-from-file.md) — Batch Import from File

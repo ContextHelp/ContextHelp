@@ -8,6 +8,7 @@
 
 - Build comprehensive profiles of people, companies, and topics from scattered public sources
 - Capture authenticated web content (behind logins) without manual copy-paste
+- Recover full article bodies from difficult layouts using domain-aware extraction rules and fallbacks
 - Cross-reference entities across platforms (same person on X, LinkedIn, GitHub, Wikipedia)
 - Track changes over time (profile updates, new publications, deleted content)
 - Maintain provenance chain for every captured artifact (when, where, how obtained)
@@ -214,6 +215,7 @@ Generated: 2026-02-18 | Template: osint-profile
 - User controls which profiles/sessions are available for capture
 - Extension captures rendered DOM (not just source), handling JS-heavy SPAs
 - Screenshot capture provides archival visual proof alongside structured data
+- Domain-specific scraper rules can extract the real article body when generic readability is too noisy
 
 ### Cookie-Based Fetching
 - CLI `ctxt capture` can use exported cookie files for authenticated fetching

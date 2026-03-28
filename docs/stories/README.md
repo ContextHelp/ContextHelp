@@ -176,6 +176,7 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0111** | [configure-registry-autoupdate.md](./pipelines/US-0111-configure-registry-autoupdate.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers, Registry Operators |
 | **US-0112** | [configure-sandbox-per-pipeline.md](./pipelines/US-0112-configure-sandbox-per-pipeline.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
 | **US-0113** | [ctxt-analyze-api-client.md](./pipelines/US-0113-ctxt-analyze-api-client.md) | dpkms (self-hosted), dpkms cloud | Knowledge Workers, Platform Integrators |
+| **US-0114** | [configure-domain-scraper-rules](./pipelines/US-0114-configure-domain-scraper-rules.md) | ctxt, dpkms (self-hosted) | Platform Integrators, Maintainers |
 
 ---
 

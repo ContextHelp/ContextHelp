@@ -15,7 +15,7 @@ As a knowledge worker, I want to subscribe to RSS, Atom, and JSON feeds and have
 
 Knowledge workers follow dozens of blogs, newsletters, research feeds, and industry publications. Manually copying links into the system every time a new article appears is unsustainable. Feed subscriptions solve this by turning ingestion into a background process: subscribe once, and every new item flows into the knowledge base automatically.
 
-Feed ingestion is a first-class subsystem, not a one-shot import. It maintains persistent subscriptions with scheduled polling, conditional HTTP fetching (ETag/Last-Modified) to respect upstream bandwidth, and per-item deduplication to prevent re-ingestion. Each feed item is enqueued as its own ingestion job, reusing existing pipelines (`url.article`, `text.long`) for extraction and enrichment.
+Feed ingestion is a first-class subsystem, not a one-shot import. It maintains persistent subscriptions with scheduled polling, conditional HTTP fetching (ETag/Last-Modified) to respect upstream bandwidth, and per-item deduplication to prevent re-ingestion. Each feed item is enqueued as its own ingestion job, reusing existing pipelines (`url.article`, `text.long`) for extraction and enrichment. For feeds that only publish excerpts or thin summaries, the system may fetch the linked article and reuse the same domain-aware scraper used by browser capture so the resulting knowledge object contains fuller content.
 
 Operations teams need visibility into feed health: which feeds are active, when they last synced, whether a feed has gone stale or returned errors. The system must handle real-world feed problems gracefully: temporarily unreachable URLs, malformed XML/JSON, feeds that disappear (410 Gone), and rate limiting (429 Too Many Requests).
 
@@ -31,6 +31,11 @@ Operations teams need visibility into feed health: which feeds are active, when 
 - [ ] Sync uses conditional GET (ETag/Last-Modified) to avoid re-fetching unchanged feeds
 - [ ] Each new feed item is enqueued as a separate ingestion job with its own KnowledgeObject
 - [ ] Items are deduplicated by GUID or link to prevent re-ingestion across syncs
+- [ ] Feed items with missing, excerpt-only, or clearly thin content may fetch the linked article for enrichment before final ingestion
+- [ ] Feed items that already contain rich embedded content can skip linked-article enrichment
+- [ ] Linked-article enrichment reuses the same selector-rule and readability fallback strategy as web page capture
+- [ ] If linked-article enrichment fails, the original feed-provided content is retained and ingestion still completes
+- [ ] Feed item metadata records whether the final content came from the feed body, linked-article enrichment, or a fallback path
 - [ ] Feed errors (unreachable, malformed, 410 Gone, 429) are logged and surfaced in feed status
 - [ ] Feed metadata (title, description, site URL) is extracted and stored on first subscribe
 
@@ -144,7 +149,7 @@ DELETE /feeds/f-abc123
 
 The `feed.sync` pipeline runs at the subscription level (periodic polling). Individual feed items are dispatched to content pipelines:
 
-- **feed.sync** --> FeedFetcher --> FeedParser --> ItemDeduplicator --> ItemEnqueuer
+- **feed.sync** --> FeedFetcher --> FeedParser --> ItemDeduplicator --> FeedItemFetcher (optional enrichment) --> ItemEnqueuer
 - Each new item enqueued to **url.article** (if item has a link) or **text.long** (if item is content-only)
 
 ```go
@@ -229,9 +234,10 @@ func (s *FeedParser) Run(ctx context.Context, draft *storage.KnowledgeObject) (*
 3. **Conditional fetch:** FeedFetcher sends a GET request with `If-None-Match` (ETag) and `If-Modified-Since` headers. If the server returns 304 Not Modified, the sync completes with zero new items.
 4. **Parse:** FeedParser detects the format and extracts a list of items. Each item has a GUID (or link as fallback), title, content/summary, published date, and author.
 5. **Deduplicate:** ItemDeduplicator checks each item's GUID against a `feed_items` table. Only items not previously seen are passed through.
-6. **Enqueue:** ItemEnqueuer creates one ingestion job per new item. The job's pipeline is `url.article` if the item has a link, or `text.long` if it contains inline content only. The KnowledgeObject for each item has `Type="feed_item"`, `Source=<item URL>`, and Metadata including `feed_url`, `feed_id`, `published_at`, and `author`.
-7. **Update feed state:** The `feeds` row is updated with the new `etag`, `last_modified`, `last_sync` timestamp, and item count.
-8. **Error handling:** If the feed URL is unreachable, the feed status is set to `error` with the reason. After a configurable number of consecutive failures (default: 5), the feed is automatically set to `suspended`. A 410 Gone response permanently marks the feed as `gone`.
+6. **Optional article enrichment:** For items whose feed body is empty or too thin, `FeedItemFetcher` fetches the linked article and runs the shared article extractor. When enrichment succeeds, the item body is replaced with the fuller article content and tagged as article-enriched in metadata.
+7. **Enqueue:** ItemEnqueuer creates one ingestion job per new item. The job's pipeline is `url.article` if the item has a link, or `text.long` if it contains inline content only. The KnowledgeObject for each item has `Type="feed_item"`, `Source=<item URL>`, and Metadata including `feed_url`, `feed_id`, `published_at`, `author`, and `content_origin`.
+8. **Update feed state:** The `feeds` row is updated with the new `etag`, `last_modified`, `last_sync` timestamp, and item count.
+9. **Error handling:** If the feed URL is unreachable, the feed status is set to `error` with the reason. After a configurable number of consecutive failures (default: 5), the feed is automatically set to `suspended`. A 410 Gone response permanently marks the feed as `gone`.
 
 ### Database Schema
 

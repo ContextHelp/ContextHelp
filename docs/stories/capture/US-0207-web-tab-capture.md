@@ -17,7 +17,7 @@ Knowledge workers spend significant time in the browser -- reading articles, rev
 
 A browser extension that integrates directly with ctxt eliminates this friction entirely. A single click or keyboard shortcut captures the full page, a text selection, or a specific DOM element -- complete with source URL, page title, capture timestamp, and authentication state. The extension popup shows recent captures with status indicators, providing confidence that captured content is being processed.
 
-Three capture modes address different use cases: full-page capture for articles and reference pages (processed through the readability extraction pipeline), selection capture for specific paragraphs or quotes (processed through the text pipeline), and element capture for structured data like tables, code blocks, or UI components (preserving both HTML structure and a visual screenshot). Each mode routes to the appropriate pipeline, ensuring the captured content is cleaned, enriched, and indexed optimally.
+Three capture modes address different use cases: full-page capture for articles and reference pages (processed through a domain-aware article extraction pipeline), selection capture for specific paragraphs or quotes (processed through the text pipeline), and element capture for structured data like tables, code blocks, or UI components (preserving both HTML structure and a visual screenshot). Each mode routes to the appropriate pipeline, ensuring the captured content is cleaned, enriched, and indexed optimally.
 
 ---
 
@@ -27,13 +27,16 @@ Three capture modes address different use cases: full-page capture for articles 
 - [ ] Right-click selected text -> "Capture selection to ctxt" sends selection + source URL to ctxt
 - [ ] Right-click any element -> "Capture element" sends element outerHTML + screenshot + source URL
 - [ ] All captures include: source URL, page title, capture timestamp, and authentication state
-- [ ] Full page capture uses the `web.page` pipeline (readability extraction on pre-fetched HTML)
+- [ ] Full page capture uses the `web.page` pipeline (domain-aware selector extraction on pre-fetched HTML with readability fallback)
+- [ ] When a domain-specific scraper rule exists, full-page capture extracts the matching article body before generic readability is attempted
+- [ ] When no scraper rule matches or selector extraction returns empty content, full-page capture falls back to readability extraction without failing the capture
 - [ ] Selection capture routes to `web.selection` pipeline
 - [ ] Element capture routes to `web.element` pipeline and stores both HTML and screenshot
 - [ ] Extension popup shows the 10 most recent captures with status indicators (pending, completed, failed)
 - [ ] Keyboard shortcut Cmd+Shift+C (configurable) triggers capture of current tab
 - [ ] Extension communicates with local ctxt instance via localhost API
 - [ ] Captures from authenticated pages include cookie state metadata (not the cookies themselves)
+- [ ] Full-page captures record extraction metadata such as strategy used (`selector` or `readability`) and the matched rule domain when applicable
 - [ ] Extension gracefully handles ctxt being unreachable (queues locally, retries)
 
 ---
@@ -173,7 +176,7 @@ GET /api/v1/capture/recent?limit=10
 
 **web.page** (full page capture from browser extension — HTML pre-fetched by extension):
 ```
-HTMLReceiver -> ReadabilityConverter -> MetadataExtractor -> Sectioner -> Tagger -> EmbeddingGenerator
+HTMLReceiver -> ArticleScraper -> MetadataExtractor -> Sectioner -> Tagger -> EmbeddingGenerator
 ```
 
 **web.selection** (text selection capture):

@@ -7,6 +7,7 @@
 ## Goals
 
 - Capture insights and content with minimal friction (seconds, not minutes)
+- Capture clean article bodies even when feeds only expose excerpts or sites use awkward layouts
 - Retrieve just-in-time context matching role/project focus without scrolling through archives
 - Discover relationships and patterns across accumulated knowledge automatically
 - Generate briefs, plans, and drafts with traceable sources (who said this, when, why)
@@ -180,6 +181,11 @@ ctxt make plan --intent "implement mobile-first redesign"
 - Videos: presentation recordings, demos (transcribed, scene-detected)
 - Documents: PDFs, Markdown, code files (parsed, structured)
 - Feeds: RSS/Atom (periodic sync, incremental indexing)
+
+### Domain-Aware Article Extraction
+- Browser captures and URL ingestion can use per-domain scraper rules before generic readability
+- Feed items with thin summaries can be enriched from the linked article automatically
+- Extraction metadata shows whether content came from a selector rule, readability, or the original feed body
 
 ### Semantic Enrichment
 - Automatic summarization (extractive or abstractive)

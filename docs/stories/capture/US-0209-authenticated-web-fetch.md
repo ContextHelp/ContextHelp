@@ -17,7 +17,7 @@ A significant portion of valuable knowledge lives behind authentication walls: p
 
 Authenticated web fetch solves this by leveraging the user's existing browser session. When `--auth browser` is specified, the system injects stored cookies from the user's browser into the fetch request, impersonating their authenticated session. This approach avoids storing passwords or API keys for every service -- the user simply needs to be logged in via their browser, and ctxt piggybacks on that session. A cookie freshness check warns when cookies are stale (beyond a configurable age), prompting the user to refresh their browser session before capture.
 
-The system distinguishes between public and private content for robots.txt compliance: public sites respect robots.txt directives, while authenticated private content (where the user has legitimate access) bypasses these restrictions. Per-domain configuration allows fine-grained control over authentication method, rate limiting, and content extraction strategy. Readability extraction strips navigation, ads, and page chrome to preserve only the article body, ensuring clean content regardless of the source site's layout complexity.
+The system distinguishes between public and private content for robots.txt compliance: public sites respect robots.txt directives, while authenticated private content (where the user has legitimate access) bypasses these restrictions. Per-domain configuration allows fine-grained control over authentication method, rate limiting, and content extraction strategy. Domain-specific scraper rules should be tried before generic readability so authenticated pages with awkward layouts, heavy chrome, or unstable article markup still yield usable body content.
 
 ---
 
@@ -26,8 +26,11 @@ The system distinguishes between public and private content for robots.txt compl
 - [ ] `ctxt capture <url> --auth browser` fetches content using stored browser cookies
 - [ ] System falls back to unauthenticated fetch when cookies are missing or expired
 - [ ] Cookie freshness check warns when cookies are older than the configured `cookieMaxAge`
-- [ ] Readability extraction strips navigation, ads, and page chrome from captured content
+- [ ] Per-domain scraper rules may override generic readability extraction for authenticated pages
+- [ ] Same-site authenticated redirects continue to use the matched scraper rule when one exists for the effective domain
+- [ ] Readability extraction strips navigation, ads, and page chrome from captured content when no scraper rule matches or selector extraction fails
 - [ ] Authentication method is recorded in object metadata (`cookie`, `public`, or `api-key`)
+- [ ] Extraction metadata records the strategy used (`selector` or `readability`), effective URL, and matched rule domain when applicable
 - [ ] Per-domain configuration controls auth method, rate limits, and extraction strategy
 - [ ] Rate limiting is enforced per domain to avoid triggering anti-bot measures
 - [ ] Public sites respect robots.txt; authenticated private content bypasses robots.txt
@@ -174,7 +177,7 @@ GET /api/v1/capture/domains
 
 **web.authenticated** (authenticated fetch pipeline):
 ```
-CookieInjector -> HTMLFetcher -> ReadabilityConverter -> MetadataExtractor -> Sectioner -> Tagger -> EmbeddingGenerator
+CookieInjector -> HTMLFetcher -> ArticleScraper -> MetadataExtractor -> Sectioner -> Tagger -> EmbeddingGenerator
 ```
 
 Each step implements the `PipelineStep` interface:

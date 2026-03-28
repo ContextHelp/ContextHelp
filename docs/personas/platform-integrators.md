@@ -10,6 +10,7 @@
 - Implement custom AI providers for enrichment and NLQ normalization
 - Build tailored capture and composition UI layers (web, mobile, IDE plugins)
 - Integrate with external knowledge sources (industry registries, APIs, data lakes)
+- Improve extraction quality for difficult websites and feed-linked articles with domain-specific rules
 - Monetize or white-label the system for specific domains or use cases
 
 ---
@@ -213,6 +214,11 @@ func (p *Plugin) Register(ctx HostContext) error {
 - Config loader auto-dispatches on type key
 - Environment variable overrides for deployment flexibility
 
+### Extraction Rule Maintenance
+- Integrators can ship curated scraper rules for domains their users rely on
+- The same rule set can improve browser capture, authenticated fetch, and feed enrichment together
+- Rule-hit and fallback metadata make it easier to validate extraction quality in production
+
 ### Event-Driven Job Queue
 - Plugins hook into ingestion + enrichment pipeline
 - Can observe and react to job state changes (pending → running → completed)
@@ -258,6 +264,7 @@ Platform integrators interact with the system through these key stories:
 ### Pipeline & Configuration
 - [US-0028](../stories/admin/US-0028-register-custom-pipeline.md) — Register Custom Pipeline (custom processing workflows)
 - [US-0029](../stories/admin/US-0029-install-and-enable-plugin.md) — Install and Enable Plugin (deployment & permissions)
+- [US-0114](../stories/pipelines/US-0114-configure-domain-scraper-rules.md) — Configure Domain Scraper Rules (config-driven extraction quality)
 - [US-0041](../stories/agents/US-0041-agent-uses-constrained-enrichment.md) — Agent Uses Constrained Enrichment (constraint patterns)
 
 ### Registry & Ranking
