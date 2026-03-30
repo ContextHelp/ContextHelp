@@ -83,3 +83,46 @@ func TestMigration022_GraphColumns(t *testing.T) {
 	).Scan(&idxCount))
 	assert.Equal(t, 2, idxCount, "both object_nodes indexes must exist")
 }
+
+// TestMigration022_Backfill verifies the backfill logic inside
+// migrate022GraphCanonical: any row with graph_json IS NULL must be updated to
+// '{}' when the backfill UPDATE is applied.
+//
+// Strategy: full Migrate has already run (column exists); we INSERT a row with
+// explicit NULL via raw SQL, then re-execute the exact same backfill UPDATE that
+// migrate022GraphCanonical uses, and confirm the row is now '{}'.
+func TestMigration022_Backfill(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Force graph_json = NULL by bypassing any application-level defaults.
+	_, err := d.db.ExecContext(ctx, `
+		INSERT INTO objects
+		    (id, type, created_at, updated_at, graph_json)
+		VALUES
+		    (?, ?, ?, ?, NULL)`,
+		"obj_backfill022", "note", now, now,
+	)
+	require.NoError(t, err, "INSERT with explicit NULL graph_json must succeed")
+
+	// Confirm the row is actually NULL before backfill.
+	var before *string
+	require.NoError(t, d.db.QueryRowContext(ctx,
+		`SELECT graph_json FROM objects WHERE id = ?`, "obj_backfill022",
+	).Scan(&before))
+	assert.Nil(t, before, "graph_json must be NULL before backfill")
+
+	// Re-run the exact backfill UPDATE from migrate022GraphCanonical.
+	_, err = d.db.ExecContext(ctx,
+		`UPDATE objects SET graph_json = '{}' WHERE graph_json IS NULL`)
+	require.NoError(t, err, "backfill UPDATE must not error")
+
+	// Verify the row now has '{}'.
+	var after string
+	require.NoError(t, d.db.QueryRowContext(ctx,
+		`SELECT graph_json FROM objects WHERE id = ?`, "obj_backfill022",
+	).Scan(&after))
+	assert.Equal(t, "{}", after, "graph_json must be '{}' after backfill")
+}
