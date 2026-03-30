@@ -9,6 +9,8 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/repl"
+	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
@@ -96,7 +98,17 @@ func runFind(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	// Use the command context so session state (injected by REPL) is visible.
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// Extract session state when running inside a REPL session.
+	var sessionState *repl.SessionState
+	if v := ctx.Value(repl.SessionContextKey{}); v != nil {
+		sessionState, _ = v.(*repl.SessionState)
+	}
 
 	// Resolve search config: global → active profile → CLI flags.
 	searchCfg := cfg.Search
@@ -148,13 +160,21 @@ func runFind(cmd *cobra.Command, args []string) error {
 	case "vector":
 		factory := providers.NewFactory(cfg.Providers, nil)
 		ep := factory.Embedding()
+		ep, originalVec := blendSessionContext(ctx, query, ep, sessionState)
 		results, err = svc.SemanticSearch(ctx, query, limit, ep)
+		if err == nil && sessionState != nil && originalVec != nil {
+			sessionState.PushQueryVector(originalVec)
+		}
 	case "fts":
 		results, err = svc.FindByText(ctx, query, limit)
 	default: // "hybrid"
 		factory := providers.NewFactory(cfg.Providers, nil)
 		ep := factory.Embedding()
+		ep, originalVec := blendSessionContext(ctx, query, ep, sessionState)
 		results, err = svc.HybridSearch(ctx, query, limit, ep, searchCfg)
+		if err == nil && sessionState != nil && originalVec != nil {
+			sessionState.PushQueryVector(originalVec)
+		}
 	}
 
 	if err != nil {
@@ -225,6 +245,49 @@ func runFindExplain(cmd *cobra.Command, ctx context.Context, svc *service.Servic
 		fmt.Println()
 	}
 	return nil
+}
+
+// blendSessionContext embeds the query, blends with session context if available,
+// and returns a precomputed provider plus the original (pre-blend) vector.
+// If no session context is available, originalVec is nil and ep is returned unchanged.
+func blendSessionContext(
+	ctx context.Context,
+	query string,
+	ep providers.EmbeddingProvider,
+	state *repl.SessionState,
+) (providers.EmbeddingProvider, []float32) {
+	if state == nil {
+		return ep, nil
+	}
+	sessionCtxVec := state.SessionContextVector()
+	if sessionCtxVec == nil {
+		// No context yet — embed so we can push after success, but return original ep.
+		originalVec, embedErr := ep.Embed(ctx, query)
+		if embedErr != nil || len(originalVec) == 0 {
+			return ep, nil
+		}
+		return &precomputedEmbedProvider{vec: originalVec, inner: ep}, originalVec
+	}
+
+	// Embed, blend, wrap.
+	originalVec, embedErr := ep.Embed(ctx, query)
+	if embedErr != nil || len(originalVec) == 0 {
+		return ep, nil
+	}
+	blended := search.BlendVectors(originalVec, sessionCtxVec, 0.85)
+	return &precomputedEmbedProvider{vec: blended, inner: ep}, originalVec
+}
+
+// precomputedEmbedProvider satisfies providers.EmbeddingProvider using a cached vector.
+type precomputedEmbedProvider struct {
+	vec   []float32
+	inner providers.EmbeddingProvider
+}
+
+func (p *precomputedEmbedProvider) Name() string    { return p.inner.Name() }
+func (p *precomputedEmbedProvider) Dimensions() int { return len(p.vec) }
+func (p *precomputedEmbedProvider) Embed(_ context.Context, _ string) ([]float32, error) {
+	return p.vec, nil
 }
 
 // printFindSuggestions runs a prefix FTS query and prints "Did you mean?" hints.
