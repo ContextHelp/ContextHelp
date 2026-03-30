@@ -1,6 +1,7 @@
 package retrieval
 
 import (
+	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -25,8 +26,24 @@ type Config struct {
 
 // TierConfig configures a single retrieval tier.
 type TierConfig struct {
-	Enabled bool
-	TopK    int
+	Enabled         bool
+	TopK            int
+	TopKMultipliers map[search.QueryMode]float64
+}
+
+// EffectiveTopK returns TopK scaled by the multiplier for mode.
+// When no multiplier is set (zero value) it defaults to 1.0.
+// Result is always at least 1.
+func (t TierConfig) EffectiveTopK(mode search.QueryMode) int {
+	mult := t.TopKMultipliers[mode]
+	if mult == 0 {
+		mult = 1.0
+	}
+	k := int(float64(t.TopK) * mult)
+	if k < 1 {
+		k = 1
+	}
+	return k
 }
 
 // State tracks in-flight retrieval progress.
@@ -44,6 +61,7 @@ type State struct {
 
 	QueryVector   []float32
 	NextStepQuery string
+	QueryMode     search.QueryMode
 }
 
 // Hit is a retrieved object with its relevance score.
@@ -70,8 +88,32 @@ func DefaultConfig() Config {
 		Method:                 MethodRAG,
 		EnableSufficiencyCheck: true,
 		LLMProfile:             "default",
-		Categories:             TierConfig{Enabled: true, TopK: 10},
-		Items:                  TierConfig{Enabled: true, TopK: 20},
-		Resources:              TierConfig{Enabled: true, TopK: 5},
+		Categories: TierConfig{
+			Enabled: true,
+			TopK:    10,
+			TopKMultipliers: map[search.QueryMode]float64{
+				search.QueryModeKeyword:   0.5,
+				search.QueryModeQuestion:  1.5,
+				search.QueryModeTechnical: 1.25,
+			},
+		},
+		Items: TierConfig{
+			Enabled: true,
+			TopK:    20,
+			TopKMultipliers: map[search.QueryMode]float64{
+				search.QueryModeKeyword:   0.5,
+				search.QueryModeQuestion:  1.5,
+				search.QueryModeTechnical: 1.25,
+			},
+		},
+		Resources: TierConfig{
+			Enabled: true,
+			TopK:    5,
+			TopKMultipliers: map[search.QueryMode]float64{
+				search.QueryModeKeyword:   1.0,
+				search.QueryModeQuestion:  2.0,
+				search.QueryModeTechnical: 1.5,
+			},
+		},
 	}
 }

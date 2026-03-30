@@ -7,6 +7,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
@@ -59,6 +60,7 @@ func (w *Workflow) Retrieve(
 		RewrittenQuery: query,
 		ActiveQuery:    query,
 		NeedsRetrieval: true,
+		QueryMode:      search.DetectQueryMode(query),
 	}
 
 	// Step 1: Route intention check (is retrieval even needed?).

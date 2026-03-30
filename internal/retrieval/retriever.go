@@ -14,7 +14,8 @@ func (w *Workflow) retrieveCategories(
 	filter storage.ObjectFilter,
 	nf *pluginapi.NodeAwareFilter,
 ) error {
-	return w.ragRetrieve(ctx, state, &state.CategoryHits, "category", w.config.Categories.TopK, filter, nf)
+	return w.ragRetrieve(ctx, state, &state.CategoryHits, "category",
+		w.config.Categories.EffectiveTopK(state.QueryMode), filter, nf)
 }
 
 // retrieveItems fetches item-typed objects.
@@ -24,7 +25,8 @@ func (w *Workflow) retrieveItems(
 	filter storage.ObjectFilter,
 	nf *pluginapi.NodeAwareFilter,
 ) error {
-	return w.ragRetrieve(ctx, state, &state.ItemHits, "item", w.config.Items.TopK, filter, nf)
+	return w.ragRetrieve(ctx, state, &state.ItemHits, "item",
+		w.config.Items.EffectiveTopK(state.QueryMode), filter, nf)
 }
 
 // retrieveResources fetches document-typed objects.
@@ -34,7 +36,8 @@ func (w *Workflow) retrieveResources(
 	filter storage.ObjectFilter,
 	nf *pluginapi.NodeAwareFilter,
 ) error {
-	return w.ragRetrieve(ctx, state, &state.ResourceHits, "document", w.config.Resources.TopK, filter, nf)
+	return w.ragRetrieve(ctx, state, &state.ResourceHits, "document",
+		w.config.Resources.EffectiveTopK(state.QueryMode), filter, nf)
 }
 
 // ragRetrieve performs a vector similarity search for a given type and accumulates
