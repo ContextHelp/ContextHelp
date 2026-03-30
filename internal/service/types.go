@@ -88,6 +88,8 @@ type ScoreBreakdown struct {
 	MentionBoost float64 `json:"mention_boost"`
 	// GraphRelevance is the additive bonus from inbound backlinks (direct + 2-hop).
 	GraphRelevance float64 `json:"graph_relevance"`
+	// WordOverlap is the additive bonus from projection-aware word overlap scoring.
+	WordOverlap float64 `json:"word_overlap"`
 	// Total is the sum of all signal contributions.
 	Total float64 `json:"total"`
 }

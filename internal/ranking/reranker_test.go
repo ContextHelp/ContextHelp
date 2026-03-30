@@ -71,7 +71,7 @@ func makeObj(id string, mentions ...string) *storage.KnowledgeObject {
 // TestRerank_EmptyCandidates returns empty result without error.
 func TestRerank_EmptyCandidates(t *testing.T) {
 	r := ranking.New(&stubEdges{}, ranking.DefaultWeights())
-	results, err := r.Rerank(context.Background(), nil, 0)
+	results, err := r.Rerank(context.Background(), "", nil, 0)
 	require.NoError(t, err)
 	assert.Empty(t, results)
 }
@@ -86,7 +86,7 @@ func TestRerank_FTSScorePreserved(t *testing.T) {
 		"b": {Object: makeObj("b"), FTSScore: 0.1, VecScore: 0.0},
 	}
 
-	results, err := r.Rerank(context.Background(), candidates, 0)
+	results, err := r.Rerank(context.Background(), "", candidates, 0)
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 
@@ -108,7 +108,7 @@ func TestRerank_MentionBoostApplied(t *testing.T) {
 		"b": {Object: makeObj("b"), FTSScore: 0.1},
 	}
 
-	results, err := r.Rerank(context.Background(), candidates, 0)
+	results, err := r.Rerank(context.Background(), "", candidates, 0)
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 
@@ -133,7 +133,7 @@ func TestRerank_MentionBoostCapped(t *testing.T) {
 		"a": {Object: makeObj("a", "n.a", "n.b", "n.c", "n.d", "n.e"), FTSScore: 0.0},
 	}
 
-	results, err := r.Rerank(context.Background(), candidates, 0)
+	results, err := r.Rerank(context.Background(), "", candidates, 0)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.InDelta(t, 1.0, results[0].MentionBoost, 1e-9)
@@ -150,7 +150,7 @@ func TestRerank_DirectBacklinkBoost(t *testing.T) {
 		"y": {Object: makeObj("y"), FTSScore: 0.1},
 	}
 
-	results, err := r.Rerank(context.Background(), candidates, 0)
+	results, err := r.Rerank(context.Background(), "", candidates, 0)
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 
@@ -173,7 +173,7 @@ func TestRerank_HopBacklinkBoost(t *testing.T) {
 		"unrelated": {Object: makeObj("unrelated", "ns.other"), FTSScore: 0.05},
 	}
 
-	results, err := r.Rerank(context.Background(), candidates, 0)
+	results, err := r.Rerank(context.Background(), "", candidates, 0)
 	require.NoError(t, err)
 	require.Len(t, results, 3)
 
@@ -197,7 +197,7 @@ func TestRerank_MinScoreFilters(t *testing.T) {
 		"low":  {Object: makeObj("low"), FTSScore: 0.01},
 	}
 
-	results, err := r.Rerank(context.Background(), candidates, 0.1)
+	results, err := r.Rerank(context.Background(), "", candidates, 0.1)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, "high", results[0].Object.ID)
@@ -212,12 +212,12 @@ func TestRerank_TotalEqualsSumOfSignals(t *testing.T) {
 		"z": {Object: makeObj("z", "ns.a"), FTSScore: 0.25, VecScore: 0.15},
 	}
 
-	results, err := r.Rerank(context.Background(), candidates, 0)
+	results, err := r.Rerank(context.Background(), "", candidates, 0)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 
 	res := results[0]
-	want := res.FTS + res.Vector + res.MentionBoost + res.GraphRelevance
+	want := res.FTS + res.Vector + res.MentionBoost + res.GraphRelevance + res.WordOverlap
 	assert.InDelta(t, want, res.Total, 1e-9)
 }
 
@@ -233,7 +233,7 @@ func TestRerank_DeterministicOrderOnTie(t *testing.T) {
 		"b": {Object: makeObj("b"), FTSScore: 0.1},
 	}
 
-	results, err := r.Rerank(context.Background(), candidates, 0)
+	results, err := r.Rerank(context.Background(), "", candidates, 0)
 	require.NoError(t, err)
 	require.Len(t, results, 3)
 	assert.Equal(t, "a", results[0].Object.ID)
@@ -258,7 +258,7 @@ func TestRerank_DocumentViewPopulated(t *testing.T) {
 		"doc1": {Object: obj, FTSScore: 0.5},
 	}
 
-	results, err := r.Rerank(context.Background(), candidates, 0)
+	results, err := r.Rerank(context.Background(), "", candidates, 0)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	// DocumentView.Body must be set (flat path: TextContent).
@@ -276,7 +276,7 @@ func TestRerank_DocumentViewFromGraph(t *testing.T) {
 		"g1": {Object: obj, FTSScore: 0.3},
 	}
 
-	results, err := r.Rerank(context.Background(), candidates, 0)
+	results, err := r.Rerank(context.Background(), "", candidates, 0)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	// Graph path: body is empty, sections carry the content.
