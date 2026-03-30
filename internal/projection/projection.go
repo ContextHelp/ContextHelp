@@ -12,6 +12,9 @@ import (
 // ProjectDocument derives a DocumentProjection from a KnowledgeObject.
 // Uses graph nodes when Graph is non-nil and non-empty; falls back to flat fields.
 func ProjectDocument(ko *pluginapi.KnowledgeObject) pluginapi.DocumentProjection {
+	if ko == nil {
+		return pluginapi.DocumentProjection{}
+	}
 	if ko.Graph == nil || len(ko.Graph.Nodes) == 0 {
 		return pluginapi.DocumentProjection{
 			Body:     ko.TextContent,
@@ -29,7 +32,7 @@ func ProjectDocument(ko *pluginapi.KnowledgeObject) pluginapi.DocumentProjection
 			Order:   n.Order,
 		})
 	}
-	sort.Slice(sections, func(i, j int) bool {
+	sort.SliceStable(sections, func(i, j int) bool {
 		return sections[i].Order < sections[j].Order
 	})
 	return pluginapi.DocumentProjection{Sections: sections}
@@ -38,6 +41,9 @@ func ProjectDocument(ko *pluginapi.KnowledgeObject) pluginapi.DocumentProjection
 // ProjectIndex derives an IndexProjection from a KnowledgeObject.
 // Uses graph nodes when Graph is non-nil and non-empty; falls back to flat fields.
 func ProjectIndex(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
+	if ko == nil {
+		return pluginapi.IndexProjection{}
+	}
 	if ko.Graph == nil || len(ko.Graph.Nodes) == 0 {
 		return flatIndexProjection(ko)
 	}
