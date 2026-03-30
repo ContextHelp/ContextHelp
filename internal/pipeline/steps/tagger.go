@@ -9,6 +9,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 var stopWords = map[string]bool{
@@ -124,6 +125,31 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 	}
 
 	draft.Tags = tags
+
+	// Emit canonical graph nodes: one NodeTypeTag node per tag.
+	// Skip if ID is empty (in-pipeline drafts before ID assignment).
+	if draft.ID != "" {
+		if draft.Graph == nil {
+			draft.Graph = &pluginapi.ObjectGraph{}
+		}
+		for i, tag := range tags {
+			tagID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeTag, i)
+			if draft.Graph.FindNode(tagID) != nil {
+				continue
+			}
+			draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+				ID:       tagID,
+				NodeType: pluginapi.NodeTypeTag,
+				Label:    tag.Label,
+				Order:    i,
+				Metadata: map[string]any{
+					"weight": tag.Weight,
+					"source": tag.Source,
+				},
+			})
+		}
+	}
+
 	return draft, nil
 }
 

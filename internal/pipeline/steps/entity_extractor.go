@@ -5,10 +5,11 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/internal/mentions"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // mentionRe matches @namespace.slug references in text.
@@ -80,5 +81,26 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 	}
 
 	draft.Mentions = mentions.ParseSlice(slugs)
+
+	// Emit canonical graph nodes: one NodeTypeEntityMention node per mention.
+	// Skip if ID is empty (in-pipeline drafts before ID assignment).
+	if draft.ID != "" {
+		if draft.Graph == nil {
+			draft.Graph = &pluginapi.ObjectGraph{}
+		}
+		for i, u := range draft.Mentions {
+			mentionID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeEntityMention, i)
+			if draft.Graph.FindNode(mentionID) != nil {
+				continue
+			}
+			draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+				ID:       mentionID,
+				NodeType: pluginapi.NodeTypeEntityMention,
+				Label:    u.String(),
+				Order:    i,
+			})
+		}
+	}
+
 	return draft, nil
 }

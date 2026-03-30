@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestExtractTags(t *testing.T) {
@@ -62,5 +63,48 @@ func TestTagWeights(t *testing.T) {
 
 	if designWeight <= patternWeight {
 		t.Errorf("design weight (%v) should be > pattern weight (%v)", designWeight, patternWeight)
+	}
+}
+
+func TestTaggerEmitsGraphNodes(t *testing.T) {
+	step := NewTagger()
+	draft := &storage.KnowledgeObject{
+		ID:         "obj-tag-001",
+		RawContent: strings.Repeat("design pattern layout ", 5),
+	}
+	got, err := step.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got.Graph == nil {
+		t.Fatal("graph is nil; expected tag nodes")
+	}
+	if len(got.Tags) == 0 {
+		t.Fatal("no tags produced; cannot verify graph nodes")
+	}
+	for i, tag := range got.Tags {
+		nodeID := pluginapi.NewNodeID("obj-tag-001", pluginapi.NodeTypeTag, i)
+		n := got.Graph.FindNode(nodeID)
+		if n == nil {
+			t.Errorf("tag node %q not found in graph", nodeID)
+			continue
+		}
+		if n.NodeType != pluginapi.NodeTypeTag {
+			t.Errorf("node %q: type = %q, want %q", nodeID, n.NodeType, pluginapi.NodeTypeTag)
+		}
+		if n.Label != tag.Label {
+			t.Errorf("node %q: label = %q, want %q", nodeID, n.Label, tag.Label)
+		}
+	}
+}
+
+func TestTaggerNoGraphWithoutID(t *testing.T) {
+	step := NewTagger()
+	draft := &storage.KnowledgeObject{
+		RawContent: strings.Repeat("design pattern ", 5),
+	}
+	got, _ := step.Run(context.Background(), draft)
+	if got.Graph != nil {
+		t.Error("expected nil graph when ID is empty")
 	}
 }
