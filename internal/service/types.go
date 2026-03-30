@@ -5,6 +5,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/citation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"hop.top/uri"
 )
 
@@ -92,9 +93,11 @@ type ScoreBreakdown struct {
 }
 
 // HybridResult pairs a KnowledgeObject with its score breakdown.
+// DocumentView is populated for all results; use it for display surfaces.
 type HybridResult struct {
-	Object    *storage.KnowledgeObject `json:"object"`
-	Breakdown ScoreBreakdown           `json:"score_breakdown"`
+	Object       *storage.KnowledgeObject    `json:"object"`
+	Breakdown    ScoreBreakdown              `json:"score_breakdown"`
+	DocumentView pluginapi.DocumentProjection `json:"document_view"`
 }
 
 // InboxQueueItem is a row in the combined inbox queue view.
