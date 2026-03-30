@@ -2,11 +2,13 @@ package steps
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 type Sectioner struct {
@@ -103,5 +105,43 @@ func (s *Sectioner) Run(ctx context.Context, draft *storage.KnowledgeObject) (*s
 	}
 
 	draft.Sections = sections
+
+	// Emit canonical graph nodes: root summary + one section node per section.
+	// Skip if ID is empty (e.g., in-pipeline drafts before ID assignment).
+	if draft.ID == "" {
+		return draft, nil
+	}
+	if draft.Graph == nil {
+		draft.Graph = &pluginapi.ObjectGraph{}
+	}
+	rootID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSummary, 0)
+	// Only add root if not already present (textcleaner may have added it).
+	if draft.Graph.FindNode(rootID) == nil {
+		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			ID:       rootID,
+			NodeType: pluginapi.NodeTypeSummary,
+			Label:    "root",
+			Content:  draft.RawContent,
+			Order:    0,
+		})
+	}
+	for i, sec := range sections {
+		secID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSection, i)
+		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			ID:       secID,
+			NodeType: pluginapi.NodeTypeSection,
+			Label:    sec.Title,
+			Content:  sec.Content,
+			Order:    i,
+			Metadata: sec.Metadata,
+		})
+		draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+			ID:       fmt.Sprintf("%s->%s", rootID, secID),
+			FromID:   rootID,
+			ToID:     secID,
+			EdgeType: pluginapi.EdgeTypeContains,
+		})
+	}
+
 	return draft, nil
 }

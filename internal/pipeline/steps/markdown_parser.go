@@ -2,11 +2,13 @@ package steps
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 var markdownHeadingRe = regexp.MustCompile(`(?m)^(#{1,6})\s+(.+)$`)
@@ -63,6 +65,45 @@ func (s *MarkdownParser) Run(ctx context.Context, draft *storage.KnowledgeObject
 	}
 
 	draft.Metadata["markdown_heading_count"] = len(matches)
+
+	// Emit canonical graph nodes: root summary + section nodes with contains edges.
+	// Skip if ID is empty (e.g., in-pipeline drafts before ID assignment).
+	if draft.ID == "" {
+		return draft, nil
+	}
+	if draft.Graph == nil {
+		draft.Graph = &pluginapi.ObjectGraph{}
+	}
+	rootID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSummary, 0)
+	if draft.Graph.FindNode(rootID) == nil {
+		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			ID:       rootID,
+			NodeType: pluginapi.NodeTypeSummary,
+			Label:    "root",
+			Content:  draft.RawContent,
+			Order:    0,
+		})
+	}
+	for i, sec := range draft.Sections {
+		secID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSection, i)
+		if draft.Graph.FindNode(secID) != nil {
+			continue
+		}
+		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			ID:       secID,
+			NodeType: pluginapi.NodeTypeSection,
+			Label:    sec.Title,
+			Content:  sec.Content,
+			Order:    i,
+			Metadata: sec.Metadata,
+		})
+		draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+			ID:       fmt.Sprintf("%s->%s", rootID, secID),
+			FromID:   rootID,
+			ToID:     secID,
+			EdgeType: pluginapi.EdgeTypeContains,
+		})
+	}
 
 	return draft, nil
 }

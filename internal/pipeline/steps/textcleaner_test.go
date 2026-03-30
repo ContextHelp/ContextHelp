@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestTextCleanerNormalizesSpaces(t *testing.T) {
@@ -40,5 +41,40 @@ func TestTextCleanerCRLF(t *testing.T) {
 	got, _ := step.Run(context.Background(), draft)
 	if got.RawContent != "line1\nline2" {
 		t.Errorf("got %q", got.RawContent)
+	}
+}
+
+func TestTextCleanerEmitsGraphSummaryNode(t *testing.T) {
+	step := NewTextCleaner()
+	draft := &storage.KnowledgeObject{
+		ID:         "obj-001",
+		RawContent: "  hello   world  ",
+	}
+	got, err := step.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got.Graph == nil {
+		t.Fatal("graph is nil; expected summary node")
+	}
+	wantID := pluginapi.NewNodeID("obj-001", pluginapi.NodeTypeSummary, 0)
+	node := got.Graph.FindNode(wantID)
+	if node == nil {
+		t.Fatalf("summary node %q not found in graph", wantID)
+	}
+	if node.NodeType != pluginapi.NodeTypeSummary {
+		t.Errorf("node type: got %q, want %q", node.NodeType, pluginapi.NodeTypeSummary)
+	}
+	if node.Content != "hello world" {
+		t.Errorf("node content: got %q, want %q", node.Content, "hello world")
+	}
+}
+
+func TestTextCleanerNoGraphWithoutID(t *testing.T) {
+	step := NewTextCleaner()
+	draft := &storage.KnowledgeObject{RawContent: "some text"}
+	got, _ := step.Run(context.Background(), draft)
+	if got.Graph != nil {
+		t.Error("expected nil graph when ID is empty")
 	}
 }

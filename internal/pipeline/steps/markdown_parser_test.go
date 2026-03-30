@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestMarkdownParserCreatesHeadingSections(t *testing.T) {
@@ -45,5 +46,65 @@ func TestMarkdownParserName(t *testing.T) {
 	step := NewMarkdownParser()
 	if step.Name() != "markdown_parser" {
 		t.Errorf("name: %q", step.Name())
+	}
+}
+
+func TestMarkdownParserEmitsGraphNodes(t *testing.T) {
+	step := NewMarkdownParser()
+	draft := &storage.KnowledgeObject{
+		ID:         "obj-004",
+		RawContent: "# Title\n\nSome content\n\n## Section\n\nMore content",
+	}
+	got, err := step.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got.Graph == nil {
+		t.Fatal("graph is nil; expected nodes")
+	}
+
+	rootID := pluginapi.NewNodeID("obj-004", pluginapi.NodeTypeSummary, 0)
+	if got.Graph.FindNode(rootID) == nil {
+		t.Errorf("root summary node %q not found", rootID)
+	}
+
+	// Two headings → two section nodes.
+	for i := 0; i < 2; i++ {
+		secID := pluginapi.NewNodeID("obj-004", pluginapi.NodeTypeSection, i)
+		if got.Graph.FindNode(secID) == nil {
+			t.Errorf("section node %q not found", secID)
+		}
+	}
+
+	if len(got.Graph.Edges) != 2 {
+		t.Errorf("edges: got %d, want 2", len(got.Graph.Edges))
+	}
+	for _, e := range got.Graph.Edges {
+		if e.EdgeType != pluginapi.EdgeTypeContains {
+			t.Errorf("edge type: got %q, want contains", e.EdgeType)
+		}
+	}
+}
+
+func TestMarkdownParserNoGraphWithoutID(t *testing.T) {
+	step := NewMarkdownParser()
+	draft := &storage.KnowledgeObject{
+		RawContent: "# Title\n\ncontent",
+	}
+	got, _ := step.Run(context.Background(), draft)
+	if got.Graph != nil {
+		t.Error("expected nil graph when ID is empty")
+	}
+}
+
+func TestMarkdownParserNoGraphOnNoHeadings(t *testing.T) {
+	step := NewMarkdownParser()
+	draft := &storage.KnowledgeObject{
+		ID:         "obj-005",
+		RawContent: "Just plain text.",
+	}
+	got, _ := step.Run(context.Background(), draft)
+	if got.Graph != nil {
+		t.Error("expected nil graph when there are no headings")
 	}
 }
