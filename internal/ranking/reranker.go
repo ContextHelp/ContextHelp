@@ -24,6 +24,7 @@ type Result struct {
 	Vector         float64 // RRF vector contribution
 	MentionBoost   float64 // outbound mention count bonus
 	GraphRelevance float64 // inbound backlink bonus
+	WordOverlap    float64 // post-retrieval word overlap signal
 	Total          float64 // sum of all signals
 	// DocumentView is pre-computed via ProjectDocument for display surfaces.
 	DocumentView pluginapi.DocumentProjection
@@ -43,15 +44,20 @@ type WeightConfig struct {
 	// HopBacklink is the bonus for 2-hop connections via shared entity URIs.
 	// Default: 0.03.
 	HopBacklink float64
+	// WordOverlapWeight scales the word-overlap ratio (0–1) before adding to
+	// the total score. Kept intentionally light to act as a tiebreaker signal.
+	// Default: 0.15.
+	WordOverlapWeight float64
 }
 
 // DefaultWeights returns sensible default weight constants.
 func DefaultWeights() WeightConfig {
 	return WeightConfig{
-		MentionBoost:    0.05,
-		MaxMentionBoost: 1.0,
-		DirectBacklink:  0.08,
-		HopBacklink:     0.03,
+		MentionBoost:      0.05,
+		MaxMentionBoost:   1.0,
+		DirectBacklink:    0.08,
+		HopBacklink:       0.03,
+		WordOverlapWeight: 0.15,
 	}
 }
 
@@ -64,9 +70,10 @@ type EdgeCounter interface {
 // Reranker merges, scores, and sorts search candidates.
 type Reranker interface {
 	// Rerank takes a map of pre-scored candidates (keyed by object ID),
-	// applies mention + graph signals, and returns results sorted by
-	// descending total score.  Results below minScore are excluded.
-	Rerank(ctx context.Context, candidates map[string]Candidate, minScore float64) ([]Result, error)
+	// applies mention + graph + word-overlap signals, and returns results sorted
+	// by descending total score.  Results below minScore are excluded.
+	// query is the original search string used for word overlap scoring.
+	Rerank(ctx context.Context, query string, candidates map[string]Candidate, minScore float64) ([]Result, error)
 }
 
 // DefaultReranker is the built-in Reranker implementation.
@@ -84,7 +91,7 @@ func New(edges EdgeCounter, weights WeightConfig) *DefaultReranker {
 }
 
 // Rerank implements Reranker.
-func (r *DefaultReranker) Rerank(ctx context.Context, candidates map[string]Candidate, minScore float64) ([]Result, error) {
+func (r *DefaultReranker) Rerank(ctx context.Context, query string, candidates map[string]Candidate, minScore float64) ([]Result, error) {
 	w := r.weights
 
 	mentionScores := make(map[string]float64, len(candidates))
@@ -141,10 +148,20 @@ func (r *DefaultReranker) Rerank(ctx context.Context, candidates map[string]Cand
 		}
 	}
 
+	// --- Pass 3: projection-aware word overlap ---
+	overlapScores := make(map[string]float64, len(candidates))
+	if w.WordOverlapWeight > 0 {
+		scorer := NewWordOverlapScorer()
+		for id, c := range candidates {
+			ratio := scorer.Score(query, c.Object)
+			overlapScores[id] = ratio * w.WordOverlapWeight
+		}
+	}
+
 	// --- Build, filter, sort results ---
 	results := make([]Result, 0, len(candidates))
 	for id, c := range candidates {
-		total := c.FTSScore + c.VecScore + mentionScores[id] + graphScores[id]
+		total := c.FTSScore + c.VecScore + mentionScores[id] + graphScores[id] + overlapScores[id]
 		if total < minScore {
 			continue
 		}
@@ -154,6 +171,7 @@ func (r *DefaultReranker) Rerank(ctx context.Context, candidates map[string]Cand
 			Vector:         c.VecScore,
 			MentionBoost:   mentionScores[id],
 			GraphRelevance: graphScores[id],
+			WordOverlap:    overlapScores[id],
 			Total:          total,
 			DocumentView:   projection.ProjectDocument(c.Object),
 		})

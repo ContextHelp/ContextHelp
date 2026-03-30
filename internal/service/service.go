@@ -1500,7 +1500,7 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 	}
 
 	reranker := ranking.New(s.Store.Edges(), weights)
-	ranked, err := reranker.Rerank(ctx, candidates, cfg.MinScore)
+	ranked, err := reranker.Rerank(ctx, query, candidates, cfg.MinScore)
 	if err != nil {
 		return nil, fmt.Errorf("hybrid search rerank: %w", err)
 	}
@@ -1518,6 +1518,7 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 				Vector:         r.Vector,
 				MentionBoost:   r.MentionBoost,
 				GraphRelevance: r.GraphRelevance,
+				WordOverlap:    r.WordOverlap,
 				Total:          r.Total,
 			},
 			DocumentView: projection.ProjectDocument(r.Object),
