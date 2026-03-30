@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // FeedParser parses RSS 2.0, Atom 1.0, or JSON Feed from draft.RawContent.
@@ -21,7 +22,7 @@ func NewFeedParser() *FeedParser {
 	return &FeedParser{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"Metadata"},
+			Produces: []string{"Metadata", "Sections"},
 		}),
 	}
 }
@@ -76,6 +77,48 @@ func (s *FeedParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*st
 	draft.Metadata["feed_format"] = feedFormat
 	draft.Metadata["feed_title"] = feedTitle
 	draft.Metadata["feed_items"] = items
+
+	// Emit canonical graph nodes when ID is set.
+	// Each feed item → one section node.
+	if draft.ID == "" {
+		return draft, nil
+	}
+	if draft.Graph == nil {
+		draft.Graph = &pluginapi.ObjectGraph{}
+	}
+	for i, item := range items {
+		title, _ := item["title"].(string)
+		content, _ := item["content"].(string)
+		link, _ := item["link"].(string)
+		guid, _ := item["guid"].(string)
+		published, _ := item["published"].(string)
+
+		secID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSection, i)
+		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			ID:       secID,
+			NodeType: pluginapi.NodeTypeSection,
+			Label:    title,
+			Content:  content,
+			Order:    i,
+			Metadata: map[string]any{
+				"guid":        guid,
+				"link":        link,
+				"published":   published,
+				"feed_format": feedFormat,
+			},
+		})
+		// Flat sections mirror for projection fallback.
+		draft.Sections = append(draft.Sections, storage.Section{
+			Title:   title,
+			Content: content,
+			Order:   i,
+			Metadata: map[string]any{
+				"guid":      guid,
+				"link":      link,
+				"published": published,
+			},
+		})
+	}
 
 	return draft, nil
 }
