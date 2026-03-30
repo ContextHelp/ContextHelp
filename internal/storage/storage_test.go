@@ -5,6 +5,8 @@ import (
 	"io"
 	"testing"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // mockDriver verifies that a concrete type can satisfy StorageDriver.
@@ -99,6 +101,12 @@ func (m *mockObjectStore) VectorSearch(ctx context.Context, vector []float32, fi
 	return nil, nil
 }
 func (m *mockObjectStore) FTSSearch(ctx context.Context, query string, filter ObjectFilter) ([]*KnowledgeObject, error) {
+	return nil, nil
+}
+func (m *mockObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+	return nil, nil
+}
+func (m *mockObjectStore) VectorSearchNodeAware(_ context.Context, _ []float32, _ ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
 	return nil, nil
 }
 func (m *mockObjectStore) SetReminder(ctx context.Context, id string, at time.Time) error {

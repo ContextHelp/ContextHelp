@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // --- test doubles ---
@@ -105,6 +106,12 @@ func (m *mockObjectStore2) VectorSearch(_ context.Context, _ []float32, f storag
 	return out, nil
 }
 func (m *mockObjectStore2) FTSSearch(_ context.Context, _ string, f storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	return nil, nil
+}
+func (m *mockObjectStore2) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+	return nil, nil
+}
+func (m *mockObjectStore2) VectorSearchNodeAware(_ context.Context, _ []float32, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
 	return nil, nil
 }
 func (m *mockObjectStore2) SetReminder(_ context.Context, _ string, _ time.Time) error {
