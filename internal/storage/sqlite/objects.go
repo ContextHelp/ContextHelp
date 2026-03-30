@@ -26,6 +26,10 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
 	}
+	graphJSON, err := marshalGraph(obj.Graph)
+	if err != nil {
+		return fmt.Errorf("create object graph: %w", err)
+	}
 
 	if obj.Status == "" {
 		obj.Status = "active"
@@ -36,18 +40,21 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions, tasks, embeddings, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		remind_at, reminded_at, profile_id, graph_json
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, nil, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.Format(time.RFC3339), obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed), obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, obj.ProfileID,
+		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
+	}
+	if err := s.upsertObjectNodes(ctx, obj.ID, obj.Graph); err != nil {
+		return fmt.Errorf("create object nodes: %w", err)
 	}
 	if err := s.upsertEmbedding(ctx, obj.ID, obj.Embeddings); err != nil {
 		return fmt.Errorf("create object embedding: %w", err)
@@ -67,7 +74,7 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id
+		remind_at, reminded_at, profile_id, graph_json
 	FROM objects WHERE id = ?`, id)
 	obj, err := scanObject(row)
 	if err != nil {
@@ -106,7 +113,7 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id
+		remind_at, reminded_at, profile_id, graph_json
 	FROM objects WHERE content_hash = ? LIMIT 1`, hash)
 	return scanObject(row)
 }
@@ -183,7 +190,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id
+		remind_at, reminded_at, profile_id, graph_json
 	FROM objects %s ORDER BY %s %s`, where, sortCol, dir)
 
 	if filter.Limit > 0 {
@@ -215,6 +222,10 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err != nil {
 		return fmt.Errorf("update object: %w", err)
 	}
+	graphJSON, err := marshalGraph(obj.Graph)
+	if err != nil {
+		return fmt.Errorf("update object graph: %w", err)
+	}
 
 	result, err := s.db.ExecContext(ctx, `UPDATE objects SET
 		type=?, subtype=?, raw_content=?, content_type=?, text_content=?,
@@ -222,7 +233,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions=?, tasks=?, pipeline=?, source=?,
 		registry_influences=?, plugins=?, content_hash=?, reinforcement_count=?, last_reinforced_at=?,
 		updated_at=?, fts_indexed=?, vector_indexed=?, status=?, inbox_note=?,
-		remind_at=?, reminded_at=?, profile_id=?
+		remind_at=?, reminded_at=?, profile_id=?, graph_json=?
 	WHERE id=?`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
@@ -230,7 +241,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed), obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, obj.ProfileID,
+		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON,
 		obj.ID,
 	)
 	if err != nil {
@@ -239,6 +250,9 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	n, _ := result.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("object %s not found", obj.ID)
+	}
+	if err := s.upsertObjectNodes(ctx, obj.ID, obj.Graph); err != nil {
+		return fmt.Errorf("update object nodes: %w", err)
 	}
 	if err := s.upsertEmbedding(ctx, obj.ID, obj.Embeddings); err != nil {
 		return fmt.Errorf("update object embedding: %w", err)
@@ -392,7 +406,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id
+		remind_at, reminded_at, profile_id, graph_json
 	FROM objects`
 	if where != "" {
 		query += " WHERE " + where
@@ -432,6 +446,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		createdAt, updatedAt                                string
 		ftsIndexed, vectorIndexed                           int
 		lastReinforcedAt, remindAt, remindedAt              sql.NullString
+		graphJSON                                           sql.NullString
 	)
 
 	err := row.Scan(
@@ -440,7 +455,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &obj.ProfileID,
+		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -453,6 +468,13 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
 		createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
 		remindAt, remindedAt)
+	if graphJSON.Valid {
+		g, err := unmarshalGraph(graphJSON.String)
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal graph: %w", err)
+		}
+		obj.Graph = g
+	}
 	return &obj, nil
 }
 
@@ -465,6 +487,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		createdAt, updatedAt                                string
 		ftsIndexed, vectorIndexed                           int
 		lastReinforcedAt, remindAt, remindedAt              sql.NullString
+		graphJSON                                           sql.NullString
 	)
 
 	err := rows.Scan(
@@ -473,7 +496,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &obj.ProfileID,
+		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
@@ -483,6 +506,13 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
 		createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
 		remindAt, remindedAt)
+	if graphJSON.Valid {
+		g, err := unmarshalGraph(graphJSON.String)
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal graph: %w", err)
+		}
+		obj.Graph = g
+	}
 	return &obj, nil
 }
 
@@ -566,6 +596,49 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	}
 
 	return f, err
+}
+
+func marshalGraph(g *storage.ObjectGraph) (string, error) {
+	if g == nil {
+		return "{}", nil
+	}
+	b, err := json.Marshal(g)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func unmarshalGraph(raw string) (*storage.ObjectGraph, error) {
+	if raw == "" || raw == "{}" {
+		return nil, nil
+	}
+	var g storage.ObjectGraph
+	if err := json.Unmarshal([]byte(raw), &g); err != nil {
+		return nil, err
+	}
+	return &g, nil
+}
+
+func (s *ObjectStore) upsertObjectNodes(ctx context.Context,
+	objectID string, g *storage.ObjectGraph) error {
+	if _, err := s.db.ExecContext(ctx,
+		`DELETE FROM object_nodes WHERE object_id = ?`, objectID); err != nil {
+		return fmt.Errorf("delete object_nodes: %w", err)
+	}
+	if g == nil {
+		return nil
+	}
+	for _, n := range g.Nodes {
+		if _, err := s.db.ExecContext(ctx,
+			`INSERT INTO object_nodes (id, object_id, node_type, ordinal, content, created_at)
+			 VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+			n.ID, objectID, n.NodeType, n.Order, n.Content,
+		); err != nil {
+			return fmt.Errorf("insert object_node %s: %w", n.ID, err)
+		}
+	}
+	return nil
 }
 
 func boolToInt(b bool) int {
