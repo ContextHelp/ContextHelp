@@ -5,7 +5,9 @@ package ranking
 import (
 	"context"
 
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // Candidate is a pre-merged search result from one or more retrieval legs.
@@ -23,6 +25,8 @@ type Result struct {
 	MentionBoost   float64 // outbound mention count bonus
 	GraphRelevance float64 // inbound backlink bonus
 	Total          float64 // sum of all signals
+	// DocumentView is pre-computed via ProjectDocument for display surfaces.
+	DocumentView pluginapi.DocumentProjection
 }
 
 // WeightConfig holds the per-signal weight constants for the default reranker.
@@ -87,13 +91,20 @@ func (r *DefaultReranker) Rerank(ctx context.Context, candidates map[string]Cand
 	graphScores   := make(map[string]float64, len(candidates))
 
 	// --- Pass 1: outbound mention bonus + direct backlink ---
+	// Use ProjectIndex to resolve mentions from graph nodes when available.
 	directNeighbours := make(map[string]struct{})
 
+	// Pre-compute index projections once per candidate.
+	idxCache := make(map[string][]string, len(candidates))
 	for id, c := range candidates {
-		obj := c.Object
+		idxCache[id] = projection.ProjectIndex(c.Object).Mentions
+	}
+
+	for id, c := range candidates {
+		mentions := idxCache[id]
 
 		// Outbound mention bonus.
-		if n := len(obj.Mentions); n > 0 {
+		if n := len(mentions); n > 0 {
 			bonus := float64(n) * w.MentionBoost
 			if bonus > w.MaxMentionBoost {
 				bonus = w.MaxMentionBoost
@@ -102,7 +113,7 @@ func (r *DefaultReranker) Rerank(ctx context.Context, candidates map[string]Cand
 		}
 
 		// Direct inbound backlinks.
-		inbound, err := r.edges.CountMentionsTo(ctx, "object", id)
+		inbound, err := r.edges.CountMentionsTo(ctx, "object", c.Object.ID)
 		if err == nil && inbound > 0 {
 			graphScores[id] += w.DirectBacklink
 			directNeighbours[id] = struct{}{}
@@ -113,16 +124,16 @@ func (r *DefaultReranker) Rerank(ctx context.Context, candidates map[string]Cand
 	if len(directNeighbours) > 0 {
 		neighbourEntitySet := make(map[string]struct{})
 		for id := range directNeighbours {
-			for _, m := range candidates[id].Object.Mentions {
-				neighbourEntitySet[m.String()] = struct{}{}
+			for _, m := range idxCache[id] {
+				neighbourEntitySet[m] = struct{}{}
 			}
 		}
-		for id, c := range candidates {
+		for id := range candidates {
 			if _, isDirect := directNeighbours[id]; isDirect {
 				continue
 			}
-			for _, m := range c.Object.Mentions {
-				if _, shared := neighbourEntitySet[m.String()]; shared {
+			for _, m := range idxCache[id] {
+				if _, shared := neighbourEntitySet[m]; shared {
 					graphScores[id] += w.HopBacklink
 					break
 				}
@@ -144,6 +155,7 @@ func (r *DefaultReranker) Rerank(ctx context.Context, candidates map[string]Cand
 			MentionBoost:   mentionScores[id],
 			GraphRelevance: graphScores[id],
 			Total:          total,
+			DocumentView:   projection.ProjectDocument(c.Object),
 		})
 	}
 

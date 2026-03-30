@@ -7,10 +7,32 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/ranking"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"hop.top/uri"
 )
+
+// makeObjWithGraph creates an object with a single section node in its graph.
+func makeObjWithGraph(id, sectionContent string) *storage.KnowledgeObject {
+	return &storage.KnowledgeObject{
+		ID:   id,
+		Type: "document",
+		Graph: &pluginapi.ObjectGraph{
+			Nodes: []pluginapi.GraphNode{
+				{
+					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSection, 0),
+					NodeType: pluginapi.NodeTypeSection,
+					Label:    "Section",
+					Content:  sectionContent,
+					Order:    0,
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+}
 
 // stubEdges is a minimal EdgeCounter for tests.
 type stubEdges struct {
@@ -217,4 +239,47 @@ func TestRerank_DeterministicOrderOnTie(t *testing.T) {
 	assert.Equal(t, "a", results[0].Object.ID)
 	assert.Equal(t, "b", results[1].Object.ID)
 	assert.Equal(t, "c", results[2].Object.ID)
+}
+
+// TestRerank_DocumentViewPopulated verifies that every result carries a DocumentView
+// derived from ProjectDocument, not ad-hoc field access.
+func TestRerank_DocumentViewPopulated(t *testing.T) {
+	edges := &stubEdges{inbound: map[string]int{}}
+	r := ranking.New(edges, ranking.DefaultWeights())
+
+	obj := &storage.KnowledgeObject{
+		ID:          "doc1",
+		Type:        "document",
+		TextContent: "Hello from TextContent",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	candidates := map[string]ranking.Candidate{
+		"doc1": {Object: obj, FTSScore: 0.5},
+	}
+
+	results, err := r.Rerank(context.Background(), candidates, 0)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	// DocumentView.Body must be set (flat path: TextContent).
+	assert.Equal(t, "Hello from TextContent", results[0].DocumentView.Body)
+}
+
+// TestRerank_DocumentViewFromGraph verifies that graph-backed objects surface
+// section content in DocumentView.
+func TestRerank_DocumentViewFromGraph(t *testing.T) {
+	edges := &stubEdges{inbound: map[string]int{}}
+	r := ranking.New(edges, ranking.DefaultWeights())
+
+	obj := makeObjWithGraph("g1", "section content from graph")
+	candidates := map[string]ranking.Candidate{
+		"g1": {Object: obj, FTSScore: 0.3},
+	}
+
+	results, err := r.Rerank(context.Background(), candidates, 0)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	// Graph path: body is empty, sections carry the content.
+	assert.NotEmpty(t, results[0].DocumentView.Sections)
+	assert.Equal(t, "section content from graph", results[0].DocumentView.Sections[0].Content)
 }
