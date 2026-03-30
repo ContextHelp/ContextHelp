@@ -277,7 +277,21 @@ tasks:
       - go mod vendor
 
   deps:install:
-    desc: "Install all ingestor dependencies by group (usage: task deps:install or task deps:install -- GROUP)"
+    desc: "Install ingestor dependencies by group (usage: task deps:install or task deps:install -- GROUP)"
+    cmds:
+      - |
+        case "$(uname -s 2>/dev/null || echo Windows)" in
+          Darwin)  task deps:install:unix -- {{.CLI_ARGS}} ;;
+          Linux)   task deps:install:unix -- {{.CLI_ARGS}} ;;
+          Windows*|MINGW*|MSYS*|CYGWIN*)
+            echo "Windows detected — use: task deps:install:windows -- {{.CLI_ARGS}}"
+            task deps:install:windows -- {{.CLI_ARGS}}
+            ;;
+          *) echo "Unknown OS — run task deps:install:unix or task deps:install:windows manually" ;;
+        esac
+
+  deps:install:unix:
+    desc: "Install ingestor dependencies on macOS/Linux (usage: task deps:install:unix -- GROUP)"
     cmds:
       - |
         GROUP="{{.CLI_ARGS}}"
@@ -287,35 +301,77 @@ tasks:
         skip(){ printf '  - %s (already installed)\n' "$1"; }
         fail(){ printf '  ✗ %s — install failed\n' "$1"; }
 
-        brew_install() {
-          local pkg="$1"; local label="${2:-$1}"
-          if command -v "$label" >/dev/null 2>&1; then skip "$label"; return; fi
-          brew install "$pkg" && ok "$label" || fail "$label"
+        # ── detect package manager ─────────────────────────────────────────
+        if command -v brew >/dev/null 2>&1; then
+          PKG=brew
+        elif command -v apt-get >/dev/null 2>&1; then
+          PKG=apt
+          sudo apt-get update -qq
+        elif command -v dnf >/dev/null 2>&1; then
+          PKG=dnf
+        elif command -v pacman >/dev/null 2>&1; then
+          PKG=pacman
+        elif command -v zypper >/dev/null 2>&1; then
+          PKG=zypper
+        else
+          echo "No supported package manager found (brew/apt/dnf/pacman/zypper)."
+          echo "Install dependencies manually and re-run 'task preflight'."
+          exit 1
+        fi
+
+        pkg_install() {
+          # pkg_install <brew-pkg> <apt-pkg> <dnf-pkg> <pacman-pkg> <zypper-pkg> <bin-to-check> [label]
+          local brew_p="$1" apt_p="$2" dnf_p="$3" pac_p="$4" zyp_p="$5" bin="$6" label="${7:-$6}"
+          if command -v "$bin" >/dev/null 2>&1; then skip "$label"; return; fi
+          case "$PKG" in
+            brew)   brew install "$brew_p" && ok "$label" || fail "$label" ;;
+            apt)    sudo apt-get install -y "$apt_p"   && ok "$label" || fail "$label" ;;
+            dnf)    sudo dnf install -y "$dnf_p"       && ok "$label" || fail "$label" ;;
+            pacman) sudo pacman -S --noconfirm "$pac_p" && ok "$label" || fail "$label" ;;
+            zypper) sudo zypper install -y "$zyp_p"    && ok "$label" || fail "$label" ;;
+          esac
         }
-        brew_cask() {
-          local cask="$1"; local bin="$2"
-          if command -v "$bin" >/dev/null 2>&1; then skip "$bin"; return; fi
-          brew install --cask "$cask" && ok "$bin" || fail "$bin"
+        cask_install() {
+          # cask_install <brew-cask> <apt-pkg> <dnf-pkg> <pacman-pkg> <zypper-pkg> <bin-to-check> [label]
+          local brew_c="$1" apt_p="$2" dnf_p="$3" pac_p="$4" zyp_p="$5" bin="$6" label="${7:-$6}"
+          if command -v "$bin" >/dev/null 2>&1; then skip "$label"; return; fi
+          case "$PKG" in
+            brew)   brew install --cask "$brew_c"       && ok "$label" || fail "$label" ;;
+            apt)    sudo apt-get install -y "$apt_p"    && ok "$label" || fail "$label" ;;
+            dnf)    sudo dnf install -y "$dnf_p"        && ok "$label" || fail "$label" ;;
+            pacman) sudo pacman -S --noconfirm "$pac_p"  && ok "$label" || fail "$label" ;;
+            zypper) sudo zypper install -y "$zyp_p"     && ok "$label" || fail "$label" ;;
+          esac
         }
 
         # ── ocr ────────────────────────────────────────────────────────────
         if [ "$GROUP" = all ] || [ "$GROUP" = ocr ]; then
           echo "▶ OCR"
-          brew_install tesseract tesseract
-          brew_install tesseract-lang "tesseract-lang (extra language packs)"
+          pkg_install tesseract tesseract-ocr tesseract tesseract tesseract tesseract
+          case "$PKG" in
+            brew)   brew install tesseract-lang && ok "tesseract-lang" || fail "tesseract-lang" ;;
+            apt)    sudo apt-get install -y tesseract-ocr-all && ok "tesseract-lang" || fail "tesseract-lang" ;;
+            dnf)    sudo dnf install -y tesseract-langpack-* 2>/dev/null; ok "tesseract-lang (best-effort)" ;;
+            pacman) sudo pacman -S --noconfirm tesseract-data-eng 2>/dev/null; ok "tesseract-lang (eng)" ;;
+            zypper) sudo zypper install -y tesseract-ocr-traineddata-english 2>/dev/null; ok "tesseract-lang (eng)" ;;
+          esac
         fi
 
         # ── audio / transcription ──────────────────────────────────────────
         if [ "$GROUP" = all ] || [ "$GROUP" = audio ]; then
           echo "▶ Audio / Transcription"
-          brew_install ffmpeg ffmpeg
-          # whisper is installed locally; skip brew
+          pkg_install ffmpeg ffmpeg ffmpeg ffmpeg ffmpeg ffmpeg
           if command -v whisper >/dev/null 2>&1 || command -v whisper-cpp >/dev/null 2>&1; then
             skip "whisper (already at $(command -v whisper 2>/dev/null || command -v whisper-cpp))"
           else
-            echo "  ! whisper not found — install whisper-cpp via brew or openai-whisper via pip:"
-            echo "      brew install whisper-cpp"
-            echo "      # or: pip install openai-whisper"
+            echo "  ! whisper not found — install via:"
+            case "$PKG" in
+              brew)   echo "      brew install whisper-cpp  # or: pip install openai-whisper" ;;
+              apt)    echo "      pip install openai-whisper" ;;
+              dnf)    echo "      pip install openai-whisper" ;;
+              pacman) echo "      yay -S whisper-cpp  # or: pip install openai-whisper" ;;
+              zypper) echo "      pip install openai-whisper" ;;
+            esac
           fi
         fi
 
@@ -333,19 +389,19 @@ tasks:
         # ── pdf ────────────────────────────────────────────────────────────
         if [ "$GROUP" = all ] || [ "$GROUP" = pdf ]; then
           echo "▶ PDF"
-          brew_install poppler pdftotext
+          pkg_install poppler poppler-utils poppler-utils poppler poppler-tools pdftotext "pdftotext (poppler)"
         fi
 
         # ── office ────────────────────────────────────────────────────────
         if [ "$GROUP" = all ] || [ "$GROUP" = office ]; then
           echo "▶ Office documents"
-          brew_cask libreoffice soffice
+          cask_install libreoffice libreoffice libreoffice libreoffice libreoffice soffice "soffice (LibreOffice)"
         fi
 
         # ── markdown / docs ───────────────────────────────────────────────
         if [ "$GROUP" = all ] || [ "$GROUP" = markdown ]; then
           echo "▶ Markdown / Docs"
-          brew_install pandoc pandoc
+          pkg_install pandoc pandoc pandoc pandoc pandoc pandoc
         fi
 
         # ── go dev tools ──────────────────────────────────────────────────
@@ -360,8 +416,101 @@ tasks:
         echo ""
         echo "Done. Run 'task preflight' to verify."
 
+  deps:install:windows:
+    desc: "Install ingestor dependencies on Windows via winget/choco (usage: task deps:install:windows -- GROUP)"
+    cmds:
+      - |
+        $Group = "{{.CLI_ARGS}}"
+        if (-not $Group) { $Group = "all" }
+
+        function ok($label)   { Write-Host "  OK  $label" -ForegroundColor Green }
+        function skip($label) { Write-Host "  --  $label (already installed)" }
+        function fail($label) { Write-Host "  XX  $label -- install failed" -ForegroundColor Red }
+
+        # prefer winget; fall back to choco
+        $usechoco = $false
+        if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+          if (Get-Command choco -ErrorAction SilentlyContinue) {
+            $usechoco = $true
+          } else {
+            Write-Host "Neither winget nor choco found."
+            Write-Host "Install winget: https://aka.ms/winget-install"
+            Write-Host "  or choco:  https://chocolatey.org/install"
+            exit 1
+          }
+        }
+
+        function pkg_install($winget_id, $choco_id, $bin, $label = $bin) {
+          if (Get-Command $bin -ErrorAction SilentlyContinue) { skip $label; return }
+          if ($usechoco) { choco install -y $choco_id && ok $label || fail $label }
+          else           { winget install --id $winget_id -e --silent && ok $label || fail $label }
+        }
+
+        if ($Group -eq "all" -or $Group -eq "ocr") {
+          Write-Host "▶ OCR"
+          pkg_install "UB-Mannheim.TesseractOCR" "tesseract" "tesseract"
+          Write-Host "  ! Language packs: install via Tesseract installer at https://github.com/UB-Mannheim/tesseract/wiki"
+        }
+
+        if ($Group -eq "all" -or $Group -eq "audio") {
+          Write-Host "▶ Audio / Transcription"
+          pkg_install "Gyan.FFmpeg" "ffmpeg" "ffmpeg"
+          if (Get-Command whisper -ErrorAction SilentlyContinue) { skip "whisper" }
+          elseif (Get-Command whisper-cpp -ErrorAction SilentlyContinue) { skip "whisper-cpp" }
+          else {
+            Write-Host "  ! whisper not found — install via:"
+            Write-Host "      pip install openai-whisper"
+          }
+        }
+
+        if ($Group -eq "all" -or $Group -eq "diarization") {
+          Write-Host "▶ Diarization"
+          if (Get-Command pyannote-audio -ErrorAction SilentlyContinue) { skip "pyannote-audio" }
+          else {
+            Write-Host "  ! pyannote-audio not found — install via pip:"
+            Write-Host "      pip install pyannote.audio"
+          }
+        }
+
+        if ($Group -eq "all" -or $Group -eq "pdf") {
+          Write-Host "▶ PDF"
+          pkg_install "freedesktop.Poppler" "poppler" "pdftotext" "pdftotext (poppler)"
+        }
+
+        if ($Group -eq "all" -or $Group -eq "office") {
+          Write-Host "▶ Office documents"
+          pkg_install "TheDocumentFoundation.LibreOffice" "libreoffice" "soffice" "soffice (LibreOffice)"
+        }
+
+        if ($Group -eq "all" -or $Group -eq "markdown") {
+          Write-Host "▶ Markdown / Docs"
+          pkg_install "JohnMacFarlane.Pandoc" "pandoc" "pandoc"
+        }
+
+        if ($Group -eq "all" -or $Group -eq "gotools") {
+          Write-Host "▶ Go dev tools"
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && ok "golangci-lint" || fail "golangci-lint"
+          go install golang.org/x/vuln/cmd/govulncheck@latest && ok "govulncheck" || fail "govulncheck"
+          go install github.com/securego/gosec/v2/cmd/gosec@latest && ok "gosec" || fail "gosec"
+          go install -tags sqlite3 github.com/golang-migrate/migrate/v4/cmd/migrate@latest && ok "migrate" || fail "migrate"
+        }
+
+        Write-Host ""
+        Write-Host "Done. Run 'task preflight' to verify."
+    platforms: [windows]
+
   preflight:
     desc: Check all ingestor deps and API keys are present (pre-flight)
+    cmds:
+      - |
+        case "$(uname -s 2>/dev/null || echo Windows)" in
+          Darwin|Linux) task preflight:unix ;;
+          Windows*|MINGW*|MSYS*|CYGWIN*) task preflight:windows ;;
+          *) task preflight:unix ;;
+        esac
+
+  preflight:unix:
+    desc: Pre-flight check for macOS / Linux
     cmds:
       - |
         PASS=0; WARN=0; FAIL=0
@@ -439,6 +588,71 @@ tasks:
         echo ""
         echo "Result: ${PASS} ok  ${WARN} warnings  ${FAIL} failures"
         [ "$FAIL" -eq 0 ] || exit 1
+
+  preflight:windows:
+    desc: Pre-flight check for Windows
+    cmds:
+      - |
+        $pass = 0; $warn = 0; $fail = 0
+        function ok($label, $path = "")   { Write-Host ("  OK  {0,-30} {1}" -f $label, $path) -ForegroundColor Green;   $script:pass++ }
+        function warn($label, $note = "") { Write-Host ("  !!  {0,-30} {1}" -f $label, $note) -ForegroundColor Yellow;  $script:warn++ }
+        function fail($label, $note = "") { Write-Host ("  XX  {0,-30} {1}" -f $label, $note) -ForegroundColor Red;     $script:fail++ }
+
+        function check_bin($bin, $label = $bin, $note = "not found") {
+          $p = Get-Command $bin -ErrorAction SilentlyContinue
+          if ($p) { ok $label $p.Source } else { fail $label $note }
+        }
+        function check_env($var, $label = $var, $sev = "warn") {
+          $val = [System.Environment]::GetEnvironmentVariable($var)
+          if ($val) { ok $label "(set)" }
+          elseif ($sev -eq "fail") { fail $label "not set" }
+          else { warn $label "not set — vision/llm pipelines may be limited" }
+        }
+
+        Write-Host "── Build tools ──────────────────────────────────────────────"
+        check_bin go
+        check_bin task "task (taskfile)"
+        check_bin golangci-lint
+        check_bin govulncheck
+        check_bin migrate
+
+        Write-Host "── OCR ──────────────────────────────────────────────────────"
+        check_bin tesseract
+
+        Write-Host "── Audio / Transcription ────────────────────────────────────"
+        check_bin ffmpeg
+        check_bin ffprobe
+        if (Get-Command whisper -ErrorAction SilentlyContinue) { ok "whisper" }
+        elseif (Get-Command whisper-cpp -ErrorAction SilentlyContinue) { ok "whisper-cpp" }
+        else { fail "whisper / whisper-cpp" "required for audio transcription" }
+
+        Write-Host "── Diarization ──────────────────────────────────────────────"
+        if (Get-Command pyannote-audio -ErrorAction SilentlyContinue) { ok "pyannote-audio" }
+        elseif (Get-Command pyannote -ErrorAction SilentlyContinue) { ok "pyannote" }
+        else { warn "pyannote-audio" "not found — diarization pipeline disabled" }
+
+        Write-Host "── PDF ──────────────────────────────────────────────────────"
+        check_bin pdftotext "pdftotext (poppler)"
+
+        Write-Host "── Office documents ─────────────────────────────────────────"
+        if (Get-Command soffice -ErrorAction SilentlyContinue) { ok "soffice (LibreOffice)" }
+        else { warn "soffice (LibreOffice)" "not found — Office doc pipeline disabled (task deps:install -- office)" }
+
+        Write-Host "── Markdown / Docs ──────────────────────────────────────────"
+        check_bin pandoc
+
+        Write-Host "── API keys (vision / LLM) ──────────────────────────────────"
+        check_env OPENAI_API_KEY
+        check_env ANTHROPIC_API_KEY
+        check_env GEMINI_API_KEY
+        check_env OPENROUTER_API_KEY
+        if (Get-Command ollama -ErrorAction SilentlyContinue) { ok "ollama (local vision/LLM)" }
+        else { warn "ollama" "not found — local vision/LLM unavailable" }
+
+        Write-Host ""
+        Write-Host "Result: $pass ok  $warn warnings  $fail failures"
+        if ($fail -gt 0) { exit 1 }
+    platforms: [windows]
 
   # Installation tasks
   install:
