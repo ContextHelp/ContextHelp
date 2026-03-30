@@ -162,7 +162,7 @@ Pipeline steps may write to `Graph` directly; storage layer backfills flat field
 
 ### Positive
 
-- **Ingest steps** — must write to `Graph.Nodes`; flat-field writes treated legacy until backfill.
+- **Ingest + enrichment steps** — must write to `Graph.Nodes`; flat-field writes treated legacy until backfill.
 - **Stable intra-object identity** — every section/tag/decision/task has a UUID; can be
   referenced by intra- and inter-object edges.
 - **Defined write semantics** — steps append typed nodes to `Graph.Nodes`; no array-append
