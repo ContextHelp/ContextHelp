@@ -201,10 +201,22 @@ func seenEvent(t URLTarget, hash, content string) pluginapi.Event {
 func changeEvent(t URLTarget, newHash, summary, diff, _, newContent string) pluginapi.Event {
 	obj := buildObject(t, newHash, newContent, "change", summary)
 	if diff != "" {
+		diffOrder := len(obj.Sections)
 		obj.Sections = append(obj.Sections, pluginapi.Section{
 			Title:   "Diff",
 			Content: diff,
-			Order:   len(obj.Sections),
+			Order:   diffOrder,
+		})
+		// Keep Graph in sync with the appended Diff section.
+		if obj.Graph == nil {
+			obj.Graph = &pluginapi.ObjectGraph{}
+		}
+		obj.Graph.Nodes = append(obj.Graph.Nodes, pluginapi.GraphNode{
+			ID:       pluginapi.NewNodeID(newHash, pluginapi.NodeTypeSection, diffOrder),
+			NodeType: pluginapi.NodeTypeSection,
+			Label:    "Diff",
+			Content:  diff,
+			Order:    diffOrder,
 		})
 	}
 	return pluginapi.Event{
@@ -248,11 +260,31 @@ func buildObject(t URLTarget, hash, content, subtype, summary string) pluginapi.
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	// Populate flat sections (backward compat) and graph-canonical nodes.
+	var nodes []pluginapi.GraphNode
+	if content != "" {
+		nodes = append(nodes, pluginapi.GraphNode{
+			ID:       pluginapi.NewNodeID(hash, pluginapi.NodeTypeSummary, 0),
+			NodeType: pluginapi.NodeTypeSummary,
+			Content:  content,
+			Order:    0,
+		})
+	}
 	if summary != "" {
 		obj.Sections = []pluginapi.Section{
 			{Title: "Change Summary", Content: summary, Order: 0},
 		}
 		obj.Metadata["change_summary"] = summary
+		nodes = append(nodes, pluginapi.GraphNode{
+			ID:       pluginapi.NewNodeID(hash, pluginapi.NodeTypeSection, 0),
+			NodeType: pluginapi.NodeTypeSection,
+			Label:    "Change Summary",
+			Content:  summary,
+			Order:    0,
+		})
+	}
+	if len(nodes) > 0 {
+		obj.Graph = &pluginapi.ObjectGraph{Nodes: nodes}
 	}
 	return obj
 }

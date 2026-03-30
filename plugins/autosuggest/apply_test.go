@@ -82,3 +82,39 @@ func TestApplySelect_ClearPending(t *testing.T) {
 	assert.Empty(t, tags)
 	assert.Empty(t, mentions)
 }
+
+func TestApplyGenerate_EmitsGraphNodes(t *testing.T) {
+	// Graph nodes must be populated alongside flat fields for graph-canonical KOs.
+	obj := &storage.KnowledgeObject{ID: "obj_graph_001"}
+	require.NoError(t, autosuggest.ApplyGenerate(obj, []string{"go", "plugin"}, []string{"eng.backend"}))
+
+	require.NotNil(t, obj.Graph, "Graph must be initialised by ApplyGenerate")
+
+	tagNodes := 0
+	mentionNodes := 0
+	for _, n := range obj.Graph.Nodes {
+		switch n.NodeType {
+		case "tag":
+			tagNodes++
+		case "entity_mention":
+			mentionNodes++
+		}
+	}
+	assert.Equal(t, 2, tagNodes, "one graph node per new tag")
+	assert.Equal(t, 1, mentionNodes, "one graph node per new mention")
+}
+
+func TestApplyGenerate_GraphNodes_NoDuplicates(t *testing.T) {
+	// Calling ApplyGenerate twice with overlapping tags must not duplicate graph nodes.
+	obj := &storage.KnowledgeObject{ID: "obj_graph_002"}
+	require.NoError(t, autosuggest.ApplyGenerate(obj, []string{"go"}, nil))
+	require.NoError(t, autosuggest.ApplyGenerate(obj, []string{"go", "plugin"}, nil))
+
+	tagNodes := 0
+	for _, n := range obj.Graph.Nodes {
+		if n.NodeType == "tag" {
+			tagNodes++
+		}
+	}
+	assert.Equal(t, 2, tagNodes, "go deduped, plugin added: total 2 tag nodes")
+}

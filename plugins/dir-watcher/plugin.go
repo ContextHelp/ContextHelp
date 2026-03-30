@@ -210,6 +210,19 @@ func (p *Plugin) fileToObject(path string, de os.DirEntry) (pluginapi.KnowledgeO
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	// Populate graph-canonical nodes so downstream projection works correctly.
+	if string(content) != "" {
+		obj.Graph = &pluginapi.ObjectGraph{
+			Nodes: []pluginapi.GraphNode{
+				{
+					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
+					NodeType: pluginapi.NodeTypeSummary,
+					Content:  string(content),
+					Order:    0,
+				},
+			},
+		}
+	}
 	return obj, nil
 }
 
