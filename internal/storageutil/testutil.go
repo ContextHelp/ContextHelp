@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
@@ -31,17 +32,13 @@ func NewTestDriver(t *testing.T) storage.StorageDriver {
 }
 
 // BuildGraphKO builds a graph-canonical KnowledgeObject with Graph populated.
-// Flat fields (Tags, Sections, Summaries) are also set for backward compat.
+// Flat fields (Tags, Sections, Summaries) are derived from the graph via
+// projection helpers — not hand-populated — ensuring graph and flat fields
+// are always consistent.
 // id and typ are used as-is; content becomes the section body and summary text.
 // tags is the list of tag labels to attach.
 func BuildGraphKO(id, typ, content string, tags ...string) *storage.KnowledgeObject {
 	now := time.Now().Truncate(time.Second)
-
-	// Flat fields — kept for backward compat.
-	flatTags := make([]storage.Tag, len(tags))
-	for i, lbl := range tags {
-		flatTags[i] = storage.Tag{Label: lbl, Weight: 1.0}
-	}
 
 	// Graph nodes: one summary + one section + one tag per label.
 	nodes := []pluginapi.GraphNode{
@@ -70,21 +67,44 @@ func BuildGraphKO(id, typ, content string, tags ...string) *storage.KnowledgeObj
 		})
 	}
 
-	return &storage.KnowledgeObject{
+	graph := &pluginapi.ObjectGraph{Nodes: nodes}
+
+	// Build a minimal KO to pass into projection helpers.
+	ko := &storage.KnowledgeObject{
 		ID:         id,
 		Type:       typ,
 		RawContent: content,
-		Summaries:  []string{content},
-		Sections: []storage.Section{{
-			Title:   "Body",
-			Content: content,
-			Order:   0,
-		}},
-		Tags:      flatTags,
-		Graph:     &pluginapi.ObjectGraph{Nodes: nodes},
-		CreatedAt: now,
-		UpdatedAt: now,
+		Graph:      graph,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
+
+	// Derive flat fields from graph via shared projection helpers.
+	doc := projection.ProjectDocument(ko)
+	idx := projection.ProjectIndex(ko)
+
+	ko.Sections = doc.Sections
+	ko.Tags = idx.Tags
+
+	// Summaries: extracted from NodeTypeSummary nodes in the graph.
+	ko.Summaries = summariesFromGraph(graph)
+
+	return ko
+}
+
+// summariesFromGraph extracts Content from all NodeTypeSummary nodes, ordered
+// by their Order field.
+func summariesFromGraph(g *pluginapi.ObjectGraph) []string {
+	if g == nil {
+		return nil
+	}
+	var out []string
+	for _, n := range g.Nodes {
+		if n.NodeType == pluginapi.NodeTypeSummary && n.Content != "" {
+			out = append(out, n.Content)
+		}
+	}
+	return out
 }
 
 // SeedObjects creates n KnowledgeObjects with deterministic IDs ("seed-obj-0",
