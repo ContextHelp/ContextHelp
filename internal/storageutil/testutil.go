@@ -10,6 +10,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,21 +30,75 @@ func NewTestDriver(t *testing.T) storage.StorageDriver {
 	return driver
 }
 
+// BuildGraphKO builds a graph-canonical KnowledgeObject with Graph populated.
+// Flat fields (Tags, Sections, Summaries) are also set for backward compat.
+// id and typ are used as-is; content becomes the section body and summary text.
+// tags is the list of tag labels to attach.
+func BuildGraphKO(id, typ, content string, tags ...string) *storage.KnowledgeObject {
+	now := time.Now().Truncate(time.Second)
+
+	// Flat fields — kept for backward compat.
+	flatTags := make([]storage.Tag, len(tags))
+	for i, lbl := range tags {
+		flatTags[i] = storage.Tag{Label: lbl, Weight: 1.0}
+	}
+
+	// Graph nodes: one summary + one section + one tag per label.
+	nodes := []pluginapi.GraphNode{
+		{
+			ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
+			NodeType: pluginapi.NodeTypeSummary,
+			Label:    "Summary",
+			Content:  content,
+			Order:    0,
+		},
+		{
+			ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSection, 0),
+			NodeType: pluginapi.NodeTypeSection,
+			Label:    "Body",
+			Content:  content,
+			Order:    0,
+		},
+	}
+	for i, lbl := range tags {
+		nodes = append(nodes, pluginapi.GraphNode{
+			ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeTag, i),
+			NodeType: pluginapi.NodeTypeTag,
+			Label:    lbl,
+			Content:  lbl,
+			Order:    i,
+		})
+	}
+
+	return &storage.KnowledgeObject{
+		ID:         id,
+		Type:       typ,
+		RawContent: content,
+		Summaries:  []string{content},
+		Sections: []storage.Section{{
+			Title:   "Body",
+			Content: content,
+			Order:   0,
+		}},
+		Tags:      flatTags,
+		Graph:     &pluginapi.ObjectGraph{Nodes: nodes},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+}
+
 // SeedObjects creates n KnowledgeObjects with deterministic IDs ("seed-obj-0",
-// "seed-obj-1", ...) and minimal content. It returns the created objects.
+// "seed-obj-1", ...) and graph-canonical content. It returns the created objects.
 func SeedObjects(t *testing.T, driver storage.StorageDriver, n int) []*storage.KnowledgeObject {
 	t.Helper()
 	ctx := context.Background()
-	now := time.Now().Truncate(time.Second)
 	objects := make([]*storage.KnowledgeObject, n)
 	for i := 0; i < n; i++ {
-		obj := &storage.KnowledgeObject{
-			ID:         fmt.Sprintf("seed-obj-%d", i),
-			Type:       "text",
-			RawContent: fmt.Sprintf("content for object %d", i),
-			CreatedAt:  now,
-			UpdatedAt:  now,
-		}
+		obj := BuildGraphKO(
+			fmt.Sprintf("seed-obj-%d", i),
+			"text",
+			fmt.Sprintf("content for object %d", i),
+		)
 		require.NoError(t, driver.Objects().Create(ctx, obj), "SeedObjects: create object %d", i)
 		objects[i] = obj
 	}

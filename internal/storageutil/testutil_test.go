@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,6 +57,68 @@ func TestSeedObjects(t *testing.T) {
 		d2 := NewTestDriver(t)
 		objects := SeedObjects(t, d2, 0)
 		assert.Empty(t, objects)
+	})
+}
+
+func TestBuildGraphKO(t *testing.T) {
+	t.Run("graph non-nil with nodes", func(t *testing.T) {
+		ko := BuildGraphKO("ko-1", "note", "hello world", "go", "testing")
+		require.NotNil(t, ko.Graph)
+		assert.NotEmpty(t, ko.Graph.Nodes)
+	})
+
+	t.Run("contains summary node", func(t *testing.T) {
+		ko := BuildGraphKO("ko-2", "note", "summary text")
+		var found bool
+		for _, n := range ko.Graph.Nodes {
+			if n.NodeType == pluginapi.NodeTypeSummary {
+				found = true
+				assert.Equal(t, "summary text", n.Content)
+			}
+		}
+		assert.True(t, found, "expected a summary node")
+	})
+
+	t.Run("contains section node", func(t *testing.T) {
+		ko := BuildGraphKO("ko-3", "note", "body text")
+		var found bool
+		for _, n := range ko.Graph.Nodes {
+			if n.NodeType == pluginapi.NodeTypeSection {
+				found = true
+				assert.Equal(t, "body text", n.Content)
+			}
+		}
+		assert.True(t, found, "expected a section node")
+	})
+
+	t.Run("tag nodes match labels", func(t *testing.T) {
+		ko := BuildGraphKO("ko-4", "note", "content", "alpha", "beta")
+		var tagNodes []string
+		for _, n := range ko.Graph.Nodes {
+			if n.NodeType == pluginapi.NodeTypeTag {
+				tagNodes = append(tagNodes, n.Label)
+			}
+		}
+		assert.ElementsMatch(t, []string{"alpha", "beta"}, tagNodes)
+	})
+
+	t.Run("flat fields preserved", func(t *testing.T) {
+		ko := BuildGraphKO("ko-5", "text", "flat content", "mytag")
+		assert.Equal(t, "flat content", ko.RawContent)
+		require.Len(t, ko.Tags, 1)
+		assert.Equal(t, "mytag", ko.Tags[0].Label)
+		assert.NotEmpty(t, ko.Summaries)
+		assert.NotEmpty(t, ko.Sections)
+	})
+
+	t.Run("node IDs are valid", func(t *testing.T) {
+		ko := BuildGraphKO("ko-6", "note", "content", "tag1")
+		for _, n := range ko.Graph.Nodes {
+			ref, err := pluginapi.ParseNodeID(n.ID)
+			require.NoError(t, err, "node ID %q should parse", n.ID)
+			assert.Equal(t, "ko-6", ref.ObjectID)
+			assert.Equal(t, string(n.NodeType), ref.NodeType)
+		}
 	})
 }
 

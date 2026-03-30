@@ -86,6 +86,12 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0014** | [constrain-extraction-with-lmql](./enrichment/US-0014-constrain-extraction-with-lmql.md) | dpkms (self-hosted) | Agents/LLMs, Platform Integrators |
 | **US-0015** | [batch-enrichment-with-progress](./enrichment/US-0015-batch-enrichment-with-progress.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
 
+#### Graph Extraction (US-0063)
+
+| ID | Story | System Types | Personas |
+|----|-------|-------------|----------|
+| **US-0063** | [unified-graph-extraction-at-ingest](./enrichment/US-0063-unified-graph-extraction-at-ingest.md) | dpkms (self-hosted), dpkms cloud | Agents/LLMs, Knowledge Workers |
+
 #### Advanced Enrichment (US-0046 to US-0050)
 
 | ID | Story | System Types | Personas |
@@ -326,8 +332,12 @@ Importer Stories (US-0300-0317):
 
 ## Story Status
 
-**Fully Documented (40):**
-- US-0001, US-0002, US-0009, US-0010, US-0011, US-0012, US-0013, US-0014, US-0015, US-0016, US-0022, US-0023, US-0024, US-0025, US-0026, US-0027, US-0028, US-0029, US-0030, US-0031, US-0032, US-0033, US-0034, US-0035, US-0036, US-0037, US-0038, US-0039, US-0040, US-0041, US-0046, US-0047, US-0048, US-0049, US-0050, US-0056, US-0057, US-0058, US-0059, US-0060
+**Fully Documented (41):**
+- US-0001, US-0002, US-0009, US-0010, US-0011, US-0012, US-0013, US-0014, US-0015, US-0016,
+  US-0022, US-0023, US-0024, US-0025, US-0026, US-0027, US-0028, US-0029, US-0030, US-0031,
+  US-0032, US-0033, US-0034, US-0035, US-0036, US-0037, US-0038, US-0039, US-0040, US-0041,
+  US-0046, US-0047, US-0048, US-0049, US-0050, US-0056, US-0057, US-0058, US-0059, US-0060,
+  US-0063
 
 **Expanded E2E + Narrative - Search Category (11):**
 - US-0017, US-0018, US-0019, US-0020, US-0021 (core search)
@@ -351,4 +361,4 @@ Importer Stories (US-0300-0317):
 **Platform Capture - Fully Documented (11):**
 - US-0200, US-0201, US-0202, US-0203, US-0204, US-0205, US-0206, US-0207, US-0208, US-0209, US-0210
 
-**Total: 103 stories across 12 categories**
+**Total: 104 stories across 12 categories**

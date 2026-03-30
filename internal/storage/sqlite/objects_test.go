@@ -7,22 +7,58 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"hop.top/uri"
 )
 
+// makeObject builds a graph-canonical KnowledgeObject for tests.
+// Flat fields (Tags, Mentions, RawContent) are preserved for backward compat.
+// Graph is populated with a summary node, a section node, and a tag node.
 func makeObject(id, typ string) *storage.KnowledgeObject {
 	now := time.Now().Truncate(time.Second)
+	content := "test content for " + id
 	return &storage.KnowledgeObject{
 		ID:         id,
 		Type:       typ,
 		Subtype:    "short",
-		RawContent: "test content for " + id,
-		Tags:        []storage.Tag{{Label: "design", Weight: 1.0}},
-		Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "ui/layout"}},
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		RawContent: content,
+		Tags:       []storage.Tag{{Label: "design", Weight: 1.0}},
+		Mentions:   []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "ui/layout"}},
+		Summaries:  []string{content},
+		Sections: []storage.Section{{
+			Title:   "Body",
+			Content: content,
+			Order:   0,
+		}},
+		Graph: &pluginapi.ObjectGraph{
+			Nodes: []pluginapi.GraphNode{
+				{
+					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
+					NodeType: pluginapi.NodeTypeSummary,
+					Label:    "Summary",
+					Content:  content,
+					Order:    0,
+				},
+				{
+					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSection, 0),
+					NodeType: pluginapi.NodeTypeSection,
+					Label:    "Body",
+					Content:  content,
+					Order:    0,
+				},
+				{
+					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeTag, 0),
+					NodeType: pluginapi.NodeTypeTag,
+					Label:    "design",
+					Content:  "design",
+					Order:    0,
+				},
+			},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 
