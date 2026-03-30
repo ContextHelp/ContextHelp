@@ -31,7 +31,7 @@ Failure modes:
    nodes (a specific decision, a specific mention) have no addressable identity for finer-grained
    edges.
 
-Diagram: [ko-graph-structure-v1.mmd](ADR-063-graph-canonical-knowledge-object/ko-graph-structure-v1.mmd)
+Diagram: [graph diagram](ADR-063-graph-canonical-knowledge-object/ko-graph-structure-v1.mmd)
 
 ---
 
@@ -162,6 +162,7 @@ Pipeline steps may write to `Graph` directly; storage layer backfills flat field
 
 ### Positive
 
+- **Ingest steps** — must write to `Graph.Nodes`; flat-field writes treated legacy until backfill.
 - **Stable intra-object identity** — every section/tag/decision/task has a UUID; can be
   referenced by intra- and inter-object edges.
 - **Defined write semantics** — steps append typed nodes to `Graph.Nodes`; no array-append
