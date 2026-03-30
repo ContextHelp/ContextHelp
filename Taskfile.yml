@@ -125,7 +125,7 @@ tasks:
     cmds:
       - go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
       - go tool cover -html=coverage.out -o coverage.html
-      - echo "Coverage report generated: coverage.html"
+      - 'echo "Coverage report generated: coverage.html"'
       - go tool cover -func=coverage.out
 
   test:watch:
@@ -213,7 +213,7 @@ tasks:
       - migrate -path {{.MIGRATION_PATH}} -database "sqlite3://{{.DB_PATH}}" down 1
 
   db:migrate:create:
-    desc: Create new migration (usage: task db:migrate:create -- name)
+    desc: "Create new migration (usage: task db:migrate:create -- name)"
     cmds:
       - migrate create -ext sql -dir {{.MIGRATION_PATH}} -seq {{.CLI_ARGS}}
 
@@ -276,6 +276,170 @@ tasks:
     cmds:
       - go mod vendor
 
+  deps:install:
+    desc: "Install all ingestor dependencies by group (usage: task deps:install or task deps:install -- GROUP)"
+    cmds:
+      - |
+        GROUP="{{.CLI_ARGS}}"
+        GROUP="${GROUP:-all}"
+
+        ok()  { printf '  ✓ %s\n' "$1"; }
+        skip(){ printf '  - %s (already installed)\n' "$1"; }
+        fail(){ printf '  ✗ %s — install failed\n' "$1"; }
+
+        brew_install() {
+          local pkg="$1"; local label="${2:-$1}"
+          if command -v "$label" >/dev/null 2>&1; then skip "$label"; return; fi
+          brew install "$pkg" && ok "$label" || fail "$label"
+        }
+        brew_cask() {
+          local cask="$1"; local bin="$2"
+          if command -v "$bin" >/dev/null 2>&1; then skip "$bin"; return; fi
+          brew install --cask "$cask" && ok "$bin" || fail "$bin"
+        }
+
+        # ── ocr ────────────────────────────────────────────────────────────
+        if [ "$GROUP" = all ] || [ "$GROUP" = ocr ]; then
+          echo "▶ OCR"
+          brew_install tesseract tesseract
+          brew_install tesseract-lang "tesseract-lang (extra language packs)"
+        fi
+
+        # ── audio / transcription ──────────────────────────────────────────
+        if [ "$GROUP" = all ] || [ "$GROUP" = audio ]; then
+          echo "▶ Audio / Transcription"
+          brew_install ffmpeg ffmpeg
+          # whisper is installed locally; skip brew
+          if command -v whisper >/dev/null 2>&1 || command -v whisper-cpp >/dev/null 2>&1; then
+            skip "whisper (already at $(command -v whisper 2>/dev/null || command -v whisper-cpp))"
+          else
+            echo "  ! whisper not found — install whisper-cpp via brew or openai-whisper via pip:"
+            echo "      brew install whisper-cpp"
+            echo "      # or: pip install openai-whisper"
+          fi
+        fi
+
+        # ── diarization ────────────────────────────────────────────────────
+        if [ "$GROUP" = all ] || [ "$GROUP" = diarization ]; then
+          echo "▶ Diarization"
+          if command -v pyannote-audio >/dev/null 2>&1 || command -v pyannote >/dev/null 2>&1; then
+            skip "pyannote-audio (already installed)"
+          else
+            echo "  ! pyannote-audio not found — install via pip:"
+            echo "      pip install pyannote.audio"
+          fi
+        fi
+
+        # ── pdf ────────────────────────────────────────────────────────────
+        if [ "$GROUP" = all ] || [ "$GROUP" = pdf ]; then
+          echo "▶ PDF"
+          brew_install poppler pdftotext
+        fi
+
+        # ── office ────────────────────────────────────────────────────────
+        if [ "$GROUP" = all ] || [ "$GROUP" = office ]; then
+          echo "▶ Office documents"
+          brew_cask libreoffice soffice
+        fi
+
+        # ── markdown / docs ───────────────────────────────────────────────
+        if [ "$GROUP" = all ] || [ "$GROUP" = markdown ]; then
+          echo "▶ Markdown / Docs"
+          brew_install pandoc pandoc
+        fi
+
+        # ── go dev tools ──────────────────────────────────────────────────
+        if [ "$GROUP" = all ] || [ "$GROUP" = gotools ]; then
+          echo "▶ Go dev tools"
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && ok golangci-lint || fail golangci-lint
+          go install golang.org/x/vuln/cmd/govulncheck@latest && ok govulncheck || fail govulncheck
+          go install github.com/securego/gosec/v2/cmd/gosec@latest && ok gosec || fail gosec
+          go install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest && ok migrate || fail migrate
+        fi
+
+        echo ""
+        echo "Done. Run 'task preflight' to verify."
+
+  preflight:
+    desc: Check all ingestor deps and API keys are present (pre-flight)
+    cmds:
+      - |
+        PASS=0; WARN=0; FAIL=0
+        ok()   { printf '  ✓  %-30s %s\n' "$1" "${2:-}"; PASS=$((PASS+1)); }
+        warn() { printf '  ⚠  %-30s %s\n' "$1" "${2:-}"; WARN=$((WARN+1)); }
+        fail() { printf '  ✗  %-30s %s\n' "$1" "${2:-}"; FAIL=$((FAIL+1)); }
+        check_bin() {
+          local bin="$1"; local label="${2:-$1}"; local note="${3:-}"
+          if p=$(command -v "$bin" 2>/dev/null); then ok "$label" "$p"
+          else fail "$label" "${note:-not found}"; fi
+        }
+        check_env() {
+          local var="$1"; local label="${2:-$var}"; local sev="${3:-warn}"
+          if [ -n "${!var}" ]; then ok "$label" "(set)"
+          elif [ "$sev" = fail ]; then fail "$label" "not set"
+          else warn "$label" "not set — vision/llm pipelines may be limited"; fi
+        }
+
+        PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
+
+        echo "── Build tools ──────────────────────────────────────────────"
+        check_bin go           "go"
+        check_bin task         "task (taskfile)"
+        check_bin golangci-lint "golangci-lint"
+        check_bin govulncheck  "govulncheck"
+        check_bin migrate      "migrate"
+
+        echo "── OCR ──────────────────────────────────────────────────────"
+        check_bin tesseract    "tesseract"
+
+        echo "── Audio / Transcription ────────────────────────────────────"
+        check_bin ffmpeg       "ffmpeg"
+        check_bin ffprobe      "ffprobe"
+        if command -v whisper >/dev/null 2>&1; then
+          ok "whisper" "$(command -v whisper)"
+        elif command -v whisper-cpp >/dev/null 2>&1; then
+          ok "whisper-cpp" "$(command -v whisper-cpp)"
+        else
+          fail "whisper / whisper-cpp" "required for audio transcription"
+        fi
+
+        echo "── Diarization ──────────────────────────────────────────────"
+        if command -v pyannote-audio >/dev/null 2>&1; then
+          ok "pyannote-audio" "$(command -v pyannote-audio)"
+        elif command -v pyannote >/dev/null 2>&1; then
+          ok "pyannote" "$(command -v pyannote)"
+        else
+          warn "pyannote-audio" "not found — diarization pipeline disabled"
+        fi
+
+        echo "── PDF ──────────────────────────────────────────────────────"
+        check_bin pdftotext    "pdftotext (poppler)"
+
+        echo "── Office documents ─────────────────────────────────────────"
+        if command -v soffice >/dev/null 2>&1; then
+          ok "soffice (LibreOffice)" "$(command -v soffice)"
+        else
+          warn "soffice (LibreOffice)" "not found — Office doc pipeline disabled (task deps:install -- office)"
+        fi
+
+        echo "── Markdown / Docs ──────────────────────────────────────────"
+        check_bin pandoc       "pandoc"
+
+        echo "── API keys (vision / LLM) ──────────────────────────────────"
+        check_env OPENAI_API_KEY      "OPENAI_API_KEY"
+        check_env ANTHROPIC_API_KEY   "ANTHROPIC_API_KEY"
+        check_env GEMINI_API_KEY      "GEMINI_API_KEY"
+        check_env OPENROUTER_API_KEY  "OPENROUTER_API_KEY"
+        if command -v ollama >/dev/null 2>&1; then
+          ok "ollama (local vision/LLM)" "$(command -v ollama)"
+        else
+          warn "ollama" "not found — local vision/LLM unavailable"
+        fi
+
+        echo ""
+        echo "Result: ${PASS} ok  ${WARN} warnings  ${FAIL} failures"
+        [ "$FAIL" -eq 0 ] || exit 1
+
   # Installation tasks
   install:
     desc: Install binaries to GOPATH
@@ -324,7 +488,7 @@ tasks:
       - echo "Preparing release..."
       - git describe --tags --abbrev=0 || echo "No tags found"
       - echo "Update CHANGELOG.md and version files"
-      - echo "Then run: git tag -a v0.x.0 -m 'Release v0.x.0'"
+      - "echo \"Then run: git tag -a v0.x.0 -m 'Release v0.x.0'\""
 
   release:build:
     desc: Build release artifacts
@@ -338,9 +502,9 @@ tasks:
   version:
     desc: Show version information
     cmds:
-      - echo "Git tag: $(git describe --tags --always --dirty)"
-      - echo "Git commit: $(git rev-parse HEAD)"
-      - echo "Go version: $(go version)"
+      - 'echo "Git tag: $(git describe --tags --always --dirty)"'
+      - 'echo "Git commit: $(git rev-parse HEAD)"'
+      - 'echo "Go version: $(go version)"'
 
   verify:
     desc: Verify installation
@@ -352,6 +516,6 @@ tasks:
       - migrate -version || echo "migrate not found"
       - govulncheck -version || echo "govulncheck not found"
       - echo "=== Database ==="
-      - ls -lh {{.DB_PATH}} || echo "Database not found (run: task db:migrate:up)"
+      - 'ls -lh {{.DB_PATH}} || echo "Database not found (run: task db:migrate:up)"'
       - echo "=== Binaries ==="
-      - ls -lh bin/ || echo "Binaries not found (run: task build)"
+      - 'ls -lh bin/ || echo "Binaries not found (run: task build)"'
