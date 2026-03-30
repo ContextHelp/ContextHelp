@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 const testRSS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -132,6 +133,45 @@ func TestFeedParserEmptyContent(t *testing.T) {
 	// No format set for empty content.
 	if _, ok := got.Metadata["feed_format"]; ok {
 		t.Error("expected no feed_format for empty content")
+	}
+}
+
+func TestFeedParserEmitsGraphNodes(t *testing.T) {
+	step := NewFeedParser()
+	draft := &storage.KnowledgeObject{
+		ID:         "obj-feed-001",
+		RawContent: testRSS,
+	}
+	got, err := step.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got.Graph == nil {
+		t.Fatal("graph is nil; expected nodes")
+	}
+	var sectionNodes []pluginapi.GraphNode
+	for _, n := range got.Graph.Nodes {
+		if n.NodeType == pluginapi.NodeTypeSection {
+			sectionNodes = append(sectionNodes, n)
+		}
+	}
+	if len(sectionNodes) != 2 {
+		t.Errorf("expected 2 section nodes (one per RSS item), got %d", len(sectionNodes))
+	}
+	if sectionNodes[0].Label != "Item One" {
+		t.Errorf("section[0] label: got %q", sectionNodes[0].Label)
+	}
+}
+
+func TestFeedParserNoGraphWithoutID(t *testing.T) {
+	step := NewFeedParser()
+	draft := &storage.KnowledgeObject{RawContent: testRSS}
+	got, err := step.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got.Graph != nil && len(got.Graph.Nodes) > 0 {
+		t.Error("expected no graph nodes when ID is empty")
 	}
 }
 

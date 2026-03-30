@@ -22,7 +22,7 @@ const (
 	NodeTypeSummary       = "summary"
 	NodeTypeCodeBlock     = "code_block"
 	NodeTypeOpenQuestion  = "open_question"
-	NodeTypeArtifact      = "artifact"
+	NodeTypeArtifact      = "artifact" // binary/media reference (image, audio, file)
 )
 
 // Edge type constants for ObjectGraph edges.

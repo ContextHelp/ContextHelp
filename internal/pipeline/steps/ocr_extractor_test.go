@@ -6,6 +6,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestOCRExtractorSetsText(t *testing.T) {
@@ -51,6 +52,56 @@ func TestOCRExtractorLowConfidence(t *testing.T) {
 	}
 	if !hasReview {
 		t.Error("expected needs-review tag")
+	}
+}
+
+func TestOCRExtractorEmitsGraphNodes(t *testing.T) {
+	step := NewOCRExtractor()
+	draft := &storage.KnowledgeObject{
+		ID:          "obj-ocr-001",
+		RawContent:  "fake image bytes",
+		ContentType: "image/png",
+	}
+	got, err := step.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got.Graph == nil {
+		t.Fatal("graph is nil; expected nodes")
+	}
+	artifactID := pluginapi.NewNodeID("obj-ocr-001", pluginapi.NodeTypeArtifact, 0)
+	if got.Graph.FindNode(artifactID) == nil {
+		t.Errorf("artifact node %q not found", artifactID)
+	}
+	var sectionNode *pluginapi.GraphNode
+	for i := range got.Graph.Nodes {
+		if got.Graph.Nodes[i].NodeType == pluginapi.NodeTypeSection {
+			sectionNode = &got.Graph.Nodes[i]
+			break
+		}
+	}
+	if sectionNode == nil {
+		t.Error("expected a section node for OCR text")
+	} else if sectionNode.Label != "OCR Text" {
+		t.Errorf("section label: got %q", sectionNode.Label)
+	}
+	if len(got.Graph.Edges) == 0 {
+		t.Error("expected edge from artifact to section")
+	}
+}
+
+func TestOCRExtractorNoGraphWithoutID(t *testing.T) {
+	step := NewOCRExtractor()
+	draft := &storage.KnowledgeObject{
+		RawContent:  "fake image bytes",
+		ContentType: "image/png",
+	}
+	got, err := step.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got.Graph != nil && len(got.Graph.Nodes) > 0 {
+		t.Error("expected no graph nodes when ID is empty")
 	}
 }
 
