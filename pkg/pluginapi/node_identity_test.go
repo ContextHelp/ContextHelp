@@ -40,3 +40,44 @@ func TestObjectNodeURI_ParseRoundtrip(t *testing.T) {
 		t.Errorf("unexpected ref %+v", ref)
 	}
 }
+
+func TestNewNodeID_PanicsOnSlashInObjectID(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for objectID with '/'")
+		}
+	}()
+	pluginapi.NewNodeID("org/repo", pluginapi.NodeTypeSection, 0)
+}
+
+func TestNewNodeID_PanicsOnEmptyObjectID(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for empty objectID")
+		}
+	}()
+	pluginapi.NewNodeID("", pluginapi.NodeTypeSection, 0)
+}
+
+func TestNewNodeID_PanicsOnNegativeOrdinal(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for negative ordinal")
+		}
+	}()
+	pluginapi.NewNodeID("obj-1", pluginapi.NodeTypeSection, -1)
+}
+
+func TestParseNodeID_MalformedInput(t *testing.T) {
+	_, err := pluginapi.ParseNodeID("only-two/parts")
+	if err == nil {
+		t.Fatal("expected error for malformed input")
+	}
+}
+
+func TestParseNodeURI_MissingPrefix(t *testing.T) {
+	_, err := pluginapi.ParseNodeURI("node/obj/section/0")
+	if err == nil {
+		t.Fatal("expected error for missing ctxt:node/ prefix")
+	}
+}

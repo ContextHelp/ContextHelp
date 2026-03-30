@@ -34,7 +34,17 @@ type NodeRef struct {
 
 // NewNodeID returns a stable opaque identifier for a node.
 // Format: "<objectID>/<nodeType>/<ordinal>"
+// Panics (programmer error) if objectID or nodeType is empty, objectID contains '/', or ordinal < 0.
 func NewNodeID(objectID, nodeType string, ordinal int) string {
+	if objectID == "" || nodeType == "" {
+		panic(fmt.Sprintf("pluginapi.NewNodeID: objectID and nodeType must be non-empty"))
+	}
+	if strings.Contains(objectID, "/") {
+		panic(fmt.Sprintf("pluginapi.NewNodeID: objectID must not contain '/': %q", objectID))
+	}
+	if ordinal < 0 {
+		panic(fmt.Sprintf("pluginapi.NewNodeID: ordinal must be >= 0, got %d", ordinal))
+	}
 	return fmt.Sprintf("%s/%s/%d", objectID, nodeType, ordinal)
 }
 
@@ -48,12 +58,29 @@ func ParseNodeID(id string) (NodeRef, error) {
 	if err != nil {
 		return NodeRef{}, fmt.Errorf("invalid ordinal in node id %q: %w", id, err)
 	}
-	return NodeRef{ObjectID: parts[0], NodeType: parts[1], Ordinal: ord}, nil
+	ref := NodeRef{ObjectID: parts[0], NodeType: parts[1], Ordinal: ord}
+	if ref.ObjectID == "" || ref.NodeType == "" {
+		return NodeRef{}, fmt.Errorf("invalid node id %q: empty objectID or nodeType", id)
+	}
+	if ref.Ordinal < 0 {
+		return NodeRef{}, fmt.Errorf("invalid node id %q: negative ordinal", id)
+	}
+	return ref, nil
 }
 
 // NodeURI returns the canonical URI for a node.
 // Format: "ctxt:node/<objectID>/<nodeType>/<ordinal>"
+// Panics (programmer error) if objectID or nodeType is empty, objectID contains '/', or ordinal < 0.
 func NodeURI(objectID, nodeType string, ordinal int) string {
+	if objectID == "" || nodeType == "" {
+		panic(fmt.Sprintf("pluginapi.NodeURI: objectID and nodeType must be non-empty"))
+	}
+	if strings.Contains(objectID, "/") {
+		panic(fmt.Sprintf("pluginapi.NodeURI: objectID must not contain '/': %q", objectID))
+	}
+	if ordinal < 0 {
+		panic(fmt.Sprintf("pluginapi.NodeURI: ordinal must be >= 0, got %d", ordinal))
+	}
 	return fmt.Sprintf("ctxt:node/%s/%s/%d", objectID, nodeType, ordinal)
 }
 
