@@ -21,6 +21,7 @@ const (
 	NodeTypeTask          = "task"
 	NodeTypeSummary       = "summary"
 	NodeTypeCodeBlock     = "code_block"
+	NodeTypeArtifact      = "artifact" // external package / dependency reference
 )
 
 // Edge type constants for ObjectGraph edges.
