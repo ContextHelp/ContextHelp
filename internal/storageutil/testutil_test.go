@@ -102,13 +102,18 @@ func TestBuildGraphKO(t *testing.T) {
 		assert.ElementsMatch(t, []string{"alpha", "beta"}, tagNodes)
 	})
 
-	t.Run("flat fields preserved", func(t *testing.T) {
+	t.Run("flat fields derived from graph projections", func(t *testing.T) {
 		ko := BuildGraphKO("ko-5", "text", "flat content", "mytag")
 		assert.Equal(t, "flat content", ko.RawContent)
+		// Tags derived via ProjectIndex — label present, Weight not set by projection.
 		require.Len(t, ko.Tags, 1)
 		assert.Equal(t, "mytag", ko.Tags[0].Label)
+		// Summaries extracted from NodeTypeSummary nodes.
 		assert.NotEmpty(t, ko.Summaries)
+		assert.Equal(t, "flat content", ko.Summaries[0])
+		// Sections derived via ProjectDocument.
 		assert.NotEmpty(t, ko.Sections)
+		assert.Equal(t, "flat content", ko.Sections[0].Content)
 	})
 
 	t.Run("node IDs are valid", func(t *testing.T) {
