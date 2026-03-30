@@ -54,3 +54,46 @@ func TestSuggestTagsAndMentions_NilLLM_ReturnsEmpty(t *testing.T) {
 	assert.Empty(t, tags)
 	assert.Empty(t, mentions)
 }
+
+func TestSuggestTagsAndMentions_GraphCanonical_UsesProjection(t *testing.T) {
+	// Graph-canonical KO: content lives in Graph nodes, not flat fields.
+	// The LLM prompt must include the graph-projected text.
+	var capturedPrompt string
+	llm := &capturePromptLLM{
+		response: `{"tags":["graph","canonical"],"mentions":[]}`,
+		capture:  &capturedPrompt,
+	}
+	obj := &storage.KnowledgeObject{
+		ID: "obj_graph_suggest",
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
+				{
+					ID:       "obj_graph_suggest/summary/0",
+					NodeType: "summary", // NodeTypeSummary
+					Content:  "Content from graph node for LLM",
+					Order:    0,
+				},
+			},
+		},
+	}
+	cfg := autosuggest.DefaultConfig()
+	cfg.MaxTags = 2
+
+	tags, _, err := autosuggest.SuggestTagsAndMentions(context.Background(), obj, cfg, llm)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"graph", "canonical"}, tags)
+	// Prompt must include the graph node content, not empty string.
+	assert.Contains(t, capturedPrompt, "Content from graph node for LLM",
+		"prompt must contain graph-projected text")
+}
+
+// capturePromptLLM records the prompt passed to Generate.
+type capturePromptLLM struct {
+	response string
+	capture  *string
+}
+
+func (m *capturePromptLLM) Generate(_ context.Context, prompt string) (string, error) {
+	*m.capture = prompt
+	return m.response, nil
+}

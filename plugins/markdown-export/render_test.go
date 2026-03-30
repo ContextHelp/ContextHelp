@@ -142,3 +142,53 @@ func TestRender_LongSummaryTruncated(t *testing.T) {
 		}
 	}
 }
+
+func TestRender_GraphCanonical_UsesProjection(t *testing.T) {
+	// Graph-canonical KO: no flat Summaries/Sections — all content in Graph.
+	now := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+	obj := pluginapi.KnowledgeObject{
+		ID:        "obj_graph_render",
+		Type:      "text",
+		CreatedAt: now,
+		UpdatedAt: now,
+		Graph: &pluginapi.ObjectGraph{
+			Nodes: []pluginapi.GraphNode{
+				{
+					ID:       "obj_graph_render/summary/0",
+					NodeType: pluginapi.NodeTypeSummary,
+					Content:  "Graph-sourced summary body.",
+					Order:    0,
+				},
+				{
+					ID:       "obj_graph_render/section/0",
+					NodeType: pluginapi.NodeTypeSection,
+					Label:    "Details",
+					Content:  "Section content here.",
+					Order:    0,
+				},
+				{
+					ID:       "obj_graph_render/tag/0",
+					NodeType: pluginapi.NodeTypeTag,
+					Label:    "graph-tag",
+					Content:  "graph-tag",
+					Order:    0,
+				},
+			},
+		},
+	}
+
+	out, err := markdownexport.Render(obj)
+	require.NoError(t, err)
+	s := string(out)
+
+	// Tags from graph nodes appear in frontmatter.
+	assert.Contains(t, s, "tags:")
+	assert.Contains(t, s, "  - graph-tag")
+
+	// Section from graph appears in body.
+	assert.Contains(t, s, "## Details")
+	assert.Contains(t, s, "Section content here.")
+
+	// Title uses FTSBody when no metadata title and Graph is present.
+	assert.Contains(t, s, "Graph-sourced summary body.")
+}
