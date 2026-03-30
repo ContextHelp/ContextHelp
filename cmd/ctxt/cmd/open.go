@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -99,25 +100,50 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 
-	if len(obj.Tags) > 0 {
+	// Use projection helpers — never access KO fields ad hoc.
+	docProj := projection.ProjectDocument(obj)
+	idxProj := projection.ProjectIndex(obj)
+
+	if len(idxProj.Tags) > 0 {
 		var labels []string
-		for _, t := range obj.Tags {
+		for _, t := range idxProj.Tags {
 			labels = append(labels, t.Label)
 		}
 		fmt.Printf("Tags:      %s\n", strings.Join(labels, ", "))
 	}
-	if len(obj.Mentions) > 0 {
-		mentionStrs := make([]string, len(obj.Mentions))
-		for i, u := range obj.Mentions {
-			mentionStrs[i] = u.String()
-		}
-		fmt.Printf("Mentions:  %s\n", strings.Join(mentionStrs, ", "))
+	if len(idxProj.Mentions) > 0 {
+		fmt.Printf("Mentions:  %s\n", strings.Join(idxProj.Mentions, ", "))
 	}
 	fmt.Println()
 
 	if len(obj.Summaries) > 0 {
 		fmt.Println("Summary:")
 		fmt.Printf("  %s\n", obj.Summaries[0])
+		fmt.Println()
+	}
+
+	if len(docProj.Sections) > 0 {
+		fmt.Println("Sections:")
+		for _, s := range docProj.Sections {
+			if s.Title != "" {
+				fmt.Printf("  [%s]\n", s.Title)
+			}
+			if s.Content != "" {
+				body := s.Content
+				if len(body) > 120 {
+					body = body[:117] + "..."
+				}
+				fmt.Printf("    %s\n", body)
+			}
+		}
+		fmt.Println()
+	} else if docProj.Body != "" {
+		fmt.Println("Body:")
+		body := docProj.Body
+		if len(body) > 240 {
+			body = body[:237] + "..."
+		}
+		fmt.Printf("  %s\n", body)
 		fmt.Println()
 	}
 
@@ -134,14 +160,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 		fmt.Println("See Also:")
 		for _, r := range related {
-			label := r.ID
-			if len(r.Summaries) > 0 && r.Summaries[0] != "" {
-				summary := r.Summaries[0]
-				if len(summary) > 60 {
-					summary = summary[:57] + "..."
-				}
-				label = fmt.Sprintf("%s  %s", r.ID, summary)
-			}
+			label := koLabel(r)
 			fmt.Printf("  %s\n", label)
 		}
 	}
