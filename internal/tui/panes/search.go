@@ -2,12 +2,14 @@ package panes
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/types"
 )
@@ -20,14 +22,44 @@ type resultItem struct {
 }
 
 func (r resultItem) Title() string {
-	if len(r.obj.Summaries) > 0 {
-		return r.obj.Summaries[0]
+	dp := projection.ProjectDocument(r.obj)
+	switch {
+	case dp.Title != "":
+		return dp.Title
+	case dp.Body != "":
+		// Truncate body to a single line for the list title.
+		line := dp.Body
+		if nl := strings.IndexByte(line, '\n'); nl >= 0 {
+			line = line[:nl]
+		}
+		if len(line) > 80 {
+			line = line[:80] + "…"
+		}
+		return line
+	case len(dp.Sections) > 0 && dp.Sections[0].Title != "":
+		return dp.Sections[0].Title
+	default:
+		return r.obj.ID
 	}
-	return r.obj.ID
 }
 
 func (r resultItem) Description() string {
-	return r.obj.Type + " · " + r.obj.Pipeline
+	ip := projection.ProjectIndex(r.obj)
+	var parts []string
+	if r.obj.Type != "" {
+		parts = append(parts, r.obj.Type)
+	}
+	// Surface up to 3 tags as preview badges.
+	for i, tag := range ip.Tags {
+		if i >= 3 {
+			break
+		}
+		parts = append(parts, "#"+tag.Label)
+	}
+	if len(parts) == 0 {
+		return r.obj.Pipeline
+	}
+	return strings.Join(parts, " · ")
 }
 
 func (r resultItem) FilterValue() string { return r.Title() }

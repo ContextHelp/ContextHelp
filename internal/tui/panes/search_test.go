@@ -75,3 +75,47 @@ func TestSearchPaneFocusBlur(t *testing.T) {
 	sp.Blur()
 	assert.False(t, sp.IsFocused())
 }
+
+// TestSearchPaneListUsesProjectionTitle verifies that resultItem renders using
+// DocumentProjection (TextContent as title body) rather than raw Summaries.
+func TestSearchPaneListUsesProjectionTitle(t *testing.T) {
+	theme := tui.DefaultTheme()
+	sp := panes.NewSearchPane(&stubAdapter{}, theme)
+
+	objs := []*storage.KnowledgeObject{
+		{
+			ID:          "proj-title-1",
+			Type:        "text",
+			TextContent: "Projection body text",
+			Tags:        []storage.Tag{{Label: "go", Weight: 0.9}, {Label: "tui", Weight: 0.8}},
+		},
+	}
+	updated, _ := sp.Update(tui.SearchResultsMsg{Results: objs})
+	view := updated.View(80, 40)
+	assert.Contains(t, view, "Projection body text", "title from projection body expected")
+	assert.Contains(t, view, "#go", "tag badge expected in description")
+}
+
+// TestSearchPaneListUsesProjectionTags verifies graph tags appear in item description.
+func TestSearchPaneListUsesProjectionTags(t *testing.T) {
+	theme := tui.DefaultTheme()
+	sp := panes.NewSearchPane(&stubAdapter{}, theme)
+
+	graph := &storage.ObjectGraph{
+		Nodes: []storage.GraphNode{
+			{ID: "g1/tag/0", NodeType: "tag", Label: "graph-tag-a"},
+		},
+	}
+	objs := []*storage.KnowledgeObject{
+		{
+			ID:    "graph-tag-obj",
+			Type:  "text",
+			Graph: graph,
+			Tags:  []storage.Tag{{Label: "flat-tag", Weight: 1.0}},
+		},
+	}
+	updated, _ := sp.Update(tui.SearchResultsMsg{Results: objs})
+	view := updated.View(80, 40)
+	assert.Contains(t, view, "#graph-tag-a", "graph tag expected in description")
+	assert.NotContains(t, view, "#flat-tag", "flat tag must not appear when graph present")
+}
