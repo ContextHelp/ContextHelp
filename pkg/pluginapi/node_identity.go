@@ -37,7 +37,7 @@ type NodeRef struct {
 // Panics (programmer error) if objectID or nodeType is empty, objectID contains '/', or ordinal < 0.
 func NewNodeID(objectID, nodeType string, ordinal int) string {
 	if objectID == "" || nodeType == "" {
-		panic(fmt.Sprintf("pluginapi.NewNodeID: objectID and nodeType must be non-empty"))
+		panic("pluginapi.NewNodeID: objectID and nodeType must be non-empty")
 	}
 	if strings.Contains(objectID, "/") {
 		panic(fmt.Sprintf("pluginapi.NewNodeID: objectID must not contain '/': %q", objectID))
@@ -73,7 +73,7 @@ func ParseNodeID(id string) (NodeRef, error) {
 // Panics (programmer error) if objectID or nodeType is empty, objectID contains '/', or ordinal < 0.
 func NodeURI(objectID, nodeType string, ordinal int) string {
 	if objectID == "" || nodeType == "" {
-		panic(fmt.Sprintf("pluginapi.NodeURI: objectID and nodeType must be non-empty"))
+		panic("pluginapi.NodeURI: objectID and nodeType must be non-empty")
 	}
 	if strings.Contains(objectID, "/") {
 		panic(fmt.Sprintf("pluginapi.NodeURI: objectID must not contain '/': %q", objectID))
