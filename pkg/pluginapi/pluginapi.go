@@ -141,9 +141,11 @@ type Task struct {
 
 // GraphNode is a typed node within an object's intra-object graph.
 type GraphNode struct {
-	ID       string         `json:"id"`        // NewNodeID(objectID, nodeType, ordinal)
-	NodeType string         `json:"node_type"` // NodeType* constant
+	ID       string         `json:"id"`              // NewNodeID(objectID, nodeType, ordinal)
+	NodeType GraphNodeType  `json:"node_type"`       // NodeType* constant
+	Label    string         `json:"label,omitempty"` // human-readable label
 	Content  string         `json:"content,omitempty"`
+	Order    int            `json:"order"`           // ordinal position; zero is valid
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
@@ -153,7 +155,7 @@ type GraphEdge struct {
 	ID       string  `json:"id"`
 	FromID   string  `json:"from_id"`
 	ToID     string  `json:"to_id"`
-	EdgeType string  `json:"edge_type"` // EdgeType* constant
+	EdgeType GraphEdgeType `json:"edge_type"` // EdgeType* constant
 	Weight   float64 `json:"weight,omitempty"`
 }
 
@@ -166,6 +168,9 @@ type ObjectGraph struct {
 
 // FindNode returns the node with the given ID, or nil.
 func (g *ObjectGraph) FindNode(id string) *GraphNode {
+	if g == nil {
+		return nil
+	}
 	for i := range g.Nodes {
 		if g.Nodes[i].ID == id {
 			return &g.Nodes[i]
@@ -185,9 +190,11 @@ type DocumentProjection struct {
 // IndexProjection is a derived search-index view of a KnowledgeObject.
 // Derived by projection.ProjectIndex; not stored directly.
 type IndexProjection struct {
-	FTSBody       string `json:"fts_body,omitempty"`
-	Tags          []Tag  `json:"tags,omitempty"`
-	EmbeddingText string `json:"embedding_text,omitempty"`
+	FTSBody string `json:"fts_body,omitempty"`
+	// Tags includes weight and source metadata — richer than ADR pseudocode []string.
+	Tags          []Tag    `json:"tags,omitempty"`
+	Mentions      []string `json:"mentions,omitempty"`
+	EmbeddingText string   `json:"embedding_text,omitempty"`
 }
 
 // ─── Pipeline step contract ───────────────────────────────────────────────────

@@ -52,3 +52,41 @@ func TestIndexProjection_HasFTSBody(t *testing.T) {
 		t.Fatal("FTSBody missing")
 	}
 }
+
+func TestObjectGraph_FindNode_NilReceiver(t *testing.T) {
+	var g *pluginapi.ObjectGraph
+	if g.FindNode("any-id") != nil {
+		t.Fatal("expected nil from nil receiver")
+	}
+}
+
+func TestObjectGraph_FindNode_NotFound(t *testing.T) {
+	g := &pluginapi.ObjectGraph{}
+	if g.FindNode("missing") != nil {
+		t.Fatal("expected nil for missing node")
+	}
+}
+
+func TestGraphNode_HasOrderAndLabel(t *testing.T) {
+	n := pluginapi.GraphNode{
+		ID:       pluginapi.NewNodeID("obj-1", pluginapi.NodeTypeSection, 2),
+		NodeType: pluginapi.NodeTypeSection,
+		Label:    "Introduction",
+		Order:    2,
+	}
+	if n.Order != 2 {
+		t.Errorf("Order: got %d", n.Order)
+	}
+	if n.Label != "Introduction" {
+		t.Errorf("Label: got %q", n.Label)
+	}
+}
+
+func TestIndexProjection_HasMentions(t *testing.T) {
+	ip := pluginapi.IndexProjection{
+		Mentions: []string{"@people.alice", "@project.foo"},
+	}
+	if len(ip.Mentions) != 2 {
+		t.Fatalf("want 2 mentions, got %d", len(ip.Mentions))
+	}
+}

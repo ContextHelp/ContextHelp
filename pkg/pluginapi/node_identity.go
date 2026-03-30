@@ -6,6 +6,12 @@ import (
 	"strings"
 )
 
+// GraphNodeType is the type of a node within an ObjectGraph.
+type GraphNodeType = string
+
+// GraphEdgeType is the type of an edge within an ObjectGraph.
+type GraphEdgeType = string
+
 // Node type constants for ObjectGraph nodes.
 const (
 	NodeTypeSection       = "section"
