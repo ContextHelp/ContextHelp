@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
@@ -88,6 +89,50 @@ func (h *queryHandler) GetObject(ctx context.Context, req *pb.GetObjectRequest) 
 	return koToProto(o), nil
 }
 
+// NodeAwareSearch runs an RSQL query with optional node/edge type filtering.
+// Results include graph structure, document projection, and optional node hits.
+func (h *queryHandler) NodeAwareSearch(
+	ctx context.Context,
+	req *pb.NodeAwareSearchRequest,
+) (*pb.NodeAwareSearchResponse, error) {
+	if req.Query == "" {
+		return nil, status.Error(codes.InvalidArgument, "query is required")
+	}
+	limit := int(req.Limit)
+	if limit <= 0 {
+		limit = 20
+	}
+
+	var apiFilter *pluginapi.NodeAwareFilter
+	if req.Filter != nil {
+		apiFilter = &pluginapi.NodeAwareFilter{
+			NodeTypes:      req.Filter.NodeTypes,
+			EdgeTypes:      req.Filter.EdgeTypes,
+			ReturnNodeHits: req.Filter.ReturnNodeHits,
+		}
+	}
+
+	profileID := req.ProfileId
+	objs, total, err := h.svc.SearchObjectsNodeAware(ctx, req.Query, limit, int(req.Offset), apiFilter, profileID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "node-aware search: %v", err)
+	}
+
+	results := make([]*pb.NodeAwareResult, 0, len(objs))
+	for _, o := range objs {
+		r := &pb.NodeAwareResult{
+			Object:       koToProto(o),
+			DocumentView: docProjectionToProto(projection.ProjectDocument(o)),
+		}
+		if apiFilter != nil && apiFilter.ReturnNodeHits && o.Graph != nil {
+			r.NodeHits = buildNodeHits(o)
+		}
+		results = append(results, r)
+	}
+
+	return &pb.NodeAwareSearchResponse{Results: results, Total: int32(total)}, nil
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 func koToProto(o *pluginapi.KnowledgeObject) *pb.KnowledgeObject {
@@ -102,7 +147,83 @@ func koToProto(o *pluginapi.KnowledgeObject) *pb.KnowledgeObject {
 		CreatedAt:   safeTimestamp(o.CreatedAt),
 		UpdatedAt:   safeTimestamp(o.UpdatedAt),
 	}
+	if o.Graph != nil {
+		p.Graph = objectGraphToProto(o.Graph)
+	}
 	return p
+}
+
+func objectGraphToProto(g *pluginapi.ObjectGraph) *pb.ObjectGraph {
+	if g == nil {
+		return nil
+	}
+	pg := &pb.ObjectGraph{
+		Nodes: make([]*pb.GraphNode, 0, len(g.Nodes)),
+		Edges: make([]*pb.GraphEdge, 0, len(g.Edges)),
+	}
+	for _, n := range g.Nodes {
+		pg.Nodes = append(pg.Nodes, &pb.GraphNode{
+			Id:       n.ID,
+			NodeType: string(n.NodeType),
+			Label:    n.Label,
+			Content:  n.Content,
+			Order:    int32(n.Order),
+		})
+	}
+	for _, e := range g.Edges {
+		pg.Edges = append(pg.Edges, &pb.GraphEdge{
+			Id:       e.ID,
+			FromId:   e.FromID,
+			ToId:     e.ToID,
+			EdgeType: string(e.EdgeType),
+			Weight:   e.Weight,
+		})
+	}
+	return pg
+}
+
+func docProjectionToProto(d pluginapi.DocumentProjection) *pb.DocumentProjection {
+	dp := &pb.DocumentProjection{
+		Title: d.Title,
+		Body:  d.Body,
+	}
+	for _, s := range d.Sections {
+		dp.Sections = append(dp.Sections, &pb.Section{
+			Title:   s.Title,
+			Content: s.Content,
+			Order:   int32(s.Order),
+		})
+	}
+	return dp
+}
+
+// buildNodeHits constructs NodeHit entries for every node in the object graph.
+// Score is 1.0 (presence-based); richer scoring is deferred to T-0180.
+func buildNodeHits(o *pluginapi.KnowledgeObject) []*pb.NodeHit {
+	if o.Graph == nil {
+		return nil
+	}
+	hits := make([]*pb.NodeHit, 0, len(o.Graph.Nodes))
+	for i, n := range o.Graph.Nodes {
+		hits = append(hits, &pb.NodeHit{
+			ObjectId: o.ID,
+			NodeRef:  pluginapi.NodeURI(o.ID, string(n.NodeType), i),
+			NodeType: string(n.NodeType),
+			Snippet:  snippetFromNode(n),
+			Score:    1.0,
+		})
+	}
+	return hits
+}
+
+func snippetFromNode(n pluginapi.GraphNode) string {
+	if n.Content != "" {
+		if len(n.Content) > 200 {
+			return n.Content[:200]
+		}
+		return n.Content
+	}
+	return n.Label
 }
 
 func safeTimestamp(t time.Time) *timestamppb.Timestamp {

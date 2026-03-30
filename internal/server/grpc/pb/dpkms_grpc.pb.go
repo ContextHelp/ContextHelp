@@ -311,9 +311,10 @@ var JobService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	QueryService_Search_FullMethodName      = "/dpkms.v1.QueryService/Search"
-	QueryService_ListObjects_FullMethodName = "/dpkms.v1.QueryService/ListObjects"
-	QueryService_GetObject_FullMethodName   = "/dpkms.v1.QueryService/GetObject"
+	QueryService_Search_FullMethodName          = "/dpkms.v1.QueryService/Search"
+	QueryService_ListObjects_FullMethodName     = "/dpkms.v1.QueryService/ListObjects"
+	QueryService_GetObject_FullMethodName       = "/dpkms.v1.QueryService/GetObject"
+	QueryService_NodeAwareSearch_FullMethodName = "/dpkms.v1.QueryService/NodeAwareSearch"
 )
 
 // QueryServiceClient is the client API for QueryService service.
@@ -326,6 +327,8 @@ type QueryServiceClient interface {
 	ListObjects(ctx context.Context, in *ListObjectsRequest, opts ...grpc.CallOption) (*ListObjectsResponse, error)
 	// Get a single knowledge object.
 	GetObject(ctx context.Context, in *GetObjectRequest, opts ...grpc.CallOption) (*KnowledgeObject, error)
+	// NodeAwareSearch runs an RSQL query with optional node/edge type filtering.
+	NodeAwareSearch(ctx context.Context, in *NodeAwareSearchRequest, opts ...grpc.CallOption) (*NodeAwareSearchResponse, error)
 }
 
 type queryServiceClient struct {
@@ -366,6 +369,16 @@ func (c *queryServiceClient) GetObject(ctx context.Context, in *GetObjectRequest
 	return out, nil
 }
 
+func (c *queryServiceClient) NodeAwareSearch(ctx context.Context, in *NodeAwareSearchRequest, opts ...grpc.CallOption) (*NodeAwareSearchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NodeAwareSearchResponse)
+	err := c.cc.Invoke(ctx, QueryService_NodeAwareSearch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServiceServer is the server API for QueryService service.
 // All implementations must embed UnimplementedQueryServiceServer
 // for forward compatibility.
@@ -376,6 +389,8 @@ type QueryServiceServer interface {
 	ListObjects(context.Context, *ListObjectsRequest) (*ListObjectsResponse, error)
 	// Get a single knowledge object.
 	GetObject(context.Context, *GetObjectRequest) (*KnowledgeObject, error)
+	// NodeAwareSearch runs an RSQL query with optional node/edge type filtering.
+	NodeAwareSearch(context.Context, *NodeAwareSearchRequest) (*NodeAwareSearchResponse, error)
 	mustEmbedUnimplementedQueryServiceServer()
 }
 
@@ -394,6 +409,9 @@ func (UnimplementedQueryServiceServer) ListObjects(context.Context, *ListObjects
 }
 func (UnimplementedQueryServiceServer) GetObject(context.Context, *GetObjectRequest) (*KnowledgeObject, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetObject not implemented")
+}
+func (UnimplementedQueryServiceServer) NodeAwareSearch(context.Context, *NodeAwareSearchRequest) (*NodeAwareSearchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method NodeAwareSearch not implemented")
 }
 func (UnimplementedQueryServiceServer) mustEmbedUnimplementedQueryServiceServer() {}
 func (UnimplementedQueryServiceServer) testEmbeddedByValue()                      {}
@@ -470,6 +488,24 @@ func _QueryService_GetObject_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _QueryService_NodeAwareSearch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodeAwareSearchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServiceServer).NodeAwareSearch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QueryService_NodeAwareSearch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServiceServer).NodeAwareSearch(ctx, req.(*NodeAwareSearchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // QueryService_ServiceDesc is the grpc.ServiceDesc for QueryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -488,6 +524,10 @@ var QueryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetObject",
 			Handler:    _QueryService_GetObject_Handler,
+		},
+		{
+			MethodName: "NodeAwareSearch",
+			Handler:    _QueryService_NodeAwareSearch_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -8,6 +8,45 @@ import "google/protobuf/timestamp.proto";
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
+// GraphNode is a typed node within a KnowledgeObject's intra-object graph.
+message GraphNode {
+  string id        = 1; // "<objectID>/<nodeType>/<ordinal>"
+  string node_type = 2; // section | tag | entity_mention | decision | task | summary | code_block
+  string label     = 3;
+  string content   = 4;
+  int32  order     = 5;
+}
+
+// GraphEdge is a directed edge between two nodes in the same object graph.
+message GraphEdge {
+  string id        = 1;
+  string from_id   = 2;
+  string to_id     = 3;
+  string edge_type = 4; // contains | references | resolves_to | derives_from
+  double weight    = 5;
+}
+
+// ObjectGraph holds typed nodes and edges for a single KnowledgeObject.
+message ObjectGraph {
+  repeated GraphNode nodes = 1;
+  repeated GraphEdge edges = 2;
+}
+
+// Section is a structural section of a knowledge object.
+message Section {
+  string title   = 1;
+  string content = 2;
+  int32  order   = 3;
+}
+
+// DocumentProjection is the derived human-facing view of a KnowledgeObject.
+message DocumentProjection {
+  string           title    = 1;
+  string           body     = 2;
+  repeated Section sections = 3;
+}
+
+// KnowledgeObject is the central proto type for an ingested piece of knowledge.
 message KnowledgeObject {
   string id            = 1;
   string type          = 2;
@@ -16,8 +55,12 @@ message KnowledgeObject {
   string text_content  = 5;
   string pipeline      = 6;
   string profile_id    = 7;
-  google.protobuf.Timestamp created_at = 8;
-  google.protobuf.Timestamp updated_at = 9;
+  google.protobuf.Timestamp created_at  = 8;
+  google.protobuf.Timestamp updated_at  = 9;
+  // graph holds canonical node/edge structure; populated when graph_json is stored.
+  ObjectGraph graph = 10;
+  // document_view is the derived document projection; populated on demand.
+  DocumentProjection document_view = 11;
 }
 
 message Entity {
@@ -40,10 +83,35 @@ message Job {
   string error        = 8;
   int32  retry_count  = 9;
   int32  max_retries  = 10;
-  google.protobuf.Timestamp created_at  = 11;
-  google.protobuf.Timestamp updated_at  = 12;
-  google.protobuf.Timestamp started_at  = 13;
+  google.protobuf.Timestamp created_at   = 11;
+  google.protobuf.Timestamp updated_at   = 12;
+  google.protobuf.Timestamp started_at   = 13;
   google.protobuf.Timestamp completed_at = 14;
+}
+
+// ─── Node-aware search types ──────────────────────────────────────────────────
+
+// NodeHit is a search result pointing to a matching node within an object.
+message NodeHit {
+  string object_id = 1;
+  string node_ref  = 2; // canonical NodeURI: "ctxt:node/<objectID>/<nodeType>/<ordinal>"
+  string node_type = 3;
+  string snippet   = 4;
+  double score     = 5;
+}
+
+// NodeAwareFilter constrains node-aware search by node/edge type.
+message NodeAwareFilter {
+  repeated string node_types      = 1; // restrict to objects containing these node types
+  repeated string edge_types      = 2; // restrict to objects containing these edge types
+  bool            return_node_hits = 3; // when true, results include per-node NodeHit entries
+}
+
+// NodeAwareResult wraps a KnowledgeObject with optional node-level hits.
+message NodeAwareResult {
+  KnowledgeObject      object        = 1;
+  repeated NodeHit     node_hits     = 2;
+  DocumentProjection   document_view = 3;
 }
 
 // ─── AnalyzeService ──────────────────────────────────────────────────────────
@@ -99,9 +167,9 @@ message WatchJobRequest {
 }
 
 message JobStatusUpdate {
-  string job_id   = 1;
-  string status   = 2;
-  string error    = 3;
+  string job_id    = 1;
+  string status    = 2;
+  string error     = 3;
   string result_id = 4;
   google.protobuf.Timestamp updated_at = 5;
 }
@@ -117,6 +185,9 @@ service QueryService {
 
   // Get a single knowledge object.
   rpc GetObject(GetObjectRequest) returns (KnowledgeObject);
+
+  // NodeAwareSearch runs an RSQL query with optional node/edge type filtering.
+  rpc NodeAwareSearch(NodeAwareSearchRequest) returns (NodeAwareSearchResponse);
 }
 
 message SearchRequest {
@@ -146,6 +217,19 @@ message ListObjectsResponse {
 
 message GetObjectRequest {
   string id = 1;
+}
+
+message NodeAwareSearchRequest {
+  string           query      = 1;
+  string           profile_id = 2;
+  int32            limit      = 3;
+  int32            offset     = 4;
+  NodeAwareFilter  filter     = 5;
+}
+
+message NodeAwareSearchResponse {
+  repeated NodeAwareResult results = 1;
+  int32                    total   = 2;
 }
 
 // ─── EntityService ────────────────────────────────────────────────────────────

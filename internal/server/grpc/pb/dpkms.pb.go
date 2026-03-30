@@ -22,24 +22,358 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type KnowledgeObject struct {
+// GraphNode is a typed node within a KnowledgeObject's intra-object graph.
+type GraphNode struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                             // "<objectID>/<nodeType>/<ordinal>"
+	NodeType      string                 `protobuf:"bytes,2,opt,name=node_type,json=nodeType,proto3" json:"node_type,omitempty"` // section | tag | entity_mention | decision | task | summary | code_block
+	Label         string                 `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`
+	Content       string                 `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
+	Order         int32                  `protobuf:"varint,5,opt,name=order,proto3" json:"order,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GraphNode) Reset() {
+	*x = GraphNode{}
+	mi := &file_dpkms_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GraphNode) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GraphNode) ProtoMessage() {}
+
+func (x *GraphNode) ProtoReflect() protoreflect.Message {
+	mi := &file_dpkms_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GraphNode.ProtoReflect.Descriptor instead.
+func (*GraphNode) Descriptor() ([]byte, []int) {
+	return file_dpkms_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *GraphNode) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *GraphNode) GetNodeType() string {
+	if x != nil {
+		return x.NodeType
+	}
+	return ""
+}
+
+func (x *GraphNode) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *GraphNode) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *GraphNode) GetOrder() int32 {
+	if x != nil {
+		return x.Order
+	}
+	return 0
+}
+
+// GraphEdge is a directed edge between two nodes in the same object graph.
+type GraphEdge struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
-	Source        string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
-	RawContent    string                 `protobuf:"bytes,4,opt,name=raw_content,json=rawContent,proto3" json:"raw_content,omitempty"`
-	TextContent   string                 `protobuf:"bytes,5,opt,name=text_content,json=textContent,proto3" json:"text_content,omitempty"`
-	Pipeline      string                 `protobuf:"bytes,6,opt,name=pipeline,proto3" json:"pipeline,omitempty"`
-	ProfileId     string                 `protobuf:"bytes,7,opt,name=profile_id,json=profileId,proto3" json:"profile_id,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	FromId        string                 `protobuf:"bytes,2,opt,name=from_id,json=fromId,proto3" json:"from_id,omitempty"`
+	ToId          string                 `protobuf:"bytes,3,opt,name=to_id,json=toId,proto3" json:"to_id,omitempty"`
+	EdgeType      string                 `protobuf:"bytes,4,opt,name=edge_type,json=edgeType,proto3" json:"edge_type,omitempty"` // contains | references | resolves_to | derives_from
+	Weight        float64                `protobuf:"fixed64,5,opt,name=weight,proto3" json:"weight,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GraphEdge) Reset() {
+	*x = GraphEdge{}
+	mi := &file_dpkms_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GraphEdge) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GraphEdge) ProtoMessage() {}
+
+func (x *GraphEdge) ProtoReflect() protoreflect.Message {
+	mi := &file_dpkms_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GraphEdge.ProtoReflect.Descriptor instead.
+func (*GraphEdge) Descriptor() ([]byte, []int) {
+	return file_dpkms_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *GraphEdge) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *GraphEdge) GetFromId() string {
+	if x != nil {
+		return x.FromId
+	}
+	return ""
+}
+
+func (x *GraphEdge) GetToId() string {
+	if x != nil {
+		return x.ToId
+	}
+	return ""
+}
+
+func (x *GraphEdge) GetEdgeType() string {
+	if x != nil {
+		return x.EdgeType
+	}
+	return ""
+}
+
+func (x *GraphEdge) GetWeight() float64 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
+// ObjectGraph holds typed nodes and edges for a single KnowledgeObject.
+type ObjectGraph struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Nodes         []*GraphNode           `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	Edges         []*GraphEdge           `protobuf:"bytes,2,rep,name=edges,proto3" json:"edges,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ObjectGraph) Reset() {
+	*x = ObjectGraph{}
+	mi := &file_dpkms_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ObjectGraph) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ObjectGraph) ProtoMessage() {}
+
+func (x *ObjectGraph) ProtoReflect() protoreflect.Message {
+	mi := &file_dpkms_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ObjectGraph.ProtoReflect.Descriptor instead.
+func (*ObjectGraph) Descriptor() ([]byte, []int) {
+	return file_dpkms_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ObjectGraph) GetNodes() []*GraphNode {
+	if x != nil {
+		return x.Nodes
+	}
+	return nil
+}
+
+func (x *ObjectGraph) GetEdges() []*GraphEdge {
+	if x != nil {
+		return x.Edges
+	}
+	return nil
+}
+
+// Section is a structural section of a knowledge object.
+type Section struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Title         string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
+	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	Order         int32                  `protobuf:"varint,3,opt,name=order,proto3" json:"order,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Section) Reset() {
+	*x = Section{}
+	mi := &file_dpkms_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Section) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Section) ProtoMessage() {}
+
+func (x *Section) ProtoReflect() protoreflect.Message {
+	mi := &file_dpkms_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Section.ProtoReflect.Descriptor instead.
+func (*Section) Descriptor() ([]byte, []int) {
+	return file_dpkms_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Section) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *Section) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *Section) GetOrder() int32 {
+	if x != nil {
+		return x.Order
+	}
+	return 0
+}
+
+// DocumentProjection is the derived human-facing view of a KnowledgeObject.
+type DocumentProjection struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Title         string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
+	Body          string                 `protobuf:"bytes,2,opt,name=body,proto3" json:"body,omitempty"`
+	Sections      []*Section             `protobuf:"bytes,3,rep,name=sections,proto3" json:"sections,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DocumentProjection) Reset() {
+	*x = DocumentProjection{}
+	mi := &file_dpkms_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DocumentProjection) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DocumentProjection) ProtoMessage() {}
+
+func (x *DocumentProjection) ProtoReflect() protoreflect.Message {
+	mi := &file_dpkms_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DocumentProjection.ProtoReflect.Descriptor instead.
+func (*DocumentProjection) Descriptor() ([]byte, []int) {
+	return file_dpkms_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DocumentProjection) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *DocumentProjection) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+func (x *DocumentProjection) GetSections() []*Section {
+	if x != nil {
+		return x.Sections
+	}
+	return nil
+}
+
+// KnowledgeObject is the central proto type for an ingested piece of knowledge.
+type KnowledgeObject struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Type        string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	Source      string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	RawContent  string                 `protobuf:"bytes,4,opt,name=raw_content,json=rawContent,proto3" json:"raw_content,omitempty"`
+	TextContent string                 `protobuf:"bytes,5,opt,name=text_content,json=textContent,proto3" json:"text_content,omitempty"`
+	Pipeline    string                 `protobuf:"bytes,6,opt,name=pipeline,proto3" json:"pipeline,omitempty"`
+	ProfileId   string                 `protobuf:"bytes,7,opt,name=profile_id,json=profileId,proto3" json:"profile_id,omitempty"`
+	CreatedAt   *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt   *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// graph holds canonical node/edge structure; populated when graph_json is stored.
+	Graph *ObjectGraph `protobuf:"bytes,10,opt,name=graph,proto3" json:"graph,omitempty"`
+	// document_view is the derived document projection; populated on demand.
+	DocumentView  *DocumentProjection `protobuf:"bytes,11,opt,name=document_view,json=documentView,proto3" json:"document_view,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *KnowledgeObject) Reset() {
 	*x = KnowledgeObject{}
-	mi := &file_dpkms_proto_msgTypes[0]
+	mi := &file_dpkms_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51,7 +385,7 @@ func (x *KnowledgeObject) String() string {
 func (*KnowledgeObject) ProtoMessage() {}
 
 func (x *KnowledgeObject) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[0]
+	mi := &file_dpkms_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -64,7 +398,7 @@ func (x *KnowledgeObject) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KnowledgeObject.ProtoReflect.Descriptor instead.
 func (*KnowledgeObject) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{0}
+	return file_dpkms_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *KnowledgeObject) GetId() string {
@@ -130,6 +464,20 @@ func (x *KnowledgeObject) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *KnowledgeObject) GetGraph() *ObjectGraph {
+	if x != nil {
+		return x.Graph
+	}
+	return nil
+}
+
+func (x *KnowledgeObject) GetDocumentView() *DocumentProjection {
+	if x != nil {
+		return x.DocumentView
+	}
+	return nil
+}
+
 type Entity struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Slug          string                 `protobuf:"bytes,1,opt,name=slug,proto3" json:"slug,omitempty"`
@@ -144,7 +492,7 @@ type Entity struct {
 
 func (x *Entity) Reset() {
 	*x = Entity{}
-	mi := &file_dpkms_proto_msgTypes[1]
+	mi := &file_dpkms_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -156,7 +504,7 @@ func (x *Entity) String() string {
 func (*Entity) ProtoMessage() {}
 
 func (x *Entity) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[1]
+	mi := &file_dpkms_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -169,7 +517,7 @@ func (x *Entity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Entity.ProtoReflect.Descriptor instead.
 func (*Entity) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{1}
+	return file_dpkms_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Entity) GetSlug() string {
@@ -236,7 +584,7 @@ type Job struct {
 
 func (x *Job) Reset() {
 	*x = Job{}
-	mi := &file_dpkms_proto_msgTypes[2]
+	mi := &file_dpkms_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -248,7 +596,7 @@ func (x *Job) String() string {
 func (*Job) ProtoMessage() {}
 
 func (x *Job) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[2]
+	mi := &file_dpkms_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -261,7 +609,7 @@ func (x *Job) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Job.ProtoReflect.Descriptor instead.
 func (*Job) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{2}
+	return file_dpkms_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Job) GetId() string {
@@ -362,6 +710,205 @@ func (x *Job) GetCompletedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// NodeHit is a search result pointing to a matching node within an object.
+type NodeHit struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ObjectId      string                 `protobuf:"bytes,1,opt,name=object_id,json=objectId,proto3" json:"object_id,omitempty"`
+	NodeRef       string                 `protobuf:"bytes,2,opt,name=node_ref,json=nodeRef,proto3" json:"node_ref,omitempty"` // canonical NodeURI: "ctxt:node/<objectID>/<nodeType>/<ordinal>"
+	NodeType      string                 `protobuf:"bytes,3,opt,name=node_type,json=nodeType,proto3" json:"node_type,omitempty"`
+	Snippet       string                 `protobuf:"bytes,4,opt,name=snippet,proto3" json:"snippet,omitempty"`
+	Score         float64                `protobuf:"fixed64,5,opt,name=score,proto3" json:"score,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeHit) Reset() {
+	*x = NodeHit{}
+	mi := &file_dpkms_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeHit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeHit) ProtoMessage() {}
+
+func (x *NodeHit) ProtoReflect() protoreflect.Message {
+	mi := &file_dpkms_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeHit.ProtoReflect.Descriptor instead.
+func (*NodeHit) Descriptor() ([]byte, []int) {
+	return file_dpkms_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *NodeHit) GetObjectId() string {
+	if x != nil {
+		return x.ObjectId
+	}
+	return ""
+}
+
+func (x *NodeHit) GetNodeRef() string {
+	if x != nil {
+		return x.NodeRef
+	}
+	return ""
+}
+
+func (x *NodeHit) GetNodeType() string {
+	if x != nil {
+		return x.NodeType
+	}
+	return ""
+}
+
+func (x *NodeHit) GetSnippet() string {
+	if x != nil {
+		return x.Snippet
+	}
+	return ""
+}
+
+func (x *NodeHit) GetScore() float64 {
+	if x != nil {
+		return x.Score
+	}
+	return 0
+}
+
+// NodeAwareFilter constrains node-aware search by node/edge type.
+type NodeAwareFilter struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	NodeTypes      []string               `protobuf:"bytes,1,rep,name=node_types,json=nodeTypes,proto3" json:"node_types,omitempty"`                   // restrict to objects containing these node types
+	EdgeTypes      []string               `protobuf:"bytes,2,rep,name=edge_types,json=edgeTypes,proto3" json:"edge_types,omitempty"`                   // restrict to objects containing these edge types
+	ReturnNodeHits bool                   `protobuf:"varint,3,opt,name=return_node_hits,json=returnNodeHits,proto3" json:"return_node_hits,omitempty"` // when true, results include per-node NodeHit entries
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *NodeAwareFilter) Reset() {
+	*x = NodeAwareFilter{}
+	mi := &file_dpkms_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeAwareFilter) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeAwareFilter) ProtoMessage() {}
+
+func (x *NodeAwareFilter) ProtoReflect() protoreflect.Message {
+	mi := &file_dpkms_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeAwareFilter.ProtoReflect.Descriptor instead.
+func (*NodeAwareFilter) Descriptor() ([]byte, []int) {
+	return file_dpkms_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *NodeAwareFilter) GetNodeTypes() []string {
+	if x != nil {
+		return x.NodeTypes
+	}
+	return nil
+}
+
+func (x *NodeAwareFilter) GetEdgeTypes() []string {
+	if x != nil {
+		return x.EdgeTypes
+	}
+	return nil
+}
+
+func (x *NodeAwareFilter) GetReturnNodeHits() bool {
+	if x != nil {
+		return x.ReturnNodeHits
+	}
+	return false
+}
+
+// NodeAwareResult wraps a KnowledgeObject with optional node-level hits.
+type NodeAwareResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Object        *KnowledgeObject       `protobuf:"bytes,1,opt,name=object,proto3" json:"object,omitempty"`
+	NodeHits      []*NodeHit             `protobuf:"bytes,2,rep,name=node_hits,json=nodeHits,proto3" json:"node_hits,omitempty"`
+	DocumentView  *DocumentProjection    `protobuf:"bytes,3,opt,name=document_view,json=documentView,proto3" json:"document_view,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeAwareResult) Reset() {
+	*x = NodeAwareResult{}
+	mi := &file_dpkms_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeAwareResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeAwareResult) ProtoMessage() {}
+
+func (x *NodeAwareResult) ProtoReflect() protoreflect.Message {
+	mi := &file_dpkms_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeAwareResult.ProtoReflect.Descriptor instead.
+func (*NodeAwareResult) Descriptor() ([]byte, []int) {
+	return file_dpkms_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *NodeAwareResult) GetObject() *KnowledgeObject {
+	if x != nil {
+		return x.Object
+	}
+	return nil
+}
+
+func (x *NodeAwareResult) GetNodeHits() []*NodeHit {
+	if x != nil {
+		return x.NodeHits
+	}
+	return nil
+}
+
+func (x *NodeAwareResult) GetDocumentView() *DocumentProjection {
+	if x != nil {
+		return x.DocumentView
+	}
+	return nil
+}
+
 type AnalyzeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Content       string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
@@ -376,7 +923,7 @@ type AnalyzeRequest struct {
 
 func (x *AnalyzeRequest) Reset() {
 	*x = AnalyzeRequest{}
-	mi := &file_dpkms_proto_msgTypes[3]
+	mi := &file_dpkms_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -388,7 +935,7 @@ func (x *AnalyzeRequest) String() string {
 func (*AnalyzeRequest) ProtoMessage() {}
 
 func (x *AnalyzeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[3]
+	mi := &file_dpkms_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -401,7 +948,7 @@ func (x *AnalyzeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnalyzeRequest.ProtoReflect.Descriptor instead.
 func (*AnalyzeRequest) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{3}
+	return file_dpkms_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *AnalyzeRequest) GetContent() string {
@@ -455,7 +1002,7 @@ type AnalyzeResponse struct {
 
 func (x *AnalyzeResponse) Reset() {
 	*x = AnalyzeResponse{}
-	mi := &file_dpkms_proto_msgTypes[4]
+	mi := &file_dpkms_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -467,7 +1014,7 @@ func (x *AnalyzeResponse) String() string {
 func (*AnalyzeResponse) ProtoMessage() {}
 
 func (x *AnalyzeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[4]
+	mi := &file_dpkms_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -480,7 +1027,7 @@ func (x *AnalyzeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnalyzeResponse.ProtoReflect.Descriptor instead.
 func (*AnalyzeResponse) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{4}
+	return file_dpkms_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *AnalyzeResponse) GetJobId() string {
@@ -499,7 +1046,7 @@ type GetJobRequest struct {
 
 func (x *GetJobRequest) Reset() {
 	*x = GetJobRequest{}
-	mi := &file_dpkms_proto_msgTypes[5]
+	mi := &file_dpkms_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -511,7 +1058,7 @@ func (x *GetJobRequest) String() string {
 func (*GetJobRequest) ProtoMessage() {}
 
 func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[5]
+	mi := &file_dpkms_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -524,7 +1071,7 @@ func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJobRequest.ProtoReflect.Descriptor instead.
 func (*GetJobRequest) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{5}
+	return file_dpkms_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetJobRequest) GetId() string {
@@ -545,7 +1092,7 @@ type ListJobsRequest struct {
 
 func (x *ListJobsRequest) Reset() {
 	*x = ListJobsRequest{}
-	mi := &file_dpkms_proto_msgTypes[6]
+	mi := &file_dpkms_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -557,7 +1104,7 @@ func (x *ListJobsRequest) String() string {
 func (*ListJobsRequest) ProtoMessage() {}
 
 func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[6]
+	mi := &file_dpkms_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -570,7 +1117,7 @@ func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobsRequest.ProtoReflect.Descriptor instead.
 func (*ListJobsRequest) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{6}
+	return file_dpkms_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListJobsRequest) GetStatus() string {
@@ -604,7 +1151,7 @@ type ListJobsResponse struct {
 
 func (x *ListJobsResponse) Reset() {
 	*x = ListJobsResponse{}
-	mi := &file_dpkms_proto_msgTypes[7]
+	mi := &file_dpkms_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -616,7 +1163,7 @@ func (x *ListJobsResponse) String() string {
 func (*ListJobsResponse) ProtoMessage() {}
 
 func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[7]
+	mi := &file_dpkms_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -629,7 +1176,7 @@ func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobsResponse.ProtoReflect.Descriptor instead.
 func (*ListJobsResponse) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{7}
+	return file_dpkms_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListJobsResponse) GetJobs() []*Job {
@@ -655,7 +1202,7 @@ type WatchJobRequest struct {
 
 func (x *WatchJobRequest) Reset() {
 	*x = WatchJobRequest{}
-	mi := &file_dpkms_proto_msgTypes[8]
+	mi := &file_dpkms_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -667,7 +1214,7 @@ func (x *WatchJobRequest) String() string {
 func (*WatchJobRequest) ProtoMessage() {}
 
 func (x *WatchJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[8]
+	mi := &file_dpkms_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -680,7 +1227,7 @@ func (x *WatchJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchJobRequest.ProtoReflect.Descriptor instead.
 func (*WatchJobRequest) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{8}
+	return file_dpkms_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *WatchJobRequest) GetId() string {
@@ -703,7 +1250,7 @@ type JobStatusUpdate struct {
 
 func (x *JobStatusUpdate) Reset() {
 	*x = JobStatusUpdate{}
-	mi := &file_dpkms_proto_msgTypes[9]
+	mi := &file_dpkms_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -715,7 +1262,7 @@ func (x *JobStatusUpdate) String() string {
 func (*JobStatusUpdate) ProtoMessage() {}
 
 func (x *JobStatusUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[9]
+	mi := &file_dpkms_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -728,7 +1275,7 @@ func (x *JobStatusUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobStatusUpdate.ProtoReflect.Descriptor instead.
 func (*JobStatusUpdate) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{9}
+	return file_dpkms_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *JobStatusUpdate) GetJobId() string {
@@ -778,7 +1325,7 @@ type SearchRequest struct {
 
 func (x *SearchRequest) Reset() {
 	*x = SearchRequest{}
-	mi := &file_dpkms_proto_msgTypes[10]
+	mi := &file_dpkms_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -790,7 +1337,7 @@ func (x *SearchRequest) String() string {
 func (*SearchRequest) ProtoMessage() {}
 
 func (x *SearchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[10]
+	mi := &file_dpkms_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -803,7 +1350,7 @@ func (x *SearchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchRequest.ProtoReflect.Descriptor instead.
 func (*SearchRequest) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{10}
+	return file_dpkms_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SearchRequest) GetQuery() string {
@@ -844,7 +1391,7 @@ type SearchResponse struct {
 
 func (x *SearchResponse) Reset() {
 	*x = SearchResponse{}
-	mi := &file_dpkms_proto_msgTypes[11]
+	mi := &file_dpkms_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -856,7 +1403,7 @@ func (x *SearchResponse) String() string {
 func (*SearchResponse) ProtoMessage() {}
 
 func (x *SearchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[11]
+	mi := &file_dpkms_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -869,7 +1416,7 @@ func (x *SearchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchResponse.ProtoReflect.Descriptor instead.
 func (*SearchResponse) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{11}
+	return file_dpkms_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *SearchResponse) GetObjects() []*KnowledgeObject {
@@ -899,7 +1446,7 @@ type ListObjectsRequest struct {
 
 func (x *ListObjectsRequest) Reset() {
 	*x = ListObjectsRequest{}
-	mi := &file_dpkms_proto_msgTypes[12]
+	mi := &file_dpkms_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -911,7 +1458,7 @@ func (x *ListObjectsRequest) String() string {
 func (*ListObjectsRequest) ProtoMessage() {}
 
 func (x *ListObjectsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[12]
+	mi := &file_dpkms_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -924,7 +1471,7 @@ func (x *ListObjectsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListObjectsRequest.ProtoReflect.Descriptor instead.
 func (*ListObjectsRequest) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{12}
+	return file_dpkms_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListObjectsRequest) GetType() string {
@@ -972,7 +1519,7 @@ type ListObjectsResponse struct {
 
 func (x *ListObjectsResponse) Reset() {
 	*x = ListObjectsResponse{}
-	mi := &file_dpkms_proto_msgTypes[13]
+	mi := &file_dpkms_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -984,7 +1531,7 @@ func (x *ListObjectsResponse) String() string {
 func (*ListObjectsResponse) ProtoMessage() {}
 
 func (x *ListObjectsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[13]
+	mi := &file_dpkms_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -997,7 +1544,7 @@ func (x *ListObjectsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListObjectsResponse.ProtoReflect.Descriptor instead.
 func (*ListObjectsResponse) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{13}
+	return file_dpkms_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListObjectsResponse) GetObjects() []*KnowledgeObject {
@@ -1023,7 +1570,7 @@ type GetObjectRequest struct {
 
 func (x *GetObjectRequest) Reset() {
 	*x = GetObjectRequest{}
-	mi := &file_dpkms_proto_msgTypes[14]
+	mi := &file_dpkms_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1035,7 +1582,7 @@ func (x *GetObjectRequest) String() string {
 func (*GetObjectRequest) ProtoMessage() {}
 
 func (x *GetObjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[14]
+	mi := &file_dpkms_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1048,7 +1595,7 @@ func (x *GetObjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetObjectRequest.ProtoReflect.Descriptor instead.
 func (*GetObjectRequest) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{14}
+	return file_dpkms_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GetObjectRequest) GetId() string {
@@ -1056,6 +1603,134 @@ func (x *GetObjectRequest) GetId() string {
 		return x.Id
 	}
 	return ""
+}
+
+type NodeAwareSearchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	ProfileId     string                 `protobuf:"bytes,2,opt,name=profile_id,json=profileId,proto3" json:"profile_id,omitempty"`
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	Filter        *NodeAwareFilter       `protobuf:"bytes,5,opt,name=filter,proto3" json:"filter,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeAwareSearchRequest) Reset() {
+	*x = NodeAwareSearchRequest{}
+	mi := &file_dpkms_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeAwareSearchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeAwareSearchRequest) ProtoMessage() {}
+
+func (x *NodeAwareSearchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dpkms_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeAwareSearchRequest.ProtoReflect.Descriptor instead.
+func (*NodeAwareSearchRequest) Descriptor() ([]byte, []int) {
+	return file_dpkms_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *NodeAwareSearchRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *NodeAwareSearchRequest) GetProfileId() string {
+	if x != nil {
+		return x.ProfileId
+	}
+	return ""
+}
+
+func (x *NodeAwareSearchRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *NodeAwareSearchRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+func (x *NodeAwareSearchRequest) GetFilter() *NodeAwareFilter {
+	if x != nil {
+		return x.Filter
+	}
+	return nil
+}
+
+type NodeAwareSearchResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Results       []*NodeAwareResult     `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeAwareSearchResponse) Reset() {
+	*x = NodeAwareSearchResponse{}
+	mi := &file_dpkms_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeAwareSearchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeAwareSearchResponse) ProtoMessage() {}
+
+func (x *NodeAwareSearchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dpkms_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeAwareSearchResponse.ProtoReflect.Descriptor instead.
+func (*NodeAwareSearchResponse) Descriptor() ([]byte, []int) {
+	return file_dpkms_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *NodeAwareSearchResponse) GetResults() []*NodeAwareResult {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+func (x *NodeAwareSearchResponse) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
 }
 
 type ListEntitiesRequest struct {
@@ -1069,7 +1744,7 @@ type ListEntitiesRequest struct {
 
 func (x *ListEntitiesRequest) Reset() {
 	*x = ListEntitiesRequest{}
-	mi := &file_dpkms_proto_msgTypes[15]
+	mi := &file_dpkms_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1081,7 +1756,7 @@ func (x *ListEntitiesRequest) String() string {
 func (*ListEntitiesRequest) ProtoMessage() {}
 
 func (x *ListEntitiesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[15]
+	mi := &file_dpkms_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1094,7 +1769,7 @@ func (x *ListEntitiesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEntitiesRequest.ProtoReflect.Descriptor instead.
 func (*ListEntitiesRequest) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{15}
+	return file_dpkms_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ListEntitiesRequest) GetNamespace() string {
@@ -1128,7 +1803,7 @@ type ListEntitiesResponse struct {
 
 func (x *ListEntitiesResponse) Reset() {
 	*x = ListEntitiesResponse{}
-	mi := &file_dpkms_proto_msgTypes[16]
+	mi := &file_dpkms_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1140,7 +1815,7 @@ func (x *ListEntitiesResponse) String() string {
 func (*ListEntitiesResponse) ProtoMessage() {}
 
 func (x *ListEntitiesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[16]
+	mi := &file_dpkms_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1153,7 +1828,7 @@ func (x *ListEntitiesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEntitiesResponse.ProtoReflect.Descriptor instead.
 func (*ListEntitiesResponse) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{16}
+	return file_dpkms_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ListEntitiesResponse) GetEntities() []*Entity {
@@ -1179,7 +1854,7 @@ type GetEntityRequest struct {
 
 func (x *GetEntityRequest) Reset() {
 	*x = GetEntityRequest{}
-	mi := &file_dpkms_proto_msgTypes[17]
+	mi := &file_dpkms_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1191,7 +1866,7 @@ func (x *GetEntityRequest) String() string {
 func (*GetEntityRequest) ProtoMessage() {}
 
 func (x *GetEntityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[17]
+	mi := &file_dpkms_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1204,7 +1879,7 @@ func (x *GetEntityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEntityRequest.ProtoReflect.Descriptor instead.
 func (*GetEntityRequest) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{17}
+	return file_dpkms_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *GetEntityRequest) GetSlug() string {
@@ -1225,7 +1900,7 @@ type GetEntityBacklinksRequest struct {
 
 func (x *GetEntityBacklinksRequest) Reset() {
 	*x = GetEntityBacklinksRequest{}
-	mi := &file_dpkms_proto_msgTypes[18]
+	mi := &file_dpkms_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1237,7 +1912,7 @@ func (x *GetEntityBacklinksRequest) String() string {
 func (*GetEntityBacklinksRequest) ProtoMessage() {}
 
 func (x *GetEntityBacklinksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[18]
+	mi := &file_dpkms_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1250,7 +1925,7 @@ func (x *GetEntityBacklinksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEntityBacklinksRequest.ProtoReflect.Descriptor instead.
 func (*GetEntityBacklinksRequest) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{18}
+	return file_dpkms_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetEntityBacklinksRequest) GetSlug() string {
@@ -1284,7 +1959,7 @@ type GetEntityBacklinksResponse struct {
 
 func (x *GetEntityBacklinksResponse) Reset() {
 	*x = GetEntityBacklinksResponse{}
-	mi := &file_dpkms_proto_msgTypes[19]
+	mi := &file_dpkms_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1296,7 +1971,7 @@ func (x *GetEntityBacklinksResponse) String() string {
 func (*GetEntityBacklinksResponse) ProtoMessage() {}
 
 func (x *GetEntityBacklinksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dpkms_proto_msgTypes[19]
+	mi := &file_dpkms_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1309,7 +1984,7 @@ func (x *GetEntityBacklinksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEntityBacklinksResponse.ProtoReflect.Descriptor instead.
 func (*GetEntityBacklinksResponse) Descriptor() ([]byte, []int) {
-	return file_dpkms_proto_rawDescGZIP(), []int{19}
+	return file_dpkms_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GetEntityBacklinksResponse) GetObjects() []*KnowledgeObject {
@@ -1330,7 +2005,30 @@ var File_dpkms_proto protoreflect.FileDescriptor
 
 const file_dpkms_proto_rawDesc = "" +
 	"\n" +
-	"\vdpkms.proto\x12\bdpkms.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc2\x02\n" +
+	"\vdpkms.proto\x12\bdpkms.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"~\n" +
+	"\tGraphNode\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
+	"\tnode_type\x18\x02 \x01(\tR\bnodeType\x12\x14\n" +
+	"\x05label\x18\x03 \x01(\tR\x05label\x12\x18\n" +
+	"\acontent\x18\x04 \x01(\tR\acontent\x12\x14\n" +
+	"\x05order\x18\x05 \x01(\x05R\x05order\"~\n" +
+	"\tGraphEdge\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\afrom_id\x18\x02 \x01(\tR\x06fromId\x12\x13\n" +
+	"\x05to_id\x18\x03 \x01(\tR\x04toId\x12\x1b\n" +
+	"\tedge_type\x18\x04 \x01(\tR\bedgeType\x12\x16\n" +
+	"\x06weight\x18\x05 \x01(\x01R\x06weight\"c\n" +
+	"\vObjectGraph\x12)\n" +
+	"\x05nodes\x18\x01 \x03(\v2\x13.dpkms.v1.GraphNodeR\x05nodes\x12)\n" +
+	"\x05edges\x18\x02 \x03(\v2\x13.dpkms.v1.GraphEdgeR\x05edges\"O\n" +
+	"\aSection\x12\x14\n" +
+	"\x05title\x18\x01 \x01(\tR\x05title\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\tR\acontent\x12\x14\n" +
+	"\x05order\x18\x03 \x01(\x05R\x05order\"m\n" +
+	"\x12DocumentProjection\x12\x14\n" +
+	"\x05title\x18\x01 \x01(\tR\x05title\x12\x12\n" +
+	"\x04body\x18\x02 \x01(\tR\x04body\x12-\n" +
+	"\bsections\x18\x03 \x03(\v2\x11.dpkms.v1.SectionR\bsections\"\xb2\x03\n" +
 	"\x0fKnowledgeObject\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x16\n" +
@@ -1344,7 +2042,10 @@ const file_dpkms_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xb3\x01\n" +
+	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12+\n" +
+	"\x05graph\x18\n" +
+	" \x01(\v2\x15.dpkms.v1.ObjectGraphR\x05graph\x12A\n" +
+	"\rdocument_view\x18\v \x01(\v2\x1c.dpkms.v1.DocumentProjectionR\fdocumentView\"\xb3\x01\n" +
 	"\x06Entity\x12\x12\n" +
 	"\x04slug\x18\x01 \x01(\tR\x04slug\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
@@ -1372,7 +2073,23 @@ const file_dpkms_proto_rawDesc = "" +
 	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x129\n" +
 	"\n" +
 	"started_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12=\n" +
-	"\fcompleted_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\"\xa7\x01\n" +
+	"\fcompleted_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\"\x8e\x01\n" +
+	"\aNodeHit\x12\x1b\n" +
+	"\tobject_id\x18\x01 \x01(\tR\bobjectId\x12\x19\n" +
+	"\bnode_ref\x18\x02 \x01(\tR\anodeRef\x12\x1b\n" +
+	"\tnode_type\x18\x03 \x01(\tR\bnodeType\x12\x18\n" +
+	"\asnippet\x18\x04 \x01(\tR\asnippet\x12\x14\n" +
+	"\x05score\x18\x05 \x01(\x01R\x05score\"y\n" +
+	"\x0fNodeAwareFilter\x12\x1d\n" +
+	"\n" +
+	"node_types\x18\x01 \x03(\tR\tnodeTypes\x12\x1d\n" +
+	"\n" +
+	"edge_types\x18\x02 \x03(\tR\tedgeTypes\x12(\n" +
+	"\x10return_node_hits\x18\x03 \x01(\bR\x0ereturnNodeHits\"\xb7\x01\n" +
+	"\x0fNodeAwareResult\x121\n" +
+	"\x06object\x18\x01 \x01(\v2\x19.dpkms.v1.KnowledgeObjectR\x06object\x12.\n" +
+	"\tnode_hits\x18\x02 \x03(\v2\x11.dpkms.v1.NodeHitR\bnodeHits\x12A\n" +
+	"\rdocument_view\x18\x03 \x01(\v2\x1c.dpkms.v1.DocumentProjectionR\fdocumentView\"\xa7\x01\n" +
 	"\x0eAnalyzeRequest\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\tR\acontent\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x1a\n" +
@@ -1420,7 +2137,17 @@ const file_dpkms_proto_rawDesc = "" +
 	"\aobjects\x18\x01 \x03(\v2\x19.dpkms.v1.KnowledgeObjectR\aobjects\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\"\"\n" +
 	"\x10GetObjectRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"a\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\xae\x01\n" +
+	"\x16NodeAwareSearchRequest\x12\x14\n" +
+	"\x05query\x18\x01 \x01(\tR\x05query\x12\x1d\n" +
+	"\n" +
+	"profile_id\x18\x02 \x01(\tR\tprofileId\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x04 \x01(\x05R\x06offset\x121\n" +
+	"\x06filter\x18\x05 \x01(\v2\x19.dpkms.v1.NodeAwareFilterR\x06filter\"d\n" +
+	"\x17NodeAwareSearchResponse\x123\n" +
+	"\aresults\x18\x01 \x03(\v2\x19.dpkms.v1.NodeAwareResultR\aresults\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\"a\n" +
 	"\x13ListEntitiesRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
@@ -1443,11 +2170,12 @@ const file_dpkms_proto_rawDesc = "" +
 	"JobService\x120\n" +
 	"\x06GetJob\x12\x17.dpkms.v1.GetJobRequest\x1a\r.dpkms.v1.Job\x12A\n" +
 	"\bListJobs\x12\x19.dpkms.v1.ListJobsRequest\x1a\x1a.dpkms.v1.ListJobsResponse\x12B\n" +
-	"\bWatchJob\x12\x19.dpkms.v1.WatchJobRequest\x1a\x19.dpkms.v1.JobStatusUpdate0\x012\xdb\x01\n" +
+	"\bWatchJob\x12\x19.dpkms.v1.WatchJobRequest\x1a\x19.dpkms.v1.JobStatusUpdate0\x012\xb3\x02\n" +
 	"\fQueryService\x12;\n" +
 	"\x06Search\x12\x17.dpkms.v1.SearchRequest\x1a\x18.dpkms.v1.SearchResponse\x12J\n" +
 	"\vListObjects\x12\x1c.dpkms.v1.ListObjectsRequest\x1a\x1d.dpkms.v1.ListObjectsResponse\x12B\n" +
-	"\tGetObject\x12\x1a.dpkms.v1.GetObjectRequest\x1a\x19.dpkms.v1.KnowledgeObject2\xfa\x01\n" +
+	"\tGetObject\x12\x1a.dpkms.v1.GetObjectRequest\x1a\x19.dpkms.v1.KnowledgeObject\x12V\n" +
+	"\x0fNodeAwareSearch\x12 .dpkms.v1.NodeAwareSearchRequest\x1a!.dpkms.v1.NodeAwareSearchResponse2\xfa\x01\n" +
 	"\rEntityService\x12M\n" +
 	"\fListEntities\x12\x1d.dpkms.v1.ListEntitiesRequest\x1a\x1e.dpkms.v1.ListEntitiesResponse\x129\n" +
 	"\tGetEntity\x12\x1a.dpkms.v1.GetEntityRequest\x1a\x10.dpkms.v1.Entity\x12_\n" +
@@ -1465,68 +2193,90 @@ func file_dpkms_proto_rawDescGZIP() []byte {
 	return file_dpkms_proto_rawDescData
 }
 
-var file_dpkms_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_dpkms_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_dpkms_proto_goTypes = []any{
-	(*KnowledgeObject)(nil),            // 0: dpkms.v1.KnowledgeObject
-	(*Entity)(nil),                     // 1: dpkms.v1.Entity
-	(*Job)(nil),                        // 2: dpkms.v1.Job
-	(*AnalyzeRequest)(nil),             // 3: dpkms.v1.AnalyzeRequest
-	(*AnalyzeResponse)(nil),            // 4: dpkms.v1.AnalyzeResponse
-	(*GetJobRequest)(nil),              // 5: dpkms.v1.GetJobRequest
-	(*ListJobsRequest)(nil),            // 6: dpkms.v1.ListJobsRequest
-	(*ListJobsResponse)(nil),           // 7: dpkms.v1.ListJobsResponse
-	(*WatchJobRequest)(nil),            // 8: dpkms.v1.WatchJobRequest
-	(*JobStatusUpdate)(nil),            // 9: dpkms.v1.JobStatusUpdate
-	(*SearchRequest)(nil),              // 10: dpkms.v1.SearchRequest
-	(*SearchResponse)(nil),             // 11: dpkms.v1.SearchResponse
-	(*ListObjectsRequest)(nil),         // 12: dpkms.v1.ListObjectsRequest
-	(*ListObjectsResponse)(nil),        // 13: dpkms.v1.ListObjectsResponse
-	(*GetObjectRequest)(nil),           // 14: dpkms.v1.GetObjectRequest
-	(*ListEntitiesRequest)(nil),        // 15: dpkms.v1.ListEntitiesRequest
-	(*ListEntitiesResponse)(nil),       // 16: dpkms.v1.ListEntitiesResponse
-	(*GetEntityRequest)(nil),           // 17: dpkms.v1.GetEntityRequest
-	(*GetEntityBacklinksRequest)(nil),  // 18: dpkms.v1.GetEntityBacklinksRequest
-	(*GetEntityBacklinksResponse)(nil), // 19: dpkms.v1.GetEntityBacklinksResponse
-	(*timestamppb.Timestamp)(nil),      // 20: google.protobuf.Timestamp
+	(*GraphNode)(nil),                  // 0: dpkms.v1.GraphNode
+	(*GraphEdge)(nil),                  // 1: dpkms.v1.GraphEdge
+	(*ObjectGraph)(nil),                // 2: dpkms.v1.ObjectGraph
+	(*Section)(nil),                    // 3: dpkms.v1.Section
+	(*DocumentProjection)(nil),         // 4: dpkms.v1.DocumentProjection
+	(*KnowledgeObject)(nil),            // 5: dpkms.v1.KnowledgeObject
+	(*Entity)(nil),                     // 6: dpkms.v1.Entity
+	(*Job)(nil),                        // 7: dpkms.v1.Job
+	(*NodeHit)(nil),                    // 8: dpkms.v1.NodeHit
+	(*NodeAwareFilter)(nil),            // 9: dpkms.v1.NodeAwareFilter
+	(*NodeAwareResult)(nil),            // 10: dpkms.v1.NodeAwareResult
+	(*AnalyzeRequest)(nil),             // 11: dpkms.v1.AnalyzeRequest
+	(*AnalyzeResponse)(nil),            // 12: dpkms.v1.AnalyzeResponse
+	(*GetJobRequest)(nil),              // 13: dpkms.v1.GetJobRequest
+	(*ListJobsRequest)(nil),            // 14: dpkms.v1.ListJobsRequest
+	(*ListJobsResponse)(nil),           // 15: dpkms.v1.ListJobsResponse
+	(*WatchJobRequest)(nil),            // 16: dpkms.v1.WatchJobRequest
+	(*JobStatusUpdate)(nil),            // 17: dpkms.v1.JobStatusUpdate
+	(*SearchRequest)(nil),              // 18: dpkms.v1.SearchRequest
+	(*SearchResponse)(nil),             // 19: dpkms.v1.SearchResponse
+	(*ListObjectsRequest)(nil),         // 20: dpkms.v1.ListObjectsRequest
+	(*ListObjectsResponse)(nil),        // 21: dpkms.v1.ListObjectsResponse
+	(*GetObjectRequest)(nil),           // 22: dpkms.v1.GetObjectRequest
+	(*NodeAwareSearchRequest)(nil),     // 23: dpkms.v1.NodeAwareSearchRequest
+	(*NodeAwareSearchResponse)(nil),    // 24: dpkms.v1.NodeAwareSearchResponse
+	(*ListEntitiesRequest)(nil),        // 25: dpkms.v1.ListEntitiesRequest
+	(*ListEntitiesResponse)(nil),       // 26: dpkms.v1.ListEntitiesResponse
+	(*GetEntityRequest)(nil),           // 27: dpkms.v1.GetEntityRequest
+	(*GetEntityBacklinksRequest)(nil),  // 28: dpkms.v1.GetEntityBacklinksRequest
+	(*GetEntityBacklinksResponse)(nil), // 29: dpkms.v1.GetEntityBacklinksResponse
+	(*timestamppb.Timestamp)(nil),      // 30: google.protobuf.Timestamp
 }
 var file_dpkms_proto_depIdxs = []int32{
-	20, // 0: dpkms.v1.KnowledgeObject.created_at:type_name -> google.protobuf.Timestamp
-	20, // 1: dpkms.v1.KnowledgeObject.updated_at:type_name -> google.protobuf.Timestamp
-	20, // 2: dpkms.v1.Job.created_at:type_name -> google.protobuf.Timestamp
-	20, // 3: dpkms.v1.Job.updated_at:type_name -> google.protobuf.Timestamp
-	20, // 4: dpkms.v1.Job.started_at:type_name -> google.protobuf.Timestamp
-	20, // 5: dpkms.v1.Job.completed_at:type_name -> google.protobuf.Timestamp
-	2,  // 6: dpkms.v1.ListJobsResponse.jobs:type_name -> dpkms.v1.Job
-	20, // 7: dpkms.v1.JobStatusUpdate.updated_at:type_name -> google.protobuf.Timestamp
-	0,  // 8: dpkms.v1.SearchResponse.objects:type_name -> dpkms.v1.KnowledgeObject
-	0,  // 9: dpkms.v1.ListObjectsResponse.objects:type_name -> dpkms.v1.KnowledgeObject
-	1,  // 10: dpkms.v1.ListEntitiesResponse.entities:type_name -> dpkms.v1.Entity
-	0,  // 11: dpkms.v1.GetEntityBacklinksResponse.objects:type_name -> dpkms.v1.KnowledgeObject
-	3,  // 12: dpkms.v1.AnalyzeService.Analyze:input_type -> dpkms.v1.AnalyzeRequest
-	5,  // 13: dpkms.v1.JobService.GetJob:input_type -> dpkms.v1.GetJobRequest
-	6,  // 14: dpkms.v1.JobService.ListJobs:input_type -> dpkms.v1.ListJobsRequest
-	8,  // 15: dpkms.v1.JobService.WatchJob:input_type -> dpkms.v1.WatchJobRequest
-	10, // 16: dpkms.v1.QueryService.Search:input_type -> dpkms.v1.SearchRequest
-	12, // 17: dpkms.v1.QueryService.ListObjects:input_type -> dpkms.v1.ListObjectsRequest
-	14, // 18: dpkms.v1.QueryService.GetObject:input_type -> dpkms.v1.GetObjectRequest
-	15, // 19: dpkms.v1.EntityService.ListEntities:input_type -> dpkms.v1.ListEntitiesRequest
-	17, // 20: dpkms.v1.EntityService.GetEntity:input_type -> dpkms.v1.GetEntityRequest
-	18, // 21: dpkms.v1.EntityService.GetEntityBacklinks:input_type -> dpkms.v1.GetEntityBacklinksRequest
-	4,  // 22: dpkms.v1.AnalyzeService.Analyze:output_type -> dpkms.v1.AnalyzeResponse
-	2,  // 23: dpkms.v1.JobService.GetJob:output_type -> dpkms.v1.Job
-	7,  // 24: dpkms.v1.JobService.ListJobs:output_type -> dpkms.v1.ListJobsResponse
-	9,  // 25: dpkms.v1.JobService.WatchJob:output_type -> dpkms.v1.JobStatusUpdate
-	11, // 26: dpkms.v1.QueryService.Search:output_type -> dpkms.v1.SearchResponse
-	13, // 27: dpkms.v1.QueryService.ListObjects:output_type -> dpkms.v1.ListObjectsResponse
-	0,  // 28: dpkms.v1.QueryService.GetObject:output_type -> dpkms.v1.KnowledgeObject
-	16, // 29: dpkms.v1.EntityService.ListEntities:output_type -> dpkms.v1.ListEntitiesResponse
-	1,  // 30: dpkms.v1.EntityService.GetEntity:output_type -> dpkms.v1.Entity
-	19, // 31: dpkms.v1.EntityService.GetEntityBacklinks:output_type -> dpkms.v1.GetEntityBacklinksResponse
-	22, // [22:32] is the sub-list for method output_type
-	12, // [12:22] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	0,  // 0: dpkms.v1.ObjectGraph.nodes:type_name -> dpkms.v1.GraphNode
+	1,  // 1: dpkms.v1.ObjectGraph.edges:type_name -> dpkms.v1.GraphEdge
+	3,  // 2: dpkms.v1.DocumentProjection.sections:type_name -> dpkms.v1.Section
+	30, // 3: dpkms.v1.KnowledgeObject.created_at:type_name -> google.protobuf.Timestamp
+	30, // 4: dpkms.v1.KnowledgeObject.updated_at:type_name -> google.protobuf.Timestamp
+	2,  // 5: dpkms.v1.KnowledgeObject.graph:type_name -> dpkms.v1.ObjectGraph
+	4,  // 6: dpkms.v1.KnowledgeObject.document_view:type_name -> dpkms.v1.DocumentProjection
+	30, // 7: dpkms.v1.Job.created_at:type_name -> google.protobuf.Timestamp
+	30, // 8: dpkms.v1.Job.updated_at:type_name -> google.protobuf.Timestamp
+	30, // 9: dpkms.v1.Job.started_at:type_name -> google.protobuf.Timestamp
+	30, // 10: dpkms.v1.Job.completed_at:type_name -> google.protobuf.Timestamp
+	5,  // 11: dpkms.v1.NodeAwareResult.object:type_name -> dpkms.v1.KnowledgeObject
+	8,  // 12: dpkms.v1.NodeAwareResult.node_hits:type_name -> dpkms.v1.NodeHit
+	4,  // 13: dpkms.v1.NodeAwareResult.document_view:type_name -> dpkms.v1.DocumentProjection
+	7,  // 14: dpkms.v1.ListJobsResponse.jobs:type_name -> dpkms.v1.Job
+	30, // 15: dpkms.v1.JobStatusUpdate.updated_at:type_name -> google.protobuf.Timestamp
+	5,  // 16: dpkms.v1.SearchResponse.objects:type_name -> dpkms.v1.KnowledgeObject
+	5,  // 17: dpkms.v1.ListObjectsResponse.objects:type_name -> dpkms.v1.KnowledgeObject
+	9,  // 18: dpkms.v1.NodeAwareSearchRequest.filter:type_name -> dpkms.v1.NodeAwareFilter
+	10, // 19: dpkms.v1.NodeAwareSearchResponse.results:type_name -> dpkms.v1.NodeAwareResult
+	6,  // 20: dpkms.v1.ListEntitiesResponse.entities:type_name -> dpkms.v1.Entity
+	5,  // 21: dpkms.v1.GetEntityBacklinksResponse.objects:type_name -> dpkms.v1.KnowledgeObject
+	11, // 22: dpkms.v1.AnalyzeService.Analyze:input_type -> dpkms.v1.AnalyzeRequest
+	13, // 23: dpkms.v1.JobService.GetJob:input_type -> dpkms.v1.GetJobRequest
+	14, // 24: dpkms.v1.JobService.ListJobs:input_type -> dpkms.v1.ListJobsRequest
+	16, // 25: dpkms.v1.JobService.WatchJob:input_type -> dpkms.v1.WatchJobRequest
+	18, // 26: dpkms.v1.QueryService.Search:input_type -> dpkms.v1.SearchRequest
+	20, // 27: dpkms.v1.QueryService.ListObjects:input_type -> dpkms.v1.ListObjectsRequest
+	22, // 28: dpkms.v1.QueryService.GetObject:input_type -> dpkms.v1.GetObjectRequest
+	23, // 29: dpkms.v1.QueryService.NodeAwareSearch:input_type -> dpkms.v1.NodeAwareSearchRequest
+	25, // 30: dpkms.v1.EntityService.ListEntities:input_type -> dpkms.v1.ListEntitiesRequest
+	27, // 31: dpkms.v1.EntityService.GetEntity:input_type -> dpkms.v1.GetEntityRequest
+	28, // 32: dpkms.v1.EntityService.GetEntityBacklinks:input_type -> dpkms.v1.GetEntityBacklinksRequest
+	12, // 33: dpkms.v1.AnalyzeService.Analyze:output_type -> dpkms.v1.AnalyzeResponse
+	7,  // 34: dpkms.v1.JobService.GetJob:output_type -> dpkms.v1.Job
+	15, // 35: dpkms.v1.JobService.ListJobs:output_type -> dpkms.v1.ListJobsResponse
+	17, // 36: dpkms.v1.JobService.WatchJob:output_type -> dpkms.v1.JobStatusUpdate
+	19, // 37: dpkms.v1.QueryService.Search:output_type -> dpkms.v1.SearchResponse
+	21, // 38: dpkms.v1.QueryService.ListObjects:output_type -> dpkms.v1.ListObjectsResponse
+	5,  // 39: dpkms.v1.QueryService.GetObject:output_type -> dpkms.v1.KnowledgeObject
+	24, // 40: dpkms.v1.QueryService.NodeAwareSearch:output_type -> dpkms.v1.NodeAwareSearchResponse
+	26, // 41: dpkms.v1.EntityService.ListEntities:output_type -> dpkms.v1.ListEntitiesResponse
+	6,  // 42: dpkms.v1.EntityService.GetEntity:output_type -> dpkms.v1.Entity
+	29, // 43: dpkms.v1.EntityService.GetEntityBacklinks:output_type -> dpkms.v1.GetEntityBacklinksResponse
+	33, // [33:44] is the sub-list for method output_type
+	22, // [22:33] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_dpkms_proto_init() }
@@ -1540,7 +2290,7 @@ func file_dpkms_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dpkms_proto_rawDesc), len(file_dpkms_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   4,
 		},
