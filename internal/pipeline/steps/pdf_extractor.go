@@ -7,6 +7,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // PDFExtractor extracts text from PDF documents using a DocumentProvider.
@@ -65,6 +66,44 @@ func (s *PDFExtractor) Run(ctx context.Context, draft *storage.KnowledgeObject) 
 				"type":        "page",
 				"page_number": page.Number,
 			},
+		})
+	}
+
+	// Emit canonical graph nodes when ID is set.
+	if draft.ID == "" {
+		return draft, nil
+	}
+	if draft.Graph == nil {
+		draft.Graph = &pluginapi.ObjectGraph{}
+	}
+	rootID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSummary, 0)
+	if draft.Graph.FindNode(rootID) == nil {
+		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			ID:       rootID,
+			NodeType: pluginapi.NodeTypeSummary,
+			Label:    "root",
+			Content:  result.FullText,
+			Order:    0,
+		})
+	}
+	for i, page := range result.Pages {
+		secID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSection, i)
+		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			ID:       secID,
+			NodeType: pluginapi.NodeTypeSection,
+			Label:    fmt.Sprintf("Page %d", page.Number),
+			Content:  page.Content,
+			Order:    i,
+			Metadata: map[string]any{
+				"type":        "page",
+				"page_number": page.Number,
+			},
+		})
+		draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+			ID:       fmt.Sprintf("%s->%s", rootID, secID),
+			FromID:   rootID,
+			ToID:     secID,
+			EdgeType: pluginapi.EdgeTypeContains,
 		})
 	}
 

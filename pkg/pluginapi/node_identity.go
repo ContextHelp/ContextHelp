@@ -21,6 +21,7 @@ const (
 	NodeTypeTask          = "task"
 	NodeTypeSummary       = "summary"
 	NodeTypeCodeBlock     = "code_block"
+	NodeTypeArtifact      = "artifact" // binary/media reference (image, audio, file)
 )
 
 // Edge type constants for ObjectGraph edges.
