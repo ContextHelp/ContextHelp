@@ -72,6 +72,9 @@ var migration020 string
 //go:embed migrations/021_saved_searches.sql
 var migration021 string
 
+//go:embed migrations/022_graph_canonical.sql
+var migration022 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -110,6 +113,10 @@ var migrations = []migration{
 	// Uses a Go fn so the {DIMENSION} placeholder is filled from d.vectorDimension.
 	{Version: 20, fn: migrate020VecObjects},
 	{Version: 21, SQL: migration021},
+	// Migration 022: graph_json column on objects + object_nodes table.
+	// Uses a Go fn so the backfill (graph_json = '{}' for legacy rows) runs
+	// atomically after the DDL.
+	{Version: 22, fn: migrate022GraphCanonical},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -239,6 +246,18 @@ func (d *Driver) Migrate(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// migrate022GraphCanonical adds graph_json to objects and creates the
+// object_nodes denormalised index table. After DDL it backfills graph_json = '{}'
+// for any legacy rows that are NULL (idempotent via DEFAULT NULL + WHERE clause).
+func migrate022GraphCanonical(ctx context.Context, d *Driver) error {
+	if _, err := d.db.ExecContext(ctx, migration022); err != nil {
+		return err
+	}
+	_, err := d.db.ExecContext(ctx,
+		`UPDATE objects SET graph_json = '{}' WHERE graph_json IS NULL`)
+	return err
 }
 
 // migrate020VecObjects creates the vec0 virtual table for sqlite-vec ANN search.
