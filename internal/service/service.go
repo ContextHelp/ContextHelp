@@ -1373,7 +1373,7 @@ func (s *Service) ClearSearchHistory(ctx context.Context, profileID string) erro
 
 // SemanticSearch performs vector similarity search using the provided embedding provider.
 func (s *Service) SemanticSearch(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider) ([]*storage.KnowledgeObject, error) {
-	vec, err := ep.Embed(ctx, query)
+	vec, err := ep.Embed(ctx, search.DecomposeQuery(query, 2))
 	if err != nil {
 		return nil, fmt.Errorf("embed query: %w", err)
 	}
@@ -1432,7 +1432,7 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 			vecPool = 50
 		}
 		go func() {
-			vec, err := ep.Embed(ctx, query)
+			vec, err := ep.Embed(ctx, search.DecomposeQuery(query, 2))
 			if err != nil {
 				vecCh <- legResult{nil, err}
 				return
