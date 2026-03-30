@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestDependencyEnricherName(t *testing.T) {
@@ -404,5 +405,83 @@ func TestDependencyEnricherPathBasenameNormalization(t *testing.T) {
 	}
 	if !strings.Contains(items[0]["content"].(string), "react") {
 		t.Errorf("content: got %v", items[0]["content"])
+	}
+}
+
+func TestDependencyEnricherGraphNodesEmitted(t *testing.T) {
+	s := NewDependencyEnricher()
+	draft := &storage.KnowledgeObject{
+		ID:     "obj-001",
+		Source: "https://github.com/owner/repo",
+		Metadata: map[string]any{
+			"dep_files": map[string]any{
+				"package.json": `{"dependencies": {"express": "^4.18.0", "lodash": "^4.17.21"}}`,
+			},
+		},
+	}
+
+	got, err := s.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if got.Graph == nil {
+		t.Fatal("Graph must not be nil when deps detected with non-empty ID")
+	}
+	if len(got.Graph.Nodes) != 2 {
+		t.Fatalf("Graph.Nodes: got %d, want 2", len(got.Graph.Nodes))
+	}
+	for _, n := range got.Graph.Nodes {
+		if n.NodeType != pluginapi.NodeTypeArtifact {
+			t.Errorf("node %q has NodeType %q, want %q", n.ID, n.NodeType, pluginapi.NodeTypeArtifact)
+		}
+		if n.Label == "" {
+			t.Errorf("node %q has empty Label", n.ID)
+		}
+	}
+	if len(got.Graph.Edges) != 2 {
+		t.Fatalf("Graph.Edges: got %d, want 2", len(got.Graph.Edges))
+	}
+	for _, e := range got.Graph.Edges {
+		if e.EdgeType != pluginapi.EdgeTypeContains {
+			t.Errorf("edge %q has EdgeType %q, want %q", e.ID, e.EdgeType, pluginapi.EdgeTypeContains)
+		}
+	}
+}
+
+func TestDependencyEnricherGraphSkippedWithEmptyID(t *testing.T) {
+	s := NewDependencyEnricher()
+	draft := &storage.KnowledgeObject{
+		// ID intentionally empty — pre-ID pipeline draft.
+		Source: "https://github.com/owner/repo",
+		Metadata: map[string]any{
+			"dep_files": map[string]any{
+				"package.json": `{"dependencies": {"express": "^4.18.0"}}`,
+			},
+		},
+	}
+
+	got, err := s.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got.Graph != nil {
+		t.Errorf("Graph should be nil when draft.ID is empty, got %+v", got.Graph)
+	}
+}
+
+func TestDependencyEnricherGraphSkippedWhenNoDeps(t *testing.T) {
+	s := NewDependencyEnricher()
+	draft := &storage.KnowledgeObject{
+		ID:         "obj-002",
+		RawContent: "no manifest here",
+	}
+
+	got, err := s.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got.Graph != nil {
+		t.Errorf("Graph should be nil when no deps found, got %+v", got.Graph)
 	}
 }

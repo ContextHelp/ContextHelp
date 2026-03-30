@@ -7,6 +7,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // languageByExt maps file extensions to programming language names.
@@ -69,8 +70,30 @@ func (s *LanguageDetector) Run(ctx context.Context, draft *storage.KnowledgeObje
 	}
 
 	ext := strings.ToLower(filepath.Ext(filename))
-	if lang, ok := languageByExt[ext]; ok {
+	lang, known := languageByExt[ext]
+	if known {
 		draft.Metadata["language"] = lang
+	}
+
+	// Emit canonical graph node: one NodeTypeTag for detected language.
+	// Skip when draft.ID is empty (pre-ID pipeline drafts) or language unknown.
+	if draft.ID != "" && known {
+		if draft.Graph == nil {
+			draft.Graph = &pluginapi.ObjectGraph{}
+		}
+		nodeID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeTag, 0)
+		if draft.Graph.FindNode(nodeID) == nil {
+			draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+				ID:       nodeID,
+				NodeType: pluginapi.NodeTypeTag,
+				Label:    "lang:" + lang,
+				Order:    0,
+				Metadata: map[string]any{
+					"source": "language_detector",
+					"lang":   lang,
+				},
+			})
+		}
 	}
 
 	return draft, nil
