@@ -24,8 +24,10 @@ Entities (people, projects, systems, concepts) are the semantic glue that connec
 - [ ] Extraction is deterministic (same input always produces same entities)
 - [ ] Mentions are automatically linked to canonical entities in knowledge base
 - [ ] Entities unknown to system are created as new canonical entities
-- [ ] Extracted mentions appear in knowledge object as JSON array
-- [ ] Graph edges are automatically created (object → mentions → entities)
+- [ ] Extracted mentions stored as `entity_mention` nodes in the object's `ObjectGraph`
+  (graph-canonical write); `IndexProjection.Mentions` derived on read exposes them as an array
+- [ ] Intra-object edges (object → references → entity) stored in `graph_json`; inter-object
+  edges written to the `edges` table for cross-object traversal
 - [ ] Pipeline supports both local (LMQL) and API-hosted (instructor) extraction
 
 ---
@@ -210,8 +212,10 @@ object(o-abc123)
 - [ ] CLI: `--step extract-entities-and-mentions` flag is present in the request payload as `step` field
 - [ ] Server: POST `/enrich/{object_id}/extract-mentions` receives `step`, `ai_provider`, and `max_entities` in request body
 - [ ] Server: Response contains `object_id`, `mentions` array, `entities_created`, `entities_linked`, and `graph_edges_added`
-- [ ] Storage: GET `/objects/{object_id}` returns object with `mentions` field populated as a non-empty JSON array
-- [ ] Storage: `enrichment.extraction_method` field on stored object matches the `ai_provider` value sent in request
+- [ ] Storage: GET `/objects/{object_id}` returns `index.mentions` array populated with
+  `@type.slug` values (derived from `entity_mention` nodes via IndexProjection)
+- [ ] Storage: `enrichment.extraction_method` field on stored object matches the `ai_provider`
+  value sent in request
 - [ ] Storage: `enrichment.entities_extracted_at` timestamp is set on the stored object after enrichment completes
 - [ ] Extract: Input with clear entity names → all entities identified
 - [ ] Extract: Unknown entities → created as new canonical entities

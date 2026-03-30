@@ -109,7 +109,8 @@ Content-Type: application/json
 - [ ] Content Extraction: HTML cleaned, text extracted; stored object's RawContent contains extracted text (not raw HTML)
 - [ ] Source: Original URL stored in object's Source field — GET /objects/{object_id} confirms `"source_url"` matches input
 - [ ] Async: CLI returns immediately without blocking; job transitions `pending` → `completed` in background
-- [ ] Enrichment: Content summarized and indexed within 30s; stored object has non-empty sections/summary
+- [ ] Enrichment: Content summarized and indexed within 30s; `GET /objects/{id}` returns non-empty
+  `document.sections` and `document.body` (derived from graph via DocumentProjection)
 - [ ] Error Handling: 404 URL handled gracefully with error message; job status set to `failed` with descriptive reason
 - [ ] Error Handling: Timeout (>30s fetch) handled gracefully; job status set to `failed` with timeout reason
 - [ ] Repository: GitHub repo content extracted and indexed; stored object type reflects `url.repository` pipeline

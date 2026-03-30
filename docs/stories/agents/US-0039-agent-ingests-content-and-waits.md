@@ -24,7 +24,9 @@ Agents cannot rely on synchronous ingestion because enrichment pipelines are lon
 - [ ] Initial `status` in the 202 response is `"pending"` or `"pending_enrichment"`
 - [ ] Agent polls `GET /jobs/{job_id}` at a configured interval until status is terminal
 - [ ] Job status transitions on server: `"pending"` → `"processing"` → `"completed"` (or `"failed"`)
-- [ ] After `"completed"`, object is retrievable via `GET /objects/{object_id}` with non-empty `summary` and `pipeline` fields
+- [ ] After `"completed"`, object is retrievable via `GET /objects/{object_id}` with non-empty
+  `pipeline` field and non-empty `document.body` (summary derived from graph via
+  DocumentProjection)
 - [ ] Stored object `id` matches the `object_id` from the original ingest response
 - [ ] Agent times out gracefully if job does not complete within a configured maximum wait
 - [ ] Agent does not poll if the initial `POST /analyze` returns a non-202 status
@@ -136,7 +138,9 @@ def ingest_and_wait(api_url, content, source_type, profile=None,
 - [ ] Polling: Server returns `status` field in GET /jobs/{job_id} response body
 - [ ] Polling: Server-side job record exists and is retrievable immediately after POST /analyze completes
 - [ ] Polling: Job `status` on server transitions from `"pending"` → `"processing"` → `"completed"` (verified across sequential GET /jobs/{job_id} calls)
-- [ ] Storage: After job `status` is `"completed"`, GET /objects/{object_id} returns the stored object with non-empty `summary` and `pipeline` fields (server-side storage validated)
+- [ ] Storage: After job `status` is `"completed"`, GET /objects/{object_id} returns non-empty
+  `pipeline` field and non-empty `document.body` (summary derived via DocumentProjection from
+  graph); `graph.node_count > 0` confirms graph-canonical write succeeded
 - [ ] Storage: Stored object's `id` matches `object_id` returned in the original POST /analyze response
 - [ ] Timeout: Agent handles job that remains in `"pending"` longer than expected (does not poll indefinitely; times out gracefully after configured maximum wait)
 - [ ] Error: If POST /analyze returns non-202 status, agent surfaces the error and does not poll

@@ -136,8 +136,10 @@ func (g *BriefGenerator) GenerateBrief(ctx context.Context,
     objectIDs []string, template string, profile string) (*Brief, error) {
 
   // Step 1: Retrieve objects + graph neighbors
+  // objects carry DocumentProjection (title/sections/body) + IndexProjection (tags/mentions)
+  // derived from ObjectGraph on read; no flat summary/sections fields accessed directly
   objects := g.objectStore.GetByIDs(objectIDs)
-  entities := g.extractEntitiesFromObjects(objects)
+  entities := g.extractEntitiesFromObjects(objects) // from IndexProjection.Mentions
   relatedObjects := g.graphStore.GetNeighbors(objectIDs)
 
   // Step 2: Select template
@@ -201,7 +203,7 @@ func (g *BriefGenerator) generateProvenance(objects []Object,
     provenance.PrimaryObjects = append(provenance.PrimaryObjects, ObjectRef{
       ID:        obj.ID,
       Type:      obj.Type,
-      Summary:   obj.Summary,
+      Summary:   obj.DocumentProjection.Body, // derived from graph summary node
       CreatedAt: obj.CreatedAt,
       Source:    obj.Source,
     })
@@ -362,7 +364,8 @@ The engineering team made critical decisions regarding the migration from a mono
 - [ ] Brief from query includes provenance listing each resolved object
 
 ### Content correctness
-- [ ] Brief includes entities/mentions extracted from source objects
+- [ ] Brief includes entities/mentions from source objects (sourced from
+  `IndexProjection.Mentions` of each contributing KO, not flat fields)
 - [ ] Brief includes related objects discovered via graph traversal
 - [ ] Each section lists source object IDs in provenance block
 

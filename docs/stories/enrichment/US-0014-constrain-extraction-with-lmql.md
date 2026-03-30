@@ -301,9 +301,13 @@ ch_fallback_success_rate{from="lmql",to="instructor"}
 - [ ] CLI: Enrichment command with `--ai-provider instructor` sends `ai_provider: "instructor"` in the request payload
 - [ ] Server: Enrichment request body contains `step` and `ai_provider` fields for every LMQL-backed enrichment call
 - [ ] Server: Response contains extraction results matching the schema for the requested step (entities, decisions, or tags)
-- [ ] Storage: GET `/objects/{object_id}` after LMQL enrichment returns object with the relevant enrichment field populated (`mentions`, `enrichment.decisions`, or `tags`)
-- [ ] Storage: `enrichment.extraction_method` on the stored object equals `"lmql"` when LMQL was used
-- [ ] Storage: `enrichment.extraction_method` on the stored object equals `"instructor"` when the fallback was used
+- [ ] Storage: GET `/objects/{object_id}` after LMQL enrichment returns relevant projection fields
+  populated: `index.mentions` (entity extraction), `index.tags` (tag assignment), or decision
+  nodes accessible via `graph.nodes` (decision extraction)
+- [ ] Storage: `enrichment.extraction_method` on the stored object equals `"lmql"` when LMQL
+  was used
+- [ ] Storage: `enrichment.extraction_method` on the stored object equals `"instructor"` when
+  the fallback was used
 - [ ] LMQL: Local LLM server running at configured endpoint
 - [ ] LMQL: Entity extraction succeeds without post-processing
 - [ ] LMQL: All extracted entities match `@type.slug` format

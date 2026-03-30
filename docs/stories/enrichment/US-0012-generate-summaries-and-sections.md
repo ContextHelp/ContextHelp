@@ -19,11 +19,13 @@ Long documents are difficult to query and compose from. Automatic summarization 
 
 ## Acceptance Criteria
 
-- [ ] A brief summary (1–3 sentences) is generated and stored on the object under `summary`
-- [ ] Long-form content is decomposed into sections, each with `title`, `body`, and `position`
-- [ ] Sections are stored as child objects linked to the parent object
+- [ ] A brief summary (1–3 sentences) is generated and stored as a `summary` node in the
+  object's `ObjectGraph`; user sees it in `document.body` via DocumentProjection
+- [ ] Long-form content is decomposed into sections, each with `title`, `body`, and `position`;
+  each section stored as a `section` node in `ObjectGraph` (not as separate child objects)
+- [ ] `DocumentProjection.Sections` derived on read reflects ordered section nodes
 - [ ] Request payload includes the AI provider and max section count
-- [ ] Both summary and sections are persisted to the knowledge base before the job is marked complete
+- [ ] Both summary and sections are persisted to `graph_json` before the job is marked complete
 
 ---
 
@@ -99,11 +101,13 @@ Content-Type: application/json
 - [ ] Server: Response contains `summary` string field (non-empty)
 - [ ] Server: Response contains `sections` array with `position`, `title`, and `body` fields per entry
 - [ ] Server: `sections_created` in response matches the actual count in `sections` array
-- [ ] Storage: GET `/objects/{object_id}` returns object with `summary` field populated
-- [ ] Storage: GET `/objects/{object_id}` returns object with `enrichment.sections` populated as a non-empty array
+- [ ] Storage: GET `/objects/{object_id}` returns `document.body` non-empty (summary text derived
+  from `summary` graph node via DocumentProjection)
+- [ ] Storage: GET `/objects/{object_id}` returns `document.sections` as a non-empty ordered
+  array (derived from `section` nodes in `ObjectGraph` via DocumentProjection)
 - [ ] Storage: `enrichment.summarized_at` timestamp is set on the stored object
 - [ ] Storage: `enrichment.summarization_method` matches the `ai_provider` value sent in request
-- [ ] Sections: Each section is retrievable as a child object linked to the parent
+- [ ] Sections: Section nodes in graph accessible via GET `/objects/{id}/nodes?type=section`
 - [ ] Sections: Section count does not exceed `max_sections` when the flag is provided
 - [ ] Error: Empty content returns an error rather than an empty summary
 - [ ] Resilience: Step is retryable on transient failures

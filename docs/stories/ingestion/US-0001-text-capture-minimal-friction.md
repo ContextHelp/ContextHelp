@@ -151,7 +151,8 @@ storage:
 
 - [ ] CLI: `ctxt add "test insight"` returns job ID within 1 second
 - [ ] CLI: Job status transitions from `pending` → `completed` within 30 seconds
-- [ ] CLI: Retrieved object contains extracted summary, entities, tags
+- [ ] CLI: Retrieved object contains extracted summary (`document.body`), entities
+  (`index.mentions`), and tags (`index.tags`) — all derived from graph via projections
 - [ ] CLI: `ctxt add "text" --profile engineering` sends `"profile": "engineering"` in the request payload to the server
 - [ ] CLI: `ctxt add "text" --profile engineering --project mobile-app` sends both `"profile": "engineering"` and `"project": "mobile-app"` in the server request payload
 - [ ] CLI: With `--profile engineering`, stored object Metadata includes profile reference and object is tagged appropriately

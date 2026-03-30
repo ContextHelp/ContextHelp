@@ -21,7 +21,8 @@ Uncontrolled free-form tagging produces inconsistent taxonomies. A controlled vo
 
 - [ ] Tag assignment is constrained to the operator-defined vocabulary set
 - [ ] No tags outside the allowed vocabulary are ever produced
-- [ ] Tags are stored on the knowledge object as a JSON array under `tags`
+- [ ] Assigned tags are written as `tag` nodes into the object's `ObjectGraph` (graph-canonical
+  write source); `IndexProjection.Tags` derived on read contains the same values
 - [ ] Pipeline supports both LMQL (local) and instructor (API-hosted) assignment
 - [ ] Operator can specify a custom vocabulary file or use the default vocabulary
 - [ ] Request payload includes the vocabulary source used for the assignment
@@ -91,7 +92,8 @@ Content-Type: application/json
 - [ ] Server: Response contains `tags` array with only vocabulary-valid tag values
 - [ ] Server: Response contains `vocabulary_used` field confirming which vocabulary was applied
 - [ ] Constraint: All returned tags exist in the configured vocabulary (no out-of-vocabulary tags)
-- [ ] Storage: GET `/objects/{object_id}` returns object with `tags` field populated as a non-empty JSON array
+- [ ] Storage: GET `/objects/{object_id}` returns object with `index.tags` array populated
+  (derived via IndexProjection from `tag` nodes in graph); value matches assigned vocabulary tags
 - [ ] Storage: `enrichment.tags_assigned_at` timestamp is set on the stored object
 - [ ] Storage: `enrichment.vocabulary_used` matches the vocabulary value sent in request
 - [ ] LMQL: Tag assignment uses hard `in(allowed_tags)` constraint — invalid tags are never emitted
