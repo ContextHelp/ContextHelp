@@ -2,6 +2,7 @@ package contentmonitor_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -188,4 +189,38 @@ func TestPlugin_TargetLabel(t *testing.T) {
 	require.NoError(t, p.Close(context.Background()))
 
 	assert.NotEmpty(t, bus.events, "should have at least one event")
+}
+
+func TestPlugin_SeenEvent_EmitsGraphNode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("some page content"))
+	}))
+	defer srv.Close()
+
+	bus := &stubBus{}
+	p := contentmonitor.New()
+	err := p.Init(context.Background(), map[string]interface{}{
+		"targets":  []interface{}{map[string]interface{}{"url": srv.URL}},
+		"interval": "1h",
+	}, pluginapi.Deps{Bus: bus})
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+	require.NoError(t, p.Close(context.Background()))
+
+	var ko pluginapi.KnowledgeObject
+	for _, e := range bus.events {
+		if e.Type == "ctxt.plugin.content-monitor.seen" {
+			require.NoError(t, json.Unmarshal(e.Data, &ko))
+			break
+		}
+	}
+	require.NotNil(t, ko.Graph, "Graph must be populated when content is non-empty")
+	found := false
+	for _, n := range ko.Graph.Nodes {
+		if n.NodeType == pluginapi.NodeTypeSummary && n.Content != "" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "summary graph node with content expected in seen event")
 }

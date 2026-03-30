@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -72,17 +73,27 @@ func SuggestTagsAndMentions(ctx context.Context, obj *storage.KnowledgeObject, c
 }
 
 // buildSummary constructs a compact representation of the object for the LLM prompt.
+// Uses projection.ProjectIndex so graph-canonical KOs are handled correctly;
+// falls back to flat fields (Summaries, RawContent) when Graph is nil.
 func buildSummary(obj *storage.KnowledgeObject) string {
+	idx := projection.ProjectIndex(obj)
 	var parts []string
-	if len(obj.Summaries) > 0 {
-		parts = append(parts, obj.Summaries[0])
-	}
-	content := obj.RawContent
-	if len(content) > 800 {
-		content = content[:800] + "…"
-	}
-	if content != "" {
-		parts = append(parts, content)
+	if idx.FTSBody != "" {
+		body := idx.FTSBody
+		if len(body) > 800 {
+			body = body[:800] + "…"
+		}
+		parts = append(parts, body)
+	} else {
+		// Flat-field fallback: FTSBody empty means no summaries/sections in graph
+		// and no textual flat fields — fall back to RawContent.
+		content := obj.RawContent
+		if len(content) > 800 {
+			content = content[:800] + "…"
+		}
+		if content != "" {
+			parts = append(parts, content)
+		}
 	}
 	return strings.Join(parts, "\n\n")
 }

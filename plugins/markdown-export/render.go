@@ -7,13 +7,19 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"github.com/ideacrafterslabs/ctxt/pkg/projection"
 )
 
 // Render converts obj into Obsidian-compatible Markdown with YAML frontmatter.
 //
 // Frontmatter fields: id, type, title, tags, entities (mentions), created, updated.
 // Body: summary, sections, decisions, tasks, backlinks.
+// Uses projection.ProjectDocument / ProjectIndex so graph-canonical KOs are
+// handled correctly; falls back to flat fields when Graph is nil.
 func Render(obj pluginapi.KnowledgeObject) ([]byte, error) {
+	doc := projection.ProjectDocument(&obj)
+	idx := projection.ProjectIndex(&obj)
+
 	var b bytes.Buffer
 
 	// ── frontmatter ──────────────────────────────────────────────────────────
@@ -24,17 +30,17 @@ func Render(obj pluginapi.KnowledgeObject) ([]byte, error) {
 	title := objectTitle(obj)
 	b.WriteString(fmt.Sprintf("title: %q\n", title))
 
-	if len(obj.Tags) > 0 {
+	if len(idx.Tags) > 0 {
 		b.WriteString("tags:\n")
-		for _, t := range obj.Tags {
+		for _, t := range idx.Tags {
 			b.WriteString(fmt.Sprintf("  - %s\n", sanitiseTag(t.Label)))
 		}
 	}
 
-	if len(obj.Mentions) > 0 {
+	if len(idx.Mentions) > 0 {
 		b.WriteString("entities:\n")
-		for _, m := range obj.Mentions {
-			b.WriteString(fmt.Sprintf("  - %s\n", m.String()))
+		for _, m := range idx.Mentions {
+			b.WriteString(fmt.Sprintf("  - %s\n", m))
 		}
 	}
 
@@ -48,14 +54,18 @@ func Render(obj pluginapi.KnowledgeObject) ([]byte, error) {
 	// ── title heading ────────────────────────────────────────────────────────
 	b.WriteString(fmt.Sprintf("# %s\n\n", title))
 
-	// ── summary ──────────────────────────────────────────────────────────────
-	if len(obj.Summaries) > 0 && obj.Summaries[0] != "" {
+	// ── body / summary ───────────────────────────────────────────────────────
+	if doc.Body != "" {
+		b.WriteString(doc.Body)
+		b.WriteString("\n\n")
+	} else if len(obj.Summaries) > 0 && obj.Summaries[0] != "" {
+		// flat-field fallback: summaries not in graph
 		b.WriteString(obj.Summaries[0])
 		b.WriteString("\n\n")
 	}
 
 	// ── sections ─────────────────────────────────────────────────────────────
-	for _, s := range obj.Sections {
+	for _, s := range doc.Sections {
 		if s.Title != "" {
 			b.WriteString(fmt.Sprintf("## %s\n\n", s.Title))
 		}
@@ -88,10 +98,10 @@ func Render(obj pluginapi.KnowledgeObject) ([]byte, error) {
 	}
 
 	// ── backlinks (entity mentions as wiki-links) ─────────────────────────────
-	if len(obj.Mentions) > 0 {
+	if len(idx.Mentions) > 0 {
 		b.WriteString("## Backlinks\n\n")
-		for _, m := range obj.Mentions {
-			b.WriteString(fmt.Sprintf("- [[%s]]\n", m.String()))
+		for _, m := range idx.Mentions {
+			b.WriteString(fmt.Sprintf("- [[%s]]\n", m))
 		}
 		b.WriteString("\n")
 	}

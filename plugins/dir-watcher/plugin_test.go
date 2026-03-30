@@ -2,6 +2,7 @@ package dirwatcher_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -168,4 +169,38 @@ func TestPlugin_NewFilePickedUpAfterStart(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, fileEvents, "late-dropped file must be picked up on subsequent poll")
+}
+
+func TestPlugin_IngestedFile_EmitsGraphNode(t *testing.T) {
+	dir := newDropDir(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "graph.txt"), []byte("graph content"), 0o644))
+
+	bus := &stubBus{}
+	p := dirwatcher.New()
+	err := p.Init(context.Background(), map[string]interface{}{
+		"dir":      dir,
+		"interval": "1h",
+	}, pluginapi.Deps{Bus: bus})
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+	require.NoError(t, p.Close(context.Background()))
+
+	var ko pluginapi.KnowledgeObject
+	for _, e := range bus.events {
+		if e.Type == "ctxt.plugin.dir-watcher.file" {
+			require.NoError(t, json.Unmarshal(e.Data, &ko))
+			break
+		}
+	}
+	require.NotNil(t, ko.Graph, "Graph must be populated for non-empty file content")
+	assert.NotEmpty(t, ko.Graph.Nodes, "at least one graph node expected")
+
+	found := false
+	for _, n := range ko.Graph.Nodes {
+		if n.NodeType == pluginapi.NodeTypeSummary && n.Content == "graph content" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "summary graph node must carry file text content")
 }

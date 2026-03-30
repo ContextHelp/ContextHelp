@@ -5,6 +5,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 const pendingMetaKey = "plugin.autosuggest.pending"
@@ -15,14 +16,17 @@ type pendingPayload struct {
 	Mentions []string `json:"mentions"`
 }
 
-// ApplyGenerate directly appends suggested tags and mentions to obj, deduplicating.
+// ApplyGenerate appends suggested tags and mentions to obj, deduplicating.
+// Flat fields (Tags, Mentions) are updated for backward compat; Graph nodes are
+// also emitted so projection.ProjectIndex picks them up on graph-canonical KOs.
 // The caller is responsible for persisting the updated object.
 func ApplyGenerate(obj *storage.KnowledgeObject, tags []string, mentionSlugs []string) error {
-	// Merge tags.
+	// ── flat tags (backward compat) ───────────────────────────────────────────
 	existing := make(map[string]bool, len(obj.Tags))
 	for _, t := range obj.Tags {
 		existing[t.Label] = true
 	}
+	var newTags []string
 	for _, label := range tags {
 		if label == "" || existing[label] {
 			continue
@@ -33,17 +37,58 @@ func ApplyGenerate(obj *storage.KnowledgeObject, tags []string, mentionSlugs []s
 			Source: "plugin:autosuggest",
 		})
 		existing[label] = true
+		newTags = append(newTags, label)
 	}
 
-	// Merge mentions: parse incoming strings (either @slug or ctxt:// form) and deduplicate.
+	// ── flat mentions (backward compat) ───────────────────────────────────────
 	existingM := make(map[string]bool, len(obj.Mentions))
 	for _, u := range obj.Mentions {
 		existingM[u.String()] = true
 	}
+	var newMentions []string
 	for _, u := range mentions.ParseSlice(mentionSlugs) {
 		if !existingM[u.String()] {
 			obj.Mentions = append(obj.Mentions, u)
 			existingM[u.String()] = true
+			newMentions = append(newMentions, u.String())
+		}
+	}
+
+	// ── graph nodes (graph-canonical contract) ────────────────────────────────
+	// Append tag and entity_mention nodes so ProjectIndex works correctly when
+	// Graph is present. Only new entries are appended; existing graph nodes are
+	// left untouched to avoid duplication on repeated calls.
+	if obj.ID != "" && (len(newTags) > 0 || len(newMentions) > 0) {
+		if obj.Graph == nil {
+			obj.Graph = &pluginapi.ObjectGraph{}
+		}
+		tagOrd, mentionOrd := 0, 0
+		for _, n := range obj.Graph.Nodes {
+			switch n.NodeType {
+			case pluginapi.NodeTypeTag:
+				tagOrd++
+			case pluginapi.NodeTypeEntityMention:
+				mentionOrd++
+			}
+		}
+		for _, label := range newTags {
+			obj.Graph.Nodes = append(obj.Graph.Nodes, pluginapi.GraphNode{
+				ID:       pluginapi.NewNodeID(obj.ID, pluginapi.NodeTypeTag, tagOrd),
+				NodeType: pluginapi.NodeTypeTag,
+				Label:    label,
+				Content:  label,
+				Order:    tagOrd,
+			})
+			tagOrd++
+		}
+		for _, m := range newMentions {
+			obj.Graph.Nodes = append(obj.Graph.Nodes, pluginapi.GraphNode{
+				ID:       pluginapi.NewNodeID(obj.ID, pluginapi.NodeTypeEntityMention, mentionOrd),
+				NodeType: pluginapi.NodeTypeEntityMention,
+				Content:  m,
+				Order:    mentionOrd,
+			})
+			mentionOrd++
 		}
 	}
 

@@ -2,6 +2,7 @@ package rssfeed_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -199,4 +200,38 @@ func TestPlugin_DeduplicatesItems(t *testing.T) {
 	}
 	// Feed has 2 items; even with multiple polls, items must not be duplicated.
 	assert.Equal(t, 2, itemEvents, "duplicate GUIDs must not re-emit events")
+}
+
+func TestPlugin_RSSItem_EmitsGraphNodes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(sampleRSS))
+	}))
+	defer srv.Close()
+
+	bus := &stubBus{}
+	p := rssfeed.New()
+	err := p.Init(context.Background(), map[string]interface{}{
+		"feeds":    []interface{}{srv.URL},
+		"interval": "1h",
+	}, pluginapi.Deps{Bus: bus})
+	require.NoError(t, err)
+	time.Sleep(200 * time.Millisecond)
+	require.NoError(t, p.Close(context.Background()))
+
+	var ko pluginapi.KnowledgeObject
+	for _, e := range bus.events {
+		if e.Type == "ctxt.plugin.rss-feed.item" {
+			require.NoError(t, json.Unmarshal(e.Data, &ko))
+			break
+		}
+	}
+	require.NotNil(t, ko.Graph, "Graph must be populated for RSS items with a title")
+	sectionNodes := 0
+	for _, n := range ko.Graph.Nodes {
+		if n.NodeType == pluginapi.NodeTypeSection {
+			sectionNodes++
+		}
+	}
+	assert.GreaterOrEqual(t, sectionNodes, 1, "at least one section graph node expected")
 }

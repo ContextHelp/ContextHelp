@@ -211,8 +211,9 @@ func itemToObject(item feedItem, feedURL string) pluginapi.KnowledgeObject {
 		meta["author"] = item.Author
 	}
 
+	objID := sha256hex(item.GUID)
 	obj := pluginapi.KnowledgeObject{
-		ID:          sha256hex(item.GUID),
+		ID:          objID,
 		Type:        "url",
 		Subtype:     "rss-item",
 		RawContent:  item.Link,
@@ -224,6 +225,7 @@ func itemToObject(item feedItem, feedURL string) pluginapi.KnowledgeObject {
 		CreatedAt:   pub,
 		UpdatedAt:   now,
 	}
+	// Populate flat sections (backward compat) and graph-canonical nodes.
 	if item.Title != "" {
 		obj.Sections = []pluginapi.Section{
 			{Title: "Title", Content: item.Title, Order: 0},
@@ -233,6 +235,27 @@ func itemToObject(item feedItem, feedURL string) pluginapi.KnowledgeObject {
 				Title: "Body", Content: body, Order: 1,
 			})
 		}
+		// Graph nodes mirror the sections so downstream projection works on
+		// graph-canonical KOs without falling back to flat fields.
+		nodes := []pluginapi.GraphNode{
+			{
+				ID:       pluginapi.NewNodeID(objID, pluginapi.NodeTypeSection, 0),
+				NodeType: pluginapi.NodeTypeSection,
+				Label:    "Title",
+				Content:  item.Title,
+				Order:    0,
+			},
+		}
+		if body != "" {
+			nodes = append(nodes, pluginapi.GraphNode{
+				ID:       pluginapi.NewNodeID(objID, pluginapi.NodeTypeSection, 1),
+				NodeType: pluginapi.NodeTypeSection,
+				Label:    "Body",
+				Content:  body,
+				Order:    1,
+			})
+		}
+		obj.Graph = &pluginapi.ObjectGraph{Nodes: nodes}
 	}
 	return obj
 }
