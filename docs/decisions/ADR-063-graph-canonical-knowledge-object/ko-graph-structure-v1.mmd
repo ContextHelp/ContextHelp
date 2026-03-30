@@ -1,0 +1,11 @@
+graph LR
+  KO[KnowledgeObject] --> OG[ObjectGraph]
+  OG --> N1[Node: section]
+  OG --> N2[Node: tag]
+  OG --> N3[Node: entity_mention]
+  OG --> N4[Node: decision]
+  OG --> N5[Node: task]
+  OG --> E1[Edge: contains]
+  OG --> E2[Edge: references]
+  KO --> DP[DocumentProjection]
+  KO --> IP[IndexProjection]
