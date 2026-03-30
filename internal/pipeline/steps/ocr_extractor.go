@@ -7,6 +7,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 type OCRExtractor struct {
@@ -69,6 +70,48 @@ func (s *OCRExtractor) Run(ctx context.Context, draft *storage.KnowledgeObject) 
 
 	// Set RawContent to extracted text for downstream steps.
 	draft.RawContent = result.Text
+
+	// Emit canonical graph nodes when ID is set.
+	// OCR produces: one artifact node (image ref) + one section node (extracted text).
+	if draft.ID == "" {
+		return draft, nil
+	}
+	if draft.Graph == nil {
+		draft.Graph = &pluginapi.ObjectGraph{}
+	}
+	artifactID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeArtifact, 0)
+	if draft.Graph.FindNode(artifactID) == nil {
+		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			ID:       artifactID,
+			NodeType: pluginapi.NodeTypeArtifact,
+			Label:    "source-image",
+			Content:  draft.ContentType,
+			Order:    0,
+		})
+	}
+	secOrdinal := 0
+	for _, n := range draft.Graph.Nodes {
+		if n.NodeType == pluginapi.NodeTypeSection {
+			secOrdinal++
+		}
+	}
+	secID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSection, secOrdinal)
+	draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+		ID:       secID,
+		NodeType: pluginapi.NodeTypeSection,
+		Label:    "OCR Text",
+		Content:  result.Text,
+		Order:    0,
+		Metadata: map[string]any{
+			"ocr_confidence": result.Confidence,
+		},
+	})
+	draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+		ID:       fmt.Sprintf("%s->%s", artifactID, secID),
+		FromID:   artifactID,
+		ToID:     secID,
+		EdgeType: pluginapi.EdgeTypeDerivedFrom,
+	})
 
 	return draft, nil
 }
