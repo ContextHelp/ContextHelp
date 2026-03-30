@@ -1414,6 +1414,9 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 		ftsPool = 50
 	}
 
+	// Expand FTS query with concept aliases; vector leg uses the original query.
+	ftsQuery := search.ExpandQuery(ctx, query, newStorageAliasResolver(s.Store.Aliases(), ""))
+
 	type legResult struct {
 		results []*storage.KnowledgeObject
 		err     error
@@ -1421,7 +1424,7 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 
 	ftsCh := make(chan legResult, 1)
 	go func() {
-		res, err := s.Store.Objects().FTSSearch(ctx, query, storage.ObjectFilter{Limit: ftsPool})
+		res, err := s.Store.Objects().FTSSearch(ctx, ftsQuery, storage.ObjectFilter{Limit: ftsPool})
 		ftsCh <- legResult{res, err}
 	}()
 
