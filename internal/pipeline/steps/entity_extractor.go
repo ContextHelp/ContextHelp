@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -28,7 +29,7 @@ func NewEntityExtractor() *EntityExtractor {
 	return &EntityExtractor{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"Mentions"},
+			Produces: []string{"Mentions", "Graph"},
 		}),
 	}
 }
@@ -82,22 +83,30 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 
 	draft.Mentions = mentions.ParseSlice(slugs)
 
-	// Emit canonical graph nodes: one NodeTypeEntityMention node per mention.
-	// Skip if ID is empty (in-pipeline drafts before ID assignment).
-	if draft.ID != "" {
+	// Intra-object graph: one NodeTypeEntityMention node per mention with an
+	// EdgeTypeReferences edge pointing to the entity URI.
+	// Inter-object edges (object → entity in the edges table) are written by
+	// entity_resolver, NOT here — that is the layer boundary (ADR-063).
+	if draft.ID != "" && len(draft.Mentions) > 0 {
 		if draft.Graph == nil {
 			draft.Graph = &pluginapi.ObjectGraph{}
 		}
 		for i, u := range draft.Mentions {
-			mentionID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeEntityMention, i)
-			if draft.Graph.FindNode(mentionID) != nil {
+			nodeID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeEntityMention, i)
+			if draft.Graph.FindNode(nodeID) != nil {
 				continue
 			}
 			draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
-				ID:       mentionID,
+				ID:       nodeID,
 				NodeType: pluginapi.NodeTypeEntityMention,
 				Label:    u.String(),
 				Order:    i,
+			})
+			draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+				ID:       fmt.Sprintf("%s->%s", nodeID, u.String()),
+				FromID:   nodeID,
+				ToID:     u.String(),
+				EdgeType: pluginapi.EdgeTypeReferences,
 			})
 		}
 	}

@@ -90,34 +90,34 @@ func TestEntityExtractorMultiDotSlug(t *testing.T) {
 	}
 }
 
-func TestEntityExtractorEmitsGraphNodes(t *testing.T) {
+func TestEntityExtractorEmitsIntraObjectGraphNodes(t *testing.T) {
 	step := NewEntityExtractor()
 	draft := &storage.KnowledgeObject{
-		ID:         "obj-ent-001",
-		RawContent: "Working on @project.signup-redesign with @person.alice and @org.acme today.",
+		ID:         "obj-ee1",
+		RawContent: "Working on @project.alpha and @org.acme today.",
 	}
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	if got.Graph == nil {
-		t.Fatal("graph is nil; expected entity_mention nodes")
+		t.Fatal("graph is nil; expected intra-object nodes")
 	}
-	if len(got.Mentions) == 0 {
-		t.Fatal("no mentions produced; cannot verify graph nodes")
+	// Two mentions → two NodeTypeEntityMention nodes + two EdgeTypeReferences edges.
+	if len(got.Graph.Nodes) != 2 {
+		t.Errorf("nodes: got %d, want 2", len(got.Graph.Nodes))
 	}
-	for i, u := range got.Mentions {
-		nodeID := pluginapi.NewNodeID("obj-ent-001", pluginapi.NodeTypeEntityMention, i)
-		n := got.Graph.FindNode(nodeID)
-		if n == nil {
-			t.Errorf("entity_mention node %q not found in graph", nodeID)
-			continue
-		}
+	for i, n := range got.Graph.Nodes {
 		if n.NodeType != pluginapi.NodeTypeEntityMention {
-			t.Errorf("node %q: type = %q, want %q", nodeID, n.NodeType, pluginapi.NodeTypeEntityMention)
+			t.Errorf("node[%d] type: got %q, want %q", i, n.NodeType, pluginapi.NodeTypeEntityMention)
 		}
-		if n.Label != u.String() {
-			t.Errorf("node %q: label = %q, want %q", nodeID, n.Label, u.String())
+	}
+	if len(got.Graph.Edges) != 2 {
+		t.Errorf("edges: got %d, want 2", len(got.Graph.Edges))
+	}
+	for i, e := range got.Graph.Edges {
+		if e.EdgeType != pluginapi.EdgeTypeReferences {
+			t.Errorf("edge[%d] type: got %q, want %q", i, e.EdgeType, pluginapi.EdgeTypeReferences)
 		}
 	}
 }
@@ -125,23 +125,29 @@ func TestEntityExtractorEmitsGraphNodes(t *testing.T) {
 func TestEntityExtractorNoGraphWithoutID(t *testing.T) {
 	step := NewEntityExtractor()
 	draft := &storage.KnowledgeObject{
-		RawContent: "Working on @project.foo today.",
+		RawContent: "Mentioning @project.foo here.",
 	}
-	got, _ := step.Run(context.Background(), draft)
+	got, err := step.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
 	if got.Graph != nil {
 		t.Error("expected nil graph when ID is empty")
 	}
 }
 
-func TestEntityExtractorNoGraphNoMentions(t *testing.T) {
+func TestEntityExtractorNoGraphWhenNoMentions(t *testing.T) {
 	step := NewEntityExtractor()
 	draft := &storage.KnowledgeObject{
-		ID:         "obj-ent-002",
-		RawContent: "No mentions here at all.",
+		ID:         "obj-ee2",
+		RawContent: "No entity mentions here.",
 	}
-	got, _ := step.Run(context.Background(), draft)
-	// graph may be nil or empty — either is valid when no mentions
-	if got.Graph != nil && len(got.Graph.Nodes) != 0 {
-		t.Errorf("expected no graph nodes when no mentions, got %d", len(got.Graph.Nodes))
+	got, err := step.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got.Graph != nil {
+		t.Error("expected nil graph when no mentions found")
 	}
 }
+

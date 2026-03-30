@@ -295,6 +295,37 @@ func TestEntityResolverNoEdgeWithoutObjectID(t *testing.T) {
 	}
 }
 
+func TestEntityResolverDoesNotWriteIntraObjectGraph(t *testing.T) {
+	// Boundary test (ADR-063): entity_resolver writes storage.Edge (inter-object) only.
+	// It must NOT touch ko.Graph — that layer belongs to entity_extractor.
+	known := &storage.Entity{
+		Slug:          "project/beta",
+		Title:         "Beta",
+		Namespace:     "project",
+		ContentStatus: storage.ContentStatusFull,
+	}
+	entities := newStubEntityStore(known)
+	edges := &stubEdgeStore{}
+	step := NewEntityResolverWithStores(entities, edges)
+
+	draft := &storage.KnowledgeObject{
+		ID:       "obj-er1",
+		Mentions: []uri.URI{mustURI(t, "ctxt://entity/project/beta")},
+	}
+	got, err := step.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	// Inter-object edge written.
+	if len(edges.created) != 1 {
+		t.Errorf("expected 1 inter-object edge, got %d", len(edges.created))
+	}
+	// Intra-object graph must remain untouched.
+	if got.Graph != nil {
+		t.Error("entity_resolver must not write to ko.Graph (intra-object layer)")
+	}
+}
+
 func TestMentionSlug(t *testing.T) {
 	cases := []struct {
 		uriStr string
