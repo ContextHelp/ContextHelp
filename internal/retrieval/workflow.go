@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // EmbeddingProvider wraps providers.EmbeddingProvider to match retrieval usage.
@@ -40,12 +42,18 @@ func NewWorkflow(
 // Retrieve executes progressive retrieval with sufficiency checking.
 // It walks through category → item → resource tiers, stopping early when
 // retrieved content is deemed sufficient to answer the query.
+// nodeFilter is optional; pass nil to skip node-type filtering.
 func (w *Workflow) Retrieve(
 	ctx context.Context,
 	query string,
 	conversationHistory []string,
 	filter storage.ObjectFilter,
+	nodeFilter ...*pluginapi.NodeAwareFilter,
 ) (*Result, error) {
+	var nf *pluginapi.NodeAwareFilter
+	if len(nodeFilter) > 0 {
+		nf = nodeFilter[0]
+	}
 	state := &State{
 		OriginalQuery:  query,
 		RewrittenQuery: query,
@@ -78,7 +86,7 @@ func (w *Workflow) Retrieve(
 
 	// Step 2: Tier 1 — Categories.
 	if w.config.Categories.Enabled {
-		if err := w.retrieveCategories(ctx, state, filter); err != nil {
+		if err := w.retrieveCategories(ctx, state, filter, nf); err != nil {
 			return nil, fmt.Errorf("retrieve categories: %w", err)
 		}
 
@@ -101,7 +109,7 @@ func (w *Workflow) Retrieve(
 
 	// Step 3: Tier 2 — Items.
 	if w.config.Items.Enabled && state.ProceedToItems {
-		if err := w.retrieveItems(ctx, state, filter); err != nil {
+		if err := w.retrieveItems(ctx, state, filter, nf); err != nil {
 			return nil, fmt.Errorf("retrieve items: %w", err)
 		}
 
@@ -124,7 +132,7 @@ func (w *Workflow) Retrieve(
 
 	// Step 4: Tier 3 — Resources.
 	if w.config.Resources.Enabled && state.ProceedToResources {
-		if err := w.retrieveResources(ctx, state, filter); err != nil {
+		if err := w.retrieveResources(ctx, state, filter, nf); err != nil {
 			return nil, fmt.Errorf("retrieve resources: %w", err)
 		}
 	}
@@ -157,9 +165,19 @@ func (w *Workflow) formatRetrievedContent(state *State) string {
 	if len(state.CategoryHits) > 0 {
 		parts = append(parts, "## Categories")
 		for _, hit := range state.CategoryHits {
-			if hit.Data != nil && len(hit.Data.Summaries) > 0 {
-				parts = append(parts, fmt.Sprintf("- %s (score: %.3f)",
-					hit.Data.Summaries[0], hit.Score))
+			if hit.Data == nil {
+				continue
+			}
+			doc := projection.ProjectDocument(hit.Data)
+			snippet := doc.Body
+			if snippet == "" && len(doc.Sections) > 0 {
+				snippet = doc.Sections[0].Content
+			}
+			if snippet != "" {
+				if len(snippet) > 200 {
+					snippet = snippet[:200]
+				}
+				parts = append(parts, fmt.Sprintf("- %s (score: %.3f)", snippet, hit.Score))
 			}
 		}
 	}
@@ -167,13 +185,15 @@ func (w *Workflow) formatRetrievedContent(state *State) string {
 	if len(state.ItemHits) > 0 {
 		parts = append(parts, "\n## Items")
 		for _, hit := range state.ItemHits {
-			if hit.Data != nil {
-				content := hit.Data.RawContent
-				if len(content) > 200 {
-					content = content[:200]
-				}
-				parts = append(parts, fmt.Sprintf("- %s (score: %.3f)", content, hit.Score))
+			if hit.Data == nil {
+				continue
 			}
+			idx := projection.ProjectIndex(hit.Data)
+			content := idx.FTSBody
+			if len(content) > 200 {
+				content = content[:200]
+			}
+			parts = append(parts, fmt.Sprintf("- %s (score: %.3f)", content, hit.Score))
 		}
 	}
 

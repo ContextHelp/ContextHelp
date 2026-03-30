@@ -8,6 +8,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -123,15 +124,19 @@ func TemporalProximity(a, b *storage.KnowledgeObject) float64 {
 }
 
 // EntityProximity computes Jaccard similarity between the entity mention sets of two objects.
+// Uses ProjectIndex to resolve mentions from graph nodes when available.
 func EntityProximity(a, b *storage.KnowledgeObject) float64 {
-	setA := make(map[string]bool, len(a.Mentions))
-	for _, u := range a.Mentions {
-		setA[u.String()] = true
+	idxA := projection.ProjectIndex(a)
+	idxB := projection.ProjectIndex(b)
+
+	setA := make(map[string]bool, len(idxA.Mentions))
+	for _, m := range idxA.Mentions {
+		setA[m] = true
 	}
 
-	setB := make(map[string]bool, len(b.Mentions))
-	for _, u := range b.Mentions {
-		setB[u.String()] = true
+	setB := make(map[string]bool, len(idxB.Mentions))
+	for _, m := range idxB.Mentions {
+		setB[m] = true
 	}
 
 	intersection := 0

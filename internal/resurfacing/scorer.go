@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -31,9 +32,12 @@ type ScoreResult struct {
 //  1. Entity overlap — fraction of profile entity slugs present in object mentions.
 //  2. Tag overlap    — fraction of profile tags matching object tags.
 //  3. Recency decay  — exponential decay over 30 days; brand-new = 1.0.
+//
+// Uses ProjectIndex to resolve tags and mentions from graph nodes when available.
 func Score(in ScoreInput) ScoreResult {
-	entity := entityOverlap(in.Object, in.ProfileEntitySlugs)
-	tag := tagOverlap(in.Object, in.Profile.Tags)
+	idx := projection.ProjectIndex(in.Object)
+	entity := entityOverlapFromIndex(idx.Mentions, in.ProfileEntitySlugs)
+	tag := tagOverlapFromIndex(idx.Tags, in.Profile.Tags)
 	recency := recencyDecay(in.Object.CreatedAt, in.Now)
 
 	score := (entity + tag + recency) / 3.0
@@ -43,28 +47,34 @@ func Score(in ScoreInput) ScoreResult {
 }
 
 // entityOverlap returns the fraction of profileSlugs that appear in the
-// object's mention URIs.
-//
-// A mention URI has Scheme, Space (host), and ID (path). A profile slug like
-// "stripe.api" or "api" is matched against the URI's Space field (which holds
-// the namespace-qualified slug in ctxt:// mentions).
+// object's mention URIs. Delegates to entityOverlapFromIndex via ProjectIndex.
 func entityOverlap(obj *storage.KnowledgeObject, profileSlugs []string) float64 {
-	if len(profileSlugs) == 0 || len(obj.Mentions) == 0 {
+	idx := projection.ProjectIndex(obj)
+	return entityOverlapFromIndex(idx.Mentions, profileSlugs)
+}
+
+// entityOverlapFromIndex matches profileSlugs against pre-projected mention strings.
+// Each mention string is a serialised URI ("ctxt://space.id"). Matching is done
+// against the full string and its space/id components.
+func entityOverlapFromIndex(mentions []string, profileSlugs []string) float64 {
+	if len(profileSlugs) == 0 || len(mentions) == 0 {
 		return 0
 	}
-	// Index mention keys: Space, ID, and "Space.ID" composite.
-	objKeys := make(map[string]struct{}, len(obj.Mentions)*3)
-	for i := range obj.Mentions {
-		m := &obj.Mentions[i]
-		if m.Space != "" {
-			objKeys[m.Space] = struct{}{}
+	// Build a key set from each mention: full string + derived space/id parts.
+	objKeys := make(map[string]struct{}, len(mentions)*3)
+	for _, m := range mentions {
+		objKeys[m] = struct{}{}
+		// Extract space and id from "ctxt://space.id" or "ctxt://space/id".
+		space, id := extractSpaceID(m)
+		if space != "" {
+			objKeys[space] = struct{}{}
 		}
-		if m.ID != "" {
-			objKeys[m.ID] = struct{}{}
+		if id != "" {
+			objKeys[id] = struct{}{}
 		}
-		if m.Space != "" && m.ID != "" {
-			objKeys[m.Space+"."+m.ID] = struct{}{}
-			objKeys[m.Space+"/"+m.ID] = struct{}{}
+		if space != "" && id != "" {
+			objKeys[space+"."+id] = struct{}{}
+			objKeys[space+"/"+id] = struct{}{}
 		}
 	}
 
@@ -74,16 +84,16 @@ func entityOverlap(obj *storage.KnowledgeObject, profileSlugs []string) float64 
 			matches++
 			continue
 		}
-		// Try suffix match: "stripe.api" → match "api".
-		if idx := strings.LastIndex(slug, "."); idx >= 0 {
-			if _, ok := objKeys[slug[idx+1:]]; ok {
+		// Suffix match: "stripe.api" → "api".
+		if i := strings.LastIndex(slug, "."); i >= 0 {
+			if _, ok := objKeys[slug[i+1:]]; ok {
 				matches++
 				continue
 			}
 		}
-		// Try prefix match: "stripe" matches "stripe.api" Space.
-		if idx := strings.Index(slug, "."); idx >= 0 {
-			if _, ok := objKeys[slug[:idx]]; ok {
+		// Prefix match: "stripe" → matches space "stripe".
+		if i := strings.Index(slug, "."); i >= 0 {
+			if _, ok := objKeys[slug[:i]]; ok {
 				matches++
 			}
 		}
@@ -91,18 +101,44 @@ func entityOverlap(obj *storage.KnowledgeObject, profileSlugs []string) float64 
 	return float64(matches) / float64(len(profileSlugs))
 }
 
+// extractSpaceID splits a serialised URI string into its space and id components.
+// Handles "ctxt://space.id", "ctxt://space/id", or bare "space.id" forms.
+func extractSpaceID(m string) (space, id string) {
+	// Strip scheme prefix if present.
+	s := m
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	// Try dot separator first.
+	if i := strings.Index(s, "."); i >= 0 {
+		return s[:i], s[i+1:]
+	}
+	// Try slash separator.
+	if i := strings.Index(s, "/"); i >= 0 {
+		return s[:i], s[i+1:]
+	}
+	return s, ""
+}
+
 // tagOverlap returns the fraction of profileTags that match any object tag label.
+// Delegates to tagOverlapFromIndex via ProjectIndex.
 func tagOverlap(obj *storage.KnowledgeObject, profileTags []string) float64 {
-	if len(profileTags) == 0 || len(obj.Tags) == 0 {
+	idx := projection.ProjectIndex(obj)
+	return tagOverlapFromIndex(idx.Tags, profileTags)
+}
+
+// tagOverlapFromIndex matches profileTags against pre-projected pluginapi.Tag values.
+func tagOverlapFromIndex(objTags []storage.Tag, profileTags []string) float64 {
+	if len(profileTags) == 0 || len(objTags) == 0 {
 		return 0
 	}
-	objTags := make(map[string]struct{}, len(obj.Tags))
-	for _, t := range obj.Tags {
-		objTags[strings.ToLower(t.Label)] = struct{}{}
+	tagSet := make(map[string]struct{}, len(objTags))
+	for _, t := range objTags {
+		tagSet[strings.ToLower(t.Label)] = struct{}{}
 	}
 	matches := 0
 	for _, pt := range profileTags {
-		if _, ok := objTags[strings.ToLower(pt)]; ok {
+		if _, ok := tagSet[strings.ToLower(pt)]; ok {
 			matches++
 		}
 	}
