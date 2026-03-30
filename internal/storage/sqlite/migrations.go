@@ -75,6 +75,9 @@ var migration021 string
 //go:embed migrations/022_graph_canonical.sql
 var migration022 string
 
+//go:embed migrations/023_projected_fts_body.sql
+var migration023 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -117,6 +120,9 @@ var migrations = []migration{
 	// Uses a Go fn so the backfill (graph_json = '{}' for legacy rows) runs
 	// atomically after the DDL.
 	{Version: 22, fn: migrate022GraphCanonical},
+	// Migration 023: projected_fts_body column + FTS rebuild (T-0195).
+	// Uses a Go fn for idempotency: checks for column before ALTER TABLE.
+	{Version: 23, fn: migrate023ProjectedFTSBody},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -303,6 +309,48 @@ func migrate022GraphCanonical(ctx context.Context, d *Driver) error {
 
 	_, err = d.db.ExecContext(ctx,
 		`UPDATE objects SET graph_json = '{}' WHERE graph_json IS NULL`)
+	return err
+}
+
+// migrate023ProjectedFTSBody adds projected_fts_body to objects and rebuilds the
+// FTS virtual table to index it instead of raw summaries/raw_content (T-0195).
+// Idempotent: checks pragma_table_info before ALTER TABLE.
+func migrate023ProjectedFTSBody(ctx context.Context, d *Driver) error {
+	existing := map[string]bool{}
+	rows, err := d.db.QueryContext(ctx, "SELECT name FROM pragma_table_info('objects')")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return err
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if !existing["projected_fts_body"] {
+		if _, err := d.db.ExecContext(ctx,
+			`ALTER TABLE objects ADD COLUMN projected_fts_body TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+
+	// Drop and recreate FTS to index projected_fts_body.
+	if _, err := d.db.ExecContext(ctx, `DROP TABLE IF EXISTS objects_fts`); err != nil {
+		return err
+	}
+	_, err = d.db.ExecContext(ctx, `
+		CREATE VIRTUAL TABLE objects_fts USING fts5(
+		    id UNINDEXED,
+		    projected_fts_body,
+		    content='objects',
+		    content_rowid='rowid'
+		)`)
 	return err
 }
 

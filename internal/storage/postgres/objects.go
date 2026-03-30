@@ -8,8 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"hop.top/uri"
 )
 
@@ -414,6 +415,16 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 // FTSSearch is not implemented for the postgres backend.
 func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	return nil, fmt.Errorf("FTSSearch: not implemented for postgres backend")
+}
+
+// FTSSearchNodeAware is not implemented for the postgres backend.
+func (s *ObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+	return nil, fmt.Errorf("FTSSearchNodeAware: not implemented for postgres backend")
+}
+
+// VectorSearchNodeAware is not implemented for the postgres backend.
+func (s *ObjectStore) VectorSearchNodeAware(_ context.Context, _ []float32, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+	return nil, fmt.Errorf("VectorSearchNodeAware: not implemented for postgres backend")
 }
 
 // objectSelectCols is the SELECT column list (no trailing FROM).

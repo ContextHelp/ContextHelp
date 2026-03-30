@@ -149,6 +149,12 @@ type ObjectStore interface {
 	// FTSSearch queries the objects_fts FTS5 virtual table using SQLite FTS5 MATCH syntax.
 	// Returns results ranked by FTS5 bm25 score, filtered by ObjectFilter.
 	FTSSearch(ctx context.Context, query string, filter ObjectFilter) ([]*KnowledgeObject, error)
+	// FTSSearchNodeAware runs FTS search and applies NodeAwareFilter post-query.
+	// When naf.NodeTypes is non-empty, only objects with ALL listed node types are returned.
+	FTSSearchNodeAware(ctx context.Context, query string, filter ObjectFilter, naf pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error)
+	// VectorSearchNodeAware runs vector search and applies NodeAwareFilter post-query.
+	// When naf.NodeTypes is non-empty, only objects with ALL listed node types are returned.
+	VectorSearchNodeAware(ctx context.Context, vector []float32, filter ObjectFilter, naf pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error)
 }
 
 // EntityStore persists and retrieves named entities.

@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -33,14 +34,11 @@ func NewEmbeddingGenerator(provider providers.EmbeddingProvider) *EmbeddingGener
 
 func (s *EmbeddingGenerator) Name() string { return "embedding_generator" }
 
-// Run embeds the draft's raw content and sets Embeddings + VectorIndexed.
-// Errors from the embedding provider are non-fatal — the draft is returned
-// with VectorIndexed=false so the pipeline can continue.
+// Run embeds the draft using projection.ProjectIndex.EmbeddingText as the
+// canonical text source, ensuring graph-aware content is indexed. Falls back
+// to an empty string check so that objects with no content are skipped cleanly.
 func (s *EmbeddingGenerator) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	text := draft.RawContent
-	if text == "" && len(draft.Summaries) > 0 {
-		text = draft.Summaries[0]
-	}
+	text := projection.ProjectIndex(draft).EmbeddingText
 	if text == "" {
 		draft.VectorIndexed = false
 		return draft, nil

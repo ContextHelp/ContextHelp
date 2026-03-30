@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"hop.top/uri"
 )
 
@@ -79,6 +80,12 @@ func (s *stubObjectStore) VectorSearch(_ context.Context, _ []float32, _ storage
 	return nil, nil
 }
 func (s *stubObjectStore) FTSSearch(_ context.Context, _ string, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	return nil, nil
+}
+func (s *stubObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+	return nil, nil
+}
+func (s *stubObjectStore) VectorSearchNodeAware(_ context.Context, _ []float32, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
 	return nil, nil
 }
 

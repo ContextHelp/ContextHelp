@@ -454,21 +454,44 @@ func TestVectorSearch_RespectsLimit(t *testing.T) {
 	assert.Len(t, results, 2)
 }
 
+// makeFTSObject builds an object whose projected_fts_body contains the given text.
+// Uses a Graph with a summary node so that ProjectIndex derives the FTS body from
+// the graph (matching the canonical projection path post-T-0195).
+func makeFTSObject(id, typ, searchableText string) *storage.KnowledgeObject {
+	now := time.Now().Truncate(time.Second)
+	return &storage.KnowledgeObject{
+		ID:        id,
+		Type:      typ,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Graph: &pluginapi.ObjectGraph{
+			Nodes: []pluginapi.GraphNode{
+				{
+					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
+					NodeType: pluginapi.NodeTypeSummary,
+					Label:    "Summary",
+					Content:  searchableText,
+					Order:    0,
+				},
+			},
+		},
+	}
+}
+
 func TestFTSSearch(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()
 
-	obj1 := makeObject("fts-1", "article")
-	obj1.Summaries = []string{"authentication best practices guide"}
-	obj1.RawContent = "Use bcrypt for password hashing"
+	// Objects whose graph summary nodes contain distinct search terms.
+	// ProjectIndex uses Graph nodes for FTSBody, so the projected_fts_body
+	// column (and thus objects_fts) will contain these terms after Create.
+	obj1 := makeFTSObject("fts-1", "article", "authentication best practices guide")
 	require.NoError(t, d.Objects().Create(ctx, obj1))
 
-	obj2 := makeObject("fts-2", "article")
-	obj2.Summaries = []string{"database indexing strategies"}
-	obj2.RawContent = "Composite indexes improve query performance"
+	obj2 := makeFTSObject("fts-2", "article", "database indexing strategies")
 	require.NoError(t, d.Objects().Create(ctx, obj2))
 
-	// Rebuild FTS content table index.
+	// Rebuild FTS content table index from projected_fts_body column.
 	_, err := d.db.ExecContext(ctx, "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")
 	require.NoError(t, err)
 

@@ -10,8 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"hop.top/uri"
 )
 
@@ -35,6 +37,9 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.Status = "active"
 	}
 
+	// Derive FTS body from projection — single source of truth for indexed text.
+	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("create object: begin tx: %w", err)
@@ -47,15 +52,15 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions, tasks, embeddings, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		remind_at, reminded_at, profile_id, graph_json, projected_fts_body
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, nil, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.Format(time.RFC3339), obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed), obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON,
+		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
@@ -239,6 +244,9 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		return fmt.Errorf("update object graph: %w", err)
 	}
 
+	// Derive FTS body from projection — single source of truth for indexed text.
+	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("update object: begin tx: %w", err)
@@ -251,7 +259,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions=?, tasks=?, pipeline=?, source=?,
 		registry_influences=?, plugins=?, content_hash=?, reinforcement_count=?, last_reinforced_at=?,
 		updated_at=?, fts_indexed=?, vector_indexed=?, status=?, inbox_note=?,
-		remind_at=?, reminded_at=?, profile_id=?, graph_json=?
+		remind_at=?, reminded_at=?, profile_id=?, graph_json=?, projected_fts_body=?
 	WHERE id=?`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
@@ -259,7 +267,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed), obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON,
+		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody,
 		obj.ID,
 	)
 	if err != nil {
@@ -946,7 +954,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		       o.decisions, o.tasks, o.pipeline, o.source,
 		       o.registry_influences, o.plugins, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
 		       o.created_at, o.updated_at, o.fts_indexed, o.vector_indexed, o.status, o.inbox_note,
-		       o.remind_at, o.reminded_at, o.profile_id,
+		       o.remind_at, o.reminded_at, o.profile_id, o.graph_json,
 		       bm25(objects_fts) AS score
 		FROM objects_fts
 		JOIN objects o ON objects_fts.id = o.id
@@ -977,6 +985,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 			createdAt, updatedAt                                string
 			ftsIndexed, vectorIndexed                           int
 			lastReinforcedAt, remindAt, remindedAt              sql.NullString
+			graphJSON                                           sql.NullString
 			score                                               float64
 		)
 		err := rows.Scan(
@@ -985,7 +994,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 			&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 			&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 			&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
-			&remindAt, &remindedAt, &obj.ProfileID,
+			&remindAt, &remindedAt, &obj.ProfileID, &graphJSON,
 			&score,
 		)
 		if err != nil {
@@ -995,6 +1004,13 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
 			createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
 			remindAt, remindedAt)
+		if graphJSON.Valid {
+			g, err := unmarshalGraph(graphJSON.String)
+			if err != nil {
+				return nil, fmt.Errorf("fts search unmarshal graph: %w", err)
+			}
+			obj.Graph = g
+		}
 		if obj.Metadata == nil {
 			obj.Metadata = make(map[string]any)
 		}
@@ -1044,4 +1060,118 @@ func blobToFloat32Slice(b []byte) []float32 {
 		v[i] = math.Float32frombits(bits)
 	}
 	return v
+}
+
+// nodeTypeObjectIDs returns object IDs that contain at least one node of each
+// requested type. When nodeTypes is empty, nil is returned (no pre-filter).
+func (s *ObjectStore) nodeTypeObjectIDs(ctx context.Context, nodeTypes []string) (map[string]struct{}, error) {
+	if len(nodeTypes) == 0 {
+		return nil, nil
+	}
+	// Build: SELECT object_id FROM object_nodes WHERE node_type IN (?, ?, ...)
+	// GROUP BY object_id HAVING COUNT(DISTINCT node_type) = N
+	// so only objects that have ALL requested node types are returned.
+	placeholders := make([]string, len(nodeTypes))
+	args := make([]any, len(nodeTypes))
+	for i, t := range nodeTypes {
+		placeholders[i] = "?"
+		args[i] = t
+	}
+	q := fmt.Sprintf(
+		`SELECT object_id FROM object_nodes WHERE node_type IN (%s)
+		 GROUP BY object_id HAVING COUNT(DISTINCT node_type) = ?`,
+		strings.Join(placeholders, ", "),
+	)
+	args = append(args, len(nodeTypes))
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("node type object IDs: %w", err)
+	}
+	defer rows.Close()
+
+	ids := make(map[string]struct{})
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("node type object IDs scan: %w", err)
+		}
+		ids[id] = struct{}{}
+	}
+	return ids, rows.Err()
+}
+
+// FTSSearchNodeAware runs FTS search with an optional NodeAwareFilter.
+// When naf.NodeTypes is set, only objects containing ALL those node types are
+// returned. Results include a populated DocumentView when naf.ReturnNodeHits is true.
+func (s *ObjectStore) FTSSearchNodeAware(
+	ctx context.Context,
+	query string,
+	filter storage.ObjectFilter,
+	naf pluginapi.NodeAwareFilter,
+) ([]*pluginapi.NodeAwareResult, error) {
+	// Run FTS first; node-type pre-filter is applied in-process after the query
+	// so that bm25 ranking is preserved. (object_nodes has an index on node_type;
+	// the pre-filter set is small relative to the full index.)
+	objects, err := s.FTSSearch(ctx, query, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	allowedIDs, err := s.nodeTypeObjectIDs(ctx, naf.NodeTypes)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []*pluginapi.NodeAwareResult
+	for _, obj := range objects {
+		if allowedIDs != nil {
+			if _, ok := allowedIDs[obj.ID]; !ok {
+				continue
+			}
+		}
+		r := &pluginapi.NodeAwareResult{Object: obj}
+		if naf.ReturnNodeHits {
+			dv := projection.ProjectDocument(obj)
+			r.DocumentView = &dv
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// VectorSearchNodeAware runs vector search with an optional NodeAwareFilter.
+// When naf.NodeTypes is set, only objects containing ALL those node types are
+// returned. Results include a populated DocumentView when naf.ReturnNodeHits is true.
+func (s *ObjectStore) VectorSearchNodeAware(
+	ctx context.Context,
+	vector []float32,
+	filter storage.ObjectFilter,
+	naf pluginapi.NodeAwareFilter,
+) ([]*pluginapi.NodeAwareResult, error) {
+	objects, err := s.VectorSearch(ctx, vector, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	allowedIDs, err := s.nodeTypeObjectIDs(ctx, naf.NodeTypes)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []*pluginapi.NodeAwareResult
+	for _, obj := range objects {
+		if allowedIDs != nil {
+			if _, ok := allowedIDs[obj.ID]; !ok {
+				continue
+			}
+		}
+		r := &pluginapi.NodeAwareResult{Object: obj}
+		if naf.ReturnNodeHits {
+			dv := projection.ProjectDocument(obj)
+			r.DocumentView = &dv
+		}
+		out = append(out, r)
+	}
+	return out, nil
 }
