@@ -21,6 +21,8 @@ const (
 	NodeTypeTask          = "task"
 	NodeTypeSummary       = "summary"
 	NodeTypeCodeBlock     = "code_block"
+	NodeTypeOpenQuestion  = "open_question"
+	NodeTypeArtifact      = "artifact"
 )
 
 // Edge type constants for ObjectGraph edges.
