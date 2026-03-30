@@ -75,11 +75,12 @@ type GraphNode struct {
     Metadata map[string]any
 }
 
+// Inter-object edges MUST go to `edges` table (ADR-049); `GraphEdge` is intra-object only.
 type GraphEdge struct {
     ID     string
     Type   GraphEdgeType   // contains | references | resolves_to | derives_from
-    FromID string          // GraphNode.ID (intra) or object UUID (inter via ADR-049)
-    ToID   string
+    FromID string          // GraphNode.ID within this object only
+    ToID   string          // GraphNode.ID within this object only
     Weight float64
 }
 
@@ -99,7 +100,7 @@ const (
     EdgeContains    GraphEdgeType = "contains"
     EdgeReferences  GraphEdgeType = "references"
     EdgeResolvesTo  GraphEdgeType = "resolves_to"
-    EdgeDerivedFrom GraphEdgeType = "derives_from"
+    EdgeDerivedFrom GraphEdgeType = "derives_from" // intra-object only; cross-object → ADR-049 `edges`
 )
 ```
 
@@ -156,13 +157,16 @@ Public `pluginapi` gains: `ObjectGraph`, `GraphNode`, `GraphEdge`, `GraphNodeTyp
 Existing flat slice fields on `KnowledgeObject` retained (aliased from projections).
 Pipeline steps may write to `Graph` directly; storage layer backfills flat fields on write.
 
+> Note: ingest and enrichment steps MUST write to `Graph.Nodes`; flat-field writes treated as
+> legacy until backfill completes.
+
 ---
 
 ## Consequences
 
 ### Positive
 
-- **Ingest + enrichment steps** — must write to `Graph.Nodes`; flat-field writes treated legacy until backfill.
+- **Single write target for enrichment** — no merge ambiguity between flat-field and graph writes.
 - **Stable intra-object identity** — every section/tag/decision/task has a UUID; can be
   referenced by intra- and inter-object edges.
 - **Defined write semantics** — steps append typed nodes to `Graph.Nodes`; no array-append
@@ -197,7 +201,8 @@ Pipeline steps may write to `Graph` directly; storage layer backfills flat field
 1. Add `graph_json TEXT` column to `objects` table (nullable; empty = legacy row).
 2. Backfill job: for each row with `graph_json IS NULL`, reconstruct `ObjectGraph` from existing
    flat columns (`sections`, `tags`, `decisions`, `tasks`, `summaries`), generate stable node
-   UUIDs (hash of `object_id + type + order`), write JSON to `graph_json`.
+   UUIDs (hash of `object_id + type + ordinal-within-type`, 0-indexed per type). Collisions
+   impossible by construction. Write JSON to `graph_json`.
 3. After backfill: storage `Create`/`Update` writes `graph_json`; `Get`/`List` project from it.
 4. Flat column removal deferred to follow-on ADR once all writers confirmed graph-aware.
 
