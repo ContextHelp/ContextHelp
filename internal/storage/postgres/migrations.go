@@ -256,6 +256,65 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			return fmt.Errorf("migration %d: %w", i+1, err)
 		}
 	}
+
+	// Graph-canonical migration: add graph_json + object_nodes (idempotent).
+	if err := migrateGraphCanonical(ctx, d.db); err != nil {
+		return fmt.Errorf("graph canonical migration: %w", err)
+	}
+	return nil
+}
+
+// migrateGraphCanonical adds graph_json JSONB to objects, creates the
+// object_nodes denormalised index table, and backfills graph_json = '{}'
+// for legacy NULL rows. Idempotent via IF NOT EXISTS / information_schema check.
+func migrateGraphCanonical(ctx context.Context, db *sql.DB) error {
+	// Check if graph_json column already exists.
+	var exists bool
+	err := db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'objects' AND column_name = 'graph_json'
+		)
+	`).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("check graph_json column: %w", err)
+	}
+	if !exists {
+		if _, err := db.ExecContext(ctx,
+			`ALTER TABLE objects ADD COLUMN graph_json JSONB DEFAULT NULL`); err != nil {
+			return fmt.Errorf("add graph_json column: %w", err)
+		}
+	}
+
+	if _, err := db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS object_nodes (
+			id          TEXT PRIMARY KEY,
+			object_id   TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+			node_type   TEXT NOT NULL,
+			ordinal     INTEGER NOT NULL DEFAULT 0,
+			content     TEXT DEFAULT '',
+			created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+		)`); err != nil {
+		return fmt.Errorf("create object_nodes table: %w", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`CREATE INDEX IF NOT EXISTS idx_object_nodes_object_id ON object_nodes(object_id)`); err != nil {
+		return fmt.Errorf("create object_nodes object_id index: %w", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`CREATE INDEX IF NOT EXISTS idx_object_nodes_node_type ON object_nodes(node_type)`); err != nil {
+		return fmt.Errorf("create object_nodes node_type index: %w", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`CREATE INDEX IF NOT EXISTS idx_object_nodes_object_node_type ON object_nodes(object_id, node_type)`); err != nil {
+		return fmt.Errorf("create object_nodes compound index: %w", err)
+	}
+
+	// Backfill: set graph_json = '{}' for rows that predate this migration.
+	if _, err := db.ExecContext(ctx,
+		`UPDATE objects SET graph_json = '{}' WHERE graph_json IS NULL`); err != nil {
+		return fmt.Errorf("backfill graph_json: %w", err)
+	}
 	return nil
 }
 
