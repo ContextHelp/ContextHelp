@@ -94,6 +94,8 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"alternative_detector": func() pipeline.PipelineStep { return steps.NewAlternativeDetector() },
 	// Dependency enrichment step.
 	"dependency_enricher": func() pipeline.PipelineStep { return steps.NewDependencyEnricher() },
+	// Graph extractor: no-op without LLM; provider-aware constructor below.
+	"graph_extractor": func() pipeline.PipelineStep { return steps.NewGraphExtractor() },
 }
 
 // blobStepConstructors maps step names to blob-store-aware constructors.
@@ -132,6 +134,9 @@ var providerStepConstructors = map[string]func(*providers.Factory) pipeline.Pipe
 	},
 	"entity_extractor": func(f *providers.Factory) pipeline.PipelineStep {
 		return steps.NewEntityExtractorWithLLM(f.LLM())
+	},
+	"graph_extractor": func(f *providers.Factory) pipeline.PipelineStep {
+		return steps.NewGraphExtractorWithLLM(f.LLM())
 	},
 	"audio_extractor": func(f *providers.Factory) pipeline.PipelineStep {
 		return steps.NewAudioExtractor(steps.WithVideoProvider(f.Video()))
