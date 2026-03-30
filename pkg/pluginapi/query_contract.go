@@ -19,13 +19,6 @@ type NodeAwareFilter struct {
 	ReturnNodeHits bool `json:"return_node_hits,omitempty"`
 }
 
-// DocumentProjection is a derived human-facing view of a KnowledgeObject.
-// Stub — full definition arrives with T-0169; remove if already defined.
-type DocumentProjection struct {
-	Title string `json:"title,omitempty"`
-	Body  string `json:"body,omitempty"`
-}
-
 // NodeAwareResult wraps a KnowledgeObject result with optional node-level hits.
 type NodeAwareResult struct {
 	Object       *KnowledgeObject    `json:"object"`

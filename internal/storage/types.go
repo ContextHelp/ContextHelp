@@ -25,6 +25,13 @@ type Decision = pluginapi.Decision
 // Task represents an extracted task from content.
 type Task = pluginapi.Task
 
+// Graph-canonical types (ADR-063).
+type ObjectGraph        = pluginapi.ObjectGraph
+type GraphNode          = pluginapi.GraphNode
+type GraphEdge          = pluginapi.GraphEdge
+type DocumentProjection = pluginapi.DocumentProjection
+type IndexProjection    = pluginapi.IndexProjection
+
 // BlobMeta describes metadata for a stored blob.
 type BlobMeta struct {
 	ContentType string            `json:"content_type"`

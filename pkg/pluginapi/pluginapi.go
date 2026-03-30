@@ -103,6 +103,7 @@ type KnowledgeObject struct {
 	VectorIndexed      bool           `json:"vector_indexed"`
 	ProfileID          string         `json:"profile_id,omitempty"` // owning profile; empty = global
 	AttachmentIDs      []string       `json:"attachment_ids,omitempty"`
+	Graph              *ObjectGraph   `json:"graph,omitempty"`
 }
 
 // Draft is an alias for KnowledgeObject being progressively enriched.
@@ -134,6 +135,59 @@ type Decision struct {
 type Task struct {
 	Title  string `json:"title"`
 	Status string `json:"status"`
+}
+
+// ─── Graph-canonical types ────────────────────────────────────────────────────
+
+// GraphNode is a typed node within an object's intra-object graph.
+type GraphNode struct {
+	ID       string         `json:"id"`        // NewNodeID(objectID, nodeType, ordinal)
+	NodeType string         `json:"node_type"` // NodeType* constant
+	Content  string         `json:"content,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+// GraphEdge is a directed edge between two nodes within the same object graph.
+// Inter-object edges MUST go to the edges table (ADR-049); this is intra-object only.
+type GraphEdge struct {
+	ID       string  `json:"id"`
+	FromID   string  `json:"from_id"`
+	ToID     string  `json:"to_id"`
+	EdgeType string  `json:"edge_type"` // EdgeType* constant
+	Weight   float64 `json:"weight,omitempty"`
+}
+
+// ObjectGraph holds typed nodes and edges for a single KnowledgeObject.
+// Write source of truth for graph-canonical KOs.
+type ObjectGraph struct {
+	Nodes []GraphNode `json:"nodes,omitempty"`
+	Edges []GraphEdge `json:"edges,omitempty"`
+}
+
+// FindNode returns the node with the given ID, or nil.
+func (g *ObjectGraph) FindNode(id string) *GraphNode {
+	for i := range g.Nodes {
+		if g.Nodes[i].ID == id {
+			return &g.Nodes[i]
+		}
+	}
+	return nil
+}
+
+// DocumentProjection is a derived human-facing view of a KnowledgeObject.
+// Derived by projection.ProjectDocument; not stored directly.
+type DocumentProjection struct {
+	Title    string    `json:"title,omitempty"`
+	Body     string    `json:"body,omitempty"`
+	Sections []Section `json:"sections,omitempty"`
+}
+
+// IndexProjection is a derived search-index view of a KnowledgeObject.
+// Derived by projection.ProjectIndex; not stored directly.
+type IndexProjection struct {
+	FTSBody       string `json:"fts_body,omitempty"`
+	Tags          []Tag  `json:"tags,omitempty"`
+	EmbeddingText string `json:"embedding_text,omitempty"`
 }
 
 // ─── Pipeline step contract ───────────────────────────────────────────────────
