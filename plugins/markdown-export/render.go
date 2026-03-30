@@ -110,10 +110,27 @@ func Render(obj pluginapi.KnowledgeObject) ([]byte, error) {
 }
 
 // objectTitle extracts a human-readable title for the object.
+// Prefers metadata["title"], then projection body (graph-canonical path),
+// then flat Summaries[0] (backward compat), then falls back to ID.
 func objectTitle(obj pluginapi.KnowledgeObject) string {
 	if v, ok := obj.Metadata["title"].(string); ok && v != "" {
 		return v
 	}
+	// Graph-canonical path: use first line of FTSBody as title hint.
+	if obj.Graph != nil && len(obj.Graph.Nodes) > 0 {
+		idx := projection.ProjectIndex(&obj)
+		if idx.FTSBody != "" {
+			s := idx.FTSBody
+			if nl := strings.IndexByte(s, '\n'); nl > 0 {
+				s = s[:nl]
+			}
+			if len(s) > 80 {
+				s = s[:77] + "..."
+			}
+			return s
+		}
+	}
+	// Flat-field fallback: summaries not in graph.
 	if len(obj.Summaries) > 0 && obj.Summaries[0] != "" {
 		s := obj.Summaries[0]
 		if len(s) > 80 {
