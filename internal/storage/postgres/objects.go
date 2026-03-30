@@ -19,33 +19,50 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
 	}
+	graphJSON, err := marshalGraph(obj.Graph)
+	if err != nil {
+		return fmt.Errorf("create object graph: %w", err)
+	}
 	if obj.Status == "" {
 		obj.Status = "active"
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO objects (
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("create object: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO objects (
 		id, type, subtype, raw_content, content_type,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, embedding, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at
+		remind_at, reminded_at, graph_json
 	) VALUES (
 		$1, $2, $3, $4, $5,
 		$6, $7, $8, $9, $10,
 		$11, $12, $13, $14, $15,
 		$16, $17, $18, $19, $20,
 		$21, $22, $23, $24, $25, $26,
-		$27, $28
+		$27, $28, $29
 	)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt,
+		f.remindAt, f.remindedAt, graphJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
+	}
+	if err := upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
+		return fmt.Errorf("create object nodes: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("create object: commit: %w", err)
 	}
 	return nil
 }
@@ -159,22 +176,33 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err != nil {
 		return fmt.Errorf("update object: %w", err)
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE objects SET
+	graphJSON, err := marshalGraph(obj.Graph)
+	if err != nil {
+		return fmt.Errorf("update object graph: %w", err)
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("update object: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `UPDATE objects SET
 		type=$1, subtype=$2, raw_content=$3, content_type=$4,
 		metadata=$5, summaries=$6, sections=$7, tags=$8, mentions=$9,
 		decisions=$10, tasks=$11, embedding=$12, pipeline=$13, source=$14,
 		registry_influences=$15, plugins=$16, content_hash=$17,
 		reinforcement_count=$18, last_reinforced_at=$19,
 		updated_at=$20, fts_indexed=$21, vector_indexed=$22, status=$23, inbox_note=$24,
-		remind_at=$25, reminded_at=$26
-	WHERE id=$27`,
+		remind_at=$25, reminded_at=$26, graph_json=$27
+	WHERE id=$28`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash,
 		obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt,
+		f.remindAt, f.remindedAt, graphJSON,
 		obj.ID,
 	)
 	if err != nil {
@@ -183,6 +211,12 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	n, _ := result.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("object %s not found", obj.ID)
+	}
+	if err := upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
+		return fmt.Errorf("update object nodes: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("update object: commit: %w", err)
 	}
 	return nil
 }
@@ -434,7 +468,7 @@ const objectSelectCols = `SELECT
 	decisions, tasks, pipeline, source,
 	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 	created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-	remind_at, reminded_at`
+	remind_at, reminded_at, graph_json`
 
 func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 	var obj storage.KnowledgeObject
@@ -443,6 +477,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
 		influencesJSON, pluginsJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
+		graphJSON                                           []byte
 	)
 	err := row.Scan(
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
@@ -450,7 +485,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt,
+		&remindAt, &remindedAt, &graphJSON,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -461,6 +496,13 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 	unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
 		lastReinforcedAt, remindAt, remindedAt)
+	if len(graphJSON) > 0 {
+		g, err := unmarshalGraph(string(graphJSON))
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal graph: %w", err)
+		}
+		obj.Graph = g
+	}
 	return &obj, nil
 }
 
@@ -471,6 +513,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
 		influencesJSON, pluginsJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
+		graphJSON                                           []byte
 	)
 	err := rows.Scan(
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
@@ -478,7 +521,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt,
+		&remindAt, &remindedAt, &graphJSON,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
@@ -486,6 +529,13 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 	unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
 		lastReinforcedAt, remindAt, remindedAt)
+	if len(graphJSON) > 0 {
+		g, err := unmarshalGraph(string(graphJSON))
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal graph: %w", err)
+		}
+		obj.Graph = g
+	}
 	return &obj, nil
 }
 
@@ -497,6 +547,7 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
 		influencesJSON, pluginsJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
+		graphJSON                                           []byte
 		embStr                                              sql.NullString
 	)
 	err := rows.Scan(
@@ -505,7 +556,7 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt,
+		&remindAt, &remindedAt, &graphJSON,
 		&embStr,
 	)
 	if err != nil {
@@ -514,6 +565,13 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 	unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
 		lastReinforcedAt, remindAt, remindedAt)
+	if len(graphJSON) > 0 {
+		g, err := unmarshalGraph(string(graphJSON))
+		if err != nil {
+			return nil, nil, fmt.Errorf("unmarshal graph: %w", err)
+		}
+		obj.Graph = g
+	}
 	vec := parsePgVector(embStr.String)
 	return &obj, vec, nil
 }
@@ -526,6 +584,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
 		influencesJSON, pluginsJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
+		graphJSON                                           []byte
 		score                                               float64
 	)
 	err := rows.Scan(
@@ -534,7 +593,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt,
+		&remindAt, &remindedAt, &graphJSON,
 		&score,
 	)
 	if err != nil {
@@ -543,6 +602,13 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 	unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
 		lastReinforcedAt, remindAt, remindedAt)
+	if len(graphJSON) > 0 {
+		g, err := unmarshalGraph(string(graphJSON))
+		if err != nil {
+			return nil, 0, fmt.Errorf("unmarshal graph: %w", err)
+		}
+		obj.Graph = g
+	}
 	return &obj, score, nil
 }
 
@@ -730,4 +796,50 @@ func mentionsToStrings(uris []uri.URI) []string {
 		s[i] = u.String()
 	}
 	return s
+}
+
+// marshalGraph serialises a graph to JSON for storage. Returns nil for nil graphs.
+func marshalGraph(g *storage.ObjectGraph) ([]byte, error) {
+	if g == nil {
+		return nil, nil
+	}
+	b, err := json.Marshal(g)
+	if err != nil {
+		return nil, fmt.Errorf("marshal graph: %w", err)
+	}
+	return b, nil
+}
+
+// unmarshalGraph deserialises a JSON string into an ObjectGraph.
+func unmarshalGraph(raw string) (*storage.ObjectGraph, error) {
+	if raw == "" || raw == "{}" {
+		return &storage.ObjectGraph{}, nil
+	}
+	var g storage.ObjectGraph
+	if err := json.Unmarshal([]byte(raw), &g); err != nil {
+		return nil, fmt.Errorf("unmarshal graph: %w", err)
+	}
+	return &g, nil
+}
+
+// upsertObjectNodesTx replaces object_nodes rows for the given object within tx.
+func upsertObjectNodesTx(ctx context.Context, tx *sql.Tx,
+	objectID string, g *storage.ObjectGraph) error {
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM object_nodes WHERE object_id = $1`, objectID); err != nil {
+		return fmt.Errorf("delete object_nodes: %w", err)
+	}
+	if g == nil {
+		return nil
+	}
+	for _, n := range g.Nodes {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO object_nodes (id, object_id, node_type, ordinal, content, created_at)
+			 VALUES ($1, $2, $3, $4, $5, NOW())`,
+			n.ID, objectID, n.NodeType, n.Order, n.Content,
+		); err != nil {
+			return fmt.Errorf("insert object_node %s: %w", n.ID, err)
+		}
+	}
+	return nil
 }
