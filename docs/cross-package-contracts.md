@@ -134,23 +134,26 @@ type MentionExtractor interface {
 ### 3. Storage (ctxt → dPKMS)
 
 **Contract:**
-- ctxt produces enriched knowledge objects
-- dPKMS persists and indexes them
-- dPKMS provides query interface
+- ctxt produces enriched knowledge objects with `ObjectGraph` as write source of truth (ADR-063)
+- dPKMS persists `graph_json` + derives `IndexProjection` for FTS/vector indexing
+- dPKMS derives `DocumentProjection` on read; flat fields populated as projection cache
+- dPKMS provides query interface (object-level + node-aware)
 
 **Flow:**
 ```
-ctxt pipeline: completes enrichment
+ctxt pipeline: completes enrichment → writes structured content to KO.Graph.Nodes
   ↓
-ctxt: creates KnowledgeObject struct
+ctxt: creates KnowledgeObject with ObjectGraph populated
   ↓
-dPKMS: WriteKnowledgeObject() → SQLite/Postgres
+dPKMS: WriteKnowledgeObject() → serialises graph_json → SQLite/Postgres
   ↓
-dPKMS: updates FTS index
+dPKMS: derives IndexProjection(ko) → updates FTS + vector indexes
+  ↓
+dPKMS: upserts object_nodes table (stable node refs)
   ↓
 dPKMS: updates entity backlinks
   ↓
-ctxt list: queries dPKMS storage → displays results
+ctxt list: queries dPKMS storage → derives DocumentProjection for display
 ```
 
 **Interface (dPKMS):**
@@ -250,6 +253,35 @@ type QueryEngine interface {
 ```go
 type Reranker interface {
     Rerank(ctx context.Context, results []KnowledgeObject, query Query) ([]KnowledgeObject, error)
+}
+```
+
+**Node-aware query contract** (`pluginapi.query_contract.go`):
+
+Results may include sub-object node hits when `NodeAwareFilter.ReturnNodeHits` is set.
+
+```go
+// NodeAwareFilter — extend object query with node/edge type constraints
+type NodeAwareFilter struct {
+    NodeTypes      []string // filter to objects containing these node types
+    EdgeTypes      []string // filter to objects containing these edge types
+    ReturnNodeHits bool     // include per-node NodeHit in results
+}
+
+// NodeHit — search result pointing to a matching intra-object node
+type NodeHit struct {
+    ObjectID string  // parent KO
+    NodeRef  string  // canonical NodeURI: ctxt:node/<objectID>/<nodeType>/<ordinal>
+    NodeType string
+    Snippet  string
+    Score    float64
+}
+
+// NodeAwareResult — wraps a KO result with optional node-level hits + document view
+type NodeAwareResult struct {
+    Object       *KnowledgeObject
+    NodeHits     []NodeHit
+    DocumentView *DocumentProjection // derived display view
 }
 ```
 

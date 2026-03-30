@@ -190,13 +190,15 @@ dPKMS provides the runtime.
 
 ## Knowledge Objects (Successor to “Bookmarks”)
 Each processed item becomes a structured object with:
-- summaries and sections
-- atomic notes
-- tags and classifications
-- decisions and tasks
-- mentions (`@...`) + canonical entities
+- identity scalars: `ID`, `Type`, `Subtype`, `Source`, `Pipeline`, `ProfileID`
+- `ObjectGraph` — intra-object graph of typed nodes (write source of truth; ADR-063):
+  sections, tags, entity mentions, decisions, tasks, summaries, code blocks
+- stable node IDs (`<objectID>/<nodeType>/<ordinal>`) + URI scheme (`ctxt:node/…`)
+- `DocumentProjection` and `IndexProjection` derived on read from the graph
 - provenance and version history
 - embeddings and retrieval metadata
+- flat fields (`Sections`, `Tags`, `Decisions`, `Tasks`) retained as projection
+  cache; writers MUST target `ObjectGraph`
 
 ---
 

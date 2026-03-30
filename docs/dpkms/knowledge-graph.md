@@ -1,27 +1,38 @@
 # Knowledge Graph
 
-The knowledge graph integrates bookmarks, entities, and their semantic relationships into a structured system that supports retrieval, navigation, inference, and future automation.
+The knowledge graph integrates knowledge objects, entities, and their semantic relationships
+into a structured system supporting retrieval, navigation, inference, and automation.
+
+## Two Graph Layers (ADR-063 + ADR-049)
+
+The system maintains two distinct graph layers:
+
+| Layer | Scope | Storage | Types |
+|---|---|---|---|
+| **Intra-object graph** | Within one KO | `objects.graph_json` (`ObjectGraph`) | section, tag, entity_mention, decision, task, summary, code_block |
+| **Inter-object graph** | Across KOs + entities | `edges` table | mentions, related, derives_from, alias_of, parent_of |
+
+Intra-object edges live entirely in `graph_json` and reference node IDs of the form
+`<objectID>/<nodeType>/<ordinal>`. Inter-object edges go to the `edges` table and may
+target object IDs or stable node IDs for sub-object precision.
 
 ## Overview
 
-The graph models:
-- Nodes: bookmarks and entities
-- Edges: explicit or inferred relationships
+The inter-object graph models:
+- Nodes: knowledge objects and entities
+- Edges: explicit or inferred cross-object relationships
 - Backlinks: reverse edges enabling discovery of all references to a concept
 
-Its goal is to provide a durable, canonical representation of how information connects across the system.
+Its goal is to provide a durable, canonical representation of how information connects across
+the system.
 
 ## Node Types
 
-### Bookmarks
+### Knowledge Objects (inter-object graph)
 
-Bookmarks represent captured knowledge items and may include:
-- content
-- tags
-- hints
-- mentions
-
-A bookmark becomes a graph node when it includes at least one mention referencing an entity.
+Knowledge objects represent captured items. Each KO contains an `ObjectGraph` with typed
+intra-object nodes (sections, tags, decisions, etc.). A KO participates in the inter-object
+graph when it includes at least one mention resolving to an entity.
 
 ### Entities
 

@@ -242,19 +242,69 @@ for dependency ordering. Declare every field you read and every field you write.
 
 | Field | Type | Notes |
 |---|---|---|
+| `Graph` | `*ObjectGraph` | **preferred write target** (ADR-063) |
 | `TextContent` | `string` | normalised text |
 | `Metadata` | `map[string]any` | arbitrary enrichment |
-| `Summaries` | `[]string` | short summaries |
-| `Sections` | `[]Section` | structured content |
-| `Tags` | `[]Tag` | weighted labels |
-| `Mentions` | `[]uri.URI` | `@namespace.slug` references |
-| `Decisions` | `[]Decision` | extracted decisions |
-| `Tasks` | `[]Task` | extracted tasks |
+| `Summaries` | `[]string` | legacy; prefer Graph nodes |
+| `Sections` | `[]Section` | legacy; prefer Graph nodes |
+| `Tags` | `[]Tag` | legacy; prefer Graph nodes |
+| `Mentions` | `[]uri.URI` | legacy; prefer Graph nodes |
+| `Decisions` | `[]Decision` | legacy; prefer Graph nodes |
+| `Tasks` | `[]Task` | legacy; prefer Graph nodes |
 | `Embeddings` | `[]float32` | vector embedding |
 | `Plugins` | `map[string]any` | plugin-owned namespace |
 
+New pipeline steps MUST write structured content (sections, tags, decisions,
+tasks, mentions) to `Graph.Nodes` using typed `GraphNode` values. Flat-field writes
+are treated as legacy until backfill completes. See ADR-063.
+
+Node ID construction: `pluginapi.NewNodeID(objectID, nodeType, ordinal)`
+Node URI: `pluginapi.NodeURI(objectID, nodeType, ordinal)` → `ctxt:node/<id>`
+
 Never write to `ID`, `CreatedAt`, `ContentHash`, or `Status` — those are
 core-managed fields.
+
+### 4.4.1 Graph-canonical write pattern (ADR-063)
+
+Enrichment steps that extract structured content append typed `GraphNode` values to
+`draft.Graph.Nodes`. Example — tagging step:
+
+```
+// pseudocode; see pkg/pluginapi for exact types
+func (s *TagStep) Run(ctx, draft *pluginapi.KnowledgeObject) (*pluginapi.KnowledgeObject, error) {
+    if draft.Graph == nil {
+        draft.Graph = &pluginapi.ObjectGraph{}
+    }
+    tags := extractTags(draft.TextContent) // your logic
+    for i, label := range tags {
+        draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+            ID:       pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeTag, i),
+            NodeType: pluginapi.NodeTypeTag,
+            Label:    label,
+            Order:    i,
+        })
+    }
+    return draft, nil
+}
+```
+
+Node type constants (`pluginapi.NodeType*`):
+
+| Constant | Value |
+|---|---|
+| `NodeTypeSection` | `"section"` |
+| `NodeTypeTag` | `"tag"` |
+| `NodeTypeEntityMention` | `"entity_mention"` |
+| `NodeTypeDecision` | `"decision"` |
+| `NodeTypeTask` | `"task"` |
+| `NodeTypeSummary` | `"summary"` |
+| `NodeTypeCodeBlock` | `"code_block"` |
+
+Edge type constants (`pluginapi.EdgeType*`): `contains`, `references`, `resolves_to`,
+`derives_from`. Intra-object only; inter-object edges go to the `edges` table (ADR-049).
+
+The storage layer derives `DocumentProjection` (display) and `IndexProjection`
+(FTS/vector input) from `Graph` on read. Plugins never construct projections directly.
 
 ### 4.5 Writing a post-ingest hook
 

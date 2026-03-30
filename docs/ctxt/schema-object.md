@@ -1,14 +1,26 @@
-# Bookmark Schema
+# KnowledgeObject Schema
 
-This document defines the full Bookmark schema used by ContextHelp, updated to incorporate **Mentions** and **Plugin Metadata** as first-class extensibility layers. Bookmarks represent enriched, structured, registry-aligned knowledge extracted from any input type.
+> **Note (ADR-063):** The canonical type is `KnowledgeObject` (not "Bookmark"). The write
+> source of truth for all structured content is `ObjectGraph` (`graph_json` column). Flat
+> fields (`sections`, `tags`, `decisions`, `tasks`, `summaries`) are projection caches derived
+> on read by `internal/projection`. Pipeline steps MUST write to `Graph.Nodes`; flat-field
+> writes are treated as legacy. See `pkg/pluginapi/pluginapi.go` for the authoritative type.
 
-They power retrieval, agent reasoning, semantic clustering, graph analysis, federated registry alignment, plugin-driven workflows, and deterministic reproduction.
+This document describes the `KnowledgeObject` schema used by ContextHelp, including
+**Mentions**, **Plugin Metadata**, and the **ObjectGraph** as first-class layers. KOs represent
+enriched, structured, registry-aligned knowledge extracted from any input type.
+
+They power retrieval, agent reasoning, semantic clustering, graph analysis, federated registry
+alignment, plugin-driven workflows, and deterministic reproduction.
 
 ## Overview
 
-A Bookmark is a deterministic, JSON-serializable object produced by pipelines. All fields follow strict semantics to ensure stability across runs, machines, registries, agents, and plugins.
+A `KnowledgeObject` is a deterministic, JSON-serializable object produced by pipelines. All
+fields follow strict semantics to ensure stability across runs, machines, registries, agents,
+and plugins.
 
-Below is the conceptual structure including the `mention_uris` field and the `plugins` metadata namespace:
+Below is the conceptual structure including the `mention_uris` field and the `plugins`
+metadata namespace:
 
 ```json
 {
@@ -61,6 +73,53 @@ flowchart TD
     H[Plugins] --> G
     H --> B
 ```
+
+---
+
+## ObjectGraph (write source of truth)
+
+`KnowledgeObject.Graph` (`*ObjectGraph`) holds all structured intra-object content as typed
+nodes and edges. Persisted in `objects.graph_json`. See ADR-063.
+
+```json
+{
+  "graph": {
+    "nodes": [
+      {
+        "id": "<objectID>/section/0",
+        "node_type": "section",
+        "label": "Hero Section",
+        "content": "The hero section lacks clarity...",
+        "order": 0
+      },
+      {
+        "id": "<objectID>/tag/0",
+        "node_type": "tag",
+        "label": "ui.hero.antipattern",
+        "order": 0
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "from_id": "<objectID>/section/0",
+        "to_id": "<objectID>/tag/0",
+        "edge_type": "derives_from"
+      }
+    ]
+  }
+}
+```
+
+Node types: `section`, `tag`, `entity_mention`, `decision`, `task`, `summary`, `code_block`
+
+Edge types (intra-object only): `contains`, `references`, `resolves_to`, `derives_from`
+
+Stable node ID format: `<objectID>/<nodeType>/<ordinal>` (0-indexed per type)
+Node URI scheme: `ctxt:node/<objectID>/<nodeType>/<ordinal>`
+
+Flat fields (`sections`, `tags`, `decisions`, `tasks`) in the JSON below are projection caches
+populated by the storage layer from `graph_json` on read. Do not treat them as write targets.
 
 ---
 

@@ -371,8 +371,15 @@ dPKMS is the execution and data layer. It is designed to be **agent-ready**, not
 - Graph adjacency indexes (object ↔ entity, entity ↔ entity)
 - Stable IDs and portable data model
 
-**Knowledge Objects + Graph Model**
-- Structured object schema (metadata, sections, tags, mentions, decisions, tasks, embeddings, provenance)
+**Knowledge Objects + Graph Model** (see ADR-063)
+- Graph-canonical KO: identity scalars + `ObjectGraph` (typed nodes + intra-object edges)
+- `ObjectGraph` is the write source of truth; flat fields (`Sections`, `Tags`, etc.) are
+  projection caches derived on read by `internal/projection`
+- Node types: `section`, `tag`, `entity_mention`, `decision`, `task`, `summary`, `code_block`
+- Edge types (intra-object only): `contains`, `references`, `resolves_to`, `derives_from`
+- Stable node IDs: `<objectID>/<nodeType>/<ordinal>`; URI scheme: `ctxt:node/<id>`
+- `DocumentProjection` (display) and `IndexProjection` (FTS/vector) derived on read
+- Inter-object edges stay in `edges` table (ADR-049); intra-object edges live in `graph_json`
 - Canonical entities with aliases, translations, and versioning
 - Mention extraction and resolution (`@entity.slug`)
 - Graph index for semantic navigation and retrieval
@@ -858,20 +865,28 @@ The Storage Layer in dPKMS provides durable, queryable, local-first storage.
 **Core Tables:**
 
 ```sql
--- Knowledge Objects (formerly bookmarks)
+-- Knowledge Objects
 objects:
   - id (UUID, stable)
   - type, subtype
   - raw_content
   - metadata (JSON)
-  - summaries (JSON array)
-  - sections (JSON array)
-  - tags (JSON array with weights)
-  - mentions (JSON array)
-  - decisions, tasks (JSON arrays)
+  - graph_json (JSON) -- ObjectGraph; write source of truth (ADR-063)
+  - summaries (JSON array) -- projection cache; derived from graph_json
+  - sections (JSON array) -- projection cache; derived from graph_json
+  - tags (JSON array with weights) -- projection cache
+  - mentions (JSON array) -- projection cache
+  - decisions, tasks (JSON arrays) -- projection cache
   - embeddings (vector)
   - pipeline, source
   - created_at, updated_at
+
+-- object_nodes: stable node-index for graph node addressing
+object_nodes:
+  - object_id (FK → objects.id)
+  - node_type (section | tag | entity_mention | decision | task | summary | code_block)
+  - ordinal (0-indexed within type)
+  - node_id (stable; format: "<objectID>/<nodeType>/<ordinal>")
 
 -- Entities
 entities:
