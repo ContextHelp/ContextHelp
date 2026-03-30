@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -123,16 +124,21 @@ func printObjectResults(objects []*storage.KnowledgeObject, total int) error {
 	headers := []string{"ID", "Type", "Title", "Created"}
 	var rows [][]string
 	for _, obj := range objects {
-		title := obj.ID
-		if len(obj.Summaries) > 0 {
+		// Use projection for title; fall back to first summary then ID.
+		docProj := projection.ProjectDocument(obj)
+		title := docProj.Title
+		if title == "" && len(obj.Summaries) > 0 {
 			title = obj.Summaries[0]
-			if len(title) > 40 {
-				title = title[:37] + "..."
-			}
+		}
+		if title == "" {
+			title = obj.ID
+		}
+		if len(title) > 40 {
+			title = title[:37] + "..."
 		}
 		dupOf, _ := obj.Metadata["duplicate_of"].(string)
 		if dupOf != "" {
-			title += " (duplicate of " + dupOf + ")"
+			title += " (dup:" + dupOf + ")"
 		}
 		rows = append(rows, []string{
 			obj.ID,

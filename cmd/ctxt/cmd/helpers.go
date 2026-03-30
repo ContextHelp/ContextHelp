@@ -16,6 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/plugin"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -162,6 +163,27 @@ func findOutputGenerator(reg *plugin.Registry, format string) pluginapi.OutputGe
 		return nil
 	}
 	return reg.FindOutputGenerator(format)
+}
+
+// koLabel returns a short display label for a KO. Uses DocumentProjection.Title when
+// available, then falls back to the first summary, then the object ID.
+// maxLen caps the label length; truncation appends "...".
+func koLabel(ko *storage.KnowledgeObject) string {
+	const maxLen = 60
+	docProj := projection.ProjectDocument(ko)
+	label := docProj.Title
+	if label == "" && len(ko.Summaries) > 0 {
+		label = ko.Summaries[0]
+	}
+	if label == "" {
+		return ko.ID
+	}
+	out := fmt.Sprintf("%s  %s", ko.ID, label)
+	if len(out) > maxLen+len(ko.ID)+2 {
+		label = label[:maxLen-3] + "..."
+		out = fmt.Sprintf("%s  %s", ko.ID, label)
+	}
+	return out
 }
 
 // buildObjectFilter reads common filter flags from viper and returns an ObjectFilter.

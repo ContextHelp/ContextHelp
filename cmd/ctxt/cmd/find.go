@@ -218,14 +218,8 @@ func runFindExplain(cmd *cobra.Command, ctx context.Context, svc *service.Servic
 	for i, r := range explainResults {
 		obj := r.Object
 		b := r.Breakdown
-		label := obj.ID
-		if len(obj.Summaries) > 0 && obj.Summaries[0] != "" {
-			label = obj.Summaries[0]
-			if len(label) > 60 {
-				label = label[:57] + "..."
-			}
-		}
-		fmt.Printf("%d. %s (%s)\n", i+1, label, obj.ID)
+		label := koLabel(obj)
+		fmt.Printf("%d. %s\n", i+1, label)
 		fmt.Printf("   total=%.4f  fts=%.4f  vector=%.4f  mention=%.4f  graph=%.4f\n",
 			b.Total, b.FTS, b.Vector, b.MentionBoost, b.GraphRelevance)
 		fmt.Println()
@@ -252,17 +246,11 @@ func printFindSuggestions(cmd *cobra.Command, ctx context.Context, svc interface
 		return
 	}
 
-	// Collect unique summaries/IDs to surface as hints (max 3).
+	// Collect unique labels to surface as hints (max 3).
 	var hints []string
 	seen := make(map[string]bool)
 	for _, obj := range suggestions {
-		label := obj.ID
-		if len(obj.Summaries) > 0 && obj.Summaries[0] != "" {
-			label = obj.Summaries[0]
-			if len(label) > 60 {
-				label = label[:57] + "..."
-			}
-		}
+		label := koLabel(obj)
 		if !seen[label] {
 			hints = append(hints, label)
 			seen[label] = true
