@@ -3,7 +3,6 @@ package search
 import (
 	"context"
 	"strings"
-	"unicode"
 )
 
 // AliasResolver resolves query terms to their known aliases.
@@ -65,24 +64,3 @@ func ExpandQuery(ctx context.Context, query string, resolver AliasResolver) stri
 	return query + " " + strings.Join(extra, " ")
 }
 
-// tokenize splits s into non-empty whitespace-delimited tokens that contain at
-// least one letter or digit (filters out punctuation-only tokens).
-func tokenize(s string) []string {
-	fields := strings.FieldsFunc(s, unicode.IsSpace)
-	out := make([]string, 0, len(fields))
-	for _, f := range fields {
-		if hasMeaningfulChar(f) {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
-func hasMeaningfulChar(s string) bool {
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			return true
-		}
-	}
-	return false
-}
