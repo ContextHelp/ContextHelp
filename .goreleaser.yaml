@@ -1,5 +1,5 @@
 # GoReleaser configuration for ctxt + dpkms
-# Produces signed binaries for macOS (arm64/amd64) and Linux (amd64).
+# Produces signed binaries for macOS (arm64/amd64), Linux (amd64), and Windows (amd64).
 # Triggered by CI on version tags (see .github/workflows/release.yml).
 
 version: 2
@@ -16,17 +16,30 @@ builds:
     binary: ctxt
     main: ./cmd/ctxt
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     goos:
       - darwin
       - linux
+      - windows
     goarch:
       - amd64
       - arm64
     # Exclude linux/arm64 — added when runner support stabilises.
+    # Exclude windows/arm64 — added when runner support stabilises.
     ignore:
       - goos: linux
         goarch: arm64
+      - goos: windows
+        goarch: arm64
+    overrides:
+      # Windows cross-compilation requires mingw-w64 on the CI runner.
+      # Install via: sudo apt-get install -y gcc-mingw-w64-x86-64
+      - goos: windows
+        goarch: amd64
+        env:
+          - CGO_ENABLED=1
+          - CC=x86_64-w64-mingw32-gcc
+          - CXX=x86_64-w64-mingw32-g++
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}
@@ -37,16 +50,26 @@ builds:
     binary: dpkms
     main: ./cmd/dpkms
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     goos:
       - darwin
       - linux
+      - windows
     goarch:
       - amd64
       - arm64
     ignore:
       - goos: linux
         goarch: arm64
+      - goos: windows
+        goarch: arm64
+    overrides:
+      - goos: windows
+        goarch: amd64
+        env:
+          - CGO_ENABLED=1
+          - CC=x86_64-w64-mingw32-gcc
+          - CXX=x86_64-w64-mingw32-g++
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}

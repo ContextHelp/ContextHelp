@@ -65,6 +65,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install mingw-w64 (Windows CGO cross-compilation)
+        run: sudo apt-get install -y gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
+
       - name: Import GPG key (optional — skip if secret absent)
         id: import_gpg
         if: "${{ secrets.GPG_PRIVATE_KEY != '' }}"

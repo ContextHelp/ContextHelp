@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -255,33 +254,8 @@ func (se *StepExecutor) getStepExecutablePath(step *storage.RegisteredStep) stri
 	return ""
 }
 
-func (se *StepExecutor) setMemoryLimit(limit string) error {
-	rlim := &syscall.Rlimit{}
-
-	err := syscall.Getrlimit(syscall.RLIMIT_AS, rlim)
-	if err != nil {
-		return err
-	}
-
-	rlim.Cur = parseMemoryLimit(limit)
-	rlim.Max = rlim.Cur
-
-	return syscall.Setrlimit(syscall.RLIMIT_AS, rlim)
-}
-
-func (se *StepExecutor) setCPULimit(limit string) error {
-	rlim := &syscall.Rlimit{}
-
-	err := syscall.Getrlimit(syscall.RLIMIT_CPU, rlim)
-	if err != nil {
-		return err
-	}
-
-	rlim.Cur = parseCPULimit(limit)
-	rlim.Max = rlim.Cur
-
-	return syscall.Setrlimit(syscall.RLIMIT_CPU, rlim)
-}
+// setMemoryLimit and setCPULimit are implemented in executor_unix.go (darwin/linux)
+// and executor_windows.go (windows) via build tags.
 
 func parseMemoryLimit(limit string) uint64 {
 	var value float64

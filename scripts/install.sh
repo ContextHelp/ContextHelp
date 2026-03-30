@@ -43,9 +43,13 @@ run()   { if $DRY_RUN; then echo "  [dry-run] $*"; else "$@"; fi; }
 # ── detect OS / arch ────────────────────────────────────────────────────────
 detect_os() {
   case "$(uname -s)" in
-    Darwin) echo "darwin" ;;
-    Linux)  echo "linux"  ;;
-    *)      die "Unsupported OS: $(uname -s)" ;;
+    Darwin)               echo "darwin" ;;
+    Linux)                echo "linux"  ;;
+    MINGW*|MSYS*|CYGWIN*)
+      warn "Windows detected. Use the PowerShell installer instead:"
+      warn "  irm https://raw.githubusercontent.com/${REPO}/main/scripts/install.ps1 | iex"
+      exit 1 ;;
+    *) die "Unsupported OS: $(uname -s)" ;;
   esac
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -83,6 +84,8 @@ func installSystem(d deps.Dep, mgr string) error {
 		pkg = d.DnfPkg
 	case "pacman":
 		pkg = d.PacmanPkg
+	case "winget", "choco":
+		pkg = d.BrewPkg // best-effort: fall back to brew pkg name; callers should set WingetPkg when available
 	}
 	if pkg == "" {
 		// This manager has no package defined; try pip if available.
@@ -116,6 +119,12 @@ func packageManagerArgs(mgr, pkg string) []string {
 		return []string{"sudo", "dnf", "install", "-y", pkg}
 	case "pacman":
 		return []string{"sudo", "pacman", "-S", "--noconfirm", pkg}
+	case "zypper":
+		return []string{"sudo", "zypper", "install", "-y", pkg}
+	case "winget":
+		return []string{"winget", "install", "--id", pkg, "-e", "--silent"}
+	case "choco":
+		return []string{"choco", "install", "-y", pkg}
 	}
 	return nil
 }
@@ -129,18 +138,47 @@ func runInstallCmd(name string, args ...string) error {
 }
 
 func detectPackageManager() string {
-	if runtime.GOOS == "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
 		if toolInstalled("brew") {
 			return "brew"
 		}
 		return ""
+	case "windows":
+		for _, mgr := range []string{"winget", "choco"} {
+			if toolInstalled(mgr) {
+				return mgr
+			}
+		}
+		return ""
+	default: // linux and others
+		for _, mgr := range []string{"apt-get", "dnf", "pacman", "zypper"} {
+			if toolInstalled(mgr) {
+				return mgr
+			}
+		}
+		return ""
 	}
-	for _, mgr := range []string{"apt-get", "dnf", "pacman"} {
-		if toolInstalled(mgr) {
-			return mgr
+}
+
+// platformExtraDirs returns platform-specific directories to probe when
+// exec.LookPath misses a binary (e.g. tools installed outside PATH at build time).
+func platformExtraDirs(home string) []string {
+	switch runtime.GOOS {
+	case "windows":
+		return []string{
+			filepath.Join(os.Getenv("ProgramFiles"), "Git", "usr", "bin"),
+			filepath.Join(os.Getenv("LOCALAPPDATA"), "Microsoft", "WinGet", "Packages"),
+			filepath.Join(home, "scoop", "shims"),
+			filepath.Join(home, "AppData", "Local", "Programs"),
+		}
+	default:
+		return []string{
+			"/opt/homebrew/bin",
+			"/usr/local/bin",
+			filepath.Join(home, ".local", "bin"),
 		}
 	}
-	return ""
 }
 
 func detectPip() string {
@@ -157,8 +195,8 @@ func toolInstalled(name string) bool {
 		return true
 	}
 	home, _ := os.UserHomeDir()
-	for _, dir := range []string{"/opt/homebrew/bin", "/usr/local/bin", home + "/.local/bin"} {
-		if _, err := os.Stat(dir + "/" + name); err == nil {
+	for _, dir := range platformExtraDirs(home) {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			return true
 		}
 	}
