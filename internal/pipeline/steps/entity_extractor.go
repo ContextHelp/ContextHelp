@@ -2,13 +2,15 @@ package steps
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/internal/mentions"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // mentionRe matches @namespace.slug references in text.
@@ -27,7 +29,7 @@ func NewEntityExtractor() *EntityExtractor {
 	return &EntityExtractor{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"Mentions"},
+			Produces: []string{"Mentions", "Graph"},
 		}),
 	}
 }
@@ -80,5 +82,31 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 	}
 
 	draft.Mentions = mentions.ParseSlice(slugs)
+
+	// Intra-object graph: one NodeTypeEntityMention node per mention with an
+	// EdgeTypeReferences edge pointing to the entity URI.
+	// Inter-object edges (object → entity in the edges table) are written by
+	// entity_resolver, NOT here — that is the layer boundary (ADR-063).
+	if draft.ID != "" && len(draft.Mentions) > 0 {
+		if draft.Graph == nil {
+			draft.Graph = &pluginapi.ObjectGraph{}
+		}
+		for i, u := range draft.Mentions {
+			nodeID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeEntityMention, i)
+			draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+				ID:       nodeID,
+				NodeType: pluginapi.NodeTypeEntityMention,
+				Label:    u.String(),
+				Order:    i,
+			})
+			draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+				ID:       fmt.Sprintf("%s->%s", nodeID, u.String()),
+				FromID:   nodeID,
+				ToID:     u.String(),
+				EdgeType: pluginapi.EdgeTypeReferences,
+			})
+		}
+	}
+
 	return draft, nil
 }

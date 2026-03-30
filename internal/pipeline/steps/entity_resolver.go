@@ -80,7 +80,8 @@ func (r *EntityResolver) Run(ctx context.Context, draft *storage.KnowledgeObject
 			resolved = append(resolved, entity.Slug)
 		}
 
-		// Write backlink edge: object → entity.
+		// Inter-object layer only: write backlink edge to the edges table (ADR-049/ADR-063).
+		// Intra-object NodeTypeEntityMention nodes live in ko.Graph and are written by entity_extractor.
 		if draft.ID != "" {
 			edge := &storage.Edge{
 				ID:        uuid.NewString(),
