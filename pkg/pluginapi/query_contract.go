@@ -6,7 +6,7 @@ type NodeHit struct {
 	NodeRef  string  `json:"node_ref"`  // canonical NodeURI
 	NodeType string  `json:"node_type"`
 	Snippet  string  `json:"snippet,omitempty"`
-	Score    float64 `json:"score,omitempty"`
+	Score    float64 `json:"score"`
 }
 
 // NodeAwareFilter extends object filtering with node/edge type constraints.
@@ -16,7 +16,7 @@ type NodeAwareFilter struct {
 	// EdgeTypes restricts to objects containing edges of these types.
 	EdgeTypes []string `json:"edge_types,omitempty"`
 	// ReturnNodeHits — when true, results include per-node NodeHit entries.
-	ReturnNodeHits bool `json:"return_node_hits,omitempty"`
+	ReturnNodeHits bool `json:"return_node_hits"`
 }
 
 // NodeAwareResult wraps a KnowledgeObject result with optional node-level hits.
