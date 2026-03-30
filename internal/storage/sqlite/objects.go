@@ -34,7 +34,14 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	if obj.Status == "" {
 		obj.Status = "active"
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO objects (
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("create object: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO objects (
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, embeddings, pipeline, source,
@@ -53,9 +60,14 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
 	}
-	if err := s.upsertObjectNodes(ctx, obj.ID, obj.Graph); err != nil {
+	if err := s.upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
 		return fmt.Errorf("create object nodes: %w", err)
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("create object: commit: %w", err)
+	}
+
+	// Embeddings are best-effort: stored outside the core transaction.
 	if err := s.upsertEmbedding(ctx, obj.ID, obj.Embeddings); err != nil {
 		return fmt.Errorf("create object embedding: %w", err)
 	}
@@ -227,7 +239,13 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		return fmt.Errorf("update object graph: %w", err)
 	}
 
-	result, err := s.db.ExecContext(ctx, `UPDATE objects SET
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("update object: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `UPDATE objects SET
 		type=?, subtype=?, raw_content=?, content_type=?, text_content=?,
 		metadata=?, summaries=?, sections=?, tags=?, mentions=?,
 		decisions=?, tasks=?, pipeline=?, source=?,
@@ -251,9 +269,14 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	if n == 0 {
 		return fmt.Errorf("object %s not found", obj.ID)
 	}
-	if err := s.upsertObjectNodes(ctx, obj.ID, obj.Graph); err != nil {
+	if err := s.upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
 		return fmt.Errorf("update object nodes: %w", err)
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("update object: commit: %w", err)
+	}
+
+	// Embeddings are best-effort: stored outside the core transaction.
 	if err := s.upsertEmbedding(ctx, obj.ID, obj.Embeddings); err != nil {
 		return fmt.Errorf("update object embedding: %w", err)
 	}
@@ -598,24 +621,24 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	return f, err
 }
 
-func marshalGraph(g *storage.ObjectGraph) (string, error) {
+func marshalGraph(g *storage.ObjectGraph) (sql.NullString, error) {
 	if g == nil {
-		return "{}", nil
+		return sql.NullString{}, nil
 	}
 	b, err := json.Marshal(g)
 	if err != nil {
-		return "", err
+		return sql.NullString{}, fmt.Errorf("marshal graph: %w", err)
 	}
-	return string(b), nil
+	return sql.NullString{String: string(b), Valid: true}, nil
 }
 
 func unmarshalGraph(raw string) (*storage.ObjectGraph, error) {
-	if raw == "" || raw == "{}" {
+	if raw == "" {
 		return nil, nil
 	}
 	var g storage.ObjectGraph
 	if err := json.Unmarshal([]byte(raw), &g); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal graph: %w", err)
 	}
 	return &g, nil
 }
@@ -631,6 +654,27 @@ func (s *ObjectStore) upsertObjectNodes(ctx context.Context,
 	}
 	for _, n := range g.Nodes {
 		if _, err := s.db.ExecContext(ctx,
+			`INSERT INTO object_nodes (id, object_id, node_type, ordinal, content, created_at)
+			 VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+			n.ID, objectID, n.NodeType, n.Order, n.Content,
+		); err != nil {
+			return fmt.Errorf("insert object_node %s: %w", n.ID, err)
+		}
+	}
+	return nil
+}
+
+func (s *ObjectStore) upsertObjectNodesTx(ctx context.Context, tx *sql.Tx,
+	objectID string, g *storage.ObjectGraph) error {
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM object_nodes WHERE object_id = ?`, objectID); err != nil {
+		return fmt.Errorf("delete object_nodes: %w", err)
+	}
+	if g == nil {
+		return nil
+	}
+	for _, n := range g.Nodes {
+		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO object_nodes (id, object_id, node_type, ordinal, content, created_at)
 			 VALUES (?, ?, ?, ?, ?, datetime('now'))`,
 			n.ID, objectID, n.NodeType, n.Order, n.Content,

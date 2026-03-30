@@ -130,3 +130,93 @@ func TestObjectStore_ObjectNodes_UpsertOnCreate(t *testing.T) {
 		t.Fatalf("want 2 object_nodes rows, got %d", len(types))
 	}
 }
+
+func TestObjectStore_Create_NilGraph_NoObjectNodes(t *testing.T) {
+	drv := newTestDriver(t)
+	ctx := context.Background()
+
+	ko := &pluginapi.KnowledgeObject{
+		ID: "obj-nil-g", Type: "note", Status: "active",
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		// Graph is nil
+	}
+	if err := drv.Objects().Create(ctx, ko); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	_ = drv.DB().QueryRowContext(ctx,
+		`SELECT count(*) FROM object_nodes WHERE object_id = ?`, "obj-nil-g").Scan(&count)
+	if count != 0 {
+		t.Errorf("want 0 object_nodes, got %d", count)
+	}
+	got, err := drv.Objects().Get(ctx, "obj-nil-g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Graph != nil {
+		t.Errorf("want nil Graph, got %+v", got.Graph)
+	}
+}
+
+func TestObjectStore_Create_EmptyGraph_RoundTrips(t *testing.T) {
+	drv := newTestDriver(t)
+	ctx := context.Background()
+
+	ko := &pluginapi.KnowledgeObject{
+		ID: "obj-empty-g", Type: "note", Status: "active",
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		Graph: &pluginapi.ObjectGraph{}, // non-nil but zero nodes
+	}
+	if err := drv.Objects().Create(ctx, ko); err != nil {
+		t.Fatal(err)
+	}
+	got, err := drv.Objects().Get(ctx, "obj-empty-g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Graph == nil {
+		t.Fatal("want non-nil empty Graph after roundtrip")
+	}
+	if len(got.Graph.Nodes) != 0 {
+		t.Errorf("want 0 nodes, got %d", len(got.Graph.Nodes))
+	}
+}
+
+func TestObjectStore_Update_ClearsGraph(t *testing.T) {
+	drv := newTestDriver(t)
+	ctx := context.Background()
+
+	ko := &pluginapi.KnowledgeObject{
+		ID: "obj-clear-g", Type: "note", Status: "active",
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		Graph: &pluginapi.ObjectGraph{
+			Nodes: []pluginapi.GraphNode{
+				{ID: pluginapi.NewNodeID("obj-clear-g", pluginapi.NodeTypeTag, 0),
+					NodeType: pluginapi.NodeTypeTag, Label: "go", Content: "go"},
+			},
+		},
+	}
+	if err := drv.Objects().Create(ctx, ko); err != nil {
+		t.Fatal(err)
+	}
+
+	ko.Graph = nil
+	if err := drv.Objects().Update(ctx, ko); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := drv.Objects().Get(ctx, "obj-clear-g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Graph != nil {
+		t.Errorf("want nil Graph after clear, got %+v", got.Graph)
+	}
+
+	var count int
+	_ = drv.DB().QueryRowContext(ctx,
+		`SELECT count(*) FROM object_nodes WHERE object_id = ?`, "obj-clear-g").Scan(&count)
+	if count != 0 {
+		t.Errorf("want 0 object_nodes after clear, got %d", count)
+	}
+}
