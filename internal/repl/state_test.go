@@ -57,3 +57,44 @@ func TestSessionState_SetResults_Replaces(t *testing.T) {
 	assert.Len(t, s.LastResults, 2)
 	assert.Equal(t, "y", s.LastResults[0].ID)
 }
+
+func TestSessionState_PushQueryVector_SlidingWindow(t *testing.T) {
+	s := &SessionState{}
+
+	for i := 0; i < 7; i++ {
+		s.PushQueryVector([]float32{float32(i), 0})
+	}
+
+	assert.Len(t, s.QueryHistory, 5, "window must cap at QueryHistoryMax (5)")
+	// Oldest remaining should be i=2 (7 pushes, keep last 5: 2,3,4,5,6).
+	assert.Equal(t, float32(2), s.QueryHistory[0][0])
+	assert.Equal(t, float32(6), s.QueryHistory[4][0])
+}
+
+func TestSessionState_SessionContextVector_NilWhenFewEntries(t *testing.T) {
+	s := &SessionState{}
+	assert.Nil(t, s.SessionContextVector(), "nil when empty")
+
+	s.PushQueryVector([]float32{1, 0})
+	assert.Nil(t, s.SessionContextVector(), "nil with only 1 entry")
+}
+
+func TestSessionState_SessionContextVector_WeightsMostRecent(t *testing.T) {
+	s := &SessionState{}
+	// Push 3 orthogonal-ish vectors.
+	s.PushQueryVector([]float32{1, 0, 0}) // oldest
+	s.PushQueryVector([]float32{0, 1, 0})
+	s.PushQueryVector([]float32{0, 0, 1}) // most recent → weight 0.4
+
+	ctx := s.SessionContextVector()
+	require.NotNil(t, ctx)
+	require.Len(t, ctx, 3)
+
+	// Most recent dim (index 2) should dominate; its weight is 0.4.
+	// The unnormalized contribution to dim 2 is 0.4 (from vec [0,0,1]).
+	// dim 0 contributes 0.2 (from vec [1,0,0] with weight 0.2).
+	// dim 1 contributes 0.3 (from vec [0,1,0] with weight 0.3).
+	// After normalization the largest component should be dim 2.
+	assert.Greater(t, ctx[2], ctx[0], "most-recent dim should dominate after blending")
+	assert.Greater(t, ctx[2], ctx[1], "most-recent dim should dominate after blending")
+}

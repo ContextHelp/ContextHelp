@@ -15,6 +15,9 @@ import (
 
 const replPrompt = "ctxt> "
 
+// SessionContextKey is the context key used to inject *SessionState into cobra commands.
+type SessionContextKey struct{}
+
 // Session owns the REPL lifecycle: liner state, history, job watcher, and read loop.
 type Session struct {
 	svc   *service.Service
@@ -53,6 +56,7 @@ func (s *Session) Run(ctx context.Context) error {
 		s.watch.Start(ctx)
 	}
 
+	ctx = context.WithValue(ctx, SessionContextKey{}, s.state)
 	execCobra := buildCobraExecutor(ctx)
 
 	for {
