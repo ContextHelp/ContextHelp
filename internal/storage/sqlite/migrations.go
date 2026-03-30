@@ -249,13 +249,59 @@ func (d *Driver) Migrate(ctx context.Context) error {
 }
 
 // migrate022GraphCanonical adds graph_json to objects and creates the
-// object_nodes denormalised index table. After DDL it backfills graph_json = '{}'
-// for any legacy rows that are NULL (idempotent via DEFAULT NULL + WHERE clause).
+// object_nodes denormalised index table. Idempotent: checks pragma_table_info
+// before ALTER TABLE, uses IF NOT EXISTS for table/index DDL, and backfills
+// graph_json = '{}' for legacy NULL rows.
 func migrate022GraphCanonical(ctx context.Context, d *Driver) error {
-	if _, err := d.db.ExecContext(ctx, migration022); err != nil {
+	existing := map[string]bool{}
+	rows, err := d.db.QueryContext(ctx, "SELECT name FROM pragma_table_info('objects')")
+	if err != nil {
 		return err
 	}
-	_, err := d.db.ExecContext(ctx,
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return err
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if !existing["graph_json"] {
+		if _, err := d.db.ExecContext(ctx,
+			`ALTER TABLE objects ADD COLUMN graph_json TEXT DEFAULT NULL`); err != nil {
+			return err
+		}
+	}
+
+	if _, err := d.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS object_nodes (
+		    id          TEXT PRIMARY KEY,
+		    object_id   TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+		    node_type   TEXT NOT NULL,
+		    ordinal     INTEGER NOT NULL DEFAULT 0,
+		    content     TEXT DEFAULT '',
+		    created_at  TEXT NOT NULL
+		)`); err != nil {
+		return err
+	}
+	if _, err := d.db.ExecContext(ctx,
+		`CREATE INDEX IF NOT EXISTS idx_object_nodes_object_id ON object_nodes(object_id)`); err != nil {
+		return err
+	}
+	if _, err := d.db.ExecContext(ctx,
+		`CREATE INDEX IF NOT EXISTS idx_object_nodes_node_type ON object_nodes(node_type)`); err != nil {
+		return err
+	}
+	if _, err := d.db.ExecContext(ctx,
+		`CREATE INDEX IF NOT EXISTS idx_object_nodes_object_node_type ON object_nodes(object_id, node_type)`); err != nil {
+		return err
+	}
+
+	_, err = d.db.ExecContext(ctx,
 		`UPDATE objects SET graph_json = '{}' WHERE graph_json IS NULL`)
 	return err
 }

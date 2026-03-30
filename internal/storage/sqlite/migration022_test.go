@@ -79,9 +79,13 @@ func TestMigration022_GraphColumns(t *testing.T) {
 	require.NoError(t, d.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM sqlite_master
 		WHERE type='index'
-		  AND name IN ('idx_object_nodes_object_id','idx_object_nodes_node_type')`,
+		  AND name IN (
+		      'idx_object_nodes_object_id',
+		      'idx_object_nodes_node_type',
+		      'idx_object_nodes_object_node_type'
+		  )`,
 	).Scan(&idxCount))
-	assert.Equal(t, 2, idxCount, "both object_nodes indexes must exist")
+	assert.Equal(t, 3, idxCount, "all three object_nodes indexes must exist")
 }
 
 // TestMigration022_Backfill verifies the backfill logic inside
@@ -125,4 +129,17 @@ func TestMigration022_Backfill(t *testing.T) {
 		`SELECT graph_json FROM objects WHERE id = ?`, "obj_backfill022",
 	).Scan(&after))
 	assert.Equal(t, "{}", after, "graph_json must be '{}' after backfill")
+}
+
+// TestMigration022_Idempotent verifies that calling migrate022GraphCanonical
+// a second time on an already-migrated database does not error.  The
+// schema_version guard normally prevents re-runs via Migrate(), but the fn
+// itself must be safe to call directly (e.g. during testing or manual repair).
+func TestMigration022_Idempotent(t *testing.T) {
+	d := newTestDriver(t) // runs Init (Migrate) once
+	ctx := context.Background()
+
+	// Second call: column + table + indexes already exist; must be a no-op.
+	err := migrate022GraphCanonical(ctx, d)
+	require.NoError(t, err, "migrate022GraphCanonical must be idempotent on second call")
 }

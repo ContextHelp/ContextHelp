@@ -16,3 +16,4 @@ CREATE TABLE IF NOT EXISTS object_nodes (
 
 CREATE INDEX IF NOT EXISTS idx_object_nodes_object_id ON object_nodes(object_id);
 CREATE INDEX IF NOT EXISTS idx_object_nodes_node_type ON object_nodes(node_type);
+CREATE INDEX IF NOT EXISTS idx_object_nodes_object_node_type ON object_nodes(object_id, node_type);
