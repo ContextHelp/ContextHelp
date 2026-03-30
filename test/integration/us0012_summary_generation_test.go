@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -93,6 +94,11 @@ Next steps include drafting a migration plan by Q2 and piloting with the setting
 
 	require.NotEmpty(t, obj.Summaries, "summaries must be non-empty after generation")
 	assert.Equal(t, wantSummary, obj.Summaries[0], "summary must match generated text")
+
+	// Verify projected index surface: summary text must appear in FTSBody.
+	idx := projection.ProjectIndex(&obj)
+	assert.Contains(t, idx.FTSBody, wantSummary,
+		"ProjectIndex.FTSBody must include the generated summary text")
 }
 
 // TestUS0012_SectionCountMatchesStructure verifies section count in Metadata matches
@@ -140,6 +146,10 @@ func TestUS0012_SectionCountMatchesStructure(t *testing.T) {
 	assert.Len(t, obj.Sections, 5, "section count should match structure")
 	assert.Equal(t, float64(5), obj.Metadata["sections_created"],
 		"sections_created metadata must match actual section count")
+
+	// Verify projected document surface: all 5 sections must appear in DocumentProjection.
+	doc := projection.ProjectDocument(&obj)
+	assert.Len(t, doc.Sections, 5, "ProjectDocument.Sections must reflect all stored sections")
 }
 
 // TestUS0012_SectionsHaveTitleAndContent verifies each section has title and content fields.

@@ -465,25 +465,20 @@ func TestListEntitiesEmpty(t *testing.T) {
 func seedObjectsForCompose(t *testing.T, ctx context.Context, svc *Service) []*storage.KnowledgeObject {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
-	objs := []*storage.KnowledgeObject{
-		{
-			ID:        "o-abc123",
-			Type:      "decision",
-			Summaries: []string{"Defer infrastructure refactor"},
-			Source:    "engineering-meeting.pdf",
-			Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "team/alice"}},
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-		{
-			ID:        "o-def456",
-			Type:      "note",
-			Summaries: []string{"Market timing analysis"},
-			Source:    "slack-#engineering",
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}
+
+	// Build graph-canonical fixtures; summaries/sections derived from graph nodes.
+	obj1 := storageutil.BuildGraphKO("o-abc123", "decision", "Defer infrastructure refactor")
+	obj1.Source = "engineering-meeting.pdf"
+	obj1.Mentions = []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "team/alice"}}
+	obj1.CreatedAt = now
+	obj1.UpdatedAt = now
+
+	obj2 := storageutil.BuildGraphKO("o-def456", "note", "Market timing analysis")
+	obj2.Source = "slack-#engineering"
+	obj2.CreatedAt = now
+	obj2.UpdatedAt = now
+
+	objs := []*storage.KnowledgeObject{obj1, obj2}
 	for _, obj := range objs {
 		require.NoError(t, svc.Store.Objects().Create(ctx, obj))
 	}
@@ -770,9 +765,9 @@ func TestHybridSearchExplain_PopulatesDocumentView(t *testing.T) {
 	require.NotEmpty(t, results)
 
 	r := results[0]
-	// DocumentView must be a valid projection; Body or Sections populated
-	// from flat fields since obj has no Graph.
-	assert.Equal(t, r.Object.ID, "dv-1")
-	// DocumentView.Body comes from TextContent via ProjectDocument flat path.
-	assert.Equal(t, obj.TextContent, r.DocumentView.Body)
+	assert.Equal(t, "dv-1", r.Object.ID)
+	// DocumentView is populated via ProjectDocument. Because the object has a Graph
+	// (BuildGraphKO path), Sections are non-empty and Body is empty.
+	assert.NotEmpty(t, r.DocumentView.Sections, "DocumentView.Sections must be populated from graph nodes")
+	assert.Equal(t, "document view test content", r.DocumentView.Sections[0].Content)
 }
