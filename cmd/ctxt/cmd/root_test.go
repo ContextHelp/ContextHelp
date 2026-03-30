@@ -14,6 +14,9 @@ func TestMain(m *testing.M) {
 	// Disable clipboard access for all tests — avoids non-deterministic behaviour
 	// when tests run with clipboard content present.
 	os.Setenv("CTXT_NO_CLIPBOARD", "1")
+	// Force env secrets backend so tests are not affected by the local config
+	// file (which may configure keychain or another backend).
+	os.Setenv("CTXT_SECRETS_BACKEND", "env")
 	os.Exit(m.Run())
 }
 
