@@ -3,25 +3,29 @@ package service
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// makeSearchObject builds a graph-canonical KO for search tests.
+// The first element of summaries becomes the graph summary node content,
+// driving FTS via ProjectIndex. rawContent is stored for flat-fallback tests.
 func makeSearchObject(id string, summaries []string, rawContent string) *storage.KnowledgeObject {
-	now := time.Now().Truncate(time.Second)
-	return &storage.KnowledgeObject{
-		ID:         id,
-		Type:       "text",
-		Summaries:  summaries,
-		RawContent: rawContent,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+	content := rawContent
+	if len(summaries) > 0 && summaries[0] != "" {
+		content = summaries[0]
 	}
+	obj := storageutil.BuildGraphKO(id, "text", content)
+	// Preserve RawContent for tests that check it directly.
+	if rawContent != "" {
+		obj.RawContent = rawContent
+	}
+	return obj
 }
 
 func rebuildFTS(t *testing.T, svc *Service) {

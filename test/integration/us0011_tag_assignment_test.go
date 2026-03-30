@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -96,6 +97,20 @@ func TestUS0011_TagsAssignedFromVocabulary(t *testing.T) {
 			}
 		}
 		assert.True(t, found, "tag %q must be in the allowed vocabulary", tag.Label)
+	}
+
+	// Verify projected index surface: all assigned tags must appear in IndexProjection.Tags.
+	idx := projection.ProjectIndex(&obj)
+	require.NotEmpty(t, idx.Tags, "ProjectIndex.Tags must reflect assigned tags")
+	for _, idxTag := range idx.Tags {
+		found := false
+		for _, v := range vocabulary {
+			if idxTag.Label == v {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "projected tag %q must be in allowed vocabulary", idxTag.Label)
 	}
 }
 

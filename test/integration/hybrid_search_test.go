@@ -5,24 +5,13 @@ package integration
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func testKnowledgeObject(id string) *storage.KnowledgeObject {
-	now := time.Now().Truncate(time.Second)
-	return &storage.KnowledgeObject{
-		ID:        id,
-		Type:      "text",
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-}
 
 func TestHybridSearch_EndToEnd(t *testing.T) {
 	env := startTestEnv(t)
@@ -32,15 +21,16 @@ func TestHybridSearch_EndToEnd(t *testing.T) {
 	d, ok := env.svc.Store.(*sqlite.Driver)
 	require.True(t, ok, "store must be *sqlite.Driver")
 
-	// Insert objects with distinct content.
-	for _, tc := range []struct{ id, summary, raw string }{
-		{"hs-auth", "oauth2 authentication flow", "implement token refresh"},
-		{"hs-cache", "redis caching strategies", "eviction policy LRU"},
-		{"hs-db", "postgres query optimisation", "explain analyse index scan"},
+	// Insert graph-canonical objects. ProjectIndex derives FTSBody from graph
+	// summary nodes, so projected_fts_body is populated on Create.
+	for _, tc := range []struct{ id, summary string }{
+		{"hs-auth", "oauth2 authentication flow"},
+		{"hs-cache", "redis caching strategies"},
+		{"hs-db", "postgres query optimisation"},
 	} {
-		obj := testKnowledgeObject(tc.id)
-		obj.Summaries = []string{tc.summary}
-		obj.RawContent = tc.raw
+		obj := storageutil.BuildGraphKO(tc.id, "text", tc.summary)
+		obj.CreatedAt = nowTrunc()
+		obj.UpdatedAt = nowTrunc()
 		require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
 	}
 
