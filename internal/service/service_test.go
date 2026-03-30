@@ -12,6 +12,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"hop.top/uri"
@@ -647,4 +648,131 @@ func TestRelatedObjectsDefaultLimit(t *testing.T) {
 	related, err := svc.RelatedObjects(ctx, "seed", 1, 0)
 	require.NoError(t, err)
 	assert.LessOrEqual(t, len(related), 10)
+}
+
+// ---------------------------------------------------------------------------
+// objectSnippet — projection helper
+// ---------------------------------------------------------------------------
+
+func TestObjectSnippet_GraphCanonical(t *testing.T) {
+	obj := storageutil.BuildGraphKO("ko-1", "note", "graph-derived content", "tag1")
+	s := objectSnippet(obj)
+	assert.Contains(t, s, "graph-derived content")
+}
+
+func TestObjectSnippet_FlatSummary(t *testing.T) {
+	obj := &storage.KnowledgeObject{
+		ID:        "flat-1",
+		Summaries: []string{"summary text"},
+	}
+	assert.Equal(t, "summary text", objectSnippet(obj))
+}
+
+func TestObjectSnippet_FlatRawContent(t *testing.T) {
+	obj := &storage.KnowledgeObject{
+		ID:         "flat-2",
+		RawContent: "raw content here",
+	}
+	assert.Equal(t, "raw content here", objectSnippet(obj))
+}
+
+func TestObjectSnippet_LongRawContentTruncated(t *testing.T) {
+	content := make([]byte, 600)
+	for i := range content {
+		content[i] = 'x'
+	}
+	obj := &storage.KnowledgeObject{
+		ID:         "flat-3",
+		RawContent: string(content),
+	}
+	s := objectSnippet(obj)
+	assert.Len(t, s, 503) // 500 + "..."
+	assert.True(t, len(s) <= 503)
+}
+
+func TestObjectSnippet_Empty(t *testing.T) {
+	obj := &storage.KnowledgeObject{ID: "empty-1"}
+	assert.Equal(t, "", objectSnippet(obj))
+}
+
+// ---------------------------------------------------------------------------
+// SearchObjectsNodeAware
+// ---------------------------------------------------------------------------
+
+func TestSearchObjectsNodeAware_NoFilter(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	now := time.Now().Truncate(time.Second)
+	require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		ID: "na-1", Type: "note", CreatedAt: now, UpdatedAt: now,
+	}))
+	require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		ID: "na-2", Type: "note", CreatedAt: now, UpdatedAt: now,
+	}))
+
+	results, total, err := svc.SearchObjectsNodeAware(ctx, "type==note", 10, 0, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Len(t, results, 2)
+}
+
+func TestSearchObjectsNodeAware_NodeTypeFilter(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	graphObj := storageutil.BuildGraphKO("graph-obj", "note", "hello graph world", "tag1")
+	now := time.Now().Truncate(time.Second)
+	graphObj.CreatedAt = now
+	graphObj.UpdatedAt = now
+	require.NoError(t, svc.Store.Objects().Create(ctx, graphObj))
+
+	flatObj := &storage.KnowledgeObject{
+		ID: "flat-obj", Type: "note", TextContent: "hello flat world",
+		CreatedAt: now, UpdatedAt: now,
+	}
+	require.NoError(t, svc.Store.Objects().Create(ctx, flatObj))
+
+	filter := &pluginapi.NodeAwareFilter{
+		NodeTypes: []string{string(pluginapi.NodeTypeSummary)},
+	}
+	results, total, err := svc.SearchObjectsNodeAware(ctx, "type==note", 10, 0, filter)
+	require.NoError(t, err)
+	// Only the graph object has NodeTypeSummary nodes.
+	assert.Equal(t, 1, total)
+	assert.Len(t, results, 1)
+	assert.Equal(t, "graph-obj", results[0].ID)
+}
+
+// ---------------------------------------------------------------------------
+// HybridResult.DocumentView populated
+// ---------------------------------------------------------------------------
+
+func TestHybridSearchExplain_PopulatesDocumentView(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	obj := makeSearchObject("dv-1", []string{"document view test content"}, "")
+	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+
+	// Rebuild FTS index so the object is findable.
+	rebuildFTS(t, svc)
+
+	cfg := config.SearchConfig{
+		DefaultMode:   "hybrid",
+		RRF:           config.RRFConfig{K: 60, FTSWeight: 0.5, VectorWeight: 0.5},
+		CandidatePool: config.CandidatePoolConfig{FTS: 20, Vector: 20},
+		FallbackToFTS: true,
+	}
+
+	results, err := svc.HybridSearchExplain(ctx, "document view test", 10, nil, cfg)
+	require.NoError(t, err)
+	require.NotEmpty(t, results)
+
+	r := results[0]
+	// DocumentView must be a valid projection; Body or Sections populated
+	// from flat fields since obj has no Graph.
+	assert.Equal(t, r.Object.ID, "dv-1")
+	// DocumentView.Body comes from TextContent via ProjectDocument flat path.
+	assert.Equal(t, obj.TextContent, r.DocumentView.Body)
 }

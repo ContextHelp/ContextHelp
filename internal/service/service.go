@@ -21,6 +21,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/plugin"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/ranking"
@@ -28,6 +29,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // Service coordinates all business operations.
@@ -720,15 +722,9 @@ func (s *Service) Compose(ctx context.Context, objects []*storage.KnowledgeObjec
 
 	for _, obj := range objects {
 		fmt.Fprintf(&b, "## %s\n", obj.ID)
-		if len(obj.Summaries) > 0 {
-			b.WriteString(obj.Summaries[0])
-			b.WriteString("\n\n")
-		} else if obj.RawContent != "" {
-			content := obj.RawContent
-			if len(content) > 500 {
-				content = content[:500] + "..."
-			}
-			b.WriteString(content)
+		snippet := objectSnippet(obj)
+		if snippet != "" {
+			b.WriteString(snippet)
 			b.WriteString("\n\n")
 		}
 	}
@@ -757,14 +753,9 @@ func (s *Service) ComposeWithCitations(ctx context.Context, objects []*storage.K
 
 	for _, obj := range objects {
 		fmt.Fprintf(&b, "## %s\n", obj.ID)
-		if len(obj.Summaries) > 0 {
-			fmt.Fprintf(&b, "%s [ref:%s]\n\n", obj.Summaries[0], obj.ID)
-		} else if obj.RawContent != "" {
-			content := obj.RawContent
-			if len(content) > 500 {
-				content = content[:500] + "..."
-			}
-			fmt.Fprintf(&b, "%s [ref:%s]\n\n", content, obj.ID)
+		snippet := objectSnippet(obj)
+		if snippet != "" {
+			fmt.Fprintf(&b, "%s [ref:%s]\n\n", snippet, obj.ID)
 		} else {
 			fmt.Fprintf(&b, "[ref:%s]\n\n", obj.ID)
 		}
@@ -789,6 +780,120 @@ func (s *Service) ComposeWithCitations(ctx context.Context, objects []*storage.K
 		SourceIDs:   sourceIDs,
 		GeneratedAt: time.Now(),
 	}, nil
+}
+
+// objectSnippet returns the best short text snippet for an object using
+// projection helpers. Prefers graph-derived body; falls back to flat
+// Summaries, then RawContent (truncated to 500 chars).
+func objectSnippet(obj *storage.KnowledgeObject) string {
+	doc := projection.ProjectDocument(obj)
+	// Graph-canonical path: use first non-empty section content.
+	if obj.Graph != nil && len(obj.Graph.Nodes) > 0 {
+		if doc.Body != "" {
+			if len(doc.Body) > 500 {
+				return doc.Body[:500] + "..."
+			}
+			return doc.Body
+		}
+		for _, sec := range doc.Sections {
+			if sec.Content != "" {
+				if len(sec.Content) > 500 {
+					return sec.Content[:500] + "..."
+				}
+				return sec.Content
+			}
+		}
+	}
+	// Flat-field fallback: Summaries first, then RawContent.
+	if len(obj.Summaries) > 0 {
+		return obj.Summaries[0]
+	}
+	if obj.RawContent != "" {
+		if len(obj.RawContent) > 500 {
+			return obj.RawContent[:500] + "..."
+		}
+		return obj.RawContent
+	}
+	return ""
+}
+
+// SearchObjectsNodeAware runs an RSQL query and post-filters results by
+// NodeAwareFilter constraints (NodeTypes / EdgeTypes). Storage does not yet
+// expose native node-type filtering, so the filtering happens in-process.
+// When filter is nil or empty, behaviour is identical to SearchObjects.
+func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limit, offset int, filter *pluginapi.NodeAwareFilter, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
+	// Fetch a wider candidate pool when node filtering is active so the final
+	// page still has enough results after the in-process filter.
+	fetchLimit := limit
+	fetchOffset := offset
+	nodeFilter := filter != nil && (len(filter.NodeTypes) > 0 || len(filter.EdgeTypes) > 0)
+	if nodeFilter {
+		// TODO(T-0177): push NodeTypes/EdgeTypes into storage query when
+		// storage exposes node-index filtering.
+		fetchLimit = limit*10 + 200
+		fetchOffset = 0
+	}
+
+	all, _, err := s.Search.Search(ctx, query, fetchLimit, fetchOffset, profileID...)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if !nodeFilter {
+		return all, len(all), nil
+	}
+
+	nodeTypeSet := make(map[string]bool, len(filter.NodeTypes))
+	for _, nt := range filter.NodeTypes {
+		nodeTypeSet[nt] = true
+	}
+	edgeTypeSet := make(map[string]bool, len(filter.EdgeTypes))
+	for _, et := range filter.EdgeTypes {
+		edgeTypeSet[et] = true
+	}
+
+	var filtered []*storage.KnowledgeObject
+	for _, obj := range all {
+		if obj.Graph == nil {
+			continue
+		}
+		if len(nodeTypeSet) > 0 {
+			matched := false
+			for _, n := range obj.Graph.Nodes {
+				if nodeTypeSet[string(n.NodeType)] {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		if len(edgeTypeSet) > 0 {
+			matched := false
+			for _, e := range obj.Graph.Edges {
+				if edgeTypeSet[string(e.EdgeType)] {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		filtered = append(filtered, obj)
+	}
+
+	total := len(filtered)
+	// Apply original offset/limit to filtered results.
+	if offset >= total {
+		return nil, total, nil
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return filtered[offset:end], total, nil
 }
 
 // --- Feed methods ---
@@ -1415,6 +1520,7 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 				GraphRelevance: r.GraphRelevance,
 				Total:          r.Total,
 			},
+			DocumentView: projection.ProjectDocument(r.Object),
 		}
 	}
 	return out, nil
