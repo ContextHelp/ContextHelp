@@ -40,8 +40,22 @@ func BinaryPath(name string) string {
 	return filepath.Join(root, "bin", name)
 }
 
+func buildCommand(root string) *exec.Cmd {
+	if _, err := exec.LookPath("task"); err == nil {
+		cmd := exec.Command("task", "build")
+		cmd.Dir = root
+		return cmd
+	}
+	if _, err := exec.LookPath("mise"); err == nil {
+		cmd := exec.Command("mise", "exec", "--", "task", "build")
+		cmd.Dir = root
+		return cmd
+	}
+	return nil
+}
+
 // EnsureBuilt checks if both bin/ctxt and bin/dpkms exist. If either is
-// missing, it runs "make build" from the project root. If the build fails
+// missing, it runs "task build" from the project root. If the build fails
 // the test is skipped.
 func EnsureBuilt(t *testing.T) {
 	t.Helper()
@@ -62,8 +76,11 @@ func EnsureBuilt(t *testing.T) {
 		return // both exist
 	}
 
-	cmd := exec.Command("make", "build")
-	cmd.Dir = root
+	cmd := buildCommand(root)
+	if cmd == nil {
+		t.Skip("build skipped: neither task nor mise is available")
+		return
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Skipf("build failed: %v\n%s", err, string(out))
@@ -71,7 +88,7 @@ func EnsureBuilt(t *testing.T) {
 }
 
 // EnsureBuiltM is the same as EnsureBuilt but works with *testing.M for use
-// in TestMain. It returns false if the build failed (caller should os.Exit).
+// in TestMain.
 func EnsureBuiltM() error {
 	root, err := projectRoot()
 	if err != nil {
@@ -88,8 +105,10 @@ func EnsureBuiltM() error {
 		return nil
 	}
 
-	cmd := exec.Command("make", "build")
-	cmd.Dir = root
+	cmd := buildCommand(root)
+	if cmd == nil {
+		return fmt.Errorf("build failed: neither task nor mise is available")
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("build failed: %v\n%s", err, string(out))

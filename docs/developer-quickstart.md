@@ -131,7 +131,7 @@ cd ctxt
 ./scripts/dev-setup.sh
 
 # Build both binaries
-make build
+task build
 
 # Verify installation
 ./bin/ctxt version
@@ -165,8 +165,8 @@ go mod verify
 ### 3. Build Binaries
 
 ```bash
-# Using Make
-make build
+# Using Task
+task build
 
 # Or manually
 go build -o bin/ctxt ./cmd/ctxt
@@ -213,10 +213,6 @@ vim .env
 ### Run Tests
 
 ```bash
-# Using Make
-make test
-
-# Using Task (if installed)
 task test
 
 # Or directly
@@ -226,11 +222,7 @@ go test -v ./...
 ### Start Development Server
 
 ```bash
-# Using Task
 task run:dpkms
-
-# Using Make
-make run-dpkms
 
 # Or manually
 ./bin/dpkms serve
@@ -266,28 +258,6 @@ task security
 task dev
 ```
 
-### Using Make
-
-```bash
-# Show available targets
-make help
-
-# Build binaries
-make build
-
-# Run tests
-make test
-
-# Lint and format
-make lint
-make fmt
-
-# Clean build artifacts
-make clean
-```
-
----
-
 ## Project Structure
 
 ```
@@ -303,12 +273,13 @@ ctxt/
 ├── config/        # Configuration files
 ├── test/           # Tests
 │   ├── integration/
-│   ├── e2e/
-│   └── fixtures/
+│   ├── smoke/
+│   ├── testdata/
+│   └── testutil/
 ├── docs/           # Documentation
 ├── .env.example    # Environment configuration template
-├── Makefile        # Make targets
-├── Taskfile.yml    # Task runner configuration
+├── Makefile        # Legacy compatibility targets
+├── Taskfile.yml    # Primary task runner configuration
 └── go.mod          # Go module definition
 ```
 
@@ -432,10 +403,10 @@ go mod tidy
 
 ```bash
 # Clean build artifacts
-make clean
+task clean
 
 # Rebuild from scratch
-make build
+task build
 ```
 
 ### Database Locked
@@ -489,12 +460,12 @@ GRPC_PORT=9091
 
 ```bash
 # Build
-make build              # Build both binaries
-task build              # Alternative with Task
+task build              # Build both binaries
+task build:prod         # Production binaries with version info
 
 # Test
-make test               # Run all tests
-task test:unit          # Unit tests only
+task test               # Run all tests
+task test:smoke         # Binary smoke tests
 task test:coverage      # With coverage report
 
 # Run
@@ -502,12 +473,12 @@ task test:coverage      # With coverage report
 ./bin/ctxt analyze ...  # Capture knowledge
 
 # Quality
-make lint               # Lint code
-make fmt                # Format code
+task check              # Primary local gate
+task lint               # Lint code
 task security           # Security scan
 
 # Clean
-make clean              # Remove build artifacts
+task clean              # Remove build artifacts
 task db:reset           # Reset database
 
 # Services

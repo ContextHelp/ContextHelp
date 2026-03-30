@@ -11,6 +11,7 @@ vars:
   MAIN_CTXT: ./cmd/ctxt
   DB_PATH: ./data/sqlite/contexthelp.db
   MIGRATION_PATH: ./data/migrations
+  BUILD_TAGS: -tags fts5
 
 env:
   GO111MODULE: on
@@ -21,6 +22,10 @@ tasks:
     desc: Show available tasks
     cmds:
       - task --list
+
+  check:
+    desc: Run the primary local quality gate
+    deps: [ci]
 
   # Development tasks
   dev:
@@ -56,7 +61,7 @@ tasks:
     desc: Build dPKMS binary
     cmds:
       - mkdir -p bin
-      - go build -v -o {{.BINARY_DPKMS}} {{.MAIN_DPKMS}}
+      - go build {{.BUILD_TAGS}} -v -o {{.BINARY_DPKMS}} {{.MAIN_DPKMS}}
     sources:
       - "{{.MAIN_DPKMS}}/**/*.go"
       - internal/dpkms/**/*.go
@@ -68,7 +73,7 @@ tasks:
     desc: Build ctxt binary
     cmds:
       - mkdir -p bin
-      - go build -v -o {{.BINARY_CTXT}} {{.MAIN_CTXT}}
+      - go build {{.BUILD_TAGS}} -v -o {{.BINARY_CTXT}} {{.MAIN_CTXT}}
     sources:
       - "{{.MAIN_CTXT}}/**/*.go"
       - internal/ctxt/**/*.go
@@ -81,10 +86,10 @@ tasks:
     cmds:
       - mkdir -p bin
       - |
-        go build -v -ldflags="-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}}" \
+        go build {{.BUILD_TAGS}} -v -ldflags="-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}}" \
           -o {{.BINARY_DPKMS}} {{.MAIN_DPKMS}}
       - |
-        go build -v -ldflags="-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}}" \
+        go build {{.BUILD_TAGS}} -v -ldflags="-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}}" \
           -o {{.BINARY_CTXT}} {{.MAIN_CTXT}}
     vars:
       VERSION:
@@ -103,27 +108,32 @@ tasks:
   test:
     desc: Run all tests
     cmds:
-      - go test -v -race -cover ./...
+      - go test {{.BUILD_TAGS}} -v -race -cover ./...
 
   test:unit:
     desc: Run unit tests only
     cmds:
-      - go test -v -short -race -cover ./...
+      - go test {{.BUILD_TAGS}} -v -short -race -cover ./...
 
   test:integration:
     desc: Run integration tests
     cmds:
-      - go test -v -race -tags=integration ./test/integration/...
+      - go test {{.BUILD_TAGS}} -v -race -tags=integration ./test/integration/...
 
   test:e2e:
-    desc: Run end-to-end tests
+    desc: Run focused end-to-end integration scenarios
     cmds:
-      - go test -v -race -tags=e2e ./test/e2e/...
+      - go test {{.BUILD_TAGS}} -v -race ./test/integration -run '^Test(FullWritePath|FullReadPath|JobRetry|EdgesCreated|IngestThenSearch|ConcurrentIngestion|ObjectDeleteCascade)$'
+
+  test:smoke:
+    desc: Run binary smoke tests
+    cmds:
+      - go test {{.BUILD_TAGS}} -v -tags=smoke ./test/smoke/...
 
   test:coverage:
     desc: Generate test coverage report
     cmds:
-      - go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+      - go test {{.BUILD_TAGS}} -v -race -coverprofile=coverage.out -covermode=atomic ./...
       - go tool cover -html=coverage.out -o coverage.html
       - 'echo "Coverage report generated: coverage.html"'
       - go tool cover -func=coverage.out
@@ -138,12 +148,12 @@ tasks:
   test:race:
     desc: Run tests with race detector
     cmds:
-      - go test -v -race ./...
+      - go test {{.BUILD_TAGS}} -v -race ./...
 
   test:bench:
     desc: Run benchmarks
     cmds:
-      - go test -v -bench=. -benchmem ./...
+      - go test {{.BUILD_TAGS}} -v -bench=. -benchmem ./...
 
   # Code quality tasks
   lint:
@@ -659,8 +669,8 @@ tasks:
     desc: Install binaries to GOPATH
     deps: [build]
     cmds:
-      - go install {{.MAIN_DPKMS}}
-      - go install {{.MAIN_CTXT}}
+      - go install {{.BUILD_TAGS}} {{.MAIN_DPKMS}}
+      - go install {{.BUILD_TAGS}} {{.MAIN_CTXT}}
       - echo "Binaries installed to $(go env GOPATH)/bin"
 
   install:tools:

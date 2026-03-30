@@ -25,11 +25,11 @@
     docker compose --profile prod pull
 
     # Or build locally:
-    make docker-build
+    docker compose build dpkms
 
 **4. Start**
 
-    make docker-prod
+    docker compose --profile prod up -d
 
 **5. Verify**
 
@@ -58,8 +58,8 @@ Migrations run automatically on startup.
 
 ## Logs
 
-    make docker-logs
+    docker compose logs -f
 
 ## Stop
 
-    make docker-down
+    docker compose --profile prod down

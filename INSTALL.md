@@ -4,8 +4,9 @@ This guide covers installing the ContextHelp CLI tools.
 
 ## Prerequisites
 
-- Go 1.21 or higher (for building from source)
+- Go version compatible with `go.mod` (use `mise install` if you follow the repo toolchain)
 - Git (for cloning the repository)
+- `task` (preferred task runner; if it is not on `PATH`, use `mise exec -- task ...`)
 
 ## Installation Methods
 
@@ -17,7 +18,7 @@ git clone https://github.com/ideacrafterslabs/ctxt.git
 cd ctxt
 
 # Build both binaries
-make build
+task build
 
 # Binaries will be in bin/ctxt and bin/dpkms
 ```
@@ -30,7 +31,7 @@ git clone https://github.com/ideacrafterslabs/ctxt.git
 cd ctxt
 
 # Install to $GOPATH/bin
-make install
+task install
 
 # Make sure $GOPATH/bin is in your PATH
 export PATH="$PATH:$(go env GOPATH)/bin"
@@ -44,7 +45,7 @@ git clone https://github.com/ideacrafterslabs/ctxt.git
 cd ctxt
 
 # Build binaries
-make build
+task build
 
 # Copy to a directory in your PATH
 sudo cp bin/ctxt /usr/local/bin/
@@ -160,8 +161,8 @@ export OPENAI_API_KEY="your-api-key-here"
 ```bash
 cd ctxt
 git pull origin main
-make clean
-make build
+task clean
+task build
 ```
 
 ### Installed Version
@@ -169,7 +170,7 @@ make build
 ```bash
 cd ctxt
 git pull origin main
-make install
+task install
 ```
 
 ## Uninstallation
@@ -177,7 +178,7 @@ make install
 ### Remove Binaries
 
 ```bash
-# If installed with make install
+# If installed with task install
 rm $(go env GOPATH)/bin/ctxt
 rm $(go env GOPATH)/bin/dpkms
 
@@ -248,9 +249,9 @@ If build fails:
 
 ```bash
 # Clean and rebuild
-make clean
+task clean
 go mod tidy
-make build
+task build
 ```
 
 ### Configuration Not Found
@@ -319,20 +320,20 @@ go build -gcflags="all=-N -l" -o bin/ctxt cmd/ctxt/main.go
 go build -gcflags="all=-N -l" -o bin/dpkms cmd/dpkms/main.go
 
 # Run tests
-make test
+task test
 
 # Run linter
-make lint
+task lint
 ```
 
 ## Next Steps
 
 After installation:
 
-1. Read the [Quick Start Guide](./docs/quickstart-cli.md)
-2. Set up your [configuration](./config/config.example.yaml)
+1. Read the [Quick Start Guide](./docs/cli-quickstart.md)
+2. Set up your [configuration](./docs/ctxt/configuration.md)
 3. Start using the [CLI commands](./docs/ctxt/api-cli.md)
-4. Explore [focus profiles](./docs/ctxt/profiles.md)
+4. Explore focus profiles in [ctxt configuration](./docs/ctxt/configuration.md)
 
 ## Getting Help
 

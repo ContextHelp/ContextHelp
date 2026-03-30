@@ -50,12 +50,17 @@ OS=$(detect_os)
 # Step 1: Check Go installation
 info "Step 1: Checking Go installation..."
 if ! command_exists go; then
-    error "Go is not installed. Please install Go 1.23+ from https://go.dev/dl/"
+    error "Go is not installed. Please install a version compatible with go.mod from https://go.dev/dl/"
     exit 1
 fi
 
 GO_VERSION=$(go version | awk '{print $3}' | sed 's/go//')
-REQUIRED_VERSION="1.23"
+REQUIRED_VERSION=$(awk '/^go / {print $2}' go.mod 2>/dev/null)
+
+if [ -z "$REQUIRED_VERSION" ]; then
+    error "Unable to determine required Go version from go.mod"
+    exit 1
+fi
 
 if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$GO_VERSION" | sort -V | head -n1)" != "$REQUIRED_VERSION" ]; then
     error "Go version $GO_VERSION is too old. Minimum required: $REQUIRED_VERSION"
@@ -72,7 +77,7 @@ mkdir -p internal/ctxt/pipelines internal/ctxt/profiles
 mkdir -p pkg/dpkms pkg/ctxt
 mkdir -p data/sqlite data/migrations
 mkdir -p configs
-mkdir -p test/integration test/e2e test/fixtures
+mkdir -p test/integration test/smoke test/testdata test/testutil
 mkdir -p docs/development
 success "Directory structure created"
 

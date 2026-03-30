@@ -4,8 +4,8 @@ This guide will help you get started with the ContextHelp CLI implementation.
 
 ## Prerequisites
 
-- Go 1.21 or higher
-- Make (optional, for convenient building)
+- Go version compatible with `go.mod`
+- `task` (preferred; if it is not on `PATH`, use `mise exec -- task ...`)
 
 ## Installation
 
@@ -17,14 +17,14 @@ git clone https://github.com/ideacrafterslabs/ctxt.git
 cd ctxt
 
 # Build both binaries
-make build
+task build
 
 # Or build individually
-make build-ctxt
-make build-dpkms
+task build:ctxt
+task build:dpkms
 
 # Install to $GOPATH/bin
-make install
+task install
 ```
 
 ### Manual Build
@@ -412,7 +412,7 @@ mkdir -p ~/.local/share/contexthelp
 
 1. Explore the [CLI API documentation](./ctxt/api-cli.md)
 2. Read the [design documentation](./design.md)
-3. Learn about [focus profiles](./ctxt/profiles.md)
+3. Learn about focus profiles in [ctxt configuration](./ctxt/configuration.md)
 4. Understand [pipeline configuration](./ctxt/pipelines.md)
 5. Check out the [plugin system](./plugins.md)
 
@@ -435,19 +435,19 @@ For developers working on the CLI:
 
 ```bash
 # Build with version info
-make build
+task build
 
 # Run tests
-make test
+task test
 
 # Lint code
-make lint
+task lint
 
 # Format code
-make fmt
+task fmt
 
 # Clean build artifacts
-make clean
+task clean
 ```
 
 See [CLI Implementation Guide](./cli-implementation.md) for detailed implementation notes.

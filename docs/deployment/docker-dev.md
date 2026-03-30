@@ -4,11 +4,10 @@
 
 - Docker Engine 24+ + Docker Compose v2
 - Go 1.24+ (for running tests on host)
-- Make
 
 ## Start
 
-    make docker-dev
+    docker compose --profile dev up
 
 Services started:
 - `ctxt-dpkms-dev` — Go server with air hot-reload on :8080
@@ -30,7 +29,7 @@ Edit any `.go` file. Air detects the change, rebuilds in ~3s, restarts.
 
 ## Stop
 
-    make docker-down
+    docker compose --profile dev down
 
 ## Ports
 

@@ -113,24 +113,26 @@ See `docs/branding.md` for naming conventions and `docs/architecture.md` for det
 
     git clone https://github.com/ideacrafterslabs/ctxt.git && cd ctxt
     cp docker/.env.prod.example .env.prod && $EDITOR .env.prod
-    make docker-prod
+    docker compose --profile prod up -d
 
 See [docs/deployment/docker.md](docs/deployment/docker.md) for full details.
 
 **Docker (local dev with hot-reload):**
 
-    make docker-dev
+    docker compose --profile dev up
 
 See [docs/deployment/docker-dev.md](docs/deployment/docker-dev.md).
 
 **Build from source:**
 
-    make build
+    task build
     ./bin/dpkms serve
+
+If `task` is not on your shell `PATH`, run the same commands via `mise exec -- task ...`.
 
 **Installation:** See [INSTALL.md](./INSTALL.md) for detailed installation instructions.
 
-**Usage:** After installation, check the [Quick Start Guide](./docs/quickstart-cli.md) to begin using ContextHelp.
+**Usage:** After installation, check the [Quick Start Guide](./docs/cli-quickstart.md) to begin using ContextHelp.
 
 **Documentation:** Browse the complete documentation in [docs/README.md](./docs/README.md).
 

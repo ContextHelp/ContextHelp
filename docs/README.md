@@ -20,6 +20,7 @@ Together they provide **context-as-a-service** for humans and AI agents (self-ho
 4. Read [design.md](design.md) - Consolidated design documentation
 5. Review [dpkms-or-ctxt.md](dpkms-or-ctxt.md) - Package placement guide
 6. Read [manual/README.md](manual/README.md) - Persona and workflow user manual
+7. Read [operations/pre-alpha-gate.md](operations/pre-alpha-gate.md) - Early-access publish gate
 
 **Looking for specific capabilities?**
 - [featureset.md](featureset.md) - Complete feature overview
