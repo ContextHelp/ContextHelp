@@ -99,7 +99,8 @@ export interface ListJobsResponse {
 }
 
 export interface SearchResponse {
-  objects: KnowledgeObject[];
+  data: KnowledgeObject[];
+  total: number;
 }
 
 // Inbox (Plan 7 — included for forward compatibility)

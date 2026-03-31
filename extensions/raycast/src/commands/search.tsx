@@ -91,7 +91,7 @@ export default function SearchCommand(props: LaunchProps<{ launchContext: Launch
 
     searchObjects(query.trim())
       .then((res) => {
-        if (!cancelled) setResults(res.objects ?? []);
+        if (!cancelled) setResults(res.data ?? []);
       })
       .catch(async (e: unknown) => {
         if (!cancelled && !(e instanceof ServerOfflineError)) {
