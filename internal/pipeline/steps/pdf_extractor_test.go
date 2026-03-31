@@ -11,7 +11,8 @@ import (
 func TestPDFExtractorCreatesPageSections(t *testing.T) {
 	step := NewPDFExtractor()
 	draft := &storage.KnowledgeObject{
-		Source: "/tmp/test.pdf",
+		Source:  "/tmp/test.pdf",
+		Subtype: "pdf",
 	}
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
@@ -38,8 +39,9 @@ func TestPDFExtractorName(t *testing.T) {
 func TestPDFExtractorEmitsGraphNodes(t *testing.T) {
 	step := NewPDFExtractor()
 	draft := &storage.KnowledgeObject{
-		ID:     "obj-pdf-001",
-		Source: "/tmp/test.pdf",
+		ID:      "obj-pdf-001",
+		Source:  "/tmp/test.pdf",
+		Subtype: "pdf",
 	}
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
@@ -68,7 +70,7 @@ func TestPDFExtractorEmitsGraphNodes(t *testing.T) {
 
 func TestPDFExtractorNoGraphWithoutID(t *testing.T) {
 	step := NewPDFExtractor()
-	draft := &storage.KnowledgeObject{Source: "/tmp/test.pdf"}
+	draft := &storage.KnowledgeObject{Source: "/tmp/test.pdf", Subtype: "pdf"}
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
 		t.Fatalf("run: %v", err)

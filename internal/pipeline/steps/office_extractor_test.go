@@ -11,7 +11,8 @@ import (
 func TestOfficeExtractorCreatesPageSections(t *testing.T) {
 	step := NewOfficeExtractor()
 	draft := &storage.KnowledgeObject{
-		Source: "/tmp/test.docx",
+		Source:  "/tmp/test.docx",
+		Subtype: "office",
 	}
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
@@ -38,8 +39,9 @@ func TestOfficeExtractorName(t *testing.T) {
 func TestOfficeExtractorEmitsGraphNodes(t *testing.T) {
 	step := NewOfficeExtractor()
 	draft := &storage.KnowledgeObject{
-		ID:     "obj-office-001",
-		Source: "/tmp/test.docx",
+		ID:      "obj-office-001",
+		Source:  "/tmp/test.docx",
+		Subtype: "office",
 	}
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
@@ -68,7 +70,7 @@ func TestOfficeExtractorEmitsGraphNodes(t *testing.T) {
 
 func TestOfficeExtractorNoGraphWithoutID(t *testing.T) {
 	step := NewOfficeExtractor()
-	draft := &storage.KnowledgeObject{Source: "/tmp/test.docx"}
+	draft := &storage.KnowledgeObject{Source: "/tmp/test.docx", Subtype: "office"}
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
 		t.Fatalf("run: %v", err)

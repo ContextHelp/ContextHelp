@@ -42,6 +42,10 @@ func NewOfficeExtractor(opts ...OfficeExtractorOption) *OfficeExtractor {
 func (s *OfficeExtractor) Name() string { return "office_extractor" }
 
 func (s *OfficeExtractor) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	if draft.Subtype != "office" {
+		return draft, nil
+	}
+
 	if draft.Metadata == nil {
 		draft.Metadata = make(map[string]any)
 	}

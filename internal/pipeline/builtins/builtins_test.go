@@ -204,6 +204,76 @@ func TestInjectDedupStep(t *testing.T) {
 	}
 }
 
+func TestSelectPipelineGitHub(t *testing.T) {
+	r := Registry()
+
+	tests := []struct {
+		desc    string
+		content string
+		want    string
+	}{
+		// Specific sub-paths resolve before the repo catch-all.
+		{
+			desc:    "pull request",
+			content: "https://github.com/torvalds/linux/pull/1234",
+			want:    "url.github.pr",
+		},
+		{
+			desc:    "issue",
+			content: "https://github.com/torvalds/linux/issues/42",
+			want:    "url.github.issue",
+		},
+		{
+			desc:    "release",
+			content: "https://github.com/cli/cli/releases/tag/v2.0.0",
+			want:    "url.github.release",
+		},
+		// Repo root URL (two segments).
+		{
+			desc:    "repo root",
+			content: "https://github.com/torvalds/linux",
+			want:    "url.github.repo",
+		},
+		{
+			desc:    "repo root trailing slash",
+			content: "https://github.com/torvalds/linux/",
+			want:    "url.github.repo",
+		},
+		// Profile: single segment, no repo path.
+		{
+			desc:    "user profile",
+			content: "https://github.com/torvalds",
+			want:    "url.github.profile",
+		},
+		{
+			desc:    "org profile",
+			content: "https://github.com/nomic-ai",
+			want:    "url.github.profile",
+		},
+		{
+			desc:    "profile with tab param",
+			content: "https://github.com/monk1337?tab=repositories",
+			want:    "url.github.profile",
+		},
+		// Starred: payload-based via ContentTest.
+		{
+			desc: "starred repo payload",
+			content: "Repository: torvalds/linux\nURL: https://github.com/torvalds/linux\n" +
+				"Source: starred\nLanguage: C\nStars: 180000\n\nDescription:\nLinux kernel source tree",
+			want: "url.github.starred",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got := r.SelectPipeline(tt.content)
+			if got != tt.want {
+				t.Errorf("SelectPipeline(%q) = %q, want %q", tt.content, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDedupStepRegistered(t *testing.T) {
 	s, err := resolveStep("dedup", BuildOpts{})
 	if err != nil {

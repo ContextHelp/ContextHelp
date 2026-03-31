@@ -20,6 +20,7 @@ type Def struct {
 	Extensions  []string                         // file extensions this pipeline handles
 	URLPattern  *regexp.Regexp                   // optional URL pattern; matched before url.generic fallback
 	ContentTest func(string) bool                // optional content-based selector
+	Priority    int                              // ContentTest ordering: lower = higher priority (default 0)
 	Steps       []string                         // step names, resolved to constructors at build time
 	Providers   []string                         // provider types needed: "ocr", "vision", "transcription", "diarization"
 	Overrides   map[string]pipeline.StepOverride // per-step contract overrides, keyed by step name
@@ -50,7 +51,8 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"entity_resolver":   func() pipeline.PipelineStep { return steps.NewEntityResolver() },
 	"timestamp_aligner": func() pipeline.PipelineStep { return steps.NewTimestampAligner() },
 	"noop":              func() pipeline.PipelineStep { return steps.NewNoop() },
-	"url_fetcher":       func() pipeline.PipelineStep { return steps.NewURLFetcher() },
+	"url_fetcher":            func() pipeline.PipelineStep { return steps.NewURLFetcher() },
+	"content_type_router":   func() pipeline.PipelineStep { return steps.NewContentTypeRouter() },
 	// Dropbox pipeline steps.
 	"dropbox_fetcher":  func() pipeline.PipelineStep { return steps.NewDropboxFetcher() },
 	"dropbox_enqueuer": func() pipeline.PipelineStep { return steps.NewDropboxEnqueuer() },
@@ -246,6 +248,7 @@ type selector struct {
 	Extensions   []string
 	URLPattern   *regexp.Regexp
 	ContentTest  func(string) bool
+	Priority     int
 }
 
 // buildSelectors returns a list of selectors from the registered defs.
@@ -260,22 +263,29 @@ func buildSelectors() []selector {
 				Extensions:   d.Extensions,
 				URLPattern:   d.URLPattern,
 				ContentTest:  d.ContentTest,
+				Priority:     d.Priority,
 			})
 		}
 	}
-	// Sort URL-pattern selectors: fewer alternations (|) = more specific = higher priority.
-	// Tie-break by longer pattern string (more anchors/constraints).
+	// Sort selectors:
+	// 1. URL-pattern selectors first (non-nil URLPattern before nil).
+	// 2. Among URL-pattern selectors: fewer alternations (|) = more specific; tie-break by length.
+	// 3. Among ContentTest-only selectors: lower Priority value = higher priority.
 	sort.SliceStable(sels, func(i, j int) bool {
 		pi, pj := sels[i].URLPattern, sels[j].URLPattern
-		if pi == nil || pj == nil {
-			return pi != nil // non-nil before nil
+		if (pi == nil) != (pj == nil) {
+			return pi != nil // URL-pattern selectors before content-test-only
 		}
-		altsI := strings.Count(pi.String(), "|")
-		altsJ := strings.Count(pj.String(), "|")
-		if altsI != altsJ {
-			return altsI < altsJ // fewer alternations = more specific
+		if pi != nil && pj != nil {
+			altsI := strings.Count(pi.String(), "|")
+			altsJ := strings.Count(pj.String(), "|")
+			if altsI != altsJ {
+				return altsI < altsJ // fewer alternations = more specific
+			}
+			return len(pi.String()) > len(pj.String()) // longer = more specific
 		}
-		return len(pi.String()) > len(pj.String()) // longer = more specific
+		// Both are ContentTest-only: lower Priority wins.
+		return sels[i].Priority < sels[j].Priority
 	})
 	return sels
 }
