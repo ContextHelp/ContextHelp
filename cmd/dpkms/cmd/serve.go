@@ -247,6 +247,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return cookieBridge.Start(ctx)
 	})
 
+	// Drain timeout: how long in-flight jobs get to finish after signal.
+	drainTimeout := cfg.Jobs.DrainTimeout
+	if drainTimeout == 0 {
+		drainTimeout = 30 * time.Second
+	}
+
 	// Wait for shutdown signal.
 	g.Go(func() error {
 		sigChan := make(chan os.Signal, 1)
@@ -256,9 +262,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 			fmt.Println()
 			fmt.Println("Shutting down gracefully...")
 		case <-ctx.Done():
+			return nil
 		}
+
+		// Stop accepting new jobs and requests.
 		cancel()
-		httpSrv.Shutdown(context.Background())
+
+		// Give in-flight jobs time to finish, then shut down HTTP/gRPC.
+		shutCtx, shutCancel := context.WithTimeout(context.Background(), drainTimeout)
+		defer shutCancel()
+		fmt.Printf("Draining workers (up to %s)...\n", drainTimeout)
+		httpSrv.Shutdown(shutCtx)
 		// gRPC server stops via ctx cancellation in grpcSrv.Start.
 		return nil
 	})

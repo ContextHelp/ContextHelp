@@ -821,6 +821,9 @@ type JobsConfig struct {
 	MaxRetries int `mapstructure:"max_retries" yaml:"max_retries"`
 	// MaxHops is the maximum number of pipeline hops a job can take.
 	MaxHops int `mapstructure:"max_hops" yaml:"max_hops"`
+	// DrainTimeout is how long to wait for in-flight jobs to finish on
+	// graceful shutdown. Defaults to 30s if zero.
+	DrainTimeout time.Duration `mapstructure:"drain_timeout" yaml:"drain_timeout"`
 }
 
 // PipelinesConfig holds per-pipeline overrides and global routing config.

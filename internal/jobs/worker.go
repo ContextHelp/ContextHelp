@@ -27,6 +27,7 @@ type WorkerPool struct {
 	workers      int
 	staleTimeout time.Duration
 	pollInterval time.Duration
+	drainTimeout time.Duration
 	maxHops      int
 	maxRetries   int
 }
@@ -41,42 +42,60 @@ func NewWorkerPool(queue *Queue, pipelines pipeline.Registry, store storage.Stor
 		workers:      workers,
 		staleTimeout: cfg.StaleTimeout,
 		pollInterval: cfg.PollInterval,
+		drainTimeout: cfg.DrainTimeout,
 		maxHops:      cfg.MaxHops,
 		maxRetries:   cfg.MaxRetries,
 	}
 }
 
 // Start runs the worker pool until the context is cancelled.
+// On cancellation, in-flight jobs are given drainTimeout to finish before
+// returning. Pass a drainTimeout of 0 to use the default (30s).
 func (p *WorkerPool) Start(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx)
+	drain := p.drainTimeout
+	if drain == 0 {
+		drain = 30 * time.Second
+	}
 
-	// Stale recovery goroutine.
-	g.Go(func() error { return p.recoverStaleLoop(ctx) })
+	g, acquireCtx := errgroup.WithContext(ctx)
 
-	// Worker goroutines.
+	// drainCtx: jobs started before shutdown get up to drain seconds to finish.
+	// It is not tied to acquireCtx so cancelling acquireCtx does not abort them.
+	// The timeout starts when Start is called; in practice jobs are short-lived
+	// so the deadline is only reached on hangs.
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), drain)
+	defer drainCancel()
+
+	// Stale recovery goroutine — stops acquiring when ctx is cancelled.
+	g.Go(func() error { return p.recoverStaleLoop(acquireCtx) })
+
+	// Worker goroutines — stop acquiring on ctx cancel but finish in-flight
+	// jobs using drainCtx (bounded by drain timeout).
 	for i := 0; i < p.workers; i++ {
-		g.Go(func() error { return p.workerLoop(ctx) })
+		g.Go(func() error { return p.workerLoop(acquireCtx, drainCtx) })
 	}
 
 	return g.Wait()
 }
 
-func (p *WorkerPool) workerLoop(ctx context.Context) error {
+func (p *WorkerPool) workerLoop(acquireCtx, jobCtx context.Context) error {
 	for {
 		select {
-		case <-ctx.Done():
+		case <-acquireCtx.Done():
 			return nil
 		default:
-			job, err := p.queue.AcquireNext(ctx)
+			job, err := p.queue.AcquireNext(acquireCtx)
 			if err != nil || job == nil {
 				select {
-				case <-ctx.Done():
+				case <-acquireCtx.Done():
 					return nil
 				case <-time.After(p.pollInterval):
 				}
 				continue
 			}
-			p.process(ctx, job)
+			// Use jobCtx so in-flight work is not cancelled immediately on
+			// shutdown — serve.go cancels jobCtx after drain timeout.
+			p.process(jobCtx, job)
 		}
 	}
 }
