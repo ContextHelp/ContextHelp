@@ -341,6 +341,7 @@ func ConfiguredRegistryStrict(f *providers.Factory) pipeline.Registry {
 
 // ConfiguredRegistryWithPipelineOverrides builds a registry where each pipeline
 // can override individual provider backends via PipelinesConfig.Overrides.
+// It also honors SkipSteps and ExtraSteps structural overrides.
 func ConfiguredRegistryWithPipelineOverrides(
 	base *providers.Factory,
 	baseCfg config.ProvidersConfig,
@@ -354,31 +355,39 @@ func ConfiguredRegistryWithPipelineOverrides(
 	for name, d := range defs {
 		opts := BuildOpts{Factory: base, BlobStore: blobStore, BlobThreshold: blobThreshold}
 
-		if override, ok := pipelinesCfg.Overrides[name]; ok && len(override.Providers) > 0 {
-			merged := baseCfg
-			for role, bc := range override.Providers {
-				switch role {
-				case "llm":
-					merged.LLM = bc
-				case "embedding":
-					merged.Embedding = bc
-				case "ocr":
-					merged.OCR = bc
-				case "vision":
-					merged.Vision = bc
-				case "transcription":
-					merged.Transcription = bc
-				case "diarization":
-					merged.Diarization = bc
-				case "video":
-					merged.Video = bc
-				case "document":
-					merged.Document = bc
-				default:
-					log.Printf("builtins: pipeline %q: unknown provider role %q in override (ignored)", name, role)
-				}
+		if override, ok := pipelinesCfg.Overrides[name]; ok {
+			// 1. Handle structural overrides (SkipSteps, ExtraSteps).
+			if len(override.SkipSteps) > 0 || len(override.ExtraSteps) > 0 {
+				d.Steps = applyStructuralOverrides(d.Steps, override.SkipSteps, override.ExtraSteps)
 			}
-			opts.Factory = providers.NewFactory(merged, nil)
+
+			// 2. Handle provider overrides.
+			if len(override.Providers) > 0 {
+				merged := baseCfg
+				for role, bc := range override.Providers {
+					switch role {
+					case "llm":
+						merged.LLM = bc
+					case "embedding":
+						merged.Embedding = bc
+					case "ocr":
+						merged.OCR = bc
+					case "vision":
+						merged.Vision = bc
+					case "transcription":
+						merged.Transcription = bc
+					case "diarization":
+						merged.Diarization = bc
+					case "video":
+						merged.Video = bc
+					case "document":
+						merged.Document = bc
+					default:
+						log.Printf("builtins: pipeline %q: unknown provider role %q in override (ignored)", name, role)
+					}
+				}
+				opts.Factory = providers.NewFactory(merged, nil)
+			}
 		}
 
 		p, err := buildPipeline(name, d, opts, false)
@@ -395,6 +404,28 @@ func ConfiguredRegistryWithPipelineOverrides(
 	}))
 
 	return r
+}
+
+func applyStructuralOverrides(steps []string, skip []string, extra []string) []string {
+	out := make([]string, 0, len(steps)+len(extra))
+	out = append(out, steps...)
+
+	if len(skip) > 0 {
+		skipMap := make(map[string]bool)
+		for _, s := range skip {
+			skipMap[s] = true
+		}
+		filtered := make([]string, 0, len(out))
+		for _, s := range out {
+			if !skipMap[s] {
+				filtered = append(filtered, s)
+			}
+		}
+		out = filtered
+	}
+
+	out = append(out, extra...)
+	return out
 }
 
 func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
