@@ -109,7 +109,7 @@ func TestHybridSearchExplain_ReturnsBreakdown(t *testing.T) {
 	// Vector leg should be zero — no embedding provider.
 	assert.Equal(t, 0.0, r.Breakdown.Vector)
 	// Total must equal sum of all signals.
-	wantTotal := r.Breakdown.FTS + r.Breakdown.Vector + r.Breakdown.MentionBoost + r.Breakdown.GraphRelevance
+	wantTotal := r.Breakdown.FTS + r.Breakdown.Vector + r.Breakdown.MentionBoost + r.Breakdown.GraphRelevance + r.Breakdown.WordOverlap
 	assert.InDelta(t, wantTotal, r.Breakdown.Total, 1e-9)
 }
 

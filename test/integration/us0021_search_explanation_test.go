@@ -54,7 +54,8 @@ func TestUS0021_ExplainReturnsScoreBreakdownPerResult(t *testing.T) {
 
 		// Total must equal the sum of all signal contributions.
 		wantTotal := r.Breakdown.FTS + r.Breakdown.Vector +
-			r.Breakdown.MentionBoost + r.Breakdown.GraphRelevance
+			r.Breakdown.MentionBoost + r.Breakdown.GraphRelevance +
+			r.Breakdown.WordOverlap
 		assert.InDelta(t, wantTotal, r.Breakdown.Total, 1e-9, "total must equal sum of signals for %s", r.Object.ID)
 	}
 }
