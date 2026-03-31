@@ -30,10 +30,10 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/peterh/liner v1.2.2
 	github.com/yuin/goldmark v1.7.16
-	golang.org/x/crypto v0.45.0
-	golang.org/x/term v0.37.0
-	google.golang.org/grpc v1.68.0
-	google.golang.org/protobuf v1.34.2
+	golang.org/x/crypto v0.46.0
+	golang.org/x/term v0.38.0
+	google.golang.org/grpc v1.79.3
+	google.golang.org/protobuf v1.36.10
 	modernc.org/sqlite v1.47.0
 )
 
@@ -49,8 +49,8 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
-	golang.org/x/net v0.47.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
+	golang.org/x/net v0.48.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	modernc.org/libc v1.70.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
@@ -100,7 +100,7 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
 )
 
 replace (
