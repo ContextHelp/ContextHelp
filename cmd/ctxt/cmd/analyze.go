@@ -134,15 +134,18 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		rawMode = viper.GetBool("analyze.raw")
 	}
 
+	// Use actual source value; "argument"/"stdin"/"clipboard"/"file" are not
+	// fetchable URLs — downstream steps (url_fetcher) must validate before use.
+	reqSource := source
+
 	// Build request body.
 	reqBody := map[string]any{
 		"content":  content,
 		"type":     flagString(cmd, "type", "analyze.type"),
 		"pipeline": flagString(cmd, "pipeline", "analyze.pipeline"),
-		"source":   "cli",
+		"source":   reqSource,
 		"raw":      rawMode,
 	}
-	_ = source
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {

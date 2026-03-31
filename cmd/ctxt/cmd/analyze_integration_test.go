@@ -41,7 +41,10 @@ func TestAnalyzeCallsDPKMS(t *testing.T) {
 	if received["content"] != "hello world" {
 		t.Errorf("content: got %q, want %q", received["content"], "hello world")
 	}
-	if received["source"] != "cli" {
-		t.Errorf("source: got %q, want %q", received["source"], "cli")
+	// "argument" is the origin when content is passed as a CLI arg.
+	// (Previously this was hardcoded to "cli", which caused url_fetcher to
+	// attempt GET "cli" — see T-0227.)
+	if received["source"] != "argument" {
+		t.Errorf("source: got %q, want %q", received["source"], "argument")
 	}
 }

@@ -94,6 +94,57 @@ func TestURLFetcher_ErrorStatus(t *testing.T) {
 	}
 }
 
+func TestURLFetcher_NonURLSourceFallsToRawContent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("fetched"))
+	}))
+	defer srv.Close()
+
+	// Source is a non-URL origin string (e.g. set by the CLI).  The fetcher must
+	// not attempt GET on it; it must fall back to RawContent which holds the URL.
+	nonURLSources := []string{"cli", "argument", "stdin", "clipboard", "import:pinboard", ""}
+	for _, src := range nonURLSources {
+		draft := &storage.KnowledgeObject{
+			Source:     src,
+			RawContent: srv.URL,
+		}
+		step := NewURLFetcher(WithURLHTTPClient(srv.Client()))
+		got, err := step.Run(context.Background(), draft)
+		if err != nil {
+			t.Fatalf("source=%q: unexpected error: %v", src, err)
+		}
+		if got.RawContent != "fetched" {
+			t.Errorf("source=%q: RawContent: got %q, want %q", src, got.RawContent, "fetched")
+		}
+	}
+}
+
+func TestIsHTTPURL(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"http://example.com", true},
+		{"https://example.com/path?q=1", true},
+		{"cli", false},
+		{"argument", false},
+		{"stdin", false},
+		{"clipboard", false},
+		{"import:pinboard", false},
+		{"file", false},
+		{"", false},
+		{"ftp://example.com", false},
+		{"//no-scheme.com", false},
+	}
+	for _, tc := range cases {
+		got := isHTTPURL(tc.in)
+		if got != tc.want {
+			t.Errorf("isHTTPURL(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestURLFetcher_DomainCredential(t *testing.T) {
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

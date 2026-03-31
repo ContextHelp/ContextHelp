@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -52,10 +53,23 @@ func NewURLFetcher(opts ...URLFetcherOption) *URLFetcher {
 
 func (s *URLFetcher) Name() string { return "url_fetcher" }
 
+// isHTTPURL returns true only for http/https URLs.
+func isHTTPURL(s string) bool {
+	s = strings.TrimSpace(s)
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
 func (s *URLFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	rawURL := draft.Source
+	rawURL := ""
+	// Only use Source if it is a valid http/https URL; non-URL origin strings
+	// such as "cli", "argument", "stdin", "clipboard", "import:pinboard" must
+	// not be passed to the HTTP client.
+	if isHTTPURL(draft.Source) {
+		rawURL = strings.TrimSpace(draft.Source)
+	}
 	if rawURL == "" {
-		// Fallback to RawContent if Source is missing but it looks like a URL.
+		// Fallback to RawContent if Source is missing/non-URL but content looks like a URL.
 		if strings.HasPrefix(strings.TrimSpace(draft.RawContent), "http") {
 			rawURL = strings.TrimSpace(draft.RawContent)
 		}
