@@ -22,6 +22,33 @@ func seedJob(t *testing.T, ts *testServerBundle, id string) {
 	})
 }
 
+// TestListJobsEmptyCollection ensures empty DB returns [] not null (T-0219).
+func TestListJobsEmptyCollection(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/v1/jobs?limit=20")
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status: got %d, want 200", resp.StatusCode)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if string(raw["data"]) == "null" {
+		t.Errorf("data: got null, want empty array []")
+	}
+	if string(raw["data"]) != "[]" {
+		t.Errorf("data: got %s, want []", raw["data"])
+	}
+}
+
 func TestListJobs(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
