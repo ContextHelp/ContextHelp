@@ -38,6 +38,10 @@ func NewFileReader(opts ...FileReaderOption) *FileReader {
 func (s *FileReader) Name() string { return "file_reader" }
 
 func (s *FileReader) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	if draft.RawContent != "" {
+		return draft, nil
+	}
+
 	path := draft.Source
 	if path == "" {
 		return nil, fmt.Errorf("file_reader: no source path")
