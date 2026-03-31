@@ -81,6 +81,9 @@ var migration023 string
 //go:embed migrations/024_rename_mention_uris.sql
 var migration024 string
 
+//go:embed migrations/025_federation_watermarks.sql
+var migration025 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -129,6 +132,8 @@ var migrations = []migration{
 	// Migration 024: rename mention_uris → mentions on objects table.
 	// Uses a Go fn for idempotency: skips if column is already named 'mentions'.
 	{Version: 24, fn: migrate024RenameMentionUris},
+	// Migration 025: federation_watermarks table for tracking per-federation sync state.
+	{Version: 25, SQL: migration025},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
