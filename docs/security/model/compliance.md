@@ -2,6 +2,10 @@
 
 Compliance mapping for ContextHelp security controls.
 
+> **Pre-alpha status:** Auth (ADR-023) and encryption at rest (ADR-019) are designed
+> but not yet shipped. Controls below reflect what is actually implemented today.
+> "Partial" = design exists, runtime behaviour not yet enforced.
+
 ---
 
 ## Overview
@@ -23,25 +27,14 @@ ContextHelp aligns with major security and privacy standards:
 **Risk**: Users acting outside their intended permissions
 
 **ContextHelp Mitigations**:
-- User/permission validation before data access
-- Localhost-only API binding by default
-- File permission validation (0600/0700)
-- Plugin sandboxing with capability-based permissions
-- Authorization checks on all API endpoints
+- Localhost-only API binding by default ✅
+- File permission validation (0600/0700) ✅
+- Plugin sandboxing with capability-based permissions ⚠️ planned (ADR-027)
+- Authorization checks on all API endpoints ⚠️ planned (ADR-023)
 
-**Implementation**:
-```go
-func CheckAccess(userID string, action string, resourceID string) error {
-    permission := db.GetPermission(userID, resourceID)
-    if !permission.Allows(action) {
-        AuditLog(EventPermissionDenied, userID, action, resourceID)
-        return fmt.Errorf("access denied")
-    }
-    return nil
-}
-```
+**Note:** Code sample shows the intended design; not yet enforced at runtime.
 
-**Compliance Level**: ✅ Full
+**Compliance Level**: ⚠️ Partial (localhost binding + file perms active; authz not enforced)
 
 ---
 
@@ -50,22 +43,14 @@ func CheckAccess(userID string, action string, resourceID string) error {
 **Risk**: Sensitive data exposed due to weak crypto
 
 **ContextHelp Mitigations**:
-- Optional AES-256-GCM encryption at rest
-- Mandatory TLS 1.2+ for remote connections
-- Secure key derivation (PBKDF2, Argon2)
-- Certificate validation
-- No plaintext secrets in configuration
+- No plaintext secrets in configuration ✅
+- Certificate validation for outbound TLS ✅
+- AES-256-GCM encryption at rest ⚠️ planned (ADR-019)
+- TLS 1.2+ for remote connections ⚠️ operator-configured; not enforced by server
 
-**Implementation**:
-```yaml
-security:
-  encryption:
-    enabled: true
-    algorithm: aes-256-gcm
-    key_derivation: argon2
-```
+**Note:** Config snippet shows planned feature; encryption not active in current release.
 
-**Compliance Level**: ✅ Full
+**Compliance Level**: ⚠️ Partial (no plaintext secrets; storage encryption and TLS not yet enforced)
 
 ---
 
@@ -167,28 +152,14 @@ security-scan:
 **Risk**: Weak authentication or session management
 
 **ContextHelp Mitigations**:
-- Optional JWT token authentication
-- Secure session handling
-- Strong token generation
-- Session expiration
-- Failed login monitoring
+- JWT token authentication ⚠️ planned (ADR-023)
+- Secure session handling ⚠️ planned (ADR-023)
+- Strong token generation ⚠️ planned (ADR-023)
 
-**Implementation**:
-```go
-// JWT configuration
-type JWTConfig struct {
-    Secret     string        `json:"secret"`
-    Expiration time.Duration `json:"expiration"`
-    Issuer     string        `json:"issuer"`
-}
+**Note:** Auth system is designed; not yet enforced — server accepts unauthenticated
+requests to localhost in the current release.
 
-// Strong token generation
-tokenBytes := make([]byte, 32)
-rand.Read(tokenBytes)
-token := base64.URLEncoding.EncodeToString(tokenBytes)
-```
-
-**Compliance Level**: ✅ Full
+**Compliance Level**: ⚠️ Partial (localhost-only binding reduces exposure; auth not enforced)
 
 ---
 
@@ -268,20 +239,22 @@ registries:
 
 ## OWASP Compliance Summary
 
+> ✅ = active in current release; ⚠️ = partial / planned; see per-category notes.
+
 | Category | Compliance | Notes |
 |----------|-----------|-------|
-| A01 Broken Access Control | ✅ Full | Capability model, permissions |
-| A02 Cryptographic Failures | ✅ Full | AES-256-GCM, TLS 1.2+ |
-| A03 Injection | ✅ Full | Parameterized queries, validation |
+| A01 Broken Access Control | ⚠️ Partial | localhost binding ✅; authz not enforced |
+| A02 Cryptographic Failures | ⚠️ Partial | no plaintext secrets ✅; encryption/TLS not enforced |
+| A03 Injection | ✅ Full | Parameterized queries, schema validation |
 | A04 Insecure Design | ✅ Full | Threat model, secure defaults |
-| A05 Security Misconfiguration | ✅ Full | Validation tools, warnings |
-| A06 Vulnerable Components | ✅ Full | Dependency scanning |
-| A07 Authentication Failures | ✅ Full | JWT, session management |
-| A08 Data Integrity Failures | ⚠️ Partial | Schema validation, signatures planned |
-| A09 Logging Failures | ✅ Full | Comprehensive audit logging |
-| A10 SSRF | ✅ Full | No auto-external calls, validation |
+| A05 Security Misconfiguration | ✅ Full | `ctxt config validate/lint`, file perms |
+| A06 Vulnerable Components | ✅ Full | `govulncheck` in CI |
+| A07 Authentication Failures | ⚠️ Partial | auth designed (ADR-023), not yet enforced |
+| A08 Data Integrity Failures | ⚠️ Partial | Schema validation ✅; HMAC/signatures planned |
+| A09 Logging Failures | ✅ Full | Append-only audit log, log sanitization |
+| A10 SSRF | ✅ Full | No auto-external calls, explicit opt-in |
 
-**Overall**: 9/10 Full, 1/10 Partial
+**Overall**: 6/10 Full, 4/10 Partial (pre-alpha; improves as ADR-019/023/027 land)
 
 ---
 
@@ -307,21 +280,20 @@ registries:
 ### 2. Protect
 
 **Access Control**:
-- Capability-based permissions
-- File permission validation
-- Authentication/authorization
+- File permission validation ✅
+- Capability-based permissions ⚠️ planned (ADR-027)
+- Authentication/authorization ⚠️ planned (ADR-023)
 
 **Data Security**:
-- Optional encryption at rest
-- TLS 1.2+ in transit
-- Secure key derivation
+- Encryption at rest ⚠️ planned (ADR-019)
+- TLS 1.2+ in transit ⚠️ operator-configured
+- Secure key derivation ⚠️ planned
 
 **Awareness & Training**:
-- Security documentation
-- Best practices guides
-- Runbook procedures
+- Security documentation ✅
+- Best practices guides ✅
 
-**Compliance**: ✅ Full
+**Compliance**: ⚠️ Partial (file perms + docs active; auth/encryption not yet enforced)
 
 ---
 
@@ -455,12 +427,12 @@ registries:
 - Ensure data integrity
 
 **ContextHelp Implementation**:
-- Optional encryption at rest
-- TLS for external connections
-- Access controls
-- Audit logging
+- Encryption at rest ⚠️ planned (ADR-019); operator must enable when handling PII
+- TLS for external connections ⚠️ operator-configured; not enforced by server
+- Access controls ⚠️ planned (ADR-023)
+- Audit logging ✅
 
-**Compliance**: ✅ Full
+**Compliance**: ⚠️ Partial (audit log active; encryption/access controls not yet enforced)
 
 ---
 
@@ -564,11 +536,11 @@ registries:
 - Protect assets from unauthorized access
 
 **ContextHelp Implementation**:
-- Authentication/authorization
-- File permission validation
-- Plugin sandboxing
+- File permission validation ✅
+- Authentication/authorization ⚠️ planned (ADR-023)
+- Plugin sandboxing ⚠️ planned (ADR-027)
 
-**Compliance**: ✅ Full
+**Compliance**: ⚠️ Partial (file perms active; auth/sandboxing not yet enforced)
 
 ---
 
@@ -655,22 +627,22 @@ registries:
 ### A.9: Access Control
 
 **ContextHelp Implementation**:
-- Access control policy
-- User authentication
-- Authorization checks
+- Access control policy ✅ (documented)
+- User authentication ⚠️ planned (ADR-023)
+- Authorization checks ⚠️ planned (ADR-023)
 
-**Compliance**: ✅ Full
+**Compliance**: ⚠️ Partial (policy documented; runtime enforcement not yet active)
 
 ---
 
 ### A.10: Cryptography
 
 **ContextHelp Implementation**:
-- Encryption at rest (AES-256-GCM)
-- TLS 1.2+ in transit
-- Key management
+- Encryption at rest (AES-256-GCM) ⚠️ planned (ADR-019)
+- TLS 1.2+ in transit ⚠️ operator-configured; not enforced by server
+- Key management ⚠️ planned (ADR-019)
 
-**Compliance**: ✅ Full
+**Compliance**: ⚠️ Partial (design documented; not yet active at runtime)
 
 ---
 
@@ -720,13 +692,16 @@ registries:
 
 ## Compliance Summary
 
+> Pre-alpha. Controls marked ⚠️ are designed (ADRs exist) but not yet runtime-active.
+> Re-evaluate at GA once ADR-019, ADR-023, ADR-027 are fully implemented.
+
 | Standard | Compliance Level | Notes |
 |----------|-----------------|-------|
-| **OWASP Top 10** | 90% (9/10 Full, 1/10 Partial) | Signature verification planned |
-| **NIST CSF** | 100% | All 5 functions implemented |
-| **GDPR** | 100% | All 7 principles met |
-| **SOC 2** | 100% | All 9 trust service criteria |
-| **ISO 27001** | 100% | Key controls implemented |
+| **OWASP Top 10** | ⚠️ Partial (6/10 full) | A01/A02/A07 partial; auth/encryption not enforced |
+| **NIST CSF** | ⚠️ Partial | Identify/Detect/Respond ✅; Protect partial |
+| **GDPR** | ⚠️ Partial | Local-first ✅; encryption/access controls pending |
+| **SOC 2** | ⚠️ Partial | Logging ✅; CC6 auth/encryption not enforced |
+| **ISO 27001** | ⚠️ Partial | A.9 access control and A.10 crypto pending |
 
 ---
 

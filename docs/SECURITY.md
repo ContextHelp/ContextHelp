@@ -312,9 +312,9 @@ export CH_REGISTRY_TOKEN_UXPATTERNS="eyJhbGc..."
 
 ### Planned Encryption Features
 
-#### 1. Storage Encryption (Coming Soon)
+#### 1. Storage Encryption (Coming Soon — ADR-019)
 
-**SQLite with SQLCipher:**
+**SQLite with SQLCipher (planned config):**
 ```yaml
 storage:
   type: sqlite
@@ -325,27 +325,26 @@ storage:
     key_derivation: argon2id
 ```
 
-**Setup:**
+**Until ADR-019 ships, use OS-level disk encryption:**
+- macOS: enable FileVault (`System Settings → Privacy & Security → FileVault`)
+- Linux: LUKS full-disk or ecryptfs home directory
+- Windows: BitLocker
+
+Also restrict file permissions:
 ```bash
-# Set encryption passphrase
-export ENCRYPTION_PASSPHRASE="your-strong-passphrase"
-
-# Enable encryption
-ctxt encryption enable --provider sqlcipher
-
-# Verify encryption
-ctxt encryption status
+chmod 600 ~/.local/share/contexthelp/data.db
+chmod 700 ~/.local/share/contexthelp/
 ```
 
-#### 2. Object-Level Encryption (Planned)
+#### 2. Object-Level Encryption (Planned — ADR-019)
 
-Encrypt individual knowledge objects:
-```bash
-# Analyze with encryption
-ctxt analyze --encrypt "sensitive content"
-
-# Query encrypted objects (requires passphrase)
-ctxt find "query" --decrypt
+Encrypt individual knowledge objects (not yet implemented):
+```yaml
+# Planned config — not active in current release
+storage:
+  encryption:
+    enabled: true
+    object_level: true
 ```
 
 #### 3. End-to-End Encryption for Registry Sync (Planned)
@@ -368,9 +367,9 @@ registries:
 3. Use encrypted backups
 4. Consider full-disk encryption
 
-**Check Implementation Status:**
+**Check whether encryption is active:**
 ```bash
-ctxt version --features | grep encryption
+ctxt version --output json | grep -i encrypt   # will show nothing until ADR-019 ships
 ```
 
 ---
@@ -464,37 +463,42 @@ storage:
 
 ### Current Status
 
-**⚠️ IMPORTANT:** Authentication system is **designed but not fully implemented**. See [ADR-023](docs/decisions/ADR-023-authentication-authorization-model.md) for complete specifications.
+**⚠️ IMPORTANT:** Authentication system is **designed but not yet implemented**.
+See [ADR-023](docs/decisions/ADR-023-authentication-authorization-model.md) for
+specifications. The server currently accepts unauthenticated requests to localhost.
 
-### Planned Features
+**Operator guidance until ADR-023 ships:**
+- Keep `dpkms serve` on `127.0.0.1` (default; do not use `--public` without a
+  TLS-terminating reverse proxy and network ACLs).
+- If exposing the port on a shared machine, use firewall rules to restrict access
+  to trusted UIDs/IPs.
+
+### Planned Features (ADR-023)
 
 #### 1. Personal Access Tokens (PATs)
 
+```yaml
+# Planned config — not active in current release
+security:
+  authentication:
+    enabled: true
+    jwt:
+      secret: ${JWT_SECRET}
+      expiration: 24h
+```
+
+#### 2. Registry Authentication (active)
+
+Registry `login` / `logout` is shipped:
 ```bash
-# Generate token for API access
-ctxt auth token create --name "ci-pipeline" --scopes read,write
-
-# Use token
-export CTXT_API_TOKEN="ctp_..."
-curl -H "Authorization: Bearer $CTXT_API_TOKEN" http://localhost:7700/api/analyze
+ctxt registry login <name>    # prompts for token; stores in secrets backend
+ctxt registry logout <name>
 ```
 
-#### 2. OAuth for Registry Access
+#### 3. Plugin Capabilities (Planned — ADR-027)
 
 ```yaml
-registries:
-  enabled:
-    - name: enterprise-registry
-      url: https://registry.corp.example.com
-      auth:
-        method: oauth
-        client_id: ${OAUTH_CLIENT_ID}
-        client_secret: ${OAUTH_CLIENT_SECRET}
-```
-
-#### 3. Plugin Capabilities
-
-```yaml
+# Planned config — not active in current release
 plugins:
   load:
     - name: github-plugin

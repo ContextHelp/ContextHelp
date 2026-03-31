@@ -8,13 +8,16 @@ ContextHelp implements a **local-first, defense-in-depth security model** that p
 
 ### Core Security Guarantees
 
-- **Local-First**: Minimal external communication by default
-- **No Auto-Telemetry**: Zero automatic data transmission
-- **Encrypted Storage**: Optional encryption at rest for sensitive data
-- **Process Isolation**: Plugins and pipelines run in isolated contexts
-- **Secrets Protection**: Automatic detection and sanitization
-- **Schema Validation**: All external inputs validated against strict schemas
-- **Explicit Configuration**: Remote features require opt-in configuration
+> **Pre-alpha:** encryption at rest (ADR-019), API authentication (ADR-023), and
+> plugin sandboxing (ADR-027) are designed but not yet active at runtime.
+
+- **Local-First**: Minimal external communication by default ✅
+- **No Auto-Telemetry**: Zero automatic data transmission ✅
+- **Encrypted Storage**: ⚠️ Planned — optional AES-256-GCM at rest (ADR-019)
+- **Process Isolation**: ⚠️ Planned — plugin/pipeline sandboxing (ADR-027)
+- **Secrets Protection**: Automatic detection and sanitization ✅
+- **Schema Validation**: All external inputs validated against strict schemas ✅
+- **Explicit Configuration**: Remote features require opt-in configuration ✅
 
 ## Threat Model
 
@@ -284,36 +287,41 @@ ContextHelp protects the following critical assets:
 
 ### Authentication & Authorization
 
-**REST API**:
+> ⚠️ **Planned** — auth system designed in ADR-023; not yet enforced at runtime.
+> Current release binds to localhost by default; no token required for local access.
+
+**REST API** (planned):
 - Optional JWT token authentication
 - Session-based authentication
 - mTLS support for internal connections
 - Per-user permission scopes
 
-**gRPC API**:
+**gRPC API** (planned):
 - JWT token validation
 - Per-connection authentication
 - Stream-level authorization checks
-- Credential validation
 
-**CLI**:
-- Local user authentication (file permissions)
-- No network authentication needed
-- Configuration file permission validation
+**CLI** (active):
+- Local user authentication via OS file permissions (0600 config)
+- No network authentication needed for local-only operation
 
 ### Encryption
 
-**At Rest**:
-- Optional AES-256-GCM encryption for storage
+> ⚠️ **Planned** — encryption at rest designed in ADR-019; not yet active at runtime.
+> Operators handling PII must use OS-level disk encryption (FileVault, LUKS, BitLocker)
+> until ADR-019 lands.
+
+**At Rest** (planned):
+- Optional AES-256-GCM encryption for storage (ADR-019)
 - Configurable key derivation (PBKDF2, Argon2)
 - Transparent encryption/decryption
 - Key rotation support
 
-**In Transit**:
-- Mandatory TLS 1.2+ for external connections
-- Certificate validation
-- HSTS headers for HTTP APIs
-- No plaintext communication for remote features
+**In Transit** (operator-configured):
+- TLS 1.2+ for external connections — not enforced by the server; configure via
+  reverse proxy (nginx, Caddy, etc.) or PostgreSQL `sslmode=require`
+- Certificate validation active for outbound API calls
+- No plaintext communication for remote features (client enforces HTTPS URLs)
 
 **Configuration**:
 - Sensitive values stored separately

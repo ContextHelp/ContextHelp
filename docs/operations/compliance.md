@@ -171,28 +171,33 @@ The audit log is preserved unless `--include-audit` is passed.
 Mapping of SOC 2 Trust Service Criteria to ctxt implementation controls.
 Reference: AICPA TSC 2017.
 
+> **Pre-alpha status:** auth (ADR-023) and encryption at rest (ADR-019) are designed
+> but not yet shipped. "Partial" = design exists; runtime control not yet active.
+
 | SOC 2 Criterion | Control description | ctxt implementation | Status |
 |-----------------|--------------------|--------------------|--------|
 | CC1.1 — Integrity & ethics | Commitment to security values | Local-first design; no auto-telemetry | Met |
 | CC2.2 — Information communication | Security events communicated | Structured audit log; syslog integration | Met |
 | CC3.2 — Risk assessment | Identify and analyse risks | Threat model in `docs/security/model/threat.md` | Met |
 | CC4.1 — Monitoring | Ongoing control evaluation | `govulncheck` in CI; quarterly audit review | Met |
-| CC5.2 — Control activities | Select/develop controls | Multi-layer defence; automated enforcement | Met |
-| CC6.1 — Logical access (ACL) | Restrict access to authorised users | File permissions 0600; JWT auth; capability-based plugin ACL | Met |
+| CC5.2 — Control activities | Select/develop controls | Multi-layer defence; file perms enforced | Met |
+| CC6.1 — Logical access (ACL) | Restrict access to authorised users | File permissions 0600; localhost-only bind | Partial |
 | CC6.6 — External threats | Protect against external attacks | Localhost-only binding; registry untrusted by default | Met |
-| CC6.7 — Encryption at rest | Protect data from unauthorised access | AES-256-GCM opt-in; Argon2 key derivation | Met |
-| CC7.1 — Detection (signed artefacts) | Detect configuration tampering | GoReleaser signed binaries; HMAC verification (planned) | Partial |
-| CC7.2 — Audit log monitoring | Monitor security events | Append-only audit log; `ctxt audit logs`; syslog | Met |
+| CC6.7 — Encryption at rest | Protect data from unauthorised access | AES-256-GCM planned (ADR-019); not yet active | Partial |
+| CC7.1 — Detection (signed artefacts) | Detect configuration tampering | GPG release signing optional (skipped if secret absent) | Partial |
+| CC7.2 — Audit log monitoring | Monitor security events | Append-only audit log; `ctxt audit list`; syslog | Met |
 | CC7.4 — Incident response | Respond to security events | IR procedures in `docs/SECURITY.md#incident-response` | Met |
 | CC8.1 — Change management | Authorise and test changes | Conventional Commits; PR gate; `govulncheck` | Met |
 | CC9.2 — Third-party risk | Vendor risk management | Dependency assessment process (see below) | Met |
 
 Notes:
 
-- **CC6.7 partial**: Encryption is opt-in; operators handling PII **must** enable it.
-- **CC7.1 partial**: HMAC bundle verification is planned (tracked in
-  `docs/security/model/compliance.md`); signed release binaries are in place via
-  GoReleaser cosign.
+- **CC6.1 partial**: JWT auth and plugin ACL planned (ADR-023, ADR-027); not yet enforced.
+  Current protection: localhost-only bind + OS file permissions.
+- **CC6.7 partial**: Encryption not active; operators handling PII **must** use OS-level
+  disk encryption (FileVault / LUKS / BitLocker) until ADR-019 ships.
+- **CC7.1 partial**: GPG release signing is conditional — skipped when `GPG_PRIVATE_KEY`
+  secret is absent from CI. HMAC bundle verification is also planned.
 
 Full compliance evidence checklist for auditors: `docs/security/model/compliance.md`.
 
