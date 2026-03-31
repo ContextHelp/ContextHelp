@@ -138,80 +138,49 @@ If `task` is not on your shell `PATH`, run the same commands via `mise exec -- t
 
 ---
 
-## Key Features
+## Key Features (Pre-Alpha)
 
-- **Universal Capture Layer (Every Interface)**
-  First-class capture from CLI, TUI, REPL, browser extension, web UI, and mobile share sheet, with offline-first behavior and a local outbox for seamless sync and processing.
+- **Universal Capture Layer**
+  First-class capture from CLI. TUI, REPL, and Web UI are available as experimental surfaces. Browser extension and mobile share sheet are planned for future releases.
 
-- **Multimodal Pipelines**
-  Text, URL, image, audio, video, documents, and code processing with extensible steps, custom AI models, mention extraction, entity resolution, and plugin-defined transformations.
+- **Multimodal Ingestion Pipelines** (Shipped)
+  Text, URL, image, audio, and video processing with extensible steps, custom AI model integration, and entity-aware mention extraction.
 
-- **Structured Knowledge Objects** (dPKMS storage, ctxt enrichment)
-  Each processed item becomes a fully enriched knowledge object with summaries, extracted atomic notes, sections, tags, mentions, decisions, tasks, metadata, embeddings, and provenance.
+- **Structured Knowledge Objects** (Shipped)
+  Rich internal representation including summaries, tags, mentions, decisions, and embeddings, with full provenance tracking.
 
-- **Semantic Identity & Knowledge Graph**
-  Stable entities (canonical concepts) referenced via `@mentions`, with a graph index of object ↔ entity and entity ↔ entity edges used for querying, navigation, relationship discovery, and agent reasoning.
+- **Semantic Identity & Knowledge Graph** (Shipped)
+  Stable concepts (@mentions) and a queryable graph of relationships between content and entities.
 
-- **Traceability + Version History**
-  Full provenance preservation (source + time + pipeline + model) with revision history for objects, entities, and edges, including diff views, rollback, and “why this changed” explanations.
+- **Transactional Job Queue** (Shipped)
+  Crash-safe, resumable ingestion and background processing using the local outbox pattern.
 
-- **Transactional Job Queue (Local Outbox Pattern)**
-  All ingestion and refresh operations run through a transactional jobs table, guaranteeing crash-safe recovery, resumable execution, and background pipeline execution.
+- **Advanced Query Language (RSQL)** (Shipped)
+  Boolean logic, filters, and graph-aware operators translated to optimized SQL, FTS, and vector queries.
 
-- **Permissioned Sharing Model**
-  Private-by-default workspaces with explicit permissions for publishing, subscribing, and collaboration at the level of collections, objects, entities, and views.
+- **Action & Composition Layer** (Planned)
+  Generation of briefs, plans, and publish-ready drafts from graph-connected atomic knowledge.
 
-- **Decentralized Registries**
-  Subscribe to external or local registries for taxonomies, entity definitions, tag labels, weight systems, shared knowledge packs, or workflows — with optional authentication or paid access (including index-only sync + just-in-time pulls for licensed content).
-
-- **Advanced Query Language (AST-Based)**
-  Supports boolean logic, filters, ranges, nested expressions, provenance constraints, and graph-aware operators; translates cleanly into SQL, FTS, vector queries, and traversal queries.
-
-- **Federated Scatter–Gather Retrieval**
-  Query across local storage and multiple registries and merge results using hybrid retrieval (symbolic + vector) with reranking informed by entities, provenance, and graph signals.
-
-- **Evergreen Refresh Engine**
-  Policy-driven refresh behaviors re-run pipelines on stale items, detect source changes, and resurface knowledge “just in time” via scheduled review queues and reminders.
-
-- **Action Layer (Decisions, Tasks, Outputs)**
-  Extract decisions, tasks, and next steps, and generate outputs like briefs, plans, checklists, meeting packets, and publish-ready drafts from graph-connected atomic knowledge.
-
-- **Plugin Architecture (With Formal Contract)**
-  Plugins can extend pipelines, registries, commands, storage backends, query operators, AI providers, UI surfaces, refresh policies, export formats, and notifications using a documented Plugin API and strict permission model.
-
-- **Security + Encryption**
-  Encryption at rest and in transit with pluggable key management, controlled sharing handshakes, and an optional privacy-preserving search mode that supports filtering and retrieval without exposing plaintext.
-
-- **L10N & I18N via Plugins**
-  Users may configure preferred languages; plugins provide translation, localized entity and tag labels, and multilingual indexing.
-
-- **Multiple Storage Backends**
-  Default SQLite backend, with optional support for Postgres, remote stores, vector databases, or community-maintained “context management” systems — all behind a portable storage contract.
-
-- **Export + Portability Contract**
-  Full export/import support using Markdown + JSON + SQLite bundles preserving entities, edges, provenance, and stable IDs, enabling migration without data loss or broken links.
-
-- **Performance Guarantees**
-  Optimized indexing for FTS + vectors + graph adjacency, incremental embedding updates, background compaction, and caching layers to keep search and retrieval “instant-feeling” at scale.
+- **Evergreen Refresh Engine** (Planned)
+  Policy-driven re-ingestion and scheduled review queues.
 
 ---
 
 ## CLI Overview
 
-ContextHelp provides two command-line binaries:
-
 ### `ctxt` (User-Facing Commands)
 
-- `ctxt <content>` — (Default) capture and enqueue content from arguments, stdin, or clipboard
-- `ctxt analyze` — capture and enqueue content for processing (supports clipboard fallback)
-- `ctxt list` — query knowledge objects using filters or the query language
-- `ctxt find <query>` — semantic search (supports clipboard fallback)
-- `ctxt open <id>` — view knowledge object details (supports clipboard fallback)
-- `ctxt jobs` — inspect ingestion jobs and their status
-- `ctxt profile` — manage focus profiles (Founder, Engineer, Research, etc.)
-- `ctxt make` — generate compositions (briefs, plans, summaries)
-- `ctxt registry` — manage registry subscriptions
-- `ctxt uri register` — register `ctxt://` as a clickable OS URL scheme
+- `ctxt <content>` — Capture and enqueue content from arguments, stdin, or clipboard
+- `ctxt analyze` — Capture and enqueue content for processing
+- `ctxt list` — Query knowledge objects using RSQL filters
+- `ctxt find <query>` — Semantic search across your knowledge base
+- `ctxt open <id>` — View knowledge object details
+- `ctxt jobs` — Inspect ingestion jobs and their status
+- `ctxt tui` — (Experimental) Terminal User Interface
+- `ctxt make` — (Planned) Generate compositions (briefs, plans, summaries)
+- `ctxt profile` — (Planned) Manage focus profiles
+- `ctxt registry` — (Planned) Manage registry subscriptions
+- `ctxt uri register` — Register `ctxt://` as a clickable OS URL scheme
 
 ### `dpkms` (Infrastructure Commands)
 
