@@ -114,6 +114,9 @@ func (d *Driver) SearchHistory() storage.SearchHistoryStore  { return d.searchHi
 // SetBlobs allows injection of a custom BlobStore implementation.
 func (d *Driver) SetBlobs(bs storage.BlobStore) { d.blobs = bs }
 
+// SQLDialect implements search.dialectDetector; signals Postgres SQL dialect.
+func (d *Driver) SQLDialect() string { return "postgres" }
+
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)
 }

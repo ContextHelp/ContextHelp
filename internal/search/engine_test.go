@@ -3,11 +3,14 @@ package search
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func seedObject(t *testing.T, driver storage.StorageDriver, id, typ string, tags []storage.Tag) {
@@ -227,6 +230,82 @@ func TestProfileIsolation(t *testing.T) {
 		t.Errorf("global total: got %d, want 3", total)
 	}
 	_ = results
+}
+
+// --- Postgres dialect WHERE-building tests (no live DB needed) ---
+
+// TestBuildWherePostgresPlaceholders verifies that buildWhere emits $N
+// placeholders for the Postgres dialect.
+func TestBuildWherePostgresPlaceholders(t *testing.T) {
+	ast, err := Parse("type==article")
+	require.NoError(t, err)
+
+	where, args, err := buildWhere(DialectPostgres, ast)
+	require.NoError(t, err)
+	assert.Equal(t, "type = $1", where)
+	assert.Equal(t, []any{"article"}, args)
+	assert.NotContains(t, where, "?", "should not contain ? placeholders for Postgres")
+}
+
+// TestBuildWherePostgresProfileScope verifies that the profile scope placeholder
+// is included in the $N sequence rather than being a dangling ?.
+func TestBuildWherePostgresProfileScope(t *testing.T) {
+	ast, err := Parse("type==article")
+	require.NoError(t, err)
+
+	where, args, err := buildWhere(DialectPostgres, ast, "alice")
+	require.NoError(t, err)
+	assert.Contains(t, where, "$1")
+	assert.Contains(t, where, "$2")
+	assert.NotContains(t, where, "?")
+	assert.Equal(t, []any{"alice", "article"}, args)
+}
+
+// TestBuildWherePostgresTagEq verifies jsonb_array_elements is used for tags.
+func TestBuildWherePostgresTagEq(t *testing.T) {
+	ast, err := Parse("tag==perf")
+	require.NoError(t, err)
+
+	where, _, err := buildWhere(DialectPostgres, ast)
+	require.NoError(t, err)
+	assert.Contains(t, where, "jsonb_array_elements")
+	assert.NotContains(t, where, "json_each")
+	assert.NotContains(t, where, "?")
+}
+
+// TestBuildWherePostgresSimilarError verifies similar== is rejected on Postgres.
+func TestBuildWherePostgresSimilarError(t *testing.T) {
+	ast, err := Parse("similar==keyword")
+	require.NoError(t, err)
+
+	_, _, err = buildWhere(DialectPostgres, ast)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not supported on the Postgres backend")
+}
+
+// TestBuildWhereSQLiteUnchanged verifies SQLite paths are unaffected.
+func TestBuildWhereSQLiteUnchanged(t *testing.T) {
+	ast, err := Parse("tag==ui")
+	require.NoError(t, err)
+
+	where, _, err := buildWhere(DialectSQLite, ast)
+	require.NoError(t, err)
+	assert.Contains(t, where, "json_each")
+	assert.Contains(t, where, "?")
+	assert.False(t, strings.Contains(where, "$"), "SQLite should not have $N placeholders")
+}
+
+// TestBuildWherePostgresAndMultiArg verifies multi-arg AND gets sequential $N.
+func TestBuildWherePostgresAndMultiArg(t *testing.T) {
+	ast, err := Parse("type==article;tag==ui")
+	require.NoError(t, err)
+
+	where, args, err := buildWhere(DialectPostgres, ast)
+	require.NoError(t, err)
+	assert.Contains(t, where, "$1")
+	assert.Contains(t, where, "$2")
+	assert.NotContains(t, where, "?")
+	assert.Equal(t, []any{"article", "ui"}, args)
 }
 
 // TestSearchRelated verifies related: returns objects sharing mention targets.
