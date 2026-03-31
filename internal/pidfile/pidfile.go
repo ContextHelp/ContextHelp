@@ -22,11 +22,12 @@ import (
 
 // Info holds the metadata written to a pidfile.
 type Info struct {
-	PID      int       `json:"pid"`
-	Port     int       `json:"port"`
-	GRPCPort int       `json:"grpc_port"`
-	DBPath   string    `json:"db_path"`
-	StartedAt time.Time `json:"started_at"`
+	PID              int       `json:"pid"`
+	Port             int       `json:"port"`
+	GRPCPort         int       `json:"grpc_port"`
+	CookieBridgePort int       `json:"cookie_bridge_port"`
+	DBPath           string    `json:"db_path"`
+	StartedAt        time.Time `json:"started_at"`
 }
 
 // Write creates or overwrites the pidfile for the given port in dir.

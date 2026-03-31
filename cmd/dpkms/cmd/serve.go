@@ -164,9 +164,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Handler: router,
 	}
 
-	// 9b. Create gRPC server.
+	// 9b. Auto-assign gRPC port if preferred is busy.
+	grpcPort, err = findFreePort(grpcPort)
+	if err != nil {
+		return fmt.Errorf("grpc port: %w", err)
+	}
 	grpcBind := fmt.Sprintf("%s:%d", bind, grpcPort)
 	grpcSrv := grpcserver.New(grpcBind, svc)
+
+	// 9c. Auto-assign cookie-bridge port if preferred is busy.
+	cookieBridgePort, err := findFreePort(wsserver.DefaultCookieBridgePort)
+	if err != nil {
+		return fmt.Errorf("cookie bridge port: %w", err)
+	}
+	cookieBridgeAddr := fmt.Sprintf("127.0.0.1:%d", cookieBridgePort)
 
 	// 10. Init worker pool.
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
@@ -186,11 +197,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("run dir: %w", err)
 	}
 	if err := pidfile.Write(runDir, pidfile.Info{
-		PID:       os.Getpid(),
-		Port:      port,
-		GRPCPort:  grpcPort,
-		DBPath:    storagePath,
-		StartedAt: time.Now(),
+		PID:              os.Getpid(),
+		Port:             port,
+		GRPCPort:         grpcPort,
+		CookieBridgePort: cookieBridgePort,
+		DBPath:           storagePath,
+		StartedAt:        time.Now(),
 	}); err != nil {
 		// Non-fatal: ps won't show this instance but serve still works.
 		fmt.Fprintf(os.Stderr, "warning: could not write pidfile: %v\n", err)
@@ -274,9 +286,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Cookie bridge (for browser extension).
 	cookieCache := wsserver.NewCookieCache()
-	cookieBridge := wsserver.NewCookieBridgeServer(cookieCache)
+	cookieBridge := wsserver.NewCookieBridgeServer(cookieCache, cookieBridgeAddr)
 	g.Go(func() error {
-		fmt.Println("Cookie bridge listening on ws://127.0.0.1:9377")
+		fmt.Printf("Cookie bridge listening on ws://%s\n", cookieBridgeAddr)
 		return cookieBridge.Start(ctx)
 	})
 
@@ -326,4 +338,24 @@ func runServe(cmd *cobra.Command, args []string) error {
 	fmt.Println("Storage closed")
 
 	return nil
+}
+
+// findFreePort tries to bind preferred on 127.0.0.1.
+// If preferred is busy, it asks the OS for any free port.
+// The listener is closed immediately; the caller owns the port convention.
+func findFreePort(preferred int) (int, error) {
+	addr := fmt.Sprintf("127.0.0.1:%d", preferred)
+	ln, err := net.Listen("tcp", addr)
+	if err == nil {
+		ln.Close()
+		return preferred, nil
+	}
+	// Preferred port is busy — let the OS pick one.
+	ln, err = net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, fmt.Errorf("no free port available: %w", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	return port, nil
 }

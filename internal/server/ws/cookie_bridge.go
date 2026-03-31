@@ -78,23 +78,29 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// CookieBridgeServer is a standalone WebSocket server on port 9377.
+// DefaultCookieBridgePort is the preferred port for the cookie bridge server.
+const DefaultCookieBridgePort = 9377
+
+// CookieBridgeServer is a standalone WebSocket server for browser-extension cookie sync.
 type CookieBridgeServer struct {
 	cache  *CookieCache
 	server *http.Server
 }
 
-// NewCookieBridgeServer creates a CookieBridgeServer with the given cache.
-func NewCookieBridgeServer(cache *CookieCache) *CookieBridgeServer {
+// NewCookieBridgeServer creates a CookieBridgeServer bound to addr (e.g. "127.0.0.1:9377").
+func NewCookieBridgeServer(cache *CookieCache, addr string) *CookieBridgeServer {
 	mux := http.NewServeMux()
 	srv := &CookieBridgeServer{cache: cache}
 	mux.HandleFunc("/", srv.handleWS)
 	srv.server = &http.Server{
-		Addr:    "127.0.0.1:9377",
+		Addr:    addr,
 		Handler: mux,
 	}
 	return srv
 }
+
+// Addr returns the address the server is configured to listen on.
+func (s *CookieBridgeServer) Addr() string { return s.server.Addr }
 
 // Start starts the WebSocket server and blocks until ctx is cancelled.
 func (s *CookieBridgeServer) Start(ctx context.Context) error {
