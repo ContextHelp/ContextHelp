@@ -158,11 +158,11 @@ If `task` is not on your shell `PATH`, run the same commands via `mise exec -- t
 - **Advanced Query Language (RSQL)** (Shipped)
   Boolean logic, filters, and graph-aware operators translated to optimized SQL, FTS, and vector queries.
 
-- **Action & Composition Layer** (Planned)
-  Generation of briefs, plans, and publish-ready drafts from graph-connected atomic knowledge.
+- **Action & Composition Layer** (Shipped)
+  Generation of briefs, plans, and publish-ready drafts from graph-connected atomic knowledge via `ctxt make`.
 
-- **Evergreen Refresh Engine** (Planned)
-  Policy-driven re-ingestion and scheduled review queues.
+- **Evergreen Refresh Engine** (Shipped)
+  Scheduled reminders and resurfacing candidates via `ctxt remind` and `ctxt resurface`.
 
 ---
 
@@ -177,9 +177,9 @@ If `task` is not on your shell `PATH`, run the same commands via `mise exec -- t
 - `ctxt open <id>` — View knowledge object details
 - `ctxt jobs` — Inspect ingestion jobs and their status
 - `ctxt tui` — (Experimental) Terminal User Interface
-- `ctxt make` — (Planned) Generate compositions (briefs, plans, summaries)
-- `ctxt profile` — (Planned) Manage focus profiles
-- `ctxt registry` — (Planned) Manage registry subscriptions
+- `ctxt make` — Generate compositions (briefs, plans, summaries)
+- `ctxt profile` — Manage focus profiles
+- `ctxt registry` — Manage registry subscriptions
 - `ctxt uri register` — Register `ctxt://` as a clickable OS URL scheme
 
 ### `dpkms` (Infrastructure Commands)
