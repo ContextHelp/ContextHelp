@@ -23,6 +23,9 @@ func ListJobs(svc *service.Service) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
+		if list == nil {
+			list = []*storage.Job{}
+		}
 		WriteJSON(w, http.StatusOK, map[string]any{
 			"data":  list,
 			"total": total,

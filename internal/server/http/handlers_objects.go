@@ -39,6 +39,9 @@ func ListObjects(svc *service.Service) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
+		if objs == nil {
+			objs = []*storage.KnowledgeObject{}
+		}
 		WriteJSON(w, http.StatusOK, map[string]any{
 			"data":  objs,
 			"total": total,
