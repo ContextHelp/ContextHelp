@@ -67,6 +67,8 @@ What gets federated:
 | Jobs           | no        | per-instance queue; not portable                |
 | Feeds/watches  | no        | per-instance config                             |
 | Pipelines      | no        | per-instance config                             |
+| Backup         | no        | per-instance; see Backup & Recovery below       |
+| Housekeeping   | no        | per-instance; VACUUM/index rebuild stays local  |
 
 ---
 
@@ -105,6 +107,8 @@ What gets federated:
 - Content-hash dedup: idempotent push; safe retries; no duplicates at target.
 - No new instance type: uniform deployment model preserved.
 - Phase 1 ships SQLite-only; adds immediate value before HTTP remote is built.
+- Federation DBs self-heal: restore any source instance + `dpkms serve` = full rebuild.
+- Backup scope stays simple: one DB + one config file per instance; no cross-instance state.
 
 ### Negative
 
@@ -193,6 +197,16 @@ table federation_watermarks {
   last_synced_at   DATETIME
 }
 ```
+
+### Backup & Recovery
+
+- `dpkms backup` is per-instance; archives the instance DB + `config.yaml`.
+- `config.yaml` includes `federations:` entries — federation topology is config, not data.
+- **Rebuilding a federation DB from scratch:** restore source instance(s) from backup,
+  `dpkms serve` → async/inline sync repopulates target DB automatically.
+- No special federation backup needed; downstream DBs are derivable from their sources.
+- Housekeeping (`dpkms housekeeping`) — VACUUM, index rebuild, stale job cleanup —
+  runs per-instance; no federation-awareness required.
 
 ### Phases
 
