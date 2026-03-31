@@ -26,11 +26,11 @@ export function useJobs(): UseJobsResult {
       try {
         const res = await listJobs({ limit: "50" });
         if (!cancelled) {
-          setJobs(res.jobs ?? []);
+          setJobs(res.data ?? []);
           setError(null);
 
           // Only schedule next poll if active jobs remain
-          const hasActive = (res.jobs ?? []).some((j) =>
+          const hasActive = (res.data ?? []).some((j) =>
             ACTIVE_STATUSES.includes(j.status)
           );
           if (hasActive) {

@@ -94,7 +94,7 @@ export interface ListObjectsResponse {
 }
 
 export interface ListJobsResponse {
-  jobs: Job[];
+  data: Job[];
   total: number;
 }
 
