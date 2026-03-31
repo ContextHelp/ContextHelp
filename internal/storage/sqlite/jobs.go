@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -103,36 +104,37 @@ func (s *JobStore) List(ctx context.Context, filter storage.JobFilter) ([]*stora
 func (s *JobStore) AcquireNext(ctx context.Context) (*storage.Job, error) {
 	now := time.Now().Format(time.RFC3339)
 
-	// SQLite doesn't support UPDATE...RETURNING in all versions, so use a transaction.
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback()
+	// Single atomic statement: the correlated subquery and the UPDATE are
+	// executed under SQLite's write lock, so no two workers can claim the same
+	// row.  AND status = 'pending' in the outer WHERE is the re-check guard —
+	// if a concurrent writer already claimed the row, RowsAffected returns 0
+	// and we return nil (no job available).  RETURNING eliminates the
+	// separate SELECT round-trip.
+	//
+	// RETURNING was added in SQLite 3.35 (March 2021).
+	// go-sqlite3 v1.14.37 bundles SQLite 3.47+, so this is safe to use.
+	row := s.db.QueryRowContext(ctx, `
+		UPDATE jobs
+		SET status = 'running', started_at = ?, updated_at = ?
+		WHERE id = (
+			SELECT id FROM jobs
+			WHERE status = 'pending'
+			ORDER BY created_at ASC
+			LIMIT 1
+		) AND status = 'pending'
+		RETURNING id, type, status, payload, pipeline, source, result_id, error,
+		          retry_count, max_retries, created_at, updated_at, started_at, completed_at`,
+		now, now)
 
-	var id string
-	err = tx.QueryRowContext(ctx,
-		"SELECT id FROM jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1",
-	).Scan(&id)
+	j, err := scanJob(row)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
+			// No pending job available (queue empty or lost the claim race).
 			return nil, nil
 		}
 		return nil, fmt.Errorf("acquire next: %w", err)
 	}
-
-	_, err = tx.ExecContext(ctx,
-		"UPDATE jobs SET status = 'running', started_at = ?, updated_at = ? WHERE id = ?",
-		now, now, id)
-	if err != nil {
-		return nil, fmt.Errorf("set running: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit acquire: %w", err)
-	}
-
-	return s.Get(ctx, id)
+	return j, nil
 }
 
 func (s *JobStore) Complete(ctx context.Context, id string, resultID string) error {
@@ -220,7 +222,7 @@ func scanJob(row *sql.Row) (*storage.Job, error) {
 		&createdAt, &updatedAt, &startedAt, &completedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("job not found")
+			return nil, fmt.Errorf("job not found: %w", sql.ErrNoRows)
 		}
 		return nil, fmt.Errorf("scan job: %w", err)
 	}

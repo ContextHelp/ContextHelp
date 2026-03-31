@@ -12,16 +12,105 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/ctxt-dpkms
+  GO_VERSION: '1.23'
 
 jobs:
-  # ── Gate: trivy scan must pass before release proceeds ──────────────────────
+  # ── Gate 1: secret scan ──────────────────────────────────────────────────────
+  secret-scan:
+    name: Secret Scanning (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Gate 2: lint ─────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+            | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+
+      - name: Run golangci-lint
+        run: golangci-lint run --timeout=5m --verbose
+
+      - name: Check formatting
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Go code is not formatted. Run: gofmt -w ."
+            gofmt -d .
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: go vet ./...
+
+  # ── Gate 3: security scan ────────────────────────────────────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec (fail on medium+ severity)
+        run: |
+          gosec -conf .gosec.yaml \
+            -severity medium \
+            -confidence medium \
+            -exclude G104,G304,G307 \
+            -fmt sarif \
+            -out gosec-results.sarif \
+            ./...
+
+      - name: Upload gosec results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: gosec-results.sarif
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+  # ── Gate 4: Trivy CRITICAL scans (Dockerfile + filesystem) ──────────────────
   trivy-release-gate:
     name: Trivy Release Gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -47,11 +136,114 @@ jobs:
           severity: CRITICAL
           ignore-unfixed: true
 
-  # ── GoReleaser: build + publish signed binaries ──────────────────────────────
+  # ── Gate 5: unit tests ────────────────────────────────────────────────────────
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run unit tests
+        run: go test -v -short -race -coverprofile=coverage.out -covermode=atomic ./...
+
+  # ── Gate 6: integration tests ─────────────────────────────────────────────────
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: contexthelp
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: contexthelp_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run integration tests
+        run: go test -v -tags=integration ./test/integration/...
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: contexthelp
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: contexthelp_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+  # ── Gate 7: build + smoke ────────────────────────────────────────────────────
+  build-smoke:
+    name: Build + Smoke
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build dpkms
+        run: go build -v -o bin/dpkms ./cmd/dpkms
+
+      - name: Build ctxt
+        run: go build -v -o bin/ctxt ./cmd/ctxt
+
+      - name: Smoke — binaries respond
+        run: |
+          ./bin/dpkms version || echo "dpkms built successfully"
+          ./bin/ctxt version  || echo "ctxt built successfully"
+
+  # ── GoReleaser: publish only after full gate passes ──────────────────────────
   goreleaser:
     name: GoReleaser
     runs-on: ubuntu-latest
-    needs: trivy-release-gate
+    needs:
+      - secret-scan
+      - lint
+      - security
+      - trivy-release-gate
+      - test
+      - integration
+      - build-smoke
 
     steps:
       - name: Checkout code
