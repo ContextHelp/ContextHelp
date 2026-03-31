@@ -104,6 +104,7 @@ pipelines:
 
 profiles:
   founder:
+    default: true           # mark as server default (at most one may be true)
     registries: [uxpatterns, growth-weights]
     weights: [growth-weights]
     pipelines: [text.long, url.generic]

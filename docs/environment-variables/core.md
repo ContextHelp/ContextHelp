@@ -77,6 +77,26 @@ LOG_FILE=/var/log/contexthelp/app.log
 
 ---
 
+---
+
+## Multi-Instance Targeting
+
+### CTXT_INSTANCE
+**Type:** string
+**Default:** _(none — uses saved state file or default instance)_
+
+Selects which running dpkms instance `ctxt` commands target.
+Precedence: `--instance <name>` flag > `CTXT_INSTANCE` env var > `ctxt instance use` saved state > default (port 8080).
+
+```bash
+CTXT_INSTANCE=work ctxt stats
+CTXT_INSTANCE=personal ctxt find "weekend notes"
+```
+
+See also: `ctxt instance use`, `ctxt instance list`, `ctxt instance current`.
+
+---
+
 ## Examples
 
 ### Development

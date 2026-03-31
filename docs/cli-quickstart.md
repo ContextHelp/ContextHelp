@@ -93,13 +93,22 @@ For packaging (app bundles, plist, `.desktop`), use `ctxt uri snippet --platform
 For full functionality, start the background worker and API server:
 
 ```bash
-./bin/dpkms serve
+./bin/dpkms serve                   # foreground (Ctrl-C to stop)
+./bin/dpkms serve --daemon          # background daemon (detached from terminal)
+./bin/dpkms serve --name work       # named instance for multi-instance setups
 ```
 
 This starts:
 - Background job worker for processing ingestion
-- REST API on port 8080
-- gRPC API on port 9090
+- REST API on port 8080 (auto-assigned if busy)
+- gRPC API on port 9090 (auto-assigned if busy)
+
+Manage running instances:
+
+```bash
+./bin/dpkms ps                      # list running instances
+./bin/dpkms shutdown                # graceful stop
+```
 
 ### 2. Analyze Content
 

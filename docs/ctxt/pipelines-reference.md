@@ -205,6 +205,64 @@ May be refreshed by the Refresh Plugin when configured.
 
 ---
 
+## url.github.profile
+
+Processes GitHub user or organization profile pages.
+
+**Selector**: URL matches `https://github.com/<username>` (single path segment, no repo subpath)
+
+**Steps**
+
+- url_fetcher
+- content_type_router
+- html_cleaner
+- typedetector
+- textcleaner
+- sectioner
+- tagger
+- entity_extractor
+- entity_resolver
+- embedding
+
+**Outputs**
+
+- profile summary and bio
+- organization or user type
+- tags derived from profile content
+- entity links
+
+---
+
+## url.github.starred
+
+Processes items from a GitHub starred repository list.
+
+**Selector**: Content test — payload contains `github.com` and `Source: starred` (e.g. from `ctxt import github`)
+
+**Priority**: `-1` (runs before generic text-length selectors)
+
+**Steps**
+
+- url_fetcher
+- content_type_router
+- html_cleaner
+- typedetector
+- textcleaner
+- sectioner
+- tagger
+- entity_extractor
+- entity_resolver
+- dependency_enricher
+- embedding
+
+**Outputs**
+
+- repository metadata
+- dependency graph entries
+- engineering tags
+
+---
+
 ## url.repo
 
 Processes repositories from GitHub/GitLab/etc.
@@ -459,6 +517,8 @@ Custom pipelines follow all standard rules:
 | text.short | ✓ | ✓ | (opt.) | – | ✓ | ✓ | 1-step |
 | text.long | ✓✓ | ✓✓ | ✓ | ✓ | ✓ | ✓ | multi-step |
 | url.generic | ✓ | ✓ | (opt.) | ✓ | ✓ | ✓ | multi-step |
+| url.github.profile | ✓ | ✓ | – | – | ✓ | ✓ | multi-step |
+| url.github.starred | ✓ | ✓✓ | – | ✓ | ✓ | ✓ | multi-step |
 | url.repo | ✓✓ | ✓✓ | ✓ | ✓ | ✓ | ✓ | multi-step |
 | image.landing | ✓ | ✓✓ | ✓✓ | ✓ | ✓ | ✓ | multi-step |
 | image.ui | ✓ | ✓✓ | ✓ | ✓ | ✓ | ✓ | multi-step |

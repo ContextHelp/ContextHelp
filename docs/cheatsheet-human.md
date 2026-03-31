@@ -8,11 +8,34 @@ Quick reference for daily capture. Scannable in 30 seconds.
 
 ```bash
 dpkms serve                          # start worker + REST/gRPC (keep running)
+dpkms serve --daemon                 # detach from terminal (background daemon)
+dpkms serve --name work              # named instance for multi-instance setups
 ctxt version                         # verify client is connected
 curl http://127.0.0.1:8080/health    # optional health probe
 ```
 
 Config: `~/.config/contexthelp/config.yaml`
+
+### Multiple instances
+
+```bash
+dpkms serve --name work    --config ~/.config/contexthelp/work.yaml
+dpkms serve --name personal --config ~/.config/contexthelp/personal.yaml --daemon
+dpkms ps                             # NAME  PID  PORT  GRPC  DB  UPTIME
+ctxt instance use work               # persist active instance
+ctxt instance list                   # * marks current
+ctxt --instance personal stats       # per-call override
+```
+
+### Manage running instances
+
+```bash
+dpkms ps                             # list all running instances
+dpkms shutdown                       # stop default instance (graceful drain)
+dpkms stop --port 8081               # stop instance on port 8081
+dpkms reboot                         # restart default instance (drain+exit; re-launch manually)
+dpkms reboot --port 8081             # restart specific instance
+```
 
 ---
 
@@ -156,13 +179,25 @@ ctxt make draft   --tag blog,launch --output-file post.md
 
 ---
 
+## At-a-glance Stats
+
+```bash
+ctxt stats                           # object counts, job states, feeds, profiles
+ctxt stats --output json             # machine-readable snapshot
+ctxt stats --watch                   # live refresh every 3s (Ctrl-C to exit)
+```
+
+---
+
 ## Common Tips and Failure Modes
 
 | Symptom | Fix |
 |---------|-----|
-| Jobs stuck on `pending` | Confirm `dpkms serve` is running |
+| Jobs stuck on `pending` | Confirm `dpkms serve` is running; check `ctxt instance current` |
+| Stats from wrong DB | `ctxt instance use <name>` or `ctxt --instance <name> stats` |
 | Object missing expected tags | Re-ingest with `--hints` and `--mentions` |
 | Wrong type detected | Set `--type` explicitly |
 | Captured object needs specific pipeline | Add `--pipeline text.long` (or matching name) |
 | Verify what was captured | `ctxt open <id> --output json` |
 | Feed not updating | Use `--fetch-new` flag when analyzing the feed URL |
+| Server won't stop | `dpkms shutdown --port <port>` or `dpkms ps` to find the right port |

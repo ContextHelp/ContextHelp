@@ -8,9 +8,20 @@ Scannable in 30 seconds.
 ## Prerequisites
 
 ```bash
-dpkms serve                          # REST :8080, gRPC :9090, background worker
+dpkms serve --name work --daemon     # REST :8080, gRPC :9090, detached daemon
 curl http://127.0.0.1:8080/health    # → {"status":"ok"}
 ctxt version                         # verify client
+
+# Multiple instances: target by name or port
+dpkms ps                             # list running instances (PID/PORT/GRPC/DB/UPTIME)
+ctxt instance use work               # persist selection
+ctxt --instance work stats           # per-call (overrides state file)
+CTXT_INSTANCE=work ctxt stats        # env var (same precedence as flag)
+
+# Lifecycle management
+dpkms shutdown                       # graceful stop (drains in-flight jobs)
+dpkms shutdown --port 8081           # stop specific instance
+dpkms reboot                         # SIGHUP drain+exit (caller must re-launch)
 ```
 
 ---
@@ -186,11 +197,22 @@ Save artifact path **and** the source object IDs used — required for audit rep
 
 ---
 
+## System Stats
+
+```bash
+ctxt stats                           # objects, jobs, entities, feeds, profiles, reminders
+ctxt stats --output json             # machine-readable (embed in monitoring workflows)
+ctxt stats --watch                   # live 3s refresh
+```
+
+---
+
 ## Error Handling
 
 | Condition | Handling |
 |-----------|----------|
 | Job stays `pending` | Check `dpkms serve` is running; `ctxt job list --state running` |
+| Wrong instance targeted | `ctxt instance current`; use `--instance <name>` or `ctxt instance use` |
 | Job `failed` | `ctxt job log <id>` → fix input → `ctxt job retry <id>` |
 | RSQL returns empty | Remove one clause at a time; verify with `ctxt list --type <t>` |
 | Registry latency | Separate local-first and federated runs in agent policy |

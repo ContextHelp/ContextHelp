@@ -377,6 +377,47 @@ server:
 
 ---
 
+# Federation Configuration
+
+Peer replication between dPKMS instances.
+
+### Outbound peers (`federations`)
+
+Each entry describes one remote dPKMS instance to push to or sync with.
+
+```yaml
+federations:
+  - name: home-server
+    url: https://home.example.com:8080
+    token: ${DPKMS_FED_TOKEN_HOME}
+    sync_mode: async
+    interval: 5m
+
+  - name: local-replica
+    url: file:///mnt/backup/dpkms.db
+    sync_mode: inline
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Unique local identifier |
+| `url` | string | Remote HTTP endpoint or `file://` path |
+| `token` | string | Bearer token sent to the remote instance |
+| `sync_mode` | string | `async` (scheduled) or `inline` (immediate) |
+| `interval` | duration | How often to sync (`async` mode only) |
+
+### Inbound auth (`federation`)
+
+```yaml
+federation:
+  token: ${DPKMS_FEDERATION_ACCEPT_TOKEN}
+```
+
+Set `token` to require a Bearer token on incoming push requests.
+Empty = accept any token (use only in trusted network environments).
+
+---
+
 # I18N / L10N Configuration
 
 Localization and translation settings.

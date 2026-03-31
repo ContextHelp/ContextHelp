@@ -71,6 +71,8 @@ go build -o dpkms cmd/dpkms/main.go
 | `ctxt edit` | Modify knowledge object metadata |
 | `ctxt profile` | Manage focus profiles |
 | `ctxt make` | Generate compositions (briefs, plans) |
+| `ctxt stats` | Live at-a-glance system summary |
+| `ctxt instance` | Multi-instance targeting (use, list, current) |
 | `ctxt config` | Configuration operations |
 | `ctxt registry` | Manage registries |
 | `ctxt entity` | Query and inspect entities |
@@ -82,6 +84,9 @@ go build -o dpkms cmd/dpkms/main.go
 | Command | Purpose |
 |--------|---------|
 | `dpkms serve` | Start background worker + REST/gRPC APIs |
+| `dpkms ps` | List all running dpkms instances |
+| `dpkms shutdown` | Gracefully stop a running instance (alias: `stop`) |
+| `dpkms reboot` | Gracefully restart a running instance (SIGHUP) |
 | `dpkms housekeeping` | Database maintenance and optimization |
 
 ### Version and Verbose Flags
@@ -417,6 +422,7 @@ Start REST API, gRPC API, and the background job worker.
 
 ```bash
 dpkms serve <options>
+# aliases: dpkms start
 ```
 
 ### Options
@@ -424,11 +430,71 @@ dpkms serve <options>
 | Flag | Description |
 |------|-------------|
 | `--port <number>` | HTTP port (default: 8080) |
-| `--grpc-port <number>` | gRPC port (default: 9090) |
-| `--profile <name>` | Default focus profile |
+| `--grpc-port <number>` | gRPC port (default: 9090; auto-assigned if busy) |
+| `--name <string>` | Instance name for multi-instance targeting |
+| `--daemon` | Detach from terminal (background daemon) |
+| `--profile <name>` | Default focus profile (interactive picker if unset and multiple exist) |
 | `--public` | Allow remote connections |
 | `--config <path>` | Custom config file |
 | `--workers <n>` | Number of worker threads |
+| `--dev` | Enable CORS for Vite dev server (localhost:5173) |
+| `--reminder-interval <duration>` | How often to check for due reminders (default: 1m) |
+
+### Notes
+
+- gRPC and cookie-bridge ports are auto-assigned if the preferred port is busy.
+- `--daemon` re-execs the process detached from the terminal; stdio is redirected to `/dev/null`.
+- A pidfile is written to `$XDG_DATA_HOME/contexthelp/run/<port>.pid` on start and removed on clean shutdown.
+- Stale pidfiles (from crashes) are cleaned up automatically by `dpkms ps`.
+- On startup, stale/interrupted jobs are reset to `pending` for retry.
+- SIGHUP triggers graceful drain + exit (for use with process supervisors or `dpkms reboot`).
+
+---
+
+## `dpkms ps`
+
+List all running dpkms instances on this machine.
+
+```bash
+dpkms ps [--output json]
+```
+
+Scans `$XDG_DATA_HOME/contexthelp/run/` for pidfiles, validates each process is alive, and removes stale entries automatically.
+
+Output columns: `PID  PORT  GRPC  DB  UPTIME`
+
+---
+
+## `dpkms shutdown`
+
+Gracefully stop a running dpkms instance (alias: `dpkms stop`).
+
+```bash
+dpkms shutdown [--port <number>]
+dpkms stop     [--port <number>]
+```
+
+Sends SIGTERM to the target instance. The instance drains in-flight jobs, closes all servers, and exits.
+
+| Flag | Description |
+|------|-------------|
+| `--port <number>` | Port of the instance to stop (default: server-url port) |
+
+---
+
+## `dpkms reboot`
+
+Gracefully restart a running dpkms instance.
+
+```bash
+dpkms reboot [--port <number>]
+```
+
+Sends SIGHUP. The instance drains in-flight jobs and exits. The caller (or process supervisor) is responsible for re-launching `dpkms serve`.
+
+| Flag | Description |
+|------|-------------|
+| `--port <number>` | Port of the instance to restart (default: server-url port) |
 
 ---
 
@@ -444,6 +510,36 @@ dpkms housekeeping reindex
 dpkms housekeeping compact
 dpkms housekeeping prune --before <ISO>
 ```
+
+---
+
+## `ctxt stats`
+
+Live at-a-glance system summary: knowledge objects (by type), jobs (by status), entities, feeds, profiles, pending reminders, and resurfacing candidates.
+
+```bash
+ctxt stats
+ctxt stats --output json
+ctxt stats --watch               # re-print every 3s; Ctrl-C to exit
+```
+
+| Flag | Description |
+|------|-------------|
+| `--watch` | Continuous refresh every 3 seconds |
+| `--output json` | JSON snapshot (suitable for monitoring scripts) |
+
+### JSON fields
+
+| Field | Description |
+|-------|-------------|
+| `knowledge_objects` | Total object count |
+| `objects_by_type` | Map of type → count |
+| `jobs.total/pending/running/completed/failed` | Job counts by state |
+| `entities` | Total entity count |
+| `feeds` / `feeds_active` | Total and active feed count |
+| `profiles` / `default_profile` | Profile count and active default |
+| `reminders_pending` | Due or upcoming reminder count |
+| `resurfacing_candidates` | Objects queued for resurfacing |
 
 ---
 
