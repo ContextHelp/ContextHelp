@@ -168,6 +168,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 10. Init worker pool.
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
 
+	// 10b. Crash recovery: reset any jobs left in "running" state from a
+	// previous crash back to "pending" so they are picked up immediately.
+	if n, err := queue.RecoverStale(context.Background(), 0); err != nil {
+		return fmt.Errorf("crash recovery: %w", err)
+	} else if n > 0 {
+		fmt.Printf("Crash recovery: reset %d stale job(s) to pending\n", n)
+	}
+
 	// 11. Start everything via errgroup.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
