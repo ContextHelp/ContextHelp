@@ -170,9 +170,18 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 10. Init worker pool.
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
 
-	// 10b. Write pidfile so dpkms ps can discover this instance.
+	// 10b. Bind HTTP port early so port conflicts fail before we write the
+	// pidfile or start any background goroutines.
+	httpLn, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listen: %w", err)
+	}
+
+	// 10c. Write pidfile so dpkms ps can discover this instance.
+	// Deferred removal covers both clean shutdown and error paths.
 	runDir, err := config.RunDir()
 	if err != nil {
+		httpLn.Close()
 		return fmt.Errorf("run dir: %w", err)
 	}
 	if err := pidfile.Write(runDir, pidfile.Info{
@@ -185,8 +194,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 		// Non-fatal: ps won't show this instance but serve still works.
 		fmt.Fprintf(os.Stderr, "warning: could not write pidfile: %v\n", err)
 	}
+	defer pidfile.Remove(runDir, port)
 
-	// 10c. Crash recovery: reset any jobs left in "running" state from a
+	// 10d. Crash recovery: reset any jobs left in "running" state from a
 	// previous crash back to "pending" so they are picked up immediately.
 	if n, err := queue.RecoverStale(context.Background(), 0); err != nil {
 		return fmt.Errorf("crash recovery: %w", err)
@@ -200,14 +210,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	// HTTP server.
+	// HTTP server — listener already bound above.
 	g.Go(func() error {
-		ln, err := net.Listen("tcp", addr)
-		if err != nil {
-			return fmt.Errorf("listen: %w", err)
-		}
 		fmt.Printf("HTTP server listening on %s\n", addr)
-		if err := httpSrv.Serve(ln); err != nil && err != gohttp.ErrServerClosed {
+		if err := httpSrv.Serve(httpLn); err != nil && err != gohttp.ErrServerClosed {
 			return err
 		}
 		return nil
@@ -294,9 +300,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		case <-ctx.Done():
 			return nil
 		}
-
-		// Remove pidfile before exit/restart.
-		pidfile.Remove(runDir, port)
 
 		// Stop accepting new jobs and requests.
 		cancel()
