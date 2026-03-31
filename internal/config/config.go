@@ -110,6 +110,16 @@ type Config struct {
 
 	// Federations lists remote dPKMS instances to sync with.
 	Federations []FederationEntry `mapstructure:"federations" yaml:"federations"`
+
+	// Federation holds server-side federation settings (receive-side).
+	Federation FederationConfig `mapstructure:"federation" yaml:"federation"`
+}
+
+// FederationConfig holds server-side (receive-side) federation settings.
+type FederationConfig struct {
+	// Token is the expected Bearer token for incoming push requests.
+	// Empty = no auth check; any token accepted.
+	Token string `mapstructure:"token" yaml:"token"`
 }
 
 // FederationEntry describes one remote dPKMS instance to federate with.

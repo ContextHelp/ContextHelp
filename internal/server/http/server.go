@@ -159,6 +159,9 @@ func NewRouter(svc *service.Service, devCORS bool, mgr *watcher.Manager) chi.Rou
 		// Search history (US-0055)
 		r.Get("/search-history", ListSearchHistory(svc))
 		r.Delete("/search-history", ClearSearchHistory(svc))
+
+		// Federation push (Phase 2)
+		r.Post("/federation/push", FederationPush(svc))
 	})
 
 	return r
