@@ -709,13 +709,13 @@ export CH_AUDIT_LOG=/var/log/ctxt/audit.log
 **Review audit logs:**
 ```bash
 # View recent entries
-ctxt audit logs --tail 100
+ctxt audit list --limit 100
 
-# Filter by event type
-ctxt audit logs --type auth --since 24h
+# Filter by event type and time window
+ctxt audit list --event-type auth --since 24h
 
 # Export for analysis
-ctxt audit export --format json --output audit-2024-01.json
+ctxt audit export --format json > audit-2024-01.json
 ```
 
 ### Secret Scanning
@@ -744,11 +744,14 @@ trufflehog git file://. --json > trufflehog-report.json
 
 **Configuration validation:**
 ```bash
-# Check for plaintext secrets in config
-ctxt config validate --check-secrets
+# Validate config structure
+ctxt config validate
 
-# Scan all config files
+# Lint for common issues
 ctxt config lint
+
+# Check for plaintext secrets — use gitleaks on config files:
+gitleaks detect --source ~/.config/contexthelp/ --no-git --verbose
 ```
 
 ---
@@ -781,8 +784,11 @@ export OPENAI_API_KEY_NEW="sk-proj-new..."
 curl https://api.openai.com/v1/models \
   -H "Authorization: Bearer $OPENAI_API_KEY_NEW"
 
-# 3. Update configuration
-ctxt config set ai_providers.openai.key "${OPENAI_API_KEY_NEW}"
+# 3. Update configuration — edit config file or update env var
+# Option A: edit config.yaml directly
+$EDITOR ~/.config/contexthelp/config.yaml
+# Option B: set env var (overrides config)
+export OPENAI_API_KEY="${OPENAI_API_KEY_NEW}"
 
 # 4. Restart services
 systemctl restart dpkms
@@ -906,8 +912,8 @@ git push --force --tags
 - [ ] Verify `.env` is in `.gitignore`
 - [ ] Set file permissions: `chmod 600 .env`
 - [ ] Use `${VAR_NAME}` syntax in `config.yaml`
-- [ ] Test configuration: `ctxt config validate`
-- [ ] Enable encryption (when available)
+- [ ] Validate configuration: `ctxt config validate`
+- [ ] Enable OS-level disk encryption (FileVault / LUKS / BitLocker) until ADR-019 ships
 
 ### Development Workflow
 
@@ -938,7 +944,7 @@ git push --force --tags
 - [ ] Rotate API keys quarterly
 - [ ] Review access logs monthly
 - [ ] Update dependencies regularly
-- [ ] Scan for vulnerabilities: `ctxt security scan`
+- [ ] Scan for vulnerabilities: `govulncheck ./...` (Go) / `trivy fs .` (container)
 - [ ] Test backup restoration
 - [ ] Review and update security policies
 - [ ] Conduct security training for team

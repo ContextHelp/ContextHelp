@@ -28,15 +28,18 @@ External egress only occurs when **explicitly configured**:
 - Registry sync — opt-in via `registries.*`
 - Remote dPKMS backend (Postgres, S3) — opt-in via `storage.type`
 
-Strict offline mode blocks all egress unconditionally:
+Strict offline mode blocks all egress unconditionally. Use the `--offline` flag on
+any command, or set the env var permanently:
 
 ```
-ctxt config set offline true
-# or
+# Per-invocation:
+ctxt --offline find "query"
+
+# Persistent (add to shell profile):
 export CTXT_OFFLINE=true
 ```
 
-See also: sprint 007 task 1.3 (`ctxt config --offline`) for hard-blocking implementation.
+See also: sprint 007 task 1.3 for a hard-blocking config option (not yet shipped).
 
 For multi-region or sovereign-cloud deployments that use a remote backend, configure
 the backend to remain within the required jurisdiction and disable AI providers that
@@ -76,31 +79,33 @@ retention:
   pipeline_logs_days: 30
 ```
 
-A background sweep runs nightly; force a run:
+A background sweep runs nightly as part of the dpkms job worker.
+Manual sweep is not yet exposed as a CLI command; to trigger expiry processing
+restart the server — it runs the sweep on startup — or use the dev reindex command:
 
 ```
-ctxt maintenance sweep --dry-run
-ctxt maintenance sweep
+# Reindex (also prunes stale vectors); requires dpkms running
+ctxt dev reindex-vectors
 ```
 
 ### Minimisation guidance
 
 - Do not ingest documents containing bulk PII unless the object store is
   encrypted at rest (`security.encryption.enabled: true`).
-- Use `ctxt object tag <id> pii:true` to mark objects for expedited review.
+- Use `ctxt edit --id <id>` to add a `pii:true` hint to mark objects for expedited review.
 - Scope pipeline outputs to exclude PII fields before storing enrichment results.
 
 ---
 
 ## Right to Erasure
 
-ctxt supports GDPR Art. 17 / CCPA right-to-delete via the `ctxt object delete`
+ctxt supports GDPR Art. 17 / CCPA right-to-delete via the `ctxt delete`
 command and its bulk variants.
 
 ### Single-object deletion
 
 ```
-ctxt object delete <id>
+ctxt delete --id <id>
 ```
 
 Cascade effects:
@@ -110,21 +115,30 @@ Cascade effects:
 - Removes mention records referencing the object
 - Does NOT remove audit log entries (immutable by design)
 
-### Bulk deletion by date range
+### Bulk deletion
 
 ```
-# Preview what would be deleted
-ctxt object delete --all --before 2025-01-01 --dry-run
+# Delete all objects (confirmation prompt)
+ctxt delete --all
 
-# Execute deletion
-ctxt object delete --all --before 2025-01-01
+# Skip confirmation
+ctxt delete --all --yes
 
-# Scope to a namespace
-ctxt object delete --all --before 2025-01-01 --namespace personal
+# Delete by tag
+ctxt delete --tag temporary
+
+# Delete by mention
+ctxt delete --mention @project.archived
 ```
 
-`--before` accepts ISO 8601 dates (`YYYY-MM-DD`) or RFC 3339 timestamps.
-The command deletes objects whose `created_at` is strictly before the given date.
+> **Note:** `--before <date>` date-range bulk deletion is not yet implemented in the
+> shipped `ctxt delete` command. As a workaround, list objects with `ctxt list`,
+> filter by date in a script, then delete by ID in a loop:
+>
+> ```bash
+> ctxt list --output json | jq -r '.[] | select(.created_at < "2025-01-01") | .id' \
+>   | xargs -I{} ctxt delete --id {} --yes
+> ```
 
 ### Cascade effects summary
 
@@ -143,26 +157,28 @@ The command deletes objects whose `created_at` is strictly before the given date
 After a deletion run, confirm with:
 
 ```
-ctxt object list --before 2025-01-01 --count
-# Should return 0
+ctxt list --output json | jq 'length'
+# Should return 0 for the relevant subset
 ```
 
 For regulated environments, export the audit log entry as evidence:
 
 ```
-ctxt audit export --event object.delete --since 2025-01-01 --format json
+ctxt audit export --event-type object.delete --since 2025-01-01 --format json
 ```
 
 ### Full database wipe
 
-To destroy all data (unrecoverable):
+`ctxt db drop` is not yet implemented. To destroy all data (unrecoverable):
 
+```bash
+# Stop the dpkms server first, then remove all data files:
+rm ~/.local/share/contexthelp/db.sqlite
+rm -rf ~/.local/share/contexthelp/vecs/
+rm -rf ~/.local/share/contexthelp/plugins/
+# Optionally remove audit log too (default: preserved):
+# rm ~/.local/share/contexthelp/audit.log
 ```
-ctxt db drop --confirm
-```
-
-This removes the SQLite file, the vector store, and the plugin data directories.
-The audit log is preserved unless `--include-audit` is passed.
 
 ---
 

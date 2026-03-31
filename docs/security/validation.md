@@ -437,18 +437,22 @@ func TestPathTraversal(t *testing.T) {
 ### Validation CLI
 
 ```bash
-# Test secret detection
-ctxt security test-pattern "sk-proj-abc123"
-
-# Validate configuration
+# Validate configuration structure
 ctxt config validate
 
-# Scan file for secrets
-ctxt security scan-file config.yaml
+# Lint for common issues
+ctxt config lint
 
-# Scan directory
-ctxt security scan-dir ~/.config/contexthelp/
+# Scan a file for secrets — use gitleaks (external tool):
+gitleaks detect --source ~/.config/contexthelp/ --no-git --verbose --redact
+
+# Scan entire repo for committed secrets:
+gitleaks detect --verbose --redact
 ```
+
+> **Note:** `ctxt security test-pattern`, `ctxt security scan-file`, and
+> `ctxt security scan-dir` are not implemented in the current release.
+> Use `gitleaks` or `trufflehog` for secret scanning.
 
 ---
 

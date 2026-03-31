@@ -324,12 +324,16 @@ func TestSanitization(t *testing.T) {
 ### Verify Sanitization
 
 ```bash
-# Check logs for secrets
-ctxt security verify-logs --show-unredacted
+# Check log file directly for any unredacted patterns (using grep):
+grep -E "sk-proj-|sk-ant-|ghp_|AKIA" ~/.local/share/contexthelp/audit.log \
+  && echo "WARNING: possible unredacted secret" || echo "clean"
 
-# Scan specific log file
-ctxt security scan-logs /var/log/contexthelp/app.log
+# Or use gitleaks on the log file:
+gitleaks detect --source ~/.local/share/contexthelp/ --no-git --verbose --redact
 ```
+
+> **Note:** `ctxt security verify-logs` and `ctxt security scan-logs` are not
+> implemented in the current release.
 
 ---
 
@@ -410,17 +414,17 @@ If secrets are not being redacted:
 
 1. Check sanitization enabled:
    ```bash
-   ctxt config get security.logging.sanitize
+   ctxt config show | grep -A5 "logging:"
    ```
 
-2. Verify pattern matches:
+2. Verify the pattern is in the detector list:
    ```bash
-   ctxt security test-pattern "sk-proj-abc123"
+   ctxt detector list
    ```
 
-3. Check log level configuration:
+3. Check your config for sanitize settings:
    ```bash
-   ctxt config get security.logging.sanitize_levels
+   ctxt config validate
    ```
 
 ---
