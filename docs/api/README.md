@@ -23,11 +23,12 @@ This directory contains documentation for external APIs — the programmatic int
 
 Both APIs are served by **`dpkms serve`** and provide access to both **ctxt** (intelligence) and **dPKMS** (substrate) capabilities:
 
-- **Input Layer** - Ingestion endpoints (`POST /analyze`, `Ingest()`)
-- **Query Layer** - Search and retrieval (`GET /objects`, `Search()`)
-- **Composition Layer** - Brief/plan generation (`POST /compose`, `Compose()`)
-- **Management Layer** - Jobs, profiles, registries (`GET /jobs`, `GetJob()`)
-- **Entity Layer** - Entity resolution and graph navigation (`GET /entities`, `GetEntity()`)
+- **Input Layer** - Ingestion endpoints (`POST /analyze`, `Analyze()`) - **Shipped**
+- **Query Layer** - Search and retrieval (`GET /objects`, `Search()`) - **Shipped**
+- **Entity Layer** - Entity resolution and graph navigation (`GET /entities`, `GetEntity()`) - **Shipped**
+- **Management Layer** - Jobs, registries (`GET /jobs`, `ListJobs()`) - **Partial (Jobs Shipped)**
+- **Composition Layer** - Brief/plan generation (`POST /compose`, `Compose()`) - **Planned**
+- **Profile Layer** - Manage focus profiles (`GET /profiles`) - **Planned**
 
 ## Common Patterns
 

@@ -30,38 +30,30 @@ Plugins MAY define additional RPC services under their own namespaces without mo
 
 The gRPC surface area is divided into logical services:
 
-| Service | Responsibility |
-|--------|----------------|
-| `AnalyzeService` | Ingestion via job-based pipelines |
-| `JobService` | Query, retry, manage job lifecycle |
-| `ObjectService` | Search, list, update, delete knowledge objects |
-| `ProfileService` | Manage focus profiles |
-| `CompositionService` | Generate briefs, plans, summaries, drafts |
-| `RegistryService` | Discover registries and capabilities |
-| `EntityService` | Resolve entities, list mentions, navigate backlinks |
-| `SuggestionService` | Tag and hint suggestions (optional) |
-| `NodeAdminService` (optional) | Node enrollment and admin operations (used by context.help cloud) |
-| **`PluginService` (reserved)** | Plugin-defined RPCs mounted dynamically |
-
-Plugins MAY register additional RPC services under the namespace:
-
-```
-contexthelp.plugins.<pluginName>.v1
-```
-
-These services do not require any modification to core API files.
+| Service | Responsibility | Status |
+|--------|----------------|--------|
+| `AnalyzeService` | Ingestion via job-based pipelines | **Shipped** |
+| `JobService` | Query, retry, manage job lifecycle | **Shipped** |
+| `QueryService` | Search, list, and retrieve knowledge objects | **Shipped** |
+| `EntityService` | Resolve entities, list mentions, navigate backlinks | **Shipped** |
+| `ProfileService` | Manage focus profiles | Planned |
+| `CompositionService` | Generate briefs, plans, summaries, drafts | Planned |
+| `RegistryService` | Discover registries and capabilities | Planned |
+| `SuggestionService` | Tag and hint suggestions | Planned |
+| `NodeAdminService` | Node enrollment and admin operations | Planned |
+| **`PluginService`** | Plugin-defined RPCs mounted dynamically | Experimental |
 
 ```mermaid
 graph LR
   A[Clients<br/>UIs, Agents, Plugins] --> B[gRPC Endpoint]
   B --> C[AnalyzeService]
   B --> D[JobService]
-  B --> E[ObjectService]
-  B --> F[ProfileService]
-  B --> G[CompositionService]
-  B --> H[RegistryService]
+  B --> E[QueryService]
+  B --> F[ProfileService (Planned)]
+  B --> G[CompositionService (Planned)]
+  B --> H[RegistryService (Planned)]
   B --> I2[EntityService]
-  B --> J[SuggestionService]
+  B --> J[SuggestionService (Planned)]
   B --> P[Plugin Services<br/>Dynamic, per-plugin]
 
   E --> K[(Local Storage)]
