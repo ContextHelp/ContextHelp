@@ -100,6 +100,10 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 		UpdatedAt:  now,
 	}
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
+		// Compensate: revert status if enqueueing fails.
+		obj.Status = "inbox"
+		obj.UpdatedAt = time.Now().Truncate(time.Second)
+		_ = s.Store.Objects().Update(ctx, obj)
 		return "", fmt.Errorf("triage inbox enqueue: %w", err)
 	}
 
