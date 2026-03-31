@@ -118,7 +118,7 @@ tasks:
   test:integration:
     desc: Run integration tests
     cmds:
-      - go test {{.BUILD_TAGS}} -v -race -tags=integration ./test/integration/...
+      - go test -tags "fts5,integration" -buildvcs=false -v -race ./test/integration/...
 
   test:e2e:
     desc: Run focused end-to-end integration scenarios
@@ -128,7 +128,7 @@ tasks:
   test:smoke:
     desc: Run binary smoke tests
     cmds:
-      - go test {{.BUILD_TAGS}} -v -tags=smoke ./test/smoke/...
+      - go test -tags "fts5,smoke" -buildvcs=false -v ./test/smoke/...
 
   test:coverage:
     desc: Generate test coverage report
