@@ -30,6 +30,25 @@ DEV_MODE=true
 
 ---
 
+## Instance Routing
+
+### CTXT_INSTANCE
+**Type:** string
+**Default:** *(none)*
+
+Target dpkms instance by name or port for all `ctxt` commands.
+Takes the same precedence as `--instance` flag; overrides the state file
+written by `ctxt instance use`.
+
+```bash
+CTXT_INSTANCE=work ctxt stats
+CTXT_INSTANCE=8081 ctxt find "auth patterns"
+```
+
+Use `ctxt instance use <name>` for a persistent session-level selection instead.
+
+---
+
 ## Logging
 
 ### LOG_LEVEL

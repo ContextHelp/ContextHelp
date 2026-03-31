@@ -429,9 +429,9 @@ dpkms serve <options>
 
 | Flag | Description |
 |------|-------------|
-| `--port <number>` | HTTP port (default: 8080) |
+| `--name <slug>` | Instance name (URI-safe, e.g. `work`); derived from DB basename if omitted. Must be unique across running instances |
+| `--port <number>` | HTTP port (default: 8080; auto-assigns if busy) |
 | `--grpc-port <number>` | gRPC port (default: 9090; auto-assigned if busy) |
-| `--name <string>` | Instance name for multi-instance targeting |
 | `--daemon` | Detach from terminal (background daemon) |
 | `--profile <name>` | Default focus profile (interactive picker if unset and multiple exist) |
 | `--public` | Allow remote connections |
@@ -448,6 +448,14 @@ dpkms serve <options>
 - Stale pidfiles (from crashes) are cleaned up automatically by `dpkms ps`.
 - On startup, stale/interrupted jobs are reset to `pending` for retry.
 - SIGHUP triggers graceful drain + exit (for use with process supervisors or `dpkms reboot`).
+- Starting a second instance with the same `--name` is a fatal error.
+
+### Multiple instances
+
+```bash
+dpkms serve --name work     --config ~/.config/contexthelp/work.yaml
+dpkms serve --name personal --config ~/.config/contexthelp/personal.yaml --port 8081
+```
 
 ---
 
@@ -461,7 +469,7 @@ dpkms ps [--output json]
 
 Scans `$XDG_DATA_HOME/contexthelp/run/` for pidfiles, validates each process is alive, and removes stale entries automatically.
 
-Output columns: `PID  PORT  GRPC  DB  UPTIME`
+Output columns: `NAME  PID  PORT  GRPC  DB  UPTIME` (BROWSER column added when any instance has browser enabled).
 
 ---
 
@@ -553,6 +561,38 @@ ctxt config path
 ctxt config validate
 ctxt config edit
 ```
+
+---
+
+## `ctxt instance`
+
+Select which dpkms instance `ctxt` commands target when multiple instances
+are running. The selection is persisted to
+`$XDG_DATA_HOME/contexthelp/run/current-instance`.
+
+### Commands
+
+```bash
+ctxt instance list              # table of running instances; * marks current
+ctxt instance use <name>        # set current instance by name
+ctxt instance use <port>        # set by port number
+ctxt instance use -             # clear — revert to config storage.path
+ctxt instance current           # print active instance
+```
+
+### Per-call override (not persisted)
+
+```bash
+ctxt --instance work stats
+ctxt --instance personal find "auth patterns"
+CTXT_INSTANCE=work ctxt stats   # env var; same precedence as flag
+```
+
+### Resolution order
+
+1. `--instance` flag / `CTXT_INSTANCE` env var
+2. State file set by `ctxt instance use`
+3. `storage.path` in config (original behaviour)
 
 ---
 
