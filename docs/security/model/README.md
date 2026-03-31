@@ -35,15 +35,19 @@ ContextHelp implements a **local-first, defense-in-depth security model** with:
 
 ## Core Security Guarantees
 
-| Guarantee | Implementation |
-|-----------|---------------|
-| **Local-First** | No external communication by default |
-| **No Auto-Telemetry** | Zero automatic data transmission |
-| **Encrypted Storage** | Optional AES-256-GCM encryption at rest |
-| **Process Isolation** | Sandboxed plugins with capability-based permissions |
-| **Secrets Protection** | Automatic detection and log sanitization |
-| **Schema Validation** | All external inputs validated against strict schemas |
-| **Explicit Configuration** | Remote features require opt-in configuration |
+> **Pre-alpha note:** encryption at rest and API authentication are
+> designed (ADR-019, ADR-023) but not yet shipped. Controls marked
+> ⚠️ below are planned; all others are active.
+
+| Guarantee | Implementation | Status |
+|-----------|---------------|--------|
+| **Local-First** | No external communication by default | ✅ shipped |
+| **No Auto-Telemetry** | Zero automatic data transmission | ✅ shipped |
+| **Encrypted Storage** | Optional AES-256-GCM at rest (SQLCipher) | ⚠️ planned |
+| **Process Isolation** | Sandboxed plugins with capability-based permissions | ⚠️ planned |
+| **Secrets Protection** | Automatic detection and log sanitization | ✅ shipped |
+| **Schema Validation** | All external inputs validated against strict schemas | ✅ shipped |
+| **Explicit Configuration** | Remote features require opt-in configuration | ✅ shipped |
 
 ---
 
@@ -113,13 +117,13 @@ See [boundaries.md](boundaries.md) for detailed boundary definitions.
 
 ## Security Controls
 
-Comprehensive defense-in-depth controls:
+Defense-in-depth controls (⚠️ = designed, not yet shipped):
 
-- **Authentication & Authorization** — JWT tokens, mTLS, session-based auth
-- **Encryption** — AES-256-GCM at rest, TLS 1.2+ in transit
-- **Data Validation** — JSON schema, size limits, type checking
-- **Process Isolation** — Plugin sandboxing, memory/CPU limits
-- **Audit Logging** — Comprehensive event logging with sanitization
+- **Authentication & Authorization** — ⚠️ JWT tokens, mTLS (planned; see ADR-023)
+- **Encryption** — ⚠️ AES-256-GCM at rest (planned); TLS 1.2+ in transit (operator-configured)
+- **Data Validation** — JSON schema, size limits, type checking ✅
+- **Process Isolation** — ⚠️ Plugin sandboxing, memory/CPU limits (planned; see ADR-027)
+- **Audit Logging** — Comprehensive event logging with sanitization ✅
 
 See [controls.md](controls.md) for implementation details.
 

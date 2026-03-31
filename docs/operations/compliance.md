@@ -28,15 +28,18 @@ External egress only occurs when **explicitly configured**:
 - Registry sync — opt-in via `registries.*`
 - Remote dPKMS backend (Postgres, S3) — opt-in via `storage.type`
 
-Strict offline mode blocks all egress unconditionally:
+Strict offline mode blocks all egress unconditionally. Use the `--offline` flag on
+any command, or set the env var permanently:
 
 ```
-ctxt config set offline true
-# or
+# Per-invocation:
+ctxt --offline find "query"
+
+# Persistent (add to shell profile):
 export CTXT_OFFLINE=true
 ```
 
-See also: sprint 007 task 1.3 (`ctxt config --offline`) for hard-blocking implementation.
+See also: sprint 007 task 1.3 for a hard-blocking config option (not yet shipped).
 
 For multi-region or sovereign-cloud deployments that use a remote backend, configure
 the backend to remain within the required jurisdiction and disable AI providers that
@@ -76,31 +79,33 @@ retention:
   pipeline_logs_days: 30
 ```
 
-A background sweep runs nightly; force a run:
+A background sweep runs nightly as part of the dpkms job worker.
+Manual sweep is not yet exposed as a CLI command; to trigger expiry processing
+restart the server — it runs the sweep on startup — or use the dev reindex command:
 
 ```
-ctxt maintenance sweep --dry-run
-ctxt maintenance sweep
+# Reindex (also prunes stale vectors); requires dpkms running
+ctxt dev reindex-vectors
 ```
 
 ### Minimisation guidance
 
 - Do not ingest documents containing bulk PII unless the object store is
   encrypted at rest (`security.encryption.enabled: true`).
-- Use `ctxt object tag <id> pii:true` to mark objects for expedited review.
+- Use `ctxt edit --id <id>` to add a `pii:true` hint to mark objects for expedited review.
 - Scope pipeline outputs to exclude PII fields before storing enrichment results.
 
 ---
 
 ## Right to Erasure
 
-ctxt supports GDPR Art. 17 / CCPA right-to-delete via the `ctxt object delete`
+ctxt supports GDPR Art. 17 / CCPA right-to-delete via the `ctxt delete`
 command and its bulk variants.
 
 ### Single-object deletion
 
 ```
-ctxt object delete <id>
+ctxt delete --id <id>
 ```
 
 Cascade effects:
@@ -110,21 +115,30 @@ Cascade effects:
 - Removes mention records referencing the object
 - Does NOT remove audit log entries (immutable by design)
 
-### Bulk deletion by date range
+### Bulk deletion
 
 ```
-# Preview what would be deleted
-ctxt object delete --all --before 2025-01-01 --dry-run
+# Delete all objects (confirmation prompt)
+ctxt delete --all
 
-# Execute deletion
-ctxt object delete --all --before 2025-01-01
+# Skip confirmation
+ctxt delete --all --yes
 
-# Scope to a namespace
-ctxt object delete --all --before 2025-01-01 --namespace personal
+# Delete by tag
+ctxt delete --tag temporary
+
+# Delete by mention
+ctxt delete --mention @project.archived
 ```
 
-`--before` accepts ISO 8601 dates (`YYYY-MM-DD`) or RFC 3339 timestamps.
-The command deletes objects whose `created_at` is strictly before the given date.
+> **Note:** `--before <date>` date-range bulk deletion is not yet implemented in the
+> shipped `ctxt delete` command. As a workaround, list objects with `ctxt list`,
+> filter by date in a script, then delete by ID in a loop:
+>
+> ```bash
+> ctxt list --output json | jq -r '.[] | select(.created_at < "2025-01-01") | .id' \
+>   | xargs -I{} ctxt delete --id {} --yes
+> ```
 
 ### Cascade effects summary
 
@@ -143,26 +157,28 @@ The command deletes objects whose `created_at` is strictly before the given date
 After a deletion run, confirm with:
 
 ```
-ctxt object list --before 2025-01-01 --count
-# Should return 0
+ctxt list --output json | jq 'length'
+# Should return 0 for the relevant subset
 ```
 
 For regulated environments, export the audit log entry as evidence:
 
 ```
-ctxt audit export --event object.delete --since 2025-01-01 --format json
+ctxt audit export --event-type object.delete --since 2025-01-01 --format json
 ```
 
 ### Full database wipe
 
-To destroy all data (unrecoverable):
+`ctxt db drop` is not yet implemented. To destroy all data (unrecoverable):
 
+```bash
+# Stop the dpkms server first, then remove all data files:
+rm ~/.local/share/contexthelp/db.sqlite
+rm -rf ~/.local/share/contexthelp/vecs/
+rm -rf ~/.local/share/contexthelp/plugins/
+# Optionally remove audit log too (default: preserved):
+# rm ~/.local/share/contexthelp/audit.log
 ```
-ctxt db drop --confirm
-```
-
-This removes the SQLite file, the vector store, and the plugin data directories.
-The audit log is preserved unless `--include-audit` is passed.
 
 ---
 
@@ -171,28 +187,33 @@ The audit log is preserved unless `--include-audit` is passed.
 Mapping of SOC 2 Trust Service Criteria to ctxt implementation controls.
 Reference: AICPA TSC 2017.
 
+> **Pre-alpha status:** auth (ADR-023) and encryption at rest (ADR-019) are designed
+> but not yet shipped. "Partial" = design exists; runtime control not yet active.
+
 | SOC 2 Criterion | Control description | ctxt implementation | Status |
 |-----------------|--------------------|--------------------|--------|
 | CC1.1 — Integrity & ethics | Commitment to security values | Local-first design; no auto-telemetry | Met |
 | CC2.2 — Information communication | Security events communicated | Structured audit log; syslog integration | Met |
 | CC3.2 — Risk assessment | Identify and analyse risks | Threat model in `docs/security/model/threat.md` | Met |
 | CC4.1 — Monitoring | Ongoing control evaluation | `govulncheck` in CI; quarterly audit review | Met |
-| CC5.2 — Control activities | Select/develop controls | Multi-layer defence; automated enforcement | Met |
-| CC6.1 — Logical access (ACL) | Restrict access to authorised users | File permissions 0600; JWT auth; capability-based plugin ACL | Met |
+| CC5.2 — Control activities | Select/develop controls | Multi-layer defence; file perms enforced | Met |
+| CC6.1 — Logical access (ACL) | Restrict access to authorised users | File permissions 0600; localhost-only bind | Partial |
 | CC6.6 — External threats | Protect against external attacks | Localhost-only binding; registry untrusted by default | Met |
-| CC6.7 — Encryption at rest | Protect data from unauthorised access | AES-256-GCM opt-in; Argon2 key derivation | Met |
-| CC7.1 — Detection (signed artefacts) | Detect configuration tampering | GoReleaser signed binaries; HMAC verification (planned) | Partial |
-| CC7.2 — Audit log monitoring | Monitor security events | Append-only audit log; `ctxt audit logs`; syslog | Met |
+| CC6.7 — Encryption at rest | Protect data from unauthorised access | AES-256-GCM planned (ADR-019); not yet active | Partial |
+| CC7.1 — Detection (signed artefacts) | Detect configuration tampering | GPG release signing optional (skipped if secret absent) | Partial |
+| CC7.2 — Audit log monitoring | Monitor security events | Append-only audit log; `ctxt audit list`; syslog | Met |
 | CC7.4 — Incident response | Respond to security events | IR procedures in `docs/SECURITY.md#incident-response` | Met |
 | CC8.1 — Change management | Authorise and test changes | Conventional Commits; PR gate; `govulncheck` | Met |
 | CC9.2 — Third-party risk | Vendor risk management | Dependency assessment process (see below) | Met |
 
 Notes:
 
-- **CC6.7 partial**: Encryption is opt-in; operators handling PII **must** enable it.
-- **CC7.1 partial**: HMAC bundle verification is planned (tracked in
-  `docs/security/model/compliance.md`); signed release binaries are in place via
-  GoReleaser cosign.
+- **CC6.1 partial**: JWT auth and plugin ACL planned (ADR-023, ADR-027); not yet enforced.
+  Current protection: localhost-only bind + OS file permissions.
+- **CC6.7 partial**: Encryption not active; operators handling PII **must** use OS-level
+  disk encryption (FileVault / LUKS / BitLocker) until ADR-019 ships.
+- **CC7.1 partial**: GPG release signing is conditional — skipped when `GPG_PRIVATE_KEY`
+  secret is absent from CI. HMAC bundle verification is also planned.
 
 Full compliance evidence checklist for auditors: `docs/security/model/compliance.md`.
 

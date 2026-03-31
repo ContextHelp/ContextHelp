@@ -480,23 +480,22 @@ func main() {
 
 ### CLI Validation Command
 
-Validate files or directories:
+> **Note:** `ctxt security validate` is not implemented in the current release.
+> Use the shipped `ctxt config validate` for config structure checks, and
+> external tools for secret scanning:
 
 ```bash
-# Check a single file
-ctxt security validate ./config.yaml
+# Validate config structure
+ctxt config validate
 
-# Check directory recursively
-ctxt security validate ./config/ --recursive
+# Validate detector rules
+ctxt detector list
 
-# Show detailed report
-ctxt security validate ./config/ --verbose
+# Scan config directory for secrets — use gitleaks:
+gitleaks detect --source ~/.config/contexthelp/ --no-git --verbose --redact
 
-# Generate JSON report
-ctxt security validate ./config/ --output json > secrets-report.json
-
-# Fail if secrets found
-ctxt security validate ./config/ --fail-on-secret
+# Fail on detected secrets (CI usage):
+gitleaks detect --source . --no-git --exit-code 1
 ```
 
 ## Configuration File Security
@@ -615,24 +614,26 @@ security:
 ```
 
 ```bash
-# View what was redacted
-ctxt logs show --filter "REDACTED"
+# View audit entries that mention redaction
+ctxt audit list --event-type secret.detected
 
-# Show redaction statistics
-ctxt logs stats --filter "REDACTED"
+# Or grep the raw log file:
+grep "REDACTED" ~/.local/share/contexthelp/audit.log | wc -l
 ```
 
-### Log Sanitization Verification Command
+### Log Sanitization Verification
+
+> **Note:** `ctxt security verify-logs` is not implemented in the current release.
+> Use gitleaks or direct grep to verify the audit log:
 
 ```bash
-# Verify logs are sanitized
-ctxt security verify-logs
+# Check audit log for any unredacted patterns:
+grep -E "sk-proj-|sk-ant-|ghp_|AKIA" \
+  ~/.local/share/contexthelp/audit.log \
+  && echo "WARNING: possible unredacted secret" || echo "clean"
 
-# Show detected secrets that were redacted
-ctxt security verify-logs --show-redacted
-
-# Export sanitization report
-ctxt security verify-logs --export pdf > sanitization-report.pdf
+# Full scan via gitleaks:
+gitleaks detect --source ~/.local/share/contexthelp/ --no-git --verbose --redact
 ```
 
 ## Integration Points
@@ -754,7 +755,10 @@ func fetchFromRegistry(token string) error {
 
 1. **Audit logs regularly**: Check for any unredacted secrets
    ```bash
-   ctxt security verify-logs --daily
+   # Daily cron: grep audit log for known secret prefixes
+   grep -E "sk-proj-|sk-ant-|ghp_|AKIA" \
+     ~/.local/share/contexthelp/audit.log && \
+     echo "ALERT: unredacted secret in audit log"
    ```
 
 2. **Use log aggregation**: Ensure centralized logs are also sanitized
@@ -769,8 +773,9 @@ func fetchFromRegistry(token string) error {
 
 3. **Monitor for suspicious patterns**: Watch for repeated redactions
    ```bash
-   # Alert if redactions increase unexpectedly
-   ctxt logs stats --watch
+   # Count redacted entries in audit log:
+   grep -c "REDACTED\|secret.detected" \
+     ~/.local/share/contexthelp/audit.log
    ```
 
 4. **Rotate secrets regularly**: Follow schedule in [Secret Management](./secret-management.md#secret-rotation)
@@ -784,13 +789,15 @@ func fetchFromRegistry(token string) error {
 
 2. **Generate compliance reports**: Document sanitization effectiveness
    ```bash
-   ctxt security compliance-report > compliance-$(date +%Y-%m-%d).md
+   # Export audit log in NDJSON for analysis / evidence:
+   ctxt audit export --format json > compliance-$(date +%Y-%m-%d).ndjson
    ```
 
 3. **Test incident response**: Verify procedures work
    ```bash
-   # Simulate secret exposure
-   ctxt security simulate-exposure --secret-type api_key
+   # Test gitleaks pattern against a fake key string:
+   echo "sk-proj-test-notreal-abc123" | \
+     gitleaks detect --pipe --verbose --redact
    ```
 
 ## Troubleshooting
@@ -801,17 +808,17 @@ func fetchFromRegistry(token string) error {
 
 **Solutions**:
 ```bash
-# Check if detection is enabled
+# Check if detection is enabled (config)
 ctxt config show | grep -A5 "secrets:"
 
-# Test detection directly
-echo "sk-proj-abc123def456" | ctxt security validate -
+# List active detector rules
+ctxt detector list
 
-# Verify pattern is in rules
-ctxt security list-patterns
+# Test detection with gitleaks against a known pattern:
+echo "sk-proj-abc123def456" | gitleaks detect --pipe --verbose
 
-# Add custom pattern if needed
-# Edit config.yaml and add custom pattern
+# Add a custom detector rule via ctxt:
+ctxt detector add --name "my-secret" --pattern "mysvc-[a-z0-9]{32}"
 ```
 
 ### False Positives
@@ -820,15 +827,12 @@ ctxt security list-patterns
 
 **Solutions**:
 ```bash
-# Add to whitelist
-ctxt security whitelist add "my-value"
+# Disable specific detector rule
+ctxt detector disable <id>   # use: ctxt detector list  to get id
 
-# Or edit config manually
+# Or edit config manually:
 vim ~/.config/contexthelp/config.yaml
 # Add to security.secrets.detection.whitelist.exact_matches
-
-# Check whitelist
-ctxt security whitelist list
 ```
 
 ### Logs Not Sanitized
