@@ -359,3 +359,4 @@ web/ui/node_modules/
 # Browser extension build artifacts
 extensions/browser/.output/
 extensions/browser/node_modules/
+.task/
