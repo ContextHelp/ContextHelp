@@ -174,9 +174,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if public {
 		bind = "0.0.0.0"
 	}
+
+	// 9. Auto-assign HTTP port if preferred is busy.
+	port, err = findFreePort(port)
+	if err != nil {
+		return fmt.Errorf("http port: %w", err)
+	}
 	addr := fmt.Sprintf("%s:%d", bind, port)
 
-	// 9. Create HTTP server.
+	// 9a. Create HTTP server.
 	httpSrv := &gohttp.Server{
 		Addr:    addr,
 		Handler: router,
