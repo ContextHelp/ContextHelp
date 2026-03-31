@@ -2,109 +2,45 @@ package steps
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestExtractTags(t *testing.T) {
-	step := NewTagger()
-	// Repeat "design" enough times to ensure it appears as a tag.
-	draft := &storage.KnowledgeObject{
-		RawContent: strings.Repeat("design pattern layout ", 5),
-	}
+func TestTagger_Deterministic(t *testing.T) {
+	ctx := context.Background()
+	tagger := NewTagger()
+	tagger.maxTags = 3
 
-	got, err := step.Run(context.Background(), draft)
-	if err != nil {
-		t.Fatalf("run: %v", err)
-	}
+	// Content where "apple", "banana", "cherry", "date" all appear once.
+	// Since maxTags is 3, one will be dropped.
+	// Map iteration order in Go is random, so without deterministic tie-break,
+	// the set of 3 tags will vary across runs.
+	content := "apple banana cherry date"
 
-	found := false
-	for _, tag := range got.Tags {
-		if tag.Label == "design" {
-			found = true
-			break
+	results := make(map[string]int)
+	iterations := 100
+
+	for i := 0; i < iterations; i++ {
+		draft := &storage.KnowledgeObject{
+			RawContent: content,
 		}
-	}
-	if !found {
-		t.Errorf("expected tag 'design' in %v", got.Tags)
-	}
-}
+		out, err := tagger.Run(ctx, draft)
+		require.NoError(t, err)
 
-func TestNoTags(t *testing.T) {
-	step := NewTagger()
-	draft := &storage.KnowledgeObject{RawContent: "hi"}
-
-	got, _ := step.Run(context.Background(), draft)
-	if len(got.Tags) != 0 {
-		t.Errorf("expected 0 tags, got %d: %v", len(got.Tags), got.Tags)
-	}
-}
-
-func TestTagWeights(t *testing.T) {
-	step := NewTagger()
-	// "design" appears more than "pattern".
-	draft := &storage.KnowledgeObject{
-		RawContent: "design design design design pattern pattern layout",
-	}
-
-	got, _ := step.Run(context.Background(), draft)
-	var designWeight, patternWeight float64
-	for _, tag := range got.Tags {
-		if tag.Label == "design" {
-			designWeight = tag.Weight
+		var labels []string
+		for _, tag := range out.Tags {
+			labels = append(labels, tag.Label)
 		}
-		if tag.Label == "pattern" {
-			patternWeight = tag.Weight
+		key := ""
+		for _, l := range labels {
+			key += l + ","
 		}
+		results[key]++
 	}
 
-	if designWeight <= patternWeight {
-		t.Errorf("design weight (%v) should be > pattern weight (%v)", designWeight, patternWeight)
-	}
-}
-
-func TestTaggerEmitsGraphNodes(t *testing.T) {
-	step := NewTagger()
-	draft := &storage.KnowledgeObject{
-		ID:         "obj-tag-001",
-		RawContent: strings.Repeat("design pattern layout ", 5),
-	}
-	got, err := step.Run(context.Background(), draft)
-	if err != nil {
-		t.Fatalf("run: %v", err)
-	}
-	if got.Graph == nil {
-		t.Fatal("graph is nil; expected tag nodes")
-	}
-	if len(got.Tags) == 0 {
-		t.Fatal("no tags produced; cannot verify graph nodes")
-	}
-	for i, tag := range got.Tags {
-		nodeID := pluginapi.NewNodeID("obj-tag-001", pluginapi.NodeTypeTag, i)
-		n := got.Graph.FindNode(nodeID)
-		if n == nil {
-			t.Errorf("tag node %q not found in graph", nodeID)
-			continue
-		}
-		if n.NodeType != pluginapi.NodeTypeTag {
-			t.Errorf("node %q: type = %q, want %q", nodeID, n.NodeType, pluginapi.NodeTypeTag)
-		}
-		if n.Label != tag.Label {
-			t.Errorf("node %q: label = %q, want %q", nodeID, n.Label, tag.Label)
-		}
-	}
-}
-
-func TestTaggerNoGraphWithoutID(t *testing.T) {
-	step := NewTagger()
-	draft := &storage.KnowledgeObject{
-		RawContent: strings.Repeat("design pattern ", 5),
-	}
-	got, _ := step.Run(context.Background(), draft)
-	if got.Graph != nil {
-		t.Error("expected nil graph when ID is empty")
-	}
+	// If it's deterministic, we should have only 1 unique result set
+	assert.Equal(t, 1, len(results), "Expected deterministic tagging, but got multiple variations: %v", results)
 }

@@ -75,7 +75,10 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 		counts = append(counts, wordCount{w, c})
 	}
 	sort.Slice(counts, func(i, j int) bool {
-		return counts[i].count > counts[j].count
+		if counts[i].count != counts[j].count {
+			return counts[i].count > counts[j].count
+		}
+		return counts[i].word < counts[j].word
 	})
 
 	limit := t.maxTags
