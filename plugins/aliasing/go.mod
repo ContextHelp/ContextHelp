@@ -21,5 +21,5 @@ require (
 
 replace (
 	github.com/ideacrafterslabs/ctxt => ../..
-	hop.top/uri => /Users/jadb/.w/ideacrafterslabs/uri/hops/main
+	// hop.top/uri is resolved via the repo-root go.work replace directives.
 )
