@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -329,4 +330,85 @@ func TestWorkerPoolNoObjectCreatedOnFailure(t *testing.T) {
 	if count != 0 {
 		t.Errorf("object.created events on failure: got %d, want 0", count)
 	}
+}
+
+// TestEdgeWriteFailureFails verifies that a failed edge write causes the job to
+// be marked failed rather than completed, and that no object.created event is
+// emitted. This is the regression test for T-0206.
+func TestEdgeWriteFailureFails(t *testing.T) {
+	base := storageutil.NewTestDriver(t)
+	driver := &failingEdgeDriver{StorageDriver: base}
+	q := NewQueue(driver.Jobs())
+
+	pipes := pipeline.NewRegistry()
+	pipes.Register("test.mentions", &pipeline.Pipeline{
+		PipelineName: "test.mentions",
+		Steps:        []pipeline.PipelineStep{&mentionStep{}},
+	})
+
+	bus := events.NewLocalBus()
+	var mu sync.Mutex
+	var objectCreatedCount int
+	bus.Subscribe("object.created", func(_ context.Context, _ events.Event) error {
+		mu.Lock()
+		objectCreatedCount++
+		mu.Unlock()
+		return nil
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	job := makeJob("job-edge-fail")
+	job.Pipeline = "test.mentions"
+	q.Enqueue(ctx, job)
+
+	pool := NewWorkerPool(q, pipes, driver, 1, bus, defaultTestJobsCfg())
+
+	go func() {
+		for {
+			got, _ := q.Get(ctx, "job-edge-fail")
+			if got != nil && got.Status == storage.JobFailed {
+				cancel()
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+	pool.Start(ctx)
+
+	time.Sleep(100 * time.Millisecond)
+
+	got, _ := q.Get(context.Background(), "job-edge-fail")
+	if got.Status != storage.JobFailed {
+		t.Errorf("status: got %q, want failed", got.Status)
+	}
+	if got.Error == "" {
+		t.Error("job.Error should be set when edge write fails")
+	}
+
+	mu.Lock()
+	count := objectCreatedCount
+	mu.Unlock()
+	if count != 0 {
+		t.Errorf("object.created events on edge failure: got %d, want 0", count)
+	}
+}
+
+// failingEdgeDriver wraps a real StorageDriver and returns an error on every
+// edge Create call, simulating a persistent storage failure.
+type failingEdgeDriver struct {
+	storage.StorageDriver
+}
+
+func (d *failingEdgeDriver) Edges() storage.EdgeStore {
+	return &failingEdgeStore{EdgeStore: d.StorageDriver.Edges()}
+}
+
+type failingEdgeStore struct {
+	storage.EdgeStore
+}
+
+func (s *failingEdgeStore) Create(_ context.Context, _ *storage.Edge) error {
+	return errors.New("simulated edge write failure")
 }

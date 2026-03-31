@@ -771,3 +771,87 @@ func TestHybridSearchExplain_PopulatesDocumentView(t *testing.T) {
 	assert.NotEmpty(t, r.DocumentView.Sections, "DocumentView.Sections must be populated from graph nodes")
 	assert.Equal(t, "document view test content", r.DocumentView.Sections[0].Content)
 }
+
+// ---------------------------------------------------------------------------
+// T-0209: source-aware DetectInput for automatic pipeline selection
+// ---------------------------------------------------------------------------
+
+// newTestServiceWithDetector returns a service whose registry has an extra
+// detector prepended. The detector maps a fixed source prefix to a pipeline name.
+func newTestServiceWithDetector(t *testing.T, sourcePfx, pipelineName string) *Service {
+	t.Helper()
+	svc := newTestService(t)
+	svc.Pipes.RegisterDetector(pipeline.DetectorFunc(func(in pipeline.DetectInput) (string, error) {
+		if len(in.Source) >= len(sourcePfx) && in.Source[:len(sourcePfx)] == sourcePfx {
+			return pipelineName, nil
+		}
+		return "", pipeline.ErrDelegate
+	}))
+	svc.Pipes.Upsert(pipelineName, &pipeline.Pipeline{PipelineName: pipelineName})
+	return svc
+}
+
+// TestAnalyzeUsesSourceForPipelineDetection verifies that when a file-backed
+// source is present, Analyze passes it to Detect so extension/URL detectors
+// fire correctly. Regression test for T-0209.
+func TestAnalyzeUsesSourceForPipelineDetection(t *testing.T) {
+	svc := newTestServiceWithDetector(t, "/vault/notes/", "watch.file")
+	ctx := context.Background()
+
+	jobID, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content: "some text that would normally resolve to text.short",
+		Type:    "text",
+		Source:  "/vault/notes/meeting.md",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, jobID)
+
+	job, err := svc.GetJob(ctx, jobID)
+	require.NoError(t, err)
+	assert.Equal(t, "watch.file", job.Pipeline,
+		"Analyze must route by source path, not raw content")
+}
+
+// TestEnqueueUsesSourceForPipelineDetection verifies that Enqueue also passes
+// the real source to Detect. Regression test for T-0209.
+func TestEnqueueUsesSourceForPipelineDetection(t *testing.T) {
+	svc := newTestServiceWithDetector(t, "https://example.com/", "url.ingest")
+	ctx := context.Background()
+
+	jobID, err := svc.Enqueue(ctx, AnalyzeRequest{
+		Content: "page body text",
+		Type:    "url",
+		Source:  "https://example.com/article",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, jobID)
+
+	job, err := svc.GetJob(ctx, jobID)
+	require.NoError(t, err)
+	assert.Equal(t, "url.ingest", job.Pipeline,
+		"Enqueue must route by source URL, not raw content")
+}
+
+// TestTriageInboxUsesSourceForPipelineDetection verifies that inbox triage
+// passes the stored object's Source to Detect. Regression test for T-0209.
+func TestTriageInboxUsesSourceForPipelineDetection(t *testing.T) {
+	svc := newTestServiceWithDetector(t, "/drop/", "drop.file")
+	ctx := context.Background()
+
+	// Capture an inbox item with a file source.
+	obj, err := svc.CaptureToInbox(ctx, InboxCaptureRequest{
+		Content: "dropped file content",
+		Type:    "text",
+		Source:  "/drop/report.pdf",
+	})
+	require.NoError(t, err)
+
+	jobID, err := svc.TriageInbox(ctx, obj.ID, TriageRequest{})
+	require.NoError(t, err)
+	require.NotEmpty(t, jobID)
+
+	job, err := svc.GetJob(ctx, jobID)
+	require.NoError(t, err)
+	assert.Equal(t, "drop.file", job.Pipeline,
+		"TriageInbox must route by object.Source, not raw content")
+}

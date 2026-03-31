@@ -111,7 +111,11 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 
 	pipelineName := req.Pipeline
 	if pipelineName == "" {
-		pipelineName = s.Pipes.SelectPipeline(req.Content)
+		pipelineName = s.Pipes.Detect(pipeline.DetectInput{
+			Source:      jobSource,
+			ContentType: req.Type,
+			Sniff:       contentSniff(req.Content),
+		})
 	}
 
 	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).
@@ -332,7 +336,11 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 	now := time.Now().Truncate(time.Second)
 	pipelineName := req.Pipeline
 	if pipelineName == "" {
-		pipelineName = s.Pipes.SelectPipeline(req.Content)
+		pipelineName = s.Pipes.Detect(pipeline.DetectInput{
+			Source:      req.Source,
+			ContentType: req.Type,
+			Sniff:       contentSniff(req.Content),
+		})
 	}
 
 	job := &storage.Job{
@@ -1698,4 +1706,15 @@ func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error
 	}
 
 	return result, nil
+}
+
+// contentSniff returns the first 512 bytes of content as a string, suitable
+// for use as DetectInput.Sniff when building a source-aware pipeline detection
+// request.
+func contentSniff(content string) string {
+	const sniffLen = 512
+	if len(content) <= sniffLen {
+		return content
+	}
+	return content[:sniffLen]
 }
