@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -92,6 +93,9 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
+	// Resolve config file path for inclusion in archive.
+	configPath := resolveConfigPath()
+
 	// Sync: run directly.
 	opts := service.BackupOpts{
 		DBPath:         dbPath,
@@ -99,6 +103,7 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 		IncludeBlobs:   includeBlobs,
 		OutputDir:      outDir,
 		SkipBlobErrors: skipBlobErrors,
+		ConfigPath:     configPath,
 	}
 
 	fmt.Fprintf(os.Stderr, "-> snapshot db...\n")
@@ -114,6 +119,18 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 		result.Duration.Seconds(),
 	)
 	return nil
+}
+
+// resolveConfigPath mirrors the lookup order in config.Load: --config flag,
+// then CTXT_CONFIG env, then default location.
+func resolveConfigPath() string {
+	if cfgFile != "" {
+		return cfgFile
+	}
+	if envPath := os.Getenv(config.EnvConfigPath); envPath != "" {
+		return envPath
+	}
+	return config.GetConfigPath()
 }
 
 func humanBytes(b int64) string {
