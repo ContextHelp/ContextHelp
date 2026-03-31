@@ -410,6 +410,10 @@ type ProfileConfig struct {
 
 // FocusProfile is a named configuration preset for a specific role or project.
 type FocusProfile struct {
+	// Default marks this profile as the server default. At most one profile
+	// may have Default: true; it is equivalent to setting profile.default in
+	// the top-level config. If both are set they must agree.
+	Default bool `mapstructure:"default" yaml:"default,omitempty"`
 	// Description is a human-readable label shown in ctxt profile list.
 	Description string `mapstructure:"description" yaml:"description"`
 	// Tags is the default tag set pre-populated when this profile is active.
@@ -589,6 +593,12 @@ func Load(cfgFile string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	// Sync FocusProfile.Default bool → ProfileConfig.Default string.
+	// A profile entry with Default:true is equivalent to profile.default:<name>.
+	if err := syncProfileDefault(&cfg); err != nil {
+		return nil, err
+	}
+
 	// Run migrations if needed.
 	if cfg.Version < currentSchemaVersion {
 		if migrate(&cfg) {
@@ -601,6 +611,34 @@ func Load(cfgFile string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// syncProfileDefault reconciles FocusProfile.Default bool with
+// ProfileConfig.Default string. Rules:
+//   - At most one FocusProfile may have Default:true.
+//   - If one does, and ProfileConfig.Default is empty, set it.
+//   - If both are set they must agree; conflict is an error.
+func syncProfileDefault(cfg *Config) error {
+	var inlineDefault string
+	for name, p := range cfg.Profile.Profiles {
+		if p.Default {
+			if inlineDefault != "" {
+				return fmt.Errorf("config: profiles %q and %q both have default:true; only one may be default", inlineDefault, name)
+			}
+			inlineDefault = name
+		}
+	}
+	if inlineDefault == "" {
+		return nil
+	}
+	if cfg.Profile.Default == "" {
+		cfg.Profile.Default = inlineDefault
+		return nil
+	}
+	if cfg.Profile.Default != inlineDefault {
+		return fmt.Errorf("config: profile.default %q conflicts with profile %q default:true", cfg.Profile.Default, inlineDefault)
+	}
+	return nil
 }
 
 // migrate applies schema migrations to cfg in-place and returns true if

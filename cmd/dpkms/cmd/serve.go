@@ -6,10 +6,14 @@ import (
 	"net"
 	gohttp "net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"slices"
+	"sort"
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
@@ -47,6 +51,9 @@ Examples:
   # Start with default settings
   dpkms serve
 
+  # Start as a background daemon
+  dpkms serve --daemon
+
   # Start with custom ports
   dpkms serve --port 8080 --grpc-port 9090
 
@@ -73,6 +80,7 @@ func init() {
 	serveCmd.Flags().String("steps-path", "", "path to external steps directory")
 	serveCmd.Flags().Bool("dev", false, "enable CORS for Vite dev server (http://localhost:5173)")
 	serveCmd.Flags().Duration("reminder-interval", time.Minute, "how often to check for due reminders")
+	serveCmd.Flags().Bool("daemon", false, "run as background daemon (detach from terminal)")
 
 	// Bind flags to viper
 	viper.BindPFlag("server.port", serveCmd.Flags().Lookup("port"))
@@ -86,6 +94,16 @@ func init() {
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
+	// --daemon: re-exec self in background, detached from terminal.
+	if daemon, _ := cmd.Flags().GetBool("daemon"); daemon {
+		return daemonize(cmd)
+	}
+
+	// Resolve default profile: flag > config default > inline bool > interactive.
+	if err := resolveDefaultProfile(cmd); err != nil {
+		return err
+	}
+
 	port := viper.GetInt("server.port")
 	grpcPort := viper.GetInt("server.grpc_port")
 	workers := viper.GetInt("server.workers")
@@ -358,4 +376,117 @@ func findFreePort(preferred int) (int, error) {
 	port := ln.Addr().(*net.TCPAddr).Port
 	ln.Close()
 	return port, nil
+}
+
+// daemonize re-executes the current binary in the background without the
+// --daemon flag, redirecting stdin/stdout/stderr to /dev/null, then returns
+// immediately so the calling process (the user's terminal) exits.
+func daemonize(cmd *cobra.Command) error {
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("daemon: resolve executable: %w", err)
+	}
+
+	// Build args: all os.Args except the --daemon flag itself.
+	args := slices.DeleteFunc(os.Args[1:], func(s string) bool {
+		return s == "--daemon" || s == "-daemon"
+	})
+
+	devNull, err := os.Open(os.DevNull)
+	if err != nil {
+		return fmt.Errorf("daemon: open /dev/null: %w", err)
+	}
+	defer devNull.Close()
+
+	c := exec.Command(self, args...)
+	c.Stdin = devNull
+	c.Stdout = devNull
+	c.Stderr = devNull
+	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
+	if err := c.Start(); err != nil {
+		return fmt.Errorf("daemon: start: %w", err)
+	}
+
+	fmt.Printf("dpkms started (pid %d)\n", c.Process.Pid)
+	return nil
+}
+
+// resolveDefaultProfile ensures cfg.Profile.Default is set before the server
+// starts. Priority:
+//  1. --profile flag (already bound to viper "profile.default" in init())
+//  2. profile.default from config file (via cfg.Profile.Default, set by Load())
+//  3. If exactly one profile is defined, use it automatically.
+//  4. If multiple profiles and none flagged as default, prompt the user to pick.
+//
+// Non-interactive contexts (no TTY) fall through without error if no default is
+// set — the server starts with no active profile.
+func resolveDefaultProfile(cmd *cobra.Command) error {
+	// Already set via flag or config?
+	if viper.GetString("profile.default") != "" {
+		return nil
+	}
+
+	profiles := cfg.Profile.Profiles
+	if len(profiles) == 0 {
+		return nil // no profiles defined; nothing to resolve
+	}
+
+	names := make([]string, 0, len(profiles))
+	for name := range profiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	// Single profile: use it automatically.
+	if len(names) == 1 {
+		viper.Set("profile.default", names[0])
+		return nil
+	}
+
+	// Multiple profiles, no default — interactive picker (requires a TTY).
+	if !isTTY() {
+		return nil // headless: start without a default profile
+	}
+
+	// Build huh select options: one per profile + a "(none)" option.
+	opts := make([]huh.Option[string], 0, len(names)+1)
+	for _, name := range names {
+		p := profiles[name]
+		label := name
+		if p.Description != "" {
+			label = name + " — " + p.Description
+		}
+		opts = append(opts, huh.NewOption(label, name))
+	}
+	opts = append(opts, huh.NewOption("(none)", ""))
+
+	var selected string
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("No default profile set. Choose one:").
+				Options(opts...).
+				Value(&selected),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		// User cancelled (Ctrl+C / Esc) — proceed without a profile.
+		return nil
+	}
+
+	if selected != "" {
+		viper.Set("profile.default", selected)
+	}
+	return nil
+}
+
+// isTTY reports whether stdin is an interactive terminal.
+func isTTY() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
 }
