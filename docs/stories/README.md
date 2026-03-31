@@ -215,6 +215,17 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0044** | [implement-registry-adapter-plugin](./plugins/US-0044-implement-registry-adapter-plugin.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators |
 | **US-0045** | [implement-custom-ranking-algorithm](./plugins/US-0045-implement-custom-ranking-algorithm.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators |
 
+### Federation (US-0318 to US-0323)
+
+| ID | Story | System Types | Personas |
+|----|-------|-------------|----------|
+| **US-0318** | [configure-federation-targets](./federation/US-0318-configure-federation-targets.md) | dpkms (self-hosted) | Platform Integrators |
+| **US-0319** | [async-push-local-merged](./federation/US-0319-async-push-local-merged.md) | dpkms (self-hosted) | Knowledge Workers |
+| **US-0320** | [inline-push-during-ingest](./federation/US-0320-inline-push-during-ingest.md) | dpkms (self-hosted) | Platform Integrators |
+| **US-0321** | [multi-instance-lifecycle](./federation/US-0321-multi-instance-lifecycle.md) | dpkms (self-hosted) | Operations |
+| **US-0322** | [backup-and-federation-rebuild](./federation/US-0322-backup-and-federation-rebuild.md) | dpkms (self-hosted) | Operations |
+| **US-0323** | [dag-federation-chain](./federation/US-0323-dag-federation-chain.md) | dpkms (self-hosted) | Platform Integrators |
+
 ---
 
 ## Story Template
@@ -263,6 +274,7 @@ Links to related stories
 - **US-0101 to US-0113** — Pipeline Management
 - **US-0200 to US-0210** — Platform Capture (cookie bridge, social media, academic, OSINT, temporal watch)
 - **US-0300 to US-0317** — Importer Interface and Source Importers
+- **US-0318 to US-0323** — Federation
 
 ---
 
@@ -361,4 +373,4 @@ Importer Stories (US-0300-0317):
 **Platform Capture - Fully Documented (11):**
 - US-0200, US-0201, US-0202, US-0203, US-0204, US-0205, US-0206, US-0207, US-0208, US-0209, US-0210
 
-**Total: 104 stories across 12 categories**
+**Total: 110 stories across 13 categories**

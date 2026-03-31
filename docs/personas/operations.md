@@ -294,6 +294,27 @@ dpkms import < backup-2025-01-18.ndjson
 dpkms export-delta --since 2025-01-17T00:00:00Z > delta.ndjson
 ```
 
+#### Backup + Federation Rebuild
+
+Backup scope: DB file + config.yaml only. No special federation state needed.
+
+```
+# backup a single instance (SQLite)
+cp ~/.local/share/dpkms/<profile>/db.sqlite  backup-<profile>-$(date +%F).sqlite
+cp ~/.config/dpkms/<profile>/config.yaml     backup-<profile>-config.yaml
+
+# restore: copy files back, then start
+cp backup-<profile>-*.sqlite ~/.local/share/dpkms/<profile>/db.sqlite
+cp backup-<profile>-config.yaml ~/.config/dpkms/<profile>/config.yaml
+dpkms start --profile <profile>
+```
+
+- On `dpkms serve` / start: downstream federation DBs rebuild automatically
+- No need to back up downstream DBs; they are derived from source instances
+- Restore one instance → downstream consumers re-sync from watermark 0
+- Config.yaml carries federation targets; restoring it restores topology
+- Ref: US-0322 (backup + rebuild)
+
 #### Reindex (After Schema Changes)
 ```bash
 # Rebuild FTS index (offline safe)
@@ -305,6 +326,43 @@ dpkms reindex --vector
 # Rebuild graph index
 dpkms reindex --graph
 ```
+
+#### Multi-Instance Lifecycle
+
+One instance per profile; each has separate DB, config.yaml, port, pidfile.
+
+```
+# list running instances + their PIDs, ports, profiles
+dpkms ps
+
+# start/stop/reboot a specific instance by profile
+dpkms start  --profile work
+dpkms stop   --profile work
+dpkms reboot --profile work
+```
+
+- `dpkms ps` — shows all running instances; pid, port, profile, uptime
+- `dpkms stop` — graceful shutdown; waits for in-flight jobs
+- `dpkms reboot` — stop + start in sequence; use after config change
+- Pidfile location: `~/.local/share/dpkms/<profile>/dpkms.pid`
+- Port conflicts: assign distinct ports per profile in each config.yaml
+- Ref: US-0321 (multi-instance lifecycle)
+
+#### Federation Health
+
+Watermark table tracks per-source sync progress.
+
+```sql
+-- check lag per federation source
+SELECT source, last_synced_at,
+       strftime('%s','now') - strftime('%s', last_synced_at) AS lag_sec
+FROM   federation_watermarks
+ORDER  BY lag_sec DESC;
+```
+
+- Expected: `lag_sec` < configured interval (e.g. 5m async = < 300)
+- Stale watermark: re-check source reachability; inspect job queue for errors
+- `last_synced_at NULL` → source never synced; check federation config + connectivity
 
 #### Plugin Management
 ```bash
@@ -405,6 +463,10 @@ Operations teams interact with the system through these key stories:
 ### Monitoring & Observability
 - [US-0032](../stories/operations/US-0032-monitor-job-queue-health.md) — Monitor Job Queue Health (queue metrics, latency)
 - [US-0033](../stories/operations/US-0033-debug-failed-enrichment-job.md) — Debug Failed Enrichment Job (troubleshooting)
+
+### Multi-Instance & Federation
+- US-0321 — Multi-instance lifecycle (ps/start/stop/reboot per profile)
+- US-0322 — Backup + federation rebuild (DB + config.yaml; downstream auto-rebuilds)
 
 ### Backup & Migration
 - [US-0034](../stories/operations/US-0034-export-and-backup-all-knowledge.md) — Export and Backup All Knowledge (disaster recovery)

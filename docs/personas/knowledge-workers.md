@@ -201,6 +201,16 @@ ctxt make plan --intent "implement mobile-first redesign"
 - Search can include or exclude registry results per query
 - Conflict resolution: user can choose canonical source when duplicates appear
 
+### Federation: Merged Instance Access
+- Query merged/federated DB: run `dpkms serve` against `merged.sqlite` path;
+  use `ctxt find` normally against that instance
+- Target merged instance on different port:
+  `ctxt find "query" --server http://localhost:8082`
+- Async lag: objects from source instances appear after configured interval (e.g.,
+  5m); not real-time
+- Ref: [US-0319](../stories/federation/US-0319-async-push-local-merged.md) —
+  async push to local merged DB
+
 ---
 
 ## User Stories
@@ -256,6 +266,9 @@ Knowledge workers interact with the system through these key stories:
 
 ### Configuration & Preferences
 - [US-0030](../stories/admin/US-0030-set-up-focus-profiles.md) — Set Up Focus Profiles (role/project lenses)
+
+### Federation
+- [US-0319](../stories/federation/US-0319-async-push-local-merged.md) — Async Push to Local Merged DB
 
 ### Import & Migration
 - [US-0301](../stories/ingestion/US-0301-import-chrome-bookmarks.md) — Import Chrome Bookmarks

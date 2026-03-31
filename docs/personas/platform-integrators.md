@@ -182,6 +182,43 @@ func (p *Plugin) Register(ctx HostContext) error {
 // rankingMethod: domain-expertise
 ```
 
+#### Federation Configuration
+
+Configure federation targets in config.yaml; mix local SQLite paths + remote HTTP.
+
+```
+# config.yaml — federation targets
+federations:
+  - name: local-merged          # local SQLite; background sync every 5m
+    url: /path/to/merged.sqlite
+    interval: 5m
+    sync_mode: async
+
+  - name: team                  # remote HTTP; background sync every 1h
+    url: https://team.internal:8080
+    interval: 1h
+    sync_mode: async
+
+  - name: realtime-mirror       # local SQLite; inline (synchronous pipeline step)
+    url: /path/to/mirror.sqlite
+    sync_mode: inline
+```
+
+Sync modes:
+- `async` — background goroutine; interval-based; non-blocking ingestion
+- `inline` — synchronous pipeline step; push on every object write; adds latency
+
+DAG topology:
+- Chain instances as federation targets (A → B → C)
+- Cycle detection built-in; misconfigured cycles rejected at startup
+- Each hop copies objects + watermarks forward; no central coordinator
+
+Token auth (Phase 2 — not yet implemented):
+- Shape: per-target `token:` field in federation config entry
+- Exact token management TBD; placeholder in config schema for forward compat
+
+Refs: US-0318 (configure targets), US-0320 (inline push), US-0323 (DAG chain)
+
 ---
 
 ## Key Pain Points
@@ -266,6 +303,11 @@ Platform integrators interact with the system through these key stories:
 - [US-0029](../stories/admin/US-0029-install-and-enable-plugin.md) — Install and Enable Plugin (deployment & permissions)
 - [US-0114](../stories/pipelines/US-0114-configure-domain-scraper-rules.md) — Configure Domain Scraper Rules (config-driven extraction quality)
 - [US-0041](../stories/agents/US-0041-agent-uses-constrained-enrichment.md) — Agent Uses Constrained Enrichment (constraint patterns)
+
+### Federation Configuration
+- US-0318 — Configure federation targets (local SQLite + remote HTTP in config.yaml)
+- US-0320 — Inline push (synchronous pipeline step; realtime mirror)
+- US-0323 — DAG chain (multi-hop federation topology; cycle detection)
 
 ### Registry & Ranking
 - [US-0044](../stories/plugins/US-0044-implement-registry-adapter-plugin.md) — Implement Registry Adapter Plugin (external knowledge sources)
