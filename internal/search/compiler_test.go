@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -264,3 +266,132 @@ func TestCompileUnknownNodeType(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown node type")
 }
+
+// --- Postgres dialect tests ---
+
+func TestCompileForPostgresEq(t *testing.T) {
+	sql, args, err := CompileFor(DialectPostgres, mustParse(t, "type==article"))
+	require.NoError(t, err)
+	assert.Equal(t, "type = $1", sql)
+	assert.Equal(t, []any{"article"}, args)
+}
+
+func TestCompileForPostgresIn(t *testing.T) {
+	sql, args, err := CompileFor(DialectPostgres, mustParse(t, "type=in=(article,note)"))
+	require.NoError(t, err)
+	assert.Equal(t, "type IN ($1,$2)", sql)
+	assert.Equal(t, []any{"article", "note"}, args)
+}
+
+func TestCompileForPostgresOut(t *testing.T) {
+	sql, args, err := CompileFor(DialectPostgres, mustParse(t, "type=out=(draft)"))
+	require.NoError(t, err)
+	assert.Equal(t, "type NOT IN ($1)", sql)
+	assert.Equal(t, []any{"draft"}, args)
+}
+
+func TestCompileForPostgresTagEq(t *testing.T) {
+	sql, args, err := CompileFor(DialectPostgres, mustParse(t, "tag==performance"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "jsonb_array_elements")
+	assert.NotContains(t, sql, "json_each")
+	assert.Contains(t, sql, "$1")
+	assert.Equal(t, []any{"performance"}, args)
+}
+
+func TestCompileForPostgresTagNeq(t *testing.T) {
+	sql, args, err := CompileFor(DialectPostgres, mustParse(t, "tag!=performance"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "NOT EXISTS")
+	assert.Contains(t, sql, "jsonb_array_elements")
+	assert.NotContains(t, sql, "json_each")
+	assert.Equal(t, []any{"performance"}, args)
+}
+
+func TestCompileForPostgresTagIn(t *testing.T) {
+	sql, args, err := CompileFor(DialectPostgres, mustParse(t, "tag=in=(a,b)"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "jsonb_array_elements")
+	assert.Contains(t, sql, "IN ($1,$2)")
+	assert.Equal(t, []any{"a", "b"}, args)
+}
+
+func TestCompileForPostgresMention(t *testing.T) {
+	sql, args, err := CompileFor(DialectPostgres, mustParse(t, "mention==@ns.slug"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "edges")
+	assert.Contains(t, sql, "$1")
+	assert.NotContains(t, sql, "?")
+	assert.Equal(t, []any{"@ns.slug"}, args)
+}
+
+func TestCompileForPostgresRelated(t *testing.T) {
+	sql, args, err := CompileFor(DialectPostgres, mustParse(t, "related==@ns.slug"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "edges")
+	assert.Contains(t, sql, "$1")
+	assert.NotContains(t, sql, "?")
+	assert.Equal(t, []any{"@ns.slug"}, args)
+}
+
+func TestCompileForPostgresSimilarError(t *testing.T) {
+	_, _, err := CompileFor(DialectPostgres, mustParse(t, "similar==keyword"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not supported on the Postgres backend")
+}
+
+func TestCompileForPostgresAnd(t *testing.T) {
+	sql, args, err := CompileFor(DialectPostgres, mustParse(t, "type==article;tag==ui"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "AND")
+	assert.Contains(t, sql, "$1")
+	assert.Contains(t, sql, "$2")
+	assert.NotContains(t, sql, "?")
+	assert.Equal(t, []any{"article", "ui"}, args)
+}
+
+func TestRebindPostgres(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"type = ?", "type = $1"},
+		{"a = ? AND b = ?", "a = $1 AND b = $2"},
+		{"no placeholders", "no placeholders"},
+		{"? AND ? AND ?", "$1 AND $2 AND $3"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			got := rebindPostgres(tt.in)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestDialectFor(t *testing.T) {
+	// SQLite driver (no SQLDialect method) defaults to DialectSQLite.
+	sqlite := storageutil.NewTestDriver(t)
+	assert.Equal(t, DialectSQLite, DialectFor(sqlite))
+
+	// A wrapper that adds SQLDialect() → "postgres" triggers DialectPostgres.
+	pg := &postgresDialectWrapper{StorageDriver: sqlite}
+	assert.Equal(t, DialectPostgres, DialectFor(pg))
+
+	// A wrapper returning an unrecognised dialect string defaults to SQLite.
+	unknown := &unknownDialectWrapper{StorageDriver: sqlite}
+	assert.Equal(t, DialectSQLite, DialectFor(unknown))
+}
+
+// postgresDialectWrapper wraps any StorageDriver and claims the postgres dialect.
+type postgresDialectWrapper struct {
+	storage.StorageDriver
+}
+
+func (w *postgresDialectWrapper) SQLDialect() string { return "postgres" }
+
+// unknownDialectWrapper wraps any StorageDriver and claims an unrecognised dialect.
+type unknownDialectWrapper struct {
+	storage.StorageDriver
+}
+
+func (w *unknownDialectWrapper) SQLDialect() string { return "mysql" }

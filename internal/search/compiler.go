@@ -19,27 +19,59 @@ var dateColumns = map[string]bool{
 }
 
 // Compile converts an AST node into a SQL WHERE clause and arguments.
+// It targets SQLite (? placeholders, json_each, FTS5 MATCH).
+// Use CompileFor to target a specific dialect.
 func Compile(node Node) (string, []any, error) {
-	return compileNode(node)
+	return CompileFor(DialectSQLite, node)
 }
 
-func compileNode(node Node) (string, []any, error) {
+// CompileFor compiles node for the given SQL dialect.
+// For DialectPostgres: uses $N placeholders, jsonb_array_elements for tag
+// queries, and rejects the similar== field (no FTS5 equivalent).
+func CompileFor(d Dialect, node Node) (string, []any, error) {
+	sql, args, err := compileNode(d, node)
+	if err != nil {
+		return "", nil, err
+	}
+	if d == DialectPostgres {
+		sql = rebindPostgres(sql)
+	}
+	return sql, args, nil
+}
+
+// rebindPostgres replaces sequential ? placeholders with $1, $2, ... as
+// required by the lib/pq PostgreSQL driver.
+func rebindPostgres(sql string) string {
+	var b strings.Builder
+	n := 1
+	for i := 0; i < len(sql); i++ {
+		if sql[i] == '?' {
+			fmt.Fprintf(&b, "$%d", n)
+			n++
+		} else {
+			b.WriteByte(sql[i])
+		}
+	}
+	return b.String()
+}
+
+func compileNode(d Dialect, node Node) (string, []any, error) {
 	switch n := node.(type) {
 	case ComparisonNode:
-		return compileComparison(n)
+		return compileComparison(d, n)
 	case AndNode:
-		return compileLogical(n.Children, "AND")
+		return compileLogical(d, n.Children, "AND")
 	case OrNode:
-		return compileLogical(n.Children, "OR")
+		return compileLogical(d, n.Children, "OR")
 	default:
 		return "", nil, fmt.Errorf("unknown node type: %T", node)
 	}
 }
 
-func compileComparison(n ComparisonNode) (string, []any, error) {
+func compileComparison(d Dialect, n ComparisonNode) (string, []any, error) {
 	// Tag field: JSON subquery.
 	if n.Field == "tag" {
-		return compileTag(n)
+		return compileTag(d, n)
 	}
 
 	// Mention field: edge JOIN query.
@@ -52,9 +84,9 @@ func compileComparison(n ComparisonNode) (string, []any, error) {
 		return compileRelated(n)
 	}
 
-	// Similar field: FTS5 MATCH.
+	// Similar field: FTS5 MATCH (SQLite only).
 	if n.Field == "similar" {
-		return compileSimilar(n)
+		return compileSimilar(d, n)
 	}
 
 	// Direct columns.
@@ -92,7 +124,16 @@ func compileDirect(n ComparisonNode) (string, []any, error) {
 	return fmt.Sprintf("%s %s ?", n.Field, sqlOp), []any{n.Value}, nil
 }
 
-func compileTag(n ComparisonNode) (string, []any, error) {
+// compileTag emits a JSON tag existence check.
+// SQLite uses json_each; Postgres uses jsonb_array_elements.
+func compileTag(d Dialect, n ComparisonNode) (string, []any, error) {
+	jsonFunc := "json_each(tags)"
+	rowAlias := "json_each.value->>'label'"
+	if d == DialectPostgres {
+		jsonFunc = "jsonb_array_elements(tags)"
+		rowAlias = "value->>'label'"
+	}
+
 	if n.Operator == OpIn {
 		vals, ok := n.Value.([]string)
 		if !ok {
@@ -105,18 +146,18 @@ func compileTag(n ComparisonNode) (string, []any, error) {
 			args[i] = v
 		}
 		return fmt.Sprintf(
-			"EXISTS (SELECT 1 FROM json_each(tags) WHERE json_each.value->>'label' IN (%s))",
-			strings.Join(placeholders, ","),
+			"EXISTS (SELECT 1 FROM %s WHERE %s IN (%s))",
+			jsonFunc, rowAlias, strings.Join(placeholders, ","),
 		), args, nil
 	}
 
 	if n.Operator == OpEq {
-		return "EXISTS (SELECT 1 FROM json_each(tags) WHERE json_each.value->>'label' = ?)",
+		return fmt.Sprintf("EXISTS (SELECT 1 FROM %s WHERE %s = ?)", jsonFunc, rowAlias),
 			[]any{n.Value}, nil
 	}
 
 	if n.Operator == OpNeq {
-		return "NOT EXISTS (SELECT 1 FROM json_each(tags) WHERE json_each.value->>'label' = ?)",
+		return fmt.Sprintf("NOT EXISTS (SELECT 1 FROM %s WHERE %s = ?)", jsonFunc, rowAlias),
 			[]any{n.Value}, nil
 	}
 
@@ -155,20 +196,25 @@ func compileRelated(n ComparisonNode) (string, []any, error) {
 	return sql, []any{n.Value}, nil
 }
 
-func compileSimilar(n ComparisonNode) (string, []any, error) {
+// compileSimilar emits an FTS5 full-text search expression (SQLite only).
+// Returns an explicit error on Postgres since there is no FTS5 equivalent.
+func compileSimilar(d Dialect, n ComparisonNode) (string, []any, error) {
 	if n.Operator != OpEq {
 		return "", nil, fmt.Errorf("similar field only supports == operator")
+	}
+	if d == DialectPostgres {
+		return "", nil, fmt.Errorf("similar== is not supported on the Postgres backend (no FTS5 index); use vector search instead")
 	}
 	return "id IN (SELECT id FROM objects_fts WHERE objects_fts MATCH ?)",
 		[]any{n.Value}, nil
 }
 
-func compileLogical(children []Node, op string) (string, []any, error) {
+func compileLogical(d Dialect, children []Node, op string) (string, []any, error) {
 	parts := make([]string, len(children))
 	var allArgs []any
 
 	for i, child := range children {
-		sql, args, err := compileNode(child)
+		sql, args, err := compileNode(d, child)
 		if err != nil {
 			return "", nil, err
 		}
