@@ -78,6 +78,9 @@ var migration022 string
 //go:embed migrations/023_projected_fts_body.sql
 var migration023 string
 
+//go:embed migrations/024_rename_mention_uris.sql
+var migration024 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -123,6 +126,9 @@ var migrations = []migration{
 	// Migration 023: projected_fts_body column + FTS rebuild (T-0195).
 	// Uses a Go fn for idempotency: checks for column before ALTER TABLE.
 	{Version: 23, fn: migrate023ProjectedFTSBody},
+	// Migration 024: rename mention_uris → mentions on objects table.
+	// Uses a Go fn for idempotency: skips if column is already named 'mentions'.
+	{Version: 24, fn: migrate024RenameMentionUris},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -351,6 +357,31 @@ func migrate023ProjectedFTSBody(ctx context.Context, d *Driver) error {
 		    content='objects',
 		    content_rowid='rowid'
 		)`)
+	return err
+}
+
+// migrate024RenameMentionUris renames the mention_uris column back to mentions.
+// Idempotent: skips the rename if the column is already named 'mentions'.
+func migrate024RenameMentionUris(ctx context.Context, d *Driver) error {
+	rows, err := d.db.QueryContext(ctx, "SELECT name FROM pragma_table_info('objects')")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return err
+		}
+		if name == "mentions" {
+			// Already renamed — nothing to do.
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = d.db.ExecContext(ctx, `ALTER TABLE objects RENAME COLUMN mention_uris TO mentions`)
 	return err
 }
 
