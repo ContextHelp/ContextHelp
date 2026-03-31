@@ -110,6 +110,16 @@ type Config struct {
 
 	// Federations lists remote dPKMS instances to sync with.
 	Federations []FederationEntry `mapstructure:"federations" yaml:"federations"`
+
+	// Federation holds server-side federation settings (receive-side).
+	Federation FederationConfig `mapstructure:"federation" yaml:"federation"`
+}
+
+// FederationConfig holds server-side (receive-side) federation settings.
+type FederationConfig struct {
+	// Token is the expected Bearer token for incoming push requests.
+	// Empty = no auth check; any token accepted.
+	Token string `mapstructure:"token" yaml:"token"`
 }
 
 // FederationEntry describes one remote dPKMS instance to federate with.
@@ -122,6 +132,9 @@ type FederationEntry struct {
 	Interval time.Duration `mapstructure:"interval" yaml:"interval"`
 	// SyncMode controls how sync runs. Valid values: "async" | "inline".
 	SyncMode string `mapstructure:"sync_mode" yaml:"sync_mode"`
+	// Token is the Bearer token sent to the remote instance. Empty = no auth header sent.
+	// Tokens are stored here for remote HTTP peers only; local file targets use path-level auth.
+	Token string `mapstructure:"token" yaml:"token"`
 }
 
 // AuditConfig controls SIEM-ready audit log export and real-time forwarding.
