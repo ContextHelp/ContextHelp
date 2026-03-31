@@ -501,6 +501,14 @@ func TestFederationsValidation(t *testing.T) {
 			wantErr: true,
 			errFrag: "name must not be empty",
 		},
+		{
+			name: "bidirectional sync_mode rejected (Phase 3 not implemented)",
+			cfg: Config{Federations: []FederationEntry{
+				{Name: "bi-peer", URL: "https://bi.example.com", SyncMode: "bidirectional"},
+			}},
+			wantErr: true,
+			errFrag: "not yet implemented",
+		},
 	}
 
 	for _, tt := range tests {

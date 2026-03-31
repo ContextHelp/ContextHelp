@@ -92,6 +92,8 @@ func (c *Config) validateFederations() error {
 		switch f.SyncMode {
 		case "async", "inline":
 			// valid
+		case "bidirectional":
+			return fmt.Errorf("config: federations[%d] (%q): bidirectional sync mode is not yet implemented (Phase 3)", i, f.Name)
 		default:
 			return fmt.Errorf("config: federations[%d] (%q): sync_mode must be \"async\" or \"inline\"; got %q", i, f.Name, f.SyncMode)
 		}
