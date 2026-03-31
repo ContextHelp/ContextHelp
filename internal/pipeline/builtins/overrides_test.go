@@ -9,29 +9,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPipelineProviderOverride(t *testing.T) {
-	// Base config uses stub LLM everywhere.
+func TestPipelineStructuralOverride(t *testing.T) {
 	baseCfg := config.ProvidersConfig{}
-	baseCfg.LLM.Backend = "stub"
 	baseFactory := providers.NewFactory(baseCfg, nil)
 
-	// Override url.generic to use anthropic LLM.
+	// "text.short" normally has: typedetector, sectioner, tagger, formatdetector, textcleaner, embedding, entity_extractor, entity_resolver
+	// Let's skip 'tagger' and add 'noop' as an extra step.
 	pipelinesCfg := config.PipelinesConfig{
 		Overrides: map[string]config.PipelineOverride{
-			"url.generic": {
-				Providers: map[string]config.ProviderBackendConfig{
-					"llm": {Backend: "anthropic", Model: "claude-3-haiku-20240307"},
-				},
+			"text.short": {
+				SkipSteps:  []string{"tagger"},
+				ExtraSteps: []string{"noop"},
 			},
 		},
 	}
 
 	reg := builtins.ConfiguredRegistryWithPipelineOverrides(baseFactory, baseCfg, pipelinesCfg, nil, 0)
-	require.NotNil(t, reg)
-
-	pipe, err := reg.Get("url.generic")
+	pipe, err := reg.Get("text.short")
 	require.NoError(t, err)
-	require.NotNil(t, pipe)
-	// Structural check: pipeline must have steps.
+
+	// Verify 'tagger' is gone.
+	hasTagger := false
+	for _, s := range pipe.Steps {
+		if s.Name() == "tagger" {
+			hasTagger = true
+		}
+	}
+	require.False(t, hasTagger, "tagger should have been skipped")
+
+	// Verify 'noop' was added at the end.
 	require.NotEmpty(t, pipe.Steps)
+	require.Equal(t, "noop", pipe.Steps[len(pipe.Steps)-1].Name())
 }

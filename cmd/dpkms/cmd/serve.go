@@ -112,17 +112,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 	queue := jobs.NewQueue(driver.Jobs())
 	fmt.Println("Job queue initialized")
 
-	// 3. Init pipeline registry with configured providers.
+	// 3. Init pipeline registry with configured providers and overrides.
 	secretsResolver, err := secrets.NewResolver(cfg.Secrets)
 	if err != nil {
 		return fmt.Errorf("init secrets: %w", err)
 	}
 	factory := providers.NewFactory(cfg.Providers, secretsResolver)
-	pipes := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
-		Factory:       factory,
-		BlobThreshold: cfg.Storage.Blob.Threshold,
-	})
-	fmt.Println("Pipeline runtime initialized")
+	pipes := builtins.ConfiguredRegistryWithPipelineOverrides(
+		factory,
+		cfg.Providers,
+		cfg.Pipelines,
+		driver.Blobs(),
+		cfg.Storage.Blob.Threshold,
+	)
+	fmt.Println("Pipeline runtime initialized (with overrides)")
 
 	// 4. Init search engine.
 	engine := search.NewEngine(driver)
