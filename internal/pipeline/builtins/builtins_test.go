@@ -6,6 +6,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
 )
 
 func TestAllDefsRegistered(t *testing.T) {
@@ -161,11 +162,14 @@ func TestAllPipelinesValidateComposability(t *testing.T) {
 }
 
 func TestStrictModeRejectsIncapable(t *testing.T) {
-	// With empty opts and strict mode, pipelines requiring capabilities should fail.
+	// With a factory containing only stubs and strict mode, pipelines requiring capabilities should fail.
+	f := providers.NewFactory(config.ProvidersConfig{
+		OCR: config.ProviderBackendConfig{Backend: "stub"},
+	}, nil)
 	d := Defs()["image.ocr"]
-	_, err := buildPipeline("image.ocr", d, BuildOpts{}, true)
+	_, err := buildPipeline("image.ocr", d, BuildOpts{Factory: f}, true)
 	if err == nil {
-		t.Error("expected error in strict mode with empty opts for image.ocr")
+		t.Error("expected error in strict mode with stubbed opts for image.ocr")
 	}
 }
 
