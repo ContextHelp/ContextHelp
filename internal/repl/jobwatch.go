@@ -18,6 +18,7 @@ type JobWatcher struct {
 	prompt string
 	out    io.Writer
 	mu     sync.Mutex
+	wg     sync.WaitGroup
 	done   chan struct{}
 }
 
@@ -34,6 +35,8 @@ func NewJobWatcher(bus events.Bus, prompt string, out io.Writer) *JobWatcher {
 // Start subscribes to job.completed and job.failed events on the bus.
 func (w *JobWatcher) Start(ctx context.Context) {
 	handler := func(_ context.Context, e events.Event) error {
+		w.wg.Add(1)
+		defer w.wg.Done()
 		select {
 		case <-w.done:
 			return nil
@@ -49,13 +52,15 @@ func (w *JobWatcher) Start(ctx context.Context) {
 	w.bus.Subscribe("job.failed", handler)
 }
 
-// Stop signals the watcher to ignore further events.
+// Stop signals the watcher to ignore further events and waits for any
+// in-flight handlers to finish before returning.
 func (w *JobWatcher) Stop() {
 	select {
 	case <-w.done:
 	default:
 		close(w.done)
 	}
+	w.wg.Wait()
 }
 
 // jobIDFromEvent extracts the job_id from an event's Data field (json.RawMessage).

@@ -1,0 +1,114 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 976
+        transfer_encoding: []
+        trailer: {}
+        host: api.openai.com
+        remote_addr: ""
+        request_uri: ""
+        body: '{"messages":[{"content":"You are a knowledge extraction assistant. Given content, extract the following\nin a single JSON response with these fields:\n- summary: string — one-sentence summary of the content (required, non-empty)\n- topics: []string — relevant topic/tag labels (0–10 items)\n- decisions: []string — explicit decisions stated in the content (0–10 items)\n- open_questions: []string — open questions raised but not answered (0–10 items)\n- artifacts: []string — referenced artifacts, files, tools, or products (0–10 items)\n\nReturn ONLY valid JSON. Example:\n{\"summary\":\"...\",\"topics\":[\"go\",\"testing\"],\"decisions\":[\"Use SQLite\"],\"open_questions\":[\"Which auth?\"],\"artifacts\":[\"go.mod\",\"Makefile\"]}\n\nContent:\nWe decided to use SQLite as the default storage backend. The main open question is which authentication provider to integrate. Artifacts include go.mod and the Makefile.","role":"user"}],"model":"gpt-4o-mini"}'
+        form: {}
+        headers:
+            Content-Type:
+                - application/json
+        url: https://api.openai.com/v1/chat/completions
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        transfer_encoding: []
+        trailer: {}
+        content_length: -1
+        uncompressed: true
+        body: |
+            {
+              "id": "chatcmpl-DPIsWqcUUMbOG5BS0Jk3za3r8Hg7G",
+              "object": "chat.completion",
+              "created": 1774923140,
+              "model": "gpt-4o-mini-2024-07-18",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "{\"summary\":\"We have chosen SQLite as the default storage backend and are considering authentication providers for integration.\",\"topics\":[\"database\",\"SQLite\",\"authentication\"],\"decisions\":[\"Use SQLite as the default storage backend\"],\"open_questions\":[\"Which authentication provider to integrate?\"],\"artifacts\":[\"go.mod\",\"Makefile\"]}",
+                    "refusal": null,
+                    "annotations": []
+                  },
+                  "logprobs": null,
+                  "finish_reason": "stop"
+                }
+              ],
+              "usage": {
+                "prompt_tokens": 199,
+                "completion_tokens": 61,
+                "total_tokens": 260,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "audio_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0,
+                  "audio_tokens": 0,
+                  "accepted_prediction_tokens": 0,
+                  "rejected_prediction_tokens": 0
+                }
+              },
+              "service_tier": "default",
+              "system_fingerprint": "fp_162d3c480f"
+            }
+        headers:
+            Access-Control-Expose-Headers:
+                - X-Request-ID
+            Alt-Svc:
+                - h3=":443"; ma=86400
+            Cf-Cache-Status:
+                - DYNAMIC
+            Cf-Ray:
+                - 9e4bd418bcb0a2e2-YUL
+            Content-Type:
+                - application/json
+            Date:
+                - Tue, 31 Mar 2026 02:12:21 GMT
+            Openai-Organization:
+                - brainiac-hav1rx
+            Openai-Processing-Ms:
+                - "1223"
+            Openai-Project:
+                - proj_1i9sA9R86JDFuQXDtLxUqzfj
+            Openai-Version:
+                - "2020-10-01"
+            Server:
+                - cloudflare
+            Set-Cookie:
+                - __cf_bm=jIqRj03OGU.b5gAxOVPS2oWlhvvqUJc8cdrhY7g6nMs-1774923139.95221-1.0.1.1-1Zj8dObDolmMRYM7ae9D6CLKHozwEG1_abTIy51LU1UO77uEwbUFIJj2fjqtOFmQxeEg7d78IJN3j2cr0NIpK5JHoemFN3ymjSdee8ruhH.wNJgZ8.kKkyZjT3lcoYUS; HttpOnly; Secure; Path=/; Domain=api.openai.com; Expires=Tue, 31 Mar 2026 02:42:21 GMT
+            Strict-Transport-Security:
+                - max-age=31536000; includeSubDomains; preload
+            X-Content-Type-Options:
+                - nosniff
+            X-Openai-Proxy-Wasm:
+                - v0.1
+            X-Ratelimit-Limit-Requests:
+                - "30000"
+            X-Ratelimit-Limit-Tokens:
+                - "150000000"
+            X-Ratelimit-Remaining-Requests:
+                - "29999"
+            X-Ratelimit-Remaining-Tokens:
+                - "149999780"
+            X-Ratelimit-Reset-Requests:
+                - 2ms
+            X-Ratelimit-Reset-Tokens:
+                - 0s
+            X-Request-Id:
+                - req_ae3f46d461e14e008fbb9d8eeaeacfcb
+        status: 200 OK
+        code: 200
+        duration: 1.696274959s

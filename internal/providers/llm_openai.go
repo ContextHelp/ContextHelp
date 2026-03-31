@@ -29,6 +29,14 @@ func NewOpenAILLMProvider(model string) *OpenAILLMProvider {
 	}
 }
 
+// WithHTTPClient returns a copy of the provider using the given HTTP client.
+// Used in tests to inject a VCR-backed client.
+func (p *OpenAILLMProvider) WithHTTPClient(c *http.Client) *OpenAILLMProvider {
+	copy := *p
+	copy.client = c
+	return &copy
+}
+
 func (p *OpenAILLMProvider) Name() string { return "openai" }
 
 func (p *OpenAILLMProvider) Generate(ctx context.Context, prompt string) (string, error) {
