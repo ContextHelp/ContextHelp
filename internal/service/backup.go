@@ -23,6 +23,7 @@ type BackupOpts struct {
 	IncludeBlobs   bool
 	OutputDir      string // directory to write archive; cwd if empty
 	SkipBlobErrors bool
+	ConfigPath     string // optional: path to config.yaml to include in archive
 }
 
 // BackupResult summarises a completed backup.
@@ -86,6 +87,19 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 		return abort(fmt.Errorf("backup: tar db: %w", err))
 	}
 
+	// 1b. Optional config.yaml — non-fatal if missing.
+	configIncluded := false
+	if opts.ConfigPath != "" {
+		if _, serr := os.Stat(opts.ConfigPath); serr == nil {
+			if terr := addFileToTar(tw, opts.ConfigPath, "ctxt-backup/config.yaml"); terr != nil {
+				return abort(fmt.Errorf("backup: tar config: %w", terr))
+			}
+			configIncluded = true
+		} else {
+			fmt.Fprintf(os.Stderr, "backup: config file not found, skipping: %s\n", opts.ConfigPath)
+		}
+	}
+
 	// 2. Optional blobs (local backend only).
 	if opts.IncludeBlobs && opts.BlobCfg.Backend == "local" {
 		bs, err := blobfactory.New(opts.BlobCfg)
@@ -125,10 +139,11 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 
 	// 3. manifest.json — written last; its presence signals a complete backup.
 	manifest := map[string]any{
-		"schema_version": 1,
-		"created_at":     time.Now().UTC().Format(time.RFC3339),
-		"db_size":        result.DBSize,
-		"blob_count":     result.BlobCount,
+		"schema_version":  1,
+		"created_at":      time.Now().UTC().Format(time.RFC3339),
+		"db_size":         result.DBSize,
+		"blob_count":      result.BlobCount,
+		"config_included": configIncluded,
 	}
 	manifestBytes, _ := json.Marshal(manifest)
 	hdr := &tar.Header{
