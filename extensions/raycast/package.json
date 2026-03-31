@@ -2,7 +2,7 @@
   "name": "ctxt",
   "title": "ctxt Knowledge",
   "description": "Capture, search, and compose with ctxt",
-  "icon": "extension-icon.png",
+  "icon": "extension-icon.svg",
   "author": "contexthelp",
   "categories": ["Productivity"],
   "license": "MIT",
