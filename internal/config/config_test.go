@@ -437,3 +437,103 @@ func TestBackupConfigDefaults(t *testing.T) {
 		t.Fatalf("expected empty backup dir, got %q", cfg.Backup.Dir)
 	}
 }
+
+func TestFederationsValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr bool
+		errFrag string
+	}{
+		{
+			name: "zero federations",
+			cfg:  Config{},
+		},
+		{
+			name: "valid async entry",
+			cfg: Config{Federations: []FederationEntry{
+				{Name: "peer-a", URL: "https://peer-a.example.com", SyncMode: "async", Interval: 5 * time.Minute},
+			}},
+		},
+		{
+			name: "valid inline entry",
+			cfg: Config{Federations: []FederationEntry{
+				{Name: "peer-b", URL: "https://peer-b.example.com", SyncMode: "inline"},
+			}},
+		},
+		{
+			name: "valid mixed async and inline",
+			cfg: Config{Federations: []FederationEntry{
+				{Name: "async-peer", URL: "https://a.example.com", SyncMode: "async", Interval: time.Hour},
+				{Name: "inline-peer", URL: "https://b.example.com", SyncMode: "inline"},
+			}},
+		},
+		{
+			name: "unknown sync_mode",
+			cfg: Config{Federations: []FederationEntry{
+				{Name: "bad-peer", URL: "https://bad.example.com", SyncMode: "push"},
+			}},
+			wantErr: true,
+			errFrag: "sync_mode",
+		},
+		{
+			name: "async without interval",
+			cfg: Config{Federations: []FederationEntry{
+				{Name: "no-interval", URL: "https://peer.example.com", SyncMode: "async"},
+			}},
+			wantErr: true,
+			errFrag: "interval",
+		},
+		{
+			name: "duplicate name",
+			cfg: Config{Federations: []FederationEntry{
+				{Name: "dup", URL: "https://a.example.com", SyncMode: "inline"},
+				{Name: "dup", URL: "https://b.example.com", SyncMode: "inline"},
+			}},
+			wantErr: true,
+			errFrag: "duplicate name",
+		},
+		{
+			name: "empty name",
+			cfg: Config{Federations: []FederationEntry{
+				{Name: "", URL: "https://a.example.com", SyncMode: "inline"},
+			}},
+			wantErr: true,
+			errFrag: "name must not be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errFrag != "" {
+					assert.Contains(t, err.Error(), tt.errFrag)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestFederationsLoadFromYAML(t *testing.T) {
+	cfg, err := loadFromYAML(t, `
+federations:
+  - name: peer-a
+    url: https://peer-a.internal:8080
+    sync_mode: async
+    interval: 10m
+  - name: peer-b
+    url: https://peer-b.internal:8080
+    sync_mode: inline
+`)
+	require.NoError(t, err)
+	require.Len(t, cfg.Federations, 2)
+	assert.Equal(t, "peer-a", cfg.Federations[0].Name)
+	assert.Equal(t, "async", cfg.Federations[0].SyncMode)
+	assert.Equal(t, 10*time.Minute, cfg.Federations[0].Interval)
+	assert.Equal(t, "peer-b", cfg.Federations[1].Name)
+	assert.Equal(t, "inline", cfg.Federations[1].SyncMode)
+}

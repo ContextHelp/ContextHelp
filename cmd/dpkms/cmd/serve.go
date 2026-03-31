@@ -32,8 +32,9 @@ import (
 )
 
 var serveCmd = &cobra.Command{
-	Use:   "serve",
-	Short: "Start background worker and API server",
+	Use:     "serve",
+	Aliases: []string{"start"},
+	Short:   "Start background worker and API server",
 	Long: `Start the dPKMS server which includes:
   - Background job worker for processing ingestion pipelines
   - REST API server for HTTP access

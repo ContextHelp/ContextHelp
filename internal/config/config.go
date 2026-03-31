@@ -107,6 +107,21 @@ type Config struct {
 
 	// Security configures security alerting hooks.
 	Security SecurityConfig `mapstructure:"security" yaml:"security"`
+
+	// Federations lists remote dPKMS instances to sync with.
+	Federations []FederationEntry `mapstructure:"federations" yaml:"federations"`
+}
+
+// FederationEntry describes one remote dPKMS instance to federate with.
+type FederationEntry struct {
+	// Name is a unique local identifier for this federation peer.
+	Name string `mapstructure:"name" yaml:"name"`
+	// URL is the address of the remote dPKMS instance (e.g. https://host:8080 or file:///path/to/db).
+	URL string `mapstructure:"url" yaml:"url"`
+	// Interval is how often to sync. Required for async mode; zero = no scheduled sync.
+	Interval time.Duration `mapstructure:"interval" yaml:"interval"`
+	// SyncMode controls how sync runs. Valid values: "async" | "inline".
+	SyncMode string `mapstructure:"sync_mode" yaml:"sync_mode"`
 }
 
 // AuditConfig controls SIEM-ready audit log export and real-time forwarding.

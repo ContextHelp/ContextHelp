@@ -68,6 +68,38 @@ func (c *Config) Validate() error {
 	if err := c.validateDuplicates(); err != nil {
 		return err
 	}
+	if err := c.validateFederations(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateFederations checks federation entries for valid sync modes, required
+// intervals, and duplicate names (which would cause ambiguous routing).
+// Full topology-level cycle detection (A→B→A across remote configs) is deferred
+// to Phase 2 when remote config discovery is available.
+func (c *Config) validateFederations() error {
+	seen := make(map[string]struct{}, len(c.Federations))
+	for i, f := range c.Federations {
+		if f.Name == "" {
+			return fmt.Errorf("config: federations[%d].name must not be empty", i)
+		}
+		if _, dup := seen[f.Name]; dup {
+			return fmt.Errorf("config: federations: duplicate name %q (names must be unique)", f.Name)
+		}
+		seen[f.Name] = struct{}{}
+
+		switch f.SyncMode {
+		case "async", "inline":
+			// valid
+		default:
+			return fmt.Errorf("config: federations[%d] (%q): sync_mode must be \"async\" or \"inline\"; got %q", i, f.Name, f.SyncMode)
+		}
+
+		if f.SyncMode == "async" && f.Interval <= 0 {
+			return fmt.Errorf("config: federations[%d] (%q): interval is required and must be >0 for async sync_mode", i, f.Name)
+		}
+	}
 	return nil
 }
 
