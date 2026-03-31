@@ -19,7 +19,7 @@ func TestMigrateFromScratch(t *testing.T) {
 	}
 
 	// Verify all tables exist.
-	tables := []string{"objects", "entities", "edges", "jobs", "feeds", "feed_items", "batches", "schema_version"}
+	tables := []string{"objects", "entities", "edges", "jobs", "feeds", "feed_items", "batches", "schema_version", "federation_watermarks"}
 	for _, table := range tables {
 		var name string
 		err := d.db.QueryRow(
