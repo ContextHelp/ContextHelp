@@ -66,9 +66,9 @@ func runPS(cmd *cobra.Command, _ []string) error {
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if hasBrowser {
-		fmt.Fprintln(w, "PID\tPORT\tGRPC\tBROWSER\tDB\tUPTIME")
+		fmt.Fprintln(w, "NAME\tPID\tPORT\tGRPC\tBROWSER\tDB\tUPTIME")
 	} else {
-		fmt.Fprintln(w, "PID\tPORT\tGRPC\tDB\tUPTIME")
+		fmt.Fprintln(w, "NAME\tPID\tPORT\tGRPC\tDB\tUPTIME")
 	}
 	for _, info := range instances {
 		uptime := time.Since(info.StartedAt).Truncate(time.Second)
@@ -77,11 +77,11 @@ func runPS(cmd *cobra.Command, _ []string) error {
 			if info.BrowserPort > 0 {
 				browser = fmt.Sprintf("%d", info.BrowserPort)
 			}
-			fmt.Fprintf(w, "%d\t%d\t%d\t%s\t%s\t%s\n",
-				info.PID, info.Port, info.GRPCPort, browser, info.DBPath, uptime)
+			fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%s\t%s\t%s\n",
+				info.Name, info.PID, info.Port, info.GRPCPort, browser, info.DBPath, uptime)
 		} else {
-			fmt.Fprintf(w, "%d\t%d\t%d\t%s\t%s\n",
-				info.PID, info.Port, info.GRPCPort, info.DBPath, uptime)
+			fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%s\t%s\n",
+				info.Name, info.PID, info.Port, info.GRPCPort, info.DBPath, uptime)
 		}
 	}
 	return w.Flush()

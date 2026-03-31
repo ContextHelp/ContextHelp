@@ -14,15 +14,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 )
 
+// validName matches URI-safe instance names: lowercase alphanumeric and hyphens.
+var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// ValidateName reports whether name is a legal instance name.
+func ValidateName(name string) bool { return validName.MatchString(name) }
+
 // Info holds the metadata written to a pidfile.
 type Info struct {
 	PID              int       `json:"pid"`
+	Name             string    `json:"name"`              // unique instance name (URI-safe slug)
+	ConfigPath       string    `json:"config_path"`       // config file used at startup
 	Port             int       `json:"port"`
 	GRPCPort         int       `json:"grpc_port"`
 	CookieBridgePort int       `json:"cookie_bridge_port"`
@@ -79,6 +88,33 @@ func Scan(dir string) ([]Info, error) {
 		live = append(live, info)
 	}
 	return live, nil
+}
+
+// FindByName scans dir and returns the live Info whose Name matches, or
+// (Info{}, false) if not found. Stale pidfiles are pruned as usual.
+func FindByName(dir, name string) (Info, bool, error) {
+	infos, err := Scan(dir)
+	if err != nil {
+		return Info{}, false, err
+	}
+	for _, info := range infos {
+		if info.Name == name {
+			return info, true, nil
+		}
+	}
+	return Info{}, false, nil
+}
+
+// CheckNameConflict returns an error if any live instance in dir already uses name.
+func CheckNameConflict(dir, name string) error {
+	_, found, err := FindByName(dir, name)
+	if err != nil {
+		return err
+	}
+	if found {
+		return fmt.Errorf("instance name %q is already in use by a running dpkms process", name)
+	}
+	return nil
 }
 
 // alive reports whether the process with the given pid is running.

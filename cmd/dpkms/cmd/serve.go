@@ -13,6 +13,9 @@ import (
 	"syscall"
 	"time"
 
+	"path/filepath"
+	"strings"
+
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -67,7 +70,11 @@ Examples:
   dpkms serve --public
 
   # Use specific profile
-  dpkms serve --profile founder`,
+  dpkms serve --profile founder
+
+  # Named instance (required when running multiple instances)
+  dpkms serve --name work
+  dpkms serve --name personal --port 8081`,
 	RunE: runServe,
 }
 
@@ -75,6 +82,7 @@ func init() {
 	rootCmd.AddCommand(serveCmd)
 
 	// Server flags
+	serveCmd.Flags().String("name", "", "instance name (URI-safe slug, e.g. 'work'); defaults to DB basename")
 	serveCmd.Flags().Int("port", 8080, "HTTP port")
 	serveCmd.Flags().Int("grpc-port", 9090, "gRPC port")
 	serveCmd.Flags().Int("workers", 4, "number of worker threads")
@@ -100,6 +108,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// --daemon: re-exec self in background, detached from terminal.
 	if daemon, _ := cmd.Flags().GetBool("daemon"); daemon {
 		return daemonize(cmd)
+	}
+
+	// Resolve instance name: flag > derive from DB basename.
+	instanceName, err := resolveInstanceName(cmd)
+	if err != nil {
+		return err
 	}
 
 	// Resolve default profile: flag > config default > inline bool > interactive.
@@ -277,12 +291,19 @@ func runServe(cmd *cobra.Command, args []string) error {
 		httpLn.Close()
 		return fmt.Errorf("run dir: %w", err)
 	}
+	if err := pidfile.CheckNameConflict(runDir, instanceName); err != nil {
+		httpLn.Close()
+		return err
+	}
+	configPath := cfgFile
 	var browserPort int
 	if browserMgr != nil {
 		browserPort = browserMgr.Port()
 	}
 	if err := pidfile.Write(runDir, pidfile.Info{
 		PID:              os.Getpid(),
+		Name:             instanceName,
+		ConfigPath:       configPath,
 		Port:             port,
 		GRPCPort:         grpcPort,
 		CookieBridgePort: cookieBridgePort,
@@ -429,6 +450,58 @@ func runServe(cmd *cobra.Command, args []string) error {
 // findFreePort tries to bind preferred on 127.0.0.1.
 // If preferred is busy, it asks the OS for any free port.
 // The listener is closed immediately; the caller owns the port convention.
+// resolveInstanceName returns the instance name for this serve invocation.
+// Priority: --name flag > derive from DB basename.
+// Validates the name is URI-safe (lowercase alphanumeric + hyphens).
+func resolveInstanceName(cmd *cobra.Command) (string, error) {
+	name, _ := cmd.Flags().GetString("name")
+	if name == "" {
+		// Derive from DB path: strip directory and known extensions, then slugify.
+		dbPath := cfg.Storage.Path
+		if dbPath == "" {
+			dbPath = "dpkms.db"
+		}
+		name = instanceNameFromDBPath(dbPath)
+	}
+	if !pidfile.ValidateName(name) {
+		return "", fmt.Errorf(
+			"instance name %q is invalid: use lowercase letters, digits, and hyphens (e.g. 'work', 'my-project')",
+			name,
+		)
+	}
+	return name, nil
+}
+
+// instanceNameFromDBPath derives a URI-safe instance name from a DB file path.
+// e.g. "/data/work.db" → "work", "dpkms.sqlite" → "dpkms", "my_work.db" → "my-work".
+func instanceNameFromDBPath(dbPath string) string {
+	base := filepath.Base(dbPath)
+	// Strip known extensions.
+	for _, ext := range []string{".sqlite3", ".sqlite", ".db"} {
+		if strings.HasSuffix(base, ext) {
+			base = strings.TrimSuffix(base, ext)
+			break
+		}
+	}
+	// Slugify: lowercase, replace non-alphanumeric runs with hyphens, trim hyphens.
+	var b strings.Builder
+	prevHyphen := false
+	for _, r := range strings.ToLower(base) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			prevHyphen = false
+		} else if !prevHyphen && b.Len() > 0 {
+			b.WriteByte('-')
+			prevHyphen = true
+		}
+	}
+	name := strings.TrimRight(b.String(), "-")
+	if name == "" {
+		return "default"
+	}
+	return name
+}
+
 func findFreePort(preferred int) (int, error) {
 	addr := fmt.Sprintf("127.0.0.1:%d", preferred)
 	ln, err := net.Listen("tcp", addr)

@@ -71,6 +71,7 @@ func init() {
 	rootCmd.PersistentFlags().String("output", "text", "output format (text|json|yaml)")
 	rootCmd.PersistentFlags().BoolP("verbose", "V", false, "enable verbose output")
 	rootCmd.PersistentFlags().Bool("offline", false, "disable all network calls (registry sync, LLM/embedding APIs); forces local-only operation")
+	rootCmd.PersistentFlags().String("instance", "", "target dpkms instance by name or port (overrides current-instance state and config)")
 	rootCmd.Flags().BoolP("version", "v", false, "print version and exit")
 	rootCmd.Flags().Bool("check", false, "check for a newer release (use with -v)")
 
@@ -79,6 +80,8 @@ func init() {
 	viper.BindPFlag("output.format", rootCmd.PersistentFlags().Lookup("output"))
 	viper.BindPFlag("cli.verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 	viper.BindPFlag("offline.enabled", rootCmd.PersistentFlags().Lookup("offline"))
+	viper.BindPFlag("instance", rootCmd.PersistentFlags().Lookup("instance"))
+	viper.BindEnv("instance", "CTXT_INSTANCE")
 }
 
 func printVersion(cmd *cobra.Command) {

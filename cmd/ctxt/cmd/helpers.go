@@ -13,7 +13,9 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
+	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/plugin"
@@ -35,15 +37,24 @@ var sessionSvc *service.Service
 // Returns the service and a cleanup function that must be deferred.
 // When called from within a `ctxt shell` session (sessionSvc != nil), returns
 // the session-scoped service with a no-op cleanup to avoid double-close.
+//
+// Instance resolution order:
+//  1. --instance flag (or CTXT_INSTANCE env var, bound via viper)
+//  2. current-instance state file (written by `ctxt instance use`)
+//  3. config storage.path (original behaviour)
 func newService() (*service.Service, func(), error) {
 	if sessionSvc != nil {
 		return sessionSvc, func() {}, nil
 	}
+
 	storageType := cfg.Storage.Type
 	if storageType == "" {
 		storageType = "sqlite"
 	}
-	storagePath := cfg.Storage.Path
+	storagePath, err := resolveStoragePath()
+	if err != nil {
+		return nil, nil, err
+	}
 	if storagePath == "" {
 		return nil, nil, fmt.Errorf("storage path not configured")
 	}
@@ -82,6 +93,56 @@ func newService() (*service.Service, func(), error) {
 	}
 
 	return svc, cleanup, nil
+}
+
+// resolveStoragePath returns the DB path to open, applying instance routing.
+// Resolution order: --instance flag / CTXT_INSTANCE env > state file > config.
+func resolveStoragePath() (string, error) {
+	instanceTarget := activeInstanceName()
+	if instanceTarget != "" {
+		path, err := dbPathForInstance(instanceTarget)
+		if err != nil {
+			return "", err
+		}
+		return path, nil
+	}
+	return cfg.Storage.Path, nil
+}
+
+// activeInstanceName returns the active instance selector, if any.
+// Priority: --instance flag (or CTXT_INSTANCE env, bound in root.go) > state file.
+func activeInstanceName() string {
+	if v := viper.GetString("instance"); v != "" {
+		return v
+	}
+	stateFile, err := config.CurrentInstanceFile()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(stateFile)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// dbPathForInstance resolves a DB path from an instance name or port string.
+// Scans live pidfiles; returns an error if no matching instance is found.
+func dbPathForInstance(nameOrPort string) (string, error) {
+	runDir, err := config.RunDir()
+	if err != nil {
+		return "", fmt.Errorf("instance routing: run dir: %w", err)
+	}
+	infos, err := pidfile.Scan(runDir)
+	if err != nil {
+		return "", fmt.Errorf("instance routing: scan pidfiles: %w", err)
+	}
+	for _, info := range infos {
+		if info.Name == nameOrPort || fmt.Sprintf("%d", info.Port) == nameOrPort {
+			return info.DBPath, nil
+		}
+	}
+	return "", fmt.Errorf("no running dpkms instance named %q — use `dpkms ps` to list instances", nameOrPort)
 }
 
 // loadDetectors reads enabled detectors from the DB and registers them with the registry.

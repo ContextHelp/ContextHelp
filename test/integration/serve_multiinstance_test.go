@@ -23,6 +23,7 @@ import (
 //
 // The test builds the real dpkms binary, starts two instances that both
 // request the default ports, and verifies they both come up on distinct ports.
+// Also verifies that each instance has a unique, non-empty Name in its pidfile.
 func TestMultiInstanceAutoPort(t *testing.T) {
 	bin := buildDpkmsBinary(t)
 
@@ -32,15 +33,15 @@ func TestMultiInstanceAutoPort(t *testing.T) {
 	env := append(os.Environ(), "XDG_DATA_HOME="+dataDir)
 
 	// Each instance gets its own db to avoid SQLite single-writer contention.
-	cfg1 := writeServeConfig(t, dataDir, "1")
-	cfg2 := writeServeConfig(t, dataDir, "2")
+	cfg1 := writeServeConfig(t, dataDir, "alpha")
+	cfg2 := writeServeConfig(t, dataDir, "beta")
 
 	// Both instances request the same default HTTP (8080) and gRPC (9090) ports.
 	// The second must auto-assign free alternatives.
-	p1 := startServeProcess(t, bin, cfg1, env)
+	p1 := startServeProcessWithName(t, bin, cfg1, "alpha", env)
 	defer p1.Process.Kill()
 
-	p2 := startServeProcess(t, bin, cfg2, env)
+	p2 := startServeProcessWithName(t, bin, cfg2, "beta", env)
 	defer p2.Process.Kill()
 
 	runDir := filepath.Join(dataDir, "contexthelp", "run")
@@ -54,30 +55,58 @@ func TestMultiInstanceAutoPort(t *testing.T) {
 	}
 	for _, info := range instances {
 		waitHTTPHealthy(t, info.Port, 5*time.Second)
+		if info.Name == "" {
+			t.Errorf("instance on port %d has empty Name in pidfile", info.Port)
+		}
+	}
+	// Names must be distinct.
+	if instances[0].Name == instances[1].Name {
+		t.Errorf("both instances have the same Name %q", instances[0].Name)
+	}
+}
+
+// TestMultiInstanceNameConflict verifies that starting two instances with the
+// same --name fails with a non-zero exit code.
+func TestMultiInstanceNameConflict(t *testing.T) {
+	bin := buildDpkmsBinary(t)
+	dataDir := t.TempDir()
+	env := append(os.Environ(), "XDG_DATA_HOME="+dataDir)
+
+	cfg1 := writeServeConfig(t, dataDir, "conflict-a")
+	cfg2 := writeServeConfig(t, dataDir, "conflict-b")
+
+	p1 := startServeProcessWithName(t, bin, cfg1, "shared", env)
+	defer p1.Process.Kill()
+
+	// Wait for first instance to write its pidfile.
+	runDir := filepath.Join(dataDir, "contexthelp", "run")
+	waitForPidfiles(t, runDir, 1, 10*time.Second)
+
+	// Second instance with the same name should exit non-zero.
+	c := exec.Command(bin, "--config", cfg2, "serve", "--name", "shared")
+	c.Env = env
+	err := c.Run()
+	if err == nil {
+		t.Error("expected error starting second instance with duplicate name, got nil")
 	}
 }
 
 // TestMultiInstanceAutoPort_PS verifies that dpkms ps --output json lists
-// both instances with distinct ports after they auto-assigned.
+// both instances with distinct ports and distinct names after auto-assignment.
 func TestMultiInstanceAutoPort_PS(t *testing.T) {
 	bin := buildDpkmsBinary(t)
 	dataDir := t.TempDir()
 	env := append(os.Environ(), "XDG_DATA_HOME="+dataDir)
 
-	cfg1 := writeServeConfig(t, dataDir, "1")
-	cfg2 := writeServeConfig(t, dataDir, "2")
+	cfg1 := writeServeConfig(t, dataDir, "ps-alpha")
+	cfg2 := writeServeConfig(t, dataDir, "ps-beta")
 
-	p1 := startServeProcess(t, bin, cfg1, env)
+	p1 := startServeProcessWithName(t, bin, cfg1, "ps-alpha", env)
 	defer p1.Process.Kill()
-
-	// Wait for the first instance to bind its port before starting the second,
-	// avoiding the TOCTOU race in findFreePort where both probe 8080 as free.
-	runDir := filepath.Join(dataDir, "contexthelp", "run")
-	waitForPidfiles(t, runDir, 1, 10*time.Second)
-
-	p2 := startServeProcess(t, bin, cfg2, env)
+	p2 := startServeProcessWithName(t, bin, cfg2, "ps-beta", env)
 	defer p2.Process.Kill()
 
+	runDir := filepath.Join(dataDir, "contexthelp", "run")
 	waitForPidfiles(t, runDir, 2, 15*time.Second)
 
 	psCmd := exec.Command(bin, "--config", cfg1, "ps", "--output", "json")
@@ -94,12 +123,20 @@ func TestMultiInstanceAutoPort_PS(t *testing.T) {
 	if len(infos) < 2 {
 		t.Fatalf("ps listed %d instance(s), want >=2", len(infos))
 	}
-	seen := map[int]bool{}
+	seenPorts := map[int]bool{}
+	seenNames := map[string]bool{}
 	for _, info := range infos {
-		if seen[info.Port] {
+		if seenPorts[info.Port] {
 			t.Errorf("duplicate HTTP port %d in ps output", info.Port)
 		}
-		seen[info.Port] = true
+		seenPorts[info.Port] = true
+		if info.Name == "" {
+			t.Errorf("instance on port %d has empty Name in ps output", info.Port)
+		}
+		if seenNames[info.Name] {
+			t.Errorf("duplicate Name %q in ps output", info.Name)
+		}
+		seenNames[info.Name] = true
 	}
 }
 
@@ -124,6 +161,19 @@ func startServeProcess(t *testing.T, bin, configPath string, env []string) *exec
 	c.Stderr = os.Stderr
 	if err := c.Start(); err != nil {
 		t.Fatalf("start serve process: %v", err)
+	}
+	return c
+}
+
+// startServeProcessWithName launches dpkms serve with an explicit --name flag.
+func startServeProcessWithName(t *testing.T, bin, configPath, name string, env []string) *exec.Cmd {
+	t.Helper()
+	c := exec.Command(bin, "--config", configPath, "serve", "--name", name)
+	c.Env = env
+	c.Stdout = os.Stderr
+	c.Stderr = os.Stderr
+	if err := c.Start(); err != nil {
+		t.Fatalf("start serve process (name=%s): %v", name, err)
 	}
 	return c
 }

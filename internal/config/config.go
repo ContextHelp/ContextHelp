@@ -974,6 +974,17 @@ func RunDir() (string, error) {
 	return dir, nil
 }
 
+// CurrentInstanceFile returns the path to the state file that stores the
+// user's chosen current instance name (written by `ctxt instance use`).
+// Stored alongside pidfiles: $XDG_DATA_HOME/contexthelp/run/current-instance
+func CurrentInstanceFile() (string, error) {
+	dir, err := RunDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "current-instance"), nil
+}
+
 // JobsConfig controls worker pool runtime parameters.
 type JobsConfig struct {
 	// PollInterval is how often idle workers poll for new jobs. Min 50ms.
