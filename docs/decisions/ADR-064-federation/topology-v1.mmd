@@ -1,0 +1,6 @@
+flowchart TD
+  A[instance: founder] -->|push objects+edges| M[local-merged.sqlite]
+  B[instance: researcher] -->|push objects+edges| M
+  C[instance: engineer] -->|push objects+edges| M
+  M -->|push objects+edges async 1h| T[team-server\ndpkms HTTP]
+  T -->|push objects+edges async 24h| O[org-archive\ndpkms HTTP]
