@@ -810,6 +810,29 @@ func EnsureDataDir() error {
 	return os.MkdirAll(dataDir, 0755)
 }
 
+// RunDir returns the directory used for runtime files (pidfiles).
+// Respects XDG_DATA_HOME: $XDG_DATA_HOME/contexthelp/run or
+// $CTXT_DATA_DIR/run or ~/.local/share/contexthelp/run.
+func RunDir() (string, error) {
+	base := os.Getenv(EnvDataDir)
+	if base == "" {
+		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+			base = filepath.Join(xdg, "contexthelp")
+		} else {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", fmt.Errorf("home dir: %w", err)
+			}
+			base = filepath.Join(home, ".local", "share", "contexthelp")
+		}
+	}
+	dir := filepath.Join(base, "run")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("run dir: %w", err)
+	}
+	return dir, nil
+}
+
 // JobsConfig controls worker pool runtime parameters.
 type JobsConfig struct {
 	// PollInterval is how often idle workers poll for new jobs. Min 50ms.

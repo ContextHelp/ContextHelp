@@ -14,8 +14,10 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
+	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/remind"
@@ -168,7 +170,23 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 10. Init worker pool.
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
 
-	// 10b. Crash recovery: reset any jobs left in "running" state from a
+	// 10b. Write pidfile so dpkms ps can discover this instance.
+	runDir, err := config.RunDir()
+	if err != nil {
+		return fmt.Errorf("run dir: %w", err)
+	}
+	if err := pidfile.Write(runDir, pidfile.Info{
+		PID:       os.Getpid(),
+		Port:      port,
+		GRPCPort:  grpcPort,
+		DBPath:    storagePath,
+		StartedAt: time.Now(),
+	}); err != nil {
+		// Non-fatal: ps won't show this instance but serve still works.
+		fmt.Fprintf(os.Stderr, "warning: could not write pidfile: %v\n", err)
+	}
+
+	// 10c. Crash recovery: reset any jobs left in "running" state from a
 	// previous crash back to "pending" so they are picked up immediately.
 	if n, err := queue.RecoverStale(context.Background(), 0); err != nil {
 		return fmt.Errorf("crash recovery: %w", err)
@@ -264,14 +282,21 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Wait for shutdown signal.
 	g.Go(func() error {
 		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 		select {
-		case <-sigChan:
+		case sig := <-sigChan:
 			fmt.Println()
-			fmt.Println("Shutting down gracefully...")
+			if sig == syscall.SIGHUP {
+				fmt.Println("Received SIGHUP — restarting...")
+			} else {
+				fmt.Println("Shutting down gracefully...")
+			}
 		case <-ctx.Done():
 			return nil
 		}
+
+		// Remove pidfile before exit/restart.
+		pidfile.Remove(runDir, port)
 
 		// Stop accepting new jobs and requests.
 		cancel()
