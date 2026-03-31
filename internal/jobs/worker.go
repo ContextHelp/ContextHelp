@@ -188,6 +188,10 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	}
 
 	// Write edges for mentions (ADR-049).
+	// Any edge write failure rolls back by failing the job; the object has
+	// already been persisted but no edges exist yet, so the job is retryable
+	// and a subsequent run will re-create the object (content-hash dedup) and
+	// re-attempt edge writes.
 	for _, mention := range draft.Mentions {
 		edge := &storage.Edge{
 			ID:        uuid.New().String(),
@@ -199,7 +203,12 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 			Weight:    1.0,
 			CreatedAt: time.Now(),
 		}
-		p.store.Edges().Create(ctx, edge)
+		if err := p.store.Edges().Create(ctx, edge); err != nil {
+			reason := fmt.Sprintf("edge write: mention %s: %s", mention.String(), err)
+			p.queue.Fail(ctx, job.ID, reason)
+			p.emitFailed(ctx, job.ID, reason)
+			return
+		}
 	}
 
 	p.emitObjectCreated(ctx, draft.ID)
