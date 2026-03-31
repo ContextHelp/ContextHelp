@@ -11,7 +11,7 @@ vars:
   MAIN_CTXT: ./cmd/ctxt
   DB_PATH: ./data/sqlite/contexthelp.db
   MIGRATION_PATH: ./data/migrations
-  BUILD_TAGS: -tags fts5
+  BUILD_TAGS: -tags fts5 -buildvcs=false
 
 env:
   GO111MODULE: on

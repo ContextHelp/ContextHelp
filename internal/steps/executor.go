@@ -144,9 +144,14 @@ func (se *StepExecutor) executeWithProcess(ctx context.Context, name string, con
 		return nil, fmt.Errorf("step error: %s", errMsg)
 	}
 
-	objBytes, ok := result["object"].([]byte)
+	objRaw, ok := result["object"]
 	if !ok {
-		return nil, fmt.Errorf("invalid output format")
+		return nil, fmt.Errorf("invalid output format: missing object field")
+	}
+
+	objBytes, err := json.Marshal(objRaw)
+	if err != nil {
+		return nil, fmt.Errorf("re-marshal object: %w", err)
 	}
 
 	var obj storage.KnowledgeObject
@@ -223,9 +228,14 @@ func (se *StepExecutor) executeWithContainer(ctx context.Context, name string, c
 		return nil, fmt.Errorf("step error: %s", errMsg)
 	}
 
-	objBytes, ok := result["object"].([]byte)
+	objRaw, ok := result["object"]
 	if !ok {
-		return nil, fmt.Errorf("invalid output format")
+		return nil, fmt.Errorf("invalid output format: missing object field")
+	}
+
+	objBytes, err := json.Marshal(objRaw)
+	if err != nil {
+		return nil, fmt.Errorf("re-marshal object: %w", err)
 	}
 
 	var obj storage.KnowledgeObject

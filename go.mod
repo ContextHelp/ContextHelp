@@ -103,7 +103,7 @@ require (
 	golang.org/x/text v0.32.0 // indirect
 )
 
-replace (
-	hop.top/hdl => /Users/jadb/.w/ideacrafterslabs/hdl/hops/main
-	hop.top/uri => /Users/jadb/.w/ideacrafterslabs/uri/hops/main
-)
+// hop.top/hdl and hop.top/uri are self-owned sibling repos.
+// Resolved via go.work replace directives (see go.work at the repo root).
+// For standalone builds without go.work, provide these modules via GOPROXY
+// or adapt go.work for your local workspace layout.
