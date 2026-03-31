@@ -122,6 +122,9 @@ type FederationEntry struct {
 	Interval time.Duration `mapstructure:"interval" yaml:"interval"`
 	// SyncMode controls how sync runs. Valid values: "async" | "inline".
 	SyncMode string `mapstructure:"sync_mode" yaml:"sync_mode"`
+	// Token is the Bearer token sent to the remote instance. Empty = no auth header sent.
+	// Tokens are stored here for remote HTTP peers only; local file targets use path-level auth.
+	Token string `mapstructure:"token" yaml:"token"`
 }
 
 // AuditConfig controls SIEM-ready audit log export and real-time forwarding.
