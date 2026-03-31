@@ -294,6 +294,15 @@ func TestMergeStrings(t *testing.T) {
 	})
 }
 
+func TestGetByContentHashEmptyStore(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	got, err := d.Objects().GetByContentHash(ctx, "any-hash")
+	assert.NoError(t, err)
+	assert.Nil(t, got, "empty store must return nil, nil — not an error")
+}
+
 func TestGetByContentHash(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()
@@ -309,9 +318,9 @@ func TestGetByContentHash(t *testing.T) {
 		assert.Equal(t, "hash-1", got.ID)
 	})
 
-	t.Run("not found", func(t *testing.T) {
+	t.Run("not found returns nil nil", func(t *testing.T) {
 		got, err := d.Objects().GetByContentHash(ctx, "nonexistent")
-		assert.Error(t, err)
+		assert.NoError(t, err)
 		assert.Nil(t, got)
 	})
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +14,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"hop.top/uri"
 )
+
+// errObjectNotFound is returned by scanObjectRow when no row matches.
+var errObjectNotFound = errors.New("object not found")
 
 func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) error {
 	f, err := marshalObjectFields(obj)
@@ -77,7 +81,11 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		return nil, nil
 	}
 	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE content_hash = $1 LIMIT 1`, hash)
-	return scanObjectRow(row)
+	obj, err := scanObjectRow(row)
+	if errors.Is(err, errObjectNotFound) {
+		return nil, nil
+	}
+	return obj, err
 }
 
 func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
@@ -489,7 +497,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("object not found")
+			return nil, errObjectNotFound
 		}
 		return nil, fmt.Errorf("scan object: %w", err)
 	}

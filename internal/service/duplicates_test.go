@@ -81,6 +81,14 @@ func TestCheckDuplicates(t *testing.T) {
 			wantNil: true,
 		},
 		{
+			// Regression: T-0200 — empty store must return no-duplicate, not error.
+			name:    "empty store returns no duplicate",
+			hash:    "sha256:fresh",
+			cfg:     config.DuplicatesConfig{CheckExact: true, SimilarityThreshold: 0.95},
+			byHash:  map[string]*storage.KnowledgeObject{},
+			wantNil: true,
+		},
+		{
 			name:    "exact check disabled",
 			hash:    "sha256:abc",
 			cfg:     config.DuplicatesConfig{CheckExact: false},
