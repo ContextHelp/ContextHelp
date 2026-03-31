@@ -25,6 +25,19 @@ func TestVersionFlag(t *testing.T) {
 	}
 }
 
+func TestVersionSubcommand(t *testing.T) {
+	SetVersionInfo("1.2.3", "2026-03-15_10:00:00", "abc1234")
+	defer SetVersionInfo("", "", "")
+
+	out, err := executeCommand("version")
+	if err != nil {
+		t.Fatalf("version subcommand should succeed: %v", err)
+	}
+	if !strings.Contains(out, "ctxt version 1.2.3") {
+		t.Errorf("output should contain 'ctxt version 1.2.3', got: %s", out)
+	}
+}
+
 func TestVersionFlagShort(t *testing.T) {
 	SetVersionInfo("1.2.3", "2026-03-15_10:00:00", "abc1234")
 	defer SetVersionInfo("", "", "")
