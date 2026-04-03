@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -200,8 +201,40 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	if err := p.store.Objects().Create(ctx, draft); err != nil {
 		// Unique constraint race: another worker inserted the same hash concurrently.
+		// The other worker's insert may not be visible yet (WAL delay), so retry
+		// with short backoff before giving up.
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-			existingID, rerr := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
+			backoffs := []time.Duration{50 * time.Millisecond, 100 * time.Millisecond, 200 * time.Millisecond}
+			var existingID string
+			var rerr error
+			for i, delay := range backoffs {
+				existingID, rerr = p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
+				if rerr == nil {
+					break
+				}
+				if !errors.Is(rerr, sql.ErrNoRows) {
+					break
+				}
+				slog.Debug("jobs: reinforce after race retry",
+					"attempt", i+1,
+					"delay", delay,
+					"hash", draft.ContentHash,
+				)
+				// Don't sleep after the last attempt.
+				if i >= len(backoffs)-1 {
+					break
+				}
+				timer := time.NewTimer(delay)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					rerr = ctx.Err()
+				case <-timer.C:
+				}
+				if rerr != nil {
+					break
+				}
+			}
 			if rerr != nil {
 				p.queue.Fail(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr))
 				p.emitFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr))

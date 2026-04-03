@@ -2,8 +2,10 @@ package jobs
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -393,6 +395,105 @@ func TestEdgeWriteFailureFails(t *testing.T) {
 	if count != 0 {
 		t.Errorf("object.created events on edge failure: got %d, want 0", count)
 	}
+}
+
+// TestReinforceAfterRaceRetry verifies that the worker retries Reinforce when
+// a UNIQUE constraint race produces a transient "no rows" error.
+func TestReinforceAfterRaceRetry(t *testing.T) {
+	base := storageutil.NewTestDriver(t)
+	driver := newRaceObjectDriver(base, 1) // fail first Reinforce, succeed on second
+	q := NewQueue(driver.Jobs())
+	pipes := builtins.Registry()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	job := makeJob("job-race-retry")
+	job.Payload = "race retry test content"
+	job.Pipeline = "text.short"
+	q.Enqueue(ctx, job)
+
+	pool := NewWorkerPool(q, pipes, driver, 1, nil, defaultTestJobsCfg())
+
+	go func() {
+		for {
+			got, _ := q.Get(ctx, "job-race-retry")
+			if got != nil && (got.Status == storage.JobCompleted || got.Status == storage.JobFailed) {
+				cancel()
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+	pool.Start(ctx)
+
+	got, _ := q.Get(context.Background(), "job-race-retry")
+	assert.Equal(t, storage.JobCompleted, got.Status, "job should complete after retry")
+	assert.NotEmpty(t, got.ResultID)
+}
+
+// raceObjectDriver wraps a StorageDriver, returning a shared raceObjectStore
+// that simulates the UNIQUE constraint race condition.
+type raceObjectDriver struct {
+	storage.StorageDriver
+	store *raceObjectStore
+}
+
+func newRaceObjectDriver(base storage.StorageDriver, failCount int) *raceObjectDriver {
+	return &raceObjectDriver{
+		StorageDriver: base,
+		store: &raceObjectStore{
+			ObjectStore: base.Objects(),
+			failCount:   failCount,
+		},
+	}
+}
+
+func (d *raceObjectDriver) Objects() storage.ObjectStore {
+	return d.store
+}
+
+// raceObjectStore intercepts Create to return UNIQUE constraint error and
+// Reinforce to fail with "no rows" for the first N calls.
+type raceObjectStore struct {
+	storage.ObjectStore
+	mu           sync.Mutex
+	failCount    int
+	createCalled bool
+	reinforced   int
+}
+
+func (s *raceObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) error {
+	s.mu.Lock()
+	firstCall := !s.createCalled
+	s.createCalled = true
+	s.mu.Unlock()
+
+	// First call: let the real store create the object so Reinforce can find it.
+	if firstCall {
+		if err := s.ObjectStore.Create(ctx, obj); err != nil {
+			return err
+		}
+	}
+	// Always return UNIQUE constraint to trigger the retry path.
+	return errors.New("UNIQUE constraint failed: objects.content_hash")
+}
+
+func (s *raceObjectStore) Reinforce(ctx context.Context, hash string, mergeData *storage.KnowledgeObject) (string, error) {
+	s.mu.Lock()
+	call := s.reinforced
+	s.reinforced++
+	s.mu.Unlock()
+
+	if call < s.failCount {
+		return "", fmt.Errorf("reinforce: lookup: %w", sql.ErrNoRows)
+	}
+	return s.ObjectStore.Reinforce(ctx, hash, mergeData)
+}
+
+func (s *raceObjectStore) GetByContentHash(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
+	// Return not-found so the worker takes the Create path.
+	return nil, nil
 }
 
 // failingEdgeDriver wraps a real StorageDriver and returns an error on every
