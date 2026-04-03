@@ -190,8 +190,31 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	if err := p.store.Objects().Create(ctx, draft); err != nil {
 		// Unique constraint race: another worker inserted the same hash concurrently.
+		// The other worker's insert may not be visible yet (WAL delay), so retry
+		// with short backoff before giving up.
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-			existingID, rerr := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
+			backoffs := []time.Duration{50 * time.Millisecond, 100 * time.Millisecond, 200 * time.Millisecond}
+			var existingID string
+			var rerr error
+			for attempt, delay := range backoffs {
+				existingID, rerr = p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
+				if rerr == nil {
+					break
+				}
+				if !strings.Contains(rerr.Error(), "no rows") {
+					break
+				}
+				slog.Debug("jobs: reinforce after race retry",
+					"attempt", attempt+1,
+					"delay", delay,
+					"hash", draft.ContentHash,
+				)
+				if ctx.Err() != nil {
+					rerr = ctx.Err()
+					break
+				}
+				time.Sleep(delay)
+			}
 			if rerr != nil {
 				p.queue.Fail(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr))
 				p.emitFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr))
