@@ -65,7 +65,7 @@ func init() {
 	importGitHubCmd.Flags().Bool("dry-run", false, "print what would be imported without enqueueing jobs")
 	importGitHubCmd.Flags().String("output", "table", "output format: table or json")
 	importGitHubCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
-	importGitHubCmd.Flags().String("pipeline", "import.github", "pipeline override for enqueued jobs")
+	importGitHubCmd.Flags().String("pipeline", "url.github.repo", "pipeline override for enqueued jobs")
 
 	// hidden for test/dev overrides
 	importGitHubCmd.Flags().String("github-base-url", "", "override GitHub API base URL")
