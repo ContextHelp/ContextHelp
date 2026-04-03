@@ -99,7 +99,11 @@ func (s *URLFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		log.Printf("url_fetcher: unexpected status %d", resp.StatusCode)
-		return nil, fmt.Errorf("url_fetcher: unexpected status %d for %s", resp.StatusCode, rawURL)
+		err := fmt.Errorf("url_fetcher: unexpected status %d for %s", resp.StatusCode, rawURL)
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return nil, pipeline.Permanent(err)
+		}
+		return nil, err
 	}
 
 	body, err := io.ReadAll(resp.Body)

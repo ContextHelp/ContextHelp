@@ -2,10 +2,12 @@ package steps
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -91,6 +93,61 @@ func TestURLFetcher_ErrorStatus(t *testing.T) {
 	_, err := step.Run(context.Background(), draft)
 	if err == nil {
 		t.Fatal("expected error for 403 status")
+	}
+}
+
+func TestURLFetcher_PermanentErrors(t *testing.T) {
+	codes := []int{
+		http.StatusBadRequest,        // 400
+		http.StatusForbidden,         // 403
+		http.StatusNotFound,          // 404
+		http.StatusGone,              // 410
+		http.StatusUnprocessableEntity, // 422
+		451,                          // Unavailable For Legal Reasons
+	}
+	for _, code := range codes {
+		t.Run(fmt.Sprintf("status_%d", code), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(code)
+			}))
+			defer srv.Close()
+
+			step := NewURLFetcher(WithURLHTTPClient(srv.Client()))
+			draft := &storage.KnowledgeObject{Source: srv.URL}
+			_, err := step.Run(context.Background(), draft)
+			if err == nil {
+				t.Fatalf("expected error for status %d", code)
+			}
+			if !pipeline.IsPermanent(err) {
+				t.Errorf("status %d: expected PermanentError, got %T: %v", code, err, err)
+			}
+		})
+	}
+}
+
+func TestURLFetcher_RetryableErrors(t *testing.T) {
+	codes := []int{
+		http.StatusInternalServerError, // 500
+		http.StatusBadGateway,          // 502
+		http.StatusServiceUnavailable,  // 503
+	}
+	for _, code := range codes {
+		t.Run(fmt.Sprintf("status_%d", code), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(code)
+			}))
+			defer srv.Close()
+
+			step := NewURLFetcher(WithURLHTTPClient(srv.Client()))
+			draft := &storage.KnowledgeObject{Source: srv.URL}
+			_, err := step.Run(context.Background(), draft)
+			if err == nil {
+				t.Fatalf("expected error for status %d", code)
+			}
+			if pipeline.IsPermanent(err) {
+				t.Errorf("status %d: should be retryable, got PermanentError", code)
+			}
+		})
 	}
 }
 
