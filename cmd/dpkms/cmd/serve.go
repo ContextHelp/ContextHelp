@@ -149,6 +149,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 		if err := browserMgr.Start(context.Background()); err != nil {
 			return fmt.Errorf("browser daemon: %w", err)
 		}
+		defer func() {
+			if err := browserMgr.Stop(); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: browser daemon stop: %v\n", err)
+			}
+		}()
 		browserClient = browserMgr.Client()
 		fmt.Printf("IBR browser daemon on port %d\n", browserMgr.Port())
 	}
@@ -378,11 +383,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Cleanup.
-	if browserMgr != nil {
-		if err := browserMgr.Stop(); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: browser daemon stop: %v\n", err)
-		}
-	}
 	driver.Close(context.Background())
 	fmt.Println("Storage closed")
 

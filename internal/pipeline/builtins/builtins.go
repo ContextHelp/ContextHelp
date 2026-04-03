@@ -384,7 +384,15 @@ func ConfiguredRegistryWithPipelineOverrides(
 		bc = browserClient[0]
 	}
 
+	// Pre-compute capabilities to skip pipelines with unsatisfied providers.
+	baseCaps := CapabilitiesFromOpts(BuildOpts{Factory: base, BlobStore: blobStore, BlobThreshold: blobThreshold, BrowserClient: bc})
+
 	for name, d := range defs {
+		if !defProvidersSatisfied(d, baseCaps) {
+			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, d.Providers)
+			continue
+		}
+
 		opts := BuildOpts{Factory: base, BlobStore: blobStore, BlobThreshold: blobThreshold, BrowserClient: bc}
 
 		if override, ok := pipelinesCfg.Overrides[name]; ok {
@@ -438,6 +446,17 @@ func ConfiguredRegistryWithPipelineOverrides(
 	return r
 }
 
+// defProvidersSatisfied returns true if all providers listed in d.Providers
+// are present in caps. An empty Providers list is always satisfied.
+func defProvidersSatisfied(d Def, caps pipeline.CapabilitySet) bool {
+	for _, p := range d.Providers {
+		if !caps[p] {
+			return false
+		}
+	}
+	return true
+}
+
 func applyStructuralOverrides(steps []string, skip []string, extra []string) []string {
 	out := make([]string, 0, len(steps)+len(extra))
 	out = append(out, steps...)
@@ -463,8 +482,14 @@ func applyStructuralOverrides(steps []string, skip []string, extra []string) []s
 func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()
+	caps := CapabilitiesFromOpts(opts)
 
 	for name, d := range defs {
+		if !defProvidersSatisfied(d, caps) {
+			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, d.Providers)
+			continue
+		}
+
 		p, err := buildPipeline(name, d, opts, strict)
 		if err != nil {
 			panic(fmt.Sprintf("builtins: %v", err))

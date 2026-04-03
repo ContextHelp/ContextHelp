@@ -7,6 +7,8 @@ import (
 	"log"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -72,14 +74,19 @@ func (s *IBRFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*
 		}
 	}
 
-	var sb strings.Builder
-	sb.WriteString("url: " + rawURL + "\n")
-	sb.WriteString("instructions:\n")
-	for _, instr := range instructions {
-		sb.WriteString("  - " + instr + "\n")
+	prompt := struct {
+		URL          string   `yaml:"url"`
+		Instructions []string `yaml:"instructions"`
+	}{
+		URL:          rawURL,
+		Instructions: instructions,
+	}
+	promptBytes, err := yaml.Marshal(prompt)
+	if err != nil {
+		return nil, fmt.Errorf("ibr_fetcher: marshal prompt: %w", err)
 	}
 
-	result, err := s.client.Execute(ctx, sb.String())
+	result, err := s.client.Execute(ctx, string(promptBytes))
 	if err != nil {
 		return nil, fmt.Errorf("ibr_fetcher: execute: %w", err)
 	}
@@ -91,7 +98,9 @@ func (s *IBRFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*
 	draft.Metadata["ibr_token_usage"] = result.TokenUsage
 
 	if len(result.Extracts) > 0 {
-		draft.RawContent = extractContent(result.Extracts[0])
+		content, contentType := extractContent(result.Extracts[0])
+		draft.RawContent = content
+		draft.ContentType = contentType
 		raw, _ := json.Marshal(result.Extracts)
 		draft.Metadata["ibr_extracts"] = json.RawMessage(raw)
 	}
@@ -100,15 +109,21 @@ func (s *IBRFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*
 	return draft, nil
 }
 
-// extractContent picks the best text field from an extract map.
-func extractContent(extract map[string]any) string {
+// extractContent picks the best text field from an extract map and returns
+// the content along with a MIME content type.
+func extractContent(extract map[string]any) (string, string) {
+	// html/content fields are treated as HTML; text/body as plain text.
+	htmlKeys := map[string]bool{"html": true, "content": true}
 	for _, key := range []string{"html", "content", "text", "body"} {
 		if v, ok := extract[key]; ok {
 			if s, ok := v.(string); ok && s != "" {
-				return s
+				if htmlKeys[key] {
+					return s, "text/html"
+				}
+				return s, "text/plain"
 			}
 		}
 	}
 	b, _ := json.Marshal(extract)
-	return string(b)
+	return string(b), "application/json"
 }

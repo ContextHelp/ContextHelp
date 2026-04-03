@@ -55,6 +55,7 @@ func TestIBRFetcher_Run_FetchesViaIBRDaemon(t *testing.T) {
 	result, err := f.Run(context.Background(), draft)
 	require.NoError(t, err)
 	assert.Contains(t, result.RawContent, "Hello World")
+	assert.Equal(t, "text/plain", result.ContentType) // "text" key → text/plain
 	assert.Equal(t, "https://example.com", result.Metadata["source_url"])
 }
 

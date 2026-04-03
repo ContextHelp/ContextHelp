@@ -116,7 +116,13 @@ func (m *Manager) Stop() error {
 	}
 	log.Printf("browser: stopping IBR daemon (pid %d)", m.cmd.Process.Pid)
 	if err := m.cmd.Process.Signal(os.Interrupt); err != nil {
-		return m.cmd.Process.Kill()
+		if killErr := m.cmd.Process.Kill(); killErr != nil {
+			return killErr
+		}
+		_ = m.cmd.Wait() // reap zombie
+		m.client = nil
+		m.cmd = nil
+		return nil
 	}
 	done := make(chan error, 1)
 	go func() { done <- m.cmd.Wait() }()
@@ -124,6 +130,7 @@ func (m *Manager) Stop() error {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		_ = m.cmd.Process.Kill()
+		_ = m.cmd.Wait() // reap zombie after forced kill
 	}
 	m.client = nil
 	m.cmd = nil

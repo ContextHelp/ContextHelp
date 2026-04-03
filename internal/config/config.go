@@ -120,22 +120,13 @@ type Config struct {
 
 // BrowserConfig controls the built-in IBR browser automation daemon.
 type BrowserConfig struct {
-	Enabled      bool                `mapstructure:"enabled" yaml:"enabled"`
-	Binary       string              `mapstructure:"binary" yaml:"binary"`
-	Port         int                 `mapstructure:"port" yaml:"port"`
-	MaxClients   int                 `mapstructure:"max_clients" yaml:"max_clients"`
-	QueueTimeout time.Duration       `mapstructure:"queue_timeout" yaml:"queue_timeout"`
-	Headless     bool                `mapstructure:"headless" yaml:"headless"`
-	AIProvider   string              `mapstructure:"ai_provider" yaml:"ai_provider"`
-	AIModel      string              `mapstructure:"ai_model" yaml:"ai_model"`
-	Cookies      BrowserCookieConfig `mapstructure:"cookies" yaml:"cookies"`
-}
-
-// BrowserCookieConfig controls cookie import for authenticated web access.
-type BrowserCookieConfig struct {
-	Browser string   `mapstructure:"browser" yaml:"browser"`
-	Domains []string `mapstructure:"domains" yaml:"domains"`
-	Profile string   `mapstructure:"profile" yaml:"profile"`
+	Enabled    bool   `mapstructure:"enabled" yaml:"enabled"`
+	Binary     string `mapstructure:"binary" yaml:"binary"`
+	Port       int    `mapstructure:"port" yaml:"port"`
+	MaxClients int    `mapstructure:"max_clients" yaml:"max_clients"`
+	Headless   bool   `mapstructure:"headless" yaml:"headless"`
+	AIProvider string `mapstructure:"ai_provider" yaml:"ai_provider"`
+	AIModel    string `mapstructure:"ai_model" yaml:"ai_model"`
 }
 
 // FederationConfig holds server-side (receive-side) federation settings.
@@ -796,9 +787,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("browser.binary", "ibr")
 	v.SetDefault("browser.port", 0)
 	v.SetDefault("browser.max_clients", 3)
-	v.SetDefault("browser.queue_timeout", 30*time.Second)
 	v.SetDefault("browser.headless", true)
-	v.SetDefault("browser.cookies.profile", "Default")
 
 	// Security alerting defaults
 	v.SetDefault("security.alerts.auth_failure_threshold", 3)
