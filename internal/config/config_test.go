@@ -545,3 +545,36 @@ federations:
 	assert.Equal(t, "peer-b", cfg.Federations[1].Name)
 	assert.Equal(t, "inline", cfg.Federations[1].SyncMode)
 }
+
+func TestBrowserConfigDefaults(t *testing.T) {
+	cfg, err := Load("")
+	require.NoError(t, err)
+	assert.False(t, cfg.Browser.Enabled)
+	assert.Equal(t, "ibr", cfg.Browser.Binary)
+	assert.Equal(t, 0, cfg.Browser.Port)
+	assert.Equal(t, 3, cfg.Browser.MaxClients)
+	assert.True(t, cfg.Browser.Headless)
+	assert.Empty(t, cfg.Browser.AIProvider)
+	assert.Empty(t, cfg.Browser.AIModel)
+}
+
+func TestBrowserConfigFromYAML(t *testing.T) {
+	cfg, err := loadFromYAML(t, `
+browser:
+  enabled: true
+  binary: /usr/local/bin/ibr
+  port: 9222
+  max_clients: 5
+  headless: false
+  ai_provider: anthropic
+  ai_model: claude-sonnet-4-6
+`)
+	require.NoError(t, err)
+	assert.True(t, cfg.Browser.Enabled)
+	assert.Equal(t, "/usr/local/bin/ibr", cfg.Browser.Binary)
+	assert.Equal(t, 9222, cfg.Browser.Port)
+	assert.Equal(t, 5, cfg.Browser.MaxClients)
+	assert.False(t, cfg.Browser.Headless)
+	assert.Equal(t, "anthropic", cfg.Browser.AIProvider)
+	assert.Equal(t, "claude-sonnet-4-6", cfg.Browser.AIModel)
+}

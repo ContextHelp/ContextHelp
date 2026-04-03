@@ -26,6 +26,7 @@ type Info struct {
 	Port             int       `json:"port"`
 	GRPCPort         int       `json:"grpc_port"`
 	CookieBridgePort int       `json:"cookie_bridge_port"`
+	BrowserPort      int       `json:"browser_port,omitempty"`
 	DBPath           string    `json:"db_path"`
 	StartedAt        time.Time `json:"started_at"`
 }

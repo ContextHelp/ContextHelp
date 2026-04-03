@@ -3,6 +3,7 @@ package builtins
 import (
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 )
@@ -43,5 +44,20 @@ func TestCapabilitiesFromFactory_IOAlwaysPresent(t *testing.T) {
 	caps := CapabilitiesFromFactory(f)
 	if !caps["io"] {
 		t.Error("io capability should always be present")
+	}
+}
+
+func TestCapabilitiesFromOpts_IncludesBrowser(t *testing.T) {
+	// Without browser client.
+	caps := CapabilitiesFromOpts(BuildOpts{})
+	if caps["browser"] {
+		t.Error("browser should not be present without client")
+	}
+
+	// With browser client.
+	c := browser.NewClient("http://localhost:1", "tok")
+	caps = CapabilitiesFromOpts(BuildOpts{BrowserClient: c})
+	if !caps["browser"] {
+		t.Error("browser should be present when BrowserClient is set")
 	}
 }

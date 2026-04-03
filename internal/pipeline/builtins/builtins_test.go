@@ -18,7 +18,7 @@ func TestAllDefsRegistered(t *testing.T) {
 		"image.ocr", "image.analysis",
 		"audio.transcribe", "video.full", "video.audio_only",
 		"doc.pdf", "doc.markdown", "doc.code", "doc.office",
-		"url.generic", "url.repo",
+		"url.generic", "url.repo", "url.interactive", "url.authenticated",
 		"feed.sync",
 		"batch.jsonl", "batch.csv", "batch.tsv",
 		"import.twitter", "import.linkedin.posts", "import.linkedin.articles",
@@ -51,11 +51,13 @@ func TestRegistryBuildsAllPipelines(t *testing.T) {
 
 	// Verify that the core set of pipelines is present in the registry.
 	// The registry may contain additional pipelines; we check membership, not an exact list.
+	// Pipelines with provider requirements (video.*, url.interactive, url.authenticated)
+	// are skipped when their providers are absent; they are not listed here.
 	required := []string{
 		"audio.transcribe", "batch.csv", "batch.jsonl", "batch.tsv",
 		"doc.code", "doc.markdown", "doc.office", "doc.pdf",
 		"feed.sync", "image.analysis", "image.ocr", "text.long",
-		"text.short", "url.generic", "url.repo", "video.audio_only", "video.full",
+		"text.short", "url.generic", "url.repo",
 		"import.twitter", "import.linkedin.posts", "import.linkedin.articles",
 	}
 
@@ -125,6 +127,10 @@ func TestPipelineStepsMatchDef(t *testing.T) {
 	for name, d := range Defs() {
 		p, err := r.Get(name)
 		if err != nil {
+			// Pipelines with unsatisfied provider requirements are skipped at registration.
+			if len(d.Providers) > 0 {
+				continue
+			}
 			t.Errorf("Get(%q): %v", name, err)
 			continue
 		}

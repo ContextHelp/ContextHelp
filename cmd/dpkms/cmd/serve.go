@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
@@ -139,14 +140,39 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("init secrets: %w", err)
 	}
 	factory := providers.NewFactory(cfg.Providers, secretsResolver)
+
+	// 3b. Browser automation daemon (optional).
+	var browserMgr *browser.Manager
+	var browserClient *browser.Client
+	if cfg.Browser.Enabled {
+		browserMgr = browser.NewManager(cfg.Browser)
+		if err := browserMgr.Start(context.Background()); err != nil {
+			return fmt.Errorf("browser daemon: %w", err)
+		}
+		defer func() {
+			if err := browserMgr.Stop(); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: browser daemon stop: %v\n", err)
+			}
+		}()
+		browserClient = browserMgr.Client()
+		fmt.Printf("IBR browser daemon on port %d\n", browserMgr.Port())
+	}
+
 	pipes := builtins.ConfiguredRegistryWithPipelineOverrides(
 		factory,
 		cfg.Providers,
 		cfg.Pipelines,
 		driver.Blobs(),
 		cfg.Storage.Blob.Threshold,
+		browserClient,
 	)
 	fmt.Println("Pipeline runtime initialized (with overrides)")
+
+	// 3b. Wire pipeline preflight validation into the queue.
+	queue.SetPipelineValidator(func(name string) error {
+		_, err := pipes.Get(name)
+		return err
+	})
 
 	// 4. Init search engine.
 	engine := search.NewEngine(driver)
@@ -220,11 +246,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 		httpLn.Close()
 		return fmt.Errorf("run dir: %w", err)
 	}
+	var browserPort int
+	if browserMgr != nil {
+		browserPort = browserMgr.Port()
+	}
 	if err := pidfile.Write(runDir, pidfile.Info{
 		PID:              os.Getpid(),
 		Port:             port,
 		GRPCPort:         grpcPort,
 		CookieBridgePort: cookieBridgePort,
+		BrowserPort:      browserPort,
 		DBPath:           storagePath,
 		StartedAt:        time.Now(),
 	}); err != nil {

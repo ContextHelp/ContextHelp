@@ -3,16 +3,18 @@ package pipeline
 import "errors"
 
 // PermanentError wraps an error that should not be retried.
+// Use Permanent() to construct one and errors.As() to detect it.
 type PermanentError struct {
 	Err error
 }
 
 func (e *PermanentError) Error() string {
-	if e.Err == nil {
+	if e == nil || e.Err == nil {
 		return "<nil>"
 	}
 	return e.Err.Error()
 }
+
 func (e *PermanentError) Unwrap() error { return e.Err }
 
 // Permanent wraps err as a PermanentError.

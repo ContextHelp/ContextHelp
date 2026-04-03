@@ -61,6 +61,12 @@ func newService() (*service.Service, func(), error) {
 	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
 
+	// Wire pipeline preflight validation into the queue.
+	queue.SetPipelineValidator(func(name string) error {
+		_, err := pipes.Get(name)
+		return err
+	})
+
 	// Load persisted detectors into the pipeline registry.
 	if err := loadDetectors(ctx, driver, pipes); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load detectors: %v\n", err)

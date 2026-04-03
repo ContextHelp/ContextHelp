@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
@@ -98,6 +99,15 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"dependency_enricher": func() pipeline.PipelineStep { return steps.NewDependencyEnricher() },
 	// Graph extractor: no-op without LLM; provider-aware constructor below.
 	"graph_extractor": func() pipeline.PipelineStep { return steps.NewGraphExtractor() },
+	// Browser-based fetcher: nil client → returns error at run time.
+	"ibr_fetcher": func() pipeline.PipelineStep { return steps.NewIBRFetcher(nil) },
+}
+
+// browserStepConstructors maps step names to browser-client-aware constructors.
+var browserStepConstructors = map[string]func(*browser.Client) pipeline.PipelineStep{
+	"ibr_fetcher": func(c *browser.Client) pipeline.PipelineStep {
+		return steps.NewIBRFetcher(c)
+	},
 }
 
 // blobStepConstructors maps step names to blob-store-aware constructors.
@@ -112,6 +122,7 @@ type BuildOpts struct {
 	Factory       *providers.Factory
 	BlobStore     storage.BlobStore
 	BlobThreshold int64
+	BrowserClient *browser.Client
 }
 
 // providerStepConstructors maps step names to provider-aware constructors.
@@ -162,6 +173,11 @@ func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
 	if opts.Factory != nil {
 		if ctor, ok := providerStepConstructors[name]; ok {
 			return ctor(opts.Factory), nil
+		}
+	}
+	if opts.BrowserClient != nil {
+		if ctor, ok := browserStepConstructors[name]; ok {
+			return ctor(opts.BrowserClient), nil
 		}
 	}
 	if opts.BlobStore != nil {
@@ -358,12 +374,26 @@ func ConfiguredRegistryWithPipelineOverrides(
 	pipelinesCfg config.PipelinesConfig,
 	blobStore storage.BlobStore,
 	blobThreshold int64,
+	browserClient ...*browser.Client,
 ) pipeline.Registry {
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()
 
+	var bc *browser.Client
+	if len(browserClient) > 0 {
+		bc = browserClient[0]
+	}
+
+	// Pre-compute capabilities to skip pipelines with unsatisfied providers.
+	baseCaps := CapabilitiesFromOpts(BuildOpts{Factory: base, BlobStore: blobStore, BlobThreshold: blobThreshold, BrowserClient: bc})
+
 	for name, d := range defs {
-		opts := BuildOpts{Factory: base, BlobStore: blobStore, BlobThreshold: blobThreshold}
+		if !defProvidersSatisfied(d, baseCaps) {
+			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, d.Providers)
+			continue
+		}
+
+		opts := BuildOpts{Factory: base, BlobStore: blobStore, BlobThreshold: blobThreshold, BrowserClient: bc}
 
 		if override, ok := pipelinesCfg.Overrides[name]; ok {
 			// 1. Handle structural overrides (SkipSteps, ExtraSteps).
@@ -416,6 +446,17 @@ func ConfiguredRegistryWithPipelineOverrides(
 	return r
 }
 
+// defProvidersSatisfied returns true if all providers listed in d.Providers
+// are present in caps. An empty Providers list is always satisfied.
+func defProvidersSatisfied(d Def, caps pipeline.CapabilitySet) bool {
+	for _, p := range d.Providers {
+		if !caps[p] {
+			return false
+		}
+	}
+	return true
+}
+
 func applyStructuralOverrides(steps []string, skip []string, extra []string) []string {
 	out := make([]string, 0, len(steps)+len(extra))
 	out = append(out, steps...)
@@ -441,8 +482,14 @@ func applyStructuralOverrides(steps []string, skip []string, extra []string) []s
 func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()
+	caps := CapabilitiesFromOpts(opts)
 
 	for name, d := range defs {
+		if !defProvidersSatisfied(d, caps) {
+			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, d.Providers)
+			continue
+		}
+
 		p, err := buildPipeline(name, d, opts, strict)
 		if err != nil {
 			panic(fmt.Sprintf("builtins: %v", err))
