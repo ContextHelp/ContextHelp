@@ -93,7 +93,11 @@ func (s *URLFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*
 	resp, err := s.bridge.Do(req)
 	if err != nil {
 		log.Printf("url_fetcher: fetch error: %v", err)
-		return nil, fmt.Errorf("url_fetcher: fetch %s: %w", rawURL, err)
+		wrapped := fmt.Errorf("url_fetcher: fetch %s: %w", rawURL, err)
+		if isPermanentNetError(err) {
+			return nil, pipeline.Permanent(wrapped)
+		}
+		return nil, wrapped
 	}
 	defer resp.Body.Close()
 
@@ -114,4 +118,24 @@ func (s *URLFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*
 	draft.Metadata["content_type"] = resp.Header.Get("Content-Type")
 
 	return draft, nil
+}
+
+// permanentPatterns lists substrings that indicate a non-retryable network error.
+var permanentPatterns = []string{
+	"no such host",
+	"tls:",
+	"certificate",
+	"x509",
+}
+
+// isPermanentNetError returns true if the error message (via string matching)
+// contains a known non-retryable network failure such as DNS resolution or TLS errors.
+func isPermanentNetError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	for _, pat := range permanentPatterns {
+		if strings.Contains(msg, pat) {
+			return true
+		}
+	}
+	return false
 }
