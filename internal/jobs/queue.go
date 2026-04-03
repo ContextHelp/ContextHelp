@@ -9,9 +9,14 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
+// PipelineValidator checks whether a pipeline name is known.
+// Return nil if the pipeline exists, or an error otherwise.
+type PipelineValidator func(name string) error
+
 // Queue wraps storage.JobStore with queue semantics.
 type Queue struct {
-	store storage.JobStore
+	store             storage.JobStore
+	validatePipeline  PipelineValidator
 }
 
 // NewQueue creates a job queue backed by the given job store.
@@ -19,7 +24,18 @@ func NewQueue(store storage.JobStore) *Queue {
 	return &Queue{store: store}
 }
 
+// SetPipelineValidator installs a pre-flight check that rejects enqueue
+// requests for unknown pipeline names.
+func (q *Queue) SetPipelineValidator(v PipelineValidator) {
+	q.validatePipeline = v
+}
+
 func (q *Queue) Enqueue(ctx context.Context, job *storage.Job) error {
+	if q.validatePipeline != nil && job.Pipeline != "" {
+		if err := q.validatePipeline(job.Pipeline); err != nil {
+			return fmt.Errorf("enqueue rejected: %w", err)
+		}
+	}
 	if job.Status == "" {
 		job.Status = storage.JobPending
 	}

@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -205,4 +206,73 @@ func TestQueueListByStatus(t *testing.T) {
 	if len(jobs) != 2 {
 		t.Errorf("count: got %d", len(jobs))
 	}
+}
+
+func TestQueueEnqueueRejectsUnknownPipeline(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := NewQueue(driver.Jobs())
+	q.SetPipelineValidator(func(name string) error {
+		if name == "text.short" {
+			return nil
+		}
+		return fmt.Errorf("pipeline %q not found", name)
+	})
+	ctx := context.Background()
+
+	// Known pipeline succeeds.
+	job := makeJob("job-ok")
+	job.Pipeline = "text.short"
+	if err := q.Enqueue(ctx, job); err != nil {
+		t.Fatalf("enqueue known pipeline: %v", err)
+	}
+
+	// Unknown pipeline is rejected at enqueue time.
+	bad := makeJob("job-bad")
+	bad.Pipeline = "import.github"
+	err := q.Enqueue(ctx, bad)
+	if err == nil {
+		t.Fatal("expected error for unknown pipeline")
+	}
+	if got := err.Error(); !contains(got, "not found") {
+		t.Errorf("error should mention 'not found', got: %s", got)
+	}
+}
+
+func TestQueueEnqueueIngestJobRejectsUnknownPipeline(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := NewQueue(driver.Jobs())
+	q.SetPipelineValidator(func(name string) error {
+		return fmt.Errorf("pipeline %q not found", name)
+	})
+
+	err := q.EnqueueIngestJob(context.Background(), "ingest:text", "payload", "no.such.pipe", "src", 3)
+	if err == nil {
+		t.Fatal("expected error for unknown pipeline")
+	}
+}
+
+func TestQueueEnqueueNoValidatorAcceptsAll(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := NewQueue(driver.Jobs())
+	ctx := context.Background()
+
+	// Without a validator, any pipeline name is accepted.
+	job := makeJob("job-any")
+	job.Pipeline = "totally.made.up"
+	if err := q.Enqueue(ctx, job); err != nil {
+		t.Fatalf("enqueue without validator: %v", err)
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && searchString(s, substr)
+}
+
+func searchString(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
 }

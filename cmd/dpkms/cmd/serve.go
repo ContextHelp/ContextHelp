@@ -148,6 +148,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	)
 	fmt.Println("Pipeline runtime initialized (with overrides)")
 
+	// 3b. Wire pipeline preflight validation into the queue.
+	queue.SetPipelineValidator(func(name string) error {
+		_, err := pipes.Get(name)
+		return err
+	})
+
 	// 4. Init search engine.
 	engine := search.NewEngine(driver)
 
