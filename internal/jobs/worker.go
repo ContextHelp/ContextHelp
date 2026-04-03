@@ -165,8 +165,18 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	draft, err := p.processWithHops(ctx, job)
 	if err != nil {
-		p.queue.Fail(ctx, job.ID, err.Error())
-		p.emitFailed(ctx, job.ID, err.Error())
+		var perm *pipeline.PermanentError
+		if errors.As(err, &perm) {
+			slog.Debug("jobs: permanent error, skipping retry", "job", job.ID, "err", err)
+			p.queue.Fail(ctx, job.ID, err.Error())
+			p.emitFailed(ctx, job.ID, err.Error())
+			return
+		}
+		// Attempt retry for transient errors; fall back to Fail on exhaustion.
+		if retryErr := p.queue.Retry(ctx, job.ID); retryErr != nil {
+			p.queue.Fail(ctx, job.ID, err.Error())
+			p.emitFailed(ctx, job.ID, err.Error())
+		}
 		return
 	}
 
