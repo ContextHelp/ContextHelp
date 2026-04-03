@@ -103,7 +103,7 @@ func TestURLFetcher_PermanentErrors(t *testing.T) {
 		http.StatusNotFound,          // 404
 		http.StatusGone,              // 410
 		http.StatusUnprocessableEntity, // 422
-		451,                          // Unavailable For Legal Reasons
+		http.StatusUnavailableForLegalReasons, // 451
 	}
 	for _, code := range codes {
 		t.Run(fmt.Sprintf("status_%d", code), func(t *testing.T) {
@@ -127,6 +127,8 @@ func TestURLFetcher_PermanentErrors(t *testing.T) {
 
 func TestURLFetcher_RetryableErrors(t *testing.T) {
 	codes := []int{
+		http.StatusRequestTimeout,      // 408
+		http.StatusTooManyRequests,     // 429
 		http.StatusInternalServerError, // 500
 		http.StatusBadGateway,          // 502
 		http.StatusServiceUnavailable,  // 503

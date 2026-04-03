@@ -100,7 +100,10 @@ func (s *URLFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		log.Printf("url_fetcher: unexpected status %d", resp.StatusCode)
 		err := fmt.Errorf("url_fetcher: unexpected status %d for %s", resp.StatusCode, rawURL)
-		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 &&
+			resp.StatusCode != http.StatusRequestTimeout &&
+			resp.StatusCode != http.StatusTooManyRequests {
+			// Worker detects PermanentError to skip retries (see worker.go process()).
 			return nil, pipeline.Permanent(err)
 		}
 		return nil, err
