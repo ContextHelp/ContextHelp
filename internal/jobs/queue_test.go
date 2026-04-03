@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -233,7 +234,7 @@ func TestQueueEnqueueRejectsUnknownPipeline(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown pipeline")
 	}
-	if got := err.Error(); !contains(got, "not found") {
+	if got := err.Error(); !strings.Contains(got, "not found") {
 		t.Errorf("error should mention 'not found', got: %s", got)
 	}
 }
@@ -264,15 +265,3 @@ func TestQueueEnqueueNoValidatorAcceptsAll(t *testing.T) {
 	}
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}

@@ -31,7 +31,10 @@ func (q *Queue) SetPipelineValidator(v PipelineValidator) {
 }
 
 func (q *Queue) Enqueue(ctx context.Context, job *storage.Job) error {
-	if q.validatePipeline != nil && job.Pipeline != "" {
+	if q.validatePipeline != nil {
+		if job.Pipeline == "" {
+			return fmt.Errorf("enqueue rejected: pipeline is required")
+		}
 		if err := q.validatePipeline(job.Pipeline); err != nil {
 			return fmt.Errorf("enqueue rejected: %w", err)
 		}
