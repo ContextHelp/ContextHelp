@@ -18,7 +18,7 @@ func TestAllDefsRegistered(t *testing.T) {
 		"image.ocr", "image.analysis",
 		"audio.transcribe", "video.full", "video.audio_only",
 		"doc.pdf", "doc.markdown", "doc.code", "doc.office",
-		"url.generic", "url.repo",
+		"url.generic", "url.repo", "url.interactive", "url.authenticated",
 		"feed.sync",
 		"batch.jsonl", "batch.csv", "batch.tsv",
 		"import.twitter", "import.linkedin.posts", "import.linkedin.articles",

@@ -113,6 +113,29 @@ type Config struct {
 
 	// Federation holds server-side federation settings (receive-side).
 	Federation FederationConfig `mapstructure:"federation" yaml:"federation"`
+
+	// Browser configures the built-in IBR browser automation daemon.
+	Browser BrowserConfig `mapstructure:"browser" yaml:"browser"`
+}
+
+// BrowserConfig controls the built-in IBR browser automation daemon.
+type BrowserConfig struct {
+	Enabled      bool                `mapstructure:"enabled" yaml:"enabled"`
+	Binary       string              `mapstructure:"binary" yaml:"binary"`
+	Port         int                 `mapstructure:"port" yaml:"port"`
+	MaxClients   int                 `mapstructure:"max_clients" yaml:"max_clients"`
+	QueueTimeout time.Duration       `mapstructure:"queue_timeout" yaml:"queue_timeout"`
+	Headless     bool                `mapstructure:"headless" yaml:"headless"`
+	AIProvider   string              `mapstructure:"ai_provider" yaml:"ai_provider"`
+	AIModel      string              `mapstructure:"ai_model" yaml:"ai_model"`
+	Cookies      BrowserCookieConfig `mapstructure:"cookies" yaml:"cookies"`
+}
+
+// BrowserCookieConfig controls cookie import for authenticated web access.
+type BrowserCookieConfig struct {
+	Browser string   `mapstructure:"browser" yaml:"browser"`
+	Domains []string `mapstructure:"domains" yaml:"domains"`
+	Profile string   `mapstructure:"profile" yaml:"profile"`
 }
 
 // FederationConfig holds server-side (receive-side) federation settings.
@@ -768,6 +791,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("resurfacing.min_score", 0.4)
 	v.SetDefault("resurfacing.run_interval", time.Hour)
 
+	// Browser defaults — disabled by default; Playwright/Chromium is heavy.
+	v.SetDefault("browser.enabled", false)
+	v.SetDefault("browser.binary", "ibr")
+	v.SetDefault("browser.port", 0)
+	v.SetDefault("browser.max_clients", 3)
+	v.SetDefault("browser.queue_timeout", 30*time.Second)
+	v.SetDefault("browser.headless", true)
+	v.SetDefault("browser.cookies.profile", "Default")
+
 	// Security alerting defaults
 	v.SetDefault("security.alerts.auth_failure_threshold", 3)
 	v.SetDefault("security.alerts.acl_denial_threshold", 10)
@@ -805,6 +837,11 @@ func bindEnvVars(v *viper.Viper) {
 	v.BindEnv("secrets.backend", "CTXT_SECRETS_BACKEND")
 	v.BindEnv("secrets.age_file", "CTXT_AGE_FILE")
 	v.BindEnv("secrets.age_identity_file", "CTXT_AGE_IDENTITY")
+
+	// Browser env var bindings
+	v.BindEnv("browser.enabled", "CTXT_BROWSER_ENABLED")
+	v.BindEnv("browser.binary", "CTXT_BROWSER_BINARY")
+	v.BindEnv("browser.port", "CTXT_BROWSER_PORT")
 }
 
 // ResolveSearchConfig merges global search config with a profile-level override.
