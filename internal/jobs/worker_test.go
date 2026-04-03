@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -485,14 +486,14 @@ func (s *raceObjectStore) Reinforce(ctx context.Context, hash string, mergeData 
 	s.mu.Unlock()
 
 	if call < s.failCount {
-		return "", fmt.Errorf("reinforce: lookup: %w", errors.New("sql: no rows in result set"))
+		return "", fmt.Errorf("reinforce: lookup: %w", sql.ErrNoRows)
 	}
 	return s.ObjectStore.Reinforce(ctx, hash, mergeData)
 }
 
 func (s *raceObjectStore) GetByContentHash(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
 	// Return not-found so the worker takes the Create path.
-	return nil, errors.New("not found")
+	return nil, nil
 }
 
 // failingEdgeDriver wraps a real StorageDriver and returns an error on every

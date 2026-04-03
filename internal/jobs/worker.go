@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -196,24 +197,33 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 			backoffs := []time.Duration{50 * time.Millisecond, 100 * time.Millisecond, 200 * time.Millisecond}
 			var existingID string
 			var rerr error
-			for attempt, delay := range backoffs {
+			for i, delay := range backoffs {
 				existingID, rerr = p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
 				if rerr == nil {
 					break
 				}
-				if !strings.Contains(rerr.Error(), "no rows") {
+				if !errors.Is(rerr, sql.ErrNoRows) {
 					break
 				}
 				slog.Debug("jobs: reinforce after race retry",
-					"attempt", attempt+1,
+					"attempt", i+1,
 					"delay", delay,
 					"hash", draft.ContentHash,
 				)
-				if ctx.Err() != nil {
-					rerr = ctx.Err()
+				// Don't sleep after the last attempt.
+				if i >= len(backoffs)-1 {
 					break
 				}
-				time.Sleep(delay)
+				timer := time.NewTimer(delay)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					rerr = ctx.Err()
+				case <-timer.C:
+				}
+				if rerr != nil {
+					break
+				}
 			}
 			if rerr != nil {
 				p.queue.Fail(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr))
