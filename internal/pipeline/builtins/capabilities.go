@@ -78,6 +78,9 @@ func CapabilitiesFromOpts(opts BuildOpts) pipeline.CapabilitySet {
 	if opts.BlobStore != nil {
 		caps["blob-externalize"] = true
 	}
+	if opts.BrowserClient != nil {
+		caps["browser"] = true
+	}
 	return caps
 }
 
