@@ -128,8 +128,8 @@ var permanentPatterns = []string{
 	"x509",
 }
 
-// isPermanentNetError returns true if err (or any error in its chain) matches
-// a known non-retryable network failure such as DNS resolution or TLS errors.
+// isPermanentNetError returns true if the error message (via string matching)
+// contains a known non-retryable network failure such as DNS resolution or TLS errors.
 func isPermanentNetError(err error) bool {
 	msg := strings.ToLower(err.Error())
 	for _, pat := range permanentPatterns {

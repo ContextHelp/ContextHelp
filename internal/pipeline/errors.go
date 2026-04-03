@@ -9,7 +9,7 @@ type PermanentError struct {
 }
 
 func (e *PermanentError) Error() string {
-	return fmt.Sprintf("permanent: %s", e.Err)
+	return fmt.Sprintf("permanent: %v", e.Err)
 }
 
 func (e *PermanentError) Unwrap() error {
@@ -18,5 +18,8 @@ func (e *PermanentError) Unwrap() error {
 
 // Permanent wraps err as a PermanentError, signalling that retries are futile.
 func Permanent(err error) error {
+	if err == nil {
+		return nil
+	}
 	return &PermanentError{Err: err}
 }
