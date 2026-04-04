@@ -333,7 +333,7 @@ func (sd *StepDiscovery) DownloadStep(ctx context.Context, name, fromRegistry st
 	}
 
 	stepPath := filepath.Join(sd.stepsPath, name)
-	if err := os.MkdirAll(stepPath, 0755); err != nil {
+	if err := os.MkdirAll(stepPath, 0750); err != nil {
 		return fmt.Errorf("create step directory: %w", err)
 	}
 

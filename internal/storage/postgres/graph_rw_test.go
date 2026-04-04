@@ -29,7 +29,7 @@ func newIntegrationDriver(t *testing.T) *pgdrv.Driver {
 	if err := drv.Migrate(ctx); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	t.Cleanup(func() { drv.Close() })
+	t.Cleanup(func() { drv.Close(context.Background()) })
 	return drv
 }
 

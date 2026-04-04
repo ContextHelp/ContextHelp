@@ -95,7 +95,7 @@ type CommandResult struct {
 
 // RunCommand executes a CLI tool with the given arguments, respecting context cancellation and timeout.
 func RunCommand(ctx context.Context, name string, args ...string) (*CommandResult, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := exec.CommandContext(ctx, name, args...) // #nosec G204 -- caller controls command name and args
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

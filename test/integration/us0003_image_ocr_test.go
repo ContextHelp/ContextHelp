@@ -706,18 +706,19 @@ func TestUS0003_WorkerCrashRetry(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
+	// Register a pipeline with a step that always fails (simulates worker crash).
 	env.svc.Pipes.Upsert("image.crashretry", &pipeline.Pipeline{
 		PipelineName: "image.crashretry",
 		Steps: []pipeline.PipelineStep{
-			&imageMetaStep{format: "png", width: 100, height: 100, size: 256},
+			&alwaysFailStep{},
 		},
 	})
 
-	// Enqueue a job that will use a pipeline that does not exist (simulates worker failure).
+	// Enqueue a job using the always-failing pipeline.
 	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
 		Content:  "crash-retry-image-data",
 		Type:     "image",
-		Pipeline: "image.nonexistent",
+		Pipeline: "image.crashretry",
 		Source:   "e2e-test",
 	})
 	require.NoError(t, err)

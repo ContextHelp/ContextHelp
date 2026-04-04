@@ -41,6 +41,16 @@ func startTestEnv(t *testing.T) *testEnv {
 	driver := storageutil.NewTestDriver(t)
 	queue := jobs.NewQueue(driver.Jobs())
 	pipes := builtins.Registry()
+	queue.SetPipelineValidator(func(name string) error {
+		// Check in-memory registry first, then DB-stored pipelines.
+		if _, err := pipes.Get(name); err == nil {
+			return nil
+		}
+		if _, err := driver.Pipelines().Get(context.Background(), name); err == nil {
+			return nil
+		}
+		return fmt.Errorf("pipeline %q not found", name)
+	})
 	engine := search.NewEngine(driver)
 	svc := service.New(driver, queue, pipes, engine, "", nil)
 	router := httpserver.NewRouter(svc, false, nil)
@@ -222,16 +232,22 @@ func TestFullReadPath(t *testing.T) {
 	}
 }
 
-// TestJobRetry: POST /analyze with content that uses a nonexistent pipeline → job fails → retry → re-processing.
+// TestJobRetry: POST /analyze with a pipeline whose step always fails → job fails → retry → re-processing.
 func TestJobRetry(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	// Enqueue a job with a nonexistent pipeline directly via service.
+	// Register a pipeline with a step that always fails.
+	env.svc.Pipes.Upsert("test.alwaysfail", &pipeline.Pipeline{
+		PipelineName: "test.alwaysfail",
+		Steps:        []pipeline.PipelineStep{&alwaysFailStep{}},
+	})
+
+	// Enqueue a job using the always-failing pipeline.
 	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
 		Content:  "test retry content",
 		Type:     "text",
-		Pipeline: "nonexistent.pipeline",
+		Pipeline: "test.alwaysfail",
 		Source:   "e2e-test",
 	})
 	if err != nil {
@@ -256,7 +272,7 @@ func TestJobRetry(t *testing.T) {
 		t.Fatalf("retry status: got %d, want 200", resp.StatusCode)
 	}
 
-	// Job should go back to pending, then fail again (same bad pipeline).
+	// Job should go back to pending, then fail again (same always-failing step).
 	waitForJob(t, env.URL, jobID, storage.JobFailed)
 }
 

@@ -3,6 +3,7 @@ package watcher
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -252,12 +253,9 @@ func (sw *ScreenWatcher) dedup(imgData []byte, text string, state *screenState) 
 func (sw *ScreenWatcher) contentHash(imgData []byte, text string) string {
 	textHash := sha256.Sum256([]byte(text))
 	// Image fingerprint: encode size as 8-byte big-endian; cheap, avoids hashing whole image.
-	size := len(imgData)
-	sizeBytes := []byte{
-		byte(size >> 56), byte(size >> 48), byte(size >> 40), byte(size >> 32),
-		byte(size >> 24), byte(size >> 16), byte(size >> 8), byte(size),
-	}
-	combined := append(textHash[:], sizeBytes...)
+	var sizeBytes [8]byte
+	binary.BigEndian.PutUint64(sizeBytes[:], uint64(len(imgData)))
+	combined := append(textHash[:], sizeBytes[:]...)
 	final := sha256.Sum256(combined)
 	return hex.EncodeToString(final[:])
 }

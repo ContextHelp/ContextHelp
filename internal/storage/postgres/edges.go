@@ -107,6 +107,7 @@ func (s *EdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth
 			i++
 		}
 
+		// #nosec G201 -- placeholders are "$N" parameter markers, not user input
 		query := fmt.Sprintf(`
 			SELECT DISTINCT e2.from_id
 			FROM edges e1

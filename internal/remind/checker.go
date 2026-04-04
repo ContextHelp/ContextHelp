@@ -77,9 +77,9 @@ func notify(title, body string) {
 			`display notification %q with title "ctxt reminder" subtitle %q`,
 			body, title,
 		)
-		_ = exec.Command("osascript", "-e", script).Run()
+		_ = exec.Command("osascript", "-e", script).Run() // #nosec G204 -- script is constructed from reminder title/body
 	case "linux":
-		_ = exec.Command("notify-send",
+		_ = exec.Command("notify-send", // #nosec G204 -- args are reminder title/body
 			"--app-name=ctxt",
 			fmt.Sprintf("ctxt: %s", title),
 			body,

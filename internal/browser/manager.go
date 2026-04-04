@@ -89,7 +89,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		env = append(env, "AI_MODEL="+m.cfg.AIModel)
 	}
 
-	cmd := exec.CommandContext(ctx, binary)
+	cmd := exec.CommandContext(ctx, binary) // #nosec G204 -- binary resolved from config or PATH lookup
 	cmd.Env = env
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

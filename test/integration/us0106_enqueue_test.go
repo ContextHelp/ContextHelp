@@ -250,7 +250,7 @@ func TestUS0106_CreateThenEnqueue(t *testing.T) {
 	assert.Equal(t, "roundtrip-pipeline", job.Pipeline)
 }
 
-func TestUS0106_EnqueueInvalidPipelineCreatesJob(t *testing.T) {
+func TestUS0106_EnqueueInvalidPipelineRejected(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -265,11 +265,8 @@ func TestUS0106_EnqueueInvalidPipelineCreatesJob(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	assert.Equal(t, gohttp.StatusAccepted, resp.StatusCode)
-
-	var result map[string]string
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
-	assert.NotEmpty(t, result["job_id"])
+	// With pipeline validation, unknown pipelines are rejected at enqueue time.
+	assert.Equal(t, gohttp.StatusBadRequest, resp.StatusCode)
 }
 
 func TestUS0106_EnqueueEmptySourceAccepted(t *testing.T) {

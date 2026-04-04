@@ -74,7 +74,7 @@ func (s *AuditStore) List(ctx context.Context, f storage.AuditFilter) ([]*storag
 		query += fmt.Sprintf(" LIMIT %d", f.Limit)
 	}
 	if f.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", f.Offset)
+		query += fmt.Sprintf(" OFFSET %d", f.Offset) // #nosec G202 -- integer value
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

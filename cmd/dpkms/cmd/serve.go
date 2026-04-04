@@ -169,9 +169,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 	fmt.Println("Pipeline runtime initialized (with overrides)")
 
 	// 3b. Wire pipeline preflight validation into the queue.
+	// Check in-memory registry first, then DB-stored pipelines.
 	queue.SetPipelineValidator(func(name string) error {
-		_, err := pipes.Get(name)
-		return err
+		if _, err := pipes.Get(name); err == nil {
+			return nil
+		}
+		if _, err := driver.Pipelines().Get(context.Background(), name); err == nil {
+			return nil
+		}
+		return fmt.Errorf("pipeline %q not found", name)
 	})
 
 	// 4. Init search engine.
@@ -435,7 +441,7 @@ func daemonize(cmd *cobra.Command) error {
 	}
 	defer devNull.Close()
 
-	c := exec.Command(self, args...)
+	c := exec.Command(self, args...) // #nosec G204,G702 -- self is os.Executable(), args from os.Args
 	c.Stdin = devNull
 	c.Stdout = devNull
 	c.Stderr = devNull

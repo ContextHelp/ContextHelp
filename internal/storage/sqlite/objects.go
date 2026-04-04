@@ -455,7 +455,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		query += fmt.Sprintf(" LIMIT %d", limit)
 	}
 	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", offset)
+		query += fmt.Sprintf(" OFFSET %d", offset) // #nosec G202 -- integer value, not user string
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -1085,7 +1085,7 @@ func (s *ObjectStore) nodeTypeObjectIDs(ctx context.Context, nodeTypes []string)
 		placeholders[i] = "?"
 		args[i] = t
 	}
-	q := fmt.Sprintf(
+	q := fmt.Sprintf( // #nosec G201 -- placeholders are literal "?" strings, not user input
 		`SELECT object_id FROM object_nodes WHERE node_type IN (%s)
 		 GROUP BY object_id HAVING COUNT(DISTINCT node_type) = ?`,
 		strings.Join(placeholders, ", "),

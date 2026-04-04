@@ -99,7 +99,7 @@ func (se *StepExecutor) executeWithProcess(ctx context.Context, name string, con
 		return nil, fmt.Errorf("marshal input: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, execPath)
+	cmd := exec.CommandContext(ctx, execPath) // #nosec G204 -- execPath is a validated step binary from registry
 	cmd.Stdin = strings.NewReader(string(inputJSON))
 
 	if sandbox != nil {

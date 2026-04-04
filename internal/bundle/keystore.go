@@ -20,7 +20,7 @@ func StorePrivateKey(priv ed25519.PrivateKey) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("security", "add-generic-password",
+		cmd = exec.Command("security", "add-generic-password", // #nosec G204 -- args are compile-time constants
 			"-s", KeychainService,
 			"-a", KeychainAccount,
 			"-w", encoded,

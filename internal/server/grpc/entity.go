@@ -40,7 +40,7 @@ func (h *entityHandler) ListEntities(ctx context.Context, req *pb.ListEntitiesRe
 		out = append(out, entityToProto(e))
 	}
 
-	return &pb.ListEntitiesResponse{Entities: out, Total: int32(len(out))}, nil
+	return &pb.ListEntitiesResponse{Entities: out, Total: int32(len(out))}, nil // #nosec G115 -- total bounded by query limit
 }
 
 func (h *entityHandler) GetEntity(ctx context.Context, req *pb.GetEntityRequest) (*pb.Entity, error) {
@@ -77,7 +77,7 @@ func (h *entityHandler) GetEntityBacklinks(
 		out = append(out, koToProto(o))
 	}
 
-	return &pb.GetEntityBacklinksResponse{Objects: out, Total: int32(len(out))}, nil
+	return &pb.GetEntityBacklinksResponse{Objects: out, Total: int32(len(out))}, nil // #nosec G115 -- total bounded by query limit
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────

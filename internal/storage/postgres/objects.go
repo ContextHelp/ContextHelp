@@ -154,7 +154,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		dir = "ASC"
 	}
 
-	query := objectSelectCols + ` FROM objects ` + where + fmt.Sprintf(` ORDER BY %s %s`, sortCol, dir)
+	query := objectSelectCols + ` FROM objects ` + where + fmt.Sprintf(` ORDER BY %s %s`, sortCol, dir) // #nosec G202 -- sortCol/dir are validated constants
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", filter.Limit)
 	}
@@ -327,7 +327,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		query += fmt.Sprintf(" LIMIT %d", limit)
 	}
 	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", offset)
+		query += fmt.Sprintf(" OFFSET %d", offset) // #nosec G202 -- integer value
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -430,6 +430,7 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 		limit = 20
 	}
 
+	// #nosec G202 -- vecLiteral is a formatted float array, where is parameterized, limit is int
 	query := objectSelectCols + fmt.Sprintf(`, 1 - (embedding <=> %s) AS score FROM objects %s ORDER BY embedding <=> %s LIMIT %d`,
 		vecLiteral, where, vecLiteral, limit)
 

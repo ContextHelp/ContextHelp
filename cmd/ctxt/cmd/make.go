@@ -149,7 +149,7 @@ func runMake(cmd *cobra.Command, args []string) error {
 
 	outputFile := viper.GetString("make.output-file")
 	if outputFile != "" {
-		if err := os.WriteFile(outputFile, []byte(output), 0644); err != nil {
+		if err := os.WriteFile(outputFile, []byte(output), 0600); err != nil {
 			return fmt.Errorf("write file: %w", err)
 		}
 		fmt.Printf("Composition written to %s\n", outputFile)

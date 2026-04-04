@@ -121,7 +121,7 @@ func EnsureBuiltM() error {
 func Run(t *testing.T, name string, args ...string) (string, error) {
 	t.Helper()
 	bin := BinaryPath(name)
-	cmd := exec.Command(bin, args...)
+	cmd := exec.Command(bin, args...) // #nosec G204 -- test helper runs built test binaries
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -144,7 +144,7 @@ func StartServer(t *testing.T, extraArgs ...string) (url string, cleanup func())
 	args := []string{"serve", "--port", fmt.Sprintf("%d", port)}
 	args = append(args, extraArgs...)
 
-	cmd := exec.Command(bin, args...)
+	cmd := exec.Command(bin, args...) // #nosec G204 -- test helper runs built test binaries
 	// Use a temp dir for the database so tests are isolated.
 	tmpDir := t.TempDir()
 	cmd.Env = append(os.Environ(),

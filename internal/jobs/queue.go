@@ -2,12 +2,17 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
+
+// ErrPipelineNotFound is returned when an enqueue request references an
+// unknown pipeline name.
+var ErrPipelineNotFound = errors.New("pipeline not found")
 
 // PipelineValidator checks whether a pipeline name is known.
 // Return nil if the pipeline exists, or an error otherwise.
@@ -36,7 +41,7 @@ func (q *Queue) Enqueue(ctx context.Context, job *storage.Job) error {
 			return fmt.Errorf("enqueue rejected: pipeline is required")
 		}
 		if err := q.validatePipeline(job.Pipeline); err != nil {
-			return fmt.Errorf("enqueue rejected: %w", err)
+			return fmt.Errorf("%w: %s", ErrPipelineNotFound, job.Pipeline)
 		}
 	}
 	if job.Status == "" {

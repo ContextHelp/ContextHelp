@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -43,6 +44,9 @@ func (h *queryHandler) Search(ctx context.Context, req *pb.SearchRequest) (*pb.S
 		out = append(out, koToProto(o))
 	}
 
+	if total > math.MaxInt32 {
+		total = math.MaxInt32
+	}
 	return &pb.SearchResponse{Objects: out, Total: int32(total)}, nil
 }
 
@@ -70,6 +74,9 @@ func (h *queryHandler) ListObjects(ctx context.Context, req *pb.ListObjectsReque
 		out = append(out, koToProto(o))
 	}
 
+	if total > math.MaxInt32 {
+		total = math.MaxInt32
+	}
 	return &pb.ListObjectsResponse{Objects: out, Total: int32(total)}, nil
 }
 
@@ -130,6 +137,9 @@ func (h *queryHandler) NodeAwareSearch(
 		results = append(results, r)
 	}
 
+	if total > math.MaxInt32 {
+		total = math.MaxInt32
+	}
 	return &pb.NodeAwareSearchResponse{Results: results, Total: int32(total)}, nil
 }
 
@@ -167,7 +177,7 @@ func objectGraphToProto(g *pluginapi.ObjectGraph) *pb.ObjectGraph {
 			NodeType: string(n.NodeType),
 			Label:    n.Label,
 			Content:  n.Content,
-			Order:    int32(n.Order),
+			Order:    int32(n.Order), // #nosec G115 -- node order is small bounded int
 		})
 	}
 	for _, e := range g.Edges {
@@ -191,7 +201,7 @@ func docProjectionToProto(d pluginapi.DocumentProjection) *pb.DocumentProjection
 		dp.Sections = append(dp.Sections, &pb.Section{
 			Title:   s.Title,
 			Content: s.Content,
-			Order:   int32(s.Order),
+			Order:   int32(s.Order), // #nosec G115 -- section order is small bounded int
 		})
 	}
 	return dp

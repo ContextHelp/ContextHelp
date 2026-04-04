@@ -38,7 +38,7 @@ func Write(dir string, info Info) error {
 		return err
 	}
 	path := filepath.Join(dir, fmt.Sprintf("%d.pid", info.Port))
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 // Remove deletes the pidfile for the given port in dir.

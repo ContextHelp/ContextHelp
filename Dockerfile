@@ -8,9 +8,11 @@ WORKDIR /ui
 RUN mkdir -p dist && echo '{}' > dist/.keep
 
 # ─── Stage 2: Go builder ─────────────────────────────────────────────────────
-FROM golang:1.26-alpine AS go-builder
+FROM golang:1.26-bookworm AS go-builder
 
-RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev sqlite-dev
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates tzdata gcc libc6-dev libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -40,11 +42,13 @@ RUN GOWORK=off CGO_ENABLED=1 GOOS=linux go build \
     -o /out/ctxt ./cmd/ctxt
 
 # ─── Stage 3: Runtime ────────────────────────────────────────────────────────
-FROM alpine:3.21 AS runtime
+FROM debian:bookworm-slim AS runtime
 
-RUN apk add --no-cache ca-certificates tzdata sqlite wget
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates tzdata libsqlite3-0 wget \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN addgroup -S ctxt && adduser -S -G ctxt -u 1000 ctxt
+RUN groupadd -r ctxt && useradd -r -g ctxt -u 1000 ctxt
 
 WORKDIR /app
 

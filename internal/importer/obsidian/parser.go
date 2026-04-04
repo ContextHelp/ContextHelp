@@ -80,7 +80,7 @@ func WalkVault(vaultDir string) ([]Note, error) {
 			return nil
 		}
 
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G122 -- reading user's own vault; symlink TOCTOU not a threat
 		if err != nil {
 			return fmt.Errorf("obsidian: read %q: %w", path, err)
 		}

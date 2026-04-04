@@ -415,19 +415,26 @@ func TestReinforceAfterRaceRetry(t *testing.T) {
 
 	pool := NewWorkerPool(q, pipes, driver, 1, nil, defaultTestJobsCfg())
 
+	done := make(chan struct{})
 	go func() {
 		for {
-			got, _ := q.Get(ctx, "job-race-retry")
+			got, _ := q.Get(context.Background(), "job-race-retry")
 			if got != nil && (got.Status == storage.JobCompleted || got.Status == storage.JobFailed) {
-				cancel()
+				close(done)
 				return
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
 	}()
-	pool.Start(ctx)
+
+	go pool.Start(ctx)
+	<-done
+	cancel()
 
 	got, _ := q.Get(context.Background(), "job-race-retry")
+	if got.Status == storage.JobFailed {
+		t.Logf("job error: %s", got.Error)
+	}
 	assert.Equal(t, storage.JobCompleted, got.Status, "job should complete after retry")
 	assert.NotEmpty(t, got.ResultID)
 }
@@ -478,6 +485,8 @@ func (s *raceObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObje
 	// Always return UNIQUE constraint to trigger the retry path.
 	return errors.New("UNIQUE constraint failed: objects.content_hash")
 }
+
+
 
 func (s *raceObjectStore) Reinforce(ctx context.Context, hash string, mergeData *storage.KnowledgeObject) (string, error) {
 	s.mu.Lock()

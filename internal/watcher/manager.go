@@ -132,7 +132,7 @@ func (m *Manager) cancelWatch(id string) {
 }
 
 func (m *Manager) startWatch(ctx context.Context, cfg *WatchConfig) error {
-	watchCtx, cancel := context.WithCancel(ctx)
+	watchCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is stored in m.cancels and invoked by stopWatch
 	m.mu.Lock()
 	m.cancels[cfg.ID] = cancel
 	m.mu.Unlock()
