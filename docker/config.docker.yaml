@@ -1,0 +1,35 @@
+# Docker runtime configuration for dpkms
+version: 1
+
+storage:
+  type: sqlite
+  path: /data/bookmarks.db
+  concurrency: safe
+
+ingestion:
+  mode: jobs
+  auto_start_worker: true
+
+queue:
+  backend: sqlite
+  workers: 4
+  retry_limit: 3
+
+pipelines:
+  enabled:
+    - text.short
+    - text.long
+    - url.generic
+  defaults:
+    text: text.long
+    url: url.generic
+
+server:
+  http:
+    port: 8080
+    public: true
+  grpc:
+    port: 9090
+
+privacy:
+  telemetry: false
