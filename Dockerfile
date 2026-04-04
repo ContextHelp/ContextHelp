@@ -8,19 +8,16 @@ WORKDIR /ui
 RUN mkdir -p dist && echo '{}' > dist/.keep
 
 # ─── Stage 2: Go builder ─────────────────────────────────────────────────────
-FROM golang:1.24-alpine AS go-builder
+FROM golang:1.26-alpine AS go-builder
 
 RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev sqlite-dev
 
 WORKDIR /app
 
 COPY go.mod go.sum ./
-# Patch go directive to allow building with 1.24 toolchain
-RUN sed -i 's/^go 1\.[0-9]*/go 1.24/' go.mod && go mod download
+RUN go mod download
 
 COPY . .
-# Patch go.mod again after full COPY (go.mod in repo may have newer version)
-RUN sed -i 's/^go 1\.[0-9]*/go 1.24/' go.mod
 
 # Copy UI dist from ui-builder (embedded into dpkms binary or served from /app/web)
 COPY --from=ui-builder /ui/dist ./web/ui/dist
@@ -53,7 +50,7 @@ WORKDIR /app
 
 COPY --from=go-builder /out/dpkms /app/dpkms
 COPY --from=go-builder /out/ctxt   /app/ctxt
-COPY docker/config.yaml            /app/config.yaml
+COPY docker/config.docker.yaml     /app/config.yaml
 
 RUN mkdir -p /data/blobs && chown -R ctxt:ctxt /data /app
 

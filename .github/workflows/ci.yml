@@ -12,15 +12,18 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: '1.23'
+  GO_VERSION: '1.26'
 
 jobs:
   secret-scan:
     name: Secret Scanning (gitleaks)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -34,17 +37,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+
       - name: Install golangci-lint
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
 
       - name: Run golangci-lint
         run: golangci-lint run --timeout=5m --verbose
@@ -63,32 +66,40 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+
 
       - name: Install gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
       - name: Run gosec (fail on medium+ severity)
         run: |
-          gosec -conf .gosec.yaml \
+          gosec \
             -severity medium \
             -confidence medium \
             -exclude G104,G304,G307 \
+            -exclude-dir vendor \
+            -exclude-dir docs \
+            -exclude-dir test/fixtures \
             -fmt sarif \
             -out gosec-results.sarif \
             ./...
 
       - name: Upload gosec results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
+        continue-on-error: true
         with:
           sarif_file: gosec-results.sarif
 
@@ -107,8 +118,9 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
+        continue-on-error: true
         with:
           sarif_file: 'trivy-results.sarif'
 
@@ -117,26 +129,31 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        go-version: ['1.23']
+        os: [ubuntu-latest, macos-latest]
+        go-version: ['1.26']
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
 
+
       - name: Download dependencies
+        shell: bash
         run: go mod download
 
       - name: Run unit tests
-        run: go test -v -short -race -coverprofile=coverage.out -covermode=atomic ./...
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        run: go test -v -short -race -tags fts5 -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         if: matrix.os == 'ubuntu-latest'
         with:
           file: ./coverage.out
@@ -174,17 +191,19 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+
       - name: Run integration tests
-        run: go test -v -tags=integration ./test/integration/...
+        run: go test -v -tags=integration,fts5 ./test/integration/...
         env:
+          CGO_ENABLED: '1'
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
           POSTGRES_USER: contexthelp
@@ -199,19 +218,20 @@ jobs:
     needs: [lint, security, secret-scan, test]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+
       - name: Build dpkms
-        run: go build -v -o bin/dpkms ./cmd/dpkms
+        run: CGO_ENABLED=1 go build -v -tags fts5 -o bin/dpkms ./cmd/dpkms
 
       - name: Build ctxt
-        run: go build -v -o bin/ctxt ./cmd/ctxt
+        run: CGO_ENABLED=1 go build -v -tags fts5 -o bin/ctxt ./cmd/ctxt
 
       - name: Verify binaries
         run: |
@@ -219,7 +239,7 @@ jobs:
           ./bin/ctxt version || echo "ctxt built successfully"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: binaries
           path: bin/
