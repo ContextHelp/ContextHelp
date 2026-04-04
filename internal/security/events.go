@@ -262,13 +262,14 @@ func (e *Emitter) count(kind, principal string) int {
 }
 
 // dispatch invokes all registered handlers in goroutines (non-blocking).
+// context.WithoutCancel ensures handlers outlive the caller's request scope.
 func (e *Emitter) dispatch(ctx context.Context, a Alert) {
+	detached := context.WithoutCancel(ctx)
 	for _, h := range e.handlers {
 		go func(handler AlertHandler) {
-			handler(context.Background(), a)
+			handler(detached, a)
 		}(h)
 	}
-	_ = ctx // keep ctx in signature for future synchronous handlers
 }
 
 // defaultHandler logs the alert and appends to the audit log (event_class=security).

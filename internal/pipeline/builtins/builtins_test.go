@@ -53,11 +53,14 @@ func TestRegistryBuildsAllPipelines(t *testing.T) {
 	// The registry may contain additional pipelines; we check membership, not an exact list.
 	// Pipelines with provider requirements (video.*, url.interactive, url.authenticated)
 	// are skipped when their providers are absent; they are not listed here.
+	// Only list pipelines that have NO provider requirements and are always registered.
+	// Capability-gated pipelines (audio.*, image.*, video.*, url.interactive, url.authenticated)
+	// are skipped when providers are absent — tested separately in TestAllDefsRegistered.
 	required := []string{
-		"audio.transcribe", "batch.csv", "batch.jsonl", "batch.tsv",
+		"batch.csv", "batch.jsonl", "batch.tsv",
 		"doc.code", "doc.markdown", "doc.office", "doc.pdf",
-		"feed.sync", "image.analysis", "image.ocr", "text.long",
-		"text.short", "url.generic", "url.repo",
+		"feed.sync", "text.long", "text.short",
+		"url.generic", "url.repo",
 		"import.twitter", "import.linkedin.posts", "import.linkedin.articles",
 	}
 

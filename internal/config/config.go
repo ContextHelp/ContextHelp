@@ -885,7 +885,7 @@ func EnsureConfigDir() error {
 	}
 
 	configDir := filepath.Dir(configPath)
-	return os.MkdirAll(configDir, 0755)
+	return os.MkdirAll(configDir, 0750)
 }
 
 // EnsureDataDir ensures the data directory exists
@@ -899,7 +899,7 @@ func EnsureDataDir() error {
 		dataDir = filepath.Join(home, ".local", "share", "contexthelp")
 	}
 
-	return os.MkdirAll(dataDir, 0755)
+	return os.MkdirAll(filepath.Clean(dataDir), 0750) // #nosec G703 -- dataDir from trusted env or home dir
 }
 
 // RunDir returns the directory used for runtime files (pidfiles).
@@ -919,7 +919,7 @@ func RunDir() (string, error) {
 		}
 	}
 	dir := filepath.Join(base, "run")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(filepath.Clean(dir), 0750); err != nil { // #nosec G703 -- dir from trusted env or home dir
 		return "", fmt.Errorf("run dir: %w", err)
 	}
 	return dir, nil

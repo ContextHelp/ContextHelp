@@ -67,7 +67,7 @@ func saveRotationLog(keysDir string, log RotationLog) error {
 	}
 	path := RotationLogPath(keysDir)
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
 		return fmt.Errorf("bundle: write rotation log tmp: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {

@@ -817,18 +817,19 @@ func TestUS0004_WorkerCrashRetry(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
+	// Register a pipeline with a step that always fails (simulates worker crash).
 	env.svc.Pipes.Upsert("audio.crashretry", &pipeline.Pipeline{
 		PipelineName: "audio.crashretry",
 		Steps: []pipeline.PipelineStep{
-			&audioMetaStep{format: "mp3", duration: 10.0, size: 64000},
+			&alwaysFailStep{},
 		},
 	})
 
-	// Enqueue a job with a nonexistent pipeline to simulate worker failure.
+	// Enqueue a job using the always-failing pipeline.
 	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
 		Content:  "crash-retry-audio-data",
 		Type:     "audio",
-		Pipeline: "audio.nonexistent",
+		Pipeline: "audio.crashretry",
 		Source:   "e2e-test",
 	})
 	require.NoError(t, err)
@@ -845,7 +846,7 @@ func TestUS0004_WorkerCrashRetry(t *testing.T) {
 	resp.Body.Close()
 	assert.Equal(t, gohttp.StatusOK, resp.StatusCode, "retry should return 200")
 
-	// Job should go back to pending and fail again (same bad pipeline).
+	// Job should go back to pending and fail again (same always-failing step).
 	waitForJob(t, env.URL, jobID, storage.JobFailed)
 }
 

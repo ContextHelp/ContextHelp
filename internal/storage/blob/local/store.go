@@ -18,7 +18,7 @@ type Store struct {
 }
 
 func New(root string) (*Store, error) {
-	if err := os.MkdirAll(root, 0755); err != nil {
+	if err := os.MkdirAll(root, 0750); err != nil {
 		return nil, fmt.Errorf("blob local: create root %q: %w", root, err)
 	}
 	return &Store{root: root}, nil
@@ -37,7 +37,7 @@ func (s *Store) metaPath(key string) string {
 
 func (s *Store) Put(_ context.Context, key string, data io.Reader, meta storage.BlobMeta) error {
 	path := s.blobPath(key)
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
 		return fmt.Errorf("blob local put: mkdir: %w", err)
 	}
 
@@ -55,7 +55,7 @@ func (s *Store) Put(_ context.Context, key string, data io.Reader, meta storage.
 	if err != nil {
 		return fmt.Errorf("blob local put: marshal meta: %w", err)
 	}
-	if err := os.WriteFile(s.metaPath(key), metaBytes, 0644); err != nil {
+	if err := os.WriteFile(s.metaPath(key), metaBytes, 0600); err != nil {
 		return fmt.Errorf("blob local put: write meta: %w", err)
 	}
 

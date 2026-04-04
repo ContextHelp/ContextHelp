@@ -130,7 +130,7 @@ func packageManagerArgs(mgr, pkg string) []string {
 }
 
 func runInstallCmd(name string, args ...string) error {
-	cmd := exec.CommandContext(context.Background(), name, args...)
+	cmd := exec.CommandContext(context.Background(), name, args...) // #nosec G204 -- caller controls command
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin

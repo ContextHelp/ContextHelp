@@ -118,6 +118,7 @@ func (s *EdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth
 
 		// Find shared-target neighbours: objects that share any mention target
 		// with any object in the current frontier.
+		// #nosec G201 -- placeholders are literal "?" strings, not user input
 		query := fmt.Sprintf(`
 			SELECT DISTINCT e2.from_id
 			FROM edges e1

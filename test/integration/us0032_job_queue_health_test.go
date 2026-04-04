@@ -26,7 +26,7 @@ type alwaysFailStep struct {
 
 func (s *alwaysFailStep) Name() string { return "test-always-fail" }
 func (s *alwaysFailStep) Run(_ context.Context, _ *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	return nil, fmt.Errorf("intentional failure for US-0032 test")
+	return nil, pipeline.Permanent(fmt.Errorf("intentional failure for test"))
 }
 
 // ---------------------------------------------------------------------------

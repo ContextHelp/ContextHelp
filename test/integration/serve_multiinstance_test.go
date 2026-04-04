@@ -69,10 +69,15 @@ func TestMultiInstanceAutoPort_PS(t *testing.T) {
 
 	p1 := startServeProcess(t, bin, cfg1, env)
 	defer p1.Process.Kill()
+
+	// Wait for the first instance to bind its port before starting the second,
+	// avoiding the TOCTOU race in findFreePort where both probe 8080 as free.
+	runDir := filepath.Join(dataDir, "contexthelp", "run")
+	waitForPidfiles(t, runDir, 1, 10*time.Second)
+
 	p2 := startServeProcess(t, bin, cfg2, env)
 	defer p2.Process.Kill()
 
-	runDir := filepath.Join(dataDir, "contexthelp", "run")
 	waitForPidfiles(t, runDir, 2, 15*time.Second)
 
 	psCmd := exec.Command(bin, "--config", cfg1, "ps", "--output", "json")

@@ -239,7 +239,7 @@ func runConfigEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Open editor
-	editorCmd := exec.Command(editor, configPath)
+	editorCmd := exec.Command(editor, configPath) // #nosec G204,G702 -- editor from $EDITOR or known default
 	editorCmd.Stdin = os.Stdin
 	editorCmd.Stdout = os.Stdout
 	editorCmd.Stderr = os.Stderr

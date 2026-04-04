@@ -29,20 +29,22 @@ func NewLocalBus() *LocalBus {
 }
 
 // Publish executes all handlers registered for the event's type asynchronously.
+// context.WithoutCancel ensures handlers outlive the caller's request scope.
 func (b *LocalBus) Publish(ctx context.Context, e Event) error {
 	b.mu.RLock()
 	handlers := b.handlers[e.Type]
 	catchAll := b.handlers["*"]
 	b.mu.RUnlock()
 
+	detached := context.WithoutCancel(ctx)
 	for _, h := range handlers {
 		go func(handler Handler) {
-			_ = handler(context.Background(), e)
+			_ = handler(detached, e)
 		}(h)
 	}
 	for _, h := range catchAll {
 		go func(handler Handler) {
-			_ = handler(context.Background(), e)
+			_ = handler(detached, e)
 		}(h)
 	}
 

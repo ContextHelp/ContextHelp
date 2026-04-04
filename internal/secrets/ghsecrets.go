@@ -54,7 +54,7 @@ func (r *GHSecretsResolver) Set(key, value string) error {
 	if r.repo != "" {
 		args = append(args, "--repo", r.repo)
 	}
-	if out, err := exec.Command("gh", args...).CombinedOutput(); err != nil {
+	if out, err := exec.Command("gh", args...).CombinedOutput(); err != nil { // #nosec G204 -- args built from validated key/repo config
 		return fmt.Errorf("secrets: gh secret set %q: %w — %s", key, err, strings.TrimSpace(string(out)))
 	}
 	return nil

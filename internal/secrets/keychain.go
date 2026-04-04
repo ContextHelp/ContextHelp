@@ -25,10 +25,10 @@ func (r *KeychainResolver) Get(key string) (string, error) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("security", "find-generic-password",
+		cmd = exec.Command("security", "find-generic-password", // #nosec G204 -- args from service config + key name
 			"-s", r.service, "-a", key, "-w")
 	default: // linux
-		cmd = exec.Command("secret-tool", "lookup", "service", r.service, "account", key)
+		cmd = exec.Command("secret-tool", "lookup", "service", r.service, "account", key) // #nosec G204 -- args from service config + key name
 	}
 	out, err := cmd.Output()
 	if err != nil {
@@ -87,7 +87,7 @@ func parseKeychainDump(dump, service string) []string {
 }
 
 func (r *KeychainResolver) keysLinux() ([]string, error) {
-	out, err := exec.Command("secret-tool", "search", "service", r.service).Output()
+	out, err := exec.Command("secret-tool", "search", "service", r.service).Output() // #nosec G204 -- service from config
 	if err != nil {
 		// secret-tool exits non-zero when no results found.
 		return nil, nil
@@ -111,10 +111,10 @@ func (r *KeychainResolver) Set(key, value string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("security", "add-generic-password",
+		cmd = exec.Command("security", "add-generic-password", // #nosec G204 -- args from service config + key name
 			"-s", r.service, "-a", key, "-w", value, "-U")
 	default: // linux
-		cmd = exec.Command("secret-tool", "store",
+		cmd = exec.Command("secret-tool", "store", // #nosec G204 -- args from service config + key name
 			"--label", fmt.Sprintf("%s/%s", r.service, key),
 			"service", r.service, "account", key)
 		cmd.Stdin = strings.NewReader(value)
@@ -132,10 +132,10 @@ func (r *KeychainResolver) Delete(key string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("security", "delete-generic-password",
+		cmd = exec.Command("security", "delete-generic-password", // #nosec G204 -- args from service config + key name
 			"-s", r.service, "-a", key)
 	default: // linux
-		cmd = exec.Command("secret-tool", "clear",
+		cmd = exec.Command("secret-tool", "clear", // #nosec G204 -- args from service config + key name
 			"service", r.service, "account", key)
 	}
 	if out, err := cmd.CombinedOutput(); err != nil {

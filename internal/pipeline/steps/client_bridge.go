@@ -120,7 +120,7 @@ func (cb *ClientBridge) Do(req *http.Request) (*http.Response, error) {
 	// Per-domain credential injection.
 	cb.injectDomainCreds(req)
 
-	return cb.client.Do(req)
+	return cb.client.Do(req) // #nosec G704 -- request URL is controlled by pipeline configuration
 }
 
 // HTTPClient returns the underlying *http.Client for callers that need it directly

@@ -79,7 +79,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("build config: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0750); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 

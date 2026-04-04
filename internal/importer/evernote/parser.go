@@ -1,7 +1,7 @@
 package evernote
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- SHA1 used for deterministic note IDs, not security
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
@@ -291,7 +291,7 @@ func fallbackExternalID(raw enNote, index int) string {
 		strings.TrimSpace(raw.Updated) + "\n" +
 		strings.TrimSpace(raw.Content) + "\n" +
 		fmt.Sprintf("%d", index)
-	sum := sha1.Sum([]byte(payload))
+	sum := sha1.Sum([]byte(payload)) // #nosec G401 -- SHA1 used for deterministic note IDs, not security
 	return "enex-" + hex.EncodeToString(sum[:8])
 }
 

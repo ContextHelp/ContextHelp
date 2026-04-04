@@ -167,7 +167,7 @@ func enqueueContent(serverURL, content, contentType, pipelineName, source string
 }
 
 func postEnqueueRequest(url string, body []byte) (jobID string, statusCode int, respBody string, err error) {
-	resp, err := gohttp.Post(url, "application/json", bytes.NewReader(body))
+	resp, err := gohttp.Post(url, "application/json", bytes.NewReader(body)) // #nosec G107 -- URL built from trusted server config
 	if err != nil {
 		return "", 0, "", fmt.Errorf("request to dpkms: %w", err)
 	}

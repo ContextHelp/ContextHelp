@@ -149,7 +149,7 @@ func runFeedList(cmd *cobra.Command, args []string) error {
 		reqURL += "?status=" + statusFilter
 	}
 
-	resp, err := gohttp.Get(reqURL)
+	resp, err := gohttp.Get(reqURL) // #nosec G107 -- URL built from trusted server config
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}

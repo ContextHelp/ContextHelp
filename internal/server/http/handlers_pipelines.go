@@ -2,9 +2,11 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -172,6 +174,10 @@ func Enqueue(svc *service.Service) http.HandlerFunc {
 
 		jobID, err := svc.Enqueue(r.Context(), req)
 		if err != nil {
+			if errors.Is(err, jobs.ErrPipelineNotFound) {
+				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+				return
+			}
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}

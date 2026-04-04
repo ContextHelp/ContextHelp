@@ -284,7 +284,7 @@ func runDevInitPlugin(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("init-plugin: directory %q already exists", pluginDir)
 	}
 
-	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+	if err := os.MkdirAll(pluginDir, 0o750); err != nil {
 		return fmt.Errorf("init-plugin: mkdir %q: %w", pluginDir, err)
 	}
 
@@ -355,7 +355,7 @@ func init() {
 func runDevGenDocs(cmd *cobra.Command, args []string) error {
 	outDir, _ := cmd.Flags().GetString("dir")
 
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
+	if err := os.MkdirAll(outDir, 0o750); err != nil {
 		return fmt.Errorf("gen-docs: mkdir %q: %w", outDir, err)
 	}
 

@@ -105,7 +105,7 @@ func WalkGraph(graphDir string) ([]Page, error) {
 			return nil
 		}
 
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G122 -- reading user's own graph; symlink TOCTOU not a threat
 		if err != nil {
 			return fmt.Errorf("logseq: read %q: %w", path, err)
 		}

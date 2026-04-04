@@ -156,25 +156,22 @@ func TestUS0033_FailedJobListedInFailedFilter(t *testing.T) {
 	assert.True(t, found, "failed job %s must appear in the failed list", jobID)
 }
 
-// TestUS0033_UnknownPipelineJobFails verifies that a job with a nonexistent
-// pipeline name transitions to "failed" with a descriptive error.
+// TestUS0033_UnknownPipelineJobFails verifies that enqueuing a job with a
+// nonexistent pipeline name is rejected at enqueue time with a descriptive error.
 func TestUS0033_UnknownPipelineJobFails(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	_, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
 		Content:  "content for unknown pipeline",
 		Type:     "text",
 		Pipeline: "us0033.does-not-exist",
 		Source:   "e2e-test",
 	})
-	require.NoError(t, err)
-
-	job := waitForJob(t, env.URL, jobID, storage.JobFailed)
-	assert.NotEmpty(t, job.Error)
+	require.Error(t, err, "enqueue with unknown pipeline must fail")
 	assert.True(t,
-		strings.Contains(job.Error, "pipeline") || strings.Contains(job.Error, "not found"),
-		"error should mention pipeline or not-found; got: %q", job.Error)
+		strings.Contains(err.Error(), "pipeline") || strings.Contains(err.Error(), "not found"),
+		"error should mention pipeline or not-found; got: %q", err.Error())
 }
 
 // TestUS0033_FailedJobHasTimestamps verifies that completed_at is set on a

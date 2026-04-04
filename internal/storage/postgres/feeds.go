@@ -53,7 +53,7 @@ func (s *FeedStore) List(ctx context.Context, filter storage.FeedFilter) ([]*sto
 	}
 	query += ` ORDER BY created_at DESC`
 	if filter.Limit > 0 {
-		query += fmt.Sprintf(` LIMIT %d OFFSET %d`, filter.Limit, filter.Offset)
+		query += fmt.Sprintf(` LIMIT %d OFFSET %d`, filter.Limit, filter.Offset) // #nosec G202 -- integer values
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

@@ -81,7 +81,7 @@ func loadPassphraseFromKeychain() (string, error) {
 // promptPassphrase reads a passphrase interactively from the terminal.
 // When confirm=true, prompts twice and returns an error if they differ.
 func promptPassphrase(confirm bool) (string, error) {
-	if !isTerminal(int(os.Stdin.Fd())) {
+	if !isTerminal(int(os.Stdin.Fd())) { // #nosec G115 -- Fd() fits in int on supported 64-bit platforms
 		return "", fmt.Errorf("bundle: passphrase: no passphrase source available " +
 			"(set %s or use --passphrase)", PassphraseEnvVar)
 	}
@@ -111,7 +111,7 @@ func promptPassphrase(confirm bool) (string, error) {
 // Falls back to a plain line reader when terminal raw mode is unavailable.
 func readPasswordPrompt(prompt string) (string, error) {
 	fmt.Fprint(os.Stderr, prompt)
-	fd := int(os.Stdin.Fd())
+	fd := int(os.Stdin.Fd()) // #nosec G115 -- Fd() fits in int on supported 64-bit platforms
 	if isTerminal(fd) {
 		b, err := term.ReadPassword(fd)
 		fmt.Fprintln(os.Stderr) // newline after hidden input

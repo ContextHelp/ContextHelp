@@ -230,6 +230,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 					timer.Stop()
 					rerr = ctx.Err()
 				case <-timer.C:
+					rerr = nil // clear previous error before next iteration
 				}
 				if rerr != nil {
 					break

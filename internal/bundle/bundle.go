@@ -102,7 +102,7 @@ func SavePublicKey(configDir string, kp KeyPair) error {
 	}
 	path := PublicKeyPath(configDir, kp.Fingerprint)
 	content := hex.EncodeToString(kp.Public)
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		return fmt.Errorf("bundle: write pubkey: %w", err)
 	}
 	return nil
@@ -178,7 +178,7 @@ func Build(opts BuildOpts) (BuildResult, error) {
 	zipPath := filepath.Join(opts.OutputDir, baseName+".zip")
 	sigPath := zipPath + ".sig"
 
-	if err := os.MkdirAll(opts.OutputDir, 0755); err != nil {
+	if err := os.MkdirAll(opts.OutputDir, 0750); err != nil {
 		return BuildResult{}, fmt.Errorf("bundle: mkdir output dir: %w", err)
 	}
 
@@ -234,10 +234,10 @@ func Build(opts BuildOpts) (BuildResult, error) {
 	sig := Sign(zipBytes, opts.PrivateKey)
 
 	// Write zip and sig files.
-	if err := os.WriteFile(zipPath, zipBytes, 0644); err != nil {
+	if err := os.WriteFile(zipPath, zipBytes, 0600); err != nil {
 		return BuildResult{}, fmt.Errorf("bundle: write zip: %w", err)
 	}
-	if err := os.WriteFile(sigPath, sig, 0644); err != nil {
+	if err := os.WriteFile(sigPath, sig, 0600); err != nil {
 		os.Remove(zipPath)
 		return BuildResult{}, fmt.Errorf("bundle: write sig: %w", err)
 	}

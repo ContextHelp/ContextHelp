@@ -25,7 +25,7 @@ func (r *OnePasswordResolver) itemURI(key string) string {
 
 func (r *OnePasswordResolver) Get(key string) (string, error) {
 	uri := r.itemURI(key)
-	out, err := exec.Command("op", "read", uri).Output()
+	out, err := exec.Command("op", "read", uri).Output() // #nosec G204 -- uri is constructed from config vault/key
 	if err != nil {
 		return "", ErrNotFound{Key: key}
 	}

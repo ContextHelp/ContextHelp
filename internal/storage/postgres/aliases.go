@@ -65,7 +65,7 @@ func (s *AliasStore) List(ctx context.Context, filter storage.AliasFilter) ([]*s
 		idx++
 	}
 	if filter.Profile != "" {
-		query += fmt.Sprintf(` AND profile=$%d`, idx)
+		query += fmt.Sprintf(` AND profile=$%d`, idx) // #nosec G202 -- idx is a parameterized placeholder index
 		args = append(args, filter.Profile)
 		idx++
 	}

@@ -81,7 +81,7 @@ func (s *JobStore) List(ctx context.Context, filter storage.JobFilter) ([]*stora
 		query += fmt.Sprintf(" LIMIT %d", filter.Limit)
 	}
 	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
+		query += fmt.Sprintf(" OFFSET %d", filter.Offset) // #nosec G202 -- integer value
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

@@ -67,7 +67,7 @@ func (s *DetectorStore) List(ctx context.Context, filter storage.DetectorFilter)
 	query := `SELECT id, kind, name, pipeline_name, pattern, priority, enabled, created_at, updated_at
 	FROM detectors ` + where + " ORDER BY priority ASC, created_at ASC"
 	if filter.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d OFFSET %d", filter.Limit, filter.Offset)
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", filter.Limit, filter.Offset) // #nosec G202 -- integer values
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
