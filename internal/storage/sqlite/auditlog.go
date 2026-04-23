@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -41,6 +42,14 @@ func (s *auditStore) List(ctx context.Context, f storage.AuditFilter) ([]*storag
 	if f.EventType != "" {
 		where += " AND event_type=?"
 		args = append(args, f.EventType)
+	}
+	if len(f.EventTypes) > 0 {
+		placeholders := make([]string, len(f.EventTypes))
+		for i, et := range f.EventTypes {
+			placeholders[i] = "?"
+			args = append(args, et)
+		}
+		where += " AND event_type IN (" + strings.Join(placeholders, ",") + ")"
 	}
 	if f.Actor != "" {
 		where += " AND actor=?"

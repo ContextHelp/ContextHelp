@@ -160,6 +160,9 @@ func NewRouter(svc *service.Service, devCORS bool, mgr *watcher.Manager) chi.Rou
 		r.Get("/search-history", ListSearchHistory(svc))
 		r.Delete("/search-history", ClearSearchHistory(svc))
 
+		// Audit log (US-0405)
+		r.Get("/audit-log", ListAuditLog(svc))
+
 		// Federation push (Phase 2)
 		r.Post("/federation/push", FederationPush(svc))
 	})

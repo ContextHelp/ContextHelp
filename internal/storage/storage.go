@@ -90,13 +90,14 @@ type AuditEntry struct {
 
 // AuditFilter restricts audit log queries.
 type AuditFilter struct {
-	ObjectID  string
-	EventType string
-	Actor     string
-	After     time.Time
-	Before    time.Time
-	Limit     int
-	Offset    int
+	ObjectID   string
+	EventType  string   // single event type (legacy)
+	EventTypes []string // multiple event types (OR)
+	Actor      string
+	After      time.Time
+	Before     time.Time
+	Limit      int
+	Offset     int
 }
 
 // AuditStore is an append-only store for audit log entries.
