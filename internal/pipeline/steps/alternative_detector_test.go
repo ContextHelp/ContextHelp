@@ -35,6 +35,10 @@ func (s *stubObjectStore) GetByContentHash(_ context.Context, _ string) (*storag
 	return nil, io.EOF
 }
 
+func (s *stubObjectStore) GetBySourceKey(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
+	return nil, nil
+}
+
 func (s *stubObjectStore) List(_ context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	var out []*storage.KnowledgeObject
 	for _, o := range s.objects {

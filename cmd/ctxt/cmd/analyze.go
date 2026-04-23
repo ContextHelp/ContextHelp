@@ -56,6 +56,8 @@ func init() {
 	analyzeCmd.Flags().String("lang", "", "input language override")
 	analyzeCmd.Flags().String("translate", "", "translation mode (none to skip)")
 	analyzeCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")
+	analyzeCmd.Flags().Bool("force", false, "bypass duplicate detection")
+	analyzeCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	analyzeCmd.Flags().Bool("wait", false, "block until job completes")
 	analyzeCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 
@@ -69,6 +71,8 @@ func init() {
 	rootCmd.Flags().String("lang", "", "input language override")
 	rootCmd.Flags().String("translate", "", "translation mode (none to skip)")
 	rootCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")
+	rootCmd.Flags().Bool("force", false, "bypass duplicate detection")
+	rootCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	rootCmd.Flags().Bool("wait", false, "block until job completes")
 	rootCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 
@@ -138,13 +142,22 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	// fetchable URLs — downstream steps (url_fetcher) must validate before use.
 	reqSource := source
 
+	forceMode := false
+	if f := cmd.Flags().Lookup("force"); f != nil && f.Changed {
+		forceMode, _ = cmd.Flags().GetBool("force")
+	}
+
+	sourceKey := flagString(cmd, "source-key", "analyze.source_key")
+
 	// Build request body.
 	reqBody := map[string]any{
-		"content":  content,
-		"type":     flagString(cmd, "type", "analyze.type"),
-		"pipeline": flagString(cmd, "pipeline", "analyze.pipeline"),
-		"source":   reqSource,
-		"raw":      rawMode,
+		"content":    content,
+		"type":       flagString(cmd, "type", "analyze.type"),
+		"pipeline":   flagString(cmd, "pipeline", "analyze.pipeline"),
+		"source":     reqSource,
+		"raw":        rawMode,
+		"force":      forceMode,
+		"source_key": sourceKey,
 	}
 
 	body, err := json.Marshal(reqBody)

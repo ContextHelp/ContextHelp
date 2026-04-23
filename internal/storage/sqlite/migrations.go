@@ -84,6 +84,9 @@ var migration024 string
 //go:embed migrations/025_federation_watermarks.sql
 var migration025 string
 
+//go:embed migrations/026_source_key.sql
+var migration026 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -134,6 +137,8 @@ var migrations = []migration{
 	{Version: 24, fn: migrate024RenameMentionUris},
 	// Migration 025: federation_watermarks table for tracking per-federation sync state.
 	{Version: 25, SQL: migration025},
+	// Migration 026: source_key column for external dedup key (Slack ts, tweet ID, etc.).
+	{Version: 26, SQL: migration026},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
