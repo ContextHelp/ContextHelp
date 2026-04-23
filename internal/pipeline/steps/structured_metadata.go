@@ -3,8 +3,10 @@ package steps
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -12,13 +14,13 @@ import (
 
 // Valid content types for structured metadata classification.
 var validContentTypes = map[string]bool{
-	"observation":  true,
-	"task":         true,
-	"idea":         true,
-	"reference":    true,
-	"person_note":  true,
-	"decision":     true,
-	"question":     true,
+	"observation": true,
+	"task":        true,
+	"idea":        true,
+	"reference":   true,
+	"person_note": true,
+	"decision":    true,
+	"question":    true,
 }
 
 // Valid source types.
@@ -60,7 +62,8 @@ Content:
 // using an LLM and stores it under Metadata["enrichment.structured_metadata"].
 type StructuredMetadataExtractor struct {
 	pipeline.BaseContract
-	llm providers.LLMProvider
+	llm    providers.LLMProvider
+	schema *config.ProfileSchema
 }
 
 func NewStructuredMetadataExtractor() *StructuredMetadataExtractor {
@@ -77,6 +80,17 @@ func NewStructuredMetadataExtractor() *StructuredMetadataExtractor {
 func NewStructuredMetadataExtractorWithLLM(llm providers.LLMProvider) *StructuredMetadataExtractor {
 	s := NewStructuredMetadataExtractor()
 	s.llm = llm
+	return s
+}
+
+// NewStructuredMetadataExtractorWithSchema creates an extractor constrained
+// by a profile schema's entity types, topic vocabulary, and classification rules.
+func NewStructuredMetadataExtractorWithSchema(
+	llm providers.LLMProvider,
+	schema *config.ProfileSchema,
+) *StructuredMetadataExtractor {
+	s := NewStructuredMetadataExtractorWithLLM(llm)
+	s.schema = schema
 	return s
 }
 
@@ -121,6 +135,11 @@ func (s *StructuredMetadataExtractor) Run(
 	// Infer source_type from object if LLM returned empty/invalid.
 	if !validSourceTypes[meta.SourceType] {
 		meta.SourceType = inferSourceType(draft)
+	}
+
+	// Apply profile schema constraints when present.
+	if s.schema != nil {
+		applySchemaConstraints(meta, s.schema, content)
 	}
 
 	draft.Metadata["enrichment.structured_metadata"] = meta
@@ -171,6 +190,53 @@ func parseStructuredMetadata(raw string) (*StructuredMetadata, error) {
 	}
 
 	return &meta, nil
+}
+
+// applySchemaConstraints constrains metadata to profile schema vocabulary.
+// Classification rules are checked first (pattern match overrides LLM type).
+// Entity types and topics are filtered to the profile's vocabulary.
+func applySchemaConstraints(
+	meta *StructuredMetadata,
+	schema *config.ProfileSchema,
+	content string,
+) {
+	// Classification rules: first match wins.
+	for _, rule := range schema.ClassificationRules {
+		re, err := regexp.Compile(rule.Pattern)
+		if err != nil {
+			continue
+		}
+		if re.MatchString(content) {
+			meta.Type = rule.Type
+			break
+		}
+	}
+
+	// Constrain type to profile entity types (if defined).
+	if len(schema.EntityTypes) > 0 {
+		allowed := make(map[string]bool, len(schema.EntityTypes))
+		for _, t := range schema.EntityTypes {
+			allowed[t] = true
+		}
+		if !allowed[meta.Type] {
+			meta.Type = schema.EntityTypes[0]
+		}
+	}
+
+	// Constrain topics to profile vocabulary (if defined).
+	if len(schema.TopicVocabulary) > 0 {
+		allowed := make(map[string]bool, len(schema.TopicVocabulary))
+		for _, t := range schema.TopicVocabulary {
+			allowed[t] = true
+		}
+		filtered := meta.Topics[:0]
+		for _, t := range meta.Topics {
+			if allowed[t] {
+				filtered = append(filtered, t)
+			}
+		}
+		meta.Topics = filtered
+	}
 }
 
 // inferSourceType derives source_type from the object's Source field.
