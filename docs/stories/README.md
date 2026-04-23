@@ -226,6 +226,21 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0322** | [backup-and-federation-rebuild](./federation/US-0322-backup-and-federation-rebuild.md) | dpkms (self-hosted) | Operations |
 | **US-0323** | [dag-federation-chain](./federation/US-0323-dag-federation-chain.md) | dpkms (self-hosted) | Platform Integrators |
 
+### Knowledge Compiler (US-0400 to US-0409)
+
+| ID | Story | System Types | Personas |
+|----|-------|-------------|----------|
+| **US-0400** | [fan-out-enrichment](./enrichment/US-0400-fan-out-enrichment.md) | dpkms (self-hosted), dpkms cloud | Agents/LLMs, Knowledge Workers, Maintainers |
+| **US-0401** | [persistent-composed-pages](./composition/US-0401-persistent-composed-pages.md) | dpkms (self-hosted), dpkms cloud, ctxt | Knowledge Workers, Agents/LLMs |
+| **US-0402** | [knowledge-lint](./operations/US-0402-knowledge-lint.md) | dpkms (self-hosted), dpkms cloud, ctxt | Maintainers, Operations, Agents/LLMs |
+| **US-0403** | [structured-metadata-extraction](./enrichment/US-0403-structured-metadata-extraction.md) | dpkms (self-hosted), dpkms cloud | Agents/LLMs, Knowledge Workers |
+| **US-0404** | [fingerprint-dedup](./ingestion/US-0404-fingerprint-dedup.md) | dpkms (self-hosted), dpkms cloud, ctxt | Knowledge Workers, Operations |
+| **US-0405** | [append-only-changelog](./knowledge-graph/US-0405-append-only-changelog.md) | dpkms (self-hosted), dpkms cloud, ctxt | Maintainers, Knowledge Workers, Operations |
+| **US-0406** | [associative-object-links](./knowledge-graph/US-0406-associative-object-links.md) | dpkms (self-hosted), dpkms cloud | Knowledge Workers, Agents/LLMs |
+| **US-0407** | [metadata-facet-search](./search/US-0407-metadata-facet-search.md) | dpkms (self-hosted), dpkms cloud, ctxt | Knowledge Workers, Agents/LLMs |
+| **US-0408** | [index-first-retrieval](./search/US-0408-index-first-retrieval.md) | dpkms (self-hosted), dpkms cloud, ctxt | Knowledge Workers, Agents/LLMs |
+| **US-0409** | [schema-co-evolution](./enrichment/US-0409-schema-co-evolution.md) | dpkms (self-hosted), dpkms cloud | Maintainers, Knowledge Workers |
+
 ---
 
 ## Story Template
@@ -275,6 +290,7 @@ Links to related stories
 - **US-0200 to US-0210** — Platform Capture (cookie bridge, social media, academic, OSINT, temporal watch)
 - **US-0300 to US-0317** — Importer Interface and Source Importers
 - **US-0318 to US-0323** — Federation
+- **US-0400 to US-0409** — Knowledge Compiler (fan-out, persistent pages, lint, dedup, links, facets, index)
 
 ---
 
@@ -303,6 +319,15 @@ Importer Stories (US-0300-0317):
   US-0300 (interface contract) → US-0301 to US-0317 (source-specific importers)
   US-0008 (batch import) → US-0300 (foundation for fan-out and batch tracking)
   US-0106 (enqueue) → US-0300 (unified enqueue endpoint used by all importers)
+
+Knowledge Compiler (US-0400-0409):
+  US-0403 (structured metadata) → US-0400 (fan-out) → US-0401 (persistent pages)
+  US-0403 → US-0407 (facet search)
+  US-0404 (fingerprint dedup) — standalone at ingest
+  US-0400 → US-0405 (changelog) ← US-0402 (lint)
+  US-0400 → US-0406 (associative links) → US-0402 (lint)
+  US-0401 → US-0408 (index-first retrieval)
+  US-0409 (schema co-evolution) → US-0403 (metadata extraction)
 ```
 
 ---
@@ -311,11 +336,11 @@ Importer Stories (US-0300-0317):
 
 | Persona | dpkms (self-hosted) | dpkms cloud | ctxt |
 |---------|-------------------|-------------|------|
-| **Maintainers** | US-0006, US-0008, US-0015, US-0027-0035 | US-0015, US-0027, US-0032, US-0034 | US-0030 |
-| **Agents/LLMs** | US-0003, US-0005, US-0009-0014, US-0018-0019, US-0024, US-0037-0041, US-0046-0050 | US-0009-0012, US-0018-0019, US-0024, US-0037-0040 | US-0003, US-0005, US-0016 |
-| **Knowledge Workers** | US-0003-0007, US-0009-0012, US-0019-0021, US-0046-0048 | US-0008 | US-0001-0007, US-0016, US-0020-0021, US-0022-0026, US-0030, US-0053-0055, US-0056-0060 |
+| **Maintainers** | US-0006, US-0008, US-0015, US-0027-0035, US-0400, US-0402, US-0405, US-0409 | US-0015, US-0027, US-0032, US-0034, US-0400, US-0402, US-0405, US-0409 | US-0030, US-0402, US-0405 |
+| **Agents/LLMs** | US-0003, US-0005, US-0009-0014, US-0018-0019, US-0024, US-0037-0041, US-0046-0050, US-0400, US-0403, US-0406-0408 | US-0009-0012, US-0018-0019, US-0024, US-0037-0040, US-0400, US-0403, US-0406-0408 | US-0003, US-0005, US-0016, US-0401, US-0407-0408 |
+| **Knowledge Workers** | US-0003-0007, US-0009-0012, US-0019-0021, US-0046-0048, US-0400, US-0403-0409 | US-0008, US-0400-0409 | US-0001-0007, US-0016, US-0020-0021, US-0022-0026, US-0030, US-0053-0055, US-0056-0060, US-0401, US-0404-0405, US-0407-0408 |
 | **Platform Integrators** | US-0013-0014, US-0028-0029, US-0041-0045, US-0049-0050, US-0101-0113 | US-0101-0113 | — |
-| **Operations** | US-0007, US-0008, US-0015, US-0029, US-0032-0036 | US-0015, US-0027, US-0032, US-0034 | — |
+| **Operations** | US-0007, US-0008, US-0015, US-0029, US-0032-0036, US-0402, US-0404-0405 | US-0015, US-0027, US-0032, US-0034, US-0402, US-0404-0405 | US-0402, US-0404-0405 |
 
 ---
 
@@ -373,4 +398,7 @@ Importer Stories (US-0300-0317):
 **Platform Capture - Fully Documented (11):**
 - US-0200, US-0201, US-0202, US-0203, US-0204, US-0205, US-0206, US-0207, US-0208, US-0209, US-0210
 
-**Total: 110 stories across 13 categories**
+**Knowledge Compiler - Fully Documented (10):**
+- US-0400, US-0401, US-0402, US-0403, US-0404, US-0405, US-0406, US-0407, US-0408, US-0409
+
+**Total: 120 stories across 14 categories**
