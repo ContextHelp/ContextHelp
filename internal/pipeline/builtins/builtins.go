@@ -99,6 +99,8 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"dependency_enricher": func() pipeline.PipelineStep { return steps.NewDependencyEnricher() },
 	// Graph extractor: no-op without LLM; provider-aware constructor below.
 	"graph_extractor": func() pipeline.PipelineStep { return steps.NewGraphExtractor() },
+	// Structured metadata: no-op without LLM; provider-aware constructor below.
+	"structured_metadata": func() pipeline.PipelineStep { return steps.NewStructuredMetadataExtractor() },
 	// Browser-based fetcher: nil client → returns error at run time.
 	"ibr_fetcher": func() pipeline.PipelineStep { return steps.NewIBRFetcher(nil) },
 }
@@ -150,6 +152,9 @@ var providerStepConstructors = map[string]func(*providers.Factory) pipeline.Pipe
 	},
 	"graph_extractor": func(f *providers.Factory) pipeline.PipelineStep {
 		return steps.NewGraphExtractorWithLLM(f.LLM())
+	},
+	"structured_metadata": func(f *providers.Factory) pipeline.PipelineStep {
+		return steps.NewStructuredMetadataExtractorWithLLM(f.LLM())
 	},
 	"audio_extractor": func(f *providers.Factory) pipeline.PipelineStep {
 		return steps.NewAudioExtractor(steps.WithVideoProvider(f.Video()))
