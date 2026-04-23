@@ -16,9 +16,11 @@ type AnalyzeRequest struct {
 	Pipeline    string `json:"pipeline,omitempty"`
 	Source      string `json:"source,omitempty"`
 	KnownHash   string `json:"known_hash,omitempty"`   // pre-computed content hash; skips re-hashing
+	SourceKey   string `json:"source_key,omitempty"`   // external dedup key (Slack ts, tweet ID, etc.)
 	SourceTitle string `json:"source_title,omitempty"` // human-readable title of source (e.g. page title)
 	AuthState   string `json:"auth_state,omitempty"`   // opaque auth state token (browser extension)
 	Raw         bool   `json:"raw,omitempty"`          // skip AI enrichment; store object immediately in raw state
+	Force       bool   `json:"force,omitempty"`        // bypass duplicate detection
 }
 
 // CreatePipelineRequest represents a request to create a custom pipeline.

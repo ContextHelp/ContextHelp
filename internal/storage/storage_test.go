@@ -80,6 +80,9 @@ func (m *mockObjectStore) Get(ctx context.Context, id string) (*KnowledgeObject,
 func (m *mockObjectStore) GetByContentHash(ctx context.Context, hash string) (*KnowledgeObject, error) {
 	return nil, nil
 }
+func (m *mockObjectStore) GetBySourceKey(ctx context.Context, key string) (*KnowledgeObject, error) {
+	return nil, nil
+}
 func (m *mockObjectStore) List(ctx context.Context, filter ObjectFilter) ([]*KnowledgeObject, int, error) {
 	return nil, 0, nil
 }

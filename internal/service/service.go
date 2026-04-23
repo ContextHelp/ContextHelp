@@ -95,6 +95,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 			Type:        detectedType,
 			RawContent:  req.Content,
 			Source:      jobSource,
+			SourceKey:   req.SourceKey,
 			ContentHash: storageutil.ContentHash(req.Content, jobSource),
 			Status:      "raw",
 			CreatedAt:   now,
@@ -118,27 +119,28 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		})
 	}
 
-	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).
-	// Auto-compute content hash when not pre-supplied by the caller.
-	hashForDedup := req.KnownHash
-	if hashForDedup == "" && s.Cfg.Duplicates.CheckExact {
-		hashForDedup = storageutil.ContentHash(req.Content, jobSource)
-	}
-	dup, err := s.checkDuplicates(ctx, hashForDedup, nil, s.Cfg.Duplicates)
-	if err != nil {
-		return "", fmt.Errorf("analyze: duplicate check: %w", err)
-	}
-	if dup != nil {
-		switch s.Cfg.Duplicates.Policy {
-		case "drop":
-			// Return the existing object's ID — no new job enqueued.
-			return dup.Existing.ID, nil
-		case "warn":
-			fmt.Fprintf(os.Stderr, "warning: duplicate detected (%s): existing object %s\n",
-				dup.Kind, dup.Existing.ID)
-			// Fall through — continue ingestion.
-		case "keep":
-			// Fall through silently.
+	// Duplicate detection — skip when --force is set.
+	if !req.Force {
+		// Auto-compute content hash when not pre-supplied by the caller.
+		hashForDedup := req.KnownHash
+		if hashForDedup == "" && s.Cfg.Duplicates.CheckExact {
+			hashForDedup = storageutil.ContentHash(req.Content, jobSource)
+		}
+		dup, err := s.checkDuplicates(ctx, hashForDedup, req.SourceKey, nil, s.Cfg.Duplicates)
+		if err != nil {
+			return "", fmt.Errorf("analyze: duplicate check: %w", err)
+		}
+		if dup != nil {
+			s.logDedupDecision(ctx, dup, s.Cfg.Duplicates.Policy)
+			switch s.Cfg.Duplicates.Policy {
+			case "drop":
+				return dup.Existing.ID, nil
+			case "warn":
+				fmt.Fprintf(os.Stderr, "warning: duplicate detected (%s): existing object %s\n",
+					dup.Kind, dup.Existing.ID)
+			case "keep":
+				// Fall through silently.
+			}
 		}
 	}
 

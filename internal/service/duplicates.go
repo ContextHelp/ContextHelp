@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"math"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -16,6 +18,8 @@ const (
 	DuplicateExact DuplicateKind = "exact"
 	// DuplicateSimilar means cosine similarity exceeded the configured threshold.
 	DuplicateSimilar DuplicateKind = "similar"
+	// DuplicateSourceKey means the source_key matched an existing object.
+	DuplicateSourceKey DuplicateKind = "source_key"
 )
 
 // DuplicateResult describes a duplicate match.
@@ -25,10 +29,10 @@ type DuplicateResult struct {
 	Similarity float64 // 1.0 for exact matches
 }
 
-// checkDuplicates inspects the store for an exact or near-duplicate of the
-// given content hash / embeddings, applying the caller's DuplicatesConfig.
+// checkDuplicates inspects the store for an exact, source-key, or
+// near-duplicate of the given content, applying the caller's DuplicatesConfig.
 // Returns nil, nil when no duplicate is found.
-func (s *Service) checkDuplicates(ctx context.Context, hash string, embeddings []float32, cfg config.DuplicatesConfig) (*DuplicateResult, error) {
+func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, embeddings []float32, cfg config.DuplicatesConfig) (*DuplicateResult, error) {
 	// 1. Exact match via content_hash.
 	if cfg.CheckExact && hash != "" {
 		existing, err := s.Store.Objects().GetByContentHash(ctx, hash)
@@ -44,7 +48,22 @@ func (s *Service) checkDuplicates(ctx context.Context, hash string, embeddings [
 		}
 	}
 
-	// 2. Near-duplicate via vector similarity.
+	// 2. Source-key match.
+	if sourceKey != "" {
+		existing, err := s.Store.Objects().GetBySourceKey(ctx, sourceKey)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil {
+			return &DuplicateResult{
+				Kind:       DuplicateSourceKey,
+				Existing:   existing,
+				Similarity: 1.0,
+			}, nil
+		}
+	}
+
+	// 3. Near-duplicate via vector similarity.
 	if cfg.CheckSimilar && len(embeddings) > 0 {
 		filter := storage.ObjectFilter{Limit: 1}
 		candidates, err := s.Store.Objects().VectorSearch(ctx, embeddings, filter)
@@ -69,6 +88,24 @@ func (s *Service) checkDuplicates(ctx context.Context, hash string, embeddings [
 	}
 
 	return nil, nil
+}
+
+// logDedupDecision writes an audit entry recording the dedup outcome.
+func (s *Service) logDedupDecision(ctx context.Context, dup *DuplicateResult, policy string) {
+	if s.Store.AuditLog() == nil {
+		return
+	}
+	_ = s.Store.AuditLog().Append(ctx, &storage.AuditEntry{
+		ID:        uuid.New().String(),
+		EventType: "dedup." + string(dup.Kind),
+		ObjectID:  dup.Existing.ID,
+		Actor:     "system",
+		Payload: map[string]any{
+			"policy":     policy,
+			"similarity": dup.Similarity,
+		},
+		CreatedAt: time.Now().UTC(),
+	})
 }
 
 // serviceCosineSimilarity computes cosine similarity between two float32 vectors.

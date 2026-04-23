@@ -91,6 +91,7 @@ type KnowledgeObject struct {
 	RegistryInfluences []string       `json:"registry_influences,omitempty"`
 	Plugins            map[string]any `json:"plugins,omitempty"`
 	ContentHash        string         `json:"content_hash,omitempty"`
+	SourceKey          string         `json:"source_key,omitempty"` // external dedup key (Slack ts, tweet ID, etc.)
 	Status             string         `json:"status,omitempty"`
 	InboxNote          string         `json:"inbox_note,omitempty"`
 	ReinforcementCount int            `json:"reinforcement_count,omitempty"`

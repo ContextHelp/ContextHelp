@@ -331,6 +331,35 @@ func TestGetByContentHash(t *testing.T) {
 	})
 }
 
+func TestGetBySourceKey(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj := makeObject("sk-1", "text")
+	obj.SourceKey = "slack:C01/1234.5678"
+	require.NoError(t, d.Objects().Create(ctx, obj))
+
+	t.Run("found", func(t *testing.T) {
+		got, err := d.Objects().GetBySourceKey(ctx, "slack:C01/1234.5678")
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, "sk-1", got.ID)
+		assert.Equal(t, "slack:C01/1234.5678", got.SourceKey)
+	})
+
+	t.Run("not found returns nil nil", func(t *testing.T) {
+		got, err := d.Objects().GetBySourceKey(ctx, "nonexistent")
+		assert.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("empty key returns nil", func(t *testing.T) {
+		got, err := d.Objects().GetBySourceKey(ctx, "")
+		assert.NoError(t, err)
+		assert.Nil(t, got)
+	})
+}
+
 func TestReinforce(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()

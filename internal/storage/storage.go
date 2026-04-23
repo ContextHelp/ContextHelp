@@ -125,6 +125,7 @@ type ObjectStore interface {
 	Create(ctx context.Context, obj *KnowledgeObject) error
 	Get(ctx context.Context, id string) (*KnowledgeObject, error)
 	GetByContentHash(ctx context.Context, hash string) (*KnowledgeObject, error)
+	GetBySourceKey(ctx context.Context, key string) (*KnowledgeObject, error)
 	List(ctx context.Context, filter ObjectFilter) ([]*KnowledgeObject, int, error)
 	Update(ctx context.Context, obj *KnowledgeObject) error
 	Delete(ctx context.Context, id string) error
