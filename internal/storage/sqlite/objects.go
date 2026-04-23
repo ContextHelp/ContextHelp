@@ -56,15 +56,15 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions, tasks, embeddings, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, projected_fts_body
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		remind_at, reminded_at, profile_id, graph_json, projected_fts_body, source_key
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, nil, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.Format(time.RFC3339), obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed), obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody,
+		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
@@ -95,7 +95,7 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json
+		remind_at, reminded_at, profile_id, graph_json, source_key
 	FROM objects WHERE id = ?`, id)
 	obj, err := scanObject(row)
 	if err != nil {
@@ -134,8 +134,27 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json
+		remind_at, reminded_at, profile_id, graph_json, source_key
 	FROM objects WHERE content_hash = ? LIMIT 1`, hash)
+	obj, err := scanObject(row)
+	if errors.Is(err, errObjectNotFound) {
+		return nil, nil
+	}
+	return obj, err
+}
+
+func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.KnowledgeObject, error) {
+	if key == "" {
+		return nil, nil
+	}
+	row := s.db.QueryRowContext(ctx, `SELECT
+		id, type, subtype, raw_content, content_type, text_content,
+		metadata, summaries, sections, tags, mentions,
+		decisions, tasks, pipeline, source,
+		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
+		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+		remind_at, reminded_at, profile_id, graph_json, source_key
+	FROM objects WHERE source_key = ? LIMIT 1`, key)
 	obj, err := scanObject(row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil
@@ -220,7 +239,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json
+		remind_at, reminded_at, profile_id, graph_json, source_key
 	FROM objects %s ORDER BY %s %s`, where, sortCol, dir)
 
 	if filter.Limit > 0 {
@@ -272,7 +291,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions=?, tasks=?, pipeline=?, source=?,
 		registry_influences=?, plugins=?, content_hash=?, reinforcement_count=?, last_reinforced_at=?,
 		updated_at=?, fts_indexed=?, vector_indexed=?, status=?, inbox_note=?,
-		remind_at=?, reminded_at=?, profile_id=?, graph_json=?, projected_fts_body=?
+		remind_at=?, reminded_at=?, profile_id=?, graph_json=?, projected_fts_body=?, source_key=?
 	WHERE id=?`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
@@ -280,7 +299,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed), obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody,
+		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
 		obj.ID,
 	)
 	if err != nil {
@@ -450,7 +469,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json
+		remind_at, reminded_at, profile_id, graph_json, source_key
 	FROM objects`
 	if where != "" {
 		query += " WHERE " + where
@@ -491,6 +510,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		ftsIndexed, vectorIndexed                           int
 		lastReinforcedAt, remindAt, remindedAt              sql.NullString
 		graphJSON                                           sql.NullString
+		sourceKey                                           sql.NullString
 	)
 
 	err := row.Scan(
@@ -499,7 +519,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON,
+		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -519,6 +539,9 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		}
 		obj.Graph = g
 	}
+	if sourceKey.Valid {
+		obj.SourceKey = sourceKey.String
+	}
 	return &obj, nil
 }
 
@@ -532,6 +555,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		ftsIndexed, vectorIndexed                           int
 		lastReinforcedAt, remindAt, remindedAt              sql.NullString
 		graphJSON                                           sql.NullString
+		sourceKey                                           sql.NullString
 	)
 
 	err := rows.Scan(
@@ -540,7 +564,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON,
+		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
@@ -556,6 +580,9 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 			return nil, fmt.Errorf("unmarshal graph: %w", err)
 		}
 		obj.Graph = g
+	}
+	if sourceKey.Valid {
+		obj.SourceKey = sourceKey.String
 	}
 	return &obj, nil
 }
