@@ -119,9 +119,8 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		})
 	}
 
-	// Duplicate detection — skip when --force is set.
+	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).
 	if !req.Force {
-		// Auto-compute content hash when not pre-supplied by the caller.
 		hashForDedup := req.KnownHash
 		if hashForDedup == "" && s.Cfg.Duplicates.CheckExact {
 			hashForDedup = storageutil.ContentHash(req.Content, jobSource)
@@ -144,9 +143,14 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		}
 	}
 
+	jobType := "ingest:" + detectedType
+	if req.NoFanout {
+		jobType += ":nofanout"
+	}
+
 	job := &storage.Job{
 		ID:         uuid.New().String(),
-		Type:       "ingest:" + detectedType,
+		Type:       jobType,
 		Status:     storage.JobPending,
 		Payload:    req.Content,
 		Pipeline:   pipelineName,

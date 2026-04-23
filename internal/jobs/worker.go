@@ -19,6 +19,11 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
+// FanOutFunc is called after a successful ingest with the new object ID.
+// It runs fan-out enrichment (cross-reference edges, audit log).
+// Returning an error is logged but does not fail the ingest job.
+type FanOutFunc func(ctx context.Context, objectID string) error
+
 // WorkerPool runs pipeline jobs from the queue.
 type WorkerPool struct {
 	queue        *Queue
@@ -31,6 +36,7 @@ type WorkerPool struct {
 	drainTimeout time.Duration
 	maxHops      int
 	maxRetries   int
+	fanOut       FanOutFunc
 }
 
 // NewWorkerPool creates a worker pool.
@@ -48,6 +54,9 @@ func NewWorkerPool(queue *Queue, pipelines pipeline.Registry, store storage.Stor
 		maxRetries:   cfg.MaxRetries,
 	}
 }
+
+// SetFanOut installs a post-ingest fan-out callback.
+func (p *WorkerPool) SetFanOut(fn FanOutFunc) { p.fanOut = fn }
 
 // Start runs the worker pool until the context is cancelled.
 // On cancellation, in-flight jobs are given drainTimeout to finish before
@@ -230,7 +239,6 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 					timer.Stop()
 					rerr = ctx.Err()
 				case <-timer.C:
-					rerr = nil // clear previous error before next iteration
 				}
 				if rerr != nil {
 					break
@@ -277,6 +285,13 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	p.emitObjectCreated(ctx, draft.ID)
 	p.queue.Complete(ctx, job.ID, draft.ID)
 	p.emitCompleted(ctx, job.ID, draft.ID)
+
+	// Post-ingest fan-out enrichment (bidirectional edges, audit log).
+	if p.fanOut != nil && !strings.HasSuffix(job.Type, ":nofanout") {
+		if err := p.fanOut(ctx, draft.ID); err != nil {
+			slog.Warn("jobs: fan-out enrichment failed", "object", draft.ID, "err", err)
+		}
+	}
 
 	// Fan out per-item jobs if the pipeline staged items for enqueueing.
 	p.fanOutItems(ctx, draft)
