@@ -218,3 +218,14 @@ func buildObjectFilter() storage.ObjectFilter {
 	}
 	return filter
 }
+
+// truncate clips s to max bytes, appending "..." if truncated.
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	if max < 3 {
+		return s[:max]
+	}
+	return s[:max-3] + "..."
+}
