@@ -103,6 +103,14 @@ type ObjectFilter struct {
 	Sort      string // "created_at", "updated_at"
 	Dir       string // "asc", "desc"
 	Status    string // "" → default to "active"; "inbox"; "discarded"; "all"
+
+	// Metadata facet filters (US-0407): applied via JSON extraction on the metadata column.
+	MetadataType   string     // metadata.type (e.g. "observation", "task")
+	MetadataTopic  string     // element in metadata.topics array
+	MetadataPerson string     // element in metadata.people array
+	MetadataSince  *time.Time // objects with dates_mentioned >= this
+	MetadataUntil  *time.Time // dates_mentioned upper bound
+	SourceType     string     // metadata.source_type
 }
 
 // EntityFilter specifies criteria for listing entities.

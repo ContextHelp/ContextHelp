@@ -179,6 +179,32 @@ func (s *Service) ListObjects(ctx context.Context, filter storage.ObjectFilter) 
 	return s.Store.Objects().List(ctx, filter)
 }
 
+// FacetCounts returns metadata type counts for objects matching the filter.
+// The result maps metadata type values to their occurrence count.
+func (s *Service) FacetCounts(ctx context.Context, filter storage.ObjectFilter) (map[string]int, error) {
+	// Fetch all matching objects (no limit for faceting).
+	facetFilter := filter
+	facetFilter.Limit = 0
+	facetFilter.Offset = 0
+	objects, _, err := s.Store.Objects().List(ctx, facetFilter)
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int)
+	for _, obj := range objects {
+		if obj.Metadata == nil {
+			counts["(none)"]++
+			continue
+		}
+		t, _ := obj.Metadata["type"].(string)
+		if t == "" {
+			t = "(none)"
+		}
+		counts[t]++
+	}
+	return counts, nil
+}
+
 // UpdateObject updates a knowledge object.
 func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject) error {
 	if err := s.Store.Objects().Update(ctx, obj); err != nil {
@@ -536,10 +562,15 @@ func (s *Service) DismissResurfacing(ctx context.Context, id string) error {
 	return s.Store.Resurfacing().Dismiss(ctx, id, time.Now())
 }
 
-// FindByText searches knowledge objects by text matching on summaries and raw content.
 // FindByText searches knowledge objects using FTS5 full-text search.
 func (s *Service) FindByText(ctx context.Context, query string, limit int) ([]*storage.KnowledgeObject, error) {
-	return s.Store.Objects().FTSSearch(ctx, query, storage.ObjectFilter{Limit: limit})
+	return s.FindByTextFiltered(ctx, query, storage.ObjectFilter{Limit: limit})
+}
+
+// FindByTextFiltered is like FindByText but accepts a full ObjectFilter
+// for metadata facet filtering.
+func (s *Service) FindByTextFiltered(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	return s.Store.Objects().FTSSearch(ctx, query, filter)
 }
 
 // CancelJob cancels a pending or running job.
@@ -1387,11 +1418,17 @@ func (s *Service) ClearSearchHistory(ctx context.Context, profileID string) erro
 
 // SemanticSearch performs vector similarity search using the provided embedding provider.
 func (s *Service) SemanticSearch(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider) ([]*storage.KnowledgeObject, error) {
+	return s.SemanticSearchFiltered(ctx, query, storage.ObjectFilter{Limit: limit}, ep)
+}
+
+// SemanticSearchFiltered is like SemanticSearch but accepts a full ObjectFilter
+// for metadata facet filtering.
+func (s *Service) SemanticSearchFiltered(ctx context.Context, query string, filter storage.ObjectFilter, ep providers.EmbeddingProvider) ([]*storage.KnowledgeObject, error) {
 	vec, err := ep.Embed(ctx, search.DecomposeQuery(query, 2))
 	if err != nil {
 		return nil, fmt.Errorf("embed query: %w", err)
 	}
-	return s.Store.Objects().VectorSearch(ctx, vec, storage.ObjectFilter{Limit: limit})
+	return s.Store.Objects().VectorSearch(ctx, vec, filter)
 }
 
 // HybridSearch runs FTS and vector search concurrently, merges results with
@@ -1399,7 +1436,13 @@ func (s *Service) SemanticSearch(ctx context.Context, query string, limit int, e
 // If ep is nil and cfg.FallbackToFTS is true, degrades to FTS-only.
 // If ep is nil and cfg.FallbackToFTS is false, returns an error.
 func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]*storage.KnowledgeObject, error) {
-	results, err := s.HybridSearchExplain(ctx, query, limit, ep, cfg)
+	return s.HybridSearchFiltered(ctx, query, storage.ObjectFilter{Limit: limit}, ep, cfg)
+}
+
+// HybridSearchFiltered is like HybridSearch but accepts a full ObjectFilter
+// for metadata facet filtering.
+func (s *Service) HybridSearchFiltered(ctx context.Context, query string, filter storage.ObjectFilter, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]*storage.KnowledgeObject, error) {
+	results, err := s.HybridSearchExplainFiltered(ctx, query, filter, ep, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -1418,6 +1461,12 @@ func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep 
 // HybridSearchExplain is like HybridSearch but returns per-result score breakdowns
 // so callers can explain why each result ranked where it did.
 func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]HybridResult, error) {
+	return s.HybridSearchExplainFiltered(ctx, query, storage.ObjectFilter{Limit: limit}, ep, cfg)
+}
+
+// HybridSearchExplainFiltered is like HybridSearchExplain but accepts a full
+// ObjectFilter for metadata facet filtering.
+func (s *Service) HybridSearchExplainFiltered(ctx context.Context, query string, filter storage.ObjectFilter, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]HybridResult, error) {
 	k := cfg.RRF.K
 	if k <= 0 {
 		k = 60
@@ -1431,6 +1480,10 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 	// Expand FTS query with concept aliases; vector leg uses the original query.
 	ftsQuery := search.ExpandQuery(ctx, query, newStorageAliasResolver(s.Store.Aliases(), ""))
 
+	// Build per-leg filters: inherit metadata facets but override pool size.
+	ftsFilter := filter
+	ftsFilter.Limit = ftsPool
+
 	type legResult struct {
 		results []*storage.KnowledgeObject
 		err     error
@@ -1438,7 +1491,7 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 
 	ftsCh := make(chan legResult, 1)
 	go func() {
-		res, err := s.Store.Objects().FTSSearch(ctx, ftsQuery, storage.ObjectFilter{Limit: ftsPool})
+		res, err := s.Store.Objects().FTSSearch(ctx, ftsQuery, ftsFilter)
 		ftsCh <- legResult{res, err}
 	}()
 
@@ -1448,13 +1501,15 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 		if vecPool <= 0 {
 			vecPool = 50
 		}
+		vecFilter := filter
+		vecFilter.Limit = vecPool
 		go func() {
 			vec, err := ep.Embed(ctx, search.DecomposeQuery(query, 2))
 			if err != nil {
 				vecCh <- legResult{nil, err}
 				return
 			}
-			res, err := s.Store.Objects().VectorSearch(ctx, vec, storage.ObjectFilter{Limit: vecPool})
+			res, err := s.Store.Objects().VectorSearch(ctx, vec, vecFilter)
 			vecCh <- legResult{res, err}
 		}()
 	} else {
@@ -1522,7 +1577,8 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 		return nil, fmt.Errorf("hybrid search rerank: %w", err)
 	}
 
-	if limit > len(ranked) {
+	limit := filter.Limit
+	if limit <= 0 || limit > len(ranked) {
 		limit = len(ranked)
 	}
 	out := make([]HybridResult, limit)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -48,7 +49,19 @@ Examples:
   ctxt find "onboarding" --limit 10
 
   # Show score breakdown per result
-  ctxt find "onboarding" --explain`,
+  ctxt find "onboarding" --explain
+
+  # Filter by metadata type
+  ctxt find "auth" --meta-type task
+
+  # Filter by topic and person
+  ctxt find "deployment" --topic kubernetes --person alice-chen
+
+  # Filter by source and date range
+  ctxt find "standup" --source-type slack --since 2026-04-01
+
+  # Show facet breakdown with results
+  ctxt find "architecture" --facets`,
 	RunE: runFind,
 }
 
@@ -68,6 +81,15 @@ func init() {
 	findCmd.Flags().Int("vector-pool", 0, "vector candidate pool size override")
 	findCmd.Flags().Float64("min-score", -1, "minimum RRF score threshold override (-1 = use config)")
 	findCmd.Flags().Bool("explain", false, "show per-signal score breakdown for each result")
+
+	// Metadata facet filters (US-0407)
+	findCmd.Flags().String("meta-type", "", "filter by metadata type (e.g. observation, task)")
+	findCmd.Flags().String("topic", "", "filter by topic in metadata")
+	findCmd.Flags().String("person", "", "filter by person in metadata")
+	findCmd.Flags().String("since", "", "filter by dates_mentioned >= (ISO date)")
+	findCmd.Flags().String("until", "", "filter by dates_mentioned <= (ISO date)")
+	findCmd.Flags().String("source-type", "", "filter by source_type")
+	findCmd.Flags().Bool("facets", false, "show metadata type count breakdown")
 
 	viper.BindPFlag("find.limit", findCmd.Flags().Lookup("limit"))
 	viper.BindPFlag("find.semantic", findCmd.Flags().Lookup("semantic"))
@@ -148,6 +170,10 @@ func runFind(cmd *cobra.Command, args []string) error {
 	}
 
 	explain, _ := cmd.Flags().GetBool("explain")
+	facets, _ := cmd.Flags().GetBool("facets")
+
+	// Build metadata facet filter from CLI flags.
+	filter := buildFindFilter(cmd, limit)
 
 	// --explain only applies to hybrid mode; it prints per-signal score breakdowns.
 	if explain && mode == "hybrid" {
@@ -161,17 +187,17 @@ func runFind(cmd *cobra.Command, args []string) error {
 		factory := providers.NewFactory(cfg.Providers, nil)
 		ep := factory.Embedding()
 		ep, originalVec := blendSessionContext(ctx, query, ep, sessionState)
-		results, err = svc.SemanticSearch(ctx, query, limit, ep)
+		results, err = svc.SemanticSearchFiltered(ctx, query, filter, ep)
 		if err == nil && sessionState != nil && originalVec != nil {
 			sessionState.PushQueryVector(originalVec)
 		}
 	case "fts":
-		results, err = svc.FindByText(ctx, query, limit)
+		results, err = svc.FindByTextFiltered(ctx, query, filter)
 	default: // "hybrid"
 		factory := providers.NewFactory(cfg.Providers, nil)
 		ep := factory.Embedding()
 		ep, originalVec := blendSessionContext(ctx, query, ep, sessionState)
-		results, err = svc.HybridSearch(ctx, query, limit, ep, searchCfg)
+		results, err = svc.HybridSearchFiltered(ctx, query, filter, ep, searchCfg)
 		if err == nil && sessionState != nil && originalVec != nil {
 			sessionState.PushQueryVector(originalVec)
 		}
@@ -179,6 +205,27 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		return fmt.Errorf("find (%s): %w", mode, err)
+	}
+
+	// --facets: show metadata type count breakdown before results.
+	if facets {
+		counts, fErr := svc.FacetCounts(ctx, filter)
+		if fErr == nil {
+			if isJSONOutput() {
+				return outputJSON(os.Stdout, map[string]any{
+					"objects": results,
+					"total":   len(results),
+					"query":   query,
+					"mode":    mode,
+					"facets":  counts,
+				})
+			}
+			fmt.Printf("Facets (metadata type):\n")
+			for t, c := range counts {
+				fmt.Printf("  %-20s %d\n", t, c)
+			}
+			fmt.Println()
+		}
 	}
 
 	if isJSONOutput() {
@@ -326,4 +373,26 @@ func printFindSuggestions(cmd *cobra.Command, ctx context.Context, svc interface
 	for _, h := range hints {
 		fmt.Fprintf(cmd.OutOrStdout(), "  • %s\n", h)
 	}
+}
+
+// buildFindFilter constructs an ObjectFilter from find-command metadata facet flags.
+func buildFindFilter(cmd *cobra.Command, limit int) storage.ObjectFilter {
+	f := storage.ObjectFilter{Limit: limit}
+
+	f.MetadataType, _ = cmd.Flags().GetString("meta-type")
+	f.MetadataTopic, _ = cmd.Flags().GetString("topic")
+	f.MetadataPerson, _ = cmd.Flags().GetString("person")
+	f.SourceType, _ = cmd.Flags().GetString("source-type")
+
+	if since, _ := cmd.Flags().GetString("since"); since != "" {
+		if t, err := time.Parse("2006-01-02", since); err == nil {
+			f.MetadataSince = &t
+		}
+	}
+	if until, _ := cmd.Flags().GetString("until"); until != "" {
+		if t, err := time.Parse("2006-01-02", until); err == nil {
+			f.MetadataUntil = &t
+		}
+	}
+	return f
 }
