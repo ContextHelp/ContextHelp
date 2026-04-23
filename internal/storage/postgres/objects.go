@@ -43,21 +43,21 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions, tasks, embedding, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, graph_json
+		remind_at, reminded_at, graph_json, source_key
 	) VALUES (
 		$1, $2, $3, $4, $5,
 		$6, $7, $8, $9, $10,
 		$11, $12, $13, $14, $15,
 		$16, $17, $18, $19, $20,
 		$21, $22, $23, $24, $25, $26,
-		$27, $28, $29
+		$27, $28, $29, $30
 	)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, graphJSON,
+		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
@@ -81,6 +81,18 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		return nil, nil
 	}
 	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE content_hash = $1 LIMIT 1`, hash)
+	obj, err := scanObjectRow(row)
+	if errors.Is(err, errObjectNotFound) {
+		return nil, nil
+	}
+	return obj, err
+}
+
+func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.KnowledgeObject, error) {
+	if key == "" {
+		return nil, nil
+	}
+	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE source_key = $1 LIMIT 1`, key)
 	obj, err := scanObjectRow(row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil
@@ -486,7 +498,7 @@ const objectSelectCols = `SELECT
 	decisions, tasks, pipeline, source,
 	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 	created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-	remind_at, reminded_at, graph_json`
+	remind_at, reminded_at, graph_json, source_key`
 
 func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 	var obj storage.KnowledgeObject
@@ -496,6 +508,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		influencesJSON, pluginsJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		graphJSON                                           []byte
+		sourceKey                                           sql.NullString
 	)
 	err := row.Scan(
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
@@ -503,7 +516,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -521,6 +534,9 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		}
 		obj.Graph = g
 	}
+	if sourceKey.Valid {
+		obj.SourceKey = sourceKey.String
+	}
 	return &obj, nil
 }
 
@@ -532,6 +548,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		influencesJSON, pluginsJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		graphJSON                                           []byte
+		sourceKey                                           sql.NullString
 	)
 	err := rows.Scan(
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
@@ -539,7 +556,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
@@ -553,6 +570,9 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 			return nil, fmt.Errorf("unmarshal graph: %w", err)
 		}
 		obj.Graph = g
+	}
+	if sourceKey.Valid {
+		obj.SourceKey = sourceKey.String
 	}
 	return &obj, nil
 }

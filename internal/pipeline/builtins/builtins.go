@@ -101,6 +101,8 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"graph_extractor": func() pipeline.PipelineStep { return steps.NewGraphExtractor() },
 	// Structured metadata: no-op without LLM; provider-aware constructor below.
 	"structured_metadata": func() pipeline.PipelineStep { return steps.NewStructuredMetadataExtractor() },
+	// Content classification via hop.top/c12n; graceful no-op without cgo.
+	"c12n_classify": func() pipeline.PipelineStep { return steps.NewC12nClassifier() },
 	// Browser-based fetcher: nil client → returns error at run time.
 	"ibr_fetcher": func() pipeline.PipelineStep { return steps.NewIBRFetcher(nil) },
 }
