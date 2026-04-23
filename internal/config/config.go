@@ -463,6 +463,26 @@ type FocusProfile struct {
 	// SearchStrategy overrides global search config for this profile.
 	// Zero/empty fields inherit from the global search config.
 	SearchStrategy ProfileSearchStrategy `mapstructure:"search_strategy" yaml:"search_strategy"`
+	// Schema holds per-profile entity/topic vocabulary and classification rules.
+	Schema ProfileSchema `mapstructure:"schema" yaml:"schema,omitempty"`
+}
+
+// ProfileSchema defines per-profile vocabulary constraints for metadata extraction.
+type ProfileSchema struct {
+	// Version is incremented on each schema mutation.
+	Version int `mapstructure:"version" yaml:"version" json:"version"`
+	// EntityTypes constrains the "type" field during metadata extraction.
+	EntityTypes []string `mapstructure:"entity_types" yaml:"entity_types" json:"entity_types"`
+	// TopicVocabulary constrains extracted topics to this vocabulary.
+	TopicVocabulary []string `mapstructure:"topic_vocabulary" yaml:"topic_vocabulary" json:"topic_vocabulary"`
+	// ClassificationRules map regex patterns to entity types.
+	ClassificationRules []ClassificationRule `mapstructure:"classification_rules" yaml:"classification_rules" json:"classification_rules"`
+}
+
+// ClassificationRule maps a regex pattern to an entity type.
+type ClassificationRule struct {
+	Pattern string `mapstructure:"pattern" yaml:"pattern" json:"pattern"`
+	Type    string `mapstructure:"type" yaml:"type" json:"type"`
 }
 
 // RegistriesGlobalConfig holds registry-wide settings that apply to all registries.
