@@ -116,6 +116,30 @@ type Config struct {
 
 	// Browser configures the built-in IBR browser automation daemon.
 	Browser BrowserConfig `mapstructure:"browser" yaml:"browser"`
+
+	// FanOut controls post-ingest fan-out enrichment.
+	FanOut FanOutConfig `mapstructure:"fanout" yaml:"fanout"`
+}
+
+// FanOutConfig controls post-ingest fan-out enrichment behaviour.
+// Fan-out runs as an async job after a successful ingest, creating
+// cross-reference edges and audit log entries for extracted entities.
+type FanOutConfig struct {
+	// Enabled activates fan-out enrichment. Default: true.
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// Entities enables entity cross-reference edge creation. Default: true.
+	Entities bool `mapstructure:"entities" yaml:"entities"`
+	// AuditLog enables changelog entries for fan-out mutations. Default: true.
+	AuditLog bool `mapstructure:"audit_log" yaml:"audit_log"`
+}
+
+// DefaultFanOutConfig returns sensible defaults (all enabled).
+func DefaultFanOutConfig() FanOutConfig {
+	return FanOutConfig{
+		Enabled:  true,
+		Entities: true,
+		AuditLog: true,
+	}
 }
 
 // BrowserConfig controls the built-in IBR browser automation daemon.
@@ -789,6 +813,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("browser.max_clients", 3)
 	v.SetDefault("browser.headless", true)
 
+	// Fan-out enrichment defaults — enabled by default.
+	v.SetDefault("fanout.enabled", true)
+	v.SetDefault("fanout.entities", true)
+	v.SetDefault("fanout.audit_log", true)
+
 	// Security alerting defaults
 	v.SetDefault("security.alerts.auth_failure_threshold", 3)
 	v.SetDefault("security.alerts.acl_denial_threshold", 10)
@@ -885,7 +914,7 @@ func EnsureConfigDir() error {
 	}
 
 	configDir := filepath.Dir(configPath)
-	return os.MkdirAll(configDir, 0750)
+	return os.MkdirAll(configDir, 0755)
 }
 
 // EnsureDataDir ensures the data directory exists
@@ -899,7 +928,7 @@ func EnsureDataDir() error {
 		dataDir = filepath.Join(home, ".local", "share", "contexthelp")
 	}
 
-	return os.MkdirAll(filepath.Clean(dataDir), 0750) // #nosec G703 -- dataDir from trusted env or home dir
+	return os.MkdirAll(dataDir, 0755)
 }
 
 // RunDir returns the directory used for runtime files (pidfiles).
@@ -919,7 +948,7 @@ func RunDir() (string, error) {
 		}
 	}
 	dir := filepath.Join(base, "run")
-	if err := os.MkdirAll(filepath.Clean(dir), 0750); err != nil { // #nosec G703 -- dir from trusted env or home dir
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("run dir: %w", err)
 	}
 	return dir, nil

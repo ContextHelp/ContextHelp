@@ -56,6 +56,7 @@ func init() {
 	analyzeCmd.Flags().String("lang", "", "input language override")
 	analyzeCmd.Flags().String("translate", "", "translation mode (none to skip)")
 	analyzeCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")
+	analyzeCmd.Flags().Bool("no-fanout", false, "skip post-ingest fan-out enrichment")
 	analyzeCmd.Flags().Bool("force", false, "bypass duplicate detection")
 	analyzeCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	analyzeCmd.Flags().Bool("wait", false, "block until job completes")
@@ -71,6 +72,7 @@ func init() {
 	rootCmd.Flags().String("lang", "", "input language override")
 	rootCmd.Flags().String("translate", "", "translation mode (none to skip)")
 	rootCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")
+	rootCmd.Flags().Bool("no-fanout", false, "skip post-ingest fan-out enrichment")
 	rootCmd.Flags().Bool("force", false, "bypass duplicate detection")
 	rootCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	rootCmd.Flags().Bool("wait", false, "block until job completes")
@@ -138,9 +140,11 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		rawMode = viper.GetBool("analyze.raw")
 	}
 
-	// Use actual source value; "argument"/"stdin"/"clipboard"/"file" are not
-	// fetchable URLs — downstream steps (url_fetcher) must validate before use.
-	reqSource := source
+	// Resolve --no-fanout flag.
+	noFanout := false
+	if f := cmd.Flags().Lookup("no-fanout"); f != nil && f.Changed {
+		noFanout, _ = cmd.Flags().GetBool("no-fanout")
+	}
 
 	forceMode := false
 	if f := cmd.Flags().Lookup("force"); f != nil && f.Changed {
@@ -149,6 +153,10 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 
 	sourceKey := flagString(cmd, "source-key", "analyze.source_key")
 
+	// Use actual source value; "argument"/"stdin"/"clipboard"/"file" are not
+	// fetchable URLs — downstream steps (url_fetcher) must validate before use.
+	reqSource := source
+
 	// Build request body.
 	reqBody := map[string]any{
 		"content":    content,
@@ -156,6 +164,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		"pipeline":   flagString(cmd, "pipeline", "analyze.pipeline"),
 		"source":     reqSource,
 		"raw":        rawMode,
+		"no_fanout":  noFanout,
 		"force":      forceMode,
 		"source_key": sourceKey,
 	}
