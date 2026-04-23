@@ -109,6 +109,15 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 		}
 	}
 
+	// Entity page upsert: update persistent pages for each mentioned entity.
+	if cfg.Entities && len(result.EntitySlugs) > 0 {
+		for _, slug := range result.EntitySlugs {
+			if _, err := s.PageUpsert(ctx, slug, objectID); err != nil {
+				return nil, fmt.Errorf("fanout: page upsert %s: %w", slug, err)
+			}
+		}
+	}
+
 	// Audit log entries.
 	if cfg.AuditLog && result.EdgesCreated > 0 {
 		entry := &storage.AuditEntry{
