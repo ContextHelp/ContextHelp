@@ -216,16 +216,21 @@ func buildObjectFilter() storage.ObjectFilter {
 			filter.After = &t
 		}
 	}
-	return filter
-}
 
-// truncate clips s to max bytes, appending "..." if truncated.
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
+	// Metadata facet filters (US-0407).
+	filter.MetadataType = viper.GetString("list.meta-type")
+	filter.MetadataTopic = viper.GetString("list.topic")
+	filter.MetadataPerson = viper.GetString("list.person")
+	filter.SourceType = viper.GetString("list.source-type")
+	if since := viper.GetString("list.since"); since != "" {
+		if t, err := time.Parse("2006-01-02", since); err == nil {
+			filter.MetadataSince = &t
+		}
 	}
-	if max < 3 {
-		return s[:max]
+	if until := viper.GetString("list.until"); until != "" {
+		if t, err := time.Parse("2006-01-02", until); err == nil {
+			filter.MetadataUntil = &t
+		}
 	}
-	return s[:max-3] + "..."
+	return filter
 }

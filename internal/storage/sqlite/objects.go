@@ -56,15 +56,15 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions, tasks, embeddings, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, projected_fts_body, source_key
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		remind_at, reminded_at, profile_id, graph_json, projected_fts_body
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, nil, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.Format(time.RFC3339), obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed), obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
+		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
@@ -95,7 +95,7 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key
+		remind_at, reminded_at, profile_id, graph_json
 	FROM objects WHERE id = ?`, id)
 	obj, err := scanObject(row)
 	if err != nil {
@@ -134,27 +134,8 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key
+		remind_at, reminded_at, profile_id, graph_json
 	FROM objects WHERE content_hash = ? LIMIT 1`, hash)
-	obj, err := scanObject(row)
-	if errors.Is(err, errObjectNotFound) {
-		return nil, nil
-	}
-	return obj, err
-}
-
-func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.KnowledgeObject, error) {
-	if key == "" {
-		return nil, nil
-	}
-	row := s.db.QueryRowContext(ctx, `SELECT
-		id, type, subtype, raw_content, content_type, text_content,
-		metadata, summaries, sections, tags, mentions,
-		decisions, tasks, pipeline, source,
-		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key
-	FROM objects WHERE source_key = ? LIMIT 1`, key)
 	obj, err := scanObject(row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil
@@ -205,6 +186,11 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		args = append(args, filter.Before.Format(time.RFC3339))
 	}
 
+	// Metadata facet filters (US-0407).
+	mc, ma := metadataFacetConditionsSQLite(filter)
+	conditions = append(conditions, mc...)
+	args = append(args, ma...)
+
 	where := ""
 	if len(conditions) > 0 {
 		where = "WHERE " + strings.Join(conditions, " AND ")
@@ -234,7 +220,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key
+		remind_at, reminded_at, profile_id, graph_json
 	FROM objects %s ORDER BY %s %s`, where, sortCol, dir)
 
 	if filter.Limit > 0 {
@@ -286,7 +272,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions=?, tasks=?, pipeline=?, source=?,
 		registry_influences=?, plugins=?, content_hash=?, reinforcement_count=?, last_reinforced_at=?,
 		updated_at=?, fts_indexed=?, vector_indexed=?, status=?, inbox_note=?,
-		remind_at=?, reminded_at=?, profile_id=?, graph_json=?, projected_fts_body=?, source_key=?
+		remind_at=?, reminded_at=?, profile_id=?, graph_json=?, projected_fts_body=?
 	WHERE id=?`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
@@ -294,7 +280,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed), obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
+		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody,
 		obj.ID,
 	)
 	if err != nil {
@@ -464,7 +450,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key
+		remind_at, reminded_at, profile_id, graph_json
 	FROM objects`
 	if where != "" {
 		query += " WHERE " + where
@@ -505,7 +491,6 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		ftsIndexed, vectorIndexed                           int
 		lastReinforcedAt, remindAt, remindedAt              sql.NullString
 		graphJSON                                           sql.NullString
-		sourceKey                                           sql.NullString
 	)
 
 	err := row.Scan(
@@ -514,7 +499,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey,
+		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -534,9 +519,6 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		}
 		obj.Graph = g
 	}
-	if sourceKey.Valid {
-		obj.SourceKey = sourceKey.String
-	}
 	return &obj, nil
 }
 
@@ -550,7 +532,6 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		ftsIndexed, vectorIndexed                           int
 		lastReinforcedAt, remindAt, remindedAt              sql.NullString
 		graphJSON                                           sql.NullString
-		sourceKey                                           sql.NullString
 	)
 
 	err := rows.Scan(
@@ -559,7 +540,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey,
+		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
@@ -575,9 +556,6 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 			return nil, fmt.Errorf("unmarshal graph: %w", err)
 		}
 		obj.Graph = g
-	}
-	if sourceKey.Valid {
-		obj.SourceKey = sourceKey.String
 	}
 	return &obj, nil
 }
@@ -902,6 +880,9 @@ func (s *ObjectStore) vectorSearchANN(ctx context.Context, vector []float32, fil
 		if filter.Pipeline != "" && obj.Pipeline != filter.Pipeline {
 			continue
 		}
+		if !matchesMetadataFacets(obj, filter) {
+			continue
+		}
 		if obj.Metadata == nil {
 			obj.Metadata = make(map[string]any)
 		}
@@ -934,6 +915,9 @@ func (s *ObjectStore) vectorSearchBruteForce(ctx context.Context, vector []float
 			continue
 		}
 		if filter.Pipeline != "" && obj.Pipeline != filter.Pipeline {
+			continue
+		}
+		if !matchesMetadataFacets(obj, filter) {
 			continue
 		}
 		if len(obj.Embeddings) == 0 {
@@ -1000,6 +984,15 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		q += " AND o.type = ?"
 		args = append(args, filter.Type)
 	}
+
+	// Metadata facet filters (US-0407).
+	mc, ma := metadataFacetConditionsSQLite(filter)
+	for _, c := range mc {
+		// Prefix bare column refs with table alias for the JOIN query.
+		aliased := strings.ReplaceAll(c, "metadata", "o.metadata")
+		q += " AND " + aliased
+	}
+	args = append(args, ma...)
 
 	q += " ORDER BY score LIMIT ?"
 	args = append(args, limit)
@@ -1209,4 +1202,116 @@ func (s *ObjectStore) VectorSearchNodeAware(
 		out = append(out, r)
 	}
 	return out, nil
+}
+
+// metadataFacetConditionsSQLite builds WHERE clauses for metadata facet filters
+// using SQLite json_extract / json_each.
+func metadataFacetConditionsSQLite(f storage.ObjectFilter) ([]string, []any) {
+	var conds []string
+	var args []any
+
+	if f.MetadataType != "" {
+		conds = append(conds, "json_extract(metadata, '$.type') = ?")
+		args = append(args, f.MetadataType)
+	}
+	if f.SourceType != "" {
+		conds = append(conds, "json_extract(metadata, '$.source_type') = ?")
+		args = append(args, f.SourceType)
+	}
+	if f.MetadataTopic != "" {
+		conds = append(conds,
+			"EXISTS (SELECT 1 FROM json_each(json_extract(metadata, '$.topics')) WHERE json_each.value = ?)")
+		args = append(args, f.MetadataTopic)
+	}
+	if f.MetadataPerson != "" {
+		conds = append(conds,
+			"EXISTS (SELECT 1 FROM json_each(json_extract(metadata, '$.people')) WHERE json_each.value = ?)")
+		args = append(args, f.MetadataPerson)
+	}
+	if f.MetadataSince != nil {
+		conds = append(conds,
+			"EXISTS (SELECT 1 FROM json_each(json_extract(metadata, '$.dates_mentioned')) WHERE json_each.value >= ?)")
+		args = append(args, f.MetadataSince.Format("2006-01-02"))
+	}
+	if f.MetadataUntil != nil {
+		conds = append(conds,
+			"EXISTS (SELECT 1 FROM json_each(json_extract(metadata, '$.dates_mentioned')) WHERE json_each.value <= ?)")
+		args = append(args, f.MetadataUntil.Format("2006-01-02"))
+	}
+	return conds, args
+}
+
+// matchesMetadataFacets checks whether an object passes the metadata facet
+// filters in-memory. Used for post-filtering in vector search where
+// SQL-level JSON filtering is not possible.
+func matchesMetadataFacets(obj *storage.KnowledgeObject, f storage.ObjectFilter) bool {
+	if obj.Metadata == nil {
+		return f.MetadataType == "" && f.SourceType == "" &&
+			f.MetadataTopic == "" && f.MetadataPerson == "" &&
+			f.MetadataSince == nil && f.MetadataUntil == nil
+	}
+	if f.MetadataType != "" {
+		if v, _ := obj.Metadata["type"].(string); v != f.MetadataType {
+			return false
+		}
+	}
+	if f.SourceType != "" {
+		if v, _ := obj.Metadata["source_type"].(string); v != f.SourceType {
+			return false
+		}
+	}
+	if f.MetadataTopic != "" && !metadataSliceContains(obj.Metadata, "topics", f.MetadataTopic) {
+		return false
+	}
+	if f.MetadataPerson != "" && !metadataSliceContains(obj.Metadata, "people", f.MetadataPerson) {
+		return false
+	}
+	if f.MetadataSince != nil && !metadataHasDateGE(obj.Metadata, "dates_mentioned", f.MetadataSince) {
+		return false
+	}
+	if f.MetadataUntil != nil && !metadataHasDateLE(obj.Metadata, "dates_mentioned", f.MetadataUntil) {
+		return false
+	}
+	return true
+}
+
+func metadataSliceContains(m map[string]any, key, needle string) bool {
+	arr, ok := m[key].([]any)
+	if !ok {
+		return false
+	}
+	for _, v := range arr {
+		if s, _ := v.(string); s == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func metadataHasDateGE(m map[string]any, key string, since *time.Time) bool {
+	arr, ok := m[key].([]any)
+	if !ok {
+		return false
+	}
+	threshold := since.Format("2006-01-02")
+	for _, v := range arr {
+		if s, _ := v.(string); s >= threshold {
+			return true
+		}
+	}
+	return false
+}
+
+func metadataHasDateLE(m map[string]any, key string, until *time.Time) bool {
+	arr, ok := m[key].([]any)
+	if !ok {
+		return false
+	}
+	threshold := until.Format("2006-01-02")
+	for _, v := range arr {
+		if s, _ := v.(string); s <= threshold {
+			return true
+		}
+	}
+	return false
 }

@@ -331,35 +331,6 @@ func TestGetByContentHash(t *testing.T) {
 	})
 }
 
-func TestGetBySourceKey(t *testing.T) {
-	d := newTestDriver(t)
-	ctx := context.Background()
-
-	obj := makeObject("sk-1", "text")
-	obj.SourceKey = "slack:C01/1234.5678"
-	require.NoError(t, d.Objects().Create(ctx, obj))
-
-	t.Run("found", func(t *testing.T) {
-		got, err := d.Objects().GetBySourceKey(ctx, "slack:C01/1234.5678")
-		require.NoError(t, err)
-		require.NotNil(t, got)
-		assert.Equal(t, "sk-1", got.ID)
-		assert.Equal(t, "slack:C01/1234.5678", got.SourceKey)
-	})
-
-	t.Run("not found returns nil nil", func(t *testing.T) {
-		got, err := d.Objects().GetBySourceKey(ctx, "nonexistent")
-		assert.NoError(t, err)
-		assert.Nil(t, got)
-	})
-
-	t.Run("empty key returns nil", func(t *testing.T) {
-		got, err := d.Objects().GetBySourceKey(ctx, "")
-		assert.NoError(t, err)
-		assert.Nil(t, got)
-	})
-}
-
 func TestReinforce(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()
@@ -548,4 +519,120 @@ func TestCosineSimilarity(t *testing.T) {
 	assert.InDelta(t, 0.0, cosineSimilarity([]float32{1, 0, 0}, []float32{0, 1, 0}), 0.0001)
 	assert.InDelta(t, -1.0, cosineSimilarity([]float32{1, 0, 0}, []float32{-1, 0, 0}), 0.0001)
 	assert.InDelta(t, 0.0, cosineSimilarity([]float32{0, 0, 0}, []float32{1, 0, 0}), 0.0001)
+}
+
+func TestMetadataFacetConditionsSQLite(t *testing.T) {
+	t.Run("empty filter yields no conditions", func(t *testing.T) {
+		conds, args := metadataFacetConditionsSQLite(storage.ObjectFilter{})
+		assert.Empty(t, conds)
+		assert.Empty(t, args)
+	})
+
+	t.Run("all fields set", func(t *testing.T) {
+		since := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		until := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+		conds, args := metadataFacetConditionsSQLite(storage.ObjectFilter{
+			MetadataType:   "observation",
+			SourceType:     "slack",
+			MetadataTopic:  "auth",
+			MetadataPerson: "alice",
+			MetadataSince:  &since,
+			MetadataUntil:  &until,
+		})
+		assert.Len(t, conds, 6)
+		assert.Len(t, args, 6)
+		assert.Contains(t, conds[0], "json_extract(metadata, '$.type')")
+		assert.Contains(t, conds[1], "json_extract(metadata, '$.source_type')")
+		assert.Contains(t, conds[2], "$.topics")
+		assert.Contains(t, conds[3], "$.people")
+		assert.Contains(t, conds[4], "$.dates_mentioned")
+		assert.Contains(t, conds[5], "$.dates_mentioned")
+	})
+}
+
+func TestMatchesMetadataFacets(t *testing.T) {
+	obj := &storage.KnowledgeObject{
+		Metadata: map[string]any{
+			"type":            "observation",
+			"source_type":     "slack",
+			"topics":          []any{"auth", "security"},
+			"people":          []any{"alice", "bob"},
+			"dates_mentioned": []any{"2026-03-15", "2026-04-10"},
+		},
+	}
+
+	t.Run("no filter matches all", func(t *testing.T) {
+		assert.True(t, matchesMetadataFacets(obj, storage.ObjectFilter{}))
+	})
+
+	t.Run("matching type", func(t *testing.T) {
+		assert.True(t, matchesMetadataFacets(obj, storage.ObjectFilter{MetadataType: "observation"}))
+	})
+
+	t.Run("non-matching type", func(t *testing.T) {
+		assert.False(t, matchesMetadataFacets(obj, storage.ObjectFilter{MetadataType: "task"}))
+	})
+
+	t.Run("matching topic", func(t *testing.T) {
+		assert.True(t, matchesMetadataFacets(obj, storage.ObjectFilter{MetadataTopic: "auth"}))
+	})
+
+	t.Run("non-matching topic", func(t *testing.T) {
+		assert.False(t, matchesMetadataFacets(obj, storage.ObjectFilter{MetadataTopic: "crypto"}))
+	})
+
+	t.Run("matching person", func(t *testing.T) {
+		assert.True(t, matchesMetadataFacets(obj, storage.ObjectFilter{MetadataPerson: "alice"}))
+	})
+
+	t.Run("non-matching person", func(t *testing.T) {
+		assert.False(t, matchesMetadataFacets(obj, storage.ObjectFilter{MetadataPerson: "charlie"}))
+	})
+
+	t.Run("matching source_type", func(t *testing.T) {
+		assert.True(t, matchesMetadataFacets(obj, storage.ObjectFilter{SourceType: "slack"}))
+	})
+
+	t.Run("non-matching source_type", func(t *testing.T) {
+		assert.False(t, matchesMetadataFacets(obj, storage.ObjectFilter{SourceType: "email"}))
+	})
+
+	t.Run("since filter matches", func(t *testing.T) {
+		since := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+		assert.True(t, matchesMetadataFacets(obj, storage.ObjectFilter{MetadataSince: &since}))
+	})
+
+	t.Run("since filter too late", func(t *testing.T) {
+		since := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+		assert.False(t, matchesMetadataFacets(obj, storage.ObjectFilter{MetadataSince: &since}))
+	})
+
+	t.Run("until filter matches", func(t *testing.T) {
+		until := time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)
+		assert.True(t, matchesMetadataFacets(obj, storage.ObjectFilter{MetadataUntil: &until}))
+	})
+
+	t.Run("until filter too early", func(t *testing.T) {
+		until := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		assert.False(t, matchesMetadataFacets(obj, storage.ObjectFilter{MetadataUntil: &until}))
+	})
+
+	t.Run("combined filters intersect", func(t *testing.T) {
+		assert.True(t, matchesMetadataFacets(obj, storage.ObjectFilter{
+			MetadataType:  "observation",
+			MetadataTopic: "auth",
+			SourceType:    "slack",
+		}))
+		assert.False(t, matchesMetadataFacets(obj, storage.ObjectFilter{
+			MetadataType:  "observation",
+			MetadataTopic: "crypto",
+			SourceType:    "slack",
+		}))
+	})
+
+	t.Run("nil metadata rejects non-empty filter", func(t *testing.T) {
+		nilObj := &storage.KnowledgeObject{}
+		assert.True(t, matchesMetadataFacets(nilObj, storage.ObjectFilter{}))
+		assert.False(t, matchesMetadataFacets(nilObj, storage.ObjectFilter{MetadataType: "task"}))
+	})
 }

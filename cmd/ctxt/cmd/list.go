@@ -16,7 +16,8 @@ var listCmd = &cobra.Command{
 	Short: "Query knowledge objects",
 	Long: `Query knowledge objects across local storage and registries.
 
-Supports filtering by tags, hints, mentions, entities, and types.
+Supports filtering by tags, hints, mentions, entities, types,
+and metadata facets (type, topic, person, dates, source).
 
 Examples:
   # List all objects
@@ -33,6 +34,21 @@ Examples:
 
   # Filter by date range
   ctxt list --after 2025-01-01 --before 2025-01-31
+
+  # Filter by metadata type
+  ctxt list --meta-type observation
+
+  # Filter by topic and source
+  ctxt list --topic auth --source-type slack
+
+  # Filter by person
+  ctxt list --person alice-chen
+
+  # Filter by dates mentioned in content
+  ctxt list --since 2026-04-01 --until 2026-04-23
+
+  # Show facet breakdown
+  ctxt list --facets
 
   # Use query language
   ctxt list --q "type==url;tag=in=(ux,design)"`,
@@ -55,6 +71,15 @@ func init() {
 	listCmd.Flags().String("q", "", "AST-based query")
 	listCmd.Flags().String("status", "", "filter by status (active|inbox|discarded|raw|all)")
 
+	// Metadata facet filters (US-0407)
+	listCmd.Flags().String("meta-type", "", "filter by metadata type (e.g. observation, task)")
+	listCmd.Flags().String("topic", "", "filter by topic in metadata")
+	listCmd.Flags().String("person", "", "filter by person in metadata")
+	listCmd.Flags().String("since", "", "filter by dates_mentioned >= (ISO date)")
+	listCmd.Flags().String("until", "", "filter by dates_mentioned <= (ISO date)")
+	listCmd.Flags().String("source-type", "", "filter by source_type")
+	listCmd.Flags().Bool("facets", false, "show metadata type count breakdown")
+
 	// Display flags
 	listCmd.Flags().Int("limit", 50, "maximum results")
 	listCmd.Flags().Int("start", 0, "pagination offset")
@@ -74,6 +99,13 @@ func init() {
 	viper.BindPFlag("list.orig-lang", listCmd.Flags().Lookup("orig-lang"))
 	viper.BindPFlag("list.q", listCmd.Flags().Lookup("q"))
 	viper.BindPFlag("list.status", listCmd.Flags().Lookup("status"))
+	viper.BindPFlag("list.meta-type", listCmd.Flags().Lookup("meta-type"))
+	viper.BindPFlag("list.topic", listCmd.Flags().Lookup("topic"))
+	viper.BindPFlag("list.person", listCmd.Flags().Lookup("person"))
+	viper.BindPFlag("list.since", listCmd.Flags().Lookup("since"))
+	viper.BindPFlag("list.until", listCmd.Flags().Lookup("until"))
+	viper.BindPFlag("list.source-type", listCmd.Flags().Lookup("source-type"))
+	viper.BindPFlag("list.facets", listCmd.Flags().Lookup("facets"))
 	viper.BindPFlag("list.limit", listCmd.Flags().Lookup("limit"))
 	viper.BindPFlag("list.start", listCmd.Flags().Lookup("start"))
 	viper.BindPFlag("list.sort", listCmd.Flags().Lookup("sort"))
@@ -102,6 +134,31 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	filter := buildObjectFilter()
+
+	// --facets: show metadata type count breakdown alongside results.
+	if viper.GetBool("list.facets") {
+		counts, err := svc.FacetCounts(ctx, filter)
+		if err != nil {
+			return fmt.Errorf("facet counts: %w", err)
+		}
+		if isJSONOutput() {
+			objects, total, err := svc.ListObjects(ctx, filter)
+			if err != nil {
+				return fmt.Errorf("list objects: %w", err)
+			}
+			return outputJSON(os.Stdout, map[string]any{
+				"objects": objects,
+				"total":   total,
+				"facets":  counts,
+			})
+		}
+		fmt.Printf("Facets (metadata type):\n")
+		for t, c := range counts {
+			fmt.Printf("  %-20s %d\n", t, c)
+		}
+		fmt.Println()
+	}
+
 	objects, total, err := svc.ListObjects(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("list objects: %w", err)
