@@ -8,6 +8,9 @@ This directory contains documentation for integrations with external systems and
 - [glm-pov.md](glm-pov.md) - GLM (General Language Model) integration perspective
 - [gemini-pov.md](gemini-pov.md) - Google Gemini integration perspective
 
+### Ingestion Adapters
+- [ingestion-adapters.md](ingestion-adapters.md) - Pluggable data ingestion (cardamum contacts, himalaya email)
+
 ### External Systems
 - [leann-integration.md](leann-integration.md) - Leann system integration
 
