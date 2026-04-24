@@ -234,3 +234,15 @@ func buildObjectFilter() storage.ObjectFilter {
 	}
 	return filter
 }
+
+// truncate clips s to n runes, appending "..." if truncated.
+func truncate(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	if n <= 3 {
+		return string(runes[:n])
+	}
+	return string(runes[:n-3]) + "..."
+}
