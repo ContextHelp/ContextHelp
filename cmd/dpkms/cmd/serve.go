@@ -203,7 +203,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// on /ws/bus. Remote apps (aps, tlc) connect here to share events.
 	busToken := os.Getenv("DPKMS_BUS_TOKEN")
 	if busToken == "" {
-		busToken = "dpkms-dev-token"
+		busToken = os.Getenv("BUS_TOKEN")
+	}
+	if busToken == "" {
+		return fmt.Errorf("bus auth: set BUS_TOKEN or DPKMS_BUS_TOKEN env var")
 	}
 	hubBus := kitbus.New()
 	hubNet := kitbus.NewNetworkAdapter(hubBus,
