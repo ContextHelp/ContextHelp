@@ -41,8 +41,17 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.Status = "active"
 	}
 
+	// For text pipeline objects, populate TextContent from RawContent when empty.
+	if obj.TextContent == "" && obj.RawContent != "" {
+		obj.TextContent = obj.RawContent
+	}
+
 	// Derive FTS body from projection — single source of truth for indexed text.
 	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
+
+	if projectedFTSBody != "" {
+		obj.FTSIndexed = true
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -71,6 +80,14 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	if err := s.upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
 		return fmt.Errorf("create object nodes: %w", err)
+	}
+	if projectedFTSBody != "" {
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO objects_fts(rowid, id, projected_fts_body) VALUES ((SELECT rowid FROM objects WHERE id = ?), ?, ?)`,
+			obj.ID, obj.ID, projectedFTSBody)
+		if err != nil {
+			return fmt.Errorf("create object fts index: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("create object: commit: %w", err)
@@ -279,6 +296,10 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	// Derive FTS body from projection — single source of truth for indexed text.
 	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
 
+	if projectedFTSBody != "" {
+		obj.FTSIndexed = true
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("update object: begin tx: %w", err)
@@ -311,6 +332,17 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	if err := s.upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
 		return fmt.Errorf("update object nodes: %w", err)
+	}
+	// Sync FTS5 content-sync index: delete old, insert new.
+	_, _ = tx.ExecContext(ctx,
+		`DELETE FROM objects_fts WHERE rowid = (SELECT rowid FROM objects WHERE id = ?)`, obj.ID)
+	if projectedFTSBody != "" {
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO objects_fts(rowid, id, projected_fts_body) VALUES ((SELECT rowid FROM objects WHERE id = ?), ?, ?)`,
+			obj.ID, obj.ID, projectedFTSBody)
+		if err != nil {
+			return fmt.Errorf("update object fts index: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("update object: commit: %w", err)
