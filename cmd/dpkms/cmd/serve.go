@@ -186,6 +186,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// 6. Init service layer.
 	bus := events.NewLocalBus()
+	events.SetupSubscriber(bus, cfg, config.GetConfigPath())
 	svc := service.New(driver, queue, pipes, engine, stepsPath, bus, *cfg)
 
 	// 6b. Init watcher manager.

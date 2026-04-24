@@ -233,7 +233,7 @@ func TestWorkerPoolEmitsObjectCreated(t *testing.T) {
 
 	var mu sync.Mutex
 	var received []events.Event
-	bus.Subscribe("object.created", func(_ context.Context, e events.Event) error {
+	bus.Subscribe(string(events.TopicObjectIngested), func(_ context.Context, e events.Event) error {
 		mu.Lock()
 		received = append(received, e)
 		mu.Unlock()
@@ -269,18 +269,18 @@ func TestWorkerPoolEmitsObjectCreated(t *testing.T) {
 	count := len(received)
 	var objectID string
 	if count > 0 {
-		var payload map[string]string
+		var payload events.ObjectIngestedPayload
 		if err := json.Unmarshal(received[0].Data, &payload); err == nil {
-			objectID = payload["id"]
+			objectID = payload.ObjectID
 		}
 	}
 	mu.Unlock()
 
 	if count != 1 {
-		t.Errorf("object.created events: got %d, want 1", count)
+		t.Errorf("object.ingested events: got %d, want 1", count)
 	}
 	if objectID == "" {
-		t.Error("object.created event missing id in payload")
+		t.Error("object.ingested event missing object_id in payload")
 	}
 	if count > 0 && received[0].Source != "worker.pool" {
 		t.Errorf("source: got %q, want %q", received[0].Source, "worker.pool")
@@ -295,7 +295,7 @@ func TestWorkerPoolNoObjectCreatedOnFailure(t *testing.T) {
 
 	var mu sync.Mutex
 	var received []events.Event
-	bus.Subscribe("object.created", func(_ context.Context, e events.Event) error {
+	bus.Subscribe(string(events.TopicObjectIngested), func(_ context.Context, e events.Event) error {
 		mu.Lock()
 		received = append(received, e)
 		mu.Unlock()
@@ -330,7 +330,7 @@ func TestWorkerPoolNoObjectCreatedOnFailure(t *testing.T) {
 	mu.Unlock()
 
 	if count != 0 {
-		t.Errorf("object.created events on failure: got %d, want 0", count)
+		t.Errorf("object.ingested events on failure: got %d, want 0", count)
 	}
 }
 
@@ -351,7 +351,7 @@ func TestEdgeWriteFailureFails(t *testing.T) {
 	bus := events.NewLocalBus()
 	var mu sync.Mutex
 	var objectCreatedCount int
-	bus.Subscribe("object.created", func(_ context.Context, _ events.Event) error {
+	bus.Subscribe(string(events.TopicObjectIngested), func(_ context.Context, _ events.Event) error {
 		mu.Lock()
 		objectCreatedCount++
 		mu.Unlock()
@@ -393,7 +393,7 @@ func TestEdgeWriteFailureFails(t *testing.T) {
 	count := objectCreatedCount
 	mu.Unlock()
 	if count != 0 {
-		t.Errorf("object.created events on edge failure: got %d, want 0", count)
+		t.Errorf("object.ingested events on edge failure: got %d, want 0", count)
 	}
 }
 

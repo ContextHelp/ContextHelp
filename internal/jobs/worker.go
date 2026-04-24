@@ -173,6 +173,8 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 }
 
 func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
+	start := time.Now()
+
 	draft, err := p.processWithHops(ctx, job)
 	if err != nil {
 		var perm *pipeline.PermanentError
@@ -193,16 +195,18 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	draft.UpdatedAt = time.Now()
 	draft.ContentHash = storageutil.ContentHash(draft.RawContent, draft.Source)
 
+	durationMs := time.Since(start).Milliseconds()
+
 	existing, err := p.store.Objects().GetByContentHash(ctx, draft.ContentHash)
 	if err == nil && existing != nil {
 		existingID, err := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
 		if err != nil {
 			p.queue.Fail(ctx, job.ID, fmt.Sprintf("reinforce: %s", err))
-			p.emitFailed(ctx, job.ID, fmt.Sprintf("reinforce: %s", err))
+			p.emitFailed(ctx, job.ID, fmt.Sprintf("reinforce: %s", err), existingID)
 			return
 		}
 		p.queue.Complete(ctx, job.ID, existingID)
-		p.emitCompleted(ctx, job.ID, existingID)
+		p.emitCompleted(ctx, job.ID, existingID, durationMs)
 		return
 	}
 
@@ -246,15 +250,15 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 			}
 			if rerr != nil {
 				p.queue.Fail(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr))
-				p.emitFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr))
+				p.emitFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr), draft.ID)
 				return
 			}
 			p.queue.Complete(ctx, job.ID, existingID)
-			p.emitCompleted(ctx, job.ID, existingID)
+			p.emitCompleted(ctx, job.ID, existingID, durationMs)
 			return
 		}
 		p.queue.Fail(ctx, job.ID, fmt.Sprintf("store: %s", err))
-		p.emitFailed(ctx, job.ID, fmt.Sprintf("store: %s", err))
+		p.emitFailed(ctx, job.ID, fmt.Sprintf("store: %s", err), draft.ID)
 		return
 	}
 
@@ -277,14 +281,15 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		if err := p.store.Edges().Create(ctx, edge); err != nil {
 			reason := fmt.Sprintf("edge write: mention %s: %s", mention.String(), err)
 			p.queue.Fail(ctx, job.ID, reason)
-			p.emitFailed(ctx, job.ID, reason)
+			p.emitFailed(ctx, job.ID, reason, draft.ID)
 			return
 		}
 	}
 
-	p.emitObjectCreated(ctx, draft.ID)
+	durationMs = time.Since(start).Milliseconds()
+	p.emitObjectIngested(ctx, draft, durationMs)
 	p.queue.Complete(ctx, job.ID, draft.ID)
-	p.emitCompleted(ctx, job.ID, draft.ID)
+	p.emitCompleted(ctx, job.ID, draft.ID, durationMs)
 
 	// Post-ingest fan-out enrichment (bidirectional edges, audit log).
 	if p.fanOut != nil && !strings.HasSuffix(job.Type, ":nofanout") {
@@ -348,41 +353,60 @@ func (p *WorkerPool) fanOutItems(ctx context.Context, draft *storage.KnowledgeOb
 	}
 }
 
-func (p *WorkerPool) emitCompleted(ctx context.Context, jobID, resultID string) {
+func (p *WorkerPool) emitCompleted(ctx context.Context, jobID, resultID string, durationMs int64) {
 	if p.bus == nil {
 		return
 	}
-	ev, err := events.NewEvent("worker.pool", "job.completed", map[string]string{
-		"job_id":    jobID,
-		"result_id": resultID,
+	ev, err := events.NewEvent("worker.pool", string(events.TopicJobCompleted), events.JobCompletedPayload{
+		JobID:       jobID,
+		ObjectCount: 1,
+		DurationMs:  durationMs,
 	})
 	if err == nil {
-		_ = p.bus.Publish(ctx, ev)
+		if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
+			slog.Warn("jobs: failed to publish job.completed event", "job", jobID, "err", pubErr)
+		}
 	}
 }
 
-func (p *WorkerPool) emitFailed(ctx context.Context, jobID, reason string) {
+func (p *WorkerPool) emitFailed(ctx context.Context, jobID, reason string, objectID ...string) {
 	if p.bus == nil {
 		return
 	}
-	ev, err := events.NewEvent("worker.pool", "job.failed", map[string]string{
-		"job_id": jobID,
-		"error":  reason,
-	})
+	payload := events.JobFailedPayload{
+		JobID: jobID,
+		Error: reason,
+	}
+	if len(objectID) > 0 {
+		payload.ObjectID = objectID[0]
+	}
+	ev, err := events.NewEvent("worker.pool", string(events.TopicJobFailed), payload)
 	if err == nil {
-		_ = p.bus.Publish(ctx, ev)
+		if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
+			slog.Warn("jobs: failed to publish job.failed event", "job", jobID, "err", pubErr)
+		}
 	}
 }
 
-func (p *WorkerPool) emitObjectCreated(ctx context.Context, objectID string) {
+func (p *WorkerPool) emitObjectIngested(ctx context.Context, draft *storage.KnowledgeObject, durationMs int64) {
 	if p.bus == nil {
 		return
 	}
-	ev, err := events.NewEvent("worker.pool", "object.created", map[string]string{
-		"id": objectID,
+	tags := make([]string, len(draft.Tags))
+	for i, t := range draft.Tags {
+		tags[i] = t.Label
+	}
+	ev, err := events.NewEvent("worker.pool", string(events.TopicObjectIngested), events.ObjectIngestedPayload{
+		ObjectID:   draft.ID,
+		Type:       draft.Type,
+		Pipeline:   draft.Pipeline,
+		Tags:       tags,
+		DurationMs: durationMs,
 	})
 	if err == nil {
-		_ = p.bus.Publish(ctx, ev)
+		if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
+			slog.Warn("jobs: failed to publish object.ingested event", "object", draft.ID, "err", pubErr)
+		}
 	}
 }
 
