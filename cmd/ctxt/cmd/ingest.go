@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/ingest"
 	"github.com/ideacrafterslabs/ctxt/internal/ingest/cardamum"
+	"github.com/ideacrafterslabs/ctxt/internal/ingest/himalaya"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +20,7 @@ var ingestCmd = &cobra.Command{
 stores them in the local knowledge base with deduplication.
 
 Adapters are named sources that emit JSON arrays of objects.
-Built-in adapters: cardamum.
+Built-in adapters: cardamum, himalaya.
 
 Examples:
   # Ingest contacts from cardamum
@@ -44,8 +45,12 @@ func init() {
 
 	// cardamum-specific flags
 	ingestCmd.Flags().String("addressbook", "default", "cardamum addressbook ID")
-	ingestCmd.Flags().String("account", "", "cardamum account name")
+	ingestCmd.Flags().String("account", "", "adapter account name")
 	ingestCmd.Flags().String("binary", "", "path to adapter binary")
+
+	// himalaya-specific flags
+	ingestCmd.Flags().String("folder", "INBOX", "himalaya IMAP folder")
+	ingestCmd.Flags().Int("max-items", 0, "max items to fetch (0=all)")
 
 	_ = ingestCmd.MarkFlagRequired("source")
 }
@@ -113,6 +118,8 @@ func buildAdapter(cmd *cobra.Command, source string) (ingest.Adapter, error) {
 	switch source {
 	case "cardamum":
 		return buildCardamumAdapter(cmd)
+	case "himalaya":
+		return buildHimalayaAdapter(cmd)
 	default:
 		return nil, fmt.Errorf("unknown adapter: %s", source)
 	}
@@ -134,6 +141,23 @@ func buildCardamumAdapter(cmd *cobra.Command) (ingest.Adapter, error) {
 	return cardamum.New(addressbook, opts...), nil
 }
 
+func buildHimalayaAdapter(cmd *cobra.Command) (ingest.Adapter, error) {
+	account, _ := cmd.Flags().GetString("account")
+	folder, _ := cmd.Flags().GetString("folder")
+	binary, _ := cmd.Flags().GetString("binary")
+	maxItems, _ := cmd.Flags().GetInt("max-items")
+
+	a := &himalaya.Adapter{
+		Account:  account,
+		Folder:   folder,
+		MaxItems: maxItems,
+	}
+	if binary != "" {
+		a.Binary = binary
+	}
+	return a, nil
+}
+
 func printIngestResult(res *ingest.Result) {
 	fmt.Printf("source: %s | total: %d | created: %d | skipped: %d | errors: %d | %s\n",
 		res.Source, res.Total, res.Created, res.Skipped, res.Errors, res.Elapsed.Round(time.Millisecond))
@@ -149,6 +173,13 @@ func IngestRegistry() *ingest.Registry {
 			ab = args[0]
 		}
 		return cardamum.New(ab), nil
+	})
+	reg.Register("himalaya", func(args []string) (ingest.Adapter, error) {
+		a := &himalaya.Adapter{}
+		if len(args) > 0 {
+			a.Account = args[0]
+		}
+		return a, nil
 	})
 	return reg
 }
