@@ -34,6 +34,8 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
+
+	kitbus "hop.top/kit/bus"
 )
 
 var serveCmd = &cobra.Command{
@@ -195,6 +197,23 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 7. Build HTTP router.
 	devCORS := viper.GetBool("server.dev")
 	router := httpserver.NewRouter(svc, devCORS, watchMgr)
+
+	// 7b. Cross-process event bus hub.
+	// Creates a kit/bus with NetworkAdapter and exposes its WS handler
+	// on /ws/bus. Remote apps (aps, tlc) connect here to share events.
+	busToken := os.Getenv("DPKMS_BUS_TOKEN")
+	if busToken == "" {
+		busToken = "dpkms-dev-token"
+	}
+	hubBus := kitbus.New()
+	hubNet := kitbus.NewNetworkAdapter(hubBus,
+		kitbus.WithAuth(&kitbus.StaticTokenAuth{Token_: busToken}),
+	)
+	defer func() {
+		_ = hubNet.Close()
+		_ = hubBus.Close(context.Background())
+	}()
+	router.Handle("/ws/bus", hubNet.Handler())
 
 	// 8. Determine bind address.
 	bind := "127.0.0.1"
