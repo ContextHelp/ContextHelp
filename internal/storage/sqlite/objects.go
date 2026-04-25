@@ -414,8 +414,12 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	contentUpdate := ""
 	contentArgs := []any{now, string(mergedTagsJSON), string(mergedMentionsJSON), now}
 	if mergeData.RawContent != "" && mergeData.RawContent != hash {
+		tc := mergeData.TextContent
+		if tc == "" {
+			tc = mergeData.RawContent
+		}
 		contentUpdate = ", raw_content = ?, text_content = ?"
-		contentArgs = append(contentArgs, mergeData.RawContent, mergeData.TextContent)
+		contentArgs = append(contentArgs, mergeData.RawContent, tc)
 	}
 	contentArgs = append(contentArgs, hash)
 

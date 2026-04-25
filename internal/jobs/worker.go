@@ -64,7 +64,10 @@ func (p *WorkerPool) SetFanOut(fn FanOutFunc) { p.fanOut = fn }
 func (p *WorkerPool) Start(ctx context.Context) error {
 	drain := p.drainTimeout
 	if drain == 0 {
-		drain = 30 * time.Second
+		// Default must exceed any realistic server uptime. The previous
+		// 30s default expired during normal operation, killing all
+		// in-flight pipeline steps after 30s of uptime.
+		drain = 365 * 24 * time.Hour
 	}
 
 	g, acquireCtx := errgroup.WithContext(ctx)
@@ -244,7 +247,8 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 					rerr = ctx.Err()
 				case <-timer.C:
 				}
-				if rerr != nil {
+				if ctx.Err() != nil {
+					rerr = ctx.Err()
 					break
 				}
 			}
