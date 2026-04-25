@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
@@ -47,4 +48,22 @@ func setupTestDB(t *testing.T) *testDB {
 func (db *testDB) exec(args ...string) (string, error) {
 	fullArgs := append([]string{"--config", db.ConfigPath}, args...)
 	return executeCommand(fullArgs...)
+}
+
+// seedJob inserts a job record into the test database.
+func seedJob(t *testing.T, db *testDB, id, typ, pipeline string, status storage.JobStatus) {
+	t.Helper()
+	now := time.Now().Truncate(time.Second)
+	job := &storage.Job{
+		ID:         id,
+		Type:       typ,
+		Status:     status,
+		Pipeline:   pipeline,
+		MaxRetries: 3,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := db.Driver.Jobs().Create(context.Background(), job); err != nil {
+		t.Fatalf("seed job %s: %v", id, err)
+	}
 }

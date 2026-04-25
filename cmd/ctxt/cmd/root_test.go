@@ -104,7 +104,7 @@ func TestRootSubcommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("root --help should succeed: %v", err)
 	}
-	for _, subcmd := range []string{"analyze", "import", "list", "find", "open", "delete", "edit", "make", "config", "profile", "job", "entity", "registry", "secret", "completion"} {
+	for _, subcmd := range []string{"analyze", "import", "list", "find", "open", "delete", "edit", "make", "config", "profile", "entity", "registry", "completion"} {
 		if !strings.Contains(out, subcmd) {
 			t.Errorf("help output should list subcommand %q", subcmd)
 		}

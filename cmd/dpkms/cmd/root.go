@@ -59,6 +59,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/contexthelp/config.yaml)")
 	rootCmd.PersistentFlags().String("data-dir", "", "data directory override")
 	rootCmd.PersistentFlags().String("server-url", "http://localhost:8080", "dpkms server URL")
+	rootCmd.PersistentFlags().String("output", "text", "output format (text|json|yaml)")
 	rootCmd.PersistentFlags().BoolP("verbose", "V", false, "enable verbose output")
 	rootCmd.PersistentFlags().Bool("offline", false, "disable all network calls (registry sync, LLM/embedding APIs); forces local-only operation")
 	rootCmd.Flags().BoolP("version", "v", false, "print version and exit")
@@ -67,6 +68,7 @@ func init() {
 	// Bind flags to viper
 	viper.BindPFlag("storage.path", rootCmd.PersistentFlags().Lookup("data-dir"))
 	viper.BindPFlag("server.url", rootCmd.PersistentFlags().Lookup("server-url"))
+	viper.BindPFlag("output.format", rootCmd.PersistentFlags().Lookup("output"))
 	viper.BindPFlag("offline.enabled", rootCmd.PersistentFlags().Lookup("offline"))
 }
 

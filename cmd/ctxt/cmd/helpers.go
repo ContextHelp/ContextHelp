@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -233,6 +234,24 @@ func buildObjectFilter() storage.ObjectFilter {
 		}
 	}
 	return filter
+}
+
+// statusStyle renders a job/feed status string with a colour indicator.
+func statusStyle(status string) string {
+	var color lipgloss.Color
+	switch strings.ToLower(status) {
+	case "completed":
+		color = lipgloss.Color("2")
+	case "failed":
+		color = lipgloss.Color("1")
+	case "running", "processing":
+		color = lipgloss.Color("3")
+	case "pending":
+		color = lipgloss.Color("8")
+	default:
+		color = lipgloss.Color("7")
+	}
+	return lipgloss.NewStyle().Foreground(color).Render(status)
 }
 
 // truncate clips s to n runes, appending "..." if truncated.

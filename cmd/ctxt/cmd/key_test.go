@@ -5,77 +5,33 @@ import (
 	"testing"
 )
 
-func TestKeyCommandRegistered(t *testing.T) {
-	found := false
-	for _, c := range rootCmd.Commands() {
-		if c.Use == "key" {
-			found = true
-			break
-		}
+func TestKeyDeprecated(t *testing.T) {
+	_, err := executeCommand("key")
+	if err == nil {
+		t.Fatal("key should return error (moved to dpkms)")
 	}
-	if !found {
-		t.Fatal("key command not registered on rootCmd")
+	if !strings.Contains(err.Error(), "moved to dpkms key") {
+		t.Errorf("error should mention dpkms, got: %v", err)
 	}
 }
 
-func TestKeyInitSubcommandRegistered(t *testing.T) {
-	found := false
-	for _, c := range rootCmd.Commands() {
-		if c.Use != "key" {
-			continue
-		}
-		for _, sub := range c.Commands() {
-			if sub.Use == "init" {
-				found = true
-				break
-			}
-		}
-		break
+func TestKeyInitDeprecated(t *testing.T) {
+	_, err := executeCommand("key", "init")
+	if err == nil {
+		t.Fatal("key init should return error (moved to dpkms)")
 	}
-	if !found {
-		t.Fatal("key init subcommand not registered")
+	if !strings.Contains(err.Error(), "moved to dpkms key init") {
+		t.Errorf("error should mention dpkms, got: %v", err)
 	}
 }
 
-func TestKeyHelp(t *testing.T) {
-	out, err := executeCommand("key", "--help")
-	if err != nil {
-		t.Fatalf("key --help: %v", err)
+func TestKeyRotateDeprecated(t *testing.T) {
+	_, err := executeCommand("key", "rotate")
+	if err == nil {
+		t.Fatal("key rotate should return error (moved to dpkms)")
 	}
-	if !strings.Contains(out, "init") {
-		t.Errorf("help output should mention 'init', got: %s", out)
-	}
-	if !strings.Contains(out, "rotate") {
-		t.Errorf("help output should mention 'rotate', got: %s", out)
-	}
-}
-
-func TestKeyRotateSubcommandRegistered(t *testing.T) {
-	found := false
-	for _, c := range rootCmd.Commands() {
-		if c.Use != "key" {
-			continue
-		}
-		for _, sub := range c.Commands() {
-			if sub.Use == "rotate" {
-				found = true
-				break
-			}
-		}
-		break
-	}
-	if !found {
-		t.Fatal("key rotate subcommand not registered")
-	}
-}
-
-func TestKeyRotateHelp(t *testing.T) {
-	out, err := executeCommand("key", "rotate", "--help")
-	if err != nil {
-		t.Fatalf("key rotate --help: %v", err)
-	}
-	if !strings.Contains(out, "rotation") {
-		t.Errorf("rotate help should mention 'rotation', got: %s", out)
+	if !strings.Contains(err.Error(), "moved to dpkms key rotate") {
+		t.Errorf("error should mention dpkms, got: %v", err)
 	}
 }
 

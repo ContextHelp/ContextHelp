@@ -5,63 +5,42 @@ import (
 	"testing"
 )
 
-func TestSecretHelp(t *testing.T) {
-	out, err := executeCommand("secret", "--help")
-	if err != nil {
-		t.Fatalf("secret --help should succeed: %v", err)
+func TestSecretDeprecated(t *testing.T) {
+	_, err := executeCommand("secret")
+	if err == nil {
+		t.Fatal("secret should return error (moved to dpkms)")
 	}
-	for _, sub := range []string{"get", "set", "list"} {
-		if !strings.Contains(out, sub) {
-			t.Errorf("secret help should list subcommand %q", sub)
-		}
+	if !strings.Contains(err.Error(), "moved to dpkms secret") {
+		t.Errorf("error should mention dpkms, got: %v", err)
 	}
 }
 
-func TestSecretSetEnvReadOnly(t *testing.T) {
+func TestSecretGetDeprecated(t *testing.T) {
+	_, err := executeCommand("secret", "get", "KEY")
+	if err == nil {
+		t.Fatal("secret get should return error (moved to dpkms)")
+	}
+	if !strings.Contains(err.Error(), "moved to dpkms secret get") {
+		t.Errorf("error should mention dpkms, got: %v", err)
+	}
+}
+
+func TestSecretSetDeprecated(t *testing.T) {
 	_, err := executeCommand("secret", "set", "KEY", "val")
-	// env backend is read-only, Set() always returns an error
 	if err == nil {
-		t.Error("secret set with env backend should fail (read-only)")
+		t.Fatal("secret set should return error (moved to dpkms)")
+	}
+	if !strings.Contains(err.Error(), "moved to dpkms secret set") {
+		t.Errorf("error should mention dpkms, got: %v", err)
 	}
 }
 
-func TestSecretGetMissing(t *testing.T) {
-	_, err := executeCommand("secret", "get", "CTXT_TEST_NONEXISTENT_KEY_XYZ")
+func TestSecretListDeprecated(t *testing.T) {
+	_, err := executeCommand("secret", "list")
 	if err == nil {
-		t.Error("secret get for missing env var should fail")
+		t.Fatal("secret list should return error (moved to dpkms)")
 	}
-}
-
-func TestSecretGetFound(t *testing.T) {
-	t.Setenv("CTXT_TEST_KEY", "hello")
-
-	out, err := executeCommand("secret", "get", "CTXT_TEST_KEY")
-	if err != nil {
-		t.Fatalf("secret get should succeed: %v", err)
-	}
-	if !strings.Contains(out, "hello") {
-		t.Errorf("secret get should print value, got: %q", out)
-	}
-}
-
-func TestSecretList(t *testing.T) {
-	out, err := executeCommand("secret", "list")
-	if err != nil {
-		t.Fatalf("secret list should succeed: %v", err)
-	}
-	if !strings.Contains(out, "backend") && !strings.Contains(out, "Backend") {
-		t.Errorf("secret list should show backend info, got: %q", out)
-	}
-}
-
-func TestSecretListEnvBackendNoKeyEnumeration(t *testing.T) {
-	// env backend does not implement Lister — list should show metadata, not keys.
-	out, err := executeCommand("secret", "list")
-	if err != nil {
-		t.Fatalf("secret list should succeed: %v", err)
-	}
-	// Should not claim to enumerate keys
-	if strings.Contains(out, "keys:") {
-		t.Errorf("env backend list should not show key enumeration, got: %q", out)
+	if !strings.Contains(err.Error(), "moved to dpkms secret list") {
+		t.Errorf("error should mention dpkms, got: %v", err)
 	}
 }
