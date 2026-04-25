@@ -24,6 +24,16 @@ type BackupOpts struct {
 	OutputDir      string // directory to write archive; cwd if empty
 	SkipBlobErrors bool
 	ConfigPath     string // optional: path to config.yaml to include in archive
+	IncludeConfigs bool   // include config.yaml + keys/ + other config files
+	ConfigDir      string // config directory (e.g. ~/.config/contexthelp)
+	EmbeddingInfo  EmbeddingInfo // current embedding model for manifest
+}
+
+// EmbeddingInfo records the embedding backend used when creating a backup.
+type EmbeddingInfo struct {
+	Backend   string `json:"backend"`
+	Model     string `json:"model"`
+	Dimension int    `json:"dimension"`
 }
 
 // BackupResult summarises a completed backup.
@@ -45,6 +55,22 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 		outDir, err = os.Getwd()
 		if err != nil {
 			return BackupResult{}, fmt.Errorf("backup: resolve output dir: %w", err)
+		}
+	}
+
+	if info, err := os.Stat(outDir); err != nil {
+		if !os.IsNotExist(err) {
+			return BackupResult{}, fmt.Errorf("backup: stat output dir: %w", err)
+		}
+		if err := os.MkdirAll(outDir, 0755); err != nil {
+			return BackupResult{}, fmt.Errorf("backup: create output dir: %w", err)
+		}
+	} else if info.IsDir() {
+		entries, _ := os.ReadDir(outDir)
+		if len(entries) > 0 {
+			return BackupResult{}, fmt.Errorf(
+				"backup: output dir %q is not empty (%d items); use an empty or new directory",
+				outDir, len(entries))
 		}
 	}
 
@@ -100,6 +126,22 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 		}
 	}
 
+	// 1c. Optional full config dir (keys/, etc.).
+	if opts.IncludeConfigs && opts.ConfigDir != "" {
+		if cInfo, serr := os.Stat(opts.ConfigDir); serr == nil && cInfo.IsDir() {
+			err := filepath.Walk(opts.ConfigDir, func(path string, info os.FileInfo, werr error) error {
+				if werr != nil || info.IsDir() {
+					return werr
+				}
+				rel, _ := filepath.Rel(opts.ConfigDir, path)
+				return addFileToTar(tw, path, filepath.Join("ctxt-backup/config", rel))
+			})
+			if err != nil {
+				return abort(fmt.Errorf("backup: tar config dir: %w", err))
+			}
+		}
+	}
+
 	// 2. Optional blobs (local backend only).
 	if opts.IncludeBlobs && opts.BlobCfg.Backend == "local" {
 		bs, err := blobfactory.New(opts.BlobCfg)
@@ -139,11 +181,13 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 
 	// 3. manifest.json — written last; its presence signals a complete backup.
 	manifest := map[string]any{
-		"schema_version":  1,
+		"schema_version":  2,
 		"created_at":      time.Now().UTC().Format(time.RFC3339),
 		"db_size":         result.DBSize,
 		"blob_count":      result.BlobCount,
 		"config_included": configIncluded,
+		"configs_dir":     opts.IncludeConfigs,
+		"embedding":       opts.EmbeddingInfo,
 	}
 	manifestBytes, _ := json.Marshal(manifest)
 	hdr := &tar.Header{

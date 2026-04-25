@@ -58,26 +58,35 @@ func TestBackupCreatesArchive(t *testing.T) {
 	assertArchiveContains(t, result.Path, "ctxt-backup/ctxt.db", "ctxt-backup/manifest.json")
 }
 
-func TestBackupFailsOnUnwritableOutputDir(t *testing.T) {
+func TestBackupFailsOnNonEmptyOutputDir(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	// Create a minimal SQLite DB.
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		t.Fatalf("create db: %v", err)
 	}
 	db.Close()
 
-	// Use a non-existent output dir — archive creation will fail.
+	outDir := filepath.Join(dir, "out")
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outDir, "stale.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	opts := service.BackupOpts{
 		DBPath:    dbPath,
-		OutputDir: filepath.Join(dir, "no", "such", "dir"),
+		OutputDir: outDir,
 	}
 
 	_, err = service.Backup(context.Background(), opts)
 	if err == nil {
-		t.Fatal("expected error for unwritable output dir")
+		t.Fatal("expected error for non-empty output dir")
+	}
+	if !strings.Contains(err.Error(), "not empty") {
+		t.Fatalf("expected 'not empty' error, got: %v", err)
 	}
 }
 

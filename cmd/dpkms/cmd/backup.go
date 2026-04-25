@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,12 +22,15 @@ var backupCmd = &cobra.Command{
 	Long: `Create a timestamped .tar.gz archive containing:
   - SQLite database snapshot (always)
   - Blob files (with --include-blobs, local backend only)
+  - Config files and keys (with --include-configs)
 
 Output directory defaults to backup.dir in config, then current directory.
+The directory is auto-created if it does not exist, but must be empty.
 
 Examples:
   dpkms backup
   dpkms backup --include-blobs
+  dpkms backup --include-configs
   dpkms backup --output /var/backups/ctxt
   dpkms backup --async`,
 	RunE: runBackup,
@@ -38,10 +42,12 @@ func init() {
 	backupCmd.Flags().String("output", "", "override output directory path")
 	backupCmd.Flags().Bool("async", false, "enqueue as background job and exit")
 	backupCmd.Flags().Bool("skip-blob-errors", false, "skip unreadable blobs instead of failing")
+	backupCmd.Flags().Bool("include-configs", false, "include config files and keys in archive")
 }
 
 func runBackup(cmd *cobra.Command, _ []string) error {
 	includeBlobs, _ := cmd.Flags().GetBool("include-blobs")
+	includeConfigs, _ := cmd.Flags().GetBool("include-configs")
 	outputFlag, _ := cmd.Flags().GetString("output")
 	async, _ := cmd.Flags().GetBool("async")
 	skipBlobErrors, _ := cmd.Flags().GetBool("skip-blob-errors")
@@ -95,6 +101,7 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 
 	// Resolve config file path for inclusion in archive.
 	configPath := resolveConfigPath()
+	configDir := filepath.Dir(configPath)
 
 	// Sync: run directly.
 	opts := service.BackupOpts{
@@ -104,6 +111,12 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 		OutputDir:      outDir,
 		SkipBlobErrors: skipBlobErrors,
 		ConfigPath:     configPath,
+		IncludeConfigs: includeConfigs,
+		ConfigDir:      configDir,
+		EmbeddingInfo: service.EmbeddingInfo{
+			Backend: cfg.Providers.Embedding.Backend,
+			Model:   cfg.Providers.Embedding.Model,
+		},
 	}
 
 	fmt.Fprintf(os.Stderr, "-> snapshot db...\n")
