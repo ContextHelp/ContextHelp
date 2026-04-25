@@ -13,11 +13,18 @@ import (
 
 // apiRepo is the minimal GitHub REST API repo shape used by both list and search endpoints.
 type apiRepo struct {
-	FullName    string `json:"full_name"`
-	HTMLURL     string `json:"html_url"`
-	Description string `json:"description"`
-	StarCount   int    `json:"stargazers_count"`
-	Language    string `json:"language"`
+	FullName    string   `json:"full_name"`
+	HTMLURL     string   `json:"html_url"`
+	Description string   `json:"description"`
+	StarCount   int      `json:"stargazers_count"`
+	Language    string   `json:"language"`
+	Topics      []string `json:"topics"`
+	License     *struct {
+		SpdxID string `json:"spdx_id"`
+	} `json:"license"`
+	Homepage string `json:"homepage"`
+	Forks    int    `json:"forks_count"`
+	Archived bool   `json:"archived"`
 }
 
 // apiSearchResult is the shape returned by /search/repositories.
@@ -147,12 +154,20 @@ func parseLinkNext(header string) string {
 
 // toImported converts an apiRepo to an ImportedRepo.
 func toImported(r apiRepo, source ListType) ImportedRepo {
-	return ImportedRepo{
-		URL:         r.HTMLURL,
-		FullName:    r.FullName,
+	repo := ImportedRepo{
+		URL:      r.HTMLURL,
+		FullName: r.FullName,
 		Description: r.Description,
-		Stars:       r.StarCount,
-		Language:    r.Language,
-		Source:      source,
+		Stars:    r.StarCount,
+		Language: r.Language,
+		Topics:   r.Topics,
+		Homepage: r.Homepage,
+		Forks:    r.Forks,
+		Archived: r.Archived,
+		Source:   source,
 	}
+	if r.License != nil {
+		repo.License = r.License.SpdxID
+	}
+	return repo
 }

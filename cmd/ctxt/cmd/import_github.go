@@ -18,6 +18,7 @@ const githubTokenEnv = "GITHUB_TOKEN"
 // githubFetcher is the interface the command depends on; swap for testing.
 type githubFetcher interface {
 	Fetch(ctx context.Context, opts githubimporter.FetchOptions) ([]githubimporter.ImportedRepo, error)
+	Enrich(ctx context.Context, repos []githubimporter.ImportedRepo)
 }
 
 // newGitHubClient is overridable in tests.
@@ -65,7 +66,7 @@ func init() {
 	importGitHubCmd.Flags().Bool("dry-run", false, "print what would be imported without enqueueing jobs")
 	importGitHubCmd.Flags().String("output", "table", "output format: table or json")
 	importGitHubCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
-	importGitHubCmd.Flags().String("pipeline", "url.github.repo", "pipeline override for enqueued jobs")
+	importGitHubCmd.Flags().String("pipeline", "text.long", "pipeline override for enqueued jobs")
 
 	// hidden for test/dev overrides
 	importGitHubCmd.Flags().String("github-base-url", "", "override GitHub API base URL")
@@ -114,6 +115,8 @@ func runImportGitHub(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "no repositories found")
 		return nil
 	}
+
+	client.Enrich(context.Background(), repos)
 
 	if dryRun {
 		return renderGitHubOutput(os.Stdout, outputFmt, repos)

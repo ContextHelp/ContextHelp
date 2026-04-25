@@ -5,6 +5,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -36,7 +37,14 @@ type ImportedRepo struct {
 	Description string   `json:"description,omitempty"`
 	Stars       int      `json:"stars"`
 	Language    string   `json:"language,omitempty"`
+	Topics      []string `json:"topics,omitempty"`
+	License     string   `json:"license,omitempty"`
+	Homepage    string   `json:"homepage,omitempty"`
+	Forks       int      `json:"forks,omitempty"`
+	Archived    bool     `json:"archived,omitempty"`
 	Source      ListType `json:"source"`
+	Readme      string   `json:"readme,omitempty"`
+	Context7    string   `json:"context7,omitempty"`
 }
 
 // Client fetches repos from GitHub user lists.
@@ -108,20 +116,83 @@ func (c *Client) fetchList(ctx context.Context, username string, list ListType) 
 	}
 }
 
-// RenderContent formats an ImportedRepo into a text payload for ingestion.
+// Enrich fetches README and Context7 docs for each repo (best-effort).
+func (c *Client) Enrich(ctx context.Context, repos []ImportedRepo) {
+	for i := range repos {
+		c.enrichOne(ctx, &repos[i])
+	}
+}
+
+func (c *Client) enrichOne(ctx context.Context, repo *ImportedRepo) {
+	// README via API
+	parts := strings.SplitN(repo.FullName, "/", 2)
+	if len(parts) == 2 {
+		url := fmt.Sprintf("%s/repos/%s/readme", c.baseURL, repo.FullName)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err == nil {
+			if c.token != "" {
+				req.Header.Set("Authorization", "Bearer "+c.token)
+			}
+			req.Header.Set("Accept", "application/vnd.github.raw+json")
+			resp, err := c.hc.Do(req)
+			if err == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode == 200 {
+					body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+					if err == nil {
+						repo.Readme = string(body)
+					}
+				}
+			}
+		}
+	}
+	// Context7
+	c7url := fmt.Sprintf("https://context7.com/%s/llms.txt", repo.FullName)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c7url, nil)
+	if err == nil {
+		resp, err := c.hc.Do(req)
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == 200 {
+				body, err := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
+				if err == nil && len(body) > 100 {
+					repo.Context7 = string(body)
+				}
+			}
+		}
+	}
+}
+
+// RenderContent formats an ImportedRepo into rich markdown for ingestion.
 func RenderContent(repo ImportedRepo) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Repository: %s\n", repo.FullName))
-	sb.WriteString(fmt.Sprintf("URL: %s\n", repo.URL))
-	sb.WriteString(fmt.Sprintf("Source: %s\n", repo.Source))
-	if repo.Language != "" {
-		sb.WriteString(fmt.Sprintf("Language: %s\n", repo.Language))
-	}
-	sb.WriteString(fmt.Sprintf("Stars: %d\n", repo.Stars))
+	sb.WriteString(fmt.Sprintf("# %s\n\n", repo.FullName))
 	if repo.Description != "" {
-		sb.WriteString("\nDescription:\n")
-		sb.WriteString(repo.Description)
-		sb.WriteString("\n")
+		sb.WriteString(repo.Description + "\n\n")
+	}
+	sb.WriteString(fmt.Sprintf("- URL: %s\n", repo.URL))
+	if repo.Homepage != "" {
+		sb.WriteString(fmt.Sprintf("- Homepage: %s\n", repo.Homepage))
+	}
+	sb.WriteString(fmt.Sprintf("- Stars: %d / Forks: %d\n", repo.Stars, repo.Forks))
+	if repo.Language != "" {
+		sb.WriteString(fmt.Sprintf("- Language: %s\n", repo.Language))
+	}
+	if repo.License != "" {
+		sb.WriteString(fmt.Sprintf("- License: %s\n", repo.License))
+	}
+	if len(repo.Topics) > 0 {
+		sb.WriteString(fmt.Sprintf("- Topics: %s\n", strings.Join(repo.Topics, ", ")))
+	}
+	if repo.Archived {
+		sb.WriteString("- Status: ARCHIVED\n")
+	}
+	sb.WriteString(fmt.Sprintf("- Source: %s\n", repo.Source))
+	if repo.Readme != "" {
+		sb.WriteString("\n## README\n\n" + repo.Readme + "\n")
+	}
+	if repo.Context7 != "" {
+		sb.WriteString("\n## Documentation (Context7)\n\n" + repo.Context7 + "\n")
 	}
 	return sb.String()
 }

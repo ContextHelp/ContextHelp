@@ -21,6 +21,8 @@ func (s *stubGitHubFetcher) Fetch(_ context.Context, _ githubimporter.FetchOptio
 	return s.repos, s.err
 }
 
+func (s *stubGitHubFetcher) Enrich(_ context.Context, _ []githubimporter.ImportedRepo) {}
+
 func sampleRepos() []githubimporter.ImportedRepo {
 	return []githubimporter.ImportedRepo{
 		{
