@@ -48,23 +48,13 @@ type Driver struct {
 // New creates a new SQLite driver for the given database path.
 func New(path string) (*Driver, error) {
 	sqlite_vec.Auto()
-	db, err := sql.Open("sqlite3", path)
+	// Encode pragmas in the DSN so every pooled connection inherits them.
+	// go-sqlite3 requires file: URI prefix for query parameters to be
+	// parsed as connection pragmas (bare path+? is treated as filename).
+	dsn := "file:" + path + "?_journal_mode=WAL&_synchronous=NORMAL&_foreign_keys=ON&_cache_size=-64000&_busy_timeout=5000"
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
-	}
-
-	// Set pragmas for performance and correctness.
-	for _, pragma := range []string{
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA synchronous=NORMAL",
-		"PRAGMA foreign_keys=ON",
-		"PRAGMA cache_size=-64000",
-		"PRAGMA busy_timeout=5000",
-	} {
-		if _, err := db.Exec(pragma); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("set %s: %w", pragma, err)
-		}
 	}
 
 	d := &Driver{db: db, path: path, vectorDimension: DefaultVectorDimension}
