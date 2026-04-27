@@ -1570,3 +1570,175 @@ They provide:
 
 This is not just a tool.
 It is a **substrate + brain for contextual cognition**.
+
+---
+
+# 2026-04-26 update — addenda since v1
+
+> **Scope.** The body above is current as of v1. The
+> following section captures additions since then that have
+> not yet been folded into the main narrative: ingestion
+> adapters, kit/bus integration, REPL session model,
+> node-aware retrieval, schema co-evolution per profile,
+> persistent composition pages, and concrete cross-project
+> integration contracts. Folding into the relevant sections
+> above is queued; until then this addendum is authoritative
+> for those topics.
+
+## Cross-references
+
+- [kit](https://github.com/hop-top/kit/blob/main/docs/architecture.md) — CLI substrate; consumed transitively via `hop.top/c12n` (kit `v0.3.2-patch.3` compatible)
+- [aps](https://github.com/hop-top/aps/blob/main/docs/architecture.md) — agent profile; profile scoping drives ranking + pipeline filters
+- [usp](https://github.com/hop-top/usp/blob/main/docs/architecture.md) — session lookup; `usp-ctxt sync` bridge ingests sessions into ctxt as mentions
+- [wsm](https://github.com/hop-top/wsm/blob/main/docs/architecture.md) — workspace state (multi-workspace scoping is roadmap)
+- [eva](https://github.com/hop-top/eva/blob/main/docs/architecture.md) — evaluation engine for composition quality metrics
+
+## Hop-managed status
+
+Per ADR-001 RED status, **ctxt is NOT hop-managed**. `hop up
+v0.1` does not spawn or control ctxt. Runs as a standalone
+daemon (`docker compose up -d dpkms`) on:
+
+- REST `:8080`
+- gRPC `:9090`
+- MCP `:9377`
+
+Data: `~/.config/contexthelp/` (config) +
+`dpkms-data:` Docker volume (SQLite).
+
+## Ingestion adapters (recent)
+
+The plugin layer has gained concrete ingestion adapters that
+deserve dedicated coverage:
+
+| Adapter | Source | Status |
+|---|---|---|
+| cardamum | local contacts (vdir) | Live |
+| himalaya | email accounts (IMAP / SMTP) | Live |
+| GitHub | repository README + Context7 docs | Live |
+| Dropbox, Notion, Obsidian, Logseq | knowledge bases | Various |
+| Discord, Slack, Twitter | conversation streams | Various |
+| Evernote, LinkedIn, Pinboard, Raindrop | bookmarking + notes | Various |
+| Chrome, Firefox, Safari, Edge | browser history | Various |
+
+Each adapter implements the generic adapter interface and
+plugs into the pipeline runtime for enrichment.
+
+## kit/bus integration (recent)
+
+The runtime now publishes ingest + profile events through
+kit/bus to the dpkms cross-process hub on `/ws/bus`:
+
+- env-based auth (`BUS_TOKEN`)
+- DrainCtx timeout for graceful shutdown
+- Profile subscriber + ingest event types
+- Cross-process event hub for federation
+
+See commits `0fe3534` (DrainCtx), `b148986` (cross-process
+hub), and the worker / bus refactor of April 2026.
+
+## REPL shell (P-310)
+
+A long-running session model where a single
+`*service.Service` is held across commands (no per-command
+re-init overhead). State:
+
+- Active profile (persists across REPL restarts via session state file)
+- Last result set (for follow-up queries)
+- Command history
+
+Profile switching is `ctxt profile use <name>` inside the REPL.
+
+## Node-aware retrieval
+
+The KnowledgeObject model now exposes typed nodes within an
+ObjectGraph (per ADR-063). Search returns `NodeHit` results,
+not just whole objects. Node URI scheme:
+
+```
+ctxt:node/<objectID>/<nodeType>/<ordinal>
+```
+
+Where `<nodeType>` is one of: `section`, `tag`,
+`entity_mention`, `decision`, `task`, `summary`, `code_block`.
+This enables fine-grained citation and partial retrieval
+without loading whole objects.
+
+## Schema co-evolution per profile (US-0409)
+
+Each profile can evolve its own schema for metadata
+extraction. The c12n pipeline step (US-0407) drives metadata
+faceting; per-profile schema lets engineer / writer / founder
+profiles surface different facets from the same source. See
+commit `5f884f2`.
+
+## Persistent composition pages (US-0401)
+
+`ctxt make brief|plan|summary` outputs are now persisted as
+composed pages with provenance edges back to source nodes.
+Templates live under `composition.templates` in the profile
+schema.
+
+## Multi-source syndication (US-0410)
+
+Ingestion can pull from multiple sources with dual filter
+ownership: source-defined filters (what the source emits) and
+profile-defined filters (what the profile wants). See commit
+`5c0d06b`.
+
+## Concrete cross-project contracts
+
+### usp ↔ ctxt bridge (Pipeline B)
+
+usp-ctxt invokes:
+
+```
+ctxt analyze --mentions @usp.session.<id> @agent.<id> \
+             --source-key usp/<id> --wait
+<session body via stdin>
+```
+
+Mentions identity model (post-T-0068):
+- `@usp.session.<id>` — canonical session identity
+- `@agent.<id>` — producer (aps profile ID)
+- `@cli.<name>` — originating CLI (claude / codex / gemini / opencode)
+- `@scope.<value>` — workspace / project scope
+
+Per-CLI per-project high-water-mark for idempotent re-runs
+(`~/.local/share/usp-ctxt/last_run.json`).
+
+### aps ↔ ctxt scoping
+
+A profile's `scope` field (file_patterns, operations, tools,
+secrets, networks) drives ranking filters and pipeline
+selection in ctxt. Profile schema co-evolves per role.
+
+### kai's mention-registry
+
+Custom entity resolvers + registry subscriptions integrate
+via the plugin API. Specifically:
+- Per-profile entity resolution
+- Federated registry sync
+- Just-in-time entity loading
+
+## Recent activity
+
+- US-0410 multi-source syndication (`5c0d06b`)
+- GitHub adapter with README + Context7 (`1f9bd22`)
+- Backup / restore + manifest v2 + auto-create dir (`9c1b5e1`...`a7ad19f`)
+- Worker / bus DrainCtx + env auth + cross-process hub (`0fe3534`...`b148986`)
+- Pipeline FTS in `text.short`/`text.long` + embedding step (`e51f793`...`2596dd7`)
+- Himalaya email + cardamum contacts adapters (`f2b056e`...`8053c96`)
+- US-0407 metadata faceted search + c12n pipeline step (`c68d00e`...`ebf81e1`)
+- US-0409 schema co-evolution per profile (`5f884f2`)
+
+## Open questions
+
+1. **Mention-registry ownership.** Built-in registry or pure plugin? Where does canonical entity resolution live?
+2. **usp session boundary.** When does a session "end" for ctxt? How are capture batches mapped to sessions?
+3. **Multi-workspace via wsm.** Workspace isolation in shared instance: roadmap or shipped?
+4. **Vector index policy.** ADR-022 marks vector search optional; is the embeddings step now mandatory in all pipelines?
+5. **Profile persistence semantics.** Does `ctxt profile use <name>` persist across REPL restarts, or session-only?
+6. **Composition traceability.** How are provenance links encoded in persistent composed pages — edges or metadata?
+7. **Cross-registry entity conflicts.** ADR-029 covers conflicts; how are they resolved when subscribing to multiple registries with overlapping entities?
+8. **Node-level access control.** Can plugins or profiles scope access to individual nodes within an ObjectGraph, or only to whole objects?
