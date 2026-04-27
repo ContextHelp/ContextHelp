@@ -22,13 +22,13 @@ require (
 	github.com/atotto/clipboard v0.1.4
 	github.com/aws/aws-sdk-go-v2/config v1.32.16
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.15
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.99.1
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.100.0
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/lib/pq v1.11.2
-	github.com/mattn/go-sqlite3 v1.14.37
+	github.com/lib/pq v1.12.3
+	github.com/mattn/go-sqlite3 v1.14.42
 	github.com/pelletier/go-toml/v2 v2.3.0
 	github.com/peterh/liner v1.2.2
 	github.com/yuin/goldmark v1.8.2
@@ -36,7 +36,7 @@ require (
 	golang.org/x/term v0.42.0
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
-	modernc.org/sqlite v1.48.2
+	modernc.org/sqlite v1.50.0
 )
 
 require (
@@ -113,7 +113,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
-	gopkg.in/dnaeon/go-vcr.v4 v4.0.2
+	gopkg.in/dnaeon/go-vcr.v4 v4.0.6
 )
 
 // hop.top/* are self-owned sibling repos.
