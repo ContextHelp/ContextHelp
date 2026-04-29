@@ -42,6 +42,7 @@ require (
 
 require (
 	charm.land/lipgloss/v2 v2.0.3 // indirect
+	charm.land/log/v2 v2.0.0 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/apple/pkl-go v0.13.2 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260413225345-5027f0c48455 // indirect
@@ -50,6 +51,7 @@ require (
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/danielgtaylor/huma/v2 v2.37.3 // indirect
+	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/hashicorp/mdns v1.0.6 // indirect
 	github.com/miekg/dns v1.1.55 // indirect
 	github.com/muesli/mango v0.2.0 // indirect
@@ -58,6 +60,7 @@ require (
 	github.com/muesli/roff v0.1.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
+	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/tools v0.44.0 // indirect
 	hop.top/xrr v0.1.0-alpha.3 // indirect
