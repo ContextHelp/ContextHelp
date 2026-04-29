@@ -30,21 +30,25 @@ func TestMultiInstanceAutoPort(t *testing.T) {
 	// XDG_DATA_HOME isolates pidfiles without overriding storage.path
 	// (CTXT_DATA_DIR would do both since it binds to storage.path in viper).
 	dataDir := t.TempDir()
-	env := append(os.Environ(), "XDG_DATA_HOME="+dataDir)
+	env := append(os.Environ(), "XDG_DATA_HOME="+dataDir, "BUS_TOKEN=test-bus-token")
 
 	// Each instance gets its own db to avoid SQLite single-writer contention.
 	cfg1 := writeServeConfig(t, dataDir, "alpha")
 	cfg2 := writeServeConfig(t, dataDir, "beta")
 
 	// Both instances request the same default HTTP (8080) and gRPC (9090) ports.
-	// The second must auto-assign free alternatives.
+	// The second must auto-assign free alternatives. Wait for the first
+	// instance to claim its ports before starting the second so findFreePort's
+	// TOCTOU window is closed (otherwise both can probe 9090 as free).
 	p1 := startServeProcessWithName(t, bin, cfg1, "alpha", env)
 	defer p1.Process.Kill()
+
+	runDir := filepath.Join(dataDir, "contexthelp", "run")
+	waitForPidfiles(t, runDir, 1, 10*time.Second)
 
 	p2 := startServeProcessWithName(t, bin, cfg2, "beta", env)
 	defer p2.Process.Kill()
 
-	runDir := filepath.Join(dataDir, "contexthelp", "run")
 	instances := waitForPidfiles(t, runDir, 2, 15*time.Second)
 
 	if instances[0].Port == instances[1].Port {
@@ -70,7 +74,7 @@ func TestMultiInstanceAutoPort(t *testing.T) {
 func TestMultiInstanceNameConflict(t *testing.T) {
 	bin := buildDpkmsBinary(t)
 	dataDir := t.TempDir()
-	env := append(os.Environ(), "XDG_DATA_HOME="+dataDir)
+	env := append(os.Environ(), "XDG_DATA_HOME="+dataDir, "BUS_TOKEN=test-bus-token")
 
 	cfg1 := writeServeConfig(t, dataDir, "conflict-a")
 	cfg2 := writeServeConfig(t, dataDir, "conflict-b")
@@ -96,17 +100,20 @@ func TestMultiInstanceNameConflict(t *testing.T) {
 func TestMultiInstanceAutoPort_PS(t *testing.T) {
 	bin := buildDpkmsBinary(t)
 	dataDir := t.TempDir()
-	env := append(os.Environ(), "XDG_DATA_HOME="+dataDir)
+	env := append(os.Environ(), "XDG_DATA_HOME="+dataDir, "BUS_TOKEN=test-bus-token")
 
 	cfg1 := writeServeConfig(t, dataDir, "ps-alpha")
 	cfg2 := writeServeConfig(t, dataDir, "ps-beta")
 
 	p1 := startServeProcessWithName(t, bin, cfg1, "ps-alpha", env)
 	defer p1.Process.Kill()
+
+	runDir := filepath.Join(dataDir, "contexthelp", "run")
+	waitForPidfiles(t, runDir, 1, 10*time.Second)
+
 	p2 := startServeProcessWithName(t, bin, cfg2, "ps-beta", env)
 	defer p2.Process.Kill()
 
-	runDir := filepath.Join(dataDir, "contexthelp", "run")
 	waitForPidfiles(t, runDir, 2, 15*time.Second)
 
 	psCmd := exec.Command(bin, "--config", cfg1, "ps", "--output", "json")

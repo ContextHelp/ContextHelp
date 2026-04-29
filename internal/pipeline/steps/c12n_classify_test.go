@@ -26,7 +26,10 @@ func TestC12nClassifierContract(t *testing.T) {
 }
 
 func TestC12nClassifierGracefulFallback(t *testing.T) {
-	// Without cgo, NewPipeline returns errNoCgo; step must not fail.
+	// Whatever the build environment (cgo on/off, Rust lib present/absent),
+	// Run must never return an error and must always set a c12n_status.
+	// When the pipeline cannot classify (unavailable/error), the enrichment
+	// key must NOT be set so downstream steps don't pick up stale data.
 	step := NewC12nClassifier()
 	draft := &storage.KnowledgeObject{
 		RawContent: "Some content to classify",
@@ -39,12 +42,17 @@ func TestC12nClassifierGracefulFallback(t *testing.T) {
 	if !ok {
 		t.Fatal("expected c12n_status in metadata")
 	}
-	if status != "unavailable" {
-		t.Errorf("expected c12n_status=unavailable without cgo, got %v", status)
-	}
-	// enrichment key must NOT be set on fallback.
-	if _, exists := got.Metadata["enrichment.c12n_signals"]; exists {
-		t.Error("enrichment.c12n_signals should not be set when pipeline unavailable")
+	switch status {
+	case "complete":
+		if _, exists := got.Metadata["enrichment.c12n_signals"]; !exists {
+			t.Error("enrichment.c12n_signals must be set when c12n_status=complete")
+		}
+	case "unavailable", "error":
+		if _, exists := got.Metadata["enrichment.c12n_signals"]; exists {
+			t.Errorf("enrichment.c12n_signals must not be set when c12n_status=%v", status)
+		}
+	default:
+		t.Errorf("unexpected c12n_status %v (want one of complete/unavailable/error)", status)
 	}
 }
 

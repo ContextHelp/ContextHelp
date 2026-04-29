@@ -136,8 +136,12 @@ func TestUS0034_ArchiveContainsDBAndManifest(t *testing.T) {
 	assert.True(t, entries["ctxt-backup/manifest.json"], "archive must contain ctxt-backup/manifest.json")
 }
 
-// TestUS0034_ManifestSchemaVersionIsOne verifies the manifest.json schema_version field.
-func TestUS0034_ManifestSchemaVersionIsOne(t *testing.T) {
+// TestUS0034_ManifestSchemaVersionIsCurrent verifies the manifest.json
+// schema_version pins to the current value emitted by service.Backup. Bump
+// this constant in lockstep with internal/service/backup.go when the manifest
+// shape changes (and document the migration in docs/stories/operations/US-0034).
+func TestUS0034_ManifestSchemaVersionIsCurrent(t *testing.T) {
+	const wantSchemaVersion = 2
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "ctxt.db")
 	outDir := filepath.Join(dir, "out")
@@ -156,8 +160,8 @@ func TestUS0034_ManifestSchemaVersionIsOne(t *testing.T) {
 
 	sv, ok := manifest["schema_version"]
 	require.True(t, ok, "manifest must contain schema_version")
-	// JSON numbers decode as float64.
-	assert.Equal(t, float64(1), sv, "schema_version must be 1")
+	assert.Equal(t, float64(wantSchemaVersion), sv,
+		"schema_version drift — bump test constant in lockstep with backup.go")
 }
 
 // TestUS0034_BackupContainsObjectsAfterIngestion verifies that after ingesting

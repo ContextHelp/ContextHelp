@@ -42,6 +42,32 @@ endpoint confirms the server is in a clean state before taking a backup.
 
 ## Implementation Notes
 
+### Manifest schema
+
+`ctxt-backup/manifest.json` is the last file written by `service.Backup`;
+its presence signals a complete archive. Current shape (`schema_version: 2`):
+
+```json
+{
+  "schema_version":  2,
+  "created_at":      "2026-04-29T12:00:00Z",
+  "db_size":         123456,
+  "blob_count":      42,
+  "config_included": true,
+  "configs_dir":     "/path/to/contexthelp",
+  "embedding": { "backend": "...", "model": "...", "dimensions": 384 }
+}
+```
+
+History:
+- `v1` — initial: `created_at`, `db_size`, `blob_count`, optional `config_included`.
+- `v2` (Apr 2026) — added `configs_dir` + `embedding` block; emitted when
+  `BackupOpts.IncludeConfigs` / `EmbeddingInfo` are populated.
+
+When you bump the schema, update `internal/service/backup.go`,
+`internal/service/backup_test.go`, and the `wantSchemaVersion` constant in
+`test/integration/us0034_export_backup_test.go` together.
+
 ### CLI Commands (dpkms)
 
 ```
