@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	kitstyles "hop.top/kit/go/console/tui/styles"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -134,21 +134,21 @@ func runJobsList(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
+// statusStyle renders a job status string with kit's semantic palette.
 func statusStyle(status string) string {
-	var color lipgloss.Color
+	st := kitstyles.NewStyles(root.Theme)
 	switch strings.ToLower(status) {
 	case "completed":
-		color = lipgloss.Color("2")
+		return st.Success.Render(status)
 	case "failed":
-		color = lipgloss.Color("1")
+		return st.Error.Render(status)
 	case "running", "processing":
-		color = lipgloss.Color("3")
+		return st.Accent.Render(status)
 	case "pending":
-		color = lipgloss.Color("8")
+		return st.Muted.Render(status)
 	default:
-		color = lipgloss.Color("7")
+		return st.Secondary.Render(status)
 	}
-	return lipgloss.NewStyle().Foreground(color).Render(status)
 }
 
 func runJobsStatus(cmd *cobra.Command, args []string) error {

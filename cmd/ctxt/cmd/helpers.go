@@ -11,8 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
+	kitstyles "hop.top/kit/go/console/tui/styles"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
@@ -297,22 +298,23 @@ func buildObjectFilter() storage.ObjectFilter {
 	return filter
 }
 
-// statusStyle renders a job/feed status string with a colour indicator.
+// statusStyle renders a job/feed status string with kit's semantic palette.
+// Mapping: completed→Success, failed→Error, running/processing→Accent,
+// pending→Muted, fallback→Secondary.
 func statusStyle(status string) string {
-	var color lipgloss.Color
+	st := kitstyles.NewStyles(root.Theme)
 	switch strings.ToLower(status) {
 	case "completed":
-		color = lipgloss.Color("2")
+		return st.Success.Render(status)
 	case "failed":
-		color = lipgloss.Color("1")
+		return st.Error.Render(status)
 	case "running", "processing":
-		color = lipgloss.Color("3")
+		return st.Accent.Render(status)
 	case "pending":
-		color = lipgloss.Color("8")
+		return st.Muted.Render(status)
 	default:
-		color = lipgloss.Color("7")
+		return st.Secondary.Render(status)
 	}
-	return lipgloss.NewStyle().Foreground(color).Render(status)
 }
 
 // truncate clips s to n runes, appending "..." if truncated.
