@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"hop.top/kit/go/core/xdg"
 )
 
 const (
@@ -618,13 +619,10 @@ func Load(cfgFile string) (*Config, error) {
 		if envConfig := os.Getenv(EnvConfigPath); envConfig != "" {
 			v.SetConfigFile(envConfig)
 		} else {
-			// Use default location
-			home, err := os.UserHomeDir()
+			configPath, err := configDirXDG()
 			if err != nil {
-				return nil, fmt.Errorf("failed to get home directory: %w", err)
+				return nil, fmt.Errorf("config dir: %w", err)
 			}
-
-			configPath := filepath.Join(home, DefaultConfigDir)
 			v.AddConfigPath(configPath)
 			v.SetConfigName("config")
 			v.SetConfigType("yaml")
@@ -715,8 +713,12 @@ func migrate(cfg *Config) bool {
 
 // setDefaults sets default configuration values
 func setDefaults(v *viper.Viper) {
-	home, _ := os.UserHomeDir()
-	dataDir := filepath.Join(home, ".local", "share", "contexthelp")
+	dataDir, err := dataDirXDG()
+	if err != nil {
+		// Fallback only when XDG resolution fails (e.g. no $HOME).
+		home, _ := os.UserHomeDir()
+		dataDir = filepath.Join(home, ".local", "share", "contexthelp")
+	}
 
 	// Storage defaults
 	v.SetDefault("storage.type", "sqlite")
@@ -912,59 +914,66 @@ func ResolveSearchConfig(global SearchConfig, profile ProfileSearchStrategy) Sea
 	return out
 }
 
-// GetConfigPath returns the configuration file path being used
+const xdgTool = "contexthelp"
+
+// configDirXDG returns the XDG-resolved config directory for contexthelp,
+// using kit/xdg's RawConfigDir (the guard-respecting ConfigDir is unsuitable
+// here because it errors when the dir doesn't exist yet).
+func configDirXDG() (string, error) {
+	return xdg.RawConfigDir(xdgTool)
+}
+
+// dataDirXDG returns the XDG-resolved data directory for contexthelp.
+func dataDirXDG() (string, error) {
+	return xdg.RawDataDir(xdgTool)
+}
+
+// GetConfigPath returns the configuration file path being used.
+// Resolution order: $CTXT_CONFIG > kit/xdg ConfigDir/config.yaml.
 func GetConfigPath() string {
 	if cfgPath := os.Getenv(EnvConfigPath); cfgPath != "" {
 		return cfgPath
 	}
-
-	home, err := os.UserHomeDir()
+	dir, err := configDirXDG()
 	if err != nil {
 		return ""
 	}
-
-	return filepath.Join(home, DefaultConfigDir, DefaultConfigFileName)
+	return filepath.Join(dir, DefaultConfigFileName)
 }
 
-// EnsureConfigDir ensures the configuration directory exists
+// EnsureConfigDir ensures the configuration directory exists.
 func EnsureConfigDir() error {
 	configPath := GetConfigPath()
 	if configPath == "" {
 		return fmt.Errorf("failed to determine config path")
 	}
-
 	configDir := filepath.Dir(configPath)
 	return os.MkdirAll(configDir, 0755)
 }
 
-// EnsureDataDir ensures the data directory exists
+// EnsureDataDir ensures the data directory exists.
+// Resolution order: $CTXT_DATA_DIR > kit/xdg DataDir.
 func EnsureDataDir() error {
 	dataDir := os.Getenv(EnvDataDir)
 	if dataDir == "" {
-		home, err := os.UserHomeDir()
+		var err error
+		dataDir, err = dataDirXDG()
 		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
+			return fmt.Errorf("data dir: %w", err)
 		}
-		dataDir = filepath.Join(home, ".local", "share", "contexthelp")
 	}
-
 	return os.MkdirAll(dataDir, 0755)
 }
 
 // RunDir returns the directory used for runtime files (pidfiles).
-// Respects XDG_DATA_HOME: $XDG_DATA_HOME/contexthelp/run or
-// $CTXT_DATA_DIR/run or ~/.local/share/contexthelp/run.
+// Resolution order: $CTXT_DATA_DIR/run > kit/xdg DataDir/run.
 func RunDir() (string, error) {
 	base := os.Getenv(EnvDataDir)
 	if base == "" {
-		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
-			base = filepath.Join(xdg, "contexthelp")
-		} else {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", fmt.Errorf("home dir: %w", err)
-			}
-			base = filepath.Join(home, ".local", "share", "contexthelp")
+		var err error
+		base, err = dataDirXDG()
+		if err != nil {
+			return "", fmt.Errorf("data dir: %w", err)
 		}
 	}
 	dir := filepath.Join(base, "run")
