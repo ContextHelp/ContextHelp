@@ -1,75 +1,123 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
+	"charm.land/fang/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/logger"
 	internalversion "github.com/ideacrafterslabs/ctxt/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	kitcli "hop.top/kit/go/console/cli"
 )
+
+const dpkmsLong = `dpkms is the infrastructure layer for ContextHelp.
+
+dPKMS (Decentralized Personal Knowledge Management Substrate) provides
+the storage, job queue, pipeline runtime, and API server that powers
+ContextHelp's knowledge management capabilities.`
 
 var (
 	cfgFile string
 	cfg     *config.Config
 
-	// Version information
 	version   string
 	buildTime string
 	gitCommit string
+
+	// root is initialised at package load — BEFORE any init() in this package
+	// runs — so subcommands' init() functions can call rootCmd.AddCommand.
+	root = kitcli.New(kitcli.Config{
+		Name:    "dpkms",
+		Version: "dev",
+		Short:   "dPKMS - Decentralized knowledge substrate",
+		Help:    kitcli.HelpConfig{Disclaimer: dpkmsLong},
+		Globals: []kitcli.Flag{
+			{Name: "config", Usage: "config file (default $XDG_CONFIG_HOME/contexthelp/config.yaml)"},
+			{Name: "data-dir", Usage: "data directory override"},
+			{Name: "server-url", Default: "http://localhost:8080", Usage: "dpkms server URL"},
+			{Name: "offline", Usage: "disable all network calls; force local-only operation"},
+		},
+	})
+	rootCmd = root.Cmd
 )
 
-var rootCmd = &cobra.Command{
-	Use:   "dpkms",
-	Short: "dPKMS - Decentralized knowledge substrate",
-	Long: `dpkms is the infrastructure layer for ContextHelp.
+func init() {
+	rootCmd.Use = "dpkms"
+	rootCmd.SilenceUsage = true
+	rootCmd.SilenceErrors = true
+	rootCmd.SuggestionsMinimumDistance = 2
 
-dPKMS (Decentralized Personal Knowledge Management Substrate) provides
-the storage, job queue, pipeline runtime, and API server that powers
-ContextHelp's knowledge management capabilities.`,
-	SilenceUsage:              true,
-	SilenceErrors:             true,
-	SuggestionsMinimumDistance: 2,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		verbose, _ := cmd.PersistentFlags().GetBool("verbose")
-		logger.Init(verbose)
-		return nil
-	},
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if ok, _ := cmd.Flags().GetBool("version"); ok {
+	// Custom --version + --check (see ctxt root.go for rationale).
+	rootCmd.Flags().BoolP("version", "v", false, "print version and exit")
+	rootCmd.Flags().Bool("check", false, "check for a newer release (use with -v)")
+
+	// Hidden deprecated --output alias for --format.
+	rootCmd.PersistentFlags().String("output", "", "(deprecated) alias for --format")
+	_ = rootCmd.PersistentFlags().MarkHidden("output")
+
+	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if v, _ := cmd.Flags().GetBool("version"); v {
 			printVersion(cmd)
 			return nil
 		}
 		return cmd.Help()
-	},
-}
+	}
 
-func Execute() error {
-	return rootCmd.Execute()
-}
+	// Mirror kit/cli bindings into the global viper used throughout the codebase.
+	pf := rootCmd.PersistentFlags()
+	for _, name := range []string{"format", "quiet", "no-color", "verbose", "no-hints", "chdir", "config", "data-dir", "server-url", "offline", "output"} {
+		if f := pf.Lookup(name); f != nil {
+			_ = viper.BindPFlag(name, f)
+		}
+	}
+	// Aliases used by the rest of the codebase.
+	viper.RegisterAlias("storage.path", "data-dir")
+	viper.RegisterAlias("server.url", "server-url")
+	viper.RegisterAlias("output.format", "format")
+	viper.RegisterAlias("offline.enabled", "offline")
+	viper.RegisterAlias("cli.verbose", "verbose")
 
-func init() {
+	// Single PersistentPreRunE: chains kit's chdir hook + verbose logger init
+	// + the --output→--format compatibility shim.
+	chdirHook := rootCmd.PersistentPreRunE
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if chdirHook != nil {
+			if err := chdirHook(cmd, args); err != nil {
+				return err
+			}
+		}
+		if outFlag := cmd.Root().PersistentFlags().Lookup("output"); outFlag != nil && outFlag.Changed {
+			val := outFlag.Value.String()
+			_ = cmd.Root().PersistentFlags().Set("format", val)
+			viper.Set("format", val)
+		}
+		count, _ := cmd.Root().PersistentFlags().GetCount("verbose")
+		logger.Init(count > 0)
+		return nil
+	}
+
 	cobra.OnInitialize(initConfig)
+}
 
-	// Global flags
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/contexthelp/config.yaml)")
-	rootCmd.PersistentFlags().String("data-dir", "", "data directory override")
-	rootCmd.PersistentFlags().String("server-url", "http://localhost:8080", "dpkms server URL")
-	rootCmd.PersistentFlags().String("output", "text", "output format (text|json|yaml)")
-	rootCmd.PersistentFlags().BoolP("verbose", "V", false, "enable verbose output")
-	rootCmd.PersistentFlags().Bool("offline", false, "disable all network calls (registry sync, LLM/embedding APIs); forces local-only operation")
-	rootCmd.Flags().BoolP("version", "v", false, "print version and exit")
-	rootCmd.Flags().Bool("check", false, "check for a newer release (use with -v)")
-
-	// Bind flags to viper
-	viper.BindPFlag("storage.path", rootCmd.PersistentFlags().Lookup("data-dir"))
-	viper.BindPFlag("server.url", rootCmd.PersistentFlags().Lookup("server-url"))
-	viper.BindPFlag("output.format", rootCmd.PersistentFlags().Lookup("output"))
-	viper.BindPFlag("offline.enabled", rootCmd.PersistentFlags().Lookup("offline"))
+// Execute runs dpkms via fang (styled help + errors). We pass WithoutVersion
+// so fang doesn't intercept --version; ctxt has its own format with --check.
+func Execute() error {
+	rootCmd.InitDefaultCompletionCmd()
+	for _, c := range rootCmd.Commands() {
+		if c.Name() == "completion" {
+			c.GroupID = "management"
+			break
+		}
+	}
+	return fang.Execute(context.Background(), rootCmd,
+		fang.WithoutVersion(),
+	)
 }
 
 func printVersion(cmd *cobra.Command) {
@@ -106,15 +154,14 @@ func printVersion(cmd *cobra.Command) {
 }
 
 func initConfig() {
+	cfgFile = viper.GetString("config")
 	var err error
 	cfg, err = config.Load(cfgFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load config: %v\n", err)
-		// Continue with defaults
 		cfg = &config.Config{}
 	}
 
-	// Ensure required directories exist
 	if err := config.EnsureConfigDir(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure config directory: %v\n", err)
 	}
@@ -122,20 +169,19 @@ func initConfig() {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure data directory: %v\n", err)
 	}
 
-	// Initialize API client
 	serverURL := viper.GetString("server.url")
 	initPipelineClient(serverURL)
 }
 
-// SetVersionInfo sets version information for the CLI
 func SetVersionInfo(v, bt, gc string) {
 	version = v
 	buildTime = bt
 	gitCommit = gc
+	if root != nil {
+		root.Config.Version = strings.TrimPrefix(v, "v")
+	}
 }
 
-// SetVersionFetcher overrides the HTTP fetcher used by --check.
-// Intended for tests only.
 func SetVersionFetcher(f internalversion.Fetcher) {
 	internalversion.DefaultFetcher = f
 }
