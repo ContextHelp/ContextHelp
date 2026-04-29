@@ -41,6 +41,12 @@ storage:
   concurrency: safe
   options: {}
 
+blob:
+  backend: local
+  threshold: 65536
+  local:
+    path: ~/.local/share/contexthelp/blobs
+
 ingestion:
   mode: jobs
   auto_start_worker: true
@@ -272,6 +278,114 @@ See [LEANN Integration Documentation](../integrations/leann-integration.md) for 
 | `plugin-<name>` | Storage provided by a plugin (remote KV, vector DB, etc.). |
 
 Plugins can register new backend types dynamically.
+
+---
+
+# Blob Storage Configuration
+
+Externalizes oversized object content (PDFs, audio, images, long
+documents) out of SQLite into a pluggable blob store. Above the
+configured threshold, `KnowledgeObject.RawContent` is replaced with a
+`blob://<sha256>` reference; the original is fetched on demand via
+`BlobStore.Get`. Below the threshold, content stays inline.
+
+```yaml
+blob:
+  backend: local | s3 | garage | stub
+  threshold: 65536               # bytes; 0 disables externalization
+  local:
+    path: ~/.local/share/contexthelp/blobs
+  s3:
+    endpoint: ""                 # custom endpoint for non-AWS providers
+    region: us-east-1
+    bucket: ""
+    prefix: ""                   # key prefix within the bucket
+    access_key: ""               # or AWS_ACCESS_KEY_ID env var
+    secret_key: ""               # or AWS_SECRET_ACCESS_KEY env var
+    use_path_style: false        # true for MinIO / Garage / many self-hosted
+    presign_expiry: 1h
+    max_retries: 3
+```
+
+## Backends
+
+| Backend | When to use |
+|---------|-------------|
+| `local` | Default. Single-machine; sharded directory under `local.path`. |
+| `s3` | AWS S3, Cloudflare R2, Backblaze B2, DigitalOcean Spaces, MinIO, Wasabi, Linode Object Storage, etc. SigV4 with optional custom `endpoint`. |
+| `garage` | [Garage](https://garagehq.deuxfleurs.fr) — self-hosted, distributed, Rust-built S3-compat object store. Preset that auto-applies `use_path_style: true` and defaults `region: garage`. Requires `s3.endpoint`. |
+| `stub` | Tests / dev. `Put` succeeds silently, `Get` returns not-found. |
+
+## Key path layout (s3 / garage / local)
+
+`{prefix}/{hash[0:2]}/{hash[2:4]}/{hash}` — 2-level sharding prevents huge flat namespaces. A sidecar `.meta.json` object stores `BlobMeta` (content type, original size, content hash, optional filename, extensible properties).
+
+## Backend-specific examples
+
+### Cloudflare R2
+
+```yaml
+blob:
+  backend: s3
+  threshold: 65536
+  s3:
+    endpoint: https://<account>.r2.cloudflarestorage.com
+    region: auto
+    bucket: ctxt-blobs
+    access_key: ${R2_ACCESS_KEY}
+    secret_key: ${R2_SECRET_KEY}
+```
+
+### MinIO (self-hosted)
+
+```yaml
+blob:
+  backend: s3
+  threshold: 65536
+  s3:
+    endpoint: http://minio:9000
+    region: us-east-1
+    bucket: ctxt-blobs
+    use_path_style: true            # required for MinIO
+    access_key: ${MINIO_ACCESS_KEY}
+    secret_key: ${MINIO_SECRET_KEY}
+```
+
+### Garage (self-hosted, distributed)
+
+```yaml
+blob:
+  backend: garage
+  threshold: 65536
+  s3:
+    endpoint: http://garage:3900
+    bucket: ctxt-blobs
+    access_key: ${GARAGE_ACCESS_KEY}
+    secret_key: ${GARAGE_SECRET_KEY}
+    # use_path_style and region defaulted by the garage preset
+```
+
+To stand up a single-node Garage for development, see
+[`test/integration/blob_garage_test.go`](../../test/integration/blob_garage_test.go)
+which embeds a complete `garage.toml` and bootstrap sequence.
+
+## Behavior at the threshold
+
+- `len(RawContent) <= threshold` — pass through unchanged.
+- `len(RawContent) > threshold` — compute `sha256(content + source)`,
+  `BlobStore.Put` (idempotent — same hash dedupes), replace
+  `RawContent` with `blob://<hash>`, set
+  `Metadata.blob_key`, `blob_original_size`, `blob_content_type`.
+- `threshold: 0` — disables externalization entirely. Useful when you
+  want all content in SQLite (small corpora) or when running with
+  `backend: stub`.
+
+## Presigned URLs
+
+`BlobStore.URL(ctx, key)` returns a presigned GET for s3 / garage
+backends, expiring after `presign_expiry`. For `local`, returns
+`file://<absolute_path>`. Used by the API layer when a client requests
+a download link without proxying bytes through the server.
 
 ---
 

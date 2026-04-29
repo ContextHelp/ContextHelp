@@ -12,7 +12,7 @@ Add a pluggable blob storage layer to dPKMS/ctxt for externalizing content that 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Scope | Threshold-based (any content > N bytes) | Universal, type-agnostic |
-| S3 compatibility | Generic (AWS, MinIO, R2, B2, DO Spaces) | Aligns with pluggable philosophy |
+| S3 compatibility | Generic (AWS, MinIO, R2, B2, DO Spaces, Garage) | Aligns with pluggable philosophy |
 | Default backend | Local filesystem | Local-first; S3 is opt-in |
 | Content handling | Replace RawContent with `blob://{hash}` | Keeps SQLite lean |
 | Architecture | BlobStore sub-store + pipeline step (hybrid) | Clean abstraction + pipeline composability |
@@ -77,11 +77,28 @@ type BlobInfo struct {
 - `Put()` succeeds silently, `Get()` returns not found
 - Follows existing providers stub pattern
 
+### Garage preset (`backend: garage`)
+
+[Garage](https://garagehq.deuxfleurs.fr) is a Rust-built, distributed,
+self-hosted S3-compatible object store. It is fully SigV4-compatible
+and reuses the `s3` store implementation; the `garage` backend is a
+thin preset on the factory that:
+
+- Forces `use_path_style: true` (Garage's recommended addressing).
+- Defaults `region: "garage"` (matches the upstream quick-start).
+- Requires `s3.endpoint` explicitly (no sensible default).
+
+Validated end-to-end by
+[`test/integration/blob_garage_test.go`](../../test/integration/blob_garage_test.go),
+which can auto-launch a single-node Garage container, init the
+cluster layout, create a bucket and access key, and exercise the full
+`BlobStore` round-trip.
+
 ### Factory (`internal/storage/blob/factory.go`)
 
 ```go
 func New(cfg config.BlobConfig) (storage.BlobStore, error)
-// cfg.Backend: "local" (default) | "s3" | "stub"
+// cfg.Backend: "local" (default) | "s3" | "garage" | "stub"
 ```
 
 ## Configuration
@@ -91,7 +108,7 @@ storage:
   type: "sqlite"
   path: "~/.local/share/contexthelp/db.sqlite"
   blob:
-    backend: "local"              # local | s3 | stub
+    backend: "local"              # local | s3 | garage | stub
     threshold: 65536              # bytes (64KB). 0 = never externalize
     local:
       path: "~/.local/share/contexthelp/blobs"

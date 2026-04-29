@@ -43,11 +43,11 @@ Done. Caddy handles TLS automatically via Let's Encrypt.
 | Volume | Contents |
 |--------|----------|
 | `ctxt_data` | SQLite database (`/data/dpkms.db`) |
-| `ctxt_blobs` | Binary objects (PDFs, audio, images) |
+| `ctxt_blobs` | Binary objects (PDFs, audio, images) when `blob.backend: local` |
 | `caddy_data` | TLS certificates |
 | `caddy_config` | Caddy runtime config |
 
-Back up `ctxt_data` and `ctxt_blobs` volumes.
+Back up `ctxt_data` and `ctxt_blobs` volumes. When using a remote blob backend (`backend: s3 | garage`) the `ctxt_blobs` volume is unused — back up the bucket out-of-band instead. See [`docs/ctxt/configuration.md`](../ctxt/configuration.md#blob-storage-configuration) for backend options.
 
 ## Upgrade
 

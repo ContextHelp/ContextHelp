@@ -37,7 +37,7 @@ export $(cat .env | xargs)
 
 ### Core & Infrastructure
 - **[core.md](core.md)** — Environment, logging (99 lines)
-- **[storage.md](storage.md)** — SQLite & PostgreSQL (212 lines)
+- **[storage.md](storage.md)** — SQLite, PostgreSQL & blob backends (local / s3 / garage)
 - **[services.md](services.md)** — Redis & Qdrant (178 lines)
 
 ### Application Layer
@@ -62,7 +62,7 @@ export $(cat .env | xargs)
 | Topic | File | Key Variables |
 |-------|------|---------------|
 | **Basic Setup** | [core.md](core.md) | `ENV`, `LOG_LEVEL`, `LOG_FORMAT` |
-| **Storage** | [storage.md](storage.md) | `STORAGE_BACKEND`, `SQLITE_PATH`, `POSTGRES_*` |
+| **Storage** | [storage.md](storage.md) | `STORAGE_BACKEND`, `SQLITE_PATH`, `POSTGRES_*`, `CTXT_BLOB_*` |
 | **API** | [api.md](api.md) | `API_HOST`, `API_PORT`, `GRPC_PORT` |
 | **Workers** | [workers.md](workers.md) | `WORKER_COUNT`, `JOB_TIMEOUT` |
 | **AI** | [ai-providers.md](ai-providers.md) | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` |
