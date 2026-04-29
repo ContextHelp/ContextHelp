@@ -1,66 +1,57 @@
 // Package version provides update-check helpers for CLI binaries.
+//
+// The implementation now delegates network discovery to kit/go/core/upgrade
+// when DefaultFetcher is left at its package default. Tests can still
+// override DefaultFetcher with a mock Fetcher to avoid hitting the real
+// GitHub API; the shim path bypasses kit/upgrade entirely.
 package version
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
+
+	"hop.top/kit/go/core/upgrade"
 )
 
 const (
-	releaseAPIURL = "https://api.github.com/repos/jadb/ContextHelp/releases/latest"
-	checkTimeout  = 5 * time.Second
+	githubRepo   = "jadb/ContextHelp"
+	checkTimeout = 5 * time.Second
 )
 
-// Fetcher retrieves the latest release tag from the GitHub releases API.
-// Swappable in tests.
+// Fetcher retrieves the latest release tag. Swappable in tests.
 type Fetcher func(ctx context.Context) (string, error)
 
-// DefaultFetcher hits the real GitHub releases API.
-var DefaultFetcher Fetcher = func(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releaseAPIURL, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
+// DefaultFetcher delegates to kit/go/core/upgrade. Tests override this
+// to avoid hitting the network; production goes through kit's checker.
+var DefaultFetcher Fetcher = kitFetcher
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
+// kitFetcher uses kit/upgrade.Checker to discover the latest tag.
+func kitFetcher(ctx context.Context) (string, error) {
+	c := upgrade.New(
+		upgrade.WithBinary("ctxt", ""),
+		upgrade.WithGitHub(githubRepo),
+		upgrade.WithTimeout(checkTimeout),
+		upgrade.WithCacheTTL(0), // bypass kit's cache for --check
+	)
+	r := c.Check(ctx)
+	if r.Err != nil {
+		return "", r.Err
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	var payload struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return "", fmt.Errorf("unexpected response: %w", err)
-	}
-	if payload.TagName == "" {
-		return "", fmt.Errorf("empty tag_name in GitHub response")
-	}
-	return payload.TagName, nil
+	return r.Latest, nil
 }
 
 // CheckResult holds the outcome of a version check.
 type CheckResult struct {
-	Current   string
-	Latest    string
-	UpToDate  bool
-	FetchErr  error
+	Current  string
+	Latest   string
+	UpToDate bool
+	FetchErr error
 }
 
 // Check compares current against the latest GitHub release.
-// Uses f (or DefaultFetcher if nil). Network errors → soft warning (FetchErr set, no panic).
+// Uses f (or DefaultFetcher if nil). Network errors → soft warning (FetchErr set).
 func Check(current string, f Fetcher) CheckResult {
 	if f == nil {
 		f = DefaultFetcher
@@ -74,7 +65,6 @@ func Check(current string, f Fetcher) CheckResult {
 		return CheckResult{Current: current, FetchErr: err}
 	}
 
-	// Normalise: strip leading 'v' for comparison.
 	norm := func(s string) string { return strings.TrimPrefix(s, "v") }
 	upToDate := norm(latest) == norm(current)
 
