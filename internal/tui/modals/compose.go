@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/types"
 )
@@ -114,13 +114,14 @@ func (m *ComposeModal) Update(msg tea.Msg) (*ComposeModal, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyEsc:
+		k := msg.Key()
+		switch {
+		case k.Code == tea.KeyEsc:
 			m.active = false
 			return m, nil
-		case tea.KeyCtrlS:
+		case k.Code == 's' && k.Mod&tea.ModCtrl != 0:
 			return m, m.Submit()
-		case tea.KeyTab:
+		case k.Code == tea.KeyTab:
 			m.activeField = (m.activeField + 1) % 2
 			if m.activeField == 1 {
 				m.tagInput.Focus()

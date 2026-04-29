@@ -1,9 +1,9 @@
 package tui
 
 import (
-	"github.com/charmbracelet/bubbles/help"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/modals"
@@ -134,35 +134,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	k := msg.Key()
+	ctrl := k.Mod&tea.ModCtrl != 0
+	shift := k.Mod&tea.ModShift != 0
 	switch {
-	case m.keys.Quit.Enabled() && (msg.String() == "q" || msg.Type == tea.KeyCtrlC):
+	case m.keys.Quit.Enabled() && (k.Code == 'q' || (k.Code == 'c' && ctrl)):
 		return m, tea.Quit
 
-	case m.keys.Help.Enabled() && msg.String() == "?":
+	case m.keys.Help.Enabled() && k.Code == '?':
 		m.showHelp = !m.showHelp
 		return m, nil
 
-	case m.keys.Capture.Enabled() && msg.Type == tea.KeyCtrlN:
+	case m.keys.Capture.Enabled() && k.Code == 'n' && ctrl && !shift:
 		m.captureModal.Open()
 		return m, nil
 
-	case m.keys.Compose.Enabled() && msg.String() == "ctrl+shift+n":
+	case m.keys.Compose.Enabled() && k.Code == 'n' && ctrl && shift:
 		m.composeModal.Open()
 		return m, nil
 
-	case m.keys.NextPane.Enabled() && msg.Type == tea.KeyTab:
+	case m.keys.NextPane.Enabled() && k.Code == tea.KeyTab && !shift:
 		m.cyclePaneForward()
 		return m, nil
 
-	case m.keys.PrevPane.Enabled() && msg.Type == tea.KeyShiftTab:
+	case m.keys.PrevPane.Enabled() && k.Code == tea.KeyTab && shift:
 		m.cyclePaneBackward()
 		return m, nil
 
-	case m.keys.Search.Enabled() && msg.String() == "/":
+	case m.keys.Search.Enabled() && k.Code == '/':
 		m.setActivePane(PaneSearch)
 		return m, nil
 
-	case m.keys.Refresh.Enabled() && msg.Type == tea.KeyCtrlR:
+	case m.keys.Refresh.Enabled() && k.Code == 'r' && ctrl:
 		return m, PollJobsCmd(m.adapter)
 	}
 
@@ -175,9 +178,12 @@ func (m Model) updateFocusedPane(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updated, cmd := m.search.Update(msg)
 		m.search = updated.(*panes.SearchPane)
 
-		if km, ok := msg.(tea.KeyMsg); ok && (km.Type == tea.KeyEnter || km.String() == " ") {
-			if obj := m.search.SelectedObject(); obj != nil {
-				return m, tea.Batch(cmd, LoadObjectCmd(m.adapter, obj.ID))
+		if km, ok := msg.(tea.KeyMsg); ok {
+			c := km.Key().Code
+			if c == tea.KeyEnter || c == tea.KeySpace {
+				if obj := m.search.SelectedObject(); obj != nil {
+					return m, tea.Batch(cmd, LoadObjectCmd(m.adapter, obj.ID))
+				}
 			}
 		}
 		return m, cmd
@@ -221,7 +227,14 @@ func (m *Model) cyclePaneBackward() {
 }
 
 // View implements tea.Model.
-func (m Model) View() string {
+func (m Model) View() tea.View {
+	v := tea.NewView(m.render())
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
+}
+
+func (m Model) render() string {
 	if m.width == 0 {
 		return "Loading..."
 	}

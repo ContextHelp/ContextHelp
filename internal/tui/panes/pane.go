@@ -1,6 +1,6 @@
 package panes
 
-import tea "github.com/charmbracelet/bubbletea"
+import tea "charm.land/bubbletea/v2"
 
 // Pane is the interface satisfied by every TUI pane (search, preview, graph).
 // Panes are value types passed by pointer; Update returns the updated pane and

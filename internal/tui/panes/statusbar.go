@@ -3,7 +3,7 @@ package panes
 import (
 	"fmt"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/types"
 )
 

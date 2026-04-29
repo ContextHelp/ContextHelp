@@ -3,8 +3,8 @@ package panes_test
 import (
 	"testing"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/panes"
@@ -68,23 +68,23 @@ func TestPreviewPaneSubviewToggle(t *testing.T) {
 	pp.Focus() // Must be focused for key handling
 
 	// Toggle to tags view with 't'
-	updated, _ := pp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	updated, _ := pp.Update(tea.KeyPressMsg{Code: 't', Text: "t"})
 	view := updated.View(80, 24)
 	assert.Contains(t, view, "design")
 
 	// Toggle to mentions view with 'm'
-	updated, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	updated, _ = updated.Update(tea.KeyPressMsg{Code: 'm', Text: "m"})
 	view = updated.View(80, 24)
 	assert.Contains(t, view, "ctxt://entity/ui/form")
 
 	// Toggle to sections view with 's'
-	updated, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	updated, _ = updated.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	view = updated.View(80, 24)
 	assert.Contains(t, view, "Sec1")
 }
 
 func TestPreviewPaneViewNonEmpty(t *testing.T) {
-	_ = viewport.New(80, 24) // ensure import used
+	_ = viewport.New()
 	theme := tui.DefaultTheme()
 	pp := panes.NewPreviewPane(theme)
 	view := pp.View(80, 24)
@@ -119,7 +119,7 @@ func TestPreviewPaneGraphSectionsFromNodes(t *testing.T) {
 	pp.Focus()
 
 	// Switch to sections subview.
-	updated, _ := pp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	updated, _ := pp.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	view := updated.View(80, 24)
 	assert.Contains(t, view, "Graph Section", "graph section title expected")
 	assert.Contains(t, view, "Content from graph node", "graph section content expected")
@@ -151,7 +151,7 @@ func TestPreviewPaneGraphDecisionNodes(t *testing.T) {
 	pp.SetObject(obj)
 	pp.Focus()
 
-	updated, _ := pp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	updated, _ := pp.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	view := updated.View(80, 24)
 	assert.Contains(t, view, "decisions", "decisions header expected")
 	assert.Contains(t, view, "Use projection helpers", "decision label expected")
@@ -178,7 +178,7 @@ func TestPreviewPaneIndexProjectionTags(t *testing.T) {
 	pp.SetObject(obj)
 	pp.Focus()
 
-	updated, _ := pp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	updated, _ := pp.Update(tea.KeyPressMsg{Code: 't', Text: "t"})
 	view := updated.View(80, 24)
 	assert.Contains(t, view, "graph-tag", "graph tag expected")
 	assert.NotContains(t, view, "flat-tag", "flat tag must not appear when graph present")

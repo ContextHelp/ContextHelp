@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/modals"
@@ -58,7 +58,7 @@ func TestCaptureModalEscClosesWithoutSubmit(t *testing.T) {
 	m := modals.NewCaptureModal(adapter, tui.DefaultTheme())
 	m.Open()
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	assert.Nil(t, cmd)
 	assert.False(t, m.IsActive())
 }

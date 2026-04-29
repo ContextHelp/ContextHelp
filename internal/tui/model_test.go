@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
 	"github.com/stretchr/testify/assert"
@@ -67,7 +67,7 @@ func TestModelJobsUpdatedRepollsJobs(t *testing.T) {
 
 func TestModelQuitKeyExitsProgram(t *testing.T) {
 	m := buildModel()
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	require.NotNil(t, cmd)
 	msg := cmd()
 	assert.Equal(t, tea.Quit(), msg)

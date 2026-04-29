@@ -1,7 +1,7 @@
 package tui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
@@ -28,11 +28,7 @@ func RunWithOpts(adapter ServiceAdapter, cfg *config.Config, opts StartOpts) err
 	if opts.InitialObjectID != "" {
 		m.activePane = PanePreview
 	}
-	teaOpts := []tea.ProgramOption{
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
-	}
-	p := tea.NewProgram(m, teaOpts...)
+	p := tea.NewProgram(m)
 	_, err := p.Run()
 	return err
 }

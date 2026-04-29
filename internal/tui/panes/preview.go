@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/types"
@@ -33,7 +33,7 @@ type PreviewPane struct {
 
 // NewPreviewPane constructs a ready-to-use PreviewPane.
 func NewPreviewPane(theme types.Theme) *PreviewPane {
-	vp := viewport.New(80, 20)
+	vp := viewport.New()
 	vp.SetContent("No object selected. Use the search pane to find knowledge objects.")
 	return &PreviewPane{
 		viewport: vp,
@@ -110,8 +110,8 @@ func (p *PreviewPane) View(width, height int) string {
 		innerH = 1
 	}
 
-	p.viewport.Width = innerW
-	p.viewport.Height = innerH
+	p.viewport.SetWidth(innerW)
+	p.viewport.SetHeight(innerH)
 
 	subviewLabel := p.theme.Muted.Render(
 		fmt.Sprintf(" [d]summary [t]tags [m]mentions [s]sections | %s", string(p.subview)),

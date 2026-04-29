@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textarea"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/types"
 )
 
@@ -84,15 +84,15 @@ func (m *CaptureModal) Update(msg tea.Msg) (*CaptureModal, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyEsc:
+		k := msg.Key()
+		switch {
+		case k.Code == tea.KeyEsc:
 			m.active = false
 			m.textarea.Reset()
 			return m, nil
-		case tea.KeyCtrlS:
+		case k.Code == 's' && k.Mod&tea.ModCtrl != 0:
 			return m, m.Submit()
-		}
-		if msg.Type == tea.KeyEnter && msg.Alt {
+		case k.Code == tea.KeyEnter && k.Mod&tea.ModAlt != 0:
 			return m, m.Submit()
 		}
 	}

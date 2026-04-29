@@ -3,7 +3,7 @@ package panes_test
 import (
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/panes"
 	"github.com/stretchr/testify/assert"
