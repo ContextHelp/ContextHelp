@@ -10,28 +10,29 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/providers/vision"
-	"github.com/ideacrafterslabs/ctxt/internal/secrets"
+	"hop.top/kit/go/storage/secret"
+	"hop.top/kit/go/storage/secret/env"
 )
 
 // Factory resolves the best available provider for each type based on configuration.
 type Factory struct {
 	cfg     config.ProvidersConfig
-	secrets secrets.Resolver
+	secrets secret.Store
 }
 
 // NewFactory creates a Factory from the providers configuration.
-// If resolver is nil, EnvResolver is used (backward-compatible default).
-func NewFactory(cfg config.ProvidersConfig, resolver secrets.Resolver) *Factory {
-	if resolver == nil {
-		resolver = secrets.NewEnvResolver()
+// If store is nil, an env-backed store is used (backward-compatible default).
+func NewFactory(cfg config.ProvidersConfig, store secret.Store) *Factory {
+	if store == nil {
+		store = env.New("")
 	}
-	return &Factory{cfg: cfg, secrets: resolver}
+	return &Factory{cfg: cfg, secrets: store}
 }
 
-// apiKey fetches a secret by key via the resolver, falling back to os.Getenv.
+// apiKey fetches a secret by key via the store, falling back to os.Getenv.
 func (f *Factory) apiKey(key string) string {
-	if v, err := f.secrets.Get(key); err == nil {
-		return v
+	if got, err := f.secrets.Get(context.Background(), key); err == nil {
+		return string(got.Value)
 	}
 	return os.Getenv(key)
 }

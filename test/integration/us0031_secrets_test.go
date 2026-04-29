@@ -1,7 +1,9 @@
 package integration
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,18 +12,19 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
+	"hop.top/kit/go/storage/secret"
 )
 
 // ---------------------------------------------------------------------------
 // US-0031 Tests — Configure Encryption and Secrets
 //
-// All backends are tested via env-based or in-process mocks — no real OS
-// keychain, 1Password, or gh CLI required. Keychain backend tests are skipped
-// when the OS keychain is unavailable (CI safety).
+// All backends are exercised through the kit secret.Store interface via the
+// thin internal/secrets factory. No real OS keychain, 1Password, or gh CLI is
+// invoked — keychain backend tests skip when the OS keyring is unavailable.
 // ---------------------------------------------------------------------------
 
-// TestUS0031_SecretsConfigRoundTripAllBackends verifies that SecretsConfig fields
-// survive JSON marshal/unmarshal for every supported backend.
+// TestUS0031_SecretsConfigRoundTripAllBackends verifies that SecretsConfig
+// fields survive JSON marshal/unmarshal for every supported backend.
 func TestUS0031_SecretsConfigRoundTripAllBackends(t *testing.T) {
 	cases := []config.SecretsConfig{
 		{Backend: "env"},
@@ -49,106 +52,105 @@ func TestUS0031_SecretsConfigRoundTripAllBackends(t *testing.T) {
 	}
 }
 
-// TestUS0031_EnvBackendResolvesFromEnv verifies that the env resolver returns
+// TestUS0031_EnvBackendResolvesFromEnv verifies that the env backend returns
 // values from environment variables.
 func TestUS0031_EnvBackendResolvesFromEnv(t *testing.T) {
 	t.Setenv("CTXT_TEST_SECRET_KEY", "sk-test-resolved-value")
 
-	r := secrets.NewEnvResolver()
-	val, err := r.Get("CTXT_TEST_SECRET_KEY")
+	r, err := secrets.New(config.SecretsConfig{Backend: "env"})
 	require.NoError(t, err)
-	assert.Equal(t, "sk-test-resolved-value", val)
+	got, err := r.Get(context.Background(), "CTXT_TEST_SECRET_KEY")
+	require.NoError(t, err)
+	assert.Equal(t, "sk-test-resolved-value", string(got.Value))
 }
 
-// TestUS0031_EnvBackendMissingKeyReturnsError verifies that Get() on an unset
-// env var returns an error (not a silent empty string).
+// TestUS0031_EnvBackendMissingKeyReturnsError verifies that Get on an unset
+// env var returns ErrNotFound (not silent empty value).
 func TestUS0031_EnvBackendMissingKeyReturnsError(t *testing.T) {
-	r := secrets.NewEnvResolver()
-	_, err := r.Get("CTXT_TEST_DEFINITELY_NOT_SET_XYZZY")
-	require.Error(t, err, "Get on missing env var must return error")
+	r, err := secrets.New(config.SecretsConfig{Backend: "env"})
+	require.NoError(t, err)
+	_, err = r.Get(context.Background(), "CTXT_TEST_DEFINITELY_NOT_SET_XYZZY")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, secret.ErrNotFound), "want ErrNotFound, got %v", err)
 }
 
-// TestUS0031_EnvBackendSetReturnsError verifies that Set() on the env resolver
-// returns a clear error (env is read-only at runtime).
-func TestUS0031_EnvBackendSetReturnsError(t *testing.T) {
-	r := secrets.NewEnvResolver()
-	err := r.Set("CTXT_TEST_KEY", "some-value")
-	require.Error(t, err, "env resolver Set() must return error")
+// TestUS0031_EnvBackendSetReturnsNotSupported verifies that Set on the env
+// backend returns ErrNotSupported (env is read-only at runtime).
+func TestUS0031_EnvBackendSetReturnsNotSupported(t *testing.T) {
+	r, err := secrets.New(config.SecretsConfig{Backend: "env"})
+	require.NoError(t, err)
+	err = r.Set(context.Background(), "CTXT_TEST_KEY", []byte("some-value"))
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, secret.ErrNotSupported), "want ErrNotSupported, got %v", err)
 }
 
-// TestUS0031_NewResolverEnvBackend verifies that factory returns an EnvResolver
-// for the "env" backend without error.
+// TestUS0031_NewResolverEnvBackend verifies that the factory returns a working
+// store for the "env" backend without error.
 func TestUS0031_NewResolverEnvBackend(t *testing.T) {
-	cfg := config.SecretsConfig{Backend: "env"}
-	r, err := secrets.NewResolver(cfg)
+	r, err := secrets.New(config.SecretsConfig{Backend: "env"})
 	require.NoError(t, err)
 	require.NotNil(t, r)
 }
 
 // TestUS0031_NewResolverEmptyBackendDefaultsToEnv verifies that empty Backend
-// field defaults to env resolver (backward-compatible).
+// defaults to env (backward-compatible).
 func TestUS0031_NewResolverEmptyBackendDefaultsToEnv(t *testing.T) {
-	cfg := config.SecretsConfig{}
-	r, err := secrets.NewResolver(cfg)
+	r, err := secrets.New(config.SecretsConfig{})
 	require.NoError(t, err)
 	require.NotNil(t, r)
 }
 
-// TestUS0031_NewResolverAgeFileMissingAgeFile verifies that "age-file" backend
-// with empty AgeFile returns an error containing "age_file".
+// TestUS0031_NewResolverAgeFileMissingAgeFile verifies the age-file backend
+// errors when AgeFile is empty.
 func TestUS0031_NewResolverAgeFileMissingAgeFile(t *testing.T) {
 	cfg := config.SecretsConfig{
 		Backend:         "age-file",
 		AgeIdentityFile: "/path/to/identity.txt",
 	}
-	_, err := secrets.NewResolver(cfg)
+	_, err := secrets.New(cfg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "age_file", "error must mention the missing age_file field")
+	assert.Contains(t, err.Error(), "age_file")
 }
 
-// TestUS0031_NewResolverAgeFileMissingIdentityFile verifies that "age-file" backend
-// with empty AgeIdentityFile returns an error containing "age_identity_file".
+// TestUS0031_NewResolverAgeFileMissingIdentityFile verifies the age-file backend
+// errors when AgeIdentityFile is empty.
 func TestUS0031_NewResolverAgeFileMissingIdentityFile(t *testing.T) {
 	cfg := config.SecretsConfig{
 		Backend: "age-file",
 		AgeFile: "/path/to/secrets.age",
 	}
-	_, err := secrets.NewResolver(cfg)
+	_, err := secrets.New(cfg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "age_identity_file", "error must mention the missing age_identity_file field")
+	assert.Contains(t, err.Error(), "age_identity_file")
 }
 
-// TestUS0031_NewResolverOnePasswordMissingVault verifies that "1password" backend
-// with empty OnePasswordVault returns an error containing "vault".
+// TestUS0031_NewResolverOnePasswordMissingVault verifies the 1password backend
+// errors when OnePasswordVault is empty.
 func TestUS0031_NewResolverOnePasswordMissingVault(t *testing.T) {
 	cfg := config.SecretsConfig{Backend: "1password"}
-	_, err := secrets.NewResolver(cfg)
+	_, err := secrets.New(cfg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "vault", "error must mention the missing vault field")
+	assert.Contains(t, err.Error(), "vault")
 }
 
-// TestUS0031_NewResolverUnknownBackendReturnsError verifies that an unknown backend
+// TestUS0031_NewResolverUnknownBackendReturnsError verifies an unknown backend
 // value returns a validation error.
 func TestUS0031_NewResolverUnknownBackendReturnsError(t *testing.T) {
-	cfg := config.SecretsConfig{Backend: "not-a-real-backend"}
-	_, err := secrets.NewResolver(cfg)
-	require.Error(t, err, "unknown backend must return error")
+	_, err := secrets.New(config.SecretsConfig{Backend: "not-a-real-backend"})
+	require.Error(t, err)
 }
 
 // TestUS0031_KeychainBackendDefaultsServiceName verifies that omitting
-// KeychainService results in a resolver that uses "ctxt" as the default.
-// The resolver is constructed only — no actual keychain access is performed.
+// KeychainService still constructs a valid store (default "ctxt").
 func TestUS0031_KeychainBackendDefaultsServiceName(t *testing.T) {
-	cfg := config.SecretsConfig{Backend: "keychain"} // KeychainService intentionally omitted
-	r, err := secrets.NewResolver(cfg)
+	r, err := secrets.New(config.SecretsConfig{Backend: "keychain"})
 	require.NoError(t, err)
-	require.NotNil(t, r, "keychain resolver must be non-nil even without KeychainService set")
+	require.NotNil(t, r)
 }
 
 // TestUS0031_ProviderFactoryUsesResolver verifies that the providers factory
-// delegates API key lookup to the supplied resolver, not to os.Getenv directly.
+// delegates API key lookup to the supplied store, not to os.Getenv directly.
 func TestUS0031_ProviderFactoryUsesResolver(t *testing.T) {
-	// Use the in-process mock resolver seeded with a known key.
 	resolver := newTestMockResolver(map[string]string{
 		"ANTHROPIC_API_KEY": "sk-from-secrets-resolver",
 	})
@@ -158,14 +160,12 @@ func TestUS0031_ProviderFactoryUsesResolver(t *testing.T) {
 	f := providers.NewFactory(cfg, resolver)
 	require.NotNil(t, f)
 
-	// LLM() should pick the Anthropic provider based on the key from the resolver.
 	llm := f.LLM()
 	assert.NotNil(t, llm, "factory must return a provider when resolver supplies a key")
 }
 
-// TestUS0031_NoPlaintextKeyInSecretsConfig verifies that the SecretsConfig struct
-// does not contain any field that would store a plaintext API key value.
-// The config must only store metadata (backend, paths, names) — never the secret itself.
+// TestUS0031_NoPlaintextKeyInSecretsConfig verifies that the SecretsConfig
+// struct never carries plaintext secret values — only metadata.
 func TestUS0031_NoPlaintextKeyInSecretsConfig(t *testing.T) {
 	cfg := config.SecretsConfig{
 		Backend:          "keychain",
@@ -182,12 +182,8 @@ func TestUS0031_NoPlaintextKeyInSecretsConfig(t *testing.T) {
 	var raw map[string]interface{}
 	require.NoError(t, json.Unmarshal(data, &raw))
 
-	// Ensure no field name resembles a plaintext API key.
-	sensitiveKeys := []string{"api_key", "apikey", "password", "secret", "token", "key_value"}
-	for _, k := range sensitiveKeys {
+	for _, k := range []string{"api_key", "apikey", "password", "secret", "token", "key_value"} {
 		_, exists := raw[k]
 		assert.False(t, exists, "SecretsConfig must not contain field %q (would store plaintext secret)", k)
 	}
-
-	t.Logf("config fields present: %v", raw)
 }

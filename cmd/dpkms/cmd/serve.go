@@ -151,11 +151,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	fmt.Println("Job queue initialized")
 
 	// 3. Init pipeline registry with configured providers and overrides.
-	secretsResolver, err := secrets.NewResolver(cfg.Secrets)
+	secretsStore, err := secrets.New(cfg.Secrets)
 	if err != nil {
 		return fmt.Errorf("init secrets: %w", err)
 	}
-	factory := providers.NewFactory(cfg.Providers, secretsResolver)
+	factory := providers.NewFactory(cfg.Providers, secretsStore)
 
 	// 3b. Browser automation daemon (optional).
 	var browserMgr *browser.Manager

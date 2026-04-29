@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/storage/secret"
 )
 
 var secretCmd = &cobra.Command{
@@ -61,32 +64,32 @@ func init() {
 func runSecretGet(cmd *cobra.Command, args []string) error {
 	key := args[0]
 
-	r, err := secrets.NewResolver(cfg.Secrets)
+	store, err := secrets.New(cfg.Secrets)
 	if err != nil {
 		return fmt.Errorf("secret get: %w", err)
 	}
 
-	value, err := r.Get(key)
+	got, err := store.Get(context.Background(), key)
 	if err != nil {
 		return err
 	}
 
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, map[string]string{"key": key, "value": value})
+		return outputJSON(os.Stdout, map[string]string{"key": key, "value": string(got.Value)})
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), value)
+	fmt.Fprintln(cmd.OutOrStdout(), string(got.Value))
 	return nil
 }
 
 func runSecretSet(cmd *cobra.Command, args []string) error {
 	key, value := args[0], args[1]
 
-	r, err := secrets.NewResolver(cfg.Secrets)
+	store, err := secrets.New(cfg.Secrets)
 	if err != nil {
 		return fmt.Errorf("secret set: %w", err)
 	}
 
-	if err := r.Set(key, value); err != nil {
+	if err := store.Set(context.Background(), key, []byte(value)); err != nil {
 		return err
 	}
 
@@ -100,16 +103,13 @@ func runSecretList(cmd *cobra.Command, _ []string) error {
 		backend = "env"
 	}
 
-	r, err := secrets.NewResolver(cfg.Secrets)
+	store, err := secrets.New(cfg.Secrets)
 	if err != nil {
 		return fmt.Errorf("secret list: %w", err)
 	}
 
-	if lister, ok := r.(secrets.Lister); ok {
-		keys, err := lister.Keys()
-		if err != nil {
-			return fmt.Errorf("secret list: %w", err)
-		}
+	keys, err := store.List(context.Background(), "")
+	if err == nil {
 		if isJSONOutput() {
 			return outputJSON(os.Stdout, map[string]any{"backend": backend, "keys": keys})
 		}
@@ -122,6 +122,9 @@ func runSecretList(cmd *cobra.Command, _ []string) error {
 			}
 		}
 		return nil
+	}
+	if !errors.Is(err, secret.ErrNotSupported) {
+		return fmt.Errorf("secret list: %w", err)
 	}
 
 	if isJSONOutput() {

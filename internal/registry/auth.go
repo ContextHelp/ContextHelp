@@ -1,5 +1,3 @@
-//go:build darwin || linux
-
 // Package registry manages per-registry auth tokens stored in the OS keychain.
 // Tokens are NEVER written to the YAML config file; the keychain is the sole
 // canonical store. The YAML auth block carries only type metadata and optional
@@ -7,16 +5,16 @@
 package registry
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
-	"github.com/ideacrafterslabs/ctxt/internal/secrets"
+	"hop.top/kit/go/storage/secret"
+	"hop.top/kit/go/storage/secret/keyring"
 )
 
-const (
-	// keychainService is the service name used for all registry tokens.
-	keychainService = "ctxt-registry"
-)
+// keychainService is the service name used for all registry tokens.
+const keychainService = "ctxt-registry"
 
 // ErrNoToken is returned when no token is found for a registry.
 type ErrNoToken struct {
@@ -29,18 +27,18 @@ func (e ErrNoToken) Error() string {
 }
 
 // TokenStore stores and retrieves registry auth tokens from the OS keychain.
-// One KeychainResolver handles all registries; registry name is the account key.
+// One keyring store handles all registries; registry name is the account key.
 type TokenStore struct {
-	kc *secrets.KeychainResolver
+	kc secret.MutableStore
 }
 
 // NewTokenStore creates a TokenStore backed by the OS keychain.
 func NewTokenStore() *TokenStore {
-	return &TokenStore{kc: secrets.NewKeychainResolver(keychainService)}
+	return &TokenStore{kc: keyring.New(keychainService)}
 }
 
-// Set stores token for registryName in the keychain.
-// Previous token for the same registry is silently overwritten (-U flag).
+// Set stores token for registryName in the keychain. Existing tokens are
+// silently overwritten.
 func (s *TokenStore) Set(registryName, token string) error {
 	if registryName == "" {
 		return errors.New("registry: name must not be empty")
@@ -48,7 +46,7 @@ func (s *TokenStore) Set(registryName, token string) error {
 	if token == "" {
 		return errors.New("registry: token must not be empty")
 	}
-	if err := s.kc.Set(registryName, token); err != nil {
+	if err := s.kc.Set(context.Background(), registryName, []byte(token)); err != nil {
 		return fmt.Errorf("registry: store token: %w", err)
 	}
 	return nil
@@ -57,29 +55,26 @@ func (s *TokenStore) Set(registryName, token string) error {
 // Get retrieves the token for registryName from the keychain.
 // Returns ErrNoToken when nothing is stored.
 func (s *TokenStore) Get(registryName string) (string, error) {
-	token, err := s.kc.Get(registryName)
+	got, err := s.kc.Get(context.Background(), registryName)
 	if err != nil {
-		var notFound secrets.ErrNotFound
-		if errors.As(err, &notFound) {
+		if errors.Is(err, secret.ErrNotFound) {
 			return "", ErrNoToken{RegistryName: registryName}
 		}
 		return "", fmt.Errorf("registry: retrieve token: %w", err)
 	}
-	return token, nil
+	return string(got.Value), nil
 }
 
 // Delete removes the stored token for registryName from the keychain.
 // Returns ErrNoToken when nothing was stored.
 func (s *TokenStore) Delete(registryName string) error {
-	// Verify existence first to surface a clear error.
-	if _, err := s.kc.Get(registryName); err != nil {
-		var notFound secrets.ErrNotFound
-		if errors.As(err, &notFound) {
+	if _, err := s.kc.Get(context.Background(), registryName); err != nil {
+		if errors.Is(err, secret.ErrNotFound) {
 			return ErrNoToken{RegistryName: registryName}
 		}
 		return fmt.Errorf("registry: delete token: %w", err)
 	}
-	if err := s.kc.Delete(registryName); err != nil {
+	if err := s.kc.Delete(context.Background(), registryName); err != nil {
 		return fmt.Errorf("registry: delete token: %w", err)
 	}
 	return nil

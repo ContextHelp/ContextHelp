@@ -16,14 +16,16 @@ shell export.
 
 ## Context
 
-The `internal/secrets` package provides a `Resolver` interface backed by five configurable
-backends (`env`, `keychain`, `age-file`, `1password`, `gh-secrets`). Users currently have no
-CLI surface to interact with secrets — they must use backend-specific tools (`security`,
-`op`, `gh`) directly.
+The `internal/secrets` package is a thin factory that translates ctxt's
+`SecretsConfig.Backend` to a [kit](https://github.com/hop-top/kit)
+`secret.Store` (or `MutableStore` when writes are supported). Five backends are
+wired: `env`, `keychain` (kit `keyring`), `age-file` (kit `agefile`),
+`1password` (kit `onepassword`), `gh-secrets` (kit `ghsecrets`). Users have no
+need to invoke backend-specific tools (`security`, `op`, `gh`) directly —
+`dpkms secret get/set/list` wraps the active store.
 
-`ctxt secret` wraps the active backend's `Get()` and `Set()` methods behind a single,
-backend-agnostic command. The active backend is determined by `secrets.backend` in the
-config file.
+The active backend is determined by `secrets.backend` in the config file.
+`ctxt secret` is deprecated; commands now live under `dpkms secret`.
 
 ---
 
@@ -89,13 +91,16 @@ var secretListCmd = &cobra.Command{
 
 When `ctxt secret set KEY` is called without a value, use `huh.NewInput().EchoMode(huh.EchoModePassword)` (charmbracelet/huh, already in go.mod) to prompt for the value securely.
 
-### Resolver Construction
+### Store Construction
 
 ```go
-resolver, err := secrets.NewResolver(cfg.Secrets)
+store, err := secrets.New(cfg.Secrets) // returns kit secret.MutableStore
+got, err := store.Get(ctx, key)        // *secret.Secret with Value []byte
+err := store.Set(ctx, key, []byte(v)) // ErrNotSupported on read-only backends
 ```
 
-Use the resolver directly — `Set()` writes to the backend, `Get()` reads from it.
+The factory is a thin shim over `kit/go/storage/secret.Open()`; backend
+implementations live in kit (one source of truth across hop.top tools).
 
 ### `list` Command
 
@@ -113,35 +118,40 @@ Not all backends support enumeration. Return a static informational message for 
 
 - Read-only backend: `"secrets: <Backend> backend does not support Set(); <guidance>"`
 - Key not found: `"secrets: key \"KEY\" not found"`
-- Backend init failure: surface the error from `secrets.NewResolver()`
+- Backend init failure: surface the error from `secrets.New()`
 
 ---
 
 ## E2E Test Checklist
 
-### `ctxt secret set`
-- [ ] `ctxt secret set MYKEY myvalue` with `keychain` backend → key readable via `security find-generic-password`
-- [ ] `ctxt secret set MYKEY myvalue` with `gh-secrets` backend → `gh secret list` shows MYKEY
-- [ ] `ctxt secret set MYKEY` (no value) → interactive prompt appears, value accepted without echo
-- [ ] `ctxt secret set MYKEY value` with `env` backend → exits non-zero with error about read-only
-- [ ] `ctxt secret set MYKEY value` with `age-file` backend → exits non-zero with error about read-only
+### Backend round-trip (in-process; no CLI subprocess)
+- [x] `env` Set → ErrNotSupported; Get → reads `os.Getenv`; missing key → ErrNotFound
+  ([us0062_secrets_cli_test.go](../../../test/integration/us0062_secrets_cli_test.go))
+- [x] `keychain` Set → Get → Delete → Get returns ErrNotFound (skipped when host has no keyring)
+  ([us0062_secrets_keychain_e2e_test.go](../../../test/integration/us0062_secrets_keychain_e2e_test.go))
+- [x] `keychain` Set on existing key overwrites silently
+  ([us0062_secrets_keychain_e2e_test.go](../../../test/integration/us0062_secrets_keychain_e2e_test.go))
+- [x] `age-file` decrypts a real age-encrypted YAML; Get returns the bare value;
+      missing key → ErrNotFound; Set → ErrNotSupported; List enumerates all keys
+  ([us0062_secrets_agefile_e2e_test.go](../../../test/integration/us0062_secrets_agefile_e2e_test.go))
+- [x] `gh-secrets` Get falls back to env when `gh` CLI not invoked
+  ([us0062_secrets_cli_test.go](../../../test/integration/us0062_secrets_cli_test.go))
+- [ ] `1password` Get via real `op` CLI (deferred; needs CI vault)
 
-### `ctxt secret get`
-- [ ] `ctxt secret get KEY` with `env` backend + env var set → prints value to stdout
-- [ ] `ctxt secret get KEY` with `keychain` backend + key stored → prints value
-- [ ] `ctxt secret get MISSING` → exits non-zero, error contains key name
-- [ ] `ctxt secret get KEY --json` → `{"key":"KEY","value":"..."}` on stdout
-
-### `ctxt secret list`
-- [ ] `ctxt secret list` with `gh-secrets` backend → output includes names from `gh secret list`
-- [ ] `ctxt secret list` with `age-file` backend → lists all key names from decrypted YAML
-- [ ] `ctxt secret list --json` → JSON array of key name strings
-- [ ] `ctxt secret list` with `keychain` or `1password` backend → human-readable guidance message, exits 0
+### CLI behaviour (subprocess `dpkms secret …`)
+- [ ] `dpkms secret set MYKEY value` with `env` backend → exits non-zero with ErrNotSupported
+- [ ] `dpkms secret set MYKEY value` with `keychain` backend → key readable via `security find-generic-password`
+- [ ] `dpkms secret get MISSING` → exits non-zero, error contains key name
+- [ ] `dpkms secret get KEY --output json` → `{"key":"KEY","value":"..."}` on stdout
+- [ ] `dpkms secret list` with `age-file` → lists all keys from decrypted YAML
+- [ ] `dpkms secret list` with `gh-secrets` → output includes names from `gh secret list`
+- [ ] `dpkms secret set MYKEY` (no value) → interactive prompt without echo (deferred)
 
 ### Security
-- [ ] Interactive input prompt does not echo characters to terminal
-- [ ] Secret value is never logged or printed except by explicit `ctxt secret get`
-- [ ] `ctxt secret get` output is the bare value with a trailing newline (suitable for `$(ctxt secret get KEY)`)
+- [ ] Interactive input prompt does not echo characters to terminal (deferred)
+- [x] Secret value is never logged or printed except by explicit `dpkms secret get`
+- [x] `dpkms secret get` output is the bare value with a trailing newline
+  (suitable for `$(dpkms secret get KEY)`)
 
 ---
 
@@ -162,4 +172,6 @@ Not all backends support enumeration. Return a static informational message for 
 
 ## E2E Tests
 
-> Not yet implemented.
+- [test/integration/us0062_secrets_cli_test.go](../../../test/integration/us0062_secrets_cli_test.go) — env, gh-secrets fallback, validation
+- [test/integration/us0062_secrets_agefile_e2e_test.go](../../../test/integration/us0062_secrets_agefile_e2e_test.go) — age round-trip, list, sentinel errors
+- [test/integration/us0062_secrets_keychain_e2e_test.go](../../../test/integration/us0062_secrets_keychain_e2e_test.go) — OS keyring round-trip, overwrite (skip when no keyring)

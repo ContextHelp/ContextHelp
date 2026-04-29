@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"context"
+	"errors"
 	"runtime"
 	"testing"
 
@@ -9,73 +11,59 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
+	"hop.top/kit/go/storage/secret"
 )
 
 // ---------------------------------------------------------------------------
 // US-0062 Tests — Manage Secrets via CLI
 //
-// Note: These tests exercise the secrets.Resolver backends directly (unit-level
-// integration) since the CLI itself is not invoked in-process during e2e tests.
+// These tests exercise the kit-backed secret stores selected by ctxt's thin
+// internal/secrets factory. The CLI itself is not invoked in-process — these
+// are unit-level integration tests over the same code path the CLI uses.
 //
-// Keychain backend tests are skipped when not on a supported OS or when the
-// keychain is unavailable (CI safety). Use env backend for all CI scenarios.
+// Keychain backend tests skip when the OS keychain is unavailable. Use the
+// env backend for all CI scenarios.
 // ---------------------------------------------------------------------------
 
-// TestUS0062_EnvResolverGetSetDelete verifies the env backend's Get/Set behaviour.
-// Set returns an error (read-only); Get reads from the environment.
-func TestUS0062_EnvResolverGetSetDelete(t *testing.T) {
-	// Set: env resolver must return a clear read-only error.
-	r := secrets.NewEnvResolver()
-	err := r.Set("TEST_ENV_KEY_0062", "my-value")
-	require.Error(t, err, "env backend Set must return error (read-only)")
-
-	// Get with env var set.
-	t.Setenv("TEST_ENV_KEY_0062", "expected-value")
-	val, err := r.Get("TEST_ENV_KEY_0062")
+// TestUS0062_EnvBackendGetSet verifies the env backend's Get/Set behaviour.
+// Set returns ErrNotSupported (read-only); Get reads from the environment.
+func TestUS0062_EnvBackendGetSet(t *testing.T) {
+	r, err := secrets.New(config.SecretsConfig{Backend: "env"})
 	require.NoError(t, err)
-	assert.Equal(t, "expected-value", val, "env resolver must return the env var value")
 
-	// Get for missing key.
-	_, err = r.Get("TEST_ENV_MISSING_KEY_XYZZY_0062")
-	require.Error(t, err, "Get on missing env var must return error")
+	err = r.Set(context.Background(), "TEST_ENV_KEY_0062", []byte("my-value"))
+	require.True(t, errors.Is(err, secret.ErrNotSupported), "want ErrNotSupported, got %v", err)
+
+	t.Setenv("TEST_ENV_KEY_0062", "expected-value")
+	got, err := r.Get(context.Background(), "TEST_ENV_KEY_0062")
+	require.NoError(t, err)
+	assert.Equal(t, "expected-value", string(got.Value))
+
+	_, err = r.Get(context.Background(), "TEST_ENV_MISSING_KEY_XYZZY_0062")
+	require.True(t, errors.Is(err, secret.ErrNotFound), "want ErrNotFound, got %v", err)
 }
 
-// TestUS0062_EnvResolverGetOutputsJSON verifies that the resolved value is a bare
-// string (correct for `ctxt secret get` bare output and JSON wrapping).
-func TestUS0062_EnvResolverGetOutputsJSON(t *testing.T) {
+// TestUS0062_EnvBackendBareValue verifies the resolved value is bare bytes.
+func TestUS0062_EnvBackendBareValue(t *testing.T) {
 	t.Setenv("CTXT_TEST_JSON_KEY", "sk-bare-value")
 
-	r := secrets.NewEnvResolver()
-	val, err := r.Get("CTXT_TEST_JSON_KEY")
+	r, err := secrets.New(config.SecretsConfig{Backend: "env"})
 	require.NoError(t, err)
-
-	// The CLI wraps this in {"key":"...","value":"..."} for --output json.
-	// Verify the value is the raw string without extra quoting.
-	assert.Equal(t, "sk-bare-value", val, "Get must return the bare value without JSON encoding")
+	got, err := r.Get(context.Background(), "CTXT_TEST_JSON_KEY")
+	require.NoError(t, err)
+	assert.Equal(t, "sk-bare-value", string(got.Value))
 }
 
-// TestUS0062_EnvBackendMissingKeyError verifies that Get on a missing env key
-// returns an error whose message contains the key name (for clear UX).
-func TestUS0062_EnvBackendMissingKeyError(t *testing.T) {
-	r := secrets.NewEnvResolver()
-	_, err := r.Get("CTXT_DEFINITELY_MISSING_0062")
-	require.Error(t, err)
-	// The CLI shows this error to the user — message quality matters.
-	assert.NotEmpty(t, err.Error(), "error message must be non-empty")
-}
-
-// TestUS0062_FactoryEnvBackend verifies that secrets.NewResolver returns a
-// working EnvResolver for the "env" backend declaration.
+// TestUS0062_FactoryEnvBackend verifies the factory returns a working env store.
 func TestUS0062_FactoryEnvBackend(t *testing.T) {
-	cfg := config.SecretsConfig{Backend: "env"}
-	r, err := secrets.NewResolver(cfg)
+	r, err := secrets.New(config.SecretsConfig{Backend: "env"})
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
 	t.Setenv("CTXT_FACTORY_TEST_KEY", "factory-value")
-	val, err := r.Get("CTXT_FACTORY_TEST_KEY")
+	got, err := r.Get(context.Background(), "CTXT_FACTORY_TEST_KEY")
 	require.NoError(t, err)
-	assert.Equal(t, "factory-value", val)
+	assert.Equal(t, "factory-value", string(got.Value))
 }
 
 // TestUS0062_KeychainBackendSkippedInCI skips keychain tests when on an
@@ -85,24 +73,20 @@ func TestUS0062_KeychainBackendSkippedInCI(t *testing.T) {
 		t.Skip("keychain tests only run on macOS and Linux")
 	}
 
-	// Attempt to construct a keychain resolver. In CI without a keychain
-	// daemon, the constructor succeeds (it's lazy) but Get() would fail.
-	// We only verify construction here.
 	cfg := config.SecretsConfig{Backend: "keychain", KeychainService: "ctxt-test-e2e"}
-	r, err := secrets.NewResolver(cfg)
+	r, err := secrets.New(cfg)
 	if err != nil {
-		t.Skipf("keychain resolver unavailable: %v", err)
+		t.Skipf("keychain unavailable: %v", err)
 	}
 	require.NotNil(t, r)
 
-	// Attempt a Get — skip if the keychain tool is not available.
-	_, getErr := r.Get("CTXT_E2E_NONEXISTENT_KEY_0062")
-	if getErr != nil {
-		t.Skipf("keychain get failed (expected in CI): %v", getErr)
+	_, getErr := r.Get(context.Background(), "CTXT_E2E_NONEXISTENT_KEY_0062")
+	if getErr != nil && !errors.Is(getErr, secret.ErrNotFound) {
+		t.Skipf("keychain Get failed (expected in CI): %v", getErr)
 	}
 }
 
-// TestUS0062_AgeFileBackendMissingFilesErrors verifies that the age-file backend
+// TestUS0062_AgeFileBackendMissingFilesErrors verifies the age-file backend
 // fails clearly when required file paths are not configured.
 func TestUS0062_AgeFileBackendMissingFilesErrors(t *testing.T) {
 	cases := []struct {
@@ -124,58 +108,38 @@ func TestUS0062_AgeFileBackendMissingFilesErrors(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := secrets.NewResolver(tc.cfg)
+			_, err := secrets.New(tc.cfg)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantErr)
 		})
 	}
 }
 
-// TestUS0062_OnePasswordBackendMissingVaultErrors verifies that the 1password
+// TestUS0062_OnePasswordBackendMissingVaultErrors verifies the 1password
 // backend fails clearly when onepassword_vault is not set.
 func TestUS0062_OnePasswordBackendMissingVaultErrors(t *testing.T) {
-	cfg := config.SecretsConfig{Backend: "1password"} // vault intentionally omitted
-	_, err := secrets.NewResolver(cfg)
+	_, err := secrets.New(config.SecretsConfig{Backend: "1password"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "vault")
 }
 
-// TestUS0062_GHSecretsBackendSetReadonly verifies that the gh-secrets backend
-// is constructed successfully and its Get() falls back to env variables.
-func TestUS0062_GHSecretsBackendSetReadonly(t *testing.T) {
-	cfg := config.SecretsConfig{Backend: "gh-secrets", GHRepo: ""}
-	r, err := secrets.NewResolver(cfg)
-	require.NoError(t, err, "gh-secrets resolver must construct without error")
+// TestUS0062_GHSecretsBackendEnvFallback verifies that gh-secrets constructs
+// successfully and Get falls back to environment variables.
+func TestUS0062_GHSecretsBackendEnvFallback(t *testing.T) {
+	r, err := secrets.New(config.SecretsConfig{Backend: "gh-secrets", GHRepo: ""})
+	require.NoError(t, err)
 	require.NotNil(t, r)
 
-	// Get should fall back to env when the gh CLI is not available.
 	t.Setenv("CTXT_GH_FALLBACK_KEY", "gh-env-fallback-value")
-	val, getErr := r.Get("CTXT_GH_FALLBACK_KEY")
-	if getErr == nil {
-		// Either gh CLI worked or env fallback worked.
-		assert.Equal(t, "gh-env-fallback-value", val)
-	}
-	// If getErr != nil it means both gh CLI and env lookup failed — acceptable in CI.
-}
-
-// TestUS0062_SecretListEnvBackendReturnsBackendInfo verifies that the env backend
-// resolver can be introspected (type assertion) for the list command use case.
-func TestUS0062_SecretListEnvBackendReturnsBackendInfo(t *testing.T) {
-	cfg := config.SecretsConfig{Backend: "env"}
-	r, err := secrets.NewResolver(cfg)
+	got, err := r.Get(context.Background(), "CTXT_GH_FALLBACK_KEY")
 	require.NoError(t, err)
-
-	// The list command inspects the resolver type — verify it's the expected concrete type.
-	_, isEnv := r.(*secrets.EnvResolver)
-	assert.True(t, isEnv, "env backend must return an *EnvResolver")
+	assert.Equal(t, "gh-env-fallback-value", string(got.Value))
 }
 
-// TestUS0062_UnknownBackendValidationError verifies that an invalid backend value
-// returns a validation error listing the problem.
+// TestUS0062_UnknownBackendValidationError verifies an invalid backend value
+// returns a validation error mentioning the bad name.
 func TestUS0062_UnknownBackendValidationError(t *testing.T) {
-	cfg := config.SecretsConfig{Backend: "does-not-exist"}
-	_, err := secrets.NewResolver(cfg)
+	_, err := secrets.New(config.SecretsConfig{Backend: "does-not-exist"})
 	require.Error(t, err)
-	// Error should be informative enough for the user to fix their config.
-	assert.Contains(t, err.Error(), "does-not-exist", "error must include the invalid backend name")
+	assert.Contains(t, err.Error(), "does-not-exist")
 }

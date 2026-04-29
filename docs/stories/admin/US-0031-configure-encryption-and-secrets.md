@@ -25,8 +25,14 @@ secrets backend so they are never written in plaintext to the config file.
 | `1password` | 1Password vault via `op` CLI |
 | `gh-secrets` | GitHub Actions secrets via `gh` CLI (write-only; `Get()` falls back to env) |
 
-All backends implement the same `secrets.Resolver` interface (`Get(key) string`, `Set(key, value)`).
-The providers factory uses the active resolver transparently — callers never read `os.Getenv` directly.
+All backends implement [kit](https://github.com/hop-top/kit)'s `secret.Store`
+interface (`Get(ctx, key) *Secret`, `List(ctx, prefix) []string`, `Exists`)
+and — where writes are supported — `secret.MutableStore` (adds `Set`,
+`Delete`). ctxt's `internal/secrets.New(cfg)` is a thin factory that maps
+`SecretsConfig.Backend` strings to kit's canonical backend names
+(`env`, `keyring`, `agefile`, `onepassword`, `ghsecrets`). The providers
+factory uses the active store transparently — callers never read
+`os.Getenv` directly.
 
 All secrets config is stored locally in the config file. There is no REST admin endpoint
 for secrets management. The server reads secrets at startup; changing backends requires a restart.

@@ -14,9 +14,11 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
-	"github.com/ideacrafterslabs/ctxt/internal/secrets"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"hop.top/kit/go/storage/secret"
+	_ "hop.top/kit/go/storage/secret/env" // register env backend
+	"hop.top/kit/go/storage/secret/memory"
 )
 
 // ---------------------------------------------------------------------------
@@ -42,22 +44,16 @@ func (s *providerRecordStep) Run(_ context.Context, draft *storage.KnowledgeObje
 // Mock secrets resolver for test isolation.
 // ---------------------------------------------------------------------------
 
-type testMockResolver struct {
-	store map[string]string
-}
-
-func newTestMockResolver(kv map[string]string) *testMockResolver {
-	return &testMockResolver{store: kv}
-}
-
-func (r *testMockResolver) Get(key string) (string, error) {
-	if v, ok := r.store[key]; ok {
-		return v, nil
+// newTestMockResolver returns a kit memory store seeded with the given
+// key/value pairs. Caller-side: `secret.Store` interface lets callers swap
+// memory for env/keychain/etc. without code changes.
+func newTestMockResolver(kv map[string]string) secret.MutableStore {
+	store := memory.New()
+	for k, v := range kv {
+		_ = store.Set(context.Background(), k, []byte(v))
 	}
-	return "", fmt.Errorf("not found: %s", key)
+	return store
 }
-
-func (r *testMockResolver) Set(_, _ string) error { return nil }
 
 // ---------------------------------------------------------------------------
 // US-0027 Tests
@@ -162,9 +158,10 @@ func TestUS0027_NilResolverFallsBackToEnv(t *testing.T) {
 
 // TestUS0027_EnvResolverReadOnly verifies that the env resolver rejects Set().
 func TestUS0027_EnvResolverReadOnly(t *testing.T) {
-	r := secrets.NewEnvResolver()
-	err := r.Set("SOME_KEY", "some-value")
-	require.Error(t, err, "env resolver must return an error on Set()")
+	r, err := secret.Open(secret.Config{Backend: "env"})
+	require.NoError(t, err)
+	err = r.Set(context.Background(), "SOME_KEY", []byte("some-value"))
+	require.Error(t, err, "env backend must return error on Set()")
 }
 
 // TestUS0027_AnalyzeEndpointUsesConfiguredPipeline verifies that the HTTP API
