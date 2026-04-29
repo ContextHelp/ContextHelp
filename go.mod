@@ -18,6 +18,8 @@ require (
 
 require (
 	charm.land/fang/v2 v2.0.1
+	charm.land/lipgloss/v2 v2.0.3
+	charm.land/log/v2 v2.0.0
 	filippo.io/age v1.3.1
 	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/atotto/clipboard v0.1.4
@@ -41,8 +43,6 @@ require (
 )
 
 require (
-	charm.land/lipgloss/v2 v2.0.3 // indirect
-	charm.land/log/v2 v2.0.0 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/apple/pkl-go v0.13.2 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260413225345-5027f0c48455 // indirect
