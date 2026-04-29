@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -12,42 +13,72 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/telemetry"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
 	internalversion "github.com/ideacrafterslabs/ctxt/internal/version"
+	"charm.land/fang/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	kitcli "hop.top/kit/go/console/cli"
 )
 
-var (
-	cfgFile string
-	cfg     *config.Config
-	tel     telemetry.Telemetry
-
-	// Version information
-	version   string
-	buildTime string
-	gitCommit string
-)
-
-var rootCmd = &cobra.Command{
-	Use:   "ctxt [content]",
-	Short: "ContextHelp - Your agentic context brain",
-	Long: `ctxt is the user-facing interface for ContextHelp.
+const longDescription = `ctxt is the user-facing interface for ContextHelp.
 
 ContextHelp provides universal capture, semantic search, and intelligent
 composition of your knowledge. It's local-first, offline-capable, and
 designed to augment both human and agent workflows.
 
 If called without a subcommand, it defaults to 'analyze', capturing content
-from arguments, stdin, or the clipboard.`,
-	SilenceUsage:              true,
-	SilenceErrors:             true,
-	SuggestionsMinimumDistance: 2,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		verbose, _ := cmd.PersistentFlags().GetBool("verbose")
-		logger.Init(verbose)
-		return nil
-	},
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if ok, _ := cmd.Flags().GetBool("version"); ok {
+from arguments, stdin, or the clipboard.`
+
+var (
+	cfgFile string
+	cfg     *config.Config
+	tel     telemetry.Telemetry
+
+	version   string
+	buildTime string
+	gitCommit string
+
+	// root is initialised at package load — BEFORE any init() in this package
+	// runs — so subcommands' init() functions can call rootCmd.AddCommand.
+	root = kitcli.New(kitcli.Config{
+		Name:    "ctxt",
+		Version: "dev", // overwritten by SetVersionInfo
+		Short:   "ContextHelp - Your agentic context brain",
+		Help: kitcli.HelpConfig{
+			Disclaimer: longDescription,
+		},
+		Globals: []kitcli.Flag{
+			{Name: "config", Usage: "config file (default $XDG_CONFIG_HOME/contexthelp/config.yaml)"},
+			{Name: "profile", Usage: "focus profile to use"},
+			{Name: "offline", Usage: "disable all network calls; force local-only operation"},
+			{Name: "instance", Usage: "target dpkms instance by name or port (overrides current-instance state and config)"},
+		},
+	})
+	rootCmd = root.Cmd
+)
+
+func init() {
+	rootCmd.Use = "ctxt [content]"
+	rootCmd.SilenceUsage = true
+	rootCmd.SilenceErrors = true
+	rootCmd.SuggestionsMinimumDistance = 2
+
+	// Take ownership of --version + --check from cobra/fang. We render
+	// the legacy "ctxt version <semver> (<date>)" format and append the
+	// optional update check inline. rootCmd.Version stays empty so cobra
+	// doesn't auto-handle --version.
+	rootCmd.Flags().BoolP("version", "v", false, "print version and exit")
+	rootCmd.Flags().Bool("check", false, "check for a newer release (use with -v)")
+
+	// Wrap RunE later so we can short-circuit on --version.
+
+	// --output is a hidden alias for --format (kit/cli built-in) so existing
+	// callers and scripts keep working. Both write to viper key "format".
+	rootCmd.PersistentFlags().String("output", "", "(deprecated) alias for --format")
+	_ = rootCmd.PersistentFlags().MarkHidden("output")
+	root.Viper.RegisterAlias("output", "format")
+
+	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if v, _ := cmd.Flags().GetBool("version"); v {
 			printVersion(cmd)
 			return nil
 		}
@@ -55,33 +86,68 @@ from arguments, stdin, or the clipboard.`,
 			return dispatchURI(cmd, args[0])
 		}
 		return RunAnalyze(cmd, args)
-	},
-}
+	}
 
-func Execute() error {
-	return rootCmd.Execute()
-}
+	v := root.Viper
+	cfgFlag := rootCmd.PersistentFlags().Lookup("config")
+	cfgFlag.NoOptDefVal = ""
 
-func init() {
+	// Mirror kit/cli's bindings into the GLOBAL viper used throughout this
+	// codebase (helpers.go, stats.go, etc. read from viper.Get*). Kit owns
+	// its private viper for parsing; we re-bind every persistent flag here.
+	pf := rootCmd.PersistentFlags()
+	for _, name := range []string{"format", "quiet", "no-color", "verbose", "config", "profile", "offline", "instance", "output", "no-hints", "chdir"} {
+		if f := pf.Lookup(name); f != nil {
+			_ = viper.BindPFlag(name, f)
+		}
+	}
+	// Aliases the rest of the codebase reads.
+	viper.RegisterAlias("output.format", "format")
+	viper.RegisterAlias("profile.default", "profile")
+	viper.RegisterAlias("offline.enabled", "offline")
+	viper.RegisterAlias("cli.verbose", "verbose")
+	_ = viper.BindEnv("instance", "CTXT_INSTANCE")
+	_ = v.BindEnv("instance", "CTXT_INSTANCE")
+
+	// Single PersistentPreRunE: chains kit/cli's chdir hook + verbose logger
+	// init + the --output→--format compatibility shim.
+	chdirHook := rootCmd.PersistentPreRunE
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if chdirHook != nil {
+			if err := chdirHook(cmd, args); err != nil {
+				return err
+			}
+		}
+		if outFlag := cmd.Root().PersistentFlags().Lookup("output"); outFlag != nil && outFlag.Changed {
+			val := outFlag.Value.String()
+			_ = cmd.Root().PersistentFlags().Set("format", val)
+			viper.Set("format", val)
+		}
+		count, _ := cmd.Root().PersistentFlags().GetCount("verbose")
+		logger.Init(count > 0)
+		return nil
+	}
+
 	cobra.OnInitialize(initConfig)
+}
 
-	// Global flags
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/contexthelp/config.yaml)")
-	rootCmd.PersistentFlags().String("profile", "", "focus profile to use")
-	rootCmd.PersistentFlags().String("output", "text", "output format (text|json|yaml)")
-	rootCmd.PersistentFlags().BoolP("verbose", "V", false, "enable verbose output")
-	rootCmd.PersistentFlags().Bool("offline", false, "disable all network calls (registry sync, LLM/embedding APIs); forces local-only operation")
-	rootCmd.PersistentFlags().String("instance", "", "target dpkms instance by name or port (overrides current-instance state and config)")
-	rootCmd.Flags().BoolP("version", "v", false, "print version and exit")
-	rootCmd.Flags().Bool("check", false, "check for a newer release (use with -v)")
-
-	// Bind flags to viper
-	viper.BindPFlag("profile.default", rootCmd.PersistentFlags().Lookup("profile"))
-	viper.BindPFlag("output.format", rootCmd.PersistentFlags().Lookup("output"))
-	viper.BindPFlag("cli.verbose", rootCmd.PersistentFlags().Lookup("verbose"))
-	viper.BindPFlag("offline.enabled", rootCmd.PersistentFlags().Lookup("offline"))
-	viper.BindPFlag("instance", rootCmd.PersistentFlags().Lookup("instance"))
-	viper.BindEnv("instance", "CTXT_INSTANCE")
+// Execute runs the root command via fang (styled help + errors). We bypass
+// fang's --version handling because ctxt has its own --version flag with
+// build-date and --check support; the fang default would override our RunE.
+func Execute() error {
+	ctx := context.Background()
+	// kit/cli.Execute would call fang.WithVersion(); we need WithoutVersion
+	// so fang doesn't intercept --version. Replicate kit's other setup.
+	rootCmd.InitDefaultCompletionCmd()
+	for _, c := range rootCmd.Commands() {
+		if c.Name() == "completion" {
+			c.GroupID = "management"
+			break
+		}
+	}
+	return fang.Execute(ctx, rootCmd,
+		fang.WithoutVersion(),
+	)
 }
 
 func printVersion(cmd *cobra.Command) {
@@ -118,15 +184,14 @@ func printVersion(cmd *cobra.Command) {
 }
 
 func initConfig() {
+	cfgFile = viper.GetString("config")
 	var err error
 	cfg, err = config.Load(cfgFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load config: %v\n", err)
-		// Continue with defaults
 		cfg = &config.Config{}
 	}
 
-	// Ensure required directories exist
 	if err := config.EnsureConfigDir(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure config directory: %v\n", err)
 	}
@@ -134,19 +199,18 @@ func initConfig() {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure data directory: %v\n", err)
 	}
 
-	// Initialise telemetry (respects CH_DISABLE_TELEMETRY + privacy.telemetry).
 	tel = telemetry.New(cfg)
 }
 
-// SetVersionInfo sets version information for the CLI
 func SetVersionInfo(v, bt, gc string) {
 	version = v
 	buildTime = bt
 	gitCommit = gc
+	if root != nil {
+		root.Config.Version = strings.TrimPrefix(v, "v")
+	}
 }
 
-// SetVersionFetcher overrides the HTTP fetcher used by --check.
-// Intended for tests only.
 func SetVersionFetcher(f internalversion.Fetcher) {
 	internalversion.DefaultFetcher = f
 }
@@ -191,7 +255,6 @@ func dispatchURI(cmd *cobra.Command, raw string) error {
 	}
 }
 
-// dispatchURIViaTUI opens the TUI with the given start options.
 func dispatchURIViaTUI(opts tui.StartOpts) error {
 	svc, cleanup, err := newService()
 	if err != nil {

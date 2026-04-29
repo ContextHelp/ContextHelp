@@ -178,9 +178,9 @@ func loadDetectors(ctx context.Context, driver storage.StorageDriver, pipes inte
 	return nil
 }
 
-// isJSONOutput returns true when --output is "json".
+// isJSONOutput returns true when --format (or its --output alias) is "json".
 func isJSONOutput() bool {
-	return viper.GetString("output.format") == "json"
+	return viper.GetString("format") == "json"
 }
 
 // outputJSON writes v as indented JSON to w.

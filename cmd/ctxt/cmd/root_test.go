@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
 
 func TestMain(m *testing.M) {
@@ -48,6 +49,13 @@ func resetFlag(f *pflag.Flag) {
 func executeCommand(args ...string) (string, error) {
 	// Reset all flags to their defaults to avoid state leakage between tests.
 	resetAllFlags(rootCmd)
+	// Reset viper state too — kit/cli + previous BindPFlag bindings persist
+	// the last --output/--format value across tests otherwise. Use the helper
+	// that resets only the keys we manage, leaving "config" alone so that
+	// the --config flag parsed for each call still reaches initConfig.
+	for _, k := range []string{"format", "output", "output.format", "verbose", "quiet", "no-color", "no-hints", "profile", "profile.default", "offline", "offline.enabled", "instance"} {
+		viper.Set(k, "")
+	}
 
 	// Capture os.Stdout — drain concurrently to avoid pipe-buffer deadlock
 	// when commands emit large output (e.g. bash completion scripts).
@@ -92,10 +100,41 @@ func TestRootGlobalFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("root --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--config", "--profile", "--output"} {
+	// Tool-specific globals (added via kit cli.Globals).
+	for _, flag := range []string{"--config", "--profile", "--offline", "--instance"} {
 		if !strings.Contains(out, flag) {
-			t.Errorf("help output should contain global flag %s", flag)
+			t.Errorf("help output should contain ctxt global flag %s", flag)
 		}
+	}
+	// Kit/cli built-ins we expect for free.
+	for _, flag := range []string{"--format", "--quiet", "--no-color", "--verbose"} {
+		if !strings.Contains(out, flag) {
+			t.Errorf("help output should contain kit/cli built-in flag %s", flag)
+		}
+	}
+}
+
+func TestRootVerboseIsCount(t *testing.T) {
+	// kit/cli registers -V/--verbose as a stackable Count flag, not a bool.
+	flag := rootCmd.PersistentFlags().Lookup("verbose")
+	if flag == nil {
+		t.Fatal("--verbose flag should be registered on root")
+	}
+	if flag.Value.Type() != "count" {
+		t.Errorf("verbose flag should be Count type for stackable -VV; got %s", flag.Value.Type())
+	}
+}
+
+func TestRootHasFormat(t *testing.T) {
+	// Kit owns --format; --output is a deprecated hidden alias kept for back-compat.
+	if rootCmd.PersistentFlags().Lookup("format") == nil {
+		t.Error("--format flag should be provided by kit/cli")
+	}
+	outFlag := rootCmd.PersistentFlags().Lookup("output")
+	if outFlag == nil {
+		t.Error("--output should be retained as a hidden deprecated alias")
+	} else if !outFlag.Hidden {
+		t.Error("--output should be hidden in --help (deprecated alias)")
 	}
 }
 
