@@ -123,4 +123,4 @@ require (
 
 replace hop.top/c12n => /Users/jadb/.w/ideacrafterslabs/c12n/hops/main
 
-replace hop.top/kit => /Users/jadb/.w/ideacrafterslabs/kit/hops/bus-compat
+replace hop.top/kit => /Users/jadb/.w/ideacrafterslabs/kit/hops/main

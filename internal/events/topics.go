@@ -1,6 +1,6 @@
 package events
 
-import "hop.top/kit/bus"
+import "hop.top/kit/go/runtime/bus"
 
 // Outbound topic constants for ctxt domain events.
 const (

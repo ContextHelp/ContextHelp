@@ -38,7 +38,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 
-	kitbus "hop.top/kit/bus"
+	kitbus "hop.top/kit/go/runtime/bus"
 )
 
 var serveCmd = &cobra.Command{
