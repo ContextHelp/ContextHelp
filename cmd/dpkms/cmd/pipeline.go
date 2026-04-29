@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/ideacrafterslabs/ctxt/internal/cli/printer"
+	"hop.top/kit/go/console/output"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -421,18 +421,24 @@ func printJSON(v any) error {
 	return nil
 }
 
+type pipelineRow struct {
+	Name        string `table:"NAME"`
+	Description string `table:"DESCRIPTION"`
+	Steps       int    `table:"STEPS"`
+	Archived    bool   `table:"ARCHIVED"`
+}
+
 func printTable(pipelines []*storage.Pipeline) error {
-	ps := make([]printer.Pipeline, len(pipelines))
+	ps := make([]pipelineRow, len(pipelines))
 	for i, p := range pipelines {
-		ps[i] = printer.Pipeline{
+		ps[i] = pipelineRow{
 			Name:        p.Name,
 			Description: p.Description,
 			Steps:       len(p.Steps),
 			Archived:    p.Archived,
 		}
 	}
-	printer.PrintPipelines(ps)
-	return nil
+	return output.Render(os.Stdout, output.Table, ps)
 }
 
 func printPipelineDetails(p *storage.Pipeline) error {
@@ -447,39 +453,50 @@ func printPipelineDetails(p *storage.Pipeline) error {
 	return nil
 }
 
+type stepRow struct {
+	Name    string `table:"NAME"`
+	Source  string `table:"SOURCE"`
+	Version string `table:"VERSION"`
+}
+
 func printStepTable(steps []*storage.RegisteredStep) error {
-	ss := make([]printer.Step, len(steps))
+	ss := make([]stepRow, len(steps))
 	for i, s := range steps {
 		version := "1.0.0"
 		if s.Metadata != nil && s.Metadata.Version != "" {
 			version = s.Metadata.Version
 		}
-		ss[i] = printer.Step{
+		ss[i] = stepRow{
 			Name:    s.Name,
 			Source:  s.Source,
 			Version: version,
 		}
 	}
-	printer.PrintSteps(ss)
-	return nil
+	return output.Render(os.Stdout, output.Table, ss)
+}
+
+type registryRow struct {
+	URL         string `table:"URL"`
+	Version     string `table:"VERSION"`
+	AutoUpdate  bool   `table:"AUTO-UPDATE"`
+	LastFetched string `table:"LAST FETCHED"`
 }
 
 func printRegistryTable(registries []*storage.RegistryCache) error {
-	rs := make([]printer.Registry, len(registries))
+	rs := make([]registryRow, len(registries))
 	for i, r := range registries {
 		version := "unknown"
 		if r.Manifest != nil && r.Manifest.Version != "" {
 			version = r.Manifest.Version
 		}
-		rs[i] = printer.Registry{
+		rs[i] = registryRow{
 			URL:         r.RegistryURL,
 			Version:     version,
 			AutoUpdate:  r.AutoUpdate,
 			LastFetched: r.LastFetched.Format("2006-01-02 15:04"),
 		}
 	}
-	printer.PrintRegistries(rs)
-	return nil
+	return output.Render(os.Stdout, output.Table, rs)
 }
 
 func waitForJob(jobID string) error {
