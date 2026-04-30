@@ -45,6 +45,16 @@ var (
 		Short:   "ContextHelp - Your agentic context brain",
 		Help: kitcli.HelpConfig{
 			Disclaimer: longDescription,
+			Groups: []kitcli.GroupConfig{
+				{ID: "capture", Title: "CAPTURE"},
+				{ID: "knowledge", Title: "KNOWLEDGE"},
+				{ID: "compose", Title: "COMPOSE"},
+				{ID: "curate", Title: "CURATE"},
+				{ID: "organize", Title: "ORGANIZE"},
+				{ID: "interact", Title: "INTERACT"},
+				{ID: "instance", Title: "INSTANCE"},
+				{ID: "deprecated", Title: "DEPRECATED", Hidden: true},
+			},
 		},
 		Globals: []kitcli.Flag{
 			{Name: "config", Usage: "config file (default $XDG_CONFIG_HOME/contexthelp/config.yaml)"},
@@ -131,6 +141,58 @@ func init() {
 	cobra.OnInitialize(initConfig)
 }
 
+// commandGroups maps each top-level subcommand name to its help-output
+// group. Subcommands not listed fall through to the default "COMMANDS"
+// group. Edit here to move a command between groups; no need to touch
+// individual <name>.go files.
+var commandGroups = map[string]string{
+	// CAPTURE — get content into ctxt
+	"analyze": "capture", "import": "capture", "ingest": "capture",
+	"inbox": "capture", "feed": "capture", "watch": "capture",
+	"watcher": "capture",
+
+	// KNOWLEDGE — read & navigate the graph
+	"find": "knowledge", "list": "knowledge", "open": "knowledge",
+	"links": "knowledge", "link": "knowledge", "unlink": "knowledge",
+	"log": "knowledge", "stats": "knowledge",
+
+	// COMPOSE — synthesize knowledge into outputs
+	"make": "compose", "export": "compose", "page": "compose",
+	"remind": "compose", "reminders": "compose", "resurface": "compose",
+
+	// CURATE — modify the graph
+	"edit": "curate", "delete": "curate", "classify": "curate",
+	"enrich": "curate",
+
+	// ORGANIZE — taxonomy + scoping
+	"entity": "organize", "index": "organize", "profile": "organize",
+	"registry": "organize", "lint": "organize",
+
+	// INTERACT — interactive surfaces
+	"shell": "interact", "tui": "interact", "init": "interact",
+
+	// INSTANCE — talk to a specific dpkms
+	"instance": "instance", "audit": "instance",
+
+	// MANAGEMENT — hidden by default; --help-all to show
+	"config": "management", "uri": "management", "version": "management",
+
+	// DEPRECATED — moved to dpkms; hidden by default
+	"detector": "deprecated", "dev": "deprecated", "job": "deprecated",
+	"key": "deprecated", "secret": "deprecated",
+}
+
+// applyCommandGroups assigns GroupID to every top-level subcommand based
+// on the commandGroups map. Run after all init() functions have called
+// rootCmd.AddCommand, before help is rendered.
+func applyCommandGroups() {
+	for _, c := range rootCmd.Commands() {
+		if g, ok := commandGroups[c.Name()]; ok {
+			c.GroupID = g
+		}
+	}
+}
+
 // Execute runs the root command via fang (styled help + errors). We bypass
 // fang's --version handling because ctxt has its own --version flag with
 // build-date and --check support; the fang default would override our RunE.
@@ -139,6 +201,8 @@ func Execute() error {
 	// kit/cli.Execute would call fang.WithVersion(); we need WithoutVersion
 	// so fang doesn't intercept --version. Replicate kit's other setup.
 	rootCmd.InitDefaultCompletionCmd()
+	applyCommandGroups()
+	root.ApplyGroupVisibility()
 	for _, c := range rootCmd.Commands() {
 		if c.Name() == "completion" {
 			c.GroupID = "management"

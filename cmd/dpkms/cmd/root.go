@@ -36,7 +36,16 @@ var (
 		Name:    "dpkms",
 		Version: "dev",
 		Short:   "dPKMS - Decentralized knowledge substrate",
-		Help:    kitcli.HelpConfig{Disclaimer: dpkmsLong},
+		Help: kitcli.HelpConfig{
+			Disclaimer: dpkmsLong,
+			Groups: []kitcli.GroupConfig{
+				{ID: "lifecycle", Title: "LIFECYCLE"},
+				{ID: "data", Title: "DATA"},
+				{ID: "pipelines", Title: "PIPELINES"},
+				{ID: "security", Title: "SECURITY"},
+				{ID: "dev", Title: "DEVELOPMENT"},
+			},
+		},
 		Globals: []kitcli.Flag{
 			{Name: "config", Usage: "config file (default $XDG_CONFIG_HOME/contexthelp/config.yaml)"},
 			{Name: "data-dir", Usage: "data directory override"},
@@ -105,10 +114,43 @@ func init() {
 	cobra.OnInitialize(initConfig)
 }
 
+// commandGroups maps each top-level subcommand name to its help-output
+// group. Edit here to move a command between groups.
+var commandGroups = map[string]string{
+	// LIFECYCLE — control running instances
+	"serve": "lifecycle", "shutdown": "lifecycle", "reboot": "lifecycle",
+	"ps": "lifecycle",
+
+	// DATA — backup, restore, housekeeping
+	"backup": "data", "restore": "data", "housekeeping": "data",
+
+	// PIPELINES — ingestion machinery
+	"pipeline": "pipelines", "detector": "pipelines", "job": "pipelines",
+
+	// SECURITY — keys + secrets
+	"key": "security", "secret": "security",
+
+	// DEVELOPMENT — maintenance utilities
+	"dev": "dev",
+
+	// MANAGEMENT — hidden by default
+	"version": "management",
+}
+
+func applyCommandGroups() {
+	for _, c := range rootCmd.Commands() {
+		if g, ok := commandGroups[c.Name()]; ok {
+			c.GroupID = g
+		}
+	}
+}
+
 // Execute runs dpkms via fang (styled help + errors). We pass WithoutVersion
 // so fang doesn't intercept --version; ctxt has its own format with --check.
 func Execute() error {
 	rootCmd.InitDefaultCompletionCmd()
+	applyCommandGroups()
+	root.ApplyGroupVisibility()
 	for _, c := range rootCmd.Commands() {
 		if c.Name() == "completion" {
 			c.GroupID = "management"
