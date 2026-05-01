@@ -61,7 +61,7 @@ var configEditCmd = &cobra.Command{
 }
 
 var configLintCmd = &cobra.Command{
-	Use:   "lint",
+	Use:   "doctor",
 	Short: "Lint configuration: schema, secrets, permissions, deprecated keys",
 	Long: `Full config file linter combining multiple checks.
 
@@ -269,7 +269,7 @@ func runConfigLint(cmd *cobra.Command, args []string) error {
 	findings := config.LintConfig(cfg, configPath)
 
 	if len(findings) == 0 {
-		fmt.Println("  ✓ config lint: no issues found")
+		fmt.Println("  ✓ config doctor: no issues found")
 		return nil
 	}
 

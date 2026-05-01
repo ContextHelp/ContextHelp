@@ -42,7 +42,7 @@ Examples:
   ctxt registry sync --dry-run uxpatterns
 
   # Remove a registry
-  ctxt registry remove uxpatterns`,
+  ctxt registry delete uxpatterns`,
 }
 
 var registryListCmd = &cobra.Command{
@@ -59,7 +59,7 @@ var registryAddCmd = &cobra.Command{
 }
 
 var registryRemoveCmd = &cobra.Command{
-	Use:   "remove <name>",
+	Use:   "delete <name>",
 	Short: "Remove a registry",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runRegistryRemove,

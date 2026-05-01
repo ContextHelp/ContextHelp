@@ -46,7 +46,7 @@ func TestFeedHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("feed --help should succeed: %v", err)
 	}
-	for _, subcmd := range []string{"add", "list", "sync", "remove"} {
+	for _, subcmd := range []string{"add", "list", "sync", "delete"} {
 		if !strings.Contains(out, subcmd) {
 			t.Errorf("feed help should list subcommand %q", subcmd)
 		}
@@ -149,9 +149,9 @@ func TestFeedRemoveByID(t *testing.T) {
 	srv := startMockFeedServer(t)
 	defer srv.Close()
 
-	out, err := executeCommand("feed", "remove", "feed_001", "--server", srv.URL)
+	out, err := executeCommand("feed", "delete", "feed_001", "--server", srv.URL)
 	if err != nil {
-		t.Fatalf("feed remove by ID should succeed: %v", err)
+		t.Fatalf("feed delete by ID should succeed: %v", err)
 	}
 	if !strings.Contains(out, "feed_001") {
 		t.Errorf("output should mention feed ID, got: %s", out)
@@ -165,9 +165,9 @@ func TestFeedRemoveByURL(t *testing.T) {
 	srv := startMockFeedServer(t)
 	defer srv.Close()
 
-	out, err := executeCommand("feed", "remove", "https://example.com/feed.xml", "--server", srv.URL)
+	out, err := executeCommand("feed", "delete", "https://example.com/feed.xml", "--server", srv.URL)
 	if err != nil {
-		t.Fatalf("feed remove by URL should succeed: %v", err)
+		t.Fatalf("feed delete by URL should succeed: %v", err)
 	}
 	if !strings.Contains(out, "removed") {
 		t.Errorf("output should confirm removal, got: %s", out)
@@ -175,8 +175,8 @@ func TestFeedRemoveByURL(t *testing.T) {
 }
 
 func TestFeedRemoveRequiresArg(t *testing.T) {
-	_, err := executeCommand("feed", "remove")
+	_, err := executeCommand("feed", "delete")
 	if err == nil {
-		t.Error("feed remove without arg should fail")
+		t.Error("feed delete without arg should fail")
 	}
 }

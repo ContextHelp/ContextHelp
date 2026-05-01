@@ -100,7 +100,7 @@ func TestConfigHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config --help should succeed: %v", err)
 	}
-	for _, subcmd := range []string{"show", "path", "validate", "edit", "lint"} {
+	for _, subcmd := range []string{"show", "path", "validate", "edit", "doctor"} {
 		if !strings.Contains(out, subcmd) {
 			t.Errorf("config help should list subcommand %q", subcmd)
 		}
@@ -121,7 +121,7 @@ func TestConfigLintClean(t *testing.T) {
 	if err := os.WriteFile(cfgPath, lintConfigYAML(""), 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	out, err := executeCommand("--config", cfgPath, "config", "lint")
+	out, err := executeCommand("--config", cfgPath, "config", "doctor")
 	if err != nil {
 		t.Fatalf("expected exit 0 on clean config, got: %v\noutput: %s", err, out)
 	}
@@ -138,7 +138,7 @@ func TestConfigLintPermissionWarn(t *testing.T) {
 	if err := os.WriteFile(cfgPath, lintConfigYAML(""), 0644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	out, err := executeCommand("--config", cfgPath, "config", "lint")
+	out, err := executeCommand("--config", cfgPath, "config", "doctor")
 	if err == nil {
 		t.Fatalf("expected exit 1 when config is world-readable; output: %s", out)
 	}
@@ -156,7 +156,7 @@ func TestConfigLintSecretWarn(t *testing.T) {
 	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	out, err := executeCommand("--config", cfgPath, "config", "lint")
+	out, err := executeCommand("--config", cfgPath, "config", "doctor")
 	if err == nil {
 		t.Fatalf("expected exit 1 when plaintext secret present; output: %s", out)
 	}
@@ -175,7 +175,7 @@ func TestConfigLintFix(t *testing.T) {
 	}
 
 	// Run with --fix; apply the permission fix.
-	_, _ = executeCommand("--config", cfgPath, "config", "lint", "--fix")
+	_, _ = executeCommand("--config", cfgPath, "config", "doctor", "--fix")
 
 	info, err := os.Stat(cfgPath)
 	if err != nil {
@@ -188,9 +188,9 @@ func TestConfigLintFix(t *testing.T) {
 
 // TestConfigLintHelp verifies --fix flag is documented.
 func TestConfigLintHelp(t *testing.T) {
-	out, err := executeCommand("config", "lint", "--help")
+	out, err := executeCommand("config", "doctor", "--help")
 	if err != nil {
-		t.Fatalf("config lint --help should succeed: %v", err)
+		t.Fatalf("config doctor --help should succeed: %v", err)
 	}
 	if !strings.Contains(out, "--fix") {
 		t.Error("lint help should document --fix flag")

@@ -98,9 +98,9 @@ func TestProfileSetDefault(t *testing.T) {
 		t.Fatalf("create should succeed: %v", err)
 	}
 
-	out, err := db.exec("profile", "set-default", "founder")
+	out, err := db.exec("profile", "default", "founder")
 	if err != nil {
-		t.Fatalf("profile set-default should succeed: %v", err)
+		t.Fatalf("profile default should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Set default profile to: founder") {
 		t.Errorf("output should confirm default profile change, got: %q", out)
@@ -114,9 +114,9 @@ func TestProfileSetDefault(t *testing.T) {
 		t.Error("output should indicate profile is default")
 	}
 
-	out, err = db.exec("profile", "set-default")
+	out, err = db.exec("profile", "default")
 	if err != nil {
-		t.Fatalf("profile set-default (clear) should succeed: %v", err)
+		t.Fatalf("profile default (clear) should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Cleared default profile") {
 		t.Errorf("output should confirm clearing default profile, got: %q", out)
@@ -129,7 +129,7 @@ func TestProfileHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("profile --help should succeed: %v", err)
 	}
-	for _, subcmd := range []string{"list", "show", "create", "delete", "set-default"} {
+	for _, subcmd := range []string{"list", "show", "create", "delete", "default"} {
 		if !strings.Contains(out, subcmd) {
 			t.Errorf("profile help should list subcommand %q", subcmd)
 		}

@@ -30,7 +30,7 @@ Examples:
   ctxt feed sync --url https://example.com/feed.xml
 
   # Remove a feed
-  ctxt feed remove feed_12345678`,
+  ctxt feed delete feed_12345678`,
 }
 
 var feedAddCmd = &cobra.Command{
@@ -56,7 +56,7 @@ var feedSyncCmd = &cobra.Command{
 }
 
 var feedRemoveCmd = &cobra.Command{
-	Use:   "remove <url-or-id>",
+	Use:   "delete <url-or-id>",
 	Short: "Remove a feed subscription",
 	Long:  `Remove an RSS/Atom feed subscription by URL or ID.`,
 	Args:  cobra.ExactArgs(1),
@@ -84,7 +84,7 @@ func init() {
 	feedSyncCmd.Flags().String("url", "", "feed URL to sync")
 	feedSyncCmd.Flags().String("id", "", "feed ID to sync")
 
-	// feed remove flags
+	// feed delete flags
 	feedRemoveCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 }
 

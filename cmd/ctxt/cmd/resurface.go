@@ -129,7 +129,7 @@ func runResurfaceShow(cmd *cobra.Command, _ []string) error {
 	if len(entries) == 0 {
 		fmt.Println("No resurfacing candidates.")
 		if profileName == "" {
-			fmt.Println("Tip: set a default profile with: ctxt profile set-default <name>")
+			fmt.Println("Tip: set a default profile with: ctxt profile default <name>")
 			fmt.Println("     Then run: ctxt resurface refresh")
 		}
 		return nil

@@ -28,7 +28,7 @@ Examples:
   ctxt profile create myproject
 
   # Set default profile
-  ctxt profile set-default founder`,
+  ctxt profile default founder`,
 }
 
 var profileListCmd = &cobra.Command{
@@ -59,7 +59,7 @@ var profileDeleteCmd = &cobra.Command{
 }
 
 var profileSetDefaultCmd = &cobra.Command{
-	Use:   "set-default [name]",
+	Use:   "default [name]",
 	Short: "Set default profile",
 	Args:  cobra.MaximumNArgs(1),
 	RunE:  runProfileSetDefault,

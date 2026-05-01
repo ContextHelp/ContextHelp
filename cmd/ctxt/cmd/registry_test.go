@@ -105,16 +105,16 @@ func TestRegistryAddNoArgsError(t *testing.T) {
 
 func TestRegistryRemove(t *testing.T) {
 	db := setupTestDB(t)
-	_, err := db.exec("registry", "remove", "nonexistent")
+	_, err := db.exec("registry", "delete", "nonexistent")
 	if err == nil {
-		t.Error("registry remove for unknown registry should fail")
+		t.Error("registry delete for unknown registry should fail")
 	}
 }
 
 func TestRegistryRemoveNoNameError(t *testing.T) {
-	_, err := executeCommand("registry", "remove")
+	_, err := executeCommand("registry", "delete")
 	if err == nil {
-		t.Error("registry remove without name should fail")
+		t.Error("registry delete without name should fail")
 	}
 }
 
@@ -159,7 +159,7 @@ func TestRegistryHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("registry --help should succeed: %v", err)
 	}
-	for _, subcmd := range []string{"list", "add", "remove", "info", "sync", "submit"} {
+	for _, subcmd := range []string{"list", "add", "delete", "info", "sync", "submit"} {
 		if !strings.Contains(out, subcmd) {
 			t.Errorf("registry help should list subcommand %q", subcmd)
 		}
