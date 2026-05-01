@@ -64,6 +64,7 @@ func (d *stubDriver) Metering() storage.MeteringStore { return nil }
 func (d *stubDriver) Vectors() storage.VectorStore    { return nil }
 func (d *stubDriver) SavedSearches() storage.SavedSearchStore { return nil }
 func (d *stubDriver) SearchHistory() storage.SearchHistoryStore { return nil }
+func (d *stubDriver) Watermarks() storage.WatermarkStore { return nil }
 func (d *stubDriver) Health(_ context.Context) error  { return nil }
 
 // writeStepScript writes a shell script that echoes a fixed JSON payload and

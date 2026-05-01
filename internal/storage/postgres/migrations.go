@@ -249,6 +249,10 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			expires_at    TIMESTAMP,
 			fetched_at    TIMESTAMP NOT NULL DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS federation_watermarks (
+			federation_name TEXT PRIMARY KEY,
+			last_synced_at  TIMESTAMPTZ NOT NULL DEFAULT 'epoch'
+		)`,
 	}
 
 	for i, m := range migrations {

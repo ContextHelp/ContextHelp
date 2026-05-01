@@ -38,7 +38,17 @@ func (m *mockDriver) Metering() MeteringStore                { return &mockMeter
 func (m *mockDriver) Vectors() VectorStore                   { return &mockVectorStore{} }
 func (m *mockDriver) SavedSearches() SavedSearchStore        { return &mockSavedSearchStore{} }
 func (m *mockDriver) SearchHistory() SearchHistoryStore      { return &mockSearchHistoryStore{} }
+func (m *mockDriver) Watermarks() WatermarkStore             { return &mockWatermarkStore{} }
 func (m *mockDriver) Health(ctx context.Context) error       { return nil }
+
+type mockWatermarkStore struct{}
+
+func (m *mockWatermarkStore) GetWatermark(_ context.Context, _ string) (time.Time, error) {
+	return time.Unix(0, 0).UTC(), nil
+}
+func (m *mockWatermarkStore) SetWatermark(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
 
 type mockVectorStore struct{}
 

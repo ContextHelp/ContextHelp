@@ -126,6 +126,7 @@ func (d *Driver) Metering() storage.MeteringStore            { return d.metering
 func (d *Driver) Vectors() storage.VectorStore               { return d.vectors }
 func (d *Driver) SavedSearches() storage.SavedSearchStore    { return d.savedSearches }
 func (d *Driver) SearchHistory() storage.SearchHistoryStore  { return d.searchHistory }
+func (d *Driver) Watermarks() storage.WatermarkStore         { return &watermarkStore{db: d.db} }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)

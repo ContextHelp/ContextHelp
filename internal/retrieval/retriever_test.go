@@ -155,6 +155,7 @@ func (n *naStore) Metering() storage.MeteringStore           { return nil }
 func (n *naStore) Vectors() storage.VectorStore              { return nil }
 func (n *naStore) SavedSearches() storage.SavedSearchStore   { return nil }
 func (n *naStore) SearchHistory() storage.SearchHistoryStore { return nil }
+func (n *naStore) Watermarks() storage.WatermarkStore        { return nil }
 func (n *naStore) Health(_ context.Context) error            { return nil }
 
 // TestRagRetrieve_NodeAwareFilterRoutesThroughNodeAwarePath verifies that when a

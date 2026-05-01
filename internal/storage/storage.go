@@ -52,7 +52,19 @@ type StorageDriver interface {
 	Vectors() VectorStore
 	SavedSearches() SavedSearchStore
 	SearchHistory() SearchHistoryStore
+	Watermarks() WatermarkStore
 	Health(ctx context.Context) error
+}
+
+// WatermarkStore tracks per-federation last-synced timestamps for the
+// federation_watermarks table (US-0319). One row per federation name.
+// Missing rows are treated as the Unix epoch (never synced).
+type WatermarkStore interface {
+	// GetWatermark returns the last_synced_at for federationName.
+	// Missing rows return time.Unix(0, 0).UTC() with nil error.
+	GetWatermark(ctx context.Context, federationName string) (time.Time, error)
+	// SetWatermark upserts last_synced_at for federationName. Idempotent.
+	SetWatermark(ctx context.Context, federationName string, ts time.Time) error
 }
 
 // VectorStore persists and queries ANN (approximate nearest neighbour) embeddings.
