@@ -359,6 +359,94 @@ func TestLocalPusher_EdgesTravelWithObjects(t *testing.T) {
 	}
 }
 
+// TestFederation_EntityPageDupeDoesNotAbortBatch verifies T-0189: when one
+// object in the batch hits a UNIQUE-id collision at the target (e.g. an
+// entity_page that auto-generates with the same id on two consecutive ticks
+// and has an empty ContentHash so the dedup-by-hash check at line 83 misses),
+// the LocalPusher logs + continues with the rest of the batch. Before the
+// fix, the first failing Create() bubbled out and aborted the loop, so any
+// objects later in the slice — and the watermark — were left behind.
+func TestFederation_EntityPageDupeDoesNotAbortBatch(t *testing.T) {
+	_, targetPath := newTestDB(t)
+
+	now := time.Now().UTC()
+
+	// Pre-seed the target with an entity_page id that is about to collide
+	// in the next batch. Empty ContentHash matches the real entity_page
+	// row produced by service.PageUpsert (no content hashing on those).
+	preexisting := storage.KnowledgeObject{
+		ID:          "ep-dup-1",
+		Type:        "entity_page",
+		RawContent:  "preexisting page",
+		ContentHash: "", // entity_page rows have no content hash
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	{
+		drv, err := storageutil.NewDriver("sqlite", targetPath)
+		if err != nil {
+			t.Fatalf("seed open: %v", err)
+		}
+		if err := drv.Init(context.Background()); err != nil {
+			t.Fatalf("seed init: %v", err)
+		}
+		if err := drv.Objects().Create(context.Background(), &preexisting); err != nil {
+			t.Fatalf("seed create: %v", err)
+		}
+		drv.Close(context.Background())
+	}
+
+	// Source batch: the same entity_page id (would collide), plus two
+	// fresh capture objects that must still land + drive the watermark.
+	colliding := storage.KnowledgeObject{
+		ID:          "ep-dup-1",
+		Type:        "entity_page",
+		RawContent:  "regenerated entity_page body",
+		ContentHash: "",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	objects := []storage.KnowledgeObject{
+		colliding,
+		makeObject("capture-A", "hash-cap-A"),
+		makeObject("capture-B", "hash-cap-B"),
+	}
+
+	pusher := NewLocalPusher("dupe-fed", targetPath)
+
+	if err := pusher.Push(context.Background(), objects, nil, nil); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+
+	drv, err := storageutil.NewDriver("sqlite", targetPath)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer drv.Close(context.Background())
+	if err := drv.Init(context.Background()); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	for _, id := range []string{"capture-A", "capture-B"} {
+		got, err := drv.Objects().Get(context.Background(), id)
+		if err != nil || got == nil {
+			t.Errorf("object %q missing at target: %v (got=%v) — batch aborted on dupe id",
+				id, err, got)
+		}
+	}
+
+	// Watermark MUST advance: the batch as a whole was a success, even
+	// though one row was a no-op skip.
+	wm, err := drv.Watermarks().GetWatermark(context.Background(), "dupe-fed")
+	if err != nil {
+		t.Fatalf("GetWatermark: %v", err)
+	}
+	epoch := time.Unix(0, 0).UTC()
+	if !wm.After(epoch) {
+		t.Errorf("watermark not advanced after dupe-skip batch: got %v", wm)
+	}
+}
+
 // TestLocalPusher_FileURLPrefixStripped verifies T-0187: when a federation
 // target URL is configured as `file:///abs/path/to/db.sqlite`, the LocalPusher
 // strips the `file://` prefix before opening the SQLite driver. Without the

@@ -3,6 +3,8 @@ package federation
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -95,7 +97,27 @@ func (p *LocalPusher) Push(
 				continue
 			}
 		}
+		// T-0189: rows with empty ContentHash (entity_page, etc.) skip the
+		// content-hash dedup above and would fall through to Create, which
+		// fails with UNIQUE-id when the same id already exists at the
+		// target. Pre-check by id so we treat dupes as no-op skips instead
+		// of aborting the whole batch.
+		if obj.ContentHash == "" {
+			if existing, _ := objs.Get(ctx, obj.ID); existing != nil {
+				slog.Debug("federation local push: skipping pre-existing object id",
+					"federation", p.name, "id", obj.ID, "type", obj.Type)
+				continue
+			}
+		}
 		if err := objs.Create(ctx, obj); err != nil {
+			// Defensive: a concurrent peer may have inserted this row
+			// between our Get and Create. Treat UNIQUE-constraint races as
+			// no-op skips so the rest of the batch + watermark still land.
+			if isUniqueConstraintErr(err) {
+				slog.Warn("federation local push: UNIQUE collision, skipping row",
+					"federation", p.name, "id", obj.ID, "err", err)
+				continue
+			}
 			return fmt.Errorf("federation local push: create object %q: %w", obj.ID, err)
 		}
 		// Insert edges that belong to this object (dedup within this batch).
@@ -108,6 +130,12 @@ func (p *LocalPusher) Push(
 				continue
 			}
 			if err := edgeStore.Create(ctx, e); err != nil {
+				if isUniqueConstraintErr(err) {
+					slog.Warn("federation local push: UNIQUE collision on edge, skipping",
+						"federation", p.name, "edge", e.ID, "err", err)
+					insertedEdges[e.ID] = true
+					continue
+				}
 				return fmt.Errorf("federation local push: create edge %q: %w", e.ID, err)
 			}
 			insertedEdges[e.ID] = true
@@ -120,4 +148,16 @@ func (p *LocalPusher) Push(
 		return fmt.Errorf("federation local push: advance watermark for %q: %w", p.name, err)
 	}
 	return nil
+}
+
+// isUniqueConstraintErr reports whether the error is a SQLite UNIQUE
+// constraint violation. Both sqlite drivers in this repo (mattn + modernc)
+// surface the violation as text in the error string. We string-match
+// instead of typing on the driver-specific error to keep this package
+// driver-agnostic — same approach used by jobs/worker.go.
+func isUniqueConstraintErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
