@@ -24,6 +24,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
+	"github.com/ideacrafterslabs/ctxt/internal/federation"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
@@ -269,6 +270,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 10. Init worker pool.
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
 
+	// 10pre. Init federation worker set. Cycle detection runs here; an
+	// invalid topology fails serve before any port is bound (US-0318 AC).
+	fedSet, err := federation.New(*cfg, driver)
+	if err != nil {
+		return fmt.Errorf("federation: %w", err)
+	}
+	if n := fedSet.Len(); n > 0 {
+		fmt.Printf("Federation: %d async target(s) configured\n", n)
+	}
+
 	// 10a. Wire fan-out enrichment (bidirectional edges + audit log).
 	if cfg.FanOut.Enabled {
 		pool.SetFanOut(func(ctx context.Context, objectID string) error {
@@ -398,6 +409,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Cookie bridge listening on ws://%s\n", cookieBridgeAddr)
 		return cookieBridge.Start(ctx)
 	})
+
+	// Federation async workers (US-0319). Spawns one goroutine per async
+	// target; honours ctx for graceful shutdown (Stop drains within 5s).
+	fedSet.Start(ctx)
+	defer func() {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 6*time.Second)
+		defer stopCancel()
+		if err := fedSet.Stop(stopCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: federation workers stop: %v\n", err)
+		}
+	}()
 
 	// Drain timeout: how long in-flight jobs get to finish after signal.
 	drainTimeout := cfg.Jobs.DrainTimeout
