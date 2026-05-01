@@ -12,7 +12,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/logger"
 	"github.com/ideacrafterslabs/ctxt/internal/telemetry"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
-	internalversion "github.com/ideacrafterslabs/ctxt/internal/version"
 	"charm.land/fang/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -72,12 +71,11 @@ func init() {
 	rootCmd.SilenceErrors = true
 	rootCmd.SuggestionsMinimumDistance = 2
 
-	// Take ownership of --version + --check from cobra/fang. We render
-	// the legacy "ctxt version <semver> (<date>)" format and append the
-	// optional update check inline. rootCmd.Version stays empty so cobra
-	// doesn't auto-handle --version.
+	// Take ownership of --version from cobra/fang. We render the legacy
+	// "ctxt version <semver> (<date>)" format. rootCmd.Version stays empty
+	// so cobra doesn't auto-handle --version. Update checks moved to
+	// `ctxt upgrade check`.
 	rootCmd.Flags().BoolP("version", "v", false, "print version and exit")
-	rootCmd.Flags().Bool("check", false, "check for a newer release (use with -v)")
 
 	// Wrap RunE later so we can short-circuit on --version.
 
@@ -175,6 +173,7 @@ var commandGroups = map[string]string{
 
 	// MANAGEMENT — hidden by default; --help-all to show
 	"config": "management", "uri": "management", "version": "management",
+	"upgrade": "management",
 
 	// DEPRECATED — moved to dpkms; hidden by default
 	"detector": "deprecated", "dev": "deprecated", "job": "deprecated",
@@ -214,7 +213,6 @@ func Execute() error {
 }
 
 func printVersion(cmd *cobra.Command) {
-	check, _ := cmd.Flags().GetBool("check")
 	date := strings.SplitN(buildTime, "_", 2)[0]
 
 	if viper.GetString("output.format") == "json" {
@@ -224,26 +222,12 @@ func printVersion(cmd *cobra.Command) {
 			"date":       date,
 			"git_commit": gitCommit,
 		}
-		if check {
-			r := internalversion.Check(version, nil)
-			if r.FetchErr != nil {
-				payload["update_check"] = "error: " + r.FetchErr.Error()
-			} else if r.UpToDate {
-				payload["update_check"] = "up_to_date"
-			} else {
-				payload["update_check"] = r.Latest
-			}
-		}
 		out, _ := json.Marshal(payload)
 		fmt.Fprintln(cmd.OutOrStdout(), string(out))
 		return
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "ctxt version %s (%s)\n", version, date)
-	if check {
-		r := internalversion.Check(version, nil)
-		fmt.Fprintln(cmd.OutOrStdout(), internalversion.FormatResult(r))
-	}
 }
 
 func initConfig() {
@@ -272,10 +256,6 @@ func SetVersionInfo(v, bt, gc string) {
 	if root != nil {
 		root.Config.Version = strings.TrimPrefix(v, "v")
 	}
-}
-
-func SetVersionFetcher(f internalversion.Fetcher) {
-	internalversion.DefaultFetcher = f
 }
 
 // dispatchURI handles ctxt:// URIs passed directly as an argument (e.g. from

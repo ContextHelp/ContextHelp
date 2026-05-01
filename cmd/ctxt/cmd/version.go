@@ -14,5 +14,4 @@ var versionCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(versionCmd)
-	versionCmd.Flags().Bool("check", false, "check for a newer release")
 }
