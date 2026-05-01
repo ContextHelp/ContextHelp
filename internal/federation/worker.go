@@ -84,7 +84,7 @@ func New(cfg config.Config, src storage.StorageDriver) (*WorkerSet, error) {
 		ws.workers = append(ws.workers, &Worker{
 			target: tgt,
 			src:    src,
-			pusher: pusherFor(entry),
+			pusher: pusherFor(entry, src),
 		})
 	}
 	return ws, nil
@@ -246,10 +246,14 @@ func collectEntitiesForEdges(
 }
 
 // pusherFor returns the appropriate Pusher implementation for a federation
-// entry. Local SQLite paths use LocalPusher; HTTP(S) URLs use RemotePusher.
-func pusherFor(entry config.FederationEntry) Pusher {
+// entry. Local SQLite paths use LocalPusher; HTTP(S) URLs use RemotePusher
+// wired with the source-side WatermarkStore so successful pushes advance the
+// per-federation watermark (T-0188). LocalPusher writes the watermark into
+// the target DB (US-0319 AC #3) and does not need src wiring.
+func pusherFor(entry config.FederationEntry, src storage.StorageDriver) Pusher {
 	if isHTTP(entry.URL) {
-		return NewRemotePusher(entry.Name, entry.URL, entry.Token)
+		return NewRemotePusherWithWatermarks(entry.Name, entry.URL, entry.Token,
+			src.Watermarks())
 	}
 	return NewLocalPusher(entry.Name, entry.URL)
 }

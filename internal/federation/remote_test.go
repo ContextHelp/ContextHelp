@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -93,5 +94,70 @@ func TestRemotePusher_NoToken_NoAuthHeader(t *testing.T) {
 	}
 	if gotAuth != "" {
 		t.Errorf("expected no Authorization header, got %q", gotAuth)
+	}
+}
+
+// TestRemotePusher_AdvancesWatermarkAfterCommit verifies T-0188: a successful
+// HTTP push (200) advances the per-federation watermark on the source-side
+// WatermarkStore. Without this advance, the worker re-pushes the same batch
+// every tick and the receiver returns 5xx on duplicate ids, causing the
+// "all 3 attempts failed" log line founder saw in the scenario-1 demo.
+func TestRemotePusher_AdvancesWatermarkAfterCommit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	src, _ := newTestDB(t)
+
+	p := NewRemotePusherWithWatermarks("rwm-fed", srv.URL, "", src.Watermarks())
+
+	before := time.Now().UTC()
+	if err := p.Push(context.Background(),
+		[]storage.KnowledgeObject{makeObject("rwm-1", "rwm-h1")}, nil, nil); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	after := time.Now().UTC()
+
+	got, err := src.Watermarks().GetWatermark(context.Background(), "rwm-fed")
+	if err != nil {
+		t.Fatalf("GetWatermark: %v", err)
+	}
+	epoch := time.Unix(0, 0).UTC()
+	if !got.After(epoch) {
+		t.Errorf("watermark not advanced past epoch: got %v", got)
+	}
+	if got.Before(before.Add(-time.Second)) || got.After(after.Add(time.Second)) {
+		t.Errorf("watermark outside call window: got %v, before=%v after=%v",
+			got, before, after)
+	}
+}
+
+// TestRemotePusher_DoesNotAdvanceWatermarkOnFailure verifies the watermark
+// stays at epoch when the receiver returns a non-2xx status. Mirrors AC #4 of
+// US-0319 for the remote variant — failed batches must be retried on the
+// next tick.
+func TestRemotePusher_DoesNotAdvanceWatermarkOnFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	src, _ := newTestDB(t)
+
+	p := NewRemotePusherWithWatermarks("rwm-fail-fed", srv.URL, "", src.Watermarks())
+
+	if err := p.Push(context.Background(),
+		[]storage.KnowledgeObject{makeObject("rwmf-1", "rwmf-h1")}, nil, nil); err == nil {
+		t.Fatal("expected error after retries, got nil")
+	}
+
+	got, err := src.Watermarks().GetWatermark(context.Background(), "rwm-fail-fed")
+	if err != nil {
+		t.Fatalf("GetWatermark: %v", err)
+	}
+	epoch := time.Unix(0, 0).UTC()
+	if !got.Equal(epoch) {
+		t.Errorf("failed push advanced watermark: got %v, want epoch", got)
 	}
 }

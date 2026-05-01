@@ -27,14 +27,23 @@ type FederationPushRequest struct {
 // Endpoint: POST /api/v1/federation/push
 // Auth: Bearer token per target (optional; empty = no auth header).
 // Retry: exponential backoff, max 3 attempts on transient errors.
+//
+// Watermarks: when constructed via NewRemotePusherWithWatermarks, a successful
+// HTTP push advances the source-side federation_watermarks row for this peer
+// to time.Now() (T-0188). Without that advance the worker re-sends the same
+// batch every tick and the receiver returns 5xx on duplicate ids. The store
+// is intentionally optional: the bare NewRemotePusher constructor preserves
+// the original behaviour for tests + callers that don't care about the gate.
 type RemotePusher struct {
-	name    string
-	baseURL string // e.g. https://team.internal:8080
-	token   string // Bearer token; empty = no auth
-	client  *http.Client
+	name       string
+	baseURL    string // e.g. https://team.internal:8080
+	token      string // Bearer token; empty = no auth
+	client     *http.Client
+	watermarks storage.WatermarkStore // optional; nil = no watermark advance
 }
 
-// NewRemotePusher creates a RemotePusher for the given peer.
+// NewRemotePusher creates a RemotePusher for the given peer. Watermarks are
+// not advanced — use NewRemotePusherWithWatermarks for production wiring.
 func NewRemotePusher(name, baseURL, token string) *RemotePusher {
 	return &RemotePusher{
 		name:    name,
@@ -42,6 +51,19 @@ func NewRemotePusher(name, baseURL, token string) *RemotePusher {
 		token:   token,
 		client:  &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+// NewRemotePusherWithWatermarks creates a RemotePusher that advances the
+// source-side watermark on each successful (200) HTTP push. wm is the source
+// driver's WatermarkStore (the same store LocalPusher writes to for local
+// targets — see local.go and US-0319 AC #3).
+func NewRemotePusherWithWatermarks(
+	name, baseURL, token string,
+	wm storage.WatermarkStore,
+) *RemotePusher {
+	p := NewRemotePusher(name, baseURL, token)
+	p.watermarks = wm
+	return p
 }
 
 // Name returns the federation entry name from config.
@@ -109,6 +131,17 @@ func (p *RemotePusher) Push(
 		resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
+			// T-0188: advance source-side watermark so the next tick filters
+			// this batch out. Mirrors LocalPusher.Push (US-0319 AC #3). A
+			// watermark write failure is reported as a push failure so the
+			// next tick retries — better to re-send than to silently drift
+			// out of sync.
+			if p.watermarks != nil {
+				if err := p.watermarks.SetWatermark(ctx, p.name, time.Now().UTC()); err != nil {
+					return fmt.Errorf("federation remote push %q: advance watermark: %w",
+						p.name, err)
+				}
+			}
 			return nil
 		}
 
