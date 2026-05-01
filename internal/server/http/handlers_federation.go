@@ -30,7 +30,7 @@ func FederationPush(svc *service.Service) http.HandlerFunc {
 			return
 		}
 
-		n, err := svc.FederationAccept(r.Context(), req.Objects, req.Edges)
+		n, err := svc.FederationAccept(r.Context(), req.Objects, req.Edges, req.Entities)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return

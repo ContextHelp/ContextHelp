@@ -178,9 +178,13 @@ func (w *Worker) run(ctx context.Context) {
 	}
 }
 
-// tick performs one push cycle: list source objects + their edges, hand
-// off to the Pusher. Watermark filtering is delegated to LocalPusher
-// (which dedups by content_hash and advances the watermark on success).
+// tick performs one push cycle: list source objects + their edges + the
+// entities those edges reference, then hand off to the Pusher. Watermark
+// filtering is delegated to LocalPusher (which dedups by content_hash and
+// advances the watermark on success).
+//
+// T-0175: entities accompany mention edges (ADR-049) so the receiver can
+// resolve to_id slugs without a dangling reference.
 func (w *Worker) tick(ctx context.Context) error {
 	objs, _, err := w.src.Objects().List(ctx, storage.ObjectFilter{Status: "all"})
 	if err != nil {
@@ -206,7 +210,39 @@ func (w *Worker) tick(ctx context.Context) error {
 		}
 	}
 
-	return w.pusher.Push(ctx, materialized, edges)
+	entities, err := collectEntitiesForEdges(ctx, w.src, edges)
+	if err != nil {
+		return fmt.Errorf("collect mention entities: %w", err)
+	}
+
+	return w.pusher.Push(ctx, materialized, edges, entities)
+}
+
+// collectEntitiesForEdges returns the entity rows referenced by any edge
+// with to_type='entity' (the canonical mention-target shape per ADR-049).
+// Slugs are deduped within the batch. Missing entities are skipped: a
+// dangling mention edge at the source is not a federation concern.
+func collectEntitiesForEdges(
+	ctx context.Context,
+	src storage.StorageDriver,
+	edges []storage.Edge,
+) ([]storage.Entity, error) {
+	seen := make(map[string]bool, len(edges))
+	var entities []storage.Entity
+	store := src.Entities()
+	for i := range edges {
+		e := &edges[i]
+		if e.ToType != "entity" || e.ToID == "" || seen[e.ToID] {
+			continue
+		}
+		seen[e.ToID] = true
+		ent, err := store.Get(ctx, e.ToID)
+		if err != nil || ent == nil {
+			continue
+		}
+		entities = append(entities, *ent)
+	}
+	return entities, nil
 }
 
 // pusherFor returns the appropriate Pusher implementation for a federation

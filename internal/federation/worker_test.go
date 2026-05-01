@@ -27,7 +27,7 @@ type fakePusher struct {
 
 func (p *fakePusher) Name() string { return p.name }
 
-func (p *fakePusher) Push(_ context.Context, objects []storage.KnowledgeObject, _ []storage.Edge) error {
+func (p *fakePusher) Push(_ context.Context, objects []storage.KnowledgeObject, _ []storage.Edge, _ []storage.Entity) error {
 	atomic.AddInt32(&p.calls, 1)
 	if remaining := p.failNext.Load(); remaining > 0 {
 		p.failNext.Store(remaining - 1)

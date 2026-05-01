@@ -12,9 +12,15 @@ import (
 )
 
 // FederationPushRequest is the JSON body sent to POST /api/v1/federation/push.
+//
+// Entities is the set of entity rows referenced by mention edges in this
+// batch (ADR-049: object→entity, edge_type='mentions'). Receivers upsert
+// them so the mention edges they accompany do not dangle. T-0175 added
+// Entities for US-0319 AC #6.
 type FederationPushRequest struct {
-	Objects []storage.KnowledgeObject `json:"objects"`
-	Edges   []storage.Edge            `json:"edges"`
+	Objects  []storage.KnowledgeObject `json:"objects"`
+	Edges    []storage.Edge            `json:"edges"`
+	Entities []storage.Entity          `json:"entities"`
 }
 
 // RemotePusher pushes objects to a remote dpkms instance via HTTP POST.
@@ -41,19 +47,28 @@ func NewRemotePusher(name, baseURL, token string) *RemotePusher {
 // Name returns the federation entry name from config.
 func (p *RemotePusher) Name() string { return p.name }
 
-// Push sends objects and edges as JSON to POST /api/v1/federation/push.
+// Push sends objects, edges, and entities as JSON to POST /api/v1/federation/push.
 // Retries up to 3 times with exponential backoff (1s, 2s, 4s) on transient errors.
 // 4xx (except 429) are non-retriable; returns error immediately.
-func (p *RemotePusher) Push(ctx context.Context, objects []storage.KnowledgeObject, edges []storage.Edge) error {
+func (p *RemotePusher) Push(
+	ctx context.Context,
+	objects []storage.KnowledgeObject,
+	edges []storage.Edge,
+	entities []storage.Entity,
+) error {
 	payload := FederationPushRequest{
-		Objects: objects,
-		Edges:   edges,
+		Objects:  objects,
+		Edges:    edges,
+		Entities: entities,
 	}
 	if payload.Objects == nil {
 		payload.Objects = []storage.KnowledgeObject{}
 	}
 	if payload.Edges == nil {
 		payload.Edges = []storage.Edge{}
+	}
+	if payload.Entities == nil {
+		payload.Entities = []storage.Entity{}
 	}
 
 	body, err := json.Marshal(payload)

@@ -17,7 +17,7 @@ func TestRemotePusher_Success(t *testing.T) {
 	defer srv.Close()
 
 	p := NewRemotePusher("test", srv.URL, "")
-	err := p.Push(context.Background(), []storage.KnowledgeObject{makeObject("o1", "h1")}, nil)
+	err := p.Push(context.Background(), []storage.KnowledgeObject{makeObject("o1", "h1")}, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestRemotePusher_500_Retries_ThenFails(t *testing.T) {
 	// We patch the pusher directly: use a modified version that uses tiny backoff.
 	p := NewRemotePusher("test", srv.URL, "")
 
-	err := p.Push(context.Background(), []storage.KnowledgeObject{makeObject("o2", "h2")}, nil)
+	err := p.Push(context.Background(), []storage.KnowledgeObject{makeObject("o2", "h2")}, nil, nil)
 	if err == nil {
 		t.Fatal("expected error after all retries, got nil")
 	}
@@ -53,7 +53,7 @@ func TestRemotePusher_400_NoRetry(t *testing.T) {
 	defer srv.Close()
 
 	p := NewRemotePusher("test", srv.URL, "")
-	err := p.Push(context.Background(), []storage.KnowledgeObject{makeObject("o3", "h3")}, nil)
+	err := p.Push(context.Background(), []storage.KnowledgeObject{makeObject("o3", "h3")}, nil, nil)
 	if err == nil {
 		t.Fatal("expected error for 400, got nil")
 	}
@@ -71,7 +71,7 @@ func TestRemotePusher_BearerToken(t *testing.T) {
 	defer srv.Close()
 
 	p := NewRemotePusher("test", srv.URL, "secret-token")
-	if err := p.Push(context.Background(), []storage.KnowledgeObject{makeObject("o4", "h4")}, nil); err != nil {
+	if err := p.Push(context.Background(), []storage.KnowledgeObject{makeObject("o4", "h4")}, nil, nil); err != nil {
 		t.Fatalf("push: %v", err)
 	}
 	if gotAuth != "Bearer secret-token" {
@@ -88,7 +88,7 @@ func TestRemotePusher_NoToken_NoAuthHeader(t *testing.T) {
 	defer srv.Close()
 
 	p := NewRemotePusher("test", srv.URL, "") // empty token
-	if err := p.Push(context.Background(), []storage.KnowledgeObject{makeObject("o5", "h5")}, nil); err != nil {
+	if err := p.Push(context.Background(), []storage.KnowledgeObject{makeObject("o5", "h5")}, nil, nil); err != nil {
 		t.Fatalf("push: %v", err)
 	}
 	if gotAuth != "" {

@@ -64,7 +64,7 @@ func TestLocalPusher_SingleObject(t *testing.T) {
 	obj := makeObject("obj-1", "hash-1")
 	pusher := NewLocalPusher("test-fed", targetPath)
 
-	if err := pusher.Push(context.Background(), []storage.KnowledgeObject{obj}, nil); err != nil {
+	if err := pusher.Push(context.Background(), []storage.KnowledgeObject{obj}, nil, nil); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 
@@ -97,7 +97,7 @@ func TestLocalPusher_Idempotent(t *testing.T) {
 	pusher := NewLocalPusher("test-fed", targetPath)
 
 	for i := 0; i < 2; i++ {
-		if err := pusher.Push(context.Background(), []storage.KnowledgeObject{obj}, nil); err != nil {
+		if err := pusher.Push(context.Background(), []storage.KnowledgeObject{obj}, nil, nil); err != nil {
 			t.Fatalf("Push[%d]: %v", i, err)
 		}
 	}
@@ -128,7 +128,7 @@ func TestLocalPusher_MultipleObjects(t *testing.T) {
 	}
 	pusher := NewLocalPusher("test-fed", targetPath)
 
-	if err := pusher.Push(context.Background(), objects, nil); err != nil {
+	if err := pusher.Push(context.Background(), objects, nil, nil); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 
@@ -162,7 +162,7 @@ func TestLocalPusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 	pusher := NewLocalPusher("wm-fed", targetPath)
 
 	before := time.Now().UTC()
-	if err := pusher.Push(context.Background(), objects, nil); err != nil {
+	if err := pusher.Push(context.Background(), objects, nil, nil); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 	after := time.Now().UTC()
@@ -203,7 +203,7 @@ func TestLocalPusher_NoObjectsLeavesWatermarkUntouched(t *testing.T) {
 	_, targetPath := newTestDB(t)
 
 	pusher := NewLocalPusher("noop-fed", targetPath)
-	if err := pusher.Push(context.Background(), nil, nil); err != nil {
+	if err := pusher.Push(context.Background(), nil, nil, nil); err != nil {
 		t.Fatalf("Push on empty: %v", err)
 	}
 
@@ -226,6 +226,99 @@ func TestLocalPusher_NoObjectsLeavesWatermarkUntouched(t *testing.T) {
 	}
 }
 
+// TestLocalPusher_PushesMentions verifies AC #6 of US-0319: mention edges
+// AND the entity rows they reference both land at target. Per ADR-049, the
+// edges table is the source of truth for mentions (edge_type='mentions',
+// to_type='entity'). Without their target entity rows, mention edges at
+// the receiver dangle. T-0175 closes that gap.
+func TestLocalPusher_PushesMentions(t *testing.T) {
+	_, targetPath := newTestDB(t)
+
+	now := time.Now().UTC()
+	obj := storage.KnowledgeObject{
+		ID:          "obj-mention-1",
+		Type:        "bookmark",
+		RawContent:  "alice and bob",
+		ContentHash: "hash-mention-1",
+		Metadata:    map[string]any{"people": []string{"alice", "bob"}},
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	mentionAlice := storage.Edge{
+		ID: "edge-m-alice", FromType: "object", FromID: obj.ID,
+		ToType: "entity", ToID: "alice", EdgeType: "mentions",
+		Weight: 1.0, CreatedAt: now,
+	}
+	mentionBob := storage.Edge{
+		ID: "edge-m-bob", FromType: "object", FromID: obj.ID,
+		ToType: "entity", ToID: "bob", EdgeType: "mentions",
+		Weight: 1.0, CreatedAt: now,
+	}
+	entAlice := storage.Entity{
+		Slug: "alice", Title: "Alice", Namespace: "person",
+		CreatedAt: now, UpdatedAt: now,
+	}
+	entBob := storage.Entity{
+		Slug: "bob", Title: "Bob", Namespace: "person",
+		CreatedAt: now, UpdatedAt: now,
+	}
+
+	pusher := NewLocalPusher("test-fed", targetPath)
+	if err := pusher.Push(context.Background(),
+		[]storage.KnowledgeObject{obj},
+		[]storage.Edge{mentionAlice, mentionBob},
+		[]storage.Entity{entAlice, entBob},
+	); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+
+	drv, err := storageutil.NewDriver("sqlite", targetPath)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer drv.Close(context.Background())
+	if err := drv.Init(context.Background()); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	// (1) object lands with metadata.people round-tripped.
+	got, err := drv.Objects().Get(context.Background(), obj.ID)
+	if err != nil {
+		t.Fatalf("Get object: %v", err)
+	}
+	people, ok := got.Metadata["people"].([]any)
+	if !ok || len(people) != 2 {
+		t.Errorf("metadata.people: got %v (%T), want 2 entries",
+			got.Metadata["people"], got.Metadata["people"])
+	}
+
+	// (2) mention edges land with edge_type='mentions' to entity.
+	edges, err := drv.Edges().ListFrom(context.Background(), "object", obj.ID)
+	if err != nil {
+		t.Fatalf("ListFrom: %v", err)
+	}
+	mentionEdges := 0
+	for _, e := range edges {
+		if e.EdgeType == "mentions" && e.ToType == "entity" {
+			mentionEdges++
+		}
+	}
+	if mentionEdges != 2 {
+		t.Errorf("want 2 mention edges at target, got %d", mentionEdges)
+	}
+
+	// (3) entity rows land — mention edges have valid targets.
+	for _, slug := range []string{"alice", "bob"} {
+		ent, err := drv.Entities().Get(context.Background(), slug)
+		if err != nil {
+			t.Fatalf("Entities().Get(%q): %v", slug, err)
+		}
+		if ent == nil {
+			t.Errorf("entity %q missing at target — mention edge dangles", slug)
+		}
+	}
+}
+
 // TestLocalPusher_EdgesTravelWithObjects verifies edges are inserted alongside their objects.
 func TestLocalPusher_EdgesTravelWithObjects(t *testing.T) {
 	_, targetPath := newTestDB(t)
@@ -240,6 +333,7 @@ func TestLocalPusher_EdgesTravelWithObjects(t *testing.T) {
 		context.Background(),
 		[]storage.KnowledgeObject{obj1, obj2},
 		[]storage.Edge{edge},
+		nil,
 	); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
