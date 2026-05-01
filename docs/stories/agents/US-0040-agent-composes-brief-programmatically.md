@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0040: Agent Composes Brief Programmatically
 
 **System Types:** dpkms (self-hosted), dpkms cloud

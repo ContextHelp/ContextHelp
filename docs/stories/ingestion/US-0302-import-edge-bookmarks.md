@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0302: Import Edge Bookmarks
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

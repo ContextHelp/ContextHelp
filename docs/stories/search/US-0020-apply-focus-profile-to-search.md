@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0020: Apply Focus Profile to Search
 
 **System Types:** ctxt

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0009: Extract Entities and Mentions
 
 **System Types:** dpkms (self-hosted), dpkms cloud

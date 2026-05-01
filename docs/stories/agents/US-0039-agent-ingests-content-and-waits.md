@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0039: Agent Ingests Content And Waits
 
 **System Types:** dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0046: Extract Relationships Between Entities
 
 **System Types:** dpkms (self-hosted)

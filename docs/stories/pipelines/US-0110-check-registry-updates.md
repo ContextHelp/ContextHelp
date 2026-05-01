@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0110: Check Registry Updates
 
 **System Types:** dpkms (self-hosted), dpkms cloud

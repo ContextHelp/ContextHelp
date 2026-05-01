@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0029: Install And Enable Plugin
 
 **System Types:** dpkms (self-hosted), dpkms cloud

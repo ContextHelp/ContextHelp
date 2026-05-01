@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0311: Import Obsidian Vault
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

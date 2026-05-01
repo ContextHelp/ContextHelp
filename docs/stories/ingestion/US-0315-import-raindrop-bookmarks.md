@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0315: Import Raindrop.io Bookmarks
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

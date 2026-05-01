@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0007: Feed Ingestion and Sync
 
 **System Types:** ctxt, dpkms (self-hosted)

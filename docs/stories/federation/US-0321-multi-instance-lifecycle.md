@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0321: Multi-Instance dpkms ps + Lifecycle
 
 **System Types:** dpkms (self-hosted)

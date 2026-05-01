@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0113: ctxt Analyze API Client
 
 **System Types:** dpkms (self-hosted), dpkms cloud

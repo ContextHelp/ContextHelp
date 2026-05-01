@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0404: Fingerprint Dedup at Ingest
 
 **System Types:** dpkms (self-hosted), dpkms cloud, ctxt

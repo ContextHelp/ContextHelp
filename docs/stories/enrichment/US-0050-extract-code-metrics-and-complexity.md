@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0050: Extract Code Metrics And Complexity
 
 **System Types:** dpkms (self-hosted)

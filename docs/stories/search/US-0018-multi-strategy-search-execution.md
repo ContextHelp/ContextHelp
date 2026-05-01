@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0018: Multi-Strategy Search Execution
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0317: Import LinkedIn Export
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

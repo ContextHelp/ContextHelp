@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0313: Import Evernote ENEX
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

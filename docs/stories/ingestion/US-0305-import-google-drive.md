@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0305: Import Google Drive
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

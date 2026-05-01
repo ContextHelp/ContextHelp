@@ -1,3 +1,7 @@
+---
+status: shipped-no-e2e
+---
+
 # Story: Named Cursor for Incremental Retrieval
 
 **System Types:** ctxt

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0308: Import Dropbox Content
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0107: Discover Local Steps
 
 **System Types:** dpkms (self-hosted), dpkms cloud

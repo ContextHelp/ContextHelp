@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # Story: Agent Discovers Query Schema
 
 **System Types:** dpkms (self-hosted), dpkms cloud

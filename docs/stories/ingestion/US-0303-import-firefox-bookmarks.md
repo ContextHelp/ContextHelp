@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0303: Import Firefox Bookmarks
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

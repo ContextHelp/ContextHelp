@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0210: Cross-Platform Entity Resolution
 
 **System Types:** dpkms (self-hosted), dpkms cloud

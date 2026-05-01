@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0208: Temporal Watch and Change Detection
 
 **System Types:** ctxt, dpkms (self-hosted)

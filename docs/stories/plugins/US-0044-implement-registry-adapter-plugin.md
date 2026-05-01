@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0044: Implement Registry Adapter Plugin
 
 **System Types:** dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0203: arXiv Paper Capture and Indexing
 
 **System Types:** ctxt

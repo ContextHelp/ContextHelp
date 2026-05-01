@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0105: Archive Pipeline
 
 **System Types:** dpkms (self-hosted), dpkms cloud

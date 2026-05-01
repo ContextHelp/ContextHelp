@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0204: LinkedIn Profile and Post Capture
 
 **System Types:** ctxt

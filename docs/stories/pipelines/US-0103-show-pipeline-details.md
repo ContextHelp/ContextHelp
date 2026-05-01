@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0103: Show Pipeline Details
 
 **System Types:** dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0013: Detect And Extract Code Snippets
 
 **System Types:** dpkms (self-hosted), dpkms cloud

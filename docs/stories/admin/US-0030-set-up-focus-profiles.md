@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0030: Set Up Focus Profiles
 
 **System Types:** ctxt

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0319: Async Federation Push to Local Merged DB
 
 **System Types:** dpkms (self-hosted)

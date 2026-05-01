@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0063: Unified Graph Extraction at Ingest
 
 **System Types:** dpkms (self-hosted), dpkms cloud

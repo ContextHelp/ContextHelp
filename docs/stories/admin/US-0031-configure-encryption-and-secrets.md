@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0031: Configure Encryption And Secrets
 
 **System Types:** dpkms (self-hosted), dpkms cloud

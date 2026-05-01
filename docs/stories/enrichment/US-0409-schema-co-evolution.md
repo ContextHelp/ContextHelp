@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0409: Schema Co-Evolution per Profile
 
 **System Types:** dpkms (self-hosted), dpkms cloud

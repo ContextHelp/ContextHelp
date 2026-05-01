@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0312: Import Logseq Graph
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

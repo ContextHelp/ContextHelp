@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0062: Manage Secrets via CLI
 
 **System Types:** ctxt

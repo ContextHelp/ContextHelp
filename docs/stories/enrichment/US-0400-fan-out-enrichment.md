@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0400: Fan-Out Enrichment at Ingest
 
 **System Types:** dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0049: Classify Content With Taxonomy
 
 **System Types:** dpkms (self-hosted)

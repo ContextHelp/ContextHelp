@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # Story: Generate Brief from Objects
 
 **System Types:** ctxt

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0202: GitHub Repository and PR Capture
 
 **System Types:** ctxt

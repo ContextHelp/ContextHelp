@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0047: Extract Temporal Information
 
 **System Types:** dpkms (self-hosted)

@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0320: Inline Federation Push During Ingest
 
 **System Types:** dpkms (self-hosted)

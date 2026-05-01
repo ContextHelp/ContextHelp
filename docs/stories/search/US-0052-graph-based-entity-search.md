@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0052: Graph-Based Entity Search
 
 **System Types:** dpkms (self-hosted), dpkms cloud

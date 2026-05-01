@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0035: Migrate Storage Backend
 
 **System Types:** dpkms (self-hosted), dpkms cloud

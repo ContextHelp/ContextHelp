@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0026: Share Composition With Team
 
 **System Types:** ctxt, dpkms cloud

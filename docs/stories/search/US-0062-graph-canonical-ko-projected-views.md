@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0062: Graph-Canonical KO with Projected Document Views
 
 **System Types:** ctxt, dpkms

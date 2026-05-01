@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0056: Compose Decision Timeline
 
 **System Types:** ctxt

@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # Story: Set Reminder on Knowledge Object
 
 **System Types:** ctxt

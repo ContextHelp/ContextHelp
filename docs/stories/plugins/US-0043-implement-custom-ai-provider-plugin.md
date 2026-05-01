@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0043: Implement Custom AI Provider Plugin
 
 **System Types:** dpkms (self-hosted), dpkms cloud

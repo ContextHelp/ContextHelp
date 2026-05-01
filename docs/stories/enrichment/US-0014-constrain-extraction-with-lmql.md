@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0014: Constrain Extraction with LMQL
 
 **System Types:** dpkms (self-hosted)

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0023: Generate Plan From Decisions
 
 **System Types:** ctxt

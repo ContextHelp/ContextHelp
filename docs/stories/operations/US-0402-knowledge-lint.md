@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0402: Knowledge Lint and Health Check
 
 **System Types:** dpkms (self-hosted), dpkms cloud, ctxt

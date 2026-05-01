@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0032: Monitor Job Queue Health
 
 **System Types:** dpkms (self-hosted), dpkms cloud

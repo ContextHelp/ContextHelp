@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0306: Import OneDrive and SharePoint
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

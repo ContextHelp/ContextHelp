@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0012: Generate Summaries And Sections
 
 **System Types:** dpkms (self-hosted), dpkms cloud

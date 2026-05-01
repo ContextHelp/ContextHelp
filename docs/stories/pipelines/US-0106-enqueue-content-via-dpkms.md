@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0106: Enqueue Content via dPKMS
 
 **System Types:** dpkms (self-hosted), dpkms cloud

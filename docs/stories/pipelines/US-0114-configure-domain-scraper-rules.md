@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0114: Configure Domain Scraper Rules
 
 **System Types:** ctxt, dpkms (self-hosted)

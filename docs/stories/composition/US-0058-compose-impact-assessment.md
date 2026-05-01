@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0058: Compose Impact Assessment
 
 **System Types:** ctxt

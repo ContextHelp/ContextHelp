@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0300: Importer Extension Interface
 
 **System Types:** dpkms (self-hosted), dpkms cloud, ctxt

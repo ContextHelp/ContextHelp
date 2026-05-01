@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0019: Federated Registry Search
 
 **System Types:** dpkms (self-hosted), dpkms cloud

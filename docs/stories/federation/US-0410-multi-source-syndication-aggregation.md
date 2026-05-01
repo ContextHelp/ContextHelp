@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0410: Multi-Source Syndication Aggregation with Dual Filter Ownership
 
 **System Types:** dpkms (self-hosted)

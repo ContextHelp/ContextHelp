@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0008: Batch Import from File
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

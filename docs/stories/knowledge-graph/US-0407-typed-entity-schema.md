@@ -1,3 +1,7 @@
+---
+status: shipped-no-e2e
+---
+
 # US-0407: Typed Entity Schema for Mentions
 
 **System Types:** ctxt

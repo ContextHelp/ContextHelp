@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0041: Agent Uses Constrained Enrichment
 
 **System Types:** dpkms (self-hosted), dpkms cloud

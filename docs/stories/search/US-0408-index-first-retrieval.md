@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0408: Index-First Retrieval
 
 **System Types:** dpkms (self-hosted), dpkms cloud, ctxt

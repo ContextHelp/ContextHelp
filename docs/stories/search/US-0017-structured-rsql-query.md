@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0017: Structured RSQL Query
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0201: X/Twitter Profile and Thread Capture
 
 **System Types:** ctxt

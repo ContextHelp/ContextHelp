@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0321: Cardamum Contacts Ingestion Adapter
 
 **System Types:** ctxt

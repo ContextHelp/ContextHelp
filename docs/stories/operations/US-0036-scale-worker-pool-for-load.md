@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0036: Scale Worker Pool for Load
 
 **System Types:** dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # Story: Resurface Knowledge Objects by Profile Relevance
 
 **System Types:** ctxt

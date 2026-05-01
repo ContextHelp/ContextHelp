@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # Story: Natural Language Search
 
 **System Types:** ctxt

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0024: Compose With Graph Traversal
 
 **System Types:** dpkms (self-hosted), dpkms cloud

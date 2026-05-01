@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0034: Export and Backup All Knowledge
 
 **System Types:** dpkms (self-hosted), dpkms cloud

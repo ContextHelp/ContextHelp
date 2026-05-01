@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0406: Associative Object Links
 
 **System Types:** dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0015: Batch Enrichment With Progress
 
 **System Types:** dpkms (self-hosted), dpkms cloud

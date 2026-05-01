@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0200: Browser Cookie Bridge
 
 **System Types:** ctxt

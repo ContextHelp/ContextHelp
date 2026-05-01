@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0322: Backup and Federation Rebuild
 
 **System Types:** dpkms (self-hosted)

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0111: Configure Registry Auto-Update
 
 **System Types:** dpkms (self-hosted), dpkms cloud

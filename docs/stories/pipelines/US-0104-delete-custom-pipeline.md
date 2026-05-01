@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0104: Delete Custom Pipeline
 
 **System Types:** dpkms (self-hosted), dpkms cloud

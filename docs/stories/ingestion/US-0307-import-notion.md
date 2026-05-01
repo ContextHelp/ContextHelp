@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0307: Import Notion Workspace
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

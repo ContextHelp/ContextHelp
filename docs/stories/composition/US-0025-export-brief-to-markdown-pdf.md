@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0025: Export Brief To Markdown PDF
 
 **System Types:** ctxt

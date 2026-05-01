@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0061: Visual Similarity Search
 
 **System Types:** ctxt, dpkms

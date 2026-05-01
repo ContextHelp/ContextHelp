@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0054: Saved Search and Alerts
 
 **System Types:** ctxt

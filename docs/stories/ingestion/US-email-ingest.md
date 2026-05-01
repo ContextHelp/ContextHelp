@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-email-ingest: Import Email Threads from Himalaya
 
 **System Types:** ctxt

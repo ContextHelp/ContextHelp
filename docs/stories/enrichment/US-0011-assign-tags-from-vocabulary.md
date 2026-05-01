@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0011: Assign Tags From Vocabulary
 
 **System Types:** dpkms (self-hosted), dpkms cloud

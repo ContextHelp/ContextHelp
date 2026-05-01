@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0316: Import Twitter/X Archive
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

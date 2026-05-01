@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0005: Video Processing with Scenes
 
 **System Types:** ctxt, dpkms (self-hosted)

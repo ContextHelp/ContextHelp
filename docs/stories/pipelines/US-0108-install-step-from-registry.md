@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0108: Install Step from Registry
 
 **System Types:** dpkms (self-hosted), dpkms cloud

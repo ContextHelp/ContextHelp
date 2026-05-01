@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0408: @meeting.<date-slug> Entity Schema
 
 **System Types:** ctxt

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0309: Import Slack Workspace
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

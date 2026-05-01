@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0010: Extract Decisions And Tasks
 
 **System Types:** dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0059: Compose Recommendation Document
 
 **System Types:** ctxt

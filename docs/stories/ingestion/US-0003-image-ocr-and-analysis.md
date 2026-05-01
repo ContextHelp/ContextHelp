@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0003: Image OCR and Analysis
 
 **System Types:** ctxt, dpkms (self-hosted)

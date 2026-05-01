@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0021: Search with Result Explanation
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

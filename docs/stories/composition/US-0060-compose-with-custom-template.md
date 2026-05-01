@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0060: Compose With Custom Template
 
 **System Types:** ctxt

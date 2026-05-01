@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0042: Implement Custom Enrichment Plugin
 
 **System Types:** dpkms (self-hosted), dpkms cloud

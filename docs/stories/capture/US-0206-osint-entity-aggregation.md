@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0206: OSINT Entity Aggregation
 
 **System Types:** ctxt, dpkms (self-hosted)

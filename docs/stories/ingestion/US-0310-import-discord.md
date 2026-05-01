@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0310: Import Discord Channels
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0207: Browser Tab and Element Capture
 
 **System Types:** ctxt

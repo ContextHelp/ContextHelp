@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0403: Structured Metadata Extraction at Ingest
 
 **System Types:** dpkms (self-hosted), dpkms cloud

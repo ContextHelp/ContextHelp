@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0001: Text Capture with Minimal Friction
 
 **System Types:** ctxt

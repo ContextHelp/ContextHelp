@@ -1,3 +1,7 @@
+---
+status: shipped-no-e2e
+---
+
 # US-0318: Configure Federation Targets
 
 **System Types:** dpkms (self-hosted)

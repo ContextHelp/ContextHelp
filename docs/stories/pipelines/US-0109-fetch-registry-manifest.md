@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0109: Fetch Registry Manifest
 
 **System Types:** dpkms (self-hosted), dpkms cloud

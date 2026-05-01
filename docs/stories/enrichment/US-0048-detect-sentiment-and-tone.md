@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0048: Detect Sentiment And Tone
 
 **System Types:** dpkms (self-hosted)

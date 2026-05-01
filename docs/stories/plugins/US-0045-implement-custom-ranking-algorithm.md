@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0045: Implement Custom Ranking Algorithm
 
 **System Types:** dpkms (self-hosted), dpkms cloud

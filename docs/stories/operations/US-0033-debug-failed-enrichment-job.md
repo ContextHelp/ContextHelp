@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0033: Debug Failed Enrichment Job
 
 **System Types:** dpkms (self-hosted), dpkms cloud

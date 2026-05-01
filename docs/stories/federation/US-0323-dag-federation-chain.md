@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0323: DAG Federation Chain Push
 
 **System Types:** dpkms (self-hosted)

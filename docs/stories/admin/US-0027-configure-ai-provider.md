@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # Story: Configure AI Provider
 
 **System Types:** dpkms (self-hosted), dpkms cloud

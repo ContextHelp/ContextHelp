@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0209: Authenticated Web Content Fetch
 
 **System Types:** ctxt, dpkms (self-hosted)

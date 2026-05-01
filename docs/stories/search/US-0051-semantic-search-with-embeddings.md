@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0051: Semantic Search with Embeddings
 
 **System Types:** dpkms (self-hosted), dpkms cloud

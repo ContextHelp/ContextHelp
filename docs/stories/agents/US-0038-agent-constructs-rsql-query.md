@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # Story: Agent Constructs RSQL Query
 
 **System Types:** dpkms (self-hosted), dpkms cloud

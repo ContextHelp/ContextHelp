@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0101: Create Custom Pipeline
 
 **System Types:** dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-0211: Passive Clipboard Watcher
 
 **System Types:** ctxt

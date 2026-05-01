@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0102: List and Filter Pipelines
 
 **System Types:** dpkms (self-hosted), dpkms cloud

@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0401: Persistent Composed Pages
 
 **System Types:** dpkms (self-hosted), dpkms cloud, ctxt

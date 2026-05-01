@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0205: Wikipedia and Reference Article Capture
 
 **System Types:** ctxt

@@ -1,3 +1,7 @@
+---
+status: paper
+---
+
 # US-contact-scope: Contact-Scoped Knowledge Boundary
 
 **System Types:** ctxt

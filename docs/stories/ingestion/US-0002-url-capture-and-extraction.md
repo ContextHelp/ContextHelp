@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0002: URL Capture and Extraction
 
 **System Types:** ctxt

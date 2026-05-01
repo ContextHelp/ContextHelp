@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0405: Append-Only Knowledge Changelog
 
 **System Types:** dpkms (self-hosted), dpkms cloud, ctxt

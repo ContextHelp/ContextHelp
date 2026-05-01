@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0004: Audio Transcription and Indexing
 
 **System Types:** ctxt, dpkms (self-hosted)

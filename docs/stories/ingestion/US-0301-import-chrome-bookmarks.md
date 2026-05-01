@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0301: Import Chrome Bookmarks
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

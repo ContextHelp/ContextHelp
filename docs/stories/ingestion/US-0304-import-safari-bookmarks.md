@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0304: Import Safari Bookmarks
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

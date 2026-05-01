@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0314: Import Pinboard Bookmarks
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud

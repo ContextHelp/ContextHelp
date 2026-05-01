@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0055: Search History and Recommendations
 
 **System Types:** ctxt

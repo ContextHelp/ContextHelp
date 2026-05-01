@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0112: Configure Sandbox per Pipeline
 
 **System Types:** dpkms (self-hosted), dpkms cloud

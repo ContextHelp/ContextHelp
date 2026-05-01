@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0057: Compose Stakeholder Analysis
 
 **System Types:** ctxt

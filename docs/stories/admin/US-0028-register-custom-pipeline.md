@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0028: Register Custom Pipeline
 
 **System Types:** dpkms (self-hosted), dpkms cloud

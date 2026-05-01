@@ -1,3 +1,7 @@
+---
+status: shipped
+---
+
 # US-0006: Document Parsing and Decomposition
 
 **System Types:** ctxt, dpkms (self-hosted)
