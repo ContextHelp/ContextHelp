@@ -102,6 +102,10 @@ func captureBookmark(t *testing.T, inst *instance, id, contentHash, content stri
 // pushOnce drives one synchronous federation push from src.tgt. This stands
 // in for what the async worker should do on each tick. Tests that need to
 // verify the worker's behavior (not its scheduling) use this directly.
+//
+// Mirrors Worker.tick: lists objects, collects edges touching them, then
+// resolves entities referenced by edges with to_type='entity' (ADR-049
+// mention edges) so the receiver doesn't dangle.
 func pushOnce(t *testing.T, ix instances) error {
 	t.Helper()
 	ctx := context.Background()
@@ -117,16 +121,45 @@ func pushOnce(t *testing.T, ix instances) error {
 	// Collect edges that touch any of the pushed objects.
 	allEdges := []storage.Edge{}
 	for _, o := range objs {
-		from, err := ix.src.drv.Edges().ListFrom(ctx, "object", o.ID)
-		if err != nil {
-			return fmt.Errorf("list edges for %q: %w", o.ID, err)
+		from, ferr := ix.src.drv.Edges().ListFrom(ctx, "object", o.ID)
+		if ferr != nil {
+			return fmt.Errorf("list edges for %q: %w", o.ID, ferr)
 		}
 		for _, e := range from {
 			allEdges = append(allEdges, *e)
 		}
 	}
+	// Resolve entities referenced by mention edges (ADR-049).
+	entities := collectEntitiesForEdges(ctx, ix.src.drv, allEdges)
 	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path)
-	return pusher.Push(ctx, materialized, allEdges)
+	return pusher.Push(ctx, materialized, allEdges, entities)
+}
+
+// collectEntitiesForEdges returns entity rows for edges with to_type='entity'.
+// Mirrors federation.collectEntitiesForEdges (unexported there). Missing
+// entities are silently dropped: a dangling source-side mention is not a
+// federation concern (matches Worker.tick semantics).
+func collectEntitiesForEdges(
+	ctx context.Context,
+	src storage.StorageDriver,
+	edges []storage.Edge,
+) []storage.Entity {
+	seen := map[string]bool{}
+	var ents []storage.Entity
+	store := src.Entities()
+	for i := range edges {
+		e := &edges[i]
+		if e.ToType != "entity" || e.ToID == "" || seen[e.ToID] {
+			continue
+		}
+		seen[e.ToID] = true
+		ent, err := store.Get(ctx, e.ToID)
+		if err != nil || ent == nil {
+			continue
+		}
+		ents = append(ents, *ent)
+	}
+	return ents
 }
 
 // waitForFederation polls the target until obj.ID appears or timeout fires.
