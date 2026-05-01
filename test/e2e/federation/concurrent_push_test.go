@@ -41,12 +41,9 @@ import (
 // "idempotent push" per US-0323). Either way, both pushers must return nil
 // and the target row count must be exactly 5.
 func TestFederation_ConcurrentPush_Idempotent(t *testing.T) {
-	t.Skip("US-0319 dedup-by-content-hash + US-0323 idempotent push are NOT " +
-		"concurrency-safe: LocalPusher uses non-atomic GetByContentHash + " +
-		"Create, so two pushers racing on the same hash both pass the " +
-		"existence check and one hits a UNIQUE constraint failure. Test " +
-		"un-skips when LocalPusher uses INSERT … ON CONFLICT DO NOTHING " +
-		"(or treats UNIQUE collision as no-op).")
+	// T-0189: LocalPusher.Push now treats UNIQUE-constraint collisions
+	// (objects.content_hash + jobs id + edge id) as no-op skips so the
+	// concurrent-pushers race no longer surfaces as an error. Re-enabled.
 	tmp := t.TempDir()
 	srcA := mustOpenInstance(t, "srcA", filepath.Join(tmp, "a.db"))
 	srcB := mustOpenInstance(t, "srcB", filepath.Join(tmp, "b.db"))
