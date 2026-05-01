@@ -147,6 +147,85 @@ func TestLocalPusher_MultipleObjects(t *testing.T) {
 	}
 }
 
+// TestLocalPusher_AdvancesWatermarkAfterCommit verifies AC #3 of US-0319:
+// after a successful Push, the federation_watermarks row at the target DB
+// reflects last_synced_at > epoch. Drives the same code path the async
+// worker invokes (federation.LocalPusher.Push).
+func TestLocalPusher_AdvancesWatermarkAfterCommit(t *testing.T) {
+	_, targetPath := newTestDB(t)
+
+	objects := []storage.KnowledgeObject{
+		makeObject("wm-1", "wm-hash-1"),
+		makeObject("wm-2", "wm-hash-2"),
+		makeObject("wm-3", "wm-hash-3"),
+	}
+	pusher := NewLocalPusher("wm-fed", targetPath)
+
+	before := time.Now().UTC()
+	if err := pusher.Push(context.Background(), objects, nil); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	after := time.Now().UTC()
+
+	// Reopen to read watermark + verify objects landed.
+	drv, err := storageutil.NewDriver("sqlite", targetPath)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer drv.Close(context.Background())
+	if err := drv.Init(context.Background()); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	if n := countObjects(t, drv); n != 3 {
+		t.Errorf("source objects: want 3 at target, got %d", n)
+	}
+
+	got, err := drv.Watermarks().GetWatermark(context.Background(), "wm-fed")
+	if err != nil {
+		t.Fatalf("GetWatermark: %v", err)
+	}
+	epoch := time.Unix(0, 0).UTC()
+	if !got.After(epoch) {
+		t.Errorf("watermark not advanced: got %v, want > epoch", got)
+	}
+	// Sanity: watermark sits within the call's wall-clock window (small slack).
+	if got.Before(before.Add(-time.Second)) || got.After(after.Add(time.Second)) {
+		t.Errorf("watermark outside call window: got %v, before=%v after=%v",
+			got, before, after)
+	}
+}
+
+// TestLocalPusher_NoObjectsLeavesWatermarkUntouched verifies AC #7 of US-0319:
+// "Zero objects since last watermark → tick is a no-op (no DB writes,
+// no error)." The watermark MUST NOT advance when there is nothing to push.
+func TestLocalPusher_NoObjectsLeavesWatermarkUntouched(t *testing.T) {
+	_, targetPath := newTestDB(t)
+
+	pusher := NewLocalPusher("noop-fed", targetPath)
+	if err := pusher.Push(context.Background(), nil, nil); err != nil {
+		t.Fatalf("Push on empty: %v", err)
+	}
+
+	drv, err := storageutil.NewDriver("sqlite", targetPath)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer drv.Close(context.Background())
+	if err := drv.Init(context.Background()); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	got, err := drv.Watermarks().GetWatermark(context.Background(), "noop-fed")
+	if err != nil {
+		t.Fatalf("GetWatermark: %v", err)
+	}
+	epoch := time.Unix(0, 0).UTC()
+	if !got.Equal(epoch) {
+		t.Errorf("no-op tick advanced watermark: got %v, want epoch", got)
+	}
+}
+
 // TestLocalPusher_EdgesTravelWithObjects verifies edges are inserted alongside their objects.
 func TestLocalPusher_EdgesTravelWithObjects(t *testing.T) {
 	_, targetPath := newTestDB(t)

@@ -3,6 +3,7 @@ package federation
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -27,7 +28,19 @@ func (p *LocalPusher) Name() string { return p.name }
 // Push upserts objects and their edges into the target SQLite database.
 // Objects with a matching ContentHash at the target are skipped (idempotent).
 // Edges are inserted only for objects that were newly created.
+// On a successful non-empty batch, the federation_watermarks row at the
+// target is advanced to time.Now() (US-0319 AC #3). Empty batches are a
+// no-op: no writes, no watermark advance (US-0319 AC #7).
+//
+// The watermark is written as the last step after all objects + edges have
+// been committed. If any per-object/per-edge call returns an error the
+// function returns early and the watermark is left untouched, so the next
+// tick re-pushes the failed batch (US-0319 AC #4 crash recovery).
 func (p *LocalPusher) Push(ctx context.Context, objects []storage.KnowledgeObject, edges []storage.Edge) error {
+	if len(objects) == 0 {
+		return nil
+	}
+
 	drv, err := storageutil.NewDriver("sqlite", p.targetPath)
 	if err != nil {
 		return fmt.Errorf("federation local push: open target %q: %w", p.targetPath, err)
@@ -67,6 +80,12 @@ func (p *LocalPusher) Push(ctx context.Context, objects []storage.KnowledgeObjec
 			}
 			insertedEdges[e.ID] = true
 		}
+	}
+
+	// Advance watermark only after the batch has fully committed. If any
+	// upsert above failed we returned early — watermark stays at last value.
+	if err := drv.Watermarks().SetWatermark(ctx, p.name, time.Now().UTC()); err != nil {
+		return fmt.Errorf("federation local push: advance watermark for %q: %w", p.name, err)
 	}
 	return nil
 }
