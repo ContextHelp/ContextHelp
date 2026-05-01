@@ -358,3 +358,39 @@ func TestLocalPusher_EdgesTravelWithObjects(t *testing.T) {
 		t.Errorf("edge ID: got %q, want %q", edges[0].ID, "edge-xy")
 	}
 }
+
+// TestLocalPusher_FileURLPrefixStripped verifies T-0187: when a federation
+// target URL is configured as `file:///abs/path/to/db.sqlite`, the LocalPusher
+// strips the `file://` prefix before opening the SQLite driver. Without the
+// strip, the SQLite driver receives a literal `file:///…` path and fails with
+// "no such file or directory" because it does not unwrap the URI scheme.
+func TestLocalPusher_FileURLPrefixStripped(t *testing.T) {
+	dir := t.TempDir()
+	absPath := filepath.Join(dir, "fileurl.sqlite")
+	target := "file://" + absPath
+
+	obj := makeObject("obj-fileurl", "hash-fileurl")
+	pusher := NewLocalPusher("file-url-fed", target)
+
+	if err := pusher.Push(context.Background(), []storage.KnowledgeObject{obj}, nil, nil); err != nil {
+		t.Fatalf("Push with file:// URL: %v", err)
+	}
+
+	// Reopen using bare absolute path to verify object landed.
+	drv, err := storageutil.NewDriver("sqlite", absPath)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer drv.Close(context.Background())
+	if err := drv.Init(context.Background()); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	got, err := drv.Objects().Get(context.Background(), "obj-fileurl")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got == nil || got.ContentHash != "hash-fileurl" {
+		t.Errorf("object did not round-trip via file:// URL target")
+	}
+}

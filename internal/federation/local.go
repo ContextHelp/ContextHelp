@@ -49,14 +49,23 @@ func (p *LocalPusher) Push(
 		return nil
 	}
 
-	drv, err := storageutil.NewDriver("sqlite", p.targetPath)
+	// T-0187: federation entries may declare targets as file:// URIs.
+	// SQLite driver expects a bare filesystem path; canonicalPath strips
+	// the scheme + resolves the absolute path (same helper used by
+	// detectCycles in worker.go).
+	targetPath, err := canonicalPath(p.targetPath)
 	if err != nil {
-		return fmt.Errorf("federation local push: open target %q: %w", p.targetPath, err)
+		return fmt.Errorf("federation local push: resolve target %q: %w", p.targetPath, err)
+	}
+
+	drv, err := storageutil.NewDriver("sqlite", targetPath)
+	if err != nil {
+		return fmt.Errorf("federation local push: open target %q: %w", targetPath, err)
 	}
 	defer drv.Close(ctx)
 
 	if err := drv.Init(ctx); err != nil {
-		return fmt.Errorf("federation local push: init target %q: %w", p.targetPath, err)
+		return fmt.Errorf("federation local push: init target %q: %w", targetPath, err)
 	}
 
 	objs := drv.Objects()
