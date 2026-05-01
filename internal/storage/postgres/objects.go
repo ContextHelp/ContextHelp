@@ -134,6 +134,18 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		args = append(args, filter.Tag)
 		idx++
 	}
+	if filter.Mention != "" {
+		// mentions column stores a JSONB array of canonical ctxt:// URI strings.
+		// Parse input to canonical URI to accept either @ns.slug or ctxt:// form.
+		if u, ok := mentions.Parse(filter.Mention); ok {
+			conditions = append(conditions, fmt.Sprintf(
+				`EXISTS (SELECT 1 FROM jsonb_array_elements_text(mentions) AS m WHERE m = $%d)`, idx))
+			args = append(args, u.String())
+			idx++
+		} else {
+			conditions = append(conditions, "1 = 0")
+		}
+	}
 	if filter.After != nil {
 		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", idx))
 		args = append(args, filter.After.UTC())

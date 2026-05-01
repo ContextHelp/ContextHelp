@@ -209,6 +209,17 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		conditions = append(conditions, "EXISTS (SELECT 1 FROM json_each(tags) WHERE json_each.value->>'label' = ?)")
 		args = append(args, filter.Tag)
 	}
+	if filter.Mention != "" {
+		// mentions column stores a JSON array of canonical ctxt:// URI strings.
+		// Accept either input form (@ns.slug or ctxt://entity/...) by parsing
+		// to the canonical URI and matching against json_each.value.
+		if u, ok := mentions.Parse(filter.Mention); ok {
+			conditions = append(conditions, "EXISTS (SELECT 1 FROM json_each(mentions) WHERE json_each.value = ?)")
+			args = append(args, u.String())
+		} else {
+			conditions = append(conditions, "1 = 0")
+		}
+	}
 	if filter.ProfileID != "" {
 		conditions = append(conditions, "profile_id = ?")
 		args = append(args, filter.ProfileID)
