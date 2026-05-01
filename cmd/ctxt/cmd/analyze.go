@@ -7,6 +7,7 @@ import (
 	"io"
 	gohttp "net/http"
 	"os"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/spf13/cobra"
@@ -153,6 +154,15 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 
 	sourceKey := flagString(cmd, "source-key", "analyze.source_key")
 
+	// T-0190: ship `--mentions "@client.acme @project.foo"` through to the
+	// server so user-asserted mentions become real edges + entity rows
+	// (handled by service.Analyze + jobs/worker.go).
+	mentionsFlag := flagString(cmd, "mentions", "analyze.mentions")
+	var userMentions []string
+	if mentionsFlag != "" {
+		userMentions = strings.Fields(mentionsFlag)
+	}
+
 	// Use actual source value; "argument"/"stdin"/"clipboard"/"file" are not
 	// fetchable URLs — downstream steps (url_fetcher) must validate before use.
 	reqSource := source
@@ -167,6 +177,9 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		"no_fanout":  noFanout,
 		"force":      noDedup,
 		"source_key": sourceKey,
+	}
+	if len(userMentions) > 0 {
+		reqBody["mentions"] = userMentions
 	}
 
 	body, err := json.Marshal(reqBody)

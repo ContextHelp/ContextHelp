@@ -265,6 +265,33 @@ func (d *Driver) Migrate(ctx context.Context) error {
 	if err := migrateGraphCanonical(ctx, d.db); err != nil {
 		return fmt.Errorf("graph canonical migration: %w", err)
 	}
+	// Jobs.user_mentions column for `ctxt analyze --mentions` (T-0190).
+	if err := migrateJobsUserMentions(ctx, d.db); err != nil {
+		return fmt.Errorf("jobs.user_mentions migration: %w", err)
+	}
+	return nil
+}
+
+// migrateJobsUserMentions adds user_mentions TEXT column to jobs. Idempotent
+// via information_schema check so re-running on upgraded DBs is a no-op.
+func migrateJobsUserMentions(ctx context.Context, db *sql.DB) error {
+	var exists bool
+	err := db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'jobs' AND column_name = 'user_mentions'
+		)
+	`).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("check user_mentions column: %w", err)
+	}
+	if exists {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE jobs ADD COLUMN user_mentions TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("add user_mentions column: %w", err)
+	}
 	return nil
 }
 

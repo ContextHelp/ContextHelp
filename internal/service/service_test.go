@@ -855,3 +855,76 @@ func TestTriageInboxUsesSourceForPipelineDetection(t *testing.T) {
 	assert.Equal(t, "drop.file", job.Pipeline,
 		"TriageInbox must route by object.Source, not raw content")
 }
+
+// TestAnalyze_HonorsExplicitMentions verifies T-0190: caller-supplied
+// `--mentions "@client.acme @project.foo"` round-trips through analyze and
+// becomes mention edges + thin entity rows, regardless of whether auto
+// extraction would also have surfaced those slugs from text. The Raw path
+// is the directly-observable surface (writes happen synchronously without
+// the worker pool), so we drive that path here.
+func TestAnalyze_HonorsExplicitMentions(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	objID, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content:  "this is plain content with no @-mentions inline",
+		Type:     "text",
+		Source:   "test",
+		Raw:      true,
+		Mentions: []string{"@client.acme", "@project.foo"},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, objID)
+
+	// Object lands with the URI-form Mentions populated.
+	obj, err := svc.GetObject(ctx, objID)
+	require.NoError(t, err)
+	require.NotNil(t, obj)
+	assert.Len(t, obj.Mentions, 2,
+		"caller-asserted mentions must be persisted on the object")
+
+	// Two thin entity rows exist for the asserted slugs.
+	for _, slug := range []string{"client/acme", "project/foo"} {
+		ent, err := svc.Store.Entities().Get(ctx, slug)
+		require.NoError(t, err, "Entities.Get(%q)", slug)
+		require.NotNil(t, ent, "entity %q must exist after analyze --mentions", slug)
+		assert.Equal(t, storage.ContentStatusThin, ent.ContentStatus,
+			"caller-asserted mentions create thin entities (full record may exist later)")
+	}
+
+	// Two object→entity 'mentions' edges exist, one per slug.
+	edges, err := svc.Store.Edges().ListFrom(ctx, "object", objID)
+	require.NoError(t, err)
+	mentionTargets := map[string]bool{}
+	for _, e := range edges {
+		if e.EdgeType == "mentions" && e.ToType == "entity" {
+			mentionTargets[e.ToID] = true
+		}
+	}
+	for _, slug := range []string{"client/acme", "project/foo"} {
+		assert.True(t, mentionTargets[slug],
+			"mention edge for %q must exist after analyze --mentions", slug)
+	}
+}
+
+// TestAnalyze_PipelineModePersistsUserMentions verifies the pipeline path:
+// caller-asserted mentions ride along on Job.UserMentions through the queue
+// so the worker can pre-populate draft.Mentions before entity_extractor runs.
+func TestAnalyze_PipelineModePersistsUserMentions(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	jobID, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content:  "no inline @mentions here either",
+		Type:     "text",
+		Source:   "test",
+		Mentions: []string{"@client.acme"},
+	})
+	require.NoError(t, err)
+
+	job, err := svc.GetJob(ctx, jobID)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	assert.Equal(t, []string{"@client.acme"}, job.UserMentions,
+		"Job.UserMentions must round-trip from request to DB")
+}

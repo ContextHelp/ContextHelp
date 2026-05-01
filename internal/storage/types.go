@@ -147,6 +147,12 @@ type Job struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 	StartedAt   *time.Time `json:"started_at,omitempty"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	// UserMentions are caller-asserted @namespace.slug mentions passed
+	// alongside the analyze request (e.g. `ctxt analyze --mentions
+	// "@client.acme"`). The pipeline merges these with auto-extracted
+	// mentions before writing edges (T-0190). Stored on disk as a
+	// JSON-encoded string array via the user_mentions column.
+	UserMentions []string `json:"user_mentions,omitempty"`
 }
 
 // JobFilter specifies criteria for listing jobs.

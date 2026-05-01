@@ -22,6 +22,11 @@ type AnalyzeRequest struct {
 	NoFanout    bool   `json:"no_fanout,omitempty"`    // skip post-ingest fan-out enrichment
 	SourceKey   string `json:"source_key,omitempty"`   // external dedup key (Slack ts, tweet ID, etc.)
 	Force       bool   `json:"force,omitempty"`        // bypass duplicate detection
+	// Mentions are caller-asserted @namespace.slug strings (T-0190). They
+	// are merged with auto-extracted mentions during pipeline execution and
+	// become real mention edges + thin entity rows. Caller-supplied wins on
+	// conflict — the merge step dedupes by slug.
+	Mentions []string `json:"mentions,omitempty"`
 }
 
 // CreatePipelineRequest represents a request to create a custom pipeline.

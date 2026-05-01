@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -14,12 +15,14 @@ import (
 func (s *JobStore) Create(ctx context.Context, job *storage.Job) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO jobs (
 		id, type, status, payload, pipeline, source, result_id, error,
-		retry_count, max_retries, created_at, updated_at, started_at, completed_at
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
+		user_mentions
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
 		job.ID, job.Type, string(job.Status), job.Payload, job.Pipeline, job.Source,
 		job.ResultID, job.Error, job.RetryCount, job.MaxRetries,
 		job.CreatedAt.UTC(), job.UpdatedAt.UTC(),
 		nullableTime(job.StartedAt), nullableTime(job.CompletedAt),
+		encodeUserMentions(job.UserMentions),
 	)
 	if err != nil {
 		return fmt.Errorf("create job: %w", err)
@@ -27,10 +30,34 @@ func (s *JobStore) Create(ctx context.Context, job *storage.Job) error {
 	return nil
 }
 
+// encodeUserMentions marshals caller-asserted mentions to JSON for the
+// user_mentions column. Empty slice → empty string (DB default).
+func encodeUserMentions(m []string) string {
+	if len(m) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(m)
+	return string(b)
+}
+
+// decodeUserMentions parses the user_mentions column back to a slice. Empty
+// or invalid JSON → nil.
+func decodeUserMentions(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(s), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
 func (s *JobStore) Get(ctx context.Context, id string) (*storage.Job, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT
 		id, type, status, payload, pipeline, source, result_id, error,
-		retry_count, max_retries, created_at, updated_at, started_at, completed_at
+		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
+		user_mentions
 	FROM jobs WHERE id = $1`, id)
 	return scanJob(row)
 }
@@ -63,7 +90,8 @@ func (s *JobStore) List(ctx context.Context, filter storage.JobFilter) ([]*stora
 
 	query := `SELECT
 		id, type, status, payload, pipeline, source, result_id, error,
-		retry_count, max_retries, created_at, updated_at, started_at, completed_at
+		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
+		user_mentions
 	FROM jobs ` + where + " ORDER BY created_at DESC"
 
 	if filter.Limit > 0 {
@@ -99,7 +127,8 @@ func (s *JobStore) AcquireNext(ctx context.Context) (*storage.Job, error) {
 		SELECT id FROM jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
 	)
 	RETURNING id, type, status, payload, pipeline, source, result_id, error,
-		retry_count, max_retries, created_at, updated_at, started_at, completed_at`, now)
+		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
+		user_mentions`, now)
 
 	j, err := scanJob(row)
 	if err != nil {
@@ -190,10 +219,11 @@ func scanJob(row *sql.Row) (*storage.Job, error) {
 	var j storage.Job
 	var status string
 	var startedAt, completedAt sql.NullTime
+	var userMentions sql.NullString
 
 	err := row.Scan(&j.ID, &j.Type, &status, &j.Payload, &j.Pipeline, &j.Source,
 		&j.ResultID, &j.Error, &j.RetryCount, &j.MaxRetries,
-		&j.CreatedAt, &j.UpdatedAt, &startedAt, &completedAt)
+		&j.CreatedAt, &j.UpdatedAt, &startedAt, &completedAt, &userMentions)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, sql.ErrNoRows
@@ -209,6 +239,9 @@ func scanJob(row *sql.Row) (*storage.Job, error) {
 		t := completedAt.Time
 		j.CompletedAt = &t
 	}
+	if userMentions.Valid {
+		j.UserMentions = decodeUserMentions(userMentions.String)
+	}
 	return &j, nil
 }
 
@@ -216,10 +249,11 @@ func scanJobRow(rows *sql.Rows) (*storage.Job, error) {
 	var j storage.Job
 	var status string
 	var startedAt, completedAt sql.NullTime
+	var userMentions sql.NullString
 
 	err := rows.Scan(&j.ID, &j.Type, &status, &j.Payload, &j.Pipeline, &j.Source,
 		&j.ResultID, &j.Error, &j.RetryCount, &j.MaxRetries,
-		&j.CreatedAt, &j.UpdatedAt, &startedAt, &completedAt)
+		&j.CreatedAt, &j.UpdatedAt, &startedAt, &completedAt, &userMentions)
 	if err != nil {
 		return nil, fmt.Errorf("scan job row: %w", err)
 	}
@@ -231,6 +265,9 @@ func scanJobRow(rows *sql.Rows) (*storage.Job, error) {
 	if completedAt.Valid {
 		t := completedAt.Time
 		j.CompletedAt = &t
+	}
+	if userMentions.Valid {
+		j.UserMentions = decodeUserMentions(userMentions.String)
 	}
 	return &j, nil
 }

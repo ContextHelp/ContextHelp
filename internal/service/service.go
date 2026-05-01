@@ -30,6 +30,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"hop.top/uri"
 )
 
 // Service coordinates all business operations.
@@ -100,9 +101,16 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 			Status:      "raw",
 			CreatedAt:   now,
 			UpdatedAt:   now,
+			Mentions:    mentions.ParseSlice(req.Mentions),
 		}
 		if err := s.Store.Objects().Create(ctx, obj); err != nil {
 			return "", fmt.Errorf("analyze raw: store: %w", err)
+		}
+		// T-0190: caller-asserted mentions become thin entity rows + mention
+		// edges even on the raw path so partitioning by @client/@project
+		// works without the pipeline running.
+		if err := s.writeUserMentionEdges(ctx, obj.ID, obj.Mentions); err != nil {
+			return "", fmt.Errorf("analyze raw: user mentions: %w", err)
 		}
 		if ev, err := events.NewEvent("service.analyze", "object.raw_stored", obj); err == nil {
 			_ = s.Bus.Publish(ctx, ev)
@@ -149,15 +157,16 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	}
 
 	job := &storage.Job{
-		ID:         uuid.New().String(),
-		Type:       jobType,
-		Status:     storage.JobPending,
-		Payload:    req.Content,
-		Pipeline:   pipelineName,
-		Source:     jobSource,
-		MaxRetries: 3,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:           uuid.New().String(),
+		Type:         jobType,
+		Status:       storage.JobPending,
+		Payload:      req.Content,
+		Pipeline:     pipelineName,
+		Source:       jobSource,
+		MaxRetries:   3,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		UserMentions: req.Mentions, // T-0190: forwarded to draft.Mentions in worker.
 	}
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
@@ -167,6 +176,79 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		_ = s.Bus.Publish(ctx, ev)
 	}
 	return job.ID, nil
+}
+
+// writeUserMentionEdges persists thin entity rows + object→entity 'mentions'
+// edges for caller-asserted mentions (T-0190). Mirrors the entity_resolver
+// pipeline step but runs at analyze-time so even Raw-mode and pipeline-mode
+// captures land partitioning data uniformly. Idempotent: thin upsert on
+// entities + UNIQUE-tolerant edge insert.
+func (s *Service) writeUserMentionEdges(
+	ctx context.Context,
+	objectID string,
+	uris []uri.URI,
+) error {
+	if len(uris) == 0 || objectID == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	for i := range uris {
+		slug := mentionURISlug(&uris[i])
+		if slug == "" {
+			continue
+		}
+		ns := strings.SplitN(slug, "/", 2)[0]
+		entity := &storage.Entity{
+			Slug:          slug,
+			Title:         humanizeSlug(slug),
+			Namespace:     ns,
+			ContentStatus: storage.ContentStatusThin,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		}
+		if err := s.Store.Entities().UpsertThin(ctx, entity); err != nil {
+			return fmt.Errorf("upsert thin entity %q: %w", slug, err)
+		}
+		edge := &storage.Edge{
+			ID:        uuid.NewString(),
+			FromType:  "object",
+			FromID:    objectID,
+			ToType:    "entity",
+			ToID:      slug,
+			EdgeType:  "mentions",
+			Weight:    1.0,
+			CreatedAt: now,
+		}
+		if err := s.Store.Edges().Create(ctx, edge); err != nil {
+			// UNIQUE collision (parallel worker, retry path): non-fatal.
+			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+				continue
+			}
+			return fmt.Errorf("create user-mention edge for %q: %w", slug, err)
+		}
+	}
+	return nil
+}
+
+// mentionURISlug extracts the entity slug from a ctxt://entity/<slug> URI.
+// Returns "" for non-entity URIs.
+func mentionURISlug(u *uri.URI) string {
+	s := u.String()
+	const prefix = "ctxt://entity/"
+	if !strings.HasPrefix(s, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(s, prefix)
+}
+
+// humanizeSlug derives a display title from a namespace/slug path: takes the
+// last segment, replaces dashes/underscores with spaces.
+func humanizeSlug(slug string) string {
+	parts := strings.Split(slug, "/")
+	last := parts[len(parts)-1]
+	last = strings.ReplaceAll(last, "-", " ")
+	last = strings.ReplaceAll(last, "_", " ")
+	return last
 }
 
 // GetObject retrieves a knowledge object by ID.

@@ -48,6 +48,24 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 	seen := make(map[string]bool)
 	var slugs []string
 
+	// 0. T-0190: caller-asserted mentions (e.g. `ctxt analyze --mentions
+	//    "@client.acme"`) are pre-populated on draft.Mentions by the worker
+	//    before the pipeline runs. Seed `seen` with their slugs so steps 1+2
+	//    don't double-insert when the same slug is also detected from text.
+	//    Caller-supplied wins on conflict.
+	for _, u := range draft.Mentions {
+		s := u.String()
+		const prefix = "ctxt://entity/"
+		if !strings.HasPrefix(s, prefix) {
+			continue
+		}
+		// Convert path form (namespace/slug) back to dot form (namespace.slug)
+		// so it dedupes with regex matches that produce dotted slugs.
+		slug := strings.TrimPrefix(s, prefix)
+		dotted := strings.ReplaceAll(slug, "/", ".")
+		seen[dotted] = true
+	}
+
 	// 1. Heuristic: scan for literal @namespace.slug tokens.
 	for _, m := range mentionRe.FindAllStringSubmatch(draft.RawContent, -1) {
 		slug := m[1] // capture group 1: namespace.slug without leading @
@@ -81,7 +99,9 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 		// On LLM failure, fall back to heuristic slugs already collected.
 	}
 
-	draft.Mentions = mentions.ParseSlice(slugs)
+	// Merge: keep caller-asserted mentions (already on draft.Mentions) and
+	// append the text-extracted ones. Order: user-asserted first.
+	draft.Mentions = append(draft.Mentions, mentions.ParseSlice(slugs)...)
 
 	// Intra-object graph: one NodeTypeEntityMention node per mention with an
 	// EdgeTypeReferences edge pointing to the entity URI.

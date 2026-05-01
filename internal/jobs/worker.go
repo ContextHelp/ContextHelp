@@ -14,10 +14,22 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
+	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"hop.top/uri"
 )
+
+// parseUserMentions converts caller-asserted @namespace.slug strings (T-0190)
+// to the URI form draft.Mentions expects. Empty / unparseable tokens are
+// silently dropped — the user's free-form input shouldn't kill the job.
+func parseUserMentions(raw []string) []uri.URI {
+	if len(raw) == 0 {
+		return nil
+	}
+	return mentions.ParseSlice(raw)
+}
 
 // FanOutFunc is called after a successful ingest with the new object ID.
 // It runs fan-out enrichment (cross-reference edges, audit log).
@@ -144,6 +156,10 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 		Pipeline:   job.Pipeline,
 		Source:     job.Source,
 		CreatedAt:  time.Now(),
+		// T-0190: caller-asserted mentions (`ctxt analyze --mentions`) start
+		// life on the draft so entity_extractor's text-scan can merge with
+		// them by slug instead of overwriting them.
+		Mentions: parseUserMentions(job.UserMentions),
 	}
 
 	draft, err = p.runSteps(ctx, pipe, draft)

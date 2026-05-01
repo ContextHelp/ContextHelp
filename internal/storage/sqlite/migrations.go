@@ -87,6 +87,9 @@ var migration025 string
 //go:embed migrations/026_source_key.sql
 var migration026 string
 
+//go:embed migrations/027_jobs_user_mentions.sql
+var migration027 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -139,6 +142,9 @@ var migrations = []migration{
 	{Version: 25, SQL: migration025},
 	// Migration 026: source_key column for external dedup key (Slack ts, tweet ID, etc.).
 	{Version: 26, SQL: migration026},
+	// Migration 027: user_mentions column on jobs for `ctxt analyze --mentions` (T-0190).
+	// Plain SQL is safe — column did not exist in any prior schema version.
+	{Version: 27, SQL: migration027},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
