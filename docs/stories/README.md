@@ -4,6 +4,8 @@ This directory contains detailed user stories organized by workflow and linkable
 
 All stories use **US-XXXX** numbering (e.g., US-0001, US-0002) for easy reference and filename compatibility.
 
+Authoring convention: see [Story → e2e test linkage](../conventions/stories.md).
+
 ---
 
 ## System Types
