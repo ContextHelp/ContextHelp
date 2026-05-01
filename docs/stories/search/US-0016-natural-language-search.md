@@ -296,4 +296,6 @@ message RankExplanation {
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0016_nlq_search_test.go::TestUS0016_NLQSearchReturnsMatchingObjects`
+- `test/integration/us0016_nlq_search_test.go::TestUS0016_NLQSearchViaHTTPReturnsResults`
+- `test/integration/us0016_nlq_search_test.go::TestUS0016_NLQNoResults`

@@ -148,4 +148,7 @@ DELETE /compositions/{id}/shares/{share_id}
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0026_share_composition_test.go::TestUS0026_ShareEventRecordedOnBus`
+- `test/integration/us0026_share_composition_test.go::TestUS0026_CompositionObjectAccessibleAfterIngest`
+- `test/integration/us0026_share_composition_test.go::TestUS0026_MultipleObjectsComposedAndAccessible`
+- `test/integration/us0026_share_composition_test.go::TestUS0026_ShareLinkContainsObjectReference`

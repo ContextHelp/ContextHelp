@@ -94,4 +94,9 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0313_evernote_test.go::TestUS0313_EvernoteParseENEXFile`
+- `test/integration/us0313_evernote_test.go::TestUS0313_EvernoteNoteFields`
+- `test/integration/us0313_evernote_test.go::TestUS0313_EvernoteTagsExtracted`
+- `test/integration/us0313_evernote_test.go::TestUS0313_EvernoteSourceURL`
+- `test/integration/us0313_evernote_test.go::TestUS0313_EvernoteRenderContent`
+- `test/integration/us0313_evernote_test.go::TestUS0313_EvernoteParseFromBytes`

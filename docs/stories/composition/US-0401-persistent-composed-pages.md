@@ -118,3 +118,12 @@ new_object ingested
 - US-0022: Generate brief from objects (ephemeral predecessor)
 - US-0406: Knowledge lint and health check
 - US-0402: Index-first retrieval
+
+---
+
+## E2E Tests
+
+- `test/integration/us0401_persistent_pages_test.go::TestUS0401_IngestCreatesEntityPage`
+- `test/integration/us0401_persistent_pages_test.go::TestUS0401_IncrementalUpdate`
+- `test/integration/us0401_persistent_pages_test.go::TestUS0401_PageSearchable`
+- `test/integration/us0401_persistent_pages_test.go::TestUS0401_RevisionLogShowsAllUpdates`

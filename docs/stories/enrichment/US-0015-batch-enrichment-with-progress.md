@@ -135,4 +135,8 @@ GET /enrich/batch/{batch_job_id}/progress
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0015_batch_enrichment_test.go::TestUS0015_NObjectsEnqueuedAndAllComplete`
+- `test/integration/us0015_batch_enrichment_test.go::TestUS0015_AllEnrichedObjectsHaveEnrichmentMetadata`
+- `test/integration/us0015_batch_enrichment_test.go::TestUS0015_DistinctObjectIDsForBatchItems`
+- `test/integration/us0015_batch_enrichment_test.go::TestUS0015_JobsProcessedIndependently`
+- `test/integration/us0015_batch_enrichment_test.go::TestUS0015_BatchProgressCountsConsistent`

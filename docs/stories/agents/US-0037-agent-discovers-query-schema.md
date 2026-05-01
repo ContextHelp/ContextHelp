@@ -401,4 +401,11 @@ def get_schema_cached(api_url):
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0037_agent_schema_test.go::TestUS0037_QuerySchemaEndpointReturns200`
+- `test/integration/us0037_agent_schema_test.go::TestUS0037_QuerySchemaContentTypeIsJSON`
+- `test/integration/us0037_agent_schema_test.go::TestUS0037_QuerySchemaHasVersionField`
+- `test/integration/us0037_agent_schema_test.go::TestUS0037_QuerySchemaHasRequiredProperties`
+- `test/integration/us0037_agent_schema_test.go::TestUS0037_QuerySchemaHasAllOperators`
+- `test/integration/us0037_agent_schema_test.go::TestUS0037_QuerySchemaHasConstraints`
+- `test/integration/us0037_agent_schema_test.go::TestUS0037_QuerySchemaRespondsWithinTimeout`
+- `test/integration/us0037_agent_schema_test.go::TestUS0037_SearchEndpointAcceptsRSQLQuery`

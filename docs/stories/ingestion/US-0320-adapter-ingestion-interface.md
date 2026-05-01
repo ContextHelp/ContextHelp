@@ -63,6 +63,13 @@ The adapter contract:
 
 ---
 
+## E2E Tests
+
+- planned: `test/integration/us0320_adapter_ingestion_test.go::TestAdapterIngest_RegistersAdapter`
+- planned: `test/integration/us0320_adapter_ingestion_test.go::TestAdapterIngest_RoutesObjectByMime`
+- planned: `test/integration/us0320_adapter_ingestion_test.go::TestAdapterIngest_ProvenanceRecorded`
+- planned: `test/integration/us0320_adapter_ingestion_test.go::TestAdapterIngest_AdapterFailureBackoff`
+
 ## Personas
 
 - [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)

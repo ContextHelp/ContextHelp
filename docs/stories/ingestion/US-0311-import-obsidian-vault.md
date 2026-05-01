@@ -94,4 +94,9 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0311_obsidian_test.go::TestUS0311_ObsidianWalkVault`
+- `test/integration/us0311_obsidian_test.go::TestUS0311_ObsidianNoteFields`
+- `test/integration/us0311_obsidian_test.go::TestUS0311_ObsidianFrontmatterParsed`
+- `test/integration/us0311_obsidian_test.go::TestUS0311_ObsidianTagsExtracted`
+- `test/integration/us0311_obsidian_test.go::TestUS0311_ObsidianWikilinksExtracted`
+- `test/integration/us0311_obsidian_test.go::TestUS0311_ObsidianRenderContent`

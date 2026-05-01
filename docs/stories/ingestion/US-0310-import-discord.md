@@ -95,4 +95,11 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0310_discord_test.go::TestUS0310_DiscordParseExportFile`
+- `test/integration/us0310_discord_test.go::TestUS0310_DiscordMessageFields`
+- `test/integration/us0310_discord_test.go::TestUS0310_DiscordSourceAttribution`
+- `test/integration/us0310_discord_test.go::TestUS0310_DiscordReactionsExtracted`
+- `test/integration/us0310_discord_test.go::TestUS0310_DiscordAttachmentsExtracted`
+- `test/integration/us0310_discord_test.go::TestUS0310_DiscordReplyReferenceExtracted`
+- `test/integration/us0310_discord_test.go::TestUS0310_DiscordRenderContent`
+- `test/integration/us0310_discord_test.go::TestUS0310_DiscordParseExportBytes`

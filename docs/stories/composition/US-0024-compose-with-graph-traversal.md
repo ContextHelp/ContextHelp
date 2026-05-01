@@ -143,4 +143,7 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0024_graph_compose_test.go::TestUS0024_GraphEdgesCreatedForMentions`
+- `test/integration/us0024_graph_compose_test.go::TestUS0024_GraphTraversalDepth1ReturnsDirectNeighbors`
+- `test/integration/us0024_graph_compose_test.go::TestUS0024_GraphCompositionIncludesRelatedObjects`
+- `test/integration/us0024_graph_compose_test.go::TestUS0024_GraphBacklinksReachable`

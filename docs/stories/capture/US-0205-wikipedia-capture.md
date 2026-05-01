@@ -669,4 +669,5 @@ wikipedia:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0205_wikipedia_capture_test.go::TestUS0205_TitleSummaryStored`
+- `test/integration/us0205_wikipedia_capture_test.go::TestUS0205_InfoboxEntitiesExtracted`

@@ -345,4 +345,7 @@ ch_fallback_success_rate{from="lmql",to="instructor"}
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0014_lmql_extraction_test.go::TestUS0014_LMQLExtractedEntitiesConformToNamespaceSlugFormat`
+- `test/integration/us0014_lmql_extraction_test.go::TestUS0014_LMQLConstraintFiltersInvalidSlugs`
+- `test/integration/us0014_lmql_extraction_test.go::TestUS0014_LMQLTagConstraintEnforcesVocabulary`
+- `test/integration/us0014_lmql_extraction_test.go::TestUS0014_ExtractionProviderRecordedInMetadata`

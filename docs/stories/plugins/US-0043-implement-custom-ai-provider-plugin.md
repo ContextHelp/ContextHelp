@@ -184,4 +184,7 @@ pipelines:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0043_ai_provider_plugin_test.go::TestUS0043_PluginInitReadsConfig`
+- `test/integration/us0043_ai_provider_plugin_test.go::TestUS0043_StubResponsesStoredCorrectly`
+- `test/integration/us0043_ai_provider_plugin_test.go::TestUS0043_TwoAIPluginsNoConflict`
+- `test/integration/us0043_ai_provider_plugin_test.go::TestUS0043_CloseCalledOnShutdown`

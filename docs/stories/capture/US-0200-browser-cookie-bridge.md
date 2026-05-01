@@ -461,4 +461,7 @@ capture:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0200_cookie_bridge_test.go::TestUS0200_CookieBridgeHandshake`
+- `test/integration/us0200_cookie_bridge_test.go::TestUS0200_AuthenticatedFetchUsesCookies`
+- `test/integration/us0200_cookie_bridge_test.go::TestUS0200_CookieStoredWithDomainScope`
+- `test/integration/us0200_cookie_bridge_test.go::TestUS0200_CookieBridgeJobReturnedImmediately`

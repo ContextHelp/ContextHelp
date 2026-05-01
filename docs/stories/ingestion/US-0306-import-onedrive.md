@@ -95,4 +95,6 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0306_onedrive_test.go::TestUS0306_OneDriveListFolderItems`
+- `test/integration/us0306_onedrive_test.go::TestUS0306_OneDriveRequiresDriveID`
+- `test/integration/us0306_onedrive_test.go::TestUS0306_OneDriveRequiresToken`

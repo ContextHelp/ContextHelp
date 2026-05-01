@@ -113,3 +113,12 @@ step FederationPush(target):
 - [US-0319](./US-0319-async-push.md) — async background push
 - [US-0322](./US-0322-backup-and-rebuild.md) — backup/restore per instance
 - [US-0323](./US-0323-dag-chain.md) — DAG chain across instances
+
+---
+
+## E2E Tests
+
+- planned: `test/e2e/federation/inline_push_test.go::TestInlinePush_PushOnIngest`
+- planned: `test/e2e/federation/inline_push_test.go::TestInlinePush_FailureFallsBackAsync`
+- planned: `test/e2e/federation/inline_push_test.go::TestInlinePush_RespectsTargetPause`
+- planned: `test/e2e/federation/inline_push_test.go::TestInlinePush_EdgesIncluded`

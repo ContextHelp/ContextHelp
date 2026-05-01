@@ -147,4 +147,7 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0058_impact_assessment_test.go::TestUS0058_HighImpactDecisionPreserved`
+- `test/integration/us0058_impact_assessment_test.go::TestUS0058_MultipleImpactLevelsPreserved`
+- `test/integration/us0058_impact_assessment_test.go::TestUS0058_ImpactAssessmentCompositionIncludesImpactLevels`
+- `test/integration/us0058_impact_assessment_test.go::TestUS0058_NoDecisionsInObjectProducesEmptyImpactList`

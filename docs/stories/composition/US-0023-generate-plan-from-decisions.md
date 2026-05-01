@@ -160,4 +160,6 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0023_generate_plan_test.go::TestUS0023_PlanPreservesDecisionTaskStructure`
+- `test/integration/us0023_generate_plan_test.go::TestUS0023_PlanCompositionContainsDecisionAndTaskContent`
+- `test/integration/us0023_generate_plan_test.go::TestUS0023_HighImpactDecisionAppearsInPlan`

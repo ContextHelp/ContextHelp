@@ -94,3 +94,13 @@ ctxt "slack message" --source-key "slack:C01ABC:1234567890"
 - US-0402: Knowledge lint (post-hoc dedup detection)
 - US-0001: Text capture minimal friction (ingest path)
 - US-0403: Structured metadata extraction (runs after dedup)
+
+---
+
+## E2E Tests
+
+- `test/integration/us0404_fingerprint_dedup_test.go::TestUS0404_ExactDuplicateBlocked`
+- `test/integration/us0404_fingerprint_dedup_test.go::TestUS0404_SourceKeyBlocked`
+- `test/integration/us0404_fingerprint_dedup_test.go::TestUS0404_SourceKeyNewProceeds`
+- `test/integration/us0404_fingerprint_dedup_test.go::TestUS0404_ForceBypasses`
+- `test/integration/us0404_fingerprint_dedup_test.go::TestUS0404_DedupAuditLog`

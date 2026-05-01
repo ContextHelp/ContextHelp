@@ -400,4 +400,6 @@ social:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0201_twitter_capture_test.go::TestUS0201_TweetTextAuthorTimestampStored`
+- `test/integration/us0201_twitter_capture_test.go::TestUS0201_TweetSourceURLStored`
+- `test/integration/us0201_twitter_capture_test.go::TestUS0201_CaptureIsAsync`

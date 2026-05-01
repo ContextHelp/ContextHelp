@@ -167,4 +167,14 @@ def ingest_and_wait(api_url, content, source_type, profile=None,
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0039_agent_ingest_wait_test.go::TestUS0039_PostAnalyzeReturns202`
+- `test/integration/us0039_agent_ingest_wait_test.go::TestUS0039_PostAnalyzeReturnsJobID`
+- `test/integration/us0039_agent_ingest_wait_test.go::TestUS0039_PostAnalyzeMissingContentReturns400`
+- `test/integration/us0039_agent_ingest_wait_test.go::TestUS0039_JobExistsImmediatelyAfterPost`
+- `test/integration/us0039_agent_ingest_wait_test.go::TestUS0039_JobStatusFieldPresent`
+- `test/integration/us0039_agent_ingest_wait_test.go::TestUS0039_JobTransitionsToCompleted`
+- `test/integration/us0039_agent_ingest_wait_test.go::TestUS0039_ObjectRetrievableAfterJobCompletes`
+- `test/integration/us0039_agent_ingest_wait_test.go::TestUS0039_ObjectIDMatchesJobResultID`
+- `test/integration/us0039_agent_ingest_wait_test.go::TestUS0039_JobNotFoundReturns404`
+- `test/integration/us0039_agent_ingest_wait_test.go::TestUS0039_AgentPollPatternNoRace`
+- `test/integration/us0039_agent_ingest_wait_test.go::TestUS0039_ConcurrentAgentIngests`

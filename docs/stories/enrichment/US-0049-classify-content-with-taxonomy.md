@@ -127,4 +127,7 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- planned: `test/integration/us0049_classify_test.go::TestClassify_AssignsTaxonomyLabels`
+- planned: `test/integration/us0049_classify_test.go::TestClassify_MultiLabel`
+- planned: `test/integration/us0049_classify_test.go::TestClassify_CustomTaxonomyConfig`
+- planned: `test/integration/us0049_classify_test.go::TestClassify_ConfidenceThreshold`

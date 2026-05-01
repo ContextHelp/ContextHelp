@@ -321,4 +321,14 @@ def execute_with_retry(query, max_attempts=3):
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0038_agent_rsql_test.go::TestUS0038_AgentRSQLTypeEquality`
+- `test/integration/us0038_agent_rsql_test.go::TestUS0038_AgentRSQLAndOperator`
+- `test/integration/us0038_agent_rsql_test.go::TestUS0038_AgentRSQLOrOperator`
+- `test/integration/us0038_agent_rsql_test.go::TestUS0038_AgentRSQLInOperator`
+- `test/integration/us0038_agent_rsql_test.go::TestUS0038_AgentRSQLEmptyResultsReturn200`
+- `test/integration/us0038_agent_rsql_test.go::TestUS0038_AgentRSQLInvalidExpressionReturns400`
+- `test/integration/us0038_agent_rsql_test.go::TestUS0038_AgentRSQLDeterministicOrdering`
+- `test/integration/us0038_agent_rsql_test.go::TestUS0038_AgentRSQLObjectMetadataPresent`
+- `test/integration/us0038_agent_rsql_test.go::TestUS0038_AgentRSQLViaHTTPQueryMode`
+- `test/integration/us0038_agent_rsql_test.go::TestUS0038_AgentRSQLObjectRetrievableByID`
+- `test/integration/us0038_agent_rsql_test.go::TestUS0038_AgentRSQLPerformanceLocal`

@@ -103,6 +103,8 @@ reply boundaries (see US-contact-scope).
 
 ## E2E Tests
 
-> Covered by unit + integration tests in
-> `internal/importer/himalaya/*_test.go` and
-> `cmd/ctxt/cmd/import_himalaya_test.go`.
+- planned: `test/integration/us_email_ingest_test.go::TestEmailIngest_IMAPFetch`
+- planned: `test/integration/us_email_ingest_test.go::TestEmailIngest_ThreadGrouping`
+- planned: `test/integration/us_email_ingest_test.go::TestEmailIngest_AttachmentExtraction`
+- planned: `test/integration/us_email_ingest_test.go::TestEmailIngest_ContactLinkage`
+- planned: `test/integration/us_email_ingest_test.go::TestEmailIngest_DedupeMessageID`

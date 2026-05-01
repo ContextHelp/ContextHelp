@@ -106,4 +106,6 @@ A staff engineer may operate across security, backend, and infrastructure profil
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0053_cross_profile_test.go::TestUS0053_GlobalSearchIncludesAllProfiles`
+- `test/integration/us0053_cross_profile_test.go::TestUS0053_PerProfileSearchReturnsIsolatedResults`
+- `test/integration/us0053_cross_profile_test.go::TestUS0053_AggregatedSearchViaHTTP`

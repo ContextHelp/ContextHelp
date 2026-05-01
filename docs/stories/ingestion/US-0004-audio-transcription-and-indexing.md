@@ -458,4 +458,21 @@ sectioner:
 
 ## E2E Tests
 
-[us0004_audio_transcription_test.go](../../../test/integration/us0004_audio_transcription_test.go)
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_AudioFileReturnsJobID`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_JobCompletesWithTranscript`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_PipelineSelection`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_SupportedFormats`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_UnsupportedFormatRejects`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_CorruptAudioReturnsError`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_FileSizeLimitEnforced`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_DurationLimitEnforced`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_TranscriptSearchable`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_TimestampedSections`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_DiarizationEnabled`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_DiarizationDisabled`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_LanguageHint`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_MultipartUploadReturns202`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_ObjectRetrievableViaAPI`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_AsyncProcessing`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_WorkerCrashRetry`
+- `test/integration/us0004_audio_transcription_test.go::TestUS0004_TranscriptionProviderConfigurable`

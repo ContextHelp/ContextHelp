@@ -143,3 +143,12 @@ POST /lint
 - US-0404: Fingerprint dedup at ingest (prevents duplicates
   before they enter)
 - US-0011: Assign tags from vocabulary (related enrichment)
+
+---
+
+## E2E Tests
+
+- `test/integration/us0402_lint_test.go::TestUS0402_LintOrphan`
+- `test/integration/us0402_lint_test.go::TestUS0402_LintMissingMetadata`
+- `test/integration/us0402_lint_test.go::TestUS0402_LintCheckFilter`
+- `test/integration/us0402_lint_test.go::TestUS0402_LintAuditLog`

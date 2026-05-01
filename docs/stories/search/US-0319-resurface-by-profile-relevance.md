@@ -97,3 +97,12 @@ ctxt resurface --output json
 - US-0318 — Set reminder on knowledge object
 - US-0020 — Apply focus profile to search
 - US-0055 — Search history and recommendations
+
+---
+
+## E2E Tests
+
+- planned: `test/integration/us0319_resurface_test.go::TestResurface_ScoredByProfile`
+- planned: `test/integration/us0319_resurface_test.go::TestResurface_RespectsRecencyDecay`
+- planned: `test/integration/us0319_resurface_test.go::TestResurface_DedupesAcrossDays`
+- planned: `test/integration/us0319_resurface_test.go::TestResurface_FilterByTag`

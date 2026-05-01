@@ -102,3 +102,13 @@ ctxt enrich <id> --step structured-metadata
 - US-0014: Constrain extraction with LMQL (mechanism)
 - US-0400: Fan-out enrichment (consumes this metadata)
 - US-0407: Source-scoped metadata facet search
+
+---
+
+## E2E Tests
+
+- `test/integration/us0403_structured_metadata_test.go::TestUS0403_PersonDateActionExtracted`
+- `test/integration/us0403_structured_metadata_test.go::TestUS0403_TypeClassification`
+- `test/integration/us0403_structured_metadata_test.go::TestUS0403_Idempotent`
+- `test/integration/us0403_structured_metadata_test.go::TestUS0403_FailedExtractionStoresPending`
+- `test/integration/us0403_structured_metadata_test.go::TestUS0403_MetadataFilterableByType`

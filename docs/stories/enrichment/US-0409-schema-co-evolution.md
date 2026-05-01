@@ -110,3 +110,9 @@ ctxt profile schema evolve research --apply
 - US-0014: Constrain extraction with LMQL (mechanism)
 - US-0020: Apply focus profile to search (profile as filter)
 - US-0400: Fan-out enrichment (uses profile-specific rules)
+
+---
+
+## E2E Tests
+
+- `test/integration/us0409_schema_evolution_test.go::TestUS0409_SchemaEvolution`

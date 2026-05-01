@@ -527,4 +527,6 @@ watch:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0208_temporal_watch_test.go::TestUS0208_InitialSnapshotIngested`
+- `test/integration/us0208_temporal_watch_test.go::TestUS0208_ChangeDetectedOnNewVersion`
+- `test/integration/us0208_temporal_watch_test.go::TestUS0208_NoChangeWhenContentIdentical`

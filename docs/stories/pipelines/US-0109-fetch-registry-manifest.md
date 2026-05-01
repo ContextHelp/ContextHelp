@@ -172,4 +172,7 @@ Create entry in system_reminders:
 
 ## E2E Tests
 
-[us0109_registry_test.go](../../../test/integration/us0109_registry_test.go)
+- `test/integration/us0109_registry_test.go::TestUS0109_RegistryListEmpty`
+- `test/integration/us0109_registry_test.go::TestUS0109_CacheThenList`
+- `test/integration/us0109_registry_test.go::TestUS0109_CacheManifestFieldsPreserved`
+- `test/integration/us0109_registry_test.go::TestUS0109_MultipleCaches`

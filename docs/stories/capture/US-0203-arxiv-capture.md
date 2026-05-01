@@ -513,4 +513,6 @@ arxiv:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0203_arxiv_capture_test.go::TestUS0203_TitleAbstractAuthorsStored`
+- `test/integration/us0203_arxiv_capture_test.go::TestUS0203_ArxivIDStoredInMetadata`
+- `test/integration/us0203_arxiv_capture_test.go::TestUS0203_CaptureIsAsync`

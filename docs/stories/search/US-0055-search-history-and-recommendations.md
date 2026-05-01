@@ -116,4 +116,7 @@ Users often repeat searches or forget what they searched last session. Every sea
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0055_search_history_test.go::TestUS0055_ResurfacingQueueActsAsRecommendation`
+- `test/integration/us0055_search_history_test.go::TestUS0055_RepeatedSearchReturnsConsistentResults`
+- `test/integration/us0055_search_history_test.go::TestUS0055_DismissingResurfacingEntryHidesItFromUnseenList`
+- `test/integration/us0055_search_history_test.go::TestUS0055_EmptyResurfacingQueueReturnsNoError`

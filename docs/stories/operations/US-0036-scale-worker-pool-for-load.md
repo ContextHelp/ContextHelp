@@ -140,4 +140,7 @@ This means in-flight jobs are not lost; they complete before shutdown.
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0036_worker_pool_test.go::TestUS0036_BurstJobsAllComplete`
+- `test/integration/us0036_worker_pool_test.go::TestUS0036_MaxWorkersHonored`
+- `test/integration/us0036_worker_pool_test.go::TestUS0036_ConcurrentIngestViaService`
+- `test/integration/us0036_worker_pool_test.go::TestUS0036_NoDataRaceOnJobListDuringProcessing`

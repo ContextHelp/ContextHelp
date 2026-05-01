@@ -115,4 +115,7 @@ Structured knowledge is stored as a graph: each knowledge object can mention ent
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0052_graph_entity_search_test.go::TestUS0052_EntityBacklinksReturnDirectMentions`
+- `test/integration/us0052_graph_entity_search_test.go::TestUS0052_GraphEdgeCreatedAfterIngestion`
+- `test/integration/us0052_graph_entity_search_test.go::TestUS0052_RelatedObjectsViaSharedEntityMention`
+- `test/integration/us0052_graph_entity_search_test.go::TestUS0052_EntityWithNoConnectionsReturnsEmptyNotError`

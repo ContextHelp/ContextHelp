@@ -161,4 +161,7 @@ federation_watermarks:
 
 ## E2E Tests
 
-> Not yet implemented.
+- planned: `test/e2e/federation/dag_chain_test.go::TestDAGChain_3HopPropagation`
+- planned: `test/e2e/federation/dag_chain_test.go::TestDAGChain_BranchingFanOut`
+- planned: `test/e2e/federation/dag_chain_test.go::TestDAGChain_DiamondMergeDedupe`
+- planned: `test/e2e/federation/dag_chain_test.go::TestDAGChain_BackpressureUnderLoad`

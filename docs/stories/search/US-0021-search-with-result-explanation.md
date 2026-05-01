@@ -105,4 +105,7 @@ Relevance ranking is invisible by default. A result at position 3 may be there b
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0021_search_explanation_test.go::TestUS0021_ExplainReturnsScoreBreakdownPerResult`
+- `test/integration/us0021_search_explanation_test.go::TestUS0021_ExplainFTSContributesWhenNoEmbeddingProvider`
+- `test/integration/us0021_search_explanation_test.go::TestUS0021_ExplainTotalMatchesHybridSearchRRFScore`
+- `test/integration/us0021_search_explanation_test.go::TestUS0021_ExplainNoMatchReturnsEmptyList`

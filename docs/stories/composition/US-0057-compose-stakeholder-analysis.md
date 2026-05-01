@@ -148,4 +148,7 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0057_stakeholder_analysis_test.go::TestUS0057_StakeholderMentionsPreservedAfterIngestion`
+- `test/integration/us0057_stakeholder_analysis_test.go::TestUS0057_StakeholderEdgesCreatedFromMentions`
+- `test/integration/us0057_stakeholder_analysis_test.go::TestUS0057_StakeholderAnalysisCompositionIncludesMentions`
+- `test/integration/us0057_stakeholder_analysis_test.go::TestUS0057_MultipleObjectsStakeholderSurfaced`

@@ -120,4 +120,6 @@ Recurring searches are common: "any new security decisions," "new content about 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0054_saved_search_test.go::TestUS0054_DetectorPersistsQueryPattern`
+- `test/integration/us0054_saved_search_test.go::TestUS0054_IngestMatchingObjectFoundByQuery`
+- `test/integration/us0054_saved_search_test.go::TestUS0054_DeleteDetectorRemovesRecord`

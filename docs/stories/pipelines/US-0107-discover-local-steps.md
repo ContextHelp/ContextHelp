@@ -206,4 +206,9 @@ dpkms system reminders dismiss <id>
 
 ## E2E Tests
 
-[us0107_steps_test.go](../../../test/integration/us0107_steps_test.go)
+- `test/integration/us0107_steps_test.go::TestUS0107_ListAvailableSteps`
+- `test/integration/us0107_steps_test.go::TestUS0107_GetByName`
+- `test/integration/us0107_steps_test.go::TestUS0107_FilterBySource`
+- `test/integration/us0107_steps_test.go::TestUS0107_MetadataAllFields`
+- `test/integration/us0107_steps_test.go::TestUS0107_UpdateMetadata`
+- `test/integration/us0107_steps_test.go::TestUS0107_Uninstall`

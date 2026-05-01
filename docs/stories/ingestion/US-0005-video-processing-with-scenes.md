@@ -369,4 +369,20 @@ video:
 
 ## E2E Tests
 
-[us0005_video_processing_test.go](../../../test/integration/us0005_video_processing_test.go)
+- `test/integration/us0005_video_processing_test.go::TestUS0005_VideoFileReturnsJobID`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_JobCompletesWithTimestampedSections`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_TranscriptInRawContent`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_VideoMetadataStored`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_FullPipelineStepOrder`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_AudioOnlyPipelineSkipsVisual`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_SupportedFormats`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_UnsupportedCodecRejectsGracefully`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_CorruptVideoReturnsError`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_FileSizeLimitEnforced`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_ProcessingTimeoutEnforced`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_MultipartUploadReturns202`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_ChunkedUploadFlow`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_TranscriptTextSearchable`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_FrameOCRTextSearchable`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_FrameSamplingIntervalConfigurable`
+- `test/integration/us0005_video_processing_test.go::TestUS0005_SceneDetectionThresholdConfigurable`

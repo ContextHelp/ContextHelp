@@ -228,4 +228,14 @@ CREATE TABLE IF NOT EXISTS pipelines (
 
 ## E2E Tests
 
-[us0101_create_pipeline_test.go](../../../test/integration/us0101_create_pipeline_test.go)
+- `test/integration/us0101_create_pipeline_test.go::TestUS0101_CreateFromJSON`
+- `test/integration/us0101_create_pipeline_test.go::TestUS0101_InvalidStepsJSON`
+- `test/integration/us0101_create_pipeline_test.go::TestUS0101_SandboxConfigStored`
+- `test/integration/us0101_create_pipeline_test.go::TestUS0101_DuplicateName`
+- `test/integration/us0101_create_pipeline_test.go::TestUS0101_MissingName`
+- `test/integration/us0101_create_pipeline_test.go::TestUS0101_MissingSteps`
+- `test/integration/us0101_create_pipeline_test.go::TestUS0101_MultipleSteps`
+- `test/integration/us0101_create_pipeline_test.go::TestUS0101_FullMetadata`
+- `test/integration/us0101_create_pipeline_test.go::TestUS0101_StepNamesCaseSensitive`
+- `test/integration/us0101_create_pipeline_test.go::TestUS0101_PipelineImmediatelyAvailableForEnqueue`
+- `test/integration/us0101_create_pipeline_test.go::TestUS0101_EmptyStepsArray`

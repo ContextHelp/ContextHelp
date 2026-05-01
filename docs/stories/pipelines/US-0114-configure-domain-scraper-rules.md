@@ -75,3 +75,12 @@ scraper_rules:
 - [US-0207](../capture/US-0207-web-tab-capture.md) — Web Tab Capture
 - [US-0209](../capture/US-0209-authenticated-web-fetch.md) — Authenticated Web Fetch
 - [US-0007](../ingestion/US-0007-feed-ingestion-and-sync.md) — Feed Ingestion and Sync
+
+---
+
+## E2E Tests
+
+- planned: `test/integration/us0114_scraper_rules_test.go::TestScraperRules_AddRule`
+- planned: `test/integration/us0114_scraper_rules_test.go::TestScraperRules_RuleAppliedOnCapture`
+- planned: `test/integration/us0114_scraper_rules_test.go::TestScraperRules_FallsBackToReadability`
+- planned: `test/integration/us0114_scraper_rules_test.go::TestScraperRules_ListAndRemove`

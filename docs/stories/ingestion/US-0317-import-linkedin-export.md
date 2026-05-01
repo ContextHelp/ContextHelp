@@ -95,4 +95,11 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0317_linkedin_export_test.go::TestUS0317_LinkedInParsePosts`
+- `test/integration/us0317_linkedin_export_test.go::TestUS0317_LinkedInPostFields`
+- `test/integration/us0317_linkedin_export_test.go::TestUS0317_LinkedInPostContent`
+- `test/integration/us0317_linkedin_export_test.go::TestUS0317_LinkedInParseArticles`
+- `test/integration/us0317_linkedin_export_test.go::TestUS0317_LinkedInArticleFields`
+- `test/integration/us0317_linkedin_export_test.go::TestUS0317_LinkedInFilterPostsSince`
+- `test/integration/us0317_linkedin_export_test.go::TestUS0317_LinkedInRenderPost`
+- `test/integration/us0317_linkedin_export_test.go::TestUS0317_LinkedInRenderArticle`

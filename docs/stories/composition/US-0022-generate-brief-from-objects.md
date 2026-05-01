@@ -393,4 +393,7 @@ The engineering team made critical decisions regarding the migration from a mono
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0022_generate_brief_test.go::TestUS0022_BriefContainsObjectSummaries`
+- `test/integration/us0022_generate_brief_test.go::TestUS0022_BriefContainsObjectTitles`
+- `test/integration/us0022_generate_brief_test.go::TestUS0022_BriefWithCitationsIncludesRefTable`
+- `test/integration/us0022_generate_brief_test.go::TestUS0022_EmptyObjectListProducesEmptyBrief`

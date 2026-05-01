@@ -94,4 +94,7 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0303_firefox_bookmarks_test.go::TestUS0303_FirefoxBookmarksParseHTML`
+- `test/integration/us0303_firefox_bookmarks_test.go::TestUS0303_FirefoxBookmarksFromFile`
+- `test/integration/us0303_firefox_bookmarks_test.go::TestUS0303_FirefoxBookmarksURLsExtracted`
+- `test/integration/us0303_firefox_bookmarks_test.go::TestUS0303_FirefoxBookmarksFolderAssigned`

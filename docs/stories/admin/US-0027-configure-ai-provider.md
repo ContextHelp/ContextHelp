@@ -244,4 +244,10 @@ func (c *CostTracker) RecordCall(tokens int, costUSD float64) {
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0027_ai_provider_test.go::TestUS0027_EnvBackendLLMStub`
+- `test/integration/us0027_ai_provider_test.go::TestUS0027_ProviderCalledAndResultStored`
+- `test/integration/us0027_ai_provider_test.go::TestUS0027_ConfigRoundTripLLMBackend`
+- `test/integration/us0027_ai_provider_test.go::TestUS0027_FactoryUsesResolverNotEnv`
+- `test/integration/us0027_ai_provider_test.go::TestUS0027_NilResolverFallsBackToEnv`
+- `test/integration/us0027_ai_provider_test.go::TestUS0027_EnvResolverReadOnly`
+- `test/integration/us0027_ai_provider_test.go::TestUS0027_AnalyzeEndpointUsesConfiguredPipeline`

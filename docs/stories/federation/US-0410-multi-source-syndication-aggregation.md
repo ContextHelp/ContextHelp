@@ -265,3 +265,11 @@ endpoints or implement per-token scoping (out of scope here).
   (Mode A composes naturally with chained DAG)
 - rux story 041 — connect to remote rux daemon (orthogonal: control
   plane vs. knowledge plane)
+
+---
+
+## E2E Tests
+
+- planned: `test/e2e/federation/syndication_test.go::TestSyndication_AggregateMultipleSources`
+- planned: `test/e2e/federation/syndication_test.go::TestSyndication_DedupeAcrossSources`
+- planned: `test/e2e/federation/syndication_test.go::TestSyndication_PerSourceWatermarks`

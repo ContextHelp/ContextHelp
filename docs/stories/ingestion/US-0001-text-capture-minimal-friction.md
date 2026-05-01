@@ -188,4 +188,9 @@ storage:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0001_text_capture_test.go::TestUS0001_PlainTextPostReturnsJobID`
+- `test/integration/us0001_text_capture_test.go::TestUS0001_JobCompletesWithCorrectTypeAndPipeline`
+- `test/integration/us0001_text_capture_test.go::TestUS0001_ObjectRetrievableByID`
+- `test/integration/us0001_text_capture_test.go::TestUS0001_ProfileAndProjectPersistedInMetadata`
+- `test/integration/us0001_text_capture_test.go::TestUS0001_JobIDReturnedImmediately`
+- `test/integration/us0001_text_capture_test.go::TestUS0001_JobStatusTransitionsPendingToCompleted`

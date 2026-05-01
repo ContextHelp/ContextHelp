@@ -93,6 +93,7 @@ filter contract. The actual reply workflow uses these tags via
 
 ## E2E Tests
 
-> Contact scope tagging verified in
-> `internal/importer/himalaya/adapter_test.go` (TestContactScopeTag).
-> Query-time filtering depends on ctxt find infrastructure.
+- planned: `test/integration/us_contact_scope_test.go::TestContactScope_RestrictsRetrievalByContact`
+- planned: `test/integration/us_contact_scope_test.go::TestContactScope_AllowsCrossContactWithProfile`
+- planned: `test/integration/us_contact_scope_test.go::TestContactScope_ResolverFallback`
+- planned: `test/integration/us_contact_scope_test.go::TestContactScope_AuditTrailOnAccess`

@@ -190,4 +190,10 @@ plugins:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0045_ranking_plugin_test.go::TestUS0045_PluginInitReadsWeightConfig`
+- `test/integration/us0045_ranking_plugin_test.go::TestUS0045_MissingWeightUsesDefault`
+- `test/integration/us0045_ranking_plugin_test.go::TestUS0045_PostIngestHookRegistered`
+- `test/integration/us0045_ranking_plugin_test.go::TestUS0045_PostIngestScoreStoredInPlugins`
+- `test/integration/us0045_ranking_plugin_test.go::TestUS0045_TwoObjectsHaveDistinctScores`
+- `test/integration/us0045_ranking_plugin_test.go::TestUS0045_CloseCalledWithoutError`
+- `test/integration/us0045_ranking_plugin_test.go::TestUS0045_TwoRankingPluginsBothScored`

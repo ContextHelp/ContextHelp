@@ -267,4 +267,8 @@ func (sd *SandboxDocker) Apply(
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0112_sandbox_test.go::TestUS0112_NonSandboxedStep_CanMakeOutboundCall`
+- `test/integration/us0112_sandbox_test.go::TestUS0112_SandboxConfig_NoNetworkFlag`
+- `test/integration/us0112_sandbox_test.go::TestUS0112_SandboxConfig_NetworkAllowed`
+- `test/integration/us0112_sandbox_test.go::TestUS0112_SandboxConfig_RoundTrip_ViaCreateAPI`
+- `test/integration/us0112_sandbox_test.go::TestUS0112_Sandbox_UnsupportedPlatformSkip`

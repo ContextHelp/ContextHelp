@@ -131,3 +131,13 @@ Content-Type: application/json
 - US-0063: Unified graph extraction at ingest
 - US-0401: Persistent composed pages
 - US-0405: Append-only knowledge changelog
+
+---
+
+## E2E Tests
+
+- `test/integration/us0400_fan_out_test.go::TestUS0400_FanOutCreatesEdges`
+- `test/integration/us0400_fan_out_test.go::TestUS0400_FanOutIdempotent`
+- `test/integration/us0400_fan_out_test.go::TestUS0400_FanOutAuditLog`
+- `test/integration/us0400_fan_out_test.go::TestUS0400_NoFanoutFlag`
+- `test/integration/us0400_fan_out_test.go::TestUS0400_FanOutCompletesInTime`

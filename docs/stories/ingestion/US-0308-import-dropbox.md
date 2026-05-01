@@ -95,4 +95,6 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0308_dropbox_test.go::TestUS0308_DropboxListFiles`
+- `test/integration/us0308_dropbox_test.go::TestUS0308_DropboxRequiresToken`
+- `test/integration/us0308_dropbox_test.go::TestUS0308_DropboxCursorReturned`

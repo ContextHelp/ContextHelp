@@ -109,3 +109,12 @@ ctxt find "token rotation"    # targeted vector search
 - US-0016: Natural language search (fallback after index scan)
 - US-0403: Structured metadata extraction (topics feed index
   categories)
+
+---
+
+## E2E Tests
+
+- `test/integration/us0408_index_retrieval_test.go::TestUS0408_IndexShowsThreeCategories`
+- `test/integration/us0408_index_retrieval_test.go::TestUS0408_IncrementalUpdate`
+- `test/integration/us0408_index_retrieval_test.go::TestUS0408_FilterByTopic`
+- `test/integration/us0408_index_retrieval_test.go::TestUS0408_RefreshRegenerates`

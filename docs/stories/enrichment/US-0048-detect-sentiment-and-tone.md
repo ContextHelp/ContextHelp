@@ -127,4 +127,7 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- planned: `test/integration/us0048_sentiment_test.go::TestSentiment_PositiveText`
+- planned: `test/integration/us0048_sentiment_test.go::TestSentiment_NegativeText`
+- planned: `test/integration/us0048_sentiment_test.go::TestSentiment_NeutralText`
+- planned: `test/integration/us0048_sentiment_test.go::TestSentiment_ToneClassification`

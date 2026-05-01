@@ -121,4 +121,7 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0011_tag_assignment_test.go::TestUS0011_TagsAssignedFromVocabulary`
+- `test/integration/us0011_tag_assignment_test.go::TestUS0011_NoOutOfVocabularyTagsProduced`
+- `test/integration/us0011_tag_assignment_test.go::TestUS0011_VocabularyUsedRecordedInMetadata`
+- `test/integration/us0011_tag_assignment_test.go::TestUS0011_TagsStoredAsJSONArrayOnObject`

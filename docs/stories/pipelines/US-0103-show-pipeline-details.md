@@ -302,4 +302,12 @@ WHERE name = ?
 
 ## E2E Tests
 
-[us0103_show_pipeline_test.go](../../../test/integration/us0103_show_pipeline_test.go)
+- `test/integration/us0103_show_pipeline_test.go::TestUS0103_ShowExisting`
+- `test/integration/us0103_show_pipeline_test.go::TestUS0103_ShowNonExistent`
+- `test/integration/us0103_show_pipeline_test.go::TestUS0103_ShowArchived`
+- `test/integration/us0103_show_pipeline_test.go::TestUS0103_ShowStepsWithConfigs`
+- `test/integration/us0103_show_pipeline_test.go::TestUS0103_ResourceLimitsRoundTrip`
+- `test/integration/us0103_show_pipeline_test.go::TestUS0103_SandboxConfigComplete`
+- `test/integration/us0103_show_pipeline_test.go::TestUS0103_MetadataAccurate`
+- `test/integration/us0103_show_pipeline_test.go::TestUS0103_ShowMultipleStepsPreservesOrder`
+- `test/integration/us0103_show_pipeline_test.go::TestUS0103_ShowReturnsJSONContentType`

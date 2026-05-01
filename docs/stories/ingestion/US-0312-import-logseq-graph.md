@@ -94,4 +94,9 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0312_logseq_test.go::TestUS0312_LogseqWalkGraph`
+- `test/integration/us0312_logseq_test.go::TestUS0312_LogseqPageFields`
+- `test/integration/us0312_logseq_test.go::TestUS0312_LogseqJournalDetected`
+- `test/integration/us0312_logseq_test.go::TestUS0312_LogseqPagePropertiesExtracted`
+- `test/integration/us0312_logseq_test.go::TestUS0312_LogseqRenderContent`
+- `test/integration/us0312_logseq_test.go::TestUS0312_LogseqStableExternalID`

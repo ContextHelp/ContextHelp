@@ -167,4 +167,10 @@ When deleting a pipeline, consider:
 
 ## E2E Tests
 
-[us0104_delete_pipeline_test.go](../../../test/integration/us0104_delete_pipeline_test.go)
+- `test/integration/us0104_delete_pipeline_test.go::TestUS0104_DeleteCustom`
+- `test/integration/us0104_delete_pipeline_test.go::TestUS0104_DeleteBuiltIn`
+- `test/integration/us0104_delete_pipeline_test.go::TestUS0104_DeleteNonExistent`
+- `test/integration/us0104_delete_pipeline_test.go::TestUS0104_DeleteConfirmedGoneFromList`
+- `test/integration/us0104_delete_pipeline_test.go::TestUS0104_DeleteThenRecreate`
+- `test/integration/us0104_delete_pipeline_test.go::TestUS0104_DeleteReturnsNoBody`
+- `test/integration/us0104_delete_pipeline_test.go::TestUS0104_DeleteDoesNotAffectOthers`

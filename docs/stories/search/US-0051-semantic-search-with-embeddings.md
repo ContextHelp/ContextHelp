@@ -114,4 +114,6 @@ Keyword search fails when the query and the document use different words for the
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0051_semantic_search_test.go::TestUS0051_VectorSearchReturnsSimilarObjects`
+- `test/integration/us0051_semantic_search_test.go::TestUS0051_VectorSearchSkipsObjectsWithoutEmbeddings`
+- `test/integration/us0051_semantic_search_test.go::TestUS0051_VectorSearchLimitHonoured`

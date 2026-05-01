@@ -132,4 +132,7 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0012_summary_generation_test.go::TestUS0012_SummarySectionCreatedForLongDoc`
+- `test/integration/us0012_summary_generation_test.go::TestUS0012_SectionCountMatchesStructure`
+- `test/integration/us0012_summary_generation_test.go::TestUS0012_SectionsHaveTitleAndContent`
+- `test/integration/us0012_summary_generation_test.go::TestUS0012_SummarizationMethodRecordedInMetadata`

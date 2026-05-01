@@ -112,3 +112,17 @@ DFS from self; if any target.URL resolves to self → cycle error
 - [US-0321](./US-0321-http-federation-push.md) — remote HTTP target push (Phase 2)
 - [US-0322](./US-0322-federation-topology-api.md) — topology API for cycle detection (Phase 2)
 - [US-0323](./US-0323-federation-status-monitoring.md) — federation push status monitoring
+
+---
+
+## E2E Tests
+
+- `test/e2e/federation/cycle_detection_test.go::TestCycleDetection_SelfLoop_Rejected`
+- `test/e2e/federation/cycle_detection_test.go::TestCycleDetection_DuplicateTargetNames_Rejected`
+- `test/e2e/federation/cycle_detection_test.go::TestCycleDetection_EmptyTargetName_Rejected`
+- `test/e2e/federation/cycle_detection_test.go::TestCycleDetection_ValidNoLoop_Accepted`
+- `test/e2e/federation/cycle_detection_test.go::TestCycleDetection_MultiHopABA_Phase2Deferred`
+- planned: `test/e2e/federation/configure_targets_test.go::TestConfigure_AddTarget`
+- planned: `test/e2e/federation/configure_targets_test.go::TestConfigure_ListTargets`
+- planned: `test/e2e/federation/configure_targets_test.go::TestConfigure_RemoveTarget`
+- planned: `test/e2e/federation/configure_targets_test.go::TestConfigure_PauseResume`

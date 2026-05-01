@@ -95,4 +95,11 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0316_twitter_archive_test.go::TestUS0316_TwitterParseArchiveFile`
+- `test/integration/us0316_twitter_archive_test.go::TestUS0316_TwitterTweetFields`
+- `test/integration/us0316_twitter_archive_test.go::TestUS0316_TwitterHashtagsExtracted`
+- `test/integration/us0316_twitter_archive_test.go::TestUS0316_TwitterURLsExtracted`
+- `test/integration/us0316_twitter_archive_test.go::TestUS0316_TwitterReplyDetected`
+- `test/integration/us0316_twitter_archive_test.go::TestUS0316_TwitterFavoriteCount`
+- `test/integration/us0316_twitter_archive_test.go::TestUS0316_TwitterFilterSince`
+- `test/integration/us0316_twitter_archive_test.go::TestUS0316_TwitterRenderContent`

@@ -184,4 +184,10 @@ plugins:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0044_registry_adapter_test.go::TestUS0044_PluginRegisteredAsAliasResolver`
+- `test/integration/us0044_registry_adapter_test.go::TestUS0044_InitWithNilStoreReturnsError`
+- `test/integration/us0044_registry_adapter_test.go::TestUS0044_AliasCreationAndResolution`
+- `test/integration/us0044_registry_adapter_test.go::TestUS0044_UnknownAliasPassesThrough`
+- `test/integration/us0044_registry_adapter_test.go::TestUS0044_ProfileScopedAlias`
+- `test/integration/us0044_registry_adapter_test.go::TestUS0044_GlobalAliasResolvesForAnyProfile`
+- `test/integration/us0044_registry_adapter_test.go::TestUS0044_RegistryResolveIDFirstMatchWins`

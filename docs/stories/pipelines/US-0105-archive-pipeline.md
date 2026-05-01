@@ -160,4 +160,8 @@ When a pipeline is archived:
 
 ## E2E Tests
 
-[us0105_archive_pipeline_test.go](../../../test/integration/us0105_archive_pipeline_test.go)
+- `test/integration/us0105_archive_pipeline_test.go::TestUS0105_ArchiveSetsFlag`
+- `test/integration/us0105_archive_pipeline_test.go::TestUS0105_UnarchiveMakesAvailable`
+- `test/integration/us0105_archive_pipeline_test.go::TestUS0105_ArchiveIdempotent`
+- `test/integration/us0105_archive_pipeline_test.go::TestUS0105_ArchiveExcludesFromDefaultList`
+- `test/integration/us0105_archive_pipeline_test.go::TestUS0105_UnarchiveIdempotent`

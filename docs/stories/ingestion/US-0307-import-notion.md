@@ -95,4 +95,7 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0307_notion_test.go::TestUS0307_NotionSearchPages`
+- `test/integration/us0307_notion_test.go::TestUS0307_NotionRequiresToken`
+- `test/integration/us0307_notion_test.go::TestUS0307_NotionMaxItemsRespected`
+- `test/integration/us0307_notion_test.go::TestUS0307_NotionLastEditedTimeParsed`

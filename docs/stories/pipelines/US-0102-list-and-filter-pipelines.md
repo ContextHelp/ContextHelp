@@ -253,4 +253,13 @@ ORDER BY
 
 ## E2E Tests
 
-[us0102_list_pipelines_test.go](../../../test/integration/us0102_list_pipelines_test.go)
+- `test/integration/us0102_list_pipelines_test.go::TestUS0102_ListNonArchived`
+- `test/integration/us0102_list_pipelines_test.go::TestUS0102_IncludeArchived`
+- `test/integration/us0102_list_pipelines_test.go::TestUS0102_NameFilter`
+- `test/integration/us0102_list_pipelines_test.go::TestUS0102_OnlyArchived`
+- `test/integration/us0102_list_pipelines_test.go::TestUS0102_IncludeArchivedShowsBoth`
+- `test/integration/us0102_list_pipelines_test.go::TestUS0102_ExcludesArchived`
+- `test/integration/us0102_list_pipelines_test.go::TestUS0102_StepCountAccurate`
+- `test/integration/us0102_list_pipelines_test.go::TestUS0102_JSONResponseValid`
+- `test/integration/us0102_list_pipelines_test.go::TestUS0102_TotalMatchesLength`
+- `test/integration/us0102_list_pipelines_test.go::TestUS0102_EmptyListReturnsZero`

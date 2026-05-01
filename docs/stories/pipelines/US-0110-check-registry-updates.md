@@ -218,4 +218,9 @@ When auto-update is enabled:
 
 ## E2E Tests
 
-[us0110_reminders_test.go](../../../test/integration/us0110_reminders_test.go)
+- `test/integration/us0110_reminders_test.go::TestUS0110_ListReminders`
+- `test/integration/us0110_reminders_test.go::TestUS0110_DismissReminder`
+- `test/integration/us0110_reminders_test.go::TestUS0110_ActiveOnlyFilter`
+- `test/integration/us0110_reminders_test.go::TestUS0110_DismissThenVerify`
+- `test/integration/us0110_reminders_test.go::TestUS0110_MultipleTypes`
+- `test/integration/us0110_reminders_test.go::TestUS0110_DismissNonExistentIsIdempotent`

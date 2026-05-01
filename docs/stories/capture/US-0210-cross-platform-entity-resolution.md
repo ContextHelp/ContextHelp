@@ -675,4 +675,5 @@ entity_resolution:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0210_entity_resolution_test.go::TestUS0210_SameEntityFromTwoPlatformsMerged`
+- `test/integration/us0210_entity_resolution_test.go::TestUS0210_LowConfidenceNotAutoLinked`

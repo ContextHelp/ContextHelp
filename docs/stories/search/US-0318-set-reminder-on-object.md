@@ -91,3 +91,12 @@ ctxt reminders --output json
 - US-0319 — Resurface knowledge objects by profile relevance
 - US-0054 — Saved search and alerts
 - US-0020 — Apply focus profile to search
+
+---
+
+## E2E Tests
+
+- planned: `test/integration/us0318_set_reminder_test.go::TestReminder_CreateOnObject`
+- planned: `test/integration/us0318_set_reminder_test.go::TestReminder_FiresAtScheduledTime`
+- planned: `test/integration/us0318_set_reminder_test.go::TestReminder_ListUpcoming`
+- planned: `test/integration/us0318_set_reminder_test.go::TestReminder_CancelReminder`

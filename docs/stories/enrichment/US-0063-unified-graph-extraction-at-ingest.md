@@ -324,4 +324,7 @@ steps:
 
 ## E2E Tests
 
-> Not yet implemented.
+- planned: `test/integration/us0063_graph_at_ingest_test.go::TestGraphAtIngest_NodesEmitted`
+- planned: `test/integration/us0063_graph_at_ingest_test.go::TestGraphAtIngest_EdgesEmitted`
+- planned: `test/integration/us0063_graph_at_ingest_test.go::TestGraphAtIngest_DedupeAcrossPipelines`
+- planned: `test/integration/us0063_graph_at_ingest_test.go::TestGraphAtIngest_PartialFailureRetains`

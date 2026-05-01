@@ -156,7 +156,7 @@ properties:
 
 ---
 
-## E2E Tests (planned)
+## E2E Tests
 
 Path: `tests/e2e/typed_entity/`
 
@@ -205,3 +205,5 @@ Path: `tests/e2e/typed_entity/`
   — registry adapter (delivers schemas alongside entity defs)
 - [US-0109](../plugins/US-0109-fetch-registry-manifest.md) — registry
   manifest fetch (extend to carry entity type schemas)
+
+---

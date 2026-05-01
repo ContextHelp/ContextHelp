@@ -466,4 +466,21 @@ document:
 
 ## E2E Tests
 
-[us0006_document_parsing_test.go](../../../test/integration/us0006_document_parsing_test.go)
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_PDFReturnsJobID`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_JobCompletesWithHierarchicalSections`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_PDFEmbeddedImagesAsChildObjects`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_PDFTablesExtracted`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_PasswordProtectedPDFRejected`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_MarkdownHeadingHierarchy`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_MarkdownCodeBlocksExtracted`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_GoCodeParsedToFunctions`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_PythonCodeParsedToClasses`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_CodeTODOAnnotationsExtracted`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_UnsupportedLanguageFallback`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_DOCXParsedLikePDF`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_CorruptFileReturnsError`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_FileSizeLimitEnforced`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_MultipartUploadReturns202`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_SectionLevelSearch`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_HierarchyTraversableViaAPI`
+- `test/integration/us0006_document_parsing_test.go::TestUS0006_DecompositionDepthConfigurable`

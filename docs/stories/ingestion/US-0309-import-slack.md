@@ -95,4 +95,10 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0309_slack_test.go::TestUS0309_SlackParseExportDir`
+- `test/integration/us0309_slack_test.go::TestUS0309_SlackMessageFields`
+- `test/integration/us0309_slack_test.go::TestUS0309_SlackMessagesSortedByTimestamp`
+- `test/integration/us0309_slack_test.go::TestUS0309_SlackReactionsAndFiles`
+- `test/integration/us0309_slack_test.go::TestUS0309_SlackRenderContent`
+- `test/integration/us0309_slack_test.go::TestUS0309_SlackThreadReplyDetected`
+- `test/integration/us0309_slack_test.go::TestUS0309_SlackParseMessagesJSON`

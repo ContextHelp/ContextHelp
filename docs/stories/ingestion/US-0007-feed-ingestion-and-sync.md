@@ -333,4 +333,21 @@ feeds:
 
 ## E2E Tests
 
-[us0007_feed_ingestion_test.go](../../../test/integration/us0007_feed_ingestion_test.go)
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_SubscribeRSSReturnsMetadata`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_SubscribeAtomFormat`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_SubscribeJSONFeed`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_ListSubscriptions`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_SyncAllFeeds`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_SyncSpecificFeed`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_RemoveSubscription`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_ConditionalGetETag`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_DeduplicationByGUID`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_FanoutCreatesJobs`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_FeedItemKnowledgeObject`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_UnreachableFeedSetsError`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_Feed410GonePermanent`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_Feed429RespectsRetryAfter`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_POSTFeedsReturns201`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_GETFeedsReturnsList`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_SyncReturns202`
+- `test/integration/us0007_feed_ingestion_test.go::TestUS0007_DeleteReturns204`

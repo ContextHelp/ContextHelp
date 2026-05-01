@@ -107,4 +107,8 @@ Agents and maintainers often need precise, repeatable queries: "all decisions cr
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0017_rsql_query_test.go::TestUS0017_RSQLTypeFilter`
+- `test/integration/us0017_rsql_query_test.go::TestUS0017_RSQLMultipleTypes`
+- `test/integration/us0017_rsql_query_test.go::TestUS0017_RSQLInvalidExpressionReturnsError`
+- `test/integration/us0017_rsql_query_test.go::TestUS0017_RSQLViaHTTPEndpoint`
+- `test/integration/us0017_rsql_query_test.go::TestUS0017_RSQLProfileScopeRestrictsResults`

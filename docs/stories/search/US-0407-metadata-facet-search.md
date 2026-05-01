@@ -96,3 +96,14 @@ dates_mentioned=gt=2026-04-01
 - US-0016: Natural language search (base search)
 - US-0017: Structured RSQL query (RSQL integration)
 - US-0020: Apply focus profile to search (profile-level filter)
+
+---
+
+## E2E Tests
+
+- `test/integration/us0407_facet_search_test.go::TestFacetSearch_MetadataType`
+- `test/integration/us0407_facet_search_test.go::TestFacetSearch_Person`
+- `test/integration/us0407_facet_search_test.go::TestFacetSearch_SinceUntil`
+- `test/integration/us0407_facet_search_test.go::TestFacetSearch_CombinedFilters`
+- `test/integration/us0407_facet_search_test.go::TestFacetSearch_FacetCounts`
+- `test/integration/us0407_facet_search_test.go::TestFacetSearch_HybridWithFilter`

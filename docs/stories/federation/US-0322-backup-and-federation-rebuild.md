@@ -135,4 +135,6 @@ federations:
 
 ## E2E Tests
 
-> Not yet implemented.
+- planned: `test/e2e/federation/backup_rebuild_test.go::TestBackup_ExportThenRestore`
+- planned: `test/e2e/federation/backup_rebuild_test.go::TestBackup_FederationStateSurvivesRebuild`
+- planned: `test/e2e/federation/backup_rebuild_test.go::TestBackup_PartialRestoreFlagsRetry`

@@ -94,4 +94,7 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0304_safari_bookmarks_test.go::TestUS0304_SafariBookmarksParseHTML`
+- `test/integration/us0304_safari_bookmarks_test.go::TestUS0304_SafariBookmarksFromFile`
+- `test/integration/us0304_safari_bookmarks_test.go::TestUS0304_SafariBookmarksURLsAndTitles`
+- `test/integration/us0304_safari_bookmarks_test.go::TestUS0304_SafariBookmarksReadingList`

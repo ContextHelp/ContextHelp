@@ -107,4 +107,7 @@ The same query ("authentication decisions") means different things to a security
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0020_focus_profile_test.go::TestUS0020_FocusProfileRestrictsSearchScope`
+- `test/integration/us0020_focus_profile_test.go::TestUS0020_FocusProfileAllObjectsWhenNoProfile`
+- `test/integration/us0020_focus_profile_test.go::TestUS0020_FocusProfileViaHTTPSearchQuery`
+- `test/integration/us0020_focus_profile_test.go::TestUS0020_FocusProfileNoMatchReturnsEmpty`

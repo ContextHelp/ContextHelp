@@ -172,4 +172,8 @@ the `image.ocr` pipeline from Skeleton 4.
 
 ## E2E Tests
 
-> Not yet implemented.
+- planned: `test/integration/us0212_screen_monitor_test.go::TestScreenMonitor_PeriodicSnapshot`
+- planned: `test/integration/us0212_screen_monitor_test.go::TestScreenMonitor_OCRRoutesToImagePipeline`
+- planned: `test/integration/us0212_screen_monitor_test.go::TestScreenMonitor_AppAllowlistFiltering`
+- planned: `test/integration/us0212_screen_monitor_test.go::TestScreenMonitor_PauseResume`
+- planned: `test/integration/us0212_screen_monitor_test.go::TestScreenMonitor_StorageQuotaEnforced`

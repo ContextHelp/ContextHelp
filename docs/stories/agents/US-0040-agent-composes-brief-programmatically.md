@@ -167,4 +167,13 @@ def compose_brief(api_url, query, template, output_format="markdown",
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0040_agent_compose_test.go::TestUS0040_ComposeReturnsBriefWithObjectContent`
+- `test/integration/us0040_agent_compose_test.go::TestUS0040_ComposeBriefIsMarkdown`
+- `test/integration/us0040_agent_compose_test.go::TestUS0040_ComposeWithCitationsIncludesSourceIDs`
+- `test/integration/us0040_agent_compose_test.go::TestUS0040_ComposeWithCitationsStructuredNotMarkdownBlob`
+- `test/integration/us0040_agent_compose_test.go::TestUS0040_ComposeQueryMatchTemplate`
+- `test/integration/us0040_agent_compose_test.go::TestUS0040_ComposeEmptyObjectsReturnsEmptyBrief`
+- `test/integration/us0040_agent_compose_test.go::TestUS0040_ComposeObjectsQueryableAfterCompose`
+- `test/integration/us0040_agent_compose_test.go::TestUS0040_HTTPComposeEndpointExists`
+- `test/integration/us0040_agent_compose_test.go::TestUS0040_HTTPComposeReturnsJobIDAndCompositionID`
+- `test/integration/us0040_agent_compose_test.go::TestUS0040_HTTPComposeMissingTemplateReturns400`

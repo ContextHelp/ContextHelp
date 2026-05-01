@@ -95,4 +95,8 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0315_raindrop_test.go::TestUS0315_RaindropListCollections`
+- `test/integration/us0315_raindrop_test.go::TestUS0315_RaindropListItems`
+- `test/integration/us0315_raindrop_test.go::TestUS0315_RaindropRequiresToken`
+- `test/integration/us0315_raindrop_test.go::TestUS0315_RaindropRequiresCollectionID`
+- `test/integration/us0315_raindrop_test.go::TestUS0315_RaindropRenderContent`

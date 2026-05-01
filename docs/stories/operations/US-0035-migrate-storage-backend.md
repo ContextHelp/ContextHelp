@@ -139,4 +139,7 @@ storage:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0035_storage_migration_test.go::TestUS0035_ObjectCountIdenticalAfterMigration`
+- `test/integration/us0035_storage_migration_test.go::TestUS0035_ObjectContentIdenticalAfterMigration`
+- `test/integration/us0035_storage_migration_test.go::TestUS0035_EdgeCountIdenticalAfterMigration`
+- `test/integration/us0035_storage_migration_test.go::TestUS0035_MigrationWithSecondSQLiteDestination`

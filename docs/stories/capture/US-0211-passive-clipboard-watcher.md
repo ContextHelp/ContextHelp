@@ -165,4 +165,8 @@ Implements Sk8 Task 2.2 (Clipboard Watcher) and depends on Task 2.1 (Watcher Int
 
 ## E2E Tests
 
-> Not yet implemented.
+- planned: `test/integration/us0211_clipboard_watcher_test.go::TestClipboardWatcher_CapturesPlainText`
+- planned: `test/integration/us0211_clipboard_watcher_test.go::TestClipboardWatcher_DedupeRapidUpdates`
+- planned: `test/integration/us0211_clipboard_watcher_test.go::TestClipboardWatcher_RespectsAppAllowlist`
+- planned: `test/integration/us0211_clipboard_watcher_test.go::TestClipboardWatcher_PauseResume`
+- planned: `test/integration/us0211_clipboard_watcher_test.go::TestClipboardWatcher_RoutesToTextPipeline`

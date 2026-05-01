@@ -131,4 +131,7 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- planned: `test/integration/us0050_code_metrics_test.go::TestCodeMetrics_LineCounts`
+- planned: `test/integration/us0050_code_metrics_test.go::TestCodeMetrics_CyclomaticComplexity`
+- planned: `test/integration/us0050_code_metrics_test.go::TestCodeMetrics_LanguageDetection`
+- planned: `test/integration/us0050_code_metrics_test.go::TestCodeMetrics_FunctionInventory`

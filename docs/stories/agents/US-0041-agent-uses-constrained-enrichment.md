@@ -149,4 +149,11 @@ See [constrain-extraction-with-lmql](../enrichment/US-0014-constrain-extraction-
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0041_agent_constrained_enrichment_test.go::TestUS0041_ConstrainedEntitiesConformToPattern`
+- `test/integration/us0041_agent_constrained_enrichment_test.go::TestUS0041_ConstrainedTagsAreSubsetOfAllowedList`
+- `test/integration/us0041_agent_constrained_enrichment_test.go::TestUS0041_EnrichmentResultIsDurable`
+- `test/integration/us0041_agent_constrained_enrichment_test.go::TestUS0041_EnrichmentUpdatesObjectViaHTTP`
+- `test/integration/us0041_agent_constrained_enrichment_test.go::TestUS0041_PipelineFieldReflectsEnrichmentPipeline`
+- `test/integration/us0041_agent_constrained_enrichment_test.go::TestUS0041_HTTPEnrichEndpointExists`
+- `test/integration/us0041_agent_constrained_enrichment_test.go::TestUS0041_HTTPEnrichNonexistentObjectReturns404`
+- `test/integration/us0041_agent_constrained_enrichment_test.go::TestUS0041_HTTPEnrichUnsupportedExtractionTypeReturns400`

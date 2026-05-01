@@ -251,4 +251,7 @@ object(o-abc123)
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0009_entity_extraction_test.go::TestUS0009_EntityMentionsExtracted`
+- `test/integration/us0009_entity_extraction_test.go::TestUS0009_MentionEdgesCreated`
+- `test/integration/us0009_entity_extraction_test.go::TestUS0009_MentionFormatIsNamespaceSlug`
+- `test/integration/us0009_entity_extraction_test.go::TestUS0009_EntityObjectsCreatedForMentions`

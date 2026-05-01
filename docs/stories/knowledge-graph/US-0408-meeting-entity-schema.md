@@ -116,16 +116,16 @@ No new tables.
 
 ---
 
-## E2E Tests (planned)
+## E2E Tests
 
 Path: `tests/e2e/typed_entity/meeting_test.go`
 
-- `TestMeeting_RegisterSchema` — register succeeds; `entity types` lists v0.1
-- `TestMeeting_ValidPayloadAccepted` — full drop persists with typed payload
-- `TestMeeting_MissingDatetimeRejected` — field-level US-0407 error
-- `TestMeeting_InvalidArtifactTypeRejected` — `video` not in enum
-- `TestMeeting_ParticipantsMixedForms` — `@person.x` + free-form both accepted
-- `TestMeeting_MentionGraphBacklinks` — meeting → `@project.lesexperts` back-edge
+- planned: `tests/e2e/typed_entity/meeting_test.go::TestMeeting_RegisterSchema`
+- planned: `tests/e2e/typed_entity/meeting_test.go::TestMeeting_ValidPayloadAccepted`
+- planned: `tests/e2e/typed_entity/meeting_test.go::TestMeeting_MissingDatetimeRejected`
+- planned: `tests/e2e/typed_entity/meeting_test.go::TestMeeting_InvalidArtifactTypeRejected`
+- planned: `tests/e2e/typed_entity/meeting_test.go::TestMeeting_ParticipantsMixedForms`
+- planned: `tests/e2e/typed_entity/meeting_test.go::TestMeeting_MentionGraphBacklinks`
 
 ---
 
@@ -147,3 +147,5 @@ Path: `tests/e2e/typed_entity/meeting_test.go`
   — mention extraction
 - [US-0405](US-0405-append-only-changelog.md) — meeting drops as
   `create` mutations
+
+---

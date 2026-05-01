@@ -168,4 +168,8 @@ prune:    SELECT * FROM objects WHERE created_at < $before  (confirm)
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0034_export_backup_test.go::TestUS0034_BackupArchiveCreated`
+- `test/integration/us0034_export_backup_test.go::TestUS0034_ArchiveContainsDBAndManifest`
+- `test/integration/us0034_export_backup_test.go::TestUS0034_ManifestSchemaVersionIsCurrent`
+- `test/integration/us0034_export_backup_test.go::TestUS0034_BackupContainsObjectsAfterIngestion`
+- `test/integration/us0034_export_backup_test.go::TestUS0034_BackupWithEdgesIncluded`

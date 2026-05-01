@@ -185,4 +185,7 @@ Fields written by the step (`Tags`, `Metadata`, `Sections`, etc.) are serialised
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0042_enrichment_plugin_test.go::TestUS0042_PluginSatisfiesInterface`
+- `test/integration/us0042_enrichment_plugin_test.go::TestUS0042_DuplicatePluginNamePanics`
+- `test/integration/us0042_enrichment_plugin_test.go::TestUS0042_StepRunsAndOutputMerged`
+- `test/integration/us0042_enrichment_plugin_test.go::TestUS0042_PluginConfigIsolated`

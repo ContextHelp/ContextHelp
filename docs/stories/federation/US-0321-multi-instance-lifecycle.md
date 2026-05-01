@@ -127,3 +127,12 @@ cmd serve --port P --config C:
 - [US-0320](./US-0320-inline-push-during-ingest.md) — inline push during ingest
 - [US-0322](./US-0322-backup-and-rebuild.md) — backup/restore per instance
 - [US-0323](./US-0323-dag-chain.md) — DAG chain across instances
+
+---
+
+## E2E Tests
+
+- planned: `test/e2e/federation/multi_instance_test.go::TestMultiInstance_BootstrapTwoInstances`
+- planned: `test/e2e/federation/multi_instance_test.go::TestMultiInstance_PromoteToMerged`
+- planned: `test/e2e/federation/multi_instance_test.go::TestMultiInstance_DecommissionTarget`
+- planned: `test/e2e/federation/multi_instance_test.go::TestMultiInstance_ReassignTarget`

@@ -387,4 +387,19 @@ image:
 
 ## E2E Tests
 
-[us0003_image_ocr_test.go](../../../test/integration/us0003_image_ocr_test.go)
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_ImageFileReturnsJobID`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_JobCompletesWithOCRText`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_ImageAnalysisPipelineSelection`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_SupportedFormats`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_GIFFirstFrameOnly`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_UnsupportedFormatRejectsGracefully`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_CorruptImageReturnsError`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_FileSizeLimitEnforced`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_OCRTextSearchable`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_LowConfidenceFlaggedForReview`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_MetadataStored`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_MultipartUploadReturns202`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_ObjectRetrievableViaAPI`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_AsyncProcessing`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_WorkerCrashRetry`
+- `test/integration/us0003_image_ocr_test.go::TestUS0003_OCRProviderConfigurable`

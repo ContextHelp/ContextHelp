@@ -126,4 +126,7 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- planned: `test/integration/us0047_temporal_test.go::TestTemporal_ExtractAbsoluteDates`
+- planned: `test/integration/us0047_temporal_test.go::TestTemporal_ExtractRelativeDates`
+- planned: `test/integration/us0047_temporal_test.go::TestTemporal_TimezoneNormalization`
+- planned: `test/integration/us0047_temporal_test.go::TestTemporal_DurationExtraction`

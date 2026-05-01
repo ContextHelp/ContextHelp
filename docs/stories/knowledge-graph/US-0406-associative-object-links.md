@@ -113,3 +113,13 @@ GET /objects/{id}/links?type=extends&depth=2
 - US-0400: Fan-out enrichment (auto-creates links)
 - US-0402: Knowledge lint (detects contradiction links)
 - US-0401: Persistent composed pages (pages link to sources)
+
+---
+
+## E2E Tests
+
+- `test/integration/us0406_associative_links_test.go::TestUS0406_BidirectionalLink`
+- `test/integration/us0406_associative_links_test.go::TestUS0406_ListLinks`
+- `test/integration/us0406_associative_links_test.go::TestUS0406_FollowTraversal`
+- `test/integration/us0406_associative_links_test.go::TestUS0406_DeleteCascade`
+- `test/integration/us0406_associative_links_test.go::TestUS0406_InvalidLinkTypeRejected`

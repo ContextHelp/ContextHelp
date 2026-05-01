@@ -142,4 +142,8 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0010_decision_extraction_test.go::TestUS0010_DecisionObjectsExtractedWithCorrectFields`
+- `test/integration/us0010_decision_extraction_test.go::TestUS0010_DecisionImpactConstrainedToValidEnums`
+- `test/integration/us0010_decision_extraction_test.go::TestUS0010_DecisionStatusConstrainedToValidEnums`
+- `test/integration/us0010_decision_extraction_test.go::TestUS0010_NoDecisionsReturnsEmptySlice`
+- `test/integration/us0010_decision_extraction_test.go::TestUS0010_DecisionCountStoredInMetadata`

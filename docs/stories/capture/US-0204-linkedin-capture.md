@@ -508,4 +508,5 @@ linkedin:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0204_linkedin_capture_test.go::TestUS0204_ProfileContentStoredWithAttribution`
+- `test/integration/us0204_linkedin_capture_test.go::TestUS0204_PostContentStoredWithAttribution`

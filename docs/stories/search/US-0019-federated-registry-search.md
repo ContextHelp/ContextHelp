@@ -111,4 +111,7 @@ Knowledge is often distributed across multiple registries: a team registry, an o
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0019_federated_search_test.go::TestUS0019_FederatedSearchFansOutToRegistries`
+- `test/integration/us0019_federated_search_test.go::TestUS0019_FederatedSearchOneRegistryDown`
+- `test/integration/us0019_federated_search_test.go::TestUS0019_FederatedSearchNoRegistries`
+- `test/integration/us0019_federated_search_test.go::TestUS0019_FederatedSearchDeduplicatesSameID`

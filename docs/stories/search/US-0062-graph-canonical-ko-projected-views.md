@@ -311,4 +311,11 @@ Projections invoked by storage Get/List (never persisted in graph_json):
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0062_secrets_cli_test.go::TestUS0062_EnvBackendGetSet`
+- `test/integration/us0062_secrets_cli_test.go::TestUS0062_EnvBackendBareValue`
+- `test/integration/us0062_secrets_cli_test.go::TestUS0062_FactoryEnvBackend`
+- `test/integration/us0062_secrets_cli_test.go::TestUS0062_KeychainBackendSkippedInCI`
+- `test/integration/us0062_secrets_cli_test.go::TestUS0062_AgeFileBackendMissingFilesErrors`
+- `test/integration/us0062_secrets_cli_test.go::TestUS0062_OnePasswordBackendMissingVaultErrors`
+- `test/integration/us0062_secrets_cli_test.go::TestUS0062_GHSecretsBackendEnvFallback`
+- `test/integration/us0062_secrets_cli_test.go::TestUS0062_UnknownBackendValidationError`

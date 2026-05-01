@@ -148,4 +148,5 @@ GET /health
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0032_job_queue_health_test.go::TestUS0032_HealthReturnsOK`
+- `test/integration/us0032_job_queue_health_test.go::TestUS0032_JobCounts`

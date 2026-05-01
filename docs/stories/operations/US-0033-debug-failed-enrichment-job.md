@@ -139,4 +139,8 @@ RetryJob(ctx, id):
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0033_debug_failed_job_test.go::TestUS0033_MisconfiguredPipelineJobFails`
+- `test/integration/us0033_debug_failed_job_test.go::TestUS0033_FailedJobErrorDetailRetrievableViaAPI`
+- `test/integration/us0033_debug_failed_job_test.go::TestUS0033_FailedJobListedInFailedFilter`
+- `test/integration/us0033_debug_failed_job_test.go::TestUS0033_UnknownPipelineJobFails`
+- `test/integration/us0033_debug_failed_job_test.go::TestUS0033_FailedJobHasTimestamps`

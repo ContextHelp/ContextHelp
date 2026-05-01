@@ -94,4 +94,7 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0302_edge_bookmarks_test.go::TestUS0302_EdgeBookmarksParseHTML`
+- `test/integration/us0302_edge_bookmarks_test.go::TestUS0302_EdgeBookmarksFolderHierarchy`
+- `test/integration/us0302_edge_bookmarks_test.go::TestUS0302_EdgeBookmarksURLAndTitle`
+- `test/integration/us0302_edge_bookmarks_test.go::TestUS0302_EdgeBookmarksLastModified`

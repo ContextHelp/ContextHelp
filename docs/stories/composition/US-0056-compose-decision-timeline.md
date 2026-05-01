@@ -148,4 +148,7 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0056_decision_timeline_test.go::TestUS0056_DecisionObjectsRetainTimestamp`
+- `test/integration/us0056_decision_timeline_test.go::TestUS0056_TimelineCompositionPreservesChronologicalOrder`
+- `test/integration/us0056_decision_timeline_test.go::TestUS0056_EmptyDecisionSetProducesEmptyTimeline`
+- `test/integration/us0056_decision_timeline_test.go::TestUS0056_DecisionStatusPreservedInTimeline`

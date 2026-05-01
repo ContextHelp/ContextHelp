@@ -155,4 +155,7 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0059_recommendation_test.go::TestUS0059_RecommendationCompositionHasCorrectHeader`
+- `test/integration/us0059_recommendation_test.go::TestUS0059_RecommendationContainsSourceObjectReference`
+- `test/integration/us0059_recommendation_test.go::TestUS0059_MultipleSourcesProduceSingleRecommendation`
+- `test/integration/us0059_recommendation_test.go::TestUS0059_OpenDecisionsGenerateActionableRecommendations`

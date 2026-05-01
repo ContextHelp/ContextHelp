@@ -475,4 +475,7 @@ ctxt admin backfill --status
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0061_visual_similarity_test.go::TestUS0061_VisuallySimialrImageRanksHigher`
+- `test/integration/us0061_visual_similarity_test.go::TestUS0061_DualEmbeddingImageAndTextCoexist`
+- `test/integration/us0061_visual_similarity_test.go::TestUS0061_ImageTypeFilterRestrictsVectorResults`
+- `test/integration/us0061_visual_similarity_test.go::TestUS0061_NoEmbeddingImageExcludedFromVectorSearch`

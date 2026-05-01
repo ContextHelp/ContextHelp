@@ -114,3 +114,16 @@ for target in cfg.Federation.Targets:
 - [US-0321](./US-0321-http-federation-push.md) — remote HTTP target push (Phase 2)
 - [US-0322](./US-0322-federation-topology-api.md) — topology API (Phase 2)
 - [US-0323](./US-0323-federation-status-monitoring.md) — federation push status monitoring
+
+---
+
+## E2E Tests
+
+- `test/e2e/federation/async_push_test.go::TestFederation_AsyncPush_ObjectAppearsAtMergedDB`
+- `test/e2e/federation/async_push_test.go::TestFederation_AsyncPush_DedupeByContentHash`
+- `test/e2e/federation/async_push_test.go::TestFederation_AsyncPush_WatermarkAdvances`
+- `test/e2e/federation/async_push_test.go::TestFederation_AsyncPush_CrashRecovery`
+- `test/e2e/federation/async_push_test.go::TestFederation_AsyncPush_EdgesPushed`
+- `test/e2e/federation/async_push_test.go::TestFederation_AsyncPush_MentionsPushed`
+- `test/e2e/federation/async_push_test.go::TestFederation_AsyncPush_NoChangesNoOp`
+- `test/e2e/federation/async_push_test.go::TestFederation_AsyncPush_GracefulShutdown`

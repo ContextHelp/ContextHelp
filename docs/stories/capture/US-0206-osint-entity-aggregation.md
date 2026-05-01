@@ -397,4 +397,5 @@ osint:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0206_osint_test.go::TestUS0206_MergedProfileFromMultipleSources`
+- `test/integration/us0206_osint_test.go::TestUS0206_SingleSourceAggregation`

@@ -242,4 +242,13 @@ resp, _ := http.Post(serverURL+"/api/v1/pipelines/enqueue", "application/json", 
 
 ## E2E Tests
 
-[us0106_enqueue_test.go](../../../test/integration/us0106_enqueue_test.go)
+- `test/integration/us0106_enqueue_test.go::TestUS0106_EnqueueBasic`
+- `test/integration/us0106_enqueue_test.go::TestUS0106_JobHasCorrectPipeline`
+- `test/integration/us0106_enqueue_test.go::TestUS0106_AutoSelectsPipeline`
+- `test/integration/us0106_enqueue_test.go::TestUS0106_MissingContentReturns400`
+- `test/integration/us0106_enqueue_test.go::TestUS0106_TypeDefaultsToText`
+- `test/integration/us0106_enqueue_test.go::TestUS0106_JobTypeFormat`
+- `test/integration/us0106_enqueue_test.go::TestUS0106_MultipleJobsUniqueIDs`
+- `test/integration/us0106_enqueue_test.go::TestUS0106_CreateThenEnqueue`
+- `test/integration/us0106_enqueue_test.go::TestUS0106_EnqueueInvalidPipelineRejected`
+- `test/integration/us0106_enqueue_test.go::TestUS0106_EnqueueEmptySourceAccepted`

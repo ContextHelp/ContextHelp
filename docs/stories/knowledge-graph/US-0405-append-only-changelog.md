@@ -102,3 +102,13 @@ ctxt log --actor system:lint
 - US-0400: Fan-out enrichment (produces many mutations to log)
 - US-0402: Knowledge lint (lint_fix mutations logged)
 - US-0401: Persistent composed pages (page_update logged)
+
+---
+
+## E2E Tests
+
+- `test/integration/us0405_changelog_test.go::TestUS0405_AppendAndQuery`
+- `test/integration/us0405_changelog_test.go::TestUS0405_FilterByType`
+- `test/integration/us0405_changelog_test.go::TestUS0405_FilterBySince`
+- `test/integration/us0405_changelog_test.go::TestUS0405_FilterByObject`
+- `test/integration/us0405_changelog_test.go::TestUS0405_Immutable`

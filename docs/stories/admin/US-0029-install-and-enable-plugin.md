@@ -179,4 +179,8 @@ plugins:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0029_install_plugin_test.go::TestUS0029_StepStoredAndRetrievable`
+- `test/integration/us0029_install_plugin_test.go::TestUS0029_InstalledStepAppearsInList`
+- `test/integration/us0029_install_plugin_test.go::TestUS0029_UninstallStepRemovesIt`
+- `test/integration/us0029_install_plugin_test.go::TestUS0029_PluginRegistersHook`
+- `test/integration/us0029_install_plugin_test.go::TestUS0029_PluginHookFiredOnIngest`

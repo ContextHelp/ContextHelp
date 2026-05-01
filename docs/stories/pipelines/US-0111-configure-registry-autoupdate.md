@@ -186,4 +186,7 @@ DPKMS_REGISTRY_{}_AUTO_UPDATE=true
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0111_autoupdate_test.go::TestUS0111_AutoUpdate_SkipWhenETagUnchanged`
+- `test/integration/us0111_autoupdate_test.go::TestUS0111_AutoUpdate_UpgradeWhenETagChanges`
+- `test/integration/us0111_autoupdate_test.go::TestUS0111_AutoUpdate_NotifyWhenNotAutoUpdate`
+- `test/integration/us0111_autoupdate_test.go::TestUS0111_AutoUpdate_VersionComparison`

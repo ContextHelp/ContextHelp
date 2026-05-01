@@ -131,4 +131,6 @@ GET /compositions/brief/{id}/exports
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0025_export_brief_test.go::TestUS0025_MarkdownExportContainsSectionsAndHeadings`
+- `test/integration/us0025_export_brief_test.go::TestUS0025_BriefExportContainsProvenance`
+- `test/integration/us0025_export_brief_test.go::TestUS0025_MultiSectionBriefPreservesOrder`

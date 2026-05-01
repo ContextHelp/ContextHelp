@@ -176,4 +176,16 @@ secrets:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0031_secrets_test.go::TestUS0031_SecretsConfigRoundTripAllBackends`
+- `test/integration/us0031_secrets_test.go::TestUS0031_EnvBackendResolvesFromEnv`
+- `test/integration/us0031_secrets_test.go::TestUS0031_EnvBackendMissingKeyReturnsError`
+- `test/integration/us0031_secrets_test.go::TestUS0031_EnvBackendSetReturnsNotSupported`
+- `test/integration/us0031_secrets_test.go::TestUS0031_NewResolverEnvBackend`
+- `test/integration/us0031_secrets_test.go::TestUS0031_NewResolverEmptyBackendDefaultsToEnv`
+- `test/integration/us0031_secrets_test.go::TestUS0031_NewResolverAgeFileMissingAgeFile`
+- `test/integration/us0031_secrets_test.go::TestUS0031_NewResolverAgeFileMissingIdentityFile`
+- `test/integration/us0031_secrets_test.go::TestUS0031_NewResolverOnePasswordMissingVault`
+- `test/integration/us0031_secrets_test.go::TestUS0031_NewResolverUnknownBackendReturnsError`
+- `test/integration/us0031_secrets_test.go::TestUS0031_KeychainBackendDefaultsServiceName`
+- `test/integration/us0031_secrets_test.go::TestUS0031_ProviderFactoryUsesResolver`
+- `test/integration/us0031_secrets_test.go::TestUS0031_NoPlaintextKeyInSecretsConfig`

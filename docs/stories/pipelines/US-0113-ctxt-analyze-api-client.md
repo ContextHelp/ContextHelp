@@ -230,4 +230,8 @@ server:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0113_analyze_api_test.go::TestUS0113_AnalyzeAPI_IngestsCodeFile`
+- `test/integration/us0113_analyze_api_test.go::TestUS0113_AnalyzeAPI_IngestsMultipleFiles`
+- `test/integration/us0113_analyze_api_test.go::TestUS0113_AnalyzeAPI_ObjectMetadata`
+- `test/integration/us0113_analyze_api_test.go::TestUS0113_AnalyzeAPI_MissingContent`
+- `test/integration/us0113_analyze_api_test.go::TestUS0113_AnalyzeAPI_SearchAfterIngest`

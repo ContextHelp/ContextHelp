@@ -398,4 +398,22 @@ import:
 
 ## E2E Tests
 
-[us0008_batch_import_test.go](../../../test/integration/us0008_batch_import_test.go)
+- `test/integration/us0008_batch_import_test.go::TestUS0008_JSONLImportReturnsBatchID`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_CSVImportDefaultMapping`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_CSVCustomColumnMapping`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_TSVImport`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_MarkdownDirectoryScan`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_OPMLCreatesFeedSubscriptions`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_ImportStatusProgress`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_DryRunValidatesOnly`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_FanoutCreatesJobs`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_PartialSuccessHandling`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_BatchReportErrors`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_ChildObjectsLinkedViaEdges`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_BatchSizeLimitEnforced`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_ConcurrencyLimitRespected`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_MultipartUploadReturns202`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_ImportStatusViaAPI`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_JSONLMissingContentRejected`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_CSVNoHeaderHandled`
+- `test/integration/us0008_batch_import_test.go::TestUS0008_BatchObjectsCreatedViaService`

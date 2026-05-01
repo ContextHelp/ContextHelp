@@ -185,4 +185,10 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0028_register_pipeline_test.go::TestUS0028_RegisterPipelineViaAPI`
+- `test/integration/us0028_register_pipeline_test.go::TestUS0028_RegisteredPipelineRetrievableByName`
+- `test/integration/us0028_register_pipeline_test.go::TestUS0028_RegisteredPipelineAppearsInListing`
+- `test/integration/us0028_register_pipeline_test.go::TestUS0028_IngestWithCustomPipelineNameExecutesSteps`
+- `test/integration/us0028_register_pipeline_test.go::TestUS0028_MissingNameReturns400`
+- `test/integration/us0028_register_pipeline_test.go::TestUS0028_MissingStepsReturns400`
+- `test/integration/us0028_register_pipeline_test.go::TestUS0028_EnqueueViaHTTPRecordsJobPipeline`

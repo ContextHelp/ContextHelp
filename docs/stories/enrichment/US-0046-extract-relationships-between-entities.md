@@ -126,4 +126,7 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- planned: `test/integration/us0046_relationships_test.go::TestRelationships_ExtractFromText`
+- planned: `test/integration/us0046_relationships_test.go::TestRelationships_TypedEdgesEmitted`
+- planned: `test/integration/us0046_relationships_test.go::TestRelationships_DedupeAcrossObjects`
+- planned: `test/integration/us0046_relationships_test.go::TestRelationships_ConfidenceThreshold`

@@ -126,4 +126,8 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0013_code_extraction_test.go::TestUS0013_FencedCodeBlocksExtracted`
+- `test/integration/us0013_code_extraction_test.go::TestUS0013_CodeObjectsCreatedWithLanguageTag`
+- `test/integration/us0013_code_extraction_test.go::TestUS0013_UnlabeledFencedBlocksGetUnknownLanguage`
+- `test/integration/us0013_code_extraction_test.go::TestUS0013_NoCodeContentReturnsEmptySnippets`
+- `test/integration/us0013_code_extraction_test.go::TestUS0013_DetectionMethodRecordedInMetadata`

@@ -181,4 +181,7 @@ DELETE /templates/{name}
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0060_custom_template_test.go::TestUS0060_CustomTemplateSectionsRegisteredInPipeline`
+- `test/integration/us0060_custom_template_test.go::TestUS0060_CustomTemplateContentInterpolated`
+- `test/integration/us0060_custom_template_test.go::TestUS0060_CustomTemplateSectionOrderInComposition`
+- `test/integration/us0060_custom_template_test.go::TestUS0060_BulletListSectionFormatPreserved`

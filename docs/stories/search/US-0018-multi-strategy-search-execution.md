@@ -116,4 +116,6 @@ No single search strategy covers all cases: keyword search misses semantic equiv
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0018_multi_strategy_test.go::TestUS0018_FTSAndRSQLPathsBothReturn`
+- `test/integration/us0018_multi_strategy_test.go::TestUS0018_HybridSearchDeduplicate`
+- `test/integration/us0018_multi_strategy_test.go::TestUS0018_ExplainContainsScoreBreakdown`

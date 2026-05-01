@@ -490,4 +490,6 @@ github:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0202_github_capture_test.go::TestUS0202_RepoTitleDescriptionStored`
+- `test/integration/us0202_github_capture_test.go::TestUS0202_IssueTitleBodyLabelsStored`
+- `test/integration/us0202_github_capture_test.go::TestUS0202_PRTitleBodyStored`

@@ -143,4 +143,8 @@ dpkms pipeline step uninstall <name>
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0108_install_step_test.go::TestUS0108_InstallStep_DownloadAndRegister`
+- `test/integration/us0108_install_step_test.go::TestUS0108_InstallStep_GetAfterInstall`
+- `test/integration/us0108_install_step_test.go::TestUS0108_InstallStep_MissingName`
+- `test/integration/us0108_install_step_test.go::TestUS0108_InstallStep_MissingRegistry`
+- `test/integration/us0108_install_step_test.go::TestUS0108_InstallStep_StepNotInManifest`

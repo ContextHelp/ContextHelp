@@ -515,4 +515,7 @@ capture:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0207_web_tab_test.go::TestUS0207_FullPageCapture`
+- `test/integration/us0207_web_tab_test.go::TestUS0207_SelectionCapture`
+- `test/integration/us0207_web_tab_test.go::TestUS0207_CaptureViaAnalyzeAPIReturnsJobID`
+- `test/integration/us0207_web_tab_test.go::TestUS0207_AuthStateStoredInMetadata`

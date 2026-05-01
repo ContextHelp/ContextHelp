@@ -93,4 +93,6 @@ This story establishes the core importer interface and lifecycle for registratio
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0300_importer_interface_test.go::TestUS0300_BookmarkImporterContract`
+- `test/integration/us0300_importer_interface_test.go::TestUS0300_SlackImporterContract`
+- `test/integration/us0300_importer_interface_test.go::TestUS0300_SourceAttributionEndToEnd`

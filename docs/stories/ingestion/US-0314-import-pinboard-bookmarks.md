@@ -95,4 +95,8 @@ The importer must support both initial backfill and repeat sync runs. It should 
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0314_pinboard_test.go::TestUS0314_PinboardFetchPosts`
+- `test/integration/us0314_pinboard_test.go::TestUS0314_PinboardTagsExtracted`
+- `test/integration/us0314_pinboard_test.go::TestUS0314_PinboardToReadFlagPreserved`
+- `test/integration/us0314_pinboard_test.go::TestUS0314_PinboardFilterSince`
+- `test/integration/us0314_pinboard_test.go::TestUS0314_PinboardRenderContent`

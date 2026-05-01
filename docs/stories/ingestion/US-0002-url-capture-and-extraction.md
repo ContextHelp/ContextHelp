@@ -137,4 +137,8 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0002_url_capture_test.go::TestUS0002_URLIngestReturnsJobID`
+- `test/integration/us0002_url_capture_test.go::TestUS0002_TitleAndBodyExtracted`
+- `test/integration/us0002_url_capture_test.go::TestUS0002_SourceURLStoredOnObject`
+- `test/integration/us0002_url_capture_test.go::TestUS0002_DedupOnReIngestSameURL`
+- `test/integration/us0002_url_capture_test.go::TestUS0002_URLPipelineAssigned`

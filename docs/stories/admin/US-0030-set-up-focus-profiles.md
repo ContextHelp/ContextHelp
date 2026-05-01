@@ -155,4 +155,9 @@ Content-Type: application/json
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0030_focus_profiles_test.go::TestUS0030_ProfileConfigRoundTrip`
+- `test/integration/us0030_focus_profiles_test.go::TestUS0030_ProfileConfigDefaultRoundTrip`
+- `test/integration/us0030_focus_profiles_test.go::TestUS0030_ObjectWithProfileIDStoredAndRetrievable`
+- `test/integration/us0030_focus_profiles_test.go::TestUS0030_EmptyProfileIDIsGlobal`
+- `test/integration/us0030_focus_profiles_test.go::TestUS0030_SearchFilteredByProfileReturnsCorrectObjects`
+- `test/integration/us0030_focus_profiles_test.go::TestUS0030_MultipleProfilesCoexistIndependently`

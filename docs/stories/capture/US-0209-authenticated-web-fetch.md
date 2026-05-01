@@ -595,4 +595,6 @@ capture:
 
 ## E2E Tests
 
-> Not yet implemented.
+- `test/integration/us0209_auth_fetch_test.go::TestUS0209_CookieAuthSentToServer`
+- `test/integration/us0209_auth_fetch_test.go::TestUS0209_APIKeyAuthSentToServer`
+- `test/integration/us0209_auth_fetch_test.go::TestUS0209_AuthMethodStoredInMetadata`
