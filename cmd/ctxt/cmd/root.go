@@ -149,27 +149,26 @@ var commandGroups = map[string]string{
 	// CAPTURE — get content into ctxt
 	"analyze": "capture", "import": "capture", "ingest": "capture",
 	"inbox": "capture", "feed": "capture", "watch": "capture",
-	"watcher": "capture",
 
 	// KNOWLEDGE — read & navigate the graph
-	"find": "knowledge", "list": "knowledge", "open": "knowledge",
-	"links": "knowledge", "link": "knowledge", "unlink": "knowledge",
+	"find": "knowledge", "list": "knowledge", "show": "knowledge",
+	"link": "knowledge",
 	"log": "knowledge", "stats": "knowledge",
 
 	// COMPOSE — synthesize knowledge into outputs
-	"make": "compose", "export": "compose", "page": "compose",
-	"remind": "compose", "reminders": "compose", "resurface": "compose",
+	"compose": "compose", "export": "compose", "page": "compose",
+	"remind": "compose", "resurface": "compose",
 
 	// CURATE — modify the graph
 	"edit": "curate", "delete": "curate", "classify": "curate",
-	"enrich": "curate",
+	"reprocess": "curate",
 
 	// ORGANIZE — taxonomy + scoping
 	"entity": "organize", "index": "organize", "profile": "organize",
-	"registry": "organize", "lint": "organize",
+	"registry": "organize", "doctor": "organize",
 
 	// INTERACT — interactive surfaces
-	"shell": "interact", "tui": "interact", "init": "interact",
+	"shell": "interact", "tui": "interact", "setup": "interact",
 
 	// INSTANCE — talk to a specific dpkms
 	"instance": "instance", "audit": "instance",
@@ -287,7 +286,7 @@ func SetVersionFetcher(f internalversion.Fetcher) {
 //   - ctxt://search/<query>     → find <query>
 //
 // The ui.handler config key (default "cli") controls the presentation layer:
-//   - "cli"  → prints to stdout via runOpen / runFind
+//   - "cli"  → prints to stdout via runShow / runFind
 //   - "tui"  → opens the interactive terminal interface focused on the result
 func dispatchURI(cmd *cobra.Command, raw string) error {
 	u, err := url.Parse(raw)
@@ -315,7 +314,7 @@ func dispatchURI(cmd *cobra.Command, raw string) error {
 		if handler == "tui" {
 			return dispatchURIViaTUI(tui.StartOpts{InitialObjectID: objectID})
 		}
-		return runOpen(cmd, []string{objectID})
+		return runShow(cmd, []string{objectID})
 	}
 }
 

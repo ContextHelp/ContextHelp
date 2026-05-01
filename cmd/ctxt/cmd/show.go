@@ -13,38 +13,38 @@ import (
 	"github.com/spf13/viper"
 )
 
-var openCmd = &cobra.Command{
-	Use:   "open [id]",
+var showCmd = &cobra.Command{
+	Use:   "show [id]",
 	Short: "Display knowledge object details",
 	Long: `Display detailed information about a knowledge object.
 
 If no ID is provided, it will check the clipboard for an ID.
 
 Examples:
-  # View object details
-  ctxt open obj_12345678
+  # Show object details
+  ctxt show obj_12345678
 
   # View object using ID from clipboard
-  ctxt open
+  ctxt show
 
-  # View raw object data
-  ctxt open obj_12345678 --raw`,
-	RunE: runOpen,
+  # Show raw object data
+  ctxt show obj_12345678 --raw`,
+	RunE: runShow,
 }
 
 func init() {
-	rootCmd.AddCommand(openCmd)
+	rootCmd.AddCommand(showCmd)
 
 	// Display flags
-	openCmd.Flags().Bool("raw", false, "show raw object data")
-	openCmd.Flags().String("format", "", "output-generator plugin name (e.g. obsidian-md)")
+	showCmd.Flags().Bool("raw", false, "show raw object data")
+	showCmd.Flags().String("format", "", "output-generator plugin name (e.g. obsidian-md)")
 
 	// Bind flags to viper
-	viper.BindPFlag("open.raw", openCmd.Flags().Lookup("raw"))
-	viper.BindPFlag("open.format", openCmd.Flags().Lookup("format"))
+	viper.BindPFlag("show.raw", showCmd.Flags().Lookup("raw"))
+	viper.BindPFlag("show.format", showCmd.Flags().Lookup("format"))
 }
 
-func runOpen(cmd *cobra.Command, args []string) error {
+func runShow(cmd *cobra.Command, args []string) error {
 	objectID, source, err := cli.GetInput(args)
 	if err != nil {
 		return err
@@ -67,7 +67,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	}
 
 	// Delegate to output-generator plugin when --format is specified.
-	if format := viper.GetString("open.format"); format != "" {
+	if format := viper.GetString("show.format"); format != "" {
 		gen := findOutputGenerator(svc.PluginRegistry, format)
 		if gen == nil {
 			return fmt.Errorf("no output-generator plugin loaded for format %q", format)
@@ -83,7 +83,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if isJSONOutput() || viper.GetBool("open.raw") {
+	if isJSONOutput() || viper.GetBool("show.raw") {
 		return outputJSON(os.Stdout, obj)
 	}
 

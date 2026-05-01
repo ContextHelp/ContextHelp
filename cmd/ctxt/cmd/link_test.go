@@ -26,7 +26,7 @@ func TestLinkCreatesEdges(t *testing.T) {
 	db := setupTestDB(t)
 	seedTwoObjects(t, db)
 
-	out, err := db.exec("link", "obj_a", "obj_b", "--type", "extends")
+	out, err := db.exec("link", "create", "obj_a", "obj_b", "--type", "extends")
 	if err != nil {
 		t.Fatalf("link: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestLinkSymmetricNoDuplicate(t *testing.T) {
 	db := setupTestDB(t)
 	seedTwoObjects(t, db)
 
-	_, err := db.exec("link", "obj_a", "obj_b", "--type", "related-to")
+	_, err := db.exec("link", "create", "obj_a", "obj_b", "--type", "related-to")
 	if err != nil {
 		t.Fatalf("link: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestLinkInvalidType(t *testing.T) {
 	db := setupTestDB(t)
 	seedTwoObjects(t, db)
 
-	_, err := db.exec("link", "obj_a", "obj_b", "--type", "imaginary")
+	_, err := db.exec("link", "create", "obj_a", "obj_b", "--type", "imaginary")
 	if err == nil {
 		t.Error("expected error for invalid link type")
 	}
@@ -102,7 +102,7 @@ func TestLinkMissingType(t *testing.T) {
 	db := setupTestDB(t)
 	seedTwoObjects(t, db)
 
-	_, err := db.exec("link", "obj_a", "obj_b")
+	_, err := db.exec("link", "create", "obj_a", "obj_b")
 	if err == nil {
 		t.Error("expected error when --type not provided")
 	}
@@ -112,7 +112,7 @@ func TestLinkSourceNotFound(t *testing.T) {
 	db := setupTestDB(t)
 	seedTwoObjects(t, db)
 
-	_, err := db.exec("link", "obj_missing", "obj_b", "--type", "extends")
+	_, err := db.exec("link", "create", "obj_missing", "obj_b", "--type", "extends")
 	if err == nil {
 		t.Error("expected error for missing source")
 	}
@@ -122,7 +122,7 @@ func TestLinkWithContext(t *testing.T) {
 	db := setupTestDB(t)
 	seedTwoObjects(t, db)
 
-	_, err := db.exec("link", "obj_a", "obj_b",
+	_, err := db.exec("link", "create", "obj_a", "obj_b",
 		"--type", "contradicts", "--context", "newer data")
 	if err != nil {
 		t.Fatalf("link with context: %v", err)
@@ -143,9 +143,9 @@ func TestLinksListsAll(t *testing.T) {
 	db := setupTestDB(t)
 	seedTwoObjects(t, db)
 
-	_, _ = db.exec("link", "obj_a", "obj_b", "--type", "extends")
+	_, _ = db.exec("link", "create", "obj_a", "obj_b", "--type", "extends")
 
-	out, err := db.exec("links", "obj_a")
+	out, err := db.exec("link", "list", "obj_a")
 	if err != nil {
 		t.Fatalf("links: %v", err)
 	}
@@ -161,10 +161,10 @@ func TestLinksFilterByType(t *testing.T) {
 	db := setupTestDB(t)
 	seedTwoObjects(t, db)
 
-	_, _ = db.exec("link", "obj_a", "obj_b", "--type", "extends")
-	_, _ = db.exec("link", "obj_a", "obj_b", "--type", "supports")
+	_, _ = db.exec("link", "create", "obj_a", "obj_b", "--type", "extends")
+	_, _ = db.exec("link", "create", "obj_a", "obj_b", "--type", "supports")
 
-	out, err := db.exec("links", "obj_a", "--type", "extends")
+	out, err := db.exec("link", "list", "obj_a", "--type", "extends")
 	if err != nil {
 		t.Fatalf("links --type: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestLinksNoLinks(t *testing.T) {
 	db := setupTestDB(t)
 	seedTwoObjects(t, db)
 
-	out, err := db.exec("links", "obj_a")
+	out, err := db.exec("link", "list", "obj_a")
 	if err != nil {
 		t.Fatalf("links: %v", err)
 	}
@@ -201,10 +201,10 @@ func TestLinksFollow(t *testing.T) {
 		})
 	}
 
-	_, _ = db.exec("link", "obj_1", "obj_2", "--type", "extends")
-	_, _ = db.exec("link", "obj_2", "obj_3", "--type", "extends")
+	_, _ = db.exec("link", "create", "obj_1", "obj_2", "--type", "extends")
+	_, _ = db.exec("link", "create", "obj_2", "obj_3", "--type", "extends")
 
-	out, err := db.exec("links", "obj_1", "--follow", "2")
+	out, err := db.exec("link", "list", "obj_1", "--follow", "2")
 	if err != nil {
 		t.Fatalf("links --follow: %v", err)
 	}
@@ -220,9 +220,9 @@ func TestUnlink(t *testing.T) {
 	db := setupTestDB(t)
 	seedTwoObjects(t, db)
 
-	_, _ = db.exec("link", "obj_a", "obj_b", "--type", "extends")
+	_, _ = db.exec("link", "create", "obj_a", "obj_b", "--type", "extends")
 
-	out, err := db.exec("unlink", "obj_a", "obj_b")
+	out, err := db.exec("link", "delete", "obj_a", "obj_b")
 	if err != nil {
 		t.Fatalf("unlink: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestUnlinkNoLinks(t *testing.T) {
 	db := setupTestDB(t)
 	seedTwoObjects(t, db)
 
-	out, err := db.exec("unlink", "obj_a", "obj_b")
+	out, err := db.exec("link", "delete", "obj_a", "obj_b")
 	if err != nil {
 		t.Fatalf("unlink: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestDeleteCascadesLinks(t *testing.T) {
 	db := setupTestDB(t)
 	seedTwoObjects(t, db)
 
-	_, _ = db.exec("link", "obj_a", "obj_b", "--type", "extends")
+	_, _ = db.exec("link", "create", "obj_a", "obj_b", "--type", "extends")
 
 	// delete obj_a — should cascade via DeleteByObject
 	_, err := db.exec("delete", "--id", "obj_a", "-y")
@@ -276,7 +276,7 @@ func TestDeleteCascadesLinks(t *testing.T) {
 }
 
 func TestLinkHelp(t *testing.T) {
-	out, err := executeCommand("link", "--help")
+	out, err := executeCommand("link", "create", "--help")
 	if err != nil {
 		t.Fatalf("link --help: %v", err)
 	}

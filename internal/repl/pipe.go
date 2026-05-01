@@ -45,5 +45,5 @@ func BuildPipeCommand(objs []*storage.KnowledgeObject, artifactType string) stri
 	for i, obj := range objs {
 		ids[i] = obj.ID
 	}
-	return fmt.Sprintf(`make %s --q "id=in=(%s)"`, artifactType, strings.Join(ids, ","))
+	return fmt.Sprintf(`compose %s --q "id=in=(%s)"`, artifactType, strings.Join(ids, ","))
 }

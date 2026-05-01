@@ -42,7 +42,7 @@ func TestCompleter_OpenPrefix_WithResults(t *testing.T) {
 		{ID: "abc-003"},
 	})
 	c := &Completer{state: state, service: &mockAdapter{}}
-	got := c.Complete("open ")
+	got := c.Complete("show ")
 	assert.Contains(t, got, "1")
 	assert.Contains(t, got, "2")
 	assert.Contains(t, got, "3")
@@ -52,7 +52,7 @@ func TestCompleter_OpenPrefix_WithResults(t *testing.T) {
 
 func TestCompleter_OpenPrefix_NoResults(t *testing.T) {
 	c := &Completer{state: &SessionState{}, service: &mockAdapter{}}
-	got := c.Complete("open ")
+	got := c.Complete("show ")
 	assert.Empty(t, got)
 }
 

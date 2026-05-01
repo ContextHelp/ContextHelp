@@ -13,7 +13,7 @@ import (
 )
 
 var editCmd = &cobra.Command{
-	Use:   "edit --id <id>",
+	Use:   "edit <id>",
 	Short: "Modify knowledge object metadata",
 	Long: `Edit metadata for a knowledge object.
 
@@ -22,25 +22,22 @@ decisions, and subtype.
 
 Examples:
   # Update title
-  ctxt edit --id obj_12345678 --title "New title"
+  ctxt edit obj_12345678 --title "New title"
 
   # Update tags
-  ctxt edit --id obj_12345678 --tags "ux,onboarding,critical"
+  ctxt edit obj_12345678 --tags "ux,onboarding,critical"
 
   # Update mentions
-  ctxt edit --id obj_12345678 --mentions "@ui.best-practice @ux.onboarding"
+  ctxt edit obj_12345678 --mentions "@ui.best-practice @ux.onboarding"
 
   # Update multiple fields
-  ctxt edit --id obj_12345678 --title "New title" --tags "ux" --subtype "article"`,
+  ctxt edit obj_12345678 --title "New title" --tags "ux" --subtype "article"`,
+	Args: cobra.ExactArgs(1),
 	RunE: runEdit,
 }
 
 func init() {
 	rootCmd.AddCommand(editCmd)
-
-	// Required flags
-	editCmd.Flags().String("id", "", "knowledge object ID (required)")
-	editCmd.MarkFlagRequired("id")
 
 	// Editable fields
 	editCmd.Flags().String("title", "", "update title")
@@ -51,8 +48,6 @@ func init() {
 	editCmd.Flags().String("decisions", "", "replace decisions (JSON)")
 	editCmd.Flags().String("subtype", "", "update subtype")
 
-	// Bind flags to viper
-	viper.BindPFlag("edit.id", editCmd.Flags().Lookup("id"))
 	viper.BindPFlag("edit.title", editCmd.Flags().Lookup("title"))
 	viper.BindPFlag("edit.summary", editCmd.Flags().Lookup("summary"))
 	viper.BindPFlag("edit.tags", editCmd.Flags().Lookup("tags"))
@@ -63,7 +58,7 @@ func init() {
 }
 
 func runEdit(cmd *cobra.Command, args []string) error {
-	id := viper.GetString("edit.id")
+	id := args[0]
 
 	// Collect changed fields
 	updates := make(map[string]string)

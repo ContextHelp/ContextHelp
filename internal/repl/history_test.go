@@ -27,7 +27,7 @@ func TestLoadSaveHistory_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
 
-	lines := []string{"find auth flow", "list --type url", "open 1"}
+	lines := []string{"find auth flow", "list --type url", "show 1"}
 
 	l := liner.NewLiner()
 	for _, line := range lines {

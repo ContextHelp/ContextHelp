@@ -17,16 +17,16 @@ func TestParsePipe(t *testing.T) {
 	}{
 		{
 			name:     "simple pipe",
-			input:    "find auth | make brief",
+			input:    "find auth | compose brief",
 			wantLHS:  "find auth",
-			wantRHS:  "make brief",
+			wantRHS:  "compose brief",
 			wantPipe: true,
 		},
 		{
 			name:     "query without command token",
-			input:    "authentication flow | make summary",
+			input:    "authentication flow | compose summary",
 			wantLHS:  "authentication flow",
-			wantRHS:  "make summary",
+			wantRHS:  "compose summary",
 			wantPipe: true,
 		},
 		{
@@ -41,16 +41,16 @@ func TestParsePipe(t *testing.T) {
 		},
 		{
 			name:     "quoted pipe is not a pipe separator",
-			input:    `find "pipe | dream" | make brief`,
+			input:    `find "pipe | dream" | compose brief`,
 			wantLHS:  `find "pipe | dream"`,
-			wantRHS:  "make brief",
+			wantRHS:  "compose brief",
 			wantPipe: true,
 		},
 		{
 			name:     "pipe with extra whitespace trimmed",
-			input:    "checkout UX   |   make plan",
+			input:    "checkout UX   |   compose plan",
 			wantLHS:  "checkout UX",
-			wantRHS:  "make plan",
+			wantRHS:  "compose plan",
 			wantPipe: true,
 		},
 	}
@@ -73,13 +73,13 @@ func TestBuildPipeCommand(t *testing.T) {
 		{ID: "id-002"},
 	}
 	got := BuildPipeCommand(objs, "brief")
-	assert.Equal(t, `make brief --q "id=in=(id-001,id-002)"`, got)
+	assert.Equal(t, `compose brief --q "id=in=(id-001,id-002)"`, got)
 }
 
 func TestBuildPipeCommand_Single(t *testing.T) {
 	objs := []*storage.KnowledgeObject{{ID: "only-one"}}
 	got := BuildPipeCommand(objs, "summary")
-	assert.Equal(t, `make summary --q "id=in=(only-one)"`, got)
+	assert.Equal(t, `compose summary --q "id=in=(only-one)"`, got)
 }
 
 func TestBuildPipeCommand_Empty(t *testing.T) {

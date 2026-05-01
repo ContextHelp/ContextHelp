@@ -13,10 +13,15 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// --- ctxt link <source> <target> --type extends ---
+// --- ctxt link {create,list,delete} ---
 
 var linkCmd = &cobra.Command{
-	Use:   "link <source_id> <target_id>",
+	Use:   "link",
+	Short: "Manage typed links between knowledge objects",
+}
+
+var linkCreateCmd = &cobra.Command{
+	Use:   "create <source_id> <target_id>",
 	Short: "Create a typed link between two objects",
 	Long: `Create a typed associative link between two knowledge objects.
 
@@ -24,21 +29,22 @@ Valid link types: extends, contradicts, supersedes, supports, related-to, derive
 A reverse link is created automatically (e.g. extends → extended-by).
 
 Examples:
-  ctxt link obj_abc obj_xyz --type extends
-  ctxt link obj_abc obj_xyz --type contradicts --context "newer research"`,
+  ctxt link create obj_abc obj_xyz --type extends
+  ctxt link create obj_abc obj_xyz --type contradicts --context "newer research"`,
 	Args: cobra.ExactArgs(2),
-	RunE: runLink,
+	RunE: runLinkCreate,
 }
 
 func init() {
 	rootCmd.AddCommand(linkCmd)
-	linkCmd.Flags().StringP("type", "t", "", "link type (required): "+
+	linkCmd.AddCommand(linkCreateCmd)
+	linkCreateCmd.Flags().StringP("type", "t", "", "link type (required): "+
 		strings.Join(graph.UserLinkTypeStrings(), ", "))
-	linkCmd.Flags().String("context", "", "optional reason for the link")
-	_ = linkCmd.MarkFlagRequired("type")
+	linkCreateCmd.Flags().String("context", "", "optional reason for the link")
+	_ = linkCreateCmd.MarkFlagRequired("type")
 }
 
-func runLink(cmd *cobra.Command, args []string) error {
+func runLinkCreate(cmd *cobra.Command, args []string) error {
 	sourceID, targetID := args[0], args[1]
 	ltStr, _ := cmd.Flags().GetString("type")
 	ctx, _ := cmd.Flags().GetString("context")
@@ -110,28 +116,28 @@ func runLink(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// --- ctxt links <object_id> ---
+// --- ctxt link list <object_id> ---
 
-var linksCmd = &cobra.Command{
-	Use:   "links <object_id>",
+var linkListCmd = &cobra.Command{
+	Use:   "list <object_id>",
 	Short: "List all links for an object",
 	Long: `List all associative links for a knowledge object (inbound + outbound).
 
 Examples:
-  ctxt links obj_abc
-  ctxt links obj_abc --type contradicts
-  ctxt links obj_abc --follow 2`,
+  ctxt link list obj_abc
+  ctxt link list obj_abc --type contradicts
+  ctxt link list obj_abc --follow 2`,
 	Args: cobra.ExactArgs(1),
-	RunE: runLinks,
+	RunE: runLinkList,
 }
 
 func init() {
-	rootCmd.AddCommand(linksCmd)
-	linksCmd.Flags().StringP("type", "t", "", "filter by link type")
-	linksCmd.Flags().Int("follow", 0, "depth-limited traversal (max 3)")
+	linkCmd.AddCommand(linkListCmd)
+	linkListCmd.Flags().StringP("type", "t", "", "filter by link type")
+	linkListCmd.Flags().Int("follow", 0, "depth-limited traversal (max 3)")
 }
 
-func runLinks(cmd *cobra.Command, args []string) error {
+func runLinkList(cmd *cobra.Command, args []string) error {
 	objectID := args[0]
 	typeFilter, _ := cmd.Flags().GetString("type")
 	follow, _ := cmd.Flags().GetInt("follow")
@@ -285,25 +291,25 @@ func printLinksTraversal(
 	return nil
 }
 
-// --- ctxt unlink <source_id> <target_id> ---
+// --- ctxt link delete <source_id> <target_id> ---
 
-var unlinkCmd = &cobra.Command{
-	Use:   "unlink <source_id> <target_id>",
+var linkDeleteCmd = &cobra.Command{
+	Use:   "delete <source_id> <target_id>",
 	Short: "Remove links between two objects",
 	Long: `Remove all associative links between two knowledge objects.
 Both forward and reverse edges are removed.
 
 Examples:
-  ctxt unlink obj_abc obj_xyz`,
+  ctxt link delete obj_abc obj_xyz`,
 	Args: cobra.ExactArgs(2),
-	RunE: runUnlink,
+	RunE: runLinkDelete,
 }
 
 func init() {
-	rootCmd.AddCommand(unlinkCmd)
+	linkCmd.AddCommand(linkDeleteCmd)
 }
 
-func runUnlink(cmd *cobra.Command, args []string) error {
+func runLinkDelete(cmd *cobra.Command, args []string) error {
 	sourceID, targetID := args[0], args[1]
 
 	svc, cleanup, err := newService()

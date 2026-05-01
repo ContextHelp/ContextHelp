@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var initCmd = &cobra.Command{
-	Use:   "init",
+var setupCmd = &cobra.Command{
+	Use:   "setup",
 	Short: "Interactive zero-config onboarding wizard",
 	Long: `Run the ctxt setup wizard to configure your installation.
 
@@ -25,16 +25,16 @@ The resulting config is written to ~/.config/contexthelp/config.yaml.
 
 Examples:
   # Interactive wizard
-  ctxt init
+  ctxt setup
 
   # Non-interactive (CI/scripts) — writes defaults without prompting
-  ctxt init --non-interactive`,
-	RunE: runInit,
+  ctxt setup --non-interactive`,
+	RunE: runSetup,
 }
 
 func init() {
-	rootCmd.AddCommand(initCmd)
-	initCmd.Flags().Bool("non-interactive", false, "skip all prompts and write defaults (also triggered by CI=true)")
+	rootCmd.AddCommand(setupCmd)
+	setupCmd.Flags().Bool("non-interactive", false, "skip all prompts and write defaults (also triggered by CI=true)")
 }
 
 // wizardAnswers holds the values collected (or defaulted) by the wizard.
@@ -45,7 +45,7 @@ type wizardAnswers struct {
 	Pipeline    string // "text" | "url" | "auto"
 }
 
-func runInit(cmd *cobra.Command, args []string) error {
+func runSetup(cmd *cobra.Command, args []string) error {
 	nonInteractive, _ := cmd.Flags().GetBool("non-interactive")
 	if !nonInteractive && os.Getenv("CI") != "" {
 		nonInteractive = true

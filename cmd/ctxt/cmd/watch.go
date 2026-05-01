@@ -8,38 +8,44 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 	"github.com/spf13/cobra"
 )
 
+// watchCmd is the top-level "watcher" command group.
 var watchCmd = &cobra.Command{
 	Use:   "watch",
-	Short: "Manage background watchers (clipboard, directories)",
-	Long: `Start, stop, and inspect background watchers.
+	Short: "Manage passive background watchers (clipboard, directories)",
+	Long: `Start, stop, inspect, and configure passive background watchers.
 
-Watchers monitor the clipboard and filesystem directories, automatically
-enqueueing ingestion jobs when new or changed content is detected.
+Watchers monitor the clipboard and filesystem directories, silently enqueueing
+ingestion jobs when new or changed content is detected.
+
+Configuration (config.yaml):
+  watch:
+    clipboard:
+      enabled: false       # must opt-in explicitly
+      poll_interval: 2s
+      min_length: 80
+      auto_ingest: true
+
+  CTXT_NO_CLIPBOARD=1 disables the clipboard watcher unconditionally.
 
 Examples:
-  # Start all configured watchers and block until Ctrl-C
+  ctxt watch enable clipboard
   ctxt watch start
-
-  # Stop all active watchers (persisted in storage)
-  ctxt watch stop
-
-  # Show status of all active watches
-  ctxt watch status`,
+  ctxt watch status
+  ctxt watch stop`,
 }
 
 var watchStartCmd = &cobra.Command{
 	Use:   "start",
-	Short: "Start all configured watchers",
+	Short: "Start all configured watchers and block",
 	Long: `Start clipboard and directory watchers as configured in config.yaml.
 
-Blocks until interrupted (Ctrl-C or SIGTERM). Clipboard watcher respects
-watch.clipboard.enabled and CTXT_NO_CLIPBOARD env var. Directory watchers
-are loaded from storage (persisted watch configs).`,
+Blocks until interrupted (Ctrl-C or SIGTERM).`,
 	RunE: runWatchStart,
 }
 
@@ -52,9 +58,31 @@ var watchStopCmd = &cobra.Command{
 
 var watchStatusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Show status of all active watches",
-	Long:  `List all watch configurations stored in the database with their status.`,
+	Short: "Show status of all configured watchers",
+	Long:  `Display clipboard watcher status and all directory watch configurations.`,
 	RunE:  runWatchStatus,
+}
+
+var watchEnableCmd = &cobra.Command{
+	Use:   "enable <watcher>",
+	Short: "Enable a watcher by name (e.g. clipboard)",
+	Long: `Enable a named watcher. Supported names: clipboard.
+
+This writes the change to the active config. Restart 'ctxt watch start'
+to apply.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runWatchEnable,
+}
+
+var watchDisableCmd = &cobra.Command{
+	Use:   "disable <watcher>",
+	Short: "Disable a watcher by name (e.g. clipboard)",
+	Long: `Disable a named watcher. Supported names: clipboard.
+
+This writes the change to the active config. The running watcher will stop
+at the next poll cycle if already running.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runWatchDisable,
 }
 
 func init() {
@@ -62,6 +90,8 @@ func init() {
 	watchCmd.AddCommand(watchStartCmd)
 	watchCmd.AddCommand(watchStopCmd)
 	watchCmd.AddCommand(watchStatusCmd)
+	watchCmd.AddCommand(watchEnableCmd)
+	watchCmd.AddCommand(watchDisableCmd)
 }
 
 func runWatchStart(cmd *cobra.Command, _ []string) error {
@@ -74,7 +104,6 @@ func runWatchStart(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Handle Ctrl-C / SIGTERM.
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -101,17 +130,21 @@ func runWatchStart(cmd *cobra.Command, _ []string) error {
 
 	clipWatcher := watcher.NewClipboardWatcher(clipCfg, svc, nil)
 
-	if cfg.Watch.Clipboard.Enabled {
+	noClip := os.Getenv("CTXT_NO_CLIPBOARD") == "1"
+	if cfg.Watch.Clipboard.Enabled && !noClip {
 		fmt.Fprintln(cmd.OutOrStdout(), "Clipboard watcher: enabled")
 		go clipWatcher.Run(ctx)
+	} else if noClip {
+		fmt.Fprintln(cmd.OutOrStdout(), "Clipboard watcher: disabled (CTXT_NO_CLIPBOARD=1)")
 	} else {
-		fmt.Fprintln(cmd.OutOrStdout(), "Clipboard watcher: disabled (set watch.clipboard.enabled: true to activate)")
+		fmt.Fprintln(cmd.OutOrStdout(),
+			"Clipboard watcher: disabled (use 'ctxt watch enable clipboard' to activate)")
 	}
 
-	// Directory watchers from dirs config.
+	// Directory watchers.
 	dirs := cfg.Watch.Dirs
 	if len(dirs) == 0 {
-		dirs = cfg.Watch.Paths // backwards compat
+		dirs = cfg.Watch.Paths
 	}
 	for _, dir := range dirs {
 		mode := watcher.DetectMode(dir)
@@ -175,7 +208,6 @@ func runWatchStatus(cmd *cobra.Command, _ []string) error {
 
 	ctx := context.Background()
 
-	// List all (active + paused).
 	active, err := svc.Store.Watches().ListWatches(ctx, "active")
 	if err != nil {
 		return fmt.Errorf("list active watches: %w", err)
@@ -187,7 +219,6 @@ func runWatchStatus(cmd *cobra.Command, _ []string) error {
 
 	all := append(active, paused...)
 
-	// Clipboard status from config.
 	clipStatus := "disabled"
 	if cfg.Watch.Clipboard.Enabled {
 		clipStatus = "enabled"
@@ -212,16 +243,63 @@ func runWatchStatus(cmd *cobra.Command, _ []string) error {
 		})
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Clipboard watcher: %s\n", clipStatus)
+	fmt.Fprintf(cmd.OutOrStdout(), "Clipboard watcher : %s\n", clipStatus)
 	fmt.Fprintln(cmd.OutOrStdout())
+
+	if len(all) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "No directory watches configured.")
+		return nil
+	}
 
 	headers := []string{"ID", "Path", "Mode", "Status", "Last Error"}
 	rows := make([][]string, 0, len(all))
 	for _, w := range all {
-		rows = append(rows, []string{
-			w.ID, w.Path, w.Mode, w.Status, w.LastError,
-		})
+		rows = append(rows, []string{w.ID, w.Path, w.Mode, w.Status, w.LastError})
 	}
 	printTable(cmd.OutOrStdout(), headers, rows)
 	return nil
+}
+
+// runWatchEnable handles: ctxt watch enable <name>
+func runWatchEnable(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	switch name {
+	case "clipboard":
+		return setClipboardEnabled(cmd, true)
+	default:
+		return fmt.Errorf("unknown watcher %q (supported: clipboard)", name)
+	}
+}
+
+// runWatchDisable handles: ctxt watch disable <name>
+func runWatchDisable(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	switch name {
+	case "clipboard":
+		return setClipboardEnabled(cmd, false)
+	default:
+		return fmt.Errorf("unknown watcher %q (supported: clipboard)", name)
+	}
+}
+
+// setClipboardEnabled writes the enabled flag to config.
+func setClipboardEnabled(cmd *cobra.Command, enabled bool) error {
+	cfg.Watch.Clipboard.Enabled = enabled
+	if err := writeWatchConfig(); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	state := "enabled"
+	if !enabled {
+		state = "disabled"
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Clipboard watcher %s.\n", state)
+	if enabled {
+		fmt.Fprintln(cmd.OutOrStdout(), "Run 'ctxt watch start' to begin monitoring.")
+	}
+	return nil
+}
+
+// writeWatchConfig persists the current cfg back to the config file.
+func writeWatchConfig() error {
+	return config.WriteBack(cfg, configPath())
 }

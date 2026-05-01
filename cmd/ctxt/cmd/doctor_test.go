@@ -5,34 +5,34 @@ import (
 	"testing"
 )
 
-func TestLintHelp(t *testing.T) {
-	out, err := executeCommand("lint", "--help")
+func TestDoctorHelp(t *testing.T) {
+	out, err := executeCommand("doctor", "--help")
 	if err != nil {
-		t.Fatalf("lint --help should succeed: %v", err)
+		t.Fatalf("doctor --help should succeed: %v", err)
 	}
-	for _, want := range []string{"lint", "--check", "--limit", "--profile"} {
+	for _, want := range []string{"doctor", "--check", "--limit", "--profile"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help output missing %q", want)
 		}
 	}
 }
 
-func TestLintText(t *testing.T) {
+func TestDoctorText(t *testing.T) {
 	db := setupTestDB(t)
-	out, err := db.exec("lint")
+	out, err := db.exec("doctor")
 	if err != nil {
-		t.Fatalf("lint should succeed: %v", err)
+		t.Fatalf("doctor should succeed: %v", err)
 	}
 	if !strings.Contains(out, "Lint checks") {
-		t.Errorf("expected lint header in output, got: %s", out)
+		t.Errorf("expected doctor header in output, got: %s", out)
 	}
 }
 
-func TestLintJSON(t *testing.T) {
+func TestDoctorJSON(t *testing.T) {
 	db := setupTestDB(t)
-	out, err := db.exec("--output", "json", "lint")
+	out, err := db.exec("--output", "json", "doctor")
 	if err != nil {
-		t.Fatalf("lint --output json should succeed: %v", err)
+		t.Fatalf("doctor --output json should succeed: %v", err)
 	}
 	for _, want := range []string{`"checks"`, `"issues"`, `"duration"`} {
 		if !strings.Contains(out, want) {
@@ -41,11 +41,11 @@ func TestLintJSON(t *testing.T) {
 	}
 }
 
-func TestLintCheckFlag(t *testing.T) {
+func TestDoctorCheckFlag(t *testing.T) {
 	db := setupTestDB(t)
-	out, err := db.exec("--output", "json", "lint", "--check", "orphans")
+	out, err := db.exec("--output", "json", "doctor", "--check", "orphans")
 	if err != nil {
-		t.Fatalf("lint --check orphans should succeed: %v", err)
+		t.Fatalf("doctor --check orphans should succeed: %v", err)
 	}
 	if !strings.Contains(out, `"orphans"`) {
 		t.Errorf("expected orphans check in output")

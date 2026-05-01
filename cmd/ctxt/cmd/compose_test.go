@@ -9,7 +9,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-func TestMakeBrief(t *testing.T) {
+func TestComposeBrief(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
 	now := time.Now().Truncate(time.Second)
@@ -25,7 +25,7 @@ func TestMakeBrief(t *testing.T) {
 		t.Fatalf("seed object: %v", err)
 	}
 
-	out, err := db.exec("make", "brief")
+	out, err := db.exec("compose", "brief")
 	if err != nil {
 		t.Fatalf("make brief should succeed: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestMakeBrief(t *testing.T) {
 	}
 }
 
-func TestMakePlan(t *testing.T) {
+func TestComposePlan(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
 	now := time.Now().Truncate(time.Second)
@@ -53,7 +53,7 @@ func TestMakePlan(t *testing.T) {
 		t.Fatalf("seed object: %v", err)
 	}
 
-	out, err := db.exec("make", "plan")
+	out, err := db.exec("compose", "plan")
 	if err != nil {
 		t.Fatalf("make plan should succeed: %v", err)
 	}
@@ -62,10 +62,10 @@ func TestMakePlan(t *testing.T) {
 	}
 }
 
-func TestMakeNoObjects(t *testing.T) {
+func TestComposeNoObjects(t *testing.T) {
 	db := setupTestDB(t)
 
-	out, err := db.exec("make", "summary")
+	out, err := db.exec("compose", "summary")
 	if err != nil {
 		t.Fatalf("make with no objects should succeed: %v", err)
 	}
@@ -74,24 +74,24 @@ func TestMakeNoObjects(t *testing.T) {
 	}
 }
 
-func TestMakeUnknownTypeError(t *testing.T) {
+func TestComposeUnknownTypeError(t *testing.T) {
 	db := setupTestDB(t)
 
-	_, err := db.exec("make", "invalid_type")
+	_, err := db.exec("compose", "invalid_type")
 	if err == nil {
 		t.Error("make with unknown type should fail")
 	}
 }
 
-func TestMakeNoTypeError(t *testing.T) {
-	_, err := executeCommand("make")
+func TestComposeNoTypeError(t *testing.T) {
+	_, err := executeCommand("compose")
 	if err == nil {
 		t.Error("make without type argument should fail")
 	}
 }
 
-func TestMakeHelp(t *testing.T) {
-	out, err := executeCommand("make", "--help")
+func TestComposeHelp(t *testing.T) {
+	out, err := executeCommand("compose", "--help")
 	if err != nil {
 		t.Fatalf("make --help should succeed: %v", err)
 	}

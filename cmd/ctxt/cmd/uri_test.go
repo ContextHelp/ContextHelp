@@ -67,7 +67,7 @@ func TestURISnippetUnknownPlatform(t *testing.T) {
 
 func TestDispatchURIObject(t *testing.T) {
 	db := setupTestDB(t)
-	// Use ctxt://obj_00000000 — not found, but routing should reach runOpen
+	// Use ctxt://obj_00000000 — not found, but routing should reach runShow
 	// (which returns an error about not finding the object, not a routing error).
 	_, err := db.exec("ctxt://obj_00000000")
 	if err == nil {
@@ -103,8 +103,8 @@ func TestDispatchURISearchRouting(t *testing.T) {
 }
 
 func TestDispatchURIHandlerDefaultCLI(t *testing.T) {
-	// With no config (default handler="cli"), ctxt://<id> routes to runOpen.
-	// runOpen on a missing object returns a storage error, not a routing error.
+	// With no config (default handler="cli"), ctxt://<id> routes to runShow.
+	// runShow on a missing object returns a storage error, not a routing error.
 	db := setupTestDB(t)
 	cfg = nil
 	_, err := db.exec("ctxt://obj_cli_test")

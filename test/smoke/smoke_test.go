@@ -37,8 +37,8 @@ func TestCtxtHelp(t *testing.T) {
 	require.NoError(t, err, "ctxt --help should exit 0")
 
 	subcommands := []string{
-		"analyze", "list", "find", "open", "edit", "delete",
-		"make", "job", "profile", "config", "registry",
+		"analyze", "list", "find", "show", "edit", "delete",
+		"compose", "job", "profile", "config", "registry",
 		"entity", "completion",
 	}
 	for _, sub := range subcommands {

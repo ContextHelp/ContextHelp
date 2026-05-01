@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-func TestInitNonInteractive(t *testing.T) {
+func TestSetupNonInteractive(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	t.Setenv("CTXT_CONFIG", cfgPath)
 
-	out, err := executeCommand("init", "--non-interactive")
+	out, err := executeCommand("setup", "--non-interactive")
 	if err != nil {
 		t.Fatalf("init --non-interactive failed: %v", err)
 	}
@@ -30,13 +30,13 @@ func TestInitNonInteractive(t *testing.T) {
 	}
 }
 
-func TestInitNonInteractiveViaCI(t *testing.T) {
+func TestSetupNonInteractiveViaCI(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	t.Setenv("CTXT_CONFIG", cfgPath)
 	t.Setenv("CI", "true")
 
-	out, err := executeCommand("init")
+	out, err := executeCommand("setup")
 	if err != nil {
 		t.Fatalf("init with CI=true failed: %v", err)
 	}
@@ -53,12 +53,12 @@ func TestInitNonInteractiveViaCI(t *testing.T) {
 	t.Cleanup(func() { os.Unsetenv("CI") })
 }
 
-func TestInitWritesValidYAML(t *testing.T) {
+func TestSetupWritesValidYAML(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	t.Setenv("CTXT_CONFIG", cfgPath)
 
-	_, err := executeCommand("init", "--non-interactive")
+	_, err := executeCommand("setup", "--non-interactive")
 	if err != nil {
 		t.Fatalf("init failed: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestInitWritesValidYAML(t *testing.T) {
 	}
 }
 
-func TestInitDefaultAnswers(t *testing.T) {
+func TestSetupDefaultAnswers(t *testing.T) {
 	a := defaultAnswers()
 	if a.Provider != "skip" {
 		t.Errorf("default provider should be skip, got %s", a.Provider)
@@ -90,8 +90,8 @@ func TestInitDefaultAnswers(t *testing.T) {
 	}
 }
 
-func TestInitHelp(t *testing.T) {
-	out, err := executeCommand("init", "--help")
+func TestSetupHelp(t *testing.T) {
+	out, err := executeCommand("setup", "--help")
 	if err != nil {
 		t.Fatalf("init --help failed: %v", err)
 	}

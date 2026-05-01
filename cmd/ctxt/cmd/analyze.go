@@ -27,8 +27,8 @@ Content can be provided as:
   - Clipboard: ctxt analyze (if no argument, stdin, or file is provided)
 
 Examples:
-  # Analyze text with hints and mentions
-  echo "Fix signup flow" | ctxt analyze --type text --hints "#ux #bad" --mentions "@ui.best-practice"
+  # Analyze text with tags and mentions
+  echo "Fix signup flow" | ctxt analyze --type text --tag "ux,bad" --mentions "@ui.best-practice"
 
   # Analyze an image
   ctxt analyze --file screenshot.png --type image --mentions "@ui.layout"
@@ -49,15 +49,15 @@ func init() {
 
 	// Register flags on analyzeCmd for `ctxt analyze --help`.
 	analyzeCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")
-	analyzeCmd.Flags().String("file", "", "read input from file")
-	analyzeCmd.Flags().String("hints", "", "influence tagging (e.g., \"#ux #bug\")")
+	analyzeCmd.Flags().StringP("file", "f", "", "read input from file")
+	analyzeCmd.Flags().String("tag", "", "influence tagging (e.g., \"#ux #bug\")")
 	analyzeCmd.Flags().String("mentions", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
 	analyzeCmd.Flags().String("pipeline", "", "force specific pipeline")
-	analyzeCmd.Flags().String("lang", "", "input language override")
+	analyzeCmd.Flags().String("language", "", "input language override")
 	analyzeCmd.Flags().String("translate", "", "translation mode (none to skip)")
 	analyzeCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")
 	analyzeCmd.Flags().Bool("no-fanout", false, "skip post-ingest fan-out enrichment")
-	analyzeCmd.Flags().Bool("force", false, "bypass duplicate detection")
+	analyzeCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	analyzeCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	analyzeCmd.Flags().Bool("wait", false, "block until job completes")
 	analyzeCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
@@ -65,15 +65,15 @@ func init() {
 	// Mirror flags on rootCmd (local, not persistent) so `ctxt <content> --type url` works
 	// without leaking these flags into every subcommand's help.
 	rootCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")
-	rootCmd.Flags().String("file", "", "read input from file")
-	rootCmd.Flags().String("hints", "", "influence tagging (e.g., \"#ux #bug\")")
+	rootCmd.Flags().StringP("file", "f", "", "read input from file")
+	rootCmd.Flags().String("tag", "", "influence tagging (e.g., \"#ux #bug\")")
 	rootCmd.Flags().String("mentions", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
 	rootCmd.Flags().String("pipeline", "", "force specific pipeline")
-	rootCmd.Flags().String("lang", "", "input language override")
+	rootCmd.Flags().String("language", "", "input language override")
 	rootCmd.Flags().String("translate", "", "translation mode (none to skip)")
 	rootCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")
 	rootCmd.Flags().Bool("no-fanout", false, "skip post-ingest fan-out enrichment")
-	rootCmd.Flags().Bool("force", false, "bypass duplicate detection")
+	rootCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	rootCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	rootCmd.Flags().Bool("wait", false, "block until job completes")
 	rootCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
@@ -82,10 +82,10 @@ func init() {
 	// here are for config-file fallback only (flag values take precedence via cmd.Flags()).
 	viper.BindPFlag("analyze.type", analyzeCmd.Flags().Lookup("type"))
 	viper.BindPFlag("analyze.file", analyzeCmd.Flags().Lookup("file"))
-	viper.BindPFlag("analyze.hints", analyzeCmd.Flags().Lookup("hints"))
+	viper.BindPFlag("analyze.tag", analyzeCmd.Flags().Lookup("tag"))
 	viper.BindPFlag("analyze.mentions", analyzeCmd.Flags().Lookup("mentions"))
 	viper.BindPFlag("analyze.pipeline", analyzeCmd.Flags().Lookup("pipeline"))
-	viper.BindPFlag("analyze.lang", analyzeCmd.Flags().Lookup("lang"))
+	viper.BindPFlag("analyze.language", analyzeCmd.Flags().Lookup("language"))
 	viper.BindPFlag("analyze.translate", analyzeCmd.Flags().Lookup("translate"))
 	viper.BindPFlag("analyze.raw", analyzeCmd.Flags().Lookup("raw"))
 	viper.BindPFlag("analyze.wait", analyzeCmd.Flags().Lookup("wait"))
@@ -146,9 +146,9 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		noFanout, _ = cmd.Flags().GetBool("no-fanout")
 	}
 
-	forceMode := false
-	if f := cmd.Flags().Lookup("force"); f != nil && f.Changed {
-		forceMode, _ = cmd.Flags().GetBool("force")
+	noDedup := false
+	if f := cmd.Flags().Lookup("no-dedup"); f != nil && f.Changed {
+		noDedup, _ = cmd.Flags().GetBool("no-dedup")
 	}
 
 	sourceKey := flagString(cmd, "source-key", "analyze.source_key")
@@ -165,7 +165,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		"source":     reqSource,
 		"raw":        rawMode,
 		"no_fanout":  noFanout,
-		"force":      forceMode,
+		"force":      noDedup,
 		"source_key": sourceKey,
 	}
 

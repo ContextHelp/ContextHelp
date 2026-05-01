@@ -17,8 +17,8 @@ var knownEnrichSteps = map[string]bool{
 	"tagger":              true,
 }
 
-var enrichCmd = &cobra.Command{
-	Use:   "enrich <id>",
+var reprocessCmd = &cobra.Command{
+	Use:   "reprocess <id>",
 	Short: "Re-run enrichment step on an existing object",
 	Long: `Run a specific enrichment step against an already-ingested object.
 
@@ -27,19 +27,19 @@ the object in storage. Useful for backfilling structured metadata on
 objects ingested before a step was added to the pipeline.
 
 Examples:
-  ctxt enrich abc123 --step structured-metadata
-  ctxt enrich abc123 --step entity_extractor`,
+  ctxt reprocess abc123 --step structured-metadata
+  ctxt reprocess abc123 --step entity_extractor`,
 	Args: cobra.ExactArgs(1),
-	RunE: runEnrich,
+	RunE: runReprocess,
 }
 
 func init() {
-	rootCmd.AddCommand(enrichCmd)
-	enrichCmd.Flags().String("step", "structured_metadata",
+	rootCmd.AddCommand(reprocessCmd)
+	reprocessCmd.Flags().String("step", "structured_metadata",
 		"enrichment step to run (structured_metadata|entity_extractor|tagger)")
 }
 
-func runEnrich(cmd *cobra.Command, args []string) error {
+func runReprocess(cmd *cobra.Command, args []string) error {
 	objID := args[0]
 	stepName, _ := cmd.Flags().GetString("step")
 

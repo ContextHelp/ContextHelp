@@ -25,7 +25,7 @@ func TestEditTitle(t *testing.T) {
 		t.Fatalf("seed object: %v", err)
 	}
 
-	out, err := db.exec("edit", "--id", "obj_123", "--title", "New title")
+	out, err := db.exec("edit", "obj_123", "--title", "New title")
 	if err != nil {
 		t.Fatalf("edit with --title should succeed: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestEditMultipleFields(t *testing.T) {
 		t.Fatalf("seed object: %v", err)
 	}
 
-	out, err := db.exec("edit", "--id", "obj_123", "--title", "New title", "--tags", "ux,design", "--subtype", "article")
+	out, err := db.exec("edit", "obj_123", "--title", "New title", "--tags", "ux,design", "--subtype", "article")
 	if err != nil {
 		t.Fatalf("edit with multiple fields should succeed: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestEditMultipleFields(t *testing.T) {
 
 func TestEditNoFieldsError(t *testing.T) {
 	db := setupTestDB(t)
-	_, err := db.exec("edit", "--id", "obj_123")
+	_, err := db.exec("edit", "obj_123")
 	if err == nil {
 		t.Error("edit without any fields should fail")
 	}
@@ -82,7 +82,7 @@ func TestEditNoFieldsError(t *testing.T) {
 func TestEditMissingIDError(t *testing.T) {
 	_, err := executeCommand("edit", "--title", "New title")
 	if err == nil {
-		t.Error("edit without --id should fail")
+		t.Error("edit without positional id should fail")
 	}
 }
 
@@ -91,7 +91,7 @@ func TestEditHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("edit --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--id", "--title", "--summary", "--tags", "--hints", "--mentions", "--decisions", "--subtype"} {
+	for _, flag := range []string{"--title", "--summary", "--tags", "--hints", "--mentions", "--decisions", "--subtype"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("edit help should list flag %s", flag)
 		}

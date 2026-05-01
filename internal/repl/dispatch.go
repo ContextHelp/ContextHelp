@@ -10,7 +10,7 @@ import (
 //
 // Priority chain (evaluated top to bottom, first match wins):
 //  1. Empty line or line beginning with '#' -> no-op, return nil
-//  1.5. `open N` shorthand — resolve 1-based index to full object ID
+//  1.5. `show N` shorthand — resolve 1-based index to full object ID
 //  2. First token is a known command -> delegate to execCobra
 //  3. Line contains ' | ' (space-pipe-space) -> pipe: run LHS as find, then RHS as make
 //  4. Line contains '==' or '=in=' -> treat as RSQL; delegate as `list --q <line>`
@@ -21,15 +21,15 @@ func Dispatch(ctx context.Context, line string, state *SessionState, execCobra f
 		return nil
 	}
 
-	// Branch 1.5: `open N` shorthand — resolve 1-based index to full object ID.
-	if strings.HasPrefix(line, "open ") {
-		suffix := strings.TrimSpace(strings.TrimPrefix(line, "open "))
+	// Branch 1.5: `show N` shorthand — resolve 1-based index to full object ID.
+	if strings.HasPrefix(line, "show ") {
+		suffix := strings.TrimSpace(strings.TrimPrefix(line, "show "))
 		if n, parseErr := strconv.Atoi(suffix); parseErr == nil {
 			obj, resolveErr := state.ResolveIndex(n)
 			if resolveErr != nil {
 				return resolveErr
 			}
-			return execCobra([]string{"open", obj.ID})
+			return execCobra([]string{"show", obj.ID})
 		}
 		// Not a pure integer — fall through to known-command dispatch.
 	}
@@ -73,7 +73,7 @@ func dispatchPipe(ctx context.Context, lhs, rhs string, state *SessionState, exe
 
 	rhsArgs := splitArgs(rhs)
 	artifactType := ""
-	if len(rhsArgs) >= 2 && rhsArgs[0] == "make" {
+	if len(rhsArgs) >= 2 && rhsArgs[0] == "compose" {
 		artifactType = rhsArgs[1]
 	} else if len(rhsArgs) == 1 {
 		artifactType = rhsArgs[0]

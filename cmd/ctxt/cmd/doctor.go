@@ -12,32 +12,32 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var lintCmd = &cobra.Command{
-	Use:   "lint",
+var doctorCmd = &cobra.Command{
+	Use:   "doctor",
 	Short: "Run automated health checks on the knowledge graph",
 	Long: `Inspect the knowledge graph for common issues: orphaned objects,
 missing metadata enrichment, near-duplicates, and stale objects.
 
 Examples:
-  ctxt lint
-  ctxt lint --check orphans,duplicates
-  ctxt lint --output json
-  ctxt lint --profile work --limit 50`,
-	RunE: runLint,
+  ctxt doctor
+  ctxt doctor --check orphans,duplicates
+  ctxt doctor --output json
+  ctxt doctor --profile work --limit 50`,
+	RunE: runDoctor,
 }
 
 func init() {
-	rootCmd.AddCommand(lintCmd)
-	lintCmd.Flags().StringSlice("check", nil,
+	rootCmd.AddCommand(doctorCmd)
+	doctorCmd.Flags().StringSlice("check", nil,
 		"checks to run (orphans,missing_metadata,duplicates,stale); default: all")
-	lintCmd.Flags().String("profile", "", "scope checks to a focus profile")
-	lintCmd.Flags().Int("limit", 0, "max issues to report (0 = unlimited)")
-	lintCmd.Flags().Int("stale-days", 90, "days without update before flagging as stale")
-	lintCmd.Flags().Float64("duplicate-threshold", 0.95,
+	doctorCmd.Flags().String("profile", "", "scope checks to a focus profile")
+	doctorCmd.Flags().Int("limit", 0, "max issues to report (0 = unlimited)")
+	doctorCmd.Flags().Int("stale-days", 90, "days without update before flagging as stale")
+	doctorCmd.Flags().Float64("duplicate-threshold", 0.95,
 		"cosine similarity threshold for near-duplicate detection")
 }
 
-func runLint(cmd *cobra.Command, _ []string) error {
+func runDoctor(cmd *cobra.Command, _ []string) error {
 	svc, cleanup, err := newService()
 	if err != nil {
 		return err
@@ -114,7 +114,7 @@ func logLintReport(ctx context.Context, driver storage.StorageDriver, r *lint.Re
 	}
 	entry := &storage.AuditEntry{
 		ID:        fmt.Sprintf("lint-%d", time.Now().UnixNano()),
-		EventType: "lint.run",
+		EventType: "doctor.run",
 		Actor:     "ctxt-cli",
 		Payload:   payload,
 		CreatedAt: time.Now(),

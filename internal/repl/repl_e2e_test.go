@@ -41,9 +41,9 @@ func TestREPL_E2E_ScriptedCommands(t *testing.T) {
 	assert.Len(t, state.LastResults, 2)
 
 	// open 1 -> resolved to first result
-	require.NoError(t, Dispatch(ctx, "open 1", state, cap.exec))
+	require.NoError(t, Dispatch(ctx, "show 1", state, cap.exec))
 	require.Len(t, cap.calls, 2)
-	assert.Equal(t, []string{"open", "obj-aaa-001"}, cap.calls[1])
+	assert.Equal(t, []string{"show", "obj-aaa-001"}, cap.calls[1])
 
 	// RSQL expression -> list --q
 	require.NoError(t, Dispatch(ctx, "type==url;tag==checkout", state, cap.exec))
@@ -80,7 +80,7 @@ func TestREPL_E2E_PipeFlow(t *testing.T) {
 	assert.Equal(t, "find", cap.calls[0][0])
 
 	if len(cap.calls) >= 2 {
-		assert.Equal(t, "make", cap.calls[1][0])
+		assert.Equal(t, "compose", cap.calls[1][0])
 		assert.Equal(t, "brief", cap.calls[1][1])
 		assert.Contains(t, cap.calls[1][2], "--q")
 	}

@@ -39,7 +39,7 @@ func TestSession_DispatchIntegration(t *testing.T) {
 	// Populate state, then test open N.
 	state.SetResults([]*storage.KnowledgeObject{{ID: "real-uuid-abc"}})
 	execCalls = nil
-	require.NoError(t, Dispatch(context.Background(), "open 1", state, execFn))
+	require.NoError(t, Dispatch(context.Background(), "show 1", state, execFn))
 	require.Len(t, execCalls, 1)
-	assert.Equal(t, []string{"open", "real-uuid-abc"}, execCalls[0])
+	assert.Equal(t, []string{"show", "real-uuid-abc"}, execCalls[0])
 }

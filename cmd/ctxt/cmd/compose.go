@@ -12,8 +12,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-var makeCmd = &cobra.Command{
-	Use:   "make <type>",
+var composeCmd = &cobra.Command{
+	Use:   "compose <type>",
 	Short: "Generate compositions from knowledge",
 	Long: `Generate compositions such as briefs, plans, summaries, or drafts.
 
@@ -28,51 +28,51 @@ Types:
 
 Examples:
   # Generate a brief with inline citations (default)
-  ctxt make brief --tag ux,onboarding
+  ctxt compose brief --tag ux,onboarding
 
   # Generate a plan with specific mentions
-  ctxt make plan --mention @project.signup-redesign
+  ctxt compose plan --mention @project.signup-redesign
 
   # Generate summary since a specific date
-  ctxt make summary --since 2025-01-01
+  ctxt compose summary --since 2025-01-01
 
   # Generate draft and save to file
-  ctxt make draft --tag launch --output launch-plan.md
+  ctxt compose draft --tag launch --output launch-plan.md
 
   # Export as JSON (includes structured citations)
-  ctxt make brief --tag launch --export json
+  ctxt compose brief --tag launch --export json
 
   # Disable citations
-  ctxt make brief --tag launch --no-citations`,
+  ctxt compose brief --tag launch --no-citations`,
 	Args: cobra.ExactArgs(1),
-	RunE: runMake,
+	RunE: runCompose,
 }
 
 func init() {
-	rootCmd.AddCommand(makeCmd)
+	rootCmd.AddCommand(composeCmd)
 
 	// Filter flags
-	makeCmd.Flags().String("mention", "", "focus on specific mentions")
-	makeCmd.Flags().String("tag", "", "focus on specific tags (comma-separated)")
-	makeCmd.Flags().String("since", "", "include knowledge since date (ISO)")
+	composeCmd.Flags().String("mention", "", "focus on specific mentions")
+	composeCmd.Flags().String("tag", "", "focus on specific tags (comma-separated)")
+	composeCmd.Flags().String("since", "", "include knowledge since date (ISO)")
 
 	// Output flags
-	makeCmd.Flags().StringP("output-file", "o", "", "write to file")
+	composeCmd.Flags().StringP("output-file", "o", "", "write to file")
 
 	// Citation flags
-	makeCmd.Flags().Bool("no-citations", false, "disable inline [ref:ID] citations")
-	makeCmd.Flags().String("export", "markdown", "output format: markdown or json")
+	composeCmd.Flags().Bool("no-citations", false, "disable inline [ref:ID] citations")
+	composeCmd.Flags().String("export", "markdown", "output format: markdown or json")
 
 	// Bind flags to viper
-	viper.BindPFlag("make.mention", makeCmd.Flags().Lookup("mention"))
-	viper.BindPFlag("make.tag", makeCmd.Flags().Lookup("tag"))
-	viper.BindPFlag("make.since", makeCmd.Flags().Lookup("since"))
-	viper.BindPFlag("make.output-file", makeCmd.Flags().Lookup("output-file"))
-	viper.BindPFlag("make.no-citations", makeCmd.Flags().Lookup("no-citations"))
-	viper.BindPFlag("make.export", makeCmd.Flags().Lookup("export"))
+	viper.BindPFlag("compose.mention", composeCmd.Flags().Lookup("mention"))
+	viper.BindPFlag("compose.tag", composeCmd.Flags().Lookup("tag"))
+	viper.BindPFlag("compose.since", composeCmd.Flags().Lookup("since"))
+	viper.BindPFlag("compose.output-file", composeCmd.Flags().Lookup("output-file"))
+	viper.BindPFlag("compose.no-citations", composeCmd.Flags().Lookup("no-citations"))
+	viper.BindPFlag("compose.export", composeCmd.Flags().Lookup("export"))
 }
 
-func runMake(cmd *cobra.Command, args []string) error {
+func runCompose(cmd *cobra.Command, args []string) error {
 	compositionType := args[0]
 
 	switch compositionType {
@@ -81,7 +81,7 @@ func runMake(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unknown composition type: %s (expected brief|plan|summary|draft)", compositionType)
 	}
 
-	exportFormat := viper.GetString("make.export")
+	exportFormat := viper.GetString("compose.export")
 	switch exportFormat {
 	case "markdown", "json", "":
 	default:
@@ -97,11 +97,11 @@ func runMake(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	filter := storage.ObjectFilter{
-		Tag:     viper.GetString("make.tag"),
-		Mention: viper.GetString("make.mention"),
+		Tag:     viper.GetString("compose.tag"),
+		Mention: viper.GetString("compose.mention"),
 		Limit:   100,
 	}
-	if since := viper.GetString("make.since"); since != "" {
+	if since := viper.GetString("compose.since"); since != "" {
 		if t, err := time.Parse("2006-01-02", since); err == nil {
 			filter.After = &t
 		}
@@ -117,7 +117,7 @@ func runMake(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	noCitations := viper.GetBool("make.no-citations")
+	noCitations := viper.GetBool("compose.no-citations")
 
 	var output string
 
@@ -147,7 +147,7 @@ func runMake(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	outputFile := viper.GetString("make.output-file")
+	outputFile := viper.GetString("compose.output-file")
 	if outputFile != "" {
 		if err := os.WriteFile(outputFile, []byte(output), 0600); err != nil {
 			return fmt.Errorf("write file: %w", err)

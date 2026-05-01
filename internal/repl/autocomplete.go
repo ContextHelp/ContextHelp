@@ -8,7 +8,7 @@ import (
 
 // knownCommands is the authoritative list of top-level ctxt sub-commands.
 var knownCommands = []string{
-	"find", "list", "open", "make", "analyze",
+	"find", "list", "show", "compose", "analyze",
 	"job", "config", "import", "feed", "entity",
 	"profile", "registry",
 }
@@ -40,7 +40,7 @@ func NewCompleter(state *SessionState, svc ServiceAdapter) *Completer {
 // Called by liner from the same goroutine as the read loop — no locking needed.
 func (c *Completer) Complete(line string) []string {
 	switch {
-	case strings.HasPrefix(line, "open "):
+	case strings.HasPrefix(line, "show "):
 		return c.completeOpen()
 	case strings.HasPrefix(line, "list --type "):
 		return knownTypes

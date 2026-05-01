@@ -10,7 +10,7 @@ import (
 	"hop.top/uri"
 )
 
-func TestOpen(t *testing.T) {
+func TestShow(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
 	now := time.Now().Truncate(time.Second)
@@ -34,7 +34,7 @@ func TestOpen(t *testing.T) {
 		t.Fatalf("seed object: %v", err)
 	}
 
-	out, err := db.exec("open", "obj_12345678")
+	out, err := db.exec("show", "obj_12345678")
 	if err != nil {
 		t.Fatalf("open should succeed: %v", err)
 	}
@@ -58,15 +58,15 @@ func TestOpen(t *testing.T) {
 	}
 }
 
-func TestOpenNoIDError(t *testing.T) {
-	_, err := executeCommand("open")
+func TestShowNoIDError(t *testing.T) {
+	_, err := executeCommand("show")
 	if err == nil {
 		t.Error("open without ID should fail")
 	}
 }
 
-func TestOpenHelp(t *testing.T) {
-	out, err := executeCommand("open", "--help")
+func TestShowHelp(t *testing.T) {
+	out, err := executeCommand("show", "--help")
 	if err != nil {
 		t.Fatalf("open --help should succeed: %v", err)
 	}

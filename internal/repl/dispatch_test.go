@@ -88,7 +88,7 @@ func TestDispatch_ExecError_Propagates(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestDispatch_OpenShorthand_ResolvesIndex(t *testing.T) {
+func TestDispatch_ShowShorthand_ResolvesIndex(t *testing.T) {
 	state := &SessionState{}
 	state.SetResults([]*storage.KnowledgeObject{
 		{ID: "full-uuid-001"},
@@ -96,26 +96,26 @@ func TestDispatch_OpenShorthand_ResolvesIndex(t *testing.T) {
 	})
 
 	cap := &captureExec{}
-	err := Dispatch(context.Background(), "open 2", state, cap.exec)
+	err := Dispatch(context.Background(), "show 2", state, cap.exec)
 	require.NoError(t, err)
 	require.Len(t, cap.calls, 1)
-	assert.Equal(t, []string{"open", "full-uuid-002"}, cap.calls[0])
+	assert.Equal(t, []string{"show", "full-uuid-002"}, cap.calls[0])
 }
 
-func TestDispatch_OpenShorthand_OutOfRange(t *testing.T) {
+func TestDispatch_ShowShorthand_OutOfRange(t *testing.T) {
 	state := &SessionState{}
 	state.SetResults([]*storage.KnowledgeObject{{ID: "only"}})
 
 	cap := &captureExec{}
-	err := Dispatch(context.Background(), "open 5", state, cap.exec)
+	err := Dispatch(context.Background(), "show 5", state, cap.exec)
 	assert.Error(t, err)
 	assert.Empty(t, cap.calls)
 }
 
-func TestDispatch_OpenShorthand_NotNumeric(t *testing.T) {
+func TestDispatch_ShowShorthand_NotNumeric(t *testing.T) {
 	cap := &captureExec{}
-	err := Dispatch(context.Background(), "open abc123", &SessionState{}, cap.exec)
+	err := Dispatch(context.Background(), "show abc123", &SessionState{}, cap.exec)
 	require.NoError(t, err)
 	require.Len(t, cap.calls, 1)
-	assert.Equal(t, []string{"open", "abc123"}, cap.calls[0])
+	assert.Equal(t, []string{"show", "abc123"}, cap.calls[0])
 }
