@@ -53,7 +53,9 @@ require (
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/danielgtaylor/huma/v2 v2.37.3 // indirect
+	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/hashicorp/mdns v1.0.6 // indirect
 	github.com/miekg/dns v1.1.55 // indirect
 	github.com/muesli/mango v0.2.0 // indirect
@@ -62,6 +64,7 @@ require (
 	github.com/muesli/roff v0.1.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
+	github.com/zalando/go-keyring v0.2.8 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/tools v0.44.0 // indirect

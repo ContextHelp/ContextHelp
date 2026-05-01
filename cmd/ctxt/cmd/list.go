@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cursor"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
@@ -87,6 +90,12 @@ func init() {
 	listCmd.Flags().String("dir", "desc", "sort direction (asc|desc)")
 	listCmd.Flags().Bool("no-track", false, "skip match tracking")
 
+	// Named cursor (US-0409): per-viewer position over results.
+	listCmd.Flags().String("cursor", "",
+		"use named cursor; returns items added after cursor's last_seen_at")
+	listCmd.Flags().Bool("advance", false,
+		"advance the cursor after a successful list (requires --cursor)")
+
 	// Bind flags to viper
 	viper.BindPFlag("list.type", listCmd.Flags().Lookup("type"))
 	viper.BindPFlag("list.tag", listCmd.Flags().Lookup("tag"))
@@ -111,6 +120,8 @@ func init() {
 	viper.BindPFlag("list.sort", listCmd.Flags().Lookup("sort"))
 	viper.BindPFlag("list.dir", listCmd.Flags().Lookup("dir"))
 	viper.BindPFlag("list.no-track", listCmd.Flags().Lookup("no-track"))
+	viper.BindPFlag("list.cursor", listCmd.Flags().Lookup("cursor"))
+	viper.BindPFlag("list.advance", listCmd.Flags().Lookup("advance"))
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -122,6 +133,12 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
+	cursorName := viper.GetString("list.cursor")
+	advance := viper.GetBool("list.advance")
+	if advance && cursorName == "" {
+		return fmt.Errorf("--advance requires --cursor <name>")
+	}
+
 	// If RSQL query is provided, use search engine
 	if q := viper.GetString("list.q"); q != "" {
 		limit := viper.GetInt("list.limit")
@@ -130,10 +147,17 @@ func runList(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("search: %w", err)
 		}
+		// Cursor with --q: out of scope for predicate composition; emit warning.
+		if cursorName != "" {
+			fmt.Fprintln(os.Stderr, "warning: --cursor with --q does not gate by created_at; results unfiltered")
+		}
 		return printObjectResults(objects, total)
 	}
 
 	filter := buildObjectFilter()
+	if cursorName != "" {
+		return runListWithCursor(ctx, svc, filter, cursorName, advance)
+	}
 
 	// --facets: show metadata type count breakdown alongside results.
 	if viper.GetBool("list.facets") {
@@ -206,4 +230,114 @@ func printObjectResults(objects []*storage.KnowledgeObject, total int) error {
 	}
 	printTable(os.Stdout, headers, rows)
 	return nil
+}
+
+// currentSnapshot reads list flags into a QuerySnapshot for drift compare.
+func currentSnapshot() cursor.QuerySnapshot {
+	return cursor.QuerySnapshot{
+		Mention: splitNonEmpty(viper.GetString("list.mention")),
+		Tag:     splitNonEmpty(viper.GetString("list.tag")),
+		Profile: viper.GetString("profile"),
+		Q:       viper.GetString("list.q"),
+		Type:    viper.GetString("list.type"),
+		After:   viper.GetString("list.after"),
+	}
+}
+
+func splitNonEmpty(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// runListWithCursor wraps the ListObjects path with cursor gating.
+//
+// AC compliance:
+//   - new cursor (no advance flag, never seen): exits 2 with hint
+//   - new cursor + --advance: starts at epoch 0, returns full set, then advances
+//   - existing cursor: gates created_at > last_seen_at; sort forced ASC
+//   - empty result: cursor untouched
+//   - drift: warn to stderr, continue
+//   - JSON output: {cursor: ..., items: ..., advanced: bool}
+func runListWithCursor(ctx context.Context, svc listService, filter storage.ObjectFilter, name string, advance bool) error {
+	if err := cursor.ValidateName(name); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(2)
+	}
+	mgr, err := cursor.New()
+	if err != nil {
+		return err
+	}
+
+	c, fresh, err := mgr.GetOrInit(name)
+	if err != nil {
+		return err
+	}
+	if fresh && !advance {
+		fmt.Fprintf(os.Stderr,
+			"cursor %q does not exist. Run with --advance to initialize, or `ctxt cursor list` to see existing.\n", name)
+		os.Exit(2)
+	}
+
+	// Drift detection — compare current flags to stored snapshot.
+	snap := currentSnapshot()
+	if !fresh && !c.Query.Equal(snap) {
+		fmt.Fprintf(os.Stderr,
+			"warning: cursor %q query snapshot differs from current flags; results may not match prior listings\n", name)
+	}
+
+	// Cursor adds time-gate predicate on created_at > last_seen_at;
+	// storage's After uses `>=` against an RFC3339 (second-precision)
+	// string, so bump by 1 second to strictly exclude the tail.
+	// Items that share the tail's second would already have been seen
+	// in the prior listing.
+	if !c.LastSeenAt.IsZero() {
+		gate := c.LastSeenAt.Add(time.Second)
+		if filter.After == nil || gate.After(*filter.After) {
+			filter.After = &gate
+		}
+	}
+	filter.Sort = "created_at"
+	filter.Dir = "asc"
+
+	objects, total, err := svc.ListObjects(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("list objects: %w", err)
+	}
+
+	advanced := false
+	if advance && len(objects) > 0 {
+		tail := objects[len(objects)-1]
+		if _, err := mgr.Advance(name, tail.CreatedAt, tail.ID, snap); err != nil {
+			return fmt.Errorf("advance cursor: %w", err)
+		}
+		advanced = true
+	}
+
+	if isJSONOutput() {
+		// Refresh cursor view for output.
+		latest, _ := mgr.Get(name)
+		out := map[string]any{
+			"cursor":   latest,
+			"items":    objects,
+			"total":    total,
+			"advanced": advanced,
+		}
+		return outputJSON(os.Stdout, out)
+	}
+	return printObjectResults(objects, total)
+}
+
+// listService captures the subset of *service.Service used by the cursor path.
+type listService interface {
+	ListObjects(ctx context.Context, f storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error)
 }
