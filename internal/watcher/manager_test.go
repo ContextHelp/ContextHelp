@@ -84,6 +84,59 @@ func TestWatchLoop_CreateFile_CallsAnalyze(t *testing.T) {
 	}
 }
 
+// TestWatchLoop_NewSubdir_FileIngested is the regression test for T-0477.
+// Files dropped into a subdirectory created AFTER the watcher started must
+// still be ingested. Bug: fsnotify on macOS does not propagate into
+// subdirectories created post-registration; the watcher must Add the new
+// subdir AND re-walk it so files already inside it are picked up too (the
+// race window between MkdirAll and Add can swallow file events).
+func TestWatchLoop_NewSubdir_FileIngested(t *testing.T) {
+	dir := t.TempDir()
+	driver := storageutil.NewTestDriver(t)
+	mi := &mockIngester{}
+	m := watcher.NewManager(driver.Watches(), mi)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cfg := &storage.WatchConfig{
+		ID: "w1", Path: dir, Mode: "generic",
+		IncludePatterns: []string{"**/*.md"},
+		ExcludePatterns: []string{},
+		DebounceMS: 100, Status: "active",
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	driver.Watches().CreateWatch(ctx, cfg)
+	m.AddWatch(ctx, cfg)
+
+	time.Sleep(200 * time.Millisecond)
+
+	sub := filepath.Join(dir, "newsub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "child.md"), []byte("# Child"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		mi.mu.Lock()
+		n := len(mi.analyzed)
+		mi.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	mi.mu.Lock()
+	defer mi.mu.Unlock()
+	if len(mi.analyzed) == 0 {
+		t.Fatal("expected Analyze for child.md inside newly-created subdir")
+	}
+}
+
 func TestWatchLoop_ExcludedFile_NoAnalyze(t *testing.T) {
 	dir := t.TempDir()
 	driver := storageutil.NewTestDriver(t)

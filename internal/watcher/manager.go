@@ -185,9 +185,37 @@ func (m *Manager) watchLoop(ctx context.Context, cfg *WatchConfig) {
 			absPath := event.Name
 
 			if event.Has(fsnotify.Create) || event.Has(fsnotify.Write) {
-				// Check if it's a directory — if so, add it to watcher.
+				// New directory: add it to the watcher and walk it.
+				// Walking covers the race window between MkdirAll and any
+				// child file Create events fired before fsw.Add lands —
+				// fsnotify only delivers events for paths registered at
+				// the time the kernel emits them.
 				if fi, err := os.Stat(absPath); err == nil && fi.IsDir() {
-					fsw.Add(absPath)
+					filepath.WalkDir(absPath, func(p string, d fs.DirEntry, werr error) error {
+						if werr != nil {
+							return nil
+						}
+						if d.IsDir() {
+							fsw.Add(p)
+							return nil
+						}
+						relP := strings.TrimPrefix(p, cfg.Path+string(os.PathSeparator))
+						relP = filepath.ToSlash(relP)
+						if !MatchAny(cfg.IncludePatterns, relP) {
+							return nil
+						}
+						if len(cfg.ExcludePatterns) > 0 && MatchAny(cfg.ExcludePatterns, relP) {
+							return nil
+						}
+						pp := p
+						if t, ok := debounce[pp]; ok {
+							t.Stop()
+						}
+						debounce[pp] = time.AfterFunc(debounceDelay, func() {
+							m.processFile(ctx, cfg, pp)
+						})
+						return nil
+					})
 					continue
 				}
 
