@@ -66,9 +66,10 @@ func init() {
 	rootCmd.Flags().BoolP("version", "v", false, "print version and exit")
 	rootCmd.Flags().Bool("check", false, "check for a newer release (use with -v)")
 
-	// Hidden deprecated --output alias for --format.
-	rootCmd.PersistentFlags().String("output", "", "(deprecated) alias for --format")
-	_ = rootCmd.PersistentFlags().MarkHidden("output")
+	// kit/cli registers --output (-o) as the output-path flag. We do NOT
+	// re-register it here: the previous code defined --output as a hidden
+	// alias for --format, which collides with kit's path semantics and
+	// panics at init time on every invocation.
 
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if v, _ := cmd.Flags().GetBool("version"); v {

@@ -79,11 +79,10 @@ func init() {
 
 	// Wrap RunE later so we can short-circuit on --version.
 
-	// --output is a hidden alias for --format (kit/cli built-in) so existing
-	// callers and scripts keep working. Both write to viper key "format".
-	rootCmd.PersistentFlags().String("output", "", "(deprecated) alias for --format")
-	_ = rootCmd.PersistentFlags().MarkHidden("output")
-	root.Viper.RegisterAlias("output", "format")
+	// kit/cli registers --output (-o) as the output-path flag. We do NOT
+	// re-register it here: the previous code defined --output as a hidden
+	// alias for --format, which collides with kit's path semantics and
+	// panics at init time on every invocation.
 
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if v, _ := cmd.Flags().GetBool("version"); v {

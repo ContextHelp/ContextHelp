@@ -56,8 +56,10 @@ func init() {
 	composeCmd.Flags().String("tag", "", "focus on specific tags (comma-separated)")
 	composeCmd.Flags().String("since", "", "include knowledge since date (ISO)")
 
-	// Output flags
-	composeCmd.Flags().StringP("output-file", "o", "", "write to file")
+	// Output flags. -o shorthand is reserved by kit/cli's --output (write
+	// path), so --output-file is long-name only. A follow-up should drop
+	// --output-file entirely in favor of kit's --output.
+	composeCmd.Flags().String("output-file", "", "write to file")
 
 	// Citation flags
 	composeCmd.Flags().Bool("no-citations", false, "disable inline [ref:ID] citations")

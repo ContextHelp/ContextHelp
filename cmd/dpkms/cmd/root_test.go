@@ -101,11 +101,17 @@ func TestRootHasFormat(t *testing.T) {
 	if rootCmd.PersistentFlags().Lookup("format") == nil {
 		t.Error("--format flag should be provided by kit/cli")
 	}
+	// kit/cli owns --output as the output-path flag (T-0457). It must be
+	// present, NOT hidden, and have shorthand -o.
 	outFlag := rootCmd.PersistentFlags().Lookup("output")
 	if outFlag == nil {
-		t.Error("--output should be retained as hidden deprecated alias")
-	} else if !outFlag.Hidden {
-		t.Error("--output should be hidden in help (deprecated alias)")
+		t.Fatal("--output should be registered by kit/cli as the output-path flag")
+	}
+	if outFlag.Hidden {
+		t.Error("kit/cli's --output should NOT be hidden")
+	}
+	if outFlag.Shorthand != "o" {
+		t.Errorf("kit/cli's --output shorthand: got %q, want %q", outFlag.Shorthand, "o")
 	}
 }
 
