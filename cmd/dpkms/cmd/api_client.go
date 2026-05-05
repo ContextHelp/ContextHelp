@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,17 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
+
+// HeaderCtxtNote is the request header CLIs use to plumb their --note|-n
+// flag through to the policy engine on the daemon. Mirrors
+// internal/server/http.HeaderCtxtNote — duplicated here to avoid
+// pulling the server package into the CLI.
+const HeaderCtxtNote = "X-Ctxt-Note"
+
+// ErrPolicyDenied is the sentinel returned when the daemon refuses a
+// state-changing call because of a policy veto. CLI handlers map it
+// to exit code 4 (CONFLICT).
+var ErrPolicyDenied = errors.New("policy denied")
 
 type APIClient struct {
 	baseURL string
@@ -23,13 +35,29 @@ func NewAPIClient(baseURL string) *APIClient {
 	}
 }
 
-func (c *APIClient) CreatePipeline(req service.CreatePipelineRequest) (string, error) {
+// withNoteHeader sets the X-Ctxt-Note header on req when note is
+// non-empty. The daemon's HTTP layer copies the value into ctx via
+// policy.ContextAttrsKey before invoking the service.
+func withNoteHeader(req *http.Request, note string) {
+	if note != "" {
+		req.Header.Set(HeaderCtxtNote, note)
+	}
+}
+
+func (c *APIClient) CreatePipeline(req service.CreatePipelineRequest, note string) (string, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return "", err
 	}
 
-	resp, err := c.client.Post(c.baseURL+"/api/v1/pipelines", "application/json", bytes.NewReader(body))
+	httpReq, err := http.NewRequest(http.MethodPost, c.baseURL+"/api/v1/pipelines", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	withNoteHeader(httpReq, note)
+
+	resp, err := c.client.Do(httpReq)
 	if err != nil {
 		return "", err
 	}
@@ -47,8 +75,9 @@ func (c *APIClient) CreatePipeline(req service.CreatePipelineRequest) (string, e
 	return result["id"], nil
 }
 
-func (c *APIClient) DeletePipeline(name string) error {
-	req, _ := http.NewRequest("DELETE", c.baseURL+"/api/v1/pipelines/"+name, nil)
+func (c *APIClient) DeletePipeline(name, note string) error {
+	req, _ := http.NewRequest(http.MethodDelete, c.baseURL+"/api/v1/pipelines/"+name, nil)
+	withNoteHeader(req, note)
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return err
@@ -107,8 +136,9 @@ func (c *APIClient) GetPipeline(name string) (*storage.Pipeline, error) {
 	return &pipeline, nil
 }
 
-func (c *APIClient) ArchivePipeline(name string) error {
-	req, _ := http.NewRequest("POST", c.baseURL+"/api/v1/pipelines/"+name+"/archive", nil)
+func (c *APIClient) ArchivePipeline(name, note string) error {
+	req, _ := http.NewRequest(http.MethodPost, c.baseURL+"/api/v1/pipelines/"+name+"/archive", nil)
+	withNoteHeader(req, note)
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return err
@@ -122,8 +152,9 @@ func (c *APIClient) ArchivePipeline(name string) error {
 	return nil
 }
 
-func (c *APIClient) UnarchivePipeline(name string) error {
-	req, _ := http.NewRequest("POST", c.baseURL+"/api/v1/pipelines/"+name+"/unarchive", nil)
+func (c *APIClient) UnarchivePipeline(name, note string) error {
+	req, _ := http.NewRequest(http.MethodPost, c.baseURL+"/api/v1/pipelines/"+name+"/unarchive", nil)
+	withNoteHeader(req, note)
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return err
@@ -330,7 +361,17 @@ func (c *APIClient) parseError(resp *http.Response) error {
 	json.Unmarshal(body, &errResp)
 
 	if errMsg, ok := errResp["error"].(map[string]any); ok {
-		return fmt.Errorf("%s: %s", errMsg["code"], errMsg["message"])
+		code, _ := errMsg["code"].(string)
+		msg, _ := errMsg["message"].(string)
+		formatted := fmt.Errorf("%s: %s", code, msg)
+		// 409 + POLICY_DENIED is the daemon's way of surfacing a
+		// policy.PolicyDeniedError. Wrap with ErrPolicyDenied so the
+		// CLI runner can map to exit code 4 without re-parsing the
+		// error string.
+		if resp.StatusCode == http.StatusConflict && code == "POLICY_DENIED" {
+			return fmt.Errorf("%w: %w", ErrPolicyDenied, formatted)
+		}
+		return formatted
 	}
 
 	return fmt.Errorf("unexpected error: %s", string(body))
