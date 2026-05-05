@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -144,6 +145,21 @@ func applyCommandGroups() {
 			c.GroupID = g
 		}
 	}
+}
+
+// ExitCodeFor maps an error returned from Execute to a process exit
+// code. PolicyDeniedError (and the equivalent ErrPolicyDenied surfaced
+// by the API client when the daemon returns 409 POLICY_DENIED) maps
+// to 4 — the kit-canonical CONFLICT exit. Any other non-nil error
+// maps to 1; nil maps to 0.
+func ExitCodeFor(err error) int {
+	if err == nil {
+		return 0
+	}
+	if errors.Is(err, ErrPolicyDenied) {
+		return 4
+	}
+	return 1
 }
 
 // Execute runs dpkms via fang (styled help + errors). We pass WithoutVersion

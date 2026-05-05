@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"hop.top/kit/go/console/output"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"hop.top/kit/go/console/output"
 )
 
 var apiClient *APIClient
@@ -145,6 +145,14 @@ var (
 	pipelineIncludeArchived bool
 	pipelineOnlyArchived    bool
 	pipelineShowRaw         bool
+
+	// pipelineNote holds the --note|-n flag value for state-changing
+	// pipeline subcommands (create / remove / archive / unarchive). It
+	// is forwarded to the daemon via the X-Ctxt-Note header on the
+	// outgoing HTTP request, where the policy engine reads it as
+	// context.note. The default policy bundle requires a non-empty
+	// value for archive + delete; create + unarchive accept empty.
+	pipelineNote string
 )
 
 var (
@@ -192,6 +200,15 @@ func init() {
 	pipelineEnqueueCmd.Flags().StringVar(&pipelineType, "type", "text", "content type")
 	pipelineEnqueueCmd.Flags().StringVar(&pipelinePipeline, "pipeline", "", "pipeline name")
 	pipelineEnqueueCmd.Flags().BoolVar(&pipelineWait, "wait", false, "wait for job completion")
+
+	// State-changing subcommands accept --note|-n. Forwarded to the
+	// daemon via X-Ctxt-Note so the policy engine can read it as
+	// context.note. Required for archive + delete by the default
+	// policy bundle.
+	pipelineCreateCmd.Flags().StringVarP(&pipelineNote, "note", "n", "", "note explaining the change (recorded for audit + policy)")
+	pipelineRemoveCmd.Flags().StringVarP(&pipelineNote, "note", "n", "", "note explaining the deletion (required by default policy)")
+	pipelineArchiveCmd.Flags().StringVarP(&pipelineNote, "note", "n", "", "note explaining the archive (required by default policy)")
+	pipelineUnarchiveCmd.Flags().StringVarP(&pipelineNote, "note", "n", "", "note explaining the unarchive")
 
 	stepListCmd.Flags().StringVar(&stepSource, "source", "", "filter by source")
 
@@ -252,7 +269,7 @@ func runPipelineCreate(cmd *cobra.Command, args []string) error {
 		return printJSON(req)
 	}
 
-	id, err := apiClient.CreatePipeline(req)
+	id, err := apiClient.CreatePipeline(req, pipelineNote)
 	if err != nil {
 		return err
 	}
@@ -263,7 +280,7 @@ func runPipelineCreate(cmd *cobra.Command, args []string) error {
 
 func runPipelineRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	return apiClient.DeletePipeline(name)
+	return apiClient.DeletePipeline(name, pipelineNote)
 }
 
 func runPipelineList(cmd *cobra.Command, _ []string) error {
@@ -301,12 +318,12 @@ func runPipelineShow(cmd *cobra.Command, args []string) error {
 
 func runPipelineArchive(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	return apiClient.ArchivePipeline(name)
+	return apiClient.ArchivePipeline(name, pipelineNote)
 }
 
 func runPipelineUnarchive(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	return apiClient.UnarchivePipeline(name)
+	return apiClient.UnarchivePipeline(name, pipelineNote)
 }
 
 func runPipelineEnqueue(cmd *cobra.Command, args []string) error {
