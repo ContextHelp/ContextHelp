@@ -216,16 +216,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 7b. Cross-process event bus hub.
 	// Creates a kit/bus with NetworkAdapter and exposes its WS handler
 	// on /ws/bus. Remote apps (aps, tlc) connect here to share events.
-	busToken := os.Getenv("DPKMS_BUS_TOKEN")
-	if busToken == "" {
-		busToken = os.Getenv("BUS_TOKEN")
-	}
-	if busToken == "" {
+	auth, ok := kitbus.AuthFromEnv("DPKMS_BUS_TOKEN", "BUS_TOKEN")
+	if !ok {
 		return fmt.Errorf("bus auth: set BUS_TOKEN or DPKMS_BUS_TOKEN env var")
 	}
 	hubBus := kitbus.New()
 	hubNet := kitbus.NewNetworkAdapter(hubBus,
-		kitbus.WithAuth(&kitbus.StaticTokenAuth{Token_: busToken}),
+		kitbus.WithAuth(auth),
 	)
 	defer func() {
 		_ = hubNet.Close()
