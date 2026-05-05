@@ -437,8 +437,10 @@ func (s *Service) EntityBacklinks(ctx context.Context, slug string) ([]*storage.
 
 // CreatePipeline persists a new pipeline through domain.Service so
 // the kit pre_validated / pre_persisted veto seams fire before the
-// repo write. Validation (name + steps required) runs in the
-// pipelineValidator slot between the two pre-events.
+// repo write. Validation (Name non-empty) runs in the pipelineValidator
+// slot between the two pre-events. Steps may be empty — per-step
+// validation lives in pipeline.ValidateComposability at execution time,
+// not in the domain.Service path.
 func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest) (string, error) {
 	now := time.Now().Truncate(time.Second)
 
