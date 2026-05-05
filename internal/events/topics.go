@@ -3,12 +3,17 @@ package events
 import "hop.top/kit/go/runtime/bus"
 
 // Outbound topic constants for ctxt domain events.
+//
+// Topics follow kit's 4-segment past-tense contract enforced by
+// bus.ValidateTopic: source.category.object.action. The "runtime" category
+// matches kit's own convention for events emitted from the runtime layer
+// (cf. wsm.runtime.workspace.created).
 const (
-	TopicObjectIngested bus.Topic = "ctxt.object.ingested"
-	TopicObjectUpdated  bus.Topic = "ctxt.object.updated"
-	TopicObjectDeleted  bus.Topic = "ctxt.object.deleted"
-	TopicJobCompleted   bus.Topic = "ctxt.job.completed"
-	TopicJobFailed      bus.Topic = "ctxt.job.failed"
+	TopicObjectIngested bus.Topic = "ctxt.runtime.object.ingested"
+	TopicObjectUpdated  bus.Topic = "ctxt.runtime.object.updated"
+	TopicObjectDeleted  bus.Topic = "ctxt.runtime.object.deleted"
+	TopicJobCompleted   bus.Topic = "ctxt.runtime.job.completed"
+	TopicJobFailed      bus.Topic = "ctxt.runtime.job.failed"
 )
 
 // Inbound subscription topics.
