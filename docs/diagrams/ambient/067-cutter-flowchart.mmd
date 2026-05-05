@@ -1,0 +1,26 @@
+```mermaid
+flowchart TB
+    tick[check_cuts tick or OnEvent] --> active{is_active?}
+    active -->|no| done([no-op])
+    active -->|yes| gap{now - last_event<br/>> gap_minutes?}
+
+    gap -->|yes| hard[hard cut: end at last_event_time]
+    hard --> emit_idle[emit closed, reason=idle]
+
+    gap -->|no| timeout{now - session_start<br/>> max_session_hours?}
+    timeout -->|yes| hard2[timeout cut: end at last_event_time]
+    hard2 --> emit_timeout[emit closed, reason=timeout]
+
+    timeout -->|no| switch{app_switched_at set<br/>and recent_switches >= 2?}
+    switch -->|no| keep([keep active])
+    switch -->|yes| since{now - app_switched_at<br/>> soft_cut_minutes?}
+    since -->|no| keep
+    since -->|yes| freq{frequent-switching?<br/>≥2 distinct apps in last 2 min}
+    freq -->|yes| keep_multi([keep active —<br/>multi-app work])
+    freq -->|no| soft[soft cut: end at last_event_time]
+    soft --> emit_soft[emit closed, reason=soft_cut]
+
+    emit_idle --> done2([session ended])
+    emit_timeout --> done2
+    emit_soft --> done2
+```

@@ -1,0 +1,45 @@
+```mermaid
+flowchart LR
+    subgraph local["User's local machine"]
+        agents[AI agents<br/>Claude Code / Cursor / Codex / opencode]
+        ctxd[ctxd]
+        local_mcp["ctxd MCP<br/>:8744/mcp<br/>5 local-only tools"]
+        cutter[Session cutter]
+        buf[(Local buffer)]
+
+        ctxd --> local_mcp
+        ctxd --> cutter
+        ctxd --> buf
+        local_mcp -. reads .-> buf
+        local_mcp -. reads .-> cutter
+    end
+
+    subgraph dpkms["dpkms (often remote)"]
+        http_listener[HTTP listener]
+        rest["/api/v1/*<br/>REST"]
+        mcp["/api/v1/mcp/<br/>10 tools"]
+        grpc[gRPC services<br/>Query/Entity/Job/Analyze]
+        ws["/ws/bus<br/>BUS_TOKEN gated"]
+
+        http_listener --> rest
+        http_listener --> mcp
+        http_listener --> ws
+
+        svc[Service layer<br/>FTS / vector / RSQL / entity resolver]
+        store[(SQLite or Postgres<br/>+ vector index)]
+
+        rest --> svc
+        mcp --> svc
+        grpc --> svc
+        svc --> store
+    end
+
+    agents -->|tools| local_mcp
+    agents -->|tools| mcp
+    ctxd -->|HTTP enqueue| rest
+
+    subgraph remote_agents["Agents on other machines"]
+        remote[Remote agent]
+    end
+    remote -->|tools| mcp
+```

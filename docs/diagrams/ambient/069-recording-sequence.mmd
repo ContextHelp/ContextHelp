@@ -1,0 +1,51 @@
+```mermaid
+sequenceDiagram
+    autonumber
+    actor user as User
+    participant cli as ctxt CLI
+    participant ctxd as ctxd
+    participant rec as Platform recorder<br/>(SCK / WASAPI / portal)
+    participant policy as kit/policy
+    participant bus as kit/bus
+    participant cutter as Session cutter
+    participant disk as Local media disk
+    participant dp as dpkms
+    participant pipe as audio.transcribe<br/>or video.full
+
+    user->>cli: ctxt capture meeting start<br/>--label "Q3 planning"
+    cli->>ctxd: gRPC: Meeting.Start
+    ctxd->>bus: emit .requested
+    bus->>policy: deliver
+    policy-->>ctxd: allow
+    ctxd->>cutter: ensure active session<br/>or open new
+    cutter-->>ctxd: sess_xyz
+
+    ctxd->>rec: configure capture (mode, target window)
+    rec->>rec: OS permission prompt<br/>(first-time only)
+    rec-->>ctxd: granted; bus emit .permission_granted
+
+    ctxd->>bus: emit .started + .indicator_displayed
+    rec->>rec: capture audio + video frames
+    Note over rec,disk: 60 minutes pass...
+
+    user->>cli: ctxt capture meeting stop
+    cli->>ctxd: Meeting.Stop
+    ctxd->>rec: stop
+    rec->>disk: finalize file (.mov/.mp4/.webm)
+    ctxd->>bus: emit .stopped (duration, bytes)
+
+    ctxd->>dp: POST /api/v1/analyze<br/>file=path, pipeline=video.full,<br/>session_id=sess_xyz
+    dp->>pipe: enqueue
+    ctxd->>bus: emit .enqueued
+    pipe->>pipe: extract audio → transcribe → diarize<br/>sample frames → OCR → assemble timeline
+    pipe-->>dp: KnowledgeObject(transcript, sections, mentions)
+    dp->>bus: emit .transcript_ready (KO id)
+
+    Note over disk,dp: 48 hours later (retention TTL)
+    ctxd->>disk: delete media file
+    ctxd->>bus: emit .media_evicted
+
+    user->>cli: ctxt session show sess_xyz
+    cli->>dp: query: objects WHERE session_id=sess_xyz
+    dp-->>user: meeting transcript + prep clipboard +<br/>browser visits + post-meeting file edits
+```

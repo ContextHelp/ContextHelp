@@ -1,0 +1,49 @@
+```mermaid
+flowchart LR
+    subgraph local["User's local machine"]
+        direction TB
+        clip[Clipboard source]
+        fwatch[File-watch source]
+        bhist[Browser-history source]
+        fg[Foreground-window source]
+        shot[Screenshot source]
+
+        runner[Runner<br/>multiplex + dedup + tag SessionID]
+        buffer[(Buffer<br/>local FS / S3 / memory)]
+        cutter[Session cutter<br/>3-rule, ADR-067]
+        policy[kit/runtime/policy<br/>CEL guards]
+        bus((kit/runtime/bus))
+
+        clip --> runner
+        fwatch --> runner
+        bhist --> runner
+        fg --> runner
+        shot --> runner
+
+        runner -->|RawEvent| policy
+        policy -->|allow| buffer
+        runner --> cutter
+        cutter -->|SessionID| runner
+        runner -. emits .-> bus
+    end
+
+    subgraph host["Launchers (host the same library)"]
+        direction TB
+        cli[ctxt capture --ambient<br/>auto-config + exec]
+        ctxd[ctxd<br/>standalone binary]
+        svc[brew services / launchd / systemd]
+        cli --> ctxd
+        svc --> ctxd
+    end
+
+    ctxd --> runner
+
+    subgraph dpkms["dpkms (often remote)"]
+        api[/api/v1/analyze]
+        pipes[Existing pipelines<br/>text.short / url.generic / image.ocr / ...]
+        store[(KnowledgeObjects)]
+        api --> pipes --> store
+    end
+
+    buffer -->|HTTP enqueue| api
+```

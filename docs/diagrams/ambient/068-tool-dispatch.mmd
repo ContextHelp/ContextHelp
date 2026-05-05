@@ -1,0 +1,27 @@
+```mermaid
+sequenceDiagram
+    autonumber
+    participant agent as MCP client (agent)
+    participant mcp as MCP handler<br/>/api/v1/mcp/
+    participant policy as kit/runtime/policy
+    participant bus as kit/runtime/bus
+    participant svc as Service layer
+    participant store as Storage driver
+
+    agent->>mcp: tools/call search(query="auth bug", profile="work")
+    mcp->>bus: emit dpkms.mcp.tool.invoked
+    bus->>policy: deliver to subscribers
+    policy-->>mcp: allow (or veto)
+
+    alt vetoed by policy
+        mcp-->>agent: error: blocked by rule
+        mcp->>bus: emit dpkms.mcp.tool.failed
+    else allowed
+        mcp->>svc: SearchObjects(query, profile_id="work", top_k=10)
+        svc->>store: FTS5 BM25 + vector rerank
+        store-->>svc: rows
+        svc-->>mcp: results
+        mcp->>bus: emit dpkms.mcp.tool.completed
+        mcp-->>agent: ToolResult{json: [...]}
+    end
+```

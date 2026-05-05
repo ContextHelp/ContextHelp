@@ -1,0 +1,21 @@
+```mermaid
+stateDiagram-v2
+    [*] --> active: first capture-worthy event<br/>OnEvent → _start_locked
+
+    active --> active: subsequent events<br/>last_event_time advanced<br/>recent_switches updated
+
+    active --> ended: hard cut (idle > gap_minutes)
+    active --> ended: soft cut (single-app focus<br/>+ NOT frequent-switching)
+    active --> ended: timeout (> max_session_hours)
+    active --> ended: force_end (shutdown / 23:55 safety net)
+
+    state "ended (v1 terminal)" as ended
+    ended --> [*]: emit ctxt.ambient.session.closed<br/>PUT /api/v1/sessions/{id}
+
+    note right of ended
+        Phase 6+ (deferred): ended → reduced
+        when per-session reducer ships.
+        Schema already carries flush_end +
+        classified_end bookmarks for it.
+    end note
+```

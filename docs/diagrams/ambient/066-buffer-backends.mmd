@@ -1,0 +1,11 @@
+```mermaid
+flowchart LR
+    cfg[ambient.buffer.backend] --> sel{which?}
+    sel -->|local default| fs[Local FS<br/>$XDG_STATE_HOME/ctxt/ambient/]
+    sel -->|s3| s3[S3-compatible<br/>AWS / R2 / B2 / MinIO]
+    sel -->|memory| mem[In-memory<br/>tests only]
+
+    fs -->|retention| lru[LRU eviction<br/>2GB cap default]
+    s3 -->|retention| lifecycle[Provider lifecycle policy]
+    mem -->|retention| ring[Bounded ring]
+```

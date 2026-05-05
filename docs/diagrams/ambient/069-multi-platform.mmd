@@ -1,0 +1,58 @@
+```mermaid
+flowchart LR
+    subgraph desktop["Desktop (ctxd)"]
+        direction TB
+        iface[MeetingRecorder interface<br/>Start / Stop / Pause / Resume]
+
+        subgraph mac["macOS 13+"]
+            sck[ScreenCaptureKit<br/>system audio + window]
+            avc[AVCaptureSession<br/>mic mix]
+            sck_swift[Swift bridge<br/>cgo]
+            sck --> sck_swift
+            avc --> sck_swift
+        end
+
+        subgraph win["Windows 10+"]
+            wasapi[WASAPI loopback<br/>system audio]
+            gca[Graphics Capture API<br/>video]
+            mf[Media Foundation<br/>encode mp4]
+            wasapi --> mf
+            gca --> mf
+            mf_cpp[C++ bridge<br/>cgo]
+            mf --> mf_cpp
+        end
+
+        subgraph linux["Linux"]
+            portal[xdg-desktop-portal<br/>ScreenCast — Wayland]
+            pipewire[PipeWire monitor<br/>system audio]
+            gst[gstreamer pipeline<br/>encode webm/mp4]
+            portal --> gst
+            pipewire --> gst
+            x11[XComposite + XDamage<br/>X11 fallback]
+            x11 --> gst
+        end
+
+        sck_swift --> iface
+        mf_cpp --> iface
+        gst --> iface
+
+        iface --> file[Media file on disk<br/>$XDG_STATE_HOME/ctxt/ambient/media/]
+    end
+
+    subgraph mobile["Mobile companion apps (Phase 6+)"]
+        direction TB
+        ios[ctxt-ios<br/>Swift + ReplayKit]
+        android[ctxt-android<br/>Kotlin + MediaProjection<br/>+ AudioPlaybackCapture]
+    end
+
+    subgraph dpkms["dpkms"]
+        api[/api/v1/analyze]
+        pipes[audio.transcribe<br/>OR video.full]
+        ko[(KnowledgeObject<br/>+ SessionID)]
+        api --> pipes --> ko
+    end
+
+    file -->|enqueue| api
+    ios -->|HTTPS POST| api
+    android -->|HTTPS POST| api
+```

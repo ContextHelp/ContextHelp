@@ -1,0 +1,31 @@
+```mermaid
+sequenceDiagram
+    autonumber
+    participant src as Ambient source
+    participant cutter as Session cutter
+    participant buf as Local buffer
+    participant net as Enqueue client
+    participant dp as dpkms /api/v1
+
+    src->>cutter: OnEvent(t=10:00, bundle=zoom)
+    cutter->>cutter: _start_locked → sess_abc
+    cutter->>buf: append SessionOpened(sess_abc, 10:00)
+    src->>buf: append RawEvent(t=10:01, session_id=sess_abc)
+    src->>buf: append RawEvent(t=10:02, session_id=sess_abc)
+
+    Note over net,dp: dpkms unreachable<br/>(network partition)
+    net-->>net: emit .waiting
+    net-->>net: backoff 1s, 2s, 4s ...
+
+    Note over net,dp: dpkms returns
+    net->>dp: POST /api/v1/analyze (event @ 10:01)
+    dp-->>dp: object created with session_id=sess_abc<br/>(soft-FK; session row not yet present)
+    net->>dp: POST /api/v1/analyze (event @ 10:02)
+    net->>dp: PUT /api/v1/sessions/sess_abc (idempotent)
+    dp-->>dp: session row inserted<br/>existing objects already linked
+
+    Note over cutter,dp: 10:30 — idle gap > 5min
+    cutter->>buf: append SessionClosed(sess_abc, 10:25, reason=idle)
+    net->>dp: PUT /api/v1/sessions/sess_abc (now with ended_at)
+    dp-->>net: 200 OK
+```

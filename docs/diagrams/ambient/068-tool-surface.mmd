@@ -1,0 +1,32 @@
+```mermaid
+flowchart TB
+    subgraph dpkms_tools["dpkms-side: 10 tools"]
+        direction TB
+        subgraph reading["Reading"]
+            search[search<br/>FTS + vector hybrid]
+            list[list<br/>by kind + filter]
+            get[get<br/>by id]
+            recent[recent<br/>newest-first]
+        end
+        subgraph entities["Entities & graph"]
+            entity[entity<br/>resolve + backlinks]
+            mentions[mentions<br/>graph traversal]
+        end
+        subgraph sessions_g["Sessions ADR-067"]
+            sessions[sessions<br/>list]
+            session[session<br/>show + items]
+        end
+        subgraph synth["Synthesis"]
+            compose[compose<br/>template + scope]
+            schema[schema<br/>taxonomy]
+        end
+    end
+
+    subgraph ctxd_tools["ctxd-side: 5 local-only tools"]
+        current[current_session]
+        recent_local[recent_local]
+        pending[pending_enqueue<br/>dpkms-down detection]
+        sources[sources]
+        health[health]
+    end
+```

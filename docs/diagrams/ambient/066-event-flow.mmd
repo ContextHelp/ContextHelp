@@ -1,0 +1,19 @@
+```mermaid
+flowchart TB
+    src[Source emits RawEvent] -->|captured| redact[Source-side redaction]
+    redact -->|redacted?| filter{kit/policy CEL}
+    filter -->|veto| drop1([dropped — filtered])
+    filter -->|allow| dedup{Fingerprint match<br/>recent event?}
+    dedup -->|yes| drop2([dropped — deduped])
+    dedup -->|no| compress[Compressor<br/>burst → one event]
+    compress --> session[Tag SessionID<br/>from cutter]
+    session --> buf[(Append to buffer)]
+    buf --> queue[Enqueue ring]
+    queue --> net{dpkms reachable?}
+    net -->|no| wait[Hold in buffer<br/>emit .waiting]
+    wait -. retry-after .-> net
+    net -->|yes| post[POST /api/v1/analyze]
+    post --> resp{2xx?}
+    resp -->|yes| ok([succeeded])
+    resp -->|no| fail([failed — retry per backoff])
+```

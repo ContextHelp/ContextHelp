@@ -1,0 +1,30 @@
+```mermaid
+stateDiagram-v2
+    [*] --> requested: hotkey / CLI / mobile tap
+
+    requested --> policy_check: emit .requested
+    policy_check --> vetoed: CEL rule blocks
+    vetoed --> [*]: emit .policy_vetoed
+
+    policy_check --> permission: allow
+    permission --> denied: user denies OS prompt
+    denied --> [*]: emit .permission_denied
+
+    permission --> recording: granted
+    recording --> recording: indicator displayed,<br/>frames flowing
+    recording --> paused: user pauses
+    paused --> recording: user resumes
+
+    recording --> capture_failed: device unplug,<br/>codec error,<br/>permission revoked
+    capture_failed --> stopping: emit .capture_failed
+    paused --> stopping: user stops
+    recording --> stopping: user stops / auto-detect ends /<br/>max_duration / shutdown
+
+    stopping --> stopped: emit .stopped
+    stopped --> enqueued: hand to audio.transcribe / video.full
+    enqueued --> indexed: pipeline completes
+    indexed --> [*]: KnowledgeObject created<br/>emit .transcript_ready
+
+    enqueued --> pipeline_failed: pipeline errored
+    pipeline_failed --> [*]: emit .transcript_failed<br/>(media still on disk for retry)
+```
