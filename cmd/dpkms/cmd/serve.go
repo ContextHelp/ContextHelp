@@ -227,9 +227,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 6b. Wire kit/runtime/policy on the hub bus. Misconfig (bad YAML,
 	// unknown topic, broken CEL) fails loud here so the daemon never
 	// serves traffic against an unenforced ruleset.
+	// policy.Init already prefixes returned errors with "policy:" so
+	// we surface them as-is rather than re-wrap and produce
+	// "policy: policy: ...".
 	pol, err := policy.Init(hubBus)
 	if err != nil {
-		return fmt.Errorf("policy: %w", err)
+		return err
 	}
 	defer pol.Close()
 

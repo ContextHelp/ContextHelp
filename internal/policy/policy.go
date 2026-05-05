@@ -1,10 +1,13 @@
 // Package policy wires kit/runtime/policy into ctxt's daemon.
 //
-// The engine is a process-scoped singleton built on first call to
-// Init. It loads YAML from $XDG_CONFIG_HOME/contexthelp/policies.yaml
-// (overridable via $CTXT_POLICY_FILE), subscribes to the kit
-// pre_persisted topic on the daemon's bus, and vetoes domain.Service
-// mutations that fail their CEL `when` predicate.
+// Init builds a fresh CEL-backed engine each call, loading YAML from
+// $XDG_CONFIG_HOME/contexthelp/policies.yaml (overridable via
+// $CTXT_POLICY_FILE), and subscribes the engine to the kit
+// pre_persisted topic on the supplied bus. Lifecycle is caller-managed:
+// the daemon constructs one Bootstrap at serve startup and Close()s it
+// on shutdown. There is no package-level cache, so calling Init twice
+// against the same bus would double-subscribe — keep the daemon's
+// single-Init invariant intact.
 //
 // Bootstrap from cmd/dpkms/cmd/serve.go, BEFORE service.New so the
 // EventPublisher returned here can be plumbed into pipeline ops:

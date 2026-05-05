@@ -11,7 +11,9 @@
 # `payload.Op` is the kit/runtime/domain.Op enum stringified ("create",
 # "update", "delete"). Archive is plumbed through Update with the
 # Archived flag flipped, so the archive guard reads the request-scoped
-# context.action attribute that ctxt sets on archive/unarchive paths.
+# context.request_attrs.action attribute that ctxt sets on
+# archive/unarchive paths. (Plain context.action is dropped by kit's
+# contextAttrsFromCtx allowlist — only `note` and `request_attrs` survive.)
 policies:
   - name: archive-pipeline-requires-note
     on: kit.runtime.entity.pre_persisted
