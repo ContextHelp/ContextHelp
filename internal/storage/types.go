@@ -176,6 +176,13 @@ type Pipeline struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
+// GetID satisfies kit/runtime/domain.Entity. Pipelines are looked up
+// by Name across the storage layer (Get/Update/Delete/Archive all key
+// on name); the UUID column is stored but never used as a lookup key.
+// Returning Name keeps domain.Service.Delete(id) and Repository.Get(id)
+// consistent with the rest of the pipeline manager.
+func (p Pipeline) GetID() string { return p.Name }
+
 // StepRef references a step with its configuration.
 type StepRef struct {
 	Name   string         `json:"name"`
