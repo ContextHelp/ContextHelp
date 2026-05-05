@@ -7,9 +7,39 @@ import (
 	"strings"
 
 	"hop.top/kit/go/runtime/domain"
+	"hop.top/kit/go/runtime/policy"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
+
+// withPolicyAction merges an "action" attribute into the
+// policy.ContextAttrsKey map without losing keys already attached
+// upstream (notably "note" stuffed by the HTTP layer). The CEL rule
+// archive-pipeline-requires-note reads context.request_attrs.action
+// to differentiate archive from unarchive, since both share the same
+// Op="update" topic. kit's contextAttrsFromCtx forwards "note" and
+// "request_attrs" verbatim — anything outside that allowlist is
+// dropped, so action must live under request_attrs.
+func withPolicyAction(ctx context.Context, action string) context.Context {
+	existing, _ := ctx.Value(policy.ContextAttrsKey).(map[string]any)
+	merged := make(map[string]any, len(existing)+1)
+	for k, v := range existing {
+		merged[k] = v
+	}
+	reqAttrs, _ := merged["request_attrs"].(map[string]any)
+	if reqAttrs == nil {
+		reqAttrs = map[string]any{}
+	} else {
+		copy := make(map[string]any, len(reqAttrs)+1)
+		for k, v := range reqAttrs {
+			copy[k] = v
+		}
+		reqAttrs = copy
+	}
+	reqAttrs["action"] = action
+	merged["request_attrs"] = reqAttrs
+	return context.WithValue(ctx, policy.ContextAttrsKey, merged)
+}
 
 // pipelineRepo adapts storage.PipelineStore to
 // domain.Repository[storage.Pipeline].
@@ -182,17 +212,19 @@ func (v *pipelineValidator) Validate(ctx context.Context, p storage.Pipeline) er
 // seam is the path of least surprise for future subscribers (policy
 // engine, audit writers).
 //
-// No EventPublisher is attached today: ctxt's events.Bus is its own
-// in-process interface and the cross-process kit bus instance lives
-// only in dpkms serve. Wiring a publisher would expand surface beyond
-// this refactor's scope. Pre-event seams stay no-ops until a publisher
-// is attached; once attached, veto propagates with no further code
-// changes here.
-func newPipelineService(store storage.PipelineStore) *domain.Service[storage.Pipeline] {
+// pub may be nil. Daemons (dpkms serve) construct a kit/bus-backed
+// publisher and pass it; tests that need only the repo+validator
+// path leave it nil. When pub is non-nil, every Create/Update/Delete
+// fires kit.runtime.entity.pre_persisted on the bus and a sync
+// subscriber (the policy engine) can veto by returning an error.
+func newPipelineService(store storage.PipelineStore, pub domain.EventPublisher) *domain.Service[storage.Pipeline] {
 	repo := newPipelineRepo(store)
 	val := newPipelineValidator()
 	opts := []domain.Option[storage.Pipeline]{
 		domain.WithValidation[storage.Pipeline](val),
+	}
+	if pub != nil {
+		opts = append(opts, domain.WithPublisher[storage.Pipeline](pub))
 	}
 	return domain.NewService[storage.Pipeline](repo, opts...)
 }

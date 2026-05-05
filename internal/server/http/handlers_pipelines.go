@@ -30,8 +30,11 @@ func CreatePipeline(svc *service.Service) http.HandlerFunc {
 			return
 		}
 
-		id, err := svc.CreatePipeline(r.Context(), req)
+		id, err := svc.CreatePipeline(withPolicyContext(r), req)
 		if err != nil {
+			if writePolicyError(w, err) {
+				return
+			}
 			statusCode := http.StatusInternalServerError
 			if strings.Contains(err.Error(), "parse steps") || strings.Contains(err.Error(), "invalid JSON") {
 				statusCode = http.StatusBadRequest
@@ -96,7 +99,10 @@ func DeletePipeline(svc *service.Service) http.HandlerFunc {
 			return
 		}
 
-		if err := svc.DeletePipeline(r.Context(), name); err != nil {
+		if err := svc.DeletePipeline(withPolicyContext(r), name); err != nil {
+			if writePolicyError(w, err) {
+				return
+			}
 			statusCode := http.StatusInternalServerError
 			errCode := "INTERNAL_ERROR"
 			if strings.Contains(err.Error(), "PROTECTED") || strings.Contains(err.Error(), "built-in") {
@@ -123,7 +129,10 @@ func ArchivePipeline(svc *service.Service) http.HandlerFunc {
 			return
 		}
 
-		if err := svc.ArchivePipeline(r.Context(), name); err != nil {
+		if err := svc.ArchivePipeline(withPolicyContext(r), name); err != nil {
+			if writePolicyError(w, err) {
+				return
+			}
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
@@ -143,7 +152,10 @@ func UnarchivePipeline(svc *service.Service) http.HandlerFunc {
 			return
 		}
 
-		if err := svc.UnarchivePipeline(r.Context(), name); err != nil {
+		if err := svc.UnarchivePipeline(withPolicyContext(r), name); err != nil {
+			if writePolicyError(w, err) {
+				return
+			}
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}

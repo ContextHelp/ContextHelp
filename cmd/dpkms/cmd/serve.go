@@ -28,12 +28,13 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
+	"github.com/ideacrafterslabs/ctxt/internal/policy"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/remind"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
-	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
+	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -204,18 +205,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 6. Init service layer.
 	bus := events.NewLocalBus()
 	events.SetupSubscriber(bus, cfg, config.GetConfigPath())
-	svc := service.New(driver, queue, pipes, engine, stepsPath, bus, *cfg)
 
-	// 6b. Init watcher manager.
-	watchMgr := watcher.NewManager(driver.Watches(), svc)
-
-	// 7. Build HTTP router.
-	devCORS := viper.GetBool("server.dev")
-	router := httpserver.NewRouter(svc, devCORS, watchMgr)
-
-	// 7b. Cross-process event bus hub.
-	// Creates a kit/bus with NetworkAdapter and exposes its WS handler
-	// on /ws/bus. Remote apps (aps, tlc) connect here to share events.
+	// 6a. Cross-process event bus hub. Constructed before service.New
+	// so the kit/runtime/policy engine can subscribe and the resulting
+	// EventPublisher can be wired into domain.Service[Pipeline]
+	// inside service.NewWithOptions. Remote apps (aps, tlc) connect to
+	// /ws/bus to share events.
 	auth, ok := kitbus.AuthFromEnv("DPKMS_BUS_TOKEN", "BUS_TOKEN")
 	if !ok {
 		return fmt.Errorf("bus auth: set BUS_TOKEN or DPKMS_BUS_TOKEN env var")
@@ -228,6 +223,27 @@ func runServe(cmd *cobra.Command, args []string) error {
 		_ = hubNet.Close()
 		_ = hubBus.Close(context.Background())
 	}()
+
+	// 6b. Wire kit/runtime/policy on the hub bus. Misconfig (bad YAML,
+	// unknown topic, broken CEL) fails loud here so the daemon never
+	// serves traffic against an unenforced ruleset.
+	pol, err := policy.Init(hubBus)
+	if err != nil {
+		return fmt.Errorf("policy: %w", err)
+	}
+	defer pol.Close()
+
+	svc := service.NewWithOptions(driver, queue, pipes, engine, stepsPath, bus,
+		[]service.Option{service.WithPolicyPublisher(pol.Publisher())},
+		*cfg,
+	)
+
+	// 6c. Init watcher manager.
+	watchMgr := watcher.NewManager(driver.Watches(), svc)
+
+	// 7. Build HTTP router.
+	devCORS := viper.GetBool("server.dev")
+	router := httpserver.NewRouter(svc, devCORS, watchMgr)
 	router.Handle("/ws/bus", hubNet.Handler())
 
 	// 8. Determine bind address.

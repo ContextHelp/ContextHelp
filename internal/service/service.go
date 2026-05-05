@@ -17,14 +17,14 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/citation"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
-	registrysync "github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
+	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/plugin"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
-	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/ranking"
+	registrysync "github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -53,10 +53,36 @@ type Service struct {
 	// UnarchivePipeline) routes through it internally — callers keep
 	// the same method shapes.
 	pipelineSvc *domain.Service[storage.Pipeline]
+
+	// policyPub is the domain.EventPublisher attached to pipelineSvc.
+	// nil in tests and outside dpkms serve; non-nil when the daemon
+	// has wired kit/runtime/policy on the bus.
+	policyPub domain.EventPublisher
+}
+
+// Option configures a Service at construction time. Existing call
+// sites that pass only a config value keep working (the variadic
+// cfg arg is preserved); new behaviors (policy publisher, etc.) ride
+// in via Option closures.
+type Option func(*Service)
+
+// WithPolicyPublisher attaches a domain.EventPublisher to the
+// internal domain.Service[Pipeline] so policy.Engine can veto
+// kit.runtime.entity.pre_persisted events. The daemon constructs the
+// publisher from internal/policy.Init.
+func WithPolicyPublisher(p domain.EventPublisher) Option {
+	return func(s *Service) { s.policyPub = p }
 }
 
 // New creates a new service instance.
 func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus, cfg ...config.Config) *Service {
+	return NewWithOptions(store, queue, pipes, engine, stepsPath, bus, nil, cfg...)
+}
+
+// NewWithOptions is the explicit constructor used by callers that need
+// to wire optional behaviors (e.g. policy publisher). Existing callers
+// of New continue to work unchanged.
+func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus, opts []Option, cfg ...config.Config) *Service {
 	discovery := steps.NewStepDiscovery(store, stepsPath)
 	executor := steps.NewStepExecutor(store, stepsPath)
 
@@ -79,8 +105,13 @@ func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry
 		Bus:       bus,
 		Cfg:       c,
 	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(s)
+		}
+	}
 	if store != nil {
-		s.pipelineSvc = newPipelineService(store.Pipelines())
+		s.pipelineSvc = newPipelineService(store.Pipelines(), s.policyPub)
 	}
 	return s
 }
@@ -489,7 +520,8 @@ func (s *Service) ArchivePipeline(ctx context.Context, name string) error {
 	}
 	p.Archived = true
 	p.UpdatedAt = time.Now().Truncate(time.Second)
-	if err := s.pipelineSvc.Update(withPipelineValidateOp(ctx, pipelineOpArchive), p); err != nil {
+	opCtx := withPolicyAction(withPipelineValidateOp(ctx, pipelineOpArchive), "archive")
+	if err := s.pipelineSvc.Update(opCtx, p); err != nil {
 		return fmt.Errorf("archive pipeline: %w", err)
 	}
 	return nil
@@ -514,7 +546,8 @@ func (s *Service) UnarchivePipeline(ctx context.Context, name string) error {
 	}
 	p.Archived = false
 	p.UpdatedAt = time.Now().Truncate(time.Second)
-	if err := s.pipelineSvc.Update(withPipelineValidateOp(ctx, pipelineOpUnarchive), p); err != nil {
+	opCtx := withPolicyAction(withPipelineValidateOp(ctx, pipelineOpUnarchive), "unarchive")
+	if err := s.pipelineSvc.Update(opCtx, p); err != nil {
 		return fmt.Errorf("unarchive pipeline: %w", err)
 	}
 	return nil
@@ -1374,9 +1407,9 @@ func (s *Service) parseBatchRecords(content, format string) ([]storage.ImportRec
 
 // opmlOutline is used for XML parsing of OPML files.
 type opmlOutline struct {
-	Type    string        `xml:"type,attr"`
-	Text    string        `xml:"text,attr"`
-	XMLUrl  string        `xml:"xmlUrl,attr"`
+	Type     string        `xml:"type,attr"`
+	Text     string        `xml:"text,attr"`
+	XMLUrl   string        `xml:"xmlUrl,attr"`
 	Outlines []opmlOutline `xml:"outline"`
 }
 
@@ -1692,8 +1725,8 @@ func (s *Service) HybridSearchExplainFiltered(ctx context.Context, query string,
 
 	// Build per-leg RRF scores and collect candidates for the reranker.
 	ftsScores := map[string]float64{}
-	vecScores  := map[string]float64{}
-	byID       := map[string]*storage.KnowledgeObject{}
+	vecScores := map[string]float64{}
+	byID := map[string]*storage.KnowledgeObject{}
 
 	addLeg := func(results []*storage.KnowledgeObject, weight float64, dest map[string]float64) {
 		for rank, obj := range results {
