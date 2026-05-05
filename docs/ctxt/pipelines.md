@@ -383,6 +383,27 @@ Plugins may request automatic translation of their metadata via the I18N plugin.
 
 ---
 
+## Lifecycle CLI
+
+State-changing operations on pipelines run through `dpkms`:
+
+| Subcommand | Purpose | `--note\|-n` |
+|------------|---------|--------------|
+| `dpkms pipeline create <file>` | Create from JSON/YAML/TOML config | optional |
+| `dpkms pipeline remove <name>` | Delete a custom pipeline | **required** by default policy |
+| `dpkms pipeline archive <name>` | Soft-disable a pipeline | **required** by default policy |
+| `dpkms pipeline unarchive <name>` | Re-enable an archived pipeline | optional |
+
+The `--note|-n` flag carries an audit explanation through the
+`X-Ctxt-Note` HTTP header to the daemon, where the kit/runtime
+policy engine evaluates it. Missing `--note` on a gated subcommand
+returns exit code 4 (CONFLICT) with `POLICY_DENIED`.
+
+See [policies.md](policies.md) for the rule schema, default bundle,
+extension recipes, and how to override the gate temporarily.
+
+---
+
 ## Testing Pipelines
 
 Testing includes:
