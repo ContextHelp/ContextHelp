@@ -1,6 +1,8 @@
 package adapter
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -34,5 +36,19 @@ func TestLifecycleStatesAreDistinct(t *testing.T) {
 			t.Fatalf("duplicate state: %q", s)
 		}
 		seen[s] = true
+	}
+}
+
+// TestErrCapabilityNotDeclared_IsSentinel proves the package-level
+// error supports errors.Is matching when wrapped — capability-gated
+// adapter methods that aren't declared MUST return this sentinel so
+// substrate code can branch on it without parsing error strings.
+func TestErrCapabilityNotDeclared_IsSentinel(t *testing.T) {
+	if ErrCapabilityNotDeclared == nil {
+		t.Fatal("ErrCapabilityNotDeclared must be a non-nil sentinel")
+	}
+	wrapped := fmt.Errorf("adapter foo: %w", ErrCapabilityNotDeclared)
+	if !errors.Is(wrapped, ErrCapabilityNotDeclared) {
+		t.Fatal("ErrCapabilityNotDeclared must support errors.Is when wrapped")
 	}
 }
