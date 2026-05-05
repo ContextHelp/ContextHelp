@@ -13,12 +13,19 @@ package adapter
 
 import (
 	"context"
+	"errors"
 	"net"
 
 	"hop.top/kit/go/runtime/bus"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ingest"
 )
+
+// ErrCapabilityNotDeclared is returned by capability-gated methods
+// (Adapter.Fetch / Submit / Serve) when the adapter does not declare
+// the corresponding Capability. Substrate code branches on this via
+// errors.Is so adapter authors don't need to parse error strings.
+var ErrCapabilityNotDeclared = errors.New("adapter: capability not declared")
 
 // Capability is a declared adapter capability. The substrate gates
 // which methods are callable based on declared capabilities;
