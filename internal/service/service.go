@@ -30,6 +30,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"hop.top/kit/go/runtime/domain"
 	"hop.top/uri"
 )
 
@@ -44,6 +45,14 @@ type Service struct {
 	Bus            events.Bus
 	Cfg            config.Config
 	PluginRegistry *plugin.Registry
+
+	// pipelineSvc delegates pipeline CRUD to kit/runtime/domain so
+	// pre_validated / pre_persisted veto seams fire on every
+	// lifecycle op. The service is unexported because the public API
+	// surface (CreatePipeline / DeletePipeline / ArchivePipeline /
+	// UnarchivePipeline) routes through it internally — callers keep
+	// the same method shapes.
+	pipelineSvc *domain.Service[storage.Pipeline]
 }
 
 // New creates a new service instance.
@@ -60,7 +69,7 @@ func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry
 		c = cfg[0]
 	}
 
-	return &Service{
+	s := &Service{
 		Store:     store,
 		Queue:     queue,
 		Pipes:     pipes,
@@ -70,6 +79,10 @@ func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry
 		Bus:       bus,
 		Cfg:       c,
 	}
+	if store != nil {
+		s.pipelineSvc = newPipelineService(store.Pipelines())
+	}
+	return s
 }
 
 // Analyze enqueues a content analysis job and returns the job ID.
@@ -391,6 +404,10 @@ func (s *Service) EntityBacklinks(ctx context.Context, slug string) ([]*storage.
 	return objs, nil
 }
 
+// CreatePipeline persists a new pipeline through domain.Service so
+// the kit pre_validated / pre_persisted veto seams fire before the
+// repo write. Validation (name + steps required) runs in the
+// pipelineValidator slot between the two pre-events.
 func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest) (string, error) {
 	now := time.Now().Truncate(time.Second)
 
@@ -411,8 +428,14 @@ func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest)
 		UpdatedAt:   now,
 	}
 
-	if err := s.Store.Pipelines().Create(ctx, pipeline); err != nil {
-		return "", fmt.Errorf("create pipeline: %w", err)
+	if s.pipelineSvc != nil {
+		if err := s.pipelineSvc.Create(withPipelineValidateOp(ctx, pipelineOpCreate), pipeline); err != nil {
+			return "", fmt.Errorf("create pipeline: %w", err)
+		}
+	} else {
+		if err := s.Store.Pipelines().Create(ctx, pipeline); err != nil {
+			return "", fmt.Errorf("create pipeline: %w", err)
+		}
 	}
 
 	return pipeline.ID, nil
@@ -426,6 +449,11 @@ func (s *Service) ListPipelines(ctx context.Context, filter storage.PipelineFilt
 	return s.Store.Pipelines().List(ctx, filter)
 }
 
+// DeletePipeline removes a custom pipeline. Built-in protection runs
+// inline before the service call so the protection error shape stays
+// stable for the HTTP layer's "PROTECTED" substring match. The
+// pre-existence Get keeps NotFound errors surfacing the same way the
+// legacy path did (storage Delete is a no-op when the row is missing).
 func (s *Service) DeletePipeline(ctx context.Context, name string) error {
 	if _, err := s.Pipes.Get(name); err == nil {
 		return fmt.Errorf("PROTECTED: cannot delete built-in pipeline")
@@ -435,15 +463,61 @@ func (s *Service) DeletePipeline(ctx context.Context, name string) error {
 		return err
 	}
 
+	if s.pipelineSvc != nil {
+		return s.pipelineSvc.Delete(ctx, name)
+	}
 	return s.Store.Pipelines().Delete(ctx, name)
 }
 
+// ArchivePipeline flips the Archived flag and persists via domain.Service.Update
+// so pre-events fire on the post-flip entity. The pre-flip status check
+// (already-archived) stays inline since the validator runs after the
+// flip and can't infer prior state.
 func (s *Service) ArchivePipeline(ctx context.Context, name string) error {
-	return s.Store.Pipelines().Archive(ctx, name)
+	if s.pipelineSvc == nil {
+		return s.Store.Pipelines().Archive(ctx, name)
+	}
+	p, err := s.Store.Pipelines().Get(ctx, name)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return fmt.Errorf("pipeline %q not found", name)
+	}
+	if p.Archived {
+		return nil
+	}
+	p.Archived = true
+	p.UpdatedAt = time.Now().Truncate(time.Second)
+	if err := s.pipelineSvc.Update(withPipelineValidateOp(ctx, pipelineOpArchive), p); err != nil {
+		return fmt.Errorf("archive pipeline: %w", err)
+	}
+	return nil
 }
 
+// UnarchivePipeline is the inverse of ArchivePipeline: same lifecycle
+// (load → flip Archived → domain.Service.Update) so pre-events fire
+// symmetrically.
 func (s *Service) UnarchivePipeline(ctx context.Context, name string) error {
-	return s.Store.Pipelines().Unarchive(ctx, name)
+	if s.pipelineSvc == nil {
+		return s.Store.Pipelines().Unarchive(ctx, name)
+	}
+	p, err := s.Store.Pipelines().Get(ctx, name)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return fmt.Errorf("pipeline %q not found", name)
+	}
+	if !p.Archived {
+		return nil
+	}
+	p.Archived = false
+	p.UpdatedAt = time.Now().Truncate(time.Second)
+	if err := s.pipelineSvc.Update(withPipelineValidateOp(ctx, pipelineOpUnarchive), p); err != nil {
+		return fmt.Errorf("unarchive pipeline: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, error) {
