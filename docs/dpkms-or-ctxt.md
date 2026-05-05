@@ -129,3 +129,40 @@ It turns:
 
 - **dPKMS runs jobs and pipelines correctly (including multilingual-safe storage + indexing).**
 - **`ctxt` decides which jobs and pipelines are worth running (and how language is used).**
+
+
+# Where ambient capture lives (and why it can't be in dPKMS)
+
+A common follow-up: *"Where does the ambient capture daemon (`ctxd`) fit in this boundary?"*
+
+**`ctxd` is a `ctxt`-side concern, not a dPKMS-side concern.**
+
+In the canonical deployment topology, **dPKMS is often deployed remote** — managed instance, household NAS, federated peer per ADR-064. A remote dPKMS:
+
+- cannot read the user's clipboard,
+- cannot see what app currently has foreground focus,
+- cannot watch `~/Inbox` for new files,
+- cannot subscribe to browser SQLite history,
+- cannot capture system audio during a video call.
+
+All of these signals are local-machine-only. Any subsystem that depends on them must run on the user's machine, **not** on dPKMS. Therefore:
+
+- The **ambient capture substrate** (sources, runner, fingerprint dedup, session cutter) lives in `ctxd` — `ctxt`-side. See [ADR-066](decisions/ADR-066-ambient-capture-substrate.md).
+- The **session cutter** lives in `ctxd` because the foreground-window signal is local. dPKMS receives `session_id` as opaque metadata. See [ADR-067](decisions/ADR-067-session-workunit.md).
+- The **local MCP read-surface** lives in `ctxd` because it surfaces information dPKMS cannot see when remote (live cutter state, buffered events, fingerprint dedup state). The dpkms-side MCP is the authoritative surface; the ctxd-side MCP is the local complement. Agents on the user's machine attach to both. See [ADR-068](decisions/ADR-068-mcp-read-surface.md).
+- The **meeting capture source** lives in `ctxd` (with mobile companion apps as Phase 6+) because system-audio + window-framebuffer capture requires OS APIs that only run on the device. See [ADR-069](decisions/ADR-069-meeting-capture-source.md).
+
+`ctxd` enqueues against whichever dPKMS is configured (local or remote) via the existing `/api/v1/analyze` HTTP path (per [ADR-056](decisions/ADR-056-unified-enqueue-api.md)). dPKMS remains a pure pipeline+storage worker; it gains zero ambient/capture responsibilities.
+
+**Boundary, restated for the ambient case:**
+
+| Concern | Where it lives | Why |
+|---|---|---|
+| Reading local-machine signals | `ctxd` (`ctxt`-side) | dPKMS may be remote |
+| Cutting sessions | `ctxd` (`ctxt`-side) | Needs foreground-window signal |
+| Privacy/policy gates on capture | `ctxd` (`ctxt`-side, via kit/runtime/policy) | Privacy enforcement must precede network egress |
+| Pipeline execution | dPKMS | Pipeline runtime is dPKMS's job |
+| KnowledgeObject persistence | dPKMS | Storage is dPKMS's job |
+| Federation between instances | dPKMS-to-dPKMS via ADR-064 | Federation is substrate-level |
+| Authoritative MCP read-surface | dPKMS (`/api/v1/mcp/`) | Authoritative graph lives in dPKMS |
+| Local MCP read-surface | `ctxd` (`:8744/mcp`) | Live local state cannot be queried from dPKMS when remote |

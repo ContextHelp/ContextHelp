@@ -7,6 +7,22 @@ flowchart TD
       CLI_EDIT["ctxt edit
       cmd/edit.go"]
 
+      %% Ambient capture entry (ADR-066)
+      CTXD["ctxd ambient daemon
+      internal/ambient/runner.go
+      sources: clipboard, file-watch,
+      browser, foreground, screenshot, meeting"]
+      CUTTER["session cutter
+      internal/ambient/session/cutter.go
+      tags RawEvent.SessionID"]
+      BUF["local buffer
+      $XDG_STATE_HOME/ctxt/ambient/
+      LRU; S3 backend optional"]
+      CTXD -->|RawEvent| CUTTER
+      CUTTER --> BUF
+      BUF -->|HTTP enqueue
+      session_id, fingerprint| HTTP_ANALYZE
+
       %% Parsing
       PARSE["mentions.ParseSlice([]string)
       internal/mentions/mentions.go

@@ -7,6 +7,10 @@ Use this section when you want task-oriented execution, regardless of persona.
 | If your goal is to... | Start here |
 |---|---|
 | Bring new content into the system | [`ingestion-capture.md`](./ingestion-capture.md) |
+| Capture continuously while you work | [`ambient-capture.md`](./ambient-capture.md) |
+| Record video calls + transcribe + frame-OCR | [`meeting-capture.md`](./meeting-capture.md) |
+| Group captures into work units | [`sessions.md`](./sessions.md) |
+| Expose the graph to AI agents | [`mcp-agents.md`](./mcp-agents.md) |
 | Verify and improve extraction quality | [`enrichment-processing.md`](./enrichment-processing.md) |
 | Retrieve relevant context fast | [`search-retrieval.md`](./search-retrieval.md) |
 | Produce briefs, plans, and summaries | [`composition-reporting.md`](./composition-reporting.md) |

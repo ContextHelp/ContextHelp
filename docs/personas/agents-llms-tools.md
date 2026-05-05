@@ -136,11 +136,35 @@ Agents interact with the system through these key stories:
 - [US-0210](../stories/capture/US-0210-cross-platform-entity-resolution.md) — Cross-Platform Entity Resolution (identity matching)
 
 ### Discovery & Bootstrap
-- [US-0037](../stories/agents/US-0037-agent-discovers-query-schema.md) — Agent Discovers Query Schema
+- [US-0037](../stories/agents/US-0037-agent-discovers-query-schema.md) — Agent Discovers Query Schema (closed by ADR-068's `schema()` MCP tool)
 - [US-0038](../stories/agents/US-0038-agent-constructs-rsql-query.md) — Agent Constructs RSQL Query
 
 ### Content Ingestion
 - [US-0039](../stories/agents/US-0039-agent-ingests-content-and-waits.md) — Agent Ingests Content and Waits
+
+### MCP Read-Surface (ADR-068) — Native Agent Integration
+
+The MCP servers are the canonical agent-integration surface. ctxt exposes 10 dpkms-side tools (authoritative, full graph) + 5 ctxd-side tools (local-only, live state). Agents on the user's machine attach to both; agents elsewhere attach only to dpkms.
+
+- [US-0219](../stories/capture/US-0219-mcp-agent-integration.md) — MCP agent integration (install matrix, tool reference, default flows)
+- [US-0220](../stories/capture/US-0220-local-mcp-during-network-loss.md) — Local MCP during network loss (agent works even when remote dpkms is unreachable)
+- [US-0216](../stories/capture/US-0216-work-sessions.md) — Sessions surface via `current_session()`, `sessions()`, `session()` MCP tools
+- [US-0217](../stories/capture/US-0217-meeting-capture-desktop.md) — Meeting transcripts queryable via `search()` and `recent()` once `transcript_ready` bus event fires
+
+**Sample use cases for AI agents:**
+
+- *"Read the user's active session before answering"* — Default flow per [`cheatsheet-agent.md` §MCP Read-Surface](../cheatsheet-agent.md): call `current_session()` first; the result tells the agent what apps and topics the user has been engaging with in the last 30 minutes, allowing more contextual responses without explicit context-stuffing.
+- *"Search the user's recent captures"* — `recent(since="today", limit=20)` is a low-latency feed of newest-first KnowledgeObjects across all sources. Beats trying to construct an RSQL query for time-bounded retrieval.
+- *"Observe capture lifecycle for 'is this saved yet?' UX"* — Subscribe to bus events via the existing `/ws/bus` endpoint (or wait for an MCP-bus-tap when ADR-068 ships it). Topics: `ctxt.ambient.meeting.transcript_ready` (new transcript indexed), `dpkms.mcp.tool.*` (agent's own tool calls visible to the user's audit log).
+- *"Read pending-enqueue when dpkms appears slow"* — `pending_enqueue()` from the ctxd-side server surfaces buffered events. Useful when the user complains "I copied that 5 minutes ago — why isn't it searchable?" — the agent can diagnose dpkms-down state directly.
+- *"Discover the schema before constructing RSQL"* — `schema()` returns the storage taxonomy: object types, subtypes, edge types. Closes US-0037 without needing a separate discovery endpoint.
+
+**Bus events agents can subscribe to** (when bus-tap MCP tool ships):
+- `ctxt.ambient.meeting.transcript_ready` — meeting just indexed; agent can fetch via `get(id)`
+- `ctxt.ambient.session.closed` — work session just ended; agent can offer "want a recap?"
+- `dpkms.mcp.tool.invoked` — observe other agents' tool calls (with profile scoping)
+
+**Read-only by design:** no MCP tool mutates. Writes still go through `ctxt analyze` HTTP. If the agent needs to ingest, use the existing US-0039 path.
 
 ### Enrichment with Constraints
 - [US-0009](../stories/enrichment/US-0009-extract-entities-and-mentions.md) — Extract Entities and Mentions

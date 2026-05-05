@@ -39,6 +39,8 @@ The system consists of two primary packages, each with distinct subsystems:
 
 ### `ctxt` (The Agentic Brain)
 - Universal Capture Layer (CLI, TUI, Browser, Mobile)
+- **Ambient Capture Substrate** (`ctxd` daemon + sources: clipboard, file-watch, browser-history, foreground-window, screenshot, meeting) — see [`architecture/ambient-capture.md`](architecture/ambient-capture.md), [ADR-066](decisions/ADR-066-ambient-capture-substrate.md)
+- **Sessions / WorkUnits** (3-rule cutter groups captures into queryable work units) — see [ADR-067](decisions/ADR-067-session-workunit.md)
 - Ingestion Recipes (Multimodal Enrichment Pipelines)
 - Focus Profiles (Role/Project Lenses)
 - Search & Retrieval UX
@@ -47,7 +49,10 @@ The system consists of two primary packages, each with distinct subsystems:
 - Action Layer (Decisions, Tasks, Follow-Ups)
 - Safe Agent Execution (Propose → Dry Run → Apply)
 - Controlled Sharing Workflows
+- **Agent-Native MCP Read-Surface** (dpkms-side authoritative + ctxd-side local) — see [ADR-068](decisions/ADR-068-mcp-read-surface.md)
 - CLI/REST/gRPC Interfaces
+
+> **Local vs. remote:** dpkms is often deployed remote (managed instance, household NAS, federated peer). Ambient capture, session cutting, and the local MCP surface live **in `ctxd` on the user's machine** because the foreground-window signal, clipboard contents, and meeting audio cannot reach a remote dpkms. See [`dpkms-or-ctxt.md`](dpkms-or-ctxt.md) for the boundary clarification.
 
 Each subsystem is modular and replaceable. Plugins may extend, override, or wrap any part of the architecture through **stable, documented extension interfaces**, without touching the core.
 
@@ -58,9 +63,12 @@ flowchart TD
     subgraph ctxt["ctxt (Agentic Brain)"]
         A[Universal Capture] --> B[Ingestion Recipe Selection]
         B --> C[Focus Profile Context]
+        AMB[Ambient Capture Substrate<br/>ctxd + sources + cutter] --> A
+        MCP_L[ctxd MCP<br/>local read-surface]
         K[Just-In-Time Surfacing]
         L[Composition Engine]
         M[Safe Agent Execution]
+        MCP_D[dpkms MCP<br/>authoritative read-surface]
     end
 
     subgraph dPKMS["dPKMS (Substrate)"]
@@ -69,7 +77,7 @@ flowchart TD
         F[Mention Extraction]
         G[Entity Resolver]
         H[Knowledge Object Construction]
-        I[Storage + Graph Index]
+        I[Storage + Graph Index<br/>+ Sessions]
         J[Query Engine]
         N[Plugin Runtime]
     end
@@ -86,7 +94,11 @@ flowchart TD
     L --> M
     E --> N
     N --> E
+    MCP_D -.->|reads| I
+    MCP_L -.->|reads local buffer| AMB
 ```
+
+> **Detail:** for the ambient subsystem's per-event flow, buffer backends, session lifecycle, and MCP topology, see [`architecture/ambient-capture.md`](architecture/ambient-capture.md).
 
 ---
 

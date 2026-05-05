@@ -226,6 +226,30 @@ Knowledge workers interact with the system through these key stories:
 - [US-0207](../stories/capture/US-0207-web-tab-capture.md) — Web Tab Capture
 - [US-0209](../stories/capture/US-0209-authenticated-web-fetch.md) — Authenticated Web Fetch
 
+### Ambient & Continuous Capture (ADR-066/067/068/069)
+
+Long-running local daemon (`ctxd`) captures clipboard, files, browser history, foreground windows, screenshots, and meetings while the user works. Sessions group these signals into bounded work units.
+
+- [US-0211](../stories/capture/US-0211-passive-clipboard-watcher.md) — Passive Clipboard (drops "remembering to copy-paste" friction)
+- [US-0212](../stories/capture/US-0212-screen-monitor.md) — Screenshot-on-demand (hotkey + OCR for ephemeral on-screen content)
+- [US-0213](../stories/capture/US-0213-file-watch-source.md) — Drop-folder file-watch (move files to ~/Inbox, they get ingested)
+- [US-0214](../stories/capture/US-0214-browser-history-source.md) — Browser tabs/history (research trails captured automatically)
+- [US-0215](../stories/capture/US-0215-foreground-window-source.md) — Foreground app/window (the signal that powers session cutting)
+- [US-0216](../stories/capture/US-0216-work-sessions.md) — Work sessions (3-rule cutter; "what was I doing yesterday afternoon?" becomes one query)
+- [US-0217](../stories/capture/US-0217-meeting-capture-desktop.md) — Meeting capture desktop (record video calls, get diarized transcripts + frame OCR)
+- [US-0218](../stories/capture/US-0218-meeting-redact-export.md) — Meeting redact + export (post-hoc segment removal; SRT/VTT export)
+- [US-0219](../stories/capture/US-0219-mcp-agent-integration.md) — MCP agent integration (Claude Code / Cursor / Codex query the graph natively)
+- [US-0220](../stories/capture/US-0220-local-mcp-during-network-loss.md) — Local MCP during network loss (agent works even when remote dpkms is unreachable)
+- [US-0221](../stories/capture/US-0221-meeting-auto-detect-prompt.md) — Auto-detect prompt for meetings (opt-in)
+- [US-0222](../stories/capture/US-0222-mobile-meeting-companion.md) — Mobile meeting companion (iOS/Android, Phase 6/7)
+
+**Sample use cases for knowledge workers:**
+
+- *"Reconstruct yesterday afternoon"* — `ctxt session list --since "yesterday afternoon"` then `ctxt session show <id>` returns the meeting transcript + prep clipboard captures + browser visits + post-meeting file edits as one cohesive view.
+- *"Capture meeting decisions without leaving Zoom"* — Hotkey ⇧⌘M starts recording; transcript materializes 4-5 min after the meeting ends, with speakers diarized and shared-screen content OCR'd. Decisions and tasks are extracted automatically.
+- *"Ask Claude about my recent decisions"* — `ctxt mcp install claude-code` once; thereafter Claude answers "what did I decide about the auth migration last week?" by calling `search()` + `recent()` MCP tools natively.
+- *"Drop file → ingested"* — Save a PDF brief to `~/Inbox/ctxt`; file-watch source detects it, routes to `text.long`, mention extraction lands the brief in the graph linked to the project entity within seconds.
+
 ### Capture & Ingestion
 - [US-0001](../stories/ingestion/US-0001-text-capture-minimal-friction.md) — Text Capture with Minimal Friction
 - [US-0002](../stories/ingestion/US-0002-url-capture-and-extraction.md) — URL Capture and Extraction

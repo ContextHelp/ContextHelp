@@ -1,76 +1,58 @@
 ---
 status: paper
+adr: ADR-066
+task: T-0504
 ---
 
-# US-0212: Screen Monitor
+# US-0212: Screenshot-on-Demand Source
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),
 [Researchers & OSINT Analysts](../../personas/researchers-osint.md)
 
+> **Re-grounded in ADR-066** (2026-05-05). The original draft proposed **continuous periodic screen capture (every 30s)**. ADR-066 §Rationale 5 explicitly rejects continuous screen-memory capture: ctxt captures *signals*, not *recordings*. This story is re-scoped to **screenshot-on-demand**: explicit hotkey or scheduled trigger only, never continuous. Implementation task: **T-0504** (Source: screenshot-on-demand → OCR).
+>
+> If the user wants live screen-memory recording (the OpenChronicle model), that's a separate product surface and a separate ADR — not v1 scope.
+
 ---
 
 ## User Goal
 
-As a knowledge worker, I want ctxt to periodically capture my screen and extract any
-meaningful content via OCR so that information I view but never explicitly save is still
-findable in my knowledge base.
+As a knowledge worker, I want a hotkey (or schedule) that captures my screen, runs the result through OCR, and stores the structured output in my knowledge graph so that information I view but never explicitly save can be made findable on demand.
+
+For meeting capture (recording video calls with audio + video → transcript + frame OCR), see US-0217 (which depends on a separate substrate per [ADR-069](../../decisions/ADR-069-meeting-capture-source.md)).
 
 ---
 
 ## Context
 
-A significant portion of valuable information is consumed visually but never captured:
-terminal output that scrolls away, Figma designs reviewed briefly, Slack threads scanned
-and closed, dashboards glanced at during standup. The clipboard watcher (US-0211) only
-captures what the user explicitly copies. The screen monitor captures what the user merely
-looks at.
+A significant portion of valuable information is consumed visually but never captured: terminal output that scrolls away, Figma designs reviewed briefly, dashboards glanced at during standup, paper book pages photographed, whiteboard contents at the end of a meeting. The clipboard watcher (US-0211) only captures what the user explicitly copies. The screenshot source captures what the user **explicitly screenshots** for ingestion.
 
-The mechanism is straightforward: periodic screenshot → `image.ocr` pipeline → structured
-knowledge object. The OCR output is then subject to the same entity extraction, mention
-resolution, and tagging as any other ingested content.
+The mechanism is straightforward: explicit trigger → screenshot → `image.ocr` pipeline → structured KnowledgeObject. The OCR output flows through the same entity extraction, mention resolution, and tagging as any other ingested content. Sessions ([ADR-067](../../decisions/ADR-067-session-workunit.md)) group the screenshot with surrounding work.
 
-Noise is the primary risk. Most screen content is ephemeral: mouse pointers, chrome UI,
-transient notifications, duplicate frames. The watcher must deduplicate aggressively
-(perceptual hash + text hash), apply a minimum meaningful-content threshold, and allow
-the user to configure focus regions and exclusion patterns (e.g., skip browser chrome,
-skip system menubar).
-
-Privacy is critical. Screen capture is the most sensitive watcher type. It must be
-opt-in, clearly documented, and must never run without explicit user consent. On macOS,
-Screen Recording permission must be requested and its absence must fail gracefully.
+**Privacy by design:** explicit-trigger only. No continuous capture, no periodic polling without an explicit user-set schedule, no auto-detection. The first time the user invokes the source on each OS, a permission prompt appears. kit/policy CEL rules can veto sensitive contexts (bundle-id deny-list) before the OS permission prompt fires.
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] Screen monitor is disabled by default; requires explicit config opt-in
-- [ ] `ctxt watcher enable screen` requires user confirmation (interactive prompt)
-- [ ] Monitor captures screenshots at configurable interval (default: 30s)
-- [ ] Each screenshot is processed through the `image.ocr` pipeline
-- [ ] Perceptual hash deduplication skips frames with < 5% visual change from last capture
-- [ ] Text hash deduplication skips frames whose OCR output matches last ingested text
-- [ ] Minimum OCR text length threshold (default: 120 chars) filters empty/noise frames
-- [ ] Jobs annotated with `origin=watcher/screen`
-- [ ] Config supports focus regions (crop to active window or defined rect) and interval:
-
-```yaml
-watchers:
-  screen:
-    enabled: false
-    interval: 30s
-    min_ocr_length: 120
-    focus: active_window   # active_window | full | {x,y,w,h}
-    exclude_apps:
-      - 1Password
-      - Keychain Access
-```
-
-- [ ] `exclude_apps` list prevents capture when specified apps are frontmost (macOS)
-- [ ] On macOS, Screen Recording permission absence produces a clear error + setup guide
-- [ ] Raw screenshots are never persisted to disk — only OCR text and metadata
-- [ ] `ctxt watcher status` shows screen monitor state, last trigger, and jobs enqueued
-- [ ] Works on macOS; Linux support documented as best-effort (X11/Wayland variance noted)
+- [ ] Source registered as `screenshot` in the ambient runner (per ADR-066 §Phase 3)
+- [ ] **Explicit hotkey trigger:** configurable hotkey (default ⇧⌘S / Ctrl+Shift+S) captures the active screen / window and routes to `image.ocr`
+- [ ] **CLI trigger:** `ctxt capture screenshot [--window-title TITLE] [--label "..."]`
+- [ ] **Optional schedule trigger** (opt-in, off by default): `ambient.sources.screenshot.schedule.enabled = true` with a configurable interval (must be ≥ 60s; no sub-minute schedules) — e.g. for whiteboard kiosks or status-display capture
+- [ ] First-use OS permission prompt; absence produces a clear error + setup pointer (per OS)
+- [ ] kit/policy CEL veto on `ctxt.ambient.event.captured` for `source=screenshot` fires **before** OS permission prompt
+- [ ] Capture target options:
+    - Active window (default)
+    - Full screen
+    - User-selected region (via OS-native picker)
+    - Specific window-title substring (CLI / config)
+- [ ] Capture writes a temporary file under `$XDG_STATE_HOME/ctxt/ambient/media/screenshots/`; OCR pipeline result becomes the durable KnowledgeObject; raw image evicted per `screenshot.media_retention_hours` (default 24h)
+- [ ] Per-app deny-list: `ambient.sources.screenshot.exclude_bundles` (default includes 1Password, Keychain Access, system Keychain, password manager bundles)
+- [ ] Bus events per ADR-066 taxonomy: `ctxt.ambient.event.captured`, `…filtered`, `…enqueued`; plus `ctxt.ambient.screenshot.requested` / `…permission_*` for OS prompt flow
+- [ ] Resulting KnowledgeObject carries `ambient_source=screenshot`, `session_id`, fingerprint (perceptual hash of the image)
+- [ ] OCR text length minimum (`min_ocr_length = 80`) silently skips empty captures
+- [ ] Works on macOS 13+; Windows 10+; Linux (Wayland portal first, X11 fallback)
 
 ---
 
@@ -79,105 +61,110 @@ watchers:
 ### Architecture
 
 ```
-ScreenMonitor (ticks every 30s)
-  -> capture screenshot (active window or full screen)
-  -> phash(frame) diff > threshold?
-    -> submit to image.ocr pipeline
-      -> ocr_text length >= min_ocr_length?
-        -> hash(ocr_text) != lastTextHash?
-          -> enqueue job
-          -> store lastTextHash
-      -> discard otherwise
+internal/ambient/screenshot/screenshot.go
+  implements ambient.AmbientSource
+
+  Trigger paths:
+    1. Hotkey listener (per OS):
+         macOS: NSEvent global monitor
+         Windows: RegisterHotKey
+         Linux: portal-mediated (Wayland) or XGrabKey (X11)
+    2. CLI: `ctxt capture screenshot ...` → gRPC to ctxd
+    3. Schedule (opt-in): time.Ticker with min 60s interval
+
+  Capture path (per OS):
+    macOS: ScreenCaptureKit (single-frame mode) — same dependency as ADR-069 meeting capture
+    Windows: Graphics Capture API (single-frame)
+    Linux: xdg-desktop-portal Screenshot API (Wayland) / XGetImage (X11)
+
+  Output:
+    -> write tmp file under media/screenshots/
+    -> emit RawEvent{Source: "screenshot", Kind: "image", Payload: filepath, SuggestedPipeline: "image.ocr"}
+    -> runner: redact (none for image) -> CEL filter -> dedup (perceptual hash) -> session-tag -> buffer -> enqueue
 ```
 
-Implements the `Watcher` interface (Sk8 Task 2.1). Screenshot capture via OS APIs:
-- macOS: `screencapture` CLI or `CGWindowListCreateImage` via cgo
-- Linux: `scrot` / `import` (ImageMagick) as subprocess fallback
+The screenshot source is a thin shim that implements `AmbientSource` (per ADR-066 §Decision item 2). Captures land on disk first; the substrate enqueues against `image.ocr` which already exists in `internal/pipeline/builtins/image_ocr.go`.
 
-### Perceptual Hash
+### Deduplication
 
-Use dHash (difference hash, 8x8 grid). Threshold: Hamming distance > 10 of 64 bits (~15%)
-triggers re-evaluation. This tolerates minor cursor movement and clock changes.
+Handled by the substrate. Perceptual hash (dHash, 8x8 grid; Hamming distance > 10 of 64 bits triggers as new) is the fingerprint for `screenshot` events. Identical-looking captures within the dedup window collapse.
 
-### Active Window Focus (macOS)
+### Privacy
 
-```
-frontmost app = NSWorkspace.sharedWorkspace.frontmostApplication
-if frontmost in exclude_apps -> skip
-capture CGWindowID of frontmost window -> crop screenshot to window bounds
-```
+- **Explicit-trigger only** by default. Schedule mode is opt-in with a minimum 60s interval to prevent abuse.
+- Bundle-id deny-list runs **before** screenshot capture; matching apps cause source to no-op without OS permission prompt
+- kit/policy CEL veto runs at `ctxt.ambient.event.captured` and is the structural enforcement layer
+- Raw image files evicted after `screenshot.media_retention_hours` (default 24h); only OCR text persists durably
+- macOS recording-indicator is shown by the OS during capture (orange/purple dot in menubar) — not suppressible
 
-### Privacy Guarantees
+### Auto-detect (NOT in v1)
 
-- Screenshots held in memory only; never written to `data/` or temp files
-- OCR text stored as knowledge object content (same as any other ingested text)
-- `CTXT_NO_SCREEN=1` env var disables unconditionally
-- Log lines emit: `[screen-watcher] frame captured, ocr_length=347, enqueued=true`
-  — never raw text
+The original draft proposed continuous capture with perceptual-hash filtering. Per ADR-066 §Rationale 5, this is rejected. If a future story needs always-on screen memory, it gets its own ADR and substrate (matches OpenChronicle's model, separate scope).
 
 ### CLI
 
 ```bash
-# Enable (prompts for confirmation)
-ctxt watcher enable screen
-# -> Screen monitoring captures your display periodically. Continue? [y/N]
+# Hotkey: ⇧⌘S (configurable)
+# OR explicit:
+ctxt capture screenshot                                  # active window
+ctxt capture screenshot --full-screen
+ctxt capture screenshot --window-title "Figma"
+ctxt capture screenshot --region                          # OS-native region picker
+ctxt capture screenshot --label "Q3 dashboard snapshot"
 
-# Start
-ctxt watcher start
-
-# Status
-ctxt watcher status
-# ->
-# Watcher     Status    Interval  Last Trigger              Jobs Enqueued
-# clipboard   running   2s        2026-03-25T14:32:01Z      47
-# screen      running   30s       2026-03-25T14:31:58Z      12
+# Verify
+ctxt capture --ambient tail --source screenshot
+ctxt list --ambient-source screenshot --since today
 ```
 
 ---
 
 ## E2E Checklist
 
-- [ ] Enable screen watcher; verify confirmation prompt appears
-- [ ] Start watcher; open a text-heavy window; wait 30s
-- [ ] Verify job appears in `ctxt jobs` with `origin=watcher/screen`
-- [ ] Verify resulting object has OCR text content
-- [ ] Cover screen / switch to empty desktop; wait 30s; verify no job (noise filter)
-- [ ] Add app to `exclude_apps`; bring it to foreground; verify no capture
-- [ ] Stop watcher; verify no further jobs
-- [ ] Verify no screenshot files in `data/` or `/tmp/ctxt*`
-- [ ] On macOS: revoke Screen Recording permission; verify graceful error message
+- [ ] Press hotkey ⇧⌘S; verify capture event in `ctxt capture --ambient tail --source screenshot`
+- [ ] Verify object created via `image.ocr`, with OCR text content, `ambient_source=screenshot`, `session_id` populated
+- [ ] Trigger via CLI; verify same path
+- [ ] Add `com.1password.*` to exclude_bundles; bring 1Password to foreground; press hotkey; verify no capture (CEL veto OR bundle deny)
+- [ ] On first run, verify OS permission prompt; deny → graceful error + setup pointer
+- [ ] Take 5 screenshots of the same screen in quick succession; verify dedup keeps only one (perceptual hash)
+- [ ] Capture an empty desktop; verify silently skipped (OCR < min_ocr_length)
+- [ ] Verify raw image file deleted after media_retention_hours; OCR'd KnowledgeObject persists
+- [ ] Bus events fire for the documented topics
 
 ---
 
 ## Related Stories
 
-- [US-0003](../ingestion/US-0003-image-ocr-and-analysis.md) — Image OCR pipeline
-  (this story drives it passively)
-- [US-0211](US-0211-passive-clipboard-watcher.md) — Passive clipboard watcher (sibling)
-- [US-0208](US-0208-temporal-watch.md) — Temporal watch
+- [US-0003](../ingestion/US-0003-image-ocr-and-analysis.md) — Image OCR pipeline (this source drives it)
+- [US-0211](US-0211-passive-clipboard-watcher.md) — Passive clipboard watcher (sibling ambient source)
+- [US-0213](US-0213-file-watch-source.md) — File-watch source (sibling)
+- [US-0215](US-0215-foreground-window-source.md) — Foreground-window source (sibling)
+- [US-0216](US-0216-work-sessions.md) — Work sessions (groups screenshot captures)
+- [US-0217](US-0217-meeting-capture-desktop.md) — Meeting capture (different substrate, ADR-069)
 
 ---
 
 ## Sprint
 
-**Skeleton 8 — Trust & Automation**
-New Task 2.5 (Screen Monitor Watcher). Depends on Task 2.1 (Watcher Interface) and
-the `image.ocr` pipeline from Skeleton 4.
+**Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
+Implements ADR-066 Phase 3e (screenshot-on-demand source) — see `tlc track show ambient-capture`, task **T-0504**.
 
 ---
 
 ## Personas
 
 - [Knowledge Workers](../../personas/knowledge-workers.md)
-- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
-- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- [Researchers & OSINT Analysts](../../personas/researchers-osint.md)
 
 ---
 
 ## E2E Tests
 
-- planned: `test/integration/us0212_screen_monitor_test.go::TestScreenMonitor_PeriodicSnapshot`
-- planned: `test/integration/us0212_screen_monitor_test.go::TestScreenMonitor_OCRRoutesToImagePipeline`
-- planned: `test/integration/us0212_screen_monitor_test.go::TestScreenMonitor_AppAllowlistFiltering`
-- planned: `test/integration/us0212_screen_monitor_test.go::TestScreenMonitor_PauseResume`
-- planned: `test/integration/us0212_screen_monitor_test.go::TestScreenMonitor_StorageQuotaEnforced`
+- planned: `test/integration/us0212_screenshot_test.go::TestScreenshot_HotkeyTrigger`
+- planned: `test/integration/us0212_screenshot_test.go::TestScreenshot_CLITrigger`
+- planned: `test/integration/us0212_screenshot_test.go::TestScreenshot_RoutesToImageOCR`
+- planned: `test/integration/us0212_screenshot_test.go::TestScreenshot_BundleDenyList`
+- planned: `test/integration/us0212_screenshot_test.go::TestScreenshot_CELVeto`
+- planned: `test/integration/us0212_screenshot_test.go::TestScreenshot_PerceptualHashDedup`
+- planned: `test/integration/us0212_screenshot_test.go::TestScreenshot_PermissionFlow`
+- planned: `test/integration/us0212_screenshot_test.go::TestScreenshot_MediaRetentionEviction`

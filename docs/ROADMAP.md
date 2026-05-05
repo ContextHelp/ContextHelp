@@ -164,6 +164,51 @@ This is where `ctxt` starts feeling agentic.
 
 ---
 
+## Skeleton 9.5: Ambient Capture + Sessions + Agent-Native MCP
+
+**Goal:** Capture happens *while you work*, not just when you remember to. Group ambient signals into temporal work units. Expose the graph natively to AI agents.
+
+ADRs locked: [066](decisions/ADR-066-ambient-capture-substrate.md), [067](decisions/ADR-067-session-workunit.md), [068](decisions/ADR-068-mcp-read-surface.md), [069](decisions/ADR-069-meeting-capture-source.md). Track: `tlc track show ambient-capture`.
+
+### Substrate (Phase 2)
+- [ ] `internal/ambient/` skeleton — `AmbientSource` interface, runner, registry, lifecycle bus events
+- [ ] Client-side fingerprint dedup at the enqueue boundary (avoid pipeline cost on no-op events)
+- [ ] Local-FS XDG-compliant buffer + in-memory test buffer
+- [ ] Standalone `ctxd` binary; CLI launcher (`ctxt capture --ambient`); service-manager integration
+
+### Sources (Phase 3)
+- [ ] Clipboard daemon (cross-platform) — first end-to-end source
+- [ ] Local file-watch / drop-folder
+- [ ] Browser tabs/history (Chrome/Firefox/Safari/Edge SQLite history)
+- [ ] Foreground app/window (macOS via AX; Linux X11/Wayland separate; Windows separate)
+- [ ] Screenshot-on-demand → `image.ocr` pipeline
+- [ ] Meeting capture — macOS audio-only → macOS full → Windows → Linux
+
+### Quality (Phase 4)
+- [ ] Session/WorkUnit type + 3-rule cutter (idle / soft-cut + frequent-switching / timeout)
+- [ ] sessions table + `objects.session_id` (soft-FK)
+- [ ] S3-compatible buffer backend
+- [ ] Adapter-side redaction hooks (passwords, OAuth tokens) before pipeline
+- [ ] Media retention tier (separate from event buffer; default 48h local + optional S3 archive)
+
+### UX (Phase 5)
+- [ ] `ctxt session list/show/tail` + `ctxt compose --session <id>` + `--since` time-range
+- [ ] `ctxt capture meeting redact <id> --segment HH:MM-HH:MM` (supersede + media segment removal)
+- [ ] `ctxt capture meeting export <id> --format md|srt|vtt`
+- [ ] Auto-detect prompt for known meeting bundle-ids (opt-in)
+- [ ] User docs + ops runbook
+
+### MCP read-surface (Phase 5)
+- [ ] dpkms-side MCP at `/api/v1/mcp/` — 10 tools (search, list, get, entity, recent, sessions, session, compose, mentions, schema)
+- [ ] ctxd-side MCP at `:8744/mcp` — 5 local-only tools (current_session, recent_local, pending_enqueue, sources, health)
+- [ ] `ctxt mcp install/uninstall <client>` for claude-code/desktop, cursor, codex, opencode, mcp-json
+
+### Mobile companions (Phase 6/7 — separate repos, separate tracks)
+- [ ] iOS companion app (`ctxt-ios`, Swift + ReplayKit) — POSTs to configured dpkms via `/api/v1/analyze`
+- [ ] Android companion app (`ctxt-android`, Kotlin + MediaProjection + AudioPlaybackCapture)
+
+---
+
 ## Skeleton 10: Scale Track (Optional Enterprise Mode)
 
 **Goal:** Support growth without sacrificing the local-first core.

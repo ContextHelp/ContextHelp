@@ -263,6 +263,81 @@ Query and inspect canonical entities:
 ./bin/ctxt entity backlink ui.best-practice
 ```
 
+### 9. Continuous Capture & Sessions
+
+The `ctxd` ambient daemon captures clipboard, file-watch, browser-history, foreground-window, screenshots, and meetings into the knowledge graph automatically. Sessions group these captures into work units. Agents query both via MCP. Full guide: [`manual/workflows/ambient-capture.md`](manual/workflows/ambient-capture.md).
+
+```bash
+# Start the ambient daemon (auto-config, runs in background)
+ctxt capture --ambient
+
+# OR via service-manager (preferred for desktop installs that should survive logout)
+brew services start ctxd                              # macOS Homebrew
+launchctl load ~/Library/LaunchAgents/io.ctxt.ctxd.plist   # macOS launchd
+systemctl --user enable --now ctxd.service           # Linux systemd
+
+# Check what's running
+ctxt capture --ambient status
+ctxt capture --ambient sources
+ctxt capture --ambient tail               # follow live capture stream
+
+# Stop
+ctxt capture --ambient stop
+```
+
+#### Meeting capture (audio + video)
+
+```bash
+# Start a recording (default: full audio + video → video.full pipeline)
+ctxt capture meeting start --label "Q3 planning"
+
+# Audio-only mode (smaller files, faster pipeline)
+ctxt capture meeting start --label "1:1 with Alice" --audio-only
+
+# Stop (or use the same hotkey, default ⇧⌘M / Ctrl+Shift+M)
+ctxt capture meeting stop
+
+# View past meetings
+ctxt capture meeting list --since today
+ctxt capture meeting show <id>
+
+# Redact a sensitive segment
+ctxt capture meeting redact <id> --segment 14:55-14:58 --reason "off-record"
+
+# Export the transcript
+ctxt capture meeting export <id> --format md
+ctxt capture meeting export <id> --format srt > meeting.srt
+```
+
+#### Sessions
+
+```bash
+# List recent sessions
+ctxt session list --since today
+ctxt session list --since "yesterday afternoon"
+
+# Show one session (timeline + items)
+ctxt session show sess_a1b2c3d4e5f6
+
+# Compose by session
+ctxt compose --session sess_a1b2c3d4e5f6 --template meeting-recap
+ctxt compose --since "2 hours ago" --template work-summary
+```
+
+#### Agent integration (MCP)
+
+```bash
+# Install MCP for your agent
+ctxt mcp install claude-code        # OR claude-desktop / cursor / codex / opencode / mcp-json
+
+# Verify
+ctxt mcp status
+
+# Restart your agent client to pick up the new MCP servers
+```
+
+After install, your agent can call `search()`, `recent()`, `session()`, `compose()`, `current_session()`, etc. directly. Full tool reference: [`manual/workflows/mcp-agents.md`](manual/workflows/mcp-agents.md).
+
 ## Shell Completion
 
 Enable shell completion for better CLI experience:

@@ -5,6 +5,47 @@ First-class capture from CLI, TUI, REPL, browser extension, web UI, and mobile
 share sheet with offline-first behavior, a local outbox, instant “inbox dump”
 mode, and zero required classification at capture time.
 
+## Ambient Capture (Continuous Local-Side)
+Long-running local daemon (`ctxd`) hosts pluggable ambient sources — clipboard,
+file-watch (drop-folder), browser history, foreground-window, screenshot,
+meeting capture (audio + video) — feeding into existing pipelines without explicit
+per-event user action. Runs client-side (because dPKMS is often deployed remote)
+with a pluggable buffer (local-FS XDG / S3-compatible / in-memory), client-side
+fingerprint dedup at the enqueue boundary, kit/policy CEL guards for privacy
+enforcement before network egress, and a comprehensive bus event taxonomy at
+every transformation. Three launch paths share one binary: `ctxt capture --ambient`
+(auto-config CLI), `brew services start ctxd`, or `launchctl`/`systemctl`.
+
+## Work Sessions (Temporal Grouping)
+Three-rule cutter (idle / single-app focus + frequent-switching exception /
+hard timeout) groups ambient captures into bounded work units — queryable via
+`ctxt session list`, `ctxt session show`, `ctxt compose --session <id>`. Sessions
+cut client-side in `ctxd` (the foreground-window signal is local); dPKMS
+persists them with soft-FK semantics so network-loss replay handles arrival
+ordering correctly.
+
+## Meeting Capture (Audio + Video, Multi-Platform)
+Explicit-trigger recording of video calls (Zoom, Meet, Teams, FaceTime, Discord)
+on macOS 13+, Windows 10+, and Linux (Wayland-first). Captures system audio +
+window framebuffer via OS-blessed public APIs (ScreenCaptureKit / WASAPI loopback +
+Graphics Capture / xdg-desktop-portal + PipeWire). Routes to existing
+`audio.transcribe` (diarization, alignment) or `video.full` (transcript + frame
+OCR + scene-aligned timeline) pipelines. First-class redact-as-supersede for
+post-hoc segment removal. Mobile companion apps (iOS / Android) as Phase 6+ work
+in separate repos. Mandatory recording indicator; consent-law guidance documented
+but enforcement is the user's.
+
+## Agent-Native MCP Read-Surface
+Two MCP servers expose the knowledge graph and live local state to AI agents
+(Claude Code, Claude Desktop, Cursor, Codex, opencode, custom). dpkms-side
+(`/api/v1/mcp/`) is authoritative with 10 tools spanning search, list, get,
+entity, recent, sessions, session, compose, mentions, schema. ctxd-side
+(`:8744/mcp`) is local-only with 5 tools (current_session, recent_local,
+pending_enqueue, sources, health) surfacing state dPKMS cannot see when remote.
+Read-only by design; writes go through the existing `ctxt analyze` enqueue path.
+Streamable-HTTP per MCP spec 2025-03-26. `ctxt mcp install <client>` writes the
+appropriate config for the major MCP-aware clients; idempotent and reversible.
+
 ## Multimodal + Polyglot Ingestion Pipelines
 Text, URL, image, audio, video, documents, code snippets, and chat transcripts
 flow through configurable pipelines with extensible steps, custom AI models,

@@ -85,6 +85,91 @@ ctxt analyze "Pricing experiment notes" --type text \
 
 ---
 
+## Ambient Capture (continuous, local)
+
+Background daemon (`ctxd`) captures clipboard, files, browser, foreground apps, screenshots, and meetings while you work. Sessions group them.
+
+```bash
+# Start (auto-config, runs in background)
+ctxt capture --ambient
+
+# Service-manager alternatives
+brew services start ctxd                              # macOS
+launchctl load ~/Library/LaunchAgents/io.ctxt.ctxd.plist
+systemctl --user enable --now ctxd.service           # Linux
+
+# Status / sources / tail
+ctxt capture --ambient status
+ctxt capture --ambient sources
+ctxt capture --ambient tail [--source clipboard|browser|foreground|...]
+
+# Buffer
+ctxt capture --ambient buffer flush       # force replay
+ctxt capture --ambient buffer purge       # drop (confirms)
+
+# Stop
+ctxt capture --ambient stop
+```
+
+Full guide: [`manual/workflows/ambient-capture.md`](manual/workflows/ambient-capture.md).
+
+---
+
+## Meeting Capture
+
+```bash
+# Start recording
+ctxt capture meeting start --label "Q3 planning"
+ctxt capture meeting start --label "1:1" --audio-only
+ctxt capture meeting start --label "demo" --window-title "Zoom" --duration 30m
+
+# Stop
+ctxt capture meeting stop                 # or hotkey ⇧⌘M / Ctrl+Shift+M
+
+# Browse + view
+ctxt capture meeting list --since today
+ctxt capture meeting show <id>
+
+# Redact + export
+ctxt capture meeting redact <id> --segment 14:55-14:58 --reason "off-record"
+ctxt capture meeting export <id> --format md          # OR srt | vtt
+```
+
+Full guide: [`manual/workflows/meeting-capture.md`](manual/workflows/meeting-capture.md).
+
+---
+
+## Sessions
+
+```bash
+ctxt session list                          # active + recent
+ctxt session list --since "yesterday"
+ctxt session show sess_a1b2c3d4e5f6
+ctxt session tail                          # follow active session live
+
+ctxt compose --session sess_a1b2c3d4e5f6 --template meeting-recap
+ctxt compose --since "2 hours ago" --template work-summary
+```
+
+Full guide: [`manual/workflows/sessions.md`](manual/workflows/sessions.md).
+
+---
+
+## Agent Integration (MCP)
+
+```bash
+# Install MCP for your agent (idempotent)
+ctxt mcp install claude-code               # OR claude-desktop / cursor / codex / opencode / mcp-json
+ctxt mcp status                            # verify
+ctxt mcp uninstall <client>                # reverse
+
+# Restart your agent client to pick up the new MCP servers.
+```
+
+After install, your agent can natively call `search()`, `recent()`, `session()`, `compose()`, `current_session()`, etc. Full tool reference: [`manual/workflows/mcp-agents.md`](manual/workflows/mcp-agents.md).
+
+---
+
 ## Inbox Triage
 
 Items captured with deferred processing (e.g. via mobile share, PWA, or `--inbox`) land here.

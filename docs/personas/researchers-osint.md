@@ -268,6 +268,27 @@ Researchers and OSINT analysts interact with the system through these key storie
 - [US-0209](../stories/capture/US-0209-authenticated-web-fetch.md) — Authenticated Web Fetch (cookie-based fetching)
 - [US-0210](../stories/capture/US-0210-cross-platform-entity-resolution.md) — Cross-Platform Entity Resolution (identity matching)
 
+### Ambient & Continuous Capture for Investigations (ADR-066/067/068/069)
+
+Long-running local daemon captures the research session itself — every URL visited, file saved, and meeting recorded — into a queryable work unit. Investigators can reconstruct an investigation later: "show me everything I did on the Acme acquisition trail last Tuesday."
+
+- [US-0211](../stories/capture/US-0211-passive-clipboard-watcher.md) — Passive clipboard (every copied citation, lead, datapoint goes into the graph)
+- [US-0214](../stories/capture/US-0214-browser-history-source.md) — Browser tabs/history (research trail captured automatically; pairs with the existing platform-specific capture stories)
+- [US-0212](../stories/capture/US-0212-screen-monitor.md) — Screenshot-on-demand for ephemeral content (terminal output, dashboards, content behind login walls)
+- [US-0216](../stories/capture/US-0216-work-sessions.md) — Work sessions group all artifacts of an investigation into one queryable unit
+- [US-0217](../stories/capture/US-0217-meeting-capture-desktop.md) — Meeting capture (interviews, source calls — with mandatory recording indicator and consent-law guidance)
+- [US-0218](../stories/capture/US-0218-meeting-redact-export.md) — Redact + export (post-hoc segment removal for sources who go off-record; SRT/VTT for evidence packaging)
+- [US-0219](../stories/capture/US-0219-mcp-agent-integration.md) — MCP agent integration (LLM-assisted analysis without leaving Claude Code / Cursor)
+
+**Sample use cases for OSINT analysts:**
+
+- *"Continuous browser-history capture during a research session"* — `ctxt capture --ambient` running while you investigate; `ctxt session show <id>` later returns the timeline of every page visited + every clip copied + every screenshot taken, all linked to the session's mention graph.
+- *"Group all artifacts of an investigation into one session"* — Sessions cut by the 3-rule cutter naturally bundle a 90-minute investigation (browser visits + clipboard + screenshots + notes) into one ID. `ctxt compose --session sess_X --template investigation-brief` produces the deliverable.
+- *"MCP search across captured evidence"* — `search(query="Acme Corp", since="this month", profile="investigation-acme")` from Claude returns all evidence captured under the dedicated profile, with provenance preserved per [US-0050+](../stories/) provenance stories.
+- *"Capture interviews with consent + redact"* — `ctxt capture meeting start --label "interview Alice"` records both speakers; transcript materializes diarized; `ctxt capture meeting redact <id> --segment` removes off-record portions before export to evidence package.
+
+**Privacy posture:** kit/policy CEL rules enforce per-profile capture rules (drop captures from `bundle-id matches com.bank.*` while in any profile; require `confidential` tag for personal-profile sessions). Privacy enforcement runs **client-side** before content reaches dpkms — material to legally-bound investigations.
+
 ### Capture & Ingestion
 - [US-0001](../stories/ingestion/US-0001-text-capture-minimal-friction.md) -- Text Capture with Minimal Friction (quick notes during investigation)
 - [US-0002](../stories/ingestion/US-0002-url-capture-and-extraction.md) -- URL Capture and Extraction (capture web pages with structure)

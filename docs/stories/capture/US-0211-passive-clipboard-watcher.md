@@ -1,5 +1,7 @@
 ---
 status: paper
+adr: ADR-066
+task: T-0500
 ---
 
 # US-0211: Passive Clipboard Watcher
@@ -8,11 +10,15 @@ status: paper
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),
 [Researchers & OSINT Analysts](../../personas/researchers-osint.md)
 
+> **Re-grounded in ADR-066** (2026-05-05). The clipboard watcher now lands as the **first ambient source** under the substrate defined in [ADR-066](../../decisions/ADR-066-ambient-capture-substrate.md), with the rest of the substrate (runner, fingerprint dedup, buffer, kit/policy CEL guards, bus events) handling the heavy lifting. Implementation task: **T-0500** (Source: clipboard daemon).
+>
+> The `ctxt watcher` CLI from the original draft is superseded by `ctxt capture --ambient` per [ADR-066 §Decision](../../decisions/ADR-066-ambient-capture-substrate.md#decision). Daemon is `ctxd`; sources are managed via `ctxt capture --ambient sources` / `tail` / `status`.
+
 ---
 
 ## User Goal
 
-As a knowledge worker, I want ctxt to silently monitor my clipboard in the background and
+As a knowledge worker, I want `ctxd` to silently monitor my clipboard in the background and
 automatically ingest content when I copy something worth capturing, so that valuable
 information is never lost due to capture friction.
 
@@ -24,48 +30,55 @@ The current clipboard fallback in `ctxt analyze` requires intentional invocation
 must run a command and happen to have no other input. This is not passive — it's still a
 manual trigger that requires context-switching.
 
-True passive capture means the system runs in the background, notices clipboard changes,
+True passive capture means the daemon runs in the background, notices clipboard changes,
 applies heuristics to decide whether content is worth ingesting (URL, code block, long
 text), and enqueues a job silently. The user does nothing. Content appears in the knowledge
 base without any deliberate action beyond copying.
 
 This removes the single biggest friction point for casual capture: remembering to run the
 command. It also unlocks ambient accumulation — the knowledge base grows naturally as the
-user works.
+user works. Sessions ([ADR-067](../../decisions/ADR-067-session-workunit.md)) group these
+clipboard captures with the surrounding work (foreground app, browser visits, file edits)
+into queryable work units.
 
 The watcher must be safe: it must not ingest noise (single words, passwords, file paths),
-must deduplicate via content hash, and must respect an opt-out config. Privacy is
-non-negotiable — the clipboard is sensitive; the watcher must never log raw content.
+must deduplicate via fingerprint, and must respect kit/policy CEL veto rules. Privacy is
+non-negotiable — the clipboard is sensitive; redaction happens at the source boundary
+(before the event leaves the user's machine), and content never leaves the machine when a
+policy rule vetoes the capture.
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] `ctxt watcher start` starts all enabled background watchers including clipboard
-- [ ] `ctxt watcher stop` stops all background watchers
-- [ ] `ctxt watcher status` shows enabled watchers, last trigger times, and job counts
-- [ ] Clipboard watcher polls at configurable interval (default: 2s)
-- [ ] Content is only enqueued if it differs from the last captured hash
-- [ ] Ingestion heuristics filter noise: min length 80 chars, or valid URL, or fenced code block
-- [ ] Enqueued jobs are annotated with `origin=watcher/clipboard`
-- [ ] Raw clipboard content is never written to logs or stderr
-- [ ] Watcher is disabled by default; must be explicitly enabled in config
-- [ ] Config controls poll interval, min length threshold, and auto_ingest flag:
+- [ ] `ctxt capture --ambient` starts `ctxd` with the clipboard source registered (per ADR-066 substrate)
+- [ ] `ctxt capture --ambient stop` stops the daemon cleanly
+- [ ] `ctxt capture --ambient status` shows clipboard source state, last-event timestamp, and counts
+- [ ] `ctxt capture --ambient tail --source clipboard` follows the live capture stream
+- [ ] Clipboard source emits a `RawEvent` per change; uses `golang.design/x/clipboard` or platform-equivalent
+- [ ] Source-side redaction strips known-sensitive shapes (passwords, OAuth tokens) before emission → emits `ctxt.ambient.event.redacted`
+- [ ] Client-side fingerprint dedup at enqueue (SHA-256 over normalized payload, configurable window) drops duplicates → emits `ctxt.ambient.event.deduped`
+- [ ] Routing heuristics: URL → `url.generic`, fenced code block → `text.short` (code), text ≥ min_length → `text.short`
+- [ ] Enqueued objects carry `ambient_source=clipboard` + `session_id` + `fingerprint`
+- [ ] Raw clipboard content never written to logs or stderr (only fingerprint + pipeline name)
+- [ ] Source is enabled by default in config; `ambient.sources.clipboard.enabled = false` disables
+- [ ] Config:
 
 ```yaml
-watchers:
-  clipboard:
-    enabled: false
-    poll_interval: 2s
-    min_length: 80
-    auto_ingest: true
+ambient:
+  sources:
+    clipboard:
+      enabled: true
+      poll_interval: 2s          # platform-specific; some OSes notify
+      min_length: 80
+      route_urls_to: url.generic
+      route_text_to: text.short
 ```
 
-- [ ] `ctxt watcher enable clipboard` / `ctxt watcher disable clipboard` toggle without
-  restart
-- [ ] Duplicate content (same hash as last ingested) is silently skipped
-- [ ] On macOS, watcher requests clipboard permission gracefully if denied
-- [ ] Watcher survives `dpkms serve` restarts without re-ingesting old content
+- [ ] kit/policy CEL rules can veto on `ctxt.ambient.event.captured` for `source=clipboard` (e.g. drop while bundle-id matches `com.1password.*`); veto fires `ctxt.ambient.event.filtered`
+- [ ] Source survives `dpkms` restarts; buffered events replay on reconnect
+- [ ] On macOS, source requests clipboard permission gracefully if denied
+- [ ] Bus event taxonomy from ADR-066 §Decision is fully emitted (lifecycle: started/ready/stopped; per-event: captured/redacted/filtered/deduped/buffered/enqueue.*)
 
 ---
 
@@ -74,71 +87,78 @@ watchers:
 ### Architecture
 
 ```
-ClipboardWatcher (polls every 2s)
-  -> hash(content) != lastHash?
-    -> heuristic(content) passes?
-      -> enqueue job (pipeline: text.short or url.generic)
-      -> store hash as lastHash
+internal/ambient/clipboard/clipboard.go
+  implements ambient.AmbientSource
+  -> Start(ctx, bus) — register on the runner
+  -> Events() <-chan ambient.RawEvent
+  -> Stop(ctx) / Drain(ctx)
+
+  Internal loop:
+  poll/notify -> content changed?
+    -> fingerprint = sha256(normalized payload)
+    -> emit RawEvent{Source: "clipboard", Kind: "text"|"url", Payload, Fingerprint, SuggestedPipeline}
+    -> runner: redact -> CEL filter -> dedup -> compress -> session-tag -> buffer -> enqueue
 ```
 
-Watcher implements the `Watcher` interface defined in Sk8 Task 2.1. Runs as a goroutine
-managed by the ctxt watcher supervisor.
+The clipboard source is a thin shim that implements `AmbientSource` (per ADR-066 §Decision item 2). The substrate (runner, redaction, policy filter, dedup, buffer, enqueue) handles everything downstream — the source's only job is "produce a RawEvent when the clipboard changes."
 
 ### Heuristics (ordered)
 
 ```
-1. Valid URL (http/https)          -> pipeline: url.generic
-2. Fenced code block (``` prefix)  -> pipeline: text.short (code)
-3. Length >= min_length chars      -> pipeline: text.short
-4. Otherwise: skip
+1. Valid URL (http/https)          -> SuggestedPipeline: url.generic
+2. Fenced code block (``` prefix)  -> SuggestedPipeline: text.short (code subtype)
+3. Length >= min_length chars      -> SuggestedPipeline: text.short
+4. Otherwise: skip (no RawEvent emitted)
 ```
 
 ### Deduplication
 
-```
-Store: ~/.local/share/ctxt/watcher-state.json
-  { "clipboard": { "last_hash": "sha256:...", "last_seen": "2026-03-25T..." } }
-```
-
-Hash is SHA-256 of raw content. State persists across restarts.
+Handled by the **substrate**, not the source. The runner's enqueue-boundary fingerprint dedup (per ADR-066 §Decision item 3) drops duplicate fingerprints within a configurable window (default 60s). The source emits unconditionally; runner decides.
 
 ### Privacy
 
-- Never log content — only hash and pipeline name
-- `CTXT_NO_CLIPBOARD=1` env var disables watcher unconditionally
-- Watcher state file contains hashes only, never plaintext
+- Never log content — only fingerprint, kind, and pipeline name
+- Source-side redaction (ADR-066 §Phase 4) strips known-sensitive shapes before emission
+- kit/policy CEL guard rules veto sensitive contexts (bundle-id deny-list, time-of-day) before content leaves the machine
+- Buffer state files contain fingerprints only, never plaintext (raw event payloads in the buffer are encrypted at rest if `ambient.buffer.encrypt=true`)
 
-### CLI
+### CLI (per ADR-066)
 
 ```bash
-# Enable and start
-ctxt watcher enable clipboard
-ctxt watcher start
+# Start the daemon (clipboard source is registered by default)
+ctxt capture --ambient
 
-# Check status
-ctxt watcher status
+# Check what's running
+ctxt capture --ambient status
 # ->
-# Watcher         Status    Last Trigger              Jobs Enqueued
-# clipboard       running   2026-03-25T14:32:01Z      47
-# directory       stopped   -                         0
+# ctxd: running (PID 4218, uptime 2h 14m)
+# sources:
+#   clipboard       active   23 events captured / 19 enqueued / 4 deduped
 
-# Disable
-ctxt watcher disable clipboard
+# Tail live
+ctxt capture --ambient tail --source clipboard
+
+# Disable in config
+# ambient.sources.clipboard.enabled: false
+
+# Stop
+ctxt capture --ambient stop
 ```
 
 ---
 
 ## E2E Checklist
 
-- [ ] Enable clipboard watcher via config
-- [ ] Start `ctxt watcher start`
-- [ ] Copy a URL to clipboard
-- [ ] Wait 2s; verify job appears in `ctxt jobs`
-- [ ] Copy same URL again; verify no duplicate job
-- [ ] Copy a single word; verify no job enqueued
-- [ ] Copy a code block (```); verify job enqueued with code pipeline
-- [ ] Stop watcher; verify no new jobs after copy
-- [ ] Restart watcher; verify state file prevents re-ingestion
+- [ ] `ctxt capture --ambient` starts ctxd with clipboard source enabled
+- [ ] Copy a URL to clipboard; within poll interval, verify object created via `url.generic` pipeline
+- [ ] Verify object has `ambient_source=clipboard`, non-empty `session_id`, populated `fingerprint`
+- [ ] Copy same URL again; verify dedup (`ctxt.ambient.event.deduped` event fires; no new object)
+- [ ] Copy a single word (< min_length); verify no event emitted
+- [ ] Copy a code block (```); verify object created with `subtype=code` via `text.short`
+- [ ] Configure CEL veto rule for bundle-id `com.1password.*`; verify clipboard from 1Password is dropped (`.filtered` event fires; no enqueue)
+- [ ] Stop `ctxt capture --ambient`; verify cutter emits `session.closed`; no new events after
+- [ ] Take dpkms offline; copy several items; verify buffer holds them; verify `pending_enqueue()` MCP tool surfaces them; bring dpkms back; verify replay
+- [ ] Bus events fire per ADR-066 taxonomy (lifecycle + capture + buffer + enqueue stages)
 
 ---
 
@@ -147,15 +167,18 @@ ctxt watcher disable clipboard
 - [US-0001](../ingestion/US-0001-text-capture-minimal-friction.md) — Text capture
   (manual trigger; this story adds passive variant)
 - [US-0002](../ingestion/US-0002-url-capture-and-extraction.md) — URL capture
-- [US-0212](US-0212-screen-monitor.md) — Screen monitor (sibling passive watcher)
-- [US-0208](US-0208-temporal-watch.md) — Temporal watch (scheduled re-capture)
+- [US-0212](US-0212-screen-monitor.md) — Screen monitor (sibling ambient source)
+- [US-0213](US-0213-file-watch-source.md) — File-watch source (sibling ambient source)
+- [US-0214](US-0214-browser-history-source.md) — Browser-history source (sibling ambient source)
+- [US-0216](US-0216-work-sessions.md) — Work sessions (groups clipboard captures)
+- [US-0219](US-0219-mcp-agent-integration.md) — MCP agent integration
 
 ---
 
 ## Sprint
 
-**Skeleton 8 — Trust & Automation**
-Implements Sk8 Task 2.2 (Clipboard Watcher) and depends on Task 2.1 (Watcher Interface).
+**Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
+Implements ADR-066 Phase 3a (clipboard source) — see `tlc track show ambient-capture`, task **T-0500**.
 
 ---
 
