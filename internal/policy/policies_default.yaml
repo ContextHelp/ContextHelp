@@ -1,0 +1,28 @@
+# ctxt default policy bundle. Loaded by internal/policy/policy.go when
+# no user policies file exists at $XDG_CONFIG_HOME/contexthelp/policies.yaml,
+# and seeded into that path on first daemon boot for adopters to extend.
+#
+# Default rules cover destructive pipeline mutations: archive and
+# delete must carry a non-empty `--note` so the audit trail explains
+# why the mutation happened. Non-destructive ops (create, list, show,
+# unarchive) stay open by default — additional rules belong in the
+# user file, not here.
+#
+# `payload.Op` is the kit/runtime/domain.Op enum stringified ("create",
+# "update", "delete"). Archive is plumbed through Update with the
+# Archived flag flipped, so the archive guard reads the request-scoped
+# context.action attribute that ctxt sets on archive/unarchive paths.
+policies:
+  - name: archive-pipeline-requires-note
+    on: kit.runtime.entity.pre_persisted
+    when: 'payload.Op != "update" || !has(context.request_attrs.action) || context.request_attrs.action != "archive" || context.note != ""'
+    effect: allow
+    otherwise: deny
+    message: "archiving a pipeline requires --note explaining why"
+
+  - name: delete-pipeline-requires-note
+    on: kit.runtime.entity.pre_persisted
+    when: 'payload.Op != "delete" || context.note != ""'
+    effect: allow
+    otherwise: deny
+    message: "deleting a pipeline requires --note explaining why"
