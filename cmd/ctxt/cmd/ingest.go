@@ -7,9 +7,10 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/adapter/contacts/cardamum"
+	"github.com/ideacrafterslabs/ctxt/internal/adapter/email/himalaya"
+	"github.com/ideacrafterslabs/ctxt/internal/adapter/legacy"
 	"github.com/ideacrafterslabs/ctxt/internal/ingest"
-	"github.com/ideacrafterslabs/ctxt/internal/ingest/cardamum"
-	"github.com/ideacrafterslabs/ctxt/internal/ingest/himalaya"
 	"github.com/spf13/cobra"
 )
 
@@ -130,15 +131,11 @@ func buildCardamumAdapter(cmd *cobra.Command) (ingest.Adapter, error) {
 	account, _ := cmd.Flags().GetString("account")
 	binary, _ := cmd.Flags().GetString("binary")
 
-	var opts []cardamum.Option
-	if binary != "" {
-		opts = append(opts, cardamum.WithBinary(binary))
-	}
-	if account != "" {
-		opts = append(opts, cardamum.WithAccount(account))
-	}
-
-	return cardamum.New(addressbook, opts...), nil
+	typed := cardamum.New(addressbook, cardamum.Config{
+		Account: account,
+		Binary:  binary,
+	})
+	return legacy.AsLegacy(typed), nil
 }
 
 func buildHimalayaAdapter(cmd *cobra.Command) (ingest.Adapter, error) {
@@ -147,15 +144,13 @@ func buildHimalayaAdapter(cmd *cobra.Command) (ingest.Adapter, error) {
 	binary, _ := cmd.Flags().GetString("binary")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 
-	a := &himalaya.Adapter{
+	typed := himalaya.New(himalaya.Config{
 		Account:  account,
 		Folder:   folder,
 		MaxItems: maxItems,
-	}
-	if binary != "" {
-		a.Binary = binary
-	}
-	return a, nil
+		Binary:   binary,
+	})
+	return legacy.AsLegacy(typed), nil
 }
 
 func printIngestResult(res *ingest.Result) {
@@ -164,7 +159,10 @@ func printIngestResult(res *ingest.Result) {
 }
 
 // IngestRegistry returns the default adapter registry with built-in
-// adapters. Used by tests to verify registration.
+// adapters. Used by tests to verify registration. Both built-ins now
+// route through the typed substrate via legacy.AsLegacy so the
+// registry sees the same surface but the underlying impl uses the
+// new internal/adapter contract.
 func IngestRegistry() *ingest.Registry {
 	reg := ingest.NewRegistry()
 	reg.Register("cardamum", func(args []string) (ingest.Adapter, error) {
@@ -172,14 +170,14 @@ func IngestRegistry() *ingest.Registry {
 		if len(args) > 0 {
 			ab = args[0]
 		}
-		return cardamum.New(ab), nil
+		return legacy.AsLegacy(cardamum.New(ab, cardamum.Config{})), nil
 	})
 	reg.Register("himalaya", func(args []string) (ingest.Adapter, error) {
-		a := &himalaya.Adapter{}
+		cfg := himalaya.Config{}
 		if len(args) > 0 {
-			a.Account = args[0]
+			cfg.Account = args[0]
 		}
-		return a, nil
+		return legacy.AsLegacy(himalaya.New(cfg)), nil
 	})
 	return reg
 }
