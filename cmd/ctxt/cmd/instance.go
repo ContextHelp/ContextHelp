@@ -4,13 +4,22 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/output"
 )
+
+type instanceRow struct {
+	Name   string `table:"NAME"`
+	PID    int    `table:"PID"`
+	Port   int    `table:"PORT"`
+	GRPC   int    `table:"GRPC"`
+	DB     string `table:"DB"`
+	Uptime string `table:"UPTIME"`
+}
 
 var instanceCmd = &cobra.Command{
 	Use:   "instance",
@@ -80,18 +89,22 @@ func runInstanceList(cmd *cobra.Command, _ []string) error {
 
 	current := activeInstanceName()
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "  NAME\tPID\tPORT\tGRPC\tDB\tUPTIME")
-	for _, info := range instances {
+	rows := make([]instanceRow, len(instances))
+	for i, info := range instances {
 		marker := "  "
 		if info.Name == current || fmt.Sprintf("%d", info.Port) == current {
 			marker = "* "
 		}
-		uptime := time.Since(info.StartedAt).Truncate(time.Second)
-		fmt.Fprintf(w, "%s%s\t%d\t%d\t%d\t%s\t%s\n",
-			marker, info.Name, info.PID, info.Port, info.GRPCPort, info.DBPath, uptime)
+		rows[i] = instanceRow{
+			Name:   marker + info.Name,
+			PID:    info.PID,
+			Port:   info.Port,
+			GRPC:   info.GRPCPort,
+			DB:     info.DBPath,
+			Uptime: time.Since(info.StartedAt).Truncate(time.Second).String(),
+		}
 	}
-	return w.Flush()
+	return output.Render(os.Stdout, output.Table, rows, output.WithTableStyle(root.TableStyle()))
 }
 
 func runInstanceUse(cmd *cobra.Command, args []string) error {

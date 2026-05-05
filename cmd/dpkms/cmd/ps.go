@@ -4,14 +4,33 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/output"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 )
+
+type psRow struct {
+	Name   string `table:"NAME"`
+	PID    int    `table:"PID"`
+	Port   int    `table:"PORT"`
+	GRPC   int    `table:"GRPC"`
+	DB     string `table:"DB"`
+	Uptime string `table:"UPTIME"`
+}
+
+type psBrowserRow struct {
+	Name    string `table:"NAME"`
+	PID     int    `table:"PID"`
+	Port    int    `table:"PORT"`
+	GRPC    int    `table:"GRPC"`
+	Browser string `table:"BROWSER"`
+	DB      string `table:"DB"`
+	Uptime  string `table:"UPTIME"`
+}
 
 var psCmd = &cobra.Command{
 	Use:   "ps",
@@ -64,25 +83,36 @@ func runPS(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	style := output.WithTableStyle(root.TableStyle())
 	if hasBrowser {
-		fmt.Fprintln(w, "NAME\tPID\tPORT\tGRPC\tBROWSER\tDB\tUPTIME")
-	} else {
-		fmt.Fprintln(w, "NAME\tPID\tPORT\tGRPC\tDB\tUPTIME")
-	}
-	for _, info := range instances {
-		uptime := time.Since(info.StartedAt).Truncate(time.Second)
-		if hasBrowser {
+		rows := make([]psBrowserRow, len(instances))
+		for i, info := range instances {
 			browser := "-"
 			if info.BrowserPort > 0 {
 				browser = fmt.Sprintf("%d", info.BrowserPort)
 			}
-			fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%s\t%s\t%s\n",
-				info.Name, info.PID, info.Port, info.GRPCPort, browser, info.DBPath, uptime)
-		} else {
-			fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%s\t%s\n",
-				info.Name, info.PID, info.Port, info.GRPCPort, info.DBPath, uptime)
+			rows[i] = psBrowserRow{
+				Name:    info.Name,
+				PID:     info.PID,
+				Port:    info.Port,
+				GRPC:    info.GRPCPort,
+				Browser: browser,
+				DB:      info.DBPath,
+				Uptime:  time.Since(info.StartedAt).Truncate(time.Second).String(),
+			}
+		}
+		return output.Render(os.Stdout, output.Table, rows, style)
+	}
+	rows := make([]psRow, len(instances))
+	for i, info := range instances {
+		rows[i] = psRow{
+			Name:   info.Name,
+			PID:    info.PID,
+			Port:   info.Port,
+			GRPC:   info.GRPCPort,
+			DB:     info.DBPath,
+			Uptime: time.Since(info.StartedAt).Truncate(time.Second).String(),
 		}
 	}
-	return w.Flush()
+	return output.Render(os.Stdout, output.Table, rows, style)
 }

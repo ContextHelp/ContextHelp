@@ -438,7 +438,7 @@ func printTable(pipelines []*storage.Pipeline) error {
 			Archived:    p.Archived,
 		}
 	}
-	return output.Render(os.Stdout, output.Table, ps)
+	return output.Render(os.Stdout, output.Table, ps, output.WithTableStyle(root.TableStyle()))
 }
 
 func printPipelineDetails(p *storage.Pipeline) error {
@@ -472,7 +472,7 @@ func printStepTable(steps []*storage.RegisteredStep) error {
 			Version: version,
 		}
 	}
-	return output.Render(os.Stdout, output.Table, ss)
+	return output.Render(os.Stdout, output.Table, ss, output.WithTableStyle(root.TableStyle()))
 }
 
 type registryRow struct {
@@ -496,7 +496,7 @@ func printRegistryTable(registries []*storage.RegistryCache) error {
 			LastFetched: r.LastFetched.Format("2006-01-02 15:04"),
 		}
 	}
-	return output.Render(os.Stdout, output.Table, rs)
+	return output.Render(os.Stdout, output.Table, rs, output.WithTableStyle(root.TableStyle()))
 }
 
 func waitForJob(jobID string) error {
