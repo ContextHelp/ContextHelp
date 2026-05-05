@@ -52,6 +52,21 @@ var (
 			{Name: "server-url", Default: "http://localhost:8080", Usage: "dpkms server URL"},
 			{Name: "offline", Usage: "disable all network calls; force local-only operation"},
 		},
+		// Hook runs after kit's built-in chain (chdir → identity → peer →
+		// progress); we use it for the --output→--format compatibility shim
+		// and verbose logger init.
+		Hooks: kitcli.Hooks{
+			PrePersistentRunE: func(cmd *cobra.Command, _ []string) error {
+				if outFlag := cmd.Root().PersistentFlags().Lookup("output"); outFlag != nil && outFlag.Changed {
+					val := outFlag.Value.String()
+					_ = cmd.Root().PersistentFlags().Set("format", val)
+					viper.Set("format", val)
+				}
+				count, _ := cmd.Root().PersistentFlags().GetCount("verbose")
+				logger.Init(count > 0)
+				return nil
+			},
+		},
 	})
 	rootCmd = root.Cmd
 )
@@ -93,24 +108,9 @@ func init() {
 	viper.RegisterAlias("offline.enabled", "offline")
 	viper.RegisterAlias("cli.verbose", "verbose")
 
-	// Single PersistentPreRunE: chains kit's chdir hook + verbose logger init
-	// + the --output→--format compatibility shim.
-	chdirHook := rootCmd.PersistentPreRunE
-	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		if chdirHook != nil {
-			if err := chdirHook(cmd, args); err != nil {
-				return err
-			}
-		}
-		if outFlag := cmd.Root().PersistentFlags().Lookup("output"); outFlag != nil && outFlag.Changed {
-			val := outFlag.Value.String()
-			_ = cmd.Root().PersistentFlags().Set("format", val)
-			viper.Set("format", val)
-		}
-		count, _ := cmd.Root().PersistentFlags().GetCount("verbose")
-		logger.Init(count > 0)
-		return nil
-	}
+	// PersistentPreRunE chain is wired via kitcli.Config.Hooks.PrePersistentRunE
+	// at package load (see root var block above). Kit composes:
+	//   chdir → identity → peer → progress → our hook (output shim + logger init)
 
 	cobra.OnInitialize(initConfig)
 }
