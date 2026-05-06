@@ -10,7 +10,7 @@ phase: 6, 7
 **System Types:** ctxt-ios, ctxt-android (separate repos)
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)
 
-> **Phase 6/7 — out of v1 scope.** Tracked as separate repositories with their own release cadence. Documented here so the substrate ([ADR-069](../../decisions/ADR-069-meeting-capture-source.md)) ensures the enqueue path absorbs them on day one.
+> **Phase 6/7 — out of v1 scope.** Repo structure (monorepo `mobile/{ios,android}/` vs. separate `ctxt-ios` / `ctxt-android` repos) is **TBD at Phase 6/7 start** — see [ADR-069 §1](../../decisions/ADR-069-meeting-capture-source.md). The substrate's enqueue API + bus event taxonomy is the binding contract; whichever repo structure ships, the wire is unchanged.
 
 ---
 
@@ -34,7 +34,7 @@ The apps are intentionally minimal: record locally, retry on transient network f
 
 ### iOS app (`ctxt-ios`, Phase 6, T-0520)
 
-- [ ] Swift app, separate repo, distributed via App Store
+- [ ] Swift app (repo location TBD per ADR-069 §1); distributed via App Store
 - [ ] iOS 17+ minimum (ReplayKit broadcast extensions stable)
 - [ ] Recording UX:
     - Big "record" button on home screen
@@ -52,7 +52,7 @@ The apps are intentionally minimal: record locally, retry on transient network f
 
 ### Android app (`ctxt-android`, Phase 7, T-0521)
 
-- [ ] Kotlin app, separate repo, distributed via Play Store
+- [ ] Kotlin app (repo location TBD per ADR-069 §1); distributed via Play Store
 - [ ] Android 10+ minimum (AudioPlaybackCapture API)
 - [ ] Recording UX matches iOS (big button, label, history list)
 - [ ] MediaProjection API for screen + AudioPlaybackCapture for system audio

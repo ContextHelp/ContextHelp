@@ -40,10 +40,17 @@ The ambient capture substrate (ADR-066) ships sources for clipboard, file-watch,
 | Track | Platforms | Implementation | Status |
 |---|---|---|---|
 | **Desktop** | macOS 13+, Windows 10+, Linux (Wayland-first, X11 fallback) | Native Go in `internal/ambient/meeting/` using cgo bindings to OS APIs; ships in `ctxd` | Phase 3 of ADR-066 + this ADR |
-| **iOS companion** | iPhone, iPad (iOS 17+) | Swift app `ctxt-ios` (separate repo); ReplayKit for screen+audio; sends recordings to user-configured ctxt instance via the existing `/api/v1/analyze` HTTP path | Phase 6 (deferred) |
-| **Android companion** | Android 10+ | Kotlin app `ctxt-android` (separate repo); MediaProjection for screen, AudioPlaybackCapture API (Android 10+) for system audio; same enqueue path | Phase 6 (deferred) |
+| **iOS companion** | iPhone, iPad (iOS 17+) | Swift app (`ctxt-ios`); ReplayKit for screen+audio; POSTs to user-configured dpkms via the existing `/api/v1/analyze` HTTP path | Phase 6 (deferred) |
+| **Android companion** | Android 10+ | Kotlin app (`ctxt-android`); MediaProjection + AudioPlaybackCapture (Android 10+); same enqueue path | Phase 7 (deferred) |
 
 iOS/Android companions are **out of v1** but the substrate (enqueue API, session tagging, profile resolution) supports them on day one. They post recordings to whichever dpkms is configured (local-network or remote) per ADR-066's enqueue model.
+
+> **Repo structure: TBD at Phase 6/7 start.** Earlier drafts of this ADR locked-in "separate repos" for iOS/Android. That decision was premature — both monorepo and split-repo are defensible, with real trade-offs:
+>
+> - **Monorepo** (in this repo, under `mobile/ios/` + `mobile/android/`): one source of truth for the wire contract (RawEvent / RecordOptions / bus topics), atomic cross-language refactors, easier end-to-end tests. Trade-off: heterogeneous CI (Swift + Kotlin + Go in one pipeline).
+> - **Separate repos** (`ctxt-ios`, `ctxt-android`): matches the rest of the ctxt org's repo layout, isolates Apple Developer / Play Console secrets, independent release cadence. Trade-off: three-way schema sync, integration-test ceremony.
+>
+> The decision is **revisited when Phase 6 actually starts**, not now. Either path requires identical Go-side work (none beyond what's already shipped); the substrate's enqueue API + bus event taxonomy are the binding contract. Whatever repo structure ships, the wire is unchanged.
 
 ### 2. Two trigger modes (desktop)
 
@@ -170,7 +177,7 @@ The `redact` command is not optional UX — the user discovering after-the-fact 
 - **Existing pipelines do all the AI work.** `audio.transcribe` and `video.full` already exist with diarization, OCR, scene detection, timeline assembly. The capture source is a thin shim that produces the right file shape; we don't need to reimplement Whisper, FFmpeg, or speaker clustering.
 - **Explicit trigger sidesteps the consent-law minefield.** Two-party-consent jurisdictions (CA, FL, IL, MA, MD, MT, NV, NH, PA, WA in the US — and most of Europe under GDPR) require all parties to be aware. Always-on recording would force ctxt to ship lawyer-disclaimers at the wrong altitude. Explicit-by-default with an unmissable indicator pushes the consent burden to the user (where it belongs) and matches what most modern tools do (Zoom requires the host to start recording; Granola asks before starting).
 - **Three desktop OS tracks share substrate, differ in capture API.** The Go interface (`MeetingRecorder`) is the same across OSes; the OS-specific implementations live behind build tags. ScreenCaptureKit / WASAPI+Graphics Capture / xdg-desktop-portal are public, modern, and don't require kernel-level drivers (BlackHole et al. become fallback, not requirement).
-- **Mobile is its own architecture problem and deserves its own apps.** ReplayKit (iOS) and MediaProjection (Android) are designed for in-app screen+audio capture. A Go daemon will not run on iOS at all and runs on Android only awkwardly. Honest split: ship `ctxt-ios` and `ctxt-android` as small native apps that record locally and POST to the configured dpkms via the existing enqueue HTTP path. Phase 6 work; not v1.
+- **Mobile is its own architecture problem and deserves dedicated native apps.** ReplayKit (iOS) and MediaProjection (Android) are designed for in-app screen+audio capture. A Go daemon will not run on iOS at all and runs on Android only awkwardly. Ship `ctxt-ios` (Swift) and `ctxt-android` (Kotlin) as small native apps that record locally and POST to the configured dpkms via the existing enqueue HTTP path. Phase 6/7 work; not v1. Repo structure (monorepo vs split repos) is TBD at Phase 6/7 start — see §1 above.
 - **Media files get their own retention tier because their size profile is different.** Bolting a 500MB file into a buffer designed for kilobyte events is a bug magnet. Separate cap, separate retention default, separate eviction story, separate optional S3 archive — all configurable, all defaulted to sensible values, all auditable via bus events.
 - **Redact is a first-class command, not an afterthought.** Users will record a meeting where someone says something they later wish wasn't recorded. Without redact, ctxt becomes a liability. Redact-as-supersede composes with the existing data model (ADR-066's append-only-with-supersede pattern).
 
@@ -258,9 +265,8 @@ resources/
 ├── WindowsCaptureBridge.cpp       — compiled at build-time, vendored as .lib or .dll
 ```
 
-Mobile companions (Phase 6):
+Mobile companions (Phase 6/7; repo structure TBD — monorepo `mobile/{ios,android}/` or split repos `ctxt-ios` / `ctxt-android`):
 ```
-(separate repos)
 ctxt-ios/    — Swift, ReplayKit-based, ~1000 LoC
 ctxt-android/ — Kotlin, MediaProjection + AudioPlaybackCapture, ~1500 LoC
 ```
