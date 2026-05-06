@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 252ab9bd
+recorded_at: "2026-05-06T02:24:57Z"
+payload:
+    status: 200
+    body: |
+        {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\"app_mix\":{\"com.apple.Safari\":0.25,\"com.tinyspeck.slackmacgap\":0.1,\"us.zoom.xos\":0.65},\"event_count\":23,\"id\":\"sess_test_aabbccddeeff\",\"started_at\":\"2026-05-06T10:30:00Z\"}","type":"text"}],"isError":false}}
