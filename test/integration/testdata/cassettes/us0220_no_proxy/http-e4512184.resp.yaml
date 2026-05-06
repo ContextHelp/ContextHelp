@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: e4512184
+recorded_at: "2026-05-06T02:24:57Z"
+payload:
+    status: 200
+    body: |
+        {"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"tool \"search\" not found"}}

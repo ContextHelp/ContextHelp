@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 25f5f66b
+recorded_at: "2026-05-06T02:24:57Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:55834
+    body: '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"sources","arguments":{}}}'
