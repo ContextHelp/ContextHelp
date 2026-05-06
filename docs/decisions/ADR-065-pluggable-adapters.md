@@ -231,10 +231,12 @@ Each instance has one email backend; the merged instance sees objects from both 
 
 ### Migration phases
 
-- **Phase 1** — Substrate (`internal/adapter/`) + email + contacts protocol slots + migration of cardamum/himalaya from `internal/ingest/`. Stalwart and mxhook backends out of scope for Phase 1.
-- **Phase 2** — Stalwart backend (bundled MX) + mxhook backend (Gmail bridge first). Calendar slot + caldav-vdir backend.
-- **Phase 3** — Additional mxhook backends (iCloud, M365, Proton, Fastmail). Reminders, accounts, bills slots.
-- **Phase 4** — Files slot. External-step adapters (per ADR-058) for adapter authors who want a separate-binary path.
+> Phase 2 expanded by the 2026-05-06 amendment (see below) to add sensor adapters + ambient capture; files slot pulled forward from Phase 4.
+
+- **Phase 1** — Substrate (`internal/adapter/`) + email + contacts protocol slots + migration of cardamum/himalaya from `internal/ingest/`. Stalwart and mxhook backends out of scope for Phase 1. **(landed 2026-05-06)**
+- **Phase 2** — Service adapters (mxhook+gmail, caldav-vdir) + sensor adapters (rss, sshfs/sftp, s3-compatible, local-fs, watched-fs, clipboard, screen, mic) + files slot + calendar slot + os-platform slots (clipboard/screen/mic each its own slot). Adds the `ctxt capture` umbrella verb + `--ambient` mode + `policy/ambient.yaml` config. Closes Acceptance Gate 4 (CEL veto on adapter pre_persisted).
+- **Phase 3** — Stalwart backend (bundled MX). Additional mxhook backends (iCloud, M365, Proton, Fastmail). Reminders, accounts, bills slots. Linux + Windows ports of the OS-platform sensors.
+- **Phase 4** — External-step adapters (per ADR-058) for adapter authors who want a separate-binary path.
 
 Existing `internal/ingest/` is kept as a thin shim during Phase 1+2 for backwards compat; removal in Phase 3.
 
@@ -253,9 +255,93 @@ Existing `internal/ingest/` is kept as a thin shim during Phase 1+2 for backward
 
 ---
 
-## References
+## Amendment 2026-05-06 — Service vs. sensor distinction; ambient capture; OS-platform slots
 
-- [ADR-058 – External Step Execution Protocol](ADR-058-external-step-execution-protocol.md)
+### Context for the amendment
+
+Phase 1 landed the substrate (PR #24) with two fetch-only adapters (cardamum, himalaya) wrapped through `internal/adapter/legacy.AsLegacy`. Phase 2 was originally scoped narrowly: Stalwart + mxhook+gmail + caldav-vdir + reminders slot. Walking forward into Phase 2 surfaced three issues the original ADR didn't address:
+
+1. **Adapter mental model is bimodal.** Stalwart-as-MX is bidirectional, long-running, and user-initiated (operators turn it on; phones connect to it). An RSS poller, an S3 bucket diff, a clipboard watcher are *passive observers* of a source — same `Adapter` contract, but the operator doesn't think of them the same way. The substrate didn't distinguish these; documentation was generic.
+2. **OS-platform sensors don't fit one slot.** Putting clipboard + screen + mic under a single `os-events` protocol slot would conflict with the one-platform-per-protocol invariant — only one of the three could run per dPKMS instance. But ambient capture is meaningless if a user can have screen XOR mic, not both.
+3. **No user-facing verb for "read everything now."** The original spec described "Universal Capture Layer" as a featureset but no CLI command; existing `ctxt` / `ctxt analyze` / `ctxt ingest` were single-source verbs.
+
+### Amendment decisions
+
+#### Adapter taxonomy: service vs. sensor
+
+The substrate distinguishes two adapter shapes, both implementing the same `internal/adapter.Adapter` contract:
+
+- **Service adapter** — long-running, user-initiated, typically bidirectional. Examples: Stalwart (IMAP/SMTP server + MX), mxhook+gmail (IMAP bridge + send-as), caldav-vdir (CalDAV server). Capabilities typically include `serve`, `submit` in addition to `fetch`. Operators "turn them on" via config; clients (phones, mail apps) connect to them.
+- **Sensor** — passive observer of a source, fetch-only or fetch+emit-events. Examples: rss (poll feed URLs), s3-compatible (diff buckets), sshfs/sftp (poll remote file trees), local-fs (watch Downloads/Documents/Photos), watched-fs (fsnotify on configured paths), clipboard (read pasteboard generation), screen (capture screenshot buffer), mic (record window). Capabilities are `fetch` + `emit-events`. Sensors are the substrate side of **ambient capture** (`ctxt capture --ambient`).
+
+**Both shapes use the same Adapter interface — this is a docs/UX distinction, not a type-system one.** Adapter authors don't need to declare which they are; the operator's mental model differs, and our docs reflect that.
+
+#### Protocol slots for OS-platform sensors
+
+OS-platform sensors get **one protocol slot per device kind**, not a single shared slot:
+
+- `internal/adapter/clipboard/slot.go` — `Protocol = "clipboard"`
+- `internal/adapter/screen/slot.go` — `Protocol = "screen"`
+- `internal/adapter/mic/slot.go` — `Protocol = "mic"`
+
+Per-device slots honor the one-platform-per-protocol invariant literally (one clipboard backend, one screen backend, one mic backend). Ambient capture (§ below) aggregates across all configured slots.
+
+OS-platform sensor adapters **declare a platform constraint** via a new capability shape: `Capability("platform:darwin")`, `Capability("platform:linux")`, etc. Phase 2 ships darwin-only implementations; Phase 3 adds Linux + Windows ports. The Registry's startup check rejects backends whose platform capability doesn't match the running OS.
+
+#### Files slot pulled forward from Phase 4
+
+The `files` protocol slot (originally Phase 4) lands in Phase 2 to host sshfs/sftp + s3-compatible + local-fs sensors. Without it, those sensors have no slot identity. The Phase 4 entry shifts to "External-step adapters only."
+
+#### `ctxt capture` umbrella verb
+
+Phase 2 introduces `ctxt capture` as the canonical user-facing verb for explicit reads from any source the substrate handles. Existing forms (`ctxt`, `ctxt analyze`, `ctxt ingest`) keep working. Full spec: [docs/ctxt/capture.md](../ctxt/capture.md).
+
+The `--ambient` flag invokes a **sweep across all sensors enabled in the user's `policy/ambient.yaml`**. Sensors run in parallel; objects emit through the existing pipeline registry; results route to inbox or active store per `--inbox` flag.
+
+Per-source forms (`ctxt capture <url>`, `ctxt capture ./file`, etc.) target a single adapter resolved via detector chain (URL pattern → adapter slot → backend) or explicit `--source <name>`.
+
+#### Config layout: `policy/ctxt.yaml` + `policy/ambient.yaml`
+
+PR #23's `$XDG_CONFIG_HOME/contexthelp/policies.yaml` relocates to `policy/ctxt.yaml` (tool-namespaced). The new `policy/ambient.yaml` declares per-sensor enablement, OS-permission requirements, and per-sensor config. Boot-time migration handles the relocation; `CTXT_POLICY_FILE` env override is updated. Full schema: [docs/ctxt/ambient.md](../ctxt/ambient.md).
+
+#### Acceptance Gate 4 closed in Phase 2
+
+`kit/runtime/policy.Wire` already runs in the daemon (PR #23 landed it for pipeline events). Phase 2 wires the same engine to the substrate's adapter pre_persisted topics so CEL rules can veto adapter mutations end-to-end. e2e test required.
+
+### Phase 2 sub-tracks
+
+Phase 2 dispatches as four parallel agent streams plus this foundation track. Each agent owns a coherent slice of the substrate; integration PR after all land:
+
+| Track | Scope |
+|---|---|
+| `dpkms-pluggable-adapters-phase-2-foundations` (this) | ADR amendment, `ctxt capture` spec, `ambient.yaml` schema, `policies.yaml` relocation, Gate 4 substrate wiring |
+| `dpkms-sensors-network` (Agent A) | rss, s3-compatible, sshfs/sftp |
+| `dpkms-sensors-localfs` (Agent B) | local-fs (Downloads/Documents/Photos), watched-fs |
+| `dpkms-services-bidir` (Agent C) | mxhook+gmail, caldav-vdir |
+| `dpkms-sensors-osplatform` (Agent D) | clipboard, screen, mic + Gate 4 e2e test |
+
+### Consequences of the amendment
+
+**Positive.**
+
+- Docs match the operator's mental model: service adapters and sensors are described differently because they ARE different in usage even though they share an interface.
+- OS-platform sensors compose: ambient capture can include all three (clipboard + screen + mic) without violating the one-platform-per-protocol invariant.
+- `ctxt capture --ambient` gives users a single verb for "read everything now" — closes the gap between the "Universal Capture Layer" featureset and what's invokable.
+- Files slot earlier means three real sensors (sshfs, s3, local-fs) can land in Phase 2 instead of waiting for Phase 4.
+
+**Negative.**
+
+- Phase 2 scope tripled (from 3 backends to 10). Mitigated by the four-agent split; each agent owns 2–3 backends.
+- OS-platform sensors require platform-conditional code from the start. Phase 2 ships darwin-only; Linux + Windows are an explicit Phase 3 deliverable.
+- `policy/` directory introduces a config-path break for PR #23 adopters. Boot-time migration is automatic but operators with custom `CTXT_POLICY_FILE` overrides must update them.
+
+**Neutral.**
+
+- The `Capability("platform:<os>")` pattern is precedent-setting. Other capability dimensions may want this shape later (e.g. `Capability("requires:permission:tcc:Microphone")`). Worth watching for over-extension.
+
+---
+
+## References
 - [ADR-063 – Graph-Canonical KnowledgeObject](ADR-063-graph-canonical-knowledge-object.md)
 - [ADR-064 – Federation: Multi-Instance Object Sync](ADR-064-federation.md)
 - kit ADR-0008 (kit/runtime/policy guard engine) — `~/.w/ideacrafterslabs/kit/hops/main/docs/adr/0008-kit-runtime-policy-engine.md`
