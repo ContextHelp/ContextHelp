@@ -47,6 +47,11 @@ type Config struct {
 	// (10s) — generous enough for slow feeds, tight enough that one
 	// hung feed doesn't block the sweep indefinitely.
 	HTTPTimeout time.Duration
+	// Transport overrides the default http.Transport on the per-adapter
+	// http.Client. Production leaves this nil and gets the standard
+	// transport; tests inject an xrr-wrapped RoundTripper to record /
+	// replay HTTP interactions through cassettes.
+	Transport http.RoundTripper
 }
 
 // New constructs a typed rss Adapter. The HTTP client is built per
@@ -57,9 +62,13 @@ func New(cfg Config) *Adapter {
 	if timeout == 0 {
 		timeout = 10 * time.Second
 	}
+	client := &http.Client{Timeout: timeout}
+	if cfg.Transport != nil {
+		client.Transport = cfg.Transport
+	}
 	return &Adapter{
 		cfg:    cfg,
-		client: &http.Client{Timeout: timeout},
+		client: client,
 	}
 }
 
