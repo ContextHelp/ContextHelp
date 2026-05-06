@@ -15,9 +15,10 @@ import (
 )
 
 var installDepsCmd = &cobra.Command{
-	Use:    "install-deps",
-	Short:  "Install all registered runtime dependencies",
-	Hidden: true, // invoked by 'make deps', not shown in help
+	Use:   "install-deps",
+	Short: "Install all registered runtime dependencies",
+	// Hidden from default --help via the MANAGEMENT group; surfaces under
+	// --help-all and --help-management. Invoked by 'make deps' in CI.
 	Long: `Install system and Python packages required by built-in pipelines
 and any registered plugins or custom detectors.
 

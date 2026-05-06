@@ -144,8 +144,9 @@ var commandGroups = map[string]string{
 	// DEVELOPMENT — maintenance utilities
 	"dev": "dev",
 
-	// MANAGEMENT — hidden by default
-	"version": "management",
+	// MANAGEMENT — hidden by default (kit auto-registers the group with
+	// always-hidden semantics; opt-in via --help-all or --help-management).
+	"version": "management", "install-deps": "management",
 }
 
 func applyCommandGroups() {
