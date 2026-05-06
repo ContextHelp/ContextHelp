@@ -8,7 +8,7 @@
 //
 // Existing fetch-only adapters (cardamum, himalaya) live as backends
 // under the email/contacts slots and continue to satisfy the legacy
-// internal/ingest.Adapter interface via internal/ingest.AsLegacy.
+// internal/ingest.Adapter interface via internal/adapter/legacy.AsLegacy.
 package adapter
 
 import (
@@ -53,8 +53,26 @@ const (
 	CapSubscribeEvents Capability = "subscribe-events"
 )
 
-// LifecycleState is the adapter's current lifecycle position. The
-// runner emits dpkms.adapter.lifecycle.<state> on every transition.
+// LifecycleState is the adapter's current lifecycle position — an
+// internal state-machine label used by the substrate to reason about
+// in-flight transitions.
+//
+// LifecycleState values (stopped, starting, ready, draining) are
+// distinct from the action segments emitted as bus topics by the
+// Runner. The runner publishes past-tense "transition-completed"
+// actions (started, readied, drained, stopped) per kit/bus's
+// 4-segment past-tense rule; the State labels above are the
+// in-progress / settled positions the runner moves through.
+//
+// State → emitted topic action correspondence:
+//
+//   - StateStarting → emits "started" before Adapter.Start runs
+//   - StateReady    → emits "readied" after Adapter.Start succeeds
+//   - StateDraining → emits "drained" after Adapter.Drain runs
+//   - StateStopped  → emits "stopped" after Adapter.Stop runs
+//
+// See LifecycleTopic in events.go for the exact past-tense topic
+// builder; runner.go for the emission ordering.
 type LifecycleState string
 
 const (

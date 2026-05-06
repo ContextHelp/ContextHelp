@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"hop.top/kit/go/runtime/bus"
@@ -44,28 +45,36 @@ func (r *Runner) Start(ctx context.Context, a Adapter) error {
 // Drain and Stop in order and emitting dpkms.adapter.lifecycle.drained
 // after Drain and dpkms.adapter.lifecycle.stopped after Stop.
 //
-// Errors from Drain or Stop are joined and returned; events still fire
-// so observers see the transition complete even on partial failure.
-// The two methods are always invoked in order: a Drain failure does
-// NOT skip Stop, since Stop must release resources regardless.
+// Stop is best-effort by design: Drain runs, then the drained event
+// publishes, then Stop runs, then the stopped event publishes —
+// EVERY step is attempted regardless of earlier failures, since Stop
+// must release resources even when the bus is unhealthy or Drain
+// errored out. All errors (drain, drain-publish, stop, stop-publish)
+// are aggregated via errors.Join so callers can branch on each cause
+// via errors.Is / errors.As without losing any.
 func (r *Runner) Stop(ctx context.Context, a Adapter) error {
 	drainErr := a.Drain(ctx)
-	if err := r.publish(ctx, LifecycleTopic("drained"), a); err != nil {
-		return fmt.Errorf("publish drained: %w", err)
-	}
+	drainPubErr := r.publish(ctx, LifecycleTopic("drained"), a)
 	stopErr := a.Stop(ctx)
-	if err := r.publish(ctx, LifecycleTopic("stopped"), a); err != nil {
-		return fmt.Errorf("publish stopped: %w", err)
+	stopPubErr := r.publish(ctx, LifecycleTopic("stopped"), a)
+
+	wrapped := []error{}
+	if drainErr != nil {
+		wrapped = append(wrapped, fmt.Errorf("drain: %w", drainErr))
 	}
-	switch {
-	case drainErr != nil && stopErr != nil:
-		return fmt.Errorf("adapter %s/%s: drain: %v; stop: %w", a.Protocol(), a.Backend(), drainErr, stopErr)
-	case drainErr != nil:
-		return fmt.Errorf("adapter %s/%s: drain: %w", a.Protocol(), a.Backend(), drainErr)
-	case stopErr != nil:
-		return fmt.Errorf("adapter %s/%s: stop: %w", a.Protocol(), a.Backend(), stopErr)
+	if drainPubErr != nil {
+		wrapped = append(wrapped, fmt.Errorf("publish drained: %w", drainPubErr))
 	}
-	return nil
+	if stopErr != nil {
+		wrapped = append(wrapped, fmt.Errorf("stop: %w", stopErr))
+	}
+	if stopPubErr != nil {
+		wrapped = append(wrapped, fmt.Errorf("publish stopped: %w", stopPubErr))
+	}
+	if len(wrapped) == 0 {
+		return nil
+	}
+	return fmt.Errorf("adapter %s/%s: %w", a.Protocol(), a.Backend(), errors.Join(wrapped...))
 }
 
 // publish emits a kit/bus event tagged with the adapter's

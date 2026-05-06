@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -123,3 +124,81 @@ func TestRunnerStopEmitsDrainAndStop(t *testing.T) {
 		t.Errorf("expected stopped event, got %q", got[len(got)-1])
 	}
 }
+
+// TestRunnerStop_PublishFailureDoesNotSkipStop is the regression guard
+// for the resource-leak bug where Runner.Stop returned early after a
+// failed `drained` publish — Adapter.Stop must run even when the bus
+// is unhealthy, since Stop releases resources.
+//
+// The test adds a sync subscriber that returns an error, which causes
+// every kit/bus publish on the lifecycle topic to surface that error.
+// Despite that, the runner must still call Adapter.Drain AND
+// Adapter.Stop, and the returned error must wrap the publish failure
+// so callers see what went wrong.
+func TestRunnerStop_PublishFailureDoesNotSkipStop(t *testing.T) {
+	b := bus.New()
+	defer func() { _ = b.Close(context.Background()) }()
+
+	publishVeto := errors.New("bus unhealthy")
+	b.Subscribe("dpkms.adapter.lifecycle.*", func(_ context.Context, _ bus.Event) error {
+		return publishVeto
+	})
+
+	a := &recordingAdapter{stubAdapter: stubAdapter{protocol: "email", backend: "test"}}
+	runner := NewRunner(b)
+
+	// Stop must return an error (publish fails) but still invoke both
+	// Drain and Stop on the adapter.
+	err := runner.Stop(context.Background(), a)
+	if err == nil {
+		t.Fatal("Stop: expected error from failing publish, got nil")
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.drainCalled {
+		t.Error("Adapter.Drain was not called despite publish failure")
+	}
+	if !a.stopCalled {
+		t.Error("Adapter.Stop was not called despite publish failure (resource-leak risk)")
+	}
+}
+
+// TestRunnerStop_JoinsDrainAndStopErrors is the regression guard for
+// the error-joining bug where Drain's error was %v-formatted instead
+// of %w-wrapped, breaking errors.Is on the drain side. Both errors
+// must be unwrap-able via errors.Is.
+func TestRunnerStop_JoinsDrainAndStopErrors(t *testing.T) {
+	b := bus.New()
+	defer func() { _ = b.Close(context.Background()) }()
+
+	drainErr := errors.New("drain-failure")
+	stopErr := errors.New("stop-failure")
+
+	a := &errorAdapter{
+		stubAdapter: stubAdapter{protocol: "email", backend: "test"},
+		drainErr:    drainErr,
+		stopErr:     stopErr,
+	}
+	runner := NewRunner(b)
+	err := runner.Stop(context.Background(), a)
+	if err == nil {
+		t.Fatal("Stop: expected combined error, got nil")
+	}
+	if !errors.Is(err, drainErr) {
+		t.Errorf("errors.Is(err, drainErr) = false; drain error not unwrap-able from %v", err)
+	}
+	if !errors.Is(err, stopErr) {
+		t.Errorf("errors.Is(err, stopErr) = false; stop error not unwrap-able from %v", err)
+	}
+}
+
+// errorAdapter returns configured errors from Drain and Stop.
+type errorAdapter struct {
+	stubAdapter
+	drainErr error
+	stopErr  error
+}
+
+func (e *errorAdapter) Drain(_ context.Context) error { return e.drainErr }
+func (e *errorAdapter) Stop(_ context.Context) error  { return e.stopErr }
