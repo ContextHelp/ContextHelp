@@ -306,7 +306,23 @@ PR #23's `$XDG_CONFIG_HOME/contexthelp/policies.yaml` relocates to `policy/ctxt.
 
 #### Acceptance Gate 4 closed in Phase 2
 
-`kit/runtime/policy.Wire` already runs in the daemon (PR #23 landed it for pipeline events). Phase 2 wires the same engine to the substrate's adapter pre_persisted topics so CEL rules can veto adapter mutations end-to-end. e2e test required.
+`kit/runtime/policy.Wire` already runs in the daemon (PR #23 landed it for pipeline events). Phase 2 documents that **adapter entity mutations route through `domain.Service[T]` to inherit the existing kit gate** — no new substrate wiring needed.
+
+**Why not adapter-namespaced policy topics?** kit/runtime/policy hardcodes the veto-able topic allowlist to the three `kit.runtime.*` topics (`config.go` `allowedTopics`). YAML rules with `on: dpkms.<protocol>.entity.pre_persisted` fail at load time. Patching kit to widen the allowlist is a kit-level change with no clear adopter beyond ctxt; routing through `domain.Service[T]`'s existing kit-namespaced topic is the path of least resistance and reuses the gate adopters already understand.
+
+The `internal/adapter/events.go` `EntityTopic(protocol, action)` builder is **reserved for adapter-observability post-events** (`persisted`, `failed`) — useful for audit subscribers, dashboards, federation. It is NOT a policy-veto seam. Adapter authors who want policy gates on their entity mutations construct a `domain.Service[T]` for the entity type and pass the daemon's `policy.Bootstrap.Publisher()` (same as the pipeline manager does in PR #23). CEL rules in `policy/ctxt.yaml` use the kit topic with payload-discriminator guards:
+
+```yaml
+- name: deny-email-msg-without-folder
+  on: kit.runtime.entity.pre_persisted
+  when: 'payload.kind != "email-message" || resource.fields.folder != ""'
+  effect: allow
+  otherwise: deny
+```
+
+This convention keeps the substrate compatible with kit's existing primitives. Per-protocol veto-able topics could land later if kit grows that surface; the substrate stays compatible either way because adapters publish through `domain.Service[T]`, not directly.
+
+A Gate-4-specific smoke test in `internal/policy/` registers a fake adapter using `domain.Service[T]` and verifies the engine vetoes a `kit.runtime.entity.pre_persisted` it fires — proves the gate works for adapter-driven mutations, not just pipeline-driven ones.
 
 ### Phase 2 sub-tracks
 
