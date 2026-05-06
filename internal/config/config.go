@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	kitconfig "hop.top/kit/go/core/config"
 	"hop.top/kit/go/core/xdg"
 )
 
@@ -607,27 +608,22 @@ type ProviderBackendConfig struct {
 	Language string `mapstructure:"language,omitempty"`
 }
 
-// Load loads the configuration from file and environment variables
+// Load loads the configuration from file and environment variables.
+//
+// Resolution order when cfgFile is empty and CTXT_CONFIG is unset:
+//
+//  1. system  — /etc/ctxt/config.yaml
+//  2. user    — $XDG_CONFIG_HOME/ctxt/config.yaml
+//  3. project — nearest .ctxt/config.yaml | .ctxt.yaml | ctxt.yaml,
+//     walking up from cwd, stopping at $HOME or fs root
+//
+// Each layer is merged on top of the previous via viper.MergeInConfig,
+// so project overrides user overrides system. The cascade is built by
+// kit's config.OptionsForToolWithMarkers and kept in sync with other
+// kit-built tools.
 func Load(cfgFile string) (*Config, error) {
 	v := viper.New()
-
-	// Set configuration file
-	if cfgFile != "" {
-		v.SetConfigFile(cfgFile)
-	} else {
-		// Check environment variable
-		if envConfig := os.Getenv(EnvConfigPath); envConfig != "" {
-			v.SetConfigFile(envConfig)
-		} else {
-			configPath, err := configDirXDG()
-			if err != nil {
-				return nil, fmt.Errorf("config dir: %w", err)
-			}
-			v.AddConfigPath(configPath)
-			v.SetConfigName("config")
-			v.SetConfigType("yaml")
-		}
-	}
+	v.SetConfigType("yaml")
 
 	// Set defaults
 	setDefaults(v)
@@ -635,12 +631,46 @@ func Load(cfgFile string) (*Config, error) {
 	// Bind environment variables
 	bindEnvVars(v)
 
-	// Read config file
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("failed to read config: %w", err)
+	// Resolve the file(s) to read.
+	if cfgFile != "" {
+		v.SetConfigFile(cfgFile)
+		if err := v.ReadInConfig(); err != nil {
+			if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+				return nil, fmt.Errorf("failed to read config: %w", err)
+			}
 		}
-		// Config file not found is acceptable
+	} else if envConfig := os.Getenv(EnvConfigPath); envConfig != "" {
+		v.SetConfigFile(envConfig)
+		if err := v.ReadInConfig(); err != nil {
+			if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+				return nil, fmt.Errorf("failed to read config: %w", err)
+			}
+		}
+	} else {
+		// Walk the kit-canonical cascade: system → user → project.
+		// Each existing file is merged on top of the previous so the
+		// closest layer wins.
+		opts := kitconfig.OptionsForToolWithMarkers("ctxt", []string{
+			filepath.Join(".ctxt", "config.yaml"),
+			".ctxt.yaml",
+			"ctxt.yaml",
+		})
+		for _, path := range []string{
+			opts.SystemConfigPath,
+			opts.UserConfigPath,
+			opts.ProjectConfigPath,
+		} {
+			if path == "" {
+				continue
+			}
+			if _, err := os.Stat(path); err != nil {
+				continue
+			}
+			v.SetConfigFile(path)
+			if err := v.MergeInConfig(); err != nil {
+				return nil, fmt.Errorf("failed to merge config %s: %w", path, err)
+			}
+		}
 	}
 
 	// Unmarshal configuration
