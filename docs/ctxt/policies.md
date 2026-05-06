@@ -56,7 +56,17 @@ the user policy file.
 | Resolution order | Source |
 |------------------|--------|
 | 1 | `$CTXT_POLICY_FILE` env var (used by tests + CI) |
-| 2 | `$XDG_CONFIG_HOME/contexthelp/policies.yaml` (default `~/.config/contexthelp/policies.yaml`) |
+| 2 | `$XDG_CONFIG_HOME/contexthelp/policy/ctxt.yaml` (default `~/.config/contexthelp/policy/ctxt.yaml`) |
+
+> **Path relocation 2026-05-06.** The PR #23 path
+> `$XDG_CONFIG_HOME/contexthelp/policies.yaml` (flat) was moved to
+> `policy/ctxt.yaml` (namespaced) by the
+> [ADR-065 amendment](../decisions/ADR-065-pluggable-adapters.md#amendment-2026-05-06--service-vs-sensor-distinction-ambient-capture-os-platform-slots).
+> The new `policy/` subdirectory groups `ctxt.yaml` (CEL gating rules)
+> and `ambient.yaml` ([sensor enablement config](ambient.md)) under one
+> roof. **Migration is automatic** on first boot after the upgrade;
+> operators with custom `$CTXT_POLICY_FILE` overrides must update them
+> manually.
 
 On first daemon boot, ctxt seeds option 2 from the bundled default
 if it is missing or empty. **Existing non-empty user files are never
@@ -233,9 +243,10 @@ Error: POLICY_DENIED: policy "<name>" denied: <message>
   `POST /api/v1/pipelines/<name>/unarchive`. Empty / missing header
   reads as `context.note == ""` in CEL.
 - To restore pre-T-1296 behavior temporarily, edit
-  `$XDG_CONFIG_HOME/contexthelp/policies.yaml` and remove the two
-  default rules. ctxt does not re-seed once a non-empty user file
-  exists, so the change persists across upgrades.
+  `$XDG_CONFIG_HOME/contexthelp/policy/ctxt.yaml` (post-2026-05-06
+  relocation; was `policies.yaml`) and remove the two default rules.
+  ctxt does not re-seed once a non-empty user file exists, so the
+  change persists across upgrades.
 
 ## Troubleshooting
 

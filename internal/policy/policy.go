@@ -1,13 +1,22 @@
 // Package policy wires kit/runtime/policy into ctxt's daemon.
 //
 // Init builds a fresh CEL-backed engine each call, loading YAML from
-// $XDG_CONFIG_HOME/contexthelp/policies.yaml (overridable via
+// $XDG_CONFIG_HOME/contexthelp/policy/ctxt.yaml (overridable via
 // $CTXT_POLICY_FILE), and subscribes the engine to the kit
 // pre_persisted topic on the supplied bus. Lifecycle is caller-managed:
 // the daemon constructs one Bootstrap at serve startup and Close()s it
 // on shutdown. There is no package-level cache, so calling Init twice
 // against the same bus would double-subscribe — keep the daemon's
 // single-Init invariant intact.
+//
+// Phase 2 (2026-05-06 ADR-065 amendment) relocates the YAML from the
+// flat $XDG_CONFIG_HOME/contexthelp/policies.yaml that PR #23 used to
+// the namespaced policy/ctxt.yaml under a new policy/ subdirectory
+// alongside policy/ambient.yaml. The migration is automatic: on first
+// Init after upgrade, if only the legacy path exists, the file moves
+// to the new location. Operators with custom $CTXT_POLICY_FILE
+// overrides must update them manually — env-overridden paths are
+// never migrated.
 //
 // Bootstrap from cmd/dpkms/cmd/serve.go, BEFORE service.New so the
 // EventPublisher returned here can be plumbed into pipeline ops:
@@ -60,8 +69,12 @@ type Bootstrap struct {
 // Resolution order for the YAML source:
 //
 //  1. $CTXT_POLICY_FILE if set.
-//  2. $XDG_CONFIG_HOME/contexthelp/policies.yaml, seeded from the
-//     bundled default on first boot when missing or empty.
+//  2. $XDG_CONFIG_HOME/contexthelp/policy/ctxt.yaml. On first boot
+//     after the Phase 2 upgrade, if only the legacy
+//     $XDG_CONFIG_HOME/contexthelp/policies.yaml path exists, the
+//     file is auto-relocated. The new path is then seeded from the
+//     bundled default if missing/empty (operator-authored content
+//     never clobbered).
 func Init(b bus.Bus) (*Bootstrap, error) {
 	if b == nil {
 		return nil, fmt.Errorf("policy: bus is required")
@@ -133,9 +146,23 @@ func loadConfig() (*policy.Config, error) {
 	return cfg, nil
 }
 
-// PoliciesPath returns the user-level policies.yaml path. Exported
-// so the doctor command can surface the resolved location.
+// PoliciesPath returns the canonical user-level CEL policy path.
+// Exported so dpkms doctor can surface the resolved location.
+//
+// Phase 2 path: $XDG_CONFIG_HOME/contexthelp/policy/ctxt.yaml.
 func PoliciesPath() (string, error) {
+	dir, err := xdg.RawConfigDir(xdgTool)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "policy", "ctxt.yaml"), nil
+}
+
+// LegacyPoliciesPath returns the pre-Phase-2 policy path that PR #23
+// used. Exported for migration tooling and doctor checks.
+//
+// Legacy path: $XDG_CONFIG_HOME/contexthelp/policies.yaml.
+func LegacyPoliciesPath() (string, error) {
 	dir, err := xdg.RawConfigDir(xdgTool)
 	if err != nil {
 		return "", err
@@ -143,12 +170,67 @@ func PoliciesPath() (string, error) {
 	return filepath.Join(dir, "policies.yaml"), nil
 }
 
-// ensureDefaultFile writes the bundled default to the user policies
-// path when the file is missing or empty. Existing non-empty user
+// migrateLegacyIfNeeded relocates the pre-Phase-2 policies.yaml to
+// the new policy/ctxt.yaml path when:
+//
+//   - the new path doesn't exist, AND
+//   - the legacy path does exist, AND
+//   - neither file is empty
+//
+// The new file inherits the legacy file's bytes verbatim. The legacy
+// file is removed after the move so future boots take the new path
+// directly.
+//
+// When the new path already exists, the legacy file (if any) is left
+// alone — the new path is the source of truth and a stale legacy file
+// is the operator's to clean up.
+func migrateLegacyIfNeeded(newPath string) error {
+	if _, err := os.Stat(newPath); err == nil {
+		return nil // new path already populated; nothing to migrate
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat %s: %w", newPath, err)
+	}
+
+	legacy, err := LegacyPoliciesPath()
+	if err != nil {
+		return err
+	}
+	st, err := os.Stat(legacy)
+	switch {
+	case err != nil && os.IsNotExist(err):
+		return nil // no legacy file; fresh install
+	case err != nil:
+		return fmt.Errorf("stat legacy %s: %w", legacy, err)
+	case st.Size() == 0:
+		return nil // empty legacy file isn't worth migrating
+	}
+
+	body, err := os.ReadFile(legacy)
+	if err != nil {
+		return fmt.Errorf("read legacy %s: %w", legacy, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(newPath), 0o750); err != nil {
+		return fmt.Errorf("mkdir for %s: %w", newPath, err)
+	}
+	if err := os.WriteFile(newPath, body, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", newPath, err)
+	}
+	if err := os.Remove(legacy); err != nil {
+		return fmt.Errorf("remove legacy %s: %w", legacy, err)
+	}
+	return nil
+}
+
+// ensureDefaultFile resolves the canonical policy path, migrates from
+// the legacy location if needed, and seeds the bundled default when
+// the resolved path is missing or empty. Existing non-empty user
 // files are left alone — never clobber adopter-authored rules.
 func ensureDefaultFile() (string, error) {
 	path, err := PoliciesPath()
 	if err != nil {
+		return "", err
+	}
+	if err := migrateLegacyIfNeeded(path); err != nil {
 		return "", err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
