@@ -3,9 +3,16 @@ package s3
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
 	"testing"
+
+	xrr "hop.top/xrr"
+	xhttp "hop.top/xrr/adapters/http"
 
 	"github.com/ideacrafterslabs/ctxt/internal/adapter"
 	"github.com/ideacrafterslabs/ctxt/internal/ingest"
@@ -71,11 +78,17 @@ func TestNewRejectsMissingConfig(t *testing.T) {
 	}
 }
 
-// TestFetchListsObjects exercises the happy path against a fake S3
-// endpoint. The httptest.Server returns a canned ListObjectsV2 XML
-// response; the adapter should produce one ingest.Object per <Contents>
-// entry. Credentials resolution is stubbed (the ref is recorded but
-// not actually fetched in this PR per the brief).
+// TestFetchListsObjects exercises the happy path against a recorded
+// xrr cassette. Recording mode (XRR_RECORD=1) hits an in-process
+// httptest fake serving canned ListBucketResult XML; replay mode runs
+// the AWS SDK against the cassette without any network. The cassette
+// is sanitized — bucket name, region, and credentials ref are
+// fictional placeholders so the artifact can be committed.
+//
+// TODO: record xrr cassette against real S3 when test creds are wired.
+// The current cassette stands in for the real-world recording — it
+// captures the ListObjectsV2 wire shape exactly but is sourced from
+// an in-process fixture rather than AWS.
 func TestFetchListsObjects(t *testing.T) {
 	const body = `<?xml version="1.0" encoding="UTF-8"?>
 <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
@@ -99,18 +112,16 @@ func TestFetchListsObjects(t *testing.T) {
     <StorageClass>STANDARD</StorageClass>
   </Contents>
 </ListBucketResult>`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/xml")
-		_, _ = w.Write([]byte(body))
-	}))
-	defer srv.Close()
+
+	httpClient, endpoint := newCassetteS3Client(t, "cassettes/list_objects", body)
 
 	a := New(Config{
 		BucketName:     "my-bucket",
 		Region:         "us-east-1",
-		Endpoint:       srv.URL,
+		Endpoint:       endpoint,
 		CredentialsRef: "op://Personal/aws-test",
 		Prefix:         "papers/",
+		HTTPClient:     httpClient,
 	})
 	objs, err := a.Fetch(context.Background())
 	if err != nil {
@@ -129,3 +140,145 @@ func TestFetchListsObjects(t *testing.T) {
 		t.Errorf("Metadata[bucket] = %q, want my-bucket", got)
 	}
 }
+
+// newCassetteS3Client returns an awsHTTPClient that drives the AWS SDK
+// through an xrr session, plus a stable Endpoint string the SDK uses
+// to build URLs. Cassette fingerprints key off the stable endpoint so
+// they replay deterministically across machines.
+func newCassetteS3Client(t *testing.T, cassetteDir, body string) (awsHTTPClient, string) {
+	t.Helper()
+
+	const stableEndpoint = "https://s3.test"
+
+	mode := xrr.ModeReplay
+	if os.Getenv("XRR_RECORD") != "" {
+		mode = xrr.ModeRecord
+		if err := os.MkdirAll(cassetteDir, 0o755); err != nil {
+			t.Fatalf("mkdir cassettes: %v", err)
+		}
+	}
+	sess := xrr.NewSession(mode, xrr.NewFileCassette(cassetteDir))
+	httpAdapter := xhttp.NewAdapter()
+
+	var liveSrv *httptest.Server
+	if mode == xrr.ModeRecord {
+		liveSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = w.Write([]byte(body))
+		}))
+		t.Cleanup(liveSrv.Close)
+	}
+
+	return clientFunc(func(req *http.Request) (*http.Response, error) {
+		// Rewrite the request URL to the stable endpoint so the
+		// fingerprint is the same in record and replay runs even when
+		// the AWS SDK switches its build-time host or port.
+		stable, _ := url.Parse(stableEndpoint)
+		stableURL := *req.URL
+		stableURL.Scheme = stable.Scheme
+		stableURL.Host = stable.Host
+
+		var bodyBytes []byte
+		if req.Body != nil {
+			b, err := io.ReadAll(req.Body)
+			if err != nil {
+				return nil, err
+			}
+			bodyBytes = b
+			_ = req.Body.Close()
+		}
+		xreq := &xhttp.Request{
+			Method: req.Method,
+			URL:    stableURL.String(),
+			Body:   string(bodyBytes),
+		}
+
+		do := func() (xrr.Response, error) {
+			liveURL := liveSrv.URL + req.URL.Path
+			if req.URL.RawQuery != "" {
+				liveURL += "?" + req.URL.RawQuery
+			}
+			liveReq, err := http.NewRequestWithContext(req.Context(), req.Method, liveURL, strings.NewReader(string(bodyBytes)))
+			if err != nil {
+				return nil, err
+			}
+			for k, vs := range req.Header {
+				for _, v := range vs {
+					liveReq.Header.Add(k, v)
+				}
+			}
+			httpResp, err := http.DefaultTransport.RoundTrip(liveReq)
+			if err != nil {
+				return nil, err
+			}
+			defer httpResp.Body.Close()
+			respBody, err := io.ReadAll(httpResp.Body)
+			if err != nil {
+				return nil, err
+			}
+			headers := map[string]string{}
+			for k, vs := range httpResp.Header {
+				if len(vs) > 0 {
+					headers[k] = vs[0]
+				}
+			}
+			return &xhttp.Response{
+				Status:  httpResp.StatusCode,
+				Headers: headers,
+				Body:    string(respBody),
+			}, nil
+		}
+
+		resp, err := sess.Record(req.Context(), httpAdapter, xreq, do)
+		if err != nil {
+			return nil, err
+		}
+		return xrrResponseToHTTP(resp)
+	}), stableEndpoint
+}
+
+// xrrResponseToHTTP translates either an *xhttp.Response (record mode)
+// or an *xrr.RawResponse (replay mode) into a real *http.Response the
+// AWS SDK can consume.
+func xrrResponseToHTTP(resp xrr.Response) (*http.Response, error) {
+	var (
+		status  int
+		headers map[string]string
+		body    string
+	)
+	switch r := resp.(type) {
+	case *xhttp.Response:
+		status, headers, body = r.Status, r.Headers, r.Body
+	case *xrr.RawResponse:
+		if v, ok := r.Payload["status"].(int); ok {
+			status = v
+		}
+		if v, ok := r.Payload["body"].(string); ok {
+			body = v
+		}
+		if h, ok := r.Payload["headers"].(map[string]any); ok {
+			headers = make(map[string]string, len(h))
+			for k, v := range h {
+				if s, ok := v.(string); ok {
+					headers[k] = s
+				}
+			}
+		}
+	default:
+		return nil, errors.New("s3: unsupported xrr response type")
+	}
+	hdr := http.Header{}
+	for k, v := range headers {
+		hdr.Set(k, v)
+	}
+	return &http.Response{
+		StatusCode: status,
+		Header:     hdr,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}, nil
+}
+
+// clientFunc lets a function value satisfy awsHTTPClient.
+type clientFunc func(*http.Request) (*http.Response, error)
+
+func (f clientFunc) Do(r *http.Request) (*http.Response, error) { return f(r) }

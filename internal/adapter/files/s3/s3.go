@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -55,6 +56,18 @@ type Config struct {
 	// Prefix limits the listing to keys under this prefix. Empty
 	// lists every key in the bucket.
 	Prefix string
+	// HTTPClient overrides the AWS SDK's default HTTP client. Production
+	// leaves this nil and gets the SDK's standard transport; tests
+	// inject an xrr-wrapped client to record / replay HTTP interactions
+	// through cassettes.
+	HTTPClient awsHTTPClient
+}
+
+// awsHTTPClient mirrors the smithy-go HTTP client interface without
+// pulling in the smithy-go module name into this package's surface.
+// awss3.Options accepts any value satisfying this shape.
+type awsHTTPClient interface {
+	Do(*http.Request) (*http.Response, error)
 }
 
 // New constructs a typed s3 Adapter. The AWS SDK client is built
@@ -168,6 +181,11 @@ func (a *Adapter) newClient() *awss3.Client {
 			// S3-compatible services that don't speak
 			// virtual-host bucket addressing.
 			o.UsePathStyle = true
+		})
+	}
+	if a.cfg.HTTPClient != nil {
+		opts = append(opts, func(o *awss3.Options) {
+			o.HTTPClient = a.cfg.HTTPClient
 		})
 	}
 	return awss3.NewFromConfig(awsCfg, opts...)
