@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 87fbd0d2
+recorded_at: "2026-05-06T02:19:03Z"
+payload:
+    status: 200
+    body: |
+        {"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"search: simulated search failure"}}

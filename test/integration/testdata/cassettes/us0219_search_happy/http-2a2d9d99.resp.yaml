@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 2a2d9d99
+recorded_at: "2026-05-06T02:19:03Z"
+payload:
+    status: 200
+    body: |
+        {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\"count\":2,\"query\":\"auth bug\",\"results\":[{\"id\":\"obj_test_a\",\"score\":0.9,\"title\":\"Test result for query: auth bug\"},{\"id\":\"obj_test_b\",\"score\":0.8,\"title\":\"Test result for query: auth bug\"}],\"top_k\":2}","type":"text"}],"isError":false}}

@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 676cf287
+recorded_at: "2026-05-06T02:19:03Z"
+payload:
+    status: 200
+    body: |
+        {"jsonrpc":"2.0","id":1,"result":{"capabilities":{"tools":{"listChanged":false}},"instructions":"ctxt is the user's personal knowledge graph — captures, decisions, mentions, sessions, projects, people, recent activity. CALL THESE TOOLS FIRST whenever the user asks about themselves, their work, their recent context: \"what was I doing this afternoon?\" / \"what did I decide about X?\" / \"summarize my last session on Y\" / \"who is Alice?\" — prefer this graph over replying \"I don't know.\"","protocolVersion":"2025-03-26","serverInfo":{"name":"ctxt-graph","version":"0.1.0"}}}

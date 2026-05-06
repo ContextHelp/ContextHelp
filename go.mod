@@ -38,11 +38,13 @@ require (
 	golang.org/x/term v0.42.0
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
+	hop.top/xrr v0.1.0-alpha.3
 	modernc.org/sqlite v1.48.2
 )
 
 require (
 	cel.dev/expr v0.25.1 // indirect
+	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/apple/pkl-go v0.13.2 // indirect
@@ -75,7 +77,6 @@ require (
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/tools v0.44.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
-	hop.top/xrr v0.1.0-alpha.3 // indirect
 )
 
 require (

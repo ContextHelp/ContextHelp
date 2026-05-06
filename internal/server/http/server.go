@@ -1,12 +1,14 @@
 package http
 
 import (
+	"context"
 	"io/fs"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ideacrafterslabs/ctxt/internal/mcp"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/ui"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
@@ -165,9 +167,49 @@ func NewRouter(svc *service.Service, devCORS bool, mgr *watcher.Manager) chi.Rou
 
 		// Federation push (Phase 2)
 		r.Post("/federation/push", FederationPush(svc))
+
+		// MCP read-surface (per ADR-068).
+		// Mounted at /api/v1/mcp/ as a sibling of REST routes. JSON-RPC 2.0
+		// over POST per MCP spec 2025-03-26 (streamable-HTTP transport).
+		// Handler is a single endpoint; tool dispatch happens inside the
+		// handler based on the JSON-RPC method/params.
+		r.Handle("/mcp/", mountMCP(svc))
+		r.Handle("/mcp", mountMCP(svc))
 	})
 
 	return r
+}
+
+// mountMCP constructs the MCP server with handlers wired to the supplied
+// service.Service. Per ADR-068 §Implementation Notes, the MCP package
+// owns the JSON-RPC dispatch + tool registry; this function is the
+// dpkms-side wiring (the single place service.Service connects to MCP).
+func mountMCP(svc *service.Service) http.Handler {
+	server := mcp.New(mcp.ToolContext{
+		SearchHandler: func(ctx context.Context, query string, topK int) ([]any, error) {
+			objs, _, err := svc.SearchObjects(ctx, query, topK, 0)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]any, 0, len(objs))
+			for _, o := range objs {
+				out = append(out, map[string]any{
+					"id":      o.ID,
+					"type":    o.Type,
+					"subtype": o.Subtype,
+				})
+			}
+			return out, nil
+		},
+		SchemaHandler: func(_ context.Context) (map[string]any, error) {
+			return map[string]any{
+				"object_kinds": []string{"text", "url", "image", "audio", "video", "file", "meeting"},
+				"edge_types":   []string{"mentions", "supersedes", "references"},
+				"pipelines":    []string{"text.short", "text.long", "url.generic", "url.repo", "image.ocr", "audio.transcribe", "video.full"},
+			}, nil
+		},
+	})
+	return server.Handler()
 }
 
 // Health returns the health check handler.

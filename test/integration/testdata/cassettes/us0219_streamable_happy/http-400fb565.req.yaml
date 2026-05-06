@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 400fb565
+recorded_at: "2026-05-06T02:19:03Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:55283
+    body: '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search","arguments":{"query":"q3 planning","top_k":2}}}'

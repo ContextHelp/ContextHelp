@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 400fb565
+recorded_at: "2026-05-06T02:19:03Z"
+payload:
+    status: 200
+    body: |
+        {"jsonrpc":"2.0","id":3,"result":{"content":[{"text":"{\"count\":2,\"query\":\"q3 planning\",\"results\":[{\"id\":\"obj_test_a\",\"score\":0.9,\"title\":\"Test result for query: q3 planning\"},{\"id\":\"obj_test_b\",\"score\":0.8,\"title\":\"Test result for query: q3 planning\"}],\"top_k\":2}","type":"text"}],"isError":false}}

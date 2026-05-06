@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 694c32a8
+recorded_at: "2026-05-06T02:19:03Z"
+payload:
+    status: 200
+    body: |
+        {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\"edge_types\":[\"mentions\",\"supersedes\",\"references\"],\"object_kinds\":[\"text\",\"url\",\"image\",\"audio\",\"video\",\"file\",\"meeting\"],\"pipelines\":[\"text.short\",\"text.long\",\"url.generic\",\"url.repo\",\"image.ocr\",\"audio.transcribe\",\"video.full\"]}","type":"text"}],"isError":false}}

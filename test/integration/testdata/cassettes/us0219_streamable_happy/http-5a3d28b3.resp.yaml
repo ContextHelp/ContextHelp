@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 5a3d28b3
+recorded_at: "2026-05-06T02:19:03Z"
+payload:
+    status: 200
+    body: |
+        {"jsonrpc":"2.0","id":2,"result":{"tools":[{"description":"Return the ctxt storage taxonomy: object kinds (text/url/image/audio/video/file/meeting), edge types, available pipelines, supported metadata fields. Use when constructing structured queries — rarely needed for direct lookups.","inputSchema":{"properties":{},"required":[],"type":"object"},"name":"schema"},{"description":"Hybrid full-text + semantic search across the user's knowledge graph. Best when you have specific keywords — a person's name, project / company name, topic, date, file path, or a phrase the user might have used. Returns ranked results with snippets.","inputSchema":{"properties":{"query":{"description":"The search query. Supports keywords, phrases.","type":"string"},"top_k":{"default":10,"description":"Maximum number of results to return. Default: 10.","maximum":100,"minimum":1,"type":"integer"}},"required":["query"],"type":"object"},"name":"search"}]}}
