@@ -520,7 +520,7 @@ Output directory defaults to backup.dir in config, then current directory.
 Examples:
   dpkms backup
   dpkms backup --include-blobs
-  dpkms backup --output /var/backups/ctxt-now.tar.gz
+  dpkms backup --output-dir /var/backups/ctxt-now.tar.gz
   dpkms backup --async`,
     RunE: runBackup,
 }
@@ -701,7 +701,7 @@ git commit -m "feat(jobs): dispatch backup pipeline jobs to service.Backup"
 func TestBackupCommandProducesValidArchive(t *testing.T) {
     // 1. start dpkms with temp db
     // 2. ingest 2 objects via API
-    // 3. run `dpkms backup --output <tmpdir>`
+    // 3. run `dpkms backup --output-dir <tmpdir>`
     // 4. verify archive exists and contains ctxt.db + manifest.json
     // 5. verify manifest blob_count == 0, db_size > 0
 }
