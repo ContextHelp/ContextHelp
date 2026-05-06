@@ -2,7 +2,7 @@
 
 > **Status:** Accepted
 > **Date:** 2026-05-05
-> **Author:** $USER
+> **Author:** jadb
 > **Applies to:** ctxt CLI, ctxd local daemon, dpkms storage
 > **Supersedes:** None
 > **References:** ADR-053 (KnowledgeObject as pipeline draft), ADR-063 (graph-canonical KnowledgeObject), ADR-066 (ambient capture substrate), prior art: OpenChronicle session manager (`~/.p/sandbox/OpenChronicle/src/openchronicle/session/manager.py`, `docs/session.md`)

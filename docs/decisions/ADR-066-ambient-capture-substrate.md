@@ -2,7 +2,7 @@
 
 > **Status:** Accepted
 > **Date:** 2026-05-05
-> **Author:** $USER
+> **Author:** jadb
 > **Applies to:** ctxt CLI, new `ctxd` local daemon
 > **Supersedes:** None
 > **References:** ADR-007 (transactional outbox), ADR-053 (KnowledgeObject as pipeline draft), ADR-056 (unified enqueue API), ADR-064 (federation), ADR-065 (pluggable adapters), prior art: OpenChronicle (`~/.p/sandbox/OpenChronicle`)

@@ -2,7 +2,7 @@
 
 > **Status:** Accepted
 > **Date:** 2026-05-05
-> **Author:** $USER
+> **Author:** jadb
 > **Applies to:** ctxt CLI, ctxd local daemon, mobile companions (iOS/Android), existing audio.transcribe / video.full / video.audio_only pipelines
 > **Supersedes:** None
 > **References:** ADR-066 (ambient capture substrate), ADR-067 (sessions), ADR-068 (MCP read-surface), ADR-053 (KnowledgeObject as pipeline draft), ADR-056 (unified enqueue API), prior art: Granola, Otter, Cleft, Zoom AI Companion (proprietary), OpenAI Whisper (transcription), Apple ScreenCaptureKit, Microsoft Graph Media Capture API

@@ -2,7 +2,7 @@
 
 > **Status:** Accepted
 > **Date:** 2026-05-05
-> **Author:** $USER
+> **Author:** jadb
 > **Applies to:** dpkms, ctxd, ctxt CLI
 > **Supersedes:** None
 > **References:** ADR-023 (auth), ADR-038 (SuperMemory MCP pattern), ADR-052 (HTTP+gRPC listeners), ADR-056 (unified enqueue API), ADR-064 (federation), ADR-065 (pluggable adapters), ADR-066 (ambient capture substrate), ADR-067 (sessions), prior art: OpenChronicle reader MCP (`~/.p/sandbox/OpenChronicle/src/openchronicle/mcp/server.py`, `docs/mcp.md`); SuperMemory MCP server pattern (referenced in ADR-038)
