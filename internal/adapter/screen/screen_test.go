@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"hop.top/kit/go/runtime/bus"
+	xrr "hop.top/xrr"
+	xexec "hop.top/xrr/adapters/exec"
 
 	"github.com/ideacrafterslabs/ctxt/internal/adapter"
 	"github.com/ideacrafterslabs/ctxt/internal/ingest"
@@ -250,6 +254,95 @@ func contains(haystack []string, needle string) bool {
 	for _, v := range haystack {
 		if v == needle {
 			return true
+		}
+	}
+	return false
+}
+
+// TestFetchAgainstScreencaptureCassette is the end-to-end migration to
+// xrr cassettes. Recording (XRR_RECORD=1, macOS only) invokes the real
+// /usr/sbin/screencapture against a tiny rect to keep the captured PNG
+// neutral, then writes the exec invocation + exit code into
+// cassettes/screencapture/. Replay mode runs the same Fetch path
+// against the cassette without invoking the binary — making the test
+// deterministic on every platform that has the cassette committed.
+//
+// Argument fingerprinting is normalised: the timestamped output path
+// is rewritten to a fixed sentinel before xrr fingerprints, so a fresh
+// record run keys to the same cassette as the committed one.
+func TestFetchAgainstScreencaptureCassette(t *testing.T) {
+	cassetteDir := "cassettes/screencapture"
+
+	mode := xrr.ModeReplay
+	if os.Getenv("XRR_RECORD") != "" {
+		if runtime.GOOS != "darwin" {
+			t.Skip("XRR_RECORD requires macOS for /usr/sbin/screencapture")
+		}
+		if _, err := os.Stat("/usr/sbin/screencapture"); err != nil {
+			t.Skipf("/usr/sbin/screencapture not present: %v", err)
+		}
+		mode = xrr.ModeRecord
+		if err := os.MkdirAll(cassetteDir, 0o755); err != nil {
+			t.Fatalf("mkdir cassettes: %v", err)
+		}
+	}
+	sess := xrr.NewSession(mode, xrr.NewFileCassette(cassetteDir))
+	xexecAdapter := xexec.NewAdapter()
+
+	runner := func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		// Normalise the output path so fingerprints match across runs.
+		// The adapter always passes the output path as the last arg.
+		fpArgs := append([]string{name}, args...)
+		if len(fpArgs) > 0 {
+			fpArgs[len(fpArgs)-1] = "<outpath>"
+		}
+		// Force a tiny rect when recording so the captured PNG is small
+		// and shows neutral content (top-left corner of the screen).
+		// Replay mode never re-runs the command, so this branch is
+		// only effective during recording.
+		req := &xexec.Request{Argv: fpArgs}
+		do := func() (xrr.Response, error) {
+			realArgs := append([]string{}, args...)
+			// Inject -R 0,0,1,1 just before the output path if the
+			// caller didn't already set a region.
+			if !containsAny(realArgs, "-R", "-W") {
+				outIdx := len(realArgs) - 1
+				realArgs = append(realArgs[:outIdx], append([]string{"-R", "0,0,1,1"}, realArgs[outIdx:]...)...)
+			}
+			cmd := exec.CommandContext(ctx, name, realArgs...)
+			out, runErr := cmd.CombinedOutput()
+			return &xexec.Response{
+				Stdout:   string(out),
+				ExitCode: xexec.ExitCodeFromError(runErr),
+			}, runErr
+		}
+		_, err := sess.Record(ctx, xexecAdapter, req, do)
+		return nil, err
+	}
+
+	dir := t.TempDir()
+	a := New(Config{Runner: runner, OutputDir: dir})
+	objs, err := a.Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(objs) != 1 {
+		t.Fatalf("Fetch returned %d, want 1", len(objs))
+	}
+	if objs[0].Type != "image" {
+		t.Errorf("Type = %q, want image", objs[0].Type)
+	}
+	if objs[0].Metadata["source"] != "screen" {
+		t.Errorf("Metadata.source = %v, want screen", objs[0].Metadata["source"])
+	}
+}
+
+func containsAny(haystack []string, needles ...string) bool {
+	for _, h := range haystack {
+		for _, n := range needles {
+			if h == n {
+				return true
+			}
 		}
 	}
 	return false
