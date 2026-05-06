@@ -14,6 +14,7 @@ const (
 	TopicObjectDeleted  bus.Topic = "ctxt.runtime.object.deleted"
 	TopicJobCompleted   bus.Topic = "ctxt.runtime.job.completed"
 	TopicJobFailed      bus.Topic = "ctxt.runtime.job.failed"
+	TopicJobEnqueued    bus.Topic = "ctxt.runtime.job.enqueued"
 
 	// TopicDpkmsUpgradeSignatureMismatch fires when daemon startup detects an
 	// index-signature drift (ADR-070 §3, T-0579). Detection only — the

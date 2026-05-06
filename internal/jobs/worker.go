@@ -397,7 +397,7 @@ func (p *WorkerPool) fanOutItems(ctx context.Context, draft *storage.KnowledgeOb
 			continue
 		}
 		if p.bus != nil {
-			if ev, err := events.NewEvent("worker.pool.fanout", "job.enqueued", job); err == nil {
+			if ev, err := events.NewEvent(SourceWorkerPoolFanOut, string(TopicJobEnqueued), job); err == nil {
 				_ = p.bus.Publish(ctx, ev)
 			}
 		}
@@ -408,7 +408,7 @@ func (p *WorkerPool) emitCompleted(ctx context.Context, jobID, resultID string, 
 	if p.bus == nil {
 		return
 	}
-	ev, err := events.NewEvent("worker.pool", string(events.TopicJobCompleted), events.JobCompletedPayload{
+	ev, err := events.NewEvent(SourceWorkerPool, string(TopicJobCompleted), events.JobCompletedPayload{
 		JobID:       jobID,
 		ObjectCount: 1,
 		DurationMs:  durationMs,
@@ -431,7 +431,7 @@ func (p *WorkerPool) emitFailed(ctx context.Context, jobID, reason string, objec
 	if len(objectID) > 0 {
 		payload.ObjectID = objectID[0]
 	}
-	ev, err := events.NewEvent("worker.pool", string(events.TopicJobFailed), payload)
+	ev, err := events.NewEvent(SourceWorkerPool, string(TopicJobFailed), payload)
 	if err == nil {
 		if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
 			slog.Warn("jobs: failed to publish job.failed event", "job", jobID, "err", pubErr)
@@ -447,7 +447,7 @@ func (p *WorkerPool) emitObjectIngested(ctx context.Context, draft *storage.Know
 	for i, t := range draft.Tags {
 		tags[i] = t.Label
 	}
-	ev, err := events.NewEvent("worker.pool", string(events.TopicObjectIngested), events.ObjectIngestedPayload{
+	ev, err := events.NewEvent(SourceWorkerPool, string(TopicObjectIngested), events.ObjectIngestedPayload{
 		ObjectID:   draft.ID,
 		Type:       draft.Type,
 		Pipeline:   draft.Pipeline,
