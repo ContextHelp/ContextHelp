@@ -63,11 +63,13 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/cel-go v0.25.0 // indirect
 	github.com/hashicorp/mdns v1.0.6 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/miekg/dns v1.1.55 // indirect
 	github.com/muesli/mango v0.2.0 // indirect
 	github.com/muesli/mango-cobra v1.3.0 // indirect
 	github.com/muesli/mango-pflag v0.2.0 // indirect
 	github.com/muesli/roff v0.1.0 // indirect
+	github.com/pkg/sftp v1.13.10 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/tj/go-naturaldate v1.3.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
