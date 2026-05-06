@@ -1,6 +1,6 @@
 # ADR-066 – Ambient Capture Substrate (Local-Side Daemon)
 
-> **Status:** Proposed
+> **Status:** Accepted
 > **Date:** 2026-05-05
 > **Author:** $USER
 > **Applies to:** ctxt CLI, new `ctxd` local daemon

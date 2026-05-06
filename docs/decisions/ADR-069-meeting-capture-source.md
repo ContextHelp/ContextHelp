@@ -1,6 +1,6 @@
 # ADR-069 – Meeting Capture Source (Audio + Video, Multi-Platform)
 
-> **Status:** Proposed
+> **Status:** Accepted
 > **Date:** 2026-05-05
 > **Author:** $USER
 > **Applies to:** ctxt CLI, ctxd local daemon, mobile companions (iOS/Android), existing audio.transcribe / video.full / video.audio_only pipelines

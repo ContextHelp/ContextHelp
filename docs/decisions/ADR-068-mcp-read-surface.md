@@ -1,6 +1,6 @@
 # ADR-068 – MCP Read-Surface (Dual: dpkms-Authoritative + ctxd-Local)
 
-> **Status:** Proposed
+> **Status:** Accepted
 > **Date:** 2026-05-05
 > **Author:** $USER
 > **Applies to:** dpkms, ctxd, ctxt CLI

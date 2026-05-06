@@ -1,6 +1,6 @@
 # ADR-067 – Session / WorkUnit as a First-Class Type
 
-> **Status:** Proposed
+> **Status:** Accepted
 > **Date:** 2026-05-05
 > **Author:** $USER
 > **Applies to:** ctxt CLI, ctxd local daemon, dpkms storage

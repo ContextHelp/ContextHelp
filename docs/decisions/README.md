@@ -455,22 +455,22 @@ Push-only DAG federation between dPKMS instances. Each instance pushes objects +
 ### **ADR-065 – Pluggable Adapters: Protocol Server + Read/Write Substrate (Proposed)**
 Typed adapter substrate at `internal/adapter/` with five concepts: protocol slots (email, contacts, calendar, …), adapters (with capabilities: fetch / serve / submit / emit-events / subscribe-events), backends (concrete platform configs: stalwart, mxhook+gmail, cardamum, himalaya, …), one-platform-per-protocol invariant enforced at registration, lifecycle on kit/runtime/bus. Migrates legacy `internal/ingest/` adapters (cardamum, himalaya) to the typed substrate via a backwards-compat shim. Federation composition (ADR-064) handles multi-platform deployments.
 
-### **ADR-066 – Ambient Capture Substrate (Local-Side Daemon) (Proposed)**
+### **ADR-066 – Ambient Capture Substrate (Local-Side Daemon) (Accepted)**
 Long-running local daemon (`ctxd`) hosts pluggable ambient sources (clipboard, file-watch, browser-history, foreground-window, screenshot, meeting) feeding existing pipelines via the existing `/api/v1/analyze` HTTP path. Runs **client-side** because dpkms is often deployed remote. Pluggable buffer (local-FS XDG / S3-compatible / in-memory). Client-side fingerprint dedup at enqueue. kit/runtime/policy CEL guards enforce privacy before network egress. Three launch paths share one binary: `ctxt capture --ambient`, `brew services start ctxd`, or service-manager. Comprehensive bus event taxonomy at every transformation. Borrows substrate patterns from OpenChronicle without its screen-memory scope.
 
 **Diagrams:** [`docs/diagrams/ambient/066-architecture.mmd`](../diagrams/ambient/066-architecture.mmd), [`066-event-flow.mmd`](../diagrams/ambient/066-event-flow.mmd), [`066-buffer-backends.mmd`](../diagrams/ambient/066-buffer-backends.mmd).
 
-### **ADR-067 – Session / WorkUnit as a First-Class Type (Proposed)**
+### **ADR-067 – Session / WorkUnit as a First-Class Type (Accepted)**
 Adds `Session` to `pkg/pluginapi/` and `SessionID` to `KnowledgeObject`. Three-rule cutter (idle 5min / soft-cut 3min + frequent-switching exception / 2h timeout) ported verbatim from OpenChronicle's `session/manager.py`. Cutter runs **client-side in `ctxd`** because the foreground-window signal is local. dpkms persists sessions as opaque metadata via PUT `/api/v1/sessions/{id}` (idempotent). Soft-FK on `objects.session_id` absorbs network-loss replay ordering. v1 is grouping-only; per-session reducer deferred to Phase 6+. Schema reserves `flush_end` and `classified_end` bookmarks for the future reducer.
 
 **Diagrams:** [`docs/diagrams/ambient/067-lifecycle.mmd`](../diagrams/ambient/067-lifecycle.mmd), [`067-cutter-flowchart.mmd`](../diagrams/ambient/067-cutter-flowchart.mmd), [`067-replay-sequence.mmd`](../diagrams/ambient/067-replay-sequence.mmd).
 
-### **ADR-068 – MCP Read-Surface (Dual: dpkms-Authoritative + ctxd-Local) (Proposed)**
+### **ADR-068 – MCP Read-Surface (Dual: dpkms-Authoritative + ctxd-Local) (Accepted)**
 Two MCP servers expose the knowledge graph and live local state to AI agents (Claude Code, Claude Desktop, Cursor, Codex, opencode). dpkms-side (`/api/v1/mcp/`) is authoritative with 10 tools (search, list, get, entity, recent, sessions, session, compose, mentions, schema). ctxd-side (`:8744/mcp`) is local-only with 5 tools (current_session, recent_local, pending_enqueue, sources, health) surfacing state dpkms cannot see when remote. Read-only by design; writes go through existing `ctxt analyze`. Streamable-HTTP per MCP spec 2025-03-26. `ctxt mcp install <client>` ports OpenChronicle's mature install matrix. Closes ADR-038's deferred MCP commitment (US-0037–US-0041).
 
 **Diagrams:** [`docs/diagrams/ambient/068-topology.mmd`](../diagrams/ambient/068-topology.mmd), [`068-tool-dispatch.mmd`](../diagrams/ambient/068-tool-dispatch.mmd), [`068-tool-surface.mmd`](../diagrams/ambient/068-tool-surface.mmd).
 
-### **ADR-069 – Meeting Capture Source (Audio + Video, Multi-Platform) (Proposed)**
+### **ADR-069 – Meeting Capture Source (Audio + Video, Multi-Platform) (Accepted)**
 Specialized ambient source for video calls (Zoom, Meet, Teams, FaceTime, Discord). Captures system audio + window framebuffer via OS-blessed public APIs (ScreenCaptureKit on macOS 13+, WASAPI loopback + Graphics Capture on Windows 10+, xdg-desktop-portal + PipeWire on Linux). Routes to existing `audio.transcribe` (diarization, alignment, sectioning) or `video.full` (transcript + frame OCR + scene-aligned timeline) pipelines. Explicit-trigger only in v1 (no always-on). Mandatory recording indicator. First-class redact-as-supersede. Mobile companion apps (iOS / Android) deferred to Phase 6/7 (separate repos, separate tracks). 22-topic bus event taxonomy covers every state transition. Storage gets a separate retention tier (default 48h local + optional S3 archive).
 
 **Diagrams:** [`docs/diagrams/ambient/069-recording-state.mmd`](../diagrams/ambient/069-recording-state.mmd), [`069-multi-platform.mmd`](../diagrams/ambient/069-multi-platform.mmd), [`069-recording-sequence.mmd`](../diagrams/ambient/069-recording-sequence.mmd).
