@@ -20,6 +20,7 @@ func TestOutboundTopicsAreKitConformant(t *testing.T) {
 		"TopicObjectDeleted":                 events.TopicObjectDeleted,
 		"TopicJobCompleted":                  events.TopicJobCompleted,
 		"TopicJobFailed":                     events.TopicJobFailed,
+		"TopicJobEnqueued":                   events.TopicJobEnqueued,
 		"TopicDpkmsUpgradeSignatureMismatch": events.TopicDpkmsUpgradeSignatureMismatch,
 	}
 	for name, topic := range cases {
