@@ -40,17 +40,21 @@ The ambient capture substrate (ADR-066) ships sources for clipboard, file-watch,
 | Track | Platforms | Implementation | Status |
 |---|---|---|---|
 | **Desktop** | macOS 13+, Windows 10+, Linux (Wayland-first, X11 fallback) | Native Go in `internal/ambient/meeting/` using cgo bindings to OS APIs; ships in `ctxd` | Phase 3 of ADR-066 + this ADR |
-| **iOS companion** | iPhone, iPad (iOS 17+) | Swift app (`ctxt-ios`); ReplayKit for screen+audio; POSTs to user-configured dpkms via the existing `/api/v1/analyze` HTTP path | Phase 6 (deferred) |
-| **Android companion** | Android 10+ | Kotlin app (`ctxt-android`); MediaProjection + AudioPlaybackCapture (Android 10+); same enqueue path | Phase 7 (deferred) |
+| **iOS companion** | iPhone, iPad (iOS 17+) | Swift app at `mobile/ios/`; share extension + ReplayKit for screen+audio + on-device session cutter; POSTs to user-configured dpkms via the existing `/api/v1/analyze` HTTP path | Phase 6 (deferred) |
+| **Android companion** | Android 10+ | Kotlin app at `mobile/android/`; share intent + MediaProjection + AudioPlaybackCapture + foreground service + on-device session cutter; same enqueue path | Phase 7 (deferred) |
 
 iOS/Android companions are **out of v1** but the substrate (enqueue API, session tagging, profile resolution) supports them on day one. They post recordings to whichever dpkms is configured (local-network or remote) per ADR-066's enqueue model.
 
-> **Repo structure: TBD at Phase 6/7 start.** Earlier drafts of this ADR locked-in "separate repos" for iOS/Android. That decision was premature — both monorepo and split-repo are defensible, with real trade-offs:
+> **Repo structure: monorepo (`mobile/{ios,android}/` in this repo).** Decided 2026-05-06. Rationale: one source of truth for the wire contract (RawEvent / RecordOptions / bus topics) so cross-language refactors are atomic and three-way schema drift can't happen. CI runs Swift + Kotlin + Go pipelines in parallel; signing secrets (Apple Developer / Play Console) live in repo-scoped GitHub Actions secrets, isolated by workflow. The earlier "separate repos" framing was premature.
 >
-> - **Monorepo** (in this repo, under `mobile/ios/` + `mobile/android/`): one source of truth for the wire contract (RawEvent / RecordOptions / bus topics), atomic cross-language refactors, easier end-to-end tests. Trade-off: heterogeneous CI (Swift + Kotlin + Go in one pipeline).
-> - **Separate repos** (`ctxt-ios`, `ctxt-android`): matches the rest of the ctxt org's repo layout, isolates Apple Developer / Play Console secrets, independent release cadence. Trade-off: three-way schema sync, integration-test ceremony.
+> **v1 mobile scope** (each platform):
+> - **Share to ctxt** — share-sheet (iOS) / share intent (Android) destination that receives URL/text/image/audio/video from any app and POSTs to dpkms.
+> - **Meeting recording** — full audio + video capture via ReplayKit broadcast extension (iOS) or MediaProjection + AudioPlaybackCapture + foreground service (Android). Routes to existing `audio.transcribe` / `video.full` pipelines.
+> - **Auto-detect prompt** — when known meeting bundle-ids (Zoom, Teams, Meet web, etc.) come to focus, surface an OS notification offering to start recording. Same opt-in semantics as desktop (per ADR-069 §Phase 5).
+> - **On-device session cutter** — same three-rule cutter as desktop ctxd (idle / soft-cut + frequent-switching exception / timeout), so meetings group with prep/follow-up captures on the device.
+> - Single-user; one dpkms endpoint; bearer-token auth (per ADR-023).
 >
-> The decision is **revisited when Phase 6 actually starts**, not now. Either path requires identical Go-side work (none beyond what's already shipped); the substrate's enqueue API + bus event taxonomy are the binding contract. Whatever repo structure ships, the wire is unchanged.
+> **Out of v1 mobile**: cross-device session merging, multi-account support, on-device transcription (relies on dpkms-side `audio.transcribe`), background continuous capture (clipboard / browser-history equivalents), MCP server on mobile.
 
 ### 2. Two trigger modes (desktop)
 
@@ -177,7 +181,7 @@ The `redact` command is not optional UX — the user discovering after-the-fact 
 - **Existing pipelines do all the AI work.** `audio.transcribe` and `video.full` already exist with diarization, OCR, scene detection, timeline assembly. The capture source is a thin shim that produces the right file shape; we don't need to reimplement Whisper, FFmpeg, or speaker clustering.
 - **Explicit trigger sidesteps the consent-law minefield.** Two-party-consent jurisdictions (CA, FL, IL, MA, MD, MT, NV, NH, PA, WA in the US — and most of Europe under GDPR) require all parties to be aware. Always-on recording would force ctxt to ship lawyer-disclaimers at the wrong altitude. Explicit-by-default with an unmissable indicator pushes the consent burden to the user (where it belongs) and matches what most modern tools do (Zoom requires the host to start recording; Granola asks before starting).
 - **Three desktop OS tracks share substrate, differ in capture API.** The Go interface (`MeetingRecorder`) is the same across OSes; the OS-specific implementations live behind build tags. ScreenCaptureKit / WASAPI+Graphics Capture / xdg-desktop-portal are public, modern, and don't require kernel-level drivers (BlackHole et al. become fallback, not requirement).
-- **Mobile is its own architecture problem and deserves dedicated native apps.** ReplayKit (iOS) and MediaProjection (Android) are designed for in-app screen+audio capture. A Go daemon will not run on iOS at all and runs on Android only awkwardly. Ship `ctxt-ios` (Swift) and `ctxt-android` (Kotlin) as small native apps that record locally and POST to the configured dpkms via the existing enqueue HTTP path. Phase 6/7 work; not v1. Repo structure (monorepo vs split repos) is TBD at Phase 6/7 start — see §1 above.
+- **Mobile is its own architecture problem and deserves dedicated native apps.** ReplayKit (iOS) and MediaProjection (Android) are designed for in-app screen+audio capture. A Go daemon will not run on iOS at all and runs on Android only awkwardly. Ship a Swift app at `mobile/ios/` and a Kotlin app at `mobile/android/` (monorepo per §1) that record locally + run on-device session cutters + offer Share-to-ctxt extensions, and POST to the configured dpkms via the existing enqueue HTTP path. Phase 6/7 work; not v1.
 - **Media files get their own retention tier because their size profile is different.** Bolting a 500MB file into a buffer designed for kilobyte events is a bug magnet. Separate cap, separate retention default, separate eviction story, separate optional S3 archive — all configurable, all defaulted to sensible values, all auditable via bus events.
 - **Redact is a first-class command, not an afterthought.** Users will record a meeting where someone says something they later wish wasn't recorded. Without redact, ctxt becomes a liability. Redact-as-supersede composes with the existing data model (ADR-066's append-only-with-supersede pattern).
 
@@ -265,10 +269,18 @@ resources/
 ├── WindowsCaptureBridge.cpp       — compiled at build-time, vendored as .lib or .dll
 ```
 
-Mobile companions (Phase 6/7; repo structure TBD — monorepo `mobile/{ios,android}/` or split repos `ctxt-ios` / `ctxt-android`):
+Mobile companions (Phase 6/7; monorepo at `mobile/{ios,android}/`):
 ```
-ctxt-ios/    — Swift, ReplayKit-based, ~1000 LoC
-ctxt-android/ — Kotlin, MediaProjection + AudioPlaybackCapture, ~1500 LoC
+mobile/ios/      — Swift, ~3-4k LoC. Three targets:
+                     - App (settings + recording UI + history list)
+                     - ShareExtension (Share-to-ctxt destination)
+                     - BroadcastExtension (ReplayKit screen+audio capture)
+mobile/android/  — Kotlin, ~3-4k LoC. Components:
+                     - Main activity (settings + recording UI + history)
+                     - Share intent receiver (Share-to-ctxt destination)
+                     - RecordingService (foreground service holding
+                       MediaProjection + AudioPlaybackCapture)
+                     - SessionCutter (in-app port of session.Cutter)
 ```
 
 ### Modified files
@@ -335,8 +347,8 @@ OS-specific files implement `MeetingRecorder`; `meeting.go` consumes the interfa
 - **Phase 3d — Linux recorder.** xdg-desktop-portal + PipeWire. X11 fallback explicitly second-class.
 - **Phase 4 — auto-detect prompt.** `foreground` source observes meeting bundle-ids; emits prompt event; user confirms or dismisses.
 - **Phase 5 — redact + export commands.** Segment-level transcript+media redaction; SRT/VTT export.
-- **Phase 6 — iOS companion app.** ReplayKit broadcast extension. Separate repo. App store review.
-- **Phase 7 — Android companion app.** MediaProjection + AudioPlaybackCapture. Separate repo. Play store review.
+- **Phase 6 — iOS companion app.** Swift app at `mobile/ios/` with three targets: App + ShareExtension + BroadcastExtension (ReplayKit). On-device session cutter. App Store review.
+- **Phase 7 — Android companion app.** Kotlin app at `mobile/android/` with main activity + share intent receiver + foreground RecordingService (MediaProjection + AudioPlaybackCapture) + on-device session cutter. Play Store review.
 
 Phases 3a–3d and 4–5 land in the `ambient-capture` track. Phases 6–7 each get their own track and ADRs (mobile-specific concerns are non-trivial: app-store policy, signing, OAuth-dpkms-from-mobile, etc.).
 

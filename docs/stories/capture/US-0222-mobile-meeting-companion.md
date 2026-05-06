@@ -7,78 +7,118 @@ phase: 6, 7
 
 # US-0222: Mobile Meeting Companion (iOS + Android)
 
-**System Types:** ctxt-ios, ctxt-android (separate repos)
+**System Types:** Mobile (`mobile/ios/`, `mobile/android/` — monorepo)
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)
 
-> **Phase 6/7 — out of v1 scope.** Repo structure (monorepo `mobile/{ios,android}/` vs. separate `ctxt-ios` / `ctxt-android` repos) is **TBD at Phase 6/7 start** — see [ADR-069 §1](../../decisions/ADR-069-meeting-capture-source.md). The substrate's enqueue API + bus event taxonomy is the binding contract; whichever repo structure ships, the wire is unchanged.
+> **Phase 6/7 — out of v1 scope.** Lives in this repo at `mobile/{ios,android}/` per [ADR-069 §1](../../decisions/ADR-069-meeting-capture-source.md). v1 mobile scope is full feature parity with desktop meeting capture: Share-to-ctxt + ReplayKit/MediaProjection recording + auto-detect prompts + on-device session cutter. The substrate's enqueue API + bus event taxonomy is the binding contract; mobile is a peer of desktop.
 
 ---
 
 ## User Goal
 
-As a knowledge worker who takes calls on iPhone, iPad, or Android, I want a small native companion app that records meetings on my phone (audio + video) and POSTs the recording to my configured ctxt instance (local or remote dpkms) — so meetings on the commute, on-the-go check-ins, and family calls flow into the same knowledge graph as desktop meetings.
+As a knowledge worker on iPhone / iPad / Android, I want a native companion app that:
+
+1. **Acts as a "Share to ctxt" destination** so anything from any app's share sheet (URL, text, image, audio, video) lands in my knowledge graph.
+2. **Records video calls** (audio + video) with the same explicit-trigger model as desktop, routing recordings to ctxt's existing transcript + frame-OCR pipelines.
+3. **Auto-detects meeting apps** (Zoom, Teams, Meet, FaceTime, Discord, Slack Huddles) when they come to focus and offers to start recording (opt-in).
+4. **Cuts sessions on-device** with the same three-rule cutter as desktop (idle / soft-cut + frequent-switching / timeout) so meetings group with prep/follow-up shares.
+
+So meetings on the commute, on-the-go check-ins, family calls, and content shared from mobile apps all flow into the same knowledge graph as desktop captures.
 
 ---
 
 ## Context
 
-[ADR-069](../../decisions/ADR-069-meeting-capture-source.md) splits meeting capture cleanly: desktop ships in `ctxd` (Go binary, OS-specific cgo bridges to ScreenCaptureKit / Graphics Capture / xdg-desktop-portal). Mobile is fundamentally different — Go does not run usefully on iOS at all, runs awkwardly on Android, and the OS APIs (ReplayKit on iOS, MediaProjection + AudioPlaybackCapture on Android) are designed for in-app integration via native frameworks.
+[ADR-069](../../decisions/ADR-069-meeting-capture-source.md) keeps mobile at full feature parity with desktop meeting capture (recording + sessions + auto-detect), plus adds the Share-to-ctxt extension as the primary low-friction path for non-meeting content. Mobile is a peer of desktop, not a thin client — but the implementation is platform-native because Go does not run on iOS and runs awkwardly on Android, and the OS APIs (ReplayKit on iOS, MediaProjection + AudioPlaybackCapture on Android) are designed for in-app integration.
 
-Honest split: ship two thin native apps in separate repos. They share **nothing** structurally with `ctxd` — but they emit the same bus event taxonomy (over HTTP/WS to dpkms) and POST to the same `/api/v1/analyze` endpoint with the same payload shape. dpkms doesn't need to know they exist; the substrate absorbs them transparently.
+Both apps emit the same bus event taxonomy (forwarded over HTTP/WS to dpkms after upload) and POST to the same `/api/v1/analyze` endpoint with the same payload shape. dpkms doesn't need to know they exist; the substrate absorbs them transparently. Session continuity is per-device in v1 — a phone session and a laptop session for the same activity are two distinct sessions (cross-device merging is deferred).
 
-The apps are intentionally minimal: record locally, retry on transient network failures, POST when ready. No on-device transcript pipeline (that runs on dpkms via `audio.transcribe` / `video.full`); no on-device knowledge graph (that lives in dpkms).
+On-device transcript pipelines are out of v1 mobile scope — recording uploads to dpkms which runs `audio.transcribe` / `video.full` server-side. Mobile apps display the transcript once `transcript_ready` fires.
 
 ---
 
 ## Acceptance Criteria
 
-### iOS app (`ctxt-ios`, Phase 6, T-0520)
+### iOS app (`mobile/ios/`, Phase 6, T-0520)
 
-- [ ] Swift app (repo location TBD per ADR-069 §1); distributed via App Store
-- [ ] iOS 17+ minimum (ReplayKit broadcast extensions stable)
-- [ ] Recording UX:
-    - Big "record" button on home screen
-    - Live duration timer + stop button while recording
-    - Optional label entry before start (or after, in editable field)
-- [ ] ReplayKit broadcast extension captures screen + audio (system + mic)
-- [ ] Recording lands on device first under app's Documents directory
-- [ ] Background-task API used for upload after recording stops (continues even if app backgrounded)
-- [ ] Configures dpkms endpoint via in-app settings (URL + bearer token if `mcp.host=0.0.0.0`)
-- [ ] POSTs recording to `/api/v1/analyze` with `pipeline=video.full`, `ambient_source=mobile-ios`, label, device timestamp
-- [ ] Retry logic for transient failures (exponential backoff; cap at 24h)
-- [ ] In-app history list of past recordings (with upload status)
+- [ ] Swift project at `mobile/ios/` (monorepo per ADR-069 §1); distributed via App Store
+- [ ] iOS 17+ minimum (ReplayKit broadcast extensions + Share Extension stable)
+
+#### Share extension (Share-to-ctxt)
+- [ ] Appears in the iOS share sheet for URL, text, image, audio, video, file content types
+- [ ] On select: shows minimal UI (cancel + post buttons; optional label/note field)
+- [ ] POSTs the shared content to `/api/v1/analyze` with appropriate `type` field (url/text/image/audio/video/file) and `ambient_source=mobile-ios-share`
+- [ ] Handles auth via shared App Group token (set in main app's Settings)
+- [ ] Failure path: queue locally; retry on next share or via main app's "Pending" view
+
+#### Recording (ReplayKit broadcast extension)
+- [ ] Recording UX: big "record" button on home screen; live duration timer + stop button while recording; optional label entry
+- [ ] ReplayKit broadcast extension captures screen + system audio + mic
+- [ ] Recording lands on device first under App Group's Documents directory
+- [ ] Background-task API used for upload after recording stops (continues if app backgrounded)
+- [ ] POSTs recording with `pipeline=video.full` (or `audio.transcribe` if audio-only), `ambient_source=mobile-ios`
+- [ ] Retry logic with exponential backoff (1s, 2s, 4s … cap at 1h)
+- [ ] In-app history list of past recordings + their pipeline status (pending → uploading → indexed)
 - [ ] Mandatory recording indicator (iOS shows red status-bar pill during ReplayKit recording — system-enforced)
-- [ ] Privacy: explicit-trigger only; no auto-detect; no background recording
 
-### Android app (`ctxt-android`, Phase 7, T-0521)
+#### Auto-detect prompts (opt-in)
+- [ ] Configurable list of meeting bundle-ids (defaults: Zoom, Teams, Meet web, FaceTime, Discord, Slack)
+- [ ] When detected (via app-state observation or shortcut intent), surface a UNUserNotification with "Record this meeting?" + 10s confirm window
+- [ ] Per-app remember-my-choice (auto-start / never / prompt) stored in app Settings
+- [ ] NEVER starts recording without explicit user confirmation OR an explicit `auto-start` per-app rule
 
-- [ ] Kotlin app (repo location TBD per ADR-069 §1); distributed via Play Store
+#### On-device session cutter
+- [ ] Swift port of the three-rule cutter (idle / soft-cut + frequent-switching / timeout) — same defaults as desktop (5min / 3min / 2h)
+- [ ] Cutter consumes share + recording events to drive session boundaries
+- [ ] Active SessionID attached to every POSTed event (for grouping with prep/follow-up shares)
+- [ ] PUT to `/api/v1/sessions/{id}` on session open and close (idempotent, per ADR-067 §Wire shape)
+
+### Android app (`mobile/android/`, Phase 7, T-0521)
+
+- [ ] Kotlin project at `mobile/android/`; distributed via Play Store
 - [ ] Android 10+ minimum (AudioPlaybackCapture API)
+
+#### Share intent receiver (Share-to-ctxt)
+- [ ] Activity registered for ACTION_SEND / ACTION_SEND_MULTIPLE intents with text/uri/image/audio/video/file MIME types
+- [ ] On receive: minimal UI (post button + optional label) before background upload
+- [ ] POSTs to `/api/v1/analyze` with appropriate `type` and `ambient_source=mobile-android-share`
+- [ ] Failure path: WorkManager re-queues for retry
+
+#### Recording (foreground service)
 - [ ] Recording UX matches iOS (big button, label, history list)
-- [ ] MediaProjection API for screen + AudioPlaybackCapture for system audio
-- [ ] Foreground service for long-running recording (system-required for MediaProjection)
+- [ ] MediaProjection API for screen + AudioPlaybackCapture for system audio + standard MediaRecorder for mic
+- [ ] RecordingService is a foreground service (system-required for MediaProjection): persistent notification with stop button
 - [ ] Recording lands on device first under app's private storage
-- [ ] Upload via WorkManager (Android's background-task API)
-- [ ] Same dpkms endpoint configuration UX
-- [ ] Same POST shape (`pipeline=video.full`, `ambient_source=mobile-android`)
-- [ ] Same retry logic
-- [ ] Mandatory recording indicator (Android shows persistent foreground-service notification — system-required)
-- [ ] Privacy posture matches iOS (explicit-trigger only)
+- [ ] Upload via WorkManager with exponential backoff
+- [ ] Same POST shape as iOS (with `ambient_source=mobile-android`)
+- [ ] Mandatory recording indicator (foreground service notification + Android's MediaProjection overlay — system-enforced)
+
+#### Auto-detect prompts (opt-in)
+- [ ] App-state listener (UsageStatsManager or AccessibilityService — pick the lighter-touch option) observes meeting package focus
+- [ ] On detection, post a notification with quick-action "Record" / "Dismiss" (10s timeout)
+- [ ] Per-app remember-my-choice stored in app Settings; same auto-start / never / prompt semantics as iOS
+
+#### On-device session cutter
+- [ ] Kotlin port of the three-rule cutter (parity with iOS + desktop)
+- [ ] Same SessionID propagation + idempotent PUT to dpkms
 
 ### Shared (both apps)
 
-- [ ] Same `RawEvent`-shaped enqueue payload as desktop
-- [ ] Same SessionID semantics — apps treat each recording as its own session (no cross-session continuity v1)
-- [ ] Same bus event taxonomy emitted to dpkms over HTTP after upload (`ctxt.ambient.meeting.requested|started|stopped|enqueued|transcript_ready` etc.)
-- [ ] OAuth or token-based auth to dpkms (per ADR-023; see [US-0219](US-0219-mcp-agent-integration.md) for the auth model)
-- [ ] Documentation lives in respective repos; this story is the boundary spec
+- [ ] Same `RawEvent`-shaped enqueue payload as desktop (Source name, Kind, Payload, Fingerprint, SessionID, Metadata)
+- [ ] Same SessionID semantics — sessions cut on-device using the three-rule cutter; sessions are per-device in v1 (no cross-device merging)
+- [ ] Same bus event taxonomy from ADR-069 §5 emitted to dpkms via HTTP/WS after upload
+- [ ] Bearer-token auth to dpkms (per ADR-023). Mobile stores token in OS keychain (iOS Keychain / Android Keystore); never plaintext on disk
+- [ ] Schema sync: a small build-time codegen step generates Swift structs + Kotlin data classes from a shared spec (the existing Go RawEvent struct, exported via JSON Schema or similar). This is the "monorepo single source of truth" benefit cited in ADR-069 §1
+- [ ] CI: `mobile/ios/` builds via xcodebuild on a macOS GitHub Actions runner; `mobile/android/` builds via Gradle on an Ubuntu runner. Both gated on test pass + lint clean
 
 ### Out of scope for v1 mobile
 
-- Live transcription on device (deferred; dpkms handles via `audio.transcribe` / `video.full`)
-- On-device knowledge graph queries (no MCP server in mobile apps; users running ctxt mobile rely on dpkms-side MCP via web/desktop)
-- Cross-machine session continuity (a meeting on phone is one session; doesn't merge with a desktop session)
-- Auto-detect of meeting apps on mobile (technically harder; explicit-trigger only)
+- Live (on-device) transcription — uploads to dpkms which runs `audio.transcribe` / `video.full` server-side
+- On-device knowledge graph queries — no MCP server in mobile apps; users query via the dpkms-side MCP from a desktop / web client
+- Cross-device session merging — a phone session and a laptop session for the same meeting are two distinct sessions
+- Multi-account support — single dpkms endpoint per app install
+- Background continuous capture (clipboard, browser-history equivalents) — these are tricky on mobile due to OS background-execution restrictions; deferred
+- Live transcript display during recording — Phase 8+ (whisper-on-device is real but expensive)
 
 ---
 

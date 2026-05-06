@@ -1,0 +1,27 @@
+# iOS
+ios/build/
+ios/DerivedData/
+ios/*.xcodeproj/xcuserdata/
+ios/Pods/
+ios/.swiftpm/
+
+# Android
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/captures/
+
+# Generated wire types (regenerated from Go on build)
+ios/Generated/
+android/app/src/main/kotlin/io/ctxt/wire/
+
+# Test fixtures (not checked in; large files)
+ios/Tests/Fixtures/
+android/app/src/androidTest/assets/fixtures/
+
+# Signing secrets (NEVER commit)
+ios/*.mobileprovision
+ios/*.p12
+android/app/release-keystore.jks
+android/app/upload-keystore.jks
