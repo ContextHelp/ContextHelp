@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: 8317a34b
+recorded_at: "2026-05-06T08:24:58Z"
+payload:
+    method: GET
+    url: https://s3.test/my-bucket?list-type=2&prefix=papers%2F
