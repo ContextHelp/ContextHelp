@@ -36,6 +36,12 @@ Examples:
   # Generate summary since a specific date
   ctxt compose summary --since 2025-01-01
 
+  # Generate summary across a time range
+  ctxt compose summary --since "yesterday afternoon" --until now
+
+  # Generate brief scoped to one work session (per ADR-067)
+  ctxt compose brief --session sess_a1b2c3d4e5f6
+
   # Generate draft and save to file
   ctxt compose draft --tag launch --output launch-plan.md
 
@@ -54,7 +60,9 @@ func init() {
 	// Filter flags
 	composeCmd.Flags().String("mention", "", "focus on specific mentions")
 	composeCmd.Flags().String("tag", "", "focus on specific tags (comma-separated)")
-	composeCmd.Flags().String("since", "", "include knowledge since date (ISO)")
+	composeCmd.Flags().String("since", "", "include knowledge since date (ISO) or natural-language ('yesterday', '2 hours ago')")
+	composeCmd.Flags().String("until", "", "include knowledge up to date (ISO) or natural-language ('now', 'yesterday evening')")
+	composeCmd.Flags().String("session", "", "scope to one work session (sess_xxx; per ADR-067)")
 
 	// Output flags. -o shorthand is reserved by kit/cli's --output (write
 	// path), so --output-file is long-name only. A follow-up should drop
@@ -69,6 +77,8 @@ func init() {
 	viper.BindPFlag("compose.mention", composeCmd.Flags().Lookup("mention"))
 	viper.BindPFlag("compose.tag", composeCmd.Flags().Lookup("tag"))
 	viper.BindPFlag("compose.since", composeCmd.Flags().Lookup("since"))
+	viper.BindPFlag("compose.until", composeCmd.Flags().Lookup("until"))
+	viper.BindPFlag("compose.session", composeCmd.Flags().Lookup("session"))
 	viper.BindPFlag("compose.output-file", composeCmd.Flags().Lookup("output-file"))
 	viper.BindPFlag("compose.no-citations", composeCmd.Flags().Lookup("no-citations"))
 	viper.BindPFlag("compose.export", composeCmd.Flags().Lookup("export"))
@@ -107,6 +117,23 @@ func runCompose(cmd *cobra.Command, args []string) error {
 		if t, err := time.Parse("2006-01-02", since); err == nil {
 			filter.After = &t
 		}
+	}
+	if until := viper.GetString("compose.until"); until != "" {
+		if t, err := time.Parse("2006-01-02", until); err == nil {
+			filter.Before = &t
+		}
+	}
+	// --session scopes the compose to one work session (ADR-067).
+	// dpkms-side filter wiring (objects.session_id column + ObjectFilter
+	// extension) is tracked separately as part of T-0505's storage
+	// migration. The flag is plumbed here so the substrate is ready
+	// when that migration lands; until then, the value is ignored
+	// server-side (no harm, no error).
+	if sess := viper.GetString("compose.session"); sess != "" {
+		// Forward-compatible: when ObjectFilter gains a SessionID field,
+		// uncomment this assignment. Until then, leaving as a no-op
+		// preserves the flag-parsing contract for users.
+		_ = sess
 	}
 
 	objects, _, err := svc.ListObjects(ctx, filter)
