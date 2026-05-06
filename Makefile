@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks vuln-scan trivy-scan
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate test-docker lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks vuln-scan trivy-scan
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -99,6 +99,27 @@ test-gate: test-all
 	@go tool cover -func=coverage.out | grep total:
 	@echo ""
 	@echo "✓ Test gate passed"
+
+## test-docker: Run the test suite inside the canonical Linux/Go container
+##
+## Useful when local Go (mise/brew) doesn't match go.mod, or when CGo
+## extensions (sqlite3, fts5, sqlite-vec) misbehave on macOS. Builds the
+## Dockerfile builder stage once, mounts the repo read-write so the build
+## cache and test artifacts persist across runs, and runs the full test
+## tree with the canonical $(BUILD_TAGS).
+test-docker:
+	@echo "Building test image (golang:1.26-bookworm + sqlite-dev)..."
+	@docker build --target go-builder -t ctxt/test:latest -f Dockerfile .
+	@echo "Running tests inside container..."
+	docker run --rm \
+		-v "$(PWD)":/app \
+		-v ctxt_test_gocache:/root/.cache/go-build \
+		-v ctxt_test_gomod:/go/pkg/mod \
+		-w /app \
+		-e CGO_ENABLED=1 \
+		-e GOWORK=off \
+		ctxt/test:latest \
+		go test $(BUILD_TAGS) -race -count=1 ./...
 
 ## vuln-scan: Run govulncheck + nancy dependency vulnerability scans
 vuln-scan:
