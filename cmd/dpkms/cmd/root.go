@@ -56,6 +56,7 @@ var (
 			{Name: "data-dir", Usage: "data directory override"},
 			{Name: "server-url", Default: "http://localhost:8080", Usage: "dpkms server URL"},
 			{Name: "offline", Usage: "disable all network calls; force local-only operation"},
+			{Name: "instance", Usage: "name of dpkms instance to target (default: unnamed)"},
 		},
 		// Hook runs after kit's built-in chain (chdir → identity → peer →
 		// progress); we use it for the --output→--format compatibility shim
@@ -106,7 +107,7 @@ func init() {
 
 	// Mirror kit/cli bindings into the global viper used throughout the codebase.
 	pf := rootCmd.PersistentFlags()
-	for _, name := range []string{"format", "quiet", "no-color", "verbose", "no-hints", "chdir", "config", "data-dir", "server-url", "offline", "output"} {
+	for _, name := range []string{"format", "quiet", "no-color", "verbose", "no-hints", "chdir", "config", "data-dir", "server-url", "offline", "instance", "output"} {
 		if f := pf.Lookup(name); f != nil {
 			_ = viper.BindPFlag(name, f)
 		}
