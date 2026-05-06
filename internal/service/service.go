@@ -519,7 +519,7 @@ func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest)
 	}
 
 	if s.pipelineSvc != nil {
-		if err := s.pipelineSvc.Create(withPipelineValidateOp(ctx, pipelineOpCreate), pipeline); err != nil {
+		if err := s.pipelineSvc.Create(ctx, pipeline); err != nil {
 			return "", fmt.Errorf("create pipeline: %w", err)
 		}
 	} else {
@@ -579,7 +579,7 @@ func (s *Service) ArchivePipeline(ctx context.Context, name string) error {
 	}
 	p.Archived = true
 	p.UpdatedAt = time.Now().Truncate(time.Second)
-	opCtx := withPolicyAction(withPipelineValidateOp(ctx, pipelineOpArchive), "archive")
+	opCtx := withPolicyAction(domain.WithSubOp(ctx, "archive"), "archive")
 	if err := s.pipelineSvc.Update(opCtx, p); err != nil {
 		return fmt.Errorf("archive pipeline: %w", err)
 	}
@@ -605,7 +605,7 @@ func (s *Service) UnarchivePipeline(ctx context.Context, name string) error {
 	}
 	p.Archived = false
 	p.UpdatedAt = time.Now().Truncate(time.Second)
-	opCtx := withPolicyAction(withPipelineValidateOp(ctx, pipelineOpUnarchive), "unarchive")
+	opCtx := withPolicyAction(domain.WithSubOp(ctx, "unarchive"), "unarchive")
 	if err := s.pipelineSvc.Update(opCtx, p); err != nil {
 		return fmt.Errorf("unarchive pipeline: %w", err)
 	}

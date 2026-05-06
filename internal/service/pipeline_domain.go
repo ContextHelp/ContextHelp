@@ -143,34 +143,6 @@ func mapPipelineRepoErr(err error) error {
 	}
 }
 
-// pipelineOpKind tells pipelineValidator which CRUD verb is in flight.
-// kit/runtime/domain.Service exposes a single Validate(entity) signature;
-// the discriminator pattern (action-aware via a sentinel context value)
-// is the same workaround wsm uses until kit grows per-op validators.
-type pipelineOpKind int
-
-const (
-	// pipelineOpCreate runs full create-time validation: name + steps
-	// presence.
-	pipelineOpCreate pipelineOpKind = iota + 1
-	// pipelineOpArchive is an Update verb. Status flip is performed by
-	// the manager before the service call; validator no-ops because the
-	// pre-flip precondition can't be inferred from the post-flip entity.
-	pipelineOpArchive
-	// pipelineOpUnarchive is the inverse of Archive. Same rationale as
-	// pipelineOpArchive: validator no-ops.
-	pipelineOpUnarchive
-)
-
-// pipelineValidateContextKey carries the action discriminator into the
-// validator. It does not flow over the bus — only inside the goroutine
-// running the op.
-type pipelineValidateContextKey struct{}
-
-func withPipelineValidateOp(ctx context.Context, op pipelineOpKind) context.Context {
-	return context.WithValue(ctx, pipelineValidateContextKey{}, op)
-}
-
 // pipelineValidator runs invariants on a Pipeline before persistence.
 // It runs in domain.Service[storage.Pipeline]'s validation slot, between
 // kit.runtime.entity.pre_validated and kit.runtime.entity.pre_persisted.
@@ -182,6 +154,12 @@ func withPipelineValidateOp(ctx context.Context, op pipelineOpKind) context.Cont
 // during execution. Centralizing the name check here lets future
 // entry points (gRPC, CLI, scripts) inherit the rule without
 // duplicating the HTTP layer's substring guard.
+//
+// Op discrimination uses kit's canonical domain.OpFromCtx — Service
+// auto-injects domain.OpCreate/OpUpdate/OpDelete. Update verbs
+// (archive, unarchive) skip create-time invariants so post-flip
+// entities don't get rejected for data that already passed at
+// create time.
 type pipelineValidator struct{}
 
 // Compile-time assertion: pipelineValidator implements
@@ -191,12 +169,7 @@ var _ domain.Validator[storage.Pipeline] = (*pipelineValidator)(nil)
 func newPipelineValidator() *pipelineValidator { return &pipelineValidator{} }
 
 func (v *pipelineValidator) Validate(ctx context.Context, p storage.Pipeline) error {
-	op, _ := ctx.Value(pipelineValidateContextKey{}).(pipelineOpKind)
-	if op != pipelineOpCreate {
-		// Update / Archive / Unarchive: the manager owns precondition
-		// checks against the pre-flip state. The validator only
-		// enforces create-time rules so post-flip entities don't get
-		// rejected for missing data that already passed at create time.
+	if domain.OpFromCtx(ctx) != domain.OpCreate {
 		return nil
 	}
 	if strings.TrimSpace(p.Name) == "" {
