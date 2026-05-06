@@ -82,6 +82,14 @@ func New(tc ToolContext) *Server {
 	return s
 }
 
+// NewBare constructs a Server with no tools registered. Used by surfaces
+// (e.g. the ctxd-side server in internal/ambient/mcp) that want the
+// JSON-RPC dispatch + protocol scaffold but a different tool set than
+// the dpkms-side defaults.
+func NewBare() *Server {
+	return &Server{tools: make(map[string]Tool)}
+}
+
 // Register adds a tool. Used by Phase A extensions that ship more tools.
 func (s *Server) Register(tool Tool) {
 	s.mu.Lock()
