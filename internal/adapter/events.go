@@ -33,10 +33,23 @@ func LifecycleTopic(action string) string {
 // entity event. Topics follow kit/bus's 4-segment past-tense rule:
 // dpkms.<protocol>.entity.<action>.
 //
+// **Reserved for observability / audit, NOT for policy gating.**
+// kit/runtime/policy's `allowedTopics` only accepts the three
+// `kit.runtime.*` veto-able topics (see kit/runtime/policy/config.go);
+// rules with `on: dpkms.<protocol>.entity.<action>` fail at YAML
+// load. Adapters that need policy-gated entity mutations route
+// through domain.Service[T] (which fires `kit.runtime.entity.
+// pre_persisted` natively, inheriting the gate PR #23 already wired).
+//
+// Use EntityTopic for post-events (persisted, failed) consumed by
+// audit subscribers, federation pushers, dashboards. Pre-events
+// (pre_validated, pre_persisted) are still defined here for symmetry
+// but adapters should prefer the kit-namespaced topic via
+// domain.Service[T] for any pre-event that needs policy gating.
+//
 // Allowed actions: pre_validated, pre_persisted, persisted, failed.
-// pre_* actions are veto-able by kit/runtime/policy via the existing
-// internal/policy bootstrap; CEL rules subscribed to these topics
-// can return PolicyDeniedError to abort an in-flight mutation.
+// See ADR-065 §Amendment-2026-05-06 §Acceptance Gate 4 for the full
+// rationale.
 func EntityTopic(protocol, action string) string {
 	return fmt.Sprintf("dpkms.%s.entity.%s", protocol, action)
 }
