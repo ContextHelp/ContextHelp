@@ -1,0 +1,24 @@
+xrr: "1"
+adapter: http
+fingerprint: "61485159"
+recorded_at: "2026-05-06T08:22:34Z"
+payload:
+    status: 200
+    headers:
+        Content-Length: "412"
+        Content-Type: application/atom+xml
+        Date: Wed, 06 May 2026 08:22:34 GMT
+    body: |-
+        <?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <title>Atom Example</title>
+          <id>https://example.com/atom</id>
+          <updated>2026-05-05T10:00:00Z</updated>
+          <entry>
+            <title>Atom post</title>
+            <id>tag:example.com,2026:atom-1</id>
+            <link href="https://example.com/atom-1"/>
+            <updated>2026-05-05T10:00:00Z</updated>
+            <summary>Atom body.</summary>
+          </entry>
+        </feed>

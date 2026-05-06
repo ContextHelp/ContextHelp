@@ -1,0 +1,33 @@
+xrr: "1"
+adapter: http
+fingerprint: c19e12b5
+recorded_at: "2026-05-06T08:22:34Z"
+payload:
+    status: 200
+    headers:
+        Content-Length: "684"
+        Content-Type: application/rss+xml
+        Date: Wed, 06 May 2026 08:22:34 GMT
+    body: |-
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Example Feed</title>
+            <link>https://example.com/</link>
+            <description>An example feed.</description>
+            <item>
+              <title>First post</title>
+              <link>https://example.com/1</link>
+              <guid>https://example.com/1</guid>
+              <pubDate>Mon, 05 May 2026 10:00:00 GMT</pubDate>
+              <description>First body.</description>
+            </item>
+            <item>
+              <title>Second post</title>
+              <link>https://example.com/2</link>
+              <guid>https://example.com/2</guid>
+              <pubDate>Mon, 05 May 2026 11:00:00 GMT</pubDate>
+              <description>Second body.</description>
+            </item>
+          </channel>
+        </rss>

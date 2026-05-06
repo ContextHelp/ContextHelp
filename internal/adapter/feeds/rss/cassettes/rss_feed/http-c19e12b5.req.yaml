@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: c19e12b5
+recorded_at: "2026-05-06T08:22:34Z"
+payload:
+    method: GET
+    url: https://feeds.test/rss_feed
