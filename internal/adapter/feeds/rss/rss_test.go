@@ -247,8 +247,17 @@ func xrrResponseToHTTP(resp xrr.Response) (*http.Response, error) {
 	case *xhttp.Response:
 		status, headers, body = r.Status, r.Headers, r.Body
 	case *xrr.RawResponse:
-		if v, ok := r.Payload["status"].(int); ok {
-			status = v
+		// Cassette numeric fields come back as int via YAML decode but
+		// can decode as float64 via JSON round-trip on other replay
+		// paths — accept both. Mirrors test/integration/us0219_mcp_test.go's
+		// rawToHTTP. Default to 200 if absent so the converter is lenient
+		// for cassettes that omit the field.
+		status = 200
+		switch n := r.Payload["status"].(type) {
+		case int:
+			status = n
+		case float64:
+			status = int(n)
 		}
 		if v, ok := r.Payload["body"].(string); ok {
 			body = v
