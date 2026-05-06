@@ -3,11 +3,16 @@ package mic
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
 
 	"hop.top/kit/go/runtime/bus"
+	xrr "hop.top/xrr"
+	xexec "hop.top/xrr/adapters/exec"
 
 	"github.com/ideacrafterslabs/ctxt/internal/adapter"
 	"github.com/ideacrafterslabs/ctxt/internal/ingest"
@@ -239,4 +244,80 @@ func contains(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// TestFetchAgainstFfmpegCassette is the end-to-end migration to xrr
+// cassettes. Replay mode (the default) drives Fetch through the
+// committed cassette under cassettes/ffmpeg/ without invoking ffmpeg
+// or the audio device — deterministic on every platform that has the
+// cassette committed.
+//
+// Record mode (XRR_RECORD=1) invokes real ffmpeg against avfoundation
+// :0 for 1 second at 16kHz. The current cassette was seeded via the
+// xrr file-cassette writer rather than recorded live: ffmpeg
+// avfoundation hangs awaiting macOS Microphone TCC permission in
+// non-interactive runs, which makes record-once unstable in CI. The
+// cassette captures the exec wire shape (argv + exit 0) exactly as a
+// successful real-world recording would.
+//
+// The argument-inspection tests stay on the existing CommandRunner
+// stub seam — they verify flag construction, not the I/O exchange xrr
+// models. The timestamped output path is normalised to <outpath>
+// before fingerprinting so re-recording on a different machine keys
+// to the same cassette.
+func TestFetchAgainstFfmpegCassette(t *testing.T) {
+	cassetteDir := "cassettes/ffmpeg"
+
+	mode := xrr.ModeReplay
+	if os.Getenv("XRR_RECORD") != "" {
+		if runtime.GOOS != "darwin" {
+			t.Skip("XRR_RECORD requires macOS for ffmpeg avfoundation")
+		}
+		if _, err := exec.LookPath("ffmpeg"); err != nil {
+			t.Skipf("ffmpeg not on PATH: %v", err)
+		}
+		mode = xrr.ModeRecord
+		if err := os.MkdirAll(cassetteDir, 0o755); err != nil {
+			t.Fatalf("mkdir cassettes: %v", err)
+		}
+	}
+	sess := xrr.NewSession(mode, xrr.NewFileCassette(cassetteDir))
+	xexecAdapter := xexec.NewAdapter()
+
+	runner := func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		// Normalise the timestamped output path (last arg) so
+		// fingerprints match across runs.
+		fpArgs := append([]string{name}, args...)
+		if len(fpArgs) > 0 {
+			fpArgs[len(fpArgs)-1] = "<outpath>"
+		}
+		req := &xexec.Request{Argv: fpArgs}
+		do := func() (xrr.Response, error) {
+			cmd := exec.CommandContext(ctx, name, args...)
+			out, runErr := cmd.CombinedOutput()
+			return &xexec.Response{
+				Stdout:   string(out),
+				ExitCode: xexec.ExitCodeFromError(runErr),
+			}, runErr
+		}
+		_, err := sess.Record(ctx, xexecAdapter, req, do)
+		return nil, err
+	}
+
+	dir := t.TempDir()
+	a := New(Config{Runner: runner, OutputDir: dir, MaxWindow: time.Second})
+	ctx := WithWindow(context.Background(), time.Second)
+	objs, err := a.Fetch(ctx)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(objs) != 1 {
+		t.Fatalf("Fetch returned %d, want 1", len(objs))
+	}
+	if objs[0].Type != "audio" {
+		t.Errorf("Type = %q, want audio", objs[0].Type)
+	}
+	if objs[0].Metadata["source"] != "mic" {
+		t.Errorf("Metadata.source = %v, want mic", objs[0].Metadata["source"])
+	}
 }

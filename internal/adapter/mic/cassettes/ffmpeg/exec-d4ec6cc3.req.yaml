@@ -1,0 +1,17 @@
+xrr: "1"
+adapter: exec
+fingerprint: d4ec6cc3
+recorded_at: "2026-05-06T08:29:16Z"
+payload:
+    argv:
+        - ffmpeg
+        - -y
+        - -f
+        - avfoundation
+        - -i
+        - :0
+        - -t
+        - "1"
+        - -ar
+        - "16000"
+        - <outpath>
