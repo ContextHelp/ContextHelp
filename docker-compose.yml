@@ -45,7 +45,7 @@ services:
 
   # ── Dev dpkms (hot-reload via air) ──────────────────────────────────────
   dpkms-dev:
-    image: golang:1.24-bookworm
+    image: golang:1.26-bookworm
     container_name: ctxt-dpkms-dev
     working_dir: /app
     command: >

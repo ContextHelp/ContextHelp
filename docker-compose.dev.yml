@@ -1,19 +1,25 @@
-version: '3.8'
-
-# Docker Compose configuration for optional development services
-# These services are NOT required for local development with SQLite
-# Use them when testing Postgres, Redis, or Qdrant integrations
+# Optional development side-services for testing non-default backends.
+# Default ctxt dev flow uses SQLite + local job queue + sqlite-vec — these
+# services are NOT required. Spin them up only when validating Postgres,
+# Redis, or Qdrant integrations.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up postgres
+#   docker compose -f docker-compose.dev.yml up redis qdrant
+#
+# Network parity: the `ctxt` network is shared with docker-compose.yml so
+# services started from either file can reach each other by service name.
 
 services:
-  # PostgreSQL - Alternative storage backend
+  # PostgreSQL — alternative storage backend
   postgres:
     image: postgres:16-alpine
-    container_name: contexthelp-postgres
+    container_name: ctxt-postgres-dev
     restart: unless-stopped
     environment:
-      POSTGRES_USER: contexthelp
-      POSTGRES_PASSWORD: dev_password
-      POSTGRES_DB: contexthelp
+      POSTGRES_USER: ctxt
+      POSTGRES_PASSWORD: ctxt
+      POSTGRES_DB: ctxt
       POSTGRES_INITDB_ARGS: '--encoding=UTF8 --lc-collate=C --lc-ctype=C'
     ports:
       - "5432:5432"
@@ -21,17 +27,17 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./data/migrations:/docker-entrypoint-initdb.d/migrations:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U contexthelp"]
+      test: ["CMD-SHELL", "pg_isready -U ctxt"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - contexthelp
+      - ctxt
 
-  # Redis - Distributed job queue and caching
+  # Redis — distributed job queue and caching
   redis:
     image: redis:7-alpine
-    container_name: contexthelp-redis
+    container_name: ctxt-redis-dev
     restart: unless-stopped
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
@@ -44,12 +50,12 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - contexthelp
+      - ctxt
 
-  # Qdrant - Vector search database
+  # Qdrant — vector search database
   qdrant:
     image: qdrant/qdrant:v1.7.0
-    container_name: contexthelp-qdrant
+    container_name: ctxt-qdrant-dev
     restart: unless-stopped
     ports:
       - "6333:6333"  # REST API
@@ -65,7 +71,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - contexthelp
+      - ctxt
 
 volumes:
   postgres_data:
@@ -76,5 +82,9 @@ volumes:
     driver: local
 
 networks:
-  contexthelp:
+  ctxt:
+    name: ctxt
     driver: bridge
+    # external: true here would attach to docker-compose.yml's `ctxt`
+    # network when both stacks are up. Compose auto-creates if absent;
+    # we leave external out so this file works standalone too.
