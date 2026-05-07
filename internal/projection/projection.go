@@ -69,6 +69,17 @@ func ProjectIndex(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
 			}
 		}
 	}
+	// T-0565: if the graph carries Tag/Mention nodes only (e.g. text.short
+	// pipeline runs no markdown_parser/sectioner), `parts` is empty and
+	// FTSBody would be too — making the document invisible to FTS even
+	// though TextContent holds the full body. Fall back to flat text in
+	// that case while keeping the graph-derived Tags and Mentions.
+	if len(parts) == 0 {
+		flat := flatIndexProjection(ko)
+		flat.Tags = tags
+		flat.Mentions = mentions
+		return flat
+	}
 	body := strings.Join(parts, " ")
 	return pluginapi.IndexProjection{
 		FTSBody:       body,

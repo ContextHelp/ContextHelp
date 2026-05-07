@@ -3,6 +3,7 @@ package retrieval
 import (
 	"context"
 
+	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
@@ -88,7 +89,8 @@ func (w *Workflow) ragRetrieve(
 			return nil
 		}
 		// No vector — node-aware FTS with empty query falls back to list filtered by type.
-		results, err := w.store.Objects().FTSSearchNodeAware(ctx, state.ActiveQuery, f, *nf)
+		// Sanitise via SafeFTSQuery (T-0565) so user punctuation never reaches MATCH raw.
+		results, err := w.store.Objects().FTSSearchNodeAware(ctx, search.SafeFTSQuery(state.ActiveQuery), f, *nf)
 		if err != nil {
 			return err
 		}

@@ -759,9 +759,11 @@ func (s *Service) FindByText(ctx context.Context, query string, limit int) ([]*s
 }
 
 // FindByTextFiltered is like FindByText but accepts a full ObjectFilter
-// for metadata facet filtering.
+// for metadata facet filtering. The query is sanitised through SafeFTSQuery
+// (T-0565) so user-supplied punctuation never reaches FTS5 MATCH as
+// operator syntax.
 func (s *Service) FindByTextFiltered(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	return s.Store.Objects().FTSSearch(ctx, query, filter)
+	return s.Store.Objects().FTSSearch(ctx, search.SafeFTSQuery(query), filter)
 }
 
 // CancelJob cancels a pending or running job.
@@ -1669,7 +1671,12 @@ func (s *Service) HybridSearchExplainFiltered(ctx context.Context, query string,
 	}
 
 	// Expand FTS query with concept aliases; vector leg uses the original query.
-	ftsQuery := search.ExpandQuery(ctx, query, newStorageAliasResolver(s.Store.Aliases(), ""))
+	// SafeFTSQuery sanitises after expansion (aliases are bare terms too) so
+	// user input — and any alias-injected punctuation — never reaches FTS5
+	// MATCH as raw operator syntax (T-0565).
+	ftsQuery := search.SafeFTSQuery(
+		search.ExpandQuery(ctx, query, newStorageAliasResolver(s.Store.Aliases(), "")),
+	)
 
 	// Build per-leg filters: inherit metadata facets but override pool size.
 	ftsFilter := filter

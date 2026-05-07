@@ -8,6 +8,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,6 +70,81 @@ func TestFindByText_UsesFTS(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, "fbt-1", results[0].ID)
+}
+
+// TestFindByText_HyphenatedQueryDoesNotCrash is the T-0565 service-level
+// regression test: `ctxt find credit-eligible` previously surfaced
+// "no such column: eligible" because the hyphen was passed unsanitised
+// into FTS5 MATCH. With SafeFTSQuery wired into FindByTextFiltered, the
+// hyphen becomes a token boundary and the query succeeds.
+func TestFindByText_HyphenatedQueryDoesNotCrash(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	obj := makeSearchObject("fbt-hy-1", []string{"documents that are credit eligible for activate"}, "")
+	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	rebuildFTS(t, svc)
+
+	results, err := svc.FindByText(ctx, "credit-eligible", 10)
+	require.NoError(t, err, "hyphenated query must not crash FTS")
+	require.Len(t, results, 1)
+	assert.Equal(t, "fbt-hy-1", results[0].ID)
+}
+
+// TestFindByText_GraphWithoutSummaryIndexesListItems is the second half of
+// the T-0565 fix: a KO whose graph has only Tag / EntityMention nodes
+// (e.g. a doc routed through text.short, which runs no markdown_parser /
+// sectioner) used to produce an empty projected_fts_body — so
+// `ctxt find SageMaker` against a 250-line bullet list returned 0 hits
+// even though TextContent stored every item. ProjectIndex now falls back
+// to flat fields when the graph lacks Summary/Section nodes; this test
+// proves the round-trip works.
+func TestFindByText_GraphWithoutSummaryIndexesListItems(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	bulletList := `Eligible AWS services for Activate credits:
+
+- AWS SageMaker
+- AWS Lambda
+- VMware Cloud on AWS
+- Amazon Bedrock`
+
+	// KO with text.short-style graph: only Tag + EntityMention nodes,
+	// no Summary or Section. Body lives in TextContent only.
+	const koID = "fbt-list-1"
+	obj := &storage.KnowledgeObject{
+		ID:          koID,
+		Type:        "text",
+		Subtype:     "long",
+		TextContent: bulletList,
+		RawContent:  bulletList,
+		Graph: &pluginapi.ObjectGraph{
+			Nodes: []pluginapi.GraphNode{
+				{
+					ID:       pluginapi.NewNodeID(koID, pluginapi.NodeTypeTag, 0),
+					NodeType: pluginapi.NodeTypeTag,
+					Label:    "aws",
+					Content:  "aws",
+				},
+				{
+					ID:       pluginapi.NewNodeID(koID, pluginapi.NodeTypeEntityMention, 0),
+					NodeType: pluginapi.NodeTypeEntityMention,
+					Content:  "@vendor.aws",
+				},
+			},
+		},
+	}
+	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	rebuildFTS(t, svc)
+
+	for _, term := range []string{"SageMaker", "VMware", "Bedrock"} {
+		results, err := svc.FindByText(ctx, term, 10)
+		require.NoError(t, err, "FindByText(%q)", term)
+		require.NotEmpty(t, results,
+			"FindByText(%q) returned 0 results — list item not indexed (T-0565 regression)", term)
+		assert.Equal(t, "fbt-list-1", results[0].ID, "term=%q", term)
+	}
 }
 
 func TestHybridSearch_ErrorWhenNoProvider_FallbackDisabled(t *testing.T) {

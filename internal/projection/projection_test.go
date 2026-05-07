@@ -127,6 +127,35 @@ func TestProjectIndex_FallbackToFlatFields(t *testing.T) {
 	}
 }
 
+// TestProjectIndex_GraphWithoutSummaryStillIndexesText covers the T-0565 bug:
+// pipelines like text.short produce a graph that has Tag and EntityMention
+// nodes but no Summary or Section nodes. Before the fix, ProjectIndex took
+// the graph branch and produced an empty FTSBody — the document was invisible
+// to FTS even though TextContent and RawContent held the full body.
+func TestProjectIndex_GraphWithoutSummaryStillIndexesText(t *testing.T) {
+	ko := &pluginapi.KnowledgeObject{
+		ID:          "obj-7",
+		TextContent: "- AWS SageMaker\n- AWS Lambda\n- VMware Cloud",
+		Graph: &pluginapi.ObjectGraph{
+			Nodes: []pluginapi.GraphNode{
+				{NodeType: pluginapi.NodeTypeTag, Label: "aws", Content: "aws"},
+				{NodeType: pluginapi.NodeTypeEntityMention, Content: "@vendor.aws"},
+			},
+		},
+	}
+	idx := projection.ProjectIndex(ko)
+	if !contains(idx.FTSBody, "SageMaker") {
+		t.Errorf("FTSBody missing list item — graph-without-summary case must fall back to TextContent\nFTSBody=%q", idx.FTSBody)
+	}
+	if !contains(idx.FTSBody, "VMware") {
+		t.Errorf("FTSBody missing list item: %q", idx.FTSBody)
+	}
+	// Tags from the graph must still be picked up (no regression).
+	if len(idx.Tags) != 1 || idx.Tags[0].Label != "aws" {
+		t.Errorf("tags from graph lost: got %+v", idx.Tags)
+	}
+}
+
 func contains(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(s) > 0 && containsStr(s, sub))
 }

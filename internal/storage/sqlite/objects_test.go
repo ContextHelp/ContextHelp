@@ -514,6 +514,29 @@ func TestFTSSearch(t *testing.T) {
 	assert.Empty(t, results)
 }
 
+// TestFTSSearch_HyphenatedQuerySanitised exercises the T-0565 hyphen-crash
+// regression: before the fix, `credit-eligible` reached SQLite FTS5 raw,
+// where `-` was parsed as NOT / column qualifier and produced
+// "no such column: eligible". The service now passes user input through
+// search.SafeFTSQuery before MATCH; this test calls FTSSearch with the
+// already-sanitised expression and confirms FTS5 accepts it cleanly.
+func TestFTSSearch_HyphenatedQuerySanitised(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj := makeFTSObject("fts-hy-1", "article", "documents that are credit eligible")
+	require.NoError(t, d.Objects().Create(ctx, obj))
+
+	_, err := d.db.ExecContext(ctx, "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")
+	require.NoError(t, err)
+
+	// The sanitised form a real client now sends.
+	results, err := d.Objects().FTSSearch(ctx, `"credit" "eligible"`, storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err, "sanitised FTS expression must not crash MATCH")
+	require.Len(t, results, 1)
+	assert.Equal(t, "fts-hy-1", results[0].ID)
+}
+
 func TestCosineSimilarity(t *testing.T) {
 	assert.InDelta(t, 1.0, cosineSimilarity([]float32{1, 0, 0}, []float32{1, 0, 0}), 0.0001)
 	assert.InDelta(t, 0.0, cosineSimilarity([]float32{1, 0, 0}, []float32{0, 1, 0}), 0.0001)
