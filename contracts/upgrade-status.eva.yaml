@@ -1,0 +1,54 @@
+# `ctxt upgrade status` output contract — Tier-1 deterministic.
+#
+# Locks the JSON shape returned by `ctxt upgrade status` (ADR-070 §5).
+# The shape mirrors internal/upgrade.Status (Go) and the `Upgrade` envelope
+# embedded in `/healthz`. Operators, monitoring scripts, and the in-progress
+# CLI banner middleware all consume this shape — a regression here breaks
+# every consumer at once.
+#
+# State machine:
+#   idle ──Start──▶ in_progress ──Tick──▶ in_progress
+#                       │              \──Complete──▶ idle
+#                       └─────Fail──────▶ failed ──Start──▶ in_progress
+#
+# `awaiting_consent` is reserved for bucket-3 (T-0581+); included in the
+# enum for forward compatibility.
+#
+# Pass condition: input MUST be a JSON object whose `state` is one of the
+# four enumerated values; when state ≠ "idle", the bucket field MUST be set
+# to one of the three ADR-070 buckets.
+name: ctxt-upgrade-status-0.1
+provider: ctxt
+evaluators:
+  - name: json_schema_valid
+    mode: binary
+    schema:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [idle, in_progress, awaiting_consent, failed]
+        bucket:
+          type: string
+          enum: [reindex_auto, reingest_selective, reingest_all]
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+        done:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+        eta_seconds:
+          type: integer
+          minimum: 0
+        started_at:
+          # RFC3339 timestamp; empty string allowed when state is "idle"
+          # (the field is omitempty on the Go side and absent in steady-state).
+          type: string
+        last_error:
+          type: string

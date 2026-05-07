@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate test-docker lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks vuln-scan trivy-scan
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate test-docker lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks vuln-scan trivy-scan eva check
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -120,6 +120,27 @@ test-docker:
 		-e GOWORK=off \
 		ctxt/test:latest \
 		go test $(BUILD_TAGS) -race -count=1 ./...
+
+## eva: Run hop.top/eva contract tests against the recorded fixture set
+##
+## Tier-1 deterministic JSON-Schema contracts for operator-facing JSON
+## shapes (ADR-070 §6, T-0586). Contracts live under contracts/*.eva.yaml
+## and are paired with one or more fixtures under
+## test/integration/testdata/eva-fixtures/<contract-base>*.json.
+##
+## Requires the eva CLI on PATH (https://github.com/hop-top/eva). Override
+## with EVA_BIN=/path/to/eva when running from a non-standard install. CI
+## pins the version in .github/workflows/eva-contracts.yml.
+eva:
+	@echo "Running eva contract tests..."
+	@./scripts/run-eva-contracts.sh
+
+## check: Run the pre-merge gate (test + eva contracts)
+##
+## Mirrors the CI default lane: every commit must pass tests AND every
+## operator-facing JSON shape must conform to its eva contract. New
+## contracts added under contracts/*.eva.yaml are picked up automatically.
+check: test eva
 
 ## vuln-scan: Run govulncheck + nancy dependency vulnerability scans
 vuln-scan:

@@ -1,0 +1,69 @@
+# `ctxt embeddings list` output contract — Tier-1 deterministic.
+#
+# Locks the JSON shape returned by `ctxt embeddings list` (ADR-071 §"Operator-
+# facing CLI surface"). Authored from the ADR-071 data-model spec; T-0582 is
+# delivering the CLI implementation in parallel and will conform to this
+# contract. If the CLI lands with drift, this contract fails CI and the
+# release-notes operator-impact row notes the tightening pass.
+#
+# Data model — one row per registered embedding model (ADR-071 §"Data model"):
+#   - model_id      e.g. "openai-text-embedding-3-small@2025-01-15"
+#   - provider      e.g. "openai", "ollama", "voyage"
+#   - dimension     positive integer
+#   - is_default    boolean — at most one row may be true (partial unique
+#                   index enforces this server-side; this contract enforces
+#                   the wire-shape, not the cardinality invariant)
+#   - registered_at RFC3339 timestamp
+#   - deprecated_at RFC3339 timestamp or null/absent
+#   - coverage      0.0 .. 1.0 — fraction of distinct objects that have an
+#                   embedding row under this model. Computed at query time.
+#
+# Pass condition: input MUST be a JSON object with a `models` array of zero
+# or more entries, each conforming to the row schema.
+#
+# T-0582-coordination note: the at-most-one-default invariant is NOT
+# enforceable via JSON Schema (it's a cardinality constraint across rows).
+# The CLI must surface this via SQL constraint + integration test, not
+# this contract. The schema below requires `is_default` to be a boolean
+# but does not constrain the count.
+name: ctxt-embeddings-list-0.1
+provider: ctxt
+evaluators:
+  - name: json_schema_valid
+    mode: binary
+    schema:
+      type: object
+      required: [models]
+      additionalProperties: false
+      properties:
+        models:
+          type: array
+          items:
+            type: object
+            required: [model_id, provider, dimension, is_default, registered_at, coverage]
+            additionalProperties: false
+            properties:
+              model_id:
+                type: string
+                minLength: 1
+              provider:
+                type: string
+                minLength: 1
+              dimension:
+                type: integer
+                minimum: 1
+              is_default:
+                type: boolean
+              registered_at:
+                type: string
+                minLength: 1
+              deprecated_at:
+                # Nullable per ADR-071 (`TEXT` column, nullable). Absent in
+                # JSON when not deprecated; explicit null also accepted so
+                # operators can distinguish "field is set" from "row predates
+                # the column". String form is RFC3339.
+                type: [string, "null"]
+              coverage:
+                type: number
+                minimum: 0
+                maximum: 1

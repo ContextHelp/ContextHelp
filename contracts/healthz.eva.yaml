@@ -1,0 +1,106 @@
+# `/healthz` envelope contract — Tier-1 deterministic.
+#
+# Locks the JSON shape returned by GET /healthz on dpkms (ADR-070 §5).
+# Mirrors internal/server/http.HealthzEnvelope. The envelope is INTENTIONALLY
+# EXTENSIBLE — new top-level fields are tolerated as additions; this contract
+# enforces the floor (required keys + value types) without forbidding future
+# unknowns. Third-party monitors parse this payload; once shipped, the floor
+# is locked.
+#
+# `health` flips to "upgrading" when the embedded `upgrade` envelope reports
+# state == "in_progress". Both signals must agree.
+#
+# Pass condition: input MUST be a JSON object containing the four required
+# top-level keys (health, version, uptime_seconds, checks) with conformant
+# inner shapes. The optional `upgrade` envelope, when present, must validate
+# against the same shape used in upgrade-status.eva.yaml.
+name: ctxt-healthz-envelope-0.1
+provider: dpkms
+evaluators:
+  - name: json_schema_valid
+    mode: binary
+    schema:
+      type: object
+      required: [health, version, uptime_seconds, checks]
+      properties:
+        health:
+          type: string
+          enum: [healthy, degraded, failed, upgrading]
+        version:
+          type: string
+        uptime_seconds:
+          type: integer
+          minimum: 0
+        checks:
+          type: object
+          required: [process, rest_api, grpc_api, db, queue, watchers]
+          properties:
+            process:
+              type: string
+            rest_api:
+              type: string
+            grpc_api:
+              type: string
+            db:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                last_write:
+                  type: string
+            queue:
+              type: object
+              required: [pending, running, failed]
+              properties:
+                pending:
+                  type: integer
+                  minimum: 0
+                running:
+                  type: integer
+                  minimum: 0
+                failed:
+                  type: integer
+                  minimum: 0
+            watchers:
+              type: array
+              items:
+                type: object
+                required: [name, subscriptions]
+                properties:
+                  name:
+                    type: string
+                  subscriptions:
+                    type: integer
+                    minimum: 0
+                  last_event:
+                    type: string
+        upgrade:
+          # Same shape as upgrade-status.eva.yaml; replicated inline so the
+          # contract is self-contained (eva contracts are not yet composable).
+          type: object
+          required: [state]
+          properties:
+            state:
+              type: string
+              enum: [idle, in_progress, awaiting_consent, failed]
+            bucket:
+              type: string
+              enum: [reindex_auto, reingest_selective, reingest_all]
+            progress:
+              type: number
+              minimum: 0
+              maximum: 1
+            done:
+              type: integer
+              minimum: 0
+            total:
+              type: integer
+              minimum: 0
+            eta_seconds:
+              type: integer
+              minimum: 0
+            started_at:
+              type: string
+            last_error:
+              type: string

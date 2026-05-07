@@ -1,0 +1,35 @@
+{
+  "health": "upgrading",
+  "version": "0.1.0-dev",
+  "uptime_seconds": 1908,
+  "checks": {
+    "process": "ok",
+    "rest_api": "ok",
+    "grpc_api": "ok",
+    "db": {
+      "status": "ok",
+      "last_write": "2026-05-07T14:23:08Z"
+    },
+    "queue": {
+      "pending": 0,
+      "running": 1,
+      "failed": 0
+    },
+    "watchers": [
+      {
+        "name": "clipboard",
+        "subscriptions": 1,
+        "last_event": "2026-05-07T14:22:47Z"
+      }
+    ]
+  },
+  "upgrade": {
+    "state": "in_progress",
+    "bucket": "reingest_selective",
+    "progress": 0.62,
+    "done": 124,
+    "total": 200,
+    "eta_seconds": 47,
+    "started_at": "2026-05-07T14:23:11Z"
+  }
+}

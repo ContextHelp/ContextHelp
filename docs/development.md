@@ -250,6 +250,73 @@ test/
 └── fixtures/      # Shared test data
 ```
 
+### Operator-contract tests (eva)
+
+Operator-facing JSON shapes — `ctxt upgrade status` output, the `/healthz`
+envelope, the `staleness_warning` field on search responses, `ctxt
+embeddings list` output — are locked by **Tier-1 deterministic contracts**
+authored against [`hop.top/eva`](https://github.com/hop-top/eva). The
+contract files live at:
+
+```
+contracts/
+├── upgrade-status.eva.yaml      # ctxt upgrade status JSON shape (ADR-070 §5)
+├── healthz.eva.yaml             # /healthz envelope (ADR-070 §5)
+├── search-staleness.eva.yaml    # staleness_warning field on search responses
+└── embeddings-list.eva.yaml     # ctxt embeddings list output (ADR-071)
+```
+
+Each contract is paired with one or more JSON fixtures under
+`test/integration/testdata/eva-fixtures/`. The naming convention is
+`<contract-base>*.json` so a single contract can lock multiple states
+(e.g. `upgrade-status-idle.json` + `upgrade-status-in-progress.json`).
+
+**Rationale** — see ADR-070 §6 and the "Why xrr + eva + ben specifically"
+rationale section. Short version: the same JSON is consumed by humans, by
+`osascript` for notifications, and by web dashboards. eva contracts catch
+shape regressions before they reach an operator's terminal — a missing
+key, a renamed field, an enum value that flipped from `in_progress` to
+`inProgress` all fail the build.
+
+**Running locally**:
+
+```bash
+# Run all contracts against their fixtures
+make eva
+
+# Or run the script directly (useful when iterating)
+./scripts/run-eva-contracts.sh
+
+# Run as part of the pre-merge gate (test + eva)
+make check
+```
+
+Requires the `eva` CLI on PATH. Install via `pipx install eva` (once a
+version with `eva run --contract` ships) or from source per the pinned
+ref in `.github/workflows/eva-contracts.yml`. Override the binary with
+`EVA_BIN=/path/to/eva make eva` when debugging against a local build.
+
+**Adding a new contract**:
+
+1. Author `contracts/<name>.eva.yaml`. Use `json_schema_valid` for Tier-1
+   deterministic shape locks; use additional evaluators (regex, contains,
+   …) when the shape encodes free-text fields with a known invariant.
+2. Record one or more fixtures at
+   `test/integration/testdata/eva-fixtures/<name>*.json`. Capture against
+   the live CLI when the surface exists; synthesize from the spec when it
+   doesn't (and tighten on land).
+3. The CI workflow (`.github/workflows/eva-contracts.yml`) and `make eva`
+   pick the new contract up automatically — no further wiring required.
+
+**Why eva specifically, not a hand-rolled JSON-Schema test?** eva ships a
+single-source-of-truth dispatcher that's shared with the eva gateway, so a
+contract that passes locally is the same contract a future eva-served API
+gateway would enforce at request time. The marginal cost is one YAML file
+per shape; the marginal reward is shape-stability across CLI consumers,
+docs, and gateway middleware in lockstep.
+
+
+
 ### Running Tests
 
 ```bash
