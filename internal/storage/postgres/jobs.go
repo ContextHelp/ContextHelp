@@ -34,7 +34,8 @@ func (s *JobStore) Create(ctx context.Context, job *storage.Job) error {
 
 // encodeUserStrings marshals a caller-asserted string slice to JSON for
 // columns like user_mentions and user_hints. Empty slice → empty string
-// (DB default; matches the column DEFAULT ” set in the migrations).
+// (DB default is empty string; matches the column DEFAULT clause set
+// in the migrations).
 func encodeUserStrings(m []string) string {
 	if len(m) == 0 {
 		return ""
