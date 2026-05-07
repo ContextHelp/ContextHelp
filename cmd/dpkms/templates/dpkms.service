@@ -1,0 +1,16 @@
+[Unit]
+Description=dpkms daemon (ContextHelp Decentralized Personal Knowledge Management Substrate)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={{.BinaryPath}} serve
+Restart=always
+RestartSec={{.RestartSec}}
+StandardOutput=append:{{.StdoutPath}}
+StandardError=append:{{.StderrPath}}
+WorkingDirectory={{.WorkingDirectory}}
+Environment=HOME={{.HomeDir}}
+
+[Install]
+WantedBy=default.target
