@@ -183,8 +183,9 @@ func captureOnce(cmd *cobra.Command, args []string) error {
 	wait, _ := cmd.Flags().GetBool("wait")
 	inbox, _ := cmd.Flags().GetBool("inbox")
 
-	// Build request body. The server-side JSON contract still uses `tag` and
-	// `mentions`; we only renamed the CLI flag (--hint/--mention).
+	// Build request body. Server-side JSON contract uses `hints` (T-0573)
+	// and `mentions` arrays — both are caller-asserted user inputs that
+	// merge with auto-extracted entries during pipeline execution.
 	reqBody := map[string]any{
 		"content":    content,
 		"type":       contentType,
@@ -196,9 +197,7 @@ func captureOnce(cmd *cobra.Command, args []string) error {
 		"source_key": sourceKey,
 	}
 	if len(hints) > 0 {
-		// `tag` is the server-side field name (legacy); "hints" on the wire
-		// would require a server-side change. Track 1 is client-side only.
-		reqBody["tag"] = strings.Join(hints, ",")
+		reqBody["hints"] = hints
 	}
 	if len(mentions) > 0 {
 		reqBody["mentions"] = mentions
@@ -263,7 +262,7 @@ func postInboxCapture(
 		body["inbox_note"] = note
 	}
 	if len(hints) > 0 {
-		body["hints"] = strings.Join(hints, ",")
+		body["hints"] = hints
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {

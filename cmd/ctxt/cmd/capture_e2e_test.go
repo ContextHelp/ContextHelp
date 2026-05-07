@@ -226,8 +226,9 @@ func TestE2ECaptureHintMention(t *testing.T) {
 		t.Fatalf("exit=%d stderr=%q", exit, errOut)
 	}
 	recs := f.recordsFor("/api/v1/analyze")
-	if got := recs[0].Body["tag"]; got != "ux,research" {
-		t.Errorf("body.tag=%v want \"ux,research\"", got)
+	hs, _ := recs[0].Body["hints"].([]any)
+	if len(hs) != 2 || hs[0] != "ux" || hs[1] != "research" {
+		t.Errorf("body.hints=%v want [\"ux\", \"research\"]", hs)
 	}
 	mens, _ := recs[0].Body["mentions"].([]any)
 	if len(mens) != 1 || mens[0] != "@project.alpha" {

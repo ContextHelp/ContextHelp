@@ -167,8 +167,9 @@ func TestCaptureHintAndMentionFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("capture: %v", err)
 	}
-	if got, _ := recs[0].Body["tag"].(string); got != "ux,research" {
-		t.Errorf("body.tag = %q, want \"ux,research\" (--hint maps to tag on the wire)", got)
+	hs, _ := recs[0].Body["hints"].([]any)
+	if len(hs) != 2 || hs[0] != "ux" || hs[1] != "research" {
+		t.Errorf("body.hints = %v, want [\"ux\", \"research\"]", hs)
 	}
 	mens, _ := recs[0].Body["mentions"].([]any)
 	if len(mens) != 2 {
@@ -228,8 +229,9 @@ func TestCaptureInboxRoutesToInboxEndpoint(t *testing.T) {
 	if note, _ := recs[0].Body["inbox_note"].(string); note != "kickoff" {
 		t.Errorf("body.inbox_note = %q, want \"kickoff\"", note)
 	}
-	if hints, _ := recs[0].Body["hints"].(string); hints != "research" {
-		t.Errorf("body.hints = %q, want \"research\"", hints)
+	hs, _ := recs[0].Body["hints"].([]any)
+	if len(hs) != 1 || hs[0] != "research" {
+		t.Errorf("body.hints = %v, want [\"research\"]", hs)
 	}
 }
 

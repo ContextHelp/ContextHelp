@@ -51,7 +51,7 @@ func init() {
 	// Register flags on analyzeCmd for `ctxt analyze --help`.
 	analyzeCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")
 	analyzeCmd.Flags().StringP("file", "f", "", "read input from file")
-	analyzeCmd.Flags().String("hint", "", "influence tagging hints (e.g., \"#ux #bug\")")
+	analyzeCmd.Flags().StringSlice("hint", nil, "tagging hints attached to the captured object (repeatable, CSV)")
 	analyzeCmd.Flags().String("mention", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
 	analyzeCmd.Flags().String("pipeline", "", "force specific pipeline")
 	analyzeCmd.Flags().String("language", "", "input language override")
@@ -67,7 +67,7 @@ func init() {
 	// without leaking these flags into every subcommand's help.
 	rootCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")
 	rootCmd.Flags().StringP("file", "f", "", "read input from file")
-	rootCmd.Flags().String("hint", "", "influence tagging hints (e.g., \"#ux #bug\")")
+	rootCmd.Flags().StringSlice("hint", nil, "tagging hints attached to the captured object (repeatable, CSV)")
 	rootCmd.Flags().String("mention", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
 	rootCmd.Flags().String("pipeline", "", "force specific pipeline")
 	rootCmd.Flags().String("language", "", "input language override")
@@ -164,6 +164,15 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		userMentions = strings.Fields(mentionsFlag)
 	}
 
+	// T-0573: ship `--hint research,ux` (repeatable, CSV) through to the
+	// server as a JSON array. service.Analyze pre-populates draft.Tags
+	// with Source:"user"; the auto-tagger merges with these rather
+	// than overwriting.
+	var userHints []string
+	if f := cmd.Flags().Lookup("hint"); f != nil && f.Changed {
+		userHints, _ = cmd.Flags().GetStringSlice("hint")
+	}
+
 	// Use actual source value; "argument"/"stdin"/"clipboard"/"file" are not
 	// fetchable URLs — downstream steps (url_fetcher) must validate before use.
 	reqSource := source
@@ -181,6 +190,9 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	}
 	if len(userMentions) > 0 {
 		reqBody["mentions"] = userMentions
+	}
+	if len(userHints) > 0 {
+		reqBody["hints"] = userHints
 	}
 
 	body, err := json.Marshal(reqBody)
