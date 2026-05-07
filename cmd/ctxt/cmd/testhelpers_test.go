@@ -25,6 +25,17 @@ func setupTestDB(t *testing.T) *testDB {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
+	// Hermeticize env so the CLI's instance-state lookup (RunDir → XDG_DATA_HOME)
+	// can't read the developer's real ~/.local/share/contexthelp/run/current-instance,
+	// which would silently override --config and route the test at the production DB
+	// (T-0186: data-safety hazard, not just a test-correctness bug).
+	//
+	// Do NOT set CTXT_DATA_DIR: it's bound to storage.path via viper.BindEnv, so it
+	// would clobber the test's --config storage.path with the literal env value.
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("HOME", dir)
+
 	driver, err := sqlite.New(dbPath)
 	if err != nil {
 		t.Fatalf("new sqlite: %v", err)
