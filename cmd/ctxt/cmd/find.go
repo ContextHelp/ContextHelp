@@ -181,6 +181,9 @@ func runFind(cmd *cobra.Command, args []string) error {
 	}
 
 	var results []*storage.KnowledgeObject
+	// diagnostics is populated only by hybrid mode. fts/vector modes leave it
+	// at zero values (CandidateCount = 0) so JSON output stays uniform.
+	var diagnostics service.SearchDiagnostics
 
 	switch mode {
 	case "vector":
@@ -197,7 +200,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 		factory := providers.NewFactory(cfg.Providers, nil)
 		ep := factory.Embedding()
 		ep, originalVec := blendSessionContext(ctx, query, ep, sessionState)
-		results, err = svc.HybridSearchFiltered(ctx, query, filter, ep, searchCfg)
+		results, diagnostics, err = svc.HybridSearchFilteredWithDiagnostics(ctx, query, filter, ep, searchCfg)
 		if err == nil && sessionState != nil && originalVec != nil {
 			sessionState.PushQueryVector(originalVec)
 		}
@@ -213,11 +216,12 @@ func runFind(cmd *cobra.Command, args []string) error {
 		if fErr == nil {
 			if isJSONOutput() {
 				return outputJSON(os.Stdout, map[string]any{
-					"objects": results,
-					"total":   len(results),
-					"query":   query,
-					"mode":    mode,
-					"facets":  counts,
+					"objects":     results,
+					"total":       len(results),
+					"query":       query,
+					"mode":        mode,
+					"facets":      counts,
+					"diagnostics": diagnostics,
 				})
 			}
 			fmt.Printf("Facets (metadata type):\n")
@@ -230,16 +234,29 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, map[string]any{
-			"objects": results,
-			"total":   len(results),
-			"query":   query,
-			"mode":    mode,
+			"objects":     results,
+			"total":       len(results),
+			"query":       query,
+			"mode":        mode,
+			"diagnostics": diagnostics,
 		})
 	}
 
 	fmt.Printf("Search [%s]: %q (%d results)\n\n", mode, query, len(results))
 
 	if len(results) == 0 {
+		// T-0574: distinguish "nothing matched any token" from "matches existed
+		// but the reranker dropped them all under MinScore". The first surfaces
+		// suggestions; the second surfaces threshold context.
+		if diagnostics.CandidateCount > 0 && diagnostics.BelowThresholdCount > 0 {
+			fmt.Printf("No results above threshold (%.2f).\n", diagnostics.Threshold)
+			fmt.Printf("Matched %d candidate%s, all below threshold. Top below-threshold score: %.2f.\n",
+				diagnostics.CandidateCount,
+				pluralS(diagnostics.CandidateCount),
+				diagnostics.TopBelowThresholdScore)
+			fmt.Println("Run with --explain to see which docs were dropped.")
+			return nil
+		}
 		printFindSuggestions(cmd, ctx, svc, query)
 		return nil
 	}
@@ -262,23 +279,35 @@ func runFindExplain(cmd *cobra.Command, ctx context.Context, svc *service.Servic
 	factory := providers.NewFactory(cfg.Providers, nil)
 	ep := factory.Embedding()
 
-	explainResults, err := svc.HybridSearchExplain(ctx, query, limit, ep, searchCfg)
+	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(ctx, query, storage.ObjectFilter{Limit: limit}, ep, searchCfg)
 	if err != nil {
 		return fmt.Errorf("find explain (%s): %w", mode, err)
 	}
+	explainResults := envelope.Results
+	diagnostics := envelope.Diagnostics
 
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, map[string]any{
-			"results": explainResults,
-			"total":   len(explainResults),
-			"query":   query,
-			"mode":    mode,
+			"results":     explainResults,
+			"total":       len(explainResults),
+			"query":       query,
+			"mode":        mode,
+			"diagnostics": diagnostics,
 		})
 	}
 
 	fmt.Printf("Search [%s] --explain: %q (%d results)\n\n", mode, query, len(explainResults))
 
 	if len(explainResults) == 0 {
+		// T-0574: surface threshold context when candidates surfaced but were
+		// all dropped below MinScore.
+		if diagnostics.CandidateCount > 0 && diagnostics.BelowThresholdCount > 0 {
+			fmt.Printf("No results above threshold (%.2f).\n", diagnostics.Threshold)
+			fmt.Printf("Matched %d candidate%s, all below threshold. Top below-threshold score: %.2f.\n",
+				diagnostics.CandidateCount,
+				pluralS(diagnostics.CandidateCount),
+				diagnostics.TopBelowThresholdScore)
+		}
 		return nil
 	}
 
@@ -291,7 +320,28 @@ func runFindExplain(cmd *cobra.Command, ctx context.Context, svc *service.Servic
 			b.Total, b.FTS, b.Vector, b.MentionBoost, b.GraphRelevance)
 		fmt.Println()
 	}
+
+	if diagnostics.BelowThresholdCount > 0 {
+		// T-0574: we surface the count + top dropped score here. Listing each
+		// dropped candidate's per-leg breakdown is a follow-up (would need
+		// HybridSearchExplainFilteredWithDiagnostics to also return the
+		// dropped ranking.Result slice; out of scope for this task).
+		fmt.Printf("(%d additional candidate%s dropped below threshold %.2f; top below-threshold score: %.2f)\n",
+			diagnostics.BelowThresholdCount,
+			pluralS(diagnostics.BelowThresholdCount),
+			diagnostics.Threshold,
+			diagnostics.TopBelowThresholdScore)
+	}
 	return nil
+}
+
+// pluralS returns "s" for n != 1, otherwise "". Helper for grammatical
+// pluralisation in find diagnostics output.
+func pluralS(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // blendSessionContext embeds the query, blends with session context if available,

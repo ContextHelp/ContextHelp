@@ -110,6 +110,34 @@ type HybridResult struct {
 	DocumentView pluginapi.DocumentProjection `json:"document_view"`
 }
 
+// SearchDiagnostics captures information about candidates that surfaced from
+// the FTS or vector legs but were dropped by the reranker's MinScore threshold
+// (T-0574). It lets callers distinguish "no docs matched any token" from
+// "matches existed but all fell below threshold".
+//
+// All fields are populated on every search call (zero values are valid).
+type SearchDiagnostics struct {
+	// CandidateCount is the number of unique objects that surfaced from the
+	// FTS or vector legs before reranker filtering.
+	CandidateCount int `json:"candidate_count"`
+	// BelowThresholdCount is the number of candidates dropped by the
+	// reranker because their total score was strictly below Threshold.
+	BelowThresholdCount int `json:"below_threshold_count"`
+	// TopBelowThresholdScore is the highest total score among the dropped
+	// candidates. Zero when BelowThresholdCount is zero.
+	TopBelowThresholdScore float64 `json:"top_below_threshold_score,omitempty"`
+	// Threshold is the MinScore threshold applied during this search call.
+	Threshold float64 `json:"threshold"`
+}
+
+// HybridSearchResult is the wrapper envelope for HybridSearchExplain calls.
+// It pairs the post-threshold result list with diagnostics covering candidates
+// that surfaced from retrieval but were dropped by the reranker (T-0574).
+type HybridSearchResult struct {
+	Results     []HybridResult    `json:"results"`
+	Diagnostics SearchDiagnostics `json:"diagnostics"`
+}
+
 // InboxQueueItem is a row in the combined inbox queue view.
 // Represents either a job (pending/failed) or a raw object.
 type InboxQueueItem struct {

@@ -200,6 +200,79 @@ func TestHybridSearchExplain_ErrorWhenNoProvider_FallbackDisabled(t *testing.T) 
 	require.Error(t, err)
 }
 
+// TestHybridSearchExplainFilteredWithDiagnostics_BelowThresholdPopulated is the
+// T-0574 regression test: when candidates surface from FTS but their total
+// scores all fall below cfg.MinScore, the result envelope must report
+// CandidateCount > 0, BelowThresholdCount == CandidateCount, and a
+// non-zero TopBelowThresholdScore — letting the CLI distinguish "nothing
+// indexed under any matching token" from "matches dropped under threshold".
+func TestHybridSearchExplainFilteredWithDiagnostics_BelowThresholdPopulated(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	// Two candidates that should match the FTS leg but produce small RRF
+	// totals (one term hit, fallback FTS-only via no embedding provider).
+	for _, id := range []string{"thr-1", "thr-2"} {
+		obj := makeSearchObject(id, []string{"resilient distributed-systems checkpointing"}, "")
+		require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	}
+	rebuildFTS(t, svc)
+
+	// MinScore=10.0 is far above any plausible RRF total (RRF contributions
+	// are 1/(k+rank+1) with k=60 → at most ~0.016 per leg).
+	cfg := config.SearchConfig{
+		DefaultMode:   "hybrid",
+		RRF:           config.RRFConfig{K: 60, FTSWeight: 0.5, VectorWeight: 0.5},
+		CandidatePool: config.CandidatePoolConfig{FTS: 20, Vector: 20},
+		FallbackToFTS: true,
+		MinScore:      10.0,
+	}
+
+	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(
+		ctx, "resilient", storage.ObjectFilter{Limit: 10}, nil, cfg,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, envelope)
+
+	// All candidates must have been dropped — Results is empty.
+	assert.Empty(t, envelope.Results, "all candidates should be below threshold")
+
+	d := envelope.Diagnostics
+	assert.Equal(t, 10.0, d.Threshold, "threshold must echo cfg.MinScore")
+	assert.GreaterOrEqual(t, d.CandidateCount, 2, "FTS leg should surface both candidates")
+	assert.Equal(t, d.CandidateCount, d.BelowThresholdCount, "every candidate is below 10.0")
+	assert.Greater(t, d.TopBelowThresholdScore, 0.0, "top dropped score must be the highest scored candidate, not zero")
+	assert.Less(t, d.TopBelowThresholdScore, d.Threshold, "top dropped score must be strictly below threshold")
+}
+
+// TestHybridSearchExplainFilteredWithDiagnostics_NoCandidates verifies the
+// empty-truth shape: when no document matches any FTS token, the envelope
+// reports CandidateCount=0 and BelowThresholdCount=0 — distinguishing this
+// case from the all-below-threshold one above.
+func TestHybridSearchExplainFilteredWithDiagnostics_NoCandidates(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	cfg := config.SearchConfig{
+		DefaultMode:   "hybrid",
+		RRF:           config.RRFConfig{K: 60, FTSWeight: 0.5, VectorWeight: 0.5},
+		CandidatePool: config.CandidatePoolConfig{FTS: 20, Vector: 20},
+		FallbackToFTS: true,
+		MinScore:      0.0,
+	}
+
+	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(
+		ctx, "zzz_nothing_indexed_xyzzy", storage.ObjectFilter{Limit: 10}, nil, cfg,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, envelope)
+
+	assert.Empty(t, envelope.Results)
+	assert.Equal(t, 0, envelope.Diagnostics.CandidateCount)
+	assert.Equal(t, 0, envelope.Diagnostics.BelowThresholdCount)
+	assert.Equal(t, 0.0, envelope.Diagnostics.TopBelowThresholdScore)
+}
+
 func TestHybridSearchExplain_TotalMatchesHybridSearchRRFScore(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

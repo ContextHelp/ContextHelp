@@ -1635,12 +1635,20 @@ func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep 
 // HybridSearchFiltered is like HybridSearch but accepts a full ObjectFilter
 // for metadata facet filtering.
 func (s *Service) HybridSearchFiltered(ctx context.Context, query string, filter storage.ObjectFilter, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]*storage.KnowledgeObject, error) {
-	results, err := s.HybridSearchExplainFiltered(ctx, query, filter, ep, cfg)
+	objs, _, err := s.HybridSearchFilteredWithDiagnostics(ctx, query, filter, ep, cfg)
+	return objs, err
+}
+
+// HybridSearchFilteredWithDiagnostics is like HybridSearchFiltered but also
+// returns SearchDiagnostics describing candidates that surfaced from the FTS
+// or vector legs and were dropped by the reranker MinScore threshold (T-0574).
+func (s *Service) HybridSearchFilteredWithDiagnostics(ctx context.Context, query string, filter storage.ObjectFilter, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]*storage.KnowledgeObject, SearchDiagnostics, error) {
+	envelope, err := s.HybridSearchExplainFilteredWithDiagnostics(ctx, query, filter, ep, cfg)
 	if err != nil {
-		return nil, err
+		return nil, SearchDiagnostics{}, err
 	}
-	out := make([]*storage.KnowledgeObject, len(results))
-	for i, r := range results {
+	out := make([]*storage.KnowledgeObject, len(envelope.Results))
+	for i, r := range envelope.Results {
 		obj := r.Object
 		if obj.Metadata == nil {
 			obj.Metadata = make(map[string]any)
@@ -1648,7 +1656,7 @@ func (s *Service) HybridSearchFiltered(ctx context.Context, query string, filter
 		obj.Metadata["rrf_score"] = r.Breakdown.Total
 		out[i] = obj
 	}
-	return out, nil
+	return out, envelope.Diagnostics, nil
 }
 
 // HybridSearchExplain is like HybridSearch but returns per-result score breakdowns
@@ -1658,8 +1666,26 @@ func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit i
 }
 
 // HybridSearchExplainFiltered is like HybridSearchExplain but accepts a full
-// ObjectFilter for metadata facet filtering.
+// ObjectFilter for metadata facet filtering. Diagnostics about dropped
+// candidates are discarded; call HybridSearchExplainFilteredWithDiagnostics
+// for the full envelope.
 func (s *Service) HybridSearchExplainFiltered(ctx context.Context, query string, filter storage.ObjectFilter, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]HybridResult, error) {
+	envelope, err := s.HybridSearchExplainFilteredWithDiagnostics(ctx, query, filter, ep, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return envelope.Results, nil
+}
+
+// HybridSearchExplainFilteredWithDiagnostics runs the full hybrid search
+// pipeline and returns a HybridSearchResult envelope containing both the
+// post-threshold result list and a SearchDiagnostics block describing
+// candidates dropped by the reranker MinScore threshold (T-0574).
+//
+// Diagnostics let callers distinguish two visually identical "no results"
+// cases at the CLI: (a) zero candidates from any retrieval leg vs. (b)
+// candidates surfaced but all fell below MinScore.
+func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context, query string, filter storage.ObjectFilter, ep providers.EmbeddingProvider, cfg config.SearchConfig) (*HybridSearchResult, error) {
 	k := cfg.RRF.K
 	if k <= 0 {
 		k = 60
@@ -1770,9 +1796,40 @@ func (s *Service) HybridSearchExplainFiltered(ctx context.Context, query string,
 	}
 
 	reranker := ranking.New(s.Store.Edges(), weights)
-	ranked, err := reranker.Rerank(ctx, query, candidates, cfg.MinScore)
+	// Run the reranker with minScore=0 so we receive every scored candidate.
+	// Diagnostics need to know which candidates fell below cfg.MinScore — that
+	// information is lost if we let Rerank filter early (T-0574).
+	scored, err := reranker.Rerank(ctx, query, candidates, 0)
 	if err != nil {
 		return nil, fmt.Errorf("hybrid search rerank: %w", err)
+	}
+
+	// Partition into above-threshold (kept) vs below-threshold (dropped),
+	// preserving the descending-score order from the reranker.
+	threshold := cfg.MinScore
+	ranked := make([]ranking.Result, 0, len(scored))
+	belowCount := 0
+	topBelowScore := 0.0
+	haveBelow := false
+	for _, r := range scored {
+		if r.Total < threshold {
+			belowCount++
+			if !haveBelow || r.Total > topBelowScore {
+				topBelowScore = r.Total
+				haveBelow = true
+			}
+			continue
+		}
+		ranked = append(ranked, r)
+	}
+
+	diagnostics := SearchDiagnostics{
+		CandidateCount:      len(candidates),
+		BelowThresholdCount: belowCount,
+		Threshold:           threshold,
+	}
+	if haveBelow {
+		diagnostics.TopBelowThresholdScore = topBelowScore
 	}
 
 	limit := filter.Limit
@@ -1795,7 +1852,7 @@ func (s *Service) HybridSearchExplainFiltered(ctx context.Context, query string,
 			DocumentView: projection.ProjectDocument(r.Object),
 		}
 	}
-	return out, nil
+	return &HybridSearchResult{Results: out, Diagnostics: diagnostics}, nil
 }
 
 // EnsureDefaultRegistry caches the bundled default registry manifest if no cache entry
