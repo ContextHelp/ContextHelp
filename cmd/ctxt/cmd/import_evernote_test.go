@@ -41,7 +41,7 @@ func TestImportEvernoteDryRunScoped(t *testing.T) {
 		"import", "evernote",
 		"--file", file,
 		"--since", "2026-01-01",
-		"--tag", "work",
+		"--tagged", "work",
 		"--dry-run",
 	)
 	if err != nil {

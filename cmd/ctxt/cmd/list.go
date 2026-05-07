@@ -30,7 +30,7 @@ Examples:
   ctxt list --type url
 
   # Filter by tags
-  ctxt list --tag ux,onboarding
+  ctxt list --tagged ux,onboarding
 
   # Filter by mentions
   ctxt list --mention @ui.best-practice
@@ -63,7 +63,7 @@ func init() {
 
 	// Filter flags
 	listCmd.Flags().String("type", "", "filter by knowledge object type")
-	listCmd.Flags().String("tag", "", "filter by tags (comma-separated)")
+	listCmd.Flags().String("tagged", "", "filter by tags (comma-separated)")
 	listCmd.Flags().String("hint", "", "filter by hints (comma-separated)")
 	listCmd.Flags().String("mention", "", "filter by mention")
 	listCmd.Flags().String("pipeline", "", "filter by pipeline")
@@ -98,7 +98,7 @@ func init() {
 
 	// Bind flags to viper
 	viper.BindPFlag("list.type", listCmd.Flags().Lookup("type"))
-	viper.BindPFlag("list.tag", listCmd.Flags().Lookup("tag"))
+	viper.BindPFlag("list.tagged", listCmd.Flags().Lookup("tagged"))
 	viper.BindPFlag("list.hint", listCmd.Flags().Lookup("hint"))
 	viper.BindPFlag("list.mention", listCmd.Flags().Lookup("mention"))
 	viper.BindPFlag("list.pipeline", listCmd.Flags().Lookup("pipeline"))
@@ -236,7 +236,7 @@ func printObjectResults(objects []*storage.KnowledgeObject, total int) error {
 func currentSnapshot() cursor.QuerySnapshot {
 	return cursor.QuerySnapshot{
 		Mention: splitNonEmpty(viper.GetString("list.mention")),
-		Tag:     splitNonEmpty(viper.GetString("list.tag")),
+		Tag:     splitNonEmpty(viper.GetString("list.tagged")),
 		Profile: viper.GetString("profile"),
 		Q:       viper.GetString("list.q"),
 		Type:    viper.GetString("list.type"),

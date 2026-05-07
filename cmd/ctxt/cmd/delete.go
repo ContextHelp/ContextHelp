@@ -22,7 +22,7 @@ Examples:
   ctxt delete --id obj_12345678
 
   # Delete by tag
-  ctxt delete --tag temporary
+  ctxt delete --tagged temporary
 
   # Delete by mention
   ctxt delete --mention @project.archived
@@ -38,7 +38,7 @@ func init() {
 	// Filter flags
 	deleteCmd.Flags().String("id", "", "delete specific knowledge object")
 	deleteCmd.Flags().String("index", "", "delete by list index (comma-separated)")
-	deleteCmd.Flags().String("tag", "", "delete by tag")
+	deleteCmd.Flags().String("tagged", "", "delete by tag (comma-separated)")
 	deleteCmd.Flags().String("hint", "", "delete by hint")
 	deleteCmd.Flags().String("mention", "", "delete by mention")
 	deleteCmd.Flags().String("type", "", "delete by type")
@@ -51,7 +51,7 @@ func init() {
 	// Bind flags to viper
 	viper.BindPFlag("delete.id", deleteCmd.Flags().Lookup("id"))
 	viper.BindPFlag("delete.index", deleteCmd.Flags().Lookup("index"))
-	viper.BindPFlag("delete.tag", deleteCmd.Flags().Lookup("tag"))
+	viper.BindPFlag("delete.tagged", deleteCmd.Flags().Lookup("tagged"))
 	viper.BindPFlag("delete.hint", deleteCmd.Flags().Lookup("hint"))
 	viper.BindPFlag("delete.mention", deleteCmd.Flags().Lookup("mention"))
 	viper.BindPFlag("delete.type", deleteCmd.Flags().Lookup("type"))
@@ -62,14 +62,14 @@ func init() {
 
 func runDelete(cmd *cobra.Command, args []string) error {
 	id := viper.GetString("delete.id")
-	tag := viper.GetString("delete.tag")
+	tag := viper.GetString("delete.tagged")
 	mention := viper.GetString("delete.mention")
 	typ := viper.GetString("delete.type")
 	deleteAll := viper.GetBool("delete.all")
 	skipConfirmation := viper.GetBool("delete.yes")
 
 	if id == "" && tag == "" && mention == "" && typ == "" && !deleteAll {
-		return fmt.Errorf("no filter specified; use --id, --tag, --mention, --type, or --all")
+		return fmt.Errorf("no filter specified; use --id, --tagged, --mention, --type, or --all")
 	}
 
 	svc, cleanup, err := newService()

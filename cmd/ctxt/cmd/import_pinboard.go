@@ -36,13 +36,13 @@ What you must provide:
 
 How import scope is selective:
   - --since RFC3339 or YYYY-MM-DD (saved time floor)
-  - --tag can be repeated; all listed tags must match
+  - --tagged can be repeated; all listed tags must match
   - --max-items caps total selected bookmarks
   - you can combine API + file sources in one run
 
 Examples:
   # Dry-run from API bookmarks saved since 2026-01-01 with "go" tag
-  ctxt import pinboard --token $PINBOARD_TOKEN --since 2026-01-01 --tag go --dry-run
+  ctxt import pinboard --token $PINBOARD_TOKEN --since 2026-01-01 --tagged go --dry-run
 
   # Import from local export file
   ctxt import pinboard --file ./pinboard.json --server http://localhost:8080
@@ -59,7 +59,7 @@ func init() {
 	importPinboardCmd.Flags().String("file", "", "path to Pinboard export JSON file")
 	importPinboardCmd.Flags().String("pinboard-base-url", "", "Pinboard API base URL override (tests/dev only)")
 	importPinboardCmd.Flags().String("since", "", "import bookmarks saved on/after this time (RFC3339 or YYYY-MM-DD)")
-	importPinboardCmd.Flags().StringSlice("tag", nil, "require bookmarks to include all specified tags")
+	importPinboardCmd.Flags().StringSlice("tagged", nil, "require bookmarks to include all specified tags")
 	importPinboardCmd.Flags().Int("max-items", 0, "maximum bookmarks to import (0 = all)")
 	importPinboardCmd.Flags().Bool("dry-run", false, "preview matched bookmarks without enqueueing jobs")
 	importPinboardCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
@@ -71,7 +71,7 @@ func runImportPinboard(cmd *cobra.Command, args []string) error {
 	file, _ := cmd.Flags().GetString("file")
 	baseURL, _ := cmd.Flags().GetString("pinboard-base-url")
 	sinceRaw, _ := cmd.Flags().GetString("since")
-	tags, _ := cmd.Flags().GetStringSlice("tag")
+	tags, _ := cmd.Flags().GetStringSlice("tagged")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	serverURL, _ := cmd.Flags().GetString("server")

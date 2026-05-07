@@ -83,7 +83,7 @@ func TestListHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--type", "--tag", "--hint", "--mention", "--pipeline", "--subtype", "--before", "--after", "--q", "--limit", "--start", "--sort", "--dir", "--no-track"} {
+	for _, flag := range []string{"--type", "--tagged", "--hint", "--mention", "--pipeline", "--subtype", "--before", "--after", "--q", "--limit", "--start", "--sort", "--dir", "--no-track"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("list help should list flag %s", flag)
 		}
