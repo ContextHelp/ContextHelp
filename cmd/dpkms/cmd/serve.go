@@ -37,6 +37,7 @@ import (
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 
@@ -205,6 +206,38 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 6. Init service layer.
 	bus := events.NewLocalBus()
 	events.SetupSubscriber(bus, cfg, config.GetConfigPath(binName))
+
+	// 6.0 ADR-070 §3 / T-0579: verify the FTS index signature on startup.
+	// Detection only — the reindex worker is T-0581. A mismatch (or first
+	// boot) logs a warning and emits a bus event; the daemon proceeds.
+	if sqliteDriver, ok := driver.(*sqlite.Driver); ok {
+		if res, err := sqlite.VerifyFTSSignature(context.Background(), sqliteDriver.DB()); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: fts signature verify: %v\n", err)
+		} else if !res.Match {
+			if res.FirstBoot {
+				fmt.Printf("FTS signature: first-boot stamp %s (inputs: %s)\n",
+					res.NewHash[:12], res.InputsSummary)
+			} else {
+				fmt.Fprintf(os.Stderr,
+					"warning: FTS signature mismatch: old=%s new=%s inputs=%s — reindex_auto pending (T-0581)\n",
+					res.OldHash[:12], res.NewHash[:12], res.InputsSummary,
+				)
+			}
+			ev, err := events.NewEvent(
+				"dpkms.serve",
+				string(events.TopicDpkmsUpgradeSignatureMismatch),
+				events.UpgradeSignatureMismatchPayload{
+					SignatureID:   res.SignatureID,
+					OldHash:       res.OldHash,
+					NewHash:       res.NewHash,
+					InputsSummary: res.InputsSummary,
+				},
+			)
+			if err == nil {
+				_ = bus.Publish(context.Background(), ev)
+			}
+		}
+	}
 
 	// 6a. Cross-process event bus hub. Constructed before service.New
 	// so the kit/runtime/policy engine can subscribe and the resulting
