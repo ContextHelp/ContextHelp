@@ -39,6 +39,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 
 	kitbus "hop.top/kit/go/runtime/bus"
@@ -281,9 +282,40 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// reports the binary's compiled version + serve start time. gRPC
 	// probe is wired below once grpcSrv is constructed.
 	devCORS := viper.GetBool("server.dev")
+
+	// Upgrade-state manager (ADR-070 §5, T-0580). The shadow file lives
+	// next to pidfiles so CLI-side banner injection finds it without an
+	// HTTP roundtrip. RunDir errors are non-fatal: a missing run dir
+	// just disables the shadow (the in-memory state still feeds /healthz).
+	var upgradeMgr *upgrade.Manager
+	if runDir, runDirErr := config.RunDir(); runDirErr == nil {
+		upgradeMgr = upgrade.NewManager(filepath.Join(runDir, "upgrade-state.json"))
+	} else {
+		upgradeMgr = upgrade.NewManager("")
+	}
+
 	healthProbes := httpserver.HealthzProbes{
 		Version: version,
 		Started: time.Now(),
+		Upgrade: func(_ context.Context) *httpserver.UpgradeSnapshot {
+			snap := upgradeMgr.Snapshot()
+			if snap.State == upgrade.StateIdle {
+				return nil
+			}
+			out := &httpserver.UpgradeSnapshot{
+				State:      string(snap.State),
+				Bucket:     string(snap.Bucket),
+				Progress:   snap.Progress,
+				Done:       snap.Done,
+				Total:      snap.Total,
+				EtaSeconds: snap.EtaSeconds,
+				LastError:  snap.LastError,
+			}
+			if !snap.StartedAt.IsZero() {
+				out.StartedAt = snap.StartedAt.UTC().Format(time.RFC3339)
+			}
+			return out
+		},
 	}
 	router := httpserver.NewRouterWithProbes(svc, devCORS, watchMgr, healthProbes)
 	router.Handle("/ws/bus", hubNet.Handler())

@@ -121,6 +121,70 @@ func TestHealthzDegradedWhenQueueHasFailures(t *testing.T) {
 	assert.GreaterOrEqual(t, env.Checks.Queue.Failed, 1)
 }
 
+// TestHealthzUpgradeProbeFlipsHealthAndAttachesEnvelope verifies T-0580's
+// extension: a probe that reports an in-progress upgrade flips the
+// top-level Health to "upgrading" AND attaches the upgrade envelope to
+// the response.
+func TestHealthzUpgradeProbeFlipsHealthAndAttachesEnvelope(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := jobs.NewQueue(driver.Jobs())
+	pipes := builtins.Registry()
+	engine := search.NewEngine(driver)
+	svc := service.New(driver, q, pipes, engine, "", nil)
+
+	probes := HealthzProbes{
+		Started: time.Now().Add(-10 * time.Second),
+		Upgrade: func(_ context.Context) *UpgradeSnapshot {
+			return &UpgradeSnapshot{
+				State:      "in_progress",
+				Bucket:     "reingest_selective",
+				Done:       47,
+				Total:      120,
+				Progress:   0.391,
+				EtaSeconds: 32,
+				StartedAt:  "2026-05-07T13:42:00Z",
+			}
+		},
+	}
+
+	ts := httptest.NewServer(NewRouterWithProbes(svc, false, nil, probes))
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/healthz")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var env HealthzEnvelope
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&env))
+	assert.Equal(t, HealthUpgrading, env.Health,
+		"in-progress upgrade must flip top-level health to upgrading")
+	require.NotNil(t, env.Upgrade, "upgrade envelope must be attached")
+	assert.Equal(t, "in_progress", env.Upgrade.State)
+	assert.Equal(t, "reingest_selective", env.Upgrade.Bucket)
+	assert.Equal(t, 47, env.Upgrade.Done)
+	assert.Equal(t, 120, env.Upgrade.Total)
+	assert.Equal(t, 32, env.Upgrade.EtaSeconds)
+}
+
+// TestHealthzNoUpgradeProbeOmitsField confirms that without an Upgrade
+// probe the envelope serialises without the upgrade key (omitempty).
+// This protects existing /healthz consumers that parse strictly.
+func TestHealthzNoUpgradeProbeOmitsField(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/healthz")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&raw))
+	_, hasUpgrade := raw["upgrade"]
+	assert.False(t, hasUpgrade, "upgrade key must be absent when no probe is wired")
+}
+
 // TestHealthzWithProbesPopulatesVersionAndGRPC verifies the
 // NewRouterWithProbes constructor injects probe-supplied data.
 func TestHealthzWithProbesPopulatesVersionAndGRPC(t *testing.T) {
