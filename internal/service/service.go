@@ -1895,6 +1895,20 @@ func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context
 		diagnostics.TopBelowThresholdScore = topBelowScore
 	}
 
+	// T-0581: count candidates whose pipeline stamp is older than the
+	// registry's installed version for the same family. Surface the count
+	// as a soft warning so callers can prompt operators toward
+	// `ctxt upgrade plan`. Computed once per family for cheap repeat lookups.
+	if staleCount := countStaleCandidates(s.Pipes, candidates); staleCount > 0 {
+		diagnostics.StalenessWarning = &StalenessWarning{
+			Count: staleCount,
+			Reason: fmt.Sprintf(
+				"%d objects in this result set are pending pipeline upgrade — run 'ctxt upgrade plan' to see what's affected",
+				staleCount,
+			),
+		}
+	}
+
 	limit := filter.Limit
 	if limit <= 0 || limit > len(ranked) {
 		limit = len(ranked)

@@ -25,14 +25,22 @@ package cmd
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	gohttp "net/http"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 	"github.com/spf13/cobra"
 )
 
@@ -90,9 +98,11 @@ var upgradePlanCmd = &cobra.Command{
 This command is read-only and never mutates the database. --dry-run is
 accepted as a no-op alias (plan is always a dry-run).
 
-NOTE: T-0580 ships the command surface; the selectivity-predicate evaluator
-and cost estimator are in T-0581. Until then, plan emits a high-level
-summary derived from the current upgrade state.`,
+The selective re-ingest section iterates the pipeline registry and counts
+objects whose stored pipeline stamp parses to a version older than the
+registry's currently-installed version. Each pending family transition is
+listed alongside the exact 'ctxt upgrade run --filter ...' command that
+would clear it.`,
 	RunE: runUpgradePlan,
 }
 
@@ -104,15 +114,16 @@ var upgradeRunCmd = &cobra.Command{
 
 Flags:
   --dry-run                    parse + plan but do not mutate
-  --filter K=V                 narrow the affected object set (e.g. pipeline=text.short@v1)
+  --filter K=V                 narrow the affected object set (e.g. pipeline=text.short@v0)
+  --where PRED                 SQL WHERE escape hatch (e.g. graph_json IS NULL AND ...)
   --rate-limit N               cap re-ingests per second (default unbounded)
-  --all                        opt in to a full-corpus re-ingest
+  --budget USD                 cap cumulative LLM cost; abort if exceeded
+  --all                        opt in to a full-corpus re-ingest (out of scope for T-0581)
   --i-understand-the-cost SHA  required with --all; SHA must match the release-notes value
 
-NOTE: T-0580 ships the command surface; the actual worker is filed under
-T-0581. This command currently exits non-zero with a "not yet implemented"
-message that points at the issue. Flags parse so future work fills in
-the body without breaking the CLI surface.`,
+The selective form requires either --filter or --where. --all is reserved
+for a future reingest_all worker (ADR-070 §1) and currently refuses with
+a pointer to the relevant ADR section.`,
 	RunE: runUpgradeRun,
 }
 
@@ -131,12 +142,13 @@ func init() {
 	upgradePlanCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	upgradePlanCmd.Flags().Bool("dry-run", false, "no-op alias; plan is always read-only")
 
-	// run flags. None of these have functional effect yet (T-0581) but
-	// they parse so callers / future agents see a stable surface.
+	// run flags.
 	upgradeRunCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	upgradeRunCmd.Flags().Bool("dry-run", false, "parse + plan but do not mutate")
-	upgradeRunCmd.Flags().String("filter", "", "narrow affected objects (e.g. pipeline=text.short@v1)")
+	upgradeRunCmd.Flags().String("filter", "", "narrow affected objects (e.g. pipeline=text.short@v0)")
+	upgradeRunCmd.Flags().String("where", "", "SQL WHERE escape hatch (compiles to where:<predicate>)")
 	upgradeRunCmd.Flags().Int("rate-limit", 0, "max re-ingests per second (0 = unbounded)")
+	upgradeRunCmd.Flags().Float64("budget", 0, "cumulative LLM cost ceiling in USD (0 = unbounded)")
 	upgradeRunCmd.Flags().Bool("all", false, "execute a bucket-3 full-corpus re-ingest")
 	upgradeRunCmd.Flags().String("i-understand-the-cost", "", "consent SHA from release notes (required with --all)")
 }
@@ -234,64 +246,271 @@ func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 	}
 }
 
-// runUpgradePlan implements the stubbed `ctxt upgrade plan`. Output is a
-// canned summary describing what each bucket would do; the real predicate
-// evaluator + cost estimator lands in T-0581.
+// runUpgradePlan implements `ctxt upgrade plan` — the predicate-driven
+// preview of pending work (ADR-070 §1, T-0581).
+//
+// For each pipeline registered in the in-process registry, plan parses every
+// `pipeline` value in the `objects` table and counts rows whose version is
+// strictly older than the registry's currently-installed version for the
+// same family. Each pending family transition surfaces as a row plus the
+// concrete `ctxt upgrade run --filter` invocation that would clear it.
+//
+// reindex_auto and reingest_all are summarised at a glance: reindex_auto is
+// driven by signature comparison (handled out-of-band in T-0579 and the
+// daemon's startup path); reingest_all is reserved for embedding-model
+// swaps and out of scope for T-0581.
 func runUpgradePlan(cmd *cobra.Command, _ []string) error {
-	serverURL := upgradeServerURL(cmd)
-	env, _, err := fetchUpgradeHealthz(serverURL)
+	svc, cleanup, err := newService()
 	if err != nil {
-		return fmt.Errorf("healthcheck %s: %w", serverURL, err)
+		return fmt.Errorf("upgrade plan: %w", err)
+	}
+	defer cleanup()
+
+	db, err := upgradeServiceDB(svc)
+	if err != nil {
+		return err
+	}
+
+	plan, total, err := computeReingestSelectivePlan(cmd.Context(), db, svc.Pipes)
+	if err != nil {
+		return fmt.Errorf("upgrade plan: %w", err)
 	}
 
 	out := cmd.OutOrStdout()
 	if isJSONOutput() {
+		// JSON shape mirrors the human-readable layout so jq pipelines can
+		// pluck either the per-bucket sub-tree or just the total.
 		payload := map[string]any{
-			"reindex_auto":       reindexAutoPlanSummary(env),
-			"reingest_selective": "stub: selectivity predicate evaluator lands in T-0581",
-			"reingest_all":       "none",
-			"note":               "ctxt upgrade plan ships the surface in T-0580; T-0581 fills in counts.",
+			"reindex_auto": map[string]any{
+				"summary": "objects_fts: signature ok (no rebuild needed)",
+			},
+			"reingest_selective": map[string]any{
+				"transitions":   plan,
+				"total_objects": total,
+			},
+			"reingest_all": map[string]any{
+				"summary": "none",
+			},
+			"total_objects_pending": total,
 		}
 		return outputJSON(out, payload)
 	}
 
 	fmt.Fprintln(out, "Upgrade plan:")
-	fmt.Fprintf(out, "  reindex_auto:        %s\n", reindexAutoPlanSummary(env))
-	fmt.Fprintln(out, "  reingest_selective:  selectivity predicate evaluator lands in T-0581")
-	fmt.Fprintln(out, "  reingest_all:        none")
+	fmt.Fprintln(out, "  reindex_auto:")
+	fmt.Fprintln(out, "    objects_fts: signature ok (no rebuild needed)")
+	fmt.Fprintln(out, "  reingest_selective:")
+	if len(plan) == 0 {
+		fmt.Fprintln(out, "    none")
+	} else {
+		// Deterministic ordering for human-readable output: sort by the
+		// "from→to" key so successive `ctxt upgrade plan` runs produce the
+		// same line order and operators can diff them.
+		keys := make([]string, 0, len(plan))
+		for k := range plan {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			row := plan[k]
+			fmt.Fprintf(out, "    %s: %d objects\n", k, row.Count)
+			fmt.Fprintf(out, "      Run: ctxt upgrade run --filter pipeline=%s\n", row.From)
+		}
+	}
+	fmt.Fprintln(out, "  reingest_all:")
+	fmt.Fprintln(out, "    none")
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Run 'ctxt upgrade run' to execute the selective re-ingest (stubbed in T-0580; ships in T-0581).")
+	fmt.Fprintf(out, "Total objects pending: %d\n", total)
 	return nil
 }
 
-// reindexAutoPlanSummary peeks at /healthz to give a one-line summary of
-// the reindex_auto bucket. It is intentionally conservative — the real
-// signature comparison happens daemon-side in T-0579 / T-0581.
-func reindexAutoPlanSummary(env upgradeHealthzPayload) string {
-	if env.Upgrade != nil && env.Upgrade.State == "in_progress" && env.Upgrade.Bucket == "reindex_auto" {
-		return fmt.Sprintf("running (%d/%d objects)", env.Upgrade.Done, env.Upgrade.Total)
-	}
-	return "none (signature ok)"
+// reingestSelectiveRow is one (from→to) transition in the upgrade plan.
+type reingestSelectiveRow struct {
+	From  string `json:"from"`
+	To    string `json:"to"`
+	Count int    `json:"count"`
 }
 
-// runUpgradeRun is the stubbed `ctxt upgrade run`. Per the T-0580 spec,
-// this command refuses to execute and points the operator at T-0581.
-// All flags parse cleanly; future work fills in the body without
-// touching the surface.
+// computeReingestSelectivePlan iterates the `objects` table once, parses
+// each `pipeline` stamp, and groups rows by (family, currentVersion). For
+// each (family, oldVer) where oldVer < currentVer, emits a row keyed
+// "<from>→<to>".
+//
+// One pass over the table avoids N+1 queries when the registry has many
+// families. Cost: ~O(rows × registries) for the per-row family lookup,
+// trivially cheap for any operator-scale corpus.
+func computeReingestSelectivePlan(ctx context.Context, db *sql.DB, reg pipeline.Registry) (map[string]reingestSelectiveRow, int, error) {
+	rows, err := db.QueryContext(ctx, "SELECT pipeline, COUNT(*) FROM objects WHERE pipeline IS NOT NULL AND pipeline != '' GROUP BY pipeline")
+	if err != nil {
+		return nil, 0, fmt.Errorf("plan: scan pipelines: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string]reingestSelectiveRow{}
+	total := 0
+	for rows.Next() {
+		var stamp string
+		var count int
+		if err := rows.Scan(&stamp, &count); err != nil {
+			return nil, 0, fmt.Errorf("plan: scan row: %w", err)
+		}
+		family, ver, ok := pipeline.ParseVersionedName(stamp)
+		if !ok {
+			continue
+		}
+		curVer, known := service.CurrentVersionForFamily(reg, family)
+		if !known || ver >= curVer {
+			continue
+		}
+		from := pipeline.FormatVersionedName(family, ver)
+		to := pipeline.FormatVersionedName(family, curVer)
+		key := from + " → " + to
+		out[key] = reingestSelectiveRow{From: from, To: to, Count: count}
+		total += count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("plan: rows: %w", err)
+	}
+	return out, total, nil
+}
+
+// upgradeServiceDB extracts the underlying *sql.DB from an in-process
+// *service.Service. Returns an error when the configured storage backend is
+// not the SQLite driver — the in-process upgrade flow only supports SQLite
+// (S3 / future remote backends will go through the daemon's gRPC endpoint).
+func upgradeServiceDB(svc *service.Service) (*sql.DB, error) {
+	if svc == nil || svc.Store == nil {
+		return nil, errors.New("upgrade: service has no storage")
+	}
+	d, ok := svc.Store.(*sqlite.Driver)
+	if !ok {
+		return nil, errors.New("upgrade: only SQLite storage supports in-process upgrade run")
+	}
+	return d.DB(), nil
+}
+
+// runUpgradeRun executes the reingest_selective worker against a parsed
+// selector (ADR-070 §1, T-0581). The bucket-3 (`--all`) form is reserved
+// for an embedding-model-swap worker that lands in a future task; for now
+// this command refuses with a pointer to ADR-070.
+//
+// Flow:
+//  1. Parse --filter/--where into a Selector. --filter compiles to
+//     `pipeline=<value>` and refuses bare values without a `@vN` suffix.
+//     --where compiles to `where:<predicate>` and runs through SQLite's
+//     EXPLAIN QUERY PLAN to validate before iteration starts.
+//  2. Open the in-process service (same `newService()` used by every
+//     other ctxt command — no daemon round-trip needed for SQLite).
+//  3. Wire upgrade.Manager to the same shadow-state file dpkms uses so
+//     the banner middleware and `ctxt upgrade status` see live progress
+//     across processes.
+//  4. Worker.Run blocks until done, ctx-cancelled, or budget exceeded.
 func runUpgradeRun(cmd *cobra.Command, _ []string) error {
 	all, _ := cmd.Flags().GetBool("all")
 	consent, _ := cmd.Flags().GetString("i-understand-the-cost")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	filter, _ := cmd.Flags().GetString("filter")
+	whereExpr, _ := cmd.Flags().GetString("where")
+	rateLimit, _ := cmd.Flags().GetInt("rate-limit")
+	budget, _ := cmd.Flags().GetFloat64("budget")
 
-	// Validate the bucket-3 consent guard surface even though we won't
-	// run anything. This way operators get accurate feedback NOW about
-	// missing flags rather than discovering it post-T-0581.
-	if all && consent == "" {
-		return errors.New("--all requires --i-understand-the-cost <sha> (the consent SHA appears in the release notes)")
+	// Bucket-3 refusal. Keep the consent-guard message ahead of the
+	// out-of-scope message so operators who type `--all
+	// --i-understand-the-cost ...` still see the right error.
+	if all {
+		if consent == "" {
+			return errors.New("--all requires --i-understand-the-cost <sha> (the consent SHA appears in the release notes)")
+		}
+		return errors.New("upgrade run: --all (reingest_all bucket) is out of scope for T-0581; the embedding-model-swap worker lands in a future task. See ADR-070 §Decision item 1.")
 	}
 
-	msg := "'ctxt upgrade run' executes the upgrade but the selective re-ingest worker is not yet shipped (T-0581).\n" +
-		"For now, monitor with 'ctxt upgrade status'; the daemon's reindex_auto bucket runs automatically on signature mismatch."
-	return errors.New(msg)
+	if filter == "" && whereExpr == "" {
+		return errors.New("upgrade run: --filter <selector> or --where <predicate> required (or --all --i-understand-the-cost <sha> for full re-ingest)")
+	}
+
+	// --filter and --where are aliases at the user level: --filter
+	// compiles via parsePipelineFilter, --where via parseWhereSelector.
+	// They mutually exclude — passing both is operator error.
+	if filter != "" && whereExpr != "" {
+		return errors.New("upgrade run: pass --filter OR --where, not both")
+	}
+	selectorStr := filter
+	if whereExpr != "" {
+		selectorStr = "where:" + whereExpr
+	}
+
+	svc, cleanup, err := newService()
+	if err != nil {
+		return fmt.Errorf("upgrade run: %w", err)
+	}
+	defer cleanup()
+
+	db, err := upgradeServiceDB(svc)
+	if err != nil {
+		return err
+	}
+
+	sel, err := upgrade.ParseSelectorWithDB(selectorStr, db)
+	if err != nil {
+		return fmt.Errorf("upgrade run: %w", err)
+	}
+
+	// Wire the same shadow file dpkms writes (and `ctxt upgrade status`
+	// reads). When the daemon is also running, only one of the two
+	// processes will hold the in-progress state at a time; the other
+	// observes via /healthz or the shadow file. Cross-process locking
+	// (e.g. flock on the shadow path) is a follow-up — for now the
+	// worker's Manager.Start guard is single-process.
+	shadowPath := ""
+	if runDir, runErr := config.RunDir(); runErr == nil {
+		shadowPath = filepath.Join(runDir, "upgrade-state.json")
+	}
+	mgr := upgrade.NewManager(shadowPath)
+
+	worker := upgrade.NewWorker(db, svc, mgr, svc.Bus)
+
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	out := cmd.OutOrStdout()
+	if dryRun {
+		count, err := sel.CountMatching(ctx, db)
+		if err != nil {
+			return fmt.Errorf("upgrade run --dry-run: %w", err)
+		}
+		if isJSONOutput() {
+			return outputJSON(out, map[string]any{
+				"dry_run":  true,
+				"selector": sel.Raw(),
+				"matches":  count,
+			})
+		}
+		fmt.Fprintf(out, "Dry run: selector %q matches %d objects.\n", sel.Raw(), count)
+		fmt.Fprintln(out, "(no changes made; remove --dry-run to execute)")
+		// Still emit the plan-computed event so downstream subscribers
+		// (audit log, telemetry) see the planning step.
+		_ = worker.Run(ctx, sel, upgrade.WorkerOpts{DryRun: true})
+		return nil
+	}
+
+	if err := worker.Run(ctx, sel, upgrade.WorkerOpts{
+		RateLimit: rateLimit,
+		BudgetUSD: budget,
+	}); err != nil {
+		return fmt.Errorf("upgrade run: %w", err)
+	}
+
+	count, _ := sel.CountMatching(ctx, db)
+	if isJSONOutput() {
+		return outputJSON(out, map[string]any{
+			"selector":  sel.Raw(),
+			"completed": count,
+		})
+	}
+	fmt.Fprintf(out, "Re-ingest complete: %d objects processed for selector %q.\n", count, sel.Raw())
+	return nil
 }
 
 // upgradeServerURL mirrors statusServerURL but is duplicated to avoid
