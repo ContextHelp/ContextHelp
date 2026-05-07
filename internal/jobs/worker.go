@@ -31,6 +31,33 @@ func parseUserMentions(raw []string) []uri.URI {
 	return mentions.ParseSlice(raw)
 }
 
+// parseUserHints converts caller-asserted hint strings (T-0573) into the
+// Tag form draft.Tags expects, with Source:"user". Blank / whitespace-only
+// hints are silently dropped — `--hint ""` shouldn't kill the job.
+// The auto-tagger (pipeline/steps/tagger.go) merges with these rather
+// than overwriting, preserving operator intent.
+func parseUserHints(raw []string) []storage.Tag {
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]storage.Tag, 0, len(raw))
+	for _, h := range raw {
+		label := strings.TrimSpace(h)
+		if label == "" {
+			continue
+		}
+		out = append(out, storage.Tag{
+			Label:  label,
+			Source: "user",
+			Weight: 1.0,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // FanOutFunc is called after a successful ingest with the new object ID.
 // It runs fan-out enrichment (cross-reference edges, audit log).
 // Returning an error is logged but does not fail the ingest job.
@@ -160,6 +187,10 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 		// life on the draft so entity_extractor's text-scan can merge with
 		// them by slug instead of overwriting them.
 		Mentions: parseUserMentions(job.UserMentions),
+		// T-0573: caller-asserted hints (`ctxt capture --hint`) start life
+		// on the draft so the auto-tagger's heuristic+LLM tags can merge
+		// with them by lowercase label instead of overwriting them.
+		Tags: parseUserHints(job.UserHints),
 	}
 
 	draft, err = p.runSteps(ctx, pipe, draft)
