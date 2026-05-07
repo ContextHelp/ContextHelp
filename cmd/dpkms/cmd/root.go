@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"charm.land/fang/v2"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/banner"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/logger"
 	internalversion "github.com/ideacrafterslabs/ctxt/internal/version"
@@ -68,6 +69,11 @@ var (
 				}
 				count, _ := cmd.Root().PersistentFlags().GetCount("verbose")
 				logger.Init(count > 0)
+				// Upgrade banner (ADR-070 §5, T-0580). Reads the
+				// shadow file under config.RunDir(); no-op when no
+				// upgrade is in flight. Failure to render the banner
+				// MUST NOT block the underlying command.
+				_ = banner.Inject(cmd.ErrOrStderr())
 				return nil
 			},
 		},
