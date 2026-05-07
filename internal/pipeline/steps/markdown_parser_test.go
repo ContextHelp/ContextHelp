@@ -108,3 +108,36 @@ func TestMarkdownParserNoGraphOnNoHeadings(t *testing.T) {
 		t.Error("expected nil graph when there are no headings")
 	}
 }
+
+// TestHasMarkdownStructure exercises the predicate consumed by the
+// pipeline selector (T-0575). True positives: any heading, or >=5
+// bullets. True negatives: prose, single-bullet snippets, hyphen-only
+// lines that are not real bullets.
+func TestHasMarkdownStructure(t *testing.T) {
+	cases := []struct {
+		desc string
+		in   string
+		want bool
+	}{
+		{"empty", "", false},
+		{"plain prose", "Just a regular sentence about today's weather.", false},
+		{"single heading", "# Title\n\nbody", true},
+		{"second-level heading", "## Notes\nbody", true},
+		{"heading mid-document", "intro line\n\n### Mid heading\n\nmore", true},
+		{"four bullets (under threshold)", "- a\n- b\n- c\n- d\n", false},
+		{"five bullets (threshold)", "- a\n- b\n- c\n- d\n- e\n", true},
+		{"asterisk bullets", "* one\n* two\n* three\n* four\n* five\n", true},
+		{"plus bullets", "+ one\n+ two\n+ three\n+ four\n+ five\n", true},
+		{"indented bullets", "  - a\n  - b\n  - c\n  - d\n  - e\n", true},
+		{"em dash prose, not bullets", "Some text — with em dashes — and more text — and more — and more — text.", false},
+		{"hyphen with no space, not a bullet", "-foo\n-bar\n-baz\n-quux\n-zot\n", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got := HasMarkdownStructure(tc.in)
+			if got != tc.want {
+				t.Errorf("HasMarkdownStructure(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}

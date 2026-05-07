@@ -13,6 +13,28 @@ import (
 
 var markdownHeadingRe = regexp.MustCompile(`(?m)^(#{1,6})\s+(.+)$`)
 
+// markdownBulletRe matches an unordered-list bullet at the start of a line:
+// "- item", "* item", or "+ item". Used by HasMarkdownStructure for routing.
+var markdownBulletRe = regexp.MustCompile(`(?m)^[\t ]*[-*+][\t ]+\S`)
+
+// HasMarkdownStructure returns true when content has at least one markdown
+// heading (e.g. "# Title", "## Heading") OR at least 5 unordered list items
+// (lines starting with "-", "*", or "+" followed by whitespace and content).
+//
+// This helper is consumed by pipeline selectors (see builtins/text_long.go) so
+// that structured markdown — which benefits from sectioner / markdown_parser —
+// is routed to text.long even when the length-based heuristic is borderline
+// or the routing input is otherwise truncated. A bullet-list-only doc with
+// no headings still qualifies as long as it has a real list (>=5 items),
+// which keeps random prose with a stray hyphen out.
+func HasMarkdownStructure(content string) bool {
+	if markdownHeadingRe.MatchString(content) {
+		return true
+	}
+	matches := markdownBulletRe.FindAllStringIndex(content, 5)
+	return len(matches) >= 5
+}
+
 // MarkdownParser parses Markdown headings and creates sections.
 type MarkdownParser struct {
 	pipeline.BaseContract
