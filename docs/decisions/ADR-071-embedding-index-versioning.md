@@ -285,6 +285,12 @@ The eval harness is the single biggest piece of infrastructure this ADR depends 
 - After migration, the schema state is identical to a fresh install.
 - No CLI command name conflicts; `embeddings` is a new noun under `ctxt`.
 
+#### Implementation Notes (Phase 1 lock-in)
+
+The synthetic `model_id` derived for legacy-blob backfill follows the format `legacy-blob-<dim>@2026-05-07`, where `<dim>` is the driver's vector dimension at migration time (defaults to 1536 when no dimension is recorded). The `@2026-05-07` suffix is the ADR's authorship date and is **immutable**: subsequent migrations must not change it. Phase 2 (T-0583, dual-write at ingest) ships with `populate_models` defaulting to exactly this string after a fresh upgrade, so changing the anchor would silently break every existing deployment's policy. This anchor was first encoded in T-0582 (commit `4bbf5bf`); treat it as a load-bearing constant.
+
+Postgres has no per-object backfill in Phase 1: postgres carries embeddings on the `objects.embedding` pgvector column and has no legacy `object_embeddings` table to copy from. The Phase 1 migration on postgres only seeds the singleton default row in `embedding_models` plus the corresponding `index_signatures` row. The new `embeddings` composite-key table is empty on postgres until Phase 2 (T-0583) starts dual-writing at ingest. T-0584's migration job must not be surprised by this on postgres backends; on sqlite, the per-row backfill is real and the new table is non-empty from the moment migration 033 runs.
+
 ### Out of scope (deferred to future ADRs if/when need arises)
 
 - Per-query model routing logic (tag-based, language-based, recency-based).
