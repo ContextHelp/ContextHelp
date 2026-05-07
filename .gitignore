@@ -315,8 +315,8 @@ plugins/*/testdata/secrets/
 *.onnx
 *.pt
 *.pth
-models/
-embeddings/
+/models/
+/embeddings/
 
 #############################################################################
 # Custom Exceptions (Keep These)
@@ -335,11 +335,6 @@ embeddings/
 # Keep test fixtures (if they're safe)
 !testdata/**/*.yaml
 !testdata/**/*.json
-
-# Keep the Go embeddings registry package — `embeddings/` rule above is for
-# binary model artifacts, not source.
-!internal/embeddings/
-!internal/embeddings/**
 
 #############################################################################
 # Docker Dev/Prod Environment Files
