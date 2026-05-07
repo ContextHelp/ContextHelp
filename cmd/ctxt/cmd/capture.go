@@ -1,8 +1,17 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	gohttp "net/http"
+	"net/url"
+	"os"
+	"strings"
+	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/spf13/cobra"
 )
 
@@ -97,12 +106,212 @@ func validateCaptureFlags(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// RunCapture is the entry point for `ctxt capture`. T-0567 stubs only the
-// flag scaffolding + mutex validation; behavior lands in T-0568 (positional/
-// stdin/file → POST /api/v1/analyze) and T-0569 (--every continuous loop).
+// RunCapture is the entry point for `ctxt capture`. Implements positional /
+// file / stdin / clipboard capture by POSTing to /api/v1/analyze. T-0569 wires
+// the --every continuous mode on top of this body.
 func RunCapture(cmd *cobra.Command, args []string) error {
 	if err := validateCaptureFlags(cmd, args); err != nil {
 		return err
 	}
-	return fmt.Errorf("ctxt capture: not yet implemented (Track 1 wiring lands in T-0568)")
+	return captureOnce(cmd, args)
+}
+
+// captureOnce performs a single capture: resolves input → builds request →
+// POSTs to /api/v1/analyze → prints job ID → optionally waits for completion.
+func captureOnce(cmd *cobra.Command, args []string) error {
+	content, source, err := resolveCaptureInput(cmd, args)
+	if err != nil {
+		return err
+	}
+
+	serverURL, _ := cmd.Flags().GetString("server")
+	if serverURL == "" {
+		serverURL = "http://localhost:8080"
+	}
+
+	contentType, _ := cmd.Flags().GetString("type")
+	pipeline, _ := cmd.Flags().GetString("pipeline")
+	rawMode, _ := cmd.Flags().GetBool("raw")
+	noFanout, _ := cmd.Flags().GetBool("no-fanout")
+	noDedup, _ := cmd.Flags().GetBool("no-dedup")
+	sourceKey, _ := cmd.Flags().GetString("source-key")
+	hints, _ := cmd.Flags().GetStringSlice("hint")
+	mentions, _ := cmd.Flags().GetStringSlice("mention")
+	wait, _ := cmd.Flags().GetBool("wait")
+	inbox, _ := cmd.Flags().GetBool("inbox")
+
+	// Build request body. The server-side JSON contract still uses `tag` and
+	// `mentions`; we only renamed the CLI flag (--hint/--mention).
+	reqBody := map[string]any{
+		"content":    content,
+		"type":       contentType,
+		"pipeline":   pipeline,
+		"source":     source,
+		"raw":        rawMode,
+		"no_fanout":  noFanout,
+		"force":      noDedup,
+		"source_key": sourceKey,
+	}
+	if len(hints) > 0 {
+		// `tag` is the server-side field name (legacy); "hints" on the wire
+		// would require a server-side change. Track 1 is client-side only.
+		reqBody["tag"] = strings.Join(hints, ",")
+	}
+	if len(mentions) > 0 {
+		reqBody["mentions"] = mentions
+	}
+
+	endpoint := serverURL + "/api/v1/analyze"
+	if inbox {
+		// Route through the inbox endpoint (server-side spec /api/v1/inbox).
+		// Field names are different on that handler — re-shape the body.
+		inboxBody := map[string]any{
+			"content":  content,
+			"type":     contentType,
+			"source":   source,
+			"mentions": mentions,
+		}
+		if note, _ := cmd.Flags().GetString("note"); note != "" {
+			inboxBody["inbox_note"] = note
+		}
+		if len(hints) > 0 {
+			inboxBody["hints"] = strings.Join(hints, ",")
+		}
+		body, err := json.Marshal(inboxBody)
+		if err != nil {
+			return fmt.Errorf("marshal inbox request: %w", err)
+		}
+		resp, err := gohttp.Post(serverURL+"/api/v1/inbox", "application/json", bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("request to dpkms inbox: %w", err)
+		}
+		defer resp.Body.Close()
+		respBody, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != gohttp.StatusCreated && resp.StatusCode != gohttp.StatusAccepted && resp.StatusCode != gohttp.StatusOK {
+			return fmt.Errorf("dpkms inbox returned %d: %s", resp.StatusCode, string(respBody))
+		}
+		var obj map[string]any
+		if err := json.Unmarshal(respBody, &obj); err != nil {
+			return fmt.Errorf("parse inbox response: %w", err)
+		}
+		if id, ok := obj["id"].(string); ok && id != "" {
+			fmt.Printf("Inbox object: %s\n", id)
+		} else {
+			fmt.Println("Inbox object stored")
+		}
+		// --wait is meaningless for inbox capture (no job is enqueued);
+		// stay silent rather than errorring.
+		return nil
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+
+	resp, err := gohttp.Post(endpoint, "application/json", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("request to dpkms: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode != gohttp.StatusAccepted && resp.StatusCode != gohttp.StatusOK {
+		return fmt.Errorf("dpkms returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
+	jobID := result["job_id"]
+	fmt.Printf("Job ID: %s\n", jobID)
+
+	if wait && jobID != "" {
+		return waitForCaptureJob(serverURL, jobID)
+	}
+	return nil
+}
+
+// resolveCaptureInput picks the input source:
+//   - --stdin       read from os.Stdin
+//   - positional    URL, file path, or literal string
+//   - (none)        fall back to clipboard
+//
+// The returned source string mirrors `ctxt analyze`'s convention:
+// "stdin" / "argument" / "clipboard" / "file" / <url>.
+func resolveCaptureInput(cmd *cobra.Command, args []string) (content, source string, err error) {
+	stdin, _ := cmd.Flags().GetBool("stdin")
+	if stdin {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", "", fmt.Errorf("read stdin: %w", err)
+		}
+		return string(data), "stdin", nil
+	}
+
+	if len(args) > 0 {
+		raw := strings.Join(args, " ")
+		// Treat http(s) URLs as URL captures: pass through the raw URL as
+		// content; service.Analyze auto-detects type=url and uses the URL
+		// as the job source.
+		if u, perr := url.Parse(strings.TrimSpace(raw)); perr == nil && (u.Scheme == "http" || u.Scheme == "https") {
+			return strings.TrimSpace(raw), strings.TrimSpace(raw), nil
+		}
+		// File path?
+		if info, statErr := os.Stat(raw); statErr == nil && !info.IsDir() {
+			data, err := os.ReadFile(raw)
+			if err != nil {
+				return "", "", fmt.Errorf("read file %q: %w", raw, err)
+			}
+			return string(data), "file:" + raw, nil
+		}
+		// Literal string.
+		return raw, "argument", nil
+	}
+
+	// Clipboard fallback.
+	if clipboard.Unsupported || os.Getenv("CTXT_NO_CLIPBOARD") != "" {
+		return "", "", fmt.Errorf("no input provided and clipboard is unsupported")
+	}
+	c, err := clipboard.ReadAll()
+	if err != nil || c == "" {
+		return "", "", fmt.Errorf("no input provided (use a positional source, --stdin, or copy something to the clipboard)")
+	}
+	fmt.Fprintln(os.Stderr, "Using content from clipboard...")
+	return c, "clipboard", nil
+}
+
+// waitForCaptureJob polls /api/v1/jobs/<id> until terminal status. Mirrors
+// cmd/dpkms/cmd/pipeline.go::waitForJob's contract.
+func waitForCaptureJob(serverURL, jobID string) error {
+	endpoint := fmt.Sprintf("%s/api/v1/jobs/%s", serverURL, jobID)
+	for {
+		resp, err := gohttp.Get(endpoint)
+		if err != nil {
+			return fmt.Errorf("poll job %s: %w", jobID, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != gohttp.StatusOK {
+			return fmt.Errorf("dpkms returned %d polling %s: %s", resp.StatusCode, jobID, string(body))
+		}
+		var job struct {
+			Status string `json:"status"`
+			Error  string `json:"error,omitempty"`
+		}
+		if err := json.Unmarshal(body, &job); err != nil {
+			return fmt.Errorf("parse job %s: %w", jobID, err)
+		}
+		switch job.Status {
+		case "completed":
+			return nil
+		case "failed":
+			return fmt.Errorf("job %s failed: %s", jobID, job.Error)
+		}
+		time.Sleep(1 * time.Second)
+	}
 }

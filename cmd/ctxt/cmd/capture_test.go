@@ -1,0 +1,251 @@
+package cmd
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// startMockCaptureDPKMS captures the body of every POST to /api/v1/analyze
+// and replies with a fixed Job ID. Tests can assert on what the CLI sent.
+type captureRecord struct {
+	Path        string
+	Method      string
+	ContentType string
+	Body        map[string]any
+}
+
+func startMockCaptureDPKMS(t *testing.T, recs *[]captureRecord) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := map[string]any{}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		*recs = append(*recs, captureRecord{
+			Path:        r.URL.Path,
+			Method:      r.Method,
+			ContentType: r.Header.Get("Content-Type"),
+			Body:        body,
+		})
+		switch {
+		case r.URL.Path == "/api/v1/analyze" && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(map[string]string{"job_id": "job_capture_1"})
+		case r.URL.Path == "/api/v1/inbox" && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "obj_inbox_1"})
+		case strings.HasPrefix(r.URL.Path, "/api/v1/jobs/") && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "completed"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+// --- Mutex / scaffolding tests ---
+
+func TestCaptureAmbientErrors(t *testing.T) {
+	_, err := executeCommand("capture", "--ambient")
+	if err == nil {
+		t.Fatal("--ambient should error in Track 1")
+	}
+	if !strings.Contains(err.Error(), "ambient mode not yet implemented") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestCaptureTrack2FlagsError(t *testing.T) {
+	for _, flag := range []string{"--input", "--skip"} {
+		_, err := executeCommand("capture", flag, "x", "some-source")
+		if err == nil {
+			t.Fatalf("%s should error in Track 1", flag)
+		}
+		if !strings.Contains(err.Error(), "ambient mode (Track 2") {
+			t.Errorf("%s: unexpected message: %v", flag, err)
+		}
+	}
+	// --window is a duration flag; pass a duration value.
+	_, err := executeCommand("capture", "--window", "5m", "some-source")
+	if err == nil || !strings.Contains(err.Error(), "ambient mode (Track 2") {
+		t.Errorf("--window should error in Track 1; got %v", err)
+	}
+}
+
+func TestCaptureStdinPlusPositionalErrors(t *testing.T) {
+	_, err := executeCommand("capture", "--stdin", "literal text")
+	if err == nil || !strings.Contains(err.Error(), "cannot combine --stdin with a positional source") {
+		t.Errorf("expected --stdin + positional mutex error; got %v", err)
+	}
+}
+
+// --- Behavior tests ---
+
+func TestCapturePositionalURL(t *testing.T) {
+	var recs []captureRecord
+	srv := startMockCaptureDPKMS(t, &recs)
+	defer srv.Close()
+
+	out, err := executeCommand("capture", "https://example.com/post", "--server", srv.URL)
+	if err != nil {
+		t.Fatalf("capture URL: %v", err)
+	}
+	if !strings.Contains(out, "Job ID: job_capture_1") {
+		t.Errorf("expected Job ID in stdout, got %q", out)
+	}
+	if len(recs) != 1 || recs[0].Path != "/api/v1/analyze" {
+		t.Fatalf("expected one analyze POST, got %+v", recs)
+	}
+	if got := recs[0].Body["content"]; got != "https://example.com/post" {
+		t.Errorf("body.content = %v, want URL", got)
+	}
+	if got := recs[0].Body["source"]; got != "https://example.com/post" {
+		t.Errorf("body.source = %v, want URL (analyze auto-detect path)", got)
+	}
+}
+
+func TestCapturePositionalLiteral(t *testing.T) {
+	var recs []captureRecord
+	srv := startMockCaptureDPKMS(t, &recs)
+	defer srv.Close()
+
+	_, err := executeCommand("capture", "some literal thought", "--server", srv.URL)
+	if err != nil {
+		t.Fatalf("capture literal: %v", err)
+	}
+	if got := recs[0].Body["content"]; got != "some literal thought" {
+		t.Errorf("body.content = %v", got)
+	}
+	if got := recs[0].Body["source"]; got != "argument" {
+		t.Errorf("body.source = %v, want \"argument\"", got)
+	}
+}
+
+func TestCapturePositionalFile(t *testing.T) {
+	var recs []captureRecord
+	srv := startMockCaptureDPKMS(t, &recs)
+	defer srv.Close()
+
+	dir := t.TempDir()
+	f := filepath.Join(dir, "notes.md")
+	if err := os.WriteFile(f, []byte("# heading\nbody\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := executeCommand("capture", f, "--server", srv.URL)
+	if err != nil {
+		t.Fatalf("capture file: %v", err)
+	}
+	if got := recs[0].Body["content"]; got != "# heading\nbody\n" {
+		t.Errorf("body.content = %q, want file contents", got)
+	}
+	if src, _ := recs[0].Body["source"].(string); !strings.HasPrefix(src, "file:") {
+		t.Errorf("body.source = %q, want file:<path>", src)
+	}
+}
+
+func TestCaptureHintAndMentionFlags(t *testing.T) {
+	var recs []captureRecord
+	srv := startMockCaptureDPKMS(t, &recs)
+	defer srv.Close()
+
+	_, err := executeCommand("capture", "ux refresh idea",
+		"--hint", "ux,research",
+		"--mention", "@project.alpha",
+		"--mention", "@person.bob",
+		"--server", srv.URL,
+	)
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	if got, _ := recs[0].Body["tag"].(string); got != "ux,research" {
+		t.Errorf("body.tag = %q, want \"ux,research\" (--hint maps to tag on the wire)", got)
+	}
+	mens, _ := recs[0].Body["mentions"].([]any)
+	if len(mens) != 2 {
+		t.Fatalf("body.mentions = %v, want 2 entries", mens)
+	}
+	if mens[0] != "@project.alpha" || mens[1] != "@person.bob" {
+		t.Errorf("body.mentions = %v", mens)
+	}
+}
+
+func TestCaptureWaitPolls(t *testing.T) {
+	var recs []captureRecord
+	srv := startMockCaptureDPKMS(t, &recs)
+	defer srv.Close()
+
+	out, err := executeCommand("capture", "wait test", "--wait", "--server", srv.URL)
+	if err != nil {
+		t.Fatalf("capture --wait: %v", err)
+	}
+	if !strings.Contains(out, "Job ID: job_capture_1") {
+		t.Errorf("expected Job ID in stdout, got %q", out)
+	}
+	// Verify we hit /api/v1/jobs/<id> at least once.
+	hitJobs := false
+	for _, r := range recs {
+		if strings.HasPrefix(r.Path, "/api/v1/jobs/") {
+			hitJobs = true
+			break
+		}
+	}
+	if !hitJobs {
+		t.Errorf("--wait should poll /api/v1/jobs/<id>; recs=%+v", recs)
+	}
+}
+
+func TestCaptureInboxRoutesToInboxEndpoint(t *testing.T) {
+	var recs []captureRecord
+	srv := startMockCaptureDPKMS(t, &recs)
+	defer srv.Close()
+
+	out, err := executeCommand("capture", "park this",
+		"--inbox",
+		"--note", "kickoff",
+		"--hint", "research",
+		"--mention", "@project.alpha",
+		"--server", srv.URL,
+	)
+	if err != nil {
+		t.Fatalf("capture --inbox: %v", err)
+	}
+	if !strings.Contains(out, "Inbox object: obj_inbox_1") {
+		t.Errorf("expected Inbox object id in stdout, got %q", out)
+	}
+	if recs[0].Path != "/api/v1/inbox" {
+		t.Errorf("expected POST /api/v1/inbox, got %s", recs[0].Path)
+	}
+	if note, _ := recs[0].Body["inbox_note"].(string); note != "kickoff" {
+		t.Errorf("body.inbox_note = %q, want \"kickoff\"", note)
+	}
+	if hints, _ := recs[0].Body["hints"].(string); hints != "research" {
+		t.Errorf("body.hints = %q, want \"research\"", hints)
+	}
+}
+
+func TestCaptureHelpListsFlags(t *testing.T) {
+	out, err := executeCommand("capture", "--help")
+	if err != nil {
+		t.Fatalf("capture --help: %v", err)
+	}
+	for _, flag := range []string{
+		"--source", "--stdin", "--type",
+		"--pipeline", "--inbox",
+		"--every",
+		"--hint", "--mention", "--note", "--profile",
+		"--raw", "--no-fanout", "--no-dedup", "--source-key",
+		"--wait", "--server",
+		"--ambient", "--input", "--skip", "--window",
+	} {
+		if !strings.Contains(out, flag) {
+			t.Errorf("capture help should list %s", flag)
+		}
+	}
+}
