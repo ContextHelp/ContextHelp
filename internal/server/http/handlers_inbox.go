@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
 )
 
 // CaptureInbox handles POST /api/v1/inbox.
@@ -21,7 +21,7 @@ func CaptureInbox(svc *service.Service) http.HandlerFunc {
 			Type      string   `json:"type"`
 			Source    string   `json:"source"`
 			InboxNote string   `json:"inbox_note"`
-			Hints     string   `json:"hints"`
+			Hints     []string `json:"hints"`
 			Mentions  []string `json:"mentions"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
