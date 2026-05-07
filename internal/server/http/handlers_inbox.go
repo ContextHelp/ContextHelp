@@ -23,6 +23,7 @@ func CaptureInbox(svc *service.Service) http.HandlerFunc {
 			InboxNote string   `json:"inbox_note"`
 			Hints     []string `json:"hints"`
 			Mentions  []string `json:"mentions"`
+			Profile   string   `json:"profile"` // T-0588
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
@@ -46,6 +47,7 @@ func CaptureInbox(svc *service.Service) http.HandlerFunc {
 			InboxNote: req.InboxNote,
 			Hints:     req.Hints,
 			Mentions:  mentions.ParseSlice(req.Mentions),
+			Profile:   req.Profile,
 		}
 		obj, err := svc.CaptureToInbox(r.Context(), captureReq)
 		if err != nil {

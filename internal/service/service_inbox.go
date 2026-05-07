@@ -39,7 +39,10 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 		// T-0573: caller-asserted hints land directly on Tags (Source:"user")
 		// since no pipeline runs at inbox-capture time. Triage will re-enqueue
 		// the object via a pipeline job that picks these up via UserHints.
-		Tags:      userHintsToTags(req.Hints),
+		Tags: userHintsToTags(req.Hints),
+		// T-0588: caller-asserted profile partitions the inbox item from
+		// the start so list/find queries scoped to a profile see it.
+		ProfileID: req.Profile,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}

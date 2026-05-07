@@ -191,6 +191,13 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 		// on the draft so the auto-tagger's heuristic+LLM tags can merge
 		// with them by lowercase label instead of overwriting them.
 		Tags: parseUserHints(job.UserHints),
+		// T-0588: caller-asserted profile + note pre-populate the draft
+		// so they survive pipeline execution and land on the persisted
+		// KnowledgeObject. Pipeline steps that don't touch these fields
+		// preserve them; steps that overwrite (none today) would need
+		// to merge instead.
+		ProfileID: job.UserProfile,
+		InboxNote: job.UserNote,
 	}
 
 	draft, err = p.runSteps(ctx, pipe, draft)

@@ -203,6 +203,8 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 	sourceKey, _ := cmd.Flags().GetString("source-key")
 	hints, _ := cmd.Flags().GetStringSlice("hint")
 	mentions, _ := cmd.Flags().GetStringSlice("mention")
+	profile, _ := cmd.Flags().GetString("profile")
+	note, _ := cmd.Flags().GetString("note")
 	wait, _ := cmd.Flags().GetBool("wait")
 	inbox, _ := cmd.Flags().GetBool("inbox")
 
@@ -221,6 +223,12 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 	}
 	if len(hints) > 0 {
 		reqBody["hints"] = hints
+	}
+	if profile != "" {
+		reqBody["profile"] = profile
+	}
+	if note != "" {
+		reqBody["note"] = note
 	}
 	if len(mentions) > 0 {
 		reqBody["mentions"] = mentions
@@ -292,6 +300,10 @@ func postInboxCapture(
 	}
 	if len(hints) > 0 {
 		body["hints"] = hints
+	}
+	// T-0588: --profile partitions the inbox item to a focus profile.
+	if profile, _ := cmd.Flags().GetString("profile"); profile != "" {
+		body["profile"] = profile
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {

@@ -178,6 +178,32 @@ func TestCaptureSourceFlagOverridesAutoDetected(t *testing.T) {
 	}
 }
 
+// TestCaptureProfileAndNoteFlags is the regression for T-0588: --profile
+// and --note are real flags that flow into the request body and reach
+// AnalyzeRequest.Profile / AnalyzeRequest.Note server-side. Pre-T-0588
+// they were declared on capture.go but never read — the values silently
+// vanished before the POST.
+func TestCaptureProfileAndNoteFlags(t *testing.T) {
+	var recs []captureRecord
+	srv := startMockCaptureDPKMS(t, &recs)
+	defer srv.Close()
+
+	_, err := executeCommand("capture", "literal text",
+		"--profile", "founder",
+		"--note", "client kickoff 2026-Q2",
+		"--server", srv.URL,
+	)
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	if got, _ := recs[0].Body["profile"].(string); got != "founder" {
+		t.Errorf("body.profile = %q, want %q", got, "founder")
+	}
+	if got, _ := recs[0].Body["note"].(string); got != "client kickoff 2026-Q2" {
+		t.Errorf("body.note = %q, want %q", got, "client kickoff 2026-Q2")
+	}
+}
+
 func TestCaptureHintAndMentionFlags(t *testing.T) {
 	var recs []captureRecord
 	srv := startMockCaptureDPKMS(t, &recs)

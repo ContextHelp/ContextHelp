@@ -273,6 +273,11 @@ func (d *Driver) Migrate(ctx context.Context) error {
 	if err := migrateJobsUserHints(ctx, d.db); err != nil {
 		return fmt.Errorf("jobs.user_hints migration: %w", err)
 	}
+	// Jobs.user_profile + user_note columns for `ctxt capture
+	// --profile` and `--note` (T-0588). Idempotent.
+	if err := migrateJobsUserProfileNote(ctx, d.db); err != nil {
+		return fmt.Errorf("jobs.user_profile/user_note migration: %w", err)
+	}
 	return nil
 }
 
@@ -319,6 +324,33 @@ func migrateJobsUserHints(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx,
 		`ALTER TABLE jobs ADD COLUMN user_hints TEXT NOT NULL DEFAULT ''`); err != nil {
 		return fmt.Errorf("add user_hints column: %w", err)
+	}
+	return nil
+}
+
+// migrateJobsUserProfileNote adds user_profile + user_note TEXT columns to
+// jobs. Idempotent per-column via information_schema checks; either
+// column can be missing independently after a partial upgrade. Mirrors
+// migrateJobsUserMentions / migrateJobsUserHints (T-0588).
+func migrateJobsUserProfileNote(ctx context.Context, db *sql.DB) error {
+	for _, col := range []string{"user_profile", "user_note"} {
+		var exists bool
+		err := db.QueryRowContext(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'jobs' AND column_name = $1
+			)
+		`, col).Scan(&exists)
+		if err != nil {
+			return fmt.Errorf("check %s column: %w", col, err)
+		}
+		if exists {
+			continue
+		}
+		if _, err := db.ExecContext(ctx,
+			`ALTER TABLE jobs ADD COLUMN `+col+` TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add %s column: %w", col, err)
+		}
 	}
 	return nil
 }
