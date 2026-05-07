@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -107,6 +109,13 @@ func validateCaptureFlags(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// captureHTTPClient is the HTTP client used for all capture-side POSTs
+// to dpkms. The 30s timeout protects against an unreachable server
+// hanging the CLI indefinitely; in --every loops the per-request
+// context is also cancellable via SIGINT so Ctrl-C interrupts an
+// in-flight POST instead of waiting for the timeout.
+var captureHTTPClient = &gohttp.Client{Timeout: 30 * time.Second}
+
 // RunCapture is the entry point for `ctxt capture`. Implements positional /
 // file / stdin / clipboard capture by POSTing to /api/v1/analyze. When
 // --every is set, wraps captureOnce in a ticker loop until SIGINT.
@@ -116,14 +125,17 @@ func RunCapture(cmd *cobra.Command, args []string) error {
 	}
 	every, _ := cmd.Flags().GetDuration("every")
 	if every <= 0 {
-		return captureOnce(cmd, args)
+		return captureOnce(cmd.Context(), cmd, args)
 	}
 	return captureLoop(cmd, args, every)
 }
 
 // captureLoop runs captureOnce immediately, then on every tick of `every`
 // until the context is cancelled (SIGINT). Per-tick errors are logged to
-// stderr and don't kill the loop — only ctx cancellation does.
+// stderr and don't kill the loop — only ctx cancellation does. The loop
+// context threads into each captureOnce call so an in-flight HTTP
+// request cancels promptly on Ctrl-C instead of waiting for the
+// per-request 30s timeout.
 func captureLoop(cmd *cobra.Command, args []string, every time.Duration) error {
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
@@ -131,7 +143,7 @@ func captureLoop(cmd *cobra.Command, args []string, every time.Duration) error {
 	label := captureSourceLabel(cmd, args)
 	fmt.Fprintf(os.Stderr, "capturing %s every %s (ctrl-c to stop)\n", label, every)
 
-	if err := captureOnce(cmd, args); err != nil {
+	if err := captureOnce(ctx, cmd, args); err != nil {
 		fmt.Fprintf(os.Stderr, "capture: %v\n", err)
 	}
 	ticker := time.NewTicker(every)
@@ -141,7 +153,7 @@ func captureLoop(cmd *cobra.Command, args []string, every time.Duration) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if err := captureOnce(cmd, args); err != nil {
+			if err := captureOnce(ctx, cmd, args); err != nil {
 				fmt.Fprintf(os.Stderr, "capture: %v\n", err)
 			}
 		}
@@ -161,10 +173,21 @@ func captureSourceLabel(cmd *cobra.Command, args []string) string {
 
 // captureOnce performs a single capture: resolves input → builds request →
 // POSTs to /api/v1/analyze → prints job ID → optionally waits for completion.
-func captureOnce(cmd *cobra.Command, args []string) error {
+//
+// ctx threads through to the HTTP request so a SIGINT during --every loops
+// cancels the in-flight POST instead of blocking on the client timeout.
+func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 	content, source, err := resolveCaptureInput(cmd, args)
 	if err != nil {
 		return err
+	}
+
+	// --source overrides the auto-detected source string. Operators use
+	// it to pin pipeline detection (e.g. --source /vault/notes/file.md
+	// when the actual content arrived via --stdin). Empty value keeps
+	// the auto-detected source from resolveCaptureInput.
+	if override, _ := cmd.Flags().GetString("source"); override != "" {
+		source = override
 	}
 
 	serverURL, _ := cmd.Flags().GetString("server")
@@ -204,7 +227,7 @@ func captureOnce(cmd *cobra.Command, args []string) error {
 	}
 
 	if inbox {
-		return postInboxCapture(serverURL, content, source, contentType, hints, mentions, cmd)
+		return postInboxCapture(ctx, serverURL, content, source, contentType, hints, mentions, cmd)
 	}
 
 	endpoint := serverURL + "/api/v1/analyze"
@@ -213,7 +236,12 @@ func captureOnce(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	resp, err := gohttp.Post(endpoint, "application/json", bytes.NewReader(body))
+	req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := captureHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("request to dpkms: %w", err)
 	}
@@ -248,6 +276,7 @@ func captureOnce(cmd *cobra.Command, args []string) error {
 // enqueue a job — it only stores the object in inbox state for later triage
 // (svc.CaptureToInbox). There is no job to poll.
 func postInboxCapture(
+	ctx context.Context,
 	serverURL, content, source, contentType string,
 	hints, mentions []string,
 	cmd *cobra.Command,
@@ -268,7 +297,12 @@ func postInboxCapture(
 	if err != nil {
 		return fmt.Errorf("marshal inbox request: %w", err)
 	}
-	resp, err := gohttp.Post(serverURL+"/api/v1/inbox", "application/json", bytes.NewReader(raw))
+	req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodPost, serverURL+"/api/v1/inbox", bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("build inbox request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := captureHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("request to dpkms inbox: %w", err)
 	}
@@ -322,7 +356,17 @@ func resolveCaptureInput(cmd *cobra.Command, args []string) (content, source str
 			if err != nil {
 				return "", "", fmt.Errorf("read file %q: %w", raw, err)
 			}
-			return string(data), "file:" + raw, nil
+			// Send the absolute path as `source` so the server's
+			// pipeline detector chain can fire both extension-based
+			// detectors (foo.png → image.ocr) AND prefix-based ones
+			// (/vault/notes/... → watch.file, T-0209). The earlier
+			// "file:<path>" prefix broke the latter. Resolution
+			// failure falls back to the raw path the operator typed.
+			abs, absErr := filepath.Abs(raw)
+			if absErr != nil {
+				abs = raw
+			}
+			return string(data), abs, nil
 		}
 		// Literal string.
 		return raw, "argument", nil

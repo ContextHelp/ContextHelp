@@ -196,8 +196,11 @@ func TestE2ECapturePositionalFile(t *testing.T) {
 	if got := recs[0].Body["content"]; got != "hello e2e" {
 		t.Errorf("body.content=%q", got)
 	}
-	if src, _ := recs[0].Body["source"].(string); !strings.HasPrefix(src, "file:") {
-		t.Errorf("body.source=%q want file:<path>", src)
+	// PR #31 review fix: source is the absolute file path (no "file:"
+	// prefix) so server-side prefix-based pipeline detectors fire on
+	// the actual path. T-0209 covers the server-side regression.
+	if src, _ := recs[0].Body["source"].(string); !filepath.IsAbs(src) || !strings.HasSuffix(src, filepath.Base(path)) {
+		t.Errorf("body.source=%q want absolute path ending in %q", src, filepath.Base(path))
 	}
 }
 

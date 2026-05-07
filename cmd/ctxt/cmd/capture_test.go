@@ -148,8 +148,33 @@ func TestCapturePositionalFile(t *testing.T) {
 	if got := recs[0].Body["content"]; got != "# heading\nbody\n" {
 		t.Errorf("body.content = %q, want file contents", got)
 	}
-	if src, _ := recs[0].Body["source"].(string); !strings.HasPrefix(src, "file:") {
-		t.Errorf("body.source = %q, want file:<path>", src)
+	// PR #31 review fix: capture sends the absolute file path as `source`
+	// (no "file:" prefix) so server-side prefix-based pipeline detectors
+	// (e.g. /vault/notes/... → watch.file, T-0209) fire correctly.
+	if src, _ := recs[0].Body["source"].(string); !filepath.IsAbs(src) || !strings.HasSuffix(src, filepath.Base(f)) {
+		t.Errorf("body.source = %q, want absolute path ending in %q", src, filepath.Base(f))
+	}
+}
+
+// TestCaptureSourceFlagOverridesAutoDetected is the regression for PR #31
+// review item #2: --source <name> on the CLI was declared but never read.
+// It must overwrite the auto-detected source string in the request body
+// so operators can pin pipeline detection (e.g. --source /vault/notes/x.md
+// when content arrives via --stdin).
+func TestCaptureSourceFlagOverridesAutoDetected(t *testing.T) {
+	var recs []captureRecord
+	srv := startMockCaptureDPKMS(t, &recs)
+	defer srv.Close()
+
+	_, err := executeCommand("capture", "literal text",
+		"--source", "/vault/notes/manual-pin.md",
+		"--server", srv.URL,
+	)
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	if got, _ := recs[0].Body["source"].(string); got != "/vault/notes/manual-pin.md" {
+		t.Errorf("body.source = %q, want /vault/notes/manual-pin.md (--source override)", got)
 	}
 }
 
