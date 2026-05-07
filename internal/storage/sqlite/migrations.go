@@ -99,6 +99,9 @@ var migration029 string
 //go:embed migrations/030_stamp_pipeline_version.sql
 var migration030 string
 
+//go:embed migrations/031_jobs_user_profile_note.sql
+var migration031 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -163,6 +166,10 @@ var migrations = []migration{
 	// Migration 030: stamp existing objects.pipeline rows with @v0 so post-T-0579
 	// pipeline versioning has a baseline (ADR-070 §2). Idempotent.
 	{Version: 30, SQL: migration030},
+	// Migration 031: user_profile + user_note columns on jobs for
+	// `ctxt capture --profile` and `--note` (T-0588). Mirrors 027/028 —
+	// plain TEXT columns; neither existed in any prior schema version.
+	{Version: 31, SQL: migration031},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

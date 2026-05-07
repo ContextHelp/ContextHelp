@@ -167,6 +167,11 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 			// raw path too, so capture-with-hints partitioning works without
 			// the pipeline running.
 			Tags: userHintsToTags(req.Hints),
+			// T-0588: caller-asserted profile and note flow directly onto
+			// the KnowledgeObject so partitioning + audit-note capture
+			// work even on the raw path (no pipeline to plumb through).
+			ProfileID: req.Profile,
+			InboxNote: req.Note,
 		}
 		if err := s.Store.Objects().Create(ctx, obj); err != nil {
 			return "", fmt.Errorf("analyze raw: store: %w", err)
@@ -242,6 +247,8 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		UpdatedAt:    now,
 		UserMentions: req.Mentions, // T-0190: forwarded to draft.Mentions in worker.
 		UserHints:    req.Hints,    // T-0573: forwarded to draft.Tags (Source:"user") in worker.
+		UserProfile:  req.Profile,  // T-0588: forwarded to draft.ProfileID in worker.
+		UserNote:     req.Note,     // T-0588: forwarded to draft.InboxNote in worker.
 	}
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {

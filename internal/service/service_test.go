@@ -257,6 +257,59 @@ func TestAnalyzeRawWithHintsPopulatesUserTags(t *testing.T) {
 	assert.Equal(t, "user", obj.Tags[1].Source)
 }
 
+// T-0588: raw path must persist caller-asserted profile + note directly
+// on the KnowledgeObject. Pre-T-0588 the AnalyzeRequest had no Profile
+// or Note fields; CLI flags --profile and --note were silently dropped
+// at the JSON decode boundary.
+func TestAnalyzeRawWithProfileAndNote(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	id, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content: "raw with profile + note",
+		Type:    "text",
+		Source:  "test",
+		Raw:     true,
+		Profile: "founder",
+		Note:    "client kickoff 2026-Q2",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, id)
+
+	obj, err := svc.Store.Objects().Get(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, obj)
+
+	assert.Equal(t, "founder", obj.ProfileID, "raw path must persist Profile to ProfileID")
+	assert.Equal(t, "client kickoff 2026-Q2", obj.InboxNote, "raw path must persist Note to InboxNote")
+}
+
+// T-0588: pipeline path must forward Profile + Note onto the Job's
+// UserProfile/UserNote so the worker can pre-populate draft.ProfileID
+// and draft.InboxNote before the pipeline runs. Verifies the Job is
+// enqueued with the right values; worker pre-population is exercised
+// in the worker package's own tests.
+func TestAnalyzePipelineForwardsProfileAndNoteToJob(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	jobID, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content: "pipeline path with profile + note",
+		Type:    "text",
+		Source:  "test",
+		Profile: "founder",
+		Note:    "client kickoff 2026-Q2",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, jobID)
+
+	job, err := svc.Store.Jobs().Get(ctx, jobID)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	assert.Equal(t, "founder", job.UserProfile)
+	assert.Equal(t, "client kickoff 2026-Q2", job.UserNote)
+}
+
 func TestGetObject(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
