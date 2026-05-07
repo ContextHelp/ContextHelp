@@ -17,6 +17,10 @@ import (
 	kitcli "hop.top/kit/go/console/cli"
 )
 
+// binName selects which file in the shared `contexthelp/` config
+// namespace this binary reads. dpkms reads contexthelp/dpkms.yaml.
+const binName = "dpkms"
+
 const dpkmsLong = `dpkms is the infrastructure layer for ContextHelp.
 
 dPKMS (Decentralized Personal Knowledge Management Substrate) provides
@@ -48,7 +52,7 @@ var (
 			},
 		},
 		Globals: []kitcli.Flag{
-			{Name: "config", Usage: "config file (default $XDG_CONFIG_HOME/contexthelp/config.yaml)"},
+			{Name: "config", Usage: "config file (default $XDG_CONFIG_HOME/contexthelp/dpkms.yaml)"},
 			{Name: "data-dir", Usage: "data directory override"},
 			{Name: "server-url", Default: "http://localhost:8080", Usage: "dpkms server URL"},
 			{Name: "offline", Usage: "disable all network calls; force local-only operation"},
@@ -215,13 +219,13 @@ func printVersion(cmd *cobra.Command) {
 func initConfig() {
 	cfgFile = viper.GetString("config")
 	var err error
-	cfg, err = config.Load(cfgFile)
+	cfg, err = config.Load(binName, cfgFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load config: %v\n", err)
 		cfg = &config.Config{}
 	}
 
-	if err := config.EnsureConfigDir(); err != nil {
+	if err := config.EnsureConfigDir(binName); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure config directory: %v\n", err)
 	}
 	if err := config.EnsureDataDir(); err != nil {

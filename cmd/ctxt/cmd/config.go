@@ -159,7 +159,7 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("Configuration:")
 	fmt.Println()
-	fmt.Printf("  Config file:  %s\n", config.GetConfigPath())
+	fmt.Printf("  Config file:  %s\n", config.GetConfigPath(binName))
 	fmt.Println()
 	fmt.Println("  storage:")
 	fmt.Printf("    type:       %s\n", cfg.Storage.Type)
@@ -190,7 +190,7 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 }
 
 func runConfigPath(cmd *cobra.Command, args []string) error {
-	configPath := config.GetConfigPath()
+	configPath := config.GetConfigPath(binName)
 	fmt.Println(configPath)
 	return nil
 }
@@ -201,7 +201,7 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 	// Re-load to get a fresh validation result (cfg may have been loaded early).
 	// If load fails, report error; otherwise use cfg (already loaded by initConfig)
 	// to avoid the migration write-back corrupting a temporary test file.
-	if _, err := config.Load(cfgFile); err != nil {
+	if _, err := config.Load(binName, cfgFile); err != nil {
 		fmt.Printf("  ✗ Configuration is invalid: %v\n", err)
 		return err
 	}
@@ -230,7 +230,7 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 }
 
 func runConfigEdit(cmd *cobra.Command, args []string) error {
-	configPath := config.GetConfigPath()
+	configPath := config.GetConfigPath(binName)
 
 	// Get editor from environment or use default
 	editor := os.Getenv("EDITOR")
@@ -256,7 +256,7 @@ func runConfigLint(cmd *cobra.Command, args []string) error {
 	// Fall back to the default config path when no --config flag was provided.
 	configPath := cfgFile
 	if configPath == "" {
-		configPath = config.GetConfigPath()
+		configPath = config.GetConfigPath(binName)
 	}
 
 	// Apply auto-fixes before running lint so the results reflect the fixed state.
@@ -313,7 +313,7 @@ func runConfigBackup(cmd *cobra.Command, _ []string) error {
 
 	passphraseFlag, _ := cmd.Flags().GetString("passphrase")
 
-	configPath := config.GetConfigPath()
+	configPath := config.GetConfigPath(binName)
 	configDir := filepath.Dir(configPath)
 
 	// Load private key from OS keychain.
@@ -461,7 +461,7 @@ func maybeDecryptBundleFile(path string) (outPath string, wasEncrypted bool, err
 
 // writeRestoredFiles writes bundle file contents to the config directory.
 func writeRestoredFiles(cmd *cobra.Command, files map[string][]byte) error {
-	configPath := config.GetConfigPath()
+	configPath := config.GetConfigPath(binName)
 	configDir := filepath.Dir(configPath)
 	for name, data := range files {
 		dst := filepath.Join(configDir, name)

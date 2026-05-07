@@ -204,7 +204,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// 6. Init service layer.
 	bus := events.NewLocalBus()
-	events.SetupSubscriber(bus, cfg, config.GetConfigPath())
+	events.SetupSubscriber(bus, cfg, config.GetConfigPath(binName))
 
 	// 6a. Cross-process event bus hub. Constructed before service.New
 	// so the kit/runtime/policy engine can subscribe and the resulting

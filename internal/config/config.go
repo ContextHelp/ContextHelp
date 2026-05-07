@@ -7,15 +7,10 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
-	kitconfig "hop.top/kit/go/core/config"
 	"hop.top/kit/go/core/xdg"
 )
 
 const (
-	// DefaultConfigFileName is the default configuration file name
-	DefaultConfigFileName = "config.yaml"
-	// DefaultConfigDir is the default configuration directory
-	DefaultConfigDir = ".config/contexthelp"
 	// EnvConfigPath is the environment variable for config path override
 	EnvConfigPath = "CTXT_CONFIG"
 	// EnvDataDir is the environment variable for data directory override
@@ -610,18 +605,25 @@ type ProviderBackendConfig struct {
 
 // Load loads the configuration from file and environment variables.
 //
+// bin selects the per-binary config file under the shared `contexthelp/`
+// namespace. Pass "ctxt" or "dpkms" — the cascade then looks for
+// `contexthelp/<bin>.yaml` at every layer, so each binary can ship its
+// own settings without forking the schema. The Config struct stays
+// shared; bin-specific keys simply land in the bin-specific file.
+//
 // Resolution order when cfgFile is empty and CTXT_CONFIG is unset:
 //
-//  1. system  — /etc/ctxt/config.yaml
-//  2. user    — $XDG_CONFIG_HOME/ctxt/config.yaml
-//  3. project — nearest .ctxt/config.yaml | .ctxt.yaml | ctxt.yaml,
-//     walking up from cwd, stopping at $HOME or fs root
+//  1. system  — /etc/contexthelp/<bin>.yaml
+//  2. user    — $XDG_CONFIG_HOME/contexthelp/<bin>.yaml
+//  3. project — nearest .contexthelp/<bin>.yaml, walking up from cwd
+//     and stopping at $HOME or fs root
 //
 // Each layer is merged on top of the previous via viper.MergeInConfig,
-// so project overrides user overrides system. The cascade is built by
-// kit's config.OptionsForToolWithMarkers and kept in sync with other
-// kit-built tools.
-func Load(cfgFile string) (*Config, error) {
+// so project overrides user overrides system.
+func Load(bin, cfgFile string) (*Config, error) {
+	if bin == "" {
+		return nil, fmt.Errorf("config.Load: bin name is required (e.g. \"ctxt\" or \"dpkms\")")
+	}
 	v := viper.New()
 	v.SetConfigType("yaml")
 
@@ -647,19 +649,9 @@ func Load(cfgFile string) (*Config, error) {
 			}
 		}
 	} else {
-		// Walk the kit-canonical cascade: system → user → project.
-		// Each existing file is merged on top of the previous so the
-		// closest layer wins.
-		opts := kitconfig.OptionsForToolWithMarkers("ctxt", []string{
-			filepath.Join(".ctxt", "config.yaml"),
-			".ctxt.yaml",
-			"ctxt.yaml",
-		})
-		for _, path := range []string{
-			opts.SystemConfigPath,
-			opts.UserConfigPath,
-			opts.ProjectConfigPath,
-		} {
+		// Walk system → user → project. Each existing file merges on
+		// top of the previous so the closest layer wins.
+		for _, path := range cascadePaths(bin) {
 			if path == "" {
 				continue
 			}
@@ -958,9 +950,49 @@ func dataDirXDG() (string, error) {
 	return xdg.RawDataDir(xdgTool)
 }
 
-// GetConfigPath returns the configuration file path being used.
-// Resolution order: $CTXT_CONFIG > kit/xdg ConfigDir/config.yaml.
-func GetConfigPath() string {
+// cascadePaths returns the system → user → project file list for the
+// given binary. Each entry is an absolute path; missing layers (e.g.
+// no project marker walk hit) are returned as "" and skipped by Load.
+func cascadePaths(bin string) []string {
+	system := filepath.Join("/etc", xdgTool, bin+".yaml")
+
+	var user string
+	if dir, err := configDirXDG(); err == nil && dir != "" {
+		user = filepath.Join(dir, bin+".yaml")
+	}
+
+	project := walkUpForMarker(bin)
+
+	return []string{system, user, project}
+}
+
+// walkUpForMarker walks up from cwd looking for `.contexthelp/<bin>.yaml`,
+// stopping at $HOME or fs root. Returns "" if cwd is unobtainable or no
+// marker is found.
+func walkUpForMarker(bin string) string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	home, _ := os.UserHomeDir()
+	marker := filepath.Join(".contexthelp", bin+".yaml")
+
+	dir := cwd
+	for {
+		candidate := filepath.Join(dir, marker)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		if dir == home || dir == "/" || dir == filepath.Dir(dir) {
+			return ""
+		}
+		dir = filepath.Dir(dir)
+	}
+}
+
+// GetConfigPath returns the user-layer configuration file path for the
+// given binary. Resolution: $CTXT_CONFIG > $XDG_CONFIG_HOME/contexthelp/<bin>.yaml.
+func GetConfigPath(bin string) string {
 	if cfgPath := os.Getenv(EnvConfigPath); cfgPath != "" {
 		return cfgPath
 	}
@@ -968,12 +1000,13 @@ func GetConfigPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, DefaultConfigFileName)
+	return filepath.Join(dir, bin+".yaml")
 }
 
-// EnsureConfigDir ensures the configuration directory exists.
-func EnsureConfigDir() error {
-	configPath := GetConfigPath()
+// EnsureConfigDir ensures the configuration directory for the given
+// binary exists.
+func EnsureConfigDir(bin string) error {
+	configPath := GetConfigPath(bin)
 	if configPath == "" {
 		return fmt.Errorf("failed to determine config path")
 	}

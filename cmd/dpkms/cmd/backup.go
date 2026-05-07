@@ -143,7 +143,7 @@ func resolveConfigPath() string {
 	if envPath := os.Getenv(config.EnvConfigPath); envPath != "" {
 		return envPath
 	}
-	return config.GetConfigPath()
+	return config.GetConfigPath(binName)
 }
 
 func humanBytes(b int64) string {

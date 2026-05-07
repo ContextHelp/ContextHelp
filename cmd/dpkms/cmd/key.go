@@ -66,7 +66,7 @@ func init() {
 }
 
 func runKeyInit(cmd *cobra.Command, _ []string) error {
-	configPath := config.GetConfigPath()
+	configPath := config.GetConfigPath(binName)
 	configDir := filepath.Dir(configPath)
 
 	kp, err := bundle.GenerateKeyPair()
@@ -103,7 +103,7 @@ func runKeyInit(cmd *cobra.Command, _ []string) error {
 }
 
 func runKeyRotate(cmd *cobra.Command, _ []string) error {
-	configPath := config.GetConfigPath()
+	configPath := config.GetConfigPath(binName)
 	configDir := filepath.Dir(configPath)
 	keysDir := bundle.PublicKeyDir(configDir)
 

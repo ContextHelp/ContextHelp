@@ -15,7 +15,7 @@ func TestEmptyYAMLDefaults(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.yaml")
 	os.WriteFile(cfgPath, []byte(""), 0644)
 
-	cfg, err := Load(cfgPath)
+	cfg, err := Load("ctxt", cfgPath)
 	require.NoError(t, err)
 
 	assert.Equal(t, 500*time.Millisecond, cfg.Jobs.PollInterval)
@@ -45,7 +45,7 @@ func TestWriteBackRoundtrip(t *testing.T) {
 	err := WriteBack(original, path)
 	require.NoError(t, err)
 
-	loaded, err := Load(path)
+	loaded, err := Load("ctxt", path)
 	require.NoError(t, err)
 
 	assert.Equal(t, original.Version, loaded.Version)
@@ -61,12 +61,12 @@ func TestMigrateV0ToV1(t *testing.T) {
 	v0yaml := []byte("storage:\n  type: sqlite\n")
 	require.NoError(t, os.WriteFile(path, v0yaml, 0644))
 
-	cfg, err := Load(path)
+	cfg, err := Load("ctxt", path)
 	require.NoError(t, err)
 	assert.Equal(t, 1, cfg.Version, "version should be bumped to 1")
 
 	// Reload from disk to verify write-back.
-	reloaded, err := Load(path)
+	reloaded, err := Load("ctxt", path)
 	require.NoError(t, err)
 	assert.Equal(t, 1, reloaded.Version, "version should be persisted after migration")
 }

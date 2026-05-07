@@ -79,7 +79,7 @@ func configPath() string {
 	if cfgFile != "" {
 		return cfgFile
 	}
-	return config.GetConfigPath()
+	return config.GetConfigPath(binName)
 }
 
 func runProfileList(cmd *cobra.Command, args []string) error {
@@ -124,7 +124,7 @@ func runProfileList(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	fmt.Println("  Configure profiles in your config file:")
-	fmt.Printf("  %s\n", config.GetConfigPath())
+	fmt.Printf("  %s\n", config.GetConfigPath(binName))
 	return nil
 }
 

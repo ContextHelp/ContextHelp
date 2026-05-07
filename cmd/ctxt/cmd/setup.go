@@ -21,7 +21,7 @@ The wizard prompts for:
   - Storage path (default: ~/.local/share/ctxt)
   - Default pipeline (text / url / auto)
 
-The resulting config is written to ~/.config/contexthelp/config.yaml.
+The resulting config is written to ~/.config/contexthelp/ctxt.yaml.
 
 Examples:
   # Interactive wizard
@@ -51,7 +51,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		nonInteractive = true
 	}
 
-	cfgPath := config.GetConfigPath()
+	cfgPath := config.GetConfigPath(binName)
 
 	// Check if config already exists.
 	if _, err := os.Stat(cfgPath); err == nil && !nonInteractive {

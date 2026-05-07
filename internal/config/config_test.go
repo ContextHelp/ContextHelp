@@ -20,11 +20,11 @@ func loadFromYAML(t *testing.T, yaml string) (*Config, error) {
 	if err := os.WriteFile(cfgPath, []byte(yaml), 0644); err != nil {
 		t.Fatalf("failed to write test config: %v", err)
 	}
-	return Load(cfgPath)
+	return Load("ctxt", cfgPath)
 }
 
 func TestLoadDefaults(t *testing.T) {
-	cfg, err := Load("")
+	cfg, err := Load("ctxt", "")
 	if err != nil {
 		t.Fatalf("Load with no config file should succeed: %v", err)
 	}
@@ -71,7 +71,7 @@ profile:
 		t.Fatalf("failed to write config file: %v", err)
 	}
 
-	cfg, err := Load(cfgPath)
+	cfg, err := Load("ctxt", cfgPath)
 	if err != nil {
 		t.Fatalf("Load with valid config should succeed: %v", err)
 	}
@@ -100,32 +100,32 @@ profile:
 }
 
 func TestLoadInvalidFile(t *testing.T) {
-	_, err := Load("/nonexistent/path/config.yaml")
+	_, err := Load("ctxt", "/nonexistent/path/config.yaml")
 	if err == nil {
 		t.Error("expected error for nonexistent config file")
 	}
 }
 
 func TestGetConfigPath(t *testing.T) {
-	path := GetConfigPath()
+	path := GetConfigPath("ctxt")
 	if path == "" {
 		t.Error("GetConfigPath should return a non-empty path")
 	}
-	if filepath.Base(path) != DefaultConfigFileName {
-		t.Errorf("expected filename %s, got %s", DefaultConfigFileName, filepath.Base(path))
+	if filepath.Base(path) != "ctxt.yaml" {
+		t.Errorf("expected filename ctxt.yaml, got %s", filepath.Base(path))
 	}
 }
 
 func TestGetConfigPathWithEnv(t *testing.T) {
 	t.Setenv(EnvConfigPath, "/custom/config.yaml")
-	path := GetConfigPath()
+	path := GetConfigPath("ctxt")
 	if path != "/custom/config.yaml" {
 		t.Errorf("expected /custom/config.yaml, got %s", path)
 	}
 }
 
 func TestEnsureConfigDir(t *testing.T) {
-	err := EnsureConfigDir()
+	err := EnsureConfigDir("ctxt")
 	if err != nil {
 		t.Fatalf("EnsureConfigDir should succeed: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestLoadWithRegistries(t *testing.T) {
 		t.Fatalf("failed to write config file: %v", err)
 	}
 
-	cfg, err := Load(cfgPath)
+	cfg, err := Load("ctxt", cfgPath)
 	if err != nil {
 		t.Fatalf("Load should succeed: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestLoadWithPlugins(t *testing.T) {
 		t.Fatalf("failed to write config file: %v", err)
 	}
 
-	cfg, err := Load(cfgPath)
+	cfg, err := Load("ctxt", cfgPath)
 	if err != nil {
 		t.Fatalf("Load should succeed: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestLoadWithI18n(t *testing.T) {
 		t.Fatalf("failed to write config file: %v", err)
 	}
 
-	cfg, err := Load(cfgPath)
+	cfg, err := Load("ctxt", cfgPath)
 	if err != nil {
 		t.Fatalf("Load should succeed: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestEnsureConfigDirError(t *testing.T) {
 	// Point CTXT_CONFIG to a path that requires creating a subdir inside the read-only dir
 	t.Setenv(EnvConfigPath, filepath.Join(readonlyDir, "subdir", "config.yaml"))
 
-	err := EnsureConfigDir()
+	err := EnsureConfigDir("ctxt")
 	assert.Error(t, err, "EnsureConfigDir should fail when parent directory is read-only")
 }
 
@@ -269,7 +269,7 @@ func TestEnsureConfigDirCreatesDirectory(t *testing.T) {
 
 	t.Setenv(EnvConfigPath, configFile)
 
-	err := EnsureConfigDir()
+	err := EnsureConfigDir("ctxt")
 	require.NoError(t, err, "EnsureConfigDir should succeed for a writable temp path")
 
 	info, statErr := os.Stat(configDir)
@@ -281,17 +281,17 @@ func TestGetConfigPathDefault(t *testing.T) {
 	// Ensure the env var is unset so we exercise the default path
 	t.Setenv(EnvConfigPath, "")
 
-	path := GetConfigPath()
+	path := GetConfigPath("ctxt")
 	assert.NotEmpty(t, path, "GetConfigPath should return a non-empty path when env is unset")
-	assert.True(t, strings.HasSuffix(path, DefaultConfigFileName),
-		"path should end with %s, got %s", DefaultConfigFileName, path)
+	assert.True(t, strings.HasSuffix(path, "ctxt.yaml"),
+		"path should end with ctxt.yaml, got %s", path)
 }
 
 func TestGetConfigPathEnvOverride(t *testing.T) {
 	custom := "/tmp/custom/config.yaml"
 	t.Setenv(EnvConfigPath, custom)
 
-	path := GetConfigPath()
+	path := GetConfigPath("ctxt")
 	assert.Equal(t, custom, path, "GetConfigPath should return the exact env value")
 }
 
@@ -348,7 +348,7 @@ func TestDuplicatesValidation(t *testing.T) {
 }
 
 func TestDuplicatesDefaults(t *testing.T) {
-	cfg, err := Load("")
+	cfg, err := Load("ctxt", "")
 	require.NoError(t, err)
 	assert.Equal(t, "warn", cfg.Duplicates.Policy)
 	assert.Equal(t, 0.95, cfg.Duplicates.SimilarityThreshold)
@@ -357,7 +357,7 @@ func TestDuplicatesDefaults(t *testing.T) {
 }
 
 func TestBlobConfigDefaults(t *testing.T) {
-	cfg, err := Load("")
+	cfg, err := Load("ctxt", "")
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -547,7 +547,7 @@ federations:
 }
 
 func TestBrowserConfigDefaults(t *testing.T) {
-	cfg, err := Load("")
+	cfg, err := Load("ctxt", "")
 	require.NoError(t, err)
 	assert.False(t, cfg.Browser.Enabled)
 	assert.Equal(t, "ibr", cfg.Browser.Binary)
