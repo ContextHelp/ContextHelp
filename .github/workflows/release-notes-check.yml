@@ -1,0 +1,104 @@
+name: Release Notes Check
+
+# Per ADR-070: every PR with an operator-impacting change must declare its
+# bucket via the `Operator-Impact:` commit trailer AND have a matching row in
+# the release-notes file at docs/release-notes/<release-date>.md.
+#
+# This check fails the PR if any commit in the diff carries a non-`none`
+# Operator-Impact trailer without a corresponding release-notes entry.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  release-notes:
+    name: Verify operator-impact declarations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify Operator-Impact trailer + release-notes entry
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # SHA values are hex-only (validated by GitHub). Still use env vars
+          # for defence-in-depth per workflow-injection guidance.
+          commits=$(git rev-list "${BASE_SHA}..${HEAD_SHA}")
+          if [ -z "$commits" ]; then
+            echo "No commits in PR; nothing to check."
+            exit 0
+          fi
+
+          fail=0
+          for sha in $commits; do
+            trailer=$(git log -1 --format='%(trailers:key=Operator-Impact,valueonly,separator=%x20)' "$sha" || true)
+            trailer="${trailer## }"; trailer="${trailer%% }"
+
+            # Default to "none" when absent. ADR-070 §4 makes "none" the implicit default.
+            if [ -z "$trailer" ]; then
+              trailer="none"
+            fi
+
+            case "$trailer" in
+              none|reindex_auto|reingest_selective|reingest_all)
+                ;;
+              *)
+                echo "::error::Commit $sha has invalid Operator-Impact trailer: '$trailer'"
+                echo "::error::Valid values: none | reindex_auto | reingest_selective | reingest_all"
+                echo "::error::See ADR-070 §1 for the taxonomy."
+                fail=1
+                continue
+                ;;
+            esac
+
+            if [ "$trailer" = "none" ]; then
+              continue
+            fi
+
+            # For non-`none` buckets, find a matching row in any
+            # release-notes file added/modified by this PR.
+            notes_files=$(git diff --name-only --diff-filter=AM "${BASE_SHA}..${HEAD_SHA}" -- 'docs/release-notes/*.md' || true)
+            if [ -z "$notes_files" ]; then
+              echo "::error::Commit $sha declares Operator-Impact: $trailer but no release-notes file under docs/release-notes/ is added or modified in this PR."
+              echo "::error::Add a row to docs/release-notes/<release-date>.md (template at docs/release-notes/template.md). See ADR-070 §4."
+              fail=1
+              continue
+            fi
+
+            short_sha=$(echo "$sha" | cut -c1-7)
+            found=0
+            for f in $notes_files; do
+              if grep -qF "$short_sha" "$f" && grep -qF "$trailer" "$f"; then
+                found=1
+                break
+              fi
+            done
+
+            if [ $found -eq 0 ]; then
+              echo "::error::Commit $sha (short SHA $short_sha) declares Operator-Impact: $trailer but no release-notes file in this PR contains a row referencing both the SHA and the bucket."
+              echo "::error::Files searched: $notes_files"
+              echo "::error::See docs/release-notes/template.md for the row format."
+              fail=1
+            fi
+          done
+
+          if [ $fail -ne 0 ]; then
+            echo "::error::Release-notes check failed. Each non-'none' Operator-Impact commit needs a matching row in docs/release-notes/<release-date>.md."
+            exit 1
+          fi
+
+          echo "All Operator-Impact declarations are accounted for."

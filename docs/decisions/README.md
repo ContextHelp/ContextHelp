@@ -475,6 +475,12 @@ Specialized ambient source for video calls (Zoom, Meet, Teams, FaceTime, Discord
 
 **Diagrams:** [`docs/diagrams/ambient/069-recording-state.mmd`](../diagrams/ambient/069-recording-state.mmd), [`069-multi-platform.mmd`](../diagrams/ambient/069-multi-platform.mmd), [`069-recording-sequence.mmd`](../diagrams/ambient/069-recording-sequence.mmd).
 
+### **ADR-070 – Pipeline & Index Versioning, Upgrade Taxonomy, and Operator Consent (Accepted)**
+Three-bucket upgrade taxonomy (`reindex_auto`, `reingest_selective`, `reingest_all`) classifies every change that affects stored knowledge, the index, or pipeline contract. Per-object `pipeline_version` (`name@vN`) lets old objects keep their contract while new ingests adopt the corrected behavior. Per-table index signatures (tokenizer-, projection-, embedding-format-hashes in `index_signatures`) drive automatic bucket-1 rebuilds on startup signature mismatch. Release-notes contract at `docs/release-notes/<date>.md` + `Operator-Impact:` commit trailer + CI gate (`.github/workflows/release-notes-check.yml`) enforce the taxonomy at PR-time. Operator-facing CLI: `ctxt upgrade {plan,run,status,status --watch}` with banner injection in every CLI command during in-flight upgrades; `/healthz` upgrade envelope; `staleness_warning` field on search responses. Test substrate: `hop.top/xrr` cassettes (already in use) for upgrade-time external calls; `hop.top/eva` contracts for operator-facing JSON shapes (new adoption); `hop.top/ben` recall benchmarks gating `reingest_selective` PRs (new adoption). Strict-minimum design discipline: bucket 2 quarterly, bucket 3 annually.
+
+### **ADR-071 – Embedding Index Versioning and Dual-Write Migration (Accepted)**
+Single `embeddings` table with `(object_id, model_id, chunk_idx)` composite key plus `embedding_models` registry plus dual-write at ingest during migration windows plus operator-driven default-flip with coverage + recall guards. Solves graceful embedding-model migration without query blackout. Designs-for (does not build) heterogeneous routing, sovereignty tiers, score fusion, on-device fallback. Three preconditions before implementation: ADR-070 shipping, `hop.top/ben` recall suite at `suites/recall-vector.ben.yaml`, second concrete use case beyond migration. `ctxt embeddings {list,register,migrate,set-default,deprecate,purge}` operator surface. Test substrate: ben suite (mandatory before migrate ships), xrr cassettes for embedding API calls, eva contract for `embeddings list` shape.
+
 ---
 
 ## Purpose of This Directory
