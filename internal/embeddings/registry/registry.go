@@ -27,9 +27,11 @@ const (
 
 // Model represents one row in the embedding_models table.
 //
-// Field names are stable JSON identifiers — they double as the operator-facing
-// CLI shape (`ctxt embeddings list --format=json`). T-0586 will add the eva
-// contract that pins these names; Phase 1 documents them here.
+// Field names are stable JSON identifiers used by the registry layer.
+// The CLI surface for `ctxt embeddings list` is pinned by the eva contract
+// at `contracts/embeddings-list.eva.yaml` (T-0586) and is constructed from
+// ListWithCoverage rather than this struct directly — `coverage` is a
+// computed value, not a column.
 type Model struct {
 	ModelID       string     `json:"model_id"`
 	Provider      string     `json:"provider"`
@@ -150,6 +152,54 @@ func (s *Store) List(ctx context.Context) ([]Model, error) {
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// ModelWithCoverage pairs a registered model with its corpus-coverage fraction
+// (0.0 .. 1.0): the fraction of distinct objects that have at least one
+// embedding row under this model_id. The CLI surface for `ctxt embeddings
+// list` requires coverage (eva contract `contracts/embeddings-list.eva.yaml`).
+type ModelWithCoverage struct {
+	Model
+	Coverage float64 `json:"coverage"`
+}
+
+// ListWithCoverage returns ListWithCoverage in registered_at ASC order,
+// matching List, plus a per-row corpus-coverage fraction. Coverage is
+// COUNT(DISTINCT embeddings.object_id WHERE model_id = m) / COUNT(objects).
+// When the objects table is empty, coverage is reported as 1.0 (vacuous
+// coverage on an empty corpus — the operator-useful interpretation).
+func (s *Store) ListWithCoverage(ctx context.Context) ([]ModelWithCoverage, error) {
+	models, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(models) == 0 {
+		return nil, nil
+	}
+
+	var total int64
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM objects`).Scan(&total); err != nil {
+		return nil, fmt.Errorf("registry.ListWithCoverage: total objects: %w", err)
+	}
+
+	out := make([]ModelWithCoverage, 0, len(models))
+	for _, m := range models {
+		var covered int64
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT COUNT(DISTINCT object_id) FROM embeddings WHERE model_id = ?`,
+			m.ModelID,
+		).Scan(&covered); err != nil {
+			return nil, fmt.Errorf("registry.ListWithCoverage: covered count for %s: %w", m.ModelID, err)
+		}
+		var coverage float64
+		if total == 0 {
+			coverage = 1.0
+		} else {
+			coverage = float64(covered) / float64(total)
+		}
+		out = append(out, ModelWithCoverage{Model: m, Coverage: coverage})
+	}
+	return out, nil
 }
 
 // Get returns the model row for modelID. Returns ErrModelNotFound when no row

@@ -312,3 +312,70 @@ func runBackfill(t testing.TB, d *sqlite.Driver) error {
 	t.Helper()
 	return sqlite.RunEmbeddingsBackfillForTest(context.Background(), d)
 }
+
+// TestListWithCoverage_EmptyCorpus verifies that on a fresh DB with no
+// objects, the seeded legacy model reports coverage = 1.0 (the
+// vacuous-coverage convention — operators reading `ctxt embeddings list`
+// should not see 0.0 just because nothing has been ingested yet).
+func TestListWithCoverage_EmptyCorpus(t *testing.T) {
+	r, _ := newRegistry(t)
+	ctx := context.Background()
+
+	models, err := r.ListWithCoverage(ctx)
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	assert.InDelta(t, 1.0, models[0].Coverage, 1e-9, "empty corpus → vacuous full coverage")
+}
+
+// TestListWithCoverage_PartialCoverage seeds a small corpus and a candidate
+// model, embeds half the objects under the candidate, and verifies the
+// reported coverage matches the fraction. This is the operator-facing
+// recall guard's primary input — getting it wrong means Phase 3
+// (T-0584) ships a guard that lies.
+func TestListWithCoverage_PartialCoverage(t *testing.T) {
+	r, d := newRegistry(t)
+	ctx := context.Background()
+
+	// Seed 4 objects so the math (1/4, 2/4) is exact in float64.
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, id := range []string{"o1", "o2", "o3", "o4"} {
+		_, err := d.DB().ExecContext(ctx,
+			`INSERT INTO objects (id, type, created_at, updated_at) VALUES (?, 'note', ?, ?)`,
+			id, now, now,
+		)
+		require.NoError(t, err, "seed object %s", id)
+	}
+
+	// Register the candidate model and embed 2 of the 4 objects under it.
+	candidate := registry.Model{
+		ModelID:   "test-candidate@2026-05-07",
+		Provider:  "test",
+		Dimension: 8,
+	}
+	require.NoError(t, r.Register(ctx, candidate, false))
+
+	for _, id := range []string{"o1", "o2"} {
+		_, err := d.DB().ExecContext(ctx,
+			`INSERT INTO embeddings (object_id, model_id, chunk_idx, vector, created_at)
+			 VALUES (?, ?, 0, ?, ?)`,
+			id, candidate.ModelID, []byte{0, 1, 2, 3}, time.Now().UTC().Format(time.RFC3339),
+		)
+		require.NoError(t, err)
+	}
+
+	models, err := r.ListWithCoverage(ctx)
+	require.NoError(t, err)
+	require.Len(t, models, 2, "legacy default + candidate")
+
+	var legacyCov, candidateCov float64
+	for _, m := range models {
+		switch m.ModelID {
+		case candidate.ModelID:
+			candidateCov = m.Coverage
+		default:
+			legacyCov = m.Coverage
+		}
+	}
+	assert.InDelta(t, 0.5, candidateCov, 1e-9, "2 of 4 objects covered under candidate")
+	assert.InDelta(t, 0.0, legacyCov, 1e-9, "legacy model has no embeddings rows under it yet")
+}
