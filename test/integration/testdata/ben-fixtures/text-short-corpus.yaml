@@ -1,0 +1,108 @@
+# Corpus fixture for hop.top/ben recall suite — text.short pipeline.
+# See ../../../../suites/recall-text-short.ben.yaml.
+#
+# Each object is < 500 chars (the text.short ContentTest cutoff). The
+# corpus is intentionally varied: prose, bullet lists with hyphenated
+# compound terms, code-adjacent text. Bullets + hyphens specifically cover
+# the regression class T-0565 surfaced (FTS invisibility for bullet items
+# and hyphen-crashing queries).
+#
+# To add or remove objects, also update text-short-queries.yaml so every
+# query still has at least one expected_id present.
+objects:
+  - id: doc-auth-001
+    text: "OAuth 2.0 authorization code flow with PKCE for public clients."
+    tags: [security, authn, oauth]
+  - id: doc-auth-002
+    text: "Refresh-token rotation guidance and reuse-detection mitigations."
+    tags: [security, authn, refresh-token]
+  - id: doc-auth-003
+    text: "OIDC ID-token claims: sub, aud, iss, exp, iat, nonce."
+    tags: [security, oidc, identity]
+  - id: doc-search-001
+    text: "FTS5 tokenizer: porter unicode61. Hyphens now treated as word-internal characters per T-0565."
+    tags: [search, fts, tokenizer]
+  - id: doc-search-002
+    text: |
+      Hybrid search combines FTS and vector legs via RRF.
+      - Reciprocal-rank fusion with k=60 default
+      - Per-leg pool sizes tunable via config
+      - Weighted across legs to balance lexical/semantic recall
+    tags: [search, hybrid, rrf]
+  - id: doc-search-003
+    text: |
+      Recall regression playbook:
+      - Snapshot corpus before tokenizer change
+      - Run ben recall-text-short suite
+      - Compare recall@5 against the floor
+    tags: [search, recall, regression]
+  - id: doc-pipeline-001
+    text: |
+      text.short pipeline (post-T-0575): markdown with structure routes to
+      text.long instead. Bare prose under 500 chars stays on text.short.
+    tags: [pipeline, routing, text-short]
+  - id: doc-pipeline-002
+    text: "Pipeline registry: ParseVersionedName resolves bare names to @v0 (ADR-070)."
+    tags: [pipeline, versioning, adr-070]
+  - id: doc-pipeline-003
+    text: |
+      Bullet items must be visible to FTS:
+      - capture
+      - enrichment
+      - retrieval
+      - composition
+    tags: [pipeline, fts, bullet-list]
+  - id: doc-capture-001
+    text: "ctxt capture --profile founder --note 'follow up' supports inline metadata."
+    tags: [capture, profile, note]
+  - id: doc-capture-002
+    text: "Ambient capture: clipboard, mic, screen, watched-fs all funnel into the same dpkms ingest path."
+    tags: [capture, ambient, dpkms]
+  - id: doc-capture-003
+    text: "Offline-queue: ctxt add returns under 100ms even when dpkms is unreachable."
+    tags: [capture, offline, latency]
+  - id: doc-find-001
+    text: |
+      ctxt find supports per-call RRF overrides:
+      - --fts-weight
+      - --vector-weight
+      - --rrf-k
+      All zero values fall through to the active profile defaults.
+    tags: [find, search, rrf]
+  - id: doc-find-002
+    text: "Profile-aware ranking: founder boosts business tags, engineer boosts technical tags."
+    tags: [find, profile, ranking]
+  - id: doc-find-003
+    text: "Fuzzy matching: ctxt find tolerates typos via the porter stemmer + trigram fallback."
+    tags: [find, fuzzy, typos]
+  - id: doc-graph-001
+    text: "Mention extraction: @entity.slug references survive enrichment and link back during composition."
+    tags: [graph, mentions, entity]
+  - id: doc-graph-002
+    text: "Entity resolver merges mentions with existing entities by canonical slug."
+    tags: [graph, entity, resolver]
+  - id: doc-config-001
+    text: "Per-binary config files live under contexthelp/ namespace (ctxt.yaml, dpkms.yaml). T-0576."
+    tags: [config, contexthelp]
+  - id: doc-config-002
+    text: "Search strategy resolution order: CLI flags → active profile → global config."
+    tags: [config, find, profile]
+  - id: doc-upgrade-001
+    text: |
+      Upgrade taxonomy (ADR-070):
+      - reindex_auto: silent rebuild on tokenizer change
+      - reingest_selective: per-pipeline-version re-run, operator consents
+      - reingest_all: full corpus re-ingest, SHA256 token gate
+    tags: [upgrade, adr-070, taxonomy]
+  - id: doc-upgrade-002
+    text: "ctxt upgrade status surfaces the current bucket + ETA via the /healthz envelope."
+    tags: [upgrade, healthz, status]
+  - id: doc-noise-001
+    text: "Internal lunch survey results for the May offsite. Pizza majority, sushi minority."
+    tags: [misc, ops]
+  - id: doc-noise-002
+    text: "Welcome packet table-of-contents draft. Reorder pages 4 and 7."
+    tags: [misc, docs]
+  - id: doc-noise-003
+    text: "Calendar reminder: standup moved to 09:30 on Wednesdays starting next week."
+    tags: [misc, calendar]

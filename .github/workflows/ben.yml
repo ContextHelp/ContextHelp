@@ -1,0 +1,74 @@
+name: Ben Recall Suite
+
+# Per ADR-070 §6 and ADR-071 Phase 3: any PR that flips an object's
+# pipeline_version, registers a new embedding model, or otherwise touches
+# the retrieval substrate must run the hop.top/ben recall suite on the
+# post-upgrade fixture corpus and demonstrate that recall stays above the
+# configured floor.
+#
+# The trigger is intentionally broad ("touches anything in the retrieval
+# substrate") rather than diff-content-aware. ADR-070 lets us tighten this
+# later; the priority is to never let a recall regression sneak through
+# while the framework is young.
+#
+# This workflow does NOT reference any untrusted PR-author-controlled
+# inputs (titles, bodies, branch names) in run: blocks. Adding any such
+# reference requires environment-variable escaping per the workflow-
+# injection guidance baked into the project's security hook.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'internal/pipeline/**'
+      - 'internal/embeddings/**'
+      - 'internal/search/**'
+      - 'suites/**.ben.yaml'
+      - 'test/integration/testdata/ben-fixtures/**'
+      - 'cmd/ben-adapter-ctxt-recall/**'
+      - 'cmd/ctxt-ben-run/**'
+      - 'scripts/ben-floor.sh'
+      - 'tools/ben.ref'
+      - '.github/workflows/ben.yml'
+      - 'Makefile'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  ben-recall:
+    name: Recall floor (ADR-070 / ADR-071)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Install jq
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+
+      - name: Run text.short recall suite (gates reingest_selective PRs)
+        run: make ben-text-short
+
+      - name: Run vector recall suite (gates ctxt embeddings migrate)
+        run: make ben-vector
+
+      - name: Upload ben run records on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ben-run-records
+          path: bin/ben-runs/
+          retention-days: 14
