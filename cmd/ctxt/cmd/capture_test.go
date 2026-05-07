@@ -233,6 +233,30 @@ func TestCaptureInboxRoutesToInboxEndpoint(t *testing.T) {
 	}
 }
 
+func TestCaptureInboxIgnoresWait(t *testing.T) {
+	// --inbox routes to /api/v1/inbox which does NOT enqueue a job; --wait
+	// must NOT crash and must NOT poll /api/v1/jobs/<id>.
+	var recs []captureRecord
+	srv := startMockCaptureDPKMS(t, &recs)
+	defer srv.Close()
+
+	out, err := executeCommand("capture", "stash this",
+		"--inbox", "--wait",
+		"--server", srv.URL,
+	)
+	if err != nil {
+		t.Fatalf("capture --inbox --wait: %v", err)
+	}
+	if !strings.Contains(out, "Inbox object: obj_inbox_1") {
+		t.Errorf("expected Inbox object id in stdout, got %q", out)
+	}
+	for _, r := range recs {
+		if strings.HasPrefix(r.Path, "/api/v1/jobs/") {
+			t.Errorf("--inbox --wait should not poll /api/v1/jobs/<id>; got %s", r.Path)
+		}
+	}
+}
+
 func TestCaptureEveryLoops(t *testing.T) {
 	var (
 		mu    sync.Mutex

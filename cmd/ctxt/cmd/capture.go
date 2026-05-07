@@ -204,49 +204,11 @@ func captureOnce(cmd *cobra.Command, args []string) error {
 		reqBody["mentions"] = mentions
 	}
 
-	endpoint := serverURL + "/api/v1/analyze"
 	if inbox {
-		// Route through the inbox endpoint (server-side spec /api/v1/inbox).
-		// Field names are different on that handler — re-shape the body.
-		inboxBody := map[string]any{
-			"content":  content,
-			"type":     contentType,
-			"source":   source,
-			"mentions": mentions,
-		}
-		if note, _ := cmd.Flags().GetString("note"); note != "" {
-			inboxBody["inbox_note"] = note
-		}
-		if len(hints) > 0 {
-			inboxBody["hints"] = strings.Join(hints, ",")
-		}
-		body, err := json.Marshal(inboxBody)
-		if err != nil {
-			return fmt.Errorf("marshal inbox request: %w", err)
-		}
-		resp, err := gohttp.Post(serverURL+"/api/v1/inbox", "application/json", bytes.NewReader(body))
-		if err != nil {
-			return fmt.Errorf("request to dpkms inbox: %w", err)
-		}
-		defer resp.Body.Close()
-		respBody, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != gohttp.StatusCreated && resp.StatusCode != gohttp.StatusAccepted && resp.StatusCode != gohttp.StatusOK {
-			return fmt.Errorf("dpkms inbox returned %d: %s", resp.StatusCode, string(respBody))
-		}
-		var obj map[string]any
-		if err := json.Unmarshal(respBody, &obj); err != nil {
-			return fmt.Errorf("parse inbox response: %w", err)
-		}
-		if id, ok := obj["id"].(string); ok && id != "" {
-			fmt.Printf("Inbox object: %s\n", id)
-		} else {
-			fmt.Println("Inbox object stored")
-		}
-		// --wait is meaningless for inbox capture (no job is enqueued);
-		// stay silent rather than errorring.
-		return nil
+		return postInboxCapture(serverURL, content, source, contentType, hints, mentions, cmd)
 	}
 
+	endpoint := serverURL + "/api/v1/analyze"
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return fmt.Errorf("marshal request: %w", err)
@@ -275,6 +237,57 @@ func captureOnce(cmd *cobra.Command, args []string) error {
 
 	if wait && jobID != "" {
 		return waitForCaptureJob(serverURL, jobID)
+	}
+	return nil
+}
+
+// postInboxCapture POSTs to /api/v1/inbox (the CaptureInbox handler) instead
+// of /api/v1/analyze. The endpoint accepts a different body shape (no
+// `tag`/`pipeline`/`raw`; uses `inbox_note` + `hints` instead of `tag`).
+//
+// --wait is intentionally ignored on this path: the inbox endpoint does NOT
+// enqueue a job — it only stores the object in inbox state for later triage
+// (svc.CaptureToInbox). There is no job to poll.
+func postInboxCapture(
+	serverURL, content, source, contentType string,
+	hints, mentions []string,
+	cmd *cobra.Command,
+) error {
+	body := map[string]any{
+		"content":  content,
+		"type":     contentType,
+		"source":   source,
+		"mentions": mentions,
+	}
+	if note, _ := cmd.Flags().GetString("note"); note != "" {
+		body["inbox_note"] = note
+	}
+	if len(hints) > 0 {
+		body["hints"] = strings.Join(hints, ",")
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal inbox request: %w", err)
+	}
+	resp, err := gohttp.Post(serverURL+"/api/v1/inbox", "application/json", bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("request to dpkms inbox: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != gohttp.StatusCreated &&
+		resp.StatusCode != gohttp.StatusAccepted &&
+		resp.StatusCode != gohttp.StatusOK {
+		return fmt.Errorf("dpkms inbox returned %d: %s", resp.StatusCode, string(respBody))
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(respBody, &obj); err != nil {
+		return fmt.Errorf("parse inbox response: %w", err)
+	}
+	if id, ok := obj["id"].(string); ok && id != "" {
+		fmt.Printf("Inbox object: %s\n", id)
+	} else {
+		fmt.Println("Inbox object stored")
 	}
 	return nil
 }
