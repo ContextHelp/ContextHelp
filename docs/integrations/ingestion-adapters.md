@@ -47,8 +47,8 @@ ctxt ingest --source cardamum --addressbook work
 # Pipe JSON objects from stdin
 echo '[{...}]' | ctxt ingest --stdin
 
-# Watch mode (poll on interval)
-ctxt ingest --source cardamum --watch --interval 5m
+# Continuous mode (poll on cadence)
+ctxt ingest --source cardamum --every 5m
 ```
 
 ## Built-in Adapters

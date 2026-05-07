@@ -57,9 +57,9 @@ func TestDeleteByTagWithYes(t *testing.T) {
 		t.Fatalf("seed object: %v", err)
 	}
 
-	out, err := db.exec("delete", "--tag", "temporary", "-y")
+	out, err := db.exec("delete", "--tagged", "temporary", "-y")
 	if err != nil {
-		t.Fatalf("delete --tag with -y should succeed: %v", err)
+		t.Fatalf("delete --tagged with -y should succeed: %v", err)
 	}
 	if !strings.Contains(out, "objects deleted") {
 		t.Errorf("output should confirm deletion count, got: %s", out)
@@ -131,7 +131,7 @@ func TestDeleteHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("delete --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--id", "--tag", "--hint", "--mention", "--type", "--subtype", "--all", "-y"} {
+	for _, flag := range []string{"--id", "--tagged", "--hint", "--mention", "--type", "--subtype", "--all", "-y"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("delete help should list flag %s", flag)
 		}

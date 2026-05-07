@@ -35,7 +35,7 @@ ctxt capture --stdin [flags]
 | Flag | Type | Semantics |
 |---|---|---|
 | `--window <duration>` | duration string | Capture state from the last N (e.g. `5m`, `1h`, `24h`). Sensors that support windowing apply it (RSS reads items published within the window, mic records that duration, screen reads the buffer); sensors that don't support windowing ignore it gracefully (clipboard always reads "now"). |
-| `--interval <duration>` | duration string | When set, the command runs continuously and re-reads the source(s) on this cadence until interrupted (Ctrl-C). When absent, the command is one-shot. |
+| `--every <duration>` | duration string | When set, the command runs continuously and re-reads the source(s) on this cadence until interrupted (Ctrl-C). When absent, the command is one-shot. |
 
 ### Routing
 
@@ -96,12 +96,12 @@ echo "thought i had" | ctxt capture --stdin --type text
 
 ```bash
 # Re-poll the feed every 15m. Ctrl-C stops the loop.
-ctxt capture https://hnrss.org/frontpage.rss --interval 15m
+ctxt capture https://hnrss.org/frontpage.rss --every 15m
 
 # Re-poll with a window — each tick reads items from the last 30m.
-# Useful when the source has more than the interval covers; dedup
+# Useful when the source has more than the every covers; dedup
 # handles overlap.
-ctxt capture https://hnrss.org/frontpage.rss --interval 15m --window 30m
+ctxt capture https://hnrss.org/frontpage.rss --every 15m --window 30m
 ```
 
 ### Ambient capture
@@ -124,10 +124,10 @@ ctxt capture --ambient --window 5m
 ctxt capture --ambient --window 1h --input mic,screen
 
 # Long-running ambient: re-sweep every 30m. Ctrl-C stops.
-ctxt capture --ambient --interval 30m
+ctxt capture --ambient --every 30m
 
 # Long-running, scoped + windowed
-ctxt capture --ambient --input rss,s3 --interval 15m --window 30m
+ctxt capture --ambient --input rss,s3 --every 15m --window 30m
 ```
 
 ### Triage routing
@@ -157,7 +157,7 @@ ctxt capture <url> --hint research,draft
 
 ### One-shot vs. continuous
 
-The presence of `--interval` is the **only** signal for continuous mode. Without it, every form runs once and exits. With it, the form re-reads on the cadence until interrupted. There is no separate `--watch` flag.
+The presence of `--every` is the **only** signal for continuous mode. Without it, every form runs once and exits. With it, the form re-reads on the cadence until interrupted. There is no separate `--watch`/`--interval` flag — `--every <duration>` is the only signal for continuous mode.
 
 ### Empty ambient set
 
@@ -178,19 +178,27 @@ Sensors that need OS-level permissions (TCC on macOS for clipboard/screen/mic, s
 
 `ctxt capture <source>` runs the source through the existing pipeline detector chain (`pipeline.DetectorFunc`). The chain is extended in Phase 2 to include adapter-supplied detectors (each adapter declares URL/path patterns it handles). The first matching detector wins; `--source <name>` short-circuits the chain.
 
-### Backward compatibility
+### Migration table
 
-| Today | Tomorrow |
+The old forms STOP working — there is no backward compat. Update every script,
+shortcut, and example to the new shapes below:
+
+| Old (removed) | New |
 |---|---|
 | `ctxt` (bare; reads clipboard) | `ctxt capture --input clipboard` |
 | `ctxt "some text"` | `ctxt capture "some text"` |
 | `cat x \| ctxt` | `cat x \| ctxt capture --stdin` |
 | `ctxt analyze --file x.md` | `ctxt capture ./x.md` |
+| `ctxt analyze --tag <hint>` | `ctxt capture --hint <hint>` |
+| `ctxt analyze --mentions <m>` | `ctxt capture --mention <m>` |
 | `ctxt analyze --inbox` | `ctxt capture --inbox` |
 | `ctxt ingest --source rss --url <url>` | `ctxt capture <url>` (or explicit `--source rss`) |
-| `ctxt ingest --source <name> --watch --interval 5m` | `ctxt capture <source> --interval 5m` |
+| `ctxt ingest --source <name> --watch --interval 5m` | `ctxt capture <source> --every 5m` |
 
-The old forms keep working through the existing `cmd/ctxt/cmd/{analyze,ingest}.go` handlers; `capture` is a new sibling subcommand, not a replacement at the binary level.
+`capture` lives at `cmd/ctxt/cmd/capture.go` as a new sibling subcommand. The
+`analyze`/`ingest` handlers continue to exist for now but use the new flag names
+(`--hint`, `--mention`, `--every`); the old `--tag`, `--mentions`, `--watch`,
+`--interval` flags have been removed without aliases.
 
 ### Exit codes
 

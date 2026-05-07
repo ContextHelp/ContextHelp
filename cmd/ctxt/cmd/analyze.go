@@ -30,11 +30,11 @@ Content can be provided as:
   - Clipboard: ctxt analyze (if no argument, stdin, or file is provided)
 
 Examples:
-  # Analyze text with tags and mentions
-  echo "Fix signup flow" | ctxt analyze --type text --tag "ux,bad" --mentions "@ui.best-practice"
+  # Analyze text with hints and mentions
+  echo "Fix signup flow" | ctxt analyze --type text --hint "ux,bad" --mention "@ui.best-practice"
 
   # Analyze an image
-  ctxt analyze --file screenshot.png --type image --mentions "@ui.layout"
+  ctxt analyze --file screenshot.png --type image --mention "@ui.layout"
 
   # Analyze a URL with a focus profile
   ctxt analyze https://example.com --type url --profile growth
@@ -53,8 +53,8 @@ func init() {
 	// Register flags on analyzeCmd for `ctxt analyze --help`.
 	analyzeCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")
 	analyzeCmd.Flags().StringP("file", "f", "", "read input from file")
-	analyzeCmd.Flags().String("tag", "", "influence tagging (e.g., \"#ux #bug\")")
-	analyzeCmd.Flags().String("mentions", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
+	analyzeCmd.Flags().StringSlice("hint", nil, "tagging hints attached to the captured object (repeatable, CSV)")
+	analyzeCmd.Flags().String("mention", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
 	analyzeCmd.Flags().String("pipeline", "", "force specific pipeline")
 	analyzeCmd.Flags().String("language", "", "input language override")
 	analyzeCmd.Flags().String("translate", "", "translation mode (none to skip)")
@@ -69,8 +69,8 @@ func init() {
 	// without leaking these flags into every subcommand's help.
 	rootCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")
 	rootCmd.Flags().StringP("file", "f", "", "read input from file")
-	rootCmd.Flags().String("tag", "", "influence tagging (e.g., \"#ux #bug\")")
-	rootCmd.Flags().String("mentions", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
+	rootCmd.Flags().StringSlice("hint", nil, "tagging hints attached to the captured object (repeatable, CSV)")
+	rootCmd.Flags().String("mention", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
 	rootCmd.Flags().String("pipeline", "", "force specific pipeline")
 	rootCmd.Flags().String("language", "", "input language override")
 	rootCmd.Flags().String("translate", "", "translation mode (none to skip)")
@@ -85,8 +85,8 @@ func init() {
 	// here are for config-file fallback only (flag values take precedence via cmd.Flags()).
 	viper.BindPFlag("analyze.type", analyzeCmd.Flags().Lookup("type"))
 	viper.BindPFlag("analyze.file", analyzeCmd.Flags().Lookup("file"))
-	viper.BindPFlag("analyze.tag", analyzeCmd.Flags().Lookup("tag"))
-	viper.BindPFlag("analyze.mentions", analyzeCmd.Flags().Lookup("mentions"))
+	viper.BindPFlag("analyze.hint", analyzeCmd.Flags().Lookup("hint"))
+	viper.BindPFlag("analyze.mention", analyzeCmd.Flags().Lookup("mention"))
 	viper.BindPFlag("analyze.pipeline", analyzeCmd.Flags().Lookup("pipeline"))
 	viper.BindPFlag("analyze.language", analyzeCmd.Flags().Lookup("language"))
 	viper.BindPFlag("analyze.translate", analyzeCmd.Flags().Lookup("translate"))
@@ -156,13 +156,23 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 
 	sourceKey := flagString(cmd, "source-key", "analyze.source_key")
 
-	// T-0190: ship `--mentions "@client.acme @project.foo"` through to the
+	// T-0190: ship `--mention "@client.acme @project.foo"` through to the
 	// server so user-asserted mentions become real edges + entity rows
-	// (handled by service.Analyze + jobs/worker.go).
-	mentionsFlag := flagString(cmd, "mentions", "analyze.mentions")
+	// (handled by service.Analyze + jobs/worker.go). The CLI flag is
+	// --mention; the server-side JSON field is still `mentions`.
+	mentionsFlag := flagString(cmd, "mention", "analyze.mention")
 	var userMentions []string
 	if mentionsFlag != "" {
 		userMentions = strings.Fields(mentionsFlag)
+	}
+
+	// T-0573: ship `--hint research,ux` (repeatable, CSV) through to the
+	// server as a JSON array. service.Analyze pre-populates draft.Tags
+	// with Source:"user"; the auto-tagger merges with these rather
+	// than overwriting.
+	var userHints []string
+	if f := cmd.Flags().Lookup("hint"); f != nil && f.Changed {
+		userHints, _ = cmd.Flags().GetStringSlice("hint")
 	}
 
 	// Use actual source value; "argument"/"stdin"/"clipboard"/"file" are not
@@ -182,6 +192,9 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	}
 	if len(userMentions) > 0 {
 		reqBody["mentions"] = userMentions
+	}
+	if len(userHints) > 0 {
+		reqBody["hints"] = userHints
 	}
 
 	body, err := json.Marshal(reqBody)

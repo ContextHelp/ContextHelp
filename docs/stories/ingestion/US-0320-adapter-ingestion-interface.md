@@ -41,8 +41,8 @@ The adapter contract:
 - [ ] CLI: `ctxt ingest --source <name>` executes adapter
 - [ ] CLI: `ctxt ingest --source <name> --stdin` reads JSON
       from stdin
-- [ ] CLI: `ctxt ingest --source <name> --watch --interval 5m`
-      polls adapter on interval
+- [ ] CLI: `ctxt ingest --source <name> --every 5m`
+      polls adapter on the cadence
 - [ ] Objects stored with `status: raw`, `source: adapter_name`
 - [ ] Tags from adapter output mapped to `storage.Tag`
 - [ ] Metadata from adapter output stored on KnowledgeObject

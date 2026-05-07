@@ -28,7 +28,7 @@ Types:
 
 Examples:
   # Generate a brief with inline citations (default)
-  ctxt compose brief --tag ux,onboarding
+  ctxt compose brief --tagged ux,onboarding
 
   # Generate a plan with specific mentions
   ctxt compose plan --mention @project.signup-redesign
@@ -43,13 +43,13 @@ Examples:
   ctxt compose brief --session sess_a1b2c3d4e5f6
 
   # Generate draft and save to file
-  ctxt compose draft --tag launch --output launch-plan.md
+  ctxt compose draft --tagged launch --output launch-plan.md
 
   # Export as JSON (includes structured citations)
-  ctxt compose brief --tag launch --export json
+  ctxt compose brief --tagged launch --export json
 
   # Disable citations
-  ctxt compose brief --tag launch --no-citations`,
+  ctxt compose brief --tagged launch --no-citations`,
 	Args: cobra.ExactArgs(1),
 	RunE: runCompose,
 }
@@ -59,7 +59,7 @@ func init() {
 
 	// Filter flags
 	composeCmd.Flags().String("mention", "", "focus on specific mentions")
-	composeCmd.Flags().String("tag", "", "focus on specific tags (comma-separated)")
+	composeCmd.Flags().String("tagged", "", "focus on specific tags (comma-separated)")
 	composeCmd.Flags().String("since", "", "include knowledge since date (ISO) or natural-language ('yesterday', '2 hours ago')")
 	composeCmd.Flags().String("until", "", "include knowledge up to date (ISO) or natural-language ('now', 'yesterday evening')")
 	composeCmd.Flags().String("session", "", "scope to one work session (sess_xxx; per ADR-067)")
@@ -75,7 +75,7 @@ func init() {
 
 	// Bind flags to viper
 	viper.BindPFlag("compose.mention", composeCmd.Flags().Lookup("mention"))
-	viper.BindPFlag("compose.tag", composeCmd.Flags().Lookup("tag"))
+	viper.BindPFlag("compose.tagged", composeCmd.Flags().Lookup("tagged"))
 	viper.BindPFlag("compose.since", composeCmd.Flags().Lookup("since"))
 	viper.BindPFlag("compose.until", composeCmd.Flags().Lookup("until"))
 	viper.BindPFlag("compose.session", composeCmd.Flags().Lookup("session"))
@@ -109,7 +109,7 @@ func runCompose(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	filter := storage.ObjectFilter{
-		Tag:     viper.GetString("compose.tag"),
+		Tag:     viper.GetString("compose.tagged"),
 		Mention: viper.GetString("compose.mention"),
 		Limit:   100,
 	}

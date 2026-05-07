@@ -230,6 +230,33 @@ func TestAnalyzeRawFlagSkipsEnrichment(t *testing.T) {
 	assert.Equal(t, id, objs[0].ID)
 }
 
+// T-0573: raw path must persist caller-asserted hints as Tag{Source:"user"}
+// directly on the KnowledgeObject (no pipeline runs in --raw mode).
+func TestAnalyzeRawWithHintsPopulatesUserTags(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	id, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content: "raw with hints",
+		Type:    "text",
+		Source:  "test",
+		Raw:     true,
+		Hints:   []string{"research", "ux", "  ", ""},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, id)
+
+	obj, err := svc.Store.Objects().Get(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, obj)
+
+	require.Len(t, obj.Tags, 2, "blank hints must be dropped")
+	assert.Equal(t, "research", obj.Tags[0].Label)
+	assert.Equal(t, "user", obj.Tags[0].Source)
+	assert.Equal(t, "ux", obj.Tags[1].Label)
+	assert.Equal(t, "user", obj.Tags[1].Source)
+}
+
 func TestGetObject(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
@@ -656,7 +683,7 @@ func TestRelatedObjects(t *testing.T) {
 	// ro-1 and ro-2 both mention "entity-X"; ro-3 mentions "entity-Y" only.
 	mkEdge := func(id, from, to string) *storage.Edge {
 		return &storage.Edge{
-			ID:       id, FromType: "object", FromID: from,
+			ID: id, FromType: "object", FromID: from,
 			ToType: "entity", ToID: to, EdgeType: "mentions",
 			Weight: 1.0, CreatedAt: now,
 		}
@@ -687,13 +714,13 @@ func TestRelatedObjectsDefaultLimit(t *testing.T) {
 			ID: id, Type: "note", CreatedAt: now, UpdatedAt: now,
 		}))
 		require.NoError(t, svc.Store.Edges().Create(ctx, &storage.Edge{
-			ID:       "e-" + id, FromType: "object", FromID: id,
+			ID: "e-" + id, FromType: "object", FromID: id,
 			ToType: "entity", ToID: "entity-X", EdgeType: "mentions",
 			Weight: 1.0, CreatedAt: now,
 		}))
 	}
 	require.NoError(t, svc.Store.Edges().Create(ctx, &storage.Edge{
-		ID:       "e-seed", FromType: "object", FromID: "seed",
+		ID: "e-seed", FromType: "object", FromID: "seed",
 		ToType: "entity", ToID: "entity-X", EdgeType: "mentions",
 		Weight: 1.0, CreatedAt: now,
 	}))

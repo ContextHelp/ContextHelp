@@ -27,6 +27,11 @@ type AnalyzeRequest struct {
 	// become real mention edges + thin entity rows. Caller-supplied wins on
 	// conflict — the merge step dedupes by slug.
 	Mentions []string `json:"mentions,omitempty"`
+	// Hints are caller-asserted hint strings (`ctxt capture --hint research`).
+	// They become Tag{Source:"user"} entries on the persisted KnowledgeObject
+	// after the auto-tagger merges (T-0573). Stored on the Job as UserHints
+	// for the worker to read at pipeline-start time.
+	Hints []string `json:"hints,omitempty"`
 }
 
 // CreatePipelineRequest represents a request to create a custom pipeline.
@@ -54,11 +59,14 @@ type CompositionResult struct {
 
 // InboxCaptureRequest carries data for a fast-path inbox capture.
 type InboxCaptureRequest struct {
-	Content     string
-	Type        string
-	Source      string
-	InboxNote   string
-	Hints       string
+	Content   string
+	Type      string
+	Source    string
+	InboxNote string
+	// Hints are caller-asserted hint strings (T-0573). On the inbox path
+	// they land directly on KnowledgeObject.Tags with Source:"user" — no
+	// pipeline runs at capture time, only at triage.
+	Hints    []string
 	Mentions []uri.URI
 }
 
@@ -73,7 +81,9 @@ type InboxFilter struct {
 // TriageRequest carries parameters to promote an inbox object into the pipeline.
 type TriageRequest struct {
 	Pipeline string
-	Hints    string
+	// Hints are caller-asserted hint strings (T-0573); forwarded to
+	// Job.UserHints when triage enqueues the pipeline job.
+	Hints    []string
 	Mentions []string
 }
 
@@ -105,8 +115,8 @@ type ScoreBreakdown struct {
 // HybridResult pairs a KnowledgeObject with its score breakdown.
 // DocumentView is populated for all results; use it for display surfaces.
 type HybridResult struct {
-	Object       *storage.KnowledgeObject    `json:"object"`
-	Breakdown    ScoreBreakdown              `json:"score_breakdown"`
+	Object       *storage.KnowledgeObject     `json:"object"`
+	Breakdown    ScoreBreakdown               `json:"score_breakdown"`
 	DocumentView pluginapi.DocumentProjection `json:"document_view"`
 }
 

@@ -28,7 +28,7 @@ Required from user:
 
 Selective controls:
   --since <RFC3339|YYYY-MM-DD>   only include updated items
-  --tag <tag>                    exact tag filter (case-insensitive)
+  --tagged <tag>                 exact tag filter (case-insensitive)
   --query <text>                 text filter across title/url/note/excerpt/tags
   --max-items <n>                cap selected items
 
@@ -37,7 +37,7 @@ Examples:
   ctxt import raindrop --all --dry-run
 
   # Import selected collections and filter to recent work links
-  ctxt import raindrop --collection-id 42 --collection-id 77 --tag work --since 2026-01-01`,
+  ctxt import raindrop --collection-id 42 --collection-id 77 --tagged work --since 2026-01-01`,
 	RunE: runImportRaindrop,
 }
 
@@ -48,7 +48,7 @@ func init() {
 	importRaindropCmd.Flags().StringSlice("collection-id", nil, "Raindrop collection ID to import from (repeatable)")
 	importRaindropCmd.Flags().Bool("all", false, "import from all collections")
 	importRaindropCmd.Flags().String("query", "", "text filter over title/url/excerpt/note/tags/highlights")
-	importRaindropCmd.Flags().String("tag", "", "exact tag filter (case-insensitive)")
+	importRaindropCmd.Flags().String("tagged", "", "exact tag filter (case-insensitive)")
 	importRaindropCmd.Flags().String("since", "", "only import items updated since RFC3339 or YYYY-MM-DD")
 	importRaindropCmd.Flags().Int("max-items", 0, "maximum number of items to import (0 = all)")
 	importRaindropCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
@@ -73,7 +73,7 @@ func runImportRaindrop(cmd *cobra.Command, args []string) error {
 	allCollections, _ := cmd.Flags().GetBool("all")
 	collectionIDsRaw, _ := cmd.Flags().GetStringSlice("collection-id")
 	query, _ := cmd.Flags().GetString("query")
-	tag, _ := cmd.Flags().GetString("tag")
+	tag, _ := cmd.Flags().GetString("tagged")
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")

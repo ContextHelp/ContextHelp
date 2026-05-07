@@ -62,7 +62,7 @@ ctxt
 ctxt "The API rate limit is 1000 req/min" --hints "#api #limits"
 
 # Piped stdin
-echo "Fix signup flow" | ctxt --mentions "@product.auth"
+echo "Fix signup flow" | ctxt --mention "@product.auth"
 
 # From file
 ctxt analyze --file notes.md --type text
@@ -196,8 +196,8 @@ ctxt registry info core
 | Flag | Description |
 |------|-------------|
 | `--type <text\|url\|image\|audio\|video\|feed\|auto>` | Input type override |
-| `--hints "<#h1 #h2>"` | Influence tagging |
-| `--mentions "<@slug1 @slug2>"` | Attach explicit mentions |
+| `--hint "<#h1 #h2>"` | Influence tagging hints |
+| `--mention "<@slug1 @slug2>"` | Attach explicit mentions |
 | `--file <path>` | Read from file |
 | `--profile <name>` | Focus profile |
 | `--pipeline <name>` | Force pipeline |
@@ -266,7 +266,7 @@ Entities are referenced with `@namespace.slug`:
 @stripe.api       # entity "api" in namespace "stripe"
 ```
 
-Use in `--mentions` flags and `--q` AST queries.
+Use in `--mention` flags and `--q` AST queries.
 
 ### Hint syntax
 

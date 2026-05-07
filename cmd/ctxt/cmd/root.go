@@ -8,11 +8,11 @@ import (
 	"os"
 	"strings"
 
+	"charm.land/fang/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/logger"
 	"github.com/ideacrafterslabs/ctxt/internal/telemetry"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
-	"charm.land/fang/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	kitcli "hop.top/kit/go/console/cli"
@@ -148,13 +148,14 @@ func init() {
 // individual <name>.go files.
 var commandGroups = map[string]string{
 	// CAPTURE — get content into ctxt
-	"analyze": "capture", "import": "capture", "ingest": "capture",
-	"inbox": "capture", "feed": "capture", "watch": "capture",
+	"analyze": "capture", "capture": "capture", "import": "capture",
+	"ingest": "capture", "inbox": "capture", "feed": "capture",
+	"watch": "capture",
 
 	// KNOWLEDGE — read & navigate the graph
 	"find": "knowledge", "list": "knowledge", "show": "knowledge",
 	"link": "knowledge",
-	"log": "knowledge", "stats": "knowledge",
+	"log":  "knowledge", "stats": "knowledge",
 
 	// COMPOSE — synthesize knowledge into outputs
 	"compose": "compose", "export": "compose", "page": "compose",

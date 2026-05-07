@@ -52,10 +52,26 @@ func NewTaggerWithLLM(llm providers.LLMProvider) *Tagger {
 
 func (t *Tagger) Name() string { return "tagger" }
 
+// Run extracts heuristic + (optional) LLM tags from draft.RawContent and
+// merges them with any pre-existing draft.Tags entries that have
+// Source:"user" (T-0573). User-asserted tags WIN on lowercase-label
+// collision — operator intent overrides auto-extraction. Non-user
+// pre-existing tags are dropped (the prior behaviour was to overwrite
+// the slice, so this keeps the same effective contract for them).
 func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	// T-0573: preserve any caller-asserted user tags pre-populated on the
+	// draft (by jobs.worker via Job.UserHints, or by Service.Analyze on
+	// the raw path). They will be merged in below the auto-extracted set.
+	var userTags []storage.Tag
+	for _, tag := range draft.Tags {
+		if tag.Source == "user" {
+			userTags = append(userTags, tag)
+		}
+	}
+
 	words := tokenize(draft.RawContent)
 	if len(words) == 0 {
-		draft.Tags = nil
+		draft.Tags = userTags
 		return draft, nil
 	}
 
@@ -127,7 +143,11 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 		// On LLM failure, silently fall back to heuristic tags already computed.
 	}
 
-	draft.Tags = tags
+	// T-0573: merge user-asserted tags with auto-extracted ones, dedup by
+	// lowercase label. User tags win on collision — they come first in the
+	// final slice and the auto/llm entry is dropped.
+	merged := mergeUserTags(userTags, tags)
+	draft.Tags = merged
 
 	// Emit canonical graph nodes: one NodeTypeTag node per tag.
 	// Skip if ID is empty (in-pipeline drafts before ID assignment).
@@ -135,7 +155,7 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 		if draft.Graph == nil {
 			draft.Graph = &pluginapi.ObjectGraph{}
 		}
-		for i, tag := range tags {
+		for i, tag := range merged {
 			tagID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeTag, i)
 			if draft.Graph.FindNode(tagID) != nil {
 				continue
@@ -154,6 +174,35 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 	}
 
 	return draft, nil
+}
+
+// mergeUserTags combines caller-asserted user tags (Source:"user") with
+// auto-extracted tags, with user tags WINNING on lowercase-label collision
+// (T-0573). User tags appear first in the result so downstream consumers
+// that read positionally see operator intent at the top.
+func mergeUserTags(userTags, autoTags []storage.Tag) []storage.Tag {
+	if len(userTags) == 0 {
+		return autoTags
+	}
+	seen := make(map[string]struct{}, len(userTags)+len(autoTags))
+	out := make([]storage.Tag, 0, len(userTags)+len(autoTags))
+	for _, t := range userTags {
+		key := strings.ToLower(t.Label)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, t)
+	}
+	for _, t := range autoTags {
+		key := strings.ToLower(t.Label)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, t)
+	}
+	return out
 }
 
 func tokenize(text string) []string {

@@ -13,7 +13,6 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
-	kitstyles "hop.top/kit/go/console/tui/styles"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
@@ -27,6 +26,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/spf13/viper"
+	kitstyles "hop.top/kit/go/console/tui/styles"
 )
 
 // sessionSvc holds the service instance for the duration of a `ctxt shell` session.
@@ -260,7 +260,7 @@ func buildObjectFilter() storage.ObjectFilter {
 	filter := storage.ObjectFilter{
 		Type:     viper.GetString("list.type"),
 		Subtype:  viper.GetString("list.subtype"),
-		Tag:      viper.GetString("list.tag"),
+		Tag:      viper.GetString("list.tagged"),
 		Mention:  viper.GetString("list.mention"),
 		Pipeline: viper.GetString("list.pipeline"),
 		Status:   viper.GetString("list.status"),

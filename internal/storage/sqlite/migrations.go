@@ -90,6 +90,9 @@ var migration026 string
 //go:embed migrations/027_jobs_user_mentions.sql
 var migration027 string
 
+//go:embed migrations/028_jobs_user_hints.sql
+var migration028 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -145,6 +148,9 @@ var migrations = []migration{
 	// Migration 027: user_mentions column on jobs for `ctxt analyze --mentions` (T-0190).
 	// Plain SQL is safe — column did not exist in any prior schema version.
 	{Version: 27, SQL: migration027},
+	// Migration 028: user_hints column on jobs for `ctxt capture --hint` (T-0573).
+	// Mirrors 027 — JSON-encoded array; column did not exist in any prior schema.
+	{Version: 28, SQL: migration028},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

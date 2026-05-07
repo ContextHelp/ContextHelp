@@ -258,7 +258,7 @@ ctxt list <filters> <options>
 | Flag | Description |
 |------|-------------|
 | `--type <type>` | Filter by knowledge object type |
-| `--tag <t1,t2>` | Filter by tags |
+| `--tagged <t1,t2>` | Filter by tags |
 | `--hint <#h1,#h2>` | Filter by hints |
 | `--mention <@slug>` | Filter by mention |
 | `--pipeline <name>` | Filter by pipeline |
@@ -339,7 +339,7 @@ ctxt delete <filters> <options>
 |------|-------------|
 | `--id <id>` | Delete specific knowledge object |
 | `--index <i1,i2>` | Delete by list index |
-| `--tag <t>` | Delete by tag |
+| `--tagged <t>` | Delete by tag |
 | `--hint <#h>` | Delete by hint |
 | `--mention <@slug>` | Delete by mention |
 | `--type <type>` | Delete by type |
@@ -410,7 +410,7 @@ ctxt make <type> <options>
 |------|-------------|
 | `--profile <name>` | Use focus profile |
 | `--mention <@slug>` | Focus on specific mentions |
-| `--tag <t1,t2>` | Focus on specific tags |
+| `--tagged <t1,t2>` | Focus on specific tags |
 | `--since <ISO>` | Include knowledge since date |
 | `--output <path>` | Write to file |
 

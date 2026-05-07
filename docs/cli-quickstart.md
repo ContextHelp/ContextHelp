@@ -406,8 +406,8 @@ echo "Authentication pattern from competitor" | ./bin/ctxt analyze \
 
 ```bash
 # Analyze project resources
-./bin/ctxt analyze --file docs/architecture.md --mentions "@project.platform"
-./bin/ctxt analyze https://github.com/org/repo --mentions "@project.platform"
+./bin/ctxt analyze --file docs/architecture.md --mention "@project.platform"
+./bin/ctxt analyze https://github.com/org/repo --mention "@project.platform"
 
 # Generate project brief
 ./bin/ctxt make plan --mention @project.platform

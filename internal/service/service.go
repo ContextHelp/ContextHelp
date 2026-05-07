@@ -163,6 +163,10 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 			CreatedAt:   now,
 			UpdatedAt:   now,
 			Mentions:    mentions.ParseSlice(req.Mentions),
+			// T-0573: caller-asserted hints become Tag{Source:"user"} on the
+			// raw path too, so capture-with-hints partitioning works without
+			// the pipeline running.
+			Tags: userHintsToTags(req.Hints),
 		}
 		if err := s.Store.Objects().Create(ctx, obj); err != nil {
 			return "", fmt.Errorf("analyze raw: store: %w", err)
@@ -237,6 +241,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		CreatedAt:    now,
 		UpdatedAt:    now,
 		UserMentions: req.Mentions, // T-0190: forwarded to draft.Mentions in worker.
+		UserHints:    req.Hints,    // T-0573: forwarded to draft.Tags (Source:"user") in worker.
 	}
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
@@ -246,6 +251,32 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		_ = s.Bus.Publish(ctx, ev)
 	}
 	return job.ID, nil
+}
+
+// userHintsToTags converts caller-asserted hint strings (T-0573) to the
+// Tag form KnowledgeObject.Tags expects, with Source:"user" so the
+// auto-tagger merge step can identify and preserve them. Empty / blank
+// hints are dropped — `--hint ""` shouldn't store a blank Tag.
+func userHintsToTags(hints []string) []storage.Tag {
+	if len(hints) == 0 {
+		return nil
+	}
+	out := make([]storage.Tag, 0, len(hints))
+	for _, h := range hints {
+		label := strings.TrimSpace(h)
+		if label == "" {
+			continue
+		}
+		out = append(out, storage.Tag{
+			Label:  label,
+			Source: "user",
+			Weight: 1.0,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // writeUserMentionEdges persists thin entity rows + object→entity 'mentions'

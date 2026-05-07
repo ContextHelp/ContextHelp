@@ -20,7 +20,7 @@ Required from user:
 
 Selective import scope:
   --since RFC3339 or YYYY-MM-DD     only notes updated/created on or after this time
-  --tag <name> (repeatable)         include only notes containing at least one tag
+  --tagged <name> (repeatable)      include only notes containing at least one tag
   --max-items N                     cap selected notes
 
 Examples:
@@ -28,7 +28,7 @@ Examples:
   ctxt import evernote --file ./notes.enex --dry-run
 
   # Import only recent work-tagged notes
-  ctxt import evernote --file ./notes.enex --since 2026-01-01 --tag work --server http://localhost:8080`,
+  ctxt import evernote --file ./notes.enex --since 2026-01-01 --tagged work --server http://localhost:8080`,
 	RunE: runImportEvernote,
 }
 
@@ -37,7 +37,7 @@ func init() {
 
 	importEvernoteCmd.Flags().String("file", "", "path to Evernote export file (.enex or .html)")
 	importEvernoteCmd.Flags().String("since", "", "only import notes modified since this time (RFC3339 or YYYY-MM-DD)")
-	importEvernoteCmd.Flags().StringSlice("tag", nil, "only include notes with at least one of these tags (repeatable)")
+	importEvernoteCmd.Flags().StringSlice("tagged", nil, "only include notes with at least one of these tags (repeatable)")
 	importEvernoteCmd.Flags().Int("max-items", 0, "maximum notes to import (0 = all)")
 	importEvernoteCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importEvernoteCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
@@ -49,7 +49,7 @@ func init() {
 func runImportEvernote(cmd *cobra.Command, args []string) error {
 	file, _ := cmd.Flags().GetString("file")
 	sinceRaw, _ := cmd.Flags().GetString("since")
-	filterTags, _ := cmd.Flags().GetStringSlice("tag")
+	filterTags, _ := cmd.Flags().GetStringSlice("tagged")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	serverURL, _ := cmd.Flags().GetString("server")
 	pipelineName, _ := cmd.Flags().GetString("pipeline")

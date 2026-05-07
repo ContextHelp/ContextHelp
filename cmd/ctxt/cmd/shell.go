@@ -21,7 +21,7 @@ standalone ctxt invocation, making interactive exploration significantly snappie
 Commands inside the shell are identical to standalone CLI commands:
 
   ctxt> find authentication flow
-  ctxt> list --type url --tag checkout
+  ctxt> list --type url --tagged checkout
   ctxt> open 1
   ctxt> authentication flow | make brief
 

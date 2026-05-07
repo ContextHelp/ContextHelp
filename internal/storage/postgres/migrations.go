@@ -269,6 +269,10 @@ func (d *Driver) Migrate(ctx context.Context) error {
 	if err := migrateJobsUserMentions(ctx, d.db); err != nil {
 		return fmt.Errorf("jobs.user_mentions migration: %w", err)
 	}
+	// Jobs.user_hints column for `ctxt capture --hint` (T-0573).
+	if err := migrateJobsUserHints(ctx, d.db); err != nil {
+		return fmt.Errorf("jobs.user_hints migration: %w", err)
+	}
 	return nil
 }
 
@@ -291,6 +295,30 @@ func migrateJobsUserMentions(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx,
 		`ALTER TABLE jobs ADD COLUMN user_mentions TEXT NOT NULL DEFAULT ''`); err != nil {
 		return fmt.Errorf("add user_mentions column: %w", err)
+	}
+	return nil
+}
+
+// migrateJobsUserHints adds user_hints TEXT column to jobs. Idempotent via
+// information_schema check so re-running on upgraded DBs is a no-op.
+// Mirrors migrateJobsUserMentions exactly (T-0573).
+func migrateJobsUserHints(ctx context.Context, db *sql.DB) error {
+	var exists bool
+	err := db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'jobs' AND column_name = 'user_hints'
+		)
+	`).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("check user_hints column: %w", err)
+	}
+	if exists {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE jobs ADD COLUMN user_hints TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("add user_hints column: %w", err)
 	}
 	return nil
 }

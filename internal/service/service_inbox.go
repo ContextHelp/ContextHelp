@@ -36,8 +36,12 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 		Status:      "inbox",
 		InboxNote:   req.InboxNote,
 		Mentions:    req.Mentions,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		// T-0573: caller-asserted hints land directly on Tags (Source:"user")
+		// since no pipeline runs at inbox-capture time. Triage will re-enqueue
+		// the object via a pipeline job that picks these up via UserHints.
+		Tags:      userHintsToTags(req.Hints),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
 	if err := s.Store.Objects().Create(ctx, obj); err != nil {
@@ -98,6 +102,9 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 		MaxRetries: 3,
 		CreatedAt:  now,
 		UpdatedAt:  now,
+		// T-0573: forward caller-asserted hints to the worker so the
+		// auto-tagger merge preserves them as Tag{Source:"user"}.
+		UserHints: req.Hints,
 	}
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
 		// Compensate: revert status if enqueueing fails.

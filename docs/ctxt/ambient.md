@@ -23,7 +23,7 @@ sensors:
     enabled: <bool>
     platform: <darwin|linux|windows> | <list>
     permissions: <list of os-permission strings>
-    interval: <duration>     # default cadence when --interval unset
+    interval: <duration>     # default cadence when --every unset
     config:
       <sensor-specific keys>
 ```
@@ -34,7 +34,7 @@ Each entry:
 - **`enabled`** — when `false`, the sensor is skipped entirely from ambient sweeps (regardless of `--input` / `--skip`). Set `false` to keep config rows around for reference without activating them.
 - **`platform`** — string or list. The sensor only runs when the dPKMS instance's OS matches. `["darwin"]` is the Phase 2 default for OS-platform sensors; `["darwin","linux","windows"]` is the eventual cross-platform target.
 - **`permissions`** — list of OS-permission strings the sensor needs (see § Permission model below). The substrate checks each at adapter Start; if any are missing, the sensor is skipped during ambient sweep with a stderr warning.
-- **`interval`** — default cadence for continuous mode. Only used when the user passes `--interval` to `ctxt capture --ambient` *without* a value (Phase 3+ feature; Phase 2 requires explicit `--interval <duration>`).
+- **`interval`** — default cadence for continuous mode. Only used when the user passes `--every` to `ctxt capture --ambient` *without* a value (Phase 3+ feature; Phase 2 requires explicit `--every <duration>`). The YAML field is named `interval` because it describes the sensor's natural cadence; the CLI flag is `--every` because it reads naturally as "re-run every N".
 - **`config`** — sensor-specific. The keys depend on `name`; see § Per-sensor schemas below.
 
 ## Example — minimal

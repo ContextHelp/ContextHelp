@@ -95,7 +95,7 @@ func TestComposeHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("make --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--mention", "--tag", "--since", "-o"} {
+	for _, flag := range []string{"--mention", "--tagged", "--since", "-o"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("make help should list flag %s", flag)
 		}

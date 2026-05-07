@@ -28,7 +28,7 @@ Examples:
   ctxt edit obj_12345678 --tags "ux,onboarding,critical"
 
   # Update mentions
-  ctxt edit obj_12345678 --mentions "@ui.best-practice @ux.onboarding"
+  ctxt edit obj_12345678 --mention "@ui.best-practice @ux.onboarding"
 
   # Update multiple fields
   ctxt edit obj_12345678 --title "New title" --tags "ux" --subtype "article"`,
@@ -44,7 +44,7 @@ func init() {
 	editCmd.Flags().String("summary", "", "update summary")
 	editCmd.Flags().String("tags", "", "replace tags (comma-separated)")
 	editCmd.Flags().String("hints", "", "replace hints")
-	editCmd.Flags().String("mentions", "", "replace mentions")
+	editCmd.Flags().String("mention", "", "replace mentions")
 	editCmd.Flags().String("decisions", "", "replace decisions (JSON)")
 	editCmd.Flags().String("subtype", "", "update subtype")
 
@@ -52,7 +52,7 @@ func init() {
 	viper.BindPFlag("edit.summary", editCmd.Flags().Lookup("summary"))
 	viper.BindPFlag("edit.tags", editCmd.Flags().Lookup("tags"))
 	viper.BindPFlag("edit.hints", editCmd.Flags().Lookup("hints"))
-	viper.BindPFlag("edit.mentions", editCmd.Flags().Lookup("mentions"))
+	viper.BindPFlag("edit.mention", editCmd.Flags().Lookup("mention"))
 	viper.BindPFlag("edit.decisions", editCmd.Flags().Lookup("decisions"))
 	viper.BindPFlag("edit.subtype", editCmd.Flags().Lookup("subtype"))
 }
@@ -71,7 +71,7 @@ func runEdit(cmd *cobra.Command, args []string) error {
 	if tags := viper.GetString("edit.tags"); tags != "" {
 		updates["tags"] = tags
 	}
-	if mentions := viper.GetString("edit.mentions"); mentions != "" {
+	if mentions := viper.GetString("edit.mention"); mentions != "" {
 		updates["mentions"] = mentions
 	}
 	if subtype := viper.GetString("edit.subtype"); subtype != "" {

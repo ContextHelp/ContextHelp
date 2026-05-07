@@ -86,7 +86,7 @@ func TestImportPinboardDryRunFromFileSelective(t *testing.T) {
 		"import", "pinboard",
 		"--file", file,
 		"--since", "2026-01-01",
-		"--tag", "go",
+		"--tagged", "go",
 		"--dry-run",
 	)
 	if err != nil {
