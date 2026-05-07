@@ -218,36 +218,42 @@ All three are already vetted; xrr is in production use already. The marginal cos
 
 ## Implementation Notes
 
-This ADR is the framework. Implementation lands across multiple PRs/tasks, sequenced:
+This ADR is the framework. Implementation landed across the following PRs/tasks (all on 2026-05-07):
 
-### Phase 1 — Storage & detection foundations (T-NEW-1)
+### Phase 1 — Storage & detection foundations (T-0579, **shipped**)
 
-- `index_signatures` table; signature compute + verify on daemon startup.
-- `objects.pipeline` value-format convention (`name@vN`); migration helper that stamps existing rows as `@v0`.
-- Tests: in-package unit tests for signature compute; xrr-backed integration test for daemon-startup signature-mismatch detection.
+- `index_signatures` table (migration 029); signature compute + verify on daemon startup; mismatch emits `dpkms.upgrade.signature.mismatched` bus event.
+- `objects.pipeline` value-format convention (`name@vN`); migration 030 stamps existing rows as `@v0`. `pipeline.ParseVersionedName` + registry lookup for `@v0` fallback.
+- Tests: in-package unit tests for signature compute + version parsing.
+- xrr cassettes were optional and skipped — the signature-verify path is local SQLite only; the rebuild worker (Phase 3) is the right cassette layer.
 
-### Phase 2 — Upgrade CLI surface (T-NEW-2)
+### Phase 2 — Upgrade CLI surface (T-0580, **shipped**)
 
-- `ctxt upgrade {status,plan,run}` commands; `ctxt upgrade status --watch`.
-- `/healthz` upgrade envelope (extends existing healthcheck per T-0564).
-- Banner injection in every CLI command (kit/cli middleware, hooks into the existing `PrePersistentRunE`).
-- Tests: eva contract for `ctxt upgrade status` JSON; xrr cassettes for `--watch` mode bus events; in-package unit tests for the banner middleware.
+- `ctxt upgrade {status,plan,run}` commands; `ctxt upgrade status --watch` + `--interval`.
+- `/healthz` upgrade envelope (extends T-0564's healthcheck): top-level `health` flips to `"upgrading"` when an upgrade is in flight; new `upgrade` field carries `{state, bucket, progress, done, total, eta_seconds, started_at}`.
+- `internal/upgrade/` package owns the state machine + JSON-shadowed disk file at `$XDG_DATA_HOME/contexthelp/run/upgrade-state.json` so the banner reads from disk (no per-command HTTP latency).
+- `internal/cli/banner/` middleware injected into both `cmd/ctxt/cmd/root.go` and `cmd/dpkms/cmd/root.go` `Hooks.PrePersistentRunE`.
+- Tests: 15 in-package unit tests covering the state machine, banner format, healthz envelope.
+- eva contracts and xrr cassettes deferred to T-0586/T-0587 (the eva/ben adoption tasks).
 
-### Phase 3 — Selective re-ingest engine (T-NEW-3)
+### Phase 3 — Selective re-ingest engine (T-0581, **shipped**)
 
-- Selector-predicate parser (SQL WHERE clause or pipeline-name filter).
-- Background re-ingest worker; rate-limit + LLM-cost-cap support.
-- `staleness_warning` injection in search responses.
-- Tests: ben suite for recall regression on `text.short@v1 → @v2`; xrr cassettes for LLM calls during re-ingest; eva contract for `staleness_warning` envelope.
+- `internal/upgrade/selector.go`: `Selector` parses `pipeline=<name>@vN` (most common) or `where:<sql-where-clause>` (escape hatch with strict regexp validation against DDL/DML/semicolons/comments). `CountMatching` and `IterateMatching` against the SQLite store.
+- `internal/upgrade/worker.go`: `Worker.Run` acquires the upgrade-state lock, iterates the selector, calls `service.ReanalyzeObject` per ID, ticks progress, honors `--rate-limit`, tracks running LLM cost against `--budget-usd`. Emits 5 bus events (`plan.computed`, `reingest.{started,progressed,completed,failed}`).
+- `internal/service/reanalyze.go`: new `Service.ReanalyzeObject(ctx, id) (newVersion, llmCostUSD, error)` method.
+- `internal/service/staleness.go`: `CurrentVersionForFamily(reg, name)` walks the registry returning `max(@vN)`; used by both staleness-warning population and `ctxt upgrade plan`.
+- `staleness_warning` field on `SearchDiagnostics` (extended from T-0574's diagnostics block) populated in `HybridSearch` by counting candidates whose `pipeline` parses to a version older than the registry's current.
+- Tests: 23 cases across selector + worker + service.
+- xrr cassettes skipped for now — `Service.Analyze`'s test infrastructure didn't admit cassette-replay cleanly at the worker layer; worker tests use a `fakeReanalyzer` interface. Cassette work is queued behind T-0586/T-0587.
 
-### Phase 4 — Release-notes scaffolding (this commit)
+### Phase 4 — Release-notes scaffolding (T-0577, **shipped**)
 
 - `docs/release-notes/template.md` — fillable template.
-- `docs/release-notes/2026-05-07.md` — retroactive notes for T-0565, T-0576, T-0577, T-0578.
+- `docs/release-notes/2026-05-07.md` — retroactive + ongoing notes for the 2026-05-07 cohort.
 - `.github/PULL_REQUEST_TEMPLATE.md` — checkbox + bucket prompt.
 - `.github/workflows/release-notes-check.yml` — CI gate that reads commit trailers and fails on missing release-notes rows.
 
-Phases 1–3 are runtime work, filed as follow-up tasks. Phase 4 lands with this ADR.
+> **Process note (2026-05-07)**: the CI gate enforces the contract on PRs, not on direct merges to main. T-0579/T-0580/T-0581 were ff-merged from worktree branches without going through PR review. The release-notes rows for those commits were authored by hand at merge time. Future work that lands via PR will trigger the gate automatically.
 
 ### Backward compatibility
 
