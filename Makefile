@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate test-docker lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks vuln-scan trivy-scan eva check
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate test-docker lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -300,6 +300,101 @@ install-hooks:
 	@printf '#!/bin/sh\n# Pre-commit hook: secret scanning via gitleaks\nif ! command -v gitleaks >/dev/null 2>&1; then\n  echo "WARNING: gitleaks not found; skipping secret scan."\n  echo "Install: brew install gitleaks"\n  exit 0\nfi\ngitleaks protect --staged --config .gitleaks.toml --verbose\n' > .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
 	@echo "✓ pre-commit hook installed (.git/hooks/pre-commit)"
+
+## ben: Run all hop.top/ben recall suites (text-short + vector)
+##
+## Gates pipeline-version + embedding-model PRs per ADR-070 §6 and
+## ADR-071 Phase 3. Set BEN=1 to opt in when the suite is part of an
+## aggregate test target; running this target directly always executes.
+ben: ben-text-short ben-vector
+	@echo "✓ All ben recall suites passed"
+
+## ben-install: Install hop.top/ben into bin/ at the version pinned in tools/ben.ref
+##
+## Resolution order:
+##   1. $$BEN_LOCAL_PATH env var, if set and pointing to a hop.top/ben checkout
+##   2. Sibling labspace path ($$HOME/.w/ideacrafterslabs/ben/hops/main) if it
+##      exists — matches the dev convention used by xrr / kit / c12n
+##   3. `go install hop.top/ben/cmd/ben@$(BEN_VERSION)` from the network
+##   4. Fallback: build the local ben-compatible runner cmd/ctxt-ben-run.
+##      This fallback exists because hop.top/ben at the pinned SHA does
+##      not currently build against the restructured hop.top/kit module
+##      layout (kit/hops/main moved its packages under go/<area>/ while
+##      ben still imports the flat hop.top/kit/<pkg> paths). When ben/main
+##      lands the kit-compat fix, drop this fallback and the cmd/ctxt-ben-run
+##      directory; suites are already in ben's native YAML format.
+##      See docs/ctxt/testing.md "ben recall harness" for the full story.
+##
+## The installed binary lives in $(BUILD_DIR)/ (not $GOPATH/bin) so the
+## version stays scoped to this checkout.
+BEN_REF_FILE := tools/ben.ref
+BEN_VERSION := $(shell grep '^BEN_VERSION=' $(BEN_REF_FILE) | cut -d= -f2)
+BEN_BIN_PATH := $(shell grep '^BEN_BIN_PATH=' $(BEN_REF_FILE) | cut -d= -f2)
+BEN_BINARY := $(BUILD_DIR)/ben
+BEN_SIBLING := $(HOME)/.w/ideacrafterslabs/ben/hops/main
+ben-install: $(BEN_BINARY)
+
+$(BEN_BINARY): $(BEN_REF_FILE)
+	@mkdir -p $(BUILD_DIR)
+	@set -e; \
+	if [ -n "$$BEN_LOCAL_PATH" ] && [ -d "$$BEN_LOCAL_PATH" ]; then \
+		echo "Trying upstream ben from BEN_LOCAL_PATH=$$BEN_LOCAL_PATH..."; \
+		if (cd "$$BEN_LOCAL_PATH" && go build -o $(abspath $(BEN_BINARY)) ./cmd/ben) 2>/dev/null; then \
+			echo "✓ Installed upstream ben: $(BEN_BINARY)"; exit 0; fi; \
+	elif [ -d "$(BEN_SIBLING)" ]; then \
+		echo "Trying upstream ben from sibling labspace ($(BEN_SIBLING))..."; \
+		if (cd "$(BEN_SIBLING)" && go build -o $(abspath $(BEN_BINARY)) ./cmd/ben) 2>/dev/null; then \
+			echo "✓ Installed upstream ben: $(BEN_BINARY)"; exit 0; fi; \
+	else \
+		echo "Trying upstream ben install $(BEN_BIN_PATH)@$(BEN_VERSION)..."; \
+		if GOBIN=$(abspath $(BUILD_DIR)) go install $(BEN_BIN_PATH)@$(BEN_VERSION) 2>/dev/null; then \
+			echo "✓ Installed upstream ben: $(BEN_BINARY)"; exit 0; fi; \
+	fi; \
+	echo "Upstream ben unavailable; falling back to local cmd/ctxt-ben-run (see Makefile comment)..."; \
+	go build -buildvcs=false -o $(abspath $(BEN_BINARY)) ./cmd/ctxt-ben-run; \
+	echo "✓ Built fallback ctxt-ben-run as: $(BEN_BINARY)"
+
+## ben-adapter: Build the ctxt-recall ben binary plugin into bin/
+##
+## ben discovers binary plugins on PATH; we prepend $(BUILD_DIR) when we
+## invoke ben so the plugin is picked up without polluting the user PATH.
+BEN_ADAPTER := $(BUILD_DIR)/ben-adapter-ctxt-recall
+ben-adapter: $(BEN_ADAPTER)
+
+$(BEN_ADAPTER):
+	@echo "Building ben-adapter-ctxt-recall..."
+	@mkdir -p $(BUILD_DIR)
+	go build -buildvcs=false -o $(BEN_ADAPTER) ./cmd/ben-adapter-ctxt-recall
+	@echo "✓ Built: $(BEN_ADAPTER)"
+
+## ben-text-short: Run the text.short recall suite (ADR-070 §6)
+##
+## Output:
+##   $(BUILD_DIR)/ben-runs/recall-text-short.json — full ben run record
+##   stdout — pretty-printed pass/fail summary with the recall floor check.
+BEN_RUN_DIR := $(BUILD_DIR)/ben-runs
+BEN_TEXT_SHORT_FLOOR := 0.85
+ben-text-short: ben-install ben-adapter
+	@mkdir -p $(BEN_RUN_DIR)
+	@echo "Running ben suite: recall-text-short.ben.yaml (floor=$(BEN_TEXT_SHORT_FLOOR))"
+	@PATH="$(abspath $(BUILD_DIR)):$$PATH" $(BEN_BINARY) run \
+		--suite suites/recall-text-short.ben.yaml \
+		--format json > $(BEN_RUN_DIR)/recall-text-short.json
+	@bash scripts/ben-floor.sh $(BEN_RUN_DIR)/recall-text-short.json $(BEN_TEXT_SHORT_FLOOR)
+
+## ben-vector: Run the vector-recall suite (ADR-071 Phase 3 gate)
+##
+## See suites/recall-vector.ben.yaml for the floor-rationale. The floor
+## is intentionally low while T-0584 hasn't wired the real candidate
+## model; raise it when the embedding leg lights up.
+BEN_VECTOR_FLOOR := 0.40
+ben-vector: ben-install ben-adapter
+	@mkdir -p $(BEN_RUN_DIR)
+	@echo "Running ben suite: recall-vector.ben.yaml (floor=$(BEN_VECTOR_FLOOR))"
+	@PATH="$(abspath $(BUILD_DIR)):$$PATH" $(BEN_BINARY) run \
+		--suite suites/recall-vector.ben.yaml \
+		--format json > $(BEN_RUN_DIR)/recall-vector.json
+	@bash scripts/ben-floor.sh $(BEN_RUN_DIR)/recall-vector.json $(BEN_VECTOR_FLOOR)
 
 ## help: Show this help message
 help:

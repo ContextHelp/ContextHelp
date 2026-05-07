@@ -495,6 +495,112 @@ Before release, manually test:
 
 ---
 
+## Recall Harness (hop.top/ben)
+
+ADR-070 §6 (pipeline-version gate) and ADR-071 Phase 3 (embedding-migration gate) both require a deterministic recall benchmark on a fixed corpus + query list. We adopt **`hop.top/ben`** for this, mirroring the `hop.top/xrr` cassette pattern (`internal/adapter/{mic,feeds/rss,screen,files/s3}`).
+
+### Where things live
+
+| File | Purpose |
+|------|---------|
+| `suites/recall-text-short.ben.yaml` | Gates `reingest_selective` PRs (text.short pipeline) |
+| `suites/recall-vector.ben.yaml` | Gates `ctxt embeddings migrate` (ADR-071 Phase 3) |
+| `test/integration/testdata/ben-fixtures/text-short-corpus.yaml` | 24 short-form objects covering bullet+hyphen edge cases |
+| `test/integration/testdata/ben-fixtures/text-short-queries.yaml` | 23 queries with explicit `expected_ids` mapping |
+| `test/integration/testdata/ben-fixtures/vector-corpus.yaml` | 20 paraphrase-friendly objects (semantic-leaning) |
+| `test/integration/testdata/ben-fixtures/vector-queries.yaml` | 10 paraphrase queries; lexical baseline scores ~0.75 today |
+| `cmd/ben-adapter-ctxt-recall/` | The hop.top/ben binary plugin that scores recall@k |
+| `cmd/ctxt-ben-run/` | Local fallback runner (drops out when ben/main rebuilds against current kit) |
+| `scripts/ben-floor.sh` | Reads `ben run --format json` output and enforces the recall floor |
+| `tools/ben.ref` | Pinned ben SHA + module path |
+| `.github/workflows/ben.yml` | CI gate triggered by retrieval-substrate changes |
+
+### Running locally
+
+```sh
+# Run both suites and enforce floors:
+make ben
+
+# Run just one:
+make ben-text-short
+make ben-vector
+```
+
+The Makefile prefers an upstream `hop.top/ben` build when one is
+available (set `BEN_LOCAL_PATH=...` to override the sibling-labspace
+discovery). When ben fails to build — currently the case at the pinned
+SHA, see "Known limitations" below — the Makefile falls back to a local
+ben-compatible runner (`cmd/ctxt-ben-run`) so the gate stays enforceable.
+
+### Interpreting a recall-floor failure
+
+A failing `make ben-*` looks like:
+
+```
+[FAIL] current      recall_at_k=0.72  (floor=0.85)
+ben-floor: at least one candidate dropped below the floor; see ADR-070 §6 for the escape-hatch process.
+```
+
+Three diagnoses, in order of likelihood:
+
+1. **Real regression.** The PR introduced a tokenizer / pipeline / index
+   change that genuinely lost recall on previously-retrieved objects.
+   Fix the regression and re-run; the gate should clear.
+2. **Fixture drift.** The PR removed or renamed an object the queries
+   reference, but didn't update the queries. Edit the queries fixture
+   alongside the corpus change.
+3. **Legitimate trade-off** (e.g. tokenizer change improves precision at
+   a small cost to recall, see ADR-070's escape-hatch language). This is
+   the only case where lowering the floor in the suite YAML is correct.
+   See "Updating a suite" below.
+
+### Updating a suite (the ADR-070 escape-hatch path)
+
+Lowering a recall floor or removing a query is an operator-impacting
+change. The PR doing so must:
+
+1. Edit `suites/<name>.ben.yaml` and/or the floor in the Makefile
+   (`BEN_TEXT_SHORT_FLOOR` / `BEN_VECTOR_FLOOR`).
+2. Add a `reingest_selective` row to `docs/release-notes/<date>.md`
+   per ADR-070 §4 — the release-notes-check workflow will fail otherwise.
+3. Carry an `Operator-Impact: reingest_selective` trailer on the commit
+   that lowers the floor.
+
+The release-notes row must explain why the recall trade-off is
+acceptable; reviewers should treat a recall-floor drop as a yellow flag
+that needs justification, not a routine bump.
+
+### Authoring a new fixture
+
+Keep both fixtures small. Targets:
+
+- `text-short-corpus.yaml`: < ~50 objects so the harness clears in under
+  a second on a laptop.
+- `vector-corpus.yaml`: < ~30 objects until the real vector leg ships
+  (T-0584); after that the cassette set is the binding constraint.
+
+Each query must have at least one `expected_id` present in the matching
+corpus file — the adapter validates this and exits 1 otherwise. Multiple
+`expected_ids` is fine and exercises AND-style relevance.
+
+### Known limitations
+
+- **Upstream ben build broken at the pinned SHA.** The pinned ben SHA
+  (`tools/ben.ref`) does not currently build against the restructured
+  `hop.top/kit` module layout (kit moved packages under `go/<area>/`
+  while ben still imports the flat `hop.top/kit/<pkg>` paths). The
+  Makefile falls back to `cmd/ctxt-ben-run` so the gate stays enforced
+  locally; CI hits the same fallback. Expected fix: an upstream PR on
+  `hop.top/ben/main` updating its imports. Once landed, bump
+  `tools/ben.ref` and the fallback delegates to the real ben — no other
+  changes needed in this repo.
+- **Vector leg is a lexical baseline today.** Both candidates in
+  `recall-vector.ben.yaml` run the lexical baseline. T-0584 wires the
+  candidate-model leg through xrr cassettes; the suite shape is in
+  place so that PR is purely additive.
+
+---
+
 ## Summary
 
 `ctxt` testing ensures:

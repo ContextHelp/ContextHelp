@@ -1,0 +1,39 @@
+# Query fixture for hop.top/ben recall-vector suite (ADR-071).
+#
+# The query set deliberately stresses semantic proximity over lexical
+# overlap so that, when the real embedding leg lights up (T-0584), the
+# delta between the lexical baseline and the model-driven score is large
+# enough to detect a regression. Each query has 1-3 expected_ids drawn
+# from vector-corpus.yaml.
+k: 5
+queries:
+  - id: q-vec-sso-paraphrase
+    query: "logging in once for many apps"
+    expected_ids: [vec-001, vec-002]
+  - id: q-vec-hybrid-signals
+    query: "combining keyword and meaning for retrieval"
+    expected_ids: [vec-003, vec-004]
+  - id: q-vec-versioning-isolation
+    query: "isolating per-object schema drift"
+    expected_ids: [vec-005, vec-006]
+  - id: q-vec-profile-ranking
+    query: "intent-driven ranking with profile context"
+    expected_ids: [vec-007, vec-008]
+  - id: q-vec-embedding-migration
+    query: "migrate embedding model with recall guard"
+    expected_ids: [vec-009, vec-010]
+  - id: q-vec-operator-consent
+    query: "explicit consent for full corpus re-ingest"
+    expected_ids: [vec-011, vec-012]
+  - id: q-vec-async-capture
+    query: "non-blocking capture with background enrichment"
+    expected_ids: [vec-013, vec-014]
+  - id: q-vec-decisions-summary
+    query: "extracting decisions and bounded summaries"
+    expected_ids: [vec-015, vec-016]
+  - id: q-vec-composition-provenance
+    query: "templates that link claims back to sources"
+    expected_ids: [vec-017, vec-018]
+  - id: q-vec-federation-health
+    query: "peer compatibility and upgrade state surfacing"
+    expected_ids: [vec-019, vec-020]
