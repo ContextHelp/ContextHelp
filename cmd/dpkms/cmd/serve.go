@@ -244,9 +244,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 6c. Init watcher manager.
 	watchMgr := watcher.NewManager(driver.Watches(), svc)
 
-	// 7. Build HTTP router.
+	// 7. Build HTTP router. Inject /healthz probes so the envelope
+	// reports the binary's compiled version + serve start time. gRPC
+	// probe is wired below once grpcSrv is constructed.
 	devCORS := viper.GetBool("server.dev")
-	router := httpserver.NewRouter(svc, devCORS, watchMgr)
+	healthProbes := httpserver.HealthzProbes{
+		Version: version,
+		Started: time.Now(),
+	}
+	router := httpserver.NewRouterWithProbes(svc, devCORS, watchMgr, healthProbes)
 	router.Handle("/ws/bus", hubNet.Handler())
 
 	// 8. Determine bind address.

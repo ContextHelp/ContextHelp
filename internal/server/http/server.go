@@ -17,7 +17,18 @@ import (
 // NewRouter creates the HTTP router with all routes and middleware.
 // devCORS enables CORS for http://localhost:5173 (Vite dev server).
 // mgr is optional (nil-safe); nil disables live watch management but keeps CRUD.
+//
+// The /healthz endpoint is registered with zero-valued HealthzProbes;
+// callers (dpkms serve) that want richer signals (version, gRPC probe,
+// watcher introspection) should use NewRouterWithProbes instead.
 func NewRouter(svc *service.Service, devCORS bool, mgr *watcher.Manager) chi.Router {
+	return NewRouterWithProbes(svc, devCORS, mgr, HealthzProbes{})
+}
+
+// NewRouterWithProbes is the explicit constructor used by dpkms serve
+// to inject runtime healthcheck signals. The basic NewRouter wraps it
+// with a zero-valued HealthzProbes so existing callers keep working.
+func NewRouterWithProbes(svc *service.Service, devCORS bool, mgr *watcher.Manager, probes HealthzProbes) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
@@ -25,6 +36,7 @@ func NewRouter(svc *service.Service, devCORS bool, mgr *watcher.Manager) chi.Rou
 	r.Use(CORS(devCORS))
 
 	r.Get("/health", Health(svc))
+	r.Get("/healthz", Healthz(svc, probes))
 	r.Get("/manifest.json", ManifestJSON())
 
 	// GET /ui → redirect to /ui/

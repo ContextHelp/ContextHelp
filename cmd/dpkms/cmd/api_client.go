@@ -355,6 +355,77 @@ func (c *APIClient) GetJob(id string) (*storage.Job, error) {
 	return &job, nil
 }
 
+// HealthzEnvelope is the wire shape returned by GET /healthz on dpkms.
+// Mirrors internal/server/http.HealthzEnvelope; duplicated here so the
+// CLI doesn't import the server package transitively.
+//
+// New top-level fields (e.g. T-0580's `Upgrade`) are tolerated by Go's
+// JSON decoder; consumers looking for them must either extend this
+// struct or read the raw map via Healthz().
+type HealthzEnvelope struct {
+	Health        string         `json:"health"`
+	Version       string         `json:"version"`
+	UptimeSeconds int64          `json:"uptime_seconds"`
+	Checks        HealthzChecks  `json:"checks"`
+	Upgrade       map[string]any `json:"upgrade,omitempty"`
+}
+
+// HealthzChecks groups per-subsystem signals.
+type HealthzChecks struct {
+	Process  string             `json:"process"`
+	RESTAPI  string             `json:"rest_api"`
+	GRPCAPI  string             `json:"grpc_api"`
+	DB       HealthzDBCheck     `json:"db"`
+	Queue    HealthzQueueCheck  `json:"queue"`
+	Watchers []HealthzWatcher   `json:"watchers"`
+}
+
+// HealthzDBCheck reports DB reachability.
+type HealthzDBCheck struct {
+	Status    string `json:"status"`
+	LastWrite string `json:"last_write,omitempty"`
+}
+
+// HealthzQueueCheck reports queue depths.
+type HealthzQueueCheck struct {
+	Pending int `json:"pending"`
+	Running int `json:"running"`
+	Failed  int `json:"failed"`
+}
+
+// HealthzWatcher reports the state of one registered watcher.
+type HealthzWatcher struct {
+	Name          string `json:"name"`
+	Subscriptions int    `json:"subscriptions"`
+	LastEvent     string `json:"last_event,omitempty"`
+}
+
+// Healthz fetches GET /healthz. The HTTP status code is returned so
+// callers can distinguish 200 healthy/degraded from 503 failed without
+// re-parsing the body.
+func (c *APIClient) Healthz() (HealthzEnvelope, int, error) {
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+"/healthz", nil)
+	if err != nil {
+		return HealthzEnvelope{}, 0, err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return HealthzEnvelope{}, 0, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return HealthzEnvelope{}, resp.StatusCode, err
+	}
+
+	var env HealthzEnvelope
+	if err := json.Unmarshal(body, &env); err != nil {
+		return HealthzEnvelope{}, resp.StatusCode, fmt.Errorf("decode healthz: %w", err)
+	}
+	return env, resp.StatusCode, nil
+}
+
 func (c *APIClient) parseError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
 	var errResp map[string]any
