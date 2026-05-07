@@ -15,11 +15,12 @@ import (
 
 func TestOutboundTopicsAreKitConformant(t *testing.T) {
 	cases := map[string]bus.Topic{
-		"TopicObjectIngested": events.TopicObjectIngested,
-		"TopicObjectUpdated":  events.TopicObjectUpdated,
-		"TopicObjectDeleted":  events.TopicObjectDeleted,
-		"TopicJobCompleted":   events.TopicJobCompleted,
-		"TopicJobFailed":      events.TopicJobFailed,
+		"TopicObjectIngested":                events.TopicObjectIngested,
+		"TopicObjectUpdated":                 events.TopicObjectUpdated,
+		"TopicObjectDeleted":                 events.TopicObjectDeleted,
+		"TopicJobCompleted":                  events.TopicJobCompleted,
+		"TopicJobFailed":                     events.TopicJobFailed,
+		"TopicDpkmsUpgradeSignatureMismatch": events.TopicDpkmsUpgradeSignatureMismatch,
 	}
 	for name, topic := range cases {
 		t.Run(name, func(t *testing.T) {

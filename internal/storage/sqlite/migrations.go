@@ -93,6 +93,12 @@ var migration027 string
 //go:embed migrations/028_jobs_user_hints.sql
 var migration028 string
 
+//go:embed migrations/029_index_signatures.sql
+var migration029 string
+
+//go:embed migrations/030_stamp_pipeline_version.sql
+var migration030 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -151,6 +157,12 @@ var migrations = []migration{
 	// Migration 028: user_hints column on jobs for `ctxt capture --hint` (T-0573).
 	// Mirrors 027 — JSON-encoded array; column did not exist in any prior schema.
 	{Version: 28, SQL: migration028},
+	// Migration 029: index_signatures table for ADR-070 bucket-1 (reindex_auto)
+	// detection (T-0579). Detection-only; reindex worker lands in T-0581.
+	{Version: 29, SQL: migration029},
+	// Migration 030: stamp existing objects.pipeline rows with @v0 so post-T-0579
+	// pipeline versioning has a baseline (ADR-070 §2). Idempotent.
+	{Version: 30, SQL: migration030},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
