@@ -128,17 +128,20 @@ func init() {
 
 // embeddingsListItem is the JSON shape of one row in `ctxt embeddings list`.
 //
-// The field names here are the contract surface T-0586 will pin via eva.
-// Keep them stable: they appear in dashboards and downstream operator
-// scripts. Adding fields is fine; renaming or removing is a breaking change.
+// The field names here are the contract surface pinned by
+// `contracts/embeddings-list.eva.yaml` (T-0586). Keep them stable: they
+// appear in dashboards and downstream operator scripts. Adding fields is
+// fine; renaming or removing is a breaking change. `coverage` is the
+// fraction of distinct objects that have an embedding row under this
+// model_id (0.0 .. 1.0); on an empty corpus it is reported as 1.0.
 type embeddingsListItem struct {
 	ModelID      string  `json:"model_id"`
 	Provider     string  `json:"provider"`
 	Dimension    int     `json:"dimension"`
 	IsDefault    bool    `json:"is_default"`
 	RegisteredAt string  `json:"registered_at"`
-	DeprecatedAt *string `json:"deprecated_at,omitempty"`
-	ConfigJSON   string  `json:"config_json"`
+	DeprecatedAt *string `json:"deprecated_at"`
+	Coverage     float64 `json:"coverage"`
 }
 
 func runEmbeddingsList(cmd *cobra.Command, _ []string) error {
@@ -148,7 +151,7 @@ func runEmbeddingsList(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	models, err := r.List(context.Background())
+	models, err := r.ListWithCoverage(context.Background())
 	if err != nil {
 		return fmt.Errorf("list embedding models: %w", err)
 	}
@@ -161,7 +164,7 @@ func runEmbeddingsList(cmd *cobra.Command, _ []string) error {
 			Dimension:    m.Dimension,
 			IsDefault:    m.IsDefault,
 			RegisteredAt: m.RegisteredAt.Format("2006-01-02T15:04:05Z07:00"),
-			ConfigJSON:   m.ConfigJSON,
+			Coverage:     m.Coverage,
 		}
 		if m.DeprecatedAt != nil {
 			ts := m.DeprecatedAt.Format("2006-01-02T15:04:05Z07:00")
@@ -171,14 +174,14 @@ func runEmbeddingsList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if isJSONOutput() {
-		return outputJSON(cmd.OutOrStdout(), out)
+		return outputJSON(cmd.OutOrStdout(), map[string]any{"models": out})
 	}
 
 	if len(out) == 0 {
 		fmt.Fprintln(cmd.OutOrStdout(), "No embedding models registered.")
 		return nil
 	}
-	headers := []string{"Model ID", "Provider", "Dim", "Default", "Registered", "Deprecated"}
+	headers := []string{"Model ID", "Provider", "Dim", "Default", "Coverage", "Registered", "Deprecated"}
 	rows := make([][]string, 0, len(out))
 	for _, m := range out {
 		def := ""
@@ -194,6 +197,7 @@ func runEmbeddingsList(cmd *cobra.Command, _ []string) error {
 			m.Provider,
 			fmt.Sprintf("%d", m.Dimension),
 			def,
+			fmt.Sprintf("%.2f", m.Coverage),
 			m.RegisteredAt,
 			dep,
 		})
