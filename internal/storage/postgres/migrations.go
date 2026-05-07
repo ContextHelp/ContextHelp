@@ -332,25 +332,44 @@ func migrateJobsUserHints(ctx context.Context, db *sql.DB) error {
 // jobs. Idempotent per-column via information_schema checks; either
 // column can be missing independently after a partial upgrade. Mirrors
 // migrateJobsUserMentions / migrateJobsUserHints (T-0588).
+//
+// Unrolled to two constant ALTER statements (rather than looping with
+// string concatenation) so gosec's G201 SQL-injection lint stays
+// satisfied without a #nosec annotation. Postgres doesn't accept
+// parameterized DDL — column names can't be $1 — so the literal-SQL
+// shape is unavoidable.
 func migrateJobsUserProfileNote(ctx context.Context, db *sql.DB) error {
-	for _, col := range []string{"user_profile", "user_note"} {
-		var exists bool
-		err := db.QueryRowContext(ctx, `
-			SELECT EXISTS (
-				SELECT 1 FROM information_schema.columns
-				WHERE table_name = 'jobs' AND column_name = $1
-			)
-		`, col).Scan(&exists)
-		if err != nil {
-			return fmt.Errorf("check %s column: %w", col, err)
-		}
-		if exists {
-			continue
-		}
-		if _, err := db.ExecContext(ctx,
-			`ALTER TABLE jobs ADD COLUMN `+col+` TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("add %s column: %w", col, err)
-		}
+	if err := addJobsColumnIfMissing(ctx, db, "user_profile",
+		`ALTER TABLE jobs ADD COLUMN user_profile TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := addJobsColumnIfMissing(ctx, db, "user_note",
+		`ALTER TABLE jobs ADD COLUMN user_note TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	return nil
+}
+
+// addJobsColumnIfMissing runs alterSQL only when the named column is
+// missing from the jobs table. The column-existence check uses a
+// parameterized query against information_schema (safe); the alterSQL
+// is a literal string supplied by the caller (no operator input).
+func addJobsColumnIfMissing(ctx context.Context, db *sql.DB, col, alterSQL string) error {
+	var exists bool
+	err := db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'jobs' AND column_name = $1
+		)
+	`, col).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("check %s column: %w", col, err)
+	}
+	if exists {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, alterSQL); err != nil {
+		return fmt.Errorf("add %s column: %w", col, err)
 	}
 	return nil
 }

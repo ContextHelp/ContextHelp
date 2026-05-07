@@ -99,9 +99,6 @@ var migration029 string
 //go:embed migrations/030_stamp_pipeline_version.sql
 var migration030 string
 
-//go:embed migrations/031_jobs_user_profile_note.sql
-var migration031 string
-
 type migration struct {
 	Version int
 	SQL     string
@@ -167,9 +164,10 @@ var migrations = []migration{
 	// pipeline versioning has a baseline (ADR-070 §2). Idempotent.
 	{Version: 30, SQL: migration030},
 	// Migration 031: user_profile + user_note columns on jobs for
-	// `ctxt capture --profile` and `--note` (T-0588). Mirrors 027/028 —
-	// plain TEXT columns; neither existed in any prior schema version.
-	{Version: 31, SQL: migration031},
+	// `ctxt capture --profile` and `--note` (T-0588). Idempotent Go fn
+	// (mirrors migrate014RemindAt) so re-init on a partially-migrated
+	// DB doesn't trip duplicate-column errors.
+	{Version: 31, fn: migrate031JobsUserProfileNote},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -437,4 +435,43 @@ func migrate020VecObjects(ctx context.Context, d *Driver) error {
 	ddl := strings.ReplaceAll(migration020, "{DIMENSION}", strconv.Itoa(dim))
 	_, err := d.db.ExecContext(ctx, ddl)
 	return err
+}
+
+// migrate031JobsUserProfileNote adds user_profile + user_note TEXT columns to
+// jobs (T-0588). Idempotent — checks pragma_table_info before each ALTER so
+// repeated Init calls on a partially-migrated DB (e.g. tests that hold a
+// driver handle open while a second handle reads pre-WAL-checkpoint state)
+// don't trip "duplicate column name" errors.
+func migrate031JobsUserProfileNote(ctx context.Context, d *Driver) error {
+	existing := map[string]bool{}
+	rows, err := d.db.QueryContext(ctx, "SELECT name FROM pragma_table_info('jobs')")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return err
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, col := range []struct{ name, def string }{
+		{"user_profile", "TEXT DEFAULT ''"},
+		{"user_note", "TEXT DEFAULT ''"},
+	} {
+		if existing[col.name] {
+			continue
+		}
+		if _, err := d.db.ExecContext(ctx,
+			"ALTER TABLE jobs ADD COLUMN "+col.name+" "+col.def,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
