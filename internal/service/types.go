@@ -138,6 +138,21 @@ type SearchDiagnostics struct {
 	TopBelowThresholdScore float64 `json:"top_below_threshold_score,omitempty"`
 	// Threshold is the MinScore threshold applied during this search call.
 	Threshold float64 `json:"threshold"`
+	// StalenessWarning is populated when one or more candidates in the
+	// pre-filter set are stamped with a pipeline version older than the
+	// registry's currently-installed version (ADR-070 §6, T-0581). Soft
+	// signal: search still returns the stale results, but the caller knows
+	// to suggest `ctxt upgrade plan` to the operator.
+	StalenessWarning *StalenessWarning `json:"staleness_warning,omitempty"`
+}
+
+// StalenessWarning summarises pipeline-version drift in a search result set.
+// Populated by HybridSearch* when at least one candidate's `pipeline` field
+// parses to an older version than the registry's currently-installed version
+// for the same family (ADR-070 §6, T-0581).
+type StalenessWarning struct {
+	Count  int    `json:"count"`
+	Reason string `json:"reason"`
 }
 
 // HybridSearchResult is the wrapper envelope for HybridSearchExplain calls.
