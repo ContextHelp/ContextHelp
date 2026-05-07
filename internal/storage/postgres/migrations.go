@@ -2,8 +2,12 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
+	"sort"
+	"strings"
 )
 
 func (d *Driver) Migrate(ctx context.Context) error {
@@ -253,6 +257,40 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			federation_name TEXT PRIMARY KEY,
 			last_synced_at  TIMESTAMPTZ NOT NULL DEFAULT 'epoch'
 		)`,
+		// ADR-071 Phase 1 (T-0582): embedding_models registry +
+		// composite-key embeddings table. Mirrors the sqlite migration
+		// 032/033 surface; the partial unique index uses postgres'
+		// "WHERE" partial-index syntax and the ON CONFLICT path on
+		// the seeded default row matches the sqlite semantics.
+		`CREATE TABLE IF NOT EXISTS embedding_models (
+			model_id      TEXT PRIMARY KEY,
+			provider      TEXT NOT NULL DEFAULT '',
+			dimension     INTEGER NOT NULL DEFAULT 0,
+			is_default    INTEGER NOT NULL DEFAULT 0,
+			registered_at TIMESTAMPTZ NOT NULL,
+			deprecated_at TIMESTAMPTZ,
+			config_json   JSONB NOT NULL DEFAULT '{}'
+		)`,
+		`CREATE TABLE IF NOT EXISTS embeddings (
+			object_id  TEXT NOT NULL,
+			model_id   TEXT NOT NULL REFERENCES embedding_models(model_id),
+			chunk_idx  INTEGER NOT NULL DEFAULT 0,
+			vector     BYTEA NOT NULL,
+			text       TEXT,
+			created_at TIMESTAMPTZ NOT NULL,
+			PRIMARY KEY (object_id, model_id, chunk_idx)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings (model_id, object_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_embedding_default
+			ON embedding_models(is_default) WHERE is_default = 1`,
+		// ADR-070 §3 + ADR-071 §"Data model" callout: per-table
+		// signature stamps. Matches the sqlite migration 029 schema.
+		`CREATE TABLE IF NOT EXISTS index_signatures (
+			signature_id   TEXT PRIMARY KEY,
+			signature_hash TEXT NOT NULL,
+			computed_at    TIMESTAMPTZ NOT NULL,
+			inputs_summary TEXT NOT NULL DEFAULT ''
+		)`,
 	}
 
 	for i, m := range migrations {
@@ -278,7 +316,66 @@ func (d *Driver) Migrate(ctx context.Context) error {
 	if err := migrateJobsUserProfileNote(ctx, d.db); err != nil {
 		return fmt.Errorf("jobs.user_profile/user_note migration: %w", err)
 	}
+	// ADR-071 Phase 1 (T-0582): seed the legacy default embedding model
+	// row + stamp the matching index_signatures row. The legacy
+	// object_embeddings table never existed in the postgres schema
+	// (postgres carries embeddings on the `objects` row directly via the
+	// pgvector column), so there is nothing to backfill into the new
+	// `embeddings` table — but the registry still needs a default row so
+	// the CLI surface returns a meaningful value on a fresh install.
+	if err := migrateEmbeddingsDefaultSeed(ctx, d.db); err != nil {
+		return fmt.Errorf("embeddings default seed migration: %w", err)
+	}
 	return nil
+}
+
+// migrateEmbeddingsDefaultSeed inserts the legacy default embedding model row
+// (matching the sqlite synthetic-model-id rule) + stamps the matching
+// index_signatures row. Idempotent — uses ON CONFLICT DO NOTHING on both
+// tables so re-running on an upgraded DB is a no-op.
+//
+// The synthetic model_id matches the sqlite-side rule from
+// migrate033EmbeddingsBackfill so a postgres-to-sqlite or sqlite-to-postgres
+// snapshot keeps the same model_id surface.
+func migrateEmbeddingsDefaultSeed(ctx context.Context, db *sql.DB) error {
+	const dim = 1536 // matches sqlite.DefaultVectorDimension; pgvector default
+	modelID := fmt.Sprintf("legacy-blob-%d@2026-05-07", dim)
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO embedding_models
+			(model_id, provider, dimension, is_default, registered_at, config_json)
+		VALUES ($1, $2, $3, 1, NOW(), '{}'::jsonb)
+		ON CONFLICT (model_id) DO NOTHING`,
+		modelID, "legacy-blob", dim,
+	); err != nil {
+		return fmt.Errorf("seed default embedding_models row: %w", err)
+	}
+
+	sigID := "embeddings_" + modelID
+	hash, summary := computeEmbeddingSignaturePG(modelID, "legacy-blob", dim)
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO index_signatures
+			(signature_id, signature_hash, computed_at, inputs_summary)
+		VALUES ($1, $2, NOW(), $3)
+		ON CONFLICT (signature_id) DO NOTHING`,
+		sigID, hash, summary,
+	); err != nil {
+		return fmt.Errorf("seed embeddings index_signatures row: %w", err)
+	}
+	return nil
+}
+
+// computeEmbeddingSignaturePG mirrors the sqlite hash so the value is
+// portable across backends.
+func computeEmbeddingSignaturePG(modelID, provider string, dimension int) (string, string) {
+	parts := []string{
+		"model_id=" + modelID,
+		"provider=" + provider,
+		fmt.Sprintf("dimension=%d", dimension),
+	}
+	sort.Strings(parts)
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
+	return hex.EncodeToString(sum[:]),
+		fmt.Sprintf("model_id=%s;provider=%s;dimension=%d", modelID, provider, dimension)
 }
 
 // migrateJobsUserMentions adds user_mentions TEXT column to jobs. Idempotent
