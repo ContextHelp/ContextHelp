@@ -87,11 +87,11 @@ var migration025 string
 //go:embed migrations/026_source_key.sql
 var migration026 string
 
-//go:embed migrations/027_jobs_user_mentions.sql
-var migration027 string
-
-//go:embed migrations/028_jobs_user_hints.sql
-var migration028 string
+// Migrations 027 and 028 are now Go fns (migrate027JobsUserMentions /
+// migrate028JobsUserHints) — see T-0186. The raw ALTER SQL was vulnerable
+// to "duplicate column" errors when a test setup keeps one driver handle
+// open while another driver Init runs against the same DB path. The Go
+// fns check pragma_table_info before each ALTER, mirroring 014/022/031.
 
 //go:embed migrations/029_index_signatures.sql
 var migration029 string
@@ -152,11 +152,11 @@ var migrations = []migration{
 	// Migration 026: source_key column for external dedup key (Slack ts, tweet ID, etc.).
 	{Version: 26, SQL: migration026},
 	// Migration 027: user_mentions column on jobs for `ctxt analyze --mentions` (T-0190).
-	// Plain SQL is safe — column did not exist in any prior schema version.
-	{Version: 27, SQL: migration027},
+	// Idempotent Go fn (T-0186) — pragma_table_info check before ALTER.
+	{Version: 27, fn: migrate027JobsUserMentions},
 	// Migration 028: user_hints column on jobs for `ctxt capture --hint` (T-0573).
-	// Mirrors 027 — JSON-encoded array; column did not exist in any prior schema.
-	{Version: 28, SQL: migration028},
+	// Idempotent Go fn (T-0186).
+	{Version: 28, fn: migrate028JobsUserHints},
 	// Migration 029: index_signatures table for ADR-070 bucket-1 (reindex_auto)
 	// detection (T-0579). Detection-only; reindex worker lands in T-0581.
 	{Version: 29, SQL: migration029},
@@ -437,12 +437,11 @@ func migrate020VecObjects(ctx context.Context, d *Driver) error {
 	return err
 }
 
-// migrate031JobsUserProfileNote adds user_profile + user_note TEXT columns to
-// jobs (T-0588). Idempotent — checks pragma_table_info before each ALTER so
-// repeated Init calls on a partially-migrated DB (e.g. tests that hold a
-// driver handle open while a second handle reads pre-WAL-checkpoint state)
-// don't trip "duplicate column name" errors.
-func migrate031JobsUserProfileNote(ctx context.Context, d *Driver) error {
+// addJobsColumnIfMissing adds a single TEXT column to the jobs table if
+// it doesn't already exist (T-0186). The check uses pragma_table_info so
+// re-running on a partially-migrated DB (e.g. test setups that double-open
+// the same path) is a no-op rather than a duplicate-column error.
+func addJobsColumnIfMissing(ctx context.Context, d *Driver, name, def string) error {
 	existing := map[string]bool{}
 	rows, err := d.db.QueryContext(ctx, "SELECT name FROM pragma_table_info('jobs')")
 	if err != nil {
@@ -450,28 +449,44 @@ func migrate031JobsUserProfileNote(ctx context.Context, d *Driver) error {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
+		var col string
+		if err := rows.Scan(&col); err != nil {
 			return err
 		}
-		existing[name] = true
+		existing[col] = true
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
-
-	for _, col := range []struct{ name, def string }{
-		{"user_profile", "TEXT DEFAULT ''"},
-		{"user_note", "TEXT DEFAULT ''"},
-	} {
-		if existing[col.name] {
-			continue
-		}
-		if _, err := d.db.ExecContext(ctx,
-			"ALTER TABLE jobs ADD COLUMN "+col.name+" "+col.def,
-		); err != nil {
-			return err
-		}
+	if existing[name] {
+		return nil
 	}
-	return nil
+	_, err = d.db.ExecContext(ctx, "ALTER TABLE jobs ADD COLUMN "+name+" "+def)
+	return err
 }
+
+// migrate027JobsUserMentions adds user_mentions TEXT column to jobs
+// (T-0190). Originally raw ALTER SQL; converted to idempotent Go fn in
+// T-0186 to match the pattern of 014/022/031.
+func migrate027JobsUserMentions(ctx context.Context, d *Driver) error {
+	return addJobsColumnIfMissing(ctx, d, "user_mentions", "TEXT DEFAULT ''")
+}
+
+// migrate028JobsUserHints adds user_hints TEXT column to jobs (T-0573).
+// Originally raw ALTER SQL; converted to idempotent Go fn in T-0186.
+func migrate028JobsUserHints(ctx context.Context, d *Driver) error {
+	return addJobsColumnIfMissing(ctx, d, "user_hints", "TEXT DEFAULT ''")
+}
+
+// migrate031JobsUserProfileNote adds user_profile + user_note TEXT columns to
+// jobs (T-0588). Idempotent — checks pragma_table_info before each ALTER so
+// repeated Init calls on a partially-migrated DB (e.g. tests that hold a
+// driver handle open while a second handle reads pre-WAL-checkpoint state)
+// don't trip "duplicate column name" errors.
+func migrate031JobsUserProfileNote(ctx context.Context, d *Driver) error {
+	if err := addJobsColumnIfMissing(ctx, d, "user_profile", "TEXT DEFAULT ''"); err != nil {
+		return err
+	}
+	return addJobsColumnIfMissing(ctx, d, "user_note", "TEXT DEFAULT ''")
+}
+
