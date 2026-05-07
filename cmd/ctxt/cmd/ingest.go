@@ -30,8 +30,8 @@ Examples:
   # Pipe adapter output via stdin
   my-adapter | ctxt ingest --source my-adapter --stdin
 
-  # Watch mode: poll every 5 minutes
-  ctxt ingest --source cardamum --addressbook default --watch --interval 5m`,
+  # Continuous mode: poll every 5 minutes
+  ctxt ingest --source cardamum --addressbook default --every 5m`,
 	RunE: runIngest,
 }
 
@@ -40,8 +40,7 @@ func init() {
 
 	ingestCmd.Flags().String("source", "", "adapter name (required)")
 	ingestCmd.Flags().Bool("stdin", false, "read JSON array from stdin")
-	ingestCmd.Flags().Bool("watch", false, "poll adapter on interval")
-	ingestCmd.Flags().Duration("interval", 5*time.Minute, "poll interval for --watch")
+	ingestCmd.Flags().Duration("every", 0, "continuous mode: re-poll on this cadence (one-shot when absent)")
 	ingestCmd.Flags().String("type", "", "override object type")
 
 	// cardamum-specific flags
@@ -59,8 +58,7 @@ func init() {
 func runIngest(cmd *cobra.Command, _ []string) error {
 	source, _ := cmd.Flags().GetString("source")
 	fromStdin, _ := cmd.Flags().GetBool("stdin")
-	watch, _ := cmd.Flags().GetBool("watch")
-	interval, _ := cmd.Flags().GetDuration("interval")
+	every, _ := cmd.Flags().GetDuration("every")
 
 	svc, cleanup, err := newService()
 	if err != nil {
@@ -84,7 +82,7 @@ func runIngest(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	if !watch {
+	if every <= 0 {
 		res, err := runner.Run(cmd.Context(), adapter)
 		if err != nil {
 			return err
@@ -93,12 +91,12 @@ func runIngest(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	// Watch mode: poll on interval until interrupted.
+	// Continuous mode: re-poll the adapter on the cadence until interrupted.
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
 
-	fmt.Fprintf(os.Stderr, "watching %s every %s (ctrl-c to stop)\n",
-		source, interval)
+	fmt.Fprintf(os.Stderr, "ingesting %s every %s (ctrl-c to stop)\n",
+		source, every)
 	for {
 		res, err := runner.Run(ctx, adapter)
 		if err != nil {
@@ -110,7 +108,7 @@ func runIngest(cmd *cobra.Command, _ []string) error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(interval):
+		case <-time.After(every):
 		}
 	}
 }

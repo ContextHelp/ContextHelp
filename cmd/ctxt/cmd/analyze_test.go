@@ -62,8 +62,8 @@ func TestAnalyzeWithFlags(t *testing.T) {
 
 	out, err := executeCommand("analyze", "content",
 		"--type", "url",
-		"--tag", "ux,bug",
-		"--mentions", "@ui.best-practice",
+		"--hint", "ux,bug",
+		"--mention", "@ui.best-practice",
 		"--pipeline", "url.article",
 		"--language", "fr",
 		"--raw",
@@ -124,7 +124,7 @@ func TestAnalyzeHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("analyze --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--type", "--file", "--tag", "--mentions", "--pipeline", "--language", "--translate", "--raw", "--wait"} {
+	for _, flag := range []string{"--type", "--file", "--hint", "--mention", "--pipeline", "--language", "--translate", "--raw", "--wait"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("analyze help should list flag %s", flag)
 		}

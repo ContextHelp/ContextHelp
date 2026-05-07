@@ -9,7 +9,7 @@ func TestIngestHelp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"--source", "--stdin", "--watch", "--interval"} {
+	for _, want := range []string{"--source", "--stdin", "--every"} {
 		if !containsStr(out, want) {
 			t.Errorf("help missing %q", want)
 		}

@@ -91,7 +91,7 @@ ctxt analyze --file ./docs/architecture.md --type text --pipeline text.long
 Attach explicit mentions:
 
 ```bash
-ctxt analyze "Action for checkout redesign" --type text --mentions "@project.checkout-redesign"
+ctxt analyze "Action for checkout redesign" --type text --mention "@project.checkout-redesign"
 ```
 
 ### Step 3: Track job execution

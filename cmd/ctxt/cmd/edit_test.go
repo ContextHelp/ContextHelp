@@ -91,7 +91,7 @@ func TestEditHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("edit --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--title", "--summary", "--tags", "--hints", "--mentions", "--decisions", "--subtype"} {
+	for _, flag := range []string{"--title", "--summary", "--tags", "--hints", "--mention", "--decisions", "--subtype"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("edit help should list flag %s", flag)
 		}

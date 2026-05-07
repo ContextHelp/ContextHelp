@@ -1705,7 +1705,7 @@ profile-defined filters (what the profile wants). See commit
 usp-ctxt invokes:
 
 ```
-ctxt analyze --mentions @usp.session.<id> @agent.<id> \
+ctxt analyze --mention @usp.session.<id> @agent.<id> \
              --source-key usp/<id> --wait
 <session body via stdin>
 ```
