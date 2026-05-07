@@ -26,11 +26,11 @@ type Decision = pluginapi.Decision
 type Task = pluginapi.Task
 
 // Graph-canonical types (ADR-063).
-type ObjectGraph        = pluginapi.ObjectGraph
-type GraphNode          = pluginapi.GraphNode
-type GraphEdge          = pluginapi.GraphEdge
+type ObjectGraph = pluginapi.ObjectGraph
+type GraphNode = pluginapi.GraphNode
+type GraphEdge = pluginapi.GraphEdge
 type DocumentProjection = pluginapi.DocumentProjection
-type IndexProjection    = pluginapi.IndexProjection
+type IndexProjection = pluginapi.IndexProjection
 
 // BlobMeta describes metadata for a stored blob.
 type BlobMeta struct {
@@ -62,17 +62,17 @@ const (
 
 // Entity represents a named entity in the knowledge graph.
 type Entity struct {
-	Slug          string        `json:"slug"`
-	Title         string        `json:"title"`
-	Description   string        `json:"description,omitempty"`
-	Namespace     string        `json:"namespace,omitempty"`
-	Aliases       []string      `json:"aliases,omitempty"`
+	Slug          string         `json:"slug"`
+	Title         string         `json:"title"`
+	Description   string         `json:"description,omitempty"`
+	Namespace     string         `json:"namespace,omitempty"`
+	Aliases       []string       `json:"aliases,omitempty"`
 	Metadata      map[string]any `json:"metadata,omitempty"`
-	ContentStatus ContentStatus `json:"content_status,omitempty"`
-	VersionHash   string        `json:"version_hash,omitempty"`
-	RegistryURL   string        `json:"registry_url,omitempty"`
-	CreatedAt     time.Time     `json:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at"`
+	ContentStatus ContentStatus  `json:"content_status,omitempty"`
+	VersionHash   string         `json:"version_hash,omitempty"`
+	RegistryURL   string         `json:"registry_url,omitempty"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 }
 
 // Edge represents a relationship between two nodes in the knowledge graph (ADR-049).
@@ -153,6 +153,13 @@ type Job struct {
 	// mentions before writing edges (T-0190). Stored on disk as a
 	// JSON-encoded string array via the user_mentions column.
 	UserMentions []string `json:"user_mentions,omitempty"`
+	// UserHints are caller-asserted hint strings passed alongside the
+	// capture/analyze request (e.g. `ctxt capture --hint research`). The
+	// worker pre-populates draft.Tags with Tag{Source:"user"} entries
+	// before pipeline execution; the auto-tagger merges with these
+	// rather than overwriting (T-0573). Stored as JSON-encoded string
+	// array in the user_hints column.
+	UserHints []string `json:"user_hints,omitempty"`
 }
 
 // JobFilter specifies criteria for listing jobs.
@@ -235,9 +242,9 @@ type StepMetadata struct {
 // RegistryCapabilities declares optional features supported by a registry.
 // Used in the capability handshake to warn clients before using unsupported features.
 type RegistryCapabilities struct {
-	EntitySync   bool `json:"entity_sync"`   // registry exposes /entities/index
-	Taxonomy     bool `json:"taxonomy"`      // registry exposes /taxonomy
-	Translations bool `json:"translations"`  // registry includes i18n labels/descriptions
+	EntitySync   bool `json:"entity_sync"`  // registry exposes /entities/index
+	Taxonomy     bool `json:"taxonomy"`     // registry exposes /taxonomy
+	Translations bool `json:"translations"` // registry includes i18n labels/descriptions
 }
 
 // RegistryManifest represents a registry's step manifest.
@@ -291,15 +298,15 @@ type ManifestStep struct {
 
 // RegistryCache stores fetched registry manifests with update tracking.
 type RegistryCache struct {
-	RegistryURL    string              `json:"registry_url"`
-	Manifest       *RegistryManifest   `json:"manifest"`
-	LastFetched    time.Time           `json:"last_fetched"`
-	ETag           string              `json:"etag"`
-	AutoUpdate     bool                `json:"auto_update"`
+	RegistryURL string            `json:"registry_url"`
+	Manifest    *RegistryManifest `json:"manifest"`
+	LastFetched time.Time         `json:"last_fetched"`
+	ETag        string            `json:"etag"`
+	AutoUpdate  bool              `json:"auto_update"`
 	// TrustStatus records the outcome of the last signature verification attempt.
-	TrustStatus    RegistryTrustStatus `json:"trust_status,omitempty"`
+	TrustStatus RegistryTrustStatus `json:"trust_status,omitempty"`
 	// KeyFingerprint is the SHA-256 fingerprint (hex) of the registry's declared public key.
-	KeyFingerprint string              `json:"key_fingerprint,omitempty"`
+	KeyFingerprint string `json:"key_fingerprint,omitempty"`
 }
 
 // RegistryEntitlement stores the entitlement record returned by a registry's
@@ -467,11 +474,11 @@ type ProximityStats struct {
 type WatchConfig struct {
 	ID               string    `json:"id"`
 	Path             string    `json:"path"`
-	Mode             string    `json:"mode"`              // "generic" | "obsidian" | "logseq"
+	Mode             string    `json:"mode"` // "generic" | "obsidian" | "logseq"
 	IncludePatterns  []string  `json:"include_patterns"`
 	ExcludePatterns  []string  `json:"exclude_patterns"`
 	DebounceMS       int       `json:"debounce_ms"`
-	Status           string    `json:"status"`            // "active" | "paused"
+	Status           string    `json:"status"` // "active" | "paused"
 	PipelineOverride string    `json:"pipeline_override"`
 	LastError        string    `json:"last_error"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -491,9 +498,9 @@ type WatchFileRecord struct {
 type MeteringEventType string
 
 const (
-	MeteringEventEntityResolve  MeteringEventType = "entity_resolve"
-	MeteringEventContentPull    MeteringEventType = "content_pull"
-	MeteringEventTaxonomySync   MeteringEventType = "taxonomy_sync"
+	MeteringEventEntityResolve MeteringEventType = "entity_resolve"
+	MeteringEventContentPull   MeteringEventType = "content_pull"
+	MeteringEventTaxonomySync  MeteringEventType = "taxonomy_sync"
 )
 
 // MeteringEvent records one billable access for a registry.
@@ -559,12 +566,12 @@ type SavedSearchFilter struct {
 
 // SearchHistoryEntry is one record in the search history log (US-0055).
 type SearchHistoryEntry struct {
-	ID              string    `json:"id"`
-	Query           string    `json:"query"`
-	ProfileID       string    `json:"profile_id"`
-	StrategiesUsed  string    `json:"strategies_used"`  // comma-separated strategy names
-	ResultCount     int       `json:"result_count"`
-	SearchedAt      time.Time `json:"searched_at"`
+	ID             string    `json:"id"`
+	Query          string    `json:"query"`
+	ProfileID      string    `json:"profile_id"`
+	StrategiesUsed string    `json:"strategies_used"` // comma-separated strategy names
+	ResultCount    int       `json:"result_count"`
+	SearchedAt     time.Time `json:"searched_at"`
 }
 
 // SearchHistoryFilter restricts search history queries.
