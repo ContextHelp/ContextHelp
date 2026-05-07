@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -27,6 +28,14 @@ func Analyze(svc *service.Service) http.HandlerFunc {
 
 		jobID, err := svc.Analyze(r.Context(), req)
 		if err != nil {
+			// T-0562: surface unsupported types as 422 so callers see a
+			// clear, actionable error instead of a generic 500. Previously
+			// this path silently enqueued a job referencing a non-existent
+			// pipeline and the worker dropped the job.
+			if errors.Is(err, service.ErrPipelineNotFound) {
+				WriteError(w, http.StatusUnprocessableEntity, "PIPELINE_NOT_FOUND", err.Error())
+				return
+			}
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}

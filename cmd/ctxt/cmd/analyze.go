@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	gohttp "net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/spf13/cobra"
@@ -200,6 +202,14 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	}
 
 	if resp.StatusCode != gohttp.StatusAccepted && resp.StatusCode != gohttp.StatusOK {
+		// T-0562: 422 from the analyze endpoint signals an unrouted type
+		// (e.g. `--type document` with no document.* pipeline registered).
+		// Surface the server-supplied message verbatim so the user sees
+		// exactly which type/pipeline pairing was rejected — previously
+		// this path returned a Job ID and silently dropped the work.
+		if resp.StatusCode == gohttp.StatusUnprocessableEntity {
+			return fmt.Errorf("dpkms refused the request (422): %s", strings.TrimSpace(string(respBody)))
+		}
 		return fmt.Errorf("dpkms returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
@@ -208,7 +218,94 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parse response: %w", err)
 	}
 
-	fmt.Printf("Job ID: %s\n", result["job_id"])
+	jobID := result["job_id"]
+	fmt.Printf("Job ID: %s\n", jobID)
 
-	return nil
+	// Resolve --wait flag (present on both analyzeCmd and rootCmd).
+	wait := false
+	if f := cmd.Flags().Lookup("wait"); f != nil && f.Changed {
+		wait, _ = cmd.Flags().GetBool("wait")
+	} else {
+		wait = viper.GetBool("analyze.wait")
+	}
+	if !wait || jobID == "" {
+		return nil
+	}
+
+	// T-0562: --wait was previously a no-op. The CLI returned the job ID
+	// from POST /analyze and exited even when the job was never persisted,
+	// so the user never learned the work was dropped. Poll GET /jobs/{id}
+	// and fail loudly if the ID can't be located within a short window —
+	// that 404 is the canonical "silently dropped" signal.
+	return waitForJob(cmd.Context(), serverURL, jobID)
+}
+
+// waitForJob polls GET /api/v1/jobs/{id} until the job reaches a terminal
+// state, the context is cancelled, or pollTimeout elapses. If the job ID
+// is not present in the queue within notFoundTimeout, return a clear
+// error pointing at the silent-drop class of bug — the worker may have
+// rejected the job before persistence.
+func waitForJob(ctx context.Context, serverURL, jobID string) error {
+	const (
+		pollTimeout     = 5 * time.Minute
+		notFoundTimeout = 5 * time.Second
+		pollInterval    = 500 * time.Millisecond
+	)
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, pollTimeout)
+	defer cancel()
+
+	url := serverURL + "/api/v1/jobs/" + jobID
+	deadline404 := time.Now().Add(notFoundTimeout)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("wait: timed out after %s polling for job %s", pollTimeout, jobID)
+		default:
+		}
+
+		resp, err := gohttp.Get(url)
+		if err != nil {
+			return fmt.Errorf("wait: GET %s: %w", url, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode == gohttp.StatusNotFound {
+			if time.Now().After(deadline404) {
+				return fmt.Errorf(
+					"error: job %s not found in queue after %s; the job may have been silently dropped — please report this",
+					jobID, notFoundTimeout)
+			}
+			time.Sleep(pollInterval)
+			continue
+		}
+
+		if resp.StatusCode != gohttp.StatusOK {
+			return fmt.Errorf("wait: unexpected status %d: %s", resp.StatusCode, string(body))
+		}
+
+		var job struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+			Error  string `json:"error,omitempty"`
+		}
+		if err := json.Unmarshal(body, &job); err != nil {
+			return fmt.Errorf("wait: parse job response: %w", err)
+		}
+
+		switch job.Status {
+		case "done", "completed", "succeeded":
+			fmt.Printf("Job %s: %s\n", jobID, job.Status)
+			return nil
+		case "failed", "error":
+			return fmt.Errorf("job %s failed: %s", jobID, job.Error)
+		default:
+			time.Sleep(pollInterval)
+		}
+	}
 }

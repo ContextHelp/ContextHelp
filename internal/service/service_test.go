@@ -23,6 +23,13 @@ func newTestService(t *testing.T) *Service {
 	driver := storageutil.NewTestDriver(t)
 	q := jobs.NewQueue(driver.Jobs())
 	pipes := pipeline.DefaultRegistry()
+	// T-0562: tests assume the default selector's `text.short` fallback
+	// resolves to a registered pipeline; without this, Analyze now (correctly)
+	// rejects the request with ErrPipelineNotFound. Register a stub so the
+	// existing tests exercise the queue/dedup paths instead of bouncing on
+	// the loud-error guard. Tests that exercise the guard explicitly use a
+	// fresh registry without this stub.
+	pipes.Upsert("text.short", &pipeline.Pipeline{PipelineName: "text.short"})
 	engine := search.NewEngine(driver)
 	return New(driver, q, pipes, engine, "", nil)
 }
@@ -132,6 +139,58 @@ func TestAnalyze(t *testing.T) {
 	if job.Payload != "hello world" {
 		t.Errorf("payload: got %q", job.Payload)
 	}
+}
+
+// TestAnalyzeUnregisteredPipelineErrors covers T-0562: when the resolved
+// pipeline is not in the registry, Analyze must return ErrPipelineNotFound
+// instead of silently enqueueing a job that the worker would later drop.
+//
+// The original bug surfaced for `--type document --file foo.pdf` where the
+// detector fell through to `text.short` (or any other unregistered name) and
+// the queue grew with an unroutable job. The repro here is more direct: build
+// a service with an empty registry and confirm Analyze errors out.
+func TestAnalyzeUnregisteredPipelineErrors(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := jobs.NewQueue(driver.Jobs())
+	pipes := pipeline.DefaultRegistry() // empty — text.short not registered
+	engine := search.NewEngine(driver)
+	svc := New(driver, q, pipes, engine, "", nil)
+
+	ctx := context.Background()
+	_, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content: "%PDF-1.4 stub bytes",
+		Type:    "document",
+		Source:  "file",
+	})
+	require.Error(t, err, "Analyze must reject unrouted document type")
+	require.ErrorIs(t, err, ErrPipelineNotFound)
+	require.Contains(t, err.Error(), `type="document"`,
+		"error must name the unsupported type so callers see what to fix")
+
+	// No job was enqueued — the queue stays clean instead of growing with
+	// unroutable rows.
+	_, total, err := svc.ListJobs(ctx, storage.JobFilter{})
+	require.NoError(t, err)
+	require.Equal(t, 0, total, "no jobs must be enqueued when pipeline routing fails")
+}
+
+// TestEnqueueUnregisteredPipelineErrors mirrors the above for the
+// alternate Enqueue entrypoint.
+func TestEnqueueUnregisteredPipelineErrors(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := jobs.NewQueue(driver.Jobs())
+	pipes := pipeline.DefaultRegistry()
+	engine := search.NewEngine(driver)
+	svc := New(driver, q, pipes, engine, "", nil)
+
+	ctx := context.Background()
+	_, err := svc.Enqueue(ctx, AnalyzeRequest{
+		Content: "%PDF-1.4 stub bytes",
+		Type:    "document",
+		Source:  "file",
+	})
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrPipelineNotFound)
 }
 
 func TestAnalyzeRawFlagSkipsEnrichment(t *testing.T) {

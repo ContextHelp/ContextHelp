@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -116,9 +117,25 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 	return s
 }
 
+// ErrPipelineNotFound is returned by Analyze/Enqueue when the resolved
+// pipeline name does not exist in the registry. Callers (HTTP handler,
+// CLI) surface this as a 422 / non-zero exit rather than silently
+// dropping the job. T-0562: previously a job was enqueued referencing a
+// non-existent pipeline name (e.g. when --type document picked up the
+// fallback "text.short" or any other path) — the worker would then fail
+// to dispatch silently and the data would be lost without any signal to
+// the operator. Failing loudly at enqueue time keeps the queue honest.
+var ErrPipelineNotFound = errors.New("pipeline not found")
+
 // Analyze enqueues a content analysis job and returns the job ID.
 // When req.Raw is true, skips AI enrichment and stores the object immediately
 // with Status "raw"; returns the object ID (not a job ID).
+//
+// When the resolved pipeline does not exist in the registry, Analyze
+// returns an error wrapping ErrPipelineNotFound rather than enqueueing a
+// job that the worker would silently fail to dispatch. The raw path is
+// exempt because it bypasses the pipeline entirely and persists the
+// object directly.
 func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, error) {
 	now := time.Now().Truncate(time.Second)
 
@@ -169,6 +186,15 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 			ContentType: req.Type,
 			Sniff:       contentSniff(req.Content),
 		})
+	}
+
+	// T-0562: validate the resolved pipeline exists in the registry. Without
+	// this, a job referencing a non-existent pipeline (e.g. `--type document`
+	// when no document.* pipeline is registered) would be enqueued and the
+	// worker would silently fail to dispatch — data lost, no signal.
+	if _, err := s.Pipes.Get(pipelineName); err != nil {
+		return "", fmt.Errorf("analyze: %w: type=%q pipeline=%q (no pipeline registered for this content type)",
+			ErrPipelineNotFound, req.Type, pipelineName)
 	}
 
 	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).
@@ -564,6 +590,12 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 			ContentType: req.Type,
 			Sniff:       contentSniff(req.Content),
 		})
+	}
+
+	// T-0562: same registry check as Analyze. See note above.
+	if _, err := s.Pipes.Get(pipelineName); err != nil {
+		return "", fmt.Errorf("enqueue: %w: type=%q pipeline=%q (no pipeline registered for this content type)",
+			ErrPipelineNotFound, req.Type, pipelineName)
 	}
 
 	job := &storage.Job{
