@@ -2,8 +2,11 @@ package sqlite
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -99,6 +102,9 @@ var migration029 string
 //go:embed migrations/030_stamp_pipeline_version.sql
 var migration030 string
 
+//go:embed migrations/032_embedding_models.sql
+var migration032 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -168,6 +174,19 @@ var migrations = []migration{
 	// (mirrors migrate014RemindAt) so re-init on a partially-migrated
 	// DB doesn't trip duplicate-column errors.
 	{Version: 31, fn: migrate031JobsUserProfileNote},
+	// Migration 032: embedding_models registry + embeddings composite-key
+	// table for ADR-071 Phase 1 (T-0582). Plain SQL — DDL is fresh; the
+	// CREATE TABLE IF NOT EXISTS / CREATE UNIQUE INDEX IF NOT EXISTS
+	// guards make it safe to re-run.
+	{Version: 32, SQL: migration032},
+	// Migration 033: backfill legacy object_embeddings rows into the new
+	// composite-key embeddings table under a synthetic model_id derived
+	// from the driver's configured vectorDimension. Also seeds the
+	// matching embedding_models row (is_default = 1) and stamps the
+	// `embeddings_<model_id>` row in index_signatures (ADR-070
+	// integration). Idempotent — uses INSERT OR IGNORE on the composite
+	// key and ON CONFLICT upserts on the singleton model row.
+	{Version: 33, fn: migrate033EmbeddingsBackfill},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -488,5 +507,137 @@ func migrate031JobsUserProfileNote(ctx context.Context, d *Driver) error {
 		return err
 	}
 	return addJobsColumnIfMissing(ctx, d, "user_note", "TEXT DEFAULT ''")
+}
+
+// migrate033EmbeddingsBackfill copies legacy object_embeddings rows into the
+// composite-key embeddings table under a synthetic model_id, seeds the
+// matching embedding_models row (marked is_default = 1 per ADR-071 §"Backward
+// compatibility"), and stamps the embeddings_<model_id> row in
+// index_signatures so ADR-070's auto-rebuild semantics apply (T-0582).
+//
+// The synthetic model_id rule is "legacy-blob-<dim>@<schema-date>", where:
+//   - "legacy-blob" identifies these rows as predating the registry (no
+//     provider name was recorded by the legacy single-table schema).
+//   - "<dim>" is d.vectorDimension at migration time, capturing the only
+//     stable shape input we have for the legacy rows.
+//   - "@<schema-date>" follows the ADR-071 model_id convention (provider@date)
+//     so downstream tools that parse model_ids don't need a special case.
+//
+// Idempotent: repeated runs against an already-migrated DB INSERT OR IGNORE
+// the composite-key rows and ON CONFLICT-upsert the singleton model row.
+// Skipped cleanly when object_embeddings does not exist (fresh installs).
+func migrate033EmbeddingsBackfill(ctx context.Context, d *Driver) error {
+	dim := d.vectorDimension
+	if dim <= 0 {
+		dim = DefaultVectorDimension
+	}
+
+	// Always seed an embedding_models default row, even if there are no
+	// legacy object_embeddings rows (fresh installs need a default too so
+	// the registry has something to return). The schema-date suffix
+	// matches ADR-071's documented convention; we use a fixed wall-clock
+	// anchor so the model_id is deterministic across re-runs of the
+	// migration on the same DB.
+	modelID := LegacyEmbeddingModelID(dim)
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := d.db.ExecContext(ctx, `
+		INSERT INTO embedding_models
+			(model_id, provider, dimension, is_default, registered_at, config_json)
+		VALUES (?, ?, ?, 1, ?, '{}')
+		ON CONFLICT(model_id) DO UPDATE SET
+			provider      = excluded.provider,
+			dimension     = excluded.dimension,
+			is_default    = 1,
+			registered_at = embedding_models.registered_at`,
+		modelID, "legacy-blob", dim, now,
+	); err != nil {
+		return fmt.Errorf("seed default embedding_models row: %w", err)
+	}
+
+	// Backfill rows from object_embeddings into embeddings, but only when
+	// the legacy table actually exists. Fresh installs where migration
+	// 004 ran but never produced rows still have the table; only an
+	// install whose migration 004 was retroactively dropped would not.
+	// We check for existence so the migration is robust either way.
+	var n int
+	if err := d.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='object_embeddings'`,
+	).Scan(&n); err != nil {
+		return fmt.Errorf("check legacy object_embeddings table: %w", err)
+	}
+	if n > 0 {
+		if _, err := d.db.ExecContext(ctx, `
+			INSERT OR IGNORE INTO embeddings
+				(object_id, model_id, chunk_idx, vector, text, created_at)
+			SELECT id, ?, 0, embedding, NULL, COALESCE(created_at, ?)
+			  FROM object_embeddings`,
+			modelID, now,
+		); err != nil {
+			return fmt.Errorf("backfill embeddings from object_embeddings: %w", err)
+		}
+	}
+
+	// Stamp the embeddings_<model_id> row in index_signatures (ADR-070
+	// integration). Hash inputs follow the ADR-071 §"Data model" callout:
+	// "(model_id + dimension + provider)".
+	//
+	// Defensive CREATE: production DBs that ran migration 029 already
+	// have the table, but in-development DBs upgraded across the
+	// T-0579 / T-0582 boundary may have schema_version recording 029
+	// without the table actually present (a known dev-pollution mode).
+	// A no-op CREATE TABLE IF NOT EXISTS keeps this migration robust
+	// without re-recording the version.
+	if _, err := d.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS index_signatures (
+		    signature_id   TEXT NOT NULL PRIMARY KEY,
+		    signature_hash TEXT NOT NULL,
+		    computed_at    TEXT NOT NULL,
+		    inputs_summary TEXT NOT NULL DEFAULT ''
+		)`); err != nil {
+		return fmt.Errorf("ensure index_signatures table exists: %w", err)
+	}
+
+	sigID := EmbeddingSignatureID(modelID)
+	hash, summary := computeEmbeddingSignature(modelID, "legacy-blob", dim)
+	if err := UpsertIndexSignature(ctx, d.db, sigID, hash, summary); err != nil {
+		return fmt.Errorf("stamp embeddings index_signatures row: %w", err)
+	}
+
+	return nil
+}
+
+// LegacyEmbeddingModelID returns the canonical synthetic model_id used by
+// migrate033EmbeddingsBackfill to identify rows migrated from the pre-registry
+// single-table schema. Exposed (uppercase) so the registry package and tests
+// can name it without duplicating the format.
+func LegacyEmbeddingModelID(dim int) string {
+	if dim <= 0 {
+		dim = DefaultVectorDimension
+	}
+	// Fixed wall-clock anchor: ADR-071 was authored on 2026-05-07.
+	// Using a fixed date (rather than time.Now()) keeps the synthetic
+	// model_id deterministic — re-running the migration on the same DB
+	// must compute the same key.
+	return fmt.Sprintf("legacy-blob-%d@2026-05-07", dim)
+}
+
+// EmbeddingSignatureID returns the index_signatures row key for an embedding
+// model. Mirrors FTSSignatureID for the FTS path.
+func EmbeddingSignatureID(modelID string) string {
+	return "embeddings_" + modelID
+}
+
+// computeEmbeddingSignature hashes (model_id, provider, dimension) per
+// ADR-071 §"Data model" and returns (hex-sha256, human summary).
+func computeEmbeddingSignature(modelID, provider string, dimension int) (string, string) {
+	parts := []string{
+		"model_id=" + modelID,
+		"provider=" + provider,
+		fmt.Sprintf("dimension=%d", dimension),
+	}
+	sort.Strings(parts)
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
+	return hex.EncodeToString(sum[:]),
+		fmt.Sprintf("model_id=%s;provider=%s;dimension=%d", modelID, provider, dimension)
 }
 
