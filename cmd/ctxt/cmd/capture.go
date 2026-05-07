@@ -8,6 +8,7 @@ import (
 	gohttp "net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -107,13 +108,55 @@ func validateCaptureFlags(cmd *cobra.Command, args []string) error {
 }
 
 // RunCapture is the entry point for `ctxt capture`. Implements positional /
-// file / stdin / clipboard capture by POSTing to /api/v1/analyze. T-0569 wires
-// the --every continuous mode on top of this body.
+// file / stdin / clipboard capture by POSTing to /api/v1/analyze. When
+// --every is set, wraps captureOnce in a ticker loop until SIGINT.
 func RunCapture(cmd *cobra.Command, args []string) error {
 	if err := validateCaptureFlags(cmd, args); err != nil {
 		return err
 	}
-	return captureOnce(cmd, args)
+	every, _ := cmd.Flags().GetDuration("every")
+	if every <= 0 {
+		return captureOnce(cmd, args)
+	}
+	return captureLoop(cmd, args, every)
+}
+
+// captureLoop runs captureOnce immediately, then on every tick of `every`
+// until the context is cancelled (SIGINT). Per-tick errors are logged to
+// stderr and don't kill the loop — only ctx cancellation does.
+func captureLoop(cmd *cobra.Command, args []string, every time.Duration) error {
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+	defer stop()
+
+	label := captureSourceLabel(cmd, args)
+	fmt.Fprintf(os.Stderr, "capturing %s every %s (ctrl-c to stop)\n", label, every)
+
+	if err := captureOnce(cmd, args); err != nil {
+		fmt.Fprintf(os.Stderr, "capture: %v\n", err)
+	}
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := captureOnce(cmd, args); err != nil {
+				fmt.Fprintf(os.Stderr, "capture: %v\n", err)
+			}
+		}
+	}
+}
+
+// captureSourceLabel produces a short label for the loop banner.
+func captureSourceLabel(cmd *cobra.Command, args []string) string {
+	if stdin, _ := cmd.Flags().GetBool("stdin"); stdin {
+		return "stdin"
+	}
+	if len(args) > 0 {
+		return args[0]
+	}
+	return "clipboard"
 }
 
 // captureOnce performs a single capture: resolves input → builds request →

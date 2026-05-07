@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // startMockCaptureDPKMS captures the body of every POST to /api/v1/analyze
@@ -227,6 +230,61 @@ func TestCaptureInboxRoutesToInboxEndpoint(t *testing.T) {
 	}
 	if hints, _ := recs[0].Body["hints"].(string); hints != "research" {
 		t.Errorf("body.hints = %q, want \"research\"", hints)
+	}
+}
+
+func TestCaptureEveryLoops(t *testing.T) {
+	var (
+		mu    sync.Mutex
+		count int
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/analyze" && r.Method == http.MethodPost {
+			mu.Lock()
+			count++
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(map[string]string{"job_id": "loop_job"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	// Drive RunCapture directly so we can cancel via context — executeCommand's
+	// cobra harness binds context.Background by default.
+	resetAllFlags(rootCmd)
+	captureCmd.Flags().Set("server", srv.URL)
+	captureCmd.Flags().Set("every", "100ms")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	captureCmd.SetContext(ctx)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- RunCapture(captureCmd, []string{"loop content"})
+	}()
+
+	// Expect: 1 immediate capture + ticks at 100ms, 200ms = 3 by ~250ms.
+	time.Sleep(250 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("capture loop returned: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("capture loop did not return after cancel")
+	}
+
+	mu.Lock()
+	got := count
+	mu.Unlock()
+	if got < 2 || got > 4 {
+		t.Errorf("expected 2-4 captures in 250ms with --every 100ms, got %d", got)
 	}
 }
 
