@@ -6,10 +6,16 @@ name: Ben Recall Suite
 # post-upgrade fixture corpus and demonstrate that recall stays above the
 # configured floor.
 #
-# The trigger is intentionally broad ("touches anything in the retrieval
-# substrate") rather than diff-content-aware. ADR-070 lets us tighten this
-# later; the priority is to never let a recall regression sneak through
-# while the framework is young.
+# Currently DISABLED via the `if: false` guard on the job: hop.top/ben is
+# consumed via local-path replace and has no published version. CI cannot
+# resolve `make ben` without checking out ben adjacent to ctxt — deferred
+# until the coordinated open-source publish pass resets every kit-powered
+# package to 0.1.0-alpha.0 (T-0196 survey). Re-enable by removing the
+# `if: false` once ben publishes a tag and the Makefile can build it from
+# `go install hop.top/ben/cmd/ben@<tag>` on a clean CI runner.
+#
+# Path triggers below still fire on relevant diffs so the workflow shows
+# up in PR checks (as a skipped job) rather than rotting silently.
 #
 # This workflow does NOT reference any untrusted PR-author-controlled
 # inputs (titles, bodies, branch names) in run: blocks. Adding any such
@@ -28,9 +34,7 @@ on:
       - 'suites/**.ben.yaml'
       - 'test/integration/testdata/ben-fixtures/**'
       - 'cmd/ben-adapter-ctxt-recall/**'
-      - 'cmd/ctxt-ben-run/**'
       - 'scripts/ben-floor.sh'
-      - 'tools/ben.ref'
       - '.github/workflows/ben.yml'
       - 'Makefile'
   workflow_dispatch:
@@ -43,6 +47,12 @@ jobs:
   ben-recall:
     name: Recall floor (ADR-070 / ADR-071)
     runs-on: ubuntu-latest
+    # Disabled for PR runs until hop.top/ben publishes a tagged version
+    # (post-T-0196 OSS reset). Local-path replace doesn't resolve in CI
+    # without checking out ben as a sibling. Remains runnable via the
+    # workflow_dispatch entrypoint above for ad-hoc verification on a
+    # runner image that has been pre-staged with a ben checkout.
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout code
         uses: actions/checkout@v6

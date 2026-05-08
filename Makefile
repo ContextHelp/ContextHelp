@@ -309,50 +309,39 @@ install-hooks:
 ben: ben-text-short ben-vector
 	@echo "✓ All ben recall suites passed"
 
-## ben-install: Install hop.top/ben into bin/ at the version pinned in tools/ben.ref
+## ben-install: Build hop.top/ben into bin/ from a local checkout.
 ##
 ## Resolution order:
-##   1. $$BEN_LOCAL_PATH env var, if set and pointing to a hop.top/ben checkout
-##   2. Sibling labspace path ($$HOME/.w/ideacrafterslabs/ben/hops/main) if it
-##      exists — matches the dev convention used by xrr / kit / c12n
-##   3. `go install hop.top/ben/cmd/ben@$(BEN_VERSION)` from the network
-##   4. Fallback: build the local ben-compatible runner cmd/ctxt-ben-run.
-##      This fallback exists because hop.top/ben at the pinned SHA does
-##      not currently build against the restructured hop.top/kit module
-##      layout (kit/hops/main moved its packages under go/<area>/ while
-##      ben still imports the flat hop.top/kit/<pkg> paths). When ben/main
-##      lands the kit-compat fix, drop this fallback and the cmd/ctxt-ben-run
-##      directory; suites are already in ben's native YAML format.
-##      See docs/ctxt/testing.md "ben recall harness" for the full story.
+##   1. $$BEN_LOCAL_PATH env var, if set and pointing to a ben checkout.
+##   2. Sibling labspace path ($$HOME/.w/ideacrafterslabs/ben/hops/main) —
+##      matches the dev convention used by xrr / kit / c12n.
 ##
-## The installed binary lives in $(BUILD_DIR)/ (not $GOPATH/bin) so the
-## version stays scoped to this checkout.
-BEN_REF_FILE := tools/ben.ref
-BEN_VERSION := $(shell grep '^BEN_VERSION=' $(BEN_REF_FILE) | cut -d= -f2)
-BEN_BIN_PATH := $(shell grep '^BEN_BIN_PATH=' $(BEN_REF_FILE) | cut -d= -f2)
+## ben is consumed via local-path replace, not a published version: it has
+## no tagged release yet and is in active local development alongside this
+## tree. CI must check ben out next to ctxt for `make ben` to resolve. See
+## docs/ctxt/testing.md "Recall Harness (hop.top/ben)" for the full story.
+##
+## The built binary lives in $(BUILD_DIR)/ (not $GOPATH/bin) so the version
+## stays scoped to this checkout.
 BEN_BINARY := $(BUILD_DIR)/ben
 BEN_SIBLING := $(HOME)/.w/ideacrafterslabs/ben/hops/main
 ben-install: $(BEN_BINARY)
 
-$(BEN_BINARY): $(BEN_REF_FILE)
+$(BEN_BINARY):
 	@mkdir -p $(BUILD_DIR)
 	@set -e; \
 	if [ -n "$$BEN_LOCAL_PATH" ] && [ -d "$$BEN_LOCAL_PATH" ]; then \
-		echo "Trying upstream ben from BEN_LOCAL_PATH=$$BEN_LOCAL_PATH..."; \
-		if (cd "$$BEN_LOCAL_PATH" && go build -o $(abspath $(BEN_BINARY)) ./cmd/ben) 2>/dev/null; then \
-			echo "✓ Installed upstream ben: $(BEN_BINARY)"; exit 0; fi; \
+		echo "Building ben from BEN_LOCAL_PATH=$$BEN_LOCAL_PATH..."; \
+		(cd "$$BEN_LOCAL_PATH" && go build -buildvcs=false -o $(abspath $(BEN_BINARY)) ./cmd/ben); \
 	elif [ -d "$(BEN_SIBLING)" ]; then \
-		echo "Trying upstream ben from sibling labspace ($(BEN_SIBLING))..."; \
-		if (cd "$(BEN_SIBLING)" && go build -o $(abspath $(BEN_BINARY)) ./cmd/ben) 2>/dev/null; then \
-			echo "✓ Installed upstream ben: $(BEN_BINARY)"; exit 0; fi; \
+		echo "Building ben from sibling labspace ($(BEN_SIBLING))..."; \
+		(cd "$(BEN_SIBLING)" && go build -buildvcs=false -o $(abspath $(BEN_BINARY)) ./cmd/ben); \
 	else \
-		echo "Trying upstream ben install $(BEN_BIN_PATH)@$(BEN_VERSION)..."; \
-		if GOBIN=$(abspath $(BUILD_DIR)) go install $(BEN_BIN_PATH)@$(BEN_VERSION) 2>/dev/null; then \
-			echo "✓ Installed upstream ben: $(BEN_BINARY)"; exit 0; fi; \
+		echo "ERROR: hop.top/ben not found." >&2; \
+		echo "Set BEN_LOCAL_PATH=<path-to-ben-checkout> or check ben out at $(BEN_SIBLING)." >&2; \
+		exit 1; \
 	fi; \
-	echo "Upstream ben unavailable; falling back to local cmd/ctxt-ben-run (see Makefile comment)..."; \
-	go build -buildvcs=false -o $(abspath $(BEN_BINARY)) ./cmd/ctxt-ben-run; \
-	echo "✓ Built fallback ctxt-ben-run as: $(BEN_BINARY)"
+	echo "✓ Built ben: $(BEN_BINARY)"
 
 ## ben-adapter: Build the ctxt-recall ben binary plugin into bin/
 ##
