@@ -35,8 +35,8 @@ type CapturedEvent struct {
 // on the candidate set before any are materialized.
 type Candidate struct {
 	URL           string
-	CandidateType string // sibling_repo, owner_profile, sponsor_page, etc.
-	Strategy      string // strategy ID that produced this candidate
+	CandidateType string         // sibling_repo, owner_profile, sponsor_page, etc.
+	Strategy      string         // strategy ID that produced this candidate
 	Preview       map[string]any // strategy-supplied preview fields (title, description, stars, etc.) shown pre-promotion; not source of truth
 }
 

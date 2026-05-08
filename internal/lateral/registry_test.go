@@ -17,6 +17,7 @@ func (s *stubStrategy) Family() StrategyFamily { return s.family }
 func (s *stubStrategy) Applies(ctx context.Context, ev CapturedEvent) AppliesResult {
 	return AppliesResult{Matches: s.matches, Specificity: s.specificity}
 }
+
 func (s *stubStrategy) Probe(ctx context.Context, ev CapturedEvent, ac ActiveContext) ([]Candidate, error) {
 	return nil, nil
 }
