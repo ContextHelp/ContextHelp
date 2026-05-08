@@ -240,6 +240,45 @@ func TestLoadWithI18n(t *testing.T) {
 	}
 }
 
+// TestLoad_EnvOverridesFile asserts that env > file precedence holds for
+// bound env vars. Regression test for kit/core/config.Load adoption: the
+// naive "stage 1 env-into-cfg, stage 2 file-into-cfg" wiring would have
+// silently let files override env vars. T-0199, PR #33 review (Copilot).
+func TestLoad_EnvOverridesFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "ctxt.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(
+		"server:\n  port: 4242\n  grpc_port: 5252\n"), 0o644))
+
+	// CH_SERVER_PORT should beat the 4242 in the file.
+	t.Setenv("CH_SERVER_PORT", "9999")
+
+	cfg, err := Load("ctxt", cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, 9999, cfg.Server.Port,
+		"env CH_SERVER_PORT=9999 must override file server.port=4242")
+	assert.Equal(t, 5252, cfg.Server.GRPCPort,
+		"unrelated file value should remain")
+}
+
+// TestLoad_OverrideBeatsEnv asserts kit's -c key=value overrides win over
+// env vars (CLI > env > file).
+func TestLoad_OverrideBeatsEnv(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "ctxt.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(
+		"server:\n  port: 4242\n"), 0o644))
+
+	t.Setenv("CH_SERVER_PORT", "9999")
+
+	cfg, err := LoadWithOverrides("ctxt", cfgPath, nil, map[string]any{
+		"server": map[string]any{"port": 7777},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 7777, cfg.Server.Port,
+		"CLI override 7777 must beat env 9999 and file 4242")
+}
+
 func TestEnsureConfigDirError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-based permission test not reliable on Windows")
@@ -392,10 +431,10 @@ func TestResolveSearchConfig(t *testing.T) {
 	}
 	resolved := ResolveSearchConfig(global, profile)
 	assert.Equal(t, "vector", resolved.DefaultMode)
-	assert.Equal(t, 60, resolved.RRF.K)          // inherited
+	assert.Equal(t, 60, resolved.RRF.K)                      // inherited
 	assert.InDelta(t, 0.2, resolved.RRF.FTSWeight, 0.001)    // overridden
-	assert.InDelta(t, 0.8, resolved.RRF.VectorWeight, 0.001)  // overridden
-	assert.Equal(t, 50, resolved.CandidatePool.FTS) // inherited
+	assert.InDelta(t, 0.8, resolved.RRF.VectorWeight, 0.001) // overridden
+	assert.Equal(t, 50, resolved.CandidatePool.FTS)          // inherited
 }
 
 func TestProfileSearchStrategyOverride(t *testing.T) {

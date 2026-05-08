@@ -243,12 +243,15 @@ func initConfig() {
 		cfg = &config.Config{}
 	}
 	// Legacy global: callers (config doctor, validate, etc.) read this
-	// to find the user-supplied config path. Pick the first bare-path
-	// -c <path> if any; otherwise leave empty so they fall back to
-	// config.GetConfigPath.
+	// to find the user-supplied config path. With kit's repeatable
+	// -c/--config, later paths layer on top of earlier ones, so the
+	// LAST path is the highest-precedence (effective) file — that's
+	// what subcommands operating on "the" config should target.
+	// Empty when no -c <path> was supplied; callers fall back to
+	// config.GetConfigPath in that case.
 	cfgFile = ""
 	if len(paths) > 0 {
-		cfgFile = paths[0]
+		cfgFile = paths[len(paths)-1]
 	}
 
 	if err := config.EnsureConfigDir(binName); err != nil {

@@ -227,10 +227,13 @@ func initConfig() {
 		cfg = &config.Config{}
 	}
 	// Legacy global: subcommands read this for the user-supplied path.
-	// Pick the first bare-path -c <path>; empty otherwise.
+	// With kit's repeatable -c, later paths layer on top of earlier
+	// ones, so the LAST is the effective (highest-precedence) file —
+	// that's what targeting subcommands (edit, lint --fix, validate)
+	// should operate on. Empty when no -c <path> was given.
 	cfgFile = ""
 	if len(paths) > 0 {
-		cfgFile = paths[0]
+		cfgFile = paths[len(paths)-1]
 	}
 
 	if err := config.EnsureConfigDir(binName); err != nil {

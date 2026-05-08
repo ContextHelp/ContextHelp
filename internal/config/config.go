@@ -633,8 +633,9 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 		return nil, fmt.Errorf("config.Load: bin name is required (e.g. \"ctxt\" or \"dpkms\")")
 	}
 
-	// Stage 1: viper seeds defaults + env vars into a baseline Config.
-	// Files are NOT read here — kit/core/config.Load owns the file cascade.
+	// Stage 1: viper holds defaults + env binds. Defaults seed cfg as a
+	// baseline; env binds resolve at viper.Get* time so we can re-apply
+	// them after the file merge (kit's EnvOverride hook).
 	v := viper.New()
 	v.SetConfigType("yaml")
 	setDefaults(v)
@@ -659,11 +660,19 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 		extraPaths = append([]string{envCfg}, extraPaths...)
 	}
 
+	// envOverride re-applies env-bound viper keys to dst after files merge,
+	// preserving viper's "env > file" precedence. Without this, a yaml file
+	// with `server.port: 4242` would silently override `CH_SERVER_PORT=9999`.
+	envOverride := func(dst any) {
+		applyEnvOverrides(v, dst.(*Config))
+	}
+
 	if err := kitconfig.Load(&cfg, kitconfig.Options{
 		SystemConfigPath:  system,
 		UserConfigPath:    user,
 		ProjectConfigPath: project,
 		ExtraConfigPaths:  extraPaths,
+		EnvOverride:       envOverride,
 		Overrides:         overrides,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
@@ -903,37 +912,70 @@ func bindEnvVars(v *viper.Viper) {
 	v.SetEnvPrefix("CH")
 	v.AutomaticEnv()
 
-	// Explicit bindings for common overrides
-	v.BindEnv("storage.type", "CH_STORAGE_TYPE")
-	v.BindEnv("storage.path", EnvDataDir)
+	// Single source of truth for env-binding lives in envBindings; this loop
+	// wires each entry into viper so code paths still calling viper.Get* see
+	// env values, and applyEnvOverrides walks the same list to enforce
+	// env > file precedence on the typed Config after kit's file merge.
+	for _, b := range envBindings {
+		_ = v.BindEnv(b.Key, b.Env)
+	}
+}
 
-	// Blob storage env var bindings
-	v.BindEnv("storage.blob.backend", "CTXT_BLOB_BACKEND")
-	v.BindEnv("storage.blob.threshold", "CTXT_BLOB_THRESHOLD")
-	v.BindEnv("storage.blob.s3.endpoint", "CTXT_BLOB_S3_ENDPOINT")
-	v.BindEnv("storage.blob.s3.region", "CTXT_BLOB_S3_REGION")
-	v.BindEnv("storage.blob.s3.bucket", "CTXT_BLOB_S3_BUCKET")
-	v.BindEnv("storage.blob.s3.prefix", "CTXT_BLOB_S3_PREFIX")
-	v.BindEnv("storage.blob.s3.access_key", "CTXT_BLOB_S3_ACCESS_KEY")
-	v.BindEnv("storage.blob.s3.secret_key", "CTXT_BLOB_S3_SECRET_KEY")
-	v.BindEnv("server.port", "CH_SERVER_PORT")
-	v.BindEnv("server.grpc_port", "CH_GRPC_PORT")
-	v.BindEnv("server.workers", EnvDPKMSWorkers)
-	v.BindEnv("server.public", "CH_PUBLIC")
-	v.BindEnv("profile.default", EnvProfile)
+// envBindings is the registry of (dotted_key, env_var) pairs honored by
+// LoadWithOverrides for the env > file precedence layer. Keep in sync with
+// bindEnvVars — the latter wires viper for code paths that still call
+// viper.Get*; this list drives env > file overlay on the typed Config.
+var envBindings = []struct{ Key, Env string }{
+	{"storage.type", "CH_STORAGE_TYPE"},
+	{"storage.path", EnvDataDir},
+	{"storage.blob.backend", "CTXT_BLOB_BACKEND"},
+	{"storage.blob.threshold", "CTXT_BLOB_THRESHOLD"},
+	{"storage.blob.s3.endpoint", "CTXT_BLOB_S3_ENDPOINT"},
+	{"storage.blob.s3.region", "CTXT_BLOB_S3_REGION"},
+	{"storage.blob.s3.bucket", "CTXT_BLOB_S3_BUCKET"},
+	{"storage.blob.s3.prefix", "CTXT_BLOB_S3_PREFIX"},
+	{"storage.blob.s3.access_key", "CTXT_BLOB_S3_ACCESS_KEY"},
+	{"storage.blob.s3.secret_key", "CTXT_BLOB_S3_SECRET_KEY"},
+	{"server.port", "CH_SERVER_PORT"},
+	{"server.grpc_port", "CH_GRPC_PORT"},
+	{"server.workers", EnvDPKMSWorkers},
+	{"server.public", "CH_PUBLIC"},
+	{"profile.default", EnvProfile},
+	{"jobs.poll_interval", "DPKMS_POLL_INTERVAL"},
+	{"jobs.stale_timeout", "DPKMS_STALE_TIMEOUT"},
+	{"jobs.max_retries", "DPKMS_MAX_RETRIES"},
+	{"jobs.max_hops", "DPKMS_MAX_HOPS"},
+	{"secrets.backend", "CTXT_SECRETS_BACKEND"},
+	{"secrets.age_file", "CTXT_AGE_FILE"},
+	{"secrets.age_identity_file", "CTXT_AGE_IDENTITY"},
+	{"browser.enabled", "CTXT_BROWSER_ENABLED"},
+	{"browser.binary", "CTXT_BROWSER_BINARY"},
+	{"browser.port", "CTXT_BROWSER_PORT"},
+}
 
-	v.BindEnv("jobs.poll_interval", "DPKMS_POLL_INTERVAL")
-	v.BindEnv("jobs.stale_timeout", "DPKMS_STALE_TIMEOUT")
-	v.BindEnv("jobs.max_retries", "DPKMS_MAX_RETRIES")
-	v.BindEnv("jobs.max_hops", "DPKMS_MAX_HOPS")
-	v.BindEnv("secrets.backend", "CTXT_SECRETS_BACKEND")
-	v.BindEnv("secrets.age_file", "CTXT_AGE_FILE")
-	v.BindEnv("secrets.age_identity_file", "CTXT_AGE_IDENTITY")
-
-	// Browser env var bindings
-	v.BindEnv("browser.enabled", "CTXT_BROWSER_ENABLED")
-	v.BindEnv("browser.binary", "CTXT_BROWSER_BINARY")
-	v.BindEnv("browser.port", "CTXT_BROWSER_PORT")
+// applyEnvOverrides re-applies env-bound values on top of cfg after kit's
+// file merge, so env > file precedence holds. Routes through kit's override
+// machinery (ParseOverrides → ApplyOverrides) so dotted keys land in the
+// same nested-map shape that file-based overrides do.
+func applyEnvOverrides(_ *viper.Viper, cfg *Config) {
+	pairs := make([]string, 0, len(envBindings))
+	for _, b := range envBindings {
+		val, ok := os.LookupEnv(b.Env)
+		if !ok || val == "" {
+			continue
+		}
+		pairs = append(pairs, b.Key+"="+val)
+	}
+	if len(pairs) == 0 {
+		return
+	}
+	_, overrides, err := kitconfig.ParseConfigArgs(pairs)
+	if err != nil {
+		// Malformed key=value can only come from a bug in envBindings, not
+		// user input — best-effort skip rather than fail Load.
+		return
+	}
+	_ = kitconfig.ApplyOverrides(cfg, overrides)
 }
 
 // ResolveSearchConfig merges global search config with a profile-level override.
