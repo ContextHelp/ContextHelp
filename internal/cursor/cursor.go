@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+	"hop.top/kit/go/core/xdg"
 )
 
 const (
@@ -83,15 +84,11 @@ func Path() (string, error) {
 	if p := os.Getenv(EnvFile); p != "" {
 		return p, nil
 	}
-	configDir := os.Getenv("XDG_CONFIG_HOME")
-	if configDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("home dir: %w", err)
-		}
-		configDir = filepath.Join(home, ".config")
+	dir, err := xdg.RawConfigDir("contexthelp")
+	if err != nil {
+		return "", fmt.Errorf("config dir: %w", err)
 	}
-	return filepath.Join(configDir, "contexthelp", DefaultFileName), nil
+	return filepath.Join(dir, DefaultFileName), nil
 }
 
 // Load reads the cursor file from path; missing file returns an empty File.

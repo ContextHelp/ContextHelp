@@ -52,7 +52,6 @@ var (
 			},
 		},
 		Globals: []kitcli.Flag{
-			{Name: "config", Usage: "config file (default $XDG_CONFIG_HOME/contexthelp/dpkms.yaml)"},
 			{Name: "data-dir", Usage: "data directory override"},
 			{Name: "server-url", Default: "http://localhost:8080", Usage: "dpkms server URL"},
 			{Name: "offline", Usage: "disable all network calls; force local-only operation"},
@@ -217,12 +216,21 @@ func printVersion(cmd *cobra.Command) {
 }
 
 func initConfig() {
-	cfgFile = viper.GetString("config")
+	// kit/cli's -c/--config global supports both bare paths and key=value
+	// overrides. ConfigArgs splits the two halves so we can layer them
+	// through kit/core/config.Load.
+	paths, overrides := root.ConfigArgs()
 	var err error
-	cfg, err = config.Load(binName, cfgFile)
+	cfg, err = config.LoadWithOverrides(binName, "", paths, overrides)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load config: %v\n", err)
 		cfg = &config.Config{}
+	}
+	// Legacy global: subcommands read this for the user-supplied path.
+	// Pick the first bare-path -c <path>; empty otherwise.
+	cfgFile = ""
+	if len(paths) > 0 {
+		cfgFile = paths[0]
 	}
 
 	if err := config.EnsureConfigDir(binName); err != nil {

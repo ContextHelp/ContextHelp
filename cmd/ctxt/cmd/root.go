@@ -60,7 +60,6 @@ var (
 			},
 		},
 		Globals: []kitcli.Flag{
-			{Name: "config", Usage: "config file (default $XDG_CONFIG_HOME/contexthelp/ctxt.yaml)"},
 			{Name: "profile", Usage: "focus profile to use"},
 			{Name: "offline", Usage: "disable all network calls; force local-only operation"},
 			{Name: "instance", Usage: "target dpkms instance by name or port (overrides current-instance state and config)"},
@@ -115,8 +114,6 @@ func init() {
 	}
 
 	v := root.Viper
-	cfgFlag := rootCmd.PersistentFlags().Lookup("config")
-	cfgFlag.NoOptDefVal = ""
 
 	// Mirror kit/cli's bindings into the GLOBAL viper used throughout this
 	// codebase (helpers.go, stats.go, etc. read from viper.Get*). Kit owns
@@ -235,12 +232,23 @@ func printVersion(cmd *cobra.Command) {
 }
 
 func initConfig() {
-	cfgFile = viper.GetString("config")
+	// kit/cli's -c/--config global supports both bare paths and key=value
+	// overrides. ConfigArgs splits the two halves so we can layer them
+	// through kit/core/config.Load.
+	paths, overrides := root.ConfigArgs()
 	var err error
-	cfg, err = config.Load(binName, cfgFile)
+	cfg, err = config.LoadWithOverrides(binName, "", paths, overrides)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load config: %v\n", err)
 		cfg = &config.Config{}
+	}
+	// Legacy global: callers (config doctor, validate, etc.) read this
+	// to find the user-supplied config path. Pick the first bare-path
+	// -c <path> if any; otherwise leave empty so they fall back to
+	// config.GetConfigPath.
+	cfgFile = ""
+	if len(paths) > 0 {
+		cfgFile = paths[0]
 	}
 
 	if err := config.EnsureConfigDir(binName); err != nil {

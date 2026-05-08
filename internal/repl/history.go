@@ -5,19 +5,20 @@ import (
 	"path/filepath"
 
 	"github.com/peterh/liner"
+	"hop.top/kit/go/core/xdg"
 )
 
 // HistoryPath returns the absolute path to the REPL history file.
-// Follows XDG Base Directory specification:
-//   - $XDG_DATA_HOME/contexthelp/repl_history   (if XDG_DATA_HOME is set)
-//   - ~/.local/share/contexthelp/repl_history    (fallback)
+// Follows XDG Base Directory specification via kit/core/xdg:
+//   - $XDG_DATA_HOME/contexthelp/repl_history (when XDG_DATA_HOME is set)
+//   - ~/.local/share/contexthelp/repl_history (fallback)
 func HistoryPath() string {
-	base := os.Getenv("XDG_DATA_HOME")
-	if base == "" {
-		home, _ := os.UserHomeDir()
-		base = filepath.Join(home, ".local", "share")
+	dir, err := xdg.RawDataDir("contexthelp")
+	if err != nil {
+		// xdg.RawDataDir only fails if neither $XDG_DATA_HOME nor $HOME is set.
+		return filepath.Join("contexthelp", "repl_history")
 	}
-	return filepath.Join(base, "contexthelp", "repl_history")
+	return filepath.Join(dir, "repl_history")
 }
 
 // LoadHistory reads previously saved lines into l.

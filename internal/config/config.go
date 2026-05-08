@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	kitconfig "hop.top/kit/go/core/config"
 	"hop.top/kit/go/core/xdg"
 )
 
@@ -32,58 +33,58 @@ type Config struct {
 	Version int `mapstructure:"version" yaml:"version"`
 
 	// Storage configuration
-	Storage StorageConfig `mapstructure:"storage"`
+	Storage StorageConfig `mapstructure:"storage" yaml:"storage"`
 
 	// Server configuration
-	Server ServerConfig `mapstructure:"server"`
+	Server ServerConfig `mapstructure:"server" yaml:"server"`
 
 	// Profile configuration
-	Profile ProfileConfig `mapstructure:"profile"`
+	Profile ProfileConfig `mapstructure:"profile" yaml:"profile"`
 
 	// Registries configuration
-	Registries []RegistryConfig `mapstructure:"registries"`
+	Registries []RegistryConfig `mapstructure:"registries" yaml:"registries"`
 
 	// RegistriesGlobal holds registry-wide settings that apply to all registries.
 	RegistriesGlobal RegistriesGlobalConfig `mapstructure:"registries_global" yaml:"registries_global"`
 
 	// Plugins configuration
-	Plugins []PluginConfig `mapstructure:"plugins"`
+	Plugins []PluginConfig `mapstructure:"plugins" yaml:"plugins"`
 
 	// I18n configuration
-	I18n I18nConfig `mapstructure:"i18n"`
+	I18n I18nConfig `mapstructure:"i18n" yaml:"i18n"`
 
 	// Providers configuration
-	Providers ProvidersConfig `mapstructure:"providers"`
+	Providers ProvidersConfig `mapstructure:"providers" yaml:"providers"`
 
 	// Retrieval configuration
-	Retrieval RetrievalConfig `mapstructure:"retrieval"`
+	Retrieval RetrievalConfig `mapstructure:"retrieval" yaml:"retrieval"`
 
 	// Jobs controls worker pool behaviour.
-	Jobs JobsConfig `mapstructure:"jobs"`
+	Jobs JobsConfig `mapstructure:"jobs" yaml:"jobs"`
 
 	// Pipelines holds per-pipeline provider overrides and routing rules.
-	Pipelines PipelinesConfig `mapstructure:"pipelines"`
+	Pipelines PipelinesConfig `mapstructure:"pipelines" yaml:"pipelines"`
 
 	// Conventions enforces naming rules across the system.
-	Conventions ConventionsConfig `mapstructure:"conventions"`
+	Conventions ConventionsConfig `mapstructure:"conventions" yaml:"conventions"`
 
 	// Secrets configures the secrets backend.
-	Secrets SecretsConfig `mapstructure:"secrets"`
+	Secrets SecretsConfig `mapstructure:"secrets" yaml:"secrets"`
 
 	// Watch configures the filesystem watcher.
-	Watch WatchConfig `mapstructure:"watch"`
+	Watch WatchConfig `mapstructure:"watch" yaml:"watch"`
 
 	// Inbox configures the default inbox for new content.
-	Inbox InboxConfig `mapstructure:"inbox"`
+	Inbox InboxConfig `mapstructure:"inbox" yaml:"inbox"`
 
 	// Duplicates controls duplicate detection policy.
-	Duplicates DuplicatesConfig `mapstructure:"duplicates"`
+	Duplicates DuplicatesConfig `mapstructure:"duplicates" yaml:"duplicates"`
 
 	// Search controls hybrid query execution behaviour.
-	Search SearchConfig `mapstructure:"search"`
+	Search SearchConfig `mapstructure:"search" yaml:"search"`
 
 	// URI controls ctxt:// URL scheme dispatch behaviour.
-	URI URIConfig `mapstructure:"uri"`
+	URI URIConfig `mapstructure:"uri" yaml:"uri"`
 
 	// Backup configures the backup command.
 	Backup BackupConfig `mapstructure:"backup" yaml:"backup"`
@@ -270,15 +271,15 @@ type URIConfig struct {
 type DuplicatesConfig struct {
 	// Policy determines what happens when a duplicate is found.
 	// Valid values: "warn" (default), "drop", "keep".
-	Policy string `mapstructure:"policy"`
+	Policy string `mapstructure:"policy" yaml:"policy"`
 	// SimilarityThreshold is the cosine similarity cutoff for near-duplicate detection.
 	// Range: 0.0–1.0. Default: 0.95.
-	SimilarityThreshold float64 `mapstructure:"similarity_threshold"`
+	SimilarityThreshold float64 `mapstructure:"similarity_threshold" yaml:"similarity_threshold"`
 	// CheckExact enables content-hash exact-match deduplication. Default: true.
-	CheckExact bool `mapstructure:"check_exact"`
+	CheckExact bool `mapstructure:"check_exact" yaml:"check_exact"`
 	// CheckSimilar enables vector-embedding near-duplicate detection. Default: false.
 	// Requires embeddings to have been computed (pipeline embedding step must run first).
-	CheckSimilar bool `mapstructure:"check_similar"`
+	CheckSimilar bool `mapstructure:"check_similar" yaml:"check_similar"`
 }
 
 // ProfileSearchStrategy overrides global search settings for a specific profile.
@@ -398,43 +399,43 @@ type BackupConfig struct {
 
 // StorageConfig represents storage configuration
 type StorageConfig struct {
-	Type string     `mapstructure:"type"`
-	Path string     `mapstructure:"path"`
-	Blob BlobConfig `mapstructure:"blob"`
+	Type string     `mapstructure:"type" yaml:"type"`
+	Path string     `mapstructure:"path" yaml:"path"`
+	Blob BlobConfig `mapstructure:"blob" yaml:"blob"`
 }
 
 // BlobConfig holds configuration for the blob storage backend.
 type BlobConfig struct {
-	Backend   string          `mapstructure:"backend"`
-	Threshold int64           `mapstructure:"threshold"`
-	Local     BlobLocalConfig `mapstructure:"local"`
-	S3        BlobS3Config    `mapstructure:"s3"`
+	Backend   string          `mapstructure:"backend" yaml:"backend"`
+	Threshold int64           `mapstructure:"threshold" yaml:"threshold"`
+	Local     BlobLocalConfig `mapstructure:"local" yaml:"local"`
+	S3        BlobS3Config    `mapstructure:"s3" yaml:"s3"`
 }
 
 // BlobLocalConfig configures the local filesystem blob backend.
 type BlobLocalConfig struct {
-	Path string `mapstructure:"path"`
+	Path string `mapstructure:"path" yaml:"path"`
 }
 
 // BlobS3Config configures the S3-compatible blob backend.
 type BlobS3Config struct {
-	Endpoint      string        `mapstructure:"endpoint"`
-	Region        string        `mapstructure:"region"`
-	Bucket        string        `mapstructure:"bucket"`
-	Prefix        string        `mapstructure:"prefix"`
-	AccessKey     string        `mapstructure:"access_key"`
-	SecretKey     string        `mapstructure:"secret_key"`
-	UsePathStyle  bool          `mapstructure:"use_path_style"`
-	PresignExpiry time.Duration `mapstructure:"presign_expiry"`
-	MaxRetries    int           `mapstructure:"max_retries"`
+	Endpoint      string        `mapstructure:"endpoint" yaml:"endpoint"`
+	Region        string        `mapstructure:"region" yaml:"region"`
+	Bucket        string        `mapstructure:"bucket" yaml:"bucket"`
+	Prefix        string        `mapstructure:"prefix" yaml:"prefix"`
+	AccessKey     string        `mapstructure:"access_key" yaml:"access_key"`
+	SecretKey     string        `mapstructure:"secret_key" yaml:"secret_key"`
+	UsePathStyle  bool          `mapstructure:"use_path_style" yaml:"use_path_style"`
+	PresignExpiry time.Duration `mapstructure:"presign_expiry" yaml:"presign_expiry"`
+	MaxRetries    int           `mapstructure:"max_retries" yaml:"max_retries"`
 }
 
 // ServerConfig represents server configuration
 type ServerConfig struct {
-	Port     int    `mapstructure:"port"`
-	GRPCPort int    `mapstructure:"grpc_port"`
-	Workers  int    `mapstructure:"workers"`
-	Public   bool   `mapstructure:"public"`
+	Port     int  `mapstructure:"port" yaml:"port"`
+	GRPCPort int  `mapstructure:"grpc_port" yaml:"grpc_port"`
+	Workers  int  `mapstructure:"workers" yaml:"workers"`
+	Public   bool `mapstructure:"public" yaml:"public"`
 }
 
 // ProfileConfig represents profile configuration
@@ -567,128 +568,157 @@ func (r RegistryConfig) EffectiveTrustLevel() RegistryTrustLevel {
 
 // PluginConfig represents a plugin configuration
 type PluginConfig struct {
-	Type   string                 `mapstructure:"type"`
-	Plugin string                 `mapstructure:"plugin"`
-	Config map[string]interface{} `mapstructure:"config"`
+	Type   string                 `mapstructure:"type" yaml:"type"`
+	Plugin string                 `mapstructure:"plugin" yaml:"plugin"`
+	Config map[string]interface{} `mapstructure:"config" yaml:"config"`
 }
 
 // I18nConfig represents i18n configuration
 type I18nConfig struct {
-	Enabled            bool     `mapstructure:"enabled"`
-	PreferredLanguages []string `mapstructure:"preferred_languages"`
-	AutoTranslate      bool     `mapstructure:"auto_translate"`
-	TranslateTags      bool     `mapstructure:"translate_tags"`
+	Enabled            bool     `mapstructure:"enabled" yaml:"enabled"`
+	PreferredLanguages []string `mapstructure:"preferred_languages" yaml:"preferred_languages"`
+	AutoTranslate      bool     `mapstructure:"auto_translate" yaml:"auto_translate"`
+	TranslateTags      bool     `mapstructure:"translate_tags" yaml:"translate_tags"`
 }
 
 // ProvidersConfig controls backend selection for each provider type.
 type ProvidersConfig struct {
-	Video         ProviderBackendConfig `mapstructure:"video"`
-	Document      ProviderBackendConfig `mapstructure:"document"`
-	OCR           ProviderBackendConfig `mapstructure:"ocr"`
-	Transcription ProviderBackendConfig `mapstructure:"transcription"`
-	Vision        ProviderBackendConfig `mapstructure:"vision"`
-	Diarization   ProviderBackendConfig `mapstructure:"diarization"`
-	LLM           ProviderBackendConfig `mapstructure:"llm"`
-	Embedding     ProviderBackendConfig `mapstructure:"embedding"`
+	Video         ProviderBackendConfig `mapstructure:"video" yaml:"video"`
+	Document      ProviderBackendConfig `mapstructure:"document" yaml:"document"`
+	OCR           ProviderBackendConfig `mapstructure:"ocr" yaml:"ocr"`
+	Transcription ProviderBackendConfig `mapstructure:"transcription" yaml:"transcription"`
+	Vision        ProviderBackendConfig `mapstructure:"vision" yaml:"vision"`
+	Diarization   ProviderBackendConfig `mapstructure:"diarization" yaml:"diarization"`
+	LLM           ProviderBackendConfig `mapstructure:"llm" yaml:"llm"`
+	Embedding     ProviderBackendConfig `mapstructure:"embedding" yaml:"embedding"`
 }
 
 // ProviderBackendConfig selects which backend to use for a provider.
 type ProviderBackendConfig struct {
-	Backend string `mapstructure:"backend"`
+	Backend string `mapstructure:"backend" yaml:"backend"`
 	// Model overrides the default model for LLM-based providers (vision, transcription via ollama).
-	Model string `mapstructure:"model,omitempty"`
+	Model string `mapstructure:"model,omitempty" yaml:"model,omitempty"`
 	// Endpoint overrides the default API endpoint (e.g. Ollama URL).
-	Endpoint string `mapstructure:"endpoint,omitempty"`
+	Endpoint string `mapstructure:"endpoint,omitempty" yaml:"endpoint,omitempty"`
 	// Language sets a default language hint (e.g. for OCR, transcription).
-	Language string `mapstructure:"language,omitempty"`
+	Language string `mapstructure:"language,omitempty" yaml:"language,omitempty"`
 }
 
 // Load loads the configuration from file and environment variables.
 //
 // bin selects the per-binary config file under the shared `contexthelp/`
 // namespace. Pass "ctxt" or "dpkms" — the cascade then looks for
-// `contexthelp/<bin>.yaml` at every layer, so each binary can ship its
-// own settings without forking the schema. The Config struct stays
-// shared; bin-specific keys simply land in the bin-specific file.
+// `contexthelp/<bin>.yaml` at every layer.
 //
-// Resolution order when cfgFile is empty and CTXT_CONFIG is unset:
+// cfgFile, when non-empty, takes precedence over the cascade and is loaded
+// as the sole file source. When empty the legacy CTXT_CONFIG env var is
+// honored, and otherwise the system → user → project cascade is walked.
 //
-//  1. system  — /etc/contexthelp/<bin>.yaml
-//  2. user    — $XDG_CONFIG_HOME/contexthelp/<bin>.yaml
-//  3. project — nearest .contexthelp/<bin>.yaml, walking up from cwd
-//     and stopping at $HOME or fs root
-//
-// Each layer is merged on top of the previous via viper.MergeInConfig,
-// so project overrides user overrides system.
+// For -c/--config CLI integration prefer LoadWithOverrides, which lets
+// callers wire kit/cli's ConfigArgs() output directly.
 func Load(bin, cfgFile string) (*Config, error) {
+	return LoadWithOverrides(bin, cfgFile, nil, nil)
+}
+
+// LoadWithOverrides is the full-fat entry point used by adopters wiring
+// kit/cli's -c/--config global. extraPaths are loaded after the standard
+// cascade (system → user → project) and before overrides; overrides win
+// over every file layer. Pass paths/overrides from root.ConfigArgs().
+//
+// cfgFile retains the legacy single-file override semantic for tools
+// that still wire it; new call sites should leave it empty and rely on
+// the cascade plus extraPaths.
+func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[string]any) (*Config, error) {
 	if bin == "" {
 		return nil, fmt.Errorf("config.Load: bin name is required (e.g. \"ctxt\" or \"dpkms\")")
 	}
+
+	// Stage 1: viper seeds defaults + env vars into a baseline Config.
+	// Files are NOT read here — kit/core/config.Load owns the file cascade.
 	v := viper.New()
 	v.SetConfigType("yaml")
-
-	// Set defaults
 	setDefaults(v)
-
-	// Bind environment variables
 	bindEnvVars(v)
 
-	// Resolve the file(s) to read.
-	if cfgFile != "" {
-		v.SetConfigFile(cfgFile)
-		if err := v.ReadInConfig(); err != nil {
-			if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-				return nil, fmt.Errorf("failed to read config: %w", err)
-			}
-		}
-	} else if envConfig := os.Getenv(EnvConfigPath); envConfig != "" {
-		v.SetConfigFile(envConfig)
-		if err := v.ReadInConfig(); err != nil {
-			if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-				return nil, fmt.Errorf("failed to read config: %w", err)
-			}
-		}
-	} else {
-		// Walk system → user → project. Each existing file merges on
-		// top of the previous so the closest layer wins.
-		for _, path := range cascadePaths(bin) {
-			if path == "" {
-				continue
-			}
-			if _, err := os.Stat(path); err != nil {
-				continue
-			}
-			v.SetConfigFile(path)
-			if err := v.MergeInConfig(); err != nil {
-				return nil, fmt.Errorf("failed to merge config %s: %w", path, err)
-			}
-		}
-	}
-
-	// Unmarshal configuration
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal defaults: %w", err)
+	}
+
+	// Stage 2: kit/core/config layered file merge. The cascade slots are
+	// explicit (no kitconfig.OptionsForTool here) because contexthelp
+	// uses a per-binary file under a shared "contexthelp/" namespace
+	// rather than a single tool-level config.yaml.
+	system, user, project := cascadeSlots(bin)
+	if cfgFile != "" {
+		// Legacy single-file override: replace cascade with just this file.
+		system, user, project = "", "", ""
+		extraPaths = append([]string{cfgFile}, extraPaths...)
+	} else if envCfg := os.Getenv(EnvConfigPath); envCfg != "" {
+		system, user, project = "", "", ""
+		extraPaths = append([]string{envCfg}, extraPaths...)
+	}
+
+	if err := kitconfig.Load(&cfg, kitconfig.Options{
+		SystemConfigPath:  system,
+		UserConfigPath:    user,
+		ProjectConfigPath: project,
+		ExtraConfigPaths:  extraPaths,
+		Overrides:         overrides,
+	}); err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Sync FocusProfile.Default bool → ProfileConfig.Default string.
-	// A profile entry with Default:true is equivalent to profile.default:<name>.
 	if err := syncProfileDefault(&cfg); err != nil {
 		return nil, err
 	}
 
-	// Run migrations if needed.
+	// Run migrations if needed. Write-back targets the highest-precedence
+	// file that actually contributed to the merge (project > user > system),
+	// or the explicit cfgFile/CTXT_CONFIG path when one was used.
 	if cfg.Version < currentSchemaVersion {
 		if migrate(&cfg) {
-			// Best-effort write-back: ignore errors (config path may be read-only).
-			cfgPath := v.ConfigFileUsed()
-			if cfgPath != "" {
+			if cfgPath := writeBackTarget(cfgFile, system, user, project); cfgPath != "" {
 				_ = WriteBack(&cfg, cfgPath)
 			}
 		}
 	}
 
 	return &cfg, nil
+}
+
+// writeBackTarget picks the file to write a migrated config to. Priority:
+// explicit override (cfgFile or CTXT_CONFIG) > project > user > system.
+// Returns "" when nothing on the cascade existed.
+func writeBackTarget(cfgFile, system, user, project string) string {
+	if cfgFile != "" {
+		return cfgFile
+	}
+	if env := os.Getenv(EnvConfigPath); env != "" {
+		return env
+	}
+	for _, p := range []string{project, user, system} {
+		if p == "" {
+			continue
+		}
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+// cascadeSlots returns the system/user/project paths for the given bin.
+// Empty strings mean "no path resolvable" (e.g. xdg failure, no project
+// marker found); kit/core/config.Load skips empty slots.
+func cascadeSlots(bin string) (system, user, project string) {
+	system = filepath.Join("/etc", xdgTool, bin+".yaml")
+	if dir, err := configDirXDG(); err == nil && dir != "" {
+		user = filepath.Join(dir, bin+".yaml")
+	}
+	project = walkUpForMarker(bin)
+	return
 }
 
 // syncProfileDefault reconciles FocusProfile.Default bool with
@@ -948,22 +978,6 @@ func configDirXDG() (string, error) {
 // dataDirXDG returns the XDG-resolved data directory for contexthelp.
 func dataDirXDG() (string, error) {
 	return xdg.RawDataDir(xdgTool)
-}
-
-// cascadePaths returns the system → user → project file list for the
-// given binary. Each entry is an absolute path; missing layers (e.g.
-// no project marker walk hit) are returned as "" and skipped by Load.
-func cascadePaths(bin string) []string {
-	system := filepath.Join("/etc", xdgTool, bin+".yaml")
-
-	var user string
-	if dir, err := configDirXDG(); err == nil && dir != "" {
-		user = filepath.Join(dir, bin+".yaml")
-	}
-
-	project := walkUpForMarker(bin)
-
-	return []string{system, user, project}
 }
 
 // walkUpForMarker walks up from cwd looking for `.contexthelp/<bin>.yaml`,

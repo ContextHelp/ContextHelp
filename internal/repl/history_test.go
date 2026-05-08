@@ -3,6 +3,7 @@ package repl
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/peterh/liner"
@@ -11,10 +12,16 @@ import (
 )
 
 func TestHistoryPath_DefaultFallback(t *testing.T) {
+	// When XDG_DATA_HOME is unset, kit/core/xdg picks the platform-correct
+	// default — Linux: ~/.local/share, macOS: ~/Library/Application Support.
+	// We assert only the suffix + that it lives under the user's home.
 	t.Setenv("XDG_DATA_HOME", "")
 	home, _ := os.UserHomeDir()
-	want := filepath.Join(home, ".local", "share", "contexthelp", "repl_history")
-	assert.Equal(t, want, HistoryPath())
+	got := HistoryPath()
+	assert.True(t, strings.HasPrefix(got, home),
+		"expected path under home, got %q", got)
+	assert.Equal(t, filepath.Join("contexthelp", "repl_history"),
+		strings.Join([]string{filepath.Base(filepath.Dir(got)), filepath.Base(got)}, string(filepath.Separator)))
 }
 
 func TestHistoryPath_XDGOverride(t *testing.T) {
