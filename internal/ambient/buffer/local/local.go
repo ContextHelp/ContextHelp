@@ -34,6 +34,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"hop.top/kit/go/core/xdg"
 	kitblob "hop.top/kit/go/storage/blob"
 	kitlocal "hop.top/kit/go/storage/blob/local"
 
@@ -99,21 +100,18 @@ func New(cfg Config) (*Buffer, error) {
 // ResolveDefaultDir computes the XDG-compliant default buffer path.
 //
 // Resolution order:
-//   1. $CTXT_AMBIENT_BUFFER_DIR (ctxt-specific override)
-//   2. $XDG_STATE_HOME/ctxt/ambient/
-//   3. $HOME/.local/state/ctxt/ambient/
+//  1. $CTXT_AMBIENT_BUFFER_DIR (ctxt-specific override)
+//  2. $XDG_STATE_HOME/ctxt/ambient/  (via kit/core/xdg)
+//  3. $HOME/.local/state/ctxt/ambient/
 func ResolveDefaultDir() (string, error) {
 	if v := os.Getenv("CTXT_AMBIENT_BUFFER_DIR"); v != "" {
 		return v, nil
 	}
-	if v := os.Getenv("XDG_STATE_HOME"); v != "" {
-		return filepath.Join(v, "ctxt", "ambient"), nil
-	}
-	home, err := os.UserHomeDir()
+	dir, err := xdg.RawStateDir("ctxt")
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "state", "ctxt", "ambient"), nil
+	return filepath.Join(dir, "ambient"), nil
 }
 
 func keyForEvent(ev ambient.RawEvent, fallbackNow time.Time) string {
