@@ -12,13 +12,15 @@ import (
 // Follows XDG Base Directory specification via kit/core/xdg:
 //   - $XDG_DATA_HOME/contexthelp/repl_history (when XDG_DATA_HOME is set)
 //   - ~/.local/share/contexthelp/repl_history (fallback)
+//
+// Last-resort fallback (no $HOME, no $XDG_DATA_HOME — only happens in
+// hermetic test envs): os.TempDir/contexthelp/repl_history. The caller
+// can always trust the returned path to be absolute.
 func HistoryPath() string {
-	dir, err := xdg.RawDataDir("contexthelp")
-	if err != nil {
-		// xdg.RawDataDir only fails if neither $XDG_DATA_HOME nor $HOME is set.
-		return filepath.Join("contexthelp", "repl_history")
+	if dir, err := xdg.RawDataDir("contexthelp"); err == nil {
+		return filepath.Join(dir, "repl_history")
 	}
-	return filepath.Join(dir, "repl_history")
+	return filepath.Join(os.TempDir(), "contexthelp", "repl_history")
 }
 
 // LoadHistory reads previously saved lines into l.
