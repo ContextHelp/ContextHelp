@@ -134,6 +134,7 @@ Stories `US-0014` and `US-0041` define constrained extraction patterns. Availabi
 
 ## Related references
 
+- [`./entity-auto-enrichment.md`](./entity-auto-enrichment.md)
 - [`../reference/query-language-and-ranking.md`](../reference/query-language-and-ranking.md)
 - [`../operations/runbook.md`](../operations/runbook.md)
 - [`../troubleshooting/faq.md`](../troubleshooting/faq.md)
