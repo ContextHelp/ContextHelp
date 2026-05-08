@@ -510,10 +510,8 @@ ADR-070 §6 (pipeline-version gate) and ADR-071 Phase 3 (embedding-migration gat
 | `test/integration/testdata/ben-fixtures/vector-corpus.yaml` | 20 paraphrase-friendly objects (semantic-leaning) |
 | `test/integration/testdata/ben-fixtures/vector-queries.yaml` | 10 paraphrase queries; lexical baseline scores ~0.75 today |
 | `cmd/ben-adapter-ctxt-recall/` | The hop.top/ben binary plugin that scores recall@k |
-| `cmd/ctxt-ben-run/` | Local fallback runner (drops out when ben/main rebuilds against current kit) |
 | `scripts/ben-floor.sh` | Reads `ben run --format json` output and enforces the recall floor |
-| `tools/ben.ref` | Pinned ben SHA + module path |
-| `.github/workflows/ben.yml` | CI gate triggered by retrieval-substrate changes |
+| `.github/workflows/ben.yml` | CI gate triggered by retrieval-substrate changes (currently disabled — see "Known limitations") |
 
 ### Running locally
 
@@ -526,11 +524,13 @@ make ben-text-short
 make ben-vector
 ```
 
-The Makefile prefers an upstream `hop.top/ben` build when one is
-available (set `BEN_LOCAL_PATH=...` to override the sibling-labspace
-discovery). When ben fails to build — currently the case at the pinned
-SHA, see "Known limitations" below — the Makefile falls back to a local
-ben-compatible runner (`cmd/ctxt-ben-run`) so the gate stays enforceable.
+`hop.top/ben` is consumed via local-path replace — no published version
+exists yet. The Makefile resolves it in this order:
+
+1. `$BEN_LOCAL_PATH` env var, if set and pointing to a ben checkout.
+2. `~/.w/ideacrafterslabs/ben/hops/main` (sibling labspace).
+
+If neither resolves, `make ben` fails loudly with a remediation hint.
 
 ### Interpreting a recall-floor failure
 
@@ -585,15 +585,14 @@ corpus file — the adapter validates this and exits 1 otherwise. Multiple
 
 ### Known limitations
 
-- **Upstream ben build broken at the pinned SHA.** The pinned ben SHA
-  (`tools/ben.ref`) does not currently build against the restructured
-  `hop.top/kit` module layout (kit moved packages under `go/<area>/`
-  while ben still imports the flat `hop.top/kit/<pkg>` paths). The
-  Makefile falls back to `cmd/ctxt-ben-run` so the gate stays enforced
-  locally; CI hits the same fallback. Expected fix: an upstream PR on
-  `hop.top/ben/main` updating its imports. Once landed, bump
-  `tools/ben.ref` and the fallback delegates to the real ben — no other
-  changes needed in this repo.
+- **CI gate is disabled** (`if: false` on the job in
+  `.github/workflows/ben.yml`). ben is consumed via local-path replace
+  and has no published tag, so a clean CI runner can't resolve it
+  without checking out ben adjacent to ctxt. Re-enable once ben
+  publishes a tagged version (gated on the coordinated open-source
+  reset to `0.1.0-alpha.0` for every kit-powered package — see T-0196).
+  At that point the Makefile gains `go install hop.top/ben/cmd/ben@<tag>`
+  as a third resolution tier and CI works without sibling checkout.
 - **Vector leg is a lexical baseline today.** Both candidates in
   `recall-vector.ben.yaml` run the lexical baseline. T-0584 wires the
   candidate-model leg through xrr cassettes; the suite shape is in
