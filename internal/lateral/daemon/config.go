@@ -8,9 +8,18 @@ import (
 	"gopkg.in/yaml.v3"
 
 	lateralconfig "github.com/ideacrafterslabs/ctxt/internal/lateral/config"
+	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/arxiv"
+	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/beehiiv"
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/github"
+	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/google"
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/jit"
+	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/linkedin"
+	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/medium"
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/roster"
+	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/substack"
+	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/wikipedia"
+	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/x"
+	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/youtube"
 )
 
 // Config is the daemon-side bundle the lateral subcommand assembles
@@ -66,9 +75,13 @@ type Config struct {
 	Roster roster.Gates
 
 	// SamplePercent is the per-strategy traffic-shaping percent
-	// (T-0329). Keys are strategy IDs (e.g. "GitHubStrategy",
-	// "GoogleSearchStrategy", "jit"); values are 0-100. Missing key
-	// = full traffic (100%). Operators set values via
+	// (T-0329). Keys are strategy IDs as exported by each strategy
+	// package: "jit"; "github", "github.gist", "github.advisory";
+	// "GoogleSearchStrategy", "WikipediaStrategy", "XStrategy", and
+	// other roster IDs (see internal/lateral/strategies/<name>/ for
+	// the canonical ID constants). Values are 0-100; missing key
+	// means full traffic (100%); explicit 0 means deny all (soft
+	// kill-switch). Operators set values via
 	// `strategies.<name>.sample_percent` in the YAML config.
 	SamplePercent map[string]int
 }
@@ -284,24 +297,24 @@ func mergeStrategies(cfg *Config, s strategiesFile) {
 		}
 		cfg.SamplePercent[id] = *gate.SamplePercent
 	}
-	pct("GoogleStrategy", s.Google)
-	pct("GoogleSearchStrategy", s.GoogleSearch)
-	pct("GoogleScholarStrategy", s.GoogleScholar)
-	pct("GoogleTrendsStrategy", s.GoogleTrends)
-	pct("GoogleNewsStrategy", s.GoogleNews)
-	pct("XStrategy", s.X)
-	pct("LinkedInStrategy", s.LinkedIn)
-	pct("ArxivStrategy", s.Arxiv)
-	pct("WikipediaStrategy", s.Wikipedia)
-	pct("MediumStrategy", s.Medium)
-	pct("MediumPublicationStrategy", s.MediumPublication)
-	pct("MediumProfileStrategy", s.MediumProfile)
-	pct("SubstackStrategy", s.Substack)
-	pct("SubstackPublicationStrategy", s.SubstackPublication)
-	pct("SubstackPostStrategy", s.SubstackPost)
-	pct("SubstackNotesStrategy", s.SubstackNotes)
-	pct("BeehiivStrategy", s.Beehiiv)
-	pct("BeehiivPublicationStrategy", s.BeehiivPublication)
-	pct("BeehiivPostStrategy", s.BeehiivPost)
-	pct("YouTubeStrategy", s.YouTube)
+	pct(google.IDParent, s.Google)
+	pct(google.IDSearch, s.GoogleSearch)
+	pct(google.IDScholar, s.GoogleScholar)
+	pct(google.IDTrends, s.GoogleTrends)
+	pct(google.IDNews, s.GoogleNews)
+	pct(x.ID, s.X)
+	pct(linkedin.ID, s.LinkedIn)
+	pct(arxiv.ID, s.Arxiv)
+	pct(wikipedia.ID, s.Wikipedia)
+	pct(medium.IDParent, s.Medium)
+	pct(medium.IDPublication, s.MediumPublication)
+	pct(medium.IDProfile, s.MediumProfile)
+	pct(substack.IDParent, s.Substack)
+	pct(substack.IDPublication, s.SubstackPublication)
+	pct(substack.IDPost, s.SubstackPost)
+	pct(substack.IDNotes, s.SubstackNotes)
+	pct(beehiiv.IDParent, s.Beehiiv)
+	pct(beehiiv.IDPublication, s.BeehiivPublication)
+	pct(beehiiv.IDPost, s.BeehiivPost)
+	pct(youtube.ID, s.YouTube)
 }

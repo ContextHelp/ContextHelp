@@ -37,8 +37,11 @@ Add fixtures by:
 
 1. Picking a strategy and a representative URL pattern from its
    `Applies` clauses.
-2. For positive fixtures: pick the strategy ID that should claim, set
-   `min_candidates: 1` (since URL-only candidates are still emit).
+2. For positive fixtures: pick the strategy ID that should claim. Set
+   `min_candidates: 0` for shape-only checks (the strategy must claim
+   the URL but the actual candidate count depends on a real adapter
+   that the offline harness doesn't wire). Bump above 0 only when an
+   adapter-stubbed test path produces a deterministic count.
 3. For negative fixtures: pick a URL that looks platform-shaped but
    shouldn't match (e.g. an api.* host on a platform that ignores
    API subdomains), set `negative: true`.
