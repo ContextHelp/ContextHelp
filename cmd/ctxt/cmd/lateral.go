@@ -19,7 +19,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -142,6 +141,7 @@ func runLateralStart(cmd *cobra.Command, _ []string) error {
 	// network adapter, sqlite adapter, etc. extend cmd/ctxt/cmd/
 	// lateral_wiring.go (P5 follow-on).
 	b := bus.New(bus.WithEnforce(bus.ModeOff))
+	defer func() { _ = b.Close(context.Background()) }()
 	pub := adapterbus.New(b)
 
 	// Build the registry. v1 default config = all strategies disabled
@@ -189,7 +189,6 @@ func runLateralStart(cmd *cobra.Command, _ []string) error {
 	if err := lc.Run(ctx); err != nil && err != context.Canceled {
 		return fmt.Errorf("lateral start: poller: %w", err)
 	}
-	_ = b.Close(context.Background())
 	return nil
 }
 
@@ -214,5 +213,3 @@ func runLateralConfigShow(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// silence unused-import warning when tests aren't running.
-var _ = time.Second

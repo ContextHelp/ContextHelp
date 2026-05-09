@@ -201,6 +201,9 @@ func NewIBR(opts IBROptions) (*IBRFetcher, error) {
 		opts:   opts,
 		binary: resolved,
 		runFunc: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			// #nosec G204 -- name is the resolved ibr binary path
+			// (exec.LookPath above) and args are URLs from the caller's
+			// Fetcher contract; both audited by NewIBR's binary resolution.
 			cmd := exec.CommandContext(ctx, name, args...)
 			return cmd.CombinedOutput()
 		},

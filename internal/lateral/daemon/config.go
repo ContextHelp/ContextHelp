@@ -75,7 +75,7 @@ type Config struct {
 // enabled: false explicitly.
 type strategiesFile struct {
 	JIT struct {
-		Enabled bool `yaml:"enabled"`
+		Enabled *bool `yaml:"enabled"`
 	} `yaml:"jit"`
 
 	GitHub struct {
@@ -214,7 +214,9 @@ func applyStrategiesLayer(cfg *Config, path string) error {
 // field reflects "explicitly set in this layer"; absence preserves
 // the prior layer's value (or the default when no layer touched it).
 func mergeStrategies(cfg *Config, s strategiesFile) {
-	cfg.JIT.Enabled = s.JIT.Enabled
+	if s.JIT.Enabled != nil {
+		cfg.JIT.Enabled = *s.JIT.Enabled
+	}
 
 	if s.GitHub.EnableParent != nil {
 		cfg.GitHub.EnableParent = *s.GitHub.EnableParent

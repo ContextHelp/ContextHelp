@@ -159,6 +159,59 @@ func TestLoadConfig_EmptyStrategiesBlock(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_JITAbsentBlockPreservesLowerLayer pins the precedence
+// fix: a higher-precedence layer that omits the strategies.jit block
+// must NOT silently disable JIT when a lower-precedence layer enabled
+// it. Without the *bool wrapper, "absent" and "explicitly false" looked
+// identical and overwrote prior layers with a zero-value bool.
+func TestLoadConfig_JITAbsentBlockPreservesLowerLayer(t *testing.T) {
+	dir := t.TempDir()
+	user := writeFile(t, dir, "user.yaml", `strategies:
+  jit:
+    enabled: true
+`)
+	// Project layer omits jit entirely (no strategies.jit block).
+	proj := writeFile(t, dir, "project.yaml", `strategies:
+  google:
+    enabled: false
+`)
+	cfg, err := LoadConfig(LoadOptions{
+		UserConfigPath:    user,
+		ProjectConfigPath: proj,
+	})
+	if err != nil {
+		t.Fatalf("LoadConfig err = %v", err)
+	}
+	if !cfg.JIT.Enabled {
+		t.Error("JIT.Enabled = false; want true (user-layer enable preserved when project layer omits jit block)")
+	}
+}
+
+// TestLoadConfig_JITPartialEntryNoOp mirrors TestLoadConfig_PartialStrategyEntryNoOp
+// for JIT: a strategies.jit: {} block (no enabled key) leaves the gate
+// alone. Distinguishes "mentioned but not configured" from "explicitly
+// false."
+func TestLoadConfig_JITPartialEntryNoOp(t *testing.T) {
+	dir := t.TempDir()
+	user := writeFile(t, dir, "user.yaml", `strategies:
+  jit:
+    enabled: true
+`)
+	proj := writeFile(t, dir, "project.yaml", `strategies:
+  jit: {}
+`)
+	cfg, err := LoadConfig(LoadOptions{
+		UserConfigPath:    user,
+		ProjectConfigPath: proj,
+	})
+	if err != nil {
+		t.Fatalf("LoadConfig err = %v", err)
+	}
+	if !cfg.JIT.Enabled {
+		t.Error("JIT.Enabled = false; want true (empty jit block must not flip the gate)")
+	}
+}
+
 // TestLoadConfig_PartialStrategyEntryNoOp asserts that a
 // strategies.<name>: {} block (no enabled key) leaves the gate alone.
 // Distinguishes "explicitly false" from "mentioned but not configured."
