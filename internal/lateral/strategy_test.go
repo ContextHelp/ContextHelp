@@ -45,3 +45,31 @@ func TestCapturedEvent_HintsRoundTrip(t *testing.T) {
 		t.Fatalf("Hints mutated through CapturedEvent: got %#v want %#v", ev.Hints, want)
 	}
 }
+
+// TestActiveContext_AuthorHintsZeroValue pins T-0308's contract:
+// nil AuthorHints means "no author hints" — strategies must treat
+// it as skip-author-scoped-probes.
+func TestActiveContext_AuthorHintsZeroValue(t *testing.T) {
+	ac := ActiveContext{}
+	if ac.AuthorHints != nil {
+		t.Fatalf("zero ActiveContext has non-nil AuthorHints: %#v", ac.AuthorHints)
+	}
+}
+
+// TestActiveContext_AuthorHintsLookup pins basic platform-keyed
+// author hint storage + retrieval.
+func TestActiveContext_AuthorHintsLookup(t *testing.T) {
+	ac := ActiveContext{
+		AuthorHints: map[string]string{
+			"github":   "samber",
+			"x":        "samberdotgo",
+			"linkedin": "samber",
+		},
+	}
+	if got, want := ac.AuthorHints["github"], "samber"; got != want {
+		t.Errorf("AuthorHints[github] = %q, want %q", got, want)
+	}
+	if _, ok := ac.AuthorHints["unknown"]; ok {
+		t.Error("AuthorHints[unknown] returned ok=true; expected zero-value path")
+	}
+}
