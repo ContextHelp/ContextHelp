@@ -63,10 +63,16 @@ func New(st Store, eng *policy.Engine) *Handler {
 func (h *Handler) Promote(ctx context.Context, candidateID string, path Path) (Output, error) {
 	rec, err := h.st.ReadCandidate(ctx, candidateID)
 	if err != nil {
-		return Output{}, err
+		return Output{}, fmt.Errorf("read candidate: %w", err)
 	}
-	meta := rec["metadata"].(map[string]any)
-	lc := meta["lifecycle"].(map[string]any)
+	meta, ok := rec["metadata"].(map[string]any)
+	if !ok {
+		return Output{}, fmt.Errorf("invalid record shape: metadata is not a map")
+	}
+	lc, ok := meta["lifecycle"].(map[string]any)
+	if !ok {
+		return Output{}, fmt.Errorf("invalid record shape: metadata.lifecycle is not a map")
+	}
 	state, _ := lc["state"].(string)
 
 	activation := map[string]any{
@@ -83,25 +89,26 @@ func (h *Handler) Promote(ctx context.Context, candidateID string, path Path) (O
 		return Output{}, fmt.Errorf("promote denied: %w", err)
 	}
 
-	url := rec["source"].(string)
+	url, ok := rec["source"].(string)
+	if !ok {
+		return Output{}, fmt.Errorf("invalid record shape: source is not a string")
+	}
 	canonicalID, err := h.st.KickCanonicalCapture(ctx, url)
 	if err != nil {
 		return Output{}, fmt.Errorf("kick canonical: %w", err)
 	}
-	patch := map[string]any{
-		"metadata": map[string]any{
-			"lifecycle": map[string]any{
-				"state":          string(lifecycle.Promoted),
-				"promotion_path": string(path),
-				"promoted_at":    h.now().Format(time.RFC3339),
-			},
-		},
-	}
+	// mutate lifecycle in-place — preserves all sibling metadata fields
+	// (kind, candidate_type, discovered_by, strategy, scoring, preview, ...)
+	// that a shallow-merge UpdateCandidate would otherwise wipe.
+	lc["state"] = string(lifecycle.Promoted)
+	lc["promotion_path"] = string(path)
+	lc["promoted_at"] = h.now().Format(time.RFC3339)
+	patch := map[string]any{"metadata": meta}
 	if err := h.st.UpdateCandidate(ctx, candidateID, patch); err != nil {
-		return Output{}, err
+		return Output{}, fmt.Errorf("update candidate: %w", err)
 	}
 	if err := h.st.WriteEdge(ctx, canonicalID, candidateID, "promoted_from"); err != nil {
-		return Output{}, err
+		return Output{}, fmt.Errorf("write promoted_from edge: %w", err)
 	}
 	return Output{NewCanonicalID: canonicalID}, nil
 }

@@ -86,6 +86,43 @@ func TestPromote_P2Explicit(t *testing.T) {
 	}
 }
 
+func TestPromote_PreservesSiblingMetadata(t *testing.T) {
+	st := newFakeStore()
+	st.records["o-lc-2"] = map[string]any{
+		"source": "https://x/y",
+		"metadata": map[string]any{
+			"lifecycle":      map[string]any{"state": "probationary"},
+			"kind":           "lateral_candidate",
+			"candidate_type": "sibling_repo",
+			"discovered_by":  "o-parent",
+			"strategy":       "github.owner",
+			"scoring":        map[string]any{"score": 0.7, "signals_used": []string{"session_topic"}},
+			"preview":        map[string]any{"title": "y"},
+		},
+	}
+	h := New(st, newEngine(t))
+	if _, err := h.Promote(context.Background(), "o-lc-2", PathP2Explicit); err != nil {
+		t.Fatal(err)
+	}
+	rec := st.records["o-lc-2"]
+	meta := rec["metadata"].(map[string]any)
+	for _, k := range []string{"kind", "candidate_type", "discovered_by", "strategy", "scoring", "preview"} {
+		if _, ok := meta[k]; !ok {
+			t.Fatalf("metadata.%s was wiped during promotion", k)
+		}
+	}
+	lc := meta["lifecycle"].(map[string]any)
+	if lc["state"] != string(lifecycle.Promoted) {
+		t.Fatalf("expected promoted state, got %v", lc["state"])
+	}
+	if lc["promotion_path"] != string(PathP2Explicit) {
+		t.Fatalf("expected promotion_path=p2_explicit, got %v", lc["promotion_path"])
+	}
+	if _, ok := lc["promoted_at"].(string); !ok {
+		t.Fatal("expected promoted_at to be a string timestamp")
+	}
+}
+
 func TestPromote_RefuseExpiredBeyondWindow(t *testing.T) {
 	st := newFakeStore()
 	st.records["o-lc-3"] = map[string]any{
