@@ -93,10 +93,17 @@ func (s *GitHubStrategy) Preconditions() []string { return nil }
 
 // Applies returns Matches=true when the captured event's SourceURL is on
 // github.com (case-insensitive) and is NOT on the gist subdomain (which
-// GistStrategy claims at higher specificity). Specificity is fixed at
-// SpecificityParent.
+// GistStrategy claims at higher specificity) and is NOT an advisory page
+// (which SecurityAdvisoryStrategy claims). Declining advisory URLs at
+// the parent lets the registry fall through to JIT when the advisory
+// child is disabled — without it, the parent claims the URL, probes
+// produce no candidates (classifier excludes /advisories/*), and JIT
+// never fires. Specificity is fixed at SpecificityParent.
 func (s *GitHubStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) lateral.AppliesResult {
 	if !isGitHubURL(ev.SourceURL) {
+		return lateral.AppliesResult{}
+	}
+	if isAdvisoryURL(ev.SourceURL) {
 		return lateral.AppliesResult{}
 	}
 	return lateral.AppliesResult{Matches: true, Specificity: SpecificityParent}
