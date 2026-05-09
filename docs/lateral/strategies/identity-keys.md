@@ -42,7 +42,10 @@ Strategies set the typed `Candidate.IdentityKey` field directly at
 construction time:
 
 ```go
-import "github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/identitykey"
+import (
+    lateral "github.com/ideacrafterslabs/ctxt/internal/lateral"
+    "github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/identitykey"
+)
 
 cand := lateral.Candidate{
     URL:           url,

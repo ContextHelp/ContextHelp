@@ -75,11 +75,23 @@ type Candidate struct {
 	Strategy      string         // strategy ID that produced this candidate
 	Preview       map[string]any // strategy-supplied preview fields (title, description, stars, etc.) shown pre-promotion; not source of truth
 	// IdentityKey is the canonical opaque key the resolver uses to dedup
-	// candidates across captures. Strategies emit this directly via
-	// identitykey.Build / identitykey.BuildLocalised; the resolver reads
-	// the typed field first and falls back to Preview[identity_key] for
-	// one minor cycle (T-0307 / T-0309). Empty when the strategy has no
-	// canonical id, in which case the resolver falls back to URL match.
+	// candidates across captures. The resolver treats this as an opaque
+	// string — equality is the only operation. Format is up to the
+	// emitting strategy:
+	//
+	//   - Most strategies use the identitykey package's
+	//     <platform>/<entity_type>/<id> shape via identitykey.Build /
+	//     BuildLocalised — see docs/lateral/strategies/identity-keys.md.
+	//   - The github family uses its own @github.<scope>.<value> namespace
+	//     for historical reasons; both formats coexist and dedup
+	//     correctly because the resolver compares strings, not parses
+	//     them.
+	//
+	// During the T-0307/T-0309 migration window the resolver reads the
+	// typed field first and falls back to Preview[identity_key] for
+	// candidates emitted by strategies that haven't migrated yet. Empty
+	// when the strategy has no canonical id, in which case the resolver
+	// falls back to URL match.
 	IdentityKey string
 }
 
