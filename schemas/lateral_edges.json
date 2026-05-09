@@ -1,0 +1,33 @@
+{
+  "title": "lateral_edges",
+  "type": "object",
+  "definitions": {
+    "discovered_by": {
+      "type": "object",
+      "required": ["from", "to", "type"],
+      "properties": {
+        "from": {"type": "string"},
+        "to":   {"type": "string"},
+        "type": {"const": "discovered_by"}
+      }
+    },
+    "refers_to_canonical": {
+      "type": "object",
+      "required": ["from", "to", "type"],
+      "properties": {
+        "from": {"type": "string"},
+        "to":   {"type": "string"},
+        "type": {"const": "refers_to_canonical"}
+      }
+    },
+    "promoted_from": {
+      "type": "object",
+      "required": ["from", "to", "type"],
+      "properties": {
+        "from": {"type": "string"},
+        "to":   {"type": "string"},
+        "type": {"const": "promoted_from"}
+      }
+    }
+  }
+}
