@@ -118,9 +118,11 @@ func Register(reg Registrar, cfg Config, deps SharedDeps) int {
 			cfg, cfg.EnableGist, cfg.EnableSecurityAdvisory))
 	}
 
-	if deps.FailureRecorder != nil {
-		SetFailureRecorder(deps.FailureRecorder)
-	}
+	// Always install the recorder. SetFailureRecorder treats nil as
+	// "reset to noop", which matches the docstring on SharedDeps.
+	// Calling unconditionally avoids leaking a previously installed
+	// recorder across Register invocations (tests, hot reload).
+	SetFailureRecorder(deps.FailureRecorder)
 
 	// Construct a FloorTracker from cfg when caller hasn't supplied one.
 	// Daemon wiring shares a single tracker across the registry by passing

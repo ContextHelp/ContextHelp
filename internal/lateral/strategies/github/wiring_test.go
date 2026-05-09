@@ -161,6 +161,33 @@ func TestRegister_FailureRecorderInstalled(t *testing.T) {
 	SetFailureRecorder(nil)
 }
 
+func TestRegister_NilRecorder_ResetsLeakedRecorder(t *testing.T) {
+	// First Register installs a capturing recorder. Second Register with
+	// FailureRecorder=nil must reset to noop instead of leaving the
+	// first recorder live.
+	called := 0
+	first := &captureRecorder{onSubpath: func() { called++ }}
+	_ = Register(&stubRegistrar{}, DefaultConfig(), SharedDeps{
+		APIClient:       &stubAPIClient{},
+		FailureRecorder: first,
+	})
+	// Sanity: first recorder reachable.
+	recordSubpathFailure("test", "obj", "mech", nil)
+	if called != 1 {
+		t.Fatalf("first recorder called %d times, want 1", called)
+	}
+	// Second Register with nil FailureRecorder must reset.
+	_ = Register(&stubRegistrar{}, DefaultConfig(), SharedDeps{
+		APIClient: &stubAPIClient{},
+	})
+	recordSubpathFailure("test", "obj", "mech", nil)
+	if called != 1 {
+		t.Errorf("first recorder called %d times after second Register, want 1 "+
+			"(prior recorder leaked across registrations)", called)
+	}
+	SetFailureRecorder(nil)
+}
+
 // captureRecorder is a FailureRecorder whose SubpathFailure calls a
 // configurable callback. Used to assert SetFailureRecorder wiring.
 type captureRecorder struct {
