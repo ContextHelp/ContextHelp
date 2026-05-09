@@ -6,11 +6,19 @@ import (
 
 // Sampler shapes per-strategy traffic by hashing a stable input ID
 // (typically lateral.CapturedEvent.ObjectID) and comparing against a
-// percent threshold. Zero or unconfigured percent = full traffic.
+// percent threshold.
+//
+// Map semantics:
+//   - Missing key (unconfigured) → full traffic (Allow returns true).
+//   - Explicit 0 → deny all traffic (Allow returns false). Useful as a
+//     soft kill-switch when an operator wants to stop a strategy
+//     without unregistering it.
+//   - 1..99 → hash-bucketed sampling at the configured percent.
+//   - 100 (or higher, clamped) → full traffic.
 //
 // Per-strategy percent comes from cfg.<Strategy>.SamplePercent in
-// the daemon's layered config. The default is 100 so existing
-// deployments are unaffected by sampler introduction.
+// the daemon's layered config. New deployments don't configure this,
+// so every strategy gets full traffic by default.
 //
 // The hash is stable across process restarts (FNV-1a 32-bit, no salt)
 // so an event that lands in the sampled fraction at t0 will land

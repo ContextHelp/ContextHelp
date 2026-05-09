@@ -3,13 +3,14 @@
 
 Reads JSON output from `ctxt lateral eval metrics --json` runs in
 $OUT_DIR (pr-*.json + baseline-*.json), produces a markdown table to
-$COMMENT_PATH, and exits 1 if any per-strategy precision or recall
-dropped > 0.1 from baseline.
+$COMMENT_PATH, and sets ${GITHUB_OUTPUT}.regressed = "true|false" when
+any per-strategy precision or recall dropped > 0.1 from baseline.
 
-Sets ${GITHUB_OUTPUT}.regressed = "true|false" so the calling step can
-gate on it.
-
-Used by .github/workflows/lateral-eval.yml.
+The script always exits 0 — gating happens in the calling workflow
+step (.github/workflows/lateral-eval.yml's `enforce` step), which
+fails the job when steps.compare.outputs.regressed == 'true'. This
+split lets the artifact upload + PR comment posting steps run on the
+regression path before the workflow fails.
 """
 
 import glob
