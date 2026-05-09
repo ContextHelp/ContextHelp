@@ -177,8 +177,35 @@ func runLateralStart(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("lateral start: lifecycle: %w", err)
 	}
 
+	// Apply per-strategy gate from initial config (T-0328). Operators
+	// flip strategies live by editing the YAML and sending SIGHUP;
+	// the goroutine below re-reads + re-applies on each signal.
+	lc.ApplyGate(cfg)
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	// SIGHUP → reload + re-apply gate. Keeps the daemon's
+	// per-strategy enable / kill-switch flags responsive.
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	defer signal.Stop(hup)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-hup:
+				newCfg, lerr := daemon.LoadConfig(loadOptionsFromCmd(cmd))
+				if lerr != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "lateral: SIGHUP reload failed: %v\n", lerr)
+					continue
+				}
+				lc.ApplyGate(newCfg)
+				fmt.Fprintln(cmd.OutOrStdout(), "lateral: SIGHUP reload applied")
+			}
+		}
+	}()
 
 	if err := lc.Start(ctx); err != nil {
 		return fmt.Errorf("lateral start: subscribe: %w", err)

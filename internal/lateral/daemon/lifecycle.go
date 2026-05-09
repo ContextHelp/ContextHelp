@@ -14,6 +14,7 @@ import (
 
 	lateral "github.com/ideacrafterslabs/ctxt/internal/lateral"
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/jobs"
+	"github.com/ideacrafterslabs/ctxt/internal/lateral/rollout"
 )
 
 // CapturedEventTopic is the bus topic the daemon subscribes to for
@@ -36,6 +37,16 @@ type Lifecycle struct {
 	jobSvc   job.Service
 	workerID string
 	pollIntv time.Duration
+
+	// gate is the runtime per-strategy enable filter. Mutated by
+	// SIGHUP-driven config reloads (T-0328); consulted on the hot
+	// dispatch path before invoking Probe. Nil in tests that don't
+	// care about runtime gating; filtering becomes a no-op.
+	gate *rollout.StrategyGate
+
+	// sampler is the per-strategy traffic-shaping filter (T-0329).
+	// Nil = full traffic to every strategy.
+	sampler *rollout.Sampler
 
 	cancels []bus.Unsubscribe
 
@@ -68,6 +79,17 @@ type LifecycleOptions struct {
 	JobService   job.Service
 	WorkerID     string
 	PollInterval time.Duration
+
+	// Gate is the runtime per-strategy enable filter (T-0328). Nil
+	// is a no-op — Lifecycle constructs an empty gate so callers can
+	// later flip strategies via Lifecycle.Gate().Set without
+	// re-creating the lifecycle. Pass a pre-populated gate when the
+	// daemon already owns it (e.g. config-reload pipeline).
+	Gate *rollout.StrategyGate
+
+	// Sampler is the per-strategy traffic-shaping filter (T-0329).
+	// Nil falls back to full traffic.
+	Sampler *rollout.Sampler
 }
 
 // NewLifecycle wires the lifecycle layer. Validates required deps;
@@ -95,6 +117,10 @@ func NewLifecycle(opts LifecycleOptions) (*Lifecycle, error) {
 	if pollIntv == 0 {
 		pollIntv = 5 * time.Second
 	}
+	gate := opts.Gate
+	if gate == nil {
+		gate = rollout.NewStrategyGate()
+	}
 	return &Lifecycle{
 		registry: opts.Registry,
 		pub:      opts.Publisher,
@@ -102,8 +128,19 @@ func NewLifecycle(opts LifecycleOptions) (*Lifecycle, error) {
 		jobSvc:   svc,
 		workerID: worker,
 		pollIntv: pollIntv,
+		gate:     gate,
+		sampler:  opts.Sampler,
 	}, nil
 }
+
+// Gate returns the runtime strategy gate. Operators / config-reload
+// drivers use this handle to flip per-strategy enabled flags
+// without restarting the daemon.
+func (l *Lifecycle) Gate() *rollout.StrategyGate { return l.gate }
+
+// Sampler returns the runtime traffic-shaping sampler. May be nil
+// when the daemon was wired without one.
+func (l *Lifecycle) Sampler() *rollout.Sampler { return l.sampler }
 
 // Start subscribes to capture events. Idempotent: calling twice
 // re-subscribes (test convenience); production callers invoke once.
@@ -214,6 +251,19 @@ func (l *Lifecycle) handleCaptureEvent(ctx context.Context, e bus.Event) error {
 	chosen := l.registry.Dispatch(ctx, ev)
 	candidates := 0
 	for _, s := range chosen {
+		// Per-strategy runtime gate (T-0328). Operators flip via
+		// SIGHUP-driven config reload; the gate sees the new flag
+		// atomically. Skip silently — a disabled strategy is not
+		// a failure.
+		if !l.gate.Allowed(s.ID()) {
+			continue
+		}
+		// Per-strategy percentage traffic shaping (T-0329). Hash
+		// stable across reloads so the same event consistently
+		// routes to the same strategy fraction.
+		if l.sampler != nil && !l.sampler.Allow(s.ID(), ev.ObjectID) {
+			continue
+		}
 		out, err := s.Probe(ctx, ev, lateral.ActiveContext{})
 		if err != nil {
 			// Emit a scan-failed event for observability; intentionally
@@ -285,6 +335,12 @@ func (l *Lifecycle) EnqueueDirect(ctx context.Context, ev lateral.CapturedEvent)
 		return fmt.Errorf("lifecycle.EnqueueDirect: no strategy matched %s", ev.SourceURL)
 	}
 	for _, s := range chosen {
+		if !l.gate.Allowed(s.ID()) {
+			continue
+		}
+		if l.sampler != nil && !l.sampler.Allow(s.ID(), ev.ObjectID) {
+			continue
+		}
 		if _, err := s.Probe(ctx, ev, lateral.ActiveContext{}); err != nil {
 			return err
 		}
