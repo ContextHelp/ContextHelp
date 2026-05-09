@@ -1,0 +1,242 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Lateral discovery substrate operations — candidate emission, scan failures, recipe usage, reaper health, conversion. Source: ctxt.lateral.* bus events (schemas/lateral_events.json).",
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "iteration": 1,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": ["lateral"],
+      "targetBlank": true,
+      "title": "Lateral runbook",
+      "tooltip": "docs/operations/runbooks/lateral.md",
+      "type": "link",
+      "url": "https://github.com/ideacrafterslabs/ctxt/blob/main/docs/operations/runbooks/lateral.md"
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Candidate emission rate (per strategy)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "ctxt.lateral.scan.completed.candidates_emitted bucketed per strategy_id. Goes to zero on a strategy = signal for the LateralStrategyZeroEmission alert.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "sum by (strategy_id) (rate(ctxt_lateral_scan_completed_candidates_emitted_total[5m]))",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {"drawStyle": "line", "lineWidth": 1, "fillOpacity": 10}
+        }
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "right"}}
+    },
+    {
+      "id": 2,
+      "title": "scan.failed rate by mechanism",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "ctxt.lateral.scan.failed counted by qualifiers.mechanism. Sustained spikes drive LateralScanFailedRate.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "sum by (mechanism) (rate(ctxt_lateral_scan_failed_total[5m]))",
+          "legendFormat": "{{mechanism}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "ops"}},
+      "options": {"legend": {"displayMode": "table", "placement": "right"}}
+    },
+    {
+      "id": 3,
+      "title": "subpath.failed by reason (heatmap)",
+      "type": "heatmap",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "ctxt.lateral.subpath.failed counted by qualifiers.reason — fetch_timeout, parse_error, redirect_loop, etc. Warm regions = recurring failure modes.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(ctxt_lateral_subpath_failed_total[5m]))",
+          "format": "heatmap",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "recipe.served rate by circumstance",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "ctxt.lateral.recipe.served — sustained non-zero == LLM outage stuck. Drives LateralRecipeServedSustained.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "sum by (circumstance) (rate(ctxt_lateral_recipe_served_total[5m]))",
+          "legendFormat": "{{circumstance}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.01},
+              {"color": "red", "value": 0.1}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Candidate → promoted conversion rate (per strategy)",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "promoted / emitted within rolling 14-day window. Sourced from ctxt.lateral.candidate.created + ctxt.lateral.candidate.promoted via the eval.ConversionAggregator.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {
+          "expr": "ctxt_lateral_conversion_rate",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.1},
+              {"color": "green", "value": 0.3}
+            ]
+          }
+        }
+      },
+      "options": {"colorMode": "background", "graphMode": "area"}
+    },
+    {
+      "id": 6,
+      "title": "Reaper cycle health",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Last reaper cycle completion + duration. Stalled cycles trigger LateralReaperCycleStalled.",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 16},
+      "targets": [
+        {
+          "expr": "time() - max(ctxt_lateral_reaper_cycle_completed_timestamp_seconds)",
+          "legendFormat": "since last completion",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 600},
+              {"color": "red", "value": 1800}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Reaper duration_ms (last cycle)",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 16},
+      "targets": [
+        {
+          "expr": "max(ctxt_lateral_reaper_cycle_duration_ms)",
+          "legendFormat": "duration",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "ms"}}
+    },
+    {
+      "id": 8,
+      "title": "Per-strategy quality score",
+      "type": "bargauge",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Weighted (0.5/0.5) average of offline precision + production conversion rate. Sourced from observe.Quality (T-0333).",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "targets": [
+        {
+          "expr": "ctxt_lateral_quality_score",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.4},
+              {"color": "green", "value": 0.7}
+            ]
+          }
+        }
+      },
+      "options": {"orientation": "horizontal", "displayMode": "lcd"}
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 36,
+  "style": "dark",
+  "tags": ["lateral", "ctxt", "discovery"],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {"text": "Prometheus", "value": "prometheus"},
+        "hide": 0
+      }
+    ]
+  },
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "",
+  "title": "Lateral discovery — operations",
+  "uid": "ctxt-lateral-ops",
+  "version": 1
+}
