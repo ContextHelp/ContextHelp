@@ -37,6 +37,18 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      # go.mod ships local-path replace directives for hop.top/kit and
+      # hop.top/c12n (developer convenience). Strip them before build
+      # so the published tags resolve via the module proxy. NB: this
+      # workflow handles the replace problem locally — fixing it
+      # repo-wide is out of scope here (main ci.yml has the same
+      # issue; tracked separately).
+      - name: Drop local-path replaces (PR + baseline)
+        run: |
+          for d in pr baseline; do
+            (cd "$d" && go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n)
+          done
+
       # Build the eval CLI for both branches so we compare apples to
       # apples. baseline produces baseline.json; PR produces pr.json.
       - name: Build PR ctxt
