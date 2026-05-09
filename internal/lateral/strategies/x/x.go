@@ -20,9 +20,9 @@
 // For a generic path the strategy falls back to the apex profile (best
 // effort dedup target).
 //
-// The strategy does NOT call x.com directly. The daemon supplies an
-// XClient via XClient interface; here only URL parsing + sub-path
-// generation runs.
+// The strategy does NOT call x.com directly. Identity keys are
+// username-keyed; a future patch may re-introduce a daemon-side client
+// interface for username→user_id resolution.
 package x
 
 import (
@@ -49,26 +49,12 @@ const (
 	CandidateTypeLikes   = "x_likes"
 )
 
-// XClient is the daemon-side fetcher interface the strategy calls when
-// it needs a real network round-trip. The strategy file in this package
-// does not import an SDK; the daemon adapts a concrete client onto this
-// interface and passes it via Strategy.Client.
-type XClient interface {
-	// FetchProfile resolves a username into a stable user_id when one
-	// is known. Strategy uses the value (when non-empty) as the
-	// identity-key id segment.
-	FetchProfile(ctx context.Context, username string) (userID string, err error)
-}
+// Strategy implements lateral.LateralStrategy for X. It is purely
+// URL-structural; identity keys are username-keyed.
+type Strategy struct{}
 
-// Strategy implements lateral.LateralStrategy for X.
-type Strategy struct {
-	// Client is optional; when nil, identity keys fall back to
-	// username-keyed entries.
-	Client XClient
-}
-
-// New constructs a Strategy with the given client (may be nil).
-func New(client XClient) *Strategy { return &Strategy{Client: client} }
+// New constructs a Strategy.
+func New() *Strategy { return &Strategy{} }
 
 // ID returns the registry identifier.
 func (*Strategy) ID() string { return ID }
@@ -111,10 +97,8 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 	if err != nil {
 		return nil, err
 	}
-	host := strings.ToLower(u.Hostname())
 	// Normalise to x.com so dedup keys collapse twitter→x.
 	apex := "https://x.com"
-	_ = host
 
 	parts := pathSegments(u.Path)
 	if len(parts) == 0 {
@@ -190,9 +174,9 @@ func hostOf(rawURL string) string {
 	return strings.ToLower(u.Hostname())
 }
 
-// pathSegments splits URL path into non-empty lowercased segments.
-// Username casing is preserved (X is case-insensitive on lookup but
-// canonical-cased URLs improve cache hits).
+// pathSegments splits URL path into non-empty segments. Case is
+// preserved (callers expect username casing — X is case-insensitive on
+// lookup but canonical-cased URLs improve cache hits).
 func pathSegments(p string) []string {
 	p = strings.Trim(p, "/")
 	if p == "" {

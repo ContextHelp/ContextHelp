@@ -19,7 +19,7 @@ func TestApplies(t *testing.T) {
 		{"https://example.com/x", false, 0},
 		{"", false, 0},
 	}
-	s := New(nil)
+	s := New()
 	for _, tc := range cases {
 		t.Run(tc.url, func(t *testing.T) {
 			res := s.Applies(context.Background(), lateral.CapturedEvent{SourceURL: tc.url})
@@ -34,7 +34,7 @@ func TestApplies(t *testing.T) {
 }
 
 func TestProbe_Tweet(t *testing.T) {
-	s := New(nil)
+	s := New()
 	cands, err := s.Probe(context.Background(), lateral.CapturedEvent{
 		SourceURL: "https://x.com/jadb/status/1234567890",
 	}, lateral.ActiveContext{})
@@ -50,7 +50,7 @@ func TestProbe_Tweet(t *testing.T) {
 }
 
 func TestProbe_BareProfile(t *testing.T) {
-	s := New(nil)
+	s := New()
 	cands, err := s.Probe(context.Background(), lateral.CapturedEvent{
 		SourceURL: "https://twitter.com/jadb",
 	}, lateral.ActiveContext{})
@@ -72,7 +72,7 @@ func TestProbe_BareProfile(t *testing.T) {
 }
 
 func TestProbe_ReservedUser(t *testing.T) {
-	s := New(nil)
+	s := New()
 	cands, _ := s.Probe(context.Background(), lateral.CapturedEvent{
 		SourceURL: "https://x.com/search?q=foo",
 	}, lateral.ActiveContext{})
@@ -82,7 +82,7 @@ func TestProbe_ReservedUser(t *testing.T) {
 }
 
 func TestProbe_HasIdentityKey(t *testing.T) {
-	s := New(nil)
+	s := New()
 	cands, _ := s.Probe(context.Background(), lateral.CapturedEvent{
 		SourceURL: "https://x.com/jadb/status/1",
 	}, lateral.ActiveContext{})
@@ -94,7 +94,7 @@ func TestProbe_HasIdentityKey(t *testing.T) {
 }
 
 func TestStrategyMetadata(t *testing.T) {
-	s := New(nil)
+	s := New()
 	if s.ID() != ID {
 		t.Fatalf("ID mismatch")
 	}

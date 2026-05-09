@@ -33,8 +33,11 @@ intentionally no-op until daemon-side fetcher gains those surfaces.
 
 ## Wiring
 
-`linkedin.New(client)` takes a `LinkedInClient.ResolveSlug` for
-slug→id resolution. Strategy degrades cleanly without it.
+`linkedin.New()` takes no client. The strategy is purely
+URL-structural: it parses the captured URL and emits sub-path probe
+candidates. Identity keys are slug-keyed. A future patch may
+re-introduce a daemon-side client for slug → stable-id resolution;
+until it does, no wiring is required.
 
 ## Limits
 

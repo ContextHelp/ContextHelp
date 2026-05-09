@@ -17,7 +17,7 @@ func TestApplies(t *testing.T) {
 		{"https://business.linkedin.com/talent", true},
 		{"https://example.com/in/foo", false},
 	}
-	s := New(nil)
+	s := New()
 	for _, tc := range cases {
 		if got := s.Applies(context.Background(), lateral.CapturedEvent{SourceURL: tc.url}); got.Matches != tc.matches {
 			t.Errorf("%s: matches=%v want=%v", tc.url, got.Matches, tc.matches)
@@ -37,7 +37,7 @@ func TestProbe(t *testing.T) {
 		{"post", "https://www.linkedin.com/posts/jadbitar_hello-activity-1234", CandidateTypePost},
 		{"pulse", "https://www.linkedin.com/pulse/some-slug", CandidateTypeArticle},
 	}
-	s := New(nil)
+	s := New()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cands, err := s.Probe(context.Background(), lateral.CapturedEvent{SourceURL: tc.url}, lateral.ActiveContext{})
@@ -61,7 +61,7 @@ func TestProbe(t *testing.T) {
 }
 
 func TestProbe_PostEmitsAuthorProfile(t *testing.T) {
-	s := New(nil)
+	s := New()
 	cands, _ := s.Probe(context.Background(), lateral.CapturedEvent{
 		SourceURL: "https://www.linkedin.com/posts/jadbitar_some-activity-9999",
 	}, lateral.ActiveContext{})
@@ -77,7 +77,7 @@ func TestProbe_PostEmitsAuthorProfile(t *testing.T) {
 }
 
 func TestProbe_UnknownPathReturnsEmpty(t *testing.T) {
-	s := New(nil)
+	s := New()
 	cands, _ := s.Probe(context.Background(), lateral.CapturedEvent{
 		SourceURL: "https://www.linkedin.com/jobs/view/12345",
 	}, lateral.ActiveContext{})
