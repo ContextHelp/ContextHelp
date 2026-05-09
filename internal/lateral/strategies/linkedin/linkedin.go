@@ -87,7 +87,7 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 				URL:           apex + "/in/" + slug + "/recent-activity/all/",
 				CandidateType: CandidateTypeRecent,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"slug": slug}, identitykey.Build("linkedin", identitykey.EntityProfile, slug+"/recent")),
+				Preview:       identitykey.Set(map[string]any{"slug": slug}, identitykey.Build("linkedin", identitykey.EntityProfile, slug, "recent")),
 			},
 		)
 	case "company":
@@ -106,13 +106,13 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 				URL:           apex + "/company/" + slug + "/people/",
 				CandidateType: CandidateTypeOrg,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"slug": slug, "facet": "people"}, identitykey.Build("linkedin", identitykey.EntityOrg, slug+"/people")),
+				Preview:       identitykey.Set(map[string]any{"slug": slug, "facet": "people"}, identitykey.Build("linkedin", identitykey.EntityOrg, slug, "people")),
 			},
 			lateral.Candidate{
 				URL:           apex + "/company/" + slug + "/posts/",
 				CandidateType: CandidateTypeOrg,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"slug": slug, "facet": "posts"}, identitykey.Build("linkedin", identitykey.EntityOrg, slug+"/posts")),
+				Preview:       identitykey.Set(map[string]any{"slug": slug, "facet": "posts"}, identitykey.Build("linkedin", identitykey.EntityOrg, slug, "posts")),
 			},
 		)
 	case "school":

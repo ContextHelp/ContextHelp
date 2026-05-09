@@ -59,18 +59,18 @@ func (s *SearchStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ 
 		urls, err := s.Client.SearchTopResults(ctx, q, limit)
 		if err == nil {
 			for _, ru := range urls {
-				// Skip URLs that don't yield a host-backed id; otherwise
-				// the result identity key collapses to `q|` and dedups
-				// against every other invalid result.
-				hb := identitykey.HostBackedID(ru)
-				if hb == "" {
+				// Skip URLs that don't yield host-backed id parts;
+				// otherwise the result identity key collapses to `q|`
+				// and dedups against every other invalid result.
+				hbParts := identitykey.HostBackedIDParts(ru)
+				if hbParts == nil {
 					continue
 				}
 				out = append(out, lateral.Candidate{
 					URL:           ru,
 					CandidateType: CandidateTypeResult,
 					Strategy:      IDSearch,
-					Preview:       identitykey.Set(map[string]any{"query": q, "result_url": ru}, identitykey.Build("google", identitykey.EntitySearch, q+"|"+hb)),
+					Preview:       identitykey.Set(map[string]any{"query": q, "result_url": ru}, identitykey.Build("google", identitykey.EntitySearch, q+"|"+strings.Join(hbParts, "/"))),
 				})
 			}
 		}

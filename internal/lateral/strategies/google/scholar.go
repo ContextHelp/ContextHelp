@@ -71,11 +71,15 @@ func (s *ScholarStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _
 			}}
 			if s.Client != nil {
 				if author, err := s.Client.ScholarAuthor(ctx, query); err == nil && author != "" {
+					hbParts := identitykey.HostBackedIDParts(author)
+					if hbParts == nil {
+						return out, nil
+					}
 					out = append(out, lateral.Candidate{
 						URL:           author,
 						CandidateType: CandidateTypeAuthor,
 						Strategy:      IDScholar,
-						Preview:       identitykey.Set(map[string]any{"author_url": author}, identitykey.Build("scholar", identitykey.EntityProfile, identitykey.HostBackedID(author))),
+						Preview:       identitykey.Set(map[string]any{"author_url": author}, identitykey.Build("scholar", identitykey.EntityProfile, hbParts...)),
 					})
 				}
 			}
