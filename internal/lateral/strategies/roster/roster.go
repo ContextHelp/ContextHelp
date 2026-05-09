@@ -164,28 +164,31 @@ func Register(reg *lateral.Registry, g Gates, deps Deps) {
 // AllEnabled returns a Gates value with every flag explicitly enabled.
 // Useful for tests and for daemon code paths that want to express
 // "every strategy on" without relying on the zero-value default.
+//
+// Each pointer field is allocated separately so callers can mutate one
+// flag without affecting the others.
 func AllEnabled() Gates {
-	t := true
+	on := func() *bool { v := true; return &v }
 	return Gates{
-		GoogleStrategy:              &t,
-		GoogleSearchStrategy:        &t,
-		GoogleScholarStrategy:       &t,
-		GoogleTrendsStrategy:        &t,
-		GoogleNewsStrategy:          &t,
-		XStrategy:                   &t,
-		LinkedInStrategy:            &t,
-		ArxivStrategy:               &t,
-		WikipediaStrategy:           &t,
-		MediumStrategy:              &t,
-		MediumPublicationStrategy:   &t,
-		MediumProfileStrategy:       &t,
-		SubstackStrategy:            &t,
-		SubstackPublicationStrategy: &t,
-		SubstackPostStrategy:        &t,
-		SubstackNotesStrategy:       &t,
-		BeehiivStrategy:             &t,
-		BeehiivPublicationStrategy:  &t,
-		BeehiivPostStrategy:         &t,
-		YouTubeStrategy:             &t,
+		GoogleStrategy:              on(),
+		GoogleSearchStrategy:        on(),
+		GoogleScholarStrategy:       on(),
+		GoogleTrendsStrategy:        on(),
+		GoogleNewsStrategy:          on(),
+		XStrategy:                   on(),
+		LinkedInStrategy:            on(),
+		ArxivStrategy:               on(),
+		WikipediaStrategy:           on(),
+		MediumStrategy:              on(),
+		MediumPublicationStrategy:   on(),
+		MediumProfileStrategy:       on(),
+		SubstackStrategy:            on(),
+		SubstackPublicationStrategy: on(),
+		SubstackPostStrategy:        on(),
+		SubstackNotesStrategy:       on(),
+		BeehiivStrategy:             on(),
+		BeehiivPublicationStrategy:  on(),
+		BeehiivPostStrategy:         on(),
+		YouTubeStrategy:             on(),
 	}
 }
