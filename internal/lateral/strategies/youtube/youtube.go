@@ -135,7 +135,7 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 				URL:           apex + "/channel/" + ch + "/videos",
 				CandidateType: CandidateTypeUploads,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"channel_id": ch, "facet": "uploads"}, identitykey.Build("youtube", identitykey.EntityChannel, ch+"/uploads")),
+				Preview:       identitykey.Set(map[string]any{"channel_id": ch, "facet": "uploads"}, identitykey.Build("youtube", identitykey.EntityChannel, ch, "uploads")),
 			},
 		}, nil
 	}
@@ -194,7 +194,7 @@ func (s *Strategy) channelCandidates(ctx context.Context, apex, kind, vanity str
 					URL:           apex + "/channel/" + ch + "/videos",
 					CandidateType: CandidateTypeUploads,
 					Strategy:      ID,
-					Preview:       identitykey.Set(map[string]any{"channel_id": ch, "facet": "uploads"}, identitykey.Build("youtube", identitykey.EntityChannel, ch+"/uploads")),
+					Preview:       identitykey.Set(map[string]any{"channel_id": ch, "facet": "uploads"}, identitykey.Build("youtube", identitykey.EntityChannel, ch, "uploads")),
 				},
 			)
 		}

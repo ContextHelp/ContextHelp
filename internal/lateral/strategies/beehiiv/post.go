@@ -45,7 +45,7 @@ func (s *PostStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ la
 	root := canonicalRoot(slug)
 	postSlug := parts[1]
 
-	postKey := identitykey.Build("beehiiv", identitykey.EntityPost, slug+"/"+postSlug)
+	postKey := identitykey.Build("beehiiv", identitykey.EntityPost, slug, postSlug)
 	pubKey := identitykey.Build("beehiiv", identitykey.EntityPublication, slug)
 
 	return []lateral.Candidate{
