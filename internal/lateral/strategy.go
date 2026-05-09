@@ -74,6 +74,13 @@ type Candidate struct {
 	CandidateType string         // sibling_repo, owner_profile, sponsor_page, etc.
 	Strategy      string         // strategy ID that produced this candidate
 	Preview       map[string]any // strategy-supplied preview fields (title, description, stars, etc.) shown pre-promotion; not source of truth
+	// IdentityKey is the canonical opaque key the resolver uses to dedup
+	// candidates across captures. Strategies emit this directly via
+	// identitykey.Build / identitykey.BuildLocalised; the resolver reads
+	// the typed field first and falls back to Preview[identity_key] for
+	// one minor cycle (T-0307 / T-0309). Empty when the strategy has no
+	// canonical id, in which case the resolver falls back to URL match.
+	IdentityKey string
 }
 
 // ActiveContext is the blended-scoring input passed to Probe(). Strategies

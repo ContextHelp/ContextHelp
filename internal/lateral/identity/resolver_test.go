@@ -77,3 +77,63 @@ func TestResolver_IdentityKeyFromPreview(t *testing.T) {
 		t.Fatalf("expected edge-only via identity key, got %+v", res)
 	}
 }
+
+// TestResolver_IdentityKeyFromTypedField pins T-0307: the typed
+// Candidate.IdentityKey reaches FindByIdentityKey just like the legacy
+// Preview-map form.
+func TestResolver_IdentityKeyFromTypedField(t *testing.T) {
+	g := &fakeGraph{byKey: map[string]string{"github/owner/foo": "o-foo"}}
+	r := NewResolver(g)
+	res, err := r.Resolve(context.Background(), Candidate{
+		URL:         "https://github.com/foo",
+		IdentityKey: "github/owner/foo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.EdgeOnly || res.CanonicalID != "o-foo" {
+		t.Fatalf("expected edge-only via typed key, got %+v", res)
+	}
+}
+
+// TestResolver_TypedFieldWinsOverPreview pins the precedence rule:
+// when both forms are set with different non-empty values, the typed
+// field wins. This makes the migration from Preview-map to typed-field
+// safe — a stale Preview entry can't override a freshly-set typed key.
+func TestResolver_TypedFieldWinsOverPreview(t *testing.T) {
+	g := &fakeGraph{byKey: map[string]string{
+		"github/owner/typed":   "o-typed",
+		"github/owner/preview": "o-preview",
+	}}
+	r := NewResolver(g)
+	res, err := r.Resolve(context.Background(), Candidate{
+		URL:         "https://example",
+		IdentityKey: "github/owner/typed",
+		Preview:     preview("github/owner/preview"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.EdgeOnly || res.CanonicalID != "o-typed" {
+		t.Fatalf("expected typed field to win; got %+v", res)
+	}
+}
+
+// TestResolver_TypedFieldMissingFallsBackToPreview pins that an empty
+// typed field doesn't short-circuit the Preview-map fallback during
+// the T-0309 migration window.
+func TestResolver_TypedFieldMissingFallsBackToPreview(t *testing.T) {
+	g := &fakeGraph{byKey: map[string]string{"github/owner/foo": "o-foo"}}
+	r := NewResolver(g)
+	res, err := r.Resolve(context.Background(), Candidate{
+		URL:         "https://github.com/foo",
+		IdentityKey: "",
+		Preview:     preview("github/owner/foo"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.EdgeOnly || res.CanonicalID != "o-foo" {
+		t.Fatalf("expected Preview-map fallback to resolve, got %+v", res)
+	}
+}

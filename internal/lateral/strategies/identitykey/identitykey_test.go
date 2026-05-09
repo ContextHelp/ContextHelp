@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/lateral"
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/identitykey"
 )
 
@@ -287,6 +288,51 @@ func TestSet_OverwritesExisting(t *testing.T) {
 	identitykey.Set(preview, "new")
 	if v := preview[identitykey.KeyField]; v != "new" {
 		t.Fatalf("Set didn't overwrite: %v", v)
+	}
+}
+
+// TestOf_TypedFieldWins pins T-0307: Of returns the typed
+// IdentityKey field when set, even when Preview also carries a
+// (different) entry. Migration window precedence — typed wins.
+func TestOf_TypedFieldWins(t *testing.T) {
+	c := lateral.Candidate{
+		IdentityKey: "github/owner/typed",
+		Preview:     map[string]any{identitykey.KeyField: "github/owner/preview"},
+	}
+	if got := identitykey.Of(c); got != "github/owner/typed" {
+		t.Fatalf("Of typed-wins = %q, want github/owner/typed", got)
+	}
+}
+
+// TestOf_FallsBackToPreview pins that with an empty typed field, Of
+// reads the legacy Preview entry (T-0309 backward-compat).
+func TestOf_FallsBackToPreview(t *testing.T) {
+	c := lateral.Candidate{
+		Preview: map[string]any{identitykey.KeyField: "substack/publication/foo"},
+	}
+	if got := identitykey.Of(c); got != "substack/publication/foo" {
+		t.Fatalf("Of preview-fallback = %q, want substack/publication/foo", got)
+	}
+}
+
+// TestOf_BothEmpty returns the empty string so callers fall through
+// to URL match.
+func TestOf_BothEmpty(t *testing.T) {
+	if got := identitykey.Of(lateral.Candidate{URL: "https://example"}); got != "" {
+		t.Fatalf("Of empty = %q, want \"\"", got)
+	}
+}
+
+// TestSetField writes onto the typed field and leaves Preview alone.
+// Documented contract: SetField does NOT also write Preview[KeyField].
+func TestSetField(t *testing.T) {
+	c := lateral.Candidate{Preview: map[string]any{"other": "x"}}
+	c = identitykey.SetField(c, "github/owner/jadb")
+	if c.IdentityKey != "github/owner/jadb" {
+		t.Fatalf("SetField IdentityKey = %q, want github/owner/jadb", c.IdentityKey)
+	}
+	if _, exists := c.Preview[identitykey.KeyField]; exists {
+		t.Errorf("SetField wrote Preview[KeyField] — must not")
 	}
 }
 
