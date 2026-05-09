@@ -2,6 +2,22 @@ package pageshape
 
 import "strings"
 
+// Label is a page-shape classification label. Values correspond to the
+// shape-keyed strategies in the lateral design (ProductPageStrategy etc.,
+// minus the "Strategy" suffix). T22 and T23 consume these constants
+// directly; never compare against bare string literals.
+type Label string
+
+const (
+	LabelPricingPage    Label = "PricingPage"
+	LabelAboutPage      Label = "AboutPage"
+	LabelProductPage    Label = "ProductPage"
+	LabelEcommerceStore Label = "EcommerceStore"
+	LabelBlog           Label = "Blog"
+	LabelJobPosting     Label = "JobPosting"
+	LabelEventPage      Label = "EventPage"
+)
+
 // Input is what the heuristic classifier receives. URL is required; HTML may
 // be empty (URL-only heuristics still apply).
 type Input struct {
@@ -24,39 +40,50 @@ type Heuristic struct{}
 // sets) can be added without an API break.
 func NewHeuristic() *Heuristic { return &Heuristic{} }
 
-// Classify returns the list of page-shape labels matched by URL or HTML
-// signatures. Order is determined by rule firing, not by confidence.
-// Caller is responsible for deduping if a label can fire from multiple
-// rules (current rules avoid intra-call duplicates).
-func (h *Heuristic) Classify(in Input) []string {
-	var out []string
+// Classify returns the deduplicated list of page-shape labels matched by
+// URL or HTML signatures. Order is determined by rule firing, not by
+// confidence. A label is included at most once even if multiple rules
+// fire for it (e.g. a Shopify product page with JSON-LD @type:product
+// hits both rule #3 and rule #5 but appears once).
+//
+// When Classify returns an empty slice, downstream layers (recipe cache,
+// LLM fallback) take over.
+func (h *Heuristic) Classify(in Input) []Label {
+	var out []Label
+	seen := map[Label]bool{}
+	add := func(l Label) {
+		if !seen[l] {
+			seen[l] = true
+			out = append(out, l)
+		}
+	}
 	url := strings.ToLower(in.URL)
 	html := strings.ToLower(in.HTML)
 
 	if strings.Contains(url, "/pricing") {
-		out = append(out, "PricingPage")
+		add(LabelPricingPage)
 	}
 	if strings.HasSuffix(url, "/about") || strings.HasSuffix(url, "/team") || strings.HasSuffix(url, "/company") {
-		out = append(out, "AboutPage")
+		add(LabelAboutPage)
 	}
 	if strings.Contains(html, "cdn.shopify.com") || strings.Contains(html, "myshopify.com") {
 		if strings.Contains(url, "/products/") {
-			out = append(out, "ProductPage")
+			add(LabelProductPage)
 		} else {
-			out = append(out, "EcommerceStore")
+			add(LabelEcommerceStore)
 		}
 	}
 	if strings.Contains(html, `type="application/rss+xml"`) || strings.Contains(html, `type='application/rss+xml'`) {
-		out = append(out, "Blog")
+		add(LabelBlog)
 	}
 	if strings.Contains(html, `"@type":"product"`) || strings.Contains(html, `"@type": "product"`) {
-		out = append(out, "ProductPage")
+		add(LabelProductPage)
 	}
 	if strings.Contains(html, `"@type":"jobposting"`) {
-		out = append(out, "JobPosting")
+		add(LabelJobPosting)
 	}
 	if strings.Contains(html, `"@type":"event"`) {
-		out = append(out, "EventPage")
+		add(LabelEventPage)
 	}
 	return out
 }
