@@ -43,11 +43,22 @@ var lateralEvalReplayCmd = &cobra.Command{
 	RunE:  runLateralEvalReplay,
 }
 
+var lateralEvalMetricsCmd = &cobra.Command{
+	Use:   "metrics <fixtures.jsonl>",
+	Short: "Replay + print per-strategy precision/recall/negative-pass table",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runLateralEvalMetrics,
+}
+
 func init() {
 	lateralCmd.AddCommand(lateralEvalCmd)
 	lateralEvalCmd.AddCommand(lateralEvalReplayCmd)
+	lateralEvalCmd.AddCommand(lateralEvalMetricsCmd)
 
-	lateralEvalReplayCmd.Flags().String("lateral-config", "", "extra config file appended as the highest-priority layer")
+	for _, c := range []*cobra.Command{lateralEvalReplayCmd, lateralEvalMetricsCmd} {
+		c.Flags().String("lateral-config", "", "extra config file appended as the highest-priority layer")
+	}
+	lateralEvalMetricsCmd.Flags().Bool("json", false, "emit JSON instead of the default text table")
 }
 
 // buildEvalRegistry constructs a registry suitable for offline replay.
@@ -86,5 +97,28 @@ func runLateralEvalReplay(cmd *cobra.Command, args []string) error {
 	if err := enc.Encode(report); err != nil {
 		return fmt.Errorf("lateral eval replay: encode: %w", err)
 	}
+	return nil
+}
+
+func runLateralEvalMetrics(cmd *cobra.Command, args []string) error {
+	reg, err := buildEvalRegistry(cmd)
+	if err != nil {
+		return fmt.Errorf("lateral eval metrics: %w", err)
+	}
+	report, err := eval.Replay(context.Background(), reg, args[0])
+	if err != nil {
+		return fmt.Errorf("lateral eval metrics: %w", err)
+	}
+	metrics := eval.ComputeMetrics(report)
+	jsonOut, _ := cmd.Flags().GetBool("json")
+	if jsonOut {
+		enc := json.NewEncoder(cmd.OutOrStdout())
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(metrics); err != nil {
+			return fmt.Errorf("lateral eval metrics: encode: %w", err)
+		}
+		return nil
+	}
+	fmt.Fprint(cmd.OutOrStdout(), eval.RenderMetricsTable(metrics))
 	return nil
 }
