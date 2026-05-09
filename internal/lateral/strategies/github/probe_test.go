@@ -300,6 +300,89 @@ func TestProbePR_FullClient_EmitsAllTypes(t *testing.T) {
 	}
 }
 
+// TestProbePR_AuthorHints_FiresAuthoredPRs pins T-0308: when
+// ActiveContext.AuthorHints["github"] is set, probePR fetches the
+// author's other PRs and emits author_other_pr candidates.
+func TestProbePR_AuthorHints_FiresAuthoredPRs(t *testing.T) {
+	called := false
+	api := &stubAPIClient{
+		listAuthoredPRsFn: func(_ context.Context, login string, limit int) ([]PullRequestSummary, error) {
+			called = true
+			if login != "samber" {
+				t.Errorf("ListAuthoredPRs login = %q, want samber", login)
+			}
+			if limit != 25 {
+				t.Errorf("ListAuthoredPRs limit = %d, want 25", limit)
+			}
+			return []PullRequestSummary{{Owner: "samber", Repo: "lo", Number: 7, Author: "samber"}}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/pull/42"},
+		lateral.ActiveContext{AuthorHints: map[string]string{"github": "samber"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Fatal("ListAuthoredPRs not called despite AuthorHints set")
+	}
+	if !hasType(got, TypeAuthorPR) {
+		t.Errorf("missing %q in %v", TypeAuthorPR, candidateTypes(got))
+	}
+}
+
+// TestProbePR_NoAuthorHints_SkipsAuthoredPRs pins the negative path:
+// without AuthorHints["github"], probePR does NOT fetch authored PRs.
+// This is the seam — the existence of AuthorHints unlocks the probe.
+func TestProbePR_NoAuthorHints_SkipsAuthoredPRs(t *testing.T) {
+	called := false
+	api := &stubAPIClient{
+		listAuthoredPRsFn: func(_ context.Context, _ string, _ int) ([]PullRequestSummary, error) {
+			called = true
+			return nil, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, _ := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/pull/42"},
+		lateral.ActiveContext{})
+	if called {
+		t.Error("ListAuthoredPRs called without AuthorHints set")
+	}
+	if hasType(got, TypeAuthorPR) {
+		t.Errorf("emitted %q without author hint; got %v", TypeAuthorPR, candidateTypes(got))
+	}
+}
+
+// TestProbeIssue_AuthorHints_FiresAuthoredIssues mirrors the PR test
+// for the issue probe.
+func TestProbeIssue_AuthorHints_FiresAuthoredIssues(t *testing.T) {
+	called := false
+	api := &stubAPIClient{
+		listAuthoredIssuesFn: func(_ context.Context, login string, _ int) ([]IssueSummary, error) {
+			called = true
+			if login != "samber" {
+				t.Errorf("ListAuthoredIssues login = %q, want samber", login)
+			}
+			return []IssueSummary{{Owner: "samber", Repo: "lo", Number: 9, Author: "samber"}}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/issues/3"},
+		lateral.ActiveContext{AuthorHints: map[string]string{"github": "samber"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Fatal("ListAuthoredIssues not called despite AuthorHints set")
+	}
+	if !hasType(got, TypeAuthorIssue) {
+		t.Errorf("missing %q in %v", TypeAuthorIssue, candidateTypes(got))
+	}
+}
+
 func TestProbePR_PullsListView_NoNumber_SkipsReviewers(t *testing.T) {
 	reviewerCalled := false
 	api := &stubAPIClient{

@@ -90,6 +90,17 @@ type ActiveContext struct {
 	CaptureWindow    map[string]float64 // 30d aggregate; always present once captures exist
 	InterestRegistry map[string]float64 // active interests
 	Fingerprint      string             // hash for triage caching
+	// AuthorHints carries platform-keyed sticky author identifiers
+	// resolved by capture-pipeline session middleware. Keys are platform
+	// IDs ("github", "x", "linkedin", ...); values are the
+	// platform-specific author identifier (github login, x username,
+	// etc.). Strategies consult AuthorHints to unlock author-scoped
+	// probes (e.g. github author_other_pr / author_other_issue) without
+	// having to derive the author from the captured URL.
+	//
+	// Nil / missing key = no author hint for that platform; strategies
+	// MUST treat that as "skip the author-scoped probe."
+	AuthorHints map[string]string
 }
 
 // LateralStrategy is the per-source-or-shape contract. Implementations live
