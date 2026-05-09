@@ -172,16 +172,12 @@ func (s *GitHubStrategy) probePR(ctx context.Context, ev lateral.CapturedEvent, 
 	}
 
 	// Author's other PRs: use the captured PR's author signal in the
-	// event's preview if available; otherwise fall back to fetching from
-	// the PR endpoint. v1 reads author from the event's preview when the
-	// daemon has populated it; without that, we skip author-based
-	// candidates rather than incur an extra fetch.
-	//
-	// The CapturedEvent type doesn't carry preview today (substrate is a
-	// thin envelope). Author lookup therefore happens via the API on the
-	// PR endpoint inside ListAuthoredPRs only when an explicit author
-	// hint comes through the active context. v1 keeps this path
-	// best-effort.
+	// author_other_pr fires only when the active context carries a
+	// github author hint (T-0308). The hint is set by the daemon's
+	// session middleware before Probe is called; absent, we skip the
+	// author-based fan-out rather than incur an extra fetch to discover
+	// the author from the PR endpoint. Best-effort by design — a session
+	// without an established author signal produces no author candidates.
 	if author := authorHintFor(ac); author != "" {
 		const limit = 25
 		if prs, err := s.deps.APIClient.ListAuthoredPRs(ctx, author, limit); err != nil {
