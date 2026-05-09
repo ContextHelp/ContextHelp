@@ -40,7 +40,9 @@ func (s RateSnapshot) IsZero() bool {
 //     ourselves of a few-call buffer, even when no lateral activity is
 //     happening).
 //
-// Both percentages are fractions in [0,1].
+// Both percentages are fractions in [0,1]. Values outside that range
+// (negative, or > 1) are clamped at compute time by clampBounds; if
+// MinPct > MaxPct after clamping, the pair is swapped.
 type FloorBounds struct {
 	MinPct float64
 	MaxPct float64
@@ -150,17 +152,7 @@ func (f *FloorTracker) Floor() int {
 		return 0
 	}
 	limit := f.snapshot.Limit
-	min := f.bounds.MinPct
-	max := f.bounds.MaxPct
-	if min < 0 {
-		min = 0
-	}
-	if max > 1 {
-		max = 1
-	}
-	if min > max {
-		min, max = max, min
-	}
+	min, max := clampBounds(f.bounds.MinPct, f.bounds.MaxPct)
 	f.evictLocked(f.now())
 	calls := len(f.calls)
 	pressure := float64(calls) / float64(limit)
@@ -201,17 +193,7 @@ func (f *FloorTracker) floorLocked(now time.Time) int {
 	if limit <= 0 {
 		return 0
 	}
-	min := f.bounds.MinPct
-	max := f.bounds.MaxPct
-	if min < 0 {
-		min = 0
-	}
-	if max > 1 {
-		max = 1
-	}
-	if min > max {
-		min, max = max, min
-	}
+	min, max := clampBounds(f.bounds.MinPct, f.bounds.MaxPct)
 	// Walk back through f.calls to count those still in window without
 	// mutating; the public path mutates via evictLocked, but the locked
 	// helper avoids re-evicting if the caller already did.
@@ -228,6 +210,35 @@ func (f *FloorTracker) floorLocked(now time.Time) int {
 	}
 	pct := min + (max-min)*pressure
 	return int(float64(limit) * pct)
+}
+
+// clampBounds normalises the [min, max] floor-percentage bounds:
+//
+//  1. Each value is clamped into [0, 1] so misconfigured percentages
+//     (e.g. MinPct=2.0, MaxPct=-0.5) cannot produce nonsense floors
+//     above the upstream limit or below zero.
+//  2. After clamping, if min > max the pair is swapped so the algorithm
+//     in Floor() always sees min <= max.
+//
+// Returns the normalised (min, max). The result is guaranteed to satisfy
+// 0 <= min <= max <= 1.
+func clampBounds(min, max float64) (float64, float64) {
+	if min < 0 {
+		min = 0
+	}
+	if min > 1 {
+		min = 1
+	}
+	if max < 0 {
+		max = 0
+	}
+	if max > 1 {
+		max = 1
+	}
+	if min > max {
+		min, max = max, min
+	}
+	return min, max
 }
 
 // evictLocked drops calls older than now-window. Caller holds f.mu.
