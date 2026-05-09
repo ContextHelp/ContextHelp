@@ -53,19 +53,22 @@ func (s *PostStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ la
 			URL:           root + "/p/" + postSlug,
 			CandidateType: CandidateTypePost,
 			Strategy:      IDPost,
-			Preview:       identitykey.Set(map[string]any{"slug": slug, "post": postSlug}, postKey),
+			IdentityKey:   postKey,
+			Preview:       map[string]any{"slug": slug, "post": postSlug},
 		},
 		{
 			URL:           root,
 			CandidateType: CandidateTypePublication,
 			Strategy:      IDPost,
-			Preview:       identitykey.Set(map[string]any{"slug": slug}, pubKey),
+			IdentityKey:   pubKey,
+			Preview:       map[string]any{"slug": slug},
 		},
 		{
 			URL:           root + "/p/" + postSlug + "/comments",
 			CandidateType: CandidateTypePost,
 			Strategy:      IDPost,
-			Preview:       identitykey.Set(map[string]any{"slug": slug, "post": postSlug, "facet": "comments"}, postKey),
+			IdentityKey:   postKey,
+			Preview:       map[string]any{"slug": slug, "post": postSlug, "facet": "comments"},
 		},
 	}, nil
 }

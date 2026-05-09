@@ -59,6 +59,7 @@ func (*ParentStrategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ late
 		URL:           ev.SourceURL,
 		CandidateType: CandidateTypeGeneric,
 		Strategy:      IDParent,
-		Preview:       identitykey.Set(map[string]any{"host": host, "path": path}, identitykey.Build("google", "page", idParts...)),
+		IdentityKey:   identitykey.Build("google", "page", idParts...),
+		Preview:       map[string]any{"host": host, "path": path},
 	}}, nil
 }

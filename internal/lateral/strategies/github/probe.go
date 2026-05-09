@@ -78,21 +78,20 @@ func repoCandidate(r RepoSummary, candidateType, strategyID string) lateral.Cand
 	if url == "" {
 		url = repoURL(r.Owner, r.Name)
 	}
-	preview := map[string]any{
-		PreviewKeyIdentityKey: repoIdentityKey(r.Owner, r.Name),
-		"owner":               r.Owner,
-		"name":                r.Name,
-		"description":         r.Description,
-		"stars":               r.Stars,
-		"language":            r.Language,
-		"archived":            r.Archived,
-		"fork":                r.Fork,
-	}
 	return lateral.Candidate{
 		URL:           url,
 		CandidateType: candidateType,
 		Strategy:      strategyID,
-		Preview:       preview,
+		IdentityKey:   repoIdentityKey(r.Owner, r.Name),
+		Preview: map[string]any{
+			"owner":       r.Owner,
+			"name":        r.Name,
+			"description": r.Description,
+			"stars":       r.Stars,
+			"language":    r.Language,
+			"archived":    r.Archived,
+			"fork":        r.Fork,
+		},
 	}
 }
 
@@ -102,9 +101,9 @@ func ownerProfileCandidate(login, strategyID string) lateral.Candidate {
 		URL:           userURL(login),
 		CandidateType: TypeOwnerProfile,
 		Strategy:      strategyID,
+		IdentityKey:   userIdentityKey(login),
 		Preview: map[string]any{
-			PreviewKeyIdentityKey: userIdentityKey(login),
-			"login":               login,
+			"login": login,
 		},
 	}
 }
@@ -115,9 +114,9 @@ func sponsorCandidate(login, strategyID string) lateral.Candidate {
 		URL:           sponsorURL(login),
 		CandidateType: TypeSponsorPage,
 		Strategy:      strategyID,
+		IdentityKey:   userIdentityKey(login),
 		Preview: map[string]any{
-			PreviewKeyIdentityKey: userIdentityKey(login),
-			"login":               login,
+			"login": login,
 		},
 	}
 }
@@ -211,11 +210,11 @@ func userCandidate(u UserSummary, candidateType, strategyID string) lateral.Cand
 		URL:           url,
 		CandidateType: candidateType,
 		Strategy:      strategyID,
+		IdentityKey:   idKey,
 		Preview: map[string]any{
-			PreviewKeyIdentityKey: idKey,
-			"login":               u.Login,
-			"type":                u.Type,
-			"name":                u.Name,
+			"login": u.Login,
+			"type":  u.Type,
+			"name":  u.Name,
 		},
 	}
 }
@@ -230,10 +229,10 @@ func orgCandidate(o OrgSummary, candidateType, strategyID string) lateral.Candid
 		URL:           url,
 		CandidateType: candidateType,
 		Strategy:      strategyID,
+		IdentityKey:   orgIdentityKey(o.Login),
 		Preview: map[string]any{
-			PreviewKeyIdentityKey: orgIdentityKey(o.Login),
-			"login":               o.Login,
-			"name":                o.Name,
+			"login": o.Login,
+			"name":  o.Name,
 		},
 	}
 }
@@ -334,10 +333,10 @@ func repoIssueParentCandidate(owner, repo, strategyID string) lateral.Candidate 
 		URL:           repoURL(owner, repo),
 		CandidateType: TypeRepoIssue,
 		Strategy:      strategyID,
+		IdentityKey:   repoIdentityKey(owner, repo),
 		Preview: map[string]any{
-			PreviewKeyIdentityKey: repoIdentityKey(owner, repo),
-			"owner":               owner,
-			"name":                repo,
+			"owner": owner,
+			"name":  repo,
 		},
 	}
 }

@@ -31,15 +31,19 @@ const (
 	IdentityKeyPrefixOrg  = "@github.org."
 )
 
-// ExtractIdentityKey lifts the identity key from a Candidate's Preview
-// map. Returns "" if no identity key is present (in which case the
-// resolver falls back to URL match only).
+// ExtractIdentityKey lifts the identity key from a Candidate. Reads
+// the typed Candidate.IdentityKey field first, falling back to the
+// legacy Preview[PreviewKeyIdentityKey] entry for backward compat
+// during the T-0309 migration window. Returns "" when neither is set.
 //
-// This is the documented adapter that substrate-side wiring code calls
-// to feed identity.Candidate.IdentityKey before invoking the resolver.
-// Substrate's lateral.Candidate has no IdentityKey field today; this
-// helper is the bridge until it does.
+// Deprecated: prefer reading lateral.Candidate.IdentityKey directly,
+// or use identitykey.Of(c) for the same dual-read semantics applied
+// across all platforms (not just github). This helper survives one
+// minor cycle so external callers keep compiling.
 func ExtractIdentityKey(c lateral.Candidate) string {
+	if c.IdentityKey != "" {
+		return c.IdentityKey
+	}
 	if c.Preview == nil {
 		return ""
 	}

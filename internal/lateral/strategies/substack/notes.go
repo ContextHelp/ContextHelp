@@ -64,7 +64,8 @@ func (*NotesStrategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ later
 			URL:           apex + "/notes",
 			CandidateType: CandidateTypeNote,
 			Strategy:      IDNotes,
-			Preview:       identitykey.Set(map[string]any{"feed": "global"}, identitykey.Build("substack", identitykey.EntityNote, "feed_global")),
+			IdentityKey:   identitykey.Build("substack", identitykey.EntityNote, "feed_global"),
+			Preview:       map[string]any{"feed": "global"},
 		}}, nil
 	case "note":
 		if len(parts) < 2 {
@@ -75,7 +76,8 @@ func (*NotesStrategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ later
 			URL:           apex + "/note/" + id,
 			CandidateType: CandidateTypeNote,
 			Strategy:      IDNotes,
-			Preview:       identitykey.Set(map[string]any{"note_id": id}, identitykey.Build("substack", identitykey.EntityNote, id)),
+			IdentityKey:   identitykey.Build("substack", identitykey.EntityNote, id),
+			Preview:       map[string]any{"note_id": id},
 		}}, nil
 	case "profile":
 		if len(parts) < 4 || parts[2] != "note" {
@@ -87,13 +89,15 @@ func (*NotesStrategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ later
 				URL:           apex + "/profile/" + profile,
 				CandidateType: CandidateTypeAuthor,
 				Strategy:      IDNotes,
-				Preview:       identitykey.Set(map[string]any{"profile": profile}, identitykey.Build("substack", identitykey.EntityProfile, profile)),
+				IdentityKey:   identitykey.Build("substack", identitykey.EntityProfile, profile),
+				Preview:       map[string]any{"profile": profile},
 			},
 			{
 				URL:           apex + "/profile/" + profile + "/note/" + noteID,
 				CandidateType: CandidateTypeNote,
 				Strategy:      IDNotes,
-				Preview:       identitykey.Set(map[string]any{"profile": profile, "note_id": noteID}, identitykey.Build("substack", identitykey.EntityNote, profile, noteID)),
+				IdentityKey:   identitykey.Build("substack", identitykey.EntityNote, profile, noteID),
+				Preview:       map[string]any{"profile": profile, "note_id": noteID},
 			},
 		}, nil
 	}

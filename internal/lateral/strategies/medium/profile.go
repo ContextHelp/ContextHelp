@@ -52,19 +52,22 @@ func (*ProfileStrategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lat
 			URL:           apex + "/@" + username,
 			CandidateType: CandidateTypeAuthor,
 			Strategy:      IDProfile,
-			Preview:       identitykey.Set(map[string]any{"username": username}, idKey),
+			IdentityKey:   idKey,
+			Preview:       map[string]any{"username": username},
 		},
 		{
 			URL:           apex + "/@" + username + "/following",
 			CandidateType: CandidateTypeAuthor,
 			Strategy:      IDProfile,
-			Preview:       identitykey.Set(map[string]any{"username": username, "facet": "following"}, idKey),
+			IdentityKey:   idKey,
+			Preview:       map[string]any{"username": username, "facet": "following"},
 		},
 		{
 			URL:           apex + "/feed/@" + username,
 			CandidateType: CandidateTypeFeed,
 			Strategy:      IDProfile,
-			Preview:       identitykey.Set(map[string]any{"username": username}, identitykey.Build("medium", "feed", username)),
+			IdentityKey:   identitykey.Build("medium", "feed", username),
+			Preview:       map[string]any{"username": username},
 		},
 	}, nil
 }

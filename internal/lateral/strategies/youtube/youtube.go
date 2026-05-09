@@ -112,7 +112,8 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 			URL:           apex + "/playlist?list=" + listID,
 			CandidateType: CandidateTypePlaylist,
 			Strategy:      ID,
-			Preview:       identitykey.Set(map[string]any{"playlist_id": listID}, identitykey.Build("youtube", identitykey.EntityPlaylist, listID)),
+			IdentityKey:   identitykey.Build("youtube", identitykey.EntityPlaylist, listID),
+			Preview:       map[string]any{"playlist_id": listID},
 		}}, nil
 	case len(parts) >= 1 && strings.HasPrefix(parts[0], "@"):
 		handle := strings.TrimPrefix(parts[0], "@")
@@ -129,13 +130,15 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 				URL:           apex + "/channel/" + ch,
 				CandidateType: CandidateTypeChannel,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"channel_id": ch}, identitykey.Build("youtube", identitykey.EntityChannel, ch)),
+				IdentityKey:   identitykey.Build("youtube", identitykey.EntityChannel, ch),
+				Preview:       map[string]any{"channel_id": ch},
 			},
 			{
 				URL:           apex + "/channel/" + ch + "/videos",
 				CandidateType: CandidateTypeUploads,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"channel_id": ch, "facet": "uploads"}, identitykey.Build("youtube", identitykey.EntityChannel, ch, "uploads")),
+				IdentityKey:   identitykey.Build("youtube", identitykey.EntityChannel, ch, "uploads"),
+				Preview:       map[string]any{"channel_id": ch, "facet": "uploads"},
 			},
 		}, nil
 	}
@@ -149,7 +152,8 @@ func (s *Strategy) videoCandidates(ctx context.Context, apex, videoID string) []
 		URL:           apex + "/watch?v=" + videoID,
 		CandidateType: CandidateTypeVideo,
 		Strategy:      ID,
-		Preview:       identitykey.Set(map[string]any{"video_id": videoID}, identitykey.Build("youtube", identitykey.EntityVideo, videoID)),
+		IdentityKey:   identitykey.Build("youtube", identitykey.EntityVideo, videoID),
+		Preview:       map[string]any{"video_id": videoID},
 	}}
 	if s.Client != nil {
 		if ch, err := s.Client.VideoUploader(ctx, videoID); err == nil && ch != "" {
@@ -157,7 +161,8 @@ func (s *Strategy) videoCandidates(ctx context.Context, apex, videoID string) []
 				URL:           apex + "/channel/" + ch,
 				CandidateType: CandidateTypeChannel,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"channel_id": ch}, identitykey.Build("youtube", identitykey.EntityChannel, ch)),
+				IdentityKey:   identitykey.Build("youtube", identitykey.EntityChannel, ch),
+				Preview:       map[string]any{"channel_id": ch},
 			})
 		}
 	}
@@ -179,7 +184,8 @@ func (s *Strategy) channelCandidates(ctx context.Context, apex, kind, vanity str
 		URL:           url,
 		CandidateType: CandidateTypeChannel,
 		Strategy:      ID,
-		Preview:       identitykey.Set(map[string]any{"vanity": vanity, "kind": kind}, identitykey.Build("youtube", identitykey.EntityChannel, kind+"_"+vanity)),
+		IdentityKey:   identitykey.Build("youtube", identitykey.EntityChannel, kind+"_"+vanity),
+		Preview:       map[string]any{"vanity": vanity, "kind": kind},
 	}}
 	if s.Client != nil {
 		if ch, err := s.Client.ResolveChannel(ctx, vanity); err == nil && ch != "" {
@@ -188,13 +194,15 @@ func (s *Strategy) channelCandidates(ctx context.Context, apex, kind, vanity str
 					URL:           apex + "/channel/" + ch,
 					CandidateType: CandidateTypeChannel,
 					Strategy:      ID,
-					Preview:       identitykey.Set(map[string]any{"channel_id": ch, "vanity": vanity}, identitykey.Build("youtube", identitykey.EntityChannel, ch)),
+					IdentityKey:   identitykey.Build("youtube", identitykey.EntityChannel, ch),
+					Preview:       map[string]any{"channel_id": ch, "vanity": vanity},
 				},
 				lateral.Candidate{
 					URL:           apex + "/channel/" + ch + "/videos",
 					CandidateType: CandidateTypeUploads,
 					Strategy:      ID,
-					Preview:       identitykey.Set(map[string]any{"channel_id": ch, "facet": "uploads"}, identitykey.Build("youtube", identitykey.EntityChannel, ch, "uploads")),
+					IdentityKey:   identitykey.Build("youtube", identitykey.EntityChannel, ch, "uploads"),
+					Preview:       map[string]any{"channel_id": ch, "facet": "uploads"},
 				},
 			)
 		}

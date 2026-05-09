@@ -163,8 +163,8 @@ func TestProbeRepo_Skeleton_NoClient(t *testing.T) {
 	if owner == nil || owner.URL != "https://github.com/samber" {
 		t.Errorf("owner candidate URL = %v, want https://github.com/samber", owner)
 	}
-	if owner.Preview[PreviewKeyIdentityKey] != "@github.user.samber" {
-		t.Errorf("identity_key = %v, want @github.user.samber", owner.Preview[PreviewKeyIdentityKey])
+	if got, want := ExtractIdentityKey(*owner), "@github.user.samber"; got != want {
+		t.Errorf("identity_key = %q, want %q", got, want)
 	}
 }
 
@@ -205,8 +205,8 @@ func TestProbeRepo_FullClient_EmitsAllCandidateTypes(t *testing.T) {
 
 	// Sibling identity_key is canonical repo key.
 	sib := findFirst(got, TypeSiblingRepo)
-	if got, want := sib.Preview[PreviewKeyIdentityKey], "@github.repo.samber/do"; got != want {
-		t.Errorf("sibling identity_key = %v, want %v", got, want)
+	if got, want := ExtractIdentityKey(*sib), "@github.repo.samber/do"; got != want {
+		t.Errorf("sibling identity_key = %q, want %q", got, want)
 	}
 }
 
@@ -287,14 +287,15 @@ func TestProbePR_FullClient_EmitsAllTypes(t *testing.T) {
 		if c.CandidateType != TypeReviewer {
 			continue
 		}
+		key := ExtractIdentityKey(c)
 		if c.Preview["login"] == "acme" {
-			if got, want := c.Preview[PreviewKeyIdentityKey], "@github.org.acme"; got != want {
-				t.Errorf("org reviewer identity_key = %v, want %v", got, want)
+			if key != "@github.org.acme" {
+				t.Errorf("org reviewer identity_key = %q, want @github.org.acme", key)
 			}
 		}
 		if c.Preview["login"] == "alice" {
-			if got, want := c.Preview[PreviewKeyIdentityKey], "@github.user.alice"; got != want {
-				t.Errorf("user reviewer identity_key = %v, want %v", got, want)
+			if key != "@github.user.alice" {
+				t.Errorf("user reviewer identity_key = %q, want @github.user.alice", key)
 			}
 		}
 	}
@@ -515,8 +516,8 @@ func TestProbeProfile_FullClient_EmitsAllTypes(t *testing.T) {
 
 	// Contribution org carries @github.org.* identity key.
 	co := findFirst(got, TypeContribOrg)
-	if got, want := co.Preview[PreviewKeyIdentityKey], "@github.org.ideacrafterslabs"; got != want {
-		t.Errorf("contrib_org identity_key = %v, want %v", got, want)
+	if got, want := ExtractIdentityKey(*co), "@github.org.ideacrafterslabs"; got != want {
+		t.Errorf("contrib_org identity_key = %q, want %q", got, want)
 	}
 }
 

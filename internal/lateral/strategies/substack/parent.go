@@ -47,13 +47,15 @@ func (s *ParentStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ 
 			URL:           root,
 			CandidateType: CandidateTypePublication,
 			Strategy:      IDParent,
-			Preview:       identitykey.Set(map[string]any{"slug": slug}, identitykey.Build("substack", identitykey.EntityPublication, slug)),
+			IdentityKey:   identitykey.Build("substack", identitykey.EntityPublication, slug),
+			Preview:       map[string]any{"slug": slug},
 		},
 		{
 			URL:           root + "/feed",
 			CandidateType: CandidateTypeFeed,
 			Strategy:      IDParent,
-			Preview:       identitykey.Set(map[string]any{"slug": slug}, identitykey.Build("substack", "feed", slug)),
+			IdentityKey:   identitykey.Build("substack", "feed", slug),
+			Preview:       map[string]any{"slug": slug},
 		},
 	}
 	return out, nil

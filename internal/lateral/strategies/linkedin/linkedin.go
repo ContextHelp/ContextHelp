@@ -81,13 +81,15 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 				URL:           apex + "/in/" + slug,
 				CandidateType: CandidateTypeProfile,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"slug": slug}, identitykey.Build("linkedin", identitykey.EntityProfile, slug)),
+				IdentityKey:   identitykey.Build("linkedin", identitykey.EntityProfile, slug),
+				Preview:       map[string]any{"slug": slug},
 			},
 			lateral.Candidate{
 				URL:           apex + "/in/" + slug + "/recent-activity/all/",
 				CandidateType: CandidateTypeRecent,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"slug": slug}, identitykey.Build("linkedin", identitykey.EntityProfile, slug, "recent")),
+				IdentityKey:   identitykey.Build("linkedin", identitykey.EntityProfile, slug, "recent"),
+				Preview:       map[string]any{"slug": slug},
 			},
 		)
 	case "company":
@@ -100,19 +102,22 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 				URL:           apex + "/company/" + slug,
 				CandidateType: CandidateTypeOrg,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"slug": slug}, identitykey.Build("linkedin", identitykey.EntityOrg, slug)),
+				IdentityKey:   identitykey.Build("linkedin", identitykey.EntityOrg, slug),
+				Preview:       map[string]any{"slug": slug},
 			},
 			lateral.Candidate{
 				URL:           apex + "/company/" + slug + "/people/",
 				CandidateType: CandidateTypeOrg,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"slug": slug, "facet": "people"}, identitykey.Build("linkedin", identitykey.EntityOrg, slug, "people")),
+				IdentityKey:   identitykey.Build("linkedin", identitykey.EntityOrg, slug, "people"),
+				Preview:       map[string]any{"slug": slug, "facet": "people"},
 			},
 			lateral.Candidate{
 				URL:           apex + "/company/" + slug + "/posts/",
 				CandidateType: CandidateTypeOrg,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"slug": slug, "facet": "posts"}, identitykey.Build("linkedin", identitykey.EntityOrg, slug, "posts")),
+				IdentityKey:   identitykey.Build("linkedin", identitykey.EntityOrg, slug, "posts"),
+				Preview:       map[string]any{"slug": slug, "facet": "posts"},
 			},
 		)
 	case "school":
@@ -124,7 +129,8 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 			URL:           apex + "/school/" + slug,
 			CandidateType: CandidateTypeSchool,
 			Strategy:      ID,
-			Preview:       identitykey.Set(map[string]any{"slug": slug}, identitykey.Build("linkedin", identitykey.EntityOrg, "school_"+slug)),
+			IdentityKey:   identitykey.Build("linkedin", identitykey.EntityOrg, "school_"+slug),
+			Preview:       map[string]any{"slug": slug},
 		})
 	case "posts":
 		// /posts/<author-slug>_<activity-id>.
@@ -143,13 +149,15 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 				URL:           apex + "/posts/" + raw,
 				CandidateType: CandidateTypePost,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"id": raw}, identitykey.Build("linkedin", identitykey.EntityPost, raw)),
+				IdentityKey:   identitykey.Build("linkedin", identitykey.EntityPost, raw),
+				Preview:       map[string]any{"id": raw},
 			},
 			lateral.Candidate{
 				URL:           apex + "/in/" + author,
 				CandidateType: CandidateTypeProfile,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"slug": author}, identitykey.Build("linkedin", identitykey.EntityProfile, author)),
+				IdentityKey:   identitykey.Build("linkedin", identitykey.EntityProfile, author),
+				Preview:       map[string]any{"slug": author},
 			},
 		)
 	case "pulse":
@@ -161,7 +169,8 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 			URL:           apex + "/pulse/" + slug,
 			CandidateType: CandidateTypeArticle,
 			Strategy:      ID,
-			Preview:       identitykey.Set(map[string]any{"slug": slug}, identitykey.Build("linkedin", identitykey.EntityArticle, slug)),
+			IdentityKey:   identitykey.Build("linkedin", identitykey.EntityArticle, slug),
+			Preview:       map[string]any{"slug": slug},
 		})
 	}
 
