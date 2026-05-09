@@ -116,9 +116,8 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 		URL:           apex + "/" + user,
 		CandidateType: CandidateTypeProfile,
 		Strategy:      ID,
-		Preview: identitykey.Set(map[string]any{
-			"username": user,
-		}, identitykey.Build("x", identitykey.EntityProfile, user)),
+		IdentityKey:   identitykey.Build("x", identitykey.EntityProfile, user),
+		Preview:       map[string]any{"username": user},
 	})
 
 	switch {
@@ -129,18 +128,15 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 			URL:           apex + "/" + user + "/media",
 			CandidateType: CandidateTypeMedia,
 			Strategy:      ID,
-			Preview: identitykey.Set(map[string]any{
-				"username": user,
-			}, identitykey.Build("x", identitykey.EntityProfile, user, "media")),
+			IdentityKey:   identitykey.Build("x", identitykey.EntityProfile, user, "media"),
+			Preview:       map[string]any{"username": user},
 		})
 		out = append(out, lateral.Candidate{
 			URL:           apex + "/" + user + "/status/" + tweetID,
 			CandidateType: CandidateTypeThread,
 			Strategy:      ID,
-			Preview: identitykey.Set(map[string]any{
-				"username": user,
-				"tweet_id": tweetID,
-			}, identitykey.Build("x", identitykey.EntityThread, user+"_"+tweetID)),
+			IdentityKey:   identitykey.Build("x", identitykey.EntityThread, user+"_"+tweetID),
+			Preview:       map[string]any{"username": user, "tweet_id": tweetID},
 		})
 	case len(parts) == 1:
 		// Bare profile capture. Surface the user's curated lists + likes.
@@ -148,17 +144,15 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 			URL:           apex + "/" + user + "/lists",
 			CandidateType: CandidateTypeList,
 			Strategy:      ID,
-			Preview: identitykey.Set(map[string]any{
-				"username": user,
-			}, identitykey.Build("x", identitykey.EntityProfile, user, "lists")),
+			IdentityKey:   identitykey.Build("x", identitykey.EntityProfile, user, "lists"),
+			Preview:       map[string]any{"username": user},
 		})
 		out = append(out, lateral.Candidate{
 			URL:           apex + "/" + user + "/likes",
 			CandidateType: CandidateTypeLikes,
 			Strategy:      ID,
-			Preview: identitykey.Set(map[string]any{
-				"username": user,
-			}, identitykey.Build("x", identitykey.EntityProfile, user, "likes")),
+			IdentityKey:   identitykey.Build("x", identitykey.EntityProfile, user, "likes"),
+			Preview:       map[string]any{"username": user},
 		})
 	}
 

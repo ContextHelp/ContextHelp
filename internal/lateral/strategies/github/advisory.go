@@ -171,10 +171,10 @@ func advisoryRepoCandidate(owner, repo, strategyID string) lateral.Candidate {
 		URL:           repoURL(owner, repo),
 		CandidateType: TypeAdvisoryRepo,
 		Strategy:      strategyID,
+		IdentityKey:   repoIdentityKey(owner, repo),
 		Preview: map[string]any{
-			PreviewKeyIdentityKey: repoIdentityKey(owner, repo),
-			"owner":               owner,
-			"name":                repo,
+			"owner": owner,
+			"name":  repo,
 		},
 	}
 }

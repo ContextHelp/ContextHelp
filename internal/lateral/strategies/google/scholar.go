@@ -51,7 +51,8 @@ func (s *ScholarStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _
 			URL:           apex + "/citations?user=" + uid,
 			CandidateType: CandidateTypeAuthor,
 			Strategy:      IDScholar,
-			Preview:       identitykey.Set(map[string]any{"user_id": uid}, identitykey.Build("scholar", identitykey.EntityProfile, uid)),
+			IdentityKey:   identitykey.Build("scholar", identitykey.EntityProfile, uid),
+			Preview:       map[string]any{"user_id": uid},
 		}}, nil
 	case u.Path == "/scholar":
 		if cluster := q.Get("cluster"); cluster != "" {
@@ -59,7 +60,8 @@ func (s *ScholarStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _
 				URL:           apex + "/scholar?cluster=" + cluster,
 				CandidateType: CandidateTypePaper,
 				Strategy:      IDScholar,
-				Preview:       identitykey.Set(map[string]any{"cluster_id": cluster}, identitykey.Build("scholar", identitykey.EntityPaper, cluster)),
+				IdentityKey:   identitykey.Build("scholar", identitykey.EntityPaper, cluster),
+				Preview:       map[string]any{"cluster_id": cluster},
 			}}, nil
 		}
 		if query := q.Get("q"); query != "" {
@@ -67,7 +69,8 @@ func (s *ScholarStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _
 				URL:           apex + "/scholar?q=" + url.QueryEscape(query),
 				CandidateType: CandidateTypeQuery,
 				Strategy:      IDScholar,
-				Preview:       identitykey.Set(map[string]any{"query": query}, identitykey.Build("scholar", identitykey.EntitySearch, query)),
+				IdentityKey:   identitykey.Build("scholar", identitykey.EntitySearch, query),
+				Preview:       map[string]any{"query": query},
 			}}
 			if s.Client != nil {
 				if author, err := s.Client.ScholarAuthor(ctx, query); err == nil && author != "" {
@@ -79,7 +82,8 @@ func (s *ScholarStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _
 						URL:           author,
 						CandidateType: CandidateTypeAuthor,
 						Strategy:      IDScholar,
-						Preview:       identitykey.Set(map[string]any{"author_url": author}, identitykey.Build("scholar", identitykey.EntityProfile, hbParts...)),
+						IdentityKey:   identitykey.Build("scholar", identitykey.EntityProfile, hbParts...),
+						Preview:       map[string]any{"author_url": author},
 					})
 				}
 			}

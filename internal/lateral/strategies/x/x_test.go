@@ -87,7 +87,14 @@ func TestProbe_HasIdentityKey(t *testing.T) {
 		SourceURL: "https://x.com/jadb/status/1",
 	}, lateral.ActiveContext{})
 	for _, c := range cands {
-		if c.Preview["identity_key"] == nil || c.Preview["identity_key"].(string) == "" {
+		// Post-T-0309 strategies emit the typed field; the legacy
+		// Preview-map form is acceptable too during the migration
+		// window but x.Strategy now sets the typed field directly.
+		key := c.IdentityKey
+		if key == "" {
+			key, _ = c.Preview["identity_key"].(string)
+		}
+		if key == "" {
 			t.Fatalf("candidate %q missing identity_key", c.CandidateType)
 		}
 	}

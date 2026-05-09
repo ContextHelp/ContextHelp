@@ -49,7 +49,11 @@ func TestProbe(t *testing.T) {
 				if c.CandidateType == tc.wantType {
 					found = true
 				}
-				if c.Preview["identity_key"] == nil || c.Preview["identity_key"].(string) == "" {
+				key := c.IdentityKey
+				if key == "" {
+					key, _ = c.Preview["identity_key"].(string)
+				}
+				if key == "" {
 					t.Fatalf("candidate %s missing identity_key", c.CandidateType)
 				}
 			}

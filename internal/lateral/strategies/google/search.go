@@ -49,7 +49,8 @@ func (s *SearchStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ 
 		URL:           "https://www.google.com/search?q=" + url.QueryEscape(q),
 		CandidateType: CandidateTypeQuery,
 		Strategy:      IDSearch,
-		Preview:       identitykey.Set(map[string]any{"query": q}, identitykey.Build("google", identitykey.EntitySearch, q)),
+		IdentityKey:   identitykey.Build("google", identitykey.EntitySearch, q),
+		Preview:       map[string]any{"query": q},
 	}}
 	if s.Client != nil {
 		limit := s.ResultCap
@@ -70,7 +71,8 @@ func (s *SearchStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ 
 					URL:           ru,
 					CandidateType: CandidateTypeResult,
 					Strategy:      IDSearch,
-					Preview:       identitykey.Set(map[string]any{"query": q, "result_url": ru}, identitykey.Build("google", identitykey.EntitySearch, q+"|"+strings.Join(hbParts, "/"))),
+					IdentityKey:   identitykey.Build("google", identitykey.EntitySearch, q+"|"+strings.Join(hbParts, "/")),
+					Preview:       map[string]any{"query": q, "result_url": ru},
 				})
 			}
 		}

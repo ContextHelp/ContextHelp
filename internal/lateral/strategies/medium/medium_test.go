@@ -70,10 +70,13 @@ func TestPublication_ArchiveSharesIdentityKey(t *testing.T) {
 				if c.CandidateType != CandidateTypePublication {
 					continue
 				}
+				// Post-T-0309 the strategy emits the typed
+				// IdentityKey field; the legacy Preview entry is
+				// no longer set.
 				if facet, _ := c.Preview["facet"].(string); facet == "archive" {
-					archive, _ = c.Preview["identity_key"].(string)
+					archive = c.IdentityKey
 				} else {
-					landing, _ = c.Preview["identity_key"].(string)
+					landing = c.IdentityKey
 				}
 			}
 			if landing == "" || archive == "" {

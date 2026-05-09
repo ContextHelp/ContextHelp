@@ -93,25 +93,29 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 			URL:           apex + "/wiki/" + title,
 			CandidateType: CandidateTypeArticle,
 			Strategy:      ID,
-			Preview:       identitykey.Set(map[string]any{"lang": lang, "title": title}, idKey),
+			IdentityKey:   idKey,
+			Preview:       map[string]any{"lang": lang, "title": title},
 		},
 		{
 			URL:           apex + "/wiki/Talk:" + title,
 			CandidateType: CandidateTypeTalk,
 			Strategy:      ID,
-			Preview:       identitykey.Set(map[string]any{"lang": lang, "title": title, "facet": "talk"}, idKey),
+			IdentityKey:   idKey,
+			Preview:       map[string]any{"lang": lang, "title": title, "facet": "talk"},
 		},
 		{
 			URL:           apex + "/w/index.php?title=" + title + "&action=history",
 			CandidateType: CandidateTypeHistory,
 			Strategy:      ID,
-			Preview:       identitykey.Set(map[string]any{"lang": lang, "title": title, "facet": "history"}, idKey),
+			IdentityKey:   idKey,
+			Preview:       map[string]any{"lang": lang, "title": title, "facet": "history"},
 		},
 		{
 			URL:           apex + "/wiki/Special:WhatLinksHere/" + title,
 			CandidateType: CandidateTypeCategories,
 			Strategy:      ID,
-			Preview:       identitykey.Set(map[string]any{"lang": lang, "title": title, "facet": "backlinks"}, idKey),
+			IdentityKey:   idKey,
+			Preview:       map[string]any{"lang": lang, "title": title, "facet": "backlinks"},
 		},
 	}
 
@@ -120,7 +124,8 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 		URL:           apex + "/w/api.php?action=query&prop=langlinks&titles=" + title + "&format=json",
 		CandidateType: CandidateTypeInterwiki,
 		Strategy:      ID,
-		Preview:       identitykey.Set(map[string]any{"lang": lang, "title": title, "facet": "interwiki"}, idKey),
+		IdentityKey:   idKey,
+		Preview:       map[string]any{"lang": lang, "title": title, "facet": "interwiki"},
 	})
 
 	if s.Client != nil {
@@ -129,7 +134,8 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 				URL:           "https://www.wikidata.org/wiki/" + qid,
 				CandidateType: CandidateTypeWikidata,
 				Strategy:      ID,
-				Preview:       identitykey.Set(map[string]any{"qid": qid}, identitykey.Build("wikidata", "item", qid)),
+				IdentityKey:   identitykey.Build("wikidata", "item", qid),
+				Preview:       map[string]any{"qid": qid},
 			})
 		}
 	}

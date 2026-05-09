@@ -94,7 +94,8 @@ func (s *PublicationStrategy) Probe(ctx context.Context, ev lateral.CapturedEven
 					URL:           root,
 					CandidateType: CandidateTypePublication,
 					Strategy:      IDPublication,
-					Preview:       identitykey.Set(map[string]any{"host": host}, pubKey),
+					IdentityKey:   pubKey,
+					Preview:       map[string]any{"host": host},
 				},
 				{
 					URL:           root + "archive",
@@ -103,13 +104,15 @@ func (s *PublicationStrategy) Probe(ctx context.Context, ev lateral.CapturedEven
 					// Reuse the publication identity key; differentiate
 					// the facet via Preview so the resolver still dedups
 					// to the same entity.
-					Preview: identitykey.Set(map[string]any{"host": host, "facet": "archive"}, pubKey),
+					IdentityKey: pubKey,
+					Preview:     map[string]any{"host": host, "facet": "archive"},
 				},
 				{
 					URL:           root + "feed",
 					CandidateType: CandidateTypeFeed,
 					Strategy:      IDPublication,
-					Preview:       identitykey.Set(map[string]any{"host": host}, identitykey.Build("medium", "feed", host)),
+					IdentityKey:   identitykey.Build("medium", "feed", host),
+					Preview:       map[string]any{"host": host},
 				},
 			}, nil
 		}
@@ -123,7 +126,8 @@ func (s *PublicationStrategy) Probe(ctx context.Context, ev lateral.CapturedEven
 			URL:           "https://medium.com/" + slug,
 			CandidateType: CandidateTypePublication,
 			Strategy:      IDPublication,
-			Preview:       identitykey.Set(map[string]any{"slug": slug}, pubKey),
+			IdentityKey:   pubKey,
+			Preview:       map[string]any{"slug": slug},
 		},
 		{
 			URL:           "https://medium.com/" + slug + "/archive",
@@ -132,13 +136,15 @@ func (s *PublicationStrategy) Probe(ctx context.Context, ev lateral.CapturedEven
 			// Reuse the publication identity key so the resolver
 			// collapses landing + archive onto the same entity; the
 			// facet is differentiated via Preview.
-			Preview: identitykey.Set(map[string]any{"slug": slug, "facet": "archive"}, pubKey),
+			IdentityKey: pubKey,
+			Preview:     map[string]any{"slug": slug, "facet": "archive"},
 		},
 		{
 			URL:           "https://medium.com/feed/" + slug,
 			CandidateType: CandidateTypeFeed,
 			Strategy:      IDPublication,
-			Preview:       identitykey.Set(map[string]any{"slug": slug}, identitykey.Build("medium", "feed", slug)),
+			IdentityKey:   identitykey.Build("medium", "feed", slug),
+			Preview:       map[string]any{"slug": slug},
 		},
 	}
 	return out, nil

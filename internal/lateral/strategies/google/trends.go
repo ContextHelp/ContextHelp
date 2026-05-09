@@ -48,7 +48,8 @@ func (s *TrendsStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ 
 			URL:           apex + "/trends/explore?q=" + url.QueryEscape(topic),
 			CandidateType: CandidateTypeTrend,
 			Strategy:      IDTrends,
-			Preview:       identitykey.Set(map[string]any{"topic": topic}, identitykey.Build("trends", identitykey.EntityTrend, topic)),
+			IdentityKey:   identitykey.Build("trends", identitykey.EntityTrend, topic),
+			Preview:       map[string]any{"topic": topic},
 		}}
 		if s.Client != nil {
 			limit := s.RelatedCap
@@ -68,7 +69,8 @@ func (s *TrendsStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ 
 						URL:           apex + "/trends/explore?q=" + url.QueryEscape(r),
 						CandidateType: CandidateTypeTrend,
 						Strategy:      IDTrends,
-						Preview:       identitykey.Set(map[string]any{"topic": r, "related_to": topic}, identitykey.Build("trends", identitykey.EntityTrend, r)),
+						IdentityKey:   identitykey.Build("trends", identitykey.EntityTrend, r),
+						Preview:       map[string]any{"topic": r, "related_to": topic},
 					})
 					added++
 				}
