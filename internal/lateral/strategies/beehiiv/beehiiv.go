@@ -44,7 +44,11 @@ func parseURL(rawURL string) (*url.URL, []string, error) {
 	return u, parts, nil
 }
 
-func hintsFromEvent(_ lateral.CapturedEvent) customdomain.Hints { return customdomain.Hints{} }
+// hintsFromEvent lifts capture-pipeline hints off CapturedEvent.Hints
+// for the customdomain detector (T-0306). Returns the zero value when
+// the substrate hasn't populated Hints, preserving pre-substrate
+// canonical-host-only detection.
+func hintsFromEvent(ev lateral.CapturedEvent) customdomain.Hints { return ev.Hints }
 
 // canonicalSlug derives the publication slug from the host. *.beehiiv.com
 // gives the slug as the leftmost label; custom domains use the host

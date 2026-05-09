@@ -37,11 +37,12 @@ type MediumClient interface {
 	ResolveAuthor(ctx context.Context, articleURL string) (username string, err error)
 }
 
-// hintsFromEvent extracts the customdomain.Hints we can pull from the
-// CapturedEvent. P4 substrate doesn't yet thread page meta, so this is
-// a hook for the daemon to fill via Preview during capture; today it
-// returns an empty Hints.
-func hintsFromEvent(_ lateral.CapturedEvent) customdomain.Hints { return customdomain.Hints{} }
+// hintsFromEvent lifts capture-pipeline hints off CapturedEvent.Hints
+// for the customdomain detector. The substrate threads
+// MetaPlatform / Generator / CanonicalHost through ev.Hints (T-0306);
+// strategies just forward the typed value here so the detector input
+// is uniform across packages.
+func hintsFromEvent(ev lateral.CapturedEvent) customdomain.Hints { return ev.Hints }
 
 func parseURL(rawURL string) (*url.URL, []string, error) {
 	u, err := url.Parse(rawURL)
