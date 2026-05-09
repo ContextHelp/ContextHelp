@@ -75,13 +75,57 @@ platform itself knows. Wikipedia callers pass `true`; everyone else passes
 
 ## Empty / missing inputs
 
-- Empty or whitespace-only id segments are dropped silently. Pass at least one
-  non-empty segment to produce a usable key.
-- `HostBackedID(rawURL)` returns `""` when `rawURL` has no host. **Callers
-  MUST guard against this** — passing a `""` result through to `Build` collapses
-  the key to just `<platform>/<entity>`, which is non-unique across captures.
-  Skip the candidate or use a stable fallback id when `HostBackedID` returns
-  empty.
+`Build` returns `""` (empty string) under any of these conditions, signalling
+"refuse to emit a non-unique key":
+
+- `platform` is empty or whitespace-only.
+- `entityType` is empty or whitespace-only.
+- All `id` segments are empty or whitespace-only (i.e. no usable id remains
+  after normalisation).
+
+`BuildLocalised` returns `""` under the same conditions, plus when `locale`
+is empty (a locale-scoped key without a locale is malformed).
+
+Callers MUST treat `""` as "skip the candidate" or "don't set Preview's
+identity_key field." Emitting a candidate without an identity_key forces the
+resolver to fall back to URL-equality dedup — which is the correct degraded
+behaviour. Emitting a candidate with `"<platform>/<entity>"` (no id) would let
+the resolver merge unrelated entities under one key.
+
+```go
+key := identitykey.Build("github", identitykey.EntityRepository, owner, repo)
+if key == "" {
+    return // skip — owner or repo wasn't resolvable
+}
+candidate.Preview = identitykey.Set(candidate.Preview, key)
+```
+
+## Host-backed fallback IDs
+
+When a strategy doesn't have a structural canonical id (e.g. unknown CMS,
+generic search-result URLs), `HostBackedIDParts(rawURL)` returns a `[]string`
+of `[host, pathPart1, pathPart2, ...]` derived from the URL. Spread the slice
+into `Build`'s variadic id:
+
+```go
+parts := identitykey.HostBackedIDParts(url)
+if parts == nil {
+    return // skip — URL had no host
+}
+key := identitykey.Build("google", identitykey.EntityArticle, parts...)
+```
+
+`HostBackedIDParts` returns `nil` when the URL is unparseable or has no host.
+Spreading `nil` into `Build` yields `""` by Build's contract, but checking at
+the call site lets the strategy decline the candidate entirely (preferred)
+rather than emit one without an identity_key.
+
+Returning `[]string` instead of a single `host/path/...` string is intentional:
+if it returned a single concatenated string, callers would face a choice —
+pass it as one id segment (slashes escape to underscores → `host_path_part`)
+or split and pass as multiple (slashes preserved → `host/path/part`). Two
+different keys for the same logical input. The `[]string` API forces the
+correct multi-segment representation.
 
 ## Entity-type vocabulary
 
