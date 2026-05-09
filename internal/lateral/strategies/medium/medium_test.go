@@ -106,3 +106,38 @@ func TestProfile_Probe(t *testing.T) {
 		t.Fatalf("want 3 profile probes, got %d", len(cands))
 	}
 }
+
+// TestHintsRoundTrip_MediumCustomDomain pins T-0310 for medium:
+// MetaPlatform=medium on a non-medium host unlocks the parent
+// strategy's custom-domain branch.
+func TestHintsRoundTrip_MediumCustomDomain(t *testing.T) {
+	parent := NewParent(stubClient{pub: "uxdesign"})
+	customURL := "https://blog.example.com/some-post"
+
+	// Negative: no Hints — declines.
+	if parent.Applies(context.Background(), lateral.CapturedEvent{SourceURL: customURL}).Matches {
+		t.Fatal("medium custom-domain without Hints must not match")
+	}
+
+	// Positive: MetaPlatform unlocks match.
+	ev := lateral.CapturedEvent{
+		SourceURL: customURL,
+		Hints:     lateral.Hints{MetaPlatform: "medium"},
+	}
+	if !parent.Applies(context.Background(), ev).Matches {
+		t.Fatal("medium custom-domain with MetaPlatform=medium must match")
+	}
+}
+
+// TestHintsRoundTrip_MediumGeneratorHint exercises the Generator
+// signal pathway.
+func TestHintsRoundTrip_MediumGeneratorHint(t *testing.T) {
+	parent := NewParent(stubClient{})
+	ev := lateral.CapturedEvent{
+		SourceURL: "https://blog.example.com/post",
+		Hints:     lateral.Hints{Generator: "Medium"},
+	}
+	if !parent.Applies(context.Background(), ev).Matches {
+		t.Fatal("Generator=Medium hint must unlock custom-domain match")
+	}
+}
