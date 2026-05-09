@@ -238,6 +238,85 @@ func TestProbeRepo_PartialFailure_OtherSubpathsContinue(t *testing.T) {
 	}
 }
 
+func TestProbePR_Skeleton_NoClient(t *testing.T) {
+	s := NewGitHubStrategy(Dependencies{})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/pull/42"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].CandidateType != TypeOwnerProfile {
+		t.Errorf("skeleton mode should emit only owner_profile; got %v", candidateTypes(got))
+	}
+}
+
+func TestProbePR_FullClient_EmitsAllTypes(t *testing.T) {
+	api := &stubAPIClient{
+		listRepoSiblingsFn: func(_ context.Context, owner, exclude string) ([]RepoSummary, error) {
+			if owner != "owner" || exclude != "repo" {
+				t.Errorf("ListRepoSiblings(%q, %q) unexpected args", owner, exclude)
+			}
+			return []RepoSummary{{Owner: "owner", Name: "other"}}, nil
+		},
+		listPRReviewersFn: func(_ context.Context, owner, repo string, n int) ([]UserSummary, error) {
+			if owner != "owner" || repo != "repo" || n != 42 {
+				t.Errorf("ListPRReviewers(%q,%q,%d) unexpected args", owner, repo, n)
+			}
+			return []UserSummary{
+				{Login: "alice", Type: "User"},
+				{Login: "acme", Type: "Organization"},
+			}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/pull/42"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{TypeOwnerProfile, TypeSiblingRepo, TypeReviewer} {
+		if !hasType(got, want) {
+			t.Errorf("missing %q in %v", want, candidateTypes(got))
+		}
+	}
+
+	// Reviewer that's an Org should carry @github.org.* identity key.
+	for _, c := range got {
+		if c.CandidateType != TypeReviewer {
+			continue
+		}
+		if c.Preview["login"] == "acme" {
+			if got, want := c.Preview[PreviewKeyIdentityKey], "@github.org.acme"; got != want {
+				t.Errorf("org reviewer identity_key = %v, want %v", got, want)
+			}
+		}
+		if c.Preview["login"] == "alice" {
+			if got, want := c.Preview[PreviewKeyIdentityKey], "@github.user.alice"; got != want {
+				t.Errorf("user reviewer identity_key = %v, want %v", got, want)
+			}
+		}
+	}
+}
+
+func TestProbePR_PullsListView_NoNumber_SkipsReviewers(t *testing.T) {
+	reviewerCalled := false
+	api := &stubAPIClient{
+		listPRReviewersFn: func(_ context.Context, _, _ string, _ int) ([]UserSummary, error) {
+			reviewerCalled = true
+			return nil, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	_, _ = s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/pulls"},
+		lateral.ActiveContext{})
+	if reviewerCalled {
+		t.Error("ListPRReviewers should not be called for /pulls list view (no number)")
+	}
+}
+
 func TestRepoIdentityKey(t *testing.T) {
 	if got, want := repoIdentityKey("samber", "lo"), "@github.repo.samber/lo"; got != want {
 		t.Errorf("repoIdentityKey = %q, want %q", got, want)
