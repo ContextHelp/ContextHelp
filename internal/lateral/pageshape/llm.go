@@ -33,7 +33,10 @@ func NewLLMClassifier(llm LLM, cache RecipeCache) *LLMClassifier {
 // Classify returns the labels for in. On cache miss the LLM is consulted and
 // its verdict is stored before returning. LLM errors propagate; cache errors
 // don't exist (the in-memory adapter is infallible; a future on-disk adapter
-// would surface IO errors via Get/Put which currently swallow them).
+// would surface IO errors via Get/Put which currently swallow them). Empty
+// verdicts are NOT cached — the LLM may have failed transiently or genuinely
+// had no opinion; either way, we want the next call to retry rather than
+// short-circuit on a sticky empty result.
 func (c *LLMClassifier) Classify(ctx context.Context, in Input) ([]Label, error) {
 	domain, pattern := normalize(in.URL)
 	if v, ok := c.cache.Get(ctx, domain, pattern); ok {
@@ -43,15 +46,18 @@ func (c *LLMClassifier) Classify(ctx context.Context, in Input) ([]Label, error)
 	if err != nil {
 		return nil, err
 	}
-	c.cache.Put(ctx, domain, pattern, v)
+	if len(v) > 0 {
+		c.cache.Put(ctx, domain, pattern, v)
+	}
 	return v, nil
 }
 
 // idRe matches path segments that look like opaque IDs: pure numeric, hex
-// hashes 16+ chars, or slug-with-trailing-numeric (e.g. "post-12345"). Such
-// segments collapse to "*" so distinct objects under the same template share
-// a recipe entry.
-var idRe = regexp.MustCompile(`^[0-9]+$|^[0-9a-f-]{16,}$|^[a-z0-9-]+-[0-9]+$`)
+// hashes 16+ chars, or slug-with-trailing-numeric where the numeric tail is
+// at least 3 digits (so version-style slugs like "windows-10" or "gpt-4"
+// survive). Such segments collapse to "*" so distinct objects under the
+// same template share a recipe entry.
+var idRe = regexp.MustCompile(`^[0-9]+$|^[0-9a-f-]{16,}$|^[a-z0-9-]+-[0-9]{3,}$`)
 
 // normalize splits rawURL into (host, id-stripped path pattern). Path
 // segments matching idRe become "*" so /posts/123/comments and
