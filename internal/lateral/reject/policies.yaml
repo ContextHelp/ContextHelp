@@ -1,0 +1,18 @@
+policies:
+  - name: lateral.reject.no-already-promoted
+    on: kit.runtime.entity.pre_persisted
+    when: |
+      payload.kind == "lateral.reject" &&
+      payload.from_state == "promoted"
+    effect: deny
+    otherwise: allow
+    message: "cannot reject a candidate that has already been promoted"
+
+  - name: lateral.reject.reason-required
+    on: kit.runtime.entity.pre_persisted
+    when: |
+      payload.kind == "lateral.reject" &&
+      size(payload.reason) == 0
+    effect: deny
+    otherwise: allow
+    message: "reject requires a non-empty reason"
