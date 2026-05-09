@@ -38,6 +38,14 @@ func TestGitHubStrategy_Applies(t *testing.T) {
 		{"malformed", "://nope", false, 0},
 		{"empty", "", false, 0},
 		{"raw subdomain", "https://raw.githubusercontent.com/owner/repo/main/README.md", false, 0},
+
+		// Advisory paths must decline so SecurityAdvisoryStrategy claims
+		// uncontested at higher specificity, and JIT can fall back when
+		// the child is not registered.
+		{"advisory global list - parent declines", "https://github.com/advisories", false, 0},
+		{"advisory global ghsa - parent declines", "https://github.com/advisories/GHSA-aaa", false, 0},
+		{"advisory per-repo - parent declines", "https://github.com/owner/repo/security/advisories", false, 0},
+		{"advisory per-repo ghsa - parent declines", "https://github.com/owner/repo/security/advisories/GHSA-bbb", false, 0},
 	}
 	s := NewGitHubStrategy(Dependencies{})
 	for _, tc := range cases {
@@ -76,6 +84,36 @@ func TestClassifyPath(t *testing.T) {
 			got := classifyPath(tc.url)
 			if got != tc.want {
 				t.Errorf("classifyPath(%q) = %v, want %v", tc.url, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDispatch_AdvisoryFallsThroughWhenChildDisabled verifies that
+// dispatching an advisory URL when SecurityAdvisoryStrategy is not in
+// the registry results in zero strategies (JIT fallback territory) —
+// not the parent claiming the URL and producing no candidates.
+func TestDispatch_AdvisoryFallsThroughWhenChildDisabled(t *testing.T) {
+	reg := lateral.NewRegistry()
+	reg.Register(NewGitHubStrategy(Dependencies{}))
+	// SecurityAdvisoryStrategy intentionally NOT registered.
+
+	cases := []string{
+		"https://github.com/advisories",
+		"https://github.com/advisories/GHSA-aaa",
+		"https://github.com/owner/repo/security/advisories",
+		"https://github.com/owner/repo/security/advisories/GHSA-bbb",
+	}
+	for _, url := range cases {
+		url := url
+		t.Run(url, func(t *testing.T) {
+			ds := reg.Dispatch(context.Background(), lateral.CapturedEvent{SourceURL: url})
+			if len(ds) != 0 {
+				ids := make([]string, len(ds))
+				for i, d := range ds {
+					ids[i] = d.ID()
+				}
+				t.Errorf("dispatch(%q) = %v, want [] (JIT fallback)", url, ids)
 			}
 		})
 	}
