@@ -1,0 +1,10 @@
+policies:
+  - name: lateral.promote.resurrection-window
+    on: kit.runtime.entity.pre_persisted
+    when: |
+      payload.kind == "lateral.promote" &&
+      payload.from_state == "expired" &&
+      (timestamp(payload.now) - timestamp(payload.expired_at)) > duration(payload.resurrect_window)
+    effect: deny
+    otherwise: allow
+    message: "candidate is past the resurrection window"
