@@ -73,6 +73,9 @@ func (s *Scorer) Score(ctx context.Context, c lateral.Candidate, ac lateral.Acti
 }
 
 // redistribute rescales weights for surviving signals so they sum to 1.0.
+// If the surviving signals' base weights sum to zero (degenerate config),
+// falls back to equal weights across the survivors so the scorer never
+// produces NaN/Inf.
 func (s *Scorer) redistribute(present map[string]float64) map[string]float64 {
 	base := map[string]float64{
 		"session_topic":     s.weights.SessionTopic,
@@ -84,6 +87,13 @@ func (s *Scorer) redistribute(present map[string]float64) map[string]float64 {
 		sum += base[k]
 	}
 	out := map[string]float64{}
+	if sum == 0 {
+		equal := 1.0 / float64(len(present))
+		for k := range present {
+			out[k] = equal
+		}
+		return out
+	}
 	for k := range present {
 		out[k] = base[k] / sum
 	}
