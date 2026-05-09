@@ -85,11 +85,19 @@ func (g *guardedAPI) gate() error {
 
 // recordOutcome is shared post-call book-keeping: feed success/failure
 // to the breaker, record a call to the floor tracker so pressure
-// updates.
-func (g *guardedAPI) recordOutcome(err error) {
+// updates, and observe the latest rate-limit snapshot so ShouldThrottle
+// has signal on the next gate check.
+func (g *guardedAPI) recordOutcome(ctx context.Context, err error) {
 	g.breaker.Record(err == nil, 0)
 	if g.floor != nil {
 		g.floor.Record(g.floor.now())
+		// Pull the latest snapshot from the inner client and feed it
+		// into the tracker. Without this Observe step, snapshot stays
+		// zero and ShouldThrottle returns false — making the floor
+		// gate effectively unreachable in production.
+		if snap := g.inner.RateSnapshot(ctx); !snap.IsZero() {
+			g.floor.Observe(snap)
+		}
 	}
 }
 
@@ -98,7 +106,7 @@ func (g *guardedAPI) ListRepoSiblings(ctx context.Context, owner, exclude string
 		return nil, err
 	}
 	out, err := g.inner.ListRepoSiblings(ctx, owner, exclude)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
@@ -107,7 +115,7 @@ func (g *guardedAPI) ListOwnerStarred(ctx context.Context, login string) ([]Repo
 		return nil, err
 	}
 	out, err := g.inner.ListOwnerStarred(ctx, login)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
@@ -116,7 +124,7 @@ func (g *guardedAPI) ListOwnerPinned(ctx context.Context, login string) ([]RepoS
 		return nil, err
 	}
 	out, err := g.inner.ListOwnerPinned(ctx, login)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
@@ -125,7 +133,7 @@ func (g *guardedAPI) HasSponsorPage(ctx context.Context, login string) (bool, er
 		return false, err
 	}
 	out, err := g.inner.HasSponsorPage(ctx, login)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
@@ -134,7 +142,7 @@ func (g *guardedAPI) ListAuthoredPRs(ctx context.Context, login string, limit in
 		return nil, err
 	}
 	out, err := g.inner.ListAuthoredPRs(ctx, login, limit)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
@@ -143,7 +151,7 @@ func (g *guardedAPI) ListPRReviewers(ctx context.Context, owner, repo string, nu
 		return nil, err
 	}
 	out, err := g.inner.ListPRReviewers(ctx, owner, repo, number)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
@@ -152,7 +160,7 @@ func (g *guardedAPI) ListAuthoredIssues(ctx context.Context, login string, limit
 		return nil, err
 	}
 	out, err := g.inner.ListAuthoredIssues(ctx, login, limit)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
@@ -161,7 +169,7 @@ func (g *guardedAPI) ListIssueLabels(ctx context.Context, owner, repo string, nu
 		return nil, err
 	}
 	out, err := g.inner.ListIssueLabels(ctx, owner, repo, number)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
@@ -170,7 +178,7 @@ func (g *guardedAPI) ListSponsored(ctx context.Context, login string) ([]UserSum
 		return nil, err
 	}
 	out, err := g.inner.ListSponsored(ctx, login)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
@@ -179,7 +187,7 @@ func (g *guardedAPI) ListContributionOrgs(ctx context.Context, login string) ([]
 		return nil, err
 	}
 	out, err := g.inner.ListContributionOrgs(ctx, login)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
@@ -188,7 +196,7 @@ func (g *guardedAPI) ListSimilarSponsors(ctx context.Context, login string) ([]U
 		return nil, err
 	}
 	out, err := g.inner.ListSimilarSponsors(ctx, login)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
@@ -197,7 +205,7 @@ func (g *guardedAPI) ListOwnerGists(ctx context.Context, login string) ([]GistSu
 		return nil, err
 	}
 	out, err := g.inner.ListOwnerGists(ctx, login)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
@@ -206,7 +214,7 @@ func (g *guardedAPI) ListGlobalAdvisories(ctx context.Context, ecosystem, severi
 		return nil, err
 	}
 	out, err := g.inner.ListGlobalAdvisories(ctx, ecosystem, severity, limit)
-	g.recordOutcome(err)
+	g.recordOutcome(ctx, err)
 	return out, err
 }
 
