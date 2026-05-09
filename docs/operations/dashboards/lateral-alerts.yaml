@@ -72,8 +72,10 @@ groups:
             without intent.
           runbook: https://github.com/ideacrafterslabs/ctxt/blob/main/docs/operations/runbooks/lateral.md#per-strategy-zero-emission
 
-      # Reaper cycle stalled for 2x the expected interval (default
-      # 5s polling → 10s critical lag).
+      # Reaper cycle stalled. Threshold (600s = 10m) is generous
+      # relative to the default 5s polling interval to absorb GC
+      # pauses, leader-election churn, and cron-skewed runs without
+      # paging. Tighten if your deployment runs the poller faster.
       - alert: LateralReaperCycleStalled
         expr: |
           time() - max(ctxt_lateral_reaper_cycle_completed_timestamp_seconds) > 600

@@ -5,9 +5,18 @@ package rollout
 // daemon.Config gates into this map and applies it to a StrategyGate.
 //
 // Wire-shape compatibility: the keys mirror the substrate's strategy
-// IDs exactly (e.g. "GitHubStrategy", "GoogleSearchStrategy", "jit").
-// Operators flipping `lateral.strategies.<name>.enabled = false` see
-// the corresponding gate go false on the next SIGHUP.
+// IDs exactly. ID conventions vary by strategy package:
+//
+//   - jit: "jit"
+//   - github family: "github", "github.gist", "github.advisory"
+//   - platform roster: "<Platform>Strategy" or
+//     "<Platform><Type>Strategy" (e.g. "GoogleSearchStrategy",
+//     "WikipediaStrategy", "XStrategy")
+//
+// See each strategy package's exported ID / StrategyID / IDParent /
+// IDChild* constants for the canonical values. Operators flipping
+// `lateral.strategies.<name>.enabled = false` in YAML see the
+// corresponding gate go false on the next SIGHUP.
 type GateConfig map[string]bool
 
 // Apply replaces gate's flags with cfg. Existing gate state is
