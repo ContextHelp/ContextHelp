@@ -437,6 +437,43 @@ func TestProbeProfile_FullClient_EmitsAllTypes(t *testing.T) {
 	}
 }
 
+func TestProbeSponsor_Skeleton_NoClient(t *testing.T) {
+	s := NewGitHubStrategy(Dependencies{})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/sponsors/jadb"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].CandidateType != TypeOwnerProfile {
+		t.Errorf("skeleton mode emits owner_profile only; got %v", candidateTypes(got))
+	}
+	if got[0].URL != "https://github.com/jadb" {
+		t.Errorf("owner URL = %q, want https://github.com/jadb", got[0].URL)
+	}
+}
+
+func TestProbeSponsor_FullClient_EmitsSimilarSponsors(t *testing.T) {
+	api := &stubAPIClient{
+		listSimilarSponsorsFn: func(_ context.Context, login string) ([]UserSummary, error) {
+			if login != "jadb" {
+				t.Errorf("ListSimilarSponsors(%q) unexpected", login)
+			}
+			return []UserSummary{{Login: "fasterthanlime", Type: "User"}}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/sponsors/jadb"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasType(got, TypeOwnerProfile) || !hasType(got, TypeSimilarSpons) {
+		t.Errorf("missing expected types in %v", candidateTypes(got))
+	}
+}
+
 func TestRepoIdentityKey(t *testing.T) {
 	if got, want := repoIdentityKey("samber", "lo"), "@github.repo.samber/lo"; got != want {
 		t.Errorf("repoIdentityKey = %q, want %q", got, want)
