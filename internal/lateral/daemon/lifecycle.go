@@ -190,43 +190,65 @@ func (l *Lifecycle) makeScanFunc() jobs.ScanFunc {
 }
 
 // handleCaptureEvent is the bus subscriber for capture events. It
-// constructs a lateral.CapturedEvent, dispatches through the
-// registry, and runs each matching strategy's Probe. Probe outputs
-// (candidates) are emitted on the bus for the resolver/cap-gate slice
-// to consume (already wired in the substrate).
+// constructs a lateral.CapturedEvent, dispatches through the registry,
+// and runs each matching strategy's Probe. The cumulative candidate
+// count surfaces in a ctxt.lateral.scan.completed event per the schema
+// at schemas/lateral_events.json (object_id + candidates_emitted).
+//
+// Probe outputs themselves are NOT routed downstream by this slice.
+// Score / cap-gate / identity-resolve / materialize are separate stages
+// that a follow-on track wires (see docs/superpowers/specs/...
+// lateral-capture-discovery-design.md). For now the daemon's job is
+// dispatch + observability; downstream consumers subscribe to
+// scan.completed for the count and scan.failed for per-strategy errors.
 //
 // Errors from individual strategies are NOT returned to the bus —
-// the bus would veto every subsequent handler. Instead they're
-// emitted as ctxt.lateral.scan.failed events (per the lateral spec)
-// so observers see the failure without breaking other subscribers.
+// the bus would veto every subsequent handler. They emit as
+// ctxt.lateral.scan.failed events instead so observers see the
+// failure without breaking other subscribers.
 func (l *Lifecycle) handleCaptureEvent(ctx context.Context, e bus.Event) error {
 	ev, ok := captureEventFromBusPayload(e)
 	if !ok {
 		return nil // malformed payload — skip, not bus error
 	}
 	chosen := l.registry.Dispatch(ctx, ev)
+	candidates := 0
 	for _, s := range chosen {
-		_, err := s.Probe(ctx, ev, lateral.ActiveContext{})
+		out, err := s.Probe(ctx, ev, lateral.ActiveContext{})
 		if err != nil {
 			// Emit a scan-failed event for observability; intentionally
 			// not returning the error so other subscribers still run.
 			_ = l.pub.Publish(ctx, "ctxt.lateral.scan.failed", "lateral.daemon",
 				map[string]any{
-					"strategy_id":  s.ID(),
-					"object_id":    ev.ObjectID,
-					"source_url":   ev.SourceURL,
-					"error":        err.Error(),
-					"severity":     "error",
+					"strategy_id": s.ID(),
+					"object_id":   ev.ObjectID,
+					"source_url":  ev.SourceURL,
+					"error":       err.Error(),
+					"severity":    "error",
 				})
+			continue
 		}
+		candidates += len(out)
 	}
+	// scan.completed is emitted whether or not any strategy claimed —
+	// observers see the dispatch happened, with candidates_emitted=0
+	// when no strategy matched (or all matched but produced empty).
+	_ = l.pub.Publish(ctx, "ctxt.lateral.scan.completed", "lateral.daemon",
+		map[string]any{
+			"object_id":          ev.ObjectID,
+			"candidates_emitted": candidates,
+			"severity":           "info",
+		})
 	return nil
 }
 
 // captureEventFromBusPayload coerces the bus event payload into a
 // lateral.CapturedEvent. Capture pipeline payloads are typed as
 // map[string]any with stable keys (object_id / namespace / source_url
-// / capture_pipeline / persisted_at) — see schemas/capture_events.json.
+// / capture_pipeline / persisted_at). The capture pipeline owns this
+// shape; lateral consumes it as-is. No formal JSON schema is published
+// for the capture-side payload today — the field set tracks
+// lateral.CapturedEvent directly.
 //
 // Returns ok=false on shape mismatch so the caller can drop the event
 // without surfacing it as a bus error.
