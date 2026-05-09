@@ -8,8 +8,21 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/jit"
 )
 
+// newSkeletonStrategy returns a *jit.Strategy wired with safe-default
+// collaborators: an empty-reply proposer, an unused executor, no publisher,
+// no outage, no classifier. Useful for tests asserting interface-contract
+// invariants (ID, Family, Applies, Preconditions, registry placement) that
+// don't care about end-to-end behavior.
+func newSkeletonStrategy() *jit.Strategy {
+	return jit.New(
+		jit.NewCachedProposer(&fakeProposer{}, jit.NewMemoryProposalCache()),
+		jit.NewExecutor(&pipelineFetcher{}),
+		nil, nil, nil,
+	)
+}
+
 func TestStrategy_IDStable(t *testing.T) {
-	s := jit.New()
+	s := newSkeletonStrategy()
 	if got, want := s.ID(), jit.StrategyID; got != want {
 		t.Fatalf("ID() = %q, want %q", got, want)
 	}
@@ -19,7 +32,7 @@ func TestStrategy_IDStable(t *testing.T) {
 }
 
 func TestStrategy_Family(t *testing.T) {
-	s := jit.New()
+	s := newSkeletonStrategy()
 	if got, want := s.Family(), lateral.FamilyJIT; got != want {
 		t.Fatalf("Family() = %v, want %v", got, want)
 	}
@@ -37,7 +50,7 @@ func TestStrategy_AppliesAllURLs(t *testing.T) {
 		{"with_namespace", lateral.CapturedEvent{Namespace: "@x.repo", SourceURL: "https://anything"}},
 	}
 
-	s := jit.New()
+	s := newSkeletonStrategy()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			res := s.Applies(context.Background(), tc.ev)
@@ -51,19 +64,8 @@ func TestStrategy_AppliesAllURLs(t *testing.T) {
 	}
 }
 
-func TestStrategy_ProbeReturnsNoCandidates(t *testing.T) {
-	s := jit.New()
-	candidates, err := s.Probe(context.Background(), lateral.CapturedEvent{}, lateral.ActiveContext{})
-	if err != nil {
-		t.Fatalf("Probe() err = %v, want nil", err)
-	}
-	if candidates != nil {
-		t.Fatalf("Probe() candidates = %v, want nil (skeleton)", candidates)
-	}
-}
-
 func TestStrategy_PreconditionsEmpty(t *testing.T) {
-	s := jit.New()
+	s := newSkeletonStrategy()
 	if got := s.Preconditions(); got != nil {
 		t.Fatalf("Preconditions() = %v, want nil", got)
 	}
@@ -76,7 +78,7 @@ func TestStrategy_PreconditionsEmpty(t *testing.T) {
 // verifies the real type satisfies the contract through that machinery.
 func TestStrategy_RegistersAtFamilyJIT(t *testing.T) {
 	reg := lateral.NewRegistry()
-	reg.Register(jit.New())
+	reg.Register(newSkeletonStrategy())
 
 	chosen := reg.Dispatch(context.Background(), lateral.CapturedEvent{
 		SourceURL: "https://example.com/anything",
