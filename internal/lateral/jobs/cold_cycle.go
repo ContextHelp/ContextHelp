@@ -8,12 +8,12 @@ import (
 )
 
 // Bus topic + source for the cold-cycle handler's emitted events.
-// Naming follows the [Source].[Category].[Object].[Action] standard
-// (ctxt.lateral.reaper_cycle.<action>). The schema for this event
-// lives in schemas/reaper_events.json.
+// Naming follows the extended [Source].[Category].[Object][modifier].[Action]
+// notation (ctxt.lateral.reaper[cycle].<action>). The schema for this event
+// lives in schemas/lateral_events.json under the "reaper[cycle].completed" key.
 const (
-	TopicReaperCycleCompleted = "ctxt.lateral.reaper_cycle.completed"
-	SourceReaperCycle         = "lateral.reaper_cycle"
+	TopicReaperCycleCompleted = "ctxt.lateral.reaper[cycle].completed"
+	SourceReaperCycle         = "lateral.reaper[cycle]"
 )
 
 // CycleStats summarizes one cold-cycle scan for observability.
