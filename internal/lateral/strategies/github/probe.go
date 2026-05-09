@@ -262,8 +262,113 @@ func prCandidate(p PullRequestSummary, candidateType, strategyID string) lateral
 // it.
 func authorHintFor(_ lateral.CapturedEvent) string { return "" }
 
-func (s *GitHubStrategy) probeIssue(_ context.Context, _ lateral.CapturedEvent, _ lateral.ActiveContext) ([]lateral.Candidate, error) {
-	return nil, nil
+// probeIssue emits candidates from a captured issue URL
+// (/<owner>/<repo>/issues/<n> or /<owner>/<repo>/issues). Lateral surface:
+//
+//   - author_other_issue — other issues by the same author
+//   - repo_issue         — repo (parent) candidate (helpful when capture
+//                          was the issue thread, not the repo itself)
+//   - issue_label        — labels attached to the issue
+//
+// Number-less URLs (/issues list view) skip label lookup. owner_profile
+// is always emitted.
+func (s *GitHubStrategy) probeIssue(ctx context.Context, ev lateral.CapturedEvent, _ lateral.ActiveContext) ([]lateral.Candidate, error) {
+	pu, ok := parseGitHubURL(ev.SourceURL)
+	if !ok || pu.Owner == "" || pu.Repo == "" {
+		return nil, nil
+	}
+	if s.deps.APIClient == nil {
+		return []lateral.Candidate{
+			ownerProfileCandidate(pu.Owner, s.ID()),
+			repoIssueParentCandidate(pu.Owner, pu.Repo, s.ID()),
+		}, nil
+	}
+
+	out := []lateral.Candidate{
+		ownerProfileCandidate(pu.Owner, s.ID()),
+		repoIssueParentCandidate(pu.Owner, pu.Repo, s.ID()),
+	}
+
+	// Labels: only when we have a number (issue-level URL).
+	if pu.Number > 0 {
+		if labels, err := s.deps.APIClient.ListIssueLabels(ctx, pu.Owner, pu.Repo, pu.Number); err != nil {
+			recordSubpathFailure(s.ID(), ev.ObjectID, "list_issue_labels", err)
+		} else {
+			for _, l := range labels {
+				out = append(out, labelCandidate(l, pu.Owner, pu.Repo, s.ID()))
+			}
+		}
+	}
+
+	// Author's other issues: same hint mechanism as PR; v1 best-effort.
+	if author := authorHintFor(ev); author != "" {
+		const limit = 25
+		if iss, err := s.deps.APIClient.ListAuthoredIssues(ctx, author, limit); err != nil {
+			recordSubpathFailure(s.ID(), ev.ObjectID, "list_authored_issues", err)
+		} else {
+			for _, i := range iss {
+				out = append(out, issueCandidate(i, TypeAuthorIssue, s.ID()))
+			}
+		}
+	}
+
+	return out, nil
+}
+
+// repoIssueParentCandidate emits a repo_issue candidate pointing at the
+// parent repo of a captured issue.
+func repoIssueParentCandidate(owner, repo, strategyID string) lateral.Candidate {
+	return lateral.Candidate{
+		URL:           repoURL(owner, repo),
+		CandidateType: TypeRepoIssue,
+		Strategy:      strategyID,
+		Preview: map[string]any{
+			PreviewKeyIdentityKey: repoIdentityKey(owner, repo),
+			"owner":               owner,
+			"name":                repo,
+		},
+	}
+}
+
+// labelCandidate builds an issue_label candidate.
+func labelCandidate(l LabelSummary, owner, repo, strategyID string) lateral.Candidate {
+	url := l.URL
+	if url == "" {
+		url = "https://github.com/" + owner + "/" + repo + "/labels/" + l.Name
+	}
+	return lateral.Candidate{
+		URL:           url,
+		CandidateType: TypeIssueLabel,
+		Strategy:      strategyID,
+		Preview: map[string]any{
+			"label":       l.Name,
+			"description": l.Description,
+			"color":       l.Color,
+			"owner":       owner,
+			"repo":        repo,
+		},
+	}
+}
+
+// issueCandidate builds an issue cross-reference candidate.
+func issueCandidate(i IssueSummary, candidateType, strategyID string) lateral.Candidate {
+	url := i.URL
+	if url == "" {
+		url = repoURL(i.Owner, i.Repo)
+	}
+	return lateral.Candidate{
+		URL:           url,
+		CandidateType: candidateType,
+		Strategy:      strategyID,
+		Preview: map[string]any{
+			"owner":  i.Owner,
+			"repo":   i.Repo,
+			"number": i.Number,
+			"title":  i.Title,
+			"state":  i.State,
+			"author": i.Author,
+		},
+	}
 }
 
 func (s *GitHubStrategy) probeProfile(_ context.Context, _ lateral.CapturedEvent, _ lateral.ActiveContext) ([]lateral.Candidate, error) {
