@@ -33,10 +33,14 @@ type Config struct {
 	// EnableSecurityAdvisory registers SecurityAdvisoryStrategy when true.
 	EnableSecurityAdvisory bool
 	// FloorWindow controls the trailing window for the rate-limit
-	// dynamic-floor tracker. Zero falls back to 4h.
+	// dynamic-floor tracker Register builds when deps.Floor is nil.
+	// Ignored when deps.Floor is non-nil. Zero falls back to 4h
+	// (NewFloorTracker default) when at least one floor knob is set.
 	FloorWindow time.Duration
-	// FloorBounds clamps the floor adjustment in [MinPct, MaxPct].
-	// Zero falls back to DefaultFloorBounds (5%/90%).
+	// FloorBounds clamps the floor adjustment in [MinPct, MaxPct] for
+	// the tracker Register builds when deps.Floor is nil. Ignored when
+	// deps.Floor is non-nil. Zero falls back to DefaultFloorBounds
+	// (5%/90%).
 	FloorBounds FloorBounds
 }
 
@@ -94,7 +98,10 @@ type SharedDeps struct {
 //     and any strategy is enabled, mirroring the fail-loud-at-init
 //     pattern the substrate uses for unknown families.
 //   - Breaker + Floor are optional. When wired, the APIClient passed to
-//     each strategy is wrapped via NewGuardedAPI.
+//     each strategy is wrapped via NewGuardedAPI. When deps.Floor is nil
+//     and cfg.FloorWindow / cfg.FloorBounds carry a non-zero value,
+//     Register constructs a FloorTracker from those cfg knobs and uses
+//     it for the wrap.
 //   - FailureRecorder is installed via SetFailureRecorder; pass nil to
 //     use the noop default.
 //
@@ -115,10 +122,19 @@ func Register(reg Registrar, cfg Config, deps SharedDeps) int {
 		SetFailureRecorder(deps.FailureRecorder)
 	}
 
+	// Construct a FloorTracker from cfg when caller hasn't supplied one.
+	// Daemon wiring shares a single tracker across the registry by passing
+	// deps.Floor directly; standalone callers (tests, embedded use) lean
+	// on cfg.FloorWindow/FloorBounds and let Register build the tracker.
+	floor := deps.Floor
+	if floor == nil && (cfg.FloorWindow > 0 || cfg.FloorBounds != (FloorBounds{})) {
+		floor = NewFloorTracker(cfg.FloorWindow, cfg.FloorBounds)
+	}
+
 	api := deps.APIClient
-	if deps.Breaker != nil || deps.Floor != nil {
+	if deps.Breaker != nil || floor != nil {
 		// Wrap with guardedAPI when either gate is wired.
-		api = NewGuardedAPI(deps.APIClient, deps.Breaker, deps.Floor)
+		api = NewGuardedAPI(deps.APIClient, deps.Breaker, floor)
 	}
 
 	stratDeps := Dependencies{
