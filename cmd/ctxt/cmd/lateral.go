@@ -177,10 +177,12 @@ func runLateralStart(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("lateral start: lifecycle: %w", err)
 	}
 
-	// Apply per-strategy gate from initial config (T-0328). Operators
-	// flip strategies live by editing the YAML and sending SIGHUP;
-	// the goroutine below re-reads + re-applies on each signal.
+	// Apply per-strategy gate + sampler from initial config (T-0328 +
+	// T-0329). Operators flip strategies live by editing the YAML
+	// and sending SIGHUP; the goroutine below re-reads + re-applies
+	// on each signal.
 	lc.ApplyGate(cfg)
+	lc.ApplySampler(cfg)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -202,6 +204,7 @@ func runLateralStart(cmd *cobra.Command, _ []string) error {
 					continue
 				}
 				lc.ApplyGate(newCfg)
+				lc.ApplySampler(newCfg)
 				fmt.Fprintln(cmd.OutOrStdout(), "lateral: SIGHUP reload applied")
 			}
 		}

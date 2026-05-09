@@ -64,6 +64,13 @@ type Config struct {
 	// children, beehiiv + children, youtube). Zero-value Gates means
 	// every strategy enabled (matches the spec's v1 posture).
 	Roster roster.Gates
+
+	// SamplePercent is the per-strategy traffic-shaping percent
+	// (T-0329). Keys are strategy IDs (e.g. "GitHubStrategy",
+	// "GoogleSearchStrategy", "jit"); values are 0-100. Missing key
+	// = full traffic (100%). Operators set values via
+	// `strategies.<name>.sample_percent` in the YAML config.
+	SamplePercent map[string]int
 }
 
 // strategiesFile is the on-disk shape of `lateral.strategies.*`. The
@@ -109,10 +116,12 @@ type strategiesFile struct {
 }
 
 // strategyGate is the per-entry shape under lateral.strategies.<name>.
-// Just an enabled flag for now; future fields (rate-limits, custom
-// floors) layer in here without breaking the on-disk format.
+// Just an enabled flag and a sample percent for now; future fields
+// (rate-limits, custom floors) layer in here without breaking the
+// on-disk format.
 type strategyGate struct {
-	Enabled *bool `yaml:"enabled"`
+	Enabled       *bool `yaml:"enabled"`
+	SamplePercent *int  `yaml:"sample_percent"`
 }
 
 // rootFile is the YAML root the daemon reads for strategy gates. The
@@ -157,10 +166,11 @@ func LoadConfig(opts LoadOptions) (Config, error) {
 	}
 
 	cfg := Config{
-		Substrate: substrate,
-		JIT:       jit.Config{},
-		GitHub:    github.DefaultConfig(),
-		Roster:    roster.Gates{}, // zero-value = every strategy enabled
+		Substrate:     substrate,
+		JIT:           jit.Config{},
+		GitHub:        github.DefaultConfig(),
+		Roster:        roster.Gates{}, // zero-value = every strategy enabled
+		SamplePercent: map[string]int{},
 	}
 
 	// Apply layers in the canonical order. Later layers win.
@@ -260,4 +270,38 @@ func mergeStrategies(cfg *Config, s strategiesFile) {
 	apply(&cfg.Roster.BeehiivPublicationStrategy, s.BeehiivPublication)
 	apply(&cfg.Roster.BeehiivPostStrategy, s.BeehiivPost)
 	apply(&cfg.Roster.YouTubeStrategy, s.YouTube)
+
+	// Sample-percent overlay (T-0329). Mapping: strategy ID → percent.
+	// Key names mirror the IDs the gate consumes (Roster IDs come
+	// from each platform package's exported const; jit/github use
+	// their own).
+	if cfg.SamplePercent == nil {
+		cfg.SamplePercent = map[string]int{}
+	}
+	pct := func(id string, gate *strategyGate) {
+		if gate == nil || gate.SamplePercent == nil {
+			return
+		}
+		cfg.SamplePercent[id] = *gate.SamplePercent
+	}
+	pct("GoogleStrategy", s.Google)
+	pct("GoogleSearchStrategy", s.GoogleSearch)
+	pct("GoogleScholarStrategy", s.GoogleScholar)
+	pct("GoogleTrendsStrategy", s.GoogleTrends)
+	pct("GoogleNewsStrategy", s.GoogleNews)
+	pct("XStrategy", s.X)
+	pct("LinkedInStrategy", s.LinkedIn)
+	pct("ArxivStrategy", s.Arxiv)
+	pct("WikipediaStrategy", s.Wikipedia)
+	pct("MediumStrategy", s.Medium)
+	pct("MediumPublicationStrategy", s.MediumPublication)
+	pct("MediumProfileStrategy", s.MediumProfile)
+	pct("SubstackStrategy", s.Substack)
+	pct("SubstackPublicationStrategy", s.SubstackPublication)
+	pct("SubstackPostStrategy", s.SubstackPost)
+	pct("SubstackNotesStrategy", s.SubstackNotes)
+	pct("BeehiivStrategy", s.Beehiiv)
+	pct("BeehiivPublicationStrategy", s.BeehiivPublication)
+	pct("BeehiivPostStrategy", s.BeehiivPost)
+	pct("YouTubeStrategy", s.YouTube)
 }

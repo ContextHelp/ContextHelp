@@ -86,3 +86,12 @@ func (cfg Config) GateConfig() rollout.GateConfig {
 func (lc *Lifecycle) ApplyGate(cfg Config) {
 	cfg.GateConfig().Apply(lc.gate)
 }
+
+// ApplySampler swaps the lifecycle's sampler with one built from
+// cfg.SamplePercent. SIGHUP reload drives this alongside ApplyGate;
+// initial boot calls it once. Empty cfg.SamplePercent is a valid
+// "no shaping" state — the sampler still installs but every Allow
+// returns true.
+func (lc *Lifecycle) ApplySampler(cfg Config) {
+	lc.sampler.Store(rollout.NewSampler(cfg.SamplePercent))
+}
