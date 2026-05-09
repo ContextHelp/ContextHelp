@@ -446,6 +446,30 @@ func (s *GitHubStrategy) probeProfile(ctx context.Context, ev lateral.CapturedEv
 	return out, nil
 }
 
-func (s *GitHubStrategy) probeSponsor(_ context.Context, _ lateral.CapturedEvent, _ lateral.ActiveContext) ([]lateral.Candidate, error) {
-	return nil, nil
+// probeSponsor emits candidates from a captured /sponsors/<login> URL.
+// Lateral surface:
+//
+//   - owner_profile   — the sponsored profile itself (always)
+//   - similar_sponsor — profiles that sponsor a similar set of recipients
+//                       to login (i.e. peers of login as a sponsor)
+//
+// Skeleton mode emits only owner_profile (no fetch).
+func (s *GitHubStrategy) probeSponsor(ctx context.Context, ev lateral.CapturedEvent, _ lateral.ActiveContext) ([]lateral.Candidate, error) {
+	pu, ok := parseGitHubURL(ev.SourceURL)
+	if !ok || pu.Login == "" {
+		return nil, nil
+	}
+	login := pu.Login
+	out := []lateral.Candidate{ownerProfileCandidate(login, s.ID())}
+	if s.deps.APIClient == nil {
+		return out, nil
+	}
+	if peers, err := s.deps.APIClient.ListSimilarSponsors(ctx, login); err != nil {
+		recordSubpathFailure(s.ID(), ev.ObjectID, "list_similar_sponsors", err)
+	} else {
+		for _, u := range peers {
+			out = append(out, userCandidate(u, TypeSimilarSpons, s.ID()))
+		}
+	}
+	return out, nil
 }
