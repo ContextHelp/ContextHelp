@@ -72,11 +72,8 @@ type APIClient interface {
 	RateSnapshot(ctx context.Context) RateSnapshot
 }
 
-// RateSnapshot is the minimal rate-limit observation the dynamic-floor
-// helper (ratelimit.go, T-0260) consults. The skeleton ships an empty
-// struct; T-0260 fleshes out fields (Limit, Remaining, ResetAt, etc.).
-// Defined here so the APIClient interface compiles in isolation.
-type RateSnapshot struct{}
+// RateSnapshot is defined in ratelimit.go alongside the dynamic-floor
+// helper that consumes it.
 
 // RepoSummary is the cross-method repo identity payload.
 type RepoSummary struct {
