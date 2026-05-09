@@ -16,10 +16,13 @@ import (
 //   - /trends/explore?q=<topic>   topic page → trend candidate
 //   - /trends/trendingsearches    rising-now → trend candidate
 type TrendsStrategy struct {
-	Client GoogleClient
+	Client     GoogleClient
+	RelatedCap int // maximum number of related-topic candidates; default 10
 }
 
-func NewTrends(c GoogleClient) *TrendsStrategy { return &TrendsStrategy{Client: c} }
+func NewTrends(c GoogleClient) *TrendsStrategy {
+	return &TrendsStrategy{Client: c, RelatedCap: 10}
+}
 
 func (*TrendsStrategy) ID() string                    { return IDTrends }
 func (*TrendsStrategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
@@ -48,14 +51,26 @@ func (s *TrendsStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ 
 			Preview:       identitykey.Set(map[string]any{"topic": topic}, identitykey.Build("trends", identitykey.EntityTrend, topic)),
 		}}
 		if s.Client != nil {
+			limit := s.RelatedCap
+			if limit <= 0 {
+				limit = 10
+			}
 			if related, err := s.Client.TrendsRelated(ctx, topic); err == nil {
+				added := 0
 				for _, r := range related {
+					if added >= limit {
+						break
+					}
+					if strings.TrimSpace(r) == "" {
+						continue
+					}
 					out = append(out, lateral.Candidate{
 						URL:           apex + "/trends/explore?q=" + url.QueryEscape(r),
 						CandidateType: CandidateTypeTrend,
 						Strategy:      IDTrends,
 						Preview:       identitykey.Set(map[string]any{"topic": r, "related_to": topic}, identitykey.Build("trends", identitykey.EntityTrend, r)),
 					})
+					added++
 				}
 			}
 		}

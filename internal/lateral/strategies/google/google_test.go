@@ -127,6 +127,59 @@ func TestNews_Topic(t *testing.T) {
 	}
 }
 
+func TestSearch_SkipsEmptyHostBackedID(t *testing.T) {
+	// Mix valid + invalid URLs (relative path / parse-clean-but-hostless).
+	// Strategy must skip the hostless ones rather than emit a `q|` key.
+	s := NewSearch(stubClient{results: []string{"https://a.example/1", "not a url", "/relative/path"}})
+	cands, _ := s.Probe(context.Background(), lateral.CapturedEvent{SourceURL: "https://www.google.com/search?q=foo"}, lateral.ActiveContext{})
+	count := 0
+	for _, c := range cands {
+		if c.CandidateType == CandidateTypeResult {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("want 1 valid result candidate, got %d", count)
+	}
+}
+
+func TestNews_SkipsEmptyHostBackedID(t *testing.T) {
+	s := NewNews(stubClient{articles: []string{"https://a.example/1", "/relative", "not a url"}})
+	cands, _ := s.Probe(context.Background(), lateral.CapturedEvent{SourceURL: "https://news.google.com/topics/ABC"}, lateral.ActiveContext{})
+	count := 0
+	for _, c := range cands {
+		if c.CandidateType == CandidateTypeArticle {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("want 1 valid article candidate, got %d", count)
+	}
+}
+
+func TestTrends_RelatedCap(t *testing.T) {
+	related := make([]string, 25)
+	for i := range related {
+		related[i] = "topic-" + string(rune('a'+i%26))
+	}
+	s := NewTrends(stubClient{related: related})
+	s.RelatedCap = 5
+	cands, _ := s.Probe(context.Background(), lateral.CapturedEvent{SourceURL: "https://trends.google.com/trends/explore?q=ai"}, lateral.ActiveContext{})
+	// 1 primary + 5 related = 6.
+	if len(cands) != 6 {
+		t.Fatalf("expected 1 primary + 5 capped related = 6, got %d", len(cands))
+	}
+}
+
+func TestTrends_SkipsBlankRelated(t *testing.T) {
+	s := NewTrends(stubClient{related: []string{"a", "  ", "", "b"}})
+	cands, _ := s.Probe(context.Background(), lateral.CapturedEvent{SourceURL: "https://trends.google.com/trends/explore?q=ai"}, lateral.ActiveContext{})
+	// 1 primary + 2 non-blank related = 3.
+	if len(cands) != 3 {
+		t.Fatalf("expected primary + 2 non-blank related = 3, got %d", len(cands))
+	}
+}
+
 func TestNews_Article(t *testing.T) {
 	s := NewNews(nil)
 	cands, _ := s.Probe(context.Background(), lateral.CapturedEvent{SourceURL: "https://news.google.com/articles/CAIid"}, lateral.ActiveContext{})
