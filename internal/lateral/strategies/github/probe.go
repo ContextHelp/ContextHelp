@@ -371,8 +371,79 @@ func issueCandidate(i IssueSummary, candidateType, strategyID string) lateral.Ca
 	}
 }
 
-func (s *GitHubStrategy) probeProfile(_ context.Context, _ lateral.CapturedEvent, _ lateral.ActiveContext) ([]lateral.Candidate, error) {
-	return nil, nil
+// probeProfile emits candidates from a captured profile URL (/<login>).
+// Lateral surface:
+//
+//   - owned_repo        — repos owned by the profile (proxied via siblings
+//                         lookup with empty exclude)
+//   - pinned_repo       — pinned items on the profile
+//   - sponsor_page      — the profile's sponsors page (if active)
+//   - sponsored_profile — profiles this profile sponsors
+//   - contribution_org  — organizations this profile publicly contributes to
+//
+// Profile probes are uniformly cheap (no number-gating). Skeleton mode
+// emits the structural sponsor candidate (always speculatively useful)
+// without requiring an API call.
+func (s *GitHubStrategy) probeProfile(ctx context.Context, ev lateral.CapturedEvent, _ lateral.ActiveContext) ([]lateral.Candidate, error) {
+	pu, ok := parseGitHubURL(ev.SourceURL)
+	if !ok || pu.Owner == "" {
+		return nil, nil
+	}
+	login := pu.Owner
+	if s.deps.APIClient == nil {
+		// Without a client we still emit the speculative sponsor page
+		// (cheap, helps cold-start when the page exists).
+		return []lateral.Candidate{
+			sponsorCandidate(login, s.ID()),
+		}, nil
+	}
+
+	var out []lateral.Candidate
+
+	// Owned repos: ListRepoSiblings(login, "") returns all of login's repos.
+	if owned, err := s.deps.APIClient.ListRepoSiblings(ctx, login, ""); err != nil {
+		recordSubpathFailure(s.ID(), ev.ObjectID, "list_owned_repos", err)
+	} else {
+		for _, r := range owned {
+			out = append(out, repoCandidate(r, TypeOwnedRepo, s.ID()))
+		}
+	}
+
+	// Pinned items.
+	if pinned, err := s.deps.APIClient.ListOwnerPinned(ctx, login); err != nil {
+		recordSubpathFailure(s.ID(), ev.ObjectID, "list_owner_pinned", err)
+	} else {
+		for _, r := range pinned {
+			out = append(out, repoCandidate(r, TypePinnedRepo, s.ID()))
+		}
+	}
+
+	// Sponsor page.
+	if has, err := s.deps.APIClient.HasSponsorPage(ctx, login); err != nil {
+		recordSubpathFailure(s.ID(), ev.ObjectID, "has_sponsor_page", err)
+	} else if has {
+		out = append(out, sponsorCandidate(login, s.ID()))
+	}
+
+	// Sponsored profiles (whom this user sponsors).
+	if sp, err := s.deps.APIClient.ListSponsored(ctx, login); err != nil {
+		recordSubpathFailure(s.ID(), ev.ObjectID, "list_sponsored", err)
+	} else {
+		for _, u := range sp {
+			out = append(out, userCandidate(u, TypeSponsored, s.ID()))
+		}
+	}
+
+	// Contribution orgs.
+	if orgs, err := s.deps.APIClient.ListContributionOrgs(ctx, login); err != nil {
+		recordSubpathFailure(s.ID(), ev.ObjectID, "list_contribution_orgs", err)
+	} else {
+		for _, o := range orgs {
+			out = append(out, orgCandidate(o, TypeContribOrg, s.ID()))
+		}
+	}
+
+	return out, nil
 }
 
 func (s *GitHubStrategy) probeSponsor(_ context.Context, _ lateral.CapturedEvent, _ lateral.ActiveContext) ([]lateral.Candidate, error) {
