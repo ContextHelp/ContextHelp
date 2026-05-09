@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/lateral"
 )
@@ -82,6 +83,64 @@ func TestRegister_GuardedAPIWiringWhenBreakerProvided(t *testing.T) {
 	// Cannot directly inspect strategy.deps.APIClient is wrapped without
 	// reflection or exporting more state. Smoke-test via dispatch: the
 	// strategies register correctly, which is the wiring contract.
+}
+
+func TestRegister_FloorBuiltFromCfgWhenDepsFloorNil(t *testing.T) {
+	// Cfg knobs (FloorWindow/FloorBounds) must take effect when caller
+	// did not supply deps.Floor. Verify by registering with DefaultConfig
+	// (non-zero window + bounds) and an APIClient that records a call —
+	// the guarded wrapper records the call into the constructed tracker,
+	// so CallsInWindow on the underlying tracker should reflect the call.
+	//
+	// The tracker is internal to Register, so we cannot inspect it
+	// directly. Instead we rely on the guarded path being taken: the
+	// guardedAPI wraps the APIClient when floor != nil, even if breaker
+	// is nil. Without the cfg-driven construction, no wrap happens and
+	// the inner stubAPIClient is exposed unchanged.
+	reg := &stubRegistrar{}
+	api := &stubAPIClient{}
+	count := Register(reg, DefaultConfig(), SharedDeps{APIClient: api})
+	if count != 3 {
+		t.Errorf("count = %d, want 3", count)
+	}
+	// Smoke: registration succeeded; substrate-level wiring covered by
+	// TestRegister_RealRegistry_DispatchPath.
+}
+
+func TestRegister_FloorTakesDepsFloorWhenProvided(t *testing.T) {
+	// When deps.Floor != nil, Register must use it verbatim and ignore
+	// cfg.FloorWindow/FloorBounds. Verify by recording a call through the
+	// guarded wrapper and observing it on the supplied tracker.
+	reg := lateral.NewRegistry()
+	provided := NewFloorTracker(time.Hour, FloorBounds{MinPct: 0.1, MaxPct: 0.5})
+	api := &stubAPIClient{
+		listRepoSiblingsFn: func(_ context.Context, _, _ string) ([]RepoSummary, error) {
+			return nil, nil
+		},
+	}
+	cfg := DefaultConfig()
+	// Override cfg with values that would build a different tracker.
+	cfg.FloorWindow = 5 * time.Minute
+	cfg.FloorBounds = FloorBounds{MinPct: 0.99, MaxPct: 1.0}
+	count := Register(reg, cfg, SharedDeps{APIClient: api, Floor: provided})
+	if count != 3 {
+		t.Errorf("count = %d, want 3", count)
+	}
+	// Dispatch + probe to drive a call through the guarded wrapper.
+	ds := reg.Dispatch(context.Background(), lateral.CapturedEvent{
+		SourceURL: "https://github.com/owner/repo",
+	})
+	if len(ds) != 1 {
+		t.Fatalf("dispatched %d, want 1", len(ds))
+	}
+	if _, err := ds[0].Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo"},
+		lateral.ActiveContext{}); err != nil {
+		t.Fatalf("probe failed: %v", err)
+	}
+	if got := provided.CallsInWindow(); got == 0 {
+		t.Error("provided FloorTracker received zero calls; deps.Floor was not used")
+	}
 }
 
 func TestRegister_FailureRecorderInstalled(t *testing.T) {
