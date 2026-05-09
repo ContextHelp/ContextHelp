@@ -383,6 +383,60 @@ func TestProbeIssue_ListView_NoLabelFetch(t *testing.T) {
 	}
 }
 
+func TestProbeProfile_Skeleton_NoClient_EmitsSponsor(t *testing.T) {
+	s := NewGitHubStrategy(Dependencies{})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/jadb"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].CandidateType != TypeSponsorPage {
+		t.Errorf("skeleton mode should emit only sponsor_page; got %v", candidateTypes(got))
+	}
+}
+
+func TestProbeProfile_FullClient_EmitsAllTypes(t *testing.T) {
+	api := &stubAPIClient{
+		listRepoSiblingsFn: func(_ context.Context, owner, exclude string) ([]RepoSummary, error) {
+			if owner != "jadb" || exclude != "" {
+				t.Errorf("ListRepoSiblings(%q, %q) unexpected", owner, exclude)
+			}
+			return []RepoSummary{{Owner: "jadb", Name: "ctxt"}}, nil
+		},
+		listOwnerPinnedFn: func(_ context.Context, _ string) ([]RepoSummary, error) {
+			return []RepoSummary{{Owner: "jadb", Name: "kit"}}, nil
+		},
+		hasSponsorPageFn: func(_ context.Context, _ string) (bool, error) { return true, nil },
+		listSponsoredFn: func(_ context.Context, _ string) ([]UserSummary, error) {
+			return []UserSummary{{Login: "fasterthanlime", Type: "User"}}, nil
+		},
+		listContributionOrgsFn: func(_ context.Context, _ string) ([]OrgSummary, error) {
+			return []OrgSummary{{Login: "ideacrafterslabs"}}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/jadb"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		TypeOwnedRepo, TypePinnedRepo, TypeSponsorPage, TypeSponsored, TypeContribOrg,
+	} {
+		if !hasType(got, want) {
+			t.Errorf("missing %q in %v", want, candidateTypes(got))
+		}
+	}
+
+	// Contribution org carries @github.org.* identity key.
+	co := findFirst(got, TypeContribOrg)
+	if got, want := co.Preview[PreviewKeyIdentityKey], "@github.org.ideacrafterslabs"; got != want {
+		t.Errorf("contrib_org identity_key = %v, want %v", got, want)
+	}
+}
+
 func TestRepoIdentityKey(t *testing.T) {
 	if got, want := repoIdentityKey("samber", "lo"), "@github.repo.samber/lo"; got != want {
 		t.Errorf("repoIdentityKey = %q, want %q", got, want)
