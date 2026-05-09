@@ -52,6 +52,40 @@ func TestPublication_PathBased(t *testing.T) {
 	}
 }
 
+// TestPublication_ArchiveSharesIdentityKey guards the dedup contract:
+// landing + archive candidates for the same publication must share the
+// publication identity key so the resolver collapses them onto the same
+// entity. Facets are differentiated via Preview, not via the key.
+func TestPublication_ArchiveSharesIdentityKey(t *testing.T) {
+	pub := NewPublication(nil)
+	cases := []string{
+		"https://medium.com/uxdesign",
+		"https://uxdesign.medium.com",
+	}
+	for _, u := range cases {
+		t.Run(u, func(t *testing.T) {
+			cands, _ := pub.Probe(context.Background(), lateral.CapturedEvent{SourceURL: u}, lateral.ActiveContext{})
+			var landing, archive string
+			for _, c := range cands {
+				if c.CandidateType != CandidateTypePublication {
+					continue
+				}
+				if facet, _ := c.Preview["facet"].(string); facet == "archive" {
+					archive, _ = c.Preview["identity_key"].(string)
+				} else {
+					landing, _ = c.Preview["identity_key"].(string)
+				}
+			}
+			if landing == "" || archive == "" {
+				t.Fatalf("missing landing or archive candidate (landing=%q archive=%q)", landing, archive)
+			}
+			if landing != archive {
+				t.Fatalf("archive identity_key %q must match landing %q for resolver dedup", archive, landing)
+			}
+		})
+	}
+}
+
 func TestProfile_Applies(t *testing.T) {
 	pr := NewProfile(nil)
 	if !pr.Applies(context.Background(), lateral.CapturedEvent{SourceURL: "https://medium.com/@jadb"}).Matches {
