@@ -1,0 +1,12 @@
+{
+  "title": "reaper_events",
+  "description": "Reaper-cycle and sanity-check event payloads. Keys are short-form (Object.Action); the runtime topic is `<source>.<category>.<short_form>` per the [Source].[Category].[Object].[Action] standard. Lateral emits these as `ctxt.lateral.<key>`. Object `reaper_cycle` is snake_case so Action stays a single word.",
+  "type": "object",
+  "definitions": {
+    "reaper_cycle.started":         {"type": "object"},
+    "reaper_cycle.completed":       {"type": "object", "properties": {"expired": {"type": "integer"}, "duration_ms": {"type": "integer"}}},
+    "reaper_cycle.failed":          {"type": "object", "properties": {"reason": {"type": "string"}}},
+    "reaper_cycle.skipped_overlap": {"type": "object"},
+    "sanity_check.violated":        {"type": "object", "properties": {"candidate_id": {"type": "string"}, "violation": {"type": "string"}}}
+  }
+}

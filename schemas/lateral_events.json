@@ -1,32 +1,10 @@
 {
   "title": "lateral_events",
+  "description": "Lateral-specific event payloads. Cross-cutting events (scan, candidate, reaper, scoring, resolver, recipe, classifier) live in their own category catalogs. Keys are short-form (Object.Action); the runtime topic is `<source>.<category>.<short_form>` per the [Source].[Category].[Object].[Action] standard. These are emitted as `ctxt.lateral.<key>`.",
   "type": "object",
   "definitions": {
-    "scan.started":          {"type": "object", "properties": {"object_id": {"type": "string"}}},
-    "scan.completed":        {"type": "object", "properties": {"object_id": {"type": "string"}, "candidates_emitted": {"type": "integer"}}},
-    "scan.deferred":         {"type": "object", "properties": {"object_id": {"type": "string"}, "reason": {"type": "string"}}},
-    "scan.skipped":          {"type": "object", "properties": {"object_id": {"type": "string"}, "reason": {"type": "string"}}},
-    "subpath.failed":        {"type": "object", "properties": {"object_id": {"type": "string"}, "subpath": {"type": "string"}, "reason": {"type": "string"}}},
-    "scan.jit_proposal_failed": {"type": "object", "properties": {"object_id": {"type": "string"}, "reason": {"type": "string"}}},
-    "candidate.created":     {"type": "object", "properties": {"candidate_id": {"type": "string"}}},
-    "candidate.promoted":    {"type": "object", "properties": {"candidate_id": {"type": "string"}, "path": {"type": "string"}}},
-    "candidate.expired":     {"type": "object", "properties": {"candidate_id": {"type": "string"}, "reason": {"type": "string"}}},
-    "candidate.rejected":    {"type": "object", "properties": {"candidate_id": {"type": "string"}}},
-    "candidate.resurrected": {"type": "object", "properties": {"candidate_id": {"type": "string"}}},
-    "reaper.cycle.started":   {"type": "object"},
-    "reaper.cycle.completed": {"type": "object", "properties": {"expired": {"type": "integer"}, "duration_ms": {"type": "integer"}}},
-    "reaper.cycle.failed":    {"type": "object", "properties": {"reason": {"type": "string"}}},
-    "reaper.cycle.skipped_overlap": {"type": "object"},
-    "reaper.sanity_violation":      {"type": "object", "properties": {"candidate_id": {"type": "string"}, "violation": {"type": "string"}}},
-    "scoring.invalid_score":   {"type": "object", "properties": {"candidate_id": {"type": "string"}}},
-    "scoring.signal_degraded": {"type": "object", "properties": {"signal": {"type": "string"}, "reason": {"type": "string"}}},
-    "resolver.ambiguous":      {"type": "object", "properties": {"candidate_id": {"type": "string"}}},
-    "recipe.refreshed":        {"type": "object", "properties": {"source_domain": {"type": "string"}, "page_type": {"type": "string"}}},
-    "recipe.using_during_llm_outage": {"type": "object", "properties": {"source_domain": {"type": "string"}, "page_type": {"type": "string"}}},
-    "classifier.heuristic_match":     {"type": "object", "properties": {"source_domain": {"type": "string"}, "page_type": {"type": "string"}}},
-    "classifier.llm_classification":  {"type": "object", "properties": {"source_domain": {"type": "string"}, "page_type": {"type": "string"}, "duration_ms": {"type": "integer"}}},
-    "classifier.recipe_hit":          {"type": "object", "properties": {"source_domain": {"type": "string"}, "page_type": {"type": "string"}}},
-    "research_intent.boost_applied":  {"type": "object", "properties": {"context_shape": {"type": "string"}, "boost_factor": {"type": "number"}}},
-    "research_intent.suppressed":     {"type": "object", "properties": {"context_shape": {"type": "string"}, "reason": {"type": "string"}}}
+    "scan.jit_proposal_failed":     {"type": "object", "properties": {"object_id": {"type": "string"}, "reason": {"type": "string"}}},
+    "research_intent.boosted":      {"type": "object", "properties": {"context_shape": {"type": "string"}, "boost_factor": {"type": "number"}}},
+    "research_intent.suppressed":   {"type": "object", "properties": {"context_shape": {"type": "string"}, "reason": {"type": "string"}}}
   }
 }
