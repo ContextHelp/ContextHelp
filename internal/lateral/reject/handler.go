@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/lateral/lifecycle"
 	"hop.top/kit/go/runtime/policy"
 )
 
@@ -67,7 +68,7 @@ func (h *Handler) Reject(ctx context.Context, candidateID, reason string) error 
 
 	// Mutate lifecycle in-place, then patch the full meta back so
 	// UpdateCandidate's shallow merge preserves sibling fields.
-	lc["state"] = "expired"
+	lc["state"] = string(lifecycle.Expired)
 	lc["expired_at"] = h.now().Format(time.RFC3339)
 	lc["reason"] = reason
 	patch := map[string]any{"metadata": meta}
