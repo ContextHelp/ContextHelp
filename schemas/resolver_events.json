@@ -1,0 +1,8 @@
+{
+  "title": "resolver_events",
+  "description": "Resolver event payloads. Keys are short-form (Object.Action); the runtime topic is `<source>.<category>.<short_form>` per the [Source].[Category].[Object].[Action] standard. Lateral emits these as `ctxt.lateral.<key>`.",
+  "type": "object",
+  "definitions": {
+    "resolution.flagged_ambiguous": {"type": "object", "properties": {"candidate_id": {"type": "string"}}}
+  }
+}

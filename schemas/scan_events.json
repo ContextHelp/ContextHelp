@@ -1,0 +1,12 @@
+{
+  "title": "scan_events",
+  "description": "Scan-vocabulary event payloads. Keys are short-form (Object.Action); the runtime topic is `<source>.<category>.<short_form>` per the [Source].[Category].[Object].[Action] standard. Lateral emits these as `ctxt.lateral.<key>`; another pipeline emitting the same vocabulary would substitute its own category.",
+  "type": "object",
+  "definitions": {
+    "scan.started":   {"type": "object", "properties": {"object_id": {"type": "string"}}},
+    "scan.completed": {"type": "object", "properties": {"object_id": {"type": "string"}, "candidates_emitted": {"type": "integer"}}},
+    "scan.deferred":  {"type": "object", "properties": {"object_id": {"type": "string"}, "reason": {"type": "string"}}},
+    "scan.skipped":   {"type": "object", "properties": {"object_id": {"type": "string"}, "reason": {"type": "string"}}},
+    "subpath.failed": {"type": "object", "properties": {"object_id": {"type": "string"}, "subpath": {"type": "string"}, "reason": {"type": "string"}}}
+  }
+}
