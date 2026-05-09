@@ -19,9 +19,15 @@ type Scoring struct {
 
 // Lifecycle holds the durations the reaper + promote/reject handlers
 // consult. Days are integers because the on-disk file is human-edited.
+//
+// ColdCycleDays and SoftDeleteDays carry `reload:"true"` — they are
+// runtime-mutable knobs the reaper re-reads each cycle.
+// P3ReferenceThreshold is intentionally untagged (immutable): it gates a
+// structural promotion decision that flips an entity's persistence shape,
+// so changing it mid-process would race in-flight promotions.
 type Lifecycle struct {
-	ColdCycleDays        int `yaml:"cold_cycle_days"`
-	SoftDeleteDays       int `yaml:"soft_delete_days"`
+	ColdCycleDays        int `yaml:"cold_cycle_days" reload:"true"`
+	SoftDeleteDays       int `yaml:"soft_delete_days" reload:"true"`
 	P3ReferenceThreshold int `yaml:"p3_reference_threshold"`
 }
 
@@ -34,8 +40,15 @@ type Jobs struct {
 }
 
 // Config is the typed shape kit/core/config.Load fills.
+//
+// Scoring is reload-tagged at the struct level so every nested weight,
+// threshold, and cap_k inherits mutability — operators tune these live
+// without restarting the daemon. Lifecycle is untagged at the struct
+// level because only some of its leaves are mutable; its per-field tags
+// handle the partition. Jobs is wholly immutable: engine choice and
+// sqlite path bind storage at boot and cannot hot-swap.
 type Config struct {
-	Scoring   Scoring   `yaml:"scoring"`
+	Scoring   Scoring   `yaml:"scoring" reload:"true"`
 	Lifecycle Lifecycle `yaml:"lifecycle"`
 	Jobs      Jobs      `yaml:"jobs"`
 }
