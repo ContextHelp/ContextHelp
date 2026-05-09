@@ -2,6 +2,37 @@ package lateral
 
 import "context"
 
+// Hints carries capture-pipeline-supplied attribution signals about the
+// captured page. Strategies consume Hints when URL-shape alone doesn't
+// identify the publishing platform — most commonly when a page is hosted
+// on a publication's own custom domain rather than the platform's
+// canonical host.
+//
+// The zero value disables hint-based detection. Strategies treat zero
+// Hints as "no page-side signals available" and fall back to host-only
+// matching, preserving pre-Hints behaviour.
+//
+// Hints lives on lateral.CapturedEvent so the substrate (not the
+// per-platform strategy package) owns the type. Strategies that want
+// platform-specific hint extraction read CapturedEvent.Hints and adapt
+// to their own input shape.
+type Hints struct {
+	// Generator is the value of <meta name="generator"> when present.
+	// Substack and Beehiiv emit recognisable strings here on
+	// custom-domain pages.
+	Generator string
+
+	// MetaPlatform is an explicit platform identifier when the capture
+	// pipeline has already attributed the page (e.g. via JS SDK probes,
+	// installed publishing scripts, or a manual override).
+	MetaPlatform string
+
+	// CanonicalHost is the host extracted from the page's rel=canonical
+	// link. Custom-domain Substack publications point rel=canonical at
+	// *.substack.com; same for Beehiiv. Apex/empty when absent.
+	CanonicalHost string
+}
+
 // StrategyFamily distinguishes platform-keyed strategies (mutually exclusive
 // within a platform tree) from shape-keyed strategies (parallel-firing).
 type StrategyFamily int
@@ -29,6 +60,11 @@ type CapturedEvent struct {
 	SourceURL       string
 	CapturePipeline string
 	PersistedAt     int64 // unix nanos; zero if from .captured fallback
+	// Hints are capture-pipeline-supplied page-side signals (meta
+	// generator, explicit platform tag, rel=canonical host) that
+	// strategies consume to refine platform attribution. Zero value =
+	// no signals available; strategies fall back to host-only matching.
+	Hints Hints
 }
 
 // Candidate is a strategy's raw output. Identity resolution + cap gate run
