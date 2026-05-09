@@ -20,8 +20,12 @@ import (
 // the parent strategy makes for /<owner>/<repo>, then verifies:
 //
 //  1. The dispatcher selects GitHubStrategy (parent claims github.com).
-//  2. probeRepo emits all five candidate types (sibling/owner/pinned/
-//     sponsor/starred).
+//  2. probeRepo emits the four REST-reachable candidate types
+//     (sibling/owner/sponsor/starred). pinned_repo requires GraphQL —
+//     HTTPAPIClient.ListOwnerPinned returns nil/nil per spec, so this
+//     end-to-end test does not exercise the pinned path. Daemon
+//     adapters with GraphQL access plug in here without changing the
+//     strategy code.
 //  3. Each candidate carries a parseable @github.* identity key.
 //  4. The captured repo (samber/lo) is NOT itself in the sibling set.
 //  5. Owner candidate URL is canonical (https://github.com/samber).
