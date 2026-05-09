@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/identitykey"
 )
 
 // TODO: replace with kit's domain.MockRepository (kit/runtime/domain) once the
@@ -33,6 +35,12 @@ func (g *fakeGraph) FindByIdentityKey(_ context.Context, key string) (string, er
 	return "", ErrNotFound
 }
 
+// preview is shorthand for the strategy-side Preview map carrying an
+// identity_key, mirroring identitykey.Set semantics.
+func preview(key string) map[string]any {
+	return map[string]any{identitykey.KeyField: key}
+}
+
 func TestResolver_ExactURLMatchEdgeOnly(t *testing.T) {
 	r := NewResolver(&fakeGraph{byURL: map[string]string{"https://x/y": "o-canonical"}})
 	res, err := r.Resolve(context.Background(), Candidate{URL: "https://x/y"})
@@ -55,12 +63,12 @@ func TestResolver_NoMatchProbationary(t *testing.T) {
 	}
 }
 
-func TestResolver_IdentityKeyFallback(t *testing.T) {
-	g := &fakeGraph{byKey: map[string]string{"@github.user.foo": "o-foo"}}
+func TestResolver_IdentityKeyFromPreview(t *testing.T) {
+	g := &fakeGraph{byKey: map[string]string{"github/owner/foo": "o-foo"}}
 	r := NewResolver(g)
 	res, err := r.Resolve(context.Background(), Candidate{
-		URL:         "https://github.com/foo",
-		IdentityKey: "@github.user.foo",
+		URL:     "https://github.com/foo",
+		Preview: preview("github/owner/foo"),
 	})
 	if err != nil {
 		t.Fatal(err)
