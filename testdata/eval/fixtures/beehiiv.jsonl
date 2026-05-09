@@ -1,0 +1,7 @@
+# Beehiiv family (parent + publication + post).
+{"event": {"source_url": "https://www.beehiiv.com/"}, "expect": {"strategy_id": "BeehiivStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://writer.beehiiv.com/"}, "expect": {"strategy_id": "BeehiivPublicationStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://writer.beehiiv.com/p/post-slug"}, "expect": {"strategy_id": "BeehiivPostStrategy", "min_candidates": 0}}
+# Custom-domain Beehiiv: meta-generator hint.
+{"event": {"source_url": "https://newsletter.example.com/p/welcome", "hints": {"generator": "beehiiv"}}, "expect": {"strategy_id": "BeehiivPostStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://example.com/beehiiv-knockoff"}, "expect": {"negative": true}}

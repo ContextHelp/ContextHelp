@@ -1,0 +1,7 @@
+# Google family fixtures. Spec amendment lateral.strategies.google.*
+{"event": {"source_url": "https://www.google.com/"}, "expect": {"strategy_id": "GoogleStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://www.google.com/search?q=foo"}, "expect": {"strategy_id": "GoogleSearchStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://scholar.google.com/scholar?q=lateral"}, "expect": {"strategy_id": "GoogleScholarStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://trends.google.com/trends/explore?q=ctxt"}, "expect": {"strategy_id": "GoogleTrendsStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://news.google.com/articles/abc"}, "expect": {"strategy_id": "GoogleNewsStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://example.com/google-search-result"}, "expect": {"negative": true}}
