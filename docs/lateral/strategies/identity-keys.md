@@ -7,6 +7,10 @@ The substrate's identity resolver uses equality on this string to merge
 candidates that point at the same entity even when their URLs differ
 (shortlinks, mobile hosts, custom domains, locale prefixes).
 
+> See also: [`../launch-summary.md`](../launch-summary.md) — top-level summary
+> of the lateral rollout including identity-key collision detection +
+> rollback runbook section.
+
 Package: `internal/lateral/strategies/identitykey`
 
 ## Format
