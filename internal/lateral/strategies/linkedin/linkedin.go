@@ -29,21 +29,12 @@ const (
 	CandidateTypeRecent  = "linkedin_recent"
 )
 
-// LinkedInClient is the daemon-supplied fetcher interface. Strategy
-// receives a pre-configured client; calling code does not import an SDK.
-type LinkedInClient interface {
-	// ResolveSlug returns a stable LinkedIn entity ID for the given
-	// slug + entity type, when one is known. Strategy uses the id
-	// (when non-empty) as the identity-key id segment.
-	ResolveSlug(ctx context.Context, entity, slug string) (id string, err error)
-}
+// Strategy implements lateral.LateralStrategy for LinkedIn. It is
+// purely URL-structural; identity keys are slug-keyed.
+type Strategy struct{}
 
-// Strategy implements lateral.LateralStrategy for LinkedIn.
-type Strategy struct {
-	Client LinkedInClient
-}
-
-func New(c LinkedInClient) *Strategy { return &Strategy{Client: c} }
+// New constructs a Strategy.
+func New() *Strategy { return &Strategy{} }
 
 func (*Strategy) ID() string                    { return ID }
 func (*Strategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }

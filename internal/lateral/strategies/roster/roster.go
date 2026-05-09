@@ -37,10 +37,10 @@ import (
 // Deps carries the daemon-side clients each strategy may use. All
 // fields are optional; passing nil for a client makes the corresponding
 // strategy degrade to URL-only output (no follow-up fetches).
+//
+// X and LinkedIn strategies are URL-structural and take no client.
 type Deps struct {
 	Google    google.GoogleClient
-	X         x.XClient
-	LinkedIn  linkedin.LinkedInClient
 	Arxiv     arxiv.ArxivClient
 	Wikipedia wikipedia.WikipediaClient
 	Medium    medium.MediumClient
@@ -109,10 +109,10 @@ func Register(reg *lateral.Registry, g Gates, deps Deps) {
 
 	// Single-strategy platforms.
 	if enabled(g.XStrategy) {
-		reg.Register(x.New(deps.X))
+		reg.Register(x.New())
 	}
 	if enabled(g.LinkedInStrategy) {
-		reg.Register(linkedin.New(deps.LinkedIn))
+		reg.Register(linkedin.New())
 	}
 	if enabled(g.ArxivStrategy) {
 		reg.Register(arxiv.New(deps.Arxiv))
