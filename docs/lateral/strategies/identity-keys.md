@@ -62,16 +62,74 @@ identitykey.Build("github", "repo", owner, repo)
 
 ## Reading on the resolver side
 
+The substrate's identity resolver (`internal/lateral/identity`) consumes
+identity keys via `identitykey.Get(candidate.Preview)` and applies them
+ahead of URL equality. Three rules govern the consumer contract; tests
+that pin them live in `internal/lateral/identity/{precedence,fallback,
+dedup,property}_test.go`.
+
+### Precedence rule — identity_key wins over URL
+
+When a candidate carries a non-empty identity_key AND the graph holds a
+matching entry, the resolver returns that canonical regardless of URL
+match. This is what lets dedup survive URL skew (mobile host, custom
+domain, locale prefix).
+
 ```go
-key := identitykey.Get(candidate.Preview)
+import "github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/identitykey"
+
+key := identitykey.Get(c.Preview)
+if key != "" {
+    if id, err := graph.FindByIdentityKey(ctx, key); err == nil {
+        return Result{EdgeOnly: true, CanonicalID: id}, nil
+    }
+    // ErrNotFound falls through to URL match; other errors propagate.
+}
+id, err := graph.FindByURL(ctx, c.URL)
+// ...
+```
+
+### Fallback rule — empty identity_key falls back to URL
+
+`identitykey.Get` returns `""` when `Preview` is nil, the entry is
+missing, the value is the empty string, or the value isn't a string.
+Each case skips the identity_key path and consults URL equality —
+matching pre-identitykey behaviour for legacy candidates and degenerate
+strategy outputs (per `Build`'s "refuse to emit a non-unique key"
+contract).
+
+### Mismatch rule — distinct identity_keys never merge
+
+Two candidates that hit the same URL but carry different non-empty
+identity_keys MUST resolve to distinct canonicals. The resolver never
+falls back from "identity_key found, no canonical match" to URL match
+across different keys — the identity_key precedence claim only relaxes
+to URL when the key path returns `ErrNotFound`. URL match never bridges
+two known-different identity_keys.
+
+### Reading the structured key
+
+When the resolver (or an adjacent component) needs the segments rather
+than just the opaque string:
+
+```go
 parsed := identitykey.Parse(key, /* localised = */ false)
 // parsed.Platform, parsed.EntityType, parsed.IDParts
 ```
 
-`Parse` cannot tell a localised key from a non-localised one purely by shape
-(both look the same). The caller passes `localised` explicitly because only the
-platform itself knows. Wikipedia callers pass `true`; everyone else passes
-`false`.
+`Parse` cannot tell a localised key from a non-localised one purely by
+shape (both look the same). The caller passes `localised` explicitly
+because only the platform itself knows. Wikipedia callers pass `true`;
+everyone else passes `false`.
+
+### Future: typed `Candidate.IdentityKey`
+
+A follow-up substrate change promotes `identity_key` from a `Preview`
+entry to a typed `Candidate.IdentityKey` field. During the transition
+the resolver will read both — the typed field if set, falling back to
+`identitykey.Get(c.Preview)` — for one minor cycle. The precedence,
+fallback, and mismatch rules above stay unchanged across that
+transition.
 
 ## Empty / missing inputs
 
