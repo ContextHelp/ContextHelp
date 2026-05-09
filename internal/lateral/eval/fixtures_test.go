@@ -1,8 +1,8 @@
 package eval_test
 
 import (
+	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/eval"
@@ -49,8 +49,7 @@ func TestFixtures_AllDecodeCleanly(t *testing.T) {
 
 	// Defensive: the README must also be present so curators have
 	// guidance.
-	if _, err := filepath.Abs(filepath.Join(root, "README.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, "README.md")); err != nil {
 		t.Errorf("missing README: %v", err)
 	}
-	_ = strings.TrimSpace // keep import for future negative-list expansions
 }

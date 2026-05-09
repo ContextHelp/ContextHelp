@@ -2,7 +2,6 @@ package rollout
 
 import (
 	"fmt"
-	"math"
 	"testing"
 )
 
@@ -136,15 +135,10 @@ func TestSampler_SnapshotIsCopied(t *testing.T) {
 	t.Parallel()
 	s := NewSampler(map[string]int{"x": 50})
 	snap := s.Snapshot()
+	// Mutate the snapshot — the live sampler must NOT see the change.
 	snap["x"] = 0
-	if !s.Allow("x", "id") && s.Allow("x", "id") == false {
-		// Confirm the original sampler still uses 50; we assert the
-		// underlying map wasn't mutated by a stable-ID hash check.
-		_ = math.Abs(0)
-	}
-	// More directly: the snapshot copy must not equal the live state.
 	live := s.Snapshot()
 	if live["x"] != 50 {
-		t.Errorf("live snap[x] = %d after snap mutation; want 50", live["x"])
+		t.Errorf("live snap[x] = %d after snap mutation; want 50 (snapshot must be a copy)", live["x"])
 	}
 }
