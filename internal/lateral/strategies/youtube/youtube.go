@@ -75,13 +75,15 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 	host := strings.ToLower(u.Hostname())
 	apex := "https://www.youtube.com"
 
-	// youtu.be/<id> → video shortlink.
+	// youtu.be/<id> → video shortlink. Extract only the first non-empty
+	// path segment so trailing segments (e.g. `youtu.be/<id>/extra`) or
+	// trailing slashes don't bleed into the canonical /watch?v= URL.
 	if host == "youtu.be" {
-		id := strings.TrimPrefix(u.Path, "/")
-		if id == "" {
+		segs := pathSegments(u.Path)
+		if len(segs) == 0 || segs[0] == "" {
 			return nil, nil
 		}
-		return s.videoCandidates(ctx, apex, id), nil
+		return s.videoCandidates(ctx, apex, segs[0]), nil
 	}
 
 	q := u.Query()

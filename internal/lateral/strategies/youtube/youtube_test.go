@@ -59,6 +59,28 @@ func TestProbe_ShortLink(t *testing.T) {
 	}
 }
 
+func TestProbe_ShortLink_TrailingSegments(t *testing.T) {
+	s := New(nil)
+	cands, _ := s.Probe(context.Background(), lateral.CapturedEvent{SourceURL: "https://youtu.be/ABCdef12345/extra/junk"}, lateral.ActiveContext{})
+	if len(cands) == 0 {
+		t.Fatal("expected video candidate even with trailing path segments")
+	}
+	if cands[0].URL != "https://www.youtube.com/watch?v=ABCdef12345" {
+		t.Fatalf("trailing path bled into canonical URL: %s", cands[0].URL)
+	}
+}
+
+func TestProbe_ShortLink_TrailingSlash(t *testing.T) {
+	s := New(nil)
+	cands, _ := s.Probe(context.Background(), lateral.CapturedEvent{SourceURL: "https://youtu.be/ABCdef12345/"}, lateral.ActiveContext{})
+	if len(cands) == 0 {
+		t.Fatal("expected video candidate with trailing slash")
+	}
+	if cands[0].URL != "https://www.youtube.com/watch?v=ABCdef12345" {
+		t.Fatalf("trailing slash bled into canonical URL: %s", cands[0].URL)
+	}
+}
+
 func TestProbe_Shorts(t *testing.T) {
 	s := New(nil)
 	cands, _ := s.Probe(context.Background(), lateral.CapturedEvent{SourceURL: "https://www.youtube.com/shorts/abc123"}, lateral.ActiveContext{})
