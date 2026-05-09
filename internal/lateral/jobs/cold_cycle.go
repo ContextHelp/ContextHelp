@@ -3,17 +3,22 @@ package jobs
 import (
 	"context"
 
+	"hop.top/kit/go/runtime/bus"
 	"hop.top/kit/go/runtime/domain"
 	"hop.top/kit/go/runtime/job"
 )
 
 // Bus topic + source for the cold-cycle handler's emitted events.
-// Naming follows the extended [Source].[Category].[Object][modifier].[Action]
-// notation (ctxt.lateral.reaper[cycle].<action>). The schema for this event
-// lives in schemas/lateral_events.json under the "reaper[cycle].completed" key.
-const (
-	TopicReaperCycleCompleted = "ctxt.lateral.reaper[cycle].completed"
-	SourceReaperCycle         = "lateral.reaper[cycle]"
+// Built via the kit bus.TopicOf builder so the wire form follows the
+// 4-segment grammar [Source].[Category].[Object].[Action] with the
+// modifier joined to Object via underscore: ctxt.lateral.reaper_cycle.<action>.
+// The schema for this event lives in schemas/lateral_events.json under
+// the "reaper_cycle.completed" key.
+var (
+	TopicReaperCycleCompleted = bus.TopicOf("ctxt", "lateral", "reaper").
+					Mod("cycle").
+					Action("completed")
+	SourceReaperCycle = "lateral.reaper_cycle"
 )
 
 // CycleStats summarizes one cold-cycle scan for observability.
@@ -50,7 +55,7 @@ func ColdCycleHandler(svc job.Service, pub domain.EventPublisher, scan ScanFunc)
 		}
 		if pub != nil {
 			_ = pub.Publish(
-				ctx, TopicReaperCycleCompleted,
+				ctx, string(TopicReaperCycleCompleted),
 				SourceReaperCycle,
 				map[string]any{
 					"job_id":      j.ID,
