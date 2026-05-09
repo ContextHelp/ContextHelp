@@ -51,7 +51,8 @@ func (s *NewsStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ la
 			URL:           apex + "/articles/" + id,
 			CandidateType: CandidateTypeArticle,
 			Strategy:      IDNews,
-			Preview:       identitykey.Set(map[string]any{"article_id": id}, identitykey.Build("news.google", identitykey.EntityArticle, id)),
+			IdentityKey:   identitykey.Build("news.google", identitykey.EntityArticle, id),
+			Preview:       map[string]any{"article_id": id},
 		}}, nil
 	case "topics":
 		id := parts[1]
@@ -59,7 +60,8 @@ func (s *NewsStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ la
 			URL:           apex + "/topics/" + id,
 			CandidateType: CandidateTypeTopic,
 			Strategy:      IDNews,
-			Preview:       identitykey.Set(map[string]any{"topic_id": id}, identitykey.Build("news.google", identitykey.EntityTopic, id)),
+			IdentityKey:   identitykey.Build("news.google", identitykey.EntityTopic, id),
+			Preview:       map[string]any{"topic_id": id},
 		}}
 		if s.Client != nil {
 			limit := s.ArticleCap
@@ -80,7 +82,8 @@ func (s *NewsStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ la
 						URL:           au,
 						CandidateType: CandidateTypeArticle,
 						Strategy:      IDNews,
-						Preview:       identitykey.Set(map[string]any{"topic_id": id, "article_url": au}, identitykey.Build("news.google", identitykey.EntityArticle, id+"|"+strings.Join(hbParts, "/"))),
+						IdentityKey:   identitykey.Build("news.google", identitykey.EntityArticle, id+"|"+strings.Join(hbParts, "/")),
+						Preview:       map[string]any{"topic_id": id, "article_url": au},
 					})
 				}
 			}

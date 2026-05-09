@@ -103,18 +103,21 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 	}
 
 	apex := "https://arxiv.org"
+	paperKey := identitykey.Build("arxiv", identitykey.EntityPaper, canonID)
 	out := []lateral.Candidate{
 		{
 			URL:           apex + "/abs/" + canonID,
 			CandidateType: CandidateTypePaper,
 			Strategy:      ID,
-			Preview:       identitykey.Set(map[string]any{"id": canonID}, identitykey.Build("arxiv", identitykey.EntityPaper, canonID)),
+			IdentityKey:   paperKey,
+			Preview:       map[string]any{"id": canonID},
 		},
 		{
 			URL:           apex + "/pdf/" + canonID,
 			CandidateType: CandidateTypePDF,
 			Strategy:      ID,
-			Preview:       identitykey.Set(map[string]any{"id": canonID, "format": "pdf"}, identitykey.Build("arxiv", identitykey.EntityPaper, canonID)),
+			IdentityKey:   paperKey,
+			Preview:       map[string]any{"id": canonID, "format": "pdf"},
 		},
 	}
 
@@ -123,7 +126,8 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 			URL:           apex + "/abs/" + canonID + version,
 			CandidateType: CandidateTypeVersion,
 			Strategy:      ID,
-			Preview:       identitykey.Set(map[string]any{"id": canonID, "version": version}, identitykey.Build("arxiv", identitykey.EntityPaper, canonID+version)),
+			IdentityKey:   identitykey.Build("arxiv", identitykey.EntityPaper, canonID+version),
+			Preview:       map[string]any{"id": canonID, "version": version},
 		})
 	}
 
@@ -139,7 +143,8 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 					URL:           apex + "/a/" + slug + ".html",
 					CandidateType: CandidateTypeAuthor,
 					Strategy:      ID,
-					Preview:       identitykey.Set(map[string]any{"name": a}, identitykey.Build("arxiv", identitykey.EntityProfile, slug)),
+					IdentityKey:   identitykey.Build("arxiv", identitykey.EntityProfile, slug),
+					Preview:       map[string]any{"name": a},
 				})
 			}
 		}
@@ -152,7 +157,8 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 		URL:           "https://www.semanticscholar.org/arxiv?query=" + canonID,
 		CandidateType: CandidateTypeMirror,
 		Strategy:      ID,
-		Preview:       identitykey.Set(map[string]any{"id": canonID, "mirror": "semanticscholar"}, identitykey.Build("arxiv", identitykey.EntityPaper, canonID)),
+		IdentityKey:   paperKey,
+		Preview:       map[string]any{"id": canonID, "mirror": "semanticscholar"},
 	})
 
 	return out, nil

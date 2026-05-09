@@ -57,7 +57,8 @@ func (s *ParentStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ 
 			URL:           "https://medium.com/p/" + slug,
 			CandidateType: CandidateTypeArticle,
 			Strategy:      IDParent,
-			Preview:       identitykey.Set(map[string]any{"slug": slug, "author": author}, identitykey.Build("medium", identitykey.EntityArticle, slug)),
+			IdentityKey:   identitykey.Build("medium", identitykey.EntityArticle, slug),
+			Preview:       map[string]any{"slug": slug, "author": author},
 		})
 	}
 
@@ -67,7 +68,8 @@ func (s *ParentStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ 
 			URL:           "https://medium.com/@" + author,
 			CandidateType: CandidateTypeAuthor,
 			Strategy:      IDParent,
-			Preview:       identitykey.Set(map[string]any{"username": author}, identitykey.Build("medium", identitykey.EntityProfile, author)),
+			IdentityKey:   identitykey.Build("medium", identitykey.EntityProfile, author),
+			Preview:       map[string]any{"username": author},
 		})
 	}
 
@@ -80,7 +82,8 @@ func (s *ParentStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ 
 		URL:           "https://medium.com/feed/" + feedID,
 		CandidateType: CandidateTypeFeed,
 		Strategy:      IDParent,
-		Preview:       identitykey.Set(map[string]any{"feed_id": feedID}, identitykey.Build("medium", "feed", feedID)),
+		IdentityKey:   identitykey.Build("medium", "feed", feedID),
+		Preview:       map[string]any{"feed_id": feedID},
 	})
 
 	return out, nil

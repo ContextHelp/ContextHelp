@@ -50,25 +50,29 @@ func (s *PublicationStrategy) Probe(ctx context.Context, ev lateral.CapturedEven
 			URL:           root,
 			CandidateType: CandidateTypePublication,
 			Strategy:      IDPublication,
-			Preview:       identitykey.Set(map[string]any{"slug": slug}, idKey),
+			IdentityKey:   idKey,
+			Preview:       map[string]any{"slug": slug},
 		},
 		{
 			URL:           root + "/archive",
 			CandidateType: CandidateTypeArchive,
 			Strategy:      IDPublication,
-			Preview:       identitykey.Set(map[string]any{"slug": slug, "facet": "archive"}, idKey),
+			IdentityKey:   idKey,
+			Preview:       map[string]any{"slug": slug, "facet": "archive"},
 		},
 		{
 			URL:           root + "/about",
 			CandidateType: CandidateTypePublication,
 			Strategy:      IDPublication,
-			Preview:       identitykey.Set(map[string]any{"slug": slug, "facet": "about"}, idKey),
+			IdentityKey:   idKey,
+			Preview:       map[string]any{"slug": slug, "facet": "about"},
 		},
 		{
 			URL:           root + "/feed",
 			CandidateType: CandidateTypeFeed,
 			Strategy:      IDPublication,
-			Preview:       identitykey.Set(map[string]any{"slug": slug}, identitykey.Build("substack", "feed", slug)),
+			IdentityKey:   identitykey.Build("substack", "feed", slug),
+			Preview:       map[string]any{"slug": slug},
 		},
 	}, nil
 }

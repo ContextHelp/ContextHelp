@@ -155,9 +155,16 @@ func TestIntegration_PlatformRoster(t *testing.T) {
 					t.Errorf("missing %s in %v", want, candTypes(cands))
 				}
 			}
-			// Every candidate must carry a non-empty identity_key.
+			// Every candidate must carry a non-empty identity_key —
+			// post-T-0309 strategies write to the typed field, but
+			// the legacy Preview-map form is also accepted for
+			// one-cycle backward compat.
 			for _, c := range cands {
-				if k, _ := c.Preview["identity_key"].(string); k == "" {
+				key := c.IdentityKey
+				if key == "" {
+					key, _ = c.Preview["identity_key"].(string)
+				}
+				if key == "" {
 					t.Errorf("candidate %s missing identity_key", c.CandidateType)
 				}
 			}

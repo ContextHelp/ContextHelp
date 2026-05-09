@@ -66,8 +66,8 @@ func TestSecurityAdvisoryStrategy_ProbeRepo_EmitsOwnerAndRepo(t *testing.T) {
 		t.Errorf("missing expected types in %v", candidateTypes(got))
 	}
 	repo := findFirst(got, TypeAdvisoryRepo)
-	if repo.Preview[PreviewKeyIdentityKey] != "@github.repo.owner/repo" {
-		t.Errorf("repo identity_key = %v", repo.Preview[PreviewKeyIdentityKey])
+	if got, want := ExtractIdentityKey(*repo), "@github.repo.owner/repo"; got != want {
+		t.Errorf("repo identity_key = %q, want %q", got, want)
 	}
 }
 

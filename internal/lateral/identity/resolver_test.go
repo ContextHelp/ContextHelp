@@ -137,3 +137,45 @@ func TestResolver_TypedFieldMissingFallsBackToPreview(t *testing.T) {
 		t.Fatalf("expected Preview-map fallback to resolve, got %+v", res)
 	}
 }
+
+// TestResolver_TypedAndPreviewProduceIdenticalResults pins T-0309's
+// migration safety net: any candidate that sets either form (typed or
+// Preview-map) must produce identical resolver output. Strategies can
+// migrate one at a time without breaking dedup.
+func TestResolver_TypedAndPreviewProduceIdenticalResults(t *testing.T) {
+	cases := []struct {
+		name string
+		key  string
+	}{
+		{"github_repo", "github/repo/samber/lo"},
+		{"github_user", "github/owner/jadb"},
+		{"substack_pub", "substack/publication/anthropic-research"},
+		{"wikipedia_localised", "wikipedia/article/en/turing_machine"},
+		{"youtube_channel", "youtube/channel/uc12345"},
+		{"missing_in_graph", "platform/entity/never-indexed"},
+	}
+	g := &fakeGraph{byKey: map[string]string{
+		"github/repo/samber/lo":                "o-lo",
+		"github/owner/jadb":                    "o-jadb",
+		"substack/publication/anthropic-research": "o-substack",
+		"wikipedia/article/en/turing_machine":  "o-wiki",
+		"youtube/channel/uc12345":              "o-yt",
+	}}
+	r := NewResolver(g)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			typedRes, _ := r.Resolve(context.Background(), Candidate{
+				URL:         "https://example/" + tc.name,
+				IdentityKey: tc.key,
+			})
+			previewRes, _ := r.Resolve(context.Background(), Candidate{
+				URL:     "https://example/" + tc.name,
+				Preview: preview(tc.key),
+			})
+			if typedRes != previewRes {
+				t.Errorf("typed vs preview diverged for %q: typed=%+v preview=%+v",
+					tc.key, typedRes, previewRes)
+			}
+		})
+	}
+}
