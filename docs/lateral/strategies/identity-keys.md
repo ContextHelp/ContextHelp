@@ -38,13 +38,26 @@ segment escape to underscores so the resulting key remains parseable.
 
 ## Wiring strategies
 
+Strategies set the typed `Candidate.IdentityKey` field directly at
+construction time:
+
 ```go
 import "github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/identitykey"
 
-candidate.Preview = identitykey.Set(candidate.Preview, identitykey.Build(
-    "github", identitykey.EntityRepository, owner, repo,
-))
+cand := lateral.Candidate{
+    URL:           url,
+    CandidateType: "owner_repo",
+    Strategy:      ID,
+    IdentityKey:   identitykey.Build("github", identitykey.EntityRepository, owner, repo),
+    Preview:       map[string]any{"owner": owner, "name": repo},
+}
 ```
+
+The legacy `identitykey.Set(preview, key)` form remains supported for
+one minor cycle (resolver dual-reads typed field then Preview entry)
+but is `Deprecated:` for new code. See Amendment 2
+(`docs/superpowers/specs/2026-05-09-lateral-capture-discovery-design-amendment-2.md`)
+for the migration semantics.
 
 Multi-segment ids are first-class: pass each segment as a separate variadic
 argument. Don't pre-concatenate (`"owner/repo"`) — that triggers escaping and
@@ -135,14 +148,24 @@ shape (both look the same). The caller passes `localised` explicitly
 because only the platform itself knows. Wikipedia callers pass `true`;
 everyone else passes `false`.
 
-### Future: typed `Candidate.IdentityKey`
+### Typed `Candidate.IdentityKey` (landed)
 
-A follow-up substrate change promotes `identity_key` from a `Preview`
-entry to a typed `Candidate.IdentityKey` field. During the transition
-the resolver will read both — the typed field if set, falling back to
-`identitykey.Get(c.Preview)` — for one minor cycle. The precedence,
-fallback, and mismatch rules above stay unchanged across that
-transition.
+Substrate Amendment 2 (T-0307 / T-0309) promotes `identity_key` from a
+`Preview` entry to a typed `Candidate.IdentityKey` field. The resolver
+reads the typed field first; when empty, it falls back to
+`identitykey.Get(c.Preview)`. Strategies emit the typed field directly
+via `Candidate{IdentityKey: identitykey.Build(...)}`; the helper
+`identitykey.Of(c lateral.Candidate)` wraps the dual-read for adapters
+that bridge `lateral.Candidate` to `identity.Candidate`.
+
+When both forms are set with non-empty conflicting values, the typed
+field wins — by intent. The typed field is the contract; Preview is
+the legacy back-channel.
+
+The precedence, fallback, and mismatch rules above stay unchanged
+across the transition. After one minor cycle the deprecated
+`identitykey.Set` and the Preview-map fallback in the resolver are
+candidates for removal.
 
 ## Empty / missing inputs
 
