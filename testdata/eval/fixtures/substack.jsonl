@@ -1,0 +1,8 @@
+# Substack family (parent + publication + post + notes).
+{"event": {"source_url": "https://substack.com/"}, "expect": {"strategy_id": "SubstackStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://writer.substack.com/"}, "expect": {"strategy_id": "SubstackPublicationStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://writer.substack.com/p/the-post-slug"}, "expect": {"strategy_id": "SubstackPostStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://substack.com/notes/note/c-123456"}, "expect": {"strategy_id": "SubstackNotesStrategy", "min_candidates": 0}}
+# Custom-domain Substack: rel=canonical hint points back at substack.com.
+{"event": {"source_url": "https://newsletter.example.com/p/welcome", "hints": {"canonical_host": "writer.substack.com"}}, "expect": {"strategy_id": "SubstackPostStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://example.com/blog/welcome"}, "expect": {"negative": true}}

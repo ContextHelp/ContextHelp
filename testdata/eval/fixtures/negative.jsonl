@@ -1,0 +1,7 @@
+# Cross-cutting negative fixtures: URLs that look platform-shaped but
+# should NOT trigger any strategy. Regression guards for precision.
+{"event": {"source_url": "https://192.168.1.1/admin"}, "expect": {"negative": true}}
+{"event": {"source_url": "http://localhost:3000/dashboard"}, "expect": {"negative": true}}
+{"event": {"source_url": "file:///etc/hosts"}, "expect": {"negative": true}}
+{"event": {"source_url": "https://intranet.corp.example.com/wiki/Topic"}, "expect": {"negative": true}}
+{"event": {"source_url": "https://example.com/x.com-imitation"}, "expect": {"negative": true}}
