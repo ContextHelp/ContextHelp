@@ -98,17 +98,11 @@ strategies:
 
 ## Roll back per strategy
 
-Three escalating levers, fastest first:
+Two escalating levers — the operator CLI surface (`ctxt lateral kill`,
+`ctxt lateral restore`) is on the roadmap but NOT shipped today.
+Until it lands, both levers go through YAML + SIGHUP:
 
-1. **In-process kill-switch** (instant, no SIGHUP):
-   ```bash
-   ctxt lateral kill <strategy-id>
-   # Restore:
-   ctxt lateral restore <strategy-id>
-   ```
-   Operational, not durable — overwritten on next config reload.
-
-2. **YAML + SIGHUP** (durable, ~1s):
+1. **YAML enabled flag + SIGHUP** (hard cutover, ~1s):
    ```yaml
    strategies:
      <strategy>:
@@ -119,14 +113,18 @@ Three escalating levers, fastest first:
    ```
    The strategy stops dispatching on the next captured event.
 
-3. **Sample-percent ramp-down** (graceful, no abrupt cutover):
+2. **Sample-percent ramp-down + SIGHUP** (graceful, no abrupt cutover):
    ```yaml
    strategies:
      <strategy>:
        sample_percent: 10   # 10% of traffic; bump down further as needed
    ```
+   ```bash
+   pkill -HUP ctxt
+   ```
    Useful when the strategy isn't broken but is producing
-   higher-than-expected load.
+   higher-than-expected load. Setting `sample_percent: 0` is a soft
+   kill-switch (denies all traffic without changing the enabled gate).
 
 ## 30-day / 90-day review checkpoints
 
@@ -200,6 +198,14 @@ Tune:
   lands, JIT joins the labelled-fixture flow.
 - **Status subcommand** (`ctxt lateral status` returns ErrNotWired):
   read-the-bus implementation is a follow-on operational slice.
+- **Operator CLI surface** (`ctxt lateral kill <id>` /
+  `ctxt lateral restore <id>` / `ctxt lateral events ...` /
+  `ctxt lateral candidates inspect <id>`): not yet wired. Soft
+  kill-switching today goes through YAML edits + SIGHUP. The
+  rollout/observe primitives (StrategyGate, KillSwitch) are in place;
+  the CLI wrapper around them is the missing piece.
+- **SIGUSR1 breaker reset**: not wired. Operators restart the daemon
+  to re-arm a stuck breaker.
 
 ## Cross-references
 
