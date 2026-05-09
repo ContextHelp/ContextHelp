@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/lateral"
 )
@@ -114,6 +115,57 @@ func (f *httpFetcher) Get(ctx context.Context, url string) (FetchResult, error) 
 // observe rate-limit headers under the cassette.
 func (f *httpFetcher) LastResponseHeaders() (http.Header, error) {
 	return f.lastHeader, nil
+}
+
+// TestHTTPAPIClient_ConcurrentSnapshotAccess exercises RateSnapshot()
+// reads against in-flight rateAwareGet writes. Run with -race; without
+// the snapshotMu guard added in T-0270 this test trips the data-race
+// detector on lastSnapshot.
+func TestHTTPAPIClient_ConcurrentSnapshotAccess(t *testing.T) {
+	srv := fixturesServer(t, map[string]string{
+		"/users/jadb/repos?per_page=100": `[]`,
+	})
+	c := NewHTTPAPIClient(newHTTPFetcher(), srv.URL)
+
+	stop := make(chan struct{})
+	done := make(chan struct{}, 2)
+	// Reader: hammer RateSnapshot.
+	go func() {
+		for {
+			select {
+			case <-stop:
+				done <- struct{}{}
+				return
+			default:
+				_ = c.RateSnapshot(context.Background())
+			}
+		}
+	}()
+	// Writer: hammer ListRepoSiblings (which writes lastSnapshot via
+	// rateAwareGet).
+	go func() {
+		for {
+			select {
+			case <-stop:
+				done <- struct{}{}
+				return
+			default:
+				_, _ = c.ListRepoSiblings(context.Background(), "jadb", "")
+			}
+		}
+	}()
+	// Run both for ~50ms then stop.
+	timer := time.NewTimer(50 * time.Millisecond)
+	defer timer.Stop()
+	<-timer.C
+	close(stop)
+	<-done
+	<-done
+	// Final read must reflect the cassette's headers.
+	snap := c.RateSnapshot(context.Background())
+	if snap.Limit != 5000 {
+		t.Errorf("final RateSnapshot.Limit = %d, want 5000", snap.Limit)
+	}
 }
 
 func TestCassette_RepoSiblings(t *testing.T) {

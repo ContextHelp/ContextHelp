@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,8 +30,10 @@ type HTTPAPIClient struct {
 	Fetcher Fetcher
 	BaseURL string
 
-	// lastSnapshot is the most recent rate-limit observation. Mutex
-	// protected because Fetcher concurrency is permitted.
+	// snapshotMu guards lastSnapshot. Fetcher concurrency is permitted
+	// (probes fan out sub-paths), so reads via RateSnapshot may race
+	// against writes from rateAwareGet.
+	snapshotMu   sync.RWMutex
 	lastSnapshot RateSnapshot
 }
 
@@ -77,7 +80,10 @@ func (c *HTTPAPIClient) rateAwareGet(ctx context.Context, path string, out any) 
 	// If the Fetcher surfaces headers, record the snapshot.
 	if hf, ok := c.Fetcher.(HeaderFetcher); ok {
 		if h, herr := hf.LastResponseHeaders(); herr == nil {
-			c.lastSnapshot = parseRateHeaders(h)
+			snap := parseRateHeaders(h)
+			c.snapshotMu.Lock()
+			c.lastSnapshot = snap
+			c.snapshotMu.Unlock()
 		}
 	}
 	return err
@@ -118,6 +124,8 @@ func parseRateHeaders(h http.Header) RateSnapshot {
 
 // RateSnapshot returns the last observed rate-limit snapshot.
 func (c *HTTPAPIClient) RateSnapshot(_ context.Context) RateSnapshot {
+	c.snapshotMu.RLock()
+	defer c.snapshotMu.RUnlock()
 	return c.lastSnapshot
 }
 
