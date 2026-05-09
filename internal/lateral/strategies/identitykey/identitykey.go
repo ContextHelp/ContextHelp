@@ -36,6 +36,8 @@ package identitykey
 import (
 	"net/url"
 	"strings"
+
+	"github.com/ideacrafterslabs/ctxt/internal/lateral"
 )
 
 // KeyField is the Candidate.Preview map key under which the identity
@@ -190,6 +192,11 @@ func Parse(key string, localised bool) Parsed {
 }
 
 // Get returns the identity key string from preview, or "" if missing.
+//
+// Get is the legacy reader against the Preview-map form. New code
+// SHOULD prefer the typed lateral.Candidate.IdentityKey field; the
+// substrate's identity resolver consults the typed field first and
+// falls back to Get for one minor cycle (T-0307 / T-0309).
 func Get(preview map[string]any) string {
 	if preview == nil {
 		return ""
@@ -201,12 +208,45 @@ func Get(preview map[string]any) string {
 // Set writes key into preview under KeyField. Returns preview so it can
 // be chained at the end of a builder. Allocates a new map if preview is
 // nil.
+//
+// Deprecated: prefer setting lateral.Candidate.IdentityKey directly (or
+// via SetField). Set survives for one minor cycle so legacy strategies
+// keep compiling; T-0309 sweeps the in-tree call sites onto the typed
+// field.
 func Set(preview map[string]any, key string) map[string]any {
 	if preview == nil {
 		preview = map[string]any{}
 	}
 	preview[KeyField] = key
 	return preview
+}
+
+// Of returns the canonical identity key for c. The typed IdentityKey
+// field wins when non-empty; otherwise Of falls back to the legacy
+// Preview[KeyField] entry. Substrate adapters wiring lateral.Candidate
+// to identity.Candidate use Of so both forms feed the resolver
+// identically during the T-0309 migration window.
+//
+// When both are set with conflicting non-empty values, the typed field
+// wins — by intent. The typed field is the contract; Preview is the
+// legacy back-channel.
+func Of(c lateral.Candidate) string {
+	if c.IdentityKey != "" {
+		return c.IdentityKey
+	}
+	return Get(c.Preview)
+}
+
+// SetField writes key onto c.IdentityKey. Returns c so it can be
+// chained at the end of a builder. The typed-field counterpart to Set.
+//
+// SetField does NOT also write Preview[KeyField] — strategies that have
+// migrated to the typed field stop emitting the Preview entry. Callers
+// that want both forms (transitional code) call Set(c.Preview, key)
+// alongside SetField.
+func SetField(c lateral.Candidate, key string) lateral.Candidate {
+	c.IdentityKey = key
+	return c
 }
 
 // HostBackedIDParts returns stable identity-key id segments derived

@@ -20,14 +20,16 @@ type Graph interface {
 	FindByIdentityKey(ctx context.Context, key string) (string, error)
 }
 
-// Candidate is the input to Resolve. URL is required; Preview carries
-// strategy-supplied fields and is consulted via identitykey.Get to obtain
-// the canonical identity_key. Per the identitykey package contract,
-// strategies write the key into Preview[identitykey.KeyField]; the resolver
-// reads it the same way so the two sides stay in lockstep.
+// Candidate is the input to Resolve. URL is required; IdentityKey (when
+// non-empty) takes precedence over the legacy Preview[identitykey.KeyField]
+// form. Substrate adapters wiring lateral.Candidate -> identity.Candidate
+// should copy lateral.Candidate.IdentityKey into IdentityKey directly;
+// during the one-cycle backward-compat window (T-0307 / T-0309) callers
+// that still set Preview[identity_key] continue to work.
 type Candidate struct {
-	URL     string
-	Preview map[string]any
+	URL         string
+	IdentityKey string
+	Preview     map[string]any
 }
 
 // Result is what Resolve produces. EdgeOnly=true means CanonicalID points at
@@ -46,13 +48,23 @@ type Resolver struct{ g Graph }
 // NewResolver wires a Resolver to its graph backend.
 func NewResolver(g Graph) *Resolver { return &Resolver{g: g} }
 
-// Resolve returns the resolution decision for c. identity_key (read via
-// identitykey.Get(c.Preview)) takes precedence over URL: when non-empty and
-// found in the graph, that result wins regardless of URL match. When the
-// identity_key is empty or missing in the graph, Resolve falls back to URL
-// equality. Real graph errors (anything other than ErrNotFound) propagate.
+// Resolve returns the resolution decision for c. The identity key (the
+// typed Candidate.IdentityKey field when set, otherwise the legacy
+// Preview[identitykey.KeyField] entry) takes precedence over URL: when
+// non-empty and found in the graph, that result wins regardless of URL
+// match. When the identity key is empty or missing in the graph, Resolve
+// falls back to URL equality. Real graph errors (anything other than
+// ErrNotFound) propagate.
+//
+// The dual-read on identity key is the T-0307 / T-0309 backward-compat
+// window: typed field wins (it's the new contract), Preview-map fallback
+// keeps pre-T-0309 strategies working without behavior change.
 func (r *Resolver) Resolve(ctx context.Context, c Candidate) (Result, error) {
-	if key := identitykey.Get(c.Preview); key != "" {
+	key := c.IdentityKey
+	if key == "" {
+		key = identitykey.Get(c.Preview)
+	}
+	if key != "" {
 		id, err := r.g.FindByIdentityKey(ctx, key)
 		if err == nil {
 			return Result{EdgeOnly: true, CanonicalID: id}, nil
