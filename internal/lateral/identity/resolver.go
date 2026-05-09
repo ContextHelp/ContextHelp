@@ -3,11 +3,14 @@ package identity
 import (
 	"context"
 	"errors"
+
+	"hop.top/kit/go/runtime/domain"
 )
 
-// ErrNotFound signals that a graph lookup didn't match any canonical entity.
-// Callers distinguish this from real graph errors via errors.Is.
-var ErrNotFound = errors.New("not found")
+// ErrNotFound aliases the kit-wide sentinel so lateral identity callers
+// using errors.Is(err, identity.ErrNotFound) interoperate with any kit-backed
+// Graph adapter that returns domain.ErrNotFound directly.
+var ErrNotFound = domain.ErrNotFound
 
 // Graph is the subset of the canonical store the resolver queries: lookup by
 // source URL, lookup by identity key (e.g. "@github.user.<login>" via aliases).

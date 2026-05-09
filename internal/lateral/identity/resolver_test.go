@@ -6,6 +6,9 @@ import (
 	"testing"
 )
 
+// TODO: replace with kit's domain.MockRepository (kit/runtime/domain) once the
+// real adapter lands; the fake will desynchronise from the canonical interface
+// otherwise.
 type fakeGraph struct {
 	byURL    map[string]string
 	byKey    map[string]string
