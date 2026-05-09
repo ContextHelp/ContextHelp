@@ -24,8 +24,7 @@ type Store interface {
 }
 
 // Input bundles everything the materializer needs to write one outcome.
-// ParentLifespan defaults to 180d when zero. Now is injected for tests; zero
-// means time.Now().
+// ParentLifespan defaults to 180d when zero.
 type Input struct {
 	ParentID        string
 	URL             string
@@ -34,7 +33,6 @@ type Input struct {
 	Strategy        string
 	Resolution      identity.Result
 	ParentLifespan  time.Duration
-	Now             time.Time
 	ScoringMetadata map[string]any
 	Preview         map[string]any
 }
@@ -49,12 +47,35 @@ type Output struct {
 	CanonicalID string
 }
 
+// Option tunes a Materializer at construction.
+type Option func(*Materializer)
+
+// WithNowFunc overrides the wall-clock source (useful for tests). Mirrors the
+// hop.top/kit/go/runtime/job.WithNowFunc pattern; kit does not currently ship
+// a wall-clock interface (sync.Clock is a hybrid logical clock returning
+// Timestamp), so we adopt the func() time.Time idiom kit uses elsewhere.
+// Follow-up: if kit grows a real wall-clock interface + fake helper, swap to
+// it here and drop this Option.
+func WithNowFunc(f func() time.Time) Option {
+	return func(m *Materializer) { m.nowFunc = f }
+}
+
 // Materializer turns a resolved candidate into store writes per the
 // schemas/lateral_candidate.json + schemas/lateral_edges.json contracts.
-type Materializer struct{ st Store }
+type Materializer struct {
+	st      Store
+	nowFunc func() time.Time
+}
 
-// New wires a Materializer to its Store.
-func New(st Store) *Materializer { return &Materializer{st: st} }
+// New wires a Materializer to its Store. Wall-clock source defaults to
+// time.Now and can be overridden via WithNowFunc.
+func New(st Store, opts ...Option) *Materializer {
+	m := &Materializer{st: st, nowFunc: time.Now}
+	for _, o := range opts {
+		o(m)
+	}
+	return m
+}
 
 // Materialize executes the resolution outcome. When the resolver flagged
 // EdgeOnly, writes only a refers_to_canonical edge. Otherwise writes a
@@ -65,10 +86,7 @@ func (m *Materializer) Materialize(ctx context.Context, in Input) (Output, error
 		err := m.st.WriteEdge(ctx, Edge{From: in.ParentID, To: in.Resolution.CanonicalID, Type: "refers_to_canonical"})
 		return Output{EdgeOnly: true, CanonicalID: in.Resolution.CanonicalID}, err
 	}
-	now := in.Now
-	if now.IsZero() {
-		now = time.Now()
-	}
+	now := m.nowFunc()
 	lifespan := in.ParentLifespan
 	if lifespan == 0 {
 		lifespan = 180 * 24 * time.Hour
