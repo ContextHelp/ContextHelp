@@ -23,6 +23,8 @@ package customdomain
 import (
 	"net/url"
 	"strings"
+
+	"github.com/ideacrafterslabs/ctxt/internal/lateral"
 )
 
 // Platform identifies the publishing platform a URL belongs to.
@@ -35,22 +37,13 @@ const (
 	PlatformBeehiiv  Platform = "beehiiv"
 )
 
-// Hints are caller-supplied page signals the detector consults when the
-// host suffix alone does not identify the platform. All fields are
-// optional; the zero value disables hint-based detection.
-type Hints struct {
-	// Generator is the value of <meta name="generator"> if present.
-	// Substack and Beehiiv emit recognisable strings here on
-	// custom-domain pages.
-	Generator string
-	// MetaPlatform is an explicit platform identifier when the capture
-	// pipeline has already attributed the page (e.g. via JS SDK probes).
-	MetaPlatform string
-	// CanonicalHost, when set, is the host extracted from the page's
-	// rel=canonical link. Custom-domain Substack publications point
-	// rel=canonical at *.substack.com; same for Beehiiv.
-	CanonicalHost string
-}
+// Hints aliases lateral.Hints so callers that only import customdomain
+// keep compiling, but the canonical home for the type is the substrate
+// (lateral package) — the Hints field lives on lateral.CapturedEvent.
+//
+// Deprecated: use lateral.Hints directly. This alias stays for one
+// minor cycle to ease migration.
+type Hints = lateral.Hints
 
 // Detection is the detector's verdict for one URL.
 type Detection struct {
@@ -59,10 +52,10 @@ type Detection struct {
 	CustomHost bool     // true when matched via custom-domain hints, not canonical suffix
 }
 
-// Detect classifies rawURL. hints is optional; pass the zero value when
-// no page-side signals are available (in which case only canonical-host
-// detection runs).
-func Detect(rawURL string, hints Hints) Detection {
+// Detect classifies rawURL. hints is optional; pass the zero value
+// (lateral.Hints{}) when no page-side signals are available, in which
+// case only canonical-host detection runs.
+func Detect(rawURL string, hints lateral.Hints) Detection {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {
 		return Detection{}
