@@ -93,7 +93,7 @@ func (*NotesStrategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ later
 				URL:           apex + "/profile/" + profile + "/note/" + noteID,
 				CandidateType: CandidateTypeNote,
 				Strategy:      IDNotes,
-				Preview:       identitykey.Set(map[string]any{"profile": profile, "note_id": noteID}, identitykey.Build("substack", identitykey.EntityNote, profile+"/"+noteID)),
+				Preview:       identitykey.Set(map[string]any{"profile": profile, "note_id": noteID}, identitykey.Build("substack", identitykey.EntityNote, profile, noteID)),
 			},
 		}, nil
 	}

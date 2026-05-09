@@ -68,19 +68,19 @@ func (s *NewsStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ la
 			}
 			if articles, err := s.Client.NewsTopicArticles(ctx, id, limit); err == nil {
 				for _, au := range articles {
-					// Skip article URLs that don't yield a host-backed
-					// id; otherwise the article identity key collapses
-					// to `<topic>|` and dedups against every other
-					// invalid article.
-					hb := identitykey.HostBackedID(au)
-					if hb == "" {
+					// Skip article URLs that don't yield host-backed
+					// id parts; otherwise the article identity key
+					// collapses to `<topic>|` and dedups against every
+					// other invalid article.
+					hbParts := identitykey.HostBackedIDParts(au)
+					if hbParts == nil {
 						continue
 					}
 					out = append(out, lateral.Candidate{
 						URL:           au,
 						CandidateType: CandidateTypeArticle,
 						Strategy:      IDNews,
-						Preview:       identitykey.Set(map[string]any{"topic_id": id, "article_url": au}, identitykey.Build("news.google", identitykey.EntityArticle, id+"|"+hb)),
+						Preview:       identitykey.Set(map[string]any{"topic_id": id, "article_url": au}, identitykey.Build("news.google", identitykey.EntityArticle, id+"|"+strings.Join(hbParts, "/"))),
 					})
 				}
 			}

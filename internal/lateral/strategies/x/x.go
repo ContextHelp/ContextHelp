@@ -131,7 +131,7 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 			Strategy:      ID,
 			Preview: identitykey.Set(map[string]any{
 				"username": user,
-			}, identitykey.Build("x", identitykey.EntityProfile, user+"/media")),
+			}, identitykey.Build("x", identitykey.EntityProfile, user, "media")),
 		})
 		out = append(out, lateral.Candidate{
 			URL:           apex + "/" + user + "/status/" + tweetID,
@@ -150,7 +150,7 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 			Strategy:      ID,
 			Preview: identitykey.Set(map[string]any{
 				"username": user,
-			}, identitykey.Build("x", identitykey.EntityProfile, user+"/lists")),
+			}, identitykey.Build("x", identitykey.EntityProfile, user, "lists")),
 		})
 		out = append(out, lateral.Candidate{
 			URL:           apex + "/" + user + "/likes",
@@ -158,7 +158,7 @@ func (s *Strategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ lateral.
 			Strategy:      ID,
 			Preview: identitykey.Set(map[string]any{
 				"username": user,
-			}, identitykey.Build("x", identitykey.EntityProfile, user+"/likes")),
+			}, identitykey.Build("x", identitykey.EntityProfile, user, "likes")),
 		})
 	}
 

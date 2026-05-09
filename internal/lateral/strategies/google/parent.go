@@ -47,14 +47,18 @@ func (*ParentStrategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ late
 	}
 	host := strings.ToLower(u.Hostname())
 	path := strings.TrimPrefix(u.Path, "/")
-	id := host
+	idParts := []string{host}
 	if path != "" {
-		id = host + "/" + path
+		for _, seg := range strings.Split(path, "/") {
+			if seg != "" {
+				idParts = append(idParts, seg)
+			}
+		}
 	}
 	return []lateral.Candidate{{
 		URL:           ev.SourceURL,
 		CandidateType: CandidateTypeGeneric,
 		Strategy:      IDParent,
-		Preview:       identitykey.Set(map[string]any{"host": host, "path": path}, identitykey.Build("google", "page", id)),
+		Preview:       identitykey.Set(map[string]any{"host": host, "path": path}, identitykey.Build("google", "page", idParts...)),
 	}}, nil
 }

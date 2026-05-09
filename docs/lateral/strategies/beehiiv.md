@@ -24,8 +24,11 @@ Post child. Custom-domain Beehiiv publications resolve via the shared
 |---|---|
 | `beehiiv_publication` | `beehiiv/publication/<slug>` |
 | `beehiiv_post` | `beehiiv/post/<slug>/<post-slug>` |
-| `beehiiv_archive` | `beehiiv/publication/<slug>/archive` |
 | `beehiiv_feed` | `beehiiv/feed/<slug>` |
+
+The `/archive` candidate reuses the publication identity key with
+`facet: archive` in `Preview`; the resolver collapses landing + archive
+onto the same entity.
 
 ## Wiring
 
