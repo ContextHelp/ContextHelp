@@ -6,6 +6,10 @@ dispatches strategies through the registry, and emits candidate URLs
 downstream for the resolver / cap-gate / materialization slice to
 consume.
 
+> See also: [`../lateral/launch-summary.md`](../lateral/launch-summary.md) —
+> top-level summary across P1–P5 including config map, rollback levers,
+> and the 30d/90d review checkpoints.
+
 > **Status (track `lateral-daemon-wiring-20260509`)**: T-0312..T-0322
 > ship the wiring shape end-to-end. Production deployments must wire
 > their own LLM, GitHub, and platform clients per the [Wiring](#wiring)
