@@ -23,9 +23,13 @@ import (
 // Required:
 //   - Publisher: shared bus publisher (T-0318 adapter). All emit
 //     helpers across jit, github, jobs use it.
-//   - Fetcher: shared HTTP/ibr fetcher (T-0315). Satisfies both
-//     jit.Fetcher and github.Fetcher; the daemon hands the same
-//     instance to every strategy.
+//
+// Per-strategy fetchers (T-0315 adapter) are passed via JITFetcher and
+// GitHubFetcher. A single adapter instance can satisfy both interfaces
+// — the daemon typically constructs one ibr-backed fetcher and assigns
+// it to both fields — but the struct keeps them separate so a future
+// per-platform fetcher (e.g. higher-budget for github) can drop in
+// without changing the wiring shape.
 //
 // Optional (zero value tolerated, defaults applied):
 //   - JITProposer / JITCache / JITClassifier: jit-specific (T-0314,

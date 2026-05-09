@@ -18,8 +18,12 @@
 //
 // Future GraphQL adapter (P5 work): wraps a separate githubv4 client
 // and overrides the three deferred methods on top of the REST adapter
-// via a struct-embed + method shadowing. The composition pattern
-// (struct{REST; GraphQL}) is documented in the README.
+// via a struct-embed + method shadowing — the wrapper looks like
+// `struct{ *RESTClient; gql githubv4.Client }` with method-receivers
+// on the wrapper for ListOwnerPinned/ListSponsored/ListSimilarSponsors;
+// every other method falls through to the embedded REST client by
+// promotion. DeferredGraphQLMethods names the three methods so a future
+// composition can assert coverage at boot.
 package githubapi
 
 import (

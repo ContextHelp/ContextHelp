@@ -25,9 +25,20 @@ ctxt lateral start [--lateral-config PATH] [--worker-id NAME] [--poll-interval D
 Behaviour:
 
 - Loads layered config (system → user → project → `--lateral-config`).
-- Builds the strategy registry. Default config disables every strategy
-  that requires operator-supplied deps (github, jit), so a fresh
-  invocation registers only the URL-shape strategies (`x`, `linkedin`).
+- Builds the strategy registry. Two gating mechanisms apply:
+  - `cfg.JIT.Enabled` defaults `false` (opt-in) — JIT requires an LLM
+    proposer dep that operators wire, so it's off until both the gate
+    flips and the proposer is supplied.
+  - `cfg.GitHub.Enable*` and roster's per-platform `*bool` gates default
+    on (zero-value pointer = enabled per the `roster.Gates` contract).
+    A fresh invocation with no operator-supplied API clients still
+    registers the URL-shape strategies (`x`, `linkedin`, plus `arxiv`,
+    `wikipedia`, `youtube`, `medium/substack/beehiiv` parents); the
+    Google family + GitHub family register but degrade to no-op when
+    their clients aren't wired (per each strategy's nil-client
+    contract).
+  - To opt OUT of a default-on strategy, set
+    `strategies.<name>.enabled: false` in your config.
 - Subscribes to `ctxt.ingest.object.captured` and
   `ctxt.ingest.object.persisted` on the in-process kit bus.
 - Drives the cold-cycle poller at `--poll-interval` (default 5s).
@@ -184,7 +195,8 @@ out-of-process.
 | `ctxt.lateral.scan.failed` | error | `lateral.daemon` | Strategy probe returned an error |
 | `ctxt.lateral.subpath.failed` | error | `lateral.jit` (or platform) | Per-path fetch failed |
 | `ctxt.lateral.recipe.served` | info | `lateral.jit` | Cached proposal served (LLM outage) |
-| `ctxt.lateral.reaper.cycle.completed` | info | `lateral.reaper_cycle` | One cold-cycle scan finished |
+| `ctxt.lateral.reaper_cycle.completed` | info | `lateral.reaper_cycle` | One cold-cycle scan finished |
+| `ctxt.lateral.scan.completed` | info | `lateral.daemon` | Per-event dispatch finished (carries `candidates_emitted` count) |
 | `kit.config.snapshot.reload_failed` | error | `kit.config` | SIGHUP reload vetoed (immutable field changed) |
 
 ## Troubleshooting
