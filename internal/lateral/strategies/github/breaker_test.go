@@ -129,6 +129,43 @@ func TestGuardedAPI_NoopBreaker_AlwaysPasses(t *testing.T) {
 	}
 }
 
+// TestGuardedAPI_ObservesSnapshotIntoFloorTracker verifies that
+// recordOutcome pulls the inner client's RateSnapshot into the floor
+// tracker after each successful call. Without Observe, the tracker's
+// snapshot stays zero and ShouldThrottle returns false — making the
+// floor gate effectively unreachable in production.
+func TestGuardedAPI_ObservesSnapshotIntoFloorTracker(t *testing.T) {
+	now := time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)
+	// Inner reports a snapshot indicating very low remaining budget.
+	inner := &rateSnapshotStub{
+		snap: RateSnapshot{
+			Limit: 100, Remaining: 1, ObservedAt: now,
+		},
+		recorded: new(bool),
+	}
+	ft := NewFloorTracker(time.Hour, FloorBounds{MinPct: 0.5, MaxPct: 0.5})
+	ft.now = fixedClock(now)
+	g := NewGuardedAPI(inner, &fakeBreaker{}, ft)
+	// First call: floor tracker has no snapshot yet → not throttled.
+	_, err := g.ListRepoSiblings(context.Background(), "o", "")
+	if err != nil {
+		t.Fatalf("first call failed: %v", err)
+	}
+	// After the call, recordOutcome must have observed the snapshot.
+	if got := ft.LatestSnapshot(); got.Limit != 100 || got.Remaining != 1 {
+		t.Errorf("LatestSnapshot = %+v, want Limit=100 Remaining=1 (Observe missing)", got)
+	}
+	// Now ShouldThrottle must trip on subsequent gate checks because
+	// the observed snapshot puts Remaining (1) below Floor (50).
+	if !ft.ShouldThrottle() {
+		t.Error("ShouldThrottle = false after Observe; want true (Remaining 1 < Floor 50)")
+	}
+	_, err = g.ListRepoSiblings(context.Background(), "o", "")
+	if !errors.Is(err, ErrFloorThrottled) {
+		t.Errorf("second call err = %v, want ErrFloorThrottled", err)
+	}
+}
+
 func TestGuardedAPI_RateSnapshot_NotGated(t *testing.T) {
 	called := false
 	inner := &stubAPIClient{}
