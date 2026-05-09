@@ -221,7 +221,7 @@ func isReservedTopLevel(seg string) bool {
 		"join", "logout", "pricing", "features", "enterprise", "about",
 		"site", "security", "orgs", "organizations", "new", "codespaces",
 		"discussions", "pulls", "issues", "watching", "stars",
-		"home", "dashboard":
+		"home", "dashboard", "advisories":
 		return true
 	}
 	return false
