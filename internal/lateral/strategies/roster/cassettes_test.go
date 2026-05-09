@@ -23,10 +23,6 @@ type recorderClient struct {
 	googleRelated  []string
 	googleArticles []string
 
-	xUserID string
-
-	linkedinID string
-
 	arxivAuthors []string
 
 	wikidataQID string
@@ -53,12 +49,6 @@ func (r *recorderClient) TrendsRelated(_ context.Context, _ string) ([]string, e
 }
 func (r *recorderClient) NewsTopicArticles(_ context.Context, _ string, _ int) ([]string, error) {
 	return r.googleArticles, nil
-}
-func (r *recorderClient) FetchProfile(_ context.Context, _ string) (string, error) {
-	return r.xUserID, nil
-}
-func (r *recorderClient) ResolveSlug(_ context.Context, _, _ string) (string, error) {
-	return r.linkedinID, nil
 }
 func (r *recorderClient) ListAuthors(_ context.Context, _ string) ([]string, error) {
 	return r.arxivAuthors, nil

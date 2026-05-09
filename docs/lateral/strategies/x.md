@@ -33,9 +33,11 @@ identity_key.
 
 ## Wiring
 
-`x.New(client)` takes an `x.XClient`; only `FetchProfile(username) →
-user_id` is consulted today (and only when wired). Nil client → strategy
-uses the username as the identity-key id segment.
+`x.New()` takes no client. The strategy is purely URL-structural: it
+parses the captured URL, normalises twitter.com → x.com, and emits
+sub-path probe candidates. Identity keys are username-keyed. A future
+patch may re-introduce a daemon-side client for username → user_id
+resolution; until it does, no wiring is required.
 
 ## Limits
 
