@@ -68,3 +68,17 @@ func TestAllEnabled_AllPointersTrue(t *testing.T) {
 		t.Fatal("AllEnabled must produce true flags")
 	}
 }
+
+// TestAllEnabled_PointersIndependent guards against the bug where every
+// pointer field aliased a single backing bool: mutating one flag must
+// not cascade to the others.
+func TestAllEnabled_PointersIndependent(t *testing.T) {
+	g := AllEnabled()
+	*g.XStrategy = false
+	if !enabled(g.YouTubeStrategy) || !enabled(g.GoogleStrategy) || !enabled(g.LinkedInStrategy) {
+		t.Fatal("disabling XStrategy must not cascade to other gates")
+	}
+	if enabled(g.XStrategy) {
+		t.Fatal("XStrategy should now read false")
+	}
+}
