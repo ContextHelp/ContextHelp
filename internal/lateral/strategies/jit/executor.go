@@ -27,9 +27,11 @@ type Fetcher interface {
 // they don't appear here.
 //
 // Executor never aborts the whole batch on a single Fetch error. T-0248
-// (failure handling) consumes the per-path Err to emit ctxt.lateral.scan.failed
-// with Mechanism=jit_proposal; T-0247 (candidate emission) reads Body for
-// success cases.
+// (failure handling) consumes the per-path Err to emit
+// ctxt.lateral.subpath.failed (one event per failed sub-path);
+// ctxt.lateral.scan.failed with Mechanism=jit_proposal is reserved for
+// proposer/pipeline-level failures, not per-path fetches. T-0247
+// (candidate emission) reads Body for success cases.
 type FetchResult struct {
 	URL  string
 	Body string

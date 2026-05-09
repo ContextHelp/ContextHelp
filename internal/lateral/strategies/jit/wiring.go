@@ -19,9 +19,16 @@ type Config struct {
 }
 
 // Deps bundles the collaborators the daemon constructs and hands to Register.
-// All fields except Outage and Classifier are required — Outage defaults to
-// NoOutage() and Classifier defaults to a no-op classifier (empty page-type)
-// when nil. Publisher is also optional (events suppressed when nil).
+//
+// Required (Register panics if nil when cfg.Enabled is true):
+//   - Proposer
+//   - Cache
+//   - Fetcher
+//
+// Optional:
+//   - Publisher  — events suppressed when nil
+//   - Outage     — defaults to NoOutage() when nil
+//   - Classifier — defaults to a no-op classifier (empty page-type) when nil
 type Deps struct {
 	Proposer   Proposer
 	Cache      ProposalCache
