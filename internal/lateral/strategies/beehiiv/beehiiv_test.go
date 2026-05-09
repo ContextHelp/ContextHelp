@@ -49,3 +49,49 @@ func TestPublication_AboutMatches(t *testing.T) {
 		t.Fatal("/about should match publication")
 	}
 }
+
+// TestHintsRoundTrip_BeehiivCustomDomain pins T-0310 for beehiiv:
+// MetaPlatform=beehiiv on a non-beehiiv host unlocks the parent
+// strategy's custom-domain branch.
+func TestHintsRoundTrip_BeehiivCustomDomain(t *testing.T) {
+	parent := NewParent(stubClient{slug: "name"})
+	customURL := "https://news.example.com/p/post-slug"
+
+	// Negative: zero Hints — no signal, declines.
+	if parent.Applies(context.Background(), lateral.CapturedEvent{SourceURL: customURL}).Matches {
+		t.Fatal("beehiiv custom-domain without Hints must not match")
+	}
+
+	// Positive: MetaPlatform=beehiiv flips the verdict.
+	ev := lateral.CapturedEvent{
+		SourceURL: customURL,
+		Hints:     lateral.Hints{MetaPlatform: "beehiiv"},
+	}
+	if !parent.Applies(context.Background(), ev).Matches {
+		t.Fatal("beehiiv custom-domain with MetaPlatform=beehiiv must match")
+	}
+
+	// Probe yields candidates with non-empty IdentityKey.
+	cands, _ := parent.Probe(context.Background(), ev, lateral.ActiveContext{})
+	if len(cands) == 0 {
+		t.Fatal("probe with Hints produced zero candidates")
+	}
+	for _, c := range cands {
+		if c.IdentityKey == "" {
+			t.Errorf("candidate %q missing IdentityKey", c.CandidateType)
+		}
+	}
+}
+
+// TestHintsRoundTrip_BeehiivCanonicalHost pins the rel=canonical
+// hint route — pointing at *.beehiiv.com unlocks platform attribution.
+func TestHintsRoundTrip_BeehiivCanonicalHost(t *testing.T) {
+	parent := NewParent(stubClient{slug: "name"})
+	ev := lateral.CapturedEvent{
+		SourceURL: "https://news.example.com/p/post",
+		Hints:     lateral.Hints{CanonicalHost: "name.beehiiv.com"},
+	}
+	if !parent.Applies(context.Background(), ev).Matches {
+		t.Fatal("CanonicalHost=*.beehiiv.com must unlock custom-domain match")
+	}
+}
