@@ -65,7 +65,11 @@ func TestBuild_EmptySegmentsDropped(t *testing.T) {
 		{"leading_empty", []string{"", "samber"}, "github/repo/samber"},
 		{"middle_empty", []string{"samber", "", "lo"}, "github/repo/samber/lo"},
 		{"whitespace_only", []string{"   ", "lo"}, "github/repo/lo"},
-		{"all_empty", []string{"", " ", ""}, "github/repo"},
+		// All-empty id parts must produce "" — a "github/repo" key with no
+		// id is dangerously non-unique (every github repo capture would
+		// dedup to one entity).
+		{"all_empty", []string{"", " ", ""}, ""},
+		{"no_id_args", nil, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -74,6 +78,59 @@ func TestBuild_EmptySegmentsDropped(t *testing.T) {
 				t.Errorf("Build %v = %q, want %q", tc.id, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestBuild_RejectsEmptyPlatformOrEntityType(t *testing.T) {
+	cases := []struct {
+		name      string
+		platform  string
+		entityTyp string
+	}{
+		{"empty_platform", "", "repo"},
+		{"empty_entity", "github", ""},
+		{"both_empty", "", ""},
+		{"whitespace_platform", "   ", "repo"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := identitykey.Build(tc.platform, tc.entityTyp, "samber", "lo")
+			if got != "" {
+				t.Errorf("Build(%q, %q, ...) = %q, want \"\"", tc.platform, tc.entityTyp, got)
+			}
+		})
+	}
+}
+
+func TestBuildLocalised_RejectsEmptyLocale(t *testing.T) {
+	cases := []struct {
+		name           string
+		platform, e, l string
+	}{
+		{"empty_locale", "wikipedia", "article", ""},
+		{"whitespace_locale", "wikipedia", "article", "   "},
+		{"empty_platform", "", "article", "en"},
+		{"empty_entity", "wikipedia", "", "en"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := identitykey.BuildLocalised(tc.platform, tc.e, tc.l, "turing_machine")
+			if got != "" {
+				t.Errorf("BuildLocalised(%q, %q, %q, ...) = %q, want \"\"", tc.platform, tc.e, tc.l, got)
+			}
+		})
+	}
+}
+
+func TestBuildLocalised_RejectsEmptyID(t *testing.T) {
+	got := identitykey.BuildLocalised("wikipedia", "article", "en")
+	if got != "" {
+		t.Errorf("BuildLocalised with no id parts = %q, want \"\"", got)
+	}
+
+	got = identitykey.BuildLocalised("wikipedia", "article", "en", "", "  ")
+	if got != "" {
+		t.Errorf("BuildLocalised with all-empty id parts = %q, want \"\"", got)
 	}
 }
 
@@ -233,44 +290,59 @@ func TestSet_OverwritesExisting(t *testing.T) {
 	}
 }
 
-func TestHostBackedID(t *testing.T) {
+func TestHostBackedIDParts(t *testing.T) {
 	cases := []struct {
-		name, url, want string
+		name, url string
+		want      []string
 	}{
-		{"plain_host", "https://example.com", "example.com"},
-		{"www_stripped", "https://www.example.com", "example.com"},
-		{"with_path", "https://example.com/post/1", "example.com/post/1"},
-		{"path_lowered", "https://Example.com/POST/1", "example.com/post/1"},
-		{"unparseable_returns_empty", "::not::a::url", ""},
-		{"no_host_returns_empty", "/just/a/path", ""},
+		{"plain_host", "https://example.com", []string{"example.com"}},
+		{"www_stripped", "https://www.example.com", []string{"example.com"}},
+		{"with_path", "https://example.com/post/1", []string{"example.com", "post", "1"}},
+		{"path_lowered", "https://Example.com/POST/1", []string{"example.com", "post", "1"}},
+		{"trailing_slash", "https://example.com/post/1/", []string{"example.com", "post", "1"}},
+		{"unparseable_returns_nil", "::not::a::url", nil},
+		{"no_host_returns_nil", "/just/a/path", nil},
+		{"empty_url_returns_nil", "", nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := identitykey.HostBackedID(tc.url); got != tc.want {
-				t.Errorf("HostBackedID(%q) = %q, want %q", tc.url, got, tc.want)
+			got := identitykey.HostBackedIDParts(tc.url)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("HostBackedIDParts(%q) = %v, want %v", tc.url, got, tc.want)
 			}
 		})
 	}
 }
 
-// TestHostBackedID_EmptyResultPropagatesNonUniqueKey documents why
-// callers MUST guard. Copilot flagged Search/News/Trends emitting
-// "q|" or similar non-unique keys when result URLs failed HostBackedID.
-// This test pins the empty-string return so callers know what to guard
-// against.
-func TestHostBackedID_EmptyResultPropagatesNonUniqueKey(t *testing.T) {
-	if got := identitykey.HostBackedID(""); got != "" {
-		t.Fatalf("HostBackedID(\"\") = %q, want \"\"", got)
+// TestHostBackedIDParts_BuildIntegration verifies the documented usage
+// pattern: spread the parts into Build's variadic id. Two URLs with the
+// same host+path produce equal keys; two with different paths produce
+// different keys; nil parts yield "" (Build's no-id contract).
+func TestHostBackedIDParts_BuildIntegration(t *testing.T) {
+	a := identitykey.HostBackedIDParts("https://example.com/post/1")
+	b := identitykey.HostBackedIDParts("https://www.example.com/post/1")
+	if !reflect.DeepEqual(a, b) {
+		t.Errorf("same logical URL yielded different parts: %v vs %v", a, b)
 	}
-	// Demonstrate the trap: Build with empty id segments would drop them,
-	// yielding only "<platform>/<entity>" — non-unique across captures.
-	emptyID := identitykey.HostBackedID("")
-	key := identitykey.Build("google", "search", "query-text", emptyID)
-	// Empty segments dropped, so key looks fine here. But if BOTH segments
-	// were empty (caller passed unguarded HostBackedID twice), the key
-	// would just be "google/search" — non-unique. Callers must check for
-	// "" return and skip the candidate.
-	if key != "google/search/query-text" {
-		t.Fatalf("Build dropped empty id segment; got %q", key)
+
+	keyA := identitykey.Build("google", identitykey.EntityArticle, a...)
+	keyB := identitykey.Build("google", identitykey.EntityArticle, b...)
+	if keyA != keyB {
+		t.Errorf("dedup keys diverged: %q vs %q", keyA, keyB)
+	}
+	if keyA != "google/article/example.com/post/1" {
+		t.Errorf("key = %q, want %q", keyA, "google/article/example.com/post/1")
+	}
+
+	c := identitykey.HostBackedIDParts("https://example.com/post/2")
+	keyC := identitykey.Build("google", identitykey.EntityArticle, c...)
+	if keyA == keyC {
+		t.Errorf("different paths produced same key: %q", keyA)
+	}
+
+	// Nil parts → Build returns "" by its own contract.
+	nilParts := identitykey.HostBackedIDParts("")
+	if got := identitykey.Build("google", identitykey.EntityArticle, nilParts...); got != "" {
+		t.Errorf("Build with nil HostBackedIDParts = %q, want \"\"", got)
 	}
 }

@@ -75,8 +75,14 @@ const (
 // (trimmed + lowercased); slashes embedded in any single segment escape
 // to underscores so the resulting key remains parseable.
 //
-// Empty or whitespace-only id segments are dropped — pass at least one
-// non-empty segment to produce a usable key.
+// Build returns "" when any of these would produce a non-unique key:
+//   - platform normalises to empty
+//   - entityType normalises to empty
+//   - all id segments normalise to empty (i.e. no usable id)
+//
+// Callers must treat "" as "skip the candidate" or "don't emit
+// identity_key" — emitting a candidate with an empty / "platform/entity"
+// key would let the resolver merge unrelated entities under one key.
 //
 // Examples:
 //
@@ -86,8 +92,16 @@ const (
 //	Build("youtube", "channel", "uc12345", "uploads")
 //	                                            → "youtube/channel/uc12345/uploads"
 //	Build("github", "repo", "owner/with/slash") → "github/repo/owner_with_slash"
+//	Build("github", "repo")                     → ""  (no id)
+//	Build("github", "repo", "", "  ")           → ""  (all id parts empty)
+//	Build("", "repo", "samber")                 → ""  (no platform)
 func Build(platform, entityType string, id ...string) string {
-	out := []string{normalize(platform), normalize(entityType)}
+	p := normalize(platform)
+	e := normalize(entityType)
+	if p == "" || e == "" {
+		return ""
+	}
+	out := []string{p, e}
 	for _, part := range id {
 		n := normalize(part)
 		if n == "" {
@@ -95,20 +109,37 @@ func Build(platform, entityType string, id ...string) string {
 		}
 		out = append(out, escape(n))
 	}
+	if len(out) == 2 {
+		// Only platform + entity remain — no id segments survived.
+		return ""
+	}
 	return strings.Join(out, "/")
 }
 
 // BuildLocalised is Build with an interleaved locale segment, used for
 // platforms whose canonical entity is locale-scoped (Wikipedia language
 // editions). Locale precedes id and is itself normalised + escaped.
+//
+// BuildLocalised returns "" under the same conditions as Build, plus
+// when locale normalises to empty — a localised key without a locale
+// is malformed and would parse ambiguously.
 func BuildLocalised(platform, entityType, locale string, id ...string) string {
-	out := []string{normalize(platform), normalize(entityType), escape(normalize(locale))}
+	p := normalize(platform)
+	e := normalize(entityType)
+	l := normalize(locale)
+	if p == "" || e == "" || l == "" {
+		return ""
+	}
+	out := []string{p, e, escape(l)}
 	for _, part := range id {
 		n := normalize(part)
 		if n == "" {
 			continue
 		}
 		out = append(out, escape(n))
+	}
+	if len(out) == 3 {
+		return ""
 	}
 	return strings.Join(out, "/")
 }
@@ -178,27 +209,47 @@ func Set(preview map[string]any, key string) map[string]any {
 	return preview
 }
 
-// HostBackedID returns a stable identity-key id segment derived from
-// rawURL's host + path. Useful when a strategy doesn't have a better
-// canonical identifier (e.g. unknown CMS): the resolver still gets a
-// deterministic dedup key. The host is stripped of "www." and the path
-// is lowercased + leading-slash-trimmed.
+// HostBackedIDParts returns stable identity-key id segments derived
+// from rawURL's host + path. Useful when a strategy doesn't have a
+// better canonical identifier (e.g. unknown CMS, generic search-result
+// URLs): the resolver still gets a deterministic dedup key from the
+// URL structure.
 //
-// HostBackedID returns "" when rawURL has no host — callers MUST guard
-// against this (Copilot pointed out that downstream strategies were
-// emitting non-unique keys like "q|" because they passed "" through to
-// Build unchecked).
-func HostBackedID(rawURL string) string {
+// Returned segments are: [host] when path is empty, or
+// [host, pathPart1, pathPart2, ...] when path has segments. The host is
+// stripped of "www." and lowercased; path segments are lowercased.
+//
+// Returns nil when rawURL is unparseable or has no host. Callers MUST
+// check for nil — passing it through Build always yields "" by Build's
+// own contract, but writing the check at the call site lets the strategy
+// decline to emit the candidate entirely (preferred) rather than emit
+// one without an identity_key.
+//
+// Recommended usage:
+//
+//	parts := identitykey.HostBackedIDParts(url)
+//	if parts == nil {
+//	    return // skip this candidate
+//	}
+//	key := identitykey.Build("google", identitykey.EntityArticle, parts...)
+func HostBackedIDParts(rawURL string) []string {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {
-		return ""
+		return nil
 	}
 	host := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
 	path := strings.TrimPrefix(strings.ToLower(u.Path), "/")
 	if path == "" {
-		return host
+		return []string{host}
 	}
-	return host + "/" + path
+	out := []string{host}
+	for _, seg := range strings.Split(path, "/") {
+		if seg == "" {
+			continue
+		}
+		out = append(out, seg)
+	}
+	return out
 }
 
 func normalize(s string) string {
