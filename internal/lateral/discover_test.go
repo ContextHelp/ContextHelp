@@ -2,6 +2,7 @@ package lateral
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -101,5 +102,32 @@ func TestDiscover_ReadWithRetryFailsAfterAllAttempts(t *testing.T) {
 	_, err := d.readParent(context.Background(), "o-missing")
 	if err == nil {
 		t.Fatal("expected error after retries exhausted")
+	}
+}
+
+// permanentErrStore returns a non-ErrNotYetReadable error on every call.
+// readParent should propagate it immediately without retrying, since the
+// retry contract is "ErrNotYetReadable only."
+type permanentErrStore struct {
+	attempts int
+	err      error
+}
+
+func (s *permanentErrStore) Read(_ context.Context, _ string) (map[string]any, error) {
+	s.attempts++
+	return nil, s.err
+}
+
+func TestDiscover_ReadParent_NonRetryableErrorReturnsImmediately(t *testing.T) {
+	wantErr := errors.New("permission denied")
+	store := &permanentErrStore{err: wantErr}
+	d := NewDiscover(DiscoverConfig{Bus: newFakeBus(), Registry: NewRegistry(), Store: store})
+
+	_, err := d.readParent(context.Background(), "o-x")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected permission denied error, got %v", err)
+	}
+	if store.attempts != 1 {
+		t.Fatalf("expected exactly 1 attempt for non-retryable error, got %d", store.attempts)
 	}
 }

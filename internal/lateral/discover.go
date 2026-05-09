@@ -1,7 +1,8 @@
 // Package lateral wires the lateral discovery pipeline. The retry/backoff for
-// readParent uses hop.top/kit/go/core/util.Retry so the schedule stays
-// consistent with other kit-backed pipelines and tests can swap RetryConfig
-// rather than hand-roll a []time.Duration.
+// readParent uses kit's util.RetryConfig.Backoff for schedule math so callers
+// can tune it rather than hand-roll a []time.Duration; the loop itself is
+// hand-rolled because util.Retry has no retry-predicate (we only retry
+// ErrNotYetReadable, not every store error).
 package lateral
 
 import (
@@ -65,10 +66,15 @@ func (d *Discover) Stop() {
 	d.cancels = nil
 }
 
-// readParent returns the canonical record for the given object ID using
-// kit's util.Retry for backoff. Default RetryConfig (zero value) is 4
+// readParent returns the canonical record for the given object ID. Only
+// ErrNotYetReadable is retryable — every other store error (auth, decode,
+// not-found, transport) propagates immediately so permanent failures don't
+// hide behind a multi-second backoff. Default RetryConfig (zero value) is 4
 // attempts with BaseDelay 50ms, MaxDelay 3s, no jitter — approximating the
 // original 50ms/200ms/1s/3s schedule. Context cancellation short-circuits.
+//
+// We hand-roll the loop instead of using util.Retry because util.Retry has
+// no retry-predicate; it would treat every store error as retryable.
 func (d *Discover) readParent(ctx context.Context, id string) (map[string]any, error) {
 	cfg := d.cfg.RetryConfig
 	if cfg == (util.RetryConfig{}) {
@@ -78,19 +84,23 @@ func (d *Discover) readParent(ctx context.Context, id string) (map[string]any, e
 			MaxDelay:    3 * time.Second,
 		}
 	}
-	var rec map[string]any
-	err := util.Retry(ctx, cfg, func() error {
-		r, err := d.cfg.Store.Read(ctx, id)
-		if err != nil {
-			return err
+	for attempt := 0; ; attempt++ {
+		rec, err := d.cfg.Store.Read(ctx, id)
+		if err == nil {
+			return rec, nil
 		}
-		rec = r
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		if !errors.Is(err, ErrNotYetReadable) {
+			return nil, err
+		}
+		if cfg.MaxAttempts > 0 && attempt+1 >= cfg.MaxAttempts {
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(cfg.Backoff(attempt)):
+		}
 	}
-	return rec, nil
 }
 
 func (d *Discover) handlePersisted(_ context.Context, _ bus.Event) error {
