@@ -8,6 +8,10 @@ import (
 
 // Eva is the subset of the eva library that scoring needs: a single Cosine
 // similarity call between two tag-weight maps.
+//
+// Production wiring should adapt the existing internal/proximity.CosineSimilarity
+// (currently []float32-based) to this map-input shape rather than introducing
+// a fourth cosine implementation.
 type Eva interface {
 	Cosine(ctx context.Context, a, b map[string]float64) (float64, error)
 }
