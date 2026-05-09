@@ -359,14 +359,14 @@ retention; expired deferrals drop with `lateral.skipped.jit_unavailable`.
 
 Use the cached recipe even if the cache is stale. A stale recipe is better
 than no lateral output. The recipe will refresh on its next failure
-(failure-driven lifecycle). Logs `lateral.recipe.using_during_llm_outage`
+(failure-driven lifecycle). Logs `lateral.recipe.served@during_llm_outage`
 for ops visibility.
 
 ### Knob 3 — LLM returns garbage proposal
 
 LLM responds but the proposal fails validation (no sub-paths proposed,
 sub-paths reference unfetchable URLs, etc.). Skip the scan with
-`lateral.scan.jit_proposal_failed`. Do not retry within the same scan.
+`lateral.scan[jit].proposal_failed`. Do not retry within the same scan.
 Ambient retry on next parent re-capture handles transient LLM hallucination.
 
 ### Knob 4 — LLM rate limiting
@@ -382,14 +382,14 @@ Add to the original spec's bus event catalog:
 
 - `ctxt.lateral.scan.skipped` reasons extended: `jit_unavailable`,
   `learned_low_promotion`.
-- `ctxt.lateral.scan.jit_proposal_failed` (re-instated; was removed during
+- `ctxt.lateral.scan[jit].proposal_failed` (re-instated; was removed during
   self-review of original spec).
-- `ctxt.lateral.recipe.using_during_llm_outage`.
-- `ctxt.lateral.classifier.heuristic_match` (heuristic layer matched).
-- `ctxt.lateral.classifier.llm_classification` (LLM fallback ran).
-- `ctxt.lateral.classifier.recipe_hit` (cached page-shape recipe used).
-- `ctxt.lateral.research_intent.boost_applied` (layer B boost applied).
-- `ctxt.lateral.research_intent.suppressed` (layer C auto-suppression
+- `ctxt.lateral.recipe.served@during_llm_outage`.
+- `ctxt.lateral.classification.matched+heuristic` (heuristic layer matched).
+- `ctxt.lateral.classification.produced+llm` (LLM fallback ran).
+- `ctxt.lateral.classification.hit+recipe_cache` (cached page-shape recipe used).
+- `ctxt.lateral.research[intent].boosted` (layer B boost applied).
+- `ctxt.lateral.research[intent].suppressed` (layer C auto-suppression
   active for this context-shape).
 
 ## Configuration additions

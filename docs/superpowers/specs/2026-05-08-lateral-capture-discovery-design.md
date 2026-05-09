@@ -163,14 +163,14 @@ T given current active context.
   `cold_cycle`, `superseded_by_canonical`)
 - `ctxt.lateral.candidate.rejected`
 - `ctxt.lateral.candidate.resurrected`
-- `ctxt.lateral.reaper.cycle.started`
-- `ctxt.lateral.reaper.cycle.completed`
-- `ctxt.lateral.reaper.cycle.failed`
-- `ctxt.lateral.reaper.cycle.skipped_overlap`
-- `ctxt.lateral.reaper.sanity_violation`
-- `ctxt.lateral.scoring.invalid_score`
-- `ctxt.lateral.scoring.signal_degraded`
-- `ctxt.lateral.resolver.ambiguous`
+- `ctxt.lateral.reaper[cycle].started`
+- `ctxt.lateral.reaper[cycle].completed`
+- `ctxt.lateral.reaper[cycle].failed`
+- `ctxt.lateral.reaper[cycle].skipped?overlap`
+- `ctxt.lateral.sanity[check].violated`
+- `ctxt.lateral.score.flagged=invalid`
+- `ctxt.lateral.signal.degraded`
+- `ctxt.lateral.resolution.flagged=ambiguous`
 - `ctxt.lateral.recipe.refreshed`
 
 ## Data model
@@ -271,8 +271,8 @@ post-promotion (full canonical capture supersedes it).
 2. Identity-key match (e.g. `@github.user.<login>` to canonical via aliases) —
    edge-only.
 3. Ambiguous match (multiple canonical candidates) — pick highest-scoring above
-   confidence threshold (0.7); else emit `lateral.resolver.ambiguous` and fall
-   to probationary.
+   confidence threshold (0.7); else emit `lateral.resolution.flagged=ambiguous`
+   and fall to probationary.
 4. No match — materialize as probationary `lateral_candidate`.
 
 Edge-only path applies to all candidate types, not just owner profile and
@@ -409,7 +409,8 @@ floor below 5%).
 - Slow resolver: soft 2s timeout, retry once with 5s timeout; beyond that,
   treat as unavailable.
 - Ambiguous match: high-confidence (>0.7) match wins via eva blend; truly
-  ambiguous emits `lateral.resolver.ambiguous` and falls to probationary.
+  ambiguous emits `lateral.resolution.flagged=ambiguous` and falls to
+  probationary.
 - Cold-start (alias registry not loaded): defer until ready.
 
 ### Mode 4 — reaper failures
@@ -420,7 +421,7 @@ floor below 5%).
 - Reaper-not-running: heartbeat events + ops-layer health check (alert if no
   heartbeat for >2 cycles).
 - Overlapping cycles: mutex; new cycle skips with
-  `lateral.reaper.cycle.skipped_overlap` if previous still holds.
+  `lateral.reaper[cycle].skipped?overlap` if previous still holds.
 - TTL math correctness: sanity bounds (refuse to expire records with
   `expires_at` >30d in future or older than `discovered_at`) + soft-delete
   quarantine (mark `state: expired`, hard-purge after 30d via separate
@@ -433,12 +434,12 @@ floor below 5%).
 
 - eva down: defer scan to persistent queue (same shape as mode 3 resolver).
 - Invalid score per candidate: treat as 0.0; candidate fails cap gate;
-  dropped; logged as `lateral.scoring.invalid_score`.
+  dropped; logged as `lateral.score.flagged=invalid`.
 - Slow eva: batch all candidates into single eva call where supported, with
   soft 5s timeout and retry-once at 10s; per-candidate fallback if batch
   unsupported (same retry shape).
 - Active-context signal degraded: treat errored signal as null;
-  redistribution handles it; logged as `lateral.scoring.signal_degraded`.
+  redistribution handles it; logged as `lateral.signal.degraded`.
 - Score auditability when degraded: record `signals_used` accurately +
   `degraded_reason` field for `--explain` output.
 
