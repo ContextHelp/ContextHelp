@@ -6,14 +6,14 @@
 //
 // The split exists for one practical reason: the cmd/ctxt/cmd test
 // package fails to load (kit/cli double-registers --config in init),
-// which makes any tests sitting in cmd/ctxt/cmd unrunnable. The daemon
-// package is consumed via a thin Run() shim from cmd/ctxt/cmd, so all
-// behaviour stays test-covered here.
+// which makes any tests sitting in cmd/ctxt/cmd unrunnable. The cmd
+// surface composes daemon primitives (LoadConfig, Build, NewLifecycle,
+// Lifecycle.Run) directly, so all behaviour stays test-covered here.
 //
-// Lifecycle: daemon.Run is blocking. It returns when ctx is cancelled
-// or a fatal startup error occurs. SIGHUP-driven config reload is
-// internal — observers see kit.config.snapshot.reload_failed bus
-// events on veto, not a Run() error.
+// Lifecycle: (*Lifecycle).Run is blocking. It returns when ctx is
+// cancelled or a fatal startup error occurs. SIGHUP-driven config
+// reload is internal — observers see kit.config.snapshot.reload_failed
+// bus events on veto, not a Run() error.
 //
 // Tasks T-0312..T-0321 land here incrementally:
 //   - T-0312: package skeleton + sentinel
