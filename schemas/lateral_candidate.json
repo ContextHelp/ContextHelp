@@ -1,0 +1,45 @@
+{
+  "title": "lateral_candidate",
+  "type": "object",
+  "required": ["id", "namespace", "title", "source", "metadata"],
+  "properties": {
+    "id":        {"type": "string"},
+    "namespace": {"const": "lateral_candidate"},
+    "title":     {"type": "string"},
+    "source":    {"type": "string", "format": "uri"},
+    "metadata": {
+      "type": "object",
+      "required": ["kind", "candidate_type", "discovered_by", "strategy", "lifecycle", "scoring"],
+      "properties": {
+        "kind":           {"const": "lateral_candidate"},
+        "candidate_type": {"type": "string"},
+        "discovered_by":  {"type": "string"},
+        "strategy":       {"type": "string"},
+        "lifecycle": {
+          "type": "object",
+          "required": ["state", "discovered_at", "expires_at"],
+          "properties": {
+            "state":                      {"enum": ["probationary", "expired", "promoted"]},
+            "discovered_at":              {"type": "string", "format": "date-time"},
+            "parent_lifespan_inherited":  {"type": "string"},
+            "cold_since":                 {"type": ["string","null"], "format": "date-time"},
+            "expires_at":                 {"type": "string", "format": "date-time"},
+            "promotion_signals":          {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "scoring": {
+          "type": "object",
+          "required": ["score", "signals_used"],
+          "properties": {
+            "score":                     {"type": "number"},
+            "signals_used":              {"type": "array", "items": {"type": "string"}},
+            "weights_applied":           {"type": "object"},
+            "degraded_reason":           {"type": ["string","null"]},
+            "active_context_snapshot":   {"type": "string"}
+          }
+        },
+        "preview": {"type": "object"}
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "title": "lateral_events",
+  "type": "object",
+  "definitions": {
+    "scan.started":          {"type": "object", "properties": {"object_id": {"type": "string"}}},
+    "scan.completed":        {"type": "object", "properties": {"object_id": {"type": "string"}, "candidates_emitted": {"type": "integer"}}},
+    "scan.deferred":         {"type": "object", "properties": {"object_id": {"type": "string"}, "reason": {"type": "string"}}},
+    "scan.skipped":          {"type": "object", "properties": {"object_id": {"type": "string"}, "reason": {"type": "string"}}},
+    "subpath.failed":        {"type": "object", "properties": {"object_id": {"type": "string"}, "subpath": {"type": "string"}, "reason": {"type": "string"}}},
+    "candidate.created":     {"type": "object", "properties": {"candidate_id": {"type": "string"}}},
+    "candidate.promoted":    {"type": "object", "properties": {"candidate_id": {"type": "string"}, "path": {"type": "string"}}},
+    "candidate.expired":     {"type": "object", "properties": {"candidate_id": {"type": "string"}, "reason": {"type": "string"}}},
+    "candidate.rejected":    {"type": "object", "properties": {"candidate_id": {"type": "string"}}},
+    "candidate.resurrected": {"type": "object", "properties": {"candidate_id": {"type": "string"}}},
+    "reaper.cycle.started":   {"type": "object"},
+    "reaper.cycle.completed": {"type": "object", "properties": {"expired": {"type": "integer"}, "duration_ms": {"type": "integer"}}},
+    "reaper.cycle.failed":    {"type": "object", "properties": {"reason": {"type": "string"}}},
+    "reaper.cycle.skipped_overlap": {"type": "object"},
+    "reaper.sanity_violation":      {"type": "object", "properties": {"candidate_id": {"type": "string"}, "violation": {"type": "string"}}},
+    "scoring.invalid_score":   {"type": "object", "properties": {"candidate_id": {"type": "string"}}},
+    "scoring.signal_degraded": {"type": "object", "properties": {"signal": {"type": "string"}, "reason": {"type": "string"}}},
+    "resolver.ambiguous":      {"type": "object", "properties": {"candidate_id": {"type": "string"}}},
+    "recipe.refreshed":        {"type": "object", "properties": {"source_domain": {"type": "string"}, "page_type": {"type": "string"}}}
+  }
+}
