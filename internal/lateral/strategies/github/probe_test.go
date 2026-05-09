@@ -317,6 +317,72 @@ func TestProbePR_PullsListView_NoNumber_SkipsReviewers(t *testing.T) {
 	}
 }
 
+func TestProbeIssue_Skeleton_NoClient_EmitsOwnerAndRepo(t *testing.T) {
+	s := NewGitHubStrategy(Dependencies{})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/issues/7"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasType(got, TypeOwnerProfile) {
+		t.Errorf("missing owner_profile in %v", candidateTypes(got))
+	}
+	if !hasType(got, TypeRepoIssue) {
+		t.Errorf("missing repo_issue in %v", candidateTypes(got))
+	}
+}
+
+func TestProbeIssue_FullClient_EmitsLabels(t *testing.T) {
+	api := &stubAPIClient{
+		listIssueLabelsFn: func(_ context.Context, owner, repo string, n int) ([]LabelSummary, error) {
+			if owner != "owner" || repo != "repo" || n != 7 {
+				t.Errorf("unexpected args (%q,%q,%d)", owner, repo, n)
+			}
+			return []LabelSummary{{Name: "bug", Color: "ff0000"}, {Name: "good first issue"}}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/issues/7"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasType(got, TypeIssueLabel) {
+		t.Errorf("missing issue_label in %v", candidateTypes(got))
+	}
+	bug := false
+	for _, c := range got {
+		if c.CandidateType == TypeIssueLabel && c.Preview["label"] == "bug" {
+			bug = true
+			if c.URL != "https://github.com/owner/repo/labels/bug" {
+				t.Errorf("default label URL wrong: %q", c.URL)
+			}
+		}
+	}
+	if !bug {
+		t.Error("missing bug label candidate")
+	}
+}
+
+func TestProbeIssue_ListView_NoLabelFetch(t *testing.T) {
+	called := false
+	api := &stubAPIClient{
+		listIssueLabelsFn: func(_ context.Context, _, _ string, _ int) ([]LabelSummary, error) {
+			called = true
+			return nil, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	_, _ = s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/issues"},
+		lateral.ActiveContext{})
+	if called {
+		t.Error("ListIssueLabels should not be called for /issues list view")
+	}
+}
+
 func TestRepoIdentityKey(t *testing.T) {
 	if got, want := repoIdentityKey("samber", "lo"), "@github.repo.samber/lo"; got != want {
 		t.Errorf("repoIdentityKey = %q, want %q", got, want)
