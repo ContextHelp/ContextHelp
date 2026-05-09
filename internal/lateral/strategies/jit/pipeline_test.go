@@ -37,7 +37,7 @@ func TestPipeline_HappyPath(t *testing.T) {
 	})
 
 	pub := &recordingPub{}
-	p := jit.NewPipeline(cp, exec, pub)
+	p := jit.NewPipeline(cp, exec, pub, jit.NoOutage())
 
 	cands, err := p.RunOnce(context.Background(), "obj-1", "https://acme.io/source", "acme.io", "post")
 	if err != nil {
@@ -59,7 +59,7 @@ func TestPipeline_ProposerErrorEmitsScanFailed(t *testing.T) {
 	exec := jit.NewExecutor(&pipelineFetcher{})
 
 	pub := &recordingPub{}
-	p := jit.NewPipeline(cp, exec, pub)
+	p := jit.NewPipeline(cp, exec, pub, jit.NoOutage())
 
 	cands, err := p.RunOnce(context.Background(), "obj-99", "https://acme.io/source", "acme.io", "post")
 	if !errors.Is(err, wantErr) {
@@ -103,7 +103,7 @@ func TestPipeline_EmptyProposalIsNotAFailure(t *testing.T) {
 	exec := jit.NewExecutor(&pipelineFetcher{})
 
 	pub := &recordingPub{}
-	p := jit.NewPipeline(cp, exec, pub)
+	p := jit.NewPipeline(cp, exec, pub, jit.NoOutage())
 
 	cands, err := p.RunOnce(context.Background(), "obj-1", "https://acme.io/source", "acme.io", "post")
 	if err != nil {
@@ -132,7 +132,7 @@ func TestPipeline_FetchErrorEmitsSubpathFailedPerURL(t *testing.T) {
 	})
 
 	pub := &recordingPub{}
-	p := jit.NewPipeline(cp, exec, pub)
+	p := jit.NewPipeline(cp, exec, pub, jit.NoOutage())
 
 	cands, err := p.RunOnce(context.Background(), "obj-7", "https://acme.io/source", "acme.io", "post")
 	if err != nil {
@@ -169,7 +169,7 @@ func TestPipeline_PartialFetchSurvivorsAndFailuresBothSurfaced(t *testing.T) {
 	})
 
 	pub := &recordingPub{}
-	p := jit.NewPipeline(cp, exec, pub)
+	p := jit.NewPipeline(cp, exec, pub, jit.NoOutage())
 
 	cands, err := p.RunOnce(context.Background(), "obj-3", "https://acme.io/source", "acme.io", "post")
 	if err != nil {
@@ -189,7 +189,7 @@ func TestPipeline_NilPubIsSafe(t *testing.T) {
 	cp := jit.NewCachedProposer(prop, cache)
 	exec := jit.NewExecutor(&pipelineFetcher{})
 
-	p := jit.NewPipeline(cp, exec, nil)
+	p := jit.NewPipeline(cp, exec, nil, jit.NoOutage())
 	_, err := p.RunOnce(context.Background(), "obj-1", "https://acme.io/source", "acme.io", "post")
 	if err == nil {
 		t.Fatal("expected error to propagate even with nil pub")
@@ -203,7 +203,7 @@ func TestPipeline_ProposerErrorScopesObjectIDAndSubject(t *testing.T) {
 	exec := jit.NewExecutor(&pipelineFetcher{})
 
 	pub := &recordingPub{}
-	p := jit.NewPipeline(cp, exec, pub)
+	p := jit.NewPipeline(cp, exec, pub, jit.NoOutage())
 
 	_, _ = p.RunOnce(context.Background(), "obj-id-X", "https://src.example/path", "src.example", "doc")
 
