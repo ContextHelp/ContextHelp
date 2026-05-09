@@ -6,12 +6,22 @@ section here.
 
 ## TL;DR — emergency levers
 
+The daemon ships with two operator levers: editing the config YAML +
+sending SIGHUP, or restarting the daemon. There is no dedicated
+operator CLI yet (`ctxt lateral status` and friends are deferred — see
+`docs/lateral/launch-summary.md` § Deferred). Use these:
+
 | Symptom | Lever |
 |---------|-------|
-| Strategy hammering an upstream API | `ctxt lateral kill <strategy-id>` (or YAML `enabled: false` + SIGHUP) |
-| LLM provider stuck | `recipe.served` should clear when provider recovers; check breaker state |
-| Identity-key collision | `ctxt lateral candidates rollback --object-id=<id>` |
-| Reaper stalled | restart daemon (preserves bus state) |
+| Strategy hammering an upstream API | YAML `strategies.<id>.enabled: false` + `pkill -HUP ctxt` |
+| LLM provider stuck | `recipe.served` should clear when provider recovers; check the metric on the dashboard |
+| Identity-key collision | YAML disable the strategy + restart daemon (see Identity-key collision section) |
+| Reaper stalled | restart the daemon process |
+
+Inspection happens via Prometheus (the lateral dashboard +
+`docs/operations/dashboards/lateral.json` panels) and process logs.
+The daemon's bus events surface as Prometheus metrics; query the
+`ctxt_lateral_*` series rather than reading the bus directly.
 
 ## Scan failed rate
 
@@ -19,11 +29,16 @@ section here.
 
 ### Diagnosis
 
+Use the dashboard's "scan.failed by mechanism" panel — it groups
+failures by the `qualifiers.mechanism` axis (`breaker_open`,
+`rate_limit_floor`, `fetch_error`, `parse_error`, etc.).
+
+If you need raw events, `journalctl -u ctxt-lateral` carries the bus
+emissions when the daemon is run as a systemd service:
+
 ```bash
-# Group failures by strategy + mechanism.
-ctxt lateral events --topic=ctxt.lateral.scan.failed --window=10m \
-  | jq '.qualifiers | {strategy_id, mechanism, error}' \
-  | sort | uniq -c | sort -rn
+journalctl -u ctxt-lateral --since="10m ago" \
+  | grep "ctxt.lateral.scan.failed"
 ```
 
 The `mechanism` qualifier tells you the failure mode:
@@ -41,8 +56,8 @@ The `mechanism` qualifier tells you the failure mode:
 - **fetch_error sustained**: check the upstream provider's status
   page. If they're up, look at egress firewall + DNS resolution.
 - **parse_error sustained**: this is a code regression. Roll back
-  to the previous container or kill-switch the strategy until a fix
-  ships.
+  to the previous container or disable the strategy via YAML +
+  SIGHUP until a fix ships.
 
 ## LLM outage stuck on
 
@@ -53,13 +68,16 @@ The `mechanism` qualifier tells you the failure mode:
 JIT's outage detector flips into recipe-fallback mode when the LLM
 breaker trips. Sustained recipe mode means the breaker isn't recovering.
 
-```bash
-# Check breaker state.
-ctxt lateral status --json | jq '.jit.breaker'
+Check the dashboard's "recipe.served by circumstance" panel. The
+`circumstance: llm_outage` series is the relevant signal — if it's
+sustained, the breaker is open.
 
-# If state == "open" + last_failure is recent: LLM provider is still
-# down. If state == "open" + last_failure is hours old, the breaker
-# probably needs a manual reset.
+For raw breaker state, the daemon doesn't expose it via API today.
+Read the journal to see the most recent breaker state transition:
+
+```bash
+journalctl -u ctxt-lateral --since="1h ago" \
+  | grep -E "breaker.*(open|closed|half)" | tail -20
 ```
 
 ### Recovery
@@ -69,12 +87,13 @@ ctxt lateral status --json | jq '.jit.breaker'
   half-opens.
 - **Breaker stuck open**: confirm the LLM is actually reachable
   (curl the provider's API directly with an auth header). If yes,
-  send SIGUSR1 to the daemon to force-reset the breaker:
+  restart the daemon — the breaker is in-process, restart re-arms it:
   ```bash
-  pkill -USR1 ctxt
+  sudo systemctl restart ctxt-lateral
   ```
+  Force-reset via signal is not currently wired (deferred).
 - **Provider partial outage**: switch to the alternate provider via
-  `lateral.jit.proposer.provider` config + SIGHUP reload.
+  `lateral.jit.proposer.provider` config + `pkill -HUP ctxt`.
 
 ## Per-strategy zero emission
 
@@ -83,26 +102,25 @@ for 1h despite traffic)
 
 ### Diagnosis
 
-```bash
-# How many events did the strategy claim this hour?
-ctxt lateral events --topic=ctxt.lateral.scan.completed --window=1h \
-  | jq 'select(.qualifiers.strategy_id == "<id>") | .qualifiers'
-```
-
-If `dispatched > 0` and `candidates_emitted == 0`:
+Use the dashboard's per-strategy "candidates_emitted" panel. If the
+strategy's series is flat at 0 while neighbors emit normally, either:
 - The strategy's `Probe` is running but returning empty results.
   Likely an upstream schema change.
-- Or the sample-percent flag was set to 0 by mistake.
+- Or `sample_percent` is set to 0 in the operator's YAML.
+
+Verify the active config:
 
 ```bash
-# Verify the gate + sampler config.
-ctxt lateral config show | jq '.SamplePercent."<id>"'
+# The daemon doesn't expose this via API; read the YAML the running
+# process loaded. The path comes from the systemd unit's
+# Environment=CTXT_CONFIG=... or the daemon's --config flag.
+cat /etc/ctxt/lateral.yaml | yq '.strategies."<id>".sample_percent'
 ```
 
 ### Recovery
 
-- **Sample-percent regression**: edit YAML to remove the explicit 0
-  (or set to 100) + SIGHUP.
+- **Sample-percent set to 0**: edit YAML to remove the explicit 0
+  (missing key = 100% / full traffic) or set to 100 + SIGHUP.
 - **Schema regression**: roll back the daemon binary, file an
   upstream-change incident.
 
@@ -114,11 +132,12 @@ sources.
 
 ### Diagnosis
 
+There is no `ctxt lateral candidates inspect` subcommand yet. Inspect
+the lateral_candidate table directly:
+
 ```bash
-# Find the offending identity key.
-ctxt lateral candidates inspect <object-id> --json \
-  | jq '.candidates[] | {url, identity_key}' \
-  | sort -u
+sqlite3 /var/lib/ctxt/lateral.sqlite \
+  "SELECT identity_key, url FROM lateral_candidate WHERE object_id='<id>'"
 ```
 
 If two URLs you'd expect to be distinct share the same `identity_key`,
@@ -127,14 +146,20 @@ the strategy emitted a non-canonical key. Cross-reference
 
 ### Recovery
 
-- Roll back the affected candidate cluster:
-  ```bash
-  ctxt lateral candidates rollback --object-id=<id> --strategy=<id>
-  ```
-  This re-runs the strategy with `--force-resolve` so identity keys
-  are re-derived.
-- If the strategy is consistently emitting bad keys, kill-switch it
-  and file a bug.
+The resolver doesn't ship a rollback subcommand. Mitigation steps:
+
+1. Disable the offending strategy via YAML + SIGHUP so the bad keys
+   stop landing.
+2. Manually remove the polluted rows from `lateral_candidate` and
+   `lateral_edges` (back up first):
+   ```bash
+   sqlite3 /var/lib/ctxt/lateral.sqlite \
+     "DELETE FROM lateral_candidate WHERE strategy='<id>' AND identity_key='<bad-key>'"
+   ```
+3. Re-enable the strategy after the keys are fixed in code.
+
+If the strategy is consistently emitting bad keys, file a bug; the
+fix is a code change in the strategy package.
 
 ## Per-strategy crash loop
 
@@ -143,9 +168,11 @@ failures/sec sustained 5m)
 
 ### Diagnosis
 
+Read the journal for the strategy's failures:
+
 ```bash
-ctxt lateral events --topic=ctxt.lateral.scan.failed --window=5m \
-  | jq 'select(.qualifiers.strategy_id == "<id>")'
+journalctl -u ctxt-lateral --since="5m ago" \
+  | grep -E "scan.failed.*strategy_id.*<id>"
 ```
 
 Look at the `error` qualifier. Crash loops usually mean either:
@@ -155,25 +182,22 @@ Look at the `error` qualifier. Crash loops usually mean either:
 
 ### Recovery
 
-Use the kill-switch — operator emergency lever:
+Use the YAML+SIGHUP soft kill-switch:
 
 ```bash
-# Immediate, in-process. No SIGHUP round-trip.
-ctxt lateral kill <strategy-id>
+# 1. Edit the YAML (path varies per deploy):
+yq -i '.strategies."<id>".enabled = false' /etc/ctxt/lateral.yaml
 
-# Verify the strategy is now skipped.
-ctxt lateral events --topic=ctxt.lateral.scan.completed --window=1m \
-  | jq 'select(.qualifiers.strategy_id == "<id>")' | wc -l
-# Should be 0.
+# 2. SIGHUP for runtime reload.
+pkill -HUP ctxt
+
+# 3. Verify the strategy is skipped — its candidates_emitted series
+# in the dashboard should drop to 0 within ~1 minute.
 ```
 
-After the upstream / code issue is resolved:
-
-```bash
-ctxt lateral restore <strategy-id>
-```
-
-Or edit YAML + SIGHUP for durable restoration.
+After the upstream / code issue is resolved, flip `enabled` back to
+true and SIGHUP again. Note: `sample_percent: 0` in the YAML achieves
+the same effect with finer-grained control (see Sampler doc).
 
 ## Reaper cycle stalled
 
@@ -214,8 +238,8 @@ These are structural assertions. Treat every fire as a real bug.
 ### Diagnosis
 
 ```bash
-ctxt lateral events --topic=ctxt.lateral.sanity_check.violated --window=1h \
-  | jq '{subject, detail}'
+journalctl -u ctxt-lateral --since="1h ago" \
+  | grep "ctxt.lateral.sanity_check.violated"
 ```
 
 The `detail` map contains the assertion-specific dump. Common
@@ -253,3 +277,21 @@ strategies:
 
 Each stage runs minimum 24h before bumping. If any alert fires,
 revert to the previous stage's percent.
+
+## Operator CLI — what's NOT shipped
+
+The following commands are referenced informally but DO NOT exist in
+the daemon today:
+
+- `ctxt lateral status` — returns `daemon.ErrNotWired`
+- `ctxt lateral events --topic=...` — no bus reader subcommand
+- `ctxt lateral kill <id>` / `ctxt lateral restore <id>` — soft
+  kill-switch is YAML+SIGHUP only
+- `ctxt lateral candidates inspect/rollback` — no candidate-table CRUD
+  surface
+- SIGUSR1 breaker reset — restart-only
+
+Operators inspect via Prometheus + journalctl + sqlite. Mutating
+operations go through YAML edits + SIGHUP or daemon restart. CLI
+parity is on the roadmap (see `docs/lateral/launch-summary.md`
+§ Deferred).
