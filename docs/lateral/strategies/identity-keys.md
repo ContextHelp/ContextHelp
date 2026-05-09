@@ -98,14 +98,26 @@ matching pre-identitykey behaviour for legacy candidates and degenerate
 strategy outputs (per `Build`'s "refuse to emit a non-unique key"
 contract).
 
-### Mismatch rule — distinct identity_keys never merge
+### Mismatch rule — distinct identity_keys never merge under one canonical
 
-Two candidates that hit the same URL but carry different non-empty
-identity_keys MUST resolve to distinct canonicals. The resolver never
-falls back from "identity_key found, no canonical match" to URL match
-across different keys — the identity_key precedence claim only relaxes
-to URL when the key path returns `ErrNotFound`. URL match never bridges
-two known-different identity_keys.
+Two candidates with different non-empty identity_keys MUST resolve to
+distinct canonicals — even when their URLs are equal. The graph's
+`FindByIdentityKey` is the source of truth for "is this entity already
+known"; URL match never bridges two known-different keys.
+
+### Key-not-yet-in-graph fallback
+
+A non-empty identity_key that returns `ErrNotFound` from
+`FindByIdentityKey` means "the graph hasn't indexed this key yet."
+Resolver falls through to URL match: if the URL is in the graph (e.g.
+the entity was first captured before identity_key was emitted), the
+candidate dedups under the URL canonical. If both miss, the candidate
+becomes probationary.
+
+The two rules above don't conflict — the mismatch rule applies to
+candidates the graph already knows under different keys; the
+key-not-yet-in-graph rule applies to candidates the graph hasn't seen
+under the proposed key at all.
 
 ### Reading the structured key
 
@@ -113,6 +125,7 @@ When the resolver (or an adjacent component) needs the segments rather
 than just the opaque string:
 
 ```go
+key := identitykey.Get(candidate.Preview)
 parsed := identitykey.Parse(key, /* localised = */ false)
 // parsed.Platform, parsed.EntityType, parsed.IDParts
 ```

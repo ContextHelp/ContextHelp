@@ -94,3 +94,49 @@ func TestResolver_NonStringIdentityKeyFallsBackToURL(t *testing.T) {
 		t.Fatalf("expected URL match with non-string identity_key, got %+v", res)
 	}
 }
+
+// TestResolver_KeyNotInGraphFallsBackToURL pins the "key present but
+// not yet known to the graph" branch: identitykey.Get returns a non-empty
+// key, FindByIdentityKey returns ErrNotFound (e.g. first capture of a
+// fresh entity), and FindByURL succeeds. Resolver MUST fall through and
+// return the URL match — a future change that returned the key's
+// ErrNotFound result instead would break dedup for entities the graph
+// already knows under their URL.
+func TestResolver_KeyNotInGraphFallsBackToURL(t *testing.T) {
+	g := &fakeGraph{
+		byURL: map[string]string{"https://x/y": "o-canonical-via-url"},
+		// byKey deliberately empty — the graph hasn't indexed this key yet.
+	}
+	r := NewResolver(g)
+	res, err := r.Resolve(context.Background(), Candidate{
+		URL: "https://x/y",
+		Preview: map[string]any{
+			identitykey.KeyField: "github/repo/samber/lo",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.EdgeOnly || res.CanonicalID != "o-canonical-via-url" {
+		t.Fatalf("expected URL fallback to o-canonical-via-url when key returns ErrNotFound, got %+v", res)
+	}
+}
+
+// TestResolver_KeyAndURLBothMissReturnsProbationary covers the bottom of
+// the fallback ladder for non-empty keys: key path returns ErrNotFound,
+// URL path also returns ErrNotFound → probationary (EdgeOnly=false).
+func TestResolver_KeyAndURLBothMissReturnsProbationary(t *testing.T) {
+	r := NewResolver(&fakeGraph{}) // empty graph
+	res, err := r.Resolve(context.Background(), Candidate{
+		URL: "https://x/y",
+		Preview: map[string]any{
+			identitykey.KeyField: "github/repo/samber/lo",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.EdgeOnly {
+		t.Fatalf("expected probationary when both key and URL miss, got %+v", res)
+	}
+}
