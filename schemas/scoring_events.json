@@ -1,9 +1,0 @@
-{
-  "title": "scoring_events",
-  "description": "Scoring-pipeline event payloads. Keys are short-form (Object.Action); the runtime topic is `<source>.<category>.<short_form>` per the [Source].[Category].[Object].[Action] standard. Lateral emits these as `ctxt.lateral.<key>`. Action stays a verb (`flagged_invalid`, `degraded`) per the standard.",
-  "type": "object",
-  "definitions": {
-    "score.flagged_invalid": {"type": "object", "properties": {"candidate_id": {"type": "string"}}},
-    "signal.degraded":       {"type": "object", "properties": {"signal": {"type": "string"}, "reason": {"type": "string"}}}
-  }
-}
