@@ -45,8 +45,10 @@ type Lifecycle struct {
 	gate *rollout.StrategyGate
 
 	// sampler is the per-strategy traffic-shaping filter (T-0329).
-	// Nil = full traffic to every strategy.
-	sampler *rollout.Sampler
+	// Held via atomic.Pointer so SIGHUP reloads swap atomically
+	// with hot-path readers. Nil pointer = full traffic to every
+	// strategy.
+	sampler atomic.Pointer[rollout.Sampler]
 
 	cancels []bus.Unsubscribe
 
@@ -121,7 +123,7 @@ func NewLifecycle(opts LifecycleOptions) (*Lifecycle, error) {
 	if gate == nil {
 		gate = rollout.NewStrategyGate()
 	}
-	return &Lifecycle{
+	lc := &Lifecycle{
 		registry: opts.Registry,
 		pub:      opts.Publisher,
 		busSrc:   opts.Bus,
@@ -129,8 +131,11 @@ func NewLifecycle(opts LifecycleOptions) (*Lifecycle, error) {
 		workerID: worker,
 		pollIntv: pollIntv,
 		gate:     gate,
-		sampler:  opts.Sampler,
-	}, nil
+	}
+	if opts.Sampler != nil {
+		lc.sampler.Store(opts.Sampler)
+	}
+	return lc, nil
 }
 
 // Gate returns the runtime strategy gate. Operators / config-reload
@@ -140,7 +145,7 @@ func (l *Lifecycle) Gate() *rollout.StrategyGate { return l.gate }
 
 // Sampler returns the runtime traffic-shaping sampler. May be nil
 // when the daemon was wired without one.
-func (l *Lifecycle) Sampler() *rollout.Sampler { return l.sampler }
+func (l *Lifecycle) Sampler() *rollout.Sampler { return l.sampler.Load() }
 
 // Start subscribes to capture events. Idempotent: calling twice
 // re-subscribes (test convenience); production callers invoke once.
@@ -261,7 +266,7 @@ func (l *Lifecycle) handleCaptureEvent(ctx context.Context, e bus.Event) error {
 		// Per-strategy percentage traffic shaping (T-0329). Hash
 		// stable across reloads so the same event consistently
 		// routes to the same strategy fraction.
-		if l.sampler != nil && !l.sampler.Allow(s.ID(), ev.ObjectID) {
+		if sm := l.sampler.Load(); sm != nil && !sm.Allow(s.ID(), ev.ObjectID) {
 			continue
 		}
 		out, err := s.Probe(ctx, ev, lateral.ActiveContext{})
@@ -338,7 +343,7 @@ func (l *Lifecycle) EnqueueDirect(ctx context.Context, ev lateral.CapturedEvent)
 		if !l.gate.Allowed(s.ID()) {
 			continue
 		}
-		if l.sampler != nil && !l.sampler.Allow(s.ID(), ev.ObjectID) {
+		if sm := l.sampler.Load(); sm != nil && !sm.Allow(s.ID(), ev.ObjectID) {
 			continue
 		}
 		if _, err := s.Probe(ctx, ev, lateral.ActiveContext{}); err != nil {
