@@ -38,7 +38,7 @@ func (g *Gate) Filter(in []Scored) []Scored {
 	var out []Scored
 	for typ, cands := range byType {
 		thresh := g.cfg.ThresholdsByType[typ]
-		passing := cands[:0]
+		passing := make([]Scored, 0, len(cands))
 		for _, c := range cands {
 			if c.Score >= thresh {
 				passing = append(passing, c)
