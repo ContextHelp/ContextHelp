@@ -61,35 +61,78 @@ func (s *PublicationStrategy) Probe(ctx context.Context, ev lateral.CapturedEven
 	host := strings.ToLower(u.Hostname())
 	d := customdomain.Detect(ev.SourceURL, hintsFromEvent(ev))
 
-	var slug string
+	// resolved indicates whether slug is a real Medium publication slug
+	// (suitable for medium.com/<slug> canonical URLs). When false, we
+	// emit the custom-domain root URL instead of forcing the host into
+	// the medium.com/ path (which produces invalid URLs like
+	// medium.com/newsletter.example.com).
+	var (
+		slug     string
+		resolved bool
+	)
 	switch {
 	case strings.HasSuffix(host, ".medium.com"):
 		slug = strings.TrimSuffix(host, ".medium.com")
+		resolved = true
 	case host == "medium.com" && len(parts) >= 1:
 		slug = parts[0]
+		resolved = true
 	case d.CustomHost:
-		slug = host
 		if s.Client != nil {
-			if resolved, err := s.Client.ResolvePublication(ctx, host); err == nil && resolved != "" {
-				slug = resolved
+			if r, err := s.Client.ResolvePublication(ctx, host); err == nil && r != "" {
+				slug = r
+				resolved = true
 			}
+		}
+		if !resolved {
+			// Degraded mode: keep the custom-domain root as the
+			// canonical surface and key the identity by host.
+			root := "https://" + host + "/"
+			pubKey := identitykey.Build("medium", identitykey.EntityPublication, host)
+			return []lateral.Candidate{
+				{
+					URL:           root,
+					CandidateType: CandidateTypePublication,
+					Strategy:      IDPublication,
+					Preview:       identitykey.Set(map[string]any{"host": host}, pubKey),
+				},
+				{
+					URL:           root + "archive",
+					CandidateType: CandidateTypePublication,
+					Strategy:      IDPublication,
+					// Reuse the publication identity key; differentiate
+					// the facet via Preview so the resolver still dedups
+					// to the same entity.
+					Preview: identitykey.Set(map[string]any{"host": host, "facet": "archive"}, pubKey),
+				},
+				{
+					URL:           root + "feed",
+					CandidateType: CandidateTypeFeed,
+					Strategy:      IDPublication,
+					Preview:       identitykey.Set(map[string]any{"host": host}, identitykey.Build("medium", "feed", host)),
+				},
+			}, nil
 		}
 	default:
 		return nil, nil
 	}
 
+	pubKey := identitykey.Build("medium", identitykey.EntityPublication, slug)
 	out := []lateral.Candidate{
 		{
 			URL:           "https://medium.com/" + slug,
 			CandidateType: CandidateTypePublication,
 			Strategy:      IDPublication,
-			Preview:       identitykey.Set(map[string]any{"slug": slug}, identitykey.Build("medium", identitykey.EntityPublication, slug)),
+			Preview:       identitykey.Set(map[string]any{"slug": slug}, pubKey),
 		},
 		{
 			URL:           "https://medium.com/" + slug + "/archive",
 			CandidateType: CandidateTypePublication,
 			Strategy:      IDPublication,
-			Preview:       identitykey.Set(map[string]any{"slug": slug, "facet": "archive"}, identitykey.Build("medium", identitykey.EntityPublication, slug+"/archive")),
+			// Reuse the publication identity key so the resolver
+			// collapses landing + archive onto the same entity; the
+			// facet is differentiated via Preview.
+			Preview: identitykey.Set(map[string]any{"slug": slug, "facet": "archive"}, pubKey),
 		},
 		{
 			URL:           "https://medium.com/feed/" + slug,
