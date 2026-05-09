@@ -143,6 +143,16 @@ func NewLifecycle(opts LifecycleOptions) (*Lifecycle, error) {
 // without restarting the daemon.
 func (l *Lifecycle) Gate() *rollout.StrategyGate { return l.gate }
 
+// KillSwitch returns a handle to the lifecycle's gate framed as
+// the operator emergency lever. Triggering the kill-switch on
+// strategy id cold-stops dispatch immediately (atomic, lock-free)
+// — no waiting for the next SIGHUP cycle. Already-running Probe
+// goroutines run to completion (no in-flight cancellation) but no
+// new dispatches happen.
+func (l *Lifecycle) KillSwitch() *rollout.KillSwitch {
+	return rollout.NewKillSwitch(l.gate)
+}
+
 // Sampler returns the runtime traffic-shaping sampler. May be nil
 // when the daemon was wired without one.
 func (l *Lifecycle) Sampler() *rollout.Sampler { return l.sampler.Load() }
