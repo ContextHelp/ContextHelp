@@ -149,28 +149,34 @@ T given current active context.
 
 ### Bus events emitted
 
+Topics follow the kit `bus.TopicOf` 4-segment grammar
+`[Source].[Category].[Object].[Action]`; modifiers join Object via
+underscore on wire (e.g. `reaper_cycle`). Reason / Mechanism / Property /
+Circumstance live in payload via `bus.Qualifiers`, never in the topic
+string. Actions are single past-tense verbs.
+
 - `ctxt.lateral.scan.started`
 - `ctxt.lateral.scan.completed`
-- `ctxt.lateral.scan.deferred` (with reason: `rate_limit`, `resolver`,
-  `cold_start`, `scoring`)
-- `ctxt.lateral.scan.skipped` (with reason: `cold_start`,
+- `ctxt.lateral.scan.deferred` (payload `Qualifiers.Reason`: `rate_limit`,
+  `resolver`, `cold_start`, `scoring`)
+- `ctxt.lateral.scan.skipped` (payload `Qualifiers.Reason`: `cold_start`,
   `rate_limit_persistent`, `triage_negative`, `no_strategy`)
 - `ctxt.lateral.subpath.failed` (with sub-path id, reason)
 - `ctxt.lateral.candidate.created`
 - `ctxt.lateral.candidate.promoted` (with promotion path: `p2_explicit`,
   `p2_implicit`, `p3_references`)
-- `ctxt.lateral.candidate.expired` (with reason: `parent_expired_no_links`,
-  `cold_cycle`, `superseded_by_canonical`)
+- `ctxt.lateral.candidate.expired` (payload `Qualifiers.Reason`:
+  `parent_expired_no_links`, `cold_cycle`, `superseded_by_canonical`)
 - `ctxt.lateral.candidate.rejected`
 - `ctxt.lateral.candidate.resurrected`
-- `ctxt.lateral.reaper[cycle].started`
-- `ctxt.lateral.reaper[cycle].completed`
-- `ctxt.lateral.reaper[cycle].failed`
-- `ctxt.lateral.reaper[cycle].skipped?overlap`
-- `ctxt.lateral.sanity[check].violated`
-- `ctxt.lateral.score.flagged=invalid`
-- `ctxt.lateral.signal.degraded`
-- `ctxt.lateral.resolution.flagged=ambiguous`
+- `ctxt.lateral.reaper_cycle.started`
+- `ctxt.lateral.reaper_cycle.completed`
+- `ctxt.lateral.reaper_cycle.failed` (payload `Qualifiers.Reason`)
+- `ctxt.lateral.reaper_cycle.skipped` (payload `Qualifiers.Reason="overlap"`)
+- `ctxt.lateral.sanity_check.violated`
+- `ctxt.lateral.score.flagged` (payload `Qualifiers.Property="invalid"`)
+- `ctxt.lateral.signal.degraded` (payload `Qualifiers.Reason`)
+- `ctxt.lateral.resolution.flagged` (payload `Qualifiers.Property="ambiguous"`)
 - `ctxt.lateral.recipe.refreshed`
 
 ## Data model
@@ -271,8 +277,8 @@ post-promotion (full canonical capture supersedes it).
 2. Identity-key match (e.g. `@github.user.<login>` to canonical via aliases) —
    edge-only.
 3. Ambiguous match (multiple canonical candidates) — pick highest-scoring above
-   confidence threshold (0.7); else emit `lateral.resolution.flagged=ambiguous`
-   and fall to probationary.
+   confidence threshold (0.7); else emit `lateral.resolution.flagged` with
+   payload `Qualifiers.Property="ambiguous"` and fall to probationary.
 4. No match — materialize as probationary `lateral_candidate`.
 
 Edge-only path applies to all candidate types, not just owner profile and
@@ -385,9 +391,9 @@ soft_floor = 5000 * floor_pct
 ```
 
 Below floor: defer scan to persistent queue, retry once after rate-limit reset
-window; if still over budget on retry, drop with
-`lateral.skipped.rate_limit_persistent`. No hard floor (clamp prevents
-floor below 5%).
+window; if still over budget on retry, drop with `lateral.scan.skipped`
+(payload `Qualifiers.Reason="rate_limit_persistent"`). No hard floor (clamp
+prevents floor below 5%).
 
 ### Mode 2 — kit/ibr failures
 
@@ -409,8 +415,8 @@ floor below 5%).
 - Slow resolver: soft 2s timeout, retry once with 5s timeout; beyond that,
   treat as unavailable.
 - Ambiguous match: high-confidence (>0.7) match wins via eva blend; truly
-  ambiguous emits `lateral.resolution.flagged=ambiguous` and falls to
-  probationary.
+  ambiguous emits `lateral.resolution.flagged` with payload
+  `Qualifiers.Property="ambiguous"` and falls to probationary.
 - Cold-start (alias registry not loaded): defer until ready.
 
 ### Mode 4 — reaper failures
@@ -421,7 +427,8 @@ floor below 5%).
 - Reaper-not-running: heartbeat events + ops-layer health check (alert if no
   heartbeat for >2 cycles).
 - Overlapping cycles: mutex; new cycle skips with
-  `lateral.reaper[cycle].skipped?overlap` if previous still holds.
+  `lateral.reaper_cycle.skipped` (payload `Qualifiers.Reason="overlap"`)
+  if previous still holds.
 - TTL math correctness: sanity bounds (refuse to expire records with
   `expires_at` >30d in future or older than `discovered_at`) + soft-delete
   quarantine (mark `state: expired`, hard-purge after 30d via separate
@@ -434,7 +441,8 @@ floor below 5%).
 
 - eva down: defer scan to persistent queue (same shape as mode 3 resolver).
 - Invalid score per candidate: treat as 0.0; candidate fails cap gate;
-  dropped; logged as `lateral.score.flagged=invalid`.
+  dropped; logged as `lateral.score.flagged` with payload
+  `Qualifiers.Property="invalid"`.
 - Slow eva: batch all candidates into single eva call where supported, with
   soft 5s timeout and retry-once at 10s; per-candidate fallback if batch
   unsupported (same retry shape).
@@ -449,8 +457,8 @@ floor below 5%).
   (signal-only event with ID + namespace; lateral re-reads from canonical
   store). Fall back to `ctxt.ingest.object.captured` + read-with-retry
   (50ms, 200ms, 1s, 3s; 5s total) for pipelines that don't emit `.persisted`.
-- 6B — cold-start (all three signals null): skip with
-  `lateral.skipped.cold_start`; ambient retry on next capture.
+- 6B — cold-start (all three signals null): skip with `lateral.scan.skipped`
+  (payload `Qualifiers.Reason="cold_start"`); ambient retry on next capture.
 - 6B definition: cold-start = all three signals null; thin-but-warm produces
   low scores naturally and falls out of cap gate.
 - Incomplete parent record: each strategy declares preconditions on a

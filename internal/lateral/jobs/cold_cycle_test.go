@@ -56,7 +56,7 @@ func TestColdCycleHandler_HeartbeatsAndEmitsCompleted(t *testing.T) {
 	}
 	found := false
 	for _, top := range pub.topics {
-		if top == TopicReaperCycleCompleted {
+		if top == string(TopicReaperCycleCompleted) {
 			found = true
 		}
 	}

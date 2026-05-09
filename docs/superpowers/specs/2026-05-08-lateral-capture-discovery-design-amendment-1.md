@@ -306,7 +306,8 @@ After ≥20 labeled candidates have run through the lifecycle for a given
 strategy + active-context-shape pair, compute the bucket promotion rate. If
 the rate is below a configurable threshold (default `0.005`, i.e. 0.5%), the
 strategy auto-suppresses for that active-context-shape: skips the scan, emits
-`lateral.skipped.learned_low_promotion`. Suppression is per-strategy and
+`lateral.scan.skipped` (payload `Qualifiers.Reason="learned_low_promotion"`).
+Suppression is per-strategy and
 per-active-context-shape; it does not affect the strategy's behavior in other
 contexts.
 
@@ -353,21 +354,23 @@ layer returns no match.
 Q-rework-1 = B: defer scan to persistent queue. LLM is treated as a
 load-bearing dependency in the same shape as eva (mode 5) and identity
 resolver (mode 3). Re-try when LLM is back. Same persistent queue, 24h
-retention; expired deferrals drop with `lateral.skipped.jit_unavailable`.
+retention; expired deferrals drop with `lateral.scan.skipped` (payload
+`Qualifiers.Reason="jit_unavailable"`).
 
 ### Knob 2 — LLM unavailable, cached recipe exists
 
 Use the cached recipe even if the cache is stale. A stale recipe is better
 than no lateral output. The recipe will refresh on its next failure
-(failure-driven lifecycle). Logs `lateral.recipe.served@during_llm_outage`
-for ops visibility.
+(failure-driven lifecycle). Logs `lateral.recipe.served` (payload
+`Qualifiers.Circumstance="llm_outage"`) for ops visibility.
 
 ### Knob 3 — LLM returns garbage proposal
 
 LLM responds but the proposal fails validation (no sub-paths proposed,
-sub-paths reference unfetchable URLs, etc.). Skip the scan with
-`lateral.scan[jit].proposal_failed`. Do not retry within the same scan.
-Ambient retry on next parent re-capture handles transient LLM hallucination.
+sub-paths reference unfetchable URLs, etc.). Fail the scan with
+`lateral.scan.failed` (payload `Qualifiers.Mechanism="jit_proposal"`). Do
+not retry within the same scan. Ambient retry on next parent re-capture
+handles transient LLM hallucination.
 
 ### Knob 4 — LLM rate limiting
 
@@ -378,19 +381,23 @@ The trailing-4h window measures LLM calls, not API calls.
 
 ## Bus event additions
 
-Add to the original spec's bus event catalog:
+Add to the original spec's bus event catalog. Topics are wire form (kit
+`bus.TopicOf`); modifier-bearing Objects join via underscore on wire.
+Reason / Mechanism / Property / Circumstance live in payload via
+`bus.Qualifiers`.
 
-- `ctxt.lateral.scan.skipped` reasons extended: `jit_unavailable`,
-  `learned_low_promotion`.
-- `ctxt.lateral.scan[jit].proposal_failed` (re-instated; was removed during
+- `ctxt.lateral.scan.skipped` (payload `Qualifiers.Reason`) — new reasons:
+  `jit_unavailable`, `learned_low_promotion`.
+- `ctxt.lateral.scan.failed` (payload `Qualifiers.Mechanism="jit_proposal"`)
+  — JIT-proposal validation failure (re-instated; was removed during
   self-review of original spec).
-- `ctxt.lateral.recipe.served@during_llm_outage`.
-- `ctxt.lateral.classification.matched+heuristic` (heuristic layer matched).
-- `ctxt.lateral.classification.produced+llm` (LLM fallback ran).
-- `ctxt.lateral.classification.hit+recipe_cache` (cached page-shape recipe used).
-- `ctxt.lateral.research[intent].boosted` (layer B boost applied).
-- `ctxt.lateral.research[intent].suppressed` (layer C auto-suppression
-  active for this context-shape).
+- `ctxt.lateral.recipe.served` (payload `Qualifiers.Circumstance="llm_outage"`).
+- `ctxt.lateral.classification.matched` — heuristic layer matched.
+- `ctxt.lateral.classification.classified` — LLM fallback ran.
+- `ctxt.lateral.classification.cached` — cached page-shape recipe used.
+- `ctxt.lateral.research_intent.boosted` — layer B boost applied.
+- `ctxt.lateral.research_intent.suppressed` — layer C auto-suppression
+  active for this context-shape.
 
 ## Configuration additions
 
