@@ -16,6 +16,13 @@ const (
 	LabelBlog           Label = "Blog"
 	LabelJobPosting     Label = "JobPosting"
 	LabelEventPage      Label = "EventPage"
+	// LLM- or recipe-cache-only labels (no heuristic rule today;
+	// produced by classifier.LLM or future heuristics).
+	LabelDocsPage      Label = "DocsPage"
+	LabelLandingPage   Label = "LandingPage"
+	LabelBlogPost      Label = "BlogPost"
+	LabelBusiness      Label = "Business"
+	LabelResearchPaper Label = "ResearchPaper"
 )
 
 // Input is what the heuristic classifier receives. URL is required; HTML may
