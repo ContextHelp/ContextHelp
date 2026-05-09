@@ -1,9 +1,0 @@
-{
-  "title": "recipe_events",
-  "description": "Recipe-cache event payloads. Keys are short-form (Object.Action); the runtime topic is `<source>.<category>.<short_form>` per the [Source].[Category].[Object].[Action] standard. Lateral emits these as `ctxt.lateral.<key>`.",
-  "type": "object",
-  "definitions": {
-    "recipe.refreshed":                 {"type": "object", "properties": {"source_domain": {"type": "string"}, "page_type": {"type": "string"}}},
-    "recipe.served_during_llm_outage":  {"type": "object", "properties": {"source_domain": {"type": "string"}, "page_type": {"type": "string"}}}
-  }
-}
