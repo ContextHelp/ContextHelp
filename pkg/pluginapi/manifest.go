@@ -31,24 +31,26 @@ const (
 var PrivilegedPermissions = []string{PermEntityWrite, PermEntityAlias}
 
 // PluginManifest declares identity, version, and permissions for a plugin.
-// Loaded from manifest.yaml in the plugin's directory (or embedded via RegisterManifest).
+// Loaded from manifest.json or manifest.yaml in the plugin's directory.
 type PluginManifest struct {
 	// APIVersion is the manifest schema version (currently "v1").
-	APIVersion string `yaml:"apiVersion"`
+	APIVersion string `yaml:"apiVersion" json:"apiVersion"`
 	// Name must match the plugin's Name() return value.
-	Name string `yaml:"name"`
+	Name string `yaml:"name" json:"name"`
+	// Slug is the unique identifier for the plugin.
+	Slug string `yaml:"slug" json:"slug"`
 	// Version is the semver string for this plugin.
-	Version string `yaml:"version"`
+	Version string `yaml:"version" json:"version"`
 	// Description is a human-readable summary.
-	Description string `yaml:"description,omitempty"`
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
 	// Type classifies the plugin's primary role. Optional; omit for general plugins.
 	// Currently supported: "registry_provider".
-	Type PluginType `yaml:"type,omitempty"`
+	Type PluginType `yaml:"type,omitempty" json:"type,omitempty"`
 	// Permissions lists all capabilities the plugin requires.
 	// Valid values: read_objects, write_objects, call_llm, network,
 	// filesystem, clipboard, refresh, notifications, entity.write, entity.alias,
 	// registry.read.
-	Permissions []string `yaml:"permissions"`
+	Permissions []string `yaml:"permissions" json:"permissions"`
 }
 
 // HasPermission reports whether m grants perm.

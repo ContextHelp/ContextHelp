@@ -1,0 +1,20 @@
+{
+  "name": "ctxt Knowledge Retrieval Skill",
+  "slug": "ctxt-retrieval-skill",
+  "description": "A reusable AI agent skill for searching and retrieving structured knowledge from ContextHelp using the ctxt CLI.",
+  "category": "skills",
+  "author": {
+    "name": "Jadb",
+    "github": "jadb"
+  },
+  "version": "1.0.0",
+  "requires": {
+    "ctxt": true,
+    "tools": ["ctxt CLI"]
+  },
+  "provides": {
+    "commands": ["ctxt list", "ctxt find", "ctxt open"]
+  },
+  "tags": ["retrieval", "search", "skill", "agent"],
+  "difficulty": "beginner"
+}

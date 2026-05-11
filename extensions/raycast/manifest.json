@@ -1,0 +1,22 @@
+{
+  "name": "Raycast Extension",
+  "slug": "raycast-extension",
+  "description": "ContextHelp extension for Raycast, providing quick search and capture capabilities directly from the Raycast launcher.",
+  "category": "extensions",
+  "author": {
+    "name": "Jadb",
+    "github": "jadb"
+  },
+  "version": "1.0.0",
+  "requires": {
+    "ctxt": true,
+    "dpkms": true,
+    "tools": ["Raycast", "Node.js 18+"]
+  },
+  "provides": {
+    "commands": ["search", "capture", "compose", "jobs", "recent"]
+  },
+  "tags": ["raycast", "search", "capture", "ui"],
+  "difficulty": "intermediate",
+  "icon": "./extension-icon.svg"
+}

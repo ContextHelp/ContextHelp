@@ -1,0 +1,23 @@
+{
+  "name": "Directory Watcher Plugin",
+  "slug": "dir-watcher-plugin",
+  "description": "Monitors specified directories for new files and automatically enqueues them for ingestion into ContextHelp.",
+  "category": "plugins",
+  "author": {
+    "name": "Jadb",
+    "github": "jadb"
+  },
+  "version": "1.0.0",
+  "requires": {
+    "ctxt": true,
+    "dpkms": true,
+    "permissions": ["filesystem.read"]
+  },
+  "provides": {
+    "triggers": {
+      "watch_dirs": ["~/Downloads", "~/Desktop"]
+    }
+  },
+  "tags": ["automation", "ingestion", "watcher", "files"],
+  "difficulty": "intermediate"
+}

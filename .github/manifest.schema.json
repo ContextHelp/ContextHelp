@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ContextHelp/ctxt/blob/main/.github/manifest.schema.json",
+  "title": "ContextHelp Contribution Manifest",
+  "description": "Schema for manifest.json files in ContextHelp contributions.",
+  "type": "object",
+  "required": [
+    "name",
+    "slug",
+    "description",
+    "category",
+    "author",
+    "version",
+    "requires",
+    "tags"
+  ],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "slug": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "description": { "type": "string" },
+    "category": { "type": "string", "enum": ["extensions", "plugins", "skills", "schemas"] },
+    "author": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "github": { "type": "string" }
+      }
+    },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "requires": {
+      "type": "object",
+      "required": ["ctxt"],
+      "properties": {
+        "ctxt": { "type": "boolean", "const": true },
+        "dpkms": { "type": "boolean" },
+        "services": { "type": "array", "items": { "type": "string" } },
+        "tools": { "type": "array", "items": { "type": "string" } },
+        "permissions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "provides": {
+      "type": "object",
+      "properties": {
+        "pipelines": { "type": "array", "items": { "type": "string" } },
+        "commands": { "type": "array", "items": { "type": "string" } },
+        "schemas": { "type": "array", "items": { "type": "string" } },
+        "triggers": { "type": "object" }
+      }
+    },
+    "tags": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "difficulty": { "type": "string", "enum": ["beginner", "intermediate", "advanced"] },
+    "icon": { "type": "string" }
+  },
+  "additionalProperties": false
+}
