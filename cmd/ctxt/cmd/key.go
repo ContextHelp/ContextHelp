@@ -25,11 +25,10 @@ var keyLong = map[string]string{
 var keyExamples = map[string][]cliconv.Example{
 	"init": {
 		{Title: "Initialise the KMS", Command: "dpkms key init"},
-		{Title: "Init with a custom seed file", Command: "dpkms key init --seed-file ~/.config/dpkms/seed"},
+		{Title: "Overwrite an existing keypair", Command: "dpkms key init --force"},
 	},
 	"rotate": {
-		{Title: "Rotate the active key", Command: "dpkms key rotate"},
-		{Title: "Force-rotate immediately", Command: "dpkms key rotate --force"},
+		{Title: "Rotate the active signing key", Command: "dpkms key rotate"},
 	},
 }
 
@@ -39,7 +38,7 @@ var keyNextSteps = map[string][]cliconv.NextStep{
 		{When: "on success", Suggest: "dpkms secret set <name> <value>", Reason: "store the first secret under the newly initialised key"},
 	},
 	"rotate": {
-		{When: "after rotate", Suggest: "dpkms key rotate --status", Reason: "confirm the new key is active and re-encryption finished"},
+		{When: "after rotate", Suggest: "dpkms config backup", Reason: "snapshot the new rotation_log.json before further changes"},
 	},
 }
 
