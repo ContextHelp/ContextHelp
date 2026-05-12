@@ -65,7 +65,9 @@ var profileDeleteCmd = &cobra.Command{
 	Short: "Delete a profile",
 	Long: `Remove a focus profile from the active config. If the deleted
 profile was the default, the default is also cleared. The change is
-persisted by rewriting the resolved config file.`,
+persisted by rewriting the resolved config file.
+
+Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
 	Args: cobra.ExactArgs(1),
 	RunE: runProfileDelete,
 }

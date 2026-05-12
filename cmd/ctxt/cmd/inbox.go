@@ -70,6 +70,8 @@ var inboxDiscardCmd = &cobra.Command{
 	Long: `Permanently discard a single inbox item by ID. The item is removed
 from the inbox queue and cannot be recovered.
 
+Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).
+
 Examples:
   ctxt inbox discard abc123`,
 	Args: cobra.ExactArgs(1),
@@ -81,6 +83,8 @@ var inboxClearCmd = &cobra.Command{
 	Short: "Discard all inbox items",
 	Long: `Discard every item currently sitting in the inbox. Destructive — the
 discarded items cannot be recovered.
+
+Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).
 
 Examples:
   ctxt inbox clear`,

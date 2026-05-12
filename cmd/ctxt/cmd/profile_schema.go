@@ -75,7 +75,9 @@ var schemaRemoveTypeCmd = &cobra.Command{
 	Long: `Drop the named entity type from the profile schema's allowed
 vocabulary. Fails when the type is not present. The schema version
 is bumped and the change is persisted by rewriting the resolved
-config file.`,
+config file.
+
+Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
 	Args: cobra.ExactArgs(2),
 	RunE: runSchemaRemoveType,
 }
@@ -86,7 +88,9 @@ var schemaRemoveTopicCmd = &cobra.Command{
 	Long: `Drop the named topic from the profile schema's topic
 vocabulary. Fails when the topic is not present. The schema version
 is bumped and the change is persisted by rewriting the resolved
-config file.`,
+config file.
+
+Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
 	Args: cobra.ExactArgs(2),
 	RunE: runSchemaRemoveTopic,
 }

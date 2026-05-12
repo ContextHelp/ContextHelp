@@ -126,6 +126,8 @@ The signature file is expected alongside the zip: <bundle>.zip.sig
 
 Without --verify, the bundle is extracted without signature checking.
 
+Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).
+
 Examples:
   ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --verify
   ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip`,

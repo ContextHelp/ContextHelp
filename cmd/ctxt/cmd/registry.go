@@ -70,7 +70,9 @@ var registryRemoveCmd = &cobra.Command{
 	Short: "Remove a registry",
 	Long: `Drop the named registry from the local cache and remove the
 matching entry from the config file. Fails when the registry is not
-present in the config.`,
+present in the config.
+
+Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRegistryRemove,
 }
