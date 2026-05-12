@@ -241,6 +241,7 @@ func init() {
 	cliconv.WithSideEffect(registryListCmd, cliconv.SideEffectRead)
 	cliconv.WithSideEffect(registryAddCmd, cliconv.SideEffectWrite)
 	cliconv.WithSideEffect(registryRemoveCmd, cliconv.SideEffectDestructive)
+	cliconv.WithDestructiveToken(registryRemoveCmd)
 	cliconv.WithSideEffect(registryInfoCmd, cliconv.SideEffectRead)
 	cliconv.WithSideEffect(registrySyncCmd, cliconv.SideEffectWrite)
 	cliconv.WithSideEffect(registrySubmitCmd, cliconv.SideEffectWrite)

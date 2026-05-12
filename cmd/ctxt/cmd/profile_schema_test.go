@@ -119,7 +119,8 @@ func TestSchemaRemoveType(t *testing.T) {
 		t.Fatalf("add-type: %v", err)
 	}
 
-	out, err := db.exec("profile", "schema", "remove-type", "p1", "bug")
+	out, err := db.exec("profile", "schema", "remove-type",
+		"--confirm=yes", "--confirm-token=04ede4ebfbb0", "p1", "bug")
 	if err != nil {
 		t.Fatalf("remove-type: %v", err)
 	}
@@ -128,7 +129,8 @@ func TestSchemaRemoveType(t *testing.T) {
 	}
 
 	// Removing nonexistent type should fail.
-	_, err = db.exec("profile", "schema", "remove-type", "p1", "bug")
+	_, err = db.exec("profile", "schema", "remove-type",
+		"--confirm=yes", "--confirm-token=04ede4ebfbb0", "p1", "bug")
 	if err == nil {
 		t.Error("removing nonexistent type should fail")
 	}
@@ -146,7 +148,8 @@ func TestSchemaRemoveTopic(t *testing.T) {
 		t.Fatalf("add-topic: %v", err)
 	}
 
-	out, err := db.exec("profile", "schema", "remove-topic", "p2", "auth")
+	out, err := db.exec("profile", "schema", "remove-topic",
+		"--confirm=yes", "--confirm-token=a8dd3f26f066", "p2", "auth")
 	if err != nil {
 		t.Fatalf("remove-topic: %v", err)
 	}
@@ -155,7 +158,8 @@ func TestSchemaRemoveTopic(t *testing.T) {
 	}
 
 	// Removing nonexistent topic should fail.
-	_, err = db.exec("profile", "schema", "remove-topic", "p2", "auth")
+	_, err = db.exec("profile", "schema", "remove-topic",
+		"--confirm=yes", "--confirm-token=a8dd3f26f066", "p2", "auth")
 	if err == nil {
 		t.Error("removing nonexistent topic should fail")
 	}

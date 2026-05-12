@@ -98,8 +98,10 @@ func init() {
 	cliconv.WithSideEffect(inboxTriageCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(inboxTriageCmd, cliconv.IdempotencyNo)
 	cliconv.WithSideEffect(inboxDiscardCmd, cliconv.SideEffectDestructive)
+	cliconv.WithDestructiveToken(inboxDiscardCmd)
 	cliconv.WithIdempotency(inboxDiscardCmd, cliconv.IdempotencyYes)
 	cliconv.WithSideEffect(inboxClearCmd, cliconv.SideEffectDestructive)
+	cliconv.WithDestructiveToken(inboxClearCmd)
 	cliconv.WithIdempotency(inboxClearCmd, cliconv.IdempotencyYes)
 
 	inboxListCmd.Flags().Int("limit", 50, "maximum results")

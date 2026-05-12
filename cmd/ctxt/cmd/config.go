@@ -155,6 +155,7 @@ func init() {
 	cliconv.WithSideEffect(configEditCmd, cliconv.SideEffectWriteLocal)
 	cliconv.WithSideEffect(configBackupCmd, cliconv.SideEffectWriteLocal)
 	cliconv.WithSideEffect(configRestoreCmd, cliconv.SideEffectDestructiveLocal)
+	cliconv.WithDestructiveToken(configRestoreCmd)
 
 	// Kit verb defaults already cover show/path/edit (Yes) and
 	// validate ("validate" not in default table → mark explicitly).

@@ -105,7 +105,8 @@ func TestRegistryAddNoArgsError(t *testing.T) {
 
 func TestRegistryRemove(t *testing.T) {
 	db := setupTestDB(t)
-	_, err := db.exec("registry", "delete", "nonexistent")
+	_, err := db.exec("registry", "delete",
+		"--confirm=yes", "--confirm-token=8b18e794cfb0", "nonexistent")
 	if err == nil {
 		t.Error("registry delete for unknown registry should fail")
 	}

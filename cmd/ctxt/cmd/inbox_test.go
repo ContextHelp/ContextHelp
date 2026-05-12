@@ -74,7 +74,8 @@ func TestInboxDiscard(t *testing.T) {
 	db := setupTestDB(t)
 	seedInboxItem(t, db, "inbox_dis_01", "to be discarded")
 
-	out, err := db.exec("inbox", "discard", "inbox_dis_01")
+	out, err := db.exec("inbox", "discard",
+		"--confirm=yes", "--confirm-token=19e29a24b91e", "inbox_dis_01")
 	if err != nil {
 		t.Fatalf("inbox discard should succeed: %v", err)
 	}
@@ -95,7 +96,8 @@ func TestInboxDiscard(t *testing.T) {
 func TestInboxDiscardNotFound(t *testing.T) {
 	db := setupTestDB(t)
 
-	_, err := db.exec("inbox", "discard", "nonexistent")
+	_, err := db.exec("inbox", "discard",
+		"--confirm=yes", "--confirm-token=19e29a24b91e", "nonexistent")
 	if err == nil {
 		t.Fatal("expected error for nonexistent item")
 	}
@@ -106,7 +108,8 @@ func TestInboxClear(t *testing.T) {
 	seedInboxItem(t, db, "inbox_clr_01", "item one")
 	seedInboxItem(t, db, "inbox_clr_02", "item two")
 
-	out, err := db.exec("inbox", "clear")
+	out, err := db.exec("inbox", "clear",
+		"--confirm=yes", "--confirm-token=055a21b894c6")
 	if err != nil {
 		t.Fatalf("inbox clear should succeed: %v", err)
 	}

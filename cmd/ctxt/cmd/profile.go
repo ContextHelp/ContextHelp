@@ -93,6 +93,7 @@ func init() {
 	cliconv.WithSideEffect(profileShowCmd, cliconv.SideEffectRead)
 	cliconv.WithSideEffect(profileCreateCmd, cliconv.SideEffectWrite)
 	cliconv.WithSideEffect(profileDeleteCmd, cliconv.SideEffectDestructive)
+	cliconv.WithDestructiveToken(profileDeleteCmd)
 	cliconv.WithSideEffect(profileSetDefaultCmd, cliconv.SideEffectWrite)
 }
 
