@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/remind"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
@@ -41,8 +42,13 @@ Examples:
 var remindClearCmd = &cobra.Command{
 	Use:   "clear <id>",
 	Short: "Clear a reminder from a knowledge object",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRemindClear,
+	Long: `Clear the reminder previously attached to a knowledge object. The
+object itself is not modified — only its reminder schedule is removed.
+
+Examples:
+  ctxt remind clear abc123`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRemindClear,
 }
 
 var remindListCmd = &cobra.Command{
@@ -61,6 +67,12 @@ func init() {
 	remindCmd.AddCommand(remindSetCmd)
 	remindCmd.AddCommand(remindClearCmd)
 	remindCmd.AddCommand(remindListCmd)
+
+	cliconv.WithSideEffect(remindSetCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(remindSetCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(remindClearCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(remindClearCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(remindListCmd, cliconv.SideEffectRead)
 }
 
 func runRemindSet(cmd *cobra.Command, args []string) error {

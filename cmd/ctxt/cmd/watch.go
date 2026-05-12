@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
@@ -92,6 +93,19 @@ func init() {
 	watchCmd.AddCommand(watchStatusCmd)
 	watchCmd.AddCommand(watchEnableCmd)
 	watchCmd.AddCommand(watchDisableCmd)
+
+	// start blocks running watchers; treat as a Write effect (it
+	// enqueues ingestion jobs while running).
+	cliconv.WithSideEffect(watchStartCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(watchStartCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(watchStopCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(watchStopCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(watchStatusCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(watchStatusCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(watchEnableCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(watchEnableCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(watchDisableCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(watchDisableCmd, cliconv.IdempotencyYes)
 }
 
 func runWatchStart(cmd *cobra.Command, _ []string) error {
