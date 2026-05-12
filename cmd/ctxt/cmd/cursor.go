@@ -108,6 +108,35 @@ func init() {
 	cliconv.WithIdempotency(cursorResetCmd, cliconv.IdempotencyYes)
 	cliconv.WithIdempotency(cursorSetCmd, cliconv.IdempotencyYes)
 
+	// 12fcc strict-gate: examples + next-steps on every leaf.
+	cliconv.WithExamples(cursorListCmd, []cliconv.Example{
+		{Title: "List all named cursors", Command: "ctxt cursor list"},
+		{Title: "JSON for scripting", Command: "ctxt cursor list --format json"},
+	})
+	cliconv.WithExamples(cursorShowCmd, []cliconv.Example{
+		{Title: "Show a cursor's state", Command: "ctxt cursor show daily-mentions"},
+		{Title: "JSON dump", Command: "ctxt cursor show daily-mentions --format json"},
+	})
+	cliconv.WithExamples(cursorResetCmd, []cliconv.Example{
+		{Title: "Rewind to the beginning", Command: "ctxt cursor reset daily-mentions"},
+	})
+	cliconv.WithNextSteps(cursorResetCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list --cursor daily-mentions --advance", Reason: "re-process the full result set from the new epoch-0 position"},
+	})
+	cliconv.WithExamples(cursorSetCmd, []cliconv.Example{
+		{Title: "Jump to an RFC3339 timestamp", Command: "ctxt cursor set daily-mentions --to 2026-04-28T14:22:11Z"},
+		{Title: "Skip back seven days", Command: "ctxt cursor set daily-mentions --to -7d"},
+	})
+	cliconv.WithNextSteps(cursorSetCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt cursor show daily-mentions", Reason: "confirm LastSeenAt landed on the expected moment"},
+	})
+	cliconv.WithExamples(cursorDeleteCmd, []cliconv.Example{
+		{Title: "Remove a cursor record", Command: "ctxt cursor delete daily-mentions"},
+	})
+	cliconv.WithNextSteps(cursorDeleteCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt cursor list", Reason: "verify the cursor is gone from the store"},
+	})
+
 	cursorSetCmd.Flags().String("to", "",
 		"target timestamp: RFC3339 (2026-04-28T14:22:11Z) or signed duration (-7d, +1h)")
 	_ = cursorSetCmd.MarkFlagRequired("to")

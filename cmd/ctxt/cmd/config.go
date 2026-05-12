@@ -159,6 +159,49 @@ func init() {
 	cliconv.WithSideEffect(configRestoreCmd, cliconv.SideEffectDestructiveLocal)
 	cliconv.WithDestructiveToken(configRestoreCmd)
 
+	// 12fcc strict-gate: every leaf carries at least one example; write
+	// and destructive leaves also carry a NextStep so agents know what
+	// to chain next.
+	cliconv.WithExamples(configShowCmd, []cliconv.Example{
+		{Title: "Human-readable view", Command: "ctxt config show"},
+		{Title: "JSON for scripting", Command: "ctxt config show --format json"},
+	})
+	cliconv.WithExamples(configPathCmd, []cliconv.Example{
+		{Title: "Print the resolved config path", Command: "ctxt config path"},
+		{Title: "Edit the resolved file", Command: "$EDITOR \"$(ctxt config path)\""},
+	})
+	cliconv.WithExamples(configLintCmd, []cliconv.Example{
+		{Title: "Lint with all checks", Command: "ctxt config doctor"},
+		{Title: "Auto-apply safe fixes", Command: "ctxt config doctor --fix"},
+	})
+	cliconv.WithExamples(configValidateCmd, []cliconv.Example{
+		{Title: "Validate + scan for plaintext secrets", Command: "ctxt config validate"},
+		{Title: "Skip the secret scan", Command: "ctxt config validate --check-secrets=false"},
+	})
+	cliconv.WithExamples(configEditCmd, []cliconv.Example{
+		{Title: "Open in $EDITOR", Command: "ctxt config edit"},
+		{Title: "Open in a specific editor", Command: "EDITOR=nano ctxt config edit"},
+	})
+	cliconv.WithNextSteps(configEditCmd, []cliconv.NextStep{
+		{When: "after saving", Suggest: "ctxt config validate", Reason: "confirm the file still parses and passes lint checks"},
+		{When: "after saving", Suggest: "ctxt config doctor", Reason: "run the full schema + secrets + permissions lint"},
+	})
+	cliconv.WithExamples(configBackupCmd, []cliconv.Example{
+		{Title: "Backup to the current directory", Command: "ctxt config backup"},
+		{Title: "Backup to a specific directory", Command: "ctxt config backup --output /tmp/my-backup"},
+	})
+	cliconv.WithNextSteps(configBackupCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt config restore --verify <bundle.zip>", Reason: "verify the bundle signature round-trips before relying on it"},
+	})
+	cliconv.WithExamples(configRestoreCmd, []cliconv.Example{
+		{Title: "Restore with signature verification", Command: "ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --verify"},
+		{Title: "Dry-run a restore to inspect contents", Command: "ctxt config restore ctxt-config-bundle.zip --verify --dry-run"},
+	})
+	cliconv.WithNextSteps(configRestoreCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt config validate", Reason: "confirm the restored config parses cleanly"},
+		{When: "on success", Suggest: "restart ctxt", Reason: "config changes only take effect on next process start"},
+	})
+
 	// Kit verb defaults already cover show/path/edit (Yes) and
 	// validate ("validate" not in default table → mark explicitly).
 	cliconv.WithIdempotency(configValidateCmd, cliconv.IdempotencyYes)
