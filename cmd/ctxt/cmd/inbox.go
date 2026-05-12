@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -38,27 +39,52 @@ Examples:
 var inboxListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List inbox items",
-	RunE:  runInboxList,
+	Long: `List inbox items awaiting triage.
+
+Filter by status (--pending, --failed, --raw) to switch into the job-queue
+view; without filters the traditional inbox listing is shown.
+
+Examples:
+  ctxt inbox list
+  ctxt inbox list --pending
+  ctxt inbox list --limit 100 --offset 50`,
+	RunE: runInboxList,
 }
 
 var inboxTriageCmd = &cobra.Command{
 	Use:   "triage <id>",
 	Short: "Promote an inbox item to active and enqueue it",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runInboxTriage,
+	Long: `Promote a single inbox item to active state and enqueue it for the
+ingestion pipeline. Optionally pin a pipeline with --pipeline.
+
+Examples:
+  ctxt inbox triage abc123
+  ctxt inbox triage abc123 --pipeline default`,
+	Args: cobra.ExactArgs(1),
+	RunE: runInboxTriage,
 }
 
 var inboxDiscardCmd = &cobra.Command{
 	Use:   "discard <id>",
 	Short: "Discard an inbox item",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runInboxDiscard,
+	Long: `Permanently discard a single inbox item by ID. The item is removed
+from the inbox queue and cannot be recovered.
+
+Examples:
+  ctxt inbox discard abc123`,
+	Args: cobra.ExactArgs(1),
+	RunE: runInboxDiscard,
 }
 
 var inboxClearCmd = &cobra.Command{
 	Use:   "clear",
 	Short: "Discard all inbox items",
-	RunE:  runInboxClear,
+	Long: `Discard every item currently sitting in the inbox. Destructive — the
+discarded items cannot be recovered.
+
+Examples:
+  ctxt inbox clear`,
+	RunE: runInboxClear,
 }
 
 func init() {
@@ -67,6 +93,14 @@ func init() {
 	inboxCmd.AddCommand(inboxTriageCmd)
 	inboxCmd.AddCommand(inboxDiscardCmd)
 	inboxCmd.AddCommand(inboxClearCmd)
+
+	cliconv.WithSideEffect(inboxListCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(inboxTriageCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(inboxTriageCmd, cliconv.IdempotencyNo)
+	cliconv.WithSideEffect(inboxDiscardCmd, cliconv.SideEffectDestructive)
+	cliconv.WithIdempotency(inboxDiscardCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(inboxClearCmd, cliconv.SideEffectDestructive)
+	cliconv.WithIdempotency(inboxClearCmd, cliconv.IdempotencyYes)
 
 	inboxListCmd.Flags().Int("limit", 50, "maximum results")
 	inboxListCmd.Flags().Int("offset", 0, "pagination offset")
