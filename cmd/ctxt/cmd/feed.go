@@ -212,7 +212,12 @@ func runFeedList(cmd *cobra.Command, args []string) error {
 		feeds = wrapper.Feeds
 	}
 
-	if isJSONOutput() {
+	// Read --format from the cobra persistent flag directly (kit owns
+	// the flag at the root). isJSONOutput() reads from viper, which
+	// callers may have reset between command invocations, but the
+	// cobra flag value reflects the parsed command line either way.
+	formatFlag, _ := cmd.Flags().GetString("format")
+	if formatFlag == "json" || isJSONOutput() {
 		return outputJSON(cmd.OutOrStdout(), map[string]any{"feeds": feeds})
 	}
 

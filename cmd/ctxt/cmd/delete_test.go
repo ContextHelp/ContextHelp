@@ -131,7 +131,11 @@ func TestDeleteHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("delete --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--id", "--tagged", "--hint", "--mention", "--type", "--subtype", "--all", "-y"} {
+	// T-0594 dropped the local -y/--yes flag in favour of kit's global
+	// --confirm=yes (+ --confirm-token=<sha> when --confirm=prompt).
+	// The destructive prompt itself remains as a secondary friction
+	// layer, but the bypass moved to the kit confirm policy.
+	for _, flag := range []string{"--id", "--tagged", "--hint", "--mention", "--type", "--subtype", "--all"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("delete help should list flag %s", flag)
 		}
