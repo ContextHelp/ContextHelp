@@ -147,13 +147,14 @@ func init() {
 	configCmd.AddCommand(configRestoreCmd)
 
 	// 12fcc conformance: side-effect + idempotency annotations.
-	// show/path/doctor are pure read. validate/edit/backup mutate
-	// (validate may rewrite migrations; edit invokes $EDITOR; backup
-	// writes a bundle). restore is destructive (overwrites config).
+	// show/path are pure read. validate calls config.Load which may
+	// rewrite migrations on disk; doctor --fix chmods the config file.
+	// edit invokes $EDITOR; backup writes a bundle. restore is
+	// destructive (overwrites config).
 	cliconv.WithSideEffect(configShowCmd, cliconv.SideEffectRead)
 	cliconv.WithSideEffect(configPathCmd, cliconv.SideEffectRead)
-	cliconv.WithSideEffect(configLintCmd, cliconv.SideEffectRead) // doctor: read-only lint
-	cliconv.WithSideEffect(configValidateCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(configLintCmd, cliconv.SideEffectWriteLocal) // doctor: --fix chmods the config
+	cliconv.WithSideEffect(configValidateCmd, cliconv.SideEffectWriteLocal) // validate may rewrite migrations
 	cliconv.WithSideEffect(configEditCmd, cliconv.SideEffectWriteLocal)
 	cliconv.WithSideEffect(configBackupCmd, cliconv.SideEffectWriteLocal)
 	cliconv.WithSideEffect(configRestoreCmd, cliconv.SideEffectDestructiveLocal)
@@ -174,9 +175,15 @@ func init() {
 		{Title: "Lint with all checks", Command: "ctxt config doctor"},
 		{Title: "Auto-apply safe fixes", Command: "ctxt config doctor --fix"},
 	})
+	cliconv.WithNextSteps(configLintCmd, []cliconv.NextStep{
+		{When: "after --fix", Suggest: "ctxt config validate", Reason: "confirm the file still parses after permission fixes"},
+	})
 	cliconv.WithExamples(configValidateCmd, []cliconv.Example{
 		{Title: "Validate + scan for plaintext secrets", Command: "ctxt config validate"},
 		{Title: "Skip the secret scan", Command: "ctxt config validate --check-secrets=false"},
+	})
+	cliconv.WithNextSteps(configValidateCmd, []cliconv.NextStep{
+		{When: "after a migration write-back", Suggest: "ctxt config show", Reason: "review the post-migration config that was just written"},
 	})
 	cliconv.WithExamples(configEditCmd, []cliconv.Example{
 		{Title: "Open in $EDITOR", Command: "ctxt config edit"},
