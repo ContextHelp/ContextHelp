@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/spf13/cobra"
@@ -35,14 +36,20 @@ Examples:
 
   # Register a candidate model from a config file
   ctxt embeddings register openai-text-embedding-3-small@2025-01-15 \
-      --config ./openai-3-small.json
+      --model-config ./openai-3-small.json
 `,
 }
 
 var embeddingsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List registered embedding models",
-	RunE:  runEmbeddingsList,
+	Long: `Print every embedding model the registry has seen.
+
+The table reports model_id, provider, vector dimension, default marker,
+coverage fraction, and registered / deprecated timestamps. Coverage is
+the fraction of distinct objects that have an embedding row under this
+model_id (0.0..1.0); on an empty corpus it is reported as 1.0.`,
+	RunE: runEmbeddingsList,
 }
 
 var (
@@ -59,8 +66,9 @@ var embeddingsRegisterCmd = &cobra.Command{
 
 The model_id should follow ADR-071's "<provider-name>@<date>" convention,
 for example "openai-text-embedding-3-small@2025-01-15". Configuration may
-be supplied via --config <path> (JSON file) or, when --config is omitted,
-$EDITOR opens with an empty JSON skeleton for the operator to fill in.
+be supplied via --model-config <path> (JSON file) or, when --model-config is
+omitted, $EDITOR opens with an empty JSON skeleton for the operator to fill
+in.
 
 This command does NOT flip the active default — call ctxt embeddings
 set-default after coverage + recall verification (Phase 3, T-0584).`,
@@ -72,8 +80,13 @@ set-default after coverage + recall verification (Phase 3, T-0584).`,
 // implementation lands in later cohort tasks. Each stub exits non-zero with
 // a clear pointer to the owning task so operators are not surprised.
 var embeddingsMigrateCmd = &cobra.Command{
-	Use:    "migrate",
-	Short:  "Migrate corpus to a new embedding model (T-0584)",
+	Use:   "migrate",
+	Short: "Migrate corpus to a new embedding model (T-0584)",
+	Long: `Migrate the existing corpus to a new embedding model.
+
+Re-embeds every object using the named model, writing rows alongside the
+current default until coverage and recall guards pass. Implementation lands
+in Phase 3 (T-0584); the stub exits non-zero so callers fail loudly.`,
 	Hidden: false,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return errors.New("ctxt embeddings migrate: cmd not yet implemented (Phase 3, T-0584)")
@@ -81,8 +94,13 @@ var embeddingsMigrateCmd = &cobra.Command{
 }
 
 var embeddingsSetDefaultCmd = &cobra.Command{
-	Use:    "set-default <model_id>",
-	Short:  "Atomically flip the active default model (T-0584)",
+	Use:   "set-default <model_id>",
+	Short: "Atomically flip the active default model (T-0584)",
+	Long: `Atomically promote a registered embedding model to the active default.
+
+The flip is gated on coverage and recall verification (see ctxt embeddings
+list). Implementation lands in Phase 3 (T-0584); the stub exits non-zero
+so callers fail loudly.`,
 	Hidden: false,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return errors.New("ctxt embeddings set-default: cmd not yet implemented (Phase 3, T-0584)")
@@ -90,8 +108,14 @@ var embeddingsSetDefaultCmd = &cobra.Command{
 }
 
 var embeddingsDeprecateCmd = &cobra.Command{
-	Use:    "deprecate <model_id>",
-	Short:  "Schedule retirement of a registered model (T-0585)",
+	Use:   "deprecate <model_id>",
+	Short: "Schedule retirement of a registered model (T-0585)",
+	Long: `Mark a registered embedding model as deprecated.
+
+Sets the deprecated_at timestamp so the model becomes a candidate for
+purge. Already-written embedding rows are preserved until purge runs.
+Implementation lands in Phase 4 (T-0585); the stub exits non-zero so
+callers fail loudly.`,
 	Hidden: false,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return errors.New("ctxt embeddings deprecate: cmd not yet implemented (Phase 4, T-0585)")
@@ -99,8 +123,13 @@ var embeddingsDeprecateCmd = &cobra.Command{
 }
 
 var embeddingsPurgeCmd = &cobra.Command{
-	Use:    "purge <model_id>",
-	Short:  "Delete embedding rows for a deprecated model (T-0585)",
+	Use:   "purge <model_id>",
+	Short: "Delete embedding rows for a deprecated model (T-0585)",
+	Long: `Delete every embedding row produced by a deprecated model.
+
+Only operates on models that have a non-null deprecated_at timestamp.
+The registry record itself is retained for audit history. Implementation
+lands in Phase 4 (T-0585); the stub exits non-zero so callers fail loudly.`,
 	Hidden: false,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return errors.New("ctxt embeddings purge: cmd not yet implemented (Phase 4, T-0585)")
@@ -116,8 +145,32 @@ func init() {
 	embeddingsCmd.AddCommand(embeddingsDeprecateCmd)
 	embeddingsCmd.AddCommand(embeddingsPurgeCmd)
 
+	// 12fcc conformance: side-effect + idempotency annotations.
+	// list is read; register / migrate / set-default mutate registry
+	// state (write-shared, runs against the dpkms DB); deprecate /
+	// purge are destructive (purge especially deletes embedding rows).
+	cliconv.WithSideEffect(embeddingsListCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(embeddingsRegisterCmd, cliconv.SideEffectWriteShared)
+	cliconv.WithSideEffect(embeddingsMigrateCmd, cliconv.SideEffectWriteShared)
+	cliconv.WithSideEffect(embeddingsSetDefaultCmd, cliconv.SideEffectWriteShared)
+	cliconv.WithSideEffect(embeddingsDeprecateCmd, cliconv.SideEffectDestructiveShared)
+	cliconv.WithSideEffect(embeddingsPurgeCmd, cliconv.SideEffectDestructiveShared)
+
+	// Kit verb defaults only cover "list" here. Tag the rest:
+	// register is non-idempotent (creates a candidate record);
+	// migrate / set-default / deprecate / purge are non-idempotent
+	// in the strict sense (replay re-runs the mutation against
+	// changed state).
+	cliconv.WithIdempotency(embeddingsRegisterCmd, cliconv.IdempotencyNo)
+	cliconv.WithIdempotency(embeddingsMigrateCmd, cliconv.IdempotencyNo)
+	cliconv.WithIdempotency(embeddingsSetDefaultCmd, cliconv.IdempotencyYes)
+	cliconv.WithIdempotency(embeddingsDeprecateCmd, cliconv.IdempotencyYes)
+	cliconv.WithIdempotency(embeddingsPurgeCmd, cliconv.IdempotencyYes)
+
+	// NOTE: --config was renamed to --model-config to avoid shadowing
+	// the kit-owned global -c/--config (ctxt config file loader).
 	embeddingsRegisterCmd.Flags().StringVar(&embeddingsRegisterConfig,
-		"config", "", "path to a JSON config file (when omitted, $EDITOR opens an empty skeleton)")
+		"model-config", "", "path to a JSON model-config file (when omitted, $EDITOR opens an empty skeleton)")
 	embeddingsRegisterCmd.Flags().StringVar(&embeddingsRegisterProvider,
 		"provider", "", "provider name (e.g. openai, ollama, voyage)")
 	embeddingsRegisterCmd.Flags().IntVar(&embeddingsRegisterDimension,
