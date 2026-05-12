@@ -35,6 +35,9 @@ func TestBaselineProbe(t *testing.T) {
 	rootCmd.InitDefaultCompletionCmd()
 	applyCommandGroups()
 	root.ApplyGroupVisibility()
+	// Match Execute()'s order: shape annotations BEFORE Validate so
+	// the probe sees the validator state after foundation wiring.
+	applyShapeAnnotations()
 
 	// Default (kit-shipped 12fcc-leak) Validate.
 	verr := root.Validate()
@@ -69,6 +72,9 @@ func TestBaselineProbe(t *testing.T) {
 		EnforceDestructiveToken: true,
 		SignatureStrictness:     kitcli.SignatureStrictnessReject,
 		PassthroughStrictness:   kitcli.PassthroughReject,
+		// Mirror the live root's expanded depth-1 surface so the
+		// strict probe doesn't false-positive on the cap rule.
+		MaxTopLevelVerbs: 30,
 	})
 	// Re-parent every top-level subcommand off the canonical root
 	// into strictRoot.Cmd so the validator sees the same tree.

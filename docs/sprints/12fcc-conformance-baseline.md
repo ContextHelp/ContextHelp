@@ -31,7 +31,26 @@ Implication for T-0593/T-0595: simply turning the strict gate "on" requires eith
 | missing-passthrough | 0 | `ValidationError.PassthroughRejected` (gated by `PassthroughStrictness=reject`) |
 | local-global-collision | 31 | `SignatureReport` `local-globals` check |
 
-**Total distinct command paths affected: 160.**
+**Total distinct command paths affected: 160 (pre-foundation).**
+
+### Post-foundation snapshot (T-0593)
+
+After `cmd/ctxt/cmd/root.go::applyShapeAnnotations` runs and
+`MaxTopLevelVerbs=30` lands, the shape buckets close:
+
+| Bucket | Pre-foundation | Post-foundation |
+|--------|----------------|-----------------|
+| `UnannotatedTopLevelLeaf` | 28 | 0 |
+| `UnannotatedDepthExceedance` | 14 | 0 |
+| `TooManyTopLevelVerbs` | 1 | 0 |
+| signature `depth-hierarchical` | 11 | 0 |
+| signature `local-globals` | 31 | 31 (subtree work) |
+| `Missing` (side-effect) | 149 | 149 (subtree work) |
+| `MissingIdempotency` | 98 | 98 (subtree work) |
+| `MissingLong` | 79 | 79 (subtree work) |
+
+Reproduce post-foundation:
+`go test -tags=ctxtbaselineprobe -run TestBaselineProbe -v ./cmd/ctxt/cmd`.
 
 ## Top-level shape problems
 
@@ -273,6 +292,74 @@ Sorted by command path. `Buckets` is the union across `Validate()` + `ValidateSi
 | `ctxt watch start` | missing-idempotency, missing-side-effect | missing kit/side-effect annotation |
 | `ctxt watch status` | missing-idempotency, missing-side-effect | missing kit/side-effect annotation |
 | `ctxt watch stop` | missing-idempotency, missing-side-effect | missing kit/side-effect annotation |
+
+## Removal patterns (T-0593 foundation → subtree fan-out)
+
+### Global-flag collisions (31 leaves)
+
+Kit owns these names as persistent flags on the root, so leaves that
+re-register them shadow the global and trip
+`SignatureCheckLocalGlobals`. The complete kit-owned set under the
+ctxt root:
+
+| Flag | Origin | Reader |
+|------|--------|--------|
+| `--dry-run` | kit Config.Disable.DryRun=false (always on) | `cmd.Flags().GetBool("dry-run")` or `sideeffect.IsDryRun(ctx)` |
+| `--format`, `-o/--output` | `output.RegisterFlags` (Disable.Format=false) | `cmd.Flags().GetString("format")` |
+| `-c/--config` | kit Disable.Config=false | `root.ConfigArgs()` (already wired in `initConfig`) |
+| `--profile` | ctxt-supplied via `Globals` | `viper.GetString("profile")` |
+| `--quiet`, `--no-color`, `-V/--verbose`, `-C/--chdir`, `--no-hints`, `--progress-format`, `--confirm`, `--max-ops`, `--policy`, `--api-version`, `--offline`, `--instance` | kit + ctxt globals | viper or `cmd.Flags()` |
+
+**Removal pattern for a leaf that re-defines a global**:
+
+```go
+// BEFORE — local re-registration shadows the global
+importChromeCmd.Flags().Bool("dry-run", false, "preview without enqueueing jobs")
+...
+dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+// AFTER — read the inherited persistent flag directly
+// (cmd.Flags() merges local + inherited; the lookup still works)
+dryRun, _ := cmd.Flags().GetBool("dry-run")
+```
+
+Subtree agents:
+
+1. Delete the `<cmd>.Flags().Bool("dry-run", …)` / `String("format", …)` /
+   `String("output", …)` / `String("config", …)` / `String("profile", …)` line.
+2. Leave the `cmd.Flags().GetBool/GetString(<name>)` reader alone — cobra
+   resolves it through the inherited persistent flag set.
+3. If the leaf had a custom default that differed from kit's, replace
+   the default-handling with a fallback inside RunE
+   (`if val == "" { val = "<custom-default>" }`).
+4. If the local description was load-bearing in `--help`, rely on kit's
+   generic description; per-leaf overrides require a custom help template
+   and are out of scope for 12fcc conformance.
+
+### Shape annotations (depth-1 + depth-3 trees)
+
+Foundation pass (this commit) handles these centrally in
+`cmd/ctxt/cmd/root.go::applyShapeAnnotations` — subtree agents do not
+need to stamp `kit/top-level-verb` or `kit/hierarchical` on individual
+leaves. The walk runs after `applyCommandGroups` so every top-level
+runnable cmd gets `kit/top-level-verb` and every depth-2 intermediate
+above a depth-3+ leaf gets `kit/hierarchical`.
+
+### Side-effect / idempotency / Long (subtree work)
+
+Use the helpers in `internal/cli/cliconv`:
+
+```go
+// inside import_chrome.go init() — one-liners next to AddCommand
+cliconv.WithSideEffect(importChromeCmd, cliconv.SideEffectWrite)
+// kit auto-fills kit/idempotent for verbs in defaultIdempotency
+// (list/show/get/sync/etc.). For NEW or non-default verbs:
+cliconv.WithIdempotency(importChromeCmd, cliconv.IdempotencyNo)
+```
+
+Long descriptions stay where they live today (string literal in the
+`var <cmd>Cmd = &cobra.Command{Long: ...}` block). Kit's validator
+checks `cmd.Long != ""` on every runnable leaf.
 
 ## Raw artifacts
 
