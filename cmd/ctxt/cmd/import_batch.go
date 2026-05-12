@@ -67,6 +67,17 @@ func init() {
 
 	cliconv.WithSideEffect(importBatchStatusCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(importBatchStatusCmd, cliconv.IdempotencyYes)
+
+	cliconv.WithExamples(importBatchStatusCmd, []cliconv.Example{
+		{
+			Title:   "Check a batch import status",
+			Command: "ctxt import batch status batch_12345678",
+		},
+		{
+			Title:   "Check status against a custom server",
+			Command: "ctxt import batch status batch_12345678 --server http://localhost:8080",
+		},
+	})
 }
 
 // batchServerURL returns the server URL from the command flag or the default.
