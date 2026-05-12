@@ -104,6 +104,18 @@ func init() {
 	// replay-safe operation.
 	cliconv.WithIdempotency(lateralCmd, cliconv.IdempotencyNo)
 
+	// start: long-running foreground daemon; not replay-safe.
+	cliconv.WithSideEffect(lateralStartCmd, cliconv.SideEffectInteractive)
+	cliconv.WithIdempotency(lateralStartCmd, cliconv.IdempotencyNo)
+	// status: read-only query against a running daemon.
+	cliconv.WithSideEffect(lateralStatusCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(lateralStatusCmd, cliconv.IdempotencyYes)
+	// config: intermediate group; mark hierarchical so the shape
+	// validator accepts the depth-3 leaf below.
+	cliconv.MarkHierarchical(lateralConfigCmd)
+	// config show: read-only config resolution.
+	cliconv.WithSideEffect(lateralConfigShowCmd, cliconv.SideEffectRead)
+
 	lateralCmd.AddCommand(lateralStartCmd)
 	lateralCmd.AddCommand(lateralStatusCmd)
 	lateralCmd.AddCommand(lateralConfigCmd)
