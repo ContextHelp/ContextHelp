@@ -66,6 +66,65 @@ Re-running `Validate()` with `EnforceGuidance + EnforceDryRunRationale + Enforce
 * `MissingNextSteps`: **149** (every non-read leaf will need `kit/next-steps`)
 * All current sig-report violations promote to hard errors.
 
+## Post-Sprint State (T-0595 close)
+
+The sprint shipped. The live `kitcli.Config` literal in `cmd/ctxt/cmd/root.go` now enables every strict gate. The build-tagged probe (`go test -tags=ctxtbaselineprobe …`) and the hermetic regression test
+`TestRootValidate_StrictGatesPass` in `cmd/ctxt/cmd/strict_validation_test.go` both report `root.Validate() == nil`.
+
+### Bucket totals (post-sprint)
+
+| Bucket | Pre-foundation | Post-foundation (T-0593) | Post-sprint (T-0595) |
+|--------|----------------|--------------------------|-----------------------|
+| `Missing` (side-effect) | 149 | 149 | **0** |
+| `MissingIdempotency` | 98 | 98 | **0** |
+| `MissingLong` | 79 | 79 | **0** |
+| `MissingExamples` (strict) | 149 | 149 | **0** |
+| `MissingNextSteps` (strict) | 149 | 149 | **0** |
+| `UnannotatedTopLevelLeaf` | 28 | 0 | **0** |
+| `UnannotatedDepthExceedance` | 14 | 0 | **0** |
+| `TooManyTopLevelVerbs` | 1 | 0 | **0** |
+| signature `depth-hierarchical` | 11 | 0 | **0** |
+| signature `local-globals` | 31 | 31 | **0** |
+| `PassthroughRejected` (strict) | n/a | n/a | **0** |
+
+**Total distinct command paths still failing strict validation: 0.**
+
+### Gates enabled on the live `kitcli.Config`
+
+| Gate | Value |
+|------|-------|
+| `EnforceValidate` | `true` (kit default) |
+| `EnforceGuidance` | `true` |
+| `EnforceDryRunRationale` | `true` |
+| `EnforceDestructiveToken` | `true` |
+| `SignatureStrictness` | `SignatureStrictnessReject` |
+| `PassthroughStrictness` | `"reject"` |
+| `MaxTopLevelVerbs` | `30` (raised from kit default `10`) |
+| `ValidationFailureMode` | `ValidationFailureError` (returned, not `os.Exit`) |
+
+### Command surface metrics
+
+* **160** total commands across the tree (depth-1 verbs + depth-2/3 subtrees).
+* **28** top-level (depth-1) runnable verbs after T-0593 grouping — under the explicit `MaxTopLevelVerbs=30` cap. The cap was raised from kit's default of `10` to preserve documented depth-1 verbs (`analyze`, `find`, `show`, etc.) without forcing a UX-breaking group rename.
+* Max nesting depth: **3** (kit default cap).
+* Reserved subcommand `status` is wired on root (kit reserved-name check passes).
+
+### Regression guard
+
+`cmd/ctxt/cmd/strict_validation_test.go` runs unconditionally (no build tag). It re-mirrors `Execute()`'s pre-flight order — `InitDefaultCompletionCmd → applyCommandGroups → ApplyGroupVisibility → applyShapeAnnotations → root.Validate()` — and asserts `root.Validate() == nil`. Adding a new subcommand without the required annotations fails this test in CI before it can ship.
+
+### Operator UX changes (carried by T-0594 + this close)
+
+* Destructive ctxt commands now require kit's global `--confirm=yes` (or `--confirm=prompt` + `--confirm-token=<sha>`) instead of any per-command `-y/--yes` flag.
+* The `ctxt delete -y/--yes` local alias has been removed; affected destructive surfaces include `delete`, `profile delete`, `profile schema remove-*`, `config restore`, `cursor delete`, `detector remove`, `embeddings deprecate/purge`, `feed delete`, `inbox clear`/`discard`, `link delete`, `registry delete`.
+
+### Reproduce post-sprint state
+
+```
+/usr/bin/env go test -buildvcs=false -run TestRootValidate_StrictGatesPass -v ./cmd/ctxt/cmd
+/usr/bin/env go test -buildvcs=false -tags=ctxtbaselineprobe -run TestBaselineProbe -v ./cmd/ctxt/cmd
+```
+
 ## Top-level command roots (for T-0593 fan-out)
 
 Discovered roots under `cmd/ctxt/cmd/*` after `applyCommandGroups()` runs:
