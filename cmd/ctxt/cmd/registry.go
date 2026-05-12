@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/apierror"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -48,28 +49,41 @@ Examples:
 var registryListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all registries",
-	RunE:  runRegistryList,
+	Long: `List every configured registry alongside the URL and the last
+fetch timestamp recorded in the local cache. Read-only.`,
+	RunE: runRegistryList,
 }
 
 var registryAddCmd = &cobra.Command{
 	Use:   "add <name> <url>",
 	Short: "Add a new registry",
-	Args:  cobra.ExactArgs(2),
-	RunE:  runRegistryAdd,
+	Long: `Fetch the manifest for the registry at <url>, cache it locally,
+and record the named subscription in the config file. Idempotent at
+the cache layer (the manifest is overwritten) but not idempotent at
+the config layer (each call appends a row).`,
+	Args: cobra.ExactArgs(2),
+	RunE: runRegistryAdd,
 }
 
 var registryRemoveCmd = &cobra.Command{
 	Use:   "delete <name>",
 	Short: "Remove a registry",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRegistryRemove,
+	Long: `Drop the named registry from the local cache and remove the
+matching entry from the config file. Fails when the registry is not
+present in the config.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistryRemove,
 }
 
 var registryInfoCmd = &cobra.Command{
 	Use:   "info <name>",
 	Short: "Show registry information",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRegistryInfo,
+	Long: `Display the cached manifest metadata for a registry: URL, last
+fetch timestamp, ETag, signing key fingerprint, trust status, and
+the high-level manifest fields (name, version, description, step
+count). Read-only.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistryInfo,
 }
 
 var registrySyncCmd = &cobra.Command{
@@ -86,8 +100,12 @@ additions, updates, and removals without writing anything to storage.`,
 var registrySubmitCmd = &cobra.Command{
 	Use:   "submit <bundle-path>",
 	Short: "Submit a bundle to the community registry (prints PR instructions)",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRegistrySubmit,
+	Long: `Validate a local registry bundle (file or directory with a
+manifest.json) and print the pull-request instructions for the
+community registry. No network calls are made; the command is a
+guided stub for community submission.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistrySubmit,
 }
 
 var registryCapabilitiesCmd = &cobra.Command{
@@ -177,8 +195,11 @@ Non-interactive (pass token via flag — prefer env-var to avoid shell history):
 var registryLogoutCmd = &cobra.Command{
 	Use:   "logout <name>",
 	Short: "Remove the stored auth token for a registry from the OS keychain",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRegistryLogout,
+	Long: `Delete the auth token for the named registry from the OS
+keychain. Fails when no token is stored for that registry. The
+config file is not modified; only the keychain entry is removed.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistryLogout,
 }
 
 func init() {
@@ -217,6 +238,25 @@ func init() {
 	// Flags for login subcommand
 	registryLoginCmd.Flags().String("token", "",
 		"auth token (reads from stdin prompt if omitted)")
+
+	cliconv.WithSideEffect(registryListCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(registryAddCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(registryRemoveCmd, cliconv.SideEffectDestructive)
+	cliconv.WithSideEffect(registryInfoCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(registrySyncCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(registrySubmitCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(registrySubmitCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(registryLoginCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(registryLoginCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(registryLogoutCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(registryLogoutCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(registryCapabilitiesCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(registryCapabilitiesCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(registryEntitlementsCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(registryEntitlementsCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(registryUsageCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(registryUsageCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(registrySearchCmd, cliconv.SideEffectRead)
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
@@ -740,11 +780,11 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 	}
 
 	type capResult struct {
-		Name         string            `json:"name"`
-		URL          string            `json:"url"`
-		Version      string            `json:"version"`
-		MinClient    string            `json:"min_client_version,omitempty"`
-		Capabilities map[string]bool   `json:"capabilities"`
+		Name         string              `json:"name"`
+		URL          string              `json:"url"`
+		Version      string              `json:"version"`
+		MinClient    string              `json:"min_client_version,omitempty"`
+		Capabilities map[string]bool     `json:"capabilities"`
 		Warnings     []map[string]string `json:"warnings,omitempty"`
 	}
 
