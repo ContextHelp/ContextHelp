@@ -71,9 +71,24 @@ func init() {
 	pageCmd.AddCommand(pageRefreshCmd)
 
 	cliconv.WithSideEffect(pageListCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(pageListCmd, []cliconv.Example{
+		{Title: "List entity pages", Command: "ctxt page list"},
+		{Title: "Cap the result count", Command: "ctxt page list --limit 100"},
+	})
 	cliconv.WithSideEffect(pageShowCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(pageShowCmd, []cliconv.Example{
+		{Title: "Show an entity page", Command: "ctxt page show person.alice"},
+		{Title: "Render as JSON", Command: "ctxt page show lang.go --output json"},
+	})
 	cliconv.WithSideEffect(pageRefreshCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(pageRefreshCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(pageRefreshCmd, []cliconv.Example{
+		{Title: "Refresh a single page", Command: "ctxt page refresh person.alice"},
+		{Title: "Refresh after re-tagging", Command: "ctxt page refresh lang.go"},
+	})
+	cliconv.WithNextSteps(pageRefreshCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt page show <entity_slug>", Reason: "review the regenerated content"},
+	})
 
 	pageListCmd.Flags().Int("limit", 50, "maximum results")
 	viper.BindPFlag("page.limit", pageListCmd.Flags().Lookup("limit"))

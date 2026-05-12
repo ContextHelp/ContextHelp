@@ -70,9 +70,26 @@ func init() {
 
 	cliconv.WithSideEffect(remindSetCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(remindSetCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(remindSetCmd, []cliconv.Example{
+		{Title: "Remind me tomorrow morning", Command: "ctxt remind set abc123 \"tomorrow 9am\""},
+		{Title: "Remind in two hours", Command: "ctxt remind set abc123 \"in 2h\""},
+	})
+	cliconv.WithNextSteps(remindSetCmd, []cliconv.NextStep{
+		{When: "after set", Suggest: "ctxt remind list", Reason: "confirm the reminder shows up with the expected fire time"},
+	})
 	cliconv.WithSideEffect(remindClearCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(remindClearCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(remindClearCmd, []cliconv.Example{
+		{Title: "Clear a reminder", Command: "ctxt remind clear abc123"},
+	})
+	cliconv.WithNextSteps(remindClearCmd, []cliconv.NextStep{
+		{When: "after clear", Suggest: "ctxt remind list", Reason: "verify the reminder is gone"},
+	})
 	cliconv.WithSideEffect(remindListCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(remindListCmd, []cliconv.Example{
+		{Title: "List scheduled reminders", Command: "ctxt remind list"},
+		{Title: "Emit JSON", Command: "ctxt remind list --output json"},
+	})
 }
 
 func runRemindSet(cmd *cobra.Command, args []string) error {

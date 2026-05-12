@@ -43,6 +43,47 @@ var detectorLong = map[string]string{
 	"disable": "Deprecated alias for 'dpkms detector disable'. Forwards invocations to dpkms.",
 }
 
+// detectorExamples supplies 12fcc strict-gate Examples per subcommand;
+// the surface is deprecated so the examples mirror the dpkms verb.
+var detectorExamples = map[string][]cliconv.Example{
+	"add": {
+		{Title: "Add a detector", Command: "dpkms detector add my-detector --pattern '^foo'"},
+		{Title: "Add and enable", Command: "dpkms detector add my-detector --pattern '^foo' --enable"},
+	},
+	"list": {
+		{Title: "List detectors", Command: "dpkms detector list"},
+		{Title: "Filter by enabled", Command: "dpkms detector list --enabled"},
+	},
+	"remove": {
+		{Title: "Remove a detector", Command: "dpkms detector remove my-detector --confirm=yes"},
+		{Title: "Prompt for confirmation", Command: "dpkms detector remove my-detector --confirm=prompt"},
+	},
+	"enable": {
+		{Title: "Enable a detector", Command: "dpkms detector enable my-detector"},
+		{Title: "Enable all detectors", Command: "dpkms detector enable --all"},
+	},
+	"disable": {
+		{Title: "Disable a detector", Command: "dpkms detector disable my-detector"},
+		{Title: "Disable all detectors", Command: "dpkms detector disable --all"},
+	},
+}
+
+// detectorNextSteps supplies follow-ups for write/destructive verbs.
+var detectorNextSteps = map[string][]cliconv.NextStep{
+	"add": {
+		{When: "on success", Suggest: "dpkms detector enable <name>", Reason: "activate the newly added detector"},
+	},
+	"remove": {
+		{When: "after remove", Suggest: "dpkms detector list", Reason: "verify the detector no longer appears"},
+	},
+	"enable": {
+		{When: "on success", Suggest: "dpkms detector list --enabled", Reason: "confirm the detector is now active"},
+	},
+	"disable": {
+		{When: "on success", Suggest: "dpkms detector list", Reason: "confirm the detector is now inactive"},
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(detectorCmd)
 
@@ -64,6 +105,12 @@ func init() {
 		// confirmation flow. Only "remove" is destructive in this group.
 		if detectorSideEffect[name] == cliconv.SideEffectDestructive {
 			cliconv.WithDestructiveToken(c)
+		}
+		if ex, ok := detectorExamples[name]; ok {
+			cliconv.WithExamples(c, ex)
+		}
+		if ns, ok := detectorNextSteps[name]; ok {
+			cliconv.WithNextSteps(c, ns)
 		}
 		detectorCmd.AddCommand(c)
 	}
