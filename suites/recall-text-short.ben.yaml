@@ -1,0 +1,66 @@
+# hop.top/ben suite — text.short pipeline recall (ADR-070 §6).
+#
+# Gates `reingest_selective` PRs: any PR that flips an object's
+# `pipeline_version` for the text.short family (or that touches
+# internal/pipeline/builtins/text_short.go, the FTS tokenizer, or the
+# tagger contribution to the FTS column) MUST run this suite on the
+# post-upgrade corpus and demonstrate that recall@5 stays above the
+# floor.
+#
+# Runner: `make ben-text-short` (also wired into `make ben`).
+# CI: .github/workflows/ben.yml (triggers when this file or pipeline
+# code changes).
+#
+# How recall is computed:
+#   The `ctxt-recall` adapter is a hop.top/ben binary plugin
+#   (cmd/ben-adapter-ctxt-recall) that loads the corpus + queries, ranks
+#   the corpus per query using a token-overlap baseline that mirrors the
+#   post-T-0565 text.short FTS behaviour, and reports mean recall@k.
+#   See cmd/ben-adapter-ctxt-recall/main.go for the scoring contract.
+#
+# Recall floor (enforced by scripts/ben-floor.sh, called from `make ben-*`):
+#   recall_at_k >= 0.85
+#
+# Tolerance rationale: the harness is deterministic; a healthy fixture
+# clears 0.95+ on the post-T-0565 baseline. 0.85 leaves headroom for
+# *legitimate* recall trade-offs (e.g. a tokenizer change that improves
+# precision at a small recall cost), which we expect to need the
+# `--i-know-recall-regressed` escape hatch documented in
+# docs/ctxt/testing.md (search "ben recall floor"). Drops below 0.85
+# almost always indicate a bug, not a trade-off.
+#
+# Updating the suite:
+#   - Adding objects → keep the corpus < ~50 objects so the harness
+#     stays under a second on a laptop. Update queries that reference
+#     the new IDs.
+#   - Removing objects → drop or repoint any query whose expected_ids
+#     contains the removed ID.
+#   - Adjusting the floor → requires an ADR-070 escape-hatch entry in
+#     the release notes (Operator-Impact: reingest_selective row).
+name: recall-text-short
+description: ctxt text.short pipeline recall benchmark — ADR-070 §6 gate for reingest_selective PRs
+version: 1
+
+task:
+  prompt: "Measure recall@k of the text.short FTS path against a fixed corpus + query list"
+  input:
+    corpus: test/integration/testdata/ben-fixtures/text-short-corpus.yaml
+    queries: test/integration/testdata/ben-fixtures/text-short-queries.yaml
+    mode: fts_baseline
+
+candidates:
+  - name: current
+    adapter: ctxt-recall
+    cmd: "{{input.mode}}"
+
+metrics:
+  - recall_at_k
+  - queries_total
+  - queries_passing
+  - queries_failing
+
+scorer:
+  strategy: raw
+
+registry:
+  push: false

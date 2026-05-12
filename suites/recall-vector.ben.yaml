@@ -1,0 +1,71 @@
+# hop.top/ben suite — vector recall (ADR-071 Phase 3 / T-0584 gate).
+#
+# This suite is **mandatory before any `ctxt embeddings migrate` ships**
+# (see ADR-071 "Test strategy" subsection, line 166). Its job is to
+# answer "is the candidate model helping?" on a fixed query corpus.
+#
+# Runner: `make ben-vector` (also wired into `make ben`).
+# CI: .github/workflows/ben.yml.
+#
+# Why this exists now even though T-0582/T-0584 haven't landed:
+#   ADR-071 names this suite as one of three preconditions for the
+#   embedding-migration command. T-0587 (this commit) ships the suite
+#   *shape* so the migration PR (T-0584) can wire the candidate model
+#   directly without needing to invent the harness on the same PR.
+#
+# Current state (T-0587):
+#   Both candidate legs run the lexical baseline (mode=vector_baseline
+#   currently aliases to fts_baseline inside cmd/ben-adapter-ctxt-recall).
+#   This means the suite passes today as a shape check — recall@5 ~= 0.5
+#   on lexical-only paraphrase queries — and will break loudly the moment
+#   T-0584 wires a real candidate model that performs *worse* on the
+#   recorded cassette set than the recorded baseline.
+#
+# Future state (T-0584):
+#   - candidate `current` keeps mode=vector_baseline → records the
+#     baseline recall under the *current* default model.
+#   - candidate `candidate` switches mode=vector_candidate (new in T-0584)
+#     → drives the new model through xrr-recorded HTTP cassettes.
+#   - the recall_at_k delta becomes the merge gate: candidate must equal
+#     or exceed current minus tolerance.
+#
+# Recall floor (enforced by scripts/ben-floor.sh):
+#   recall_at_k >= 0.40
+#
+# Tolerance rationale: the lexical baseline is intentionally weak on
+# semantic-paraphrase queries — it should hover ~0.45-0.55 on this
+# fixture today. The 0.40 floor catches a fixture-load error or a
+# regression in the harness itself; T-0584 should raise this floor when
+# the real vector leg lights up.
+name: recall-vector
+description: ctxt embedding-recall benchmark — ADR-071 mandatory gate for ctxt embeddings migrate
+version: 1
+
+task:
+  prompt: "Measure recall@k under the vector retrieval path against a fixed corpus + paraphrase queries"
+  input:
+    corpus: test/integration/testdata/ben-fixtures/vector-corpus.yaml
+    queries: test/integration/testdata/ben-fixtures/vector-queries.yaml
+    mode: vector_baseline
+
+candidates:
+  - name: current
+    adapter: ctxt-recall
+    cmd: "{{input.mode}}"
+    model: lexical-baseline-v0
+  - name: candidate
+    adapter: ctxt-recall
+    cmd: "{{input.mode}}"
+    model: lexical-baseline-v0  # placeholder — T-0584 swaps to the new embedding model
+
+metrics:
+  - recall_at_k
+  - queries_total
+  - queries_passing
+  - queries_failing
+
+scorer:
+  strategy: raw
+
+registry:
+  push: false

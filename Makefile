@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks vuln-scan trivy-scan
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate test-docker lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -99,6 +99,48 @@ test-gate: test-all
 	@go tool cover -func=coverage.out | grep total:
 	@echo ""
 	@echo "✓ Test gate passed"
+
+## test-docker: Run the test suite inside the canonical Linux/Go container
+##
+## Useful when local Go (mise/brew) doesn't match go.mod, or when CGo
+## extensions (sqlite3, fts5, sqlite-vec) misbehave on macOS. Builds the
+## Dockerfile builder stage once, mounts the repo read-write so the build
+## cache and test artifacts persist across runs, and runs the full test
+## tree with the canonical $(BUILD_TAGS).
+test-docker:
+	@echo "Building test image (golang:1.26-bookworm + sqlite-dev)..."
+	@docker build --target go-builder -t ctxt/test:latest -f Dockerfile .
+	@echo "Running tests inside container..."
+	docker run --rm \
+		-v "$(PWD)":/app \
+		-v ctxt_test_gocache:/root/.cache/go-build \
+		-v ctxt_test_gomod:/go/pkg/mod \
+		-w /app \
+		-e CGO_ENABLED=1 \
+		-e GOWORK=off \
+		ctxt/test:latest \
+		go test $(BUILD_TAGS) -race -count=1 ./...
+
+## eva: Run hop.top/eva contract tests against the recorded fixture set
+##
+## Tier-1 deterministic JSON-Schema contracts for operator-facing JSON
+## shapes (ADR-070 §6, T-0586). Contracts live under contracts/*.eva.yaml
+## and are paired with one or more fixtures under
+## test/integration/testdata/eva-fixtures/<contract-base>*.json.
+##
+## Requires the eva CLI on PATH (https://github.com/hop-top/eva). Override
+## with EVA_BIN=/path/to/eva when running from a non-standard install. CI
+## pins the version in .github/workflows/eva-contracts.yml.
+eva:
+	@echo "Running eva contract tests..."
+	@./scripts/run-eva-contracts.sh
+
+## check: Run the pre-merge gate (test + eva contracts)
+##
+## Mirrors the CI default lane: every commit must pass tests AND every
+## operator-facing JSON shape must conform to its eva contract. New
+## contracts added under contracts/*.eva.yaml are picked up automatically.
+check: test eva
 
 ## vuln-scan: Run govulncheck + nancy dependency vulnerability scans
 vuln-scan:
@@ -258,6 +300,90 @@ install-hooks:
 	@printf '#!/bin/sh\n# Pre-commit hook: secret scanning via gitleaks\nif ! command -v gitleaks >/dev/null 2>&1; then\n  echo "WARNING: gitleaks not found; skipping secret scan."\n  echo "Install: brew install gitleaks"\n  exit 0\nfi\ngitleaks protect --staged --config .gitleaks.toml --verbose\n' > .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
 	@echo "✓ pre-commit hook installed (.git/hooks/pre-commit)"
+
+## ben: Run all hop.top/ben recall suites (text-short + vector)
+##
+## Gates pipeline-version + embedding-model PRs per ADR-070 §6 and
+## ADR-071 Phase 3. Set BEN=1 to opt in when the suite is part of an
+## aggregate test target; running this target directly always executes.
+ben: ben-text-short ben-vector
+	@echo "✓ All ben recall suites passed"
+
+## ben-install: Build hop.top/ben into bin/ from a local checkout.
+##
+## Resolution order:
+##   1. $$BEN_LOCAL_PATH env var, if set and pointing to a ben checkout.
+##   2. Sibling labspace path ($$HOME/.w/ideacrafterslabs/ben/hops/main) —
+##      matches the dev convention used by xrr / kit / c12n.
+##
+## ben is consumed via local-path replace, not a published version: it has
+## no tagged release yet and is in active local development alongside this
+## tree. CI must check ben out next to ctxt for `make ben` to resolve. See
+## docs/ctxt/testing.md "Recall Harness (hop.top/ben)" for the full story.
+##
+## The built binary lives in $(BUILD_DIR)/ (not $GOPATH/bin) so the version
+## stays scoped to this checkout.
+BEN_BINARY := $(BUILD_DIR)/ben
+BEN_SIBLING := $(HOME)/.w/ideacrafterslabs/ben/hops/main
+ben-install: $(BEN_BINARY)
+
+$(BEN_BINARY):
+	@mkdir -p $(BUILD_DIR)
+	@set -e; \
+	if [ -n "$$BEN_LOCAL_PATH" ] && [ -d "$$BEN_LOCAL_PATH" ]; then \
+		echo "Building ben from BEN_LOCAL_PATH=$$BEN_LOCAL_PATH..."; \
+		(cd "$$BEN_LOCAL_PATH" && go build -buildvcs=false -o $(abspath $(BEN_BINARY)) ./cmd/ben); \
+	elif [ -d "$(BEN_SIBLING)" ]; then \
+		echo "Building ben from sibling labspace ($(BEN_SIBLING))..."; \
+		(cd "$(BEN_SIBLING)" && go build -buildvcs=false -o $(abspath $(BEN_BINARY)) ./cmd/ben); \
+	else \
+		echo "ERROR: hop.top/ben not found." >&2; \
+		echo "Set BEN_LOCAL_PATH=<path-to-ben-checkout> or check ben out at $(BEN_SIBLING)." >&2; \
+		exit 1; \
+	fi; \
+	echo "✓ Built ben: $(BEN_BINARY)"
+
+## ben-adapter: Build the ctxt-recall ben binary plugin into bin/
+##
+## ben discovers binary plugins on PATH; we prepend $(BUILD_DIR) when we
+## invoke ben so the plugin is picked up without polluting the user PATH.
+BEN_ADAPTER := $(BUILD_DIR)/ben-adapter-ctxt-recall
+ben-adapter: $(BEN_ADAPTER)
+
+$(BEN_ADAPTER):
+	@echo "Building ben-adapter-ctxt-recall..."
+	@mkdir -p $(BUILD_DIR)
+	go build -buildvcs=false -o $(BEN_ADAPTER) ./cmd/ben-adapter-ctxt-recall
+	@echo "✓ Built: $(BEN_ADAPTER)"
+
+## ben-text-short: Run the text.short recall suite (ADR-070 §6)
+##
+## Output:
+##   $(BUILD_DIR)/ben-runs/recall-text-short.json — full ben run record
+##   stdout — pretty-printed pass/fail summary with the recall floor check.
+BEN_RUN_DIR := $(BUILD_DIR)/ben-runs
+BEN_TEXT_SHORT_FLOOR := 0.85
+ben-text-short: ben-install ben-adapter
+	@mkdir -p $(BEN_RUN_DIR)
+	@echo "Running ben suite: recall-text-short.ben.yaml (floor=$(BEN_TEXT_SHORT_FLOOR))"
+	@PATH="$(abspath $(BUILD_DIR)):$$PATH" $(BEN_BINARY) run \
+		--suite suites/recall-text-short.ben.yaml \
+		--format json > $(BEN_RUN_DIR)/recall-text-short.json
+	@bash scripts/ben-floor.sh $(BEN_RUN_DIR)/recall-text-short.json $(BEN_TEXT_SHORT_FLOOR)
+
+## ben-vector: Run the vector-recall suite (ADR-071 Phase 3 gate)
+##
+## See suites/recall-vector.ben.yaml for the floor-rationale. The floor
+## is intentionally low while T-0584 hasn't wired the real candidate
+## model; raise it when the embedding leg lights up.
+BEN_VECTOR_FLOOR := 0.40
+ben-vector: ben-install ben-adapter
+	@mkdir -p $(BEN_RUN_DIR)
+	@echo "Running ben suite: recall-vector.ben.yaml (floor=$(BEN_VECTOR_FLOOR))"
+	@PATH="$(abspath $(BUILD_DIR)):$$PATH" $(BEN_BINARY) run \
+		--suite suites/recall-vector.ben.yaml \
+		--format json > $(BEN_RUN_DIR)/recall-vector.json
+	@bash scripts/ben-floor.sh $(BEN_RUN_DIR)/recall-vector.json $(BEN_VECTOR_FLOOR)
 
 ## help: Show this help message
 help:

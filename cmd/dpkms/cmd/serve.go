@@ -37,7 +37,9 @@ import (
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 
 	kitbus "hop.top/kit/go/runtime/bus"
@@ -206,6 +208,38 @@ func runServe(cmd *cobra.Command, args []string) error {
 	bus := events.NewLocalBus()
 	events.SetupSubscriber(bus, cfg, config.GetConfigPath(binName))
 
+	// 6.0 ADR-070 §3 / T-0579: verify the FTS index signature on startup.
+	// Detection only — the reindex worker is T-0581. A mismatch (or first
+	// boot) logs a warning and emits a bus event; the daemon proceeds.
+	if sqliteDriver, ok := driver.(*sqlite.Driver); ok {
+		if res, err := sqlite.VerifyFTSSignature(context.Background(), sqliteDriver.DB()); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: fts signature verify: %v\n", err)
+		} else if !res.Match {
+			if res.FirstBoot {
+				fmt.Printf("FTS signature: first-boot stamp %s (inputs: %s)\n",
+					res.NewHash[:12], res.InputsSummary)
+			} else {
+				fmt.Fprintf(os.Stderr,
+					"warning: FTS signature mismatch: old=%s new=%s inputs=%s — reindex_auto pending (T-0581)\n",
+					res.OldHash[:12], res.NewHash[:12], res.InputsSummary,
+				)
+			}
+			ev, err := events.NewEvent(
+				"dpkms.serve",
+				string(events.TopicDpkmsUpgradeSignatureMismatch),
+				events.UpgradeSignatureMismatchPayload{
+					SignatureID:   res.SignatureID,
+					OldHash:       res.OldHash,
+					NewHash:       res.NewHash,
+					InputsSummary: res.InputsSummary,
+				},
+			)
+			if err == nil {
+				_ = bus.Publish(context.Background(), ev)
+			}
+		}
+	}
+
 	// 6a. Cross-process event bus hub. Constructed before service.New
 	// so the kit/runtime/policy engine can subscribe and the resulting
 	// EventPublisher can be wired into domain.Service[Pipeline]
@@ -248,9 +282,40 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// reports the binary's compiled version + serve start time. gRPC
 	// probe is wired below once grpcSrv is constructed.
 	devCORS := viper.GetBool("server.dev")
+
+	// Upgrade-state manager (ADR-070 §5, T-0580). The shadow file lives
+	// next to pidfiles so CLI-side banner injection finds it without an
+	// HTTP roundtrip. RunDir errors are non-fatal: a missing run dir
+	// just disables the shadow (the in-memory state still feeds /healthz).
+	var upgradeMgr *upgrade.Manager
+	if runDir, runDirErr := config.RunDir(); runDirErr == nil {
+		upgradeMgr = upgrade.NewManager(filepath.Join(runDir, "upgrade-state.json"))
+	} else {
+		upgradeMgr = upgrade.NewManager("")
+	}
+
 	healthProbes := httpserver.HealthzProbes{
 		Version: version,
 		Started: time.Now(),
+		Upgrade: func(_ context.Context) *httpserver.UpgradeSnapshot {
+			snap := upgradeMgr.Snapshot()
+			if snap.State == upgrade.StateIdle {
+				return nil
+			}
+			out := &httpserver.UpgradeSnapshot{
+				State:      string(snap.State),
+				Bucket:     string(snap.Bucket),
+				Progress:   snap.Progress,
+				Done:       snap.Done,
+				Total:      snap.Total,
+				EtaSeconds: snap.EtaSeconds,
+				LastError:  snap.LastError,
+			}
+			if !snap.StartedAt.IsZero() {
+				out.StartedAt = snap.StartedAt.UTC().Format(time.RFC3339)
+			}
+			return out
+		},
 	}
 	router := httpserver.NewRouterWithProbes(svc, devCORS, watchMgr, healthProbes)
 	router.Handle("/ws/bus", hubNet.Handler())

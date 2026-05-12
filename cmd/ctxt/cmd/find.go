@@ -271,6 +271,13 @@ func runFind(cmd *cobra.Command, args []string) error {
 		})
 	}
 	printTable(os.Stdout, headers, rows)
+
+	// T-0581: surface staleness so operators see when their hits include
+	// objects pending pipeline upgrade. Soft signal — search still
+	// returned the (possibly stale) results above.
+	if diagnostics.StalenessWarning != nil && diagnostics.StalenessWarning.Count > 0 {
+		fmt.Printf("\nNote: %s\n", diagnostics.StalenessWarning.Reason)
+	}
 	return nil
 }
 
@@ -331,6 +338,9 @@ func runFindExplain(cmd *cobra.Command, ctx context.Context, svc *service.Servic
 			pluralS(diagnostics.BelowThresholdCount),
 			diagnostics.Threshold,
 			diagnostics.TopBelowThresholdScore)
+	}
+	if diagnostics.StalenessWarning != nil && diagnostics.StalenessWarning.Count > 0 {
+		fmt.Printf("\nNote: %s\n", diagnostics.StalenessWarning.Reason)
 	}
 	return nil
 }

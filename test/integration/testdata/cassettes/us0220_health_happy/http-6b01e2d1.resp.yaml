@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 6b01e2d1
+recorded_at: "2026-05-06T02:24:57Z"
+payload:
+    status: 200
+    body: |
+        {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\"buffer_capacity\":4096,\"buffer_count\":5,\"buffer_pct_full\":0.122,\"dpkms_endpoint\":\"https://dpkms.example.com\",\"dpkms_last_failure_at\":\"2026-05-06T10:28:30Z\",\"dpkms_last_success_at\":\"2026-05-06T10:00:00Z\",\"uptime_seconds\":3600,\"version\":\"0.1.0\"}","type":"text"}],"isError":false}}

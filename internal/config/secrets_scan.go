@@ -160,7 +160,11 @@ func looksLikeFilePath(s string) bool {
 // looksLikeBackendName returns true for short identifiers used as backend names.
 func looksLikeBackendName(s string) bool {
 	// These are known safe non-secret values that happen to appear in "key"-named fields.
-	knownSafe := []string{"env", "keychain", "age-file", "1password", "gh-secrets",
+	knownSafe := []string{"env",
+		// kit canonical secret backend names
+		"keyring", "agefile", "onepassword", "ghsecrets",
+		// deprecated dpkms aliases (still accepted, emit warning at runtime)
+		"keychain", "age-file", "1password", "gh-secrets",
 		"sqlite", "postgres", "local", "s3", "auto", "ctxt"}
 	lower := strings.ToLower(s)
 	for _, safe := range knownSafe {

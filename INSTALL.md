@@ -133,6 +133,62 @@ ctxt --help
 dpkms --help
 ```
 
+## Run dpkms as a Service (auto-start, auto-restart)
+
+When `ctxt analyze` returns "connection refused" out of the blue, it
+usually means the dpkms daemon died with no auto-restart and no log of
+death. Register dpkms with the host service manager so it starts at
+login and restarts on crash.
+
+### macOS (LaunchAgent)
+
+```bash
+# Install (auto-detects darwin, writes ~/Library/LaunchAgents/
+# com.contexthelp.dpkms.plist, loads it via launchctl).
+dpkms install --launchd
+
+# Show install + running state.
+dpkms install --status
+
+# Re-render the plist after a binary upgrade.
+dpkms install --launchd --force
+
+# Stop and remove.
+dpkms install --uninstall
+```
+
+Logs land at `~/Library/Logs/dpkms/dpkms.{out,err}.log`. The agent
+declares `KeepAlive=true` with `ThrottleInterval=30`, so a crash
+restart waits at least 30 seconds — preventing tight crash loops.
+
+### Linux (systemd user service)
+
+```bash
+# Install (auto-detects linux, writes ~/.config/systemd/user/dpkms.service,
+# enables + starts via systemctl --user).
+dpkms install --systemd
+
+dpkms install --status
+dpkms install --systemd --force
+dpkms install --uninstall
+```
+
+Logs land at `~/.local/share/dpkms/dpkms.{out,err}.log`. The unit uses
+`Restart=always` with `RestartSec=30`.
+
+### Notes
+
+- The binary path is captured via `os.Executable()` — the dpkms binary
+  that runs `dpkms install` is the one the service manager will launch
+  on every restart. After upgrading the binary in place, re-run
+  `dpkms install --force` only if the path changed.
+- `dpkms install` is idempotent: re-running it without `--force` prints
+  the current install state and exits 0.
+- macOS LaunchAgents require an interactive user session — they only
+  run while the user is logged in. For headless server-class hosts,
+  a LaunchDaemon under `/Library/LaunchDaemons/` is the correct shape;
+  this command does not install LaunchDaemons.
+
 ## Environment Variables (Optional)
 
 Add these to your shell profile (~/.bashrc, ~/.zshrc, etc.):

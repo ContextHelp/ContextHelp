@@ -1,0 +1,9 @@
+{
+  "state": "in_progress",
+  "bucket": "reingest_selective",
+  "progress": 0.62,
+  "done": 124,
+  "total": 200,
+  "eta_seconds": 47,
+  "started_at": "2026-05-07T14:23:11Z"
+}

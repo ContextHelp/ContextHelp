@@ -160,6 +160,20 @@ type Job struct {
 	// rather than overwriting (T-0573). Stored as JSON-encoded string
 	// array in the user_hints column.
 	UserHints []string `json:"user_hints,omitempty"`
+	// UserProfile is the focus-profile slug the operator pinned at
+	// capture time (`ctxt capture --profile founder`). The worker
+	// pre-populates draft.ProfileID before pipeline execution so the
+	// persisted KnowledgeObject is correctly partitioned by profile
+	// (T-0588). Empty string = global / no profile.
+	UserProfile string `json:"user_profile,omitempty"`
+	// UserNote is a free-form audit string the operator attached to
+	// the capture (`ctxt capture --note "client kickoff 2026-Q2"`).
+	// The worker pre-populates draft.InboxNote so the note survives
+	// pipeline execution and is queryable from the persisted object
+	// (T-0588). InboxNote is the canonical "operator-attached" field
+	// on KnowledgeObject; reusing it here keeps a single field name
+	// across inbox and pipeline paths.
+	UserNote string `json:"user_note,omitempty"`
 }
 
 // JobFilter specifies criteria for listing jobs.

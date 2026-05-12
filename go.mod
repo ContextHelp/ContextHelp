@@ -33,8 +33,10 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.37
 	github.com/pelletier/go-toml/v2 v2.3.0
 	github.com/peterh/liner v1.2.2
+	github.com/pkg/sftp v1.13.10
 	github.com/yuin/goldmark v1.8.2
 	golang.org/x/crypto v0.50.0
+	golang.org/x/mod v0.35.0
 	golang.org/x/term v0.42.0
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
@@ -49,6 +51,7 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/apple/pkl-go v0.13.2 // indirect
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
+	github.com/bits-and-blooms/bitset v1.24.4 // indirect
 	github.com/charmbracelet/bubbles v1.0.0 // indirect
 	github.com/charmbracelet/bubbletea v1.3.10 // indirect
 	github.com/charmbracelet/lipgloss v1.1.0 // indirect
@@ -59,6 +62,7 @@ require (
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/danielgtaylor/huma/v2 v2.37.3 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
+	github.com/failsafe-go/failsafe-go v0.9.6 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/cel-go v0.25.0 // indirect
@@ -69,14 +73,12 @@ require (
 	github.com/muesli/mango-cobra v1.3.0 // indirect
 	github.com/muesli/mango-pflag v0.2.0 // indirect
 	github.com/muesli/roff v0.1.0 // indirect
-	github.com/pkg/sftp v1.13.10 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/tj/go-naturaldate v1.3.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/tools v0.44.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
 )
@@ -97,7 +99,6 @@ require (
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	golang.org/x/net v0.53.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
-	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	hop.top/kit v0.3.2-patch.3
 	modernc.org/libc v1.72.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
@@ -105,7 +106,7 @@ require (
 )
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.41.6 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.41.6
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.9 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.22 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.22 // indirect

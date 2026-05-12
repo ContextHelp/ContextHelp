@@ -1,0 +1,22 @@
+{
+  "models": [
+    {
+      "model_id": "openai-text-embedding-3-small@2025-01-15",
+      "provider": "openai",
+      "dimension": 1536,
+      "is_default": true,
+      "registered_at": "2025-01-15T00:00:00Z",
+      "deprecated_at": null,
+      "coverage": 1.0
+    },
+    {
+      "model_id": "openai-text-embedding-3-large@2026-05-01",
+      "provider": "openai",
+      "dimension": 3072,
+      "is_default": false,
+      "registered_at": "2026-05-01T00:00:00Z",
+      "deprecated_at": null,
+      "coverage": 0.42
+    }
+  ]
+}

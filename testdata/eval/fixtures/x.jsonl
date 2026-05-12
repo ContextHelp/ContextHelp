@@ -1,0 +1,6 @@
+# X (formerly Twitter) fixtures.
+{"event": {"source_url": "https://x.com/jadb"}, "expect": {"strategy_id": "XStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://x.com/jadb/status/123456"}, "expect": {"strategy_id": "XStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://twitter.com/jadb"}, "expect": {"strategy_id": "XStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://help.x.com/en/using-x"}, "expect": {"negative": true}}
+{"event": {"source_url": "https://api.x.com/2/tweets"}, "expect": {"negative": true}}

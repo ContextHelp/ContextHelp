@@ -64,10 +64,31 @@ const (
 // `omitempty` so older clients receive a byte-identical payload until
 // the field is populated.
 type HealthzEnvelope struct {
-	Health        HealthStatus `json:"health"`
-	Version       string       `json:"version"`
-	UptimeSeconds int64        `json:"uptime_seconds"`
-	Checks        HealthChecks `json:"checks"`
+	Health        HealthStatus     `json:"health"`
+	Version       string           `json:"version"`
+	UptimeSeconds int64            `json:"uptime_seconds"`
+	Checks        HealthChecks     `json:"checks"`
+	Upgrade       *UpgradeSnapshot `json:"upgrade,omitempty"` // ADR-070 §5, T-0580.
+}
+
+// UpgradeSnapshot is the read-only view of the in-flight upgrade reported
+// by /healthz. Mirror of internal/upgrade.Status — duplicated here so the
+// HTTP layer doesn't pull a service-side dependency for a wire-only type.
+//
+// Populated when the dpkms server's HealthzProbes.Upgrade callback returns
+// a non-nil snapshot. When the state is "in_progress" the top-level Health
+// field flips to "upgrading"; readers MUST treat both signals as the same
+// fact ("daemon is busy upgrading"), and consumers SHOULD parse the
+// upgrade envelope rather than the top-level health for granular detail.
+type UpgradeSnapshot struct {
+	State      string  `json:"state"`
+	Bucket     string  `json:"bucket,omitempty"`
+	Progress   float64 `json:"progress,omitempty"`
+	Done       int     `json:"done,omitempty"`
+	Total      int     `json:"total,omitempty"`
+	EtaSeconds int     `json:"eta_seconds,omitempty"`
+	StartedAt  string  `json:"started_at,omitempty"` // RFC3339; empty when zero.
+	LastError  string  `json:"last_error,omitempty"`
 }
 
 // HealthChecks groups per-subsystem signals.
@@ -101,13 +122,17 @@ type WatcherCheck struct {
 }
 
 // HealthzProbes injects optional runtime signals that the dpkms serve
-// command knows about (version, gRPC liveness, watcher introspection).
-// Any field may be nil; the handler degrades gracefully.
+// command knows about (version, gRPC liveness, watcher introspection,
+// upgrade state). Any field may be nil; the handler degrades gracefully.
 type HealthzProbes struct {
 	Version  string
 	Started  time.Time
-	GRPC     func(ctx context.Context) bool         // returns true when gRPC is serving
+	GRPC     func(ctx context.Context) bool          // returns true when gRPC is serving
 	Watchers func(ctx context.Context) []WatcherCheck
+	// Upgrade returns the current upgrade-state envelope or nil when no
+	// upgrade is in progress. Wired by dpkms serve to the in-process
+	// upgrade.Manager (ADR-070 §5, T-0580).
+	Upgrade func(ctx context.Context) *UpgradeSnapshot
 }
 
 // queueDepthsFromService probes the JobStore for {pending, running, failed}
@@ -191,8 +216,19 @@ func Healthz(svc *service.Service, probes HealthzProbes) http.HandlerFunc {
 			}
 		}
 
+		// Upgrade probe — optional (T-0580). When present and reporting
+		// in_progress, the top-level Health flips to "upgrading"; for
+		// any other non-nil state we attach the envelope for visibility
+		// but leave the verdict to computeHealth.
+		if probes.Upgrade != nil {
+			env.Upgrade = probes.Upgrade(ctx)
+		}
+
 		// Verdict.
 		env.Health = computeHealth(env.Checks)
+		if env.Upgrade != nil && env.Upgrade.State == "in_progress" {
+			env.Health = HealthUpgrading
+		}
 
 		status := http.StatusOK
 		if env.Health == HealthFailed {

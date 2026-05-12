@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 25f5f66b
+recorded_at: "2026-05-06T02:24:57Z"
+payload:
+    status: 200
+    body: |
+        {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"[{\"active\":true,\"last_event_at\":\"2026-05-06T10:32:00Z\",\"name\":\"clipboard\"},{\"active\":true,\"last_event_at\":\"2026-05-06T10:25:00Z\",\"name\":\"filewatch\"},{\"active\":true,\"last_event_at\":\"2026-05-06T10:30:00Z\",\"name\":\"browserhistory\"},{\"active\":true,\"last_event_at\":\"2026-05-06T10:32:15Z\",\"name\":\"foreground\"}]","type":"text"}],"isError":false}}

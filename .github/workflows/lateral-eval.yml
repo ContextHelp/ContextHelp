@@ -1,0 +1,112 @@
+name: Lateral Eval
+
+on:
+  pull_request:
+    paths:
+      - 'internal/lateral/**'
+      - 'cmd/ctxt/cmd/lateral*'
+      - 'testdata/eval/**'
+      - '.github/workflows/lateral-eval.yml'
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.26'
+
+jobs:
+  eval:
+    name: Eval harness regression
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v6
+        with:
+          path: pr
+
+      - name: Checkout main baseline
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: baseline
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # go.mod ships local-path replace directives for hop.top/kit and
+      # hop.top/c12n (developer convenience). Strip them before build
+      # so the published tags resolve via the module proxy. NB: this
+      # workflow handles the replace problem locally — fixing it
+      # repo-wide is out of scope here (main ci.yml has the same
+      # issue; tracked separately).
+      - name: Drop local-path replaces (PR + baseline)
+        run: |
+          for d in pr baseline; do
+            (cd "$d" && go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n)
+          done
+
+      # Build the eval CLI for both branches so we compare apples to
+      # apples. baseline produces baseline.json; PR produces pr.json.
+      - name: Build PR ctxt
+        working-directory: pr
+        run: CGO_ENABLED=1 go build -tags fts5 -o ../bin/ctxt-pr ./cmd/ctxt
+
+      - name: Build baseline ctxt
+        working-directory: baseline
+        # Tolerate baseline missing the eval subcommand on first
+        # rollout (the workflow lands in the PR before main).
+        continue-on-error: true
+        run: CGO_ENABLED=1 go build -tags fts5 -o ../bin/ctxt-baseline ./cmd/ctxt
+
+      - name: Run eval on PR
+        working-directory: pr
+        run: |
+          mkdir -p ../out
+          for f in testdata/eval/fixtures/*.jsonl; do
+            name=$(basename "$f" .jsonl)
+            ../bin/ctxt-pr lateral eval metrics "$f" --json > "../out/pr-${name}.json"
+          done
+
+      - name: Run eval on baseline
+        if: ${{ hashFiles('bin/ctxt-baseline') != '' }}
+        working-directory: pr
+        # Eval the PR's fixtures against baseline's binary so we
+        # measure registry-shape regression, not fixture changes.
+        continue-on-error: true
+        run: |
+          for f in testdata/eval/fixtures/*.jsonl; do
+            name=$(basename "$f" .jsonl)
+            ../bin/ctxt-baseline lateral eval metrics "$f" --json > "../out/baseline-${name}.json" || echo "{}" > "../out/baseline-${name}.json"
+          done
+
+      - name: Compare precision/recall vs baseline
+        id: compare
+        run: |
+          python3 .github/workflows/scripts/lateral_eval_compare.py
+        env:
+          OUT_DIR: out
+          COMMENT_PATH: eval-comment.md
+
+      - name: Comment on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        if: github.event_name == 'pull_request'
+        with:
+          path: eval-comment.md
+
+      - name: Fail on regression
+        if: steps.compare.outputs.regressed == 'true'
+        run: |
+          echo "::error::Lateral eval regressed: precision or recall dropped > 0.1 from main."
+          exit 1
+
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: lateral-eval-output
+          path: out/
+          retention-days: 14

@@ -1,0 +1,84 @@
+name: Ben Recall Suite
+
+# Per ADR-070 §6 and ADR-071 Phase 3: any PR that flips an object's
+# pipeline_version, registers a new embedding model, or otherwise touches
+# the retrieval substrate must run the hop.top/ben recall suite on the
+# post-upgrade fixture corpus and demonstrate that recall stays above the
+# configured floor.
+#
+# Currently DISABLED via the `if: false` guard on the job: hop.top/ben is
+# consumed via local-path replace and has no published version. CI cannot
+# resolve `make ben` without checking out ben adjacent to ctxt — deferred
+# until the coordinated open-source publish pass resets every kit-powered
+# package to 0.1.0-alpha.0 (T-0196 survey). Re-enable by removing the
+# `if: false` once ben publishes a tag and the Makefile can build it from
+# `go install hop.top/ben/cmd/ben@<tag>` on a clean CI runner.
+#
+# Path triggers below still fire on relevant diffs so the workflow shows
+# up in PR checks (as a skipped job) rather than rotting silently.
+#
+# This workflow does NOT reference any untrusted PR-author-controlled
+# inputs (titles, bodies, branch names) in run: blocks. Adding any such
+# reference requires environment-variable escaping per the workflow-
+# injection guidance baked into the project's security hook.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'internal/pipeline/**'
+      - 'internal/embeddings/**'
+      - 'internal/search/**'
+      - 'suites/**.ben.yaml'
+      - 'test/integration/testdata/ben-fixtures/**'
+      - 'cmd/ben-adapter-ctxt-recall/**'
+      - 'scripts/ben-floor.sh'
+      - '.github/workflows/ben.yml'
+      - 'Makefile'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  ben-recall:
+    name: Recall floor (ADR-070 / ADR-071)
+    runs-on: ubuntu-latest
+    # Disabled for PR runs until hop.top/ben publishes a tagged version
+    # (post-T-0196 OSS reset). Local-path replace doesn't resolve in CI
+    # without checking out ben as a sibling. Remains runnable via the
+    # workflow_dispatch entrypoint above for ad-hoc verification on a
+    # runner image that has been pre-staged with a ben checkout.
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Install jq
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+
+      - name: Run text.short recall suite (gates reingest_selective PRs)
+        run: make ben-text-short
+
+      - name: Run vector recall suite (gates ctxt embeddings migrate)
+        run: make ben-vector
+
+      - name: Upload ben run records on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ben-run-records
+          path: bin/ben-runs/
+          retention-days: 14

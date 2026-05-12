@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -300,4 +301,81 @@ func TestHybridSearchExplain_TotalMatchesHybridSearchRRFScore(t *testing.T) {
 	rrfScore, ok := plain[0].Metadata["rrf_score"].(float64)
 	require.True(t, ok, "rrf_score must be float64")
 	assert.InDelta(t, rrfScore, explained[0].Breakdown.Total, 1e-9)
+}
+
+// TestHybridSearch_StalenessWarning_PopulatedWhenStaleVersionPresent
+// asserts that when the result set contains a candidate whose pipeline
+// stamp parses to a version older than the registry's current version
+// for the same family, SearchDiagnostics.StalenessWarning is populated
+// with the stale count and a reason that points operators at
+// `ctxt upgrade plan` (T-0581, ADR-070 §6).
+func TestHybridSearch_StalenessWarning_PopulatedWhenStaleVersionPresent(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	// Register text.short@v1 as the "current" version. The base test service
+	// already registered "text.short" (legacy bare) — adding @v1 makes v1
+	// the registry's installed version per CurrentVersionForFamily.
+	svc.Pipes.Upsert("text.short@v1", &pipeline.Pipeline{PipelineName: "text.short@v1"})
+
+	// Two stale (text.short@v0) hits + one current (text.short@v1) hit.
+	stale1 := makeSearchObject("stale-1", []string{"distributed systems fault tolerance"}, "")
+	stale1.Pipeline = "text.short@v0"
+	require.NoError(t, svc.Store.Objects().Create(ctx, stale1))
+
+	stale2 := makeSearchObject("stale-2", []string{"distributed coordination consensus"}, "")
+	stale2.Pipeline = "text.short@v0"
+	require.NoError(t, svc.Store.Objects().Create(ctx, stale2))
+
+	current := makeSearchObject("current-1", []string{"distributed actor model resilience"}, "")
+	current.Pipeline = "text.short@v1"
+	require.NoError(t, svc.Store.Objects().Create(ctx, current))
+
+	rebuildFTS(t, svc)
+
+	cfg := config.SearchConfig{
+		DefaultMode:   "hybrid",
+		RRF:           config.RRFConfig{K: 60, FTSWeight: 0.5, VectorWeight: 0.5},
+		CandidatePool: config.CandidatePoolConfig{FTS: 20, Vector: 20},
+		FallbackToFTS: true,
+	}
+
+	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(
+		ctx, "distributed", storage.ObjectFilter{Limit: 10}, nil, cfg,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, envelope.Diagnostics.StalenessWarning, "expected staleness warning")
+	assert.Equal(t, 2, envelope.Diagnostics.StalenessWarning.Count)
+	assert.Contains(t, envelope.Diagnostics.StalenessWarning.Reason, "ctxt upgrade plan")
+}
+
+// TestHybridSearch_StalenessWarning_OmittedWhenAllCurrent confirms the
+// warning is nil when every candidate's pipeline stamp matches the
+// registry's currently-installed version.
+func TestHybridSearch_StalenessWarning_OmittedWhenAllCurrent(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	// Don't register a higher version — base "text.short" is the only
+	// registration, so the registry's current version for the family
+	// is v0 and all-v0 candidates count as current.
+	obj := makeSearchObject("cur-1", []string{"distributed resilience"}, "")
+	obj.Pipeline = "text.short@v0"
+	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	rebuildFTS(t, svc)
+
+	cfg := config.SearchConfig{
+		DefaultMode:   "hybrid",
+		RRF:           config.RRFConfig{K: 60, FTSWeight: 0.5, VectorWeight: 0.5},
+		CandidatePool: config.CandidatePoolConfig{FTS: 20, Vector: 20},
+		FallbackToFTS: true,
+	}
+
+	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(
+		ctx, "distributed", storage.ObjectFilter{Limit: 10}, nil, cfg,
+	)
+	require.NoError(t, err)
+	if envelope.Diagnostics.StalenessWarning != nil {
+		t.Errorf("StalenessWarning should be nil when all candidates are current; got %+v", envelope.Diagnostics.StalenessWarning)
+	}
 }

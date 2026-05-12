@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"charm.land/fang/v2"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/banner"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/logger"
 	internalversion "github.com/ideacrafterslabs/ctxt/internal/version"
@@ -55,6 +56,7 @@ var (
 			{Name: "data-dir", Usage: "data directory override"},
 			{Name: "server-url", Default: "http://localhost:8080", Usage: "dpkms server URL"},
 			{Name: "offline", Usage: "disable all network calls; force local-only operation"},
+			{Name: "instance", Usage: "name of dpkms instance to target (default: unnamed)"},
 		},
 		// Hook runs after kit's built-in chain (chdir → identity → peer →
 		// progress); we use it for the --output→--format compatibility shim
@@ -68,6 +70,11 @@ var (
 				}
 				count, _ := cmd.Root().PersistentFlags().GetCount("verbose")
 				logger.Init(count > 0)
+				// Upgrade banner (ADR-070 §5, T-0580). Reads the
+				// shadow file under config.RunDir(); no-op when no
+				// upgrade is in flight. Failure to render the banner
+				// MUST NOT block the underlying command.
+				_ = banner.Inject(cmd.ErrOrStderr())
 				return nil
 			},
 		},
@@ -100,7 +107,7 @@ func init() {
 
 	// Mirror kit/cli bindings into the global viper used throughout the codebase.
 	pf := rootCmd.PersistentFlags()
-	for _, name := range []string{"format", "quiet", "no-color", "verbose", "no-hints", "chdir", "config", "data-dir", "server-url", "offline", "output"} {
+	for _, name := range []string{"format", "quiet", "no-color", "verbose", "no-hints", "chdir", "config", "data-dir", "server-url", "offline", "instance", "output"} {
 		if f := pf.Lookup(name); f != nil {
 			_ = viper.BindPFlag(name, f)
 		}
@@ -138,8 +145,9 @@ var commandGroups = map[string]string{
 	// DEVELOPMENT — maintenance utilities
 	"dev": "dev",
 
-	// MANAGEMENT — hidden by default
-	"version": "management",
+	// MANAGEMENT — hidden by default (kit auto-registers the group with
+	// always-hidden semantics; opt-in via --help-all or --help-management).
+	"version": "management", "install-deps": "management",
 }
 
 func applyCommandGroups() {

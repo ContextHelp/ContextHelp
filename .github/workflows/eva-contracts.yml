@@ -1,0 +1,76 @@
+name: Eva Contracts
+
+# Per ADR-070 Section 6 (Test strategy): every operator-facing JSON shape is
+# locked by a Tier-1 deterministic eva contract. PRs that change those
+# shapes without updating the contract or the recorded fixture set fail
+# this check.
+#
+# T-0586 wires the four base contracts:
+#   - contracts/upgrade-status.eva.yaml
+#   - contracts/healthz.eva.yaml
+#   - contracts/search-staleness.eva.yaml
+#   - contracts/embeddings-list.eva.yaml
+#
+# Adding a new contract: drop a contracts/<name>.eva.yaml and one or
+# more test/integration/testdata/eva-fixtures/<name>*.json files; this
+# workflow picks them up automatically via scripts/run-eva-contracts.sh.
+#
+# Security note: this workflow does not interpolate any github.event.*
+# user-controlled string into a run: block. The only env input (EVA_REF)
+# is a hard-coded literal owned by this repo, not by PR authors.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'contracts/**'
+      - 'test/integration/testdata/eva-fixtures/**'
+      - 'scripts/run-eva-contracts.sh'
+      - '.github/workflows/eva-contracts.yml'
+      # Re-validate when the underlying Go types or handlers change so a
+      # shape regression in code that forgets to update the fixture is
+      # caught early.
+      - 'internal/upgrade/**'
+      - 'internal/server/http/handlers_healthz.go'
+      - 'internal/service/types.go'
+      - 'cmd/ctxt/cmd/upgrade*.go'
+      - 'cmd/ctxt/cmd/embeddings*.go'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eva:
+    name: Validate operator JSON shapes
+    runs-on: ubuntu-latest
+    env:
+      # Pin to a specific eva commit until v0.2.0 ships the standalone-
+      # contract CLI mode ("eva run --contract <yaml> --input <json>").
+      # The released v0.1.0a1 wheel exposes only "eva run --dataset" mode.
+      # When the next eva tag lands, swap this for pip install eva==<vX>.
+      EVA_REF: '7b632dbf'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install eva (from source, pinned commit)
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          # EVA_REF comes from the workflow env, not from PR-controlled input.
+          python -m pip install "git+https://github.com/hop-top/eva@${EVA_REF}#egg=eva"
+          eva --help >/dev/null
+
+      - name: Run eva contract tests
+        run: ./scripts/run-eva-contracts.sh

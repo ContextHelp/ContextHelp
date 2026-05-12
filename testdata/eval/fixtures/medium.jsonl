@@ -1,0 +1,6 @@
+# Medium family (parent + publication + profile).
+{"event": {"source_url": "https://medium.com/"}, "expect": {"strategy_id": "MediumStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://medium.com/@jadb/the-lateral-thing-1234"}, "expect": {"strategy_id": "MediumProfileStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://medium.com/some-publication/article"}, "expect": {"strategy_id": "MediumPublicationStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://medium.engineering/the-stack"}, "expect": {"strategy_id": "MediumPublicationStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://example.com/medium-style-blog"}, "expect": {"negative": true}}

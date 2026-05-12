@@ -315,8 +315,8 @@ plugins/*/testdata/secrets/
 *.onnx
 *.pt
 *.pth
-models/
-embeddings/
+/models/
+/embeddings/
 
 #############################################################################
 # Custom Exceptions (Keep These)

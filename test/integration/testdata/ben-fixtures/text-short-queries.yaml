@@ -1,0 +1,89 @@
+# Query fixture for hop.top/ben recall suite — text.short pipeline.
+# See ../../../../suites/recall-text-short.ben.yaml.
+#
+# Each query has:
+#   - id            stable identifier (used in CI failure messages)
+#   - query         literal user-typed query string
+#   - expected_ids  the corpus IDs that *should* surface in the top-k.
+#                   Multiple expected_ids ⇒ AND-style relevance: a recall
+#                   of 1.0 requires the harness to retrieve all of them.
+#                   Single expected_id ⇒ binary "found / not found" recall.
+#   - k             optional per-query top-k cutoff (defaults to file-level k)
+#
+# Coverage rationale (T-0587 deliverable #4):
+#   - hyphenated compound terms (auth-flow, uri-scheme) — T-0565 regression class
+#   - bullet-list items — T-0565 invisibility class
+#   - prose → tag boost — verifies tagger contribution to FTS
+#   - upgrade-taxonomy queries — exercise ADR-070 vocabulary
+#   - typo / fuzzy-edge queries — exercise stemmer fallback
+k: 5
+queries:
+  - id: q-auth-oauth-pkce
+    query: "oauth pkce public clients"
+    expected_ids: [doc-auth-001]
+  - id: q-auth-refresh-rotation
+    query: "refresh-token rotation reuse"
+    expected_ids: [doc-auth-002]
+  - id: q-auth-oidc-claims
+    query: "oidc id-token claims"
+    expected_ids: [doc-auth-003]
+  - id: q-search-fts-tokenizer-hyphen
+    query: "fts tokenizer hyphen"
+    expected_ids: [doc-search-001]
+  - id: q-search-hybrid-rrf
+    query: "hybrid search rrf"
+    expected_ids: [doc-search-002]
+  - id: q-search-recall-regression
+    query: "recall regression playbook"
+    expected_ids: [doc-search-003]
+  - id: q-pipeline-text-short-routing
+    query: "text-short routing markdown"
+    expected_ids: [doc-pipeline-001]
+  - id: q-pipeline-versioning
+    query: "pipeline registry versioning"
+    expected_ids: [doc-pipeline-002]
+  - id: q-pipeline-bullet-list-fts
+    query: "bullet items fts visible"
+    expected_ids: [doc-pipeline-003]
+  - id: q-capture-profile-note
+    query: "ctxt capture profile note"
+    expected_ids: [doc-capture-001]
+  - id: q-capture-ambient
+    query: "ambient capture clipboard mic"
+    expected_ids: [doc-capture-002]
+  - id: q-capture-offline-latency
+    query: "ctxt add offline latency"
+    expected_ids: [doc-capture-003]
+  - id: q-find-rrf-overrides
+    query: "rrf-weight override per-call"
+    expected_ids: [doc-find-001]
+  - id: q-find-profile-ranking
+    query: "profile-aware ranking founder engineer"
+    expected_ids: [doc-find-002]
+  - id: q-find-fuzzy-typos
+    query: "fuzzy typos stemmer"
+    expected_ids: [doc-find-003]
+  - id: q-graph-mentions
+    query: "mention extraction entity slug"
+    expected_ids: [doc-graph-001]
+  - id: q-graph-entity-resolver
+    query: "entity resolver canonical slug"
+    expected_ids: [doc-graph-002]
+  - id: q-config-per-binary
+    query: "per-binary config contexthelp namespace"
+    expected_ids: [doc-config-001]
+  - id: q-config-search-resolution
+    query: "search strategy resolution order"
+    expected_ids: [doc-config-002]
+  - id: q-upgrade-taxonomy
+    query: "upgrade taxonomy reindex reingest"
+    expected_ids: [doc-upgrade-001]
+  - id: q-upgrade-status-healthz
+    query: "ctxt upgrade status healthz"
+    expected_ids: [doc-upgrade-002]
+  - id: q-multi-relevance-search
+    query: "search recall fts hybrid"
+    expected_ids: [doc-search-001, doc-search-002, doc-search-003]
+  - id: q-multi-relevance-capture
+    query: "capture profile note ambient offline"
+    expected_ids: [doc-capture-001, doc-capture-002, doc-capture-003]

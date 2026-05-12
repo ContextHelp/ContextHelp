@@ -1,0 +1,53 @@
+# Search response `staleness_warning` contract — Tier-1 deterministic.
+#
+# Locks the JSON shape of the `staleness_warning` envelope embedded in
+# search responses (ADR-070 §5, T-0581). The field is OPTIONAL on the
+# response (omitempty) — when absent, no objects in the result set are
+# stale; when present, at least one object's pipeline_version is older
+# than the registry's currently-installed version, and the operator is
+# being told to run `ctxt upgrade plan`.
+#
+# Mirrors internal/service.StalenessWarning. CLI consumers (`ctxt find`
+# Note: line) and JSON consumers (web dashboards) both read this — a shape
+# regression silently drops the operator hint.
+#
+# Pass condition: input MUST be a JSON object representing a search response
+# (or a wrapper with `diagnostics`); when the `staleness_warning` field is
+# present (anywhere in the response or under `diagnostics`), it MUST contain
+# both `count` (non-negative integer) and `reason` (non-empty string).
+#
+# Two valid shapes are accepted by the schema:
+#   1. Top-level: {"results": [...], "staleness_warning": {...}}
+#   2. Diagnostics-wrapped: {"results": [...], "diagnostics": {..., "staleness_warning": {...}}}
+# This matches both the high-level search envelope (ADR-070 §5) and the
+# HybridSearchExplain wrapper used by `ctxt find --explain`.
+name: ctxt-search-staleness-0.1
+provider: ctxt
+evaluators:
+  - name: json_schema_valid
+    mode: binary
+    schema:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+        staleness_warning:
+          $ref: "#/$defs/stalenessWarning"
+        diagnostics:
+          type: object
+          properties:
+            staleness_warning:
+              $ref: "#/$defs/stalenessWarning"
+      $defs:
+        stalenessWarning:
+          type: object
+          required: [count, reason]
+          additionalProperties: false
+          properties:
+            count:
+              type: integer
+              minimum: 0
+            reason:
+              type: string
+              minLength: 1

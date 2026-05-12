@@ -31,7 +31,7 @@ Examples:
   dpkms backup
   dpkms backup --include-blobs
   dpkms backup --include-configs
-  dpkms backup --output /var/backups/ctxt
+  dpkms backup --output-dir /var/backups/ctxt
   dpkms backup --async`,
 	RunE: runBackup,
 }
@@ -39,7 +39,10 @@ Examples:
 func init() {
 	rootCmd.AddCommand(backupCmd)
 	backupCmd.Flags().Bool("include-blobs", false, "include local blob files in archive")
-	backupCmd.Flags().String("output", "", "override output directory path")
+	// --output-dir, not --output: kit/output reserves -o/--output for the
+	// output-path flag globally. T-0465 disambiguates the destination
+	// directory used by `dpkms backup`.
+	backupCmd.Flags().String("output-dir", "", "override output directory path")
 	backupCmd.Flags().Bool("async", false, "enqueue as background job and exit")
 	backupCmd.Flags().Bool("skip-blob-errors", false, "skip unreadable blobs instead of failing")
 	backupCmd.Flags().Bool("include-configs", false, "include config files and keys in archive")
@@ -48,7 +51,7 @@ func init() {
 func runBackup(cmd *cobra.Command, _ []string) error {
 	includeBlobs, _ := cmd.Flags().GetBool("include-blobs")
 	includeConfigs, _ := cmd.Flags().GetBool("include-configs")
-	outputFlag, _ := cmd.Flags().GetString("output")
+	outputFlag, _ := cmd.Flags().GetString("output-dir")
 	async, _ := cmd.Flags().GetBool("async")
 	skipBlobErrors, _ := cmd.Flags().GetBool("skip-blob-errors")
 

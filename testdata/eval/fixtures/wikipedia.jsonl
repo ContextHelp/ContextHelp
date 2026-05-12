@@ -1,0 +1,5 @@
+# Wikipedia fixtures.
+{"event": {"source_url": "https://en.wikipedia.org/wiki/Lateral_discovery"}, "expect": {"strategy_id": "WikipediaStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://es.wikipedia.org/wiki/Descubrimiento"}, "expect": {"strategy_id": "WikipediaStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://commons.wikimedia.org/wiki/File:logo.svg"}, "expect": {"negative": true}}
+{"event": {"source_url": "https://example.com/wiki-style"}, "expect": {"negative": true}}

@@ -1,0 +1,571 @@
+package github
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/ideacrafterslabs/ctxt/internal/lateral"
+)
+
+// stubAPIClient is a fully-controllable APIClient for probe unit tests.
+// Each Func field, when non-nil, replaces the default zero-value return.
+type stubAPIClient struct {
+	listRepoSiblingsFn     func(ctx context.Context, owner, exclude string) ([]RepoSummary, error)
+	listOwnerStarredFn     func(ctx context.Context, login string) ([]RepoSummary, error)
+	listOwnerPinnedFn      func(ctx context.Context, login string) ([]RepoSummary, error)
+	hasSponsorPageFn       func(ctx context.Context, login string) (bool, error)
+	listAuthoredPRsFn      func(ctx context.Context, login string, limit int) ([]PullRequestSummary, error)
+	listPRReviewersFn      func(ctx context.Context, owner, repo string, number int) ([]UserSummary, error)
+	listAuthoredIssuesFn   func(ctx context.Context, login string, limit int) ([]IssueSummary, error)
+	listIssueLabelsFn      func(ctx context.Context, owner, repo string, number int) ([]LabelSummary, error)
+	listSponsoredFn        func(ctx context.Context, login string) ([]UserSummary, error)
+	listContributionOrgsFn func(ctx context.Context, login string) ([]OrgSummary, error)
+	listSimilarSponsorsFn  func(ctx context.Context, login string) ([]UserSummary, error)
+	listOwnerGistsFn       func(ctx context.Context, login string) ([]GistSummary, error)
+	listGlobalAdvisoriesFn func(ctx context.Context, ecosystem, severity string, limit int) ([]AdvisorySummary, error)
+}
+
+func (s *stubAPIClient) ListRepoSiblings(ctx context.Context, owner, exclude string) ([]RepoSummary, error) {
+	if s.listRepoSiblingsFn != nil {
+		return s.listRepoSiblingsFn(ctx, owner, exclude)
+	}
+	return nil, nil
+}
+
+func (s *stubAPIClient) ListOwnerStarred(ctx context.Context, login string) ([]RepoSummary, error) {
+	if s.listOwnerStarredFn != nil {
+		return s.listOwnerStarredFn(ctx, login)
+	}
+	return nil, nil
+}
+
+func (s *stubAPIClient) ListOwnerPinned(ctx context.Context, login string) ([]RepoSummary, error) {
+	if s.listOwnerPinnedFn != nil {
+		return s.listOwnerPinnedFn(ctx, login)
+	}
+	return nil, nil
+}
+
+func (s *stubAPIClient) HasSponsorPage(ctx context.Context, login string) (bool, error) {
+	if s.hasSponsorPageFn != nil {
+		return s.hasSponsorPageFn(ctx, login)
+	}
+	return false, nil
+}
+
+func (s *stubAPIClient) ListAuthoredPRs(ctx context.Context, login string, limit int) ([]PullRequestSummary, error) {
+	if s.listAuthoredPRsFn != nil {
+		return s.listAuthoredPRsFn(ctx, login, limit)
+	}
+	return nil, nil
+}
+
+func (s *stubAPIClient) ListPRReviewers(ctx context.Context, owner, repo string, number int) ([]UserSummary, error) {
+	if s.listPRReviewersFn != nil {
+		return s.listPRReviewersFn(ctx, owner, repo, number)
+	}
+	return nil, nil
+}
+
+func (s *stubAPIClient) ListAuthoredIssues(ctx context.Context, login string, limit int) ([]IssueSummary, error) {
+	if s.listAuthoredIssuesFn != nil {
+		return s.listAuthoredIssuesFn(ctx, login, limit)
+	}
+	return nil, nil
+}
+
+func (s *stubAPIClient) ListIssueLabels(ctx context.Context, owner, repo string, number int) ([]LabelSummary, error) {
+	if s.listIssueLabelsFn != nil {
+		return s.listIssueLabelsFn(ctx, owner, repo, number)
+	}
+	return nil, nil
+}
+
+func (s *stubAPIClient) ListSponsored(ctx context.Context, login string) ([]UserSummary, error) {
+	if s.listSponsoredFn != nil {
+		return s.listSponsoredFn(ctx, login)
+	}
+	return nil, nil
+}
+
+func (s *stubAPIClient) ListContributionOrgs(ctx context.Context, login string) ([]OrgSummary, error) {
+	if s.listContributionOrgsFn != nil {
+		return s.listContributionOrgsFn(ctx, login)
+	}
+	return nil, nil
+}
+
+func (s *stubAPIClient) ListSimilarSponsors(ctx context.Context, login string) ([]UserSummary, error) {
+	if s.listSimilarSponsorsFn != nil {
+		return s.listSimilarSponsorsFn(ctx, login)
+	}
+	return nil, nil
+}
+
+func (s *stubAPIClient) ListOwnerGists(ctx context.Context, login string) ([]GistSummary, error) {
+	if s.listOwnerGistsFn != nil {
+		return s.listOwnerGistsFn(ctx, login)
+	}
+	return nil, nil
+}
+
+func (s *stubAPIClient) ListGlobalAdvisories(ctx context.Context, ecosystem, severity string, limit int) ([]AdvisorySummary, error) {
+	if s.listGlobalAdvisoriesFn != nil {
+		return s.listGlobalAdvisoriesFn(ctx, ecosystem, severity, limit)
+	}
+	return nil, nil
+}
+
+func (s *stubAPIClient) RateSnapshot(_ context.Context) RateSnapshot { return RateSnapshot{} }
+
+// candidateTypes returns the multiset of CandidateType values across cs.
+func candidateTypes(cs []lateral.Candidate) []string {
+	out := make([]string, len(cs))
+	for i, c := range cs {
+		out[i] = c.CandidateType
+	}
+	return out
+}
+
+// hasType reports whether any candidate in cs has CandidateType t.
+func hasType(cs []lateral.Candidate, t string) bool {
+	for _, c := range cs {
+		if c.CandidateType == t {
+			return true
+		}
+	}
+	return false
+}
+
+// findFirst returns the first candidate matching t, or nil.
+func findFirst(cs []lateral.Candidate, t string) *lateral.Candidate {
+	for i := range cs {
+		if cs[i].CandidateType == t {
+			return &cs[i]
+		}
+	}
+	return nil
+}
+
+func TestProbeRepo_Skeleton_NoClient(t *testing.T) {
+	s := NewGitHubStrategy(Dependencies{})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/samber/lo"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].CandidateType != TypeOwnerProfile {
+		t.Errorf("skeleton mode should emit only owner_profile; got %v", candidateTypes(got))
+	}
+	owner := findFirst(got, TypeOwnerProfile)
+	if owner == nil || owner.URL != "https://github.com/samber" {
+		t.Errorf("owner candidate URL = %v, want https://github.com/samber", owner)
+	}
+	if got, want := ExtractIdentityKey(*owner), "@github.user.samber"; got != want {
+		t.Errorf("identity_key = %q, want %q", got, want)
+	}
+}
+
+func TestProbeRepo_FullClient_EmitsAllCandidateTypes(t *testing.T) {
+	api := &stubAPIClient{
+		listRepoSiblingsFn: func(_ context.Context, owner, exclude string) ([]RepoSummary, error) {
+			if owner != "samber" || exclude != "lo" {
+				t.Errorf("ListRepoSiblings(%q, %q): unexpected args", owner, exclude)
+			}
+			return []RepoSummary{
+				{Owner: "samber", Name: "do", URL: "https://github.com/samber/do", Stars: 1500},
+				{Owner: "samber", Name: "mo", URL: "https://github.com/samber/mo", Stars: 800},
+			}, nil
+		},
+		listOwnerPinnedFn: func(_ context.Context, login string) ([]RepoSummary, error) {
+			return []RepoSummary{{Owner: login, Name: "lo", Stars: 12000}}, nil
+		},
+		hasSponsorPageFn: func(_ context.Context, _ string) (bool, error) { return true, nil },
+		listOwnerStarredFn: func(_ context.Context, _ string) ([]RepoSummary, error) {
+			return []RepoSummary{{Owner: "thanos-io", Name: "thanos", URL: "https://github.com/thanos-io/thanos"}}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/samber/lo"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, want := range []string{
+		TypeSiblingRepo, TypeOwnerProfile, TypePinnedRepo, TypeSponsorPage, TypeStarredRepo,
+	} {
+		if !hasType(got, want) {
+			t.Errorf("missing %q in %v", want, candidateTypes(got))
+		}
+	}
+
+	// Sibling identity_key is canonical repo key.
+	sib := findFirst(got, TypeSiblingRepo)
+	if got, want := ExtractIdentityKey(*sib), "@github.repo.samber/do"; got != want {
+		t.Errorf("sibling identity_key = %q, want %q", got, want)
+	}
+}
+
+func TestProbeRepo_PartialFailure_OtherSubpathsContinue(t *testing.T) {
+	api := &stubAPIClient{
+		listRepoSiblingsFn: func(_ context.Context, _, _ string) ([]RepoSummary, error) {
+			return nil, errors.New("rate limited")
+		},
+		listOwnerPinnedFn: func(_ context.Context, _ string) ([]RepoSummary, error) {
+			return []RepoSummary{{Owner: "samber", Name: "lo"}}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/samber/lo"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Owner profile + pinned should still come through.
+	if !hasType(got, TypeOwnerProfile) {
+		t.Errorf("missing owner_profile after sibling failure")
+	}
+	if !hasType(got, TypePinnedRepo) {
+		t.Errorf("missing pinned_repo after sibling failure")
+	}
+	if hasType(got, TypeSiblingRepo) {
+		t.Errorf("sibling_repo should be empty after sibling failure")
+	}
+}
+
+func TestProbePR_Skeleton_NoClient(t *testing.T) {
+	s := NewGitHubStrategy(Dependencies{})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/pull/42"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].CandidateType != TypeOwnerProfile {
+		t.Errorf("skeleton mode should emit only owner_profile; got %v", candidateTypes(got))
+	}
+}
+
+func TestProbePR_FullClient_EmitsAllTypes(t *testing.T) {
+	api := &stubAPIClient{
+		listRepoSiblingsFn: func(_ context.Context, owner, exclude string) ([]RepoSummary, error) {
+			if owner != "owner" || exclude != "repo" {
+				t.Errorf("ListRepoSiblings(%q, %q) unexpected args", owner, exclude)
+			}
+			return []RepoSummary{{Owner: "owner", Name: "other"}}, nil
+		},
+		listPRReviewersFn: func(_ context.Context, owner, repo string, n int) ([]UserSummary, error) {
+			if owner != "owner" || repo != "repo" || n != 42 {
+				t.Errorf("ListPRReviewers(%q,%q,%d) unexpected args", owner, repo, n)
+			}
+			return []UserSummary{
+				{Login: "alice", Type: "User"},
+				{Login: "acme", Type: "Organization"},
+			}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/pull/42"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{TypeOwnerProfile, TypeSiblingRepo, TypeReviewer} {
+		if !hasType(got, want) {
+			t.Errorf("missing %q in %v", want, candidateTypes(got))
+		}
+	}
+
+	// Reviewer that's an Org should carry @github.org.* identity key.
+	for _, c := range got {
+		if c.CandidateType != TypeReviewer {
+			continue
+		}
+		key := ExtractIdentityKey(c)
+		if c.Preview["login"] == "acme" {
+			if key != "@github.org.acme" {
+				t.Errorf("org reviewer identity_key = %q, want @github.org.acme", key)
+			}
+		}
+		if c.Preview["login"] == "alice" {
+			if key != "@github.user.alice" {
+				t.Errorf("user reviewer identity_key = %q, want @github.user.alice", key)
+			}
+		}
+	}
+}
+
+// TestProbePR_AuthorHints_FiresAuthoredPRs pins T-0308: when
+// ActiveContext.AuthorHints["github"] is set, probePR fetches the
+// author's other PRs and emits author_other_pr candidates.
+func TestProbePR_AuthorHints_FiresAuthoredPRs(t *testing.T) {
+	called := false
+	api := &stubAPIClient{
+		listAuthoredPRsFn: func(_ context.Context, login string, limit int) ([]PullRequestSummary, error) {
+			called = true
+			if login != "samber" {
+				t.Errorf("ListAuthoredPRs login = %q, want samber", login)
+			}
+			if limit != 25 {
+				t.Errorf("ListAuthoredPRs limit = %d, want 25", limit)
+			}
+			return []PullRequestSummary{{Owner: "samber", Repo: "lo", Number: 7, Author: "samber"}}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/pull/42"},
+		lateral.ActiveContext{AuthorHints: map[string]string{"github": "samber"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Fatal("ListAuthoredPRs not called despite AuthorHints set")
+	}
+	if !hasType(got, TypeAuthorPR) {
+		t.Errorf("missing %q in %v", TypeAuthorPR, candidateTypes(got))
+	}
+}
+
+// TestProbePR_NoAuthorHints_SkipsAuthoredPRs pins the negative path:
+// without AuthorHints["github"], probePR does NOT fetch authored PRs.
+// This is the seam — the existence of AuthorHints unlocks the probe.
+func TestProbePR_NoAuthorHints_SkipsAuthoredPRs(t *testing.T) {
+	called := false
+	api := &stubAPIClient{
+		listAuthoredPRsFn: func(_ context.Context, _ string, _ int) ([]PullRequestSummary, error) {
+			called = true
+			return nil, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, _ := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/pull/42"},
+		lateral.ActiveContext{})
+	if called {
+		t.Error("ListAuthoredPRs called without AuthorHints set")
+	}
+	if hasType(got, TypeAuthorPR) {
+		t.Errorf("emitted %q without author hint; got %v", TypeAuthorPR, candidateTypes(got))
+	}
+}
+
+// TestProbeIssue_AuthorHints_FiresAuthoredIssues mirrors the PR test
+// for the issue probe.
+func TestProbeIssue_AuthorHints_FiresAuthoredIssues(t *testing.T) {
+	called := false
+	api := &stubAPIClient{
+		listAuthoredIssuesFn: func(_ context.Context, login string, _ int) ([]IssueSummary, error) {
+			called = true
+			if login != "samber" {
+				t.Errorf("ListAuthoredIssues login = %q, want samber", login)
+			}
+			return []IssueSummary{{Owner: "samber", Repo: "lo", Number: 9, Author: "samber"}}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/issues/3"},
+		lateral.ActiveContext{AuthorHints: map[string]string{"github": "samber"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Fatal("ListAuthoredIssues not called despite AuthorHints set")
+	}
+	if !hasType(got, TypeAuthorIssue) {
+		t.Errorf("missing %q in %v", TypeAuthorIssue, candidateTypes(got))
+	}
+}
+
+func TestProbePR_PullsListView_NoNumber_SkipsReviewers(t *testing.T) {
+	reviewerCalled := false
+	api := &stubAPIClient{
+		listPRReviewersFn: func(_ context.Context, _, _ string, _ int) ([]UserSummary, error) {
+			reviewerCalled = true
+			return nil, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	_, _ = s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/pulls"},
+		lateral.ActiveContext{})
+	if reviewerCalled {
+		t.Error("ListPRReviewers should not be called for /pulls list view (no number)")
+	}
+}
+
+func TestProbeIssue_Skeleton_NoClient_EmitsOwnerAndRepo(t *testing.T) {
+	s := NewGitHubStrategy(Dependencies{})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/issues/7"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasType(got, TypeOwnerProfile) {
+		t.Errorf("missing owner_profile in %v", candidateTypes(got))
+	}
+	if !hasType(got, TypeRepoIssue) {
+		t.Errorf("missing repo_issue in %v", candidateTypes(got))
+	}
+}
+
+func TestProbeIssue_FullClient_EmitsLabels(t *testing.T) {
+	api := &stubAPIClient{
+		listIssueLabelsFn: func(_ context.Context, owner, repo string, n int) ([]LabelSummary, error) {
+			if owner != "owner" || repo != "repo" || n != 7 {
+				t.Errorf("unexpected args (%q,%q,%d)", owner, repo, n)
+			}
+			return []LabelSummary{{Name: "bug", Color: "ff0000"}, {Name: "good first issue"}}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/issues/7"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasType(got, TypeIssueLabel) {
+		t.Errorf("missing issue_label in %v", candidateTypes(got))
+	}
+	bug := false
+	for _, c := range got {
+		if c.CandidateType == TypeIssueLabel && c.Preview["label"] == "bug" {
+			bug = true
+			if c.URL != "https://github.com/owner/repo/labels/bug" {
+				t.Errorf("default label URL wrong: %q", c.URL)
+			}
+		}
+	}
+	if !bug {
+		t.Error("missing bug label candidate")
+	}
+}
+
+func TestProbeIssue_ListView_NoLabelFetch(t *testing.T) {
+	called := false
+	api := &stubAPIClient{
+		listIssueLabelsFn: func(_ context.Context, _, _ string, _ int) ([]LabelSummary, error) {
+			called = true
+			return nil, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	_, _ = s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/owner/repo/issues"},
+		lateral.ActiveContext{})
+	if called {
+		t.Error("ListIssueLabels should not be called for /issues list view")
+	}
+}
+
+func TestProbeProfile_Skeleton_NoClient_EmitsSponsor(t *testing.T) {
+	s := NewGitHubStrategy(Dependencies{})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/jadb"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].CandidateType != TypeSponsorPage {
+		t.Errorf("skeleton mode should emit only sponsor_page; got %v", candidateTypes(got))
+	}
+}
+
+func TestProbeProfile_FullClient_EmitsAllTypes(t *testing.T) {
+	api := &stubAPIClient{
+		listRepoSiblingsFn: func(_ context.Context, owner, exclude string) ([]RepoSummary, error) {
+			if owner != "jadb" || exclude != "" {
+				t.Errorf("ListRepoSiblings(%q, %q) unexpected", owner, exclude)
+			}
+			return []RepoSummary{{Owner: "jadb", Name: "ctxt"}}, nil
+		},
+		listOwnerPinnedFn: func(_ context.Context, _ string) ([]RepoSummary, error) {
+			return []RepoSummary{{Owner: "jadb", Name: "kit"}}, nil
+		},
+		hasSponsorPageFn: func(_ context.Context, _ string) (bool, error) { return true, nil },
+		listSponsoredFn: func(_ context.Context, _ string) ([]UserSummary, error) {
+			return []UserSummary{{Login: "fasterthanlime", Type: "User"}}, nil
+		},
+		listContributionOrgsFn: func(_ context.Context, _ string) ([]OrgSummary, error) {
+			return []OrgSummary{{Login: "ideacrafterslabs"}}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/jadb"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		TypeOwnedRepo, TypePinnedRepo, TypeSponsorPage, TypeSponsored, TypeContribOrg,
+	} {
+		if !hasType(got, want) {
+			t.Errorf("missing %q in %v", want, candidateTypes(got))
+		}
+	}
+
+	// Contribution org carries @github.org.* identity key.
+	co := findFirst(got, TypeContribOrg)
+	if got, want := ExtractIdentityKey(*co), "@github.org.ideacrafterslabs"; got != want {
+		t.Errorf("contrib_org identity_key = %q, want %q", got, want)
+	}
+}
+
+func TestProbeSponsor_Skeleton_NoClient(t *testing.T) {
+	s := NewGitHubStrategy(Dependencies{})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/sponsors/jadb"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].CandidateType != TypeOwnerProfile {
+		t.Errorf("skeleton mode emits owner_profile only; got %v", candidateTypes(got))
+	}
+	if got[0].URL != "https://github.com/jadb" {
+		t.Errorf("owner URL = %q, want https://github.com/jadb", got[0].URL)
+	}
+}
+
+func TestProbeSponsor_FullClient_EmitsSimilarSponsors(t *testing.T) {
+	api := &stubAPIClient{
+		listSimilarSponsorsFn: func(_ context.Context, login string) ([]UserSummary, error) {
+			if login != "jadb" {
+				t.Errorf("ListSimilarSponsors(%q) unexpected", login)
+			}
+			return []UserSummary{{Login: "fasterthanlime", Type: "User"}}, nil
+		},
+	}
+	s := NewGitHubStrategy(Dependencies{APIClient: api})
+	got, err := s.Probe(context.Background(),
+		lateral.CapturedEvent{SourceURL: "https://github.com/sponsors/jadb"},
+		lateral.ActiveContext{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasType(got, TypeOwnerProfile) || !hasType(got, TypeSimilarSpons) {
+		t.Errorf("missing expected types in %v", candidateTypes(got))
+	}
+}
+
+func TestRepoIdentityKey(t *testing.T) {
+	if got, want := repoIdentityKey("samber", "lo"), "@github.repo.samber/lo"; got != want {
+		t.Errorf("repoIdentityKey = %q, want %q", got, want)
+	}
+	if got, want := userIdentityKey("jadb"), "@github.user.jadb"; got != want {
+		t.Errorf("userIdentityKey = %q, want %q", got, want)
+	}
+	if got, want := orgIdentityKey("hashicorp"), "@github.org.hashicorp"; got != want {
+		t.Errorf("orgIdentityKey = %q, want %q", got, want)
+	}
+}

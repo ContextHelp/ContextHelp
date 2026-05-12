@@ -1,0 +1,75 @@
+# Corpus fixture for hop.top/ben recall-vector suite — embedding model
+# swap (ADR-071 Phase 3, T-0584).
+#
+# This corpus exists ahead of T-0582/T-0584 so the suite *shape* is in
+# place when the migration command lands. For now both candidates run
+# the lexical baseline (mode=vector_baseline currently aliases to
+# fts_baseline inside cmd/ben-adapter-ctxt-recall). When T-0582 lands the
+# embedding-model registry, this corpus is the seed for the recorded xrr
+# cassettes that drive the real per-model recall comparison.
+#
+# Object selection rationale: paraphrased pairs that exercise *semantic*
+# proximity, not just lexical overlap. The lexical baseline will under-
+# perform on these queries on purpose — once the vector leg lights up,
+# recall should rise, and the suite YAML's recall-floor enforces that.
+objects:
+  - id: vec-001
+    text: "Single sign-on simplifies how a user authenticates across multiple applications."
+    tags: [authn, sso]
+  - id: vec-002
+    text: "Federated identity lets one provider vouch for the user across many relying parties."
+    tags: [authn, federation]
+  - id: vec-003
+    text: "Search relevance improves when both lexical and semantic signals are combined."
+    tags: [search, relevance]
+  - id: vec-004
+    text: "A vector index measures meaning, not surface tokens, so paraphrases still match."
+    tags: [search, vector, semantics]
+  - id: vec-005
+    text: "Pipeline versioning isolates per-object schema drift from corpus-wide schema changes."
+    tags: [pipeline, versioning]
+  - id: vec-006
+    text: "Per-document migration costs less than rebuilding the entire knowledge store."
+    tags: [migration, cost]
+  - id: vec-007
+    text: "Profile-driven ranking surfaces the artefacts that match the user's current intent."
+    tags: [profile, ranking]
+  - id: vec-008
+    text: "Tag boosting nudges relevant entries above accidental keyword matches in retrieval."
+    tags: [retrieval, tags]
+  - id: vec-009
+    text: "Embedding migration must verify recall before flipping the default model."
+    tags: [embeddings, migration, recall]
+  - id: vec-010
+    text: "Cassette-recorded HTTP traffic keeps CI free of live API costs."
+    tags: [testing, xrr, cassette]
+  - id: vec-011
+    text: "Operator consent is required before re-ingesting an entire corpus."
+    tags: [upgrade, consent, operator]
+  - id: vec-012
+    text: "A bucket-3 upgrade can cost thousands of dollars in LLM and embedding fees."
+    tags: [upgrade, cost, taxonomy]
+  - id: vec-013
+    text: "The capture surface should never block on enrichment — return immediately, enrich asynchronously."
+    tags: [capture, async, latency]
+  - id: vec-014
+    text: "Frictionless capture means the user dumps content without classifying it first."
+    tags: [capture, ux, friction]
+  - id: vec-015
+    text: "Decision extraction parses 'we decided to X because Y' patterns out of meeting notes."
+    tags: [enrichment, decisions, llm]
+  - id: vec-016
+    text: "Summary length should be bounded so briefs stay actionable."
+    tags: [enrichment, summary]
+  - id: vec-017
+    text: "Composition templates assemble atomic nodes into briefs, plans, and checklists."
+    tags: [composition, template]
+  - id: vec-018
+    text: "Provenance attaches every claim in a brief back to its source object."
+    tags: [composition, provenance]
+  - id: vec-019
+    text: "Federation peers negotiate compatibility per-object so they don't reject each other on schema drift."
+    tags: [federation, compatibility]
+  - id: vec-020
+    text: "A health endpoint surfaces upgrade state so the CLI banner stays current."
+    tags: [healthz, upgrade, banner]

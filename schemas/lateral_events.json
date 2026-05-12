@@ -1,0 +1,232 @@
+{
+  "title": "lateral_events",
+  "type": "object",
+  "description": "All bus events emitted within the lateral pipeline. Wire topics are ctxt.lateral.<key> with the modifier joined to Object via underscore. Reason/Mechanism/Property/Circumstance live in payload via bus.Qualifiers (kit/runtime/bus), not in the topic string. Actions are single past-tense verbs. See ADR-0017 in kit for rationale.",
+  "definitions": {
+    "scan.started": {
+      "type": "object",
+      "properties": {
+        "object_id": {"type": "string"}
+      }
+    },
+    "scan.completed": {
+      "type": "object",
+      "properties": {
+        "object_id": {"type": "string"},
+        "candidates_emitted": {"type": "integer"}
+      }
+    },
+    "scan.deferred": {
+      "type": "object",
+      "properties": {
+        "object_id": {"type": "string"},
+        "qualifiers": {
+          "type": "object",
+          "properties": {
+            "reason": {"type": "string"}
+          }
+        }
+      }
+    },
+    "scan.skipped": {
+      "type": "object",
+      "properties": {
+        "object_id": {"type": "string"},
+        "qualifiers": {
+          "type": "object",
+          "properties": {
+            "reason": {"type": "string"}
+          }
+        }
+      }
+    },
+    "scan.failed": {
+      "type": "object",
+      "properties": {
+        "object_id": {"type": "string"},
+        "qualifiers": {
+          "type": "object",
+          "properties": {
+            "mechanism": {"const": "jit_proposal"}
+          }
+        }
+      }
+    },
+    "subpath.failed": {
+      "type": "object",
+      "properties": {
+        "object_id": {"type": "string"},
+        "subpath": {"type": "string"},
+        "reason": {"type": "string"}
+      }
+    },
+    "candidate.created": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {"type": "string"}
+      }
+    },
+    "candidate.promoted": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {"type": "string"},
+        "path": {"type": "string"}
+      }
+    },
+    "candidate.expired": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {"type": "string"},
+        "qualifiers": {
+          "type": "object",
+          "properties": {
+            "reason": {"type": "string"}
+          }
+        }
+      }
+    },
+    "candidate.rejected": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {"type": "string"}
+      }
+    },
+    "candidate.resurrected": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {"type": "string"}
+      }
+    },
+    "reaper_cycle.started": {
+      "type": "object"
+    },
+    "reaper_cycle.completed": {
+      "type": "object",
+      "properties": {
+        "expired": {"type": "integer"},
+        "duration_ms": {"type": "integer"}
+      }
+    },
+    "reaper_cycle.failed": {
+      "type": "object",
+      "properties": {
+        "qualifiers": {
+          "type": "object",
+          "properties": {
+            "reason": {"type": "string"}
+          }
+        }
+      }
+    },
+    "reaper_cycle.skipped": {
+      "type": "object",
+      "properties": {
+        "qualifiers": {
+          "type": "object",
+          "properties": {
+            "reason": {"const": "overlap"}
+          }
+        }
+      }
+    },
+    "sanity_check.violated": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {"type": "string"},
+        "violation": {"type": "string"}
+      }
+    },
+    "score.flagged": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {"type": "string"},
+        "qualifiers": {
+          "type": "object",
+          "properties": {
+            "property": {"const": "invalid"}
+          }
+        }
+      }
+    },
+    "signal.degraded": {
+      "type": "object",
+      "properties": {
+        "signal": {"type": "string"},
+        "qualifiers": {
+          "type": "object",
+          "properties": {
+            "reason": {"type": "string"}
+          }
+        }
+      }
+    },
+    "resolution.flagged": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {"type": "string"},
+        "qualifiers": {
+          "type": "object",
+          "properties": {
+            "property": {"const": "ambiguous"}
+          }
+        }
+      }
+    },
+    "recipe.refreshed": {
+      "type": "object",
+      "properties": {
+        "source_domain": {"type": "string"},
+        "page_type": {"type": "string"}
+      }
+    },
+    "recipe.served": {
+      "type": "object",
+      "properties": {
+        "source_domain": {"type": "string"},
+        "page_type": {"type": "string"},
+        "qualifiers": {
+          "type": "object",
+          "properties": {
+            "circumstance": {"const": "llm_outage"}
+          }
+        }
+      }
+    },
+    "classification.matched": {
+      "type": "object",
+      "properties": {
+        "source_domain": {"type": "string"},
+        "page_type": {"type": "string"}
+      }
+    },
+    "classification.classified": {
+      "type": "object",
+      "properties": {
+        "source_domain": {"type": "string"},
+        "page_type": {"type": "string"},
+        "duration_ms": {"type": "integer"}
+      }
+    },
+    "classification.cached": {
+      "type": "object",
+      "properties": {
+        "source_domain": {"type": "string"},
+        "page_type": {"type": "string"}
+      }
+    },
+    "research_intent.boosted": {
+      "type": "object",
+      "properties": {
+        "context_shape": {"type": "string"},
+        "boost_factor": {"type": "number"}
+      }
+    },
+    "research_intent.suppressed": {
+      "type": "object",
+      "properties": {
+        "context_shape": {"type": "string"},
+        "reason": {"type": "string"}
+      }
+    }
+  }
+}

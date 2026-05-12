@@ -32,6 +32,18 @@ type AnalyzeRequest struct {
 	// after the auto-tagger merges (T-0573). Stored on the Job as UserHints
 	// for the worker to read at pipeline-start time.
 	Hints []string `json:"hints,omitempty"`
+	// Profile is the focus-profile slug the operator pinned at capture
+	// time (`ctxt capture --profile founder`). Populates the
+	// KnowledgeObject.ProfileID so the persisted object is partitioned
+	// to that profile (T-0588). Empty = global / no profile.
+	Profile string `json:"profile,omitempty"`
+	// Note is a free-form audit string the operator attached to the
+	// capture (`ctxt capture --note "client kickoff 2026-Q2"`).
+	// Populates KnowledgeObject.InboxNote so the note survives both
+	// raw and pipeline paths (T-0588). InboxNote is the canonical
+	// "operator-attached" field on KnowledgeObject; reusing it here
+	// keeps a single field name across capture, inbox, and pipeline.
+	Note string `json:"note,omitempty"`
 }
 
 // CreatePipelineRequest represents a request to create a custom pipeline.
@@ -68,6 +80,10 @@ type InboxCaptureRequest struct {
 	// pipeline runs at capture time, only at triage.
 	Hints    []string
 	Mentions []uri.URI
+	// Profile is the focus-profile slug the operator pinned at capture
+	// time (T-0588). Populates KnowledgeObject.ProfileID so the inbox
+	// item is partitioned to that profile from the start.
+	Profile string
 }
 
 // InboxFilter specifies criteria for listing inbox items.
@@ -138,6 +154,21 @@ type SearchDiagnostics struct {
 	TopBelowThresholdScore float64 `json:"top_below_threshold_score,omitempty"`
 	// Threshold is the MinScore threshold applied during this search call.
 	Threshold float64 `json:"threshold"`
+	// StalenessWarning is populated when one or more candidates in the
+	// pre-filter set are stamped with a pipeline version older than the
+	// registry's currently-installed version (ADR-070 §6, T-0581). Soft
+	// signal: search still returns the stale results, but the caller knows
+	// to suggest `ctxt upgrade plan` to the operator.
+	StalenessWarning *StalenessWarning `json:"staleness_warning,omitempty"`
+}
+
+// StalenessWarning summarises pipeline-version drift in a search result set.
+// Populated by HybridSearch* when at least one candidate's `pipeline` field
+// parses to an older version than the registry's currently-installed version
+// for the same family (ADR-070 §6, T-0581).
+type StalenessWarning struct {
+	Count  int    `json:"count"`
+	Reason string `json:"reason"`
 }
 
 // HybridSearchResult is the wrapper envelope for HybridSearchExplain calls.

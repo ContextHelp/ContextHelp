@@ -43,9 +43,9 @@ The data model accommodates all of these. The control plane and query path do no
 
 ### Three preconditions before any implementation
 
-The ADR itself is approved. Implementation tasks spawned from this ADR (T-NEW-*) are gated on:
+The ADR itself is approved. Implementation tasks spawned from this ADR (T-0582 through T-0585) are gated on:
 
-1. **ADR-070 must be landed and shipping** — pipeline-version and index-signature machinery must work end-to-end. Multi-engine support without versioned upgrade machinery is just two ways to be out of sync.
+1. **ADR-070 must be landed and shipping** — pipeline-version and index-signature machinery must work end-to-end. As of 2026-05-07 ADR-070's Phases 1–3 (T-0579, T-0580, T-0581) are shipped; precondition met.
 2. **An eval harness must exist** that can answer "is the new model helping?" on a fixed query corpus. `hop.top/ben` is the chosen tool (per ADR-070); a recall suite at `suites/recall-vector.ben.yaml` must exist before any `ctxt embeddings migrate` command ships.
 3. **A second concrete use case** must earn its keep beyond migration — i.e. the team has hit a real heterogeneous-corpus or sovereignty pain point. Migration alone justifies the **transitional dual-write capability**; the **full multi-engine routing layer** waits for demonstrated need.
 
@@ -254,19 +254,19 @@ The eval harness is the single biggest piece of infrastructure this ADR depends 
 
 ## Implementation Notes
 
-### Phase 1 — Data model + registry (T-NEW-A)
+### Phase 1 — Data model + registry (T-0582)
 
 - Migration: `embedding_models`, `embeddings` table replacing the current single index.
 - Registry CRUD APIs (Go side) + minimal CLI (`ctxt embeddings list`, `register`).
 - Tests: in-package unit tests; eva contract for `list` output.
 
-### Phase 2 — Dual-write at ingest (T-NEW-B)
+### Phase 2 — Dual-write at ingest (T-0583)
 
 - Pipeline `embedding` step reads `populate_models` policy.
 - Policy lives in `dpkms.yaml`. Default is `[<current-default>]`.
 - Tests: xrr cassettes for both models' API calls; pipeline step writes both rows.
 
-### Phase 3 — Migration job + recall guard (T-NEW-C)
+### Phase 3 — Migration job + recall guard (T-0584)
 
 - Background re-embed worker.
 - `ctxt embeddings migrate --to <model>` CLI command.
@@ -274,7 +274,7 @@ The eval harness is the single biggest piece of infrastructure this ADR depends 
 - `ctxt embeddings set-default` with coverage + recall guards.
 - Tests: full xrr-recorded migration end-to-end; ben suite executes against the cassette-fixed corpus.
 
-### Phase 4 — Deprecation + purge (T-NEW-D)
+### Phase 4 — Deprecation + purge (T-0585)
 
 - Scheduled deprecation; grace period; `ctxt embeddings purge`.
 - Tests: time-travel test via cassettes; verify queries still work during grace, fail after purge.
@@ -284,6 +284,12 @@ The eval harness is the single biggest piece of infrastructure this ADR depends 
 - Existing single-table embeddings rows are migrated into `embeddings` with a synthetic `model_id` derived from the current pipeline config. `embedding_models` gets the corresponding row marked `is_default = 1`.
 - After migration, the schema state is identical to a fresh install.
 - No CLI command name conflicts; `embeddings` is a new noun under `ctxt`.
+
+#### Implementation Notes (Phase 1 lock-in)
+
+The synthetic `model_id` derived for legacy-blob backfill follows the format `legacy-blob-<dim>@2026-05-07`, where `<dim>` is the driver's vector dimension at migration time (defaults to 1536 when no dimension is recorded). The `@2026-05-07` suffix is the ADR's authorship date and is **immutable**: subsequent migrations must not change it. Phase 2 (T-0583, dual-write at ingest) ships with `populate_models` defaulting to exactly this string after a fresh upgrade, so changing the anchor would silently break every existing deployment's policy. This anchor was first encoded in T-0582 (commit `4bbf5bf`); treat it as a load-bearing constant.
+
+Postgres has no per-object backfill in Phase 1: postgres carries embeddings on the `objects.embedding` pgvector column and has no legacy `object_embeddings` table to copy from. The Phase 1 migration on postgres only seeds the singleton default row in `embedding_models` plus the corresponding `index_signatures` row. The new `embeddings` composite-key table is empty on postgres until Phase 2 (T-0583) starts dual-writing at ingest. T-0584's migration job must not be surprised by this on postgres backends; on sqlite, the per-row backfill is real and the new table is non-empty from the moment migration 033 runs.
 
 ### Out of scope (deferred to future ADRs if/when need arises)
 

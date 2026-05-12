@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>{{.Label}}</string>
+
+	<key>ProgramArguments</key>
+	<array>
+		<string>{{.BinaryPath}}</string>
+		<string>serve</string>
+	</array>
+
+	<key>RunAtLoad</key>
+	<true/>
+
+	<key>KeepAlive</key>
+	<true/>
+
+	<key>ThrottleInterval</key>
+	<integer>{{.ThrottleInterval}}</integer>
+
+	<key>StandardOutPath</key>
+	<string>{{.StdoutPath}}</string>
+
+	<key>StandardErrorPath</key>
+	<string>{{.StderrPath}}</string>
+
+	<key>WorkingDirectory</key>
+	<string>{{.WorkingDirectory}}</string>
+
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>{{.HomeDir}}</string>
+		<key>PATH</key>
+		<string>{{.PathEnv}}</string>
+	</dict>
+</dict>
+</plist>

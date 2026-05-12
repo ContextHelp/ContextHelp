@@ -1,0 +1,6 @@
+# YouTube fixtures.
+{"event": {"source_url": "https://www.youtube.com/watch?v=abc123"}, "expect": {"strategy_id": "YouTubeStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://youtu.be/abc123"}, "expect": {"strategy_id": "YouTubeStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://www.youtube.com/@channelname"}, "expect": {"strategy_id": "YouTubeStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://music.youtube.com/playlist?list=xyz"}, "expect": {"strategy_id": "YouTubeStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://example.com/youtube-clone"}, "expect": {"negative": true}}

@@ -39,11 +39,32 @@ func (r *registry) Upsert(name string, p *Pipeline) {
 }
 
 func (r *registry) Get(name string) (*Pipeline, error) {
-	p, ok := r.pipelines[name]
+	// Direct hit on the exact registered key.
+	if p, ok := r.pipelines[name]; ok {
+		return p, nil
+	}
+	// ADR-070 §2: pipeline values use "<name>@vN" convention. Existing
+	// rows / callers may pass either bare names or versioned names; the
+	// registry must resolve both consistently:
+	//   - Bare "text.short" → resolved as "@v0".
+	//   - "text.short@v0" → resolved as bare "text.short" if no "@v0" entry
+	//     was explicitly registered (legacy registrations are implicitly v0).
+	parsed, version, ok := ParseVersionedName(name)
 	if !ok {
 		return nil, fmt.Errorf("pipeline %q not found", name)
 	}
-	return p, nil
+	if !strings.Contains(name, "@") {
+		// Bare name → try the @v0 alias.
+		if p, ok2 := r.pipelines[FormatVersionedName(parsed, 0)]; ok2 {
+			return p, nil
+		}
+	} else if version == 0 {
+		// "<name>@v0" → fall back to the bare registration.
+		if p, ok2 := r.pipelines[parsed]; ok2 {
+			return p, nil
+		}
+	}
+	return nil, fmt.Errorf("pipeline %q not found", name)
 }
 
 func (r *registry) List() []string {

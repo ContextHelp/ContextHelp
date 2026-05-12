@@ -1,0 +1,5 @@
+# LinkedIn fixtures.
+{"event": {"source_url": "https://www.linkedin.com/in/jadb"}, "expect": {"strategy_id": "LinkedInStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://linkedin.com/company/ideacrafterslabs"}, "expect": {"strategy_id": "LinkedInStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://www.linkedin.com/posts/jadb_lateral-discovery-activity-123"}, "expect": {"strategy_id": "LinkedInStrategy", "min_candidates": 0}}
+{"event": {"source_url": "https://example.com/linkedin-clone"}, "expect": {"negative": true}}

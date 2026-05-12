@@ -167,6 +167,11 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 			// raw path too, so capture-with-hints partitioning works without
 			// the pipeline running.
 			Tags: userHintsToTags(req.Hints),
+			// T-0588: caller-asserted profile and note flow directly onto
+			// the KnowledgeObject so partitioning + audit-note capture
+			// work even on the raw path (no pipeline to plumb through).
+			ProfileID: req.Profile,
+			InboxNote: req.Note,
 		}
 		if err := s.Store.Objects().Create(ctx, obj); err != nil {
 			return "", fmt.Errorf("analyze raw: store: %w", err)
@@ -242,6 +247,8 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		UpdatedAt:    now,
 		UserMentions: req.Mentions, // T-0190: forwarded to draft.Mentions in worker.
 		UserHints:    req.Hints,    // T-0573: forwarded to draft.Tags (Source:"user") in worker.
+		UserProfile:  req.Profile,  // T-0588: forwarded to draft.ProfileID in worker.
+		UserNote:     req.Note,     // T-0588: forwarded to draft.InboxNote in worker.
 	}
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
@@ -519,7 +526,7 @@ func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest)
 	}
 
 	if s.pipelineSvc != nil {
-		if err := s.pipelineSvc.Create(withPipelineValidateOp(ctx, pipelineOpCreate), pipeline); err != nil {
+		if err := s.pipelineSvc.Create(ctx, pipeline); err != nil {
 			return "", fmt.Errorf("create pipeline: %w", err)
 		}
 	} else {
@@ -579,7 +586,7 @@ func (s *Service) ArchivePipeline(ctx context.Context, name string) error {
 	}
 	p.Archived = true
 	p.UpdatedAt = time.Now().Truncate(time.Second)
-	opCtx := withPolicyAction(withPipelineValidateOp(ctx, pipelineOpArchive), "archive")
+	opCtx := withPolicyAction(domain.WithSubOp(ctx, "archive"), "archive")
 	if err := s.pipelineSvc.Update(opCtx, p); err != nil {
 		return fmt.Errorf("archive pipeline: %w", err)
 	}
@@ -605,7 +612,7 @@ func (s *Service) UnarchivePipeline(ctx context.Context, name string) error {
 	}
 	p.Archived = false
 	p.UpdatedAt = time.Now().Truncate(time.Second)
-	opCtx := withPolicyAction(withPipelineValidateOp(ctx, pipelineOpUnarchive), "unarchive")
+	opCtx := withPolicyAction(domain.WithSubOp(ctx, "unarchive"), "unarchive")
 	if err := s.pipelineSvc.Update(opCtx, p); err != nil {
 		return fmt.Errorf("unarchive pipeline: %w", err)
 	}
@@ -1893,6 +1900,20 @@ func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context
 	}
 	if haveBelow {
 		diagnostics.TopBelowThresholdScore = topBelowScore
+	}
+
+	// T-0581: count candidates whose pipeline stamp is older than the
+	// registry's installed version for the same family. Surface the count
+	// as a soft warning so callers can prompt operators toward
+	// `ctxt upgrade plan`. Computed once per family for cheap repeat lookups.
+	if staleCount := countStaleCandidates(s.Pipes, candidates); staleCount > 0 {
+		diagnostics.StalenessWarning = &StalenessWarning{
+			Count: staleCount,
+			Reason: fmt.Sprintf(
+				"%d objects in this result set are pending pipeline upgrade — run 'ctxt upgrade plan' to see what's affected",
+				staleCount,
+			),
+		}
 	}
 
 	limit := filter.Limit

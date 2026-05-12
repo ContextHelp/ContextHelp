@@ -1,0 +1,128 @@
+# Prometheus AlertManager rules for the lateral discovery substrate.
+# Pair with docs/operations/dashboards/lateral.json (T-0331); each
+# alert name links to a runbook section in docs/operations/runbooks/
+# lateral.md (T-0336).
+#
+# Deployment is ops work. Engineering ships the rule shape.
+groups:
+  - name: lateral-pipeline
+    interval: 30s
+    rules:
+
+      # scan.failed > 5% of scan.completed sustained 10m. The most
+      # common manifestation: a strategy's upstream API has gone
+      # flaky; the breaker hasn't tripped yet because failures are
+      # individually within the threshold.
+      - alert: LateralScanFailedRate
+        expr: |
+          sum(rate(ctxt_lateral_scan_failed_total[10m]))
+            /
+          sum(rate(ctxt_lateral_scan_completed_total[10m]))
+            > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          component: lateral
+        annotations:
+          summary: "lateral scan failure rate > 5% sustained"
+          description: |
+            Lateral pipeline is failing >5% of scans over the last 10 minutes.
+            Inspect ctxt.lateral.scan.failed events for qualifiers.mechanism
+            grouping. Likely upstream API degradation or a misconfigured
+            strategy.
+          runbook: https://github.com/ideacrafterslabs/ctxt/blob/main/docs/operations/runbooks/lateral.md#scan-failed-rate
+
+      # recipe.served sustained 30m == LLM provider stuck on outage
+      # mode. Recipe fallback is a graceful-degradation feature; if
+      # it never clears, operators have a real outage rather than a
+      # transient one.
+      - alert: LateralRecipeServedSustained
+        expr: |
+          sum(rate(ctxt_lateral_recipe_served_total[5m])) > 0
+        for: 30m
+        labels:
+          severity: warning
+          component: lateral
+        annotations:
+          summary: "lateral recipe.served has been firing for 30m+"
+          description: |
+            JIT strategy is in recipe-fallback mode for an extended period.
+            Check the LLM breaker state + provider status. Sustained recipe
+            mode degrades discovery quality vs. LLM-driven proposals.
+          runbook: https://github.com/ideacrafterslabs/ctxt/blob/main/docs/operations/runbooks/lateral.md#llm-outage-stuck-on
+
+      # Per-strategy zero emission for >1h despite traffic. Catches
+      # silent regressions: strategy registered but its Probe never
+      # produces candidates anymore.
+      - alert: LateralStrategyZeroEmission
+        expr: |
+          sum by (strategy_id) (rate(ctxt_lateral_scan_completed_candidates_emitted_total[1h])) == 0
+            and on (strategy_id)
+          sum by (strategy_id) (rate(ctxt_lateral_scan_completed_total[1h])) > 0
+        for: 1h
+        labels:
+          severity: warning
+          component: lateral
+        annotations:
+          summary: "lateral strategy {{ $labels.strategy_id }} emitting zero candidates for 1h"
+          description: |
+            Strategy {{ $labels.strategy_id }} dispatched on traffic but produced no
+            candidates over the last hour. Likely either (a) an upstream API change
+            broke the Probe parser, or (b) a sample-percent flag was reduced to 0
+            without intent.
+          runbook: https://github.com/ideacrafterslabs/ctxt/blob/main/docs/operations/runbooks/lateral.md#per-strategy-zero-emission
+
+      # Reaper cycle stalled. Threshold (600s = 10m) is generous
+      # relative to the default 5s polling interval to absorb GC
+      # pauses, leader-election churn, and cron-skewed runs without
+      # paging. Tighten if your deployment runs the poller faster.
+      - alert: LateralReaperCycleStalled
+        expr: |
+          time() - max(ctxt_lateral_reaper_cycle_completed_timestamp_seconds) > 600
+        for: 5m
+        labels:
+          severity: critical
+          component: lateral
+        annotations:
+          summary: "lateral reaper cycle hasn't completed in 10+ minutes"
+          description: |
+            The cold-cycle reaper poller is stalled. Candidates with expired TTLs
+            are not transitioning to Expired state, which leaks state. Check the
+            daemon process and the job/poller worker logs.
+          runbook: https://github.com/ideacrafterslabs/ctxt/blob/main/docs/operations/runbooks/lateral.md#reaper-cycle-stalled
+
+      # Per-strategy crash-loop: scan.failed for the same strategy
+      # for 5 consecutive minutes. Distinct from the dataset-wide
+      # rate alert because a single strategy can blow up while the
+      # rest stay healthy.
+      - alert: LateralStrategyCrashLoop
+        expr: |
+          sum by (strategy_id) (rate(ctxt_lateral_scan_failed_total[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: lateral
+        annotations:
+          summary: "lateral strategy {{ $labels.strategy_id }} appears to be crash-looping"
+          description: |
+            Strategy {{ $labels.strategy_id }} is throwing >0.5 failures/sec sustained.
+            Operators should consider Trigger'ing the kill-switch via SIGHUP-edited
+            config or runtime API while diagnosing.
+          runbook: https://github.com/ideacrafterslabs/ctxt/blob/main/docs/operations/runbooks/lateral.md#per-strategy-crash-loop
+
+      # Sanity check violations are structural bugs (the substrate's
+      # own assertions firing) and should always page.
+      - alert: LateralSanityCheckViolated
+        expr: |
+          sum(increase(ctxt_lateral_sanity_check_violated_total[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: lateral
+        annotations:
+          summary: "lateral sanity-check assertion fired"
+          description: |
+            ctxt.lateral.sanity_check.violated has been emitted. This indicates
+            a structural bug in upstream pipelines, not routine operational drift.
+            Inspect the SanityViolationPayload's Detail map and file an incident.
+          runbook: https://github.com/ideacrafterslabs/ctxt/blob/main/docs/operations/runbooks/lateral.md#sanity-check-violations
