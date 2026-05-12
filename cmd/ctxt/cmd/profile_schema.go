@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -30,50 +31,75 @@ Examples:
 var schemaShowCmd = &cobra.Command{
 	Use:   "show <profile>",
 	Short: "Display current schema for a profile",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runSchemaShow,
+	Long: `Print the entity types, topic vocabulary, classification rules,
+and version stamp for the named profile's metadata extraction schema.
+Read-only.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runSchemaShow,
 }
 
 var schemaAddTypeCmd = &cobra.Command{
 	Use:   "add-type <profile> <type>",
 	Short: "Add an entity type to the profile schema",
-	Args:  cobra.ExactArgs(2),
-	RunE:  runSchemaAddType,
+	Long: `Append a new entity type to the profile schema's allowed
+vocabulary. Rejects duplicates. The schema version is bumped and the
+change is persisted by rewriting the resolved config file.`,
+	Args: cobra.ExactArgs(2),
+	RunE: runSchemaAddType,
 }
 
 var schemaAddTopicCmd = &cobra.Command{
 	Use:   "add-topic <profile> <type>",
 	Short: "Add a topic to the profile schema vocabulary",
-	Args:  cobra.ExactArgs(2),
-	RunE:  runSchemaAddTopic,
+	Long: `Append a new topic to the profile schema's topic vocabulary.
+Rejects duplicates. The schema version is bumped and the change is
+persisted by rewriting the resolved config file.`,
+	Args: cobra.ExactArgs(2),
+	RunE: runSchemaAddTopic,
 }
 
 var schemaAddRuleCmd = &cobra.Command{
 	Use:   "add-rule <profile> <pattern> <type>",
 	Short: "Add a classification rule (regex pattern -> type)",
-	Args:  cobra.ExactArgs(3),
-	RunE:  runSchemaAddRule,
+	Long: `Append a classification rule that maps a regex pattern to an
+entity type. The pattern is compiled before persisting; invalid
+regexes are rejected. The schema version is bumped and the change is
+persisted by rewriting the resolved config file.`,
+	Args: cobra.ExactArgs(3),
+	RunE: runSchemaAddRule,
 }
 
 var schemaRemoveTypeCmd = &cobra.Command{
 	Use:   "remove-type <profile> <type>",
 	Short: "Remove an entity type from the profile schema",
-	Args:  cobra.ExactArgs(2),
-	RunE:  runSchemaRemoveType,
+	Long: `Drop the named entity type from the profile schema's allowed
+vocabulary. Fails when the type is not present. The schema version
+is bumped and the change is persisted by rewriting the resolved
+config file.`,
+	Args: cobra.ExactArgs(2),
+	RunE: runSchemaRemoveType,
 }
 
 var schemaRemoveTopicCmd = &cobra.Command{
 	Use:   "remove-topic <profile> <topic>",
 	Short: "Remove a topic from the profile schema vocabulary",
-	Args:  cobra.ExactArgs(2),
-	RunE:  runSchemaRemoveTopic,
+	Long: `Drop the named topic from the profile schema's topic
+vocabulary. Fails when the topic is not present. The schema version
+is bumped and the change is persisted by rewriting the resolved
+config file.`,
+	Args: cobra.ExactArgs(2),
+	RunE: runSchemaRemoveTopic,
 }
 
 var schemaEvolveCmd = &cobra.Command{
 	Use:   "evolve <profile>",
 	Short: "Suggest schema improvements from recent ingestions",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runSchemaEvolve,
+	Long: `Analyse recently-ingested content and suggest new entity types
+or topics worth adding to the profile schema. Read-only against the
+schema itself; suggestions are printed alongside the exact
+'ctxt profile schema add-*' invocations that would apply them.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runSchemaEvolve,
 }
 
 func init() {
@@ -85,6 +111,20 @@ func init() {
 	profileSchemaCmd.AddCommand(schemaRemoveTypeCmd)
 	profileSchemaCmd.AddCommand(schemaRemoveTopicCmd)
 	profileSchemaCmd.AddCommand(schemaEvolveCmd)
+
+	cliconv.WithSideEffect(schemaShowCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(schemaAddTypeCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(schemaAddTypeCmd, cliconv.IdempotencyNo)
+	cliconv.WithSideEffect(schemaAddTopicCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(schemaAddTopicCmd, cliconv.IdempotencyNo)
+	cliconv.WithSideEffect(schemaAddRuleCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(schemaAddRuleCmd, cliconv.IdempotencyNo)
+	cliconv.WithSideEffect(schemaRemoveTypeCmd, cliconv.SideEffectDestructive)
+	cliconv.WithIdempotency(schemaRemoveTypeCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(schemaRemoveTopicCmd, cliconv.SideEffectDestructive)
+	cliconv.WithIdempotency(schemaRemoveTopicCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(schemaEvolveCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(schemaEvolveCmd, cliconv.IdempotencyYes)
 }
 
 func getProfile(name string) (*config.FocusProfile, error) {
