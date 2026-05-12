@@ -89,12 +89,39 @@ func init() {
 
 	cliconv.WithSideEffect(upgradeCheckCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(upgradeCheckCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(upgradeCheckCmd, []cliconv.Example{
+		{Title: "Check for a new release", Command: "ctxt upgrade check"},
+		{Title: "Check and emit JSON", Command: "ctxt upgrade check --json"},
+	})
+
 	cliconv.WithSideEffect(upgradeInstallCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(upgradeInstallCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(upgradeInstallCmd, []cliconv.Example{
+		{Title: "Download and replace the binary", Command: "ctxt upgrade install"},
+		{Title: "Verify before installing", Command: "ctxt upgrade check && ctxt upgrade install"},
+	})
+	cliconv.WithNextSteps(upgradeInstallCmd, []cliconv.NextStep{
+		{Suggest: "ctxt version", Reason: "confirm the new binary version is live"},
+		{Suggest: "ctxt upgrade notes", Reason: "read the release notes for what changed"},
+	})
+
 	cliconv.WithSideEffect(upgradeSnoozeCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(upgradeSnoozeCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(upgradeSnoozeCmd, []cliconv.Example{
+		{Title: "Snooze the upgrade prompt", Command: "ctxt upgrade snooze"},
+		{Title: "Snooze then verify check still works", Command: "ctxt upgrade snooze && ctxt upgrade check"},
+	})
+	cliconv.WithNextSteps(upgradeSnoozeCmd, []cliconv.NextStep{
+		{Suggest: "ctxt upgrade check", Reason: "the banner is suppressed; this is the manual way to re-check"},
+		{Suggest: "ctxt upgrade install", Reason: "install now if you've decided to take the update"},
+	})
+
 	cliconv.WithSideEffect(upgradeNotesCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(upgradeNotesCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(upgradeNotesCmd, []cliconv.Example{
+		{Title: "Print the latest release notes", Command: "ctxt upgrade notes"},
+		{Title: "Pipe notes through less", Command: "ctxt upgrade notes | less"},
+	})
 }
 
 func runUpgradeCheck(cmd *cobra.Command, _ []string) error {

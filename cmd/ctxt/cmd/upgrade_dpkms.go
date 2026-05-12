@@ -154,10 +154,28 @@ func init() {
 
 	cliconv.WithSideEffect(upgradeStatusCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(upgradeStatusCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(upgradeStatusCmd, []cliconv.Example{
+		{Title: "Show dpkms upgrade state", Command: "ctxt upgrade status"},
+		{Title: "Watch until idle", Command: "ctxt upgrade status --watch --interval 5"},
+	})
+
 	cliconv.WithSideEffect(upgradePlanCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(upgradePlanCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(upgradePlanCmd, []cliconv.Example{
+		{Title: "Preview pending re-ingest work", Command: "ctxt upgrade plan"},
+		{Title: "Emit plan as JSON", Command: "ctxt upgrade plan --json"},
+	})
+
 	cliconv.WithSideEffect(upgradeRunCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(upgradeRunCmd, cliconv.IdempotencyConditional)
+	cliconv.WithExamples(upgradeRunCmd, []cliconv.Example{
+		{Title: "Selective re-ingest by pipeline filter", Command: "ctxt upgrade run --filter pipeline=text.short@v0"},
+		{Title: "Preview before running", Command: "ctxt upgrade run --filter pipeline=text.short@v0 --dry-run"},
+	})
+	cliconv.WithNextSteps(upgradeRunCmd, []cliconv.NextStep{
+		{Suggest: "ctxt upgrade status", Reason: "track progress while the worker runs (or pair with --watch)"},
+		{Suggest: "ctxt upgrade plan", Reason: "confirm the targeted family transition cleared after the run"},
+	})
 }
 
 // runUpgradeStatus implements `ctxt upgrade status` (+ --watch).
