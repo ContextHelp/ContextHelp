@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -49,6 +50,20 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(analyzeCmd)
+	cliconv.WithSideEffect(analyzeCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(analyzeCmd, []cliconv.Example{
+		{Title: "Analyze text from an argument", Command: "ctxt analyze \"Fix signup flow\""},
+		{Title: "Analyze text from stdin with hints", Command: "echo \"draft note\" | ctxt analyze --hint research"},
+		{Title: "Analyze a URL and wait for the job", Command: "ctxt analyze https://example.com --type url --wait"},
+	})
+	cliconv.WithNextSteps(analyzeCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt job status", Reason: "track the enqueued job"},
+		{When: "after enrichment completes", Suggest: "ctxt find <topic>", Reason: "discover related items"},
+	})
+	// "analyze" is not in kit's defaultIdempotency table; enqueueing the
+	// same content twice mints two jobs, so the operation is not
+	// idempotent without an explicit --idempotency-key.
+	cliconv.WithIdempotency(analyzeCmd, cliconv.IdempotencyConditional)
 
 	// Register flags on analyzeCmd for `ctxt analyze --help`.
 	analyzeCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")

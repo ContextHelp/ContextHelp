@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	bookmarksimporter "github.com/ideacrafterslabs/ctxt/internal/importer/bookmarks"
 	"github.com/spf13/cobra"
 )
@@ -29,9 +30,26 @@ func init() {
 	importSafariCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importSafariCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 	importSafariCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
-	importSafariCmd.Flags().Bool("dry-run", false, "parse and preview without enqueueing jobs")
 
 	importSafariCmd.MarkFlagRequired("file")
+
+	cliconv.WithSideEffect(importSafariCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importSafariCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importSafariCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import safari --file ./bookmarks.html",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import safari --file ./bookmarks.html --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importSafariCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportSafari(cmd *cobra.Command, args []string) error {

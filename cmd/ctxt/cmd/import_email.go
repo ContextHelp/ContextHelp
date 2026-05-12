@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -65,9 +66,26 @@ func init() {
 	// Common flags.
 	f.String("rules", "", "path to YAML rules file for custom routing")
 	f.String("pipeline", "", "pipeline override (applied to all messages, bypasses routing)")
-	f.Bool("dry-run", false, "evaluate routing without importing; print explain output")
 	f.String("since", "", "only fetch messages after this date (RFC 3339 or YYYY-MM-DD)")
 	f.Int("max-items", 0, "maximum number of messages to import (0 = unlimited)")
+
+	cliconv.WithSideEffect(importEmailCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importEmailCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importEmailCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import email --provider file --file message.eml",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import email --provider file --file archive.mbox --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importEmailCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 // emailServerURL returns the server URL from the command flag or the default.

@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/resurfacing"
 	"github.com/spf13/cobra"
@@ -25,27 +26,67 @@ Examples:
   ctxt resurface --limit 5
   ctxt resurface refresh
   ctxt resurface dismiss <entry-id>
-  ctxt resurface --output json`,
+  ctxt resurface --format json`,
 	RunE: runResurfaceShow,
 }
 
 var resurfaceRefreshCmd = &cobra.Command{
 	Use:   "refresh",
 	Short: "Re-score all objects and update the resurfacing queue",
-	RunE:  runResurfaceRefresh,
+	Long: `Re-score every knowledge object against the active profile and
+rewrite the resurfacing queue. Safe to re-run; existing entries are
+replaced with the freshly computed scores.
+
+Examples:
+  ctxt resurface refresh`,
+	RunE: runResurfaceRefresh,
 }
 
 var resurfaceDismissCmd = &cobra.Command{
 	Use:   "dismiss <entry-id>",
 	Short: "Dismiss a resurfacing entry",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runResurfaceDismiss,
+	Long: `Dismiss a single resurfacing entry by ID so it stops appearing in
+'ctxt resurface' output. The underlying knowledge object is untouched.
+
+Examples:
+  ctxt resurface dismiss entry-abc123`,
+	Args: cobra.ExactArgs(1),
+	RunE: runResurfaceDismiss,
 }
 
 func init() {
 	rootCmd.AddCommand(resurfaceCmd)
 	resurfaceCmd.AddCommand(resurfaceRefreshCmd)
 	resurfaceCmd.AddCommand(resurfaceDismissCmd)
+
+	// resurface itself re-injects items into the queue when shown
+	// (MarkResurfaced); treat as Write. refresh rewrites the queue.
+	cliconv.WithSideEffect(resurfaceCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(resurfaceCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(resurfaceCmd, []cliconv.Example{
+		{Title: "Show top resurfacing candidates", Command: "ctxt resurface"},
+		{Title: "Cap the result count", Command: "ctxt resurface --limit 5"},
+	})
+	cliconv.WithNextSteps(resurfaceCmd, []cliconv.NextStep{
+		{When: "when no results", Suggest: "ctxt resurface refresh", Reason: "re-score the queue before showing results"},
+		{When: "to drop an entry", Suggest: "ctxt resurface dismiss <entry-id>", Reason: "remove uninteresting entries from future output"},
+	})
+	cliconv.WithSideEffect(resurfaceRefreshCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(resurfaceRefreshCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(resurfaceRefreshCmd, []cliconv.Example{
+		{Title: "Re-score the resurfacing queue", Command: "ctxt resurface refresh"},
+	})
+	cliconv.WithNextSteps(resurfaceRefreshCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt resurface", Reason: "show the freshly re-scored candidates"},
+	})
+	cliconv.WithSideEffect(resurfaceDismissCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(resurfaceDismissCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(resurfaceDismissCmd, []cliconv.Example{
+		{Title: "Dismiss a resurfacing entry", Command: "ctxt resurface dismiss entry-abc123"},
+	})
+	cliconv.WithNextSteps(resurfaceDismissCmd, []cliconv.NextStep{
+		{When: "after dismiss", Suggest: "ctxt resurface", Reason: "verify the entry no longer appears"},
+	})
 
 	resurfaceCmd.Flags().IntP("limit", "n", 0, "max items to show (0 = use config default)")
 	resurfaceCmd.Flags().Float64("min-score", 0, "minimum score threshold (0 = use config default)")

@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 	kitupgrade "hop.top/kit/go/core/upgrade"
 )
@@ -43,25 +44,40 @@ follow XDG state conventions.`,
 var upgradeCheckCmd = &cobra.Command{
 	Use:   "check",
 	Short: "Report whether a newer release exists",
-	RunE:  runUpgradeCheck,
+	Long: `Query the configured release source (GitHub repo ` + upgradeGitHubRepo + `)
+for the latest version and report whether the current binary is up
+to date. The cache TTL is forced to zero so the check always hits
+the network. Read-only.`,
+	RunE: runUpgradeCheck,
 }
 
 var upgradeInstallCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Download and replace the ctxt binary in place",
-	RunE:  runUpgradeInstall,
+	Long: `Download the latest release artefact and atomically replace the
+running ctxt binary on disk. The replacement is performed by
+hop.top/kit/go/core/upgrade following XDG state conventions for
+cache and rollback paths.`,
+	RunE: runUpgradeInstall,
 }
 
 var upgradeSnoozeCmd = &cobra.Command{
 	Use:   "snooze",
 	Short: "Defer the upgrade prompt for the configured duration",
-	RunE:  runUpgradeSnooze,
+	Long: `Defer the in-banner upgrade prompt for the snooze window kit
+ships by default. The snooze timestamp is written to the local
+state directory under XDG; no network calls are made.`,
+	RunE: runUpgradeSnooze,
 }
 
 var upgradeNotesCmd = &cobra.Command{
 	Use:   "notes",
 	Short: "Print release notes for the latest version",
-	RunE:  runUpgradeNotes,
+	Long: `Fetch the release notes (body) for the latest release on the
+configured release source and print them to stdout. Read-only and
+network-bound; cache TTL is forced to zero so the notes are always
+fresh.`,
+	RunE: runUpgradeNotes,
 }
 
 func init() {
@@ -70,6 +86,42 @@ func init() {
 	upgradeCmd.AddCommand(upgradeInstallCmd)
 	upgradeCmd.AddCommand(upgradeSnoozeCmd)
 	upgradeCmd.AddCommand(upgradeNotesCmd)
+
+	cliconv.WithSideEffect(upgradeCheckCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(upgradeCheckCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(upgradeCheckCmd, []cliconv.Example{
+		{Title: "Check for a new release", Command: "ctxt upgrade check"},
+		{Title: "Check and emit JSON", Command: "ctxt upgrade check --json"},
+	})
+
+	cliconv.WithSideEffect(upgradeInstallCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(upgradeInstallCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(upgradeInstallCmd, []cliconv.Example{
+		{Title: "Download and replace the binary", Command: "ctxt upgrade install"},
+		{Title: "Verify before installing", Command: "ctxt upgrade check && ctxt upgrade install"},
+	})
+	cliconv.WithNextSteps(upgradeInstallCmd, []cliconv.NextStep{
+		{Suggest: "ctxt version", Reason: "confirm the new binary version is live"},
+		{Suggest: "ctxt upgrade notes", Reason: "read the release notes for what changed"},
+	})
+
+	cliconv.WithSideEffect(upgradeSnoozeCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(upgradeSnoozeCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(upgradeSnoozeCmd, []cliconv.Example{
+		{Title: "Snooze the upgrade prompt", Command: "ctxt upgrade snooze"},
+		{Title: "Snooze then verify check still works", Command: "ctxt upgrade snooze && ctxt upgrade check"},
+	})
+	cliconv.WithNextSteps(upgradeSnoozeCmd, []cliconv.NextStep{
+		{Suggest: "ctxt upgrade check", Reason: "the banner is suppressed; this is the manual way to re-check"},
+		{Suggest: "ctxt upgrade install", Reason: "install now if you've decided to take the update"},
+	})
+
+	cliconv.WithSideEffect(upgradeNotesCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(upgradeNotesCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(upgradeNotesCmd, []cliconv.Example{
+		{Title: "Print the latest release notes", Command: "ctxt upgrade notes"},
+		{Title: "Pipe notes through less", Command: "ctxt upgrade notes | less"},
+	})
 }
 
 func runUpgradeCheck(cmd *cobra.Command, _ []string) error {

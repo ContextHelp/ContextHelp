@@ -5,6 +5,7 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 	"hop.top/hdl"
 	"hop.top/hdl/generate"
@@ -16,6 +17,11 @@ const ctxtBundleID = "com.ideacrafterslabs.ctxt"
 var uriCmd = &cobra.Command{
 	Use:   "uri",
 	Short: "Manage ctxt:// URI scheme registration",
+	Long: `Manage the ctxt:// URI scheme registration with the host OS.
+
+Subcommands:
+  register  Register the ctxt:// scheme so ctxt:// links open ctxt.
+  snippet   Print a static registration snippet for bundled packaging.`,
 }
 
 var uriRegisterCmd = &cobra.Command{
@@ -51,6 +57,31 @@ func init() {
 	uriCmd.AddCommand(uriSnippetCmd)
 
 	uriSnippetCmd.Flags().String("platform", runtime.GOOS, "target platform (macos|ios|linux|windows)")
+
+	// 12fcc conformance: side-effect + idempotency annotations.
+	// register mutates OS-level URI scheme registration (write-local
+	// to the user / machine); snippet just prints a config block
+	// (read).
+	cliconv.WithSideEffect(uriRegisterCmd, cliconv.SideEffectWriteLocal)
+	cliconv.WithSideEffect(uriSnippetCmd, cliconv.SideEffectRead)
+	// "register" and "snippet" are not in kit's verb default table;
+	// tag explicitly. Re-registering the same scheme is idempotent.
+	cliconv.WithIdempotency(uriRegisterCmd, cliconv.IdempotencyYes)
+	cliconv.WithIdempotency(uriSnippetCmd, cliconv.IdempotencyYes)
+
+	// 12fcc strict-gate: examples + next-steps on every leaf.
+	cliconv.WithExamples(uriRegisterCmd, []cliconv.Example{
+		{Title: "Register ctxt:// with the OS", Command: "ctxt uri register"},
+	})
+	cliconv.WithNextSteps(uriRegisterCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "open ctxt://test", Reason: "verify the OS now hands ctxt:// links back to the ctxt binary"},
+	})
+	cliconv.WithExamples(uriSnippetCmd, []cliconv.Example{
+		{Title: "Print a macOS Info.plist snippet", Command: "ctxt uri snippet --platform macos"},
+		{Title: "Print a Linux .desktop snippet", Command: "ctxt uri snippet --platform linux"},
+	})
+	// uri snippet is a write-shaped verb name but only prints; classified
+	// as Read above. Skip next-steps — it just emits a static block.
 }
 
 func runURIRegister(cmd *cobra.Command, _ []string) error {

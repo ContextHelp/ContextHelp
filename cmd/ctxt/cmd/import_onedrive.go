@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	onedriveimporter "github.com/ideacrafterslabs/ctxt/internal/importer/onedrive"
 	"github.com/spf13/cobra"
 )
@@ -78,11 +79,28 @@ func init() {
 
 	importOneDriveCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importOneDriveCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importOneDriveCmd.Flags().Bool("dry-run", false, "list selected files without enqueueing jobs")
 
 	// For testing and self-hosted proxies.
 	importOneDriveCmd.Flags().String("graph-base-url", "", "override Microsoft Graph API base URL")
 	_ = importOneDriveCmd.Flags().MarkHidden("graph-base-url")
+
+	cliconv.WithSideEffect(importOneDriveCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importOneDriveCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importOneDriveCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import onedrive --token $ONEDRIVE_TOKEN",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import onedrive --token $ONEDRIVE_TOKEN --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importOneDriveCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 type driveFolderScope struct {

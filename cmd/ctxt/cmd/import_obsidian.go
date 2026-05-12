@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	obsidianImporter "github.com/ideacrafterslabs/ctxt/internal/importer/obsidian"
 	"github.com/spf13/cobra"
 )
@@ -42,9 +43,26 @@ func init() {
 	importObsidianCmd.Flags().Int("max-items", 0, "maximum notes to import (0 = all)")
 	importObsidianCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importObsidianCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importObsidianCmd.Flags().Bool("dry-run", false, "parse and preview notes without enqueueing jobs")
 
 	importObsidianCmd.MarkFlagRequired("vault")
+
+	cliconv.WithSideEffect(importObsidianCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importObsidianCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importObsidianCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import obsidian --vault ~/Obsidian",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import obsidian --vault ~/Obsidian --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importObsidianCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportObsidian(cmd *cobra.Command, args []string) error {

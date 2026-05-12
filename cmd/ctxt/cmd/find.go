@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/repl"
@@ -67,6 +68,12 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(findCmd)
+	cliconv.WithSideEffect(findCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(findCmd, []cliconv.Example{
+		{Title: "Hybrid search (default)", Command: "ctxt find \"authentication best practices\""},
+		{Title: "FTS-only search", Command: "ctxt find \"checkout flow\" --fts"},
+		{Title: "Vector-only search with limit", Command: "ctxt find \"signup conversion\" --semantic --limit 10"},
+	})
 
 	findCmd.Flags().Int("limit", 10, "maximum results")
 	findCmd.Flags().Bool("semantic", false, "vector-only search via embedding provider")

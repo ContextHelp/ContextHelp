@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -38,27 +39,56 @@ Examples:
 var inboxListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List inbox items",
-	RunE:  runInboxList,
+	Long: `List inbox items awaiting triage.
+
+Filter by status (--pending, --failed, --raw) to switch into the job-queue
+view; without filters the traditional inbox listing is shown.
+
+Examples:
+  ctxt inbox list
+  ctxt inbox list --pending
+  ctxt inbox list --limit 100 --offset 50`,
+	RunE: runInboxList,
 }
 
 var inboxTriageCmd = &cobra.Command{
 	Use:   "triage <id>",
 	Short: "Promote an inbox item to active and enqueue it",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runInboxTriage,
+	Long: `Promote a single inbox item to active state and enqueue it for the
+ingestion pipeline. Optionally pin a pipeline with --pipeline.
+
+Examples:
+  ctxt inbox triage abc123
+  ctxt inbox triage abc123 --pipeline default`,
+	Args: cobra.ExactArgs(1),
+	RunE: runInboxTriage,
 }
 
 var inboxDiscardCmd = &cobra.Command{
 	Use:   "discard <id>",
 	Short: "Discard an inbox item",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runInboxDiscard,
+	Long: `Permanently discard a single inbox item by ID. The item is removed
+from the inbox queue and cannot be recovered.
+
+Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).
+
+Examples:
+  ctxt inbox discard abc123`,
+	Args: cobra.ExactArgs(1),
+	RunE: runInboxDiscard,
 }
 
 var inboxClearCmd = &cobra.Command{
 	Use:   "clear",
 	Short: "Discard all inbox items",
-	RunE:  runInboxClear,
+	Long: `Discard every item currently sitting in the inbox. Destructive — the
+discarded items cannot be recovered.
+
+Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).
+
+Examples:
+  ctxt inbox clear`,
+	RunE: runInboxClear,
 }
 
 func init() {
@@ -67,6 +97,42 @@ func init() {
 	inboxCmd.AddCommand(inboxTriageCmd)
 	inboxCmd.AddCommand(inboxDiscardCmd)
 	inboxCmd.AddCommand(inboxClearCmd)
+
+	cliconv.WithSideEffect(inboxListCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(inboxListCmd, []cliconv.Example{
+		{Title: "List inbox items", Command: "ctxt inbox list"},
+		{Title: "Show only pending jobs", Command: "ctxt inbox list --pending --limit 100"},
+	})
+	cliconv.WithSideEffect(inboxTriageCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(inboxTriageCmd, cliconv.IdempotencyNo)
+	cliconv.WithExamples(inboxTriageCmd, []cliconv.Example{
+		{Title: "Triage an inbox item", Command: "ctxt inbox triage abc123"},
+		{Title: "Triage with a specific pipeline", Command: "ctxt inbox triage abc123 --pipeline default"},
+	})
+	cliconv.WithNextSteps(inboxTriageCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt job status <job-id>", Reason: "follow the triaged job through the pipeline"},
+		{When: "if triage fails", Suggest: "ctxt inbox list --failed", Reason: "inspect failed jobs and decide on retry"},
+	})
+	cliconv.WithSideEffect(inboxDiscardCmd, cliconv.SideEffectDestructive)
+	cliconv.WithDestructiveToken(inboxDiscardCmd)
+	cliconv.WithIdempotency(inboxDiscardCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(inboxDiscardCmd, []cliconv.Example{
+		{Title: "Discard an inbox item", Command: "ctxt inbox discard abc123 --confirm=yes"},
+		{Title: "Prompt for confirmation", Command: "ctxt inbox discard abc123 --confirm=prompt"},
+	})
+	cliconv.WithNextSteps(inboxDiscardCmd, []cliconv.NextStep{
+		{When: "after discard", Suggest: "ctxt inbox list", Reason: "verify the remaining inbox state"},
+	})
+	cliconv.WithSideEffect(inboxClearCmd, cliconv.SideEffectDestructive)
+	cliconv.WithDestructiveToken(inboxClearCmd)
+	cliconv.WithIdempotency(inboxClearCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(inboxClearCmd, []cliconv.Example{
+		{Title: "Clear every inbox item", Command: "ctxt inbox clear --confirm=yes"},
+		{Title: "Prompt for confirmation", Command: "ctxt inbox clear --confirm=prompt"},
+	})
+	cliconv.WithNextSteps(inboxClearCmd, []cliconv.NextStep{
+		{When: "after clear", Suggest: "ctxt inbox list", Reason: "confirm the inbox is empty"},
+	})
 
 	inboxListCmd.Flags().Int("limit", 50, "maximum results")
 	inboxListCmd.Flags().Int("offset", 0, "pagination offset")

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	raindropimporter "github.com/ideacrafterslabs/ctxt/internal/importer/raindrop"
 	"github.com/spf13/cobra"
 )
@@ -53,11 +54,28 @@ func init() {
 	importRaindropCmd.Flags().Int("max-items", 0, "maximum number of items to import (0 = all)")
 	importRaindropCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importRaindropCmd.Flags().String("pipeline", "import.raindrop", "pipeline override for enqueued jobs")
-	importRaindropCmd.Flags().Bool("dry-run", false, "list selected bookmarks without enqueueing jobs")
 
 	// For testing and self-hosted proxies.
 	importRaindropCmd.Flags().String("raindrop-base-url", "", "override Raindrop API base URL")
 	_ = importRaindropCmd.Flags().MarkHidden("raindrop-base-url")
+
+	cliconv.WithSideEffect(importRaindropCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importRaindropCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importRaindropCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import raindrop --token $RAINDROP_TOKEN --all",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import raindrop --token $RAINDROP_TOKEN --all --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importRaindropCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportRaindrop(cmd *cobra.Command, args []string) error {

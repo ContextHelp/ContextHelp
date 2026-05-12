@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -17,23 +19,43 @@ var deleteCmd = &cobra.Command{
 
 WARNING: This operation is irreversible. Use with caution.
 
+Confirmation is governed by kit's global --confirm flag (auto|yes|no|prompt).
+Pass --confirm=yes to bypass the prompt non-interactively. The kit-owned
+--confirm-token=<sha> is also required (the printed token must be echoed back).
+
 Examples:
   # Delete specific object
-  ctxt delete --id obj_12345678
+  ctxt delete --id obj_12345678 --confirm=yes --confirm-token=<sha>
 
   # Delete by tag
-  ctxt delete --tagged temporary
+  ctxt delete --tagged temporary --confirm=yes --confirm-token=<sha>
 
   # Delete by mention
-  ctxt delete --mention @project.archived
+  ctxt delete --mention @project.archived --confirm=yes --confirm-token=<sha>
 
   # Delete all (requires confirmation)
-  ctxt delete --all`,
+  ctxt delete --all --confirm=yes --confirm-token=<sha>`,
 	RunE: runDelete,
 }
 
 func init() {
 	rootCmd.AddCommand(deleteCmd)
+	cliconv.WithSideEffect(deleteCmd, cliconv.SideEffectDestructive)
+	cliconv.WithExamples(deleteCmd, []cliconv.Example{
+		{Title: "Delete a specific object", Command: "ctxt delete --id obj_12345678 --confirm=yes --confirm-token=<sha>"},
+		{Title: "Delete by tag", Command: "ctxt delete --tagged temporary --confirm=yes --confirm-token=<sha>"},
+		{Title: "Delete everything (destructive)", Command: "ctxt delete --all --confirm=yes --confirm-token=<sha>"},
+	})
+	cliconv.WithNextSteps(deleteCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "confirm the matching objects are gone"},
+		{When: "if too much was removed", Suggest: "ctxt log --type delete", Reason: "review the audit trail"},
+	})
+	// 12fcc strict-gate: opt into kit's typed-token confirmation flow.
+	// Kit installs the global --confirm + --confirm-token flags; gating
+	// happens in kit's wrapped RunE before the inner adopter chain runs.
+	cliconv.WithDestructiveToken(deleteCmd)
+	// "delete" is in kit's defaultIdempotency table (yes); deleting an
+	// already-deleted object is a no-op, so the verb default matches.
 
 	// Filter flags
 	deleteCmd.Flags().String("id", "", "delete specific knowledge object")
@@ -45,8 +67,10 @@ func init() {
 	deleteCmd.Flags().String("subtype", "", "delete by subtype")
 	deleteCmd.Flags().Bool("all", false, "delete all (requires confirmation)")
 
-	// Confirmation flags
-	deleteCmd.Flags().BoolP("yes", "y", false, "skip confirmation prompt")
+	// Confirmation: handled by kit's global --confirm (auto|yes|no|prompt)
+	// + --confirm-token flags. Local -y/--yes was dropped during the
+	// 12fcc conformance pass (T-0594) so confirmation has one source of
+	// truth across every destructive ctxt leaf.
 
 	// Bind flags to viper
 	viper.BindPFlag("delete.id", deleteCmd.Flags().Lookup("id"))
@@ -57,7 +81,6 @@ func init() {
 	viper.BindPFlag("delete.type", deleteCmd.Flags().Lookup("type"))
 	viper.BindPFlag("delete.subtype", deleteCmd.Flags().Lookup("subtype"))
 	viper.BindPFlag("delete.all", deleteCmd.Flags().Lookup("all"))
-	viper.BindPFlag("delete.yes", deleteCmd.Flags().Lookup("yes"))
 }
 
 func runDelete(cmd *cobra.Command, args []string) error {
@@ -66,7 +89,17 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	mention := viper.GetString("delete.mention")
 	typ := viper.GetString("delete.type")
 	deleteAll := viper.GetBool("delete.all")
-	skipConfirmation := viper.GetBool("delete.yes")
+	// Kit's wrapPolicyRunE has already enforced the --confirm + token
+	// matrix before this inner RunE was invoked: when control reaches
+	// here the operator has already authorized the destructive op. The
+	// per-object local prompt below is treated as a no-op whenever the
+	// operator passed --confirm=yes or --confirm=auto (kit's "go"
+	// signals).
+	skipConfirmation := false
+	if cf := cmd.Flags().Lookup("confirm"); cf != nil {
+		confirm := strings.ToLower(strings.TrimSpace(cf.Value.String()))
+		skipConfirmation = confirm == "yes" || confirm == "auto"
+	}
 
 	if id == "" && tag == "" && mention == "" && typ == "" && !deleteAll {
 		return fmt.Errorf("no filter specified; use --id, --tagged, --mention, --type, or --all")

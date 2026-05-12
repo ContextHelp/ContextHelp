@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 )
 
@@ -63,6 +64,20 @@ func init() {
 
 	// batch status flags
 	importBatchStatusCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+
+	cliconv.WithSideEffect(importBatchStatusCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(importBatchStatusCmd, cliconv.IdempotencyYes)
+
+	cliconv.WithExamples(importBatchStatusCmd, []cliconv.Example{
+		{
+			Title:   "Check a batch import status",
+			Command: "ctxt import batch status batch_12345678",
+		},
+		{
+			Title:   "Check status against a custom server",
+			Command: "ctxt import batch status batch_12345678 --server http://localhost:8080",
+		},
+	})
 }
 
 // batchServerURL returns the server URL from the command flag or the default.

@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 )
 
@@ -83,6 +84,15 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
+	cliconv.WithSideEffect(statusCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(statusCmd, []cliconv.Example{
+		{Title: "Show dpkms health (table)", Command: "ctxt status"},
+		{Title: "JSON envelope for automation", Command: "ctxt status --format json"},
+		{Title: "Refresh every 2 seconds", Command: "ctxt status --watch"},
+	})
+	// "status" is not in kit's defaultIdempotency table; mark it explicitly
+	// as idempotent — repeated /healthz polls don't mutate state.
+	cliconv.WithIdempotency(statusCmd, cliconv.IdempotencyYes)
 	statusCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	statusCmd.Flags().Bool("watch", false, "refresh every --interval seconds until interrupted")
 	statusCmd.Flags().Int("interval", 2, "seconds between refreshes when --watch is set")

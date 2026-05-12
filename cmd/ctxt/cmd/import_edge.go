@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	bookmarksimporter "github.com/ideacrafterslabs/ctxt/internal/importer/bookmarks"
 	"github.com/spf13/cobra"
 )
@@ -29,9 +30,26 @@ func init() {
 	importEdgeCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importEdgeCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 	importEdgeCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
-	importEdgeCmd.Flags().Bool("dry-run", false, "parse and preview without enqueueing jobs")
 
 	importEdgeCmd.MarkFlagRequired("file")
+
+	cliconv.WithSideEffect(importEdgeCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importEdgeCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importEdgeCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import edge --file ./bookmarks.html",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import edge --file ./bookmarks.html --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importEdgeCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportEdge(cmd *cobra.Command, args []string) error {

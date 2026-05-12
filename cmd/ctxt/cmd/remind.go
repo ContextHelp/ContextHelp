@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/remind"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
@@ -41,8 +42,13 @@ Examples:
 var remindClearCmd = &cobra.Command{
 	Use:   "clear <id>",
 	Short: "Clear a reminder from a knowledge object",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRemindClear,
+	Long: `Clear the reminder previously attached to a knowledge object. The
+object itself is not modified — only its reminder schedule is removed.
+
+Examples:
+  ctxt remind clear abc123`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRemindClear,
 }
 
 var remindListCmd = &cobra.Command{
@@ -61,6 +67,29 @@ func init() {
 	remindCmd.AddCommand(remindSetCmd)
 	remindCmd.AddCommand(remindClearCmd)
 	remindCmd.AddCommand(remindListCmd)
+
+	cliconv.WithSideEffect(remindSetCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(remindSetCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(remindSetCmd, []cliconv.Example{
+		{Title: "Remind me tomorrow morning", Command: "ctxt remind set abc123 \"tomorrow 9am\""},
+		{Title: "Remind in two hours", Command: "ctxt remind set abc123 \"in 2h\""},
+	})
+	cliconv.WithNextSteps(remindSetCmd, []cliconv.NextStep{
+		{When: "after set", Suggest: "ctxt remind list", Reason: "confirm the reminder shows up with the expected fire time"},
+	})
+	cliconv.WithSideEffect(remindClearCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(remindClearCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(remindClearCmd, []cliconv.Example{
+		{Title: "Clear a reminder", Command: "ctxt remind clear abc123"},
+	})
+	cliconv.WithNextSteps(remindClearCmd, []cliconv.NextStep{
+		{When: "after clear", Suggest: "ctxt remind list", Reason: "verify the reminder is gone"},
+	})
+	cliconv.WithSideEffect(remindListCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(remindListCmd, []cliconv.Example{
+		{Title: "List scheduled reminders", Command: "ctxt remind list"},
+		{Title: "Emit JSON", Command: "ctxt remind list --format json"},
+	})
 }
 
 func runRemindSet(cmd *cobra.Command, args []string) error {

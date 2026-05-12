@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	logseqImporter "github.com/ideacrafterslabs/ctxt/internal/importer/logseq"
 	"github.com/spf13/cobra"
 )
@@ -44,9 +45,26 @@ func init() {
 	importLogseqCmd.Flags().Int("max-items", 0, "maximum pages to import (0 = all)")
 	importLogseqCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importLogseqCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importLogseqCmd.Flags().Bool("dry-run", false, "parse and preview pages without enqueueing jobs")
 
 	importLogseqCmd.MarkFlagRequired("graph")
+
+	cliconv.WithSideEffect(importLogseqCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importLogseqCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importLogseqCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import logseq --graph ~/Logseq",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import logseq --graph ~/Logseq --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importLogseqCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportLogseq(cmd *cobra.Command, args []string) error {

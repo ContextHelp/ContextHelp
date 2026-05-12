@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/lint"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
@@ -21,16 +22,26 @@ missing metadata enrichment, near-duplicates, and stale objects.
 Examples:
   ctxt doctor
   ctxt doctor --check orphans,duplicates
-  ctxt doctor --output json
+  ctxt doctor --format json
   ctxt doctor --profile work --limit 50`,
 	RunE: runDoctor,
 }
 
 func init() {
 	rootCmd.AddCommand(doctorCmd)
+	cliconv.WithSideEffect(doctorCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(doctorCmd, []cliconv.Example{
+		{Title: "Run all health checks", Command: "ctxt doctor"},
+		{Title: "Limit to specific checks", Command: "ctxt doctor --check orphans,duplicates"},
+		{Title: "JSON output for automation", Command: "ctxt doctor --format json"},
+	})
+	// "doctor" is in kit's defaultIdempotency table (yes); the lint
+	// report-only path matches the verb default, so no override needed.
 	doctorCmd.Flags().StringSlice("check", nil,
 		"checks to run (orphans,missing_metadata,duplicates,stale); default: all")
-	doctorCmd.Flags().String("profile", "", "scope checks to a focus profile")
+	// --profile is inherited from kit's persistent flag set; do not
+	// re-register it locally. doctor reads it via cmd.Flags().GetString("profile")
+	// at run time (cobra resolves inherited persistent flags through Flags()).
 	doctorCmd.Flags().Int("limit", 0, "max issues to report (0 = unlimited)")
 	doctorCmd.Flags().Int("stale-days", 90, "days without update before flagging as stale")
 	doctorCmd.Flags().Float64("duplicate-threshold", 0.95,

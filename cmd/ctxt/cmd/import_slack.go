@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	slackimporter "github.com/ideacrafterslabs/ctxt/internal/importer/slack"
 	"github.com/spf13/cobra"
 )
@@ -48,9 +49,26 @@ func init() {
 	importSlackCmd.Flags().Int("max-items", 0, "maximum messages to import (0 = all)")
 	importSlackCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importSlackCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importSlackCmd.Flags().Bool("dry-run", false, "parse and preview messages without enqueueing jobs")
 
 	importSlackCmd.MarkFlagRequired("dir")
+
+	cliconv.WithSideEffect(importSlackCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importSlackCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importSlackCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import slack --dir ./slack-export",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import slack --dir ./slack-export --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importSlackCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportSlack(cmd *cobra.Command, args []string) error {

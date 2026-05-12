@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	notionimporter "github.com/ideacrafterslabs/ctxt/internal/importer/notion"
 	"github.com/spf13/cobra"
 )
@@ -36,11 +37,28 @@ func init() {
 
 	importNotionCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importNotionCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importNotionCmd.Flags().Bool("dry-run", false, "list pages and mapping without enqueueing jobs")
 
 	// For testing and self-hosted proxies.
 	importNotionCmd.Flags().String("notion-base-url", "", "override Notion API base URL")
 	_ = importNotionCmd.Flags().MarkHidden("notion-base-url")
+
+	cliconv.WithSideEffect(importNotionCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importNotionCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importNotionCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import notion --token $NOTION_TOKEN --all-shared",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import notion --token $NOTION_TOKEN --all-shared --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importNotionCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportNotion(cmd *cobra.Command, args []string) error {

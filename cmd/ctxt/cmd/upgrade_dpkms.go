@@ -36,6 +36,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -138,19 +139,43 @@ func init() {
 	upgradeStatusCmd.Flags().Bool("watch", false, "refresh every --interval seconds until idle")
 	upgradeStatusCmd.Flags().Int("interval", 2, "seconds between refreshes when --watch is set")
 
-	// plan flags.
+	// plan flags. --dry-run is inherited from the kit global persistent
+	// flag (plan is read-only anyway; the flag is silently accepted).
 	upgradePlanCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
-	upgradePlanCmd.Flags().Bool("dry-run", false, "no-op alias; plan is always read-only")
 
-	// run flags.
+	// run flags. --dry-run is inherited from the kit global persistent flag.
 	upgradeRunCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
-	upgradeRunCmd.Flags().Bool("dry-run", false, "parse + plan but do not mutate")
 	upgradeRunCmd.Flags().String("filter", "", "narrow affected objects (e.g. pipeline=text.short@v0)")
 	upgradeRunCmd.Flags().String("where", "", "SQL WHERE escape hatch (compiles to where:<predicate>)")
 	upgradeRunCmd.Flags().Int("rate-limit", 0, "max re-ingests per second (0 = unbounded)")
 	upgradeRunCmd.Flags().Float64("budget", 0, "cumulative LLM cost ceiling in USD (0 = unbounded)")
 	upgradeRunCmd.Flags().Bool("all", false, "execute a bucket-3 full-corpus re-ingest")
 	upgradeRunCmd.Flags().String("i-understand-the-cost", "", "consent SHA from release notes (required with --all)")
+
+	cliconv.WithSideEffect(upgradeStatusCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(upgradeStatusCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(upgradeStatusCmd, []cliconv.Example{
+		{Title: "Show dpkms upgrade state", Command: "ctxt upgrade status"},
+		{Title: "Watch until idle", Command: "ctxt upgrade status --watch --interval 5"},
+	})
+
+	cliconv.WithSideEffect(upgradePlanCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(upgradePlanCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(upgradePlanCmd, []cliconv.Example{
+		{Title: "Preview pending re-ingest work", Command: "ctxt upgrade plan"},
+		{Title: "Emit plan as JSON", Command: "ctxt upgrade plan --json"},
+	})
+
+	cliconv.WithSideEffect(upgradeRunCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(upgradeRunCmd, cliconv.IdempotencyConditional)
+	cliconv.WithExamples(upgradeRunCmd, []cliconv.Example{
+		{Title: "Selective re-ingest by pipeline filter", Command: "ctxt upgrade run --filter pipeline=text.short@v0"},
+		{Title: "Preview before running", Command: "ctxt upgrade run --filter pipeline=text.short@v0 --dry-run"},
+	})
+	cliconv.WithNextSteps(upgradeRunCmd, []cliconv.NextStep{
+		{Suggest: "ctxt upgrade status", Reason: "track progress while the worker runs (or pair with --watch)"},
+		{Suggest: "ctxt upgrade plan", Reason: "confirm the targeted family transition cleared after the run"},
+	})
 }
 
 // runUpgradeStatus implements `ctxt upgrade status` (+ --watch).

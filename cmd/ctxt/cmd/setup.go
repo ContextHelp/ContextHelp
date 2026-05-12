@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -34,6 +35,19 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(setupCmd)
+	cliconv.WithSideEffect(setupCmd, cliconv.SideEffectInteractive)
+	cliconv.WithExamples(setupCmd, []cliconv.Example{
+		{Title: "Run the interactive wizard", Command: "ctxt setup"},
+		{Title: "Write defaults non-interactively", Command: "ctxt setup --non-interactive"},
+	})
+	cliconv.WithNextSteps(setupCmd, []cliconv.NextStep{
+		{When: "after configuration", Suggest: "ctxt doctor", Reason: "verify the resulting setup"},
+		{When: "to inspect the written config", Suggest: "ctxt config show", Reason: "review the resolved values"},
+	})
+	// "setup" is not in kit's defaultIdempotency table; re-running the
+	// wizard re-prompts (or re-writes defaults in --non-interactive),
+	// converging to a deterministic config file. Mark idempotent.
+	cliconv.WithIdempotency(setupCmd, cliconv.IdempotencyYes)
 	setupCmd.Flags().Bool("non-interactive", false, "skip all prompts and write defaults (also triggered by CI=true)")
 }
 

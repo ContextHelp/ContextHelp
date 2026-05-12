@@ -103,9 +103,9 @@ func TestFeedListJSONOutput(t *testing.T) {
 	srv := startMockFeedServer(t)
 	defer srv.Close()
 
-	out, err := executeCommand("feed", "list", "--server", srv.URL, "--output", "json")
+	out, err := executeCommand("feed", "list", "--server", srv.URL, "--format", "json")
 	if err != nil {
-		t.Fatalf("feed list --output json should succeed: %v", err)
+		t.Fatalf("feed list --format json should succeed: %v", err)
 	}
 	if !strings.Contains(out, `"feeds"`) {
 		t.Errorf("JSON output should contain feeds key, got: %s", out)

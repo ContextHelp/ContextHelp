@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +28,7 @@ Examples:
   ctxt classify o-abc123
 
   # JSON output
-  ctxt classify "some text" --output json
+  ctxt classify "some text" --format json
 
   # Select a named pipeline (reserved for future use)
   ctxt classify "some text" --pipeline default`,
@@ -37,6 +38,20 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(classifyCmd)
+	cliconv.WithSideEffect(classifyCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(classifyCmd, []cliconv.Example{
+		{Title: "Classify raw text", Command: "ctxt classify \"The server crashed after deploying v2.3\""},
+		{Title: "Classify a stored object", Command: "ctxt classify o-abc123"},
+		{Title: "JSON output", Command: "ctxt classify \"some text\" --format json"},
+	})
+	cliconv.WithNextSteps(classifyCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt show <object_id>", Reason: "inspect persisted classification signals"},
+	})
+	// "classify" is not in kit's defaultIdempotency table; classifying the
+	// same input twice yields the same signals but persists fresh
+	// classification rows on stored objects, so naïve idempotency is no.
+	cliconv.WithIdempotency(classifyCmd, cliconv.IdempotencyConditional)
+
 	classifyCmd.Flags().String("pipeline", "", "pipeline name (reserved)")
 }
 

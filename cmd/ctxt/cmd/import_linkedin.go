@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	linkedinimporter "github.com/ideacrafterslabs/ctxt/internal/importer/linkedin"
 	"github.com/spf13/cobra"
 )
@@ -51,7 +52,24 @@ func init() {
 	importLinkedInCmd.Flags().Int("max-items", 0, "maximum number of items to import (0 = all)")
 	importLinkedInCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importLinkedInCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importLinkedInCmd.Flags().Bool("dry-run", false, "preview selected items without enqueueing jobs")
+
+	cliconv.WithSideEffect(importLinkedInCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importLinkedInCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importLinkedInCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import linkedin --posts ./Posts.csv",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import linkedin --posts ./Posts.csv --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importLinkedInCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportLinkedIn(cmd *cobra.Command, _ []string) error {

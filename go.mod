@@ -51,7 +51,9 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/apple/pkl-go v0.13.2 // indirect
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
+	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
+	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/charmbracelet/bubbles v1.0.0 // indirect
 	github.com/charmbracelet/bubbletea v1.3.10 // indirect
 	github.com/charmbracelet/lipgloss v1.1.0 // indirect
@@ -67,7 +69,9 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/cel-go v0.25.0 // indirect
 	github.com/hashicorp/mdns v1.0.6 // indirect
+	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/kr/fs v0.1.0 // indirect
+	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/miekg/dns v1.1.55 // indirect
 	github.com/muesli/mango v0.2.0 // indirect
 	github.com/muesli/mango-cobra v1.3.0 // indirect
@@ -77,6 +81,7 @@ require (
 	github.com/tj/go-naturaldate v1.3.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
+	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/tools v0.44.0 // indirect
@@ -158,4 +163,4 @@ require (
 
 replace hop.top/c12n => /Users/jadb/.w/ideacrafterslabs/c12n/hops/main
 
-replace hop.top/kit => /Users/jadb/.w/ideacrafterslabs/kit/hops/main
+replace hop.top/kit => /Users/jadb/.w/ideacrafterslabs/kit/hops/12fcc-leak

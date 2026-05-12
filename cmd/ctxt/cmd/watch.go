@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
@@ -92,6 +93,49 @@ func init() {
 	watchCmd.AddCommand(watchStatusCmd)
 	watchCmd.AddCommand(watchEnableCmd)
 	watchCmd.AddCommand(watchDisableCmd)
+
+	// start blocks running watchers; treat as a Write effect (it
+	// enqueues ingestion jobs while running).
+	cliconv.WithSideEffect(watchStartCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(watchStartCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(watchStartCmd, []cliconv.Example{
+		{Title: "Start every configured watcher", Command: "ctxt watch start"},
+		{Title: "Run without the clipboard watcher", Command: "CTXT_NO_CLIPBOARD=1 ctxt watch start"},
+	})
+	cliconv.WithNextSteps(watchStartCmd, []cliconv.NextStep{
+		{When: "in another shell", Suggest: "ctxt watch status", Reason: "verify the watchers report active"},
+		{When: "to stop", Suggest: "ctxt watch stop", Reason: "pause every active directory watcher"},
+	})
+	cliconv.WithSideEffect(watchStopCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(watchStopCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(watchStopCmd, []cliconv.Example{
+		{Title: "Pause every active watcher", Command: "ctxt watch stop"},
+	})
+	cliconv.WithNextSteps(watchStopCmd, []cliconv.NextStep{
+		{When: "after stop", Suggest: "ctxt watch status", Reason: "confirm every watcher moved to paused"},
+	})
+	cliconv.WithSideEffect(watchStatusCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(watchStatusCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(watchStatusCmd, []cliconv.Example{
+		{Title: "Show watcher status", Command: "ctxt watch status"},
+		{Title: "Emit JSON", Command: "ctxt watch status --format json"},
+	})
+	cliconv.WithSideEffect(watchEnableCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(watchEnableCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(watchEnableCmd, []cliconv.Example{
+		{Title: "Enable the clipboard watcher", Command: "ctxt watch enable clipboard"},
+	})
+	cliconv.WithNextSteps(watchEnableCmd, []cliconv.NextStep{
+		{When: "after enable", Suggest: "ctxt watch start", Reason: "start monitoring with the new config"},
+	})
+	cliconv.WithSideEffect(watchDisableCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(watchDisableCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(watchDisableCmd, []cliconv.Example{
+		{Title: "Disable the clipboard watcher", Command: "ctxt watch disable clipboard"},
+	})
+	cliconv.WithNextSteps(watchDisableCmd, []cliconv.NextStep{
+		{When: "after disable", Suggest: "ctxt watch status", Reason: "confirm the clipboard watcher is now disabled"},
+	})
 }
 
 func runWatchStart(cmd *cobra.Command, _ []string) error {

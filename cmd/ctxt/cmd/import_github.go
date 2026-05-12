@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	githubimporter "github.com/ideacrafterslabs/ctxt/internal/importer/github"
 	"github.com/spf13/cobra"
 )
@@ -53,7 +54,7 @@ Examples:
   ctxt import github --username octocat --token $GITHUB_TOKEN --lists starred,watched
 
   # JSON output
-  ctxt import github --username octocat --dry-run --output json`,
+  ctxt import github --username octocat --dry-run --format json`,
 	RunE: runImportGitHub,
 }
 
@@ -63,14 +64,30 @@ func init() {
 	importGitHubCmd.Flags().StringP("token", "t", "", "GitHub token (or GITHUB_TOKEN env)")
 	importGitHubCmd.Flags().StringP("username", "u", "", "GitHub username (required)")
 	importGitHubCmd.Flags().StringP("lists", "l", "starred", "comma-separated lists: starred,watched,contributed")
-	importGitHubCmd.Flags().Bool("dry-run", false, "print what would be imported without enqueueing jobs")
-	importGitHubCmd.Flags().String("output", "table", "output format: table or json")
 	importGitHubCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importGitHubCmd.Flags().String("pipeline", "text.long", "pipeline override for enqueued jobs")
 
 	// hidden for test/dev overrides
 	importGitHubCmd.Flags().String("github-base-url", "", "override GitHub API base URL")
 	_ = importGitHubCmd.Flags().MarkHidden("github-base-url")
+
+	cliconv.WithSideEffect(importGitHubCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importGitHubCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importGitHubCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import github --username octocat",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import github --username octocat --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importGitHubCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportGitHub(cmd *cobra.Command, args []string) error {
@@ -92,7 +109,10 @@ func runImportGitHub(cmd *cobra.Command, args []string) error {
 	}
 
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	outputFmt, _ := cmd.Flags().GetString("output")
+	outputFmt, _ := cmd.Flags().GetString("format")
+	if outputFmt == "" {
+		outputFmt = "table"
+	}
 	serverURL, _ := cmd.Flags().GetString("server")
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	baseURL, _ := cmd.Flags().GetString("github-base-url")

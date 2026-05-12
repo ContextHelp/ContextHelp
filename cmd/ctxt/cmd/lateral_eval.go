@@ -18,6 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	lateral "github.com/ideacrafterslabs/ctxt/internal/lateral"
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/daemon"
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/eval"
@@ -39,21 +40,46 @@ the schema.`,
 var lateralEvalReplayCmd = &cobra.Command{
 	Use:   "replay <fixtures.jsonl>",
 	Short: "Replay a fixture file through the registry, print a JSON report",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runLateralEvalReplay,
+	Long: `replay parses a JSONL fixture file (one Fixture per line), dispatches
+each event through the configured strategy registry, captures the emitted
+candidates, and prints a JSON report mapping fixture → candidates. Used
+by the lateral-eval CI workflow to gate PR merges; also useful for ad-hoc
+QA after touching a strategy's Probe/Applies surface.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runLateralEvalReplay,
 }
 
 var lateralEvalMetricsCmd = &cobra.Command{
 	Use:   "metrics <fixtures.jsonl>",
 	Short: "Replay + print per-strategy precision/recall/negative-pass table",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runLateralEvalMetrics,
+	Long: `metrics runs the same fixture replay as 'replay' and then aggregates
+per-strategy precision, recall, and negative-pass rate against the expected
+candidates declared in each Fixture. Default output is a text table; pass
+--json to emit the same numbers as machine-readable JSON.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runLateralEvalMetrics,
 }
 
 func init() {
 	lateralCmd.AddCommand(lateralEvalCmd)
 	lateralEvalCmd.AddCommand(lateralEvalReplayCmd)
 	lateralEvalCmd.AddCommand(lateralEvalMetricsCmd)
+
+	// eval is an intermediate group with depth-3 leaves below.
+	cliconv.MarkHierarchical(lateralEvalCmd)
+	// replay + metrics are read-only fixture replays.
+	cliconv.WithSideEffect(lateralEvalReplayCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(lateralEvalReplayCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(lateralEvalReplayCmd, []cliconv.Example{
+		{Title: "Replay a fixture file", Command: "ctxt lateral eval replay ./fixtures.jsonl"},
+		{Title: "Replay with extra config", Command: "ctxt lateral eval replay ./fixtures.jsonl --lateral-config ./lateral.local.yaml"},
+	})
+	cliconv.WithSideEffect(lateralEvalMetricsCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(lateralEvalMetricsCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(lateralEvalMetricsCmd, []cliconv.Example{
+		{Title: "Compute per-strategy metrics", Command: "ctxt lateral eval metrics ./fixtures.jsonl"},
+		{Title: "Emit metrics as JSON", Command: "ctxt lateral eval metrics ./fixtures.jsonl --json"},
+	})
 
 	for _, c := range []*cobra.Command{lateralEvalReplayCmd, lateralEvalMetricsCmd} {
 		c.Flags().String("lateral-config", "", "extra config file appended as the highest-priority layer")

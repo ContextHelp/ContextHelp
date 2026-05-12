@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -56,6 +57,20 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(composeCmd)
+	cliconv.WithSideEffect(composeCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(composeCmd, []cliconv.Example{
+		{Title: "Generate a brief from tagged knowledge", Command: "ctxt compose brief --tagged ux,onboarding"},
+		{Title: "Generate a plan scoped to a mention", Command: "ctxt compose plan --mention @project.signup-redesign"},
+		{Title: "Write a draft to a file as JSON", Command: "ctxt compose draft --tagged launch --output-file launch.md --export json"},
+	})
+	cliconv.WithNextSteps(composeCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt show <id>", Reason: "review the generated composition"},
+		{When: "if results miss context", Suggest: "ctxt find <topic>", Reason: "verify what knowledge was available"},
+	})
+	// "compose" is not in kit's defaultIdempotency table; LLM-backed
+	// generation is non-deterministic by default, so the same inputs may
+	// produce different outputs across runs.
+	cliconv.WithIdempotency(composeCmd, cliconv.IdempotencyNo)
 
 	// Filter flags
 	composeCmd.Flags().String("mention", "", "focus on specific mentions")

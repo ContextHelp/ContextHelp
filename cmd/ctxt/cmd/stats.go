@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 )
@@ -20,13 +21,22 @@ reminders, and resurfacing candidates.
 
 Examples:
   ctxt stats
-  ctxt stats --output json
+  ctxt stats --format json
   ctxt stats --watch`,
 	RunE: runStats,
 }
 
 func init() {
 	rootCmd.AddCommand(statsCmd)
+	cliconv.WithSideEffect(statsCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(statsCmd, []cliconv.Example{
+		{Title: "Show a snapshot summary", Command: "ctxt stats"},
+		{Title: "Re-print every 3 seconds", Command: "ctxt stats --watch"},
+		{Title: "JSON output for automation", Command: "ctxt stats --format json"},
+	})
+	// "stats" is not in kit's defaultIdempotency table; aggregating counts
+	// is naturally idempotent — no state changes between calls.
+	cliconv.WithIdempotency(statsCmd, cliconv.IdempotencyYes)
 	statsCmd.Flags().Bool("watch", false, "re-print every 3s (Ctrl-C to exit)")
 }
 

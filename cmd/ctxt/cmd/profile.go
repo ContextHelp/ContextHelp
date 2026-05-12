@@ -5,6 +5,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -34,35 +35,51 @@ Examples:
 var profileListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all profiles",
-	RunE:  runProfileList,
+	Long: `List every focus profile defined in the active config plus the
+currently-selected default. Read-only; the profile store is not
+modified.`,
+	RunE: runProfileList,
 }
 
 var profileShowCmd = &cobra.Command{
 	Use:   "show <name>",
 	Short: "Show profile details",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runProfileShow,
+	Long: `Display the description, tags, mention namespaces, and rerank
+boosts for a single focus profile. Read-only; no config writes.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runProfileShow,
 }
 
 var profileCreateCmd = &cobra.Command{
 	Use:   "create <name>",
 	Short: "Create a new profile",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runProfileCreate,
+	Long: `Add a new focus profile to the active config with a placeholder
+description. Fails if a profile of the same name already exists.
+Writes back to the resolved config file.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runProfileCreate,
 }
 
 var profileDeleteCmd = &cobra.Command{
 	Use:   "delete <name>",
 	Short: "Delete a profile",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runProfileDelete,
+	Long: `Remove a focus profile from the active config. If the deleted
+profile was the default, the default is also cleared. The change is
+persisted by rewriting the resolved config file.
+
+Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
+	Args: cobra.ExactArgs(1),
+	RunE: runProfileDelete,
 }
 
 var profileSetDefaultCmd = &cobra.Command{
 	Use:   "default [name]",
 	Short: "Set default profile",
-	Args:  cobra.MaximumNArgs(1),
-	RunE:  runProfileSetDefault,
+	Long: `Pin the named profile as the default for filtering and
+reranking, or clear the default by omitting the argument. The change
+is persisted by rewriting the resolved config file.`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runProfileSetDefault,
 }
 
 func init() {
@@ -73,6 +90,49 @@ func init() {
 	profileCmd.AddCommand(profileCreateCmd)
 	profileCmd.AddCommand(profileDeleteCmd)
 	profileCmd.AddCommand(profileSetDefaultCmd)
+
+	cliconv.WithSideEffect(profileListCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(profileListCmd, []cliconv.Example{
+		{Title: "List all profiles", Command: "ctxt profile list"},
+		{Title: "List profiles as JSON", Command: "ctxt profile list --json"},
+	})
+
+	cliconv.WithSideEffect(profileShowCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(profileShowCmd, []cliconv.Example{
+		{Title: "Show details for a profile", Command: "ctxt profile show founder"},
+		{Title: "Show profile as JSON", Command: "ctxt profile show founder --json"},
+	})
+
+	cliconv.WithSideEffect(profileCreateCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(profileCreateCmd, []cliconv.Example{
+		{Title: "Create a profile", Command: "ctxt profile create myproject"},
+		{Title: "Create then inspect", Command: "ctxt profile create research && ctxt profile show research"},
+	})
+	cliconv.WithNextSteps(profileCreateCmd, []cliconv.NextStep{
+		{Suggest: "ctxt profile show <name>", Reason: "verify the new profile and its default fields"},
+		{Suggest: "ctxt profile default <name>", Reason: "promote the new profile to be the active default"},
+	})
+
+	cliconv.WithSideEffect(profileDeleteCmd, cliconv.SideEffectDestructive)
+	cliconv.WithDestructiveToken(profileDeleteCmd)
+	cliconv.WithExamples(profileDeleteCmd, []cliconv.Example{
+		{Title: "Delete a profile", Command: "ctxt profile delete myproject --confirm=yes"},
+		{Title: "Delete with interactive confirmation", Command: "ctxt profile delete myproject --confirm=prompt"},
+	})
+	cliconv.WithNextSteps(profileDeleteCmd, []cliconv.NextStep{
+		{Suggest: "ctxt profile list", Reason: "confirm the profile is gone and review remaining ones"},
+		{When: "if it was the default", Suggest: "ctxt profile default <name>", Reason: "the default was cleared; pin a new one"},
+	})
+
+	cliconv.WithSideEffect(profileSetDefaultCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(profileSetDefaultCmd, []cliconv.Example{
+		{Title: "Pin a profile as default", Command: "ctxt profile default founder"},
+		{Title: "Clear the default profile", Command: "ctxt profile default"},
+	})
+	cliconv.WithNextSteps(profileSetDefaultCmd, []cliconv.NextStep{
+		{Suggest: "ctxt profile list", Reason: "confirm the default marker moved (* prefix)"},
+		{Suggest: "ctxt profile show <name>", Reason: "review the now-active profile schema and boosts"},
+	})
 }
 
 func configPath() string {

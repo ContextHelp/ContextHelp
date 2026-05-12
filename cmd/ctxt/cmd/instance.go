@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/spf13/cobra"
@@ -41,7 +42,12 @@ var instanceListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
 	Short:   "List running dpkms instances",
-	RunE:    runInstanceList,
+	Long: `List every running dpkms instance discovered via PID files.
+
+Each row reports name, PID, REST port, gRPC port, DB path, and uptime. A
+leading "* " marks the currently active instance (per the state file).
+Use ctxt instance use <name> to switch the active instance.`,
+	RunE: runInstanceList,
 }
 
 var instanceUseCmd = &cobra.Command{
@@ -63,7 +69,13 @@ Examples:
 var instanceCurrentCmd = &cobra.Command{
 	Use:   "current",
 	Short: "Print the active instance name",
-	RunE:  runInstanceCurrent,
+	Long: `Print the name of the currently active dpkms instance.
+
+When a per-call override is set (CTXT_INSTANCE env var or --instance flag),
+that takes precedence. Otherwise the state file under
+$XDG_DATA_HOME/contexthelp/run/current-instance is consulted. Prints
+"(none — using config storage.path)" when no instance is selected.`,
+	RunE: runInstanceCurrent,
 }
 
 func init() {
@@ -71,6 +83,32 @@ func init() {
 	instanceCmd.AddCommand(instanceListCmd)
 	instanceCmd.AddCommand(instanceUseCmd)
 	instanceCmd.AddCommand(instanceCurrentCmd)
+
+	// 12fcc conformance: side-effect + idempotency annotations.
+	// list/current are read-only; use writes the state file
+	// (write-local — affects only the current user's ctxt state).
+	cliconv.WithSideEffect(instanceListCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(instanceCurrentCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(instanceUseCmd, cliconv.SideEffectWriteLocal)
+	// Kit verb defaults cover list/current/use (all Yes); no
+	// explicit idempotency overrides needed.
+
+	// 12fcc strict-gate: examples + next-steps on every leaf.
+	cliconv.WithExamples(instanceListCmd, []cliconv.Example{
+		{Title: "List running dpkms instances", Command: "ctxt instance list"},
+		{Title: "Alias", Command: "ctxt instance ls"},
+	})
+	cliconv.WithExamples(instanceCurrentCmd, []cliconv.Example{
+		{Title: "Print the active instance", Command: "ctxt instance current"},
+		{Title: "JSON for scripting", Command: "ctxt instance current --format json"},
+	})
+	cliconv.WithExamples(instanceUseCmd, []cliconv.Example{
+		{Title: "Switch to a named instance", Command: "ctxt instance use work"},
+		{Title: "Clear the selection", Command: "ctxt instance use -"},
+	})
+	cliconv.WithNextSteps(instanceUseCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt instance current", Reason: "confirm the active instance landed on the expected target"},
+	})
 }
 
 func runInstanceList(cmd *cobra.Command, _ []string) error {

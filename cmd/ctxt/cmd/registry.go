@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/apierror"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -48,28 +49,43 @@ Examples:
 var registryListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all registries",
-	RunE:  runRegistryList,
+	Long: `List every configured registry alongside the URL and the last
+fetch timestamp recorded in the local cache. Read-only.`,
+	RunE: runRegistryList,
 }
 
 var registryAddCmd = &cobra.Command{
 	Use:   "add <name> <url>",
 	Short: "Add a new registry",
-	Args:  cobra.ExactArgs(2),
-	RunE:  runRegistryAdd,
+	Long: `Fetch the manifest for the registry at <url>, cache it locally,
+and record the named subscription in the config file. Idempotent at
+the cache layer (the manifest is overwritten) but not idempotent at
+the config layer (each call appends a row).`,
+	Args: cobra.ExactArgs(2),
+	RunE: runRegistryAdd,
 }
 
 var registryRemoveCmd = &cobra.Command{
 	Use:   "delete <name>",
 	Short: "Remove a registry",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRegistryRemove,
+	Long: `Drop the named registry from the local cache and remove the
+matching entry from the config file. Fails when the registry is not
+present in the config.
+
+Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistryRemove,
 }
 
 var registryInfoCmd = &cobra.Command{
 	Use:   "info <name>",
 	Short: "Show registry information",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRegistryInfo,
+	Long: `Display the cached manifest metadata for a registry: URL, last
+fetch timestamp, ETag, signing key fingerprint, trust status, and
+the high-level manifest fields (name, version, description, step
+count). Read-only.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistryInfo,
 }
 
 var registrySyncCmd = &cobra.Command{
@@ -86,8 +102,12 @@ additions, updates, and removals without writing anything to storage.`,
 var registrySubmitCmd = &cobra.Command{
 	Use:   "submit <bundle-path>",
 	Short: "Submit a bundle to the community registry (prints PR instructions)",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRegistrySubmit,
+	Long: `Validate a local registry bundle (file or directory with a
+manifest.json) and print the pull-request instructions for the
+community registry. No network calls are made; the command is a
+guided stub for community submission.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistrySubmit,
 }
 
 var registryCapabilitiesCmd = &cobra.Command{
@@ -177,8 +197,11 @@ Non-interactive (pass token via flag — prefer env-var to avoid shell history):
 var registryLogoutCmd = &cobra.Command{
 	Use:   "logout <name>",
 	Short: "Remove the stored auth token for a registry from the OS keychain",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRegistryLogout,
+	Long: `Delete the auth token for the named registry from the OS
+keychain. Fails when no token is stored for that registry. The
+config file is not modified; only the keychain entry is removed.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistryLogout,
 }
 
 func init() {
@@ -206,9 +229,8 @@ func init() {
 	registryUsageCmd.Flags().Int("days", 0,
 		"period in days back from now (0 = all time)")
 
-	// Flags for sync subcommand
-	registrySyncCmd.Flags().Bool("dry-run", false,
-		"fetch remote manifest and show diff without writing to storage")
+	// Flags for sync subcommand. --dry-run is inherited from the kit
+	// global persistent flag; do not re-register here (12fcc local-globals).
 	registrySyncCmd.Flags().Bool("reconcile", false,
 		"sync all configured registries with multi-registry entity reconciliation")
 	registrySyncCmd.Flags().String("merge-strategy", "last-write-wins",
@@ -217,6 +239,109 @@ func init() {
 	// Flags for login subcommand
 	registryLoginCmd.Flags().String("token", "",
 		"auth token (reads from stdin prompt if omitted)")
+
+	cliconv.WithSideEffect(registryListCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(registryListCmd, []cliconv.Example{
+		{Title: "List all registries", Command: "ctxt registry list"},
+		{Title: "List as JSON", Command: "ctxt registry list --json"},
+	})
+
+	cliconv.WithSideEffect(registryAddCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(registryAddCmd, []cliconv.Example{
+		{Title: "Add a registry by URL", Command: "ctxt registry add uxpatterns https://uxpatterns.example.com"},
+		{Title: "Add then inspect", Command: "ctxt registry add uxpatterns https://uxpatterns.example.com && ctxt registry info uxpatterns"},
+	})
+	cliconv.WithNextSteps(registryAddCmd, []cliconv.NextStep{
+		{Suggest: "ctxt registry info <name>", Reason: "review the cached manifest, trust status, and version"},
+		{Suggest: "ctxt registry sync <name>", Reason: "pull entities and taxonomies from the freshly-added registry"},
+	})
+
+	cliconv.WithSideEffect(registryRemoveCmd, cliconv.SideEffectDestructive)
+	cliconv.WithDestructiveToken(registryRemoveCmd)
+	cliconv.WithExamples(registryRemoveCmd, []cliconv.Example{
+		{Title: "Delete a registry", Command: "ctxt registry delete uxpatterns --confirm=yes"},
+		{Title: "Delete with interactive confirmation", Command: "ctxt registry delete uxpatterns --confirm=prompt"},
+	})
+	cliconv.WithNextSteps(registryRemoveCmd, []cliconv.NextStep{
+		{Suggest: "ctxt registry list", Reason: "confirm the entry is gone from the configured set"},
+		{Suggest: "ctxt registry logout <name>", Reason: "drop any leftover keychain token tied to the registry"},
+	})
+
+	cliconv.WithSideEffect(registryInfoCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(registryInfoCmd, []cliconv.Example{
+		{Title: "Show registry info", Command: "ctxt registry info uxpatterns"},
+		{Title: "Emit info as JSON", Command: "ctxt registry info uxpatterns --json"},
+	})
+
+	cliconv.WithSideEffect(registrySyncCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(registrySyncCmd, []cliconv.Example{
+		{Title: "Sync a registry", Command: "ctxt registry sync uxpatterns"},
+		{Title: "Preview without writing", Command: "ctxt registry sync --dry-run uxpatterns"},
+	})
+	cliconv.WithNextSteps(registrySyncCmd, []cliconv.NextStep{
+		{Suggest: "ctxt registry info <name>", Reason: "verify Last Fetched timestamp and ETag advanced"},
+		{When: "if conflicts were reported", Suggest: "ctxt registry sync --reconcile --merge-strategy trust-score", Reason: "reconcile entity conflicts across registries"},
+	})
+
+	cliconv.WithSideEffect(registrySubmitCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(registrySubmitCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(registrySubmitCmd, []cliconv.Example{
+		{Title: "Validate a bundle directory", Command: "ctxt registry submit ./mybundle"},
+		{Title: "Emit PR instructions as JSON", Command: "ctxt registry submit ./mybundle --json"},
+	})
+	cliconv.WithNextSteps(registrySubmitCmd, []cliconv.NextStep{
+		{Suggest: "open https://github.com/ideacrafterslabs/registry", Reason: "follow the printed PR template to upstream the bundle"},
+		{Suggest: "ctxt registry info <name>", Reason: "double-check the manifest fields before submitting"},
+	})
+
+	cliconv.WithSideEffect(registryLoginCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(registryLoginCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(registryLoginCmd, []cliconv.Example{
+		{Title: "Login interactively", Command: "ctxt registry login example-paid"},
+		{Title: "Login with env-var token", Command: "ctxt registry login example-paid --token \"$REGISTRY_TOKEN\""},
+	})
+	cliconv.WithNextSteps(registryLoginCmd, []cliconv.NextStep{
+		{Suggest: "ctxt registry sync <name>", Reason: "the token unlocks authenticated sync; pull fresh entities now"},
+		{Suggest: "ctxt registry entitlements", Reason: "check which plan and namespaces the token grants"},
+	})
+
+	cliconv.WithSideEffect(registryLogoutCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(registryLogoutCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(registryLogoutCmd, []cliconv.Example{
+		{Title: "Remove a stored token", Command: "ctxt registry logout example-paid"},
+		{Title: "Logout then verify", Command: "ctxt registry logout example-paid && ctxt registry entitlements"},
+	})
+	cliconv.WithNextSteps(registryLogoutCmd, []cliconv.NextStep{
+		{Suggest: "ctxt registry entitlements", Reason: "confirm the authenticated entitlement row is gone"},
+		{When: "to re-authenticate later", Suggest: "ctxt registry login <name>", Reason: "store a fresh token in the keychain"},
+	})
+
+	cliconv.WithSideEffect(registryCapabilitiesCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(registryCapabilitiesCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(registryCapabilitiesCmd, []cliconv.Example{
+		{Title: "Show capability handshake", Command: "ctxt registry capabilities default"},
+		{Title: "Capabilities for a named registry", Command: "ctxt registry capabilities uxpatterns"},
+	})
+
+	cliconv.WithSideEffect(registryEntitlementsCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(registryEntitlementsCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(registryEntitlementsCmd, []cliconv.Example{
+		{Title: "List active entitlements", Command: "ctxt registry entitlements"},
+		{Title: "Emit entitlements as JSON", Command: "ctxt registry entitlements --json"},
+	})
+
+	cliconv.WithSideEffect(registryUsageCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(registryUsageCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(registryUsageCmd, []cliconv.Example{
+		{Title: "Show all registry usage", Command: "ctxt registry usage"},
+		{Title: "Show usage for last 30 days", Command: "ctxt registry usage example-paid --days 30"},
+	})
+
+	cliconv.WithSideEffect(registrySearchCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(registrySearchCmd, []cliconv.Example{
+		{Title: "Search registries by topic", Command: "ctxt registry search ai"},
+		{Title: "Search and emit JSON", Command: "ctxt registry search react --json"},
+	})
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
@@ -740,11 +865,11 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 	}
 
 	type capResult struct {
-		Name         string            `json:"name"`
-		URL          string            `json:"url"`
-		Version      string            `json:"version"`
-		MinClient    string            `json:"min_client_version,omitempty"`
-		Capabilities map[string]bool   `json:"capabilities"`
+		Name         string              `json:"name"`
+		URL          string              `json:"url"`
+		Version      string              `json:"version"`
+		MinClient    string              `json:"min_client_version,omitempty"`
+		Capabilities map[string]bool     `json:"capabilities"`
 		Warnings     []map[string]string `json:"warnings,omitempty"`
 	}
 

@@ -24,6 +24,7 @@ import (
 
 	"hop.top/kit/go/runtime/bus"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	adapterbus "github.com/ideacrafterslabs/ctxt/internal/lateral/adapters/bus"
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/daemon"
 )
@@ -93,6 +94,52 @@ and prints the merged result. Useful for debugging gate decisions
 
 func init() {
 	rootCmd.AddCommand(lateralCmd)
+	// `ctxt lateral` (no subcommand) defaults to `lateral start` — a
+	// long-running foreground daemon. Mark the depth-1 leaf interactive
+	// so the validator accepts it; deeper subcommands (start/status/
+	// config show) are owned by a sibling subtree.
+	cliconv.WithSideEffect(lateralCmd, cliconv.SideEffectInteractive)
+	cliconv.WithExamples(lateralCmd, []cliconv.Example{
+		{Title: "Run the daemon in the foreground", Command: "ctxt lateral"},
+		{Title: "Run with an extra config layer", Command: "ctxt lateral --lateral-config ./lateral.yaml"},
+	})
+	cliconv.WithNextSteps(lateralCmd, []cliconv.NextStep{
+		{When: "to inspect the resolved config", Suggest: "ctxt lateral config show", Reason: "verify which strategies are gated on"},
+		{When: "to query a running daemon", Suggest: "ctxt lateral status", Reason: "see registered strategies and breaker state"},
+	})
+	// "lateral" is not in kit's defaultIdempotency table; the daemon
+	// holds open subscriptions and a poller loop, which is not a
+	// replay-safe operation.
+	cliconv.WithIdempotency(lateralCmd, cliconv.IdempotencyNo)
+
+	// start: long-running foreground daemon; not replay-safe.
+	cliconv.WithSideEffect(lateralStartCmd, cliconv.SideEffectInteractive)
+	cliconv.WithIdempotency(lateralStartCmd, cliconv.IdempotencyNo)
+	cliconv.WithExamples(lateralStartCmd, []cliconv.Example{
+		{Title: "Start the lateral daemon", Command: "ctxt lateral start"},
+		{Title: "Start with extra config", Command: "ctxt lateral start --lateral-config ./lateral.local.yaml"},
+	})
+	cliconv.WithNextSteps(lateralStartCmd, []cliconv.NextStep{
+		{When: "in another shell", Suggest: "ctxt lateral status", Reason: "query the running daemon for registered strategies"},
+		{When: "to inspect config", Suggest: "ctxt lateral config show", Reason: "see the merged config the daemon is using"},
+	})
+	// status: read-only query against a running daemon.
+	cliconv.WithSideEffect(lateralStatusCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(lateralStatusCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(lateralStatusCmd, []cliconv.Example{
+		{Title: "Query a running daemon", Command: "ctxt lateral status"},
+		{Title: "Query with extra config", Command: "ctxt lateral status --lateral-config ./lateral.local.yaml"},
+	})
+	// config: intermediate group; mark hierarchical so the shape
+	// validator accepts the depth-3 leaf below.
+	cliconv.MarkHierarchical(lateralConfigCmd)
+	// config show: read-only config resolution.
+	cliconv.WithSideEffect(lateralConfigShowCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(lateralConfigShowCmd, []cliconv.Example{
+		{Title: "Print the effective config", Command: "ctxt lateral config show"},
+		{Title: "Layer an extra config file", Command: "ctxt lateral config show --lateral-config ./lateral.local.yaml"},
+	})
+
 	lateralCmd.AddCommand(lateralStartCmd)
 	lateralCmd.AddCommand(lateralStatusCmd)
 	lateralCmd.AddCommand(lateralConfigCmd)

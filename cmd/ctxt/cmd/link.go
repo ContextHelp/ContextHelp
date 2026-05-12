@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/graph"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -18,6 +19,16 @@ import (
 var linkCmd = &cobra.Command{
 	Use:   "link",
 	Short: "Manage typed links between knowledge objects",
+	Long: `Manage associative typed links between knowledge objects.
+
+Links are directed edges with a kit-defined type (extends, contradicts,
+supersedes, supports, related-to, derived-from). Reverse edges are
+maintained automatically except for symmetric types.
+
+Subcommands:
+  create  Create a typed link between two objects.
+  list    List all links for an object, optionally with traversal.
+  delete  Remove every link between two objects.`,
 }
 
 var linkCreateCmd = &cobra.Command{
@@ -42,6 +53,22 @@ func init() {
 		strings.Join(graph.UserLinkTypeStrings(), ", "))
 	linkCreateCmd.Flags().String("context", "", "optional reason for the link")
 	_ = linkCreateCmd.MarkFlagRequired("type")
+
+	// 12fcc conformance: side-effect annotation for create.
+	// list and delete are wired in their own init() blocks below; the
+	// annotations live next to those wirings for locality.
+	cliconv.WithSideEffect(linkCreateCmd, cliconv.SideEffectWriteShared)
+	// "create" defaults to IdempotencyNo via kit verb table — no
+	// explicit override needed.
+
+	// 12fcc strict-gate: examples + next-steps on link create.
+	cliconv.WithExamples(linkCreateCmd, []cliconv.Example{
+		{Title: "Mark one object as extending another", Command: "ctxt link create obj_abc obj_xyz --type extends"},
+		{Title: "Record a contradiction with context", Command: "ctxt link create obj_abc obj_xyz --type contradicts --context \"newer research\""},
+	})
+	cliconv.WithNextSteps(linkCreateCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt link list <source_id>", Reason: "confirm the forward + reverse edges landed"},
+	})
 }
 
 func runLinkCreate(cmd *cobra.Command, args []string) error {
@@ -135,6 +162,15 @@ func init() {
 	linkCmd.AddCommand(linkListCmd)
 	linkListCmd.Flags().StringP("type", "t", "", "filter by link type")
 	linkListCmd.Flags().Int("follow", 0, "depth-limited traversal (max 3)")
+
+	// 12fcc conformance: list is a pure read traversal over edges.
+	cliconv.WithSideEffect(linkListCmd, cliconv.SideEffectRead)
+
+	// 12fcc strict-gate: examples on the read leaf.
+	cliconv.WithExamples(linkListCmd, []cliconv.Example{
+		{Title: "List inbound + outbound links for an object", Command: "ctxt link list obj_abc"},
+		{Title: "Two-hop traversal filtered by type", Command: "ctxt link list obj_abc --type contradicts --follow 2"},
+	})
 }
 
 func runLinkList(cmd *cobra.Command, args []string) error {
@@ -307,6 +343,24 @@ Examples:
 
 func init() {
 	linkCmd.AddCommand(linkDeleteCmd)
+
+	// 12fcc conformance: delete removes forward + reverse edges
+	// between two objects. Classified as destructive on the shared
+	// graph store.
+	cliconv.WithSideEffect(linkDeleteCmd, cliconv.SideEffectDestructiveShared)
+	// 12fcc strict-gate: link delete drops graph edges; opt into kit's
+	// typed-token confirmation flow.
+	cliconv.WithDestructiveToken(linkDeleteCmd)
+	// "delete" defaults to IdempotencyYes via kit verb table — no
+	// explicit override needed.
+
+	// 12fcc strict-gate: examples + next-steps on the destructive leaf.
+	cliconv.WithExamples(linkDeleteCmd, []cliconv.Example{
+		{Title: "Remove every link between two objects", Command: "ctxt link delete obj_abc obj_xyz"},
+	})
+	cliconv.WithNextSteps(linkDeleteCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt link list obj_abc", Reason: "verify the forward + reverse edges are gone"},
+	})
 }
 
 func runLinkDelete(cmd *cobra.Command, args []string) error {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	gdriveimporter "github.com/ideacrafterslabs/ctxt/internal/importer/gdrive"
 	"github.com/spf13/cobra"
 )
@@ -51,9 +52,26 @@ func init() {
 	importGDriveCmd.Flags().StringSlice("mime-type", nil, "only import these MIME types")
 	importGDriveCmd.Flags().Bool("include-trashed", false, "include trashed files (default false)")
 	importGDriveCmd.Flags().Int("max-items", 0, "maximum number of files to import (0 = all)")
-	importGDriveCmd.Flags().Bool("dry-run", false, "preview matched files without enqueueing jobs")
 	importGDriveCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importGDriveCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
+
+	cliconv.WithSideEffect(importGDriveCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importGDriveCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importGDriveCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import gdrive --access-token $GDRIVE_ACCESS_TOKEN",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import gdrive --access-token $GDRIVE_ACCESS_TOKEN --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importGDriveCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportGDrive(cmd *cobra.Command, args []string) error {

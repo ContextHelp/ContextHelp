@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	evernoteimporter "github.com/ideacrafterslabs/ctxt/internal/importer/evernote"
 	"github.com/spf13/cobra"
 )
@@ -41,9 +42,26 @@ func init() {
 	importEvernoteCmd.Flags().Int("max-items", 0, "maximum notes to import (0 = all)")
 	importEvernoteCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importEvernoteCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importEvernoteCmd.Flags().Bool("dry-run", false, "parse and preview notes without enqueueing jobs")
 
 	importEvernoteCmd.MarkFlagRequired("file")
+
+	cliconv.WithSideEffect(importEvernoteCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importEvernoteCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importEvernoteCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import evernote --file ./notes.enex",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import evernote --file ./notes.enex --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importEvernoteCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportEvernote(cmd *cobra.Command, args []string) error {

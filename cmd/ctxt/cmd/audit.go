@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/audit"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -22,7 +23,13 @@ var auditCmd = &cobra.Command{
 var auditListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List audit log entries",
-	RunE:  runAuditList,
+	Long: `Page through audit log entries with optional filters.
+
+Filter flags (--actor, --event-type, --object-id, --since) narrow the set;
+--limit / --offset paginate. The default human-readable table reports ID,
+event type, object ID, actor, and time. JSON output (--format json) emits
+the full audit record plus a total count.`,
+	RunE: runAuditList,
 }
 
 var auditExportCmd = &cobra.Command{
@@ -30,7 +37,10 @@ var auditExportCmd = &cobra.Command{
 	Short: "Export audit log entries to stdout",
 	Long: `Export audit log entries in a SIEM-compatible format.
 
-Formats:
+The output format is taken from the kit-owned --format global flag. When
+the operator does not pass --format explicitly, audit export defaults to
+json (NDJSON, one record per line). The supported SIEM formats are:
+
   json    NDJSON — one JSON object per line
   cef     ArcSight Common Event Format v0
   syslog  RFC 5424 structured-data text (one record per line)
@@ -46,6 +56,24 @@ func init() {
 	rootCmd.AddCommand(auditCmd)
 	auditCmd.AddCommand(auditListCmd)
 	auditCmd.AddCommand(auditExportCmd)
+
+	// 12fcc conformance: side-effect annotations. Both list and
+	// export are read-only over the audit log (an append-only journal
+	// the leaves never mutate).
+	cliconv.WithSideEffect(auditListCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(auditExportCmd, cliconv.SideEffectRead)
+	// "export" is not in kit's verb default table; tag explicitly.
+	cliconv.WithIdempotency(auditExportCmd, cliconv.IdempotencyYes)
+
+	// 12fcc strict-gate: examples on every leaf (both reads).
+	cliconv.WithExamples(auditListCmd, []cliconv.Example{
+		{Title: "Show the most recent audit entries", Command: "ctxt audit list --limit 25"},
+		{Title: "Filter to one actor + window", Command: "ctxt audit list --actor alice@example.com --since 24h"},
+	})
+	cliconv.WithExamples(auditExportCmd, []cliconv.Example{
+		{Title: "NDJSON for a SIEM pipeline", Command: "ctxt audit export --format json --since 24h"},
+		{Title: "CEF over the last 24h", Command: "ctxt audit export --format cef --since 24h"},
+	})
 
 	// Shared filter flags.
 	for _, cmd := range []*cobra.Command{auditListCmd, auditExportCmd} {
@@ -64,9 +92,12 @@ func init() {
 		viper.BindPFlag("audit.list.offset", cmd.Flags().Lookup("offset"))
 	}
 
-	// Export-only flags.
-	auditExportCmd.Flags().String("format", "json", "output format: json | cef | syslog")
-	viper.BindPFlag("audit.export.format", auditExportCmd.Flags().Lookup("format"))
+	// NOTE: --format is owned by the kit global persistent flag set
+	// (output.RegisterFlags). The previous local --format shadowed
+	// the global; runAuditExport now reads the inherited persistent
+	// flag and falls back to "json" when the operator did not change
+	// it from kit's "table" default (audit export's SIEM contract
+	// has no table form).
 }
 
 // buildAuditFilter constructs an AuditFilter from CLI flags / viper bindings.
@@ -129,8 +160,11 @@ func runAuditList(cmd *cobra.Command, _ []string) error {
 }
 
 func runAuditExport(cmd *cobra.Command, _ []string) error {
+	// Kit's --format global defaults to "table"; audit export has no
+	// table form, so fall back to "json" unless the operator
+	// explicitly set --format to a SIEM-compatible value.
 	fmtStr := mustGetString(cmd, "format")
-	if fmtStr == "" {
+	if fmtStr == "" || !cmd.Flags().Changed("format") {
 		fmtStr = "json"
 	}
 	fmt_, err := audit.ParseFormat(fmtStr)

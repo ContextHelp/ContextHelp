@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/spf13/cobra"
@@ -34,14 +35,21 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(showCmd)
+	cliconv.WithSideEffect(showCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(showCmd, []cliconv.Example{
+		{Title: "Show object details", Command: "ctxt show obj_12345678"},
+		{Title: "Show ID picked from the clipboard", Command: "ctxt show"},
+		{Title: "Show raw object data", Command: "ctxt show obj_12345678 --raw"},
+	})
 
 	// Display flags
 	showCmd.Flags().Bool("raw", false, "show raw object data")
-	showCmd.Flags().String("format", "", "output-generator plugin name (e.g. obsidian-md)")
+	// --format is inherited from the kit-owned persistent flag set; do not
+	// re-register it locally. show reads it via cmd.Flags().GetString("format")
+	// at run time (cobra resolves inherited flags through Flags()).
 
 	// Bind flags to viper
 	viper.BindPFlag("show.raw", showCmd.Flags().Lookup("raw"))
-	viper.BindPFlag("show.format", showCmd.Flags().Lookup("format"))
 }
 
 func runShow(cmd *cobra.Command, args []string) error {
@@ -67,7 +75,10 @@ func runShow(cmd *cobra.Command, args []string) error {
 	}
 
 	// Delegate to output-generator plugin when --format is specified.
-	if format := viper.GetString("show.format"); format != "" {
+	// --format is owned by kit as a persistent root flag; cmd.Flags()
+	// resolves inherited persistent flags transparently.
+	format, _ := cmd.Flags().GetString("format")
+	if format != "" {
 		gen := findOutputGenerator(svc.PluginRegistry, format)
 		if gen == nil {
 			return fmt.Errorf("no output-generator plugin loaded for format %q", format)

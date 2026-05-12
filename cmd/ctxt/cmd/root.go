@@ -10,6 +10,7 @@ import (
 
 	"charm.land/fang/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/banner"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/logger"
 	"github.com/ideacrafterslabs/ctxt/internal/telemetry"
@@ -47,6 +48,37 @@ var (
 		Name:    "ctxt",
 		Version: "dev", // overwritten by SetVersionInfo
 		Short:   "ContextHelp - Your agentic context brain",
+		// MaxTopLevelVerbs raises kit's default of 10 because ctxt is a
+		// meta-tool (capture + curate + compose + manage) with a wider
+		// surface than the average single-purpose CLI. Silent grouping
+		// would be a UX-breaking change to documented verbs like
+		// `ctxt analyze`, `ctxt find`, `ctxt show`, so we accept the
+		// expanded depth-1 fan-out. Re-evaluate at the next major.
+		MaxTopLevelVerbs: 30,
+		// ValidationFailureError surfaces Validate() failures as a
+		// returned error from Execute() (cmd/ctxt/main.go prints +
+		// exits 1) instead of kit's default ValidationFailureExit
+		// (os.Exit(2) inside kit). Same exit code class, but the
+		// surface is testable from `go test` callers that drive
+		// Execute() directly and friendlier to mid-sprint fan-out
+		// agents who are still closing 12fcc bucket items.
+		ValidationFailureMode: kitcli.ValidationFailureError,
+		// T-0595 enables full strict-gate enforcement at boot. The
+		// 12fcc-conformance track verified every depth-1 and depth-2+
+		// leaf carries kit/side-effect, kit/idempotent, kit/examples
+		// (and kit/next-steps + kit/destructive-token where applicable),
+		// so the live Root now enforces what the build-tagged probe
+		// previewed in T-0592. Removing any of these flags is a
+		// regression: ctxt will refuse to start if a newly added
+		// command leaves an annotation off. See
+		// docs/sprints/12fcc-conformance-baseline.md and the
+		// regression guard TestRootValidate_StrictGatesPass in
+		// cmd/ctxt/cmd/strict_validation_test.go.
+		EnforceGuidance:         true,
+		EnforceDryRunRationale:  true,
+		EnforceDestructiveToken: true,
+		SignatureStrictness:     kitcli.SignatureStrictnessReject,
+		PassthroughStrictness:   "reject",
 		Help: kitcli.HelpConfig{
 			Disclaimer: longDescription,
 			Groups: []kitcli.GroupConfig{
@@ -201,6 +233,12 @@ func applyCommandGroups() {
 // Execute runs the root command via fang (styled help + errors). We bypass
 // fang's --version handling because ctxt has its own --version flag with
 // build-date and --check support; the fang default would override our RunE.
+//
+// Unlike kit's root.Execute() we cannot delegate wholesale: kit calls
+// fang.WithVersion which would intercept --version. We replicate the
+// minimum kit pre-flight steps (completion registration, group
+// visibility, shape annotations, Validate()) and then call fang
+// directly with WithoutVersion().
 func Execute() error {
 	ctx := context.Background()
 	// kit/cli.Execute would call fang.WithVersion(); we need WithoutVersion
@@ -214,9 +252,105 @@ func Execute() error {
 			break
 		}
 	}
+
+	// Stamp kit/top-level-verb on every depth-1 runnable leaf and
+	// kit/hierarchical on the depth-2 intermediates whose subtrees
+	// reach depth >= 3. Done after applyCommandGroups so the walk
+	// sees the same shape the validator does.
+	applyShapeAnnotations()
+
+	// Boot-time strict validation (T-0593). Kit's Root.Execute() runs
+	// this implicitly; ctxt has to call it explicitly because we use
+	// fang.WithoutVersion(). Per Config.ValidationFailureMode=Error,
+	// failures surface as a returned error rather than os.Exit(2) so
+	// main.go's "Error: %v" path handles them uniformly.
+	if root.Config.EnforceValidate {
+		if err := root.Validate(); err != nil {
+			return err
+		}
+	}
+
 	return fang.Execute(ctx, rootCmd,
 		fang.WithoutVersion(),
 	)
+}
+
+// applyShapeAnnotations stamps the structural annotations the kit
+// shape validator demands:
+//
+//   - kit/top-level-verb on every depth-1 runnable leaf
+//   - kit/hierarchical on every intermediate ancestor (depth >= 1,
+//     depth <= 2 in practice) of a depth-3+ leaf
+//
+// Both keys describe the tree's *structure* — not the leaves'
+// semantics — so they live in one centralised walk next to root
+// wiring instead of per-leaf init(). The signature validator's
+// depth-hierarchical check requires kit/hierarchical on EVERY
+// intermediate up to (but excluding) the root, so this helper walks
+// each depth-3+ leaf's ancestor chain and stamps each one.
+//
+// See kit/go/console/cli/shape.go and validate_signature.go.
+func applyShapeAnnotations() {
+	if rootCmd == nil {
+		return
+	}
+	for _, c := range rootCmd.Commands() {
+		// Skip built-ins; kit exempts them from shape validation.
+		switch c.Name() {
+		case "completion", "help":
+			continue
+		}
+		// Depth-1 runnable nodes: stamp top-level-verb. Kit's shape
+		// validator treats a depth-1 cmd as a "leaf" purely on
+		// Runnable(), independent of whether it also carries
+		// subcommands (e.g. `ctxt lateral` runs AND has `lateral
+		// config`, `lateral eval` underneath). Pure groups (not
+		// runnable) don't need the annotation.
+		if c.Runnable() {
+			cliconv.MarkTopLevelVerb(c)
+		}
+	}
+	// Walk the tree once to find depth-3+ leaves, then stamp every
+	// intermediate ancestor up to the root.
+	markHierarchicalAncestors(rootCmd, 0)
+}
+
+// markHierarchicalAncestors recursively walks cmd's subtree. For
+// every runnable leaf at depth >= 3, it stamps kit/hierarchical on
+// every ancestor between the root (exclusive) and the leaf
+// (exclusive). The annotation is idempotent so multiple sibling
+// leaves under the same intermediate cost nothing extra.
+func markHierarchicalAncestors(cmd *cobra.Command, depth int) {
+	if cmd == nil {
+		return
+	}
+	switch cmd.Name() {
+	case "completion", "help":
+		return
+	}
+	if cmd.Runnable() && !hasSubcommands(cmd) && depth >= 3 {
+		for p := cmd.Parent(); p != nil && p != rootCmd; p = p.Parent() {
+			cliconv.MarkHierarchical(p)
+		}
+		return
+	}
+	for _, child := range cmd.Commands() {
+		markHierarchicalAncestors(child, depth+1)
+	}
+}
+
+// hasSubcommands reports whether cmd carries non-built-in children.
+// Mirrors kit's "non-leaf" check without importing the internal
+// helper.
+func hasSubcommands(cmd *cobra.Command) bool {
+	for _, c := range cmd.Commands() {
+		switch c.Name() {
+		case "completion", "help":
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func printVersion(cmd *cobra.Command) {

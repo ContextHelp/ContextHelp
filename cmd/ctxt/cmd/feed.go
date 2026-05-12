@@ -8,6 +8,7 @@ import (
 	gohttp "net/http"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 )
 
@@ -71,12 +72,48 @@ func init() {
 	feedCmd.AddCommand(feedSyncCmd)
 	feedCmd.AddCommand(feedRemoveCmd)
 
+	cliconv.WithSideEffect(feedAddCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(feedAddCmd, []cliconv.Example{
+		{Title: "Subscribe to a feed", Command: "ctxt feed add https://example.com/feed.xml"},
+		{Title: "Use a custom dpkms server", Command: "ctxt feed add https://example.com/feed.xml --server http://localhost:9090"},
+	})
+	cliconv.WithNextSteps(feedAddCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt feed sync --id <feed-id>", Reason: "trigger an immediate first sync"},
+		{When: "after a few minutes", Suggest: "ctxt feed list", Reason: "confirm the new feed reached active status"},
+	})
+	cliconv.WithSideEffect(feedListCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(feedListCmd, []cliconv.Example{
+		{Title: "List feed subscriptions", Command: "ctxt feed list"},
+		{Title: "Filter by status", Command: "ctxt feed list --status active"},
+	})
+	cliconv.WithSideEffect(feedSyncCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(feedSyncCmd, []cliconv.Example{
+		{Title: "Sync by feed ID", Command: "ctxt feed sync --id feed_12345678"},
+		{Title: "Sync by feed URL", Command: "ctxt feed sync --url https://example.com/feed.xml"},
+	})
+	cliconv.WithNextSteps(feedSyncCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt job status <sync-job-id>", Reason: "follow the spawned sync job to completion"},
+	})
+	cliconv.WithSideEffect(feedRemoveCmd, cliconv.SideEffectDestructive)
+	// 12fcc strict-gate: feed delete drops the subscription record on
+	// the dpkms server; opt into kit's typed-token confirmation flow.
+	cliconv.WithDestructiveToken(feedRemoveCmd)
+	cliconv.WithExamples(feedRemoveCmd, []cliconv.Example{
+		{Title: "Remove a feed by ID", Command: "ctxt feed delete feed_12345678 --confirm=yes"},
+		{Title: "Remove a feed by URL", Command: "ctxt feed delete https://example.com/feed.xml --confirm=yes"},
+	})
+	cliconv.WithNextSteps(feedRemoveCmd, []cliconv.NextStep{
+		{When: "after delete", Suggest: "ctxt feed list", Reason: "verify the subscription no longer appears"},
+	})
+
 	// feed add flags
 	feedAddCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 
 	// feed list flags
+	// NOTE: --output is owned by kit's persistent global flag set; the
+	// inherited flag is resolved through cmd.Flags() at read time, so
+	// no local re-registration is required (12fcc local-global rule).
 	feedListCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
-	feedListCmd.Flags().String("output", "", "output format (text|json)")
 	feedListCmd.Flags().String("status", "", "filter by status (active|paused|error)")
 
 	// feed sync flags
@@ -141,7 +178,6 @@ func runFeedAdd(cmd *cobra.Command, args []string) error {
 
 func runFeedList(cmd *cobra.Command, args []string) error {
 	serverURL := feedServerURL(cmd)
-	outputFmt, _ := cmd.Flags().GetString("output")
 	statusFilter, _ := cmd.Flags().GetString("status")
 
 	reqURL := serverURL + "/api/v1/feeds"
@@ -176,7 +212,12 @@ func runFeedList(cmd *cobra.Command, args []string) error {
 		feeds = wrapper.Feeds
 	}
 
-	if outputFmt == "json" || isJSONOutput() {
+	// Read --format from the cobra persistent flag directly (kit owns
+	// the flag at the root). isJSONOutput() reads from viper, which
+	// callers may have reset between command invocations, but the
+	// cobra flag value reflects the parsed command line either way.
+	formatFlag, _ := cmd.Flags().GetString("format")
+	if formatFlag == "json" || isJSONOutput() {
 		return outputJSON(cmd.OutOrStdout(), map[string]any{"feeds": feeds})
 	}
 

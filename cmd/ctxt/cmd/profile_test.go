@@ -76,7 +76,8 @@ func TestProfileDelete(t *testing.T) {
 		t.Fatalf("create should succeed: %v", err)
 	}
 
-	out, err := db.exec("profile", "delete", "old-project")
+	out, err := db.exec("profile", "delete",
+		"--confirm=yes", "--confirm-token=6b76b202884c", "old-project")
 	if err != nil {
 		t.Fatalf("profile delete should succeed: %v", err)
 	}

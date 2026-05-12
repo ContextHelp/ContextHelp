@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	bookmarksimporter "github.com/ideacrafterslabs/ctxt/internal/importer/bookmarks"
 	"github.com/spf13/cobra"
 )
@@ -29,9 +30,26 @@ func init() {
 	importFirefoxCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importFirefoxCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 	importFirefoxCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
-	importFirefoxCmd.Flags().Bool("dry-run", false, "parse and preview without enqueueing jobs")
 
 	importFirefoxCmd.MarkFlagRequired("file")
+
+	cliconv.WithSideEffect(importFirefoxCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importFirefoxCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importFirefoxCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import firefox --file ./bookmarks.html",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import firefox --file ./bookmarks.html --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importFirefoxCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportFirefox(cmd *cobra.Command, args []string) error {

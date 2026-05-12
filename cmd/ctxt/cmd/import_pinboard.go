@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	pinboardimporter "github.com/ideacrafterslabs/ctxt/internal/importer/pinboard"
 	"github.com/spf13/cobra"
 )
@@ -61,9 +62,26 @@ func init() {
 	importPinboardCmd.Flags().String("since", "", "import bookmarks saved on/after this time (RFC3339 or YYYY-MM-DD)")
 	importPinboardCmd.Flags().StringSlice("tagged", nil, "require bookmarks to include all specified tags")
 	importPinboardCmd.Flags().Int("max-items", 0, "maximum bookmarks to import (0 = all)")
-	importPinboardCmd.Flags().Bool("dry-run", false, "preview matched bookmarks without enqueueing jobs")
 	importPinboardCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importPinboardCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
+
+	cliconv.WithSideEffect(importPinboardCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importPinboardCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importPinboardCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import pinboard --token $PINBOARD_TOKEN",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import pinboard --token $PINBOARD_TOKEN --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importPinboardCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportPinboard(cmd *cobra.Command, args []string) error {

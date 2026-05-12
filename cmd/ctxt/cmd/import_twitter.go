@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	twitterimporter "github.com/ideacrafterslabs/ctxt/internal/importer/twitter"
 	"github.com/spf13/cobra"
 )
@@ -49,7 +50,24 @@ func init() {
 	importTwitterCmd.Flags().Int("max-items", 0, "maximum number of tweets to import (0 = all)")
 	importTwitterCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importTwitterCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importTwitterCmd.Flags().Bool("dry-run", false, "preview selected tweets without enqueueing jobs")
+
+	cliconv.WithSideEffect(importTwitterCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importTwitterCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importTwitterCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import twitter --file ./tweets.js",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import twitter --file ./tweets.js --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importTwitterCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportTwitter(cmd *cobra.Command, _ []string) error {

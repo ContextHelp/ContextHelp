@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	dropboximporter "github.com/ideacrafterslabs/ctxt/internal/importer/dropbox"
 	"github.com/spf13/cobra"
 )
@@ -52,9 +53,26 @@ func init() {
 	importDropboxCmd.Flags().String("cursor", "", "resume sync from this cursor (incremental mode)")
 	importDropboxCmd.Flags().Bool("recursive", false, "recurse into sub-folders")
 	importDropboxCmd.Flags().Int("max-items", 0, "maximum number of files to import (0 = all)")
-	importDropboxCmd.Flags().Bool("dry-run", false, "preview matched files without enqueueing jobs")
 	importDropboxCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importDropboxCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
+
+	cliconv.WithSideEffect(importDropboxCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importDropboxCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importDropboxCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import dropbox --access-token $DROPBOX_ACCESS_TOKEN",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import dropbox --access-token $DROPBOX_ACCESS_TOKEN --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importDropboxCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportDropbox(cmd *cobra.Command, args []string) error {

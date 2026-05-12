@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cursor"
 	"github.com/spf13/cobra"
 )
@@ -25,35 +26,60 @@ override with ` + cursor.EnvFile + `.`,
 var cursorListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all named cursors",
-	RunE:  runCursorList,
+	Long: `Print every named cursor known to the local cursor store.
+
+For each cursor the table shows name, LastSeenAt timestamp, LastObjectID, and
+the UpdatedAt for the cursor record itself. Useful before calling
+ctxt cursor reset / set / delete on a specific cursor.`,
+	RunE: runCursorList,
 }
 
 var cursorShowCmd = &cobra.Command{
 	Use:   "show <name>",
 	Short: "Show a cursor's state and query snapshot",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runCursorShow,
+	Long: `Inspect a single named cursor.
+
+Prints the cursor name, LastSeenAt timestamp, LastObjectID, creation /
+update times, and the captured query snapshot (mention, tag, profile, q,
+type, after). Use this to verify the cursor before advancing it.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runCursorShow,
 }
 
 var cursorResetCmd = &cobra.Command{
 	Use:   "reset <name>",
 	Short: "Rewind a cursor to epoch 0",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runCursorReset,
+	Long: `Rewind the named cursor so the next advance returns the full result set.
+
+LastSeenAt is set to the zero time and LastObjectID is cleared. The query
+snapshot is preserved. Use this to re-process every matching object from
+the beginning without dropping the cursor itself.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runCursorReset,
 }
 
 var cursorSetCmd = &cobra.Command{
 	Use:   "set <name> --to <ts>",
 	Short: "Jump cursor to a specific timestamp (RFC3339 or signed duration)",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runCursorSet,
+	Long: `Jump the named cursor's LastSeenAt to a specific moment.
+
+--to accepts either an RFC3339 timestamp (e.g. 2026-04-28T14:22:11Z) or a
+signed duration relative to now (e.g. -7d, +1h). Use this when you need
+to replay a known window or skip past a noisy region of the timeline.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runCursorSet,
 }
 
 var cursorDeleteCmd = &cobra.Command{
 	Use:   "delete <name>",
 	Short: "Remove a cursor",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runCursorDelete,
+	Long: `Delete the named cursor from the local cursor store.
+
+The cursor's state (LastSeenAt, LastObjectID, query snapshot) is dropped.
+Re-creating the cursor on the next ctxt list --cursor invocation will
+start a fresh epoch-0 cursor with the new query snapshot.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runCursorDelete,
 }
 
 func init() {
@@ -63,6 +89,53 @@ func init() {
 	cursorCmd.AddCommand(cursorResetCmd)
 	cursorCmd.AddCommand(cursorSetCmd)
 	cursorCmd.AddCommand(cursorDeleteCmd)
+
+	// 12fcc conformance: side-effect + idempotency annotations.
+	// list/show are read; reset/set mutate cursor state (write-local);
+	// delete removes a cursor record (destructive-local).
+	cliconv.WithSideEffect(cursorListCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(cursorShowCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(cursorResetCmd, cliconv.SideEffectWriteLocal)
+	cliconv.WithSideEffect(cursorSetCmd, cliconv.SideEffectWriteLocal)
+	cliconv.WithSideEffect(cursorDeleteCmd, cliconv.SideEffectDestructiveLocal)
+	// 12fcc strict-gate: cursor delete drops local cursor state; opt
+	// into kit's typed-token confirmation flow.
+	cliconv.WithDestructiveToken(cursorDeleteCmd)
+
+	// Kit verb defaults already cover list/show/delete (Yes).
+	// "reset" and "set" are not in the default table; tag them
+	// explicitly (both are idempotent: same args produce same state).
+	cliconv.WithIdempotency(cursorResetCmd, cliconv.IdempotencyYes)
+	cliconv.WithIdempotency(cursorSetCmd, cliconv.IdempotencyYes)
+
+	// 12fcc strict-gate: examples + next-steps on every leaf.
+	cliconv.WithExamples(cursorListCmd, []cliconv.Example{
+		{Title: "List all named cursors", Command: "ctxt cursor list"},
+		{Title: "JSON for scripting", Command: "ctxt cursor list --format json"},
+	})
+	cliconv.WithExamples(cursorShowCmd, []cliconv.Example{
+		{Title: "Show a cursor's state", Command: "ctxt cursor show daily-mentions"},
+		{Title: "JSON dump", Command: "ctxt cursor show daily-mentions --format json"},
+	})
+	cliconv.WithExamples(cursorResetCmd, []cliconv.Example{
+		{Title: "Rewind to the beginning", Command: "ctxt cursor reset daily-mentions"},
+	})
+	cliconv.WithNextSteps(cursorResetCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list --cursor daily-mentions --advance", Reason: "re-process the full result set from the new epoch-0 position"},
+	})
+	cliconv.WithExamples(cursorSetCmd, []cliconv.Example{
+		{Title: "Jump to an RFC3339 timestamp", Command: "ctxt cursor set daily-mentions --to 2026-04-28T14:22:11Z"},
+		{Title: "Skip back seven days", Command: "ctxt cursor set daily-mentions --to -7d"},
+	})
+	cliconv.WithNextSteps(cursorSetCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt cursor show daily-mentions", Reason: "confirm LastSeenAt landed on the expected moment"},
+	})
+	cliconv.WithExamples(cursorDeleteCmd, []cliconv.Example{
+		{Title: "Remove a cursor record", Command: "ctxt cursor delete daily-mentions"},
+	})
+	cliconv.WithNextSteps(cursorDeleteCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt cursor list", Reason: "verify the cursor is gone from the store"},
+	})
 
 	cursorSetCmd.Flags().String("to", "",
 		"target timestamp: RFC3339 (2026-04-28T14:22:11Z) or signed duration (-7d, +1h)")
