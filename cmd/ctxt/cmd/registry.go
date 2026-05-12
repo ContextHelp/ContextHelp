@@ -227,9 +227,8 @@ func init() {
 	registryUsageCmd.Flags().Int("days", 0,
 		"period in days back from now (0 = all time)")
 
-	// Flags for sync subcommand
-	registrySyncCmd.Flags().Bool("dry-run", false,
-		"fetch remote manifest and show diff without writing to storage")
+	// Flags for sync subcommand. --dry-run is inherited from the kit
+	// global persistent flag; do not re-register here (12fcc local-globals).
 	registrySyncCmd.Flags().Bool("reconcile", false,
 		"sync all configured registries with multi-registry entity reconciliation")
 	registrySyncCmd.Flags().String("merge-strategy", "last-write-wins",

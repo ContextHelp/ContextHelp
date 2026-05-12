@@ -139,13 +139,12 @@ func init() {
 	upgradeStatusCmd.Flags().Bool("watch", false, "refresh every --interval seconds until idle")
 	upgradeStatusCmd.Flags().Int("interval", 2, "seconds between refreshes when --watch is set")
 
-	// plan flags.
+	// plan flags. --dry-run is inherited from the kit global persistent
+	// flag (plan is read-only anyway; the flag is silently accepted).
 	upgradePlanCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
-	upgradePlanCmd.Flags().Bool("dry-run", false, "no-op alias; plan is always read-only")
 
-	// run flags.
+	// run flags. --dry-run is inherited from the kit global persistent flag.
 	upgradeRunCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
-	upgradeRunCmd.Flags().Bool("dry-run", false, "parse + plan but do not mutate")
 	upgradeRunCmd.Flags().String("filter", "", "narrow affected objects (e.g. pipeline=text.short@v0)")
 	upgradeRunCmd.Flags().String("where", "", "SQL WHERE escape hatch (compiles to where:<predicate>)")
 	upgradeRunCmd.Flags().Int("rate-limit", 0, "max re-ingests per second (0 = unbounded)")
