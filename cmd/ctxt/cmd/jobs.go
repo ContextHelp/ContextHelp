@@ -45,6 +45,42 @@ var jobLong = map[string]string{
 	"cancel": "Deprecated alias for 'dpkms job cancel'. Forwards invocations to dpkms.",
 }
 
+// jobExamples supplies 12fcc strict-gate Examples per subcommand. The
+// surface is deprecated — the examples mirror the dpkms replacement so
+// agents can hop straight to the canonical CLI.
+var jobExamples = map[string][]cliconv.Example{
+	"list": {
+		{Title: "List recent jobs", Command: "dpkms job list"},
+		{Title: "List only failed jobs", Command: "dpkms job list --status failed"},
+	},
+	"status": {
+		{Title: "Show a job's status", Command: "dpkms job status job_abc123"},
+		{Title: "JSON output", Command: "dpkms job status job_abc123 --output json"},
+	},
+	"log": {
+		{Title: "Tail a job's log", Command: "dpkms job log job_abc123"},
+		{Title: "Print full log to stdout", Command: "dpkms job log job_abc123 --follow=false"},
+	},
+	"retry": {
+		{Title: "Retry a failed job", Command: "dpkms job retry job_abc123"},
+		{Title: "Retry every failed job", Command: "dpkms job retry --all"},
+	},
+	"cancel": {
+		{Title: "Cancel a running job", Command: "dpkms job cancel job_abc123"},
+		{Title: "Cancel every pending job", Command: "dpkms job cancel --all"},
+	},
+}
+
+// jobNextSteps supplies follow-ups for write-class subcommands.
+var jobNextSteps = map[string][]cliconv.NextStep{
+	"retry": {
+		{When: "on success", Suggest: "dpkms job status <job-id>", Reason: "watch the retried job progress"},
+	},
+	"cancel": {
+		{When: "after cancel", Suggest: "dpkms job list --status cancelled", Reason: "confirm the job moved to cancelled"},
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(jobsCmd)
 
@@ -62,6 +98,12 @@ func init() {
 		}
 		cliconv.WithSideEffect(c, jobSideEffect[name])
 		cliconv.WithIdempotency(c, jobIdempotency[name])
+		if ex, ok := jobExamples[name]; ok {
+			cliconv.WithExamples(c, ex)
+		}
+		if ns, ok := jobNextSteps[name]; ok {
+			cliconv.WithNextSteps(c, ns)
+		}
 		jobsCmd.AddCommand(c)
 	}
 }
