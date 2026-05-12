@@ -101,6 +101,25 @@ func init() {
 	// not in the default table; tag explicitly.
 	cliconv.WithIdempotency(entitiesBacklinksCmd, cliconv.IdempotencyYes)
 
+	// 12fcc strict-gate: examples on every leaf (all four are reads,
+	// so no next-steps required).
+	cliconv.WithExamples(entitiesListCmd, []cliconv.Example{
+		{Title: "List all entities", Command: "ctxt entity list"},
+		{Title: "Filter by namespace", Command: "ctxt entity list --namespace ui --limit 100"},
+	})
+	cliconv.WithExamples(entitiesShowCmd, []cliconv.Example{
+		{Title: "Show entity details", Command: "ctxt entity show ui.best-practice"},
+		{Title: "JSON dump", Command: "ctxt entity show ui.best-practice --format json"},
+	})
+	cliconv.WithExamples(entitiesSearchCmd, []cliconv.Example{
+		{Title: "Search by free-text", Command: "ctxt entity search \"checkout\""},
+		{Title: "JSON for scripting", Command: "ctxt entity search \"checkout\" --format json"},
+	})
+	cliconv.WithExamples(entitiesBacklinksCmd, []cliconv.Example{
+		{Title: "List objects referencing the entity", Command: "ctxt entity backlink ui.best-practice"},
+		{Title: "JSON for scripting", Command: "ctxt entity backlink ui.best-practice --format json"},
+	})
+
 	// List flags
 	entitiesListCmd.Flags().Int("limit", 50, "maximum results")
 	entitiesListCmd.Flags().String("namespace", "", "filter by namespace")

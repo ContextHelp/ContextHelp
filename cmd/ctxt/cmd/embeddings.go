@@ -173,6 +173,47 @@ func init() {
 	cliconv.WithIdempotency(embeddingsDeprecateCmd, cliconv.IdempotencyYes)
 	cliconv.WithIdempotency(embeddingsPurgeCmd, cliconv.IdempotencyYes)
 
+	// 12fcc strict-gate: examples + next-steps on every leaf.
+	cliconv.WithExamples(embeddingsListCmd, []cliconv.Example{
+		{Title: "List registered models", Command: "ctxt embeddings list"},
+		{Title: "JSON for scripting", Command: "ctxt embeddings list --format json"},
+	})
+	cliconv.WithExamples(embeddingsRegisterCmd, []cliconv.Example{
+		{Title: "Register from a JSON model-config file", Command: "ctxt embeddings register openai-text-embedding-3-small@2025-01-15 --model-config ./openai-3-small.json"},
+		{Title: "Register and flip the default", Command: "ctxt embeddings register voyage-3-large@2025-08-01 --model-config ./voyage.json --provider voyage --dimension 1024 --make-default"},
+	})
+	cliconv.WithNextSteps(embeddingsRegisterCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt embeddings list", Reason: "confirm coverage + default marker after registration"},
+		{When: "after coverage + recall verification", Suggest: "ctxt embeddings set-default <model_id>", Reason: "promote the candidate once recall guards pass"},
+	})
+	cliconv.WithExamples(embeddingsMigrateCmd, []cliconv.Example{
+		{Title: "Migrate corpus to a new model", Command: "ctxt embeddings migrate voyage-3-large@2025-08-01"},
+		{Title: "Dry-run a migration", Command: "ctxt embeddings migrate voyage-3-large@2025-08-01 --dry-run"},
+	})
+	cliconv.WithNextSteps(embeddingsMigrateCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt embeddings list", Reason: "check coverage reached 1.0 before flipping the default"},
+	})
+	cliconv.WithExamples(embeddingsSetDefaultCmd, []cliconv.Example{
+		{Title: "Promote a registered model to default", Command: "ctxt embeddings set-default voyage-3-large@2025-08-01"},
+		{Title: "JSON output", Command: "ctxt embeddings set-default voyage-3-large@2025-08-01 --format json"},
+	})
+	cliconv.WithNextSteps(embeddingsSetDefaultCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt embeddings list", Reason: "verify the new default marker landed"},
+		{When: "after verification", Suggest: "ctxt embeddings deprecate <old_model_id>", Reason: "schedule the previous default for retirement"},
+	})
+	cliconv.WithExamples(embeddingsDeprecateCmd, []cliconv.Example{
+		{Title: "Mark a model deprecated", Command: "ctxt embeddings deprecate openai-text-embedding-ada-002@2022-12-15"},
+	})
+	cliconv.WithNextSteps(embeddingsDeprecateCmd, []cliconv.NextStep{
+		{When: "after grace period", Suggest: "ctxt embeddings purge <model_id>", Reason: "delete the embedding rows once no consumer is reading them"},
+	})
+	cliconv.WithExamples(embeddingsPurgeCmd, []cliconv.Example{
+		{Title: "Delete rows for a deprecated model", Command: "ctxt embeddings purge openai-text-embedding-ada-002@2022-12-15"},
+	})
+	cliconv.WithNextSteps(embeddingsPurgeCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt embeddings list", Reason: "confirm coverage for remaining models is unaffected"},
+	})
+
 	// NOTE: --config was renamed to --model-config to avoid shadowing
 	// the kit-owned global -c/--config (ctxt config file loader).
 	embeddingsRegisterCmd.Flags().StringVar(&embeddingsRegisterConfig,
