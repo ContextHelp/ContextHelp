@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -34,6 +35,9 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(deleteCmd)
+	cliconv.WithSideEffect(deleteCmd, cliconv.SideEffectDestructive)
+	// "delete" is in kit's defaultIdempotency table (yes); deleting an
+	// already-deleted object is a no-op, so the verb default matches.
 
 	// Filter flags
 	deleteCmd.Flags().String("id", "", "delete specific knowledge object")

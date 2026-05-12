@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/repl"
 	"github.com/spf13/cobra"
 )
@@ -36,6 +37,10 @@ Press Ctrl+D or type exit / quit to end the session.`,
 
 func init() {
 	rootCmd.AddCommand(shellCmd)
+	cliconv.WithSideEffect(shellCmd, cliconv.SideEffectInteractive)
+	// "shell" is not in kit's defaultIdempotency table; an interactive
+	// REPL session has no replay semantics.
+	cliconv.WithIdempotency(shellCmd, cliconv.IdempotencyNo)
 }
 
 func runShell(cmd *cobra.Command, args []string) error {

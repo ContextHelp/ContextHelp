@@ -24,6 +24,7 @@ import (
 
 	"hop.top/kit/go/runtime/bus"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	adapterbus "github.com/ideacrafterslabs/ctxt/internal/lateral/adapters/bus"
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/daemon"
 )
@@ -93,6 +94,16 @@ and prints the merged result. Useful for debugging gate decisions
 
 func init() {
 	rootCmd.AddCommand(lateralCmd)
+	// `ctxt lateral` (no subcommand) defaults to `lateral start` — a
+	// long-running foreground daemon. Mark the depth-1 leaf interactive
+	// so the validator accepts it; deeper subcommands (start/status/
+	// config show) are owned by a sibling subtree.
+	cliconv.WithSideEffect(lateralCmd, cliconv.SideEffectInteractive)
+	// "lateral" is not in kit's defaultIdempotency table; the daemon
+	// holds open subscriptions and a poller loop, which is not a
+	// replay-safe operation.
+	cliconv.WithIdempotency(lateralCmd, cliconv.IdempotencyNo)
+
 	lateralCmd.AddCommand(lateralStartCmd)
 	lateralCmd.AddCommand(lateralStatusCmd)
 	lateralCmd.AddCommand(lateralConfigCmd)

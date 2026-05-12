@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -39,4 +40,8 @@ Keyboard shortcuts:
 func init() {
 	tuiCmd.Flags().String("theme", "default", "color theme (default | high-contrast | solarized)")
 	rootCmd.AddCommand(tuiCmd)
+	cliconv.WithSideEffect(tuiCmd, cliconv.SideEffectInteractive)
+	// "tui" is not in kit's defaultIdempotency table; an interactive
+	// full-screen session has no replay semantics.
+	cliconv.WithIdempotency(tuiCmd, cliconv.IdempotencyNo)
 }

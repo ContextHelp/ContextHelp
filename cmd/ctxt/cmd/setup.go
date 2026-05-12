@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -34,6 +35,11 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(setupCmd)
+	cliconv.WithSideEffect(setupCmd, cliconv.SideEffectInteractive)
+	// "setup" is not in kit's defaultIdempotency table; re-running the
+	// wizard re-prompts (or re-writes defaults in --non-interactive),
+	// converging to a deterministic config file. Mark idempotent.
+	cliconv.WithIdempotency(setupCmd, cliconv.IdempotencyYes)
 	setupCmd.Flags().Bool("non-interactive", false, "skip all prompts and write defaults (also triggered by CI=true)")
 }
 
