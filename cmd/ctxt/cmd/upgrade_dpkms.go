@@ -36,6 +36,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -151,6 +152,13 @@ func init() {
 	upgradeRunCmd.Flags().Float64("budget", 0, "cumulative LLM cost ceiling in USD (0 = unbounded)")
 	upgradeRunCmd.Flags().Bool("all", false, "execute a bucket-3 full-corpus re-ingest")
 	upgradeRunCmd.Flags().String("i-understand-the-cost", "", "consent SHA from release notes (required with --all)")
+
+	cliconv.WithSideEffect(upgradeStatusCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(upgradeStatusCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(upgradePlanCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(upgradePlanCmd, cliconv.IdempotencyYes)
+	cliconv.WithSideEffect(upgradeRunCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(upgradeRunCmd, cliconv.IdempotencyConditional)
 }
 
 // runUpgradeStatus implements `ctxt upgrade status` (+ --watch).
