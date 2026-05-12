@@ -35,6 +35,11 @@ Examples:
 func init() {
 	rootCmd.AddCommand(exportCmd)
 	cliconv.WithSideEffect(exportCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(exportCmd, []cliconv.Example{
+		{Title: "Print raw JSON for an object", Command: "ctxt export obj_12345678"},
+		{Title: "Export via a format plugin", Command: "ctxt export obj_12345678 --format obsidian-md"},
+		{Title: "Write to a destination path", Command: "ctxt export obj_12345678 --format obsidian-md --dest ~/Vault"},
+	})
 	// "export" is not in kit's defaultIdempotency table. Exporting an
 	// object is naturally idempotent — the same input + format yields the
 	// same output and no source-of-truth mutation.

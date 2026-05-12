@@ -45,6 +45,11 @@ Examples:
 func init() {
 	rootCmd.AddCommand(logCmd)
 	cliconv.WithSideEffect(logCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(logCmd, []cliconv.Example{
+		{Title: "Show recent log entries", Command: "ctxt log"},
+		{Title: "Filter by event type", Command: "ctxt log --type create,enrich"},
+		{Title: "View history of one object", Command: "ctxt log --object obj_abc123"},
+	})
 	// "log" is not in kit's defaultIdempotency table; audit-log reads are
 	// naturally idempotent — re-querying does not mutate state.
 	cliconv.WithIdempotency(logCmd, cliconv.IdempotencyYes)

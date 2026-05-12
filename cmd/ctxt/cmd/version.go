@@ -23,6 +23,10 @@ Examples:
 func init() {
 	rootCmd.AddCommand(versionCmd)
 	cliconv.WithSideEffect(versionCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(versionCmd, []cliconv.Example{
+		{Title: "Print version", Command: "ctxt version"},
+		{Title: "JSON output for automation", Command: "ctxt version --output json"},
+	})
 	// "version" is not in kit's defaultIdempotency table; repeated calls
 	// only print build metadata, which is naturally idempotent.
 	cliconv.WithIdempotency(versionCmd, cliconv.IdempotencyYes)

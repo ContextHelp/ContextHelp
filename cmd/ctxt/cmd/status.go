@@ -85,6 +85,11 @@ Examples:
 func init() {
 	rootCmd.AddCommand(statusCmd)
 	cliconv.WithSideEffect(statusCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(statusCmd, []cliconv.Example{
+		{Title: "Show dpkms health (table)", Command: "ctxt status"},
+		{Title: "JSON envelope for automation", Command: "ctxt status --format json"},
+		{Title: "Refresh every 2 seconds", Command: "ctxt status --watch"},
+	})
 	// "status" is not in kit's defaultIdempotency table; mark it explicitly
 	// as idempotent — repeated /healthz polls don't mutate state.
 	cliconv.WithIdempotency(statusCmd, cliconv.IdempotencyYes)

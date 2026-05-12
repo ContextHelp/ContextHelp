@@ -36,6 +36,11 @@ Examples:
 func init() {
 	rootCmd.AddCommand(showCmd)
 	cliconv.WithSideEffect(showCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(showCmd, []cliconv.Example{
+		{Title: "Show object details", Command: "ctxt show obj_12345678"},
+		{Title: "Show ID picked from the clipboard", Command: "ctxt show"},
+		{Title: "Show raw object data", Command: "ctxt show obj_12345678 --raw"},
+	})
 
 	// Display flags
 	showCmd.Flags().Bool("raw", false, "show raw object data")

@@ -62,6 +62,11 @@ Examples:
 func init() {
 	rootCmd.AddCommand(listCmd)
 	cliconv.WithSideEffect(listCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(listCmd, []cliconv.Example{
+		{Title: "List all objects", Command: "ctxt list"},
+		{Title: "Filter by tag", Command: "ctxt list --tagged ux,onboarding"},
+		{Title: "Use the query language", Command: "ctxt list --q \"type==url;tag=in=(ux,design)\""},
+	})
 
 	// Filter flags
 	listCmd.Flags().String("type", "", "filter by knowledge object type")

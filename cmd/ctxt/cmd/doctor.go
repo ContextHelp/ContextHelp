@@ -30,6 +30,11 @@ Examples:
 func init() {
 	rootCmd.AddCommand(doctorCmd)
 	cliconv.WithSideEffect(doctorCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(doctorCmd, []cliconv.Example{
+		{Title: "Run all health checks", Command: "ctxt doctor"},
+		{Title: "Limit to specific checks", Command: "ctxt doctor --check orphans,duplicates"},
+		{Title: "JSON output for automation", Command: "ctxt doctor --output json"},
+	})
 	// "doctor" is in kit's defaultIdempotency table (yes); the lint
 	// report-only path matches the verb default, so no override needed.
 	doctorCmd.Flags().StringSlice("check", nil,

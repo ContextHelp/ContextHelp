@@ -29,6 +29,11 @@ Examples:
 func init() {
 	rootCmd.AddCommand(statsCmd)
 	cliconv.WithSideEffect(statsCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(statsCmd, []cliconv.Example{
+		{Title: "Show a snapshot summary", Command: "ctxt stats"},
+		{Title: "Re-print every 3 seconds", Command: "ctxt stats --watch"},
+		{Title: "JSON output for automation", Command: "ctxt stats --output json"},
+	})
 	// "stats" is not in kit's defaultIdempotency table; aggregating counts
 	// is naturally idempotent — no state changes between calls.
 	cliconv.WithIdempotency(statsCmd, cliconv.IdempotencyYes)
