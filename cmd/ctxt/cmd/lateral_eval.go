@@ -70,8 +70,16 @@ func init() {
 	// replay + metrics are read-only fixture replays.
 	cliconv.WithSideEffect(lateralEvalReplayCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(lateralEvalReplayCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(lateralEvalReplayCmd, []cliconv.Example{
+		{Title: "Replay a fixture file", Command: "ctxt lateral eval replay ./fixtures.jsonl"},
+		{Title: "Replay with extra config", Command: "ctxt lateral eval replay ./fixtures.jsonl --lateral-config ./lateral.local.yaml"},
+	})
 	cliconv.WithSideEffect(lateralEvalMetricsCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(lateralEvalMetricsCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(lateralEvalMetricsCmd, []cliconv.Example{
+		{Title: "Compute per-strategy metrics", Command: "ctxt lateral eval metrics ./fixtures.jsonl"},
+		{Title: "Emit metrics as JSON", Command: "ctxt lateral eval metrics ./fixtures.jsonl --json"},
+	})
 
 	for _, c := range []*cobra.Command{lateralEvalReplayCmd, lateralEvalMetricsCmd} {
 		c.Flags().String("lateral-config", "", "extra config file appended as the highest-priority layer")
