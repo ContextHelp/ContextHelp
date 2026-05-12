@@ -241,24 +241,107 @@ func init() {
 		"auth token (reads from stdin prompt if omitted)")
 
 	cliconv.WithSideEffect(registryListCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(registryListCmd, []cliconv.Example{
+		{Title: "List all registries", Command: "ctxt registry list"},
+		{Title: "List as JSON", Command: "ctxt registry list --json"},
+	})
+
 	cliconv.WithSideEffect(registryAddCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(registryAddCmd, []cliconv.Example{
+		{Title: "Add a registry by URL", Command: "ctxt registry add uxpatterns https://uxpatterns.example.com"},
+		{Title: "Add then inspect", Command: "ctxt registry add uxpatterns https://uxpatterns.example.com && ctxt registry info uxpatterns"},
+	})
+	cliconv.WithNextSteps(registryAddCmd, []cliconv.NextStep{
+		{Suggest: "ctxt registry info <name>", Reason: "review the cached manifest, trust status, and version"},
+		{Suggest: "ctxt registry sync <name>", Reason: "pull entities and taxonomies from the freshly-added registry"},
+	})
+
 	cliconv.WithSideEffect(registryRemoveCmd, cliconv.SideEffectDestructive)
 	cliconv.WithDestructiveToken(registryRemoveCmd)
+	cliconv.WithExamples(registryRemoveCmd, []cliconv.Example{
+		{Title: "Delete a registry", Command: "ctxt registry delete uxpatterns --confirm=yes"},
+		{Title: "Delete with interactive confirmation", Command: "ctxt registry delete uxpatterns --confirm=prompt"},
+	})
+	cliconv.WithNextSteps(registryRemoveCmd, []cliconv.NextStep{
+		{Suggest: "ctxt registry list", Reason: "confirm the entry is gone from the configured set"},
+		{Suggest: "ctxt registry logout <name>", Reason: "drop any leftover keychain token tied to the registry"},
+	})
+
 	cliconv.WithSideEffect(registryInfoCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(registryInfoCmd, []cliconv.Example{
+		{Title: "Show registry info", Command: "ctxt registry info uxpatterns"},
+		{Title: "Emit info as JSON", Command: "ctxt registry info uxpatterns --json"},
+	})
+
 	cliconv.WithSideEffect(registrySyncCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(registrySyncCmd, []cliconv.Example{
+		{Title: "Sync a registry", Command: "ctxt registry sync uxpatterns"},
+		{Title: "Preview without writing", Command: "ctxt registry sync --dry-run uxpatterns"},
+	})
+	cliconv.WithNextSteps(registrySyncCmd, []cliconv.NextStep{
+		{Suggest: "ctxt registry info <name>", Reason: "verify Last Fetched timestamp and ETag advanced"},
+		{When: "if conflicts were reported", Suggest: "ctxt registry sync --reconcile --merge-strategy trust-score", Reason: "reconcile entity conflicts across registries"},
+	})
+
 	cliconv.WithSideEffect(registrySubmitCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(registrySubmitCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(registrySubmitCmd, []cliconv.Example{
+		{Title: "Validate a bundle directory", Command: "ctxt registry submit ./mybundle"},
+		{Title: "Emit PR instructions as JSON", Command: "ctxt registry submit ./mybundle --json"},
+	})
+	cliconv.WithNextSteps(registrySubmitCmd, []cliconv.NextStep{
+		{Suggest: "open https://github.com/ideacrafterslabs/registry", Reason: "follow the printed PR template to upstream the bundle"},
+		{Suggest: "ctxt registry info <name>", Reason: "double-check the manifest fields before submitting"},
+	})
+
 	cliconv.WithSideEffect(registryLoginCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(registryLoginCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(registryLoginCmd, []cliconv.Example{
+		{Title: "Login interactively", Command: "ctxt registry login example-paid"},
+		{Title: "Login with env-var token", Command: "ctxt registry login example-paid --token \"$REGISTRY_TOKEN\""},
+	})
+	cliconv.WithNextSteps(registryLoginCmd, []cliconv.NextStep{
+		{Suggest: "ctxt registry sync <name>", Reason: "the token unlocks authenticated sync; pull fresh entities now"},
+		{Suggest: "ctxt registry entitlements", Reason: "check which plan and namespaces the token grants"},
+	})
+
 	cliconv.WithSideEffect(registryLogoutCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(registryLogoutCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(registryLogoutCmd, []cliconv.Example{
+		{Title: "Remove a stored token", Command: "ctxt registry logout example-paid"},
+		{Title: "Logout then verify", Command: "ctxt registry logout example-paid && ctxt registry entitlements"},
+	})
+	cliconv.WithNextSteps(registryLogoutCmd, []cliconv.NextStep{
+		{Suggest: "ctxt registry entitlements", Reason: "confirm the authenticated entitlement row is gone"},
+		{When: "to re-authenticate later", Suggest: "ctxt registry login <name>", Reason: "store a fresh token in the keychain"},
+	})
+
 	cliconv.WithSideEffect(registryCapabilitiesCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(registryCapabilitiesCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(registryCapabilitiesCmd, []cliconv.Example{
+		{Title: "Show capability handshake", Command: "ctxt registry capabilities default"},
+		{Title: "Capabilities for a named registry", Command: "ctxt registry capabilities uxpatterns"},
+	})
+
 	cliconv.WithSideEffect(registryEntitlementsCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(registryEntitlementsCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(registryEntitlementsCmd, []cliconv.Example{
+		{Title: "List active entitlements", Command: "ctxt registry entitlements"},
+		{Title: "Emit entitlements as JSON", Command: "ctxt registry entitlements --json"},
+	})
+
 	cliconv.WithSideEffect(registryUsageCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(registryUsageCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(registryUsageCmd, []cliconv.Example{
+		{Title: "Show all registry usage", Command: "ctxt registry usage"},
+		{Title: "Show usage for last 30 days", Command: "ctxt registry usage example-paid --days 30"},
+	})
+
 	cliconv.WithSideEffect(registrySearchCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(registrySearchCmd, []cliconv.Example{
+		{Title: "Search registries by topic", Command: "ctxt registry search ai"},
+		{Title: "Search and emit JSON", Command: "ctxt registry search react --json"},
+	})
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
