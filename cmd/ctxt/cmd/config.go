@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/ideacrafterslabs/ctxt/internal/bundle"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -33,13 +34,23 @@ Examples:
 var configShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Show current configuration",
-	RunE:  runConfigShow,
+	Long: `Print the loaded ctxt configuration to stdout.
+
+The default human-readable view groups settings under storage, server, profile,
+i18n, and registries. Pass --format json (global) to emit the full config tree
+as a JSON object for scripting.`,
+	RunE: runConfigShow,
 }
 
 var configPathCmd = &cobra.Command{
 	Use:   "path",
 	Short: "Show configuration file path",
-	RunE:  runConfigPath,
+	Long: `Print the absolute path to the configuration file ctxt is using.
+
+The path is resolved the same way as for every other ctxt command:
+$CTXT_CONFIG (env) → --config (flag) → $XDG_CONFIG_HOME/contexthelp/config.yaml.
+Use this to locate the file before editing or backing it up.`,
+	RunE: runConfigPath,
 }
 
 var configValidateCmd = &cobra.Command{
@@ -57,7 +68,11 @@ Exit code 1 when validation errors or secret warnings are found.`,
 var configEditCmd = &cobra.Command{
 	Use:   "edit",
 	Short: "Edit configuration in default editor",
-	RunE:  runConfigEdit,
+	Long: `Open the ctxt configuration file in $EDITOR (or vi by default).
+
+Saves are written in place. Re-run ctxt config validate or ctxt config doctor
+after editing to confirm the result still parses and passes lint checks.`,
+	RunE: runConfigEdit,
 }
 
 var configLintCmd = &cobra.Command{
@@ -129,6 +144,24 @@ func init() {
 	configCmd.AddCommand(configBackupCmd)
 	configCmd.AddCommand(configRestoreCmd)
 
+	// 12fcc conformance: side-effect + idempotency annotations.
+	// show/path/doctor are pure read. validate/edit/backup mutate
+	// (validate may rewrite migrations; edit invokes $EDITOR; backup
+	// writes a bundle). restore is destructive (overwrites config).
+	cliconv.WithSideEffect(configShowCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(configPathCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(configLintCmd, cliconv.SideEffectRead) // doctor: read-only lint
+	cliconv.WithSideEffect(configValidateCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(configEditCmd, cliconv.SideEffectWriteLocal)
+	cliconv.WithSideEffect(configBackupCmd, cliconv.SideEffectWriteLocal)
+	cliconv.WithSideEffect(configRestoreCmd, cliconv.SideEffectDestructiveLocal)
+
+	// Kit verb defaults already cover show/path/edit (Yes) and
+	// validate ("validate" not in default table → mark explicitly).
+	cliconv.WithIdempotency(configValidateCmd, cliconv.IdempotencyYes)
+	cliconv.WithIdempotency(configBackupCmd, cliconv.IdempotencyNo)
+	cliconv.WithIdempotency(configRestoreCmd, cliconv.IdempotencyNo)
+
 	// Flags for validate subcommand
 	configValidateCmd.Flags().Bool("check-secrets", true,
 		"scan config fields for plaintext secrets and warn")
@@ -138,18 +171,22 @@ func init() {
 		"auto-apply safe fixes (e.g. chmod 600 on world-readable config file)")
 
 	// Flags for backup subcommand
-	configBackupCmd.Flags().String("output", "",
-		"output directory for bundle files (default: current directory)")
+	// NOTE: --output is owned by the kit global persistent flag set
+	// (output.RegisterFlags). The previous local --output shadowed
+	// the global; readers fall through to cmd.Flags().GetString("output")
+	// which resolves the inherited persistent flag.
 	configBackupCmd.Flags().Bool("encrypt", false,
 		"encrypt the bundle with AES-256-GCM + Argon2id (overrides backup.encrypt_by_default)")
 	configBackupCmd.Flags().String("passphrase", "",
 		"passphrase for --encrypt (not recommended for scripts; prefer env var or keychain)")
 
 	// Flags for restore subcommand
+	// NOTE: --dry-run is owned by the kit global persistent flag set.
+	// Kit auto-allows --dry-run on write|destructive leaves, so the
+	// destructive configRestoreCmd inherits the global without needing
+	// a local re-declaration. Readers still use cmd.Flags().GetBool("dry-run").
 	configRestoreCmd.Flags().Bool("verify", false,
 		"verify Ed25519 signature before restoring (recommended)")
-	configRestoreCmd.Flags().Bool("dry-run", false,
-		"verify and list bundle contents without writing any files")
 }
 
 func runConfigShow(cmd *cobra.Command, args []string) error {
