@@ -103,3 +103,38 @@ func WithDestructiveToken(cmd *cobra.Command) {
 func WithRetryable(cmd *cobra.Command, v bool) {
 	kitcli.SetRetryable(cmd, v)
 }
+
+// Example and NextStep re-export kit guidance types so call sites in
+// cmd/ctxt/cmd do not need a second kit/cli import.
+type (
+	Example  = kitcli.Example
+	NextStep = kitcli.NextStep
+	Guidance = kitcli.Guidance
+)
+
+// WithExamples stamps kit/examples on cmd. Required on every runnable
+// leaf when the strict guidance gate is on. Panics on marshal/cap
+// failure so callers can declare guidance at init() without plumbing
+// errors through.
+func WithExamples(cmd *cobra.Command, ex []Example) {
+	if err := kitcli.SetExamples(cmd, ex); err != nil {
+		panic("cliconv.WithExamples " + cmd.CommandPath() + ": " + err.Error())
+	}
+}
+
+// WithNextSteps stamps kit/next-steps on cmd. Required on every
+// write/destructive leaf under the strict guidance gate; read leaves
+// don't need one. Panics on encode failure.
+func WithNextSteps(cmd *cobra.Command, ns []NextStep) {
+	if err := kitcli.SetNextSteps(cmd, ns); err != nil {
+		panic("cliconv.WithNextSteps " + cmd.CommandPath() + ": " + err.Error())
+	}
+}
+
+// WithGuidance attaches Examples + NextSteps in one call. Pass an
+// empty Guidance{} to clear both. Panics on encode failure.
+func WithGuidance(cmd *cobra.Command, g Guidance) {
+	if err := kitcli.SetGuidance(cmd, g); err != nil {
+		panic("cliconv.WithGuidance " + cmd.CommandPath() + ": " + err.Error())
+	}
+}
