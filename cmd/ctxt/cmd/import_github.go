@@ -54,7 +54,7 @@ Examples:
   ctxt import github --username octocat --token $GITHUB_TOKEN --lists starred,watched
 
   # JSON output
-  ctxt import github --username octocat --dry-run --output json`,
+  ctxt import github --username octocat --dry-run --format json`,
 	RunE: runImportGitHub,
 }
 
@@ -64,7 +64,6 @@ func init() {
 	importGitHubCmd.Flags().StringP("token", "t", "", "GitHub token (or GITHUB_TOKEN env)")
 	importGitHubCmd.Flags().StringP("username", "u", "", "GitHub username (required)")
 	importGitHubCmd.Flags().StringP("lists", "l", "starred", "comma-separated lists: starred,watched,contributed")
-	importGitHubCmd.Flags().String("output", "table", "output format: table or json")
 	importGitHubCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importGitHubCmd.Flags().String("pipeline", "text.long", "pipeline override for enqueued jobs")
 
@@ -95,7 +94,10 @@ func runImportGitHub(cmd *cobra.Command, args []string) error {
 	}
 
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	outputFmt, _ := cmd.Flags().GetString("output")
+	outputFmt, _ := cmd.Flags().GetString("format")
+	if outputFmt == "" {
+		outputFmt = "table"
+	}
 	serverURL, _ := cmd.Flags().GetString("server")
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	baseURL, _ := cmd.Flags().GetString("github-base-url")
