@@ -38,7 +38,7 @@ var secretLong = map[string]string{
 var secretExamples = map[string][]cliconv.Example{
 	"get": {
 		{Title: "Read a secret", Command: "dpkms secret get my-secret"},
-		{Title: "Read as JSON", Command: "dpkms secret get my-secret --output json"},
+		{Title: "Read as JSON", Command: "dpkms secret get my-secret --format json"},
 	},
 	"set": {
 		{Title: "Set a secret", Command: "dpkms secret set my-secret s3cret-value"},

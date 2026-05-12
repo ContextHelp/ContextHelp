@@ -88,7 +88,7 @@ func init() {
 	cliconv.WithSideEffect(remindListCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(remindListCmd, []cliconv.Example{
 		{Title: "List scheduled reminders", Command: "ctxt remind list"},
-		{Title: "Emit JSON", Command: "ctxt remind list --output json"},
+		{Title: "Emit JSON", Command: "ctxt remind list --format json"},
 	})
 }
 

@@ -14,7 +14,7 @@ human operators to confirm which build is installed.
 
 Examples:
   ctxt version
-  ctxt version --output json`,
+  ctxt version --format json`,
 	Run: func(cmd *cobra.Command, args []string) {
 		printVersion(cmd)
 	},
@@ -25,7 +25,7 @@ func init() {
 	cliconv.WithSideEffect(versionCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(versionCmd, []cliconv.Example{
 		{Title: "Print version", Command: "ctxt version"},
-		{Title: "JSON output for automation", Command: "ctxt version --output json"},
+		{Title: "JSON output for automation", Command: "ctxt version --format json"},
 	})
 	// "version" is not in kit's defaultIdempotency table; repeated calls
 	// only print build metadata, which is naturally idempotent.

@@ -78,7 +78,7 @@ func init() {
 	cliconv.WithSideEffect(pageShowCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(pageShowCmd, []cliconv.Example{
 		{Title: "Show an entity page", Command: "ctxt page show person.alice"},
-		{Title: "Render as JSON", Command: "ctxt page show lang.go --output json"},
+		{Title: "Render as JSON", Command: "ctxt page show lang.go --format json"},
 	})
 	cliconv.WithSideEffect(pageRefreshCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(pageRefreshCmd, cliconv.IdempotencyYes)

@@ -22,7 +22,7 @@ missing metadata enrichment, near-duplicates, and stale objects.
 Examples:
   ctxt doctor
   ctxt doctor --check orphans,duplicates
-  ctxt doctor --output json
+  ctxt doctor --format json
   ctxt doctor --profile work --limit 50`,
 	RunE: runDoctor,
 }
@@ -33,7 +33,7 @@ func init() {
 	cliconv.WithExamples(doctorCmd, []cliconv.Example{
 		{Title: "Run all health checks", Command: "ctxt doctor"},
 		{Title: "Limit to specific checks", Command: "ctxt doctor --check orphans,duplicates"},
-		{Title: "JSON output for automation", Command: "ctxt doctor --output json"},
+		{Title: "JSON output for automation", Command: "ctxt doctor --format json"},
 	})
 	// "doctor" is in kit's defaultIdempotency table (yes); the lint
 	// report-only path matches the verb default, so no override needed.

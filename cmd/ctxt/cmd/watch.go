@@ -118,7 +118,7 @@ func init() {
 	cliconv.WithIdempotency(watchStatusCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(watchStatusCmd, []cliconv.Example{
 		{Title: "Show watcher status", Command: "ctxt watch status"},
-		{Title: "Emit JSON", Command: "ctxt watch status --output json"},
+		{Title: "Emit JSON", Command: "ctxt watch status --format json"},
 	})
 	cliconv.WithSideEffect(watchEnableCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(watchEnableCmd, cliconv.IdempotencyYes)

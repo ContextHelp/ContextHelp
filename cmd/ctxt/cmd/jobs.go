@@ -55,7 +55,7 @@ var jobExamples = map[string][]cliconv.Example{
 	},
 	"status": {
 		{Title: "Show a job's status", Command: "dpkms job status job_abc123"},
-		{Title: "JSON output", Command: "dpkms job status job_abc123 --output json"},
+		{Title: "JSON output", Command: "dpkms job status job_abc123 --format json"},
 	},
 	"log": {
 		{Title: "Tail a job's log", Command: "dpkms job log job_abc123"},

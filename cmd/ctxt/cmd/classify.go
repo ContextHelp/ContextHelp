@@ -28,7 +28,7 @@ Examples:
   ctxt classify o-abc123
 
   # JSON output
-  ctxt classify "some text" --output json
+  ctxt classify "some text" --format json
 
   # Select a named pipeline (reserved for future use)
   ctxt classify "some text" --pipeline default`,
@@ -42,7 +42,7 @@ func init() {
 	cliconv.WithExamples(classifyCmd, []cliconv.Example{
 		{Title: "Classify raw text", Command: "ctxt classify \"The server crashed after deploying v2.3\""},
 		{Title: "Classify a stored object", Command: "ctxt classify o-abc123"},
-		{Title: "JSON output", Command: "ctxt classify \"some text\" --output json"},
+		{Title: "JSON output", Command: "ctxt classify \"some text\" --format json"},
 	})
 	cliconv.WithNextSteps(classifyCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt show <object_id>", Reason: "inspect persisted classification signals"},

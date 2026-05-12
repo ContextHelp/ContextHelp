@@ -26,7 +26,7 @@ Examples:
   ctxt resurface --limit 5
   ctxt resurface refresh
   ctxt resurface dismiss <entry-id>
-  ctxt resurface --output json`,
+  ctxt resurface --format json`,
 	RunE: runResurfaceShow,
 }
 
