@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	gdriveimporter "github.com/ideacrafterslabs/ctxt/internal/importer/gdrive"
 	"github.com/spf13/cobra"
 )
@@ -53,6 +54,9 @@ func init() {
 	importGDriveCmd.Flags().Int("max-items", 0, "maximum number of files to import (0 = all)")
 	importGDriveCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importGDriveCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
+
+	cliconv.WithSideEffect(importGDriveCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importGDriveCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportGDrive(cmd *cobra.Command, args []string) error {

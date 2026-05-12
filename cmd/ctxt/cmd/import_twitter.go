@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	twitterimporter "github.com/ideacrafterslabs/ctxt/internal/importer/twitter"
 	"github.com/spf13/cobra"
 )
@@ -49,6 +50,9 @@ func init() {
 	importTwitterCmd.Flags().Int("max-items", 0, "maximum number of tweets to import (0 = all)")
 	importTwitterCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importTwitterCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
+
+	cliconv.WithSideEffect(importTwitterCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importTwitterCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportTwitter(cmd *cobra.Command, _ []string) error {

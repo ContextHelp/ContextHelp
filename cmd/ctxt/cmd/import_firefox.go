@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	bookmarksimporter "github.com/ideacrafterslabs/ctxt/internal/importer/bookmarks"
 	"github.com/spf13/cobra"
 )
@@ -31,6 +32,9 @@ func init() {
 	importFirefoxCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
 
 	importFirefoxCmd.MarkFlagRequired("file")
+
+	cliconv.WithSideEffect(importFirefoxCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importFirefoxCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportFirefox(cmd *cobra.Command, args []string) error {

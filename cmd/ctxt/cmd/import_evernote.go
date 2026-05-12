@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	evernoteimporter "github.com/ideacrafterslabs/ctxt/internal/importer/evernote"
 	"github.com/spf13/cobra"
 )
@@ -43,6 +44,9 @@ func init() {
 	importEvernoteCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	importEvernoteCmd.MarkFlagRequired("file")
+
+	cliconv.WithSideEffect(importEvernoteCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importEvernoteCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportEvernote(cmd *cobra.Command, args []string) error {

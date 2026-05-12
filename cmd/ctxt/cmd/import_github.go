@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	githubimporter "github.com/ideacrafterslabs/ctxt/internal/importer/github"
 	"github.com/spf13/cobra"
 )
@@ -70,6 +71,9 @@ func init() {
 	// hidden for test/dev overrides
 	importGitHubCmd.Flags().String("github-base-url", "", "override GitHub API base URL")
 	_ = importGitHubCmd.Flags().MarkHidden("github-base-url")
+
+	cliconv.WithSideEffect(importGitHubCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importGitHubCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportGitHub(cmd *cobra.Command, args []string) error {

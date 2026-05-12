@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	pinboardimporter "github.com/ideacrafterslabs/ctxt/internal/importer/pinboard"
 	"github.com/spf13/cobra"
 )
@@ -63,6 +64,9 @@ func init() {
 	importPinboardCmd.Flags().Int("max-items", 0, "maximum bookmarks to import (0 = all)")
 	importPinboardCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importPinboardCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
+
+	cliconv.WithSideEffect(importPinboardCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importPinboardCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportPinboard(cmd *cobra.Command, args []string) error {

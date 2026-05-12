@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	onedriveimporter "github.com/ideacrafterslabs/ctxt/internal/importer/onedrive"
 	"github.com/spf13/cobra"
 )
@@ -82,6 +83,9 @@ func init() {
 	// For testing and self-hosted proxies.
 	importOneDriveCmd.Flags().String("graph-base-url", "", "override Microsoft Graph API base URL")
 	_ = importOneDriveCmd.Flags().MarkHidden("graph-base-url")
+
+	cliconv.WithSideEffect(importOneDriveCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importOneDriveCmd, cliconv.IdempotencyConditional)
 }
 
 type driveFolderScope struct {

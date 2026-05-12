@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	raindropimporter "github.com/ideacrafterslabs/ctxt/internal/importer/raindrop"
 	"github.com/spf13/cobra"
 )
@@ -57,6 +58,9 @@ func init() {
 	// For testing and self-hosted proxies.
 	importRaindropCmd.Flags().String("raindrop-base-url", "", "override Raindrop API base URL")
 	_ = importRaindropCmd.Flags().MarkHidden("raindrop-base-url")
+
+	cliconv.WithSideEffect(importRaindropCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importRaindropCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportRaindrop(cmd *cobra.Command, args []string) error {

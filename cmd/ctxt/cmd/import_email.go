@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -67,6 +68,9 @@ func init() {
 	f.String("pipeline", "", "pipeline override (applied to all messages, bypasses routing)")
 	f.String("since", "", "only fetch messages after this date (RFC 3339 or YYYY-MM-DD)")
 	f.Int("max-items", 0, "maximum number of messages to import (0 = unlimited)")
+
+	cliconv.WithSideEffect(importEmailCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importEmailCmd, cliconv.IdempotencyConditional)
 }
 
 // emailServerURL returns the server URL from the command flag or the default.

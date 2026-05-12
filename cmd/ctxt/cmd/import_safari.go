@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	bookmarksimporter "github.com/ideacrafterslabs/ctxt/internal/importer/bookmarks"
 	"github.com/spf13/cobra"
 )
@@ -31,6 +32,9 @@ func init() {
 	importSafariCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
 
 	importSafariCmd.MarkFlagRequired("file")
+
+	cliconv.WithSideEffect(importSafariCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importSafariCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportSafari(cmd *cobra.Command, args []string) error {

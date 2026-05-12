@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	logseqImporter "github.com/ideacrafterslabs/ctxt/internal/importer/logseq"
 	"github.com/spf13/cobra"
 )
@@ -46,6 +47,9 @@ func init() {
 	importLogseqCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	importLogseqCmd.MarkFlagRequired("graph")
+
+	cliconv.WithSideEffect(importLogseqCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importLogseqCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportLogseq(cmd *cobra.Command, args []string) error {

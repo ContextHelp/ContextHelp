@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 )
 
@@ -63,6 +64,9 @@ func init() {
 
 	// batch status flags
 	importBatchStatusCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+
+	cliconv.WithSideEffect(importBatchStatusCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(importBatchStatusCmd, cliconv.IdempotencyYes)
 }
 
 // batchServerURL returns the server URL from the command flag or the default.

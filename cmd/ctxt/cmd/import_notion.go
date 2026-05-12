@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	notionimporter "github.com/ideacrafterslabs/ctxt/internal/importer/notion"
 	"github.com/spf13/cobra"
 )
@@ -40,6 +41,9 @@ func init() {
 	// For testing and self-hosted proxies.
 	importNotionCmd.Flags().String("notion-base-url", "", "override Notion API base URL")
 	_ = importNotionCmd.Flags().MarkHidden("notion-base-url")
+
+	cliconv.WithSideEffect(importNotionCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importNotionCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportNotion(cmd *cobra.Command, args []string) error {

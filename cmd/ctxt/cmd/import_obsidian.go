@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	obsidianImporter "github.com/ideacrafterslabs/ctxt/internal/importer/obsidian"
 	"github.com/spf13/cobra"
 )
@@ -44,6 +45,9 @@ func init() {
 	importObsidianCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	importObsidianCmd.MarkFlagRequired("vault")
+
+	cliconv.WithSideEffect(importObsidianCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importObsidianCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportObsidian(cmd *cobra.Command, args []string) error {

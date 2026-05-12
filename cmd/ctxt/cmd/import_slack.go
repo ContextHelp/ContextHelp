@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	slackimporter "github.com/ideacrafterslabs/ctxt/internal/importer/slack"
 	"github.com/spf13/cobra"
 )
@@ -50,6 +51,9 @@ func init() {
 	importSlackCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	importSlackCmd.MarkFlagRequired("dir")
+
+	cliconv.WithSideEffect(importSlackCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importSlackCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportSlack(cmd *cobra.Command, args []string) error {

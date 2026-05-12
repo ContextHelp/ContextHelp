@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	dropboximporter "github.com/ideacrafterslabs/ctxt/internal/importer/dropbox"
 	"github.com/spf13/cobra"
 )
@@ -54,6 +55,9 @@ func init() {
 	importDropboxCmd.Flags().Int("max-items", 0, "maximum number of files to import (0 = all)")
 	importDropboxCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importDropboxCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
+
+	cliconv.WithSideEffect(importDropboxCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importDropboxCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportDropbox(cmd *cobra.Command, args []string) error {

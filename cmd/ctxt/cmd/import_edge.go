@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	bookmarksimporter "github.com/ideacrafterslabs/ctxt/internal/importer/bookmarks"
 	"github.com/spf13/cobra"
 )
@@ -31,6 +32,9 @@ func init() {
 	importEdgeCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
 
 	importEdgeCmd.MarkFlagRequired("file")
+
+	cliconv.WithSideEffect(importEdgeCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importEdgeCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportEdge(cmd *cobra.Command, args []string) error {

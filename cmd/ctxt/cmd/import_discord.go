@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	discordimporter "github.com/ideacrafterslabs/ctxt/internal/importer/discord"
 	"github.com/spf13/cobra"
 )
@@ -53,6 +54,9 @@ func init() {
 	importDiscordCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	importDiscordCmd.MarkFlagRequired("file")
+
+	cliconv.WithSideEffect(importDiscordCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importDiscordCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportDiscord(cmd *cobra.Command, args []string) error {

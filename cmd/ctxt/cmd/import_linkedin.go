@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	linkedinimporter "github.com/ideacrafterslabs/ctxt/internal/importer/linkedin"
 	"github.com/spf13/cobra"
 )
@@ -51,6 +52,9 @@ func init() {
 	importLinkedInCmd.Flags().Int("max-items", 0, "maximum number of items to import (0 = all)")
 	importLinkedInCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importLinkedInCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
+
+	cliconv.WithSideEffect(importLinkedInCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importLinkedInCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportLinkedIn(cmd *cobra.Command, _ []string) error {

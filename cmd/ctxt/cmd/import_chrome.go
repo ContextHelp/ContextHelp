@@ -8,6 +8,7 @@ import (
 	gohttp "net/http"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	bookmarksimporter "github.com/ideacrafterslabs/ctxt/internal/importer/bookmarks"
 	"github.com/spf13/cobra"
 )
@@ -35,6 +36,9 @@ func init() {
 	importChromeCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
 
 	importChromeCmd.MarkFlagRequired("file")
+
+	cliconv.WithSideEffect(importChromeCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importChromeCmd, cliconv.IdempotencyConditional)
 }
 
 func runImportChrome(cmd *cobra.Command, args []string) error {
