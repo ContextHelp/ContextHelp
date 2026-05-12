@@ -65,7 +65,6 @@ func init() {
 	// Common flags.
 	f.String("rules", "", "path to YAML rules file for custom routing")
 	f.String("pipeline", "", "pipeline override (applied to all messages, bypasses routing)")
-	f.Bool("dry-run", false, "evaluate routing without importing; print explain output")
 	f.String("since", "", "only fetch messages after this date (RFC 3339 or YYYY-MM-DD)")
 	f.Int("max-items", 0, "maximum number of messages to import (0 = unlimited)")
 }

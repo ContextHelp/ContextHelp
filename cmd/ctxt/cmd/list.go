@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cursor"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -60,6 +61,7 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(listCmd)
+	cliconv.WithSideEffect(listCmd, cliconv.SideEffectRead)
 
 	// Filter flags
 	listCmd.Flags().String("type", "", "filter by knowledge object type")

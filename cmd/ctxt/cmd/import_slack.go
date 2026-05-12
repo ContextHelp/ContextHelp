@@ -48,7 +48,6 @@ func init() {
 	importSlackCmd.Flags().Int("max-items", 0, "maximum messages to import (0 = all)")
 	importSlackCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importSlackCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importSlackCmd.Flags().Bool("dry-run", false, "parse and preview messages without enqueueing jobs")
 
 	importSlackCmd.MarkFlagRequired("dir")
 }

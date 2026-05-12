@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -43,6 +44,10 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(logCmd)
+	cliconv.WithSideEffect(logCmd, cliconv.SideEffectRead)
+	// "log" is not in kit's defaultIdempotency table; audit-log reads are
+	// naturally idempotent — re-querying does not mutate state.
+	cliconv.WithIdempotency(logCmd, cliconv.IdempotencyYes)
 
 	logCmd.Flags().Int("limit", 20, "max entries to return")
 	logCmd.Flags().String("type", "", "filter by event type (comma-separated)")

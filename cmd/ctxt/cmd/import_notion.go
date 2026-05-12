@@ -36,7 +36,6 @@ func init() {
 
 	importNotionCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importNotionCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importNotionCmd.Flags().Bool("dry-run", false, "list pages and mapping without enqueueing jobs")
 
 	// For testing and self-hosted proxies.
 	importNotionCmd.Flags().String("notion-base-url", "", "override Notion API base URL")

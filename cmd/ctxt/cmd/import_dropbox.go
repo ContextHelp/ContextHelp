@@ -52,7 +52,6 @@ func init() {
 	importDropboxCmd.Flags().String("cursor", "", "resume sync from this cursor (incremental mode)")
 	importDropboxCmd.Flags().Bool("recursive", false, "recurse into sub-folders")
 	importDropboxCmd.Flags().Int("max-items", 0, "maximum number of files to import (0 = all)")
-	importDropboxCmd.Flags().Bool("dry-run", false, "preview matched files without enqueueing jobs")
 	importDropboxCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importDropboxCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 }

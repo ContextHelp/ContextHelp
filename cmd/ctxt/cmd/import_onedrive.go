@@ -78,7 +78,6 @@ func init() {
 
 	importOneDriveCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importOneDriveCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importOneDriveCmd.Flags().Bool("dry-run", false, "list selected files without enqueueing jobs")
 
 	// For testing and self-hosted proxies.
 	importOneDriveCmd.Flags().String("graph-base-url", "", "override Microsoft Graph API base URL")

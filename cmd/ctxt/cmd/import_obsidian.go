@@ -42,7 +42,6 @@ func init() {
 	importObsidianCmd.Flags().Int("max-items", 0, "maximum notes to import (0 = all)")
 	importObsidianCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importObsidianCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importObsidianCmd.Flags().Bool("dry-run", false, "parse and preview notes without enqueueing jobs")
 
 	importObsidianCmd.MarkFlagRequired("vault")
 }

@@ -63,7 +63,6 @@ func init() {
 	importGitHubCmd.Flags().StringP("token", "t", "", "GitHub token (or GITHUB_TOKEN env)")
 	importGitHubCmd.Flags().StringP("username", "u", "", "GitHub username (required)")
 	importGitHubCmd.Flags().StringP("lists", "l", "starred", "comma-separated lists: starred,watched,contributed")
-	importGitHubCmd.Flags().Bool("dry-run", false, "print what would be imported without enqueueing jobs")
 	importGitHubCmd.Flags().String("output", "table", "output format: table or json")
 	importGitHubCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importGitHubCmd.Flags().String("pipeline", "text.long", "pipeline override for enqueued jobs")

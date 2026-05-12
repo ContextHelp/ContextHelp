@@ -51,7 +51,6 @@ func init() {
 	importDiscordCmd.Flags().Int("max-items", 0, "maximum messages to import (0 = all)")
 	importDiscordCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importDiscordCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importDiscordCmd.Flags().Bool("dry-run", false, "parse and preview messages without enqueueing jobs")
 
 	importDiscordCmd.MarkFlagRequired("file")
 }

@@ -51,7 +51,6 @@ func init() {
 	importGDriveCmd.Flags().StringSlice("mime-type", nil, "only import these MIME types")
 	importGDriveCmd.Flags().Bool("include-trashed", false, "include trashed files (default false)")
 	importGDriveCmd.Flags().Int("max-items", 0, "maximum number of files to import (0 = all)")
-	importGDriveCmd.Flags().Bool("dry-run", false, "preview matched files without enqueueing jobs")
 	importGDriveCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importGDriveCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 }

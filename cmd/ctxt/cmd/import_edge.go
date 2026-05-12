@@ -29,7 +29,6 @@ func init() {
 	importEdgeCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importEdgeCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 	importEdgeCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
-	importEdgeCmd.Flags().Bool("dry-run", false, "parse and preview without enqueueing jobs")
 
 	importEdgeCmd.MarkFlagRequired("file")
 }

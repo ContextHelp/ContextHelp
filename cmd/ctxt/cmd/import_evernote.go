@@ -41,7 +41,6 @@ func init() {
 	importEvernoteCmd.Flags().Int("max-items", 0, "maximum notes to import (0 = all)")
 	importEvernoteCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importEvernoteCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importEvernoteCmd.Flags().Bool("dry-run", false, "parse and preview notes without enqueueing jobs")
 
 	importEvernoteCmd.MarkFlagRequired("file")
 }

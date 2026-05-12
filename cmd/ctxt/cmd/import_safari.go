@@ -29,7 +29,6 @@ func init() {
 	importSafariCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importSafariCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 	importSafariCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
-	importSafariCmd.Flags().Bool("dry-run", false, "parse and preview without enqueueing jobs")
 
 	importSafariCmd.MarkFlagRequired("file")
 }

@@ -53,7 +53,6 @@ func init() {
 	importRaindropCmd.Flags().Int("max-items", 0, "maximum number of items to import (0 = all)")
 	importRaindropCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importRaindropCmd.Flags().String("pipeline", "import.raindrop", "pipeline override for enqueued jobs")
-	importRaindropCmd.Flags().Bool("dry-run", false, "list selected bookmarks without enqueueing jobs")
 
 	// For testing and self-hosted proxies.
 	importRaindropCmd.Flags().String("raindrop-base-url", "", "override Raindrop API base URL")

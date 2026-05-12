@@ -49,7 +49,6 @@ func init() {
 	importTwitterCmd.Flags().Int("max-items", 0, "maximum number of tweets to import (0 = all)")
 	importTwitterCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importTwitterCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importTwitterCmd.Flags().Bool("dry-run", false, "preview selected tweets without enqueueing jobs")
 }
 
 func runImportTwitter(cmd *cobra.Command, _ []string) error {

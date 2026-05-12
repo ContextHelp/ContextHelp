@@ -29,7 +29,6 @@ func init() {
 	importFirefoxCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importFirefoxCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 	importFirefoxCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
-	importFirefoxCmd.Flags().Bool("dry-run", false, "parse and preview without enqueueing jobs")
 
 	importFirefoxCmd.MarkFlagRequired("file")
 }

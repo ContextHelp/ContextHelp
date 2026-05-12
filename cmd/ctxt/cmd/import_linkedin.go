@@ -51,7 +51,6 @@ func init() {
 	importLinkedInCmd.Flags().Int("max-items", 0, "maximum number of items to import (0 = all)")
 	importLinkedInCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importLinkedInCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importLinkedInCmd.Flags().Bool("dry-run", false, "preview selected items without enqueueing jobs")
 }
 
 func runImportLinkedIn(cmd *cobra.Command, _ []string) error {

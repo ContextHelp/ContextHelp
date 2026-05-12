@@ -44,7 +44,6 @@ func init() {
 	importLogseqCmd.Flags().Int("max-items", 0, "maximum pages to import (0 = all)")
 	importLogseqCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importLogseqCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
-	importLogseqCmd.Flags().Bool("dry-run", false, "parse and preview pages without enqueueing jobs")
 
 	importLogseqCmd.MarkFlagRequired("graph")
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -33,11 +34,17 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(exportCmd)
+	cliconv.WithSideEffect(exportCmd, cliconv.SideEffectRead)
+	// "export" is not in kit's defaultIdempotency table. Exporting an
+	// object is naturally idempotent — the same input + format yields the
+	// same output and no source-of-truth mutation.
+	cliconv.WithIdempotency(exportCmd, cliconv.IdempotencyYes)
 
-	exportCmd.Flags().String("format", "", "output-generator plugin name (e.g. obsidian-md)")
+	// --format is inherited from the kit-owned persistent flag set; do not
+	// re-register it locally. export reads it via cmd.Flags().GetString("format")
+	// at run time (cobra resolves inherited persistent flags through Flags()).
 	exportCmd.Flags().String("dest", "", "destination path hint passed to the generator")
 
-	viper.BindPFlag("export.format", exportCmd.Flags().Lookup("format"))
 	viper.BindPFlag("export.dest", exportCmd.Flags().Lookup("dest"))
 }
 
@@ -63,7 +70,9 @@ func runExport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get object: %w", err)
 	}
 
-	format := viper.GetString("export.format")
+	// --format is owned by kit as a persistent root flag; cmd.Flags()
+	// resolves inherited persistent flags transparently.
+	format, _ := cmd.Flags().GetString("format")
 	if format == "" {
 		// No format requested — fall back to JSON.
 		return outputJSON(os.Stdout, obj)

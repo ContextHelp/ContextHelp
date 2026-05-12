@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 )
@@ -27,6 +28,10 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(statsCmd)
+	cliconv.WithSideEffect(statsCmd, cliconv.SideEffectRead)
+	// "stats" is not in kit's defaultIdempotency table; aggregating counts
+	// is naturally idempotent — no state changes between calls.
+	cliconv.WithIdempotency(statsCmd, cliconv.IdempotencyYes)
 	statsCmd.Flags().Bool("watch", false, "re-print every 3s (Ctrl-C to exit)")
 }
 

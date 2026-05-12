@@ -33,7 +33,6 @@ func init() {
 	importChromeCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	importChromeCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 	importChromeCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
-	importChromeCmd.Flags().Bool("dry-run", false, "parse and preview without enqueueing jobs")
 
 	importChromeCmd.MarkFlagRequired("file")
 }
