@@ -68,6 +68,20 @@ func init() {
 	// tag explicitly. Re-registering the same scheme is idempotent.
 	cliconv.WithIdempotency(uriRegisterCmd, cliconv.IdempotencyYes)
 	cliconv.WithIdempotency(uriSnippetCmd, cliconv.IdempotencyYes)
+
+	// 12fcc strict-gate: examples + next-steps on every leaf.
+	cliconv.WithExamples(uriRegisterCmd, []cliconv.Example{
+		{Title: "Register ctxt:// with the OS", Command: "ctxt uri register"},
+	})
+	cliconv.WithNextSteps(uriRegisterCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "open ctxt://test", Reason: "verify the OS now hands ctxt:// links back to the ctxt binary"},
+	})
+	cliconv.WithExamples(uriSnippetCmd, []cliconv.Example{
+		{Title: "Print a macOS Info.plist snippet", Command: "ctxt uri snippet --platform macos"},
+		{Title: "Print a Linux .desktop snippet", Command: "ctxt uri snippet --platform linux"},
+	})
+	// uri snippet is a write-shaped verb name but only prints; classified
+	// as Read above. Skip next-steps — it just emits a static block.
 }
 
 func runURIRegister(cmd *cobra.Command, _ []string) error {

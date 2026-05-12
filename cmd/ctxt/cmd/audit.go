@@ -65,6 +65,16 @@ func init() {
 	// "export" is not in kit's verb default table; tag explicitly.
 	cliconv.WithIdempotency(auditExportCmd, cliconv.IdempotencyYes)
 
+	// 12fcc strict-gate: examples on every leaf (both reads).
+	cliconv.WithExamples(auditListCmd, []cliconv.Example{
+		{Title: "Show the most recent audit entries", Command: "ctxt audit list --limit 25"},
+		{Title: "Filter to one actor + window", Command: "ctxt audit list --actor alice@example.com --since 24h"},
+	})
+	cliconv.WithExamples(auditExportCmd, []cliconv.Example{
+		{Title: "NDJSON for a SIEM pipeline", Command: "ctxt audit export --format json --since 24h"},
+		{Title: "CEF over the last 24h", Command: "ctxt audit export --format cef --since 24h"},
+	})
+
 	// Shared filter flags.
 	for _, cmd := range []*cobra.Command{auditListCmd, auditExportCmd} {
 		cmd.Flags().String("actor", "", "filter by actor (principal)")
