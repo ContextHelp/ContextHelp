@@ -219,7 +219,11 @@ func initConfig() {
 	// kit/cli's -c/--config global supports both bare paths and key=value
 	// overrides. ConfigArgs splits the two halves so we can layer them
 	// through kit/core/config.Load.
-	paths, overrides := root.ConfigArgs()
+	paths, overrides, parseErr := root.ConfigArgs()
+	if parseErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to parse -c/--config: %v\n", parseErr)
+		paths, overrides = nil, nil
+	}
 	var err error
 	cfg, err = config.LoadWithOverrides(binName, "", paths, overrides)
 	if err != nil {
