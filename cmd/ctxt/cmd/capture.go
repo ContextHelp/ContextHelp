@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/atotto/clipboard"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 )
 
@@ -55,6 +56,11 @@ Track 2 (not yet implemented): --ambient, --input, --skip, --window.`,
 
 func init() {
 	rootCmd.AddCommand(captureCmd)
+	cliconv.WithSideEffect(captureCmd, cliconv.SideEffectWrite)
+	// "capture" is not in kit's defaultIdempotency table; each invocation
+	// enqueues a fresh job unless the caller supplies --source-key or
+	// --idempotency-key for replay-safe dedup.
+	cliconv.WithIdempotency(captureCmd, cliconv.IdempotencyConditional)
 
 	// --- Source selection ---
 	captureCmd.Flags().String("source", "", "override auto-detection on the positional source")
@@ -72,7 +78,9 @@ func init() {
 	captureCmd.Flags().StringSlice("hint", nil, "hints attached to the captured object (repeatable, CSV)")
 	captureCmd.Flags().StringSlice("mention", nil, "mention targets (repeatable, CSV)")
 	captureCmd.Flags().String("note", "", "audit note explaining the capture")
-	captureCmd.Flags().String("profile", "", "focus profile for the capture")
+	// --profile is inherited from kit's persistent flag set; do not
+	// re-register it locally. capture reads it via cmd.Flags().GetString("profile")
+	// at run time (cobra resolves inherited persistent flags through Flags()).
 
 	// --- Pipeline behavior ---
 	captureCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")

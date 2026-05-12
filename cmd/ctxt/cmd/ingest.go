@@ -10,6 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/adapter/contacts/cardamum"
 	"github.com/ideacrafterslabs/ctxt/internal/adapter/email/himalaya"
 	"github.com/ideacrafterslabs/ctxt/internal/adapter/legacy"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/ingest"
 	"github.com/spf13/cobra"
 )
@@ -37,6 +38,11 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(ingestCmd)
+	cliconv.WithSideEffect(ingestCmd, cliconv.SideEffectWrite)
+	// "ingest" is not in kit's defaultIdempotency table; the runner
+	// dedups against existing objects, so re-ingesting the same adapter
+	// payload converges instead of growing the graph. Mark idempotent.
+	cliconv.WithIdempotency(ingestCmd, cliconv.IdempotencyYes)
 
 	ingestCmd.Flags().String("source", "", "adapter name (required)")
 	ingestCmd.Flags().Bool("stdin", false, "read JSON array from stdin")

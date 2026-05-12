@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -56,6 +57,11 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(composeCmd)
+	cliconv.WithSideEffect(composeCmd, cliconv.SideEffectWrite)
+	// "compose" is not in kit's defaultIdempotency table; LLM-backed
+	// generation is non-deterministic by default, so the same inputs may
+	// produce different outputs across runs.
+	cliconv.WithIdempotency(composeCmd, cliconv.IdempotencyNo)
 
 	// Filter flags
 	composeCmd.Flags().String("mention", "", "focus on specific mentions")

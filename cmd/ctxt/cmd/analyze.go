@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -49,6 +50,11 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(analyzeCmd)
+	cliconv.WithSideEffect(analyzeCmd, cliconv.SideEffectWrite)
+	// "analyze" is not in kit's defaultIdempotency table; enqueueing the
+	// same content twice mints two jobs, so the operation is not
+	// idempotent without an explicit --idempotency-key.
+	cliconv.WithIdempotency(analyzeCmd, cliconv.IdempotencyConditional)
 
 	// Register flags on analyzeCmd for `ctxt analyze --help`.
 	analyzeCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/spf13/cobra"
@@ -35,6 +36,9 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(reprocessCmd)
+	cliconv.WithSideEffect(reprocessCmd, cliconv.SideEffectWrite)
+	// "reprocess" is in kit's defaultIdempotency table (yes); no override
+	// needed.
 	reprocessCmd.Flags().String("step", "structured_metadata",
 		"enrichment step to run (structured_metadata|entity_extractor|tagger)")
 }

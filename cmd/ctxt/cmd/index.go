@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -29,6 +30,11 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(indexCmd)
+	cliconv.WithSideEffect(indexCmd, cliconv.SideEffectWrite)
+	// "index" is not in kit's defaultIdempotency table; --refresh rebuilds
+	// the topic index in place, so rerunning is safe and converges to the
+	// same projected state. Mark idempotent.
+	cliconv.WithIdempotency(indexCmd, cliconv.IdempotencyYes)
 	indexCmd.Flags().Bool("refresh", false,
 		"regenerate the index from scratch")
 }

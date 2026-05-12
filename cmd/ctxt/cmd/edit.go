@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
@@ -38,6 +39,10 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(editCmd)
+	cliconv.WithSideEffect(editCmd, cliconv.SideEffectWrite)
+	// "edit" is in kit's defaultIdempotency table (yes); the verb default
+	// matches the field-update semantics (re-applying the same update
+	// converges), so no override needed.
 
 	// Editable fields
 	editCmd.Flags().String("title", "", "update title")

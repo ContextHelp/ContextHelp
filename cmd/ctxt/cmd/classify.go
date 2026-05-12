@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 )
 
@@ -37,6 +38,12 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(classifyCmd)
+	cliconv.WithSideEffect(classifyCmd, cliconv.SideEffectWrite)
+	// "classify" is not in kit's defaultIdempotency table; classifying the
+	// same input twice yields the same signals but persists fresh
+	// classification rows on stored objects, so naïve idempotency is no.
+	cliconv.WithIdempotency(classifyCmd, cliconv.IdempotencyConditional)
+
 	classifyCmd.Flags().String("pipeline", "", "pipeline name (reserved)")
 }
 
