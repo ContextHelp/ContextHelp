@@ -76,6 +76,9 @@ func init() {
 	cliconv.WithSideEffect(feedListCmd, cliconv.SideEffectRead)
 	cliconv.WithSideEffect(feedSyncCmd, cliconv.SideEffectWrite)
 	cliconv.WithSideEffect(feedRemoveCmd, cliconv.SideEffectDestructive)
+	// 12fcc strict-gate: feed delete drops the subscription record on
+	// the dpkms server; opt into kit's typed-token confirmation flow.
+	cliconv.WithDestructiveToken(feedRemoveCmd)
 
 	// feed add flags
 	feedAddCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")

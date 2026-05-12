@@ -98,6 +98,9 @@ func init() {
 	cliconv.WithSideEffect(cursorResetCmd, cliconv.SideEffectWriteLocal)
 	cliconv.WithSideEffect(cursorSetCmd, cliconv.SideEffectWriteLocal)
 	cliconv.WithSideEffect(cursorDeleteCmd, cliconv.SideEffectDestructiveLocal)
+	// 12fcc strict-gate: cursor delete drops local cursor state; opt
+	// into kit's typed-token confirmation flow.
+	cliconv.WithDestructiveToken(cursorDeleteCmd)
 
 	// Kit verb defaults already cover list/show/delete (Yes).
 	// "reset" and "set" are not in the default table; tag them

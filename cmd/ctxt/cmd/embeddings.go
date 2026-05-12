@@ -156,6 +156,12 @@ func init() {
 	cliconv.WithSideEffect(embeddingsDeprecateCmd, cliconv.SideEffectDestructiveShared)
 	cliconv.WithSideEffect(embeddingsPurgeCmd, cliconv.SideEffectDestructiveShared)
 
+	// 12fcc strict-gate: deprecate flips a model's lifecycle bit and
+	// purge deletes embedding rows for a deprecated model. Both opt
+	// into kit's typed-token confirmation flow.
+	cliconv.WithDestructiveToken(embeddingsDeprecateCmd)
+	cliconv.WithDestructiveToken(embeddingsPurgeCmd)
+
 	// Kit verb defaults only cover "list" here. Tag the rest:
 	// register is non-idempotent (creates a candidate record);
 	// migrate / set-default / deprecate / purge are non-idempotent

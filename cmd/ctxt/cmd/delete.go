@@ -18,24 +18,32 @@ var deleteCmd = &cobra.Command{
 
 WARNING: This operation is irreversible. Use with caution.
 
+Confirmation is governed by kit's global --confirm flag (auto|yes|no|prompt).
+Pass --confirm=yes to bypass the prompt non-interactively. The kit-owned
+--confirm-token=<sha> is also required (the printed token must be echoed back).
+
 Examples:
   # Delete specific object
-  ctxt delete --id obj_12345678
+  ctxt delete --id obj_12345678 --confirm=yes --confirm-token=<sha>
 
   # Delete by tag
-  ctxt delete --tagged temporary
+  ctxt delete --tagged temporary --confirm=yes --confirm-token=<sha>
 
   # Delete by mention
-  ctxt delete --mention @project.archived
+  ctxt delete --mention @project.archived --confirm=yes --confirm-token=<sha>
 
   # Delete all (requires confirmation)
-  ctxt delete --all`,
+  ctxt delete --all --confirm=yes --confirm-token=<sha>`,
 	RunE: runDelete,
 }
 
 func init() {
 	rootCmd.AddCommand(deleteCmd)
 	cliconv.WithSideEffect(deleteCmd, cliconv.SideEffectDestructive)
+	// 12fcc strict-gate: opt into kit's typed-token confirmation flow.
+	// Kit installs the global --confirm + --confirm-token flags; gating
+	// happens in kit's wrapped RunE before the inner adopter chain runs.
+	cliconv.WithDestructiveToken(deleteCmd)
 	// "delete" is in kit's defaultIdempotency table (yes); deleting an
 	// already-deleted object is a no-op, so the verb default matches.
 

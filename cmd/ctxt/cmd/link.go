@@ -333,6 +333,9 @@ func init() {
 	// between two objects. Classified as destructive on the shared
 	// graph store.
 	cliconv.WithSideEffect(linkDeleteCmd, cliconv.SideEffectDestructiveShared)
+	// 12fcc strict-gate: link delete drops graph edges; opt into kit's
+	// typed-token confirmation flow.
+	cliconv.WithDestructiveToken(linkDeleteCmd)
 	// "delete" defaults to IdempotencyYes via kit verb table — no
 	// explicit override needed.
 }

@@ -60,6 +60,11 @@ func init() {
 		}
 		cliconv.WithSideEffect(c, detectorSideEffect[name])
 		cliconv.WithIdempotency(c, detectorIdempotency[name])
+		// 12fcc strict-gate: destructive subverbs require the typed-token
+		// confirmation flow. Only "remove" is destructive in this group.
+		if detectorSideEffect[name] == cliconv.SideEffectDestructive {
+			cliconv.WithDestructiveToken(c)
+		}
 		detectorCmd.AddCommand(c)
 	}
 }
