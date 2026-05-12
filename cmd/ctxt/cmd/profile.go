@@ -92,11 +92,47 @@ func init() {
 	profileCmd.AddCommand(profileSetDefaultCmd)
 
 	cliconv.WithSideEffect(profileListCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(profileListCmd, []cliconv.Example{
+		{Title: "List all profiles", Command: "ctxt profile list"},
+		{Title: "List profiles as JSON", Command: "ctxt profile list --json"},
+	})
+
 	cliconv.WithSideEffect(profileShowCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(profileShowCmd, []cliconv.Example{
+		{Title: "Show details for a profile", Command: "ctxt profile show founder"},
+		{Title: "Show profile as JSON", Command: "ctxt profile show founder --json"},
+	})
+
 	cliconv.WithSideEffect(profileCreateCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(profileCreateCmd, []cliconv.Example{
+		{Title: "Create a profile", Command: "ctxt profile create myproject"},
+		{Title: "Create then inspect", Command: "ctxt profile create research && ctxt profile show research"},
+	})
+	cliconv.WithNextSteps(profileCreateCmd, []cliconv.NextStep{
+		{Suggest: "ctxt profile show <name>", Reason: "verify the new profile and its default fields"},
+		{Suggest: "ctxt profile default <name>", Reason: "promote the new profile to be the active default"},
+	})
+
 	cliconv.WithSideEffect(profileDeleteCmd, cliconv.SideEffectDestructive)
 	cliconv.WithDestructiveToken(profileDeleteCmd)
+	cliconv.WithExamples(profileDeleteCmd, []cliconv.Example{
+		{Title: "Delete a profile", Command: "ctxt profile delete myproject --confirm=yes"},
+		{Title: "Delete with interactive confirmation", Command: "ctxt profile delete myproject --confirm=prompt"},
+	})
+	cliconv.WithNextSteps(profileDeleteCmd, []cliconv.NextStep{
+		{Suggest: "ctxt profile list", Reason: "confirm the profile is gone and review remaining ones"},
+		{When: "if it was the default", Suggest: "ctxt profile default <name>", Reason: "the default was cleared; pin a new one"},
+	})
+
 	cliconv.WithSideEffect(profileSetDefaultCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(profileSetDefaultCmd, []cliconv.Example{
+		{Title: "Pin a profile as default", Command: "ctxt profile default founder"},
+		{Title: "Clear the default profile", Command: "ctxt profile default"},
+	})
+	cliconv.WithNextSteps(profileSetDefaultCmd, []cliconv.NextStep{
+		{Suggest: "ctxt profile list", Reason: "confirm the default marker moved (* prefix)"},
+		{Suggest: "ctxt profile show <name>", Reason: "review the now-active profile schema and boosts"},
+	})
 }
 
 func configPath() string {

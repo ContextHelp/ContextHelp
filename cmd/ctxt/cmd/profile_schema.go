@@ -117,20 +117,78 @@ func init() {
 	profileSchemaCmd.AddCommand(schemaEvolveCmd)
 
 	cliconv.WithSideEffect(schemaShowCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(schemaShowCmd, []cliconv.Example{
+		{Title: "Show schema for a profile", Command: "ctxt profile schema show founder"},
+		{Title: "Show schema as JSON", Command: "ctxt profile schema show founder --json"},
+	})
+
 	cliconv.WithSideEffect(schemaAddTypeCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(schemaAddTypeCmd, cliconv.IdempotencyNo)
+	cliconv.WithExamples(schemaAddTypeCmd, []cliconv.Example{
+		{Title: "Add an entity type", Command: "ctxt profile schema add-type founder decision"},
+		{Title: "Add then inspect", Command: "ctxt profile schema add-type founder risk && ctxt profile schema show founder"},
+	})
+	cliconv.WithNextSteps(schemaAddTypeCmd, []cliconv.NextStep{
+		{Suggest: "ctxt profile schema show <profile>", Reason: "confirm the type landed and the version bumped"},
+		{Suggest: "ctxt profile schema add-rule <profile> <pattern> <type>", Reason: "attach a regex rule so the new type is auto-classified"},
+	})
+
 	cliconv.WithSideEffect(schemaAddTopicCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(schemaAddTopicCmd, cliconv.IdempotencyNo)
+	cliconv.WithExamples(schemaAddTopicCmd, []cliconv.Example{
+		{Title: "Add a topic", Command: "ctxt profile schema add-topic founder security"},
+		{Title: "Add then inspect", Command: "ctxt profile schema add-topic founder pricing && ctxt profile schema show founder"},
+	})
+	cliconv.WithNextSteps(schemaAddTopicCmd, []cliconv.NextStep{
+		{Suggest: "ctxt profile schema show <profile>", Reason: "verify the topic was appended and the schema version bumped"},
+		{Suggest: "ctxt profile schema evolve <profile>", Reason: "ask for more topic suggestions based on recent ingestions"},
+	})
+
 	cliconv.WithSideEffect(schemaAddRuleCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(schemaAddRuleCmd, cliconv.IdempotencyNo)
+	cliconv.WithExamples(schemaAddRuleCmd, []cliconv.Example{
+		{Title: "Map a regex to a type", Command: "ctxt profile schema add-rule founder \"(?i)deploy\" task"},
+		{Title: "Add then inspect", Command: "ctxt profile schema add-rule founder \"(?i)decision\" decision && ctxt profile schema show founder"},
+	})
+	cliconv.WithNextSteps(schemaAddRuleCmd, []cliconv.NextStep{
+		{Suggest: "ctxt profile schema show <profile>", Reason: "verify the rule landed in the classification list"},
+		{Suggest: "ctxt profile schema add-type <profile> <type>", Reason: "ensure the rule's target type is in the allowed vocabulary"},
+	})
+
 	cliconv.WithSideEffect(schemaRemoveTypeCmd, cliconv.SideEffectDestructive)
 	cliconv.WithDestructiveToken(schemaRemoveTypeCmd)
 	cliconv.WithIdempotency(schemaRemoveTypeCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(schemaRemoveTypeCmd, []cliconv.Example{
+		{Title: "Remove an entity type", Command: "ctxt profile schema remove-type founder decision --confirm=yes"},
+		{Title: "Remove with interactive confirmation", Command: "ctxt profile schema remove-type founder risk --confirm=prompt"},
+	})
+	cliconv.WithNextSteps(schemaRemoveTypeCmd, []cliconv.NextStep{
+		{Suggest: "ctxt profile schema show <profile>", Reason: "confirm the type was dropped and the schema version bumped"},
+		{Suggest: "ctxt profile schema evolve <profile>", Reason: "see whether recent ingestions suggest a replacement type"},
+	})
+
 	cliconv.WithSideEffect(schemaRemoveTopicCmd, cliconv.SideEffectDestructive)
 	cliconv.WithDestructiveToken(schemaRemoveTopicCmd)
 	cliconv.WithIdempotency(schemaRemoveTopicCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(schemaRemoveTopicCmd, []cliconv.Example{
+		{Title: "Remove a topic", Command: "ctxt profile schema remove-topic founder security --confirm=yes"},
+		{Title: "Remove with interactive confirmation", Command: "ctxt profile schema remove-topic founder pricing --confirm=prompt"},
+	})
+	cliconv.WithNextSteps(schemaRemoveTopicCmd, []cliconv.NextStep{
+		{Suggest: "ctxt profile schema show <profile>", Reason: "confirm the topic was dropped and the schema version bumped"},
+		{Suggest: "ctxt profile schema evolve <profile>", Reason: "review fresh topic suggestions before re-adding"},
+	})
+
 	cliconv.WithSideEffect(schemaEvolveCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(schemaEvolveCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(schemaEvolveCmd, []cliconv.Example{
+		{Title: "Suggest schema improvements", Command: "ctxt profile schema evolve founder"},
+		{Title: "Emit suggestions as JSON", Command: "ctxt profile schema evolve founder --json"},
+	})
+	cliconv.WithNextSteps(schemaEvolveCmd, []cliconv.NextStep{
+		{When: "for each suggested type", Suggest: "ctxt profile schema add-type <profile> <type>", Reason: "apply a recommended entity type"},
+		{When: "for each suggested topic", Suggest: "ctxt profile schema add-topic <profile> <topic>", Reason: "apply a recommended topic"},
+	})
 }
 
 func getProfile(name string) (*config.FocusProfile, error) {
