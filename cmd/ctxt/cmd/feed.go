@@ -8,6 +8,7 @@ import (
 	gohttp "net/http"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 )
 
@@ -71,12 +72,19 @@ func init() {
 	feedCmd.AddCommand(feedSyncCmd)
 	feedCmd.AddCommand(feedRemoveCmd)
 
+	cliconv.WithSideEffect(feedAddCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(feedListCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(feedSyncCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(feedRemoveCmd, cliconv.SideEffectDestructive)
+
 	// feed add flags
 	feedAddCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 
 	// feed list flags
+	// NOTE: --output is owned by kit's persistent global flag set; the
+	// inherited flag is resolved through cmd.Flags() at read time, so
+	// no local re-registration is required (12fcc local-global rule).
 	feedListCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
-	feedListCmd.Flags().String("output", "", "output format (text|json)")
 	feedListCmd.Flags().String("status", "", "filter by status (active|paused|error)")
 
 	// feed sync flags
@@ -141,7 +149,6 @@ func runFeedAdd(cmd *cobra.Command, args []string) error {
 
 func runFeedList(cmd *cobra.Command, args []string) error {
 	serverURL := feedServerURL(cmd)
-	outputFmt, _ := cmd.Flags().GetString("output")
 	statusFilter, _ := cmd.Flags().GetString("status")
 
 	reqURL := serverURL + "/api/v1/feeds"
@@ -176,7 +183,7 @@ func runFeedList(cmd *cobra.Command, args []string) error {
 		feeds = wrapper.Feeds
 	}
 
-	if outputFmt == "json" || isJSONOutput() {
+	if isJSONOutput() {
 		return outputJSON(cmd.OutOrStdout(), map[string]any{"feeds": feeds})
 	}
 
