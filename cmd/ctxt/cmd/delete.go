@@ -41,6 +41,15 @@ Examples:
 func init() {
 	rootCmd.AddCommand(deleteCmd)
 	cliconv.WithSideEffect(deleteCmd, cliconv.SideEffectDestructive)
+	cliconv.WithExamples(deleteCmd, []cliconv.Example{
+		{Title: "Delete a specific object", Command: "ctxt delete --id obj_12345678 --confirm=yes --confirm-token=<sha>"},
+		{Title: "Delete by tag", Command: "ctxt delete --tagged temporary --confirm=yes --confirm-token=<sha>"},
+		{Title: "Delete everything (destructive)", Command: "ctxt delete --all --confirm=yes --confirm-token=<sha>"},
+	})
+	cliconv.WithNextSteps(deleteCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "confirm the matching objects are gone"},
+		{When: "if too much was removed", Suggest: "ctxt log --type delete", Reason: "review the audit trail"},
+	})
 	// 12fcc strict-gate: opt into kit's typed-token confirmation flow.
 	// Kit installs the global --confirm + --confirm-token flags; gating
 	// happens in kit's wrapped RunE before the inner adopter chain runs.
