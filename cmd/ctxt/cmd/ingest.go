@@ -39,6 +39,15 @@ Examples:
 func init() {
 	rootCmd.AddCommand(ingestCmd)
 	cliconv.WithSideEffect(ingestCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(ingestCmd, []cliconv.Example{
+		{Title: "Ingest contacts from cardamum", Command: "ctxt ingest --source cardamum --addressbook default"},
+		{Title: "Pipe adapter output via stdin", Command: "my-adapter | ctxt ingest --source my-adapter --stdin"},
+		{Title: "Continuous mode (poll every 5m)", Command: "ctxt ingest --source cardamum --every 5m"},
+	})
+	cliconv.WithNextSteps(ingestCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "browse the freshly ingested objects"},
+		{When: "if a job stalled", Suggest: "ctxt job status", Reason: "inspect the queue"},
+	})
 	// "ingest" is not in kit's defaultIdempotency table; the runner
 	// dedups against existing objects, so re-ingesting the same adapter
 	// payload converges instead of growing the graph. Mark idempotent.

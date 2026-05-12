@@ -99,6 +99,14 @@ func init() {
 	// so the validator accepts it; deeper subcommands (start/status/
 	// config show) are owned by a sibling subtree.
 	cliconv.WithSideEffect(lateralCmd, cliconv.SideEffectInteractive)
+	cliconv.WithExamples(lateralCmd, []cliconv.Example{
+		{Title: "Run the daemon in the foreground", Command: "ctxt lateral"},
+		{Title: "Run with an extra config layer", Command: "ctxt lateral --lateral-config ./lateral.yaml"},
+	})
+	cliconv.WithNextSteps(lateralCmd, []cliconv.NextStep{
+		{When: "to inspect the resolved config", Suggest: "ctxt lateral config show", Reason: "verify which strategies are gated on"},
+		{When: "to query a running daemon", Suggest: "ctxt lateral status", Reason: "see registered strategies and breaker state"},
+	})
 	// "lateral" is not in kit's defaultIdempotency table; the daemon
 	// holds open subscriptions and a poller loop, which is not a
 	// replay-safe operation.

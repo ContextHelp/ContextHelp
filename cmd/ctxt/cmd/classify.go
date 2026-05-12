@@ -39,6 +39,14 @@ Examples:
 func init() {
 	rootCmd.AddCommand(classifyCmd)
 	cliconv.WithSideEffect(classifyCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(classifyCmd, []cliconv.Example{
+		{Title: "Classify raw text", Command: "ctxt classify \"The server crashed after deploying v2.3\""},
+		{Title: "Classify a stored object", Command: "ctxt classify o-abc123"},
+		{Title: "JSON output", Command: "ctxt classify \"some text\" --output json"},
+	})
+	cliconv.WithNextSteps(classifyCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt show <object_id>", Reason: "inspect persisted classification signals"},
+	})
 	// "classify" is not in kit's defaultIdempotency table; classifying the
 	// same input twice yields the same signals but persists fresh
 	// classification rows on stored objects, so naïve idempotency is no.

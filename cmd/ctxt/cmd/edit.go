@@ -40,6 +40,14 @@ Examples:
 func init() {
 	rootCmd.AddCommand(editCmd)
 	cliconv.WithSideEffect(editCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(editCmd, []cliconv.Example{
+		{Title: "Update the title", Command: "ctxt edit obj_12345678 --title \"New title\""},
+		{Title: "Replace tags", Command: "ctxt edit obj_12345678 --tags ux,onboarding,critical"},
+		{Title: "Update multiple fields", Command: "ctxt edit obj_12345678 --title \"X\" --subtype article"},
+	})
+	cliconv.WithNextSteps(editCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt show <id>", Reason: "confirm the updated metadata"},
+	})
 	// "edit" is in kit's defaultIdempotency table (yes); the verb default
 	// matches the field-update semantics (re-applying the same update
 	// converges), so no override needed.

@@ -41,6 +41,13 @@ func init() {
 	tuiCmd.Flags().String("theme", "default", "color theme (default | high-contrast | solarized)")
 	rootCmd.AddCommand(tuiCmd)
 	cliconv.WithSideEffect(tuiCmd, cliconv.SideEffectInteractive)
+	cliconv.WithExamples(tuiCmd, []cliconv.Example{
+		{Title: "Open the terminal UI", Command: "ctxt tui"},
+		{Title: "Use a high-contrast theme", Command: "ctxt tui --theme high-contrast"},
+	})
+	cliconv.WithNextSteps(tuiCmd, []cliconv.NextStep{
+		{When: "for a non-TUI workflow", Suggest: "ctxt shell", Reason: "REPL with the same data layer"},
+	})
 	// "tui" is not in kit's defaultIdempotency table; an interactive
 	// full-screen session has no replay semantics.
 	cliconv.WithIdempotency(tuiCmd, cliconv.IdempotencyNo)

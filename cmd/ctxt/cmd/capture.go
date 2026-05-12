@@ -57,6 +57,15 @@ Track 2 (not yet implemented): --ambient, --input, --skip, --window.`,
 func init() {
 	rootCmd.AddCommand(captureCmd)
 	cliconv.WithSideEffect(captureCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(captureCmd, []cliconv.Example{
+		{Title: "Capture a URL", Command: "ctxt capture https://example.com/post"},
+		{Title: "Capture a file", Command: "ctxt capture ./notes.md"},
+		{Title: "Capture from stdin", Command: "cat README.md | ctxt capture --stdin"},
+	})
+	cliconv.WithNextSteps(captureCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt show <id>", Reason: "inspect the captured object"},
+		{When: "to find captured content later", Suggest: "ctxt find <query>", Reason: "search across captures"},
+	})
 	// "capture" is not in kit's defaultIdempotency table; each invocation
 	// enqueues a fresh job unless the caller supplies --source-key or
 	// --idempotency-key for replay-safe dedup.

@@ -37,6 +37,14 @@ Examples:
 func init() {
 	rootCmd.AddCommand(reprocessCmd)
 	cliconv.WithSideEffect(reprocessCmd, cliconv.SideEffectWrite)
+	cliconv.WithExamples(reprocessCmd, []cliconv.Example{
+		{Title: "Backfill structured metadata", Command: "ctxt reprocess obj_abc123 --step structured_metadata"},
+		{Title: "Re-run entity extraction", Command: "ctxt reprocess obj_abc123 --step entity_extractor"},
+		{Title: "Re-run tagger", Command: "ctxt reprocess obj_abc123 --step tagger"},
+	})
+	cliconv.WithNextSteps(reprocessCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt show <id>", Reason: "confirm the updated enrichment fields"},
+	})
 	// "reprocess" is in kit's defaultIdempotency table (yes); no override
 	// needed.
 	reprocessCmd.Flags().String("step", "structured_metadata",

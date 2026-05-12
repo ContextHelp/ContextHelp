@@ -38,6 +38,13 @@ Press Ctrl+D or type exit / quit to end the session.`,
 func init() {
 	rootCmd.AddCommand(shellCmd)
 	cliconv.WithSideEffect(shellCmd, cliconv.SideEffectInteractive)
+	cliconv.WithExamples(shellCmd, []cliconv.Example{
+		{Title: "Open the interactive REPL", Command: "ctxt shell"},
+	})
+	cliconv.WithNextSteps(shellCmd, []cliconv.NextStep{
+		{When: "inside the REPL", Suggest: "find <query>", Reason: "search without per-command startup cost"},
+		{When: "to leave", Suggest: "exit", Reason: "or press Ctrl+D"},
+	})
 	// "shell" is not in kit's defaultIdempotency table; an interactive
 	// REPL session has no replay semantics.
 	cliconv.WithIdempotency(shellCmd, cliconv.IdempotencyNo)
