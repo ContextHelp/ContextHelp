@@ -58,6 +58,21 @@ func init() {
 
 	cliconv.WithSideEffect(importDropboxCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importDropboxCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importDropboxCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import dropbox --access-token $DROPBOX_ACCESS_TOKEN",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import dropbox --access-token $DROPBOX_ACCESS_TOKEN --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importDropboxCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportDropbox(cmd *cobra.Command, args []string) error {

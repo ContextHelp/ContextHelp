@@ -47,6 +47,21 @@ func init() {
 
 	cliconv.WithSideEffect(importEvernoteCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importEvernoteCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importEvernoteCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import evernote --file ./notes.enex",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import evernote --file ./notes.enex --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importEvernoteCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportEvernote(cmd *cobra.Command, args []string) error {

@@ -86,6 +86,21 @@ func init() {
 
 	cliconv.WithSideEffect(importOneDriveCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importOneDriveCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importOneDriveCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import onedrive --token $ONEDRIVE_TOKEN",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import onedrive --token $ONEDRIVE_TOKEN --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importOneDriveCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 type driveFolderScope struct {

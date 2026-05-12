@@ -67,6 +67,21 @@ func init() {
 
 	cliconv.WithSideEffect(importPinboardCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importPinboardCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importPinboardCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import pinboard --token $PINBOARD_TOKEN",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import pinboard --token $PINBOARD_TOKEN --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importPinboardCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportPinboard(cmd *cobra.Command, args []string) error {

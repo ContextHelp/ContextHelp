@@ -35,6 +35,21 @@ func init() {
 
 	cliconv.WithSideEffect(importFirefoxCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importFirefoxCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importFirefoxCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import firefox --file ./bookmarks.html",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import firefox --file ./bookmarks.html --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importFirefoxCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportFirefox(cmd *cobra.Command, args []string) error {

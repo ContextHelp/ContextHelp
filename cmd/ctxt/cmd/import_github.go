@@ -73,6 +73,21 @@ func init() {
 
 	cliconv.WithSideEffect(importGitHubCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importGitHubCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importGitHubCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import github --username octocat",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import github --username octocat --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importGitHubCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportGitHub(cmd *cobra.Command, args []string) error {

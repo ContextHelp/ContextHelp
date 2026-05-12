@@ -53,6 +53,21 @@ func init() {
 
 	cliconv.WithSideEffect(importTwitterCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importTwitterCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importTwitterCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import twitter --file ./tweets.js",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import twitter --file ./tweets.js --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importTwitterCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportTwitter(cmd *cobra.Command, _ []string) error {

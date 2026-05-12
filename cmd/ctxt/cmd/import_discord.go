@@ -57,6 +57,21 @@ func init() {
 
 	cliconv.WithSideEffect(importDiscordCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importDiscordCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importDiscordCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import discord --file ./export.json",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import discord --file ./export.json --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importDiscordCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportDiscord(cmd *cobra.Command, args []string) error {

@@ -35,6 +35,21 @@ func init() {
 
 	cliconv.WithSideEffect(importEdgeCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importEdgeCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importEdgeCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import edge --file ./bookmarks.html",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import edge --file ./bookmarks.html --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importEdgeCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportEdge(cmd *cobra.Command, args []string) error {

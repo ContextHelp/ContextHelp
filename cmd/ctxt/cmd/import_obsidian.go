@@ -48,6 +48,21 @@ func init() {
 
 	cliconv.WithSideEffect(importObsidianCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importObsidianCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importObsidianCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import obsidian --vault ~/Obsidian",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import obsidian --vault ~/Obsidian --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importObsidianCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportObsidian(cmd *cobra.Command, args []string) error {

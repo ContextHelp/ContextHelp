@@ -44,6 +44,21 @@ func init() {
 
 	cliconv.WithSideEffect(importNotionCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importNotionCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importNotionCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import notion --token $NOTION_TOKEN --all-shared",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import notion --token $NOTION_TOKEN --all-shared --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importNotionCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportNotion(cmd *cobra.Command, args []string) error {

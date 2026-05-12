@@ -55,6 +55,21 @@ func init() {
 
 	cliconv.WithSideEffect(importLinkedInCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importLinkedInCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importLinkedInCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import linkedin --posts ./Posts.csv",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import linkedin --posts ./Posts.csv --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importLinkedInCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportLinkedIn(cmd *cobra.Command, _ []string) error {

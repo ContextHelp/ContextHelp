@@ -54,6 +54,21 @@ func init() {
 
 	cliconv.WithSideEffect(importSlackCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importSlackCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importSlackCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import slack --dir ./slack-export",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import slack --dir ./slack-export --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importSlackCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportSlack(cmd *cobra.Command, args []string) error {

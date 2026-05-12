@@ -71,6 +71,21 @@ func init() {
 
 	cliconv.WithSideEffect(importEmailCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importEmailCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importEmailCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import email --provider file --file message.eml",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import email --provider file --file archive.mbox --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importEmailCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 // emailServerURL returns the server URL from the command flag or the default.

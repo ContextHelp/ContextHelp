@@ -39,6 +39,21 @@ func init() {
 
 	cliconv.WithSideEffect(importChromeCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importChromeCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importChromeCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import chrome --file ./bookmarks.html",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import chrome --file ./bookmarks.html --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importChromeCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportChrome(cmd *cobra.Command, args []string) error {

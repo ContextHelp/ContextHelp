@@ -50,6 +50,21 @@ func init() {
 
 	cliconv.WithSideEffect(importLogseqCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(importLogseqCmd, cliconv.IdempotencyConditional)
+
+	cliconv.WithExamples(importLogseqCmd, []cliconv.Example{
+		{
+			Title:   "Import from default source",
+			Command: "ctxt import logseq --graph ~/Logseq",
+		},
+		{
+			Title:   "Dry-run preview",
+			Command: "ctxt import logseq --graph ~/Logseq --confirm=no --dry-run",
+		},
+	})
+	cliconv.WithNextSteps(importLogseqCmd, []cliconv.NextStep{
+		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
+		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
+	})
 }
 
 func runImportLogseq(cmd *cobra.Command, args []string) error {
