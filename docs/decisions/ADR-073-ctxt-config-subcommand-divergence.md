@@ -186,11 +186,14 @@ Affected modules:
 
 Annotation invariants (per hand-rolled verb):
 
-- `kit/side-effect` — one of the §7.4 enum (`read` for `show`/`validate`,
-  `write-local` for `edit`/`doctor`/`backup`/`restore`, `destructive-local`
-  for `restore`).
-- `kit/idempotent` — `yes` (read leaves), `conditional` (`doctor` with
-  `--fix`), or `no` (`restore`).
+- `kit/side-effect` — one of the §7.4 enum, matching the stamps in
+  `cmd/ctxt/cmd/config.go`:
+  - `read` for `show`
+  - `write-local` for `validate` (config.Load may rewrite migrations to
+    disk), `edit`, `doctor` (`--fix` chmods the file), `backup`
+  - `destructive-local` for `restore`
+- `kit/idempotent` — `yes` for read leaves, `conditional` for `doctor`
+  (`--fix` mutates), `no` for `restore`.
 - `Short` + `Long` — required by Layer-A.
 - `kit/examples` + (non-read) `kit/next-steps` — required by
   `EnforceGuidance=true`.
@@ -207,8 +210,12 @@ ctxt re-evaluates and consolidates onto kit's surface, demoting this ADR to
 
 - [ADR-072 — Kit 12fcc strict CLI validation at boot](./ADR-072-kit-12fcc-strict-cli-validation.md)
 - [`kit/console/cli/config` (§7.4 source)][kit-ref] — canonical reference for
-  the `path` + `paths` minimum, the `PathsForToolWithMarkers` resolver, and
-  the dpkms / aps / wsm adopter patterns.
+  the `path` + `paths` minimum, the `WithResolver` injection point, and the
+  dpkms / aps / wsm adopter patterns.
+- `internal/cli/configpath` — shared resolver used by both ctxt and dpkms
+  to expose the real `internal/config.LoadWithOverrides` cascade through
+  `<bin> config path(s)`. See `console-cli-config.md` §"Per-bin shared
+  namespace resolvers" for the adopter pattern this codifies.
 - `cmd/ctxt/cmd/strict_validation_test.go` — regression guard ensuring the
   full eight-verb surface stays 12fcc-conformant.
 

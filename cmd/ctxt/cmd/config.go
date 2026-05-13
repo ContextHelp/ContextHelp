@@ -8,9 +8,9 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/bundle"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/configpath"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
-	kitconfig "hop.top/kit/go/core/config"
 	kitconfigcli "hop.top/kit/go/console/cli/config"
 )
 
@@ -138,30 +138,22 @@ func init() {
 
 	// 12fcc §7.4: `ctxt config path` (highest-precedence existing file)
 	// and `ctxt config paths` (full ordered chain) are mounted from
-	// kit's shared kit/console/cli/config helper. Matches the dpkms
-	// adopter pattern at cmd/dpkms/cmd/config.go. The kit subcommands
-	// pre-stamp kit/side-effect=read and kit/idempotent=yes; we only
-	// need to add kit/examples below to satisfy the strict guidance
-	// gate.
-	resolver := func(cwd string) []kitconfigcli.ResolvedPath {
-		raw := kitconfig.PathsForToolWithMarkers(cwd, "ctxt", []string{
-			".ctxt/config.yaml",
-			".ctxt.yaml",
-			"ctxt.yaml",
-		})
-		out := make([]kitconfigcli.ResolvedPath, len(raw))
-		for i, r := range raw {
-			out[i] = kitconfigcli.ResolvedPath{
-				Path:   r.Path,
-				Source: r.Source,
-				Scope:  r.Scope,
-				Exists: r.Exists,
-			}
-		}
-		return out
-	}
+	// kit's shared kit/console/cli/config helper. The kit subcommands
+	// pre-stamp kit/side-effect=read and kit/idempotent=yes; we add
+	// kit/examples below to satisfy the strict guidance gate.
+	//
+	// The resolver mirrors what internal/config.LoadWithOverrides
+	// actually walks at startup: a per-bin cascade under a shared
+	// `contexthelp/` namespace (`.contexthelp/<bin>.yaml` project marker,
+	// `$XDG_CONFIG_HOME/contexthelp/<bin>.yaml` user layer,
+	// `/etc/contexthelp/<bin>.yaml` system layer), plus the
+	// `$CTXT_CONFIG` env-var short-circuit. Kit's built-in
+	// PathsForTool*/PathsForToolWithMarkers compose `<tool>/config.yaml`
+	// — wrong shape for adopters that share a namespace across multiple
+	// binaries, so we hand-build the chain off config.CascadeSlots which
+	// is the source of truth used by LoadWithOverrides.
 	kitconfigcli.RegisterPathSubcommands(configCmd, "ctxt",
-		kitconfigcli.WithResolver(resolver))
+		kitconfigcli.WithResolver(configpath.Resolver(binName)))
 
 	// 12fcc conformance: side-effect + idempotency annotations.
 	// show is pure read. validate calls config.Load which may

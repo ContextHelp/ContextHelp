@@ -441,10 +441,13 @@ checks `cmd.Long != ""` on every runnable leaf.
 
 Read-only audit of `cmd/ctxt/cmd/config.go` confirming the 12fcc strict-gate
 annotation contract holds for every `ctxt config <leaf>` after the T-0593
-sweep. The strict gates (`EnforceValidate` + `EnforceGuidance` +
-`EnforceDestructiveToken` + `SignatureStrictnessReject`) now run at boot via
-`root.go`, so any drift would already crash the binary — this audit is the
-explicit, written verification that the live invariant holds.
+sweep. The strict-mode bundle (`EnforceValidate` + `EnforceGuidance` +
+`EnforceDryRunRationale` + `EnforceDestructiveToken` +
+`SignatureStrictness=Reject` + `PassthroughStrictness=reject`) now runs at
+boot via `root.go` and is asserted in `TestRootValidate_StrictGatesPass`
+(`cmd/ctxt/cmd/strict_validation_test.go`), so any drift would already
+crash the binary — this audit is the explicit, written verification that
+the live invariant holds.
 
 ### Per-leaf annotation table
 

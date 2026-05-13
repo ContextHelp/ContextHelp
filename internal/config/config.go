@@ -722,12 +722,57 @@ func writeBackTarget(cfgFile, system, user, project string) string {
 // Empty strings mean "no path resolvable" (e.g. xdg failure, no project
 // marker found); kit/core/config.Load skips empty slots.
 func cascadeSlots(bin string) (system, user, project string) {
+	return CascadeSlots(bin)
+}
+
+// CascadeSlots is the exported counterpart to [cascadeSlots], usable by
+// adopters wiring `<bin> config path` / `<bin> config paths` via
+// kit/console/cli/config.RegisterPathSubcommands. It is the source of
+// truth for the system/user/project cascade walked by
+// [LoadWithOverrides], so resolvers built on top stay in sync.
+//
+// Layers (highest precedence first when consumed by callers):
+//
+//   - project: nearest `.contexthelp/<bin>.yaml` walking up from cwd,
+//     stopping at $HOME or fs root. Empty when no marker is found.
+//   - user:    `$XDG_CONFIG_HOME/contexthelp/<bin>.yaml`. Empty when xdg
+//     resolution fails (e.g. no $HOME).
+//   - system:  `/etc/contexthelp/<bin>.yaml`. Always populated.
+//
+// `$CTXT_CONFIG` and `-c/--config` are not part of the cascade — they
+// short-circuit it. Callers building a resolver for `config path(s)` must
+// prepend those overrides before this chain.
+func CascadeSlots(bin string) (system, user, project string) {
 	system = filepath.Join("/etc", xdgTool, bin+".yaml")
 	if dir, err := configDirXDG(); err == nil && dir != "" {
 		user = filepath.Join(dir, bin+".yaml")
 	}
 	project = walkUpForMarker(bin)
 	return
+}
+
+// WalkUpForMarker is the exported counterpart to [walkUpForMarker].
+// Exported so adopters building a custom `config path(s)` resolver can
+// reproduce the project-layer walk-up against an explicit cwd (e.g.
+// kit/console/cli/config's `--from <dir>` flag) rather than the process
+// cwd.
+func WalkUpForMarker(cwd, bin string) string {
+	if cwd == "" {
+		return walkUpForMarker(bin)
+	}
+	home, _ := os.UserHomeDir()
+	marker := filepath.Join(".contexthelp", bin+".yaml")
+	dir := cwd
+	for {
+		candidate := filepath.Join(dir, marker)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		if dir == home || dir == "/" || dir == filepath.Dir(dir) {
+			return ""
+		}
+		dir = filepath.Dir(dir)
+	}
 }
 
 // syncProfileDefault reconciles FocusProfile.Default bool with
