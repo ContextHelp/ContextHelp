@@ -30,11 +30,25 @@ func setupTestDB(t *testing.T) *testDB {
 	// which would silently override --config and route the test at the production DB
 	// (T-0186: data-safety hazard, not just a test-correctness bug).
 	//
-	// Do NOT set CTXT_DATA_DIR: it's bound to storage.path via viper.BindEnv, so it
-	// would clobber the test's --config storage.path with the literal env value.
+	// XDG_* + HOME redirect file-based lookups into the per-test tempdir.
+	// CTXT_DATA_DIR and CTXT_INSTANCE are explicitly cleared because both
+	// take precedence over the XDG path:
+	//   - config.RunDir() reads $CTXT_DATA_DIR before $XDG_DATA_HOME, so a
+	//     dev with CTXT_DATA_DIR exported in their shell would still hit
+	//     the prod run/ dir.
+	//   - activeInstanceName() reads CTXT_INSTANCE (via viper.BindEnv on
+	//     "instance" in root.go) before the state file, so a dev with
+	//     CTXT_INSTANCE=work exported would still route to that instance.
+	//
+	// Setting CTXT_DATA_DIR="" works (vs the obvious worry that it would
+	// clobber storage.path) because viper's bound-env-var lookup treats an
+	// empty env value as unset — see cascade_test.go:98 which uses the same
+	// pattern to let file values win in TestLoad_PicksUpUserConfigPerBinary.
 	t.Setenv("XDG_DATA_HOME", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("HOME", dir)
+	t.Setenv("CTXT_DATA_DIR", "")
+	t.Setenv("CTXT_INSTANCE", "")
 
 	driver, err := sqlite.New(dbPath)
 	if err != nil {
