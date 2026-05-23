@@ -45,6 +45,12 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      # go.mod ships local-path replace directives for hop.top/kit and
+      # hop.top/c12n (developer convenience). Strip them before any Go
+      # step so published tags resolve via the module proxy. No-op when
+      # the directives are absent (e.g. on main after rollout).
+      - name: Drop local-path replaces
+        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
 
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
@@ -79,6 +85,12 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      # go.mod ships local-path replace directives for hop.top/kit and
+      # hop.top/c12n (developer convenience). Strip them before any Go
+      # step so published tags resolve via the module proxy. No-op when
+      # the directives are absent (e.g. on main after rollout).
+      - name: Drop local-path replaces
+        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
 
       - name: Install gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
@@ -141,6 +153,12 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
 
+      # go.mod ships local-path replace directives for hop.top/kit and
+      # hop.top/c12n (developer convenience). Strip them before any Go
+      # step so published tags resolve via the module proxy. No-op when
+      # the directives are absent (e.g. on main after rollout).
+      - name: Drop local-path replaces
+        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
 
       - name: Download dependencies
         shell: bash
@@ -199,6 +217,12 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      # go.mod ships local-path replace directives for hop.top/kit and
+      # hop.top/c12n (developer convenience). Strip them before any Go
+      # step so published tags resolve via the module proxy. No-op when
+      # the directives are absent (e.g. on main after rollout).
+      - name: Drop local-path replaces
+        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
 
       - name: Run integration tests
         run: go test -v -tags=integration,fts5 ./test/integration/...
@@ -226,6 +250,12 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      # go.mod ships local-path replace directives for hop.top/kit and
+      # hop.top/c12n (developer convenience). Strip them before any Go
+      # step so published tags resolve via the module proxy. No-op when
+      # the directives are absent (e.g. on main after rollout).
+      - name: Drop local-path replaces
+        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
 
       - name: Build dpkms
         run: CGO_ENABLED=1 go build -v -tags fts5 -o bin/dpkms ./cmd/dpkms
