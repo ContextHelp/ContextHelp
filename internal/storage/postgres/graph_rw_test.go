@@ -4,7 +4,7 @@ package postgres_test
 
 import (
 	"context"
-	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"testing"
@@ -47,8 +47,11 @@ func integrationDSN() string {
 	}
 	u := &url.URL{
 		Scheme: "postgres",
-		Host:   fmt.Sprintf("%s:%s", host, port),
-		Path:   "/" + db,
+		// net.JoinHostPort handles IPv6 literals (wraps "::1" as "[::1]");
+		// fmt.Sprintf would have emitted "::1:5432" which is not a valid
+		// DSN host.
+		Host: net.JoinHostPort(host, port),
+		Path: "/" + db,
 	}
 	if pw := os.Getenv("POSTGRES_PASSWORD"); pw != "" {
 		u.User = url.UserPassword(user, pw)

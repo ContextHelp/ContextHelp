@@ -53,7 +53,7 @@ func TestIntegrationDSN_EmptyWhenNoEnv(t *testing.T) {
 	}
 }
 
-func TestIntegrationDSN_NoPasswordOmitsCredentials(t *testing.T) {
+func TestIntegrationDSN_NoPasswordOmitsPassword(t *testing.T) {
 	for _, k := range []string{
 		"POSTGRES_DSN", "POSTGRES_PORT", "POSTGRES_PASSWORD", "POSTGRES_DB",
 	} {
@@ -62,8 +62,29 @@ func TestIntegrationDSN_NoPasswordOmitsCredentials(t *testing.T) {
 	t.Setenv("POSTGRES_HOST", "localhost")
 	t.Setenv("POSTGRES_USER", "contexthelp")
 
+	// User stays in the DSN; only the password is dropped.
 	got := integrationDSN()
 	want := "postgres://contexthelp@localhost:5432/contexthelp?sslmode=disable"
+	if got != want {
+		t.Errorf("integrationDSN()\n  got:  %q\n  want: %q", got, want)
+	}
+}
+
+// TestIntegrationDSN_IPv6HostWrappedWithBrackets exercises the
+// net.JoinHostPort path so an IPv6 literal in POSTGRES_HOST produces a
+// valid DSN (`[::1]:5432`) instead of the colon-mash that fmt.Sprintf
+// would emit (`::1:5432`, which is not a valid host:port string).
+func TestIntegrationDSN_IPv6HostWrappedWithBrackets(t *testing.T) {
+	for _, k := range []string{
+		"POSTGRES_DSN", "POSTGRES_PORT", "POSTGRES_PASSWORD", "POSTGRES_DB",
+	} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("POSTGRES_HOST", "::1")
+	t.Setenv("POSTGRES_USER", "contexthelp")
+
+	got := integrationDSN()
+	want := "postgres://contexthelp@[::1]:5432/contexthelp?sslmode=disable"
 	if got != want {
 		t.Errorf("integrationDSN()\n  got:  %q\n  want: %q", got, want)
 	}
