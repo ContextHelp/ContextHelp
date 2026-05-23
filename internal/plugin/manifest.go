@@ -26,6 +26,12 @@ func LoadManifest(pluginDir string) (*pluginapi.PluginManifest, error) {
 	return ParseManifestYAML(data)
 }
 
+// ParseManifest decodes and validates raw manifest bytes. The input is treated
+// as YAML, which is a superset of JSON, so either format is accepted.
+func ParseManifest(data []byte) (*pluginapi.PluginManifest, error) {
+	return ParseManifestYAML(data)
+}
+
 // ParseManifestYAML decodes and validates raw YAML manifest bytes.
 func ParseManifestYAML(data []byte) (*pluginapi.PluginManifest, error) {
 	var m pluginapi.PluginManifest
