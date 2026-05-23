@@ -4,6 +4,8 @@ package postgres_test
 
 import (
 	"context"
+	"net"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -13,13 +15,63 @@ import (
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
+// integrationDSN returns the Postgres DSN to use for integration tests.
+//
+// Resolution order:
+//  1. POSTGRES_DSN — full DSN takes precedence (legacy/local override).
+//  2. POSTGRES_HOST + POSTGRES_PORT + POSTGRES_USER + POSTGRES_PASSWORD +
+//     POSTGRES_DB — the env block exported by .github/workflows/ci.yml and
+//     standard for the postgres:16-alpine service container.
+//
+// Returns "" if neither is set, signalling the test should be skipped.
+//
+// Defaulting POSTGRES_USER (or any field) to the current OS user / "root"
+// must be avoided: libpq's fallback to $USER causes "FATAL: role \"root\"
+// does not exist" against the contexthelp role provisioned by CI.
+func integrationDSN() string {
+	if dsn := os.Getenv("POSTGRES_DSN"); dsn != "" {
+		return dsn
+	}
+	host := os.Getenv("POSTGRES_HOST")
+	user := os.Getenv("POSTGRES_USER")
+	if host == "" || user == "" {
+		return ""
+	}
+	port := os.Getenv("POSTGRES_PORT")
+	if port == "" {
+		port = "5432"
+	}
+	db := os.Getenv("POSTGRES_DB")
+	if db == "" {
+		db = user
+	}
+	u := &url.URL{
+		Scheme: "postgres",
+		// net.JoinHostPort handles IPv6 literals (wraps "::1" as "[::1]");
+		// fmt.Sprintf would have emitted "::1:5432" which is not a valid
+		// DSN host.
+		Host: net.JoinHostPort(host, port),
+		Path: "/" + db,
+	}
+	if pw := os.Getenv("POSTGRES_PASSWORD"); pw != "" {
+		u.User = url.UserPassword(user, pw)
+	} else {
+		u.User = url.User(user)
+	}
+	q := u.Query()
+	q.Set("sslmode", "disable")
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 // newIntegrationDriver creates a Postgres driver for integration tests.
-// Requires POSTGRES_DSN env var (e.g. "postgres://user:pass@localhost/ctxt_test").
+// Accepts either POSTGRES_DSN or the POSTGRES_HOST/PORT/USER/PASSWORD/DB
+// env block (see integrationDSN).
 func newIntegrationDriver(t *testing.T) *pgdrv.Driver {
 	t.Helper()
-	dsn := os.Getenv("POSTGRES_DSN")
+	dsn := integrationDSN()
 	if dsn == "" {
-		t.Skip("POSTGRES_DSN not set; skipping Postgres integration test")
+		t.Skip("POSTGRES_DSN (or POSTGRES_HOST + POSTGRES_USER) not set; skipping Postgres integration test")
 	}
 	drv, err := pgdrv.New(dsn)
 	if err != nil {
