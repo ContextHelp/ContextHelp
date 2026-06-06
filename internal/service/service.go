@@ -32,7 +32,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"hop.top/kit/go/runtime/domain"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // Service coordinates all business operations.

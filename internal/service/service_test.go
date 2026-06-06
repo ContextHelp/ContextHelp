@@ -15,7 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 func newTestService(t *testing.T) *Service {
@@ -608,7 +608,7 @@ func seedObjectsForCompose(t *testing.T, ctx context.Context, svc *Service) []*s
 	// Build graph-canonical fixtures; summaries/sections derived from graph nodes.
 	obj1 := storageutil.BuildGraphKO("o-abc123", "decision", "Defer infrastructure refactor")
 	obj1.Source = "engineering-meeting.pdf"
-	obj1.Mentions = []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "team/alice"}}
+	obj1.Mentions = []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "team/alice"}}
 	obj1.CreatedAt = now
 	obj1.UpdatedAt = now
 

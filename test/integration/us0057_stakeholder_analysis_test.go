@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -48,9 +48,9 @@ func TestUS0057_StakeholderMentionsPreservedAfterIngestion(t *testing.T) {
 	ctx := context.Background()
 
 	stakeholders := []uri.URI{
-		{Scheme: "ctxt", Space: "entity", ID: "person/alice-smith"},
-		{Scheme: "ctxt", Space: "entity", ID: "person/bob-jones"},
-		{Scheme: "ctxt", Space: "entity", ID: "team/platform"},
+		{Scheme: "ctxt", Namespace: "entity", ID: "person/alice-smith"},
+		{Scheme: "ctxt", Namespace: "entity", ID: "person/bob-jones"},
+		{Scheme: "ctxt", Namespace: "entity", ID: "team/platform"},
 	}
 
 	env.svc.Pipes.Upsert("stakeholder.mentions", &pipeline.Pipeline{
@@ -97,8 +97,8 @@ func TestUS0057_StakeholderEdgesCreatedFromMentions(t *testing.T) {
 		PipelineName: "stakeholder.edges",
 		Steps: []pipeline.PipelineStep{
 			&stakeholderMentionStep{stakeholders: []uri.URI{
-				{Scheme: "ctxt", Space: "entity", ID: "person/carol-white"},
-				{Scheme: "ctxt", Space: "entity", ID: "person/dave-green"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "person/carol-white"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "person/dave-green"},
 			}},
 		},
 	})
@@ -133,8 +133,8 @@ func TestUS0057_StakeholderAnalysisCompositionIncludesMentions(t *testing.T) {
 		PipelineName: "stakeholder.compose",
 		Steps: []pipeline.PipelineStep{
 			&stakeholderMentionStep{stakeholders: []uri.URI{
-				{Scheme: "ctxt", Space: "entity", ID: "person/eve-chen"},
-				{Scheme: "ctxt", Space: "entity", ID: "team/security"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "person/eve-chen"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "team/security"},
 			}},
 		},
 	})
@@ -179,7 +179,7 @@ func TestUS0057_MultipleObjectsStakeholderSurfaced(t *testing.T) {
 
 	ctx := context.Background()
 
-	sharedStakeholder := uri.URI{Scheme: "ctxt", Space: "entity", ID: "person/frank-lee"}
+	sharedStakeholder := uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "person/frank-lee"}
 	var objects []*storage.KnowledgeObject
 
 	for i := 0; i < 2; i++ {

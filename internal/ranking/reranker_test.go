@@ -10,7 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // makeObjWithGraph creates an object with a single section node in its graph.
@@ -57,7 +57,7 @@ func makeObj(id string, mentions ...string) *storage.KnowledgeObject {
 				break
 			}
 		}
-		ms = append(ms, uri.URI{Scheme: "ctxt", Space: space, ID: slug})
+		ms = append(ms, uri.URI{Scheme: "ctxt", Namespace: space, ID: slug})
 	}
 	return &storage.KnowledgeObject{
 		ID:        id,

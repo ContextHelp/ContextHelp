@@ -15,7 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // errObjectNotFound is returned by scanObject when no row matches.

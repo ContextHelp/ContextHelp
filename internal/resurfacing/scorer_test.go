@@ -7,7 +7,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // ─── recencyDecay ─────────────────────────────────────────────────────────────
@@ -111,7 +111,7 @@ func makeURI(t *testing.T, s string) uri.URI {
 
 func TestEntityOverlap_NoProfileSlugs(t *testing.T) {
 	obj := &storage.KnowledgeObject{
-		Mentions: []uri.URI{makeURI(t, "ctxt://stripe.api")},
+		Mentions: []uri.URI{makeURI(t, "ctxt://entity/stripe.api")},
 	}
 	if got := entityOverlap(obj, nil); got != 0 {
 		t.Errorf("no profile slugs: want 0, got %f", got)
@@ -127,7 +127,7 @@ func TestEntityOverlap_NoMentions(t *testing.T) {
 
 func TestEntityOverlap_FullMatch(t *testing.T) {
 	obj := &storage.KnowledgeObject{
-		Mentions: []uri.URI{makeURI(t, "ctxt://stripe.api")},
+		Mentions: []uri.URI{makeURI(t, "ctxt://entity/stripe.api")},
 	}
 	got := entityOverlap(obj, []string{"stripe.api"})
 	if math.Abs(got-1.0) > 0.001 {
@@ -137,7 +137,7 @@ func TestEntityOverlap_FullMatch(t *testing.T) {
 
 func TestEntityOverlap_PartialMatch(t *testing.T) {
 	obj := &storage.KnowledgeObject{
-		Mentions: []uri.URI{makeURI(t, "ctxt://stripe.api")},
+		Mentions: []uri.URI{makeURI(t, "ctxt://entity/stripe.api")},
 	}
 	got := entityOverlap(obj, []string{"stripe.api", "github.actions"})
 	if math.Abs(got-0.5) > 0.001 {
