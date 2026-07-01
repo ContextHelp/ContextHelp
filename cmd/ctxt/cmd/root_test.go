@@ -3,6 +3,7 @@ package cmd
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,7 +19,19 @@ func TestMain(m *testing.M) {
 	// Force env secrets backend so tests are not affected by the local config
 	// file (which may configure keychain or another backend).
 	os.Setenv("CTXT_SECRETS_BACKEND", "env")
-	os.Exit(m.Run())
+	// Isolate XDG dirs so state read from the host (current-instance file,
+	// stored profiles, pidfiles) never leaks into tests. Without this, a
+	// developer machine with e.g. a selected instance named "db" or saved
+	// profiles fails otherwise-hermetic tests.
+	xdgDir, err := os.MkdirTemp("", "ctxt-cmd-xdg-")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("XDG_DATA_HOME", filepath.Join(xdgDir, "data"))
+	os.Setenv("XDG_CONFIG_HOME", filepath.Join(xdgDir, "config"))
+	code := m.Run()
+	os.RemoveAll(xdgDir)
+	os.Exit(code)
 }
 
 // resetAllFlags resets all flags on a command and its subcommands to defaults.

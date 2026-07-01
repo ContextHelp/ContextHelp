@@ -3,6 +3,7 @@ package cmd
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,6 +11,21 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
+
+// TestMain isolates XDG dirs so host state (current-instance file, stored
+// profiles, pidfiles) never leaks into tests, keeping them hermetic on
+// developer machines.
+func TestMain(m *testing.M) {
+	xdgDir, err := os.MkdirTemp("", "dpkms-cmd-xdg-")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("XDG_DATA_HOME", filepath.Join(xdgDir, "data"))
+	os.Setenv("XDG_CONFIG_HOME", filepath.Join(xdgDir, "config"))
+	code := m.Run()
+	os.RemoveAll(xdgDir)
+	os.Exit(code)
+}
 
 // resetAllFlags resets all flags on a command and its subcommands to defaults.
 func resetAllFlags(cmd *cobra.Command) {
