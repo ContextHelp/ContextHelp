@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // ─── stubs ───────────────────────────────────────────────────────────────────

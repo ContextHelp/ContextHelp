@@ -5,7 +5,7 @@ go 1.26.1
 require (
 	github.com/ideacrafterslabs/ctxt v0.0.0
 	github.com/stretchr/testify v1.11.1
-	hop.top/uri v0.0.0-00010101000000-000000000000
+	hop.top/cite v0.1.0
 )
 
 require (
@@ -18,5 +18,5 @@ require (
 
 replace (
 	github.com/ideacrafterslabs/ctxt => ../..
-	// hop.top/uri is resolved via the repo-root go.work replace directives.
+	// hop.top/cite is resolved via the repo-root go.work replace directives.
 )

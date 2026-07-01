@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 func TestShow(t *testing.T) {
@@ -22,8 +22,8 @@ func TestShow(t *testing.T) {
 		Source:    "https://example.com/ux-signup",
 		Tags:      []storage.Tag{{Label: "ux"}, {Label: "onboarding"}},
 		Mentions: []uri.URI{
-			{Scheme: "ctxt", Space: "entity", ID: "ui/best-practice"},
-			{Scheme: "ctxt", Space: "entity", ID: "ux/onboarding"},
+			{Scheme: "ctxt", Namespace: "entity", ID: "ui/best-practice"},
+			{Scheme: "ctxt", Namespace: "entity", ID: "ux/onboarding"},
 		},
 		Summaries: []string{"Best UX practices for signup flows"},
 		Decisions: []storage.Decision{{Title: "Use progressive disclosure", Status: "accepted", Impact: "high"}},

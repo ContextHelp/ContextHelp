@@ -17,7 +17,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/stretchr/testify/assert"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // defaultTestJobsCfg returns a JobsConfig with fast poll for tests.
@@ -221,7 +221,7 @@ type mentionStep struct {
 
 func (s *mentionStep) Name() string { return "test-mention" }
 func (s *mentionStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	draft.Mentions = []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "test/entity"}}
+	draft.Mentions = []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "test/entity"}}
 	return draft, nil
 }
 

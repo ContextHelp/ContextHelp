@@ -10,7 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // makeObject builds a graph-canonical KnowledgeObject for tests.
@@ -25,7 +25,7 @@ func makeObject(id, typ string) *storage.KnowledgeObject {
 		Subtype:    "short",
 		RawContent: content,
 		Tags:       []storage.Tag{{Label: "design", Weight: 1.0}},
-		Mentions:   []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "ui/layout"}},
+		Mentions:   []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "ui/layout"}},
 		Summaries:  []string{content},
 		Sections: []storage.Section{{
 			Title:   "Body",
@@ -339,13 +339,13 @@ func TestReinforce(t *testing.T) {
 	obj.ContentHash = "reinf-hash"
 	obj.ReinforcementCount = 1
 	obj.Tags = []storage.Tag{{Label: "original", Weight: 1.0}}
-	obj.Mentions = []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "alice"}}
+	obj.Mentions = []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "alice"}}
 	require.NoError(t, d.Objects().Create(ctx, obj))
 
 	t.Run("increments count and merges", func(t *testing.T) {
 		merge := &storage.KnowledgeObject{
 			Tags:        []storage.Tag{{Label: "new-tag", Weight: 0.5}},
-			Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "bob"}},
+			Mentions: []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "bob"}},
 		}
 		id, err := d.Objects().Reinforce(ctx, "reinf-hash", merge)
 		require.NoError(t, err)

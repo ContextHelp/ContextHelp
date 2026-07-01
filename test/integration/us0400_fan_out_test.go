@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
@@ -96,9 +96,9 @@ func TestUS0400_FanOutCreatesEdges(t *testing.T) {
 	defer env.stop(t)
 
 	wantMentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "alice"},
-		{Scheme: "ctxt", Space: "project", ID: "mobile"},
-		{Scheme: "ctxt", Space: "org", ID: "acme"},
+		{Scheme: "ctxt", Namespace: "person", ID: "alice"},
+		{Scheme: "ctxt", Namespace: "project", ID: "mobile"},
+		{Scheme: "ctxt", Namespace: "org", ID: "acme"},
 	}
 
 	env.svc.Pipes.Upsert("text.fanout-test", &pipeline.Pipeline{
@@ -153,7 +153,7 @@ func TestUS0400_FanOutIdempotent(t *testing.T) {
 	defer env.stop(t)
 
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "bob"},
+		{Scheme: "ctxt", Namespace: "person", ID: "bob"},
 	}
 
 	env.svc.Pipes.Upsert("text.fanout-idem", &pipeline.Pipeline{
@@ -207,7 +207,7 @@ func TestUS0400_FanOutAuditLog(t *testing.T) {
 	defer env.stop(t)
 
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "concept", ID: "event-sourcing"},
+		{Scheme: "ctxt", Namespace: "concept", ID: "event-sourcing"},
 	}
 
 	env.svc.Pipes.Upsert("text.fanout-audit", &pipeline.Pipeline{
@@ -257,7 +257,7 @@ func TestUS0400_NoFanoutFlag(t *testing.T) {
 	defer env.stop(t)
 
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "carol"},
+		{Scheme: "ctxt", Namespace: "person", ID: "carol"},
 	}
 
 	env.svc.Pipes.Upsert("text.fanout-skip", &pipeline.Pipeline{
@@ -305,8 +305,8 @@ func TestUS0400_FanOutCompletesInTime(t *testing.T) {
 	defer env.stop(t)
 
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "dave"},
-		{Scheme: "ctxt", Space: "project", ID: "widget"},
+		{Scheme: "ctxt", Namespace: "person", ID: "dave"},
+		{Scheme: "ctxt", Namespace: "project", ID: "widget"},
 	}
 
 	env.svc.Pipes.Upsert("text.fanout-time", &pipeline.Pipeline{

@@ -8,7 +8,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // ---------------------------------------------------------------------------
@@ -236,8 +236,8 @@ func TestEnrichCitationsWithEntities(t *testing.T) {
 		"o-abc123": {
 			ID: "o-abc123",
 			Mentions: []uri.URI{
-				{Scheme: "ctxt", Space: "entity", ID: "team/alice"},
-				{Scheme: "ctxt", Space: "entity", ID: "project/api"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "team/alice"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "project/api"},
 			},
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -253,8 +253,8 @@ func TestEnrichCitationsWithEntities(t *testing.T) {
 func TestEnrichCitationsWithEntities_MultipleCitations(t *testing.T) {
 	now := time.Now()
 	objMap := map[string]*storage.KnowledgeObject{
-		"o-aaa": {ID: "o-aaa", Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "team/alice"}}, CreatedAt: now, UpdatedAt: now},
-		"o-bbb": {ID: "o-bbb", Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "team/bob"}}, CreatedAt: now, UpdatedAt: now},
+		"o-aaa": {ID: "o-aaa", Mentions: []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "team/alice"}}, CreatedAt: now, UpdatedAt: now},
+		"o-bbb": {ID: "o-bbb", Mentions: []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "team/bob"}}, CreatedAt: now, UpdatedAt: now},
 	}
 	cits := []citation.Citation{
 		{IDs: []string{"o-aaa", "o-bbb"}},

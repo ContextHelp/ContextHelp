@@ -8,7 +8,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // ─── stubs (ObjectStore) ──────────────────────────────────────────────────────

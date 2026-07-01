@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 func TestParse(t *testing.T) {
@@ -49,9 +49,9 @@ func TestParseSlice(t *testing.T) {
 	}
 	got := mentions.ParseSlice(in)
 	want := []uri.URI{
-		{Scheme: "ctxt", Space: "entity", ID: "stripe/api/checkout"},
-		{Scheme: "ctxt", Space: "entity", ID: "project/dashboard"},
-		{Scheme: "ctxt", Space: "entity", ID: "person/alice"},
+		{Scheme: "ctxt", Namespace: "entity", ID: "stripe/api/checkout"},
+		{Scheme: "ctxt", Namespace: "entity", ID: "project/dashboard"},
+		{Scheme: "ctxt", Namespace: "entity", ID: "person/alice"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("ParseSlice: got %d results, want %d: %v", len(got), len(want), got)

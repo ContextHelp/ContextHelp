@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // ─── Event bus ───────────────────────────────────────────────────────────────

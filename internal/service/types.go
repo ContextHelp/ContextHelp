@@ -6,7 +6,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/citation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // AnalyzeRequest represents a request to analyze content.

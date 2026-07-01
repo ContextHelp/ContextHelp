@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -51,14 +51,14 @@ func (s *constrainedEntityStep) Run(_ context.Context, draft *storage.KnowledgeO
 		if !entityPattern.MatchString(raw) {
 			continue // drop: out-of-pattern value
 		}
-		// Parse @namespace.slug → uri.URI{Space: namespace, ID: slug}
+		// Parse @namespace.slug → uri.URI{Namespace: namespace, ID: slug}
 		parts := strings.SplitN(strings.TrimPrefix(raw, "@"), ".", 2)
 		if len(parts) != 2 {
 			continue
 		}
 		draft.Mentions = append(draft.Mentions, uri.URI{
 			Scheme: "ctxt",
-			Space:  parts[0],
+			Namespace:  parts[0],
 			ID:     parts[1],
 		})
 	}
@@ -132,7 +132,7 @@ func TestUS0041_ConstrainedEntitiesConformToPattern(t *testing.T) {
 
 	for _, m := range obj.Mentions {
 		assert.Equal(t, "ctxt", m.Scheme)
-		assert.Regexp(t, `^[a-z0-9]+$`, m.Space, "namespace must be lowercase alphanumeric")
+		assert.Regexp(t, `^[a-z0-9]+$`, m.Namespace, "namespace must be lowercase alphanumeric")
 		assert.Regexp(t, `^[a-z0-9-]+$`, m.ID, "slug must be lowercase alphanumeric with hyphens")
 	}
 }
@@ -283,7 +283,7 @@ func TestUS0041_EnrichmentUpdatesObjectViaHTTP(t *testing.T) {
 	// Validate @namespace.slug format via HTTP response.
 	for _, m := range obj.Mentions {
 		assert.Equal(t, "ctxt", m.Scheme)
-		assert.NotEmpty(t, m.Space)
+		assert.NotEmpty(t, m.Namespace)
 		assert.NotEmpty(t, m.ID)
 	}
 }

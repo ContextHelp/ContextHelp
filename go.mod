@@ -12,8 +12,7 @@ require (
 	golang.org/x/sync v0.20.0
 	gopkg.in/yaml.v3 v3.0.1
 	hop.top/c12n v0.0.0
-	hop.top/hdl v0.0.1-alpha.1
-	hop.top/uri v0.0.1-alpha.1
+	hop.top/cite v0.1.0
 )
 
 require (
@@ -40,7 +39,7 @@ require (
 	golang.org/x/term v0.42.0
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
-	hop.top/xrr v0.1.0-alpha.3
+	hop.top/xrr v0.1.0-alpha.4
 	modernc.org/sqlite v1.48.2
 )
 
@@ -86,6 +85,7 @@ require (
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/tools v0.44.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
+	hop.top/aim v0.1.0-alpha.0 // indirect
 )
 
 require (
@@ -104,7 +104,7 @@ require (
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	golang.org/x/net v0.53.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
-	hop.top/kit v0.3.2-patch.3
+	hop.top/kit v0.5.0-alpha.0
 	modernc.org/libc v1.72.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
@@ -140,7 +140,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
-	github.com/mattn/go-isatty v0.0.21 // indirect
+	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -151,16 +151,10 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
 	gopkg.in/dnaeon/go-vcr.v4 v4.0.2
 )
 
-// hop.top/* are self-owned sibling repos.
-// Local dev uses go.work replace directives; CI uses published tags.
-// For standalone builds without go.work, provide these modules via GOPROXY
-// or adapt go.work for your local workspace layout.
-
-replace hop.top/c12n => /Users/jadb/.w/ideacrafterslabs/c12n/hops/main
-
-replace hop.top/kit => /Users/jadb/.w/ideacrafterslabs/kit/hops/12fcc-leak
+// hop.top/c12n still pinned via local replace pending upstream tag.
+replace hop.top/c12n => /Users/jadb/.w/ideacrafterslabs/poly-c12n/hops/main/go
