@@ -30,16 +30,28 @@ func TestMain(m *testing.M) {
 // resetAllFlags resets all flags on a command and its subcommands to defaults.
 func resetAllFlags(cmd *cobra.Command) {
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
-		_ = f.Value.Set(f.DefValue)
+		resetFlag(f)
 		f.Changed = false
 	})
 	cmd.PersistentFlags().VisitAll(func(f *pflag.Flag) {
-		_ = f.Value.Set(f.DefValue)
+		resetFlag(f)
 		f.Changed = false
 	})
 	for _, sub := range cmd.Commands() {
 		resetAllFlags(sub)
 	}
+}
+
+// resetFlag restores a single flag to its default. Slice/array flags (e.g.
+// kit's repeatable -c/--config StringArray) must be cleared with Replace(nil):
+// calling Set(DefValue) on them APPENDS the default token instead of replacing,
+// so -c values accumulate across tests and a stale path leaks into later runs.
+func resetFlag(f *pflag.Flag) {
+	if slice, ok := f.Value.(pflag.SliceValue); ok {
+		_ = slice.Replace(nil)
+		return
+	}
+	_ = f.Value.Set(f.DefValue)
 }
 
 // executeCommand runs a cobra command with args and captures all output
@@ -91,7 +103,9 @@ func TestRootGlobalFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("root --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--config", "--data-dir", "--server-url", "--offline"} {
+	// kit v0.5 hides -c/--config (repeatable key=value / extra-file override),
+	// so it is no longer in --help; it is asserted separately in TestRootHasFormat.
+	for _, flag := range []string{"--data-dir", "--server-url", "--offline"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("help output should contain ctxt global flag %s", flag)
 		}
@@ -114,17 +128,24 @@ func TestRootVerboseIsCount(t *testing.T) {
 }
 
 func TestRootHasFormat(t *testing.T) {
-	if rootCmd.PersistentFlags().Lookup("format") == nil {
-		t.Error("--format flag should be provided by kit/cli")
+	formatFlag := rootCmd.PersistentFlags().Lookup("format")
+	if formatFlag == nil {
+		t.Fatal("--format flag should be provided by kit/cli")
 	}
-	// kit/cli owns --output as the output-path flag (T-0457). It must be
-	// present, NOT hidden, and have shorthand -o.
+	// --format is the parity-contract output flag and must stay visible.
+	if formatFlag.Hidden {
+		t.Error("kit/cli's --format is the parity contract flag and must NOT be hidden")
+	}
+	// kit v0.5 keeps --output (shorthand -o) registered as the output-path
+	// flag, but hides it: --format is the sole user-facing output flag, the
+	// rest of the output suite is implementation detail. (Supersedes the
+	// earlier T-0457 contract where --output was user-facing.)
 	outFlag := rootCmd.PersistentFlags().Lookup("output")
 	if outFlag == nil {
-		t.Fatal("--output should be registered by kit/cli as the output-path flag")
+		t.Fatal("--output should still be registered by kit/cli as the output-path flag")
 	}
-	if outFlag.Hidden {
-		t.Error("kit/cli's --output should NOT be hidden")
+	if !outFlag.Hidden {
+		t.Error("kit/cli's --output should be hidden in v0.5 (implementation detail behind --format)")
 	}
 	if outFlag.Shorthand != "o" {
 		t.Errorf("kit/cli's --output shorthand: got %q, want %q", outFlag.Shorthand, "o")

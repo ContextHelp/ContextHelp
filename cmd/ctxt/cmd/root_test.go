@@ -113,13 +113,17 @@ func TestRootGlobalFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("root --help should succeed: %v", err)
 	}
-	// Tool-specific globals (added via kit cli.Globals).
-	for _, flag := range []string{"--config", "--profile", "--offline", "--instance"} {
+	// Tool-specific globals (added via kit cli.Globals) that are user-facing.
+	// kit v0.5 hides -c/--config (it became a repeatable key=value / extra-file
+	// override flag, an implementation detail), so it no longer appears in
+	// --help and is asserted separately in TestRootHasFormat.
+	for _, flag := range []string{"--profile", "--offline", "--instance"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("help output should contain ctxt global flag %s", flag)
 		}
 	}
-	// Kit/cli built-ins we expect for free.
+	// Kit/cli built-ins we expect for free. --format is the parity-contract
+	// output flag; --output is hidden in v0.5 (implementation detail).
 	for _, flag := range []string{"--format", "--quiet", "--no-color", "--verbose"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("help output should contain kit/cli built-in flag %s", flag)
@@ -139,17 +143,24 @@ func TestRootVerboseIsCount(t *testing.T) {
 }
 
 func TestRootHasFormat(t *testing.T) {
-	if rootCmd.PersistentFlags().Lookup("format") == nil {
-		t.Error("--format flag should be provided by kit/cli")
+	formatFlag := rootCmd.PersistentFlags().Lookup("format")
+	if formatFlag == nil {
+		t.Fatal("--format flag should be provided by kit/cli")
 	}
-	// kit/cli owns --output as the output-path flag (T-0457). It must be
-	// present, NOT hidden, and have shorthand -o.
+	// --format is the parity-contract output flag and must stay visible.
+	if formatFlag.Hidden {
+		t.Error("kit/cli's --format is the parity contract flag and must NOT be hidden")
+	}
+	// kit v0.5 keeps --output (shorthand -o) registered as the output-path
+	// flag, but hides it: --format is the sole user-facing output flag, the
+	// rest of the output suite is implementation detail. (Supersedes the
+	// earlier T-0457 contract where --output was user-facing.)
 	outFlag := rootCmd.PersistentFlags().Lookup("output")
 	if outFlag == nil {
-		t.Fatal("--output should be registered by kit/cli as the output-path flag")
+		t.Fatal("--output should still be registered by kit/cli as the output-path flag")
 	}
-	if outFlag.Hidden {
-		t.Error("kit/cli's --output should NOT be hidden")
+	if !outFlag.Hidden {
+		t.Error("kit/cli's --output should be hidden in v0.5 (implementation detail behind --format)")
 	}
 	if outFlag.Shorthand != "o" {
 		t.Errorf("kit/cli's --output shorthand: got %q, want %q", outFlag.Shorthand, "o")

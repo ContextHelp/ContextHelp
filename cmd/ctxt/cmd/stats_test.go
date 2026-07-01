@@ -10,7 +10,7 @@ func TestStatsHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stats --help should succeed: %v", err)
 	}
-	for _, want := range []string{"stats", "--watch", "--output"} {
+	for _, want := range []string{"stats", "--watch", "--format"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help output missing %q", want)
 		}
