@@ -36,6 +36,7 @@ dPKMS provides the **mechanical guarantees** that make the system sovereign, dur
 - [registries.md](registries.md) - Registry system overview
 - [registry-protocol.md](registry-protocol.md) - Registry protocol spec
 - [registry-syncing-and-retrieval.md](registry-syncing-and-retrieval.md) - Sync mechanisms
+- [tiered-deployment.md](tiered-deployment.md) - Org / team / personal registry tiers
 - [schema-registry.md](schema-registry.md) - Registry schema
 - [ranking-and-reranking.md](ranking-and-reranking.md) - Result merging, reranking
 - [decentralization.md](decentralization.md) - Decentralization model
