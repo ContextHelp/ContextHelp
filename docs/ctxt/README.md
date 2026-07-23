@@ -22,6 +22,7 @@ This directory contains documentation for **`ctxt`** — the agentic context bra
 
 ### Daily Interface
 - [api-cli.md](api-cli.md) - CLI command reference (`ctxt` command)
+- [resolver-contract.md](resolver-contract.md) - `ctxt resolve` one-shot contract for external consumers
 - [cli-lateral.md](cli-lateral.md) - `ctxt lateral` daemon reference + config schema
 
 ### Capture & Sources
