@@ -111,6 +111,8 @@ Frontmatter `tags` are also distinct from ctxt **hints** (`#hint` markers — se
 - **ctxt is index.** Re-ingesting the same content is idempotent: dedup by content hash reinforces the existing object instead of duplicating it (see [../dpkms/jobs-and-ingestion.md](../dpkms/jobs-and-ingestion.md), Step 5). Deleting the index loses nothing; a fresh sweep rebuilds it.
 - **ctxt never writes into the watched directory.** Export flows (`ctxt export --format obsidian-md --dest <dir>`) target a destination the operator names explicitly; pointing an export at a watched knowledge directory is an operator choice, not something ctxt does on its own.
 
+For the outbound direction — materializing selected entities into a generated markdown directory — see the [export design note](knowledge-directory-export.md).
+
 ## See also
 
 - [ambient.md](ambient.md) — `policy/ambient.yaml` schema, sensor catalog, permission model
