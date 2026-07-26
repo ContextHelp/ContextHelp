@@ -1,5 +1,5 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0208: Temporal Watch and Change Detection
@@ -24,6 +24,19 @@ Temporal watches address this by periodically re-fetching monitored URLs or enti
 Special handling is required for deleted content: when a previously accessible URL returns a 404 or 410 status, the system preserves the last known state and records a "deleted at" timestamp. This is particularly valuable for social media content that may be removed after public scrutiny. The alerting system supports configurable thresholds so researchers can tune the sensitivity -- ignoring minor formatting changes while being notified of substantive content edits.
 
 ---
+
+## Implementation status
+
+None of the criteria below are met. `watch` today means a **local
+filesystem directory** (`WatchConfig{Path, Include, Exclude, DebounceMS,
+Mode}` in `internal/storage/types.go`), driven by fsnotify with a poll
+fallback. The shipped subcommands are `start|stop|status|enable|disable`
+— there is no `watch add`, and `watch enable` accepts one watcher name:
+`clipboard`. There is no URL/entity watch, no interval scheduler, no
+snapshot diffing, and no change-threshold alerting.
+
+The nearest shipped capability is `ctxt ingest --every <duration>`, a
+foreground re-poll loop over an ingest adapter.
 
 ## Acceptance Criteria
 
