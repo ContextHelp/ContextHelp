@@ -160,5 +160,3 @@ require (
 // Local dev uses go.work replace directives; CI uses published tags.
 // For standalone builds without go.work, provide these modules via GOPROXY
 // or adapt go.work for your local workspace layout.
-
-replace hop.top/kit => /Users/jadb/.w/ideacrafterslabs/poly-kit/hops/main
