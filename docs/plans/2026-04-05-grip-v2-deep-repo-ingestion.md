@@ -1,6 +1,8 @@
 # GRIP v2 — Deep Repository Ingestion Pipeline
 
 Created: 2026-04-05
+Status: deferred — revisit after `2026-07-26-github-ingestion-consolidation.md`
+lands. The March 25 blueprint it extends is superseded.
 Supersedes: 2026-04-04-github-repo-ingestion-design.md (GRIP sections)
 Extends: 2026-03-25-github-ingestion-adapters.md (implementation plan)
 
