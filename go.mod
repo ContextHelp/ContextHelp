@@ -11,7 +11,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.20.0
 	gopkg.in/yaml.v3 v3.0.1
-	hop.top/c12n v0.0.0
+	hop.top/c12n v0.1.0-alpha.0
 )
 
 require (
@@ -160,7 +160,5 @@ require (
 // Local dev uses go.work replace directives; CI uses published tags.
 // For standalone builds without go.work, provide these modules via GOPROXY
 // or adapt go.work for your local workspace layout.
-
-replace hop.top/c12n => /Users/jadb/.w/ideacrafterslabs/poly-c12n/hops/main/go
 
 replace hop.top/kit => /Users/jadb/.w/ideacrafterslabs/poly-kit/hops/main
