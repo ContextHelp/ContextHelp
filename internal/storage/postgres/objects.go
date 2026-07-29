@@ -12,7 +12,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // errObjectNotFound is returned by scanObjectRow when no row matches.
@@ -694,10 +694,10 @@ func unmarshalObjectFields(obj *storage.KnowledgeObject,
 }
 
 type objectFields struct {
-	metadata, summaries, sections, tags string
-	mentions, decisions, tasks          string
-	influences, plugins                 string
-	embedding                           *string
+	metadata, summaries, sections, tags    string
+	mentions, decisions, tasks             string
+	influences, plugins                    string
+	embedding                              *string
 	lastReinforcedAt, remindAt, remindedAt sql.NullTime
 }
 
@@ -874,7 +874,8 @@ func unmarshalGraph(raw string) (*storage.ObjectGraph, error) {
 
 // upsertObjectNodesTx replaces object_nodes rows for the given object within tx.
 func upsertObjectNodesTx(ctx context.Context, tx *sql.Tx,
-	objectID string, g *storage.ObjectGraph) error {
+	objectID string, g *storage.ObjectGraph,
+) error {
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM object_nodes WHERE object_id = $1`, objectID); err != nil {
 		return fmt.Errorf("delete object_nodes: %w", err)

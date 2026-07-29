@@ -3,11 +3,11 @@ package autosuggest_test
 import (
 	"testing"
 
-	autosuggest "github.com/ideacrafterslabs/ctxt/plugins/autosuggest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	autosuggest "github.com/ideacrafterslabs/ctxt/plugins/autosuggest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 func TestApplyGenerate_AddsTags(t *testing.T) {
@@ -28,13 +28,13 @@ func TestApplyGenerate_AddsTags(t *testing.T) {
 	assert.Contains(t, labels, "architecture")
 	assert.Contains(t, labels, "existing")
 	assert.Equal(t, 3, len(obj.Tags), "no duplicate tags")
-	assert.Contains(t, obj.Mentions, uri.URI{Scheme: "ctxt", Space: "entity", ID: "eng/backend"})
+	assert.Contains(t, obj.Mentions, uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "eng/backend"})
 }
 
 func TestApplyGenerate_DeduplicatesMentions(t *testing.T) {
 	obj := &storage.KnowledgeObject{
-		ID:          "obj_gen_002",
-		Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "eng/frontend"}},
+		ID:       "obj_gen_002",
+		Mentions: []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "eng/frontend"}},
 	}
 	require.NoError(t, autosuggest.ApplyGenerate(obj, nil, []string{"eng.frontend", "eng.backend"}))
 	assert.Equal(t, 2, len(obj.Mentions))
@@ -50,8 +50,8 @@ func TestApplyGenerate_AcceptsURIForm(t *testing.T) {
 	if len(obj.Mentions) != 2 {
 		t.Fatalf("expected 2 mentions, got %d: %v", len(obj.Mentions), obj.Mentions)
 	}
-	assert.Contains(t, obj.Mentions, uri.URI{Scheme: "ctxt", Space: "entity", ID: "stripe/api/checkout"})
-	assert.Contains(t, obj.Mentions, uri.URI{Scheme: "ctxt", Space: "entity", ID: "person/alice"})
+	assert.Contains(t, obj.Mentions, uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "stripe/api/checkout"})
+	assert.Contains(t, obj.Mentions, uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "person/alice"})
 }
 
 func TestApplyGenerate_MixedForms(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -61,8 +61,8 @@ func TestUS0024_GraphEdgesCreatedForMentions(t *testing.T) {
 	ctx := context.Background()
 
 	entityURIs := []uri.URI{
-		{Scheme: "ctxt", Space: "entity", ID: "team/backend"},
-		{Scheme: "ctxt", Space: "entity", ID: "system/auth-service"},
+		{Scheme: "ctxt", Namespace: "entity", ID: "team/backend"},
+		{Scheme: "ctxt", Namespace: "entity", ID: "system/auth-service"},
 	}
 
 	env.svc.Pipes.Upsert("graph.root", &pipeline.Pipeline{
@@ -101,9 +101,9 @@ func TestUS0024_GraphTraversalDepth1ReturnsDirectNeighbors(t *testing.T) {
 		PipelineName: "graph.depth1",
 		Steps: []pipeline.PipelineStep{
 			&graphEntityMentionStep{mentions: []uri.URI{
-				{Scheme: "ctxt", Space: "entity", ID: "project/alpha"},
-				{Scheme: "ctxt", Space: "entity", ID: "project/beta"},
-				{Scheme: "ctxt", Space: "entity", ID: "project/gamma"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "project/alpha"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "project/beta"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "project/gamma"},
 			}},
 		},
 	})
@@ -207,7 +207,7 @@ func TestUS0024_GraphBacklinksReachable(t *testing.T) {
 		PipelineName: "graph.backlink",
 		Steps: []pipeline.PipelineStep{
 			&graphEntityMentionStep{mentions: []uri.URI{
-				{Scheme: "ctxt", Space: "entity", ID: "component/graph-engine"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "component/graph-engine"},
 			}},
 		},
 	})

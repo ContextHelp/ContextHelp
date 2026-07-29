@@ -7,8 +7,8 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
-	"hop.top/hdl"
-	"hop.top/hdl/generate"
+	hdl "hop.top/cite/handle"
+	"hop.top/cite/handle/generate"
 )
 
 // ctxtBundleID is the macOS bundle identifier for the ctxt application.
@@ -112,7 +112,13 @@ func runURISnippet(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("resolve executable: %w", err)
 	}
 
-	snippet, err := generate.Snippet(platform, "ctxt", exe)
+	snippet, err := generate.Snippet(platform, generate.HandlerSpec{
+		Vendor:   "ideacrafterslabs",
+		App:      "ctxt",
+		Language: generate.LanguageGo,
+		Scheme:   "ctxt",
+		AppPath:  exe,
+	})
 	if err != nil {
 		return fmt.Errorf("generate snippet: %w", err)
 	}

@@ -10,7 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/tui/panes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 func TestPreviewPaneObjectLoaded(t *testing.T) {
@@ -23,7 +23,7 @@ func TestPreviewPaneObjectLoaded(t *testing.T) {
 		Type:        "text",
 		TextContent: "This is a summary.",
 		Tags:        []storage.Tag{{Label: "go", Weight: 0.9}},
-		Mentions:    []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "infra/db"}},
+		Mentions:    []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "infra/db"}},
 		Sections:    []storage.Section{{Title: "Intro", Content: "Hello"}},
 	}
 
@@ -61,7 +61,7 @@ func TestPreviewPaneSubviewToggle(t *testing.T) {
 		ID:        "obj2",
 		Summaries: []string{"Summary text"},
 		Tags:      []storage.Tag{{Label: "design", Weight: 0.8}},
-		Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "ui/form"}},
+		Mentions:  []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "ui/form"}},
 		Sections:  []storage.Section{{Title: "Sec1", Content: "Section content"}},
 	}
 	pp.SetObject(obj)

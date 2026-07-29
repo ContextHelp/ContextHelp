@@ -15,7 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // errObjectNotFound is returned by scanObject when no row matches.
@@ -672,10 +672,10 @@ func unmarshalObjectJSON(obj *storage.KnowledgeObject,
 }
 
 type objectFields struct {
-	metadata, summaries, sections, tags       string
-	mentions, decisions, tasks                string
-	influences, plugins                       string
-	lastReinforcedAt, remindAt, remindedAt    sql.NullString
+	metadata, summaries, sections, tags    string
+	mentions, decisions, tasks             string
+	influences, plugins                    string
+	lastReinforcedAt, remindAt, remindedAt sql.NullString
 }
 
 func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
@@ -739,7 +739,8 @@ func unmarshalGraph(raw string) (*storage.ObjectGraph, error) {
 }
 
 func (s *ObjectStore) upsertObjectNodes(ctx context.Context,
-	objectID string, g *storage.ObjectGraph) error {
+	objectID string, g *storage.ObjectGraph,
+) error {
 	if _, err := s.db.ExecContext(ctx,
 		`DELETE FROM object_nodes WHERE object_id = ?`, objectID); err != nil {
 		return fmt.Errorf("delete object_nodes: %w", err)
@@ -760,7 +761,8 @@ func (s *ObjectStore) upsertObjectNodes(ctx context.Context,
 }
 
 func (s *ObjectStore) upsertObjectNodesTx(ctx context.Context, tx *sql.Tx,
-	objectID string, g *storage.ObjectGraph) error {
+	objectID string, g *storage.ObjectGraph,
+) error {
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM object_nodes WHERE object_id = ?`, objectID); err != nil {
 		return fmt.Errorf("delete object_nodes: %w", err)

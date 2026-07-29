@@ -1,0 +1,15 @@
+go 1.26.1
+
+use .
+
+use ./plugins/aliasing
+
+use (
+	./plugins/auditlog
+)
+
+replace hop.top/c12n => /Users/jadb/.w/ideacrafterslabs/poly-c12n/hops/main/go
+
+replace hop.top/kit => /Users/jadb/.w/ideacrafterslabs/poly-kit/hops/main
+
+replace hop.top/xrr => /Users/jadb/.w/ideacrafterslabs/poly-xrr/hops/main/go

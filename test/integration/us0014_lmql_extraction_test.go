@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -36,7 +36,7 @@ func (s *lmqlConstrainedEntityStep) Name() string { return "test-lmql-constraine
 func (s *lmqlConstrainedEntityStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	// Simulate LMQL hard-constraint: only emit mentions with valid namespace.slug format.
 	for _, m := range s.mentions {
-		if m.Scheme == "ctxt" && m.Space != "" && slugPattern.MatchString(m.ID) {
+		if m.Scheme == "ctxt" && m.Namespace != "" && slugPattern.MatchString(m.ID) {
 			draft.Mentions = append(draft.Mentions, m)
 		}
 	}
@@ -87,9 +87,9 @@ func TestUS0014_LMQLExtractedEntitiesConformToNamespaceSlugFormat(t *testing.T) 
 
 	// Well-formed mentions — these should all pass through the constraint.
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "alice-smith"},
-		{Scheme: "ctxt", Space: "project", ID: "mobile-redesign"},
-		{Scheme: "ctxt", Space: "system", ID: "backend-api"},
+		{Scheme: "ctxt", Namespace: "person", ID: "alice-smith"},
+		{Scheme: "ctxt", Namespace: "project", ID: "mobile-redesign"},
+		{Scheme: "ctxt", Namespace: "system", ID: "backend-api"},
 	}
 
 	env.svc.Pipes.Upsert("text.lmql-entities", &pipeline.Pipeline{
@@ -122,7 +122,7 @@ func TestUS0014_LMQLExtractedEntitiesConformToNamespaceSlugFormat(t *testing.T) 
 
 	for _, m := range obj.Mentions {
 		assert.Equal(t, "ctxt", m.Scheme, "mention scheme must be ctxt")
-		assert.NotEmpty(t, m.Space, "mention namespace must not be empty")
+		assert.NotEmpty(t, m.Namespace, "mention namespace must not be empty")
 		assert.True(t, slugPattern.MatchString(m.ID),
 			"mention slug %q must conform to @namespace.slug format (lowercase, hyphenated)", m.ID)
 	}
@@ -139,10 +139,10 @@ func TestUS0014_LMQLConstraintFiltersInvalidSlugs(t *testing.T) {
 
 	// Mix of valid and invalid slugs — only valid should pass through.
 	allMentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "alice-smith"},    // valid
-		{Scheme: "ctxt", Space: "person", ID: "Alice Smith"},     // invalid: spaces + caps
-		{Scheme: "ctxt", Space: "concept", ID: "event-sourcing"}, // valid
-		{Scheme: "ctxt", Space: "concept", ID: "EventSourcing"},  // invalid: camelCase
+		{Scheme: "ctxt", Namespace: "person", ID: "alice-smith"},     // valid
+		{Scheme: "ctxt", Namespace: "person", ID: "Alice Smith"},     // invalid: spaces + caps
+		{Scheme: "ctxt", Namespace: "concept", ID: "event-sourcing"}, // valid
+		{Scheme: "ctxt", Namespace: "concept", ID: "EventSourcing"},  // invalid: camelCase
 	}
 
 	env.svc.Pipes.Upsert("text.lmql-filter", &pipeline.Pipeline{
@@ -237,7 +237,7 @@ func TestUS0014_ExtractionProviderRecordedInMetadata(t *testing.T) {
 		PipelineName: "text.lmql-provider",
 		Steps: []pipeline.PipelineStep{
 			&lmqlConstrainedEntityStep{mentions: []uri.URI{
-				{Scheme: "ctxt", Space: "person", ID: "test-user"},
+				{Scheme: "ctxt", Namespace: "person", ID: "test-user"},
 			}},
 		},
 	})

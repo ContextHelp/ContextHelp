@@ -6,7 +6,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/proximity"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // --- CosineSimilarity ---
@@ -91,8 +91,8 @@ func TestTemporalProximity_OldItems(t *testing.T) {
 // --- EntityProximity ---
 
 func TestEntityProximity_FullOverlap(t *testing.T) {
-	a := &storage.KnowledgeObject{Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "alice"}, {Scheme: "ctxt", Space: "entity", ID: "bob"}}}
-	b := &storage.KnowledgeObject{Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "alice"}, {Scheme: "ctxt", Space: "entity", ID: "bob"}}}
+	a := &storage.KnowledgeObject{Mentions: []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "alice"}, {Scheme: "ctxt", Namespace: "entity", ID: "bob"}}}
+	b := &storage.KnowledgeObject{Mentions: []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "alice"}, {Scheme: "ctxt", Namespace: "entity", ID: "bob"}}}
 	got := proximity.EntityProximity(a, b)
 	if got < 0.999 || got > 1.001 {
 		t.Fatalf("expected 1.0 for full overlap, got %f", got)
@@ -100,8 +100,8 @@ func TestEntityProximity_FullOverlap(t *testing.T) {
 }
 
 func TestEntityProximity_PartialOverlap(t *testing.T) {
-	a := &storage.KnowledgeObject{Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "alice"}, {Scheme: "ctxt", Space: "entity", ID: "bob"}}}
-	b := &storage.KnowledgeObject{Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "alice"}, {Scheme: "ctxt", Space: "entity", ID: "carol"}}}
+	a := &storage.KnowledgeObject{Mentions: []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "alice"}, {Scheme: "ctxt", Namespace: "entity", ID: "bob"}}}
+	b := &storage.KnowledgeObject{Mentions: []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "alice"}, {Scheme: "ctxt", Namespace: "entity", ID: "carol"}}}
 	got := proximity.EntityProximity(a, b)
 	// intersection=1, union=3 => jaccard=0.333...
 	if got < 0.33 || got > 0.34 {
@@ -110,8 +110,8 @@ func TestEntityProximity_PartialOverlap(t *testing.T) {
 }
 
 func TestEntityProximity_NoOverlap(t *testing.T) {
-	a := &storage.KnowledgeObject{Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "alice"}}}
-	b := &storage.KnowledgeObject{Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "bob"}}}
+	a := &storage.KnowledgeObject{Mentions: []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "alice"}}}
+	b := &storage.KnowledgeObject{Mentions: []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "bob"}}}
 	got := proximity.EntityProximity(a, b)
 	if got != 0.0 {
 		t.Fatalf("expected 0.0 for no overlap, got %f", got)
@@ -236,11 +236,11 @@ func TestComputeProximity_ReturnsStorageType(t *testing.T) {
 func TestComputeProximity_SameObject(t *testing.T) {
 	now := time.Now()
 	obj := &storage.KnowledgeObject{
-		ID:          "o-1",
-		Type:        "document",
-		Source:      "same",
-		Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "alice"}},
-		CreatedAt:   now,
+		ID:        "o-1",
+		Type:      "document",
+		Source:    "same",
+		Mentions:  []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "alice"}},
+		CreatedAt: now,
 	}
 	score := proximity.ComputeProximity(obj, obj)
 	if score.Score < 0.0 || score.Score > 1.0 {
@@ -254,20 +254,20 @@ func TestComputeProximity_SameObject(t *testing.T) {
 func TestComputeProximity_HighlyRelated(t *testing.T) {
 	now := time.Now()
 	a := &storage.KnowledgeObject{
-		ID:          "o-1",
-		Type:        "document",
-		Source:      "same-source",
-		Pipeline:    "same-pipeline",
-		Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "alice"}, {Scheme: "ctxt", Space: "entity", ID: "bob"}, {Scheme: "ctxt", Space: "entity", ID: "checkout"}},
-		CreatedAt:   now,
+		ID:        "o-1",
+		Type:      "document",
+		Source:    "same-source",
+		Pipeline:  "same-pipeline",
+		Mentions:  []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "alice"}, {Scheme: "ctxt", Namespace: "entity", ID: "bob"}, {Scheme: "ctxt", Namespace: "entity", ID: "checkout"}},
+		CreatedAt: now,
 	}
 	b := &storage.KnowledgeObject{
-		ID:          "o-2",
-		Type:        "document",
-		Source:      "same-source",
-		Pipeline:    "same-pipeline",
-		Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "alice"}, {Scheme: "ctxt", Space: "entity", ID: "bob"}, {Scheme: "ctxt", Space: "entity", ID: "checkout"}},
-		CreatedAt:   now.Add(1 * time.Hour),
+		ID:        "o-2",
+		Type:      "document",
+		Source:    "same-source",
+		Pipeline:  "same-pipeline",
+		Mentions:  []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "alice"}, {Scheme: "ctxt", Namespace: "entity", ID: "bob"}, {Scheme: "ctxt", Namespace: "entity", ID: "checkout"}},
+		CreatedAt: now.Add(1 * time.Hour),
 	}
 	score := proximity.ComputeProximity(a, b)
 	if score.Score < 0.3 {
@@ -279,20 +279,20 @@ func TestComputeProximity_Unrelated(t *testing.T) {
 	now := time.Now()
 	old := now.Add(-500 * 24 * time.Hour)
 	a := &storage.KnowledgeObject{
-		ID:          "o-1",
-		Type:        "document",
-		Source:      "source-a",
-		Pipeline:    "pipeline-a",
-		Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "alice"}},
-		CreatedAt:   now,
+		ID:        "o-1",
+		Type:      "document",
+		Source:    "source-a",
+		Pipeline:  "pipeline-a",
+		Mentions:  []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "alice"}},
+		CreatedAt: now,
 	}
 	b := &storage.KnowledgeObject{
-		ID:          "o-2",
-		Type:        "document",
-		Source:      "source-b",
-		Pipeline:    "pipeline-b",
-		Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "bob"}},
-		CreatedAt:   old,
+		ID:        "o-2",
+		Type:      "document",
+		Source:    "source-b",
+		Pipeline:  "pipeline-b",
+		Mentions:  []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "bob"}},
+		CreatedAt: old,
 	}
 	score := proximity.ComputeProximity(a, b)
 	if score.Score > 0.1 {

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 func TestDeleteByIDWithYes(t *testing.T) {
@@ -74,7 +74,7 @@ func TestDeleteByMentionWithYes(t *testing.T) {
 	obj := &storage.KnowledgeObject{
 		ID:        "obj_mention",
 		Type:      "text",
-		Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "project/archived"}},
+		Mentions:  []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "project/archived"}},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}

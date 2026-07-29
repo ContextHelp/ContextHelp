@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -282,9 +282,9 @@ func TestUS0006_PDFEmbeddedImagesAsChildObjects(t *testing.T) {
 			&docTypeSetterStep{format: "pdf"},
 			&docImageExtractorStep{imageCount: 3},
 			&docEdgeCreatorStep{childMentions: []uri.URI{
-				{Scheme: "ctxt", Space: "entity", ID: "image/figure1"},
-				{Scheme: "ctxt", Space: "entity", ID: "image/figure2"},
-				{Scheme: "ctxt", Space: "entity", ID: "image/figure3"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "image/figure1"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "image/figure2"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "image/figure3"},
 			}},
 		},
 	})
@@ -892,8 +892,8 @@ func TestUS0006_HierarchyTraversableViaAPI(t *testing.T) {
 				{Title: "Chapter 1", Content: "Parent chapter", Order: 0},
 			}},
 			&docEdgeCreatorStep{childMentions: []uri.URI{
-				{Scheme: "ctxt", Space: "entity", ID: "section/chapter1-subsection1"},
-				{Scheme: "ctxt", Space: "entity", ID: "section/chapter1-subsection2"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "section/chapter1-subsection1"},
+				{Scheme: "ctxt", Namespace: "entity", ID: "section/chapter1-subsection2"},
 			}},
 		},
 	})

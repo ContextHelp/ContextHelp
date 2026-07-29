@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -51,15 +51,15 @@ func (s *constrainedEntityStep) Run(_ context.Context, draft *storage.KnowledgeO
 		if !entityPattern.MatchString(raw) {
 			continue // drop: out-of-pattern value
 		}
-		// Parse @namespace.slug → uri.URI{Space: namespace, ID: slug}
+		// Parse @namespace.slug → uri.URI{Namespace: namespace, ID: slug}
 		parts := strings.SplitN(strings.TrimPrefix(raw, "@"), ".", 2)
 		if len(parts) != 2 {
 			continue
 		}
 		draft.Mentions = append(draft.Mentions, uri.URI{
-			Scheme: "ctxt",
-			Space:  parts[0],
-			ID:     parts[1],
+			Scheme:    "ctxt",
+			Namespace: parts[0],
+			ID:        parts[1],
 		})
 	}
 	return draft, nil
@@ -99,10 +99,10 @@ func TestUS0041_ConstrainedEntitiesConformToPattern(t *testing.T) {
 
 	// Raw extraction produces valid + invalid values.
 	rawMentions := []string{
-		"@person.alice",          // valid
-		"@project.backend-api",  // valid
-		"Invalid Entity Name",   // invalid — dropped
-		"@BAD.UPPERCASE",        // invalid — dropped (uppercase)
+		"@person.alice",           // valid
+		"@project.backend-api",    // valid
+		"Invalid Entity Name",     // invalid — dropped
+		"@BAD.UPPERCASE",          // invalid — dropped (uppercase)
 		"@concept.event-sourcing", // valid
 	}
 
@@ -132,7 +132,7 @@ func TestUS0041_ConstrainedEntitiesConformToPattern(t *testing.T) {
 
 	for _, m := range obj.Mentions {
 		assert.Equal(t, "ctxt", m.Scheme)
-		assert.Regexp(t, `^[a-z0-9]+$`, m.Space, "namespace must be lowercase alphanumeric")
+		assert.Regexp(t, `^[a-z0-9]+$`, m.Namespace, "namespace must be lowercase alphanumeric")
 		assert.Regexp(t, `^[a-z0-9-]+$`, m.ID, "slug must be lowercase alphanumeric with hyphens")
 	}
 }
@@ -283,7 +283,7 @@ func TestUS0041_EnrichmentUpdatesObjectViaHTTP(t *testing.T) {
 	// Validate @namespace.slug format via HTTP response.
 	for _, m := range obj.Mentions {
 		assert.Equal(t, "ctxt", m.Scheme)
-		assert.NotEmpty(t, m.Space)
+		assert.NotEmpty(t, m.Namespace)
 		assert.NotEmpty(t, m.ID)
 	}
 }
@@ -338,7 +338,7 @@ func TestUS0041_HTTPEnrichEndpointExists(t *testing.T) {
 	defer env.stop(t)
 
 	body, _ := json.Marshal(map[string]any{
-		"object_id":      "o-placeholder",
+		"object_id":       "o-placeholder",
 		"extraction_type": "entities",
 		"constraints": map[string]any{
 			"entity_pattern": `@[a-z0-9]+\.[a-z0-9-]+`,
@@ -369,10 +369,10 @@ func TestUS0041_HTTPEnrichNonexistentObjectReturns404(t *testing.T) {
 	defer env.stop(t)
 
 	body, _ := json.Marshal(map[string]any{
-		"object_id":      "o-does-not-exist-xyz",
+		"object_id":       "o-does-not-exist-xyz",
 		"extraction_type": "entities",
-		"constraints":    map[string]any{"entity_pattern": `@[a-z0-9]+\.[a-z0-9-]+`},
-		"provider":       "openai/gpt-4o-mini",
+		"constraints":     map[string]any{"entity_pattern": `@[a-z0-9]+\.[a-z0-9-]+`},
+		"provider":        "openai/gpt-4o-mini",
 	})
 
 	resp, err := gohttp.Post(env.URL+"/api/v1/enrich", "application/json", bytes.NewReader(body))
@@ -394,10 +394,10 @@ func TestUS0041_HTTPEnrichUnsupportedExtractionTypeReturns400(t *testing.T) {
 	defer env.stop(t)
 
 	body, _ := json.Marshal(map[string]any{
-		"object_id":      "o-placeholder",
+		"object_id":       "o-placeholder",
 		"extraction_type": "unsupported_type_xyz",
-		"constraints":    map[string]any{},
-		"provider":       "openai/gpt-4o-mini",
+		"constraints":     map[string]any{},
+		"provider":        "openai/gpt-4o-mini",
 	})
 
 	resp, err := gohttp.Post(env.URL+"/api/v1/enrich", "application/json", bytes.NewReader(body))
