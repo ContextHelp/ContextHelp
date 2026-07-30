@@ -54,8 +54,8 @@ func entityOverlap(obj *storage.KnowledgeObject, profileSlugs []string) float64 
 }
 
 // entityOverlapFromIndex matches profileSlugs against pre-projected mention strings.
-// Each mention string is a serialised URI ("ctxt://space.id"). Matching is done
-// against the full string and its space/id components.
+// Each mention string is a serialised entity URI ("ctxt://entity/space/id").
+// Matching is done against the full string and its space/id components.
 func entityOverlapFromIndex(mentions []string, profileSlugs []string) float64 {
 	if len(profileSlugs) == 0 || len(mentions) == 0 {
 		return 0
@@ -64,7 +64,7 @@ func entityOverlapFromIndex(mentions []string, profileSlugs []string) float64 {
 	objKeys := make(map[string]struct{}, len(mentions)*3)
 	for _, m := range mentions {
 		objKeys[m] = struct{}{}
-		// Extract space and id from "ctxt://space.id" or "ctxt://space/id".
+		// Extract space and id from "ctxt://entity/space/id".
 		space, id := extractSpaceID(m)
 		if space != "" {
 			objKeys[space] = struct{}{}
@@ -102,13 +102,16 @@ func entityOverlapFromIndex(mentions []string, profileSlugs []string) float64 {
 }
 
 // extractSpaceID splits a serialised URI string into its space and id components.
-// Handles "ctxt://space.id", "ctxt://space/id", or bare "space.id" forms.
+// Handles the canonical "ctxt://entity/space/id" form as well as the legacy
+// "ctxt://space.id", "ctxt://space/id", and bare "space.id" forms.
 func extractSpaceID(m string) (space, id string) {
 	// Strip scheme prefix if present.
 	s := m
 	if i := strings.Index(s, "://"); i >= 0 {
 		s = s[i+3:]
 	}
+	// Strip the canonical "entity" namespace so space/id land on the slug parts.
+	s = strings.TrimPrefix(s, "entity/")
 	// Try dot separator first.
 	if i := strings.Index(s, "."); i >= 0 {
 		return s[:i], s[i+1:]
