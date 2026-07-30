@@ -190,6 +190,10 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		return nil, 0, fmt.Errorf("count objects: %w", err)
 	}
 
+	// ORDER BY cannot take a bind parameter, so the column and direction
+	// are resolved through a closed allowlist: the only reachable values
+	// are the literals below. filter.Sort / filter.Dir are compared, never
+	// interpolated, so caller input cannot reach the query text.
 	sortCol := "created_at"
 	if filter.Sort == "updated_at" {
 		sortCol = "updated_at"
@@ -199,12 +203,20 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		dir = "ASC"
 	}
 
-	query := objectSelectCols + ` FROM objects ` + where + fmt.Sprintf(` ORDER BY %s %s`, sortCol, dir)
+	// #nosec G202 -- sortCol/dir are allowlisted literals (see above), not
+	// caller-controlled strings; `where` holds only $N placeholders.
+	query := objectSelectCols + ` FROM objects ` + where + ` ORDER BY ` + sortCol + ` ` + dir
 	if filter.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", filter.Limit)
+		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
+		query += fmt.Sprintf(" LIMIT $%d", idx)
+		args = append(args, filter.Limit)
+		idx++
 	}
 	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
+		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
+		query += fmt.Sprintf(" OFFSET $%d", idx)
+		args = append(args, filter.Offset)
+		idx++
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -371,19 +383,31 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		return nil, 0, fmt.Errorf("count by sql: %w", err)
 	}
 
+	// where is a compiled RSQL predicate (internal/search): literals are
+	// already bound as $N placeholders in args, only operators and column
+	// names reach the SQL text. LIMIT/OFFSET are bound below rather than
+	// formatted in.
+	// #nosec G202 -- see above; caller values travel in args, not the string.
 	query := objectSelectCols + ` FROM objects`
 	if where != "" {
 		query += " WHERE " + where
 	}
 	query += " ORDER BY created_at DESC"
+	pageArgs := append([]any(nil), args...)
+	idx := len(pageArgs) + 1
 	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", limit)
+		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
+		query += fmt.Sprintf(" LIMIT $%d", idx)
+		pageArgs = append(pageArgs, limit)
+		idx++
 	}
 	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", offset)
+		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
+		query += fmt.Sprintf(" OFFSET $%d", idx)
+		pageArgs = append(pageArgs, offset)
 	}
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, query, pageArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list by sql: %w", err)
 	}
@@ -484,8 +508,14 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 		limit = 20
 	}
 
-	query := objectSelectCols + fmt.Sprintf(`, 1 - (embedding <=> $1::vector) AS score FROM objects %s ORDER BY embedding <=> $1::vector LIMIT %d`,
-		where, limit)
+	// Only placeholders and locally-built condition fragments are formatted
+	// into the text here; every caller-supplied value is in args. `where` is
+	// assembled from constant fragments plus $N placeholders above.
+	// #nosec G202 -- no caller string reaches the query text.
+	query := objectSelectCols + fmt.Sprintf(
+		`, 1 - (embedding <=> $1::vector) AS score FROM objects %s ORDER BY embedding <=> $1::vector LIMIT $%d`,
+		where, idx)
+	args = append(args, limit)
 
 	var objects []*storage.KnowledgeObject
 	err := queryVectorRows(ctx, s.db, s.caps, func(rows *sql.Rows) error {
