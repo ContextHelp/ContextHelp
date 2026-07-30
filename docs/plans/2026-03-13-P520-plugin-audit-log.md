@@ -1,6 +1,15 @@
 # Plugin: Audit Log Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Status: SUPERSEDED — do not execute.**
+>
+> Audit logging shipped, but in core rather than as an extractable plugin module.
+> Tasks 1-5, 10 and 11 landed in the main module; entries are appended directly by
+> the mutating services instead of via an event-bus subscription. Tasks 6-9, 12
+> and 13 (the `plugins/auditlog/` module) were never built and the empty scaffold
+> has been removed.
+>
+> Current-state reference: [docs/plugins/plugins-audit-log.md](../plugins/plugins-audit-log.md).
+> Retained for design rationale only.
 
 **Goal:** Plugin that records all object mutations (create, update, delete, triage, discard, tag change, alias set) into an immutable append-only audit log. Queryable via `ctxt audit` CLI and `GET /api/v1/audit` REST endpoint.
 

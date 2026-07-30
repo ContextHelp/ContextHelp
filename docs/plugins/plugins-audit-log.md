@@ -1,12 +1,15 @@
-# Audit Log Plugin
+# Audit Log
 
-The **Audit Log Plugin** records all knowledge-object mutations into an immutable, append-only log.
-Every create, update, delete, reinforce, triage, discard, and alias-set operation produces a
-`AuditEntry` row that can never be modified or removed. The log is queryable via the
-`ctxt audit` CLI subtree and the `GET /api/v1/audit` REST endpoint.
+> **Status:** shipped in core. Originally scoped as an extractable plugin; the
+> implementation landed in the main module instead. There is no
+> `plugins/auditlog/` module — see [Module](#module).
 
-The plugin requires **no changes to core** — it subscribes to the event bus, stores entries in a
-dedicated SQLite table (`audit_log`, migration 011), and exposes its own CLI/REST surface.
+Audit logging records knowledge-object mutations into an immutable, append-only log.
+Mutations produce an `AuditEntry` row that can never be modified or removed. The log is
+queryable via the `ctxt audit` CLI subtree and the audit REST endpoint.
+
+Entries are stored in a dedicated table (`audit_log`, migration 011) with immutability
+enforced by both the Go interface and SQLite triggers.
 
 ---
 
@@ -31,10 +34,12 @@ Non-goals:
 ## Architecture
 
 ```
-events.Bus  ──subscribe──►  Handler.Handle()  ──append──►  AuditStore (SQLite)
-                                                                  │
-                              REST handlers  ◄────List()──────────┤
-                              CLI commands   ◄────List()──────────┘
+service.fanout      ──┐
+service.duplicates  ──┼──append──►  AuditStore (SQLite / Postgres)
+ctxt doctor         ──┘                        │
+                                               │
+                     REST handler  ◄──List()───┤
+                     CLI commands  ◄──List()───┘
 ```
 
 Components:
@@ -43,12 +48,12 @@ Components:
 |-----------|----------|----------------|
 | `AuditEntry` / `AuditStore` | `internal/storage/storage.go` | Type + interface definition |
 | SQLite store | `internal/storage/sqlite/auditlog.go` | DB read/write |
+| Postgres store | `internal/storage/postgres/auditlog.go` | DB read/write |
 | Migration 011 | `internal/storage/sqlite/migrations/011_audit_log.sql` | Table + immutability triggers |
-| `Handler` | `plugins/auditlog/handler.go` | Converts bus events → `AuditEntry` |
-| `Plugin` | `plugins/auditlog/plugin.go` | Wires bus subscriptions at startup |
-| `AuditConfig` | `plugins/auditlog/config.go` | Configuration struct + defaults |
-| REST handlers | `internal/server/http/handlers_audit.go` | HTTP endpoints |
-| CLI commands | `plugins/auditlog/cli.go` | `ctxt audit` subtree |
+| Append call sites | `internal/service/fanout.go`, `internal/service/duplicates.go` | Emit `AuditEntry` on mutation |
+| Export formatting | `internal/audit/format.go` | JSON / CSV rendering |
+| REST handlers | `internal/server/http/handlers_audit_log.go` | HTTP endpoints |
+| CLI commands | `cmd/ctxt/cmd/audit.go` | `ctxt audit` subtree |
 
 ---
 
@@ -177,10 +182,9 @@ plugins:
 
 ### Defaults
 
-```go
-// See plugins/auditlog/config.go — DefaultConfig()
-cfg := auditlog.DefaultConfig()  // Enabled: true, DefaultLimit: 100
-```
+Audit settings live in the core config tree — see `internal/config/config.go`
+(`AuditConfig` for SIEM export/forwarding, `fanout.audit_log` to toggle
+changelog entries on fan-out mutations).
 
 ---
 
@@ -349,10 +353,10 @@ Two independent layers:
 ## Security & Privacy
 
 - All entries stored locally; no network egress by default.
-- No `network` permission declared in the plugin manifest.
+- Egress happens only when syslog or webhook forwarding is explicitly configured.
 - `actor` field contains the event source string, not a user identity; enrichment deferred to
   when authentication is added.
-- Plugin storage isolated to `~/.contexthelp/plugins/auditlog/` (logs only; main data in SQLite).
+- Entries live in the main SQLite/Postgres store alongside other core data.
 
 ---
 
@@ -377,16 +381,24 @@ Two independent layers:
 
 ## Module
 
-Go module: `github.com/ideacrafterslabs/ctxt-plugin-auditlog`
+Audit logging ships **in core**, not as a separate Go module. There is no
+`plugins/auditlog/` module and no extra `go.work` entry to add.
 
-Location: `plugins/auditlog/`
+Surface lives in the main `github.com/ideacrafterslabs/ctxt` module:
 
-Extraction-ready: standalone `go.mod` with `replace` directive pointing to core. Add to
-`go.work` to include in the workspace:
+| Concern | Location |
+|---------|----------|
+| Types + interface | `internal/storage/storage.go` |
+| SQLite store | `internal/storage/sqlite/auditlog.go` |
+| Postgres store | `internal/storage/postgres/auditlog.go` |
+| Migration | `internal/storage/sqlite/migrations/011_audit_log.sql` |
+| Export formatting | `internal/audit/format.go` |
+| REST handler | `internal/server/http/handlers_audit_log.go` |
+| CLI | `cmd/ctxt/cmd/audit.go` |
 
-```
-use ./plugins/auditlog
-```
+Entries are appended directly by the services that mutate objects
+(`internal/service/fanout.go`, `internal/service/duplicates.go`) rather than via
+an event-bus subscription.
 
 ---
 
