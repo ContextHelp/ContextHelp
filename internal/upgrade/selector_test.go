@@ -141,6 +141,60 @@ func TestParseSelector_RejectsInjection(t *testing.T) {
 	}
 }
 
+// TestParseSelector_AllowlistRejectsUnknownIdentifiers covers the vectors the
+// keyword denylist alone does not catch: data exfiltration via subquery,
+// reads of other tables, and function calls. None of these contain a DDL/DML
+// keyword or a chaining marker, so the allowlist is the control that stops
+// them.
+func TestParseSelector_AllowlistRejectsUnknownIdentifiers(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"subquery_select", "where:id IN (SELECT id FROM secrets)"},
+		{"union_exfil", "where:1=1 UNION SELECT password FROM users"},
+		{"other_table", "where:profile_id = users.id"},
+		{"function_call", "where:randomblob(1000000000) IS NOT NULL"},
+		{"load_extension", "where:load_extension('evil.so') IS NULL"},
+		{"unknown_column", "where:secret_column = 'x'"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := ParseSelector(tc.input); err == nil {
+				t.Fatalf("expected rejection for %q", tc.input)
+			}
+		})
+	}
+}
+
+// TestParseSelector_AllowlistAcceptsLegitimatePredicates guards against the
+// allowlist being so tight it breaks real selectors.
+func TestParseSelector_AllowlistAcceptsLegitimatePredicates(t *testing.T) {
+	cases := []string{
+		"where:graph_json IS NULL",
+		"where:graph_json IS NULL AND pipeline LIKE 'text.short%'",
+		"where:type = 'note' OR type = 'article'",
+		"where:reinforcement_count > 3 AND status IS NOT NULL",
+		"where:created_at BETWEEN '2026-01-01' AND '2026-06-01'",
+	}
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			if _, err := ParseSelector(in); err != nil {
+				t.Fatalf("legitimate predicate %q rejected: %v", in, err)
+			}
+		})
+	}
+}
+
+// TestParseSelector_LiteralsAreNotIdentifiers confirms string literal bodies
+// are treated as data — a value containing a word like "select" must not trip
+// the allowlist.
+func TestParseSelector_LiteralsAreNotIdentifiers(t *testing.T) {
+	if _, err := ParseSelector("where:source = 'select-all-notes'"); err != nil {
+		t.Fatalf("literal containing a keyword should be allowed: %v", err)
+	}
+}
+
 func TestSelector_CountMatching_PipelineFilter(t *testing.T) {
 	db := fixtureDB(t)
 	sel, err := ParseSelector("pipeline=text.short@v0")

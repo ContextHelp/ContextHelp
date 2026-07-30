@@ -227,6 +227,26 @@ func TestListBySQL_Pagination(t *testing.T) {
 	assert.Len(t, objs, 2)
 }
 
+// TestListBySQL_OffsetWithoutLimit covers the offset-only path. SQLite rejects
+// a bare OFFSET with no preceding LIMIT, so the builder emits "LIMIT -1"
+// (unbounded) in that case.
+func TestListBySQL_OffsetWithoutLimit(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		obj := makeObject(fmt.Sprintf("offset-%d", i), "article")
+		obj.CreatedAt = time.Now().Add(time.Duration(i) * time.Second).Truncate(time.Second)
+		obj.UpdatedAt = obj.CreatedAt
+		require.NoError(t, d.Objects().Create(ctx, obj))
+	}
+
+	objs, total, err := d.Objects().ListBySQL(ctx, "", nil, 0, 2)
+	require.NoError(t, err)
+	assert.Equal(t, 5, total)
+	assert.Len(t, objs, 3, "offset 2 of 5 rows with no limit should return 3")
+}
+
 func TestMergeTags(t *testing.T) {
 	t.Run("basic merge", func(t *testing.T) {
 		existing := []storage.Tag{{Label: "go", Weight: 1.0}}

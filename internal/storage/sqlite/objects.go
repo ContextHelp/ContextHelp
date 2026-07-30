@@ -557,18 +557,30 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key
 	FROM objects`
+	// where is a compiled RSQL predicate (internal/search): literals are
+	// already bound as ? placeholders in args, only operators and column
+	// names reach the SQL text. LIMIT/OFFSET are bound below.
+	// #nosec G202 -- see above; caller values travel in args, not the string.
 	if where != "" {
 		query += " WHERE " + where
 	}
 	query += " ORDER BY created_at DESC"
+	pageArgs := append([]any(nil), args...)
 	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", limit)
+		query += " LIMIT ?"
+		pageArgs = append(pageArgs, limit)
 	}
 	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", offset)
+		// SQLite requires LIMIT before OFFSET; supply an unbounded LIMIT
+		// when the caller asked only for an offset.
+		if limit <= 0 {
+			query += " LIMIT -1"
+		}
+		query += " OFFSET ?"
+		pageArgs = append(pageArgs, offset)
 	}
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, query, pageArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list by sql: %w", err)
 	}
@@ -1118,11 +1130,16 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		args = append(args, filter.Type)
 	}
 
-	// Metadata facet filters (US-0407).
+	// Metadata facet filters (US-0407). metadataFacetConditionsSQLite
+	// returns constant SQL fragments whose values are all `?` bound into
+	// ma — no caller string is ever concatenated into q here.
+	// #nosec G202 -- fragments are compile-time constants; values in args.
 	mc, ma := metadataFacetConditionsSQLite(filter)
 	for _, c := range mc {
 		// Prefix bare column refs with table alias for the JOIN query.
 		aliased := strings.ReplaceAll(c, "metadata", "o.metadata")
+		// #nosec G202 -- c is a compile-time constant fragment from
+		// metadataFacetConditionsSQLite; its values are `?` bound into ma.
 		q += " AND " + aliased
 	}
 	args = append(args, ma...)
@@ -1238,6 +1255,11 @@ func (s *ObjectStore) nodeTypeObjectIDs(ctx context.Context, nodeTypes []string)
 		placeholders[i] = "?"
 		args[i] = t
 	}
+	// The only text interpolated is the "?, ?, ..." placeholder run whose
+	// length is len(nodeTypes); the node type strings themselves are bound
+	// into args. Variable-length IN lists cannot be expressed with a single
+	// bind parameter in SQLite, so this expansion is unavoidable.
+	// #nosec G201 -- format arg is a generated placeholder list, not data.
 	q := fmt.Sprintf(
 		`SELECT object_id FROM object_nodes WHERE node_type IN (%s)
 		 GROUP BY object_id HAVING COUNT(DISTINCT node_type) = ?`,
