@@ -20,8 +20,8 @@ type PipelineValidator func(name string) error
 
 // Queue wraps storage.JobStore with queue semantics.
 type Queue struct {
-	store             storage.JobStore
-	validatePipeline  PipelineValidator
+	store            storage.JobStore
+	validatePipeline PipelineValidator
 }
 
 // NewQueue creates a job queue backed by the given job store.
@@ -41,7 +41,9 @@ func (q *Queue) Enqueue(ctx context.Context, job *storage.Job) error {
 			return fmt.Errorf("enqueue rejected: pipeline is required")
 		}
 		if err := q.validatePipeline(job.Pipeline); err != nil {
-			return fmt.Errorf("%w: %s", ErrPipelineNotFound, job.Pipeline)
+			// Keep the validator's own error in the chain; dropping it
+			// hides why the name failed to resolve.
+			return fmt.Errorf("%w: %s: %w", ErrPipelineNotFound, job.Pipeline, err)
 		}
 	}
 	if job.Status == "" {

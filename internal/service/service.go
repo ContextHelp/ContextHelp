@@ -127,6 +127,26 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 // the operator. Failing loudly at enqueue time keeps the queue honest.
 var ErrPipelineNotFound = errors.New("pipeline not found")
 
+// pipelineExists reports whether a pipeline name resolves. Pipelines live
+// in two places: the in-memory registry (built-ins, registered at
+// startup) and the pipelines store (user-created via CreatePipeline,
+// which persists only — it never mutates the registry). A check against
+// the registry alone rejects every user-created pipeline, so both
+// sources must be consulted for the answer to be correct.
+func (s *Service) pipelineExists(ctx context.Context, name string) bool {
+	if name == "" {
+		return false
+	}
+	if _, err := s.Pipes.Get(name); err == nil {
+		return true
+	}
+	if s.Store == nil {
+		return false
+	}
+	p, err := s.Store.Pipelines().Get(ctx, name)
+	return err == nil && p != nil
+}
+
 // Analyze enqueues a content analysis job and returns the job ID.
 // When req.Raw is true, skips AI enrichment and stores the object immediately
 // with Status "raw"; returns the object ID (not a job ID).
@@ -210,7 +230,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	// this, a job referencing a non-existent pipeline (e.g. `--type document`
 	// when no document.* pipeline is registered) would be enqueued and the
 	// worker would silently fail to dispatch — data lost, no signal.
-	if _, err := s.Pipes.Get(pipelineName); err != nil {
+	if !s.pipelineExists(ctx, pipelineName) {
 		return "", fmt.Errorf("analyze: %w: type=%q pipeline=%q (no pipeline registered for this content type)",
 			ErrPipelineNotFound, req.Type, pipelineName)
 	}
@@ -672,8 +692,8 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 		})
 	}
 
-	// T-0562: same registry check as Analyze. See note above.
-	if _, err := s.Pipes.Get(pipelineName); err != nil {
+	// Same existence check as Analyze. See note above.
+	if !s.pipelineExists(ctx, pipelineName) {
 		return "", fmt.Errorf("enqueue: %w: type=%q pipeline=%q (no pipeline registered for this content type)",
 			ErrPipelineNotFound, req.Type, pipelineName)
 	}
