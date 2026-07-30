@@ -145,6 +145,96 @@ func TestEntityOverlap_PartialMatch(t *testing.T) {
 	}
 }
 
+// ─── extractSpaceID ───────────────────────────────────────────────────────────
+
+// TestExtractSpaceID pins the space/id split across every mention form the
+// scorer sees. The canonical cases are the regression guard: without the
+// "entity/" prefix strip, "ctxt://entity/stripe/api" yields space="entity",
+// id="stripe/api", and every real mention silently scores zero overlap.
+func TestExtractSpaceID(t *testing.T) {
+	tests := []struct {
+		name      string
+		in        string
+		wantSpace string
+		wantID    string
+	}{
+		// Canonical entity URI — the form ctxt actually emits.
+		{"canonical entity uri", "ctxt://entity/stripe/api", "stripe", "api"},
+		{"canonical entity uri hyphenated", "ctxt://entity/acme-corp/billing-api", "acme-corp", "billing-api"},
+		// Same shape without the scheme; the strip must not depend on it.
+		{"schemeless entity prefix", "entity/stripe/api", "stripe", "api"},
+		// Legacy forms must keep working.
+		{"legacy dot form", "ctxt://stripe.api", "stripe", "api"},
+		{"legacy slash form", "ctxt://stripe/api", "stripe", "api"},
+		{"bare dot form", "stripe.api", "stripe", "api"},
+		// Dot separator wins over slash, even under the entity namespace.
+		{"entity prefix with dot slug", "ctxt://entity/stripe.api", "stripe", "api"},
+		// Extra slug segments spill into the id; only the first slash splits.
+		{"multi segment slug", "ctxt://entity/acme/team/api", "acme", "team/api"},
+		// Edge cases.
+		{"entity prefix only", "ctxt://entity/", "", ""},
+		{"scheme only", "ctxt://", "", ""},
+		{"empty input", "", "", ""},
+		{"space without id", "ctxt://stripe", "stripe", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			space, id := extractSpaceID(tt.in)
+			if space != tt.wantSpace || id != tt.wantID {
+				t.Errorf("extractSpaceID(%q) = (%q, %q), want (%q, %q)",
+					tt.in, space, id, tt.wantSpace, tt.wantID)
+			}
+		})
+	}
+}
+
+// TestEntityOverlapFromIndex_CanonicalMention is the end-to-end half of the
+// same guard: a canonical mention must match slugs written as the bare space,
+// the bare id, and the dotted "space.id" pair. Reading "entity" as the space
+// drops all three to zero.
+func TestEntityOverlapFromIndex_CanonicalMention(t *testing.T) {
+	mentions := []string{"ctxt://entity/stripe/api"}
+	tests := []struct {
+		name  string
+		slugs []string
+		want  float64
+	}{
+		{"dotted pair", []string{"stripe.api"}, 1.0},
+		{"space only", []string{"stripe"}, 1.0},
+		{"id only", []string{"api"}, 1.0},
+		{"slashed pair", []string{"stripe/api"}, 1.0},
+		{"namespace is not a slug", []string{"entity"}, 0.0},
+		{"unrelated slug", []string{"github.actions"}, 0.0},
+		{"one of two", []string{"stripe.api", "github.actions"}, 0.5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := entityOverlapFromIndex(mentions, tt.slugs)
+			if math.Abs(got-tt.want) > 0.001 {
+				t.Errorf("entityOverlapFromIndex(%v, %v) = %f, want %f",
+					mentions, tt.slugs, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestEntityOverlapFromIndex_LegacyMentionForms asserts the backward-compat
+// claim: pre-canonical mention strings still resolve to the same space/id.
+func TestEntityOverlapFromIndex_LegacyMentionForms(t *testing.T) {
+	for _, mention := range []string{
+		"ctxt://stripe.api",
+		"ctxt://stripe/api",
+		"stripe.api",
+	} {
+		t.Run(mention, func(t *testing.T) {
+			got := entityOverlapFromIndex([]string{mention}, []string{"stripe.api"})
+			if math.Abs(got-1.0) > 0.001 {
+				t.Errorf("legacy mention %q: want 1.0, got %f", mention, got)
+			}
+		})
+	}
+}
+
 // ─── Score (combined) ─────────────────────────────────────────────────────────
 
 func TestScore_Zero(t *testing.T) {
