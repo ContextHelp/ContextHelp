@@ -28,6 +28,7 @@ import (
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 	"hop.top/kit/go/runtime/bus"
 
 	"github.com/ideacrafterslabs/ctxt/internal/adapter"
@@ -48,6 +49,18 @@ type Config struct {
 	// IdentityFile is the SSH private key path. Defaults to
 	// ~/.ssh/id_ed25519 (the modern key choice in 2026).
 	IdentityFile string
+	// KnownHostsFile is the OpenSSH known_hosts file used to verify the
+	// remote host key. Defaults to ~/.ssh/known_hosts. The remote host
+	// must already have an entry; unknown hosts are rejected rather than
+	// trust-on-first-use, so an operator's first sweep fails loudly
+	// instead of silently pinning an attacker's key.
+	KnownHostsFile string
+	// InsecureSkipHostKeyVerification disables host key verification
+	// entirely. Default false. Enabling it makes the connection trivially
+	// MITM-able and is intended only for throwaway local-dev fixtures;
+	// every dial emits a warning to stderr while it is on. Never set this
+	// against a host holding real data.
+	InsecureSkipHostKeyVerification bool
 	// Ignore is a list of glob patterns; matching basenames are
 	// skipped during the walk. Common values: ".git", "node_modules",
 	// "*.tmp".
@@ -61,6 +74,9 @@ type Config struct {
 func New(cfg Config) *Adapter {
 	if cfg.IdentityFile == "" {
 		cfg.IdentityFile = "~/.ssh/id_ed25519"
+	}
+	if cfg.KnownHostsFile == "" {
+		cfg.KnownHostsFile = "~/.ssh/known_hosts"
 	}
 	return &Adapter{cfg: cfg}
 }
@@ -141,12 +157,44 @@ func (a *Adapter) validate() error {
 	return nil
 }
 
-// dial opens an SSH connection and wraps it as an SFTP client. The
-// returned closer tears both layers down in reverse order.
+// hostKeyCallback builds the ssh.HostKeyCallback used for the dial.
 //
-// HostKeyCallback uses ssh.InsecureIgnoreHostKey for now — known-hosts
-// validation is a follow-up; without it sshfs is unsafe for production
-// hosts. Operators should rely on policy/ambient.yaml gating until then.
+// Default path: verify the remote key against the operator's OpenSSH
+// known_hosts file. A host with no entry is rejected — deliberately not
+// trust-on-first-use, since TOFU inside an unattended background sweep
+// would pin whatever key answered first, including an attacker's.
+//
+// Escape hatch: Config.InsecureSkipHostKeyVerification disables
+// verification outright for throwaway local-dev fixtures. It defaults to
+// false and announces itself on every dial so it cannot be left on by
+// accident.
+func (a *Adapter) hostKeyCallback(host string) (ssh.HostKeyCallback, error) {
+	if a.cfg.InsecureSkipHostKeyVerification {
+		fmt.Fprintf(os.Stderr,
+			"WARNING: sshfs adapter connecting to %s with host key verification DISABLED "+
+				"(InsecureSkipHostKeyVerification=true). The connection is not protected against "+
+				"man-in-the-middle attacks. Do not use against hosts holding real data.\n", host)
+		// #nosec G106 -- explicit, non-default operator opt-in for local-dev
+		// fixtures only; default is known_hosts verification above, and every
+		// dial in this mode prints the warning immediately preceding.
+		return ssh.InsecureIgnoreHostKey(), nil
+	}
+
+	khPath, err := expandTilde(a.cfg.KnownHostsFile)
+	if err != nil {
+		return nil, fmt.Errorf("expand known_hosts file: %w", err)
+	}
+	cb, err := knownhosts.New(khPath)
+	if err != nil {
+		return nil, fmt.Errorf("load known_hosts %s (add the host key with 'ssh-keyscan', "+
+			"or set InsecureSkipHostKeyVerification for local-dev fixtures): %w", khPath, err)
+	}
+	return cb, nil
+}
+
+// dial opens an SSH connection and wraps it as an SFTP client. The
+// returned closer tears both layers down in reverse order. The remote
+// host key is verified via hostKeyCallback.
 func (a *Adapter) dial(_ context.Context) (*sftp.Client, func(), error) {
 	keyPath, err := expandTilde(a.cfg.IdentityFile)
 	if err != nil {
@@ -164,10 +212,14 @@ func (a *Adapter) dial(_ context.Context) (*sftp.Client, func(), error) {
 	if !strings.Contains(host, ":") {
 		host = host + ":22"
 	}
+	hkCallback, err := a.hostKeyCallback(host)
+	if err != nil {
+		return nil, nil, err
+	}
 	cfg := &ssh.ClientConfig{
 		User:            a.cfg.User,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: known-hosts validation
+		HostKeyCallback: hkCallback,
 	}
 	conn, err := ssh.Dial("tcp", host, cfg)
 	if err != nil {
