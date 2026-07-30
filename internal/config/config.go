@@ -812,11 +812,22 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	system, user, project := cascadeSlots(bin)
 	if cfgFile != "" {
 		// Legacy single-file override: replace cascade with just this file.
+		// Stays in ExtraConfigPaths (strict) — a caller naming a file
+		// outright means it, so a missing one is an error.
 		system, user, project = "", "", ""
 		extraPaths = append([]string{cfgFile}, extraPaths...)
 	} else if envCfg := os.Getenv(EnvConfigPath); envCfg != "" {
-		system, user, project = "", "", ""
-		extraPaths = append([]string{envCfg}, extraPaths...)
+		// CTXT_CONFIG goes in the `user` SLOT, not ExtraConfigPaths:
+		// kit's loader tolerates a missing cascade slot but treats a
+		// missing extra path as a hard error. This env var is ambient
+		// rather than per-invocation, and pointing it at a not-yet-
+		// created file is the normal first-run state — `ctxt setup` is
+		// the command that CREATES it.
+		//
+		// Explicit -c paths keep flowing through extraPaths, where
+		// strictness is correct: ParseConfigArgs has already proven
+		// those files exist, and -c still layers after (wins over) this.
+		system, user, project = "", envCfg, ""
 	}
 
 	// envOverride re-applies env-bound viper keys to dst after files merge,
