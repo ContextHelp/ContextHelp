@@ -203,7 +203,12 @@ func Enqueue(svc *service.Service) http.HandlerFunc {
 
 		jobID, err := svc.Enqueue(r.Context(), req)
 		if err != nil {
-			if errors.Is(err, jobs.ErrPipelineNotFound) {
+			// An unknown pipeline can surface from two layers with two
+			// distinct sentinels: the service's own pre-flight registry
+			// check, and the queue's validator deeper in Enqueue. Match
+			// both, otherwise a genuinely invalid request falls through
+			// to a generic 500.
+			if errors.Is(err, service.ErrPipelineNotFound) || errors.Is(err, jobs.ErrPipelineNotFound) {
 				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 				return
 			}
