@@ -101,6 +101,12 @@ var (
 		// and verbose logger init.
 		Hooks: kitcli.Hooks{
 			PrePersistentRunE: func(cmd *cobra.Command, _ []string) error {
+				// Fatal -c/--config failure stashed by initConfig
+				// (cobra.OnInitialize cannot return). Abort before any
+				// command body can run against the default config.
+				if initConfigErr != nil {
+					return initConfigErr
+				}
 				if outFlag := cmd.Root().PersistentFlags().Lookup("output"); outFlag != nil && outFlag.Changed {
 					val := outFlag.Value.String()
 					_ = cmd.Root().PersistentFlags().Set("format", val)
@@ -370,21 +376,23 @@ func printVersion(cmd *cobra.Command) {
 	fmt.Fprintf(cmd.OutOrStdout(), "ctxt version %s (%s)\n", version, date)
 }
 
+// initConfigErr carries a fatal config-bootstrap failure out of
+// initConfig. cobra.OnInitialize hooks cannot return an error, and
+// calling os.Exit from one would bypass fang's error rendering and
+// break in-process tests. Instead initConfig stashes the error here and
+// the PersistentPreRunE hook (which cobra runs immediately after the
+// OnInitialize chain) returns it, so the failure travels the normal
+// Execute() → main() path and yields a clean message plus exit 1.
+var initConfigErr error
+
 func initConfig() {
+	initConfigErr = nil
 	// kit/cli's -c/--config global supports both bare paths and key=value
 	// overrides. ConfigArgs splits the two halves so we can layer them
-	// through kit/core/config.Load.
+	// through kit/core/config.Load. A non-nil parse error means the user
+	// explicitly passed -c and it is invalid — fatal, never a fallback to
+	// the default config (see config.Bootstrap).
 	paths, overrides, parseErr := root.ConfigArgs()
-	if parseErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to parse -c/--config: %v\n", parseErr)
-		paths, overrides = nil, nil
-	}
-	var err error
-	cfg, err = config.LoadWithOverrides(binName, "", paths, overrides)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to load config: %v\n", err)
-		cfg = &config.Config{}
-	}
 	// Legacy global: callers (config doctor, validate, etc.) read this
 	// to find the user-supplied config path. With kit's repeatable
 	// -c/--config, later paths layer on top of earlier ones, so the
@@ -392,9 +400,12 @@ func initConfig() {
 	// what subcommands operating on "the" config should target.
 	// Empty when no -c <path> was supplied; callers fall back to
 	// config.GetConfigPath in that case.
-	cfgFile = ""
-	if len(paths) > 0 {
-		cfgFile = paths[len(paths)-1]
+	var err error
+	cfg, cfgFile, err = config.Bootstrap(binName, paths, overrides, parseErr)
+	if err != nil {
+		initConfigErr = err
+		cfg, cfgFile = nil, ""
+		return
 	}
 
 	if err := config.EnsureConfigDir(binName); err != nil {
