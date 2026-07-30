@@ -11,16 +11,26 @@ import (
 	"github.com/spf13/viper"
 )
 
+// resetFlag restores a single flag to its declared default.
+//
+// Slice/array flags (e.g. kit's repeatable -c/--config) implement
+// pflag.SliceValue and their Set() APPENDS. Calling Set(DefValue) on them
+// therefore grows the value across successive in-process command runs
+// instead of clearing it, leaking one test's --config path into the next.
+// Replace() is the only API that truly resets them.
+func resetFlag(f *pflag.Flag) {
+	if sv, ok := f.Value.(pflag.SliceValue); ok {
+		_ = sv.Replace(nil)
+	} else {
+		_ = f.Value.Set(f.DefValue)
+	}
+	f.Changed = false
+}
+
 // resetAllFlags resets all flags on a command and its subcommands to defaults.
 func resetAllFlags(cmd *cobra.Command) {
-	cmd.Flags().VisitAll(func(f *pflag.Flag) {
-		_ = f.Value.Set(f.DefValue)
-		f.Changed = false
-	})
-	cmd.PersistentFlags().VisitAll(func(f *pflag.Flag) {
-		_ = f.Value.Set(f.DefValue)
-		f.Changed = false
-	})
+	cmd.Flags().VisitAll(resetFlag)
+	cmd.PersistentFlags().VisitAll(resetFlag)
 	for _, sub := range cmd.Commands() {
 		resetAllFlags(sub)
 	}
