@@ -32,7 +32,9 @@ func TestExport_JSONFallback(t *testing.T) {
 	db := setupTestDB(t)
 	seedExportObject(t, db)
 
-	out, err := db.exec("export", "obj_exp001", "--output", "json")
+	// No --format requested: kit v0.5 defaults --format to "table", which
+	// export treats as "no generator plugin" and falls back to JSON.
+	out, err := db.exec("export", "obj_exp001")
 	if err != nil {
 		t.Fatalf("export JSON should succeed: %v", err)
 	}

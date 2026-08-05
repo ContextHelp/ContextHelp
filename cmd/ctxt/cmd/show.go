@@ -74,11 +74,14 @@ func runShow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get object: %w", err)
 	}
 
-	// Delegate to output-generator plugin when --format is specified.
+	// Delegate to output-generator plugin when a named format is specified.
 	// --format is owned by kit as a persistent root flag; cmd.Flags()
-	// resolves inherited persistent flags transparently.
+	// resolves inherited persistent flags transparently. kit v0.5 defaults
+	// --format to "table" (was ""), so an unset flag now reports "table";
+	// treat both as "no output-generator plugin requested" and fall through
+	// to the built-in human rendering below.
 	format, _ := cmd.Flags().GetString("format")
-	if format != "" {
+	if format != "" && format != "table" {
 		gen := findOutputGenerator(svc.PluginRegistry, format)
 		if gen == nil {
 			return fmt.Errorf("no output-generator plugin loaded for format %q", format)

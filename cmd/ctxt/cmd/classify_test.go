@@ -10,7 +10,7 @@ func TestClassifyHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("classify --help should succeed: %v", err)
 	}
-	for _, want := range []string{"classify", "--pipeline", "--output", "object_id"} {
+	for _, want := range []string{"classify", "--pipeline", "--format", "object_id"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help output should contain %q", want)
 		}

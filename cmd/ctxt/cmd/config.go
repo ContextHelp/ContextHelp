@@ -8,8 +8,10 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/bundle"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/configpath"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
+	kitconfigcli "hop.top/kit/go/console/cli/config"
 )
 
 var configCmd = &cobra.Command{
@@ -40,17 +42,6 @@ The default human-readable view groups settings under storage, server, profile,
 i18n, and registries. Pass --format json (global) to emit the full config tree
 as a JSON object for scripting.`,
 	RunE: runConfigShow,
-}
-
-var configPathCmd = &cobra.Command{
-	Use:   "path",
-	Short: "Show configuration file path",
-	Long: `Print the absolute path to the configuration file ctxt is using.
-
-The path is resolved the same way as for every other ctxt command:
-$CTXT_CONFIG (env) → --config (flag) → $XDG_CONFIG_HOME/contexthelp/config.yaml.
-Use this to locate the file before editing or backing it up.`,
-	RunE: runConfigPath,
 }
 
 var configValidateCmd = &cobra.Command{
@@ -139,20 +130,38 @@ func init() {
 
 	// Add subcommands
 	configCmd.AddCommand(configShowCmd)
-	configCmd.AddCommand(configPathCmd)
 	configCmd.AddCommand(configValidateCmd)
 	configCmd.AddCommand(configEditCmd)
 	configCmd.AddCommand(configLintCmd)
 	configCmd.AddCommand(configBackupCmd)
 	configCmd.AddCommand(configRestoreCmd)
 
+	// 12fcc §7.4: `ctxt config path` (highest-precedence existing file)
+	// and `ctxt config paths` (full ordered chain) are mounted from
+	// kit's shared kit/console/cli/config helper. The kit subcommands
+	// pre-stamp kit/side-effect=read and kit/idempotent=yes; we add
+	// kit/examples below to satisfy the strict guidance gate.
+	//
+	// The resolver mirrors what internal/config.LoadWithOverrides
+	// actually walks at startup: a per-bin cascade under a shared
+	// `contexthelp/` namespace (`.contexthelp/<bin>.yaml` project marker,
+	// `$XDG_CONFIG_HOME/contexthelp/<bin>.yaml` user layer,
+	// `/etc/contexthelp/<bin>.yaml` system layer), plus the
+	// `$CTXT_CONFIG` env-var short-circuit. Kit's built-in
+	// PathsForTool*/PathsForToolWithMarkers compose `<tool>/config.yaml`
+	// — wrong shape for adopters that share a namespace across multiple
+	// binaries, so we hand-build the chain off config.CascadeSlots which
+	// is the source of truth used by LoadWithOverrides.
+	kitconfigcli.RegisterPathSubcommands(configCmd, "ctxt",
+		kitconfigcli.WithResolver(configpath.Resolver(binName)))
+
 	// 12fcc conformance: side-effect + idempotency annotations.
-	// show/path are pure read. validate calls config.Load which may
+	// show is pure read. validate calls config.Load which may
 	// rewrite migrations on disk; doctor --fix chmods the config file.
 	// edit invokes $EDITOR; backup writes a bundle. restore is
-	// destructive (overwrites config).
+	// destructive (overwrites config). path/paths are pre-stamped by
+	// kitconfigcli.RegisterPathSubcommands above.
 	cliconv.WithSideEffect(configShowCmd, cliconv.SideEffectRead)
-	cliconv.WithSideEffect(configPathCmd, cliconv.SideEffectRead)
 	cliconv.WithSideEffect(configLintCmd, cliconv.SideEffectWriteLocal) // doctor: --fix chmods the config
 	cliconv.WithSideEffect(configValidateCmd, cliconv.SideEffectWriteLocal) // validate may rewrite migrations
 	cliconv.WithSideEffect(configEditCmd, cliconv.SideEffectWriteLocal)
@@ -167,10 +176,20 @@ func init() {
 		{Title: "Human-readable view", Command: "ctxt config show"},
 		{Title: "JSON for scripting", Command: "ctxt config show --format json"},
 	})
-	cliconv.WithExamples(configPathCmd, []cliconv.Example{
-		{Title: "Print the resolved config path", Command: "ctxt config path"},
-		{Title: "Edit the resolved file", Command: "$EDITOR \"$(ctxt config path)\""},
-	})
+	// kit's path/paths come with side-effect + idempotency pre-stamped
+	// but no guidance. Add examples to satisfy the strict guidance gate.
+	if pathCmd := findChildCommand(configCmd, "path"); pathCmd != nil {
+		cliconv.WithExamples(pathCmd, []cliconv.Example{
+			{Title: "Print the highest-precedence existing config file", Command: "ctxt config path"},
+			{Title: "Edit the resolved file", Command: "$EDITOR \"$(ctxt config path)\""},
+		})
+	}
+	if pathsCmd := findChildCommand(configCmd, "paths"); pathsCmd != nil {
+		cliconv.WithExamples(pathsCmd, []cliconv.Example{
+			{Title: "Print every rung of the config resolution chain", Command: "ctxt config paths"},
+			{Title: "Emit chain with source/scope/exists metadata as JSON", Command: "ctxt config paths --format json"},
+		})
+	}
 	cliconv.WithExamples(configLintCmd, []cliconv.Example{
 		{Title: "Lint with all checks", Command: "ctxt config doctor"},
 		{Title: "Auto-apply safe fixes", Command: "ctxt config doctor --fix"},
@@ -279,9 +298,15 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runConfigPath(cmd *cobra.Command, args []string) error {
-	configPath := config.GetConfigPath(binName)
-	fmt.Println(configPath)
+// findChildCommand returns the immediate child of parent whose Name()
+// equals name, or nil when not found. Used to stamp annotations on
+// kit-mounted subcommands (path/paths) after RegisterPathSubcommands.
+func findChildCommand(parent *cobra.Command, name string) *cobra.Command {
+	for _, c := range parent.Commands() {
+		if c.Name() == name {
+			return c
+		}
+	}
 	return nil
 }
 
