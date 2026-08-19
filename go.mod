@@ -11,7 +11,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.20.0
 	gopkg.in/yaml.v3 v3.0.1
-	hop.top/c12n v0.1.0-alpha.0
+	hop.top/c12n v0.1.0-alpha.1
 )
 
 require (

@@ -4,13 +4,4 @@ use .
 
 use ./plugins/aliasing
 
-use (
-	./plugins/auditlog
-)
-
-// Local checkout only until the c12n go-native-opt-in work ships in a release.
-// Published v0.1.0-alpha.0 hardcodes `#cgo LDFLAGS: -L${SRCDIR}/../target/debug`,
-// pointing at a Rust staticlib the proxy tarball does not carry, so linking from
-// the module cache fails. Upstream now gates cgo behind `-tags c12n_native`,
-// making the module proxy-installable — drop this replace on the next c12n tag.
-replace hop.top/c12n => /Users/jadb/.w/ideacrafterslabs/poly-c12n/hops/main/go
+use ./plugins/auditlog
