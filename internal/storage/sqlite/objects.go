@@ -317,6 +317,12 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	defer tx.Rollback()
 
+	// Drop the old FTS entry while the content row still holds the old
+	// body; the new body is indexed after the UPDATE below.
+	if err := deleteObjectFTSTx(ctx, tx, obj.ID); err != nil {
+		return fmt.Errorf("update object fts index: %w", err)
+	}
+
 	result, err := tx.ExecContext(ctx, `UPDATE objects SET
 		type=?, subtype=?, raw_content=?, content_type=?, text_content=?,
 		metadata=?, summaries=?, sections=?, tags=?, mentions=?,
@@ -344,9 +350,6 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err := s.upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
 		return fmt.Errorf("update object nodes: %w", err)
 	}
-	// Sync FTS5 content-sync index: delete old, insert new.
-	_, _ = tx.ExecContext(ctx,
-		`DELETE FROM objects_fts WHERE rowid = (SELECT rowid FROM objects WHERE id = ?)`, obj.ID)
 	if projectedFTSBody != "" {
 		_, err = tx.ExecContext(ctx,
 			`INSERT INTO objects_fts(rowid, id, projected_fts_body) VALUES ((SELECT rowid FROM objects WHERE id = ?), ?, ?)`,
@@ -372,7 +375,18 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 }
 
 func (s *ObjectStore) Delete(ctx context.Context, id string) error {
-	result, err := s.db.ExecContext(ctx, "DELETE FROM objects WHERE id = ?", id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("delete object: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// FTS entry first: objects_fts has no FK cascade and FTS5 needs the
+	// content row alive to compute the tokens it must drop.
+	if err := deleteObjectFTSTx(ctx, tx, id); err != nil {
+		return fmt.Errorf("delete object fts index: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, "DELETE FROM objects WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete object: %w", err)
 	}
@@ -380,7 +394,28 @@ func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 	if n == 0 {
 		return fmt.Errorf("object %s not found", id)
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("delete object: commit: %w", err)
+	}
 	return nil
+}
+
+// deleteObjectFTSTx removes the objects_fts entry for id.
+//
+// objects_fts is an external-content FTS5 table (content='objects'): a
+// DELETE against it makes FTS5 re-read the CURRENT objects row to learn
+// which tokens to remove from the index. It must therefore run before the
+// objects row is deleted or its projected_fts_body rewritten, in the same
+// transaction. Rows with an empty projected_fts_body were never indexed
+// (Create/Update skip the FTS insert for them), so they are skipped here
+// too: deleting a never-indexed rowid decrements FTS5's row/token totals
+// below what the index holds and eventually fails with SQLITE_CORRUPT.
+func deleteObjectFTSTx(ctx context.Context, tx *sql.Tx, id string) error {
+	_, err := tx.ExecContext(ctx,
+		`DELETE FROM objects_fts WHERE rowid = (
+			SELECT rowid FROM objects WHERE id = ? AND projected_fts_body != ''
+		)`, id)
+	return err
 }
 
 func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *storage.KnowledgeObject) (string, error) {

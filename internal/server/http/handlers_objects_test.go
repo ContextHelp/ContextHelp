@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -193,5 +194,72 @@ func TestDeleteObject(t *testing.T) {
 
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("status: got %d, want 204", resp.StatusCode)
+	}
+}
+
+// TestDeleteObject_FTSSearchStaysHealthy mirrors the field repro: store a
+// raw object, delete it over HTTP, then run a similar== (FTS5) search that
+// touches the deleted rowid. The FTS index must be kept in sync by the
+// delete, otherwise the search 400s with "fts5: missing row N from content
+// table" until someone rebuilds objects_fts by hand.
+func TestDeleteObject_FTSSearchStaysHealthy(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	const token = "okapifjord"
+	body, _ := json.Marshal(map[string]any{
+		"content": "meeting notes mentioning " + token + " twice: " + token,
+		"type":    "text",
+		"raw":     true,
+	})
+	resp, err := http.Post(ts.URL+"/api/v1/analyze", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("analyze request: %v", err)
+	}
+	var analyzed map[string]string
+	json.NewDecoder(resp.Body).Decode(&analyzed)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted || analyzed["job_id"] == "" {
+		t.Fatalf("analyze: status %d, body %v", resp.StatusCode, analyzed)
+	}
+	objID := analyzed["job_id"] // raw path returns the object ID
+
+	searchURL := ts.URL + "/api/v1/search?q=" + url.QueryEscape(`similar=="`+token+`"`)
+	search := func() (int, int) {
+		t.Helper()
+		resp, err := http.Get(searchURL)
+		if err != nil {
+			t.Fatalf("search request: %v", err)
+		}
+		defer resp.Body.Close()
+		var out struct {
+			Total int `json:"total"`
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		json.NewDecoder(resp.Body).Decode(&out)
+		if resp.StatusCode != http.StatusOK {
+			t.Logf("search error body: %s", out.Error.Message)
+		}
+		return resp.StatusCode, out.Total
+	}
+
+	if status, total := search(); status != http.StatusOK || total != 1 {
+		t.Fatalf("search before delete: status %d total %d, want 200/1", status, total)
+	}
+
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/v1/objects/"+objID, nil)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("delete request: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete: status %d, want 204", resp.StatusCode)
+	}
+
+	if status, total := search(); status != http.StatusOK || total != 0 {
+		t.Fatalf("search after delete: status %d total %d, want 200/0", status, total)
 	}
 }
