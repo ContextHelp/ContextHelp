@@ -434,15 +434,18 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	}
 	contentArgs = append(contentArgs, hash)
 
+	// fts_indexed / vector_indexed are left untouched: Reinforce never
+	// removes the objects_fts row or the embedding written at Create/Update
+	// time, and no downstream re-indexer exists to flip the flags back.
+	// Clearing them here misreported reinforced (deduplicated) objects as
+	// unindexed even though FTS still matched them.
 	query := fmt.Sprintf(`
 		UPDATE objects SET
 			reinforcement_count = reinforcement_count + 1,
 			last_reinforced_at = ?,
 			tags = ?,
 			mentions = ?,
-			updated_at = ?,
-			fts_indexed = 0,
-			vector_indexed = 0
+			updated_at = ?
 			%s
 		WHERE content_hash = ?
 	`, contentUpdate)

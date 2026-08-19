@@ -365,6 +365,46 @@ func TestReinforce(t *testing.T) {
 	})
 }
 
+// TestReinforceKeepsFTSIndexed pins that the dedup/reinforcement path leaves
+// an already-indexed object searchable AND still reporting fts_indexed=true.
+// Reinforce never touches objects_fts and nothing re-indexes afterwards, so
+// clearing the flag would misreport a searchable object as unindexed.
+func TestReinforceKeepsFTSIndexed(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj := makeFTSObject("reinf-fts-1", "article", "zebrafish larval locomotion study")
+	obj.RawContent = "zebrafish larval locomotion study"
+	obj.ContentHash = "reinf-fts-hash"
+	obj.ReinforcementCount = 1
+	obj.Embeddings = []float32{0.1, 0.2, 0.3}
+	obj.VectorIndexed = true
+	require.NoError(t, d.Objects().Create(ctx, obj))
+
+	before, err := d.Objects().Get(ctx, obj.ID)
+	require.NoError(t, err)
+	require.True(t, before.FTSIndexed, "precondition: Create must FTS-index the object")
+	require.True(t, before.VectorIndexed, "precondition: Create persists vector_indexed")
+
+	_, err = d.Objects().Reinforce(ctx, "reinf-fts-hash", &storage.KnowledgeObject{
+		RawContent: obj.RawContent,
+		Tags:       []storage.Tag{{Label: "extra", Weight: 1.0, Source: "user"}},
+	})
+	require.NoError(t, err)
+
+	after, err := d.Objects().Get(ctx, obj.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, after.ReinforcementCount)
+	assert.True(t, after.FTSIndexed, "Reinforce must not clear fts_indexed: object stays indexed")
+	assert.True(t, after.VectorIndexed, "Reinforce must not clear vector_indexed: embedding row untouched")
+
+	results, err := d.Objects().FTSSearch(ctx, "zebrafish", storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, results, 1, "reinforced object must remain FTS-searchable")
+	assert.Equal(t, obj.ID, results[0].ID)
+	assert.True(t, results[0].FTSIndexed)
+}
+
 func TestListBySQL_JSONExtract(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()
