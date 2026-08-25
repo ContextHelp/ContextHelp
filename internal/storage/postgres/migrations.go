@@ -10,9 +10,24 @@ import (
 	"strings"
 )
 
+// pgvectorUnavailable wraps a CREATE EXTENSION vector failure in a single
+// actionable error. On managed Postgres (RDS, Cloud SQL, Azure, …) the
+// extension often must be enabled via the provider console before the
+// connecting role may CREATE EXTENSION — this is the first error every
+// self-hosting operator would otherwise hit as a raw migration failure.
+func pgvectorUnavailable(err error) error {
+	return fmt.Errorf("pgvector extension unavailable: enable it on your Postgres instance (run CREATE EXTENSION vector as a privileged role, or toggle the extension in your provider's console) — %w", err)
+}
+
 func (d *Driver) Migrate(ctx context.Context) error {
+	// The vector extension is a hard requirement (objects.embedding is a
+	// pgvector column). Degrade its failure to one clear error instead of a
+	// numbered migration failure.
+	if _, err := d.db.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS vector`); err != nil {
+		return pgvectorUnavailable(err)
+	}
+
 	migrations := []string{
-		`CREATE EXTENSION IF NOT EXISTS vector`,
 		`CREATE TABLE IF NOT EXISTS objects (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,

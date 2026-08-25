@@ -184,7 +184,9 @@ jobs:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     services:
       postgres:
-        image: postgres:16-alpine
+        # pgvector-bundled image: the Postgres driver's first migration is
+        # CREATE EXTENSION vector, which plain postgres images cannot load.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: contexthelp
           POSTGRES_PASSWORD: test_password
