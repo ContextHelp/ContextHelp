@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -106,6 +107,23 @@ func validateAccess(c *Config) []ValidationError {
 	}
 
 	return errs
+}
+
+// ValidateAccess returns the access-class misconfiguration for c, if
+// any, as a single error. dpkms serve calls it (with the --public flag
+// folded into Server.Public) so a protected/public instance with no
+// credentials refuses to start instead of silently exposing 0.0.0.0
+// with zero auth.
+func (c *Config) ValidateAccess() error {
+	errs := validateAccess(c)
+	if len(errs) == 0 {
+		return nil
+	}
+	msgs := make([]string, len(errs))
+	for i, e := range errs {
+		msgs[i] = e.Error()
+	}
+	return fmt.Errorf("config: %s", strings.Join(msgs, "; "))
 }
 
 // Validate checks that the Config is internally consistent.

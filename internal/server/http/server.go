@@ -8,11 +8,28 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/mcp"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/ui"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
+
+// RouterConfig bundles optional router wiring so the constructor
+// signature stops growing per feature.
+type RouterConfig struct {
+	// DevCORS enables CORS for http://localhost:5173 (Vite dev server).
+	DevCORS bool
+	// Watcher is optional (nil-safe); nil disables live watch management
+	// but keeps CRUD.
+	Watcher *watcher.Manager
+	// Probes injects runtime healthcheck signals into /healthz.
+	Probes HealthzProbes
+	// Auth guards the /api/v1 route table (MCP mount included) behind
+	// the configured provider. nil = no inbound auth (private instance).
+	// Health endpoints and static UI assets stay open for probes.
+	Auth authn.Provider
+}
 
 // NewRouter creates the HTTP router with all routes and middleware.
 // devCORS enables CORS for http://localhost:5173 (Vite dev server).
@@ -20,20 +37,27 @@ import (
 //
 // The /healthz endpoint is registered with zero-valued HealthzProbes;
 // callers (dpkms serve) that want richer signals (version, gRPC probe,
-// watcher introspection) should use NewRouterWithProbes instead.
+// watcher introspection) should use NewRouterWithConfig instead.
 func NewRouter(svc *service.Service, devCORS bool, mgr *watcher.Manager) chi.Router {
-	return NewRouterWithProbes(svc, devCORS, mgr, HealthzProbes{})
+	return NewRouterWithConfig(svc, RouterConfig{DevCORS: devCORS, Watcher: mgr})
 }
 
-// NewRouterWithProbes is the explicit constructor used by dpkms serve
-// to inject runtime healthcheck signals. The basic NewRouter wraps it
-// with a zero-valued HealthzProbes so existing callers keep working.
+// NewRouterWithProbes keeps the pre-RouterConfig constructor shape for
+// callers that only inject healthcheck probes.
 func NewRouterWithProbes(svc *service.Service, devCORS bool, mgr *watcher.Manager, probes HealthzProbes) chi.Router {
+	return NewRouterWithConfig(svc, RouterConfig{DevCORS: devCORS, Watcher: mgr, Probes: probes})
+}
+
+// NewRouterWithConfig is the full constructor used by dpkms serve.
+func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
+	mgr := rc.Watcher
+	probes := rc.Probes
+
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
 	r.Use(Recoverer)
-	r.Use(CORS(devCORS))
+	r.Use(CORS(rc.DevCORS))
 
 	r.Get("/health", Health(svc))
 	r.Get("/healthz", Healthz(svc, probes))
@@ -61,6 +85,14 @@ func NewRouterWithProbes(svc *service.Service, devCORS bool, mgr *watcher.Manage
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// Inbound authentication ahead of the whole route table
+		// (REST, SSE, federation push, and the MCP mount below all
+		// inherit it). Provider-agnostic by construction: the
+		// middleware consumes authn.Provider, never a scheme.
+		if rc.Auth != nil {
+			r.Use(RequireAuth(rc.Auth))
+		}
+
 		// Objects
 		r.Get("/objects", ListObjects(svc))
 		r.Get("/objects/{id}", GetObject(svc))
