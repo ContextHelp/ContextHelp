@@ -8,8 +8,8 @@ type Dialect int
 const (
 	// DialectSQLite targets SQLite: ? placeholders, json_each, objects_fts MATCH.
 	DialectSQLite Dialect = iota
-	// DialectPostgres targets PostgreSQL: $N placeholders, jsonb_array_elements.
-	// The similar== field is unsupported (no FTS5) and returns an explicit error.
+	// DialectPostgres targets PostgreSQL: $N placeholders, jsonb_array_elements,
+	// websearch_to_tsquery over the generated tsvector column for similar==.
 	DialectPostgres
 )
 

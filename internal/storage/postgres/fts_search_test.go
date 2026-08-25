@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
@@ -239,6 +240,30 @@ func TestPostgresFTSSearchNodeAware(t *testing.T) {
 	}
 	if filtered[0].DocumentView == nil {
 		t.Error("DocumentView nil with ReturnNodeHits=true")
+	}
+}
+
+// TestPostgresSimilarQueryEndToEnd pins the lifted similar== rejection: the
+// RSQL engine auto-detects the Postgres dialect and the compiled
+// websearch_to_tsquery predicate executes against the generated tsvector
+// column.
+func TestPostgresSimilarQueryEndToEnd(t *testing.T) {
+	drv, _ := freshIntegrationDriver(t)
+	ctx := context.Background()
+
+	if err := drv.Objects().Create(ctx, makePgFTSObject("fts-pg-dsl1", "note", "canary predicate body")); err != nil {
+		t.Fatalf("create match: %v", err)
+	}
+	if err := drv.Objects().Create(ctx, makePgFTSObject("fts-pg-dsl2", "note", "unrelated body")); err != nil {
+		t.Fatalf("create non-match: %v", err)
+	}
+
+	results, total, err := search.NewEngine(drv).Search(ctx, "similar==canary", 10, 0)
+	if err != nil {
+		t.Fatalf("engine search similar==: %v", err)
+	}
+	if total != 1 || len(results) != 1 || results[0].ID != "fts-pg-dsl1" {
+		t.Fatalf("similar== results: total=%d got %+v want single fts-pg-dsl1", total, ids(results))
 	}
 }
 

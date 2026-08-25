@@ -273,14 +273,19 @@ func TestBuildWherePostgresTagEq(t *testing.T) {
 	assert.NotContains(t, where, "?")
 }
 
-// TestBuildWherePostgresSimilarError verifies similar== is rejected on Postgres.
-func TestBuildWherePostgresSimilarError(t *testing.T) {
+// TestBuildWherePostgresSimilar verifies similar== compiles to a
+// websearch_to_tsquery predicate on Postgres, sharing the $N sequence with
+// the profile scope.
+func TestBuildWherePostgresSimilar(t *testing.T) {
 	ast, err := Parse("similar==keyword")
 	require.NoError(t, err)
 
-	_, _, err = buildWhere(DialectPostgres, ast)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not supported on the Postgres backend")
+	where, args, err := buildWhere(DialectPostgres, ast, "profile-1")
+	require.NoError(t, err)
+	assert.Contains(t, where, "profile_id = $1")
+	assert.Contains(t, where, "fts @@ websearch_to_tsquery($2, $3)")
+	assert.NotContains(t, where, "?")
+	assert.Equal(t, []any{"profile-1", PostgresFTSRegconfig, "keyword"}, args)
 }
 
 // TestBuildWhereSQLiteUnchanged verifies SQLite paths are unaffected.
