@@ -85,11 +85,24 @@ func newIntegrationDriver(t *testing.T) *pgdrv.Driver {
 	return drv
 }
 
+// wipeObjects removes fixture rows by ID so tests with fixed IDs can re-run
+// against a persistent local database (CI provisions a fresh container, but
+// developer machines reuse one).
+func wipeObjects(t *testing.T, drv *pgdrv.Driver, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if _, err := drv.DB().Exec(`DELETE FROM objects WHERE id = $1`, id); err != nil {
+			t.Fatalf("wipe object %s: %v", id, err)
+		}
+	}
+}
+
 func TestPostgres_GraphRoundtrip_Create(t *testing.T) {
 	drv := newIntegrationDriver(t)
 	ctx := context.Background()
 
 	id := "pg-rw-1"
+	wipeObjects(t, drv, id)
 	ko := &pluginapi.KnowledgeObject{
 		ID:        id,
 		Type:      "note",
@@ -145,6 +158,7 @@ func TestPostgres_GraphRoundtrip_Update(t *testing.T) {
 	ctx := context.Background()
 
 	id := "pg-rw-2"
+	wipeObjects(t, drv, id)
 	ko := &pluginapi.KnowledgeObject{
 		ID: id, Type: "note", Status: "active",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
@@ -184,6 +198,7 @@ func TestPostgres_GraphRoundtrip_NilGraph(t *testing.T) {
 	ctx := context.Background()
 
 	id := "pg-nil-g"
+	wipeObjects(t, drv, id)
 	ko := &pluginapi.KnowledgeObject{
 		ID: id, Type: "note", Status: "active",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
@@ -207,6 +222,7 @@ func TestPostgres_ObjectNodes_UpsertOnCreate(t *testing.T) {
 	ctx := context.Background()
 
 	id := "pg-rw-3"
+	wipeObjects(t, drv, id)
 	ko := &pluginapi.KnowledgeObject{
 		ID: id, Type: "note", Status: "active",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),

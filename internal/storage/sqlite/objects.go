@@ -1000,8 +1000,10 @@ func (s *ObjectStore) vectorSearchANN(ctx context.Context, vector []float32, fil
 		if obj.Metadata == nil {
 			obj.Metadata = make(map[string]any)
 		}
-		// Convert L2 distance to a [0,1] similarity-like score for API compatibility.
-		obj.Metadata["score"] = 1.0 / (1.0 + float64(h.Score))
+		// vec0 reports cosine distance (migration 034 pins the metric);
+		// score = 1 - cosine_distance is the cross-driver mapping shared
+		// with the Postgres driver and the brute-force path below.
+		obj.Metadata["score"] = 1.0 - float64(h.Score)
 		out = append(out, obj)
 	}
 	return out, nil

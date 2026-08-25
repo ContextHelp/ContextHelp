@@ -598,6 +598,7 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 		influencesJSON, pluginsJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		graphJSON                                           []byte
+		sourceKey                                           sql.NullString
 		embStr                                              sql.NullString
 	)
 	err := rows.Scan(
@@ -606,7 +607,7 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey,
 		&embStr,
 	)
 	if err != nil {
@@ -622,6 +623,9 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 		}
 		obj.Graph = g
 	}
+	if sourceKey.Valid {
+		obj.SourceKey = sourceKey.String
+	}
 	vec := parsePgVector(embStr.String)
 	return &obj, vec, nil
 }
@@ -635,6 +639,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		influencesJSON, pluginsJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		graphJSON                                           []byte
+		sourceKey                                           sql.NullString
 		score                                               float64
 	)
 	err := rows.Scan(
@@ -643,7 +648,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey,
 		&score,
 	)
 	if err != nil {
@@ -658,6 +663,9 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 			return nil, 0, fmt.Errorf("unmarshal graph: %w", err)
 		}
 		obj.Graph = g
+	}
+	if sourceKey.Valid {
+		obj.SourceKey = sourceKey.String
 	}
 	return &obj, score, nil
 }

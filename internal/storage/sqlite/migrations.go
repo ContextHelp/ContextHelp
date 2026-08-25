@@ -105,6 +105,9 @@ var migration030 string
 //go:embed migrations/032_embedding_models.sql
 var migration032 string
 
+//go:embed migrations/034_vec_objects_cosine.sql
+var migration034 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -187,6 +190,10 @@ var migrations = []migration{
 	// integration). Idempotent — uses INSERT OR IGNORE on the composite
 	// key and ON CONFLICT upserts on the singleton model row.
 	{Version: 33, fn: migrate033EmbeddingsBackfill},
+	// Migration 034: recreate vec_objects with distance_metric=cosine —
+	// the pinned cross-driver distance contract. Index-only data; the fn
+	// rebuilds rows from object_embeddings after the DDL swap.
+	{Version: 34, fn: migrate034VecObjectsCosine},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -441,6 +448,34 @@ func migrate024RenameMentionUris(ctx context.Context, d *Driver) error {
 	}
 	_, err = d.db.ExecContext(ctx, `ALTER TABLE objects RENAME COLUMN mention_uris TO mentions`)
 	return err
+}
+
+// migrate034VecObjectsCosine drops and recreates the vec0 virtual table
+// with an explicit cosine distance metric, then rebuilds it from the
+// canonical object_embeddings store. Only rows whose stored dimension
+// matches the configured ANN dimension are indexed — the same
+// mirror-on-write rule ObjectStore.Create applies.
+func migrate034VecObjectsCosine(ctx context.Context, d *Driver) error {
+	dim := d.vectorDimension
+	if dim <= 0 {
+		dim = DefaultVectorDimension
+	}
+	if _, err := d.db.ExecContext(ctx, `DROP TABLE IF EXISTS vec_objects`); err != nil {
+		return fmt.Errorf("drop L2 vec_objects: %w", err)
+	}
+	ddl := strings.ReplaceAll(migration034, "{DIMENSION}", strconv.Itoa(dim))
+	if _, err := d.db.ExecContext(ctx, ddl); err != nil {
+		return fmt.Errorf("recreate vec_objects with cosine metric: %w", err)
+	}
+	// object_embeddings stores raw little-endian float32 blobs — the same
+	// encoding vec0 accepts — so the rebuild is a straight copy.
+	if _, err := d.db.ExecContext(ctx, `
+		INSERT INTO vec_objects(id, embedding)
+		SELECT id, embedding FROM object_embeddings WHERE dimensions = ?`, dim,
+	); err != nil {
+		return fmt.Errorf("rebuild vec_objects from object_embeddings: %w", err)
+	}
+	return nil
 }
 
 // migrate020VecObjects creates the vec0 virtual table for sqlite-vec ANN search.
