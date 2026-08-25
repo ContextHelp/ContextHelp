@@ -137,6 +137,27 @@ func TestEntityGateBacklinksDenied(t *testing.T) {
 	assert.Equal(t, "ENTITLEMENT_REQUIRED", errorCode(t, body))
 }
 
+// A slug the store cannot resolve must fail closed on the gated
+// backlinks path: a lookup error never skips the gate, so the response
+// is 404 — not an ungated backlink listing.
+func TestEntityGateBacklinksUnknownEntityFailsClosed(t *testing.T) {
+	ts, _, _ := newGatedServer(t)
+
+	resp, body := gatedDo(t, http.MethodGet, ts.URL+"/api/v1/entities/ghost/backlinks")
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	assert.Equal(t, "NOT_FOUND", errorCode(t, body))
+}
+
+// Same fail-closed rule on the gated pull path: an unresolvable entity
+// is refused before any pull work runs, never authorized implicitly.
+func TestEntityGatePullUnknownEntityFailsClosed(t *testing.T) {
+	ts, _, _ := newGatedServer(t)
+
+	resp, body := gatedDo(t, http.MethodPost, ts.URL+"/api/v1/entities/ghost/pull")
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	assert.Equal(t, "NOT_FOUND", errorCode(t, body))
+}
+
 func TestEntityGatePullDenied(t *testing.T) {
 	ts, _, _ := newGatedServer(t)
 

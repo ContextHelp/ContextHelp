@@ -50,7 +50,7 @@ func GetEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFun
 	return func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")
 		entity, err := svc.GetEntity(r.Context(), slug)
-		if err != nil {
+		if err != nil || entity == nil {
 			WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
 			return
 		}
@@ -68,19 +68,23 @@ func GetEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFun
 
 // EntityBacklinks returns objects that mention the given entity. The
 // gate check is unmetered — backlinks ride on the entity's namespace
-// entitlement without a quota charge.
+// entitlement without a quota charge. An entity the store cannot
+// resolve fails CLOSED: a lookup error never skips the gate.
 func EntityBacklinks(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")
 		if gate != nil {
-			if entity, err := svc.GetEntity(r.Context(), slug); err == nil {
-				if cerr := gate.Check(r.Context(), gatePrincipal(r), entity.Namespace); cerr != nil {
-					if writeInboundGateError(w, r, cerr) {
-						return
-					}
-					WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", cerr.Error())
+			entity, err := svc.GetEntity(r.Context(), slug)
+			if err != nil || entity == nil {
+				WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
+				return
+			}
+			if cerr := gate.Check(r.Context(), gatePrincipal(r), entity.Namespace); cerr != nil {
+				if writeInboundGateError(w, r, cerr) {
 					return
 				}
+				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", cerr.Error())
+				return
 			}
 		}
 		objs, err := svc.EntityBacklinks(r.Context(), slug)

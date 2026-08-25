@@ -25,16 +25,21 @@ func PullEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFu
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "slug is required")
 			return
 		}
+		// An entity the store cannot resolve fails CLOSED: a lookup
+		// error never skips the gate.
 		if gate != nil {
-			if existing, err := svc.GetEntity(r.Context(), slug); err == nil {
-				if aerr := gate.Authorize(r.Context(), gatePrincipal(r), existing.Namespace,
-					storage.MeteringEventContentPull); aerr != nil {
-					if writeInboundGateError(w, r, aerr) {
-						return
-					}
-					WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", aerr.Error())
+			existing, err := svc.GetEntity(r.Context(), slug)
+			if err != nil || existing == nil {
+				WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
+				return
+			}
+			if aerr := gate.Authorize(r.Context(), gatePrincipal(r), existing.Namespace,
+				storage.MeteringEventContentPull); aerr != nil {
+				if writeInboundGateError(w, r, aerr) {
 					return
 				}
+				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", aerr.Error())
+				return
 			}
 		}
 
