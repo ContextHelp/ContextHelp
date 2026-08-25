@@ -613,7 +613,7 @@ func TestFTSSearch_RawHostileInput(t *testing.T) {
 	_, err := d.db.ExecContext(ctx, "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")
 	require.NoError(t, err)
 
-	// The T-0565 repro, now raw at the driver.
+	// The historical hyphen-crash shape, now raw at the driver.
 	results, err := d.Objects().FTSSearch(ctx, "credit-eligible", storage.ObjectFilter{Limit: 10})
 	require.NoError(t, err, "raw hyphenated query must not crash MATCH")
 	require.Len(t, results, 1)

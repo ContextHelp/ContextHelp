@@ -256,7 +256,8 @@ func TestPostgresFTSSearch_RawHostileInput(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	// The T-0565 repro shape: hyphenated query, separated words in the doc.
+	// The historical hyphen-crash shape: hyphenated query, separated words
+	// in the doc — sanitization must both survive it and still match.
 	results, err := drv.Objects().FTSSearch(ctx, "credit-eligible", storage.ObjectFilter{Limit: 10})
 	if err != nil {
 		t.Fatalf("raw hyphenated query errored: %v", err)
