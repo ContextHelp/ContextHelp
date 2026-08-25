@@ -419,21 +419,13 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 		return nil, fmt.Errorf("vector search: empty query vector")
 	}
 
-	// Build pgvector literal: '[0.1,0.2,...]'
-	var sb strings.Builder
-	sb.WriteString("'[")
-	for i, v := range vector {
-		if i > 0 {
-			sb.WriteByte(',')
-		}
-		sb.WriteString(fmt.Sprintf("%g", v))
-	}
-	sb.WriteString("]'::vector")
-	vecLiteral := sb.String()
-
+	// The query vector is bound as $1 (referenced twice: score expression
+	// and ORDER BY); filter conditions number themselves from $2. Binding —
+	// rather than interpolating a '[...]'::vector literal — keeps the
+	// statement cacheable and the parameter path uniform.
 	var conditions []string
-	var args []any
-	idx := 1
+	args := []any{encodePgVector(vector)}
+	idx := 2
 
 	conditions = append(conditions, "embedding IS NOT NULL")
 
@@ -464,8 +456,8 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 		limit = 20
 	}
 
-	query := objectSelectCols + fmt.Sprintf(`, 1 - (embedding <=> %s) AS score FROM objects %s ORDER BY embedding <=> %s LIMIT %d`,
-		vecLiteral, where, vecLiteral, limit)
+	query := objectSelectCols + fmt.Sprintf(`, 1 - (embedding <=> $1::vector) AS score FROM objects %s ORDER BY embedding <=> $1::vector LIMIT %d`,
+		where, limit)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
