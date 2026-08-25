@@ -191,8 +191,15 @@ var migrations = []migration{
 	{Version: 33, fn: migrate033EmbeddingsBackfill},
 	// Migration 034: recreate vec_objects with distance_metric=cosine —
 	// the pinned cross-driver distance contract. Index-only data; the fn
-	// rebuilds rows from object_embeddings after the DDL swap.
+	// rebuilds rows from object_embeddings after the DDL swap, then
+	// re-stamps embedding index signatures from the new DDL (033 stamps
+	// from the pre-cosine table).
 	{Version: 34, fn: migrate034VecObjectsCosine},
+	// Migration 035: re-stamp embedding index signatures for DBs that
+	// applied 034 before it re-stamped — their stored provenance still
+	// hashes the dropped L2 table. Idempotent recomputation from the live
+	// index.
+	{Version: 35, fn: migrate035RestampEmbeddingSignatures},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -474,7 +481,74 @@ func migrate034VecObjectsCosine(ctx context.Context, d *Driver) error {
 	); err != nil {
 		return fmt.Errorf("rebuild vec_objects from object_embeddings: %w", err)
 	}
+	// The DDL swap invalidates any embedding signature stamped from the old
+	// L2 table (033 stamps before this migration runs). Re-stamp from the
+	// live cosine index so a fresh install never carries provenance for a
+	// dropped index.
+	return restampEmbeddingSignatures(ctx, d)
+}
+
+// restampEmbeddingSignatures recomputes every stored embeddings_<model_id>
+// index signature from the live vec_objects description. Migrations that
+// change the ANN index shape (034's L2 → cosine swap) call this so stored
+// provenance keeps describing the index that actually exists; otherwise the
+// next ADR-070 verify pass reports drift the migration itself created. Only
+// models that already carry a signature row are re-stamped — absent rows
+// keep their first-boot semantics.
+func restampEmbeddingSignatures(ctx context.Context, d *Driver) error {
+	idx, err := indexsig.SQLiteVectorIndex(ctx, d.db)
+	if err != nil {
+		return fmt.Errorf("describe vector index for re-stamp: %w", err)
+	}
+
+	type model struct {
+		id       string
+		provider string
+		dim      int
+	}
+	rows, err := d.db.QueryContext(ctx,
+		`SELECT model_id, provider, dimension FROM embedding_models`)
+	if err != nil {
+		return fmt.Errorf("list embedding models for re-stamp: %w", err)
+	}
+	defer rows.Close()
+	var models []model
+	for rows.Next() {
+		var m model
+		if err := rows.Scan(&m.id, &m.provider, &m.dim); err != nil {
+			return err
+		}
+		models = append(models, m)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, m := range models {
+		sigID := EmbeddingSignatureID(m.id)
+		stored, err := LoadIndexSignature(ctx, d.db, sigID)
+		if err != nil {
+			return fmt.Errorf("load signature %s: %w", sigID, err)
+		}
+		if stored == nil {
+			continue
+		}
+		hash, summary := indexsig.ComputeEmbedding(
+			m.id, m.provider, m.dim, idx.Method, idx.OpsClass, idx.BuildParams)
+		if err := UpsertIndexSignature(ctx, d.db, sigID, hash, summary); err != nil {
+			return fmt.Errorf("re-stamp %s: %w", sigID, err)
+		}
+	}
 	return nil
+}
+
+// migrate035RestampEmbeddingSignatures converges DBs that applied 034
+// before it re-stamped: their stored embedding signatures still hash the
+// dropped L2 table's DDL. Recomputing from the live cosine index brings
+// upgraded installs in line with fresh ones. Idempotent — re-running on an
+// already-correct DB rewrites identical values.
+func migrate035RestampEmbeddingSignatures(ctx context.Context, d *Driver) error {
+	return restampEmbeddingSignatures(ctx, d)
 }
 
 // migrate020VecObjects creates the vec0 virtual table for sqlite-vec ANN search.
