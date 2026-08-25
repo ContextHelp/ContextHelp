@@ -226,8 +226,16 @@ jobs:
       - name: Drop local-path replaces
         run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
 
+      # Postgres driver + embeddings registry conformance suites live next
+      # to the code, not under test/integration/. They carry the same
+      # integration build tag and read the same POSTGRES_* env block, so
+      # they must be listed here explicitly or CI never runs them.
       - name: Run integration tests
-        run: go test -v -tags=integration,fts5 ./test/integration/...
+        run: >-
+          go test -v -tags=integration,fts5
+          ./test/integration/...
+          ./internal/storage/postgres/...
+          ./internal/embeddings/registry/...
         env:
           CGO_ENABLED: '1'
           POSTGRES_HOST: localhost
