@@ -103,6 +103,12 @@ var pgMigrations = []pgMigration{
 	// so the index_signatures table describes a real index on this backend
 	// (the phantom BYTEA stamp was deleted by migration 10).
 	{Version: 12, Name: "stamp vector index signature for default model", fn: migrateStampVectorSignature},
+	// Client-replay dedup: idempotency_key column + partial unique index
+	// so a re-submitted enqueue (response lost in transit) resolves to the
+	// existing job instead of minting a duplicate.
+	{Version: 13, Name: "jobs.idempotency_key", fn: func(ctx context.Context, d *Driver) error {
+		return migrateJobsIdempotencyKey(ctx, d.db)
+	}},
 }
 
 // migrateStampVectorSignature computes the embedding signature for the
@@ -723,6 +729,24 @@ func migrateJobsUserProfileNote(ctx context.Context, db *sql.DB) error {
 	if err := addJobsColumnIfMissing(ctx, db, "user_note",
 		`ALTER TABLE jobs ADD COLUMN user_note TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
+	}
+	return nil
+}
+
+// migrateJobsIdempotencyKey adds the idempotency_key column plus a partial
+// unique index over non-empty keys — the race-window guard behind the
+// lookup-then-insert dedupe at the enqueue surface. Empty keys (legacy rows,
+// keyless enqueues) are exempt.
+func migrateJobsIdempotencyKey(ctx context.Context, db *sql.DB) error {
+	if err := addJobsColumnIfMissing(ctx, db, "idempotency_key",
+		`ALTER TABLE jobs ADD COLUMN idempotency_key TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	_, err := db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS
+		idx_jobs_idempotency_key ON jobs(idempotency_key)
+		WHERE idempotency_key != ''`)
+	if err != nil {
+		return fmt.Errorf("create idempotency key index: %w", err)
 	}
 	return nil
 }

@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	gohttp "net/http"
@@ -13,6 +13,8 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -60,9 +62,11 @@ func init() {
 		{When: "on success", Suggest: "ctxt job status", Reason: "track the enqueued job"},
 		{When: "after enrichment completes", Suggest: "ctxt find <topic>", Reason: "discover related items"},
 	})
-	// "analyze" is not in kit's defaultIdempotency table; enqueueing the
-	// same content twice mints two jobs, so the operation is not
-	// idempotent without an explicit --idempotency-key.
+	// "analyze" is not in kit's defaultIdempotency table. Each invocation
+	// is one logical submission: the client mints an idempotency key per
+	// call, so transport replays within the failover walk are deduped
+	// server-side — but running the command twice is two submissions and
+	// mints two jobs.
 	cliconv.WithIdempotency(analyzeCmd, cliconv.IdempotencyConditional)
 
 	// Register flags on analyzeCmd for `ctxt analyze --help`.
@@ -78,7 +82,8 @@ func init() {
 	analyzeCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	analyzeCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	analyzeCmd.Flags().Bool("wait", false, "block until job completes")
-	analyzeCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	analyzeCmd.Flags().String("server", "",
+		"pin routing to this single dpkms instance, bypassing the configured server.urls failover list (default http://127.0.0.1:8080 when nothing is configured)")
 
 	// Mirror flags on rootCmd (local, not persistent) so `ctxt <content> --type url` works
 	// without leaking these flags into every subcommand's help.
@@ -94,7 +99,8 @@ func init() {
 	rootCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	rootCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	rootCmd.Flags().Bool("wait", false, "block until job completes")
-	rootCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	rootCmd.Flags().String("server", "",
+		"pin routing to this single dpkms instance, bypassing the configured server.urls failover list (default http://127.0.0.1:8080 when nothing is configured)")
 
 	// Bind viper keys: RunAnalyze reads from cmd.Flags() directly, so viper bindings
 	// here are for config-file fallback only (flag values take precedence via cmd.Flags()).
@@ -144,10 +150,16 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Using content from clipboard...\n")
 	}
 
-	// Determine server URL.
-	serverURL := flagString(cmd, "server", "server.url")
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
+	// Determine the ordered endpoint list. An explicit --server pins
+	// routing to that single instance (reusing its configured token, if
+	// any); otherwise config server.urls (primary first), then
+	// server.url, then the default.
+	var endpoints []idxbridge.Endpoint
+	if f := cmd.Flags().Lookup("server"); f != nil && f.Changed {
+		v, _ := cmd.Flags().GetString("server")
+		endpoints = []idxbridge.Endpoint{pinnedEndpoint(v)}
+	} else {
+		endpoints = clientEndpoints()
 	}
 
 	// Resolve --raw flag (present on both analyzeCmd and rootCmd).
@@ -194,60 +206,53 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	// fetchable URLs — downstream steps (url_fetcher) must validate before use.
 	reqSource := source
 
-	// Build request body.
-	reqBody := map[string]any{
-		"content":    content,
-		"type":       flagString(cmd, "type", "analyze.type"),
-		"pipeline":   flagString(cmd, "pipeline", "analyze.pipeline"),
-		"source":     reqSource,
-		"raw":        rawMode,
-		"no_fanout":  noFanout,
-		"force":      noDedup,
-		"source_key": sourceKey,
-	}
-	if len(userMentions) > 0 {
-		reqBody["mentions"] = userMentions
-	}
-	if len(userHints) > 0 {
-		reqBody["hints"] = userHints
+	// Build the analyze request (also the daemon's wire format).
+	req := service.AnalyzeRequest{
+		Content:   content,
+		Type:      flagString(cmd, "type", "analyze.type"),
+		Pipeline:  flagString(cmd, "pipeline", "analyze.pipeline"),
+		Source:    reqSource,
+		Raw:       rawMode,
+		NoFanout:  noFanout,
+		Force:     noDedup,
+		SourceKey: sourceKey,
+		Mentions:  userMentions,
+		Hints:     userHints,
 	}
 
-	body, err := json.Marshal(reqBody)
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// Route: first live instance in the ordered list via POST
+	// /api/v1/analyze; when none answers, fall back to the dblock-gated
+	// local direct enqueue. A live instance's rejection is surfaced, never
+	// replayed against another instance or the local queue.
+	bridge := idxbridge.New(idxbridge.Config{
+		Endpoints:       endpoints,
+		AnalyzeFallback: idxbridge.AnalyzeFunc(localDirectAnalyze),
+	})
+
+	jobID, servedBy, err := bridge.Analyze(ctx, req)
 	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
-	}
-
-	// POST to dpkms.
-	resp, err := gohttp.Post(serverURL+"/api/v1/analyze", "application/json", bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("request to dpkms: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != gohttp.StatusAccepted && resp.StatusCode != gohttp.StatusOK {
-		// T-0562: 422 from the analyze endpoint signals an unrouted type
-		// (e.g. `--type document` with no document.* pipeline registered).
-		// Surface the server-supplied message verbatim so the user sees
-		// exactly which type/pipeline pairing was rejected — previously
-		// this path returned a Job ID and silently dropped the work.
-		if resp.StatusCode == gohttp.StatusUnprocessableEntity {
-			return fmt.Errorf("dpkms refused the request (422): %s", strings.TrimSpace(string(respBody)))
+		var rerr *idxbridge.RemoteError
+		if errors.As(err, &rerr) {
+			// T-0562: 422 from the analyze endpoint signals an unrouted type
+			// (e.g. `--type document` with no document.* pipeline registered).
+			// Surface the server-supplied message verbatim so the user sees
+			// exactly which type/pipeline pairing was rejected — previously
+			// this path returned a Job ID and silently dropped the work.
+			if rerr.StatusCode == gohttp.StatusUnprocessableEntity {
+				return fmt.Errorf("dpkms refused the request (422): %s", strings.TrimSpace(rerr.Body))
+			}
+			return fmt.Errorf("dpkms returned %d: %s", rerr.StatusCode, rerr.Body)
 		}
-		return fmt.Errorf("dpkms returned %d: %s", resp.StatusCode, string(respBody))
+		return err
 	}
 
-	var result map[string]string
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return fmt.Errorf("parse response: %w", err)
-	}
-
-	jobID := result["job_id"]
 	fmt.Printf("Job ID: %s\n", jobID)
+	usedLocal := servedBy == ""
 
 	// Resolve --wait flag (present on both analyzeCmd and rootCmd).
 	wait := false
@@ -257,27 +262,52 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		wait = viper.GetBool("analyze.wait")
 	}
 	if !wait || jobID == "" {
+		if usedLocal {
+			fmt.Println("Queued locally; the job will run when the daemon starts (`dpkms serve`).")
+		}
+		return nil
+	}
+	if usedLocal {
+		// No daemon means no worker: polling would hang. Say so and return.
+		fmt.Println("Queued locally; the job will run when the daemon starts (`dpkms serve`).")
 		return nil
 	}
 
 	// T-0562: --wait was previously a no-op. The CLI returned the job ID
 	// from POST /analyze and exited even when the job was never persisted,
 	// so the user never learned the work was dropped. Poll GET /jobs/{id}
-	// and fail loudly if the ID can't be located within a short window —
-	// that 404 is the canonical "silently dropped" signal.
-	return waitForJob(cmd.Context(), serverURL, jobID)
+	// on the instance that accepted the enqueue and fail loudly if the ID
+	// can't be located within a short window — that 404 is the canonical
+	// "silently dropped" signal.
+	return waitForJob(cmd.Context(), servedBy, endpointToken(endpoints, servedBy), jobID)
 }
 
-// waitForJob polls GET /api/v1/jobs/{id} until the job reaches a terminal
-// state, the context is cancelled, or pollTimeout elapses. If the job ID
-// is not present in the queue within notFoundTimeout, return a clear
-// error pointing at the silent-drop class of bug — the worker may have
-// rejected the job before persistence.
-func waitForJob(ctx context.Context, serverURL, jobID string) error {
+// endpointToken returns the bearer token of the endpoint matching baseURL,
+// or "" when none matches or the endpoint is unauthenticated.
+func endpointToken(endpoints []idxbridge.Endpoint, baseURL string) string {
+	base := strings.TrimRight(baseURL, "/")
+	for _, ep := range endpoints {
+		if strings.TrimRight(ep.URL, "/") == base {
+			return ep.Token
+		}
+	}
+	return ""
+}
+
+// waitForJob polls GET /api/v1/jobs/{id} on the instance that accepted the
+// enqueue until the job reaches a terminal state, the context is cancelled,
+// or pollTimeout elapses. Every poll request is context-bound and capped by
+// a per-request timeout (the default client would hang indefinitely on a
+// stalled connection), and carries the instance's bearer token when one is
+// configured. If the job ID is not present in the queue within
+// notFoundTimeout, return a clear error pointing at the silent-drop class
+// of bug — the worker may have rejected the job before persistence.
+func waitForJob(ctx context.Context, serverURL, token, jobID string) error {
 	const (
 		pollTimeout     = 5 * time.Minute
 		notFoundTimeout = 5 * time.Second
 		pollInterval    = 500 * time.Millisecond
+		requestTimeout  = 10 * time.Second
 	)
 
 	if ctx == nil {
@@ -288,6 +318,7 @@ func waitForJob(ctx context.Context, serverURL, jobID string) error {
 
 	url := serverURL + "/api/v1/jobs/" + jobID
 	deadline404 := time.Now().Add(notFoundTimeout)
+	client := &gohttp.Client{Timeout: requestTimeout}
 
 	for {
 		select {
@@ -296,7 +327,14 @@ func waitForJob(ctx context.Context, serverURL, jobID string) error {
 		default:
 		}
 
-		resp, err := gohttp.Get(url)
+		req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodGet, url, nil)
+		if err != nil {
+			return fmt.Errorf("wait: build request %s: %w", url, err)
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, err := client.Do(req)
 		if err != nil {
 			return fmt.Errorf("wait: GET %s: %w", url, err)
 		}

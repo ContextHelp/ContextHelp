@@ -174,6 +174,13 @@ type Job struct {
 	// on KnowledgeObject; reusing it here keeps a single field name
 	// across inbox and pipeline paths.
 	UserNote string `json:"user_note,omitempty"`
+	// IdempotencyKey is the client-generated key for one logical
+	// submission. The enqueue surface dedupes on it: a replay carrying
+	// a key already present returns the existing job instead of minting
+	// a second one, so a submission whose response was lost in transit
+	// can be safely retried against the same queue. Empty = no dedupe
+	// (legacy callers); enforced unique for non-empty values.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 
 // JobFilter specifies criteria for listing jobs.

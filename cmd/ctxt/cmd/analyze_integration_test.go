@@ -12,6 +12,10 @@ func TestAnalyzeCallsDPKMS(t *testing.T) {
 
 	// Start a mock dpkms server.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		if r.URL.Path != "/api/v1/analyze" {
 			http.NotFound(w, r)
 			return
