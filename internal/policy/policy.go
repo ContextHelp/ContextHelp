@@ -60,6 +60,22 @@ type Bootstrap struct {
 	once      sync.Once
 }
 
+// Option configures Init.
+type Option func(*initOptions)
+
+type initOptions struct {
+	refuseEnvPrincipal bool
+}
+
+// WithoutEnvPrincipal disables the resolver's $KIT_POLICY_ROLE/$USER
+// fallback: with no authenticated context principal the engine sees an
+// anonymous principal instead of the daemon operator's identity.
+// Non-private instances MUST set this — a remote caller must never
+// inherit the server process's env identity.
+func WithoutEnvPrincipal() Option {
+	return func(o *initOptions) { o.refuseEnvPrincipal = true }
+}
+
 // Init loads the policy YAML, builds a CEL-backed engine, wires it to
 // the supplied bus, and returns a Bootstrap whose Publisher() can be
 // passed to domain.Service[T] via domain.WithPublisher. Misconfig
@@ -75,15 +91,19 @@ type Bootstrap struct {
 //     file is auto-relocated. The new path is then seeded from the
 //     bundled default if missing/empty (operator-authored content
 //     never clobbered).
-func Init(b bus.Bus) (*Bootstrap, error) {
+func Init(b bus.Bus, opts ...Option) (*Bootstrap, error) {
 	if b == nil {
 		return nil, fmt.Errorf("policy: bus is required")
+	}
+	var o initOptions
+	for _, opt := range opts {
+		opt(&o)
 	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return nil, err
 	}
-	eng, err := withcel.New(cfg, policy.WithPrincipalResolver(ctxtPrincipalResolver))
+	eng, err := withcel.New(cfg, policy.WithPrincipalResolver(ctxtPrincipalResolver(o.refuseEnvPrincipal)))
 	if err != nil {
 		return nil, fmt.Errorf("policy: build engine: %w", err)
 	}
@@ -249,12 +269,29 @@ func ensureDefaultFile() (string, error) {
 	return path, nil
 }
 
-// ctxtPrincipalResolver picks principal from ctx → KIT_POLICY_ROLE env
-// → $USER. Aps profile lookup is a deliberate follow-up — kit cannot
-// import aps directly. The default kit resolver suffices today;
-// ctxtPrincipalResolver exists as the seam where aps resolution lands.
-func ctxtPrincipalResolver(ctx context.Context) policy.Principal {
-	return policy.DefaultPrincipalResolver(ctx)
+// ctxtPrincipalResolver returns the principal resolver for the engine.
+// With refuseEnv false (private instances) it delegates to kit's
+// default: ctx → KIT_POLICY_ROLE env → $USER. With refuseEnv true
+// (non-private instances) only the authenticated context principal is
+// honored; with none present the resolver returns an anonymous
+// principal instead of falling back to the daemon operator's env
+// identity. Aps profile lookup is a deliberate follow-up — kit cannot
+// import aps directly; this stays the seam where aps resolution lands.
+func ctxtPrincipalResolver(refuseEnv bool) policy.PrincipalResolver {
+	return func(ctx context.Context) policy.Principal {
+		if !refuseEnv {
+			return policy.DefaultPrincipalResolver(ctx)
+		}
+		if v := ctx.Value(policy.ContextPrincipalKey); v != nil {
+			if p, ok := v.(policy.Principal); ok {
+				if p.Source == "" {
+					p.Source = "ctx"
+				}
+				return p
+			}
+		}
+		return policy.Principal{Source: "none"}
+	}
 }
 
 // DefaultPoliciesYAML returns the bundled policy bytes for callers

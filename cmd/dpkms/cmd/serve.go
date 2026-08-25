@@ -283,7 +283,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// policy.Init already prefixes returned errors with "policy:" so
 	// we surface them as-is rather than re-wrap and produce
 	// "policy: policy: ...".
-	pol, err := policy.Init(hubBus)
+	// Non-private instances refuse the env principal fallback: a remote
+	// caller with no authenticated principal must resolve as anonymous,
+	// never as the daemon operator's $USER/$KIT_POLICY_ROLE.
+	var polOpts []policy.Option
+	if access != config.AccessPrivate {
+		polOpts = append(polOpts, policy.WithoutEnvPrincipal())
+	}
+	pol, err := policy.Init(hubBus, polOpts...)
 	if err != nil {
 		return err
 	}
