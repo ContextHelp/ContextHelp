@@ -386,6 +386,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Security:                    secEmitter,
 		Entitlements:                inboundGate,
 		RequireFederationCredential: requireFedCred,
+		RedactHealthz:               access == config.AccessPublic,
 	})
 	router.Handle("/ws/bus", hubNet.Handler())
 

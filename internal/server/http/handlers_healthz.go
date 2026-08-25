@@ -44,6 +44,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -127,7 +128,7 @@ type WatcherCheck struct {
 type HealthzProbes struct {
 	Version  string
 	Started  time.Time
-	GRPC     func(ctx context.Context) bool          // returns true when gRPC is serving
+	GRPC     func(ctx context.Context) bool // returns true when gRPC is serving
 	Watchers func(ctx context.Context) []WatcherCheck
 	// Upgrade returns the current upgrade-state envelope or nil when no
 	// upgrade is in progress. Wired by dpkms serve to the in-process
@@ -165,6 +166,45 @@ func queueDepthsFromService(ctx context.Context, svc *service.Service) QueueChec
 // version/start-time/gRPC/watcher signals; a zero-value HealthzProbes
 // causes those fields to be filled with safe defaults.
 func Healthz(svc *service.Service, probes HealthzProbes) http.HandlerFunc {
+	build := healthzBuilder(svc, probes)
+	return func(w http.ResponseWriter, r *http.Request) {
+		env := build(r.Context())
+		WriteJSON(w, healthzStatusCode(env), env)
+	}
+}
+
+// RedactedHealthz serves the verbose /healthz envelope only to callers
+// the provider authenticates; anonymous probes get the bare health
+// verdict with the same status code — enough for an LB, nothing about
+// version, queue depths, or upgrade progress. Public instances mount
+// this instead of Healthz.
+func RedactedHealthz(svc *service.Service, probes HealthzProbes, provider authn.Provider) http.HandlerFunc {
+	build := healthzBuilder(svc, probes)
+	return func(w http.ResponseWriter, r *http.Request) {
+		env := build(r.Context())
+		code := healthzStatusCode(env)
+		if provider != nil {
+			if _, err := provider.Authenticate(r.Context(), credentialFromRequest(r)); err == nil {
+				WriteJSON(w, code, env)
+				return
+			}
+		}
+		WriteJSON(w, code, map[string]any{"health": env.Health})
+	}
+}
+
+// healthzStatusCode maps the envelope verdict onto the HTTP status.
+func healthzStatusCode(env HealthzEnvelope) int {
+	if env.Health == HealthFailed {
+		return http.StatusServiceUnavailable
+	}
+	return http.StatusOK
+}
+
+// healthzBuilder captures the probe wiring once and returns the
+// per-request envelope constructor shared by Healthz and
+// RedactedHealthz.
+func healthzBuilder(svc *service.Service, probes HealthzProbes) func(context.Context) HealthzEnvelope {
 	if probes.Started.IsZero() {
 		probes.Started = time.Now()
 	}
@@ -172,8 +212,7 @@ func Healthz(svc *service.Service, probes HealthzProbes) http.HandlerFunc {
 	var startedRef atomic.Int64
 	startedRef.Store(startNanos)
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+	return func(ctx context.Context) HealthzEnvelope {
 		env := HealthzEnvelope{
 			Health:        HealthHealthy,
 			Version:       probes.Version,
@@ -229,12 +268,7 @@ func Healthz(svc *service.Service, probes HealthzProbes) http.HandlerFunc {
 		if env.Upgrade != nil && env.Upgrade.State == "in_progress" {
 			env.Health = HealthUpgrading
 		}
-
-		status := http.StatusOK
-		if env.Health == HealthFailed {
-			status = http.StatusServiceUnavailable
-		}
-		WriteJSON(w, status, env)
+		return env
 	}
 }
 

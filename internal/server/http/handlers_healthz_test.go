@@ -219,3 +219,51 @@ func TestHealthzWithProbesPopulatesVersionAndGRPC(t *testing.T) {
 	require.Len(t, env.Checks.Watchers, 1)
 	assert.Equal(t, "fs.notes", env.Checks.Watchers[0].Name)
 }
+
+// Public instances redact the verbose healthz envelope for anonymous
+// callers: bare health verdict only, no version/queue/upgrade detail.
+// Authenticated callers keep the full diagnostics, and bare /health
+// stays open for LB probes.
+func TestHealthzRedactedForAnonymousOnPublic(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := jobs.NewQueue(driver.Jobs())
+	svc := service.New(driver, q, builtins.Registry(), search.NewEngine(driver), "", nil)
+	srv := httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{
+		Auth:          testProvider(t),
+		RedactHealthz: true,
+		Probes:        HealthzProbes{Version: "9.9.9"},
+	}))
+	defer srv.Close()
+
+	// Anonymous: verdict only.
+	resp, err := http.Get(srv.URL + "/healthz")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	var raw map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&raw))
+	assert.Equal(t, "healthy", raw["health"])
+	_, hasVersion := raw["version"]
+	assert.False(t, hasVersion, "anonymous healthz must not leak version")
+	_, hasChecks := raw["checks"]
+	assert.False(t, hasChecks, "anonymous healthz must not leak queue depths")
+
+	// Authenticated: full envelope.
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/healthz", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer tok-valid")
+	authResp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer authResp.Body.Close()
+	assert.Equal(t, http.StatusOK, authResp.StatusCode)
+	var env HealthzEnvelope
+	require.NoError(t, json.NewDecoder(authResp.Body).Decode(&env))
+	assert.Equal(t, "9.9.9", env.Version)
+	assert.Equal(t, "ok", env.Checks.Process)
+
+	// Bare /health stays open.
+	lbResp, err := http.Get(srv.URL + "/health")
+	require.NoError(t, err)
+	lbResp.Body.Close()
+	assert.Equal(t, http.StatusOK, lbResp.StatusCode)
+}

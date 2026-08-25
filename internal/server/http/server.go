@@ -43,6 +43,10 @@ type RouterConfig struct {
 	// configured token the route refuses requests instead of accepting
 	// any authenticated principal.
 	RequireFederationCredential bool
+	// RedactHealthz hides the verbose /healthz envelope (version, queue
+	// depths, upgrade progress) from unauthenticated callers — public
+	// instances set it. Bare /health stays open for LB probes either way.
+	RedactHealthz bool
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -77,7 +81,11 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 	}
 
 	r.Get("/health", Health(svc))
-	r.Get("/healthz", Healthz(svc, probes))
+	if rc.RedactHealthz {
+		r.Get("/healthz", RedactedHealthz(svc, probes, rc.Auth))
+	} else {
+		r.Get("/healthz", Healthz(svc, probes))
+	}
 	r.Get("/manifest.json", ManifestJSON())
 
 	// GET /ui → redirect to /ui/
