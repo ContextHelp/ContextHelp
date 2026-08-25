@@ -1,17 +1,20 @@
 // Package idxbridge provides a client-side bridge that routes index/search
-// (RSQL idx) queries to a running dpkms daemon via HTTP, falling back to a
-// direct local implementation when the daemon is unreachable.
+// (RSQL idx) queries and the analyze/ingest enqueue write surface to a running
+// dpkms daemon via HTTP, falling back to a direct local implementation when
+// the daemon is unreachable.
 //
 // Usage:
 //
 //	bridge := idxbridge.New(idxbridge.Config{
-//	    BaseURL:      "http://127.0.0.1:8080",
-//	    ProbeTimeout: 500 * time.Millisecond,
-//	    Fallback:     svc, // *service.Service or any IdxSearcher
+//	    BaseURL:         "http://127.0.0.1:8080",
+//	    ProbeTimeout:    500 * time.Millisecond,
+//	    Fallback:        svc, // *service.Service or any IdxSearcher
+//	    AnalyzeFallback: svc, // *service.Service or any IdxAnalyzer
 //	})
 //
 //	// Bridge auto-detects daemon on first call; result is cached per instance.
 //	results, total, err := bridge.SearchObjects(ctx, "type==article", 20, 0)
+//	jobID, err := bridge.Analyze(ctx, req)
 package idxbridge
 
 import (
@@ -40,6 +43,10 @@ const (
 	// that probed just before daemon startup must notice the daemon within
 	// about a second, not keep writing directly for the full positive TTL.
 	DefaultNegativeProbeInterval = 1 * time.Second
+	// DefaultRequestTimeout bounds non-probe daemon requests. Distinct from
+	// ProbeTimeout: probes must answer fast, but a real search or enqueue
+	// may legitimately take longer.
+	DefaultRequestTimeout = 30 * time.Second
 )
 
 // IdxSearcher is the local fallback interface for index/search queries.
@@ -64,17 +71,27 @@ type Config struct {
 	// Defaults to DefaultNegativeProbeInterval.
 	NegativeProbeInterval time.Duration
 	// Fallback is the local searcher used when the daemon is unreachable.
-	// Required.
+	// Optional when AnalyzeFallback is set; at least one fallback is
+	// required.
 	Fallback IdxSearcher
-	// HTTPClient overrides the default HTTP client (e.g. for tests).
+	// AnalyzeFallback is the local enqueue path used when the daemon is
+	// unreachable — typically the dblock-gated direct storage path.
+	// Optional when Fallback is set.
+	AnalyzeFallback IdxAnalyzer
+	// RequestTimeout bounds non-probe daemon requests when HTTPClient is
+	// not supplied. Defaults to DefaultRequestTimeout.
+	RequestTimeout time.Duration
+	// HTTPClient overrides the default HTTP clients (e.g. for tests).
 	HTTPClient *http.Client
 }
 
-// IdxBridge routes SearchObjects calls to the dpkms daemon when it is
-// reachable, and falls back to the local Fallback searcher otherwise.
+// IdxBridge routes SearchObjects and Analyze calls to the dpkms daemon when
+// it is reachable, and falls back to the local Fallback implementations
+// otherwise.
 type IdxBridge struct {
-	cfg    Config
-	client *http.Client
+	cfg       Config
+	client    *http.Client // probe client, ProbeTimeout-bound
+	reqClient *http.Client // request client, RequestTimeout-bound
 
 	mu          sync.Mutex
 	daemonLive  bool
@@ -82,10 +99,11 @@ type IdxBridge struct {
 }
 
 // New creates an IdxBridge with the given Config.
-// Panics if cfg.Fallback is nil.
+// Panics when no fallback at all is configured — a bridge that can neither
+// search nor enqueue locally is a misconstruction, not a runtime condition.
 func New(cfg Config) *IdxBridge {
-	if cfg.Fallback == nil {
-		panic("idxbridge.New: Fallback must not be nil")
+	if cfg.Fallback == nil && cfg.AnalyzeFallback == nil {
+		panic("idxbridge.New: at least one of Fallback or AnalyzeFallback must be set")
 	}
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = DefaultBaseURL
@@ -99,11 +117,16 @@ func New(cfg Config) *IdxBridge {
 	if cfg.NegativeProbeInterval <= 0 {
 		cfg.NegativeProbeInterval = DefaultNegativeProbeInterval
 	}
+	if cfg.RequestTimeout <= 0 {
+		cfg.RequestTimeout = DefaultRequestTimeout
+	}
 	client := cfg.HTTPClient
+	reqClient := cfg.HTTPClient
 	if client == nil {
 		client = &http.Client{Timeout: cfg.ProbeTimeout}
+		reqClient = &http.Client{Timeout: cfg.RequestTimeout}
 	}
-	return &IdxBridge{cfg: cfg, client: client}
+	return &IdxBridge{cfg: cfg, client: client, reqClient: reqClient}
 }
 
 // Probe checks whether the daemon is reachable by calling its /health endpoint.
@@ -169,6 +192,9 @@ func (b *IdxBridge) SearchObjects(
 		// Daemon responded to health but search failed — invalidate and fall back.
 		b.InvalidateProbe()
 	}
+	if b.cfg.Fallback == nil {
+		return nil, 0, fmt.Errorf("idxbridge: daemon unreachable at %s and no local search fallback configured", b.cfg.BaseURL)
+	}
 	return b.cfg.Fallback.SearchObjects(ctx, query, limit, offset, profileID...)
 }
 
@@ -197,7 +223,7 @@ func (b *IdxBridge) remoteSearch(
 		return nil, 0, fmt.Errorf("idxbridge: build request: %w", err)
 	}
 
-	resp, err := b.client.Do(req)
+	resp, err := b.reqClient.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("idxbridge: search request: %w", err)
 	}

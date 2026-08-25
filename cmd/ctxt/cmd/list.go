@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cursor"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
@@ -146,11 +147,16 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--advance requires --cursor <name>")
 	}
 
-	// If RSQL query is provided, use search engine
+	// If RSQL query is provided, use the search engine — routed via a live
+	// dpkms daemon when one answers, direct local search otherwise.
 	if q := viper.GetString("list.q"); q != "" {
 		limit := viper.GetInt("list.limit")
 		offset := viper.GetInt("list.start")
-		objects, total, err := svc.SearchObjects(ctx, q, limit, offset)
+		bridge := idxbridge.New(idxbridge.Config{
+			BaseURL:  clientServerURL(),
+			Fallback: svc,
+		})
+		objects, total, err := bridge.SearchObjects(ctx, q, limit, offset)
 		if err != nil {
 			return fmt.Errorf("search: %w", err)
 		}

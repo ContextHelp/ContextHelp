@@ -14,6 +14,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -94,6 +95,16 @@ func newService() (*service.Service, func(), error) {
 	}
 
 	return svc, cleanup, nil
+}
+
+// clientServerURL resolves the dpkms base URL for client-side routing.
+// Order: server.url (bound to --server where the flag exists, config
+// otherwise) > the bridge default.
+func clientServerURL() string {
+	if v := viper.GetString("server.url"); v != "" {
+		return v
+	}
+	return idxbridge.DefaultBaseURL
 }
 
 // resolveStoragePath returns the DB path to open, applying instance routing.

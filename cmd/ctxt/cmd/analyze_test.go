@@ -12,9 +12,14 @@ import (
 
 // startMockDPKMS starts a mock dpkms server that accepts analyze requests.
 // /jobs/{id} responds with status=done so --wait tests don't block here.
+// /health answers 200 like the real daemon — the CLI probes it to route.
 func startMockDPKMS(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		if r.URL.Path == "/api/v1/analyze" && r.Method == http.MethodPost {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusAccepted)
@@ -91,6 +96,10 @@ func TestAnalyzeWithFlags(t *testing.T) {
 func TestAnalyzeRawFlagSentInRequest(t *testing.T) {
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		if r.URL.Path == "/api/v1/analyze" && r.Method == http.MethodPost {
 			json.NewDecoder(r.Body).Decode(&capturedBody)
 			w.Header().Set("Content-Type", "application/json")
@@ -136,6 +145,10 @@ func TestAnalyzeMissingFileError(t *testing.T) {
 // this path returned a Job ID and silently dropped the work.
 func TestAnalyzeUnsupportedTypeErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		if r.URL.Path == "/api/v1/analyze" && r.Method == http.MethodPost {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnprocessableEntity)
@@ -178,6 +191,8 @@ func TestAnalyzeUnsupportedTypeErrors(t *testing.T) {
 func TestAnalyzeWaitDetectsSilentDrop(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.URL.Path == "/health":
+			w.WriteHeader(http.StatusOK)
 		case r.URL.Path == "/api/v1/analyze" && r.Method == http.MethodPost:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusAccepted)
@@ -210,6 +225,8 @@ func TestAnalyzeWaitSucceedsOnDone(t *testing.T) {
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.URL.Path == "/health":
+			w.WriteHeader(http.StatusOK)
 		case r.URL.Path == "/api/v1/analyze" && r.Method == http.MethodPost:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusAccepted)

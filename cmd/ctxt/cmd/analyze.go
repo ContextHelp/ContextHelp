@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	gohttp "net/http"
@@ -13,6 +13,8 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -194,59 +196,55 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	// fetchable URLs — downstream steps (url_fetcher) must validate before use.
 	reqSource := source
 
-	// Build request body.
-	reqBody := map[string]any{
-		"content":    content,
-		"type":       flagString(cmd, "type", "analyze.type"),
-		"pipeline":   flagString(cmd, "pipeline", "analyze.pipeline"),
-		"source":     reqSource,
-		"raw":        rawMode,
-		"no_fanout":  noFanout,
-		"force":      noDedup,
-		"source_key": sourceKey,
-	}
-	if len(userMentions) > 0 {
-		reqBody["mentions"] = userMentions
-	}
-	if len(userHints) > 0 {
-		reqBody["hints"] = userHints
+	// Build the analyze request (also the daemon's wire format).
+	req := service.AnalyzeRequest{
+		Content:   content,
+		Type:      flagString(cmd, "type", "analyze.type"),
+		Pipeline:  flagString(cmd, "pipeline", "analyze.pipeline"),
+		Source:    reqSource,
+		Raw:       rawMode,
+		NoFanout:  noFanout,
+		Force:     noDedup,
+		SourceKey: sourceKey,
+		Mentions:  userMentions,
+		Hints:     userHints,
 	}
 
-	body, err := json.Marshal(reqBody)
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// Route: live daemon via POST /api/v1/analyze; unreachable daemon falls
+	// back to the dblock-gated local direct enqueue. A live daemon's
+	// rejection is surfaced, never retried locally.
+	var usedLocal bool
+	bridge := idxbridge.New(idxbridge.Config{
+		BaseURL: serverURL,
+		AnalyzeFallback: idxbridge.AnalyzeFunc(
+			func(fctx context.Context, r service.AnalyzeRequest) (string, error) {
+				usedLocal = true
+				return localDirectAnalyze(fctx, r)
+			}),
+	})
+
+	jobID, err := bridge.Analyze(ctx, req)
 	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
-	}
-
-	// POST to dpkms.
-	resp, err := gohttp.Post(serverURL+"/api/v1/analyze", "application/json", bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("request to dpkms: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != gohttp.StatusAccepted && resp.StatusCode != gohttp.StatusOK {
-		// T-0562: 422 from the analyze endpoint signals an unrouted type
-		// (e.g. `--type document` with no document.* pipeline registered).
-		// Surface the server-supplied message verbatim so the user sees
-		// exactly which type/pipeline pairing was rejected — previously
-		// this path returned a Job ID and silently dropped the work.
-		if resp.StatusCode == gohttp.StatusUnprocessableEntity {
-			return fmt.Errorf("dpkms refused the request (422): %s", strings.TrimSpace(string(respBody)))
+		var rerr *idxbridge.RemoteError
+		if errors.As(err, &rerr) {
+			// T-0562: 422 from the analyze endpoint signals an unrouted type
+			// (e.g. `--type document` with no document.* pipeline registered).
+			// Surface the server-supplied message verbatim so the user sees
+			// exactly which type/pipeline pairing was rejected — previously
+			// this path returned a Job ID and silently dropped the work.
+			if rerr.StatusCode == gohttp.StatusUnprocessableEntity {
+				return fmt.Errorf("dpkms refused the request (422): %s", strings.TrimSpace(rerr.Body))
+			}
+			return fmt.Errorf("dpkms returned %d: %s", rerr.StatusCode, rerr.Body)
 		}
-		return fmt.Errorf("dpkms returned %d: %s", resp.StatusCode, string(respBody))
+		return err
 	}
 
-	var result map[string]string
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return fmt.Errorf("parse response: %w", err)
-	}
-
-	jobID := result["job_id"]
 	fmt.Printf("Job ID: %s\n", jobID)
 
 	// Resolve --wait flag (present on both analyzeCmd and rootCmd).
@@ -257,6 +255,14 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		wait = viper.GetBool("analyze.wait")
 	}
 	if !wait || jobID == "" {
+		if usedLocal {
+			fmt.Println("Queued locally; the job will run when the daemon starts (`dpkms serve`).")
+		}
+		return nil
+	}
+	if usedLocal {
+		// No daemon means no worker: polling would hang. Say so and return.
+		fmt.Println("Queued locally; the job will run when the daemon starts (`dpkms serve`).")
 		return nil
 	}
 
