@@ -4,6 +4,7 @@ package postgres_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
@@ -106,15 +107,27 @@ func TestPostgres_SearchSchema_HonestVectorColumns(t *testing.T) {
 		t.Errorf("embeddings.vector type: got %q want vector (pgvector)", udt)
 	}
 
-	// No signature row may exist for an index that does not exist.
-	var phantom int
-	if err := db.QueryRow(`
-		SELECT COUNT(*) FROM index_signatures
-		 WHERE signature_id LIKE 'embeddings_%'`).Scan(&phantom); err != nil {
-		t.Fatalf("count phantom signatures: %v", err)
+	// Signature rows must describe real indexes: the phantom BYTEA-era
+	// stamp is gone, and the row migration 12 stamps names the live ANN
+	// index (method recorded in its inputs summary).
+	rows, err := db.Query(`
+		SELECT inputs_summary FROM index_signatures
+		 WHERE signature_id LIKE 'embeddings_%'`)
+	if err != nil {
+		t.Fatalf("read embeddings signatures: %v", err)
 	}
-	if phantom != 0 {
-		t.Errorf("write-only signature rows stamped for nonexistent embeddings index: %d", phantom)
+	defer rows.Close()
+	for rows.Next() {
+		var summary string
+		if err := rows.Scan(&summary); err != nil {
+			t.Fatalf("scan signature summary: %v", err)
+		}
+		if !strings.Contains(summary, "method=") {
+			t.Errorf("signature stamped without a live index description (phantom-era formula): %s", summary)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate signatures: %v", err)
 	}
 
 	// ANN index: HNSW cosine on objects.embedding; the old ivfflat is gone.

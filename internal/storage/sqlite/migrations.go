@@ -2,14 +2,13 @@ package sqlite
 
 import (
 	"context"
-	"crypto/sha256"
 	_ "embed"
-	"encoding/hex"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
 
 //go:embed migrations/001_initial.sql
@@ -633,7 +632,12 @@ func migrate033EmbeddingsBackfill(ctx context.Context, d *Driver) error {
 	}
 
 	sigID := EmbeddingSignatureID(modelID)
-	hash, summary := computeEmbeddingSignature(modelID, "legacy-blob", dim)
+	idx, err := indexsig.SQLiteVectorIndex(ctx, d.db)
+	if err != nil {
+		return fmt.Errorf("describe vector index for signature: %w", err)
+	}
+	hash, summary := indexsig.ComputeEmbedding(
+		modelID, "legacy-blob", dim, idx.Method, idx.OpsClass, idx.BuildParams)
 	if err := UpsertIndexSignature(ctx, d.db, sigID, hash, summary); err != nil {
 		return fmt.Errorf("stamp embeddings index_signatures row: %w", err)
 	}
@@ -659,20 +663,6 @@ func LegacyEmbeddingModelID(dim int) string {
 // EmbeddingSignatureID returns the index_signatures row key for an embedding
 // model. Mirrors FTSSignatureID for the FTS path.
 func EmbeddingSignatureID(modelID string) string {
-	return "embeddings_" + modelID
-}
-
-// computeEmbeddingSignature hashes (model_id, provider, dimension) per
-// ADR-071 §"Data model" and returns (hex-sha256, human summary).
-func computeEmbeddingSignature(modelID, provider string, dimension int) (string, string) {
-	parts := []string{
-		"model_id=" + modelID,
-		"provider=" + provider,
-		fmt.Sprintf("dimension=%d", dimension),
-	}
-	sort.Strings(parts)
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
-	return hex.EncodeToString(sum[:]),
-		fmt.Sprintf("model_id=%s;provider=%s;dimension=%d", modelID, provider, dimension)
+	return indexsig.EmbeddingSignatureID(modelID)
 }
 

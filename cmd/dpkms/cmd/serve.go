@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net"
 	gohttp "net/http"
@@ -37,6 +38,8 @@ import (
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
@@ -208,11 +211,22 @@ func runServe(cmd *cobra.Command, args []string) error {
 	bus := events.NewLocalBus()
 	events.SetupSubscriber(bus, cfg, config.GetConfigPath(binName))
 
-	// 6.0 ADR-070 §3 / T-0579: verify the FTS index signature on startup.
-	// Detection only — the reindex worker is T-0581. A mismatch (or first
-	// boot) logs a warning and emits a bus event; the daemon proceeds.
-	if sqliteDriver, ok := driver.(*sqlite.Driver); ok {
-		if res, err := sqlite.VerifyFTSSignature(context.Background(), sqliteDriver.DB()); err != nil {
+	// 6.0 ADR-070 §3: verify the FTS index signature on startup, on either
+	// backend. Detection only — the reindex worker acts separately. A
+	// mismatch (or first boot) logs a warning and emits a bus event; the
+	// daemon proceeds.
+	var (
+		sigDB      *sql.DB
+		sigDialect indexsig.Dialect
+	)
+	switch drv := driver.(type) {
+	case *sqlite.Driver:
+		sigDB, sigDialect = drv.DB(), indexsig.DialectSQLite
+	case *postgres.Driver:
+		sigDB, sigDialect = drv.DB(), indexsig.DialectPostgres
+	}
+	if sigDB != nil {
+		if res, err := indexsig.VerifyFTS(context.Background(), sigDB, sigDialect); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: fts signature verify: %v\n", err)
 		} else if !res.Match {
 			if res.FirstBoot {
@@ -220,7 +234,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 					res.NewHash[:12], res.InputsSummary)
 			} else {
 				fmt.Fprintf(os.Stderr,
-					"warning: FTS signature mismatch: old=%s new=%s inputs=%s — reindex_auto pending (T-0581)\n",
+					"warning: FTS signature mismatch: old=%s new=%s inputs=%s — reindex_auto pending\n",
 					res.OldHash[:12], res.NewHash[:12], res.InputsSummary,
 				)
 			}

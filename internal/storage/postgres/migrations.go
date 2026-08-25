@@ -5,12 +5,14 @@ import (
 
 	"database/sql"
 
+	"errors"
 	"fmt"
 
 	"strconv"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
 
 // pgvectorUnavailable wraps a CREATE EXTENSION vector failure in a single
@@ -95,6 +97,43 @@ var pgMigrations = []pgMigration{
 	// {DIMENSION}-templated vec0 migration) and replace the legacy ivfflat
 	// index with HNSW cosine ops.
 	{Version: 11, Name: "objects.embedding dimension + HNSW cosine index", fn: migrateObjectsEmbeddingDimension},
+	// ADR-070 provenance for the vector index: stamp the
+	// embeddings_<default-model> signature from the live index description
+	// so the index_signatures table describes a real index on this backend
+	// (the phantom BYTEA stamp was deleted by migration 10).
+	{Version: 12, Name: "stamp vector index signature for default model", fn: migrateStampVectorSignature},
+}
+
+// migrateStampVectorSignature computes the embedding signature for the
+// default registered model from the live ANN index description (method, ops
+// class, build params via pg_get_indexdef) and upserts the ADR-070 stamp.
+// No default model means nothing to stamp — not an error.
+func migrateStampVectorSignature(ctx context.Context, d *Driver) error {
+	var (
+		modelID, provider string
+		dim               int
+	)
+	err := d.db.QueryRowContext(ctx, `
+		SELECT model_id, provider, dimension
+		  FROM embedding_models WHERE is_default = 1`).Scan(&modelID, &provider, &dim)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("read default embedding model: %w", err)
+	}
+
+	idx, err := indexsig.PostgresVectorIndex(ctx, d.db)
+	if err != nil {
+		return fmt.Errorf("describe vector index for signature: %w", err)
+	}
+	hash, summary := indexsig.ComputeEmbedding(
+		modelID, provider, dim, idx.Method, idx.OpsClass, idx.BuildParams)
+	if err := indexsig.Upsert(ctx, d.db, indexsig.DialectPostgres,
+		indexsig.EmbeddingSignatureID(modelID), hash, summary); err != nil {
+		return fmt.Errorf("stamp vector index signature: %w", err)
+	}
+	return nil
 }
 
 // ftsRegconfig is the text-search configuration for the generated tsvector
@@ -180,6 +219,15 @@ func migrateObjectsEmbeddingDimension(ctx context.Context, d *Driver) error {
 		return fmt.Errorf("inspect objects.embedding: %w", err)
 	}
 
+	// The legacy ivfflat index predates the pinned metric contract. Drop it
+	// BEFORE any re-type: ALTER COLUMN TYPE rebuilds dependent indexes, and
+	// ivfflat refuses columns above 2000 dimensions — the re-type to a
+	// larger dimension would fail on the index it is about to obsolete.
+	if _, err := d.db.ExecContext(ctx,
+		`DROP INDEX IF EXISTS idx_objects_embedding`); err != nil {
+		return fmt.Errorf("drop legacy ivfflat index: %w", err)
+	}
+
 	want := fmt.Sprintf("vector(%d)", dim)
 	if colType != want {
 		var n int
@@ -196,12 +244,6 @@ func migrateObjectsEmbeddingDimension(ctx context.Context, d *Driver) error {
 		if _, err := d.db.ExecContext(ctx, ddl); err != nil {
 			return fmt.Errorf("re-type objects.embedding to %s: %w", want, err)
 		}
-	}
-
-	// The legacy ivfflat index predates the pinned metric contract.
-	if _, err := d.db.ExecContext(ctx,
-		`DROP INDEX IF EXISTS idx_objects_embedding`); err != nil {
-		return fmt.Errorf("drop legacy ivfflat index: %w", err)
 	}
 	if dim <= hnswMaxDimension {
 		if _, err := d.db.ExecContext(ctx,
