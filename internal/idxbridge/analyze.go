@@ -68,12 +68,23 @@ func (b *IdxBridge) Analyze(ctx context.Context, req service.AnalyzeRequest) (jo
 		if !b.probeServer(ctx, s) {
 			continue
 		}
-		jobID, err := b.remoteAnalyze(ctx, s.baseURL, req)
+		jobID, err := b.remoteAnalyze(ctx, s, req)
 		if err == nil {
 			return jobID, s.baseURL, nil
 		}
 		var rerr *RemoteError
 		if errors.As(err, &rerr) {
+			if isAuthRejection(rerr) {
+				// Auth middleware rejects BEFORE enqueue, so nothing was
+				// admitted and the replay is safe: warn (naming the
+				// instance) and try the next one / the local fallback.
+				// The probe stays valid — the instance is alive, our
+				// credentials are not.
+				fmt.Fprintf(b.cfg.WarnWriter,
+					"warning: %s rejected credentials (%d); trying next instance\n",
+					s.baseURL, rerr.StatusCode)
+				continue
+			}
 			return "", "", err
 		}
 		// Instance answered health but the request failed at transport
@@ -87,19 +98,23 @@ func (b *IdxBridge) Analyze(ctx context.Context, req service.AnalyzeRequest) (jo
 	return jobID, "", err
 }
 
-// remoteAnalyze posts the request to one instance's analyze endpoint.
-func (b *IdxBridge) remoteAnalyze(ctx context.Context, baseURL string, req service.AnalyzeRequest) (string, error) {
+// remoteAnalyze posts the request to one instance's analyze endpoint,
+// authenticating with the instance's bearer token when one is configured.
+func (b *IdxBridge) remoteAnalyze(ctx context.Context, s *serverState, req service.AnalyzeRequest) (string, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return "", fmt.Errorf("idxbridge: marshal analyze request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		baseURL+"/api/v1/analyze", bytes.NewReader(body))
+		s.baseURL+"/api/v1/analyze", bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("idxbridge: build analyze request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if s.token != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+s.token)
+	}
 
 	resp, err := b.reqClient.Do(httpReq)
 	if err != nil {

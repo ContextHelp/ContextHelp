@@ -62,6 +62,25 @@ type mockInstance struct {
 	dropAnalyze   bool         // enqueue, then close the conn instead of answering
 	dedupe        *dedupeStore // nil → every accepted analyze enqueues
 	lastKey       atomic.Value // string: idempotency key of the last analyze
+	requireToken  string       // non-empty → analyze/search demand this bearer token
+	lastAuth      atomic.Value // string: Authorization header of the last analyze/search
+	healthAuth    atomic.Value // string: Authorization header of the last health probe
+}
+
+// checkAuth enforces requireToken on the API surfaces (never on /health).
+// Returns false after writing the 401 when the bearer token is missing/wrong.
+func (m *mockInstance) checkAuth(w http.ResponseWriter, r *http.Request) bool {
+	m.lastAuth.Store(r.Header.Get("Authorization"))
+	if m.requireToken == "" {
+		return true
+	}
+	if r.Header.Get("Authorization") == "Bearer "+m.requireToken {
+		return true
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = w.Write([]byte(`{"error":"UNAUTHORIZED","message":"missing or invalid token"}`))
+	return false
 }
 
 func newMockInstance(t *testing.T, jobID string) *mockInstance {
@@ -72,6 +91,7 @@ func newMockInstance(t *testing.T, jobID string) *mockInstance {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		m.healthHits.Add(1)
+		m.healthAuth.Store(r.Header.Get("Authorization"))
 		if !m.healthy.Load() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
@@ -80,6 +100,9 @@ func newMockInstance(t *testing.T, jobID string) *mockInstance {
 	})
 	mux.HandleFunc("/api/v1/analyze", func(w http.ResponseWriter, r *http.Request) {
 		m.analyzeHits.Add(1)
+		if !m.checkAuth(w, r) {
+			return
+		}
 		var req service.AnalyzeRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		m.lastKey.Store(req.IdempotencyKey)
@@ -127,6 +150,9 @@ func newMockInstance(t *testing.T, jobID string) *mockInstance {
 	})
 	mux.HandleFunc("/api/v1/search", func(w http.ResponseWriter, r *http.Request) {
 		m.searchHits.Add(1)
+		if !m.checkAuth(w, r) {
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		if m.searchStatus != 0 && m.searchStatus != http.StatusOK {
 			w.WriteHeader(m.searchStatus)

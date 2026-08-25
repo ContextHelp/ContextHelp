@@ -32,6 +32,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,11 +67,24 @@ type IdxSearcher interface {
 		[]*storage.KnowledgeObject, int, error)
 }
 
+// Endpoint is one configured dpkms instance: base URL plus an optional
+// bearer token. The token authenticates every non-probe request (analyze
+// POST, search GET); health probes stay unauthenticated — /health is public.
+type Endpoint struct {
+	URL   string
+	Token string
+}
+
 // Config holds configuration for the IdxBridge.
 type Config struct {
+	// Endpoints is the ordered dpkms server list with per-instance
+	// credentials, primary first. Takes precedence over BaseURLs and
+	// BaseURL when non-empty.
+	Endpoints []Endpoint
 	// BaseURLs is the ordered dpkms server list, primary first (scheme +
-	// host + port each). Requests walk the list per call and use the first
-	// instance whose health probe answers. When set, BaseURL is ignored.
+	// host + port each), without credentials. Requests walk the list per
+	// call and use the first instance whose health probe answers. When
+	// set, BaseURL is ignored; ignored itself when Endpoints is set.
 	BaseURLs []string
 	// BaseURL is the single-instance form of BaseURLs. Used only when
 	// BaseURLs is empty; defaults to DefaultBaseURL when both are empty.
@@ -97,11 +111,16 @@ type Config struct {
 	RequestTimeout time.Duration
 	// HTTPClient overrides the default HTTP clients (e.g. for tests).
 	HTTPClient *http.Client
+	// WarnWriter receives routing warnings (an instance rejecting
+	// credentials, auth-driven fallback to the local corpus). Defaults
+	// to os.Stderr.
+	WarnWriter io.Writer
 }
 
 // serverState is one configured instance plus its cached probe result.
 type serverState struct {
 	baseURL string
+	token   string // bearer token for non-probe requests; "" = unauthenticated
 
 	mu       sync.Mutex
 	live     bool
@@ -125,12 +144,19 @@ func New(cfg Config) *IdxBridge {
 	if cfg.Fallback == nil && cfg.AnalyzeFallback == nil {
 		panic("idxbridge.New: at least one of Fallback or AnalyzeFallback must be set")
 	}
-	urls := cfg.BaseURLs
-	if len(urls) == 0 {
-		if cfg.BaseURL == "" {
-			cfg.BaseURL = DefaultBaseURL
+	endpoints := cfg.Endpoints
+	if len(endpoints) == 0 {
+		urls := cfg.BaseURLs
+		if len(urls) == 0 {
+			if cfg.BaseURL == "" {
+				cfg.BaseURL = DefaultBaseURL
+			}
+			urls = []string{cfg.BaseURL}
 		}
-		urls = []string{cfg.BaseURL}
+		endpoints = make([]Endpoint, len(urls))
+		for i, u := range urls {
+			endpoints[i] = Endpoint{URL: u}
+		}
 	}
 	if cfg.ProbeTimeout <= 0 {
 		cfg.ProbeTimeout = DefaultProbeTimeout
@@ -150,9 +176,12 @@ func New(cfg Config) *IdxBridge {
 		client = &http.Client{Timeout: cfg.ProbeTimeout}
 		reqClient = &http.Client{Timeout: cfg.RequestTimeout}
 	}
-	servers := make([]*serverState, len(urls))
-	for i, u := range urls {
-		servers[i] = &serverState{baseURL: strings.TrimRight(u, "/")}
+	if cfg.WarnWriter == nil {
+		cfg.WarnWriter = os.Stderr
+	}
+	servers := make([]*serverState, len(endpoints))
+	for i, e := range endpoints {
+		servers[i] = &serverState{baseURL: strings.TrimRight(e.URL, "/"), token: e.Token}
 	}
 	return &IdxBridge{cfg: cfg, client: client, reqClient: reqClient, servers: servers}
 }
@@ -229,13 +258,19 @@ func (b *IdxBridge) serverList() string {
 }
 
 // SearchObjects executes an RSQL query. It walks the ordered server list and
-// proxies the request to GET /api/v1/search on the first live instance.
+// proxies the request to GET /api/v1/search on the first live instance,
+// authenticating with the instance's bearer token when one is configured.
 //
 // Failure routing distinguishes decision from outage:
-//   - 4xx (completed exchange): the instance is live and rejected THIS
-//     query — surface it as *RemoteError with the instance's diagnostic.
-//     No walk (the next instance would reject it the same way), no probe
-//     invalidation (health was never in question).
+//   - 401/403: the instance is live but rejected OUR credentials, not the
+//     query — warn (naming the instance) and walk on; the probe stays
+//     valid. When the query then lands on the local Fallback, say so
+//     loudly: results silently coming from a different corpus would be
+//     indistinguishable from the remote answer.
+//   - other 4xx (completed exchange): the instance is live and rejected
+//     THIS query — surface it as *RemoteError with the instance's
+//     diagnostic. No walk (the next instance would reject it the same
+//     way), no probe invalidation (health was never in question).
 //   - 5xx or transport-level failure: the instance is failing — invalidate
 //     its probe and walk to the next one.
 //
@@ -246,17 +281,27 @@ func (b *IdxBridge) SearchObjects(
 	limit, offset int,
 	profileID ...string,
 ) ([]*storage.KnowledgeObject, int, error) {
+	authRejected := false
 	for _, s := range b.servers {
 		if !b.probeServer(ctx, s) {
 			continue
 		}
-		objs, total, err := b.remoteSearch(ctx, s.baseURL, query, limit, offset, profileID...)
+		objs, total, err := b.remoteSearch(ctx, s, query, limit, offset, profileID...)
 		if err == nil {
 			return objs, total, nil
 		}
 		var rerr *RemoteError
-		if errors.As(err, &rerr) && rerr.StatusCode >= 400 && rerr.StatusCode < 500 {
-			return nil, 0, err
+		if errors.As(err, &rerr) {
+			if isAuthRejection(rerr) {
+				authRejected = true
+				fmt.Fprintf(b.cfg.WarnWriter,
+					"warning: %s rejected credentials (%d); trying next instance\n",
+					s.baseURL, rerr.StatusCode)
+				continue
+			}
+			if rerr.StatusCode >= 400 && rerr.StatusCode < 500 {
+				return nil, 0, err
+			}
 		}
 		// 5xx or transport failure — invalidate and walk to the next one.
 		s.invalidate()
@@ -264,18 +309,29 @@ func (b *IdxBridge) SearchObjects(
 	if b.cfg.Fallback == nil {
 		return nil, 0, fmt.Errorf("idxbridge: no daemon reachable (%s) and no local search fallback configured", b.serverList())
 	}
+	if authRejected {
+		fmt.Fprintln(b.cfg.WarnWriter,
+			"warning: results come from the local corpus — remote instance(s) rejected credentials")
+	}
 	return b.cfg.Fallback.SearchObjects(ctx, query, limit, offset, profileID...)
+}
+
+// isAuthRejection reports whether a live instance rejected our credentials
+// rather than the request itself. Auth middleware runs before any state
+// change, so these are replay-safe and walk-eligible.
+func isAuthRejection(rerr *RemoteError) bool {
+	return rerr.StatusCode == http.StatusUnauthorized || rerr.StatusCode == http.StatusForbidden
 }
 
 // remoteSearch calls one instance's /api/v1/search endpoint.
 func (b *IdxBridge) remoteSearch(
 	ctx context.Context,
-	baseURL string,
+	s *serverState,
 	query string,
 	limit, offset int,
 	profileID ...string,
 ) ([]*storage.KnowledgeObject, int, error) {
-	u, err := url.Parse(baseURL + "/api/v1/search")
+	u, err := url.Parse(s.baseURL + "/api/v1/search")
 	if err != nil {
 		return nil, 0, fmt.Errorf("idxbridge: bad base URL: %w", err)
 	}
@@ -291,6 +347,9 @@ func (b *IdxBridge) remoteSearch(
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("idxbridge: build request: %w", err)
+	}
+	if s.token != "" {
+		req.Header.Set("Authorization", "Bearer "+s.token)
 	}
 
 	resp, err := b.reqClient.Do(req)
