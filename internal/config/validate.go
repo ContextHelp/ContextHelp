@@ -35,6 +35,8 @@ func Validate(c *Config) []ValidationError {
 		errs = append(errs, ValidationError{Field: "server.grpc_port", Message: fmt.Sprintf("must be 1024–65535, got %d", c.Server.GRPCPort)})
 	}
 
+	errs = append(errs, validateAccess(c)...)
+
 	if c.Jobs.PollInterval != 0 && c.Jobs.PollInterval < 50*time.Millisecond {
 		errs = append(errs, ValidationError{Field: "jobs.poll_interval", Message: fmt.Sprintf("must be ≥50ms, got %s", c.Jobs.PollInterval)})
 	}
@@ -61,6 +63,46 @@ func Validate(c *Config) []ValidationError {
 		// valid
 	default:
 		errs = append(errs, ValidationError{Field: "secrets.backend", Message: fmt.Sprintf("unknown backend %q; must be one of env, keyring, agefile, onepassword, ghsecrets", c.Secrets.Backend)})
+	}
+
+	return errs
+}
+
+// validateAccess enforces the server.access class rules:
+//
+//   - the class must be one of private | protected | public (empty = unset,
+//     resolved to private by EffectiveAccess);
+//   - an explicit access: private combined with server.public / --public is
+//     a hard error (the two contradict each other);
+//   - a non-private instance must have inbound authentication configured —
+//     an exposed listener with zero auth is exactly the failure mode the
+//     class exists to delete.
+func validateAccess(c *Config) []ValidationError {
+	var errs []ValidationError
+
+	switch c.Server.Access {
+	case "", AccessPrivate, AccessProtected, AccessPublic:
+		// valid
+	default:
+		errs = append(errs, ValidationError{
+			Field:   "server.access",
+			Message: fmt.Sprintf("unknown access class %q; must be one of %s, %s, %s", c.Server.Access, AccessPrivate, AccessProtected, AccessPublic),
+		})
+		return errs // effective-access rules below assume a valid class
+	}
+
+	if c.Server.Access == AccessPrivate && c.Server.Public {
+		errs = append(errs, ValidationError{
+			Field:   "server.public",
+			Message: "conflicts with server.access: private — drop server.public / --public, or set access: protected|public",
+		})
+	}
+
+	if eff := c.Server.EffectiveAccess(); eff != AccessPrivate && !c.Server.Auth.HasInboundAuth() {
+		errs = append(errs, ValidationError{
+			Field:   "server.access",
+			Message: fmt.Sprintf("%s instance requires inbound authentication — set server.auth.provider (e.g. \"static\" with at least one token under server.auth.static.tokens)", eff),
+		})
 	}
 
 	return errs

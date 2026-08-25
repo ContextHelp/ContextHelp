@@ -430,16 +430,47 @@ type BlobS3Config struct {
 	MaxRetries    int           `mapstructure:"max_retries" yaml:"max_retries"`
 }
 
+// Access classes for ServerConfig.Access. They classify who may reach
+// the instance and drive load-time validation plus serve-time policy:
+// non-private instances require inbound authentication.
+const (
+	// AccessPrivate is a loopback-only instance; no inbound auth required.
+	AccessPrivate = "private"
+	// AccessProtected is reachable by remote callers on a trusted
+	// network; inbound auth is mandatory.
+	AccessProtected = "protected"
+	// AccessPublic is internet-facing; inbound auth is mandatory.
+	AccessPublic = "public"
+)
+
 // ServerConfig represents server configuration
 type ServerConfig struct {
 	Port     int  `mapstructure:"port" yaml:"port"`
 	GRPCPort int  `mapstructure:"grpc_port" yaml:"grpc_port"`
 	Workers  int  `mapstructure:"workers" yaml:"workers"`
 	Public   bool `mapstructure:"public" yaml:"public"`
+	// Access classifies the instance: "private" (default), "protected",
+	// or "public". Empty means unset; EffectiveAccess resolves the
+	// default and the legacy server.public shorthand.
+	Access string `mapstructure:"access" yaml:"access"`
 	// Auth selects and configures the inbound authentication provider.
 	// Consumed through the internal/auth Provider interface so the
 	// identity backend is an ops decision, never a rebuild.
 	Auth AuthConfig `mapstructure:"auth" yaml:"auth"`
+}
+
+// EffectiveAccess resolves the instance access class. An explicit
+// server.access always wins; the legacy server.public flag is shorthand
+// for "public" when access is unset (deprecated, flagged by lint);
+// otherwise the default is private.
+func (s ServerConfig) EffectiveAccess() string {
+	if s.Access != "" {
+		return s.Access
+	}
+	if s.Public {
+		return AccessPublic
+	}
+	return AccessPrivate
 }
 
 // AuthConfig selects the inbound authentication provider and its settings.
