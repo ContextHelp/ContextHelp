@@ -19,16 +19,111 @@ func pgvectorUnavailable(err error) error {
 	return fmt.Errorf("pgvector extension unavailable: enable it on your Postgres instance (run CREATE EXTENSION vector as a privileged role, or toggle the extension in your provider's console) — %w", err)
 }
 
+// pgMigration is one versioned entry in the Postgres schema ledger,
+// mirroring the SQLite schema_version pattern: ordered, append-only,
+// recorded per-version so schema work lands as numbered steps instead of
+// ad-hoc idempotent helpers (the failure mode that produced write-path
+// columns no migration created).
+//
+// Every entry must stay idempotent: databases initialized before the
+// ledger existed have the full schema but no schema_version table, and
+// adopting them replays the whole chain once.
+type pgMigration struct {
+	Version int
+	Name    string
+	// Statements are executed in order when fn is nil.
+	Statements []string
+	// fn covers migrations that need Go-level logic (info-schema checks,
+	// seeded rows, dynamic DDL).
+	fn func(ctx context.Context, d *Driver) error
+}
+
+// pgMigrations is the versioned chain. Versions 1-6 fold the historical
+// unversioned bootstrap (identical statements, identical order) so
+// already-initialized databases replay them as no-ops; versions 7+ are the
+// fixes the unversioned era lost.
+var pgMigrations = []pgMigration{
+	{Version: 1, Name: "baseline schema", Statements: baselineSchema},
+	{Version: 2, Name: "graph canonical", fn: func(ctx context.Context, d *Driver) error {
+		return migrateGraphCanonical(ctx, d.db)
+	}},
+	{Version: 3, Name: "jobs.user_mentions", fn: func(ctx context.Context, d *Driver) error {
+		return migrateJobsUserMentions(ctx, d.db)
+	}},
+	{Version: 4, Name: "jobs.user_hints", fn: func(ctx context.Context, d *Driver) error {
+		return migrateJobsUserHints(ctx, d.db)
+	}},
+	{Version: 5, Name: "jobs.user_profile+user_note", fn: func(ctx context.Context, d *Driver) error {
+		return migrateJobsUserProfileNote(ctx, d.db)
+	}},
+	{Version: 6, Name: "embedding models default seed", fn: func(ctx context.Context, d *Driver) error {
+		return migrateEmbeddingsDefaultSeed(ctx, d.db)
+	}},
+	// External dedup key (Slack ts, tweet ID, email message-id, …). The
+	// column was referenced by every object query but never created by the
+	// unversioned bootstrap — the canonical fresh-database break.
+	{Version: 7, Name: "objects.source_key", Statements: []string{
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS source_key TEXT DEFAULT ''`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_objects_source_key ON objects(source_key) WHERE source_key <> ''`,
+	}},
+	// Profile-scoped objects; profile_id = '' means the global scope.
+	// Mirrors the SQLite column so profile semantics stop silently
+	// flattening into the global namespace on this backend.
+	{Version: 8, Name: "objects.profile_id", Statements: []string{
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS profile_id TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_profile_id ON objects (profile_id)`,
+	}},
+}
+
 func (d *Driver) Migrate(ctx context.Context) error {
 	// The vector extension is a hard requirement (objects.embedding is a
 	// pgvector column). Degrade its failure to one clear error instead of a
-	// numbered migration failure.
+	// numbered migration failure. Runs outside the ledger: it is
+	// server-level state, not schema history.
 	if _, err := d.db.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS vector`); err != nil {
 		return pgvectorUnavailable(err)
 	}
 
-	migrations := []string{
-		`CREATE TABLE IF NOT EXISTS objects (
+	if _, err := d.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_version (
+		version    INTEGER PRIMARY KEY,
+		applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	)`); err != nil {
+		return fmt.Errorf("create schema_version: %w", err)
+	}
+
+	var current int
+	if err := d.db.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&current); err != nil {
+		return fmt.Errorf("read schema version: %w", err)
+	}
+
+	for _, m := range pgMigrations {
+		if m.Version <= current {
+			continue
+		}
+		if m.fn != nil {
+			if err := m.fn(ctx, d); err != nil {
+				return fmt.Errorf("apply migration %d (%s): %w", m.Version, m.Name, err)
+			}
+		} else {
+			for _, stmt := range m.Statements {
+				if _, err := d.db.ExecContext(ctx, stmt); err != nil {
+					return fmt.Errorf("apply migration %d (%s): %w", m.Version, m.Name, err)
+				}
+			}
+		}
+		if _, err := d.db.ExecContext(ctx,
+			`INSERT INTO schema_version (version) VALUES ($1)`, m.Version); err != nil {
+			return fmt.Errorf("record migration %d: %w", m.Version, err)
+		}
+	}
+	return nil
+}
+
+// baselineSchema is the pre-ledger bootstrap, frozen as versioned entry 1.
+// Do not extend it — append new pgMigrations entries instead.
+var baselineSchema = []string{
+	`CREATE TABLE IF NOT EXISTS objects (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
 			subtype TEXT DEFAULT '',
@@ -58,7 +153,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			remind_at TIMESTAMP,
 			reminded_at TIMESTAMP
 		)`,
-		`CREATE TABLE IF NOT EXISTS entities (
+	`CREATE TABLE IF NOT EXISTS entities (
 			slug          TEXT PRIMARY KEY,
 			title         TEXT DEFAULT '',
 			description   TEXT DEFAULT '',
@@ -71,9 +166,9 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at    TIMESTAMP NOT NULL,
 			updated_at    TIMESTAMP NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_entities_content_status ON entities(content_status)`,
-		`CREATE INDEX IF NOT EXISTS idx_entities_registry_url ON entities(registry_url)`,
-		`CREATE TABLE IF NOT EXISTS edges (
+	`CREATE INDEX IF NOT EXISTS idx_entities_content_status ON entities(content_status)`,
+	`CREATE INDEX IF NOT EXISTS idx_entities_registry_url ON entities(registry_url)`,
+	`CREATE TABLE IF NOT EXISTS edges (
 			id TEXT PRIMARY KEY,
 			from_type TEXT NOT NULL,
 			from_id TEXT NOT NULL,
@@ -84,7 +179,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			metadata JSONB DEFAULT '{}',
 			created_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS jobs (
+	`CREATE TABLE IF NOT EXISTS jobs (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'pending',
@@ -100,7 +195,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			started_at TIMESTAMP,
 			completed_at TIMESTAMP
 		)`,
-		`CREATE TABLE IF NOT EXISTS pipelines (
+	`CREATE TABLE IF NOT EXISTS pipelines (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL UNIQUE,
 			description TEXT DEFAULT '',
@@ -111,7 +206,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS steps (
+	`CREATE TABLE IF NOT EXISTS steps (
 			name TEXT PRIMARY KEY,
 			source TEXT NOT NULL,
 			path TEXT DEFAULT '',
@@ -119,14 +214,14 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			installed_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS registry_cache (
+	`CREATE TABLE IF NOT EXISTS registry_cache (
 			registry_url TEXT PRIMARY KEY,
 			manifest JSONB DEFAULT '{}',
 			last_fetched TIMESTAMP NOT NULL,
 			etag TEXT DEFAULT '',
 			auto_update BOOLEAN DEFAULT FALSE
 		)`,
-		`CREATE TABLE IF NOT EXISTS system_reminders (
+	`CREATE TABLE IF NOT EXISTS system_reminders (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
 			title TEXT NOT NULL,
@@ -137,7 +232,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS feeds (
+	`CREATE TABLE IF NOT EXISTS feeds (
 			id TEXT PRIMARY KEY,
 			url TEXT NOT NULL UNIQUE,
 			title TEXT DEFAULT '',
@@ -154,7 +249,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS feed_items (
+	`CREATE TABLE IF NOT EXISTS feed_items (
 			id TEXT PRIMARY KEY,
 			feed_id TEXT NOT NULL REFERENCES feeds(id),
 			guid TEXT NOT NULL,
@@ -163,7 +258,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			ingested_at TIMESTAMP NOT NULL,
 			UNIQUE (feed_id, guid)
 		)`,
-		`CREATE TABLE IF NOT EXISTS batches (
+	`CREATE TABLE IF NOT EXISTS batches (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'processing',
@@ -174,7 +269,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS detectors (
+	`CREATE TABLE IF NOT EXISTS detectors (
 			id           TEXT PRIMARY KEY,
 			kind         TEXT NOT NULL,
 			name         TEXT NOT NULL,
@@ -185,7 +280,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at   TIMESTAMP NOT NULL,
 			updated_at   TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS object_proximity (
+	`CREATE TABLE IF NOT EXISTS object_proximity (
 			object_a    TEXT NOT NULL,
 			object_b    TEXT NOT NULL,
 			score       REAL NOT NULL,
@@ -198,7 +293,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			PRIMARY KEY (object_a, object_b),
 			CHECK (object_a < object_b)
 		)`,
-		`CREATE TABLE IF NOT EXISTS watches (
+	`CREATE TABLE IF NOT EXISTS watches (
 			id               TEXT PRIMARY KEY,
 			path             TEXT NOT NULL UNIQUE,
 			mode             TEXT NOT NULL DEFAULT 'generic',
@@ -211,7 +306,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at       TIMESTAMP NOT NULL,
 			updated_at       TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS watch_file_records (
+	`CREATE TABLE IF NOT EXISTS watch_file_records (
 			watch_id     TEXT NOT NULL REFERENCES watches(id) ON DELETE CASCADE,
 			file_path    TEXT NOT NULL,
 			object_id    TEXT DEFAULT '',
@@ -219,7 +314,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			last_seen    TIMESTAMP NOT NULL,
 			PRIMARY KEY (watch_id, file_path)
 		)`,
-		`CREATE TABLE IF NOT EXISTS aliases (
+	`CREATE TABLE IF NOT EXISTS aliases (
 			alias       TEXT NOT NULL,
 			object_id   TEXT NOT NULL,
 			scope       TEXT NOT NULL DEFAULT 'global',
@@ -228,7 +323,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			updated_at  TIMESTAMP NOT NULL,
 			PRIMARY KEY (alias, scope, profile)
 		)`,
-		`CREATE TABLE IF NOT EXISTS audit_log (
+	`CREATE TABLE IF NOT EXISTS audit_log (
 			id          TEXT PRIMARY KEY,
 			event_type  TEXT NOT NULL,
 			object_id   TEXT NOT NULL DEFAULT '',
@@ -236,48 +331,48 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			payload     JSONB NOT NULL DEFAULT '{}',
 			created_at  TIMESTAMP NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_type, from_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_type, to_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_pipelines_archived ON pipelines(archived)`,
-		`CREATE INDEX IF NOT EXISTS idx_objects_hash ON objects(content_hash)`,
-		`CREATE INDEX IF NOT EXISTS idx_objects_embedding ON objects USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`,
-		`CREATE INDEX IF NOT EXISTS idx_feeds_status ON feeds(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_feed_items_feed_id ON feed_items(feed_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_feed_items_feed_guid ON feed_items(feed_id, guid)`,
-		`CREATE INDEX IF NOT EXISTS idx_batches_status ON batches(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_detectors_kind ON detectors(kind)`,
-		`CREATE INDEX IF NOT EXISTS idx_detectors_enabled ON detectors(enabled)`,
-		`CREATE INDEX IF NOT EXISTS idx_detectors_priority ON detectors(priority)`,
-		`CREATE INDEX IF NOT EXISTS idx_proximity_a_score ON object_proximity(object_a, score DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_proximity_b_score ON object_proximity(object_b, score DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_proximity_score ON object_proximity(score DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_proximity_computed ON object_proximity(computed_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_watches_status ON watches(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_wfr_watch_id ON watch_file_records(watch_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_aliases_object_id ON aliases(object_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_aliases_scope_profile ON aliases(scope, profile)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_object_id ON audit_log(object_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_event_type ON audit_log(event_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_log(created_at)`,
-		`CREATE TABLE IF NOT EXISTS registry_entitlements (
+	`CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_type, from_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_type, to_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type)`,
+	`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`,
+	`CREATE INDEX IF NOT EXISTS idx_pipelines_archived ON pipelines(archived)`,
+	`CREATE INDEX IF NOT EXISTS idx_objects_hash ON objects(content_hash)`,
+	`CREATE INDEX IF NOT EXISTS idx_objects_embedding ON objects USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`,
+	`CREATE INDEX IF NOT EXISTS idx_feeds_status ON feeds(status)`,
+	`CREATE INDEX IF NOT EXISTS idx_feed_items_feed_id ON feed_items(feed_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_feed_items_feed_guid ON feed_items(feed_id, guid)`,
+	`CREATE INDEX IF NOT EXISTS idx_batches_status ON batches(status)`,
+	`CREATE INDEX IF NOT EXISTS idx_detectors_kind ON detectors(kind)`,
+	`CREATE INDEX IF NOT EXISTS idx_detectors_enabled ON detectors(enabled)`,
+	`CREATE INDEX IF NOT EXISTS idx_detectors_priority ON detectors(priority)`,
+	`CREATE INDEX IF NOT EXISTS idx_proximity_a_score ON object_proximity(object_a, score DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_proximity_b_score ON object_proximity(object_b, score DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_proximity_score ON object_proximity(score DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_proximity_computed ON object_proximity(computed_at)`,
+	`CREATE INDEX IF NOT EXISTS idx_watches_status ON watches(status)`,
+	`CREATE INDEX IF NOT EXISTS idx_wfr_watch_id ON watch_file_records(watch_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_aliases_object_id ON aliases(object_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_aliases_scope_profile ON aliases(scope, profile)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_object_id ON audit_log(object_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_event_type ON audit_log(event_type)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_log(created_at)`,
+	`CREATE TABLE IF NOT EXISTS registry_entitlements (
 			registry_name TEXT PRIMARY KEY,
 			plan          TEXT NOT NULL,
 			namespaces    TEXT NOT NULL,
 			expires_at    TIMESTAMP,
 			fetched_at    TIMESTAMP NOT NULL DEFAULT NOW()
 		)`,
-		`CREATE TABLE IF NOT EXISTS federation_watermarks (
+	`CREATE TABLE IF NOT EXISTS federation_watermarks (
 			federation_name TEXT PRIMARY KEY,
 			last_synced_at  TIMESTAMPTZ NOT NULL DEFAULT 'epoch'
 		)`,
-		// ADR-071 Phase 1 (T-0582): embedding_models registry +
-		// composite-key embeddings table. Mirrors the sqlite migration
-		// 032/033 surface; the partial unique index uses postgres'
-		// "WHERE" partial-index syntax and the ON CONFLICT path on
-		// the seeded default row matches the sqlite semantics.
-		`CREATE TABLE IF NOT EXISTS embedding_models (
+	// ADR-071 Phase 1 (T-0582): embedding_models registry +
+	// composite-key embeddings table. Mirrors the sqlite migration
+	// 032/033 surface; the partial unique index uses postgres'
+	// "WHERE" partial-index syntax and the ON CONFLICT path on
+	// the seeded default row matches the sqlite semantics.
+	`CREATE TABLE IF NOT EXISTS embedding_models (
 			model_id      TEXT PRIMARY KEY,
 			provider      TEXT NOT NULL DEFAULT '',
 			dimension     INTEGER NOT NULL DEFAULT 0,
@@ -286,7 +381,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			deprecated_at TIMESTAMPTZ,
 			config_json   JSONB NOT NULL DEFAULT '{}'
 		)`,
-		`CREATE TABLE IF NOT EXISTS embeddings (
+	`CREATE TABLE IF NOT EXISTS embeddings (
 			object_id  TEXT NOT NULL,
 			model_id   TEXT NOT NULL REFERENCES embedding_models(model_id),
 			chunk_idx  INTEGER NOT NULL DEFAULT 0,
@@ -295,53 +390,17 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL,
 			PRIMARY KEY (object_id, model_id, chunk_idx)
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings (model_id, object_id)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_embedding_default
+	`CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings (model_id, object_id)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_embedding_default
 			ON embedding_models(is_default) WHERE is_default = 1`,
-		// ADR-070 §3 + ADR-071 §"Data model" callout: per-table
-		// signature stamps. Matches the sqlite migration 029 schema.
-		`CREATE TABLE IF NOT EXISTS index_signatures (
+	// ADR-070 §3 + ADR-071 §"Data model" callout: per-table
+	// signature stamps. Matches the sqlite migration 029 schema.
+	`CREATE TABLE IF NOT EXISTS index_signatures (
 			signature_id   TEXT PRIMARY KEY,
 			signature_hash TEXT NOT NULL,
 			computed_at    TIMESTAMPTZ NOT NULL,
 			inputs_summary TEXT NOT NULL DEFAULT ''
 		)`,
-	}
-
-	for i, m := range migrations {
-		if _, err := d.db.ExecContext(ctx, m); err != nil {
-			return fmt.Errorf("migration %d: %w", i+1, err)
-		}
-	}
-
-	// Graph-canonical migration: add graph_json + object_nodes (idempotent).
-	if err := migrateGraphCanonical(ctx, d.db); err != nil {
-		return fmt.Errorf("graph canonical migration: %w", err)
-	}
-	// Jobs.user_mentions column for `ctxt analyze --mentions` (T-0190).
-	if err := migrateJobsUserMentions(ctx, d.db); err != nil {
-		return fmt.Errorf("jobs.user_mentions migration: %w", err)
-	}
-	// Jobs.user_hints column for `ctxt capture --hint` (T-0573).
-	if err := migrateJobsUserHints(ctx, d.db); err != nil {
-		return fmt.Errorf("jobs.user_hints migration: %w", err)
-	}
-	// Jobs.user_profile + user_note columns for `ctxt capture
-	// --profile` and `--note` (T-0588). Idempotent.
-	if err := migrateJobsUserProfileNote(ctx, d.db); err != nil {
-		return fmt.Errorf("jobs.user_profile/user_note migration: %w", err)
-	}
-	// ADR-071 Phase 1 (T-0582): seed the legacy default embedding model
-	// row + stamp the matching index_signatures row. The legacy
-	// object_embeddings table never existed in the postgres schema
-	// (postgres carries embeddings on the `objects` row directly via the
-	// pgvector column), so there is nothing to backfill into the new
-	// `embeddings` table — but the registry still needs a default row so
-	// the CLI surface returns a meaningful value on a fresh install.
-	if err := migrateEmbeddingsDefaultSeed(ctx, d.db); err != nil {
-		return fmt.Errorf("embeddings default seed migration: %w", err)
-	}
-	return nil
 }
 
 // migrateEmbeddingsDefaultSeed inserts the legacy default embedding model row
