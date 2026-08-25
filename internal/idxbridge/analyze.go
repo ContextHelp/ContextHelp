@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 )
 
@@ -51,7 +52,17 @@ func (e *RemoteError) Error() string {
 // (the gated local direct path) accepted the enqueue. A live instance's
 // rejection (*RemoteError) is surfaced, never replayed against the next
 // instance or the local queue; only transport-level failures walk on.
+//
+// One call = one logical submission = one idempotency key: when the caller
+// did not supply req.IdempotencyKey the bridge mints a UUID here, before the
+// walk, and every attempt (each instance, and the local fallback) carries the
+// identical key. A transport failure after an instance already enqueued the
+// payload — response lost in transit — therefore replays as a dedupe hit on
+// the next instance sharing the queue instead of a duplicate ingestion.
 func (b *IdxBridge) Analyze(ctx context.Context, req service.AnalyzeRequest) (jobID, servedBy string, err error) {
+	if req.IdempotencyKey == "" {
+		req.IdempotencyKey = uuid.NewString()
+	}
 	for _, s := range b.servers {
 		if !b.probeServer(ctx, s) {
 			continue

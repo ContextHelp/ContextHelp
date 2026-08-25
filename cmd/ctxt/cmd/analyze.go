@@ -62,9 +62,11 @@ func init() {
 		{When: "on success", Suggest: "ctxt job status", Reason: "track the enqueued job"},
 		{When: "after enrichment completes", Suggest: "ctxt find <topic>", Reason: "discover related items"},
 	})
-	// "analyze" is not in kit's defaultIdempotency table; enqueueing the
-	// same content twice mints two jobs, so the operation is not
-	// idempotent without an explicit --idempotency-key.
+	// "analyze" is not in kit's defaultIdempotency table. Each invocation
+	// is one logical submission: the client mints an idempotency key per
+	// call, so transport replays within the failover walk are deduped
+	// server-side — but running the command twice is two submissions and
+	// mints two jobs.
 	cliconv.WithIdempotency(analyzeCmd, cliconv.IdempotencyConditional)
 
 	// Register flags on analyzeCmd for `ctxt analyze --help`.
