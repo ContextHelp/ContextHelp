@@ -953,6 +953,14 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 	if len(vector) == 0 {
 		return nil, fmt.Errorf("vector search: empty query vector")
 	}
+	// Cosine similarity is undefined against a zero-magnitude query, so no
+	// row can rank: return nothing, matching the ANN leg (vec0 reports
+	// unrankable NULL distances) and the Postgres driver (NaN distance
+	// fails its range predicate). Without this guard the brute-force
+	// scorer below hands every candidate back at score 0.
+	if isZeroVector(vector) {
+		return nil, nil
+	}
 
 	if s.vec != nil && s.vecDim > 0 && len(vector) == s.vecDim {
 		return s.vectorSearchANN(ctx, vector, filter)

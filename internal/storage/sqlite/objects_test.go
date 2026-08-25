@@ -488,6 +488,28 @@ func TestVectorSearch_EmptyVectorError(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestVectorSearch_ZeroQueryReturnsNothing pins the brute-force leg to the
+// cross-driver contract: cosine similarity is undefined against a
+// zero-magnitude query, so the search returns nothing — matching the ANN
+// leg (vec0 reports unrankable NULL distances) and the Postgres driver
+// (NaN distance fails the range predicate). Without the guard the
+// brute-force scorer hands every candidate back at score 0.
+func TestVectorSearch_ZeroQueryReturnsNothing(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj := makeObject("vec-zq", "item")
+	obj.Embeddings = []float32{1, 0, 0}
+	require.NoError(t, d.Objects().Create(ctx, obj))
+
+	// Dimension 3 ≠ the driver's ANN dimension, so this exercises the
+	// brute-force scan — the leg that scored zero queries at 0 for
+	// every row.
+	results, err := d.Objects().VectorSearch(ctx, []float32{0, 0, 0}, storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err)
+	assert.Empty(t, results)
+}
+
 func TestVectorSearch_RespectsLimit(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()
