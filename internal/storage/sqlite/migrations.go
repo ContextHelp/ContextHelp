@@ -739,4 +739,3 @@ func LegacyEmbeddingModelID(dim int) string {
 func EmbeddingSignatureID(modelID string) string {
 	return indexsig.EmbeddingSignatureID(modelID)
 }
-

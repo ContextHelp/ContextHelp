@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 

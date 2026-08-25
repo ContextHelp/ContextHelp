@@ -428,4 +428,3 @@ func newEmbeddingsRegistry() (*registry.Store, func(), error) {
 		return nil, nil, fmt.Errorf("ctxt embeddings: unsupported storage backend %T", svc.Store)
 	}
 }
-
