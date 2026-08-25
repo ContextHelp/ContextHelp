@@ -35,6 +35,11 @@ const (
 	DefaultProbeTimeout = 500 * time.Millisecond
 	// DefaultProbeInterval is how long a daemon-up result is cached.
 	DefaultProbeInterval = 30 * time.Second
+	// DefaultNegativeProbeInterval is how long a daemon-down result is
+	// cached. Deliberately much shorter than DefaultProbeInterval: a CLI
+	// that probed just before daemon startup must notice the daemon within
+	// about a second, not keep writing directly for the full positive TTL.
+	DefaultNegativeProbeInterval = 1 * time.Second
 )
 
 // IdxSearcher is the local fallback interface for index/search queries.
@@ -55,6 +60,9 @@ type Config struct {
 	// ProbeInterval is how long a successful probe result is cached.
 	// Defaults to DefaultProbeInterval.
 	ProbeInterval time.Duration
+	// NegativeProbeInterval is how long a failed probe result is cached.
+	// Defaults to DefaultNegativeProbeInterval.
+	NegativeProbeInterval time.Duration
 	// Fallback is the local searcher used when the daemon is unreachable.
 	// Required.
 	Fallback IdxSearcher
@@ -88,6 +96,9 @@ func New(cfg Config) *IdxBridge {
 	if cfg.ProbeInterval <= 0 {
 		cfg.ProbeInterval = DefaultProbeInterval
 	}
+	if cfg.NegativeProbeInterval <= 0 {
+		cfg.NegativeProbeInterval = DefaultNegativeProbeInterval
+	}
 	client := cfg.HTTPClient
 	if client == nil {
 		client = &http.Client{Timeout: cfg.ProbeTimeout}
@@ -97,12 +108,18 @@ func New(cfg Config) *IdxBridge {
 
 // Probe checks whether the daemon is reachable by calling its /health endpoint.
 // Returns true if the daemon responded with a 2xx status within the configured
-// ProbeTimeout. The result is cached for ProbeInterval.
+// ProbeTimeout. Results are cached asymmetrically: daemon-up for ProbeInterval,
+// daemon-down for the much shorter NegativeProbeInterval, so a daemon that
+// starts right after a miss is noticed quickly.
 func (b *IdxBridge) Probe(ctx context.Context) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if time.Since(b.probedAt) < b.cfg.ProbeInterval {
+	ttl := b.cfg.NegativeProbeInterval
+	if b.daemonLive {
+		ttl = b.cfg.ProbeInterval
+	}
+	if !b.probedAt.IsZero() && time.Since(b.probedAt) < ttl {
 		return b.daemonLive
 	}
 
