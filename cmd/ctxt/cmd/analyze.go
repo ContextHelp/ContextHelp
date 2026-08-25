@@ -82,7 +82,8 @@ func init() {
 	analyzeCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	analyzeCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	analyzeCmd.Flags().Bool("wait", false, "block until job completes")
-	analyzeCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	analyzeCmd.Flags().String("server", "",
+		"pin routing to this single dpkms instance, bypassing the configured server.urls failover list (default http://127.0.0.1:8080 when nothing is configured)")
 
 	// Mirror flags on rootCmd (local, not persistent) so `ctxt <content> --type url` works
 	// without leaking these flags into every subcommand's help.
@@ -98,7 +99,8 @@ func init() {
 	rootCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	rootCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	rootCmd.Flags().Bool("wait", false, "block until job completes")
-	rootCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	rootCmd.Flags().String("server", "",
+		"pin routing to this single dpkms instance, bypassing the configured server.urls failover list (default http://127.0.0.1:8080 when nothing is configured)")
 
 	// Bind viper keys: RunAnalyze reads from cmd.Flags() directly, so viper bindings
 	// here are for config-file fallback only (flag values take precedence via cmd.Flags()).
@@ -148,15 +150,16 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Using content from clipboard...\n")
 	}
 
-	// Determine the ordered server list. An explicit --server pins routing
-	// to that single instance; otherwise config server.urls (primary
-	// first), then server.url, then the default.
-	var serverURLs []string
+	// Determine the ordered endpoint list. An explicit --server pins
+	// routing to that single instance (reusing its configured token, if
+	// any); otherwise config server.urls (primary first), then
+	// server.url, then the default.
+	var endpoints []idxbridge.Endpoint
 	if f := cmd.Flags().Lookup("server"); f != nil && f.Changed {
 		v, _ := cmd.Flags().GetString("server")
-		serverURLs = []string{v}
+		endpoints = []idxbridge.Endpoint{pinnedEndpoint(v)}
 	} else {
-		serverURLs = clientServerURLs()
+		endpoints = clientEndpoints()
 	}
 
 	// Resolve --raw flag (present on both analyzeCmd and rootCmd).
@@ -227,7 +230,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	// local direct enqueue. A live instance's rejection is surfaced, never
 	// replayed against another instance or the local queue.
 	bridge := idxbridge.New(idxbridge.Config{
-		BaseURLs:        serverURLs,
+		Endpoints:       endpoints,
 		AnalyzeFallback: idxbridge.AnalyzeFunc(localDirectAnalyze),
 	})
 
@@ -276,19 +279,35 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	// on the instance that accepted the enqueue and fail loudly if the ID
 	// can't be located within a short window — that 404 is the canonical
 	// "silently dropped" signal.
-	return waitForJob(cmd.Context(), servedBy, jobID)
+	return waitForJob(cmd.Context(), servedBy, endpointToken(endpoints, servedBy), jobID)
 }
 
-// waitForJob polls GET /api/v1/jobs/{id} until the job reaches a terminal
-// state, the context is cancelled, or pollTimeout elapses. If the job ID
-// is not present in the queue within notFoundTimeout, return a clear
-// error pointing at the silent-drop class of bug — the worker may have
-// rejected the job before persistence.
-func waitForJob(ctx context.Context, serverURL, jobID string) error {
+// endpointToken returns the bearer token of the endpoint matching baseURL,
+// or "" when none matches or the endpoint is unauthenticated.
+func endpointToken(endpoints []idxbridge.Endpoint, baseURL string) string {
+	base := strings.TrimRight(baseURL, "/")
+	for _, ep := range endpoints {
+		if strings.TrimRight(ep.URL, "/") == base {
+			return ep.Token
+		}
+	}
+	return ""
+}
+
+// waitForJob polls GET /api/v1/jobs/{id} on the instance that accepted the
+// enqueue until the job reaches a terminal state, the context is cancelled,
+// or pollTimeout elapses. Every poll request is context-bound and capped by
+// a per-request timeout (the default client would hang indefinitely on a
+// stalled connection), and carries the instance's bearer token when one is
+// configured. If the job ID is not present in the queue within
+// notFoundTimeout, return a clear error pointing at the silent-drop class
+// of bug — the worker may have rejected the job before persistence.
+func waitForJob(ctx context.Context, serverURL, token, jobID string) error {
 	const (
 		pollTimeout     = 5 * time.Minute
 		notFoundTimeout = 5 * time.Second
 		pollInterval    = 500 * time.Millisecond
+		requestTimeout  = 10 * time.Second
 	)
 
 	if ctx == nil {
@@ -299,6 +318,7 @@ func waitForJob(ctx context.Context, serverURL, jobID string) error {
 
 	url := serverURL + "/api/v1/jobs/" + jobID
 	deadline404 := time.Now().Add(notFoundTimeout)
+	client := &gohttp.Client{Timeout: requestTimeout}
 
 	for {
 		select {
@@ -307,7 +327,14 @@ func waitForJob(ctx context.Context, serverURL, jobID string) error {
 		default:
 		}
 
-		resp, err := gohttp.Get(url)
+		req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodGet, url, nil)
+		if err != nil {
+			return fmt.Errorf("wait: build request %s: %w", url, err)
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, err := client.Do(req)
 		if err != nil {
 			return fmt.Errorf("wait: GET %s: %w", url, err)
 		}

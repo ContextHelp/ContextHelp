@@ -97,18 +97,45 @@ func newService() (*service.Service, func(), error) {
 	return svc, cleanup, nil
 }
 
-// clientServerURLs resolves the ordered dpkms server list for client-side
-// routing, primary first. Order: server.urls (ordered list, e.g. remote
-// primary then local fallback) > server.url (single instance; bound to
-// --server where the flag exists, config otherwise) > the bridge default.
-func clientServerURLs() []string {
-	if urls := viper.GetStringSlice("server.urls"); len(urls) > 0 {
-		return urls
+// clientEndpoints resolves the ordered dpkms endpoint list for client-side
+// routing, primary first, with per-instance credentials. Order:
+// config server.urls (each entry a URL or {url, token}; server.token fills
+// entries without their own) > server.url (bound to --server where the flag
+// exists, config otherwise) > the bridge default. Tokens only ever come
+// from config, never from flags.
+func clientEndpoints() []idxbridge.Endpoint {
+	def := cfg.Server.Token
+	if urls := cfg.Server.URLs; len(urls) > 0 {
+		eps := make([]idxbridge.Endpoint, len(urls))
+		for i, u := range urls {
+			tok := u.Token
+			if tok == "" {
+				tok = def
+			}
+			eps[i] = idxbridge.Endpoint{URL: u.URL, Token: tok}
+		}
+		return eps
 	}
 	if v := viper.GetString("server.url"); v != "" {
-		return []string{v}
+		return []idxbridge.Endpoint{{URL: v, Token: def}}
 	}
-	return []string{idxbridge.DefaultBaseURL}
+	if v := cfg.Server.URL; v != "" {
+		return []idxbridge.Endpoint{{URL: v, Token: def}}
+	}
+	return []idxbridge.Endpoint{{URL: idxbridge.DefaultBaseURL, Token: def}}
+}
+
+// pinnedEndpoint resolves an explicit --server URL to a single endpoint,
+// reusing the configured token when the URL matches a server.urls entry and
+// falling back to the server.token default otherwise.
+func pinnedEndpoint(rawURL string) idxbridge.Endpoint {
+	base := strings.TrimRight(rawURL, "/")
+	for _, ep := range clientEndpoints() {
+		if strings.TrimRight(ep.URL, "/") == base {
+			return idxbridge.Endpoint{URL: rawURL, Token: ep.Token}
+		}
+	}
+	return idxbridge.Endpoint{URL: rawURL, Token: cfg.Server.Token}
 }
 
 // resolveStoragePath returns the DB path to open, applying instance routing.

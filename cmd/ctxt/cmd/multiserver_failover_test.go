@@ -5,19 +5,27 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
-
-	"github.com/spf13/viper"
 )
 
-// setServerURLs points client routing at the given ordered instance list for
-// one test.
-func setServerURLs(t *testing.T, urls ...string) {
+// serverURLsConfig writes a config file routing clients at the given ordered
+// instance list (server.urls). Append the returned -c args to the command
+// under test — the typed config, not viper state, is the routing source.
+func serverURLsConfig(t *testing.T, urls ...string) []string {
 	t.Helper()
-	viper.Set("server.urls", urls)
-	t.Cleanup(func() { viper.Set("server.urls", []string{}) })
+	var b strings.Builder
+	b.WriteString("server:\n  urls:\n")
+	for _, u := range urls {
+		b.WriteString("    - " + u + "\n")
+	}
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte(b.String()), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	return []string{"-c", cfgPath}
 }
 
 // countingAnalyzeDaemon fakes a dpkms instance's health + analyze surface and
@@ -47,9 +55,9 @@ func TestAnalyzePrimaryDownRoutesToFallbackInstance(t *testing.T) {
 
 	var hits atomic.Int64
 	srv := countingAnalyzeDaemon(t, "job_failover_1", &hits)
-	setServerURLs(t, deadServerURL, srv.URL)
+	cfgArgs := serverURLsConfig(t, deadServerURL, srv.URL)
 
-	out, err := executeCommand(append([]string{"analyze", "failover content"}, storageOverride(dbPath)...)...)
+	out, err := executeCommand(append(append([]string{"analyze", "failover content"}, cfgArgs...), storageOverride(dbPath)...)...)
 	if err != nil {
 		t.Fatalf("analyze with live fallback instance: %v", err)
 	}
@@ -71,9 +79,9 @@ func TestAnalyzePrimaryDownRoutesToFallbackInstance(t *testing.T) {
 // the write lands in the gated local queue.
 func TestAnalyzeAllInstancesDownFallsBackLocally(t *testing.T) {
 	dbPath := tempDB(t)
-	setServerURLs(t, deadServerURL, "http://127.0.0.1:19998")
+	cfgArgs := serverURLsConfig(t, deadServerURL, "http://127.0.0.1:19998")
 
-	out, err := executeCommand(append([]string{"analyze", "fully offline"}, storageOverride(dbPath)...)...)
+	out, err := executeCommand(append(append([]string{"analyze", "fully offline"}, cfgArgs...), storageOverride(dbPath)...)...)
 	if err != nil {
 		t.Fatalf("analyze with all instances down should fall back locally: %v", err)
 	}
@@ -93,9 +101,9 @@ func TestAnalyzeServerFlagPinsRouting(t *testing.T) {
 
 	var hits atomic.Int64
 	srv := countingAnalyzeDaemon(t, "job_should_not_serve", &hits)
-	setServerURLs(t, srv.URL)
+	cfgArgs := serverURLsConfig(t, srv.URL)
 
-	out, err := executeCommand(append([]string{"analyze", "pinned content", "--server", deadServerURL}, storageOverride(dbPath)...)...)
+	out, err := executeCommand(append(append([]string{"analyze", "pinned content", "--server", deadServerURL}, cfgArgs...), storageOverride(dbPath)...)...)
 	if err != nil {
 		t.Fatalf("analyze with pinned dead server should fall back locally: %v", err)
 	}
@@ -118,9 +126,9 @@ func TestListQueryPrimaryDownFallsBackToSecondInstance(t *testing.T) {
 	var hits atomic.Int64
 	srv := startMockSearchDaemon(t, &hits)
 	defer srv.Close()
-	setServerURLs(t, deadServerURL, srv.URL)
+	cfgArgs := serverURLsConfig(t, deadServerURL, srv.URL)
 
-	out, err := executeCommand(append([]string{"list", "--q", "type==note"}, storageOverride(dbPath)...)...)
+	out, err := executeCommand(append(append([]string{"list", "--q", "type==note"}, cfgArgs...), storageOverride(dbPath)...)...)
 	if err != nil {
 		t.Fatalf("list --q with live second instance: %v", err)
 	}

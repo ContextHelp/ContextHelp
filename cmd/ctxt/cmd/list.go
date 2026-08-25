@@ -153,8 +153,8 @@ func runList(cmd *cobra.Command, args []string) error {
 		limit := viper.GetInt("list.limit")
 		offset := viper.GetInt("list.start")
 		bridge := idxbridge.New(idxbridge.Config{
-			BaseURLs: clientServerURLs(),
-			Fallback: svc,
+			Endpoints: clientEndpoints(),
+			Fallback:  svc,
 		})
 		objects, total, err := bridge.SearchObjects(ctx, q, limit, offset)
 		if err != nil {
