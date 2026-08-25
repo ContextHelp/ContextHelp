@@ -2,11 +2,12 @@ package postgres
 
 import (
 	"context"
-	"crypto/sha256"
+
 	"database/sql"
-	"encoding/hex"
+
 	"fmt"
-	"sort"
+
+	"strconv"
 	"strings"
 )
 
@@ -56,9 +57,7 @@ var pgMigrations = []pgMigration{
 	{Version: 5, Name: "jobs.user_profile+user_note", fn: func(ctx context.Context, d *Driver) error {
 		return migrateJobsUserProfileNote(ctx, d.db)
 	}},
-	{Version: 6, Name: "embedding models default seed", fn: func(ctx context.Context, d *Driver) error {
-		return migrateEmbeddingsDefaultSeed(ctx, d.db)
-	}},
+	{Version: 6, Name: "embedding models default seed", fn: migrateEmbeddingsDefaultSeed},
 	// External dedup key (Slack ts, tweet ID, email message-id, …). The
 	// column was referenced by every object query but never created by the
 	// unversioned bootstrap — the canonical fresh-database break.
@@ -73,6 +72,140 @@ var pgMigrations = []pgMigration{
 		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS profile_id TEXT NOT NULL DEFAULT ''`,
 		`CREATE INDEX IF NOT EXISTS idx_objects_profile_id ON objects (profile_id)`,
 	}},
+	// FTS half of the search schema: the projected body column (single
+	// source of indexed text, mirroring SQLite migration 023) plus a STORED
+	// generated tsvector over it with a GIN index. Generated-column
+	// maintenance replaces SQLite's manual delete+reinsert into the FTS
+	// virtual table and cannot drift from the row.
+	{Version: 9, Name: "objects.projected_fts_body + generated tsvector + GIN", Statements: []string{
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS projected_fts_body TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS fts tsvector
+			GENERATED ALWAYS AS (to_tsvector('` + ftsRegconfig + `', projected_fts_body)) STORED`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_fts ON objects USING GIN (fts)`,
+	}},
+	// Honest vector schema: re-type the dead embeddings.vector BYTEA (a
+	// copy-paste of the SQLite BLOB column that no Postgres query path can
+	// read) to a real pgvector column, and delete the phantom index
+	// signature stamped for the index that never existed.
+	{Version: 10, Name: "embeddings.vector BYTEA -> pgvector", fn: migrateEmbeddingsHonestVector},
+	// Vector dimension + ANN index: apply the driver-configured dimension
+	// to objects.embedding (dynamic DDL, the analog of SQLite's
+	// {DIMENSION}-templated vec0 migration) and replace the legacy ivfflat
+	// index with HNSW cosine ops.
+	{Version: 11, Name: "objects.embedding dimension + HNSW cosine index", fn: migrateObjectsEmbeddingDimension},
+}
+
+// ftsRegconfig is the text-search configuration for the generated tsvector
+// column and every tsquery built against it. 'simple' is deliberate: it does
+// no stemming and no stop-word removal, matching SQLite FTS5's default
+// unicode61 tokenizer semantics so both drivers agree on what matches. This
+// is the tokenizer-analog decision and feeds the FTS index signature.
+const ftsRegconfig = "simple"
+
+// hnswMaxDimension is pgvector's HNSW index ceiling. Columns above it (up
+// to 4000 with halfvec, which this driver does not use yet) fall back to
+// sequential scans — mirroring SQLite's brute-force path for non-standard
+// dimensions.
+const hnswMaxDimension = 2000
+
+// migrateEmbeddingsHonestVector re-types embeddings.vector from BYTEA to
+// pgvector `vector` (typmod-less: per-model dimensions are a first-class
+// expectation of the registry). The BYTEA column was write-only dead weight
+// — nothing ever read or wrote it — but the migration still refuses to drop
+// a column that somehow holds data. Also deletes the phantom
+// embeddings_<model_id> index signature stamped for the index that never
+// existed: provenance rows must describe real indexes only.
+func migrateEmbeddingsHonestVector(ctx context.Context, d *Driver) error {
+	var udt string
+	err := d.db.QueryRowContext(ctx, `
+		SELECT udt_name FROM information_schema.columns
+		 WHERE table_name = 'embeddings' AND column_name = 'vector'`).Scan(&udt)
+	if err != nil {
+		return fmt.Errorf("inspect embeddings.vector: %w", err)
+	}
+	if udt != "vector" {
+		var n int
+		if err := d.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM embeddings`).Scan(&n); err != nil {
+			return fmt.Errorf("count embeddings rows: %w", err)
+		}
+		if n > 0 {
+			return fmt.Errorf("embeddings.vector is %s and the table holds %d rows; refusing to drop data — export and clear the table, then re-run migration", udt, n)
+		}
+		if _, err := d.db.ExecContext(ctx,
+			`ALTER TABLE embeddings DROP COLUMN vector`); err != nil {
+			return fmt.Errorf("drop BYTEA vector column: %w", err)
+		}
+		if _, err := d.db.ExecContext(ctx,
+			`ALTER TABLE embeddings ADD COLUMN vector vector NOT NULL`); err != nil {
+			return fmt.Errorf("add pgvector vector column: %w", err)
+		}
+	}
+	if _, err := d.db.ExecContext(ctx,
+		`DELETE FROM index_signatures WHERE signature_id LIKE 'embeddings\_%'`); err != nil {
+		return fmt.Errorf("delete phantom embeddings signatures: %w", err)
+	}
+	return nil
+}
+
+// migrateObjectsEmbeddingDimension applies the driver-configured vector
+// dimension to objects.embedding and builds the ANN index.
+//
+// Dimension: the baseline schema hardcoded vector(1536); this entry re-types
+// the column to the configured dimension when they differ, refusing when
+// stored embeddings exist (they cannot be cast across dimensions — rebuild
+// embeddings first, exactly the flow ADR-070 signatures drive).
+//
+// Index: HNSW with cosine ops — cosine is the pinned cross-driver distance
+// contract. HNSW indexes cap at 2000 dimensions (halfvec extends to 4000);
+// larger dimensions skip the index and search via sequential scan.
+func migrateObjectsEmbeddingDimension(ctx context.Context, d *Driver) error {
+	dim := d.vectorDimension
+	if dim <= 0 {
+		dim = DefaultVectorDimension
+	}
+
+	var colType string
+	err := d.db.QueryRowContext(ctx, `
+		SELECT format_type(a.atttypid, a.atttypmod)
+		  FROM pg_attribute a
+		 WHERE a.attrelid = 'objects'::regclass
+		   AND a.attname = 'embedding' AND NOT a.attisdropped`).Scan(&colType)
+	if err != nil {
+		return fmt.Errorf("inspect objects.embedding: %w", err)
+	}
+
+	want := fmt.Sprintf("vector(%d)", dim)
+	if colType != want {
+		var n int
+		if err := d.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM objects WHERE embedding IS NOT NULL`).Scan(&n); err != nil {
+			return fmt.Errorf("count stored embeddings: %w", err)
+		}
+		if n > 0 {
+			return fmt.Errorf("objects.embedding is %s with %d stored vectors; cannot re-type to %s — clear or rebuild embeddings first", colType, n, want)
+		}
+		ddl := strings.ReplaceAll(
+			`ALTER TABLE objects ALTER COLUMN embedding TYPE vector({DIMENSION}) USING embedding::vector({DIMENSION})`,
+			"{DIMENSION}", strconv.Itoa(dim))
+		if _, err := d.db.ExecContext(ctx, ddl); err != nil {
+			return fmt.Errorf("re-type objects.embedding to %s: %w", want, err)
+		}
+	}
+
+	// The legacy ivfflat index predates the pinned metric contract.
+	if _, err := d.db.ExecContext(ctx,
+		`DROP INDEX IF EXISTS idx_objects_embedding`); err != nil {
+		return fmt.Errorf("drop legacy ivfflat index: %w", err)
+	}
+	if dim <= hnswMaxDimension {
+		if _, err := d.db.ExecContext(ctx,
+			`CREATE INDEX IF NOT EXISTS idx_objects_embedding_hnsw
+			   ON objects USING hnsw (embedding vector_cosine_ops)`); err != nil {
+			return fmt.Errorf("create hnsw cosine index: %w", err)
+		}
+	}
+	return nil
 }
 
 func (d *Driver) Migrate(ctx context.Context) error {
@@ -404,17 +537,21 @@ var baselineSchema = []string{
 }
 
 // migrateEmbeddingsDefaultSeed inserts the legacy default embedding model row
-// (matching the sqlite synthetic-model-id rule) + stamps the matching
-// index_signatures row. Idempotent — uses ON CONFLICT DO NOTHING on both
-// tables so re-running on an upgraded DB is a no-op.
+// (matching the sqlite synthetic-model-id rule). Idempotent — ON CONFLICT DO
+// NOTHING so re-running on an upgraded DB is a no-op.
 //
 // The synthetic model_id matches the sqlite-side rule from
 // migrate033EmbeddingsBackfill so a postgres-to-sqlite or sqlite-to-postgres
-// snapshot keeps the same model_id surface.
-func migrateEmbeddingsDefaultSeed(ctx context.Context, db *sql.DB) error {
-	const dim = 1536 // matches sqlite.DefaultVectorDimension; pgvector default
+// snapshot keeps the same model_id surface. No index signature is stamped
+// here: signatures describe real indexes, and the composite embeddings table
+// has none yet on this backend.
+func migrateEmbeddingsDefaultSeed(ctx context.Context, d *Driver) error {
+	dim := d.vectorDimension
+	if dim <= 0 {
+		dim = DefaultVectorDimension
+	}
 	modelID := fmt.Sprintf("legacy-blob-%d@2026-05-07", dim)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := d.db.ExecContext(ctx, `
 		INSERT INTO embedding_models
 			(model_id, provider, dimension, is_default, registered_at, config_json)
 		VALUES ($1, $2, $3, 1, NOW(), '{}'::jsonb)
@@ -423,33 +560,7 @@ func migrateEmbeddingsDefaultSeed(ctx context.Context, db *sql.DB) error {
 	); err != nil {
 		return fmt.Errorf("seed default embedding_models row: %w", err)
 	}
-
-	sigID := "embeddings_" + modelID
-	hash, summary := computeEmbeddingSignaturePG(modelID, "legacy-blob", dim)
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO index_signatures
-			(signature_id, signature_hash, computed_at, inputs_summary)
-		VALUES ($1, $2, NOW(), $3)
-		ON CONFLICT (signature_id) DO NOTHING`,
-		sigID, hash, summary,
-	); err != nil {
-		return fmt.Errorf("seed embeddings index_signatures row: %w", err)
-	}
 	return nil
-}
-
-// computeEmbeddingSignaturePG mirrors the sqlite hash so the value is
-// portable across backends.
-func computeEmbeddingSignaturePG(modelID, provider string, dimension int) (string, string) {
-	parts := []string{
-		"model_id=" + modelID,
-		"provider=" + provider,
-		fmt.Sprintf("dimension=%d", dimension),
-	}
-	sort.Strings(parts)
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
-	return hex.EncodeToString(sum[:]),
-		fmt.Sprintf("model_id=%s;provider=%s;dimension=%d", modelID, provider, dimension)
 }
 
 // migrateJobsUserMentions adds user_mentions TEXT column to jobs. Idempotent

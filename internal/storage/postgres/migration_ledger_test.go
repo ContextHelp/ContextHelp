@@ -24,6 +24,23 @@ import (
 // query but created by no migration).
 func freshIntegrationDriver(t *testing.T) (*pgdrv.Driver, string) {
 	t.Helper()
+	dsn, name := freshDatabaseDSN(t)
+	drv, err := pgdrv.New(dsn)
+	if err != nil {
+		t.Fatalf("postgres.New(fresh): %v", err)
+	}
+	t.Cleanup(func() { drv.Close(context.Background()) })
+	if err := drv.Migrate(context.Background()); err != nil {
+		t.Fatalf("Migrate(fresh): %v", err)
+	}
+	return drv, name
+}
+
+// freshDatabaseDSN provisions a brand-new database on the integration server
+// and returns a DSN pointing at it, without opening a driver — tests that
+// need pre-Init configuration (SetVectorDimension) construct their own.
+func freshDatabaseDSN(t *testing.T) (dsn, name string) {
+	t.Helper()
 	baseDSN := integrationDSN()
 	if baseDSN == "" {
 		t.Skip("POSTGRES_DSN (or POSTGRES_HOST + POSTGRES_USER) not set; skipping Postgres integration test")
@@ -35,7 +52,7 @@ func freshIntegrationDriver(t *testing.T) (*pgdrv.Driver, string) {
 	}
 	t.Cleanup(func() { admin.Close() })
 
-	name := fmt.Sprintf("ctxt_mig_%d_%04d", time.Now().UnixNano(), rand.Intn(10000))
+	name = fmt.Sprintf("ctxt_mig_%d_%04d", time.Now().UnixNano(), rand.Intn(10000))
 	if _, err := admin.Exec("CREATE DATABASE " + name); err != nil {
 		t.Fatalf("create fresh database: %v", err)
 	}
@@ -51,15 +68,7 @@ func freshIntegrationDriver(t *testing.T) (*pgdrv.Driver, string) {
 		t.Fatalf("parse base DSN: %v", err)
 	}
 	u.Path = "/" + name
-	drv, err := pgdrv.New(u.String())
-	if err != nil {
-		t.Fatalf("postgres.New(fresh): %v", err)
-	}
-	t.Cleanup(func() { drv.Close(context.Background()) })
-	if err := drv.Migrate(context.Background()); err != nil {
-		t.Fatalf("Migrate(fresh): %v", err)
-	}
-	return drv, name
+	return u.String(), name
 }
 
 func pgColumnExists(t *testing.T, db *sql.DB, table, column string) bool {
