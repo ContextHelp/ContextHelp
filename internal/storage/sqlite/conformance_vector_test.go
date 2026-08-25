@@ -14,3 +14,15 @@ func TestConformance_VectorRankFixture(t *testing.T) {
 	d := newTestDriverDim(t, storagetest.VectorRankDimension)
 	storagetest.RunVectorRankFixture(t, d)
 }
+
+// TestConformance_Search runs the full cross-driver search conformance
+// suite. SQLite claims both legs; dimension enforcement is lenient — mixed
+// dimensions are load-bearing for its brute-force path.
+func TestConformance_Search(t *testing.T) {
+	d := newTestDriverDim(t, storagetest.VectorRankDimension)
+	storagetest.RunSearchConformance(t, d, storagetest.SearchCapabilities{
+		FTS:                    true,
+		Vectors:                true,
+		StrictDimensionOnWrite: false,
+	})
+}

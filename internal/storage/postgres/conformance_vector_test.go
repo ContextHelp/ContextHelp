@@ -26,3 +26,18 @@ func TestPostgres_Conformance_VectorRankFixture(t *testing.T) {
 	}
 	storagetest.RunVectorRankFixture(t, drv)
 }
+
+// TestPostgres_Conformance_Search runs the full cross-driver search
+// conformance suite with the Postgres capabilities flipped on: schema,
+// methods, sanitizer seam, and signatures have all landed, so FTS and
+// Vectors assert for real instead of rendering as skips. Dimension
+// enforcement is strict — the typmod'd pgvector column refuses mismatched
+// writes.
+func TestPostgres_Conformance_Search(t *testing.T) {
+	drv := freshVectorDriver(t, storagetest.VectorRankDimension)
+	storagetest.RunSearchConformance(t, drv, storagetest.SearchCapabilities{
+		FTS:                    true,
+		Vectors:                true,
+		StrictDimensionOnWrite: true,
+	})
+}
