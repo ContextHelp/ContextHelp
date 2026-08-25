@@ -436,6 +436,52 @@ type ServerConfig struct {
 	GRPCPort int  `mapstructure:"grpc_port" yaml:"grpc_port"`
 	Workers  int  `mapstructure:"workers" yaml:"workers"`
 	Public   bool `mapstructure:"public" yaml:"public"`
+	// Auth selects and configures the inbound authentication provider.
+	// Consumed through the internal/auth Provider interface so the
+	// identity backend is an ops decision, never a rebuild.
+	Auth AuthConfig `mapstructure:"auth" yaml:"auth"`
+}
+
+// AuthConfig selects the inbound authentication provider and its settings.
+type AuthConfig struct {
+	// Provider names the authentication backend. "static" is implemented;
+	// "oidc" and "mtls" are reserved for future backends behind the same
+	// interface. Empty = no inbound auth configured.
+	Provider string `mapstructure:"provider" yaml:"provider"`
+	// Static configures the static token/API-key provider.
+	Static StaticAuthConfig `mapstructure:"static" yaml:"static"`
+}
+
+// StaticAuthConfig holds credentials for the static token provider.
+type StaticAuthConfig struct {
+	// Tokens maps bearer tokens / API keys to principals.
+	Tokens []StaticTokenConfig `mapstructure:"tokens" yaml:"tokens"`
+}
+
+// StaticTokenConfig is one accepted credential and the principal it
+// authenticates as.
+type StaticTokenConfig struct {
+	// Token is the shared secret presented by the caller.
+	Token string `mapstructure:"token" yaml:"token"`
+	// Principal is the stable identity assigned to callers of this token.
+	Principal string `mapstructure:"principal" yaml:"principal"`
+	// Roles grants coarse roles to the principal (e.g. "admin", "reader").
+	Roles []string `mapstructure:"roles" yaml:"roles"`
+}
+
+// HasInboundAuth reports whether the auth config carries a usable
+// credential set: a provider is selected and (for the static provider)
+// at least one token is configured. Reserved providers count as
+// configured here; their sub-config is validated at construction time.
+func (a AuthConfig) HasInboundAuth() bool {
+	switch a.Provider {
+	case "":
+		return false
+	case "static":
+		return len(a.Static.Tokens) > 0
+	default:
+		return true
+	}
 }
 
 // ProfileConfig represents profile configuration
