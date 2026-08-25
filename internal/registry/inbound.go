@@ -33,11 +33,15 @@ type InboundGate struct {
 }
 
 // NewInboundGate builds a gate over the instance's own entitlement and
-// metering stores.
+// metering stores. The gate's meter fails CLOSED: gates only exist on
+// non-private instances, where a quota-check failure must deny the
+// access rather than serve it unmetered.
 func NewInboundGate(ents storage.EntitlementStore, met storage.MeteringStore) *InboundGate {
+	meter := NewMeter(met)
+	meter.SetFailClosed(true)
 	return &InboundGate{
 		checker: NewEntitlementChecker(ents),
-		meter:   NewMeter(met),
+		meter:   meter,
 	}
 }
 

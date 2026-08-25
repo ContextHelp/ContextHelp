@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -13,6 +14,12 @@ type MeteringStore struct{}
 
 func (s *MeteringStore) Record(_ context.Context, _ *storage.MeteringEvent) error {
 	return fmt.Errorf("metering: postgres backend not yet implemented")
+}
+
+func (s *MeteringStore) RecordCapped(
+	_ context.Context, _ *storage.MeteringEvent, _ time.Time, _ int,
+) (bool, error) {
+	return false, fmt.Errorf("metering: postgres backend not yet implemented")
 }
 
 func (s *MeteringStore) Aggregate(

@@ -147,3 +147,41 @@ func TestInboundGateNilIsNoop(t *testing.T) {
 		t.Fatalf("nil Authorize: %v", err)
 	}
 }
+
+// The inbound gate meters fail CLOSED: a quota-usage read error denies
+// the access instead of serving it unmetered.
+func TestInboundGateFailsClosedOnMeteringReadError(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	gate := registry.NewInboundGate(driver.Entitlements(), &erroringMeteringStore{})
+	gate.SetQuota("partner", storage.MeteringEventEntityResolve, storage.QuotaConfig{Limit: 10})
+
+	err := gate.Authorize(context.Background(), "partner", "ai.models",
+		storage.MeteringEventEntityResolve)
+	if err == nil {
+		t.Fatal("expected error, got nil (inbound gate must fail closed on metering read error)")
+	}
+}
+
+type erroringMeteringStore struct{}
+
+func (e *erroringMeteringStore) Record(_ context.Context, _ *storage.MeteringEvent) error {
+	return errors.New("metering store down")
+}
+
+func (e *erroringMeteringStore) RecordCapped(
+	_ context.Context, _ *storage.MeteringEvent, _ time.Time, _ int,
+) (bool, error) {
+	return false, errors.New("metering store down")
+}
+
+func (e *erroringMeteringStore) Aggregate(
+	_ context.Context, _ storage.MeteringFilter,
+) ([]*storage.MeteringAggregate, error) {
+	return nil, errors.New("metering store down")
+}
+
+func (e *erroringMeteringStore) List(
+	_ context.Context, _ storage.MeteringFilter,
+) ([]*storage.MeteringEvent, error) {
+	return nil, errors.New("metering store down")
+}
