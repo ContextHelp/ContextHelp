@@ -188,6 +188,15 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		return obj.ID, nil
 	}
 
+	// A replayed submission (same client-generated idempotency key) must
+	// resolve to the job the first attempt enqueued — a response lost in
+	// transit after the enqueue would otherwise duplicate the payload.
+	if jobID, hit, err := s.dedupeOnIdempotencyKey(ctx, req.IdempotencyKey); err != nil {
+		return "", fmt.Errorf("analyze: %w", err)
+	} else if hit {
+		return jobID, nil
+	}
+
 	pipelineName := req.Pipeline
 	if pipelineName == "" {
 		pipelineName = s.Pipes.Detect(pipeline.DetectInput{
@@ -249,9 +258,17 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		UserHints:    req.Hints,    // T-0573: forwarded to draft.Tags (Source:"user") in worker.
 		UserProfile:  req.Profile,  // T-0588: forwarded to draft.ProfileID in worker.
 		UserNote:     req.Note,     // T-0588: forwarded to draft.InboxNote in worker.
+
+		IdempotencyKey: req.IdempotencyKey,
 	}
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
+		// Lost the insert race against a concurrent replay: the partial
+		// unique index on the key rejected this row, so the surviving job
+		// is the answer.
+		if jobID, hit, lerr := s.dedupeOnIdempotencyKey(ctx, req.IdempotencyKey); lerr == nil && hit {
+			return jobID, nil
+		}
 		return "", err
 	}
 	if ev, err := events.NewEvent("service.analyze", "job.enqueued", job); err == nil {
@@ -619,8 +636,33 @@ func (s *Service) UnarchivePipeline(ctx context.Context, name string) error {
 	return nil
 }
 
+// dedupeOnIdempotencyKey resolves a client-generated idempotency key to the
+// job that already carries it. hit reports whether a job was found; the empty
+// key never matches (legacy keyless submissions keep minting fresh jobs).
+func (s *Service) dedupeOnIdempotencyKey(ctx context.Context, key string) (jobID string, hit bool, err error) {
+	if key == "" {
+		return "", false, nil
+	}
+	existing, err := s.Store.Jobs().GetByIdempotencyKey(ctx, key)
+	if err != nil {
+		return "", false, fmt.Errorf("idempotency lookup: %w", err)
+	}
+	if existing == nil {
+		return "", false, nil
+	}
+	return existing.ID, true, nil
+}
+
 func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, error) {
 	now := time.Now().Truncate(time.Second)
+
+	// Same replay contract as Analyze: a key already enqueued wins.
+	if jobID, hit, err := s.dedupeOnIdempotencyKey(ctx, req.IdempotencyKey); err != nil {
+		return "", fmt.Errorf("enqueue: %w", err)
+	} else if hit {
+		return jobID, nil
+	}
+
 	pipelineName := req.Pipeline
 	if pipelineName == "" {
 		pipelineName = s.Pipes.Detect(pipeline.DetectInput{
@@ -637,18 +679,24 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 	}
 
 	job := &storage.Job{
-		ID:         uuid.New().String(),
-		Type:       "ingest:" + req.Type,
-		Status:     storage.JobPending,
-		Payload:    req.Content,
-		Pipeline:   pipelineName,
-		Source:     req.Source,
-		MaxRetries: 3,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:             uuid.New().String(),
+		Type:           "ingest:" + req.Type,
+		Status:         storage.JobPending,
+		Payload:        req.Content,
+		Pipeline:       pipelineName,
+		Source:         req.Source,
+		MaxRetries:     3,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		IdempotencyKey: req.IdempotencyKey,
 	}
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
+		// Lost the insert race against a concurrent replay; the surviving
+		// job carrying this key is the answer.
+		if jobID, hit, lerr := s.dedupeOnIdempotencyKey(ctx, req.IdempotencyKey); lerr == nil && hit {
+			return jobID, nil
+		}
 		return "", err
 	}
 	if ev, err := events.NewEvent("service.analyze", "job.enqueued", job); err == nil {
