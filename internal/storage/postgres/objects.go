@@ -11,6 +11,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	uri "hop.top/cite/scheme"
@@ -516,6 +517,15 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	if query == "" {
 		return nil, fmt.Errorf("fts search: empty query")
+	}
+
+	// The driver owns its dialect's quoting: raw user text arrives here and
+	// is reduced to bare AND'd terms for websearch_to_tsquery (raw
+	// hyphenated input would parse as a strict <-> phrase — semantic drift
+	// from the SQLite leg). Input with no usable tokens matches nothing.
+	query = ftsq.ForPostgres(query)
+	if query == "" {
+		return nil, nil
 	}
 
 	limit := filter.Limit

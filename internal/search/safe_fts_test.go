@@ -72,3 +72,37 @@ func TestSafeFTSQuery(t *testing.T) {
 		})
 	}
 }
+
+// TestSanitizeFTSQueryFor pins the dialect seam: drivers hand raw user text
+// to their own leg of this dispatcher; no caller above the driver boundary
+// pre-bakes any dialect's rules. Both legs reduce hostile input to the same
+// token set — FTS5 phrase-quoted on SQLite, bare space-joined terms for
+// websearch_to_tsquery's implicit AND on Postgres (raw hyphenated input
+// would otherwise parse as a strict <-> phrase there: semantic drift).
+func TestSanitizeFTSQueryFor(t *testing.T) {
+	cases := []struct {
+		name         string
+		in           string
+		wantSQLite   string
+		wantPostgres string
+	}{
+		{"bare term", "kubernetes", `"kubernetes"`, "kubernetes"},
+		{"hyphenated", "credit-eligible", `"credit" "eligible"`, "credit eligible"},
+		{"user quotes", `"exact phrase"`, `"exact" "phrase"`, "exact phrase"},
+		{"near call", "NEAR(a, b)", `"NEAR" "a" "b"`, "NEAR a b"},
+		{"boolean words", "alpha AND beta", `"alpha" "AND" "beta"`, "alpha AND beta"},
+		{"colon qualifier", "field:value", `"field" "value"`, "field value"},
+		{"punctuation only", `!!! ???`, "", ""},
+		{"empty", "", "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := search.SanitizeFTSQueryFor(search.DialectSQLite, c.in); got != c.wantSQLite {
+				t.Errorf("sqlite: got %q want %q", got, c.wantSQLite)
+			}
+			if got := search.SanitizeFTSQueryFor(search.DialectPostgres, c.in); got != c.wantPostgres {
+				t.Errorf("postgres: got %q want %q", got, c.wantPostgres)
+			}
+		})
+	}
+}

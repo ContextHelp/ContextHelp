@@ -3,6 +3,8 @@ package search
 import (
 	"fmt"
 	"strings"
+
+	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 )
 
 // Known fields that map directly to columns.
@@ -198,11 +200,10 @@ func compileRelated(n ComparisonNode) (string, []any, error) {
 }
 
 // PostgresFTSRegconfig is the text-search configuration bound into every
-// tsquery the compiler emits for Postgres. It must match the regconfig of
-// the generated tsvector column in the Postgres driver's schema ('simple':
-// no stemming, no stop words — the FTS5 unicode61 semantic analog); the
-// driver package pins the two equal in its tests.
-const PostgresFTSRegconfig = "simple"
+// tsquery the compiler emits for Postgres. Aliased from the shared ftsq
+// constant the Postgres driver also builds its generated tsvector column
+// from, so compiled predicates and the column can never disagree.
+const PostgresFTSRegconfig = ftsq.PostgresRegconfig
 
 // compileSimilar emits a full-text predicate against the dialect's FTS
 // index: FTS5 MATCH on SQLite, websearch_to_tsquery over the generated

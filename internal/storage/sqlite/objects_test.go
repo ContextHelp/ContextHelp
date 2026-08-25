@@ -577,6 +577,49 @@ func TestFTSSearch_HyphenatedQuerySanitised(t *testing.T) {
 	assert.Equal(t, "fts-hy-1", results[0].ID)
 }
 
+// TestFTSSearch_RawHostileInput pins the sanitizer seam moving behind the
+// driver boundary: FTSSearch receives RAW user text and applies the FTS5
+// quoting itself. No hostile input may error or leak operator semantics;
+// input with no usable tokens matches nothing rather than erroring.
+func TestFTSSearch_RawHostileInput(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj := makeFTSObject("fts-raw-1", "article", "documents that are credit eligible")
+	require.NoError(t, d.Objects().Create(ctx, obj))
+
+	_, err := d.db.ExecContext(ctx, "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")
+	require.NoError(t, err)
+
+	// The T-0565 repro, now raw at the driver.
+	results, err := d.Objects().FTSSearch(ctx, "credit-eligible", storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err, "raw hyphenated query must not crash MATCH")
+	require.Len(t, results, 1)
+	assert.Equal(t, "fts-raw-1", results[0].ID)
+
+	// Hostile corpus: no error, no operator semantics.
+	for _, q := range []string{
+		`"credit eligible"`,
+		"NEAR(credit, eligible)",
+		"credit AND eligible",
+		"credit OR nonexistent-term-xyz",
+		"credit:eligible",
+	} {
+		if _, err := d.Objects().FTSSearch(ctx, q, storage.ObjectFilter{Limit: 10}); err != nil {
+			t.Errorf("hostile input %q errored: %v", q, err)
+		}
+	}
+
+	// No usable tokens: match nothing, do not error.
+	results, err = d.Objects().FTSSearch(ctx, "!!! ???", storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err, "punctuation-only query must not error")
+	assert.Empty(t, results)
+
+	// Truly empty input is still a caller bug.
+	_, err = d.Objects().FTSSearch(ctx, "", storage.ObjectFilter{Limit: 10})
+	require.Error(t, err)
+}
+
 func TestCosineSimilarity(t *testing.T) {
 	assert.InDelta(t, 1.0, cosineSimilarity([]float32{1, 0, 0}, []float32{1, 0, 0}), 0.0001)
 	assert.InDelta(t, 0.0, cosineSimilarity([]float32{1, 0, 0}, []float32{0, 1, 0}), 0.0001)

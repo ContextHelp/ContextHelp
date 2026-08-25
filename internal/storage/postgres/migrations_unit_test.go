@@ -4,21 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	"github.com/ideacrafterslabs/ctxt/internal/search"
 )
-
-// TestFTSRegconfigMatchesCompiler pins the driver's tsvector regconfig to the
-// one the search compiler binds into similar== tsqueries. The two are
-// declared in separate packages (the driver deliberately does not import the
-// compiler); drifting configurations would make the compiled predicate and
-// the generated column disagree on what matches.
-func TestFTSRegconfigMatchesCompiler(t *testing.T) {
-	if ftsRegconfig != search.PostgresFTSRegconfig {
-		t.Errorf("driver regconfig %q != compiler regconfig %q",
-			ftsRegconfig, search.PostgresFTSRegconfig)
-	}
-}
 
 // TestPgvectorUnavailableError pins the operator-facing degradation of a
 // CREATE EXTENSION failure: one clear, actionable error instead of a raw

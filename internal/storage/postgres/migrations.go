@@ -9,6 +9,8 @@ import (
 
 	"strconv"
 	"strings"
+
+	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 )
 
 // pgvectorUnavailable wraps a CREATE EXTENSION vector failure in a single
@@ -100,7 +102,10 @@ var pgMigrations = []pgMigration{
 // no stemming and no stop-word removal, matching SQLite FTS5's default
 // unicode61 tokenizer semantics so both drivers agree on what matches. This
 // is the tokenizer-analog decision and feeds the FTS index signature.
-const ftsRegconfig = "simple"
+// Aliased from the shared ftsq constant (which the compiler's similar==
+// tsqueries also bind) so the generated column and every query against it
+// can never disagree.
+const ftsRegconfig = ftsq.PostgresRegconfig
 
 // hnswMaxDimension is pgvector's HNSW index ceiling. Columns above it (up
 // to 4000 with halfvec, which this driver does not use yet) fall back to

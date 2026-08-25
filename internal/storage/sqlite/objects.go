@@ -13,6 +13,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	uri "hop.top/cite/scheme"
@@ -1076,6 +1077,14 @@ func (s *ObjectStore) vectorSearchBruteForce(ctx context.Context, vector []float
 func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	if query == "" {
 		return nil, fmt.Errorf("fts search: empty query")
+	}
+
+	// The driver owns its dialect's quoting: raw user text arrives here and
+	// FTS5 phrase-quoting is applied at the boundary, never by callers.
+	// Input with no usable tokens matches nothing rather than erroring.
+	query = ftsq.ForSQLite(query)
+	if query == "" {
+		return nil, nil
 	}
 
 	limit := filter.Limit

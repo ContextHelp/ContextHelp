@@ -243,6 +243,56 @@ func TestPostgresFTSSearchNodeAware(t *testing.T) {
 	}
 }
 
+// TestPostgresFTSSearch_RawHostileInput pins the sanitizer seam on the
+// Postgres leg: FTSSearch receives RAW user text; the driver reduces it to
+// the same token set the SQLite leg quotes, so hyphenated input matches
+// separated words (raw websearch_to_tsquery would demand a strict <->
+// phrase) and no hostile syntax errors or changes semantics.
+func TestPostgresFTSSearch_RawHostileInput(t *testing.T) {
+	drv, _ := freshIntegrationDriver(t)
+	ctx := context.Background()
+
+	if err := drv.Objects().Create(ctx, makePgFTSObject("fts-pg-raw1", "article", "documents that are credit eligible")); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// The T-0565 repro shape: hyphenated query, separated words in the doc.
+	results, err := drv.Objects().FTSSearch(ctx, "credit-eligible", storage.ObjectFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("raw hyphenated query errored: %v", err)
+	}
+	if len(results) != 1 || results[0].ID != "fts-pg-raw1" {
+		t.Fatalf("hyphenated query results: got %+v want single fts-pg-raw1", ids(results))
+	}
+
+	// Hostile corpus: no error, implicit-AND semantics only.
+	for _, q := range []string{
+		`"credit eligible"`,
+		"NEAR(credit, eligible)",
+		"credit AND eligible",
+		"credit OR nonexistent-term-xyz",
+		"credit:eligible",
+	} {
+		if _, err := drv.Objects().FTSSearch(ctx, q, storage.ObjectFilter{Limit: 10}); err != nil {
+			t.Errorf("hostile input %q errored: %v", q, err)
+		}
+	}
+
+	// No usable tokens: match nothing, do not error.
+	results, err = drv.Objects().FTSSearch(ctx, "!!! ???", storage.ObjectFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("punctuation-only query errored: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("punctuation-only query returned hits: %+v", ids(results))
+	}
+
+	// Truly empty input is still a caller bug.
+	if _, err := drv.Objects().FTSSearch(ctx, "", storage.ObjectFilter{Limit: 10}); err == nil {
+		t.Error("empty query succeeded; want error")
+	}
+}
+
 // TestPostgresSimilarQueryEndToEnd pins the lifted similar== rejection: the
 // RSQL engine auto-detects the Postgres dialect and the compiled
 // websearch_to_tsquery predicate executes against the generated tsvector
