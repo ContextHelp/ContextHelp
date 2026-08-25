@@ -53,10 +53,12 @@ func (d *dedupeStore) enqueueCount() int {
 type mockInstance struct {
 	srv           *httptest.Server
 	healthy       atomic.Bool
+	healthHits    atomic.Int64
 	analyzeHits   atomic.Int64
 	searchHits    atomic.Int64
 	jobID         string
 	analyzeStatus int          // 0 → 202 Accepted
+	searchStatus  int          // 0 → 200 OK
 	dropAnalyze   bool         // enqueue, then close the conn instead of answering
 	dedupe        *dedupeStore // nil → every accepted analyze enqueues
 	lastKey       atomic.Value // string: idempotency key of the last analyze
@@ -69,6 +71,7 @@ func newMockInstance(t *testing.T, jobID string) *mockInstance {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		m.healthHits.Add(1)
 		if !m.healthy.Load() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
@@ -125,6 +128,11 @@ func newMockInstance(t *testing.T, jobID string) *mockInstance {
 	mux.HandleFunc("/api/v1/search", func(w http.ResponseWriter, r *http.Request) {
 		m.searchHits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
+		if m.searchStatus != 0 && m.searchStatus != http.StatusOK {
+			w.WriteHeader(m.searchStatus)
+			_, _ = w.Write([]byte(`{"error":"BAD_QUERY","message":"unparseable RSQL"}`))
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data":  []map[string]any{{"id": "obj-" + m.jobID, "type": "note"}},
 			"total": 1,

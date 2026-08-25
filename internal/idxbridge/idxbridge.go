@@ -27,6 +27,7 @@ package idxbridge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -228,9 +229,17 @@ func (b *IdxBridge) serverList() string {
 }
 
 // SearchObjects executes an RSQL query. It walks the ordered server list and
-// proxies the request to GET /api/v1/search on the first live instance; any
-// failure there invalidates that instance's probe and walks on. When no
-// instance serves the query it delegates to the Fallback.
+// proxies the request to GET /api/v1/search on the first live instance.
+//
+// Failure routing distinguishes decision from outage:
+//   - 4xx (completed exchange): the instance is live and rejected THIS
+//     query — surface it as *RemoteError with the instance's diagnostic.
+//     No walk (the next instance would reject it the same way), no probe
+//     invalidation (health was never in question).
+//   - 5xx or transport-level failure: the instance is failing — invalidate
+//     its probe and walk to the next one.
+//
+// When no instance serves the query it delegates to the Fallback.
 func (b *IdxBridge) SearchObjects(
 	ctx context.Context,
 	query string,
@@ -245,8 +254,11 @@ func (b *IdxBridge) SearchObjects(
 		if err == nil {
 			return objs, total, nil
 		}
-		// Instance answered health but search failed — invalidate it and
-		// walk to the next one.
+		var rerr *RemoteError
+		if errors.As(err, &rerr) && rerr.StatusCode >= 400 && rerr.StatusCode < 500 {
+			return nil, 0, err
+		}
+		// 5xx or transport failure — invalidate and walk to the next one.
 		s.invalidate()
 	}
 	if b.cfg.Fallback == nil {
@@ -289,7 +301,7 @@ func (b *IdxBridge) remoteSearch(
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, 0, fmt.Errorf("idxbridge: daemon returned %d: %s", resp.StatusCode, body)
+		return nil, 0, &RemoteError{StatusCode: resp.StatusCode, Body: string(body)}
 	}
 
 	var payload struct {

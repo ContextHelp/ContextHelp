@@ -29,10 +29,11 @@ func (f AnalyzeFunc) Analyze(ctx context.Context, req service.AnalyzeRequest) (s
 	return f(ctx, req)
 }
 
-// RemoteError is an application-level response from a live daemon (non-2xx
-// with a completed HTTP exchange). The daemon answered and made a decision, so
-// routing must NOT fall back on it — a rejected request would otherwise be
-// silently re-run against the local direct path.
+// RemoteError is an application-level response from a live daemon: a non-2xx
+// status on a completed HTTP exchange, on either the analyze or the search
+// surface. The daemon answered and made a decision, so routing must NOT fall
+// back on a 4xx — the rejected request would otherwise be silently re-run
+// against the next instance or the local direct path.
 type RemoteError struct {
 	// StatusCode is the daemon's HTTP status.
 	StatusCode int
