@@ -323,6 +323,11 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	mergedMentionStrs := mergeStrings(mentionsToStrings(obj.Mentions), mentionsToStrings(mergeData.Mentions))
 	mergedMentionsJSON, _ := json.Marshal(mergedMentionStrs)
 
+	// fts_indexed / vector_indexed are left untouched: Reinforce never
+	// rewrites projected_fts_body (the generated tsvector stays valid) or
+	// the embedding column, and no downstream re-indexer exists to flip
+	// the flags back. Clearing them here misreported reinforced
+	// (deduplicated) objects as unindexed even though FTS still matched.
 	if mergeData.RawContent != "" && mergeData.RawContent != hash {
 		_, err = tx.ExecContext(ctx, `UPDATE objects SET
 			reinforcement_count = reinforcement_count + 1,
@@ -330,8 +335,6 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 			tags = $2,
 			mentions = $3,
 			updated_at = $4,
-			fts_indexed = FALSE,
-			vector_indexed = FALSE,
 			raw_content = $5
 		WHERE content_hash = $6`,
 			now, mergedTagsJSON, mergedMentionsJSON, now,
@@ -343,9 +346,7 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 			last_reinforced_at = $1,
 			tags = $2,
 			mentions = $3,
-			updated_at = $4,
-			fts_indexed = FALSE,
-			vector_indexed = FALSE
+			updated_at = $4
 		WHERE content_hash = $5`,
 			now, mergedTagsJSON, mergedMentionsJSON, now, hash,
 		)
