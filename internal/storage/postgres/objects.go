@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	uri "hop.top/cite/scheme"
@@ -31,6 +32,20 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.Status = "active"
 	}
 
+	// For text pipeline objects, populate TextContent from RawContent when
+	// empty so the projection sees the same input as on SQLite.
+	if obj.TextContent == "" && obj.RawContent != "" {
+		obj.TextContent = obj.RawContent
+	}
+
+	// Derive FTS body from projection — single source of truth for indexed
+	// text. The generated tsvector column tracks projected_fts_body, so no
+	// manual index maintenance is needed beyond writing the body.
+	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
+	if projectedFTSBody != "" {
+		obj.FTSIndexed = true
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("create object: begin tx: %w", err)
@@ -43,21 +58,21 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions, tasks, embedding, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, graph_json, source_key
+		remind_at, reminded_at, graph_json, source_key, projected_fts_body
 	) VALUES (
 		$1, $2, $3, $4, $5,
 		$6, $7, $8, $9, $10,
 		$11, $12, $13, $14, $15,
 		$16, $17, $18, $19, $20,
 		$21, $22, $23, $24, $25, $26,
-		$27, $28, $29, $30
+		$27, $28, $29, $30, $31
 	)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey,
+		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey, projectedFTSBody,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
@@ -218,6 +233,13 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		return fmt.Errorf("update object graph: %w", err)
 	}
 
+	// Derive FTS body from projection — single source of truth for indexed
+	// text; the generated tsvector column tracks the rewritten body.
+	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
+	if projectedFTSBody != "" {
+		obj.FTSIndexed = true
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("update object: begin tx: %w", err)
@@ -231,15 +253,15 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences=$15, plugins=$16, content_hash=$17,
 		reinforcement_count=$18, last_reinforced_at=$19,
 		updated_at=$20, fts_indexed=$21, vector_indexed=$22, status=$23, inbox_note=$24,
-		remind_at=$25, reminded_at=$26, graph_json=$27
-	WHERE id=$28`,
+		remind_at=$25, reminded_at=$26, graph_json=$27, projected_fts_body=$28
+	WHERE id=$29`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash,
 		obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, graphJSON,
+		f.remindAt, f.remindedAt, graphJSON, projectedFTSBody,
 		obj.ID,
 	)
 	if err != nil {
@@ -480,14 +502,142 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 	return objects, rows.Err()
 }
 
-// FTSSearch is not implemented for the postgres backend.
+// FTSSearch runs full-text search over the generated tsvector column.
+// websearch_to_tsquery neutralizes hostile query syntax by design; ts_rank_cd
+// orders best-first (DESC), matching the rank semantics of the SQLite bm25
+// leg (which orders ascending because bm25 is smaller-is-better). RRF
+// upstream consumes rank order only — score parity with bm25 is explicitly
+// not the contract. The score lands in Metadata["fts_score"], same key as
+// SQLite.
 func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	return nil, fmt.Errorf("FTSSearch: not implemented for postgres backend")
+	if query == "" {
+		return nil, fmt.Errorf("fts search: empty query")
+	}
+
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	// $1 is the raw query text; the tsquery is computed once in the FROM
+	// clause and shared by the match predicate and the rank expression.
+	// Filter placeholders number themselves from $2, mirroring the SQLite
+	// filter shape (type + metadata facets).
+	conditions := []string{"fts @@ q"}
+	args := []any{query}
+	idx := 2
+
+	if filter.Type != "" {
+		conditions = append(conditions, fmt.Sprintf("type = $%d", idx))
+		args = append(args, filter.Type)
+		idx++
+	}
+
+	// Metadata facet filters (US-0407).
+	mc, ma := metadataFacetConditionsPG(filter, &idx)
+	conditions = append(conditions, mc...)
+	args = append(args, ma...)
+
+	q := objectSelectCols + fmt.Sprintf(`, ts_rank_cd(fts, q) AS score
+		FROM objects, websearch_to_tsquery('%s', $1) AS q
+		WHERE %s
+		ORDER BY score DESC LIMIT %d`,
+		ftsRegconfig, strings.Join(conditions, " AND "), limit)
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("fts search: %w", err)
+	}
+	defer rows.Close()
+
+	var results []*storage.KnowledgeObject
+	for rows.Next() {
+		obj, score, err := scanObjectRowWithScore(rows)
+		if err != nil {
+			return nil, fmt.Errorf("fts search scan: %w", err)
+		}
+		if obj.Metadata == nil {
+			obj.Metadata = make(map[string]any)
+		}
+		obj.Metadata["fts_score"] = score
+		results = append(results, obj)
+	}
+	return results, rows.Err()
 }
 
-// FTSSearchNodeAware is not implemented for the postgres backend.
-func (s *ObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
-	return nil, fmt.Errorf("FTSSearchNodeAware: not implemented for postgres backend")
+// nodeTypeObjectIDs returns object IDs that contain at least one node of each
+// requested type. When nodeTypes is empty, nil is returned (no pre-filter).
+func (s *ObjectStore) nodeTypeObjectIDs(ctx context.Context, nodeTypes []string) (map[string]struct{}, error) {
+	if len(nodeTypes) == 0 {
+		return nil, nil
+	}
+	// Only objects that have ALL requested node types are returned.
+	placeholders := make([]string, len(nodeTypes))
+	args := make([]any, len(nodeTypes))
+	for i, t := range nodeTypes {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = t
+	}
+	q := fmt.Sprintf(
+		`SELECT object_id FROM object_nodes WHERE node_type IN (%s)
+		 GROUP BY object_id HAVING COUNT(DISTINCT node_type) = $%d`,
+		strings.Join(placeholders, ", "), len(nodeTypes)+1,
+	)
+	args = append(args, len(nodeTypes))
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("node type object IDs: %w", err)
+	}
+	defer rows.Close()
+
+	ids := make(map[string]struct{})
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("node type object IDs scan: %w", err)
+		}
+		ids[id] = struct{}{}
+	}
+	return ids, rows.Err()
+}
+
+// FTSSearchNodeAware runs FTS search with an optional NodeAwareFilter.
+// When naf.NodeTypes is set, only objects containing ALL those node types are
+// returned. Results include a populated DocumentView when naf.ReturnNodeHits
+// is true. Node-type pre-filtering happens in-process after the query so
+// relevance ordering is preserved, mirroring the SQLite shape.
+func (s *ObjectStore) FTSSearchNodeAware(
+	ctx context.Context,
+	query string,
+	filter storage.ObjectFilter,
+	naf pluginapi.NodeAwareFilter,
+) ([]*pluginapi.NodeAwareResult, error) {
+	objects, err := s.FTSSearch(ctx, query, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	allowedIDs, err := s.nodeTypeObjectIDs(ctx, naf.NodeTypes)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []*pluginapi.NodeAwareResult
+	for _, obj := range objects {
+		if allowedIDs != nil {
+			if _, ok := allowedIDs[obj.ID]; !ok {
+				continue
+			}
+		}
+		r := &pluginapi.NodeAwareResult{Object: obj}
+		if naf.ReturnNodeHits {
+			dv := projection.ProjectDocument(obj)
+			r.DocumentView = &dv
+		}
+		out = append(out, r)
+	}
+	return out, nil
 }
 
 // VectorSearchNodeAware is not implemented for the postgres backend.
