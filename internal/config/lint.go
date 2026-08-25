@@ -80,6 +80,14 @@ func lintAccess(cfg *Config) []LintFinding {
 			Message:  "inbound federation token configured on a private instance — remote pushers cannot reach it; did you mean server.access: protected?",
 		})
 	}
+	if cfg.Server.EffectiveAccess() != AccessPrivate && cfg.Federation.Token == "" {
+		findings = append(findings, LintFinding{
+			Severity: SeverityWarn,
+			Field:    "federation.token",
+			Message:  "no federation.token on a non-private instance — the federation push route refuses all requests until one is configured",
+			Fix:      "set federation.token to enable inbound federation push, or ignore if this instance never receives pushes",
+		})
+	}
 	return findings
 }
 

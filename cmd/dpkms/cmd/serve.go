@@ -363,13 +363,22 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Serve-time federation-credential validation: on non-private
+	// instances the push route is gated per federation.token, never by
+	// a principal token alone; without one the route refuses requests.
+	requireFedCred := access != config.AccessPrivate
+	if requireFedCred && cfg.Federation.Token == "" {
+		fmt.Printf("Federation push: refused — no federation.token configured (mandatory on %s instances)\n", access)
+	}
+
 	router := httpserver.NewRouterWithConfig(svc, httpserver.RouterConfig{
-		DevCORS:      devCORS,
-		Watcher:      watchMgr,
-		Probes:       healthProbes,
-		Auth:         routeAuth,
-		Security:     secEmitter,
-		Entitlements: inboundGate,
+		DevCORS:                     devCORS,
+		Watcher:                     watchMgr,
+		Probes:                      healthProbes,
+		Auth:                        routeAuth,
+		Security:                    secEmitter,
+		Entitlements:                inboundGate,
+		RequireFederationCredential: requireFedCred,
 	})
 	router.Handle("/ws/bus", hubNet.Handler())
 

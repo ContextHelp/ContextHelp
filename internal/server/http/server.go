@@ -38,6 +38,11 @@ type RouterConfig struct {
 	// namespace grants and metering quotas. nil = no inbound
 	// entitlement enforcement (private instance).
 	Entitlements *registry.InboundGate
+	// RequireFederationCredential makes the federation.token credential
+	// mandatory on the push route (non-private instances): without a
+	// configured token the route refuses requests instead of accepting
+	// any authenticated principal.
+	RequireFederationCredential bool
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -223,8 +228,9 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		// Audit log (US-0405)
 		r.Get("/audit-log", ListAuditLog(svc))
 
-		// Federation push (Phase 2)
-		r.Post("/federation/push", FederationPush(svc))
+		// Federation push (Phase 2). On non-private instances the
+		// federation credential is mandatory, not just any principal.
+		r.Post("/federation/push", FederationPush(svc, rc.RequireFederationCredential))
 
 		// MCP read-surface (per ADR-068).
 		// Mounted at /api/v1/mcp/ as a sibling of REST routes. JSON-RPC 2.0

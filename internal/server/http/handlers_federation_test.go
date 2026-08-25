@@ -183,3 +183,85 @@ func TestFederationPush_NoAuthConfigured(t *testing.T) {
 		t.Errorf("status: got %d, want 200", resp.StatusCode)
 	}
 }
+
+// newFedCredBundle models a non-private instance: the federation
+// credential is mandatory on the push route.
+func newFedCredBundle(t *testing.T, federationToken string) *testServerBundle {
+	t.Helper()
+	driver := storageutil.NewTestDriver(t)
+	q := jobs.NewQueue(driver.Jobs())
+	pipes := builtins.Registry()
+	engine := search.NewEngine(driver)
+	cfg := config.Config{
+		Federation: config.FederationConfig{Token: federationToken},
+	}
+	svc := service.New(driver, q, pipes, engine, "", nil, cfg)
+	return &testServerBundle{
+		Server: httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{
+			RequireFederationCredential: true,
+		})),
+		svc: svc,
+	}
+}
+
+// With a mandatory credential and no federation.token configured, the
+// push route refuses every request — an authenticated principal alone
+// must never be enough to push.
+func TestFederationPush_MandatoryCredentialRefusesRouteWithoutToken(t *testing.T) {
+	ts := newFedCredBundle(t, "")
+	defer ts.Close()
+
+	body := makePushBody(t, []storage.KnowledgeObject{makeKO("o6", "h6")}, nil)
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/federation/push", body)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status: got %d, want 403", resp.StatusCode)
+	}
+	var env ErrorEnvelope
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error.Code != "FEDERATION_DISABLED" {
+		t.Errorf("code: got %q, want FEDERATION_DISABLED", env.Error.Code)
+	}
+}
+
+// With a mandatory credential the configured token still gates the
+// push: wrong bearer → 401, correct bearer → 200.
+func TestFederationPush_MandatoryCredentialGatesPerToken(t *testing.T) {
+	ts := newFedCredBundle(t, "fed-secret")
+	defer ts.Close()
+
+	body := makePushBody(t, []storage.KnowledgeObject{makeKO("o7", "h7")}, nil)
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/federation/push", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer wrong")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("wrong token status: got %d, want 401", resp.StatusCode)
+	}
+
+	body = makePushBody(t, []storage.KnowledgeObject{makeKO("o7", "h7")}, nil)
+	req, _ = http.NewRequest(http.MethodPost, ts.URL+"/api/v1/federation/push", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer fed-secret")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("correct token status: got %d, want 200", resp.StatusCode)
+	}
+}

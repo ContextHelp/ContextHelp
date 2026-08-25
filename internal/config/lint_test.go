@@ -253,3 +253,25 @@ func TestLintAccessProtectedWithFederationTokenIsQuiet(t *testing.T) {
 		}
 	}
 }
+
+func TestLintAccessNonPrivateWithoutFederationToken(t *testing.T) {
+	cfg := &Config{}
+	cfg.Server.Access = AccessProtected
+	cfg.Server.Auth = AuthConfig{
+		Provider: "static",
+		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p"}}},
+	}
+
+	findings := LintConfig(cfg, "")
+
+	var hit *LintFinding
+	for i, f := range findings {
+		if f.Field == "federation.token" {
+			hit = &findings[i]
+			break
+		}
+	}
+	require.NotNil(t, hit, "expected federation.token finding on non-private instance without a credential")
+	assert.Equal(t, SeverityWarn, hit.Severity)
+	assert.Contains(t, hit.Message, "push")
+}
