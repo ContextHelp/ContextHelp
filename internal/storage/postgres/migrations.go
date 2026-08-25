@@ -250,6 +250,18 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			return fmt.Errorf("record migration %d: %w", m.Version, err)
 		}
 	}
+
+	// Capability detection, not schema: pgvector >= 0.8.0 ships
+	// hnsw.iterative_scan, which the search paths enable per query so a
+	// filtered KNN cannot under-return below LIMIT (pgvector applies WHERE
+	// after index traversal). Re-detected on every Migrate so an extension
+	// upgrade is picked up.
+	var extVersion string
+	if err := d.db.QueryRowContext(ctx,
+		`SELECT extversion FROM pg_extension WHERE extname = 'vector'`).Scan(&extVersion); err != nil {
+		return fmt.Errorf("detect pgvector version: %w", err)
+	}
+	d.caps.iterativeScan = pgvectorSupportsIterativeScan(extVersion)
 	return nil
 }
 
@@ -711,7 +723,10 @@ func migrateGraphCanonical(ctx context.Context, db *sql.DB) error {
 }
 
 // Store type declarations. Implementations are in separate files.
-type ObjectStore struct{ db *sql.DB }
+type ObjectStore struct {
+	db   *sql.DB
+	caps *pgCaps
+}
 type EntityStore struct{ db *sql.DB }
 type EdgeStore struct{ db *sql.DB }
 type JobStore struct{ db *sql.DB }

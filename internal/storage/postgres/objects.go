@@ -450,6 +450,10 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 	idx := 2
 
 	conditions = append(conditions, "embedding IS NOT NULL")
+	// Cosine distance lives in [0, 2]; the predicate is false for NaN, so
+	// rows holding a zero-magnitude embedding (undefined distance) never
+	// surface — matching the SQLite ANN leg, which refuses to index them.
+	conditions = append(conditions, "(embedding <=> $1::vector) <= 2")
 
 	if filter.Type != "" {
 		conditions = append(conditions, fmt.Sprintf("type = $%d", idx))
@@ -481,25 +485,25 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 	query := objectSelectCols + fmt.Sprintf(`, 1 - (embedding <=> $1::vector) AS score FROM objects %s ORDER BY embedding <=> $1::vector LIMIT %d`,
 		where, limit)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	var objects []*storage.KnowledgeObject
+	err := queryVectorRows(ctx, s.db, s.caps, func(rows *sql.Rows) error {
+		for rows.Next() {
+			obj, score, err := scanObjectRowWithScore(rows)
+			if err != nil {
+				return err
+			}
+			if obj.Metadata == nil {
+				obj.Metadata = make(map[string]any)
+			}
+			obj.Metadata["score"] = score
+			objects = append(objects, obj)
+		}
+		return nil
+	}, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("vector search: %w", err)
 	}
-	defer rows.Close()
-
-	var objects []*storage.KnowledgeObject
-	for rows.Next() {
-		obj, score, err := scanObjectRowWithScore(rows)
-		if err != nil {
-			return nil, err
-		}
-		if obj.Metadata == nil {
-			obj.Metadata = make(map[string]any)
-		}
-		obj.Metadata["score"] = score
-		objects = append(objects, obj)
-	}
-	return objects, rows.Err()
+	return objects, nil
 }
 
 // FTSSearch runs full-text search over the generated tsvector column.
@@ -640,9 +644,89 @@ func (s *ObjectStore) FTSSearchNodeAware(
 	return out, nil
 }
 
-// VectorSearchNodeAware is not implemented for the postgres backend.
-func (s *ObjectStore) VectorSearchNodeAware(_ context.Context, _ []float32, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
-	return nil, fmt.Errorf("VectorSearchNodeAware: not implemented for postgres backend")
+// VectorSearchNodeAware runs vector search with an optional NodeAwareFilter.
+// When naf.NodeTypes is set, only objects containing ALL those node types are
+// returned. Results include a populated DocumentView when naf.ReturnNodeHits
+// is true. Node-type pre-filtering happens in-process after the query so
+// distance ordering is preserved, mirroring the SQLite shape.
+func (s *ObjectStore) VectorSearchNodeAware(
+	ctx context.Context,
+	vector []float32,
+	filter storage.ObjectFilter,
+	naf pluginapi.NodeAwareFilter,
+) ([]*pluginapi.NodeAwareResult, error) {
+	objects, err := s.VectorSearch(ctx, vector, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	allowedIDs, err := s.nodeTypeObjectIDs(ctx, naf.NodeTypes)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []*pluginapi.NodeAwareResult
+	for _, obj := range objects {
+		if allowedIDs != nil {
+			if _, ok := allowedIDs[obj.ID]; !ok {
+				continue
+			}
+		}
+		r := &pluginapi.NodeAwareResult{Object: obj}
+		if naf.ReturnNodeHits {
+			dv := projection.ProjectDocument(obj)
+			r.DocumentView = &dv
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// queryVectorRows executes a KNN query and hands the rows to scan. When the
+// extension supports iterative index scans (pgvector >= 0.8.0), the query
+// runs in a transaction with hnsw.iterative_scan = strict_order: pgvector
+// applies WHERE after HNSW traversal, so without iterative scans a filtered
+// KNN can under-return below LIMIT even when qualifying neighbors exist.
+// strict_order keeps exact distance ordering, preserving the cross-driver
+// rank contract.
+func queryVectorRows(ctx context.Context, db *sql.DB, caps *pgCaps,
+	scan func(*sql.Rows) error, query string, args ...any,
+) error {
+	if caps == nil || !caps.iterativeScan {
+		rows, err := db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		if err := scan(rows); err != nil {
+			return err
+		}
+		return rows.Err()
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `SET LOCAL hnsw.iterative_scan = strict_order`); err != nil {
+		return fmt.Errorf("enable iterative scan: %w", err)
+	}
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	if err := scan(rows); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	return tx.Commit()
 }
 
 // objectSelectCols is the SELECT column list (no trailing FROM).

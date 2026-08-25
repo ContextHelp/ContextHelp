@@ -19,7 +19,9 @@ type Driver struct {
 	db              *sql.DB
 	connStr         string
 	vectorDimension int
+	caps       *pgCaps
 	objects    *ObjectStore
+	vectors    *VectorStore
 	entities   *EntityStore
 	edges      *EdgeStore
 	jobs       *JobStore
@@ -54,7 +56,9 @@ func New(connStr string) (*Driver, error) {
 	db.SetMaxIdleConns(5)
 
 	d := &Driver{db: db, connStr: connStr, vectorDimension: DefaultVectorDimension}
-	d.objects = &ObjectStore{db: db}
+	d.caps = &pgCaps{}
+	d.objects = &ObjectStore{db: db, caps: d.caps}
+	d.vectors = &VectorStore{db: db, caps: d.caps}
 	d.entities = &EntityStore{db: db}
 	d.edges = &EdgeStore{db: db}
 	d.jobs = &JobStore{db: db}
@@ -112,7 +116,7 @@ func (d *Driver) Attachments() storage.AttachmentStore       { return d.attachme
 func (d *Driver) Resurfacing() storage.ResurfacingQueueStore { return d.resurfacing }
 func (d *Driver) Entitlements() storage.EntitlementStore     { return d.entitlements }
 func (d *Driver) Metering() storage.MeteringStore            { return d.metering }
-func (d *Driver) Vectors() storage.VectorStore               { return &vectorStoreStub{} }
+func (d *Driver) Vectors() storage.VectorStore               { return d.vectors }
 func (d *Driver) SavedSearches() storage.SavedSearchStore    { return d.savedSearches }
 func (d *Driver) SearchHistory() storage.SearchHistoryStore  { return d.searchHistory }
 func (d *Driver) Watermarks() storage.WatermarkStore         { return &watermarkStore{db: d.db} }
