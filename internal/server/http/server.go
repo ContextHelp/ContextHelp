@@ -10,6 +10,7 @@ import (
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/mcp"
+	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/ui"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
@@ -29,6 +30,9 @@ type RouterConfig struct {
 	// the configured provider. nil = no inbound auth (private instance).
 	// Health endpoints and static UI assets stay open for probes.
 	Auth authn.Provider
+	// Security receives auth-failure and ACL-denial events. nil = no
+	// security event recording.
+	Security *security.Emitter
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -58,6 +62,9 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 	r.Use(RequestID)
 	r.Use(Recoverer)
 	r.Use(CORS(rc.DevCORS))
+	if rc.Security != nil {
+		r.Use(WithSecurityEvents(rc.Security))
+	}
 
 	r.Get("/health", Health(svc))
 	r.Get("/healthz", Healthz(svc, probes))
@@ -90,7 +97,7 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		// inherit it). Provider-agnostic by construction: the
 		// middleware consumes authn.Provider, never a scheme.
 		if rc.Auth != nil {
-			r.Use(RequireAuth(rc.Auth))
+			r.Use(RequireAuth(rc.Auth, rc.Security))
 		}
 
 		// Objects

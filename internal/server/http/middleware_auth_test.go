@@ -31,7 +31,7 @@ func authedEcho(t *testing.T) http.Handler {
 }
 
 func TestRequireAuthMissingCredential(t *testing.T) {
-	h := RequireAuth(testProvider(t))(authedEcho(t))
+	h := RequireAuth(testProvider(t), nil)(authedEcho(t))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/search", nil))
 
@@ -40,7 +40,7 @@ func TestRequireAuthMissingCredential(t *testing.T) {
 }
 
 func TestRequireAuthInvalidBearer(t *testing.T) {
-	h := RequireAuth(testProvider(t))(authedEcho(t))
+	h := RequireAuth(testProvider(t), nil)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("Authorization", "Bearer nope")
 	rec := httptest.NewRecorder()
@@ -50,7 +50,7 @@ func TestRequireAuthInvalidBearer(t *testing.T) {
 }
 
 func TestRequireAuthValidBearer(t *testing.T) {
-	h := RequireAuth(testProvider(t))(authedEcho(t))
+	h := RequireAuth(testProvider(t), nil)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("Authorization", "Bearer tok-valid")
 	rec := httptest.NewRecorder()
@@ -61,7 +61,7 @@ func TestRequireAuthValidBearer(t *testing.T) {
 }
 
 func TestRequireAuthValidAPIKey(t *testing.T) {
-	h := RequireAuth(testProvider(t))(authedEcho(t))
+	h := RequireAuth(testProvider(t), nil)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("X-API-Key", "tok-valid")
 	rec := httptest.NewRecorder()

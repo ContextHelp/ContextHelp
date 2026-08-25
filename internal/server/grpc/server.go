@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/security"
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 )
@@ -29,7 +30,15 @@ type Option func(*serverOptions)
 
 type serverOptions struct {
 	auth       authn.Provider
+	security   *security.Emitter
 	reflection bool
+}
+
+// WithSecurity wires the security event emitter into the auth
+// interceptors so failed authentications are recorded. A nil emitter is
+// a no-op.
+func WithSecurity(e *security.Emitter) Option {
+	return func(o *serverOptions) { o.security = e }
 }
 
 // WithAuth guards every RPC (unary and stream) behind the configured
@@ -56,8 +65,8 @@ func New(addr string, svc *service.Service, opts ...Option) *Server {
 	unary := []grpc.UnaryServerInterceptor{recoveryInterceptor}
 	var stream []grpc.StreamServerInterceptor
 	if o.auth != nil {
-		unary = append(unary, authUnaryInterceptor(o.auth))
-		stream = append(stream, authStreamInterceptor(o.auth))
+		unary = append(unary, authUnaryInterceptor(o.auth, o.security))
+		stream = append(stream, authStreamInterceptor(o.auth, o.security))
 	}
 
 	gs := grpc.NewServer(

@@ -34,6 +34,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/remind"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
+	"github.com/ideacrafterslabs/ctxt/internal/security"
 	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
@@ -339,11 +340,18 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if access != config.AccessPrivate {
 		routeAuth = authProvider
 	}
+	// Security event emitter: auth failures and ACL denials feed the
+	// audit log (event_class=security) plus optional webhook/SMTP
+	// alerting from config. Wired on every instance — policy denials
+	// matter on private ones too.
+	secEmitter := security.New(security.ConfigFromAlerts(cfg.Security.Alerts), driver.AuditLog())
+
 	router := httpserver.NewRouterWithConfig(svc, httpserver.RouterConfig{
-		DevCORS: devCORS,
-		Watcher: watchMgr,
-		Probes:  healthProbes,
-		Auth:    routeAuth,
+		DevCORS:  devCORS,
+		Watcher:  watchMgr,
+		Probes:   healthProbes,
+		Auth:     routeAuth,
+		Security: secEmitter,
 	})
 	router.Handle("/ws/bus", hubNet.Handler())
 
@@ -378,6 +386,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// instances only.
 	grpcSrv := grpcserver.New(grpcBind, svc,
 		grpcserver.WithAuth(routeAuth),
+		grpcserver.WithSecurity(secEmitter),
 		grpcserver.WithReflection(access == config.AccessPrivate),
 	)
 

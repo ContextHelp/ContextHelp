@@ -3,13 +3,17 @@ package grpc
 import (
 	"context"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	kitpolicy "hop.top/kit/go/runtime/policy"
+
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/security"
 )
 
 func newTestProvider(t *testing.T) authn.Provider {
@@ -28,7 +32,7 @@ func unaryInfo(method string) *grpc.UnaryServerInfo {
 }
 
 func TestAuthUnaryMissingCredential(t *testing.T) {
-	ic := authUnaryInterceptor(newTestProvider(t))
+	ic := authUnaryInterceptor(newTestProvider(t), nil)
 	_, err := ic(context.Background(), nil, unaryInfo("/dpkms.v1.QueryService/Search"),
 		func(context.Context, any) (any, error) { return "ok", nil })
 	if status.Code(err) != codes.Unauthenticated {
@@ -37,7 +41,7 @@ func TestAuthUnaryMissingCredential(t *testing.T) {
 }
 
 func TestAuthUnaryInvalidToken(t *testing.T) {
-	ic := authUnaryInterceptor(newTestProvider(t))
+	ic := authUnaryInterceptor(newTestProvider(t), nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "Bearer nope"))
 	_, err := ic(ctx, nil, unaryInfo("/dpkms.v1.QueryService/Search"),
@@ -48,7 +52,7 @@ func TestAuthUnaryInvalidToken(t *testing.T) {
 }
 
 func TestAuthUnaryValidTokenSetsPrincipal(t *testing.T) {
-	ic := authUnaryInterceptor(newTestProvider(t))
+	ic := authUnaryInterceptor(newTestProvider(t), nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "Bearer tok-valid"))
 	var seen *authn.Principal
@@ -69,7 +73,7 @@ func TestAuthUnaryValidTokenSetsPrincipal(t *testing.T) {
 }
 
 func TestAuthUnaryAPIKeyMetadata(t *testing.T) {
-	ic := authUnaryInterceptor(newTestProvider(t))
+	ic := authUnaryInterceptor(newTestProvider(t), nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("x-api-key", "tok-valid"))
 	_, err := ic(ctx, nil, unaryInfo("/dpkms.v1.QueryService/Search"),
@@ -80,7 +84,7 @@ func TestAuthUnaryAPIKeyMetadata(t *testing.T) {
 }
 
 func TestAuthUnaryHealthExempt(t *testing.T) {
-	ic := authUnaryInterceptor(newTestProvider(t))
+	ic := authUnaryInterceptor(newTestProvider(t), nil)
 	// No credentials at all — health checks must still pass.
 	_, err := ic(context.Background(), nil, unaryInfo("/grpc.health.v1.Health/Check"),
 		func(context.Context, any) (any, error) { return "ok", nil })
@@ -97,7 +101,7 @@ type fakeServerStream struct {
 func (f *fakeServerStream) Context() context.Context { return f.ctx }
 
 func TestAuthStreamMissingCredential(t *testing.T) {
-	ic := authStreamInterceptor(newTestProvider(t))
+	ic := authStreamInterceptor(newTestProvider(t), nil)
 	err := ic(nil, &fakeServerStream{ctx: context.Background()},
 		&grpc.StreamServerInfo{FullMethod: "/dpkms.v1.JobService/WatchJob"},
 		func(any, grpc.ServerStream) error { return nil })
@@ -107,7 +111,7 @@ func TestAuthStreamMissingCredential(t *testing.T) {
 }
 
 func TestAuthStreamValidTokenSetsPrincipal(t *testing.T) {
-	ic := authStreamInterceptor(newTestProvider(t))
+	ic := authStreamInterceptor(newTestProvider(t), nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "Bearer tok-valid"))
 	var seen *authn.Principal
@@ -122,5 +126,51 @@ func TestAuthStreamValidTokenSetsPrincipal(t *testing.T) {
 	}
 	if seen == nil || seen.ID != "ops" {
 		t.Fatalf("principal = %+v, want ops", seen)
+	}
+}
+
+func TestAuthUnaryFailureRecordsSecurityEvent(t *testing.T) {
+	em := security.New(security.Config{
+		AuthFailureThreshold: 1,
+		ACLDenialThreshold:   1,
+		WindowDuration:       time.Minute,
+	}, nil)
+	ch := make(chan security.Alert, 4)
+	em.AddHandler(func(_ context.Context, a security.Alert) { ch <- a })
+
+	ic := authUnaryInterceptor(newTestProvider(t), em)
+	ctx := metadata.NewIncomingContext(context.Background(),
+		metadata.Pairs("authorization", "Bearer wrong"))
+	_, err := ic(ctx, nil, unaryInfo("/dpkms.v1.QueryService/Search"),
+		func(context.Context, any) (any, error) { return "ok", nil })
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("code = %v, want Unauthenticated", status.Code(err))
+	}
+
+	select {
+	case a := <-ch:
+		if a.Kind != security.EventAuthFailure {
+			t.Fatalf("alert kind = %q, want %q", a.Kind, security.EventAuthFailure)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for auth-failure alert")
+	}
+}
+
+func TestAuthUnaryValidTokenAttachesPolicyPrincipal(t *testing.T) {
+	ic := authUnaryInterceptor(newTestProvider(t), nil)
+	ctx := metadata.NewIncomingContext(context.Background(),
+		metadata.Pairs("authorization", "Bearer tok-valid"))
+	var role string
+	_, err := ic(ctx, nil, unaryInfo("/dpkms.v1.QueryService/Search"),
+		func(hctx context.Context, _ any) (any, error) {
+			role = kitpolicy.DefaultPrincipalResolver(hctx).Role
+			return "ok", nil
+		})
+	if err != nil {
+		t.Fatalf("interceptor: %v", err)
+	}
+	if role != "admin" {
+		t.Fatalf("policy principal role = %q, want admin", role)
 	}
 }

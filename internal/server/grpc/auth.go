@@ -8,9 +8,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/security"
 )
 
 // Metadata keys carrying inbound credentials. gRPC metadata keys are
@@ -26,36 +28,52 @@ const healthMethodPrefix = "/grpc.health.v1.Health/"
 
 // authUnaryInterceptor authenticates every unary call through the
 // configured provider. Provider-agnostic: it only lifts credentials out
-// of metadata and forwards them.
-func authUnaryInterceptor(provider authn.Provider) grpc.UnaryServerInterceptor {
+// of metadata and forwards them. Failures are recorded on the security
+// emitter (nil-safe), keyed by peer address since no principal exists.
+func authUnaryInterceptor(provider authn.Provider, sec *security.Emitter) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
 			return handler(ctx, req)
 		}
 		princ, err := provider.Authenticate(ctx, credentialFromMD(ctx))
 		if err != nil {
+			recordAuthFailure(ctx, sec)
 			return nil, unauthenticatedStatus(err)
 		}
-		return handler(authn.WithPrincipal(ctx, princ), req)
+		return handler(authn.Attach(ctx, princ), req)
 	}
 }
 
 // authStreamInterceptor mirrors authUnaryInterceptor for streaming RPCs
 // (e.g. JobService.WatchJob).
-func authStreamInterceptor(provider authn.Provider) grpc.StreamServerInterceptor {
+func authStreamInterceptor(provider authn.Provider, sec *security.Emitter) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
 			return handler(srv, ss)
 		}
 		princ, err := provider.Authenticate(ss.Context(), credentialFromMD(ss.Context()))
 		if err != nil {
+			recordAuthFailure(ss.Context(), sec)
 			return unauthenticatedStatus(err)
 		}
 		return handler(srv, &authenticatedStream{
 			ServerStream: ss,
-			ctx:          authn.WithPrincipal(ss.Context(), princ),
+			ctx:          authn.Attach(ss.Context(), princ),
 		})
 	}
+}
+
+// recordAuthFailure emits a security event for a failed authentication,
+// keyed by the peer address (per-source sliding window). nil-safe.
+func recordAuthFailure(ctx context.Context, sec *security.Emitter) {
+	if sec == nil {
+		return
+	}
+	source := "unknown"
+	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+		source = p.Addr.String()
+	}
+	sec.RecordAuthFailure(ctx, source)
 }
 
 // authenticatedStream overrides Context so stream handlers see the

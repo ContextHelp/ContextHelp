@@ -2,10 +2,12 @@ package http
 
 import (
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/security"
 )
 
 // HeaderAPIKey is the API-key header accepted alongside Authorization:
@@ -18,12 +20,17 @@ const HeaderAPIKey = "X-API-Key"
 // with 401. The concrete scheme lives behind the authn.Provider
 // interface — this middleware only extracts transport credentials and
 // forwards them. On success the principal is attached to the request
-// context for handlers, the policy engine, and metering.
-func RequireAuth(provider authn.Provider) func(http.Handler) http.Handler {
+// context for handlers, the policy engine, and metering. Failures are
+// recorded on the security emitter (nil-safe), keyed by remote host
+// since no principal exists yet.
+func RequireAuth(provider authn.Provider, sec *security.Emitter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			princ, err := provider.Authenticate(r.Context(), credentialFromRequest(r))
 			if err != nil {
+				if sec != nil {
+					sec.RecordAuthFailure(r.Context(), remoteHost(r))
+				}
 				w.Header().Set("WWW-Authenticate", `Bearer realm="dpkms"`)
 				msg := "invalid credentials"
 				if errors.Is(err, authn.ErrNoCredential) {
@@ -32,9 +39,19 @@ func RequireAuth(provider authn.Provider) func(http.Handler) http.Handler {
 				WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", msg)
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(authn.WithPrincipal(r.Context(), princ)))
+			next.ServeHTTP(w, r.WithContext(authn.Attach(r.Context(), princ)))
 		})
 	}
+}
+
+// remoteHost extracts the peer host from RemoteAddr for security-event
+// keying (per-source sliding windows) — no principal exists on failure.
+func remoteHost(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 // credentialFromRequest normalizes transport-level credential material
