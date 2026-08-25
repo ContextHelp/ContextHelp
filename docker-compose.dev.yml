@@ -1,19 +1,21 @@
 # Optional development side-services for testing non-default backends.
 # Default ctxt dev flow uses SQLite + local job queue + sqlite-vec — these
-# services are NOT required. Spin them up only when validating Postgres,
-# Redis, or Qdrant integrations.
+# services are NOT required. Spin them up only when validating Postgres
+# or Redis integrations.
 #
 # Usage:
 #   docker compose -f docker-compose.dev.yml up postgres
-#   docker compose -f docker-compose.dev.yml up redis qdrant
+#   docker compose -f docker-compose.dev.yml up redis
 #
 # Network parity: the `ctxt` network is shared with docker-compose.yml so
 # services started from either file can reach each other by service name.
 
 services:
-  # PostgreSQL — alternative storage backend
+  # PostgreSQL — alternative storage backend. The pgvector-bundled image
+  # is required: the driver's first migration is CREATE EXTENSION vector,
+  # which plain postgres images cannot load.
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: ctxt-postgres-dev
     restart: unless-stopped
     environment:
@@ -52,33 +54,10 @@ services:
     networks:
       - ctxt
 
-  # Qdrant — vector search database
-  qdrant:
-    image: qdrant/qdrant:v1.7.0
-    container_name: ctxt-qdrant-dev
-    restart: unless-stopped
-    ports:
-      - "6333:6333"  # REST API
-      - "6334:6334"  # gRPC API
-    volumes:
-      - qdrant_data:/qdrant/storage
-    environment:
-      QDRANT__SERVICE__GRPC_PORT: 6334
-      QDRANT__LOG_LEVEL: INFO
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - ctxt
-
 volumes:
   postgres_data:
     driver: local
   redis_data:
-    driver: local
-  qdrant_data:
     driver: local
 
 networks:

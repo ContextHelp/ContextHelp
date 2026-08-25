@@ -13,6 +13,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	uri "hop.top/cite/scheme"
@@ -952,6 +953,14 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 	if len(vector) == 0 {
 		return nil, fmt.Errorf("vector search: empty query vector")
 	}
+	// Cosine similarity is undefined against a zero-magnitude query, so no
+	// row can rank: return nothing, matching the ANN leg (vec0 reports
+	// unrankable NULL distances) and the Postgres driver (NaN distance
+	// fails its range predicate). Without this guard the brute-force
+	// scorer below hands every candidate back at score 0.
+	if isZeroVector(vector) {
+		return nil, nil
+	}
 
 	if s.vec != nil && s.vecDim > 0 && len(vector) == s.vecDim {
 		return s.vectorSearchANN(ctx, vector, filter)
@@ -1000,8 +1009,10 @@ func (s *ObjectStore) vectorSearchANN(ctx context.Context, vector []float32, fil
 		if obj.Metadata == nil {
 			obj.Metadata = make(map[string]any)
 		}
-		// Convert L2 distance to a [0,1] similarity-like score for API compatibility.
-		obj.Metadata["score"] = 1.0 / (1.0 + float64(h.Score))
+		// vec0 reports cosine distance (migration 034 pins the metric);
+		// score = 1 - cosine_distance is the cross-driver mapping shared
+		// with the Postgres driver and the brute-force path below.
+		obj.Metadata["score"] = 1.0 - float64(h.Score)
 		out = append(out, obj)
 	}
 	return out, nil
@@ -1074,6 +1085,14 @@ func (s *ObjectStore) vectorSearchBruteForce(ctx context.Context, vector []float
 func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	if query == "" {
 		return nil, fmt.Errorf("fts search: empty query")
+	}
+
+	// The driver owns its dialect's quoting: raw user text arrives here and
+	// FTS5 phrase-quoting is applied at the boundary, never by callers.
+	// Input with no usable tokens matches nothing rather than erroring.
+	query = ftsq.ForSQLite(query)
+	if query == "" {
+		return nil, nil
 	}
 
 	limit := filter.Limit

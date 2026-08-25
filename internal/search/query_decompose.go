@@ -2,7 +2,8 @@ package search
 
 import (
 	"strings"
-	"unicode"
+
+	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 )
 
 // searchStopwords is the set of common English words to strip before embedding.
@@ -38,20 +39,5 @@ func DecomposeQuery(query string, minTerms int) string {
 
 // tokenize splits s on non-alphanumeric rune boundaries, preserving original case.
 func tokenize(s string) []string {
-	var tokens []string
-	var cur strings.Builder
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '.' {
-			cur.WriteRune(r)
-		} else {
-			if cur.Len() > 0 {
-				tokens = append(tokens, cur.String())
-				cur.Reset()
-			}
-		}
-	}
-	if cur.Len() > 0 {
-		tokens = append(tokens, cur.String())
-	}
-	return tokens
+	return ftsq.Tokenize(s)
 }

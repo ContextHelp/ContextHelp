@@ -2,18 +2,356 @@ package postgres
 
 import (
 	"context"
-	"crypto/sha256"
+
 	"database/sql"
-	"encoding/hex"
+	sqldriver "database/sql/driver"
+
+	"errors"
 	"fmt"
-	"sort"
+
+	"strconv"
 	"strings"
+
+	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
 
+// pgvectorUnavailable wraps a CREATE EXTENSION vector failure in a single
+// actionable error. On managed Postgres (RDS, Cloud SQL, Azure, …) the
+// extension often must be enabled via the provider console before the
+// connecting role may CREATE EXTENSION — this is the first error every
+// self-hosting operator would otherwise hit as a raw migration failure.
+func pgvectorUnavailable(err error) error {
+	return fmt.Errorf("pgvector extension unavailable: enable it on your Postgres instance (run CREATE EXTENSION vector as a privileged role, or toggle the extension in your provider's console) — %w", err)
+}
+
+// pgMigration is one versioned entry in the Postgres schema ledger,
+// mirroring the SQLite schema_version pattern: ordered, append-only,
+// recorded per-version so schema work lands as numbered steps instead of
+// ad-hoc idempotent helpers (the failure mode that produced write-path
+// columns no migration created).
+//
+// Every entry must stay idempotent: databases initialized before the
+// ledger existed have the full schema but no schema_version table, and
+// adopting them replays the whole chain once.
+type pgMigration struct {
+	Version int
+	Name    string
+	// Statements are executed in order when fn is nil.
+	Statements []string
+	// fn covers migrations that need Go-level logic (info-schema checks,
+	// seeded rows, dynamic DDL).
+	fn func(ctx context.Context, d *Driver) error
+}
+
+// pgMigrations is the versioned chain. Versions 1-6 fold the historical
+// unversioned bootstrap (identical statements, identical order) so
+// already-initialized databases replay them as no-ops; versions 7+ are the
+// fixes the unversioned era lost.
+var pgMigrations = []pgMigration{
+	{Version: 1, Name: "baseline schema", Statements: baselineSchema},
+	{Version: 2, Name: "graph canonical", fn: func(ctx context.Context, d *Driver) error {
+		return migrateGraphCanonical(ctx, d.db)
+	}},
+	{Version: 3, Name: "jobs.user_mentions", fn: func(ctx context.Context, d *Driver) error {
+		return migrateJobsUserMentions(ctx, d.db)
+	}},
+	{Version: 4, Name: "jobs.user_hints", fn: func(ctx context.Context, d *Driver) error {
+		return migrateJobsUserHints(ctx, d.db)
+	}},
+	{Version: 5, Name: "jobs.user_profile+user_note", fn: func(ctx context.Context, d *Driver) error {
+		return migrateJobsUserProfileNote(ctx, d.db)
+	}},
+	{Version: 6, Name: "embedding models default seed", fn: migrateEmbeddingsDefaultSeed},
+	// External dedup key (Slack ts, tweet ID, email message-id, …). The
+	// column was referenced by every object query but never created by the
+	// unversioned bootstrap — the canonical fresh-database break.
+	{Version: 7, Name: "objects.source_key", Statements: []string{
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS source_key TEXT DEFAULT ''`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_objects_source_key ON objects(source_key) WHERE source_key <> ''`,
+	}},
+	// Profile-scoped objects; profile_id = '' means the global scope.
+	// Mirrors the SQLite column so profile semantics stop silently
+	// flattening into the global namespace on this backend.
+	{Version: 8, Name: "objects.profile_id", Statements: []string{
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS profile_id TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_profile_id ON objects (profile_id)`,
+	}},
+	// FTS half of the search schema: the projected body column (single
+	// source of indexed text, mirroring SQLite migration 023) plus a STORED
+	// generated tsvector over it with a GIN index. Generated-column
+	// maintenance replaces SQLite's manual delete+reinsert into the FTS
+	// virtual table and cannot drift from the row.
+	{Version: 9, Name: "objects.projected_fts_body + generated tsvector + GIN", Statements: []string{
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS projected_fts_body TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS fts tsvector
+			GENERATED ALWAYS AS (to_tsvector('` + ftsRegconfig + `', projected_fts_body)) STORED`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_fts ON objects USING GIN (fts)`,
+	}},
+	// Honest vector schema: re-type the dead embeddings.vector BYTEA (a
+	// copy-paste of the SQLite BLOB column that no Postgres query path can
+	// read) to a real pgvector column, and delete the phantom index
+	// signature stamped for the index that never existed.
+	{Version: 10, Name: "embeddings.vector BYTEA -> pgvector", fn: migrateEmbeddingsHonestVector},
+	// Vector dimension + ANN index: apply the driver-configured dimension
+	// to objects.embedding (dynamic DDL, the analog of SQLite's
+	// {DIMENSION}-templated vec0 migration) and replace the legacy ivfflat
+	// index with HNSW cosine ops.
+	{Version: 11, Name: "objects.embedding dimension + HNSW cosine index", fn: migrateObjectsEmbeddingDimension},
+	// ADR-070 provenance for the vector index: stamp the
+	// embeddings_<default-model> signature from the live index description
+	// so the index_signatures table describes a real index on this backend
+	// (the phantom BYTEA stamp was deleted by migration 10).
+	{Version: 12, Name: "stamp vector index signature for default model", fn: migrateStampVectorSignature},
+}
+
+// migrateStampVectorSignature computes the embedding signature for the
+// default registered model from the live ANN index description (method, ops
+// class, build params via pg_get_indexdef) and upserts the ADR-070 stamp.
+// No default model means nothing to stamp — not an error.
+func migrateStampVectorSignature(ctx context.Context, d *Driver) error {
+	var (
+		modelID, provider string
+		dim               int
+	)
+	err := d.db.QueryRowContext(ctx, `
+		SELECT model_id, provider, dimension
+		  FROM embedding_models WHERE is_default = 1`).Scan(&modelID, &provider, &dim)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("read default embedding model: %w", err)
+	}
+
+	idx, err := indexsig.PostgresVectorIndex(ctx, d.db)
+	if err != nil {
+		return fmt.Errorf("describe vector index for signature: %w", err)
+	}
+	hash, summary := indexsig.ComputeEmbedding(
+		modelID, provider, dim, idx.Method, idx.OpsClass, idx.BuildParams)
+	if err := indexsig.Upsert(ctx, d.db, indexsig.DialectPostgres,
+		indexsig.EmbeddingSignatureID(modelID), hash, summary); err != nil {
+		return fmt.Errorf("stamp vector index signature: %w", err)
+	}
+	return nil
+}
+
+// ftsRegconfig is the text-search configuration for the generated tsvector
+// column and every tsquery built against it. 'simple' is deliberate: it does
+// no stemming and no stop-word removal, matching SQLite FTS5's default
+// unicode61 tokenizer semantics so both drivers agree on what matches. This
+// is the tokenizer-analog decision and feeds the FTS index signature.
+// Aliased from the shared ftsq constant (which the compiler's similar==
+// tsqueries also bind) so the generated column and every query against it
+// can never disagree.
+const ftsRegconfig = ftsq.PostgresRegconfig
+
+// hnswMaxDimension is pgvector's HNSW index ceiling. Columns above it (up
+// to 4000 with halfvec, which this driver does not use yet) fall back to
+// sequential scans — mirroring SQLite's brute-force path for non-standard
+// dimensions.
+const hnswMaxDimension = 2000
+
+// migrateEmbeddingsHonestVector re-types embeddings.vector from BYTEA to
+// pgvector `vector` (typmod-less: per-model dimensions are a first-class
+// expectation of the registry). The BYTEA column was write-only dead weight
+// — nothing ever read or wrote it — but the migration still refuses to drop
+// a column that somehow holds data. Also deletes the phantom
+// embeddings_<model_id> index signature stamped for the index that never
+// existed: provenance rows must describe real indexes only.
+func migrateEmbeddingsHonestVector(ctx context.Context, d *Driver) error {
+	var udt string
+	err := d.db.QueryRowContext(ctx, `
+		SELECT udt_name FROM information_schema.columns
+		 WHERE table_name = 'embeddings' AND column_name = 'vector'`).Scan(&udt)
+	if err != nil {
+		return fmt.Errorf("inspect embeddings.vector: %w", err)
+	}
+	if udt != "vector" {
+		var n int
+		if err := d.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM embeddings`).Scan(&n); err != nil {
+			return fmt.Errorf("count embeddings rows: %w", err)
+		}
+		if n > 0 {
+			return fmt.Errorf("embeddings.vector is %s and the table holds %d rows; refusing to drop data — export and clear the table, then re-run migration", udt, n)
+		}
+		if _, err := d.db.ExecContext(ctx,
+			`ALTER TABLE embeddings DROP COLUMN vector`); err != nil {
+			return fmt.Errorf("drop BYTEA vector column: %w", err)
+		}
+		if _, err := d.db.ExecContext(ctx,
+			`ALTER TABLE embeddings ADD COLUMN vector vector NOT NULL`); err != nil {
+			return fmt.Errorf("add pgvector vector column: %w", err)
+		}
+	}
+	if _, err := d.db.ExecContext(ctx,
+		`DELETE FROM index_signatures WHERE signature_id LIKE 'embeddings\_%'`); err != nil {
+		return fmt.Errorf("delete phantom embeddings signatures: %w", err)
+	}
+	return nil
+}
+
+// migrateObjectsEmbeddingDimension applies the driver-configured vector
+// dimension to objects.embedding and builds the ANN index.
+//
+// Dimension: the baseline schema hardcoded vector(1536); this entry re-types
+// the column to the configured dimension when they differ, refusing when
+// stored embeddings exist (they cannot be cast across dimensions — rebuild
+// embeddings first, exactly the flow ADR-070 signatures drive).
+//
+// Index: HNSW with cosine ops — cosine is the pinned cross-driver distance
+// contract. HNSW indexes cap at 2000 dimensions (halfvec extends to 4000);
+// larger dimensions skip the index and search via sequential scan.
+func migrateObjectsEmbeddingDimension(ctx context.Context, d *Driver) error {
+	dim := d.vectorDimension
+	if dim <= 0 {
+		dim = DefaultVectorDimension
+	}
+
+	var colType string
+	err := d.db.QueryRowContext(ctx, `
+		SELECT format_type(a.atttypid, a.atttypmod)
+		  FROM pg_attribute a
+		 WHERE a.attrelid = 'objects'::regclass
+		   AND a.attname = 'embedding' AND NOT a.attisdropped`).Scan(&colType)
+	if err != nil {
+		return fmt.Errorf("inspect objects.embedding: %w", err)
+	}
+
+	// The legacy ivfflat index predates the pinned metric contract. Drop it
+	// BEFORE any re-type: ALTER COLUMN TYPE rebuilds dependent indexes, and
+	// ivfflat refuses columns above 2000 dimensions — the re-type to a
+	// larger dimension would fail on the index it is about to obsolete.
+	if _, err := d.db.ExecContext(ctx,
+		`DROP INDEX IF EXISTS idx_objects_embedding`); err != nil {
+		return fmt.Errorf("drop legacy ivfflat index: %w", err)
+	}
+
+	want := fmt.Sprintf("vector(%d)", dim)
+	if colType != want {
+		var n int
+		if err := d.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM objects WHERE embedding IS NOT NULL`).Scan(&n); err != nil {
+			return fmt.Errorf("count stored embeddings: %w", err)
+		}
+		if n > 0 {
+			return fmt.Errorf("objects.embedding is %s with %d stored vectors; cannot re-type to %s — clear or rebuild embeddings first", colType, n, want)
+		}
+		ddl := strings.ReplaceAll(
+			`ALTER TABLE objects ALTER COLUMN embedding TYPE vector({DIMENSION}) USING embedding::vector({DIMENSION})`,
+			"{DIMENSION}", strconv.Itoa(dim))
+		if _, err := d.db.ExecContext(ctx, ddl); err != nil {
+			return fmt.Errorf("re-type objects.embedding to %s: %w", want, err)
+		}
+	}
+	if dim <= hnswMaxDimension {
+		if _, err := d.db.ExecContext(ctx,
+			`CREATE INDEX IF NOT EXISTS idx_objects_embedding_hnsw
+			   ON objects USING hnsw (embedding vector_cosine_ops)`); err != nil {
+			return fmt.Errorf("create hnsw cosine index: %w", err)
+		}
+	}
+	return nil
+}
+
+// migrateLockKey is the pg_advisory_lock key serializing Migrate across
+// concurrent initializers (multiple daemons, CLI + daemon, test fan-out).
+// Arbitrary but stable — "ctxt" in ASCII shifted into the upper half of the
+// int64 space to avoid colliding with small hand-picked keys other tooling
+// tends to use. Advisory locks are database-scoped, so distinct databases
+// on one server migrate independently.
+const migrateLockKey int64 = 0x63747874 << 20 // "ctxt"
+
 func (d *Driver) Migrate(ctx context.Context) error {
-	migrations := []string{
-		`CREATE EXTENSION IF NOT EXISTS vector`,
-		`CREATE TABLE IF NOT EXISTS objects (
+	// Serialize concurrent initializers. Without the lock two Migrate calls
+	// race everything downstream: CREATE EXTENSION / CREATE TABLE IF NOT
+	// EXISTS collide on catalog unique indexes (23505), and both read the
+	// same MAX(version) then fight over the schema_version PK. Advisory
+	// locks are session-scoped, so the lock lives on a dedicated connection
+	// held for the whole migration pass; the loop itself keeps using the
+	// pool — mutual exclusion is what matters, not which session runs DDL.
+	conn, err := d.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, migrateLockKey); err != nil {
+		return fmt.Errorf("acquire migration advisory lock: %w", err)
+	}
+	defer func() {
+		// Release even when ctx is already cancelled — conn.Close only
+		// returns the session to the pool, and a pooled session that still
+		// holds the lock would deadlock every later initializer.
+		if _, uerr := conn.ExecContext(context.WithoutCancel(ctx),
+			`SELECT pg_advisory_unlock($1)`, migrateLockKey); uerr != nil {
+			// Poison the session so the pool discards it; the server then
+			// drops the lock with the backend.
+			_ = conn.Raw(func(any) error { return sqldriver.ErrBadConn })
+		}
+	}()
+
+	// The vector extension is a hard requirement (objects.embedding is a
+	// pgvector column). Degrade its failure to one clear error instead of a
+	// numbered migration failure. Runs outside the ledger: it is
+	// server-level state, not schema history.
+	if _, err := d.db.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS vector`); err != nil {
+		return pgvectorUnavailable(err)
+	}
+
+	if _, err := d.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_version (
+		version    INTEGER PRIMARY KEY,
+		applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	)`); err != nil {
+		return fmt.Errorf("create schema_version: %w", err)
+	}
+
+	var current int
+	if err := d.db.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&current); err != nil {
+		return fmt.Errorf("read schema version: %w", err)
+	}
+
+	for _, m := range pgMigrations {
+		if m.Version <= current {
+			continue
+		}
+		if m.fn != nil {
+			if err := m.fn(ctx, d); err != nil {
+				return fmt.Errorf("apply migration %d (%s): %w", m.Version, m.Name, err)
+			}
+		} else {
+			for _, stmt := range m.Statements {
+				if _, err := d.db.ExecContext(ctx, stmt); err != nil {
+					return fmt.Errorf("apply migration %d (%s): %w", m.Version, m.Name, err)
+				}
+			}
+		}
+		if _, err := d.db.ExecContext(ctx,
+			`INSERT INTO schema_version (version) VALUES ($1)`, m.Version); err != nil {
+			return fmt.Errorf("record migration %d: %w", m.Version, err)
+		}
+	}
+
+	// Capability detection, not schema: pgvector >= 0.8.0 ships
+	// hnsw.iterative_scan, which the search paths enable per query so a
+	// filtered KNN cannot under-return below LIMIT (pgvector applies WHERE
+	// after index traversal). Re-detected on every Migrate so an extension
+	// upgrade is picked up.
+	var extVersion string
+	if err := d.db.QueryRowContext(ctx,
+		`SELECT extversion FROM pg_extension WHERE extname = 'vector'`).Scan(&extVersion); err != nil {
+		return fmt.Errorf("detect pgvector version: %w", err)
+	}
+	d.caps.iterativeScan = pgvectorSupportsIterativeScan(extVersion)
+	return nil
+}
+
+// baselineSchema is the pre-ledger bootstrap, frozen as versioned entry 1.
+// Do not extend it — append new pgMigrations entries instead.
+var baselineSchema = []string{
+	`CREATE TABLE IF NOT EXISTS objects (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
 			subtype TEXT DEFAULT '',
@@ -43,7 +381,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			remind_at TIMESTAMP,
 			reminded_at TIMESTAMP
 		)`,
-		`CREATE TABLE IF NOT EXISTS entities (
+	`CREATE TABLE IF NOT EXISTS entities (
 			slug          TEXT PRIMARY KEY,
 			title         TEXT DEFAULT '',
 			description   TEXT DEFAULT '',
@@ -56,9 +394,9 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at    TIMESTAMP NOT NULL,
 			updated_at    TIMESTAMP NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_entities_content_status ON entities(content_status)`,
-		`CREATE INDEX IF NOT EXISTS idx_entities_registry_url ON entities(registry_url)`,
-		`CREATE TABLE IF NOT EXISTS edges (
+	`CREATE INDEX IF NOT EXISTS idx_entities_content_status ON entities(content_status)`,
+	`CREATE INDEX IF NOT EXISTS idx_entities_registry_url ON entities(registry_url)`,
+	`CREATE TABLE IF NOT EXISTS edges (
 			id TEXT PRIMARY KEY,
 			from_type TEXT NOT NULL,
 			from_id TEXT NOT NULL,
@@ -69,7 +407,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			metadata JSONB DEFAULT '{}',
 			created_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS jobs (
+	`CREATE TABLE IF NOT EXISTS jobs (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'pending',
@@ -85,7 +423,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			started_at TIMESTAMP,
 			completed_at TIMESTAMP
 		)`,
-		`CREATE TABLE IF NOT EXISTS pipelines (
+	`CREATE TABLE IF NOT EXISTS pipelines (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL UNIQUE,
 			description TEXT DEFAULT '',
@@ -96,7 +434,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS steps (
+	`CREATE TABLE IF NOT EXISTS steps (
 			name TEXT PRIMARY KEY,
 			source TEXT NOT NULL,
 			path TEXT DEFAULT '',
@@ -104,14 +442,14 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			installed_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS registry_cache (
+	`CREATE TABLE IF NOT EXISTS registry_cache (
 			registry_url TEXT PRIMARY KEY,
 			manifest JSONB DEFAULT '{}',
 			last_fetched TIMESTAMP NOT NULL,
 			etag TEXT DEFAULT '',
 			auto_update BOOLEAN DEFAULT FALSE
 		)`,
-		`CREATE TABLE IF NOT EXISTS system_reminders (
+	`CREATE TABLE IF NOT EXISTS system_reminders (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
 			title TEXT NOT NULL,
@@ -122,7 +460,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS feeds (
+	`CREATE TABLE IF NOT EXISTS feeds (
 			id TEXT PRIMARY KEY,
 			url TEXT NOT NULL UNIQUE,
 			title TEXT DEFAULT '',
@@ -139,7 +477,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS feed_items (
+	`CREATE TABLE IF NOT EXISTS feed_items (
 			id TEXT PRIMARY KEY,
 			feed_id TEXT NOT NULL REFERENCES feeds(id),
 			guid TEXT NOT NULL,
@@ -148,7 +486,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			ingested_at TIMESTAMP NOT NULL,
 			UNIQUE (feed_id, guid)
 		)`,
-		`CREATE TABLE IF NOT EXISTS batches (
+	`CREATE TABLE IF NOT EXISTS batches (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'processing',
@@ -159,7 +497,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS detectors (
+	`CREATE TABLE IF NOT EXISTS detectors (
 			id           TEXT PRIMARY KEY,
 			kind         TEXT NOT NULL,
 			name         TEXT NOT NULL,
@@ -170,7 +508,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at   TIMESTAMP NOT NULL,
 			updated_at   TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS object_proximity (
+	`CREATE TABLE IF NOT EXISTS object_proximity (
 			object_a    TEXT NOT NULL,
 			object_b    TEXT NOT NULL,
 			score       REAL NOT NULL,
@@ -183,7 +521,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			PRIMARY KEY (object_a, object_b),
 			CHECK (object_a < object_b)
 		)`,
-		`CREATE TABLE IF NOT EXISTS watches (
+	`CREATE TABLE IF NOT EXISTS watches (
 			id               TEXT PRIMARY KEY,
 			path             TEXT NOT NULL UNIQUE,
 			mode             TEXT NOT NULL DEFAULT 'generic',
@@ -196,7 +534,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at       TIMESTAMP NOT NULL,
 			updated_at       TIMESTAMP NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS watch_file_records (
+	`CREATE TABLE IF NOT EXISTS watch_file_records (
 			watch_id     TEXT NOT NULL REFERENCES watches(id) ON DELETE CASCADE,
 			file_path    TEXT NOT NULL,
 			object_id    TEXT DEFAULT '',
@@ -204,7 +542,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			last_seen    TIMESTAMP NOT NULL,
 			PRIMARY KEY (watch_id, file_path)
 		)`,
-		`CREATE TABLE IF NOT EXISTS aliases (
+	`CREATE TABLE IF NOT EXISTS aliases (
 			alias       TEXT NOT NULL,
 			object_id   TEXT NOT NULL,
 			scope       TEXT NOT NULL DEFAULT 'global',
@@ -213,7 +551,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			updated_at  TIMESTAMP NOT NULL,
 			PRIMARY KEY (alias, scope, profile)
 		)`,
-		`CREATE TABLE IF NOT EXISTS audit_log (
+	`CREATE TABLE IF NOT EXISTS audit_log (
 			id          TEXT PRIMARY KEY,
 			event_type  TEXT NOT NULL,
 			object_id   TEXT NOT NULL DEFAULT '',
@@ -221,48 +559,48 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			payload     JSONB NOT NULL DEFAULT '{}',
 			created_at  TIMESTAMP NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_type, from_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_type, to_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_pipelines_archived ON pipelines(archived)`,
-		`CREATE INDEX IF NOT EXISTS idx_objects_hash ON objects(content_hash)`,
-		`CREATE INDEX IF NOT EXISTS idx_objects_embedding ON objects USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`,
-		`CREATE INDEX IF NOT EXISTS idx_feeds_status ON feeds(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_feed_items_feed_id ON feed_items(feed_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_feed_items_feed_guid ON feed_items(feed_id, guid)`,
-		`CREATE INDEX IF NOT EXISTS idx_batches_status ON batches(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_detectors_kind ON detectors(kind)`,
-		`CREATE INDEX IF NOT EXISTS idx_detectors_enabled ON detectors(enabled)`,
-		`CREATE INDEX IF NOT EXISTS idx_detectors_priority ON detectors(priority)`,
-		`CREATE INDEX IF NOT EXISTS idx_proximity_a_score ON object_proximity(object_a, score DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_proximity_b_score ON object_proximity(object_b, score DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_proximity_score ON object_proximity(score DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_proximity_computed ON object_proximity(computed_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_watches_status ON watches(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_wfr_watch_id ON watch_file_records(watch_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_aliases_object_id ON aliases(object_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_aliases_scope_profile ON aliases(scope, profile)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_object_id ON audit_log(object_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_event_type ON audit_log(event_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_log(created_at)`,
-		`CREATE TABLE IF NOT EXISTS registry_entitlements (
+	`CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_type, from_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_type, to_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type)`,
+	`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`,
+	`CREATE INDEX IF NOT EXISTS idx_pipelines_archived ON pipelines(archived)`,
+	`CREATE INDEX IF NOT EXISTS idx_objects_hash ON objects(content_hash)`,
+	`CREATE INDEX IF NOT EXISTS idx_objects_embedding ON objects USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`,
+	`CREATE INDEX IF NOT EXISTS idx_feeds_status ON feeds(status)`,
+	`CREATE INDEX IF NOT EXISTS idx_feed_items_feed_id ON feed_items(feed_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_feed_items_feed_guid ON feed_items(feed_id, guid)`,
+	`CREATE INDEX IF NOT EXISTS idx_batches_status ON batches(status)`,
+	`CREATE INDEX IF NOT EXISTS idx_detectors_kind ON detectors(kind)`,
+	`CREATE INDEX IF NOT EXISTS idx_detectors_enabled ON detectors(enabled)`,
+	`CREATE INDEX IF NOT EXISTS idx_detectors_priority ON detectors(priority)`,
+	`CREATE INDEX IF NOT EXISTS idx_proximity_a_score ON object_proximity(object_a, score DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_proximity_b_score ON object_proximity(object_b, score DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_proximity_score ON object_proximity(score DESC)`,
+	`CREATE INDEX IF NOT EXISTS idx_proximity_computed ON object_proximity(computed_at)`,
+	`CREATE INDEX IF NOT EXISTS idx_watches_status ON watches(status)`,
+	`CREATE INDEX IF NOT EXISTS idx_wfr_watch_id ON watch_file_records(watch_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_aliases_object_id ON aliases(object_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_aliases_scope_profile ON aliases(scope, profile)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_object_id ON audit_log(object_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_event_type ON audit_log(event_type)`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_log(created_at)`,
+	`CREATE TABLE IF NOT EXISTS registry_entitlements (
 			registry_name TEXT PRIMARY KEY,
 			plan          TEXT NOT NULL,
 			namespaces    TEXT NOT NULL,
 			expires_at    TIMESTAMP,
 			fetched_at    TIMESTAMP NOT NULL DEFAULT NOW()
 		)`,
-		`CREATE TABLE IF NOT EXISTS federation_watermarks (
+	`CREATE TABLE IF NOT EXISTS federation_watermarks (
 			federation_name TEXT PRIMARY KEY,
 			last_synced_at  TIMESTAMPTZ NOT NULL DEFAULT 'epoch'
 		)`,
-		// ADR-071 Phase 1 (T-0582): embedding_models registry +
-		// composite-key embeddings table. Mirrors the sqlite migration
-		// 032/033 surface; the partial unique index uses postgres'
-		// "WHERE" partial-index syntax and the ON CONFLICT path on
-		// the seeded default row matches the sqlite semantics.
-		`CREATE TABLE IF NOT EXISTS embedding_models (
+	// ADR-071 Phase 1 (T-0582): embedding_models registry +
+	// composite-key embeddings table. Mirrors the sqlite migration
+	// 032/033 surface; the partial unique index uses postgres'
+	// "WHERE" partial-index syntax and the ON CONFLICT path on
+	// the seeded default row matches the sqlite semantics.
+	`CREATE TABLE IF NOT EXISTS embedding_models (
 			model_id      TEXT PRIMARY KEY,
 			provider      TEXT NOT NULL DEFAULT '',
 			dimension     INTEGER NOT NULL DEFAULT 0,
@@ -271,7 +609,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			deprecated_at TIMESTAMPTZ,
 			config_json   JSONB NOT NULL DEFAULT '{}'
 		)`,
-		`CREATE TABLE IF NOT EXISTS embeddings (
+	`CREATE TABLE IF NOT EXISTS embeddings (
 			object_id  TEXT NOT NULL,
 			model_id   TEXT NOT NULL REFERENCES embedding_models(model_id),
 			chunk_idx  INTEGER NOT NULL DEFAULT 0,
@@ -280,67 +618,35 @@ func (d *Driver) Migrate(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL,
 			PRIMARY KEY (object_id, model_id, chunk_idx)
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings (model_id, object_id)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_embedding_default
+	`CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings (model_id, object_id)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_embedding_default
 			ON embedding_models(is_default) WHERE is_default = 1`,
-		// ADR-070 §3 + ADR-071 §"Data model" callout: per-table
-		// signature stamps. Matches the sqlite migration 029 schema.
-		`CREATE TABLE IF NOT EXISTS index_signatures (
+	// ADR-070 §3 + ADR-071 §"Data model" callout: per-table
+	// signature stamps. Matches the sqlite migration 029 schema.
+	`CREATE TABLE IF NOT EXISTS index_signatures (
 			signature_id   TEXT PRIMARY KEY,
 			signature_hash TEXT NOT NULL,
 			computed_at    TIMESTAMPTZ NOT NULL,
 			inputs_summary TEXT NOT NULL DEFAULT ''
 		)`,
-	}
-
-	for i, m := range migrations {
-		if _, err := d.db.ExecContext(ctx, m); err != nil {
-			return fmt.Errorf("migration %d: %w", i+1, err)
-		}
-	}
-
-	// Graph-canonical migration: add graph_json + object_nodes (idempotent).
-	if err := migrateGraphCanonical(ctx, d.db); err != nil {
-		return fmt.Errorf("graph canonical migration: %w", err)
-	}
-	// Jobs.user_mentions column for `ctxt analyze --mentions` (T-0190).
-	if err := migrateJobsUserMentions(ctx, d.db); err != nil {
-		return fmt.Errorf("jobs.user_mentions migration: %w", err)
-	}
-	// Jobs.user_hints column for `ctxt capture --hint` (T-0573).
-	if err := migrateJobsUserHints(ctx, d.db); err != nil {
-		return fmt.Errorf("jobs.user_hints migration: %w", err)
-	}
-	// Jobs.user_profile + user_note columns for `ctxt capture
-	// --profile` and `--note` (T-0588). Idempotent.
-	if err := migrateJobsUserProfileNote(ctx, d.db); err != nil {
-		return fmt.Errorf("jobs.user_profile/user_note migration: %w", err)
-	}
-	// ADR-071 Phase 1 (T-0582): seed the legacy default embedding model
-	// row + stamp the matching index_signatures row. The legacy
-	// object_embeddings table never existed in the postgres schema
-	// (postgres carries embeddings on the `objects` row directly via the
-	// pgvector column), so there is nothing to backfill into the new
-	// `embeddings` table — but the registry still needs a default row so
-	// the CLI surface returns a meaningful value on a fresh install.
-	if err := migrateEmbeddingsDefaultSeed(ctx, d.db); err != nil {
-		return fmt.Errorf("embeddings default seed migration: %w", err)
-	}
-	return nil
 }
 
 // migrateEmbeddingsDefaultSeed inserts the legacy default embedding model row
-// (matching the sqlite synthetic-model-id rule) + stamps the matching
-// index_signatures row. Idempotent — uses ON CONFLICT DO NOTHING on both
-// tables so re-running on an upgraded DB is a no-op.
+// (matching the sqlite synthetic-model-id rule). Idempotent — ON CONFLICT DO
+// NOTHING so re-running on an upgraded DB is a no-op.
 //
 // The synthetic model_id matches the sqlite-side rule from
 // migrate033EmbeddingsBackfill so a postgres-to-sqlite or sqlite-to-postgres
-// snapshot keeps the same model_id surface.
-func migrateEmbeddingsDefaultSeed(ctx context.Context, db *sql.DB) error {
-	const dim = 1536 // matches sqlite.DefaultVectorDimension; pgvector default
+// snapshot keeps the same model_id surface. No index signature is stamped
+// here: signatures describe real indexes, and the composite embeddings table
+// has none yet on this backend.
+func migrateEmbeddingsDefaultSeed(ctx context.Context, d *Driver) error {
+	dim := d.vectorDimension
+	if dim <= 0 {
+		dim = DefaultVectorDimension
+	}
 	modelID := fmt.Sprintf("legacy-blob-%d@2026-05-07", dim)
-	if _, err := db.ExecContext(ctx, `
+	if _, err := d.db.ExecContext(ctx, `
 		INSERT INTO embedding_models
 			(model_id, provider, dimension, is_default, registered_at, config_json)
 		VALUES ($1, $2, $3, 1, NOW(), '{}'::jsonb)
@@ -349,33 +655,7 @@ func migrateEmbeddingsDefaultSeed(ctx context.Context, db *sql.DB) error {
 	); err != nil {
 		return fmt.Errorf("seed default embedding_models row: %w", err)
 	}
-
-	sigID := "embeddings_" + modelID
-	hash, summary := computeEmbeddingSignaturePG(modelID, "legacy-blob", dim)
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO index_signatures
-			(signature_id, signature_hash, computed_at, inputs_summary)
-		VALUES ($1, $2, NOW(), $3)
-		ON CONFLICT (signature_id) DO NOTHING`,
-		sigID, hash, summary,
-	); err != nil {
-		return fmt.Errorf("seed embeddings index_signatures row: %w", err)
-	}
 	return nil
-}
-
-// computeEmbeddingSignaturePG mirrors the sqlite hash so the value is
-// portable across backends.
-func computeEmbeddingSignaturePG(modelID, provider string, dimension int) (string, string) {
-	parts := []string{
-		"model_id=" + modelID,
-		"provider=" + provider,
-		fmt.Sprintf("dimension=%d", dimension),
-	}
-	sort.Strings(parts)
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
-	return hex.EncodeToString(sum[:]),
-		fmt.Sprintf("model_id=%s;provider=%s;dimension=%d", modelID, provider, dimension)
 }
 
 // migrateJobsUserMentions adds user_mentions TEXT column to jobs. Idempotent
@@ -526,7 +806,10 @@ func migrateGraphCanonical(ctx context.Context, db *sql.DB) error {
 }
 
 // Store type declarations. Implementations are in separate files.
-type ObjectStore struct{ db *sql.DB }
+type ObjectStore struct {
+	db   *sql.DB
+	caps *pgCaps
+}
 type EntityStore struct{ db *sql.DB }
 type EdgeStore struct{ db *sql.DB }
 type JobStore struct{ db *sql.DB }

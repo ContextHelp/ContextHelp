@@ -488,6 +488,28 @@ func TestVectorSearch_EmptyVectorError(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestVectorSearch_ZeroQueryReturnsNothing pins the brute-force leg to the
+// cross-driver contract: cosine similarity is undefined against a
+// zero-magnitude query, so the search returns nothing — matching the ANN
+// leg (vec0 reports unrankable NULL distances) and the Postgres driver
+// (NaN distance fails the range predicate). Without the guard the
+// brute-force scorer hands every candidate back at score 0.
+func TestVectorSearch_ZeroQueryReturnsNothing(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj := makeObject("vec-zq", "item")
+	obj.Embeddings = []float32{1, 0, 0}
+	require.NoError(t, d.Objects().Create(ctx, obj))
+
+	// Dimension 3 ≠ the driver's ANN dimension, so this exercises the
+	// brute-force scan — the leg that scored zero queries at 0 for
+	// every row.
+	results, err := d.Objects().VectorSearch(ctx, []float32{0, 0, 0}, storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err)
+	assert.Empty(t, results)
+}
+
 func TestVectorSearch_RespectsLimit(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()
@@ -575,6 +597,49 @@ func TestFTSSearch_HyphenatedQuerySanitised(t *testing.T) {
 	require.NoError(t, err, "sanitised FTS expression must not crash MATCH")
 	require.Len(t, results, 1)
 	assert.Equal(t, "fts-hy-1", results[0].ID)
+}
+
+// TestFTSSearch_RawHostileInput pins the sanitizer seam moving behind the
+// driver boundary: FTSSearch receives RAW user text and applies the FTS5
+// quoting itself. No hostile input may error or leak operator semantics;
+// input with no usable tokens matches nothing rather than erroring.
+func TestFTSSearch_RawHostileInput(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj := makeFTSObject("fts-raw-1", "article", "documents that are credit eligible")
+	require.NoError(t, d.Objects().Create(ctx, obj))
+
+	_, err := d.db.ExecContext(ctx, "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")
+	require.NoError(t, err)
+
+	// The historical hyphen-crash shape, now raw at the driver.
+	results, err := d.Objects().FTSSearch(ctx, "credit-eligible", storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err, "raw hyphenated query must not crash MATCH")
+	require.Len(t, results, 1)
+	assert.Equal(t, "fts-raw-1", results[0].ID)
+
+	// Hostile corpus: no error, no operator semantics.
+	for _, q := range []string{
+		`"credit eligible"`,
+		"NEAR(credit, eligible)",
+		"credit AND eligible",
+		"credit OR nonexistent-term-xyz",
+		"credit:eligible",
+	} {
+		if _, err := d.Objects().FTSSearch(ctx, q, storage.ObjectFilter{Limit: 10}); err != nil {
+			t.Errorf("hostile input %q errored: %v", q, err)
+		}
+	}
+
+	// No usable tokens: match nothing, do not error.
+	results, err = d.Objects().FTSSearch(ctx, "!!! ???", storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err, "punctuation-only query must not error")
+	assert.Empty(t, results)
+
+	// Truly empty input is still a caller bug.
+	_, err = d.Objects().FTSSearch(ctx, "", storage.ObjectFilter{Limit: 10})
+	require.Error(t, err)
 }
 
 func TestCosineSimilarity(t *testing.T) {

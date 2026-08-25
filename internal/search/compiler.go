@@ -3,6 +3,8 @@ package search
 import (
 	"fmt"
 	"strings"
+
+	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 )
 
 // Known fields that map directly to columns.
@@ -27,7 +29,8 @@ func Compile(node Node) (string, []any, error) {
 
 // CompileFor compiles node for the given SQL dialect.
 // For DialectPostgres: uses $N placeholders, jsonb_array_elements for tag
-// queries, and rejects the similar== field (no FTS5 equivalent).
+// queries, and websearch_to_tsquery over the generated tsvector column for
+// the similar== field.
 func CompileFor(d Dialect, node Node) (string, []any, error) {
 	sql, args, err := compileNode(d, node)
 	if err != nil {
@@ -196,14 +199,22 @@ func compileRelated(n ComparisonNode) (string, []any, error) {
 	return sql, []any{n.Value}, nil
 }
 
-// compileSimilar emits an FTS5 full-text search expression (SQLite only).
-// Returns an explicit error on Postgres since there is no FTS5 equivalent.
+// PostgresFTSRegconfig is the text-search configuration bound into every
+// tsquery the compiler emits for Postgres. Aliased from the shared ftsq
+// constant the Postgres driver also builds its generated tsvector column
+// from, so compiled predicates and the column can never disagree.
+const PostgresFTSRegconfig = ftsq.PostgresRegconfig
+
+// compileSimilar emits a full-text predicate against the dialect's FTS
+// index: FTS5 MATCH on SQLite, websearch_to_tsquery over the generated
+// tsvector column on Postgres.
 func compileSimilar(d Dialect, n ComparisonNode) (string, []any, error) {
 	if n.Operator != OpEq {
 		return "", nil, fmt.Errorf("similar field only supports == operator")
 	}
 	if d == DialectPostgres {
-		return "", nil, fmt.Errorf("similar== is not supported on the Postgres backend (no FTS5 index); use vector search instead")
+		return "id IN (SELECT id FROM objects WHERE fts @@ websearch_to_tsquery(?, ?))",
+			[]any{PostgresFTSRegconfig, n.Value}, nil
 	}
 	return "id IN (SELECT id FROM objects_fts WHERE objects_fts MATCH ?)",
 		[]any{n.Value}, nil

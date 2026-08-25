@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	uri "hop.top/cite/scheme"
@@ -31,6 +33,20 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.Status = "active"
 	}
 
+	// For text pipeline objects, populate TextContent from RawContent when
+	// empty so the projection sees the same input as on SQLite.
+	if obj.TextContent == "" && obj.RawContent != "" {
+		obj.TextContent = obj.RawContent
+	}
+
+	// Derive FTS body from projection — single source of truth for indexed
+	// text. The generated tsvector column tracks projected_fts_body, so no
+	// manual index maintenance is needed beyond writing the body.
+	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
+	if projectedFTSBody != "" {
+		obj.FTSIndexed = true
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("create object: begin tx: %w", err)
@@ -43,21 +59,21 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions, tasks, embedding, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
-		remind_at, reminded_at, graph_json, source_key
+		remind_at, reminded_at, graph_json, source_key, projected_fts_body
 	) VALUES (
 		$1, $2, $3, $4, $5,
 		$6, $7, $8, $9, $10,
 		$11, $12, $13, $14, $15,
 		$16, $17, $18, $19, $20,
 		$21, $22, $23, $24, $25, $26,
-		$27, $28, $29, $30
+		$27, $28, $29, $30, $31
 	)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey,
+		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey, projectedFTSBody,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
@@ -218,6 +234,13 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		return fmt.Errorf("update object graph: %w", err)
 	}
 
+	// Derive FTS body from projection — single source of truth for indexed
+	// text; the generated tsvector column tracks the rewritten body.
+	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
+	if projectedFTSBody != "" {
+		obj.FTSIndexed = true
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("update object: begin tx: %w", err)
@@ -231,15 +254,15 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences=$15, plugins=$16, content_hash=$17,
 		reinforcement_count=$18, last_reinforced_at=$19,
 		updated_at=$20, fts_indexed=$21, vector_indexed=$22, status=$23, inbox_note=$24,
-		remind_at=$25, reminded_at=$26, graph_json=$27
-	WHERE id=$28`,
+		remind_at=$25, reminded_at=$26, graph_json=$27, projected_fts_body=$28
+	WHERE id=$29`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash,
 		obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, graphJSON,
+		f.remindAt, f.remindedAt, graphJSON, projectedFTSBody,
 		obj.ID,
 	)
 	if err != nil {
@@ -300,6 +323,11 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	mergedMentionStrs := mergeStrings(mentionsToStrings(obj.Mentions), mentionsToStrings(mergeData.Mentions))
 	mergedMentionsJSON, _ := json.Marshal(mergedMentionStrs)
 
+	// fts_indexed / vector_indexed are left untouched: Reinforce never
+	// rewrites projected_fts_body (the generated tsvector stays valid) or
+	// the embedding column, and no downstream re-indexer exists to flip
+	// the flags back. Clearing them here misreported reinforced
+	// (deduplicated) objects as unindexed even though FTS still matched.
 	if mergeData.RawContent != "" && mergeData.RawContent != hash {
 		_, err = tx.ExecContext(ctx, `UPDATE objects SET
 			reinforcement_count = reinforcement_count + 1,
@@ -307,8 +335,6 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 			tags = $2,
 			mentions = $3,
 			updated_at = $4,
-			fts_indexed = FALSE,
-			vector_indexed = FALSE,
 			raw_content = $5
 		WHERE content_hash = $6`,
 			now, mergedTagsJSON, mergedMentionsJSON, now,
@@ -320,9 +346,7 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 			last_reinforced_at = $1,
 			tags = $2,
 			mentions = $3,
-			updated_at = $4,
-			fts_indexed = FALSE,
-			vector_indexed = FALSE
+			updated_at = $4
 		WHERE content_hash = $5`,
 			now, mergedTagsJSON, mergedMentionsJSON, now, hash,
 		)
@@ -419,23 +443,19 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 		return nil, fmt.Errorf("vector search: empty query vector")
 	}
 
-	// Build pgvector literal: '[0.1,0.2,...]'
-	var sb strings.Builder
-	sb.WriteString("'[")
-	for i, v := range vector {
-		if i > 0 {
-			sb.WriteByte(',')
-		}
-		sb.WriteString(fmt.Sprintf("%g", v))
-	}
-	sb.WriteString("]'::vector")
-	vecLiteral := sb.String()
-
+	// The query vector is bound as $1 (referenced twice: score expression
+	// and ORDER BY); filter conditions number themselves from $2. Binding —
+	// rather than interpolating a '[...]'::vector literal — keeps the
+	// statement cacheable and the parameter path uniform.
 	var conditions []string
-	var args []any
-	idx := 1
+	args := []any{encodePgVector(vector)}
+	idx := 2
 
 	conditions = append(conditions, "embedding IS NOT NULL")
+	// Cosine distance lives in [0, 2]; the predicate is false for NaN, so
+	// rows holding a zero-magnitude embedding (undefined distance) never
+	// surface — matching the SQLite ANN leg, which refuses to index them.
+	conditions = append(conditions, "(embedding <=> $1::vector) <= 2")
 
 	if filter.Type != "" {
 		conditions = append(conditions, fmt.Sprintf("type = $%d", idx))
@@ -464,43 +484,260 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 		limit = 20
 	}
 
-	query := objectSelectCols + fmt.Sprintf(`, 1 - (embedding <=> %s) AS score FROM objects %s ORDER BY embedding <=> %s LIMIT %d`,
-		vecLiteral, where, vecLiteral, limit)
+	query := objectSelectCols + fmt.Sprintf(`, 1 - (embedding <=> $1::vector) AS score FROM objects %s ORDER BY embedding <=> $1::vector LIMIT %d`,
+		where, limit)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	var objects []*storage.KnowledgeObject
+	err := queryVectorRows(ctx, s.db, s.caps, func(rows *sql.Rows) error {
+		for rows.Next() {
+			obj, score, err := scanObjectRowWithScore(rows)
+			if err != nil {
+				return err
+			}
+			if obj.Metadata == nil {
+				obj.Metadata = make(map[string]any)
+			}
+			obj.Metadata["score"] = score
+			objects = append(objects, obj)
+		}
+		return nil
+	}, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("vector search: %w", err)
 	}
+	return objects, nil
+}
+
+// FTSSearch runs full-text search over the generated tsvector column.
+// websearch_to_tsquery neutralizes hostile query syntax by design; ts_rank_cd
+// orders best-first (DESC), matching the rank semantics of the SQLite bm25
+// leg (which orders ascending because bm25 is smaller-is-better). RRF
+// upstream consumes rank order only — score parity with bm25 is explicitly
+// not the contract. The score lands in Metadata["fts_score"], same key as
+// SQLite.
+func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	if query == "" {
+		return nil, fmt.Errorf("fts search: empty query")
+	}
+
+	// The driver owns its dialect's quoting: raw user text arrives here and
+	// is reduced to bare AND'd terms for websearch_to_tsquery (raw
+	// hyphenated input would parse as a strict <-> phrase — semantic drift
+	// from the SQLite leg). Input with no usable tokens matches nothing.
+	query = ftsq.ForPostgres(query)
+	if query == "" {
+		return nil, nil
+	}
+
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	// $1 is the raw query text; the tsquery is computed once in the FROM
+	// clause and shared by the match predicate and the rank expression.
+	// Filter placeholders number themselves from $2, mirroring the SQLite
+	// filter shape (type + metadata facets).
+	conditions := []string{"fts @@ q"}
+	args := []any{query}
+	idx := 2
+
+	if filter.Type != "" {
+		conditions = append(conditions, fmt.Sprintf("type = $%d", idx))
+		args = append(args, filter.Type)
+		idx++
+	}
+
+	// Metadata facet filters (US-0407).
+	mc, ma := metadataFacetConditionsPG(filter, &idx)
+	conditions = append(conditions, mc...)
+	args = append(args, ma...)
+
+	q := objectSelectCols + fmt.Sprintf(`, ts_rank_cd(fts, q) AS score
+		FROM objects, websearch_to_tsquery('%s', $1) AS q
+		WHERE %s
+		ORDER BY score DESC LIMIT %d`,
+		ftsRegconfig, strings.Join(conditions, " AND "), limit)
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("fts search: %w", err)
+	}
 	defer rows.Close()
 
-	var objects []*storage.KnowledgeObject
+	var results []*storage.KnowledgeObject
 	for rows.Next() {
 		obj, score, err := scanObjectRowWithScore(rows)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("fts search scan: %w", err)
 		}
 		if obj.Metadata == nil {
 			obj.Metadata = make(map[string]any)
 		}
-		obj.Metadata["score"] = score
-		objects = append(objects, obj)
+		obj.Metadata["fts_score"] = score
+		results = append(results, obj)
 	}
-	return objects, rows.Err()
+	return results, rows.Err()
 }
 
-// FTSSearch is not implemented for the postgres backend.
-func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	return nil, fmt.Errorf("FTSSearch: not implemented for postgres backend")
+// nodeTypeObjectIDs returns object IDs that contain at least one node of each
+// requested type. When nodeTypes is empty, nil is returned (no pre-filter).
+func (s *ObjectStore) nodeTypeObjectIDs(ctx context.Context, nodeTypes []string) (map[string]struct{}, error) {
+	if len(nodeTypes) == 0 {
+		return nil, nil
+	}
+	// Only objects that have ALL requested node types are returned.
+	placeholders := make([]string, len(nodeTypes))
+	args := make([]any, len(nodeTypes))
+	for i, t := range nodeTypes {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = t
+	}
+	q := fmt.Sprintf(
+		`SELECT object_id FROM object_nodes WHERE node_type IN (%s)
+		 GROUP BY object_id HAVING COUNT(DISTINCT node_type) = $%d`,
+		strings.Join(placeholders, ", "), len(nodeTypes)+1,
+	)
+	args = append(args, len(nodeTypes))
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("node type object IDs: %w", err)
+	}
+	defer rows.Close()
+
+	ids := make(map[string]struct{})
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("node type object IDs scan: %w", err)
+		}
+		ids[id] = struct{}{}
+	}
+	return ids, rows.Err()
 }
 
-// FTSSearchNodeAware is not implemented for the postgres backend.
-func (s *ObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
-	return nil, fmt.Errorf("FTSSearchNodeAware: not implemented for postgres backend")
+// FTSSearchNodeAware runs FTS search with an optional NodeAwareFilter.
+// When naf.NodeTypes is set, only objects containing ALL those node types are
+// returned. Results include a populated DocumentView when naf.ReturnNodeHits
+// is true. Node-type pre-filtering happens in-process after the query so
+// relevance ordering is preserved, mirroring the SQLite shape.
+func (s *ObjectStore) FTSSearchNodeAware(
+	ctx context.Context,
+	query string,
+	filter storage.ObjectFilter,
+	naf pluginapi.NodeAwareFilter,
+) ([]*pluginapi.NodeAwareResult, error) {
+	objects, err := s.FTSSearch(ctx, query, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	allowedIDs, err := s.nodeTypeObjectIDs(ctx, naf.NodeTypes)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []*pluginapi.NodeAwareResult
+	for _, obj := range objects {
+		if allowedIDs != nil {
+			if _, ok := allowedIDs[obj.ID]; !ok {
+				continue
+			}
+		}
+		r := &pluginapi.NodeAwareResult{Object: obj}
+		if naf.ReturnNodeHits {
+			dv := projection.ProjectDocument(obj)
+			r.DocumentView = &dv
+		}
+		out = append(out, r)
+	}
+	return out, nil
 }
 
-// VectorSearchNodeAware is not implemented for the postgres backend.
-func (s *ObjectStore) VectorSearchNodeAware(_ context.Context, _ []float32, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
-	return nil, fmt.Errorf("VectorSearchNodeAware: not implemented for postgres backend")
+// VectorSearchNodeAware runs vector search with an optional NodeAwareFilter.
+// When naf.NodeTypes is set, only objects containing ALL those node types are
+// returned. Results include a populated DocumentView when naf.ReturnNodeHits
+// is true. Node-type pre-filtering happens in-process after the query so
+// distance ordering is preserved, mirroring the SQLite shape.
+func (s *ObjectStore) VectorSearchNodeAware(
+	ctx context.Context,
+	vector []float32,
+	filter storage.ObjectFilter,
+	naf pluginapi.NodeAwareFilter,
+) ([]*pluginapi.NodeAwareResult, error) {
+	objects, err := s.VectorSearch(ctx, vector, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	allowedIDs, err := s.nodeTypeObjectIDs(ctx, naf.NodeTypes)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []*pluginapi.NodeAwareResult
+	for _, obj := range objects {
+		if allowedIDs != nil {
+			if _, ok := allowedIDs[obj.ID]; !ok {
+				continue
+			}
+		}
+		r := &pluginapi.NodeAwareResult{Object: obj}
+		if naf.ReturnNodeHits {
+			dv := projection.ProjectDocument(obj)
+			r.DocumentView = &dv
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// queryVectorRows executes a KNN query and hands the rows to scan. When the
+// extension supports iterative index scans (pgvector >= 0.8.0), the query
+// runs in a transaction with hnsw.iterative_scan = strict_order: pgvector
+// applies WHERE after HNSW traversal, so without iterative scans a filtered
+// KNN can under-return below LIMIT even when qualifying neighbors exist.
+// strict_order keeps exact distance ordering, preserving the cross-driver
+// rank contract.
+func queryVectorRows(ctx context.Context, db *sql.DB, caps *pgCaps,
+	scan func(*sql.Rows) error, query string, args ...any,
+) error {
+	if caps == nil || !caps.iterativeScan {
+		rows, err := db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		if err := scan(rows); err != nil {
+			return err
+		}
+		return rows.Err()
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `SET LOCAL hnsw.iterative_scan = strict_order`); err != nil {
+		return fmt.Errorf("enable iterative scan: %w", err)
+	}
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	if err := scan(rows); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	return tx.Commit()
 }
 
 // objectSelectCols is the SELECT column list (no trailing FROM).
@@ -598,6 +835,7 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 		influencesJSON, pluginsJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		graphJSON                                           []byte
+		sourceKey                                           sql.NullString
 		embStr                                              sql.NullString
 	)
 	err := rows.Scan(
@@ -606,7 +844,7 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey,
 		&embStr,
 	)
 	if err != nil {
@@ -622,6 +860,9 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 		}
 		obj.Graph = g
 	}
+	if sourceKey.Valid {
+		obj.SourceKey = sourceKey.String
+	}
 	vec := parsePgVector(embStr.String)
 	return &obj, vec, nil
 }
@@ -635,6 +876,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		influencesJSON, pluginsJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		graphJSON                                           []byte
+		sourceKey                                           sql.NullString
 		score                                               float64
 	)
 	err := rows.Scan(
@@ -643,7 +885,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey,
 		&score,
 	)
 	if err != nil {
@@ -658,6 +900,9 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 			return nil, 0, fmt.Errorf("unmarshal graph: %w", err)
 		}
 		obj.Graph = g
+	}
+	if sourceKey.Valid {
+		obj.SourceKey = sourceKey.String
 	}
 	return &obj, score, nil
 }

@@ -128,6 +128,46 @@ func TestVecStore_Count(t *testing.T) {
 	}
 }
 
+// TestVecStore_ZeroVectorSemantics mirrors TestPgVectorStore_ZeroVectorSemantics,
+// pinning the cosine contract edges on the vec0 table: upserting a
+// zero-magnitude vector clears the index entry (cosine is undefined for it),
+// and a zero query vector matches nothing.
+func TestVecStore_ZeroVectorSemantics(t *testing.T) {
+	d := newTestDriverDim(t, vecTestDim)
+	ctx := context.Background()
+	vs := d.Vectors()
+
+	if err := vs.Upsert(ctx, "vec-zero", []float32{1, 0, 0, 0}); err != nil {
+		t.Fatalf("upsert real: %v", err)
+	}
+	if err := vs.Upsert(ctx, "vec-zero", []float32{0, 0, 0, 0}); err != nil {
+		t.Fatalf("upsert zero: %v", err)
+	}
+	hits, err := vs.Search(ctx, []float32{1, 0, 0, 0}, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Errorf("zero-upserted vector still indexed: %+v", hits)
+	}
+	// The zero upsert must delete the row, not park a NULL-distance entry
+	// that would eat KNN result slots.
+	if n, err := vs.Count(ctx); err != nil || n != 0 {
+		t.Errorf("count after zero upsert: n=%d err=%v, want 0", n, err)
+	}
+
+	if err := vs.Upsert(ctx, "vec-real", []float32{0, 1, 0, 0}); err != nil {
+		t.Fatalf("upsert vec-real: %v", err)
+	}
+	hits, err = vs.Search(ctx, []float32{0, 0, 0, 0}, 10)
+	if err != nil {
+		t.Fatalf("zero-query search: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Errorf("zero query returned hits: %+v", hits)
+	}
+}
+
 // BenchmarkVecStore_Search_10k benchmarks KNN search over 10k indexed vectors.
 // Run with: go test -bench=BenchmarkVecStore -benchmem -tags fts5
 func BenchmarkVecStore_Search_10k(b *testing.B) {
@@ -178,4 +218,3 @@ func benchmarkVecSearch(b *testing.B, n int) {
 		_ = hits
 	}
 }
-

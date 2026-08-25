@@ -334,10 +334,12 @@ func TestCompileForPostgresRelated(t *testing.T) {
 	assert.Equal(t, []any{"@ns.slug"}, args)
 }
 
-func TestCompileForPostgresSimilarError(t *testing.T) {
-	_, _, err := CompileFor(DialectPostgres, mustParse(t, "similar==keyword"))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not supported on the Postgres backend")
+func TestCompileForPostgresSimilar(t *testing.T) {
+	sql, args, err := CompileFor(DialectPostgres, mustParse(t, "similar==keyword"))
+	require.NoError(t, err)
+	assert.Contains(t, sql, "fts @@ websearch_to_tsquery($1, $2)")
+	assert.NotContains(t, sql, "?")
+	assert.Equal(t, []any{PostgresFTSRegconfig, "keyword"}, args)
 }
 
 func TestCompileForPostgresAnd(t *testing.T) {

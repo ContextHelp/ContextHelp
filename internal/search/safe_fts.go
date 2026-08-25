@@ -1,6 +1,6 @@
 package search
 
-import "strings"
+import "github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 
 // SafeFTSQuery converts a free-text user query into a syntactically-safe
 // SQLite FTS5 MATCH expression. It exists because the previous code passed
@@ -22,16 +22,21 @@ import "strings"
 // Returns "" when the input has no usable tokens. Callers should treat that
 // as a clear "empty query" rather than passing it to MATCH.
 func SafeFTSQuery(q string) string {
-	tokens := tokenize(q)
-	if len(tokens) == 0 {
-		return ""
+	return ftsq.ForSQLite(q)
+}
+
+// SanitizeFTSQueryFor converts raw user text into the dialect-appropriate
+// FTS expression — the sanitizer half of the seam where CompileFor already
+// branches. Drivers apply their own leg (package ftsq) on the raw text they
+// receive; callers above the driver boundary must not pre-bake any
+// dialect's rules (FTS5 quoting sent to websearch_to_tsquery, or vice
+// versa, is exactly the drift this seam removes).
+//
+// Returns "" when the input has no usable tokens; drivers treat that as
+// match-nothing, not an error.
+func SanitizeFTSQueryFor(d Dialect, q string) string {
+	if d == DialectPostgres {
+		return ftsq.ForPostgres(q)
 	}
-	parts := make([]string, 0, len(tokens))
-	for _, t := range tokens {
-		// Embedded double-quotes are escaped per FTS5 spec by doubling them.
-		// tokenize() already strips most punctuation but defend in depth.
-		escaped := strings.ReplaceAll(t, `"`, `""`)
-		parts = append(parts, `"`+escaped+`"`)
-	}
-	return strings.Join(parts, " ")
+	return ftsq.ForSQLite(q)
 }
