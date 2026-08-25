@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
@@ -31,13 +32,16 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/policy"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/remind"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
+	"github.com/ideacrafterslabs/ctxt/internal/security"
 	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
@@ -133,6 +137,21 @@ func runServe(cmd *cobra.Command, args []string) error {
 	workers := viper.GetInt("server.workers")
 	public := viper.GetBool("server.public")
 	reminderInterval := viper.GetDuration("server.reminder_interval")
+
+	// Resolve the access class and inbound auth provider before any
+	// resource is initialized: a protected/public instance with no
+	// credentials refuses to start rather than exposing an open
+	// listener.
+	access, authProvider, err := resolveInboundAuth(cfg, public)
+	if err != nil {
+		return err
+	}
+	if cfg.Server.Access == "" && (public || cfg.Server.Public) {
+		fmt.Println("note: --public/server.public is deprecated shorthand for server.access: public; set server.access explicitly")
+	}
+	if access != config.AccessPrivate {
+		fmt.Printf("Inbound auth: %s provider (%s access)\n", authProvider.Name(), access)
+	}
 
 	// 1. Init storage.
 	storageType := cfg.Storage.Type
@@ -278,7 +297,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// policy.Init already prefixes returned errors with "policy:" so
 	// we surface them as-is rather than re-wrap and produce
 	// "policy: policy: ...".
-	pol, err := policy.Init(hubBus)
+	// Non-private instances refuse the env principal fallback: a remote
+	// caller with no authenticated principal must resolve as anonymous,
+	// never as the daemon operator's $USER/$KIT_POLICY_ROLE.
+	var polOpts []policy.Option
+	if access != config.AccessPrivate {
+		polOpts = append(polOpts, policy.WithoutEnvPrincipal())
+	}
+	pol, err := policy.Init(hubBus, polOpts...)
 	if err != nil {
 		return err
 	}
@@ -331,17 +357,63 @@ func runServe(cmd *cobra.Command, args []string) error {
 			return out
 		},
 	}
-	router := httpserver.NewRouterWithProbes(svc, devCORS, watchMgr, healthProbes)
+	// Non-private instances authenticate the whole /api/v1 route table
+	// (MCP mount included) through the provider-agnostic middleware.
+	var routeAuth authn.Provider
+	if access != config.AccessPrivate {
+		routeAuth = authProvider
+	}
+	// Security event emitter: auth failures and ACL denials feed the
+	// audit log (event_class=security) plus optional webhook/SMTP
+	// alerting from config. Wired on every instance — policy denials
+	// matter on private ones too.
+	secEmitter := security.New(security.ConfigFromAlerts(cfg.Security.Alerts), driver.AuditLog())
+
+	// Inbound entitlement/metering gate for the entity-serving surface.
+	// Only authenticated (non-private) instances construct one: grants
+	// are entitlement rows keyed by principal ID, quotas come from
+	// server.quotas config. nil on private instances = no gating.
+	var inboundGate *registry.InboundGate
+	if routeAuth != nil {
+		inboundGate = registry.NewInboundGate(driver.Entitlements(), driver.Metering())
+		for _, q := range cfg.Server.Quotas {
+			inboundGate.SetQuota(q.Principal, storage.MeteringEventType(q.Event), storage.QuotaConfig{
+				Limit:  q.Limit,
+				WarnAt: q.WarnAt,
+			})
+		}
+	}
+
+	// Serve-time federation-credential validation: on non-private
+	// instances the push route is gated per federation.token, never by
+	// a principal token alone; without one the route refuses requests.
+	requireFedCred := access != config.AccessPrivate
+	if requireFedCred && cfg.Federation.Token == "" {
+		fmt.Printf("Federation push: refused — no federation.token configured (mandatory on %s instances)\n", access)
+	}
+
+	router := httpserver.NewRouterWithConfig(svc, httpserver.RouterConfig{
+		DevCORS:                     devCORS,
+		Watcher:                     watchMgr,
+		Probes:                      healthProbes,
+		Auth:                        routeAuth,
+		Security:                    secEmitter,
+		Entitlements:                inboundGate,
+		RequireFederationCredential: requireFedCred,
+		RedactHealthz:               access == config.AccessPublic,
+	})
 	router.Handle("/ws/bus", hubNet.Handler())
 
-	// 8. Determine bind address.
+	// 8. Determine bind address. Only private instances stay on
+	// loopback; protected/public bind all interfaces (and are already
+	// guaranteed to have inbound auth configured above).
 	bind := "127.0.0.1"
-	if public {
+	if access != config.AccessPrivate {
 		bind = "0.0.0.0"
 	}
 
 	// 9. Auto-assign HTTP port if preferred is busy.
-	port, err = findFreePort(port)
+	port, err = findFreePort(bind, port)
 	if err != nil {
 		return fmt.Errorf("http port: %w", err)
 	}
@@ -354,15 +426,22 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// 9b. Auto-assign gRPC port if preferred is busy.
-	grpcPort, err = findFreePort(grpcPort)
+	grpcPort, err = findFreePort(bind, grpcPort)
 	if err != nil {
 		return fmt.Errorf("grpc port: %w", err)
 	}
 	grpcBind := fmt.Sprintf("%s:%d", bind, grpcPort)
-	grpcSrv := grpcserver.New(grpcBind, svc)
+	// Reflection advertises the API surface; keep it for private
+	// instances only.
+	grpcSrv := grpcserver.New(grpcBind, svc,
+		grpcserver.WithAuth(routeAuth),
+		grpcserver.WithSecurity(secEmitter),
+		grpcserver.WithEntitlements(inboundGate),
+		grpcserver.WithReflection(access == config.AccessPrivate),
+	)
 
 	// 9c. Auto-assign cookie-bridge port if preferred is busy.
-	cookieBridgePort, err := findFreePort(wsserver.DefaultCookieBridgePort)
+	cookieBridgePort, err := findFreePort("127.0.0.1", wsserver.DefaultCookieBridgePort)
 	if err != nil {
 		return fmt.Errorf("cookie bridge port: %w", err)
 	}
@@ -570,7 +649,35 @@ func runServe(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// findFreePort tries to bind preferred on 127.0.0.1.
+// resolveInboundAuth folds the --public flag into the loaded config,
+// enforces the access-class rules, and constructs the configured
+// authentication provider. Returns the effective access class and the
+// provider (nil when no auth is configured, which is only legal for
+// private instances). Any misconfiguration — unknown class, explicit
+// private + --public, non-private without credentials, broken provider
+// config — refuses serve before a single port is bound.
+func resolveInboundAuth(c *config.Config, publicFlag bool) (string, authn.Provider, error) {
+	folded := *c
+	folded.Server.Public = folded.Server.Public || publicFlag
+	if err := folded.ValidateAccess(); err != nil {
+		return "", nil, err
+	}
+	access := folded.Server.EffectiveAccess()
+
+	provider, err := authn.FromConfig(c.Server.Auth)
+	if err != nil {
+		return "", nil, err
+	}
+	if access != config.AccessPrivate && provider == nil {
+		// Unreachable while ValidateAccess covers credential presence;
+		// kept as a hard stop so a validation regression can never
+		// expose an unauthenticated non-private listener.
+		return "", nil, fmt.Errorf("config: %s instance requires inbound authentication (server.auth)", access)
+	}
+	return access, provider, nil
+}
+
+// findFreePort tries to bind preferred on the given bind address.
 // If preferred is busy, it asks the OS for any free port.
 // The listener is closed immediately; the caller owns the port convention.
 // resolveInstanceName returns the instance name for this serve invocation.
@@ -625,15 +732,16 @@ func instanceNameFromDBPath(dbPath string) string {
 	return name
 }
 
-func findFreePort(preferred int) (int, error) {
-	addr := fmt.Sprintf("127.0.0.1:%d", preferred)
+func findFreePort(bind string, preferred int) (int, error) {
+	addr := fmt.Sprintf("%s:%d", bind, preferred)
 	ln, err := net.Listen("tcp", addr)
 	if err == nil {
 		ln.Close()
 		return preferred, nil
 	}
-	// Preferred port is busy — let the OS pick one.
-	ln, err = net.Listen("tcp", "127.0.0.1:0")
+	// Preferred port is busy — let the OS pick one on the same bind
+	// address, so the returned port is actually bindable there.
+	ln, err = net.Listen("tcp", fmt.Sprintf("%s:0", bind))
 	if err != nil {
 		return 0, fmt.Errorf("no free port available: %w", err)
 	}

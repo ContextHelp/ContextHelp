@@ -430,12 +430,110 @@ type BlobS3Config struct {
 	MaxRetries    int           `mapstructure:"max_retries" yaml:"max_retries"`
 }
 
+// Access classes for ServerConfig.Access. They classify who may reach
+// the instance and drive load-time validation plus serve-time policy:
+// non-private instances require inbound authentication.
+const (
+	// AccessPrivate is a loopback-only instance; no inbound auth required.
+	AccessPrivate = "private"
+	// AccessProtected is reachable by remote callers on a trusted
+	// network; inbound auth is mandatory.
+	AccessProtected = "protected"
+	// AccessPublic is internet-facing; inbound auth is mandatory.
+	AccessPublic = "public"
+)
+
 // ServerConfig represents server configuration
 type ServerConfig struct {
 	Port     int  `mapstructure:"port" yaml:"port"`
 	GRPCPort int  `mapstructure:"grpc_port" yaml:"grpc_port"`
 	Workers  int  `mapstructure:"workers" yaml:"workers"`
 	Public   bool `mapstructure:"public" yaml:"public"`
+	// Access classifies the instance: "private" (default), "protected",
+	// or "public". Empty means unset; EffectiveAccess resolves the
+	// default and the legacy server.public shorthand.
+	Access string `mapstructure:"access" yaml:"access"`
+	// Auth selects and configures the inbound authentication provider.
+	// Consumed through the internal/auth Provider interface so the
+	// identity backend is an ops decision, never a rebuild.
+	Auth AuthConfig `mapstructure:"auth" yaml:"auth"`
+	// Quotas declares per-principal metering quotas enforced on the
+	// entity-serving surface of non-private instances. Namespace
+	// entitlement grants are data (entitlement rows keyed by principal
+	// ID); quotas are operator config, applied at serve start.
+	Quotas []ServerQuotaConfig `mapstructure:"quotas" yaml:"quotas"`
+}
+
+// ServerQuotaConfig caps one principal's metered usage of the
+// entity-serving surface for one event type per billing period
+// (calendar month, UTC).
+type ServerQuotaConfig struct {
+	// Principal is the authenticated principal ID the quota applies to.
+	Principal string `mapstructure:"principal" yaml:"principal"`
+	// Event is the metered event type: entity_resolve | content_pull |
+	// taxonomy_sync.
+	Event string `mapstructure:"event" yaml:"event"`
+	// Limit is the hard cap per billing period; 0 = unlimited.
+	Limit int `mapstructure:"limit" yaml:"limit"`
+	// WarnAt is the usage count that triggers a warning log
+	// (0 = default 80% of Limit).
+	WarnAt int `mapstructure:"warn_at" yaml:"warn_at"`
+}
+
+// EffectiveAccess resolves the instance access class. An explicit
+// server.access always wins; the legacy server.public flag is shorthand
+// for "public" when access is unset (deprecated, flagged by lint);
+// otherwise the default is private.
+func (s ServerConfig) EffectiveAccess() string {
+	if s.Access != "" {
+		return s.Access
+	}
+	if s.Public {
+		return AccessPublic
+	}
+	return AccessPrivate
+}
+
+// AuthConfig selects the inbound authentication provider and its settings.
+type AuthConfig struct {
+	// Provider names the authentication backend. "static" is implemented;
+	// "oidc" and "mtls" are reserved for future backends behind the same
+	// interface. Empty = no inbound auth configured.
+	Provider string `mapstructure:"provider" yaml:"provider"`
+	// Static configures the static token/API-key provider.
+	Static StaticAuthConfig `mapstructure:"static" yaml:"static"`
+}
+
+// StaticAuthConfig holds credentials for the static token provider.
+type StaticAuthConfig struct {
+	// Tokens maps bearer tokens / API keys to principals.
+	Tokens []StaticTokenConfig `mapstructure:"tokens" yaml:"tokens"`
+}
+
+// StaticTokenConfig is one accepted credential and the principal it
+// authenticates as.
+type StaticTokenConfig struct {
+	// Token is the shared secret presented by the caller.
+	Token string `mapstructure:"token" yaml:"token"`
+	// Principal is the stable identity assigned to callers of this token.
+	Principal string `mapstructure:"principal" yaml:"principal"`
+	// Roles grants coarse roles to the principal (e.g. "admin", "reader").
+	Roles []string `mapstructure:"roles" yaml:"roles"`
+}
+
+// HasInboundAuth reports whether the auth config carries a usable
+// credential set: a provider is selected and (for the static provider)
+// at least one token is configured. Reserved providers count as
+// configured here; their sub-config is validated at construction time.
+func (a AuthConfig) HasInboundAuth() bool {
+	switch a.Provider {
+	case "":
+		return false
+	case "static":
+		return len(a.Static.Tokens) > 0
+	default:
+		return true
+	}
 }
 
 // ProfileConfig represents profile configuration

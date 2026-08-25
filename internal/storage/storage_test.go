@@ -414,6 +414,11 @@ func (m *mockEntitlementStore) List(_ context.Context) ([]*RegistryEntitlement, 
 type mockMeteringStore struct{}
 
 func (m *mockMeteringStore) Record(_ context.Context, _ *MeteringEvent) error { return nil }
+func (m *mockMeteringStore) RecordCapped(
+	_ context.Context, _ *MeteringEvent, _ time.Time, _ int,
+) (bool, error) {
+	return true, nil
+}
 func (m *mockMeteringStore) Aggregate(
 	_ context.Context, _ MeteringFilter,
 ) ([]*MeteringAggregate, error) {

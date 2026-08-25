@@ -32,7 +32,7 @@ func CreatePipeline(svc *service.Service) http.HandlerFunc {
 
 		id, err := svc.CreatePipeline(withPolicyContext(r), req)
 		if err != nil {
-			if writePolicyError(w, err) {
+			if writePolicyError(w, r, err) {
 				return
 			}
 			statusCode := http.StatusInternalServerError
@@ -100,7 +100,7 @@ func DeletePipeline(svc *service.Service) http.HandlerFunc {
 		}
 
 		if err := svc.DeletePipeline(withPolicyContext(r), name); err != nil {
-			if writePolicyError(w, err) {
+			if writePolicyError(w, r, err) {
 				return
 			}
 			statusCode := http.StatusInternalServerError
@@ -130,7 +130,7 @@ func ArchivePipeline(svc *service.Service) http.HandlerFunc {
 		}
 
 		if err := svc.ArchivePipeline(withPolicyContext(r), name); err != nil {
-			if writePolicyError(w, err) {
+			if writePolicyError(w, r, err) {
 				return
 			}
 			// T-1294 added a Get-before-Update inside the service so
@@ -163,7 +163,7 @@ func UnarchivePipeline(svc *service.Service) http.HandlerFunc {
 		}
 
 		if err := svc.UnarchivePipeline(withPolicyContext(r), name); err != nil {
-			if writePolicyError(w, err) {
+			if writePolicyError(w, r, err) {
 				return
 			}
 			// Same not-found surface as ArchivePipeline (T-1294

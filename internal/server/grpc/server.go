@@ -12,36 +12,92 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
+	"github.com/ideacrafterslabs/ctxt/internal/security"
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 )
 
 // Server wraps a gRPC server with all registered services.
 type Server struct {
-	grpc    *grpc.Server
-	addr    string
-	health  *health.Server
+	grpc   *grpc.Server
+	addr   string
+	health *health.Server
+}
+
+// Option configures the gRPC server at construction time.
+type Option func(*serverOptions)
+
+type serverOptions struct {
+	auth         authn.Provider
+	security     *security.Emitter
+	entitlements *registry.InboundGate
+	reflection   bool
+}
+
+// WithSecurity wires the security event emitter into the auth
+// interceptors so failed authentications are recorded. A nil emitter is
+// a no-op.
+func WithSecurity(e *security.Emitter) Option {
+	return func(o *serverOptions) { o.security = e }
+}
+
+// WithAuth guards every RPC (unary and stream) behind the configured
+// authentication provider; grpc.health.v1 probes stay exempt. A nil
+// provider is a no-op (private instance).
+func WithAuth(p authn.Provider) Option {
+	return func(o *serverOptions) { o.auth = p }
+}
+
+// WithEntitlements gates the entity-serving RPCs behind per-principal
+// namespace grants and metering quotas — the same InboundGate the HTTP
+// router enforces, so the two transports can never drift. A nil gate is
+// a no-op (private instance).
+func WithEntitlements(g *registry.InboundGate) Option {
+	return func(o *serverOptions) { o.entitlements = g }
+}
+
+// WithReflection toggles server reflection. Reflection is a discovery
+// aid for grpcurl/tooling and stays enabled by default; non-private
+// instances disable it to avoid advertising the API surface.
+func WithReflection(enabled bool) Option {
+	return func(o *serverOptions) { o.reflection = enabled }
 }
 
 // New creates a gRPC Server with all service handlers registered.
-func New(addr string, svc *service.Service) *Server {
+func New(addr string, svc *service.Service, opts ...Option) *Server {
+	o := serverOptions{reflection: true}
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	unary := []grpc.UnaryServerInterceptor{recoveryInterceptor}
+	var stream []grpc.StreamServerInterceptor
+	if o.auth != nil {
+		unary = append(unary, authUnaryInterceptor(o.auth, o.security))
+		stream = append(stream, authStreamInterceptor(o.auth, o.security))
+	}
+
 	gs := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(recoveryInterceptor),
+		grpc.ChainUnaryInterceptor(unary...),
+		grpc.ChainStreamInterceptor(stream...),
 	)
 
 	// Register domain services.
 	pb.RegisterAnalyzeServiceServer(gs, newAnalyzeHandler(svc))
 	pb.RegisterJobServiceServer(gs, newJobHandler(svc))
 	pb.RegisterQueryServiceServer(gs, newQueryHandler(svc))
-	pb.RegisterEntityServiceServer(gs, newEntityHandler(svc))
+	pb.RegisterEntityServiceServer(gs, newEntityHandler(svc, o.entitlements, o.security))
 
 	// Register health service (grpc.health.v1).
 	hs := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(gs, hs)
 	hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
-	// Enable server reflection (useful for grpcurl / tooling).
-	reflection.Register(gs)
+	if o.reflection {
+		reflection.Register(gs)
+	}
 
 	return &Server{grpc: gs, addr: addr, health: hs}
 }

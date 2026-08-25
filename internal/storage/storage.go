@@ -83,6 +83,13 @@ type VectorStore interface {
 type MeteringStore interface {
 	// Record appends one metering event.
 	Record(ctx context.Context, event *MeteringEvent) error
+	// RecordCapped atomically appends event only when the summed count
+	// for (event.RegistryName, event.EventType) since periodStart stays
+	// below limit. Check and insert MUST happen as one storage-level
+	// operation so concurrent recorders can never overshoot the cap.
+	// Returns whether the event was recorded. A zero periodStart means
+	// all-time.
+	RecordCapped(ctx context.Context, event *MeteringEvent, periodStart time.Time, limit int) (bool, error)
 	// Aggregate returns summed counts grouped by registry_name+event_type,
 	// optionally filtered by the provided MeteringFilter.
 	Aggregate(ctx context.Context, filter MeteringFilter) ([]*MeteringAggregate, error)
