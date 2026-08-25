@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -105,6 +107,42 @@ func (c *Config) validateFederations() error {
 		if f.SyncMode == "async" && f.Interval <= 0 {
 			return fmt.Errorf("config: federations[%d] (%q): interval is required and must be >0 for async sync_mode", i, f.Name)
 		}
+	}
+	return nil
+}
+
+// validateServerEndpoints checks the client-routing endpoints. Runs at load
+// (not just on `config validate`): a malformed URL must fail loudly, never
+// degrade into a silently unreachable instance.
+func (c *Config) validateServerEndpoints() error {
+	if c.Server.URL != "" {
+		if err := validateEndpointURL(c.Server.URL); err != nil {
+			return fmt.Errorf("config: server.url: %w", err)
+		}
+	}
+	for i, ep := range c.Server.URLs {
+		if err := validateEndpointURL(ep.URL); err != nil {
+			return fmt.Errorf("config: server.urls[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// validateEndpointURL requires an absolute http/https URL with a host — the
+// only shape the client bridge can actually dial.
+func validateEndpointURL(raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		return fmt.Errorf("empty URL (each entry needs a base URL like http://127.0.0.1:8080)")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid URL %q: %v", raw, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("invalid URL %q: scheme must be http or https", raw)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("invalid URL %q: missing host", raw)
 	}
 	return nil
 }

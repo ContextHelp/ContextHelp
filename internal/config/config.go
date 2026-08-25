@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 	kitconfig "hop.top/kit/go/core/config"
 	"hop.top/kit/go/core/xdg"
 )
@@ -436,6 +437,66 @@ type ServerConfig struct {
 	GRPCPort int  `mapstructure:"grpc_port" yaml:"grpc_port"`
 	Workers  int  `mapstructure:"workers" yaml:"workers"`
 	Public   bool `mapstructure:"public" yaml:"public"`
+
+	// URL is the single dpkms instance clients route to when URLs is
+	// empty (also settable per command with --server where the flag
+	// exists). Validated at load: scheme http/https + host required.
+	URL string `mapstructure:"url" yaml:"url,omitempty"`
+	// URLs is the ordered client-routing list, primary first. Takes
+	// precedence over URL. Each entry is a bare URL string or a
+	// {url, token} mapping (see ServerEndpoint). Validated at load —
+	// a malformed entry fails the load instead of silently probing as
+	// a permanently "down" instance.
+	URLs []ServerEndpoint `mapstructure:"urls" yaml:"urls,omitempty"`
+	// Token is the default bearer token clients attach to requests
+	// against instances whose URLs entry carries no token of its own.
+	// Empty = unauthenticated.
+	Token string `mapstructure:"token" yaml:"token,omitempty"`
+}
+
+// ServerEndpoint is one client-routing target: a dpkms base URL plus an
+// optional bearer token overriding the server.token default for that
+// instance. In YAML an entry is either a bare string URL (no token) or a
+// mapping:
+//
+//	server:
+//	  urls:
+//	    - http://127.0.0.1:8080
+//	    - url: https://primary.example.net:7700
+//	      token: s3cret
+type ServerEndpoint struct {
+	URL   string `mapstructure:"url" yaml:"url"`
+	Token string `mapstructure:"token,omitempty" yaml:"token,omitempty"`
+}
+
+// UnmarshalYAML accepts both entry forms: a bare string URL and a
+// {url, token} mapping.
+func (e *ServerEndpoint) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		e.Token = ""
+		return node.Decode(&e.URL)
+	case yaml.MappingNode:
+		type plain ServerEndpoint
+		var p plain
+		if err := node.Decode(&p); err != nil {
+			return err
+		}
+		*e = ServerEndpoint(p)
+		return nil
+	default:
+		return fmt.Errorf("server.urls entry must be a URL string or a {url, token} mapping")
+	}
+}
+
+// MarshalYAML writes the bare-string form back when no token is set, so a
+// config written back (schema migration) keeps its original shape.
+func (e ServerEndpoint) MarshalYAML() (any, error) {
+	if e.Token == "" {
+		return e.URL, nil
+	}
+	type plain ServerEndpoint
+	return plain(e), nil
 }
 
 // ProfileConfig represents profile configuration
@@ -680,6 +741,14 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 
 	// Sync FocusProfile.Default bool → ProfileConfig.Default string.
 	if err := syncProfileDefault(&cfg); err != nil {
+		return nil, err
+	}
+
+	// Reject malformed client-routing endpoints loudly at load time — a
+	// bad server.url/server.urls entry would otherwise probe as a
+	// permanently "down" instance and silently shift traffic to the next
+	// instance or the local fallback.
+	if err := cfg.validateServerEndpoints(); err != nil {
 		return nil, err
 	}
 

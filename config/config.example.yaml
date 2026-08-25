@@ -187,9 +187,20 @@ server:
   # within about a second. When every instance is down, writes queue in local
   # storage and run once a daemon starts. Takes precedence over `url`; an
   # explicit --server flag pins routing to that single instance.
+  #
+  # Entries are either bare URL strings (no credentials) or {url, token}
+  # mappings; a per-entry token overrides the top-level `token` default for
+  # that instance. URLs are validated at load — a malformed entry fails the
+  # load instead of silently counting as a "down" instance.
   # urls:
-  #   - https://primary.example.net:7700
+  #   - url: https://primary.example.net:7700
+  #     token: s3cret-primary
   #   - http://127.0.0.1:8080
+  #
+  # token: default bearer token attached to client calls (analyze, search,
+  # job polling) against instances whose entry has no token of its own.
+  # Health probes stay unauthenticated (/health is public). Empty = no auth.
+  # token: s3cret-default
 
   # HTTP/REST API
   http:
