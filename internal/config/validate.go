@@ -37,6 +37,7 @@ func Validate(c *Config) []ValidationError {
 	}
 
 	errs = append(errs, validateAccess(c)...)
+	errs = append(errs, validateQuotas(c)...)
 
 	if c.Jobs.PollInterval != 0 && c.Jobs.PollInterval < 50*time.Millisecond {
 		errs = append(errs, ValidationError{Field: "jobs.poll_interval", Message: fmt.Sprintf("must be ≥50ms, got %s", c.Jobs.PollInterval)})
@@ -106,6 +107,49 @@ func validateAccess(c *Config) []ValidationError {
 		})
 	}
 
+	return errs
+}
+
+// validateQuotas enforces server.quotas entry rules: a named principal,
+// a known metered event type, and coherent thresholds. Event names
+// mirror the metering vocabulary (entity_resolve | content_pull |
+// taxonomy_sync) without importing the storage layer.
+func validateQuotas(c *Config) []ValidationError {
+	var errs []ValidationError
+	for i, q := range c.Server.Quotas {
+		if q.Principal == "" {
+			errs = append(errs, ValidationError{
+				Field:   fmt.Sprintf("server.quotas[%d].principal", i),
+				Message: "principal is required",
+			})
+		}
+		switch q.Event {
+		case "entity_resolve", "content_pull", "taxonomy_sync":
+			// valid
+		default:
+			errs = append(errs, ValidationError{
+				Field:   fmt.Sprintf("server.quotas[%d].event", i),
+				Message: fmt.Sprintf("unknown event %q; must be one of entity_resolve, content_pull, taxonomy_sync", q.Event),
+			})
+		}
+		if q.Limit < 0 {
+			errs = append(errs, ValidationError{
+				Field:   fmt.Sprintf("server.quotas[%d].limit", i),
+				Message: fmt.Sprintf("must be ≥0 (0 = unlimited), got %d", q.Limit),
+			})
+		}
+		if q.WarnAt < 0 {
+			errs = append(errs, ValidationError{
+				Field:   fmt.Sprintf("server.quotas[%d].warn_at", i),
+				Message: fmt.Sprintf("must be ≥0, got %d", q.WarnAt),
+			})
+		} else if q.Limit > 0 && q.WarnAt > q.Limit {
+			errs = append(errs, ValidationError{
+				Field:   fmt.Sprintf("server.quotas[%d].warn_at", i),
+				Message: fmt.Sprintf("must not exceed limit %d, got %d", q.Limit, q.WarnAt),
+			})
+		}
+	}
 	return errs
 }
 

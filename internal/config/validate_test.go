@@ -48,6 +48,34 @@ func TestValidate(t *testing.T) {
 			},
 			wantField: "conventions.allowed_mention_namespaces[0]",
 		},
+		{
+			name: "quota missing principal",
+			mutate: func(c *Config) {
+				c.Server.Quotas = []ServerQuotaConfig{{Event: "entity_resolve", Limit: 10}}
+			},
+			wantField: "server.quotas[0].principal",
+		},
+		{
+			name: "quota unknown event",
+			mutate: func(c *Config) {
+				c.Server.Quotas = []ServerQuotaConfig{{Principal: "partner", Event: "bad_event", Limit: 10}}
+			},
+			wantField: "server.quotas[0].event",
+		},
+		{
+			name: "quota negative limit",
+			mutate: func(c *Config) {
+				c.Server.Quotas = []ServerQuotaConfig{{Principal: "partner", Event: "entity_resolve", Limit: -1}}
+			},
+			wantField: "server.quotas[0].limit",
+		},
+		{
+			name: "quota warn threshold above limit",
+			mutate: func(c *Config) {
+				c.Server.Quotas = []ServerQuotaConfig{{Principal: "partner", Event: "content_pull", Limit: 10, WarnAt: 20}}
+			},
+			wantField: "server.quotas[0].warn_at",
+		},
 	}
 
 	for _, tc := range cases {
@@ -167,4 +195,15 @@ func TestEffectiveAccess(t *testing.T) {
 			assert.Equal(t, tc.want, tc.server.EffectiveAccess())
 		})
 	}
+}
+
+// Valid quota declarations produce no validation errors.
+func TestValidateQuotasValid(t *testing.T) {
+	cfg := &Config{}
+	cfg.Server.Quotas = []ServerQuotaConfig{
+		{Principal: "partner", Event: "entity_resolve", Limit: 1000, WarnAt: 800},
+		{Principal: "partner", Event: "content_pull"}, // no limit = unlimited
+		{Principal: "other", Event: "taxonomy_sync", Limit: 5},
+	}
+	assert.Empty(t, Validate(cfg))
 }

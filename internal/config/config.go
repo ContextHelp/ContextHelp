@@ -457,6 +457,27 @@ type ServerConfig struct {
 	// Consumed through the internal/auth Provider interface so the
 	// identity backend is an ops decision, never a rebuild.
 	Auth AuthConfig `mapstructure:"auth" yaml:"auth"`
+	// Quotas declares per-principal metering quotas enforced on the
+	// entity-serving surface of non-private instances. Namespace
+	// entitlement grants are data (entitlement rows keyed by principal
+	// ID); quotas are operator config, applied at serve start.
+	Quotas []ServerQuotaConfig `mapstructure:"quotas" yaml:"quotas"`
+}
+
+// ServerQuotaConfig caps one principal's metered usage of the
+// entity-serving surface for one event type per billing period
+// (calendar month, UTC).
+type ServerQuotaConfig struct {
+	// Principal is the authenticated principal ID the quota applies to.
+	Principal string `mapstructure:"principal" yaml:"principal"`
+	// Event is the metered event type: entity_resolve | content_pull |
+	// taxonomy_sync.
+	Event string `mapstructure:"event" yaml:"event"`
+	// Limit is the hard cap per billing period; 0 = unlimited.
+	Limit int `mapstructure:"limit" yaml:"limit"`
+	// WarnAt is the usage count that triggers a warning log
+	// (0 = default 80% of Limit).
+	WarnAt int `mapstructure:"warn_at" yaml:"warn_at"`
 }
 
 // EffectiveAccess resolves the instance access class. An explicit

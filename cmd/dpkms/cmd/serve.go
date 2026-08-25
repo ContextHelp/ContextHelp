@@ -31,6 +31,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/policy"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/remind"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
@@ -39,6 +40,7 @@ import (
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
@@ -346,12 +348,28 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// matter on private ones too.
 	secEmitter := security.New(security.ConfigFromAlerts(cfg.Security.Alerts), driver.AuditLog())
 
+	// Inbound entitlement/metering gate for the entity-serving surface.
+	// Only authenticated (non-private) instances construct one: grants
+	// are entitlement rows keyed by principal ID, quotas come from
+	// server.quotas config. nil on private instances = no gating.
+	var inboundGate *registry.InboundGate
+	if routeAuth != nil {
+		inboundGate = registry.NewInboundGate(driver.Entitlements(), driver.Metering())
+		for _, q := range cfg.Server.Quotas {
+			inboundGate.SetQuota(q.Principal, storage.MeteringEventType(q.Event), storage.QuotaConfig{
+				Limit:  q.Limit,
+				WarnAt: q.WarnAt,
+			})
+		}
+	}
+
 	router := httpserver.NewRouterWithConfig(svc, httpserver.RouterConfig{
-		DevCORS:  devCORS,
-		Watcher:  watchMgr,
-		Probes:   healthProbes,
-		Auth:     routeAuth,
-		Security: secEmitter,
+		DevCORS:      devCORS,
+		Watcher:      watchMgr,
+		Probes:       healthProbes,
+		Auth:         routeAuth,
+		Security:     secEmitter,
+		Entitlements: inboundGate,
 	})
 	router.Handle("/ws/bus", hubNet.Handler())
 

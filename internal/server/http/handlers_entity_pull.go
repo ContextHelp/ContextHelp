@@ -7,18 +7,35 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // PullEntity promotes a thin entity to full by fetching its definition on demand.
 // POST /api/v1/entities/{slug}/pull
-func PullEntity(svc *service.Service) http.HandlerFunc {
+//
+// A wired inbound gate charges the access as a metered content_pull
+// against the principal's namespace entitlement and quota before the
+// definition fetch runs.
+func PullEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")
 		if slug == "" {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "slug is required")
 			return
+		}
+		if gate != nil {
+			if existing, err := svc.GetEntity(r.Context(), slug); err == nil {
+				if aerr := gate.Authorize(r.Context(), gatePrincipal(r), existing.Namespace,
+					storage.MeteringEventContentPull); aerr != nil {
+					if writeInboundGateError(w, r, aerr) {
+						return
+					}
+					WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", aerr.Error())
+					return
+				}
+			}
 		}
 
 		entity, err := svc.PullEntity(r.Context(), slug)

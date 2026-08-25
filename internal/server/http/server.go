@@ -10,6 +10,7 @@ import (
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/mcp"
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/ui"
@@ -33,6 +34,10 @@ type RouterConfig struct {
 	// Security receives auth-failure and ACL-denial events. nil = no
 	// security event recording.
 	Security *security.Emitter
+	// Entitlements gates the entity-serving surface behind per-principal
+	// namespace grants and metering quotas. nil = no inbound
+	// entitlement enforcement (private instance).
+	Entitlements *registry.InboundGate
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -117,12 +122,14 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		// Search
 		r.Get("/search", Search(svc))
 
-		// Entities
-		r.Get("/entities", ListEntities(svc))
-		r.Get("/entities/{slug}", GetEntity(svc))
-		r.Get("/entities/{slug}/backlinks", EntityBacklinks(svc))
+		// Entities. The entity-serving surface is where inbound
+		// entitlements and metering bite: resolves and pulls are
+		// charged per principal when a gate is wired.
+		r.Get("/entities", ListEntities(svc, rc.Entitlements))
+		r.Get("/entities/{slug}", GetEntity(svc, rc.Entitlements))
+		r.Get("/entities/{slug}/backlinks", EntityBacklinks(svc, rc.Entitlements))
 		// Thin sync: promote a thin entity to full on demand.
-		r.Post("/entities/{slug}/pull", PullEntity(svc))
+		r.Post("/entities/{slug}/pull", PullEntity(svc, rc.Entitlements))
 		// Thin sync: trigger entity index sync for a registry.
 		r.Post("/entities/registry-sync", SyncRegistryEntities(svc))
 
