@@ -662,4 +662,3 @@ func computeEmbeddingSignature(modelID, provider string, dimension int) (string,
 	return hex.EncodeToString(sum[:]),
 		fmt.Sprintf("model_id=%s;provider=%s;dimension=%d", modelID, provider, dimension)
 }
-
