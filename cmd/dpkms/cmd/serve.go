@@ -405,6 +405,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	grpcSrv := grpcserver.New(grpcBind, svc,
 		grpcserver.WithAuth(routeAuth),
 		grpcserver.WithSecurity(secEmitter),
+		grpcserver.WithEntitlements(inboundGate),
 		grpcserver.WithReflection(access == config.AccessPrivate),
 	)
 

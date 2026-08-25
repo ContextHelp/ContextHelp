@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -20,18 +21,19 @@ import (
 
 // Server wraps a gRPC server with all registered services.
 type Server struct {
-	grpc    *grpc.Server
-	addr    string
-	health  *health.Server
+	grpc   *grpc.Server
+	addr   string
+	health *health.Server
 }
 
 // Option configures the gRPC server at construction time.
 type Option func(*serverOptions)
 
 type serverOptions struct {
-	auth       authn.Provider
-	security   *security.Emitter
-	reflection bool
+	auth         authn.Provider
+	security     *security.Emitter
+	entitlements *registry.InboundGate
+	reflection   bool
 }
 
 // WithSecurity wires the security event emitter into the auth
@@ -46,6 +48,14 @@ func WithSecurity(e *security.Emitter) Option {
 // provider is a no-op (private instance).
 func WithAuth(p authn.Provider) Option {
 	return func(o *serverOptions) { o.auth = p }
+}
+
+// WithEntitlements gates the entity-serving RPCs behind per-principal
+// namespace grants and metering quotas — the same InboundGate the HTTP
+// router enforces, so the two transports can never drift. A nil gate is
+// a no-op (private instance).
+func WithEntitlements(g *registry.InboundGate) Option {
+	return func(o *serverOptions) { o.entitlements = g }
 }
 
 // WithReflection toggles server reflection. Reflection is a discovery
@@ -78,7 +88,7 @@ func New(addr string, svc *service.Service, opts ...Option) *Server {
 	pb.RegisterAnalyzeServiceServer(gs, newAnalyzeHandler(svc))
 	pb.RegisterJobServiceServer(gs, newJobHandler(svc))
 	pb.RegisterQueryServiceServer(gs, newQueryHandler(svc))
-	pb.RegisterEntityServiceServer(gs, newEntityHandler(svc))
+	pb.RegisterEntityServiceServer(gs, newEntityHandler(svc, o.entitlements, o.security))
 
 	// Register health service (grpc.health.v1).
 	hs := health.NewServer()
