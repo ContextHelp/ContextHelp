@@ -379,3 +379,16 @@ func TestListWithCoverage_PartialCoverage(t *testing.T) {
 	assert.InDelta(t, 0.5, candidateCov, 1e-9, "2 of 4 objects covered under candidate")
 	assert.InDelta(t, 0.0, legacyCov, 1e-9, "legacy model has no embeddings rows under it yet")
 }
+
+// TestRegister_LargeDimensionAllowedOnSQLite pins the asymmetry contract:
+// SQLite brute-forces any dimension, so no indexability ceiling applies —
+// the ceiling is a Postgres/HNSW property enforced only there.
+func TestRegister_LargeDimensionAllowedOnSQLite(t *testing.T) {
+	r, _ := newRegistry(t)
+	err := r.Register(context.Background(), registry.Model{
+		ModelID:   "giant-embedding",
+		Provider:  registry.ProviderOpenAI,
+		Dimension: 3000,
+	}, false)
+	require.NoError(t, err, "sqlite has no indexability ceiling")
+}

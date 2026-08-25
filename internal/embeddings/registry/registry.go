@@ -13,7 +13,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
 
 // Provider hints used at Register time. Not enforced server-side; the registry
@@ -51,15 +54,53 @@ var ErrModelNotFound = errors.New("embedding model not found")
 // existing model_id is a separate (unimplemented Phase-1) operation.
 var ErrModelAlreadyRegistered = errors.New("embedding model already registered")
 
-// Store is the registry's database handle. Construct via New(driver.DB()).
+// Store is the registry's database handle. Construct via New(driver.DB())
+// for SQLite or NewFor(driver.DB(), driver.SQLDialect()) to match the
+// backend explicitly.
 type Store struct {
-	db *sql.DB
+	db       *sql.DB
+	postgres bool
+	// maxIndexableDim is the backend's ANN-indexable dimension ceiling;
+	// 0 means unbounded (SQLite brute-forces any dimension).
+	maxIndexableDim int
 }
 
-// New returns a Store wired to db. The caller owns the lifetime of db; the
-// registry never closes it.
+// New returns a SQLite-dialect Store wired to db. The caller owns the
+// lifetime of db; the registry never closes it.
 func New(db *sql.DB) *Store {
-	return &Store{db: db}
+	return NewFor(db, "sqlite")
+}
+
+// NewFor returns a Store speaking the given SQL dialect ("sqlite" or
+// "postgres", matching Driver.SQLDialect()). The Postgres dialect rebinds
+// placeholders and enforces the pgvector HNSW dimension ceiling at Register
+// time: a model SQLite happily brute-forces can be un-indexable there, and
+// that asymmetry must fail loudly at registration, not at first query.
+func NewFor(db *sql.DB, dialect string) *Store {
+	s := &Store{db: db}
+	if dialect == "postgres" {
+		s.postgres = true
+		s.maxIndexableDim = indexsig.PostgresHNSWMaxDimension
+	}
+	return s
+}
+
+// q adapts a ?-placeholder query to the store's dialect.
+func (s *Store) q(query string) string {
+	if !s.postgres {
+		return query
+	}
+	var b strings.Builder
+	n := 1
+	for i := 0; i < len(query); i++ {
+		if query[i] == '?' {
+			fmt.Fprintf(&b, "$%d", n)
+			n++
+		} else {
+			b.WriteByte(query[i])
+		}
+	}
+	return b.String()
 }
 
 // Register inserts a new model row. ConfigJSON defaults to "{}" when empty.
@@ -72,6 +113,11 @@ func (s *Store) Register(ctx context.Context, m Model, makeDefault bool) error {
 	}
 	if m.Dimension < 0 {
 		return fmt.Errorf("registry.Register: dimension must be non-negative")
+	}
+	if s.maxIndexableDim > 0 && m.Dimension > s.maxIndexableDim {
+		return fmt.Errorf(
+			"registry.Register: model %s has dimension %d, above this backend's ANN-indexable ceiling of %d (pgvector HNSW; halfvec extends to %d but is not wired) — register a smaller-dimension model or use the sqlite backend",
+			m.ModelID, m.Dimension, s.maxIndexableDim, indexsig.PostgresHalfvecMaxDimension)
 	}
 	if m.ConfigJSON == "" {
 		m.ConfigJSON = "{}"
@@ -104,11 +150,11 @@ func (s *Store) Register(ctx context.Context, m Model, makeDefault bool) error {
 		}
 	}
 
-	res, err := tx.ExecContext(ctx, `
+	res, err := tx.ExecContext(ctx, s.q(`
 		INSERT INTO embedding_models
 			(model_id, provider, dimension, is_default, registered_at, config_json)
 		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(model_id) DO NOTHING`,
+		ON CONFLICT(model_id) DO NOTHING`),
 		m.ModelID, m.Provider, m.Dimension, defFlag,
 		m.RegisteredAt.UTC().Format(time.RFC3339), m.ConfigJSON,
 	)
@@ -186,7 +232,7 @@ func (s *Store) ListWithCoverage(ctx context.Context) ([]ModelWithCoverage, erro
 	for _, m := range models {
 		var covered int64
 		if err := s.db.QueryRowContext(ctx,
-			`SELECT COUNT(DISTINCT object_id) FROM embeddings WHERE model_id = ?`,
+			s.q(`SELECT COUNT(DISTINCT object_id) FROM embeddings WHERE model_id = ?`),
 			m.ModelID,
 		).Scan(&covered); err != nil {
 			return nil, fmt.Errorf("registry.ListWithCoverage: covered count for %s: %w", m.ModelID, err)
@@ -205,11 +251,11 @@ func (s *Store) ListWithCoverage(ctx context.Context) ([]ModelWithCoverage, erro
 // Get returns the model row for modelID. Returns ErrModelNotFound when no row
 // matches.
 func (s *Store) Get(ctx context.Context, modelID string) (*Model, error) {
-	row := s.db.QueryRowContext(ctx, `
+	row := s.db.QueryRowContext(ctx, s.q(`
 		SELECT model_id, provider, dimension, is_default,
 		       registered_at, deprecated_at, config_json
 		  FROM embedding_models
-		 WHERE model_id = ?`, modelID)
+		 WHERE model_id = ?`), modelID)
 	m, err := scanModel(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -237,7 +283,7 @@ func (s *Store) SetDefault(ctx context.Context, modelID string) error {
 	// Verify target exists before mutating anything.
 	var n int
 	if err := tx.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM embedding_models WHERE model_id = ?`, modelID,
+		s.q(`SELECT COUNT(*) FROM embedding_models WHERE model_id = ?`), modelID,
 	).Scan(&n); err != nil {
 		return fmt.Errorf("registry.SetDefault: lookup: %w", err)
 	}
@@ -251,7 +297,7 @@ func (s *Store) SetDefault(ctx context.Context, modelID string) error {
 		return fmt.Errorf("registry.SetDefault: clear existing default: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE embedding_models SET is_default = 1 WHERE model_id = ?`, modelID,
+		s.q(`UPDATE embedding_models SET is_default = 1 WHERE model_id = ?`), modelID,
 	); err != nil {
 		return fmt.Errorf("registry.SetDefault: mark default: %w", err)
 	}
@@ -273,7 +319,7 @@ func (s *Store) Deprecate(ctx context.Context, modelID string, when time.Time) e
 		when = time.Now().UTC()
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE embedding_models SET deprecated_at = ? WHERE model_id = ?`,
+		s.q(`UPDATE embedding_models SET deprecated_at = ? WHERE model_id = ?`),
 		when.UTC().Format(time.RFC3339), modelID,
 	)
 	if err != nil {
@@ -298,8 +344,8 @@ type rowScanner interface {
 func scanModel(r rowScanner) (Model, error) {
 	var (
 		m            Model
-		registeredAt string
-		deprecatedAt sql.NullString
+		registeredAt any
+		deprecatedAt any
 		isDefault    int
 	)
 	if err := r.Scan(
@@ -309,14 +355,38 @@ func scanModel(r rowScanner) (Model, error) {
 		return Model{}, err
 	}
 	m.IsDefault = isDefault == 1
-	if t, err := time.Parse(time.RFC3339, registeredAt); err == nil {
-		m.RegisteredAt = t.UTC()
+	// Timestamps are TEXT (RFC3339) on SQLite, TIMESTAMPTZ (time.Time) on
+	// Postgres; normalize both.
+	if t, ok := scanTime(registeredAt); ok {
+		m.RegisteredAt = t
 	}
-	if deprecatedAt.Valid && deprecatedAt.String != "" {
-		if t, err := time.Parse(time.RFC3339, deprecatedAt.String); err == nil {
-			tt := t.UTC()
-			m.DeprecatedAt = &tt
-		}
+	if t, ok := scanTime(deprecatedAt); ok {
+		m.DeprecatedAt = &t
 	}
 	return m, nil
+}
+
+// scanTime normalizes a scanned timestamp column: time.Time from Postgres
+// TIMESTAMPTZ, RFC3339 text/bytes from SQLite. Returns ok=false for NULL,
+// empty, or unparsable values.
+func scanTime(v any) (time.Time, bool) {
+	switch t := v.(type) {
+	case time.Time:
+		return t.UTC(), true
+	case string:
+		if t == "" {
+			return time.Time{}, false
+		}
+		if parsed, err := time.Parse(time.RFC3339, t); err == nil {
+			return parsed.UTC(), true
+		}
+	case []byte:
+		if len(t) == 0 {
+			return time.Time{}, false
+		}
+		if parsed, err := time.Parse(time.RFC3339, string(t)); err == nil {
+			return parsed.UTC(), true
+		}
+	}
+	return time.Time{}, false
 }
