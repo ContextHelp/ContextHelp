@@ -316,6 +316,11 @@ func (d *Driver) Migrate(ctx context.Context) error {
 	if err := migrateJobsUserProfileNote(ctx, d.db); err != nil {
 		return fmt.Errorf("jobs.user_profile/user_note migration: %w", err)
 	}
+	// Jobs.idempotency_key column + partial unique index so a replayed
+	// enqueue resolves to the existing job instead of a duplicate.
+	if err := migrateJobsIdempotencyKey(ctx, d.db); err != nil {
+		return fmt.Errorf("jobs.idempotency_key migration: %w", err)
+	}
 	// ADR-071 Phase 1 (T-0582): seed the legacy default embedding model
 	// row + stamp the matching index_signatures row. The legacy
 	// object_embeddings table never existed in the postgres schema
@@ -443,6 +448,24 @@ func migrateJobsUserProfileNote(ctx context.Context, db *sql.DB) error {
 	if err := addJobsColumnIfMissing(ctx, db, "user_note",
 		`ALTER TABLE jobs ADD COLUMN user_note TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
+	}
+	return nil
+}
+
+// migrateJobsIdempotencyKey adds the idempotency_key column plus a partial
+// unique index over non-empty keys — the race-window guard behind the
+// lookup-then-insert dedupe at the enqueue surface. Empty keys (legacy rows,
+// keyless enqueues) are exempt.
+func migrateJobsIdempotencyKey(ctx context.Context, db *sql.DB) error {
+	if err := addJobsColumnIfMissing(ctx, db, "idempotency_key",
+		`ALTER TABLE jobs ADD COLUMN idempotency_key TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	_, err := db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS
+		idx_jobs_idempotency_key ON jobs(idempotency_key)
+		WHERE idempotency_key != ''`)
+	if err != nil {
+		return fmt.Errorf("create idempotency key index: %w", err)
 	}
 	return nil
 }

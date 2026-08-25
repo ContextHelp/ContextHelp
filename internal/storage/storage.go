@@ -204,6 +204,10 @@ type EdgeStore interface {
 type JobStore interface {
 	Create(ctx context.Context, job *Job) error
 	Get(ctx context.Context, id string) (*Job, error)
+	// GetByIdempotencyKey returns the job carrying the given non-empty
+	// idempotency key, or (nil, nil) when no such job exists. An empty
+	// key never matches.
+	GetByIdempotencyKey(ctx context.Context, key string) (*Job, error)
 	List(ctx context.Context, filter JobFilter) ([]*Job, int, error)
 	AcquireNext(ctx context.Context) (*Job, error)
 	Complete(ctx context.Context, id string, resultID string) error

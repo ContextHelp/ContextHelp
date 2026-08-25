@@ -32,12 +32,13 @@ func (s *JobStore) Create(ctx context.Context, job *storage.Job) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO jobs (
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		user_mentions, user_hints, user_profile, user_note, idempotency_key
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		job.ID, job.Type, string(job.Status), job.Payload, job.Pipeline, job.Source,
 		job.ResultID, job.Error, job.RetryCount, job.MaxRetries,
 		job.CreatedAt.Format(time.RFC3339), job.UpdatedAt.Format(time.RFC3339),
 		startedAt, completedAt, userMentions, userHints, job.UserProfile, job.UserNote,
+		job.IdempotencyKey,
 	)
 	if err != nil {
 		return fmt.Errorf("create job: %w", err)
@@ -74,7 +75,7 @@ func (s *JobStore) Get(ctx context.Context, id string) (*storage.Job, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note
+		user_mentions, user_hints, user_profile, user_note, idempotency_key
 	FROM jobs WHERE id = ?`, id)
 	return scanJob(row)
 }
@@ -105,7 +106,7 @@ func (s *JobStore) List(ctx context.Context, filter storage.JobFilter) ([]*stora
 	query := `SELECT
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note
+		user_mentions, user_hints, user_profile, user_note, idempotency_key
 	FROM jobs ` + where + " ORDER BY created_at DESC"
 
 	if filter.Limit > 0 {
@@ -155,7 +156,7 @@ func (s *JobStore) AcquireNext(ctx context.Context) (*storage.Job, error) {
 		) AND status = 'pending'
 		RETURNING id, type, status, payload, pipeline, source, result_id, error,
 		          retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		          user_mentions, user_hints, user_profile, user_note`,
+		          user_mentions, user_hints, user_profile, user_note, idempotency_key`,
 		now, now)
 
 	j, err := scanJob(row)
@@ -248,11 +249,11 @@ func scanJob(row *sql.Row) (*storage.Job, error) {
 	var j storage.Job
 	var status, createdAt, updatedAt string
 	var startedAt, completedAt sql.NullString
-	var userMentions, userHints, userProfile, userNote sql.NullString
+	var userMentions, userHints, userProfile, userNote, idemKey sql.NullString
 
 	err := row.Scan(&j.ID, &j.Type, &status, &j.Payload, &j.Pipeline, &j.Source,
 		&j.ResultID, &j.Error, &j.RetryCount, &j.MaxRetries,
-		&createdAt, &updatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote)
+		&createdAt, &updatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote, &idemKey)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("job not found: %w", sql.ErrNoRows)
@@ -283,6 +284,9 @@ func scanJob(row *sql.Row) (*storage.Job, error) {
 	if userNote.Valid {
 		j.UserNote = userNote.String
 	}
+	if idemKey.Valid {
+		j.IdempotencyKey = idemKey.String
+	}
 	return &j, nil
 }
 
@@ -290,11 +294,11 @@ func scanJobFromRows(rows *sql.Rows) (*storage.Job, error) {
 	var j storage.Job
 	var status, createdAt, updatedAt string
 	var startedAt, completedAt sql.NullString
-	var userMentions, userHints, userProfile, userNote sql.NullString
+	var userMentions, userHints, userProfile, userNote, idemKey sql.NullString
 
 	err := rows.Scan(&j.ID, &j.Type, &status, &j.Payload, &j.Pipeline, &j.Source,
 		&j.ResultID, &j.Error, &j.RetryCount, &j.MaxRetries,
-		&createdAt, &updatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote)
+		&createdAt, &updatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote, &idemKey)
 	if err != nil {
 		return nil, fmt.Errorf("scan job row: %w", err)
 	}
@@ -322,6 +326,9 @@ func scanJobFromRows(rows *sql.Rows) (*storage.Job, error) {
 	if userNote.Valid {
 		j.UserNote = userNote.String
 	}
+	if idemKey.Valid {
+		j.IdempotencyKey = idemKey.String
+	}
 	return &j, nil
 }
 
@@ -340,4 +347,26 @@ func marshalJSON(v any) string {
 		return "{}"
 	}
 	return string(data)
+}
+
+// GetByIdempotencyKey returns the job carrying the given non-empty
+// idempotency key, or (nil, nil) when no such job exists. The empty key is
+// the "no dedupe" sentinel and never matches a row.
+func (s *JobStore) GetByIdempotencyKey(ctx context.Context, key string) (*storage.Job, error) {
+	if key == "" {
+		return nil, nil
+	}
+	row := s.db.QueryRowContext(ctx, `SELECT
+		id, type, status, payload, pipeline, source, result_id, error,
+		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
+		user_mentions, user_hints, user_profile, user_note, idempotency_key
+	FROM jobs WHERE idempotency_key = ?`, key)
+	j, err := scanJob(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get job by idempotency key: %w", err)
+	}
+	return j, nil
 }
