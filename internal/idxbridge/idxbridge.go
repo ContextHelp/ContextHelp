@@ -1,20 +1,27 @@
 // Package idxbridge provides a client-side bridge that routes index/search
 // (RSQL idx) queries and the analyze/ingest enqueue write surface to a running
 // dpkms daemon via HTTP, falling back to a direct local implementation when
-// the daemon is unreachable.
+// no daemon is reachable.
+//
+// The bridge accepts an ordered list of daemon base URLs (primary first —
+// e.g. a remote instance, then a local one). Every request walks the list in
+// order and uses the first instance whose health probe answers; probe results
+// are cached per instance with an asymmetric TTL (up: ProbeInterval, down:
+// NegativeProbeInterval), so a recovered primary reclaims traffic within
+// about a second and no failover is sticky.
 //
 // Usage:
 //
 //	bridge := idxbridge.New(idxbridge.Config{
-//	    BaseURL:         "http://127.0.0.1:8080",
+//	    BaseURLs:        []string{"https://m3.example.net:7700", "http://127.0.0.1:8080"},
 //	    ProbeTimeout:    500 * time.Millisecond,
 //	    Fallback:        svc, // *service.Service or any IdxSearcher
 //	    AnalyzeFallback: svc, // *service.Service or any IdxAnalyzer
 //	})
 //
-//	// Bridge auto-detects daemon on first call; result is cached per instance.
+//	// Bridge auto-detects daemons on first call; results are cached per instance.
 //	results, total, err := bridge.SearchObjects(ctx, "type==article", 20, 0)
-//	jobID, err := bridge.Analyze(ctx, req)
+//	jobID, servedBy, err := bridge.Analyze(ctx, req)
 package idxbridge
 
 import (
@@ -25,6 +32,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,6 +50,7 @@ const (
 	// cached. Deliberately much shorter than DefaultProbeInterval: a CLI
 	// that probed just before daemon startup must notice the daemon within
 	// about a second, not keep writing directly for the full positive TTL.
+	// The same short TTL is what routes traffic back to a recovered primary.
 	DefaultNegativeProbeInterval = 1 * time.Second
 	// DefaultRequestTimeout bounds non-probe daemon requests. Distinct from
 	// ProbeTimeout: probes must answer fast, but a real search or enqueue
@@ -58,10 +67,14 @@ type IdxSearcher interface {
 
 // Config holds configuration for the IdxBridge.
 type Config struct {
-	// BaseURL is the dpkms daemon's HTTP base URL (scheme + host + port).
-	// Defaults to DefaultBaseURL when empty.
+	// BaseURLs is the ordered dpkms server list, primary first (scheme +
+	// host + port each). Requests walk the list per call and use the first
+	// instance whose health probe answers. When set, BaseURL is ignored.
+	BaseURLs []string
+	// BaseURL is the single-instance form of BaseURLs. Used only when
+	// BaseURLs is empty; defaults to DefaultBaseURL when both are empty.
 	BaseURL string
-	// ProbeTimeout is the max time to wait when probing the daemon health.
+	// ProbeTimeout is the max time to wait when probing a daemon's health.
 	// Defaults to DefaultProbeTimeout.
 	ProbeTimeout time.Duration
 	// ProbeInterval is how long a successful probe result is cached.
@@ -70,12 +83,12 @@ type Config struct {
 	// NegativeProbeInterval is how long a failed probe result is cached.
 	// Defaults to DefaultNegativeProbeInterval.
 	NegativeProbeInterval time.Duration
-	// Fallback is the local searcher used when the daemon is unreachable.
+	// Fallback is the local searcher used when no daemon is reachable.
 	// Optional when AnalyzeFallback is set; at least one fallback is
 	// required.
 	Fallback IdxSearcher
-	// AnalyzeFallback is the local enqueue path used when the daemon is
-	// unreachable — typically the dblock-gated direct storage path.
+	// AnalyzeFallback is the local enqueue path used when no daemon is
+	// reachable — typically the dblock-gated direct storage path.
 	// Optional when Fallback is set.
 	AnalyzeFallback IdxAnalyzer
 	// RequestTimeout bounds non-probe daemon requests when HTTPClient is
@@ -85,17 +98,23 @@ type Config struct {
 	HTTPClient *http.Client
 }
 
-// IdxBridge routes SearchObjects and Analyze calls to the dpkms daemon when
-// it is reachable, and falls back to the local Fallback implementations
-// otherwise.
+// serverState is one configured instance plus its cached probe result.
+type serverState struct {
+	baseURL string
+
+	mu       sync.Mutex
+	live     bool
+	probedAt time.Time
+}
+
+// IdxBridge routes SearchObjects and Analyze calls to the first reachable
+// dpkms instance in its ordered server list, and falls back to the local
+// Fallback implementations when none answers.
 type IdxBridge struct {
 	cfg       Config
 	client    *http.Client // probe client, ProbeTimeout-bound
 	reqClient *http.Client // request client, RequestTimeout-bound
-
-	mu          sync.Mutex
-	daemonLive  bool
-	probedAt    time.Time
+	servers   []*serverState
 }
 
 // New creates an IdxBridge with the given Config.
@@ -105,8 +124,12 @@ func New(cfg Config) *IdxBridge {
 	if cfg.Fallback == nil && cfg.AnalyzeFallback == nil {
 		panic("idxbridge.New: at least one of Fallback or AnalyzeFallback must be set")
 	}
-	if cfg.BaseURL == "" {
-		cfg.BaseURL = DefaultBaseURL
+	urls := cfg.BaseURLs
+	if len(urls) == 0 {
+		if cfg.BaseURL == "" {
+			cfg.BaseURL = DefaultBaseURL
+		}
+		urls = []string{cfg.BaseURL}
 	}
 	if cfg.ProbeTimeout <= 0 {
 		cfg.ProbeTimeout = DefaultProbeTimeout
@@ -126,37 +149,50 @@ func New(cfg Config) *IdxBridge {
 		client = &http.Client{Timeout: cfg.ProbeTimeout}
 		reqClient = &http.Client{Timeout: cfg.RequestTimeout}
 	}
-	return &IdxBridge{cfg: cfg, client: client, reqClient: reqClient}
+	servers := make([]*serverState, len(urls))
+	for i, u := range urls {
+		servers[i] = &serverState{baseURL: strings.TrimRight(u, "/")}
+	}
+	return &IdxBridge{cfg: cfg, client: client, reqClient: reqClient, servers: servers}
 }
 
-// Probe checks whether the daemon is reachable by calling its /health endpoint.
-// Returns true if the daemon responded with a 2xx status within the configured
-// ProbeTimeout. Results are cached asymmetrically: daemon-up for ProbeInterval,
-// daemon-down for the much shorter NegativeProbeInterval, so a daemon that
-// starts right after a miss is noticed quickly.
+// Probe reports whether any configured instance is reachable, walking the
+// ordered list. Per-instance results are cached asymmetrically: daemon-up for
+// ProbeInterval, daemon-down for the much shorter NegativeProbeInterval, so
+// an instance that starts (or recovers) right after a miss is noticed quickly.
 func (b *IdxBridge) Probe(ctx context.Context) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	for _, s := range b.servers {
+		if b.probeServer(ctx, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// probeServer returns the (possibly cached) health of one instance.
+func (b *IdxBridge) probeServer(ctx context.Context, s *serverState) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	ttl := b.cfg.NegativeProbeInterval
-	if b.daemonLive {
+	if s.live {
 		ttl = b.cfg.ProbeInterval
 	}
-	if !b.probedAt.IsZero() && time.Since(b.probedAt) < ttl {
-		return b.daemonLive
+	if !s.probedAt.IsZero() && time.Since(s.probedAt) < ttl {
+		return s.live
 	}
 
-	b.daemonLive = b.probe(ctx)
-	b.probedAt = time.Now()
-	return b.daemonLive
+	s.live = b.probe(ctx, s.baseURL)
+	s.probedAt = time.Now()
+	return s.live
 }
 
 // probe performs the actual health check without locking.
-func (b *IdxBridge) probe(ctx context.Context) bool {
+func (b *IdxBridge) probe(ctx context.Context, baseURL string) bool {
 	pctx, cancel := context.WithTimeout(ctx, b.cfg.ProbeTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(pctx, http.MethodGet, b.cfg.BaseURL+"/health", nil)
+	req, err := http.NewRequestWithContext(pctx, http.MethodGet, baseURL+"/health", nil)
 	if err != nil {
 		return false
 	}
@@ -168,44 +204,66 @@ func (b *IdxBridge) probe(ctx context.Context) bool {
 	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }
 
-// InvalidateProbe resets the cached probe result so the next call re-probes.
-// Useful in tests or after a known daemon restart.
+// InvalidateProbe resets every instance's cached probe result so the next
+// call re-probes. Useful in tests or after a known daemon restart.
 func (b *IdxBridge) InvalidateProbe() {
-	b.mu.Lock()
-	b.probedAt = time.Time{}
-	b.mu.Unlock()
+	for _, s := range b.servers {
+		s.invalidate()
+	}
 }
 
-// SearchObjects executes an RSQL query. When the daemon is live it proxies the
-// request to GET /api/v1/search; otherwise it delegates to the Fallback.
+func (s *serverState) invalidate() {
+	s.mu.Lock()
+	s.probedAt = time.Time{}
+	s.mu.Unlock()
+}
+
+// serverList renders the configured base URLs for error messages.
+func (b *IdxBridge) serverList() string {
+	urls := make([]string, len(b.servers))
+	for i, s := range b.servers {
+		urls[i] = s.baseURL
+	}
+	return strings.Join(urls, ", ")
+}
+
+// SearchObjects executes an RSQL query. It walks the ordered server list and
+// proxies the request to GET /api/v1/search on the first live instance; any
+// failure there invalidates that instance's probe and walks on. When no
+// instance serves the query it delegates to the Fallback.
 func (b *IdxBridge) SearchObjects(
 	ctx context.Context,
 	query string,
 	limit, offset int,
 	profileID ...string,
 ) ([]*storage.KnowledgeObject, int, error) {
-	if b.Probe(ctx) {
-		objs, total, err := b.remoteSearch(ctx, query, limit, offset, profileID...)
+	for _, s := range b.servers {
+		if !b.probeServer(ctx, s) {
+			continue
+		}
+		objs, total, err := b.remoteSearch(ctx, s.baseURL, query, limit, offset, profileID...)
 		if err == nil {
 			return objs, total, nil
 		}
-		// Daemon responded to health but search failed — invalidate and fall back.
-		b.InvalidateProbe()
+		// Instance answered health but search failed — invalidate it and
+		// walk to the next one.
+		s.invalidate()
 	}
 	if b.cfg.Fallback == nil {
-		return nil, 0, fmt.Errorf("idxbridge: daemon unreachable at %s and no local search fallback configured", b.cfg.BaseURL)
+		return nil, 0, fmt.Errorf("idxbridge: no daemon reachable (%s) and no local search fallback configured", b.serverList())
 	}
 	return b.cfg.Fallback.SearchObjects(ctx, query, limit, offset, profileID...)
 }
 
-// remoteSearch calls the daemon's /api/v1/search endpoint.
+// remoteSearch calls one instance's /api/v1/search endpoint.
 func (b *IdxBridge) remoteSearch(
 	ctx context.Context,
+	baseURL string,
 	query string,
 	limit, offset int,
 	profileID ...string,
 ) ([]*storage.KnowledgeObject, int, error) {
-	u, err := url.Parse(b.cfg.BaseURL + "/api/v1/search")
+	u, err := url.Parse(baseURL + "/api/v1/search")
 	if err != nil {
 		return nil, 0, fmt.Errorf("idxbridge: bad base URL: %w", err)
 	}

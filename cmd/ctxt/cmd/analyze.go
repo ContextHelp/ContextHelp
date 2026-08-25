@@ -146,10 +146,15 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Using content from clipboard...\n")
 	}
 
-	// Determine server URL.
-	serverURL := flagString(cmd, "server", "server.url")
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
+	// Determine the ordered server list. An explicit --server pins routing
+	// to that single instance; otherwise config server.urls (primary
+	// first), then server.url, then the default.
+	var serverURLs []string
+	if f := cmd.Flags().Lookup("server"); f != nil && f.Changed {
+		v, _ := cmd.Flags().GetString("server")
+		serverURLs = []string{v}
+	} else {
+		serverURLs = clientServerURLs()
 	}
 
 	// Resolve --raw flag (present on both analyzeCmd and rootCmd).
@@ -215,20 +220,16 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		ctx = context.Background()
 	}
 
-	// Route: live daemon via POST /api/v1/analyze; unreachable daemon falls
-	// back to the dblock-gated local direct enqueue. A live daemon's
-	// rejection is surfaced, never retried locally.
-	var usedLocal bool
+	// Route: first live instance in the ordered list via POST
+	// /api/v1/analyze; when none answers, fall back to the dblock-gated
+	// local direct enqueue. A live instance's rejection is surfaced, never
+	// replayed against another instance or the local queue.
 	bridge := idxbridge.New(idxbridge.Config{
-		BaseURL: serverURL,
-		AnalyzeFallback: idxbridge.AnalyzeFunc(
-			func(fctx context.Context, r service.AnalyzeRequest) (string, error) {
-				usedLocal = true
-				return localDirectAnalyze(fctx, r)
-			}),
+		BaseURLs:        serverURLs,
+		AnalyzeFallback: idxbridge.AnalyzeFunc(localDirectAnalyze),
 	})
 
-	jobID, err := bridge.Analyze(ctx, req)
+	jobID, servedBy, err := bridge.Analyze(ctx, req)
 	if err != nil {
 		var rerr *idxbridge.RemoteError
 		if errors.As(err, &rerr) {
@@ -246,6 +247,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Job ID: %s\n", jobID)
+	usedLocal := servedBy == ""
 
 	// Resolve --wait flag (present on both analyzeCmd and rootCmd).
 	wait := false
@@ -269,9 +271,10 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	// T-0562: --wait was previously a no-op. The CLI returned the job ID
 	// from POST /analyze and exited even when the job was never persisted,
 	// so the user never learned the work was dropped. Poll GET /jobs/{id}
-	// and fail loudly if the ID can't be located within a short window —
-	// that 404 is the canonical "silently dropped" signal.
-	return waitForJob(cmd.Context(), serverURL, jobID)
+	// on the instance that accepted the enqueue and fail loudly if the ID
+	// can't be located within a short window — that 404 is the canonical
+	// "silently dropped" signal.
+	return waitForJob(cmd.Context(), servedBy, jobID)
 }
 
 // waitForJob polls GET /api/v1/jobs/{id} until the job reaches a terminal

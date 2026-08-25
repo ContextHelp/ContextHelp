@@ -97,14 +97,18 @@ func newService() (*service.Service, func(), error) {
 	return svc, cleanup, nil
 }
 
-// clientServerURL resolves the dpkms base URL for client-side routing.
-// Order: server.url (bound to --server where the flag exists, config
-// otherwise) > the bridge default.
-func clientServerURL() string {
-	if v := viper.GetString("server.url"); v != "" {
-		return v
+// clientServerURLs resolves the ordered dpkms server list for client-side
+// routing, primary first. Order: server.urls (ordered list, e.g. remote
+// primary then local fallback) > server.url (single instance; bound to
+// --server where the flag exists, config otherwise) > the bridge default.
+func clientServerURLs() []string {
+	if urls := viper.GetStringSlice("server.urls"); len(urls) > 0 {
+		return urls
 	}
-	return idxbridge.DefaultBaseURL
+	if v := viper.GetString("server.url"); v != "" {
+		return []string{v}
+	}
+	return []string{idxbridge.DefaultBaseURL}
 }
 
 // resolveStoragePath returns the DB path to open, applying instance routing.

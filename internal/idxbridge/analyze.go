@@ -45,40 +45,45 @@ func (e *RemoteError) Error() string {
 	return fmt.Sprintf("daemon returned %d: %s", e.StatusCode, e.Body)
 }
 
-// Analyze enqueues content for ingestion. When the daemon is live it posts to
-// POST /api/v1/analyze; when unreachable it delegates to the configured
-// AnalyzeFallback (the gated local direct path). A live daemon's rejection
-// (*RemoteError) is surfaced, never retried locally; only transport-level
-// failures fall back.
-func (b *IdxBridge) Analyze(ctx context.Context, req service.AnalyzeRequest) (string, error) {
-	if b.Probe(ctx) {
-		jobID, err := b.remoteAnalyze(ctx, req)
+// Analyze enqueues content for ingestion. It walks the ordered server list
+// and posts to POST /api/v1/analyze on the first live instance; servedBy
+// reports that instance's base URL, or "" when the configured AnalyzeFallback
+// (the gated local direct path) accepted the enqueue. A live instance's
+// rejection (*RemoteError) is surfaced, never replayed against the next
+// instance or the local queue; only transport-level failures walk on.
+func (b *IdxBridge) Analyze(ctx context.Context, req service.AnalyzeRequest) (jobID, servedBy string, err error) {
+	for _, s := range b.servers {
+		if !b.probeServer(ctx, s) {
+			continue
+		}
+		jobID, err := b.remoteAnalyze(ctx, s.baseURL, req)
 		if err == nil {
-			return jobID, nil
+			return jobID, s.baseURL, nil
 		}
 		var rerr *RemoteError
 		if errors.As(err, &rerr) {
-			return "", err
+			return "", "", err
 		}
-		// Daemon answered health but the request failed at transport level —
-		// re-probe on the next call and fall back now.
-		b.InvalidateProbe()
+		// Instance answered health but the request failed at transport
+		// level — re-probe it on the next call and walk on now.
+		s.invalidate()
 	}
 	if b.cfg.AnalyzeFallback == nil {
-		return "", fmt.Errorf("idxbridge: daemon unreachable at %s and no local analyze fallback configured", b.cfg.BaseURL)
+		return "", "", fmt.Errorf("idxbridge: no daemon reachable (%s) and no local analyze fallback configured", b.serverList())
 	}
-	return b.cfg.AnalyzeFallback.Analyze(ctx, req)
+	jobID, err = b.cfg.AnalyzeFallback.Analyze(ctx, req)
+	return jobID, "", err
 }
 
-// remoteAnalyze posts the request to the daemon's analyze endpoint.
-func (b *IdxBridge) remoteAnalyze(ctx context.Context, req service.AnalyzeRequest) (string, error) {
+// remoteAnalyze posts the request to one instance's analyze endpoint.
+func (b *IdxBridge) remoteAnalyze(ctx context.Context, baseURL string, req service.AnalyzeRequest) (string, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return "", fmt.Errorf("idxbridge: marshal analyze request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		b.cfg.BaseURL+"/api/v1/analyze", bytes.NewReader(body))
+		baseURL+"/api/v1/analyze", bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("idxbridge: build analyze request: %w", err)
 	}

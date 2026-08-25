@@ -175,6 +175,22 @@ agents:
 # Server Configuration
 # HTTP and gRPC API server settings
 server:
+  # Client-side routing (CLI and other clients).
+  #
+  # url: single dpkms instance to talk to (also settable per command with
+  # --server where the flag exists).
+  # url: http://127.0.0.1:8080
+  #
+  # urls: ordered instance list, primary first — e.g. a remote primary and a
+  # local offline fallback. Each request health-probes the instances in order
+  # and uses the first one that answers; a recovered primary reclaims traffic
+  # within about a second. When every instance is down, writes queue in local
+  # storage and run once a daemon starts. Takes precedence over `url`; an
+  # explicit --server flag pins routing to that single instance.
+  # urls:
+  #   - https://primary.example.net:7700
+  #   - http://127.0.0.1:8080
+
   # HTTP/REST API
   http:
     # Port number for HTTP server

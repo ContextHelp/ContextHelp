@@ -62,7 +62,7 @@ func TestAnalyze_ViaDaemon(t *testing.T) {
 		HTTPClient:      srv.Client(),
 	})
 
-	jobID, err := bridge.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, servedBy, err := bridge.Analyze(context.Background(), service.AnalyzeRequest{
 		Content: "hello", Type: "text", Hints: []string{"research"},
 	})
 	if err != nil {
@@ -70,6 +70,9 @@ func TestAnalyze_ViaDaemon(t *testing.T) {
 	}
 	if jobID != "job-remote-1" {
 		t.Errorf("jobID = %q, want daemon job id", jobID)
+	}
+	if servedBy != srv.URL {
+		t.Errorf("servedBy = %q, want the daemon URL %q", servedBy, srv.URL)
 	}
 	if fb.called {
 		t.Error("local fallback called while daemon live")
@@ -87,7 +90,7 @@ func TestAnalyze_FallsBackWhenDaemonDown(t *testing.T) {
 		AnalyzeFallback: fb,
 	})
 
-	jobID, err := bridge.Analyze(context.Background(), service.AnalyzeRequest{Content: "x", Type: "text"})
+	jobID, servedBy, err := bridge.Analyze(context.Background(), service.AnalyzeRequest{Content: "x", Type: "text"})
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -96,6 +99,9 @@ func TestAnalyze_FallsBackWhenDaemonDown(t *testing.T) {
 	}
 	if jobID != "job-local-1" {
 		t.Errorf("jobID = %q, want local job id", jobID)
+	}
+	if servedBy != "" {
+		t.Errorf("servedBy = %q, want empty for the local fallback", servedBy)
 	}
 }
 
@@ -120,7 +126,7 @@ func TestAnalyze_DaemonRejectionSurfacesWithoutFallback(t *testing.T) {
 		HTTPClient:      srv.Client(),
 	})
 
-	_, err := bridge.Analyze(context.Background(), service.AnalyzeRequest{Content: "x", Type: "document"})
+	_, _, err := bridge.Analyze(context.Background(), service.AnalyzeRequest{Content: "x", Type: "document"})
 	if err == nil {
 		t.Fatal("Analyze succeeded; want daemon rejection surfaced")
 	}
@@ -167,7 +173,7 @@ func TestAnalyze_TransportFailureMidRequestFallsBack(t *testing.T) {
 		HTTPClient:      srv.Client(),
 	})
 
-	jobID, err := bridge.Analyze(context.Background(), service.AnalyzeRequest{Content: "x", Type: "text"})
+	jobID, _, err := bridge.Analyze(context.Background(), service.AnalyzeRequest{Content: "x", Type: "text"})
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
 	}
@@ -186,7 +192,7 @@ func TestAnalyze_NoFallbackConfigured(t *testing.T) {
 		Fallback:     &fakeFallback{}, // search-only bridge
 	})
 
-	_, err := bridge.Analyze(context.Background(), service.AnalyzeRequest{Content: "x", Type: "text"})
+	_, _, err := bridge.Analyze(context.Background(), service.AnalyzeRequest{Content: "x", Type: "text"})
 	if err == nil {
 		t.Fatal("Analyze with no fallback and daemon down: want error")
 	}
@@ -223,7 +229,7 @@ func TestAnalyzeFunc_Adapter(t *testing.T) {
 		ProbeTimeout:    50 * time.Millisecond,
 		AnalyzeFallback: fn,
 	})
-	jobID, err := bridge.Analyze(context.Background(), service.AnalyzeRequest{Content: "x", Type: "text"})
+	jobID, _, err := bridge.Analyze(context.Background(), service.AnalyzeRequest{Content: "x", Type: "text"})
 	if err != nil || jobID != "job-fn-1" || !called {
 		t.Fatalf("AnalyzeFunc adapter: jobID=%q err=%v called=%v", jobID, err, called)
 	}
