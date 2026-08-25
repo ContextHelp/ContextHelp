@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"database/sql"
+	sqldriver "database/sql/driver"
 
 	"errors"
 	"fmt"
@@ -255,7 +256,42 @@ func migrateObjectsEmbeddingDimension(ctx context.Context, d *Driver) error {
 	return nil
 }
 
+// migrateLockKey is the pg_advisory_lock key serializing Migrate across
+// concurrent initializers (multiple daemons, CLI + daemon, test fan-out).
+// Arbitrary but stable — "ctxt" in ASCII shifted into the upper half of the
+// int64 space to avoid colliding with small hand-picked keys other tooling
+// tends to use. Advisory locks are database-scoped, so distinct databases
+// on one server migrate independently.
+const migrateLockKey int64 = 0x63747874 << 20 // "ctxt"
+
 func (d *Driver) Migrate(ctx context.Context) error {
+	// Serialize concurrent initializers. Without the lock two Migrate calls
+	// race everything downstream: CREATE EXTENSION / CREATE TABLE IF NOT
+	// EXISTS collide on catalog unique indexes (23505), and both read the
+	// same MAX(version) then fight over the schema_version PK. Advisory
+	// locks are session-scoped, so the lock lives on a dedicated connection
+	// held for the whole migration pass; the loop itself keeps using the
+	// pool — mutual exclusion is what matters, not which session runs DDL.
+	conn, err := d.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, migrateLockKey); err != nil {
+		return fmt.Errorf("acquire migration advisory lock: %w", err)
+	}
+	defer func() {
+		// Release even when ctx is already cancelled — conn.Close only
+		// returns the session to the pool, and a pooled session that still
+		// holds the lock would deadlock every later initializer.
+		if _, uerr := conn.ExecContext(context.WithoutCancel(ctx),
+			`SELECT pg_advisory_unlock($1)`, migrateLockKey); uerr != nil {
+			// Poison the session so the pool discards it; the server then
+			// drops the lock with the backend.
+			_ = conn.Raw(func(any) error { return sqldriver.ErrBadConn })
+		}
+	}()
+
 	// The vector extension is a hard requirement (objects.embedding is a
 	// pgvector column). Degrade its failure to one clear error instead of a
 	// numbered migration failure. Runs outside the ledger: it is
