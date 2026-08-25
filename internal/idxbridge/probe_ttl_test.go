@@ -125,7 +125,9 @@ func TestDefaultNegativeProbeInterval_ShorterThanPositive(t *testing.T) {
 // init answers /health only after init, so the probe misses exactly when a
 // direct write would be most dangerous. A probe miss must never authorize a
 // direct write by itself — the advisory database lock is the gate, and with
-// the lock held the CLI resolves to wait-or-error, never a second writer.
+// the lock held the CLI resolves to wait-or-error rather than writing.
+// The daemon-side acquire is simulated here; the production serve path does
+// not yet take the lock, so this pins the CLI half of the contract only.
 func TestProbeMissWithDaemonLockHeld_NoSecondWriter(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 

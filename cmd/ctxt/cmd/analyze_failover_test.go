@@ -100,7 +100,9 @@ func TestAnalyzeDaemonDownLocalWaitDoesNotHang(t *testing.T) {
 // TestAnalyzeDaemonHoldsLockButNotHealth: the false-negative window — a
 // daemon that holds the DB lock (e.g. still inside storage init) while not
 // answering /health. The CLI must fail fast with an instructive, attributed
-// error: no hang, no second writer, no local enqueue.
+// error: no hang, no CLI-side write, no local enqueue. The daemon-side lock
+// is simulated (the production serve path does not yet acquire it); this
+// pins the CLI half of the single-writer contract.
 func TestAnalyzeDaemonHoldsLockButNotHealth(t *testing.T) {
 	dbPath := tempDB(t)
 

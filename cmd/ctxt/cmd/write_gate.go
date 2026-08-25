@@ -18,8 +18,11 @@ const cliRetryBudget = 2 * time.Second
 
 // localDirectAnalyze enqueues content straight into local storage — the
 // fallback when no daemon answers. The advisory database lock is taken
-// BEFORE storage opens, so a daemon mid-startup (holding the lock, health
-// not yet answering) is never raced by a second writer.
+// BEFORE storage opens, so concurrent lock-taking writers (other CLI
+// commands today) serialize here, and a daemon mid-startup that holds the
+// lock is not raced. That daemon-side half is pending: the serve path does
+// not yet acquire the lock, so this gate alone does not rule out a daemon
+// writing concurrently — it rules out every writer that takes the lock.
 func localDirectAnalyze(ctx context.Context, req service.AnalyzeRequest) (string, error) {
 	dbPath, err := resolveStoragePath()
 	if err != nil {

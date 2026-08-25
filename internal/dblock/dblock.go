@@ -1,5 +1,12 @@
-// Package dblock enforces single-writer access to a database file through an
-// advisory flock on a "<dbpath>.lock" sidecar file.
+// Package dblock coordinates single-writer access to a database file through
+// an advisory flock on a "<dbpath>.lock" sidecar file.
+//
+// Advisory means the gate binds only processes that acquire it. Today that is
+// the CLI's direct write path (RoleCLI); the daemon's serve path does not yet
+// take the lock on startup, so RoleDaemon holders appear only where daemon
+// behavior is simulated (tests) — daemon-side acquisition is pending, and
+// until it lands this package is one half of the single-writer story, not a
+// system-wide guarantee.
 //
 // The flock is the authority: it is kernel-owned, released automatically on
 // process exit (no stale-lock recovery needed), atomic to acquire (no
