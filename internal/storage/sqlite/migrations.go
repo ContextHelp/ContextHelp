@@ -187,11 +187,13 @@ var migrations = []migration{
 	// integration). Idempotent — uses INSERT OR IGNORE on the composite
 	// key and ON CONFLICT upserts on the singleton model row.
 	{Version: 33, fn: migrate033EmbeddingsBackfill},
-	// Migration 034: idempotency_key column on jobs + partial unique
+	// Migration 036: idempotency_key column on jobs + partial unique
 	// index, so a replayed enqueue (response lost in transit) resolves to
 	// the existing job instead of minting a duplicate. Idempotent Go fn
 	// (pragma_table_info check before ALTER; IF NOT EXISTS on the index).
-	{Version: 34, fn: migrate034JobsIdempotencyKey},
+	// Versions 034-035 are reserved by the vector-index cosine migration
+	// and its signature re-stamp sweep.
+	{Version: 36, fn: migrate036JobsIdempotencyKey},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -514,12 +516,12 @@ func migrate031JobsUserProfileNote(ctx context.Context, d *Driver) error {
 	return addJobsColumnIfMissing(ctx, d, "user_note", "TEXT DEFAULT ''")
 }
 
-// migrate034JobsIdempotencyKey adds the idempotency_key column plus a partial
+// migrate036JobsIdempotencyKey adds the idempotency_key column plus a partial
 // unique index over non-empty keys. The index is the race-window guard behind
 // the lookup-then-insert dedupe at the enqueue surface: two concurrent
 // submissions with the same key cannot both insert. Empty keys (every legacy
 // row and every keyless enqueue) are exempt.
-func migrate034JobsIdempotencyKey(ctx context.Context, d *Driver) error {
+func migrate036JobsIdempotencyKey(ctx context.Context, d *Driver) error {
 	if err := addJobsColumnIfMissing(ctx, d, "idempotency_key", "TEXT DEFAULT ''"); err != nil {
 		return err
 	}
