@@ -9,7 +9,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/sync v0.20.0
+	golang.org/x/sync v0.22.0
 	gopkg.in/yaml.v3 v3.0.1
 	hop.top/c12n v0.1.0-alpha.1
 )
@@ -33,10 +33,10 @@ require (
 	github.com/peterh/liner v1.2.2
 	github.com/pkg/sftp v1.13.10
 	github.com/yuin/goldmark v1.8.2
-	golang.org/x/crypto v0.50.0
-	golang.org/x/mod v0.35.0
-	golang.org/x/term v0.42.0
-	google.golang.org/grpc v1.80.0
+	golang.org/x/crypto v0.56.0
+	golang.org/x/mod v0.38.0
+	golang.org/x/term v0.45.0
+	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
 	hop.top/cite v0.1.0
 	hop.top/xrr v0.1.0-alpha.4
@@ -83,7 +83,7 @@ require (
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/tools v0.44.0 // indirect
+	golang.org/x/tools v0.48.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
 	hop.top/aim v0.1.0-alpha.0 // indirect
 )
@@ -102,7 +102,7 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
-	golang.org/x/net v0.53.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 	hop.top/kit v0.5.0-alpha.1
 	modernc.org/libc v1.72.0 // indirect
@@ -151,8 +151,8 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/sys v0.44.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	gopkg.in/dnaeon/go-vcr.v4 v4.0.2
 )
 
