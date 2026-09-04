@@ -10,4 +10,4 @@ package sqlite
 //
 // The undefined identifier below is deliberate: it turns a missing build tag
 // into a compile failure instead of a mid-migration SQL error.
-const fts5Enabled = fts5BuildTagRequired_RebuildWith_tags_fts5
+var _ = fts5BuildTagRequired_RebuildWith_tags_fts5
