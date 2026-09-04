@@ -3,6 +3,7 @@ run:
   build-tags:
     - integration
     - e2e
+    - fts5
   modules-download-mode: readonly
   tests: true
 linters:

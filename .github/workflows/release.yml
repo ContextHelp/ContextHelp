@@ -63,7 +63,7 @@ jobs:
           fi
 
       - name: Run go vet
-        run: go vet ./...
+        run: go vet -tags fts5 ./...
 
   # ── Gate 3: security scan ────────────────────────────────────────────────────
   security:
@@ -154,7 +154,7 @@ jobs:
         run: go mod download
 
       - name: Run unit tests
-        run: go test -v -short -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: go test -v -short -race -tags fts5 -coverprofile=coverage.out -covermode=atomic ./...
 
   # ── Gate 6: integration tests ─────────────────────────────────────────────────
   integration:
@@ -196,7 +196,7 @@ jobs:
           cache: true
 
       - name: Run integration tests
-        run: go test -v -tags=integration ./test/integration/...
+        run: go test -v -tags=integration,fts5 ./test/integration/...
         env:
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
@@ -222,10 +222,10 @@ jobs:
           cache: true
 
       - name: Build dpkms
-        run: go build -v -o bin/dpkms ./cmd/dpkms
+        run: CGO_ENABLED=1 go build -v -tags fts5 -o bin/dpkms ./cmd/dpkms
 
       - name: Build ctxt
-        run: go build -v -o bin/ctxt ./cmd/ctxt
+        run: CGO_ENABLED=1 go build -v -tags fts5 -o bin/ctxt ./cmd/ctxt
 
       - name: Smoke — binaries respond
         run: |
