@@ -88,13 +88,13 @@ test-all: test-unit test-integration test-smoke
 ## test-cover: Generate coverage report
 test-cover:
 	@echo "Running tests with coverage..."
-	go test -race -coverprofile=coverage.out ./...
+	go test $(BUILD_TAGS) -race -coverprofile=coverage.out ./...
 
 ## test-gate: Run all tests and print coverage summary
 test-gate: test-all
 	@echo ""
 	@echo "Coverage summary:"
-	@go test -race -coverprofile=coverage.out ./internal/... ./cmd/... 2>&1 | grep -E 'coverage:|FAIL'
+	@go test $(BUILD_TAGS) -race -coverprofile=coverage.out ./internal/... ./cmd/... 2>&1 | grep -E 'coverage:|FAIL'
 	@echo ""
 	@go tool cover -func=coverage.out | grep total:
 	@echo ""
