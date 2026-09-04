@@ -59,8 +59,10 @@ func New(path string) (*Driver, error) {
 
 	// Probe engine capabilities before any migration runs, so a degraded build
 	// is diagnosed here rather than failing mid-schema on a virtual table.
-	if err := probeCapabilities(db); err != nil {
-		db.Close()
+	if err := probeCapabilities(context.Background(), db); err != nil {
+		if cerr := db.Close(); cerr != nil {
+			return nil, fmt.Errorf("%w; close: %w", err, cerr)
+		}
 		return nil, err
 	}
 

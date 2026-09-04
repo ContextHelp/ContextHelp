@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -42,10 +43,10 @@ var requiredCapabilities = []capability{
 // probeCapabilities verifies every required engine capability is available on
 // the freshly opened database. Failures wrap storage.ErrCapabilityMissing and
 // name both the capability and its remedy.
-func probeCapabilities(db *sql.DB) error {
+func probeCapabilities(ctx context.Context, db *sql.DB) error {
 	for _, c := range requiredCapabilities {
 		var version string
-		if err := db.QueryRow(c.probe).Scan(&version); err != nil {
+		if err := db.QueryRowContext(ctx, c.probe).Scan(&version); err != nil {
 			return fmt.Errorf(
 				"%w: sqlite %s unavailable (%s): %w",
 				storage.ErrCapabilityMissing, c.name, c.remedy, err,
