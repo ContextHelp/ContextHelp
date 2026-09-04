@@ -57,6 +57,13 @@ func New(path string) (*Driver, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
+	// Probe engine capabilities before any migration runs, so a degraded build
+	// is diagnosed here rather than failing mid-schema on a virtual table.
+	if err := probeCapabilities(db); err != nil {
+		db.Close()
+		return nil, err
+	}
+
 	d := &Driver{db: db, path: path, vectorDimension: DefaultVectorDimension}
 	d.vectors = &VecStore{db: db}
 	d.objects = &ObjectStore{db: db, vec: d.vectors, vecDim: DefaultVectorDimension}

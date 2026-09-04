@@ -13,6 +13,13 @@ import (
 // has not yet been pulled from the source registry.
 var ErrEntityDefinitionUnavailable = errors.New("entity definition unavailable: pull required")
 
+// ErrCapabilityMissing is returned when a driver opens a store whose underlying
+// engine lacks a capability the schema requires (for example an SQLite build
+// without FTS5 or the sqlite-vec extension). Errors wrapping this sentinel name
+// the missing capability and the remedy, so callers such as config validation
+// and doctor can report a clear diagnosis instead of a mid-migration SQL error.
+var ErrCapabilityMissing = errors.New("storage capability missing")
+
 // Alias represents a human-readable name that resolves to a knowledge object ID.
 // The canonical definition lives in pkg/pluginapi.
 type Alias = pluginapi.Alias
