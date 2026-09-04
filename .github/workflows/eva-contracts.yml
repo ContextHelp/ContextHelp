@@ -23,6 +23,7 @@ on:
   pull_request:
     branches:
       - main
+      - next
       - develop
     paths:
       - 'contracts/**'
@@ -40,6 +41,7 @@ on:
   push:
     branches:
       - main
+      - next
   workflow_dispatch:
 
 permissions:
@@ -50,11 +52,14 @@ jobs:
     name: Validate operator JSON shapes
     runs-on: ubuntu-latest
     env:
-      # Pin to a specific eva commit until v0.2.0 ships the standalone-
-      # contract CLI mode ("eva run --contract <yaml> --input <json>").
-      # The released v0.1.0a1 wheel exposes only "eva run --dataset" mode.
-      # When the next eva tag lands, swap this for pip install eva==<vX>.
-      EVA_REF: '7b632dbf'
+      # Pin to a specific eva commit until the next eva tag ships the
+      # standalone-contract CLI mode ("eva run --contract <yaml> --input <json>").
+      # The released v0.1.0a1 tag exposes only "eva run --dataset" mode; the
+      # standalone mode landed on main afterwards. The previous short pin
+      # vanished when eva's history was rewritten, so pin the full SHA.
+      # Once a tag with standalone mode lands, swap this for
+      # pip install "hop-top-eva==<version>" (not on PyPI yet) or a tag ref.
+      EVA_REF: '4ca16fb0f3cf1de4e1ed47fea9ad9d0dc8792647'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -64,12 +69,17 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install eva (from source, pinned commit)
+      - name: Install eva (from source archive, pinned commit)
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
           # EVA_REF comes from the workflow env, not from PR-controlled input.
-          python -m pip install "git+https://github.com/hop-top/eva@${EVA_REF}#egg=eva"
+          # Source archive rather than git+https: eva's tree carries a private
+          # `ee` submodule and pip's git backend always runs
+          # `git submodule update --init --recursive`, which cannot clone it
+          # from CI. The archive omits submodule content; nothing eva ships
+          # imports `ee`.
+          python -m pip install "https://github.com/hop-top/eva/archive/${EVA_REF}.tar.gz"
           eva --help >/dev/null
 
       - name: Run eva contract tests
