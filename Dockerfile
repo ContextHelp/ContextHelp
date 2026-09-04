@@ -28,13 +28,15 @@ ARG VERSION=dev
 ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=unknown
 
-RUN GOWORK=off CGO_ENABLED=1 GOOS=linux go build \
+# Canonical build for both binaries: CGo on (mattn/go-sqlite3 + sqlite-vec)
+# and -tags fts5 so migrations can create FTS5 virtual tables.
+RUN GOWORK=off CGO_ENABLED=1 GOOS=linux go build -tags fts5 \
     -ldflags="-s -w \
       -X main.Version=${VERSION} \
       -X main.GitCommit=${GIT_COMMIT} \
       -X main.BuildTime=${BUILD_TIME}" \
     -o /out/dpkms ./cmd/dpkms && \
-    GOWORK=off CGO_ENABLED=0 GOOS=linux go build \
+    GOWORK=off CGO_ENABLED=1 GOOS=linux go build -tags fts5 \
     -ldflags="-s -w \
       -X main.Version=${VERSION} \
       -X main.GitCommit=${GIT_COMMIT} \
