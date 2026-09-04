@@ -1,25 +1,41 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// TestProbeCapabilities_Succeeds asserts the canonical build (fts5 tag + CGo)
-// satisfies every required capability.
-func TestProbeCapabilities_Succeeds(t *testing.T) {
+// openProbeDB opens a throwaway database on the canonical build and registers
+// a checked close. It registers sqlite-vec exactly as New does, so the probe is
+// independent of test order.
+func openProbeDB(t *testing.T) *sql.DB {
+	t.Helper()
+	sqlite_vec.Auto()
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "probe.db"))
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	defer db.Close()
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close: %v", err)
+		}
+	})
+	return db
+}
 
-	if err := probeCapabilities(db); err != nil {
+// TestProbeCapabilities_Succeeds asserts the canonical build (fts5 tag + CGo)
+// satisfies every required capability.
+func TestProbeCapabilities_Succeeds(t *testing.T) {
+	db := openProbeDB(t)
+
+	if err := probeCapabilities(t.Context(), db); err != nil {
 		t.Fatalf("probeCapabilities on canonical build: %v", err)
 	}
 }
@@ -27,11 +43,7 @@ func TestProbeCapabilities_Succeeds(t *testing.T) {
 // TestProbeCapabilities_MissingCapability asserts the error shape when a probe
 // fails: it wraps the sentinel and names both capability and remedy.
 func TestProbeCapabilities_MissingCapability(t *testing.T) {
-	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "probe.db"))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	defer db.Close()
+	db := openProbeDB(t)
 
 	// Stand in for a degraded engine by probing a function that cannot exist.
 	missing := capability{
@@ -43,7 +55,7 @@ func TestProbeCapabilities_MissingCapability(t *testing.T) {
 	requiredCapabilities = []capability{missing}
 	defer func() { requiredCapabilities = restore }()
 
-	err = probeCapabilities(db)
+	err := probeCapabilities(t.Context(), db)
 	if err == nil {
 		t.Fatal("expected error for missing capability, got nil")
 	}
@@ -63,5 +75,9 @@ func TestNew_ProbesBeforeMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New on canonical build: %v", err)
 	}
-	defer d.Close(t.Context())
+	t.Cleanup(func() {
+		if err := d.Close(context.Background()); err != nil {
+			t.Errorf("close: %v", err)
+		}
+	})
 }
