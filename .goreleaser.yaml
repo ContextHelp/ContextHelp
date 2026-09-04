@@ -17,6 +17,11 @@ builds:
     main: ./cmd/ctxt
     env:
       - CGO_ENABLED=1
+    # FTS5 must be compiled into the embedded SQLite amalgamation; without
+    # this tag every shipped binary fails at first migration.
+    flags:
+      - -tags
+      - fts5
     goos:
       - darwin
       - linux
@@ -51,6 +56,9 @@ builds:
     main: ./cmd/dpkms
     env:
       - CGO_ENABLED=1
+    flags:
+      - -tags
+      - fts5
     goos:
       - darwin
       - linux
