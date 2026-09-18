@@ -26,7 +26,7 @@ on:
   pull_request:
     branches:
       - main
-      - develop
+      - next
   schedule:
     # Nightly at 03:00 UTC
     - cron: '0 3 * * *'
