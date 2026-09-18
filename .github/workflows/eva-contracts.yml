@@ -23,7 +23,7 @@ on:
   pull_request:
     branches:
       - main
-      - develop
+      - next
     paths:
       - 'contracts/**'
       - 'test/integration/testdata/eva-fixtures/**'
@@ -40,6 +40,7 @@ on:
   push:
     branches:
       - main
+      - next
   workflow_dispatch:
 
 permissions:
