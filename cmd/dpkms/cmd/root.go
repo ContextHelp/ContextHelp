@@ -55,7 +55,6 @@ var (
 		Globals: []kitcli.Flag{
 			{Name: "data-dir", Usage: "data directory override"},
 			{Name: "server-url", Default: "http://localhost:8080", Usage: "dpkms server URL"},
-			{Name: "offline", Usage: "disable all network calls; force local-only operation"},
 			{Name: "instance", Usage: "name of dpkms instance to target (default: unnamed)"},
 		},
 		// Hook runs after kit's built-in chain (chdir → identity → peer →

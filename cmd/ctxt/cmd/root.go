@@ -94,7 +94,6 @@ var (
 		},
 		Globals: []kitcli.Flag{
 			{Name: "profile", Usage: "focus profile to use"},
-			{Name: "offline", Usage: "disable all network calls; force local-only operation"},
 			{Name: "instance", Usage: "target dpkms instance by name or port (overrides current-instance state and config)"},
 		},
 		// Hook runs after kit's built-in chain (chdir → identity → peer →
