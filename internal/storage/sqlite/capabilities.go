@@ -24,13 +24,16 @@ type capability struct {
 // future driver swap.
 // The fts5 probe reads pragma_compile_options rather than calling a version
 // function: mattn/go-sqlite3 compiles FTS5 in as a module, so ENABLE_FTS5 in
-// the compile options is the authoritative signal. sqlite-vec registers
-// vec_version() as a scalar function once sqlite_vec.Auto() has run, so a
-// direct call is the right probe there.
+// the compile options is the authoritative signal. It selects the matching
+// row rather than counting it: an aggregate always returns exactly one row,
+// so count(*) yields 0 with a nil error on a build WITHOUT fts5 and the probe
+// passes. Selecting the row makes absence surface as sql.ErrNoRows.
+// sqlite-vec registers vec_version() as a scalar function once
+// sqlite_vec.Auto() has run, so a direct call is the right probe there.
 var requiredCapabilities = []capability{
 	{
 		name:   "fts5",
-		probe:  "SELECT count(*) FROM pragma_compile_options WHERE compile_options LIKE 'ENABLE_FTS5%'",
+		probe:  "SELECT compile_options FROM pragma_compile_options WHERE compile_options LIKE 'ENABLE_FTS5%'",
 		remedy: "rebuild with -tags fts5 (CGO_ENABLED=1)",
 	},
 	{

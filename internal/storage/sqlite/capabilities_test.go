@@ -69,6 +69,47 @@ func TestProbeCapabilities_MissingCapability(t *testing.T) {
 	}
 }
 
+// TestProbeCapabilities_AggregateProbeCannotDetectAbsence guards the shape of
+// a capability probe, not a specific capability. An aggregate such as
+// count(*) always returns exactly one row, so a probe written that way scans
+// 0 with a nil error when the feature is absent and reports success. Every
+// probe must therefore return a row ONLY when the capability is present.
+//
+// The stand-in matches nothing, modelling a feature the engine lacks.
+func TestProbeCapabilities_AggregateProbeCannotDetectAbsence(t *testing.T) {
+	db := openProbeDB(t)
+
+	const absent = "'NO_SUCH_COMPILE_OPTION%'"
+
+	// An aggregate over zero matching rows still yields a row: nil error.
+	var n string
+	if err := db.QueryRowContext(t.Context(),
+		"SELECT count(*) FROM pragma_compile_options WHERE compile_options LIKE "+absent,
+	).Scan(&n); err != nil {
+		t.Fatalf("count probe returned an error, expected a row: %v", err)
+	}
+	if n != "0" {
+		t.Fatalf("count probe = %q, want \"0\"", n)
+	}
+
+	// The row-selecting form reports absence, which is what the probe needs.
+	restore := requiredCapabilities
+	requiredCapabilities = []capability{{
+		name:   "phantom-option",
+		probe:  "SELECT compile_options FROM pragma_compile_options WHERE compile_options LIKE " + absent,
+		remedy: "rebuild with the option enabled",
+	}}
+	defer func() { requiredCapabilities = restore }()
+
+	err := probeCapabilities(t.Context(), db)
+	if err == nil {
+		t.Fatal("row-selecting probe passed for an absent capability")
+	}
+	if !errors.Is(err, storage.ErrCapabilityMissing) {
+		t.Errorf("error does not wrap ErrCapabilityMissing: %v", err)
+	}
+}
+
 // TestNew_ProbesBeforeMigrations asserts the probe runs on the real open path.
 func TestNew_ProbesBeforeMigrations(t *testing.T) {
 	d, err := New(filepath.Join(t.TempDir(), "store.db"))
