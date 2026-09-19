@@ -191,7 +191,7 @@ func runResolve(cmd *cobra.Command, args []string) error {
 
 	// Read --format from the inherited kit persistent flag (same pattern
 	// as show.go) — cobra resolves inherited persistent flags through
-	// Flags(). isJSONOutput() additionally honours the viper-bound value
+	// Flags(). isJSONOutput() additionally honors the viper-bound value
 	// set by the --output shim.
 	format, _ := cmd.Flags().GetString("format")
 	if format == "json" || isJSONOutput() {
