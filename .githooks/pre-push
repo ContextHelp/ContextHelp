@@ -1,0 +1,12 @@
+#!/bin/sh
+# Chain to the user's global pre-push hook, if any.
+#
+# Setting core.hooksPath to .githooks REPLACES the global hooks directory
+# rather than adding to it, so a global pre-push (e.g. an attribution guard)
+# would silently stop running. This forwards to it.
+
+global_hooks=$(git config --global core.hooksPath 2>/dev/null)
+if [ -n "$global_hooks" ] && [ -x "$global_hooks/pre-push" ]; then
+	exec "$global_hooks/pre-push" "$@"
+fi
+exit 0

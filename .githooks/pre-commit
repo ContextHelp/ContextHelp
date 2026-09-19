@@ -1,0 +1,19 @@
+#!/bin/sh
+# Secret scanning on staged changes.
+#
+# gitleaks runs here rather than in CI: gitleaks-action needs a paid-tier
+# license for organization-owned repos, and this repo moved to an org. The
+# CI job is commented out until a GITLEAKS_LICENSE secret exists; this hook
+# is the stand-in, so secrets are caught before they ever reach a commit.
+#
+# Install with: make install-hooks
+# Bypass once (use sparingly): git commit --no-verify
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+	echo "gitleaks not found; skipping secret scan." >&2
+	echo "Install it with: make install-gitleaks" >&2
+	exit 0
+fi
+
+# `gitleaks git --staged` is the 8.x form; `protect` is the deprecated alias.
+gitleaks git --staged --config .gitleaks.toml --redact --verbose
