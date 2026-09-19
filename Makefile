@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate test-docker lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate test-docker lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -149,7 +149,7 @@ vuln-scan:
 		echo "Installing govulncheck..."; \
 		go install golang.org/x/vuln/cmd/govulncheck@latest; \
 	fi
-	govulncheck ./...
+	govulncheck -tags fts5 ./...
 	@echo "Running nancy (Sonatype OSS Index)..."
 	@if ! command -v nancy >/dev/null 2>&1; then \
 		echo "Installing nancy..."; \
@@ -293,13 +293,39 @@ security-scan:
 		exit 1; \
 	fi
 
-## install-hooks: Install git pre-commit hook running gitleaks protect --staged
+## install-hooks: Point git at the repo's .githooks directory
+##
+## Installs a pre-commit gitleaks scan. The pre-push hook chains to the
+## user's global one, since core.hooksPath replaces rather than extends.
 install-hooks:
 	@echo "Installing git hooks..."
-	@mkdir -p .git/hooks
-	@printf '#!/bin/sh\n# Pre-commit hook: secret scanning via gitleaks\nif ! command -v gitleaks >/dev/null 2>&1; then\n  echo "WARNING: gitleaks not found; skipping secret scan."\n  echo "Install: brew install gitleaks"\n  exit 0\nfi\ngitleaks protect --staged --config .gitleaks.toml --verbose\n' > .git/hooks/pre-commit
-	@chmod +x .git/hooks/pre-commit
-	@echo "✓ pre-commit hook installed (.git/hooks/pre-commit)"
+	@git config core.hooksPath .githooks
+	@chmod +x .githooks/*
+	@echo "✓ hooks installed (core.hooksPath -> .githooks)"
+	@echo "  pre-commit: gitleaks secret scan on staged changes"
+	@echo "  pre-push:   chains to your global pre-push hook, if any"
+	@command -v gitleaks >/dev/null 2>&1 || echo "  NOTE: gitleaks not installed; run 'make install-gitleaks'"
+
+## install-gitleaks: Install the gitleaks secret scanner locally
+##
+## Secret scanning runs locally rather than in CI: gitleaks-action requires
+## a license for organization-owned repos. See .github/workflows/ci.yml.
+install-gitleaks:
+	@if command -v gitleaks >/dev/null 2>&1; then \
+		echo "✓ gitleaks already installed ($$(gitleaks version 2>/dev/null))"; \
+	elif command -v brew >/dev/null 2>&1; then \
+		echo "Installing gitleaks via brew..."; \
+		brew install gitleaks; \
+	else \
+		echo "Installing gitleaks via go install..."; \
+		go install github.com/zricethezav/gitleaks/v8@latest; \
+	fi
+
+## secret-scan-local: Scan the working tree for secrets with gitleaks
+secret-scan-local: install-gitleaks
+	@echo "Scanning working tree for secrets..."
+	gitleaks detect --config .gitleaks.toml --redact --verbose
+	@echo "✓ No secrets detected"
 
 ## ben: Run all hop.top/ben recall suites (text-short + vector)
 ##
