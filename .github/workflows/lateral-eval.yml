@@ -86,7 +86,7 @@ jobs:
       - name: Compare precision/recall vs baseline
         id: compare
         run: |
-          python3 .github/workflows/scripts/lateral_eval_compare.py
+          python3 pr/.github/workflows/scripts/lateral_eval_compare.py
         env:
           OUT_DIR: out
           COMMENT_PATH: eval-comment.md
