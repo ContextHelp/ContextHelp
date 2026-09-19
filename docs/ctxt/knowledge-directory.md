@@ -78,6 +78,8 @@ Both sensors are **metadata-only emitters**: they produce one ingest object per 
 
 If the knowledge directory is (or resembles) an Obsidian vault, `ctxt import obsidian --vault <dir>` performs a one-shot batch import with markdown-aware parsing — frontmatter, inline `#tags`, wikilinks, attachments. Use the importer for the initial backfill, the ambient sensor for ongoing freshness.
 
+> **Requires a running dpkms server.** Unlike the local-first paths above, `import obsidian` enqueues a batch job over HTTP against `--server` (default `http://localhost:8080`). Start the server first, or use the ambient sensor for a purely local ingest.
+
 ```bash
 ctxt import obsidian --vault ~/work/my-repo/knowhow --dry-run   # preview
 ctxt import obsidian --vault ~/work/my-repo/knowhow             # enqueue
