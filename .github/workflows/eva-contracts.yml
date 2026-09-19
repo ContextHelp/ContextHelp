@@ -61,10 +61,10 @@ jobs:
       EVA_REF: '4ca16fb0f3cf1de4e1ed47fea9ad9d0dc8792647'
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
