@@ -31,6 +31,11 @@ jobs:
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Organization-owned repos need a (free) gitleaks license; personal
+          # accounts do not. This repo moved to the ContextHelp org, so the
+          # scan started failing with "missing gitleaks license". Obtain one
+          # at gitleaks.io and store it as the GITLEAKS_LICENSE secret.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
   # ── Gate 2: lint ─────────────────────────────────────────────────────────────
   lint:
@@ -102,7 +107,7 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run govulncheck
-        run: govulncheck ./...
+        run: govulncheck -tags fts5 ./...
 
   # ── Gate 4: Trivy CRITICAL scans (Dockerfile + filesystem) ──────────────────
   trivy-release-gate:

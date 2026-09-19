@@ -56,7 +56,7 @@ jobs:
       - name: Run govulncheck
         # Exit code 3 = vulnerabilities found in reachable code paths.
         # govulncheck only reports on reachable code; all findings are actionable.
-        run: govulncheck ./...
+        run: govulncheck -tags fts5 ./...
 
   nancy:
     name: nancy (Sonatype OSS Index)
