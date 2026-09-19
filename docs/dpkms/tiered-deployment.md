@@ -43,10 +43,12 @@ Merging across registries is deterministic and precedence-ordered ([registries.m
 
 ```yaml
 registries:
-  - name: local   # personal definitions win
-  - name: team    # shadow org for team members
-  - name: org     # base layer
+  - name: personal   # personal definitions win
+  - name: team       # shadow org for team members
+  - name: org        # base layer
 ```
+
+Registry names are arbitrary labels you choose; `personal` here is a registry you configure, not a built-in tier. Local data outside any registry always takes precedence over all of them.
 
 > **Per-facet precedence is not implemented.** A single `registries:` order applies to every facet (taxonomy, entities, weights, bookmarks) alike. The per-facet `registryOrder:` map described in [registries.md](registries.md) is a design target, not current config — do not put it in a config file expecting it to apply.
 
@@ -122,7 +124,7 @@ networks:
     driver: bridge
 ```
 
-The personal tier needs no server at all — a local `type: file` registry suffices.
+The personal tier needs no server at all — a `file://` registry URL pointing at a local directory suffices.
 
 Deployment invariants, all grounded in the trust model above:
 
