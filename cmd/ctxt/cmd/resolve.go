@@ -69,6 +69,8 @@ func init() {
 
 // resolveResult is the --format json envelope: the resolved body plus
 // a provenance object identifying where the content came from.
+// Field order is layout-optimized (govet fieldalignment); the JSON tags
+// fix the wire order, so it is independent of declaration order.
 type resolveResult struct {
 	Ref        string            `json:"ref"`
 	Kind       string            `json:"kind"` // "object" | "entity"
@@ -78,11 +80,13 @@ type resolveResult struct {
 }
 
 type resolveProvenance struct {
+	// Shared.
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 	// Object provenance.
-	Source             string   `json:"source,omitempty"`
-	Pipeline           string   `json:"pipeline,omitempty"`
-	ContentHash        string   `json:"content_hash,omitempty"`
-	RegistryInfluences []string `json:"registry_influences,omitempty"`
+	Source      string `json:"source,omitempty"`
+	Pipeline    string `json:"pipeline,omitempty"`
+	ContentHash string `json:"content_hash,omitempty"`
 	// Entity provenance.
 	RegistryURL string `json:"registry_url,omitempty"`
 	VersionHash string `json:"version_hash,omitempty"`
@@ -92,9 +96,8 @@ type resolveProvenance struct {
 	// empty until pulled, so consumers can distinguish "no content yet"
 	// from "no content at all" rather than retrying an empty body forever.
 	ContentStatus string `json:"content_status,omitempty"`
-	// Shared.
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	// Object provenance (slice last for layout).
+	RegistryInfluences []string `json:"registry_influences,omitempty"`
 }
 
 func runResolve(cmd *cobra.Command, args []string) error {
@@ -193,7 +196,7 @@ func runResolve(cmd *cobra.Command, args []string) error {
 	// as show.go) — cobra resolves inherited persistent flags through
 	// Flags(). isJSONOutput() additionally honors the viper-bound value
 	// set by the --output shim.
-	format, _ := cmd.Flags().GetString("format")
+	format, _ := cmd.Flags().GetString("format") //nolint:errcheck // flag is registered by kit; absence yields "" and the markdown default
 	if format == "json" || isJSONOutput() {
 		return outputJSON(os.Stdout, res)
 	}
