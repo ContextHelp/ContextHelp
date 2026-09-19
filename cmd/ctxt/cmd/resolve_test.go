@@ -11,7 +11,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
-func seedResolveObject(t *testing.T, db *testDB) *storage.KnowledgeObject {
+func seedResolveObject(t *testing.T, db *testDB) {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
 	obj := &storage.KnowledgeObject{
@@ -29,10 +29,9 @@ func seedResolveObject(t *testing.T, db *testDB) *storage.KnowledgeObject {
 	if err := db.Driver.Objects().Create(context.Background(), obj); err != nil {
 		t.Fatalf("seed object: %v", err)
 	}
-	return obj
 }
 
-func seedResolveEntity(t *testing.T, db *testDB) *storage.Entity {
+func seedResolveEntity(t *testing.T, db *testDB) {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
 	ent := &storage.Entity{
@@ -48,7 +47,6 @@ func seedResolveEntity(t *testing.T, db *testDB) *storage.Entity {
 	if err := db.Driver.Entities().Upsert(context.Background(), ent); err != nil {
 		t.Fatalf("seed entity: %v", err)
 	}
-	return ent
 }
 
 func TestResolveObjectMarkdown(t *testing.T) {
