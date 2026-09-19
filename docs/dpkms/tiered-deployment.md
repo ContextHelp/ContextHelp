@@ -42,12 +42,13 @@ This mirrors the guiding principles in [decentralization.md](decentralization.md
 Merging across registries is deterministic and precedence-ordered ([registries.md](registries.md) § Merging Multiple Registries). Subscription order expresses tier priority — list the most specific tier first:
 
 ```yaml
-registryOrder:
-  taxonomy: ["local", "team", "org"]
-  entities: ["local", "team", "org"]
-  weights:  ["local", "team", "org"]
-  bookmarks: ["local", "team", "org"]
+registries:
+  - name: local   # personal definitions win
+  - name: team    # shadow org for team members
+  - name: org     # base layer
 ```
+
+> **Per-facet precedence is not implemented.** A single `registries:` order applies to every facet (taxonomy, entities, weights, bookmarks) alike. The per-facet `registryOrder:` map described in [registries.md](registries.md) is a design target, not current config — do not put it in a config file expecting it to apply.
 
 Resolution behavior:
 
@@ -61,37 +62,35 @@ The effect is an overlay filesystem for semantics: org provides the base layer, 
 
 ## Minimal 3-Tier Configuration
 
-### Client-side subscription (real config shapes)
+### Client-side subscription
 
-The registry source entries follow the shapes documented in [registries.md](registries.md) § Registry Sources and [registry-protocol.md](registry-protocol.md) § Authentication:
+`registries:` is a flat list of registry sources, ordered most-specific-first — the list order *is* the precedence order. The fields below match `RegistryConfig` in `internal/config/config.go`:
 
 ```yaml
 registries:
-  taxonomy:
-    - name: org
-      type: http
-      url: https://registry.example-corp.internal/org
-      auth:
-        header: "X-API-Key"
-        token: "${ORG_REGISTRY_KEY}"      # everyone in the company holds this
-    - name: team-platform
-      type: http
-      url: https://registry.example-corp.internal/team-platform
-      auth:
-        header: "X-API-Key"
-        token: "${TEAM_REGISTRY_KEY}"     # only the platform team holds this
-    - name: personal
-      type: file
-      path: ~/knowledge/registry/taxonomy.json   # local file registry, no auth
-
-registryOrder:
-  taxonomy: ["personal", "team-platform", "org"]
-  entities: ["personal", "team-platform", "org"]
-  weights:  ["personal", "team-platform", "org"]
-  bookmarks: ["local", "personal", "team-platform", "org"]
+  # Personal tier first: local definitions win over team and org.
+  - name: personal
+    url: file://~/knowledge/registry
+    sync_mode: full
+    trust_level: trusted        # locally authored; may write to the graph
+  - name: team-platform
+    url: https://registry.example-corp.internal/team-platform
+    sync_mode: full
+    trust_level: trusted        # only the platform team holds this credential
+    auth:
+      type: api_key
+      header_name: "X-API-Key"  # defaults to X-API-Key; token lives in the OS keychain
+  - name: org
+    url: https://registry.example-corp.internal/org
+    sync_mode: thin             # index-only; pull bodies on demand
+    trust_level: untrusted      # entity writes require approval
+    auth:
+      type: api_key
 ```
 
-Access control falls out of credential distribution: revoking a person's team membership means rotating `TEAM_REGISTRY_KEY` (or revoking their token), and the team tier vanishes from their worldview on the next sync. No object-level cleanup required.
+Note what is *not* in this file: tokens. `RegistryAuthConfig` carries the auth mechanism only — credentials live in the OS keychain, never in config ([security.md](security.md) § Registry Trust Model). Set them with `ctxt registry login <name>`, not by interpolating environment variables into YAML.
+
+Access control falls out of credential distribution: revoking a person's team membership means revoking their team-registry credential, and the team tier vanishes from their worldview on the next sync. No object-level cleanup required.
 
 ### Server-side: one instance per tier (illustrative)
 
@@ -153,4 +152,4 @@ When two audiences need different views, that is by definition two registries.
 - Registries are read-only and receive no user data — so there is nothing for per-object ACLs to protect.
 - Subscription/precedence order yields overlay resolution: personal > team > org.
 - Finer visibility grades → split registries; never object ACLs.
-- Client config uses the real `registries:` / `registryOrder:` shapes; the multi-instance compose layout is the intended shape, illustrative until a first-party registry server ships.
+- Client config uses the real flat `registries:` shape (list order = precedence); per-facet `registryOrder:` and the multi-instance compose layout are intended shapes, illustrative until they ship.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -30,10 +31,15 @@ Ref forms:
 Default output is markdown (body only, pipe-friendly). --format json
 emits an envelope with the body plus a provenance object: source,
 pipeline, content hash, and registry influences for objects; registry
-URL, version hash, and namespace for entities.
+URL, version hash, namespace, and content status for entities. No
+other format is supported.
+
+An entity whose content status is "thin" or "pending_pull" is an
+index-only stub: its body is empty until the content is pulled, and a
+warning is written to stderr.
 
 Exit codes follow the CLI convention: 0 on success, 1 on any error
-(including ref not found).
+(including ref not found and an unsupported --format).
 
 Examples:
   # Resolve a knowledge object to markdown
@@ -81,6 +87,11 @@ type resolveProvenance struct {
 	RegistryURL string `json:"registry_url,omitempty"`
 	VersionHash string `json:"version_hash,omitempty"`
 	Namespace   string `json:"namespace,omitempty"`
+	// ContentStatus is "full" | "thin" | "pending_pull". A thin or
+	// pending_pull entity is an index-only stub whose body is legitimately
+	// empty until pulled, so consumers can distinguish "no content yet"
+	// from "no content at all" rather than retrying an empty body forever.
+	ContentStatus string `json:"content_status,omitempty"`
 	// Shared.
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -118,6 +129,14 @@ func runResolve(cmd *cobra.Command, args []string) error {
 			}
 			body = strings.TrimSpace(b.String())
 		}
+		// A graph carrying no Section nodes (e.g. the text.short pipeline
+		// runs no markdown_parser/sectioner) projects to an empty Body and
+		// no Sections, even though TextContent holds the full body — the
+		// same shape ProjectIndex patches for FTS. Fall back to flat text
+		// before RawContent, which is empty for non-web-captured objects.
+		if body == "" {
+			body = obj.TextContent
+		}
 		if body == "" {
 			body = obj.RawContent
 		}
@@ -145,28 +164,45 @@ func runResolve(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("resolve entity %q: %w", ref, err)
 		}
+		// An index-only stub has no body to resolve. Warn on stderr so the
+		// condition is visible to markdown consumers too (stdout stays
+		// pipe-clean); the JSON envelope reports it as content_status.
+		if entity.ContentStatus == storage.ContentStatusThin ||
+			entity.ContentStatus == storage.ContentStatusPendingPull {
+			fmt.Fprintf(os.Stderr,
+				"warning: entity %q is %s (index-only stub); body is empty until pulled\n",
+				slug, entity.ContentStatus)
+		}
 		res = resolveResult{
 			Ref:   ref,
 			Kind:  "entity",
 			Title: entity.Title,
 			Body:  entity.Description,
 			Provenance: resolveProvenance{
-				RegistryURL: entity.RegistryURL,
-				VersionHash: entity.VersionHash,
-				Namespace:   entity.Namespace,
-				CreatedAt:   entity.CreatedAt,
-				UpdatedAt:   entity.UpdatedAt,
+				RegistryURL:   entity.RegistryURL,
+				VersionHash:   entity.VersionHash,
+				Namespace:     entity.Namespace,
+				ContentStatus: string(entity.ContentStatus),
+				CreatedAt:     entity.CreatedAt,
+				UpdatedAt:     entity.UpdatedAt,
 			},
 		}
 	}
 
 	// Read --format from the inherited kit persistent flag (same pattern
 	// as show.go) — cobra resolves inherited persistent flags through
-	// Flags(). The viper binding is bypassed deliberately: viper.Set
-	// calls elsewhere would shadow the flag value.
+	// Flags(). isJSONOutput() additionally honours the viper-bound value
+	// set by the --output shim.
 	format, _ := cmd.Flags().GetString("format")
 	if format == "json" || isJSONOutput() {
 		return outputJSON(os.Stdout, res)
+	}
+	// Anything other than json/markdown is unsupported: reject it rather
+	// than silently emitting markdown under a success exit code. kit v0.5
+	// reports an unset --format as "table"; treat that (and "") as the
+	// markdown default.
+	if format != "" && format != "table" && format != "markdown" && format != "md" {
+		return fmt.Errorf("unsupported format %q for resolve (want: markdown, json)", format)
 	}
 
 	// Markdown (default; kit v0.5 reports unset --format as "table").
