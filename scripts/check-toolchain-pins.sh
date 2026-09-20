@@ -51,6 +51,26 @@ for df in Dockerfile docker/Dockerfile.dpkms; do
 	done < <(grep -oE '\bgolang:[0-9][^ ]*' "$df" || true)
 done
 
+# The devcontainer parameterises its base image via ARG, so the literal-tag
+# grep above cannot see it; check the default explicitly.
+dc_df=.devcontainer/Dockerfile
+if [ -f "$dc_df" ]; then
+	dc_go=$(sed -n 's/^ARG GO_VERSION=\(.*\)$/\1/p' "$dc_df" | head -1)
+	if [ -z "$dc_go" ]; then
+		err "$dc_df has no ARG GO_VERSION default to check"
+	elif [ "$dc_go" != "$mise_go" ]; then
+		err "$dc_df pins GO_VERSION=$dc_go but mise.toml pins go $mise_go"
+	else
+		echo "ok: $dc_df -> GO_VERSION=$dc_go"
+	fi
+	dc_lint=$(sed -n 's/^ARG GOLANGCI_LINT_VERSION=v\(.*\)$/\1/p' "$dc_df" | head -1)
+	if [ -n "$dc_lint" ] && [ "$dc_lint" != "$mise_lint" ]; then
+		err "$dc_df pins golangci-lint $dc_lint but mise.toml pins $mise_lint"
+	elif [ -n "$dc_lint" ]; then
+		echo "ok: $dc_df -> golangci-lint v$dc_lint"
+	fi
+fi
+
 # ── 2. go.mod directive ──────────────────────────────────────────────────────
 # The go.mod directive is a MINIMUM, not an equality: the pin must be >= it.
 gomod_go=$(awk '/^go /{print $2; exit}' go.mod)

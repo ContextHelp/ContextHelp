@@ -2,7 +2,8 @@
 #
 # Mirrors the toolchain the CI workflow and the production Dockerfile use so
 # a first boot can build and test without further setup:
-#   - Go, matching the GO_VERSION the CI workflow pins.
+#   - Go, matching the `go` pin in mise.toml (kept in sync by
+#     scripts/check-toolchain-pins.sh).
 #   - The SQLite headers CGo needs. Both binaries build with CGO_ENABLED=1
 #     and -tags fts5 (mattn/go-sqlite3 + sqlite-vec); without libsqlite3-dev
 #     the build fails, and without the fts5 tag it fails on a sentinel
@@ -11,7 +12,7 @@
 #     explicit.
 #   - The Postgres client, so `psql` is on PATH for poking at the database
 #     service by hand.
-ARG GO_VERSION=1.26
+ARG GO_VERSION=1.26.8
 FROM golang:${GO_VERSION}-bookworm
 
 # golangci-lint version is pinned to the one the CI workflow installs.
