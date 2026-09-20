@@ -142,7 +142,7 @@ func (w *Worker) Run(ctx context.Context, sel *Selector, opts WorkerOpts) error 
 		progressEvery = 1
 	}
 
-	ids, err := sel.IterateMatching(ctx, w.db)
+	ids, iterErrs, err := sel.IterateMatching(ctx, w.db)
 	if err != nil {
 		_ = w.mgr.Fail(fmt.Errorf("iterate: %w", err))
 		w.publish(ctx, events.TopicDpkmsUpgradeReingestFailed, events.UpgradeReingestFailedPayload{
@@ -235,6 +235,20 @@ func (w *Worker) Run(ctx context.Context, sel *Selector, opts WorkerOpts) error 
 	}
 
 completed:
+	// The id channel closing does not by itself mean iteration finished: a
+	// driver error truncates the stream the same way a clean end does. Fail
+	// the run rather than reporting a partial reingest as complete.
+	if iterErr := <-iterErrs; iterErr != nil {
+		_ = w.mgr.Fail(iterErr)
+		w.publish(ctx, events.TopicDpkmsUpgradeReingestFailed, events.UpgradeReingestFailedPayload{
+			Selector: sel.Raw(),
+			Done:     done,
+			Total:    total,
+			CostUSD:  costUSD,
+			Reason:   iterErr.Error(),
+		})
+		return fmt.Errorf("upgrade run: iterate: %w", iterErr)
+	}
 	if err := w.mgr.Complete(); err != nil {
 		return fmt.Errorf("upgrade run: complete: %w", err)
 	}

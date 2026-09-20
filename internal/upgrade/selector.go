@@ -193,16 +193,14 @@ func parseWhereSelector(predicate string, db *sql.DB) (*Selector, error) {
 		// chaining / comment markers are rejected above. This is a read-only
 		// EXPLAIN. A bind parameter cannot express a WHERE clause structure.
 		query := "EXPLAIN QUERY PLAN SELECT id FROM objects WHERE " + pred
-		rows, err := db.QueryContext(context.Background(), query)
-		if err != nil {
-			return nil, fmt.Errorf("upgrade selector: predicate rejected by SQLite: %w", err)
+		if err := explainPreWarm(db, query); err != nil {
+			return nil, err
 		}
-		_ = rows.Close()
 	}
 
 	return &Selector{
-		raw:  "where:" + pred,
-		sql:  pred,
+		raw: "where:" + pred,
+		sql: pred,
 	}, nil
 }
 
@@ -227,15 +225,18 @@ func (s *Selector) CountMatching(ctx context.Context, db *sql.DB) (int, error) {
 // (created_at ASC, id ASC) — deterministic across runs so a Tick'd progress
 // counter is meaningful (the same object is always at position N).
 //
-// The returned channel closes when iteration finishes, the context is
-// cancelled, or a row scan errors. On error, the error is logged via the
-// returned error channel; callers should range over both channels.
-//
-// Single-channel signature simplifies callers that don't care about distinct
-// success/error reporting (the worker treats any abort as a failure anyway).
-func (s *Selector) IterateMatching(ctx context.Context, db *sql.DB) (<-chan string, error) {
+// The ids channel closes when iteration finishes, the context is cancelled, or
+// a row scan errors. The errs channel carries at most one value and closes
+// after ids: a value received from it means iteration stopped early, so the
+// ids already delivered are a PARTIAL result. Callers must read errs after
+// draining ids — treating a closed id channel alone as success silently
+// accepts a truncated result set as a complete one.
+func (s *Selector) IterateMatching(
+	ctx context.Context,
+	db *sql.DB,
+) (<-chan string, <-chan error, error) {
 	if s == nil {
-		return nil, errors.New("upgrade selector: nil")
+		return nil, nil, errors.New("upgrade selector: nil")
 	}
 	// #nosec G202 -- s.sql is either the constant "pipeline = ?" or a
 	// predicate that passed validateIdentifiers at ParseSelector time
@@ -248,26 +249,56 @@ func (s *Selector) IterateMatching(ctx context.Context, db *sql.DB) (<-chan stri
 	}
 	query += " ORDER BY created_at ASC, id ASC"
 
-	rows, err := db.QueryContext(ctx, query, s.args...)
-	if err != nil {
-		return nil, fmt.Errorf("upgrade selector: iterate: %w", err)
+	//nolint:rowserrcheck // rows.Err is checked in the iterator goroutine below;
+	// rowserrcheck does not follow rows across a closure boundary.
+	rows, queryErr := db.QueryContext(ctx, query, s.args...)
+	if queryErr != nil {
+		return nil, nil, fmt.Errorf("upgrade selector: iterate: %w", queryErr)
 	}
 
 	out := make(chan string, 32)
+	errCh := make(chan error, 1)
 	go func() {
 		defer rows.Close()
+		defer close(errCh)
 		defer close(out)
 		for rows.Next() {
 			var id string
 			if scanErr := rows.Scan(&id); scanErr != nil {
+				errCh <- fmt.Errorf("upgrade selector: scan: %w", scanErr)
 				return
 			}
 			select {
 			case <-ctx.Done():
+				errCh <- fmt.Errorf("upgrade selector: iterate: %w", ctx.Err())
 				return
 			case out <- id:
 			}
 		}
+		// A driver error here means the ids delivered so far are a partial
+		// result set. Without this check the caller cannot tell a truncated
+		// scan apart from a clean end of iteration.
+		if rowsErr := rows.Err(); rowsErr != nil {
+			errCh <- fmt.Errorf("upgrade selector: iterate: %w", rowsErr)
+		}
 	}()
-	return out, nil
+	return out, errCh, nil
+}
+
+// explainPreWarm runs a read-only EXPLAIN so column-not-found and syntax
+// errors surface at parse time. Split out of ParseSelectorWithDB so rows.Close
+// can be deferred and rows.Err checked on a single path.
+func explainPreWarm(db *sql.DB, query string) error {
+	rows, err := db.QueryContext(context.Background(), query)
+	if err != nil {
+		return fmt.Errorf("upgrade selector: predicate rejected by SQLite: %w", err)
+	}
+	defer rows.Close()
+	// Drain the plan rows; only the presence of an error matters here.
+	for rows.Next() { //nolint:revive // empty block is the drain
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("upgrade selector: predicate rejected by SQLite: %w", err)
+	}
+	return nil
 }

@@ -84,6 +84,9 @@ func (s *DetectorStore) List(ctx context.Context, filter storage.DetectorFilter)
 		}
 		detectors = append(detectors, d)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate detectors: %w", err)
+	}
 	return detectors, total, nil
 }
 

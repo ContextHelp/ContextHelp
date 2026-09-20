@@ -81,6 +81,9 @@ func (s *StepStore) List(ctx context.Context, source string) ([]*storage.Registe
 		}
 		steps = append(steps, s)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate steps: %w", err)
+	}
 
 	return steps, total, nil
 }

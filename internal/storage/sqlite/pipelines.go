@@ -103,6 +103,9 @@ func (s *PipelineStore) List(ctx context.Context, filter storage.PipelineFilter)
 		}
 		pipelines = append(pipelines, p)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate pipelines: %w", err)
+	}
 
 	return pipelines, total, nil
 }

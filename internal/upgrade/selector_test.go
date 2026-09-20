@@ -231,7 +231,7 @@ func TestSelector_IterateMatching_DeterministicOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	ch, err := sel.IterateMatching(context.Background(), db)
+	ch, iterErrs, err := sel.IterateMatching(context.Background(), db)
 	if err != nil {
 		t.Fatalf("iter: %v", err)
 	}
@@ -248,6 +248,9 @@ func TestSelector_IterateMatching_DeterministicOrder(t *testing.T) {
 			t.Errorf("got[%d] = %s, want %s", i, id, want[i])
 		}
 	}
+	if iterErr := <-iterErrs; iterErr != nil {
+		t.Fatalf("iterate err: %v", iterErr)
+	}
 }
 
 func TestSelector_IterateMatching_ContextCancelClosesChan(t *testing.T) {
@@ -257,7 +260,7 @@ func TestSelector_IterateMatching_ContextCancelClosesChan(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	ch, err := sel.IterateMatching(ctx, db)
+	ch, _, err := sel.IterateMatching(ctx, db)
 	if err != nil {
 		t.Fatalf("iter: %v", err)
 	}
