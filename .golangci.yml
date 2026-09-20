@@ -71,9 +71,67 @@ linters:
         - fieldalignment
     misspell:
       locale: US
+      # The codebase is consistently British-English by authorship, so these
+      # are the house spelling rather than typos. Correcting them is not a
+      # config change: misspell --fix rewrites identifier declarations without
+      # their call sites and breaks the build.
+      #
+      # Entries match whole words, not stems, so every inflected form that
+      # actually occurs is listed. Genuine typos (deliberatley, promots) are
+      # deliberately absent so they stay reported.
       ignore-rules:
         - contexthelp
         - dpkms
+        - analyse
+        - analysed
+        - analyses
+        - artefact
+        - authorise
+        - behaviour
+        - cancelled
+        - cancelling
+        - centralised
+        - centralises
+        - centred
+        - colour
+        - customising
+        - defence
+        - destabilise
+        - favour
+        - finalises
+        - flavoured
+        - honour
+        - honouring
+        - honours
+        - initialise
+        - initialised
+        - initialises
+        - labelled
+        - localise
+        - localised
+        - marshalled
+        - marshalling
+        - materialise
+        - minimises
+        - modelling
+        - neighbour
+        - neighbours
+        - neutralises
+        - organisation
+        - recognisable
+        - recognise
+        - recognised
+        - recognises
+        - sanitise
+        - sanitised
+        - serialise
+        - serialised
+        - serialises
+        - signalling
+        - summarise
+        - summarised
+        - summarises
+        - unrecognised
     prealloc:
       simple: true
       range-loops: true
