@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: a0ace28d
+recorded_at: "2026-09-20T01:30:49Z"
+payload:
+    method: GET
+    url: http://127.0.0.1:50981/api/rest_v1/page/summary/Distributed_computing

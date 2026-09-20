@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: a0ace28d
+recorded_at: "2026-09-20T01:30:49Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"title":"Distributed computing","extract":"Distributed computing is a field of computer science that studies distributed systems.","pageid":8071}

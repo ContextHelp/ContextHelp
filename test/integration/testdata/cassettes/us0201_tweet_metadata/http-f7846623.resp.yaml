@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: f7846623
+recorded_at: "2026-09-20T01:29:54Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"data":{"id":"1234567890","text":"Distributed systems require careful coordination.","author_id":"111","created_at":"2026-02-18T10:00:00.000Z"},"includes":{"users":[{"id":"111","username":"karpathy","name":"Andrej Karpathy"}]}}

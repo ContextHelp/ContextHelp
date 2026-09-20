@@ -4,7 +4,15 @@ package integration
 //
 // Verifies: mock Wikipedia API, capture article,
 // title/summary/infobox entities extracted.
-// All external HTTP calls use httptest.NewServer — no real network.
+// Both upstream fetches (summary + article) run through a single xrr
+// cassette (testdata/cassettes/us0205_*), one recorded round-trip per
+// path. In the default replay mode the fixture server is never contacted.
+// See xrr_capture_helpers_test.go for what the cassettes do and do not
+// prove.
+//
+// Re-record: XRR_MODE=record go test -count=1 ./test/integration/ \
+//   -run TestUS0205_RecordCassettes
+//
 // Gate: INTEGRATION=1 env var required.
 
 import (
@@ -56,13 +64,16 @@ type wikipediaFetchStep struct {
 	pipeline.BaseContract
 	apiBaseURL string
 	pageTitle  string
+	// client carries the xrr record/replay transport. Nil falls back to
+	// the default client.
+	client *gohttp.Client
 }
 
 func (s *wikipediaFetchStep) Name() string { return "test-wikipedia-fetch" }
 func (s *wikipediaFetchStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	// Fetch summary.
 	summaryURL := fmt.Sprintf("%s/api/rest_v1/page/summary/%s", s.apiBaseURL, s.pageTitle)
-	resp, err := gohttp.Get(summaryURL)
+	resp, err := captureGet(s.client, summaryURL)
 	if err != nil {
 		return draft, err
 	}
@@ -75,7 +86,7 @@ func (s *wikipediaFetchStep) Run(_ context.Context, draft *storage.KnowledgeObje
 
 	// Fetch enriched article data (infobox).
 	articleURL := fmt.Sprintf("%s/api/rest_v1/page/article/%s", s.apiBaseURL, s.pageTitle)
-	respArt, err := gohttp.Get(articleURL)
+	respArt, err := captureGet(s.client, articleURL)
 	if err != nil {
 		return draft, err
 	}
@@ -108,6 +119,107 @@ func (s *wikipediaFetchStep) Run(_ context.Context, draft *storage.KnowledgeObje
 }
 
 // ---------------------------------------------------------------------------
+// Fixture handlers
+//
+// The step makes two GETs per run (summary, then article), so each
+// cassette directory holds two recorded round-trips — one per path.
+// ---------------------------------------------------------------------------
+
+const (
+	wikiDistributedPage    = "Distributed_computing"
+	wikiDistributedTitle   = "Distributed computing"
+	wikiDistributedSummary = "Distributed computing is a field of computer science that studies distributed systems."
+	wikiGoPage             = "Go_programming_language"
+	wikiGoTitle            = "Go (programming language)"
+	wikiGoSummary          = "Go is a statically typed compiled language."
+)
+
+func wikipediaSummaryPath(page string) string {
+	return fmt.Sprintf("/api/rest_v1/page/summary/%s", page)
+}
+
+func wikipediaArticlePath(page string) string {
+	return fmt.Sprintf("/api/rest_v1/page/article/%s", page)
+}
+
+// wikipediaHandler routes the REST v1 summary and article paths for one
+// page, 404-ing anything else exactly as the previous inline handlers did.
+func wikipediaHandler(page string, summary mockWikipediaSummary, article mockWikipediaArticle) gohttp.HandlerFunc {
+	return func(w gohttp.ResponseWriter, r *gohttp.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case wikipediaSummaryPath(page):
+			_ = json.NewEncoder(w).Encode(summary)
+		case wikipediaArticlePath(page):
+			_ = json.NewEncoder(w).Encode(article)
+		default:
+			w.WriteHeader(gohttp.StatusNotFound)
+		}
+	}
+}
+
+func wikipediaDistributedHandler() gohttp.HandlerFunc {
+	return wikipediaHandler(wikiDistributedPage,
+		mockWikipediaSummary{
+			Title:   wikiDistributedTitle,
+			Extract: wikiDistributedSummary,
+			PageID:  8071,
+		},
+		mockWikipediaArticle{
+			Title:   wikiDistributedTitle,
+			Summary: wikiDistributedSummary,
+			Infobox: []mockWikipediaInfoboxEntity{
+				{Name: "discipline", Value: "Computer science"},
+			},
+		})
+}
+
+func wikipediaGoHandler() gohttp.HandlerFunc {
+	return wikipediaHandler(wikiGoPage,
+		mockWikipediaSummary{
+			Title:   wikiGoTitle,
+			Extract: wikiGoSummary,
+			PageID:  25039021,
+		},
+		mockWikipediaArticle{
+			Title:   wikiGoTitle,
+			Summary: wikiGoSummary,
+			Infobox: []mockWikipediaInfoboxEntity{
+				{Name: "developer", Value: "Google"},
+				{Name: "first_appeared", Value: "2009"},
+				{Name: "paradigm", Value: "multi-paradigm"},
+			},
+		})
+}
+
+func wikipediaCassettes() []captureFixture {
+	return []captureFixture{
+		{
+			Cassette: "us0205_title_summary",
+			Handler:  wikipediaDistributedHandler(),
+			Paths: []string{
+				wikipediaSummaryPath(wikiDistributedPage),
+				wikipediaArticlePath(wikiDistributedPage),
+			},
+		},
+		{
+			Cassette: "us0205_infobox_entities",
+			Handler:  wikipediaGoHandler(),
+			Paths: []string{
+				wikipediaSummaryPath(wikiGoPage),
+				wikipediaArticlePath(wikiGoPage),
+			},
+		},
+	}
+}
+
+// TestUS0205_RecordCassettes re-records the US-0205 cassettes. No-op
+// unless XRR_MODE=record; needs no Postgres/Redis.
+func TestUS0205_RecordCassettes(t *testing.T) {
+	recordCaptureFixtures(t, wikipediaCassettes())
+}
+
+// ---------------------------------------------------------------------------
 // US-0205 Tests
 // ---------------------------------------------------------------------------
 
@@ -118,31 +230,13 @@ func TestUS0205_TitleSummaryStored(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	const pageTitle = "Distributed_computing"
-	const wantTitle = "Distributed computing"
-	const wantSummary = "Distributed computing is a field of computer science that studies distributed systems."
+	const pageTitle = wikiDistributedPage
+	const wantTitle = wikiDistributedTitle
+	const wantSummary = wikiDistributedSummary
 
-	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.URL.Path == fmt.Sprintf("/api/rest_v1/page/summary/%s", pageTitle):
-			json.NewEncoder(w).Encode(mockWikipediaSummary{
-				Title:   wantTitle,
-				Extract: wantSummary,
-				PageID:  8071,
-			})
-		case r.URL.Path == fmt.Sprintf("/api/rest_v1/page/article/%s", pageTitle):
-			json.NewEncoder(w).Encode(mockWikipediaArticle{
-				Title:   wantTitle,
-				Summary: wantSummary,
-				Infobox: []mockWikipediaInfoboxEntity{
-					{Name: "discipline", Value: "Computer science"},
-				},
-			})
-		default:
-			w.WriteHeader(gohttp.StatusNotFound)
-		}
-	}))
+	// Replay answers from the cassette; the fixture server only matters
+	// when re-recording.
+	srv := httptest.NewServer(wikipediaDistributedHandler())
 	defer srv.Close()
 
 	env := startTestEnv(t)
@@ -151,7 +245,11 @@ func TestUS0205_TitleSummaryStored(t *testing.T) {
 	env.svc.Pipes.Upsert("reference.wikipedia", &pipeline.Pipeline{
 		PipelineName: "reference.wikipedia",
 		Steps: []pipeline.PipelineStep{
-			&wikipediaFetchStep{apiBaseURL: srv.URL, pageTitle: pageTitle},
+			&wikipediaFetchStep{
+				apiBaseURL: srv.URL,
+				pageTitle:  pageTitle,
+				client:     captureClient(t, "us0205_title_summary"),
+			},
 		},
 	})
 
@@ -187,31 +285,9 @@ func TestUS0205_InfoboxEntitiesExtracted(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	const pageTitle = "Go_programming_language"
+	const pageTitle = wikiGoPage
 
-	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.URL.Path == fmt.Sprintf("/api/rest_v1/page/summary/%s", pageTitle):
-			json.NewEncoder(w).Encode(mockWikipediaSummary{
-				Title:   "Go (programming language)",
-				Extract: "Go is a statically typed compiled language.",
-				PageID:  25039021,
-			})
-		case r.URL.Path == fmt.Sprintf("/api/rest_v1/page/article/%s", pageTitle):
-			json.NewEncoder(w).Encode(mockWikipediaArticle{
-				Title:   "Go (programming language)",
-				Summary: "Go is a statically typed compiled language.",
-				Infobox: []mockWikipediaInfoboxEntity{
-					{Name: "developer", Value: "Google"},
-					{Name: "first_appeared", Value: "2009"},
-					{Name: "paradigm", Value: "multi-paradigm"},
-				},
-			})
-		default:
-			w.WriteHeader(gohttp.StatusNotFound)
-		}
-	}))
+	srv := httptest.NewServer(wikipediaGoHandler())
 	defer srv.Close()
 
 	env := startTestEnv(t)
@@ -220,7 +296,11 @@ func TestUS0205_InfoboxEntitiesExtracted(t *testing.T) {
 	env.svc.Pipes.Upsert("reference.wikipedia", &pipeline.Pipeline{
 		PipelineName: "reference.wikipedia",
 		Steps: []pipeline.PipelineStep{
-			&wikipediaFetchStep{apiBaseURL: srv.URL, pageTitle: pageTitle},
+			&wikipediaFetchStep{
+				apiBaseURL: srv.URL,
+				pageTitle:  pageTitle,
+				client:     captureClient(t, "us0205_infobox_entities"),
+			},
 		},
 	})
 
