@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: 025dde17
+recorded_at: "2026-09-20T01:30:49Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"title":"Go (programming language)","extract":"Go is a statically typed compiled language.","pageid":25039021}

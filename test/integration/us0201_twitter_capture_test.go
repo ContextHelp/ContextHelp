@@ -4,7 +4,15 @@ package integration
 //
 // Verifies: mock Twitter API, capture tweet by URL, tweet text/author/timestamp
 // stored as object.
-// All external HTTP calls use httptest.NewServer — no real network.
+// The upstream fetch runs through an xrr cassette
+// (testdata/cassettes/us0201_*). In the default replay mode the recorded
+// round-trip answers from disk and the fixture server is never contacted.
+// See xrr_capture_helpers_test.go for what the cassettes do and do not
+// prove.
+//
+// Re-record: XRR_MODE=record go test -count=1 ./test/integration/ \
+//   -run TestUS0201_RecordCassettes
+//
 // Gate: INTEGRATION=1 env var required.
 
 import (
@@ -50,19 +58,22 @@ type twitterFetchStep struct {
 	pipeline.BaseContract
 	apiBaseURL string
 	tweetID    string
+	// client carries the xrr record/replay transport. Nil falls back to
+	// the default client.
+	client *gohttp.Client
 }
 
 func (s *twitterFetchStep) Name() string { return "test-twitter-fetch" }
 func (s *twitterFetchStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	url := fmt.Sprintf("%s/2/tweets/%s?expansions=author_id", s.apiBaseURL, s.tweetID)
-	resp, err := gohttp.Get(url)
+	resp, err := captureGet(s.client, url)
 	if err != nil {
 		return draft, err
 	}
 	defer resp.Body.Close()
 
 	var payload struct {
-		Data     mockTweet       `json:"data"`
+		Data     mockTweet `json:"data"`
 		Includes struct {
 			Users []mockTwitterUser `json:"users"`
 		} `json:"includes"`
@@ -88,6 +99,100 @@ func (s *twitterFetchStep) Run(_ context.Context, draft *storage.KnowledgeObject
 }
 
 // ---------------------------------------------------------------------------
+// Fixture handlers
+//
+// Named so the replaying test and the recorder share one definition of
+// each payload. See xrr_capture_helpers_test.go.
+// ---------------------------------------------------------------------------
+
+const (
+	twitterTweetID       = "1234567890"
+	twitterTweetText     = "Distributed systems require careful coordination."
+	twitterAuthorHandle  = "karpathy"
+	twitterTweetCreated  = "2026-02-18T10:00:00.000Z"
+	twitterSourceTweetID = "9999"
+	twitterAsyncTweetID  = "1"
+)
+
+// twitterTweetHandler serves a v2 tweet lookup response with the author
+// expanded into includes.users, matching the shape the step decodes.
+func twitterTweetHandler(tweet mockTweet, user mockTwitterUser) gohttp.HandlerFunc {
+	return func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": tweet,
+			"includes": map[string]any{
+				"users": []mockTwitterUser{user},
+			},
+		})
+	}
+}
+
+func twitterMainFixture() (mockTweet, mockTwitterUser) {
+	return mockTweet{
+			ID:        twitterTweetID,
+			Text:      twitterTweetText,
+			AuthorID:  "111",
+			CreatedAt: twitterTweetCreated,
+		}, mockTwitterUser{
+			ID: "111", Username: twitterAuthorHandle, Name: "Andrej Karpathy",
+		}
+}
+
+func twitterSourceFixture() (mockTweet, mockTwitterUser) {
+	return mockTweet{
+			ID:        twitterSourceTweetID,
+			Text:      "A test tweet",
+			AuthorID:  "42",
+			CreatedAt: "2026-01-01T00:00:00.000Z",
+		}, mockTwitterUser{
+			ID: "42", Username: "testuser", Name: "Test User",
+		}
+}
+
+func twitterAsyncFixture() (mockTweet, mockTwitterUser) {
+	return mockTweet{
+		ID:        twitterAsyncTweetID,
+		Text:      "async test",
+		AuthorID:  "1",
+		CreatedAt: "2026-01-01T00:00:00.000Z",
+	}, mockTwitterUser{ID: "1", Username: "u", Name: "U"}
+}
+
+func twitterTweetPath(id string) string {
+	return fmt.Sprintf("/2/tweets/%s?expansions=author_id", id)
+}
+
+func twitterCassettes() []captureFixture {
+	main, mainUser := twitterMainFixture()
+	src, srcUser := twitterSourceFixture()
+	async, asyncUser := twitterAsyncFixture()
+	return []captureFixture{
+		{
+			Cassette: "us0201_tweet_metadata",
+			Handler:  twitterTweetHandler(main, mainUser),
+			Path:     twitterTweetPath(twitterTweetID),
+		},
+		{
+			Cassette: "us0201_tweet_source_url",
+			Handler:  twitterTweetHandler(src, srcUser),
+			Path:     twitterTweetPath(twitterSourceTweetID),
+		},
+		{
+			Cassette: "us0201_async_capture",
+			Handler:  twitterTweetHandler(async, asyncUser),
+			Path:     twitterTweetPath(twitterAsyncTweetID),
+		},
+	}
+}
+
+// TestUS0201_RecordCassettes re-records the US-0201 cassettes. No-op
+// unless XRR_MODE=record; needs no Postgres/Redis.
+func TestUS0201_RecordCassettes(t *testing.T) {
+	recordCaptureFixtures(t, twitterCassettes())
+}
+
+// ---------------------------------------------------------------------------
 // US-0201 Tests
 // ---------------------------------------------------------------------------
 
@@ -98,27 +203,14 @@ func TestUS0201_TweetTextAuthorTimestampStored(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	const tweetID = "1234567890"
-	const wantText = "Distributed systems require careful coordination."
-	const wantAuthorUsername = "karpathy"
-	const wantCreatedAt = "2026-02-18T10:00:00.000Z"
+	const tweetID = twitterTweetID
+	const wantText = twitterTweetText
+	const wantAuthorUsername = twitterAuthorHandle
+	const wantCreatedAt = twitterTweetCreated
 
-	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"data": mockTweet{
-				ID:        tweetID,
-				Text:      wantText,
-				AuthorID:  "111",
-				CreatedAt: wantCreatedAt,
-			},
-			"includes": map[string]any{
-				"users": []mockTwitterUser{
-					{ID: "111", Username: wantAuthorUsername, Name: "Andrej Karpathy"},
-				},
-			},
-		})
-	}))
+	// Replay answers from the cassette; the fixture server only matters
+	// when re-recording.
+	srv := httptest.NewServer(twitterTweetHandler(twitterMainFixture()))
 	defer srv.Close()
 
 	env := startTestEnv(t)
@@ -127,7 +219,11 @@ func TestUS0201_TweetTextAuthorTimestampStored(t *testing.T) {
 	env.svc.Pipes.Upsert("social.x.post", &pipeline.Pipeline{
 		PipelineName: "social.x.post",
 		Steps: []pipeline.PipelineStep{
-			&twitterFetchStep{apiBaseURL: srv.URL, tweetID: tweetID},
+			&twitterFetchStep{
+				apiBaseURL: srv.URL,
+				tweetID:    tweetID,
+				client:     captureClient(t, "us0201_tweet_metadata"),
+			},
 		},
 	})
 
@@ -163,24 +259,9 @@ func TestUS0201_TweetSourceURLStored(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	const tweetID = "9999"
+	const tweetID = twitterSourceTweetID
 
-	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"data": mockTweet{
-				ID:        tweetID,
-				Text:      "A test tweet",
-				AuthorID:  "42",
-				CreatedAt: "2026-01-01T00:00:00.000Z",
-			},
-			"includes": map[string]any{
-				"users": []mockTwitterUser{
-					{ID: "42", Username: "testuser", Name: "Test User"},
-				},
-			},
-		})
-	}))
+	srv := httptest.NewServer(twitterTweetHandler(twitterSourceFixture()))
 	defer srv.Close()
 
 	env := startTestEnv(t)
@@ -189,7 +270,11 @@ func TestUS0201_TweetSourceURLStored(t *testing.T) {
 	env.svc.Pipes.Upsert("social.x.post", &pipeline.Pipeline{
 		PipelineName: "social.x.post",
 		Steps: []pipeline.PipelineStep{
-			&twitterFetchStep{apiBaseURL: srv.URL, tweetID: tweetID},
+			&twitterFetchStep{
+				apiBaseURL: srv.URL,
+				tweetID:    tweetID,
+				client:     captureClient(t, "us0201_tweet_source_url"),
+			},
 		},
 	})
 
@@ -221,15 +306,7 @@ func TestUS0201_CaptureIsAsync(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"data": mockTweet{ID: "1", Text: "async test", AuthorID: "1", CreatedAt: "2026-01-01T00:00:00.000Z"},
-			"includes": map[string]any{
-				"users": []mockTwitterUser{{ID: "1", Username: "u", Name: "U"}},
-			},
-		})
-	}))
+	srv := httptest.NewServer(twitterTweetHandler(twitterAsyncFixture()))
 	defer srv.Close()
 
 	env := startTestEnv(t)
@@ -238,7 +315,11 @@ func TestUS0201_CaptureIsAsync(t *testing.T) {
 	env.svc.Pipes.Upsert("social.x.post", &pipeline.Pipeline{
 		PipelineName: "social.x.post",
 		Steps: []pipeline.PipelineStep{
-			&twitterFetchStep{apiBaseURL: srv.URL, tweetID: "1"},
+			&twitterFetchStep{
+				apiBaseURL: srv.URL,
+				tweetID:    twitterAsyncTweetID,
+				client:     captureClient(t, "us0201_async_capture"),
+			},
 		},
 	})
 

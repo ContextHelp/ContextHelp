@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: 025dde17
+recorded_at: "2026-09-20T01:30:49Z"
+payload:
+    method: GET
+    url: http://127.0.0.1:50983/api/rest_v1/page/summary/Go_programming_language

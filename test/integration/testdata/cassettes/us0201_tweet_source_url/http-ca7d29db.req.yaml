@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: ca7d29db
+recorded_at: "2026-09-20T01:29:54Z"
+payload:
+    method: GET
+    url: http://127.0.0.1:50871/2/tweets/9999?expansions=author_id

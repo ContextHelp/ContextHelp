@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: f6249192
+recorded_at: "2026-09-20T01:30:49Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"title":"Go (programming language)","summary":"Go is a statically typed compiled language.","infobox":[{"name":"developer","value":"Google"},{"name":"first_appeared","value":"2009"},{"name":"paradigm","value":"multi-paradigm"}],"sections":null,"url":""}

@@ -253,7 +253,13 @@ type captureFixture struct {
 	// Handler serves the fixture response.
 	Handler gohttp.Handler
 	// Path is the request path+query, relative to the fixture server.
+	// Use Paths instead when one cassette covers several round-trips
+	// (e.g. a step that fetches a summary and then an article).
 	Path string
+	// Paths lists several request path+query values recorded into the
+	// same cassette directory, in order. Each gets its own fingerprint,
+	// so replay matches whichever the step asks for.
+	Paths []string
 	// Method defaults to GET.
 	Method string
 	// Body is the request body, if any.
@@ -288,30 +294,42 @@ func recordCaptureFixtures(t *testing.T, fixtures []captureFixture) {
 				method = gohttp.MethodGet
 			}
 
-			var body io.Reader
-			if f.Body != "" {
-				body = strings.NewReader(f.Body)
-			}
-			req, err := gohttp.NewRequest(method, srv.URL+f.Path, body)
-			if err != nil {
-				t.Fatalf("build request: %v", err)
-			}
-			for k, vs := range f.Header {
-				for _, v := range vs {
-					req.Header.Add(k, v)
-				}
-			}
-			for _, c := range f.Cookies {
-				req.AddCookie(c)
+			paths := f.Paths
+			if len(paths) == 0 {
+				paths = []string{f.Path}
 			}
 
-			resp, err := captureClient(t, f.Cassette).Do(req)
-			if err != nil {
-				t.Fatalf("record %s: %v", f.Cassette, err)
-			}
-			defer resp.Body.Close()
-			if _, err := io.Copy(io.Discard, resp.Body); err != nil {
-				t.Fatalf("drain %s: %v", f.Cassette, err)
+			// One client, so every path in this fixture lands in the
+			// same cassette directory.
+			client := captureClient(t, f.Cassette)
+
+			for _, path := range paths {
+				var body io.Reader
+				if f.Body != "" {
+					body = strings.NewReader(f.Body)
+				}
+				req, err := gohttp.NewRequest(method, srv.URL+path, body)
+				if err != nil {
+					t.Fatalf("build request %s: %v", path, err)
+				}
+				for k, vs := range f.Header {
+					for _, v := range vs {
+						req.Header.Add(k, v)
+					}
+				}
+				for _, c := range f.Cookies {
+					req.AddCookie(c)
+				}
+
+				resp, err := client.Do(req)
+				if err != nil {
+					t.Fatalf("record %s %s: %v", f.Cassette, path, err)
+				}
+				if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+					_ = resp.Body.Close()
+					t.Fatalf("drain %s %s: %v", f.Cassette, path, err)
+				}
+				_ = resp.Body.Close()
 			}
 		})
 	}
