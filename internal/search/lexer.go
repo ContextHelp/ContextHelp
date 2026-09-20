@@ -54,29 +54,29 @@ func (l *Lexer) lex() error {
 
 		ch := l.input[l.pos]
 
-		switch {
-		case ch == ';':
+		switch ch {
+		case ';':
 			l.tokens = append(l.tokens, Token{Type: TokenAnd, Value: ";", Pos: l.pos})
 			l.pos++
-		case ch == ',':
+		case ',':
 			// Distinguish between OR separator and value list separator.
 			// If the last token was an operator (=in= or =out=), this starts a value list.
 			// Otherwise it's OR.
 			l.tokens = append(l.tokens, Token{Type: TokenOr, Value: ",", Pos: l.pos})
 			l.pos++
-		case ch == '(':
+		case '(':
 			// Check if this is a value list after =in= or =out=.
 			if l.lastTokenIsSetOp() {
 				return l.lexValueList()
 			}
 			l.tokens = append(l.tokens, Token{Type: TokenLParen, Value: "(", Pos: l.pos})
 			l.pos++
-		case ch == ')':
+		case ')':
 			l.tokens = append(l.tokens, Token{Type: TokenRParen, Value: ")", Pos: l.pos})
 			l.pos++
-		case ch == '=' || ch == '!' || ch == '>' || ch == '<':
+		case '=', '!', '>', '<':
 			return l.lexOperatorAndValue()
-		case ch == '"' || ch == '\'':
+		case '"', '\'':
 			return l.lexQuotedValue()
 		default:
 			if isIdentStart(ch) {

@@ -167,9 +167,7 @@ func (s *docDepthConfigStep) Run(_ context.Context, draft *storage.KnowledgeObje
 	}
 	draft.Metadata["decomposition_depth"] = float64(s.depth)
 	// Only add sections up to the configured depth.
-	for _, sec := range s.sections {
-		draft.Sections = append(draft.Sections, sec)
-	}
+	draft.Sections = append(draft.Sections, s.sections...)
 	return draft, nil
 }
 

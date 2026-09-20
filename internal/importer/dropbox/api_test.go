@@ -102,15 +102,16 @@ func TestListFilesMaxItems(t *testing.T) {
 				PathDisplay: "/file.txt",
 			}
 		}
-		if r.URL.Path == "/2/files/list_folder" {
+		switch r.URL.Path {
+		case "/2/files/list_folder":
 			json.NewEncoder(w).Encode(listFolderResult{
 				Entries: entries,
 				Cursor:  "c1",
 				HasMore: false,
 			})
-		} else if r.URL.Path == "/2/files/list_folder/get_latest_cursor" {
+		case "/2/files/list_folder/get_latest_cursor":
 			json.NewEncoder(w).Encode(latestCursorResult{Cursor: "c-latest"})
-		} else {
+		default:
 			http.NotFound(w, r)
 		}
 	}))

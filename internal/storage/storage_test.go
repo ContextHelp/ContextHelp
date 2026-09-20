@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"io"
-	"testing"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
@@ -74,12 +73,8 @@ func (m *mockBlobStore) List(_ context.Context, _ string) ([]BlobInfo, error) {
 }
 func (m *mockBlobStore) URL(_ context.Context, _ string) (string, error) { return "", nil }
 
-func TestBlobStoreInterfaceSatisfaction(t *testing.T) {
-	var s BlobStore = &mockBlobStore{}
-	if s == nil {
-		t.Fatal("mockBlobStore should satisfy BlobStore")
-	}
-}
+// Compile-time assertion: *mockBlobStore satisfies BlobStore.
+var _ BlobStore = (*mockBlobStore)(nil)
 
 type mockObjectStore struct{}
 
@@ -300,40 +295,20 @@ func (m *mockProximityStore) FindStale(_ context.Context, _ time.Time, _ int) ([
 }
 func (m *mockProximityStore) Stats(_ context.Context) (*ProximityStats, error) { return nil, nil }
 
-func TestStorageDriverInterfaceSatisfaction(t *testing.T) {
-	var d StorageDriver = &mockDriver{}
-	if d == nil {
-		t.Fatal("mockDriver should satisfy StorageDriver")
-	}
-}
+// Compile-time assertion: *mockDriver satisfies StorageDriver.
+var _ StorageDriver = (*mockDriver)(nil)
 
-func TestObjectStoreInterfaceSatisfaction(t *testing.T) {
-	var s ObjectStore = &mockObjectStore{}
-	if s == nil {
-		t.Fatal("mockObjectStore should satisfy ObjectStore")
-	}
-}
+// Compile-time assertion: *mockObjectStore satisfies ObjectStore.
+var _ ObjectStore = (*mockObjectStore)(nil)
 
-func TestEntityStoreInterfaceSatisfaction(t *testing.T) {
-	var s EntityStore = &mockEntityStore{}
-	if s == nil {
-		t.Fatal("mockEntityStore should satisfy EntityStore")
-	}
-}
+// Compile-time assertion: *mockEntityStore satisfies EntityStore.
+var _ EntityStore = (*mockEntityStore)(nil)
 
-func TestEdgeStoreInterfaceSatisfaction(t *testing.T) {
-	var s EdgeStore = &mockEdgeStore{}
-	if s == nil {
-		t.Fatal("mockEdgeStore should satisfy EdgeStore")
-	}
-}
+// Compile-time assertion: *mockEdgeStore satisfies EdgeStore.
+var _ EdgeStore = (*mockEdgeStore)(nil)
 
-func TestJobStoreInterfaceSatisfaction(t *testing.T) {
-	var s JobStore = &mockJobStore{}
-	if s == nil {
-		t.Fatal("mockJobStore should satisfy JobStore")
-	}
-}
+// Compile-time assertion: *mockJobStore satisfies JobStore.
+var _ JobStore = (*mockJobStore)(nil)
 
 type mockWatchStore struct{}
 

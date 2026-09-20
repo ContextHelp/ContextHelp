@@ -53,10 +53,7 @@ func TestReloadable_SIGHUPPicksUpMutableEdit(t *testing.T) {
 
 	// Poll for the snapshot to update.
 	deadline := time.After(2 * time.Second)
-	for {
-		if r.Snapshot().Scoring.Weights.SessionTopic == 0.9 {
-			break
-		}
+	for r.Snapshot().Scoring.Weights.SessionTopic != 0.9 {
 		select {
 		case <-deadline:
 			t.Fatalf("snapshot did not update after SIGHUP: still %v", r.Snapshot().Scoring.Weights.SessionTopic)

@@ -214,10 +214,10 @@ func (c *HTTPAPIClient) HasSponsorPage(ctx context.Context, login string) (bool,
 	if err != nil {
 		return false, err
 	}
-	switch {
-	case res.Status == 200:
+	switch res.Status {
+	case 200:
 		return true, nil
-	case res.Status == 404:
+	case 404:
 		return false, nil
 	default:
 		return false, fmt.Errorf("github: sponsors/%s status %d", login, res.Status)

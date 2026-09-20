@@ -141,14 +141,14 @@ func parseDepFiles(files map[string]any) ([]depEntry, error) {
 // parseManifest dispatches to the right parser based on filename.
 func parseManifest(filename, content string) ([]depEntry, error) {
 	base := strings.ToLower(baseName(filename))
-	switch {
-	case base == "package.json":
+	switch base {
+	case "package.json":
 		return parsePackageJSON(content)
-	case base == "go.mod":
+	case "go.mod":
 		return parseGoMod(content)
-	case base == "requirements.txt":
+	case "requirements.txt":
 		return parseRequirementsTxt(content)
-	case base == "gemfile":
+	case "gemfile":
 		return parseGemfile(content)
 	default:
 		return nil, nil

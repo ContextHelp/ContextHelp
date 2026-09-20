@@ -187,8 +187,8 @@ func TestUpgradeRunMissingFilterRefuses(t *testing.T) {
 }
 
 // TestUpgradeRunAllRefusesAsOutOfScope: --all (with valid consent) still
-// refuses because the reingest_all worker is out of scope for T-0581.
-// The error references ADR-070 so operators can find the deferred work.
+// refuses because the reingest_all worker is unimplemented. The error
+// references ADR-070 so operators can find the deferred work.
 func TestUpgradeRunAllRefusesAsOutOfScope(t *testing.T) {
 	cmd := upgradeRunCmd
 	require.NoError(t, cmd.Flags().Set("all", "true"))
@@ -205,7 +205,7 @@ func TestUpgradeRunAllRefusesAsOutOfScope(t *testing.T) {
 	err := runUpgradeRun(cmd, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ADR-070")
-	assert.Contains(t, err.Error(), "future task")
+	assert.Contains(t, err.Error(), "not implemented")
 }
 
 // TestUpgradeRunAllRequiresConsent: bucket-3 consent guard still fires

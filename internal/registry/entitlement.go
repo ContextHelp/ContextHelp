@@ -163,10 +163,7 @@ func matchNamespace(pattern, namespace string) bool {
 	// Wildcard suffix: "ai.*" → match any "ai.<something>" (dot required).
 	if strings.HasSuffix(pattern, ".*") {
 		prefix := strings.TrimSuffix(pattern, ".*")
-		if strings.HasPrefix(namespace, prefix+".") {
-			return true
-		}
-		return false
+		return strings.HasPrefix(namespace, prefix+".")
 	}
 	// Full glob via path.Match as fallback.
 	matched, err := path.Match(pattern, namespace)

@@ -217,10 +217,8 @@ func FingerprintInChain(keysDir, fp, currentFP string) (bool, error) {
 	// Walk the chain from fp until we reach currentFP or hit a dead end.
 	cur := fp
 	visited := make(map[string]bool)
-	for {
-		if visited[cur] {
-			break // cycle guard
-		}
+	// Loop condition is the cycle guard: stop if we revisit a fingerprint.
+	for !visited[cur] {
 		visited[cur] = true
 		next, ok := successor[cur]
 		if !ok {

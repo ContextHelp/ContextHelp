@@ -94,8 +94,8 @@ func TestImportGDriveDryRunScopeAndSelection(t *testing.T) {
 
 func TestImportGDriveEnqueueSuccess(t *testing.T) {
 	driveSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/drive/v3/files":
+		switch r.URL.Path {
+		case "/drive/v3/files":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{
 				"files": [
@@ -103,7 +103,7 @@ func TestImportGDriveEnqueueSuccess(t *testing.T) {
 					{"id":"pdf-1","name":"Spec PDF","mimeType":"application/pdf","modifiedTime":"2026-01-20T12:00:00Z","webViewLink":"https://drive.google.com/file/d/pdf-1/view"}
 				]
 			}`))
-		case r.URL.Path == "/drive/v3/files/doc-1/export":
+		case "/drive/v3/files/doc-1/export":
 			w.Header().Set("Content-Type", "text/plain")
 			_, _ = w.Write([]byte("This is the exported document body."))
 		default:

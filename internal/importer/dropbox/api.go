@@ -209,11 +209,7 @@ func (c *Client) paginateListFolder(
 	payload := firstPayload
 	first := true
 
-	for {
-		if maxItems > 0 && len(*out) >= maxItems {
-			break
-		}
-
+	for maxItems <= 0 || len(*out) < maxItems {
 		body, err := c.doJSONPost(ctx, url, payload)
 		if err != nil {
 			return "", err

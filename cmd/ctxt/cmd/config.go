@@ -434,7 +434,7 @@ func runConfigBackup(cmd *cobra.Command, _ []string) error {
 	// Load private key from OS keychain.
 	privKey, err := bundle.LoadPrivateKey()
 	if err != nil {
-		return fmt.Errorf("config backup: %w\nRun 'ctxt key init' to generate a signing key.", err)
+		return fmt.Errorf("config backup: %w (run 'ctxt key init' to generate a signing key)", err)
 	}
 
 	result, err := bundle.Build(bundle.BuildOpts{

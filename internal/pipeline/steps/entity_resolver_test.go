@@ -122,7 +122,7 @@ func TestEntityResolverNilStores(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// No-op: metadata unchanged, no edges.
-	if got.Metadata != nil && len(got.Metadata) != 0 {
+	if len(got.Metadata) != 0 {
 		t.Errorf("expected nil/empty metadata, got %v", got.Metadata)
 	}
 }

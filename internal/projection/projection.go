@@ -94,9 +94,7 @@ func flatIndexProjection(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjectio
 	if ko.TextContent != "" {
 		parts = append(parts, ko.TextContent)
 	}
-	for _, s := range ko.Summaries {
-		parts = append(parts, s)
-	}
+	parts = append(parts, ko.Summaries...)
 	for _, s := range ko.Sections {
 		if s.Content != "" {
 			parts = append(parts, s.Content)

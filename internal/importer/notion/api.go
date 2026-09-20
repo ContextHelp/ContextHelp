@@ -58,11 +58,7 @@ func (c *Client) SearchPages(ctx context.Context, query string, since *time.Time
 		pages  []Page
 	)
 
-	for {
-		if maxItems > 0 && len(pages) >= maxItems {
-			break
-		}
-
+	for maxItems <= 0 || len(pages) < maxItems {
 		pageSize := 100
 		if maxItems > 0 && maxItems-len(pages) < pageSize {
 			pageSize = maxItems - len(pages)
@@ -145,11 +141,7 @@ func (c *Client) QueryDatabasePages(ctx context.Context, databaseID string, sinc
 		pages  []Page
 	)
 
-	for {
-		if maxItems > 0 && len(pages) >= maxItems {
-			break
-		}
-
+	for maxItems <= 0 || len(pages) < maxItems {
 		pageSize := 100
 		if maxItems > 0 && maxItems-len(pages) < pageSize {
 			pageSize = maxItems - len(pages)
