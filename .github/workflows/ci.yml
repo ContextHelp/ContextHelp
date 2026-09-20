@@ -144,6 +144,12 @@ jobs:
         # type-check and gosec logs "skipping SSA analysis, no ssa result" for
         # each, so the taint-tracking rules silently analyze nothing there.
         run: |
+          # -tags fts5 is required, not cosmetic. The storage layer is
+          # compiled against SQLite's FTS5 module and guards the tag with
+          # a build sentinel, so without it 34 packages fail to type-check
+          # and gosec logs "skipping SSA analysis" and moves on — it
+          # reports success for code it never looked at. govulncheck in
+          # this same job already passes the tag.
           gosec \
             -tags fts5 \
             -severity medium \
