@@ -190,8 +190,12 @@ func scanWatch(row *sql.Row) (*storage.WatchConfig, error) {
 		}
 		return nil, fmt.Errorf("scan watch: %w", err)
 	}
-	json.Unmarshal([]byte(inclJSON), &w.IncludePatterns)
-	json.Unmarshal([]byte(exclJSON), &w.ExcludePatterns)
+	if err := decodeJSONColumn(inclJSON, "include_patterns", &w.IncludePatterns); err != nil {
+		return nil, fmt.Errorf("scan watch: %w", err)
+	}
+	if err := decodeJSONColumn(exclJSON, "exclude_patterns", &w.ExcludePatterns); err != nil {
+		return nil, fmt.Errorf("scan watch: %w", err)
+	}
 	w.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	w.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 	return &w, nil
@@ -210,8 +214,12 @@ func scanWatchRow(rows *sql.Rows) (*storage.WatchConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scan watch row: %w", err)
 	}
-	json.Unmarshal([]byte(inclJSON), &w.IncludePatterns)
-	json.Unmarshal([]byte(exclJSON), &w.ExcludePatterns)
+	if err := decodeJSONColumn(inclJSON, "include_patterns", &w.IncludePatterns); err != nil {
+		return nil, fmt.Errorf("scan watch row: %w", err)
+	}
+	if err := decodeJSONColumn(exclJSON, "exclude_patterns", &w.ExcludePatterns); err != nil {
+		return nil, fmt.Errorf("scan watch row: %w", err)
+	}
 	w.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	w.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 	return &w, nil

@@ -446,9 +446,16 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 		return "", fmt.Errorf("reinforce: lookup: %w", err)
 	}
 
-	json.Unmarshal([]byte(tagsJSON), &obj.Tags)
+	// Decode failures must not be swallowed here: the merged result is
+	// written straight back below, so treating corrupt stored tags or
+	// mentions as empty would silently overwrite them.
+	if err := decodeJSONColumn(tagsJSON, "tags", &obj.Tags); err != nil {
+		return "", fmt.Errorf("reinforce: %w", err)
+	}
 	var mentionStrs []string
-	json.Unmarshal([]byte(mentionsJSON), &mentionStrs)
+	if err := decodeJSONColumn(mentionsJSON, "mentions", &mentionStrs); err != nil {
+		return "", fmt.Errorf("reinforce: %w", err)
+	}
 	obj.Mentions = mentions.ParseSlice(mentionStrs)
 
 	now := time.Now().Format(time.RFC3339)
@@ -628,10 +635,12 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		return nil, fmt.Errorf("scan object: %w", err)
 	}
 
-	unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
+	if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
 		createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
-		remindAt, remindedAt)
+		remindAt, remindedAt); err != nil {
+		return nil, fmt.Errorf("scan object: %w", err)
+	}
 	if graphJSON.Valid {
 		g, err := unmarshalGraph(graphJSON.String)
 		if err != nil {
@@ -670,10 +679,12 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		return nil, fmt.Errorf("scan object row: %w", err)
 	}
 
-	unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
+	if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
 		createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
-		remindAt, remindedAt)
+		remindAt, remindedAt); err != nil {
+		return nil, fmt.Errorf("scan object row: %w", err)
+	}
 	if graphJSON.Valid {
 		g, err := unmarshalGraph(graphJSON.String)
 		if err != nil {
@@ -694,18 +705,30 @@ func unmarshalObjectJSON(obj *storage.KnowledgeObject,
 	createdAt, updatedAt string,
 	ftsIndexed, vectorIndexed int,
 	lastReinforcedAt, remindAt, remindedAt sql.NullString,
-) {
-	json.Unmarshal([]byte(metadataJSON), &obj.Metadata)
-	json.Unmarshal([]byte(summariesJSON), &obj.Summaries)
-	json.Unmarshal([]byte(sectionsJSON), &obj.Sections)
-	json.Unmarshal([]byte(tagsJSON), &obj.Tags)
+) error {
+	for _, col := range []struct {
+		raw  string
+		name string
+		dst  any
+	}{
+		{metadataJSON, "metadata", &obj.Metadata},
+		{summariesJSON, "summaries", &obj.Summaries},
+		{sectionsJSON, "sections", &obj.Sections},
+		{tagsJSON, "tags", &obj.Tags},
+		{decisionsJSON, "decisions", &obj.Decisions},
+		{tasksJSON, "tasks", &obj.Tasks},
+		{influencesJSON, "registry_influences", &obj.RegistryInfluences},
+		{pluginsJSON, "plugins", &obj.Plugins},
+	} {
+		if err := decodeJSONColumn(col.raw, col.name, col.dst); err != nil {
+			return err
+		}
+	}
 	var mentionStrs []string
-	json.Unmarshal([]byte(mentionsJSON), &mentionStrs)
+	if err := decodeJSONColumn(mentionsJSON, "mentions", &mentionStrs); err != nil {
+		return err
+	}
 	obj.Mentions = mentions.ParseSlice(mentionStrs)
-	json.Unmarshal([]byte(decisionsJSON), &obj.Decisions)
-	json.Unmarshal([]byte(tasksJSON), &obj.Tasks)
-	json.Unmarshal([]byte(influencesJSON), &obj.RegistryInfluences)
-	json.Unmarshal([]byte(pluginsJSON), &obj.Plugins)
 	obj.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	obj.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 	obj.FTSIndexed = ftsIndexed != 0
@@ -722,6 +745,7 @@ func unmarshalObjectJSON(obj *storage.KnowledgeObject,
 		t, _ := time.Parse(time.RFC3339, remindedAt.String)
 		obj.RemindedAt = &t
 	}
+	return nil
 }
 
 type objectFields struct {
@@ -778,6 +802,25 @@ func marshalGraph(g *storage.ObjectGraph) (sql.NullString, error) {
 		return sql.NullString{}, fmt.Errorf("marshal graph: %w", err)
 	}
 	return sql.NullString{String: string(b), Valid: true}, nil
+}
+
+// decodeJSONColumn decodes a JSON column read back out of our own database.
+//
+// An empty string is a legitimately absent column: the JSON columns carry a
+// DEFAULT but no NOT NULL, so a NULL (scanned into a string as "") or a row
+// written before the column existed reads as empty. Those keep the field's
+// zero value, exactly as before.
+//
+// Anything else that fails to decode is corrupt stored data. That is returned
+// so the caller can surface it instead of silently yielding an empty field.
+func decodeJSONColumn(raw, column string, dst any) error {
+	if raw == "" {
+		return nil
+	}
+	if err := json.Unmarshal([]byte(raw), dst); err != nil {
+		return fmt.Errorf("unmarshal %s: %w", column, err)
+	}
+	return nil
 }
 
 func unmarshalGraph(raw string) (*storage.ObjectGraph, error) {
@@ -874,10 +917,12 @@ func (s *ObjectStore) ListWithoutEmbeddings(ctx context.Context) ([]*storage.Kno
 		); err != nil {
 			return nil, fmt.Errorf("list without embeddings scan: %w", err)
 		}
-		unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
+		if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
 			createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
-			remindAt, remindedAt)
+			remindAt, remindedAt); err != nil {
+			return nil, fmt.Errorf("list without embeddings scan: %w", err)
+		}
 		objects = append(objects, &obj)
 	}
 	return objects, rows.Err()
@@ -925,10 +970,12 @@ func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.Knowle
 		); err != nil {
 			return nil, fmt.Errorf("scan embedding row: %w", err)
 		}
-		unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
+		if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
 			createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
-			remindAt, remindedAt)
+			remindAt, remindedAt); err != nil {
+			return nil, fmt.Errorf("scan embedding row: %w", err)
+		}
 		obj.Embeddings = blobToFloat32Slice(embeddingBlob)
 		objects = append(objects, &obj)
 	}
@@ -1158,10 +1205,12 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		if err != nil {
 			return nil, fmt.Errorf("fts search scan: %w", err)
 		}
-		unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
+		if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
 			createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
-			remindAt, remindedAt)
+			remindAt, remindedAt); err != nil {
+			return nil, fmt.Errorf("fts search scan: %w", err)
+		}
 		if graphJSON.Valid {
 			g, err := unmarshalGraph(graphJSON.String)
 			if err != nil {

@@ -182,8 +182,12 @@ func scanEntity(row *sql.Row) (*storage.Entity, error) {
 		return nil, fmt.Errorf("scan entity: %w", err)
 	}
 
-	json.Unmarshal([]byte(aliasesJSON), &e.Aliases)
-	json.Unmarshal([]byte(metadataJSON), &e.Metadata)
+	if err := decodeJSONColumn(aliasesJSON, "aliases", &e.Aliases); err != nil {
+		return nil, fmt.Errorf("scan entity: %w", err)
+	}
+	if err := decodeJSONColumn(metadataJSON, "metadata", &e.Metadata); err != nil {
+		return nil, fmt.Errorf("scan entity: %w", err)
+	}
 	e.ContentStatus = storage.ContentStatus(contentStatus)
 	e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	e.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
@@ -205,8 +209,12 @@ func scanEntityFromRows(rows *sql.Rows) (*storage.Entity, error) {
 		return nil, fmt.Errorf("scan entity row: %w", err)
 	}
 
-	json.Unmarshal([]byte(aliasesJSON), &e.Aliases)
-	json.Unmarshal([]byte(metadataJSON), &e.Metadata)
+	if err := decodeJSONColumn(aliasesJSON, "aliases", &e.Aliases); err != nil {
+		return nil, fmt.Errorf("scan entity row: %w", err)
+	}
+	if err := decodeJSONColumn(metadataJSON, "metadata", &e.Metadata); err != nil {
+		return nil, fmt.Errorf("scan entity row: %w", err)
+	}
 	e.ContentStatus = storage.ContentStatus(contentStatus)
 	e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	e.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)

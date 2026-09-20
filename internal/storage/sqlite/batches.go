@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -43,7 +44,9 @@ func (s *BatchStore) Get(ctx context.Context, id string) (*storage.Batch, error)
 	if err != nil {
 		return nil, err
 	}
-	json.Unmarshal([]byte(errorsJSON), &b.Errors)
+	if err := decodeJSONColumn(errorsJSON, "errors", &b.Errors); err != nil {
+		return nil, fmt.Errorf("get batch: %w", err)
+	}
 	b.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	b.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 	return &b, nil

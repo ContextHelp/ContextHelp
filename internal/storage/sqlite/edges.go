@@ -183,7 +183,9 @@ func scanEdges(rows *sql.Rows) ([]*storage.Edge, error) {
 		if err != nil {
 			return nil, fmt.Errorf("scan edge: %w", err)
 		}
-		json.Unmarshal([]byte(metadataJSON), &e.Metadata)
+		if err := decodeJSONColumn(metadataJSON, "metadata", &e.Metadata); err != nil {
+			return nil, fmt.Errorf("scan edge: %w", err)
+		}
 		e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		edges = append(edges, &e)
 	}

@@ -74,7 +74,12 @@ func restoreFromArchive(opts RestoreOpts) (RestoreResult, error) {
 		switch {
 		case name == "manifest.json":
 			data, _ := io.ReadAll(tr)
-			json.Unmarshal(data, &manifest)
+			// A corrupt manifest must not be swallowed: leaving it nil
+			// skips the schema-version guard below, restoring an
+			// unsupported backup as if it were supported.
+			if err := json.Unmarshal(data, &manifest); err != nil {
+				return RestoreResult{}, fmt.Errorf("restore: parse manifest: %w", err)
+			}
 
 		case name == "ctxt.db":
 			if opts.DryRun {

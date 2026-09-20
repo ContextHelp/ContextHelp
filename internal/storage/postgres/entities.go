@@ -174,8 +174,12 @@ func scanEntity(row *sql.Row) (*storage.Entity, error) {
 		}
 		return nil, fmt.Errorf("scan entity: %w", err)
 	}
-	json.Unmarshal(aliasesJSON, &e.Aliases)
-	json.Unmarshal(metadataJSON, &e.Metadata)
+	if err := decodeJSONColumn(aliasesJSON, "aliases", &e.Aliases); err != nil {
+		return nil, fmt.Errorf("scan entity: %w", err)
+	}
+	if err := decodeJSONColumn(metadataJSON, "metadata", &e.Metadata); err != nil {
+		return nil, fmt.Errorf("scan entity: %w", err)
+	}
 	e.ContentStatus = storage.ContentStatus(contentStatus)
 	return &e, nil
 }
@@ -194,8 +198,12 @@ func scanEntityRow(rows *sql.Rows) (*storage.Entity, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scan entity row: %w", err)
 	}
-	json.Unmarshal(aliasesJSON, &e.Aliases)
-	json.Unmarshal(metadataJSON, &e.Metadata)
+	if err := decodeJSONColumn(aliasesJSON, "aliases", &e.Aliases); err != nil {
+		return nil, fmt.Errorf("scan entity row: %w", err)
+	}
+	if err := decodeJSONColumn(metadataJSON, "metadata", &e.Metadata); err != nil {
+		return nil, fmt.Errorf("scan entity row: %w", err)
+	}
 	e.ContentStatus = storage.ContentStatus(contentStatus)
 	return &e, nil
 }
