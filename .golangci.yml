@@ -40,6 +40,17 @@ linters:
       exclude-functions:
         - (io.Closer).Close
         - (net/http.ResponseWriter).Write
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+        - github.com/spf13/viper.BindPFlag
+        - (*database/sql.Rows).Close
+        - (*database/sql.DB).Close
+        - (database/sql/driver.Conn).Close
+        - (*database/sql.Tx).Rollback
+        - (*os.File).Close
+        - os.Remove
+        - os.RemoveAll
     goconst:
       min-len: 3
       min-occurrences: 3
@@ -69,6 +80,7 @@ linters:
       # orders chosen to group related data.
       disable:
         - fieldalignment
+        - shadow
     misspell:
       locale: US
       # The codebase is consistently British-English by authorship, so these
