@@ -207,16 +207,19 @@ func runInstanceCurrent(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	// Resolve to full info if possible.
+	// Resolve to full info if possible. Both lookups are enrichment only:
+	// the selected instance name is already known and printed either way,
+	// so a failure to resolve port/db details degrades to the bare name
+	// rather than failing the command.
 	runDir, err := config.RunDir()
 	if err != nil {
 		fmt.Println(current)
-		return nil
+		return nil //nolint:nilerr // enrichment only; the instance name is still printed
 	}
 	infos, err := pidfile.Scan(runDir)
 	if err != nil {
 		fmt.Println(current)
-		return nil
+		return nil //nolint:nilerr // enrichment only; the instance name is still printed
 	}
 	for _, info := range infos {
 		if info.Name == current || fmt.Sprintf("%d", info.Port) == current {

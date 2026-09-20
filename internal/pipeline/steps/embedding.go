@@ -46,9 +46,11 @@ func (s *EmbeddingGenerator) Run(ctx context.Context, draft *storage.KnowledgeOb
 
 	vec, err := s.provider.Embed(ctx, text)
 	if err != nil || len(vec) == 0 {
-		// Non-fatal: skip vector indexing for this object.
+		// Vector indexing is optional and additive: the object remains fully
+		// usable via keyword search. VectorIndexed=false records the miss so
+		// a re-index pass can pick it up later.
 		draft.VectorIndexed = false
-		return draft, nil
+		return draft, nil //nolint:nilerr // optional step; recorded as VectorIndexed=false for re-index
 	}
 
 	draft.Embeddings = vec

@@ -187,13 +187,18 @@ type jobEventPayload struct {
 }
 
 func forwardIfMatch(jobID string, e events.Event, ch chan<- *pb.JobStatusUpdate) error {
+	// An event whose payload is not a jobEventPayload cannot belong to the
+	// job we are streaming, so it is skipped exactly like a non-matching ID.
+	// Propagating would be pointless either way: LocalBus.Publish discards
+	// handler errors (`_ = handler(...)`), so the only effect of returning
+	// one here would be to abandon an otherwise healthy stream.
 	raw, err := json.Marshal(e.Data)
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // undecodable payload cannot match jobID; bus discards handler errors
 	}
 	var p jobEventPayload
 	if err := json.Unmarshal(raw, &p); err != nil {
-		return nil
+		return nil //nolint:nilerr // undecodable payload cannot match jobID; bus discards handler errors
 	}
 	if p.ID != jobID {
 		return nil

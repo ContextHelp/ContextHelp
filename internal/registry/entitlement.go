@@ -116,8 +116,16 @@ func (c *EntitlementChecker) CheckNamespace(
 ) error {
 	ent, err := c.store.Get(ctx, registryName)
 	if err != nil {
-		// No record → no restriction applied.
-		return nil
+		// Documented fail-open (see the doc comment): with no stored
+		// entitlement the registry is treated as unrestricted.
+		//
+		// Caveat worth fixing separately: EntitlementStore exposes no
+		// not-found sentinel — the postgres implementation wraps
+		// sql.ErrNoRows as an opaque "scan entitlement: %w" — so a genuine
+		// store outage is indistinguishable here from "no record" and also
+		// fails open. Narrowing this to a not-found sentinel requires a
+		// change to the EntitlementStore contract and its implementations.
+		return nil //nolint:nilerr // documented fail-open; store exposes no not-found sentinel to narrow on
 	}
 
 	// Expired entitlement — treat as restricted.

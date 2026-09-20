@@ -122,14 +122,19 @@ func (s *StructuredMetadataExtractor) Run(
 
 	raw, err := s.llm.Generate(ctx, structuredMetadataPrompt+content)
 	if err != nil {
+		// Optional enrichment: record the miss as metadata_status=pending so
+		// a later pass can retry, and let the object continue un-enriched
+		// rather than failing ingestion on an unavailable LLM.
 		draft.Metadata["metadata_status"] = "pending"
-		return draft, nil
+		return draft, nil //nolint:nilerr // optional enrichment; recorded as metadata_status=pending for retry
 	}
 
 	meta, err := parseStructuredMetadata(raw)
 	if err != nil {
+		// Unparseable LLM output is an expected outcome, not a fault; marked
+		// pending for retry on the same terms as a generation failure.
 		draft.Metadata["metadata_status"] = "pending"
-		return draft, nil
+		return draft, nil //nolint:nilerr // optional enrichment; recorded as metadata_status=pending for retry
 	}
 
 	// Infer source_type from object if LLM returned empty/invalid.

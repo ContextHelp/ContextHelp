@@ -64,7 +64,10 @@ func (p *WhisperTranscriptionProvider) Transcribe(ctx context.Context, audioPath
 	var output whisperOutput
 	stdout := strings.TrimSpace(result.Stdout)
 	if err := json.Unmarshal([]byte(stdout), &output); err != nil {
-		// Some whisper builds output text only, not JSON.
+		// Not a failure: some whisper builds emit plain text rather than
+		// JSON. The transcript is still valid, it simply carries no segment
+		// or confidence detail, so stdout is returned as the full text.
+		//nolint:nilerr // plain-text whisper output is a supported format, not an error
 		return &TranscriptResult{
 			FullText:         stdout,
 			DetectedLanguage: opts.Language,

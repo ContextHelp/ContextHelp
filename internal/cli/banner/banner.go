@@ -47,8 +47,9 @@ func Inject(stderr io.Writer) error {
 	path, err := ShadowPath()
 	if err != nil {
 		// Couldn't resolve the run dir — silently no-op. Banner is a
-		// nice-to-have; surfacing this on every command would be noise.
-		return nil
+		// nice-to-have; surfacing this on every command would be noise,
+		// and per the contract above it must never affect the exit code.
+		return nil //nolint:nilerr // banner is advisory; must never affect the command's exit code
 	}
 	return injectFromPath(stderr, path, time.Now())
 }
@@ -61,7 +62,7 @@ func injectFromPath(stderr io.Writer, path string, now time.Time) error {
 		// A corrupt shadow file is the daemon's problem to clean up; do
 		// not let it break the CLI. We choose to silently skip rather
 		// than warn, mirroring the "banner is non-essential" contract.
-		return nil
+		return nil //nolint:nilerr // banner is advisory; must never affect the command's exit code
 	}
 	if !ok {
 		return nil

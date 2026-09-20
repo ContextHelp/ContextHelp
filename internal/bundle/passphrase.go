@@ -73,7 +73,11 @@ func loadPassphraseFromKeychain() (string, error) {
 	}
 	out, err := cmd.Output()
 	if err != nil {
-		return "", nil // not found; not an error
+		// Documented contract (see the doc comment): the keychain is one of
+		// several passphrase sources tried in order. A miss here — no entry,
+		// no keychain tool, locked keychain — must fall through to the next
+		// source, so it is reported as "" rather than as an error.
+		return "", nil //nolint:nilerr // keychain is a best-effort source; caller falls through to the prompt
 	}
 	return strings.TrimRight(string(out), "\n"), nil
 }

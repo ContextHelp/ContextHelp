@@ -323,7 +323,10 @@ func (b *Buffer) listFilesWithMtimes(ctx context.Context) ([]eventFile, error) {
 		}
 		rel, rerr := filepath.Rel(b.rootDir, path)
 		if rerr != nil {
-			return nil
+			// Only reachable if path escaped rootDir, which Walk does not
+			// do. Skip the entry rather than aborting the sweep over every
+			// other buffered event.
+			return nil //nolint:nilerr // unrelativizable path is skipped; aborting would abandon the sweep
 		}
 		key := filepath.ToSlash(rel)
 		out = append(out, eventFile{Key: key, Path: path, Size: info.Size(), ModTime: info.ModTime()})

@@ -156,9 +156,12 @@ func (m *Manager) watchLoop(ctx context.Context, cfg *WatchConfig) {
 	defer fsw.Close()
 
 	// Walk directory tree and add each subdirectory to the watcher.
+	// A per-entry error (unreadable dir, race with a concurrent delete) skips
+	// that entry only: returning it would abort the whole walk and leave the
+	// remaining subtree unwatched, which is strictly worse than missing one dir.
 	filepath.WalkDir(cfg.Path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // skip unreadable entry; aborting the walk would leave the subtree unwatched
 		}
 		if d.IsDir() {
 			fsw.Add(path)
@@ -193,7 +196,9 @@ func (m *Manager) watchLoop(ctx context.Context, cfg *WatchConfig) {
 				if fi, err := os.Stat(absPath); err == nil && fi.IsDir() {
 					filepath.WalkDir(absPath, func(p string, d fs.DirEntry, werr error) error {
 						if werr != nil {
-							return nil
+							// Skip this entry; aborting would drop the rest of
+							// the newly created subtree from the watch set.
+							return nil //nolint:nilerr // skip unreadable entry, keep walking the new subtree
 						}
 						if d.IsDir() {
 							fsw.Add(p)
@@ -263,8 +268,10 @@ func (m *Manager) pollLoop(ctx context.Context, cfg *WatchConfig) {
 		case <-ticker.C:
 			current := map[string]struct{}{}
 			filepath.WalkDir(cfg.Path, func(path string, d fs.DirEntry, err error) error {
+				// Poll tick: skip entries we cannot stat this round rather
+				// than aborting the sweep — the next tick retries them.
 				if err != nil || d.IsDir() {
-					return nil
+					return nil //nolint:nilerr // skip unreadable entry; next poll tick retries
 				}
 				relPath := strings.TrimPrefix(path, cfg.Path+string(os.PathSeparator))
 				relPath = filepath.ToSlash(relPath)
