@@ -9,18 +9,6 @@ We welcome contributions from everyone — whether you are fixing bugs, proposin
 
 # Getting Started
 
-## Prerequisites
-
-Before contributing, ensure you have:
-
-- **Go ≥ 1.22**
-- **Make** (optional but recommended)
-- **Git** and GitHub account
-- Optional tools:
-  - `sqlc` or `sqlx` helpers
-  - `golangci-lint`
-  - `docker` (for testing with alternative storage engines)
-
 Clone the repository:
 
 ```bash
@@ -28,17 +16,13 @@ git clone https://github.com/ContextHelp/ContextHelp.git
 cd ContextHelp
 ```
 
-Install dependencies:
+Then follow **[DEVELOPING.md](DEVELOPING.md)** to set up the toolchain, build
+the binaries, and run the test tiers. It covers the prerequisites (mise, the
+mandatory `CGO_ENABLED=1` and `-tags fts5` settings), which tests need Docker,
+and how to match the CI lint gate locally.
 
-```bash
-make install
-```
-
-Run tests to verify everything works:
-
-```bash
-make test
-```
+This document covers the rest: how to propose a change, and the standards it
+must meet.
 
 ---
 
@@ -130,7 +114,9 @@ refactor: extract interface for vector provider
 
 ## Language & Style
 
-- Go code must follow `gofmt` and `golangci-lint`.
+- Go code must follow `gofmt` and `golangci-lint`. See
+  [DEVELOPING.md](DEVELOPING.md#lint-and-formatting) for the CI-pinned linter
+  version and the pre-commit hooks that mirror the gate.
 - Avoid global state except where documented.
 - Prefer interfaces over concrete structs for:
   - storage
@@ -153,25 +139,15 @@ refactor: extract interface for vector provider
 
 ---
 
-# Running Tests
+# Testing Expectations
 
-### All tests:
+For the commands — the four test tiers, which ones need Docker, and how to run
+them — see [DEVELOPING.md](DEVELOPING.md#test-tiers). What a contribution is
+expected to include:
 
-```bash
-make test
-```
-
-### With coverage:
-
-```bash
-make test-coverage
-```
-
-### Watch mode:
-
-```bash
-npm run test:watch
-```
+- New behavior ships with tests.
+- A bug fix ships with a test that fails without the fix.
+- Both the unit and integration tiers must pass before you open a PR.
 
 ### Test Philosophy
 
