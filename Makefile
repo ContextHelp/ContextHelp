@@ -193,7 +193,7 @@ lint: gosec
 gosec:
 	@echo "Running gosec security scan..."
 	@if command -v gosec >/dev/null 2>&1; then \
-		gosec -conf .gosec.yaml -tags fts5 -severity medium -confidence medium \
+		gosec -tags fts5 -severity medium -confidence medium \
 			-exclude G104,G304,G307 \
 			-fmt text ./...; \
 	else \

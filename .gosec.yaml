@@ -1,3 +1,13 @@
+# NOT CURRENTLY LOADED. gosec's -conf flag parses this file as JSON, so a
+# YAML config fails with "invalid character '#' looking for beginning of
+# value" and the run exits 1 without scanning anything. Every setting below
+# is therefore passed as a CLI flag in .github/workflows/ci.yml,
+# .github/workflows/release.yml and the Makefile's gosec target instead.
+#
+# To make this file authoritative again, convert it to JSON (.gosec.json)
+# and restore -conf. Until then, treat the flags as the source of truth and
+# keep this file in step with them, or delete it.
+#
 # gosec configuration for ctxt / dPKMS
 # See https://github.com/securego/gosec#configuration
 

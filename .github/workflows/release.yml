@@ -126,12 +126,18 @@ jobs:
         # -tags fts5 is required, not cosmetic: without it 34 packages fail to
         # type-check and gosec logs "skipping SSA analysis, no ssa result" for
         # each, so the taint-tracking rules silently analyze nothing there.
+        # No -conf: gosec parses that file as JSON, so the YAML config fails to
+        # load ("invalid character '#'") and the step exits 1 without scanning.
+        # Every setting it carried is passed as a flag below instead.
         run: |
-          gosec -conf .gosec.yaml \
+          gosec \
             -tags fts5 \
             -severity medium \
             -confidence medium \
             -exclude G104,G304,G307 \
+            -exclude-dir vendor \
+            -exclude-dir docs \
+            -exclude-dir test/fixtures \
             -fmt sarif \
             -out gosec-results.sarif \
             ./...
