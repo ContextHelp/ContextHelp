@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.core.lateral-config
+title: Inspect which lateral discovery strategies are switched on
+binary: ctxt
+intent: |
+  Lateral discovery is opt-in per strategy family, so an operator who has
+  seen no candidates needs to know whether the substrate is off, or on
+  but not running. Reading the effective merged config answers the first
+  question; querying the daemon answers the second. Both are read-only —
+  neither starts the long-running daemon.
+steps:
+  - id: effective_config
+    intent: Print the effective lateral config block after layering.
+    invoke: ["ctxt", "lateral", "config", "show", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: daemon_state
+    intent: Ask a running daemon for its strategy and breaker state.
+    invoke: ["ctxt", "lateral", "status", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

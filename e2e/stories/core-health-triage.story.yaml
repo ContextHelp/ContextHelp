@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.core.health-triage
+title: Decide whether the store is answerable before trusting a search result
+binary: ctxt
+intent: |
+  An empty result set can mean the corpus has nothing, or that the
+  backing daemon is not serving. Before concluding anything from a
+  search, the agent checks the daemon health envelope, reads the
+  at-a-glance corpus summary, and only then runs the query — so an
+  infrastructure failure is never mistaken for an absence of knowledge.
+steps:
+  - id: daemon_health
+    intent: Ask the configured daemon whether it is serving requests.
+    invoke: ["ctxt", "status", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: pinned_server
+    intent: Check a specific server rather than the configured default.
+    invoke: ["ctxt", "status", "--server", "http://127.0.0.1:8080", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: corpus_summary
+    intent: Read counts of objects, jobs, entities, feeds, and reminders.
+    invoke: ["ctxt", "stats", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: query
+    intent: Only now run the query, knowing what an empty result would mean.
+    invoke: ["ctxt", "find", "release checklist", "--format", "json"]
+    capture: [exit_code, stdout]

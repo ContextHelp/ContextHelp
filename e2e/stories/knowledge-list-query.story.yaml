@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.knowledge.list-query
+title: Enumerate knowledge by filter rather than by search relevance
+binary: ctxt
+intent: |
+  The agent wants everything matching a structural condition, not the
+  best few matches for a phrase. It enumerates by tag and type, checks
+  the facet breakdown to see what it is looking at, expresses a compound
+  condition in the query language, and pages deeper with an offset when
+  the first page is not enough.
+steps:
+  - id: by_tag
+    intent: List objects carrying either of two tags.
+    invoke: ["ctxt", "list", "--tagged", "ux,onboarding", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: by_type_and_date
+    intent: Restrict to captured URLs created inside a window.
+    invoke: ["ctxt", "list", "--type", "url", "--after", "2026-01-01", "--before", "2026-01-31", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: facets
+    intent: Ask for the metadata-type breakdown of the current filter.
+    invoke: ["ctxt", "list", "--tagged", "ux", "--facets", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: query_language
+    intent: Express a compound condition in the query language instead of flags.
+    invoke: ["ctxt", "list", "--q", "type==url;tag=in=(ux,design)", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: page_two
+    intent: Take the next page by offset, sorted most recent first.
+    invoke: ["ctxt", "list", "--limit", "25", "--start", "25", "--sort", "recent", "--dir", "desc", "--format", "json"]
+    capture: [exit_code, stdout]

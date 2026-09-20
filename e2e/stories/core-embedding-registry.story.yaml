@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.core.embedding-registry
+title: Read which embedding model the corpus is indexed under before changing it
+binary: ctxt
+intent: |
+  Semantic search quality depends on which embedding model produced the
+  vectors, and on how much of the corpus that model actually covers. The
+  operator reads the registry to see the current default and its
+  coverage, registers a candidate model without promoting it, and rereads
+  the registry to confirm the default did not move — registration and
+  promotion are deliberately separate steps.
+steps:
+  - id: registry
+    intent: Read registered models, the default marker, and coverage.
+    invoke: ["ctxt", "embeddings", "list", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: register_candidate
+    intent: Register a candidate model without promoting it.
+    invoke: ["ctxt", "embeddings", "register", "openai-text-embedding-3-small@2025-01-15", "--provider", "openai", "--dimension", "1536", "--model-config", "openai-3-small.json"]
+    capture: [exit_code, stdout, stderr]
+  - id: confirm_default_unmoved
+    intent: Reread the registry to confirm the default did not move.
+    invoke: ["ctxt", "embeddings", "list", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: semantic_probe
+    intent: Probe recall under the current default before considering a flip.
+    invoke: ["ctxt", "find", "vector recall probe", "--semantic", "--explain", "--format", "json"]
+    capture: [exit_code, stdout]

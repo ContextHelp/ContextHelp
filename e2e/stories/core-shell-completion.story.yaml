@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.core.shell-completion
+title: Emit completion scripts for each supported shell
+binary: ctxt
+intent: |
+  An installer wiring the tool into a fresh machine generates the
+  completion script for whichever shell it finds, writing the output to
+  the shell's completion directory. Each script goes to stdout so the
+  installer can redirect it; nothing is installed as a side effect of
+  generating one.
+steps:
+  - id: bash
+    intent: Emit the bash completion script to standard output.
+    invoke: ["ctxt", "completion", "bash"]
+    capture: [exit_code, stdout]
+  - id: zsh
+    intent: Emit the zsh completion script to standard output.
+    invoke: ["ctxt", "completion", "zsh"]
+    capture: [exit_code, stdout]
+  - id: fish
+    intent: Emit the fish completion script to standard output.
+    invoke: ["ctxt", "completion", "fish"]
+    capture: [exit_code, stdout]
+  - id: powershell
+    intent: Emit the PowerShell completion script to standard output.
+    invoke: ["ctxt", "completion", "powershell"]
+    capture: [exit_code, stdout]

@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.knowledge.audit-trail
+title: Reconstruct what happened to one object from the changelog
+binary: ctxt
+intent: |
+  An object reads differently than the agent remembers capturing it.
+  It walks the append-only changelog for that object alone, then widens
+  to every enrichment event in the same window and to the actor that
+  produced them, so it can say whether a human edit or an automated
+  enrichment step changed the content.
+steps:
+  - id: recent
+    intent: Glance at the most recent changelog entries.
+    invoke: ["ctxt", "log", "--limit", "20", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: object_history
+    intent: Narrow to the single object under suspicion.
+    invoke: ["ctxt", "log", "--object", "obj_12345678", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: by_event_type
+    intent: Widen to every create and enrich event inside the window.
+    invoke: ["ctxt", "log", "--type", "create,enrich", "--since", "2026-01-01", "--until", "2026-01-31", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: by_actor
+    intent: Attribute the events to the actor that produced them.
+    invoke: ["ctxt", "log", "--actor", "system", "--limit", "50", "--format", "json"]
+    capture: [exit_code, stdout]

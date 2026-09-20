@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.compose.reminders
+title: Defer a note to a future moment, then review and clear the schedule
+binary: ctxt
+intent: |
+  A note is relevant, but not yet. The agent schedules it to come back at
+  a stated time rather than leaving it to search luck, reviews everything
+  currently scheduled, and clears the reminder once the note has been
+  acted on so the schedule does not accumulate stale entries.
+steps:
+  - id: relative
+    intent: Defer one note by an interval relative to right now.
+    invoke: ["ctxt", "remind", "set", "obj_12345678", "in 2h"]
+    capture: [exit_code, stdout]
+  - id: absolute
+    intent: Defer another note to a named calendar moment.
+    invoke: ["ctxt", "remind", "set", "obj_87654321", "tomorrow 9am"]
+    capture: [exit_code, stdout]
+  - id: review
+    intent: Read every reminder currently on the schedule.
+    invoke: ["ctxt", "remind", "list", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: clear
+    intent: Clear the reminder once the note has been acted on.
+    invoke: ["ctxt", "remind", "clear", "obj_12345678"]
+    capture: [exit_code, stdout]

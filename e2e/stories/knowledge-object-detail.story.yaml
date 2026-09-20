@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.knowledge.object-detail
+title: Read an object as rendered detail, as raw stored data, and as its history
+binary: ctxt
+intent: |
+  Before reusing a note the agent wants three views of it: the rendered
+  detail a human would read, the raw stored record underneath so it can
+  see fields the renderer hides, and the changelog line that says where
+  the record came from. Together they tell the agent whether what it is
+  about to quote is the enriched version or the original capture.
+steps:
+  - id: rendered
+    intent: Read the rendered object detail a human would see.
+    invoke: ["ctxt", "show", "obj_12345678", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: raw
+    intent: Read the raw stored record beneath the rendering.
+    invoke: ["ctxt", "show", "obj_12345678", "--raw", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: provenance
+    intent: Confirm where the record came from via the changelog.
+    invoke: ["ctxt", "log", "--object", "obj_12345678", "--format", "json"]
+    capture: [exit_code, stdout]

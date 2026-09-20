@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.knowledge.search-modes
+title: Compare lexical, semantic, and reranked search for the same question
+binary: ctxt
+intent: |
+  A hybrid result feels wrong and the agent wants to know which leg is
+  responsible. It runs the same query three ways — FTS only, vector only,
+  then hybrid with an explained score breakdown — so it can tell a keyword
+  match apart from a genuine semantic neighbour before trusting the ranking.
+steps:
+  - id: lexical
+    intent: Keyword-only pass, no embedding provider involved.
+    invoke: ["ctxt", "find", "checkout abandonment", "--fts", "--limit", "5", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: semantic
+    intent: Vector-only pass through the embedding provider.
+    invoke: ["ctxt", "find", "checkout abandonment", "--semantic", "--limit", "5", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: hybrid_explained
+    intent: Reranked hybrid pass with a per-signal score breakdown.
+    invoke: ["ctxt", "find", "checkout abandonment", "--hybrid", "--explain", "--limit", "5", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: reweighted
+    intent: Retry with the RRF legs reweighted toward the vector side.
+    invoke: ["ctxt", "find", "checkout abandonment", "--fts-weight", "0.3", "--vector-weight", "0.7", "--format", "json"]
+    capture: [exit_code, stdout]

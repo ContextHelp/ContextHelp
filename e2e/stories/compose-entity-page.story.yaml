@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.compose.entity-page
+title: Read the compiled page for an entity and rebuild it after new captures
+binary: ctxt
+intent: |
+  Rather than re-reading every note that mentions a person, the agent
+  reads the compiled page that aggregates them. It lists the available
+  pages, reads one, regenerates it from its sources because newer
+  material has landed since the page was last compiled, and reads it
+  again to pick up what the rebuild added.
+steps:
+  - id: list_pages
+    intent: See which entities currently have a compiled page at all.
+    invoke: ["ctxt", "page", "list", "--limit", "50", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: read_page
+    intent: Read the compiled page aggregating one entity's mentions.
+    invoke: ["ctxt", "page", "show", "person.alice", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: rebuild
+    intent: Regenerate the page from every source that mentions the entity.
+    invoke: ["ctxt", "page", "refresh", "person.alice"]
+    capture: [exit_code, stdout]
+  - id: reread
+    intent: Read the page again to pick up what the rebuild added.
+    invoke: ["ctxt", "page", "show", "person.alice", "--format", "json"]
+    capture: [exit_code, stdout]

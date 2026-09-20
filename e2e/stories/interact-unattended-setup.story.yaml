@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.interact.unattended-setup
+title: Configure a fresh install without a human at the prompt
+binary: ctxt
+intent: |
+  The onboarding wizard is interactive by default, which would hang an
+  automated provisioning run. The agent takes the non-interactive path,
+  which writes defaults without prompting, then proves the install is
+  usable by reading the daemon health envelope and the corpus summary
+  rather than assuming the wizard succeeded.
+steps:
+  - id: configure
+    intent: Write default configuration with no prompts.
+    invoke: ["ctxt", "setup", "--non-interactive"]
+    capture: [exit_code, stdout, stderr]
+  - id: health
+    intent: Confirm the newly configured daemon answers a health call.
+    invoke: ["ctxt", "status", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: corpus
+    intent: Read the summary of a freshly configured, empty store.
+    invoke: ["ctxt", "stats", "--format", "json"]
+    capture: [exit_code, stdout]

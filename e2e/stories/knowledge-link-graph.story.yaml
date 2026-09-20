@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.knowledge.link-graph
+title: Record that one note supersedes another, then walk the graph around it
+binary: ctxt
+intent: |
+  Two captured notes disagree because one is simply newer. The agent
+  records the relationship as a typed edge with a reason, confirms the
+  reverse edge exists by listing links from the other end, then walks
+  two hops out to see what else the correction drags along, and finally
+  removes an edge it got wrong.
+steps:
+  - id: supersede
+    intent: Record that the newer note replaces the older one, with a reason.
+    invoke: ["ctxt", "link", "create", "obj_12345678", "obj_87654321", "--type", "supersedes", "--context", "newer measurement run"]
+    capture: [exit_code, stdout]
+  - id: contradiction
+    intent: Record a second, weaker relationship to a third note.
+    invoke: ["ctxt", "link", "create", "obj_12345678", "obj_abcdef01", "--type", "contradicts", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: reverse_edge
+    intent: Read links from the superseded end to confirm the reverse edge was created.
+    invoke: ["ctxt", "link", "list", "obj_87654321", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: traverse
+    intent: Walk two hops out to see the neighbourhood the correction touches.
+    invoke: ["ctxt", "link", "list", "obj_12345678", "--follow", "2", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: filtered
+    intent: Narrow the same listing to one link type.
+    invoke: ["ctxt", "link", "list", "obj_12345678", "--type", "contradicts", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: retract
+    intent: Remove the edge that turned out to be wrong.
+    invoke: ["ctxt", "link", "delete", "obj_12345678", "obj_abcdef01"]
+    capture: [exit_code, stdout]

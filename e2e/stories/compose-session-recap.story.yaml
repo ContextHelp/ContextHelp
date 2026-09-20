@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.compose.session-recap
+title: Summarise a time window and a work session, then write a draft to disk
+binary: ctxt
+intent: |
+  At the end of a working stretch the agent produces three different
+  compositions over the same knowledge: a summary bounded by a natural
+  language time range, a plan focused on one project mention, and a
+  publish-ready draft written to a file for a human to edit. The last one
+  drops citations because the draft is meant to read as prose.
+steps:
+  - id: window_summary
+    intent: Summarise everything captured across a natural-language window.
+    invoke: ["ctxt", "compose", "summary", "--since", "yesterday afternoon", "--until", "now"]
+    capture: [exit_code, stdout]
+  - id: session_brief
+    intent: Scope a brief to the objects of one single work session.
+    invoke: ["ctxt", "compose", "brief", "--session", "sess_a1b2c3d4e5f6", "--export", "json"]
+    capture: [exit_code, stdout]
+  - id: project_plan
+    intent: Turn the same material into an action plan around one project.
+    invoke: ["ctxt", "compose", "plan", "--mention", "@project.signup-redesign"]
+    capture: [exit_code, stdout]
+  - id: draft_to_file
+    intent: Write an uncited publish-ready draft out to a file.
+    invoke: ["ctxt", "compose", "draft", "--tagged", "launch", "--no-citations", "--output-file", "launch-plan.md"]
+    capture: [exit_code, stdout]
