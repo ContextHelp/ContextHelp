@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	gohttp "net/http"
+	"os"
 	"testing"
 	"time"
 
@@ -136,27 +137,161 @@ func postAnalyze(t *testing.T, url, content string) string {
 	return result["job_id"]
 }
 
+// Default wall-clock budgets for the polling helpers below. Shared CI
+// runners schedule the worker pool and Postgres against every other job
+// on the box, so a job that takes milliseconds locally can sit pending
+// for tens of seconds under contention. The CI defaults are deliberately
+// generous: a real defect is caught by the fail-fast terminal-state
+// check, not by the deadline.
+const (
+	defaultJobWaitLocal = 30 * time.Second
+	defaultJobWaitCI    = 3 * time.Minute
+	defaultPollLocal    = 10 * time.Second
+	defaultPollCI       = 60 * time.Second
+	pollInterval        = 50 * time.Millisecond
+)
+
+// testTimeout resolves a polling budget from the environment, falling
+// back to ciDefault on hosted runners and localDefault elsewhere.
+// envKey accepts any time.ParseDuration string (e.g. "90s", "2m").
+func testTimeout(t *testing.T, envKey string, localDefault, ciDefault time.Duration) time.Duration {
+	t.Helper()
+	if raw := os.Getenv(envKey); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			t.Fatalf("%s=%q: %v", envKey, raw, err)
+		}
+		if d <= 0 {
+			t.Fatalf("%s=%q: must be positive", envKey, raw)
+		}
+		return d
+	}
+	if os.Getenv("CI") != "" {
+		return ciDefault
+	}
+	return localDefault
+}
+
+// jobWaitTimeout is the budget used by waitForJob. Override with
+// CTXT_TEST_JOB_TIMEOUT (e.g. CTXT_TEST_JOB_TIMEOUT=5m).
+func jobWaitTimeout(t *testing.T) time.Duration {
+	t.Helper()
+	return testTimeout(t, "CTXT_TEST_JOB_TIMEOUT", defaultJobWaitLocal, defaultJobWaitCI)
+}
+
+// pollTimeout is the budget used by pollUntil. Override with
+// CTXT_TEST_POLL_TIMEOUT.
+func pollTimeout(t *testing.T) time.Duration {
+	t.Helper()
+	return testTimeout(t, "CTXT_TEST_POLL_TIMEOUT", defaultPollLocal, defaultPollCI)
+}
+
+// jobTerminal reports whether status is a state the worker never leaves
+// on its own. Retries re-enter "pending"; they never pass through
+// "failed", so "failed" is genuinely terminal.
+func jobTerminal(status storage.JobStatus) bool {
+	return status == storage.JobCompleted || status == storage.JobFailed
+}
+
+// waitForJob polls GET /jobs/{id} until the job reaches wantStatus.
+//
+// It fails immediately when the job settles in a different terminal
+// state (so a genuinely broken job reports in milliseconds with its
+// error text rather than burning the whole budget), and otherwise waits
+// out a load-dependent budget from jobWaitTimeout.
 func waitForJob(t *testing.T, url, jobID string, wantStatus storage.JobStatus) *storage.Job {
 	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
+	return waitForJobTimeout(t, url, jobID, wantStatus, jobWaitTimeout(t))
+}
+
+// waitForJobTimeout is waitForJob with an explicit budget, for the rare
+// test that knows its own bound.
+func waitForJobTimeout(t *testing.T, url, jobID string, wantStatus storage.JobStatus, timeout time.Duration) *storage.Job {
+	t.Helper()
+
+	var (
+		start    = time.Now()
+		deadline = start.Add(timeout)
+		polls    int
+		lastJob  storage.Job
+		lastErr  error
+		seen     bool
+	)
+
 	for time.Now().Before(deadline) {
-		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/jobs/%s", url, jobID))
+		polls++
+
+		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/jobs/%s", url, jobID)) //nolint:noctx
 		if err != nil {
-			time.Sleep(50 * time.Millisecond)
+			lastErr = err
+			time.Sleep(pollInterval)
 			continue
 		}
 
 		var job storage.Job
-		json.NewDecoder(resp.Body).Decode(&job)
+		decErr := json.NewDecoder(resp.Body).Decode(&job)
 		resp.Body.Close()
+		if decErr != nil {
+			lastErr = decErr
+			time.Sleep(pollInterval)
+			continue
+		}
+		lastErr = nil
+		lastJob, seen = job, true
 
 		if job.Status == wantStatus {
 			return &job
 		}
-		time.Sleep(50 * time.Millisecond)
+
+		// Settled in the wrong terminal state: no amount of extra
+		// waiting changes it, so report now with the job's own error.
+		if jobTerminal(job.Status) && jobTerminal(wantStatus) {
+			t.Fatalf("job %s settled in terminal status %q, want %q (after %s, %d polls): %s",
+				jobID, job.Status, wantStatus, time.Since(start).Round(time.Millisecond), polls, jobDetail(&job))
+		}
+
+		time.Sleep(pollInterval)
 	}
-	t.Fatalf("job %s never reached status %q", jobID, wantStatus)
+
+	switch {
+	case !seen:
+		t.Fatalf("job %s never observed after %s (%d polls, timeout %s); last transport error: %v",
+			jobID, time.Since(start).Round(time.Millisecond), polls, timeout, lastErr)
+	default:
+		t.Fatalf("job %s never reached status %q: last status %q after %s (%d polls, timeout %s, last error: %v): %s",
+			jobID, wantStatus, lastJob.Status, time.Since(start).Round(time.Millisecond),
+			polls, timeout, lastErr, jobDetail(&lastJob))
+	}
 	return nil
+}
+
+// jobDetail renders the diagnostic fields of a job for failure messages.
+func jobDetail(job *storage.Job) string {
+	return fmt.Sprintf("pipeline=%q retries=%d/%d result_id=%q err=%q",
+		job.Pipeline, job.RetryCount, job.MaxRetries, job.ResultID, job.Error)
+}
+
+// pollUntil polls cond until it returns true or the budget from
+// pollTimeout expires. It reports whether cond ever held, leaving the
+// assertion to the caller so existing failure messages stay intact.
+func pollUntil(t *testing.T, cond func() bool) bool {
+	t.Helper()
+	return pollUntilTimeout(t, pollTimeout(t), cond)
+}
+
+// pollUntilTimeout is pollUntil with an explicit budget.
+func pollUntilTimeout(t *testing.T, timeout time.Duration, cond func() bool) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		if cond() {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(pollInterval)
+	}
 }
 
 // TestFullWritePath: POST /analyze with text → wait for job completion → GET /objects returns the ingested object.
