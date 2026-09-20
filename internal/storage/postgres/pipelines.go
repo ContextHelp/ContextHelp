@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -51,7 +52,6 @@ func (s *PipelineStore) List(ctx context.Context, filter storage.PipelineFilter)
 	if filter.Name != "" {
 		conditions = append(conditions, fmt.Sprintf("name = $%d", idx))
 		args = append(args, filter.Name)
-		idx++
 	}
 	if filter.OnlyArchived {
 		conditions = append(conditions, "archived = TRUE")
@@ -150,7 +150,7 @@ func scanPipeline(row interface{ Scan(...any) error }) (*storage.Pipeline, error
 		&p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("pipeline not found")
 		}
 		return nil, fmt.Errorf("scan pipeline: %w", err)

@@ -382,7 +382,7 @@ func TestT0191_GRPC_NodeAwareSearch_NodeTypeFilter(t *testing.T) {
 func nodeTypeSet(nodes []pluginapi.GraphNode) map[string]bool {
 	m := make(map[string]bool, len(nodes))
 	for _, n := range nodes {
-		m[string(n.NodeType)] = true
+		m[n.NodeType] = true
 	}
 	return m
 }

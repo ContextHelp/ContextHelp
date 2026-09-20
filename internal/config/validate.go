@@ -239,7 +239,7 @@ func validateEndpointURL(raw string) error {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("invalid URL %q: %v", raw, err)
+		return fmt.Errorf("invalid URL %q: %w", raw, err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return fmt.Errorf("invalid URL %q: scheme must be http or https", raw)

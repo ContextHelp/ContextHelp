@@ -31,7 +31,7 @@ func TestPermanentError_As(t *testing.T) {
 	if !errors.As(err, &perm) {
 		t.Fatal("errors.As should match PermanentError")
 	}
-	if perm.Err != inner {
+	if perm.Err != inner { //nolint:errorlint // identity is the assertion: Permanent must retain the exact inner error
 		t.Errorf("inner error: got %v, want %v", perm.Err, inner)
 	}
 }

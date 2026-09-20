@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"runtime"
 	"testing"
 	"time"
@@ -26,8 +27,8 @@ func TestLookupToolNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing tool")
 	}
-	toolErr, ok := err.(*ToolNotInstalledError)
-	if !ok {
+	var toolErr *ToolNotInstalledError
+	if !errors.As(err, &toolErr) {
 		t.Fatalf("expected *ToolNotInstalledError, got %T", err)
 	}
 	if toolErr.Tool != "nonexistent-tool-xyz-12345" {
@@ -41,8 +42,8 @@ func TestLookupToolHint(t *testing.T) {
 	if err == nil {
 		t.Skip("ffmpeg is installed, cannot test hint")
 	}
-	toolErr, ok := err.(*ToolNotInstalledError)
-	if !ok {
+	var toolErr *ToolNotInstalledError
+	if !errors.As(err, &toolErr) {
 		t.Fatalf("expected *ToolNotInstalledError, got %T", err)
 	}
 	if toolErr.Hint == "" {

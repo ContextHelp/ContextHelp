@@ -67,7 +67,6 @@ func (s *AliasStore) List(ctx context.Context, filter storage.AliasFilter) ([]*s
 	if filter.Profile != "" {
 		query += fmt.Sprintf(` AND profile=$%d`, idx) // #nosec G202 -- idx is a parameterized placeholder index
 		args = append(args, filter.Profile)
-		idx++
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

@@ -56,7 +56,6 @@ func (s *AuditStore) List(ctx context.Context, f storage.AuditFilter) ([]*storag
 	if !f.Before.IsZero() {
 		where += fmt.Sprintf(" AND created_at < $%d", idx)
 		args = append(args, f.Before.UTC())
-		idx++
 	}
 
 	var total int

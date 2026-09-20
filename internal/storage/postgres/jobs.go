@@ -100,7 +100,6 @@ func (s *JobStore) List(ctx context.Context, filter storage.JobFilter) ([]*stora
 	if filter.Type != "" {
 		conditions = append(conditions, fmt.Sprintf("type = $%d", idx))
 		args = append(args, filter.Type)
-		idx++
 	}
 
 	where := ""

@@ -135,8 +135,12 @@ func mapPipelineRepoErr(err error) error {
 	lower := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(lower, "no rows") || strings.Contains(lower, "not found"):
+		//nolint:errorlint // %v is deliberate: the driver error is message
+		// context only. Wrapping it would leak sql.ErrNoRows past the domain
+		// boundary this function exists to draw.
 		return fmt.Errorf("%w: %v", domain.ErrNotFound, err)
 	case strings.Contains(lower, "unique") || strings.Contains(lower, "conflict"):
+		//nolint:errorlint // %v is deliberate; see the ErrNotFound case above.
 		return fmt.Errorf("%w: %v", domain.ErrConflict, err)
 	default:
 		return err

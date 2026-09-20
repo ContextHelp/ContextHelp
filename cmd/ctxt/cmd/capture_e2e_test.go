@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -49,7 +50,7 @@ func e2eBinary(t *testing.T) string {
 		cmd := exec.Command("go", "build", "-tags", "fts5", "-buildvcs=false", "-o", bin, "./cmd/ctxt")
 		cmd.Dir = mustRepoRoot(t)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			e2eBinaryErr = fmt.Errorf("go build: %v\n%s", err, out)
+			e2eBinaryErr = fmt.Errorf("go build: %w\n%s", err, out)
 			return
 		}
 		e2eBinaryPath = bin
@@ -118,7 +119,8 @@ func (f *e2eFixture) run(t *testing.T, stdin string, args ...string) (stdout, st
 	err := cmd.Run()
 	exit = 0
 	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
 			exit = ee.ExitCode()
 		} else {
 			exit = -1

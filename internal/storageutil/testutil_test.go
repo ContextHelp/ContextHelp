@@ -122,7 +122,7 @@ func TestBuildGraphKO(t *testing.T) {
 			ref, err := pluginapi.ParseNodeID(n.ID)
 			require.NoError(t, err, "node ID %q should parse", n.ID)
 			assert.Equal(t, "ko-6", ref.ObjectID)
-			assert.Equal(t, string(n.NodeType), ref.NodeType)
+			assert.Equal(t, n.NodeType, ref.NodeType)
 		}
 	})
 }
