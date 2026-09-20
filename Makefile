@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate test-docker toolchain-check lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-integration-services test-smoke test-all test-cover test-gate test-docker toolchain-check lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -76,6 +76,21 @@ test-unit:
 test-integration:
 	@echo "Running integration tests..."
 	go test $(BUILD_TAGS) -race -count=1 ./test/integration/...
+
+## test-integration-services: Run integration tests needing Postgres/Redis
+#
+# The build-tagged integration suites are split across three trees: the ones
+# under test/integration/ plus the Postgres driver and embeddings registry
+# conformance suites, which live next to the code they cover. All three read
+# the same POSTGRES_* env block, so all three must be listed or the Postgres
+# coverage never runs. Mirrors the integration job in
+# .github/workflows/ci.yml; the devcontainer supplies the env block.
+test-integration-services:
+	@echo "Running integration tests (requires Postgres + Redis)..."
+	go test -v -tags=integration,fts5 -count=1 \
+		./test/integration/... \
+		./internal/storage/postgres/... \
+		./internal/embeddings/registry/...
 
 ## test-smoke: Run binary smoke tests
 test-smoke:
