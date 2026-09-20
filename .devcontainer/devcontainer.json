@@ -1,0 +1,41 @@
+{
+  // Dev environment for ContextHelp (ctxt).
+  //
+  // The image is built from .devcontainer/Dockerfile rather than assembled
+  // from devcontainer features: this repo builds with CGO_ENABLED=1 and
+  // -tags fts5, so it needs SQLite headers at image-build time. A features
+  // block installs tools, not -dev packages, so the headers have to come
+  // from the Dockerfile regardless — at which point pulling Go from the
+  // official golang image is simpler and pins the version exactly.
+  "name": "ContextHelp (ctxt) dev",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "workspace",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  // Verifies the toolchain end to end on first boot instead of asserting it:
+  // `make build` exercises CGo + fts5 + the SQLite headers, and a failure
+  // here surfaces at create time rather than halfway through a task.
+  "postCreateCommand": "make build && echo 'Dev environment ready. Run: make test-integration-services'",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "redhat.vscode-yaml",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        // gopls and the test explorer must use the same tags the build does,
+        // or the editor reports phantom errors on integration-tagged files.
+        "go.buildTags": "fts5",
+        "go.testTags": "integration,fts5",
+        "go.toolsEnvVars": {
+          "CGO_ENABLED": "1"
+        },
+        "go.lintTool": "golangci-lint"
+      }
+    }
+  },
+  "remoteUser": "vscode"
+}

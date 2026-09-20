@@ -1,0 +1,75 @@
+# Devcontainer stack: the workspace container plus the two backing services
+# the integration suite expects.
+#
+# Why these services are declared here and not reused from the repo's
+# docker-compose.dev.yml: that file exists for a different job. It serves a
+# long-lived local Postgres on the developer's own credentials
+# (ctxt/ctxt/ctxt), publishes host ports, restarts unless stopped, and keeps
+# its data in a persistent volume. The integration suite needs the opposite:
+# the exact credentials the CI workflow provisions (contexthelp /
+# contexthelp_test), no host port binding (nothing outside the stack talks to
+# it), and a throwaway database that a `docker compose down -v` resets. Two
+# stacks with the same image but different contracts; folding them together
+# would mean the integration env block silently reading a database seeded by
+# hand.
+services:
+  workspace:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ../..:/workspaces:cached
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/go/cache/go-build
+    command: sleep infinity
+    # Same env block the CI workflow exports to its integration step. It is
+    # set on the container rather than on a single command so an interactive
+    # `go test -tags=integration,fts5 ...` behaves the same as the one the
+    # postCreateCommand advertises. Host names are compose service names, not
+    # localhost: in CI the services are port-mapped onto the runner, here they
+    # are peers on the compose network.
+    environment:
+      CGO_ENABLED: '1'
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: '5432'
+      POSTGRES_USER: contexthelp
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: contexthelp_test
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # The pgvector-bundled image is required, not a preference: the Postgres
+  # driver's first migration runs CREATE EXTENSION vector, which a plain
+  # postgres image cannot load. Same image the CI workflow uses.
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: contexthelp
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: contexthelp_test
+    # No `ports:` — only the workspace container talks to this, and leaving
+    # 5432 unbound avoids colliding with docker-compose.dev.yml or any
+    # Postgres already running on the host.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contexthelp -d contexthelp_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  go-mod-cache:
+  go-build-cache:
