@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.pipeline.cancel-runaway-job
+title: Find the job saturating the workers and cancel it
+binary: dpkms
+intent: |
+  The queue has stopped draining and the machine is hot. The operator
+  looks at what is running, reads the suspect job's log to confirm it is
+  the one stuck, cancels it, and checks that the backlog starts moving.
+steps:
+  - id: list_running
+    intent: See every job the workers currently hold.
+    invoke: ["dpkms", "job", "list", "--state", "running", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: inspect_suspect
+    intent: Read the suspect job's log to confirm it is stuck, not just slow.
+    invoke: ["dpkms", "job", "log", "job_12345678"]
+    capture: [exit_code, stdout]
+  - id: cancel_job
+    intent: Cancel the runaway job to free the worker slot.
+    invoke: ["dpkms", "job", "cancel", "job_12345678", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: check_backlog
+    intent: Check whether pending work has started moving again.
+    invoke: ["dpkms", "job", "list", "--state", "pending", "--format", "json"]
+    capture: [exit_code, stdout]

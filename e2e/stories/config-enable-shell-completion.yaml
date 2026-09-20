@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.config.enable-shell-completion
+title: Generate a completion script for the shell the operator actually uses
+binary: dpkms
+intent: |
+  An operator who types long job and pipeline names wants tab completion.
+  They generate the script for their shell, and generate the bash variant
+  too so the same setup can be dropped onto servers that do not run zsh.
+steps:
+  - id: zsh_completion
+    intent: Generate the completion script for the interactive shell.
+    invoke: ["dpkms", "completion", "zsh"]
+    capture: [exit_code, stdout]
+  - id: bash_completion
+    intent: Generate the bash variant for server hosts.
+    invoke: ["dpkms", "completion", "bash"]
+    capture: [exit_code, stdout]

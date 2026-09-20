@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.security.bootstrap-signing-key
+title: Mint a signing keypair on a fresh host before exporting any bundle
+binary: dpkms
+intent: |
+  A new machine has no signing identity yet. The operator checks which
+  config the daemon is using, mints a keypair without clobbering
+  anything that might already exist, and confirms the key files are
+  captured by a config backup.
+steps:
+  - id: resolve_config
+    intent: See the full config resolution chain on this host.
+    invoke: ["dpkms", "config", "paths", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: mint_key
+    intent: Generate a signing keypair, refusing to overwrite an existing one.
+    invoke: ["dpkms", "key", "init", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: capture_in_backup
+    intent: Take a config backup so the new key is archived.
+    invoke: ["dpkms", "backup", "--include-configs", "--format", "json"]
+    capture: [exit_code, stdout]

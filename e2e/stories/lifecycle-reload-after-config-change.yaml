@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.lifecycle.reload-after-config-change
+title: Restart a running instance after editing its configuration
+binary: dpkms
+intent: |
+  An operator has edited the config file the daemon read at startup.
+  They confirm which config file is actually in effect, trigger a
+  graceful restart, and probe the instance again once it is back.
+steps:
+  - id: which_config
+    intent: Print the config file the daemon resolves as highest precedence.
+    invoke: ["dpkms", "config", "path", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: restart
+    intent: Trigger a graceful restart so the new config is picked up.
+    invoke: ["dpkms", "reboot", "--port", "8080"]
+    capture: [exit_code, stdout, stderr]
+  - id: probe_after_restart
+    intent: Probe health again to confirm the instance came back serving.
+    invoke: ["dpkms", "healthcheck", "--format", "json"]
+    capture: [exit_code, stdout]

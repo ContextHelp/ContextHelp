@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.pipeline.disable-misfiring-detector
+title: Disable a detector that is stealing traffic, without deleting the rule
+binary: dpkms
+intent: |
+  Content is being routed to the wrong pipeline. The operator suspects
+  one over-broad detector, disables it rather than deleting it so the
+  change is reversible, then re-enqueues a sample to see where the
+  content lands now.
+steps:
+  - id: list_all_detectors
+    intent: List every detector to find the over-broad rule.
+    invoke: ["dpkms", "detector", "list", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: disable_detector
+    intent: Disable the suspect detector so it stops matching.
+    invoke: ["dpkms", "detector", "disable", "det_abc123", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: confirm_disabled
+    intent: Confirm the rule now appears among the disabled detectors.
+    invoke: ["dpkms", "detector", "list", "--disabled", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: recheck_routing
+    intent: Re-enqueue a sample to see which pipeline now claims it.
+    invoke: ["dpkms", "pipeline", "enqueue", "testdata/sample.txt", "--wait", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

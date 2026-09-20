@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.data.backup-offloaded-as-job
+title: Offload a large backup to the worker and follow it through the queue
+binary: dpkms
+intent: |
+  A backup of a large store would block the operator's terminal for a
+  long time, so they hand it to the daemon as a background job and then
+  follow that job through the queue instead of waiting at the prompt.
+steps:
+  - id: confirm_worker_up
+    intent: Confirm the worker is serving before handing it a job.
+    invoke: ["dpkms", "healthcheck", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: enqueue_backup
+    intent: Enqueue the backup as a background job and return immediately.
+    invoke: ["dpkms", "backup", "--async", "--include-blobs", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: find_job
+    intent: Locate the enqueued backup job in the queue.
+    invoke: ["dpkms", "job", "list", "--limit", "10", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: check_progress
+    intent: Read the job's current state to see how far the backup got.
+    invoke: ["dpkms", "job", "status", "job_12345678", "--format", "json"]
+    capture: [exit_code, stdout]

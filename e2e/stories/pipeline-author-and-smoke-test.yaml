@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.pipeline.author-and-smoke-test
+title: Register a custom pipeline and smoke-test it on one document
+binary: dpkms
+intent: |
+  A pipeline author has written a config file and wants to know it works
+  before wiring real traffic to it. They register it, read back what the
+  daemon actually stored, then push a single document through it and
+  wait for the result rather than hoping.
+steps:
+  - id: list_existing
+    intent: See which pipelines already exist so the new name does not clash.
+    invoke: ["dpkms", "pipeline", "list", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: register_pipeline
+    intent: Register the custom pipeline from its config file with an audit note.
+    invoke: ["dpkms", "pipeline", "create", "pipelines/doc-research.yaml", "--note", "new research ingest path", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: read_back
+    intent: Read back the stored definition to confirm the steps landed as written.
+    invoke: ["dpkms", "pipeline", "show", "doc.research", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: smoke_test
+    intent: Push one document through the new pipeline and wait for completion.
+    invoke: ["dpkms", "pipeline", "enqueue", "testdata/sample.txt", "--pipeline", "doc.research", "--wait", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

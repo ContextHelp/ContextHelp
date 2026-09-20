@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.lifecycle.graceful-drain-and-stop
+title: Drain in-flight jobs and stop an instance before host maintenance
+binary: dpkms
+intent: |
+  Before rebooting the host, an operator wants the daemon to finish or
+  release what it is working on rather than being killed mid-job. They
+  check what is still running, ask for a graceful stop, and confirm the
+  instance is gone.
+steps:
+  - id: check_running_jobs
+    intent: See whether any jobs are still in flight before stopping.
+    invoke: ["dpkms", "job", "list", "--state", "running", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: confirm_target
+    intent: Identify the instance and port that will be stopped.
+    invoke: ["dpkms", "ps", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: graceful_stop
+    intent: Send the graceful shutdown signal to the targeted port.
+    invoke: ["dpkms", "shutdown", "--port", "8080"]
+    capture: [exit_code, stdout, stderr]
+  - id: confirm_stopped
+    intent: Re-list instances to see the stopped one removed.
+    invoke: ["dpkms", "ps", "--format", "json"]
+    capture: [exit_code, stdout]

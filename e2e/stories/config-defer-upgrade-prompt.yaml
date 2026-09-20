@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.config.defer-upgrade-prompt
+title: Defer an upgrade until after a freeze without losing track of it
+binary: dpkms
+intent: |
+  A new release lands mid-freeze. The operator wants the prompt out of
+  the way but not forgotten, so they read what is on offer, snooze it for
+  the configured window, and confirm the pending release is still
+  reported afterwards.
+steps:
+  - id: see_whats_offered
+    intent: Report the available release before deciding to defer.
+    invoke: ["dpkms", "upgrade", "check", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: snooze
+    intent: Defer the upgrade prompt for the configured duration.
+    invoke: ["dpkms", "upgrade", "snooze", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: still_pending
+    intent: Confirm the release is still reported as pending, just deferred.
+    invoke: ["dpkms", "upgrade", "check", "--format", "json"]
+    capture: [exit_code, stdout]

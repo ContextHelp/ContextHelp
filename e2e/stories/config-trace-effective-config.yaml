@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.config.trace-effective-config
+title: Work out which config file a setting is actually coming from
+binary: dpkms
+intent: |
+  A setting the operator edited is not taking effect. Before editing
+  anything else they trace the whole resolution chain, see which file
+  actually wins, and check how the answer changes when resolved from the
+  project directory instead of their shell's location.
+steps:
+  - id: full_chain
+    intent: Print every config file in the resolution chain, in order.
+    invoke: ["dpkms", "config", "paths", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: winning_file
+    intent: Print only the highest-precedence file that actually exists.
+    invoke: ["dpkms", "config", "path", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: resolve_from_project
+    intent: Resolve the chain again from the project directory to compare.
+    invoke: ["dpkms", "config", "paths", "--from", "/srv/contexthelp", "--format", "json"]
+    capture: [exit_code, stdout]

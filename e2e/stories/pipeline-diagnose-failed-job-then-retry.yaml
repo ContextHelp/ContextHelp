@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.pipeline.diagnose-failed-job-then-retry
+title: Read a failed job's error detail before deciding to retry it
+binary: dpkms
+intent: |
+  An ingestion job failed overnight. The operator wants the actual error
+  rather than a guess, so they narrow the queue to failures, read that
+  job's status and log, and only retry once they know the cause was
+  transient.
+steps:
+  - id: list_failures
+    intent: Narrow the queue to failed jobs so the overnight failure is easy to spot.
+    invoke: ["dpkms", "job", "list", "--state", "failed", "--limit", "20", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: read_status
+    intent: Read the failed job's state and error summary.
+    invoke: ["dpkms", "job", "status", "job_12345678", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: read_log
+    intent: Read the job's log to see which step failed and why.
+    invoke: ["dpkms", "job", "log", "job_12345678"]
+    capture: [exit_code, stdout]
+  - id: retry_job
+    intent: Retry the job now that the failure is understood.
+    invoke: ["dpkms", "job", "retry", "job_12345678", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: confirm_requeued
+    intent: Confirm the job is back in the queue rather than still failed.
+    invoke: ["dpkms", "job", "status", "job_12345678", "--format", "json"]
+    capture: [exit_code, stdout]

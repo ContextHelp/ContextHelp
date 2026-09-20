@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.lifecycle.start-named-instance
+title: Start a second named instance on its own ports without colliding
+binary: dpkms
+intent: |
+  An operator already running a personal daemon wants a separate work
+  instance on the same machine. They check which ports are taken, start
+  the new instance under its own name and ports, and confirm both show up.
+steps:
+  - id: inventory_running
+    intent: See which instances and ports are already in use.
+    invoke: ["dpkms", "ps", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: start_work_instance
+    intent: Start a named background instance on non-default ports.
+    invoke: ["dpkms", "serve", "--daemon", "--name", "work", "--port", "8081", "--grpc-port", "9091"]
+    capture: [exit_code, stdout, stderr]
+  - id: confirm_both
+    intent: Re-list instances to see the new one alongside the original.
+    invoke: ["dpkms", "ps", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: probe_new_instance
+    intent: Probe the new instance specifically via its own server URL.
+    invoke: ["dpkms", "healthcheck", "--server-url", "http://localhost:8081", "--format", "json"]
+    capture: [exit_code, stdout]

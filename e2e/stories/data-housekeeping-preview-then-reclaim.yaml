@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.data.housekeeping-preview-then-reclaim
+title: Preview maintenance actions before letting them touch the database
+binary: dpkms
+intent: |
+  The store has grown and queries feel slow, but running maintenance
+  blind makes the operator uneasy. They ask the maintenance pass what it
+  would do, read the report, and only then reclaim space and rebuild
+  indexes.
+steps:
+  - id: preview_maintenance
+    intent: Report every maintenance action without executing any of them.
+    invoke: ["dpkms", "housekeeping", "run", "--dry-run", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: preview_zombie_sweep
+    intent: Preview again with a tighter zombie threshold to see more stuck jobs.
+    invoke: ["dpkms", "housekeeping", "run", "--dry-run", "--zombie-threshold", "30m", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: reclaim_space
+    intent: Reclaim storage now that the preview has been reviewed.
+    invoke: ["dpkms", "housekeeping", "vacuum", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: rebuild_indexes
+    intent: Rebuild search indexes so queries use fresh structures.
+    invoke: ["dpkms", "housekeeping", "reindex", "--format", "json"]
+    capture: [exit_code, stdout]

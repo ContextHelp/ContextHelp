@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.security.rotate-signing-key
+title: Rotate the signing key and capture a backup that includes the new one
+binary: dpkms
+intent: |
+  A laptop holding an exported config bundle was lost, leaving the
+  signing key compromised. The operator backs up the current keys first,
+  rotates to a fresh keypair, and takes a second backup so the new key is
+  itself recoverable.
+steps:
+  - id: backup_current_keys
+    intent: Archive the existing config and keys before replacing them.
+    invoke: ["dpkms", "backup", "--include-configs", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: rotate_key
+    intent: Rotate the active signing keypair to a freshly generated one.
+    invoke: ["dpkms", "key", "rotate", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: backup_new_key
+    intent: Archive again so the newly minted key is recoverable too.
+    invoke: ["dpkms", "backup", "--include-configs", "--format", "json"]
+    capture: [exit_code, stdout]

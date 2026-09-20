@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.data.backup-then-preview-restore
+title: Take a full backup and dry-run the restore before trusting the archive
+binary: dpkms
+intent: |
+  An operator wants a backup they have actually verified, not one they
+  discover is unusable during an incident. They create an archive that
+  includes blobs and configs, then dry-run a restore from it so the
+  restore is previewed rather than performed.
+steps:
+  - id: full_backup
+    intent: Create a timestamped archive including blobs and config files.
+    invoke: ["dpkms", "backup", "--include-blobs", "--include-configs", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: preview_restore
+    intent: Dry-run the restore so nothing is written, only reported.
+    invoke: ["dpkms", "restore", "ctxt-backup.tar.gz", "--dry-run", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

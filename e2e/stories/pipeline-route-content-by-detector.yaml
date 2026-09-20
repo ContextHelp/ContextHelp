@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.pipeline.route-content-by-detector
+title: Route a new content type to its own pipeline and verify the routing
+binary: dpkms
+intent: |
+  PDFs are currently landing in the generic pipeline. The operator adds a
+  detector so they reach the dedicated one instead, checks it sits at the
+  right priority among the existing rules, and pushes a PDF through
+  without naming a pipeline to see the routing take effect.
+steps:
+  - id: review_detectors
+    intent: Review existing enabled detectors and their priorities.
+    invoke: ["dpkms", "detector", "list", "--enabled", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: add_detector
+    intent: Add an extension detector routing PDFs to the dedicated pipeline.
+    invoke: ["dpkms", "detector", "add", "--kind", "extension", "--pattern", ".pdf", "--pipeline", "doc.pdf", "--name", "PDF files", "--priority", "50", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: confirm_ordering
+    intent: List extension detectors to confirm the new rule's place in the order.
+    invoke: ["dpkms", "detector", "list", "--kind", "extension", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: enqueue_unrouted
+    intent: Enqueue a PDF without naming a pipeline so the detector decides.
+    invoke: ["dpkms", "pipeline", "enqueue", "testdata/sample.pdf", "--wait", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

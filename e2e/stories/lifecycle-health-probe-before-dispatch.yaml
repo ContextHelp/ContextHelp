@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.lifecycle.health-probe-before-dispatch
+title: Confirm a running instance is healthy before routing work to it
+binary: dpkms
+intent: |
+  An operator about to enqueue a large import first confirms the daemon
+  is actually serving, so the work is not queued against an instance
+  that is down or still starting.
+steps:
+  - id: list_instances
+    intent: List running instances to find the one to probe.
+    invoke: ["dpkms", "ps", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: probe_health
+    intent: Probe the instance health endpoint and read the envelope.
+    invoke: ["dpkms", "healthcheck", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: probe_quiet
+    intent: Repeat the probe in the exit-code-only form a supervisor would use.
+    invoke: ["dpkms", "healthcheck", "--quiet"]
+    capture: [exit_code]
