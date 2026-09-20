@@ -196,7 +196,7 @@ jobs:
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next'
     services:
       postgres:
         # pgvector-bundled image: the Postgres driver's first migration is
