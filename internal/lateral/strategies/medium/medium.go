@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/lateral"
-	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/customdomain"
 )
 
 const (
@@ -39,10 +38,10 @@ type MediumClient interface {
 
 // hintsFromEvent lifts capture-pipeline hints off CapturedEvent.Hints
 // for the customdomain detector. The substrate threads
-// MetaPlatform / Generator / CanonicalHost through ev.Hints (T-0306);
+// MetaPlatform / Generator / CanonicalHost through ev.Hints;
 // strategies just forward the typed value here so the detector input
 // is uniform across packages.
-func hintsFromEvent(ev lateral.CapturedEvent) customdomain.Hints { return ev.Hints }
+func hintsFromEvent(ev lateral.CapturedEvent) lateral.Hints { return ev.Hints }
 
 func parseURL(rawURL string) (*url.URL, []string, error) {
 	u, err := url.Parse(rawURL)

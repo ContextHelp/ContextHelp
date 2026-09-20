@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/lateral"
-	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/customdomain"
 )
 
 const (
@@ -48,10 +47,10 @@ func parseURL(rawURL string) (*url.URL, []string, error) {
 }
 
 // hintsFromEvent lifts capture-pipeline hints off CapturedEvent.Hints
-// for the customdomain detector (T-0306). Returns the zero value when
+// for the customdomain detector. Returns the zero value when
 // the substrate hasn't populated Hints, preserving pre-substrate
 // canonical-host-only detection.
-func hintsFromEvent(ev lateral.CapturedEvent) customdomain.Hints { return ev.Hints }
+func hintsFromEvent(ev lateral.CapturedEvent) lateral.Hints { return ev.Hints }
 
 // canonicalSlug resolves the publication's slug from host when it is a
 // substack subdomain; falls back to host for custom domains. Client is
