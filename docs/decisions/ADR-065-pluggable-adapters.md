@@ -15,7 +15,7 @@ dPKMS today has a **read-side ingestion substrate** at `internal/ingest/` (adapt
 
 Multiple downstream consumers need substantially more:
 
-- **`~/.fam`** (household workspace, ops repo) — needs full IMAP/SMTP server (Stalwart) so family-member devices connect to dPKMS-served mail; CardDAV/CalDAV servers for contacts/calendars; mxhook bridge fetching from existing-provider IMAPs with send-as outbound; full read+write+server surface.
+- **the household workspace** (household workspace, ops repo) — needs full IMAP/SMTP server (Stalwart) so family-member devices connect to dPKMS-served mail; CardDAV/CalDAV servers for contacts/calendars; mxhook bridge fetching from existing-provider IMAPs with send-as outbound; full read+write+server surface.
 - **Three early-adopter businesses** — each will deploy dPKMS with platform-specific backends (one to Gmail business, one to Microsoft 365 business, one to Proton). Each needs the same substrate pattern with different platform credentials.
 - **IC's FIR portfolio** — multiple incubation deployments that each need mail/contacts/calendar surfaces, each picking different backends.
 
@@ -23,7 +23,7 @@ The current `internal/ingest/` registry shape is a poor fit:
 
 - **Registry is unconstrained** (`map[string]AdapterFactory`). Multiple Gmail-shaped adapters could register simultaneously; nothing enforces "one platform per protocol" — which the brainstorm explicitly settled on as the dPKMS-level rule, with multi-platform handled via federation (per ADR-064).
 - **No protocol-server adapters** — `Stalwart-as-IMAP-server`, `cardamum-as-CardDAV-server` aren't fetch-style adapters. They serve a wire protocol to clients and react to client writes.
-- **No kit primitive integration** — `~/.fam` policy guards rely on `kit/runtime/policy` (kit ADR-0008) intercepting pre-* events. The current adapter substrate has no concept of pre-event emission; there's nothing for kit/policy to subscribe to.
+- **No kit primitive integration** — household-workspace policy guards rely on `kit/runtime/policy` (kit ADR-0008) intercepting pre-* events. The current adapter substrate has no concept of pre-event emission; there's nothing for kit/policy to subscribe to.
 - **No backend taxonomy** — Stalwart-as-MX vs. mxhook-bridge-to-Gmail vs. mxhook-bridge-to-iCloud are *different backends* of the same `email` adapter, but the current registry has no way to express "the email adapter has a backend slot, and exactly one backend is configured per dPKMS instance."
 
 **The question:** What substrate shape supports protocol-server + read+write + bidirectional adapters with kit-primitive integration, while enforcing one-platform-per-protocol per instance and composing with ADR-064 federation for multi-platform deployments?
@@ -53,7 +53,7 @@ The current `internal/ingest/` registry shape is a poor fit:
 ### Chosen: typed protocol-slot substrate with one-platform-per-protocol invariant
 
 - **One-platform-per-protocol matches operator mental model.** An operator configuring a deployment names *which* mail platform they're using, not "all the mail platforms." Multi-platform is a federation question, not a configuration question.
-- **Kit-primitive adoption is required, not optional.** `~/.fam` policy guards (FR-060–FR-066 in the `~/.fam` spec) only work if adapters emit pre-* events. Building a parallel event mechanism would duplicate kit/bus.
+- **Kit-primitive adoption is required, not optional.** household-workspace policy guards (FR-060–FR-066 in the household-workspace spec) only work if adapters emit pre-* events. Building a parallel event mechanism would duplicate kit/bus.
 - **Backend taxonomy makes operator config legible.** "I'm using `email.stalwart`" is clearer than "I'm using `email` with provider=stalwart and 47 platform-specific options"; the backend selection commits the operator to a platform's specific quirks (Gmail OAuth, iCloud app-passwords, M365 tenant config).
 - **Existing `internal/ingest/` is preserved.** Mechanical migration; no semantic change for cardamum and himalaya consumers.
 - **Federation composition (ADR-064) handles the hard case.** Multi-platform deployments don't pollute the substrate; they live at federation. ADR-064's push-only DAG is exactly the shape for this.
@@ -79,7 +79,7 @@ The current `internal/ingest/` registry shape is a poor fit:
 - **Pre-* event integration with kit/runtime/policy is automatic.** Every adapter emits its pre-* events on the bus; policy authors write CEL rules without per-adapter wiring.
 - **Federation composition is unchanged.** ADR-064 keeps working; multi-platform deployments use it.
 - **Migration of existing ingest is mechanical.** cardamum and himalaya become `internal/adapter/contacts/cardamum` and `internal/adapter/email/himalaya` (or similar paths) without semantic change.
-- **Backend taxonomy makes consumer specs (`~/.fam`, early-adopter businesses, FIR deployments) cleaner.** `~/.fam`'s spec says "configures `email.mxhook+gmail` for jad, `email.mxhook+icloud` for rania" — clear and operator-meaningful.
+- **Backend taxonomy makes consumer specs (the household workspace, early-adopter businesses, FIR deployments) cleaner.** the household workspace's spec says "configures `email.mxhook+gmail` for jad, `email.mxhook+icloud` for rania" — clear and operator-meaningful.
 - **CLI surface composes naturally.** `dpkms adapter list`, `dpkms adapter show <protocol>`, `dpkms adapter configure <protocol> <backend>` — uniform across protocols.
 
 ### Negative
@@ -360,7 +360,7 @@ Phase 2 dispatches as four parallel agent streams plus this foundation track. Ea
 ## References
 - [ADR-063 – Graph-Canonical KnowledgeObject](ADR-063-graph-canonical-knowledge-object.md)
 - [ADR-064 – Federation: Multi-Instance Object Sync](ADR-064-federation.md)
-- kit ADR-0008 (kit/runtime/policy guard engine) — `~/.w/ideacrafterslabs/kit/hops/main/docs/adr/0008-kit-runtime-policy-engine.md`
-- kit-primitive-map — `~/.ops/docs/architecture/kit-primitive-map.md`
-- Consumer spec: `~/.fam` workspace design — `~/.ops/docs/superpowers/specs/2026-05-05-fam-workspace-design.md`
+- kit ADR-0008 (kit/runtime/policy guard engine) — `../kit/hops/main/docs/adr/0008-kit-runtime-policy-engine.md`
+- kit-primitive-map — internal notes
+- Consumer spec: the household workspace workspace design — internal notes
 - Track spec.md (this ADR's WHAT companion): `.tlc/tracks/dpkms-pluggable-adapters/spec.md`

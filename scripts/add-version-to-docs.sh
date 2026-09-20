@@ -4,7 +4,7 @@
 set -e
 
 VERSION="0.1.0"
-DOCS_DIR="/Users/jadb/.w/ideacrafterslabs/ctxt/docs"
+DOCS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/docs"
 
 # Find all markdown files
 find "$DOCS_DIR" -type f -name "*.md" | while read -r file; do

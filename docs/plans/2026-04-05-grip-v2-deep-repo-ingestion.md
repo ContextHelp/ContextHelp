@@ -421,7 +421,7 @@ repo_context:
     - "git@github.com:someorg/specific-repo.git"
     - "ideacrafterslabs/*"
   local_roots:
-    - "~/.w/"
+    - "~/src/"
   promote:
     - "git@github.com:charmbracelet/bubbletea.git"
 

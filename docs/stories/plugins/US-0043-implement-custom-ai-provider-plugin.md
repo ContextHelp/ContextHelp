@@ -182,7 +182,7 @@ pipelines:
 
 - [Maintainers](../../personas/maintainers.md)
 - [Platform Integrators](../../personas/platform-integrators.md)
-- [OSS Go Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/contributors/oss-go-developer.md)
+- OSS Go Developer
 
 ---
 

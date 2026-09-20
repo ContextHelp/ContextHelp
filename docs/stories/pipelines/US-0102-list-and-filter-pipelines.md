@@ -251,7 +251,7 @@ ORDER BY
 
 - [Maintainers](../../personas/maintainers.md)
 - [Platform Integrators](../../personas/platform-integrators.md)
-- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- Automation Builder
 
 ---
 

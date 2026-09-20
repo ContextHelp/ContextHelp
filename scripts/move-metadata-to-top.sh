@@ -3,7 +3,7 @@
 
 set -e
 
-DOCS_DIR="/Users/jadb/.w/ideacrafterslabs/ctxt/docs"
+DOCS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/docs"
 
 # Find all markdown files with metadata at the bottom
 grep -rl "^\*\*Last Updated\*\*:\|^\*\*Version\*\*:\|^\*\*Status\*\*:\|^\*\*Maintained by\*\*:" "$DOCS_DIR" --include="*.md" | while read -r file; do

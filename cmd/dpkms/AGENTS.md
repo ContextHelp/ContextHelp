@@ -4,7 +4,7 @@ For agents touching the dpkms CLI surface. Read this before editing anything und
 
 ## Repo shape
 
-- Bare-repo + worktree layout. The main checkout lives at `~/.w/ideacrafterslabs/ctxt/hops/main`; feature work goes in sibling worktrees under `hops/<branch>`.
+- Bare-repo + worktree layout. The main checkout lives at `./hops/main`; feature work goes in sibling worktrees under `hops/<branch>`.
 - Always invoke git as `/usr/bin/git` (avoid the rtk wrapper for git in worktrees).
 - No `vendor/`. If one appears, delete it; never run `go mod vendor`.
 
@@ -36,12 +36,12 @@ For agents touching the dpkms CLI surface. Read this before editing anything und
 
 ## Conventions
 
-- Conventional Commits with task ID: `fix(dpkms/<area>): <subject> (T-####)`.
+- Conventional Commits: `fix(dpkms/<area>): <subject>`. No tracker IDs in commit subjects, bodies, branch names, or code comments.
 - Never mention co-authors, Claude, AI, or the tools used.
 - File length under ~500 LOC; split when growing.
 - Standards-first: cobra/viper/POSIX defaults before custom flags. Avoid short aliases when kit reserves the letter (notably `-o`).
 
 ## CLI conventions
 
-- Full guide: `~/.ops/docs/cli-conventions-with-kit.md`
+- Full guide: internal notes
 - Side-effect annotations on mutating commands (`kit/side-effect`) are validated by kit when `EnforceValidate` flips on. Annotate new mutating subcommands when you add them.

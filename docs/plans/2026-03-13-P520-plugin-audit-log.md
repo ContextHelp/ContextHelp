@@ -606,7 +606,7 @@ replace github.com/ideacrafterslabs/ctxt => ../..
 
 **Step 6.2 — add to go.work**
 
-Edit `/Users/jadb/.w/ideacrafterslabs/ctxt/go.work`:
+Edit `./go.work`:
 
 ```
 go 1.26.1
@@ -1419,7 +1419,7 @@ git commit -m "test(plugin/auditlog): add E2E integration tests"
 **Step 13.1 — verify standalone build**
 
 ```bash
-cd /Users/jadb/.w/ideacrafterslabs/ctxt/plugins/auditlog
+cd ./plugins/auditlog
 go build ./...
 ```
 
@@ -1436,7 +1436,7 @@ Expected: all `PASS`.
 **Step 13.3 — check no relative imports**
 
 ```bash
-grep -r "\"\.\./" /Users/jadb/.w/ideacrafterslabs/ctxt/plugins/auditlog/
+grep -r "\"\.\./" ./plugins/auditlog/
 ```
 
 Expected: zero output.

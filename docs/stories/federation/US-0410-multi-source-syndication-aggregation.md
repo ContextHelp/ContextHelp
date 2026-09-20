@@ -241,7 +241,7 @@ endpoints or implement per-token scoping (out of scope here).
 ## Dependencies / Risks
 
 - Depends on: dpkms's mention/entity model (per
-  `~/.ops/tracks/ingestion-retrieval-pipelines` mentions registry).
+  internal notes mentions registry).
 - Aligns with: ingestion-retrieval-pipelines architecture (this is a new
   *write-time* ingestion source for the local store).
 - Related but orthogonal: rux remote daemon (story 041 in rux). Both are

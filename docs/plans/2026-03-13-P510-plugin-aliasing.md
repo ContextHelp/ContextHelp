@@ -595,7 +595,7 @@ replace github.com/ideacrafterslabs/ctxt => ../..
 
 **Step 5.2 — add to go.work**
 
-Edit `/Users/jadb/.w/ideacrafterslabs/ctxt/go.work`:
+Edit `./go.work`:
 
 ```
 go 1.26.1
@@ -1308,7 +1308,7 @@ git commit -m "feat(plugin/aliasing): add CLI alias set/list/remove"
 **Step 12.1 — locate file**
 
 ```bash
-grep -r "\"open\"\|UseE.*open\|ctxt open" /Users/jadb/.w/ideacrafterslabs/ctxt/cmd/ --include="*.go" | head -5
+grep -r "\"open\"\|UseE.*open\|ctxt open" ./cmd/ --include="*.go" | head -5
 ```
 
 **Step 12.2 — modify lookup**
@@ -1430,7 +1430,7 @@ git commit -m "test(plugin/aliasing): add E2E integration tests"
 **Step 14.1 — verify standalone build**
 
 ```bash
-cd /Users/jadb/.w/ideacrafterslabs/ctxt/plugins/aliasing
+cd ./plugins/aliasing
 go build ./...
 ```
 
@@ -1445,7 +1445,7 @@ go test ./... -count=1
 **Step 14.3 — check no relative imports**
 
 ```bash
-grep -r "\"\.\./" /Users/jadb/.w/ideacrafterslabs/ctxt/plugins/aliasing/
+grep -r "\"\.\./" ./plugins/aliasing/
 ```
 
 Expected: zero output.

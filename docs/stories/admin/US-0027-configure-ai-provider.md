@@ -241,7 +241,7 @@ func (c *CostTracker) RecordCall(tokens int, costUSD float64) {
 ## Personas
 
 - [Maintainers](../../personas/maintainers.md)
-- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+- Platform Engineer
 - [Operations](../../personas/operations.md)
 
 ---

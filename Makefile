@@ -313,8 +313,7 @@ ben: ben-text-short ben-vector
 ##
 ## Resolution order:
 ##   1. $$BEN_LOCAL_PATH env var, if set and pointing to a ben checkout.
-##   2. Sibling labspace path ($$HOME/.w/ideacrafterslabs/ben/hops/main) —
-##      matches the dev convention used by xrr / kit / c12n.
+##   2. No default: set BEN_LOCAL_PATH to your ben checkout.
 ##
 ## ben is consumed via local-path replace, not a published version: it has
 ## no tagged release yet and is in active local development alongside this
@@ -324,7 +323,6 @@ ben: ben-text-short ben-vector
 ## The built binary lives in $(BUILD_DIR)/ (not $GOPATH/bin) so the version
 ## stays scoped to this checkout.
 BEN_BINARY := $(BUILD_DIR)/ben
-BEN_SIBLING := $(HOME)/.w/ideacrafterslabs/ben/hops/main
 ben-install: $(BEN_BINARY)
 
 $(BEN_BINARY):
@@ -333,12 +331,9 @@ $(BEN_BINARY):
 	if [ -n "$$BEN_LOCAL_PATH" ] && [ -d "$$BEN_LOCAL_PATH" ]; then \
 		echo "Building ben from BEN_LOCAL_PATH=$$BEN_LOCAL_PATH..."; \
 		(cd "$$BEN_LOCAL_PATH" && go build -buildvcs=false -o $(abspath $(BEN_BINARY)) ./cmd/ben); \
-	elif [ -d "$(BEN_SIBLING)" ]; then \
-		echo "Building ben from sibling labspace ($(BEN_SIBLING))..."; \
-		(cd "$(BEN_SIBLING)" && go build -buildvcs=false -o $(abspath $(BEN_BINARY)) ./cmd/ben); \
 	else \
 		echo "ERROR: hop.top/ben not found." >&2; \
-		echo "Set BEN_LOCAL_PATH=<path-to-ben-checkout> or check ben out at $(BEN_SIBLING)." >&2; \
+		echo "Set BEN_LOCAL_PATH=<path-to-ben-checkout> and re-run." >&2; \
 		exit 1; \
 	fi; \
 	echo "✓ Built ben: $(BEN_BINARY)"

@@ -23,8 +23,8 @@
 | Existing importer pattern | `internal/importer/pinboard/api.go` |
 | Existing plugin pattern | `plugins/autosuggest/` |
 | Jobs system | `internal/jobs/` |
-| idx Operations API | `~/.w/ideacrafterslabs/idx/hops/main/src/Operations.js` |
-| idx daemon/server | `~/.w/ideacrafterslabs/idx/hops/main/src/daemon.js`, `server.js` |
+| idx Operations API | `../idx/hops/main/src/Operations.js` |
+| idx daemon/server | `../idx/hops/main/src/daemon.js`, `server.js` |
 
 ---
 

@@ -399,7 +399,7 @@ def get_schema_cached(api_url):
 ## Personas
 
 - [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
-- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- Automation Builder
 
 ---
 

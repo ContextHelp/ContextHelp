@@ -319,7 +319,7 @@ def execute_with_retry(query, max_attempts=3):
 ## Personas
 
 - [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
-- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- Automation Builder
 
 ---
 

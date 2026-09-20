@@ -92,7 +92,7 @@ The importer must support both initial backfill and repeat sync runs. It should 
 ## Personas
 
 - [Knowledge Workers](../../personas/knowledge-workers.md)
-- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- Solo Developer
 
 ---
 
