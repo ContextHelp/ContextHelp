@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.knowledge.hybrid-search
+title: Search knowledge and inspect a result before acting on it
+binary: ctxt
+intent: |
+  An agent answering a question searches the knowledge base, then opens
+  the most promising hit to read its body and provenance before quoting
+  it, so the answer cites something real rather than a title match.
+steps:
+  - id: search
+    intent: Run a hybrid FTS+vector search for the topic.
+    invoke: ["ctxt", "find", "progressive disclosure", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: inspect
+    intent: Read the full object behind the top hit.
+    invoke: ["ctxt", "show", "obj_12345678", "--format", "json"]
+    capture: [exit_code, stdout]

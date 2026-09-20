@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.core.cursor-incremental
+title: Drain only what is new since the last pass using a named cursor
+binary: ctxt
+intent: |
+  An agent polling for new knowledge avoids reprocessing what it has
+  already seen. It reads through a named cursor and advances it in the
+  same call, so each pass returns only the objects added since the last
+  one. It inspects the cursor's stored position and query snapshot
+  between passes to confirm the position actually moved.
+steps:
+  - id: first_drain
+    intent: Read through the cursor and advance it in the same call.
+    invoke: ["ctxt", "list", "--cursor", "agent-inbox", "--advance", "--limit", "25", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: position
+    intent: Inspect the cursor's stored position and query snapshot.
+    invoke: ["ctxt", "cursor", "show", "agent-inbox", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: second_drain
+    intent: Poll again for just the objects added since the first pass.
+    invoke: ["ctxt", "list", "--cursor", "agent-inbox", "--advance", "--limit", "25", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: peek_without_advancing
+    intent: Read through the cursor without moving it.
+    invoke: ["ctxt", "list", "--cursor", "agent-inbox", "--format", "json"]
+    capture: [exit_code, stdout]

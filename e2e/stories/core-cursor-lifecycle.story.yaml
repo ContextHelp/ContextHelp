@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.core.cursor-lifecycle
+title: Replay a past window by repositioning a cursor, then retire it
+binary: ctxt
+intent: |
+  A downstream consumer dropped a batch and the agent needs to replay it.
+  Rather than reprocessing everything, it jumps the cursor back by a
+  signed duration, drains the replayed window, then rewinds another
+  cursor all the way to the beginning for a full rebuild, and finally
+  deletes a cursor whose consumer is gone.
+steps:
+  - id: enumerate
+    intent: See which named cursors exist and where each one sits.
+    invoke: ["ctxt", "cursor", "list", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: rewind_relative
+    intent: Jump the cursor back one week by signed duration.
+    invoke: ["ctxt", "cursor", "set", "agent-inbox", "--to", "-7d"]
+    capture: [exit_code, stdout]
+  - id: replay
+    intent: Drain the window the rewind just made available again.
+    invoke: ["ctxt", "list", "--cursor", "agent-inbox", "--advance", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: jump_absolute
+    intent: Move a second cursor to an exact timestamp.
+    invoke: ["ctxt", "cursor", "set", "backfill", "--to", "2026-04-28T14:22:11Z"]
+    capture: [exit_code, stdout]
+  - id: rewind_full
+    intent: Rewind that cursor all the way to the beginning for a full rebuild.
+    invoke: ["ctxt", "cursor", "reset", "backfill"]
+    capture: [exit_code, stdout]
+  - id: retire
+    intent: Delete a cursor whose consumer no longer exists.
+    invoke: ["ctxt", "cursor", "delete", "backfill"]
+    capture: [exit_code, stdout]

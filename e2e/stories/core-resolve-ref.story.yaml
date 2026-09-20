@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.core.resolve-ref
+title: Resolve a ref to its body and provenance in one shot
+binary: ctxt
+intent: |
+  An agent holding a bare ref wants the text behind it without a search
+  round trip. Markdown is the pipe-friendly default and gives the body
+  alone; the JSON envelope adds the provenance the agent needs to decide
+  whether the body is trustworthy — source, pipeline, content hash, and
+  registry influences. Entity refs resolve the same way, with or without
+  the leading marker.
+steps:
+  - id: object_markdown
+    intent: Resolve an object to its body alone, pipe-friendly.
+    invoke: ["ctxt", "resolve", "obj_12345678"]
+    capture: [exit_code, stdout]
+  - id: object_envelope
+    intent: Take the same object with provenance attached.
+    invoke: ["ctxt", "resolve", "obj_12345678", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: entity_marked
+    intent: Resolve an entity addressed by its marked slug form.
+    invoke: ["ctxt", "resolve", "@ui.best-practice", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: entity_bare
+    intent: Resolve the same entity with the marker omitted.
+    invoke: ["ctxt", "resolve", "ui.best-practice"]
+    capture: [exit_code, stdout]

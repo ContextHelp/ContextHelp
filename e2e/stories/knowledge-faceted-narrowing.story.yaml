@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.knowledge.faceted-narrowing
+title: Narrow a broad search by facet before reading anything
+binary: ctxt
+intent: |
+  A broad query returns too much to read. Rather than paging through it,
+  the agent asks for the facet breakdown first, learns which metadata
+  types and sources actually carry the answer, and then reruns the search
+  scoped to one topic, one person, and a date window.
+steps:
+  - id: facets
+    intent: Ask what metadata types the matching corpus is made of.
+    invoke: ["ctxt", "find", "deployment", "--facets", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: scoped
+    intent: Rerun scoped to the facet that looked most relevant.
+    invoke: ["ctxt", "find", "deployment", "--topic", "kubernetes", "--meta-type", "observation", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: attributed
+    intent: Narrow further to one person and a recent date window.
+    invoke: ["ctxt", "find", "deployment", "--person", "alice-chen", "--source-type", "slack", "--since", "2026-04-01", "--until", "2026-04-30", "--format", "json"]
+    capture: [exit_code, stdout]

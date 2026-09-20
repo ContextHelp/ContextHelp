@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.compose.export-object
+title: Export one object through a generator plugin, falling back to JSON
+binary: ctxt
+intent: |
+  The agent hands a single note to an external tool. It first exports with
+  no generator named, which prints the object as JSON regardless of what
+  plugins are installed, then asks for a named generator with a
+  destination hint. The bare export is the dependable path; the named one
+  only works when the plugin is loaded.
+steps:
+  - id: plain
+    intent: Export with no generator named, which prints JSON.
+    invoke: ["ctxt", "export", "obj_12345678"]
+    capture: [exit_code, stdout]
+  - id: json_envelope
+    intent: Ask for the JSON envelope explicitly rather than by omission.
+    invoke: ["ctxt", "export", "obj_12345678", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: generator
+    intent: Route the export through a named generator with a destination hint.
+    invoke: ["ctxt", "export", "obj_12345678", "--format", "obsidian-md", "--dest", "vault/inbox"]
+    capture: [exit_code, stdout, stderr]

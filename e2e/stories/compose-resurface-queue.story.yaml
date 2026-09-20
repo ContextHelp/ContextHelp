@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.compose.resurface-queue
+title: Re-score the resurfacing queue and prune what is no longer relevant
+binary: ctxt
+intent: |
+  Instead of searching for something it already knows it wants, the agent
+  asks what the system thinks is relevant to the active profile right
+  now. It re-scores the queue so the ranking reflects recent captures,
+  reads the top candidates, opens one, and dismisses an entry that keeps
+  surfacing without being useful.
+steps:
+  - id: rescore
+    intent: Re-score every object against the active profile.
+    invoke: ["ctxt", "resurface", "refresh"]
+    capture: [exit_code, stdout]
+  - id: candidates
+    intent: Read the top candidates above a score floor.
+    invoke: ["ctxt", "resurface", "--limit", "5", "--min-score", "0.4", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: open_one
+    intent: Read the object behind the leading candidate.
+    invoke: ["ctxt", "show", "obj_12345678", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: dismiss
+    intent: Stop a persistently unhelpful entry from resurfacing.
+    invoke: ["ctxt", "resurface", "dismiss", "entry-abc123"]
+    capture: [exit_code, stdout]

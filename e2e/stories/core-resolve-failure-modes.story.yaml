@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.core.resolve-failure-modes
+title: Tell a missing ref apart from an unusable output format
+binary: ctxt
+intent: |
+  A resolver an agent depends on fails legibly. The agent probes
+  the two ways resolution goes wrong — a ref that does not exist and an
+  output format the resolver does not support — and contrasts both with
+  a resolution that succeeds, so its retry logic can distinguish a
+  malformed request it can fix from knowledge that is simply absent.
+steps:
+  - id: unknown_ref
+    intent: Resolve an object ref that was never stored anywhere.
+    invoke: ["ctxt", "resolve", "obj_deadbeef", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: unsupported_format
+    intent: Ask for an output format the resolver does not support.
+    invoke: ["ctxt", "resolve", "obj_12345678", "--format", "yaml"]
+    capture: [exit_code, stdout, stderr]
+  - id: unknown_entity
+    intent: Resolve an entity slug that was never registered.
+    invoke: ["ctxt", "resolve", "@nonexistent.slug"]
+    capture: [exit_code, stdout, stderr]
+  - id: control
+    intent: Resolve a ref that does exist, as a control.
+    invoke: ["ctxt", "resolve", "obj_12345678", "--format", "json"]
+    capture: [exit_code, stdout]
