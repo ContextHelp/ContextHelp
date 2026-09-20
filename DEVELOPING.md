@@ -187,19 +187,27 @@ Formatting is fixed with `gofmt -w .` (or `make fmt`).
 ### Pre-commit hooks
 
 `.pre-commit-config.yaml` mirrors the CI lint gate, scoped to the files you are
-actually committing:
+actually committing. Install [pre-commit](https://pre-commit.com) and wire the
+repo hooks:
 
 ```bash
-pre-commit install --hooks-path .githooks
+make install-hooks
 ```
 
-`--hooks-path .githooks` is required: this repo sets `core.hooksPath` to
-`.githooks` (see `make install-hooks`), and git ignores `.git/hooks` entirely
-when that is set. Installing without the flag silently does nothing.
+You do **not** run `pre-commit install`. That command refuses to run while
+`core.hooksPath` is set — and this repo sets it to `.githooks` for the gitleaks
+scan below. Instead, `.githooks/pre-commit` chains to `pre-commit hook-impl`
+after the secret scan, so both gates run from one hook. If `pre-commit` is not
+on your `PATH`, the lint gate is skipped and only the secret scan runs.
 
-Run the hooks manually against everything with `pre-commit run --all-files`
-(expect pre-existing findings), or against your staged diff with
-`pre-commit run`.
+The hooks are scoped so the tree's pre-existing backlog does not block you:
+`gofmt` and `go vet` see only the staged files, and `golangci-lint` runs with
+`--new-from-rev=HEAD`, so only findings *your* diff introduces fail the commit.
+Editing a file that already has findings is fine.
+
+Run the hooks manually against your staged diff with `pre-commit run`, or
+against everything with `pre-commit run --all-files` (expect a lot of
+pre-existing findings).
 
 ### Secret scanning
 
