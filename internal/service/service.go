@@ -1236,7 +1236,7 @@ func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limi
 		if len(nodeTypeSet) > 0 {
 			matched := false
 			for _, n := range obj.Graph.Nodes {
-				if nodeTypeSet[string(n.NodeType)] {
+				if nodeTypeSet[n.NodeType] {
 					matched = true
 					break
 				}
@@ -1248,7 +1248,7 @@ func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limi
 		if len(edgeTypeSet) > 0 {
 			matched := false
 			for _, e := range obj.Graph.Edges {
-				if edgeTypeSet[string(e.EdgeType)] {
+				if edgeTypeSet[e.EdgeType] {
 					matched = true
 					break
 				}

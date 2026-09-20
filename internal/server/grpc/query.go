@@ -174,7 +174,7 @@ func objectGraphToProto(g *pluginapi.ObjectGraph) *pb.ObjectGraph {
 	for _, n := range g.Nodes {
 		pg.Nodes = append(pg.Nodes, &pb.GraphNode{
 			Id:       n.ID,
-			NodeType: string(n.NodeType),
+			NodeType: n.NodeType,
 			Label:    n.Label,
 			Content:  n.Content,
 			Order:    int32(n.Order), // #nosec G115 -- node order is small bounded int
@@ -185,7 +185,7 @@ func objectGraphToProto(g *pluginapi.ObjectGraph) *pb.ObjectGraph {
 			Id:       e.ID,
 			FromId:   e.FromID,
 			ToId:     e.ToID,
-			EdgeType: string(e.EdgeType),
+			EdgeType: e.EdgeType,
 			Weight:   e.Weight,
 		})
 	}
@@ -217,8 +217,8 @@ func buildNodeHits(o *pluginapi.KnowledgeObject) []*pb.NodeHit {
 	for i, n := range o.Graph.Nodes {
 		hits = append(hits, &pb.NodeHit{
 			ObjectId: o.ID,
-			NodeRef:  pluginapi.NodeURI(o.ID, string(n.NodeType), i),
-			NodeType: string(n.NodeType),
+			NodeRef:  pluginapi.NodeURI(o.ID, n.NodeType, i),
+			NodeType: n.NodeType,
 			Snippet:  snippetFromNode(n),
 			Score:    1.0,
 		})
