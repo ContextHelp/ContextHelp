@@ -65,6 +65,7 @@ func (a *Adapter) listCards(ctx context.Context) ([]card, error) {
 		args = append([]string{"-a", a.account}, args...)
 	}
 
+	// #nosec G204 -- operator-configured binary, no shell; captured content never reaches argv. a.binary defaults to "cardamum".
 	cmd := exec.CommandContext(ctx, a.binary, args...)
 	out, err := cmd.Output()
 	if err != nil {

@@ -296,6 +296,10 @@ func (a *Adapter) Serve(ctx context.Context, listener net.Listener) error {
 	a.serveErr = make(chan error, 1)
 	a.mu.Unlock()
 
+	// #nosec G118 -- the goroutine's job IS to outlive ctx: it waits
+	// for cancellation and then drains the server. Shutdown takes a
+	// fresh context deliberately, so in-flight requests get to finish
+	// rather than being cut off by the context that just fired.
 	go func() {
 		<-ctx.Done()
 		_ = srv.Shutdown(context.Background())

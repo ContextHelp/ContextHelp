@@ -314,10 +314,13 @@ func (d *darwinInstaller) bootstrap(plistPath string) error {
 		return fmt.Errorf("launchctl not found on PATH: %w", err)
 	}
 	uid := strconv.Itoa(os.Getuid())
+	// #nosec G204 -- binary is the literal "launchctl"; uid comes from
+	// os.Getuid and plistPath from UnitPath, both process-local.
 	if err := exec.Command("launchctl", "bootstrap", "gui/"+uid, plistPath).Run(); err == nil {
 		return nil
 	}
 	// fall back to deprecated load
+	// #nosec G204 -- literal binary; plistPath is process-local.
 	if err := exec.Command("launchctl", "load", plistPath).Run(); err != nil {
 		return fmt.Errorf("launchctl load %s: %w", plistPath, err)
 	}
@@ -331,9 +334,12 @@ func (d *darwinInstaller) bootout(plistPath string) error {
 	uid := strconv.Itoa(os.Getuid())
 	// Prefer the modern bootout target. If that fails (e.g. the agent
 	// was loaded with `launchctl load`), fall back to `unload`.
+	// #nosec G204 -- literal binary; uid is process-local and
+	// LaunchdLabel is a compile-time const.
 	if err := exec.Command("launchctl", "bootout", "gui/"+uid+"/"+LaunchdLabel).Run(); err == nil {
 		return nil
 	}
+	// #nosec G204 -- literal binary; plistPath is process-local.
 	_ = exec.Command("launchctl", "unload", plistPath).Run()
 	return nil
 }

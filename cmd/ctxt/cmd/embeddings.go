@@ -390,6 +390,10 @@ func loadOrEditConfig(path string) (string, error) {
 	}
 	tmp.Close()
 
+	// #nosec G204,G702 -- editor is $VISUAL/$EDITOR with a "vi"
+	// fallback, and tmpPath is our own temp file. Honouring the
+	// operator's editor is the point of the command; anyone who can
+	// set that variable can already run code as this user.
 	c := exec.Command(editor, tmpPath)
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout

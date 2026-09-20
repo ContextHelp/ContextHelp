@@ -55,6 +55,8 @@ const DefaultMaxWindow = 5 * time.Minute
 type CommandRunner func(ctx context.Context, name string, args ...string) ([]byte, error)
 
 func defaultRunner(ctx context.Context, name string, args ...string) ([]byte, error) {
+	// #nosec G204 -- operator-configured binary, no shell; captured content never reaches argv. defaultRunner is the production
+	// CommandRunner; name and args come from the adapter's config.
 	cmd := exec.CommandContext(ctx, name, args...)
 	return cmd.CombinedOutput()
 }

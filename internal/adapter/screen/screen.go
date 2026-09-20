@@ -50,6 +50,8 @@ type CommandRunner func(ctx context.Context, name string, args ...string) ([]byt
 
 // defaultRunner runs the command via os/exec with combined output.
 func defaultRunner(ctx context.Context, name string, args ...string) ([]byte, error) {
+	// #nosec G204 -- operator-configured binary, no shell; captured content never reaches argv. name and args come from the adapter's
+	// config, not from a request.
 	cmd := exec.CommandContext(ctx, name, args...)
 	return cmd.CombinedOutput()
 }

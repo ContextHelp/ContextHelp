@@ -93,6 +93,8 @@ func fileExists(path string) bool {
 	if path == "" {
 		return false
 	}
+	// #nosec G703 -- path is a config location being probed for
+	// existence: operator supplied, and Stat reads metadata only.
 	_, err := os.Stat(path)
 	return err == nil
 }

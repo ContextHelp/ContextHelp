@@ -229,9 +229,12 @@ func migrateLegacyIfNeeded(newPath string) error {
 	if err != nil {
 		return fmt.Errorf("read legacy %s: %w", legacy, err)
 	}
+	// #nosec G703 -- newPath is the policy file under the operator's
+	// own config dir, not a caller- or content-derived location.
 	if err := os.MkdirAll(filepath.Dir(newPath), 0o750); err != nil {
 		return fmt.Errorf("mkdir for %s: %w", newPath, err)
 	}
+	// #nosec G703 -- same operator-owned config path as the MkdirAll above.
 	if err := os.WriteFile(newPath, body, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", newPath, err)
 	}

@@ -889,6 +889,9 @@ func writeBackTarget(cfgFile, system, user, project string) string {
 		if p == "" {
 			continue
 		}
+		// #nosec G703 -- p is a config-file candidate from the XDG
+		// search path or an explicit --config value, both operator
+		// supplied. Stat reads metadata only.
 		if _, err := os.Stat(p); err == nil {
 			return p
 		}
@@ -1304,6 +1307,8 @@ func EnsureDataDir() error {
 			return fmt.Errorf("data dir: %w", err)
 		}
 	}
+	// #nosec G703 -- dataDir derives from XDG_DATA_HOME or the
+	// operator's config, not from captured content or a request.
 	return os.MkdirAll(dataDir, 0750)
 }
 
@@ -1319,6 +1324,7 @@ func RunDir() (string, error) {
 		}
 	}
 	dir := filepath.Join(base, "run")
+	// #nosec G703 -- base is the operator's XDG state/runtime dir.
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return "", fmt.Errorf("run dir: %w", err)
 	}

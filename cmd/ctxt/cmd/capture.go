@@ -418,6 +418,9 @@ func resolveCaptureInput(cmd *cobra.Command, args []string) (content, source str
 func waitForCaptureJob(serverURL, jobID string) error {
 	endpoint := fmt.Sprintf("%s/api/v1/jobs/%s", serverURL, jobID)
 	for {
+		// #nosec G107 -- serverURL is the operator's configured dpkms
+		// address (default loopback) and jobID was minted by that same
+		// server; neither is attacker supplied.
 		resp, err := gohttp.Get(endpoint)
 		if err != nil {
 			return fmt.Errorf("poll job %s: %w", jobID, err)

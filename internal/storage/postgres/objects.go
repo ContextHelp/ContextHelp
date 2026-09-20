@@ -585,6 +585,10 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 	conditions = append(conditions, mc...)
 	args = append(args, ma...)
 
+	// #nosec G202 -- no user data reaches the SQL text. Every caller
+	// value travels as a $N placeholder; the three interpolated items
+	// are the compile-time const ftsRegconfig, a condition list built
+	// only from literals and generated $N markers, and an int limit.
 	q := objectSelectCols + fmt.Sprintf(`, ts_rank_cd(fts, q) AS score
 		FROM objects, websearch_to_tsquery('%s', $1) AS q
 		WHERE %s
@@ -625,6 +629,8 @@ func (s *ObjectStore) nodeTypeObjectIDs(ctx context.Context, nodeTypes []string)
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		args[i] = t
 	}
+	// #nosec G201 -- the interpolated values are generated $N markers
+	// and a count, never caller input: nodeTypes travels in args.
 	q := fmt.Sprintf(
 		`SELECT object_id FROM object_nodes WHERE node_type IN (%s)
 		 GROUP BY object_id HAVING COUNT(DISTINCT node_type) = $%d`,

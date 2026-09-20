@@ -775,6 +775,9 @@ func daemonize(cmd *cobra.Command) error {
 	}
 	defer devNull.Close()
 
+	// #nosec G204,G702 -- self is os.Executable(): the daemon
+	// re-execs this very binary to detach. args are assembled from
+	// parsed flags, never from request or captured content.
 	c := exec.Command(self, args...)
 	c.Stdin = devNull
 	c.Stdout = devNull

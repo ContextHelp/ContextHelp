@@ -11,10 +11,10 @@ import (
 
 // Adapter implements ingest.Adapter for himalaya email.
 type Adapter struct {
-	Binary      string // path to himalaya binary
-	Account     string // himalaya account name
-	Folder      string // IMAP folder (default INBOX)
-	MaxItems    int    // max envelopes to fetch
+	Binary   string // path to himalaya binary
+	Account  string // himalaya account name
+	Folder   string // IMAP folder (default INBOX)
+	MaxItems int    // max envelopes to fetch
 }
 
 func (a *Adapter) Name() string { return "himalaya" }
@@ -37,6 +37,8 @@ func (a *Adapter) Fetch(
 		args = append(args, "-a", a.Account)
 	}
 
+	// #nosec G204 -- operator-configured binary, no shell; captured content never reaches argv. bin defaults to "himalaya" and is
+	// overridable in config so non-standard installs work.
 	out, err := exec.CommandContext(ctx, bin, args...).Output()
 	if err != nil {
 		return nil, fmt.Errorf("himalaya list: %w", err)
@@ -60,6 +62,7 @@ func (a *Adapter) Fetch(
 			readArgs = append(readArgs, "-a", a.Account)
 		}
 
+		// #nosec G204 -- operator-configured binary, no shell; captured content never reaches argv.
 		body, err := exec.CommandContext(
 			ctx, bin, readArgs...,
 		).Output()

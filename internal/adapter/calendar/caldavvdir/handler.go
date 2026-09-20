@@ -107,6 +107,12 @@ func handleGET(w http.ResponseWriter, r *http.Request, vdir string) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+	// #nosec G703 -- name is confined to one path segment by the guard
+	// above: it must end in .ics and may contain neither "/" nor "..".
+	// net/http percent-decodes URL.Path before the check, so encoded
+	// and double-encoded traversal is caught too (probed against ../,
+	// %2e%2e%2f, %252f, ..;/ and a NUL-prefixed variant). The taint
+	// tracker cannot see through the guard.
 	body, err := os.ReadFile(filepath.Join(vdir, name))
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
@@ -114,6 +120,8 @@ func handleGET(w http.ResponseWriter, r *http.Request, vdir string) {
 	}
 	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
+	// #nosec G705 -- not an XSS sink. The body is an iCalendar file
+	// served as text/calendar, never interpreted as HTML by a client.
 	_, _ = w.Write(body)
 }
 
@@ -145,6 +153,7 @@ func handlePUT(w http.ResponseWriter, r *http.Request, vdir string) {
 			return
 		}
 	}
+	// #nosec G703 -- same single-segment guard as handleGET.
 	if err := os.WriteFile(filepath.Join(vdir, name), buf, 0o600); err != nil {
 		http.Error(w, "write failed", http.StatusInternalServerError)
 		return
@@ -159,6 +168,7 @@ func handleDELETE(w http.ResponseWriter, r *http.Request, vdir string) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	// #nosec G703 -- same single-segment guard as handleGET.
 	if err := os.Remove(filepath.Join(vdir, name)); err != nil {
 		if os.IsNotExist(err) {
 			http.Error(w, "not found", http.StatusNotFound)
