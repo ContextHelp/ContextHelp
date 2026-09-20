@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +12,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
@@ -27,6 +27,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/spf13/viper"
+	"hop.top/kit/go/console/output"
 	kitstyles "hop.top/kit/go/console/tui/styles"
 )
 
@@ -185,7 +186,16 @@ func dbPathForInstance(nameOrPort string) (string, error) {
 			return info.DBPath, nil
 		}
 	}
-	return "", fmt.Errorf("no running dpkms instance named %q — use `dpkms ps` to list instances", nameOrPort)
+	// A declared dependency ctxt could not reach: the instance is named
+	// and routable, nothing is listening. kit's PREREQUISITE (exit 70)
+	// is the class — the invocation was correct and ctxt's own logic
+	// never ran, so the caller repairs the environment and re-runs the
+	// identical command rather than backing off or changing the input.
+	// The recovery command moves out of the prose and into the
+	// envelope's SuggestedFix, where a machine reader can act on it.
+	e := output.PrerequisiteError(fmt.Sprintf("no running dpkms instance named %q", nameOrPort))
+	e.SuggestedFix = "run `dpkms ps` to list running instances, or start one with `dpkms serve`"
+	return "", e
 }
 
 // loadDetectors reads enabled detectors from the DB and registers them with the registry.
@@ -221,16 +231,26 @@ func loadDetectors(ctx context.Context, driver storage.StorageDriver, pipes inte
 	return nil
 }
 
-// isJSONOutput returns true when --format (or its --output alias) is "json".
+// isJSONOutput returns true when --format asks for a machine-readable
+// document (json or yaml) rather than the human table.
+//
+// The name is historical: every call site branches "structured vs
+// human", and the branch is now honored for yaml too instead of
+// falling through to the table. Pair it with outputJSON, which renders
+// in whichever of the two the caller actually asked for.
 func isJSONOutput() bool {
-	return viper.GetString("format") == "json"
+	return cliformat.Structured()
 }
 
-// outputJSON writes v as indented JSON to w.
+// outputJSON writes v to w in the active machine format (json or yaml),
+// normalising empty collections so they serialize as [] rather than
+// null.
 func outputJSON(w io.Writer, v any) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
+	// EncodeTo rather than Encode: -o names a destination file, and
+	// every caller here passes os.Stdout, so encoding straight to w
+	// would print the document and leave the requested file uncreated.
+	// nil cmd resolves to the command Bind recorded for this run.
+	return cliformat.EncodeTo(nil, w, v)
 }
 
 // printTable writes a text table with headers and rows to w.

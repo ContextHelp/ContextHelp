@@ -1,0 +1,104 @@
+schema_version: "1"
+scenario_id: delete-preview
+description: >-
+  Declining confirmation on an irreversible delete yields a preview an
+  agent can act on: a machine-readable envelope naming what would be
+  removed, how many objects match, and an explicit statement that
+  nothing was deleted — followed by unchanged reported state proving
+  it. A prompt string written for a human at a terminal is not a
+  preview; a caller cannot count it, and cannot distinguish "declined,
+  nothing happened" from "skipped the question and proceeded".
+binary: ctxt
+factor_coverage: [3, 5, 6, 8, 11]
+tier: 3
+story_ref:
+  story_id: ctxt.conformance.delete-preview
+  story_path: stories/delete-preview.yaml
+  content_hash: "sha256:6b7331394fc78233f5bbe5bf4a555f44d8647af1368e27fddb2575b08eec1e1b"
+steps:
+  - id: preview_declined
+    invoke: ["ctxt", "delete", "--id", "obj_deadbeef", "--confirm=no", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: preview_all_declined
+    invoke: ["ctxt", "delete", "--all", "--confirm=no", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: state_after_preview
+    invoke: ["ctxt", "stats", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+assertions:
+  # ── F6: the preview is data, not a prompt ────────────────────────
+  # The whole point of declining is to inspect the plan. An agent
+  # needs fields it can read: that the operation was not carried out
+  # (inferring it from the absence of an error is guesswork), which
+  # objects a commit would destroy, and how many match — "would remove
+  # 0" and "would remove 40000" warrant very different next steps.
+  #
+  # Stated as a schema rather than per-field lookups deliberately: a
+  # field verb aborts as ungradable when stdout is not JSON at all,
+  # which would mask the very defect under test. A schema check calls
+  # non-JSON stdout what it is — a failure to honor the preview
+  # contract.
+  - id: preview-envelope-shape
+    kind: output_schema_matches
+    on: preview_declined
+    factor: 6
+    schema:
+      type: object
+      required: [applied, targets]
+      properties:
+        applied:
+          type: boolean
+          const: false
+        targets:
+          type: array
+  - id: preview-all-envelope-shape
+    kind: output_schema_matches
+    on: preview_all_declined
+    factor: 6
+    schema:
+      type: object
+      required: [applied, matched]
+      properties:
+        applied:
+          type: boolean
+          const: false
+        matched:
+          type: integer
+
+  # ── F3: the preview belongs on stdout as structured output ───────
+  # A confirmation prompt echoed to stdout corrupts the very stream a
+  # caller asked to receive JSON on.
+  - id: preview-stream-discipline
+    kind: stream_discipline_pass
+    on: preview_declined
+    factor: 3
+  - id: preview-all-stream-discipline
+    kind: stream_discipline_pass
+    on: preview_all_declined
+    factor: 3
+
+  # ── F8: declining actually left the store alone ──────────────────
+  # The preview's own claim is not evidence. Reading the base's state
+  # afterwards is what proves the dry path was genuinely read-only.
+  - id: store-unchanged-after-preview
+    kind: output_field_equals
+    on: state_after_preview
+    factor: 8
+    path: knowledge_objects
+    value: 0
+    parse: json
+
+  # ── F5/F11: a declined preview is a successful inspection ────────
+  # Declining is the caller doing exactly what the gate asked. It must
+  # not be reported as failure, or every safe inspection looks like an
+  # error to a caller branching on exit status.
+  - id: preview-exits-success
+    kind: exit_code_equals
+    on: preview_declined
+    factor: 11
+    value: 0
+  - id: preview-all-exits-success
+    kind: exit_code_equals
+    on: preview_all_declined
+    factor: 11
+    value: 0

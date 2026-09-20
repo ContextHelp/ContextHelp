@@ -40,9 +40,9 @@ func TestStatsText(t *testing.T) {
 
 func TestStatsJSON(t *testing.T) {
 	db := setupTestDB(t)
-	out, err := db.exec("--output", "json", "stats")
+	out, err := db.exec("--format", "json", "stats")
 	if err != nil {
-		t.Fatalf("stats --output json should succeed: %v", err)
+		t.Fatalf("stats --format json should succeed: %v", err)
 	}
 	for _, want := range []string{
 		`"knowledge_objects"`,

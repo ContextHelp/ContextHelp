@@ -1,0 +1,22 @@
+schema_version: "1"
+binary: dpkms
+binary_version: 333b5a5
+recorder: xrr
+recorder_version: 0.1.0-alpha.3
+recorded_at: 2026-09-20T14:34:27Z
+scenario_id: dpkms/maintenance-preview
+scenario_version: 1.0.0
+story_ref:
+  story_id: dpkms.conformance.maintenance-preview
+  story_path: story.yaml
+  content_hash: sha256:2b6cab3b5ff0c4394638cb0e5f18b5476174a96d9961e94886214cc339a3f8e2
+steps:
+  - id: preview_full_pass
+    cassette_dir: steps/preview_full_pass/cassette
+    captures: steps/preview_full_pass
+  - id: preview_vacuum
+    cassette_dir: steps/preview_vacuum/cassette
+    captures: steps/preview_vacuum
+  - id: preview_prune
+    cassette_dir: steps/preview_prune/cassette
+    captures: steps/preview_prune

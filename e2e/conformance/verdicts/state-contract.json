@@ -1,0 +1,111 @@
+{
+  "scenario_id": "state-contract",
+  "schema_version": "1",
+  "verdict": "pass",
+  "scored_at": "2026-09-20T14:34:29.827846Z",
+  "grader_version": "1.0.0",
+  "rules_version": "2026.05.12.1",
+  "tier": 3,
+  "facets": [
+    {
+      "factor": 3,
+      "status": "pass"
+    },
+    {
+      "factor": 8,
+      "status": "pass"
+    },
+    {
+      "factor": 5,
+      "status": "pass"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "instances-stdout-is-json",
+      "kind": "stream_discipline_pass",
+      "factor": 3,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    },
+    {
+      "id": "jobs-stdout-is-json",
+      "kind": "stream_discipline_pass",
+      "factor": 3,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    },
+    {
+      "id": "detectors-stdout-is-json",
+      "kind": "stream_discipline_pass",
+      "factor": 3,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    },
+    {
+      "id": "instances-empty-fleet-is-an-empty-collection",
+      "kind": "output_schema_matches",
+      "factor": 8,
+      "status": "pass",
+      "expected": "schema-valid"
+    },
+    {
+      "id": "jobs-reports-total",
+      "kind": "output_field_equals",
+      "factor": 8,
+      "status": "pass",
+      "observed": 0,
+      "expected": 0
+    },
+    {
+      "id": "jobs-empty-queue-is-empty-collection",
+      "kind": "output_field_count",
+      "factor": 8,
+      "status": "pass",
+      "observed": 0,
+      "expected": 0
+    },
+    {
+      "id": "detectors-names-collection",
+      "kind": "output_field_present",
+      "factor": 8,
+      "status": "pass",
+      "observed": "detectors",
+      "expected": "present"
+    },
+    {
+      "id": "jobs-envelope-shape",
+      "kind": "output_schema_matches",
+      "factor": 5,
+      "status": "pass",
+      "expected": "schema-valid"
+    },
+    {
+      "id": "instances-envelope-shape",
+      "kind": "output_schema_matches",
+      "factor": 5,
+      "status": "pass",
+      "expected": "schema-valid"
+    },
+    {
+      "id": "instances-listing-is-read-only",
+      "kind": "exit_code_class",
+      "factor": 8,
+      "status": "pass",
+      "observed": 0,
+      "expected": [
+        "OK"
+      ]
+    },
+    {
+      "id": "jobs-listing-is-read-only",
+      "kind": "exit_code_class",
+      "factor": 8,
+      "status": "pass",
+      "observed": 0,
+      "expected": [
+        "OK"
+      ]
+    }
+  ]
+}

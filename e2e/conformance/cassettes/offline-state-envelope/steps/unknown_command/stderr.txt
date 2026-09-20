@@ -1,0 +1,7 @@
+{
+  "code": "USAGE",
+  "message": "unknown command \"bogus-command\" for \"ctxt\"",
+  "suggested_fix": "run 'ctxt --help' for usage",
+  "exit_code": 2,
+  "transience": "permanent"
+}

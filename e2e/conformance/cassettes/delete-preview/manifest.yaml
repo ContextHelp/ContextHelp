@@ -1,0 +1,22 @@
+schema_version: "1"
+binary: ctxt
+binary_version: 333b5a5
+recorder: xrr
+recorder_version: 0.1.0-alpha.3
+recorded_at: 2026-09-20T14:34:24Z
+scenario_id: ctxt/delete-preview
+scenario_version: 1.0.0
+story_ref:
+  story_id: ctxt.conformance.delete-preview
+  story_path: story.yaml
+  content_hash: sha256:6b7331394fc78233f5bbe5bf4a555f44d8647af1368e27fddb2575b08eec1e1b
+steps:
+  - id: preview_declined
+    cassette_dir: steps/preview_declined/cassette
+    captures: steps/preview_declined
+  - id: preview_all_declined
+    cassette_dir: steps/preview_all_declined/cassette
+    captures: steps/preview_all_declined
+  - id: state_after_preview
+    cassette_dir: steps/state_after_preview/cassette
+    captures: steps/state_after_preview

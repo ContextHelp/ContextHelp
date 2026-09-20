@@ -20,6 +20,19 @@ var ErrEntityDefinitionUnavailable = errors.New("entity definition unavailable: 
 // and doctor can report a clear diagnosis instead of a mid-migration SQL error.
 var ErrCapabilityMissing = errors.New("storage capability missing")
 
+// ErrNotFound is the cross-backend sentinel for "the row you asked for
+// does not exist". Backends return errors wrapping it so callers can
+// tell a missing record from a failed query without matching on message
+// text — the CLI needs that distinction to answer a missing ref with a
+// NOT_FOUND envelope and a "try ctxt find" hint, rather than the
+// uncharacterized GENERIC it owes a real storage failure.
+//
+// Lives here, beside the other cross-backend sentinels, rather than in
+// each driver: sqlite and postgres each had their own unexported
+// not-found error, so the same condition was unmatchable from outside
+// the driver and unequal between drivers.
+var ErrNotFound = errors.New("not found")
+
 // Alias represents a human-readable name that resolves to a knowledge object ID.
 // The canonical definition lives in pkg/pluginapi.
 type Alias = pluginapi.Alias

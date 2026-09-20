@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -86,6 +87,12 @@ func init() {
 		"read secret value from file path (use - for stdin)")
 	secretSetCmd.Flags().BoolVar(&secretSetPrompt, "prompt", false,
 		"read secret value from an interactive secure prompt")
+
+	cliconv.WithSideEffect(secretGetCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(secretListCmd, cliconv.SideEffectRead)
+	// secret set overwrites any existing value at the key, and the prior
+	// value is not recoverable from the store. Destructive.
+	cliconv.WithSideEffect(secretSetCmd, cliconv.SideEffectDestructive)
 }
 
 func runSecretGet(cmd *cobra.Command, args []string) error {

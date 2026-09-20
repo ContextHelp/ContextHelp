@@ -30,7 +30,7 @@ func TestDoctorText(t *testing.T) {
 
 func TestDoctorJSON(t *testing.T) {
 	db := setupTestDB(t)
-	out, err := db.exec("--output", "json", "doctor")
+	out, err := db.exec("--format", "json", "doctor")
 	if err != nil {
 		t.Fatalf("doctor --output json should succeed: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestDoctorJSON(t *testing.T) {
 
 func TestDoctorCheckFlag(t *testing.T) {
 	db := setupTestDB(t)
-	out, err := db.exec("--output", "json", "doctor", "--check", "orphans")
+	out, err := db.exec("--format", "json", "doctor", "--check", "orphans")
 	if err != nil {
 		t.Fatalf("doctor --check orphans should succeed: %v", err)
 	}

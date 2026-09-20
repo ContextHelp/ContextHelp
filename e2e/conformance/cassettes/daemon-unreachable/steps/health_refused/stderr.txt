@@ -1,0 +1,7 @@
+{
+  "code": "TRANSIENT",
+  "message": "healthcheck http://localhost:8080: Get \"http://localhost:8080/healthz\": dial tcp [::1]:8080: connect: connection refused",
+  "suggested_fix": "start the daemon with `dpkms serve`, or check for a running instance with `dpkms ps`, then retry",
+  "exit_code": 6,
+  "transience": "transient"
+}

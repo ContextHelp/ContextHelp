@@ -11,6 +11,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/output"
 )
 
 // resolveCmd is the one-shot resolver contract for external consumers
@@ -38,8 +39,9 @@ An entity whose content status is "thin" or "pending_pull" is an
 index-only stub: its body is empty until the content is pulled, and a
 warning is written to stderr.
 
-Exit codes follow the CLI convention: 0 on success, 1 on any error
-(including ref not found and an unsupported --format).
+Exit codes follow the standard class table: 0 on success, 2 for an
+unsupported --format or a bad invocation, 3 when the ref names
+nothing, 1 for any other failure.
 
 Examples:
   # Resolve a knowledge object to markdown
@@ -103,6 +105,24 @@ type resolveProvenance struct {
 func runResolve(cmd *cobra.Command, args []string) error {
 	ref := args[0]
 
+	// Read --format from the inherited kit persistent flag (same pattern
+	// as show.go) — cobra resolves inherited persistent flags through
+	// Flags(). isJSONOutput() additionally honors the viper-bound value
+	// set by the --output shim.
+	format, _ := cmd.Flags().GetString("format") //nolint:errcheck // flag is registered by kit; absence yields "" and the markdown default
+	wantJSON := format == "json" || isJSONOutput()
+
+	// Reject an unsupported format before the lookup, not after it.
+	// The format is a property of the invocation, so it is wrong the
+	// moment it is typed; checking it after the ref resolves made
+	// `resolve <missing-ref> --format yaml` report NOT_FOUND and hid
+	// the usage error behind a lookup that was never going to matter.
+	// A caller retrying against a different ref would keep failing.
+	if !wantJSON && !isSupportedResolveFormat(format) {
+		return output.UsageError(fmt.Sprintf(
+			"unsupported format %q for resolve (want: markdown, json)", format))
+	}
+
 	svc, cleanup, err := newService()
 	if err != nil {
 		return err
@@ -115,7 +135,7 @@ func runResolve(cmd *cobra.Command, args []string) error {
 	if strings.HasPrefix(ref, "obj_") {
 		obj, err := svc.GetObject(ctx, ref)
 		if err != nil {
-			return fmt.Errorf("resolve object %q: %w", ref, err)
+			return refLookupError("object", ref, err)
 		}
 		doc := projection.ProjectDocument(obj)
 		body := doc.Body
@@ -165,7 +185,7 @@ func runResolve(cmd *cobra.Command, args []string) error {
 		slug := strings.TrimPrefix(ref, "@")
 		entity, err := svc.Store.Entities().Resolve(ctx, slug)
 		if err != nil {
-			return fmt.Errorf("resolve entity %q: %w", ref, err)
+			return refLookupError("entity", ref, err)
 		}
 		// An index-only stub has no body to resolve. Warn on stderr so the
 		// condition is visible to markdown consumers too (stdout stays
@@ -192,23 +212,15 @@ func runResolve(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Read --format from the inherited kit persistent flag (same pattern
-	// as show.go) — cobra resolves inherited persistent flags through
-	// Flags(). isJSONOutput() additionally honors the viper-bound value
-	// set by the --output shim.
-	format, _ := cmd.Flags().GetString("format") //nolint:errcheck // flag is registered by kit; absence yields "" and the markdown default
-	if format == "json" || isJSONOutput() {
+	// A machine format (json or yaml) renders the whole envelope; the
+	// root's format gate has already rejected anything unknown, so no
+	// local allow-list is needed here.
+	if isJSONOutput() {
 		return outputJSON(os.Stdout, res)
 	}
-	// Anything other than json/markdown is unsupported: reject it rather
-	// than silently emitting markdown under a success exit code. kit v0.5
-	// reports an unset --format as "table"; treat that (and "") as the
-	// markdown default.
-	if format != "" && format != "table" && format != "markdown" && format != "md" {
-		return fmt.Errorf("unsupported format %q for resolve (want: markdown, json)", format)
-	}
 
-	// Markdown (default; kit v0.5 reports unset --format as "table").
+	// Markdown is the prose default, and the spelling kit reports for
+	// an unset --format ("table") lands here too.
 	if res.Title != "" {
 		fmt.Printf("# %s\n\n", res.Title)
 	}
@@ -216,4 +228,18 @@ func runResolve(cmd *cobra.Command, args []string) error {
 		fmt.Println(res.Body)
 	}
 	return nil
+}
+
+// isSupportedResolveFormat reports whether format is one resolve can
+// render as markdown. Anything else is rejected rather than silently
+// emitting markdown under a success exit code. kit v0.5 reports an
+// unset --format as "table"; treat that (and "") as the markdown
+// default. The json case is handled by the caller, which also honors
+// the viper-bound --output shim.
+func isSupportedResolveFormat(format string) bool {
+	switch format {
+	case "", "table", "markdown", "md":
+		return true
+	}
+	return false
 }

@@ -10,12 +10,14 @@ import (
 
 	"charm.land/fang/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/banner"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/logger"
 	internalversion "github.com/ideacrafterslabs/ctxt/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	kitcli "hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/output"
 )
 
 // binName selects which file in the shared `contexthelp/` config
@@ -58,8 +60,8 @@ var (
 			{Name: "instance", Usage: "name of dpkms instance to target (default: unnamed)"},
 		},
 		// Hook runs after kit's built-in chain (chdir → identity → peer →
-		// progress); we use it for the --output→--format compatibility shim
-		// and verbose logger init.
+		// progress); we use it to reject an unknown --format and to init
+		// the verbose logger.
 		Hooks: kitcli.Hooks{
 			PrePersistentRunE: func(cmd *cobra.Command, _ []string) error {
 				// Fatal -c/--config failure stashed by initConfig
@@ -68,10 +70,14 @@ var (
 				if initConfigErr != nil {
 					return initConfigErr
 				}
-				if outFlag := cmd.Root().PersistentFlags().Lookup("output"); outFlag != nil && outFlag.Changed {
-					val := outFlag.Value.String()
-					_ = cmd.Root().PersistentFlags().Set("format", val)
-					viper.Set("format", val)
+				// Publish the executing command so --format resolves
+				// from the real flag, then reject an unknown value
+				// before any command body runs — a bogus value must
+				// never reach a renderer that would fall back to the
+				// human table under exit 0.
+				cliformat.Bind(cmd)
+				if err := cliformat.ValidateActive(); err != nil {
+					return err
 				}
 				count, _ := cmd.Root().PersistentFlags().GetCount("verbose")
 				logger.Init(count > 0)
@@ -126,7 +132,7 @@ func init() {
 
 	// PersistentPreRunE chain is wired via kitcli.Config.Hooks.PrePersistentRunE
 	// at package load (see root var block above). Kit composes:
-	//   chdir → identity → peer → progress → our hook (output shim + logger init)
+	//   chdir → identity → peer → progress → our hook (format gate + logger init)
 
 	cobra.OnInitialize(initConfig)
 }
@@ -163,24 +169,101 @@ func applyCommandGroups() {
 	}
 }
 
-// ExitCodeFor maps an error returned from Execute to a process exit
-// code. PolicyDeniedError (and the equivalent ErrPolicyDenied surfaced
-// by the API client when the daemon returns 409 POLICY_DENIED) maps
-// to 4 — the kit-canonical CONFLICT exit. Any other non-nil error
-// maps to 1; nil maps to 0.
+// fallbackExitCode is the code dpkms reports for a failure it cannot
+// place in kit's taxonomy, and for a class kit itself does not know.
+//
+// GENERIC (1) rather than 0 or a fresh number: 1 is the spec's
+// catch-all failure slot, so an unclassified error still reads as a
+// failure to every caller, and a class kit later adds surfaces as "not
+// yet classified" rather than as a collision with USAGE or NOT_FOUND.
+// [output.ExitCodeForClass] deliberately declines to pick a fallback
+// (its second result is false for anything it does not define) so the
+// choice is made here, once, in the open.
+const fallbackExitCode = output.ExitGeneric
+
+// ExitCodeFor maps an error returned from [Execute] to a process exit
+// code, using kit's standard class table as the single source of truth.
+// nil maps to 0.
+//
+// Resolution order, most specific first:
+//
+//  1. An error carrying a kit envelope (*output.Error, or anything
+//     wrapping one) already names its class — kit's own seams build
+//     these for flag-parse failures, Args-arity failures and the
+//     unknown-subcommand refusal, and installErrorClassification builds
+//     them for the shapes dpkms returns as bare errors. Its ExitCode is
+//     authoritative; when the envelope carries only a Code, the class
+//     table resolves it.
+//  2. A dpkms-owned classification (see classifyErr), for an error that
+//     reached here without passing through the RunE middleware.
+//  3. fallbackExitCode.
+//
+// Previously this table had exactly one entry — ErrPolicyDenied → 4 —
+// and everything else was 1. One central mapping rather than
+// per-command exits: the classes are a property of the failure, not of
+// which verb produced it, and a table each command keeps its own copy
+// of is a table that drifts.
 func ExitCodeFor(err error) int {
 	if err == nil {
-		return 0
+		return output.ExitOK
 	}
-	if errors.Is(err, ErrPolicyDenied) {
-		return 4
+
+	if code, ok := exitCodeFromEnvelope(err); ok {
+		return code
 	}
-	return 1
+
+	if class, ok := classifyErr(err); ok {
+		if code, known := output.ExitCodeForClass(class); known {
+			return code
+		}
+	}
+
+	return fallbackExitCode
+}
+
+// exitCodeFromEnvelope reads the exit code off a kit error envelope
+// anywhere in err's chain. An envelope whose ExitCode is unset (a
+// hand-built *output.Error that named only a Code) falls back to the
+// class table, so the two spellings agree.
+func exitCodeFromEnvelope(err error) (int, bool) {
+	var env *output.Error
+	if !errors.As(err, &env) || env == nil {
+		return 0, false
+	}
+	if env.ExitCode != 0 {
+		return env.ExitCode, true
+	}
+	if code, ok := output.ExitCodeForClass(env.Code); ok {
+		return code, true
+	}
+	return 0, false
 }
 
 // Execute runs dpkms via fang (styled help + errors). We pass WithoutVersion
 // so fang doesn't intercept --version; ctxt has its own format with --check.
 func Execute() error {
+	prepareTree()
+
+	return fang.Execute(context.Background(), rootCmd,
+		fang.WithoutVersion(),
+		// Single stderr writer for a failed run: suppresses errors
+		// WrapRunE already rendered so one failure is not printed
+		// twice, once as an envelope and once as fang prose.
+		fang.WithErrorHandler(envelopeErrorHandler),
+	)
+}
+
+// prepareTree applies every pre-flight step Execute performs before
+// handing the tree to fang: kit's setup and kit's RunE middleware
+// chain.
+//
+// Split out of Execute so tests can assert on the prepared tree.
+// Execute's remaining statement runs the CLI for real, which a test
+// cannot drive, and the step most easily lost in a merge —
+// root.WrapRunE — is invisible until a destructive command runs
+// unguarded. Every step here is idempotent, so calling this twice is
+// safe.
+func prepareTree() {
 	rootCmd.InitDefaultCompletionCmd()
 	applyCommandGroups()
 	root.ApplyGroupVisibility()
@@ -190,9 +273,27 @@ func Execute() error {
 			break
 		}
 	}
-	return fang.Execute(context.Background(), rootCmd,
-		fang.WithoutVersion(),
-	)
+
+	// Kit's RunE middleware chain, of which the confirmation gate is
+	// the outermost link. Without this call a kit/side-effect or
+	// kit/destructive-token annotation on any leaf is an inert
+	// declaration: --confirm-token is never registered as a flag and
+	// destructive commands run unchallenged.
+	//
+	// kit's own Root.Execute calls this; dpkms replicates that method
+	// rather than delegating (see the comment above) and had dropped
+	// this step. Idempotent — leaves already wrapped are skipped — so
+	// a second Execute in the same process is safe.
+	//
+	// Error classification is installed FIRST, and the order is load
+	// bearing: kit's WrapRunE generalizes anything that does not
+	// already carry an envelope to GENERIC / exit 1 at the outermost
+	// layer. A classifier installed after it would only ever see that
+	// GENERIC envelope and could no longer tell "unclassifiable" from
+	// "not yet classified". Installed first, kit's wrapper finds the
+	// envelope already present and passes it through untouched.
+	installErrorClassification(rootCmd)
+	root.WrapRunE()
 }
 
 func printVersion(cmd *cobra.Command) {

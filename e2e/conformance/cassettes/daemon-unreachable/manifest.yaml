@@ -1,0 +1,22 @@
+schema_version: "1"
+binary: dpkms
+binary_version: 333b5a5
+recorder: xrr
+recorder_version: 0.1.0-alpha.3
+recorded_at: 2026-09-20T14:34:27Z
+scenario_id: dpkms/daemon-unreachable
+scenario_version: 1.0.0
+story_ref:
+  story_id: dpkms.conformance.daemon-unreachable
+  story_path: story.yaml
+  content_hash: sha256:376aca37213254b29fa9ac3fefcd6720aaea31c8f7bd1a1c46a9a62e2ae3bdde
+steps:
+  - id: health_refused
+    cassette_dir: steps/health_refused/cassette
+    captures: steps/health_refused
+  - id: job_absent
+    cassette_dir: steps/job_absent/cassette
+    captures: steps/job_absent
+  - id: unknown_flag
+    cassette_dir: steps/unknown_flag/cassette
+    captures: steps/unknown_flag

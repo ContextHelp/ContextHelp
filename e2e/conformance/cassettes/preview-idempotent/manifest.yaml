@@ -1,0 +1,22 @@
+schema_version: "1"
+binary: dpkms
+binary_version: 333b5a5
+recorder: xrr
+recorder_version: 0.1.0-alpha.3
+recorded_at: 2026-09-20T14:34:27Z
+scenario_id: dpkms/preview-idempotent
+scenario_version: 1.0.0
+story_ref:
+  story_id: dpkms.conformance.preview-idempotent
+  story_path: story.yaml
+  content_hash: sha256:a4c6161b54ccd274bedc464067de8de1fd8f50ef5d324686bda0bc1b1aa268ef
+steps:
+  - id: preview_first
+    cassette_dir: steps/preview_first/cassette
+    captures: steps/preview_first
+  - id: preview_repeat
+    cassette_dir: steps/preview_repeat/cassette
+    captures: steps/preview_repeat
+  - id: queue_after
+    cassette_dir: steps/queue_after/cassette
+    captures: steps/queue_after

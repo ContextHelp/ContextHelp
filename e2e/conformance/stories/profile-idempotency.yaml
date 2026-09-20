@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.conformance.profile-idempotency
+title: Re-assert a setting without fearing the second attempt
+binary: ctxt
+intent: |
+  An agent reconciles a machine toward a desired configuration and
+  cannot know whether a previous run already got there — it may have
+  crashed, been retried, or be one of several workers. So it simply
+  asserts the desired state and re-asserts it. Selecting the active
+  focus profile is such an assertion: the first call and the second
+  must leave the same profile selected, report that outcome the same
+  way, and exit the same way. An operation that succeeds once and then
+  errors on the identical repeat forces the agent to read current state
+  before every write, or to treat its own retries as failures.
+steps:
+  - id: create
+    intent: |
+      Bring the profile into existence so there is something to select.
+    invoke: ["ctxt", "profile", "create", "reconcile-demo", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: select
+    intent: |
+      Assert that this profile is the active default.
+    invoke: ["ctxt", "profile", "default", "reconcile-demo", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: select_again
+    intent: |
+      Assert the very same thing a second time, as a retried or
+      duplicated reconcile would, and get the same answer as the first
+      attempt.
+    invoke: ["ctxt", "profile", "default", "reconcile-demo", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: converged
+    intent: |
+      Read back which profile is active and confirm the repeated
+      assertion converged on the intended one.
+    invoke: ["ctxt", "profile", "list", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: create_again
+    intent: |
+      Re-run the creation step the same way a retry would, and learn
+      from the outcome whether the object already existed — without
+      that costing the run its exit status if nothing is actually
+      wrong.
+    invoke: ["ctxt", "profile", "create", "reconcile-demo", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]

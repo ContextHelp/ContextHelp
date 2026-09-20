@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.conformance.delete-preview
+title: See what a deletion would remove before it removes anything
+binary: ctxt
+intent: |
+  An agent is asked to prune a knowledge base. Deletion is
+  irreversible, so before committing it wants to see the plan: which
+  objects match, how many there are, and confirmation that nothing has
+  been touched yet. It declines confirmation to get that preview. The
+  preview has to arrive as data it can inspect and count — an agent
+  cannot read a prompt written for a human at a terminal, and must
+  never be left guessing whether declining actually prevented the
+  delete or merely skipped a question.
+steps:
+  - id: preview_declined
+    intent: |
+      Ask to delete a specific object while declining confirmation, and
+      receive a machine-readable preview naming the object that would
+      go and stating that nothing was removed.
+    invoke: ["ctxt", "delete", "--id", "obj_deadbeef", "--confirm=no", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: preview_all_declined
+    intent: |
+      Ask to delete everything while declining confirmation, and read
+      the count of what would be affected off the preview before ever
+      committing to the destructive form.
+    invoke: ["ctxt", "delete", "--all", "--confirm=no", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: state_after_preview
+    intent: |
+      Confirm from the base's own reported state that the declined
+      previews left the store exactly as it was.
+    invoke: ["ctxt", "stats", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]

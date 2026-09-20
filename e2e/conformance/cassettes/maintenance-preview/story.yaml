@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.conformance.maintenance-preview
+title: See what maintenance would touch before letting it touch anything
+binary: dpkms
+intent: |
+  The store has grown and maintenance is overdue, but the operator will
+  not run a reclaim pass blind against the only copy of their knowledge.
+  They ask the maintenance pass to report what it would do, then ask the
+  same question of the individual reclaim steps they might run instead.
+  Every step that writes must accept the preview request and answer with
+  a machine-readable plan of the actions it would take; a step that
+  cannot be previewed must say so as a gap in its own contract, not as
+  an internal defect report aimed at whoever wrote the command.
+steps:
+  - id: preview_full_pass
+    intent: |
+      Report every maintenance action without executing any of them, as
+      JSON, so the plan can be reviewed before it is approved.
+    invoke: ["dpkms", "housekeeping", "run", "--dry-run", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: preview_vacuum
+    intent: |
+      Ask the space-reclaim step alone what it would do before running it.
+    invoke: ["dpkms", "housekeeping", "vacuum", "--dry-run", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: preview_prune
+    intent: |
+      Ask the row-removal step what it would delete before it deletes it.
+    invoke: ["dpkms", "housekeeping", "prune", "--dry-run", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]

@@ -1,0 +1,170 @@
+{
+  "scenario_id": "state-transparency",
+  "schema_version": "1",
+  "verdict": "pass",
+  "scored_at": "2026-09-20T14:34:29.925536Z",
+  "grader_version": "1.0.0",
+  "rules_version": "2026.05.12.1",
+  "tier": 3,
+  "facets": [
+    {
+      "factor": 8,
+      "status": "pass"
+    },
+    {
+      "factor": 5,
+      "status": "pass"
+    },
+    {
+      "factor": 3,
+      "status": "pass"
+    },
+    {
+      "factor": 11,
+      "status": "pass"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "stats-reports-object-count",
+      "kind": "output_field_present",
+      "factor": 8,
+      "status": "pass",
+      "observed": "knowledge_objects",
+      "expected": "present"
+    },
+    {
+      "id": "stats-reports-type-breakdown",
+      "kind": "output_field_present",
+      "factor": 8,
+      "status": "pass",
+      "observed": "objects_by_type",
+      "expected": "present"
+    },
+    {
+      "id": "stats-reports-entity-count",
+      "kind": "output_field_present",
+      "factor": 8,
+      "status": "pass",
+      "observed": "entities",
+      "expected": "present"
+    },
+    {
+      "id": "stats-reports-queue-pending",
+      "kind": "output_field_present",
+      "factor": 8,
+      "status": "pass",
+      "observed": "jobs.pending",
+      "expected": "present"
+    },
+    {
+      "id": "stats-reports-queue-running",
+      "kind": "output_field_present",
+      "factor": 8,
+      "status": "pass",
+      "observed": "jobs.running",
+      "expected": "present"
+    },
+    {
+      "id": "stats-empty-base-is-zero",
+      "kind": "output_field_equals",
+      "factor": 8,
+      "status": "pass",
+      "observed": 0,
+      "expected": 0
+    },
+    {
+      "id": "repeat-read-object-count-stable",
+      "kind": "output_field_equals",
+      "factor": 8,
+      "status": "pass",
+      "observed": 0,
+      "expected": 0
+    },
+    {
+      "id": "repeat-read-queue-stable",
+      "kind": "output_field_equals",
+      "factor": 8,
+      "status": "pass",
+      "observed": 0,
+      "expected": 0
+    },
+    {
+      "id": "list-envelope-has-total",
+      "kind": "output_field_present",
+      "factor": 5,
+      "status": "pass",
+      "observed": "total",
+      "expected": "present"
+    },
+    {
+      "id": "list-empty-total-is-zero",
+      "kind": "output_field_equals",
+      "factor": 5,
+      "status": "pass",
+      "observed": 0,
+      "expected": 0
+    },
+    {
+      "id": "find-echoes-query",
+      "kind": "output_field_equals",
+      "factor": 5,
+      "status": "pass",
+      "observed": "quarterly board review",
+      "expected": "quarterly board review"
+    },
+    {
+      "id": "find-reports-total",
+      "kind": "output_field_equals",
+      "factor": 5,
+      "status": "pass",
+      "observed": 0,
+      "expected": 0
+    },
+    {
+      "id": "find-names-retrieval-mode",
+      "kind": "output_field_present",
+      "factor": 5,
+      "status": "pass",
+      "observed": "mode",
+      "expected": "present"
+    },
+    {
+      "id": "stats-stream-discipline",
+      "kind": "stream_discipline_pass",
+      "factor": 3,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    },
+    {
+      "id": "list-stream-discipline",
+      "kind": "stream_discipline_pass",
+      "factor": 3,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    },
+    {
+      "id": "find-stream-discipline",
+      "kind": "stream_discipline_pass",
+      "factor": 3,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    },
+    {
+      "id": "stats-success-exit",
+      "kind": "exit_code_equals",
+      "factor": 11,
+      "status": "pass",
+      "observed": 0,
+      "expected": 0
+    },
+    {
+      "id": "find-miss-is-not-an-error",
+      "kind": "exit_code_equals",
+      "factor": 11,
+      "status": "pass",
+      "observed": 0,
+      "expected": 0
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+schema_version: "1"
+binary: dpkms
+binary_version: 333b5a5
+recorder: xrr
+recorder_version: 0.1.0-alpha.3
+recorded_at: 2026-09-20T14:34:27Z
+scenario_id: dpkms/output-flag-contract
+scenario_version: 1.0.0
+story_ref:
+  story_id: dpkms.conformance.output-flag-contract
+  story_path: story.yaml
+  content_hash: sha256:32b7e6057b2a63e6a309717c8f2ebb0ce24f568e34ec8635ba3fd64f4df3e7f2
+steps:
+  - id: read_help
+    cassette_dir: steps/read_help/cassette
+    captures: steps/read_help
+  - id: ask_as_documented
+    cassette_dir: steps/ask_as_documented/cassette
+    captures: steps/ask_as_documented
+  - id: ask_redirected
+    cassette_dir: steps/ask_redirected/cassette
+    captures: steps/ask_redirected

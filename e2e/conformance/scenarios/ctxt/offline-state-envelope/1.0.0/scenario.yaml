@@ -1,0 +1,116 @@
+schema_version: "1"
+scenario_id: offline-state-envelope
+description: >-
+  Orientation works with nothing running. Which build is in use and
+  which configuration is in force both answer as structured data
+  without contacting a server, because orientation is what an agent
+  needs precisely when something else is already broken. The paired
+  requirement is that a request the tool does not understand is
+  refused: an undefined subcommand that prints help under a success
+  status is recorded by a caller as a completed step, which is how a
+  typo becomes a silent no-op in an automated run.
+binary: ctxt
+factor_coverage: [3, 4, 5, 8, 11]
+tier: 3
+story_ref:
+  story_id: ctxt.conformance.offline-state-envelope
+  story_path: stories/offline-state-envelope.yaml
+  content_hash: "sha256:2d34f962d231375e91a715b076acb3d6db87d15e61d31968f533115b74bc1ff5"
+steps:
+  - id: version
+    invoke: ["ctxt", "version", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: config_path
+    invoke: ["ctxt", "config", "path", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: unknown_subcommand
+    invoke: ["ctxt", "profile", "bogus-subcommand", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: unknown_command
+    invoke: ["ctxt", "bogus-command", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+assertions:
+  # ── F8/F5: identity and effective configuration are readable ─────
+  # Version on a named field is what lets an agent attribute a later
+  # observation to a specific build instead of scraping a banner.
+  - id: version-reports-version-field
+    kind: output_field_present
+    on: version
+    factor: 8
+    path: version
+    parse: json
+  - id: version-names-binary
+    kind: output_field_equals
+    on: version
+    factor: 5
+    path: name
+    value: "ctxt"
+    parse: json
+  # Resolved config plus its provenance: "which file" is only half the
+  # answer, "and why that one" is what makes behavior attributable
+  # when a default, an env var, and a file disagree.
+  - id: config-reports-resolved-path
+    kind: output_field_present
+    on: config_path
+    factor: 8
+    path: path
+    parse: json
+  - id: config-reports-provenance
+    kind: output_field_present
+    on: config_path
+    factor: 8
+    path: source
+    parse: json
+
+  # ── F3: orientation output is machine-readable, offline ──────────
+  - id: version-stream-discipline
+    kind: stream_discipline_pass
+    on: version
+    factor: 3
+  - id: config-path-stream-discipline
+    kind: stream_discipline_pass
+    on: config_path
+    factor: 3
+
+  # ── F11: an unknown request fails, at both depths ────────────────
+  # A subcommand the group does not define must not exit 0. Printing
+  # the group's help under a success status is the silent-success
+  # failure mode: the caller's step log shows a completed action that
+  # never happened.
+  - id: unknown-subcommand-usage-class
+    kind: exit_code_class
+    on: unknown_subcommand
+    factor: 11
+    classes: [USAGE]
+  - id: unknown-command-usage-class
+    kind: exit_code_class
+    on: unknown_command
+    factor: 11
+    classes: [USAGE]
+
+  # ── F4: the rejection identifies what was not understood ─────────
+  # Echoing the offending token is what lets a caller fix the call
+  # rather than re-reading the whole help page.
+  - id: unknown-subcommand-echoes-token
+    kind: stderr_contains
+    on: unknown_subcommand
+    factor: 4
+    value: "bogus-subcommand"
+  - id: unknown-command-echoes-token
+    kind: stderr_contains
+    on: unknown_command
+    factor: 4
+    value: "bogus-command"
+  - id: unknown-command-points-at-help
+    kind: stderr_contains
+    on: unknown_command
+    factor: 4
+    value: "--help"
+
+  # ── F3: a rejected request leaves stdout empty ───────────────────
+  # Help text on stdout for a request that failed is data a pipe will
+  # consume as if it were the answer.
+  - id: unknown-subcommand-stream-discipline
+    kind: stream_discipline_pass
+    on: unknown_subcommand
+    factor: 3

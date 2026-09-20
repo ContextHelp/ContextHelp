@@ -1,0 +1,22 @@
+schema_version: "1"
+binary: ctxt
+binary_version: 333b5a5
+recorder: xrr
+recorder_version: 0.1.0-alpha.3
+recorded_at: 2026-09-20T14:34:25Z
+scenario_id: ctxt/resolve-contract
+scenario_version: 1.0.0
+story_ref:
+  story_id: ctxt.conformance.resolve-contract
+  story_path: story.yaml
+  content_hash: sha256:0cddab1ee346ae3184bf1048441f5fae1e024cd2b4fd0162f483e5009504744a
+steps:
+  - id: unknown_ref
+    cassette_dir: steps/unknown_ref/cassette
+    captures: steps/unknown_ref
+  - id: unknown_entity
+    cassette_dir: steps/unknown_entity/cassette
+    captures: steps/unknown_entity
+  - id: unknown_flag
+    cassette_dir: steps/unknown_flag/cassette
+    captures: steps/unknown_flag

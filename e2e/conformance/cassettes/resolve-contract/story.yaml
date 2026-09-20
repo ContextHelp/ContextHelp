@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.conformance.resolve-contract
+title: Tell a missing ref apart from an unusable output format
+binary: ctxt
+intent: |
+  A resolver an agent depends on fails legibly. The agent probes the two
+  ways resolution goes wrong — a ref that does not exist and an output
+  format the resolver does not support — and reads the failure off a
+  machine-readable envelope rather than prose. It needs a stable error
+  code, the failing ref echoed back, a named recovery command, and an
+  exit code whose class distinguishes "absent" from "malformed request",
+  so its retry logic can fix what it asked for instead of retrying
+  knowledge that is simply not there.
+steps:
+  - id: unknown_ref
+    intent: |
+      Resolve an object ref that was never stored, asking for JSON so the
+      failure arrives as a structured envelope.
+    invoke: ["ctxt", "resolve", "obj_deadbeef", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: unknown_entity
+    intent: |
+      Resolve an entity slug that was never registered, and read the
+      failing slug back off the envelope.
+    invoke: ["ctxt", "resolve", "@nonexistent.slug", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: unknown_flag
+    intent: |
+      Send a flag the resolver does not define, and be told which leaf's
+      help to consult rather than being silently ignored.
+    invoke: ["ctxt", "resolve", "obj_deadbeef", "--bogus-flag"]
+    capture: [exit_code, stdout, stderr]

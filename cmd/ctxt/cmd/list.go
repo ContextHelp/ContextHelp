@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/cursor"
 	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
@@ -164,12 +165,12 @@ func runList(cmd *cobra.Command, args []string) error {
 		if cursorName != "" {
 			fmt.Fprintln(os.Stderr, "warning: --cursor with --q does not gate by created_at; results unfiltered")
 		}
-		return printObjectResults(objects, total)
+		return printObjectResults(cmd, objects, total)
 	}
 
 	filter := buildObjectFilter()
 	if cursorName != "" {
-		return runListWithCursor(ctx, svc, filter, cursorName, advance)
+		return runListWithCursor(ctx, cmd, svc, filter, cursorName, advance)
 	}
 
 	// --facets: show metadata type count breakdown alongside results.
@@ -200,10 +201,10 @@ func runList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("list objects: %w", err)
 	}
-	return printObjectResults(objects, total)
+	return printObjectResults(cmd, objects, total)
 }
 
-func printObjectResults(objects []*storage.KnowledgeObject, total int) error {
+func printObjectResults(cmd *cobra.Command, objects []*storage.KnowledgeObject, total int) error {
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, map[string]any{
 			"objects": objects,
@@ -211,12 +212,43 @@ func printObjectResults(objects []*storage.KnowledgeObject, total int) error {
 		})
 	}
 
+	// csv/text/table project from objectRow's tags through kit's
+	// registry, so each renders as itself rather than falling back to
+	// the human table. The "(N total)" line is deliberately omitted
+	// there: it is prose, and on stdout it would sit in front of the
+	// header row and break every parser.
+	if cliformat.Rows() {
+		return cliformat.DispatchRows(cmd, cmd.OutOrStdout(), objectRows(objects))
+	}
+
 	fmt.Printf("Knowledge Objects (%d total)\n\n", total)
-	// Objects with a known duplicate are annotated with "(duplicate of <id>)".
-	// The duplicate_of field is set by the dedup pipeline step or by the "warn"/"keep"
-	// policy when near-duplicate detection (duplicates.check_similar) is enabled.
 	headers := []string{"ID", "Type", "Title", "Created"}
 	var rows [][]string
+	for _, r := range objectRows(objects) {
+		rows = append(rows, []string{r.ID, r.Type, r.Title, r.Created})
+	}
+	printTable(os.Stdout, headers, rows)
+	return nil
+}
+
+// objectRow is the row shape every tabular format projects from.
+type objectRow struct {
+	ID      string `table:"ID"`
+	Type    string `table:"Type"`
+	Title   string `table:"Title"`
+	Created string `table:"Created"`
+}
+
+// objectRows projects knowledge objects onto the row shape, applying
+// the same title resolution and duplicate annotation the human table
+// has always shown so the formats do not disagree on what a row says.
+//
+// Objects with a known duplicate are annotated "(dup:<id>)". The
+// duplicate_of field is set by the dedup pipeline step, or by the
+// "warn"/"keep" policy when near-duplicate detection
+// (duplicates.check_similar) is enabled.
+func objectRows(objects []*storage.KnowledgeObject) []objectRow {
+	rows := make([]objectRow, 0, len(objects))
 	for _, obj := range objects {
 		// Use projection for title; fall back to first summary then ID.
 		docProj := projection.ProjectDocument(obj)
@@ -234,15 +266,14 @@ func printObjectResults(objects []*storage.KnowledgeObject, total int) error {
 		if dupOf != "" {
 			title += " (dup:" + dupOf + ")"
 		}
-		rows = append(rows, []string{
-			obj.ID,
-			obj.Type,
-			title,
-			obj.CreatedAt.Format("2006-01-02 15:04"),
+		rows = append(rows, objectRow{
+			ID:      obj.ID,
+			Type:    obj.Type,
+			Title:   title,
+			Created: obj.CreatedAt.Format("2006-01-02 15:04"),
 		})
 	}
-	printTable(os.Stdout, headers, rows)
-	return nil
+	return rows
 }
 
 // currentSnapshot reads list flags into a QuerySnapshot for drift compare.
@@ -281,7 +312,7 @@ func splitNonEmpty(s string) []string {
 //   - empty result: cursor untouched
 //   - drift: warn to stderr, continue
 //   - JSON output: {cursor: ..., items: ..., advanced: bool}
-func runListWithCursor(ctx context.Context, svc listService, filter storage.ObjectFilter, name string, advance bool) error {
+func runListWithCursor(ctx context.Context, cmd *cobra.Command, svc listService, filter storage.ObjectFilter, name string, advance bool) error {
 	if err := cursor.ValidateName(name); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(2)
@@ -347,7 +378,7 @@ func runListWithCursor(ctx context.Context, svc listService, filter storage.Obje
 		}
 		return outputJSON(os.Stdout, out)
 	}
-	return printObjectResults(objects, total)
+	return printObjectResults(cmd, objects, total)
 }
 
 // listService captures the subset of *service.Service used by the cursor path.

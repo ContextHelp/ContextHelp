@@ -12,6 +12,27 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
+// errJobNotFound is returned by scanJob when no row matches.
+//
+// Mirrors the sqlite driver's sentinel so the same condition is the
+// same error across backends: storage.ErrNotFound is what the CLI
+// matches to answer NOT_FOUND, and sql.ErrNoRows is what AcquireNext
+// reads as "queue empty", not as a failure. Neither sentinel's text
+// enters the message — see the sqlite driver for why joining them
+// would put "sql: no rows in result set" back into Error().
+var errJobNotFound error = jobNotFoundError{}
+
+// jobNotFoundError is the "no such job" fact, phrased for whoever reads
+// it and matchable by either sentinel.
+type jobNotFoundError struct{}
+
+func (jobNotFoundError) Error() string { return "job not found" }
+
+// Is reports both sentinels without embedding their text.
+func (jobNotFoundError) Is(target error) bool {
+	return target == storage.ErrNotFound || target == sql.ErrNoRows
+}
+
 func (s *JobStore) Create(ctx context.Context, job *storage.Job) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO jobs (
 		id, type, status, payload, pipeline, source, result_id, error,
@@ -229,8 +250,8 @@ func scanJob(row *sql.Row) (*storage.Job, error) {
 		&j.ResultID, &j.Error, &j.RetryCount, &j.MaxRetries,
 		&j.CreatedAt, &j.UpdatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote, &idemKey)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, sql.ErrNoRows
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errJobNotFound
 		}
 		return nil, fmt.Errorf("scan job: %w", err)
 	}

@@ -1,0 +1,167 @@
+schema_version: "1"
+scenario_id: state-transparency
+description: >-
+  The knowledge base reports its own derived state as data. Object,
+  entity, and queue counts arrive on named fields of a JSON envelope
+  rather than a rendered dashboard; an empty store says so explicitly
+  instead of printing nothing; a search that matches nothing is
+  distinguishable from a search that failed; and two consecutive reads
+  of an unchanged base agree, so a later difference can be trusted to
+  mean the base actually changed.
+binary: ctxt
+factor_coverage: [3, 5, 8, 11]
+tier: 3
+story_ref:
+  story_id: ctxt.conformance.state-transparency
+  story_path: stories/state-transparency.yaml
+  content_hash: "sha256:b63ccc53c144f165b8817c13493a76a6d04ddbfb6639f1f847680e1a6e157d63"
+steps:
+  - id: stats
+    invoke: ["ctxt", "stats", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: stats_again
+    invoke: ["ctxt", "stats", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: list_empty
+    invoke: ["ctxt", "list", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: find_miss
+    invoke: ["ctxt", "find", "quarterly board review", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+assertions:
+  # ── F8: derived state is reported on named fields ────────────────
+  # An agent sizing up a base needs counts it can branch on. Each of
+  # these is a distinct decision input: how much is stored, how it
+  # breaks down, and whether work is still in flight.
+  - id: stats-reports-object-count
+    kind: output_field_present
+    on: stats
+    factor: 8
+    path: knowledge_objects
+    parse: json
+  - id: stats-reports-type-breakdown
+    kind: output_field_present
+    on: stats
+    factor: 8
+    path: objects_by_type
+    parse: json
+  - id: stats-reports-entity-count
+    kind: output_field_present
+    on: stats
+    factor: 8
+    path: entities
+    parse: json
+  # Queue depth is the field that tells an agent to wait rather than
+  # conclude the base is simply empty.
+  - id: stats-reports-queue-pending
+    kind: output_field_present
+    on: stats
+    factor: 8
+    path: jobs.pending
+    parse: json
+  - id: stats-reports-queue-running
+    kind: output_field_present
+    on: stats
+    factor: 8
+    path: jobs.running
+    parse: json
+  # An untouched base must say "zero", not leave the caller to infer it
+  # from an absent field.
+  - id: stats-empty-base-is-zero
+    kind: output_field_equals
+    on: stats
+    factor: 8
+    path: knowledge_objects
+    value: 0
+    parse: json
+
+  # ── F8: repeat reads of an unchanged base agree ──────────────────
+  # Without this, a caller cannot tell a real state change from
+  # reporting noise, and diffing successive reads becomes useless.
+  - id: repeat-read-object-count-stable
+    kind: output_field_equals
+    on: stats_again
+    factor: 8
+    path: knowledge_objects
+    value: 0
+    parse: json
+  - id: repeat-read-queue-stable
+    kind: output_field_equals
+    on: stats_again
+    factor: 8
+    path: jobs.total
+    value: 0
+    parse: json
+
+  # ── F5: enumeration and search carry a stable documented shape ───
+  # `total` is what makes emptiness explicit; a blank screen is
+  # ambiguous between "nothing stored" and "rendering failed".
+  - id: list-envelope-has-total
+    kind: output_field_present
+    on: list_empty
+    factor: 5
+    path: total
+    parse: json
+  - id: list-empty-total-is-zero
+    kind: output_field_equals
+    on: list_empty
+    factor: 5
+    path: total
+    value: 0
+    parse: json
+  # Echoing the query back proves the search actually ran on what was
+  # asked, which is what separates a miss from a failure.
+  - id: find-echoes-query
+    kind: output_field_equals
+    on: find_miss
+    factor: 5
+    path: query
+    value: "quarterly board review"
+    parse: json
+  - id: find-reports-total
+    kind: output_field_equals
+    on: find_miss
+    factor: 5
+    path: total
+    value: 0
+    parse: json
+  # Naming the retrieval mode lets a caller reason about why a miss
+  # happened — a lexical miss and a vector miss warrant different
+  # retries.
+  - id: find-names-retrieval-mode
+    kind: output_field_present
+    on: find_miss
+    factor: 5
+    path: mode
+    parse: json
+
+  # ── F3: structured data on stdout, diagnostics on stderr ─────────
+  # resolve-contract covers the failure path; these cover success,
+  # where a stray banner on stdout would corrupt a parse.
+  - id: stats-stream-discipline
+    kind: stream_discipline_pass
+    on: stats
+    factor: 3
+  - id: list-stream-discipline
+    kind: stream_discipline_pass
+    on: list_empty
+    factor: 3
+  - id: find-stream-discipline
+    kind: stream_discipline_pass
+    on: find_miss
+    factor: 3
+
+  # ── F11: a successful read exits 0 ───────────────────────────────
+  # A search matching nothing is a successful search. Conflating
+  # "found nothing" with failure would make every empty result look
+  # like an error to a caller branching on exit status.
+  - id: stats-success-exit
+    kind: exit_code_equals
+    on: stats
+    factor: 11
+    value: 0
+  - id: find-miss-is-not-an-error
+    kind: exit_code_equals
+    on: find_miss
+    factor: 11
+    value: 0

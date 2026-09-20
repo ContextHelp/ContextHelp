@@ -39,9 +39,11 @@ ctxt make brief|plan|summary|draft [--tag a,b] [--mention @entity.slug] [--since
 
 ```bash
 ctxt profile list
-ctxt profile show <name>
+ctxt profile view <name>
 ctxt profile create <name> --config <file>
-ctxt profile set-default <name>
+ctxt profile set <name>
+ctxt profile unset <name>
+ctxt profile rm <name> --confirm=yes
 ctxt config show|path|validate|edit
 ```
 

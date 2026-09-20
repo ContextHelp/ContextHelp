@@ -192,14 +192,17 @@ Manage focus profiles for contextual filtering:
 # List profiles
 ./bin/ctxt profile list
 
-# Show profile details
-./bin/ctxt profile show founder
+# View profile details
+./bin/ctxt profile view founder
 
 # Create custom profile
 ./bin/ctxt profile create myproject --config profile.yaml
 
 # Set default profile
-./bin/ctxt profile set-default founder
+./bin/ctxt profile set founder
+
+# Clear the default profile
+./bin/ctxt profile unset founder
 
 # Use profile with commands
 ./bin/ctxt analyze "Strategic insight" --profile founder

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
@@ -38,7 +39,7 @@ Examples:
   dpkms dev reindex-vectors
 
   # JSON output (indexed/failed counts + object IDs)
-  dpkms dev reindex-vectors --output json`,
+  dpkms dev reindex-vectors --format json`,
 	RunE: runDevReindexVectors,
 }
 
@@ -113,7 +114,7 @@ var devValidateRegistryCmd = &cobra.Command{
 
 Examples:
   dpkms dev validate-registry path/to/registry.yaml
-  dpkms dev validate-registry registry.yaml --output json`,
+  dpkms dev validate-registry registry.yaml --format json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runDevValidateRegistry,
 }
@@ -383,4 +384,16 @@ func init() {
 	devCmd.AddCommand(devValidateRegistryCmd)
 	devCmd.AddCommand(devInitPluginCmd)
 	devCmd.AddCommand(devGenDocsCmd)
+
+	// validate-registry only lints a YAML file on disk. Read.
+	cliconv.WithSideEffect(devValidateRegistryCmd, cliconv.SideEffectRead)
+	// reindex-vectors adds missing embeddings; existing vectors are left
+	// alone, so re-running converges. Write.
+	cliconv.WithSideEffect(devReindexVectorsCmd, cliconv.SideEffectWrite)
+	// init-plugin scaffolds a new directory; it refuses to clobber an
+	// existing slug. Write.
+	cliconv.WithSideEffect(devInitPluginCmd, cliconv.SideEffectWrite)
+	// gen-docs overwrites every file under the output directory. Local,
+	// regenerable output, but prior contents are gone. Destructive.
+	cliconv.WithSideEffect(devGenDocsCmd, cliconv.SideEffectDestructive)
 }

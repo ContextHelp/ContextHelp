@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
@@ -95,6 +97,15 @@ func init() {
 	detectorAddCmd.MarkFlagRequired("kind")
 	detectorAddCmd.MarkFlagRequired("pipeline")
 
+	// add creates a routing rule; enable/disable flip a boolean. All three
+	// are reversible by the opposite command, so Write, not Destructive.
+	cliconv.WithSideEffect(detectorAddCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(detectorEnableCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(detectorDisableCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(detectorListCmd, cliconv.SideEffectRead)
+	// remove deletes the detector row outright. Destructive.
+	cliconv.WithSideEffect(detectorRemoveCmd, cliconv.SideEffectDestructive)
+
 	detectorListCmd.Flags().String("kind", "", "filter by kind")
 	detectorListCmd.Flags().Bool("enabled", false, "show only enabled detectors")
 	detectorListCmd.Flags().Bool("disabled", false, "show only disabled detectors")
@@ -159,24 +170,86 @@ func runDetectorList(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("list detectors: %w", err)
 	}
 
+	// Keyed envelope for the same reason `ps` uses one: the registry
+	// listing names the collection it is reporting on, so a reader can
+	// tell an empty registry from a command that answered a different
+	// question, and a later count or filter echo can be added without
+	// changing the document's top-level type.
 	if isJSONOutput() {
-		return outputJSON(cmd.OutOrStdout(), detectors)
+		return outputJSON(cmd.OutOrStdout(), map[string]any{
+			"detectors": detectors,
+		})
+	}
+
+	rows := detectorRows(detectors)
+
+	// csv/text/table project from detectorRow's tags through kit's
+	// registry; human keeps the bordered admin table below.
+	if cliformat.Rows() {
+		return cliformat.DispatchRows(cmd, cmd.OutOrStdout(), rows)
 	}
 
 	headers := []string{"ID", "KIND", "NAME", "PIPELINE", "PATTERN", "PRIORITY", "ENABLED"}
-	rows := make([][]string, 0, len(detectors))
-	for _, d := range detectors {
-		enabled := "yes"
-		if !d.Enabled {
-			enabled = "no"
-		}
-		rows = append(rows, []string{
-			d.ID, string(d.Kind), d.Name, d.PipelineName, d.Pattern,
-			fmt.Sprintf("%d", d.Priority), enabled,
+	cells := make([][]string, 0, len(rows))
+	for _, r := range rows {
+		cells = append(cells, []string{
+			r.ID, r.Kind, r.Name, r.Pipeline, r.Pattern,
+			fmt.Sprintf("%d", r.Priority), r.Enabled,
 		})
 	}
-	printAdminTable(cmd.OutOrStdout(), headers, rows)
+	printAdminTable(cmd.OutOrStdout(), headers, cells)
 	return nil
+}
+
+// detectorRow is the single declaration every non-human format
+// projects from: kit reads these `table:""` tags to build the csv
+// header, the text key=value pairs and the table columns alike.
+//
+// Field order is the column order every format emits, so it matches
+// the table this command has always printed and is not free to change.
+// That fixes the layout: moving Priority to satisfy fieldalignment
+// would reorder the user-visible columns to save eight bytes on a
+// struct built a few at a time. The neighboring psRow/psBrowserRow
+// carry the same trade-off.
+//
+//nolint:govet // field order is the published column order
+type detectorRow struct {
+	ID       string `table:"ID"`
+	Kind     string `table:"KIND"`
+	Name     string `table:"NAME"`
+	Pipeline string `table:"PIPELINE"`
+	Pattern  string `table:"PATTERN"`
+	Priority int    `table:"PRIORITY"`
+	Enabled  string `table:"ENABLED"`
+}
+
+// detectorEnabledLabel spells the enabled flag the way the table has
+// always shown it.
+func detectorEnabledLabel(enabled bool) string {
+	if enabled {
+		return "yes"
+	}
+	return "no"
+}
+
+// detectorRows projects stored detectors onto the row shape. Enabled
+// stays the human "yes"/"no" the table has always shown rather than a
+// bool: json/yaml callers get the real boolean from the record itself,
+// and changing the tabular spelling would be a silent UX change.
+func detectorRows(detectors []*storage.DetectorRecord) []detectorRow {
+	rows := make([]detectorRow, 0, len(detectors))
+	for _, d := range detectors {
+		rows = append(rows, detectorRow{
+			ID:       d.ID,
+			Kind:     string(d.Kind),
+			Name:     d.Name,
+			Pipeline: d.PipelineName,
+			Pattern:  d.Pattern,
+			Priority: d.Priority,
+			Enabled:  detectorEnabledLabel(d.Enabled),
+		})
+	}
+	return rows
 }
 
 func runDetectorRemove(cmd *cobra.Command, args []string) error {

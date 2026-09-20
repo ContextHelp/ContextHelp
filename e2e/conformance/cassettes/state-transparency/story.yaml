@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.conformance.state-transparency
+title: Read the knowledge base's own account of what it holds
+binary: ctxt
+intent: |
+  An agent that is about to plan work over a knowledge base first asks
+  the base what it currently holds. It wants the answer as data, not as
+  a rendered dashboard: how many objects exist, how they break down by
+  type, how much work is queued and in what state. It reads those
+  counts to decide whether to ingest more, wait for a queue to drain,
+  or proceed. Two consecutive reads with nothing happening in between
+  must agree, otherwise the agent cannot tell a real change from
+  reporting noise.
+steps:
+  - id: stats
+    intent: |
+      Ask for the at-a-glance summary of the system as structured data
+      and read the object, entity, and queue counts off named fields.
+    invoke: ["ctxt", "stats", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: stats_again
+    intent: |
+      Ask a second time with nothing changed in between; the reported
+      state must be identical, so a later difference can be trusted to
+      mean the base actually changed.
+    invoke: ["ctxt", "stats", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: list_empty
+    intent: |
+      Enumerate the stored objects on an untouched base and read the
+      total off the envelope rather than inferring emptiness from a
+      blank screen.
+    invoke: ["ctxt", "list", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: find_miss
+    intent: |
+      Search for something that is not there and learn that the search
+      ran and returned nothing, as distinct from the search failing.
+    invoke: ["ctxt", "find", "quarterly board review", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]

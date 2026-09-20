@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"hop.top/kit/go/console/output"
@@ -29,7 +30,7 @@ var healthcheckCmd = &cobra.Command{
 	Use:   "healthcheck",
 	Short: "Probe a running dpkms instance via /healthz",
 	Long: `Calls GET /healthz on the configured dpkms instance and renders the
-envelope as a table. With --output json the daemon response is passed
+envelope as a table. With --format json the daemon response is passed
 through unchanged. Designed for launchd/systemd liveness probes:
 
   ProgramArguments: [dpkms, healthcheck, --quiet]
@@ -40,7 +41,7 @@ Exit codes:
 
 Examples:
   dpkms healthcheck
-  dpkms healthcheck --output json
+  dpkms healthcheck --format json
   dpkms healthcheck --watch                 # refresh every 2 seconds
   dpkms healthcheck --watch --interval 5    # refresh every 5 seconds`,
 	RunE: runHealthcheck,
@@ -51,6 +52,9 @@ func init() {
 	healthcheckCmd.Flags().Bool("watch", false, "refresh every --interval seconds until interrupted")
 	healthcheckCmd.Flags().Int("interval", 2, "seconds between refreshes when --watch is set")
 	healthcheckCmd.Flags().Bool("quiet", false, "suppress output; rely on exit code only")
+
+	// Probes GET /healthz and renders the envelope. No mutation. Read.
+	cliconv.WithSideEffect(healthcheckCmd, cliconv.SideEffectRead)
 }
 
 type healthcheckRow struct {
@@ -97,9 +101,12 @@ func healthcheckOnce(cmd *cobra.Command, serverURL string, quiet bool) error {
 	client := NewAPIClient(serverURL)
 	env, status, err := client.Healthz()
 	if err != nil {
-		if !quiet {
-			fmt.Fprintf(cmd.ErrOrStderr(), "healthcheck %s: %v\n", serverURL, err)
-		}
+		// No hand-written stderr line here. The returned error is
+		// rendered once, as a structured envelope, by kit's RunE
+		// middleware; printing the same text first put a bare prose
+		// line above the envelope, so `--format json` produced a
+		// document with a stray line on top of it and stderr parsed
+		// as neither.
 		return fmt.Errorf("healthcheck %s: %w", serverURL, err)
 	}
 

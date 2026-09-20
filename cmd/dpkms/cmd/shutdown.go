@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 )
@@ -33,6 +34,11 @@ Examples:
 func init() {
 	rootCmd.AddCommand(shutdownCmd)
 	shutdownCmd.Flags().Int("port", 0, "port of the instance to shut down (default: server-url port)")
+
+	// SIGTERM to a live daemon. The instance drains and exits; in-flight
+	// work is interrupted and the process does not come back on its own.
+	// Destructive.
+	cliconv.WithSideEffect(shutdownCmd, cliconv.SideEffectDestructive)
 }
 
 func runShutdown(cmd *cobra.Command, _ []string) error {

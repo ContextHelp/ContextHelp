@@ -1,0 +1,14 @@
+{
+  "command": "dpkms housekeeping vacuum",
+  "actions": [
+    {
+      "kind": "vacuum",
+      "target": "database:/var/folders/x6/lrc3lbzd1gs0wvmn_z_t76780000gn/T/dpkms-12fcc-record/maintenance-preview/data/contexthelp/db.sqlite",
+      "detail": "reclaim 0 KB of 544 KB (0 of 136 pages free)",
+      "count": 0,
+      "reversible": false
+    }
+  ],
+  "matched": 0,
+  "dry_run": true
+}

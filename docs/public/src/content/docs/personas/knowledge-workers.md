@@ -103,7 +103,7 @@ Check available profiles:
 
 ```bash
 ctxt profile list
-ctxt profile show <profile_name>
+ctxt profile view <profile_name>
 ```
 
 Use a profile in capture and search:
@@ -116,7 +116,7 @@ ctxt find "pricing experiment risks" --profile growth
 Set your default profile if needed:
 
 ```bash
-ctxt profile set-default <profile_name>
+ctxt profile set <profile_name>
 ```
 
 ### Step 5: Compose shareable outputs

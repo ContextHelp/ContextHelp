@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.conformance.format-contract
+title: Get the output format that was actually asked for
+binary: ctxt
+intent: |
+  An agent wires ctxt into a pipeline that parses its output. The help
+  text advertises a closed set of output formats, so the agent picks
+  one and expects the contract to hold: asking for YAML yields YAML,
+  and asking for a format that does not exist is refused loudly rather
+  than quietly downgraded to whatever the terminal would have shown a
+  human. A format flag that is silently ignored is the worst outcome
+  of the three — the pipeline keeps running and parses prose as if it
+  were data.
+steps:
+  - id: stats_yaml
+    intent: |
+      Ask the summary command for YAML, one of the formats the help
+      text lists, and receive a YAML document.
+    invoke: ["ctxt", "stats", "--format", "yaml", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: list_yaml
+    intent: |
+      Ask the enumeration command for YAML as well, so the same format
+      choice can be applied uniformly across a pipeline.
+    invoke: ["ctxt", "list", "--format", "yaml", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: stats_unknown_format
+    intent: |
+      Ask for a format the advertised set does not contain, and be
+      refused — naming the offending value — instead of silently being
+      handed human-rendered output.
+    invoke: ["ctxt", "stats", "--format", "bogus-format", "--no-hints"]
+    capture: [exit_code, stdout, stderr]

@@ -1,0 +1,22 @@
+schema_version: "1"
+binary: dpkms
+binary_version: 333b5a5
+recorder: xrr
+recorder_version: 0.1.0-alpha.3
+recorded_at: 2026-09-20T14:34:28Z
+scenario_id: dpkms/state-contract
+scenario_version: 1.0.0
+story_ref:
+  story_id: dpkms.conformance.state-contract
+  story_path: story.yaml
+  content_hash: sha256:a64c63676052640b3b19a5ff839ce74e9158f8d15e2f20de7e35c189c6ecaded
+steps:
+  - id: instances_json
+    cassette_dir: steps/instances_json/cassette
+    captures: steps/instances_json
+  - id: jobs_json
+    cassette_dir: steps/jobs_json/cassette
+    captures: steps/jobs_json
+  - id: detectors_json
+    cassette_dir: steps/detectors_json/cassette
+    captures: steps/detectors_json

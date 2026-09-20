@@ -24,6 +24,7 @@ import (
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/federation"
@@ -91,6 +92,10 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(serveCmd)
+
+	// Long-running session-bound daemon. Kit refuses --dry-run on this
+	// tier with a specific "no batch boundary" diagnostic.
+	cliconv.WithSideEffect(serveCmd, cliconv.SideEffectInteractive)
 
 	// Server flags
 	serveCmd.Flags().String("name", "", "instance name (URI-safe slug, e.g. 'work'); defaults to DB basename")

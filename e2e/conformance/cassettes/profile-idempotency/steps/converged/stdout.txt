@@ -1,0 +1,31 @@
+{
+  "default": "reconcile-demo",
+  "profiles": {
+    "reconcile-demo": {
+      "Default": false,
+      "Description": "Profile for reconcile-demo",
+      "Tags": [],
+      "MentionNamespaces": [],
+      "RerankBoosts": {},
+      "SearchStrategy": {
+        "Mode": "",
+        "RRF": {
+          "K": 0,
+          "FTSWeight": 0,
+          "VectorWeight": 0
+        },
+        "CandidatePool": {
+          "FTS": 0,
+          "Vector": 0
+        },
+        "MinScore": 0
+      },
+      "Schema": {
+        "version": 0,
+        "entity_types": null,
+        "topic_vocabulary": null,
+        "classification_rules": null
+      }
+    }
+  }
+}

@@ -35,7 +35,13 @@ repos:
         # rejects; they are covered by actionlint and compose config below.
         exclude: ^(docker-compose.*\.yml|docker/docker-compose\.yml|\.github/workflows/.*)$
       - id: end-of-file-fixer
+        # Conformance captures are recorded stdout/stderr bytes, asserted on
+        # verbatim by the grading service. Normalizing them rewrites evidence.
+        exclude: ^e2e/conformance/cassettes/
       - id: trailing-whitespace
+        # Same: kit's error blocks are space-padded, and stripping that
+        # padding corrupts the capture (see e2e/conformance/README.md).
+        exclude: ^e2e/conformance/cassettes/
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
       - id: check-merge-conflict

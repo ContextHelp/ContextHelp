@@ -182,7 +182,7 @@ ctxt registry info core
 | `ctxt edit --id <id>` | Edit object metadata |
 | `ctxt delete` | Remove objects |
 | `ctxt make <type>` | Generate compositions |
-| `ctxt profile list/show/create/delete/set-default` | Focus profiles |
+| `ctxt profile list/view/create/rm/set/unset` | Focus profiles |
 | `ctxt config show/path/validate/edit` | Config ops |
 | `ctxt registry list/add/remove/info/sync` | Registry ops |
 | `ctxt entity list/show/search/backlink` | Entity ops |

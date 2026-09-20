@@ -11,6 +11,7 @@ import (
 	"charm.land/fang/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/banner"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/logger"
 	"github.com/ideacrafterslabs/ctxt/internal/telemetry"
@@ -97,8 +98,8 @@ var (
 			{Name: "instance", Usage: "target dpkms instance by name or port (overrides current-instance state and config)"},
 		},
 		// Hook runs after kit's built-in chain (chdir → identity → peer →
-		// progress); we use it for the --output→--format compatibility shim
-		// and verbose logger init.
+		// progress); we use it to reject an unknown --format and to init
+		// the verbose logger.
 		Hooks: kitcli.Hooks{
 			PrePersistentRunE: func(cmd *cobra.Command, _ []string) error {
 				// Fatal -c/--config failure stashed by initConfig
@@ -107,10 +108,14 @@ var (
 				if initConfigErr != nil {
 					return initConfigErr
 				}
-				if outFlag := cmd.Root().PersistentFlags().Lookup("output"); outFlag != nil && outFlag.Changed {
-					val := outFlag.Value.String()
-					_ = cmd.Root().PersistentFlags().Set("format", val)
-					viper.Set("format", val)
+				// Publish the executing command so --format resolves
+				// from the real flag, then reject an unknown value
+				// before any command body runs — a bogus value must
+				// never reach a renderer that would fall back to the
+				// human table under exit 0.
+				cliformat.Bind(cmd)
+				if err := cliformat.ValidateActive(); err != nil {
+					return err
 				}
 				count, _ := cmd.Root().PersistentFlags().GetCount("verbose")
 				logger.Init(count > 0)
@@ -177,7 +182,7 @@ func init() {
 
 	// PersistentPreRunE chain is wired via kitcli.Config.Hooks.PrePersistentRunE
 	// at package load (see root var block above). Kit composes:
-	//   chdir → identity → peer → progress → our hook (output shim + logger init)
+	//   chdir → identity → peer → progress → our hook (format gate + logger init)
 
 	cobra.OnInitialize(initConfig)
 }
@@ -246,6 +251,37 @@ func applyCommandGroups() {
 // directly with WithoutVersion().
 func Execute() error {
 	ctx := context.Background()
+	if err := prepareTree(); err != nil {
+		return err
+	}
+
+	// Resolve the invocation before dispatch. A word naming no child of
+	// a non-runnable command never reaches an Args validator or kit's
+	// RunE middleware — cobra renders the group's help and exits 0 — so
+	// the refusal has to be raised here, ahead of fang.
+	if err := checkUnknownSubcommand(rootCmd, os.Args[1:]); err != nil {
+		return refuseUnknownSubcommand(rootCmd, err)
+	}
+
+	return fang.Execute(ctx, rootCmd,
+		fang.WithoutVersion(),
+		// Single stderr writer for a failed run: suppresses errors
+		// WrapRunE already rendered so one failure is not printed
+		// twice, once as an envelope and once as fang prose.
+		fang.WithErrorHandler(envelopeErrorHandler),
+	)
+}
+
+// prepareTree applies every pre-flight step Execute performs before
+// handing the tree to fang: kit's setup, boot-time validation, and the
+// error-envelope middleware.
+//
+// Split out of Execute so tests can assert on the prepared tree.
+// Execute's remaining statement runs the CLI for real, which a test
+// cannot drive, and the one step most easily lost in a merge —
+// root.WrapRunE — is invisible until a command fails under --format
+// json. Every step here is idempotent, so calling this twice is safe.
+func prepareTree() error {
 	// kit/cli.Execute would call fang.WithVersion(); we need WithoutVersion
 	// so fang doesn't intercept --version. Replicate kit's other setup.
 	rootCmd.InitDefaultCompletionCmd()
@@ -275,9 +311,33 @@ func Execute() error {
 		}
 	}
 
-	return fang.Execute(ctx, rootCmd,
-		fang.WithoutVersion(),
-	)
+	// Promote bare command errors to kit envelopes naming their class
+	// (NOT_FOUND, CONFLICT, PREREQUISITE, USAGE). Must run BEFORE
+	// WrapRunE: kit's middleware generalizes anything still bare to
+	// GENERIC/1 at the outermost layer, so a classifier installed
+	// after it would only ever see that.
+	installErrorClassification(rootCmd)
+
+	// Structured-error envelope (12fcc Factor 4) AND kit's RunE
+	// middleware chain, of which the confirmation gate is the
+	// outermost link — one call installs both. A returned error is
+	// rendered through output.RenderError, which honors --format, so
+	// JSON/YAML callers get kit's envelope (code, message, exit_code,
+	// transience, suggested fix) instead of prose to regex. Without
+	// it the kit/side-effect and kit/destructive-token annotations
+	// every destructive leaf carries are inert: --confirm-token is
+	// never registered as a flag and `ctxt inbox clear` runs
+	// unchallenged. It also installs the usage-classification seams
+	// (FlagErrorFunc + Args wrappers) that give a flag-parse or arity
+	// failure Code=USAGE / ExitCode=2 for ExitCodeFor to read.
+	//
+	// kit's own Root.Execute calls this; ctxt replicates that method
+	// rather than delegating (see the comment above) and had dropped
+	// this step. Idempotent — leaves already wrapped are skipped — so
+	// a second Execute in the same process is safe. See errenvelope.go.
+	root.WrapRunE()
+
+	return nil
 }
 
 // applyShapeAnnotations stamps the structural annotations the kit
@@ -302,7 +362,7 @@ func applyShapeAnnotations() {
 	for _, c := range rootCmd.Commands() {
 		// Skip built-ins; kit exempts them from shape validation.
 		switch c.Name() {
-		case "completion", "help":
+		case "completion", helpWord:
 			continue
 		}
 		// Depth-1 runnable nodes: stamp top-level-verb. Kit's shape
@@ -330,7 +390,7 @@ func markHierarchicalAncestors(cmd *cobra.Command, depth int) {
 		return
 	}
 	switch cmd.Name() {
-	case "completion", "help":
+	case "completion", helpWord:
 		return
 	}
 	if cmd.Runnable() && !hasSubcommands(cmd) && depth >= 3 {
@@ -350,7 +410,7 @@ func markHierarchicalAncestors(cmd *cobra.Command, depth int) {
 func hasSubcommands(cmd *cobra.Command) bool {
 	for _, c := range cmd.Commands() {
 		switch c.Name() {
-		case "completion", "help":
+		case "completion", helpWord:
 			continue
 		}
 		return true

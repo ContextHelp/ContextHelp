@@ -20,7 +20,9 @@ import (
 )
 
 // errObjectNotFound is returned by scanObject when no row matches.
-var errObjectNotFound = errors.New("object not found")
+// Wraps storage.ErrNotFound so callers outside this driver can
+// recognise a missing row without matching on message text.
+var errObjectNotFound = fmt.Errorf("object %w", storage.ErrNotFound)
 
 type ObjectStore struct {
 	db     *sql.DB

@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.conformance.daemon-unreachable
+title: Tell a daemon that is down apart from a request that was malformed
+binary: dpkms
+intent: |
+  An agent's dispatch fails and it must decide what to do next. Waiting
+  and retrying is right when the daemon is merely down; it is wasted
+  time when the request itself was wrong. The agent probes health, asks
+  after a job id that does not exist, and sends a flag the parser does
+  not define, and it needs each failure to arrive as a keyed envelope on
+  stderr with a stable code and a named recovery command, under an exit
+  code whose class separates "unavailable" from "absent" from
+  "malformed" — so the retry decision is read off the exit status rather
+  than pattern-matched out of prose.
+steps:
+  - id: health_refused
+    intent: |
+      Probe the health endpoint with nothing listening, asking for JSON
+      so the failure arrives as a structured envelope.
+    invoke: ["dpkms", "healthcheck", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: job_absent
+    intent: |
+      Ask after a job id that was never enqueued and read the failing id
+      back off the envelope.
+    invoke: ["dpkms", "job", "status", "no-such-job-0000", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: unknown_flag
+    intent: |
+      Send a flag the instance lister does not define, and be told which
+      leaf's help to consult.
+    invoke: ["dpkms", "ps", "--bogus-flag", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]

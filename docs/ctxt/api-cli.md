@@ -377,10 +377,11 @@ Manage focus profiles.
 
 ```bash
 ctxt profile list
-ctxt profile show <name>
+ctxt profile view <name>
 ctxt profile create <name> --config <path>
-ctxt profile delete <name>
-ctxt profile set-default <name>
+ctxt profile rm <name> --confirm=yes
+ctxt profile set <name>
+ctxt profile unset <name>
 ```
 
 ---

@@ -1,0 +1,110 @@
+schema_version: "1"
+scenario_id: preview-idempotent
+description: >-
+  Asking the same read-only question twice is safe and answers the same
+  way. Two identical maintenance previews agree field for field, neither
+  performs the maintenance, and the job queue afterwards shows the pair
+  enqueued no work — so a caller that loses a response can reissue the
+  request instead of having to determine whether the first attempt
+  landed.
+binary: dpkms
+factor_coverage: [6, 7, 8]
+tier: 3
+story_ref:
+  story_id: dpkms.conformance.preview-idempotent
+  story_path: stories/dpkms-preview-idempotent.yaml
+  content_hash: "sha256:a4c6161b54ccd274bedc464067de8de1fd8f50ef5d324686bda0bc1b1aa268ef"
+steps:
+  - id: preview_first
+    invoke: ["dpkms", "housekeeping", "run", "--dry-run", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: preview_repeat
+    invoke: ["dpkms", "housekeeping", "run", "--dry-run", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: queue_after
+    invoke: ["dpkms", "job", "list", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+assertions:
+  # ── F7: the retry is safe and the answer is stable ────────────────
+  # Idempotency is asserted on what a caller can actually observe:
+  # the two responses agree field for field. The grader's replay verb
+  # is deliberately not used here — it requires a paired replay capture
+  # the recording harness does not produce for these steps, and would
+  # report ungradable rather than measuring anything.
+  #
+  # Both previews must declare themselves previews, and both must
+  # project the same six-step pass. A second call that quietly
+  # switched to applying the plan, or that reported a different amount
+  # of work than the first, is the exact failure a retry loop cannot
+  # detect on its own.
+  #
+  # Both are stated as one schema per call rather than as field
+  # lookups: output_field_* reports non-JSON stdout as UNGRADABLE,
+  # which would bury the actual violation -- a preview answering a
+  # JSON request with a progress log -- under a measurement error.
+  # output_schema_matches calls that same condition a fail.
+  #
+  # Pinning the count to the six actions the pass documents is what
+  # makes the two assertions comparable: identical schemas satisfied
+  # by both captures is the observable form of "the retry returned the
+  # same answer", since no grader verb compares two steps' stdout.
+  - id: first-preview-is-a-stable-plan
+    kind: output_schema_matches
+    on: preview_first
+    factor: 7
+    schema:
+      type: object
+      required: [dry_run, actions]
+      properties:
+        dry_run:
+          const: true
+        actions:
+          type: array
+          minItems: 6
+          maxItems: 6
+  - id: repeat-preview-is-the-same-stable-plan
+    kind: output_schema_matches
+    on: preview_repeat
+    factor: 7
+    schema:
+      type: object
+      required: [dry_run, actions]
+      properties:
+        dry_run:
+          const: true
+        actions:
+          type: array
+          minItems: 6
+          maxItems: 6
+  # A retried read must not start reporting failure just because it is
+  # the second attempt.
+  - id: repeat-preview-still-succeeds
+    kind: exit_code_class
+    on: preview_repeat
+    factor: 7
+    classes: [OK]
+
+  # ── F6: previewing twice still previews ───────────────────────────
+  - id: first-preview-does-not-mutate
+    kind: dry_run_no_mutation
+    on: preview_first
+    factor: 6
+  - id: repeat-preview-does-not-mutate
+    kind: dry_run_no_mutation
+    on: preview_repeat
+    factor: 6
+
+  # ── F8: the substrate afterwards shows the previews left no trace ─
+  # The observable proof that a preview was a preview is the state it
+  # did not change. Two previews that enqueued work would show it here.
+  - id: queue-empty-after-two-previews
+    kind: output_field_equals
+    on: queue_after
+    factor: 8
+    path: total
+    value: 0
+    parse: json
+  - id: queue-readable-after-two-previews
+    kind: stream_discipline_pass
+    on: queue_after
+    factor: 8

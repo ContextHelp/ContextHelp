@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.conformance.offline-state-envelope
+title: Learn where the tool is pointed, and be told when a request misses
+binary: ctxt
+intent: |
+  An agent starting a session orients itself before it acts. It asks
+  which version it is driving and which configuration is in force, so
+  that anything it reports later can be attributed to a known setup.
+  Both answers must come back as data, and neither may depend on a
+  server being up — orientation is exactly what an agent needs when
+  something is already broken. Having oriented itself, it also needs a
+  mistyped request to be rejected: a subcommand the tool does not have
+  must fail, not quietly succeed by printing help, or the agent will
+  record a typo as a completed step.
+steps:
+  - id: version
+    intent: |
+      Ask which build is running and read the version off a named
+      field rather than scraping a banner.
+    invoke: ["ctxt", "version", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: config_path
+    intent: |
+      Ask which configuration is in force and where it came from, so
+      later behavior can be attributed to a known source.
+    invoke: ["ctxt", "config", "path", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: unknown_subcommand
+    intent: |
+      Issue a subcommand the tool does not define and be told the
+      request was not understood, instead of receiving a help page
+      under a success status that a caller would record as done.
+    invoke: ["ctxt", "profile", "bogus-subcommand", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: unknown_command
+    intent: |
+      Issue a top-level command that does not exist and get the same
+      unambiguous rejection.
+    invoke: ["ctxt", "bogus-command", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]

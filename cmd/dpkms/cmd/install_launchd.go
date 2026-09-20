@@ -27,6 +27,7 @@ import (
 	"text/template"
 
 	"github.com/ideacrafterslabs/ctxt/cmd/dpkms/templates"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 )
 
@@ -111,6 +112,11 @@ func init() {
 	installCmd.Flags().Bool("uninstall", false, "stop the service and remove the unit file")
 	installCmd.Flags().Bool("status", false, "print current install + running state and exit")
 	installCmd.Flags().Bool("force", false, "overwrite an existing unit file and reload the service manager")
+
+	// Renders a unit file and drives launchctl/systemctl. --uninstall
+	// stops the service and removes the unit; --force overwrites an
+	// existing one. Both lose prior service state. Destructive.
+	cliconv.WithSideEffect(installCmd, cliconv.SideEffectDestructive)
 }
 
 // installer is the per-platform contract install/uninstall/status share.

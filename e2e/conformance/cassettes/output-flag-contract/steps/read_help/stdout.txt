@@ -1,0 +1,36 @@
+
+  Calls GET /healthz on the configured dpkms instance and renders the                                                   
+  envelope as a table. With --format json the daemon response is passed                                                 
+  through unchanged. Designed for launchd/systemd liveness probes:                                                      
+                                                                                                                        
+    ProgramArguments: [dpkms, healthcheck, --quiet]                                                                     
+                                                                                                                        
+  Exit codes:                                                                                                           
+    0   server reported healthy or degraded (still serving)                                                             
+    1   server unreachable, returned 503, or response could not be parsed                                               
+                                                                                                                        
+  Examples:                                                                                                             
+    dpkms healthcheck                                                                                                   
+    dpkms healthcheck --format json                                                                                     
+    dpkms healthcheck --watch                 # refresh every 2 seconds                                                 
+    dpkms healthcheck --watch --interval 5    # refresh every 5 seconds                                                 
+         
+  USAGE  
+         
+    dpkms healthcheck [--flags]  
+         
+  FLAGS  
+         
+    --data-dir    Data directory override
+    --format      Output format (csv, human, json, table, text, yaml) (table)
+    -h --help     Help for healthcheck
+    --instance    Name of dpkms instance to target (default: unnamed)
+    --interval    Seconds between refreshes when --watch is set (2)
+    --no-color    Disable ANSI color
+    --no-hints    Suppress next-step hints after command output
+    --offline     Disable network access. Highest-precedence override: flips off per-command network opt-ins (peer discovery, sync, GitHub, push). Enforced beneath net/http and any client routed through netpolicy.GuardDial; loopback and diagnostics stay exempt.
+    --quiet       Suppress output; rely on exit code only
+    --server-url  Dpkms server URL (http://localhost:8080)
+    -V --verbose  Increase log verbosity (-V=debug, -VV=trace)
+    --watch       Refresh every --interval seconds until interrupted
+

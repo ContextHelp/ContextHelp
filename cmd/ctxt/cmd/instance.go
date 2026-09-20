@@ -179,7 +179,9 @@ func runInstanceUse(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if found == nil {
-		return fmt.Errorf("no running dpkms instance named %q — use `dpkms ps` or `ctxt instance list` to see running instances", target)
+		e := output.PrerequisiteError(fmt.Sprintf("no running dpkms instance named %q", target))
+		e.SuggestedFix = "run `ctxt instance list` (or `dpkms ps`) to see running instances"
+		return e
 	}
 
 	// Normalise to name so the state file is stable across port reassignments.

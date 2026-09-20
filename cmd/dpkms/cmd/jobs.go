@@ -6,10 +6,12 @@ import (
 	"os"
 	"strings"
 
-	kitstyles "hop.top/kit/go/console/tui/styles"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	kitstyles "hop.top/kit/go/console/tui/styles"
 )
 
 var jobsCmd = &cobra.Command{
@@ -95,6 +97,17 @@ func init() {
 
 	viper.BindPFlag("jobs.state", jobsListCmd.Flags().Lookup("state"))
 	viper.BindPFlag("jobs.limit", jobsListCmd.Flags().Lookup("limit"))
+
+	// list/status/log only read the queue.
+	cliconv.WithSideEffect(jobsListCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(jobsStatusCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(jobsLogsCmd, cliconv.SideEffectRead)
+	// retry re-queues a failed job: a status transition that the queue
+	// can undo by failing again. Write.
+	cliconv.WithSideEffect(jobsRetryCmd, cliconv.SideEffectWrite)
+	// cancel stops in-flight work; partial effects already applied by
+	// the job are not rolled back. Destructive.
+	cliconv.WithSideEffect(jobsCancelCmd, cliconv.SideEffectDestructive)
 }
 
 func runJobsList(cmd *cobra.Command, _ []string) error {
@@ -118,6 +131,14 @@ func runJobsList(cmd *cobra.Command, _ []string) error {
 		return outputJSON(os.Stdout, map[string]any{"jobs": jobs, "total": total})
 	}
 
+	// csv/text/table project from jobRow's tags. Status is the raw
+	// value here, not the colorized one: ANSI escapes belong in the
+	// human view, and embedding them in a csv cell would corrupt the
+	// field for every parser downstream.
+	if cliformat.Rows() {
+		return cliformat.DispatchRows(cmd, cmd.OutOrStdout(), jobRows(jobs))
+	}
+
 	fmt.Printf("Jobs (%d total)\n\n", total)
 	headers := []string{"ID", "Type", "Status", "Pipeline", "Created"}
 	var rows [][]string
@@ -132,6 +153,31 @@ func runJobsList(cmd *cobra.Command, _ []string) error {
 	}
 	printAdminTable(os.Stdout, headers, rows)
 	return nil
+}
+
+// jobRow is the row shape the tabular formats project from.
+type jobRow struct {
+	ID       string `table:"ID"`
+	Type     string `table:"Type"`
+	Status   string `table:"Status"`
+	Pipeline string `table:"Pipeline"`
+	Created  string `table:"Created"`
+}
+
+// jobRows projects queued jobs onto the row shape, carrying the plain
+// status string so machine formats stay free of terminal styling.
+func jobRows(jobs []*storage.Job) []jobRow {
+	rows := make([]jobRow, 0, len(jobs))
+	for _, j := range jobs {
+		rows = append(rows, jobRow{
+			ID:       j.ID,
+			Type:     j.Type,
+			Status:   string(j.Status),
+			Pipeline: j.Pipeline,
+			Created:  j.CreatedAt.Format("2006-01-02 15:04"),
+		})
+	}
+	return rows
 }
 
 // statusStyle renders a job status string with kit's semantic palette.

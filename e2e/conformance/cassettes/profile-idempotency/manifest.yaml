@@ -1,0 +1,28 @@
+schema_version: "1"
+binary: ctxt
+binary_version: 333b5a5
+recorder: xrr
+recorder_version: 0.1.0-alpha.3
+recorded_at: 2026-09-20T14:34:25Z
+scenario_id: ctxt/profile-idempotency
+scenario_version: 1.0.0
+story_ref:
+  story_id: ctxt.conformance.profile-idempotency
+  story_path: story.yaml
+  content_hash: sha256:1736200bb681777e1780b160c6e86910fd7ce75cc9aad7c226ccde9146dc54b4
+steps:
+  - id: create
+    cassette_dir: steps/create/cassette
+    captures: steps/create
+  - id: select
+    cassette_dir: steps/select/cassette
+    captures: steps/select
+  - id: select_again
+    cassette_dir: steps/select_again/cassette
+    captures: steps/select_again
+  - id: converged
+    cassette_dir: steps/converged/cassette
+    captures: steps/converged
+  - id: create_again
+    cassette_dir: steps/create_again/cassette
+    captures: steps/create_again

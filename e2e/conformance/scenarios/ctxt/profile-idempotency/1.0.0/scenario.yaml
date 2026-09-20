@@ -1,0 +1,138 @@
+schema_version: "1"
+scenario_id: profile-idempotency
+description: >-
+  Asserting the active focus profile converges. The first assertion and
+  an identical repeat leave the same profile selected, report the
+  outcome the same machine-readable way, and exit the same way, so a
+  reconciler that cannot know whether a prior run succeeded may simply
+  re-assert. Creation is the paired case: a repeat that finds the
+  object already present must be distinguishable, by exit-code class,
+  from a request that was malformed or from a store that was
+  unreachable.
+binary: ctxt
+factor_coverage: [3, 4, 5, 7, 8, 11]
+tier: 3
+story_ref:
+  story_id: ctxt.conformance.profile-idempotency
+  story_path: stories/profile-idempotency.yaml
+  content_hash: "sha256:1736200bb681777e1780b160c6e86910fd7ce75cc9aad7c226ccde9146dc54b4"
+steps:
+  - id: create
+    invoke: ["ctxt", "profile", "create", "reconcile-demo", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: select
+    invoke: ["ctxt", "profile", "default", "reconcile-demo", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: select_again
+    invoke: ["ctxt", "profile", "default", "reconcile-demo", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: converged
+    invoke: ["ctxt", "profile", "list", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: create_again
+    invoke: ["ctxt", "profile", "create", "reconcile-demo", "--format", "json", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+assertions:
+  # ── F7: the repeat behaves exactly like the first assertion ──────
+  # Same exit status is the minimum: a reconciler that retries must
+  # not read its own duplicate as a failure.
+  - id: select-exits-success
+    kind: exit_code_equals
+    on: select
+    factor: 7
+    value: 0
+  - id: repeat-select-exits-success
+    kind: exit_code_equals
+    on: select_again
+    factor: 7
+    value: 0
+  # Both calls must report the resulting selection on a named field.
+  # Identical reported outcomes are what let a caller treat the
+  # operation as safely repeatable rather than inspecting state first.
+  #
+  # Expressed as a schema, not a field lookup: a field verb aborts as
+  # ungradable when stdout is not JSON, which would hide a write path
+  # that answers a --format json request with a sentence. The schema
+  # form reports that as the contract failure it is.
+  - id: select-reports-active-profile
+    kind: output_schema_matches
+    on: select
+    factor: 7
+    schema:
+      type: object
+      required: [default]
+      properties:
+        default:
+          const: "reconcile-demo"
+  - id: repeat-select-reports-same-profile
+    kind: output_schema_matches
+    on: select_again
+    factor: 7
+    schema:
+      type: object
+      required: [default]
+      properties:
+        default:
+          const: "reconcile-demo"
+
+  # ── F8: the end state is what was asserted ───────────────────────
+  # Converging on the intended value is the actual contract; matching
+  # output alone could be two calls that both quietly did nothing.
+  - id: converged-on-asserted-profile
+    kind: output_field_equals
+    on: converged
+    factor: 8
+    path: default
+    value: "reconcile-demo"
+    parse: json
+  - id: converged-profile-exists
+    kind: output_field_present
+    on: converged
+    factor: 8
+    path: profiles.reconcile-demo
+    parse: json
+
+  # ── F5: the write path answers in the format it was asked for ────
+  # A create that prints a sentence under --format json forces the
+  # caller to regex its own success, and to guess at the new object's
+  # identity.
+  - id: create-reports-name
+    kind: output_schema_matches
+    on: create
+    factor: 5
+    schema:
+      type: object
+      required: [name]
+      properties:
+        name:
+          const: "reconcile-demo"
+
+  # ── F3: write-path stream discipline ─────────────────────────────
+  # Confirmation prose on stdout corrupts the stream a caller asked to
+  # receive structured output on.
+  - id: create-stream-discipline
+    kind: stream_discipline_pass
+    on: create
+    factor: 3
+  - id: select-stream-discipline
+    kind: stream_discipline_pass
+    on: select
+    factor: 3
+
+  # ── F11: "already exists" is its own class ───────────────────────
+  # A retried create that finds the object present is a CONFLICT, not
+  # a generic failure. Without the distinct class a reconciler cannot
+  # tell a benign duplicate from a malformed request or an unreachable
+  # store, and must either parse prose or abort a safe retry.
+  - id: duplicate-create-conflict-class
+    kind: exit_code_class
+    on: create_again
+    factor: 11
+    classes: [CONFLICT]
+  # The rejection must name what already existed, so a batch caller can
+  # attribute it to one input.
+  - id: duplicate-create-echoes-name
+    kind: stderr_contains
+    on: create_again
+    factor: 4
+    value: "reconcile-demo"
