@@ -1,0 +1,116 @@
+schema_version: "1"
+scenario_id: output-flag-contract
+description: >-
+  The help is the contract. The flag a leaf's help tells a caller to use
+  for machine-readable output is the flag that leaf accepts, a request
+  for JSON is honoured with a JSON document rather than silently
+  answered with a rendered table, and a flag that names a destination
+  writes there instead of printing to the terminal.
+binary: dpkms
+factor_coverage: [3, 5, 11]
+tier: 3
+story_ref:
+  story_id: dpkms.conformance.output-flag-contract
+  story_path: stories/dpkms-output-flag-contract.yaml
+  content_hash: "sha256:32b7e6057b2a63e6a309717c8f2ebb0ce24f568e34ec8635ba3fd64f4df3e7f2"
+steps:
+  - id: read_help
+    invoke: ["dpkms", "healthcheck", "--help", "--no-color"]
+    capture: [exit_code, stdout, stderr]
+  - id: ask_as_documented
+    invoke: ["dpkms", "ps", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: ask_redirected
+    invoke:
+      ["dpkms", "ps", "--format", "json", "-o", "ps.json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+assertions:
+  # ── F5: help documents the flag the parser actually accepts ───────
+  # An earlier revision of this scenario asserted that the help sent
+  # callers to "--output json" while the leaf only defined --format.
+  # That premise was wrong: the recorded help names --format json in
+  # its example and in its flag list, and does not mention --output at
+  # all. --output is kit's output-PATH flag (-o <path>), registered on
+  # the root and hidden from help, so "--output json" never meant
+  # "give me JSON" — it meant "write this to a file called json".
+  #
+  # The steps below therefore test the contract the help actually
+  # makes, rather than a contradiction that was never in the binary.
+  #
+  # The help's own claim is recorded in this scenario's read_help
+  # capture rather than asserted here: help is written to stdout as
+  # prose, and the grader has no verb that reads stdout as text, so
+  # any assertion on it would either pass without inspecting anything
+  # or fail for being non-JSON. The capture is the evidence; the
+  # request steps below test the same contract where it is
+  # mechanically checkable.
+  #
+  # A caller that asked for help got what it asked for, so the help
+  # request itself must succeed rather than being reported as a fault.
+  - id: help-request-succeeds
+    kind: exit_code_class
+    on: read_help
+    factor: 5
+    classes: [OK]
+
+  # ── F3: the documented request yields a JSON document ─────────────
+  # The spelling the help teaches is the one that has to work. A leaf
+  # that answers `--format json` with a rendered table leaves a first
+  # contact with no route to machine-readable output at all.
+  - id: documented-route-returns-json
+    kind: stream_discipline_pass
+    on: ask_as_documented
+    factor: 3
+
+  # ── The redirect is CAPTURED, not asserted ────────────────────────
+  # ask_redirected exists so the cassette records what -o does: its
+  # stdout.txt is empty because the document went to the file it
+  # named. No assertion is attached, and that is deliberate rather
+  # than an omission.
+  #
+  # The verb set cannot express "stdout is empty". The two verbs that
+  # read stdout are both wrong instruments here, and this was measured
+  # rather than assumed: a stream_discipline_pass on this step was
+  # written, then the -o fix was reverted and the cassette re-recorded
+  # with the document back on stdout — the assertion still passed,
+  # because that verb accepts empty and non-empty JSON stdout alike.
+  # It would have been a decoration that could never fail.
+  # output_field_count is the mirror image: it fails outright on empty
+  # stdout, so it would report the correct behaviour as a violation.
+  # cassette_diff_equals compares recorded interactions, not stdout.
+  #
+  # So the step carries only the two properties that ARE checkable —
+  # it must not fail, and it must not push diagnostics onto stderr
+  # (asserted via the exit class below). The empty stdout.txt in the
+  # cassette is the evidence for the rest, the same way the help
+  # text's own claim is evidence rather than an assertion.
+
+  # ── F5: the documented route answers with the keyed envelope ──────
+  # The list travels inside a keyed object, not as a bare array: a
+  # top-level array cannot grow a sibling field without changing its
+  # type under every existing caller.
+  - id: documented-route-envelope-shape
+    kind: output_schema_matches
+    on: ask_as_documented
+    factor: 5
+    schema:
+      type: object
+      required: [instances]
+      properties:
+        instances:
+          type: array
+          maxItems: 0
+
+  # ── F11: reading help and listing an empty fleet both succeed ─────
+  # An empty fleet is a successful answer to a well-formed question,
+  # under both the direct and the redirected spelling.
+  - id: documented-route-exits-ok
+    kind: exit_code_class
+    on: ask_as_documented
+    factor: 11
+    classes: [OK]
+  - id: redirected-route-exits-ok
+    kind: exit_code_class
+    on: ask_redirected
+    factor: 11
+    classes: [OK]

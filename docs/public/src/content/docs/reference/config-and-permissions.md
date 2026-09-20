@@ -43,8 +43,9 @@ dpkms serve --public
 
 ```bash
 ctxt profile list
-ctxt profile show <name>
-ctxt profile set-default <name>
+ctxt profile view <name>
+ctxt profile set <name>
+ctxt profile unset <name>
 ```
 
 ## Pipeline and extension permissions

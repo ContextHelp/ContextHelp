@@ -1,0 +1,3 @@
+USAGE: unknown flag --bogus-flag
+Cause: no flag named --bogus-flag on ctxt resolve
+Fix: run 'ctxt resolve --help' for usage

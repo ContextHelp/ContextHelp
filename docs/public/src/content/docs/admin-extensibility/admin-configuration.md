@@ -52,9 +52,11 @@ curl http://127.0.0.1:8080/health
 
 ```bash
 ctxt profile list
-ctxt profile show <name>
+ctxt profile view <name>
 ctxt profile create <name> --config <file>
-ctxt profile set-default <name>
+ctxt profile set <name>
+ctxt profile unset <name>
+ctxt profile rm <name> --confirm=yes
 ```
 
 ### 4. Validate registry configuration
@@ -93,7 +95,7 @@ Reference docs:
 ### Profile behavior seems inconsistent
 
 - Verify default profile and command-level `--profile` overrides.
-- Re-check profile definitions with `ctxt profile show`.
+- Re-check profile definitions with `ctxt profile view`.
 
 ## Cross-links
 

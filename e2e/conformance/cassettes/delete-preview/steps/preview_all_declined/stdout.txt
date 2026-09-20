@@ -1,0 +1,7 @@
+{
+  "command": "ctxt delete",
+  "reason": "confirmation declined (--confirm=no); nothing was deleted",
+  "targets": [],
+  "matched": 0,
+  "applied": false
+}

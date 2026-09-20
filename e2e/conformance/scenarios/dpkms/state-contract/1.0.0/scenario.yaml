@@ -1,0 +1,131 @@
+schema_version: "1"
+scenario_id: state-contract
+description: >-
+  Substrate state is readable as data. Asking the instance lister, the
+  job queue, and the detector registry for JSON yields a parseable
+  document with a stable, documented shape in each case — an empty
+  collection reported as an empty collection rather than as a sentence
+  or a bare null — so one parser works whether the substrate is idle or
+  loaded.
+binary: dpkms
+factor_coverage: [3, 5, 8]
+tier: 3
+story_ref:
+  story_id: dpkms.conformance.state-contract
+  story_path: stories/dpkms-state-contract.yaml
+  content_hash: "sha256:a64c63676052640b3b19a5ff839ce74e9158f8d15e2f20de7e35c189c6ecaded"
+steps:
+  - id: instances_json
+    invoke: ["dpkms", "ps", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: jobs_json
+    invoke: ["dpkms", "job", "list", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: detectors_json
+    invoke: ["dpkms", "detector", "list", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+assertions:
+  # ── F3: a request for JSON is answered with JSON ──────────────────
+  # stream_discipline_pass requires stdout to parse as a JSON document
+  # when non-empty. A caller that passed --format json and receives a
+  # rendered table has no way to consume the answer except by scraping
+  # column positions, which change whenever the renderer does.
+  - id: instances-stdout-is-json
+    kind: stream_discipline_pass
+    on: instances_json
+    factor: 3
+  - id: jobs-stdout-is-json
+    kind: stream_discipline_pass
+    on: jobs_json
+    factor: 3
+  - id: detectors-stdout-is-json
+    kind: stream_discipline_pass
+    on: detectors_json
+    factor: 3
+
+  # ── F8: state is reported as an inspectable structure ─────────────
+  # An idle fleet is still a fleet. The lister must name the collection
+  # it is reporting on and report it as empty, so a supervisor can tell
+  # "no instances" apart from "the question was not understood".
+  # Expressed as a schema rather than as field lookups: the
+  # output_field_* verbs report "stdout is not valid JSON" as
+  # UNGRADABLE, which would mask a real contract violation behind a
+  # measurement error. output_schema_matches reports the same
+  # condition as a fail, which is what it is -- the lister was asked
+  # for JSON and did not produce any.
+  - id: instances-empty-fleet-is-an-empty-collection
+    kind: output_schema_matches
+    on: instances_json
+    factor: 8
+    schema:
+      type: object
+      required: [instances]
+      properties:
+        instances:
+          type: array
+          maxItems: 0
+  # The queue already reports a total; an agent sizing a batch needs it
+  # to be a number it can compare, not a line it has to read.
+  - id: jobs-reports-total
+    kind: output_field_equals
+    on: jobs_json
+    factor: 8
+    path: total
+    value: 0
+    parse: json
+  # An empty queue must be an empty list, not null: a null forces every
+  # caller to special-case the idle substrate before it can iterate.
+  - id: jobs-empty-queue-is-empty-collection
+    kind: output_field_count
+    on: jobs_json
+    factor: 8
+    path: jobs
+    equals: 0
+    parse: json
+  - id: detectors-names-collection
+    kind: output_field_present
+    on: detectors_json
+    factor: 8
+    path: detectors
+    parse: json
+
+  # ── F5: the shape is stable enough to program against ─────────────
+  # A documented shape is what lets a caller be written once. Declaring
+  # the envelope inline here is the contract the substrate is being
+  # held to: a keyed object with a named collection and a count.
+  - id: jobs-envelope-shape
+    kind: output_schema_matches
+    on: jobs_json
+    factor: 5
+    schema:
+      type: object
+      required: [jobs, total]
+      properties:
+        jobs:
+          type: array
+        total:
+          type: integer
+  - id: instances-envelope-shape
+    kind: output_schema_matches
+    on: instances_json
+    factor: 5
+    schema:
+      type: object
+      required: [instances]
+      properties:
+        instances:
+          type: array
+
+  # ── F8: reading state is a read ───────────────────────────────────
+  # Listing what exists must not change what exists. A lister that
+  # writes cannot be used to check whether writing is safe.
+  - id: instances-listing-is-read-only
+    kind: exit_code_class
+    on: instances_json
+    factor: 8
+    classes: [OK]
+  - id: jobs-listing-is-read-only
+    kind: exit_code_class
+    on: jobs_json
+    factor: 8
+    classes: [OK]

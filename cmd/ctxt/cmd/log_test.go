@@ -101,7 +101,7 @@ func TestLogFromServerJSON(t *testing.T) {
 		}))
 	defer srv.Close()
 
-	out, err := executeCommand("log", "--server", srv.URL, "--output", "json")
+	out, err := executeCommand("log", "--server", srv.URL, "--format", "json")
 	if err != nil {
 		t.Fatalf("log --output json should succeed: %v", err)
 	}

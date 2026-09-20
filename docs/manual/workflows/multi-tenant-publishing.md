@@ -133,7 +133,7 @@ Removing the registry subscription cuts the lens; cursor file can be deleted or 
 ### Wrong registry subscribed
 
 - Verify with `ctxt registry list`; confirm role's `--profile` pins the intended registry set.
-- Re-create profile: `ctxt profile delete <role> && ctxt profile create <role> --registries ...`.
+- Re-create profile: `ctxt profile rm <role> && ctxt profile create <role> --registries ...`.
 
 ### Capture not propagating to shared dpkms
 

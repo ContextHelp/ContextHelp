@@ -1,0 +1,17 @@
+{
+  "knowledge_objects": 0,
+  "objects_by_type": {},
+  "jobs": {
+    "total": 0,
+    "pending": 0,
+    "running": 0,
+    "completed": 0,
+    "failed": 0
+  },
+  "entities": 0,
+  "feeds": 0,
+  "feeds_active": 0,
+  "profiles": 0,
+  "reminders_pending": 0,
+  "resurfacing_candidates": 0
+}

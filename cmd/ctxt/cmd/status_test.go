@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,11 +30,32 @@ func fakeHealthzServer(t *testing.T, status int, env any) *httptest.Server {
 // withFormat saves and restores the global format viper setting around
 // the test body. We deliberately avoid viper.Reset() because other tests
 // in this package rely on a populated viper state.
+//
+// These cases invoke the command function directly rather than going
+// through the root, so the root's pre-run hook — which publishes the
+// executing command to cliformat — never fires. Any command a previous
+// test bound is still there, and its --format flag may still read as
+// Changed, which would outrank the value set here. Rebind to the root
+// with the flag reset so viper is authoritative for this test.
 func withFormat(t *testing.T, value string) {
 	t.Helper()
 	prev := viper.GetString("format")
 	viper.Set("format", value)
-	t.Cleanup(func() { viper.Set("format", prev) })
+
+	formatFlag := rootCmd.PersistentFlags().Lookup("format")
+	prevChanged := false
+	if formatFlag != nil {
+		prevChanged = formatFlag.Changed
+		formatFlag.Changed = false
+	}
+	cliformat.Bind(rootCmd)
+
+	t.Cleanup(func() {
+		viper.Set("format", prev)
+		if formatFlag != nil {
+			formatFlag.Changed = prevChanged
+		}
+	})
 }
 
 func TestStatusHealthyTableOutput(t *testing.T) {

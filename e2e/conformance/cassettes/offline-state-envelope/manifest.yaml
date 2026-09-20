@@ -1,0 +1,25 @@
+schema_version: "1"
+binary: ctxt
+binary_version: 333b5a5
+recorder: xrr
+recorder_version: 0.1.0-alpha.3
+recorded_at: 2026-09-20T14:34:24Z
+scenario_id: ctxt/offline-state-envelope
+scenario_version: 1.0.0
+story_ref:
+  story_id: ctxt.conformance.offline-state-envelope
+  story_path: story.yaml
+  content_hash: sha256:2d34f962d231375e91a715b076acb3d6db87d15e61d31968f533115b74bc1ff5
+steps:
+  - id: version
+    cassette_dir: steps/version/cassette
+    captures: steps/version
+  - id: config_path
+    cassette_dir: steps/config_path/cassette
+    captures: steps/config_path
+  - id: unknown_subcommand
+    cassette_dir: steps/unknown_subcommand/cassette
+    captures: steps/unknown_subcommand
+  - id: unknown_command
+    cassette_dir: steps/unknown_command/cassette
+    captures: steps/unknown_command

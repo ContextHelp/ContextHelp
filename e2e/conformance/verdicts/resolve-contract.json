@@ -1,0 +1,118 @@
+{
+  "scenario_id": "resolve-contract",
+  "schema_version": "1",
+  "verdict": "pass",
+  "scored_at": "2026-09-20T14:34:29.727215Z",
+  "grader_version": "1.0.0",
+  "rules_version": "2026.05.12.1",
+  "tier": 3,
+  "facets": [
+    {
+      "factor": 4,
+      "status": "pass"
+    },
+    {
+      "factor": 3,
+      "status": "pass"
+    },
+    {
+      "factor": 11,
+      "status": "pass"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "missing-object-envelope-has-code",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "\"code\""
+    },
+    {
+      "id": "missing-object-envelope-offers-correction",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "\"suggested_fix\""
+    },
+    {
+      "id": "missing-object-echoes-ref",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "obj_deadbeef"
+    },
+    {
+      "id": "missing-object-names-recovery",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "ctxt find"
+    },
+    {
+      "id": "missing-entity-envelope-has-code",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "\"code\""
+    },
+    {
+      "id": "missing-entity-echoes-slug",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "nonexistent.slug"
+    },
+    {
+      "id": "unknown-flag-correction-hint",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "--help"
+    },
+    {
+      "id": "unknown-flag-echoes-flag",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "bogus-flag"
+    },
+    {
+      "id": "unknown-flag-stream-discipline",
+      "kind": "stream_discipline_pass",
+      "factor": 3,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    },
+    {
+      "id": "missing-object-not-found-class",
+      "kind": "exit_code_class",
+      "factor": 11,
+      "status": "pass",
+      "observed": 3,
+      "expected": [
+        "NOT_FOUND"
+      ]
+    },
+    {
+      "id": "missing-entity-not-found-class",
+      "kind": "exit_code_class",
+      "factor": 11,
+      "status": "pass",
+      "observed": 3,
+      "expected": [
+        "NOT_FOUND"
+      ]
+    },
+    {
+      "id": "unknown-flag-usage-class",
+      "kind": "exit_code_class",
+      "factor": 11,
+      "status": "pass",
+      "observed": 2,
+      "expected": [
+        "USAGE"
+      ]
+    }
+  ]
+}

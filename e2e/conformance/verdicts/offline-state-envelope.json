@@ -1,0 +1,127 @@
+{
+  "scenario_id": "offline-state-envelope",
+  "schema_version": "1",
+  "verdict": "pass",
+  "scored_at": "2026-09-20T14:34:28.731543Z",
+  "grader_version": "1.0.0",
+  "rules_version": "2026.05.12.1",
+  "tier": 3,
+  "facets": [
+    {
+      "factor": 8,
+      "status": "pass"
+    },
+    {
+      "factor": 5,
+      "status": "pass"
+    },
+    {
+      "factor": 3,
+      "status": "pass"
+    },
+    {
+      "factor": 11,
+      "status": "pass"
+    },
+    {
+      "factor": 4,
+      "status": "pass"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "version-reports-version-field",
+      "kind": "output_field_present",
+      "factor": 8,
+      "status": "pass",
+      "observed": "version",
+      "expected": "present"
+    },
+    {
+      "id": "version-names-binary",
+      "kind": "output_field_equals",
+      "factor": 5,
+      "status": "pass",
+      "observed": "ctxt",
+      "expected": "ctxt"
+    },
+    {
+      "id": "config-reports-resolved-path",
+      "kind": "output_field_present",
+      "factor": 8,
+      "status": "pass",
+      "observed": "path",
+      "expected": "present"
+    },
+    {
+      "id": "config-reports-provenance",
+      "kind": "output_field_present",
+      "factor": 8,
+      "status": "pass",
+      "observed": "source",
+      "expected": "present"
+    },
+    {
+      "id": "version-stream-discipline",
+      "kind": "stream_discipline_pass",
+      "factor": 3,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    },
+    {
+      "id": "config-path-stream-discipline",
+      "kind": "stream_discipline_pass",
+      "factor": 3,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    },
+    {
+      "id": "unknown-subcommand-usage-class",
+      "kind": "exit_code_class",
+      "factor": 11,
+      "status": "pass",
+      "observed": 2,
+      "expected": [
+        "USAGE"
+      ]
+    },
+    {
+      "id": "unknown-command-usage-class",
+      "kind": "exit_code_class",
+      "factor": 11,
+      "status": "pass",
+      "observed": 2,
+      "expected": [
+        "USAGE"
+      ]
+    },
+    {
+      "id": "unknown-subcommand-echoes-token",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "bogus-subcommand"
+    },
+    {
+      "id": "unknown-command-echoes-token",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "bogus-command"
+    },
+    {
+      "id": "unknown-command-points-at-help",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "--help"
+    },
+    {
+      "id": "unknown-subcommand-stream-discipline",
+      "kind": "stream_discipline_pass",
+      "factor": 3,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    }
+  ]
+}

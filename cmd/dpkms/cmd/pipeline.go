@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"hop.top/kit/go/console/output"
@@ -216,6 +217,30 @@ func init() {
 
 	stepRegistryAutoUpdateCmd.Flags().BoolVar(&registryAutoUpdateEnable, "enable", false, "enable auto-update")
 	stepRegistryAutoUpdateCmd.Flags().BoolVar(&registryAutoUpdateDisable, "disable", false, "disable auto-update")
+
+	// Read-only queries against the daemon.
+	cliconv.WithSideEffect(pipelineListCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(pipelineShowCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(stepListCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(stepRegistryListCmd, cliconv.SideEffectRead)
+
+	// Reversible mutations: create is undone by remove, archive by
+	// unarchive, enqueue adds a queue entry that can be canceled, and
+	// the registry verbs are re-runnable. Write.
+	cliconv.WithSideEffect(pipelineCreateCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(pipelineArchiveCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(pipelineUnarchiveCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(pipelineEnqueueCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(stepInstallCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(stepRegistryAddCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(stepRegistryUpdateCmd, cliconv.SideEffectWrite)
+	cliconv.WithSideEffect(stepRegistryAutoUpdateCmd, cliconv.SideEffectWrite)
+
+	// remove deletes the pipeline definition, uninstall removes the step
+	// from disk. Neither has an inverse that restores the prior state.
+	// Destructive.
+	cliconv.WithSideEffect(pipelineRemoveCmd, cliconv.SideEffectDestructive)
+	cliconv.WithSideEffect(stepUninstallCmd, cliconv.SideEffectDestructive)
 }
 
 func initPipelineClient(serverURL string) {

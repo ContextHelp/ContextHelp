@@ -1,0 +1,78 @@
+{
+  "scenario_id": "preview-idempotent",
+  "schema_version": "1",
+  "verdict": "pass",
+  "scored_at": "2026-09-20T14:34:28.907597Z",
+  "grader_version": "1.0.0",
+  "rules_version": "2026.05.12.1",
+  "tier": 3,
+  "facets": [
+    {
+      "factor": 7,
+      "status": "pass"
+    },
+    {
+      "factor": 6,
+      "status": "pass"
+    },
+    {
+      "factor": 8,
+      "status": "pass"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "first-preview-is-a-stable-plan",
+      "kind": "output_schema_matches",
+      "factor": 7,
+      "status": "pass",
+      "expected": "schema-valid"
+    },
+    {
+      "id": "repeat-preview-is-the-same-stable-plan",
+      "kind": "output_schema_matches",
+      "factor": 7,
+      "status": "pass",
+      "expected": "schema-valid"
+    },
+    {
+      "id": "repeat-preview-still-succeeds",
+      "kind": "exit_code_class",
+      "factor": 7,
+      "status": "pass",
+      "observed": 0,
+      "expected": [
+        "OK"
+      ]
+    },
+    {
+      "id": "first-preview-does-not-mutate",
+      "kind": "dry_run_no_mutation",
+      "factor": 6,
+      "status": "pass",
+      "expected": "all Read"
+    },
+    {
+      "id": "repeat-preview-does-not-mutate",
+      "kind": "dry_run_no_mutation",
+      "factor": 6,
+      "status": "pass",
+      "expected": "all Read"
+    },
+    {
+      "id": "queue-empty-after-two-previews",
+      "kind": "output_field_equals",
+      "factor": 8,
+      "status": "pass",
+      "observed": 0,
+      "expected": 0
+    },
+    {
+      "id": "queue-readable-after-two-previews",
+      "kind": "stream_discipline_pass",
+      "factor": 8,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    }
+  ]
+}

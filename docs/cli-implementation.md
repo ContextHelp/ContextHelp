@@ -187,7 +187,7 @@ ctxt open obj_12345678
 
 # Profiles
 ctxt profile list
-ctxt profile show founder
+ctxt profile view founder
 ctxt profile create myproject --config profile.yaml
 
 # Compositions

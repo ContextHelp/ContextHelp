@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/deps"
 	_ "github.com/ideacrafterslabs/ctxt/internal/providers" // register builtin deps
 	"github.com/spf13/cobra"
@@ -29,6 +30,10 @@ Python packages are installed via pip3 or pip.`,
 
 func init() {
 	rootCmd.AddCommand(installDepsCmd)
+
+	// Shells out to brew/apt/dnf/pacman and pip to add packages. Adds
+	// only; no removal path. Write.
+	cliconv.WithSideEffect(installDepsCmd, cliconv.SideEffectWrite)
 }
 
 func runInstallDeps(cmd *cobra.Command, args []string) error {

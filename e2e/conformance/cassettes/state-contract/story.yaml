@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.conformance.state-contract
+title: Read substrate state as data rather than as a rendered table
+binary: dpkms
+intent: |
+  A supervisor decides whether to route work to the substrate. It asks
+  which instances are running, which jobs are queued, and which
+  detectors are registered, and it asks for every answer as JSON because
+  nothing on the other end can read a table. It needs each answer to be
+  a parseable document with a stable shape — an empty fleet reported as
+  an empty collection, not as a sentence and not as a bare null — so the
+  same parser works whether the substrate is idle or busy.
+steps:
+  - id: instances_json
+    intent: |
+      Ask which instances are running, as JSON, with the fleet empty.
+    invoke: ["dpkms", "ps", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: jobs_json
+    intent: |
+      Ask which jobs are queued, as JSON, with the queue empty.
+    invoke: ["dpkms", "job", "list", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: detectors_json
+    intent: |
+      Ask which detectors are registered, as JSON, with none installed.
+    invoke: ["dpkms", "detector", "list", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]

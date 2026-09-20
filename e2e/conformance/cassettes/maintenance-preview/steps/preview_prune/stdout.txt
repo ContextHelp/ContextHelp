@@ -1,0 +1,6 @@
+{
+  "command": "dpkms housekeeping prune",
+  "actions": [],
+  "matched": 0,
+  "dry_run": true
+}

@@ -1,0 +1,7 @@
+{
+  "code": "CONFLICT",
+  "message": "profile already exists: reconcile-demo",
+  "suggested_fix": "choose a different name, or run `ctxt profile show reconcile-demo` to inspect the existing one",
+  "exit_code": 4,
+  "transience": "permanent"
+}

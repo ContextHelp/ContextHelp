@@ -11,6 +11,35 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
+// errJobNotFound is returned by scanJob when no row matches.
+//
+// Carries two sentinels for two different callers, and neither may be
+// dropped: storage.ErrNotFound is the cross-backend signal the CLI keys
+// on to answer a missing job with NOT_FOUND, and sql.ErrNoRows is what
+// AcquireNext reads as "queue empty" rather than as a failure —
+// dropping it would turn an idle queue into an error.
+//
+// It carries them without letting either one's text into the message.
+// errors.Join would concatenate both, putting "sql: no rows in result
+// set" back into Error() and leaving the user-facing contract one
+// formatting decision away from leaking the database library's own
+// words again. jobNotFoundError states the fact in the caller's terms
+// and exposes the sentinels only through Is.
+var errJobNotFound error = jobNotFoundError{}
+
+// jobNotFoundError is the "no such job" fact, phrased for whoever reads
+// it and matchable by either sentinel.
+type jobNotFoundError struct{}
+
+func (jobNotFoundError) Error() string { return "job not found" }
+
+// Is reports both sentinels without embedding their text. errors.Is
+// walks to this method, so errors.Is(err, storage.ErrNotFound) and
+// errors.Is(err, sql.ErrNoRows) both hold.
+func (jobNotFoundError) Is(target error) bool {
+	return target == storage.ErrNotFound || target == sql.ErrNoRows
+}
+
 type JobStore struct {
 	db *sql.DB
 }
@@ -255,8 +284,8 @@ func scanJob(row *sql.Row) (*storage.Job, error) {
 		&j.ResultID, &j.Error, &j.RetryCount, &j.MaxRetries,
 		&createdAt, &updatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote, &idemKey)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("job not found: %w", sql.ErrNoRows)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errJobNotFound
 		}
 		return nil, fmt.Errorf("scan job: %w", err)
 	}

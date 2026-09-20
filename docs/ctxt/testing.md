@@ -82,7 +82,7 @@ Integration tests verify full brain subsystems:
 - Profile-specific templates
 
 **Profile Switching:**
-- `ctxt profile use engineer` → behavior changes
+- `ctxt profile set engineer` → behavior changes
 - Registry scoping
 - Ranking adjustments
 - Surfacing rules
@@ -110,7 +110,7 @@ ctxt open <id>
 ctxt make brief --from <id>
 
 # Switch to focused mode
-ctxt profile use founder
+ctxt profile set founder
 
 # Check what matters now
 ctxt agenda --tomorrow
@@ -237,11 +237,11 @@ For URL pipelines:
 
 ```go
 // Test: Profile changes pipeline selection
-1. Set profile: ctxt profile use engineer
+1. Set profile: ctxt profile set engineer
 2. Add code snippet
 3. Assert: code.snippet pipeline selected (not text.short)
 4. Assert: Technical tags assigned
-5. Set profile: ctxt profile use founder
+5. Set profile: ctxt profile set founder
 6. Add same content
 7. Assert: Business-focused tags assigned instead
 ```
@@ -263,7 +263,7 @@ For URL pipelines:
 ```go
 // Test: Relevant knowledge resurfaces
 1. Create project-related objects (tagged "Project X")
-2. Switch profile: ctxt profile use "project-x"
+2. Switch profile: ctxt profile set "project-x"
 3. Run: ctxt agenda
 4. Assert: Related objects surface
 5. Assert: Recent activity prioritized
@@ -352,8 +352,8 @@ ctxt make checklist --from <id>
 ```bash
 # Test profile management
 ctxt profile list
-ctxt profile use engineer
-ctxt profile show
+ctxt profile set engineer
+ctxt profile view
 ```
 
 ### Output Formatting

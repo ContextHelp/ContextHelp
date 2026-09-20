@@ -1,0 +1,3 @@
+USAGE: unknown flag --bogus-flag
+Cause: no flag named --bogus-flag on dpkms ps
+Fix: run 'dpkms ps --help' for usage

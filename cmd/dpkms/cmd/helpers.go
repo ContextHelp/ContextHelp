@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +10,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
@@ -18,7 +18,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"github.com/spf13/viper"
 )
 
 // newService creates a Service wired to the configured storage backend.
@@ -100,16 +99,26 @@ func loadDetectors(ctx context.Context, driver storage.StorageDriver, pipes inte
 	return nil
 }
 
-// isJSONOutput returns true when --output is "json".
+// isJSONOutput returns true when --format asks for a machine-readable
+// document (json or yaml) rather than the human table.
+//
+// The name is historical: every call site branches "structured vs
+// human", and the branch is now honored for yaml too instead of
+// falling through to the table. Pair it with outputJSON, which renders
+// in whichever of the two the caller actually asked for.
 func isJSONOutput() bool {
-	return viper.GetString("output.format") == "json"
+	return cliformat.Structured()
 }
 
-// outputJSON writes v as indented JSON to w.
+// outputJSON writes v to w in the active machine format (json or yaml),
+// normalising empty collections so they serialize as [] rather than
+// null.
 func outputJSON(w io.Writer, v any) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
+	// EncodeTo rather than Encode: -o names a destination file, and
+	// every caller here passes os.Stdout, so encoding straight to w
+	// would print the document and leave the requested file uncreated.
+	// nil cmd resolves to the command Bind recorded for this run.
+	return cliformat.EncodeTo(nil, w, v)
 }
 
 var (

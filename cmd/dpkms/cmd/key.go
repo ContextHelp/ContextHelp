@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/bundle"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -63,6 +64,14 @@ func init() {
 	keyCmd.AddCommand(keyInitCmd)
 	keyCmd.AddCommand(keyRotateCmd)
 	keyInitCmd.Flags().Bool("force", false, "overwrite existing keypair without prompting")
+
+	// key init creates a keypair; with --force it overwrites the existing
+	// private key in the OS keychain, which is unrecoverable. Destructive.
+	cliconv.WithSideEffect(keyInitCmd, cliconv.SideEffectDestructive)
+	// key rotate archives the old private key and appends a transition
+	// record. Archived material can be lost if the backup is pruned, and
+	// the rotation log has no inverse. Destructive.
+	cliconv.WithSideEffect(keyRotateCmd, cliconv.SideEffectDestructive)
 }
 
 func runKeyInit(cmd *cobra.Command, _ []string) error {

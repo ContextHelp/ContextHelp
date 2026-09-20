@@ -1,0 +1,92 @@
+{
+  "scenario_id": "format-contract",
+  "schema_version": "1",
+  "verdict": "pass",
+  "scored_at": "2026-09-20T14:34:28.558036Z",
+  "grader_version": "1.0.0",
+  "rules_version": "2026.05.12.1",
+  "tier": 3,
+  "facets": [
+    {
+      "factor": 5,
+      "status": "pass"
+    },
+    {
+      "factor": 3,
+      "status": "pass"
+    },
+    {
+      "factor": 4,
+      "status": "pass"
+    },
+    {
+      "factor": 11,
+      "status": "pass"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "stats-yaml-carries-knowledge-objects",
+      "kind": "output_field_present",
+      "factor": 5,
+      "status": "pass",
+      "observed": "knowledge_objects",
+      "expected": "present"
+    },
+    {
+      "id": "stats-yaml-keeps-nested-jobs",
+      "kind": "output_field_present",
+      "factor": 5,
+      "status": "pass",
+      "observed": "jobs.pending",
+      "expected": "present"
+    },
+    {
+      "id": "list-yaml-carries-total",
+      "kind": "output_field_present",
+      "factor": 5,
+      "status": "pass",
+      "observed": "total",
+      "expected": "present"
+    },
+    {
+      "id": "list-yaml-total-is-zero",
+      "kind": "output_field_equals",
+      "factor": 5,
+      "status": "pass",
+      "observed": 0,
+      "expected": 0
+    },
+    {
+      "id": "unknown-format-stream-discipline",
+      "kind": "stream_discipline_pass",
+      "factor": 3,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    },
+    {
+      "id": "unknown-format-echoes-value",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "bogus-format"
+    },
+    {
+      "id": "unknown-format-names-valid-set",
+      "kind": "stderr_contains",
+      "factor": 4,
+      "status": "pass",
+      "expected": "json"
+    },
+    {
+      "id": "unknown-format-usage-class",
+      "kind": "exit_code_class",
+      "factor": 11,
+      "status": "pass",
+      "observed": 2,
+      "expected": [
+        "USAGE"
+      ]
+    }
+  ]
+}

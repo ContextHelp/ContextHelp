@@ -1,0 +1,151 @@
+schema_version: "1"
+scenario_id: daemon-unreachable
+description: >-
+  A failed dispatch is legible enough to act on. An unreachable daemon,
+  a job id that does not exist, and a flag the parser rejects each yield
+  a structured, corrective error envelope carrying a stable code, the
+  failing input echoed back, and a named recovery command — and each
+  exits in the class that matches the failure, so an agent reads
+  "retry later" apart from "this will never exist" apart from "fix the
+  request" off the exit status instead of out of prose.
+binary: dpkms
+factor_coverage: [3, 4, 11]
+tier: 3
+story_ref:
+  story_id: dpkms.conformance.daemon-unreachable
+  story_path: stories/dpkms-daemon-unreachable.yaml
+  content_hash: "sha256:376aca37213254b29fa9ac3fefcd6720aaea31c8f7bd1a1c46a9a62e2ae3bdde"
+steps:
+  - id: health_refused
+    invoke: ["dpkms", "healthcheck", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: job_absent
+    invoke: ["dpkms", "job", "status", "no-such-job-0000", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: unknown_flag
+    invoke: ["dpkms", "ps", "--bogus-flag", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+assertions:
+  # ── F4: the envelope is machine-readable and corrective ───────────
+  # A caller that asked for --format json is owed a keyed envelope on
+  # the failure path too. Rendering prose to a caller that declared it
+  # cannot read prose leaves it regexing diagnostics.
+  - id: health-refused-envelope-has-code
+    kind: stderr_contains
+    on: health_refused
+    factor: 4
+    value: '"code"'
+  # Naming the command that starts the daemon is what turns "refused"
+  # into a next step rather than a dead end.
+  - id: health-refused-names-recovery
+    kind: stderr_contains
+    on: health_refused
+    factor: 4
+    value: "dpkms serve"
+  - id: job-absent-envelope-has-code
+    kind: stderr_contains
+    on: job_absent
+    factor: 4
+    value: '"code"'
+  - id: job-absent-offers-correction
+    kind: stderr_contains
+    on: job_absent
+    factor: 4
+    value: '"suggested_fix"'
+  # Echoing the failing id lets a batch caller attribute the failure to
+  # one input without correlating by position.
+  - id: job-absent-echoes-id
+    kind: stderr_contains
+    on: job_absent
+    factor: 4
+    value: "no-such-job-0000"
+  # A missing row is a fact about the caller's request, not about the
+  # storage engine. Leaking the driver's own words ("sql: no rows in
+  # result set") tells the caller nothing it can act on and couples the
+  # user-facing contract to the database library.
+  - id: job-absent-hides-driver-internals
+    kind: stderr_does_not_contain
+    on: job_absent
+    factor: 4
+    value: "sql: no rows in result set"
+  # A rejected flag must point at the failing leaf's own help.
+  - id: unknown-flag-correction-hint
+    kind: stderr_contains
+    on: unknown_flag
+    factor: 4
+    value: "--help"
+  - id: unknown-flag-echoes-flag
+    kind: stderr_contains
+    on: unknown_flag
+    factor: 4
+    value: "bogus-flag"
+
+  # ── F3: stream discipline holds on the failure path ───────────────
+  # stdout carries data or nothing; diagnostics go to stderr. A failed
+  # probe must not leave half an envelope on stdout for a pipe to eat.
+  #
+  # Only the usage failure is asserted with stream_discipline_pass,
+  # and the omission of the other two is deliberate.
+  #
+  # That verb fails ANY stderr it can parse as JSON. Under
+  # --format json these two leaves answer with kit's structured error
+  # envelope on stderr, which is what the spec requires of them:
+  # "Machine-readable diagnostics, including structured errors and
+  # warnings, MUST be written to stderr" (12fcc v0.1, Channel
+  # discipline). Asserting the verb here would mark a leaf
+  # non-conformant for obeying the spec, and the only way to turn it
+  # green would be to delete the envelope — losing the machine-readable
+  # `code`, `exit_code` and `suggested_fix` that the stderr_contains
+  # assertions above exist to pin.
+  #
+  # unknown_flag keeps the assertion because it is a genuinely
+  # different case: a usage error is raised before format negotiation,
+  # so its stderr is prose under every --format, and the verb reads it
+  # correctly.
+  #
+  #
+  # Measured, not inferred: a build that printed a JSON object to
+  # stdout on this very step graded IDENTICALLY to the clean build
+  # under the old assertions — both reported "stderr is JSON-
+  # parseable". The verb fails on the stderr rule before it can say
+  # anything about stdout, so those assertions never detected the
+  # leak they were written to catch. Removing them loses no coverage;
+  # the coverage was already absent.
+  # What these two steps still need — stdout stays empty so a pipe
+  # gets nothing rather than half a document — has no verb: every
+  # stdout-reading verb either requires content or ignores its
+  # absence. Their stdout.txt captures are 0 bytes, and that is the
+  # evidence until a stdout-is-empty verb exists upstream.
+  - id: unknown-flag-stream-discipline
+    kind: stream_discipline_pass
+    on: unknown_flag
+    factor: 3
+
+  # ── F11: exit codes carry class, not just failure ─────────────────
+  # These are three different instructions to the caller. A refused
+  # connection is TRANSIENT — wait and retry. An absent job is
+  # NOT_FOUND — never retry, the row will not appear. A rejected flag
+  # is USAGE — repair the request and reissue it. Collapsing all three
+  # to 1 destroys exactly the distinction the retry loop needs.
+  # Stated as the numeric code rather than as the TRANSIENT class
+  # symbol. The grading service resolves an unrecognized class name to
+  # GENERIC (1) instead of rejecting it, and the deployed grader's
+  # table does not carry TRANSIENT -- so `classes: [TRANSIENT]` reads
+  # as "expect exit 1", which is precisely the behavior under test and
+  # returns a false pass. Asserting 6 directly pins the same contract
+  # without depending on the service knowing the symbol.
+  - id: health-refused-transient-code
+    kind: exit_code_equals
+    on: health_refused
+    factor: 11
+    value: 6
+  - id: job-absent-not-found-class
+    kind: exit_code_class
+    on: job_absent
+    factor: 11
+    classes: [NOT_FOUND]
+  - id: unknown-flag-usage-class
+    kind: exit_code_class
+    on: unknown_flag
+    factor: 11
+    classes: [USAGE]

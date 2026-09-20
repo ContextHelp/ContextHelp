@@ -1,0 +1,7 @@
+{
+  "code": "NOT_FOUND",
+  "message": "no job with id \"no-such-job-0000\"",
+  "suggested_fix": "run `dpkms job list` to see what exists",
+  "exit_code": 3,
+  "transience": "permanent"
+}

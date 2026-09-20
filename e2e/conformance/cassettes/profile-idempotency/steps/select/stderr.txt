@@ -1,0 +1,7 @@
+Command "default" is deprecated, use 'ctxt profile set <profile>' to pin, or 'ctxt profile unset <profile>' to clear
+{
+  "warning": {
+    "code": "DEPRECATION",
+    "message": "use 'ctxt profile set \u003cprofile\u003e' to pin, or 'ctxt profile unset \u003cprofile\u003e' to clear"
+  }
+}

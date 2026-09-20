@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.conformance.preview-idempotent
+title: Ask the same read-only question twice and get the same answer
+binary: dpkms
+intent: |
+  An agent retries a maintenance preview after a dropped connection and
+  cannot tell whether the first attempt landed. The retry must be safe:
+  asking what maintenance would do, twice, must neither perform the
+  maintenance nor change the answer. The agent runs the preview, runs it
+  again, and reads the queue state afterwards, expecting the two
+  previews to agree byte for byte and the substrate to be untouched, so
+  a lost response is never a reason to avoid retrying.
+steps:
+  - id: preview_first
+    intent: |
+      Ask what the maintenance pass would do.
+    invoke: ["dpkms", "housekeeping", "run", "--dry-run", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: preview_repeat
+    intent: |
+      Ask the identical question again, as a retry of the first.
+    invoke: ["dpkms", "housekeeping", "run", "--dry-run", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: queue_after
+    intent: |
+      Read the job queue afterwards to confirm the two previews enqueued
+      no work and left the substrate as they found it.
+    invoke: ["dpkms", "job", "list", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]

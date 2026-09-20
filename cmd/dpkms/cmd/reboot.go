@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 )
@@ -32,6 +33,11 @@ Examples:
 func init() {
 	rootCmd.AddCommand(rebootCmd)
 	rebootCmd.Flags().Int("port", 0, "port of the instance to reboot (default: server-url port)")
+
+	// SIGHUP to a live daemon: drains and shuts down, leaving relaunch to
+	// the caller or a supervisor. Same interruption profile as shutdown.
+	// Destructive.
+	cliconv.WithSideEffect(rebootCmd, cliconv.SideEffectDestructive)
 }
 
 func runReboot(cmd *cobra.Command, _ []string) error {

@@ -1,0 +1,25 @@
+schema_version: "1"
+binary: ctxt
+binary_version: 333b5a5
+recorder: xrr
+recorder_version: 0.1.0-alpha.3
+recorded_at: 2026-09-20T14:34:25Z
+scenario_id: ctxt/state-transparency
+scenario_version: 1.0.0
+story_ref:
+  story_id: ctxt.conformance.state-transparency
+  story_path: story.yaml
+  content_hash: sha256:b63ccc53c144f165b8817c13493a76a6d04ddbfb6639f1f847680e1a6e157d63
+steps:
+  - id: stats
+    cassette_dir: steps/stats/cassette
+    captures: steps/stats
+  - id: stats_again
+    cassette_dir: steps/stats_again/cassette
+    captures: steps/stats_again
+  - id: list_empty
+    cassette_dir: steps/list_empty/cassette
+    captures: steps/list_empty
+  - id: find_miss
+    cassette_dir: steps/find_miss/cassette
+    captures: steps/find_miss

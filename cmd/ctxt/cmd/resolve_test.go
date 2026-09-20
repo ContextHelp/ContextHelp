@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"gopkg.in/yaml.v3"
 )
 
 func seedResolveObject(t *testing.T, db *testDB) {
@@ -280,16 +281,44 @@ func TestResolveFullEntityReportsContentStatus(t *testing.T) {
 
 // TestResolveUnsupportedFormatErrors asserts an unknown --format fails rather
 // than silently emitting markdown under exit 0, matching show.go.
+//
+// The rejected value must appear in the message, and so must the valid
+// set: an agent that guessed wrong needs both to correct itself.
 func TestResolveUnsupportedFormatErrors(t *testing.T) {
 	db := setupTestDB(t)
 	seedResolveObject(t, db)
 
-	out, err := db.exec("resolve", "obj_resolve1", "--format", "yaml")
+	out, err := db.exec("resolve", "obj_resolve1", "--format", "bogus-format")
 	if err == nil {
 		t.Fatalf("unsupported format should fail, got output:\n%s", out)
 	}
-	if !strings.Contains(err.Error(), "yaml") {
+	if !strings.Contains(err.Error(), "bogus-format") {
 		t.Errorf("error should name the rejected format, got: %v", err)
+	}
+	for _, valid := range []string{"json", "markdown", "yaml"} {
+		if !strings.Contains(err.Error(), valid) {
+			t.Errorf("error should list valid format %q, got: %v", valid, err)
+		}
+	}
+}
+
+// TestResolveYAMLIsStructured guards the format contract from the other
+// direction: yaml is a machine format kit knows, so resolve must emit a
+// YAML document rather than reject it or fall through to prose.
+func TestResolveYAMLIsStructured(t *testing.T) {
+	db := setupTestDB(t)
+	seedResolveObject(t, db)
+
+	out, err := db.exec("resolve", "obj_resolve1", "--format", "yaml")
+	if err != nil {
+		t.Fatalf("--format yaml should succeed: %v", err)
+	}
+	var got map[string]any
+	if err := yaml.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("--format yaml should emit a YAML document, got:\n%s", out)
+	}
+	if _, ok := got["ref"]; !ok {
+		t.Errorf("yaml document should carry the ref field, got: %v", got)
 	}
 }
 

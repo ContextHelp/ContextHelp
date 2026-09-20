@@ -1,0 +1,6 @@
+          
+   ERROR  
+          
+  Usage: unknown --format "bogus-format" (valid: csv, human, json, markdown, md, table, text, yaml).                  
+
+Error: USAGE: unknown --format "bogus-format" (valid: csv, human, json, markdown, md, table, text, yaml)

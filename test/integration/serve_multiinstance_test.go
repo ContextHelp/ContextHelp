@@ -116,17 +116,28 @@ func TestMultiInstanceAutoPort_PS(t *testing.T) {
 
 	waitForPidfiles(t, runDir, 2, 15*time.Second)
 
-	psCmd := exec.Command(bin, "--config", cfg1, "ps", "--output", "json")
+	// --format, not --output: -o is kit's output-PATH flag, so
+	// `--output json` asks for a file named "json" and leaves stdout
+	// carrying the human table. The two used to be aliased by a
+	// compatibility shim on the root; that shim is gone now that
+	// --format is the single output-form flag.
+	psCmd := exec.CommandContext(t.Context(), bin, "--config", cfg1, "ps", "--format", "json")
 	psCmd.Env = env
 	out, err := psCmd.Output()
 	if err != nil {
 		t.Fatalf("dpkms ps: %v", err)
 	}
 
-	var infos []pidfile.Info
-	if err := json.Unmarshal(out, &infos); err != nil {
+	// The listing travels inside a keyed envelope rather than as a
+	// bare array, so it can grow a sibling field without changing its
+	// type under every existing caller.
+	var listing struct {
+		Instances []pidfile.Info `json:"instances"`
+	}
+	if err := json.Unmarshal(out, &listing); err != nil {
 		t.Fatalf("parse ps json: %v\noutput: %s", err, out)
 	}
+	infos := listing.Instances
 	if len(infos) < 2 {
 		t.Fatalf("ps listed %d instance(s), want >=2", len(infos))
 	}

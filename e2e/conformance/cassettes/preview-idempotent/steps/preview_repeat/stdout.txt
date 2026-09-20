@@ -1,0 +1,49 @@
+{
+  "command": "dpkms housekeeping run",
+  "actions": [
+    {
+      "kind": "checkpoint",
+      "target": "wal:/var/folders/x6/lrc3lbzd1gs0wvmn_z_t76780000gn/T/dpkms-12fcc-record/preview-idempotent/data/contexthelp/db.sqlite",
+      "detail": "PRAGMA wal_checkpoint(TRUNCATE)",
+      "count": 0,
+      "reversible": true
+    },
+    {
+      "kind": "vacuum",
+      "target": "database:/var/folders/x6/lrc3lbzd1gs0wvmn_z_t76780000gn/T/dpkms-12fcc-record/preview-idempotent/data/contexthelp/db.sqlite",
+      "detail": "VACUUM; 136 pages of 544 KB currently allocated",
+      "count": 0,
+      "reversible": false
+    },
+    {
+      "kind": "optimize",
+      "target": "table:embeddings_fts",
+      "detail": "optimize the embeddings index if the table exists",
+      "count": 0,
+      "reversible": true
+    },
+    {
+      "kind": "delete",
+      "target": "table:blobs",
+      "detail": "purge blobs whose object no longer exists",
+      "count": 0,
+      "reversible": false
+    },
+    {
+      "kind": "delete",
+      "target": "table:jobs",
+      "detail": "prune completed, failed and canceled jobs older than 30 days",
+      "count": 0,
+      "reversible": false
+    },
+    {
+      "kind": "update",
+      "target": "table:jobs",
+      "detail": "reset jobs running longer than 2h0m0s back to pending",
+      "count": 0,
+      "reversible": false
+    }
+  ],
+  "matched": 0,
+  "dry_run": true
+}

@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.conformance.output-flag-contract
+title: Learn how to ask for JSON from the help, and have it work
+binary: dpkms
+intent: |
+  An agent meeting the substrate for the first time reads the help to
+  learn how to request machine-readable output, then uses what it read.
+  The help is the contract: the flag it documents must be the flag the
+  parser accepts, and a request for JSON must be honoured with a JSON
+  document rather than silently answered with a rendered table. The
+  agent reads the health probe's help, asks for JSON the way that help
+  describes, and then redirects the same answer to a file, because a
+  flag that names a destination must write to it rather than print to
+  the terminal and report success.
+steps:
+  - id: read_help
+    intent: |
+      Read the health probe's help to learn which flag requests JSON and
+      what its exit codes mean.
+    invoke: ["dpkms", "healthcheck", "--help", "--no-color"]
+    capture: [exit_code, stdout, stderr]
+  - id: ask_as_documented
+    intent: |
+      Ask the instance lister for JSON using the format flag the help
+      documents, then read the result as a document.
+    invoke: ["dpkms", "ps", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: ask_redirected
+    intent: |
+      Ask the identical question but send the answer to a file with the
+      output-path flag, expecting the terminal to stay silent because
+      the document went where it was told to go.
+    invoke:
+      ["dpkms", "ps", "--format", "json", "-o", "ps.json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]

@@ -1,0 +1,7 @@
+{
+  "code": "NOT_FOUND",
+  "message": "no object matching \"obj_deadbeef\"",
+  "suggested_fix": "run `ctxt find obj_deadbeef` to search for it, or `ctxt list` to browse what is stored",
+  "exit_code": 3,
+  "transience": "permanent"
+}

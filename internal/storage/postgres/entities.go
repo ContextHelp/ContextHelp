@@ -171,7 +171,7 @@ func scanEntity(row *sql.Row) (*storage.Entity, error) {
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("entity not found")
+			return nil, fmt.Errorf("entity %w", storage.ErrNotFound)
 		}
 		return nil, fmt.Errorf("scan entity: %w", err)
 	}

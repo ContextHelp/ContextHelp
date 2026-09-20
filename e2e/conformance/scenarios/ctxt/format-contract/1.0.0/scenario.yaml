@@ -1,0 +1,123 @@
+schema_version: "1"
+scenario_id: format-contract
+description: >-
+  The advertised output-format set is a contract, not a suggestion. A
+  format the help text lists is honored; a format it does not list is
+  refused in the USAGE class, naming the offending value. Silently
+  downgrading an unsupported — or an unrecognized — format to
+  human-rendered output is the worst of the three outcomes: the caller
+  keeps running and parses prose as if it were data.
+binary: ctxt
+factor_coverage: [3, 4, 5, 11]
+tier: 3
+story_ref:
+  story_id: ctxt.conformance.format-contract
+  story_path: stories/format-contract.yaml
+  content_hash: "sha256:9c8f6bdcc38a0f457df0f7c5597c50b82fcb708f97b9ee84e12a732cc6b76228"
+steps:
+  - id: stats_yaml
+    invoke: ["ctxt", "stats", "--format", "yaml", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: list_yaml
+    invoke: ["ctxt", "list", "--format", "yaml", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: stats_unknown_format
+    invoke: ["ctxt", "stats", "--format", "bogus-format", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+assertions:
+  # ── F5: a listed format is actually produced ─────────────────────
+  # `--format` advertises a closed set including yaml, so asking for
+  # yaml must yield a document carrying the same named fields the JSON
+  # form exposes. Distinguishing "emitted YAML" from "emitted a table
+  # that happens to land on stdout" is the entire question.
+  #
+  # These were output_schema_matches assertions, which failed against
+  # a CORRECT binary: that verb hardcodes json.Unmarshal on stdout and
+  # ignores the `parse` argument, so well-formed YAML was reported as
+  # "stdout is not JSON: invalid character 'e'" — the 'e' of
+  # `entities:`. It graded the contract as broken because the grader
+  # could not read the format the contract is about.
+  #
+  # output_field_* share a decoder that DOES honour `parse: yaml`
+  # (kit's parseStdoutAsJSON converts YAML to JSON before the gjson
+  # query), so the fields below are read from the YAML document as
+  # itself. An earlier revision of this comment claimed a YAML-aware
+  # verb had to land upstream first; that was wrong, and the verbs
+  # were already there.
+  #
+  # Known asymmetry, measured rather than assumed: if a regression
+  # made these leaves emit the human table again, yaml.v3 rejects it
+  # ("mapping values are not allowed in this context") and the verb
+  # reports UNGRADABLE rather than fail — a broken contract filed as
+  # broken measurement. So the table case is caught by
+  # unknown-format-stream-discipline below, which reads stdout as
+  # JSON and fails on prose, and an ungradable verdict here is itself
+  # a signal to read the capture rather than a passing grade.
+  - id: stats-yaml-carries-knowledge-objects
+    kind: output_field_present
+    on: stats_yaml
+    factor: 5
+    path: knowledge_objects
+    parse: yaml
+  # jobs is a nested mapping, not a scalar: asserting its presence
+  # pins that the YAML document keeps the JSON document's shape
+  # rather than flattening it into one level of key/value lines.
+  - id: stats-yaml-keeps-nested-jobs
+    kind: output_field_present
+    on: stats_yaml
+    factor: 5
+    path: jobs.pending
+    parse: yaml
+  - id: list-yaml-carries-total
+    kind: output_field_present
+    on: list_yaml
+    factor: 5
+    path: total
+    parse: yaml
+  # A value check as well as a presence check: an empty store reports
+  # zero objects, and pinning the value means a decoder that returned
+  # some degenerate empty mapping could not satisfy the assertions
+  # above by accident.
+  - id: list-yaml-total-is-zero
+    kind: output_field_equals
+    on: list_yaml
+    factor: 5
+    path: total
+    value: 0
+    parse: yaml
+
+  # ── F3: a rejected format leaves stdout clean ────────────────────
+  # The refusal itself is a diagnostic and belongs on stderr. A leaf
+  # that ignores the unusable flag and renders a human table onto
+  # stdout fails here: a caller that piped stdout receives bytes that
+  # no parser can consume, under a status that claims success.
+  - id: unknown-format-stream-discipline
+    kind: stream_discipline_pass
+    on: stats_unknown_format
+    factor: 3
+
+  # ── F4: an unsupported format is rejected, and says so ───────────
+  # The rejection has to name the offending value, otherwise a caller
+  # assembling the flag from config cannot tell which setting is wrong.
+  - id: unknown-format-echoes-value
+    kind: stderr_contains
+    on: stats_unknown_format
+    factor: 4
+    value: "bogus-format"
+  # Listing the formats that would have worked turns the rejection
+  # into a correction rather than a dead end.
+  - id: unknown-format-names-valid-set
+    kind: stderr_contains
+    on: stats_unknown_format
+    factor: 4
+    value: "json"
+
+  # ── F11: an unusable flag value is a USAGE failure ───────────────
+  # Accepting an undefined format and quietly rendering for a human is
+  # the silent-success case this assertion exists to catch: the caller
+  # sees exit 0 and parses a table.
+  - id: unknown-format-usage-class
+    kind: exit_code_class
+    on: stats_unknown_format
+    factor: 11
+    classes: [USAGE]

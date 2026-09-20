@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 	kitupgrade "hop.top/kit/go/core/upgrade"
 )
@@ -72,6 +73,15 @@ func init() {
 	upgradeCmd.AddCommand(upgradeInstallCmd)
 	upgradeCmd.AddCommand(upgradeSnoozeCmd)
 	upgradeCmd.AddCommand(upgradeNotesCmd)
+
+	cliconv.WithSideEffect(upgradeCheckCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(upgradeNotesCmd, cliconv.SideEffectRead)
+	// snooze writes a timestamp to the XDG state dir. Reversible by
+	// re-running or clearing the file. Write.
+	cliconv.WithSideEffect(upgradeSnoozeCmd, cliconv.SideEffectWrite)
+	// install replaces the running binary in place; the previous build is
+	// not retained. Destructive.
+	cliconv.WithSideEffect(upgradeInstallCmd, cliconv.SideEffectDestructive)
 }
 
 func runUpgradeCheck(cmd *cobra.Command, _ []string) error {

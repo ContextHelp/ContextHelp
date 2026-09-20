@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 )
 
@@ -15,4 +16,6 @@ var versionCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(versionCmd)
 	versionCmd.Flags().Bool("check", false, "check for a newer release")
+
+	cliconv.WithSideEffect(versionCmd, cliconv.SideEffectRead)
 }

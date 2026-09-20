@@ -1,0 +1,22 @@
+schema_version: "1"
+binary: ctxt
+binary_version: 333b5a5
+recorder: xrr
+recorder_version: 0.1.0-alpha.3
+recorded_at: 2026-09-20T14:34:24Z
+scenario_id: ctxt/format-contract
+scenario_version: 1.0.0
+story_ref:
+  story_id: ctxt.conformance.format-contract
+  story_path: story.yaml
+  content_hash: sha256:9c8f6bdcc38a0f457df0f7c5597c50b82fcb708f97b9ee84e12a732cc6b76228
+steps:
+  - id: stats_yaml
+    cassette_dir: steps/stats_yaml/cassette
+    captures: steps/stats_yaml
+  - id: list_yaml
+    cassette_dir: steps/list_yaml/cassette
+    captures: steps/list_yaml
+  - id: stats_unknown_format
+    cassette_dir: steps/stats_unknown_format/cassette
+    captures: steps/stats_unknown_format

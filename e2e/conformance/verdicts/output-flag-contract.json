@@ -1,0 +1,69 @@
+{
+  "scenario_id": "output-flag-contract",
+  "schema_version": "1",
+  "verdict": "pass",
+  "scored_at": "2026-09-20T14:34:28.817864Z",
+  "grader_version": "1.0.0",
+  "rules_version": "2026.05.12.1",
+  "tier": 3,
+  "facets": [
+    {
+      "factor": 5,
+      "status": "pass"
+    },
+    {
+      "factor": 3,
+      "status": "pass"
+    },
+    {
+      "factor": 11,
+      "status": "pass"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "help-request-succeeds",
+      "kind": "exit_code_class",
+      "factor": 5,
+      "status": "pass",
+      "observed": 0,
+      "expected": [
+        "OK"
+      ]
+    },
+    {
+      "id": "documented-route-returns-json",
+      "kind": "stream_discipline_pass",
+      "factor": 3,
+      "status": "pass",
+      "expected": "stream discipline OK"
+    },
+    {
+      "id": "documented-route-envelope-shape",
+      "kind": "output_schema_matches",
+      "factor": 5,
+      "status": "pass",
+      "expected": "schema-valid"
+    },
+    {
+      "id": "documented-route-exits-ok",
+      "kind": "exit_code_class",
+      "factor": 11,
+      "status": "pass",
+      "observed": 0,
+      "expected": [
+        "OK"
+      ]
+    },
+    {
+      "id": "redirected-route-exits-ok",
+      "kind": "exit_code_class",
+      "factor": 11,
+      "status": "pass",
+      "observed": 0,
+      "expected": [
+        "OK"
+      ]
+    }
+  ]
+}

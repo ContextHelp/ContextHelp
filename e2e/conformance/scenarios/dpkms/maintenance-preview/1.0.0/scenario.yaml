@@ -1,0 +1,142 @@
+schema_version: "1"
+scenario_id: maintenance-preview
+description: >-
+  Every maintenance step that writes can be asked what it would do
+  first, and answers with a machine-readable plan of the actions it
+  would take rather than a rendered progress log. A step that cannot be
+  previewed reports that gap in its own contract, addressed to the
+  caller it refused, rather than emitting an internal defect report
+  aimed at whoever implemented the command.
+binary: dpkms
+factor_coverage: [3, 4, 6, 11]
+tier: 3
+story_ref:
+  story_id: dpkms.conformance.maintenance-preview
+  story_path: stories/dpkms-maintenance-preview.yaml
+  content_hash: "sha256:2b6cab3b5ff0c4394638cb0e5f18b5476174a96d9961e94886214cc339a3f8e2"
+steps:
+  - id: preview_full_pass
+    invoke: ["dpkms", "housekeeping", "run", "--dry-run", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: preview_vacuum
+    invoke: ["dpkms", "housekeeping", "vacuum", "--dry-run", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+  - id: preview_prune
+    invoke: ["dpkms", "housekeeping", "prune", "--dry-run", "--format", "json", "--no-color", "--no-hints"]
+    capture: [exit_code, stdout, stderr]
+assertions:
+  # ── F6: a preview previews, and says so in data ───────────────────
+  # The whole value of a preview is that it can be reviewed before it
+  # is approved. Reviewed by what, matters: an operator gating a
+  # reclaim pass on the only copy of their knowledge is increasingly a
+  # program, and a program cannot approve a progress log.
+  # dry_run_no_mutation is asserted against the full pass, whose steps
+  # do touch the store when run for real. It is deliberately NOT the
+  # only F6 evidence here: the verb passes vacuously when a step
+  # records no adapter traffic, so a command that previews nothing and
+  # a command that previews correctly are indistinguishable to it
+  # alone. The payload assertions below are what actually pin the
+  # contract.
+  - id: full-pass-preview-does-not-mutate
+    kind: dry_run_no_mutation
+    on: preview_full_pass
+    factor: 6
+  # The plan must declare itself a plan in the payload, not only in a
+  # prose banner, so a caller can refuse to proceed when it discovers
+  # it was handed a result instead of a projection. And a plan is a
+  # list of actions: naming them is what lets the reviewer approve
+  # some and refuse others rather than approving the whole pass sight
+  # unseen.
+  #
+  # Stated as one schema rather than as two field lookups on purpose.
+  # The output_field_* verbs report "stdout is not valid JSON" as
+  # UNGRADABLE, which would file a real contract violation -- a
+  # preview that answers a JSON request with a progress log -- as a
+  # measurement error instead. output_schema_matches reports that same
+  # condition as a fail, which is the honest verdict.
+  - id: full-pass-preview-is-a-reviewable-plan
+    kind: output_schema_matches
+    on: preview_full_pass
+    factor: 6
+    schema:
+      type: object
+      required: [dry_run, actions]
+      properties:
+        dry_run:
+          const: true
+        actions:
+          type: array
+  # The reclaim and delete steps are exactly the ones worth previewing:
+  # one rewrites the database file, the other removes rows outright.
+  # Offering --dry-run on the composite pass but not on its parts
+  # leaves the destructive steps unpreviewable when run individually.
+  # Asserted on the payload, not on absence of adapter traffic: a
+  # command that rejects --dry-run outright also records no traffic,
+  # so "did not mutate" is satisfied by refusing to run at all. What
+  # the operator needs is the projection itself.
+  - id: vacuum-preview-is-a-reviewable-plan
+    kind: output_schema_matches
+    on: preview_vacuum
+    factor: 6
+    schema:
+      type: object
+      required: [dry_run, actions]
+      properties:
+        dry_run:
+          const: true
+        actions:
+          type: array
+  - id: prune-preview-is-a-reviewable-plan
+    kind: output_schema_matches
+    on: preview_prune
+    factor: 6
+    schema:
+      type: object
+      required: [dry_run, actions]
+      properties:
+        dry_run:
+          const: true
+        actions:
+          type: array
+
+  # ── F3: the preview is data, not a progress log ───────────────────
+  - id: full-pass-preview-stdout-is-json
+    kind: stream_discipline_pass
+    on: preview_full_pass
+    factor: 3
+
+  # ── F4: a refusal addresses the caller, not the implementer ───────
+  # When a command cannot honour --dry-run, the caller needs to know
+  # which of its options remain. Telling it that "the adopter must call
+  # cli.SetSideEffect" describes a defect in code the caller does not
+  # own and cannot change; it names no recovery the caller can perform.
+  - id: vacuum-refusal-is-caller-facing
+    kind: stderr_does_not_contain
+    on: preview_vacuum
+    factor: 4
+    value: "cli.SetSideEffect"
+  - id: prune-refusal-is-caller-facing
+    kind: stderr_does_not_contain
+    on: preview_prune
+    factor: 4
+    value: "cli.SetSideEffect"
+
+  # ── F11: a preview that succeeds exits OK ─────────────────────────
+  # Previewing is a read. An operator scripting "preview, review,
+  # then apply" must be able to gate the apply on the preview's exit
+  # status without the preview itself looking like a failure.
+  - id: full-pass-preview-exits-ok
+    kind: exit_code_class
+    on: preview_full_pass
+    factor: 11
+    classes: [OK]
+  - id: vacuum-preview-exits-ok
+    kind: exit_code_class
+    on: preview_vacuum
+    factor: 11
+    classes: [OK]
+  - id: prune-preview-exits-ok
+    kind: exit_code_class
+    on: preview_prune
+    factor: 11
+    classes: [OK]
