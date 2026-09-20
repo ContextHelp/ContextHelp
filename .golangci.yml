@@ -34,7 +34,9 @@ linters:
   settings:
     errcheck:
       check-type-assertions: true
-      check-blank: true
+      # check-blank is off: `_ = f.Close()` is the idiom Go uses to document a
+      # deliberately suppressed error, so flagging it punishes the explicit
+      # form and rewards the silent bare call.
       exclude-functions:
         - (io.Closer).Close
         - (net/http.ResponseWriter).Write
@@ -45,10 +47,12 @@ linters:
       disabled-checks:
         - commentFormatting
         - whyNoLint
+      # diagnostic only. The style and performance tags cost ~6m of analyzer
+      # time against a 5m CI budget, and their headline fix (hugeParam, pass
+      # by pointer) changes aliasing semantics — a real bug risk traded for a
+      # style opinion.
       enabled-tags:
         - diagnostic
-        - style
-        - performance
     gocyclo:
       min-complexity: 15
     gosec:
@@ -60,6 +64,11 @@ linters:
       confidence: medium
     govet:
       enable-all: true
+      # fieldalignment wants struct fields reordered to save padding. Outside
+      # hot paths that buys nothing and finds no bugs, while fighting field
+      # orders chosen to group related data.
+      disable:
+        - fieldalignment
     misspell:
       locale: US
       ignore-rules:
@@ -70,11 +79,10 @@ linters:
       range-loops: true
       for-loops: true
     revive:
+      # The `exported` rule is omitted: it accounted for 915 of revive's 996
+      # findings, and satisfying it yields `// Foo does foo.` filler rather
+      # than documentation anyone benefits from reading.
       rules:
-        - name: exported
-          arguments:
-            - checkPrivateReceivers
-            - sayRepetitiveInsteadOfStutters
         - name: package-comments
         - name: var-naming
         - name: indent-error-flow
@@ -115,9 +123,12 @@ formatters:
   settings:
     gofmt:
       simplify: true
-    goimports:
-      local-prefixes:
-        - github.com/ideacrafterslabs/contexthelp
+    # goimports has no local-prefixes: the key read
+    # github.com/ideacrafterslabs/contexthelp, which matches nothing now the
+    # module is .../ctxt, so it was inert. Dropping it records that no local
+    # import grouping is enforced; setting it correctly would regroup imports
+    # across 405 files.
+    goimports: {}
   exclusions:
     generated: lax
     paths:
