@@ -109,7 +109,6 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 	if filter.ContentStatus != "" {
 		query += fmt.Sprintf(" AND content_status = $%d", argIdx)
 		args = append(args, string(filter.ContentStatus))
-		argIdx++
 	}
 
 	query += " ORDER BY slug ASC"

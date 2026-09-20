@@ -61,23 +61,19 @@ func (s *PublicationStrategy) Probe(ctx context.Context, ev lateral.CapturedEven
 	host := strings.ToLower(u.Hostname())
 	d := customdomain.Detect(ev.SourceURL, hintsFromEvent(ev))
 
-	// resolved indicates whether slug is a real Medium publication slug
-	// (suitable for medium.com/<slug> canonical URLs). When false, we
-	// emit the custom-domain root URL instead of forcing the host into
-	// the medium.com/ path (which produces invalid URLs like
-	// medium.com/newsletter.example.com).
-	var (
-		slug     string
-		resolved bool
-	)
+	var slug string
 	switch {
 	case strings.HasSuffix(host, ".medium.com"):
 		slug = strings.TrimSuffix(host, ".medium.com")
-		resolved = true
 	case host == "medium.com" && len(parts) >= 1:
 		slug = parts[0]
-		resolved = true
 	case d.CustomHost:
+		// resolved indicates whether slug is a real Medium publication
+		// slug (suitable for medium.com/<slug> canonical URLs). When
+		// false, we emit the custom-domain root URL instead of forcing
+		// the host into the medium.com/ path (which produces invalid
+		// URLs like medium.com/newsletter.example.com).
+		var resolved bool
 		if s.Client != nil {
 			if r, err := s.Client.ResolvePublication(ctx, host); err == nil && r != "" {
 				slug = r

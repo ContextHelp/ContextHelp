@@ -46,7 +46,6 @@ func (s *StepStore) List(ctx context.Context, source string) ([]*storage.Registe
 	if source != "" {
 		conditions = append(conditions, fmt.Sprintf("source = $%d", idx))
 		args = append(args, source)
-		idx++
 	}
 
 	where := ""

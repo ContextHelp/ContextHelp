@@ -40,7 +40,6 @@ func (s *DetectorStore) List(ctx context.Context, filter storage.DetectorFilter)
 	if filter.Kind != "" {
 		conditions = append(conditions, fmt.Sprintf("kind = $%d", idx))
 		args = append(args, string(filter.Kind))
-		idx++
 	}
 	if filter.Enabled != nil {
 		if *filter.Enabled {

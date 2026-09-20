@@ -51,7 +51,6 @@ func (s *PipelineStore) List(ctx context.Context, filter storage.PipelineFilter)
 	if filter.Name != "" {
 		conditions = append(conditions, fmt.Sprintf("name = $%d", idx))
 		args = append(args, filter.Name)
-		idx++
 	}
 	if filter.OnlyArchived {
 		conditions = append(conditions, "archived = TRUE")
