@@ -201,7 +201,7 @@ const (
 
 // platformEntityHandler serves one platform entity for any path, matching
 // the previous inline handlers, which also ignored the request path.
-func platformEntityHandler(ent mockPlatformEntity) gohttp.HandlerFunc {
+func platformEntityHandler(ent *mockPlatformEntity) gohttp.HandlerFunc {
 	return func(w gohttp.ResponseWriter, _ *gohttp.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(ent)
@@ -210,8 +210,8 @@ func platformEntityHandler(ent mockPlatformEntity) gohttp.HandlerFunc {
 
 // entityGitHubFixture and entityLinkedInFixture share entityCrossRefURL,
 // which is what drives the cross-reference match.
-func entityGitHubFixture() mockPlatformEntity {
-	return mockPlatformEntity{
+func entityGitHubFixture() *mockPlatformEntity {
+	return &mockPlatformEntity{
 		PlatformSlug: "@github.janedoe",
 		PlatformName: "Jane Doe",
 		Platform:     "github",
@@ -221,8 +221,8 @@ func entityGitHubFixture() mockPlatformEntity {
 	}
 }
 
-func entityLinkedInFixture() mockPlatformEntity {
-	return mockPlatformEntity{
+func entityLinkedInFixture() *mockPlatformEntity {
+	return &mockPlatformEntity{
 		PlatformSlug: "@linkedin.jane-doe",
 		PlatformName: "Jane Doe",
 		Platform:     "linkedin",
@@ -234,8 +234,8 @@ func entityLinkedInFixture() mockPlatformEntity {
 
 // entityNameOnlyFixture is a different person who happens to share a
 // name: no org, no links, so only the name can match.
-func entityNameOnlyFixture() mockPlatformEntity {
-	return mockPlatformEntity{
+func entityNameOnlyFixture() *mockPlatformEntity {
+	return &mockPlatformEntity{
 		PlatformSlug: "@x.janedoe99",
 		PlatformName: "Jane Doe",
 		Platform:     "x",
@@ -282,10 +282,9 @@ func TestUS0210_SameEntityFromTwoPlatformsMerged(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	// Both platforms link to this same URL, which is what makes them
+	// Both fixtures link to entityCrossRefURL, which is what makes them
 	// resolve to one entity.
-	const sharedCrossRefURL = entityCrossRefURL
-
+	//
 	// Replay answers from the cassettes; the fixture servers only matter
 	// when re-recording.
 	srvGH := httptest.NewServer(platformEntityHandler(entityGitHubFixture()))

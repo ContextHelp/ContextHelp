@@ -144,7 +144,7 @@ func wikipediaArticlePath(page string) string {
 
 // wikipediaHandler routes the REST v1 summary and article paths for one
 // page, 404-ing anything else exactly as the previous inline handlers did.
-func wikipediaHandler(page string, summary mockWikipediaSummary, article mockWikipediaArticle) gohttp.HandlerFunc {
+func wikipediaHandler(page string, summary *mockWikipediaSummary, article *mockWikipediaArticle) gohttp.HandlerFunc {
 	return func(w gohttp.ResponseWriter, r *gohttp.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -160,12 +160,12 @@ func wikipediaHandler(page string, summary mockWikipediaSummary, article mockWik
 
 func wikipediaDistributedHandler() gohttp.HandlerFunc {
 	return wikipediaHandler(wikiDistributedPage,
-		mockWikipediaSummary{
+		&mockWikipediaSummary{
 			Title:   wikiDistributedTitle,
 			Extract: wikiDistributedSummary,
 			PageID:  8071,
 		},
-		mockWikipediaArticle{
+		&mockWikipediaArticle{
 			Title:   wikiDistributedTitle,
 			Summary: wikiDistributedSummary,
 			Infobox: []mockWikipediaInfoboxEntity{
@@ -176,12 +176,12 @@ func wikipediaDistributedHandler() gohttp.HandlerFunc {
 
 func wikipediaGoHandler() gohttp.HandlerFunc {
 	return wikipediaHandler(wikiGoPage,
-		mockWikipediaSummary{
+		&mockWikipediaSummary{
 			Title:   wikiGoTitle,
 			Extract: wikiGoSummary,
 			PageID:  25039021,
 		},
-		mockWikipediaArticle{
+		&mockWikipediaArticle{
 			Title:   wikiGoTitle,
 			Summary: wikiGoSummary,
 			Infobox: []mockWikipediaInfoboxEntity{
