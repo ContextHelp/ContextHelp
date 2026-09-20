@@ -84,6 +84,9 @@ func (s *RegistryStore) List(ctx context.Context) ([]*storage.RegistryCache, int
 		}
 		registries = append(registries, r)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate registries: %w", err)
+	}
 
 	return registries, total, nil
 }

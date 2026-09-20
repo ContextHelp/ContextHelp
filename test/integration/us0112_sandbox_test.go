@@ -40,13 +40,22 @@ func (s *outboundProbe) Run(_ context.Context, draft *storage.KnowledgeObject) (
 // succeeds. In a real sandbox the call would be blocked by seccomp/entitlements;
 // in this test environment we simulate the restriction by using a dummy URL that
 // will always fail a connection.
+// The US-0112 tests assert only that SandboxConfig round-trips through the
+// API; none asserts that network access is actually blocked during execution.
+// This probe is the shape such a test needs, so it is kept rather than deleted
+// to keep the enforcement gap visible.
+//
+//nolint:unused // enforcement-side sandbox test not yet written
 type sandboxedProbe struct {
 	pipeline.BaseContract
 	targetURL   string
 	outboundHit *bool
 }
 
+//nolint:unused // see sandboxedProbe
 func (s *sandboxedProbe) Name() string { return "sandboxed-probe" }
+
+//nolint:unused // see sandboxedProbe
 func (s *sandboxedProbe) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	// Simulate sandbox restriction: the step policy disallows network.
 	// We honour the SandboxConfig.Network field: if false, skip outbound call.

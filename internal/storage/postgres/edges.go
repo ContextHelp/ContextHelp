@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -120,32 +121,12 @@ func (s *EdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth
 			strings.Join(placeholders, ","),
 		)
 
-		rows, err := s.db.QueryContext(ctx, query, ids...)
+		nextFrontier, done, err := s.relatedHop(ctx, query, ids, visited, &result, limit)
 		if err != nil {
 			return nil, fmt.Errorf("related objects hop %d: %w", hop+1, err)
 		}
-
-		nextFrontier := map[string]struct{}{}
-		for rows.Next() {
-			var id string
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return nil, fmt.Errorf("scan related id: %w", err)
-			}
-			if _, seen := visited[id]; seen {
-				continue
-			}
-			visited[id] = struct{}{}
-			nextFrontier[id] = struct{}{}
-			result = append(result, id)
-			if limit > 0 && len(result) >= limit {
-				rows.Close()
-				return result, nil
-			}
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return nil, fmt.Errorf("related objects rows: %w", err)
+		if done {
+			return result, nil
 		}
 
 		frontier = nextFrontier
@@ -154,11 +135,47 @@ func (s *EdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth
 	return result, nil
 }
 
-func scanEdges(rows interface {
-	Next() bool
-	Scan(dest ...any) error
-	Err() error
-}) ([]*storage.Edge, error) {
+// relatedHop runs one breadth-first hop of RelatedObjects. It is a separate
+// function so rows.Close can be deferred per hop rather than closed by hand on
+// every early-return path. done reports that the caller-supplied limit was
+// reached and iteration should stop.
+func (s *EdgeStore) relatedHop(
+	ctx context.Context,
+	query string,
+	ids []any,
+	visited map[string]struct{},
+	result *[]string,
+	limit int,
+) (map[string]struct{}, bool, error) {
+	rows, err := s.db.QueryContext(ctx, query, ids...)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+
+	nextFrontier := map[string]struct{}{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, false, fmt.Errorf("scan related id: %w", err)
+		}
+		if _, seen := visited[id]; seen {
+			continue
+		}
+		visited[id] = struct{}{}
+		nextFrontier[id] = struct{}{}
+		*result = append(*result, id)
+		if limit > 0 && len(*result) >= limit {
+			return nextFrontier, true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("related objects rows: %w", err)
+	}
+	return nextFrontier, false, nil
+}
+
+func scanEdges(rows *sql.Rows) ([]*storage.Edge, error) {
 	var edges []*storage.Edge
 	for rows.Next() {
 		var e storage.Edge

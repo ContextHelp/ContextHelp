@@ -79,6 +79,9 @@ func (s *ReminderStore) List(ctx context.Context, activeOnly bool) ([]*storage.S
 		}
 		reminders = append(reminders, r)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate reminders: %w", err)
+	}
 
 	return reminders, total, nil
 }

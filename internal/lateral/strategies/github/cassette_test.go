@@ -17,6 +17,11 @@ import (
 // replay path; when xrr lands the same Fetcher interface lets the
 // strategy switch transparently. Each cassette test below installs a
 // fixtureFetcher with the URLs and JSON bodies it expects to see.
+// Kept deliberately: cassette_xrr_test.go names this type as the migration
+// target that xrr-driven replay replaces, so deleting it would silently drop
+// the documented seam.
+//
+//nolint:unused // migration target referenced by the xrr cassette seam
 type fixtureFetcher struct {
 	mu          chan struct{}
 	fixtures    map[string][]byte
@@ -25,6 +30,7 @@ type fixtureFetcher struct {
 	lastHeaders http.Header
 }
 
+//nolint:unused // part of the xrr cassette migration seam
 func newFixtureFetcher() *fixtureFetcher {
 	return &fixtureFetcher{
 		mu:       make(chan struct{}, 1),
@@ -33,9 +39,13 @@ func newFixtureFetcher() *fixtureFetcher {
 	}
 }
 
-func (f *fixtureFetcher) lock()   { f.mu <- struct{}{} }
+//nolint:unused // part of the xrr cassette migration seam
+func (f *fixtureFetcher) lock() { f.mu <- struct{}{} }
+
+//nolint:unused // part of the xrr cassette migration seam
 func (f *fixtureFetcher) unlock() { <-f.mu }
 
+//nolint:unused // part of the xrr cassette migration seam
 func (f *fixtureFetcher) Get(_ context.Context, url string) (FetchResult, error) {
 	f.lock()
 	defer f.unlock()

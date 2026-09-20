@@ -47,12 +47,6 @@ var migration011 string
 //go:embed migrations/012_mention_uris.sql
 var migration012 string
 
-//go:embed migrations/013_entity_thin_sync.sql
-var migration013 string
-
-//go:embed migrations/014_remind_at.sql
-var migration014 string
-
 //go:embed migrations/015_profile_scoped_objects.sql
 var migration015 string
 
@@ -73,15 +67,6 @@ var migration020 string
 
 //go:embed migrations/021_saved_searches.sql
 var migration021 string
-
-//go:embed migrations/022_graph_canonical.sql
-var migration022 string
-
-//go:embed migrations/023_projected_fts_body.sql
-var migration023 string
-
-//go:embed migrations/024_rename_mention_uris.sql
-var migration024 string
 
 //go:embed migrations/025_federation_watermarks.sql
 var migration025 string

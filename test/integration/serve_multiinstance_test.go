@@ -170,19 +170,6 @@ func writeServeConfig(t *testing.T, dir, id string) string {
 	return path
 }
 
-// startServeProcess launches a foreground (non-daemon) dpkms serve process.
-func startServeProcess(t *testing.T, bin, configPath string, env []string) *exec.Cmd {
-	t.Helper()
-	c := exec.Command(bin, "--config", configPath, "serve")
-	c.Env = env
-	c.Stdout = os.Stderr
-	c.Stderr = os.Stderr
-	if err := c.Start(); err != nil {
-		t.Fatalf("start serve process: %v", err)
-	}
-	return c
-}
-
 // startServeProcessWithName launches dpkms serve with an explicit --name flag.
 func startServeProcessWithName(t *testing.T, bin, configPath, name string, env []string) *exec.Cmd {
 	t.Helper()

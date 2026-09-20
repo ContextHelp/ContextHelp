@@ -32,12 +32,20 @@ func (s *misconfiguredStep) Run(_ context.Context, _ *storage.KnowledgeObject) (
 	return nil, fmt.Errorf("misconfigured pipeline step: missing required config key %q", s.missingKey)
 }
 
-// panicRecoveredStep simulates a step that panics (recovered by the worker).
+// panicRecoveredStep is the placeholder for a worker panic-recovery test that
+// was never written: no US-0033 test wires it, and its Run returns an error
+// rather than panicking, so it would not exercise recovery as written. Kept so
+// the missing coverage stays visible instead of disappearing with the type.
+//
+//nolint:unused // panic-recovery test not yet written
 type panicRecoveredStep struct {
 	pipeline.BaseContract
 }
 
+//nolint:unused // see panicRecoveredStep
 func (s *panicRecoveredStep) Name() string { return "test-panic-recovered" }
+
+//nolint:unused // see panicRecoveredStep
 func (s *panicRecoveredStep) Run(_ context.Context, _ *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	return nil, fmt.Errorf("runtime error: nil pointer dereference in enrichment step")
 }

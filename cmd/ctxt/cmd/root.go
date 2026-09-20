@@ -37,7 +37,11 @@ from arguments, stdin, or the clipboard.`
 var (
 	cfgFile string
 	cfg     *config.Config
-	tel     telemetry.Telemetry
+	// tel holds the process-wide Telemetry sink. telemetry.New currently
+	// returns NoopTelemetry on every path, so nothing reads it yet; it is the
+	// documented wiring point for a real backend (see internal/telemetry).
+	//nolint:unused // assigned in initConfig; consumed once a real backend lands
+	tel telemetry.Telemetry
 
 	version   string
 	buildTime string

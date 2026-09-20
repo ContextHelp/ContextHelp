@@ -791,28 +791,6 @@ func unmarshalGraph(raw string) (*storage.ObjectGraph, error) {
 	return &g, nil
 }
 
-func (s *ObjectStore) upsertObjectNodes(ctx context.Context,
-	objectID string, g *storage.ObjectGraph,
-) error {
-	if _, err := s.db.ExecContext(ctx,
-		`DELETE FROM object_nodes WHERE object_id = ?`, objectID); err != nil {
-		return fmt.Errorf("delete object_nodes: %w", err)
-	}
-	if g == nil {
-		return nil
-	}
-	for _, n := range g.Nodes {
-		if _, err := s.db.ExecContext(ctx,
-			`INSERT INTO object_nodes (id, object_id, node_type, ordinal, content, created_at)
-			 VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-			n.ID, objectID, n.NodeType, n.Order, n.Content,
-		); err != nil {
-			return fmt.Errorf("insert object_node %s: %w", n.ID, err)
-		}
-	}
-	return nil
-}
-
 func (s *ObjectStore) upsertObjectNodesTx(ctx context.Context, tx *sql.Tx,
 	objectID string, g *storage.ObjectGraph,
 ) error {
