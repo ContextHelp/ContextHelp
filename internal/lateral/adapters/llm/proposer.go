@@ -116,12 +116,16 @@ func (p *Proposer) Propose(ctx context.Context, domain string, pageType string) 
 		SourceDomain: domain,
 		PageType:     pageType,
 	})
+	// kit Request.Temperature is a pointer so an explicit zero stays
+	// distinguishable from unset; opts.Temperature is already
+	// normalised to a non-zero default in New.
+	temp := p.opts.Temperature
 	resp, err := p.llm.Complete(ctx, kitllm.Request{
 		Model: p.opts.Model,
 		Messages: []kitllm.Message{
 			{Role: "user", Content: prompt},
 		},
-		Temperature: p.opts.Temperature,
+		Temperature: &temp,
 		MaxTokens:   p.opts.MaxTokens,
 	})
 	if err != nil {
@@ -184,12 +188,15 @@ var _ jit.PageTypeClassifier = (*PageTypeClassifier)(nil)
 
 func (c *PageTypeClassifier) Classify(ctx context.Context, sourceURL string) (string, error) {
 	prompt := strings.Replace(classifyPromptTemplate, "%s", sourceURL, 1)
+	// See Propose: kit takes *float64 so an explicit zero is not
+	// mistaken for unset.
+	temp := c.opts.Temperature
 	resp, err := c.llm.Complete(ctx, kitllm.Request{
 		Model: c.opts.Model,
 		Messages: []kitllm.Message{
 			{Role: "user", Content: prompt},
 		},
-		Temperature: c.opts.Temperature,
+		Temperature: &temp,
 		MaxTokens:   c.opts.MaxTokens,
 	})
 	if err != nil {

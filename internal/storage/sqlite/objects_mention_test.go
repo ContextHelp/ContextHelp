@@ -8,7 +8,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/require"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // makeObjectWithMentions builds a minimal KnowledgeObject carrying the given
@@ -52,13 +52,13 @@ func mentionURI(t *testing.T, s string) uri.URI {
 	// focused on storage behaviour.
 	switch s {
 	case "@foo":
-		return uri.URI{Scheme: "ctxt", Space: "entity", ID: "foo"}
+		return uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "foo"}
 	case "@bar":
-		return uri.URI{Scheme: "ctxt", Space: "entity", ID: "bar"}
+		return uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "bar"}
 	case "@baz":
-		return uri.URI{Scheme: "ctxt", Space: "entity", ID: "baz"}
+		return uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "baz"}
 	case "@client.acme":
-		return uri.URI{Scheme: "ctxt", Space: "entity", ID: "client/acme"}
+		return uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "client/acme"}
 	}
 	t.Fatalf("unknown test mention shorthand: %q", s)
 	return uri.URI{}

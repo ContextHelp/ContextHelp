@@ -17,7 +17,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/stretchr/testify/assert"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // defaultTestJobsCfg returns a JobsConfig with fast poll for tests.
@@ -72,6 +72,78 @@ func TestProcessJob(t *testing.T) {
 	}
 	if obj.Pipeline != "text.short" {
 		t.Errorf("pipeline: got %q", obj.Pipeline)
+	}
+}
+
+// TestProcessJobUserHintsSurviveTaggerAndFTSIndexed runs an ingest job through
+// the real text.short pipeline (no LLM) and asserts the persisted object keeps
+// caller-asserted hints as Source:"user" tags alongside auto tags, and that it
+// is FTS-indexed and findable via FTSSearch.
+func TestProcessJobUserHintsSurviveTaggerAndFTSIndexed(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := NewQueue(driver.Jobs())
+	pipes := builtins.Registry()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	job := makeJob("job-hints-fts")
+	job.Payload = "quokka habitat notes for the quokka survey on rottnest island"
+	job.Pipeline = "text.short"
+	job.UserHints = []string{"fieldwork", "wildlife", "  "}
+	q.Enqueue(ctx, job)
+
+	pool := NewWorkerPool(q, pipes, driver, 1, nil, defaultTestJobsCfg())
+	go func() {
+		for {
+			got, _ := q.Get(ctx, "job-hints-fts")
+			if got != nil && (got.Status == storage.JobCompleted || got.Status == storage.JobFailed) {
+				cancel()
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+	pool.Start(ctx)
+
+	got, _ := q.Get(context.Background(), "job-hints-fts")
+	if got.Status != storage.JobCompleted {
+		t.Fatalf("status: got %q (err=%q), want completed", got.Status, got.Error)
+	}
+
+	obj, err := driver.Objects().Get(context.Background(), got.ResultID)
+	if err != nil {
+		t.Fatalf("get object: %v", err)
+	}
+
+	userLabels := map[string]bool{}
+	autoCount := 0
+	for _, tag := range obj.Tags {
+		switch tag.Source {
+		case "user":
+			userLabels[tag.Label] = true
+		default:
+			autoCount++
+		}
+	}
+	if !userLabels["fieldwork"] || !userLabels["wildlife"] {
+		t.Errorf("user hints missing from persisted tags: %+v", obj.Tags)
+	}
+	if len(userLabels) != 2 {
+		t.Errorf("blank hint must be dropped; user tags: %v", userLabels)
+	}
+	if autoCount == 0 {
+		t.Errorf("auto tags must be merged alongside user hints: %+v", obj.Tags)
+	}
+
+	if !obj.FTSIndexed {
+		t.Error("pipeline-produced object must be fts_indexed=true")
+	}
+	results, err := driver.Objects().FTSSearch(context.Background(), "quokka", storage.ObjectFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("fts search: %v", err)
+	}
+	if len(results) != 1 || results[0].ID != obj.ID {
+		t.Errorf("FTSSearch must find pipeline-produced object; got %d results", len(results))
 	}
 }
 
@@ -221,7 +293,7 @@ type mentionStep struct {
 
 func (s *mentionStep) Name() string { return "test-mention" }
 func (s *mentionStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	draft.Mentions = []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "test/entity"}}
+	draft.Mentions = []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "test/entity"}}
 	return draft, nil
 }
 

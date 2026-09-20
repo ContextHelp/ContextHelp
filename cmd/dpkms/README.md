@@ -67,4 +67,4 @@ dpkms reads `$XDG_CONFIG_HOME/contexthelp/config.yaml` by default. Override with
 - Project install/operations: [`INSTALL.md`](../../INSTALL.md)
 - dPKMS architecture and design notes: [`docs/dpkms/README.md`](../../docs/dpkms/README.md)
 - Sibling CLI client (user-facing): [`cmd/ctxt/`](../ctxt)
-- CLI conventions (kit-aligned): `~/.ops/docs/cli-conventions-with-kit.md`
+- CLI conventions: kit-aligned (see internal conventions notes)

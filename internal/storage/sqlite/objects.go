@@ -13,9 +13,10 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // errObjectNotFound is returned by scanObject when no row matches.
@@ -317,6 +318,12 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	defer tx.Rollback()
 
+	// Drop the old FTS entry while the content row still holds the old
+	// body; the new body is indexed after the UPDATE below.
+	if err := deleteObjectFTSTx(ctx, tx, obj.ID); err != nil {
+		return fmt.Errorf("update object fts index: %w", err)
+	}
+
 	result, err := tx.ExecContext(ctx, `UPDATE objects SET
 		type=?, subtype=?, raw_content=?, content_type=?, text_content=?,
 		metadata=?, summaries=?, sections=?, tags=?, mentions=?,
@@ -344,9 +351,6 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err := s.upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
 		return fmt.Errorf("update object nodes: %w", err)
 	}
-	// Sync FTS5 content-sync index: delete old, insert new.
-	_, _ = tx.ExecContext(ctx,
-		`DELETE FROM objects_fts WHERE rowid = (SELECT rowid FROM objects WHERE id = ?)`, obj.ID)
 	if projectedFTSBody != "" {
 		_, err = tx.ExecContext(ctx,
 			`INSERT INTO objects_fts(rowid, id, projected_fts_body) VALUES ((SELECT rowid FROM objects WHERE id = ?), ?, ?)`,
@@ -372,7 +376,18 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 }
 
 func (s *ObjectStore) Delete(ctx context.Context, id string) error {
-	result, err := s.db.ExecContext(ctx, "DELETE FROM objects WHERE id = ?", id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("delete object: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// FTS entry first: objects_fts has no FK cascade and FTS5 needs the
+	// content row alive to compute the tokens it must drop.
+	if err := deleteObjectFTSTx(ctx, tx, id); err != nil {
+		return fmt.Errorf("delete object fts index: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, "DELETE FROM objects WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete object: %w", err)
 	}
@@ -380,7 +395,28 @@ func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 	if n == 0 {
 		return fmt.Errorf("object %s not found", id)
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("delete object: commit: %w", err)
+	}
 	return nil
+}
+
+// deleteObjectFTSTx removes the objects_fts entry for id.
+//
+// objects_fts is an external-content FTS5 table (content='objects'): a
+// DELETE against it makes FTS5 re-read the CURRENT objects row to learn
+// which tokens to remove from the index. It must therefore run before the
+// objects row is deleted or its projected_fts_body rewritten, in the same
+// transaction. Rows with an empty projected_fts_body were never indexed
+// (Create/Update skip the FTS insert for them), so they are skipped here
+// too: deleting a never-indexed rowid decrements FTS5's row/token totals
+// below what the index holds and eventually fails with SQLITE_CORRUPT.
+func deleteObjectFTSTx(ctx context.Context, tx *sql.Tx, id string) error {
+	_, err := tx.ExecContext(ctx,
+		`DELETE FROM objects_fts WHERE rowid = (
+			SELECT rowid FROM objects WHERE id = ? AND projected_fts_body != ''
+		)`, id)
+	return err
 }
 
 func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *storage.KnowledgeObject) (string, error) {
@@ -434,15 +470,18 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	}
 	contentArgs = append(contentArgs, hash)
 
+	// fts_indexed / vector_indexed are left untouched: Reinforce never
+	// removes the objects_fts row or the embedding written at Create/Update
+	// time, and no downstream re-indexer exists to flip the flags back.
+	// Clearing them here misreported reinforced (deduplicated) objects as
+	// unindexed even though FTS still matched them.
 	query := fmt.Sprintf(`
 		UPDATE objects SET
 			reinforcement_count = reinforcement_count + 1,
 			last_reinforced_at = ?,
 			tags = ?,
 			mentions = ?,
-			updated_at = ?,
-			fts_indexed = 0,
-			vector_indexed = 0
+			updated_at = ?
 			%s
 		WHERE content_hash = ?
 	`, contentUpdate)
@@ -518,18 +557,30 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key
 	FROM objects`
+	// where is a compiled RSQL predicate (internal/search): literals are
+	// already bound as ? placeholders in args, only operators and column
+	// names reach the SQL text. LIMIT/OFFSET are bound below.
+	// #nosec G202 -- see above; caller values travel in args, not the string.
 	if where != "" {
 		query += " WHERE " + where
 	}
 	query += " ORDER BY created_at DESC"
+	pageArgs := append([]any(nil), args...)
 	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", limit)
+		query += " LIMIT ?"
+		pageArgs = append(pageArgs, limit)
 	}
 	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", offset)
+		// SQLite requires LIMIT before OFFSET; supply an unbounded LIMIT
+		// when the caller asked only for an offset.
+		if limit <= 0 {
+			query += " LIMIT -1"
+		}
+		query += " OFFSET ?"
+		pageArgs = append(pageArgs, offset)
 	}
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, query, pageArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list by sql: %w", err)
 	}
@@ -672,10 +723,10 @@ func unmarshalObjectJSON(obj *storage.KnowledgeObject,
 }
 
 type objectFields struct {
-	metadata, summaries, sections, tags       string
-	mentions, decisions, tasks                string
-	influences, plugins                       string
-	lastReinforcedAt, remindAt, remindedAt    sql.NullString
+	metadata, summaries, sections, tags    string
+	mentions, decisions, tasks             string
+	influences, plugins                    string
+	lastReinforcedAt, remindAt, remindedAt sql.NullString
 }
 
 func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
@@ -739,7 +790,8 @@ func unmarshalGraph(raw string) (*storage.ObjectGraph, error) {
 }
 
 func (s *ObjectStore) upsertObjectNodes(ctx context.Context,
-	objectID string, g *storage.ObjectGraph) error {
+	objectID string, g *storage.ObjectGraph,
+) error {
 	if _, err := s.db.ExecContext(ctx,
 		`DELETE FROM object_nodes WHERE object_id = ?`, objectID); err != nil {
 		return fmt.Errorf("delete object_nodes: %w", err)
@@ -760,7 +812,8 @@ func (s *ObjectStore) upsertObjectNodes(ctx context.Context,
 }
 
 func (s *ObjectStore) upsertObjectNodesTx(ctx context.Context, tx *sql.Tx,
-	objectID string, g *storage.ObjectGraph) error {
+	objectID string, g *storage.ObjectGraph,
+) error {
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM object_nodes WHERE object_id = ?`, objectID); err != nil {
 		return fmt.Errorf("delete object_nodes: %w", err)
@@ -912,6 +965,14 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 	if len(vector) == 0 {
 		return nil, fmt.Errorf("vector search: empty query vector")
 	}
+	// Cosine similarity is undefined against a zero-magnitude query, so no
+	// row can rank: return nothing, matching the ANN leg (vec0 reports
+	// unrankable NULL distances) and the Postgres driver (NaN distance
+	// fails its range predicate). Without this guard the brute-force
+	// scorer below hands every candidate back at score 0.
+	if isZeroVector(vector) {
+		return nil, nil
+	}
 
 	if s.vec != nil && s.vecDim > 0 && len(vector) == s.vecDim {
 		return s.vectorSearchANN(ctx, vector, filter)
@@ -960,8 +1021,10 @@ func (s *ObjectStore) vectorSearchANN(ctx context.Context, vector []float32, fil
 		if obj.Metadata == nil {
 			obj.Metadata = make(map[string]any)
 		}
-		// Convert L2 distance to a [0,1] similarity-like score for API compatibility.
-		obj.Metadata["score"] = 1.0 / (1.0 + float64(h.Score))
+		// vec0 reports cosine distance (migration 034 pins the metric);
+		// score = 1 - cosine_distance is the cross-driver mapping shared
+		// with the Postgres driver and the brute-force path below.
+		obj.Metadata["score"] = 1.0 - float64(h.Score)
 		out = append(out, obj)
 	}
 	return out, nil
@@ -1036,6 +1099,14 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		return nil, fmt.Errorf("fts search: empty query")
 	}
 
+	// The driver owns its dialect's quoting: raw user text arrives here and
+	// FTS5 phrase-quoting is applied at the boundary, never by callers.
+	// Input with no usable tokens matches nothing rather than erroring.
+	query = ftsq.ForSQLite(query)
+	if query == "" {
+		return nil, nil
+	}
+
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = 50
@@ -1059,11 +1130,16 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		args = append(args, filter.Type)
 	}
 
-	// Metadata facet filters (US-0407).
+	// Metadata facet filters (US-0407). metadataFacetConditionsSQLite
+	// returns constant SQL fragments whose values are all `?` bound into
+	// ma — no caller string is ever concatenated into q here.
+	// #nosec G202 -- fragments are compile-time constants; values in args.
 	mc, ma := metadataFacetConditionsSQLite(filter)
 	for _, c := range mc {
 		// Prefix bare column refs with table alias for the JOIN query.
 		aliased := strings.ReplaceAll(c, "metadata", "o.metadata")
+		// #nosec G202 -- c is a compile-time constant fragment from
+		// metadataFacetConditionsSQLite; its values are `?` bound into ma.
 		q += " AND " + aliased
 	}
 	args = append(args, ma...)
@@ -1179,6 +1255,11 @@ func (s *ObjectStore) nodeTypeObjectIDs(ctx context.Context, nodeTypes []string)
 		placeholders[i] = "?"
 		args[i] = t
 	}
+	// The only text interpolated is the "?, ?, ..." placeholder run whose
+	// length is len(nodeTypes); the node type strings themselves are bound
+	// into args. Variable-length IN lists cannot be expressed with a single
+	// bind parameter in SQLite, so this expansion is unavoidable.
+	// #nosec G201 -- format arg is a generated placeholder list, not data.
 	q := fmt.Sprintf(
 		`SELECT object_id FROM object_nodes WHERE node_type IN (%s)
 		 GROUP BY object_id HAVING COUNT(DISTINCT node_type) = ?`,

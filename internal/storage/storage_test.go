@@ -177,6 +177,9 @@ func (m *mockJobStore) Create(ctx context.Context, job *Job) error { return nil 
 func (m *mockJobStore) Get(ctx context.Context, id string) (*Job, error) {
 	return nil, nil
 }
+func (m *mockJobStore) GetByIdempotencyKey(ctx context.Context, key string) (*Job, error) {
+	return nil, nil
+}
 func (m *mockJobStore) List(ctx context.Context, filter JobFilter) ([]*Job, int, error) {
 	return nil, 0, nil
 }
@@ -414,6 +417,11 @@ func (m *mockEntitlementStore) List(_ context.Context) ([]*RegistryEntitlement, 
 type mockMeteringStore struct{}
 
 func (m *mockMeteringStore) Record(_ context.Context, _ *MeteringEvent) error { return nil }
+func (m *mockMeteringStore) RecordCapped(
+	_ context.Context, _ *MeteringEvent, _ time.Time, _ int,
+) (bool, error) {
+	return true, nil
+}
 func (m *mockMeteringStore) Aggregate(
 	_ context.Context, _ MeteringFilter,
 ) ([]*MeteringAggregate, error) {

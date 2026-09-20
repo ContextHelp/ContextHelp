@@ -18,7 +18,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // parseUserMentions converts caller-asserted @namespace.slug strings (T-0190)

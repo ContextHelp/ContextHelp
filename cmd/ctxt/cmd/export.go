@@ -76,10 +76,14 @@ func runExport(cmd *cobra.Command, args []string) error {
 	}
 
 	// --format is owned by kit as a persistent root flag; cmd.Flags()
-	// resolves inherited persistent flags transparently.
+	// resolves inherited persistent flags transparently. kit v0.5 defaults
+	// --format to "table" (was ""), so an unset flag now reports "table";
+	// treat both as "no output-generator plugin requested" and fall back to
+	// the built-in JSON rendering. A named generator (e.g. obsidian-md) still
+	// routes to its plugin below.
 	format, _ := cmd.Flags().GetString("format")
-	if format == "" {
-		// No format requested — fall back to JSON.
+	if format == "" || format == "table" {
+		// No generator plugin requested — fall back to JSON.
 		return outputJSON(os.Stdout, obj)
 	}
 

@@ -240,7 +240,7 @@ resp, _ := http.Post(serverURL+"/api/v1/pipelines/enqueue", "application/json", 
 
 - [Maintainers](../../personas/maintainers.md)
 - [Platform Integrators](../../personas/platform-integrators.md)
-- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- Automation Builder
 
 ---
 

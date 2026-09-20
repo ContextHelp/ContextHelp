@@ -3,7 +3,7 @@ package mentions
 import (
 	"strings"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // Parse converts a mention string to a ctxt:// entity URI.
@@ -28,9 +28,9 @@ func Parse(s string) (uri.URI, bool) {
 	}
 	parts := strings.SplitN(s, "/", 2)
 	if len(parts) == 2 {
-		return uri.URI{Scheme: "ctxt", Space: "entity", ID: parts[0] + "/" + parts[1]}, true
+		return uri.URI{Scheme: "ctxt", Namespace: "entity", ID: parts[0] + "/" + parts[1]}, true
 	}
-	return uri.URI{Scheme: "ctxt", Space: "entity", ID: s}, true
+	return uri.URI{Scheme: "ctxt", Namespace: "entity", ID: s}, true
 }
 
 // ParseSlice converts a slice of mention strings (either format) to URIs,

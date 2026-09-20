@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 func TestDeleteByIDWithYes(t *testing.T) {
@@ -26,7 +26,7 @@ func TestDeleteByIDWithYes(t *testing.T) {
 		t.Fatalf("seed object: %v", err)
 	}
 
-	out, err := db.exec("delete", "--id", "obj_123", "-y")
+	out, err := db.exec("delete", "--id", "obj_123", "--confirm=yes")
 	if err != nil {
 		t.Fatalf("delete --id with -y should succeed: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestDeleteByTagWithYes(t *testing.T) {
 		t.Fatalf("seed object: %v", err)
 	}
 
-	out, err := db.exec("delete", "--tagged", "temporary", "-y")
+	out, err := db.exec("delete", "--tagged", "temporary", "--confirm=yes")
 	if err != nil {
 		t.Fatalf("delete --tagged with -y should succeed: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestDeleteByMentionWithYes(t *testing.T) {
 	obj := &storage.KnowledgeObject{
 		ID:        "obj_mention",
 		Type:      "text",
-		Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "project/archived"}},
+		Mentions:  []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "project/archived"}},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -82,7 +82,7 @@ func TestDeleteByMentionWithYes(t *testing.T) {
 		t.Fatalf("seed object: %v", err)
 	}
 
-	out, err := db.exec("delete", "--mention", "@project.archived", "-y")
+	out, err := db.exec("delete", "--mention", "@project.archived", "--confirm=yes")
 	if err != nil {
 		t.Fatalf("delete --mention with -y should succeed: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestDeleteAllWithYes(t *testing.T) {
 		}
 	}
 
-	out, err := db.exec("delete", "--all", "-y")
+	out, err := db.exec("delete", "--all", "--confirm=yes")
 	if err != nil {
 		t.Fatalf("delete --all with -y should succeed: %v", err)
 	}

@@ -260,7 +260,7 @@ func TestDeleteCascadesLinks(t *testing.T) {
 	_, _ = db.exec("link", "create", "obj_a", "obj_b", "--type", "extends")
 
 	// delete obj_a — should cascade via DeleteByObject
-	_, err := db.exec("delete", "--id", "obj_a", "-y")
+	_, err := db.exec("delete", "--id", "obj_a", "--confirm=yes")
 	if err != nil {
 		t.Fatalf("delete: %v", err)
 	}

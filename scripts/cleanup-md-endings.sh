@@ -3,7 +3,7 @@
 
 set -e
 
-DOCS_DIR="/Users/jadb/.w/ideacrafterslabs/ctxt/docs"
+DOCS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/docs"
 
 echo "Cleaning up markdown file endings..."
 echo ""

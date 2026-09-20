@@ -31,8 +31,8 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	uri "hop.top/cite/scheme"
 	"hop.top/kit/go/runtime/domain"
-	"hop.top/uri"
 )
 
 // Service coordinates all business operations.
@@ -127,6 +127,26 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 // the operator. Failing loudly at enqueue time keeps the queue honest.
 var ErrPipelineNotFound = errors.New("pipeline not found")
 
+// pipelineExists reports whether a pipeline name resolves. Pipelines live
+// in two places: the in-memory registry (built-ins, registered at
+// startup) and the pipelines store (user-created via CreatePipeline,
+// which persists only — it never mutates the registry). A check against
+// the registry alone rejects every user-created pipeline, so both
+// sources must be consulted for the answer to be correct.
+func (s *Service) pipelineExists(ctx context.Context, name string) bool {
+	if name == "" {
+		return false
+	}
+	if _, err := s.Pipes.Get(name); err == nil {
+		return true
+	}
+	if s.Store == nil {
+		return false
+	}
+	p, err := s.Store.Pipelines().Get(ctx, name)
+	return err == nil && p != nil
+}
+
 // Analyze enqueues a content analysis job and returns the job ID.
 // When req.Raw is true, skips AI enrichment and stores the object immediately
 // with Status "raw"; returns the object ID (not a job ID).
@@ -188,6 +208,15 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		return obj.ID, nil
 	}
 
+	// A replayed submission (same client-generated idempotency key) must
+	// resolve to the job the first attempt enqueued — a response lost in
+	// transit after the enqueue would otherwise duplicate the payload.
+	if jobID, hit, err := s.dedupeOnIdempotencyKey(ctx, req.IdempotencyKey); err != nil {
+		return "", fmt.Errorf("analyze: %w", err)
+	} else if hit {
+		return jobID, nil
+	}
+
 	pipelineName := req.Pipeline
 	if pipelineName == "" {
 		pipelineName = s.Pipes.Detect(pipeline.DetectInput{
@@ -201,7 +230,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	// this, a job referencing a non-existent pipeline (e.g. `--type document`
 	// when no document.* pipeline is registered) would be enqueued and the
 	// worker would silently fail to dispatch — data lost, no signal.
-	if _, err := s.Pipes.Get(pipelineName); err != nil {
+	if !s.pipelineExists(ctx, pipelineName) {
 		return "", fmt.Errorf("analyze: %w: type=%q pipeline=%q (no pipeline registered for this content type)",
 			ErrPipelineNotFound, req.Type, pipelineName)
 	}
@@ -249,9 +278,17 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		UserHints:    req.Hints,    // T-0573: forwarded to draft.Tags (Source:"user") in worker.
 		UserProfile:  req.Profile,  // T-0588: forwarded to draft.ProfileID in worker.
 		UserNote:     req.Note,     // T-0588: forwarded to draft.InboxNote in worker.
+
+		IdempotencyKey: req.IdempotencyKey,
 	}
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
+		// Lost the insert race against a concurrent replay: the partial
+		// unique index on the key rejected this row, so the surviving job
+		// is the answer.
+		if jobID, hit, lerr := s.dedupeOnIdempotencyKey(ctx, req.IdempotencyKey); lerr == nil && hit {
+			return jobID, nil
+		}
 		return "", err
 	}
 	if ev, err := events.NewEvent("service.analyze", "job.enqueued", job); err == nil {
@@ -619,8 +656,33 @@ func (s *Service) UnarchivePipeline(ctx context.Context, name string) error {
 	return nil
 }
 
+// dedupeOnIdempotencyKey resolves a client-generated idempotency key to the
+// job that already carries it. hit reports whether a job was found; the empty
+// key never matches (legacy keyless submissions keep minting fresh jobs).
+func (s *Service) dedupeOnIdempotencyKey(ctx context.Context, key string) (jobID string, hit bool, err error) {
+	if key == "" {
+		return "", false, nil
+	}
+	existing, err := s.Store.Jobs().GetByIdempotencyKey(ctx, key)
+	if err != nil {
+		return "", false, fmt.Errorf("idempotency lookup: %w", err)
+	}
+	if existing == nil {
+		return "", false, nil
+	}
+	return existing.ID, true, nil
+}
+
 func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, error) {
 	now := time.Now().Truncate(time.Second)
+
+	// Same replay contract as Analyze: a key already enqueued wins.
+	if jobID, hit, err := s.dedupeOnIdempotencyKey(ctx, req.IdempotencyKey); err != nil {
+		return "", fmt.Errorf("enqueue: %w", err)
+	} else if hit {
+		return jobID, nil
+	}
+
 	pipelineName := req.Pipeline
 	if pipelineName == "" {
 		pipelineName = s.Pipes.Detect(pipeline.DetectInput{
@@ -630,25 +692,31 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 		})
 	}
 
-	// T-0562: same registry check as Analyze. See note above.
-	if _, err := s.Pipes.Get(pipelineName); err != nil {
+	// Same existence check as Analyze. See note above.
+	if !s.pipelineExists(ctx, pipelineName) {
 		return "", fmt.Errorf("enqueue: %w: type=%q pipeline=%q (no pipeline registered for this content type)",
 			ErrPipelineNotFound, req.Type, pipelineName)
 	}
 
 	job := &storage.Job{
-		ID:         uuid.New().String(),
-		Type:       "ingest:" + req.Type,
-		Status:     storage.JobPending,
-		Payload:    req.Content,
-		Pipeline:   pipelineName,
-		Source:     req.Source,
-		MaxRetries: 3,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:             uuid.New().String(),
+		Type:           "ingest:" + req.Type,
+		Status:         storage.JobPending,
+		Payload:        req.Content,
+		Pipeline:       pipelineName,
+		Source:         req.Source,
+		MaxRetries:     3,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		IdempotencyKey: req.IdempotencyKey,
 	}
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
+		// Lost the insert race against a concurrent replay; the surviving
+		// job carrying this key is the answer.
+		if jobID, hit, lerr := s.dedupeOnIdempotencyKey(ctx, req.IdempotencyKey); lerr == nil && hit {
+			return jobID, nil
+		}
 		return "", err
 	}
 	if ev, err := events.NewEvent("service.analyze", "job.enqueued", job); err == nil {
@@ -829,11 +897,11 @@ func (s *Service) FindByText(ctx context.Context, query string, limit int) ([]*s
 }
 
 // FindByTextFiltered is like FindByText but accepts a full ObjectFilter
-// for metadata facet filtering. The query is sanitised through SafeFTSQuery
-// (T-0565) so user-supplied punctuation never reaches FTS5 MATCH as
-// operator syntax.
+// for metadata facet filtering. The raw query goes straight to the driver:
+// each driver applies its own dialect's FTS quoting at the boundary
+// (search.SanitizeFTSQueryFor), so no dialect's rules are baked in here.
 func (s *Service) FindByTextFiltered(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	return s.Store.Objects().FTSSearch(ctx, search.SafeFTSQuery(query), filter)
+	return s.Store.Objects().FTSSearch(ctx, query, filter)
 }
 
 // CancelJob cancels a pending or running job.
@@ -1766,13 +1834,11 @@ func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context
 		ftsPool = 50
 	}
 
-	// Expand FTS query with concept aliases; vector leg uses the original query.
-	// SafeFTSQuery sanitises after expansion (aliases are bare terms too) so
-	// user input — and any alias-injected punctuation — never reaches FTS5
-	// MATCH as raw operator syntax (T-0565).
-	ftsQuery := search.SafeFTSQuery(
-		search.ExpandQuery(ctx, query, newStorageAliasResolver(s.Store.Aliases(), "")),
-	)
+	// Expand FTS query with concept aliases; vector leg uses the original
+	// query. The expanded text stays raw here: each driver applies its own
+	// dialect's FTS quoting at the boundary (search.SanitizeFTSQueryFor),
+	// covering user input and alias-injected punctuation alike.
+	ftsQuery := search.ExpandQuery(ctx, query, newStorageAliasResolver(s.Store.Aliases(), ""))
 
 	// Build per-leg filters: inherit metadata facets but override pool size.
 	ftsFilter := filter

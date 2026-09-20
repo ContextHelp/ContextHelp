@@ -11,6 +11,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/spf13/cobra"
 )
@@ -409,20 +410,21 @@ func loadOrEditConfig(path string) (string, error) {
 
 // newEmbeddingsRegistry resolves a registry.Store via the same service-init
 // path as other CLI commands. Returns a cleanup callback the caller must
-// defer; it tears down the underlying driver. The registry needs a
-// *sqlite.Driver so it can grab DB() — postgres support arrives when the
-// postgres backend grows the equivalent CRUD wiring (out of scope for T-0582
-// per the spec).
+// defer; it tears down the underlying driver. The registry is
+// dialect-aware, so `ctxt embeddings` works on both the sqlite and postgres
+// backends (hosted instances included).
 func newEmbeddingsRegistry() (*registry.Store, func(), error) {
 	svc, cleanup, err := newService()
 	if err != nil {
 		return nil, nil, err
 	}
-	d, ok := svc.Store.(*sqlite.Driver)
-	if !ok {
+	switch d := svc.Store.(type) {
+	case *sqlite.Driver:
+		return registry.NewFor(d.DB(), "sqlite"), cleanup, nil
+	case *postgres.Driver:
+		return registry.NewFor(d.DB(), d.SQLDialect()), cleanup, nil
+	default:
 		cleanup()
-		return nil, nil, fmt.Errorf("ctxt embeddings: registry currently requires the sqlite backend (have %T) — postgres support lands with the postgres registry CRUD wiring", svc.Store)
+		return nil, nil, fmt.Errorf("ctxt embeddings: unsupported storage backend %T", svc.Store)
 	}
-	return registry.New(d.DB()), cleanup, nil
 }
-

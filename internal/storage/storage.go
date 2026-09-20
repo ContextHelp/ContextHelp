@@ -13,6 +13,13 @@ import (
 // has not yet been pulled from the source registry.
 var ErrEntityDefinitionUnavailable = errors.New("entity definition unavailable: pull required")
 
+// ErrCapabilityMissing is returned when a driver opens a store whose underlying
+// engine lacks a capability the schema requires (for example an SQLite build
+// without FTS5 or the sqlite-vec extension). Errors wrapping this sentinel name
+// the missing capability and the remedy, so callers such as config validation
+// and doctor can report a clear diagnosis instead of a mid-migration SQL error.
+var ErrCapabilityMissing = errors.New("storage capability missing")
+
 // Alias represents a human-readable name that resolves to a knowledge object ID.
 // The canonical definition lives in pkg/pluginapi.
 type Alias = pluginapi.Alias
@@ -83,6 +90,13 @@ type VectorStore interface {
 type MeteringStore interface {
 	// Record appends one metering event.
 	Record(ctx context.Context, event *MeteringEvent) error
+	// RecordCapped atomically appends event only when the summed count
+	// for (event.RegistryName, event.EventType) since periodStart stays
+	// below limit. Check and insert MUST happen as one storage-level
+	// operation so concurrent recorders can never overshoot the cap.
+	// Returns whether the event was recorded. A zero periodStart means
+	// all-time.
+	RecordCapped(ctx context.Context, event *MeteringEvent, periodStart time.Time, limit int) (bool, error)
 	// Aggregate returns summed counts grouped by registry_name+event_type,
 	// optionally filtered by the provided MeteringFilter.
 	Aggregate(ctx context.Context, filter MeteringFilter) ([]*MeteringAggregate, error)
@@ -204,6 +218,10 @@ type EdgeStore interface {
 type JobStore interface {
 	Create(ctx context.Context, job *Job) error
 	Get(ctx context.Context, id string) (*Job, error)
+	// GetByIdempotencyKey returns the job carrying the given non-empty
+	// idempotency key, or (nil, nil) when no such job exists. An empty
+	// key never matches.
+	GetByIdempotencyKey(ctx context.Context, key string) (*Job, error)
 	List(ctx context.Context, filter JobFilter) ([]*Job, int, error)
 	AcquireNext(ctx context.Context) (*Job, error)
 	Complete(ctx context.Context, id string, resultID string) error

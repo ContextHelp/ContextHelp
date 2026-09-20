@@ -138,7 +138,7 @@ This means in-flight jobs are not lost; they complete before shutdown.
 ## Personas
 
 - [Operations](../../personas/operations.md)
-- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+- Platform Engineer
 
 ---
 

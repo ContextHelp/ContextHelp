@@ -2,14 +2,13 @@ package sqlite
 
 import (
 	"context"
-	"crypto/sha256"
 	_ "embed"
-	"encoding/hex"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
 
 //go:embed migrations/001_initial.sql
@@ -105,6 +104,9 @@ var migration030 string
 //go:embed migrations/032_embedding_models.sql
 var migration032 string
 
+//go:embed migrations/034_vec_objects_cosine.sql
+var migration034 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -187,6 +189,22 @@ var migrations = []migration{
 	// integration). Idempotent — uses INSERT OR IGNORE on the composite
 	// key and ON CONFLICT upserts on the singleton model row.
 	{Version: 33, fn: migrate033EmbeddingsBackfill},
+	// Migration 034: recreate vec_objects with distance_metric=cosine —
+	// the pinned cross-driver distance contract. Index-only data; the fn
+	// rebuilds rows from object_embeddings after the DDL swap, then
+	// re-stamps embedding index signatures from the new DDL (033 stamps
+	// from the pre-cosine table).
+	{Version: 34, fn: migrate034VecObjectsCosine},
+	// Migration 035: re-stamp embedding index signatures for DBs that
+	// applied 034 before it re-stamped — their stored provenance still
+	// hashes the dropped L2 table. Idempotent recomputation from the live
+	// index.
+	{Version: 35, fn: migrate035RestampEmbeddingSignatures},
+	// Migration 036: idempotency_key column on jobs + partial unique
+	// index, so a replayed enqueue (response lost in transit) resolves to
+	// the existing job instead of minting a duplicate. Idempotent Go fn
+	// (pragma_table_info check before ALTER; IF NOT EXISTS on the index).
+	{Version: 36, fn: migrate036JobsIdempotencyKey},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -443,6 +461,101 @@ func migrate024RenameMentionUris(ctx context.Context, d *Driver) error {
 	return err
 }
 
+// migrate034VecObjectsCosine drops and recreates the vec0 virtual table
+// with an explicit cosine distance metric, then rebuilds it from the
+// canonical object_embeddings store. Only rows whose stored dimension
+// matches the configured ANN dimension are indexed — the same
+// mirror-on-write rule ObjectStore.Create applies.
+func migrate034VecObjectsCosine(ctx context.Context, d *Driver) error {
+	dim := d.vectorDimension
+	if dim <= 0 {
+		dim = DefaultVectorDimension
+	}
+	if _, err := d.db.ExecContext(ctx, `DROP TABLE IF EXISTS vec_objects`); err != nil {
+		return fmt.Errorf("drop L2 vec_objects: %w", err)
+	}
+	ddl := strings.ReplaceAll(migration034, "{DIMENSION}", strconv.Itoa(dim))
+	if _, err := d.db.ExecContext(ctx, ddl); err != nil {
+		return fmt.Errorf("recreate vec_objects with cosine metric: %w", err)
+	}
+	// object_embeddings stores raw little-endian float32 blobs — the same
+	// encoding vec0 accepts — so the rebuild is a straight copy.
+	if _, err := d.db.ExecContext(ctx, `
+		INSERT INTO vec_objects(id, embedding)
+		SELECT id, embedding FROM object_embeddings WHERE dimensions = ?`, dim,
+	); err != nil {
+		return fmt.Errorf("rebuild vec_objects from object_embeddings: %w", err)
+	}
+	// The DDL swap invalidates any embedding signature stamped from the old
+	// L2 table (033 stamps before this migration runs). Re-stamp from the
+	// live cosine index so a fresh install never carries provenance for a
+	// dropped index.
+	return restampEmbeddingSignatures(ctx, d)
+}
+
+// restampEmbeddingSignatures recomputes every stored embeddings_<model_id>
+// index signature from the live vec_objects description. Migrations that
+// change the ANN index shape (034's L2 → cosine swap) call this so stored
+// provenance keeps describing the index that actually exists; otherwise the
+// next ADR-070 verify pass reports drift the migration itself created. Only
+// models that already carry a signature row are re-stamped — absent rows
+// keep their first-boot semantics.
+func restampEmbeddingSignatures(ctx context.Context, d *Driver) error {
+	idx, err := indexsig.SQLiteVectorIndex(ctx, d.db)
+	if err != nil {
+		return fmt.Errorf("describe vector index for re-stamp: %w", err)
+	}
+
+	type model struct {
+		id       string
+		provider string
+		dim      int
+	}
+	rows, err := d.db.QueryContext(ctx,
+		`SELECT model_id, provider, dimension FROM embedding_models`)
+	if err != nil {
+		return fmt.Errorf("list embedding models for re-stamp: %w", err)
+	}
+	defer rows.Close()
+	var models []model
+	for rows.Next() {
+		var m model
+		if err := rows.Scan(&m.id, &m.provider, &m.dim); err != nil {
+			return err
+		}
+		models = append(models, m)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, m := range models {
+		sigID := EmbeddingSignatureID(m.id)
+		stored, err := LoadIndexSignature(ctx, d.db, sigID)
+		if err != nil {
+			return fmt.Errorf("load signature %s: %w", sigID, err)
+		}
+		if stored == nil {
+			continue
+		}
+		hash, summary := indexsig.ComputeEmbedding(
+			m.id, m.provider, m.dim, idx.Method, idx.OpsClass, idx.BuildParams)
+		if err := UpsertIndexSignature(ctx, d.db, sigID, hash, summary); err != nil {
+			return fmt.Errorf("re-stamp %s: %w", sigID, err)
+		}
+	}
+	return nil
+}
+
+// migrate035RestampEmbeddingSignatures converges DBs that applied 034
+// before it re-stamped: their stored embedding signatures still hash the
+// dropped L2 table's DDL. Recomputing from the live cosine index brings
+// upgraded installs in line with fresh ones. Idempotent — re-running on an
+// already-correct DB rewrites identical values.
+func migrate035RestampEmbeddingSignatures(ctx context.Context, d *Driver) error {
+	return restampEmbeddingSignatures(ctx, d)
+}
+
 // migrate020VecObjects creates the vec0 virtual table for sqlite-vec ANN search.
 // The {DIMENSION} placeholder is replaced with d.vectorDimension so the table
 // matches the embedding model in use.
@@ -507,6 +620,21 @@ func migrate031JobsUserProfileNote(ctx context.Context, d *Driver) error {
 		return err
 	}
 	return addJobsColumnIfMissing(ctx, d, "user_note", "TEXT DEFAULT ''")
+}
+
+// migrate036JobsIdempotencyKey adds the idempotency_key column plus a partial
+// unique index over non-empty keys. The index is the race-window guard behind
+// the lookup-then-insert dedupe at the enqueue surface: two concurrent
+// submissions with the same key cannot both insert. Empty keys (every legacy
+// row and every keyless enqueue) are exempt.
+func migrate036JobsIdempotencyKey(ctx context.Context, d *Driver) error {
+	if err := addJobsColumnIfMissing(ctx, d, "idempotency_key", "TEXT DEFAULT ''"); err != nil {
+		return err
+	}
+	_, err := d.db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS
+		idx_jobs_idempotency_key ON jobs(idempotency_key)
+		WHERE idempotency_key != ''`)
+	return err
 }
 
 // migrate033EmbeddingsBackfill copies legacy object_embeddings rows into the
@@ -598,7 +726,12 @@ func migrate033EmbeddingsBackfill(ctx context.Context, d *Driver) error {
 	}
 
 	sigID := EmbeddingSignatureID(modelID)
-	hash, summary := computeEmbeddingSignature(modelID, "legacy-blob", dim)
+	idx, err := indexsig.SQLiteVectorIndex(ctx, d.db)
+	if err != nil {
+		return fmt.Errorf("describe vector index for signature: %w", err)
+	}
+	hash, summary := indexsig.ComputeEmbedding(
+		modelID, "legacy-blob", dim, idx.Method, idx.OpsClass, idx.BuildParams)
 	if err := UpsertIndexSignature(ctx, d.db, sigID, hash, summary); err != nil {
 		return fmt.Errorf("stamp embeddings index_signatures row: %w", err)
 	}
@@ -624,20 +757,5 @@ func LegacyEmbeddingModelID(dim int) string {
 // EmbeddingSignatureID returns the index_signatures row key for an embedding
 // model. Mirrors FTSSignatureID for the FTS path.
 func EmbeddingSignatureID(modelID string) string {
-	return "embeddings_" + modelID
+	return indexsig.EmbeddingSignatureID(modelID)
 }
-
-// computeEmbeddingSignature hashes (model_id, provider, dimension) per
-// ADR-071 §"Data model" and returns (hex-sha256, human summary).
-func computeEmbeddingSignature(modelID, provider string, dimension int) (string, string) {
-	parts := []string{
-		"model_id=" + modelID,
-		"provider=" + provider,
-		fmt.Sprintf("dimension=%d", dimension),
-	}
-	sort.Strings(parts)
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
-	return hex.EncodeToString(sum[:]),
-		fmt.Sprintf("model_id=%s;provider=%s;dimension=%d", modelID, provider, dimension)
-}
-

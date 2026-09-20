@@ -165,8 +165,12 @@ regexes = [
   '''sk-ant-\.\.\.''',
   '''sk-\.\.\.''',
 
-  # Allow base64 encoded test data (short strings)
-  '''[a-zA-Z0-9+/=]{0,20}''',
+  # Allow base64 encoded test data (short strings).
+  # NOTE: the previous pattern used {0,20}, which matches the EMPTY string
+  # and therefore allowlisted every finding, silently disabling secret
+  # scanning. Anchored with a minimum length so it covers only genuinely
+  # short base64 test data, as intended.
+  '''^[a-zA-Z0-9+/=]{8,20}$''',
 
   # Allow common test/placeholder passwords
   '''(password|secret|token|key)[:=]\s*['"]?(test|example|placeholder|changeme|dummy)['"]?''',

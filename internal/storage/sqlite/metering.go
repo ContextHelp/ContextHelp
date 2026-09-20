@@ -36,6 +36,56 @@ func (s *MeteringStore) Record(ctx context.Context, event *storage.MeteringEvent
 	return nil
 }
 
+// RecordCapped atomically appends event only when the summed count for
+// (event.RegistryName, event.EventType) since periodStart stays below
+// limit. The usage check and the insert run as ONE SQL statement, so
+// concurrent recorders serialize on SQLite's write lock and can never
+// overshoot the cap. Returns whether the event was recorded. A zero
+// periodStart means all-time.
+func (s *MeteringStore) RecordCapped(
+	ctx context.Context,
+	event *storage.MeteringEvent,
+	periodStart time.Time,
+	limit int,
+) (bool, error) {
+	occurredAt := event.OccurredAt
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+	cond := ""
+	args := []any{
+		event.ID,
+		event.RegistryName,
+		string(event.EventType),
+		event.Namespace,
+		event.Count,
+		occurredAt.Format(time.RFC3339),
+		event.RegistryName,
+		string(event.EventType),
+	}
+	if !periodStart.IsZero() {
+		cond = " AND occurred_at >= ?"
+		args = append(args, periodStart.Format(time.RFC3339))
+	}
+	args = append(args, limit)
+
+	res, err := s.db.ExecContext(ctx, `
+		INSERT INTO metering_events (id, registry_name, event_type, namespace, count, occurred_at)
+		SELECT ?, ?, ?, ?, ?, ?
+		WHERE (SELECT COALESCE(SUM(count), 0) FROM metering_events
+		       WHERE registry_name = ? AND event_type = ?`+cond+`) < ?`,
+		args...,
+	)
+	if err != nil {
+		return false, fmt.Errorf("record capped metering event: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("record capped metering event: rows affected: %w", err)
+	}
+	return n == 1, nil
+}
+
 // Aggregate returns summed counts per registry_name + event_type, optionally
 // filtered by RegistryName, EventType, After, and Before.
 func (s *MeteringStore) Aggregate(

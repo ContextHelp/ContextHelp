@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"testing"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -37,7 +37,7 @@ func TestUS0052_EntityBacklinksReturnDirectMentions(t *testing.T) {
 	defer env.stop(t)
 
 	entitySlug := "auth-service"
-	entityURI := uri.URI{Scheme: "ctxt", Space: "entity", ID: "auth-service"}
+	entityURI := uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "auth-service"}
 
 	env.svc.Pipes.Upsert("test.entity.mention", &pipeline.Pipeline{
 		PipelineName: "test.entity.mention",
@@ -69,7 +69,7 @@ func TestUS0052_GraphEdgeCreatedAfterIngestion(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	entityURI := uri.URI{Scheme: "ctxt", Space: "entity", ID: "payment-gateway"}
+	entityURI := uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "payment-gateway"}
 	env.svc.Pipes.Upsert("test.edge.check", &pipeline.Pipeline{
 		PipelineName: "test.edge.check",
 		Steps:        []pipeline.PipelineStep{&entityMentionStep{mentions: []uri.URI{entityURI}}},
@@ -96,7 +96,7 @@ func TestUS0052_RelatedObjectsViaSharedEntityMention(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	entityURI := uri.URI{Scheme: "ctxt", Space: "entity", ID: "kafka-broker"}
+	entityURI := uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "kafka-broker"}
 	env.svc.Pipes.Upsert("test.related", &pipeline.Pipeline{
 		PipelineName: "test.related",
 		Steps:        []pipeline.PipelineStep{&entityMentionStep{mentions: []uri.URI{entityURI}}},

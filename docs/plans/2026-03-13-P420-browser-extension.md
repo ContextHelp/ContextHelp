@@ -2076,7 +2076,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 **Step 12.1 — Add `gorilla/websocket` dependency to Go module.**
 
 ```bash
-cd /Users/jadb/.w/ideacrafterslabs/ctxt
+cd ../ctxt
 go get github.com/gorilla/websocket
 go mod tidy
 ```

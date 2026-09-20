@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
@@ -37,7 +37,7 @@ func TestUS0401_IngestCreatesEntityPage(t *testing.T) {
 	env := startFanOutEnv(t)
 	defer env.stop(t)
 
-	entityURI := uri.URI{Scheme: "ctxt", Space: "person", ID: "bob"}
+	entityURI := uri.URI{Scheme: "ctxt", Namespace: "person", ID: "bob"}
 	mentions := []uri.URI{entityURI}
 
 	env.svc.Pipes.Upsert("text.page-test", &pipeline.Pipeline{

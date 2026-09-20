@@ -6,7 +6,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/citation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // AnalyzeRequest represents a request to analyze content.
@@ -37,6 +37,15 @@ type AnalyzeRequest struct {
 	// KnowledgeObject.ProfileID so the persisted object is partitioned
 	// to that profile (T-0588). Empty = global / no profile.
 	Profile string `json:"profile,omitempty"`
+	// IdempotencyKey identifies one logical submission (client-generated,
+	// e.g. a UUID minted once per `ctxt analyze` invocation). The enqueue
+	// surface dedupes on it: a replay carrying a key already present in
+	// the jobs table returns the existing job id instead of minting a
+	// second job. This makes retrying a submission whose response was
+	// lost in transit safe. Empty = no dedupe (legacy callers). The raw
+	// path (Raw: true) stores an object directly and does not consult
+	// the key.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 	// Note is a free-form audit string the operator attached to the
 	// capture (`ctxt capture --note "client kickoff 2026-Q2"`).
 	// Populates KnowledgeObject.InboxNote so the note survives both

@@ -32,8 +32,29 @@ func TestConfigPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config path should succeed: %v", err)
 	}
-	if !strings.Contains(out, "config.yaml") {
-		t.Error("output should contain config filename")
+	// After migration to kit/console/cli/config (T-0596): `path` prints
+	// the highest-precedence *existing* file. When no real config is
+	// found, kit emits the "<defaults>" sentinel — also valid output.
+	if !strings.Contains(out, "config.yaml") &&
+		!strings.Contains(out, "ctxt.yaml") &&
+		!strings.Contains(out, "<defaults>") {
+		t.Errorf("output should contain a config filename or <defaults> sentinel; got: %q", out)
+	}
+}
+
+// TestConfigPaths covers the new (T-0597) `paths` subcommand. The full
+// resolution chain is emitted one path per line in the default text
+// format and always succeeds (a default sentinel rung means the chain
+// is never empty).
+func TestConfigPaths(t *testing.T) {
+	out, err := executeCommand("config", "paths")
+	if err != nil {
+		t.Fatalf("config paths should succeed: %v", err)
+	}
+	if !strings.Contains(out, "<defaults>") &&
+		!strings.Contains(out, "config.yaml") &&
+		!strings.Contains(out, "ctxt.yaml") {
+		t.Errorf("output should contain at least one rung of the resolution chain; got: %q", out)
 	}
 }
 

@@ -55,6 +55,13 @@ func TestRootValidate_StrictGatesPass(t *testing.T) {
 			"reject", root.Config.PassthroughStrictness)
 	}
 
+	// Clear any flag state leaked from a prior test in this package: an
+	// earlier executeCommand("--config", <tempfile>) call leaves the
+	// repeatable -c/--config value set on rootCmd, and the strict validator
+	// rejects a bare path as "not a key=value pair". A fresh boot (what end
+	// users hit) has no such value, so reset before mirroring the preflight.
+	resetAllFlags(rootCmd)
+
 	// Mirror Execute()'s pre-flight order so the validator sees the
 	// same tree shape end users will see.
 	rootCmd.InitDefaultCompletionCmd()

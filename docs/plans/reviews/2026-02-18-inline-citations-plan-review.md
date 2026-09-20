@@ -289,14 +289,14 @@ Phase 4:  CLI flags (--no-citations, --export) + API route           [1 day, dep
 
 | File | Role in Review |
 |------|---------------|
-| `/Users/jadb/.w/ideacrafterslabs/ctxt/docs/plans/2026-02-18-inline-citations-plan.md` | Plan under review |
-| `/Users/jadb/.w/ideacrafterslabs/ctxt/internal/service/service.go` | Service struct (no AI provider), current Compose() |
-| `/Users/jadb/.w/ideacrafterslabs/ctxt/internal/storage/storage.go` | StorageDriver interface (no CompositionStore) |
-| `/Users/jadb/.w/ideacrafterslabs/ctxt/internal/storage/types.go` | KnowledgeObject (no Composition type) |
-| `/Users/jadb/.w/ideacrafterslabs/ctxt/cmd/ctxt/cmd/make.go` | CLI make command (no --from, --export, --no-citations) |
-| `/Users/jadb/.w/ideacrafterslabs/ctxt/internal/server/http/server.go` | HTTP router (no composition routes) |
-| `/Users/jadb/.w/ideacrafterslabs/ctxt/internal/providers/factory.go` | Provider factory (media only, no LLM) |
-| `/Users/jadb/.w/ideacrafterslabs/ctxt/docs/plans/llm-provider-support.md` | LLM plan (NOT implemented) |
-| `/Users/jadb/.w/ideacrafterslabs/ctxt/docs/decisions/ADR-017-composition-engine.md` | Composition engine ADR (NOT implemented) |
-| `/Users/jadb/.w/ideacrafterslabs/ctxt/docs/stories/composition/US-0022-generate-brief-from-objects.md` | User story (references aiProvider that does not exist) |
-| `/Users/jadb/.w/ideacrafterslabs/ctxt/docs/stories/admin/US-0027-configure-ai-provider.md` | AI provider story (NOT implemented) |
+| `./docs/plans/2026-02-18-inline-citations-plan.md` | Plan under review |
+| `./internal/service/service.go` | Service struct (no AI provider), current Compose() |
+| `./internal/storage/storage.go` | StorageDriver interface (no CompositionStore) |
+| `./internal/storage/types.go` | KnowledgeObject (no Composition type) |
+| `./cmd/ctxt/cmd/make.go` | CLI make command (no --from, --export, --no-citations) |
+| `./internal/server/http/server.go` | HTTP router (no composition routes) |
+| `./internal/providers/factory.go` | Provider factory (media only, no LLM) |
+| `./docs/plans/llm-provider-support.md` | LLM plan (NOT implemented) |
+| `./docs/decisions/ADR-017-composition-engine.md` | Composition engine ADR (NOT implemented) |
+| `./docs/stories/composition/US-0022-generate-brief-from-objects.md` | User story (references aiProvider that does not exist) |
+| `./docs/stories/admin/US-0027-configure-ai-provider.md` | AI provider story (NOT implemented) |

@@ -222,6 +222,22 @@ func fetchMessagesOnConn(conn net.Conn, cfg IMAPConfig) (*IMAPFetchResult, error
 	}, nil
 }
 
+// newIMAPTLSConfig builds the TLS client config for both the implicit-TLS
+// (port 993) and STARTTLS (port 143) paths.
+//
+// MinVersion is pinned to TLS 1.2. Go's client default still negotiates
+// down to TLS 1.0, which carries known-broken ciphers; 1.2 is the lowest
+// version worth speaking to a mail server. TLS 1.3 is deliberately NOT
+// the floor: plenty of production IMAP servers still terminate at 1.2,
+// and raising the floor that far would turn a security hardening into an
+// outage for those accounts. 1.3 is still negotiated when offered.
+func newIMAPTLSConfig(host string) *tls.Config {
+	return &tls.Config{
+		ServerName: host,
+		MinVersion: tls.VersionTLS12,
+	}
+}
+
 // connect establishes a TCP connection (TLS or plain for STARTTLS).
 func (s *IMAPFetcher) connect(ctx context.Context, cfg IMAPConfig) (net.Conn, error) {
 	host := cfg.Host
@@ -249,7 +265,7 @@ func (s *IMAPFetcher) connect(ctx context.Context, cfg IMAPConfig) (net.Conn, er
 	}
 
 	if cfg.UseTLS {
-		tlsCfg := &tls.Config{ServerName: host}
+		tlsCfg := newIMAPTLSConfig(host)
 		conn = tls.Client(conn, tlsCfg)
 		if err := conn.(*tls.Conn).Handshake(); err != nil {
 			conn.Close()
@@ -273,8 +289,7 @@ func (s *IMAPFetcher) connect(ctx context.Context, cfg IMAPConfig) (net.Conn, er
 		conn.Close()
 		return nil, fmt.Errorf("STARTTLS response: not OK")
 	}
-	tlsCfg := &tls.Config{ServerName: host}
-	tlsConn := tls.Client(conn, tlsCfg)
+	tlsConn := tls.Client(conn, newIMAPTLSConfig(host))
 	if err := tlsConn.Handshake(); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("STARTTLS handshake: %w", err)

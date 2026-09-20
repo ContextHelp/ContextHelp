@@ -66,6 +66,8 @@ ContextHelp must:
   - **Registry data** (unverified)
 - Support cryptographic signatures or version pinning in the future.
 
+The registry — not the object — is the unit of trust; visibility tiers are deployed as separate registries (see [tiered-deployment.md](tiered-deployment.md)).
+
 If a registry behaves incorrectly (malformed JSON, incorrect payload, protocol violation), ContextHelp must:
 
 - Reject the data

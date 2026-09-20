@@ -436,3 +436,74 @@ checks `cmd.Long != ""` on every runnable leaf.
 | shape-violation | depth-1 missing `kit/top-level-verb`, or depth>=3 missing `kit/hierarchical`, or > `MaxTopLevelVerbs`, or > `MaxHierarchyDepth` |
 | missing-passthrough | command uses `cobra.ArbitraryArgs` without `kit/passthrough` |
 | local-global-collision | leaf redefines a flag name owned by the persistent global flag set (e.g. `--format`, `--profile`, `--dry-run`, `--output`, `--config`) |
+
+## T-0598 Config Subcommand Annotation Audit
+
+Read-only audit of `cmd/ctxt/cmd/config.go` confirming the 12fcc strict-gate
+annotation contract holds for every `ctxt config <leaf>` after the T-0593
+sweep. The strict-mode bundle (`EnforceValidate` + `EnforceGuidance` +
+`EnforceDryRunRationale` + `EnforceDestructiveToken` +
+`SignatureStrictness=Reject` + `PassthroughStrictness=reject`) now runs at
+boot via `root.go` and is asserted in `TestRootValidate_StrictGatesPass`
+(`cmd/ctxt/cmd/strict_validation_test.go`), so any drift would already
+crash the binary — this audit is the explicit, written verification that
+the live invariant holds.
+
+### Per-leaf annotation table
+
+| command | side-effect | idempotent | Long present | examples | next-steps | destructive-token | issues |
+|---------|-------------|------------|--------------|----------|------------|-------------------|--------|
+| `config show` | `Read` (cliconv.WithSideEffect, L154) | `Yes` (kit verb-default for `show`) | yes — 3 sentences, format guidance (L37-41) | 2 (L166-169) | n/a (read leaf) | n/a | none |
+| `config validate` | `WriteLocal` (cliconv.WithSideEffect, L157) | `Yes` explicit (cliconv.WithIdempotency, L214) | yes — 3 sentences incl. exit-code (L59-64) | 2 (L181-184) | 1 (L185-187) | n/a (write, not destructive) | none |
+| `config edit` | `WriteLocal` (cliconv.WithSideEffect, L158) | `Yes` (kit verb-default for `edit`) | yes — 2 sentences, $EDITOR + post-edit guidance (L71-74) | 2 (L188-191) | 2 (L192-195) | n/a (write, not destructive) | none |
+| `config doctor` (a.k.a. lint) | `WriteLocal` (cliconv.WithSideEffect, L156) | `Yes` (kit verb-default for `doctor`) | yes — 11 lines covering checks, severity, --fix, exit code (L81-95) | 2 (L174-177) | 1 (L178-180) | n/a (write, not destructive) | none |
+| `config backup` | `WriteLocal` (cliconv.WithSideEffect, L159) | `No` explicit (cliconv.WithIdempotency, L215) | yes — describes both output files, key dependency (L102-114) | 2 (L196-199) | 1 (L200-202) | n/a (write, not destructive) | none |
+| `config restore` | `DestructiveLocal` (cliconv.WithSideEffect, L160) | `No` explicit (cliconv.WithIdempotency, L216) | yes — covers --verify, .sig pairing, --confirm (L122-133) | 2 (L203-206) | 2 (L207-210) | yes (cliconv.WithDestructiveToken, L161) | none |
+
+All seven required checks (Short, Long, side-effect, idempotent, examples,
+next-steps for write/destructive, destructive-token for destructive) hold on
+all six subcommands.
+
+### Intent-vs-code drift check
+
+Cross-referenced each annotated side-effect against the RunE body:
+
+* `runConfigShow` (L245-280): only `fmt.Println` + JSON to stdout. No filesystem writes.  Matches `Read`.
+* `runConfigValidate` (L288-320): calls `config.Load(binName, cfgFile)` which performs the
+  migration write-back to disk (annotation comment at L151-152 documents this). The
+  T-0593 PR explicitly bumped this leaf from `Read` to `WriteLocal` for exactly this
+  reason.  Matches `WriteLocal`.
+* `runConfigEdit` (L322-339): spawns `$EDITOR` against the on-disk config file. Editor
+  saves in place. Matches `WriteLocal`.
+* `runConfigLint` (L341-384): with `--fix`, calls `config.FixPermissions(configPath)`
+  which chmods the config file. The T-0593 PR bumped this from `Read` to `WriteLocal`
+  to cover that path. Matches `WriteLocal`.
+* `runConfigBackup` (L386-456): `bundle.Build(...)` writes the `.zip` + `.sig` into
+  `outDir`. Local writes only — bundles are not shared substrate. Matches `WriteLocal`.
+* `runConfigRestore` (L458-513): `writeRestoredFiles` overwrites files inside
+  `configDir` with `os.WriteFile(..., 0600)`. This replaces existing config on disk
+  — matches `DestructiveLocal`. The destructive-token annotation is present
+  (line 161) and the leaf inherits the kit global `--dry-run` (line 237-240).
+
+No drift detected between the annotation surface and the runtime behaviour.
+
+### Strict-gate regression test
+
+```
+$ /usr/bin/env go test -count=1 -run TestRootValidate_StrictGatesPass -v ./cmd/ctxt/cmd
+=== RUN   TestRootValidate_StrictGatesPass
+--- PASS: TestRootValidate_StrictGatesPass (0.00s)
+PASS
+ok      github.com/ideacrafterslabs/ctxt/cmd/ctxt/cmd   0.663s
+```
+
+Baseline probe (`-tags=ctxtbaselineprobe TestBaselineProbe`) reports the
+`signature-report.strict-gates` block with `"violations": null` and
+`Validate() strict-gates: PASS`. Zero violations across the full command tree.
+
+### Verdict
+
+**All 6 config subcommands conform.** No fix required. The annotations match
+the runtime side effects, all guidance fields are present in the shapes the
+strict gates require, and the destructive leaf carries its token marker.
+

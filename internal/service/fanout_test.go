@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -37,9 +37,9 @@ func TestFanOut_CreatesEdges(t *testing.T) {
 	ctx := context.Background()
 
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "alice"},
-		{Scheme: "ctxt", Space: "project", ID: "mobile"},
-		{Scheme: "ctxt", Space: "org", ID: "acme"},
+		{Scheme: "ctxt", Namespace: "person", ID: "alice"},
+		{Scheme: "ctxt", Namespace: "project", ID: "mobile"},
+		{Scheme: "ctxt", Namespace: "org", ID: "acme"},
 	}
 	seedObjectWithMentions(t, svc, "obj-fan-1", mentions)
 
@@ -74,7 +74,7 @@ func TestFanOut_Idempotent(t *testing.T) {
 	ctx := context.Background()
 
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "bob"},
+		{Scheme: "ctxt", Namespace: "person", ID: "bob"},
 	}
 	seedObjectWithMentions(t, svc, "obj-fan-2", mentions)
 
@@ -105,7 +105,7 @@ func TestFanOut_AuditLogEntry(t *testing.T) {
 	ctx := context.Background()
 
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "concept", ID: "graph-db"},
+		{Scheme: "ctxt", Namespace: "concept", ID: "graph-db"},
 	}
 	seedObjectWithMentions(t, svc, "obj-fan-4", mentions)
 
@@ -126,7 +126,7 @@ func TestFanOut_DisabledEntities(t *testing.T) {
 	ctx := context.Background()
 
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "carol"},
+		{Scheme: "ctxt", Namespace: "person", ID: "carol"},
 	}
 	seedObjectWithMentions(t, svc, "obj-fan-5", mentions)
 
@@ -141,7 +141,7 @@ func TestFanOut_DisabledAuditLog(t *testing.T) {
 	ctx := context.Background()
 
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "dave"},
+		{Scheme: "ctxt", Namespace: "person", ID: "dave"},
 	}
 	seedObjectWithMentions(t, svc, "obj-fan-6", mentions)
 

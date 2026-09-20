@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // ─── stubs ───────────────────────────────────────────────────────────────────
@@ -247,7 +247,7 @@ func TestEntityResolverMixedMentions(t *testing.T) {
 	draft := &storage.KnowledgeObject{
 		ID: "obj-3",
 		Mentions: []uri.URI{
-			mustURI(t, "ctxt://entity/org/acme"),         // known
+			mustURI(t, "ctxt://entity/org/acme"),          // known
 			mustURI(t, "ctxt://entity/project/new-thing"), // unknown → placeholder
 		},
 	}

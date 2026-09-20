@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -265,3 +266,58 @@ func TestQueueEnqueueNoValidatorAcceptsAll(t *testing.T) {
 	}
 }
 
+// TestQueueEnqueuePreservesValidatorErrorCause asserts the validator's own
+// error survives in the chain alongside ErrPipelineNotFound. Discarding it
+// leaves callers with a bare sentinel and no way to tell why the name failed
+// to resolve — errors.Is on the cause is the guard, not string matching.
+func TestQueueEnqueuePreservesValidatorErrorCause(t *testing.T) {
+	errUnavailable := errors.New("pipeline registry unavailable")
+
+	driver := storageutil.NewTestDriver(t)
+	q := NewQueue(driver.Jobs())
+	q.SetPipelineValidator(func(name string) error {
+		return fmt.Errorf("resolve %q: %w", name, errUnavailable)
+	})
+
+	job := makeJob("job-cause")
+	job.Pipeline = "user.custom"
+	err := q.Enqueue(context.Background(), job)
+	if err == nil {
+		t.Fatal("expected error for failing validator")
+	}
+	if !errors.Is(err, ErrPipelineNotFound) {
+		t.Errorf("want ErrPipelineNotFound in chain, got: %v", err)
+	}
+	if !errors.Is(err, errUnavailable) {
+		t.Errorf("want validator cause in chain, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "user.custom") {
+		t.Errorf("error should name the pipeline, got: %s", err.Error())
+	}
+
+	// The job must not have been persisted.
+	if _, err := q.Get(context.Background(), "job-cause"); err == nil {
+		t.Error("rejected job must not be stored")
+	}
+}
+
+// TestQueueEnqueueRequiresPipelineWhenValidatorSet pins the empty-name branch:
+// it short-circuits before the validator runs.
+func TestQueueEnqueueRequiresPipelineWhenValidatorSet(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := NewQueue(driver.Jobs())
+	called := false
+	q.SetPipelineValidator(func(string) error {
+		called = true
+		return nil
+	})
+
+	job := makeJob("job-nopipe")
+	job.Pipeline = ""
+	if err := q.Enqueue(context.Background(), job); err == nil {
+		t.Fatal("expected error for empty pipeline name")
+	}
+	if called {
+		t.Error("validator must not run for an empty pipeline name")
+	}
+}

@@ -58,8 +58,10 @@ func TestProposer_AppliesDefaults(t *testing.T) {
 	if stub.last.Model != defaultModel {
 		t.Errorf("Model = %q; want %q", stub.last.Model, defaultModel)
 	}
-	if stub.last.Temperature != defaultTemperature {
-		t.Errorf("Temperature = %v; want %v", stub.last.Temperature, defaultTemperature)
+	if stub.last.Temperature == nil {
+		t.Error("Temperature = nil; want non-nil default")
+	} else if *stub.last.Temperature != defaultTemperature {
+		t.Errorf("Temperature = %v; want %v", *stub.last.Temperature, defaultTemperature)
 	}
 	if stub.last.MaxTokens != defaultMaxTokens {
 		t.Errorf("MaxTokens = %v; want %v", stub.last.MaxTokens, defaultMaxTokens)

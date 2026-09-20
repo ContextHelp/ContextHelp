@@ -15,7 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 func newTestService(t *testing.T) *Service {
@@ -608,7 +608,7 @@ func seedObjectsForCompose(t *testing.T, ctx context.Context, svc *Service) []*s
 	// Build graph-canonical fixtures; summaries/sections derived from graph nodes.
 	obj1 := storageutil.BuildGraphKO("o-abc123", "decision", "Defer infrastructure refactor")
 	obj1.Source = "engineering-meeting.pdf"
-	obj1.Mentions = []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "team/alice"}}
+	obj1.Mentions = []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "team/alice"}}
 	obj1.CreatedAt = now
 	obj1.UpdatedAt = now
 
@@ -1066,4 +1066,99 @@ func TestAnalyze_PipelineModePersistsUserMentions(t *testing.T) {
 	require.NotNil(t, job)
 	assert.Equal(t, []string{"@client.acme"}, job.UserMentions,
 		"Job.UserMentions must round-trip from request to DB")
+}
+
+// TestAnalyzeIdempotencyKeyDedupes: a replayed submission carrying the same
+// client-generated idempotency key resolves to the job the first attempt
+// enqueued — response loss after enqueue must not duplicate the payload.
+func TestAnalyzeIdempotencyKeyDedupes(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	req := AnalyzeRequest{
+		Content: "submit once", Type: "text", Source: "cli",
+		IdempotencyKey: "idem-1",
+		Force:          true, // isolate key-dedupe from content-dedupe
+	}
+	id1, err := svc.Analyze(ctx, req)
+	require.NoError(t, err)
+	require.NotEmpty(t, id1)
+
+	id2, err := svc.Analyze(ctx, req) // replay after lost response
+	require.NoError(t, err)
+	assert.Equal(t, id1, id2, "replay must return the existing job id")
+
+	_, total, err := svc.ListJobs(ctx, storage.JobFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, 1, total, "replay must not enqueue a second job")
+}
+
+// TestAnalyzeIdempotencyKeyDistinctKeys: distinct keys are distinct logical
+// submissions — both enqueue.
+func TestAnalyzeIdempotencyKeyDistinctKeys(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	id1, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content: "same payload", Type: "text", Source: "cli",
+		IdempotencyKey: "idem-a", Force: true,
+	})
+	require.NoError(t, err)
+	id2, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content: "same payload", Type: "text", Source: "cli",
+		IdempotencyKey: "idem-b", Force: true,
+	})
+	require.NoError(t, err)
+	assert.NotEqual(t, id1, id2, "distinct keys must mint distinct jobs")
+}
+
+// TestAnalyzeNoIdempotencyKeyNoDedupe: keyless submissions keep the legacy
+// semantics — every call enqueues.
+func TestAnalyzeNoIdempotencyKeyNoDedupe(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	id1, err := svc.Analyze(ctx, AnalyzeRequest{Content: "legacy", Type: "text", Source: "cli", Force: true})
+	require.NoError(t, err)
+	id2, err := svc.Analyze(ctx, AnalyzeRequest{Content: "legacy", Type: "text", Source: "cli", Force: true})
+	require.NoError(t, err)
+	assert.NotEqual(t, id1, id2)
+}
+
+// TestEnqueueIdempotencyKeyDedupes: the bare Enqueue surface honors the key
+// the same way Analyze does.
+func TestEnqueueIdempotencyKeyDedupes(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	req := AnalyzeRequest{
+		Content: "enqueue once", Type: "text", Source: "cli",
+		IdempotencyKey: "idem-enq",
+	}
+	id1, err := svc.Enqueue(ctx, req)
+	require.NoError(t, err)
+	id2, err := svc.Enqueue(ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, id1, id2)
+
+	_, total, err := svc.ListJobs(ctx, storage.JobFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+}
+
+// TestAnalyzeIdempotencyKeyPersistedOnJob: the key lands on the job row so a
+// second daemon over the same database can honor the dedupe.
+func TestAnalyzeIdempotencyKeyPersistedOnJob(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	id, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content: "keyed", Type: "text", Source: "cli",
+		IdempotencyKey: "idem-persist", Force: true,
+	})
+	require.NoError(t, err)
+
+	job, err := svc.Store.Jobs().Get(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, "idem-persist", job.IdempotencyKey)
 }

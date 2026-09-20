@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 	kitconfig "hop.top/kit/go/core/config"
 	"hop.top/kit/go/core/xdg"
 )
@@ -430,12 +431,170 @@ type BlobS3Config struct {
 	MaxRetries    int           `mapstructure:"max_retries" yaml:"max_retries"`
 }
 
+// Access classes for ServerConfig.Access. They classify who may reach
+// the instance and drive load-time validation plus serve-time policy:
+// non-private instances require inbound authentication.
+const (
+	// AccessPrivate is a loopback-only instance; no inbound auth required.
+	AccessPrivate = "private"
+	// AccessProtected is reachable by remote callers on a trusted
+	// network; inbound auth is mandatory.
+	AccessProtected = "protected"
+	// AccessPublic is internet-facing; inbound auth is mandatory.
+	AccessPublic = "public"
+)
+
 // ServerConfig represents server configuration
 type ServerConfig struct {
 	Port     int  `mapstructure:"port" yaml:"port"`
 	GRPCPort int  `mapstructure:"grpc_port" yaml:"grpc_port"`
 	Workers  int  `mapstructure:"workers" yaml:"workers"`
 	Public   bool `mapstructure:"public" yaml:"public"`
+	// Access classifies the instance: "private" (default), "protected",
+	// or "public". Empty means unset; EffectiveAccess resolves the
+	// default and the legacy server.public shorthand.
+	Access string `mapstructure:"access" yaml:"access"`
+	// Auth selects and configures the inbound authentication provider.
+	// Consumed through the internal/auth Provider interface so the
+	// identity backend is an ops decision, never a rebuild.
+	Auth AuthConfig `mapstructure:"auth" yaml:"auth"`
+	// Quotas declares per-principal metering quotas enforced on the
+	// entity-serving surface of non-private instances. Namespace
+	// entitlement grants are data (entitlement rows keyed by principal
+	// ID); quotas are operator config, applied at serve start.
+	Quotas []ServerQuotaConfig `mapstructure:"quotas" yaml:"quotas"`
+
+	// URL is the single dpkms instance clients route to when URLs is
+	// empty (also settable per command with --server where the flag
+	// exists). Validated at load: scheme http/https + host required.
+	URL string `mapstructure:"url" yaml:"url,omitempty"`
+	// URLs is the ordered client-routing list, primary first. Takes
+	// precedence over URL. Each entry is a bare URL string or a
+	// {url, token} mapping (see ServerEndpoint). Validated at load —
+	// a malformed entry fails the load instead of silently probing as
+	// a permanently "down" instance.
+	URLs []ServerEndpoint `mapstructure:"urls" yaml:"urls,omitempty"`
+	// Token is the default bearer token clients attach to requests
+	// against instances whose URLs entry carries no token of its own.
+	// Empty = unauthenticated.
+	Token string `mapstructure:"token" yaml:"token,omitempty"`
+}
+
+// ServerQuotaConfig caps one principal's metered usage of the
+// entity-serving surface for one event type per billing period
+// (calendar month, UTC).
+type ServerQuotaConfig struct {
+	// Principal is the authenticated principal ID the quota applies to.
+	Principal string `mapstructure:"principal" yaml:"principal"`
+	// Event is the metered event type: entity_resolve | content_pull |
+	// taxonomy_sync.
+	Event string `mapstructure:"event" yaml:"event"`
+	// Limit is the hard cap per billing period; 0 = unlimited.
+	Limit int `mapstructure:"limit" yaml:"limit"`
+	// WarnAt is the usage count that triggers a warning log
+	// (0 = default 80% of Limit).
+	WarnAt int `mapstructure:"warn_at" yaml:"warn_at"`
+}
+
+// EffectiveAccess resolves the instance access class. An explicit
+// server.access always wins; the legacy server.public flag is shorthand
+// for "public" when access is unset (deprecated, flagged by lint);
+// otherwise the default is private.
+func (s ServerConfig) EffectiveAccess() string {
+	if s.Access != "" {
+		return s.Access
+	}
+	if s.Public {
+		return AccessPublic
+	}
+	return AccessPrivate
+}
+
+// AuthConfig selects the inbound authentication provider and its settings.
+type AuthConfig struct {
+	// Provider names the authentication backend. "static" is implemented;
+	// "oidc" and "mtls" are reserved for future backends behind the same
+	// interface. Empty = no inbound auth configured.
+	Provider string `mapstructure:"provider" yaml:"provider"`
+	// Static configures the static token/API-key provider.
+	Static StaticAuthConfig `mapstructure:"static" yaml:"static"`
+}
+
+// StaticAuthConfig holds credentials for the static token provider.
+type StaticAuthConfig struct {
+	// Tokens maps bearer tokens / API keys to principals.
+	Tokens []StaticTokenConfig `mapstructure:"tokens" yaml:"tokens"`
+}
+
+// StaticTokenConfig is one accepted credential and the principal it
+// authenticates as.
+type StaticTokenConfig struct {
+	// Token is the shared secret presented by the caller.
+	Token string `mapstructure:"token" yaml:"token"`
+	// Principal is the stable identity assigned to callers of this token.
+	Principal string `mapstructure:"principal" yaml:"principal"`
+	// Roles grants coarse roles to the principal (e.g. "admin", "reader").
+	Roles []string `mapstructure:"roles" yaml:"roles"`
+}
+
+// HasInboundAuth reports whether the auth config carries a usable
+// credential set: a provider is selected and (for the static provider)
+// at least one token is configured. Reserved providers count as
+// configured here; their sub-config is validated at construction time.
+func (a AuthConfig) HasInboundAuth() bool {
+	switch a.Provider {
+	case "":
+		return false
+	case "static":
+		return len(a.Static.Tokens) > 0
+	default:
+		return true
+	}
+}
+
+// ServerEndpoint is one client-routing target: a dpkms base URL plus an
+// optional bearer token overriding the server.token default for that
+// instance. In YAML an entry is either a bare string URL (no token) or a
+// mapping:
+//
+//	server:
+//	  urls:
+//	    - http://127.0.0.1:8080
+//	    - url: https://primary.example.net:7700
+//	      token: s3cret
+type ServerEndpoint struct {
+	URL   string `mapstructure:"url" yaml:"url"`
+	Token string `mapstructure:"token,omitempty" yaml:"token,omitempty"`
+}
+
+// UnmarshalYAML accepts both entry forms: a bare string URL and a
+// {url, token} mapping.
+func (e *ServerEndpoint) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		e.Token = ""
+		return node.Decode(&e.URL)
+	case yaml.MappingNode:
+		type plain ServerEndpoint
+		var p plain
+		if err := node.Decode(&p); err != nil {
+			return err
+		}
+		*e = ServerEndpoint(p)
+		return nil
+	default:
+		return fmt.Errorf("server.urls entry must be a URL string or a {url, token} mapping")
+	}
+}
+
+// MarshalYAML writes the bare-string form back when no token is set, so a
+// config written back (schema migration) keeps its original shape.
+func (e ServerEndpoint) MarshalYAML() (any, error) {
+	if e.Token == "" {
+		return e.URL, nil
+	}
+	type plain ServerEndpoint
+	return plain(e), nil
 }
 
 // ProfileConfig represents profile configuration
@@ -653,11 +812,22 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	system, user, project := cascadeSlots(bin)
 	if cfgFile != "" {
 		// Legacy single-file override: replace cascade with just this file.
+		// Stays in ExtraConfigPaths (strict) — a caller naming a file
+		// outright means it, so a missing one is an error.
 		system, user, project = "", "", ""
 		extraPaths = append([]string{cfgFile}, extraPaths...)
 	} else if envCfg := os.Getenv(EnvConfigPath); envCfg != "" {
-		system, user, project = "", "", ""
-		extraPaths = append([]string{envCfg}, extraPaths...)
+		// CTXT_CONFIG goes in the `user` SLOT, not ExtraConfigPaths:
+		// kit's loader tolerates a missing cascade slot but treats a
+		// missing extra path as a hard error. This env var is ambient
+		// rather than per-invocation, and pointing it at a not-yet-
+		// created file is the normal first-run state — `ctxt setup` is
+		// the command that CREATES it.
+		//
+		// Explicit -c paths keep flowing through extraPaths, where
+		// strictness is correct: ParseConfigArgs has already proven
+		// those files exist, and -c still layers after (wins over) this.
+		system, user, project = "", envCfg, ""
 	}
 
 	// envOverride re-applies env-bound viper keys to dst after files merge,
@@ -680,6 +850,14 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 
 	// Sync FocusProfile.Default bool → ProfileConfig.Default string.
 	if err := syncProfileDefault(&cfg); err != nil {
+		return nil, err
+	}
+
+	// Reject malformed client-routing endpoints loudly at load time — a
+	// bad server.url/server.urls entry would otherwise probe as a
+	// permanently "down" instance and silently shift traffic to the next
+	// instance or the local fallback.
+	if err := cfg.validateServerEndpoints(); err != nil {
 		return nil, err
 	}
 
@@ -722,12 +900,57 @@ func writeBackTarget(cfgFile, system, user, project string) string {
 // Empty strings mean "no path resolvable" (e.g. xdg failure, no project
 // marker found); kit/core/config.Load skips empty slots.
 func cascadeSlots(bin string) (system, user, project string) {
+	return CascadeSlots(bin)
+}
+
+// CascadeSlots is the exported counterpart to [cascadeSlots], usable by
+// adopters wiring `<bin> config path` / `<bin> config paths` via
+// kit/console/cli/config.RegisterPathSubcommands. It is the source of
+// truth for the system/user/project cascade walked by
+// [LoadWithOverrides], so resolvers built on top stay in sync.
+//
+// Layers (highest precedence first when consumed by callers):
+//
+//   - project: nearest `.contexthelp/<bin>.yaml` walking up from cwd,
+//     stopping at $HOME or fs root. Empty when no marker is found.
+//   - user:    `$XDG_CONFIG_HOME/contexthelp/<bin>.yaml`. Empty when xdg
+//     resolution fails (e.g. no $HOME).
+//   - system:  `/etc/contexthelp/<bin>.yaml`. Always populated.
+//
+// `$CTXT_CONFIG` and `-c/--config` are not part of the cascade — they
+// short-circuit it. Callers building a resolver for `config path(s)` must
+// prepend those overrides before this chain.
+func CascadeSlots(bin string) (system, user, project string) {
 	system = filepath.Join("/etc", xdgTool, bin+".yaml")
 	if dir, err := configDirXDG(); err == nil && dir != "" {
 		user = filepath.Join(dir, bin+".yaml")
 	}
 	project = walkUpForMarker(bin)
 	return
+}
+
+// WalkUpForMarker is the exported counterpart to [walkUpForMarker].
+// Exported so adopters building a custom `config path(s)` resolver can
+// reproduce the project-layer walk-up against an explicit cwd (e.g.
+// kit/console/cli/config's `--from <dir>` flag) rather than the process
+// cwd.
+func WalkUpForMarker(cwd, bin string) string {
+	if cwd == "" {
+		return walkUpForMarker(bin)
+	}
+	home, _ := os.UserHomeDir()
+	marker := filepath.Join(".contexthelp", bin+".yaml")
+	dir := cwd
+	for {
+		candidate := filepath.Join(dir, marker)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		if dir == home || dir == "/" || dir == filepath.Dir(dir) {
+			return ""
+		}
+		dir = filepath.Dir(dir)
+	}
 }
 
 // syncProfileDefault reconciles FocusProfile.Default bool with

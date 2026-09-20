@@ -54,10 +54,10 @@
 ### **Data Management & Storage**
 38. As a User I want to manually edit bookmark metadata, tags, and decisions via the CLI
 39. As a User I want to delete bookmarks individually by ID or in bulk by filter tags
-40. As an Operations Engineer I want to configure the storage backend (JSON, SQLite, or Postgres)
+40. As an Operations Engineer I want to configure the storage backend (SQLite or Postgres)
 41. As an Operations Engineer I want to migrate existing data between storage backends safely
 42. As a User I want to export my knowledge graph to standard formats (JSON/YAML) for backup
-43. As a User I want concurrency-safe storage to allow multiple agents to read/write simultaneously
+43. As a User I want concurrency-safe access so multiple agents can read and write simultaneously through the daemon API
 
 ### **Registry Management**
 44. As a ContextHelp User I want to manage registry subscriptions (add, remove, list) via the CLI
@@ -96,3 +96,24 @@
 69. As a User I want to rotate encryption keys safely without losing access to my stored knowledge
 70. As a User I want to sync my knowledge store across my own devices (local-first replication) without requiring a central server
 71. As a User I want to see why a result was ranked highly (explain scoring: weights, graph signals, provenance, recency)
+
+### **Storage Operations & Integrity (Added)**
+72. As an Operator I want orphaned blobs and dangling blob references detected and reclaimed automatically
+73. As a User I want full-fidelity backup and restore of my complete install state (database, blobs, capture spool, configuration, cursors, policies) — not just a graph export
+74. As a User I want the CLI and health check to surface my build's capabilities (full-text, vector search) instead of failing mid-migration
+75. As an Operator I want direct database access refused on public or protected instances so all access flows through the daemon's policy boundary
+
+### **Federation & Sharing Lifecycle (Added)**
+76. As a Publisher I want to retract shared content so subscribers purge it, including search indexes and attached blobs
+77. As a User I want unsubscribing from or disabling a registry to define what happens to content I already imported from it
+78. As a Subscriber I want oversized (blob-backed) content to resolve correctly after a federation sync or knowledge-pack import
+
+### **Keys & Trust Lifecycle (Added)**
+79. As an Org Admin I want to delegate per-instance signing keys from an organization root key and rotate them with overlap windows
+80. As a Subscriber I want to be warned when a publisher's signing key changes and have revoked keys stop verifying
+
+### **Identity, Privacy & Sync (Added)**
+81. As a User I want entities from different registries and instances to keep origin-qualified identity so namespace collisions are surfaced, not silently merged
+82. As a User I want my search queries kept local unless I explicitly consent to querying remote registries
+83. As a User I want my knowledge encrypted at rest without losing local search capability
+84. As a User I want my knowledge store to sync across my own devices with clear conflict resolution when I edit on two devices

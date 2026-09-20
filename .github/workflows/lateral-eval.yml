@@ -21,18 +21,18 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout PR
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: pr
 
       - name: Checkout main baseline
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: main
           path: baseline
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -86,13 +86,13 @@ jobs:
       - name: Compare precision/recall vs baseline
         id: compare
         run: |
-          python3 .github/workflows/scripts/lateral_eval_compare.py
+          python3 pr/.github/workflows/scripts/lateral_eval_compare.py
         env:
           OUT_DIR: out
           COMMENT_PATH: eval-comment.md
 
       - name: Comment on PR
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
         if: github.event_name == 'pull_request'
         with:
           path: eval-comment.md
@@ -105,7 +105,7 @@ jobs:
 
       - name: Upload eval artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: lateral-eval-output
           path: out/

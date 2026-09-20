@@ -225,3 +225,67 @@ func TestMarshalJSON_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, input, roundTripped)
 }
+
+// TestJobIdempotencyKeyRoundTrip: the key persists with the row and comes
+// back on Get.
+func TestJobIdempotencyKeyRoundTrip(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	job := makeJob("job-idem-1")
+	job.IdempotencyKey = "key-abc"
+	require.NoError(t, d.Jobs().Create(ctx, job))
+
+	got, err := d.Jobs().Get(ctx, "job-idem-1")
+	require.NoError(t, err)
+	assert.Equal(t, "key-abc", got.IdempotencyKey)
+}
+
+// TestGetByIdempotencyKey: hit returns the row, miss returns (nil, nil).
+func TestGetByIdempotencyKey(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	job := makeJob("job-idem-2")
+	job.IdempotencyKey = "key-def"
+	require.NoError(t, d.Jobs().Create(ctx, job))
+
+	got, err := d.Jobs().GetByIdempotencyKey(ctx, "key-def")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "job-idem-2", got.ID)
+
+	miss, err := d.Jobs().GetByIdempotencyKey(ctx, "no-such-key")
+	require.NoError(t, err)
+	assert.Nil(t, miss)
+}
+
+// TestIdempotencyKeyUniqueConstraint: a second insert with the same non-empty
+// key is rejected by the partial unique index — the race-window guard behind
+// the lookup-then-insert dedupe in service.Analyze.
+func TestIdempotencyKeyUniqueConstraint(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	a := makeJob("job-idem-3a")
+	a.IdempotencyKey = "key-race"
+	require.NoError(t, d.Jobs().Create(ctx, a))
+
+	b := makeJob("job-idem-3b")
+	b.IdempotencyKey = "key-race"
+	assert.Error(t, d.Jobs().Create(ctx, b), "duplicate idempotency key must be rejected")
+}
+
+// TestIdempotencyKeyEmptyNotUnique: rows without a key (the default) are
+// exempt from the unique index — every legacy enqueue writes ”.
+func TestIdempotencyKeyEmptyNotUnique(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	require.NoError(t, d.Jobs().Create(ctx, makeJob("job-idem-4a")))
+	require.NoError(t, d.Jobs().Create(ctx, makeJob("job-idem-4b")))
+
+	got, err := d.Jobs().GetByIdempotencyKey(ctx, "")
+	require.NoError(t, err)
+	assert.Nil(t, got, "empty key must never match")
+}

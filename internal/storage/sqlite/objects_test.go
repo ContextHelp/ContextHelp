@@ -10,7 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // makeObject builds a graph-canonical KnowledgeObject for tests.
@@ -25,7 +25,7 @@ func makeObject(id, typ string) *storage.KnowledgeObject {
 		Subtype:    "short",
 		RawContent: content,
 		Tags:       []storage.Tag{{Label: "design", Weight: 1.0}},
-		Mentions:   []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "ui/layout"}},
+		Mentions:   []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "ui/layout"}},
 		Summaries:  []string{content},
 		Sections: []storage.Section{{
 			Title:   "Body",
@@ -227,6 +227,26 @@ func TestListBySQL_Pagination(t *testing.T) {
 	assert.Len(t, objs, 2)
 }
 
+// TestListBySQL_OffsetWithoutLimit covers the offset-only path. SQLite rejects
+// a bare OFFSET with no preceding LIMIT, so the builder emits "LIMIT -1"
+// (unbounded) in that case.
+func TestListBySQL_OffsetWithoutLimit(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		obj := makeObject(fmt.Sprintf("offset-%d", i), "article")
+		obj.CreatedAt = time.Now().Add(time.Duration(i) * time.Second).Truncate(time.Second)
+		obj.UpdatedAt = obj.CreatedAt
+		require.NoError(t, d.Objects().Create(ctx, obj))
+	}
+
+	objs, total, err := d.Objects().ListBySQL(ctx, "", nil, 0, 2)
+	require.NoError(t, err)
+	assert.Equal(t, 5, total)
+	assert.Len(t, objs, 3, "offset 2 of 5 rows with no limit should return 3")
+}
+
 func TestMergeTags(t *testing.T) {
 	t.Run("basic merge", func(t *testing.T) {
 		existing := []storage.Tag{{Label: "go", Weight: 1.0}}
@@ -339,13 +359,13 @@ func TestReinforce(t *testing.T) {
 	obj.ContentHash = "reinf-hash"
 	obj.ReinforcementCount = 1
 	obj.Tags = []storage.Tag{{Label: "original", Weight: 1.0}}
-	obj.Mentions = []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "alice"}}
+	obj.Mentions = []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "alice"}}
 	require.NoError(t, d.Objects().Create(ctx, obj))
 
 	t.Run("increments count and merges", func(t *testing.T) {
 		merge := &storage.KnowledgeObject{
-			Tags:        []storage.Tag{{Label: "new-tag", Weight: 0.5}},
-			Mentions: []uri.URI{{Scheme: "ctxt", Space: "entity", ID: "bob"}},
+			Tags:     []storage.Tag{{Label: "new-tag", Weight: 0.5}},
+			Mentions: []uri.URI{{Scheme: "ctxt", Namespace: "entity", ID: "bob"}},
 		}
 		id, err := d.Objects().Reinforce(ctx, "reinf-hash", merge)
 		require.NoError(t, err)
@@ -363,6 +383,46 @@ func TestReinforce(t *testing.T) {
 		_, err := d.Objects().Reinforce(ctx, "", &storage.KnowledgeObject{})
 		assert.Error(t, err)
 	})
+}
+
+// TestReinforceKeepsFTSIndexed pins that the dedup/reinforcement path leaves
+// an already-indexed object searchable AND still reporting fts_indexed=true.
+// Reinforce never touches objects_fts and nothing re-indexes afterwards, so
+// clearing the flag would misreport a searchable object as unindexed.
+func TestReinforceKeepsFTSIndexed(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj := makeFTSObject("reinf-fts-1", "article", "zebrafish larval locomotion study")
+	obj.RawContent = "zebrafish larval locomotion study"
+	obj.ContentHash = "reinf-fts-hash"
+	obj.ReinforcementCount = 1
+	obj.Embeddings = []float32{0.1, 0.2, 0.3}
+	obj.VectorIndexed = true
+	require.NoError(t, d.Objects().Create(ctx, obj))
+
+	before, err := d.Objects().Get(ctx, obj.ID)
+	require.NoError(t, err)
+	require.True(t, before.FTSIndexed, "precondition: Create must FTS-index the object")
+	require.True(t, before.VectorIndexed, "precondition: Create persists vector_indexed")
+
+	_, err = d.Objects().Reinforce(ctx, "reinf-fts-hash", &storage.KnowledgeObject{
+		RawContent: obj.RawContent,
+		Tags:       []storage.Tag{{Label: "extra", Weight: 1.0, Source: "user"}},
+	})
+	require.NoError(t, err)
+
+	after, err := d.Objects().Get(ctx, obj.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, after.ReinforcementCount)
+	assert.True(t, after.FTSIndexed, "Reinforce must not clear fts_indexed: object stays indexed")
+	assert.True(t, after.VectorIndexed, "Reinforce must not clear vector_indexed: embedding row untouched")
+
+	results, err := d.Objects().FTSSearch(ctx, "zebrafish", storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, results, 1, "reinforced object must remain FTS-searchable")
+	assert.Equal(t, obj.ID, results[0].ID)
+	assert.True(t, results[0].FTSIndexed)
 }
 
 func TestListBySQL_JSONExtract(t *testing.T) {
@@ -446,6 +506,28 @@ func TestVectorSearch_EmptyVectorError(t *testing.T) {
 
 	_, err := d.Objects().VectorSearch(ctx, nil, storage.ObjectFilter{})
 	assert.Error(t, err)
+}
+
+// TestVectorSearch_ZeroQueryReturnsNothing pins the brute-force leg to the
+// cross-driver contract: cosine similarity is undefined against a
+// zero-magnitude query, so the search returns nothing — matching the ANN
+// leg (vec0 reports unrankable NULL distances) and the Postgres driver
+// (NaN distance fails the range predicate). Without the guard the
+// brute-force scorer hands every candidate back at score 0.
+func TestVectorSearch_ZeroQueryReturnsNothing(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj := makeObject("vec-zq", "item")
+	obj.Embeddings = []float32{1, 0, 0}
+	require.NoError(t, d.Objects().Create(ctx, obj))
+
+	// Dimension 3 ≠ the driver's ANN dimension, so this exercises the
+	// brute-force scan — the leg that scored zero queries at 0 for
+	// every row.
+	results, err := d.Objects().VectorSearch(ctx, []float32{0, 0, 0}, storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err)
+	assert.Empty(t, results)
 }
 
 func TestVectorSearch_RespectsLimit(t *testing.T) {
@@ -535,6 +617,49 @@ func TestFTSSearch_HyphenatedQuerySanitised(t *testing.T) {
 	require.NoError(t, err, "sanitised FTS expression must not crash MATCH")
 	require.Len(t, results, 1)
 	assert.Equal(t, "fts-hy-1", results[0].ID)
+}
+
+// TestFTSSearch_RawHostileInput pins the sanitizer seam moving behind the
+// driver boundary: FTSSearch receives RAW user text and applies the FTS5
+// quoting itself. No hostile input may error or leak operator semantics;
+// input with no usable tokens matches nothing rather than erroring.
+func TestFTSSearch_RawHostileInput(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	obj := makeFTSObject("fts-raw-1", "article", "documents that are credit eligible")
+	require.NoError(t, d.Objects().Create(ctx, obj))
+
+	_, err := d.db.ExecContext(ctx, "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")
+	require.NoError(t, err)
+
+	// The historical hyphen-crash shape, now raw at the driver.
+	results, err := d.Objects().FTSSearch(ctx, "credit-eligible", storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err, "raw hyphenated query must not crash MATCH")
+	require.Len(t, results, 1)
+	assert.Equal(t, "fts-raw-1", results[0].ID)
+
+	// Hostile corpus: no error, no operator semantics.
+	for _, q := range []string{
+		`"credit eligible"`,
+		"NEAR(credit, eligible)",
+		"credit AND eligible",
+		"credit OR nonexistent-term-xyz",
+		"credit:eligible",
+	} {
+		if _, err := d.Objects().FTSSearch(ctx, q, storage.ObjectFilter{Limit: 10}); err != nil {
+			t.Errorf("hostile input %q errored: %v", q, err)
+		}
+	}
+
+	// No usable tokens: match nothing, do not error.
+	results, err = d.Objects().FTSSearch(ctx, "!!! ???", storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err, "punctuation-only query must not error")
+	assert.Empty(t, results)
+
+	// Truly empty input is still a caller bug.
+	_, err = d.Objects().FTSSearch(ctx, "", storage.ObjectFilter{Limit: 10})
+	require.Error(t, err)
 }
 
 func TestCosineSimilarity(t *testing.T) {

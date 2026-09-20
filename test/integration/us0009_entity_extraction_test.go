@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -63,9 +63,9 @@ func TestUS0009_EntityMentionsExtracted(t *testing.T) {
 	defer env.stop(t)
 
 	wantMentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "alice-smith"},
-		{Scheme: "ctxt", Space: "project", ID: "mobile-redesign"},
-		{Scheme: "ctxt", Space: "system", ID: "backend-api"},
+		{Scheme: "ctxt", Namespace: "person", ID: "alice-smith"},
+		{Scheme: "ctxt", Namespace: "project", ID: "mobile-redesign"},
+		{Scheme: "ctxt", Namespace: "system", ID: "backend-api"},
 	}
 
 	env.svc.Pipes.Upsert("text.entity-extract", &pipeline.Pipeline{
@@ -104,8 +104,8 @@ func TestUS0009_MentionEdgesCreated(t *testing.T) {
 	defer env.stop(t)
 
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "bob-jones"},
-		{Scheme: "ctxt", Space: "concept", ID: "event-sourcing"},
+		{Scheme: "ctxt", Namespace: "person", ID: "bob-jones"},
+		{Scheme: "ctxt", Namespace: "concept", ID: "event-sourcing"},
 	}
 
 	env.svc.Pipes.Upsert("text.entity-edges", &pipeline.Pipeline{
@@ -138,9 +138,9 @@ func TestUS0009_MentionFormatIsNamespaceSlug(t *testing.T) {
 	defer env.stop(t)
 
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "carol-white"},
-		{Scheme: "ctxt", Space: "organization", ID: "acme-corp"},
-		{Scheme: "ctxt", Space: "product", ID: "super-widget"},
+		{Scheme: "ctxt", Namespace: "person", ID: "carol-white"},
+		{Scheme: "ctxt", Namespace: "organization", ID: "acme-corp"},
+		{Scheme: "ctxt", Namespace: "product", ID: "super-widget"},
 	}
 
 	env.svc.Pipes.Upsert("text.entity-format", &pipeline.Pipeline{
@@ -170,7 +170,7 @@ func TestUS0009_MentionFormatIsNamespaceSlug(t *testing.T) {
 
 	for _, m := range obj.Mentions {
 		assert.Equal(t, "ctxt", m.Scheme, "mention scheme must be ctxt")
-		assert.NotEmpty(t, m.Space, "mention namespace (Space) must not be empty")
+		assert.NotEmpty(t, m.Namespace, "mention namespace (Space) must not be empty")
 		assert.NotEmpty(t, m.ID, "mention slug (ID) must not be empty")
 		// Slug must be lowercase and hyphen-separated.
 		assert.Equal(t, strings.ToLower(m.ID), m.ID, "slug must be lowercase")
@@ -184,7 +184,7 @@ func TestUS0009_EntityObjectsCreatedForMentions(t *testing.T) {
 	defer env.stop(t)
 
 	mentions := []uri.URI{
-		{Scheme: "ctxt", Space: "person", ID: "dave-kim"},
+		{Scheme: "ctxt", Namespace: "person", ID: "dave-kim"},
 	}
 
 	env.svc.Pipes.Upsert("text.entity-objects", &pipeline.Pipeline{

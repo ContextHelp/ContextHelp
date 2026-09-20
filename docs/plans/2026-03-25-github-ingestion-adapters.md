@@ -1,5 +1,8 @@
 # GitHub Ingestion Adapters & Plugin Pattern Plan
 
+> **Status: superseded.** The idx client bridge this plan builds on is not part
+> of the codebase. Current design: `2026-07-26-github-ingestion-consolidation.md`.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Build GitHub ingestion adapters (per-URL pipeline) and a bulk importer (starred, watched, following, issues), backed by idx as the fetch/scrape runtime. Four post-ingest enrichers handle dependency linking, repo health scoring, alternative detection, and release watching. The implementation serves dual purpose: genuine utility for any workspace, and canonical reference for plugin authors.
@@ -23,8 +26,8 @@
 | Existing importer pattern | `internal/importer/pinboard/api.go` |
 | Existing plugin pattern | `plugins/autosuggest/` |
 | Jobs system | `internal/jobs/` |
-| idx Operations API | `~/.w/ideacrafterslabs/idx/hops/main/src/Operations.js` |
-| idx daemon/server | `~/.w/ideacrafterslabs/idx/hops/main/src/daemon.js`, `server.js` |
+| idx Operations API | `src/Operations.js` in the idx repo |
+| idx daemon/server | `src/daemon.js`, `src/server.js` in the idx repo |
 
 ---
 

@@ -8,7 +8,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // ─── stubs (ObjectStore) ──────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ func (s *stubObjectStore) ListWithoutEmbeddings(_ context.Context) ([]*storage.K
 }
 
 func (s *stubObjectStore) SetReminder(_ context.Context, _ string, _ time.Time) error { return nil }
-func (s *stubObjectStore) ClearReminder(_ context.Context, _ string) error             { return nil }
+func (s *stubObjectStore) ClearReminder(_ context.Context, _ string) error            { return nil }
 func (s *stubObjectStore) ListDueReminders(_ context.Context, _ time.Time) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
 }
@@ -80,15 +80,19 @@ func (s *stubObjectStore) MarkReminded(_ context.Context, _ string, _ time.Time)
 func (s *stubObjectStore) ListPendingReminders(_ context.Context) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
 }
+
 func (s *stubObjectStore) VectorSearch(_ context.Context, _ []float32, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
 }
+
 func (s *stubObjectStore) FTSSearch(_ context.Context, _ string, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
 }
+
 func (s *stubObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
 	return nil, nil
 }
+
 func (s *stubObjectStore) VectorSearchNodeAware(_ context.Context, _ []float32, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
 	return nil, nil
 }

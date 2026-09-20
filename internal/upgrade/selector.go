@@ -16,6 +16,11 @@
 //     being shoehorned into raw SQL injection.
 //
 // Validation:
+//   - Allowlist every bare identifier in the predicate against the queryable
+//     `objects` columns plus the operator keywords (AND/OR/NOT/IS/NULL/
+//     LIKE/IN/BETWEEN/GLOB). This is the primary control: it bounds the
+//     predicate to a known vocabulary, so subqueries, function calls and
+//     other tables are rejected rather than merely discouraged.
 //   - Reject any predicate containing `;`, `--`, `/*`, `*/` to block
 //     statement chaining and comment-as-code injection.
 //   - Reject any predicate matching DDL/DML keywords as standalone tokens
@@ -63,6 +68,55 @@ var dangerousFragmentRE = regexp.MustCompile(`(;|--|/\*|\*/)`)
 // the keyword set in `\b` so it won't fire on identifiers that happen to
 // contain the substring (e.g. a column named "draft" must not trip "DROP").
 var dangerousKeywordRE = regexp.MustCompile(`(?i)\b(DROP|INSERT|UPDATE|DELETE|ALTER|CREATE|REPLACE|TRUNCATE|ATTACH|DETACH|PRAGMA|BEGIN|COMMIT|ROLLBACK|VACUUM)\b`)
+
+// identifierRE extracts bare identifiers (unquoted word tokens not part of a
+// string literal) so they can be checked against allowedIdentifiers.
+var identifierRE = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
+
+// stringLiteralRE matches single-quoted SQL string literals. Literals are
+// stripped before identifier extraction so a value like 'text.short%' is not
+// mistaken for a column reference.
+var stringLiteralRE = regexp.MustCompile(`'(?:[^']|'')*'`)
+
+// allowedIdentifiers is the closed set of bare word tokens a `where:`
+// predicate may reference: the queryable columns of the objects table plus
+// the SQL operator keywords needed to combine them.
+//
+// This is the primary control. The denylists above catch obvious abuse, but a
+// denylist can always be evaded; an allowlist bounds the predicate to a known
+// vocabulary. Anything outside it — a subquery keyword (SELECT, UNION), a
+// function name, another table — is rejected before the string is ever
+// concatenated into SQL.
+var allowedIdentifiers = map[string]bool{
+	// objects columns eligible for selection predicates.
+	"id": true, "type": true, "subtype": true, "pipeline": true,
+	"source": true, "source_key": true, "status": true,
+	"content_hash": true, "content_type": true, "profile_id": true,
+	"graph_json": true, "metadata": true, "tags": true,
+	"created_at": true, "updated_at": true, "last_reinforced_at": true,
+	"reinforcement_count": true, "fts_indexed": true, "vector_indexed": true,
+	// operator / literal keywords.
+	"AND": true, "OR": true, "NOT": true, "IS": true, "NULL": true,
+	"LIKE": true, "IN": true, "BETWEEN": true, "GLOB": true,
+	"TRUE": true, "FALSE": true,
+}
+
+// validateIdentifiers rejects a predicate referencing anything outside
+// allowedIdentifiers. String literals are stripped first so their contents
+// are treated as data, not identifiers.
+func validateIdentifiers(pred string) error {
+	stripped := stringLiteralRE.ReplaceAllString(pred, "''")
+	for _, tok := range identifierRE.FindAllString(stripped, -1) {
+		// Columns are stored lowercase, keywords uppercase; accept a token
+		// under either normalisation so `PIPELINE` and `and` both pass.
+		if !allowedIdentifiers[strings.ToLower(tok)] && !allowedIdentifiers[strings.ToUpper(tok)] {
+			return fmt.Errorf(
+				"upgrade selector: predicate references unknown identifier %q "+
+					"(allowed: objects columns and AND/OR/NOT/IS/NULL/LIKE/IN/BETWEEN/GLOB)", tok)
+		}
+	}
+	return nil
+}
 
 // ErrSelectorEmpty is returned when ParseSelector is given an empty string.
 var ErrSelectorEmpty = errors.New("upgrade selector: empty (use 'pipeline=<name>@vN' or 'where:<predicate>')")
@@ -125,11 +179,19 @@ func parseWhereSelector(predicate string, db *sql.DB) (*Selector, error) {
 	if m := dangerousKeywordRE.FindString(pred); m != "" {
 		return nil, fmt.Errorf("upgrade selector: predicate contains forbidden keyword %q (DDL/DML not allowed in selector predicates)", m)
 	}
+	// Allowlist check — the control that actually bounds the predicate.
+	if err := validateIdentifiers(pred); err != nil {
+		return nil, err
+	}
 
 	// Pre-warm the query plan so column-not-found / syntax errors surface
 	// at parse time rather than at the first iterator call. Skipped when
 	// db is nil (tests).
 	if db != nil {
+		// #nosec G202 -- pred passed validateIdentifiers: every bare token is
+		// an allowlisted objects column or operator keyword, and statement
+		// chaining / comment markers are rejected above. This is a read-only
+		// EXPLAIN. A bind parameter cannot express a WHERE clause structure.
 		query := "EXPLAIN QUERY PLAN SELECT id FROM objects WHERE " + pred
 		rows, err := db.QueryContext(context.Background(), query)
 		if err != nil {
@@ -175,8 +237,13 @@ func (s *Selector) IterateMatching(ctx context.Context, db *sql.DB) (<-chan stri
 	if s == nil {
 		return nil, errors.New("upgrade selector: nil")
 	}
+	// #nosec G202 -- s.sql is either the constant "pipeline = ?" or a
+	// predicate that passed validateIdentifiers at ParseSelector time
+	// (allowlisted columns/operators only). Selector has no exported
+	// mutator, so the compiled SQL cannot be altered after validation.
 	query := "SELECT id FROM objects"
 	if s.sql != "" {
+		// #nosec G202 -- see the justification above this function body.
 		query += " WHERE " + s.sql
 	}
 	query += " ORDER BY created_at ASC, id ASC"

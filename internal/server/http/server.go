@@ -8,11 +8,46 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/mcp"
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
+	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/ui"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
+
+// RouterConfig bundles optional router wiring so the constructor
+// signature stops growing per feature.
+type RouterConfig struct {
+	// DevCORS enables CORS for http://localhost:5173 (Vite dev server).
+	DevCORS bool
+	// Watcher is optional (nil-safe); nil disables live watch management
+	// but keeps CRUD.
+	Watcher *watcher.Manager
+	// Probes injects runtime healthcheck signals into /healthz.
+	Probes HealthzProbes
+	// Auth guards the /api/v1 route table (MCP mount included) behind
+	// the configured provider. nil = no inbound auth (private instance).
+	// Health endpoints and static UI assets stay open for probes.
+	Auth authn.Provider
+	// Security receives auth-failure and ACL-denial events. nil = no
+	// security event recording.
+	Security *security.Emitter
+	// Entitlements gates the entity-serving surface behind per-principal
+	// namespace grants and metering quotas. nil = no inbound
+	// entitlement enforcement (private instance).
+	Entitlements *registry.InboundGate
+	// RequireFederationCredential makes the federation.token credential
+	// mandatory on the push route (non-private instances): without a
+	// configured token the route refuses requests instead of accepting
+	// any authenticated principal.
+	RequireFederationCredential bool
+	// RedactHealthz hides the verbose /healthz envelope (version, queue
+	// depths, upgrade progress) from unauthenticated callers — public
+	// instances set it. Bare /health stays open for LB probes either way.
+	RedactHealthz bool
+}
 
 // NewRouter creates the HTTP router with all routes and middleware.
 // devCORS enables CORS for http://localhost:5173 (Vite dev server).
@@ -20,23 +55,37 @@ import (
 //
 // The /healthz endpoint is registered with zero-valued HealthzProbes;
 // callers (dpkms serve) that want richer signals (version, gRPC probe,
-// watcher introspection) should use NewRouterWithProbes instead.
+// watcher introspection) should use NewRouterWithConfig instead.
 func NewRouter(svc *service.Service, devCORS bool, mgr *watcher.Manager) chi.Router {
-	return NewRouterWithProbes(svc, devCORS, mgr, HealthzProbes{})
+	return NewRouterWithConfig(svc, RouterConfig{DevCORS: devCORS, Watcher: mgr})
 }
 
-// NewRouterWithProbes is the explicit constructor used by dpkms serve
-// to inject runtime healthcheck signals. The basic NewRouter wraps it
-// with a zero-valued HealthzProbes so existing callers keep working.
+// NewRouterWithProbes keeps the pre-RouterConfig constructor shape for
+// callers that only inject healthcheck probes.
 func NewRouterWithProbes(svc *service.Service, devCORS bool, mgr *watcher.Manager, probes HealthzProbes) chi.Router {
+	return NewRouterWithConfig(svc, RouterConfig{DevCORS: devCORS, Watcher: mgr, Probes: probes})
+}
+
+// NewRouterWithConfig is the full constructor used by dpkms serve.
+func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
+	mgr := rc.Watcher
+	probes := rc.Probes
+
 	r := chi.NewRouter()
 
 	r.Use(RequestID)
 	r.Use(Recoverer)
-	r.Use(CORS(devCORS))
+	r.Use(CORS(rc.DevCORS))
+	if rc.Security != nil {
+		r.Use(WithSecurityEvents(rc.Security))
+	}
 
 	r.Get("/health", Health(svc))
-	r.Get("/healthz", Healthz(svc, probes))
+	if rc.RedactHealthz {
+		r.Get("/healthz", RedactedHealthz(svc, probes, rc.Auth))
+	} else {
+		r.Get("/healthz", Healthz(svc, probes))
+	}
 	r.Get("/manifest.json", ManifestJSON())
 
 	// GET /ui → redirect to /ui/
@@ -61,6 +110,14 @@ func NewRouterWithProbes(svc *service.Service, devCORS bool, mgr *watcher.Manage
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// Inbound authentication ahead of the whole route table
+		// (REST, SSE, federation push, and the MCP mount below all
+		// inherit it). Provider-agnostic by construction: the
+		// middleware consumes authn.Provider, never a scheme.
+		if rc.Auth != nil {
+			r.Use(RequireAuth(rc.Auth, rc.Security))
+		}
+
 		// Objects
 		r.Get("/objects", ListObjects(svc))
 		r.Get("/objects/{id}", GetObject(svc))
@@ -78,12 +135,14 @@ func NewRouterWithProbes(svc *service.Service, devCORS bool, mgr *watcher.Manage
 		// Search
 		r.Get("/search", Search(svc))
 
-		// Entities
-		r.Get("/entities", ListEntities(svc))
-		r.Get("/entities/{slug}", GetEntity(svc))
-		r.Get("/entities/{slug}/backlinks", EntityBacklinks(svc))
+		// Entities. The entity-serving surface is where inbound
+		// entitlements and metering bite: resolves and pulls are
+		// charged per principal when a gate is wired.
+		r.Get("/entities", ListEntities(svc, rc.Entitlements))
+		r.Get("/entities/{slug}", GetEntity(svc, rc.Entitlements))
+		r.Get("/entities/{slug}/backlinks", EntityBacklinks(svc, rc.Entitlements))
 		// Thin sync: promote a thin entity to full on demand.
-		r.Post("/entities/{slug}/pull", PullEntity(svc))
+		r.Post("/entities/{slug}/pull", PullEntity(svc, rc.Entitlements))
 		// Thin sync: trigger entity index sync for a registry.
 		r.Post("/entities/registry-sync", SyncRegistryEntities(svc))
 
@@ -177,8 +236,9 @@ func NewRouterWithProbes(svc *service.Service, devCORS bool, mgr *watcher.Manage
 		// Audit log (US-0405)
 		r.Get("/audit-log", ListAuditLog(svc))
 
-		// Federation push (Phase 2)
-		r.Post("/federation/push", FederationPush(svc))
+		// Federation push (Phase 2). On non-private instances the
+		// federation credential is mandatory, not just any principal.
+		r.Post("/federation/push", FederationPush(svc, rc.RequireFederationCredential))
 
 		// MCP read-surface (per ADR-068).
 		// Mounted at /api/v1/mcp/ as a sibling of REST routes. JSON-RPC 2.0

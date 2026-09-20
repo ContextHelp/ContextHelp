@@ -55,8 +55,9 @@ func TestSchemaVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query version: %v", err)
 	}
-	if version != len(migrations) {
-		t.Errorf("version: got %d, want %d", version, len(migrations))
+	want := migrations[len(migrations)-1].Version
+	if version != want {
+		t.Errorf("version: got %d, want %d", version, want)
 	}
 }
 

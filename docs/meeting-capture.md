@@ -2,7 +2,7 @@
 
 Record video calls (Zoom, Meet, Teams, FaceTime, Discord, Slack Huddles) and route the audio + video through ctxt's existing transcription + frame-OCR pipelines. Per [ADR-069](decisions/ADR-069-meeting-capture-source.md).
 
-> Companion to [`ambient.md`](ambient.md) (parent ambient daemon). For the task-oriented walkthrough, see [`manual/workflows/meeting-capture.md`](manual/workflows/meeting-capture.md). For ops, see `~/.ops/runbooks/meeting-capture.md`.
+> Companion to [`ambient.md`](ambient.md) (parent ambient daemon). For the task-oriented walkthrough, see [`manual/workflows/meeting-capture.md`](manual/workflows/meeting-capture.md). For ops, see the internal meeting-capture runbook.
 
 ## What it does
 
@@ -179,7 +179,7 @@ ctxt watch --topic 'ctxt.ambient.meeting.indicator_displayed' # watchdog signal
 | Disk filled up | Default 20 GB cap exceeded | Reduce `local_max_gb`, lower `media_retention_hours`, OR enable `s3_archive` |
 | Auto-detect not firing | Bundle not in default list | Add to `ambient.meeting.auto_detect.bundles` |
 
-For ops scenarios (daemon recovery, S3 credential rotation, compliance retention setup), see `~/.ops/runbooks/meeting-capture.md`.
+For ops scenarios (daemon recovery, S3 credential rotation, compliance retention setup), see the internal meeting-capture runbook.
 
 ## Related
 

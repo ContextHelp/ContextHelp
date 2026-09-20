@@ -32,7 +32,7 @@ func CreatePipeline(svc *service.Service) http.HandlerFunc {
 
 		id, err := svc.CreatePipeline(withPolicyContext(r), req)
 		if err != nil {
-			if writePolicyError(w, err) {
+			if writePolicyError(w, r, err) {
 				return
 			}
 			statusCode := http.StatusInternalServerError
@@ -100,7 +100,7 @@ func DeletePipeline(svc *service.Service) http.HandlerFunc {
 		}
 
 		if err := svc.DeletePipeline(withPolicyContext(r), name); err != nil {
-			if writePolicyError(w, err) {
+			if writePolicyError(w, r, err) {
 				return
 			}
 			statusCode := http.StatusInternalServerError
@@ -130,7 +130,7 @@ func ArchivePipeline(svc *service.Service) http.HandlerFunc {
 		}
 
 		if err := svc.ArchivePipeline(withPolicyContext(r), name); err != nil {
-			if writePolicyError(w, err) {
+			if writePolicyError(w, r, err) {
 				return
 			}
 			// T-1294 added a Get-before-Update inside the service so
@@ -163,7 +163,7 @@ func UnarchivePipeline(svc *service.Service) http.HandlerFunc {
 		}
 
 		if err := svc.UnarchivePipeline(withPolicyContext(r), name); err != nil {
-			if writePolicyError(w, err) {
+			if writePolicyError(w, r, err) {
 				return
 			}
 			// Same not-found surface as ArchivePipeline (T-1294
@@ -203,7 +203,12 @@ func Enqueue(svc *service.Service) http.HandlerFunc {
 
 		jobID, err := svc.Enqueue(r.Context(), req)
 		if err != nil {
-			if errors.Is(err, jobs.ErrPipelineNotFound) {
+			// An unknown pipeline can surface from two layers with two
+			// distinct sentinels: the service's own pre-flight registry
+			// check, and the queue's validator deeper in Enqueue. Match
+			// both, otherwise a genuinely invalid request falls through
+			// to a generic 500.
+			if errors.Is(err, service.ErrPipelineNotFound) || errors.Is(err, jobs.ErrPipelineNotFound) {
 				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 				return
 			}

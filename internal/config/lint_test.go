@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -195,4 +196,82 @@ func TestLintConfigClean(t *testing.T) {
 
 	findings := LintConfig(cfg, cfgPath)
 	assert.Empty(t, findings, "clean config + safe permissions should have no findings")
+}
+
+func TestLintAccessPrivateWithFederationToken(t *testing.T) {
+	cfg := &Config{}
+	cfg.Federation.Token = "push-secret"
+
+	findings := LintConfig(cfg, "")
+
+	var hit *LintFinding
+	for i, f := range findings {
+		if f.Field == "federation.token" {
+			hit = &findings[i]
+			break
+		}
+	}
+	require.NotNil(t, hit, "expected federation.token finding on private instance")
+	assert.Equal(t, SeverityWarn, hit.Severity)
+}
+
+func TestLintPublicFlagDeprecationShorthand(t *testing.T) {
+	cfg := &Config{}
+	cfg.Server.Public = true
+	cfg.Server.Auth = AuthConfig{
+		Provider: "static",
+		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p"}}},
+	}
+
+	findings := LintConfig(cfg, "")
+
+	var hit *LintFinding
+	for i, f := range findings {
+		if f.Field == "server.public" {
+			hit = &findings[i]
+			break
+		}
+	}
+	require.NotNil(t, hit, "expected server.public deprecation finding")
+	assert.Equal(t, SeverityWarn, hit.Severity)
+	assert.Contains(t, hit.Message, "deprecated")
+}
+
+func TestLintAccessProtectedWithFederationTokenIsQuiet(t *testing.T) {
+	cfg := &Config{}
+	cfg.Server.Access = AccessProtected
+	cfg.Server.Auth = AuthConfig{
+		Provider: "static",
+		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p"}}},
+	}
+	cfg.Federation.Token = "push-secret"
+
+	for _, f := range LintConfig(cfg, "") {
+		if f.Field == "federation.token" && f.Severity == SeverityWarn && f.Message != "" &&
+			strings.Contains(f.Message, "private") {
+			t.Fatalf("unexpected private-instance finding on protected instance: %v", f)
+		}
+	}
+}
+
+func TestLintAccessNonPrivateWithoutFederationToken(t *testing.T) {
+	cfg := &Config{}
+	cfg.Server.Access = AccessProtected
+	cfg.Server.Auth = AuthConfig{
+		Provider: "static",
+		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p"}}},
+	}
+
+	findings := LintConfig(cfg, "")
+
+	var hit *LintFinding
+	for i, f := range findings {
+		if f.Field == "federation.token" {
+			hit = &findings[i]
+			break
+		}
+	}
+	require.NotNil(t, hit, "expected federation.token finding on non-private instance without a credential")
+	assert.Equal(t, SeverityWarn, hit.Severity)
+	assert.Contains(t, hit.Message, "push")
 }

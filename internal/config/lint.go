@@ -54,7 +54,40 @@ func LintConfig(cfg *Config, configPath string) []LintFinding {
 	findings = append(findings, lintSecrets(cfg)...)
 	findings = append(findings, lintPermissions(configPath)...)
 	findings = append(findings, lintDeprecated(cfg)...)
+	findings = append(findings, lintAccess(cfg)...)
 
+	return findings
+}
+
+// lintAccess surfaces access-class smells that are not hard errors:
+// the deprecated server.public shorthand, and an inbound federation
+// token on a private instance (probably meant to be protected). Neither
+// flips the class — validation owns the hard rules.
+func lintAccess(cfg *Config) []LintFinding {
+	var findings []LintFinding
+	if cfg.Server.Access == "" && cfg.Server.Public {
+		findings = append(findings, LintFinding{
+			Severity: SeverityWarn,
+			Field:    "server.public",
+			Message:  "deprecated shorthand for server.access: public; set server.access explicitly",
+			Fix:      "set server.access: public and drop server.public",
+		})
+	}
+	if cfg.Server.EffectiveAccess() == AccessPrivate && cfg.Federation.Token != "" {
+		findings = append(findings, LintFinding{
+			Severity: SeverityWarn,
+			Field:    "federation.token",
+			Message:  "inbound federation token configured on a private instance — remote pushers cannot reach it; did you mean server.access: protected?",
+		})
+	}
+	if cfg.Server.EffectiveAccess() != AccessPrivate && cfg.Federation.Token == "" {
+		findings = append(findings, LintFinding{
+			Severity: SeverityWarn,
+			Field:    "federation.token",
+			Message:  "no federation.token on a non-private instance — the federation push route refuses all requests until one is configured",
+			Fix:      "set federation.token to enable inbound federation push, or ignore if this instance never receives pushes",
+		})
+	}
 	return findings
 }
 

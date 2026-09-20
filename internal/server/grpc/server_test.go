@@ -4,16 +4,17 @@ import (
 	"context"
 	"net"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
-	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
+	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
+	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -47,7 +48,8 @@ func newTestServer(t *testing.T) (addr string, conn *grpc.ClientConn) {
 	}()
 	t.Cleanup(cancel)
 
-	// Dial.
+	// Dial. grpc.NewClient is lazy: it returns before a connection exists, so
+	// on its own it proves nothing about the server being up.
 	conn, err = grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
@@ -56,7 +58,36 @@ func newTestServer(t *testing.T) (addr string, conn *grpc.ClientConn) {
 	}
 	t.Cleanup(func() { conn.Close() })
 
+	waitForServing(t, conn)
+
 	return addr, conn
+}
+
+// waitForServing blocks until the server answers a health check, so a test
+// never races the listener.
+//
+// srv.Start binds inside a goroutine, and the address was obtained by binding
+// a probe listener and closing it again, so nothing guarantees the server has
+// rebound by the time a test issues its first RPC. Without this the first RPC
+// intermittently fails with "connection refused" — a flake that surfaces in
+// whichever test happens to run first, not in a consistent one.
+func waitForServing(t *testing.T, conn *grpc.ClientConn) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	hc := grpc_health_v1.NewHealthClient(conn)
+	for {
+		resp, err := hc.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+		if err == nil && resp.Status == grpc_health_v1.HealthCheckResponse_SERVING {
+			return
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("grpc server not serving within timeout: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func TestHealthCheck(t *testing.T) {

@@ -147,6 +147,8 @@ Registries may be:
 
 As long as they conform to the Registry Protocol, the engine can subscribe.
 
+For deploying separate org / team / personal registry tiers, see [tiered-deployment.md](tiered-deployment.md).
+
 ---
 
 ## Entities & Mentions in Registries (New)

@@ -10,7 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // makeObjWithGraph creates an object with a single section node in its graph.
@@ -57,7 +57,7 @@ func makeObj(id string, mentions ...string) *storage.KnowledgeObject {
 				break
 			}
 		}
-		ms = append(ms, uri.URI{Scheme: "ctxt", Space: space, ID: slug})
+		ms = append(ms, uri.URI{Scheme: "ctxt", Namespace: space, ID: slug})
 	}
 	return &storage.KnowledgeObject{
 		ID:        id,
@@ -168,8 +168,8 @@ func TestRerank_HopBacklinkBoost(t *testing.T) {
 	r := ranking.New(edges, w)
 
 	candidates := map[string]ranking.Candidate{
-		"direct": {Object: makeObj("direct", "ns.shared"), FTSScore: 0.1},
-		"hop":    {Object: makeObj("hop", "ns.shared"), FTSScore: 0.05},
+		"direct":    {Object: makeObj("direct", "ns.shared"), FTSScore: 0.1},
+		"hop":       {Object: makeObj("hop", "ns.shared"), FTSScore: 0.05},
 		"unrelated": {Object: makeObj("unrelated", "ns.other"), FTSScore: 0.05},
 	}
 

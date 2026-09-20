@@ -26,7 +26,7 @@ on:
   pull_request:
     branches:
       - main
-      - develop
+      - next
   schedule:
     # Nightly at 03:00 UTC
     - cron: '0 3 * * *'
@@ -41,10 +41,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -56,17 +56,17 @@ jobs:
       - name: Run govulncheck
         # Exit code 3 = vulnerabilities found in reachable code paths.
         # govulncheck only reports on reachable code; all findings are actionable.
-        run: govulncheck ./...
+        run: govulncheck -tags fts5 ./...
 
   nancy:
     name: nancy (Sonatype OSS Index)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -86,7 +86,7 @@ jobs:
 
       - name: Upload nancy report
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: nancy-report-${{ github.run_id }}
           path: .nancy-ignore

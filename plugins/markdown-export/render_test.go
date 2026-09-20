@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 
 	markdownexport "github.com/ideacrafterslabs/ctxt-plugin-markdown-export"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
@@ -71,8 +71,7 @@ func TestRender_Title_FallbackToID(t *testing.T) {
 
 func TestRender_Mentions_Backlinks(t *testing.T) {
 	obj := baseObject()
-	u, _ := uri.Parse("@go.plugin-system")
-	obj.Mentions = []uri.URI{*u}
+	obj.Mentions = []uri.URI{{ID: "@go.plugin-system"}}
 
 	out, err := markdownexport.Render(obj)
 	require.NoError(t, err)

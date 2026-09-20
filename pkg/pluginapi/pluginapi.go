@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // ─── Event bus ───────────────────────────────────────────────────────────────
@@ -146,18 +146,18 @@ type GraphNode struct {
 	NodeType GraphNodeType  `json:"node_type"`       // NodeType* constant
 	Label    string         `json:"label,omitempty"` // human-readable label
 	Content  string         `json:"content,omitempty"`
-	Order    int            `json:"order"`           // ordinal position; zero is valid
+	Order    int            `json:"order"` // ordinal position; zero is valid
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // GraphEdge is a directed edge between two nodes within the same object graph.
 // Inter-object edges MUST go to the edges table (ADR-049); this is intra-object only.
 type GraphEdge struct {
-	ID       string  `json:"id"`
-	FromID   string  `json:"from_id"`
-	ToID     string  `json:"to_id"`
+	ID       string        `json:"id"`
+	FromID   string        `json:"from_id"`
+	ToID     string        `json:"to_id"`
 	EdgeType GraphEdgeType `json:"edge_type"` // EdgeType* constant
-	Weight   float64 `json:"weight,omitempty"`
+	Weight   float64       `json:"weight,omitempty"`
 }
 
 // ObjectGraph holds typed nodes and edges for a single KnowledgeObject.

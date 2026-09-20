@@ -91,7 +91,7 @@ This story establishes the core importer interface and lifecycle for registratio
 ## Personas
 
 - [Knowledge Workers](../../personas/knowledge-workers.md)
-- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- Solo Developer
 
 ---
 

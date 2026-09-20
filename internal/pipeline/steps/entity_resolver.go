@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"hop.top/uri"
+	uri "hop.top/cite/scheme"
 )
 
 // EntityResolver is a pipeline step that resolves @mention URIs against the

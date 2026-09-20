@@ -16,7 +16,7 @@ The plugin system is **cross-cutting** — plugins can extend both dPKMS (substr
 
 ### Bundled Plugins
 - [plugins-aliasing.md](plugins-aliasing.md) - Aliasing plugin: human-readable names for knowledge objects
-- [plugins-audit-log.md](plugins-audit-log.md) - Audit log plugin: immutable append-only record of object mutations
+- [plugins-audit-log.md](plugins-audit-log.md) - Audit log: immutable append-only record of object mutations (shipped in core, not a plugin module)
 
 ### Plugin Patterns
 - [patterns-url-adapter-post-processor.md](patterns-url-adapter-post-processor.md) - URL adapter +

@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate test-docker lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-smoke test-all test-cover test-gate test-docker lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -88,13 +88,13 @@ test-all: test-unit test-integration test-smoke
 ## test-cover: Generate coverage report
 test-cover:
 	@echo "Running tests with coverage..."
-	go test -race -coverprofile=coverage.out ./...
+	go test $(BUILD_TAGS) -race -coverprofile=coverage.out ./...
 
 ## test-gate: Run all tests and print coverage summary
 test-gate: test-all
 	@echo ""
 	@echo "Coverage summary:"
-	@go test -race -coverprofile=coverage.out ./internal/... ./cmd/... 2>&1 | grep -E 'coverage:|FAIL'
+	@go test $(BUILD_TAGS) -race -coverprofile=coverage.out ./internal/... ./cmd/... 2>&1 | grep -E 'coverage:|FAIL'
 	@echo ""
 	@go tool cover -func=coverage.out | grep total:
 	@echo ""
@@ -149,7 +149,7 @@ vuln-scan:
 		echo "Installing govulncheck..."; \
 		go install golang.org/x/vuln/cmd/govulncheck@latest; \
 	fi
-	govulncheck ./...
+	govulncheck -tags fts5 ./...
 	@echo "Running nancy (Sonatype OSS Index)..."
 	@if ! command -v nancy >/dev/null 2>&1; then \
 		echo "Installing nancy..."; \
@@ -293,13 +293,39 @@ security-scan:
 		exit 1; \
 	fi
 
-## install-hooks: Install git pre-commit hook running gitleaks protect --staged
+## install-hooks: Point git at the repo's .githooks directory
+##
+## Installs a pre-commit gitleaks scan. The pre-push hook chains to the
+## user's global one, since core.hooksPath replaces rather than extends.
 install-hooks:
 	@echo "Installing git hooks..."
-	@mkdir -p .git/hooks
-	@printf '#!/bin/sh\n# Pre-commit hook: secret scanning via gitleaks\nif ! command -v gitleaks >/dev/null 2>&1; then\n  echo "WARNING: gitleaks not found; skipping secret scan."\n  echo "Install: brew install gitleaks"\n  exit 0\nfi\ngitleaks protect --staged --config .gitleaks.toml --verbose\n' > .git/hooks/pre-commit
-	@chmod +x .git/hooks/pre-commit
-	@echo "✓ pre-commit hook installed (.git/hooks/pre-commit)"
+	@git config core.hooksPath .githooks
+	@chmod +x .githooks/*
+	@echo "✓ hooks installed (core.hooksPath -> .githooks)"
+	@echo "  pre-commit: gitleaks secret scan on staged changes"
+	@echo "  pre-push:   chains to your global pre-push hook, if any"
+	@command -v gitleaks >/dev/null 2>&1 || echo "  NOTE: gitleaks not installed; run 'make install-gitleaks'"
+
+## install-gitleaks: Install the gitleaks secret scanner locally
+##
+## Secret scanning runs locally rather than in CI: gitleaks-action requires
+## a license for organization-owned repos. See .github/workflows/ci.yml.
+install-gitleaks:
+	@if command -v gitleaks >/dev/null 2>&1; then \
+		echo "✓ gitleaks already installed ($$(gitleaks version 2>/dev/null))"; \
+	elif command -v brew >/dev/null 2>&1; then \
+		echo "Installing gitleaks via brew..."; \
+		brew install gitleaks; \
+	else \
+		echo "Installing gitleaks via go install..."; \
+		go install github.com/zricethezav/gitleaks/v8@latest; \
+	fi
+
+## secret-scan-local: Scan the working tree for secrets with gitleaks
+secret-scan-local: install-gitleaks
+	@echo "Scanning working tree for secrets..."
+	gitleaks detect --config .gitleaks.toml --redact --verbose
+	@echo "✓ No secrets detected"
 
 ## ben: Run all hop.top/ben recall suites (text-short + vector)
 ##
@@ -311,20 +337,17 @@ ben: ben-text-short ben-vector
 
 ## ben-install: Build hop.top/ben into bin/ from a local checkout.
 ##
-## Resolution order:
-##   1. $$BEN_LOCAL_PATH env var, if set and pointing to a ben checkout.
-##   2. Sibling labspace path ($$HOME/.w/ideacrafterslabs/ben/hops/main) —
-##      matches the dev convention used by xrr / kit / c12n.
+## Requires BEN_LOCAL_PATH to point at a ben checkout; there is no default,
+## since the location depends on how you arrange your checkouts.
 ##
 ## ben is consumed via local-path replace, not a published version: it has
 ## no tagged release yet and is in active local development alongside this
-## tree. CI must check ben out next to ctxt for `make ben` to resolve. See
+## tree. CI must set BEN_LOCAL_PATH for `make ben` to resolve. See
 ## docs/ctxt/testing.md "Recall Harness (hop.top/ben)" for the full story.
 ##
 ## The built binary lives in $(BUILD_DIR)/ (not $GOPATH/bin) so the version
 ## stays scoped to this checkout.
 BEN_BINARY := $(BUILD_DIR)/ben
-BEN_SIBLING := $(HOME)/.w/ideacrafterslabs/ben/hops/main
 ben-install: $(BEN_BINARY)
 
 $(BEN_BINARY):
@@ -333,12 +356,9 @@ $(BEN_BINARY):
 	if [ -n "$$BEN_LOCAL_PATH" ] && [ -d "$$BEN_LOCAL_PATH" ]; then \
 		echo "Building ben from BEN_LOCAL_PATH=$$BEN_LOCAL_PATH..."; \
 		(cd "$$BEN_LOCAL_PATH" && go build -buildvcs=false -o $(abspath $(BEN_BINARY)) ./cmd/ben); \
-	elif [ -d "$(BEN_SIBLING)" ]; then \
-		echo "Building ben from sibling labspace ($(BEN_SIBLING))..."; \
-		(cd "$(BEN_SIBLING)" && go build -buildvcs=false -o $(abspath $(BEN_BINARY)) ./cmd/ben); \
 	else \
 		echo "ERROR: hop.top/ben not found." >&2; \
-		echo "Set BEN_LOCAL_PATH=<path-to-ben-checkout> or check ben out at $(BEN_SIBLING)." >&2; \
+		echo "Set BEN_LOCAL_PATH=<path-to-ben-checkout> and re-run." >&2; \
 		exit 1; \
 	fi; \
 	echo "✓ Built ben: $(BEN_BINARY)"

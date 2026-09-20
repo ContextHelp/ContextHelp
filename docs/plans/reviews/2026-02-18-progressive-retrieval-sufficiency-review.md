@@ -25,7 +25,7 @@ The plan should be treated as a design sketch, not an implementation-ready speci
 
 **Plan reference:** Task 5 (`retriever.go`), lines 585, 639, 691 call `w.store.Objects().VectorSearch(ctx, state.QueryVector, filter)`.
 
-**Actual codebase:** The `ObjectStore` interface at `/Users/jadb/.w/ideacrafterslabs/ctxt/internal/storage/storage.go:24-33` defines exactly eight methods:
+**Actual codebase:** The `ObjectStore` interface at `./internal/storage/storage.go:24-33` defines exactly eight methods:
 
 ```go
 type ObjectStore interface {
@@ -48,7 +48,7 @@ More critically, Task 6 is described in a single sentence: "Add VectorSearch met
 
 - A vector storage backend (sqlite-vss, pgvector, Qdrant, or similar)
 - Schema migration to store vectors in a searchable format
-- An index build step (the `Embeddings []float32` field in `KnowledgeObject` exists but is never populated by any real code -- the `EmbeddingGenerator` step at `/Users/jadb/.w/ideacrafterslabs/ctxt/internal/pipeline/steps/embedding.go` is a stub that only sets `VectorIndexed = true`)
+- An index build step (the `Embeddings []float32` field in `KnowledgeObject` exists but is never populated by any real code -- the `EmbeddingGenerator` step at `./internal/pipeline/steps/embedding.go` is a stub that only sets `VectorIndexed = true`)
 - Implementation in the SQLite driver (the only current storage driver)
 
 This is not a one-line interface addition. It is an entire feature track.
@@ -66,9 +66,9 @@ This is not a one-line interface addition. It is an entire feature track.
 - `VisionProvider` (ollama)
 - `DiarizationProvider` (pyannote)
 
-No `llm.go`. No `LLMProvider` interface. The `Factory` struct at `/Users/jadb/.w/ideacrafterslabs/ctxt/internal/providers/factory.go` has no `LLM()` method. The `ProvidersConfig` at `/Users/jadb/.w/ideacrafterslabs/ctxt/internal/config/config.go:93-100` has no LLM field.
+No `llm.go`. No `LLMProvider` interface. The `Factory` struct at `./internal/providers/factory.go` has no `LLM()` method. The `ProvidersConfig` at `./internal/config/config.go:93-100` has no LLM field.
 
-A separate plan exists at `/Users/jadb/.w/ideacrafterslabs/ctxt/docs/plans/llm-provider-support.md` that proposes adding LLM and embedding support via `charm.land/fantasy` and `go-embeddings`, with the code going into `internal/llm/` (not `internal/providers/`). That plan has not been implemented either (no `internal/llm/` directory exists).
+A separate plan exists at `./docs/plans/llm-provider-support.md` that proposes adding LLM and embedding support via `charm.land/fantasy` and `go-embeddings`, with the code going into `internal/llm/` (not `internal/providers/`). That plan has not been implemented either (no `internal/llm/` directory exists).
 
 **Conflict:** The progressive retrieval plan wants `LLMProvider` in `internal/providers/llm.go`. The LLM provider support plan wants it in `internal/llm/llm.go` using the Fantasy library. These plans disagree on package placement and API shape. The progressive retrieval plan invents its own `LLMProvider` interface (`Chat`, `ChatWithSystem`) while the LLM plan uses `Generate`, `GenerateWithSystem`, `Stream`.
 
@@ -76,7 +76,7 @@ A separate plan exists at `/Users/jadb/.w/ideacrafterslabs/ctxt/docs/plans/llm-p
 
 **Plan reference:** Task 4 (`workflow.go`) defines a local `EmbeddingProvider` interface with `Embed(ctx, texts) ([][]float32, error)`.
 
-**Actual codebase:** No embedding capability exists anywhere in the codebase. The `EmbeddingGenerator` pipeline step (`/Users/jadb/.w/ideacrafterslabs/ctxt/internal/pipeline/steps/embedding.go`) is a stub:
+**Actual codebase:** No embedding capability exists anywhere in the codebase. The `EmbeddingGenerator` pipeline step (`./internal/pipeline/steps/embedding.go`) is a stub:
 
 ```go
 func (s *EmbeddingGenerator) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
@@ -163,7 +163,7 @@ func min(a, b int) int {
 }
 ```
 
-The project uses Go 1.25.6 (`/Users/jadb/.w/ideacrafterslabs/ctxt/go.mod` line 3: `go 1.25.6`). Go has had a builtin `min()` since Go 1.21. This function shadows the builtin and should be removed entirely.
+The project uses Go 1.25.6 (`./go.mod` line 3: `go 1.25.6`). Go has had a builtin `min()` since Go 1.21. This function shadows the builtin and should be removed entirely.
 
 ### 3.4 Missing `strings` Import
 
@@ -211,9 +211,9 @@ The plan creates `internal/providers/llm.go`. The existing LLM provider support 
 
 **Plan reference:** Task 8 creates `internal/server/retrieve.go` in package `server`.
 
-**Actual codebase:** The HTTP server is at `/Users/jadb/.w/ideacrafterslabs/ctxt/internal/server/http/server.go` in package `http`. All handler files follow the pattern `handlers_*.go` in that directory. The plan's `internal/server/retrieve.go` would be in the wrong package and would not integrate with the chi router in `NewRouter()`.
+**Actual codebase:** The HTTP server is at `./internal/server/http/server.go` in package `http`. All handler files follow the pattern `handlers_*.go` in that directory. The plan's `internal/server/retrieve.go` would be in the wrong package and would not integrate with the chi router in `NewRouter()`.
 
-The correct file would be `/Users/jadb/.w/ideacrafterslabs/ctxt/internal/server/http/handlers_retrieve.go` in package `http`, following the existing pattern:
+The correct file would be `./internal/server/http/handlers_retrieve.go` in package `http`, following the existing pattern:
 
 ```
 handlers_objects.go
