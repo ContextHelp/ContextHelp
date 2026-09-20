@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.capture.analyze-with-hints-and-mentions
+title: Enqueue a note with tagging hints and an explicit entity mention
+binary: ctxt
+intent: |
+  An operator jotting down a decision wants it filed against a known entity
+  rather than left for the classifier to guess, so they attach hints and an
+  explicit mention at enqueue time and then read back the stored object to
+  see whether the metadata survived enrichment.
+steps:
+  - id: enqueue
+    intent: Enqueue the note with hints and an explicit entity mention, blocking on the job.
+    invoke: ["ctxt", "analyze", "Signup flow drops users at the email step", "--type", "text", "--hint", "ux,signup", "--mention", "@ux.onboarding", "--wait", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: list_by_hint
+    intent: Find the note again through the hint that was attached at capture time.
+    invoke: ["ctxt", "list", "--hint", "signup", "--format", "json"]
+    capture: [exit_code, stdout]

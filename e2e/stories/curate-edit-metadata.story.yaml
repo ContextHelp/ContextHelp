@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.curate.correct-object-metadata
+title: Correct a mis-filed object's title, tags and mentions
+binary: ctxt
+intent: |
+  An operator who spots an object the enricher titled badly and tagged wrongly
+  reads it first, rewrites the metadata in one pass, and reads it back — so the
+  correction is visible and they are not editing blind against a guessed ID.
+steps:
+  - id: read_before
+    intent: Read the object as it currently stands, before any edit is made.
+    invoke: ["ctxt", "show", "obj_00000000", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: correct
+    intent: Rewrite title, summary, tags, subtype and mentions in one pass.
+    invoke: ["ctxt", "edit", "obj_00000000", "--title", "Signup funnel teardown", "--summary", "Where users drop out of signup", "--tags", "ux,onboarding,critical", "--subtype", "article", "--mention", "@ux.onboarding", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: read_after
+    intent: Read the object back to see the corrected metadata.
+    invoke: ["ctxt", "show", "obj_00000000", "--format", "json"]
+    capture: [exit_code, stdout]

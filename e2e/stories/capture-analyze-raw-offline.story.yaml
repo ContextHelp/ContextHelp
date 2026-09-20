@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.capture.analyze-raw-offline
+title: Store a note as raw knowledge with the network disabled
+binary: ctxt
+intent: |
+  An operator on a plane, or one handling content they keep entirely on the
+  local machine, stores the note verbatim with AI enrichment disabled and
+  network access switched off, so capture still works and nothing leaves.
+steps:
+  - id: store_raw
+    intent: Store the note without AI enrichment and with network access disabled.
+    invoke: ["ctxt", "analyze", "Private meeting note kept verbatim", "--type", "text", "--raw", "--offline", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: verify
+    intent: Confirm the raw object is retrievable while still offline.
+    invoke: ["ctxt", "list", "--type", "text", "--offline", "--format", "json"]
+    capture: [exit_code, stdout]

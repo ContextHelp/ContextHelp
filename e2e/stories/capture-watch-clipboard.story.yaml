@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.capture.watch-clipboard-opt-in
+title: Opt into the clipboard watcher, inspect it, and turn it back off
+binary: ctxt
+intent: |
+  An operator considering passive capture opts the clipboard watcher in
+  explicitly, checks what is actually running before walking away from the
+  machine, and can switch it off again — so background capture is never
+  something that silently turned itself on.
+steps:
+  - id: status_before
+    intent: See which watchers are configured before changing anything.
+    invoke: ["ctxt", "watch", "status", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: enable
+    intent: Explicitly opt the clipboard watcher in.
+    invoke: ["ctxt", "watch", "enable", "clipboard", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: status_after
+    intent: Confirm the clipboard watcher now shows as enabled.
+    invoke: ["ctxt", "watch", "status", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: disable
+    intent: Turn passive clipboard capture back off.
+    invoke: ["ctxt", "watch", "disable", "clipboard", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

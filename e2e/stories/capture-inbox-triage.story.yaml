@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.capture.inbox-triage-flow
+title: Route a capture through the inbox, then triage or discard it
+binary: ctxt
+intent: |
+  An operator who is not ready to spend pipeline budget on a source parks it
+  in the inbox first, reviews what is waiting, promotes the one item worth
+  enriching, and discards the rest — so capture stays cheap and the decision
+  to process is deliberate rather than automatic.
+steps:
+  - id: capture_to_inbox
+    intent: Capture the source but park it in the inbox instead of running the pipeline now.
+    invoke: ["ctxt", "capture", "https://example.com/longread", "--type", "url", "--inbox", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: review
+    intent: Review what is waiting in the inbox before deciding.
+    invoke: ["ctxt", "inbox", "list", "--limit", "20", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: triage
+    intent: Promote the parked item to active and enqueue it for processing.
+    invoke: ["ctxt", "inbox", "triage", "obj_00000000", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: discard
+    intent: Discard an item that is not worth enriching.
+    invoke: ["ctxt", "inbox", "discard", "obj_00000001"]
+    capture: [exit_code, stdout, stderr]

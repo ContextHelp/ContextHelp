@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.curate.delete-tagged-behind-confirmation
+title: Review a tagged set, decline the delete, then perform it deliberately
+binary: ctxt
+intent: |
+  An operator clearing out temporary objects looks at exactly what a tag
+  filter matches before deleting anything, declines the confirmation once to
+  check the destructive path really is gated, and only then deletes for real —
+  so an irreversible operation is never one keystroke away.
+steps:
+  - id: preview
+    intent: List exactly which objects carry the tag before deleting anything.
+    invoke: ["ctxt", "list", "--tagged", "temporary", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: decline
+    intent: Answer no to the confirmation and confirm nothing is removed.
+    invoke: ["ctxt", "delete", "--tagged", "temporary", "--confirm=no", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: still_there
+    intent: Confirm the declined delete left the objects in place.
+    invoke: ["ctxt", "list", "--tagged", "temporary", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: delete
+    intent: Perform the delete deliberately once the set has been reviewed.
+    invoke: ["ctxt", "delete", "--tagged", "temporary", "--confirm=yes", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: gone
+    intent: Confirm the tagged objects are no longer listed.
+    invoke: ["ctxt", "list", "--tagged", "temporary", "--format", "json"]
+    capture: [exit_code, stdout]

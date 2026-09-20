@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.organize.profile-create-use-retire
+title: Create a focus profile, make it the default, use it, then retire it
+binary: ctxt
+intent: |
+  An operator splitting work from research creates a focus profile, makes it
+  the default so every later command inherits it, runs a query under it to
+  see the filtering take effect, and retires it when the project ends.
+steps:
+  - id: list_before
+    intent: See which focus profiles already exist before adding another.
+    invoke: ["ctxt", "profile", "list", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: create
+    intent: Create a focus profile scoped to the new project being started.
+    invoke: ["ctxt", "profile", "create", "myproject", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: inspect
+    intent: Inspect the newly created profile to see its starting configuration.
+    invoke: ["ctxt", "profile", "show", "myproject", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: set_default
+    intent: Make the profile the default so later commands inherit it.
+    invoke: ["ctxt", "profile", "default", "myproject", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: use
+    intent: Run a query explicitly scoped to the profile.
+    invoke: ["ctxt", "list", "--profile", "myproject", "--limit", "10", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: retire
+    intent: Delete the profile once the project is over.
+    invoke: ["ctxt", "profile", "delete", "myproject", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

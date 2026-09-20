@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.organize.topic-index-refresh
+title: Read the topic index, drill into one topic, and rebuild it when stale
+binary: ctxt
+intent: |
+  An operator orienting in a large knowledge base reads the compressed topic
+  index rather than the raw object list, drills into the one topic they care
+  about, and rebuilds the index from scratch when a bulk import has left it
+  out of date.
+steps:
+  - id: overview
+    intent: Read the whole topic index as a compressed overview.
+    invoke: ["ctxt", "index", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: drill
+    intent: Drill into the entries filed under one topic.
+    invoke: ["ctxt", "index", "auth", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: rebuild
+    intent: Regenerate the index from scratch after a bulk import.
+    invoke: ["ctxt", "index", "--refresh", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: reread
+    intent: Read the rebuilt index back to see the refreshed topic layer.
+    invoke: ["ctxt", "index", "--format", "json"]
+    capture: [exit_code, stdout]

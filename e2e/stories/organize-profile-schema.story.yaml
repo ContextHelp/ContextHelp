@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.organize.profile-schema-vocabulary
+title: Shape a profile's classification vocabulary and let it evolve
+binary: ctxt
+intent: |
+  An operator whose content keeps getting filed under the wrong types teaches
+  the profile their own vocabulary — adding entity types, topics and a regex
+  routing rule — then asks the system what else recent ingestions suggest, so
+  the taxonomy grows from real data instead of guesswork.
+steps:
+  - id: read_schema
+    intent: Read the profile's current schema vocabulary.
+    invoke: ["ctxt", "profile", "schema", "show", "myproject", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: add_type
+    intent: Add an entity type the profile should recognise.
+    invoke: ["ctxt", "profile", "schema", "add-type", "myproject", "incident", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: add_topic
+    intent: Add a topic to the profile's vocabulary.
+    invoke: ["ctxt", "profile", "schema", "add-topic", "myproject", "reliability", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: add_rule
+    intent: Route content matching a pattern to the new type.
+    invoke: ["ctxt", "profile", "schema", "add-rule", "myproject", "postmortem", "incident", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: evolve
+    intent: Ask what else recent ingestions suggest the vocabulary is missing.
+    invoke: ["ctxt", "profile", "schema", "evolve", "myproject", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: remove_topic
+    intent: Drop a topic that turned out not to earn its place.
+    invoke: ["ctxt", "profile", "schema", "remove-topic", "myproject", "reliability", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

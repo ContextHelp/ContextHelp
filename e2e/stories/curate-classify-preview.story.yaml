@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.curate.classify-text-then-stored-object
+title: Preview classification on raw text before trusting it on a stored object
+binary: ctxt
+intent: |
+  An operator tuning how content gets filed tries the classifier on a throwaway
+  string first, so they can see what signals it produces without touching stored
+  data, and only then runs it against a real knowledge object.
+steps:
+  - id: classify_text
+    intent: Classify a throwaway string to see what the signals look like.
+    invoke: ["ctxt", "classify", "The server crashed after deploying v2.3", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: classify_object
+    intent: Run the same classifier against a stored knowledge object.
+    invoke: ["ctxt", "classify", "o-00000000", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

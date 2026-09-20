@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.capture.feed-subscribe-sync-unsubscribe
+title: Subscribe to a feed, sync it on demand, then unsubscribe
+binary: ctxt
+intent: |
+  An operator following a publication subscribes to its feed, checks the
+  subscription is registered and healthy, pulls new entries on demand rather
+  than waiting for the next scheduled poll, and later unsubscribes when the
+  source stops earning its place.
+steps:
+  - id: subscribe
+    intent: Subscribe to the publication feed so new entries arrive automatically.
+    invoke: ["ctxt", "feed", "add", "https://example.com/feed.xml", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: list_active
+    intent: Confirm the subscription is registered and currently active.
+    invoke: ["ctxt", "feed", "list", "--status", "active", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: sync
+    intent: Pull new entries from the feed on demand.
+    invoke: ["ctxt", "feed", "sync", "--url", "https://example.com/feed.xml", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: unsubscribe
+    intent: Remove the subscription once the source is no longer wanted.
+    invoke: ["ctxt", "feed", "delete", "https://example.com/feed.xml", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

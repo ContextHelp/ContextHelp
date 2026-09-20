@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.capture.import-batch-dry-run-then-commit
+title: Validate a batch import as a dry run before committing it
+binary: ctxt
+intent: |
+  An operator about to pour a few thousand rows into their knowledge base
+  first validates the file without writing anything, so a bad column mapping
+  surfaces as a preview rather than as thousands of mis-typed objects, and
+  only then runs the real import and follows the batch to completion.
+steps:
+  - id: dry_run
+    intent: Validate the file and column mapping without importing anything.
+    invoke: ["ctxt", "import", "batch", "--file", "bookmarks.csv", "--format", "csv", "--map-content", "url", "--map-tags", "tags", "--map-type", "kind", "--dry-run"]
+    capture: [exit_code, stdout, stderr]
+  - id: commit
+    intent: Run the real import now that the mapping has been previewed.
+    invoke: ["ctxt", "import", "batch", "--file", "bookmarks.csv", "--format", "csv", "--map-content", "url", "--map-tags", "tags", "--map-type", "kind"]
+    capture: [exit_code, stdout, stderr]
+  - id: follow
+    intent: Follow the batch to see how many records actually landed.
+    invoke: ["ctxt", "import", "batch", "status", "batch_00000000"]
+    capture: [exit_code, stdout, stderr]

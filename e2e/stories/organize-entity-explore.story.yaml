@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.organize.entity-search-to-backlinks
+title: Find an entity by search, inspect it, and walk its backlinks
+binary: ctxt
+intent: |
+  An operator who remembers a concept but not its exact slug searches for it,
+  opens the canonical entity, and then walks the backlinks to reach every
+  object that referenced it — so the entity graph is a way into the knowledge
+  base rather than just a taxonomy.
+steps:
+  - id: browse
+    intent: Browse entities within a namespace to see what exists.
+    invoke: ["ctxt", "entity", "list", "--namespace", "ux", "--limit", "25", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: search
+    intent: Search for the entity by a remembered word rather than its slug.
+    invoke: ["ctxt", "entity", "search", "checkout", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: inspect
+    intent: Open the canonical entity found by the search.
+    invoke: ["ctxt", "entity", "show", "ui.best-practice", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: backlinks
+    intent: Walk the backlinks to reach every object that referenced the entity.
+    invoke: ["ctxt", "entity", "backlink", "ui.best-practice", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

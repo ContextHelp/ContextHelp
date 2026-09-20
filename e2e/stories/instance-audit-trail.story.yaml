@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.instance.audit-trail-investigation
+title: Trace what happened to an object through the audit log and export it
+binary: ctxt
+intent: |
+  An operator who finds an object missing or altered narrows the append-only
+  audit log by time, actor, event type and object, so they can say who did
+  what rather than guessing, and exports the narrowed slice for a record
+  they can keep outside the instance.
+steps:
+  - id: recent
+    intent: Read the most recent audit entries to see what happened lately.
+    invoke: ["ctxt", "audit", "list", "--limit", "50", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: narrow_window
+    intent: Narrow to the last day to find when the change happened.
+    invoke: ["ctxt", "audit", "list", "--since", "24h", "--event-type", "delete", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: by_object
+    intent: Pull the full history for the one object in question.
+    invoke: ["ctxt", "audit", "list", "--object-id", "obj_00000000", "--limit", "0", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: by_actor
+    intent: Check everything the responsible actor did in the same window.
+    invoke: ["ctxt", "audit", "list", "--actor", "cli", "--since", "24h", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: export
+    intent: Export the narrowed slice as a record kept outside the instance.
+    invoke: ["ctxt", "audit", "export", "--object-id", "obj_00000000", "--since", "24h", "--format", "csv"]
+    capture: [exit_code, stdout, stderr]
