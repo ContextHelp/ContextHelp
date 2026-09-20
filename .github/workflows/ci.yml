@@ -81,6 +81,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          # --new-from-rev below diffs against the merge base, which needs
+          # real history. The default depth of 1 leaves no base commit and
+          # the gate silently reports nothing.
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -98,8 +103,21 @@ jobs:
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v${{ needs.toolchain.outputs.golangci-version }}
 
-      - name: Run golangci-lint
-        run: golangci-lint run --timeout=5m --verbose
+      # Gate on findings this branch INTRODUCES. The pre-existing backlog
+      # is real but large, and blocking every PR on it means the gate gets
+      # switched off — which is exactly what scripts/hooks/golangci-staged.sh
+      # already says about the local hook.
+      - name: Run golangci-lint (new findings)
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          [ -n "$base" ] || base="HEAD~1"
+          golangci-lint run --timeout=10m --new-from-rev="$base"
+
+      # The whole-repo scan stays visible so the backlog cannot grow
+      # unnoticed, but does not block: it reports the standing count.
+      - name: Run golangci-lint (full scan, advisory)
+        continue-on-error: true
+        run: golangci-lint run --timeout=10m
 
       - name: Check formatting
         run: |

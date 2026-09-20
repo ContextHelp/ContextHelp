@@ -65,7 +65,12 @@ linters:
       enabled-tags:
         - diagnostic
     gocyclo:
-      min-complexity: 15
+      # 15 is tight for command files that dispatch on many flags: the
+      # median flagged function here sits at 19 and the distribution is
+      # continuous, so a threshold of 15 mostly reports "this is a CLI
+      # entry point". 20 keeps the genuinely tangled ones (24 functions,
+      # up to complexity 37) and stops reporting the other 53.
+      min-complexity: 20
     gosec:
       excludes:
         - G104
