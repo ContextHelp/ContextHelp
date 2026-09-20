@@ -18,14 +18,14 @@ import (
 func RunDropboxImport(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Profile      string     `json:"profile"`
-			AccessToken  string     `json:"access_token"`
-			Path         string     `json:"path"`
-			Cursor       string     `json:"cursor"`
-			Recursive    bool       `json:"recursive"`
-			MaxItems     int        `json:"max_items"`
-			DryRun       bool       `json:"dry_run"`
-			Since        *time.Time `json:"since,omitempty"`
+			Profile     string     `json:"profile"`
+			AccessToken string     `json:"access_token"`
+			Path        string     `json:"path"`
+			Cursor      string     `json:"cursor"`
+			Recursive   bool       `json:"recursive"`
+			MaxItems    int        `json:"max_items"`
+			DryRun      bool       `json:"dry_run"`
+			Since       *time.Time `json:"since,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")

@@ -36,7 +36,7 @@ type whisperOutput struct {
 func (p *WhisperTranscriptionProvider) Transcribe(ctx context.Context, audioPath string, opts TranscribeOptions) (*TranscriptResult, error) {
 	args := []string{
 		"-f", audioPath,
-		"-oj",  // output JSON
+		"-oj", // output JSON
 	}
 
 	if opts.Language != "" {

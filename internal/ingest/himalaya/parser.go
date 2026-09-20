@@ -11,13 +11,13 @@ import (
 
 // Envelope mirrors the JSON output of `himalaya envelope list -o json`.
 type Envelope struct {
-	ID            string `json:"id"`
+	ID            string   `json:"id"`
 	Flags         []string `json:"flags"`
-	Subject       string `json:"subject"`
-	From          Address `json:"from"`
-	To            Address `json:"to"`
-	Date          string `json:"date"`
-	HasAttachment bool   `json:"has_attachment"`
+	Subject       string   `json:"subject"`
+	From          Address  `json:"from"`
+	To            Address  `json:"to"`
+	Date          string   `json:"date"`
+	HasAttachment bool     `json:"has_attachment"`
 }
 
 // Address represents an email address with optional display name.

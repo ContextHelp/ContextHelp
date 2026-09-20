@@ -62,7 +62,7 @@ type stubOutputGenerator struct {
 	generatorName string
 }
 
-func (g *stubOutputGenerator) GeneratorName() string { return g.generatorName }
+func (g *stubOutputGenerator) GeneratorName() string                    { return g.generatorName }
 func (g *stubOutputGenerator) Accepts(_ pluginapi.KnowledgeObject) bool { return true }
 func (g *stubOutputGenerator) Generate(_ context.Context, _ pluginapi.KnowledgeObject, _ pluginapi.OutputOptions) ([]byte, error) {
 	return []byte("rendered"), nil

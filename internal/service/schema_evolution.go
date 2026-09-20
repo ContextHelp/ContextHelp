@@ -17,8 +17,8 @@ type SchemaEvolutionSuggestion struct {
 
 // SchemaEvolutionResult holds all suggestions for a profile schema.
 type SchemaEvolutionResult struct {
-	Profile  string                      `json:"profile"`
-	NewTypes []SchemaEvolutionSuggestion `json:"new_types,omitempty"`
+	Profile   string                      `json:"profile"`
+	NewTypes  []SchemaEvolutionSuggestion `json:"new_types,omitempty"`
 	NewTopics []SchemaEvolutionSuggestion `json:"new_topics,omitempty"`
 }
 

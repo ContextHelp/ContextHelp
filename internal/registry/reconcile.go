@@ -45,11 +45,11 @@ type EntityProvenance map[string]ProvenanceRecord
 
 // ConflictReport summarises field-level conflicts for one entity slug.
 type ConflictReport struct {
-	Slug      string            `json:"slug"`
-	Field     string            `json:"field"`
-	Registries []RegistryValue  `json:"registries"`
-	Winner    string            `json:"winner"` // registry URL that won
-	Strategy  MergeStrategy     `json:"strategy"`
+	Slug       string          `json:"slug"`
+	Field      string          `json:"field"`
+	Registries []RegistryValue `json:"registries"`
+	Winner     string          `json:"winner"` // registry URL that won
+	Strategy   MergeStrategy   `json:"strategy"`
 }
 
 // RegistryValue is one candidate value from one registry.

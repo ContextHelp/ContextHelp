@@ -314,12 +314,12 @@ func (c *HTTPAPIClient) ListPRReviewers(ctx context.Context, owner, repo string,
 
 // issueJSON is the minimal subset of an issue list response.
 type issueJSON struct {
-	Number          int    `json:"number"`
-	Title           string `json:"title"`
-	HTMLURL         string `json:"html_url"`
-	State           string `json:"state"`
-	RepositoryURL   string `json:"repository_url"`
-	User            struct {
+	Number        int    `json:"number"`
+	Title         string `json:"title"`
+	HTMLURL       string `json:"html_url"`
+	State         string `json:"state"`
+	RepositoryURL string `json:"repository_url"`
+	User          struct {
 		Login string `json:"login"`
 	} `json:"user"`
 }
@@ -438,9 +438,9 @@ func (c *HTTPAPIClient) ListSimilarSponsors(_ context.Context, _ string) ([]User
 
 // gistJSON is the minimal subset of a gist payload.
 type gistJSON struct {
-	ID          string                 `json:"id"`
-	HTMLURL     string                 `json:"html_url"`
-	Description string                 `json:"description"`
+	ID          string `json:"id"`
+	HTMLURL     string `json:"html_url"`
+	Description string `json:"description"`
 	Owner       struct {
 		Login string `json:"login"`
 	} `json:"owner"`
@@ -472,10 +472,10 @@ func (c *HTTPAPIClient) ListOwnerGists(ctx context.Context, login string) ([]Gis
 
 // advisoryJSON is the minimal subset of /advisories.
 type advisoryJSON struct {
-	GHSAID      string `json:"ghsa_id"`
-	HTMLURL     string `json:"html_url"`
-	Summary     string `json:"summary"`
-	Severity    string `json:"severity"`
+	GHSAID          string `json:"ghsa_id"`
+	HTMLURL         string `json:"html_url"`
+	Summary         string `json:"summary"`
+	Severity        string `json:"severity"`
 	Vulnerabilities []struct {
 		Package struct {
 			Ecosystem string `json:"ecosystem"`

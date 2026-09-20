@@ -30,7 +30,7 @@ func (s *stubStepStore) List(_ context.Context, _ string) ([]*storage.Registered
 	}
 	return nil, 0, nil
 }
-func (s *stubStepStore) Unregister(_ context.Context, _ string) error      { return nil }
+func (s *stubStepStore) Unregister(_ context.Context, _ string) error              { return nil }
 func (s *stubStepStore) Update(_ context.Context, _ *storage.RegisteredStep) error { return nil }
 
 // stubDriver implements just enough of storage.StorageDriver for executor tests.
@@ -38,34 +38,34 @@ type stubDriver struct {
 	steps *stubStepStore
 }
 
-func (d *stubDriver) Init(_ context.Context) error    { return nil }
-func (d *stubDriver) Close(_ context.Context) error   { return nil }
-func (d *stubDriver) Steps() storage.StepStore        { return d.steps }
-func (d *stubDriver) Objects() storage.ObjectStore    { return nil }
-func (d *stubDriver) Entities() storage.EntityStore   { return nil }
-func (d *stubDriver) Edges() storage.EdgeStore        { return nil }
-func (d *stubDriver) Jobs() storage.JobStore          { return nil }
-func (d *stubDriver) Pipelines() storage.PipelineStore { return nil }
-func (d *stubDriver) Registries() storage.RegistryStore { return nil }
-func (d *stubDriver) Reminders() storage.ReminderStore { return nil }
-func (d *stubDriver) Feeds() storage.FeedStore        { return nil }
-func (d *stubDriver) FeedItems() storage.FeedItemStore { return nil }
-func (d *stubDriver) Batches() storage.BatchStore     { return nil }
-func (d *stubDriver) Detectors() storage.DetectorStore { return nil }
-func (d *stubDriver) Blobs() storage.BlobStore        { return nil }
-func (d *stubDriver) Proximity() storage.ProximityStore { return nil }
-func (d *stubDriver) Watches() storage.WatchStore     { return nil }
-func (d *stubDriver) Aliases() storage.AliasStore     { return nil }
-func (d *stubDriver) AuditLog() storage.AuditStore    { return nil }
-func (d *stubDriver) Attachments() storage.AttachmentStore { return nil }
+func (d *stubDriver) Init(_ context.Context) error               { return nil }
+func (d *stubDriver) Close(_ context.Context) error              { return nil }
+func (d *stubDriver) Steps() storage.StepStore                   { return d.steps }
+func (d *stubDriver) Objects() storage.ObjectStore               { return nil }
+func (d *stubDriver) Entities() storage.EntityStore              { return nil }
+func (d *stubDriver) Edges() storage.EdgeStore                   { return nil }
+func (d *stubDriver) Jobs() storage.JobStore                     { return nil }
+func (d *stubDriver) Pipelines() storage.PipelineStore           { return nil }
+func (d *stubDriver) Registries() storage.RegistryStore          { return nil }
+func (d *stubDriver) Reminders() storage.ReminderStore           { return nil }
+func (d *stubDriver) Feeds() storage.FeedStore                   { return nil }
+func (d *stubDriver) FeedItems() storage.FeedItemStore           { return nil }
+func (d *stubDriver) Batches() storage.BatchStore                { return nil }
+func (d *stubDriver) Detectors() storage.DetectorStore           { return nil }
+func (d *stubDriver) Blobs() storage.BlobStore                   { return nil }
+func (d *stubDriver) Proximity() storage.ProximityStore          { return nil }
+func (d *stubDriver) Watches() storage.WatchStore                { return nil }
+func (d *stubDriver) Aliases() storage.AliasStore                { return nil }
+func (d *stubDriver) AuditLog() storage.AuditStore               { return nil }
+func (d *stubDriver) Attachments() storage.AttachmentStore       { return nil }
 func (d *stubDriver) Resurfacing() storage.ResurfacingQueueStore { return nil }
-func (d *stubDriver) Entitlements() storage.EntitlementStore { return nil }
-func (d *stubDriver) Metering() storage.MeteringStore { return nil }
-func (d *stubDriver) Vectors() storage.VectorStore    { return nil }
-func (d *stubDriver) SavedSearches() storage.SavedSearchStore { return nil }
-func (d *stubDriver) SearchHistory() storage.SearchHistoryStore { return nil }
-func (d *stubDriver) Watermarks() storage.WatermarkStore { return nil }
-func (d *stubDriver) Health(_ context.Context) error  { return nil }
+func (d *stubDriver) Entitlements() storage.EntitlementStore     { return nil }
+func (d *stubDriver) Metering() storage.MeteringStore            { return nil }
+func (d *stubDriver) Vectors() storage.VectorStore               { return nil }
+func (d *stubDriver) SavedSearches() storage.SavedSearchStore    { return nil }
+func (d *stubDriver) SearchHistory() storage.SearchHistoryStore  { return nil }
+func (d *stubDriver) Watermarks() storage.WatermarkStore         { return nil }
+func (d *stubDriver) Health(_ context.Context) error             { return nil }
 
 // writeStepScript writes a shell script that echoes a fixed JSON payload and
 // returns its path. The caller is responsible for cleanup.

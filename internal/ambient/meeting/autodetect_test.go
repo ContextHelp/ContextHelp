@@ -15,7 +15,7 @@ func newADClock(t time.Time) *adClock {
 	c.ns.Store(t.UnixNano())
 	return c
 }
-func (c *adClock) Now() time.Time         { return time.Unix(0, c.ns.Load()) }
+func (c *adClock) Now() time.Time          { return time.Unix(0, c.ns.Load()) }
 func (c *adClock) Advance(d time.Duration) { c.ns.Add(int64(d)) }
 
 type adPub struct {

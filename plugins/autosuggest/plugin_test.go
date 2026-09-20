@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	autosuggest "github.com/ideacrafterslabs/ctxt/plugins/autosuggest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	autosuggest "github.com/ideacrafterslabs/ctxt/plugins/autosuggest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

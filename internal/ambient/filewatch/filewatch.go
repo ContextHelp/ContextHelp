@@ -71,9 +71,9 @@ type Config struct {
 // Source is the file-watch ambient source. Watches Config.Directories via
 // fsnotify; emits a RawEvent per new file.
 type Source struct {
-	cfg      Config
-	events   chan ambient.RawEvent
-	watcher  *fsnotify.Watcher
+	cfg       Config
+	events    chan ambient.RawEvent
+	watcher   *fsnotify.Watcher
 	publisher ambient.Publisher
 
 	mu       sync.Mutex

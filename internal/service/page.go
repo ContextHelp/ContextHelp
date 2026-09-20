@@ -32,9 +32,9 @@ type RevisionEntry struct {
 
 // PageUpsertResult summarises the page upsert outcome.
 type PageUpsertResult struct {
-	PageID  string `json:"page_id"`
-	Created bool   `json:"created"`
-	Revision int   `json:"revision"`
+	PageID   string `json:"page_id"`
+	Created  bool   `json:"created"`
+	Revision int    `json:"revision"`
 }
 
 // PageUpsert finds or creates an entity_page KnowledgeObject for the

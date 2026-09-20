@@ -7,17 +7,17 @@ import "fmt"
 type LinkType string
 
 const (
-	LinkExtends      LinkType = "extends"
-	LinkExtendedBy   LinkType = "extended-by"
-	LinkContradicts  LinkType = "contradicts"
+	LinkExtends        LinkType = "extends"
+	LinkExtendedBy     LinkType = "extended-by"
+	LinkContradicts    LinkType = "contradicts"
 	LinkContradictedBy LinkType = "contradicted-by"
-	LinkSupersedes   LinkType = "supersedes"
-	LinkSupersededBy LinkType = "superseded-by"
-	LinkSupports     LinkType = "supports"
-	LinkSupportedBy  LinkType = "supported-by"
-	LinkRelatedTo    LinkType = "related-to"
-	LinkDerivedFrom  LinkType = "derived-from"
-	LinkDerivedTo    LinkType = "derived-to"
+	LinkSupersedes     LinkType = "supersedes"
+	LinkSupersededBy   LinkType = "superseded-by"
+	LinkSupports       LinkType = "supports"
+	LinkSupportedBy    LinkType = "supported-by"
+	LinkRelatedTo      LinkType = "related-to"
+	LinkDerivedFrom    LinkType = "derived-from"
+	LinkDerivedTo      LinkType = "derived-to"
 )
 
 // inverseMap maps each link type to its inverse.

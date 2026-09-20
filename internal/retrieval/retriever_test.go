@@ -129,34 +129,34 @@ func newNodeAwareMockStore(all, nodeAware []*storage.KnowledgeObject) *naStore {
 }
 
 // Forward all StorageDriver methods from mockStore but return our nodeObjs.
-func (n *naStore) Init(_ context.Context) error              { return nil }
-func (n *naStore) Close(_ context.Context) error             { return nil }
-func (n *naStore) Objects() storage.ObjectStore              { return n.nodeObjs }
-func (n *naStore) Entities() storage.EntityStore             { return nil }
-func (n *naStore) Edges() storage.EdgeStore                  { return nil }
-func (n *naStore) Jobs() storage.JobStore                    { return nil }
-func (n *naStore) Pipelines() storage.PipelineStore          { return nil }
-func (n *naStore) Steps() storage.StepStore                  { return nil }
-func (n *naStore) Registries() storage.RegistryStore         { return nil }
-func (n *naStore) Reminders() storage.ReminderStore          { return nil }
-func (n *naStore) Feeds() storage.FeedStore                  { return nil }
-func (n *naStore) FeedItems() storage.FeedItemStore          { return nil }
-func (n *naStore) Batches() storage.BatchStore               { return nil }
-func (n *naStore) Detectors() storage.DetectorStore          { return nil }
-func (n *naStore) Blobs() storage.BlobStore                  { return nil }
-func (n *naStore) Proximity() storage.ProximityStore         { return nil }
-func (n *naStore) Watches() storage.WatchStore               { return nil }
-func (n *naStore) Aliases() storage.AliasStore               { return nil }
-func (n *naStore) AuditLog() storage.AuditStore              { return nil }
-func (n *naStore) Attachments() storage.AttachmentStore      { return nil }
+func (n *naStore) Init(_ context.Context) error               { return nil }
+func (n *naStore) Close(_ context.Context) error              { return nil }
+func (n *naStore) Objects() storage.ObjectStore               { return n.nodeObjs }
+func (n *naStore) Entities() storage.EntityStore              { return nil }
+func (n *naStore) Edges() storage.EdgeStore                   { return nil }
+func (n *naStore) Jobs() storage.JobStore                     { return nil }
+func (n *naStore) Pipelines() storage.PipelineStore           { return nil }
+func (n *naStore) Steps() storage.StepStore                   { return nil }
+func (n *naStore) Registries() storage.RegistryStore          { return nil }
+func (n *naStore) Reminders() storage.ReminderStore           { return nil }
+func (n *naStore) Feeds() storage.FeedStore                   { return nil }
+func (n *naStore) FeedItems() storage.FeedItemStore           { return nil }
+func (n *naStore) Batches() storage.BatchStore                { return nil }
+func (n *naStore) Detectors() storage.DetectorStore           { return nil }
+func (n *naStore) Blobs() storage.BlobStore                   { return nil }
+func (n *naStore) Proximity() storage.ProximityStore          { return nil }
+func (n *naStore) Watches() storage.WatchStore                { return nil }
+func (n *naStore) Aliases() storage.AliasStore                { return nil }
+func (n *naStore) AuditLog() storage.AuditStore               { return nil }
+func (n *naStore) Attachments() storage.AttachmentStore       { return nil }
 func (n *naStore) Resurfacing() storage.ResurfacingQueueStore { return nil }
-func (n *naStore) Entitlements() storage.EntitlementStore    { return nil }
-func (n *naStore) Metering() storage.MeteringStore           { return nil }
-func (n *naStore) Vectors() storage.VectorStore              { return nil }
-func (n *naStore) SavedSearches() storage.SavedSearchStore   { return nil }
-func (n *naStore) SearchHistory() storage.SearchHistoryStore { return nil }
-func (n *naStore) Watermarks() storage.WatermarkStore        { return nil }
-func (n *naStore) Health(_ context.Context) error            { return nil }
+func (n *naStore) Entitlements() storage.EntitlementStore     { return nil }
+func (n *naStore) Metering() storage.MeteringStore            { return nil }
+func (n *naStore) Vectors() storage.VectorStore               { return nil }
+func (n *naStore) SavedSearches() storage.SavedSearchStore    { return nil }
+func (n *naStore) SearchHistory() storage.SearchHistoryStore  { return nil }
+func (n *naStore) Watermarks() storage.WatermarkStore         { return nil }
+func (n *naStore) Health(_ context.Context) error             { return nil }
 
 // TestRagRetrieve_NodeAwareFilterRoutesThroughNodeAwarePath verifies that when a
 // NodeAwareFilter with NodeTypes is set, VectorSearchNodeAware is invoked and the
@@ -212,4 +212,3 @@ func TestRetrieve_NodeAwareFilterThreadedThroughWorkflow(t *testing.T) {
 	require.NotNil(t, store.nodeObjs.capturedFilter)
 	assert.Equal(t, []string{"section"}, store.nodeObjs.capturedFilter.NodeTypes)
 }
-

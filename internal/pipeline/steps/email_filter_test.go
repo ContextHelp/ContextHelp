@@ -110,7 +110,7 @@ func TestEmailFilterNewsletterAnyPredicate(t *testing.T) {
 			ID:       "fallback",
 			Priority: 9999,
 			When:     FilterPredicate{Always: true},
-			Action: FilterAction{RoutePipeline: "text.long"},
+			Action:   FilterAction{RoutePipeline: "text.long"},
 		},
 	}
 	f, err := NewEmailFilterFromRules(rules)

@@ -23,9 +23,9 @@ type PublicationStrategy struct {
 
 func NewPublication(c MediumClient) *PublicationStrategy { return &PublicationStrategy{Client: c} }
 
-func (*PublicationStrategy) ID() string                    { return IDPublication }
+func (*PublicationStrategy) ID() string                     { return IDPublication }
 func (*PublicationStrategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*PublicationStrategy) Preconditions() []string       { return nil }
+func (*PublicationStrategy) Preconditions() []string        { return nil }
 
 func (*PublicationStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) lateral.AppliesResult {
 	d := customdomain.Detect(ev.SourceURL, hintsFromEvent(ev))

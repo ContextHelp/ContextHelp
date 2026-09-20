@@ -5,11 +5,11 @@
 // The Runner consumes this via the ambient.Enqueuer interface; tests use a
 // recordingEnqueuer instead. This package's HTTPClient adds:
 //
-//	- Endpoint URL resolution from config (ctxt config dpkms.url)
-//	- Optional bearer-token auth (env-resolved per ADR-023)
-//	- Retry with bounded backoff on transient failures (1s, 2s, 4s, …, capped)
-//	- Marshalling of RawEvent into the POST body shape dpkms expects:
-//	    { content, type, ambient_source, fingerprint, session_id, metadata }
+//   - Endpoint URL resolution from config (ctxt config dpkms.url)
+//   - Optional bearer-token auth (env-resolved per ADR-023)
+//   - Retry with bounded backoff on transient failures (1s, 2s, 4s, …, capped)
+//   - Marshalling of RawEvent into the POST body shape dpkms expects:
+//     { content, type, ambient_source, fingerprint, session_id, metadata }
 //
 // Replay semantics (per ADR-067 §Replay safety): the buffer holds events
 // during dpkms-down windows; the Runner re-attempts via this client when
@@ -87,13 +87,13 @@ func (c *HTTPClient) Endpoint() string {
 // payload is the body shape dpkms's /api/v1/analyze accepts. Mirrors the
 // new optional fields per ADR-066 §Decision "Enqueue path".
 type payload struct {
-	Content        string         `json:"content"`
-	Type           string         `json:"type,omitempty"`
-	Pipeline       string         `json:"pipeline,omitempty"`
-	AmbientSource  string         `json:"ambient_source,omitempty"`
-	Fingerprint    string         `json:"fingerprint,omitempty"`
-	SessionID      string         `json:"session_id,omitempty"`
-	Metadata       map[string]any `json:"metadata,omitempty"`
+	Content       string         `json:"content"`
+	Type          string         `json:"type,omitempty"`
+	Pipeline      string         `json:"pipeline,omitempty"`
+	AmbientSource string         `json:"ambient_source,omitempty"`
+	Fingerprint   string         `json:"fingerprint,omitempty"`
+	SessionID     string         `json:"session_id,omitempty"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
 }
 
 // Enqueue POSTs ev to dpkms's /api/v1/analyze. Returns nil on 2xx; an error

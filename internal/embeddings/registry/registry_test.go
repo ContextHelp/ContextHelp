@@ -265,10 +265,10 @@ func TestBackfill_PreservesLegacyEmbeddings(t *testing.T) {
 	// Lookup via the embeddings table.
 	modelID := sqlite.LegacyEmbeddingModelID(sqlite.DefaultVectorDimension)
 	var (
-		gotObj    string
-		gotModel  string
-		gotChunk  int
-		gotVec    []byte
+		gotObj   string
+		gotModel string
+		gotChunk int
+		gotVec   []byte
 	)
 	err = d1.DB().QueryRowContext(context.Background(), `
 		SELECT object_id, model_id, chunk_idx, vector

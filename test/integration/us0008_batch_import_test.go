@@ -800,4 +800,3 @@ func TestUS0008_BatchObjectsCreatedViaService(t *testing.T) {
 		assert.Equal(t, true, obj.Metadata["batch_processed"])
 	}
 }
-

@@ -13,9 +13,9 @@ import (
 // stubObjectsForDup is a minimal ObjectStore stub for duplicate tests.
 type stubObjectsForDup struct {
 	storage.ObjectStore
-	byHash     map[string]*storage.KnowledgeObject
+	byHash      map[string]*storage.KnowledgeObject
 	bySourceKey map[string]*storage.KnowledgeObject
-	similar    []*storage.KnowledgeObject // returned by VectorSearch
+	similar     []*storage.KnowledgeObject // returned by VectorSearch
 }
 
 func (s *stubObjectsForDup) GetByContentHash(_ context.Context, hash string) (*storage.KnowledgeObject, error) {

@@ -9,12 +9,12 @@
 // Browser-side history reading is abstracted behind the BrowserClient
 // interface so:
 //
-//	1. Tests inject a fakeBrowserClient with controlled visit lists.
-//	2. Per-browser SQLite-poll implementations (Chrome, Firefox, Safari,
-//	   Edge, Brave, Arc) plug in behind build tags without restructuring
-//	   the Source.
-//	3. The substrate is testable without CGO sqlite or per-OS path
-//	   resolution.
+//  1. Tests inject a fakeBrowserClient with controlled visit lists.
+//  2. Per-browser SQLite-poll implementations (Chrome, Firefox, Safari,
+//     Edge, Brave, Arc) plug in behind build tags without restructuring
+//     the Source.
+//  3. The substrate is testable without CGO sqlite or per-OS path
+//     resolution.
 //
 // Routing per ADR-066 + US-0214:
 //
@@ -41,8 +41,8 @@ import (
 
 // Defaults per ADR-066 / US-0214.
 const (
-	SourceName          = "browserhistory"
-	DefaultPollInterval = 5 * time.Minute
+	SourceName           = "browserhistory"
+	DefaultPollInterval  = 5 * time.Minute
 	defaultEventChanSize = 32
 )
 
@@ -143,7 +143,6 @@ func matchGlob(pattern, s string) bool {
 	return true
 }
 
-
 // Config configures a Source.
 type Config struct {
 	// Browsers is the set of BrowserClients to poll. At least one required.
@@ -156,8 +155,8 @@ type Config struct {
 
 // Source is the browser-history ambient source.
 type Source struct {
-	cfg     Config
-	events  chan ambient.RawEvent
+	cfg       Config
+	events    chan ambient.RawEvent
 	publisher ambient.Publisher
 
 	mu       sync.Mutex
@@ -178,8 +177,8 @@ func New(cfg Config) (*Source, error) {
 		cfg.PollInterval = DefaultPollInterval
 	}
 	return &Source{
-		cfg:     cfg,
-		events:  make(chan ambient.RawEvent, defaultEventChanSize),
+		cfg:      cfg,
+		events:   make(chan ambient.RawEvent, defaultEventChanSize),
 		lastSeen: make(map[string]time.Time),
 	}, nil
 }
@@ -293,8 +292,8 @@ func (s *Source) toRawEvent(v Visit) ambient.RawEvent {
 		subtype = "search-query"
 	}
 	meta := map[string]any{
-		"browser":   v.Browser,
-		"title":     v.Title,
+		"browser":    v.Browser,
+		"title":      v.Title,
 		"visited_at": v.VisitedAt.Unix(),
 	}
 	if subtype != "" {

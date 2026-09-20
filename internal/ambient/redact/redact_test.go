@@ -79,7 +79,7 @@ func TestRedactor_ApplyRedactsStringMetadataFields(t *testing.T) {
 		Payload: []byte("clean payload"),
 		Metadata: map[string]any{
 			"file_path":            "/home/user/secrets/AKIAIOSFODNN7EXAMPLE.txt",
-			"file_size":            int64(1024),  // numeric — not redacted
+			"file_size":            int64(1024),   // numeric — not redacted
 			"foreground_bundle_id": "com.example", // clean — unchanged
 		},
 	}

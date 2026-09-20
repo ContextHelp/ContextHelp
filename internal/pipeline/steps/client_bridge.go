@@ -34,10 +34,10 @@ type ClientBridgeOption func(*ClientBridge)
 // It supports timeout, custom user-agent, extra headers, per-domain credential injection,
 // and an optional cookie jar.
 type ClientBridge struct {
-	client      *http.Client
-	userAgent   string
+	client       *http.Client
+	userAgent    string
 	extraHeaders map[string]string
-	domainCreds []DomainCredential
+	domainCreds  []DomainCredential
 }
 
 // NewClientBridge constructs a ClientBridge with sensible defaults.

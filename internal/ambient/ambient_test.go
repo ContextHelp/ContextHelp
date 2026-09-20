@@ -151,9 +151,9 @@ func (r *recordingEnqueuer) Snapshot() []RawEvent {
 // stubCutter returns a constant SessionID. Used by tests that want to assert
 // the Runner tags events correctly.
 type stubCutter struct {
-	id      string
-	mu      sync.Mutex
-	events  int
+	id     string
+	mu     sync.Mutex
+	events int
 }
 
 func (s *stubCutter) OnEvent(RawEvent) {

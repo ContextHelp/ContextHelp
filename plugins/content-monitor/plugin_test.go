@@ -31,7 +31,7 @@ func (b *stubBus) Publish(_ context.Context, e pluginapi.Event) error {
 	return nil
 }
 func (b *stubBus) Subscribe(_ string, _ func(context.Context, pluginapi.Event) error) {}
-func (b *stubBus) Close() error                                                        { return nil }
+func (b *stubBus) Close() error                                                       { return nil }
 
 // ─── unit tests ───────────────────────────────────────────────────────────────
 

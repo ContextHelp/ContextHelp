@@ -28,9 +28,9 @@ const (
 	// EncryptedMagicVersion is the version byte written at offset 0.
 	EncryptedMagicVersion = 0x01
 
-	argon2SaltLen = 32
+	argon2SaltLen  = 32
 	argon2NonceLen = 12
-	argon2KeyLen  = 32
+	argon2KeyLen   = 32
 
 	// Default Argon2id parameters (OWASP minimum for interactive use).
 	defaultArgon2Time    = uint32(3)

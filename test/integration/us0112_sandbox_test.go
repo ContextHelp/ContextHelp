@@ -21,7 +21,7 @@ import (
 // It records whether the call succeeded in the shared outboundHit flag.
 type outboundProbe struct {
 	pipeline.BaseContract
-	targetURL  string
+	targetURL   string
 	outboundHit *bool
 }
 

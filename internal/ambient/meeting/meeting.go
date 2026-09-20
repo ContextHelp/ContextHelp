@@ -124,12 +124,12 @@ type RecordHandle interface {
 
 // RecordStatus is a snapshot of the in-flight recording.
 type RecordStatus struct {
-	Active       bool
-	Paused       bool
-	Mode         Mode
-	StartedAt    time.Time
-	ElapsedSec   float64
-	BytesOnDisk  int64
+	Active      bool
+	Paused      bool
+	Mode        Mode
+	StartedAt   time.Time
+	ElapsedSec  float64
+	BytesOnDisk int64
 }
 
 // Config configures a Source.
@@ -151,15 +151,15 @@ type Config struct {
 
 // Source is the meeting-capture ambient source.
 type Source struct {
-	recorder MeetingRecorder
-	cfg      Config
-	events   chan ambient.RawEvent
+	recorder  MeetingRecorder
+	cfg       Config
+	events    chan ambient.RawEvent
 	publisher ambient.Publisher
 
-	mu       sync.Mutex
-	started  bool
-	stopped  bool
-	active   *activeRecording
+	mu      sync.Mutex
+	started bool
+	stopped bool
+	active  *activeRecording
 }
 
 type activeRecording struct {

@@ -86,15 +86,15 @@ type Theme struct {
 
 // DefaultTheme returns the default TUI color theme.
 func DefaultTheme() Theme {
-	colorPrimary    := lipgloss.Color("#5C5CFF")
+	colorPrimary := lipgloss.Color("#5C5CFF")
 	colorForeground := lipgloss.Color("#FFFFFF")
-	colorBorder     := lipgloss.Color("238")
-	colorMuted      := lipgloss.Color("8")
-	colorSuccess    := lipgloss.Color("2")
-	colorError      := lipgloss.Color("1")
-	colorWarning    := lipgloss.Color("3")
-	colorAccent     := lipgloss.Color("86")
-	colorSelected   := lipgloss.Color("205")
+	colorBorder := lipgloss.Color("238")
+	colorMuted := lipgloss.Color("8")
+	colorSuccess := lipgloss.Color("2")
+	colorError := lipgloss.Color("1")
+	colorWarning := lipgloss.Color("3")
+	colorAccent := lipgloss.Color("86")
+	colorSelected := lipgloss.Color("205")
 
 	return Theme{
 		Focused: lipgloss.NewStyle().

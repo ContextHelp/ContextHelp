@@ -3,7 +3,7 @@ package pluginapi
 // NodeHit is a search result pointing to a matching node within an object.
 type NodeHit struct {
 	ObjectID string  `json:"object_id"`
-	NodeRef  string  `json:"node_ref"`  // canonical NodeURI
+	NodeRef  string  `json:"node_ref"` // canonical NodeURI
 	NodeType string  `json:"node_type"`
 	Snippet  string  `json:"snippet,omitempty"`
 	Score    float64 `json:"score"`
@@ -21,8 +21,8 @@ type NodeAwareFilter struct {
 
 // NodeAwareResult wraps a KnowledgeObject result with optional node-level hits.
 type NodeAwareResult struct {
-	Object       *KnowledgeObject    `json:"object"`
-	NodeHits     []NodeHit           `json:"node_hits,omitempty"`
+	Object   *KnowledgeObject `json:"object"`
+	NodeHits []NodeHit        `json:"node_hits,omitempty"`
 	// DocumentView is the derived DocumentProjection for display surfaces.
 	DocumentView *DocumentProjection `json:"document_view,omitempty"`
 }

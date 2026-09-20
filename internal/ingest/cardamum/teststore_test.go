@@ -46,7 +46,7 @@ func (m *testStore) List(_ context.Context, _ storage.ObjectFilter) ([]*storage.
 }
 
 func (m *testStore) Update(_ context.Context, _ *storage.KnowledgeObject) error { return nil }
-func (m *testStore) Delete(_ context.Context, _ string) error                    { return nil }
+func (m *testStore) Delete(_ context.Context, _ string) error                   { return nil }
 
 func (m *testStore) ListBySQL(_ context.Context, _ string, _ []any, _, _ int) ([]*storage.KnowledgeObject, int, error) {
 	return nil, 0, nil

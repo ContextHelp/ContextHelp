@@ -22,11 +22,11 @@ type RepoSnapshot struct {
 	URL      string `json:"url"`
 
 	// Description & content
-	Description string   `json:"description,omitempty"`
-	Language    string   `json:"language,omitempty"`
-	Topics      []string `json:"topics,omitempty"`
-	License     string   `json:"license,omitempty"`
-	README      string   `json:"readme,omitempty"`
+	Description string              `json:"description,omitempty"`
+	Language    string              `json:"language,omitempty"`
+	Topics      []string            `json:"topics,omitempty"`
+	License     string              `json:"license,omitempty"`
+	README      string              `json:"readme,omitempty"`
 	Sections    []pluginapi.Section `json:"sections,omitempty"`
 
 	// Stats
@@ -61,9 +61,9 @@ type IssueSnapshot struct {
 	URL    string `json:"url"`
 
 	// Content
-	Title  string `json:"title"`
-	Body   string `json:"body,omitempty"`
-	State  string `json:"state"` // "open" | "closed"
+	Title  string   `json:"title"`
+	Body   string   `json:"body,omitempty"`
+	State  string   `json:"state"` // "open" | "closed"
 	Labels []string `json:"labels,omitempty"`
 
 	// Author & assignees

@@ -13,8 +13,8 @@ import (
 
 // ToolNotInstalledError indicates a required CLI tool is not on PATH.
 type ToolNotInstalledError struct {
-	Tool    string
-	Hint    string
+	Tool string
+	Hint string
 }
 
 func (e *ToolNotInstalledError) Error() string {

@@ -16,15 +16,15 @@ import (
 //   - /articles/<id>          article         → article candidate
 //   - /topics/<id>            topic feed      → topic candidate (top articles via client)
 type NewsStrategy struct {
-	Client      GoogleClient
-	ArticleCap  int // top articles emitted from a topic capture; default 5
+	Client     GoogleClient
+	ArticleCap int // top articles emitted from a topic capture; default 5
 }
 
 func NewNews(c GoogleClient) *NewsStrategy { return &NewsStrategy{Client: c, ArticleCap: 5} }
 
-func (*NewsStrategy) ID() string                    { return IDNews }
+func (*NewsStrategy) ID() string                     { return IDNews }
 func (*NewsStrategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*NewsStrategy) Preconditions() []string       { return nil }
+func (*NewsStrategy) Preconditions() []string        { return nil }
 
 func (*NewsStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) lateral.AppliesResult {
 	host := hostOf(ev.SourceURL)

@@ -9,10 +9,10 @@ import (
 
 func TestRecordValidatorJSONL(t *testing.T) {
 	records := []map[string]any{
-		{"content": "valid content"},       // valid: content field present and non-empty
-		{"content": ""},                    // invalid: content field empty
-		{"other": "some other value"},      // valid: has a non-empty string value
-		{"empty_field": ""},               // invalid: all string values empty
+		{"content": "valid content"},  // valid: content field present and non-empty
+		{"content": ""},               // invalid: content field empty
+		{"other": "some other value"}, // valid: has a non-empty string value
+		{"empty_field": ""},           // invalid: all string values empty
 	}
 	step := NewRecordValidator()
 	draft := &storage.KnowledgeObject{

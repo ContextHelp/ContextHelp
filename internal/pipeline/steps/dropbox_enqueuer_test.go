@@ -14,12 +14,12 @@ func TestDropboxEnqueuerSuccess(t *testing.T) {
 		Metadata: map[string]any{
 			"dropbox_files": []map[string]any{
 				{
-					"id":           "id:f1",
-					"name":         "notes.md",
-					"path":         "/notes.md",
-					"size":         int64(100),
-					"is_folder":    false,
-					"content_hash": "hash1",
+					"id":            "id:f1",
+					"name":          "notes.md",
+					"path":          "/notes.md",
+					"size":          int64(100),
+					"is_folder":     false,
+					"content_hash":  "hash1",
 					"modified_time": "2026-01-15T12:00:00Z",
 				},
 				{

@@ -3,9 +3,10 @@ package builtins
 import "regexp"
 
 // repoURLPattern matches GitHub, GitLab, and Bitbucket repository root URLs:
-//   https://github.com/<owner>/<repo>
-//   https://gitlab.com/<owner>/<repo>
-//   https://bitbucket.org/<owner>/<repo>
+//
+//	https://github.com/<owner>/<repo>
+//	https://gitlab.com/<owner>/<repo>
+//	https://bitbucket.org/<owner>/<repo>
 //
 // Sub-paths (issues, PRs, commits, …) are intentionally excluded so that
 // non-root forge URLs fall through to url.generic.

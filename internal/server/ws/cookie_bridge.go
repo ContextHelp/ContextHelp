@@ -25,7 +25,7 @@ type CookieEntry struct {
 
 // SyncMessage is the message format sent by the extension.
 type SyncMessage struct {
-	Type    string        `json:"type"`    // "cookie_sync"
+	Type    string        `json:"type"` // "cookie_sync"
 	Domain  string        `json:"domain"`
 	Cookies []CookieEntry `json:"cookies"`
 }

@@ -52,9 +52,9 @@ const DefaultIndexURL = "https://registry.ctxt.dev/index.json"
 
 // IndexSearchResult is one match returned by SearchIndex.
 type IndexSearchResult struct {
-	Entry  RegistryIndexEntry
+	Entry RegistryIndexEntry
 	// Score indicates relevance (higher = better). Informational; not guaranteed stable.
-	Score  int
+	Score int
 }
 
 // SearchIndex searches an in-memory RegistryIndex for registries matching query.

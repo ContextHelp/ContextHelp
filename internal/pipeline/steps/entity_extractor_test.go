@@ -150,4 +150,3 @@ func TestEntityExtractorNoGraphWhenNoMentions(t *testing.T) {
 		t.Error("expected nil graph when no mentions found")
 	}
 }
-

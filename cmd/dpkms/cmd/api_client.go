@@ -372,12 +372,12 @@ type HealthzEnvelope struct {
 
 // HealthzChecks groups per-subsystem signals.
 type HealthzChecks struct {
-	Process  string             `json:"process"`
-	RESTAPI  string             `json:"rest_api"`
-	GRPCAPI  string             `json:"grpc_api"`
-	DB       HealthzDBCheck     `json:"db"`
-	Queue    HealthzQueueCheck  `json:"queue"`
-	Watchers []HealthzWatcher   `json:"watchers"`
+	Process  string            `json:"process"`
+	RESTAPI  string            `json:"rest_api"`
+	GRPCAPI  string            `json:"grpc_api"`
+	DB       HealthzDBCheck    `json:"db"`
+	Queue    HealthzQueueCheck `json:"queue"`
+	Watchers []HealthzWatcher  `json:"watchers"`
 }
 
 // HealthzDBCheck reports DB reachability.

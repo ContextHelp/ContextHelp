@@ -159,4 +159,3 @@ func formatPayload(p map[string]any) string {
 	}
 	return string(b)
 }
-

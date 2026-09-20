@@ -42,12 +42,12 @@ func TestOnProfileCreated(t *testing.T) {
 
 	// Check tags.
 	wantTags := map[string]bool{
-		"agent:testuser":    true,
-		"dept:eng":          true,
-		"pool:company":      true,
-		"pool:product-eng":  true,
-		"pool:incidents":    true,
-		"pool:compliance":   true,
+		"agent:testuser":   true,
+		"dept:eng":         true,
+		"pool:company":     true,
+		"pool:product-eng": true,
+		"pool:incidents":   true,
+		"pool:compliance":  true,
 	}
 	for _, tag := range fp.Tags {
 		delete(wantTags, tag)

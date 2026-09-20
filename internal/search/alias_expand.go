@@ -63,4 +63,3 @@ func ExpandQuery(ctx context.Context, query string, resolver AliasResolver) stri
 
 	return query + " " + strings.Join(extra, " ")
 }
-

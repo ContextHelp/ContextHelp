@@ -12,9 +12,9 @@ import (
 
 // fakeReader is a controllable Reader: tests Push focus changes.
 type fakeReader struct {
-	mu       sync.Mutex
-	onChange func(Window)
-	subErr   error
+	mu        sync.Mutex
+	onChange  func(Window)
+	subErr    error
 	cancelled bool
 }
 

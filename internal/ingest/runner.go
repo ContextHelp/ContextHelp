@@ -33,7 +33,7 @@ func (r *Runner) Run(ctx context.Context, adapter Adapter) (*Result, error) {
 
 	res := &Result{
 		Source: adapter.Name(),
-		Total: len(objects),
+		Total:  len(objects),
 	}
 
 	for _, obj := range objects {
@@ -65,7 +65,7 @@ func (r *Runner) RunFromStdin(
 
 	res := &Result{
 		Source: source,
-		Total: len(objects),
+		Total:  len(objects),
 	}
 
 	for _, obj := range objects {

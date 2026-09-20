@@ -22,9 +22,9 @@ type ScholarStrategy struct {
 
 func NewScholar(c GoogleClient) *ScholarStrategy { return &ScholarStrategy{Client: c} }
 
-func (*ScholarStrategy) ID() string                    { return IDScholar }
+func (*ScholarStrategy) ID() string                     { return IDScholar }
 func (*ScholarStrategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*ScholarStrategy) Preconditions() []string       { return nil }
+func (*ScholarStrategy) Preconditions() []string        { return nil }
 
 func (*ScholarStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) lateral.AppliesResult {
 	host := hostOf(ev.SourceURL)

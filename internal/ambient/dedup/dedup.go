@@ -42,9 +42,9 @@ const (
 //
 // Eviction triggers:
 //
-//	- TTL: entries older than Window are treated as not-present
-//	- Capacity: when len(cache) reaches Capacity, the least-recently-used
-//	  entry is evicted to make room for the new one
+//   - TTL: entries older than Window are treated as not-present
+//   - Capacity: when len(cache) reaches Capacity, the least-recently-used
+//     entry is evicted to make room for the new one
 //
 // Cache is goroutine-safe. The Runner's dispatch goroutine calls
 // IsDuplicate concurrently with status / health read paths.
@@ -115,12 +115,12 @@ func NewCache(opts ...Option) *Cache {
 // IsDuplicate reports whether fingerprint has been recorded within the TTL
 // window. Side effects:
 //
-//	- If absent (or expired): records the fingerprint and returns false
-//	  (i.e. "not a duplicate; let it through").
-//	- If present and within window: refreshes the LRU position and returns
-//	  true (i.e. "duplicate; the Runner will drop this event").
-//	- If present but expired: deletes the stale entry, records fresh, and
-//	  returns false.
+//   - If absent (or expired): records the fingerprint and returns false
+//     (i.e. "not a duplicate; let it through").
+//   - If present and within window: refreshes the LRU position and returns
+//     true (i.e. "duplicate; the Runner will drop this event").
+//   - If present but expired: deletes the stale entry, records fresh, and
+//     returns false.
 //
 // Empty fingerprints are never treated as duplicates (they bypass dedup at
 // the source level too); IsDuplicate("") returns false without recording.

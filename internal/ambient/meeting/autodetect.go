@@ -23,7 +23,7 @@ import (
 // Source.Trigger when the user confirms. This keeps AutoDetect free of
 // recording-state concerns.
 type AutoDetect struct {
-	cfg AutoDetectConfig
+	cfg       AutoDetectConfig
 	publisher ambient.Publisher
 
 	mu               sync.Mutex
@@ -137,9 +137,9 @@ func (a *AutoDetect) OnForegroundChange(ctx context.Context, bundleID string) *P
 	if a.publisher != nil {
 		_ = a.publisher.Publish(ctx, "ctxt.ambient.meeting.auto_detected", "meeting",
 			map[string]any{
-				"bundle_id": bundleID,
-				"mode":      string(rule.Mode),
-				"action":    "prompt",
+				"bundle_id":       bundleID,
+				"mode":            string(rule.Mode),
+				"action":          "prompt",
 				"timeout_seconds": a.cfg.PromptTimeout.Seconds(),
 			})
 	}

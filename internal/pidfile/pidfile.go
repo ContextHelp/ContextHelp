@@ -30,8 +30,8 @@ func ValidateName(name string) bool { return validName.MatchString(name) }
 // Info holds the metadata written to a pidfile.
 type Info struct {
 	PID              int       `json:"pid"`
-	Name             string    `json:"name"`              // unique instance name (URI-safe slug)
-	ConfigPath       string    `json:"config_path"`       // config file used at startup
+	Name             string    `json:"name"`        // unique instance name (URI-safe slug)
+	ConfigPath       string    `json:"config_path"` // config file used at startup
 	Port             int       `json:"port"`
 	GRPCPort         int       `json:"grpc_port"`
 	CookieBridgePort int       `json:"cookie_bridge_port"`

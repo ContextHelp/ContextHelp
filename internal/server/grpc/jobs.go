@@ -166,10 +166,10 @@ func jobToProto(j *storage.Job) *pb.Job {
 
 func jobToStatusUpdate(j *storage.Job) *pb.JobStatusUpdate {
 	u := &pb.JobStatusUpdate{
-		JobId:    j.ID,
-		Status:   string(j.Status),
-		Error:    j.Error,
-		ResultId: j.ResultID,
+		JobId:     j.ID,
+		Status:    string(j.Status),
+		Error:     j.Error,
+		ResultId:  j.ResultID,
 		UpdatedAt: timestamppb.New(j.UpdatedAt),
 	}
 	return u

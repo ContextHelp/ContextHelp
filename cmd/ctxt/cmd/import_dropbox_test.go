@@ -112,9 +112,9 @@ func TestImportDropboxEnqueueSuccess(t *testing.T) {
 	defer dropboxSrv.Close()
 
 	var (
-		mu         sync.Mutex
-		enqueued   int
-		sourceOK   int
+		mu       sync.Mutex
+		enqueued int
+		sourceOK int
 	)
 
 	dpkmsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -10,7 +10,7 @@ import (
 //
 // Priority chain (evaluated top to bottom, first match wins):
 //  1. Empty line or line beginning with '#' -> no-op, return nil
-//  1.5. `show N` shorthand — resolve 1-based index to full object ID
+//     1.5. `show N` shorthand — resolve 1-based index to full object ID
 //  2. First token is a known command -> delegate to execCobra
 //  3. Line contains ' | ' (space-pipe-space) -> pipe: run LHS as find, then RHS as make
 //  4. Line contains '==' or '=in=' -> treat as RSQL; delegate as `list --q <line>`

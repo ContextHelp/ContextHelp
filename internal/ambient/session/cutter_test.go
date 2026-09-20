@@ -18,7 +18,7 @@ func newFakeClock(t time.Time) *fakeClock {
 	return c
 }
 
-func (c *fakeClock) Now() time.Time     { return time.Unix(0, c.ns.Load()) }
+func (c *fakeClock) Now() time.Time          { return time.Unix(0, c.ns.Load()) }
 func (c *fakeClock) Advance(d time.Duration) { c.ns.Add(int64(d)) }
 
 func newCutter(t *testing.T, clk *fakeClock) *Cutter {
@@ -28,16 +28,16 @@ func newCutter(t *testing.T, clk *fakeClock) *Cutter {
 
 // recordingHooks captures OnStart/OnEnd callbacks.
 type recordingHooks struct {
-	mu      sync.Mutex
-	starts  []string
-	ends    []endRecord
+	mu     sync.Mutex
+	starts []string
+	ends   []endRecord
 }
 
 type endRecord struct {
-	id       string
-	started  time.Time
-	ended    time.Time
-	reason   EndReason
+	id      string
+	started time.Time
+	ended   time.Time
+	reason  EndReason
 }
 
 func (r *recordingHooks) wire(c *Cutter) {
@@ -188,15 +188,15 @@ func TestCutter_FrequentSwitchingExceptionSuppressesSoftCut(t *testing.T) {
 	clk := newFakeClock(time.Date(2026, 5, 5, 14, 0, 0, 0, time.UTC))
 	c := newCutter(t, clk)
 
-	c.OnEvent(evt("us.zoom.xos"))                 // T+0
+	c.OnEvent(evt("us.zoom.xos")) // T+0
 	clk.Advance(30 * time.Second)
-	c.OnEvent(evt("com.apple.Safari"))            // T+30s — appSwitchedAt = T+30s
-	clk.Advance(4 * time.Minute)                  // T+4:30 — single-app focus exceeds 3 min
+	c.OnEvent(evt("com.apple.Safari")) // T+30s — appSwitchedAt = T+30s
+	clk.Advance(4 * time.Minute)       // T+4:30 — single-app focus exceeds 3 min
 	// At this point, soft-cut would fire IF frequent-switching is false.
 	// We add ONE more switch within the last RecentSwitchWindow (last 2
 	// min). Two distinct app entries are recorded in the deque within
 	// the window:
-	c.OnEvent(evt("us.zoom.xos"))                 // T+4:30 — bumps appSwitchedAt
+	c.OnEvent(evt("us.zoom.xos")) // T+4:30 — bumps appSwitchedAt
 	clk.Advance(10 * time.Second)
 	// Now appSwitchedAt = T+4:30; (now - appSwitchedAt) = 10s. Soft-cut
 	// precondition (>3 min single-app) is FALSE → no cut. This isn't
@@ -306,9 +306,9 @@ func TestCutter_ActiveIDEmptyWhenNoSession(t *testing.T) {
 func TestCutter_BundleIDFromEvent(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name     string
-		ev       ambient.RawEvent
-		want     string
+		name string
+		ev   ambient.RawEvent
+		want string
 	}{
 		{"foreground bundle_id", evt("com.example"), "com.example"},
 		{"clipboard with foreground_bundle_id", ambient.RawEvent{Metadata: map[string]any{"foreground_bundle_id": "com.test"}}, "com.test"},

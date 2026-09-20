@@ -289,4 +289,3 @@ func runLateralConfigShow(cmd *cobra.Command, _ []string) error {
 	}
 	return nil
 }
-

@@ -63,8 +63,8 @@ func newTestLifecycle(t *testing.T) (*Lifecycle, *recorderStrategy, bus.Bus) {
 
 func TestNewLifecycle_RequiresBusRegistryPublisher(t *testing.T) {
 	cases := []LifecycleOptions{
-		{},                            // all nil
-		{Bus: bus.New()},              // missing registry
+		{},               // all nil
+		{Bus: bus.New()}, // missing registry
 		{Bus: bus.New(), Registry: lateral.NewRegistry()}, // missing publisher
 	}
 	for i, opts := range cases {

@@ -161,4 +161,3 @@ func TestUS0019_FederatedSearchDeduplicatesSameID(t *testing.T) {
 	// registries produces two distinct KnowledgeObjects.
 	assert.Len(t, merged, 2, "same ID from different registries must produce two distinct results")
 }
-

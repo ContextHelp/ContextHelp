@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt-plugin-aliasing"
+	aliasing "github.com/ideacrafterslabs/ctxt-plugin-aliasing"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

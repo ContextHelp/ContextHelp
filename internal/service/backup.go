@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	blobfactory "github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	blobfactory "github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
@@ -23,9 +23,9 @@ type BackupOpts struct {
 	IncludeBlobs   bool
 	OutputDir      string // directory to write archive; cwd if empty
 	SkipBlobErrors bool
-	ConfigPath     string // optional: path to config.yaml to include in archive
-	IncludeConfigs bool   // include config.yaml + keys/ + other config files
-	ConfigDir      string // config directory (e.g. ~/.config/contexthelp)
+	ConfigPath     string        // optional: path to config.yaml to include in archive
+	IncludeConfigs bool          // include config.yaml + keys/ + other config files
+	ConfigDir      string        // config directory (e.g. ~/.config/contexthelp)
 	EmbeddingInfo  EmbeddingInfo // current embedding model for manifest
 }
 
@@ -196,7 +196,7 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 		Mode:    0644,
 		ModTime: time.Now(),
 	}
-	tw.WriteHeader(hdr)  //nolint:errcheck
+	tw.WriteHeader(hdr)     //nolint:errcheck
 	tw.Write(manifestBytes) //nolint:errcheck
 
 	if err := tw.Close(); err != nil {

@@ -56,4 +56,3 @@ func TestStubDiarization(t *testing.T) {
 		t.Errorf("Segments: got %d", len(result.Segments))
 	}
 }
-

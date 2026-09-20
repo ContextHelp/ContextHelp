@@ -155,11 +155,11 @@ func TestResolver_TypedAndPreviewProduceIdenticalResults(t *testing.T) {
 		{"missing_in_graph", "platform/entity/never-indexed"},
 	}
 	g := &fakeGraph{byKey: map[string]string{
-		"github/repo/samber/lo":                "o-lo",
-		"github/owner/jadb":                    "o-jadb",
+		"github/repo/samber/lo":                   "o-lo",
+		"github/owner/jadb":                       "o-jadb",
 		"substack/publication/anthropic-research": "o-substack",
-		"wikipedia/article/en/turing_machine":  "o-wiki",
-		"youtube/channel/uc12345":              "o-yt",
+		"wikipedia/article/en/turing_machine":     "o-wiki",
+		"youtube/channel/uc12345":                 "o-yt",
 	}}
 	r := NewResolver(g)
 	for _, tc := range cases {

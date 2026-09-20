@@ -37,8 +37,8 @@ func fakeSnapshot() ambientmcp.LocalSnapshot {
 				"started_at":  "2026-05-06T10:30:00Z",
 				"event_count": 23,
 				"app_mix": map[string]float64{
-					"us.zoom.xos":      0.65,
-					"com.apple.Safari": 0.25,
+					"us.zoom.xos":               0.65,
+					"com.apple.Safari":          0.25,
 					"com.tinyspeck.slackmacgap": 0.10,
 				},
 			}, nil
@@ -50,9 +50,9 @@ func fakeSnapshot() ambientmcp.LocalSnapshot {
 			out := make([]any, 0, limit)
 			for i := 0; i < limit && i < 3; i++ {
 				out = append(out, map[string]any{
-					"source":     "clipboard",
+					"source":      "clipboard",
 					"occurred_at": time.Date(2026, 5, 6, 10, 30+i, 0, 0, time.UTC).Format(time.RFC3339),
-					"kind":       "url",
+					"kind":        "url",
 					"fingerprint": "fp_" + string(rune('a'+i)),
 				})
 			}
@@ -60,10 +60,10 @@ func fakeSnapshot() ambientmcp.LocalSnapshot {
 		},
 		PendingEnqueue: func(_ context.Context) (any, error) {
 			return map[string]any{
-				"count":             5,
+				"count":              5,
 				"oldest_age_seconds": 120,
-				"dpkms_reachable":   false,
-				"last_failure_at":   "2026-05-06T10:28:30Z",
+				"dpkms_reachable":    false,
+				"last_failure_at":    "2026-05-06T10:28:30Z",
 				"last_failure_error": "dial tcp: connection refused",
 			}, nil
 		},
@@ -77,12 +77,12 @@ func fakeSnapshot() ambientmcp.LocalSnapshot {
 		},
 		Health: func(_ context.Context) (any, error) {
 			return map[string]any{
-				"version":              "0.1.0",
-				"uptime_seconds":       3600,
-				"buffer_count":         5,
-				"buffer_capacity":      4096,
-				"buffer_pct_full":      0.122,
-				"dpkms_endpoint":       "https://dpkms.example.com",
+				"version":               "0.1.0",
+				"uptime_seconds":        3600,
+				"buffer_count":          5,
+				"buffer_capacity":       4096,
+				"buffer_pct_full":       0.122,
+				"dpkms_endpoint":        "https://dpkms.example.com",
 				"dpkms_last_success_at": "2026-05-06T10:00:00Z",
 				"dpkms_last_failure_at": "2026-05-06T10:28:30Z",
 			}, nil

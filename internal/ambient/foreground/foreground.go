@@ -16,9 +16,9 @@
 // foreground change AND no other capture-worthy events).
 //
 // Reader interface abstracts OS access so:
-//   1. Tests inject a fakeReader.
-//   2. macOS implementation lives behind GOOS=darwin build tag.
-//   3. Substrate is testable without cgo or AX permissions.
+//  1. Tests inject a fakeReader.
+//  2. macOS implementation lives behind GOOS=darwin build tag.
+//  3. Substrate is testable without cgo or AX permissions.
 package foreground
 
 import (
@@ -86,9 +86,9 @@ type Config struct {
 
 // Source is the foreground-window ambient source.
 type Source struct {
-	reader  Reader
-	cfg     Config
-	events  chan ambient.RawEvent
+	reader    Reader
+	cfg       Config
+	events    chan ambient.RawEvent
 	publisher ambient.Publisher
 
 	mu        sync.Mutex

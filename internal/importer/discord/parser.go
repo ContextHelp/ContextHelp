@@ -68,21 +68,21 @@ type discordExport struct {
 
 // discordExportMessage is a single message entry from a DiscordChatExporter JSON export.
 type discordExportMessage struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"`
-	Timestamp string `json:"timestamp"`
+	ID         string `json:"id"`
+	Type       string `json:"type"`
+	Timestamp  string `json:"timestamp"`
 	Timestamp2 string `json:"timestampEdited"`
-	Content   string `json:"content"`
-	Author    struct {
-		ID      string `json:"id"`
-		Name    string `json:"name"`
+	Content    string `json:"content"`
+	Author     struct {
+		ID            string `json:"id"`
+		Name          string `json:"name"`
 		Discriminator string `json:"discriminator"`
-		IsBot   bool   `json:"isBot"`
+		IsBot         bool   `json:"isBot"`
 	} `json:"author"`
 	Attachments []struct {
-		ID          string `json:"id"`
-		FileName    string `json:"fileName"`
-		URL         string `json:"url"`
+		ID       string `json:"id"`
+		FileName string `json:"fileName"`
+		URL      string `json:"url"`
 	} `json:"attachments"`
 	Embeds []struct {
 		Title       string `json:"title"`

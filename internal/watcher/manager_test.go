@@ -53,7 +53,7 @@ func TestWatchLoop_CreateFile_CallsAnalyze(t *testing.T) {
 		ID: "w1", Path: dir, Mode: "generic",
 		IncludePatterns: []string{"**/*.md"},
 		ExcludePatterns: []string{},
-		DebounceMS: 100, Status: "active",
+		DebounceMS:      100, Status: "active",
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 	driver.Watches().CreateWatch(ctx, cfg)
@@ -103,7 +103,7 @@ func TestWatchLoop_NewSubdir_FileIngested(t *testing.T) {
 		ID: "w1", Path: dir, Mode: "generic",
 		IncludePatterns: []string{"**/*.md"},
 		ExcludePatterns: []string{},
-		DebounceMS: 100, Status: "active",
+		DebounceMS:      100, Status: "active",
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 	driver.Watches().CreateWatch(ctx, cfg)
@@ -150,7 +150,7 @@ func TestWatchLoop_ExcludedFile_NoAnalyze(t *testing.T) {
 		ID: "w1", Path: dir, Mode: "generic",
 		IncludePatterns: []string{"**/*.md"},
 		ExcludePatterns: []string{"**/.git/**"},
-		DebounceMS: 100, Status: "active",
+		DebounceMS:      100, Status: "active",
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 	driver.Watches().CreateWatch(ctx, cfg)
@@ -181,7 +181,7 @@ func TestWatchLoop_DeleteFile_CallsDeleteObject(t *testing.T) {
 		ID: "w1", Path: dir, Mode: "generic",
 		IncludePatterns: []string{"**/*.md"},
 		ExcludePatterns: []string{},
-		DebounceMS: 100, Status: "active",
+		DebounceMS:      100, Status: "active",
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 	driver.Watches().CreateWatch(ctx, cfg)
@@ -265,7 +265,7 @@ func TestPollLoop_PicksUpNewFile(t *testing.T) {
 	cfg := &storage.WatchConfig{
 		ID: "wpoll", Path: dir, Mode: "generic",
 		IncludePatterns: []string{"**/*.md"},
-		DebounceMS: 100, Status: "active",
+		DebounceMS:      100, Status: "active",
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 	driver.Watches().CreateWatch(ctx, cfg)

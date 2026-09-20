@@ -201,8 +201,8 @@ func parseWhereSelector(predicate string, db *sql.DB) (*Selector, error) {
 	}
 
 	return &Selector{
-		raw:  "where:" + pred,
-		sql:  pred,
+		raw: "where:" + pred,
+		sql: pred,
 	}, nil
 }
 

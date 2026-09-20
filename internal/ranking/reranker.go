@@ -12,9 +12,9 @@ import (
 
 // Candidate is a pre-merged search result from one or more retrieval legs.
 type Candidate struct {
-	Object    *storage.KnowledgeObject
-	FTSScore  float64 // RRF contribution from full-text leg
-	VecScore  float64 // RRF contribution from vector leg
+	Object   *storage.KnowledgeObject
+	FTSScore float64 // RRF contribution from full-text leg
+	VecScore float64 // RRF contribution from vector leg
 }
 
 // Result is a reranked candidate with full score breakdown.
@@ -95,7 +95,7 @@ func (r *DefaultReranker) Rerank(ctx context.Context, query string, candidates m
 	w := r.weights
 
 	mentionScores := make(map[string]float64, len(candidates))
-	graphScores   := make(map[string]float64, len(candidates))
+	graphScores := make(map[string]float64, len(candidates))
 
 	// --- Pass 1: outbound mention bonus + direct backlink ---
 	// Use ProjectIndex to resolve mentions from graph nodes when available.

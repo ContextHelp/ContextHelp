@@ -155,16 +155,16 @@ func parseLinkNext(header string) string {
 // toImported converts an apiRepo to an ImportedRepo.
 func toImported(r apiRepo, source ListType) ImportedRepo {
 	repo := ImportedRepo{
-		URL:      r.HTMLURL,
-		FullName: r.FullName,
+		URL:         r.HTMLURL,
+		FullName:    r.FullName,
 		Description: r.Description,
-		Stars:    r.StarCount,
-		Language: r.Language,
-		Topics:   r.Topics,
-		Homepage: r.Homepage,
-		Forks:    r.Forks,
-		Archived: r.Archived,
-		Source:   source,
+		Stars:       r.StarCount,
+		Language:    r.Language,
+		Topics:      r.Topics,
+		Homepage:    r.Homepage,
+		Forks:       r.Forks,
+		Archived:    r.Archived,
+		Source:      source,
 	}
 	if r.License != nil {
 		repo.License = r.License.SpdxID

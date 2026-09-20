@@ -98,11 +98,11 @@ func TestURLFetcher_ErrorStatus(t *testing.T) {
 
 func TestURLFetcher_PermanentErrors(t *testing.T) {
 	codes := []int{
-		http.StatusBadRequest,        // 400
-		http.StatusForbidden,         // 403
-		http.StatusNotFound,          // 404
-		http.StatusGone,              // 410
-		http.StatusUnprocessableEntity, // 422
+		http.StatusBadRequest,                 // 400
+		http.StatusForbidden,                  // 403
+		http.StatusNotFound,                   // 404
+		http.StatusGone,                       // 410
+		http.StatusUnprocessableEntity,        // 422
 		http.StatusUnavailableForLegalReasons, // 451
 	}
 	for _, code := range codes {

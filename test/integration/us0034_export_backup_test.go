@@ -181,11 +181,11 @@ func TestUS0034_BackupContainsObjectsAfterIngestion(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	for i := 0; i < nObjects; i++ {
 		obj := &storage.KnowledgeObject{
-			ID:        storageObjID(i),
-			Type:      "text",
+			ID:         storageObjID(i),
+			Type:       "text",
 			RawContent: storageObjContent(i),
-			CreatedAt: now,
-			UpdatedAt: now,
+			CreatedAt:  now,
+			UpdatedAt:  now,
 		}
 		require.NoError(t, driver.Objects().Create(ctx, obj))
 	}

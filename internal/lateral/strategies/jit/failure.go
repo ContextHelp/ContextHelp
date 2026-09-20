@@ -42,11 +42,11 @@ func EmitProposalFailure(ctx context.Context, pub domain.EventPublisher, objectI
 	// scan.failed.object_id) but FailurePayload doesn't carry it as a typed
 	// field — wrap so it appears in the JSON envelope.
 	wrapped := map[string]any{
-		"object_id":   objectID,
-		"qualifiers":  payload.Qualifiers,
-		"topic":       payload.Topic,
-		"subject":     payload.Subject,
-		"severity":    "error",
+		"object_id":  objectID,
+		"qualifiers": payload.Qualifiers,
+		"topic":      payload.Topic,
+		"subject":    payload.Subject,
+		"severity":   "error",
 	}
 	return pub.Publish(ctx, string(events.ScanFailed), failureSource, wrapped)
 }

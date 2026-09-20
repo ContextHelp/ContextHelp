@@ -163,10 +163,11 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 // dispatch routes a JSON-RPC request to the right MCP method handler.
 //
 // MCP standard methods (per spec 2025-03-26):
-//   initialize       — handshake; client sends capabilities, server replies
-//   tools/list       — list available tools with their schemas
-//   tools/call       — invoke a tool with arguments
-//   ping             — keepalive
+//
+//	initialize       — handshake; client sends capabilities, server replies
+//	tools/list       — list available tools with their schemas
+//	tools/call       — invoke a tool with arguments
+//	ping             — keepalive
 //
 // We implement the minimum to make MCP clients happy + serve our tools.
 func (s *Server) dispatch(ctx context.Context, req *JSONRPCRequest) *JSONRPCResponse {

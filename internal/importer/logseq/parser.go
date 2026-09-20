@@ -306,9 +306,9 @@ func decodeName(name string) string {
 }
 
 var (
-	propLineRe = regexp.MustCompile(`^([a-zA-Z][a-zA-Z0-9_-]*)::[ \t]*(.*)$`)
-	bulletRe   = regexp.MustCompile(`^(\s*)-[ \t]+(.*)$`)
-	pageRefRe  = regexp.MustCompile(`\[\[([^\[\]]+)\]\]`)
+	propLineRe  = regexp.MustCompile(`^([a-zA-Z][a-zA-Z0-9_-]*)::[ \t]*(.*)$`)
+	bulletRe    = regexp.MustCompile(`^(\s*)-[ \t]+(.*)$`)
+	pageRefRe   = regexp.MustCompile(`\[\[([^\[\]]+)\]\]`)
 	inlineTagRe = regexp.MustCompile(`(?:^|[\s(])#([A-Za-z][A-Za-z0-9_/-]*)`)
 )
 
