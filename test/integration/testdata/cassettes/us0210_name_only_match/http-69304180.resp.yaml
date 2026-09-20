@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: "69304180"
+recorded_at: "2026-09-20T01:34:23Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"platform_slug":"@x.janedoe99","platform_name":"Jane Doe","platform":"x","bio":"Random person with same name","linked_urls":[]}

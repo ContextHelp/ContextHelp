@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: 1c711ec9
+recorded_at: "2026-09-20T01:34:23Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"platform_slug":"@github.janedoe","platform_name":"Jane Doe","platform":"github","bio":"Open source contributor at Acme","linked_urls":["https://shared-profile.example.com/janedoe"],"organization":"Acme Corp"}

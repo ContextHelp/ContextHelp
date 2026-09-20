@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: b069c611
+recorded_at: "2026-09-20T01:33:25Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"platform":"x","slug":"person.jane-doe","name":"Jane Doe","bio":"Engineer @acme. Building distributed systems.","links":["https://github.com/janedoe"],"metadata":null}

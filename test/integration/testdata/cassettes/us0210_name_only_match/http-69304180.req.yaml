@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: "69304180"
+recorded_at: "2026-09-20T01:34:23Z"
+payload:
+    method: GET
+    url: http://127.0.0.1:51303/user/janedoe99

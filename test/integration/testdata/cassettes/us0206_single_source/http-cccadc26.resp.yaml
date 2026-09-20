@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: cccadc26
+recorded_at: "2026-09-20T01:33:25Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"platform":"x","slug":"person.john-smith","name":"John Smith","bio":"Researcher","links":[],"metadata":null}
