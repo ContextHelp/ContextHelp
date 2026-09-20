@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.organize.doctor-then-fix
+title: Diagnose knowledge-graph problems, then act on what doctor reported
+binary: ctxt
+intent: |
+  An operator whose search results have gone stale runs the health checks,
+  narrows to the two checks they can actually act on, and then fixes one of
+  the reported problems by backfilling the missing enrichment — so a
+  diagnostic run ends in a repair rather than a wall of findings.
+steps:
+  - id: full_check
+    intent: Run every health check to get the overall picture.
+    invoke: ["ctxt", "doctor", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: narrow
+    intent: Narrow to the actionable checks with a bounded report.
+    invoke: ["ctxt", "doctor", "--check", "orphans,missing_metadata", "--limit", "50", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: tune_duplicates
+    intent: Loosen the duplicate threshold and lengthen the stale window to see borderline cases.
+    invoke: ["ctxt", "doctor", "--check", "duplicates,stale", "--duplicate-threshold", "0.85", "--stale-days", "180", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: repair
+    intent: Backfill the missing enrichment doctor reported on one object.
+    invoke: ["ctxt", "reprocess", "obj_00000000", "--step", "structured_metadata", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

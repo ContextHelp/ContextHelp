@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.capture.ingest-adapter-stdin
+title: Ingest adapter output from stdin and from a named built-in adapter
+binary: ctxt
+intent: |
+  An operator wiring a custom source into ContextHelp pipes their own JSON
+  through stdin rather than writing a plugin, then runs the same command
+  against a built-in adapter, so one ingestion path covers both homegrown
+  and shipped sources.
+steps:
+  - id: ingest_stdin
+    intent: Ingest a JSON array of objects supplied on stdin by a custom adapter.
+    invoke: ["ctxt", "ingest", "--source", "my-adapter", "--stdin", "--type", "note", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: ingest_builtin
+    intent: Ingest a bounded slice from a built-in adapter instead.
+    invoke: ["ctxt", "ingest", "--source", "cardamum", "--addressbook", "default", "--max-items", "10", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: verify
+    intent: Confirm the ingested objects are queryable.
+    invoke: ["ctxt", "list", "--format", "json"]
+    capture: [exit_code, stdout]

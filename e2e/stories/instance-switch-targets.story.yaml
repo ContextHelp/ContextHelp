@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.instance.switch-between-targets
+title: Switch the active dpkms instance and confirm commands follow it
+binary: ctxt
+intent: |
+  An operator keeping work and personal knowledge in separate dpkms instances
+  checks which one is currently targeted before running anything destructive,
+  switches deliberately, confirms the switch stuck, and can also override the
+  target for a single call without changing the persisted state.
+steps:
+  - id: discover
+    intent: List the dpkms instances currently running.
+    invoke: ["ctxt", "instance", "list", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: current_before
+    intent: Check which instance commands are targeting right now.
+    invoke: ["ctxt", "instance", "current", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: switch
+    intent: Switch the persisted target to the work instance.
+    invoke: ["ctxt", "instance", "use", "work", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: current_after
+    intent: Confirm the switch was persisted to the current-instance state file.
+    invoke: ["ctxt", "instance", "current", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: verify_target
+    intent: Confirm a normal command now reports health for the switched-to instance.
+    invoke: ["ctxt", "status", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: one_shot_override
+    intent: Target a different instance for a single call without changing persisted state.
+    invoke: ["ctxt", "status", "--instance", "personal", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: unchanged
+    intent: Confirm the one-shot override did not move the persisted target.
+    invoke: ["ctxt", "instance", "current", "--format", "json"]
+    capture: [exit_code, stdout]

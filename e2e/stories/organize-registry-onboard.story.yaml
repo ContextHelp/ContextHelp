@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.organize.registry-add-inspect-sync
+title: Subscribe to a shared registry, inspect what it offers, and preview a sync
+binary: ctxt
+intent: |
+  An operator adopting a shared taxonomy finds the registry, adds it, checks
+  what it actually claims to support before pulling anything, previews the
+  sync as a dry run so an entity collision surfaces as a report rather than
+  as overwritten local data, and only then syncs for real.
+steps:
+  - id: discover
+    intent: Search the registry index for a relevant registry.
+    invoke: ["ctxt", "registry", "search", "ux patterns", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: add
+    intent: Subscribe to the shared registry found by the search step.
+    invoke: ["ctxt", "registry", "add", "uxpatterns", "https://uxpatterns.example.com", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: capabilities
+    intent: Check what the registry claims to support before pulling from it.
+    invoke: ["ctxt", "registry", "capabilities", "uxpatterns", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: info
+    intent: Read the registry metadata to see what taxonomy it publishes.
+    invoke: ["ctxt", "registry", "info", "uxpatterns", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: preview
+    intent: Preview the sync without writing anything, so entity collisions surface as a report.
+    invoke: ["ctxt", "registry", "sync", "uxpatterns", "--dry-run", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: sync
+    intent: Sync for real, resolving entity conflicts by trust score.
+    invoke: ["ctxt", "registry", "sync", "uxpatterns", "--merge-strategy", "trust-score", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: confirm
+    intent: Confirm the registry now appears as subscribed.
+    invoke: ["ctxt", "registry", "list", "--format", "json"]
+    capture: [exit_code, stdout]

@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.curate.reprocess-backfill-enrichment
+title: Backfill enrichment on an object ingested before a step existed
+binary: ctxt
+intent: |
+  An operator who added an enrichment step after the fact does not want to
+  re-capture old content to benefit from it, so they re-run just that step
+  against an already-ingested object and confirm the new metadata appeared.
+steps:
+  - id: read_before
+    intent: See what enrichment the object currently carries.
+    invoke: ["ctxt", "show", "obj_00000000", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: backfill_metadata
+    intent: Re-run structured metadata extraction against the existing object.
+    invoke: ["ctxt", "reprocess", "obj_00000000", "--step", "structured_metadata", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: backfill_entities
+    intent: Re-run entity extraction so the object joins the entity graph.
+    invoke: ["ctxt", "reprocess", "obj_00000000", "--step", "entity_extractor", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: read_after
+    intent: Read the object back to see the backfilled enrichment.
+    invoke: ["ctxt", "show", "obj_00000000", "--format", "json"]
+    capture: [exit_code, stdout]

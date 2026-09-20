@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.capture.url-then-confirm
+title: Capture a URL and confirm the object landed in the knowledge base
+binary: ctxt
+intent: |
+  An operator saving a reference article captures the URL, waits for the
+  ingestion job to finish rather than trusting a fire-and-forget enqueue,
+  and then confirms the object is actually listed so they know the content
+  is searchable afterwards.
+steps:
+  - id: capture
+    intent: Capture the article URL and block until the job reaches a terminal state.
+    invoke: ["ctxt", "capture", "https://example.com/article", "--type", "url", "--wait", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: list
+    intent: Confirm a URL-typed object is now present in the knowledge base.
+    invoke: ["ctxt", "list", "--type", "url", "--format", "json"]
+    capture: [exit_code, stdout]

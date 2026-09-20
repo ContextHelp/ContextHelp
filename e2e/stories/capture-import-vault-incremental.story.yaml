@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.capture.import-vault-incremental
+title: Import a note vault incrementally instead of re-importing everything
+binary: ctxt
+intent: |
+  An operator who already imported a note vault once wants the next pass to
+  pick up only what changed, so a nightly re-import stays cheap and does not
+  churn every note through enrichment again.
+steps:
+  - id: full_import
+    intent: Import the whole vault on the first pass.
+    invoke: ["ctxt", "import", "obsidian", "--vault", "vault", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: incremental
+    intent: Re-import picking up only notes modified since the first pass.
+    invoke: ["ctxt", "import", "obsidian", "--vault", "vault", "--since", "2026-01-01", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

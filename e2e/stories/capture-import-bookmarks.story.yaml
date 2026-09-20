@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: ctxt.capture.import-browser-bookmarks
+title: Import a browser bookmarks export and check what arrived
+binary: ctxt
+intent: |
+  An operator moving years of browser bookmarks into ContextHelp imports the
+  export in a bounded first pass rather than all at once, so a mis-parsed file
+  costs one small batch instead of the whole archive, and then looks at what
+  actually arrived before importing the rest.
+steps:
+  - id: import_capped
+    intent: Import a capped first slice of the bookmarks export.
+    invoke: ["ctxt", "import", "chrome", "--file", "bookmarks.html", "--max-items", "25", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: inspect
+    intent: Look at the URL objects that arrived from the import.
+    invoke: ["ctxt", "list", "--type", "url", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: import_rest
+    intent: Import the remainder once the first slice looked right.
+    invoke: ["ctxt", "import", "chrome", "--file", "bookmarks.html", "--max-items", "0", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
