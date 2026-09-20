@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: 972c91e6
+recorded_at: "2026-09-20T01:31:50Z"
+payload:
+    method: GET
+    url: http://127.0.0.1:51107/repos/golang/go/pulls/123

@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: 49f924c1
+recorded_at: "2026-09-20T01:32:26Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"post_id":"7001234567890","author":"Jane Doe","text":"Excited to share our latest work on distributed tracing.","timestamp":"2026-02-01T09:00:00Z","likes":147,"source_url":"https://www.linkedin.com/posts/jane-doe_activity-7001234567890"}

@@ -4,7 +4,15 @@ package integration
 //
 // Verifies: mock LinkedIn scraper, capture profile/post,
 // content stored with source attribution.
-// All external HTTP calls use httptest.NewServer — no real network.
+// Each scraper fetch runs through an xrr cassette
+// (testdata/cassettes/us0204_*). In the default replay mode the recorded
+// round-trip answers from disk and the fixture server is never contacted.
+// See xrr_capture_helpers_test.go for what the cassettes do and do not
+// prove.
+//
+// Re-record: XRR_MODE=record go test -count=1 ./test/integration/ \
+//   -run TestUS0204_RecordCassettes
+//
 // Gate: INTEGRATION=1 env var required.
 
 import (
@@ -56,12 +64,15 @@ type linkedInProfileFetchStep struct {
 	pipeline.BaseContract
 	scraperURL string
 	username   string
+	// client carries the xrr record/replay transport. Nil falls back to
+	// the default client.
+	client *gohttp.Client
 }
 
 func (s *linkedInProfileFetchStep) Name() string { return "test-linkedin-profile-fetch" }
 func (s *linkedInProfileFetchStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	url := fmt.Sprintf("%s/profile/%s", s.scraperURL, s.username)
-	resp, err := gohttp.Get(url)
+	resp, err := captureGet(s.client, url)
 	if err != nil {
 		return draft, err
 	}
@@ -93,12 +104,15 @@ type linkedInPostFetchStep struct {
 	pipeline.BaseContract
 	scraperURL string
 	postID     string
+	// client carries the xrr record/replay transport. Nil falls back to
+	// the default client.
+	client *gohttp.Client
 }
 
 func (s *linkedInPostFetchStep) Name() string { return "test-linkedin-post-fetch" }
 func (s *linkedInPostFetchStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	url := fmt.Sprintf("%s/post/%s", s.scraperURL, s.postID)
-	resp, err := gohttp.Get(url)
+	resp, err := captureGet(s.client, url)
 	if err != nil {
 		return draft, err
 	}
@@ -125,6 +139,74 @@ func (s *linkedInPostFetchStep) Run(_ context.Context, draft *storage.KnowledgeO
 }
 
 // ---------------------------------------------------------------------------
+// Fixture handlers
+//
+// Named so the replaying test and the recorder share one definition of
+// each payload. See xrr_capture_helpers_test.go.
+// ---------------------------------------------------------------------------
+
+const (
+	linkedInUsername      = "jane-doe"
+	linkedInProfileURL    = "https://www.linkedin.com/in/jane-doe"
+	linkedInPostID        = "7001234567890"
+	linkedInPostText      = "Excited to share our latest work on distributed tracing."
+	linkedInPostSourceURL = "https://www.linkedin.com/posts/jane-doe_activity-7001234567890"
+)
+
+// linkedInJSONHandler serves one JSON body for any path, matching the
+// previous inline handlers, which also ignored the request path.
+func linkedInJSONHandler(payload any) gohttp.HandlerFunc {
+	return func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload)
+	}
+}
+
+func linkedInProfileFixture() mockLinkedInProfile {
+	return mockLinkedInProfile{
+		Username:  linkedInUsername,
+		FullName:  "Jane Doe",
+		Headline:  "Principal Engineer at Acme Corp",
+		About:     "Building distributed systems for 10 years.",
+		Location:  "San Francisco, CA",
+		Skills:    []string{"Go", "Kubernetes", "Distributed Systems"},
+		SourceURL: linkedInProfileURL,
+	}
+}
+
+func linkedInPostFixture() mockLinkedInPost {
+	return mockLinkedInPost{
+		PostID:    linkedInPostID,
+		Author:    "Jane Doe",
+		Text:      linkedInPostText,
+		Timestamp: "2026-02-01T09:00:00Z",
+		Likes:     147,
+		SourceURL: linkedInPostSourceURL,
+	}
+}
+
+func linkedInCassettes() []captureFixture {
+	return []captureFixture{
+		{
+			Cassette: "us0204_profile_attribution",
+			Handler:  linkedInJSONHandler(linkedInProfileFixture()),
+			Path:     fmt.Sprintf("/profile/%s", linkedInUsername),
+		},
+		{
+			Cassette: "us0204_post_attribution",
+			Handler:  linkedInJSONHandler(linkedInPostFixture()),
+			Path:     fmt.Sprintf("/post/%s", linkedInPostID),
+		},
+	}
+}
+
+// TestUS0204_RecordCassettes re-records the US-0204 cassettes. No-op
+// unless XRR_MODE=record; needs no Postgres/Redis.
+func TestUS0204_RecordCassettes(t *testing.T) {
+	recordCaptureFixtures(t, linkedInCassettes())
+}
+
+// ---------------------------------------------------------------------------
 // US-0204 Tests
 // ---------------------------------------------------------------------------
 
@@ -135,21 +217,12 @@ func TestUS0204_ProfileContentStoredWithAttribution(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	const username = "jane-doe"
-	const sourceURL = "https://www.linkedin.com/in/jane-doe"
+	const username = linkedInUsername
+	const sourceURL = linkedInProfileURL
 
-	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockLinkedInProfile{
-			Username:  username,
-			FullName:  "Jane Doe",
-			Headline:  "Principal Engineer at Acme Corp",
-			About:     "Building distributed systems for 10 years.",
-			Location:  "San Francisco, CA",
-			Skills:    []string{"Go", "Kubernetes", "Distributed Systems"},
-			SourceURL: sourceURL,
-		})
-	}))
+	// Replay answers from the cassette; the fixture server only matters
+	// when re-recording.
+	srv := httptest.NewServer(linkedInJSONHandler(linkedInProfileFixture()))
 	defer srv.Close()
 
 	env := startTestEnv(t)
@@ -158,7 +231,11 @@ func TestUS0204_ProfileContentStoredWithAttribution(t *testing.T) {
 	env.svc.Pipes.Upsert("social.linkedin.profile", &pipeline.Pipeline{
 		PipelineName: "social.linkedin.profile",
 		Steps: []pipeline.PipelineStep{
-			&linkedInProfileFetchStep{scraperURL: srv.URL, username: username},
+			&linkedInProfileFetchStep{
+				scraperURL: srv.URL,
+				username:   username,
+				client:     captureClient(t, "us0204_profile_attribution"),
+			},
 		},
 	})
 
@@ -195,21 +272,11 @@ func TestUS0204_PostContentStoredWithAttribution(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	const postID = "7001234567890"
-	const wantText = "Excited to share our latest work on distributed tracing."
-	const sourceURL = "https://www.linkedin.com/posts/jane-doe_activity-7001234567890"
+	const postID = linkedInPostID
+	const wantText = linkedInPostText
+	const sourceURL = linkedInPostSourceURL
 
-	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockLinkedInPost{
-			PostID:    postID,
-			Author:    "Jane Doe",
-			Text:      wantText,
-			Timestamp: "2026-02-01T09:00:00Z",
-			Likes:     147,
-			SourceURL: sourceURL,
-		})
-	}))
+	srv := httptest.NewServer(linkedInJSONHandler(linkedInPostFixture()))
 	defer srv.Close()
 
 	env := startTestEnv(t)
@@ -218,7 +285,11 @@ func TestUS0204_PostContentStoredWithAttribution(t *testing.T) {
 	env.svc.Pipes.Upsert("social.linkedin.post", &pipeline.Pipeline{
 		PipelineName: "social.linkedin.post",
 		Steps: []pipeline.PipelineStep{
-			&linkedInPostFetchStep{scraperURL: srv.URL, postID: postID},
+			&linkedInPostFetchStep{
+				scraperURL: srv.URL,
+				postID:     postID,
+				client:     captureClient(t, "us0204_post_attribution"),
+			},
 		},
 	})
 

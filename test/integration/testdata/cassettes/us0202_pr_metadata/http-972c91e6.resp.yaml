@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: 972c91e6
+recorded_at: "2026-09-20T01:31:50Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"number":123,"title":"net/http: add structured logging support","body":"This PR adds slog integration to net/http server.","state":"open","additions":342,"deletions":89}

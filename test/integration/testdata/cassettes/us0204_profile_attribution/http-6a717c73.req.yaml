@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: 6a717c73
+recorded_at: "2026-09-20T01:32:26Z"
+payload:
+    method: GET
+    url: http://127.0.0.1:51143/profile/jane-doe
