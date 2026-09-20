@@ -368,8 +368,10 @@ For development work:
 git clone https://github.com/ideacrafterslabs/ctxt.git
 cd ctxt
 
-# Install development dependencies
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+# Install the pinned toolchain (Go + golangci-lint) from mise.toml.
+# Use this rather than `go install ...@latest`: lint rules drift between
+# versions, so an unpinned linter makes local output no evidence about CI.
+mise install
 
 # Build with debug symbols
 go build -gcflags="all=-N -l" -o bin/ctxt cmd/ctxt/main.go

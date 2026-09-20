@@ -11,10 +11,37 @@ on:
       - next
   workflow_dispatch:
 
-env:
-  GO_VERSION: '1.26'
-
 jobs:
+  # mise.toml is the single source of truth for tool versions. This job parses
+  # it once and every other job consumes the outputs, so bumping a version in
+  # mise.toml is the only edit needed. scripts/check-toolchain-pins.sh gates the
+  # declarations mise cannot reach (Dockerfile base images, go.mod directive).
+  toolchain:
+    name: Resolve toolchain pins
+    runs-on: ubuntu-latest
+    outputs:
+      go-version: ${{ steps.pins.outputs.go-version }}
+      golangci-version: ${{ steps.pins.outputs.golangci-version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Read pins from mise.toml
+        id: pins
+        run: |
+          go_version=$(sed -n 's/^go = "\(.*\)"$/\1/p' mise.toml)
+          golangci_version=$(sed -n 's/^"go:.*golangci-lint" = "\(.*\)"$/\1/p' mise.toml)
+          if [ -z "$go_version" ] || [ -z "$golangci_version" ]; then
+            echo "mise.toml is missing an exact go or golangci-lint pin" >&2
+            exit 1
+          fi
+          echo "go-version=$go_version" >>"$GITHUB_OUTPUT"
+          echo "golangci-version=$golangci_version" >>"$GITHUB_OUTPUT"
+          echo "go=$go_version golangci-lint=$golangci_version"
+
+      - name: Verify every toolchain declaration agrees
+        run: scripts/check-toolchain-pins.sh
+
   # ── DISABLED: secret scanning runs locally ───────────────────────────────
   # gitleaks-action requires a license for organization-owned repos and this
   # repo is org-owned, so the job fails with "missing gitleaks license"
@@ -49,6 +76,7 @@ jobs:
   #
   lint:
     name: Lint
+    needs: toolchain
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -57,7 +85,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
       # go.mod ships local-path replace directives for hop.top/kit and
@@ -68,7 +96,7 @@ jobs:
         run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
 
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v${{ needs.toolchain.outputs.golangci-version }}
 
       - name: Run golangci-lint
         run: golangci-lint run --timeout=5m --verbose
@@ -86,6 +114,7 @@ jobs:
 
   security:
     name: Security Scan
+    needs: toolchain
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -97,7 +126,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
       # go.mod ships local-path replace directives for hop.top/kit and
@@ -153,11 +182,11 @@ jobs:
 
   test:
     name: Test
+    needs: toolchain
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        go-version: ['1.26']
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -165,7 +194,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
       # go.mod ships local-path replace directives for hop.top/kit and
@@ -195,6 +224,7 @@ jobs:
 
   integration:
     name: Integration Tests
+    needs: toolchain
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next'
     services:
@@ -231,7 +261,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
       # go.mod ships local-path replace directives for hop.top/kit and
@@ -265,7 +295,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     # secret-scan removed from needs while the gitleaks job is disabled above
-    needs: [lint, security, test]
+    needs: [toolchain, lint, security, test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -273,7 +303,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
       # go.mod ships local-path replace directives for hop.top/kit and

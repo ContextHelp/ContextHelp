@@ -32,11 +32,31 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
-env:
-  GO_VERSION: '1.26'
 
 jobs:
+  # mise.toml is the single source of truth for tool versions; see ci.yml.
+  toolchain:
+    name: Resolve toolchain pins
+    runs-on: ubuntu-latest
+    outputs:
+      go-version: ${{ steps.pins.outputs.go-version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Read pins from mise.toml
+        id: pins
+        run: |
+          go_version=$(sed -n 's/^go = "\(.*\)"$/\1/p' mise.toml)
+          if [ -z "$go_version" ]; then
+            echo "mise.toml is missing an exact go pin" >&2
+            exit 1
+          fi
+          echo "go-version=$go_version" >>"$GITHUB_OUTPUT"
+          echo "go=$go_version"
+
   govulncheck:
+    needs: toolchain
     name: govulncheck
     runs-on: ubuntu-latest
     steps:
@@ -46,7 +66,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
 
@@ -59,6 +79,7 @@ jobs:
         run: govulncheck -tags fts5 ./...
 
   nancy:
+    needs: toolchain
     name: nancy (Sonatype OSS Index)
     runs-on: ubuntu-latest
     steps:
@@ -68,7 +89,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
 
