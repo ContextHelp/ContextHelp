@@ -322,9 +322,13 @@ install-hooks:
 	@git config core.hooksPath .githooks
 	@chmod +x .githooks/*
 	@echo "✓ hooks installed (core.hooksPath -> .githooks)"
-	@echo "  pre-commit: gitleaks secret scan on staged changes"
+	@echo "  pre-commit: gitleaks secret scan, then the lint gate"
+	@echo "              (.pre-commit-config.yaml, scoped to staged files)"
 	@echo "  pre-push:   chains to your global pre-push hook, if any"
 	@command -v gitleaks >/dev/null 2>&1 || echo "  NOTE: gitleaks not installed; run 'make install-gitleaks'"
+	@command -v pre-commit >/dev/null 2>&1 \
+		&& pre-commit install-hooks \
+		|| echo "  NOTE: pre-commit not installed; lint gate will be skipped. See https://pre-commit.com"
 
 ## install-gitleaks: Install the gitleaks secret scanner locally
 ##

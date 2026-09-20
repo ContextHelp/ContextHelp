@@ -1,5 +1,5 @@
 #!/bin/sh
-# Secret scanning on staged changes.
+# Secret scanning, then the lint gate, on staged changes.
 #
 # gitleaks runs here rather than in CI: gitleaks-action needs a paid-tier
 # license for organization-owned repos, and this repo moved to an org. The
@@ -9,11 +9,22 @@
 # Install with: make install-hooks
 # Bypass once (use sparingly): git commit --no-verify
 
-if ! command -v gitleaks >/dev/null 2>&1; then
+# `gitleaks git --staged` is the 8.x form; `protect` is the deprecated alias.
+if command -v gitleaks >/dev/null 2>&1; then
+	gitleaks git --staged --config .gitleaks.toml --redact --verbose || exit 1
+else
 	echo "gitleaks not found; skipping secret scan." >&2
 	echo "Install it with: make install-gitleaks" >&2
-	exit 0
 fi
 
-# `gitleaks git --staged` is the 8.x form; `protect` is the deprecated alias.
-gitleaks git --staged --config .gitleaks.toml --redact --verbose
+# Lint gate (.pre-commit-config.yaml), scoped to the staged files.
+#
+# pre-commit refuses to `install` while core.hooksPath is set, and this repo
+# needs that setting for the scan above — so it is chained here instead.
+# Skipped silently when pre-commit is not installed.
+if command -v pre-commit >/dev/null 2>&1; then
+	exec pre-commit hook-impl \
+		--hook-type=pre-commit \
+		--hook-dir "$(dirname "$0")" \
+		-- "$@"
+fi

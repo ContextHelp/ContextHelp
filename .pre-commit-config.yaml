@@ -1,0 +1,76 @@
+# Pre-commit hooks mirroring the CI lint gate (.github/workflows/ci.yml).
+#
+# INSTALL:
+#   make install-hooks
+#
+# Do NOT run `pre-commit install`: it refuses to run while core.hooksPath is
+# set, and this repo sets it to .githooks for the gitleaks scan. Instead
+# .githooks/pre-commit chains to `pre-commit hook-impl` after that scan, so
+# both gates run from a single hook.
+#
+# ─── Scoping: why these hooks are not repo-wide ──────────────────────────────
+#
+# This tree carries a large pre-existing lint backlog (hundreds of golangci
+# findings in internal/ambient alone; 184 files fail `gofmt -l .`). A hook that
+# ran the full CI gate would fail on every commit regardless of what changed,
+# and would be disabled within a day.
+#
+# So each hook is scoped to what you are actually committing:
+#   - gofmt / go vet   — run against the staged files (pre-commit passes them)
+#   - golangci-lint    — staged packages, filtered by --new-from-rev=HEAD so
+#                        only findings YOUR diff introduces fail the commit
+#
+# Net effect: touching a file that already has findings does not block you;
+# adding a new finding does.
+#
+# Bypass once (sparingly): git commit --no-verify
+# Check the whole repo on demand: pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+        # Compose and workflow files use YAML features the default parser
+        # rejects; they are covered by actionlint and compose config below.
+        exclude: ^(docker-compose.*\.yml|docker/docker-compose\.yml|\.github/workflows/.*)$
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: check-merge-conflict
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+
+  - repo: local
+    hooks:
+      # CI fails when `gofmt -l .` prints anything. Scoped here to the staged
+      # files so the pre-existing backlog stays out of your way.
+      - id: gofmt
+        name: gofmt (staged files)
+        entry: scripts/hooks/gofmt-staged.sh
+        language: script
+        types: [go]
+
+      # CI runs `go vet -tags fts5 ./...`. Vet analyses whole packages, so the
+      # hook maps the staged files to their packages.
+      - id: go-vet
+        name: go vet (staged packages)
+        entry: scripts/hooks/go-vet-staged.sh
+        language: script
+        types: [go]
+        pass_filenames: true
+        require_serial: true
+
+      # CI runs golangci-lint at the pinned version. --new-from-rev=HEAD means
+      # only findings introduced by this commit fail it.
+      - id: golangci-lint
+        name: golangci-lint (new findings only)
+        entry: scripts/hooks/golangci-staged.sh
+        language: script
+        types: [go]
+        pass_filenames: true
+        require_serial: true
