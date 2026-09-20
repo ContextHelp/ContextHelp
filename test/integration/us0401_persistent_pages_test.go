@@ -61,20 +61,16 @@ func TestUS0401_IngestCreatesEntityPage(t *testing.T) {
 	}
 
 	// Wait for jobs to complete.
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
+	pollUntil(t, func() bool {
 		allJobs, _, _ := env.svc.ListJobs(ctx, storage.JobFilter{Limit: 100})
 		done := 0
 		for _, j := range allJobs {
-			if j.Status == storage.JobCompleted || j.Status == storage.JobFailed {
+			if jobTerminal(j.Status) {
 				done++
 			}
 		}
-		if done >= 3 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+		return done >= 3
+	})
 
 	// Verify entity page exists.
 	page, err := env.svc.GetEntityPage(ctx, entityURI.String())

@@ -123,14 +123,10 @@ func TestUS0400_FanOutCreatesEdges(t *testing.T) {
 
 	// Fan-out runs after job completion; poll for reverse edges.
 	var rev []*storage.Edge
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
+	pollUntil(t, func() bool {
 		rev, _ = env.svc.Store.Edges().ListTo(ctx, "object", job.ResultID)
-		if len(rev) >= 3 {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+		return len(rev) >= 3
+	})
 
 	// Forward edges: object -> entity (3 from worker + fan-out dedup).
 	fwd, err := env.svc.Store.Edges().ListFrom(ctx, "object", job.ResultID)
@@ -180,14 +176,10 @@ func TestUS0400_FanOutIdempotent(t *testing.T) {
 
 	// Wait for fan-out to complete.
 	var rev1 []*storage.Edge
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
+	pollUntil(t, func() bool {
 		rev1, _ = env.svc.Store.Edges().ListTo(ctx, "object", job1.ResultID)
-		if len(rev1) > 0 {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+		return len(rev1) > 0
+	})
 	initialCount := len(rev1)
 
 	// Run fan-out again on the same object.
@@ -231,23 +223,17 @@ func TestUS0400_FanOutAuditLog(t *testing.T) {
 	ctx := context.Background()
 
 	// Wait for fan-out to complete (runs after job completion).
-	var found bool
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
+	found := pollUntil(t, func() bool {
 		history, err := env.svc.Store.AuditLog().GetObjectHistory(ctx, job.ResultID)
 		require.NoError(t, err)
 		for _, entry := range history {
 			if entry.EventType == "fanout.completed" {
-				found = true
 				assert.Equal(t, "system", entry.Actor)
-				break
+				return true
 			}
 		}
-		if found {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+		return false
+	})
 	assert.True(t, found, "should have a fanout.completed audit entry")
 }
 
@@ -324,20 +310,15 @@ func TestUS0400_FanOutCompletesInTime(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// waitForJob already has a 30s deadline.
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
 
 	// Verify fan-out completed by checking reverse edges.
 	ctx := context.Background()
 	var rev []*storage.Edge
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
+	pollUntil(t, func() bool {
 		rev, _ = env.svc.Store.Edges().ListTo(ctx, "object", job.ResultID)
-		if len(rev) >= 2 {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+		return len(rev) >= 2
+	})
 	assert.Len(t, rev, 2)
 }
