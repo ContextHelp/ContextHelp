@@ -195,10 +195,12 @@ gosec:
 	@if command -v gosec >/dev/null 2>&1; then \
 		gosec -tags fts5 -severity medium -confidence medium \
 			-exclude G104,G304,G307 \
+			-exclude-rules "cmd/dpkms/cmd/install_launchd.go:G301,G306" \
+			-exclude-dir vendor -exclude-dir docs -exclude-dir test/fixtures \
 			-fmt text ./...; \
 	else \
 		echo "gosec not installed. Install with:"; \
-		echo "  go install github.com/securego/gosec/v2/cmd/gosec@latest"; \
+		echo "  go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0"; \
 		exit 1; \
 	fi
 

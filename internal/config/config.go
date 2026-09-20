@@ -1290,7 +1290,7 @@ func EnsureConfigDir(bin string) error {
 		return fmt.Errorf("failed to determine config path")
 	}
 	configDir := filepath.Dir(configPath)
-	return os.MkdirAll(configDir, 0755)
+	return os.MkdirAll(configDir, 0750)
 }
 
 // EnsureDataDir ensures the data directory exists.
@@ -1304,7 +1304,7 @@ func EnsureDataDir() error {
 			return fmt.Errorf("data dir: %w", err)
 		}
 	}
-	return os.MkdirAll(dataDir, 0755)
+	return os.MkdirAll(dataDir, 0750)
 }
 
 // RunDir returns the directory used for runtime files (pidfiles).
@@ -1319,7 +1319,7 @@ func RunDir() (string, error) {
 		}
 	}
 	dir := filepath.Join(base, "run")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return "", fmt.Errorf("run dir: %w", err)
 	}
 	return dir, nil

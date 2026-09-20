@@ -185,7 +185,7 @@ func runInstanceUse(cmd *cobra.Command, args []string) error {
 	}
 
 	// Normalise to name so the state file is stable across port reassignments.
-	if err := os.WriteFile(stateFile, []byte(found.Name), 0644); err != nil {
+	if err := os.WriteFile(stateFile, []byte(found.Name), 0600); err != nil {
 		return fmt.Errorf("write state file: %w", err)
 	}
 	fmt.Printf("Current instance set to %q (port %d, db %s)\n", found.Name, found.Port, found.DBPath)

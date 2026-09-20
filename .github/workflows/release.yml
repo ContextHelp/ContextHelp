@@ -120,7 +120,7 @@ jobs:
           cache: true
 
       - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
 
       - name: Run gosec (fail on medium+ severity)
         # -tags fts5 is required, not cosmetic: without it 34 packages fail to
@@ -130,11 +130,17 @@ jobs:
         # load ("invalid character '#'") and the step exits 1 without scanning.
         # Every setting it carried is passed as a flag below instead.
         run: |
+          # install_launchd.go writes to ~/Library/LaunchAgents and
+          # ~/.config/systemd/user. launchd and systemd must traverse those
+          # directories and read the unit file, so 0755/0644 is required there
+          # rather than an oversight. Scoped to the one file so both rules stay
+          # live everywhere else.
           gosec \
             -tags fts5 \
             -severity medium \
             -confidence medium \
             -exclude G104,G304,G307 \
+            -exclude-rules "cmd/dpkms/cmd/install_launchd.go:G301,G306" \
             -exclude-dir vendor \
             -exclude-dir docs \
             -exclude-dir test/fixtures \

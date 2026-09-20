@@ -81,7 +81,7 @@ func restoreFromArchive(opts RestoreOpts) (RestoreResult, error) {
 				result.DBSize = hdr.Size
 				continue
 			}
-			if err := os.MkdirAll(filepath.Dir(opts.DBPath), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(opts.DBPath), 0750); err != nil {
 				return RestoreResult{}, fmt.Errorf("restore: mkdir for db: %w", err)
 			}
 			if err := writeFile(opts.DBPath, tr, hdr.FileInfo().Mode()); err != nil {
@@ -99,7 +99,7 @@ func restoreFromArchive(opts RestoreOpts) (RestoreResult, error) {
 				result.ConfigCount++
 				continue
 			}
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(target), 0750); err != nil {
 				return RestoreResult{}, fmt.Errorf("restore: mkdir config: %w", err)
 			}
 			if err := writeFile(target, tr, hdr.FileInfo().Mode()); err != nil {
@@ -116,7 +116,7 @@ func restoreFromArchive(opts RestoreOpts) (RestoreResult, error) {
 				result.BlobCount++
 				continue
 			}
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(target), 0750); err != nil {
 				return RestoreResult{}, fmt.Errorf("restore: mkdir blob: %w", err)
 			}
 			if err := writeFile(target, tr, 0644); err != nil {
@@ -155,7 +155,7 @@ func restoreFromDir(opts RestoreOpts) (RestoreResult, error) {
 	if info, err := os.Stat(dbSrc); err == nil {
 		result.DBSize = info.Size()
 		if !opts.DryRun {
-			if err := os.MkdirAll(filepath.Dir(opts.DBPath), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(opts.DBPath), 0750); err != nil {
 				return RestoreResult{}, fmt.Errorf("restore: mkdir db: %w", err)
 			}
 			if err := copyFile(dbSrc, opts.DBPath); err != nil {
@@ -178,7 +178,7 @@ func restoreFromDir(opts RestoreOpts) (RestoreResult, error) {
 				if opts.DryRun {
 					return nil
 				}
-				os.MkdirAll(filepath.Dir(target), 0755)
+				os.MkdirAll(filepath.Dir(target), 0750)
 				return copyFile(path, target)
 			})
 		}
@@ -198,7 +198,7 @@ func restoreFromDir(opts RestoreOpts) (RestoreResult, error) {
 			if opts.DryRun {
 				return nil
 			}
-			os.MkdirAll(filepath.Dir(target), 0755)
+			os.MkdirAll(filepath.Dir(target), 0750)
 			return copyFile(path, target)
 		})
 	}

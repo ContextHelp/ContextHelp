@@ -62,7 +62,7 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 		if !os.IsNotExist(err) {
 			return BackupResult{}, fmt.Errorf("backup: stat output dir: %w", err)
 		}
-		if err := os.MkdirAll(outDir, 0755); err != nil {
+		if err := os.MkdirAll(outDir, 0750); err != nil {
 			return BackupResult{}, fmt.Errorf("backup: create output dir: %w", err)
 		}
 	} else if info.IsDir() {
