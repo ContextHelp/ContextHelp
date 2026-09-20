@@ -25,8 +25,8 @@ import (
 //   - GitHub.EnableGist          → "github.gist"
 //   - GitHub.EnableSecurityAdvisory → "github.advisory"
 //   - Roster.<each>             → matching IDXxxx const from
-//                                  the strategy package (e.g.
-//                                  "GoogleSearchStrategy", "XStrategy")
+//     the strategy package (e.g.
+//     "GoogleSearchStrategy", "XStrategy")
 //
 // Pointer-bool roster gates: nil = default-enabled (true). Operators
 // set explicit `false` in YAML to disable.

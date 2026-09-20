@@ -73,8 +73,8 @@ func TestDeferredGraphQLMethods_ReturnNil(t *testing.T) {
 
 func TestDeferredGraphQLMethods_NameSliceMatches(t *testing.T) {
 	want := map[string]bool{
-		"ListOwnerPinned":    true,
-		"ListSponsored":      true,
+		"ListOwnerPinned":     true,
+		"ListSponsored":       true,
 		"ListSimilarSponsors": true,
 	}
 	if len(DeferredGraphQLMethods) != len(want) {

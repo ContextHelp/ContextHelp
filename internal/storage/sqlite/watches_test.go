@@ -15,7 +15,7 @@ func watchCfg(id, path string) *storage.WatchConfig {
 		ID: id, Path: path, Mode: "generic",
 		IncludePatterns: []string{"**/*.md"},
 		ExcludePatterns: []string{"**/.git/**"},
-		DebounceMS: 500, Status: "active",
+		DebounceMS:      500, Status: "active",
 		CreatedAt: now, UpdatedAt: now,
 	}
 }

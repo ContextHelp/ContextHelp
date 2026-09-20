@@ -37,24 +37,24 @@ func TestUS0306_OneDriveListFolderItems(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	items := []map[string]any{
 		{
-			"id":   "item-001",
-			"name": "Meeting Notes.docx",
-			"file": map[string]any{"mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
-			"size": float64(20480),
+			"id":                   "item-001",
+			"name":                 "Meeting Notes.docx",
+			"file":                 map[string]any{"mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+			"size":                 float64(20480),
 			"lastModifiedDateTime": now.Format(time.RFC3339),
-			"webUrl": "https://onedrive.live.com/item-001",
+			"webUrl":               "https://onedrive.live.com/item-001",
 			"parentReference": map[string]any{
 				"driveId": "drive-abc",
 				"path":    "/root:/Documents",
 			},
 		},
 		{
-			"id":   "item-002",
-			"name": "Budget.xlsx",
-			"file": map[string]any{"mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
-			"size": float64(10240),
+			"id":                   "item-002",
+			"name":                 "Budget.xlsx",
+			"file":                 map[string]any{"mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+			"size":                 float64(10240),
 			"lastModifiedDateTime": now.Format(time.RFC3339),
-			"webUrl": "https://onedrive.live.com/item-002",
+			"webUrl":               "https://onedrive.live.com/item-002",
 			"parentReference": map[string]any{
 				"driveId": "drive-abc",
 				"path":    "/root:/Documents",

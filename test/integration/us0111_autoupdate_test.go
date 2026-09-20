@@ -108,7 +108,7 @@ func TestUS0111_AutoUpdate_UpgradeWhenETagChanges(t *testing.T) {
 		RegistryURL: srv.URL,
 		Manifest:    &oldManifest,
 		LastFetched: time.Now().Add(-1 * time.Hour),
-		ETag:        "etag-v1",  // stale
+		ETag:        "etag-v1", // stale
 		AutoUpdate:  true,
 	}
 	err := env.svc.Store.Registries().CacheManifest(t.Context(), cache)

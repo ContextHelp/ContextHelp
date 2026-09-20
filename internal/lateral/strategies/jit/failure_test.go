@@ -179,4 +179,3 @@ func TestEmitFetchFailures_PublisherErrorDoesNotAbortBatch(t *testing.T) {
 		t.Fatalf("publisher invoked %d times, want 2 (must not abort batch on one bus error)", len(pub.snapshot()))
 	}
 }
-

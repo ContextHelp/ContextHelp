@@ -22,9 +22,9 @@ type NotesStrategy struct {
 
 func NewNotes(c SubstackClient) *NotesStrategy { return &NotesStrategy{Client: c} }
 
-func (*NotesStrategy) ID() string                    { return IDNotes }
+func (*NotesStrategy) ID() string                     { return IDNotes }
 func (*NotesStrategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*NotesStrategy) Preconditions() []string       { return nil }
+func (*NotesStrategy) Preconditions() []string        { return nil }
 
 func (*NotesStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) lateral.AppliesResult {
 	d := customdomain.Detect(ev.SourceURL, hintsFromEvent(ev))

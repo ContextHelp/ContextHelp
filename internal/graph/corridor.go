@@ -11,10 +11,10 @@ import (
 // Corridor is a background job that periodically validates graph consistency.
 // It checks for orphaned edges and logs violations; does not auto-repair.
 type Corridor struct {
-	es       storage.EntityStore
+	es        storage.EntityStore
 	edgeStore storage.EdgeStore
-	interval time.Duration
-	log      *slog.Logger
+	interval  time.Duration
+	log       *slog.Logger
 }
 
 // NewCorridor creates a Corridor. interval controls how often the check runs.

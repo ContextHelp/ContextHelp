@@ -35,23 +35,23 @@ func TestUS0051_VectorSearchReturnsSimilarObjects(t *testing.T) {
 
 	// Object with embedding similar to the query vector.
 	similar := &storage.KnowledgeObject{
-		ID:           "sem-sim-01",
-		Type:         "text",
-		Summaries:    []string{"neural network deep learning transformer"},
-		Embeddings:   makeEmbedding(dim, 0.99),
+		ID:            "sem-sim-01",
+		Type:          "text",
+		Summaries:     []string{"neural network deep learning transformer"},
+		Embeddings:    makeEmbedding(dim, 0.99),
 		VectorIndexed: true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	// Object with orthogonal embedding (dissimilar).
 	dissimilar := &storage.KnowledgeObject{
-		ID:           "sem-dis-01",
-		Type:         "text",
-		Summaries:    []string{"relational database normalisation forms"},
-		Embeddings:   makeEmbedding(dim, 0.01),
+		ID:            "sem-dis-01",
+		Type:          "text",
+		Summaries:     []string{"relational database normalisation forms"},
+		Embeddings:    makeEmbedding(dim, 0.01),
 		VectorIndexed: true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 
 	require.NoError(t, env.svc.Store.Objects().Create(ctx, similar))
@@ -79,12 +79,12 @@ func TestUS0051_VectorSearchSkipsObjectsWithoutEmbeddings(t *testing.T) {
 	const dim = 4
 
 	withEmbedding := &storage.KnowledgeObject{
-		ID:           "sem-has-01",
-		Type:         "text",
-		Embeddings:   makeEmbedding(dim, 1.0),
+		ID:            "sem-has-01",
+		Type:          "text",
+		Embeddings:    makeEmbedding(dim, 1.0),
 		VectorIndexed: true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	withoutEmbedding := &storage.KnowledgeObject{
 		ID:        "sem-none-01",
@@ -117,12 +117,12 @@ func TestUS0051_VectorSearchLimitHonoured(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		id := "sem-lim-" + string(rune('a'+i))
 		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
-			ID:           id,
-			Type:         "text",
-			Embeddings:   makeEmbedding(dim, float32(0.5+float64(i)*0.1)),
+			ID:            id,
+			Type:          "text",
+			Embeddings:    makeEmbedding(dim, float32(0.5+float64(i)*0.1)),
 			VectorIndexed: true,
-			CreatedAt:    now,
-			UpdatedAt:    now,
+			CreatedAt:     now,
+			UpdatedAt:     now,
 		}))
 	}
 

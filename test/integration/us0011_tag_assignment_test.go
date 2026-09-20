@@ -23,7 +23,7 @@ import (
 // vocabTagAssignmentStep simulates constrained tag assignment from a vocabulary.
 type vocabTagAssignmentStep struct {
 	pipeline.BaseContract
-	vocabulary  []string // allowed tag set
+	vocabulary   []string // allowed tag set
 	assignedTags []string // subset of vocabulary to assign
 }
 

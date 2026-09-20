@@ -19,9 +19,9 @@ type SearchStrategy struct {
 
 func NewSearch(c GoogleClient) *SearchStrategy { return &SearchStrategy{Client: c, ResultCap: 5} }
 
-func (*SearchStrategy) ID() string                    { return IDSearch }
+func (*SearchStrategy) ID() string                     { return IDSearch }
 func (*SearchStrategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*SearchStrategy) Preconditions() []string       { return nil }
+func (*SearchStrategy) Preconditions() []string        { return nil }
 
 // Applies returns specificity 3 on google.com/search; 0 otherwise.
 func (*SearchStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) lateral.AppliesResult {

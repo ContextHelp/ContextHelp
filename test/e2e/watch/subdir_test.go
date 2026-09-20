@@ -176,4 +176,3 @@ func freePort(t *testing.T) int {
 	require.NoError(t, l.Close())
 	return port
 }
-

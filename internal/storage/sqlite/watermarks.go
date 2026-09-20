@@ -14,7 +14,8 @@ import (
 type watermarkStore struct{ db *sql.DB }
 
 // GetWatermark returns last_synced_at for federationName or epoch when missing.
-// Empty stored values (legacy default '') are also normalised to epoch.
+// Empty stored values (the legacy empty-string default) are also normalised
+// to epoch.
 func (s *watermarkStore) GetWatermark(ctx context.Context, federationName string) (time.Time, error) {
 	var stored string
 	err := s.db.QueryRowContext(ctx,

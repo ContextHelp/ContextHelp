@@ -7,20 +7,20 @@
 //
 // OS clipboard reading is abstracted behind the Reader interface so:
 //
-//	1. The first ctxd build can ship without the cgo-required
-//	   golang.design/x/clipboard binding (which adds platform-specific
-//	   build complexity); a polling Reader stub does the right shape.
-//	2. Tests inject a fakeReader that drives clipboard contents without
-//	   touching the OS.
-//	3. Future Wayland/X11/Windows-specific bindings can replace the macOS
-//	   default behind build tags without restructuring the source.
+//  1. The first ctxd build can ship without the cgo-required
+//     golang.design/x/clipboard binding (which adds platform-specific
+//     build complexity); a polling Reader stub does the right shape.
+//  2. Tests inject a fakeReader that drives clipboard contents without
+//     touching the OS.
+//  3. Future Wayland/X11/Windows-specific bindings can replace the macOS
+//     default behind build tags without restructuring the source.
 //
 // Routing per ADR-066 + US-0211:
 //
-//	1. Valid http(s) URL → SuggestedPipeline=url.generic, Kind=KindURL
-//	2. Fenced code block (``` prefix) → SuggestedPipeline=text.short, Kind=KindText
-//	3. Length ≥ MinLength chars → SuggestedPipeline=text.short, Kind=KindText
-//	4. Otherwise: skip (no RawEvent emitted)
+//  1. Valid http(s) URL → SuggestedPipeline=url.generic, Kind=KindURL
+//  2. Fenced code block (``` prefix) → SuggestedPipeline=text.short, Kind=KindText
+//  3. Length ≥ MinLength chars → SuggestedPipeline=text.short, Kind=KindText
+//  4. Otherwise: skip (no RawEvent emitted)
 //
 // Fingerprint = SHA-256 hex of normalized (trimmed) payload bytes. Used by
 // the substrate's enqueue-boundary dedup to drop re-copies of identical
@@ -83,9 +83,9 @@ type Config struct {
 // Source satisfies ambient.Source; the Runner consumes it via
 // runner.Register(clipboard.New(...)).
 type Source struct {
-	reader   Reader
-	cfg      Config
-	events   chan ambient.RawEvent
+	reader    Reader
+	cfg       Config
+	events    chan ambient.RawEvent
 	publisher ambient.Publisher
 
 	mu       sync.Mutex

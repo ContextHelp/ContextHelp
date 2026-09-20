@@ -23,7 +23,7 @@ type codeFixture struct {
 // codebaseFixtures is a minimal multi-file codebase for analysis tests.
 var codebaseFixtures = []codeFixture{
 	{
-		name:    "main.go",
+		name: "main.go",
 		content: `package main
 
 import "fmt"

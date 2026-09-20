@@ -82,7 +82,7 @@ func loadPassphraseFromKeychain() (string, error) {
 // When confirm=true, prompts twice and returns an error if they differ.
 func promptPassphrase(confirm bool) (string, error) {
 	if !isTerminal(int(os.Stdin.Fd())) { // #nosec G115 -- Fd() fits in int on supported 64-bit platforms
-		return "", fmt.Errorf("bundle: passphrase: no passphrase source available " +
+		return "", fmt.Errorf("bundle: passphrase: no passphrase source available "+
 			"(set %s or use --passphrase)", PassphraseEnvVar)
 	}
 

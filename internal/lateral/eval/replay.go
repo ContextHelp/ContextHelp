@@ -133,10 +133,10 @@ type ReplayReport struct {
 // output. Errors records per-strategy failures so the metric package
 // can distinguish "strategy emitted nothing" from "strategy crashed."
 type Result struct {
-	Fixture    Fixture                `json:"fixture"`
-	Strategies []string               `json:"strategies"`
-	Candidates []lateral.Candidate    `json:"candidates"`
-	Errors     map[string]string      `json:"errors,omitempty"`
+	Fixture    Fixture             `json:"fixture"`
+	Strategies []string            `json:"strategies"`
+	Candidates []lateral.Candidate `json:"candidates"`
+	Errors     map[string]string   `json:"errors,omitempty"`
 }
 
 // Replay loads fixtures from path and dispatches each event through

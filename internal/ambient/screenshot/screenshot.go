@@ -8,11 +8,11 @@
 // always-on / interval-poll mode in v1.
 //
 // Capture is abstracted behind the Capturer interface so:
-//   1. Tests inject a fakeCapturer.
-//   2. Per-OS implementations (ScreenCaptureKit on macOS, Graphics
-//      Capture on Windows, xdg-desktop-portal Screenshot on Linux Wayland,
-//      XGetImage on X11) plug in behind build tags.
-//   3. Substrate is testable without OS permission prompts.
+//  1. Tests inject a fakeCapturer.
+//  2. Per-OS implementations (ScreenCaptureKit on macOS, Graphics
+//     Capture on Windows, xdg-desktop-portal Screenshot on Linux Wayland,
+//     XGetImage on X11) plug in behind build tags.
+//  3. Substrate is testable without OS permission prompts.
 //
 // The Source emits a RawEvent with the captured image file path (not the
 // image bytes themselves) so the substrate's image.ocr pipeline can read
@@ -36,8 +36,8 @@ import (
 )
 
 const (
-	SourceName     = "screenshot"
-	DefaultMinOCR  = 80
+	SourceName    = "screenshot"
+	DefaultMinOCR = 80
 )
 
 // ErrNotSupported is returned by Capturer implementations on platforms
@@ -123,14 +123,14 @@ type Config struct {
 
 // Source is the screenshot-on-demand ambient source.
 type Source struct {
-	capturer Capturer
-	cfg      Config
-	events   chan ambient.RawEvent
+	capturer  Capturer
+	cfg       Config
+	events    chan ambient.RawEvent
 	publisher ambient.Publisher
 
-	mu       sync.Mutex
-	started  bool
-	stopped  bool
+	mu      sync.Mutex
+	started bool
+	stopped bool
 }
 
 // New constructs a Source.

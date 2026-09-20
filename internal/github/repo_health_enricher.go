@@ -64,11 +64,11 @@ func (e *RepoHealthEnricher) Enrich(snap *RepoSnapshot) RepoHealth {
 // Weights: velocity 40 %, recency 40 %, issue ratio 20 %.
 func computeActivityScore(snap *RepoSnapshot, now time.Time) float64 {
 	const (
-		wVelocity  = 0.40
-		wRecency   = 0.40
+		wVelocity   = 0.40
+		wRecency    = 0.40
 		wIssueRatio = 0.20
 
-		maxStarsPerYear = 1000.0
+		maxStarsPerYear  = 1000.0
 		maxDaysSincePush = 365.0
 		maxIssueForks    = 100.0
 	)

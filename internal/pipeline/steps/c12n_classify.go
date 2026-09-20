@@ -18,10 +18,10 @@ import (
 type C12nClassifier struct {
 	pipeline.BaseContract
 
-	once     sync.Once
-	pipe     *c12n.Pipeline
-	initErr  error
-	cfg      c12n.PipelineConfig
+	once    sync.Once
+	pipe    *c12n.Pipeline
+	initErr error
+	cfg     c12n.PipelineConfig
 }
 
 // NewC12nClassifier creates a classifier with default config.

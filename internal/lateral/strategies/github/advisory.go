@@ -20,8 +20,8 @@ import (
 //
 //   - advisory_repo    — the affected repo (per-repo surface)
 //   - similar_advisory — recent advisories in the same ecosystem/severity
-//                        (when the global advisory DB is the capture
-//                        source, similar = recent)
+//     (when the global advisory DB is the capture
+//     source, similar = recent)
 //   - owner_profile    — repo owner (per-repo surface)
 type SecurityAdvisoryStrategy struct {
 	deps Dependencies

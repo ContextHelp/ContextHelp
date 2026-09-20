@@ -44,9 +44,9 @@ type Strategy struct {
 
 func New(c ArxivClient) *Strategy { return &Strategy{Client: c} }
 
-func (*Strategy) ID() string                    { return ID }
+func (*Strategy) ID() string                     { return ID }
 func (*Strategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*Strategy) Preconditions() []string       { return nil }
+func (*Strategy) Preconditions() []string        { return nil }
 
 func (*Strategy) Applies(_ context.Context, ev lateral.CapturedEvent) lateral.AppliesResult {
 	host := hostOf(ev.SourceURL)

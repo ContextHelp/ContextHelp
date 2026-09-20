@@ -16,8 +16,8 @@ type stubKitBreaker struct {
 	recordN       []int64
 }
 
-func (s *stubKitBreaker) Allow() error             { return s.allowErr }
-func (s *stubKitBreaker) State() kitbreaker.State  { return s.state }
+func (s *stubKitBreaker) Allow() error            { return s.allowErr }
+func (s *stubKitBreaker) State() kitbreaker.State { return s.state }
 func (s *stubKitBreaker) Record(success bool, n int64) {
 	s.recordSuccess = append(s.recordSuccess, success)
 	s.recordN = append(s.recordN, n)

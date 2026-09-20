@@ -315,14 +315,14 @@ type listFolderResult struct {
 
 type listFolderEntry struct {
 	// ".tag" is one of "file", "folder", "deleted".
-	Tag          string `json:".tag"`
-	Name         string `json:"name"`
-	PathLower    string `json:"path_lower"`
-	PathDisplay  string `json:"path_display"`
-	ID           string `json:"id"`
-	Size         int64  `json:"size"`
+	Tag            string `json:".tag"`
+	Name           string `json:"name"`
+	PathLower      string `json:"path_lower"`
+	PathDisplay    string `json:"path_display"`
+	ID             string `json:"id"`
+	Size           int64  `json:"size"`
 	ServerModified string `json:"server_modified"`
-	ContentHash  string `json:"content_hash"`
+	ContentHash    string `json:"content_hash"`
 }
 
 type latestCursorResult struct {

@@ -2,11 +2,11 @@
 // rooted at github.com. The package ships three strategies:
 //
 //   - GitHubStrategy        — parent. Specificity=1. Matches host==github.com
-//                             and not the gist subdomain.
+//     and not the gist subdomain.
 //   - GistStrategy          — child. Specificity=2. Matches host==gist.github.com.
 //   - SecurityAdvisoryStrategy — child. Specificity=2. Matches the global
-//                             advisory database paths and per-repo
-//                             /security/advisories/ surfaces.
+//     advisory database paths and per-repo
+//     /security/advisories/ surfaces.
 //
 // Decoupling: the package defines its own Fetcher and (later) APIClient
 // interfaces and never imports the daemon's HTTP/SDK adapters directly.

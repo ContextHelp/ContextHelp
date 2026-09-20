@@ -162,7 +162,7 @@ func init() {
 	// destructive (overwrites config). path/paths are pre-stamped by
 	// kitconfigcli.RegisterPathSubcommands above.
 	cliconv.WithSideEffect(configShowCmd, cliconv.SideEffectRead)
-	cliconv.WithSideEffect(configLintCmd, cliconv.SideEffectWriteLocal) // doctor: --fix chmods the config
+	cliconv.WithSideEffect(configLintCmd, cliconv.SideEffectWriteLocal)     // doctor: --fix chmods the config
 	cliconv.WithSideEffect(configValidateCmd, cliconv.SideEffectWriteLocal) // validate may rewrite migrations
 	cliconv.WithSideEffect(configEditCmd, cliconv.SideEffectWriteLocal)
 	cliconv.WithSideEffect(configBackupCmd, cliconv.SideEffectWriteLocal)

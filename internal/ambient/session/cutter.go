@@ -9,12 +9,12 @@
 //
 // Three rules (tunable via Config):
 //
-//	1. Hard cut (idle):   no event for GapMinutes (default 5)
-//	2. Soft cut:          single-app focus for SoftCutMinutes (default 3)
-//	                      AND user is NOT frequent-switching (≥2 distinct
-//	                      apps in last RecentSwitchWindow = 2 min)
-//	3. Hard timeout:      session > MaxSessionHours (default 2) regardless
-//	                      of activity
+//  1. Hard cut (idle):   no event for GapMinutes (default 5)
+//  2. Soft cut:          single-app focus for SoftCutMinutes (default 3)
+//     AND user is NOT frequent-switching (≥2 distinct
+//     apps in last RecentSwitchWindow = 2 min)
+//  3. Hard timeout:      session > MaxSessionHours (default 2) regardless
+//     of activity
 //
 // Plus: ForceEnd on shutdown / 23:55 daily safety net.
 //
@@ -46,11 +46,11 @@ const (
 type EndReason string
 
 const (
-	EndIdle             EndReason = "idle"
-	EndSoftCut          EndReason = "soft_cut"
-	EndTimeout          EndReason = "timeout"
-	EndShutdown         EndReason = "shutdown"
-	EndDailySafetyNet   EndReason = "daily_safety_net"
+	EndIdle           EndReason = "idle"
+	EndSoftCut        EndReason = "soft_cut"
+	EndTimeout        EndReason = "timeout"
+	EndShutdown       EndReason = "shutdown"
+	EndDailySafetyNet EndReason = "daily_safety_net"
 )
 
 // Config tunes the cutter's three rules.
@@ -74,14 +74,14 @@ type Cutter struct {
 	OnStart func(id string, startedAt time.Time)
 	OnEnd   func(id string, startedAt, endedAt time.Time, reason EndReason)
 
-	mu              sync.Mutex
-	activeID        string
-	sessionStart    time.Time
-	isActive        bool
-	lastEventTime   time.Time
-	lastBundleID    string
-	appSwitchedAt   time.Time
-	recentSwitches  []switchEntry
+	mu             sync.Mutex
+	activeID       string
+	sessionStart   time.Time
+	isActive       bool
+	lastEventTime  time.Time
+	lastBundleID   string
+	appSwitchedAt  time.Time
+	recentSwitches []switchEntry
 }
 
 type switchEntry struct {

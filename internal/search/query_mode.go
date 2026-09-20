@@ -49,7 +49,7 @@ var (
 		"rest": true, "graphql": true, "sql": true, "nosql": true,
 		"json": true, "yaml": true, "toml": true, "xml": true,
 		"tcp": true, "udp": true, "tls": true, "ssl": true,
-		"redis": false, // not a tech indicator on its own (would be keyword)
+		"redis":  false, // not a tech indicator on its own (would be keyword)
 		"docker": true, "k8s": true, "kubernetes": true, "helm": true,
 		"terraform": true, "ci": true, "cd": true, "oauth": true,
 		"saml": true, "ldap": true, "dns": true, "cdn": true,

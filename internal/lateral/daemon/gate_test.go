@@ -69,8 +69,8 @@ type countingStrategy struct {
 	calls  int
 }
 
-func (s *countingStrategy) ID() string                                   { return s.id }
-func (s *countingStrategy) Family() lateral.StrategyFamily               { return s.family }
+func (s *countingStrategy) ID() string                     { return s.id }
+func (s *countingStrategy) Family() lateral.StrategyFamily { return s.family }
 func (s *countingStrategy) Applies(_ context.Context, _ lateral.CapturedEvent) lateral.AppliesResult {
 	return lateral.AppliesResult{Matches: true, Specificity: 1}
 }

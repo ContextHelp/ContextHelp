@@ -19,14 +19,14 @@ const (
 	CodeSearchInternalFailed = "CTXT-2003"
 
 	// Config (3XXX)
-	CodeConfigPathMissing  = "CTXT-3001"
-	CodeConfigWriteFailed  = "CTXT-3002"
-	CodeConfigInvalid      = "CTXT-3003"
+	CodeConfigPathMissing = "CTXT-3001"
+	CodeConfigWriteFailed = "CTXT-3002"
+	CodeConfigInvalid     = "CTXT-3003"
 
 	// Registry (4XXX)
-	CodeRegistryNotFound     = "CTXT-4001"
-	CodeRegistryURLRequired  = "CTXT-4002"
-	CodeRegistryFetchFailed  = "CTXT-4003"
+	CodeRegistryNotFound      = "CTXT-4001"
+	CodeRegistryURLRequired   = "CTXT-4002"
+	CodeRegistryFetchFailed   = "CTXT-4003"
 	CodeRegistryBundleMissing = "CTXT-4004"
 	CodeRegistryInvalidBundle = "CTXT-4005"
 

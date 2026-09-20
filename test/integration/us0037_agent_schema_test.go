@@ -70,21 +70,21 @@ func TestUS0037_QuerySchemaContentTypeIsJSON(t *testing.T) {
 
 // querySchema is the expected shape of the /query-schema response.
 type querySchema struct {
-	Version     string              `json:"version"`
-	LastUpdated string              `json:"lastUpdated"`
-	Properties  []schemaProperty    `json:"properties"`
-	Operators   []schemaOperator    `json:"operators"`
-	Examples    []schemaExample     `json:"examples"`
-	Constraints *schemaConstraints  `json:"constraints"`
+	Version      string             `json:"version"`
+	LastUpdated  string             `json:"lastUpdated"`
+	Properties   []schemaProperty   `json:"properties"`
+	Operators    []schemaOperator   `json:"operators"`
+	Examples     []schemaExample    `json:"examples"`
+	Constraints  *schemaConstraints `json:"constraints"`
 	Deprecations []any              `json:"deprecations"`
 }
 
 type schemaProperty struct {
-	Name        string         `json:"name"`
-	Type        string         `json:"type"`
-	Indexed     bool           `json:"indexed"`
-	Description string         `json:"description"`
-	Values      []string       `json:"values,omitempty"`
+	Name        string          `json:"name"`
+	Type        string          `json:"type"`
+	Indexed     bool            `json:"indexed"`
+	Description string          `json:"description"`
+	Values      []string        `json:"values,omitempty"`
 	Examples    []schemaExample `json:"examples,omitempty"`
 }
 

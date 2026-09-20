@@ -126,8 +126,8 @@ func (s *FeedParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*st
 // --- RSS 2.0 ---
 
 type rssRoot struct {
-	XMLName xml.Name    `xml:"rss"`
-	Channel rssChannel  `xml:"channel"`
+	XMLName xml.Name   `xml:"rss"`
+	Channel rssChannel `xml:"channel"`
 }
 
 type rssChannel struct {
@@ -174,13 +174,13 @@ type atomFeed struct {
 }
 
 type atomEntry struct {
-	ID        string      `xml:"id"`
-	Title     string      `xml:"title"`
-	Links     []atomLink  `xml:"link"`
-	Summary   string      `xml:"summary"`
-	Content   string      `xml:"content"`
-	Published string      `xml:"published"`
-	Updated   string      `xml:"updated"`
+	ID        string     `xml:"id"`
+	Title     string     `xml:"title"`
+	Links     []atomLink `xml:"link"`
+	Summary   string     `xml:"summary"`
+	Content   string     `xml:"content"`
+	Published string     `xml:"published"`
+	Updated   string     `xml:"updated"`
 }
 
 type atomLink struct {

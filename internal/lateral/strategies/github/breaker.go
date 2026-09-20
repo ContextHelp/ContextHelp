@@ -31,8 +31,8 @@ var ErrBreakerOpen = errors.New("github: breaker open")
 // breaker is wired (skeleton mode + tests that don't care).
 type noopBreaker struct{}
 
-func (noopBreaker) Allow() error              { return nil }
-func (noopBreaker) Record(_ bool, _ int64)    {}
+func (noopBreaker) Allow() error           { return nil }
+func (noopBreaker) Record(_ bool, _ int64) {}
 
 // guardedAPI wraps an APIClient with breaker + floor-tracker checks.
 // Each method consults the breaker via Allow before delegating; the

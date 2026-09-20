@@ -14,10 +14,10 @@ import (
 
 // ScoreInput is the data supplied to the scorer for a single object.
 type ScoreInput struct {
-	Object          *storage.KnowledgeObject
-	Profile         config.FocusProfile
+	Object             *storage.KnowledgeObject
+	Profile            config.FocusProfile
 	ProfileEntitySlugs []string // entity slugs derived from recent objects / profile hints
-	Now             time.Time
+	Now                time.Time
 }
 
 // ScoreResult holds the computed score and a human-readable reason.

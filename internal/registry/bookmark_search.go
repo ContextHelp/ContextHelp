@@ -26,7 +26,7 @@ type RemoteBookmark struct {
 	URL         string         `json:"url"`
 	Description string         `json:"description,omitempty"`
 	Tags        []string       `json:"tags,omitempty"`
-	Mentions    []string       `json:"mentions,omitempty"`    // @namespace.slug strings
+	Mentions    []string       `json:"mentions,omitempty"`   // @namespace.slug strings
 	EntityIDs   []string       `json:"entity_ids,omitempty"` // namespace-safe canonical entity IDs
 	RegistryURL string         `json:"registry_url,omitempty"`
 	Metadata    map[string]any `json:"metadata,omitempty"`

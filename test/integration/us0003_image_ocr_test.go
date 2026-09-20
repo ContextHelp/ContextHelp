@@ -301,9 +301,9 @@ func TestUS0003_ImageAnalysisPipelineSelection(t *testing.T) {
 // TestUS0003_SupportedFormats verifies PNG, JPG, WEBP, TIFF, BMP are all accepted.
 func TestUS0003_SupportedFormats(t *testing.T) {
 	formats := []struct {
-		name      string
-		format    string
-		mimeHint  string
+		name     string
+		format   string
+		mimeHint string
 	}{
 		{"PNG", "png", "image/png"},
 		{"JPG", "jpg", "image/jpeg"},

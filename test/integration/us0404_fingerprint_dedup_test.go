@@ -77,12 +77,12 @@ func TestUS0404_SourceKeyBlocked(t *testing.T) {
 	}
 
 	obj := &storage.KnowledgeObject{
-		ID:        "us0404-sk-1",
-		Type:      "text",
-		SourceKey: "slack:C01/9876.5432",
+		ID:         "us0404-sk-1",
+		Type:       "text",
+		SourceKey:  "slack:C01/9876.5432",
 		RawContent: "original slack message",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 	require.NoError(t, env.svc.Store.Objects().Create(t.Context(), obj))
 

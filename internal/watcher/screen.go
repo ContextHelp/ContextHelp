@@ -91,7 +91,7 @@ type ScreenWatcher struct {
 	cfg       ScreenConfig
 	ingester  Ingester
 	statePath string
-	capture   func(focus string) ([]byte, error)  // injectable for tests
+	capture   func(focus string) ([]byte, error)   // injectable for tests
 	ocr       func(imgData []byte) (string, error) // injectable for tests
 }
 

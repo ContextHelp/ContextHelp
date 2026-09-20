@@ -271,7 +271,7 @@ func authorHintFor(ac lateral.ActiveContext) string {
 //
 //   - author_other_issue — other issues by the same author
 //   - repo_issue         — repo (parent) candidate (helpful when capture
-//                          was the issue thread, not the repo itself)
+//     was the issue thread, not the repo itself)
 //   - issue_label        — labels attached to the issue
 //
 // Number-less URLs (/issues list view) skip label lookup. owner_profile
@@ -382,7 +382,7 @@ func issueCandidate(i IssueSummary, candidateType, strategyID string) lateral.Ca
 // Lateral surface:
 //
 //   - owned_repo        — repos owned by the profile (proxied via siblings
-//                         lookup with empty exclude)
+//     lookup with empty exclude)
 //   - pinned_repo       — pinned items on the profile
 //   - sponsor_page      — the profile's sponsors page (if active)
 //   - sponsored_profile — profiles this profile sponsors
@@ -458,7 +458,7 @@ func (s *GitHubStrategy) probeProfile(ctx context.Context, ev lateral.CapturedEv
 //
 //   - owner_profile   — the sponsored profile itself (always)
 //   - similar_sponsor — profiles that sponsor a similar set of recipients
-//                       to login (i.e. peers of login as a sponsor)
+//     to login (i.e. peers of login as a sponsor)
 //
 // Skeleton mode emits only owner_profile (no fetch).
 func (s *GitHubStrategy) probeSponsor(ctx context.Context, ev lateral.CapturedEvent, _ lateral.ActiveContext) ([]lateral.Candidate, error) {

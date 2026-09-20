@@ -23,11 +23,11 @@ func TestMigration030_StampsBarePipelineNames(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"obj_m029_a", "text.short", "text.short@v0"},                // bare → stamped
-		{"obj_m029_b", "text.long", "text.long@v0"},                  // bare → stamped
-		{"obj_m029_c", "text.short@v1", "text.short@v1"},             // already versioned, untouched
-		{"obj_m029_d", "doc.pdf@v2", "doc.pdf@v2"},                   // already versioned, untouched
-		{"obj_m029_e", "", ""},                                       // empty stays empty
+		{"obj_m029_a", "text.short", "text.short@v0"},    // bare → stamped
+		{"obj_m029_b", "text.long", "text.long@v0"},      // bare → stamped
+		{"obj_m029_c", "text.short@v1", "text.short@v1"}, // already versioned, untouched
+		{"obj_m029_d", "doc.pdf@v2", "doc.pdf@v2"},       // already versioned, untouched
+		{"obj_m029_e", "", ""},                           // empty stays empty
 	}
 
 	for _, c := range cases {

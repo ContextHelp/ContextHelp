@@ -30,13 +30,13 @@ import (
 
 // extensionMessage represents the payload sent by the browser extension.
 type extensionMessage struct {
-	CaptureMode  string `json:"capture_mode"` // "full_page", "selection", "element"
-	SourceURL    string `json:"source_url"`
-	PageTitle    string `json:"page_title"`
-	HTMLContent  string `json:"html_content,omitempty"`
-	TextContent  string `json:"text_content,omitempty"`
-	CapturedAt   string `json:"captured_at"`
-	AuthState    string `json:"auth_state"` // "authenticated" | "anonymous"
+	CaptureMode string `json:"capture_mode"` // "full_page", "selection", "element"
+	SourceURL   string `json:"source_url"`
+	PageTitle   string `json:"page_title"`
+	HTMLContent string `json:"html_content,omitempty"`
+	TextContent string `json:"text_content,omitempty"`
+	CapturedAt  string `json:"captured_at"`
+	AuthState   string `json:"auth_state"` // "authenticated" | "anonymous"
 }
 
 // ---------------------------------------------------------------------------

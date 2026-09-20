@@ -10,16 +10,16 @@
 //
 // How to run:
 //
-//   1. Bring your own Garage:
-//        export CTXT_GARAGE_ENDPOINT=http://localhost:3900
-//        export CTXT_GARAGE_ACCESS_KEY=GK...
-//        export CTXT_GARAGE_SECRET_KEY=...
-//        export CTXT_GARAGE_BUCKET=ctxt-test
-//        make test-integration
+//  1. Bring your own Garage:
+//     export CTXT_GARAGE_ENDPOINT=http://localhost:3900
+//     export CTXT_GARAGE_ACCESS_KEY=GK...
+//     export CTXT_GARAGE_SECRET_KEY=...
+//     export CTXT_GARAGE_BUCKET=ctxt-test
+//     make test-integration
 //
-//   2. Auto-launch via docker (skipped if docker is unavailable):
-//        export CTXT_GARAGE_AUTO=1
-//        make test-integration
+//  2. Auto-launch via docker (skipped if docker is unavailable):
+//     export CTXT_GARAGE_AUTO=1
+//     make test-integration
 //
 // Skipped silently when no env is set and CTXT_GARAGE_AUTO is unset.
 package integration

@@ -123,10 +123,10 @@ func TestGistStrategy_Probe_OwnerOnly_ListsAll(t *testing.T) {
 
 func TestParseGistPath(t *testing.T) {
 	cases := []struct {
-		url        string
-		wantOwner  string
-		wantID     string
-		wantOK     bool
+		url       string
+		wantOwner string
+		wantID    string
+		wantOK    bool
 	}{
 		{"https://gist.github.com/jadb/abc123", "jadb", "abc123", true},
 		{"https://gist.github.com/jadb", "jadb", "", true},

@@ -36,9 +36,9 @@ type Strategy struct{}
 // New constructs a Strategy.
 func New() *Strategy { return &Strategy{} }
 
-func (*Strategy) ID() string                    { return ID }
+func (*Strategy) ID() string                     { return ID }
 func (*Strategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*Strategy) Preconditions() []string       { return nil }
+func (*Strategy) Preconditions() []string        { return nil }
 
 // Applies matches linkedin.com (apex + any subdomain like
 // www.linkedin.com or business.linkedin.com).

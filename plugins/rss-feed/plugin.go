@@ -202,10 +202,10 @@ func itemToObject(item feedItem, feedURL string) pluginapi.KnowledgeObject {
 	text := strings.Join(parts, "\n\n")
 
 	meta := map[string]any{
-		"feed_url":   feedURL,
-		"item_url":   item.Link,
-		"guid":       item.GUID,
-		"published":  pub.Format(time.RFC3339),
+		"feed_url":  feedURL,
+		"item_url":  item.Link,
+		"guid":      item.GUID,
+		"published": pub.Format(time.RFC3339),
 	}
 	if item.Author != "" {
 		meta["author"] = item.Author

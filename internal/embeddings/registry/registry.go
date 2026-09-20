@@ -22,10 +22,10 @@ import (
 // Provider hints used at Register time. Not enforced server-side; the registry
 // stores whatever provider string the operator supplies.
 const (
-	ProviderOpenAI    = "openai"
-	ProviderOllama    = "ollama"
-	ProviderVoyage    = "voyage"
-	ProviderLegacy    = "legacy-blob"
+	ProviderOpenAI = "openai"
+	ProviderOllama = "ollama"
+	ProviderVoyage = "voyage"
+	ProviderLegacy = "legacy-blob"
 )
 
 // Model represents one row in the embedding_models table.
@@ -36,13 +36,13 @@ const (
 // ListWithCoverage rather than this struct directly — `coverage` is a
 // computed value, not a column.
 type Model struct {
-	ModelID       string     `json:"model_id"`
-	Provider      string     `json:"provider"`
-	Dimension     int        `json:"dimension"`
-	IsDefault     bool       `json:"is_default"`
-	RegisteredAt  time.Time  `json:"registered_at"`
-	DeprecatedAt  *time.Time `json:"deprecated_at,omitempty"`
-	ConfigJSON    string     `json:"config_json"`
+	ModelID      string     `json:"model_id"`
+	Provider     string     `json:"provider"`
+	Dimension    int        `json:"dimension"`
+	IsDefault    bool       `json:"is_default"`
+	RegisteredAt time.Time  `json:"registered_at"`
+	DeprecatedAt *time.Time `json:"deprecated_at,omitempty"`
+	ConfigJSON   string     `json:"config_json"`
 }
 
 // ErrModelNotFound is returned by Get / SetDefault / Deprecate when the

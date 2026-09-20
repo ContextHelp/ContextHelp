@@ -57,7 +57,7 @@ func init() {
 
 // classifyResult mirrors c12n.PipelineResult for display without importing c12n.
 type classifyResult struct {
-	Results []classifySignal `json:"results"`
+	Results []classifySignal  `json:"results"`
 	Errors  []json.RawMessage `json:"errors,omitempty"`
 }
 

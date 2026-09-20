@@ -52,7 +52,9 @@ func (stubAPIClient) ListOwnerGists(_ context.Context, _ string) ([]github.GistS
 func (stubAPIClient) ListGlobalAdvisories(_ context.Context, _, _ string, _ int) ([]github.AdvisorySummary, error) {
 	return nil, nil
 }
-func (stubAPIClient) RateSnapshot(_ context.Context) github.RateSnapshot { return github.RateSnapshot{} }
+func (stubAPIClient) RateSnapshot(_ context.Context) github.RateSnapshot {
+	return github.RateSnapshot{}
+}
 
 type stubProposer struct{ reply []string }
 

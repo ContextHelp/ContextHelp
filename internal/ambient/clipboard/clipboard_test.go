@@ -348,7 +348,7 @@ func TestSource_RouteHeuristics(t *testing.T) {
 	}{
 		{"http url", "http://example.com/path", true, ambient.KindURL},
 		{"https url", "https://example.com/path", true, ambient.KindURL},
-		{"url with spaces (rejected as URL)", "http://example.com hello", true, ambient.KindText},     // falls through to length check; this string is long enough
+		{"url with spaces (rejected as URL)", "http://example.com hello", true, ambient.KindText}, // falls through to length check; this string is long enough
 		{"code block ``` no lang", "```\nx\n```", true, ambient.KindText},
 		{"code block with lang", "```python\nprint(1)\n```", true, ambient.KindText},
 		{"long text", "this is a longer text content here", true, ambient.KindText},

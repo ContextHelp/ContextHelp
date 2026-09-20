@@ -163,14 +163,14 @@ func TestFloorTracker_MinAboveOne_DoesNotExceedLimit(t *testing.T) {
 
 func TestClampBounds_AllPathways(t *testing.T) {
 	cases := []struct {
-		name           string
-		inMin, inMax   float64
+		name             string
+		inMin, inMax     float64
 		wantMin, wantMax float64
 	}{
 		{"both in range", 0.1, 0.9, 0.1, 0.9},
 		{"min negative", -0.1, 0.9, 0.0, 0.9},
 		{"max above one", 0.1, 1.5, 0.1, 1.0},
-		{"min above one", 2.0, 0.9, 0.9, 1.0}, // clamped, then swapped
+		{"min above one", 2.0, 0.9, 0.9, 1.0},   // clamped, then swapped
 		{"max below zero", 0.1, -0.5, 0.0, 0.1}, // clamped, then swapped
 		{"both above one", 1.5, 2.0, 1.0, 1.0},
 		{"both below zero", -1.0, -0.5, 0.0, 0.0},

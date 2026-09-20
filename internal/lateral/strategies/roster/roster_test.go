@@ -12,8 +12,8 @@ func TestRegister_DefaultGatesEnableEverything(t *testing.T) {
 	Register(reg, Gates{}, Deps{})
 
 	cases := []struct {
-		url        string
-		wantStrat  string
+		url       string
+		wantStrat string
 	}{
 		{"https://x.com/jadb/status/1", "XStrategy"},
 		{"https://www.linkedin.com/in/foo", "LinkedInStrategy"},

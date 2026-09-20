@@ -19,9 +19,9 @@ type ParentStrategy struct {
 // NewParent constructs the catch-all.
 func NewParent(c GoogleClient) *ParentStrategy { return &ParentStrategy{Client: c} }
 
-func (*ParentStrategy) ID() string                    { return IDParent }
+func (*ParentStrategy) ID() string                     { return IDParent }
 func (*ParentStrategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*ParentStrategy) Preconditions() []string       { return nil }
+func (*ParentStrategy) Preconditions() []string        { return nil }
 
 // Applies — apex google.com scores 1, subdomains score 2. Children
 // always score higher (3) so dispatcher prefers them within the platform

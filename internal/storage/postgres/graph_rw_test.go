@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 

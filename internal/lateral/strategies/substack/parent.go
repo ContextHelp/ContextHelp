@@ -18,9 +18,9 @@ type ParentStrategy struct {
 
 func NewParent(c SubstackClient) *ParentStrategy { return &ParentStrategy{Client: c} }
 
-func (*ParentStrategy) ID() string                    { return IDParent }
+func (*ParentStrategy) ID() string                     { return IDParent }
 func (*ParentStrategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*ParentStrategy) Preconditions() []string       { return nil }
+func (*ParentStrategy) Preconditions() []string        { return nil }
 
 func (*ParentStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) lateral.AppliesResult {
 	d := customdomain.Detect(ev.SourceURL, hintsFromEvent(ev))

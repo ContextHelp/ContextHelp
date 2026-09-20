@@ -15,15 +15,15 @@ import (
 // claims any event whose SourceURL contains a configured marker and
 // emits a fixed candidate set.
 type stubStrategy struct {
-	id        string
-	family    lateral.StrategyFamily
-	marker    string // SourceURL must contain this to claim
-	emit      []lateral.Candidate
-	err       error
+	id         string
+	family     lateral.StrategyFamily
+	marker     string // SourceURL must contain this to claim
+	emit       []lateral.Candidate
+	err        error
 	probeCalls int
 }
 
-func (s *stubStrategy) ID() string                  { return s.id }
+func (s *stubStrategy) ID() string                     { return s.id }
 func (s *stubStrategy) Family() lateral.StrategyFamily { return s.family }
 func (s *stubStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) lateral.AppliesResult {
 	if s.marker == "" || strings.Contains(ev.SourceURL, s.marker) {

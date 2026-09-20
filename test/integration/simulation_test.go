@@ -189,8 +189,8 @@ type fixedVecProvider struct {
 	vec []float32
 }
 
-func (p *fixedVecProvider) Name() string       { return "fixed-sim" }
-func (p *fixedVecProvider) Dimensions() int    { return len(p.vec) }
+func (p *fixedVecProvider) Name() string    { return "fixed-sim" }
+func (p *fixedVecProvider) Dimensions() int { return len(p.vec) }
 func (p *fixedVecProvider) Embed(_ context.Context, _ string) ([]float32, error) {
 	return p.vec, nil
 }

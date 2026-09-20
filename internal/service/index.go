@@ -31,9 +31,9 @@ type TopicCategory struct {
 // TopicIndex is the full materialized index stored as JSON in a
 // KnowledgeObject's RawContent.
 type TopicIndex struct {
-	Categories []TopicCategory `json:"categories"`
-	ObjectIDs  []string        `json:"object_ids"`
-	GeneratedAt time.Time     `json:"generated_at"`
+	Categories  []TopicCategory `json:"categories"`
+	ObjectIDs   []string        `json:"object_ids"`
+	GeneratedAt time.Time       `json:"generated_at"`
 }
 
 // BuildTopicIndex scans all objects, groups by topic from
@@ -215,12 +215,12 @@ func (s *Service) storeIndex(
 	}
 
 	obj := &storage.KnowledgeObject{
-		ID:        uuid.New().String(),
-		Type:      TopicIndexType,
+		ID:         uuid.New().String(),
+		Type:       TopicIndexType,
 		RawContent: string(data),
-		Status:    "active",
-		CreatedAt: now,
-		UpdatedAt: now,
+		Status:     "active",
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 	if err := s.Store.Objects().Create(ctx, obj); err != nil {
 		return "", fmt.Errorf("create topic index: %w", err)

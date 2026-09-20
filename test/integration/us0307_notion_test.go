@@ -18,9 +18,9 @@ import (
 
 func makeNotionPage(id, title, editedAt string) map[string]any {
 	return map[string]any{
-		"id":     id,
-		"object": "page",
-		"url":    "https://notion.so/" + id,
+		"id":               id,
+		"object":           "page",
+		"url":              "https://notion.so/" + id,
 		"last_edited_time": editedAt,
 		"properties": map[string]any{
 			"title": map[string]any{

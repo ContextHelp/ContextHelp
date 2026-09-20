@@ -77,7 +77,7 @@ func TestConcurrentMultipleWorkersDequeue(t *testing.T) {
 		require.NoError(t, q.Enqueue(ctx, job))
 	}
 
-	pool := NewWorkerPool(q, builtins.Registry(), driver, 4, nil, config.JobsConfig{PollInterval: 50*time.Millisecond, StaleTimeout: 30*time.Minute, MaxRetries: 3, MaxHops: 5})
+	pool := NewWorkerPool(q, builtins.Registry(), driver, 4, nil, config.JobsConfig{PollInterval: 50 * time.Millisecond, StaleTimeout: 30 * time.Minute, MaxRetries: 3, MaxHops: 5})
 	pool.pollInterval = 50 * time.Millisecond
 
 	poolCtx, poolCancel := context.WithTimeout(ctx, 10*time.Second)
@@ -117,7 +117,7 @@ func TestConcurrentEnqueueDequeue(t *testing.T) {
 	q := NewQueue(driver.Jobs())
 	ctx := context.Background()
 
-	pool := NewWorkerPool(q, builtins.Registry(), driver, 2, nil, config.JobsConfig{PollInterval: 50*time.Millisecond, StaleTimeout: 30*time.Minute, MaxRetries: 3, MaxHops: 5})
+	pool := NewWorkerPool(q, builtins.Registry(), driver, 2, nil, config.JobsConfig{PollInterval: 50 * time.Millisecond, StaleTimeout: 30 * time.Minute, MaxRetries: 3, MaxHops: 5})
 	pool.pollInterval = 50 * time.Millisecond
 
 	poolCtx, poolCancel := context.WithTimeout(ctx, 15*time.Second)
@@ -202,7 +202,7 @@ func TestShutdownWithInFlight(t *testing.T) {
 		require.NoError(t, q.Enqueue(ctx, job))
 	}
 
-	pool := NewWorkerPool(q, builtins.Registry(), driver, 2, nil, config.JobsConfig{PollInterval: 50*time.Millisecond, StaleTimeout: 30*time.Minute, MaxRetries: 3, MaxHops: 5})
+	pool := NewWorkerPool(q, builtins.Registry(), driver, 2, nil, config.JobsConfig{PollInterval: 50 * time.Millisecond, StaleTimeout: 30 * time.Minute, MaxRetries: 3, MaxHops: 5})
 	pool.pollInterval = 50 * time.Millisecond
 
 	poolCtx, poolCancel := context.WithCancel(ctx)
@@ -263,7 +263,7 @@ func TestStaleRecoveryUnderLoad(t *testing.T) {
 	require.Equal(t, "race-stale-1", acquired.ID)
 	require.Equal(t, storage.JobRunning, acquired.Status)
 
-	pool := NewWorkerPool(q, builtins.Registry(), driver, 2, nil, config.JobsConfig{PollInterval: 50*time.Millisecond, StaleTimeout: 30*time.Minute, MaxRetries: 3, MaxHops: 5})
+	pool := NewWorkerPool(q, builtins.Registry(), driver, 2, nil, config.JobsConfig{PollInterval: 50 * time.Millisecond, StaleTimeout: 30 * time.Minute, MaxRetries: 3, MaxHops: 5})
 	pool.pollInterval = 50 * time.Millisecond
 	// staleTimeout of 0 means all running jobs are treated as stale immediately.
 	pool.staleTimeout = 0

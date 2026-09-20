@@ -44,25 +44,25 @@ func TestUS0061_VisuallySimialrImageRanksHigher(t *testing.T) {
 
 	// Image closely matching the query vector.
 	similar := &storage.KnowledgeObject{
-		ID:           "vis-sim-01",
-		Type:         "image",
-		Subtype:      "jpeg",
-		Summaries:    []string{"authentication flow architecture diagram"},
-		Embeddings:   makeVisualEmbedding(dim, map[int]float32{0: 0.98, 1: 0.1}),
+		ID:            "vis-sim-01",
+		Type:          "image",
+		Subtype:       "jpeg",
+		Summaries:     []string{"authentication flow architecture diagram"},
+		Embeddings:    makeVisualEmbedding(dim, map[int]float32{0: 0.98, 1: 0.1}),
 		VectorIndexed: true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	// Image with orthogonal embedding.
 	dissimilar := &storage.KnowledgeObject{
-		ID:           "vis-dis-01",
-		Type:         "image",
-		Subtype:      "png",
-		Summaries:    []string{"database schema entity relationship diagram"},
-		Embeddings:   makeVisualEmbedding(dim, map[int]float32{3: 0.95, 4: 0.2}),
+		ID:            "vis-dis-01",
+		Type:          "image",
+		Subtype:       "png",
+		Summaries:     []string{"database schema entity relationship diagram"},
+		Embeddings:    makeVisualEmbedding(dim, map[int]float32{3: 0.95, 4: 0.2}),
 		VectorIndexed: true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 
 	require.NoError(t, env.svc.Store.Objects().Create(ctx, similar))
@@ -89,15 +89,15 @@ func TestUS0061_DualEmbeddingImageAndTextCoexist(t *testing.T) {
 	const dim = 4
 
 	imgObj := &storage.KnowledgeObject{
-		ID:           "vis-dual-01",
-		Type:         "image",
-		Subtype:      "png",
-		Summaries:    []string{"whiteboard photo of microservices topology"},
-		RawContent:   "microservices topology",
-		Embeddings:   makeVisualEmbedding(dim, map[int]float32{0: 0.9, 1: 0.3}),
+		ID:            "vis-dual-01",
+		Type:          "image",
+		Subtype:       "png",
+		Summaries:     []string{"whiteboard photo of microservices topology"},
+		RawContent:    "microservices topology",
+		Embeddings:    makeVisualEmbedding(dim, map[int]float32{0: 0.9, 1: 0.3}),
 		VectorIndexed: true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	require.NoError(t, env.svc.Store.Objects().Create(ctx, imgObj))
 	rebuildFTSIntegration(t, env)
@@ -127,20 +127,20 @@ func TestUS0061_ImageTypeFilterRestrictsVectorResults(t *testing.T) {
 	const dim = 4
 
 	imgObj := &storage.KnowledgeObject{
-		ID:           "vis-img-only-01",
-		Type:         "image",
-		Embeddings:   makeVisualEmbedding(dim, map[int]float32{0: 0.9}),
+		ID:            "vis-img-only-01",
+		Type:          "image",
+		Embeddings:    makeVisualEmbedding(dim, map[int]float32{0: 0.9}),
 		VectorIndexed: true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	textObj := &storage.KnowledgeObject{
-		ID:           "vis-text-01",
-		Type:         "text",
-		Embeddings:   makeVisualEmbedding(dim, map[int]float32{0: 0.85}),
+		ID:            "vis-text-01",
+		Type:          "text",
+		Embeddings:    makeVisualEmbedding(dim, map[int]float32{0: 0.85}),
 		VectorIndexed: true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 
 	require.NoError(t, env.svc.Store.Objects().Create(ctx, imgObj))
@@ -169,12 +169,12 @@ func TestUS0061_NoEmbeddingImageExcludedFromVectorSearch(t *testing.T) {
 	const dim = 4
 
 	withEmb := &storage.KnowledgeObject{
-		ID:           "vis-emb-yes",
-		Type:         "image",
-		Embeddings:   makeVisualEmbedding(dim, map[int]float32{0: 1.0}),
+		ID:            "vis-emb-yes",
+		Type:          "image",
+		Embeddings:    makeVisualEmbedding(dim, map[int]float32{0: 1.0}),
 		VectorIndexed: true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	noEmb := &storage.KnowledgeObject{
 		ID:        "vis-emb-no",

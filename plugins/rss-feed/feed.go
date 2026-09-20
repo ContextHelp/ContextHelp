@@ -51,12 +51,12 @@ type atomFeed struct {
 }
 
 type atomEntry struct {
-	Title   atomText   `xml:"http://www.w3.org/2005/Atom title"`
-	ID      string     `xml:"http://www.w3.org/2005/Atom id"`
-	Updated string     `xml:"http://www.w3.org/2005/Atom updated"`
-	Links   []atomLink `xml:"http://www.w3.org/2005/Atom link"`
-	Summary atomText   `xml:"http://www.w3.org/2005/Atom summary"`
-	Content atomText   `xml:"http://www.w3.org/2005/Atom content"`
+	Title   atomText     `xml:"http://www.w3.org/2005/Atom title"`
+	ID      string       `xml:"http://www.w3.org/2005/Atom id"`
+	Updated string       `xml:"http://www.w3.org/2005/Atom updated"`
+	Links   []atomLink   `xml:"http://www.w3.org/2005/Atom link"`
+	Summary atomText     `xml:"http://www.w3.org/2005/Atom summary"`
+	Content atomText     `xml:"http://www.w3.org/2005/Atom content"`
 	Authors []atomPerson `xml:"http://www.w3.org/2005/Atom author"`
 }
 

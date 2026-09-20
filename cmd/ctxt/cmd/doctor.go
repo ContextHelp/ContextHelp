@@ -133,4 +133,3 @@ func logLintReport(ctx context.Context, driver storage.StorageDriver, r *lint.Re
 	// best-effort; don't fail the command on audit write error
 	_ = driver.AuditLog().Append(ctx, entry)
 }
-

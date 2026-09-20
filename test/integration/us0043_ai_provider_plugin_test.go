@@ -24,9 +24,9 @@ import (
 // ── Stub AI provider plugin ───────────────────────────────────────────────────
 
 type stubAIProviderPlugin struct {
-	endpoint   string
-	model      string
-	initCalled bool
+	endpoint    string
+	model       string
+	initCalled  bool
 	closeCalled bool
 }
 
@@ -189,9 +189,9 @@ func TestUS0043_TwoAIPluginsNoConflict(t *testing.T) {
 		stubAIProviderPlugin
 	}
 	pl2impl := &struct {
-		endpoint    string
-		model       string
-		initCalled  bool
+		endpoint   string
+		model      string
+		initCalled bool
 	}{}
 
 	_ = pl2impl // just confirming two distinct instances exist

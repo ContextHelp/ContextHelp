@@ -28,10 +28,10 @@ type Adapter interface {
 
 // Result summarises a single ingestion run.
 type Result struct {
-	Source   string    `json:"source"`
-	Total   int       `json:"total"`
-	Created int       `json:"created"`
-	Skipped int       `json:"skipped"`
-	Errors  int       `json:"errors"`
+	Source  string        `json:"source"`
+	Total   int           `json:"total"`
+	Created int           `json:"created"`
+	Skipped int           `json:"skipped"`
+	Errors  int           `json:"errors"`
 	Elapsed time.Duration `json:"elapsed"`
 }

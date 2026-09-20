@@ -25,12 +25,12 @@ func seedIndexObj(
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
 	obj := &storage.KnowledgeObject{
-		ID:        id,
-		Type:      "text",
+		ID:         id,
+		Type:       "text",
 		RawContent: summary,
-		Status:    "active",
-		CreatedAt: now,
-		UpdatedAt: now,
+		Status:     "active",
+		CreatedAt:  now,
+		UpdatedAt:  now,
 		Metadata: map[string]any{
 			"metadata_status": "complete",
 			"enrichment.structured_metadata": map[string]any{

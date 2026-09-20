@@ -271,10 +271,10 @@ func (r *Runner) Start(ctx context.Context) error {
 //
 // Order is fixed:
 //
-//	1. captured     — every event arriving at dispatch
-//	2. session-tag  — populate ev.SessionID from the cutter
-//	3. dedup        — drop if fingerprint matches recent event
-//	4. enqueue      — POST to dpkms; emit succeeded/failed per result
+//  1. captured     — every event arriving at dispatch
+//  2. session-tag  — populate ev.SessionID from the cutter
+//  3. dedup        — drop if fingerprint matches recent event
+//  4. enqueue      — POST to dpkms; emit succeeded/failed per result
 //
 // Source-side redaction and kit/policy CEL filter are applied INSIDE Source
 // implementations or via subscribers on captured/redacted topics; the Runner

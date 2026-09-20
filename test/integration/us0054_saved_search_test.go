@@ -115,4 +115,3 @@ func TestUS0054_DeleteDetectorRemovesRecord(t *testing.T) {
 		assert.NotEqual(t, det.ID, d.ID, "deleted detector must not appear in listing")
 	}
 }
-

@@ -36,7 +36,7 @@ type Plugin struct {
 	cfg  Config
 	deps pluginapi.Deps
 
-	mu      sync.Mutex
+	mu       sync.Mutex
 	ingested map[string]struct{} // relative paths ingested this session
 
 	cancel context.CancelFunc

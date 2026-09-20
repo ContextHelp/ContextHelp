@@ -38,7 +38,7 @@ func (s *HTMLCleaner) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 	text = scriptTagRe.ReplaceAllString(text, " ")
 	text = styleTagRe.ReplaceAllString(text, " ")
 	text = htmlTagRe.ReplaceAllString(text, " ")
-	
+
 	// Unescape common HTML entities
 	text = strings.ReplaceAll(text, "&nbsp;", " ")
 	text = strings.ReplaceAll(text, "&lt;", "<")

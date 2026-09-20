@@ -10,11 +10,11 @@ import (
 // Config gates the github family registration. Mirrors the per-
 // strategy enable knobs from the lateral spec amendment:
 //
-//   lateral:
-//     strategies:
-//       GitHubStrategy:           { enabled: true }
-//       GistStrategy:             { enabled: true }
-//       SecurityAdvisoryStrategy: { enabled: true }
+//	lateral:
+//	  strategies:
+//	    GitHubStrategy:           { enabled: true }
+//	    GistStrategy:             { enabled: true }
+//	    SecurityAdvisoryStrategy: { enabled: true }
 //
 // Each child can be independently disabled. The substrate's
 // dispatcher tolerates registering the parent without the children

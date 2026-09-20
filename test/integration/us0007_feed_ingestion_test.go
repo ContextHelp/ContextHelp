@@ -24,9 +24,9 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockFeedServer struct {
-	srv     *gohttp.Server
-	addr    string
-	etag    string
+	srv      *gohttp.Server
+	addr     string
+	etag     string
 	hitCount atomic.Int64
 }
 
@@ -784,4 +784,3 @@ func TestUS0007_DeleteReturns204(t *testing.T) {
 
 	assert.Equal(t, gohttp.StatusNoContent, delResp.StatusCode)
 }
-

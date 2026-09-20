@@ -141,12 +141,12 @@ func TestUS0035_EdgeCountIdenticalAfterMigration(t *testing.T) {
 		obj := &storage.KnowledgeObject{
 			ID: fmt.Sprintf("mig-edge-obj-%d", i), Type: "text",
 			RawContent: fmt.Sprintf("edge content %d", i),
-			CreatedAt: now, UpdatedAt: now,
+			CreatedAt:  now, UpdatedAt: now,
 		}
 		require.NoError(t, srcDriver.Objects().Create(ctx, obj))
 
 		edge := &storage.Edge{
-			ID: fmt.Sprintf("mig-edge-%d", i),
+			ID:       fmt.Sprintf("mig-edge-%d", i),
 			FromType: "object", FromID: obj.ID,
 			ToType: "entity", ToID: fmt.Sprintf("@test.entity%d", i),
 			EdgeType: "mentions", Weight: 1.0, CreatedAt: now,

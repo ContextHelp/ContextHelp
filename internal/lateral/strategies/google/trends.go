@@ -24,9 +24,9 @@ func NewTrends(c GoogleClient) *TrendsStrategy {
 	return &TrendsStrategy{Client: c, RelatedCap: 10}
 }
 
-func (*TrendsStrategy) ID() string                    { return IDTrends }
+func (*TrendsStrategy) ID() string                     { return IDTrends }
 func (*TrendsStrategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*TrendsStrategy) Preconditions() []string       { return nil }
+func (*TrendsStrategy) Preconditions() []string        { return nil }
 
 func (*TrendsStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) lateral.AppliesResult {
 	host := hostOf(ev.SourceURL)

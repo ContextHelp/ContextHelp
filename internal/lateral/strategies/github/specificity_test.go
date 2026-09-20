@@ -12,9 +12,9 @@ import (
 // TestPropertyChildShadowsParent_GistOnGistURLs is a property-style test
 // that confirms the dispatch invariant for github children:
 //
-//   For every URL where GistStrategy.Applies = true, the registry's
-//   Dispatch must return GistStrategy (not GitHubStrategy), regardless
-//   of the order of registration.
+//	For every URL where GistStrategy.Applies = true, the registry's
+//	Dispatch must return GistStrategy (not GitHubStrategy), regardless
+//	of the order of registration.
 //
 // This is the platform-family contract: highest specificity wins.
 //

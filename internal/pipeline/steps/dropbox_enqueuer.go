@@ -79,10 +79,10 @@ func (s *DropboxEnqueuer) Run(_ context.Context, draft *storage.KnowledgeObject)
 			Content: content,
 			Order:   i,
 			Metadata: map[string]any{
-				"dropbox_id":      f["id"],
-				"dropbox_path":    path,
-				"content_hash":    hash,
-				"modified_time":   f["modified_time"],
+				"dropbox_id":    f["id"],
+				"dropbox_path":  path,
+				"content_hash":  hash,
+				"modified_time": f["modified_time"],
 			},
 		})
 		pending = append(pending, f)

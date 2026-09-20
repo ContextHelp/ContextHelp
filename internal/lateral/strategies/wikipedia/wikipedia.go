@@ -38,9 +38,9 @@ type Strategy struct {
 
 func New(c WikipediaClient) *Strategy { return &Strategy{Client: c} }
 
-func (*Strategy) ID() string                    { return ID }
+func (*Strategy) ID() string                     { return ID }
 func (*Strategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*Strategy) Preconditions() []string       { return nil }
+func (*Strategy) Preconditions() []string        { return nil }
 
 // Applies matches any *.wikipedia.org host. Specificity = 2 (domain +
 // language subdomain), or 1 for the apex (which redirects to en.).

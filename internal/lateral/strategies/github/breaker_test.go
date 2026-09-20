@@ -10,11 +10,11 @@ import (
 // fakeBreaker controls Allow + records counts of Record calls. Used to
 // verify breaker integration in guardedAPI.
 type fakeBreaker struct {
-	allowErr      error
-	successCount  int
-	failureCount  int
-	lastBytes     int64
-	lastSuccess   bool
+	allowErr     error
+	successCount int
+	failureCount int
+	lastBytes    int64
+	lastSuccess  bool
 }
 
 func (b *fakeBreaker) Allow() error { return b.allowErr }

@@ -244,7 +244,7 @@ func TestDependencyEnricherMultipleFiles(t *testing.T) {
 		Source: "https://github.com/owner/mixed",
 		Metadata: map[string]any{
 			"dep_files": map[string]any{
-				"package.json": `{"dependencies": {"express": "^4.0.0"}}`,
+				"package.json":     `{"dependencies": {"express": "^4.0.0"}}`,
 				"requirements.txt": "requests==2.28.0\nflask==3.0.0\n",
 			},
 		},

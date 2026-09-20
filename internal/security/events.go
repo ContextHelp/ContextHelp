@@ -92,9 +92,9 @@ func DefaultConfig() Config {
 // slidingCounter tracks event timestamps in a fixed sliding window.
 // goroutine-safe.
 type slidingCounter struct {
-	mu       sync.Mutex
-	window   time.Duration
-	events   []time.Time
+	mu     sync.Mutex
+	window time.Duration
+	events []time.Time
 }
 
 func newSlidingCounter(window time.Duration) *slidingCounter {

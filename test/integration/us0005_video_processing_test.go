@@ -130,9 +130,9 @@ func (s *videoStepRecorder) Run(_ context.Context, draft *storage.KnowledgeObjec
 // videoConfigurableStep simulates a step whose behavior varies by config in metadata.
 type videoConfigurableStep struct {
 	pipeline.BaseContract
-	name       string
-	configKey  string
-	configVal  any
+	name      string
+	configKey string
+	configVal any
 }
 
 func (s *videoConfigurableStep) Name() string { return s.name }

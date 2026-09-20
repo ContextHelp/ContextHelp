@@ -17,9 +17,9 @@ type ProfileStrategy struct {
 
 func NewProfile(c MediumClient) *ProfileStrategy { return &ProfileStrategy{Client: c} }
 
-func (*ProfileStrategy) ID() string                    { return IDProfile }
+func (*ProfileStrategy) ID() string                     { return IDProfile }
 func (*ProfileStrategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*ProfileStrategy) Preconditions() []string       { return nil }
+func (*ProfileStrategy) Preconditions() []string        { return nil }
 
 func (*ProfileStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) lateral.AppliesResult {
 	d := customdomain.Detect(ev.SourceURL, hintsFromEvent(ev))

@@ -91,11 +91,11 @@ func (s *DropboxFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject
 	fileRecords := make([]map[string]any, 0, len(result.Files))
 	for _, f := range result.Files {
 		rec := map[string]any{
-			"id":       f.ID,
-			"name":     f.Name,
-			"path":     f.Path,
-			"size":     f.Size,
-			"is_folder": f.IsFolder,
+			"id":           f.ID,
+			"name":         f.Name,
+			"path":         f.Path,
+			"size":         f.Size,
+			"is_folder":    f.IsFolder,
 			"content_hash": f.ContentHash,
 		}
 		if !f.ModifiedTime.IsZero() {

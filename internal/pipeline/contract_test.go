@@ -254,7 +254,7 @@ type stubStep struct {
 	contract StepContract
 }
 
-func (s *stubStep) Name() string          { return s.name }
+func (s *stubStep) Name() string           { return s.name }
 func (s *stubStep) Contract() StepContract { return s.contract }
 func (s *stubStep) Run(_ context.Context, d *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	return d, nil

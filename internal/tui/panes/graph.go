@@ -39,8 +39,8 @@ func (g *GraphPane) View(width, height int) string {
 	}
 
 	content := lipgloss.NewStyle().
-		Width(width - 4).
-		Height(height - 4).
+		Width(width-4).
+		Height(height-4).
 		Align(lipgloss.Center, lipgloss.Center).
 		Render("graph view\ncoming soon")
 

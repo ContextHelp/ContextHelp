@@ -19,13 +19,13 @@ import (
 //
 // Three eviction triggers (oldest-first within each):
 //
-//	1. TTL: files older than RetentionHours since their pipeline-success
-//	   timestamp are deleted. Default: 48 hours.
-//	2. Cap: when total bytes-on-disk exceeds MaxGB, oldest-first eviction
-//	   until the cap is met. Default: 20 GB.
-//	3. S3 archive (optional): if S3Archive is true, the file is uploaded
-//	   to S3 BEFORE local deletion so cold-storage retention can extend
-//	   indefinitely.
+//  1. TTL: files older than RetentionHours since their pipeline-success
+//     timestamp are deleted. Default: 48 hours.
+//  2. Cap: when total bytes-on-disk exceeds MaxGB, oldest-first eviction
+//     until the cap is met. Default: 20 GB.
+//  3. S3 archive (optional): if S3Archive is true, the file is uploaded
+//     to S3 BEFORE local deletion so cold-storage retention can extend
+//     indefinitely.
 type RetentionPolicy struct {
 	// MediaDir is the absolute path under which meeting media files live.
 	// Per-recording files: <MediaDir>/<session_id>/<uuid>.{mov,mp4,webm,m4a}.
@@ -48,9 +48,9 @@ type RetentionPolicy struct {
 
 // RetentionResult summarises one Sweep run.
 type RetentionResult struct {
-	Scanned     int   // total files inspected
-	EvictedTTL  int   // files evicted because of TTL
-	EvictedCap  int   // files evicted because of cap
+	Scanned     int // total files inspected
+	EvictedTTL  int // files evicted because of TTL
+	EvictedCap  int // files evicted because of cap
 	BytesBefore int64
 	BytesAfter  int64
 	Errors      []error

@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	PassphraseEnvVar            = "CTXT_BACKUP_PASSPHRASE"
-	PassphraseKeychainService   = "ctxt.backup"
-	PassphraseKeychainAccount   = "passphrase"
+	PassphraseEnvVar          = "CTXT_BACKUP_PASSPHRASE"
+	PassphraseKeychainService = "ctxt.backup"
+	PassphraseKeychainAccount = "passphrase"
 )
 
 // ResolvePassphrase returns the backup passphrase according to the priority chain.

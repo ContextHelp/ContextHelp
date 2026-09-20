@@ -16,9 +16,9 @@ type PostStrategy struct {
 
 func NewPost(c SubstackClient) *PostStrategy { return &PostStrategy{Client: c} }
 
-func (*PostStrategy) ID() string                    { return IDPost }
+func (*PostStrategy) ID() string                     { return IDPost }
 func (*PostStrategy) Family() lateral.StrategyFamily { return lateral.FamilyPlatform }
-func (*PostStrategy) Preconditions() []string       { return nil }
+func (*PostStrategy) Preconditions() []string        { return nil }
 
 func (*PostStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) lateral.AppliesResult {
 	d := customdomain.Detect(ev.SourceURL, hintsFromEvent(ev))

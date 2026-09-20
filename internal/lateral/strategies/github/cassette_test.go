@@ -387,7 +387,7 @@ func TestCassette_EndToEnd_RepoProbe_AllSubpathsExercised(t *testing.T) {
 	// Compose: API calls go through srv.URL; HasSponsorPage queries the
 	// sponsorSrv. The redirectingFetcher routes by host substring.
 	f := &composedFetcher{
-		baseAPI:    srv.URL,
+		baseAPI:     srv.URL,
 		baseSponsor: sponSrv.URL,
 		inner:       newHTTPFetcher(),
 	}

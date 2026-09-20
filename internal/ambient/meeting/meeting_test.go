@@ -13,10 +13,10 @@ import (
 
 // fakeRecorder is a controllable MeetingRecorder.
 type fakeRecorder struct {
-	mu        sync.Mutex
-	startErr  error
-	stopErr   error
-	stopRes   RecordResult
+	mu         sync.Mutex
+	startErr   error
+	stopErr    error
+	stopRes    RecordResult
 	startCalls atomic.Int64
 }
 

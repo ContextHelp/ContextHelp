@@ -19,7 +19,7 @@ func newClock(t time.Time) *fakeClock {
 	c.ns.Store(t.UnixNano())
 	return c
 }
-func (c *fakeClock) Now() time.Time         { return time.Unix(0, c.ns.Load()) }
+func (c *fakeClock) Now() time.Time          { return time.Unix(0, c.ns.Load()) }
 func (c *fakeClock) Advance(d time.Duration) { c.ns.Add(int64(d)) }
 
 func newBuffer(t *testing.T, cfg Config) *Buffer {

@@ -62,4 +62,3 @@ func (s *SceneDetector) Run(ctx context.Context, draft *storage.KnowledgeObject)
 
 	return draft, nil
 }
-
