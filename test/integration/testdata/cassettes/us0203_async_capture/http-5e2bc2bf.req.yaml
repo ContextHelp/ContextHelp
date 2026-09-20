@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: 5e2bc2bf
+recorded_at: "2026-09-20T01:28:14Z"
+payload:
+    method: GET
+    url: http://127.0.0.1:50722/query?id_list=0000.00001

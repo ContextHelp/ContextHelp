@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: 5e2bc2bf
+recorded_at: "2026-09-20T01:28:14Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/atom+xml
+    body: <feed><entry><id>http://arxiv.org/abs/0000.00001</id><title>Async Test</title><summary>s</summary><published>2026-01-01T00:00:00Z</published></entry></feed>
