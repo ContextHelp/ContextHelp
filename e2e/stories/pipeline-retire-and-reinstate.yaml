@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.pipeline.retire-and-reinstate
+title: Retire a pipeline reversibly, then bring it back when it is needed again
+binary: dpkms
+intent: |
+  A pipeline is no longer in use but deleting it outright would lose the
+  definition. The operator archives it with a reason, confirms it no
+  longer appears in the active list, and later reinstates it when the
+  work returns.
+steps:
+  - id: list_active
+    intent: List active pipelines to confirm the target is currently in use.
+    invoke: ["dpkms", "pipeline", "list", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: archive_pipeline
+    intent: Archive the pipeline with a note explaining why it is retired.
+    invoke: ["dpkms", "pipeline", "archive", "doc.legacy", "--note", "superseded by doc.research", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: confirm_hidden
+    intent: Confirm the archived pipeline no longer shows among active ones.
+    invoke: ["dpkms", "pipeline", "list", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: find_archived
+    intent: Find it again in the archived-only listing.
+    invoke: ["dpkms", "pipeline", "list", "--only-archived", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: reinstate
+    intent: Bring the pipeline back into service with a note.
+    invoke: ["dpkms", "pipeline", "unarchive", "doc.legacy", "--note", "needed for a backfill", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

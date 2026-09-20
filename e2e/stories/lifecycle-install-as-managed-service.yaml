@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.lifecycle.install-as-managed-service
+title: Register the daemon with the host service manager so it survives logout
+binary: dpkms
+intent: |
+  An operator tired of starting the daemon by hand registers it with the
+  platform service manager. They check the current install state first,
+  register the binary, then re-check that the service is both installed
+  and running.
+steps:
+  - id: check_install_state
+    intent: Report whether a service unit is already installed and running.
+    invoke: ["dpkms", "install", "--status", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: register_service
+    intent: Register the currently running binary with the service manager.
+    invoke: ["dpkms", "install", "--launchd"]
+    capture: [exit_code, stdout, stderr]
+  - id: reconfirm_state
+    intent: Re-read install state to see the unit registered and active.
+    invoke: ["dpkms", "install", "--status", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: probe_managed_instance
+    intent: Probe the service-launched instance to confirm it is serving.
+    invoke: ["dpkms", "healthcheck", "--format", "json"]
+    capture: [exit_code, stdout]

@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.config.vet-release-before-upgrading
+title: Read the release notes and drain the daemon before replacing the binary
+binary: dpkms
+intent: |
+  A newer release is available. Swapping the binary under a running
+  worker is not something the operator is willing to do, so they check
+  what is offered, read the notes for breaking changes, back up, stop the
+  instance cleanly, and only then install.
+steps:
+  - id: check_release
+    intent: Report whether a newer release than the installed one exists.
+    invoke: ["dpkms", "upgrade", "check", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: read_notes
+    intent: Read the release notes for breaking changes before committing.
+    invoke: ["dpkms", "upgrade", "notes"]
+    capture: [exit_code, stdout]
+  - id: backup_first
+    intent: Take a backup so the upgrade is reversible.
+    invoke: ["dpkms", "backup", "--include-configs", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: drain_instance
+    intent: Stop the running instance gracefully before replacing the binary.
+    invoke: ["dpkms", "shutdown", "--port", "8080"]
+    capture: [exit_code, stdout, stderr]
+  - id: install_release
+    intent: Download and replace the binary in place.
+    invoke: ["dpkms", "upgrade", "install", "--format", "json"]
+    capture: [exit_code, stdout, stderr]

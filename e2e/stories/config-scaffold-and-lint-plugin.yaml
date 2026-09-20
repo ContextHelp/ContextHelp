@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: dpkms.config.scaffold-and-lint-plugin
+title: Scaffold a plugin and lint its registry entry before publishing it
+binary: dpkms
+intent: |
+  A developer extending the substrate scaffolds a plugin, lints the
+  registry file that advertises it, and regenerates the CLI reference
+  docs so the surface they are extending is documented from the real
+  command tree rather than by hand.
+steps:
+  - id: scaffold_plugin
+    intent: Scaffold a new plugin with manifest, stub, and README.
+    invoke: ["dpkms", "dev", "init-plugin", "acme-notes", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: lint_registry
+    intent: Lint the registry YAML against its schema before publishing.
+    invoke: ["dpkms", "dev", "validate-registry", "plugins/registry.yaml", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: regenerate_docs
+    intent: Regenerate CLI reference docs from the live command tree.
+    invoke: ["dpkms", "dev", "gen-docs", "--dir", "docs/cli"]
+    capture: [exit_code, stdout]
