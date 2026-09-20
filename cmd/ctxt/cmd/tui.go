@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
 	"github.com/spf13/cobra"
@@ -22,10 +20,9 @@ Keyboard shortcuts:
   ?           toggle help
   q           quit`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Check ASCII-only mode (disables Unicode box-drawing characters).
-		if os.Getenv("CTXT_TUI_ASCII") == "1" {
-			// Full ASCII-only mode is a Phase 3 polish task.
-		}
+		// CTXT_TUI_ASCII=1 is reserved for ASCII-only rendering (swapping the
+		// Unicode box-drawing characters). Not yet implemented: the variable is
+		// deliberately not read here so it has no silent partial effect.
 
 		svc, cleanup, err := newService()
 		if err != nil {

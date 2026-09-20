@@ -171,14 +171,12 @@ func (p *RetentionPolicy) listMediaFiles() ([]mediaFile, error) {
 	return out, err
 }
 
-// evict removes a media file. When S3Archive is enabled, uploads first
-// (no-op stub in v1; T-0510 wires real S3 upload).
+// evict removes a media file.
+//
+// S3Archive is not yet honored: archiving to the blob buffer before deletion
+// is unimplemented, so eviction always deletes locally regardless of the flag.
+// Wiring it to internal/ambient/buffer/s3 is pending.
 func (p *RetentionPolicy) evict(_ context.Context, f mediaFile) error {
-	if p.S3Archive {
-		// TODO: wire to internal/ambient/buffer/s3 (T-0510). For now we
-		// just delete locally; the S3-archive path is stubbed so test
-		// expectations don't gate on S3.
-	}
 	return os.Remove(f.Path)
 }
 

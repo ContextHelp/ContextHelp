@@ -61,9 +61,5 @@ func (m *mockRegistry) RegisterDetector(_ Detector)     {}
 func (m *mockRegistry) Detect(in DetectInput) string    { return m.SelectPipeline(in.Source) }
 func (m *mockRegistry) Detectors() []Detector           { return nil }
 
-func TestRegistryInterface(t *testing.T) {
-	var r Registry = &mockRegistry{pipelines: make(map[string]*Pipeline)}
-	if r == nil {
-		t.Fatal("mock should satisfy Registry")
-	}
-}
+// Compile-time assertion: *mockRegistry satisfies Registry.
+var _ Registry = (*mockRegistry)(nil)

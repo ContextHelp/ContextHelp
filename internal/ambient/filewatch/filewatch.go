@@ -97,15 +97,11 @@ func New(cfg Config) (*Source, error) {
 	if cfg.SettleDuration <= 0 {
 		cfg.SettleDuration = defaultStableSettleMs * time.Millisecond
 	}
-	// MoveAfterEnqueue defaults to true; explicit zero-value handling:
-	// callers that want to disable must set false explicitly. We can't
-	// distinguish "not set" from "set false" with a bool, so the default
-	// for the config-from-zero case is true. Tests that need it false
-	// pass it explicitly.
-	if !cfg.MoveAfterEnqueue {
-		// We accept both meanings; downstream code reads cfg.MoveAfterEnqueue
-		// and acts accordingly. Documented: zero = false.
-	}
+	// MoveAfterEnqueue is intentionally left at whatever the caller passed:
+	// a bool cannot distinguish "not set" from "set false", so the zero value
+	// means false (do not move). Callers that want files moved after a
+	// successful enqueue must set it true explicitly; the flag is read at
+	// move time, not normalised here.
 	return &Source{
 		cfg:    cfg,
 		events: make(chan ambient.RawEvent, defaultEventChanSize),

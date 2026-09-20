@@ -109,10 +109,8 @@ func (s *EdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth
 		}
 
 		// Collect mention targets for all frontier objects.
-		placeholders := make([]string, 0, len(frontier))
 		args := make([]any, 0, len(frontier))
 		for id := range frontier {
-			placeholders = append(placeholders, "?")
 			args = append(args, id)
 		}
 
