@@ -431,7 +431,7 @@ func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry
 Update all callers of `New()`. Find them:
 
 ```bash
-grep -r "service.New(" /Users/jadb/.w/ideacrafterslabs/ctxt --include="*.go" -l
+grep -r "service.New(" ../ctxt --include="*.go" -l
 ```
 
 Pass a zero-value or loaded `config.Config{}` at each call site.
@@ -855,7 +855,7 @@ feat(pipeline/builtins): register dedup step and add InjectDedupStep helper
 **Step 7.1 — Check if validate.go exists**
 
 ```bash
-ls /Users/jadb/.w/ideacrafterslabs/ctxt/internal/config/
+ls ./internal/config/
 ```
 
 If absent, create it. If present, add to the existing `Validate` function.
@@ -977,7 +977,7 @@ feat(config): add Validate() with duplicates policy and threshold checks
 
 ```bash
 grep -r "duplicate_of\|ctxt list\|ListObjects\|KnowledgeObject" \
-    /Users/jadb/.w/ideacrafterslabs/ctxt/cmd --include="*.go" -l
+    ./cmd --include="*.go" -l
 ```
 
 The `ctxt list` output is typically in `cmd/list.go` or equivalent. Identify the file that calls `svc.ListObjects()` and formats the output.
@@ -1025,7 +1025,7 @@ feat(cmd): annotate duplicate objects in ctxt list output
 **Step 9.1 — Build the binary**
 
 ```bash
-cd /Users/jadb/.w/ideacrafterslabs/ctxt && go build ./cmd/ctxt/...
+cd ../ctxt && go build ./cmd/ctxt/...
 ```
 
 Expected: clean build, no errors.
@@ -1071,7 +1071,7 @@ CTXT_DUPLICATES_POLICY=warn ./ctxt analyze "The quick brown fox jumps over the l
 **Step 9.4 — Run the full test suite**
 
 ```bash
-cd /Users/jadb/.w/ideacrafterslabs/ctxt && go test ./...
+cd ../ctxt && go test ./...
 ```
 
 Expected: all packages pass.

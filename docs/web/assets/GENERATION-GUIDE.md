@@ -38,7 +38,7 @@ sudo apt-get install inkscape
 ### Using ImageMagick
 
 ```bash
-cd /Users/jadb/.w/ideacrafterslabs/ctxt/assets
+cd ./assets
 
 # Create favicon directory if not exists
 mkdir -p favicon
@@ -58,7 +58,7 @@ convert favicon/favicon-16x16.png favicon/favicon-32x32.png favicon/favicon-48x4
 ### Using Inkscape
 
 ```bash
-cd /Users/jadb/.w/ideacrafterslabs/ctxt/assets
+cd ./assets
 mkdir -p favicon
 
 # Export specific sizes
@@ -140,7 +140,7 @@ Add to your `<head>` section:
 **Alternative: Using ImageMagick**
 
 ```bash
-cd /Users/jadb/.w/ideacrafterslabs/ctxt/assets
+cd ./assets
 mkdir -p social
 
 # Create base canvas with navy background
@@ -200,7 +200,7 @@ Horizontal banner format:
 Some platforms don't support SVG. Export PNG versions:
 
 ```bash
-cd /Users/jadb/.w/ideacrafterslabs/ctxt/assets
+cd ./assets
 mkdir -p logo/png
 
 # Export logos at various sizes
@@ -294,7 +294,7 @@ Create a shell script to generate all assets at once:
 
 set -e
 
-ASSETS_DIR="/Users/jadb/.w/ideacrafterslabs/ctxt/assets"
+ASSETS_DIR="./assets"
 cd "$ASSETS_DIR"
 
 echo "Creating directories..."

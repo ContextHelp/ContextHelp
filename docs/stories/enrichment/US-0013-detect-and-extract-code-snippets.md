@@ -123,8 +123,8 @@ Content-Type: application/json
 ## Personas
 
 - [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
-- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
-- [Platform Engineer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/platform-engineer.md)
+- Automation Builder
+- Platform Engineer
 
 ---
 

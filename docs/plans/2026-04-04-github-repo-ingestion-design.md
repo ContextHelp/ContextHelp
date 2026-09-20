@@ -27,7 +27,7 @@ Three sources feed RCL, running independently, merging into a single index:
 
 - **Git host API scan.** Config provides host URL, token, and optional org filter. Uses a `HostProvider` interface with adapters for GitHub, GitLab, Gitea.
 - **Explicit config.** A `repos.context` key listing remote URLs or `org/*` globs, resolved via host API at sync time.
-- **Local directory scan.** Config provides directory roots (e.g. `~/.w/`). Walks directories, reads `.git/config` for remote URLs. No API needed.
+- **Local directory scan.** Config provides directory roots (e.g. `~/src/`). Walks directories, reads `.git/config` for remote URLs. No API needed.
 
 Deduplication by `remote_url`. Records merge across sources: local scan adds `local_path`, API adds `access_level`.
 
@@ -178,7 +178,7 @@ repo_context:
     - "ideacrafterslabs/*"
 
   local_roots:
-    - "~/.w/"
+    - "~/src/"
 
   promote:
     - "git@github.com:charmbracelet/bubbletea.git"

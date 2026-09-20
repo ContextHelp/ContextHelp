@@ -165,7 +165,7 @@ def compose_brief(api_url, query, template, output_format="markdown",
 ## Personas
 
 - [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
-- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- Automation Builder
 
 ---
 

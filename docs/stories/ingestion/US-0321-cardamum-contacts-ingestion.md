@@ -74,4 +74,4 @@ contact), and deduplicates by card UID.
 
 ## Personas
 
-- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
+- Solo Developer

@@ -165,7 +165,7 @@ def ingest_and_wait(api_url, content, source_type, profile=None,
 ## Personas
 
 - [Agents / LLMs / Tools](../../personas/agents-llms-tools.md)
-- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- Automation Builder
 
 ---
 

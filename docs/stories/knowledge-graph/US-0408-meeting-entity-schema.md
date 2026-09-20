@@ -50,7 +50,7 @@ contract.
 - [ ] `ctxt list --type entity --entity-type meeting` filters
 - [ ] `ctxt list --mention @meeting.<slug>` returns typed object
 - [ ] Mention graph composes: meeting mentioning
-  `@project.lesexperts` creates standard back-edge — no
+  `@project.acme` creates standard back-edge — no
   meeting-specific edge type
 - [ ] Derived (reserved): `summary` (string), `followups[]`
   (`{owner, action, due?}`)

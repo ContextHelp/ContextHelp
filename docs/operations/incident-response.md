@@ -62,7 +62,7 @@ Secret (API key, token, password) obtained or used by unauthorized party.
 - [ ] Provider usage log reviewed; unauthorized calls enumerated
 - [ ] Monitoring / alerting gap closed
 - [ ] Policy updated (rotation schedule, secret storage guidelines)
-- [ ] Incident report filed in `$APS_DATA_PATH/sops/incidents/`
+- [ ] Incident report filed in your operational incident log
 - [ ] Retrospective scheduled within 7 days
 
 ---
@@ -250,7 +250,8 @@ or abuse ctxt permissions beyond declared scope.
 
 ## Filing an Incident Report
 
-Store in `$APS_DATA_PATH/sops/incidents/YYYY-MM-DD-<slug>.md`.
+Store in your operational incident log, one file per incident, named
+`YYYY-MM-DD-<slug>.md`.
 
 Minimum fields:
 

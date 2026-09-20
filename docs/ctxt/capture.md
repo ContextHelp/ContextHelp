@@ -279,7 +279,7 @@ PowerToys Run plugin or AutoHotkey script:
 
 ### iOS / Android (companion app — Phase 3)
 
-Mobile capture invokes the dPKMS instance over HTTP (per `~/.fam` workspace design). Out of scope for Phase 2; tracked under the mobile companion track.
+Mobile capture invokes the dPKMS instance over HTTP (per the household workspace workspace design). Out of scope for Phase 2; tracked under the mobile companion track.
 
 ## See also
 

@@ -174,7 +174,7 @@ Restart your agent client; both endpoints get registered. Full guide: [`manual/w
 | Source meeting: not started | Auto-detect dismissed | Use explicit `ctxt capture meeting start` |
 | Session never starts | Foreground source disabled / no AX permission | Enable foreground source; grant macOS AX |
 
-For deeper troubleshooting (kit/policy rules, bus event taps, manual buffer flush, daemon restart procedures), see the ops runbook at `~/.ops/runbooks/dpkms-ambient.md`.
+For deeper troubleshooting (kit/policy rules, bus event taps, manual buffer flush, daemon restart procedures), see the internal dpkms-ambient ops runbook.
 
 ## Related
 

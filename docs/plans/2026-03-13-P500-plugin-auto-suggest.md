@@ -282,7 +282,7 @@ replace github.com/ideacrafterslabs/ctxt => ../..
 
 **Step 1.3 — add to go.work**
 
-Edit `/Users/jadb/.w/ideacrafterslabs/ctxt/go.work`:
+Edit `./go.work`:
 
 ```
 go 1.26.1
@@ -1103,7 +1103,7 @@ git commit -m "feat(plugin/autosuggest): add Plugin struct implementing plugin.P
 **Step 8.1 — locate wiring point**
 
 ```bash
-ls /Users/jadb/.w/ideacrafterslabs/ctxt/cmd/
+ls ./cmd/
 ```
 
 Find the file that creates `jobs.NewWorkerPool` and the HTTP server. Add plugin registry init there.
@@ -1484,7 +1484,7 @@ git commit -m "test(plugin/autosuggest): add E2E integration tests"
 **Step 12.1 — verify standalone build**
 
 ```bash
-cd /Users/jadb/.w/ideacrafterslabs/ctxt/plugins/autosuggest
+cd ./plugins/autosuggest
 go build ./...
 ```
 
@@ -1501,7 +1501,7 @@ Expected: `PASS`.
 **Step 12.3 — check no internal relative imports leak**
 
 ```bash
-grep -r "\"\.\./" /Users/jadb/.w/ideacrafterslabs/ctxt/plugins/autosuggest/
+grep -r "\"\.\./" ./plugins/autosuggest/
 ```
 
 Expected: zero output (all cross-references go through the module path `github.com/ideacrafterslabs/ctxt`).

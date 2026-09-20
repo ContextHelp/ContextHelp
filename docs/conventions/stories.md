@@ -16,7 +16,7 @@ Adopted across: aps, ctxt, tlc, c12n, routellm.
 v2 EXTENDS v1 (no rules removed). New: rule 8 `fixture:` prefix;
 rule 9 multi-language `### E2E (Go|Python|Rust)`; rule 10 test-plan
 class with `## Test Plan`; canonical audit script at
-`~/.agents/scripts/audit-stories.sh`; rule 7 `status:` softened to
+the story-audit script (internal tooling); rule 7 `status:` softened to
 WARN (backfill is a separate task).
 
 ## The 10 rules
@@ -149,7 +149,7 @@ acceptance criteria — map them.
 Use the canonical audit script:
 
 ```bash
-~/.agents/scripts/audit-stories.sh [REPO_ROOT]
+audit-stories.sh [REPO_ROOT]
 ```
 
 Exit 0 = all PASS or only WARN. Exit 1 = at least one FAIL.
@@ -178,7 +178,7 @@ c12n) don't paper over them with shadow `planned:` entries.
 
 If a repo is on v1 and has audit drift:
 
-1. Run `~/.agents/scripts/audit-stories.sh` from the repo root.
+1. Run the story-audit script (internal tooling) from the repo root.
 2. Fix any `FAIL` (missing section, empty section, prose-only).
 3. `WARN` lines (missing `status:`) are deferred — file a follow-up
    task to backfill `status:` per story. v2 does not block on this.

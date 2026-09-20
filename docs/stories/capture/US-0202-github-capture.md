@@ -487,8 +487,8 @@ github:
 ## Personas
 
 - [Knowledge Workers](../../personas/knowledge-workers.md)
-- [Solo Developer](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/solo-developer.md)
-- [Automation Builder](/Users/jadb/.w/ideacrafterslabs/.docs/personas/individuals/automation-builder.md)
+- Solo Developer
+- Automation Builder
 
 ---
 

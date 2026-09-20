@@ -527,10 +527,11 @@ make ben-vector
 `hop.top/ben` is consumed via local-path replace — no published version
 exists yet. The Makefile resolves it in this order:
 
-1. `$BEN_LOCAL_PATH` env var, if set and pointing to a ben checkout.
-2. `~/.w/ideacrafterslabs/ben/hops/main` (sibling labspace).
+`$BEN_LOCAL_PATH` must point at a ben checkout. There is no default path,
+since the location depends on how you arrange your checkouts.
 
-If neither resolves, `make ben` fails loudly with a remediation hint.
+If it is unset or does not resolve, `make ben` fails loudly with a
+remediation hint.
 
 ### Interpreting a recall-floor failure
 

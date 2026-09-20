@@ -219,4 +219,4 @@ ctxt re-evaluates and consolidates onto kit's surface, demoting this ADR to
 - `cmd/ctxt/cmd/strict_validation_test.go` — regression guard ensuring the
   full eight-verb surface stays 12fcc-conformant.
 
-[kit-ref]: ~/.ops/docs/kit-conventions/reference/console-cli-config.md
+[kit-ref]: kit conventions reference (internal notes)

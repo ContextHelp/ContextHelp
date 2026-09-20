@@ -168,7 +168,7 @@ Privacy enforcement happens **before** the event leaves the user's machine — a
 - **Local MCP read-surface (separate ADR-068).** When dpkms is remote, agents may want to query *what's been captured locally but not yet enqueued* (the buffer). ADR-068 will specify whether `ctxd` exposes a tiny read-surface or whether local-buffer state is opaque to agents.
 - **Session boundary computation lives client-side (separate ADR-067).** Since the foreground-window signal is local, the cutter is local. dpkms receives SessionID as opaque metadata.
 - **CLI vs. daemon process identity.** Either binary writes to the same buffer + lockfile; only one instance runs at a time. `ctxt capture --ambient` errors out if `ctxd` is already supervising (e.g. via `brew services`), and vice versa. Health-check via well-known socket.
-- **Coordination with `~/.fam` deployments.** A household-deployed dpkms is the only case where local-and-remote could mean the same machine. Substrate works either way; no special-casing.
+- **Coordination with household-workspace deployments.** A household-deployed dpkms is the only case where local-and-remote could mean the same machine. Substrate works either way; no special-casing.
 
 ---
 
