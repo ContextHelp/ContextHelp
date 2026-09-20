@@ -181,7 +181,10 @@ func FixPermissions(configPath string) error {
 	}
 	info, err := os.Stat(configPath)
 	if err != nil {
-		return nil // file doesn't exist, nothing to fix
+		// Nothing to chmod: the file is absent or unreadable. This cannot
+		// mask an unsafe-permissions problem, because the LintConfig pass
+		// that runs straight after re-checks the same path and reports it.
+		return nil //nolint:nilerr // nothing to fix; LintConfig re-checks the path and reports it
 	}
 	mode := info.Mode().Perm()
 	if mode&0044 == 0 {

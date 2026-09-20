@@ -52,9 +52,11 @@ func (s *OfficeExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 
 	result, err := s.provider.ExtractOffice(ctx, draft.Source)
 	if err != nil {
-		// Fall back to RawContent if provider fails.
+		// Optional enrichment: the draft keeps its existing RawContent when
+		// the office provider is missing or fails. The error text is kept on
+		// the object so the failure stays visible downstream.
 		draft.Metadata["office_extraction_error"] = err.Error()
-		return draft, nil
+		return draft, nil //nolint:nilerr // optional provider; error preserved in office_extraction_error
 	}
 
 	draft.RawContent = result.FullText

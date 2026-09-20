@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -12,6 +13,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	cfgpkg "github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -169,7 +171,17 @@ func (s *Store) Exists(ctx context.Context, key string) (bool, error) {
 		Key:    &objKey,
 	})
 	if err != nil {
-		return false, nil
+		// Only a definitive "no such key" means the blob is absent. Every
+		// other failure (auth, network, throttling) leaves existence
+		// unknown, and reporting it as absent would let callers overwrite
+		// or re-upload live data. Mirrors the local store, which returns
+		// the error for any stat failure other than ErrNotExist.
+		var notFound *types.NotFound
+		var noSuchKey *types.NoSuchKey
+		if errors.As(err, &notFound) || errors.As(err, &noSuchKey) {
+			return false, nil
+		}
+		return false, fmt.Errorf("blob s3 exists: %w", err)
 	}
 	return true, nil
 }

@@ -44,8 +44,10 @@ func SuggestTagsAndMentions(ctx context.Context, obj *storage.KnowledgeObject, c
 
 	raw, err := llm.Generate(ctx, prompt)
 	if err != nil {
-		// LLM errors are soft: log-worthy but not pipeline-fatal.
-		return nil, nil, nil
+		// Soft failure: "no suggestions" is a valid result. The caller
+		// cannot act on the error (it degrades to the same no-op), so an
+		// empty suggestion set is returned instead.
+		return nil, nil, nil //nolint:nilerr // optional enrichment; no suggestions is a valid result
 	}
 
 	// Strip optional markdown fences.
@@ -57,8 +59,9 @@ func SuggestTagsAndMentions(ctx context.Context, obj *storage.KnowledgeObject, c
 
 	var resp suggestResponse
 	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
-		// Unparseable response: soft failure.
-		return nil, nil, nil
+		// LLMs do not reliably emit valid JSON; an unparseable response
+		// yields no suggestions, on the same terms as a generation failure.
+		return nil, nil, nil //nolint:nilerr // optional enrichment; no suggestions is a valid result
 	}
 
 	// Enforce caps.

@@ -54,9 +54,12 @@ func (s *C12nClassifier) Run(
 
 	s.once.Do(s.initPipeline)
 	if s.initErr != nil {
+		// Classification is optional: when the c12n pipeline cannot be
+		// built the object is passed through marked unavailable, the miss
+		// is logged, and ingestion proceeds unclassified.
 		log.Printf("c12n_classify: pipeline unavailable, skipping: %v", s.initErr)
 		draft.Metadata["c12n_status"] = "unavailable"
-		return draft, nil
+		return draft, nil //nolint:nilerr // optional step; logged and marked c12n_status=unavailable
 	}
 
 	content := strings.TrimSpace(draft.RawContent)

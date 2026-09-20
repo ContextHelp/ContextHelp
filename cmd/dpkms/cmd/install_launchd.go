@@ -250,12 +250,16 @@ func (d *darwinInstaller) IsInstalled() (bool, error) {
 }
 
 func (d *darwinInstaller) IsRunning() (bool, error) {
+	// No launchctl on PATH means no launchd-managed agent, so the service
+	// is definitively not running rather than un-queryable.
 	if _, err := exec.LookPath("launchctl"); err != nil {
-		return false, nil
+		return false, nil //nolint:nilerr // no launchctl means no launchd agent, i.e. not running
 	}
 	out, err := exec.Command("launchctl", "list").Output()
 	if err != nil {
-		return false, nil
+		// `launchctl list` exits non-zero when nothing is loaded for this
+		// user — an expected "not running" answer, not a query failure.
+		return false, nil //nolint:nilerr // non-zero exit means nothing loaded, i.e. not running
 	}
 	return strings.Contains(string(out), LaunchdLabel), nil
 }
@@ -328,8 +332,10 @@ func (d *darwinInstaller) bootstrap(plistPath string) error {
 }
 
 func (d *darwinInstaller) bootout(plistPath string) error {
+	// Teardown is idempotent: with no launchctl there is no agent to unload,
+	// so the desired end state already holds.
 	if _, err := exec.LookPath("launchctl"); err != nil {
-		return nil
+		return nil //nolint:nilerr // no launchctl means no agent to unload; desired state already holds
 	}
 	uid := strconv.Itoa(os.Getuid())
 	// Prefer the modern bootout target. If that fails (e.g. the agent
@@ -372,14 +378,16 @@ func (l *linuxInstaller) IsInstalled() (bool, error) {
 }
 
 func (l *linuxInstaller) IsRunning() (bool, error) {
+	// No systemctl on PATH means no systemd-managed unit, so the service is
+	// definitively not running rather than un-queryable.
 	if _, err := exec.LookPath("systemctl"); err != nil {
-		return false, nil
+		return false, nil //nolint:nilerr // no systemctl means no systemd unit, i.e. not running
 	}
 	out, err := exec.Command("systemctl", "--user", "is-active", SystemdUnitName).Output()
 	if err != nil {
 		// is-active exits non-zero for "inactive" / "failed" — treat
 		// those as not-running rather than as an error.
-		return false, nil
+		return false, nil //nolint:nilerr // non-zero exit is is-active's "inactive"/"failed" answer
 	}
 	return strings.TrimSpace(string(out)) == "active", nil
 }
@@ -442,8 +450,10 @@ func (l *linuxInstaller) enable() error {
 }
 
 func (l *linuxInstaller) disable() error {
+	// Teardown is idempotent: with no systemctl there is no unit to disable,
+	// so the desired end state already holds.
 	if _, err := exec.LookPath("systemctl"); err != nil {
-		return nil
+		return nil //nolint:nilerr // no systemctl means no unit to disable; desired state already holds
 	}
 	_ = exec.Command("systemctl", "--user", "disable", "--now", SystemdUnitName).Run()
 	return nil

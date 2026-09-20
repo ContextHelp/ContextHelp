@@ -852,8 +852,10 @@ func resolveDefaultProfile(cmd *cobra.Command) error {
 	)
 
 	if err := form.Run(); err != nil {
-		// User cancelled (Ctrl+C / Esc) — proceed without a profile.
-		return nil
+		// User canceled (Ctrl+C / Esc) — proceed without a profile. The
+		// prompt is a convenience for picking a default; declining it is a
+		// valid choice, not a startup failure.
+		return nil //nolint:nilerr // declining the optional profile prompt is not a startup failure
 	}
 
 	if selected != "" {

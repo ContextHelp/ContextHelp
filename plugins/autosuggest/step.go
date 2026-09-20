@@ -36,8 +36,10 @@ func (s *AutoSuggestStep) Run(ctx context.Context, draft *storage.KnowledgeObjec
 
 	tags, mentions, err := SuggestTagsAndMentions(ctx, draft, s.cfg, s.llm)
 	if err != nil {
-		// Soft failure: return unchanged draft.
-		return draft, nil
+		// Autosuggest only adds optional tags/mentions to an already-valid
+		// object, so a suggestion failure leaves the draft untouched rather
+		// than failing the pipeline.
+		return draft, nil //nolint:nilerr // optional enrichment; draft passes through unchanged
 	}
 	if len(tags) == 0 && len(mentions) == 0 {
 		return draft, nil

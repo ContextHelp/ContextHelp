@@ -83,8 +83,10 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 
 	raw, err := g.llm.Generate(ctx, graphExtractorPrompt+content)
 	if err != nil {
-		// Degrade gracefully: log nothing, return ko unchanged.
-		return ko, nil
+		// Graph extraction is an enrichment pass over an already-valid
+		// object. An unavailable or failing LLM must not fail ingestion,
+		// so the object flows on without graph annotations.
+		return ko, nil //nolint:nilerr // optional enrichment; LLM failure must not fail ingestion
 	}
 
 	var resp graphExtractResponse
@@ -97,8 +99,10 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 		cleaned = cleaned[:end+1]
 	}
 	if err := json.Unmarshal([]byte(cleaned), &resp); err != nil {
-		// Unparseable response: degrade gracefully.
-		return ko, nil
+		// LLMs do not reliably emit valid JSON; an unparseable response is
+		// an expected outcome, not a pipeline fault. Same degradation as
+		// an outright generation failure.
+		return ko, nil //nolint:nilerr // optional enrichment; unparseable LLM output must not fail ingestion
 	}
 
 	if ko.Graph == nil {

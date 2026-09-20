@@ -49,9 +49,11 @@ func (s *SpeakerDiarizer) Run(ctx context.Context, draft *storage.KnowledgeObjec
 
 	result, err := s.provider.Diarize(ctx, draft.Source, segments)
 	if err != nil {
-		// Diarization failure is non-fatal.
+		// Optional enrichment: the transcript stays usable without speaker
+		// labels. The error text is kept on the object so the failure stays
+		// visible downstream.
 		draft.Metadata["diarization_error"] = err.Error()
-		return draft, nil
+		return draft, nil //nolint:nilerr // optional provider; error preserved in diarization_error
 	}
 
 	draft.Metadata["speaker_count"] = result.SpeakerCount

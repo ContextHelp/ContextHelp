@@ -52,7 +52,10 @@ func (p *stubRegistryAdapterPlugin) ResolveID(
 	}
 	id, err := p.store.Resolve(ctx, idOrAlias, profile)
 	if err != nil {
-		return idOrAlias, nil // not an alias; pass through
+		// Stub resolver: a failed lookup means the input was not an alias,
+		// so it passes through as a literal ID. This mirrors the pass-through
+		// contract the test exercises.
+		return idOrAlias, nil //nolint:nilerr // stub: unresolved input passes through as a literal ID
 	}
 	return id, nil
 }
