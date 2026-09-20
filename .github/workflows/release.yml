@@ -12,9 +12,32 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/ctxt-dpkms
-  GO_VERSION: '1.26'
 
 jobs:
+  # mise.toml is the single source of truth for tool versions; see ci.yml.
+  toolchain:
+    name: Resolve toolchain pins
+    runs-on: ubuntu-latest
+    outputs:
+      go-version: ${{ steps.pins.outputs.go-version }}
+      golangci-version: ${{ steps.pins.outputs.golangci-version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Read pins from mise.toml
+        id: pins
+        run: |
+          go_version=$(sed -n 's/^go = "\(.*\)"$/\1/p' mise.toml)
+          golangci_version=$(sed -n 's/^"go:.*golangci-lint" = "\(.*\)"$/\1/p' mise.toml)
+          if [ -z "$go_version" ] || [ -z "$golangci_version" ]; then
+            echo "mise.toml is missing an exact go or golangci-lint pin" >&2
+            exit 1
+          fi
+          echo "go-version=$go_version" >>"$GITHUB_OUTPUT"
+          echo "golangci-version=$golangci_version" >>"$GITHUB_OUTPUT"
+          echo "go=$go_version golangci-lint=$golangci_version"
+
   # ── Gate 1: secret scan ──────────────────────────────────────────────────────
   # ── DISABLED: secret scanning runs locally ───────────────────────────────
   # gitleaks-action requires a license for organization-owned repos and this
@@ -49,6 +72,7 @@ jobs:
   #
   # # ── Gate 2: lint ─────────────────────────────────────────────────────────────
   lint:
+    needs: toolchain
     name: Lint
     runs-on: ubuntu-latest
     steps:
@@ -58,13 +82,13 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
+      # Must match ci.yml: .golangci.yml declares `version: "2"`, which the
+      # golangci-lint v1 line cannot parse.
       - name: Install golangci-lint
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
-            | sh -s -- -b "$(go env GOPATH)/bin" v1.55.2
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v${{ needs.toolchain.outputs.golangci-version }}
 
       - name: Run golangci-lint
         run: golangci-lint run --timeout=5m --verbose
@@ -82,6 +106,7 @@ jobs:
 
   # ── Gate 3: security scan ────────────────────────────────────────────────────
   security:
+    needs: toolchain
     name: Security Scan
     runs-on: ubuntu-latest
     steps:
@@ -91,7 +116,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
       - name: Install gosec
@@ -121,6 +146,7 @@ jobs:
 
   # ── Gate 4: Trivy CRITICAL scans (Dockerfile + filesystem) ──────────────────
   trivy-release-gate:
+    needs: toolchain
     name: Trivy Release Gate
     runs-on: ubuntu-latest
     permissions:
@@ -153,6 +179,7 @@ jobs:
 
   # ── Gate 5: unit tests ────────────────────────────────────────────────────────
   test:
+    needs: toolchain
     name: Unit Tests
     runs-on: ubuntu-latest
     steps:
@@ -162,7 +189,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
       - name: Download dependencies
@@ -173,6 +200,7 @@ jobs:
 
   # ── Gate 6: integration tests ─────────────────────────────────────────────────
   integration:
+    needs: toolchain
     name: Integration Tests
     runs-on: ubuntu-latest
     services:
@@ -207,7 +235,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
       - name: Run integration tests
@@ -225,7 +253,7 @@ jobs:
   build-smoke:
     name: Build + Smoke
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [toolchain, lint, test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -233,7 +261,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
       - name: Build dpkms
@@ -260,6 +288,7 @@ jobs:
       - integration
       - build-smoke
 
+      - toolchain
     env:
       # secrets context is unavailable in step-level `if`; surface presence via job env
       HAS_GPG: ${{ secrets.GPG_PRIVATE_KEY != '' }}
@@ -273,7 +302,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
       - name: Install mingw-w64 (Windows CGO cross-compilation)

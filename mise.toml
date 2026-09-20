@@ -2,7 +2,32 @@
 [hooks]
 enter = "scripts/motd.sh"
 
+# Toolchain pins. This file is the single source of truth for tool versions.
+# Every workflow derives its Go version from the `go` entry below via the
+# `toolchain` job, and scripts/check-toolchain-pins.sh asserts the declarations
+# mise cannot reach (Dockerfile base images, the go.mod directive) agree.
+# Bump here first, never in a workflow or Dockerfile.
+#
+# go: must satisfy the `go` directive in go.mod (a MINIMUM, currently 1.26.1).
+#     CI previously floated on `go-version: '1.26'`, which silently tracks the
+#     newest 1.26 patch.
+# golangci-lint: lint rules drift between versions, so local output is only
+#     evidence about CI when the version matches exactly.
+#
+# golangci-lint uses the `go:` backend (compiled from source with the Go pinned
+# above) rather than the default aqua/asdf backend, which ships an upstream
+# PREBUILT binary. The v2.1.6 release binary is built with go1.24.2, and
+# golangci-lint refuses to load a config whose module targets a newer Go:
+#   "the Go language version (go1.24) used to build golangci-lint is lower
+#    than the targeted Go version (1.26.1)"
+# so the prebuilt binary cannot lint this repo at all. Building from source
+# reproduces exactly what CI's `go install ...@v2.1.6` produces.
+#
+# Why CI does NOT run `mise exec -- make <target>`:
+# CI keeps actions/setup-go for its module/build cache (a cold `mise install`
+# would recompile golangci-lint from source on every job, ~70s) and instead
+# derives the versions from this file via each workflow's `toolchain` job.
+# The versions are identical either way, so local == CI without the cache loss.
 [tools]
-age = "latest"
-fnox = "latest"
-go = "latest"
+go = "1.26.8"
+"go:github.com/golangci/golangci-lint/v2/cmd/golangci-lint" = "2.1.6"

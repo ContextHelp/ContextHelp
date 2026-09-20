@@ -8,7 +8,7 @@ WORKDIR /ui
 RUN mkdir -p dist && echo '{}' > dist/.keep
 
 # ─── Stage 2: Go builder ─────────────────────────────────────────────────────
-FROM golang:1.26-bookworm AS go-builder
+FROM golang:1.26.8-bookworm AS go-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git ca-certificates tzdata gcc libc6-dev libsqlite3-dev \
