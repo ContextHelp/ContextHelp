@@ -4,7 +4,19 @@ package integration
 //
 // Verifies: mock multiple source APIs, run entity aggregation for a slug,
 // verify merged profile stored.
-// All external HTTP calls use httptest.NewServer — no real network.
+// Each source fetch runs through its OWN xrr cassette
+// (testdata/cassettes/us0206_*). Every source is queried at the same
+// path (/entity/<slug>), so they cannot share a cassette directory: the
+// http adapter fingerprints on method + path + body, and identical
+// fingerprints would overwrite each other. One cassette per source keeps
+// the three payloads distinct.
+//
+// See xrr_capture_helpers_test.go for what the cassettes do and do not
+// prove.
+//
+// Re-record: XRR_MODE=record go test -count=1 ./test/integration/ \
+//   -run TestUS0206_RecordCassettes
+//
 // Gate: INTEGRATION=1 env var required.
 
 import (
@@ -29,12 +41,12 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockOSINTSource struct {
-	Platform  string            `json:"platform"`
-	Slug      string            `json:"slug"`
-	Name      string            `json:"name"`
-	Bio       string            `json:"bio"`
-	Links     []string          `json:"links"`
-	Metadata  map[string]string `json:"metadata"`
+	Platform string            `json:"platform"`
+	Slug     string            `json:"slug"`
+	Name     string            `json:"name"`
+	Bio      string            `json:"bio"`
+	Links    []string          `json:"links"`
+	Metadata map[string]string `json:"metadata"`
 }
 
 // ---------------------------------------------------------------------------
@@ -46,6 +58,10 @@ type osintMultiSourceFetchStep struct {
 	pipeline.BaseContract
 	sources []string // URLs of mock source endpoints
 	slug    string
+	// clients is indexed in parallel with sources: clients[i] carries the
+	// xrr transport for sources[i]. A short or nil slice, or a nil entry,
+	// falls back to the default client for that source.
+	clients []*gohttp.Client
 }
 
 func (s *osintMultiSourceFetchStep) Name() string { return "test-osint-multi-source-fetch" }
@@ -59,8 +75,12 @@ func (s *osintMultiSourceFetchStep) Run(_ context.Context, draft *storage.Knowle
 	var bios []string
 	var links []string
 
-	for _, srcURL := range s.sources {
-		resp, err := gohttp.Get(fmt.Sprintf("%s/entity/%s", srcURL, s.slug))
+	for i, srcURL := range s.sources {
+		var client *gohttp.Client
+		if i < len(s.clients) {
+			client = s.clients[i]
+		}
+		resp, err := captureGet(client, fmt.Sprintf("%s/entity/%s", srcURL, s.slug))
 		if err != nil {
 			continue
 		}
@@ -94,6 +114,98 @@ func (s *osintMultiSourceFetchStep) Run(_ context.Context, draft *storage.Knowle
 }
 
 // ---------------------------------------------------------------------------
+// Fixture handlers
+//
+// Named so the replaying test and the recorder share one definition of
+// each payload. See xrr_capture_helpers_test.go.
+// ---------------------------------------------------------------------------
+
+const (
+	osintJaneSlug = "person.jane-doe"
+	osintJohnSlug = "person.john-smith"
+)
+
+// osintSourceHandler serves one source's profile for any path, matching
+// the previous inline handlers, which also ignored the request path.
+func osintSourceHandler(src mockOSINTSource) gohttp.HandlerFunc {
+	return func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(src)
+	}
+}
+
+func osintXFixture() mockOSINTSource {
+	return mockOSINTSource{
+		Platform: "x",
+		Slug:     osintJaneSlug,
+		Name:     "Jane Doe",
+		Bio:      "Engineer @acme. Building distributed systems.",
+		Links:    []string{"https://github.com/janedoe"},
+	}
+}
+
+func osintLinkedInFixture() mockOSINTSource {
+	return mockOSINTSource{
+		Platform: "linkedin",
+		Slug:     osintJaneSlug,
+		Name:     "Jane Doe",
+		Bio:      "Principal Engineer at Acme Corp",
+		Links:    []string{"https://x.com/janedoe"},
+	}
+}
+
+func osintGitHubFixture() mockOSINTSource {
+	return mockOSINTSource{
+		Platform: "github",
+		Slug:     osintJaneSlug,
+		Name:     "janedoe",
+		Bio:      "Open source contributor",
+		Links:    []string{"https://www.linkedin.com/in/jane-doe"},
+	}
+}
+
+func osintSingleFixture() mockOSINTSource {
+	return mockOSINTSource{
+		Platform: "x",
+		Slug:     osintJohnSlug,
+		Name:     "John Smith",
+		Bio:      "Researcher",
+		Links:    []string{},
+	}
+}
+
+func osintCassettes() []captureFixture {
+	return []captureFixture{
+		{
+			Cassette: "us0206_merged_source_x",
+			Handler:  osintSourceHandler(osintXFixture()),
+			Path:     fmt.Sprintf("/entity/%s", osintJaneSlug),
+		},
+		{
+			Cassette: "us0206_merged_source_linkedin",
+			Handler:  osintSourceHandler(osintLinkedInFixture()),
+			Path:     fmt.Sprintf("/entity/%s", osintJaneSlug),
+		},
+		{
+			Cassette: "us0206_merged_source_github",
+			Handler:  osintSourceHandler(osintGitHubFixture()),
+			Path:     fmt.Sprintf("/entity/%s", osintJaneSlug),
+		},
+		{
+			Cassette: "us0206_single_source",
+			Handler:  osintSourceHandler(osintSingleFixture()),
+			Path:     fmt.Sprintf("/entity/%s", osintJohnSlug),
+		},
+	}
+}
+
+// TestUS0206_RecordCassettes re-records the US-0206 cassettes. No-op
+// unless XRR_MODE=record; needs no Postgres/Redis.
+func TestUS0206_RecordCassettes(t *testing.T) {
+	recordCaptureFixtures(t, osintCassettes())
+}
+
+// ---------------------------------------------------------------------------
 // US-0206 Tests
 // ---------------------------------------------------------------------------
 
@@ -104,45 +216,17 @@ func TestUS0206_MergedProfileFromMultipleSources(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	const slug = "person.jane-doe"
+	const slug = osintJaneSlug
 
-	// Mock X/Twitter source.
-	srvX := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockOSINTSource{
-			Platform: "x",
-			Slug:     slug,
-			Name:     "Jane Doe",
-			Bio:      "Engineer @acme. Building distributed systems.",
-			Links:    []string{"https://github.com/janedoe"},
-		})
-	}))
+	// Replay answers from the cassettes; the fixture servers only matter
+	// when re-recording. One cassette per source — see the file header.
+	srvX := httptest.NewServer(osintSourceHandler(osintXFixture()))
 	defer srvX.Close()
 
-	// Mock LinkedIn source.
-	srvLI := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockOSINTSource{
-			Platform: "linkedin",
-			Slug:     slug,
-			Name:     "Jane Doe",
-			Bio:      "Principal Engineer at Acme Corp",
-			Links:    []string{"https://x.com/janedoe"},
-		})
-	}))
+	srvLI := httptest.NewServer(osintSourceHandler(osintLinkedInFixture()))
 	defer srvLI.Close()
 
-	// Mock GitHub source.
-	srvGH := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockOSINTSource{
-			Platform: "github",
-			Slug:     slug,
-			Name:     "janedoe",
-			Bio:      "Open source contributor",
-			Links:    []string{"https://www.linkedin.com/in/jane-doe"},
-		})
-	}))
+	srvGH := httptest.NewServer(osintSourceHandler(osintGitHubFixture()))
 	defer srvGH.Close()
 
 	env := startTestEnv(t)
@@ -154,6 +238,11 @@ func TestUS0206_MergedProfileFromMultipleSources(t *testing.T) {
 			&osintMultiSourceFetchStep{
 				sources: []string{srvX.URL, srvLI.URL, srvGH.URL},
 				slug:    slug,
+				clients: []*gohttp.Client{
+					captureClient(t, "us0206_merged_source_x"),
+					captureClient(t, "us0206_merged_source_linkedin"),
+					captureClient(t, "us0206_merged_source_github"),
+				},
 			},
 		},
 	})
@@ -192,18 +281,9 @@ func TestUS0206_SingleSourceAggregation(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	const slug = "person.john-smith"
+	const slug = osintJohnSlug
 
-	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockOSINTSource{
-			Platform: "x",
-			Slug:     slug,
-			Name:     "John Smith",
-			Bio:      "Researcher",
-			Links:    []string{},
-		})
-	}))
+	srv := httptest.NewServer(osintSourceHandler(osintSingleFixture()))
 	defer srv.Close()
 
 	env := startTestEnv(t)
@@ -215,6 +295,7 @@ func TestUS0206_SingleSourceAggregation(t *testing.T) {
 			&osintMultiSourceFetchStep{
 				sources: []string{srv.URL},
 				slug:    slug,
+				clients: []*gohttp.Client{captureClient(t, "us0206_single_source")},
 			},
 		},
 	})

@@ -4,7 +4,18 @@ package integration
 //
 // Verifies: ingest entities from two mock platforms with same real-world entity,
 // dedup/merge produces single canonical object.
-// All external HTTP calls use httptest.NewServer — no real network.
+// Each platform fetch runs through its own xrr cassette
+// (testdata/cassettes/us0210_*). In the default replay mode the recorded
+// round-trip answers from disk and the fixture server is never contacted.
+// See xrr_capture_helpers_test.go for what the cassettes do and do not
+// prove.
+//
+// The entity-matching step itself is pure in-process logic and is
+// deliberately NOT recorded — a cassette can only capture the HTTP seam.
+//
+// Re-record: XRR_MODE=record go test -count=1 ./test/integration/ \
+//   -run TestUS0210_RecordCassettes
+//
 // Gate: INTEGRATION=1 env var required.
 
 import (
@@ -29,13 +40,13 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockPlatformEntity struct {
-	PlatformSlug  string   `json:"platform_slug"`  // e.g. "@github.janedoe"
-	PlatformName  string   `json:"platform_name"`  // "Jane Doe"
-	Platform      string   `json:"platform"`       // "github"
-	Bio           string   `json:"bio"`
-	LinkedURLs    []string `json:"linked_urls"`
-	Email         string   `json:"email,omitempty"`
-	Organization  string   `json:"organization,omitempty"`
+	PlatformSlug string   `json:"platform_slug"` // e.g. "@github.janedoe"
+	PlatformName string   `json:"platform_name"` // "Jane Doe"
+	Platform     string   `json:"platform"`      // "github"
+	Bio          string   `json:"bio"`
+	LinkedURLs   []string `json:"linked_urls"`
+	Email        string   `json:"email,omitempty"`
+	Organization string   `json:"organization,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -47,11 +58,14 @@ type platformEntityFetchStep struct {
 	pipeline.BaseContract
 	platformURL string
 	entityPath  string
+	// client carries the xrr record/replay transport. Nil falls back to
+	// the default client.
+	client *gohttp.Client
 }
 
 func (s *platformEntityFetchStep) Name() string { return "test-platform-entity-fetch" }
 func (s *platformEntityFetchStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	resp, err := gohttp.Get(fmt.Sprintf("%s%s", s.platformURL, s.entityPath))
+	resp, err := captureGet(s.client, fmt.Sprintf("%s%s", s.platformURL, s.entityPath))
 	if err != nil {
 		return draft, err
 	}
@@ -172,6 +186,92 @@ func (s *entityMatchStep) Run(_ context.Context, draft *storage.KnowledgeObject)
 }
 
 // ---------------------------------------------------------------------------
+// Fixture handlers
+//
+// Named so the replaying test and the recorder share one definition of
+// each payload. See xrr_capture_helpers_test.go.
+// ---------------------------------------------------------------------------
+
+const (
+	entityCrossRefURL  = "https://shared-profile.example.com/janedoe"
+	entityGitHubPath   = "/user/janedoe"
+	entityLinkedInPath = "/profile/jane-doe"
+	entityNameOnlyPath = "/user/janedoe99"
+)
+
+// platformEntityHandler serves one platform entity for any path, matching
+// the previous inline handlers, which also ignored the request path.
+func platformEntityHandler(ent mockPlatformEntity) gohttp.HandlerFunc {
+	return func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(ent)
+	}
+}
+
+// entityGitHubFixture and entityLinkedInFixture share entityCrossRefURL,
+// which is what drives the cross-reference match.
+func entityGitHubFixture() mockPlatformEntity {
+	return mockPlatformEntity{
+		PlatformSlug: "@github.janedoe",
+		PlatformName: "Jane Doe",
+		Platform:     "github",
+		Bio:          "Open source contributor at Acme",
+		LinkedURLs:   []string{entityCrossRefURL},
+		Organization: "Acme Corp",
+	}
+}
+
+func entityLinkedInFixture() mockPlatformEntity {
+	return mockPlatformEntity{
+		PlatformSlug: "@linkedin.jane-doe",
+		PlatformName: "Jane Doe",
+		Platform:     "linkedin",
+		Bio:          "Principal Engineer at Acme Corp",
+		LinkedURLs:   []string{entityCrossRefURL},
+		Organization: "Acme Corp",
+	}
+}
+
+// entityNameOnlyFixture is a different person who happens to share a
+// name: no org, no links, so only the name can match.
+func entityNameOnlyFixture() mockPlatformEntity {
+	return mockPlatformEntity{
+		PlatformSlug: "@x.janedoe99",
+		PlatformName: "Jane Doe",
+		Platform:     "x",
+		Bio:          "Random person with same name",
+		LinkedURLs:   []string{},
+		Organization: "",
+	}
+}
+
+func entityResolutionCassettes() []captureFixture {
+	return []captureFixture{
+		{
+			Cassette: "us0210_merge_github",
+			Handler:  platformEntityHandler(entityGitHubFixture()),
+			Path:     entityGitHubPath,
+		},
+		{
+			Cassette: "us0210_merge_linkedin",
+			Handler:  platformEntityHandler(entityLinkedInFixture()),
+			Path:     entityLinkedInPath,
+		},
+		{
+			Cassette: "us0210_name_only_match",
+			Handler:  platformEntityHandler(entityNameOnlyFixture()),
+			Path:     entityNameOnlyPath,
+		},
+	}
+}
+
+// TestUS0210_RecordCassettes re-records the US-0210 cassettes. No-op
+// unless XRR_MODE=record; needs no Postgres/Redis.
+func TestUS0210_RecordCassettes(t *testing.T) {
+	recordCaptureFixtures(t, entityResolutionCassettes())
+}
+
+// ---------------------------------------------------------------------------
 // US-0210 Tests
 // ---------------------------------------------------------------------------
 
@@ -182,35 +282,16 @@ func TestUS0210_SameEntityFromTwoPlatformsMerged(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	// Shared cross-reference URL used by both platforms to link to each other.
-	const sharedCrossRefURL = "https://shared-profile.example.com/janedoe"
+	// Both platforms link to this same URL, which is what makes them
+	// resolve to one entity.
+	const sharedCrossRefURL = entityCrossRefURL
 
-	// Mock GitHub API.
-	srvGH := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockPlatformEntity{
-			PlatformSlug: "@github.janedoe",
-			PlatformName: "Jane Doe",
-			Platform:     "github",
-			Bio:          "Open source contributor at Acme",
-			LinkedURLs:   []string{sharedCrossRefURL},
-			Organization: "Acme Corp",
-		})
-	}))
+	// Replay answers from the cassettes; the fixture servers only matter
+	// when re-recording.
+	srvGH := httptest.NewServer(platformEntityHandler(entityGitHubFixture()))
 	defer srvGH.Close()
 
-	// Mock LinkedIn scraper — links to the same sharedCrossRefURL.
-	srvLI := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockPlatformEntity{
-			PlatformSlug: "@linkedin.jane-doe",
-			PlatformName: "Jane Doe",
-			Platform:     "linkedin",
-			Bio:          "Principal Engineer at Acme Corp",
-			LinkedURLs:   []string{sharedCrossRefURL},
-			Organization: "Acme Corp",
-		})
-	}))
+	srvLI := httptest.NewServer(platformEntityHandler(entityLinkedInFixture()))
 	defer srvLI.Close()
 
 	env := startTestEnv(t)
@@ -220,7 +301,11 @@ func TestUS0210_SameEntityFromTwoPlatformsMerged(t *testing.T) {
 	env.svc.Pipes.Upsert("entity.github.person", &pipeline.Pipeline{
 		PipelineName: "entity.github.person",
 		Steps: []pipeline.PipelineStep{
-			&platformEntityFetchStep{platformURL: srvGH.URL, entityPath: "/user/janedoe"},
+			&platformEntityFetchStep{
+				platformURL: srvGH.URL,
+				entityPath:  entityGitHubPath,
+				client:      captureClient(t, "us0210_merge_github"),
+			},
 			&entityMatchStep{existingObjects: nil},
 		},
 	})
@@ -253,7 +338,11 @@ func TestUS0210_SameEntityFromTwoPlatformsMerged(t *testing.T) {
 	env.svc.Pipes.Upsert("entity.linkedin.person", &pipeline.Pipeline{
 		PipelineName: "entity.linkedin.person",
 		Steps: []pipeline.PipelineStep{
-			&platformEntityFetchStep{platformURL: srvLI.URL, entityPath: "/profile/jane-doe"},
+			&platformEntityFetchStep{
+				platformURL: srvLI.URL,
+				entityPath:  entityLinkedInPath,
+				client:      captureClient(t, "us0210_merge_linkedin"),
+			},
 			&entityMatchStep{existingObjects: []storage.KnowledgeObject{ghObj}},
 		},
 	})
@@ -299,27 +388,17 @@ func TestUS0210_LowConfidenceNotAutoLinked(t *testing.T) {
 	existingEntity := storage.KnowledgeObject{
 		Type: "entity.person",
 		Metadata: map[string]any{
-			"platform_slug": "@github.janedoe",
-			"platform_name": "Jane Doe",
-			"platform":      "github",
-			"organization":  "Acme Corp",
-			"linked_urls":   []any{},
+			"platform_slug":  "@github.janedoe",
+			"platform_name":  "Jane Doe",
+			"platform":       "github",
+			"organization":   "Acme Corp",
+			"linked_urls":    []any{},
 			"canonical_slug": "@github.janedoe",
 		},
 	}
 
 	// New entity: Jane Doe, no org overlap, no URL links — name-only match.
-	srvX := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockPlatformEntity{
-			PlatformSlug: "@x.janedoe99",
-			PlatformName: "Jane Doe",
-			Platform:     "x",
-			Bio:          "Random person with same name",
-			LinkedURLs:   []string{},
-			Organization: "",
-		})
-	}))
+	srvX := httptest.NewServer(platformEntityHandler(entityNameOnlyFixture()))
 	defer srvX.Close()
 
 	env := startTestEnv(t)
@@ -328,7 +407,11 @@ func TestUS0210_LowConfidenceNotAutoLinked(t *testing.T) {
 	env.svc.Pipes.Upsert("entity.x.person", &pipeline.Pipeline{
 		PipelineName: "entity.x.person",
 		Steps: []pipeline.PipelineStep{
-			&platformEntityFetchStep{platformURL: srvX.URL, entityPath: "/user/janedoe99"},
+			&platformEntityFetchStep{
+				platformURL: srvX.URL,
+				entityPath:  entityNameOnlyPath,
+				client:      captureClient(t, "us0210_name_only_match"),
+			},
 			&entityMatchStep{existingObjects: []storage.KnowledgeObject{existingEntity}},
 		},
 	})

@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: 6a717c73
+recorded_at: "2026-09-20T01:34:23Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"platform_slug":"@linkedin.jane-doe","platform_name":"Jane Doe","platform":"linkedin","bio":"Principal Engineer at Acme Corp","linked_urls":["https://shared-profile.example.com/janedoe"],"organization":"Acme Corp"}

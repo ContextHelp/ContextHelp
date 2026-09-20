@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: b069c611
+recorded_at: "2026-09-20T01:33:25Z"
+payload:
+    method: GET
+    url: http://127.0.0.1:51210/entity/person.jane-doe

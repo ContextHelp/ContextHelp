@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: b069c611
+recorded_at: "2026-09-20T01:33:25Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"platform":"github","slug":"person.jane-doe","name":"janedoe","bio":"Open source contributor","links":["https://www.linkedin.com/in/jane-doe"],"metadata":null}
