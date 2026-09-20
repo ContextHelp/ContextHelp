@@ -4,7 +4,15 @@ package integration
 //
 // Verifies: mock GitHub API, capture repo/issue/PR by URL,
 // title/body/labels stored on resulting objects.
-// All external HTTP calls use httptest.NewServer — no real network.
+// Each upstream fetch runs through an xrr cassette
+// (testdata/cassettes/us0202_*). In the default replay mode the recorded
+// round-trip answers from disk and the fixture server is never contacted.
+// See xrr_capture_helpers_test.go for what the cassettes do and do not
+// prove.
+//
+// Re-record: XRR_MODE=record go test -count=1 ./test/integration/ \
+//   -run TestUS0202_RecordCassettes
+//
 // Gate: INTEGRATION=1 env var required.
 
 import (
@@ -62,14 +70,17 @@ type mockGitHubPR struct {
 // githubRepoFetchStep calls the mock GitHub repos API.
 type githubRepoFetchStep struct {
 	pipeline.BaseContract
-	apiBaseURL string
+	apiBaseURL  string
 	owner, repo string
+	// client carries the xrr record/replay transport. Nil falls back to
+	// the default client.
+	client *gohttp.Client
 }
 
 func (s *githubRepoFetchStep) Name() string { return "test-github-repo-fetch" }
 func (s *githubRepoFetchStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s", s.apiBaseURL, s.owner, s.repo)
-	resp, err := gohttp.Get(url)
+	resp, err := captureGet(s.client, url)
 	if err != nil {
 		return draft, err
 	}
@@ -96,15 +107,18 @@ func (s *githubRepoFetchStep) Run(_ context.Context, draft *storage.KnowledgeObj
 // githubIssueFetchStep calls the mock GitHub issues API.
 type githubIssueFetchStep struct {
 	pipeline.BaseContract
-	apiBaseURL       string
-	owner, repo      string
-	issueNumber      int
+	apiBaseURL  string
+	owner, repo string
+	issueNumber int
+	// client carries the xrr record/replay transport. Nil falls back to
+	// the default client.
+	client *gohttp.Client
 }
 
 func (s *githubIssueFetchStep) Name() string { return "test-github-issue-fetch" }
 func (s *githubIssueFetchStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d", s.apiBaseURL, s.owner, s.repo, s.issueNumber)
-	resp, err := gohttp.Get(url)
+	resp, err := captureGet(s.client, url)
 	if err != nil {
 		return draft, err
 	}
@@ -138,12 +152,15 @@ type githubPRFetchStep struct {
 	apiBaseURL  string
 	owner, repo string
 	prNumber    int
+	// client carries the xrr record/replay transport. Nil falls back to
+	// the default client.
+	client *gohttp.Client
 }
 
 func (s *githubPRFetchStep) Name() string { return "test-github-pr-fetch" }
 func (s *githubPRFetchStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s/pulls/%d", s.apiBaseURL, s.owner, s.repo, s.prNumber)
-	resp, err := gohttp.Get(url)
+	resp, err := captureGet(s.client, url)
 	if err != nil {
 		return draft, err
 	}
@@ -169,6 +186,92 @@ func (s *githubPRFetchStep) Run(_ context.Context, draft *storage.KnowledgeObjec
 }
 
 // ---------------------------------------------------------------------------
+// Fixture handlers
+//
+// Named so the replaying test and the recorder share one definition of
+// each payload. See xrr_capture_helpers_test.go.
+// ---------------------------------------------------------------------------
+
+const (
+	githubOwner    = "golang"
+	githubRepoName = "go"
+	githubRepoDesc = "The Go programming language"
+	githubIssueNum = 456
+	githubPRNum    = 123
+)
+
+// githubJSONHandler serves one JSON body for any path, matching the
+// previous inline handlers, which also ignored the request path.
+func githubJSONHandler(payload any) gohttp.HandlerFunc {
+	return func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload)
+	}
+}
+
+func githubRepoFixture() mockGitHubRepo {
+	return mockGitHubRepo{
+		FullName:    fmt.Sprintf("%s/%s", githubOwner, githubRepoName),
+		Description: githubRepoDesc,
+		Language:    "Go",
+		Topics:      []string{"go", "programming-language"},
+		StarCount:   120000,
+	}
+}
+
+func githubIssueFixture() mockGitHubIssue {
+	return mockGitHubIssue{
+		Number: githubIssueNum,
+		Title:  "Improve error messages in net/http",
+		Body:   "The error messages in net/http are sometimes misleading.",
+		State:  "open",
+		Labels: []struct {
+			Name string `json:"name"`
+		}{
+			{Name: "enhancement"},
+			{Name: "NeedsDecision"},
+		},
+	}
+}
+
+func githubPRFixture() mockGitHubPR {
+	return mockGitHubPR{
+		Number:    githubPRNum,
+		Title:     "net/http: add structured logging support",
+		Body:      "This PR adds slog integration to net/http server.",
+		State:     "open",
+		Additions: 342,
+		Deletions: 89,
+	}
+}
+
+func githubCassettes() []captureFixture {
+	return []captureFixture{
+		{
+			Cassette: "us0202_repo_metadata",
+			Handler:  githubJSONHandler(githubRepoFixture()),
+			Path:     fmt.Sprintf("/repos/%s/%s", githubOwner, githubRepoName),
+		},
+		{
+			Cassette: "us0202_issue_metadata",
+			Handler:  githubJSONHandler(githubIssueFixture()),
+			Path:     fmt.Sprintf("/repos/%s/%s/issues/%d", githubOwner, githubRepoName, githubIssueNum),
+		},
+		{
+			Cassette: "us0202_pr_metadata",
+			Handler:  githubJSONHandler(githubPRFixture()),
+			Path:     fmt.Sprintf("/repos/%s/%s/pulls/%d", githubOwner, githubRepoName, githubPRNum),
+		},
+	}
+}
+
+// TestUS0202_RecordCassettes re-records the US-0202 cassettes. No-op
+// unless XRR_MODE=record; needs no Postgres/Redis.
+func TestUS0202_RecordCassettes(t *testing.T) {
+	recordCaptureFixtures(t, githubCassettes())
+}
+
+// ---------------------------------------------------------------------------
 // US-0202 Tests
 // ---------------------------------------------------------------------------
 
@@ -179,20 +282,13 @@ func TestUS0202_RepoTitleDescriptionStored(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	const owner = "golang"
-	const repo = "go"
-	const wantDesc = "The Go programming language"
+	const owner = githubOwner
+	const repo = githubRepoName
+	const wantDesc = githubRepoDesc
 
-	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockGitHubRepo{
-			FullName:    fmt.Sprintf("%s/%s", owner, repo),
-			Description: wantDesc,
-			Language:    "Go",
-			Topics:      []string{"go", "programming-language"},
-			StarCount:   120000,
-		})
-	}))
+	// Replay answers from the cassette; the fixture server only matters
+	// when re-recording.
+	srv := httptest.NewServer(githubJSONHandler(githubRepoFixture()))
 	defer srv.Close()
 
 	env := startTestEnv(t)
@@ -201,7 +297,12 @@ func TestUS0202_RepoTitleDescriptionStored(t *testing.T) {
 	env.svc.Pipes.Upsert("code.github.repo", &pipeline.Pipeline{
 		PipelineName: "code.github.repo",
 		Steps: []pipeline.PipelineStep{
-			&githubRepoFetchStep{apiBaseURL: srv.URL, owner: owner, repo: repo},
+			&githubRepoFetchStep{
+				apiBaseURL: srv.URL,
+				owner:      owner,
+				repo:       repo,
+				client:     captureClient(t, "us0202_repo_metadata"),
+			},
 		},
 	})
 
@@ -238,23 +339,9 @@ func TestUS0202_IssueTitleBodyLabelsStored(t *testing.T) {
 
 	const owner = "golang"
 	const repo = "go"
-	const issueNum = 456
+	const issueNum = githubIssueNum
 
-	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockGitHubIssue{
-			Number: issueNum,
-			Title:  "Improve error messages in net/http",
-			Body:   "The error messages in net/http are sometimes misleading.",
-			State:  "open",
-			Labels: []struct {
-				Name string `json:"name"`
-			}{
-				{Name: "enhancement"},
-				{Name: "NeedsDecision"},
-			},
-		})
-	}))
+	srv := httptest.NewServer(githubJSONHandler(githubIssueFixture()))
 	defer srv.Close()
 
 	env := startTestEnv(t)
@@ -263,7 +350,13 @@ func TestUS0202_IssueTitleBodyLabelsStored(t *testing.T) {
 	env.svc.Pipes.Upsert("code.github.issue", &pipeline.Pipeline{
 		PipelineName: "code.github.issue",
 		Steps: []pipeline.PipelineStep{
-			&githubIssueFetchStep{apiBaseURL: srv.URL, owner: owner, repo: repo, issueNumber: issueNum},
+			&githubIssueFetchStep{
+				apiBaseURL:  srv.URL,
+				owner:       owner,
+				repo:        repo,
+				issueNumber: issueNum,
+				client:      captureClient(t, "us0202_issue_metadata"),
+			},
 		},
 	})
 
@@ -307,19 +400,9 @@ func TestUS0202_PRTitleBodyStored(t *testing.T) {
 
 	const owner = "golang"
 	const repo = "go"
-	const prNum = 123
+	const prNum = githubPRNum
 
-	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockGitHubPR{
-			Number:    prNum,
-			Title:     "net/http: add structured logging support",
-			Body:      "This PR adds slog integration to net/http server.",
-			State:     "open",
-			Additions: 342,
-			Deletions: 89,
-		})
-	}))
+	srv := httptest.NewServer(githubJSONHandler(githubPRFixture()))
 	defer srv.Close()
 
 	env := startTestEnv(t)
@@ -328,7 +411,13 @@ func TestUS0202_PRTitleBodyStored(t *testing.T) {
 	env.svc.Pipes.Upsert("code.github.pr", &pipeline.Pipeline{
 		PipelineName: "code.github.pr",
 		Steps: []pipeline.PipelineStep{
-			&githubPRFetchStep{apiBaseURL: srv.URL, owner: owner, repo: repo, prNumber: prNum},
+			&githubPRFetchStep{
+				apiBaseURL: srv.URL,
+				owner:      owner,
+				repo:       repo,
+				prNumber:   prNum,
+				client:     captureClient(t, "us0202_pr_metadata"),
+			},
 		},
 	})
 

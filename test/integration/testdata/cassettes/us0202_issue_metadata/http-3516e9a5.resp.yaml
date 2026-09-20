@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: 3516e9a5
+recorded_at: "2026-09-20T01:31:50Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"number":456,"title":"Improve error messages in net/http","body":"The error messages in net/http are sometimes misleading.","state":"open","labels":[{"name":"enhancement"},{"name":"NeedsDecision"}]}

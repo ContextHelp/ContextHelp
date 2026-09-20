@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: f5a567ad
+recorded_at: "2026-09-20T01:31:50Z"
+payload:
+    method: GET
+    url: http://127.0.0.1:51103/repos/golang/go

@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: f5a567ad
+recorded_at: "2026-09-20T01:31:50Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"full_name":"golang/go","description":"The Go programming language","language":"Go","topics":["go","programming-language"],"stargazers_count":120000}

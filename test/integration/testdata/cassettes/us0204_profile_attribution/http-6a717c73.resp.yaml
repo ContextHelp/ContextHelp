@@ -1,0 +1,10 @@
+xrr: "1"
+adapter: http
+fingerprint: 6a717c73
+recorded_at: "2026-09-20T01:32:26Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json
+    body: |
+        {"username":"jane-doe","full_name":"Jane Doe","headline":"Principal Engineer at Acme Corp","about":"Building distributed systems for 10 years.","location":"San Francisco, CA","skills":["Go","Kubernetes","Distributed Systems"],"source_url":"https://www.linkedin.com/in/jane-doe"}
