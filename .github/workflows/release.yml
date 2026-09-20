@@ -123,8 +123,12 @@ jobs:
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
       - name: Run gosec (fail on medium+ severity)
+        # -tags fts5 is required, not cosmetic: without it 34 packages fail to
+        # type-check and gosec logs "skipping SSA analysis, no ssa result" for
+        # each, so the taint-tracking rules silently analyze nothing there.
         run: |
           gosec -conf .gosec.yaml \
+            -tags fts5 \
             -severity medium \
             -confidence medium \
             -exclude G104,G304,G307 \
