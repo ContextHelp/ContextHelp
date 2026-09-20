@@ -3,6 +3,7 @@ package providers
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,8 +14,8 @@ import (
 
 // ToolNotInstalledError indicates a required CLI tool is not on PATH.
 type ToolNotInstalledError struct {
-	Tool    string
-	Hint    string
+	Tool string
+	Hint string
 }
 
 func (e *ToolNotInstalledError) Error() string {
@@ -109,7 +110,8 @@ func RunCommand(ctx context.Context, name string, args ...string) (*CommandResul
 	}
 
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			result.ExitCode = exitErr.ExitCode()
 			return result, fmt.Errorf("%s exited with code %d: %s", name, result.ExitCode, strings.TrimSpace(result.Stderr))
 		}

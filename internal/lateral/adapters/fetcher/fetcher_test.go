@@ -3,8 +3,10 @@ package fetcher
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -194,4 +196,31 @@ func strSlicesEqual(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// TestExitStatus_UnwrapsWrappedExitError pins the errors.As contract:
+// callers wrap the exec error with context before it reaches exitStatus,
+// so a bare type assertion would report "?" instead of the real code.
+func TestExitStatus_UnwrapsWrappedExitError(t *testing.T) {
+	base := exec.CommandContext(t.Context(), "sh", "-c", "exit 7").Run()
+	var want *exec.ExitError
+	if !errors.As(base, &want) {
+		t.Fatalf("setup: expected *exec.ExitError, got %T", base)
+	}
+
+	if got := exitStatus(base); got != "7" {
+		t.Fatalf("bare exit error: got %q, want %q", got, "7")
+	}
+
+	wrapped := fmt.Errorf("fetcher.IBR snap %s: %w", "https://example.com", base)
+	if got := exitStatus(wrapped); got != "7" {
+		t.Fatalf("wrapped exit error: got %q, want %q", got, "7")
+	}
+}
+
+// TestExitStatus_NonExitErrorIsUnknown keeps the fallback honest.
+func TestExitStatus_NonExitErrorIsUnknown(t *testing.T) {
+	if got := exitStatus(errors.New("context deadline exceeded")); got != "?" {
+		t.Fatalf("non-exit error: got %q, want %q", got, "?")
+	}
 }

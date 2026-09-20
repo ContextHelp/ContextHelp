@@ -15,6 +15,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -263,7 +264,7 @@ func runLateralStart(cmd *cobra.Command, _ []string) error {
 	defer lc.Stop()
 
 	fmt.Fprintln(cmd.OutOrStdout(), "lateral: daemon running — Ctrl-C to stop")
-	if err := lc.Run(ctx); err != nil && err != context.Canceled {
+	if err := lc.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("lateral start: poller: %w", err)
 	}
 	return nil
@@ -289,4 +290,3 @@ func runLateralConfigShow(cmd *cobra.Command, _ []string) error {
 	}
 	return nil
 }
-

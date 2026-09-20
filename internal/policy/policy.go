@@ -155,7 +155,7 @@ func loadConfig() (*policy.Config, error) {
 		// file isn't there.
 		cfg, perr := policy.ParseConfig(defaultPoliciesYAML)
 		if perr != nil {
-			return nil, fmt.Errorf("policy: parse bundled default after seed failure %v: %w", err, perr)
+			return nil, fmt.Errorf("policy: parse bundled default after seed failure %w: %w", err, perr)
 		}
 		return cfg, nil
 	}

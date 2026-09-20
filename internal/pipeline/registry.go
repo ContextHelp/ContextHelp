@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -97,7 +98,7 @@ func (r *registry) Detect(in DetectInput) string {
 		if err == nil {
 			return name
 		}
-		if err != ErrDelegate {
+		if !errors.Is(err, ErrDelegate) {
 			log.Printf("pipeline: detector error (delegating): %v", err)
 		}
 	}

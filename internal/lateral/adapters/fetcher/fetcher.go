@@ -30,6 +30,7 @@ package fetcher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -261,7 +262,8 @@ func (i *IBRFetcher) snap(ctx context.Context, urlStr string) ([]byte, error) {
 // exitStatus extracts the process exit code (or "?" for non-exit
 // errors) for inclusion in error messages.
 func exitStatus(err error) string {
-	if ee, ok := err.(*exec.ExitError); ok {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
 		return strconv.Itoa(ee.ExitCode())
 	}
 	return "?"

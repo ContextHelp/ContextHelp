@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -85,7 +86,7 @@ func scanReminder(row interface{ Scan(...any) error }) (*storage.SystemReminder,
 		&r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("reminder not found")
 		}
 		return nil, fmt.Errorf("scan reminder: %w", err)

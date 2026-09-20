@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -149,7 +150,7 @@ func scanPipeline(row interface{ Scan(...any) error }) (*storage.Pipeline, error
 		&p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("pipeline not found")
 		}
 		return nil, fmt.Errorf("scan pipeline: %w", err)

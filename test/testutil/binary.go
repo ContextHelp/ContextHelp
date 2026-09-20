@@ -111,7 +111,7 @@ func EnsureBuiltM() error {
 	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("build failed: %v\n%s", err, string(out))
+		return fmt.Errorf("build failed: %w\n%s", err, string(out))
 	}
 	return nil
 }

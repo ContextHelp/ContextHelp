@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -79,7 +80,8 @@ func TestVerifyResponseSignature_MissingSig(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected ErrSignatureMissing, got nil")
 	}
-	if _, ok := err.(registry.ErrSignatureMissing); !ok {
+	var missing registry.ErrSignatureMissing
+	if !errors.As(err, &missing) {
 		t.Errorf("expected ErrSignatureMissing, got %T: %v", err, err)
 	}
 }
@@ -190,9 +192,5 @@ func TestFetchSigSidecar_Found(t *testing.T) {
 
 // isErrSignatureInvalid checks whether err is of type ErrSignatureInvalid.
 func isErrSignatureInvalid(err error, out *registry.ErrSignatureInvalid) bool {
-	v, ok := err.(registry.ErrSignatureInvalid)
-	if ok {
-		*out = v
-	}
-	return ok
+	return errors.As(err, out)
 }

@@ -74,6 +74,8 @@ func TestColdCycleHandler_ScanErrorReturnsErrorAndNoEvent(t *testing.T) {
 		return CycleStats{}, wantErr
 	}
 	h := ColdCycleHandler(eng, pub, scan)
+	//nolint:errorlint // identity is the assertion: the handler must return
+	// the scan error unwrapped.
 	if err := h(context.Background(), job.Job{ID: "j-1"}); err != wantErr {
 		t.Fatalf("handler err = %v, want %v", err, wantErr)
 	}

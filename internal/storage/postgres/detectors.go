@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -132,7 +133,7 @@ func scanDetector(row interface{ Scan(...any) error }) (*storage.DetectorRecord,
 		&d.CreatedAt, &d.UpdatedAt,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("detector not found")
 		}
 		return nil, fmt.Errorf("scan detector: %w", err)
