@@ -175,11 +175,6 @@ func TestUS0042_StepRunsAndOutputMerged(t *testing.T) {
 
 // TestUS0042_PluginConfigIsolated verifies config keys are plugin-scoped.
 func TestUS0042_PluginConfigIsolated(t *testing.T) {
-	type otherPlugin struct {
-		stubEnrichPlugin
-		otherCfg map[string]interface{}
-	}
-
 	type namedPlugin struct {
 		stubEnrichPlugin
 	}

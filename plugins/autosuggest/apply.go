@@ -8,8 +8,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
-const pendingMetaKey = "plugin.autosuggest.pending"
-
 // pendingPayload is stored in obj.Plugins["autosuggest"] in select mode.
 type pendingPayload struct {
 	Tags     []string `json:"tags"`

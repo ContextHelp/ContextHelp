@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -193,12 +192,4 @@ func IngestRegistry() *ingest.Registry {
 		return legacy.AsLegacy(himalaya.New(cfg)), nil
 	})
 	return reg
-}
-
-// resolveContext returns the command context or a background context.
-func resolveContext(cmd *cobra.Command) context.Context {
-	if ctx := cmd.Context(); ctx != nil {
-		return ctx
-	}
-	return context.Background()
 }

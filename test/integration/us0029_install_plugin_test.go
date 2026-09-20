@@ -51,9 +51,6 @@ func (p *testPlugin) PostIngest(_ context.Context, _ *storage.KnowledgeObject) e
 	return nil
 }
 
-// hookCount returns the number of PostIngest calls recorded.
-func (p *testPlugin) hookCount() int64 { return atomic.LoadInt64(&p.hookCounter) }
-
 // ---------------------------------------------------------------------------
 // Pipeline step contributed by a plugin (registered separately).
 // ---------------------------------------------------------------------------

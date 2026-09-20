@@ -122,6 +122,12 @@ func recordSubpathFailure(strategyID, objectID, mechanism string, err error) {
 }
 
 // recordScanFailure forwards to the active recorder.
+//
+// No probe calls this yet, so scan failures are never emitted, while the
+// sibling recordSubpathFailure is wired. The recorder side is complete
+// (interface method, bus emitter, noop); the probe-side call is missing.
+//
+//nolint:unused // recorder path complete; probe-side call site not yet wired
 func recordScanFailure(strategyID, objectID, mechanism string, err error) {
 	recorderMu.RLock()
 	r := recorder

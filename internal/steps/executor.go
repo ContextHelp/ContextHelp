@@ -294,10 +294,8 @@ func parseCPULimit(limit string) uint64 {
 
 type ExternalStep struct {
 	pipeline.BaseContract
-	name    string
-	path    string
-	config  map[string]any
-	sandbox *storage.SandboxConfig
+	name string
+	path string
 }
 
 func (es *ExternalStep) Name() string { return es.name }

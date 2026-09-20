@@ -184,10 +184,6 @@ func TestUS0043_StubResponsesStoredCorrectly(t *testing.T) {
 func TestUS0043_TwoAIPluginsNoConflict(t *testing.T) {
 	pl1 := &stubAIProviderPlugin{}
 
-	// Second plugin with a different name.
-	type stubAI2 struct {
-		stubAIProviderPlugin
-	}
 	pl2impl := &struct {
 		endpoint    string
 		model       string

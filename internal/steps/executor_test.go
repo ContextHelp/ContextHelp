@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,17 +66,6 @@ func (d *stubDriver) SearchHistory() storage.SearchHistoryStore { return nil }
 func (d *stubDriver) Watermarks() storage.WatermarkStore { return nil }
 func (d *stubDriver) Health(_ context.Context) error  { return nil }
 
-// writeStepScript writes a shell script that echoes a fixed JSON payload and
-// returns its path. The caller is responsible for cleanup.
-func writeStepScript(t *testing.T, jsonPayload string) string {
-	t.Helper()
-	dir := t.TempDir()
-	scriptPath := filepath.Join(dir, "step")
-	script := fmt.Sprintf("#!/bin/sh\necho '%s'\n", jsonPayload)
-	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
-	return scriptPath
-}
-
 // buildPayload encodes a KnowledgeObject as the `object` field of an
 // envelope that a well-behaved external step would emit.
 func buildPayload(t *testing.T, obj *storage.KnowledgeObject) string {
@@ -85,18 +73,6 @@ func buildPayload(t *testing.T, obj *storage.KnowledgeObject) string {
 	b, err := json.Marshal(map[string]any{"object": obj})
 	require.NoError(t, err)
 	return string(b)
-}
-
-// makeStep creates a RegisteredStep pointing at the given executable.
-func makeStep(name, execPath string) *storage.RegisteredStep {
-	dir := filepath.Dir(execPath)
-	return &storage.RegisteredStep{
-		Name:        name,
-		Source:      "local",
-		Path:        filepath.Dir(dir), // parent of bin/
-		InstalledAt: time.Now(),
-		UpdatedAt:   time.Now(),
-	}
 }
 
 // TestExecuteWithProcess_JSONObjectPayload verifies that process execution

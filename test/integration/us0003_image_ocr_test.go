@@ -156,21 +156,6 @@ func (s *gifFrameStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*
 	return draft, nil
 }
 
-// failOnceStep fails on the first call, succeeds on subsequent calls.
-type failOnceStep struct {
-	pipeline.BaseContract
-	called bool
-}
-
-func (s *failOnceStep) Name() string { return "test-fail-once" }
-func (s *failOnceStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	if !s.called {
-		s.called = true
-		return nil, fmt.Errorf("simulated worker crash")
-	}
-	return draft, nil
-}
-
 // ocrProviderStep simulates a configurable OCR provider.
 type ocrProviderStep struct {
 	pipeline.BaseContract

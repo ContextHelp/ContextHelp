@@ -75,12 +75,22 @@ func (s *videoErrorStep) Run(_ context.Context, _ *storage.KnowledgeObject) (*st
 }
 
 // videoTimeoutStep simulates a step that takes too long and respects context cancellation.
+//
+// TestUS0005_ProcessingTimeoutEnforced currently drives videoErrorStep, which
+// returns a canned "timed out" string, so no test exercises real context
+// cancellation. This step is the shape that test needs; kept rather than
+// deleted so the coverage gap stays visible.
+//
+//nolint:unused // real-cancellation step; timeout test still uses a string stub
 type videoTimeoutStep struct {
 	pipeline.BaseContract
 	delay time.Duration
 }
 
+//nolint:unused // see videoTimeoutStep
 func (s *videoTimeoutStep) Name() string { return "test-video-timeout" }
+
+//nolint:unused // see videoTimeoutStep
 func (s *videoTimeoutStep) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	select {
 	case <-time.After(s.delay):
@@ -130,9 +140,9 @@ func (s *videoStepRecorder) Run(_ context.Context, draft *storage.KnowledgeObjec
 // videoConfigurableStep simulates a step whose behavior varies by config in metadata.
 type videoConfigurableStep struct {
 	pipeline.BaseContract
-	name       string
-	configKey  string
-	configVal  any
+	name      string
+	configKey string
+	configVal any
 }
 
 func (s *videoConfigurableStep) Name() string { return s.name }
