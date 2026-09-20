@@ -185,7 +185,9 @@ func scanEdges(rows *sql.Rows) ([]*storage.Edge, error) {
 		if err != nil {
 			return nil, fmt.Errorf("scan edge: %w", err)
 		}
-		json.Unmarshal(metadataJSON, &e.Metadata)
+		if err := decodeJSONColumn(metadataJSON, "metadata", &e.Metadata); err != nil {
+			return nil, fmt.Errorf("scan edge: %w", err)
+		}
 		edges = append(edges, &e)
 	}
 	return edges, rows.Err()

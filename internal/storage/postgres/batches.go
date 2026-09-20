@@ -38,7 +38,9 @@ func (s *BatchStore) Get(ctx context.Context, id string) (*storage.Batch, error)
 	if err != nil {
 		return nil, fmt.Errorf("get batch: %w", err)
 	}
-	json.Unmarshal(errorsJSON, &b.Errors)
+	if err := decodeJSONColumn(errorsJSON, "errors", &b.Errors); err != nil {
+		return nil, fmt.Errorf("get batch: %w", err)
+	}
 	return &b, nil
 }
 

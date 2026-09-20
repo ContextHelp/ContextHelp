@@ -326,9 +326,16 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 		return "", fmt.Errorf("reinforce: lookup: %w", err)
 	}
 
-	json.Unmarshal(tagsJSON, &obj.Tags)
+	// Decode failures must not be swallowed here: the merged result is
+	// written straight back below, so treating corrupt stored tags or
+	// mentions as empty would silently overwrite them.
+	if err := decodeJSONColumn(tagsJSON, "tags", &obj.Tags); err != nil {
+		return "", fmt.Errorf("reinforce: %w", err)
+	}
 	var mentionStrs []string
-	json.Unmarshal(mentionsJSON, &mentionStrs)
+	if err := decodeJSONColumn(mentionsJSON, "mentions", &mentionStrs); err != nil {
+		return "", fmt.Errorf("reinforce: %w", err)
+	}
 	obj.Mentions = mentions.ParseSlice(mentionStrs)
 
 	now := time.Now().UTC()
@@ -811,9 +818,11 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		}
 		return nil, fmt.Errorf("scan object: %w", err)
 	}
-	unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
+	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
-		lastReinforcedAt, remindAt, remindedAt)
+		lastReinforcedAt, remindAt, remindedAt); err != nil {
+		return nil, fmt.Errorf("scan object: %w", err)
+	}
 	if len(graphJSON) > 0 {
 		g, err := unmarshalGraph(string(graphJSON))
 		if err != nil {
@@ -848,9 +857,11 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
 	}
-	unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
+	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
-		lastReinforcedAt, remindAt, remindedAt)
+		lastReinforcedAt, remindAt, remindedAt); err != nil {
+		return nil, fmt.Errorf("scan object row: %w", err)
+	}
 	if len(graphJSON) > 0 {
 		g, err := unmarshalGraph(string(graphJSON))
 		if err != nil {
@@ -888,9 +899,11 @@ func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []flo
 	if err != nil {
 		return nil, nil, fmt.Errorf("scan object+embedding: %w", err)
 	}
-	unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
+	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
-		lastReinforcedAt, remindAt, remindedAt)
+		lastReinforcedAt, remindAt, remindedAt); err != nil {
+		return nil, nil, fmt.Errorf("scan object+embedding: %w", err)
+	}
 	if len(graphJSON) > 0 {
 		g, err := unmarshalGraph(string(graphJSON))
 		if err != nil {
@@ -929,9 +942,11 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 	if err != nil {
 		return nil, 0, fmt.Errorf("scan object+score: %w", err)
 	}
-	unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
+	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
-		lastReinforcedAt, remindAt, remindedAt)
+		lastReinforcedAt, remindAt, remindedAt); err != nil {
+		return nil, 0, fmt.Errorf("scan object+score: %w", err)
+	}
 	if len(graphJSON) > 0 {
 		g, err := unmarshalGraph(string(graphJSON))
 		if err != nil {
@@ -950,18 +965,30 @@ func unmarshalObjectFields(obj *storage.KnowledgeObject,
 	mentionsJSON, decisionsJSON, tasksJSON,
 	influencesJSON, pluginsJSON []byte,
 	lastReinforcedAt, remindAt, remindedAt sql.NullTime,
-) {
-	json.Unmarshal(metadataJSON, &obj.Metadata)
-	json.Unmarshal(summariesJSON, &obj.Summaries)
-	json.Unmarshal(sectionsJSON, &obj.Sections)
-	json.Unmarshal(tagsJSON, &obj.Tags)
+) error {
+	for _, col := range []struct {
+		raw  []byte
+		name string
+		dst  any
+	}{
+		{metadataJSON, "metadata", &obj.Metadata},
+		{summariesJSON, "summaries", &obj.Summaries},
+		{sectionsJSON, "sections", &obj.Sections},
+		{tagsJSON, "tags", &obj.Tags},
+		{decisionsJSON, "decisions", &obj.Decisions},
+		{tasksJSON, "tasks", &obj.Tasks},
+		{influencesJSON, "registry_influences", &obj.RegistryInfluences},
+		{pluginsJSON, "plugins", &obj.Plugins},
+	} {
+		if err := decodeJSONColumn(col.raw, col.name, col.dst); err != nil {
+			return err
+		}
+	}
 	var mentionStrs []string
-	json.Unmarshal(mentionsJSON, &mentionStrs)
+	if err := decodeJSONColumn(mentionsJSON, "mentions", &mentionStrs); err != nil {
+		return err
+	}
 	obj.Mentions = mentions.ParseSlice(mentionStrs)
-	json.Unmarshal(decisionsJSON, &obj.Decisions)
-	json.Unmarshal(tasksJSON, &obj.Tasks)
-	json.Unmarshal(influencesJSON, &obj.RegistryInfluences)
-	json.Unmarshal(pluginsJSON, &obj.Plugins)
 	if lastReinforcedAt.Valid {
 		t := lastReinforcedAt.Time
 		obj.LastReinforcedAt = &t
@@ -974,6 +1001,7 @@ func unmarshalObjectFields(obj *storage.KnowledgeObject,
 		t := remindedAt.Time
 		obj.RemindedAt = &t
 	}
+	return nil
 }
 
 type objectFields struct {
@@ -1144,6 +1172,25 @@ func marshalGraph(g *storage.ObjectGraph) ([]byte, error) {
 }
 
 // unmarshalGraph deserialises a JSON string into an ObjectGraph.
+// decodeJSONColumn decodes a JSONB column read back out of our own database.
+//
+// An empty payload is a legitimately absent column: the JSONB columns carry a
+// DEFAULT but no NOT NULL, so a NULL (scanned into []byte as nil) or a row
+// written before the column existed reads as empty. Those keep the field's
+// zero value, exactly as before.
+//
+// Anything else that fails to decode is corrupt stored data. That is returned
+// so the caller can surface it instead of silently yielding an empty field.
+func decodeJSONColumn(raw []byte, column string, dst any) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(raw, dst); err != nil {
+		return fmt.Errorf("unmarshal %s: %w", column, err)
+	}
+	return nil
+}
+
 func unmarshalGraph(raw string) (*storage.ObjectGraph, error) {
 	if raw == "" || raw == "{}" {
 		return &storage.ObjectGraph{}, nil

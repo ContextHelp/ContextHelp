@@ -177,8 +177,12 @@ func scanWatch(row *sql.Row) (*storage.WatchConfig, error) {
 		}
 		return nil, fmt.Errorf("scan watch: %w", err)
 	}
-	json.Unmarshal(inclJSON, &w.IncludePatterns)
-	json.Unmarshal(exclJSON, &w.ExcludePatterns)
+	if err := decodeJSONColumn(inclJSON, "include_patterns", &w.IncludePatterns); err != nil {
+		return nil, fmt.Errorf("scan watch: %w", err)
+	}
+	if err := decodeJSONColumn(exclJSON, "exclude_patterns", &w.ExcludePatterns); err != nil {
+		return nil, fmt.Errorf("scan watch: %w", err)
+	}
 	return &w, nil
 }
 
@@ -194,7 +198,11 @@ func scanWatchRow(rows *sql.Rows) (*storage.WatchConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scan watch row: %w", err)
 	}
-	json.Unmarshal(inclJSON, &w.IncludePatterns)
-	json.Unmarshal(exclJSON, &w.ExcludePatterns)
+	if err := decodeJSONColumn(inclJSON, "include_patterns", &w.IncludePatterns); err != nil {
+		return nil, fmt.Errorf("scan watch row: %w", err)
+	}
+	if err := decodeJSONColumn(exclJSON, "exclude_patterns", &w.ExcludePatterns); err != nil {
+		return nil, fmt.Errorf("scan watch row: %w", err)
+	}
 	return &w, nil
 }

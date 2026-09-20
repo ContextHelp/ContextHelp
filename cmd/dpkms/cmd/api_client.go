@@ -110,7 +110,9 @@ func (c *APIClient) ListPipelines(filter storage.PipelineFilter) ([]*storage.Pip
 
 	pipelinesJSON, _ := json.Marshal(result["pipelines"])
 	var pipelines []*storage.Pipeline
-	json.Unmarshal(pipelinesJSON, &pipelines)
+	if err := json.Unmarshal(pipelinesJSON, &pipelines); err != nil {
+		return nil, 0, fmt.Errorf("decode pipelines: %w", err)
+	}
 
 	total := int(result["total"].(float64))
 
@@ -215,7 +217,9 @@ func (c *APIClient) ListSteps(source string) ([]*storage.RegisteredStep, int, er
 
 	stepsJSON, _ := json.Marshal(result["steps"])
 	var steps []*storage.RegisteredStep
-	json.Unmarshal(stepsJSON, &steps)
+	if err := json.Unmarshal(stepsJSON, &steps); err != nil {
+		return nil, 0, fmt.Errorf("decode steps: %w", err)
+	}
 
 	total := int(result["total"].(float64))
 
@@ -329,7 +333,9 @@ func (c *APIClient) ListRegistries() ([]*storage.RegistryCache, int, error) {
 
 	registriesJSON, _ := json.Marshal(result["registries"])
 	var registries []*storage.RegistryCache
-	json.Unmarshal(registriesJSON, &registries)
+	if err := json.Unmarshal(registriesJSON, &registries); err != nil {
+		return nil, 0, fmt.Errorf("decode registries: %w", err)
+	}
 
 	total := int(result["total"].(float64))
 
@@ -429,7 +435,11 @@ func (c *APIClient) Healthz() (HealthzEnvelope, int, error) {
 func (c *APIClient) parseError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
 	var errResp map[string]any
-	json.Unmarshal(body, &errResp)
+	// Decode failure is handled, not dropped: a body that is not the
+	// daemon's JSON error envelope leaves errResp nil, the type assertion
+	// below fails, and the raw body is reported verbatim instead. This is
+	// already the error path, so there is nowhere better to send an error.
+	_ = json.Unmarshal(body, &errResp)
 
 	if errMsg, ok := errResp["error"].(map[string]any); ok {
 		code, _ := errMsg["code"].(string)
