@@ -61,9 +61,10 @@ func (s *webTabExtractStep) Run(_ context.Context, draft *storage.KnowledgeObjec
 	}
 
 	draft.Type = "web.page"
-	if msg.CaptureMode == "selection" {
+	switch msg.CaptureMode {
+	case "selection":
 		draft.Type = "web.selection"
-	} else if msg.CaptureMode == "element" {
+	case "element":
 		draft.Type = "web.element"
 	}
 

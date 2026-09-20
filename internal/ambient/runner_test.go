@@ -21,7 +21,7 @@ type recordingBus struct {
 func newRecordingBus() *recordingBus {
 	rb := &recordingBus{Bus: bus.New()}
 	// Subscribe to every ctxt.ambient.* topic.
-	rb.Bus.Subscribe("ctxt.ambient.#", func(_ context.Context, e bus.Event) error {
+	rb.Subscribe("ctxt.ambient.#", func(_ context.Context, e bus.Event) error {
 		rb.mu.Lock()
 		rb.events = append(rb.events, e)
 		rb.mu.Unlock()

@@ -164,7 +164,7 @@ func TestPropertyParentClaimsNonChildURLs(t *testing.T) {
 // invariant the property tests rely on. If the constants drift, the
 // dispatcher would silently break.
 func TestSpecificity_ChildScoresStrictlyHigherThanParent(t *testing.T) {
-	if !(SpecificityChild > SpecificityParent) {
+	if SpecificityChild <= SpecificityParent {
 		t.Errorf("SpecificityChild (%d) must be > SpecificityParent (%d)",
 			SpecificityChild, SpecificityParent)
 	}

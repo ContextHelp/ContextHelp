@@ -119,7 +119,7 @@ Flags:
   --where PRED                 SQL WHERE escape hatch (e.g. graph_json IS NULL AND ...)
   --rate-limit N               cap re-ingests per second (default unbounded)
   --budget USD                 cap cumulative LLM cost; abort if exceeded
-  --all                        opt in to a full-corpus re-ingest (out of scope for T-0581)
+  --all                        opt in to a full-corpus re-ingest (not yet implemented)
   --i-understand-the-cost SHA  required with --all; SHA must match the release-notes value
 
 The selective form requires either --filter or --where. --all is reserved
@@ -446,7 +446,7 @@ func runUpgradeRun(cmd *cobra.Command, _ []string) error {
 		if consent == "" {
 			return errors.New("--all requires --i-understand-the-cost <sha> (the consent SHA appears in the release notes)")
 		}
-		return errors.New("upgrade run: --all (reingest_all bucket) is out of scope for T-0581; the embedding-model-swap worker lands in a future task. See ADR-070 §Decision item 1.")
+		return errors.New("upgrade run: --all (reingest_all bucket) is not implemented; the embedding-model-swap worker lands in a future release (see ADR-070 §Decision item 1)")
 	}
 
 	if filter == "" && whereExpr == "" {

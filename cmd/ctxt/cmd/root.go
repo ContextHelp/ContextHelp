@@ -512,8 +512,8 @@ func dispatchURI(cmd *cobra.Command, raw string) error {
 		handler = cfg.URI.Handler
 	}
 
-	switch {
-	case u.Host == "search":
+	switch u.Host {
+	case "search":
 		query := strings.TrimPrefix(u.Path, "/")
 		if handler == "tui" {
 			return dispatchURIViaTUI(tui.StartOpts{InitialQuery: query})

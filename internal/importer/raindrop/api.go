@@ -309,11 +309,7 @@ func (c *Client) listCollectionItems(ctx context.Context, collectionID int64, ma
 	page := 0
 	out := make([]Item, 0, 128)
 
-	for {
-		if maxItems > 0 && len(out) >= maxItems {
-			break
-		}
-
+	for maxItems <= 0 || len(out) < maxItems {
 		perPage := 50
 		if maxItems > 0 && maxItems-len(out) < perPage {
 			perPage = maxItems - len(out)

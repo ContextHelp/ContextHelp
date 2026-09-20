@@ -65,11 +65,7 @@ func (c *Client) ListFiles(ctx context.Context, opts ListOptions) ([]File, error
 	pageToken := ""
 	out := make([]File, 0, 128)
 
-	for {
-		if opts.MaxItems > 0 && len(out) >= opts.MaxItems {
-			break
-		}
-
+	for opts.MaxItems <= 0 || len(out) < opts.MaxItems {
 		pageSize := 100
 		if opts.MaxItems > 0 && opts.MaxItems-len(out) < pageSize {
 			pageSize = opts.MaxItems - len(out)

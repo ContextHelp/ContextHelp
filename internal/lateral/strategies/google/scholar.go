@@ -41,8 +41,8 @@ func (s *ScholarStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _
 	}
 	q := u.Query()
 	apex := "https://scholar.google.com"
-	switch {
-	case u.Path == "/citations":
+	switch u.Path {
+	case "/citations":
 		uid := q.Get("user")
 		if uid == "" {
 			return nil, nil
@@ -54,7 +54,7 @@ func (s *ScholarStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _
 			IdentityKey:   identitykey.Build("scholar", identitykey.EntityProfile, uid),
 			Preview:       map[string]any{"user_id": uid},
 		}}, nil
-	case u.Path == "/scholar":
+	case "/scholar":
 		if cluster := q.Get("cluster"); cluster != "" {
 			return []lateral.Candidate{{
 				URL:           apex + "/scholar?cluster=" + cluster,
