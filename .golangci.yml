@@ -96,10 +96,19 @@ linters:
   exclusions:
     generated: lax
     rules:
+      # Test files answer to different rules than production code. An
+      # http.Get in a table-driven test against httptest.NewServer is not the
+      # defect noctx exists to catch, and a body left unclosed in a test that
+      # exits in milliseconds is not a leak.
       - linters:
           - dupl
           - goconst
           - gosec
+          - noctx
+          - bodyclose
+          - errcheck
+          - prealloc
+          - unparam
         path: _test\.go
       - linters:
           - all
