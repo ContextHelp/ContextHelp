@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: c2959683
+recorded_at: "2026-09-20T01:28:14Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/atom+xml
+    body: <feed><entry><id>http://arxiv.org/abs/2404.99999</id><title>Test Paper</title><summary>Test abstract.</summary><author><name>Test Author</name></author><published>2026-04-01T00:00:00Z</published></entry></feed>
