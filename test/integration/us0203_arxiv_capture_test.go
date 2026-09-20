@@ -68,7 +68,7 @@ type arxivFetchStep struct {
 	apiBaseURL string
 	arxivID    string
 	// client carries the xrr record/replay transport. Nil falls back to
-	// the default client, preserving the pre-cassette behaviour.
+	// the default client, preserving the pre-cassette behavior.
 	client *gohttp.Client
 }
 

@@ -229,7 +229,7 @@ func captureClient(t *testing.T, cassetteName string) *gohttp.Client {
 
 // captureGet issues a GET through the supplied client, falling back to
 // the default client when nil. Fetch steps call this so a step with no
-// injected client keeps its previous behaviour.
+// injected client keeps its previous behavior.
 func captureGet(c *gohttp.Client, url string) (*gohttp.Response, error) {
 	if c == nil {
 		c = gohttp.DefaultClient
@@ -284,7 +284,8 @@ func recordCaptureFixtures(t *testing.T, fixtures []captureFixture) {
 		t.Skip("set XRR_MODE=record to re-record cassettes")
 	}
 
-	for _, f := range fixtures {
+	for i := range fixtures {
+		f := &fixtures[i]
 		t.Run(f.Cassette, func(t *testing.T) {
 			srv := httptest.NewServer(f.Handler)
 			defer srv.Close()
@@ -308,7 +309,7 @@ func recordCaptureFixtures(t *testing.T, fixtures []captureFixture) {
 				if f.Body != "" {
 					body = strings.NewReader(f.Body)
 				}
-				req, err := gohttp.NewRequest(method, srv.URL+path, body)
+				req, err := gohttp.NewRequestWithContext(t.Context(), method, srv.URL+path, body)
 				if err != nil {
 					t.Fatalf("build request %s: %v", path, err)
 				}

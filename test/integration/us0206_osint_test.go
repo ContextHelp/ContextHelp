@@ -127,15 +127,15 @@ const (
 
 // osintSourceHandler serves one source's profile for any path, matching
 // the previous inline handlers, which also ignored the request path.
-func osintSourceHandler(src mockOSINTSource) gohttp.HandlerFunc {
+func osintSourceHandler(src *mockOSINTSource) gohttp.HandlerFunc {
 	return func(w gohttp.ResponseWriter, _ *gohttp.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(src)
 	}
 }
 
-func osintXFixture() mockOSINTSource {
-	return mockOSINTSource{
+func osintXFixture() *mockOSINTSource {
+	return &mockOSINTSource{
 		Platform: "x",
 		Slug:     osintJaneSlug,
 		Name:     "Jane Doe",
@@ -144,8 +144,8 @@ func osintXFixture() mockOSINTSource {
 	}
 }
 
-func osintLinkedInFixture() mockOSINTSource {
-	return mockOSINTSource{
+func osintLinkedInFixture() *mockOSINTSource {
+	return &mockOSINTSource{
 		Platform: "linkedin",
 		Slug:     osintJaneSlug,
 		Name:     "Jane Doe",
@@ -154,8 +154,8 @@ func osintLinkedInFixture() mockOSINTSource {
 	}
 }
 
-func osintGitHubFixture() mockOSINTSource {
-	return mockOSINTSource{
+func osintGitHubFixture() *mockOSINTSource {
+	return &mockOSINTSource{
 		Platform: "github",
 		Slug:     osintJaneSlug,
 		Name:     "janedoe",
@@ -164,8 +164,8 @@ func osintGitHubFixture() mockOSINTSource {
 	}
 }
 
-func osintSingleFixture() mockOSINTSource {
-	return mockOSINTSource{
+func osintSingleFixture() *mockOSINTSource {
+	return &mockOSINTSource{
 		Platform: "x",
 		Slug:     osintJohnSlug,
 		Name:     "John Smith",
