@@ -3,7 +3,7 @@ title: Lateral Capture Discovery
 date: 2026-05-08
 status: design
 related:
-  - tracks/github-repo-ingestion-20260404 (GRIP, RCL)
+  - GitHub Repo Ingestion & Repo Context Layer (GRIP, RCL) — planning tracked externally
   - docs/stories/capture/US-0202-github-capture.md
   - docs/manual/workflows/entity-auto-enrichment.md
   - docs/architecture/ambient-capture.md
