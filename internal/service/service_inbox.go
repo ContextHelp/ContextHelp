@@ -50,7 +50,7 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 		return nil, fmt.Errorf("capture to inbox: %w", err)
 	}
 
-	if ev, err := events.NewEvent("service.inbox", "inbox.captured", obj); err == nil {
+	if ev, err := events.NewEvent("service.inbox", string(events.TopicInboxCaptured), obj); err == nil {
 		_ = s.Bus.Publish(ctx, ev)
 	}
 	return obj, nil
@@ -113,7 +113,7 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 		return "", fmt.Errorf("triage inbox enqueue: %w", err)
 	}
 
-	if ev, err := events.NewEvent("service.inbox", "inbox.triaged", obj); err == nil {
+	if ev, err := events.NewEvent("service.inbox", string(events.TopicInboxTriaged), obj); err == nil {
 		_ = s.Bus.Publish(ctx, ev)
 	}
 	return job.ID, nil

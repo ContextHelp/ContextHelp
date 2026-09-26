@@ -19,7 +19,7 @@ func TestJobWatcher_CompletedEvent(t *testing.T) {
 	defer cancel()
 	w.Start(ctx)
 
-	ev, _ := events.NewEvent("test", "job.completed", map[string]any{"job_id": "test-job-123"})
+	ev, _ := events.NewEvent("test", string(events.TopicJobCompleted), map[string]any{"job_id": "test-job-123"})
 	bus.Publish(context.Background(), ev)
 
 	time.Sleep(50 * time.Millisecond)
@@ -38,7 +38,7 @@ func TestJobWatcher_FailedEvent(t *testing.T) {
 	defer cancel()
 	w.Start(ctx)
 
-	ev, _ := events.NewEvent("test", "job.failed", map[string]any{"job_id": "fail-job-456"})
+	ev, _ := events.NewEvent("test", string(events.TopicJobFailed), map[string]any{"job_id": "fail-job-456"})
 	bus.Publish(context.Background(), ev)
 
 	time.Sleep(50 * time.Millisecond)
@@ -58,7 +58,7 @@ func TestJobWatcher_PromptReprinted(t *testing.T) {
 	defer cancel()
 	w.Start(ctx)
 
-	ev, _ := events.NewEvent("test", "job.completed", map[string]any{"job_id": "x"})
+	ev, _ := events.NewEvent("test", string(events.TopicJobCompleted), map[string]any{"job_id": "x"})
 	bus.Publish(context.Background(), ev)
 
 	time.Sleep(50 * time.Millisecond)

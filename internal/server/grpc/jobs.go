@@ -98,10 +98,10 @@ func (h *jobHandler) WatchJob(req *pb.WatchJobRequest, stream pb.JobService_Watc
 	// Subscribe to job events on the bus.
 	updates := make(chan *pb.JobStatusUpdate, 16)
 
-	h.svc.Bus.Subscribe("job.completed", func(_ context.Context, e events.Event) error {
+	h.svc.Bus.Subscribe(string(events.TopicJobCompleted), func(_ context.Context, e events.Event) error {
 		return forwardIfMatch(req.Id, e, updates)
 	})
-	h.svc.Bus.Subscribe("job.failed", func(_ context.Context, e events.Event) error {
+	h.svc.Bus.Subscribe(string(events.TopicJobFailed), func(_ context.Context, e events.Event) error {
 		return forwardIfMatch(req.Id, e, updates)
 	})
 
@@ -179,9 +179,10 @@ func isTerminal(status string) bool {
 	return status == string(storage.JobCompleted) || status == string(storage.JobFailed)
 }
 
-// jobEventPayload is the shape published to the event bus by the worker.
+// jobEventPayload is the part of events.JobCompletedPayload and
+// events.JobFailedPayload that WatchJob reads.
 type jobEventPayload struct {
-	ID       string `json:"id"`
+	ID       string `json:"job_id"`
 	ResultID string `json:"result_id,omitempty"`
 	Error    string `json:"error,omitempty"`
 }
@@ -219,9 +220,9 @@ func forwardIfMatch(jobID string, e events.Event, ch chan<- *pb.JobStatusUpdate)
 
 func eventTypeToStatus(eventType string) string {
 	switch eventType {
-	case "job.completed":
+	case string(events.TopicJobCompleted):
 		return string(storage.JobCompleted)
-	case "job.failed":
+	case string(events.TopicJobFailed):
 		return string(storage.JobFailed)
 	default:
 		return string(storage.JobRunning)
