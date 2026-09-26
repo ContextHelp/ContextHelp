@@ -205,15 +205,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// The embedding resolver is built once here and shared by every
-	// pipeline: ingest embeds each populating model through it.
-	buildOpts := embeddingBuildOpts(driver)
+	// pipeline and the startup report: ingest embeds each populating model
+	// through it.
+	embResolver := newEmbeddingResolver()
+	buildOpts := embeddingBuildOpts(driver, embResolver)
 	buildOpts.Factory = factory
 	buildOpts.BlobStore = driver.Blobs()
 	buildOpts.BlobThreshold = cfg.Storage.Blob.Threshold
 	buildOpts.BrowserClient = browserClient
 	pipes := builtins.ConfiguredRegistryWithPipelineOverrides(buildOpts, cfg.Providers, cfg.Pipelines)
 	fmt.Println("Pipeline runtime initialized (with overrides)")
-	reportEmbeddingProvider(os.Stdout)
+	reportEmbeddingProvider(os.Stdout, embResolver)
 
 	// 3b. Wire pipeline preflight validation into the queue.
 	queue.SetPipelineValidator(func(name string) error {

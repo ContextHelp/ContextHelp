@@ -20,7 +20,7 @@ func TestServeReportsResolvedEmbeddingProvider(t *testing.T) {
 	t.Setenv(embeddings.EnvEndpoint, "http://127.0.0.1:11555")
 
 	var buf bytes.Buffer
-	reportEmbeddingProvider(&buf)
+	reportEmbeddingProvider(&buf, newEmbeddingResolver())
 	out := buf.String()
 	for _, want := range []string{"backend=ollama (config)", "model=cfg-model (config)", "endpoint=http://127.0.0.1:11555 (env)"} {
 		if !strings.Contains(out, want) {
@@ -30,7 +30,7 @@ func TestServeReportsResolvedEmbeddingProvider(t *testing.T) {
 
 	t.Setenv(embeddings.EnvProvider, "openai")
 	buf.Reset()
-	reportEmbeddingProvider(&buf)
+	reportEmbeddingProvider(&buf, newEmbeddingResolver())
 	if !strings.Contains(buf.String(), "warning") || !strings.Contains(buf.String(), "not supported") {
 		t.Errorf("unsupported backend should warn, got: %s", buf.String())
 	}

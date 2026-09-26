@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
-	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 )
 
@@ -26,21 +25,12 @@ func newEmbeddingResolver() *embeddings.Resolver {
 	return r
 }
 
-// resolveEmbeddingProvider resolves the default (untargeted) embedding
-// provider with the command's flag overrides applied.
-func resolveEmbeddingProvider(ctx context.Context, o embeddings.Overrides) (providers.EmbeddingProvider, error) {
-	res, err := newEmbeddingResolver().Resolve(ctx, embeddings.Request{Overrides: o})
-	if err != nil {
-		return nil, err
-	}
-	return res.Provider()
-}
-
-// reportEmbeddingProvider writes serve's startup line: the resolved
-// embedding provider with each setting's source. A resolution that cannot
-// build a provider is a warning, not a startup failure.
-func reportEmbeddingProvider(w io.Writer) {
-	res, err := newEmbeddingResolver().Resolve(context.Background(), embeddings.Request{})
+// reportEmbeddingProvider writes serve's startup line: the provider r
+// resolves, with each setting's source. r is the resolver serve wires into
+// its pipelines, so the line describes what ingest uses. A resolution that
+// cannot build a provider is a warning, not a startup failure.
+func reportEmbeddingProvider(w io.Writer, r *embeddings.Resolver) {
+	res, err := r.Resolve(context.Background(), embeddings.Request{})
 	if err != nil {
 		fmt.Fprintf(w, "warning: embedding provider: %v\n", err)
 		return

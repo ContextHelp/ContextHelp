@@ -1,10 +1,7 @@
 package cmd
 
 import (
-	"context"
-
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
-	"github.com/ideacrafterslabs/ctxt/internal/providers"
 )
 
 // newEmbeddingResolver builds the embedding provider resolver from the
@@ -20,14 +17,4 @@ func newEmbeddingResolver() *embeddings.Resolver {
 		r.ConfigOverrides = overrides
 	}
 	return r
-}
-
-// resolveEmbeddingProvider resolves the default (untargeted) embedding
-// provider with the command's flag overrides applied.
-func resolveEmbeddingProvider(ctx context.Context, o embeddings.Overrides) (providers.EmbeddingProvider, error) {
-	res, err := newEmbeddingResolver().Resolve(ctx, embeddings.Request{Overrides: o})
-	if err != nil {
-		return nil, err
-	}
-	return res.Provider()
 }
