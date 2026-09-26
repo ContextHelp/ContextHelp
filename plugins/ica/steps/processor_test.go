@@ -100,6 +100,38 @@ func TestICAProcessorSuccess(t *testing.T) {
 	}
 }
 
+// The processor re-embeds every item with its own model and never reads
+// an incoming vector, so the draft's registry vectors stay local.
+func TestICAProcessorRequestCarriesNoVector(t *testing.T) {
+	srv := httptest.NewServer(
+		http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				var sent ica.NormalizedItem
+				if err := json.NewDecoder(r.Body).Decode(&sent); err != nil {
+					t.Errorf("decode request: %v", err)
+				}
+				if len(sent.Embedding) != 0 {
+					t.Errorf("request embedding: got %v, want none", sent.Embedding)
+				}
+				json.NewEncoder(w).Encode(processorResponse{Status: "ok"})
+			},
+		),
+	)
+	defer srv.Close()
+
+	draft := &storage.KnowledgeObject{
+		RawContent: "some raw content",
+		Vectors: []storage.ObjectVector{
+			{ModelID: "registry-model", Vector: []float32{0.4, 0.5}},
+		},
+	}
+	if _, err := NewICAProcessor(srv.URL, srv.Client()).Run(
+		context.Background(), draft,
+	); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+}
+
 func TestICAProcessorRetryOn500(t *testing.T) {
 	var calls atomic.Int32
 
