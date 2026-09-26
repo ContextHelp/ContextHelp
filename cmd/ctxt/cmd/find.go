@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
@@ -67,8 +68,20 @@ Examples:
   # Show facet breakdown with results
   ctxt find "architecture" --facets
 
+  # Explore the search as an interactive 3D graph in the browser
+  # (local, loopback-only server; Ctrl-C to stop)
+  ctxt find "deployment" --graph
+
+  # Print the viewer URL without opening a browser
+  ctxt find "deployment" --graph --no-browser
+
   # Search trace as a JGF graph document (nodes: query, candidates, entities)
   ctxt find "deployment" --graph --format json
+
+  # Write the graph to a file; the extension picks the format:
+  # .html (self-contained viewer), .json (JGF), .yaml, .graphml, .gexf
+  ctxt find "deployment" --graph -o deployment.html
+  ctxt find "deployment" --graph -o deployment.gexf
 
   # Smaller graph with similarity edges
   ctxt find "deployment" --graph --graph-max-nodes 50 --graph-similar --format json`,
@@ -136,10 +149,13 @@ func runFind(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Human output is where the interactive graph viewer will open;
-	// until it exists, --graph is machine output only.
-	if graph && !isJSONOutput() {
-		return errFindGraphViewerUnavailable()
+	// Resolve where the graph goes before searching, so a bad
+	// --format/-o combination fails fast as a usage error.
+	var graphTo graphDelivery
+	if graph {
+		if graphTo, err = findGraphDelivery(cmd); err != nil {
+			return err
+		}
 	}
 
 	query, source, err := cli.GetInput(args)
@@ -156,7 +172,10 @@ func runFind(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	// release is idempotent so the graph viewer can let go of the
+	// service before it starts serving, which may last minutes.
+	release := sync.OnceFunc(cleanup)
+	defer release()
 
 	// Use the command context so session state (injected by REPL) is visible.
 	ctx := cmd.Context()
@@ -226,7 +245,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 	// --graph always runs the traced hybrid search, whatever the mode.
 	if graph {
-		return runFindGraph(ctx, cmd, svc, sem, query, filter, searchCfg, graphOpts)
+		return runFindGraph(ctx, cmd, svc, release, findGraphQuery{query, filter, searchCfg, sem}, graphOpts, graphTo)
 	}
 
 	// --explain only applies to hybrid mode; it prints per-signal score breakdowns.

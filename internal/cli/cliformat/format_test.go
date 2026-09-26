@@ -231,3 +231,23 @@ func TestActiveDefaultsToTable(t *testing.T) {
 		t.Errorf("an unset --format should resolve to %q, got %q", Table, got)
 	}
 }
+
+// TestEncodeAsIgnoresActiveFormat asserts EncodeAs renders the format it
+// is handed, not the one --format selects.
+func TestEncodeAsIgnoresActiveFormat(t *testing.T) {
+	dispatchCmd(t, "--format", "json")
+	var buf bytes.Buffer
+	if err := EncodeAs(&buf, "yaml", map[string]any{"total": 7}); err != nil {
+		t.Fatalf("EncodeAs: %v", err)
+	}
+	if got := buf.String(); got != "total: 7\n" {
+		t.Errorf("EncodeAs(yaml) = %q, want %q", got, "total: 7\n")
+	}
+	buf.Reset()
+	if err := EncodeAs(&buf, "json", map[string]any{"total": 7}); err != nil {
+		t.Fatalf("EncodeAs: %v", err)
+	}
+	if !strings.HasPrefix(buf.String(), "{") {
+		t.Errorf("EncodeAs(json) = %q, want a JSON object", buf.String())
+	}
+}
