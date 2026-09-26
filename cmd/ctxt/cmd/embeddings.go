@@ -16,6 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/spf13/cobra"
+	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
 )
 
@@ -83,6 +84,8 @@ const (
 	// registerIndexUnsupported: the storage backend does not build
 	// per-model indexes yet; the model is registered without one.
 	registerIndexUnsupported = "unsupported"
+	// registerIndexSkipped: a dry run; no index was built.
+	registerIndexSkipped = "skipped"
 )
 
 var embeddingsRegisterCmd = &cobra.Command{
@@ -115,7 +118,11 @@ then on; endpoint and api_key_env stay overridable per run.
 
 Registering starts dual-writing new ingests for the model. It does not
 change the default model: promote it with ctxt embeddings set-default once
-coverage and recall are verified.`,
+coverage and recall are verified.
+
+--dry-run resolves the provider, probes the dimension and runs every
+check a real run does, then prints what would be registered. It writes
+nothing: no registry row, no index.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runEmbeddingsRegister,
 }
@@ -174,6 +181,7 @@ func init() {
 	cliconv.WithExamples(embeddingsRegisterCmd, []cliconv.Example{
 		{Title: "Register the configured provider's model", Command: "ctxt embeddings register ollama-nomic-embed-text@2026-09-26"},
 		{Title: "Register a specific model and check its dimension", Command: "ctxt embeddings register ollama-snowflake-arctic-embed2@2026-09-26 --embedding-model snowflake-arctic-embed2 --dimension 1024"},
+		{Title: "Check what would be registered, writing nothing", Command: "ctxt embeddings register ollama-nomic-embed-text@2026-09-26 --dry-run"},
 		{Title: "Probe through a tunnel, JSON output", Command: "ctxt embeddings register ollama-snowflake-arctic-embed2@2026-09-26 --embedding-model snowflake-arctic-embed2 --embedding-endpoint http://127.0.0.1:11555 --format json"},
 	})
 	cliconv.WithNextSteps(embeddingsRegisterCmd, []cliconv.NextStep{
@@ -360,8 +368,12 @@ type embeddingsRegisterDoc struct {
 	// for backend, model, endpoint and api_key_env, "measured" for the
 	// dimension.
 	Sources map[string]string `json:"sources"`
-	// Index is registerIndexReady or registerIndexUnsupported.
+	// Index is registerIndexReady, registerIndexUnsupported, or
+	// registerIndexSkipped on a dry run.
 	Index string `json:"index"`
+	// DryRun is true when --dry-run left the registry and indexes as
+	// they were.
+	DryRun bool `json:"dry_run"`
 }
 
 // dimensionSourceMeasured is the source register reports for the dimension.
@@ -379,6 +391,7 @@ func runEmbeddingsRegister(cmd *cobra.Command, args []string) error {
 	if embeddingsRegisterDimension < 0 {
 		return output.UsageError(fmt.Sprintf("--dimension %d must not be negative", embeddingsRegisterDimension))
 	}
+	dryRun := kitcli.IsDryRun(cmd)
 
 	reg, driver, cleanup, err := openEmbeddingsBackend()
 	if err != nil {
@@ -437,24 +450,16 @@ func runEmbeddingsRegister(cmd *cobra.Command, args []string) error {
 		Dimension:  dim,
 		ConfigJSON: string(configJSON),
 	}
-	if err := reg.Register(ctx, m, false); err != nil {
-		return fmt.Errorf("register %s: %w", modelID, err)
-	}
-
-	index := registerIndexReady
-	if err := driver.Embeddings().EnsureIndex(ctx, embeddings.SpecFor(m)); err != nil {
-		if !errors.Is(err, errors.ErrUnsupported) {
-			return fmt.Errorf(
-				"registered %s (dimension %d), but building its index failed: %w; the index is rebuilt the next time the database opens",
-				modelID, dim, err,
-			)
+	index := registerIndexSkipped
+	if !dryRun {
+		if index, err = writeRegisteredModel(ctx, reg, driver, m); err != nil {
+			return err
 		}
-		index = registerIndexUnsupported
 	}
 
 	doc := embeddingsRegisterDoc{
 		ModelID: modelID, Provider: m.Provider, Dimension: dim,
-		ConfigJSON: configJSON, Sources: map[string]string{}, Index: index,
+		ConfigJSON: configJSON, Sources: map[string]string{}, Index: index, DryRun: dryRun,
 	}
 	rows := make([][]string, 0, len(embeddings.Fields))
 	for _, e := range res.Explain() {
@@ -473,6 +478,11 @@ func runEmbeddingsRegister(cmd *cobra.Command, args []string) error {
 		return outputJSON(cmd.OutOrStdout(), doc)
 	}
 	w := cmd.OutOrStdout()
+	if dryRun {
+		fmt.Fprintf(w, "Dry run: would register %s. Nothing was registered.\n\n", modelID)
+		printTable(w, []string{"Setting", "Value", "Source"}, rows)
+		return nil
+	}
 	fmt.Fprintf(w, "Registered %s\n\n", modelID)
 	printTable(w, []string{"Setting", "Value", "Source"}, rows)
 	switch index {
@@ -483,6 +493,24 @@ func runEmbeddingsRegister(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(w, "Not the default model. Promote it with: ctxt embeddings set-default %s\n", modelID)
 	return nil
+}
+
+// writeRegisteredModel writes m's registry row and builds its index,
+// returning the index state.
+func writeRegisteredModel(ctx context.Context, reg *registry.Store, driver storage.StorageDriver, m registry.Model) (string, error) {
+	if err := reg.Register(ctx, m, false); err != nil {
+		return "", fmt.Errorf("register %s: %w", m.ModelID, err)
+	}
+	if err := driver.Embeddings().EnsureIndex(ctx, embeddings.SpecFor(m)); err != nil {
+		if !errors.Is(err, errors.ErrUnsupported) {
+			return "", fmt.Errorf(
+				"registered %s (dimension %d), but building its index failed: %w; the index is rebuilt the next time the database opens",
+				m.ModelID, m.Dimension, err,
+			)
+		}
+		return registerIndexUnsupported, nil
+	}
+	return registerIndexReady, nil
 }
 
 // layerPrecedence orders the resolver layers, highest first.
