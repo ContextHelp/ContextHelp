@@ -238,6 +238,36 @@ const crmDeny = `capture:
             deny: ["*://crm.example.net/*"]
 `
 
+// A bare host rule denies that host on any path; a non-http(s) scheme is
+// refused by the builtin layer before any rule, and the dry run says so.
+func TestCaptureTabs_DryRunShowsSchemeAndBareHostDecisions(t *testing.T) {
+	const bareDeny = `capture:
+  url_filter:
+    deny: ["crm.example.net"]
+`
+	ftp := chromiumtest.Tab{URL: "ftp://files.example.org/pub/", Title: "Files"}
+	about := chromiumtest.Tab{URL: "about:blank", Title: "New tab"}
+	e := newTabsEnv(t, bareDeny, workProfile(time.Now(), tabA, tabCRM, ftp, about))
+
+	out, errOut, code := e.run(tabsArgs("--dry-run")...)
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+	}
+	for _, want := range []string{
+		`denied by deny rule "crm.example.net" (global)`,
+		"builtin: scheme not captured (ftp)",
+		"builtin: scheme not captured (about)",
+		"1 would be sent, 3 denied",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dry-run output missing %q:\n%s", want, out)
+		}
+	}
+	if got := e.requests(); len(got) != 0 {
+		t.Fatalf("dry run sent %d requests", len(got))
+	}
+}
+
 func TestCaptureTabs_DryRunSendsNothing(t *testing.T) {
 	e := newTabsEnv(t, crmDeny, workProfile(time.Now(), tabA, tabCRM, tabA))
 

@@ -12,6 +12,11 @@ const (
 	ScopeGlobal  = "global"
 )
 
+// builtinSchemes are the only URL schemes Config.For admits. Every other
+// scheme (file, about, data, ws, ftp, browser-internal and custom ones)
+// is denied before any rule is evaluated.
+var builtinSchemes = []string{"http", "https"}
+
 // builtinDeny is shipped with ctxt and always applied by Config.For. Only
 // generic, never user- or organization-specific, entries belong here.
 var builtinDeny = []string{
@@ -19,22 +24,6 @@ var builtinDeny = []string{
 	"*://*.localhost/*",
 	"*://127.0.0.1/*",
 	"*://[::1]/*",
-	"file:*",
-	"about:*",
-	"chrome:*",
-	"chrome-extension:*",
-	"chrome-untrusted:*",
-	"chrome-search:*",
-	"brave:*",
-	"edge:*",
-	"opera:*",
-	"vivaldi:*",
-	"arc:*",
-	"devtools:*",
-	"view-source:*",
-	"javascript:*",
-	"data:*",
-	"blob:*",
 }
 
 // BuiltinDeny returns a copy of the deny rules ctxt always applies.
@@ -60,15 +49,15 @@ type BrowserConfig struct {
 	Profiles map[string]Rules `mapstructure:"profiles" yaml:"profiles,omitempty"`
 }
 
-// For compiles the filter for one browser profile: builtin rules, global
-// rules, then every browser entry whose key equals browser and every
+// For compiles the filter for one browser profile: the builtin layer
+// (only http and https admitted, then BuiltinDeny), global rules, then every browser entry whose key equals browser and every
 // profile entry whose key equals one of profiles. Keys compare
 // case-insensitively; pass every name a profile is known by (directory
 // and display name) so no rule is missed. An empty browser yields the
 // builtin and global layers only.
 func (c Config) For(browser string, profiles ...string) (*Filter, error) {
 	layers := []Layer{
-		{Scope: ScopeBuiltin, Rules: Rules{Deny: builtinDeny}},
+		{Scope: ScopeBuiltin, Rules: Rules{Deny: builtinDeny}, onlySchemes: builtinSchemes},
 		{Scope: ScopeGlobal, Rules: c.Rules},
 	}
 	if browser != "" {

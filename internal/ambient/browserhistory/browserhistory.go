@@ -211,13 +211,16 @@ func (s *Source) tick(ctx context.Context, browser BrowserClient) {
 			// The payload names the rule, never the URL: a denied URL is
 			// exactly what must not leave the source.
 			if s.publisher != nil {
-				_ = s.publisher.Publish(ctx, ambient.EventTopic("filtered"), SourceName,
-					map[string]any{
-						"browser": browser.Name(),
-						"reason":  string(d.Reason),
-						"rule":    d.Rule.Pattern,
-						"scope":   d.Rule.Scope,
-					})
+				payload := map[string]any{
+					"browser": browser.Name(),
+					"reason":  string(d.Reason),
+					"rule":    d.Rule.Pattern,
+					"scope":   d.Rule.Scope,
+				}
+				if d.Scheme != "" {
+					payload["scheme"] = d.Scheme
+				}
+				_ = s.publisher.Publish(ctx, ambient.EventTopic("filtered"), SourceName, payload)
 			}
 			s.bumpLastSeen(browser.Name(), v.VisitedAt)
 			continue

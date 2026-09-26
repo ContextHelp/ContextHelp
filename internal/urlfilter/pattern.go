@@ -12,16 +12,17 @@ import (
 
 // pattern is one compiled rule.
 //
-// Two forms exist:
+// Two forms exist, both matched field by field against the parsed URL,
+// so ports, userinfo, query strings and letter case cannot move a URL in
+// or out of a rule:
 //
 //   - URL form, any rule containing "://": scheme://host[:port][/path].
-//     Matched field by field against the parsed URL, so ports, userinfo,
-//     query strings and letter case cannot move a URL in or out of a rule.
-//   - Legacy form, anything else: `*` matches any run of characters over
-//     the raw URL string, and a rule without `*` is a substring match.
+//   - Host form, anything else: a bare host pattern, the host part of the
+//     URL form alone. It matches that host on any scheme, port and path.
+//     Anything but a host (a port, userinfo, path, query, fragment or
+//     whitespace) makes the rule invalid.
 type pattern struct {
 	raw string
-	url bool
 
 	anyScheme bool
 	scheme    string
@@ -55,9 +56,9 @@ type hostMatcher struct {
 func compilePattern(raw string) (pattern, error) {
 	i := strings.Index(raw, "://")
 	if i < 0 {
-		return pattern{raw: raw}, nil
+		return compileBare(raw)
 	}
-	p := pattern{raw: raw, url: true}
+	p := pattern{raw: raw}
 
 	scheme := strings.ToLower(raw[:i])
 	switch scheme {
@@ -94,6 +95,38 @@ func compilePattern(raw string) (pattern, error) {
 		p.path, p.pathGlob = "", false
 	}
 	return p, nil
+}
+
+// compileBare compiles a host-form rule.
+func compileBare(raw string) (pattern, error) {
+	p := pattern{raw: raw, anyScheme: true}
+	if raw == "*" {
+		return p, errors.New("a bare * is not a host; use *://*/* to match every URL")
+	}
+	for _, r := range raw {
+		if r < 0x80 && !isHostPatternByte(byte(r)) {
+			return p, fmt.Errorf("%q is not allowed in a host pattern; use scheme://host[:port][/path] for ports and paths", r)
+		}
+	}
+	h, err := compileHost(raw)
+	if err != nil {
+		return p, err
+	}
+	if h.value == "" {
+		return p, errors.New("empty host")
+	}
+	p.host = h
+	return p, nil
+}
+
+// isHostPatternByte reports whether an ASCII byte may appear in a bare
+// host pattern. Non-ASCII runes are left to IDNA validation.
+func isHostPatternByte(b byte) bool {
+	switch {
+	case 'a' <= b && b <= 'z', 'A' <= b && b <= 'Z', '0' <= b && b <= '9':
+		return true
+	}
+	return b == '.' || b == '-' || b == '_' || b == '*'
 }
 
 func splitHostPort(authority string) (host, port string, err error) {
@@ -184,8 +217,6 @@ func isASCII(s string) bool {
 
 // target is a URL parsed once for matching against every rule.
 type target struct {
-	raw string
-
 	// authority is false for URLs without "//" (about:blank, mailto:...).
 	// URL-form rules never match those.
 	authority bool
@@ -207,7 +238,6 @@ func parseTarget(raw string) (target, error) {
 		return target{}, errUnparseable
 	}
 	t := target{
-		raw:       raw,
 		authority: u.Opaque == "" && strings.HasPrefix(raw[len(u.Scheme)+1:], "//"),
 		scheme:    u.Scheme,
 		host:      host,
@@ -235,9 +265,6 @@ var defaultPorts = map[string]string{
 }
 
 func (p pattern) match(t target) bool {
-	if !p.url {
-		return matchGlob(p.raw, t.raw)
-	}
 	if !t.authority {
 		return false
 	}
@@ -279,41 +306,6 @@ func globAnchored(pattern, s string) bool {
 			return false
 		}
 		mid = mid[i+len(seg):]
-	}
-	return true
-}
-
-// matchGlob is the legacy raw-string matcher: `*` matches any substring
-// (including across `/` and `.`). Patterns without wildcards fall back to
-// substring containment.
-func matchGlob(pattern, s string) bool {
-	if !strings.ContainsAny(pattern, "*?") {
-		return strings.Contains(s, pattern)
-	}
-	segments := strings.Split(pattern, "*")
-	cursor := 0
-	for i, seg := range segments {
-		if seg == "" {
-			continue
-		}
-		if i == 0 {
-			if !strings.HasPrefix(s, seg) {
-				return false
-			}
-			cursor = len(seg)
-			continue
-		}
-		if i == len(segments)-1 {
-			if !strings.HasSuffix(s, seg) {
-				return false
-			}
-			return len(s)-len(seg) >= cursor
-		}
-		idx := strings.Index(s[cursor:], seg)
-		if idx == -1 {
-			return false
-		}
-		cursor += idx + len(seg)
 	}
 	return true
 }
