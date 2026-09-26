@@ -1,6 +1,6 @@
 # ADR-071 – Embedding Index Versioning and Dual-Write Migration
 
-> **Status:** Accepted
+> **Status:** Accepted, amended 2026-09-26 (see [Amendment 2026-09-26](#amendment-2026-09-26))
 > **Date:** 2026-05-07
 > **Author:** jadb
 > **Applies to:** dpkms, vector storage layer, embedding pipeline step, ctxt CLI
@@ -310,3 +310,138 @@ Postgres has no per-object backfill in Phase 1: postgres carries embeddings on t
 - `hop.top/ben` — recall benchmarks; precondition #2
 - `hop.top/xrr` — cassettes for embedding API calls
 - `hop.top/eva` — contracts for embedding-CLI output shapes
+
+---
+
+## Amendment 2026-09-26
+
+> **Status:** Accepted
+> **Implementation plan:** [`docs/plans/2026-09-26-embedding-model-migration.md`](../plans/2026-09-26-embedding-model-migration.md)
+
+This amendment reconciles the code with the decision above and settles what the original text left open: how vectors are indexed per model, where the populate set comes from, and what happens to the pre-registry single-vector path. The composite-key table, the registry, operator-driven default flips, and the single-default query path all stand.
+
+ctxt has never shipped a public release, so there is **no backward compatibility**: the single-vector path and the `legacy-blob` placeholder are removed outright in forward-only migrations, with no shims or compatibility reads.
+
+The following sections of this ADR are **superseded**: "Pipeline behavior at ingest" (the `populate_models` policy file), the caching sentence in "Query path (this phase)", "Backward compatibility", "Implementation Notes (Phase 1 lock-in)" (the `legacy-blob-<dim>@2026-05-07` anchor is no longer load-bearing), and the Postgres paragraph that follows it.
+
+### What the code did on 2026-09-26
+
+- **Ingest never produced vectors.** The builtin pipeline registry constructed the `embedding` step with a nil provider, which falls back to the stub (`Embed` returns nil). No provider-aware constructor existed for it. The `dedup` step was likewise registered with a nil store. Zero coverage on every instance follows from this as much as from the placeholder model.
+- **The legacy path was a separate table.** On SQLite, `KnowledgeObject.Embeddings` was persisted by `ObjectStore.Create/Update` into `object_embeddings` and mirrored into the `vec_objects` vec0 table at a fixed dimension (`DefaultVectorDimension = 1536`; `SetVectorDimension` had no production caller). The `objects.embeddings` BLOB column existed but was always written NULL. On Postgres, vectors lived on `objects.embedding vector(1536)` with an HNSW cosine index.
+- **The ADR-071 tables were inert.** `embeddings` held only the placeholder backfill, and `embedding_models` held the placeholder as default. Nothing read `embeddings` except the coverage count.
+- **The legacy upsert could not update.** `VecStore.Upsert` used `INSERT OR REPLACE`, which sqlite-vec v0.1.6 rejects on an existing key ("UNIQUE constraint failed on … primary key"; probed). Re-embedding an object through `Update` therefore failed.
+- **The lint duplicate check compared the wrong quantity.** It compared a cosine *distance* against a *similarity* threshold.
+
+### 1. Single write path
+
+`storage.EmbeddingStore` (reached through `StorageDriver.Embeddings()`) is the only path that writes or reads vectors. Canonical rows live in `embeddings`, keyed by the logical key `(object_id, model_id, chunk_idx)`. The ANN index is derived data, always rebuildable from those rows.
+
+- The pipeline `embedding` step does not touch storage, because the object does not exist yet and a reinforced draft maps to a different object ID. Instead it attaches `[]ObjectVector` (model, chunk, vector, text) to the draft's non-serialized `Vectors` field. Whoever persists the draft calls `Embeddings().Put(objectID, draft.Vectors)` after `Create`, `Reinforce` or `Update`. A failed `Put` is logged per model and never fails the ingest job.
+- `Put` replaces the object's rows for each model present and leaves other models alone. It rejects a vector whose length differs from the model's registry dimension, and it skips zero-magnitude vectors, whose cosine distance is undefined.
+- `embeddings.object_id` gains `REFERENCES objects(id) ON DELETE CASCADE` on both backends, so deleting an object removes its vectors and, on SQLite through triggers, its index entries.
+- A model that fails at ingest (unreachable provider, wrong dimension) leaves no row. The missing row is the durable record: the migration job's `ListMissing` cursor picks it up. The step also logs the model_id and error. `KnowledgeObject.VectorIndexed` means "the default model produced a vector at ingest" and is advisory. The authority is the `embeddings` table.
+
+### 2. Vector index per model, at the registry's dimension
+
+**Decision: one ANN index per `model_id`, not one per dimension, on both backends.** Its dimension is the registry's *measured* dimension (`register` probes the provider), never a driver default.
+
+**SQLite (sqlite-vec v0.1.6 through the cgo bindings `sqlite-vec-go-bindings v0.1.6`; SQLite 3.53.4).** Each model gets its own vec0 table `vec_emb_<h>` (`embedding float[<dim>] distance_metric=cosine`), where `<h>` is the first 16 hex digits of `sha256(model_id)` (`storage.EmbeddingIndexName`). The vec0 `rowid` equals `embeddings.id`. Per-model `AFTER INSERT / UPDATE OF vector / DELETE` triggers on `embeddings`, filtered `WHEN model_id = '<model_id>'`, keep each index in sync. Probe results that ground this choice:
+
+| Probe | Result |
+|---|---|
+| Two vec0 tables of different dimension (768, 1024) in one database | both work independently |
+| Insert or query with the wrong dimension | rejected: "Dimension mismatch … Expected 768 dimensions but received 1024" |
+| Dimension ceiling | `float[8192]` accepted; `float[8193]` rejected ("maximum 8192") |
+| `DROP` + `CREATE VIRTUAL TABLE` + fill inside one transaction | commits; a rollback restores the previous table and rows (vec0 DDL is transactional) |
+| `DROP TABLE` on a vec0 table | removes all shadow tables (`_chunks`, `_info`, `_rowids`, `_vector_chunks00`) |
+| `INSERT OR REPLACE`, and `INSERT … ON CONFLICT DO UPDATE`, on vec0 | fail ("UNIQUE constraint failed", "UPSERT not implemented for virtual table"); `UPDATE` and `DELETE`+`INSERT` work |
+| Triggers on a regular table writing into vec0 | insert, upsert (row id preserved) and delete stay in sync; a wrong-dimension row aborts the whole statement, so the canonical row is not written either |
+| `ON DELETE CASCADE` from `objects` into `embeddings` | fires the delete trigger; the vec0 entry is removed |
+| `partition key` and `+auxiliary` columns | supported in v0.1.6 (kept as the per-dimension fallback; not chosen) |
+
+Per-model wins over per-dimension (one vec0 table per dimension partitioned by `model_id`) for four reasons. Each model's index signature maps to exactly one table's DDL. A rebuild or purge touches one model: `PurgeModel` is `DROP TABLE`, which reclaims the shadow tables, rather than row deletes inside a shared table. A dimension collision between two models couples nothing. The number of tables is bounded by the number of registered models, which is tens at most.
+
+The vec0 table is keyed by `embeddings.id`, so `embeddings` is rebuilt with an explicit `id INTEGER PRIMARY KEY` and a `UNIQUE (object_id, model_id, chunk_idx)` constraint that carries the logical key. SQLite documents that `VACUUM` may renumber the rowids of tables without an explicit `INTEGER PRIMARY KEY`, and that would silently desynchronize the index.
+
+**Postgres (pgvector 0.8.6, probed against `pgvector/pgvector:pg17`).** `embeddings.vector` stays a typmod-less `vector`. Each model gets a partial expression HNSW index:
+
+```sql
+CREATE INDEX idx_emb_<h> ON embeddings
+  USING hnsw ((vector::vector(<dim>)) vector_cosine_ops)
+  WHERE model_id = '<model_id>';
+```
+
+The KNN query must repeat both the cast and the predicate (`WHERE model_id = '<model_id>' ORDER BY vector::vector(<dim>) <=> $1::vector(<dim>)`). Probe results:
+
+- An HNSW index on the bare typmod-less column is rejected ("column does not have dimensions"), so the cast is required.
+- `vector(2001)` is rejected ("cannot have more than 2000 dimensions for hnsw index"). Registration on Postgres already enforces the 2000 ceiling.
+- The planner uses the partial index when `model_id` is a literal or a custom plan binds it. It does **not** use it under a generic plan (`plan_cache_mode = force_generic_plan`), and falls back to a bitmap scan plus sort.
+- A row of the wrong dimension under a model makes every query for that model fail ("expected 3 dimensions, not 4"). That is why `Put` must enforce the registry dimension.
+
+The query therefore inlines `model_id` as a literal. This is safe because of the charset rule in section 8. Dropping `objects.embedding` also drops its dependent HNSW index (probed).
+
+### 3. Index signatures per model
+
+Every index is stamped in `index_signatures` as `embeddings_<model_id>`, hashed by `indexsig.ComputeEmbedding(model_id, provider, dimension, method, ops, params)`:
+
+- **SQLite:** method `vec0`, ops `cosine`, params = the model's vec0 DDL.
+- **Postgres:** method `hnsw`, ops `vector_cosine_ops`, params = the index `WITH (...)` build parameters (empty at pgvector defaults).
+
+`EnsureIndex` compares the stored stamp with the one computed from the *desired* DDL, which comes from code and the registry dimension. It creates the index when absent, and on mismatch drops, recreates and refills it from canonical rows in one transaction, then re-stamps it. This is ADR-070 bucket 1 (`reindex_auto`) per model. It runs at the end of every driver `Migrate` for each registered model with a measured dimension, and from `register` after the probe.
+
+### 4. The query path reads the default model
+
+This replaces "reads `model_id` … at startup, caches it". The query path reads the `is_default = 1` row **per query**. That is one indexed single-row lookup, and it makes a `set-default` flip in another process (CLI against daemon) effective on the next query without an invalidation protocol. Per query:
+
+1. Read the default model (`registry.Store.Default`).
+2. Resolve its provider (`ProviderResolver.ForModel`, section 7).
+3. Embed the query and check `len(vector) == dimension`.
+4. Search that model's index through `EmbeddingStore.Search`, or a driver join that applies object filters, using the same index.
+
+If there is no default, the provider fails, the dimensions mismatch, or the index is missing, the semantic leg is skipped and the result carries a **visible notice** naming the reason. It never degrades to FTS silently. Session query-vector blending is keyed by `model_id`, so vectors from a previous default are never blended into a query against a new one. Multi-index routing and score fusion remain out of scope.
+
+### 5. The populate set comes from the registry
+
+This replaces the `populate_models` policy in `dpkms.yaml`. Ingest writes vectors for `registry.Store.Populating(now)`, which is:
+
+- the default model, plus
+- every registered model whose deprecation is not yet effective (`deprecated_at` is NULL or later than now),
+- excluding models without a measured dimension.
+
+Registering a candidate therefore starts dual-writing, and deprecating it (or its predecessor) stops dual-writing. Keeping the populate set in the database instead of a config file means the CLI, which registers models, and a possibly remote daemon, which ingests, cannot disagree, and no restart is needed. Steady state is still exactly one embedding call per ingest, once the old default is deprecated.
+
+### 6. Chunking: single chunk for now
+
+The step embeds one chunk per object: `chunk_idx = 0`, and `text` is `projection.ProjectIndex(draft).EmbeddingText`. That matches ADR-046, which did not adopt chunking strategies. The data model and the `EmbeddingStore` contract are multi-chunk ready. `Put` replaces all of an object's chunks under a model, and `Search` over-fetches and collapses to the best chunk per object. That collapse happens in Go, not in a SQL `GROUP BY` on the KNN leg, which would defeat the index. A chunker can land later without a schema change.
+
+### 7. Provider resolution contract (consumed, not designed here)
+
+Every consumer (ingest step, query path, `register`, migration job) obtains providers through one interface, `internal/embeddings.ProviderResolver`:
+
+```go
+type ProviderResolver interface {
+    // m's config_json overlaid with transport-only runtime overrides.
+    ForModel(ctx context.Context, m registry.Model) (providers.EmbeddingProvider, error)
+    // config + runtime overrides (no registry input), plus the config_json to persist.
+    ForRegistration(ctx context.Context) (providers.EmbeddingProvider, json.RawMessage, error)
+}
+```
+
+The invariant consumers rely on: a registered model's `config_json` fixes its vector-space identity (backend and model). A runtime override may change transport, such as the endpoint (for example a remote Ollama over a tunnel) or credentials, but an override that would change a registered model's backend or model must fail. Otherwise it would write or query foreign vectors under that `model_id`. For the same reason the per-pipeline `providers.embedding` override no longer selects the embedding provider. The resolver lives beside the providers and satisfies the interface structurally, since `providers` cannot import `internal/embeddings` without a cycle.
+
+### 8. Removal of the old path and the placeholder
+
+These are forward-only migrations with no compatibility reads.
+
+- **Placeholder.** Every `legacy-blob` model, its `embeddings` rows and its `embeddings_<model_id>` signature are deleted when the per-model schema lands. Migrations 032–035 on SQLite and 6/10–12 on Postgres keep running on fresh installs and are then superseded. After this, an instance with no registered model has no default, and search reports that it is FTS-only until an operator registers a model, migrates and flips the default.
+- **Single-vector path.** Removed in a final sweep, after both the ingest and query paths have moved to `EmbeddingStore`:
+  - on SQLite: the `vec_objects` and `object_embeddings` tables, the `objects.embeddings` column, `VecStore`, the fixed-dimension driver plumbing and `KnowledgeObject.Embeddings`;
+  - on Postgres: `objects.embedding` and its HNSW index.
+- **Model-ID charset.** `model_id` is restricted to `^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,199}$` (`storage.ValidateEmbeddingModelID`), because it is embedded as a literal in per-model DDL (SQLite trigger `WHEN` clauses, Postgres partial-index predicates and queries).
+- **Dimension ceilings.** 8192 on SQLite (vec0) and 2000 on Postgres (HNSW). Both are enforced at `register`.
+
+### Consequences of this amendment
+
+- **Positive:** vectors have exactly one durable home and one write path, and models can have different dimensions on both backends. Each model's index rebuilds, purges and verifies on its own. Search degradation is always visible, and the populate set cannot drift between the CLI and the daemon.
+- **Negative:** SQLite now keeps two copies of every vector, the canonical BLOB and the vec0 entry, which is the same trade the legacy `object_embeddings` + `vec_objects` pair made. Per-model triggers and DDL are generated at runtime from registry data, so model IDs have a restricted charset. On Postgres the per-model KNN query must be built with a literal predicate and cast.
+- **Neutral:** `set-default`, `deprecate` and `purge` keep their semantics from the Decision section. `purge` becomes `EmbeddingStore.PurgeModel` plus removal of the registry row.
