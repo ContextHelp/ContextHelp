@@ -89,12 +89,21 @@ func TestSelectPipelineMedia(t *testing.T) {
 		{"/tmp/script.py", "doc.code"},
 		{"/tmp/app.js", "doc.code"},
 		{"/tmp/report.docx", "doc.office"},
-		{"/tmp/book.epub", "doc.office"},
 	}
 	for _, tt := range tests {
 		got := r.SelectPipeline(tt.input)
 		if got != tt.want {
 			t.Errorf("SelectPipeline(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+// doc.office extracts .docx only; other office formats must not reach it.
+func TestSelectPipelineUnextractableOfficeFormats(t *testing.T) {
+	r := NewRegistry()
+	for _, ext := range []string{".doc", ".odt", ".rtf", ".epub"} {
+		if got := r.SelectPipeline("/tmp/report" + ext); got == "doc.office" {
+			t.Errorf("SelectPipeline(%s) = doc.office, which cannot extract it", ext)
 		}
 	}
 }

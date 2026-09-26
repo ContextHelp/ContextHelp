@@ -152,10 +152,8 @@ func defaultSelector(content string) string {
 			return "doc.code"
 		}
 	}
-	for _, ext := range []string{".docx", ".doc", ".odt", ".rtf", ".epub"} {
-		if strings.HasSuffix(lower, ext) {
-			return "doc.office"
-		}
+	if strings.HasSuffix(lower, ".docx") {
+		return "doc.office"
 	}
 
 	// Default: text pipelines by length

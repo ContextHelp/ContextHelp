@@ -99,7 +99,6 @@ func TestSelectPipelineByExtension(t *testing.T) {
 		{"/tmp/script.py", "doc.code"},
 		{"/tmp/app.js", "doc.code"},
 		{"/tmp/report.docx", "doc.office"},
-		{"/tmp/book.epub", "doc.office"},
 	}
 	for _, tt := range tests {
 		got := r.SelectPipeline(tt.input)

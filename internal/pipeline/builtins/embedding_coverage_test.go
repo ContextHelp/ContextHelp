@@ -64,6 +64,13 @@ type coverageCase struct {
 	raw     string // RawContent seeded before the first step
 	ctype   string // ContentType seeded before the first step
 	fetched bool   // an acquisition step was skipped; raw is its output
+	// document names a real Document backend for extraction steps; empty
+	// keeps the stub. Stubs answer with placeholder text whatever the file
+	// holds, so they cannot show that a pipeline embeds what it extracted.
+	document string
+	// extracted is a phrase of a binary input's text. The embedding text
+	// must carry it, and never the file's leading bytes.
+	extracted string
 }
 
 var embeddingPipelines = map[string]coverageCase{
@@ -72,7 +79,7 @@ var embeddingPipelines = map[string]coverageCase{
 	"doc.markdown": {source: "survey.md", file: "# Quokka survey\n\n## Method\nDawn transects along the north shore.\n\n" +
 		"## Results\nMore quokkas near the salt lakes than last season.\n"},
 	"doc.code":         {source: "survey.go", file: "package survey\n\n// Count returns the quokkas seen on one transect.\nfunc Count(seen []string) int { return len(seen) }\n"},
-	"doc.office":       {source: "survey.docx", file: "Quokka survey report: more animals near the salt lakes than last season."},
+	"doc.office":       {source: "survey.docx", file: surveyDocx, document: "golib", extracted: surveyParagraph},
 	"doc.pdf":          {source: "survey.pdf", file: "%PDF-1.4 quokka survey"},
 	"image.ocr":        {source: "whiteboard.png", file: "\x89PNG\r\n\x1a\nquokka"},
 	"image.analysis":   {source: "photo.jpg", file: "\xff\xd8\xff\xe0quokka"},
@@ -100,10 +107,15 @@ var embeddingPipelines = map[string]coverageCase{
 // stubProviders answers every provider role with its deterministic stub,
 // so extraction steps run for real and never touch local tools.
 func stubProviders() *providers.Factory {
+	return stubProvidersWithDocument("stub")
+}
+
+// stubProvidersWithDocument is stubProviders with a real Document backend.
+func stubProvidersWithDocument(backend string) *providers.Factory {
 	stub := config.ProviderBackendConfig{Backend: "stub"}
 	return providers.NewFactory(config.ProvidersConfig{
-		Video: stub, Document: stub, OCR: stub, Transcription: stub,
-		Vision: stub, Diarization: stub, LLM: stub,
+		Video: stub, Document: config.ProviderBackendConfig{Backend: backend}, OCR: stub,
+		Transcription: stub, Vision: stub, Diarization: stub, LLM: stub,
 	}, nil)
 }
 
@@ -211,12 +223,15 @@ func hasStep(d Def, step string) bool {
 	return false
 }
 
-// requireVectors runs d on tc's input and checks every populating model
-// embedded the projected text.
-func requireVectors(t *testing.T, name string, d Def, tc coverageCase, opts BuildOpts) {
+// requireVectors runs d on tc's input, checks every populating model
+// embedded the projected text, and returns that text.
+func requireVectors(t *testing.T, name string, d Def, tc coverageCase, opts BuildOpts) string {
 	t.Helper()
 	if !hasStep(d, "embedding") {
 		t.Fatalf("content pipeline has no embedding step: %v", d.Steps)
+	}
+	if tc.document != "" {
+		opts.Factory = stubProvidersWithDocument(tc.document)
 	}
 	draft := tc.draft(t, name)
 	for _, s := range buildForCoverage(t, name, d, opts) {
@@ -234,6 +249,14 @@ func requireVectors(t *testing.T, name string, d Def, tc coverageCase, opts Buil
 	if strings.TrimSpace(text) == "" {
 		t.Fatal("pipeline output projects to empty embedding text")
 	}
+	if tc.extracted != "" {
+		if !strings.Contains(text, tc.extracted) {
+			t.Fatalf("embedding text lacks the extracted %q:\n%q", tc.extracted, text)
+		}
+		if magic := tc.file[:4]; strings.Contains(text, magic) {
+			t.Fatalf("embedding text carries the file's bytes (%q):\n%q", magic, text)
+		}
+	}
 	got := modelIDs(draft.Vectors)
 	if len(got) != 2 || got[0] != "snowflake-arctic-embed2@default" || got[1] != "snowflake-arctic-embed2@candidate" {
 		t.Fatalf("vectors for %v, want one per populating model", got)
@@ -243,4 +266,5 @@ func requireVectors(t *testing.T, name string, d Def, tc coverageCase, opts Buil
 			t.Errorf("%s: dim=%d text=%q, want 1024 dims of the projected text", v.ModelID, len(v.Vector), v.Text)
 		}
 	}
+	return text
 }
