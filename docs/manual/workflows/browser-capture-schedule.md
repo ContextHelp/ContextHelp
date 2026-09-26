@@ -21,7 +21,9 @@ per-user macOS LaunchAgent that runs the capture commands for you.
   ```
 
 - Install from the `ctxt` binary you want the schedule to use. The agent
-  records that binary's resolved path.
+  records that binary's path. A Homebrew install records the
+  `/opt/homebrew/bin/ctxt` (or `/usr/local/bin/ctxt`) link rather than
+  the versioned Cellar path, so `brew upgrade` does not break it.
 
 ## Install
 
@@ -30,15 +32,17 @@ ctxt capture schedule install --browser chrome --browser-profile Work
 ```
 
 ```text
-installed com.contexthelp.ctxt.capture-history.chrome.work-d3ce02d1
+installed com.contexthelp.ctxt.capture-history.chrome.profile-1-99aa3634
   runs:  ctxt capture history every 5m0s
-  plist: ~/Library/LaunchAgents/com.contexthelp.ctxt.capture-history.chrome.work-d3ce02d1.plist
-  logs:  ~/Library/Logs/ctxt/capture-history.chrome.work-d3ce02d1.out.log
-         ~/Library/Logs/ctxt/capture-history.chrome.work-d3ce02d1.err.log
-installed com.contexthelp.ctxt.capture-tabs.chrome.work-d3ce02d1
+  plist: ~/Library/LaunchAgents/com.contexthelp.ctxt.capture-history.chrome.profile-1-99aa3634.plist
+  logs:  ~/Library/Logs/ctxt/capture-history.chrome.profile-1-99aa3634.out.log
+         ~/Library/Logs/ctxt/capture-history.chrome.profile-1-99aa3634.err.log
+installed com.contexthelp.ctxt.capture-tabs.chrome.profile-1-99aa3634
   runs:  ctxt capture tabs every 30m0s
   ...
 ```
+
+(Here Chrome keeps the "Work" profile in the folder `Profile 1`.)
 
 `--browser` is one of `chrome`, `brave`, `edge`, `arc`, `chromium`,
 `vivaldi`. `--browser-profile` is the profile's display name or its
@@ -47,6 +51,20 @@ folder name. Quote names that contain spaces:
 ```bash
 ctxt capture schedule install --browser brave --browser-profile "Profile 1"
 ```
+
+Both flags are optional and are resolved the way `ctxt capture tabs`
+resolves them: `capture.browser`, then the one installed browser that
+has the named profile, then the OS default browser; an omitted profile
+is the browser's last-used one. See
+[Choosing the browser and profile](./browser-tab-capture.md#choosing-the-browser-and-profile),
+and run `ctxt capture browsers` to see what would be picked.
+
+Install resolves once and writes the result into the agents: the
+browser and the profile **folder**. The scheduled runs never
+auto-select, so changing your default browser or switching profiles
+later does not move them. A name that matches no profile, or several,
+is refused with exit status `2` and a list of candidates, and nothing
+is installed.
 
 To preview without writing anything or calling `launchctl`, add
 `--dry-run`. It prints each plist and where it would go.
@@ -91,10 +109,12 @@ ctxt capture schedule list
 ```
 
 ```text
-LABEL                                                      KIND     BROWSER  PROFILE  EVERY  LOADED
-com.contexthelp.ctxt.capture-history.chrome.work-d3ce02d1  history  chrome   Work     5m0s   true
-com.contexthelp.ctxt.capture-tabs.chrome.work-d3ce02d1     tabs     chrome   Work     30m0s  true
+LABEL                                                           KIND     BROWSER  PROFILE    EVERY  LOADED
+com.contexthelp.ctxt.capture-history.chrome.profile-1-99aa3634  history  chrome   Profile 1  5m0s   true
+com.contexthelp.ctxt.capture-tabs.chrome.profile-1-99aa3634     tabs     chrome   Profile 1  30m0s  true
 ```
+
+`PROFILE` is the profile folder written into the agent.
 
 `LOADED` is whether launchd currently has the job. Add `--format json`
 for the full record, including plist and log paths.
@@ -104,7 +124,7 @@ for the full record, including plist and log paths.
 Each agent writes to its own pair of files in `~/Library/Logs/ctxt/`:
 
 ```bash
-tail -f ~/Library/Logs/ctxt/capture-history.chrome.work-*.log
+tail -f ~/Library/Logs/ctxt/capture-history.chrome.profile-1-*.log
 ```
 
 `.out.log` holds the command's normal output; `.err.log` holds errors,
@@ -120,19 +140,29 @@ This unloads both agents and deletes their plists. Log files stay. Add
 `--no-tabs` or `--no-history` to keep that agent. Uninstalling a profile
 that has no agents does nothing and succeeds.
 
+Uninstall resolves `--browser` and `--browser-profile` the same way
+install does, so the flags you installed with remove the same agents.
+If the profile has since been deleted from the browser, name it by the
+folder shown in `ctxt capture schedule list`:
+
+```bash
+ctxt capture schedule uninstall --browser chrome --browser-profile "Profile 1"
+```
+
 ## Details
 
 - **Why two agents.** A launchd job has one command and one interval.
   Keeping history and tabs apart gives each its own timer, logs and
   failure state, with no wrapper script in between.
 - **Labels.** The label is the kind, the browser, a readable slug of the
-  profile name and a short hash of the exact name, so `Work`, `work` and
-  `Work!` never collide. The profile name itself is passed to the command
-  as a single argument, with no shell involved, so spaces, quotes and
-  other characters are safe.
+  profile folder and a short hash of the exact folder name, so labels
+  never collide. The folder is stable: renaming the profile in the
+  browser does not change it. It is passed to the command as a single
+  argument, with no shell involved, so spaces and other characters are
+  safe.
 - **Moving or upgrading ctxt.** The agent runs the binary path recorded
-  at install time. If that path changes (for example, a package manager
-  installs new versions under versioned directories), run `install`
-  again.
+  at install time. Homebrew upgrades are covered (the `bin/ctxt` link is
+  recorded, not the versioned Cellar directory). If you move the binary
+  anywhere else, run `install` again.
 - **Failed load.** If `launchctl` refuses the job, install removes the
   plist it just wrote, so nothing starts unexpectedly at next login.
