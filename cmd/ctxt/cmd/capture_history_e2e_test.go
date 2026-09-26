@@ -529,8 +529,7 @@ func TestCaptureHistory_ExitCodes(t *testing.T) {
 		stderrs []string
 	}{
 		{"ok", e, historyArgs("--dry-run"), 0, nil},
-		{"missing --browser", e, []string{"capture", "history", "--browser-profile", "Work"}, 2, []string{"--browser"}},
-		{"missing --browser-profile", e, []string{"capture", "history", "--browser", "brave"}, 2, []string{"--browser-profile"}},
+		{"no browser has the profile", e, []string{"capture", "history", "--browser-profile", "Nope"}, 2, []string{"Nope"}},
 		{"unknown browser", e, []string{"capture", "history", "--browser", "netscape", "--browser-profile", "Work"}, 2, []string{"unknown browser"}},
 		{"unknown profile", e, []string{"capture", "history", "--browser", "brave", "--browser-profile", "Nope"}, 2, []string{`no profile "Nope"`}},
 		{"bad --since", e, historyArgs("--since", "yesterday"), 2, []string{"--since"}},
@@ -699,4 +698,32 @@ func TestCaptureHistory_StderrNeverCarriesURLs(t *testing.T) {
 			}
 		}
 	}
+}
+
+// The history command resolves its target with the same rules as tabs:
+// --browser may be omitted when the profile name or capture.browser
+// identifies it, and the stored position key uses the resolved folder.
+func TestCaptureHistory_AutoSelectsBrowser(t *testing.T) {
+	now := hNow()
+	a := hVisit("https://example.com/a", now.Add(-2*time.Hour))
+
+	// Profile name alone: brave is the only installed browser with "Work".
+	e := newHistoryEnv(t, "", a)
+	_, errOut := e.mustRun(0, "capture", "history", "--browser-profile", "Work")
+	assertSent(t, e, a.URL)
+	assertPosition(t, e, a.At)
+	if !strings.Contains(errOut, "using brave profile") {
+		t.Errorf("auto-selection should be named on stderr:\n%s", errOut)
+	}
+
+	// capture.browser from config, profile omitted: the only profile present.
+	e = newHistoryEnv(t, "capture:\n  browser: brave\n", a)
+	e.mustRun(0, "capture", "history")
+	assertSent(t, e, a.URL)
+	assertPosition(t, e, a.At)
+
+	// Folder name (what schedule pins into agents) resolves too.
+	e = newHistoryEnv(t, "", a)
+	e.mustRun(0, "capture", "history", "--browser", "brave", "--browser-profile", "Profile 1")
+	assertSent(t, e, a.URL)
 }

@@ -107,7 +107,7 @@ func init() {
 	})
 
 	f := captureHistoryCmd.Flags()
-	f.String("browser", "", "browser to read: "+browserList())
+	f.String("browser", "", "browser to read (default: capture.browser, then auto-select): "+browserList())
 	f.String("browser-profile", "", `browser profile: display name ("Work") or folder name ("Profile 1")`)
 	f.String("since", "", "send visits from this time (RFC 3339, YYYY-MM-DD, or 30m/12h/7d/2w ago)")
 	f.String("until", "", "bounded backfill: send visits before this time (a bare date includes that day)")
@@ -380,40 +380,12 @@ func runCaptureHistory(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// resolveHistoryTarget validates --browser / --browser-profile and maps
-// them to a profile on disk. A bad name is a usage error listing the
-// candidates; state missing from disk is NOT_FOUND (exit 3).
+// resolveHistoryTarget maps --browser / --browser-profile (either may be
+// omitted) to a profile on disk via the shared capture selection rules.
 func resolveHistoryTarget(cmd *cobra.Command) (chromium.Profile, error) {
-	browserName, _ := cmd.Flags().GetString("browser")
-	profileName, _ := cmd.Flags().GetString("browser-profile")
-	if strings.TrimSpace(browserName) == "" {
-		return chromium.Profile{}, output.UsageError("--browser is required (one of: " + browserList() + ")")
-	}
-	if strings.TrimSpace(profileName) == "" {
-		return chromium.Profile{}, output.UsageError(`--browser-profile is required (a profile name such as "Work", or a folder name such as "Profile 1")`)
-	}
-	browser, err := chromium.ParseBrowser(browserName)
-	if err != nil {
-		return chromium.Profile{}, output.UsageError(err.Error())
-	}
-	profile, err := chromium.ResolveProfile(browser, profileName)
-	switch {
-	case err == nil:
-		return profile, nil
-	case errors.Is(err, chromium.ErrProfileNotFound), errors.Is(err, chromium.ErrAmbiguousProfile),
-		errors.Is(err, chromium.ErrUnsupported):
-		return chromium.Profile{}, output.UsageError(err.Error())
-	case errors.Is(err, chromium.ErrProfileDirMissing):
-		return chromium.Profile{}, output.NotFoundError(err.Error())
-	case errors.Is(err, fs.ErrNotExist):
-		dir, _ := chromium.UserDataDir(browser)
-		e := output.NotFoundError(fmt.Sprintf("%s: no %q in %s; is %s installed?",
-			browser, chromium.LocalStateFile, dir, browser))
-		e.SuggestedFix = fmt.Sprintf("set %s to the browser's user data directory", chromium.EnvUserDataDir(browser))
-		return chromium.Profile{}, e
-	default:
-		return chromium.Profile{}, err
-	}
+	browserFlag, _ := cmd.Flags().GetString("browser")
+	profileFlag, _ := cmd.Flags().GetString("browser-profile")
+	return resolveCaptureTarget(cmd, browserFlag, profileFlag)
 }
 
 // historyFlags reads and validates every flag that needs no disk access.

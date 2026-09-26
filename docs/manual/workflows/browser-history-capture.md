@@ -173,8 +173,8 @@ Other browser profiles keep their positions. The next plain run starts again fro
 
 | Flag | Meaning |
 |---|---|
-| `--browser <name>` | Which browser: `chrome`, `brave`, `edge`, `arc`, `chromium` or `vivaldi`. |
-| `--browser-profile <name>` | Which browser profile: the name shown in the browser, or the profile's folder name. |
+| `--browser <name>` | Which browser: `chrome`, `brave`, `edge`, `arc`, `chromium` or `vivaldi`. Optional: omitted, it comes from `capture.browser`, the profile name, or the OS default browser; see [Choosing the browser and profile](./browser-tab-capture.md#choosing-the-browser-and-profile). |
+| `--browser-profile <name>` | Which browser profile: the name shown in the browser, or the profile's folder name. Optional: omitted, the browser's last-used profile is read. |
 | `--since <time>` | Send visits from this time. Alone, it moves the saved position forward; with `--until`, it's a backfill. |
 | `--until <time>` | Backfill up to this time. |
 | `--range <from>..<to>` | Backfill this window. Repeatable. Can't be combined with `--since` or `--until`. |
