@@ -181,21 +181,36 @@ func inferFromRawContent(content string) ([]depEntry, error) {
 	return nil, nil
 }
 
-var requirementsLineRe = regexp.MustCompile(`(?m)^[a-zA-Z][a-zA-Z0-9_.-]+`)
+// requirementLineRe matches one complete PEP 508 requirement line:
+// name, optional extras, then optional version spec, env marker, or
+// direct reference, with an optional trailing comment. Group 1 is
+// non-empty when the line pins anything beyond a bare name.
+var requirementLineRe = regexp.MustCompile(
+	`^[A-Za-z0-9][A-Za-z0-9._-]*(?:\[[A-Za-z0-9._,\s-]*\])?` +
+		`\s*((?:===|==|>=|<=|!=|~=|>|<)\s*[^\s,;#]+(?:\s*,\s*(?:===|==|>=|<=|!=|~=|>|<)\s*[^\s,;#]+)*` +
+		`|@\s*\S+)?\s*(;[^#]*)?(?:\s+#.*)?$`)
 
+// looksLikeRequirements reports whether content is a pip requirements file.
+// Every non-comment, non-option line must be a valid requirement, and at
+// least one must carry a version spec, marker, or direct reference: a list
+// of bare words is indistinguishable from page text.
 func looksLikeRequirements(content string) bool {
-	lines := strings.Split(content, "\n")
-	matches := 0
-	for _, line := range lines {
+	matches, pinned := 0, false
+	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
 			continue
 		}
-		if requirementsLineRe.MatchString(line) {
-			matches++
+		m := requirementLineRe.FindStringSubmatch(line)
+		if m == nil {
+			return false
+		}
+		matches++
+		if m[1] != "" || m[2] != "" {
+			pinned = true
 		}
 	}
-	return matches >= 2 && matches > len(lines)/3
+	return matches >= 2 && pinned
 }
 
 // parsePackageJSON parses npm/yarn package.json for dependencies.

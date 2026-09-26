@@ -485,3 +485,99 @@ func TestDependencyEnricherGraphSkippedWhenNoDeps(t *testing.T) {
 		t.Errorf("Graph should be nil when no deps found, got %+v", got.Graph)
 	}
 }
+
+// githubPageText is an excerpt of the text a url_fetcher produces for a GitHub
+// repository page: navigation chrome, one phrase per line.
+const githubPageText = `GitHub - Graphify-Labs/graphify: Turn any codebase into a queryable knowledge graph.
+ Skip to content
+ Navigation Menu Sign in Appearance settings
+ You signed in with another tab or window. Reload to refresh your session.
+ Dismiss alert
+ {{ message }}
+ Graphify-Labs
+ /
+ graphify
+ Public
+ Uh oh!
+ There was an error while loading. Please reload this page .
+ Notifications
+ Fork
+ 11.7k
+ Star
+ 121k
+ Code
+ Issues
+ Pull requests
+ Discussions
+ Actions
+ Projects
+ Insights
+`
+
+func TestDependencyEnricherRawContentFallbackIgnoresPageText(t *testing.T) {
+	s := NewDependencyEnricher()
+	draft := &storage.KnowledgeObject{
+		Source:     "https://github.com/Graphify-Labs/graphify",
+		Metadata:   map[string]any{},
+		RawContent: githubPageText,
+	}
+
+	got, err := s.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	items, _ := got.Metadata["items_to_enqueue"].([]map[string]any)
+	if len(items) != 0 {
+		t.Errorf("page text parsed as requirements.txt: got %d items, first %v", len(items), items[0]["content"])
+	}
+}
+
+func TestDependencyEnricherRawContentFallbackIgnoresWordList(t *testing.T) {
+	s := NewDependencyEnricher()
+	draft := &storage.KnowledgeObject{
+		Metadata:   map[string]any{},
+		RawContent: "Code\nIssues\nActions\nProjects\nInsights\n",
+	}
+
+	got, err := s.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	items, _ := got.Metadata["items_to_enqueue"].([]map[string]any)
+	if len(items) != 0 {
+		t.Errorf("bare word list parsed as requirements.txt: got %d items", len(items))
+	}
+}
+
+func TestDependencyEnricherRawContentFallbackRequirementsTxt(t *testing.T) {
+	s := NewDependencyEnricher()
+	reqtxt := `# pinned
+-r base.txt
+requests>=2.28.0
+flask[async]==3.0.0 ; python_version >= "3.9"
+numpy
+`
+	draft := &storage.KnowledgeObject{
+		Metadata:   map[string]any{},
+		RawContent: reqtxt,
+	}
+
+	got, err := s.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	items, _ := got.Metadata["items_to_enqueue"].([]map[string]any)
+	want := []string{
+		"https://pypi.org/project/requests/",
+		"https://pypi.org/project/flask/",
+		"https://pypi.org/project/numpy/",
+	}
+	if len(items) != len(want) {
+		t.Fatalf("items_to_enqueue: got %d, want %d", len(items), len(want))
+	}
+	for i, w := range want {
+		if items[i]["content"] != w {
+			t.Errorf("item %d: got %v, want %s", i, items[i]["content"], w)
+		}
+	}
+}
