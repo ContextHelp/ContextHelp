@@ -63,11 +63,7 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 		family = parsed
 	}
 	if family == "" {
-		family = s.Pipes.Detect(pipeline.DetectInput{
-			Source:      obj.Source,
-			ContentType: obj.ContentType,
-			Sniff:       contentSniff(obj.RawContent),
-		})
+		family = s.detectPipeline(obj.Source, obj.ContentType, obj.RawContent)
 	}
 
 	// Pick the registry's currently-installed version for this family.
