@@ -16,23 +16,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
-// freshVectorDriver provisions a fresh database migrated at the given vector
-// dimension (small dimensions keep tests fast; the HNSW index still builds).
-func freshVectorDriver(t *testing.T, dim int) *pgdrv.Driver {
-	t.Helper()
-	dsn, _ := freshDatabaseDSN(t)
-	drv, err := pgdrv.New(dsn)
-	if err != nil {
-		t.Fatalf("postgres.New: %v", err)
-	}
-	t.Cleanup(func() { drv.Close(context.Background()) })
-	drv.SetVectorDimension(dim)
-	if err := drv.Migrate(context.Background()); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	return drv
-}
-
 // indexModel registers modelID at dim and builds its per-model index. Until
 // the driver's EmbeddingStore is implemented (errors.ErrUnsupported) the
 // index is created by hand from the ADR-071 amendment's DDL, so the query
@@ -121,7 +104,7 @@ func pgQuery(modelID string, vec ...float32) storage.VectorQuery {
 // dimension: cosine order, score = 1 - distance, one hit per object (its
 // closest chunk), and nothing from another model's rows.
 func TestPostgresVectorSearch_PerModelRankAndScore(t *testing.T) {
-	drv := freshVectorDriver(t, 4)
+	drv, _ := freshIntegrationDriver(t)
 	ctx := context.Background()
 	indexModel(t, drv, "pg-a", 4)
 	indexModel(t, drv, "pg-b", 3)
@@ -154,7 +137,7 @@ func TestPostgresVectorSearch_PerModelRankAndScore(t *testing.T) {
 }
 
 func TestPostgresVectorSearch_IndexMissingAndDimension(t *testing.T) {
-	drv := freshVectorDriver(t, 4)
+	drv, _ := freshIntegrationDriver(t)
 	ctx := context.Background()
 
 	if _, err := drv.Objects().VectorSearch(ctx, pgQuery("pg-unregistered", 1, 0, 0, 0), storage.ObjectFilter{}); !errors.Is(err, storage.ErrEmbeddingIndexMissing) {
@@ -179,7 +162,7 @@ func TestPostgresVectorSearch_IndexMissingAndDimension(t *testing.T) {
 // applies WHERE after index traversal, so this is exactly the under-return
 // case iterative index scans (>= 0.8.0) exist to fix.
 func TestPostgresVectorSearch_FilteredRecall(t *testing.T) {
-	drv := freshVectorDriver(t, 4)
+	drv, _ := freshIntegrationDriver(t)
 	ctx := context.Background()
 	indexModel(t, drv, "pg-recall", 4)
 
@@ -211,7 +194,7 @@ func TestPostgresVectorSearch_FilteredRecall(t *testing.T) {
 // TestPostgresVectorSearchNodeAware pins node-type ALL-of filtering and the
 // ReturnNodeHits DocumentView projection on the vector leg, mirroring SQLite.
 func TestPostgresVectorSearchNodeAware(t *testing.T) {
-	drv := freshVectorDriver(t, 4)
+	drv, _ := freshIntegrationDriver(t)
 	ctx := context.Background()
 	indexModel(t, drv, "pg-na", 4)
 

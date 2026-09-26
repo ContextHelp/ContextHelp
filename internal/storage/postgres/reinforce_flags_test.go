@@ -11,20 +11,18 @@ import (
 
 // TestPostgresReinforceKeepsIndexFlags pins that the dedup/reinforcement
 // path leaves an already-indexed object searchable AND still reporting
-// fts_indexed/vector_indexed=true. Reinforce never touches the tsvector
-// (generated from projected_fts_body, which it does not rewrite) or the
-// embedding column, and no re-indexer exists to flip the flags back —
-// clearing them misreports a searchable object as unindexed. Mirrors the
-// SQLite regression fix.
+// fts_indexed=true. Reinforce never touches the tsvector (generated from
+// projected_fts_body, which it does not rewrite), and no re-indexer exists
+// to flip the flag back — clearing it misreports a searchable object as
+// unindexed. Mirrors the SQLite regression fix.
 func TestPostgresReinforceKeepsIndexFlags(t *testing.T) {
-	drv := freshVectorDriver(t, 4)
+	drv, _ := freshIntegrationDriver(t)
 	ctx := context.Background()
 
 	obj := makePgFTSObject("reinf-pg-1", "article", "zebrafish larval locomotion study")
 	obj.RawContent = "zebrafish larval locomotion study"
 	obj.ContentHash = "reinf-pg-hash"
 	obj.ReinforcementCount = 1
-	obj.VectorIndexed = true
 	if err := drv.Objects().Create(ctx, obj); err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -35,9 +33,6 @@ func TestPostgresReinforceKeepsIndexFlags(t *testing.T) {
 	}
 	if !before.FTSIndexed {
 		t.Fatal("precondition: Create must FTS-index the object")
-	}
-	if !before.VectorIndexed {
-		t.Fatal("precondition: Create persists vector_indexed")
 	}
 
 	if _, err := drv.Objects().Reinforce(ctx, "reinf-pg-hash", &storage.KnowledgeObject{
@@ -56,9 +51,6 @@ func TestPostgresReinforceKeepsIndexFlags(t *testing.T) {
 	}
 	if !after.FTSIndexed {
 		t.Error("Reinforce must not clear fts_indexed: object stays indexed")
-	}
-	if !after.VectorIndexed {
-		t.Error("Reinforce must not clear vector_indexed: embedding untouched")
 	}
 
 	results, err := drv.Objects().FTSSearch(ctx, "zebrafish", storage.ObjectFilter{Limit: 10})

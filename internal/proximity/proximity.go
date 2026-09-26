@@ -95,13 +95,22 @@ func CosineSimilarity(a, b []float32) float64 {
 	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
 }
 
-// SemanticProximity computes semantic similarity using pre-stored embeddings on the objects.
-// Returns 0.0 if either object has no embeddings.
+// SemanticProximity computes the cosine similarity of the objects' chunk-0
+// vectors under the first model both carry in Vectors. Vectors from
+// different models are never compared. Returns 0.0 when the objects share
+// no model.
 func SemanticProximity(a, b *storage.KnowledgeObject) float64 {
-	if len(a.Embeddings) == 0 || len(b.Embeddings) == 0 {
-		return 0.0
+	for _, va := range a.Vectors {
+		if va.ChunkIdx != 0 {
+			continue
+		}
+		for _, vb := range b.Vectors {
+			if vb.ChunkIdx == 0 && vb.ModelID == va.ModelID {
+				return CosineSimilarity(va.Vector, vb.Vector)
+			}
+		}
 	}
-	return CosineSimilarity(a.Embeddings, b.Embeddings)
+	return 0.0
 }
 
 // TemporalProximity computes proximity based on how close in time two objects were created.

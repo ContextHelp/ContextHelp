@@ -467,9 +467,9 @@ func (x *run) publish(ctx context.Context, topic bus.Topic, reason string) {
 }
 
 // only is a ModelSource of just the target. The step's ingest-time
-// default bookkeeping (VectorIndexed, the "no default model" warning)
-// concerns drafts being stored; the migration discards the draft, so the
-// target is presented as the default to keep that bookkeeping quiet.
+// "no default model" warning concerns drafts being stored; the migration
+// discards the draft, so the target is presented as the default to keep
+// that warning quiet.
 type only registry.Model
 
 func (o only) Default(context.Context) (*registry.Model, error) {

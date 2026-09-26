@@ -8,19 +8,11 @@ import (
 
 func newTestDriver(t testing.TB) *Driver {
 	t.Helper()
-	return newTestDriverDim(t, DefaultVectorDimension)
-}
-
-// newTestDriverDim creates a test driver with a custom vector dimension.
-// Use dimension=4 for fast unit tests; dimension=1536 for production-scale benchmarks.
-func newTestDriverDim(t testing.TB, dim int) *Driver {
-	t.Helper()
 	dir := t.TempDir()
 	d, err := New(filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("new driver: %v", err)
 	}
-	d.SetVectorDimension(dim)
 	if err := d.Init(context.Background()); err != nil {
 		t.Fatalf("init driver: %v", err)
 	}

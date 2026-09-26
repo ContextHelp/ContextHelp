@@ -44,7 +44,7 @@ func NewICAProcessor(
 			pipeline.StepContract{
 				Requires: []string{"RawContent"},
 				Produces: []string{
-					"Embeddings", "Metadata", "Sections",
+					"Metadata", "Sections",
 				},
 				Capabilities: []string{"ica_processor"},
 			},
@@ -86,10 +86,6 @@ func (s *ICAProcessor) Run(
 	enriched := ica.NormalizedItemToDraft(&resp.Item)
 
 	// merge enriched fields into original draft
-	if len(enriched.Embeddings) > 0 {
-		draft.Embeddings = enriched.Embeddings
-	}
-
 	if draft.Metadata == nil {
 		draft.Metadata = make(map[string]any)
 	}

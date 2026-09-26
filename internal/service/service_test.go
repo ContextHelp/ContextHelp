@@ -216,7 +216,6 @@ func TestAnalyzeRawFlagSkipsEnrichment(t *testing.T) {
 	assert.Equal(t, "raw content no AI", obj.RawContent)
 	assert.Empty(t, obj.Summaries, "no summaries expected — no AI enrichment")
 	assert.Empty(t, obj.Tags, "no tags expected — no AI enrichment")
-	assert.Empty(t, obj.Embeddings, "no embeddings expected — no AI enrichment")
 
 	// No job must have been enqueued.
 	jobs, total, err := svc.ListJobs(ctx, storage.JobFilter{})

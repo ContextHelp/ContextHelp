@@ -59,21 +59,21 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, graph_json, source_key, projected_fts_body
 	) VALUES (
 		$1, $2, $3, $4, $5,
 		$6, $7, $8, $9, $10,
 		$11, $12, $13, $14,
 		$15, $16, $17, $18, $19,
-		$20, $21, $22, $23, $24, $25,
-		$26, $27, $28, $29, $30
+		$20, $21, $22, $23, $24,
+		$25, $26, $27, $28, $29
 	)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
-		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
+		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey, projectedFTSBody,
 	)
 	if err != nil {
@@ -266,15 +266,15 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		decisions=$10, tasks=$11, pipeline=$12, source=$13,
 		registry_influences=$14, plugins=$15, content_hash=$16,
 		reinforcement_count=$17, last_reinforced_at=$18,
-		updated_at=$19, fts_indexed=$20, vector_indexed=$21, status=$22, inbox_note=$23,
-		remind_at=$24, reminded_at=$25, graph_json=$26, projected_fts_body=$27
-	WHERE id=$28`,
+		updated_at=$19, fts_indexed=$20, status=$21, inbox_note=$22,
+		remind_at=$23, reminded_at=$24, graph_json=$25, projected_fts_body=$26
+	WHERE id=$27`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash,
 		obj.ReinforcementCount, f.lastReinforcedAt,
-		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
+		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, projectedFTSBody,
 		obj.ID,
 	)
@@ -343,11 +343,11 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	mergedMentionStrs := mergeStrings(mentionsToStrings(obj.Mentions), mentionsToStrings(mergeData.Mentions))
 	mergedMentionsJSON, _ := json.Marshal(mergedMentionStrs)
 
-	// fts_indexed / vector_indexed are left untouched: Reinforce never
-	// rewrites projected_fts_body (the generated tsvector stays valid) or
-	// the embedding column, and no downstream re-indexer exists to flip
-	// the flags back. Clearing them here misreported reinforced
-	// (deduplicated) objects as unindexed even though FTS still matched.
+	// fts_indexed is left untouched: Reinforce never rewrites
+	// projected_fts_body (the generated tsvector stays valid), and no
+	// downstream re-indexer exists to flip the flag back. Clearing it here
+	// misreported reinforced (deduplicated) objects as unindexed even
+	// though FTS still matched.
 	if mergeData.RawContent != "" && mergeData.RawContent != hash {
 		_, err = tx.ExecContext(ctx, `UPDATE objects SET
 			reinforcement_count = reinforcement_count + 1,
@@ -810,7 +810,7 @@ const objectSelectCols = `SELECT
 	metadata, summaries, sections, tags, mentions,
 	decisions, tasks, pipeline, source,
 	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-	created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+	created_at, updated_at, fts_indexed, status, inbox_note,
 	remind_at, reminded_at, graph_json, source_key`
 
 func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
@@ -828,7 +828,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
+		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &graphJSON, &sourceKey,
 	)
 	if err != nil {
@@ -870,7 +870,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
+		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &graphJSON, &sourceKey,
 	)
 	if err != nil {
@@ -911,7 +911,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
+		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &graphJSON, &sourceKey,
 		&score,
 	)
@@ -1073,23 +1073,6 @@ func encodePgVector(v []float32) string {
 	}
 	b.WriteByte(']')
 	return b.String()
-}
-
-// parsePgVector parses a pgvector string like "[0.1,0.2,0.3]" into []float32.
-func parsePgVector(s string) []float32 {
-	s = strings.TrimPrefix(s, "[")
-	s = strings.TrimSuffix(s, "]")
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	out := make([]float32, 0, len(parts))
-	for _, p := range parts {
-		var v float32
-		fmt.Sscanf(strings.TrimSpace(p), "%g", &v)
-		out = append(out, v)
-	}
-	return out
 }
 
 func mergeTags(existing, newTags []storage.Tag) []storage.Tag {

@@ -30,7 +30,7 @@ func TestPostgres_Conformance_VectorRankFixture(t *testing.T) {
 // conformance suite with both legs claimed; the vector subtests skip until
 // the driver's EmbeddingStore is implemented.
 func TestPostgres_Conformance_Search(t *testing.T) {
-	drv := freshVectorDriver(t, storagetest.VectorRankDimension)
+	drv, _ := freshIntegrationDriver(t)
 	storagetest.RunSearchConformance(t, drv, storagetest.SearchCapabilities{
 		FTS:     true,
 		Vectors: true,

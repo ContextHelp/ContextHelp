@@ -81,21 +81,19 @@ func TestUS0051_VectorSearchReturnsSimilarObjects(t *testing.T) {
 
 	// Object with embedding similar to the query vector.
 	similar := &storage.KnowledgeObject{
-		ID:            "sem-sim-01",
-		Type:          "text",
-		Summaries:     []string{"neural network deep learning transformer"},
-		VectorIndexed: true,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:        "sem-sim-01",
+		Type:      "text",
+		Summaries: []string{"neural network deep learning transformer"},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	// Object with orthogonal embedding (dissimilar).
 	dissimilar := &storage.KnowledgeObject{
-		ID:            "sem-dis-01",
-		Type:          "text",
-		Summaries:     []string{"relational database normalisation forms"},
-		VectorIndexed: true,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:        "sem-dis-01",
+		Type:      "text",
+		Summaries: []string{"relational database normalisation forms"},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
 	createWithVector(t, env, similar, makeEmbedding(dim, 0.99))
@@ -124,11 +122,10 @@ func TestUS0051_VectorSearchSkipsObjectsWithoutEmbeddings(t *testing.T) {
 	requireVectorIndex(t, env, dim)
 
 	withEmbedding := &storage.KnowledgeObject{
-		ID:            "sem-has-01",
-		Type:          "text",
-		VectorIndexed: true,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:        "sem-has-01",
+		Type:      "text",
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	withoutEmbedding := &storage.KnowledgeObject{
 		ID:        "sem-none-01",
@@ -162,11 +159,10 @@ func TestUS0051_VectorSearchLimitHonoured(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		id := "sem-lim-" + string(rune('a'+i))
 		createWithVector(t, env, &storage.KnowledgeObject{
-			ID:            id,
-			Type:          "text",
-			VectorIndexed: true,
-			CreatedAt:     now,
-			UpdatedAt:     now,
+			ID:        id,
+			Type:      "text",
+			CreatedAt: now,
+			UpdatedAt: now,
 		}, makeEmbedding(dim, float32(0.5+float64(i)*0.1)))
 	}
 

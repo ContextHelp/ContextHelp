@@ -243,7 +243,4 @@ func requireVectors(t *testing.T, name string, d Def, tc coverageCase, opts Buil
 			t.Errorf("%s: dim=%d text=%q, want 1024 dims of the projected text", v.ModelID, len(v.Vector), v.Text)
 		}
 	}
-	if !draft.VectorIndexed {
-		t.Error("VectorIndexed = false after the default model embedded")
-	}
 }

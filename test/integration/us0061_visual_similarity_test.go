@@ -46,23 +46,21 @@ func TestUS0061_VisuallySimialrImageRanksHigher(t *testing.T) {
 
 	// Image closely matching the query vector.
 	similar := &storage.KnowledgeObject{
-		ID:            "vis-sim-01",
-		Type:          "image",
-		Subtype:       "jpeg",
-		Summaries:     []string{"authentication flow architecture diagram"},
-		VectorIndexed: true,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:        "vis-sim-01",
+		Type:      "image",
+		Subtype:   "jpeg",
+		Summaries: []string{"authentication flow architecture diagram"},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	// Image with orthogonal embedding.
 	dissimilar := &storage.KnowledgeObject{
-		ID:            "vis-dis-01",
-		Type:          "image",
-		Subtype:       "png",
-		Summaries:     []string{"database schema entity relationship diagram"},
-		VectorIndexed: true,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:        "vis-dis-01",
+		Type:      "image",
+		Subtype:   "png",
+		Summaries: []string{"database schema entity relationship diagram"},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
 	createWithVector(t, env, similar, makeVisualEmbedding(dim, map[int]float32{0: 0.98, 1: 0.1}))
@@ -90,14 +88,13 @@ func TestUS0061_DualEmbeddingImageAndTextCoexist(t *testing.T) {
 	requireVectorIndex(t, env, dim)
 
 	imgObj := &storage.KnowledgeObject{
-		ID:            "vis-dual-01",
-		Type:          "image",
-		Subtype:       "png",
-		Summaries:     []string{"whiteboard photo of microservices topology"},
-		RawContent:    "microservices topology",
-		VectorIndexed: true,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:         "vis-dual-01",
+		Type:       "image",
+		Subtype:    "png",
+		Summaries:  []string{"whiteboard photo of microservices topology"},
+		RawContent: "microservices topology",
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 	createWithVector(t, env, imgObj, makeVisualEmbedding(dim, map[int]float32{0: 0.9, 1: 0.3}))
 	rebuildFTSIntegration(t, env)
@@ -128,18 +125,16 @@ func TestUS0061_ImageTypeFilterRestrictsVectorResults(t *testing.T) {
 	requireVectorIndex(t, env, dim)
 
 	imgObj := &storage.KnowledgeObject{
-		ID:            "vis-img-only-01",
-		Type:          "image",
-		VectorIndexed: true,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:        "vis-img-only-01",
+		Type:      "image",
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	textObj := &storage.KnowledgeObject{
-		ID:            "vis-text-01",
-		Type:          "text",
-		VectorIndexed: true,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:        "vis-text-01",
+		Type:      "text",
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
 	createWithVector(t, env, imgObj, makeVisualEmbedding(dim, map[int]float32{0: 0.9}))
@@ -169,11 +164,10 @@ func TestUS0061_NoEmbeddingImageExcludedFromVectorSearch(t *testing.T) {
 	requireVectorIndex(t, env, dim)
 
 	withEmb := &storage.KnowledgeObject{
-		ID:            "vis-emb-yes",
-		Type:          "image",
-		VectorIndexed: true,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:        "vis-emb-yes",
+		Type:      "image",
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	noEmb := &storage.KnowledgeObject{
 		ID:        "vis-emb-no",

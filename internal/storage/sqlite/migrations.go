@@ -2,7 +2,9 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	_ "embed"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -127,7 +129,8 @@ var migrations = []migration{
 	{Version: 18, SQL: migration018},
 	{Version: 19, SQL: migration019},
 	// Migration 20: vec0 virtual table for ANN search via sqlite-vec.
-	// Uses a Go fn so the {DIMENSION} placeholder is filled from d.vectorDimension.
+	// Uses a Go fn so the {DIMENSION} placeholder is filled with
+	// legacyVectorDimension. Dropped by 038.
 	{Version: 20, fn: migrate020VecObjects},
 	{Version: 21, SQL: migration021},
 	// Migration 022: graph_json column on objects + object_nodes table.
@@ -168,7 +171,7 @@ var migrations = []migration{
 	{Version: 32, SQL: migration032},
 	// Migration 033: backfill legacy object_embeddings rows into the new
 	// composite-key embeddings table under a synthetic model_id derived
-	// from the driver's configured vectorDimension. Also seeds the
+	// from legacyVectorDimension. Also seeds the
 	// matching embedding_models row (is_default = 1) and stamps the
 	// `embeddings_<model_id>` row in index_signatures (ADR-070
 	// integration). Idempotent — uses INSERT OR IGNORE on the composite
@@ -195,6 +198,10 @@ var migrations = []migration{
 	// deletes the legacy-blob placeholder, and builds one vec0 index per
 	// registered model. Migrate re-runs the per-model pass on every open.
 	{Version: 37, fn: migrate037PerModelEmbeddings},
+	// Migration 038: drop the single-vector path (ADR-071 amendment
+	// 2026-09-26): vec_objects, object_embeddings, objects.embeddings, and
+	// objects.vector_indexed. Vectors live only in embeddings.
+	{Version: 38, fn: migrate038DropSingleVectorPath},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -280,6 +287,22 @@ func migrate014RemindAt(ctx context.Context, d *Driver) error {
 }
 
 func (d *Driver) Migrate(ctx context.Context) error {
+	if err := d.migrateThrough(ctx, migrations[len(migrations)-1].Version); err != nil {
+		return err
+	}
+	// ADR-070 verify-and-rebuild for every registered model's vector index,
+	// on every open: a signature that drifted since the last open (new
+	// index DDL, registry dimension change, a dropped table) converges here.
+	if err := ensureEmbeddingIndexes(ctx, d); err != nil {
+		return fmt.Errorf("ensure embedding indexes: %w", err)
+	}
+	return nil
+}
+
+// migrateThrough applies every pending migration up to and including
+// target. Migrate passes the latest version; tests pass an older one to
+// build a database at a historic schema.
+func (d *Driver) migrateThrough(ctx context.Context, target int) error {
 	// Ensure schema_version table exists.
 	if _, err := d.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_version (
 		version INTEGER PRIMARY KEY,
@@ -305,7 +328,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 	}
 
 	for _, m := range migrations {
-		if m.Version <= current {
+		if m.Version <= current || m.Version > target {
 			continue
 		}
 		if m.fn != nil {
@@ -321,13 +344,6 @@ func (d *Driver) Migrate(ctx context.Context) error {
 		); err != nil {
 			return fmt.Errorf("record migration %d: %w", m.Version, err)
 		}
-	}
-
-	// ADR-070 verify-and-rebuild for every registered model's vector index,
-	// on every open: a signature that drifted since the last open (new
-	// index DDL, registry dimension change, a dropped table) converges here.
-	if err := ensureEmbeddingIndexes(ctx, d); err != nil {
-		return fmt.Errorf("ensure embedding indexes: %w", err)
 	}
 	return nil
 }
@@ -463,10 +479,7 @@ func migrate024RenameMentionUris(ctx context.Context, d *Driver) error {
 // matches the configured ANN dimension are indexed — the same
 // mirror-on-write rule ObjectStore.Create applies.
 func migrate034VecObjectsCosine(ctx context.Context, d *Driver) error {
-	dim := d.vectorDimension
-	if dim <= 0 {
-		dim = DefaultVectorDimension
-	}
+	dim := legacyVectorDimension
 	if _, err := d.db.ExecContext(ctx, `DROP TABLE IF EXISTS vec_objects`); err != nil {
 		return fmt.Errorf("drop L2 vec_objects: %w", err)
 	}
@@ -553,14 +566,9 @@ func migrate035RestampEmbeddingSignatures(ctx context.Context, d *Driver) error 
 }
 
 // migrate020VecObjects creates the vec0 virtual table for sqlite-vec ANN search.
-// The {DIMENSION} placeholder is replaced with d.vectorDimension so the table
-// matches the embedding model in use.
+// The {DIMENSION} placeholder is replaced with legacyVectorDimension.
 func migrate020VecObjects(ctx context.Context, d *Driver) error {
-	dim := d.vectorDimension
-	if dim <= 0 {
-		dim = DefaultVectorDimension
-	}
-	ddl := strings.ReplaceAll(migration020, "{DIMENSION}", strconv.Itoa(dim))
+	ddl := strings.ReplaceAll(migration020, "{DIMENSION}", strconv.Itoa(legacyVectorDimension))
 	_, err := d.db.ExecContext(ctx, ddl)
 	return err
 }
@@ -702,6 +710,56 @@ func migrate037PerModelEmbeddings(ctx context.Context, d *Driver) error {
 	return ensureEmbeddingIndexes(ctx, d)
 }
 
+// migrate038DropSingleVectorPath removes the pre-registry vector storage in
+// one transaction: the vec_objects vec0 table (with its shadow tables), the
+// object_embeddings table, and the objects.embeddings and
+// objects.vector_indexed columns. Per-model embeddings and their indexes are
+// untouched. A column still referenced by an index, trigger or view on
+// objects fails the migration with that object named, rather than letting
+// DROP COLUMN fail on a schema error. Idempotent: every step is guarded.
+func migrate038DropSingleVectorPath(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, table := range []string{"vec_objects", "object_embeddings"} {
+		if _, err := tx.ExecContext(ctx, `DROP TABLE IF EXISTS `+table); err != nil {
+			return fmt.Errorf("drop %s: %w", table, err)
+		}
+	}
+	for _, col := range []string{"embeddings", "vector_indexed"} {
+		var n int
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM pragma_table_info('objects') WHERE name = ?`, col).Scan(&n); err != nil {
+			return fmt.Errorf("inspect objects.%s: %w", col, err)
+		}
+		if n == 0 {
+			continue
+		}
+		var dependent string
+		err := tx.QueryRowContext(ctx, `
+			SELECT type || ' ' || name FROM sqlite_master
+			 WHERE ((type IN ('index', 'trigger') AND tbl_name = 'objects') OR type = 'view')
+			   AND sql LIKE '%' || ? || '%'
+			 LIMIT 1`, col).Scan(&dependent)
+		switch {
+		case err == nil:
+			return fmt.Errorf("drop objects.%s: still referenced by %s", col, dependent)
+		case !errors.Is(err, sql.ErrNoRows):
+			return fmt.Errorf("inspect dependents of objects.%s: %w", col, err)
+		}
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE objects DROP COLUMN `+col); err != nil {
+			return fmt.Errorf("drop objects.%s: %w", col, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
 // tableHasColumn reports whether pragma_table_info(table) lists column.
 func tableHasColumn(ctx context.Context, d *Driver, table, column string) (bool, error) {
 	var n int
@@ -722,8 +780,8 @@ func tableHasColumn(ctx context.Context, d *Driver, table, column string) (bool,
 // The synthetic model_id rule is "legacy-blob-<dim>@<schema-date>", where:
 //   - "legacy-blob" identifies these rows as predating the registry (no
 //     provider name was recorded by the legacy single-table schema).
-//   - "<dim>" is d.vectorDimension at migration time, capturing the only
-//     stable shape input we have for the legacy rows.
+//   - "<dim>" is legacyVectorDimension, the only stable shape input we
+//     have for the legacy rows.
 //   - "@<schema-date>" follows the ADR-071 model_id convention (provider@date)
 //     so downstream tools that parse model_ids don't need a special case.
 //
@@ -731,10 +789,7 @@ func tableHasColumn(ctx context.Context, d *Driver, table, column string) (bool,
 // the composite-key rows and ON CONFLICT-upsert the singleton model row.
 // Skipped cleanly when object_embeddings does not exist (fresh installs).
 func migrate033EmbeddingsBackfill(ctx context.Context, d *Driver) error {
-	dim := d.vectorDimension
-	if dim <= 0 {
-		dim = DefaultVectorDimension
-	}
+	dim := legacyVectorDimension
 
 	// Always seed an embedding_models default row, even if there are no
 	// legacy object_embeddings rows (fresh installs need a default too so
@@ -742,7 +797,7 @@ func migrate033EmbeddingsBackfill(ctx context.Context, d *Driver) error {
 	// matches ADR-071's documented convention; we use a fixed wall-clock
 	// anchor so the model_id is deterministic across re-runs of the
 	// migration on the same DB.
-	modelID := LegacyEmbeddingModelID(dim)
+	modelID := legacyEmbeddingModelID(dim)
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := d.db.ExecContext(ctx, `
 		INSERT INTO embedding_models
@@ -815,14 +870,15 @@ func migrate033EmbeddingsBackfill(ctx context.Context, d *Driver) error {
 	return nil
 }
 
-// LegacyEmbeddingModelID returns the canonical synthetic model_id used by
-// migrate033EmbeddingsBackfill to identify rows migrated from the pre-registry
-// single-table schema. Exposed (uppercase) so the registry package and tests
-// can name it without duplicating the format.
-func LegacyEmbeddingModelID(dim int) string {
-	if dim <= 0 {
-		dim = DefaultVectorDimension
-	}
+// legacyVectorDimension is the fixed vector dimension of the pre-registry
+// single-vector schema (vec_objects, object_embeddings). Only the historic
+// migrations 020 and 033-034 read it; 038 drops what they built.
+const legacyVectorDimension = 1536
+
+// legacyEmbeddingModelID returns the synthetic model_id
+// migrate033EmbeddingsBackfill gave rows migrated from the pre-registry
+// single-table schema. 037 deletes that placeholder model again.
+func legacyEmbeddingModelID(dim int) string {
 	// Fixed wall-clock anchor: ADR-071 was authored on 2026-05-07.
 	// Using a fixed date (rather than time.Now()) keeps the synthetic
 	// model_id deterministic — re-running the migration on the same DB

@@ -23,7 +23,6 @@ func NormalizedItemToDraft(
 		TextContent: item.ArticleBody,
 		ContentHash: item.ContentHash,
 		Source:      item.CanonicalURL,
-		Embeddings:  item.Embedding,
 		Metadata:    make(map[string]any),
 	}
 
@@ -127,7 +126,6 @@ func DraftToNormalizedItem(
 		CanonicalURL: ko.Source,
 		ArticleBody:  ko.RawContent,
 		ContentHash:  ko.ContentHash,
-		Embedding:    ko.Embeddings,
 	}
 
 	if ko.Metadata != nil {

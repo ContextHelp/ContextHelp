@@ -108,10 +108,6 @@ func (s *ICANormalizer) Run(
 			draft.Metadata[k] = v
 		}
 
-		if len(mapped.Embeddings) > 0 {
-			draft.Embeddings = mapped.Embeddings
-		}
-
 		draft.ContentHash = mapped.ContentHash
 		processed++
 	}

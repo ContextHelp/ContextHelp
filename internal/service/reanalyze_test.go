@@ -144,14 +144,6 @@ func TestReanalyzeObject_ReplacesVectors(t *testing.T) {
 		t.Fatalf("reanalyze: %v", err)
 	}
 	assertReplaced(t, store, "re-1")
-
-	obj, err := driver.Objects().Get(context.Background(), "re-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !obj.VectorIndexed || len(obj.Embeddings) != 0 {
-		t.Errorf("vector_indexed=%v legacy embeddings=%d, want indexed through the per-model path only", obj.VectorIndexed, len(obj.Embeddings))
-	}
 }
 
 func TestReanalyzeObject_PutFailureIsNotAnError(t *testing.T) {

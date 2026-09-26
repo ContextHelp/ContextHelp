@@ -77,13 +77,13 @@ func (s *ObjectStore) ListPendingReminders(ctx context.Context) ([]*storage.Know
 }
 
 // reminderSelectCols is the shared SELECT column list used by reminder queries.
-// Must match the column order expected by scanObjectFromRows (31 fields).
+// Must match the column order expected by scanObjectFromRows (30 fields).
 const reminderSelectCols = `SELECT
 	id, type, subtype, raw_content, content_type, text_content,
 	metadata, summaries, sections, tags, mentions,
 	decisions, tasks, pipeline, source,
 	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-	created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+	created_at, updated_at, fts_indexed, status, inbox_note,
 	remind_at, reminded_at, profile_id, graph_json, source_key
 `
 

@@ -127,12 +127,6 @@ func TestEmbeddingGenerator_EveryPopulatingModelGetsAVector(t *testing.T) {
 				m.ModelID, v.ChunkIdx, len(v.Vector), v.Text)
 		}
 	}
-	if !got.VectorIndexed {
-		t.Error("VectorIndexed = false, want true: the default model produced a vector")
-	}
-	if got.Embeddings != nil {
-		t.Error("step wrote the single-vector Embeddings field; the only output is Vectors")
-	}
 }
 
 func TestEmbeddingGenerator_FailingModelDoesNotBlockIngest(t *testing.T) {
@@ -151,15 +145,12 @@ func TestEmbeddingGenerator_FailingModelDoesNotBlockIngest(t *testing.T) {
 	if len(got.Vectors) != 1 || got.Vectors[0].ModelID != "snowflake-arctic-embed2@default" {
 		t.Fatalf("vectors = %+v, want only the working model's", got.Vectors)
 	}
-	if !got.VectorIndexed {
-		t.Error("VectorIndexed = false, want true: the default model succeeded")
-	}
 	if out := logs.String(); !strings.Contains(out, "model_id="+failing.ModelID) || !strings.Contains(out, "level=WARN") {
 		t.Errorf("failure not recorded as a warning naming the model; logs:\n%s", out)
 	}
 }
 
-func TestEmbeddingGenerator_DefaultFailureLeavesVectorIndexedFalse(t *testing.T) {
+func TestEmbeddingGenerator_DefaultFailureKeepsCandidate(t *testing.T) {
 	captureLogs(t)
 	resolver, _ := ollamaResolver(t)
 	step := NewEmbeddingGenerator(embeddingtest.Models{
@@ -174,13 +165,10 @@ func TestEmbeddingGenerator_DefaultFailureLeavesVectorIndexedFalse(t *testing.T)
 	if len(got.Vectors) != 1 || got.Vectors[0].ModelID != "snowflake-arctic-embed2@candidate" {
 		t.Fatalf("vectors = %+v, want the candidate's only", got.Vectors)
 	}
-	if got.VectorIndexed {
-		t.Error("VectorIndexed = true, want false: the default model failed")
-	}
 }
 
-// With no default, ingest still dual-writes registered candidates, never
-// marks the object vector-indexed, and warns once per process.
+// With no default, ingest still dual-writes registered candidates and
+// warns once per process.
 func TestEmbeddingGenerator_NoDefaultModel(t *testing.T) {
 	logs := captureLogs(t)
 	noDefaultWarning = sync.Once{}
@@ -198,9 +186,6 @@ func TestEmbeddingGenerator_NoDefaultModel(t *testing.T) {
 		if len(got.Vectors) != 1 || got.Vectors[0].ModelID != "snowflake-arctic-embed2@candidate" {
 			t.Fatalf("run %d: vectors = %+v, want the candidate's", i, got.Vectors)
 		}
-		if got.VectorIndexed {
-			t.Errorf("run %d: VectorIndexed = true with no default model", i)
-		}
 	}
 	if n := strings.Count(logs.String(), "no default embedding model"); n != 1 {
 		t.Errorf("no-default warning logged %d times, want once per process; logs:\n%s", n, logs.String())
@@ -214,8 +199,8 @@ func TestEmbeddingGenerator_NoModelsWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(got.Vectors) != 0 || got.VectorIndexed {
-		t.Errorf("vectors=%d indexed=%v, want none with an empty registry", len(got.Vectors), got.VectorIndexed)
+	if len(got.Vectors) != 0 {
+		t.Errorf("vectors=%d, want none with an empty registry", len(got.Vectors))
 	}
 	if urls := calls.URLs(); len(urls) != 0 {
 		t.Errorf("provider called %v with no populating model", urls)
@@ -235,9 +220,6 @@ func TestEmbeddingGenerator_DimensionMismatchSurfaced(t *testing.T) {
 	}
 	if len(got.Vectors) != 0 {
 		t.Fatalf("stored a %d-dim vector under a 768-dim model", len(got.Vectors[0].Vector))
-	}
-	if got.VectorIndexed {
-		t.Error("VectorIndexed = true after a dimension mismatch")
 	}
 	out := logs.String()
 	if !strings.Contains(out, "model_id="+wrong.ModelID) || !strings.Contains(out, storage.ErrEmbeddingDimension.Error()) ||
@@ -275,8 +257,8 @@ func TestEmbeddingGenerator_NilDependenciesAreANoOp(t *testing.T) {
 			if err != nil {
 				t.Fatalf("run: %v", err)
 			}
-			if len(got.Vectors) != 0 || got.VectorIndexed {
-				t.Errorf("vectors=%d indexed=%v, want a no-op", len(got.Vectors), got.VectorIndexed)
+			if len(got.Vectors) != 0 {
+				t.Errorf("vectors=%d, want a no-op", len(got.Vectors))
 			}
 		})
 	}
@@ -295,8 +277,8 @@ func TestEmbeddingGenerator_EmptyEmbeddingTextSkips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if len(got.Vectors) != 0 || got.VectorIndexed {
-		t.Errorf("vectors=%d indexed=%v, want nothing embedded", len(got.Vectors), got.VectorIndexed)
+	if len(got.Vectors) != 0 {
+		t.Errorf("vectors=%d, want nothing embedded", len(got.Vectors))
 	}
 	if urls := calls.URLs(); len(urls) != 0 {
 		t.Errorf("provider called %v for empty embedding text", urls)
@@ -331,9 +313,6 @@ func TestEmbeddingGenerator_RawContentOnlyDraftEmbeds(t *testing.T) {
 			}
 			if got.Vectors[0].Text != "wombat burrow census at mount buller" {
 				t.Errorf("embedded %q, want the raw body", got.Vectors[0].Text)
-			}
-			if !got.VectorIndexed {
-				t.Error("VectorIndexed = false after the default model embedded")
 			}
 			if got.TextContent != "" {
 				t.Error("step wrote TextContent; storage owns that default")

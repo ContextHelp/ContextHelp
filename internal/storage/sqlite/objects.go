@@ -3,11 +3,9 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -64,17 +62,17 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	_, err = tx.ExecContext(ctx, `INSERT INTO objects (
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
-		decisions, tasks, embeddings, pipeline, source,
+		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, projected_fts_body, source_key
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
-		f.decisions, f.tasks, nil, obj.Pipeline, obj.Source,
+		f.decisions, f.tasks, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.Format(time.RFC3339), obj.UpdatedAt.Format(time.RFC3339),
-		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed), obj.Status, obj.InboxNote,
+		boolToInt(obj.FTSIndexed), obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
 	)
 	if err != nil {
@@ -103,7 +101,7 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key
 	FROM objects WHERE id = ?`, id)
 	obj, err := scanObject(row)
@@ -142,7 +140,7 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key
 	FROM objects WHERE content_hash = ? LIMIT 1`, hash)
 	obj, err := scanObject(row)
@@ -161,7 +159,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key
 	FROM objects WHERE source_key = ? LIMIT 1`, key)
 	obj, err := scanObject(row)
@@ -258,7 +256,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key
 	FROM objects %s ORDER BY %s %s`, where, sortCol, dir)
 
@@ -320,7 +318,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		metadata=?, summaries=?, sections=?, tags=?, mentions=?,
 		decisions=?, tasks=?, pipeline=?, source=?,
 		registry_influences=?, plugins=?, content_hash=?, reinforcement_count=?, last_reinforced_at=?,
-		updated_at=?, fts_indexed=?, vector_indexed=?, status=?, inbox_note=?,
+		updated_at=?, fts_indexed=?, status=?, inbox_note=?,
 		remind_at=?, reminded_at=?, profile_id=?, graph_json=?, projected_fts_body=?, source_key=?
 	WHERE id=?`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
@@ -328,7 +326,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.Format(time.RFC3339),
-		boolToInt(obj.FTSIndexed), boolToInt(obj.VectorIndexed), obj.Status, obj.InboxNote,
+		boolToInt(obj.FTSIndexed), obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
 		obj.ID,
 	)
@@ -474,11 +472,11 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	}
 	contentArgs = append(contentArgs, hash)
 
-	// fts_indexed / vector_indexed are left untouched: Reinforce never
-	// removes the objects_fts row or the embedding written at Create/Update
-	// time, and no downstream re-indexer exists to flip the flags back.
-	// Clearing them here misreported reinforced (deduplicated) objects as
-	// unindexed even though FTS still matched them.
+	// fts_indexed is left untouched: Reinforce never removes the
+	// objects_fts row written at Create/Update time, and no downstream
+	// re-indexer exists to flip the flag back. Clearing it here misreported
+	// reinforced (deduplicated) objects as unindexed even though FTS still
+	// matched them.
 	query := fmt.Sprintf(`
 		UPDATE objects SET
 			tags = ?,
@@ -556,7 +554,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key
 	FROM objects`
 	// where is a compiled RSQL predicate (internal/search): literals are
@@ -607,7 +605,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		mentionsJSON, decisionsJSON, tasksJSON              string
 		influencesJSON, pluginsJSON                         string
 		createdAt, updatedAt                                string
-		ftsIndexed, vectorIndexed                           int
+		ftsIndexed                                          int
 		lastReinforcedAt, remindAt, remindedAt              sql.NullString
 		graphJSON                                           sql.NullString
 		sourceKey                                           sql.NullString
@@ -618,7 +616,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
+		&createdAt, &updatedAt, &ftsIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey,
 	)
 	if err != nil {
@@ -630,7 +628,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 
 	if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
-		createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
+		createdAt, updatedAt, ftsIndexed, lastReinforcedAt,
 		remindAt, remindedAt); err != nil {
 		return nil, fmt.Errorf("scan object: %w", err)
 	}
@@ -654,7 +652,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		mentionsJSON, decisionsJSON, tasksJSON              string
 		influencesJSON, pluginsJSON                         string
 		createdAt, updatedAt                                string
-		ftsIndexed, vectorIndexed                           int
+		ftsIndexed                                          int
 		lastReinforcedAt, remindAt, remindedAt              sql.NullString
 		graphJSON                                           sql.NullString
 		sourceKey                                           sql.NullString
@@ -665,7 +663,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
+		&createdAt, &updatedAt, &ftsIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey,
 	)
 	if err != nil {
@@ -674,7 +672,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 
 	if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
-		createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
+		createdAt, updatedAt, ftsIndexed, lastReinforcedAt,
 		remindAt, remindedAt); err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
 	}
@@ -696,7 +694,7 @@ func unmarshalObjectJSON(obj *storage.KnowledgeObject,
 	mentionsJSON, decisionsJSON, tasksJSON,
 	influencesJSON, pluginsJSON,
 	createdAt, updatedAt string,
-	ftsIndexed, vectorIndexed int,
+	ftsIndexed int,
 	lastReinforcedAt, remindAt, remindedAt sql.NullString,
 ) error {
 	for _, col := range []struct {
@@ -725,7 +723,6 @@ func unmarshalObjectJSON(obj *storage.KnowledgeObject,
 	obj.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	obj.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 	obj.FTSIndexed = ftsIndexed != 0
-	obj.VectorIndexed = vectorIndexed != 0
 	if lastReinforcedAt.Valid {
 		t, _ := time.Parse(time.RFC3339, lastReinforcedAt.String)
 		obj.LastReinforcedAt = &t
@@ -962,7 +959,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		       o.metadata, o.summaries, o.sections, o.tags, o.mentions,
 		       o.decisions, o.tasks, o.pipeline, o.source,
 		       o.registry_influences, o.plugins, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
-		       o.created_at, o.updated_at, o.fts_indexed, o.vector_indexed, o.status, o.inbox_note,
+		       o.created_at, o.updated_at, o.fts_indexed, o.status, o.inbox_note,
 		       o.remind_at, o.reminded_at, o.profile_id, o.graph_json,
 		       bm25(objects_fts) AS score
 		FROM objects_fts
@@ -1006,7 +1003,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 			mentionsJSON, decisionsJSON, tasksJSON              string
 			influencesJSON, pluginsJSON                         string
 			createdAt, updatedAt                                string
-			ftsIndexed, vectorIndexed                           int
+			ftsIndexed                                          int
 			lastReinforcedAt, remindAt, remindedAt              sql.NullString
 			graphJSON                                           sql.NullString
 			score                                               float64
@@ -1016,7 +1013,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 			&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 			&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 			&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-			&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
+			&createdAt, &updatedAt, &ftsIndexed, &obj.Status, &obj.InboxNote,
 			&remindAt, &remindedAt, &obj.ProfileID, &graphJSON,
 			&score,
 		)
@@ -1025,7 +1022,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		}
 		if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
-			createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
+			createdAt, updatedAt, ftsIndexed, lastReinforcedAt,
 			remindAt, remindedAt); err != nil {
 			return nil, fmt.Errorf("fts search scan: %w", err)
 		}
@@ -1043,28 +1040,6 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		results = append(results, &obj)
 	}
 	return results, rows.Err()
-}
-
-// float32SliceToBlob encodes []float32 as little-endian bytes.
-func float32SliceToBlob(v []float32) []byte {
-	buf := make([]byte, len(v)*4)
-	for i, f := range v {
-		binary.LittleEndian.PutUint32(buf[i*4:], math.Float32bits(f))
-	}
-	return buf
-}
-
-// blobToFloat32Slice decodes little-endian bytes to []float32.
-func blobToFloat32Slice(b []byte) []float32 {
-	if len(b)%4 != 0 {
-		return nil
-	}
-	v := make([]float32, len(b)/4)
-	for i := range v {
-		bits := binary.LittleEndian.Uint32(b[i*4:])
-		v[i] = math.Float32frombits(bits)
-	}
-	return v
 }
 
 // nodeTypeObjectIDs returns object IDs that contain at least one node of each

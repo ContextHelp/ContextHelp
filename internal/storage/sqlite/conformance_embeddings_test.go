@@ -9,5 +9,5 @@ import (
 // TestConformance_EmbeddingStore runs the cross-driver EmbeddingStore
 // contract against a fresh SQLite database.
 func TestConformance_EmbeddingStore(t *testing.T) {
-	storagetest.EmbeddingStoreConformance(t, newTestDriverDim(t, 4))
+	storagetest.EmbeddingStoreConformance(t, newTestDriver(t))
 }

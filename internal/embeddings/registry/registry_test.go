@@ -24,7 +24,6 @@ func newRegistry(t testing.TB) (*registry.Store, *sqlite.Driver) {
 	dir := t.TempDir()
 	d, err := sqlite.New(filepath.Join(dir, "test.db"))
 	require.NoError(t, err, "sqlite.New")
-	d.SetVectorDimension(sqlite.DefaultVectorDimension)
 	require.NoError(t, d.Init(context.Background()), "driver.Init")
 	t.Cleanup(func() { _ = d.Close(context.Background()) })
 	return registry.New(d.DB()), d

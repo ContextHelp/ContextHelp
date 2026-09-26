@@ -94,7 +94,7 @@ var allowedIdentifiers = map[string]bool{
 	"content_hash": true, "content_type": true, "profile_id": true,
 	"graph_json": true, "metadata": true, "tags": true,
 	"created_at": true, "updated_at": true, "last_reinforced_at": true,
-	"reinforcement_count": true, "fts_indexed": true, "vector_indexed": true,
+	"reinforcement_count": true, "fts_indexed": true,
 	// operator / literal keywords.
 	"AND": true, "OR": true, "NOT": true, "IS": true, "NULL": true,
 	"LIKE": true, "IN": true, "BETWEEN": true, "GLOB": true,

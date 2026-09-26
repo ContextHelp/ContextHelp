@@ -14,7 +14,6 @@ func TestCanonicalizeAlias(t *testing.T) {
 		{"content_type", "ContentType"},
 		{"tags", "Tags"},
 		{"metadata", "Metadata"},
-		{"vector_indexed", "VectorIndexed"},
 	}
 	for _, tt := range tests {
 		if got := Canonicalize(tt.input); got != tt.want {
