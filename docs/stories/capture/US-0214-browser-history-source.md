@@ -48,13 +48,11 @@ ambient:
         - chrome
         - firefox
         - safari
-      url_filters:
-        deny:
-          - "*://localhost/*"
-          - "*://127.0.0.1/*"
-          - "*://*.bank.example.com/*"
-        allow_only:
-          - "*://*"   # default: all
+capture:
+  url_filter:          # shared by every browser capture path
+    deny:
+      - "*://*.bank.example.com/*"
+    # localhost, loopback, file: and browser-internal pages are always denied
 ```
 
 - [ ] kit/policy CEL veto on `ctxt.ambient.event.captured` for `source=browserhistory` can drop sensitive URLs (sensitive bank, healthcare, internal domains) before enqueue
@@ -98,7 +96,7 @@ Both pipelines already exist (`internal/pipeline/builtins/url_*.go`).
 
 ### Privacy
 
-- URL filter denylist runs in the source before emission (cheap, doesn't need policy round-trip)
+- URL filter denylist runs in the source before emission (cheap, doesn't need policy round-trip); rules and syntax in [ambient.md](../../ambient.md#keep-sites-out-of-browser-capture)
 - kit/policy CEL is the structural enforcement (can ALSO check page title patterns)
 - Last-poll-timestamp persisted in `$XDG_STATE_HOME/ctxt/ambient/browserhistory.state`
 

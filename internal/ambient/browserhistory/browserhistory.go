@@ -3,7 +3,7 @@
 //
 // The source polls one or more browsers' history at a configurable interval,
 // emits RawEvents for visits newer than the last-seen timestamp, applies
-// URL-pattern allow/deny rules, and persists the last-seen timestamp per
+// URL-pattern allow/deny rules (package urlfilter), and persists the last-seen timestamp per
 // browser so daemon restart doesn't replay old visits.
 //
 // Browser-side history reading is abstracted behind the BrowserClient
@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/urlfilter"
 )
 
 // Defaults per ADR-066 / US-0214.
@@ -70,78 +71,8 @@ type BrowserClient interface {
 	VisitsSince(ctx context.Context, since time.Time) ([]Visit, error)
 }
 
-// URLFilter encapsulates allow/deny URL-pattern matching. Both lists use
-// glob-style wildcards (`*` matches any segment); filters short-circuit
-// before fingerprint or buffer.
-type URLFilter struct {
-	// Deny: if any pattern matches, the visit is dropped pre-emit.
-	Deny []string
-	// AllowOnly: if non-empty, ONLY visits matching at least one pattern
-	// are emitted. Empty = allow all (subject to Deny).
-	AllowOnly []string
-}
-
-// Matches reports whether the URL passes the filter.
-func (f *URLFilter) Matches(rawURL string) bool {
-	for _, pat := range f.Deny {
-		if matchGlob(pat, rawURL) {
-			return false
-		}
-	}
-	if len(f.AllowOnly) == 0 {
-		return true
-	}
-	for _, pat := range f.AllowOnly {
-		if matchGlob(pat, rawURL) {
-			return true
-		}
-	}
-	return false
-}
-
-// matchGlob is a simplified glob matcher where `*` matches any substring
-// (including across `/` and `.`). Patterns without wildcards fall back to
-// substring containment so callers can write either glob or substring
-// rules.
-func matchGlob(pattern, s string) bool {
-	// No wildcards: substring match.
-	if !strings.ContainsAny(pattern, "*?") {
-		return strings.Contains(s, pattern)
-	}
-	// Split on '*' and walk through s consuming each segment in order.
-	segments := strings.Split(pattern, "*")
-	cursor := 0
-	for i, seg := range segments {
-		if seg == "" {
-			continue
-		}
-		if i == 0 {
-			// Must match at the start.
-			if !strings.HasPrefix(s, seg) {
-				return false
-			}
-			cursor = len(seg)
-			continue
-		}
-		if i == len(segments)-1 {
-			// Must match at the end (and after the cursor).
-			if !strings.HasSuffix(s, seg) {
-				return false
-			}
-			// Ensure suffix doesn't overlap with already-consumed prefix.
-			if len(s)-len(seg) < cursor {
-				return false
-			}
-			return true
-		}
-		idx := strings.Index(s[cursor:], seg)
-		if idx == -1 {
-			return false
-		}
-		cursor += idx + len(seg)
-	}
-	return true
-}
+// URLFilter is the shared allow/deny rule list (see package urlfilter).
+type URLFilter = urlfilter.Rules
 
 // Config configures a Source.
 type Config struct {
@@ -149,8 +80,9 @@ type Config struct {
 	Browsers []BrowserClient
 	// PollInterval is how often each browser is polled. Default: 5 minutes.
 	PollInterval time.Duration
-	// Filter applies URL allow/deny rules.
-	Filter URLFilter
+	// Filter drops visits before emit. A URLFilter or a compiled
+	// *urlfilter.Filter; nil still drops unparseable URLs.
+	Filter urlfilter.Evaluator
 }
 
 // Source is the browser-history ambient source.
@@ -265,11 +197,22 @@ func (s *Source) tick(ctx context.Context, browser BrowserClient) {
 		}
 		return
 	}
+	filter := s.cfg.Filter
+	if filter == nil {
+		filter = URLFilter{}
+	}
 	for _, v := range visits {
-		if !s.cfg.Filter.Matches(v.URL) {
+		if d := filter.Evaluate(v.URL); !d.Allowed {
+			// The payload names the rule, never the URL: a denied URL is
+			// exactly what must not leave the source.
 			if s.publisher != nil {
 				_ = s.publisher.Publish(ctx, ambient.EventTopic("filtered"), SourceName,
-					map[string]any{"url": v.URL, "browser": browser.Name()})
+					map[string]any{
+						"browser": browser.Name(),
+						"reason":  string(d.Reason),
+						"rule":    d.Rule.Pattern,
+						"scope":   d.Rule.Scope,
+					})
 			}
 			s.bumpLastSeen(browser.Name(), v.VisitedAt)
 			continue
