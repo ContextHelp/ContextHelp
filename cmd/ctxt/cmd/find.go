@@ -207,7 +207,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 	// --explain only applies to hybrid mode; it prints per-signal score breakdowns.
 	if explain && mode == "hybrid" {
-		return runFindExplain(ctx, cmd, svc, sem, query, limit, mode, searchCfg)
+		return runFindExplain(ctx, cmd, svc, sem, query, filter, mode, searchCfg)
 	}
 
 	var results []*storage.KnowledgeObject
@@ -301,8 +301,10 @@ func runFind(cmd *cobra.Command, args []string) error {
 }
 
 // runFindExplain executes a hybrid search and prints per-result score breakdowns.
-func runFindExplain(ctx context.Context, cmd *cobra.Command, svc *service.Service, sem retrieval.SemanticSource, query string, limit int, mode string, searchCfg config.SearchConfig) error {
-	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(ctx, query, storage.ObjectFilter{Limit: limit}, sem, searchCfg)
+// filter is the facet filter the non-explain path uses, so both paths return
+// the same result set.
+func runFindExplain(ctx context.Context, cmd *cobra.Command, svc *service.Service, sem retrieval.SemanticSource, query string, filter storage.ObjectFilter, mode string, searchCfg config.SearchConfig) error {
+	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(ctx, query, filter, sem, searchCfg)
 	if err != nil {
 		return fmt.Errorf("find explain (%s): %w", mode, err)
 	}
