@@ -1,3 +1,5 @@
+// Package jobs runs queued work: ingest jobs through their pipelines and
+// task jobs through registered handlers.
 package jobs
 
 import (
@@ -78,7 +80,9 @@ type WorkerPool struct {
 	maxRetries   int
 	fanOut       FanOutFunc
 	handlers     map[string]TaskHandler // task job type -> handler (tasks.go)
-	inflight     sync.Map               // task job IDs running in this pool
+	inflight     sync.Map               // task job ID -> *taskClaim, running in this pool
+	leaseTTL     time.Duration          // task job lease; renewed every leaseTTL/3
+	recoverEvery time.Duration          // stale recovery interval
 }
 
 // NewWorkerPool creates a worker pool.
@@ -94,6 +98,8 @@ func NewWorkerPool(queue *Queue, pipelines pipeline.Registry, store storage.Stor
 		drainTimeout: cfg.DrainTimeout,
 		maxHops:      cfg.MaxHops,
 		maxRetries:   cfg.MaxRetries,
+		leaseTTL:     defaultTaskLeaseTTL,
+		recoverEvery: time.Minute,
 	}
 }
 
@@ -524,7 +530,7 @@ func (p *WorkerPool) emitObjectIngested(ctx context.Context, draft *storage.Know
 }
 
 func (p *WorkerPool) recoverStaleLoop(ctx context.Context) error {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(p.recoverEvery)
 	defer ticker.Stop()
 
 	for {

@@ -88,6 +88,14 @@ func (q *Queue) RecoverStale(ctx context.Context, timeoutSeconds int64) (int, er
 	return q.store.RecoverStale(ctx, timeoutSeconds)
 }
 
+func (q *Queue) ExtendLease(ctx context.Context, id, claim string, ttl time.Duration) (bool, error) {
+	return q.store.ExtendLease(ctx, id, claim, ttl)
+}
+
+func (q *Queue) ReleaseLease(ctx context.Context, id, claim string) error {
+	return q.store.ReleaseLease(ctx, id, claim)
+}
+
 // EnqueueIngestJob creates and enqueues an ingest job without requiring callers
 // to import internal/storage directly.
 func (q *Queue) EnqueueIngestJob(ctx context.Context, jobType, payload, pipeline, source string, maxRetries int) error {

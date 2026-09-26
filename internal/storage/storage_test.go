@@ -174,6 +174,12 @@ func (m *mockJobStore) RecoverStale(ctx context.Context, timeout int64) (int, er
 	return 0, nil
 }
 
+func (m *mockJobStore) ExtendLease(ctx context.Context, id, claim string, ttl time.Duration) (bool, error) {
+	return false, nil
+}
+
+func (m *mockJobStore) ReleaseLease(ctx context.Context, id, claim string) error { return nil }
+
 type mockPipelineStore struct{}
 
 func (m *mockPipelineStore) Create(ctx context.Context, pipeline *Pipeline) error    { return nil }

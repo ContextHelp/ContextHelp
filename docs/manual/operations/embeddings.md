@@ -139,6 +139,7 @@ ctxt embeddings migrate --to <model_id> [--rate-limit N/s] [--batch N] [--dry-ru
 
 - Queues an `embeddings:migrate` job for the instance's dpkms. The job embeds every object that has no vector for the model, using only that model's provider. If no dpkms is running, the job starts when dpkms does.
 - It keeps going after `ctxt` exits and resumes after a dpkms restart. A re-run never embeds an object twice, since it only looks at objects still missing a vector.
+- One dpkms runs the job at a time, even when several share a database: the one running it holds a lease, renewed every 10 seconds. If that dpkms dies without shutting down, the job resumes, on any dpkms serving the database, once the 30-second lease runs out (within about a minute and a half).
 - `--rate-limit` caps provider calls per second (default: no cap). `--batch` sets objects per page (default 100, at most 1000).
 - `--dry-run` prints how many objects lack a vector and queues nothing.
 - While a job for the model is queued or running, another `migrate` reports it and queues nothing. A model that is complete queues nothing.
@@ -311,10 +312,6 @@ pipelines:
 | `search.fallback_to_fts` | `true` | `find` when the semantic leg can't run |
 
 A per-pipeline `pipelines.overrides.<name>.providers.embedding` is ignored with a warning: each registered model's own entry decides its provider.
-
-## Known limitations
-
-- Two dpkms processes serving one Postgres database can both run the same migration job. Rows stay correct, but provider calls are wasted. Run one dpkms per database while migrating.
 
 ## Related
 
