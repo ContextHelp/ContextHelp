@@ -2,16 +2,17 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
+	"net/http"
+	"strconv"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/spf13/cobra"
@@ -36,9 +37,9 @@ Examples:
   # List registered models, default flag, deprecation status
   ctxt embeddings list
 
-  # Register a candidate model from a config file
-  ctxt embeddings register openai-text-embedding-3-small@2025-01-15 \
-      --model-config ./openai-3-small.json
+  # Register a candidate model; its dimension is measured from the provider
+  ctxt embeddings register ollama-snowflake-arctic-embed2@2026-09-26 \
+      --embedding-model snowflake-arctic-embed2
 `,
 }
 
@@ -55,25 +56,57 @@ model_id (0.0..1.0); on an empty corpus it is reported as 1.0.`,
 }
 
 var (
-	embeddingsRegisterConfig    string
-	embeddingsRegisterProvider  string
+	// embeddingsRegisterFlags holds `embeddings register`'s --embedding-* values.
+	embeddingsRegisterFlags embeddings.Overrides
+	// embeddingsRegisterDimension is --dimension: a check against the
+	// measured dimension, 0 when unset.
 	embeddingsRegisterDimension int
-	embeddingsRegisterDefault   bool
+	// embeddingsRegisterHTTPClient, when non-nil, carries register's
+	// provider calls. Tests set it to replay recorded provider traffic.
+	embeddingsRegisterHTTPClient *http.Client
+)
+
+// embeddingsRegisterProbeText is the fixed text register embeds to measure
+// a model's dimension.
+const embeddingsRegisterProbeText = "ctxt embedding dimension probe"
+
+// Index states `embeddings register` reports.
+const (
+	// registerIndexReady: the model's per-model index exists.
+	registerIndexReady = "ready"
+	// registerIndexUnsupported: the storage backend does not build
+	// per-model indexes yet; the model is registered without one.
+	registerIndexUnsupported = "unsupported"
 )
 
 var embeddingsRegisterCmd = &cobra.Command{
 	Use:   "register <model_id>",
-	Short: "Register a candidate embedding model",
+	Short: "Register a candidate embedding model, measuring its dimension",
 	Long: `Register a candidate embedding model.
 
-The model_id should follow ADR-071's "<provider-name>@<date>" convention,
-for example "openai-text-embedding-3-small@2025-01-15". Configuration may
-be supplied via --model-config <path> (JSON file) or, when --model-config is
-omitted, $EDITOR opens with an empty JSON skeleton for the operator to fill
-in.
+The model_id names the model's vector space, conventionally
+"<provider>-<model>@<date>" (for example
+"ollama-snowflake-arctic-embed2@2026-09-26"). It may use letters, digits
+and . _ : @ / + -, start alphanumeric, and be at most 200 characters.
 
-This command does NOT flip the active default — call ctxt embeddings
-set-default after coverage + recall verification (Phase 3, T-0584).`,
+The provider is resolved like every embedding command: --embedding-*
+flags, then CTXT_EMBEDDING_* env, then -c providers.embedding.*, then
+providers.embedding in the config file, then the defaults (see ctxt
+embeddings provider). Register then embeds a fixed probe string and
+records the length of the returned vector as the model's dimension. The
+provider must be reachable: if the probe fails, nothing is registered.
+
+--dimension is an optional check: when the measured dimension differs,
+the command fails and registers nothing.
+
+The registry row stores the resolved backend as the provider and, in
+config_json, the backend, model, endpoint and api_key_env (the variable
+NAME, never the key). Backend and model are the model's fixed identity from
+then on; endpoint and api_key_env stay overridable per run.
+
+Registering starts dual-writing new ingests for the model. It does not
+change the default model: promote it with ctxt embeddings set-default once
+coverage and recall are verified.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runEmbeddingsRegister,
 }
@@ -212,8 +245,9 @@ func init() {
 		{Title: "Resolve a registered model", Command: "ctxt embeddings provider ollama-snowflake-arctic-embed2@2026-09-26"},
 	})
 	cliconv.WithExamples(embeddingsRegisterCmd, []cliconv.Example{
-		{Title: "Register from a JSON model-config file", Command: "ctxt embeddings register openai-text-embedding-3-small@2025-01-15 --model-config ./openai-3-small.json"},
-		{Title: "Register and flip the default", Command: "ctxt embeddings register voyage-3-large@2025-08-01 --model-config ./voyage.json --provider voyage --dimension 1024 --make-default"},
+		{Title: "Register the configured provider's model", Command: "ctxt embeddings register ollama-nomic-embed-text@2026-09-26"},
+		{Title: "Register a specific model and check its dimension", Command: "ctxt embeddings register ollama-snowflake-arctic-embed2@2026-09-26 --embedding-model snowflake-arctic-embed2 --dimension 1024"},
+		{Title: "Probe through a tunnel, JSON output", Command: "ctxt embeddings register ollama-snowflake-arctic-embed2@2026-09-26 --embedding-model snowflake-arctic-embed2 --embedding-endpoint http://127.0.0.1:11555 --format json"},
 	})
 	cliconv.WithNextSteps(embeddingsRegisterCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt embeddings list", Reason: "confirm coverage + default marker after registration"},
@@ -249,16 +283,9 @@ func init() {
 
 	embeddings.AddFlags(embeddingsProviderCmd.Flags(), &embeddingsProviderFlags)
 
-	// NOTE: --config was renamed to --model-config to avoid shadowing
-	// the kit-owned global -c/--config (ctxt config file loader).
-	embeddingsRegisterCmd.Flags().StringVar(&embeddingsRegisterConfig,
-		"model-config", "", "path to a JSON model-config file (when omitted, $EDITOR opens an empty skeleton)")
-	embeddingsRegisterCmd.Flags().StringVar(&embeddingsRegisterProvider,
-		"provider", "", "provider name (e.g. openai, ollama, voyage)")
+	embeddings.AddFlags(embeddingsRegisterCmd.Flags(), &embeddingsRegisterFlags)
 	embeddingsRegisterCmd.Flags().IntVar(&embeddingsRegisterDimension,
-		"dimension", 0, "embedding vector dimension")
-	embeddingsRegisterCmd.Flags().BoolVar(&embeddingsRegisterDefault,
-		"make-default", false, "mark this model as the active default after registration (clears the previous default; coverage + recall guards do NOT run in Phase 1)")
+		"dimension", 0, "expected vector dimension; fails when the measured dimension differs (the stored dimension is always measured)")
 }
 
 // embeddingsListItem is the JSON shape of one row in `ctxt embeddings list`.
@@ -422,108 +449,161 @@ func runEmbeddingsProvider(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runEmbeddingsRegister(cmd *cobra.Command, args []string) error {
-	modelID := args[0]
-	if modelID == "" {
-		return fmt.Errorf("model_id is required")
-	}
+// embeddingsRegisterDoc is the JSON shape of `ctxt embeddings register`.
+type embeddingsRegisterDoc struct {
+	ModelID   string `json:"model_id"`
+	Provider  string `json:"provider"`
+	Dimension int    `json:"dimension"`
+	IsDefault bool   `json:"is_default"`
+	// ConfigJSON is the stored config_json document.
+	ConfigJSON json.RawMessage `json:"config_json"`
+	// Sources maps each setting to where it came from: a resolver layer
+	// for backend, model, endpoint and api_key_env, "measured" for the
+	// dimension.
+	Sources map[string]string `json:"sources"`
+	// Index is registerIndexReady or registerIndexUnsupported.
+	Index string `json:"index"`
+}
 
-	configJSON, err := loadOrEditConfig(embeddingsRegisterConfig)
-	if err != nil {
+// dimensionSourceMeasured is the source register reports for the dimension.
+const dimensionSourceMeasured = "measured"
+
+func runEmbeddingsRegister(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	modelID := args[0]
+	if err := storage.ValidateEmbeddingModelID(modelID); err != nil {
 		return err
 	}
+	if embeddingsRegisterDimension < 0 {
+		return fmt.Errorf("--dimension %d must not be negative", embeddingsRegisterDimension)
+	}
 
-	r, cleanup, err := newEmbeddingsRegistry()
+	reg, driver, cleanup, err := openEmbeddingsBackend()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	m := registry.Model{
-		ModelID:    modelID,
-		Provider:   embeddingsRegisterProvider,
-		Dimension:  embeddingsRegisterDimension,
-		ConfigJSON: configJSON,
-	}
-	if err := r.Register(context.Background(), m, embeddingsRegisterDefault); err != nil {
+	// Fail a duplicate before probing: the provider is not consulted for
+	// a model_id that cannot be registered.
+	switch _, err := reg.Get(ctx, modelID); {
+	case err == nil:
+		return fmt.Errorf("register %s: %w", modelID, registry.ErrModelAlreadyRegistered)
+	case !errors.Is(err, registry.ErrModelNotFound):
 		return fmt.Errorf("register %s: %w", modelID, err)
 	}
+
+	r := newEmbeddingResolver()
+	r.Flags = embeddingsRegisterFlags
+	r.HTTPClient = embeddingsRegisterHTTPClient
+	// Resolve reports where each setting came from; ForRegistration builds
+	// the provider and the config_json from the same layers.
+	res, err := r.Resolve(ctx, embeddings.Request{Overrides: embeddingsRegisterFlags})
+	if err != nil {
+		return err
+	}
+	prov, configJSON, err := embeddings.NewProviderResolver(r).ForRegistration(ctx)
+	if err != nil {
+		return err
+	}
+	var mc embeddings.ModelConfig
+	if err := json.Unmarshal(configJSON, &mc); err != nil {
+		return fmt.Errorf("register %s: config_json: %w", modelID, err)
+	}
+
+	dim, err := probeEmbeddingDimension(ctx, prov, mc)
+	if err != nil {
+		return fmt.Errorf("register %s: %w", modelID, err)
+	}
+	if embeddingsRegisterDimension != 0 && embeddingsRegisterDimension != dim {
+		return fmt.Errorf(
+			"register %s: --dimension %d does not match the measured dimension %d of %s model %q; nothing was registered",
+			modelID, embeddingsRegisterDimension, dim, mc.Backend, mc.Model,
+		)
+	}
+
+	m := registry.Model{
+		ModelID:    modelID,
+		Provider:   mc.Backend,
+		Dimension:  dim,
+		ConfigJSON: string(configJSON),
+	}
+	if err := reg.Register(ctx, m, false); err != nil {
+		return fmt.Errorf("register %s: %w", modelID, err)
+	}
+
+	index := registerIndexReady
+	if err := driver.Embeddings().EnsureIndex(ctx, embeddings.SpecFor(m)); err != nil {
+		if !errors.Is(err, errors.ErrUnsupported) {
+			return fmt.Errorf(
+				"registered %s (dimension %d), but building its index failed: %w; the index is rebuilt the next time the database opens",
+				modelID, dim, err,
+			)
+		}
+		index = registerIndexUnsupported
+	}
+
+	doc := embeddingsRegisterDoc{
+		ModelID: modelID, Provider: m.Provider, Dimension: dim,
+		ConfigJSON: configJSON, Sources: map[string]string{}, Index: index,
+	}
+	rows := make([][]string, 0, len(embeddings.Fields))
+	for _, e := range res.Explain() {
+		value, source := e.Value, string(e.Layer)
+		if e.Field == embeddings.FieldDimension {
+			value, source = strconv.Itoa(dim), dimensionSourceMeasured
+		}
+		doc.Sources[string(e.Field)] = source
+		if value == "" {
+			value = "(unset)"
+		}
+		rows = append(rows, []string{string(e.Field), value, source})
+	}
+
 	if isJSONOutput() {
-		return outputJSON(cmd.OutOrStdout(), map[string]any{
-			"model_id":    modelID,
-			"provider":    embeddingsRegisterProvider,
-			"dimension":   embeddingsRegisterDimension,
-			"is_default":  embeddingsRegisterDefault,
-			"config_json": configJSON,
-		})
+		return outputJSON(cmd.OutOrStdout(), doc)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Registered %s\n", modelID)
-	if embeddingsRegisterDefault {
-		fmt.Fprintln(cmd.OutOrStdout(), "Marked as default. Note: coverage + recall guards do NOT run in Phase 1; you are responsible for verifying recall.")
+	w := cmd.OutOrStdout()
+	fmt.Fprintf(w, "Registered %s\n\n", modelID)
+	printTable(w, []string{"Setting", "Value", "Source"}, rows)
+	switch index {
+	case registerIndexReady:
+		fmt.Fprintln(w, "Index: ready")
+	default:
+		fmt.Fprintln(w, "Index: not built (this storage backend does not build per-model indexes yet)")
 	}
+	fmt.Fprintf(w, "Not the default model. Promote it with: ctxt embeddings set-default %s\n", modelID)
 	return nil
 }
 
-// loadOrEditConfig returns the JSON config for a registration. When path is
-// provided, the file is read verbatim. When path is empty, an empty JSON
-// skeleton is opened in $EDITOR (or vi as a last resort) and the saved
-// contents are returned. An empty save resolves to "{}".
-func loadOrEditConfig(path string) (string, error) {
-	if path != "" {
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return "", fmt.Errorf("read config %s: %w", path, err)
-		}
-		out := strings.TrimSpace(string(b))
-		if out == "" {
-			out = "{}"
-		}
-		return out, nil
-	}
-
-	// $EDITOR fallback. Default to vi, but honour $EDITOR / $VISUAL when set.
-	editor := os.Getenv("VISUAL")
-	if editor == "" {
-		editor = os.Getenv("EDITOR")
-	}
-	if editor == "" {
-		editor = "vi"
-	}
-
-	tmp, err := os.CreateTemp("", "ctxt-embeddings-register-*.json")
+// probeEmbeddingDimension embeds the fixed probe text and returns the
+// vector length. Errors name the endpoint and a fix.
+func probeEmbeddingDimension(ctx context.Context, p providers.EmbeddingProvider, mc embeddings.ModelConfig) (int, error) {
+	vec, err := p.Embed(ctx, embeddingsRegisterProbeText)
 	if err != nil {
-		return "", fmt.Errorf("create temp file: %w", err)
+		return 0, fmt.Errorf("probe %s model %q at %s failed: %w; nothing was registered. %s",
+			mc.Backend, mc.Model, mc.Endpoint, err, probeFixHint(mc))
 	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	if len(vec) == 0 {
+		return 0, fmt.Errorf("probe %s model %q returned an empty vector, so there is no dimension to measure; nothing was registered. %s",
+			mc.Backend, mc.Model, probeFixHint(mc))
+	}
+	return len(vec), nil
+}
 
-	skeleton := "{\n  \"endpoint\": \"\",\n  \"model\": \"\",\n  \"api_key_env\": \"\"\n}\n"
-	if _, err := tmp.WriteString(skeleton); err != nil {
-		tmp.Close()
-		return "", fmt.Errorf("write skeleton: %w", err)
+func probeFixHint(mc embeddings.ModelConfig) string {
+	switch mc.Backend {
+	case embeddings.BackendOllama:
+		return fmt.Sprintf("Check that Ollama is running at %s and the model is pulled (ollama pull %s), or point at another Ollama with --embedding-endpoint.",
+			mc.Endpoint, mc.Model)
+	case embeddings.BackendStub:
+		return "The stub backend produces no vectors; choose a real backend with --embedding-provider."
+	default:
+		return "Check the provider settings with ctxt embeddings provider, or override them with --embedding-provider, --embedding-model and --embedding-endpoint."
 	}
-	tmp.Close()
-
-	// #nosec G204,G702 -- editor is $VISUAL/$EDITOR with a "vi"
-	// fallback, and tmpPath is our own temp file. Honouring the
-	// operator's editor is the point of the command; anyone who can
-	// set that variable can already run code as this user.
-	c := exec.Command(editor, tmpPath)
-	c.Stdin = os.Stdin
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	if err := c.Run(); err != nil {
-		return "", fmt.Errorf("editor %s: %w", filepath.Base(editor), err)
-	}
-	b, err := os.ReadFile(tmpPath)
-	if err != nil {
-		return "", fmt.Errorf("read edited config: %w", err)
-	}
-	out := strings.TrimSpace(string(b))
-	if out == "" {
-		out = "{}"
-	}
-	return out, nil
 }
 
 // newEmbeddingsRegistry resolves a registry.Store via the same service-init
@@ -532,17 +612,24 @@ func loadOrEditConfig(path string) (string, error) {
 // dialect-aware, so `ctxt embeddings` works on both the sqlite and postgres
 // backends (hosted instances included).
 func newEmbeddingsRegistry() (*registry.Store, func(), error) {
+	reg, _, cleanup, err := openEmbeddingsBackend()
+	return reg, cleanup, err
+}
+
+// openEmbeddingsBackend is newEmbeddingsRegistry plus the storage driver the
+// registry lives in, for commands that also build per-model indexes.
+func openEmbeddingsBackend() (*registry.Store, storage.StorageDriver, func(), error) {
 	svc, cleanup, err := newService()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	switch d := svc.Store.(type) {
 	case *sqlite.Driver:
-		return registry.NewFor(d.DB(), "sqlite"), cleanup, nil
+		return registry.NewFor(d.DB(), "sqlite"), d, cleanup, nil
 	case *postgres.Driver:
-		return registry.NewFor(d.DB(), d.SQLDialect()), cleanup, nil
+		return registry.NewFor(d.DB(), d.SQLDialect()), d, cleanup, nil
 	default:
 		cleanup()
-		return nil, nil, fmt.Errorf("ctxt embeddings: unsupported storage backend %T", svc.Store)
+		return nil, nil, nil, fmt.Errorf("ctxt embeddings: unsupported storage backend %T", svc.Store)
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
 
@@ -60,8 +61,8 @@ var ErrModelAlreadyRegistered = errors.New("embedding model already registered")
 type Store struct {
 	db       *sql.DB
 	postgres bool
-	// maxIndexableDim is the backend's ANN-indexable dimension ceiling;
-	// 0 means unbounded (SQLite brute-forces any dimension).
+	// maxIndexableDim is the backend's ANN-indexable dimension ceiling:
+	// sqlite-vec's vec0 column limit on SQLite, pgvector HNSW on Postgres.
 	maxIndexableDim int
 }
 
@@ -73,11 +74,11 @@ func New(db *sql.DB) *Store {
 
 // NewFor returns a Store speaking the given SQL dialect ("sqlite" or
 // "postgres", matching Driver.SQLDialect()). The Postgres dialect rebinds
-// placeholders and enforces the pgvector HNSW dimension ceiling at Register
-// time: a model SQLite happily brute-forces can be un-indexable there, and
-// that asymmetry must fail loudly at registration, not at first query.
+// placeholders. Each dialect enforces its per-model index dimension ceiling
+// at Register time (8192 for sqlite-vec vec0, 2000 for pgvector HNSW), so an
+// un-indexable model fails loudly at registration, not at first query.
 func NewFor(db *sql.DB, dialect string) *Store {
-	s := &Store{db: db}
+	s := &Store{db: db, maxIndexableDim: storage.SQLiteVecMaxDimension}
 	if dialect == "postgres" {
 		s.postgres = true
 		s.maxIndexableDim = indexsig.PostgresHNSWMaxDimension
@@ -103,7 +104,9 @@ func (s *Store) q(query string) string {
 	return b.String()
 }
 
-// Register inserts a new model row. ConfigJSON defaults to "{}" when empty.
+// Register inserts a new model row. The model_id must pass
+// storage.ValidateEmbeddingModelID (it is embedded as a literal in per-model
+// index DDL). ConfigJSON defaults to "{}" when empty.
 // The first model registered may be marked is_default = 1 by passing
 // makeDefault=true; subsequent registrations must call SetDefault to flip the
 // active model. Returns ErrModelAlreadyRegistered if model_id already exists.
@@ -111,13 +114,23 @@ func (s *Store) Register(ctx context.Context, m Model, makeDefault bool) error {
 	if m.ModelID == "" {
 		return fmt.Errorf("registry.Register: model_id is required")
 	}
+	if err := storage.ValidateEmbeddingModelID(m.ModelID); err != nil {
+		return fmt.Errorf("registry.Register: %w", err)
+	}
 	if m.Dimension < 0 {
 		return fmt.Errorf("registry.Register: dimension must be non-negative")
 	}
-	if s.maxIndexableDim > 0 && m.Dimension > s.maxIndexableDim {
+	if m.Dimension > s.maxIndexableDim {
+		if s.postgres {
+			return fmt.Errorf(
+				"registry.Register: model %s has dimension %d, above this backend's ANN-indexable ceiling of %d (pgvector HNSW; halfvec extends to %d but is not wired) — register a smaller-dimension model or use the sqlite backend",
+				m.ModelID, m.Dimension, s.maxIndexableDim, indexsig.PostgresHalfvecMaxDimension,
+			)
+		}
 		return fmt.Errorf(
-			"registry.Register: model %s has dimension %d, above this backend's ANN-indexable ceiling of %d (pgvector HNSW; halfvec extends to %d but is not wired) — register a smaller-dimension model or use the sqlite backend",
-			m.ModelID, m.Dimension, s.maxIndexableDim, indexsig.PostgresHalfvecMaxDimension)
+			"registry.Register: model %s has dimension %d, above this backend's ANN-indexable ceiling of %d (sqlite-vec vec0) — register a smaller-dimension model",
+			m.ModelID, m.Dimension, s.maxIndexableDim,
+		)
 	}
 	if m.ConfigJSON == "" {
 		m.ConfigJSON = "{}"
@@ -143,14 +156,16 @@ func (s *Store) Register(ctx context.Context, m Model, makeDefault bool) error {
 		// even if a different default already exists, mirroring the
 		// SetDefault semantics. (For Phase 1 this is the only way to swap
 		// a default at register time without going through SetDefault.)
-		if _, err := tx.ExecContext(ctx,
+		if _, err := tx.ExecContext(
+			ctx,
 			`UPDATE embedding_models SET is_default = 0 WHERE is_default = 1`,
 		); err != nil {
 			return fmt.Errorf("registry.Register: clear existing default: %w", err)
 		}
 	}
 
-	res, err := tx.ExecContext(ctx, s.q(`
+	res, err := tx.ExecContext(
+		ctx, s.q(`
 		INSERT INTO embedding_models
 			(model_id, provider, dimension, is_default, registered_at, config_json)
 		VALUES (?, ?, ?, ?, ?, ?)
@@ -231,7 +246,8 @@ func (s *Store) ListWithCoverage(ctx context.Context) ([]ModelWithCoverage, erro
 	out := make([]ModelWithCoverage, 0, len(models))
 	for _, m := range models {
 		var covered int64
-		if err := s.db.QueryRowContext(ctx,
+		if err := s.db.QueryRowContext(
+			ctx,
 			s.q(`SELECT COUNT(DISTINCT object_id) FROM embeddings WHERE model_id = ?`),
 			m.ModelID,
 		).Scan(&covered); err != nil {
@@ -282,7 +298,8 @@ func (s *Store) SetDefault(ctx context.Context, modelID string) error {
 
 	// Verify target exists before mutating anything.
 	var n int
-	if err := tx.QueryRowContext(ctx,
+	if err := tx.QueryRowContext(
+		ctx,
 		s.q(`SELECT COUNT(*) FROM embedding_models WHERE model_id = ?`), modelID,
 	).Scan(&n); err != nil {
 		return fmt.Errorf("registry.SetDefault: lookup: %w", err)
@@ -291,12 +308,14 @@ func (s *Store) SetDefault(ctx context.Context, modelID string) error {
 		return ErrModelNotFound
 	}
 
-	if _, err := tx.ExecContext(ctx,
+	if _, err := tx.ExecContext(
+		ctx,
 		`UPDATE embedding_models SET is_default = 0 WHERE is_default = 1`,
 	); err != nil {
 		return fmt.Errorf("registry.SetDefault: clear existing default: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx,
+	if _, err := tx.ExecContext(
+		ctx,
 		s.q(`UPDATE embedding_models SET is_default = 1 WHERE model_id = ?`), modelID,
 	); err != nil {
 		return fmt.Errorf("registry.SetDefault: mark default: %w", err)
@@ -318,7 +337,8 @@ func (s *Store) Deprecate(ctx context.Context, modelID string, when time.Time) e
 	if when.IsZero() {
 		when = time.Now().UTC()
 	}
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.db.ExecContext(
+		ctx,
 		s.q(`UPDATE embedding_models SET deprecated_at = ? WHERE model_id = ?`),
 		when.UTC().Format(time.RFC3339), modelID,
 	)
