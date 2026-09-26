@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog">
+  <rewriteSystem systemIdStartString="http://graphml.graphdrawing.org/xmlns/1.0/" rewritePrefix="./"/>
+  <rewriteURI uriStartString="http://graphml.graphdrawing.org/xmlns/1.0/" rewritePrefix="./"/>
+</catalog>

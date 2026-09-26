@@ -1,0 +1,381 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gexf xmlns="http://gexf.net/1.3" xmlns:viz="http://gexf.net/1.3/viz" version="1.3">
+  <meta lastmodifieddate="2026-09-26">
+    <creator>ctxt</creator>
+    <keywords>ctxt.search-graph/v1</keywords>
+    <description>{"vocabulary":"ctxt.search-graph/v1","generated_at":"2026-09-26T12:00:00Z","query":"hybrid search tuning","fts_query":"\"hybrid\" OR \"search\" OR \"tuning\"","mode":"hybrid","vector_model":"fixture-embed","semantic_status":"ok","fts_pool":50,"vector_pool":50,"rrf_k":60,"limit":4,"fts_weight":1,"vector_weight":1,"threshold":0.3,"weights":{"mention_boost":0.05,"max_mention_boost":0.3,"direct_backlink":0.1,"hop_backlink":0.05,"word_overlap":0.2},"counts":{"fts_hits":6,"vector_hits":6,"candidates":9,"both":3,"fts_only":3,"vector_only":3,"returned":4,"cut_limit":2,"cut_threshold":3,"nodes":13,"edges":20,"entities":3},"truncated":true,"caps":{"max_nodes":13,"max_edges":20}}</description>
+  </meta>
+  <graph mode="static" defaultedgetype="directed" idtype="string">
+    <attributes class="node" mode="static">
+      <attribute id="n_kind" title="kind" type="string"/>
+      <attribute id="n_object_id" title="object_id" type="string"/>
+      <attribute id="n_stage" title="stage" type="string"/>
+      <attribute id="n_legs" title="legs" type="string"/>
+      <attribute id="n_rank" title="rank" type="integer"/>
+      <attribute id="n_fts_rank" title="fts_rank" type="integer"/>
+      <attribute id="n_vector_rank" title="vector_rank" type="integer"/>
+      <attribute id="n_fts_raw" title="fts_raw" type="double"/>
+      <attribute id="n_vector_raw" title="vector_raw" type="double"/>
+      <attribute id="n_rrf" title="rrf" type="double"/>
+      <attribute id="n_score_fts" title="score_fts" type="double"/>
+      <attribute id="n_score_vector" title="score_vector" type="double"/>
+      <attribute id="n_score_mention_boost" title="score_mention_boost" type="double"/>
+      <attribute id="n_score_graph_relevance" title="score_graph_relevance" type="double"/>
+      <attribute id="n_score_word_overlap" title="score_word_overlap" type="double"/>
+      <attribute id="n_score_total" title="score_total" type="double"/>
+      <attribute id="n_object_type" title="object_type" type="string"/>
+      <attribute id="n_source" title="source" type="string"/>
+      <attribute id="n_created_at" title="created_at" type="string"/>
+      <attribute id="n_slug" title="slug" type="string"/>
+      <attribute id="n_mention_count" title="mention_count" type="integer"/>
+    </attributes>
+    <attributes class="edge" mode="static">
+      <attribute id="e_derivation" title="derivation" type="string"/>
+    </attributes>
+    <nodes>
+      <node id="ent:db/postgres" label="PostgreSQL">
+        <attvalues>
+          <attvalue for="n_kind" value="entity"/>
+          <attvalue for="n_slug" value="db/postgres"/>
+          <attvalue for="n_mention_count" value="3"/>
+        </attvalues>
+        <viz:color r="139" g="92" b="246"/>
+        <viz:size value="6"/>
+      </node>
+      <node id="ent:ml/embeddings" label="Embeddings">
+        <attvalues>
+          <attvalue for="n_kind" value="entity"/>
+          <attvalue for="n_slug" value="ml/embeddings"/>
+          <attvalue for="n_mention_count" value="4"/>
+        </attvalues>
+        <viz:color r="139" g="92" b="246"/>
+        <viz:size value="6"/>
+      </node>
+      <node id="ent:search/bm25" label="BM25">
+        <attvalues>
+          <attvalue for="n_kind" value="entity"/>
+          <attvalue for="n_slug" value="search/bm25"/>
+          <attvalue for="n_mention_count" value="3"/>
+        </attvalues>
+        <viz:color r="139" g="92" b="246"/>
+        <viz:size value="6"/>
+      </node>
+      <node id="obj:kb-bm25" label="BM25 scoring in SQLite FTS5">
+        <attvalues>
+          <attvalue for="n_kind" value="object"/>
+          <attvalue for="n_object_id" value="kb-bm25"/>
+          <attvalue for="n_stage" value="returned"/>
+          <attvalue for="n_legs" value="fts"/>
+          <attvalue for="n_rank" value="2"/>
+          <attvalue for="n_fts_rank" value="2"/>
+          <attvalue for="n_fts_raw" value="-6.5"/>
+          <attvalue for="n_rrf" value="0.016"/>
+          <attvalue for="n_score_fts" value="0.016"/>
+          <attvalue for="n_score_vector" value="0"/>
+          <attvalue for="n_score_mention_boost" value="0.15"/>
+          <attvalue for="n_score_graph_relevance" value="0.2"/>
+          <attvalue for="n_score_word_overlap" value="0.2"/>
+          <attvalue for="n_score_total" value="0.566"/>
+          <attvalue for="n_object_type" value="article"/>
+          <attvalue for="n_source" value="web"/>
+          <attvalue for="n_created_at" value="2026-09-01T12:30:00Z"/>
+        </attvalues>
+        <viz:color r="37" g="99" b="235"/>
+        <viz:size value="13.96"/>
+      </node>
+      <node id="obj:kb-embed" label="Embedding model migration checklist">
+        <attvalues>
+          <attvalue for="n_kind" value="object"/>
+          <attvalue for="n_object_id" value="kb-embed"/>
+          <attvalue for="n_stage" value="cut_threshold"/>
+          <attvalue for="n_legs" value="vector"/>
+          <attvalue for="n_rank" value="9"/>
+          <attvalue for="n_vector_rank" value="6"/>
+          <attvalue for="n_vector_raw" value="0.61"/>
+          <attvalue for="n_rrf" value="0.015"/>
+          <attvalue for="n_score_fts" value="0"/>
+          <attvalue for="n_score_vector" value="0.015"/>
+          <attvalue for="n_score_mention_boost" value="0.1"/>
+          <attvalue for="n_score_graph_relevance" value="0"/>
+          <attvalue for="n_score_word_overlap" value="0"/>
+          <attvalue for="n_score_total" value="0.115"/>
+          <attvalue for="n_object_type" value="note"/>
+          <attvalue for="n_source" value="import"/>
+          <attvalue for="n_created_at" value="2026-09-01T12:30:00Z"/>
+        </attvalues>
+        <viz:color r="148" g="163" b="184"/>
+        <viz:size value="6.02"/>
+      </node>
+      <node id="obj:kb-orphan" label="kb-orphan">
+        <attvalues>
+          <attvalue for="n_kind" value="object"/>
+          <attvalue for="n_object_id" value="kb-orphan"/>
+          <attvalue for="n_stage" value="cut_threshold"/>
+          <attvalue for="n_legs" value="fts"/>
+          <attvalue for="n_rank" value="8"/>
+          <attvalue for="n_fts_rank" value="6"/>
+          <attvalue for="n_fts_raw" value="-1.2"/>
+          <attvalue for="n_rrf" value="0.015"/>
+          <attvalue for="n_score_fts" value="0.015"/>
+          <attvalue for="n_score_vector" value="0"/>
+          <attvalue for="n_score_mention_boost" value="0"/>
+          <attvalue for="n_score_graph_relevance" value="0"/>
+          <attvalue for="n_score_word_overlap" value="0.1"/>
+          <attvalue for="n_score_total" value="0.115"/>
+        </attvalues>
+        <viz:color r="148" g="163" b="184"/>
+        <viz:size value="6.02"/>
+      </node>
+      <node id="obj:kb-pgvec" label="pgvector HNSW index tuning">
+        <attvalues>
+          <attvalue for="n_kind" value="object"/>
+          <attvalue for="n_object_id" value="kb-pgvec"/>
+          <attvalue for="n_stage" value="returned"/>
+          <attvalue for="n_legs" value="both"/>
+          <attvalue for="n_rank" value="4"/>
+          <attvalue for="n_fts_rank" value="4"/>
+          <attvalue for="n_vector_rank" value="3"/>
+          <attvalue for="n_fts_raw" value="-3.1"/>
+          <attvalue for="n_vector_raw" value="0.79"/>
+          <attvalue for="n_rrf" value="0.031"/>
+          <attvalue for="n_score_fts" value="0.015"/>
+          <attvalue for="n_score_vector" value="0.016"/>
+          <attvalue for="n_score_mention_boost" value="0.15"/>
+          <attvalue for="n_score_graph_relevance" value="0.15"/>
+          <attvalue for="n_score_word_overlap" value="0.1"/>
+          <attvalue for="n_score_total" value="0.431"/>
+          <attvalue for="n_object_type" value="note"/>
+          <attvalue for="n_source" value="cli"/>
+          <attvalue for="n_created_at" value="2026-09-01T12:30:00Z"/>
+        </attvalues>
+        <viz:color r="37" g="99" b="235"/>
+        <viz:size value="11.58"/>
+      </node>
+      <node id="obj:kb-rrf" label="Reciprocal rank fusion notes">
+        <attvalues>
+          <attvalue for="n_kind" value="object"/>
+          <attvalue for="n_object_id" value="kb-rrf"/>
+          <attvalue for="n_stage" value="returned"/>
+          <attvalue for="n_legs" value="both"/>
+          <attvalue for="n_rank" value="1"/>
+          <attvalue for="n_fts_rank" value="1"/>
+          <attvalue for="n_vector_rank" value="2"/>
+          <attvalue for="n_fts_raw" value="-7.25"/>
+          <attvalue for="n_vector_raw" value="0.83"/>
+          <attvalue for="n_rrf" value="0.032"/>
+          <attvalue for="n_score_fts" value="0.016"/>
+          <attvalue for="n_score_vector" value="0.016"/>
+          <attvalue for="n_score_mention_boost" value="0.15"/>
+          <attvalue for="n_score_graph_relevance" value="0.3"/>
+          <attvalue for="n_score_word_overlap" value="0.2"/>
+          <attvalue for="n_score_total" value="0.682"/>
+          <attvalue for="n_object_type" value="note"/>
+          <attvalue for="n_source" value="cli"/>
+          <attvalue for="n_created_at" value="2026-09-01T12:30:00Z"/>
+        </attvalues>
+        <viz:color r="37" g="99" b="235"/>
+        <viz:size value="16"/>
+      </node>
+      <node id="obj:kb-sqlite-vec" label="sqlite-vec brute force fallback">
+        <attvalues>
+          <attvalue for="n_kind" value="object"/>
+          <attvalue for="n_object_id" value="kb-sqlite-vec"/>
+          <attvalue for="n_stage" value="cut_limit"/>
+          <attvalue for="n_legs" value="both"/>
+          <attvalue for="n_rank" value="5"/>
+          <attvalue for="n_fts_rank" value="5"/>
+          <attvalue for="n_vector_rank" value="4"/>
+          <attvalue for="n_fts_raw" value="-2.4"/>
+          <attvalue for="n_vector_raw" value="0.74"/>
+          <attvalue for="n_rrf" value="0.031"/>
+          <attvalue for="n_score_fts" value="0.015"/>
+          <attvalue for="n_score_vector" value="0.016"/>
+          <attvalue for="n_score_mention_boost" value="0.1"/>
+          <attvalue for="n_score_graph_relevance" value="0.1"/>
+          <attvalue for="n_score_word_overlap" value="0.15"/>
+          <attvalue for="n_score_total" value="0.381"/>
+          <attvalue for="n_object_type" value="note"/>
+          <attvalue for="n_source" value="cli"/>
+          <attvalue for="n_created_at" value="2026-09-01T12:30:00Z"/>
+        </attvalues>
+        <viz:color r="217" g="119" b="6"/>
+        <viz:size value="10.7"/>
+      </node>
+      <node id="obj:kb-tsrank" label="Postgres ts_rank_cd">
+        <attvalues>
+          <attvalue for="n_kind" value="object"/>
+          <attvalue for="n_object_id" value="kb-tsrank"/>
+          <attvalue for="n_stage" value="cut_threshold"/>
+          <attvalue for="n_legs" value="fts"/>
+          <attvalue for="n_rank" value="7"/>
+          <attvalue for="n_fts_rank" value="3"/>
+          <attvalue for="n_fts_raw" value="-4.8"/>
+          <attvalue for="n_rrf" value="0.016"/>
+          <attvalue for="n_score_fts" value="0.016"/>
+          <attvalue for="n_score_vector" value="0"/>
+          <attvalue for="n_score_mention_boost" value="0.1"/>
+          <attvalue for="n_score_graph_relevance" value="0.1"/>
+          <attvalue for="n_score_word_overlap" value="0.05"/>
+          <attvalue for="n_score_total" value="0.266"/>
+          <attvalue for="n_object_type" value="note"/>
+          <attvalue for="n_created_at" value="2026-09-01T12:30:00Z"/>
+        </attvalues>
+        <viz:color r="148" g="163" b="184"/>
+        <viz:size value="8.68"/>
+      </node>
+      <node id="obj:kb-weights" label="Leg weights: 1.0 / 1.0">
+        <attvalues>
+          <attvalue for="n_kind" value="object"/>
+          <attvalue for="n_object_id" value="kb-weights"/>
+          <attvalue for="n_stage" value="cut_limit"/>
+          <attvalue for="n_legs" value="vector"/>
+          <attvalue for="n_rank" value="6"/>
+          <attvalue for="n_vector_rank" value="5"/>
+          <attvalue for="n_vector_raw" value="0.7"/>
+          <attvalue for="n_rrf" value="0.015"/>
+          <attvalue for="n_score_fts" value="0"/>
+          <attvalue for="n_score_vector" value="0.015"/>
+          <attvalue for="n_score_mention_boost" value="0.05"/>
+          <attvalue for="n_score_graph_relevance" value="0.2"/>
+          <attvalue for="n_score_word_overlap" value="0.1"/>
+          <attvalue for="n_score_total" value="0.365"/>
+          <attvalue for="n_object_type" value="decision"/>
+          <attvalue for="n_created_at" value="2026-09-01T12:30:00Z"/>
+        </attvalues>
+        <viz:color r="217" g="119" b="6"/>
+        <viz:size value="10.42"/>
+      </node>
+      <node id="obj:kb-xss" label="&lt;img src=x onerror=alert(1)&gt; RRF &amp; BM25 &lt;/script&gt;">
+        <attvalues>
+          <attvalue for="n_kind" value="object"/>
+          <attvalue for="n_object_id" value="kb-xss"/>
+          <attvalue for="n_stage" value="returned"/>
+          <attvalue for="n_legs" value="vector"/>
+          <attvalue for="n_rank" value="3"/>
+          <attvalue for="n_vector_rank" value="1"/>
+          <attvalue for="n_vector_raw" value="0.88"/>
+          <attvalue for="n_rrf" value="0.016"/>
+          <attvalue for="n_score_fts" value="0"/>
+          <attvalue for="n_score_vector" value="0.016"/>
+          <attvalue for="n_score_mention_boost" value="0.1"/>
+          <attvalue for="n_score_graph_relevance" value="0.1"/>
+          <attvalue for="n_score_word_overlap" value="0.3"/>
+          <attvalue for="n_score_total" value="0.516"/>
+          <attvalue for="n_object_type" value="note"/>
+          <attvalue for="n_created_at" value="2026-09-01T12:30:00Z"/>
+        </attvalues>
+        <viz:color r="37" g="99" b="235"/>
+        <viz:size value="13.08"/>
+      </node>
+      <node id="query" label="hybrid search tuning">
+        <attvalues>
+          <attvalue for="n_kind" value="query"/>
+        </attvalues>
+        <viz:color r="225" g="29" b="72"/>
+        <viz:size value="20"/>
+      </node>
+    </nodes>
+    <edges>
+      <edge id="e0" source="query" target="obj:kb-rrf" type="directed" label="matched" kind="matched" weight="0.682">
+        <attvalues>
+          <attvalue for="e_derivation" value="derived"/>
+        </attvalues>
+      </edge>
+      <edge id="e1" source="query" target="obj:kb-bm25" type="directed" label="matched" kind="matched" weight="0.566">
+        <attvalues>
+          <attvalue for="e_derivation" value="derived"/>
+        </attvalues>
+      </edge>
+      <edge id="e2" source="query" target="obj:kb-xss" type="directed" label="matched" kind="matched" weight="0.516">
+        <attvalues>
+          <attvalue for="e_derivation" value="derived"/>
+        </attvalues>
+      </edge>
+      <edge id="e3" source="query" target="obj:kb-pgvec" type="directed" label="matched" kind="matched" weight="0.431">
+        <attvalues>
+          <attvalue for="e_derivation" value="derived"/>
+        </attvalues>
+      </edge>
+      <edge id="e4" source="query" target="obj:kb-sqlite-vec" type="directed" label="matched" kind="matched" weight="0.381">
+        <attvalues>
+          <attvalue for="e_derivation" value="derived"/>
+        </attvalues>
+      </edge>
+      <edge id="e5" source="query" target="obj:kb-weights" type="directed" label="matched" kind="matched" weight="0.365">
+        <attvalues>
+          <attvalue for="e_derivation" value="derived"/>
+        </attvalues>
+      </edge>
+      <edge id="e6" source="query" target="obj:kb-tsrank" type="directed" label="matched" kind="matched" weight="0.266">
+        <attvalues>
+          <attvalue for="e_derivation" value="derived"/>
+        </attvalues>
+      </edge>
+      <edge id="e7" source="query" target="obj:kb-orphan" type="directed" label="matched" kind="matched" weight="0.115">
+        <attvalues>
+          <attvalue for="e_derivation" value="derived"/>
+        </attvalues>
+      </edge>
+      <edge id="e8" source="query" target="obj:kb-embed" type="directed" label="matched" kind="matched" weight="0.115">
+        <attvalues>
+          <attvalue for="e_derivation" value="derived"/>
+        </attvalues>
+      </edge>
+      <edge id="e9" source="obj:kb-pgvec" target="obj:kb-embed" type="directed" label="supports" kind="supports">
+        <attvalues>
+          <attvalue for="e_derivation" value="stored"/>
+        </attvalues>
+      </edge>
+      <edge id="e10" source="obj:kb-pgvec" target="obj:kb-sqlite-vec" type="undirected" label="related-to" kind="related-to">
+        <attvalues>
+          <attvalue for="e_derivation" value="stored"/>
+        </attvalues>
+      </edge>
+      <edge id="e11" source="obj:kb-pgvec" target="obj:kb-sqlite-vec" type="directed" label="supersedes" kind="supersedes">
+        <attvalues>
+          <attvalue for="e_derivation" value="stored"/>
+        </attvalues>
+      </edge>
+      <edge id="e12" source="obj:kb-rrf" target="obj:kb-bm25" type="directed" label="extends" kind="extends">
+        <attvalues>
+          <attvalue for="e_derivation" value="stored"/>
+        </attvalues>
+      </edge>
+      <edge id="e13" source="obj:kb-rrf" target="obj:kb-weights" type="undirected" label="related-to" kind="related-to">
+        <attvalues>
+          <attvalue for="e_derivation" value="stored"/>
+        </attvalues>
+      </edge>
+      <edge id="e14" source="obj:kb-tsrank" target="obj:kb-bm25" type="directed" label="derived-from" kind="derived-from">
+        <attvalues>
+          <attvalue for="e_derivation" value="stored"/>
+        </attvalues>
+      </edge>
+      <edge id="e15" source="obj:kb-xss" target="obj:kb-weights" type="directed" label="contradicts" kind="contradicts">
+        <attvalues>
+          <attvalue for="e_derivation" value="stored"/>
+        </attvalues>
+      </edge>
+      <edge id="e16" source="obj:kb-rrf" target="ent:ml/embeddings" type="directed" label="mentions" kind="mentions">
+        <attvalues>
+          <attvalue for="e_derivation" value="stored"/>
+        </attvalues>
+      </edge>
+      <edge id="e17" source="obj:kb-rrf" target="ent:search/bm25" type="directed" label="mentions" kind="mentions">
+        <attvalues>
+          <attvalue for="e_derivation" value="stored"/>
+        </attvalues>
+      </edge>
+      <edge id="e18" source="obj:kb-bm25" target="ent:db/postgres" type="directed" label="mentions" kind="mentions">
+        <attvalues>
+          <attvalue for="e_derivation" value="stored"/>
+        </attvalues>
+      </edge>
+      <edge id="e19" source="obj:kb-bm25" target="ent:search/bm25" type="directed" label="mentions" kind="mentions">
+        <attvalues>
+          <attvalue for="e_derivation" value="stored"/>
+        </attvalues>
+      </edge>
+    </edges>
+  </graph>
+</gexf>

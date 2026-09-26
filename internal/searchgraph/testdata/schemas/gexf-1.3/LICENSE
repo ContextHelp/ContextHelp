@@ -1,0 +1,18 @@
+The *.rng and *.xsd files in this directory are vendored unmodified from
+the GEXF specification, version 1.3 (https://gexf.net/,
+https://github.com/gephi/gexf/tree/master/specs/1.3):
+
+  gexf.rng, dynamics.rng, viz.rng  (RELAX NG, the source schemas)
+  gexf.xsd, dynamics.xsd, viz.xsd  (XML Schema, generated from them; the
+                                     same files are served at
+                                     https://gexf.net/1.3/)
+
+GEXF is (c) the GEXF Working Group and is licensed under the Creative
+Commons Attribution 4.0 International License
+(https://creativecommons.org/licenses/by/4.0/). No changes were made.
+
+Note: the XSD conversion places the viz elements (color, size, ...) in the
+main GEXF namespace, while the RELAX NG source, the GEXF 1.3 primer, Gephi
+and graphology use http://gexf.net/1.3/viz. Documents are therefore
+validated against the RELAX NG schema, and against the XSD only with their
+viz elements removed.
