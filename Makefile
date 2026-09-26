@@ -83,7 +83,8 @@ test-integration:
 # under test/integration/ plus the Postgres driver and embeddings registry
 # conformance suites, which live next to the code they cover. All three read
 # the same POSTGRES_* env block, so all three must be listed or the Postgres
-# coverage never runs. Mirrors the integration job in
+# coverage never runs. The embeddings journey's Postgres variant lives in
+# cmd/ctxt/cmd and runs by name. Mirrors the integration job in
 # .github/workflows/ci.yml; the devcontainer supplies the env block.
 test-integration-services:
 	@echo "Running integration tests (requires Postgres + Redis)..."
@@ -91,6 +92,8 @@ test-integration-services:
 		./test/integration/... \
 		./internal/storage/postgres/... \
 		./internal/embeddings/registry/...
+	go test -v -tags=integration,fts5 -count=1 \
+		-run TestEmbeddingsJourney_Postgres ./cmd/ctxt/cmd/
 
 ## test-smoke: Run binary smoke tests
 test-smoke:
