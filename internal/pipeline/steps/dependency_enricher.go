@@ -17,7 +17,6 @@ import (
 //
 // Reads:
 //   - draft.Metadata["dep_files"]    map[string]any  filename → content (optional)
-//   - draft.Source                   string          repo URL (used for context)
 //   - draft.RawContent               string          fallback: parsed if dep_files absent
 //
 // Supported manifest formats:
@@ -59,10 +58,13 @@ func (s *DependencyEnricher) Run(_ context.Context, draft *storage.KnowledgeObje
 	pending := make([]map[string]any, 0, len(existing)+len(deps))
 	pending = append(pending, existing...)
 
+	// Each dep job's source is its own URL: url_fetcher fetches Source
+	// before RawContent, so the parent repo URL here would make every dep
+	// job re-fetch the repo page. Parent linkage lives in the graph edges.
 	for _, dep := range deps {
 		pending = append(pending, map[string]any{
 			"content":  dep.URL,
-			"source":   draft.Source,
+			"source":   dep.URL,
 			"pipeline": dep.Pipeline,
 		})
 	}
