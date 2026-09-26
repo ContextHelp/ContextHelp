@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: c4935dce
+recorded_at: "2026-09-26T18:22:07Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"nomic-embed-text","prompt":"quokka colonies on rottnest island\nquokka colonies on rottnest island"}'

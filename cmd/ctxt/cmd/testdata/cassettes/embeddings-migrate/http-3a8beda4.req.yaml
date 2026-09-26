@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 3a8beda4
+recorded_at: "2026-09-26T18:22:07Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"snowflake-arctic-embed2","prompt":"dugong feeding grounds in shark bay\ndugong feeding grounds in shark bay"}'

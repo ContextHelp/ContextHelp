@@ -47,6 +47,7 @@ import (
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 )
 
 // HealthStatus is the top-level health verdict.
@@ -84,12 +85,37 @@ type HealthzEnvelope struct {
 type UpgradeSnapshot struct {
 	State      string  `json:"state"`
 	Bucket     string  `json:"bucket,omitempty"`
+	Target     string  `json:"target,omitempty"` // e.g. the model an embeddings_migrate run fills.
 	Progress   float64 `json:"progress,omitempty"`
 	Done       int     `json:"done,omitempty"`
 	Total      int     `json:"total,omitempty"`
+	Failed     int     `json:"failed,omitempty"` // objects skipped after a per-object failure.
 	EtaSeconds int     `json:"eta_seconds,omitempty"`
 	StartedAt  string  `json:"started_at,omitempty"` // RFC3339; empty when zero.
 	LastError  string  `json:"last_error,omitempty"`
+}
+
+// NewUpgradeSnapshot maps an upgrade.Manager status to the /healthz
+// envelope; nil when idle (the envelope then omits the field).
+func NewUpgradeSnapshot(st upgrade.Status) *UpgradeSnapshot {
+	if st.State == upgrade.StateIdle || st.State == "" {
+		return nil
+	}
+	out := &UpgradeSnapshot{
+		State:      string(st.State),
+		Bucket:     string(st.Bucket),
+		Target:     st.Target,
+		Progress:   st.Progress,
+		Done:       st.Done,
+		Total:      st.Total,
+		Failed:     st.Failed,
+		EtaSeconds: st.EtaSeconds,
+		LastError:  st.LastError,
+	}
+	if !st.StartedAt.IsZero() {
+		out.StartedAt = st.StartedAt.UTC().Format(time.RFC3339)
+	}
+	return out
 }
 
 // HealthChecks groups per-subsystem signals.
