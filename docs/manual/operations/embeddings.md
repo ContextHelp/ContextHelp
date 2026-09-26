@@ -148,7 +148,7 @@ ctxt embeddings migrate --to <model_id> [--rate-limit N/s] [--batch N] [--dry-ru
 #### Follow a migration
 
 ```bash
-ctxt upgrade status --server http://localhost:8080
+ctxt upgrade status
 ```
 
 ```text
@@ -160,14 +160,14 @@ Upgrade state: in_progress
   Started:   2026-09-26T19:56:26Z
 ```
 
-- `ctxt upgrade status` reads `http://localhost:8080` unless you pass `--server`; it does not use `server.url` yet. Pass `--server` for any other instance.
+- `ctxt upgrade status` reads the configured instance: the first `server.urls` entry, else `server.url`, with its token. Pass `--server` for any other instance. It exits 70 when nothing answers there.
 - `--watch` refreshes until the state is idle. `--format json` returns the `/healthz` upgrade envelope: `state`, `bucket` (`embeddings_migrate`), `target` (the model ID), `done`, `total`, `failed`, `eta_seconds`, `last_error`.
 - While a job runs, every `ctxt` command prints a one-line `ℹ ctxt: upgrading embeddings_migrate; …` banner on stderr.
 - When a run ends it goes back to `idle`, unless objects failed.
 
 #### When objects fail
 
-An object the provider rejects is counted, skipped, and left for the next run. A run that ends with failures, or is cancelled, leaves the state at `failed`, and `ctxt upgrade status` exits non-zero:
+An object the provider rejects is counted, skipped, and left for the next run. A run that ends with failures, or is cancelled, leaves the state at `failed`, and `ctxt upgrade status` exits 1:
 
 ```text
 Upgrade state: failed
@@ -314,7 +314,6 @@ A per-pipeline `pipelines.overrides.<name>.providers.embedding` is ignored with 
 
 ## Known limitations
 
-- `ctxt upgrade status`, `plan` and `run` ignore `server.url`; pass `--server`.
 - `ctxt embeddings register --dry-run` registers the model.
 - `duplicates.policy: drop` still stores a near-duplicate.
 - Two dpkms processes serving one Postgres database can both run the same migration job. Rows stay correct, but provider calls are wasted. Run one dpkms per database while migrating.
