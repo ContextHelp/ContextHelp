@@ -117,7 +117,15 @@ func Isolate(env Env, root string, bins ...string) error {
 		}
 	}
 
-	cfgDir := filepath.Join(dirs["XDG_CONFIG_HOME"], "contexthelp")
+	return WriteUserConfig(dirs["XDG_CONFIG_HOME"], bins...)
+}
+
+// WriteUserConfig writes the guard's user config for each bin under
+// configHome (an XDG_CONFIG_HOME): server.url is [ClosedServerURL]. Helpers
+// that give a spawned binary its own XDG tree call it so the binary never
+// falls back to the built-in default endpoint.
+func WriteUserConfig(configHome string, bins ...string) error {
+	cfgDir := filepath.Join(configHome, "contexthelp")
 	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
 		return fmt.Errorf("testguard: %w", err)
 	}
