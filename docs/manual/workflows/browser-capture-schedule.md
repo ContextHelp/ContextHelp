@@ -10,8 +10,10 @@ per-user macOS LaunchAgent that runs the capture commands for you.
 
 - macOS. On other platforms the command refuses with an "unsupported"
   error.
-- The one-shot commands already work for your profile. Run them once by
-  hand first; the scheduled jobs run exactly the same thing:
+- The one-shot commands already work for your profile (see
+  [browser-tab-capture.md](./browser-tab-capture.md) and
+  [browser-history-capture.md](./browser-history-capture.md)). Run them
+  once by hand first; the scheduled jobs run exactly the same thing:
 
   ```bash
   ctxt capture history --browser chrome --browser-profile Work
