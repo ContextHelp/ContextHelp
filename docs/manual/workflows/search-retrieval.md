@@ -76,6 +76,14 @@ Check:
 2. Mention/tag alignment with the query intent
 3. Pipeline/source type appropriateness
 
+Result missing or ranked oddly? See every candidate the search considered, with its scores and why it was cut:
+
+```bash
+ctxt find "recent decisions about checkout conversion" --graph
+```
+
+Details: [`search-graph.md`](./search-graph.md)
+
 ### Step 4: Iterate toward a stable query
 
 1. Start broad in semantic mode.
@@ -120,6 +128,7 @@ Use structured filters to produce a bounded input set before running `ctxt make`
 ## Related references
 
 - [`semantic-search.md`](./semantic-search.md)
+- [`search-graph.md`](./search-graph.md)
 - [`../reference/query-language-and-ranking.md`](../reference/query-language-and-ranking.md)
 - [`../reference/api-cli-reference.md`](../reference/api-cli-reference.md)
 - [`../troubleshooting/faq.md`](../troubleshooting/faq.md)

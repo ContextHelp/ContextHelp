@@ -984,6 +984,9 @@ func (m *Model) focusPane(pane PaneID) tea.Cmd {
 - Improve layout responsiveness
 
 ### Phase 3: Graph View
+
+> Available today from the CLI: `ctxt find "<query>" --graph` shows a search's candidates, entities and stored links as an interactive graph in the browser. See [See What a Search Considered](../manual/workflows/search-graph.md).
+
 - Add graph pane
 - Implement ASCII graph rendering
 - Navigation tree visualization

@@ -245,6 +245,9 @@ ctxt find "incident patterns" --profile eng --limit 10
 ctxt find "auth flow" --fts                          # FTS-only
 ctxt find "checkout flow" --semantic                 # vector-only
 ctxt find "indexing" --fts-weight 0.3 --vector-weight 0.7  # override RRF weights
+ctxt find "onboarding" --explain                     # per-signal score breakdown
+ctxt find "deployment" --graph                       # 3D graph of every candidate in the browser (Ctrl-C to stop)
+ctxt find "deployment" --graph -o deployment.html    # save: .html .json .yaml .graphml .gexf
 ctxt list --q "type==url;tag=in=(checkout,pricing)"  # structured (deterministic)
 ctxt list --mention @project.checkout-redesign
 ctxt list --q "related==@arch.decision"              # graph traversal (shared mention targets)

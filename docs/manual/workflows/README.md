@@ -18,6 +18,7 @@ Use this section when you want task-oriented execution, regardless of persona.
 | Build auto-refreshing profiles for entities or organizations | [`entity-auto-enrichment.md`](./entity-auto-enrichment.md) |
 | Retrieve relevant context fast | [`search-retrieval.md`](./search-retrieval.md) |
 | Make `find` search by meaning, or point one run at a remote embedding endpoint | [`semantic-search.md`](./semantic-search.md) |
+| See what a search considered, and why results were cut | [`search-graph.md`](./search-graph.md) |
 | Produce briefs, plans, and summaries | [`composition-reporting.md`](./composition-reporting.md) |
 
 ## Recommended execution order

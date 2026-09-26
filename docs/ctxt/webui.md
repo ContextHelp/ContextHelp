@@ -184,6 +184,9 @@ These are the core principles from [non-negotiables.md](./non-negotiables.md) as
 ```
 
 **Graph Visualization**
+
+> Available today from the CLI: `ctxt find "<query>" --graph` opens an interactive 3D graph of a search (candidates, entities, stored links) in your browser, or saves it as a shareable HTML file. See [See What a Search Considered](../manual/workflows/search-graph.md). The web UI does not show it yet.
+
 ```
 ┌─────────────────────────────────────────────────────┐
 │  [Authentication Flow] ──mentions──> [@stripe.api]  │

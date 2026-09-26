@@ -58,6 +58,8 @@ Expected ranking inputs include:
 - profile context
 - optional federated sources
 
+To see how a specific query ranked every candidate, including the ones it cut, use `ctxt find "<query>" --graph`: [`../workflows/search-graph.md`](../workflows/search-graph.md).
+
 For day-to-day usage:
 
 1. Start with semantic mode for recall.
