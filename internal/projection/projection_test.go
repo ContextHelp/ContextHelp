@@ -127,7 +127,7 @@ func TestProjectIndex_FallbackToFlatFields(t *testing.T) {
 	}
 }
 
-// TestProjectIndex_GraphWithoutSummaryStillIndexesText covers the T-0565 bug:
+// TestProjectIndex_GraphWithoutSummaryStillIndexesText covers a regression:
 // pipelines like text.short produce a graph that has Tag and EntityMention
 // nodes but no Summary or Section nodes. Before the fix, ProjectIndex took
 // the graph branch and produced an empty FTSBody — the document was invisible

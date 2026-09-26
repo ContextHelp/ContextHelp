@@ -305,7 +305,7 @@ pipelines:
 | Key | Default | Used by |
 |---|---|---|
 | `providers.embedding.backend` / `model` / `endpoint` / `api_key_env` | `ollama` / `nomic-embed-text` / `http://localhost:11434` / unset | `register`, and `find` / ingest when no model is registered ([reference](../../environment-variables/ai-providers.md#embedding-provider)) |
-| `providers.embedding.dimension` | unset | Shown by `provider`; not checked by `register` |
+| `providers.embedding.dimension` | unset | Shown by `provider`; `register` checks it against the measured dimension |
 | `embeddings.min_coverage` | `0.99` | `set-default` |
 | `embeddings.grace_period` | `720h` | `purge` |
 | `duplicates.policy` / `check_exact` / `check_similar` / `similarity_threshold` | `warn` / `true` / `false` / `0.95` | Capture in dpkms |
