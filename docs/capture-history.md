@@ -97,7 +97,7 @@ What to expect from the rules:
 - Deny rules add up across every config file (user, project and `-c`). A project or `-c` file can add denies, but it can't remove yours.
 - localhost, `file:`, `about:` and browser-internal pages are always dropped.
 
-Rule syntax, plus rules for every browser or every profile: [URL filter](ambient.md#url-filter).
+Rule syntax, plus rules for every browser or every profile: [URL filter](ambient.md#keep-sites-out-of-browser-capture).
 
 ## Reference
 
