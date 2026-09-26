@@ -103,7 +103,10 @@ records the length of the returned vector as the model's dimension. The
 provider must be reachable: if the probe fails, nothing is registered.
 
 --dimension is an optional check: when the measured dimension differs,
-the command fails and registers nothing.
+the command fails and registers nothing. Without --dimension,
+providers.embedding.dimension (config file or -c) is checked the same way
+when it describes the model being registered, that is when it is set at
+the same layer as the model or above it.
 
 The registry row stores the resolved backend as the provider and, in
 config_json, the backend, model, endpoint and api_key_env (the variable
@@ -418,13 +421,13 @@ func runEmbeddingsRegister(cmd *cobra.Command, args []string) error {
 		e.SuggestedFix = probeFixHint(mc)
 		return e.Retaining(err)
 	}
-	if embeddingsRegisterDimension != 0 && embeddingsRegisterDimension != dim {
+	if want, setting := expectedDimension(res); want != 0 && want != dim {
 		e := output.ConflictError(fmt.Sprintf(
-			"register %s: --dimension %d does not match the measured dimension %d of %s model %q; nothing was registered",
-			modelID, embeddingsRegisterDimension, dim, mc.Backend, mc.Model,
+			"register %s: %s %d does not match the measured dimension %d of %s model %q; nothing was registered",
+			modelID, setting, want, dim, mc.Backend, mc.Model,
 		))
-		e.SuggestedFix = fmt.Sprintf("drop --dimension to register the measured %d, or select the model that produces %d vectors with --embedding-model",
-			dim, embeddingsRegisterDimension)
+		e.SuggestedFix = fmt.Sprintf("drop or correct %s to register the measured %d, or select the model that produces %d vectors with --embedding-model",
+			setting, dim, want)
 		return e
 	}
 
@@ -480,6 +483,48 @@ func runEmbeddingsRegister(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(w, "Not the default model. Promote it with: ctxt embeddings set-default %s\n", modelID)
 	return nil
+}
+
+// layerPrecedence orders the resolver layers, highest first.
+var layerPrecedence = []embeddings.Layer{
+	embeddings.LayerFlag, embeddings.LayerEnv, embeddings.LayerConfigOverride,
+	embeddings.LayerRegistry, embeddings.LayerConfig, embeddings.LayerDefault,
+}
+
+func layerRank(l embeddings.Layer) int {
+	for i, p := range layerPrecedence {
+		if p == l {
+			return i
+		}
+	}
+	return len(layerPrecedence)
+}
+
+// expectedDimension returns the dimension register checks the measured one
+// against, and the setting that asked for it; 0 when nothing does.
+// --dimension wins. Otherwise providers.embedding.dimension (config file or
+// -c) applies when it was set at the model's layer or above: set below it,
+// it describes another model.
+func expectedDimension(res embeddings.Resolved) (int, string) {
+	if embeddingsRegisterDimension != 0 {
+		return embeddingsRegisterDimension, "--dimension"
+	}
+	layer := map[embeddings.Field]embeddings.Layer{}
+	for _, e := range res.Explain() {
+		layer[e.Field] = e.Layer
+	}
+	dimLayer := layer[embeddings.FieldDimension]
+	if res.Dimension == 0 || layerRank(dimLayer) > layerRank(layer[embeddings.FieldModel]) {
+		return 0, ""
+	}
+	switch dimLayer {
+	case embeddings.LayerConfigOverride:
+		return res.Dimension, "-c providers.embedding.dimension"
+	case embeddings.LayerConfig:
+		return res.Dimension, "providers.embedding.dimension"
+	default:
+		return 0, ""
+	}
 }
 
 // probeEmbeddingDimension embeds the fixed probe text and returns the

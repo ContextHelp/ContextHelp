@@ -163,19 +163,93 @@ func TestEmbeddingsRegister_MeasuresAndStoresDimension(t *testing.T) {
 }
 
 // Configuration alone is enough: no flag, no model-config file, no $EDITOR.
+// A matching providers.embedding.dimension passes its check; the stored
+// dimension is still the measured one.
 func TestEmbeddingsRegister_FromConfigWithoutFlagsOrEditor(t *testing.T) {
-	db := embeddingTestDB(t, "    model: "+registerModel+"\n    endpoint: "+registerEndpoint+"\n    dimension: 768\n")
+	db := embeddingTestDB(t, "    model: "+registerModel+"\n    endpoint: "+registerEndpoint+"\n    dimension: 1024\n")
 	t.Setenv(embeddings.EnvEndpoint, "") // TestMain points it at a closed port
 	t.Setenv("EDITOR", "false")
 	t.Setenv("VISUAL", "false")
 	recordedOllama(t)
 
 	doc := registerJSON(t, db, registerModelID)
-	if doc.Dimension != snowflakeDimension {
-		t.Errorf("dimension = %d, want the measured %d (config's 768 is not the source)", doc.Dimension, snowflakeDimension)
+	if doc.Dimension != snowflakeDimension || doc.Sources["dimension"] != dimensionSourceMeasured {
+		t.Errorf("dimension = %d from %q, want the measured %d", doc.Dimension, doc.Sources["dimension"], snowflakeDimension)
 	}
 	if doc.Sources["model"] != "config" || doc.Sources["endpoint"] != "config" {
 		t.Errorf("sources = %v, want model and endpoint from config", doc.Sources)
+	}
+}
+
+// providers.embedding.dimension is a check like --dimension, from the
+// config file or from -c: a mismatch with the measured dimension is a
+// conflict naming both values and the setting, and nothing is registered.
+func TestEmbeddingsRegister_ConfigDimensionMismatchFails(t *testing.T) {
+	for name, tc := range map[string]struct {
+		yaml    string
+		args    []string
+		setting string
+	}{
+		"config file": {
+			yaml:    "    model: " + registerModel + "\n    endpoint: " + registerEndpoint + "\n    dimension: 768\n",
+			setting: "providers.embedding.dimension",
+		},
+		"-c override": {
+			yaml:    "    model: " + registerModel + "\n    endpoint: " + registerEndpoint + "\n",
+			args:    []string{"-c", "providers.embedding.dimension=768"},
+			setting: "-c providers.embedding.dimension",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := embeddingTestDB(t, tc.yaml)
+			t.Setenv(embeddings.EnvEndpoint, "")
+			calls := recordedOllama(t)
+
+			out, err := db.exec(append(tc.args, "embeddings", "register", registerModelID)...)
+			if err == nil {
+				t.Fatalf("register with a configured dimension of 768 against a 1024-d model succeeded:\n%s", out)
+			}
+			for _, want := range []string{"768", "1024", tc.setting} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not name %s", err, want)
+				}
+			}
+			assertClass(t, err, output.CodeConflict)
+			assertNotRegistered(t, db, registerModelID)
+			if len(calls.URLs()) != 1 {
+				t.Errorf("provider calls = %v, want the one probe", calls.URLs())
+			}
+		})
+	}
+}
+
+// A configured dimension describes the configured model. When a higher
+// layer picks another model it does not apply; --dimension, a per-call
+// check, takes its place.
+func TestEmbeddingsRegister_ConfigDimensionScope(t *testing.T) {
+	for name, tc := range map[string]struct {
+		yaml string
+		args []string
+	}{
+		"flag picks another model": {
+			yaml: "    model: nomic-embed-text\n    endpoint: " + registerEndpoint + "\n    dimension: 768\n",
+			args: []string{"--embedding-model", registerModel},
+		},
+		"--dimension replaces the config check": {
+			yaml: "    model: " + registerModel + "\n    endpoint: " + registerEndpoint + "\n    dimension: 768\n",
+			args: []string{"--dimension", "1024"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := embeddingTestDB(t, tc.yaml)
+			t.Setenv(embeddings.EnvEndpoint, "")
+			recordedOllama(t)
+
+			doc := registerJSON(t, db, append([]string{registerModelID}, tc.args...)...)
+			if doc.Dimension != snowflakeDimension {
+				t.Errorf("dimension = %d, want the measured %d", doc.Dimension, snowflakeDimension)
+			}
+		})
 	}
 }
 
