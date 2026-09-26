@@ -241,11 +241,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 			p.emitFailed(ctx, job.ID, err.Error())
 			return
 		}
-		// Attempt retry for transient errors; fall back to Fail on exhaustion.
-		if retryErr := p.queue.Retry(ctx, job.ID); retryErr != nil {
-			p.queue.Fail(ctx, job.ID, err.Error())
-			p.emitFailed(ctx, job.ID, err.Error())
-		}
+		p.retryOrFail(ctx, job.ID, err.Error())
 		return
 	}
 
@@ -258,8 +254,9 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	if err == nil && existing != nil {
 		existingID, err := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
 		if err != nil {
-			p.queue.Fail(ctx, job.ID, fmt.Sprintf("reinforce: %s", err))
-			p.emitFailed(ctx, job.ID, fmt.Sprintf("reinforce: %s", err), existingID)
+			// Reinforce errors are storage contention (SQLITE_BUSY) or a row
+			// deleted since the lookup; both can succeed on a later attempt.
+			p.retryOrFail(ctx, job.ID, fmt.Sprintf("reinforce: %s", err), existingID)
 			return
 		}
 		p.queue.Complete(ctx, job.ID, existingID)
@@ -358,6 +355,17 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	// Fan out per-item jobs if the pipeline staged items for enqueueing.
 	p.fanOutItems(ctx, draft)
+}
+
+// retryOrFail requeues a job after a transient error, failing it once
+// its retries are exhausted.
+func (p *WorkerPool) retryOrFail(ctx context.Context, jobID, msg string, resultIDs ...string) {
+	if err := p.queue.Retry(ctx, jobID); err != nil {
+		if ferr := p.queue.Fail(ctx, jobID, msg); ferr != nil {
+			slog.Warn("jobs: mark failed", "job", jobID, "err", ferr)
+		}
+		p.emitFailed(ctx, jobID, msg, resultIDs...)
+	}
 }
 
 // fanOutItems enqueues per-item jobs from Metadata["items_to_enqueue"].
