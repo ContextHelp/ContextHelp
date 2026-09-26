@@ -153,6 +153,7 @@ func (n *naStore) Resurfacing() storage.ResurfacingQueueStore { return nil }
 func (n *naStore) Entitlements() storage.EntitlementStore     { return nil }
 func (n *naStore) Metering() storage.MeteringStore            { return nil }
 func (n *naStore) Vectors() storage.VectorStore               { return nil }
+func (n *naStore) Embeddings() storage.EmbeddingStore         { return nil }
 func (n *naStore) SavedSearches() storage.SavedSearchStore    { return nil }
 func (n *naStore) SearchHistory() storage.SearchHistoryStore  { return nil }
 func (n *naStore) Watermarks() storage.WatermarkStore         { return nil }

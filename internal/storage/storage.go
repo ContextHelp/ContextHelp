@@ -1,3 +1,5 @@
+// Package storage defines the backend-neutral persistence contracts that
+// the sqlite and postgres drivers implement.
 package storage
 
 import (
@@ -70,6 +72,7 @@ type StorageDriver interface {
 	Entitlements() EntitlementStore
 	Metering() MeteringStore
 	Vectors() VectorStore
+	Embeddings() EmbeddingStore
 	SavedSearches() SavedSearchStore
 	SearchHistory() SearchHistoryStore
 	Watermarks() WatermarkStore

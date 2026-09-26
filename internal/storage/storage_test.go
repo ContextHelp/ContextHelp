@@ -35,6 +35,7 @@ func (m *mockDriver) Resurfacing() ResurfacingQueueStore { return &mockResurfaci
 func (m *mockDriver) Entitlements() EntitlementStore     { return &mockEntitlementStore{} }
 func (m *mockDriver) Metering() MeteringStore            { return &mockMeteringStore{} }
 func (m *mockDriver) Vectors() VectorStore               { return &mockVectorStore{} }
+func (m *mockDriver) Embeddings() EmbeddingStore         { return nil }
 func (m *mockDriver) SavedSearches() SavedSearchStore    { return &mockSavedSearchStore{} }
 func (m *mockDriver) SearchHistory() SearchHistoryStore  { return &mockSearchHistoryStore{} }
 func (m *mockDriver) Watermarks() WatermarkStore         { return &mockWatermarkStore{} }
