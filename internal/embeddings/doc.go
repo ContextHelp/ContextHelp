@@ -52,4 +52,10 @@
 // An empty string (or a zero dimension) never counts as set, so it falls
 // through to the next layer. api_key_env is the NAME of an environment
 // variable; the resolver never reads or reports the key itself.
+//
+// Contracts: this package also holds the consumer-side contracts the
+// embedding write and query paths depend on (ADR-071, amendment 2026-09-26):
+// where the set of active models comes from (ModelSource, implemented by
+// *registry.Store) and how a model's provider is resolved (ProviderResolver,
+// implemented by NewProviderResolver).
 package embeddings
