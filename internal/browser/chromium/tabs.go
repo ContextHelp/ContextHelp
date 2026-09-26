@@ -37,7 +37,7 @@ type Session struct {
 }
 
 // OpenTabs returns the tabs open in the profile at profileDir (absolute
-// path of a profile directory, e.g. .../Profile 14). It is OpenSession
+// path of a profile directory, e.g. .../Profile 1). It is OpenSession
 // without the file metadata.
 func OpenTabs(ctx context.Context, profileDir string) ([]Tab, error) {
 	s, err := OpenSession(ctx, profileDir)
