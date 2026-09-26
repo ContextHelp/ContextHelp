@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 34cc1746
+recorded_at: "2026-09-26T19:58:09Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"snowflake-arctic-embed2","prompt":"sea cows graze seagrass"}'

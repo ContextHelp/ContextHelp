@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: a38cde45
+recorded_at: "2026-09-26T19:58:09Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"nomic-embed-text","prompt":"ctxt embedding dimension probe"}'

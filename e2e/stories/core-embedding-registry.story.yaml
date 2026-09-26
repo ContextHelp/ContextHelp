@@ -1,29 +1,68 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
 schema_version: "1"
 story_id: ctxt.core.embedding-registry
-title: Read which embedding model the corpus is indexed under before changing it
+title: Move the corpus to a new embedding model without a search blackout
 binary: ctxt
 intent: |
   Semantic search quality depends on which embedding model produced the
-  vectors, and on how much of the corpus that model actually covers. The
-  operator reads the registry to see the current default and its
-  coverage, registers a candidate model without promoting it, and rereads
-  the registry to confirm the default did not move — registration and
-  promotion are deliberately separate steps.
+  vectors and on how much of the corpus that model covers. The operator
+  registers a candidate model, letting ctxt measure its dimension from the
+  provider, and confirms the current default did not move. A premature
+  promotion is refused while the candidate's coverage is low. The operator
+  backfills the candidate in the background, follows the job, promotes the
+  candidate once it covers the corpus, checks that search now uses it, then
+  retires the previous default. Deleting the old vectors stays refused until
+  the grace period has passed.
+preconditions:
+  - ollama-snowflake-arctic-embed2@2026-09-26 is registered, is the default, and covers the corpus.
+  - providers.embedding.endpoint points at an Ollama that serves nomic-embed-text.
+  - dpkms serve is running against the instance database.
 steps:
   - id: registry
-    intent: Read registered models, the default marker, and coverage.
+    intent: Read the registered models, the default marker and each model's coverage.
     invoke: ["ctxt", "embeddings", "list", "--format", "json"]
     capture: [exit_code, stdout]
+  - id: inspect_provider
+    intent: Check which backend, model and endpoint a registration would probe, and where each came from.
+    invoke: ["ctxt", "embeddings", "provider", "--embedding-model", "nomic-embed-text", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
   - id: register_candidate
-    intent: Register a candidate model without promoting it.
-    invoke: ["ctxt", "embeddings", "register", "openai-text-embedding-3-small@2025-01-15", "--provider", "openai", "--dimension", "1536", "--model-config", "openai-3-small.json"]
+    intent: Register the candidate; ctxt measures its dimension from the provider and checks the expected 768.
+    invoke: ["ctxt", "embeddings", "register", "ollama-nomic-embed-text@2026-09-26", "--embedding-model", "nomic-embed-text", "--dimension", "768", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: confirm_default_unmoved
-    intent: Reread the registry to confirm the default did not move.
+    intent: Reread the registry to confirm registering did not change the default model.
     invoke: ["ctxt", "embeddings", "list", "--format", "json"]
     capture: [exit_code, stdout]
-  - id: semantic_probe
-    intent: Probe recall under the current default before considering a flip.
-    invoke: ["ctxt", "find", "vector recall probe", "--semantic", "--explain", "--format", "json"]
+  - id: early_flip_refused
+    intent: Try to promote the candidate before it covers the corpus; the coverage guard refuses.
+    invoke: ["ctxt", "embeddings", "set-default", "ollama-nomic-embed-text@2026-09-26", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: migrate_candidate
+    intent: Queue the background job that embeds every object still missing a vector for the candidate.
+    invoke: ["ctxt", "embeddings", "migrate", "--to", "ollama-nomic-embed-text@2026-09-26", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: follow_progress
+    intent: Follow the migration through the daemon's upgrade status until it is idle again.
+    invoke: ["ctxt", "upgrade", "status", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: confirm_coverage
+    intent: Confirm the candidate now covers the whole corpus before promoting it.
+    invoke: ["ctxt", "embeddings", "list", "--format", "json"]
     capture: [exit_code, stdout]
+  - id: promote_candidate
+    intent: Promote the fully covered candidate to the default in one atomic flip.
+    invoke: ["ctxt", "embeddings", "set-default", "ollama-nomic-embed-text@2026-09-26", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: semantic_probe
+    intent: Run a semantic query and confirm it is embedded and searched with the new default.
+    invoke: ["ctxt", "find", "where do sea cows graze on seagrass", "--semantic", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: retire_previous
+    intent: Deprecate the previous default with the typed confirmation token so ingest stops writing it.
+    invoke: ["ctxt", "embeddings", "deprecate", "ollama-snowflake-arctic-embed2@2026-09-26", "--confirm-token=753cb17b8b3f", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: purge_preview
+    intent: Preview purging the retired model; it is refused and deletes nothing inside the grace period.
+    invoke: ["ctxt", "embeddings", "purge", "ollama-snowflake-arctic-embed2@2026-09-26", "--dry-run", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
