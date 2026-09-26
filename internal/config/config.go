@@ -137,6 +137,29 @@ type CaptureConfig struct {
 	// deny lists are the union of all layers and each layer's allow_only
 	// list is one more gate. See urlfilter.Config.Merge.
 	URLFilter urlfilter.Config `mapstructure:"url_filter" yaml:"url_filter"`
+
+	// History configures `ctxt capture history`.
+	History CaptureHistoryConfig `mapstructure:"history" yaml:"history"`
+}
+
+// DefaultCaptureHistoryInitialLookback is how far back the first
+// incremental `ctxt capture history` run for a browser profile reads.
+const DefaultCaptureHistoryInitialLookback = 24 * time.Hour
+
+// CaptureHistoryConfig configures `ctxt capture history`.
+type CaptureHistoryConfig struct {
+	// InitialLookback is how far back an incremental run reads when the
+	// browser profile has no saved position yet (its first run). Later
+	// runs resume from the saved position. Must be positive. Default 24h.
+	InitialLookback time.Duration `mapstructure:"initial_lookback" yaml:"initial_lookback"`
+}
+
+// Validate rejects a zero or negative InitialLookback.
+func (c CaptureHistoryConfig) Validate() error {
+	if c.InitialLookback <= 0 {
+		return fmt.Errorf("capture.history.initial_lookback must be a positive duration such as 24h, got %s", c.InitialLookback)
+	}
+	return nil
 }
 
 // FanOutConfig controls post-ingest fan-out enrichment behaviour.
@@ -1145,6 +1168,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("fanout.enabled", true)
 	v.SetDefault("fanout.entities", true)
 	v.SetDefault("fanout.audit_log", true)
+
+	// Browser history capture: first-run lookback.
+	v.SetDefault("capture.history.initial_lookback", DefaultCaptureHistoryInitialLookback)
 
 	// Security alerting defaults
 	v.SetDefault("security.alerts.auth_failure_threshold", 3)
