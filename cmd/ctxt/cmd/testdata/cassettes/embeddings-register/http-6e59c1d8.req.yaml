@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 6e59c1d8
+recorded_at: "2026-09-26T17:09:00Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"ctxt-missing-embed-model","prompt":"ctxt embedding dimension probe"}'
