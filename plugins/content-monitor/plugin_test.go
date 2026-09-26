@@ -75,7 +75,7 @@ func TestPlugin_FirstFetchEmitsSeenEvent(t *testing.T) {
 
 	seenEvents := 0
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.content-monitor.seen" {
+		if e.Type == contentmonitor.TopicBaselineRecorded {
 			seenEvents++
 		}
 	}
@@ -108,7 +108,7 @@ func TestPlugin_ContentChangeEmitsChangeEvent(t *testing.T) {
 
 	changeEvents := 0
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.content-monitor.change" {
+		if e.Type == contentmonitor.TopicPageChanged {
 			changeEvents++
 		}
 	}
@@ -135,7 +135,7 @@ func TestPlugin_NoChangeDoesNotEmit(t *testing.T) {
 
 	changeEvents := 0
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.content-monitor.change" {
+		if e.Type == contentmonitor.TopicPageChanged {
 			changeEvents++
 		}
 	}
@@ -161,7 +161,7 @@ func TestPlugin_HTTPErrorEmitsErrorEvent(t *testing.T) {
 
 	errEvents := 0
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.content-monitor.error" {
+		if e.Type == contentmonitor.TopicCheckFailed {
 			errEvents++
 		}
 	}
@@ -209,7 +209,7 @@ func TestPlugin_SeenEvent_EmitsGraphNode(t *testing.T) {
 
 	var ko pluginapi.KnowledgeObject
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.content-monitor.seen" {
+		if e.Type == contentmonitor.TopicBaselineRecorded {
 			require.NoError(t, json.Unmarshal(e.Data, &ko))
 			break
 		}

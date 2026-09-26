@@ -5,9 +5,12 @@ import (
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"hop.top/kit/go/runtime/bus"
+
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/plugin"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-	"github.com/stretchr/testify/require"
 )
 
 func manifestWith(perms ...string) *pluginapi.PluginManifest {
@@ -106,3 +109,29 @@ func (s *stubBus) Publish(_ context.Context, _ pluginapi.Event) error { return n
 func (s *stubBus) Subscribe(_ string, _ func(context.Context, pluginapi.Event) error) {
 }
 func (s *stubBus) Close() error { return nil }
+
+// recordingPluginBus keeps the type of every published event.
+type recordingPluginBus struct{ types []string }
+
+func (b *recordingPluginBus) Publish(_ context.Context, e pluginapi.Event) error {
+	b.types = append(b.types, e.Type)
+	return nil
+}
+
+func (b *recordingPluginBus) Subscribe(_ string, _ func(context.Context, pluginapi.Event) error) {
+}
+func (b *recordingPluginBus) Close() error { return nil }
+
+func TestCapabilityEnforcer_PublishesKitTopics(t *testing.T) {
+	e := plugin.NewCapabilityEnforcer("test-plugin", manifestWith(pluginapi.PermRefresh, pluginapi.PermNotifications))
+	b := &recordingPluginBus{}
+	require.NoError(t, e.TriggerRefresh(context.Background(), b))
+	require.NoError(t, e.CreateNotification(context.Background(), b, "title", "body"))
+	require.Equal(t, []string{
+		string(events.TopicPluginRefreshRequested),
+		string(events.TopicPluginNotificationRequested),
+	}, b.types)
+	for _, typ := range b.types {
+		require.NoError(t, bus.ValidateTopic(bus.Topic(typ)))
+	}
+}

@@ -30,9 +30,9 @@ plugins:
 
 | Type | When |
 |------|------|
-| `ctxt.plugin.content-monitor.seen` | First successful fetch — baseline recorded |
-| `ctxt.plugin.content-monitor.change` | Content differs from previous fetch |
-| `ctxt.plugin.content-monitor.error` | Fetch error or non-200 HTTP status |
+| `ctxt.content_monitor.baseline.recorded` | First successful fetch — baseline recorded |
+| `ctxt.content_monitor.page.changed` | Content differs from previous fetch |
+| `ctxt.content_monitor.check.failed` | Fetch error or non-200 HTTP status |
 
 ## KnowledgeObject shape (change event)
 

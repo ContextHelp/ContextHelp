@@ -21,8 +21,8 @@ plugins:
 
 | Type | When |
 |------|------|
-| `ctxt.plugin.dir-watcher.file` | New file detected in watched directory |
-| `ctxt.plugin.dir-watcher.error` | Directory read or file read error |
+| `ctxt.dir_watcher.file.detected` | New file detected in watched directory |
+| `ctxt.dir_watcher.scan.failed` | Directory read or file read error |
 
 ## KnowledgeObject shape
 

@@ -109,7 +109,7 @@ func TestPlugin_Init_IngestsRSSFeed(t *testing.T) {
 
 	itemEvents := 0
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.rss-feed.item" {
+		if e.Type == rssfeed.TopicItemDetected {
 			itemEvents++
 		}
 	}
@@ -136,7 +136,7 @@ func TestPlugin_Init_IngestsAtomFeed(t *testing.T) {
 
 	itemEvents := 0
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.rss-feed.item" {
+		if e.Type == rssfeed.TopicItemDetected {
 			itemEvents++
 		}
 	}
@@ -164,7 +164,7 @@ func TestPlugin_MaxItems(t *testing.T) {
 
 	itemEvents := 0
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.rss-feed.item" {
+		if e.Type == rssfeed.TopicItemDetected {
 			itemEvents++
 		}
 	}
@@ -194,7 +194,7 @@ func TestPlugin_DeduplicatesItems(t *testing.T) {
 
 	itemEvents := 0
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.rss-feed.item" {
+		if e.Type == rssfeed.TopicItemDetected {
 			itemEvents++
 		}
 	}
@@ -221,7 +221,7 @@ func TestPlugin_RSSItem_EmitsGraphNodes(t *testing.T) {
 
 	var ko pluginapi.KnowledgeObject
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.rss-feed.item" {
+		if e.Type == rssfeed.TopicItemDetected {
 			require.NoError(t, json.Unmarshal(e.Data, &ko))
 			break
 		}

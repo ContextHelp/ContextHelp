@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
@@ -85,7 +86,7 @@ func (e *CapabilityEnforcer) TriggerRefresh(ctx context.Context, bus pluginapi.B
 	if err := e.check(pluginapi.PermRefresh, "refresh.Trigger"); err != nil {
 		return err
 	}
-	return bus.Publish(ctx, pluginapi.Event{Type: "ctxt.refresh.trigger"})
+	return bus.Publish(ctx, pluginapi.Event{Type: string(events.TopicPluginRefreshRequested)})
 }
 
 // ─── Notifications ───────────────────────────────────────────────────────────
@@ -95,7 +96,7 @@ func (e *CapabilityEnforcer) CreateNotification(ctx context.Context, bus plugina
 	if err := e.check(pluginapi.PermNotifications, "notifications.Create"); err != nil {
 		return err
 	}
-	return bus.Publish(ctx, pluginapi.Event{Type: "ctxt.notification.create"})
+	return bus.Publish(ctx, pluginapi.Event{Type: string(events.TopicPluginNotificationRequested)})
 }
 
 // ─── Entity operations ───────────────────────────────────────────────────────

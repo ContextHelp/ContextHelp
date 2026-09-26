@@ -34,6 +34,19 @@ type topicConst struct {
 // the object segment is a mistake: kit would split it.
 var intendedModifiers = map[string]string{}
 
+// repoRoot returns the module root (two levels above internal/events).
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("repo root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("repo root %s has no go.mod: %v", root, err)
+	}
+	return root
+}
+
 // parseDir parses the non-test Go files of one directory.
 func parseDir(t *testing.T, fset *token.FileSet, dir string) []*ast.File {
 	t.Helper()
@@ -161,5 +174,31 @@ func TestEveryEventsTopicFollowsKitGrammar(t *testing.T) {
 	}
 	for _, c := range consts {
 		t.Run(c.name, func(t *testing.T) { assertKitTopic(t, c) })
+	}
+}
+
+// TestEveryPluginTopicFollowsKitGrammar checks the Topic* constants of
+// every plugin under plugins/. Plugins are separate modules that cannot
+// import internal/events, so each declares its own topics.
+func TestEveryPluginTopicFollowsKitGrammar(t *testing.T) {
+	pluginsDir := filepath.Join(repoRoot(t), "plugins")
+	entries, err := os.ReadDir(pluginsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		consts := collectTopicConsts(t, filepath.Join(pluginsDir, e.Name()))
+		total += len(consts)
+		for _, c := range consts {
+			c.pos = e.Name() + "/" + c.pos
+			t.Run(e.Name()+"/"+c.name, func(t *testing.T) { assertKitTopic(t, c) })
+		}
+	}
+	if total == 0 {
+		t.Fatal("found no plugin topic constants; the scan is broken")
 	}
 }
