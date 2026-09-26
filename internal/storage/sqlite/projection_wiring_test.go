@@ -13,6 +13,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/storagetest"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -170,8 +171,11 @@ func TestFTSSearchNodeAware_NoFilter(t *testing.T) {
 // TestVectorSearchNodeAware_NodeTypeFilter verifies that VectorSearchNodeAware
 // restricts results to objects that contain the requested node types.
 func TestVectorSearchNodeAware_NodeTypeFilter(t *testing.T) {
-	d := newTestDriverDim(t, 3)
+	d := newTestDriver(t)
 	ctx := context.Background()
+	emb := storagetest.NewMemEmbeddingStore()
+	require.NoError(t, emb.EnsureIndex(ctx, storage.EmbeddingModelSpec{ModelID: "m3", Dimension: 3}))
+	s := &ObjectStore{db: d.db, emb: emb}
 
 	decisionNode := pluginapi.GraphNode{
 		ID:       pluginapi.NewNodeID("vs-1", pluginapi.NodeTypeDecision, 0),
@@ -182,25 +186,23 @@ func TestVectorSearchNodeAware_NodeTypeFilter(t *testing.T) {
 	}
 
 	obj1 := makeGraphObject("vs-1", "note", "architecture patterns", decisionNode)
-	obj1.Embeddings = []float32{0.9, 0.1, 0.0}
 	obj2 := makeGraphObject("vs-2", "note", "architecture overview")
-	obj2.Embeddings = []float32{0.8, 0.2, 0.0}
+	require.NoError(t, s.Create(ctx, obj1))
+	require.NoError(t, s.Create(ctx, obj2))
+	require.NoError(t, emb.Put(ctx, "vs-1", []storage.ObjectVector{{ModelID: "m3", Vector: []float32{0.9, 0.1, 0.0}}}))
+	require.NoError(t, emb.Put(ctx, "vs-2", []storage.ObjectVector{{ModelID: "m3", Vector: []float32{0.8, 0.2, 0.0}}}))
 
-	require.NoError(t, d.Objects().Create(ctx, obj1))
-	require.NoError(t, d.Objects().Create(ctx, obj2))
+	query := storage.VectorQuery{ModelID: "m3", Vector: []float32{1.0, 0.0, 0.0}}
 
-	query := []float32{1.0, 0.0, 0.0}
-
-	// Both match via brute-force cosine search.
-	allResults, err := d.Objects().VectorSearch(ctx, query, storage.ObjectFilter{Limit: 10})
+	allResults, err := s.VectorSearch(ctx, query, storage.ObjectFilter{Limit: 10})
 	require.NoError(t, err)
-	assert.Len(t, allResults, 2, "both objects have embeddings and should match")
+	assert.Len(t, allResults, 2, "both objects have vectors and should match")
 
 	// NodeAwareFilter restricts to objects with decision nodes only.
 	nodeFilter := pluginapi.NodeAwareFilter{
 		NodeTypes: []string{pluginapi.NodeTypeDecision},
 	}
-	filtered, err := d.Objects().VectorSearchNodeAware(ctx, query,
+	filtered, err := s.VectorSearchNodeAware(ctx, query,
 		storage.ObjectFilter{Limit: 10}, nodeFilter)
 	require.NoError(t, err)
 	require.Len(t, filtered, 1, "only vs-1 has a decision node")

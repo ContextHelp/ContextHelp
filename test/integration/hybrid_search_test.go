@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/stretchr/testify/assert"
@@ -46,7 +47,7 @@ func TestHybridSearch_EndToEnd(t *testing.T) {
 	}
 
 	// FTS fallback (no embedding provider).
-	results, err := env.svc.HybridSearch(ctx, "authentication", 5, nil, cfg)
+	results, err := env.svc.HybridSearch(ctx, "authentication", 5, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, "hs-auth", results[0].ID)
@@ -61,7 +62,7 @@ func TestHybridSearch_EndToEnd(t *testing.T) {
 	// MinScore filter — set high to exclude all.
 	cfgHighScore := cfg
 	cfgHighScore.MinScore = 999.0
-	results, err = env.svc.HybridSearch(ctx, "postgres", 5, nil, cfgHighScore)
+	results, err = env.svc.HybridSearch(ctx, "postgres", 5, retrieval.SemanticSource{}, cfgHighScore)
 	require.NoError(t, err)
 	assert.Empty(t, results)
 }

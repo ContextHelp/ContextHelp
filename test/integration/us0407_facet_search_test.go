@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -218,7 +219,7 @@ func TestFacetSearch_HybridWithFilter(t *testing.T) {
 
 	// Hybrid search for "kubernetes" with MetadataType=task → only fs-hy-1.
 	results, err := env.svc.HybridSearchFiltered(ctx, "kubernetes",
-		storage.ObjectFilter{Limit: 10, MetadataType: "task"}, nil, cfg)
+		storage.ObjectFilter{Limit: 10, MetadataType: "task"}, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, "fs-hy-1", results[0].ID)

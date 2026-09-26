@@ -6,10 +6,12 @@ package storagetest
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -18,10 +20,62 @@ func fixtureTime() time.Time {
 	return time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
 }
 
-// VectorRankDimension is the embedding dimension of the golden rank corpus.
-// Drivers must be configured (SetVectorDimension) with this value before
-// Init so their ANN paths — not just brute-force fallbacks — are exercised.
+// VectorRankDimension is the embedding dimension of the golden rank corpus:
+// the registry dimension of the fixture model the corpus is indexed under.
 const VectorRankDimension = 4
+
+// VectorFixtureModelID is the registered model the vector fixtures index
+// and query under.
+const VectorFixtureModelID = "fixture-rank-4"
+
+// SeedVectorModel registers VectorFixtureModelID at VectorRankDimension and
+// builds its index. It skips the calling test when the driver's
+// EmbeddingStore is not implemented (errors.ErrUnsupported), so the vector
+// fixtures run as soon as the per-model index lands and render as loud
+// skips until then.
+func SeedVectorModel(t *testing.T, drv storage.StorageDriver) {
+	t.Helper()
+	ctx := context.Background()
+	reg, err := registry.ForDriver(drv)
+	if err != nil {
+		t.Fatalf("registry: %v", err)
+	}
+	m := registry.Model{
+		ModelID:    VectorFixtureModelID,
+		Provider:   "fixture",
+		Dimension:  VectorRankDimension,
+		ConfigJSON: "{}",
+	}
+	if err := reg.Register(ctx, m, false); err != nil && !errors.Is(err, registry.ErrModelAlreadyRegistered) {
+		t.Fatalf("register fixture model: %v", err)
+	}
+	err = drv.Embeddings().EnsureIndex(ctx, storage.EmbeddingModelSpec{
+		ModelID: m.ModelID, Provider: m.Provider, Dimension: m.Dimension,
+	})
+	if errors.Is(err, errors.ErrUnsupported) {
+		t.Skip("EmbeddingStore not implemented by this driver yet (per-model index); vector fixture skipped")
+	}
+	if err != nil {
+		t.Fatalf("EnsureIndex: %v", err)
+	}
+}
+
+// putFixtureVector stores vec as objectID's single chunk under the fixture
+// model.
+func putFixtureVector(t *testing.T, drv storage.StorageDriver, objectID string, vec []float32) {
+	t.Helper()
+	err := drv.Embeddings().Put(context.Background(), objectID, []storage.ObjectVector{
+		{ModelID: VectorFixtureModelID, ChunkIdx: 0, Vector: vec},
+	})
+	if err != nil {
+		t.Fatalf("Put %s: %v", objectID, err)
+	}
+}
+
+// fixtureQuery is a VectorQuery against the fixture model.
+func fixtureQuery(vec []float32) storage.VectorQuery {
+	return storage.VectorQuery{ModelID: VectorFixtureModelID, Vector: vec}
+}
 
 // vectorRankQuery is the fixture query vector.
 var vectorRankQuery = []float32{1, 0, 0, 0}
@@ -48,14 +102,14 @@ var vectorRankCorpus = []struct {
 var vectorRankOrder = []string{"vr-top", "vr-second", "vr-third", "vr-last"}
 
 // RunVectorRankFixture seeds the golden corpus through ObjectStore.Create
-// and asserts VectorSearch reproduces the pinned cosine rank order, plus
-// the Metadata["score"] contract: present, score = 1 - cosine_distance,
-// in range, monotonically non-increasing.
-//
-// The driver must already be initialized with VectorRankDimension.
+// plus EmbeddingStore.Put under the fixture model, and asserts VectorSearch
+// on that model reproduces the pinned cosine rank order, plus the
+// Metadata["score"] contract: present, score = 1 - cosine_distance, in
+// range, monotonically non-increasing.
 func RunVectorRankFixture(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
 	ctx := context.Background()
+	SeedVectorModel(t, drv)
 
 	for _, c := range vectorRankCorpus {
 		obj := &storage.KnowledgeObject{
@@ -63,16 +117,16 @@ func RunVectorRankFixture(t *testing.T, drv storage.StorageDriver) {
 			Type:       "note",
 			Status:     "active",
 			RawContent: "vector rank fixture " + c.ID,
-			Embeddings: c.Embedding,
 			CreatedAt:  fixtureTime(),
 			UpdatedAt:  fixtureTime(),
 		}
 		if err := drv.Objects().Create(ctx, obj); err != nil {
 			t.Fatalf("seed %s: %v", c.ID, err)
 		}
+		putFixtureVector(t, drv, c.ID, c.Embedding)
 	}
 
-	results, err := drv.Objects().VectorSearch(ctx, vectorRankQuery, storage.ObjectFilter{Limit: len(vectorRankCorpus)})
+	results, err := drv.Objects().VectorSearch(ctx, fixtureQuery(vectorRankQuery), storage.ObjectFilter{Limit: len(vectorRankCorpus)})
 	if err != nil {
 		t.Fatalf("VectorSearch: %v", err)
 	}

@@ -19,7 +19,7 @@ func TestRagRetrieve_FiltersByType(t *testing.T) {
 	)
 	cfg := DefaultConfig()
 	cfg.EnableSufficiencyCheck = false
-	wf := NewWorkflow(cfg, store, nil, &mockEmbedding{})
+	wf := NewWorkflow(cfg, store, nil, fixedSemantic())
 
 	state := &State{
 		OriginalQuery:  "test",
@@ -43,7 +43,7 @@ func TestRagRetrieve_RespectsTopK(t *testing.T) {
 	)
 	cfg := DefaultConfig()
 	cfg.EnableSufficiencyCheck = false
-	wf := NewWorkflow(cfg, store, nil, &mockEmbedding{})
+	wf := NewWorkflow(cfg, store, nil, fixedSemantic())
 
 	state := &State{ActiveQuery: "test", NeedsRetrieval: true}
 	err := wf.ragRetrieve(context.Background(), state, &state.CategoryHits, "category", 2, storage.ObjectFilter{}, nil)
@@ -59,7 +59,7 @@ func TestRagRetrieve_NoEmbeddingFallsBackToList(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.EnableSufficiencyCheck = false
 	// No embedding provider.
-	wf := NewWorkflow(cfg, store, nil, nil)
+	wf := NewWorkflow(cfg, store, nil, SemanticSource{})
 
 	state := &State{ActiveQuery: "test", NeedsRetrieval: true}
 	err := wf.ragRetrieve(context.Background(), state, &state.ItemHits, "item", 10, storage.ObjectFilter{}, nil)
@@ -76,7 +76,7 @@ func TestRetrieveCategories_Items_Resources(t *testing.T) {
 	)
 	cfg := DefaultConfig()
 	cfg.EnableSufficiencyCheck = false
-	wf := NewWorkflow(cfg, store, nil, &mockEmbedding{})
+	wf := NewWorkflow(cfg, store, nil, fixedSemantic())
 
 	state := &State{ActiveQuery: "query", NeedsRetrieval: true, ProceedToItems: true, ProceedToResources: true}
 
@@ -99,7 +99,7 @@ type nodeAwareMockObjects struct {
 
 func (m *nodeAwareMockObjects) VectorSearchNodeAware(
 	_ context.Context,
-	_ []float32,
+	_ storage.VectorQuery,
 	f storage.ObjectFilter,
 	naf pluginapi.NodeAwareFilter,
 ) ([]*pluginapi.NodeAwareResult, error) {
@@ -152,7 +152,6 @@ func (n *naStore) Attachments() storage.AttachmentStore       { return nil }
 func (n *naStore) Resurfacing() storage.ResurfacingQueueStore { return nil }
 func (n *naStore) Entitlements() storage.EntitlementStore     { return nil }
 func (n *naStore) Metering() storage.MeteringStore            { return nil }
-func (n *naStore) Vectors() storage.VectorStore               { return nil }
 func (n *naStore) Embeddings() storage.EmbeddingStore         { return nil }
 func (n *naStore) SavedSearches() storage.SavedSearchStore    { return nil }
 func (n *naStore) SearchHistory() storage.SearchHistoryStore  { return nil }
@@ -173,7 +172,7 @@ func TestRagRetrieve_NodeAwareFilterRoutesThroughNodeAwarePath(t *testing.T) {
 	store := newNodeAwareMockStore(all, nodeAware)
 	cfg := DefaultConfig()
 	cfg.EnableSufficiencyCheck = false
-	wf := NewWorkflow(cfg, store, nil, &mockEmbedding{})
+	wf := NewWorkflow(cfg, store, nil, fixedSemantic())
 
 	nf := &pluginapi.NodeAwareFilter{NodeTypes: []string{"question"}}
 	state := &State{ActiveQuery: "open questions?", NeedsRetrieval: true}
@@ -202,7 +201,7 @@ func TestRetrieve_NodeAwareFilterThreadedThroughWorkflow(t *testing.T) {
 
 	cfg := DefaultConfig()
 	cfg.EnableSufficiencyCheck = false
-	wf := NewWorkflow(cfg, store, nil, &mockEmbedding{})
+	wf := NewWorkflow(cfg, store, nil, fixedSemantic())
 
 	nf := &pluginapi.NodeAwareFilter{NodeTypes: []string{"section"}}
 	result, err := wf.Retrieve(context.Background(), "query", nil, storage.ObjectFilter{}, nf)

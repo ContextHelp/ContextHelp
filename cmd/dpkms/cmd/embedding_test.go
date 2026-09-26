@@ -9,36 +9,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 )
 
-func TestDevReindexVectors_EmbeddingFlagsReachTheResolver(t *testing.T) {
-	db := setupTestDB(t)
-	out, err := db.run("dev", "reindex-vectors", "--embedding-endpoint", "127.0.0.1:11555")
-	if err == nil || !strings.Contains(err.Error(), "--embedding-endpoint") {
-		t.Fatalf("err = %v\n%s", err, out)
-	}
-	out, err = db.run("dev", "reindex-vectors", "--embedding-provider", "stub")
-	if err != nil || !strings.Contains(out, "indexed=0") {
-		t.Fatalf("stub provider: err = %v\n%s", err, out)
-	}
-}
-
-func TestEmbeddingFlags_DpkmsSignatureClean(t *testing.T) {
-	resetAllFlags(rootCmd)
-	target, _, err := rootCmd.Find([]string{"dev", "reindex-vectors"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range []string{embeddings.FlagProvider, embeddings.FlagModel, embeddings.FlagEndpoint} {
-		if target.LocalFlags().Lookup(f) == nil {
-			t.Errorf("dev reindex-vectors: missing local --%s", f)
-		}
-	}
-	for _, v := range root.ValidateSignature().Violations {
-		if strings.Contains(v.Path, "reindex-vectors") {
-			t.Errorf("signature violation: %s [%s/%s] %s", v.Path, v.Check, v.Severity, v.Detail)
-		}
-	}
-}
-
 // serve reports the provider it resolved at startup, with sources, so an
 // operator can see a one-run env override took effect.
 func TestServeReportsResolvedEmbeddingProvider(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,7 +42,7 @@ func TestUS0018_FTSAndRSQLPathsBothReturn(t *testing.T) {
 		CandidatePool: config.CandidatePoolConfig{FTS: 20, Vector: 20},
 		FallbackToFTS: true,
 	}
-	ftsResults, err := env.svc.HybridSearch(ctx, "kubernetes scheduling", 5, nil, cfg)
+	ftsResults, err := env.svc.HybridSearch(ctx, "kubernetes scheduling", 5, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	assert.True(t, containsIDPtr(ftsResults, "ms-shared-01"), "FTS path must find the object")
 
@@ -83,7 +84,7 @@ func TestUS0018_HybridSearchDeduplicate(t *testing.T) {
 		CandidatePool: config.CandidatePoolConfig{FTS: 20, Vector: 20},
 		FallbackToFTS: true,
 	}
-	results, err := env.svc.HybridSearch(ctx, "CQRS", 10, nil, cfg)
+	results, err := env.svc.HybridSearch(ctx, "CQRS", 10, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 
 	// Verify no duplicates.
@@ -119,7 +120,7 @@ func TestUS0018_ExplainContainsScoreBreakdown(t *testing.T) {
 		CandidatePool: config.CandidatePoolConfig{FTS: 20, Vector: 20},
 		FallbackToFTS: true,
 	}
-	results, err := env.svc.HybridSearchExplain(ctx, "circuit breaker", 5, nil, cfg)
+	results, err := env.svc.HybridSearchExplain(ctx, "circuit breaker", 5, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.NotEmpty(t, results)
 

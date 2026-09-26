@@ -12,31 +12,28 @@ import (
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
-// EmbeddingProvider wraps providers.EmbeddingProvider to match retrieval usage.
-type EmbeddingProvider interface {
-	Embed(ctx context.Context, text string) ([]float32, error)
-}
-
 // Workflow orchestrates progressive retrieval with optional sufficiency checking.
 type Workflow struct {
-	config    Config
-	store     storage.StorageDriver
-	llm       providers.LLMProvider
-	embedding EmbeddingProvider
+	config   Config
+	store    storage.StorageDriver
+	llm      providers.LLMProvider
+	semantic SemanticSource
 }
 
-// NewWorkflow creates a new retrieval workflow.
+// NewWorkflow creates a new retrieval workflow. semantic reaches the default
+// embedding model's index; its zero value runs without a vector leg (and
+// reports no_default_model).
 func NewWorkflow(
 	config Config,
 	store storage.StorageDriver,
 	llm providers.LLMProvider,
-	embedding EmbeddingProvider,
+	semantic SemanticSource,
 ) *Workflow {
 	return &Workflow{
-		config:    config,
-		store:     store,
-		llm:       llm,
-		embedding: embedding,
+		config:   config,
+		store:    store,
+		llm:      llm,
+		semantic: semantic,
 	}
 }
 
@@ -211,6 +208,7 @@ func (w *Workflow) buildResult(state *State) *Result {
 		OriginalQuery:  state.OriginalQuery,
 		RewrittenQuery: state.RewrittenQuery,
 		NextStepQuery:  state.NextStepQuery,
+		Semantic:       state.Semantic,
 	}
 
 	for _, hit := range state.CategoryHits {

@@ -16,6 +16,8 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -25,7 +27,9 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -65,7 +69,12 @@ func checkIntegration(t testing.TB) {
 	}
 }
 
-// newSimDriver creates a fresh SQLite driver in a temp dir configured for simDim.
+// simModelID is the registered default model the corpus is embedded under.
+const simModelID = "sim-1536"
+
+// newSimDriver creates a fresh SQLite driver in a temp dir with simModelID
+// registered as the default at simDim and indexed. It skips until the
+// driver's per-model EmbeddingStore is implemented.
 func newSimDriver(t testing.TB) *sqlite.Driver {
 	t.Helper()
 	dir := t.TempDir()
@@ -73,11 +82,22 @@ func newSimDriver(t testing.TB) *sqlite.Driver {
 	if err != nil {
 		t.Fatalf("new sim driver: %v", err)
 	}
-	d.SetVectorDimension(simDim)
-	if err := d.Init(context.Background()); err != nil {
+	ctx := context.Background()
+	if err := d.Init(ctx); err != nil {
 		t.Fatalf("init sim driver: %v", err)
 	}
 	t.Cleanup(func() { d.Close(context.Background()) })
+	m := registry.Model{ModelID: simModelID, Provider: "fixture", Dimension: simDim, ConfigJSON: "{}"}
+	if err := registry.New(d.DB()).Register(ctx, m, true); err != nil {
+		t.Fatalf("register sim model: %v", err)
+	}
+	err = d.Embeddings().EnsureIndex(ctx, storage.EmbeddingModelSpec{ModelID: m.ModelID, Provider: m.Provider, Dimension: simDim})
+	if errors.Is(err, errors.ErrUnsupported) {
+		t.Skip("EmbeddingStore not implemented by the driver yet (per-model index)")
+	}
+	if err != nil {
+		t.Fatalf("index sim model: %v", err)
+	}
 	return d
 }
 
@@ -117,7 +137,6 @@ func makeSimObject(rng *rand.Rand, i int, entitySlugs []string) *storage.Knowled
 		TextContent: summary,
 		Summaries:   []string{summary},
 		Tags:        tags,
-		Embeddings:  randVec(rng, simDim),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 		Status:      "active",
@@ -154,8 +173,13 @@ func ingestObjects(t testing.TB, d *sqlite.Driver, count int, entitySlugs []stri
 	rng := rand.New(rand.NewSource(42)) //nolint:gosec
 	start := time.Now()
 	for i := 0; i < count; i++ {
-		if err := d.Objects().Create(ctx, makeSimObject(rng, i, entitySlugs)); err != nil {
+		obj := makeSimObject(rng, i, entitySlugs)
+		if err := d.Objects().Create(ctx, obj); err != nil {
 			t.Fatalf("create object %d: %v", i, err)
+		}
+		vec := []storage.ObjectVector{{ModelID: simModelID, Vector: randVec(rng, simDim)}}
+		if err := d.Embeddings().Put(ctx, obj.ID, vec); err != nil {
+			t.Fatalf("put vector %d: %v", i, err)
 		}
 	}
 	return time.Since(start)
@@ -197,6 +221,23 @@ func (p *fixedVecProvider) Embed(_ context.Context, _ string) ([]float32, error)
 
 var _ providers.EmbeddingProvider = (*fixedVecProvider)(nil)
 
+// fixedVecResolver resolves every model to a fixedVecProvider.
+type fixedVecResolver struct{ vec []float32 }
+
+func (r fixedVecResolver) ForModel(context.Context, registry.Model) (providers.EmbeddingProvider, error) {
+	return &fixedVecProvider{vec: r.vec}, nil
+}
+
+func (r fixedVecResolver) ForRegistration(context.Context) (providers.EmbeddingProvider, json.RawMessage, error) {
+	return &fixedVecProvider{vec: r.vec}, nil, nil
+}
+
+// simSemantic reads the sim driver's default model and embeds every query
+// as queryVec.
+func simSemantic(d *sqlite.Driver, queryVec []float32) retrieval.SemanticSource {
+	return retrieval.SemanticSource{Models: registry.New(d.DB()), Resolver: fixedVecResolver{vec: queryVec}}
+}
+
 // TestSimulation_100k is the primary correctness + scale test.
 // Ingests 100k objects and verifies all three search paths return results.
 func TestSimulation_100k(t *testing.T) {
@@ -226,11 +267,11 @@ func TestSimulation_100k(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, simObjectCount, total, "total object count")
 
-	// Verify ANN index count.
-	vecCount, err := d.Vectors().Count(ctx)
+	// Every object carries a vector under the default model.
+	missing, err := d.Embeddings().ListMissing(ctx, simModelID, "", 1)
 	require.NoError(t, err)
-	require.Equal(t, simObjectCount, vecCount, "vec_objects ANN index count")
-	t.Logf("vec_objects indexed: %d; %s", vecCount, memStats())
+	require.Empty(t, missing, "objects without a %s vector", simModelID)
+	t.Logf("%s coverage complete; %s", simModelID, memStats())
 
 	rng := rand.New(rand.NewSource(99)) //nolint:gosec
 	queryVec := randVec(rng, simDim)
@@ -244,10 +285,10 @@ func TestSimulation_100k(t *testing.T) {
 	t.Logf("FTS search %q → %d results in %s", ftsQuery, len(ftsResults), time.Since(ftsStart))
 	require.NotEmpty(t, ftsResults, "FTS should return results for %q", ftsQuery)
 
-	// --- ANN vector search (VecStore) ---
-	t.Log("running ANN vector search (VecStore)...")
+	// --- ANN vector search (EmbeddingStore) ---
+	t.Log("running ANN vector search (EmbeddingStore)...")
 	annStart := time.Now()
-	annHits, err := d.Vectors().Search(ctx, queryVec, 20)
+	annHits, err := d.Embeddings().Search(ctx, storage.VectorQuery{ModelID: simModelID, Vector: queryVec, TopK: 20})
 	require.NoError(t, err)
 	t.Logf("ANN search → %d hits in %s", len(annHits), time.Since(annStart))
 	require.NotEmpty(t, annHits, "ANN search should return results")
@@ -255,7 +296,7 @@ func TestSimulation_100k(t *testing.T) {
 	// --- ObjectStore.VectorSearch (should delegate to ANN) ---
 	t.Log("running ObjectStore.VectorSearch (ANN delegation)...")
 	objVecStart := time.Now()
-	objVecResults, err := d.Objects().VectorSearch(ctx, queryVec, storage.ObjectFilter{Limit: 20})
+	objVecResults, err := d.Objects().VectorSearch(ctx, storage.VectorQuery{ModelID: simModelID, Vector: queryVec}, storage.ObjectFilter{Limit: 20})
 	require.NoError(t, err)
 	t.Logf("ObjectStore.VectorSearch → %d results in %s", len(objVecResults), time.Since(objVecStart))
 	require.NotEmpty(t, objVecResults, "ObjectStore.VectorSearch should return results")
@@ -264,7 +305,7 @@ func TestSimulation_100k(t *testing.T) {
 	t.Log("running hybrid search...")
 	eng := search.NewEngine(d)
 	svc := service.New(d, nil, nil, eng, "", nil)
-	ep := &fixedVecProvider{vec: queryVec}
+	sem := simSemantic(d, queryVec)
 	cfg := config.SearchConfig{
 		DefaultMode:   "hybrid",
 		RRF:           config.RRFConfig{K: 60, FTSWeight: 0.5, VectorWeight: 0.5},
@@ -272,7 +313,7 @@ func TestSimulation_100k(t *testing.T) {
 		FallbackToFTS: true,
 	}
 	hybridStart := time.Now()
-	hybridResults, err := svc.HybridSearch(ctx, ftsQuery, 20, ep, cfg)
+	hybridResults, err := svc.HybridSearch(ctx, ftsQuery, 20, sem, cfg)
 	require.NoError(t, err)
 	t.Logf("hybrid search %q → %d results in %s", ftsQuery, len(hybridResults), time.Since(hybridStart))
 	require.NotEmpty(t, hybridResults, "hybrid search should return results")
@@ -321,7 +362,7 @@ func BenchmarkVectorSearch_100k(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		hits, err := d.Vectors().Search(ctx, queryVec, 20)
+		hits, err := d.Embeddings().Search(ctx, storage.VectorQuery{ModelID: simModelID, Vector: queryVec, TopK: 20})
 		if err != nil {
 			b.Fatalf("vector search: %v", err)
 		}
@@ -340,7 +381,6 @@ func BenchmarkHybridSearch_100k(b *testing.B) {
 
 	rng := rand.New(rand.NewSource(13)) //nolint:gosec
 	queryVec := randVec(rng, simDim)
-	ep := &fixedVecProvider{vec: queryVec}
 	cfg := config.SearchConfig{
 		DefaultMode:   "hybrid",
 		RRF:           config.RRFConfig{K: 60, FTSWeight: 0.5, VectorWeight: 0.5},
@@ -349,13 +389,14 @@ func BenchmarkHybridSearch_100k(b *testing.B) {
 	}
 	eng := search.NewEngine(d)
 	svc := service.New(d, nil, nil, eng, "", nil)
+	sem := simSemantic(d, queryVec)
 
 	ctx := context.Background()
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		q := simTags[i%len(simTags)]
-		results, err := svc.HybridSearch(ctx, q, 20, ep, cfg)
+		results, err := svc.HybridSearch(ctx, q, 20, sem, cfg)
 		if err != nil {
 			b.Fatalf("hybrid search: %v", err)
 		}

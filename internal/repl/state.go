@@ -25,6 +25,10 @@ type SessionState struct {
 	// QueryHistory holds the last QueryHistoryMax embedding vectors for session-context
 	// blending. Index 0 is oldest; last index is most recent.
 	QueryHistory [][]float32
+	// QueryModelID is the embedding model every QueryHistory vector belongs
+	// to. Vectors from different models live in different spaces, so a
+	// query under another model starts a fresh history.
+	QueryModelID string
 	// QueryHistoryMax is the sliding window size. Defaults to defaultQueryHistoryMax.
 	QueryHistoryMax int
 }
@@ -51,8 +55,14 @@ func (s *SessionState) historyMax() int {
 	return defaultQueryHistoryMax
 }
 
-// PushQueryVector appends vec to QueryHistory and trims to QueryHistoryMax.
-func (s *SessionState) PushQueryVector(vec []float32) {
+// PushQueryVector appends vec, embedded under modelID, to QueryHistory and
+// trims to QueryHistoryMax. A modelID other than QueryModelID drops the
+// existing history first: vectors of different models are never mixed.
+func (s *SessionState) PushQueryVector(modelID string, vec []float32) {
+	if modelID != s.QueryModelID {
+		s.QueryHistory = nil
+		s.QueryModelID = modelID
+	}
 	s.QueryHistory = append(s.QueryHistory, vec)
 	max := s.historyMax()
 	if len(s.QueryHistory) > max {
@@ -61,10 +71,12 @@ func (s *SessionState) PushQueryVector(vec []float32) {
 }
 
 // SessionContextVector returns a weighted average of the query history vectors,
-// biased toward the most recent entry. Returns nil if fewer than 2 entries exist.
-// The result is NOT normalized — callers blend and normalize as needed.
-func (s *SessionState) SessionContextVector() []float32 {
-	if len(s.QueryHistory) < 2 {
+// biased toward the most recent entry, for a query embedded under modelID.
+// Returns nil if fewer than 2 entries exist or the history belongs to a
+// different model. The result is NOT normalized — callers blend and
+// normalize as needed.
+func (s *SessionState) SessionContextVector(modelID string) []float32 {
+	if modelID != s.QueryModelID || len(s.QueryHistory) < 2 {
 		return nil
 	}
 

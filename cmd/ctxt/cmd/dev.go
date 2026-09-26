@@ -18,7 +18,6 @@ var devCmd = &cobra.Command{
 // devLong supplies a per-subcommand Long description so the deprecated
 // dev stubs satisfy the 12fcc cmd.Long requirement.
 var devLong = map[string]string{
-	"reindex-vectors":   "Deprecated alias for 'dpkms dev reindex-vectors'. Forwards invocations to dpkms.",
 	"validate-registry": "Deprecated alias for 'dpkms dev validate-registry'. Forwards invocations to dpkms.",
 	"init-plugin":       "Deprecated alias for 'dpkms dev init-plugin'. Forwards invocations to dpkms.",
 	"gen-docs":          "Deprecated alias for 'dpkms dev gen-docs'. Forwards invocations to dpkms.",
@@ -27,10 +26,6 @@ var devLong = map[string]string{
 // devExamples supplies 12fcc strict-gate Examples per subcommand. The
 // surface is deprecated so the examples mirror the dpkms canonical CLI.
 var devExamples = map[string][]cliconv.Example{
-	"reindex-vectors": {
-		{Title: "Reindex every embedding", Command: "dpkms dev reindex-vectors"},
-		{Title: "Reindex a single model", Command: "dpkms dev reindex-vectors --model text-embedding-3-small"},
-	},
 	"validate-registry": {
 		{Title: "Validate the local registry", Command: "dpkms dev validate-registry"},
 		{Title: "Validate a remote registry", Command: "dpkms dev validate-registry --registry https://registry.example.com"},
@@ -47,9 +42,6 @@ var devExamples = map[string][]cliconv.Example{
 
 // devNextSteps supplies follow-ups for the dev write verbs.
 var devNextSteps = map[string][]cliconv.NextStep{
-	"reindex-vectors": {
-		{When: "on success", Suggest: "dpkms job list --pipeline reindex", Reason: "watch reindex jobs finish"},
-	},
 	"validate-registry": {
 		{When: "on validation errors", Suggest: "dpkms registry list --status invalid", Reason: "inspect the offending plugins"},
 	},
@@ -65,7 +57,7 @@ func init() {
 	rootCmd.AddCommand(devCmd)
 
 	for _, sub := range []string{
-		"reindex-vectors", "validate-registry", "init-plugin", "gen-docs",
+		"validate-registry", "init-plugin", "gen-docs",
 	} {
 		name := sub
 		c := &cobra.Command{

@@ -5,10 +5,11 @@ package integration
 // image embedding, verifies visually similar images are ranked higher than
 // dissimilar ones.
 //
-// Visual embeddings use the same storage mechanism as text embeddings
-// (Embeddings []float32 field on KnowledgeObject) with type="image".
-// The VectorSearch store method is used directly since a full VLM embedding
-// provider is not available in the integration test environment.
+// Visual embeddings use the same storage mechanism as text embeddings (rows
+// under a registered model in the per-model embedding store) with
+// type="image". The VectorSearch store method is used directly since a full
+// VLM embedding provider is not available in the integration test
+// environment.
 
 import (
 	"context"
@@ -41,6 +42,7 @@ func TestUS0061_VisuallySimialrImageRanksHigher(t *testing.T) {
 	ctx := context.Background()
 	now := nowTrunc()
 	const dim = 8
+	requireVectorIndex(t, env, dim)
 
 	// Image closely matching the query vector.
 	similar := &storage.KnowledgeObject{
@@ -48,7 +50,6 @@ func TestUS0061_VisuallySimialrImageRanksHigher(t *testing.T) {
 		Type:          "image",
 		Subtype:       "jpeg",
 		Summaries:     []string{"authentication flow architecture diagram"},
-		Embeddings:    makeVisualEmbedding(dim, map[int]float32{0: 0.98, 1: 0.1}),
 		VectorIndexed: true,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -59,18 +60,17 @@ func TestUS0061_VisuallySimialrImageRanksHigher(t *testing.T) {
 		Type:          "image",
 		Subtype:       "png",
 		Summaries:     []string{"database schema entity relationship diagram"},
-		Embeddings:    makeVisualEmbedding(dim, map[int]float32{3: 0.95, 4: 0.2}),
 		VectorIndexed: true,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
 
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, similar))
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, dissimilar))
+	createWithVector(t, env, similar, makeVisualEmbedding(dim, map[int]float32{0: 0.98, 1: 0.1}))
+	createWithVector(t, env, dissimilar, makeVisualEmbedding(dim, map[int]float32{3: 0.95, 4: 0.2}))
 
 	// Query vector aligned with "similar" image.
 	queryVec := makeVisualEmbedding(dim, map[int]float32{0: 1.0})
-	results, err := env.svc.Store.Objects().VectorSearch(ctx, queryVec, storage.ObjectFilter{Limit: 5})
+	results, err := env.svc.Store.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 5})
 	require.NoError(t, err)
 	require.NotEmpty(t, results, "vector search must return results for image embeddings")
 	assert.Equal(t, "vis-sim-01", results[0].ID,
@@ -87,6 +87,7 @@ func TestUS0061_DualEmbeddingImageAndTextCoexist(t *testing.T) {
 	ctx := context.Background()
 	now := nowTrunc()
 	const dim = 4
+	requireVectorIndex(t, env, dim)
 
 	imgObj := &storage.KnowledgeObject{
 		ID:            "vis-dual-01",
@@ -94,12 +95,11 @@ func TestUS0061_DualEmbeddingImageAndTextCoexist(t *testing.T) {
 		Subtype:       "png",
 		Summaries:     []string{"whiteboard photo of microservices topology"},
 		RawContent:    "microservices topology",
-		Embeddings:    makeVisualEmbedding(dim, map[int]float32{0: 0.9, 1: 0.3}),
 		VectorIndexed: true,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, imgObj))
+	createWithVector(t, env, imgObj, makeVisualEmbedding(dim, map[int]float32{0: 0.9, 1: 0.3}))
 	rebuildFTSIntegration(t, env)
 
 	// RSQL path must find it.
@@ -110,7 +110,7 @@ func TestUS0061_DualEmbeddingImageAndTextCoexist(t *testing.T) {
 
 	// Vector search path must also find it.
 	queryVec := makeVisualEmbedding(dim, map[int]float32{0: 1.0})
-	vecResults, err := env.svc.Store.Objects().VectorSearch(ctx, queryVec, storage.ObjectFilter{Limit: 5})
+	vecResults, err := env.svc.Store.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 5})
 	require.NoError(t, err)
 	assert.True(t, containsIDPtr(vecResults, "vis-dual-01"), "image must be findable via vector search")
 }
@@ -125,11 +125,11 @@ func TestUS0061_ImageTypeFilterRestrictsVectorResults(t *testing.T) {
 	ctx := context.Background()
 	now := nowTrunc()
 	const dim = 4
+	requireVectorIndex(t, env, dim)
 
 	imgObj := &storage.KnowledgeObject{
 		ID:            "vis-img-only-01",
 		Type:          "image",
-		Embeddings:    makeVisualEmbedding(dim, map[int]float32{0: 0.9}),
 		VectorIndexed: true,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -137,18 +137,17 @@ func TestUS0061_ImageTypeFilterRestrictsVectorResults(t *testing.T) {
 	textObj := &storage.KnowledgeObject{
 		ID:            "vis-text-01",
 		Type:          "text",
-		Embeddings:    makeVisualEmbedding(dim, map[int]float32{0: 0.85}),
 		VectorIndexed: true,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
 
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, imgObj))
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, textObj))
+	createWithVector(t, env, imgObj, makeVisualEmbedding(dim, map[int]float32{0: 0.9}))
+	createWithVector(t, env, textObj, makeVisualEmbedding(dim, map[int]float32{0: 0.85}))
 
 	// Vector search filtered to type==image.
 	queryVec := makeVisualEmbedding(dim, map[int]float32{0: 1.0})
-	results, err := env.svc.Store.Objects().VectorSearch(ctx, queryVec, storage.ObjectFilter{
+	results, err := env.svc.Store.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{
 		Limit: 10,
 		Type:  "image",
 	})
@@ -167,11 +166,11 @@ func TestUS0061_NoEmbeddingImageExcludedFromVectorSearch(t *testing.T) {
 	ctx := context.Background()
 	now := nowTrunc()
 	const dim = 4
+	requireVectorIndex(t, env, dim)
 
 	withEmb := &storage.KnowledgeObject{
 		ID:            "vis-emb-yes",
 		Type:          "image",
-		Embeddings:    makeVisualEmbedding(dim, map[int]float32{0: 1.0}),
 		VectorIndexed: true,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -183,11 +182,11 @@ func TestUS0061_NoEmbeddingImageExcludedFromVectorSearch(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, withEmb))
+	createWithVector(t, env, withEmb, makeVisualEmbedding(dim, map[int]float32{0: 1.0}))
 	require.NoError(t, env.svc.Store.Objects().Create(ctx, noEmb))
 
 	queryVec := makeVisualEmbedding(dim, map[int]float32{0: 1.0})
-	results, err := env.svc.Store.Objects().VectorSearch(ctx, queryVec, storage.ObjectFilter{Limit: 10})
+	results, err := env.svc.Store.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 10})
 	require.NoError(t, err)
 	assert.True(t, containsIDPtr(results, "vis-emb-yes"), "image with embedding must appear")
 	assert.False(t, containsIDPtr(results, "vis-emb-no"), "image without embedding must be excluded")

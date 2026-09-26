@@ -6,6 +6,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -53,7 +54,7 @@ func TestHybridSearch_FTSOnly_WhenNoEmbeddingProvider(t *testing.T) {
 		FallbackToFTS: true,
 	}
 
-	results, err := svc.HybridSearch(ctx, "distributed", 10, nil, cfg)
+	results, err := svc.HybridSearch(ctx, "distributed", 10, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, "hs-1", results[0].ID)
@@ -155,7 +156,7 @@ func TestHybridSearch_ErrorWhenNoProvider_FallbackDisabled(t *testing.T) {
 		DefaultMode:   "hybrid",
 		FallbackToFTS: false,
 	}
-	_, err := svc.HybridSearch(ctx, "anything", 10, nil, cfg)
+	_, err := svc.HybridSearch(ctx, "anything", 10, retrieval.SemanticSource{}, cfg)
 	require.Error(t, err)
 }
 
@@ -174,7 +175,7 @@ func TestHybridSearchExplain_ReturnsBreakdown(t *testing.T) {
 		FallbackToFTS: true,
 	}
 
-	results, err := svc.HybridSearchExplain(ctx, "observability", 10, nil, cfg)
+	results, err := svc.HybridSearchExplain(ctx, "observability", 10, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 
@@ -197,7 +198,7 @@ func TestHybridSearchExplain_ErrorWhenNoProvider_FallbackDisabled(t *testing.T) 
 		DefaultMode:   "hybrid",
 		FallbackToFTS: false,
 	}
-	_, err := svc.HybridSearchExplain(ctx, "anything", 10, nil, cfg)
+	_, err := svc.HybridSearchExplain(ctx, "anything", 10, retrieval.SemanticSource{}, cfg)
 	require.Error(t, err)
 }
 
@@ -230,7 +231,7 @@ func TestHybridSearchExplainFilteredWithDiagnostics_BelowThresholdPopulated(t *t
 	}
 
 	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(
-		ctx, "resilient", storage.ObjectFilter{Limit: 10}, nil, cfg,
+		ctx, "resilient", storage.ObjectFilter{Limit: 10}, retrieval.SemanticSource{}, cfg,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, envelope)
@@ -263,7 +264,7 @@ func TestHybridSearchExplainFilteredWithDiagnostics_NoCandidates(t *testing.T) {
 	}
 
 	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(
-		ctx, "zzz_nothing_indexed_xyzzy", storage.ObjectFilter{Limit: 10}, nil, cfg,
+		ctx, "zzz_nothing_indexed_xyzzy", storage.ObjectFilter{Limit: 10}, retrieval.SemanticSource{}, cfg,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, envelope)
@@ -289,11 +290,11 @@ func TestHybridSearchExplain_TotalMatchesHybridSearchRRFScore(t *testing.T) {
 		FallbackToFTS: true,
 	}
 
-	plain, err := svc.HybridSearch(ctx, "event sourcing", 10, nil, cfg)
+	plain, err := svc.HybridSearch(ctx, "event sourcing", 10, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.Len(t, plain, 1)
 
-	explained, err := svc.HybridSearchExplain(ctx, "event sourcing", 10, nil, cfg)
+	explained, err := svc.HybridSearchExplain(ctx, "event sourcing", 10, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.Len(t, explained, 1)
 
@@ -341,7 +342,7 @@ func TestHybridSearch_StalenessWarning_PopulatedWhenStaleVersionPresent(t *testi
 	}
 
 	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(
-		ctx, "distributed", storage.ObjectFilter{Limit: 10}, nil, cfg,
+		ctx, "distributed", storage.ObjectFilter{Limit: 10}, retrieval.SemanticSource{}, cfg,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, envelope.Diagnostics.StalenessWarning, "expected staleness warning")
@@ -372,7 +373,7 @@ func TestHybridSearch_StalenessWarning_OmittedWhenAllCurrent(t *testing.T) {
 	}
 
 	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(
-		ctx, "distributed", storage.ObjectFilter{Limit: 10}, nil, cfg,
+		ctx, "distributed", storage.ObjectFilter{Limit: 10}, retrieval.SemanticSource{}, cfg,
 	)
 	require.NoError(t, err)
 	if envelope.Diagnostics.StalenessWarning != nil {

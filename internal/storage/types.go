@@ -560,12 +560,6 @@ type QuotaConfig struct {
 	ResetsAt time.Time `json:"resets_at" yaml:"resets_at"`
 }
 
-// VectorHit is a single result returned by VectorStore.Search.
-type VectorHit struct {
-	ID    string  `json:"id"`
-	Score float64 `json:"score"`
-}
-
 // SavedSearch is a persisted named search query with optional alert config (US-0054).
 type SavedSearch struct {
 	ID        string    `json:"id"`
