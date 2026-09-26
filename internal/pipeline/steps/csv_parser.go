@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -11,6 +12,8 @@ import (
 )
 
 // CSVParser reads draft.RawContent as CSV, using the first row as headers.
+// Without an explicit delimiter, a draft whose source ends in .tsv is read
+// tab-separated and any other comma-separated.
 type CSVParser struct {
 	pipeline.BaseContract
 	delimiter rune
@@ -19,7 +22,7 @@ type CSVParser struct {
 // CSVParserOption configures a CSVParser.
 type CSVParserOption func(*CSVParser)
 
-// WithDelimiter sets a custom field delimiter (default is comma).
+// WithDelimiter sets a custom field delimiter (default picks by source).
 func WithDelimiter(d rune) CSVParserOption {
 	return func(p *CSVParser) { p.delimiter = d }
 }
@@ -31,7 +34,6 @@ func NewCSVParser(opts ...CSVParserOption) *CSVParser {
 			Requires: []string{"RawContent"},
 			Produces: []string{"Metadata"},
 		}),
-		delimiter: ',',
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -48,6 +50,12 @@ func (s *CSVParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*sto
 
 	r := csv.NewReader(strings.NewReader(draft.RawContent))
 	r.Comma = s.delimiter
+	if r.Comma == 0 {
+		r.Comma = ','
+		if strings.EqualFold(filepath.Ext(draft.Source), ".tsv") {
+			r.Comma = '\t'
+		}
+	}
 
 	rows, err := r.ReadAll()
 	if err != nil {

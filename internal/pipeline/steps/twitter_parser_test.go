@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -36,13 +37,13 @@ func TestTwitterArchiveParser_Run(t *testing.T) {
 		t.Fatalf("Run: unexpected error: %v", err)
 	}
 
-	raw, ok := out.Metadata["twitter_tweets"]
+	raw, ok := out.Metadata["feed_items"]
 	if !ok {
-		t.Fatal("metadata key twitter_tweets not set")
+		t.Fatal("metadata key feed_items not set")
 	}
 	tweets, ok := raw.([]map[string]any)
 	if !ok {
-		t.Fatalf("twitter_tweets has unexpected type %T", raw)
+		t.Fatalf("feed_items has unexpected type %T", raw)
 	}
 	if len(tweets) != 1 {
 		t.Fatalf("expected 1 tweet, got %d", len(tweets))
@@ -55,6 +56,13 @@ func TestTwitterArchiveParser_Run(t *testing.T) {
 	if hashtags, ok := tw["hashtags"].([]string); !ok || len(hashtags) != 1 {
 		t.Errorf("tweet hashtags = %v", tw["hashtags"])
 	}
+	content, _ := tw["content"].(string)
+	if !strings.Contains(content, "Step pipeline test tweet #test") {
+		t.Errorf("content = %q, want the rendered tweet", content)
+	}
+	if tw["source"] != "https://twitter.com/i/web/status/111222333" || tw["guid"] != "twitter:111222333" {
+		t.Errorf("source %v guid %v", tw["source"], tw["guid"])
+	}
 }
 
 func TestTwitterArchiveParser_EmptyContent(t *testing.T) {
@@ -64,7 +72,7 @@ func TestTwitterArchiveParser_EmptyContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: unexpected error: %v", err)
 	}
-	tweets := out.Metadata["twitter_tweets"].([]map[string]any)
+	tweets := out.Metadata["feed_items"].([]map[string]any)
 	if len(tweets) != 0 {
 		t.Errorf("expected 0 tweets for empty content, got %d", len(tweets))
 	}

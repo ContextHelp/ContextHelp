@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -27,13 +28,13 @@ func TestLinkedInPostsParser_Run(t *testing.T) {
 		t.Fatalf("Run: unexpected error: %v", err)
 	}
 
-	raw, ok := out.Metadata["linkedin_posts"]
+	raw, ok := out.Metadata["feed_items"]
 	if !ok {
-		t.Fatal("metadata key linkedin_posts not set")
+		t.Fatal("metadata key feed_items not set")
 	}
 	posts, ok := raw.([]map[string]any)
 	if !ok {
-		t.Fatalf("linkedin_posts has unexpected type %T", raw)
+		t.Fatalf("feed_items has unexpected type %T", raw)
 	}
 	if len(posts) != 1 {
 		t.Fatalf("expected 1 post, got %d", len(posts))
@@ -52,6 +53,13 @@ func TestLinkedInPostsParser_Run(t *testing.T) {
 	if _, ok := p["dedupe_key"]; !ok {
 		t.Error("dedupe_key not set")
 	}
+	content, _ := p["content"].(string)
+	if !strings.Contains(content, "This is a test post from the pipeline step.") {
+		t.Errorf("content = %q, want the rendered post", content)
+	}
+	if p["source"] != p["dedupe_key"] || p["guid"] != p["dedupe_key"] {
+		t.Errorf("source %v guid %v, want the dedupe key %v", p["source"], p["guid"], p["dedupe_key"])
+	}
 }
 
 func TestLinkedInPostsParser_EmptyContent(t *testing.T) {
@@ -61,7 +69,7 @@ func TestLinkedInPostsParser_EmptyContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: unexpected error: %v", err)
 	}
-	posts := out.Metadata["linkedin_posts"].([]map[string]any)
+	posts := out.Metadata["feed_items"].([]map[string]any)
 	if len(posts) != 0 {
 		t.Errorf("expected 0 posts for empty content, got %d", len(posts))
 	}
@@ -79,13 +87,13 @@ func TestLinkedInArticlesParser_Run(t *testing.T) {
 		t.Fatalf("Run: unexpected error: %v", err)
 	}
 
-	raw, ok := out.Metadata["linkedin_articles"]
+	raw, ok := out.Metadata["feed_items"]
 	if !ok {
-		t.Fatal("metadata key linkedin_articles not set")
+		t.Fatal("metadata key feed_items not set")
 	}
 	articles, ok := raw.([]map[string]any)
 	if !ok {
-		t.Fatalf("linkedin_articles has unexpected type %T", raw)
+		t.Fatalf("feed_items has unexpected type %T", raw)
 	}
 	if len(articles) != 1 {
 		t.Fatalf("expected 1 article, got %d", len(articles))
@@ -104,6 +112,13 @@ func TestLinkedInArticlesParser_Run(t *testing.T) {
 	if _, ok := a["dedupe_key"]; !ok {
 		t.Error("dedupe_key not set")
 	}
+	content, _ := a["content"].(string)
+	if !strings.Contains(content, "Summary text here.") {
+		t.Errorf("content = %q, want the rendered article", content)
+	}
+	if a["source"] != "https://linkedin.com/pulse/test" {
+		t.Errorf("source = %v, want the article URL", a["source"])
+	}
 }
 
 func TestLinkedInArticlesParser_EmptyContent(t *testing.T) {
@@ -113,7 +128,7 @@ func TestLinkedInArticlesParser_EmptyContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: unexpected error: %v", err)
 	}
-	articles := out.Metadata["linkedin_articles"].([]map[string]any)
+	articles := out.Metadata["feed_items"].([]map[string]any)
 	if len(articles) != 0 {
 		t.Errorf("expected 0 articles for empty content, got %d", len(articles))
 	}

@@ -3,12 +3,14 @@ package steps
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -45,7 +47,7 @@ func writeDiscordExportFile(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "export.json")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write export file: %v", err)
 	}
 	return path
@@ -55,15 +57,15 @@ func TestDiscordParserStep_Basic(t *testing.T) {
 	path := writeDiscordExportFile(t, discordTestExport)
 
 	step := NewDiscordParser()
-	draft := &storage.KnowledgeObject{Source: path}
+	draft := discordJob(t, map[string]any{"discord_export_file": path})
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
-	msgs, ok := got.Metadata["discord_messages"].([]map[string]any)
+	msgs, ok := got.Metadata["feed_items"].([]map[string]any)
 	if !ok {
-		t.Fatalf("discord_messages missing or wrong type: %T", got.Metadata["discord_messages"])
+		t.Fatalf("feed_items missing or wrong type: %T", got.Metadata["feed_items"])
 	}
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(msgs))
@@ -89,6 +91,25 @@ func TestDiscordParserStep_Basic(t *testing.T) {
 	}
 }
 
+// discordJob is an import.discord container draft carrying payload as its
+// job payload, as the Discord importer endpoint enqueues it.
+func discordJob(t *testing.T, payload map[string]any) *storage.KnowledgeObject {
+	t.Helper()
+	b, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &storage.KnowledgeObject{RawContent: string(b), Source: "import:discord"}
+}
+
+func TestDiscordParserStep_PayloadWithoutExportFile(t *testing.T) {
+	_, err := NewDiscordParser().Run(context.Background(), discordJob(t, map[string]any{}))
+	var perm *pipeline.PermanentError
+	if !errors.As(err, &perm) {
+		t.Fatalf("err = %v, want a permanent error", err)
+	}
+}
+
 func TestDiscordParserStep_NoSource(t *testing.T) {
 	step := NewDiscordParser()
 	draft := &storage.KnowledgeObject{}
@@ -103,17 +124,18 @@ func TestDiscordParserStep_SinceFilter(t *testing.T) {
 
 	step := NewDiscordParser()
 	// Set since to after both messages.
-	step.Since = time.Date(2024, 7, 1, 9, 0, 0, 0, time.UTC)
-
-	draft := &storage.KnowledgeObject{Source: path}
+	draft := discordJob(t, map[string]any{
+		"discord_export_file": path,
+		"discord_since":       time.Date(2024, 7, 1, 9, 0, 0, 0, time.UTC).Format(time.RFC3339),
+	})
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
-	msgs, ok := got.Metadata["discord_messages"].([]map[string]any)
+	msgs, ok := got.Metadata["feed_items"].([]map[string]any)
 	if !ok {
-		t.Fatalf("discord_messages missing")
+		t.Fatalf("feed_items missing")
 	}
 	if len(msgs) != 0 {
 		t.Errorf("expected 0 messages after since filter, got %d", len(msgs))
@@ -124,17 +146,15 @@ func TestDiscordParserStep_MaxItems(t *testing.T) {
 	path := writeDiscordExportFile(t, discordTestExport)
 
 	step := NewDiscordParser()
-	step.MaxItems = 1
-
-	draft := &storage.KnowledgeObject{Source: path}
+	draft := discordJob(t, map[string]any{"discord_export_file": path, "discord_max_items": 1})
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
-	msgs, ok := got.Metadata["discord_messages"].([]map[string]any)
+	msgs, ok := got.Metadata["feed_items"].([]map[string]any)
 	if !ok {
-		t.Fatalf("discord_messages missing")
+		t.Fatalf("feed_items missing")
 	}
 	if len(msgs) != 1 {
 		t.Errorf("expected 1 message after max-items cap, got %d", len(msgs))
@@ -145,14 +165,14 @@ func TestDiscordParserStep_RenderedContent(t *testing.T) {
 	path := writeDiscordExportFile(t, discordTestExport)
 
 	step := NewDiscordParser()
-	draft := &storage.KnowledgeObject{Source: path}
+	draft := discordJob(t, map[string]any{"discord_export_file": path})
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
-	msgs := got.Metadata["discord_messages"].([]map[string]any)
-	rendered, _ := msgs[0]["rendered"].(string)
+	msgs := got.Metadata["feed_items"].([]map[string]any)
+	rendered, _ := msgs[0]["content"].(string)
 	if rendered == "" {
 		t.Error("expected non-empty rendered content")
 	}
@@ -183,19 +203,19 @@ func TestDiscordParserStep_MetadataKeys(t *testing.T) {
 	path := writeDiscordExportFile(t, discordTestExport)
 
 	step := NewDiscordParser()
-	draft := &storage.KnowledgeObject{Source: path}
+	draft := discordJob(t, map[string]any{"discord_export_file": path})
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
-	msgs := got.Metadata["discord_messages"].([]map[string]any)
+	msgs := got.Metadata["feed_items"].([]map[string]any)
 	m := msgs[0]
 
 	requiredKeys := []string{
 		"external_id", "channel_id", "channel_name", "guild_id", "guild_name",
 		"author_id", "author_name", "author_is_bot", "content", "timestamp",
-		"referenced_message_id", "attachments", "embeds", "reactions", "source", "rendered",
+		"referenced_message_id", "attachments", "embeds", "reactions", "source", "text",
 	}
 	for _, key := range requiredKeys {
 		if _, ok := m[key]; !ok {
@@ -210,12 +230,12 @@ func TestDiscordParserStep_Idempotency(t *testing.T) {
 	step := NewDiscordParser()
 
 	run := func() []string {
-		draft := &storage.KnowledgeObject{Source: path}
+		draft := discordJob(t, map[string]any{"discord_export_file": path})
 		got, err := step.Run(context.Background(), draft)
 		if err != nil {
 			t.Fatalf("run: %v", err)
 		}
-		msgs := got.Metadata["discord_messages"].([]map[string]any)
+		msgs := got.Metadata["feed_items"].([]map[string]any)
 		ids := make([]string, len(msgs))
 		for i, m := range msgs {
 			ids[i], _ = m["external_id"].(string)

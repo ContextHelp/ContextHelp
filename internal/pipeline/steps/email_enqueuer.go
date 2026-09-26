@@ -10,13 +10,16 @@ import (
 )
 
 // EmailEnqueuer reads email messages and their routing results, then stages
-// them as Sections on the draft for downstream ingestion.
+// each kept message for ingestion as an object of its own: one draft.Sections
+// entry on the container, and one Metadata["items_to_enqueue"] entry the
+// worker turns into an item job on the route's pipeline.
 // It reads:
 //   - draft.Metadata["email_messages"]
 //   - draft.Metadata["email_routes"]  (optional; produced by EmailFilter)
 //
 // It produces:
 //   - draft.Sections  (one per non-dropped message)
+//   - draft.Metadata["items_to_enqueue"]  (one per non-dropped message)
 //   - draft.Metadata["email_queued"]
 //   - draft.Metadata["email_skipped"]
 type EmailEnqueuer struct {
@@ -78,6 +81,7 @@ func (s *EmailEnqueuer) Run(_ context.Context, draft *storage.KnowledgeObject) (
 	}
 
 	var sections []storage.Section
+	staged := make([]fanOutItem, 0, len(messages))
 	queued := 0
 	skipped := 0
 
@@ -144,11 +148,27 @@ func (s *EmailEnqueuer) Run(_ context.Context, draft *storage.KnowledgeObject) (
 			Order:    queued,
 			Metadata: sectionMeta,
 		})
+		staged = append(staged, fanOutItem{
+			Title:    title,
+			Content:  body,
+			Source:   emailItemSource(messageID, contentHash),
+			Pipeline: pipelineName,
+		})
 		queued++
 	}
 
 	draft.Sections = sections
+	draft.Metadata[itemsToEnqueueKey] = []map[string]any{}
+	stageItems(draft, staged)
 	draft.Metadata["email_queued"] = queued
 	draft.Metadata["email_skipped"] = skipped
 	return draft, nil
+}
+
+// emailItemSource names a message by its Message-Id, else its content hash.
+func emailItemSource(messageID, contentHash string) string {
+	if id := strings.Trim(strings.TrimSpace(messageID), "<>"); id != "" {
+		return "email:" + id
+	}
+	return "email:" + contentHash
 }
