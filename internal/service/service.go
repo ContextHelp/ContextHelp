@@ -202,7 +202,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		if err := s.writeUserMentionEdges(ctx, obj.ID, obj.Mentions); err != nil {
 			return "", fmt.Errorf("analyze raw: user mentions: %w", err)
 		}
-		if ev, err := events.NewEvent("service.analyze", "object.raw_stored", obj); err == nil {
+		if ev, err := events.NewEvent("service.analyze", string(events.TopicObjectRawStored), obj); err == nil {
 			_ = s.Bus.Publish(ctx, ev)
 		}
 		return obj.ID, nil
@@ -287,7 +287,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		}
 		return "", err
 	}
-	if ev, err := events.NewEvent("service.analyze", "job.enqueued", job); err == nil {
+	if ev, err := events.NewEvent("service.analyze", string(events.TopicJobEnqueued), job); err == nil {
 		_ = s.Bus.Publish(ctx, ev)
 	}
 	return job.ID, nil
@@ -433,7 +433,10 @@ func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject
 	if err := s.Store.Objects().Update(ctx, obj); err != nil {
 		return err
 	}
-	if ev, err := events.NewEvent("service.objects", "object.updated", map[string]string{"id": obj.ID}); err == nil {
+	if ev, err := events.NewEvent("service.objects", string(events.TopicObjectUpdated), events.ObjectUpdatedPayload{
+		ObjectID: obj.ID,
+		Type:     obj.Type,
+	}); err == nil {
 		_ = s.Bus.Publish(ctx, ev)
 	}
 	return nil
@@ -447,7 +450,7 @@ func (s *Service) DeleteObject(ctx context.Context, id string) error {
 	if err := s.Store.Objects().Delete(ctx, id); err != nil {
 		return err
 	}
-	if ev, err := events.NewEvent("service.objects", "object.deleted", map[string]string{"id": id}); err == nil {
+	if ev, err := events.NewEvent("service.objects", string(events.TopicObjectDeleted), events.ObjectDeletedPayload{ObjectID: id}); err == nil {
 		_ = s.Bus.Publish(ctx, ev)
 	}
 	return nil
@@ -711,7 +714,7 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 		}
 		return "", err
 	}
-	if ev, err := events.NewEvent("service.analyze", "job.enqueued", job); err == nil {
+	if ev, err := events.NewEvent("service.analyze", string(events.TopicJobEnqueued), job); err == nil {
 		_ = s.Bus.Publish(ctx, ev)
 	}
 	return job.ID, nil

@@ -32,7 +32,7 @@ func NewJobWatcher(bus events.Bus, prompt string, out io.Writer) *JobWatcher {
 	}
 }
 
-// Start subscribes to job.completed and job.failed events on the bus.
+// Start subscribes to the job completed and failed topics on the bus.
 func (w *JobWatcher) Start(ctx context.Context) {
 	handler := func(_ context.Context, e events.Event) error {
 		w.wg.Add(1)
@@ -48,8 +48,8 @@ func (w *JobWatcher) Start(ctx context.Context) {
 		fmt.Fprintf(w.out, "\n[job %s %s]\n%s", jobID, eventVerb(e.Type), w.prompt)
 		return nil
 	}
-	w.bus.Subscribe("job.completed", handler)
-	w.bus.Subscribe("job.failed", handler)
+	w.bus.Subscribe(string(events.TopicJobCompleted), handler)
+	w.bus.Subscribe(string(events.TopicJobFailed), handler)
 }
 
 // Stop signals the watcher to ignore further events and waits for any
@@ -81,9 +81,9 @@ func jobIDFromEvent(e events.Event) string {
 // eventVerb maps an event type string to a human-readable past-tense verb.
 func eventVerb(eventType string) string {
 	switch eventType {
-	case "job.completed":
+	case string(events.TopicJobCompleted):
 		return "completed"
-	case "job.failed":
+	case string(events.TopicJobFailed):
 		return "failed"
 	default:
 		return eventType

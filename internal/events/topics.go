@@ -16,6 +16,16 @@ const (
 	TopicJobFailed      bus.Topic = "ctxt.runtime.job.failed"
 	TopicJobEnqueued    bus.Topic = "ctxt.runtime.job.enqueued"
 
+	// TopicObjectRawStored fires when the analyze raw path stored an
+	// object without running a pipeline. Carries the stored object.
+	TopicObjectRawStored bus.Topic = "ctxt.runtime.object.raw_stored"
+	// TopicInboxCaptured fires when an item lands in the inbox. Carries
+	// the stored object.
+	TopicInboxCaptured bus.Topic = "ctxt.runtime.inbox.captured"
+	// TopicInboxTriaged fires when an inbox item was sent to a pipeline.
+	// Carries the object.
+	TopicInboxTriaged bus.Topic = "ctxt.runtime.inbox.triaged"
+
 	// TopicDpkmsUpgradeSignatureMismatch fires when daemon startup detects an
 	// index-signature drift (ADR-070 §3, T-0579). Detection only — the
 	// actual reindex worker (T-0581) subscribes downstream.
