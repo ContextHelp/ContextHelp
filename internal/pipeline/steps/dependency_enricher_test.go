@@ -84,8 +84,10 @@ func TestDependencyEnricherPackageJSON(t *testing.T) {
 		if item["pipeline"] != "url.generic" {
 			t.Errorf("item pipeline: got %v, want url.generic", item["pipeline"])
 		}
-		if item["source"] != "https://github.com/owner/repo" {
-			t.Errorf("item source: got %v", item["source"])
+		// url_fetcher fetches Source before RawContent; a parent-repo
+		// source would make every dep job re-fetch the repo page.
+		if item["source"] != url {
+			t.Errorf("item source: got %v, want own URL %s", item["source"], url)
 		}
 	}
 
