@@ -1,14 +1,28 @@
 # Multimodal content: phase 1 as text, later native embeddings
 
-> **Date:** 2026-09-27
-> **Decision record:** [ADR-076 – Media as Text Representations: Provenance, Originals and Chunks](../decisions/ADR-076-media-text-representations.md) (Proposed)
-> **Status:** design only. Nothing here is implemented.
-> **Audience:** the owner deciding on ADR-076 and the open decisions below, then whoever implements the increments
+> **Date:** 2026-09-27 (decisions resolved 2026-09-26)
+> **Decision record:** [ADR-076 – Media as Text Representations: Provenance, Originals and Chunks](../decisions/ADR-076-media-text-representations.md) (Accepted)
+> **Status:** design only. Nothing here is implemented. All owner decisions are resolved (see [Resolved decisions](#resolved-decisions)); one integration detail is pending from the owner (the frame-extraction package).
+> **Audience:** whoever implements the increments
 
-ctxt must accept every content type: text, images, video, sound and speech, and meetings. The owner has set the approach:
+ctxt must accept every content type: text, images, video, speech and meetings. The owner has set the approach:
 
 - **Phase 1** represents every medium as text and embeds that text with the text model the registry already runs: `snowflake-arctic-embed2` (multilingual, 1024 dimensions) on local Ollama.
 - **The later phase** adds native multimodal embeddings (CLIP or SigLIP class, nomic-embed-vision, jina-embeddings-v4). The per-model index from the [ADR-071 amendment](../decisions/ADR-071-embedding-index-versioning.md#amendment-2026-09-26) already lets models sit side by side. This plan only records what phase 1 must not foreclose.
+
+**Out of scope for phase 1:** non-speech sound. Sound without speech is neither stored as a representation nor tracked in metadata (owner decision 6). Per-OS meeting recording is ADR-069's work.
+
+## Overarching principle: every media-to-text process is a swappable provider
+
+This rule applies to every process that turns media into text: OCR, captioning, speech recognition, diarization, frame extraction, summarization, and any process added later.
+
+- **Behind an interface.** Each process is a provider role with a Go interface in `internal/providers`. Pipeline steps depend on the interface, never on a tool.
+- **Selected by config.** `providers.<role>.backend` picks the implementation, with `model` and `endpoint` where they apply. `pipelines.overrides.<pipeline>.providers.<role>` overrides it for one pipeline.
+- **A working local default.** Every role has a local default that runs on the owner's machine with no network access beyond local Ollama.
+- **Cloud is opt-in only.** A cloud backend runs only when config names it explicitly for that role. `auto` resolves to local backends and nothing else. No step, role or probe looks at cloud API keys to decide what to run.
+- **No silent fallback.** A named backend that is unavailable is an error. It never degrades to a stub, and never to another backend.
+
+This applies to all roles, including the non-media `llm` role. The [cloud-resolution changes](#where-the-cloud-preferring-auto-changes-land) say where the code changes land.
 
 The survey below was checked against the code at `2b57f39` and probed on the owner's machine on 2026-09-26. Every "fails", "skipped" or "missing" in it was observed, not inferred, unless the text says it was read from code.
 
@@ -82,12 +96,12 @@ When an explicitly configured backend is missing, the factory silently returns t
 
 ### Coverage
 
-| Type | Accepted | Text produced | Embedded | Original kept | Providers required | Status on this machine | Main gaps |
+| Type | Accepted | Text produced | Embedded | Original kept | Needs | Status on this machine | Main gaps |
 |---|---|---|---|---|---|---|---|
 | Text | yes (`text.*`, `doc.markdown`, `doc.code`) | body | yes, one chunk | the text is the object | none | works | cut at 8192 bytes |
 | Image | by extension; pipelines skipped | OCR only; caption only via `--pipeline image.analysis` | would be | no | tesseract; vision model for captions | **422**: tesseract missing, no vision model | captions not in the default route; vision reads OCR text; bytes corrupted over HTTP |
 | Audio (speech) | yes | transcript, per-segment sections | yes, doubled, cut at 8192 bytes | no | whisper **and** pyannote | **job fails**: whisper flag mismatch | whisper.cpp not found (`whisper-cli`); diarization never runs yet is required; server-host path |
-| Sound (non-speech) | as audio | nothing meaningful | — | no | — | — | no description of non-speech audio |
+| Sound (non-speech) | as audio | nothing meaningful | — | no | — | — | out of scope for phase 1 (owner decision 6) |
 | Video | by extension; pipelines never register | would be transcript, fake scenes, broken frame OCR | would embed placeholders | no | ffmpeg, whisper, tesseract | **422 always** (video capability) | transcribes the wrong file, OCRs path strings, no frame captions, leaves temp files |
 | Meeting | no recorder; the enqueuer targets `video.full` or `audio.transcribe` | as audio or video | — | no | as audio or video, plus OS capture APIs | not implemented | no summary, no speakers, no `source`, docs overstate |
 | PDF | yes | per-page text | yes | no | pdftotext (golib placeholder otherwise) | works with pdftotext | scanned pages yield nothing; embedded images ignored |
@@ -95,28 +109,59 @@ When an explicitly configured backend is missing, the factory silently returns t
 
 ## Phase 1 design
 
+### Provider roles
+
+Each media-to-text process is a role, per the [overarching principle](#overarching-principle-every-media-to-text-process-is-a-swappable-provider).
+
+| Role | Interface (in `internal/providers`) | Local default | Cloud backends (opt-in only) | Status |
+|---|---|---|---|---|
+| `ocr` | `OCRProvider` (exists) | tesseract | none today | exists; must stop falling back to the stub |
+| `vision` (captions only) | `vision.Provider` (exists) | Ollama `qwen2.5vl:7b` | OpenAI, Anthropic, Gemini, OpenRouter (exist) | exists; `auto` must stop reading cloud keys |
+| `transcription` | `TranscriptionProvider` (exists) | whisper.cpp `whisper-cli` with `large-v3-turbo` | none today | exists; the whisper.cpp and openai-whisper invocations must be fixed |
+| `diarization` | `DiarizationProvider` (exists) | pyannote, run locally; opt-in per pipeline | none today | exists; the pyannote invocation must be fixed |
+| `frames` (keyframe selection and extraction) | **new** `FrameProvider` | **the owner's frame-extraction package** (details pending); ffmpeg scene detection as the interim local default | none | new; split from `VideoProvider.SampleFrames` |
+| `video` (probe, audio track) | `VideoProvider` (exists, minus frame sampling) | ffmpeg | none | exists |
+| `summarization` | **new** `SummarizationProvider` | local Ollama chat model with a built-in prompt | OpenAI, Anthropic through the `llm` backends, opt-in | new; see [Summaries](#summaries) |
+| `llm` (tagger, sectioner, other enrichment) | `LLMProvider` (exists) | local Ollama | OpenAI, Anthropic (exist) | exists; `auto` must stop preferring cloud keys |
+| `document` | `DocumentProvider` (exists) | golib, with pdftotext for PDF | none | exists |
+
+- **Config keys.** Each role uses `providers.<role>.{backend, model, endpoint}`. `frames` and `summarization` are new config keys. The frame role's key carries the scene-detection bounds (decision 4).
+- **Doctor and capabilities.** Capabilities are derived per role from the resolved local backend, never from environment keys. `ctxt doctor` reports every role (see increment 7).
+
+### Frame extraction: pending integration
+
+The owner has built a package for frame extraction and will point to it. Until then:
+
+- **Placeholder.** Integrate the owner's frame-extraction package as the `frames` provider's local default. The details (package path, API, dependency route, how it expresses scene detection and rate bounds) are pending from the owner. This plan does not design the extraction internals.
+- **Contract the step needs from any `frames` backend.**
+  - Input: the video, read through the media accessor.
+  - Output: frames with `frame_index`, `frame_ms` and image bytes (or a blob key).
+  - Honours a minimum and a maximum frame rate, with scene detection choosing frames between them.
+- **Interim default.** Until the package is integrated, the existing ffmpeg backend serves as the local default behind the same interface: ffmpeg scene detection bounded by the minimum and maximum rates. It is replaced, not extended, when the package lands.
+
 ### Representations per type
 
 Every medium becomes one or more **representations**: text units, each with a kind and an anchor. They are stored as graph nodes (ADR-063 makes the graph canonical). Section nodes hold the representations; summary nodes hold summaries.
 
 | Type | Representations (in projection order) | Anchor |
 |---|---|---|
-| Image | `caption` (vision model: what the image shows, including diagram structure), `ocr` (text in the image) | none |
-| Audio, speech | `summary` (optional; local LLM, only above a length threshold), `transcript` (one node per ASR segment) | `start_ms`, `end_ms`, `speaker` when diarized |
-| Audio, non-speech | `sound_description` (only if a sound-tagging backend is chosen), otherwise no text and `speech_detected: false` in metadata | whole file |
+| Image | `caption` (vision provider: what the image shows, including diagram structure), `ocr` (OCR provider: text in the image) | none |
+| Audio, speech | `summary` (summarization provider, above a length threshold), `transcript` (one node per ASR segment) | `start_ms`, `end_ms`, `speaker` when diarized |
 | Video | `summary`, `transcript` (from the extracted audio), `frame_caption` and `frame_ocr` for each selected frame | `start_ms`, `end_ms`; `frame_index`, `frame_ms` |
 | Meeting | `summary` (decisions, action items, topics), `transcript` with `speaker`, plus the video representations when there is video | as audio and video |
 | PDF, DOCX | `extracted_text` per page or section; `ocr` for image-only pages; `caption` and `ocr` for embedded images | `page_number`; `image_index` |
 | Subtitle sidecar (`.vtt`, `.srt`) | `transcript` with `origin: sidecar` | cue times |
 
-The vector for a representation is the vector of its **text**. There are no placeholders: a representation whose producer failed or returned nothing is absent, never "[…]".
+- The vector for a representation is the vector of its **text**.
+- There are no placeholders. A representation whose producer failed or returned nothing is absent, never "[…]".
+- Audio with no speech produces no representation, and nothing about the non-speech sound is recorded (out of scope).
 
 ### Provenance convention
 
 ADR-076 decides this. In short:
 
 - **Node metadata on every representation node:**
-  - `representation`: one of `caption`, `ocr`, `transcript`, `frame_caption`, `frame_ocr`, `summary`, `sound_description`, `extracted_text`
+  - `representation`: one of `caption`, `ocr`, `transcript`, `frame_caption`, `frame_ocr`, `summary`, `extracted_text`
   - the anchor keys, reusing the existing ones: `start_ms`, `end_ms`, `speaker`, `page_number`, plus the new `frame_index`, `frame_ms`, `image_index`
   - `provider` and `model` (for example `ollama` and `qwen2.5vl:7b`)
   - `confidence` when the producer reports one
@@ -125,15 +170,41 @@ ADR-076 decides this. In short:
 - **Unique node ordinals.** Several steps now emit section nodes, so the ordinal per node type comes from a shared allocator, not from each step's own counter.
 - **Chunks carry provenance.** Each embedded chunk records its representation, the IDs of its source nodes, and its anchor span (see Chunking). Search can then say "matched the transcript at 12:03–12:41" or "matched the OCR of frame 7".
 
-### Original retention
+### Original retention: keep all, configurable store and CDN
 
-- The original is stored **as bytes** in the blob store, content-addressed by SHA-256, before any step runs.
-- **Blob store:** wire the existing `blob.New` factory into dpkms and the CLI's direct paths. The local filesystem store is the default and S3 is opt-in ([P-060](P-060-s3-media-storage.md)). Remove the no-op stub from the production default.
-- **Reading media:** steps read media through one accessor that materialises the blob to a private per-job temp file (mode 0700 directory, removed when the job ends). `draft.Source` stays the human-readable origin and is **never used as a path to open**. This fixes shared-host-only processing and the meeting enqueuer's missing source.
-- **Transport:** `ctxt capture <file>` uploads bytes, either as multipart or as a blob `PUT` followed by an enqueue that references the blob key. Binary is never JSON-string content. Text files keep today's path.
-- **Deletion and redaction:** they remove the blob when no other object references it, and the redact-as-supersede flow in ADR-069 must purge derived nodes and chunks together with the media.
+All originals are kept (decision 9), with no size cap.
 
-### Chunking: phase 1 needs more than one chunk
+- **Storage.**
+  - Before any step runs, the original is stored **as bytes** in the blob store, content-addressed by SHA-256.
+  - The store is configurable through the existing `storage.blob` config: `backend` (`local` default, `s3`), `local.path`, and `s3.*` ([P-060](P-060-s3-media-storage.md)).
+  - The local blob store is the default. Wire the existing `blob.New` factory into dpkms and the CLI's direct paths, and remove the no-op stub from the production default.
+- **Delivery (CDN).** New `storage.blob.delivery` config selects how clients fetch an original:
+  - `direct` (default): the local daemon serves it.
+  - `presigned`: an S3 presigned URL (`s3.presign_expiry` exists).
+  - `cdn`: a URL built from a configured `base_url` in front of the bucket.
+
+  Retrieval and the object view read this config. They never build URLs themselves.
+- **Reading media.** Steps read media through one accessor that materialises the blob to a private per-job temp file (mode 0700 directory, removed when the job ends). `draft.Source` stays the human-readable origin and is **never used as a path to open**. This fixes shared-host-only processing and the meeting enqueuer's missing source.
+- **Transport.** `ctxt capture <file>` uploads bytes, either as multipart or as a blob `PUT` followed by an enqueue that references the blob key. Binary is never JSON-string content. Text files keep today's path.
+- **Deletion and redaction.** They remove the blob when no other object references it, and the redact-as-supersede flow in ADR-069 must purge derived nodes and chunks together with the media.
+- **Frames.** Frames the `frames` provider selects are kept as blobs, so the later native-embedding phase can embed them without re-extraction.
+
+### Summaries
+
+Summaries are local-first and customisable, with a default fallback.
+
+- **Terminology.** The repository has no concept named "ingestion strategy", so this plan does not introduce that term. "Strategy" names lateral discovery (`internal/lateral/strategies`) and per-profile search (`search_strategy`), neither of which is ingestion. Ingestion is customised per pipeline through `pipelines.overrides.<pipeline>` (`internal/config/config.go`), which already takes `providers.<role>`, `skip_steps` and `extra_steps`. Summaries are customised through that mechanism.
+- **Design.**
+  - A `summarizer` step backed by the `summarization` provider role.
+  - Default: a local Ollama chat model with a built-in prompt per medium (meeting: decisions, action items, topics; video and long audio: an overview).
+  - Customisation per pipeline:
+    - `pipelines.overrides.<pipeline>.providers.summarization` sets the backend, model and prompt template;
+    - `skip_steps: [summarizer]` turns summaries off;
+    - cloud only by naming a cloud backend.
+  - Fallback: without an override the default local backend and prompt apply. If no local chat model is available, the summary is an optional representation. The job keeps its transcript and records `summary_error`; nothing stands in for the summary.
+- **Open detail.** Which local chat model is the default is not fixed by the owner's answer ("local-first"). The plan proposes a 7–8B instruct model from Ollama, set in `providers.summarization.model`. It must be pulled before summaries appear.
+
+### Chunking (accepted as proposed)
 
 Single-chunk embedding cannot hold a transcript. Phase 1 therefore lands a chunker. The data model is ready: `(object_id, model_id, chunk_idx)` rows, and `Search` already collapses to the best chunk per object.
 
@@ -151,50 +222,68 @@ Single-chunk embedding cannot hold a transcript. Phase 1 therefore lands a chunk
 
 ### Local defaults and what the owner installs
 
-Everything runs locally by default. Candidate defaults, pending the owner's decisions below:
+| Role | Default | Install |
+|---|---|---|
+| `vision` (captions) | Ollama `qwen2.5vl:7b` | `ollama pull qwen2.5vl:7b` (several GB; not pulled today) |
+| `ocr` | tesseract | `brew install tesseract` (plus `tesseract-lang` for non-English) |
+| `transcription` | whisper.cpp `whisper-cli`, model `large-v3-turbo` | `brew install whisper-cpp`, then download the ggml `large-v3-turbo` model; ctxt reads its path from `providers.transcription.model` |
+| `frames` | the owner's package (pending); interim ffmpeg | ffmpeg already installed |
+| `video` | ffmpeg | already installed |
+| `diarization` | pyannote, local, opt-in | pipx `pyannote-audio` (installed), a one-time Hugging Face token for the gated model, and a working torchcodec (broken locally today) |
+| `summarization`, `llm` | Ollama chat model | `ollama pull` a 7–8B instruct model (none pulled today) |
 
-| Role | Default | Install | Notes |
-|---|---|---|---|
-| Image and frame captions | Ollama vision model, `qwen2.5vl:7b` proposed | `ollama pull qwen2.5vl:7b` (several GB; not pulled today) | multilingual, strong on screenshots and documents; `llava` stays selectable |
-| OCR | tesseract | `brew install tesseract` (plus `tesseract-lang` for non-English) | the VLM can also read text; see decisions |
-| Speech to text | whisper.cpp `whisper-cli` with a multilingual model (for example `large-v3-turbo`) | `brew install whisper-cpp`, then download a ggml model; ctxt takes its path from config | the provider must look for `whisper-cli`, pass `--model` and read the JSON output file. openai-whisper stays supported through its own flags |
-| Frames and audio extraction | ffmpeg | already installed | scene detection through ffmpeg's `select='gt(scene,T)'` filter; no extra dependency |
-| Diarization | pyannote, opt-in | pipx `pyannote-audio`, a one-time Hugging Face token for the gated model, and a working torchcodec | ctxt must call `apply`, or a small bundled script, and parse RTTM |
-| Summaries | Ollama chat model | `ollama pull` a 7–8B instruct model | not pulled today |
-
-`ctxt doctor` (and `ctxt setup`) report each media role as available, missing (with the exact install command) or misconfigured.
+`ctxt doctor` (and `ctxt setup`) report each role as available, missing (with the exact install command) or misconfigured.
 
 ### Failure behaviour: fail loudly, never embed placeholders
 
 These rules extend the 2026-09-26 `doc.office` fix to every medium:
 
-1. **An explicitly configured backend that is missing is a configuration error**, reported at registry build and by `doctor`. It never silently falls back to a stub. Stub providers are reachable only from tests.
-2. **A media pipeline whose required role is unavailable is not registered.** Capturing that type returns `422` with the pipeline, the missing role and the install hint, for example: "`image.default` needs `ocr` (install tesseract) and `vision` (pull an Ollama vision model)".
+1. **An explicitly configured backend that is missing is a configuration error**, reported at registry build and by `doctor`. It never silently falls back to a stub, or to any other backend. Stub providers are reachable only from tests.
+2. **A media pipeline whose required role is unavailable is not registered.** Capturing that type returns `422` with the pipeline, the missing role and the install hint, for example: "`image.default` needs `ocr` (install tesseract) and `vision` (pull `qwen2.5vl:7b`)".
 3. **Provider steps in media pipelines are never pruned.** A build that would prune one fails instead, so raw bytes can never become embedding text.
 4. **Required and optional representations are separate.**
    - A required representation that fails fails the job, for example the caption or OCR of an image, or the transcript of audio or video.
-   - An optional one records `<representation>_error` in metadata, as `diarization_error` does today, and emits no text. Optional ones are speakers, `sound_description`, `summary`, and individual frames beyond a minimum.
-5. **Empty is not a failure.** An image without text has no `ocr` node, and silent audio has no `transcript` node and `speech_detected: false`. Neither case emits a placeholder.
+   - An optional one records `<representation>_error` in metadata, as `diarization_error` does today, and emits no text. Optional ones are speakers, `summary`, and individual frames beyond a minimum.
+5. **Empty is not a failure.** An image without text has no `ocr` node, and audio without speech has no `transcript` node. Neither case emits a placeholder.
 6. **Diarization is no longer a required provider** of `audio.transcribe`. The `video` capability is set from the factory.
 
-### Privacy: client media stays on the machine
+### Local by default, cloud opt-in everywhere
 
-- **`auto` resolves media roles to local backends only:** OCR, vision, transcription, diarization, video. Today vision `auto` falls through to the first cloud API key found. Cloud backends for media roles need an explicit per-role opt-in in config.
-- **LLM steps that read media-derived text stay local by default.** That covers the tagger, the sectioner and the new summariser. Today `llm: auto` prefers Anthropic or OpenAI keys whenever one is set, so a transcript would leave the machine. Whether to change `auto` for all content or only for media-derived content is an owner decision.
-- **Temp files and blobs stay private.** Per-job temp files live in a private directory and are removed. Nothing is written beside the user's files. Blobs stay in the local store unless S3 is configured.
-- **One privacy test per media role:** with cloud keys set and no opt-in, the resolved backend is local, or the pipeline is unregistered.
+Decision 8 applies to every role, media or not.
+
+- **`auto` means local.** It resolves to a local backend or to "unavailable", never to a cloud backend.
+- **A cloud backend needs its name in config** for that role (`providers.<role>.backend: anthropic`, for example), or in a per-pipeline override.
+- **Nothing is written beside the user's files.** Per-job temp files live in a private directory and are removed.
+- **Blobs stay where storage config points them.** That is the local store by default (see [Original retention](#original-retention-keep-all-configurable-store-and-cdn)).
+- **One privacy test per role:** with every cloud API key set and no explicit cloud backend, the resolved backend is local, or the pipeline is unregistered.
+
+#### Where the cloud-preferring `auto` changes land
+
+| File | Today | Change |
+|---|---|---|
+| `internal/providers/factory.go`, `Vision()` | `auto` tries Ollama, then the first of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` | `auto` = local Ollama with the configured model, else unavailable |
+| `internal/providers/factory.go`, `LLM()` | `auto` prefers `ANTHROPIC_API_KEY`, then `OPENAI_API_KEY`, then Ollama | `auto` = local Ollama; cloud only when named |
+| `internal/providers/factory.go`, `must*` helpers | a named backend that is missing returns the stub | returns a configuration error |
+| `internal/pipeline/builtins/capabilities.go`, `probeToolCapabilities` | sets the `vision` capability when any cloud API key is present | capability only from a resolved local backend, or an explicitly named cloud one |
+| `internal/config/config.go`, provider defaults | `providers.vision.model` defaults to `llava`; the comment says `auto` "falls back to stub" | default `qwen2.5vl:7b`; new `frames`, `summarization` and `storage.blob.delivery` defaults; comment corrected |
+| `internal/providers/llm_ollama.go` | an empty model silently becomes `llama3` | the model comes from config; empty is a configuration error reported by `doctor` |
+| `cmd/ctxt/cmd/setup.go` | the wizard offers only OpenAI, Anthropic or skip | local Ollama is the first and default choice; cloud stays an explicit choice |
+
+The embedding resolver (`internal/embeddings`) already defaults to local Ollama and needs no change.
 
 ## Gap list, in increments
 
 | # | Increment | Delivers | Depends on |
 |---|---|---|---|
-| 1 | **Stop false success** | fail-loud rules 1–6; placeholders removed; local-only `auto` for media roles; exec and HTTP cassette harness with small real fixtures | — |
-| 2 | **Keep the original** | blob store wired; binary-safe capture upload; media accessor with a private temp dir; artifact nodes with blob keys | ADR-076 |
+| 1 | **Stop false success** | fail-loud rules 1–6; placeholders removed; exec and HTTP cassette harness with small real fixtures | — |
+| 1b | **Local by default, swappable providers** | cloud-preferring `auto` removed in every role (see the table above); `frames` and `summarization` interfaces and config; frame sampling split out of `VideoProvider`; setup wizard offers local first | — |
+| 2 | **Keep the original** | blob store wired from `storage.blob`; delivery (`direct`, `presigned`, `cdn`) config; binary-safe capture upload; media accessor with a private temp dir; artifact nodes with blob keys | ADR-076 |
 | 3 | **Representations and chunks** | provenance keys on every media node; projection built from representation nodes (fixes the doubled transcript and the dropped flat sections); rune-safe `/api/embed`; multi-chunk embedding with chunk `meta`; ben recall gate | ADR-076 |
-| 4 | **Images** | default image route produces `caption` and `ocr`; the vision step receives the original bytes; configurable Ollama vision model; embedded images and image-only pages in PDF and DOCX | 1–3 |
-| 5 | **Audio and meetings** | whisper.cpp and openai-whisper providers fixed; transcript nodes from segments; opt-in pyannote; `.vtt`/`.srt` sidecar import; meeting summary with a local LLM; the meeting enqueuer sends blob and source; non-speech handling | 1–3 |
-| 6 | **Video** | transcript from the extracted audio; frames by scene detection within bounds; `frame_caption` and `frame_ocr` per frame; fake scene detector removed; `video.audio_only` selectable | 4, 5 |
-| 7 | **Operator surface and truth in docs** | `ctxt doctor` media report; install guide; story statuses corrected; `meeting-capture.md` marked as design until a recorder ships | 1 |
+| 4 | **Images** | default image route produces `caption` (`qwen2.5vl:7b`) and `ocr` (tesseract); the vision step receives the original bytes; embedded images and image-only pages in PDF and DOCX | 1, 1b, 2, 3 |
+| 5 | **Audio and meetings** | whisper.cpp (`large-v3-turbo`) and openai-whisper providers fixed; transcript nodes from segments; local pyannote, opt-in; `.vtt`/`.srt` sidecar import; summarizer step with local default and per-pipeline customisation; the meeting enqueuer sends blob and source | 1, 1b, 2, 3 |
+| 6 | **Video** | transcript from the extracted audio; frames through the `frames` provider (interim ffmpeg scene detection within rate bounds); `frame_caption` and `frame_ocr` per frame; fake scene detector removed; `video.audio_only` selectable | 4, 5 |
+| 6b | **Owner's frame-extraction package** | integrate the owner's package as the `frames` local default; details pending from the owner | 6 |
+| 7 | **Operator surface and truth in docs** | `ctxt doctor` report for every role; install guide; story statuses corrected; `meeting-capture.md` marked as design until a recorder ships | 1, 1b |
 
 The per-OS meeting recorder (ScreenCaptureKit, WASAPI, PipeWire) is ADR-069's own work and is not in this list. Phase 1 accepts meeting *recordings*, whether exported from Zoom, Meet or Teams or produced by any recorder, together with their transcript sidecars.
 
@@ -203,7 +292,8 @@ The per-OS meeting recorder (ScreenCaptureKit, WASAPI, PipeWire) is ADR-069's ow
 - **Real fixtures:** every provider is exercised against small real fixtures (a PNG with known text, a two-speaker WAV of a few seconds, a short MP4). CI replays xrr `exec` cassettes for tesseract, whisper, ffmpeg and pyannote, and HTTP cassettes for Ollama vision and chat.
 - **Coverage test:** `embedding_coverage_test` asserts that the embedded text contains each expected representation's fixture text and **no bracketed placeholder and no file magic bytes**. It stops treating stub output as success.
 - **Mutation-tested defects:** each defect in the survey gets a test that fails on today's code: video capability, vision bytes, the diarizer flag, `[]byte(path)` in `frame_ocr`, transcription of the extracted audio, the doubled transcript, byte truncation and edge direction.
-- **Privacy test:** see the Privacy section.
+- **Swappability:** each role has a contract test run against every backend, local and cloud (cloud through HTTP cassettes), so a new backend proves itself against the same tests.
+- **Privacy:** see [Local by default, cloud opt-in everywhere](#local-by-default-cloud-opt-in-everywhere).
 - **Recall:** `hop.top/ben` shows no regression on text objects before the chunker becomes default.
 
 ## Later phase: native multimodal embeddings (plan only)
@@ -215,21 +305,32 @@ The per-OS meeting recorder (ScreenCaptureKit, WASAPI, PipeWire) is ADR-069's ow
 
 **Constraints phase 1 must respect so this is not foreclosed:**
 
-1. **Originals are retrievable by blob key.** Selected video frames are kept as blobs, or can be re-extracted deterministically from the original at `frame_ms`, so a backfill can embed pixels without re-capturing.
+1. **Originals and selected frames are retrievable by blob key,** so a backfill can embed pixels without re-capturing.
 2. **Chunks record their representation and source nodes.** A vision model's rows can then point at the same artifact or frame nodes as the text rows. Fusion joins on node IDs, not on text.
 3. **The registry does not assume text.** Today every populating model embeds every object. Phase 2 adds an input modality to each registry entry (`text`, `image`, `audio`) so that an image model embeds only artifact and frame nodes. Phase 1 must not hard-code "every model gets `EmbeddingText`" anywhere except the embedding step's text path.
 4. **Chunk indices are stable per model** and are not reused across modalities. A model's rows are replaced only by that model's `Put`.
 5. **Dimensions come from the registry probe,** never from provider defaults (ADR-071 already requires this).
+6. **Native embedding models follow the same principle:** a local default, cloud opt-in.
 
-## Decisions the owner must make
+## Resolved decisions
 
-1. **Vision model:** `qwen2.5vl:7b` (proposed), `llama3.2-vision:11b`, `gemma3` (4B or 12B), `minicpm-v`, or the small `moondream` for low-memory machines. It must be pulled before images work.
-2. **OCR:** keep tesseract as the OCR representation, with the VLM producing only captions (proposed: deterministic, fast, separate provenance). Alternatively let the VLM also transcribe text (better on screenshots and handwriting, slower, can hallucinate), or run both.
-3. **ASR:** whisper.cpp `whisper-cli` with `large-v3-turbo` (proposed: Metal-accelerated, multilingual), openai-whisper (installed, slower on CPU), or faster-whisper.
-4. **Video frames:** ffmpeg scene detection with a floor and a ceiling, for example at least one frame per 60 s, at most one per 5 s and at most 120 per video, plus near-duplicate frame suppression (proposed). The alternative is fixed-interval sampling.
-5. **Diarization:** opt-in pyannote (proposed), always on when installed, or deferred.
-6. **Non-speech sound:** record only `speech_detected: false` in phase 1 (proposed), or add a local audio tagger (YAMNet or PANNs class) for `sound_description`.
-7. **Chunking:** the chunk size and overlap, the chunk-0 card, and a `meta` column on `embeddings` (proposed) rather than recomputing chunk provenance from the projection. The ADR-046 amendment for long text.
-8. **Cloud use:** whether `llm: auto` stops preferring cloud keys for all content or only for media-derived text, and the shape of the per-role cloud opt-in.
-9. **Originals:** keep all originals (proposed), or cap by size (video is large) and keep only representations above the cap. Keep extracted frames as blobs, or re-extract them on demand.
-10. **Summaries:** which local chat model writes meeting and video summaries, and the length threshold above which audio gets one.
+The owner resolved these on 2026-09-26.
+
+| # | Topic | Decision |
+|---|---|---|
+| 1 | Vision model | Ollama `qwen2.5vl:7b`, local, is the default; configurable via `providers.vision.model` |
+| 2 | OCR | tesseract produces the `ocr` representation; the vision model produces captions only. OCR is a swappable provider selected by config |
+| 3 | ASR | whisper.cpp (`whisper-cli`) with `large-v3-turbo` is the default |
+| 4 | Video frames | scene detection with minimum and maximum frame rates. Frame extraction is a swappable `frames` provider; the owner's own package becomes its default (details pending); ffmpeg is the interim local default |
+| 5 | Diarization | local by default (pyannote run locally), configurable, opt-in |
+| 6 | Non-speech sound | not stored and not tracked in phase 1; the tagging work is dropped |
+| 7 | Chunking | accepted as proposed: chunk size and overlap, summary card as chunk 0, `meta` column on `embeddings`; amends ADR-046 |
+| 8 | Cloud | opt-in only; every role has a local default; `auto` never prefers cloud keys, for media and generally |
+| 9 | Originals | keep them all; the storage and CDN target are configurable, with the local blob store as the default |
+| 10 | Summaries | local-first and customisable per pipeline through `pipelines.overrides`, with a default local prompt and backend as the fallback |
+
+### Pending from the owner
+
+- **The frame-extraction package:** location, API, dependency route and how it expresses scene detection and rate bounds.
+- **The default local chat model** for summaries and the `llm` role. The plan proposes a 7–8B Ollama instruct model.
+- **The term "ingestion strategies".** The owner used it, but the repository has no such concept. This plan maps it to `pipelines.overrides`; if the owner meant something else, the summary design changes accordingly.
