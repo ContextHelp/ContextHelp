@@ -1,7 +1,7 @@
 // Package embeddings resolves the embedding provider. It is the single path
 // every embedding consumer takes (ingest's embedding step, `ctxt find` and
-// other retrieval, `ctxt embeddings *`, `dpkms serve`, `dpkms dev
-// reindex-vectors`); nothing reads providers.embedding from config directly.
+// other retrieval, `ctxt embeddings *`, `dpkms serve` and the migration job
+// it runs); nothing reads providers.embedding from config directly.
 //
 // # API
 //

@@ -140,9 +140,10 @@ OLLAMA_MODEL=mistral
 
 ## Embedding provider
 
-Semantic and hybrid search (`ctxt find`) and re-embedding
-(`dpkms dev reindex-vectors`) use one embedding provider. Set it once in
-config, and override it for a single run without editing config.
+Semantic and hybrid search (`ctxt find`), ingest, and re-embedding
+(`ctxt embeddings migrate`, run by dpkms) use one embedding provider. Set
+it once in config, and override it for a single run without editing
+config.
 
 ### Configure it
 
@@ -167,7 +168,7 @@ Each setting is resolved on its own, highest first:
 
 | Layer | Example |
 |-------|---------|
-| Flag (on `find`, `embeddings provider`, `dpkms dev reindex-vectors`) | `--embedding-provider`, `--embedding-model`, `--embedding-endpoint` |
+| Flag (on `find`, `embeddings provider`, `embeddings register`) | `--embedding-provider`, `--embedding-model`, `--embedding-endpoint` |
 | Environment | `CTXT_EMBEDDING_PROVIDER`, `CTXT_EMBEDDING_MODEL`, `CTXT_EMBEDDING_ENDPOINT`, `CTXT_EMBEDDING_API_KEY_ENV` |
 | `-c` override | `-c providers.embedding.model=snowflake-arctic-embed2` |
 | Registered model | the model's endpoint and `api_key_env`, when a command targets a `model_id` |
@@ -191,7 +192,7 @@ example with an SSH tunnel on local port 11555, then point the run at it:
 
 ```bash
 ctxt find "onboarding" --embedding-endpoint http://127.0.0.1:11555
-CTXT_EMBEDDING_ENDPOINT=http://127.0.0.1:11555 dpkms dev reindex-vectors
+CTXT_EMBEDDING_ENDPOINT=http://127.0.0.1:11555 dpkms serve   # ingest + embeddings migrate
 ```
 
 The remote Ollama must have the model pulled.
