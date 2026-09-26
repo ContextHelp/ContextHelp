@@ -128,9 +128,9 @@ type CaptureConfig struct {
 
 	// URLFilter holds the deny/allow rules every browser capture path
 	// applies before sending a URL for ingestion. Rules can be global or
-	// scoped under browsers.<browser>[.profiles.<profile>]. Builtin
-	// generic denies (localhost, file:, browser-internal schemes) always
-	// apply on top; see urlfilter.BuiltinDeny.
+	// scoped under browsers.<browser>[.profiles.<profile>]. Builtins always
+	// apply on top: only http(s) URLs are captured, and loopback hosts are
+	// denied; see urlfilter.BuiltinDeny.
 	//
 	// Unlike every other key, config layers do not override this one:
 	// urlfilter.Config merges each layer the loader decodes onto it, so
