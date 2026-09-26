@@ -147,16 +147,6 @@ func oneHot(dim, i int) []float32 {
 	return v
 }
 
-func cosineDistance(a, b []float32) float64 {
-	var dot, na, nb float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
-		na += float64(a[i]) * float64(a[i])
-		nb += float64(b[i]) * float64(b[i])
-	}
-	return 1 - dot/(math.Sqrt(na)*math.Sqrt(nb))
-}
-
 func hitIDs(hits []storage.EmbeddingHit) []string {
 	out := make([]string, len(hits))
 	for i, h := range hits {
