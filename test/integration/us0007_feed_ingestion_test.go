@@ -80,8 +80,10 @@ func startMockFeedServer(t *testing.T) *mockFeedServer {
 			"title":         "Test JSON Feed",
 			"home_page_url": "http://example.com",
 			"items": []map[string]any{
-				{"id": "json-item-1", "content_text": "JSON feed item 1",
-					"url": "http://example.com/j1"},
+				{
+					"id": "json-item-1", "content_text": "JSON feed item 1",
+					"url": "http://example.com/j1",
+				},
 			},
 		})
 	})
@@ -474,11 +476,6 @@ func TestUS0007_FanoutCreatesJobs(t *testing.T) {
 	defer env.stop(t)
 	fs := startMockFeedServer(t)
 
-	env.svc.Pipes.Upsert("feed.ingest", &pipeline.Pipeline{
-		PipelineName: "feed.ingest",
-		Steps:        []pipeline.PipelineStep{&feedItemStep{}},
-	})
-
 	resp, result := postFeed(t, env.URL, map[string]any{
 		"url":    fs.URL("/rss"),
 		"format": "rss",
@@ -509,14 +506,16 @@ func TestUS0007_FanoutCreatesJobs(t *testing.T) {
 	}
 	json.NewDecoder(jobsResp.Body).Decode(&jobsBody)
 
-	// The RSS feed has 2 items, so we expect at least 2 jobs.
+	// The RSS feed has 2 items with text: each runs the registered text
+	// pipeline as a job of its own.
 	feedJobs := 0
 	for _, j := range jobsBody.Data {
-		if j.Pipeline == "feed.ingest" {
+		if j.Type == "ingest:feed_item" {
+			assert.Equal(t, "text.long", j.Pipeline, "feed item job pipeline")
 			feedJobs++
 		}
 	}
-	assert.GreaterOrEqual(t, feedJobs, 1,
+	assert.Equal(t, 2, feedJobs,
 		"each feed item should create a separate ingestion job")
 }
 

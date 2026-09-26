@@ -39,6 +39,8 @@ type FilterPredicate struct {
 
 // FilterAction describes what to do when a rule matches.
 type FilterAction struct {
+	// RoutePipeline is the content pipeline a matched message is ingested
+	// on as an object of its own; it must embed what it ingests.
 	RoutePipeline string   `json:"route_pipeline,omitempty" yaml:"route_pipeline,omitempty"`
 	SetType       string   `json:"set_type,omitempty" yaml:"set_type,omitempty"`
 	SetSubtype    string   `json:"set_subtype,omitempty" yaml:"set_subtype,omitempty"`
@@ -329,7 +331,9 @@ func (s *EmailFilter) EvaluateMessage(msg map[string]any) FilterMatch {
 	return s.evaluate(msg)
 }
 
-// DefaultRuleset returns a built-in ruleset suitable for general-purpose email routing.
+// DefaultRuleset returns a built-in ruleset suitable for general-purpose email
+// routing. Every rule ingests on text.long; the subtype and tags carry the
+// classification.
 func DefaultRuleset() FilterRuleset {
 	trueVal := true
 	return FilterRuleset{
@@ -342,7 +346,7 @@ func DefaultRuleset() FilterRuleset {
 					SubjectRegex: `(?i)(invoice|receipt|payment|billing)`,
 				},
 				Action: FilterAction{
-					RoutePipeline: "email.billing",
+					RoutePipeline: "text.long",
 					SetSubtype:    "billing",
 					SetTags:       []string{"billing", "invoice"},
 				},
@@ -357,7 +361,7 @@ func DefaultRuleset() FilterRuleset {
 					},
 				},
 				Action: FilterAction{
-					RoutePipeline: "email.newsletter",
+					RoutePipeline: "text.long",
 					SetSubtype:    "newsletter",
 					SetTags:       []string{"newsletter"},
 				},
@@ -369,7 +373,7 @@ func DefaultRuleset() FilterRuleset {
 					HasAttachment: &trueVal,
 				},
 				Action: FilterAction{
-					RoutePipeline: "email.attachment",
+					RoutePipeline: "text.long",
 					SetSubtype:    "email-attachment",
 					SetTags:       []string{"has-attachment"},
 				},

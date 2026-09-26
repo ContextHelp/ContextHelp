@@ -2,7 +2,9 @@ package steps
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/importer/slack"
@@ -10,28 +12,35 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// SlackParser parses a Slack workspace export directory and emits normalized
-// message items into draft.Metadata["slack_messages"].
+// slackImportConfig is the import.slack job payload the Slack importer
+// endpoint enqueues.
+type slackImportConfig struct {
+	ExportDir     string   `json:"slack_export_dir"`
+	ChannelFilter []string `json:"slack_channel_filter"`
+	Since         string   `json:"slack_since"`
+	MaxItems      int      `json:"slack_max_items"`
+}
+
+// SlackParser parses the Slack workspace export its job payload names and
+// emits one item per selected message into draft.Metadata["feed_items"].
 //
 // Input contract:
-//   - draft.Source must contain the path to the Slack export directory.
+//   - draft.RawContent is the JSON job payload: slack_export_dir (required),
+//     slack_channel_filter, slack_since (RFC3339) and slack_max_items.
 //
 // Output contract:
-//   - draft.Metadata["slack_messages"] is set to []map[string]any, one entry per message.
-//   - draft.Metadata["slack_channel"] is set to the channel filter (or "all").
+//   - draft.Metadata["feed_items"] is set to []map[string]any, one entry per
+//     message: its rendered text as content, the channel source as source.
+//   - draft.Metadata["slack_import_count"] is the number of items.
 type SlackParser struct {
 	pipeline.BaseContract
-	// Since filters out messages older than this time. Zero means no filter.
-	Since time.Time
-	// MaxItems caps the number of messages returned. 0 means no cap.
-	MaxItems int
 }
 
 // NewSlackParser creates a SlackParser.
 func NewSlackParser() *SlackParser {
 	return &SlackParser{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
-			Requires: []string{"Source"},
+			Requires: []string{"RawContent"},
 			Produces: []string{"Metadata"},
 		}),
 	}
@@ -44,35 +53,47 @@ func (s *SlackParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 		draft.Metadata = make(map[string]any)
 	}
 
-	exportDir := draft.Source
-	if exportDir == "" {
-		return nil, fmt.Errorf("slack_parser: no source path in draft.Source")
+	var cfg slackImportConfig
+	if err := json.Unmarshal([]byte(draft.RawContent), &cfg); err != nil {
+		return nil, pipeline.Permanent(fmt.Errorf("slack_parser: job payload: %w", err))
+	}
+	if cfg.ExportDir == "" {
+		return nil, pipeline.Permanent(fmt.Errorf("slack_parser: job payload has no slack_export_dir"))
+	}
+	var since time.Time
+	if cfg.Since != "" {
+		t, err := time.Parse(time.RFC3339, cfg.Since)
+		if err != nil {
+			return nil, pipeline.Permanent(fmt.Errorf("slack_parser: slack_since: %w", err))
+		}
+		since = t
+	}
+	channels := make(map[string]bool, len(cfg.ChannelFilter))
+	for _, c := range cfg.ChannelFilter {
+		channels[strings.ToLower(strings.TrimSpace(c))] = true
 	}
 
-	msgs, err := slack.ParseExportDir(exportDir)
+	msgs, err := slack.ParseExportDir(cfg.ExportDir)
 	if err != nil {
 		return nil, fmt.Errorf("slack_parser: %w", err)
 	}
 
-	// Apply since filter.
-	if !s.Since.IsZero() {
-		filtered := msgs[:0]
-		for _, m := range msgs {
-			if !m.Timestamp.Before(s.Since) {
-				filtered = append(filtered, m)
-			}
-		}
-		msgs = filtered
-	}
-
-	// Apply max-items cap.
-	if s.MaxItems > 0 && len(msgs) > s.MaxItems {
-		msgs = msgs[:s.MaxItems]
-	}
-
 	items := make([]map[string]any, 0, len(msgs))
 	for _, m := range msgs {
-		item := map[string]any{
+		if !since.IsZero() && m.Timestamp.Before(since) {
+			continue
+		}
+		if len(channels) > 0 && !channels[strings.ToLower(m.ChannelName)] {
+			continue
+		}
+		if cfg.MaxItems > 0 && len(items) >= cfg.MaxItems {
+			break
+		}
+		items = append(items, map[string]any{
+			"title":        "#" + m.ChannelName,
+			"content":      slack.RenderContent(m),
+			"source":       m.Source,
+			"guid":         m.ExternalID,
 			"external_id":  m.ExternalID,
 			"channel_name": m.ChannelName,
 			"user_id":      m.UserID,
@@ -83,14 +104,10 @@ func (s *SlackParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 			"is_reply":     m.IsReply,
 			"reactions":    m.Reactions,
 			"files":        m.Files,
-			"source":       m.Source,
-			// pre-rendered content for enqueue
-			"content": slack.RenderContent(m),
-		}
-		items = append(items, item)
+		})
 	}
 
-	draft.Metadata["slack_messages"] = items
+	draft.Metadata["feed_items"] = items
 	draft.Metadata["slack_import_count"] = len(items)
 
 	return draft, nil

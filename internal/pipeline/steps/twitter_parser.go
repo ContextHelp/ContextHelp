@@ -10,7 +10,9 @@ import (
 )
 
 // TwitterArchiveParser parses a Twitter/X tweets.js archive from draft.RawContent
-// and populates draft.Metadata["twitter_tweets"] with normalised tweet records.
+// and populates draft.Metadata["feed_items"] with one item per tweet: its
+// rendered text as content, its status URL as link and source, and its
+// dedupe key as guid.
 type TwitterArchiveParser struct {
 	pipeline.BaseContract
 }
@@ -33,7 +35,7 @@ func (s *TwitterArchiveParser) Run(_ context.Context, draft *storage.KnowledgeOb
 	}
 
 	if draft.RawContent == "" {
-		draft.Metadata["twitter_tweets"] = []map[string]any{}
+		draft.Metadata["feed_items"] = []map[string]any{}
 		return draft, nil
 	}
 
@@ -44,8 +46,14 @@ func (s *TwitterArchiveParser) Run(_ context.Context, draft *storage.KnowledgeOb
 
 	items := make([]map[string]any, 0, len(tweets))
 	for _, tw := range tweets {
+		link := twitter.TweetURL("", tw.ID)
 		item := map[string]any{
 			"id":         tw.ID,
+			"title":      tw.FullText,
+			"content":    twitter.RenderContent(tw),
+			"link":       link,
+			"source":     link,
+			"guid":       twitter.DedupeKey(tw),
 			"full_text":  tw.FullText,
 			"lang":       tw.Lang,
 			"dedupe_key": twitter.DedupeKey(tw),
@@ -80,6 +88,6 @@ func (s *TwitterArchiveParser) Run(_ context.Context, draft *storage.KnowledgeOb
 		items = append(items, item)
 	}
 
-	draft.Metadata["twitter_tweets"] = items
+	draft.Metadata["feed_items"] = items
 	return draft, nil
 }
