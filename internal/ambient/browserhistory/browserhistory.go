@@ -247,7 +247,7 @@ func (s *Source) toRawEvent(v Visit) ambient.RawEvent {
 		meta["subtype"] = subtype
 	}
 	if v.Source != "" {
-		meta["source"] = v.Source
+		meta["browser_profile"] = v.Source
 	}
 	return ambient.RawEvent{
 		Source:            SourceName,
