@@ -109,7 +109,7 @@ require (
 	github.com/sahilm/fuzzy v0.1.3 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260817212433-ac3dfec99bb1 // indirect
-	hop.top/kit v0.5.0-alpha.8
+	hop.top/kit v0.5.0-alpha.15
 	modernc.org/libc v1.75.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
