@@ -36,8 +36,8 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 
 	// An empty TextContent defaults to the body the embedding step used
-	// (projection.BodyText), so the FTS projection sees the same input as
-	// on SQLite.
+	// (projection.BodyText), so stored text, the FTS projection and the
+	// embedded text agree, as on SQLite.
 	obj.TextContent = projection.BodyText(obj)
 
 	// Derive FTS body from projection — single source of truth for indexed
@@ -55,21 +55,21 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx, `INSERT INTO objects (
-		id, type, subtype, raw_content, content_type,
+		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, graph_json, source_key, projected_fts_body
 	) VALUES (
-		$1, $2, $3, $4, $5,
-		$6, $7, $8, $9, $10,
-		$11, $12, $13, $14,
-		$15, $16, $17, $18, $19,
-		$20, $21, $22, $23, $24,
-		$25, $26, $27, $28, $29
+		$1, $2, $3, $4, $5, $6,
+		$7, $8, $9, $10, $11,
+		$12, $13, $14, $15,
+		$16, $17, $18, $19, $20,
+		$21, $22, $23, $24, $25,
+		$26, $27, $28, $29, $30
 	)`,
-		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
+		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
@@ -261,15 +261,15 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	defer tx.Rollback()
 
 	result, err := tx.ExecContext(ctx, `UPDATE objects SET
-		type=$1, subtype=$2, raw_content=$3, content_type=$4,
-		metadata=$5, summaries=$6, sections=$7, tags=$8, mentions=$9,
-		decisions=$10, tasks=$11, pipeline=$12, source=$13,
-		registry_influences=$14, plugins=$15, content_hash=$16,
-		reinforcement_count=$17, last_reinforced_at=$18,
-		updated_at=$19, fts_indexed=$20, status=$21, inbox_note=$22,
-		remind_at=$23, reminded_at=$24, graph_json=$25, projected_fts_body=$26
-	WHERE id=$27`,
-		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
+		type=$1, subtype=$2, raw_content=$3, content_type=$4, text_content=$5,
+		metadata=$6, summaries=$7, sections=$8, tags=$9, mentions=$10,
+		decisions=$11, tasks=$12, pipeline=$13, source=$14,
+		registry_influences=$15, plugins=$16, content_hash=$17,
+		reinforcement_count=$18, last_reinforced_at=$19,
+		updated_at=$20, fts_indexed=$21, status=$22, inbox_note=$23,
+		remind_at=$24, reminded_at=$25, graph_json=$26, projected_fts_body=$27
+	WHERE id=$28`,
+		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash,
@@ -348,6 +348,9 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	// downstream re-indexer exists to flip the flag back. Clearing it here
 	// misreported reinforced (deduplicated) objects as unindexed even
 	// though FTS still matched.
+	//
+	// New content rewrites text_content with the same default Create
+	// applies (projection.BodyText), keeping it in step with raw_content.
 	if mergeData.RawContent != "" && mergeData.RawContent != hash {
 		_, err = tx.ExecContext(ctx, `UPDATE objects SET
 			reinforcement_count = reinforcement_count + 1,
@@ -355,10 +358,11 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 			tags = $2,
 			mentions = $3,
 			updated_at = $4,
-			raw_content = $5
-		WHERE content_hash = $6`,
+			raw_content = $5,
+			text_content = $6
+		WHERE content_hash = $7`,
 			now, mergedTagsJSON, mergedMentionsJSON, now,
-			mergeData.RawContent, hash,
+			mergeData.RawContent, projection.BodyText(mergeData), hash,
 		)
 	} else {
 		_, err = tx.ExecContext(ctx, `UPDATE objects SET
@@ -806,7 +810,7 @@ func queryVectorRows(ctx context.Context, db *sql.DB, caps *pgCaps,
 
 // objectSelectCols is the SELECT column list (no trailing FROM).
 const objectSelectCols = `SELECT
-	id, type, subtype, raw_content, content_type,
+	id, type, subtype, raw_content, content_type, text_content,
 	metadata, summaries, sections, tags, mentions,
 	decisions, tasks, pipeline, source,
 	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
@@ -824,7 +828,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		sourceKey                                           sql.NullString
 	)
 	err := row.Scan(
-		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
+		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
@@ -866,7 +870,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		sourceKey                                           sql.NullString
 	)
 	err := rows.Scan(
-		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
+		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
@@ -907,7 +911,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		score                                               float64
 	)
 	err := rows.Scan(
-		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
+		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,

@@ -271,8 +271,8 @@ func TestPgMigration14_UpgradedDatabase(t *testing.T) {
 	if err := drv.Migrate(ctx); err != nil {
 		t.Fatalf("re-migrate: %v", err)
 	}
-	if n := pgScalar(t, drv, `SELECT MAX(version) FROM schema_version`); n != 15 {
-		t.Errorf("ledger at %d, want 15", n)
+	if n := pgScalar(t, drv, `SELECT MAX(version) FROM schema_version`); n != pgdrv.LatestSchemaVersionForTest() {
+		t.Errorf("ledger at %d, want %d", n, pgdrv.LatestSchemaVersionForTest())
 	}
 }
 

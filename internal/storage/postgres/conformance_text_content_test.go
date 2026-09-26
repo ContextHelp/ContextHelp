@@ -12,5 +12,5 @@ import (
 // defaulting contract against a fresh Postgres database.
 func TestConformance_TextContentDefault(t *testing.T) {
 	drv, _ := freshIntegrationDriver(t)
-	storagetest.TextContentDefaultConformance(t, drv, false)
+	storagetest.TextContentDefaultConformance(t, drv)
 }

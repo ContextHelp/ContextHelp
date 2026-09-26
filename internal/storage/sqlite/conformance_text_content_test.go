@@ -9,5 +9,5 @@ import (
 // TestConformance_TextContentDefault runs the cross-driver TextContent
 // defaulting contract against a fresh SQLite database.
 func TestConformance_TextContentDefault(t *testing.T) {
-	storagetest.TextContentDefaultConformance(t, newTestDriver(t), true)
+	storagetest.TextContentDefaultConformance(t, newTestDriver(t))
 }
