@@ -67,15 +67,15 @@ Every browser capture path (open tabs, history) checks each URL against `capture
 capture:
   url_filter:
     deny:                              # every browser, every profile
-      - "*://*.bank.example.com/*"
+      - "*.bank.example.com"
     browsers:
       brave:
         deny: []                       # every Brave profile
         profiles:
           Work:                        # the name you pass to --browser-profile
             deny:
-              - "*://crm.example.net/*"
-              - "*://drive.example.com/*"
+              - "crm.example.net"
+              - "https://drive.example.com/shared"
             allow_only: []             # optional: capture ONLY these
 ```
 
@@ -83,19 +83,23 @@ Rule syntax:
 
 | Rule | Matches |
 |---|---|
-| `*://crm.example.net/*` | that host, any scheme, any port, any path or query |
-| `*://*.example.net/*` | `example.net` and every subdomain |
-| `https://drive.example.com/shared` | that path and anything below it |
+| `crm.example.net` | that host: any scheme, port, path or query |
+| `*.example.net` | `example.net` and every subdomain |
+| `*://crm.example.net/*` | the same host, written as a URL pattern |
+| `https://drive.example.com/shared` | that scheme, host and path, and anything below the path |
 | `*://localhost:8080/*` | that port only (no port in the rule = any port) |
-| `about:*`, `example.com` | legacy form: glob, or substring, over the raw URL |
 
-Host matching ignores letter case, userinfo and a trailing dot, and compares internationalized hosts in punycode, so `bücher.example` and `xn--bcher-kva.example` are the same rule.
+A rule without `://` is a host and nothing else. A rule such as `crm.example.net/deals`, `localhost:8080`, `user@crm.example.net` or a bare `*` fails the command with an error naming it; write `https://crm.example.net/deals` or `*://localhost:8080/*` instead. Quote rules that start with `*` in YAML.
 
-Scoped rules only narrow: deny lists add up across global, browser and profile, and a URL must satisfy every `allow_only` list that applies. Deny wins over `allow_only`. A URL that cannot be parsed is dropped. localhost, loopback addresses, `file:` and browser-internal pages (`chrome:`, `brave:`, `about:`, ...) are always dropped.
+Host matching ignores letter case, userinfo and a trailing dot, and compares internationalized hosts in punycode, so `bücher.example` and `xn--bcher-kva.example` are the same rule. A host that appears only in the path or query string never matches.
+
+Only `http` and `https` pages are captured. Every other scheme is dropped before any rule runs: `file:`, `about:`, `data:`, `ftp:`, `ws:`, browser pages such as `chrome:` and `brave:`, and app links such as `mailto:`. A dry run shows these as `builtin: scheme not captured (<scheme>)`. localhost and loopback addresses are always dropped too.
+
+Scoped rules only narrow: deny lists add up across global, browser and profile, and a URL must satisfy every `allow_only` list that applies. Deny wins over `allow_only`. A URL that cannot be parsed is dropped.
 
 Rules add up across config layers too. Your user file, a project `.contexthelp/ctxt.yaml`, each `-c <file>` and each `-c key=value` all contribute:
 
-- **Deny lists accumulate.** At every scope (global, `browsers.<b>`, `browsers.<b>.profiles.<p>`) the effective deny list is the union of every layer's list, with duplicates removed. A project file that sets `browsers.brave.profiles.Work.deny` adds to your user file's Work rules, and `-c 'capture.url_filter.deny=["*://crm.example.net/*"]'` adds one rule for a single run.
+- **Deny lists accumulate.** At every scope (global, `browsers.<b>`, `browsers.<b>.profiles.<p>`) the effective deny list is the union of every layer's list, with duplicates removed. A project file that sets `browsers.brave.profiles.Work.deny` adds to your user file's Work rules, and `-c 'capture.url_filter.deny=["crm.example.net"]'` adds one rule for a single run.
 - **No layer can remove a deny rule.** An empty list (`deny: []`), `null`, or leaving the key out changes nothing. To stop denying a site, delete the rule from the file that holds it; `ctxt config paths` lists the files in play.
 - **Each `allow_only` list is one more gate.** When two layers set different `allow_only` lists at the same scope, a URL must match both, so a later layer can narrow capture but never widen it.
 - A bare value such as `-c capture.url_filter.deny=crm.example.net` is not a list and fails the command; quote a YAML list as shown above.

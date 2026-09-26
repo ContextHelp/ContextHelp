@@ -51,8 +51,8 @@ ambient:
 capture:
   url_filter:          # shared by every browser capture path
     deny:
-      - "*://*.bank.example.com/*"
-    # localhost, loopback, file: and browser-internal pages are always denied
+      - "*.bank.example.com"   # host form: the domain and every subdomain
+    # only http and https are captured; localhost and loopback always denied
 ```
 
 - [ ] kit/policy CEL veto on `ctxt.ambient.event.captured` for `source=browserhistory` can drop sensitive URLs (sensitive bank, healthcare, internal domains) before enqueue

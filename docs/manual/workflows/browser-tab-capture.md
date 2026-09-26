@@ -31,17 +31,17 @@ Add deny rules to your ctxt config for anything that must never leave the machin
 capture:
   url_filter:
     deny:                        # every browser, every profile
-      - "*://*.bank.example.com/*"
+      - "*.bank.example.com"
     browsers:
       brave:
         profiles:
           Work:                  # profile name, or folder name ("Profile 1")
             deny:
-              - "*://crm.example.net/*"
-              - "*://drive.example.com/*"
+              - "crm.example.net"
+              - "drive.example.com"
 ```
 
-`*://crm.example.net/*` matches that host on any scheme, port and path; `*://*.example.net/*` adds every subdomain. localhost, `file:` and browser-internal pages are always dropped. Full rule syntax and `allow_only` lists: [Keep sites out of browser capture](../../ambient.md#keep-sites-out-of-browser-capture).
+`crm.example.net` matches that host on any scheme, port and path; `*.example.net` matches `example.net` and every subdomain. To deny only part of a site, write the URL: `https://drive.example.com/shared`. Only `http` and `https` pages are captured; localhost and every other scheme (`file:`, `about:`, `chrome:`, ...) are always dropped. Full rule syntax and `allow_only` lists: [Keep sites out of browser capture](../../ambient.md#keep-sites-out-of-browser-capture).
 
 Deny rules add up across config files: your user config, a project `.contexthelp/ctxt.yaml`, each `-c <file>` and each `-c key=value`. No project or `-c` file can drop a rule from your user config; to stop denying a site, delete the rule from the file that holds it (`ctxt config paths` lists them). Each layer's `allow_only` list is one more list a URL must match, so a later layer can narrow capture but never widen it.
 
@@ -54,11 +54,12 @@ ctxt capture tabs --browser brave --browser-profile Work --dry-run
 ```text
 brave profile "Work" (Profile 1): session as of 2026-09-26 10:34:23 (6m ago)
   would send  https://example.com/a            "Alpha page"   allowed
-  denied      https://crm.example.net/deal/42  "Deal 42"      denied by deny rule "*://crm.example.net/*" (profile:brave/Work)
+  denied      https://crm.example.net/deal/42  "Deal 42"      denied by deny rule "crm.example.net" (profile:brave/Work)
   duplicate   https://example.com/a            "Alpha again"  duplicate of an earlier tab
   denied      http://localhost:3000/           "Local dev"    denied by deny rule "*://localhost/*" (builtin)
+  denied      chrome://settings/               "Settings"     builtin: scheme not captured (chrome)
   would send  https://github.com/example/repo  "Repo"         allowed
-dry run: 2 would be sent, 2 denied, 1 deduped (5 tabs); nothing sent
+dry run: 2 would be sent, 3 denied, 1 deduped (6 tabs); nothing sent
 ```
 
 Every tab is listed with the filter's decision and the rule behind it. Nothing is sent. The same URL open in several tabs is sent once.
