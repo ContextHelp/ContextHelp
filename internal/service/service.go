@@ -219,11 +219,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 
 	pipelineName := req.Pipeline
 	if pipelineName == "" {
-		pipelineName = s.Pipes.Detect(pipeline.DetectInput{
-			Source:      jobSource,
-			ContentType: req.Type,
-			Sniff:       contentSniff(req.Content),
-		})
+		pipelineName = s.detectPipeline(jobSource, req.Type, req.Content)
 	}
 
 	// T-0562: validate the resolved pipeline exists in the registry. Without
@@ -685,11 +681,7 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 
 	pipelineName := req.Pipeline
 	if pipelineName == "" {
-		pipelineName = s.Pipes.Detect(pipeline.DetectInput{
-			Source:      req.Source,
-			ContentType: req.Type,
-			Sniff:       contentSniff(req.Content),
-		})
+		pipelineName = s.detectPipeline(req.Source, req.Type, req.Content)
 	}
 
 	// Same existence check as Analyze. See note above.
