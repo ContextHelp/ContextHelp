@@ -303,18 +303,18 @@ func TestComputeProximity_Unrelated(t *testing.T) {
 func TestComputeProximity_WithEmbeddings(t *testing.T) {
 	now := time.Now()
 	// Identical embeddings => semantic proximity = 1.0
-	emb := []float32{1, 0, 0, 1}
+	emb := []storage.ObjectVector{{ModelID: "m@1", Vector: []float32{1, 0, 0, 1}}}
 	a := &storage.KnowledgeObject{
-		ID:         "o-1",
-		Type:       "document",
-		Embeddings: emb,
-		CreatedAt:  now,
+		ID:        "o-1",
+		Type:      "document",
+		Vectors:   emb,
+		CreatedAt: now,
 	}
 	b := &storage.KnowledgeObject{
-		ID:         "o-2",
-		Type:       "document",
-		Embeddings: emb,
-		CreatedAt:  now,
+		ID:        "o-2",
+		Type:      "document",
+		Vectors:   emb,
+		CreatedAt: now,
 	}
 	score := proximity.ComputeProximity(a, b)
 	// semantic=1.0, weight for document=0.50; score should be at least 0.5
@@ -333,5 +333,19 @@ func TestComputeProximity_ScoreRange(t *testing.T) {
 	score := proximity.ComputeProximity(a, b)
 	if score.Score < 0.0 || score.Score > 1.0 {
 		t.Fatalf("score must be in [0,1], got %f", score.Score)
+	}
+}
+
+// Vectors of different models live in different spaces: an identical
+// vector under another model_id is not evidence of similarity.
+func TestSemanticProximity_DifferentModelsNotCompared(t *testing.T) {
+	a := &storage.KnowledgeObject{Vectors: []storage.ObjectVector{{ModelID: "m@1", Vector: []float32{1, 0}}}}
+	b := &storage.KnowledgeObject{Vectors: []storage.ObjectVector{{ModelID: "m@2", Vector: []float32{1, 0}}}}
+	if got := proximity.SemanticProximity(a, b); got != 0 {
+		t.Errorf("SemanticProximity across models = %f, want 0", got)
+	}
+	b.Vectors = append(b.Vectors, storage.ObjectVector{ModelID: "m@1", Vector: []float32{1, 0}})
+	if got := proximity.SemanticProximity(a, b); got < 0.999 {
+		t.Errorf("SemanticProximity on the shared model = %f, want ~1", got)
 	}
 }

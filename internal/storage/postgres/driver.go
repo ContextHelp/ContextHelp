@@ -13,38 +13,33 @@ import (
 	blobstub "github.com/ideacrafterslabs/ctxt/internal/storage/blob/stub"
 )
 
-// DefaultVectorDimension is used when no dimension is specified before Init.
-// Matches OpenAI text-embedding-3-small and the SQLite driver default.
-const DefaultVectorDimension = 1536
-
 type Driver struct {
-	db              *sql.DB
-	connStr         string
-	vectorDimension int
-	caps            *pgCaps
-	objects         *ObjectStore
-	entities        *EntityStore
-	edges           *EdgeStore
-	jobs            *JobStore
-	pipelines       *PipelineStore
-	steps           *StepStore
-	registries      *RegistryStore
-	reminders       *ReminderStore
-	feeds           *FeedStore
-	feedItems       *FeedItemStore
-	batches         *BatchStore
-	detectors       *DetectorStore
-	blobs           storage.BlobStore
-	proximity       *ProximityStore
-	watches         *WatchStore
-	aliases         *AliasStore
-	auditLog        *AuditStore
-	attachments     *AttachmentStore
-	resurfacing     *ResurfacingQueueStore
-	entitlements    *EntitlementStore
-	metering        *MeteringStore
-	savedSearches   *SavedSearchStore
-	searchHistory   *SearchHistoryStore
+	db            *sql.DB
+	connStr       string
+	caps          *pgCaps
+	objects       *ObjectStore
+	entities      *EntityStore
+	edges         *EdgeStore
+	jobs          *JobStore
+	pipelines     *PipelineStore
+	steps         *StepStore
+	registries    *RegistryStore
+	reminders     *ReminderStore
+	feeds         *FeedStore
+	feedItems     *FeedItemStore
+	batches       *BatchStore
+	detectors     *DetectorStore
+	blobs         storage.BlobStore
+	proximity     *ProximityStore
+	watches       *WatchStore
+	aliases       *AliasStore
+	auditLog      *AuditStore
+	attachments   *AttachmentStore
+	resurfacing   *ResurfacingQueueStore
+	entitlements  *EntitlementStore
+	metering      *MeteringStore
+	savedSearches *SavedSearchStore
+	searchHistory *SearchHistoryStore
 }
 
 func New(connStr string) (*Driver, error) {
@@ -56,7 +51,7 @@ func New(connStr string) (*Driver, error) {
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
 
-	d := &Driver{db: db, connStr: connStr, vectorDimension: DefaultVectorDimension}
+	d := &Driver{db: db, connStr: connStr}
 	d.caps = &pgCaps{}
 	d.objects = &ObjectStore{db: db, caps: d.caps}
 	d.entities = &EntityStore{db: db}
@@ -122,14 +117,6 @@ func (d *Driver) Watermarks() storage.WatermarkStore         { return &watermark
 
 // SetBlobs allows injection of a custom BlobStore implementation.
 func (d *Driver) SetBlobs(bs storage.BlobStore) { d.blobs = bs }
-
-// SetVectorDimension reconfigures the pgvector dimension before Init is
-// called; the objects.embedding typmod and its ANN index are created with
-// this dimension at migration time. Mirrors the SQLite driver contract:
-// calling it after migration has no effect on the already-created schema.
-func (d *Driver) SetVectorDimension(dim int) {
-	d.vectorDimension = dim
-}
 
 // SQLDialect implements search.dialectDetector; signals Postgres SQL dialect.
 func (d *Driver) SQLDialect() string { return "postgres" }

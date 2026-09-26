@@ -16,7 +16,7 @@ import (
 // filter conditions number themselves around it. A mis-numbered placeholder
 // surfaces here as a driver error or a wrong result set.
 func TestPostgres_VectorSearch_FilterWithBoundVector(t *testing.T) {
-	drv := freshVectorDriver(t, 4)
+	drv, _ := freshIntegrationDriver(t)
 	ctx := context.Background()
 	indexModel(t, drv, "pg-bound", 4)
 

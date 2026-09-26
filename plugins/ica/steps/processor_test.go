@@ -61,12 +61,9 @@ func TestICAProcessorSuccess(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 
-	// embeddings merged
-	if len(got.Embeddings) != 3 {
-		t.Errorf(
-			"embeddings: got %d, want 3",
-			len(got.Embeddings),
-		)
+	// ICA's vector is from a model outside the registry: not merged.
+	if len(got.Vectors) != 0 {
+		t.Errorf("vectors: got %d, want none", len(got.Vectors))
 	}
 
 	// existing metadata preserved

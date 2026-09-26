@@ -10,45 +10,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// rewindTo036 turns a fully migrated database back into the pre-037 shape:
-// the composite-key embeddings table from migration 032 with no id column
-// and no object FK, no per-model indexes, the legacy-blob placeholder
-// seeded by 033, and a ledger that stops at 36.
-func rewindTo036(t *testing.T, d *Driver) {
-	t.Helper()
-	ctx := context.Background()
-	specs, err := registeredEmbeddingSpecs(ctx, d.db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, sp := range specs {
-		if err := d.Embeddings().PurgeModel(ctx, sp.ModelID); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, stmt := range []string{
-		`DROP TABLE embeddings`,
-		`CREATE TABLE embeddings (
-		    object_id  TEXT NOT NULL,
-		    model_id   TEXT NOT NULL REFERENCES embedding_models(model_id),
-		    chunk_idx  INTEGER NOT NULL DEFAULT 0,
-		    vector     BLOB NOT NULL,
-		    text       TEXT,
-		    created_at TEXT NOT NULL,
-		    PRIMARY KEY (object_id, model_id, chunk_idx)
-		)`,
-		`CREATE INDEX idx_embeddings_model ON embeddings (model_id, object_id)`,
-		`DELETE FROM schema_version WHERE version >= 37`,
-	} {
-		if _, err := d.db.Exec(stmt); err != nil {
-			t.Fatalf("rewind: %s: %v", stmt, err)
-		}
-	}
-	if err := migrate033EmbeddingsBackfill(ctx, d); err != nil {
-		t.Fatalf("re-seed placeholder: %v", err)
-	}
-}
-
 func scalarInt(t *testing.T, d *Driver, query string, args ...any) int {
 	t.Helper()
 	var n int
@@ -97,19 +58,11 @@ func TestMigration037_UpgradedDatabase(t *testing.T) {
 func seedPre037Database(t *testing.T, path string) string {
 	t.Helper()
 	ctx := context.Background()
-	d, err := New(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	d.SetVectorDimension(4)
-	if err := d.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
-	rewindTo036(t, d)
+	d := openAtVersion(t, path, 36)
 
-	legacy := LegacyEmbeddingModelID(4)
+	legacy := legacyEmbeddingModelID(legacyVectorDimension)
 	if n := scalarInt(t, d, `SELECT COUNT(*) FROM embedding_models WHERE model_id = ?`, legacy); n != 1 {
-		t.Fatalf("rewind did not seed the placeholder (%d rows)", n)
+		t.Fatalf("schema 36 lacks the placeholder (%d rows)", n)
 	}
 	insertModelRow(t, d, "real@1", "ollama", 4)
 	insertObjectRow(t, d, "keep")
@@ -160,8 +113,8 @@ func assertReopenIdempotent(t *testing.T, d *Driver, modelID string) {
 	if n := scalarInt(t, d, `SELECT COUNT(*) FROM embeddings`); n != rowsBefore {
 		t.Errorf("re-run changed rows: %d -> %d", rowsBefore, n)
 	}
-	if n := scalarInt(t, d, `SELECT MAX(version) FROM schema_version`); n != 37 {
-		t.Errorf("ledger at %d, want 37", n)
+	if n := scalarInt(t, d, `SELECT MAX(version) FROM schema_version`); n != latestMigrationVersion() {
+		t.Errorf("ledger at %d, want %d", n, latestMigrationVersion())
 	}
 	sigAfter, _ := LoadIndexSignature(ctx, d.db, EmbeddingSignatureID(modelID))
 	if sigAfter == nil || sigBefore.SignatureHash != sigAfter.SignatureHash {
@@ -212,14 +165,7 @@ func TestMigration037_FreshInstall(t *testing.T) {
 func TestMigration037_InvalidModelSkipped(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "invalid.db")
 	ctx := context.Background()
-	d, err := New(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := d.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
-	rewindTo036(t, d)
+	d := openAtVersion(t, path, 36)
 	insertModelRow(t, d, "it's-bad", "ollama", 4)
 	insertModelRow(t, d, "good@1", "ollama", 4)
 	if err := d.Migrate(ctx); err != nil {

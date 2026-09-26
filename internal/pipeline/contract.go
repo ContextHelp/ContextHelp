@@ -26,16 +26,14 @@ var SeedState = []string{"RawContent", "Source", "Pipeline"}
 
 // KeyAliases maps short names to canonical KnowledgeObject field names.
 var KeyAliases = map[string]string{
-	"text":           "RawContent",
-	"content_type":   "ContentType",
-	"type":           "Type",
-	"subtype":        "Subtype",
-	"sections":       "Sections",
-	"tags":           "Tags",
-	"mentions":       "Mentions",
-	"embeddings":     "Embeddings",
-	"metadata":       "Metadata",
-	"vector_indexed": "VectorIndexed",
+	"text":         "RawContent",
+	"content_type": "ContentType",
+	"type":         "Type",
+	"subtype":      "Subtype",
+	"sections":     "Sections",
+	"tags":         "Tags",
+	"mentions":     "Mentions",
+	"metadata":     "Metadata",
 }
 
 // Canonicalize resolves a key alias to its canonical KnowledgeObject field name.

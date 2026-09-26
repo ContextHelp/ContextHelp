@@ -85,7 +85,6 @@ type KnowledgeObject struct {
 	Mentions           []uri.URI      `json:"mentions,omitempty"`
 	Decisions          []Decision     `json:"decisions,omitempty"`
 	Tasks              []Task         `json:"tasks,omitempty"`
-	Embeddings         []float32      `json:"embeddings,omitempty"`
 	Vectors            []ObjectVector `json:"-"` // embedding-step output per model; persisted by EmbeddingStore.Put, never serialized
 	Pipeline           string         `json:"pipeline,omitempty"`
 	Source             string         `json:"source,omitempty"`
@@ -102,7 +101,6 @@ type KnowledgeObject struct {
 	CreatedAt          time.Time      `json:"created_at"`
 	UpdatedAt          time.Time      `json:"updated_at"`
 	FTSIndexed         bool           `json:"fts_indexed"`
-	VectorIndexed      bool           `json:"vector_indexed"`
 	ProfileID          string         `json:"profile_id,omitempty"` // owning profile; empty = global
 	AttachmentIDs      []string       `json:"attachment_ids,omitempty"`
 	Graph              *ObjectGraph   `json:"graph,omitempty"`

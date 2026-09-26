@@ -82,12 +82,6 @@ func TestConfiguredRegistryEmbeddingStepEmbedsPerModel(t *testing.T) {
 	if len(got) != 2 || got[0] != "snowflake-arctic-embed2@default" || got[1] != "snowflake-arctic-embed2@candidate" {
 		t.Fatalf("vectors for %v, want both populating models", got)
 	}
-	if !draft.VectorIndexed {
-		t.Error("VectorIndexed = false after the default model embedded")
-	}
-	if draft.Embeddings != nil {
-		t.Error("pipeline still fills the single-vector Embeddings field")
-	}
 }
 
 // The per-pipeline override path carries the embedding dependencies too,
@@ -129,8 +123,8 @@ func TestRegistryWithoutEmbeddingDependenciesWritesNoVectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	draft := runSteps(t, p, &storage.KnowledgeObject{RawContent: "numbat sightings near the dryandra woodland"})
-	if len(draft.Vectors) != 0 || draft.VectorIndexed {
-		t.Errorf("vectors=%v indexed=%v, want none without a registry", modelIDs(draft.Vectors), draft.VectorIndexed)
+	if len(draft.Vectors) != 0 {
+		t.Errorf("vectors=%v, want none without a registry", modelIDs(draft.Vectors))
 	}
 }
 

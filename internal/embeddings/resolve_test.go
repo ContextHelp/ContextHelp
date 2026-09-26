@@ -209,7 +209,6 @@ func newRegistry(t *testing.T) *registry.Store {
 	if err != nil {
 		t.Fatalf("sqlite.New: %v", err)
 	}
-	d.SetVectorDimension(sqlite.DefaultVectorDimension)
 	if err := d.Init(context.Background()); err != nil {
 		t.Fatalf("driver.Init: %v", err)
 	}

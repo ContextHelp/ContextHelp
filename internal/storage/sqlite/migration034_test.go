@@ -2,20 +2,21 @@ package sqlite
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
 
-// seedLegacyPlaceholder re-creates the pre-037 state migrations 033-035
-// operate on: the legacy-blob placeholder model and its stamp. Migration
-// 037 deletes both on every database, so these historic migrations are
-// exercised by calling their fns directly against the re-seeded rows.
-func seedLegacyPlaceholder(t *testing.T, d *Driver) {
+// newSchema35Driver opens a database migrated through 035: the state
+// migrations 033-035 operate on, with vec_objects and the legacy-blob
+// placeholder and its stamp still present (037 and 038 remove them). These
+// historic migrations are exercised by calling their fns directly.
+func newSchema35Driver(t *testing.T) *Driver {
 	t.Helper()
-	if err := migrate033EmbeddingsBackfill(context.Background(), d); err != nil {
-		t.Fatalf("seed legacy placeholder: %v", err)
-	}
+	d := openAtVersion(t, filepath.Join(t.TempDir(), "schema35.db"), 35)
+	t.Cleanup(func() { d.Close(context.Background()) })
+	return d
 }
 
 // expectedEmbeddingStamp computes the signature the stored row must carry:
@@ -28,7 +29,7 @@ func expectedEmbeddingStamp(t *testing.T, d *Driver, dim int) (modelID, hash, su
 	if err != nil {
 		t.Fatalf("describe live vector index: %v", err)
 	}
-	modelID = LegacyEmbeddingModelID(dim)
+	modelID = legacyEmbeddingModelID(dim)
 	hash, summary = indexsig.ComputeEmbedding(
 		modelID, "legacy-blob", dim, idx.Method, idx.OpsClass, idx.BuildParams)
 	return modelID, hash, summary
@@ -39,10 +40,9 @@ func expectedEmbeddingStamp(t *testing.T, d *Driver, dim int) (modelID, hash, su
 // it must rewrite the stamp, so a DB sitting at exactly version 34 already
 // describes the cosine index it just built.
 func TestMigration034_RestampsAfterDDLSwap(t *testing.T) {
-	const dim = 4
-	d := newTestDriverDim(t, dim)
+	const dim = legacyVectorDimension
+	d := newSchema35Driver(t)
 	ctx := context.Background()
-	seedLegacyPlaceholder(t, d)
 
 	modelID, wantHash, _ := expectedEmbeddingStamp(t, d, dim)
 	sigID := EmbeddingSignatureID(modelID)
@@ -51,7 +51,7 @@ func TestMigration034_RestampsAfterDDLSwap(t *testing.T) {
 	// ledger walking 033 → 034 sees when 034's fn starts.
 	staleHash, staleSummary := indexsig.ComputeEmbedding(
 		modelID, "legacy-blob", dim, "vec0", "l2",
-		"CREATE VIRTUAL TABLE vec_objects USING vec0(id TEXT PRIMARY KEY, embedding float[4])")
+		"CREATE VIRTUAL TABLE vec_objects USING vec0(id TEXT PRIMARY KEY, embedding float[1536])")
 	if err := UpsertIndexSignature(ctx, d.db, sigID, staleHash, staleSummary); err != nil {
 		t.Fatalf("regress stamp: %v", err)
 	}
@@ -76,10 +76,9 @@ func TestMigration034_RestampsAfterDDLSwap(t *testing.T) {
 // the dropped L2 table. Migration 035 recomputes the stamp from the live
 // index so those DBs converge with fresh installs.
 func TestMigration035_RestampsStaleSignatureOnUpgradedDB(t *testing.T) {
-	const dim = 4
-	d := newTestDriverDim(t, dim)
+	const dim = legacyVectorDimension
+	d := newSchema35Driver(t)
 	ctx := context.Background()
-	seedLegacyPlaceholder(t, d)
 
 	modelID, wantHash, _ := expectedEmbeddingStamp(t, d, dim)
 	sigID := EmbeddingSignatureID(modelID)
@@ -88,7 +87,7 @@ func TestMigration035_RestampsStaleSignatureOnUpgradedDB(t *testing.T) {
 	// model identity hashed with the old L2 vec0 description.
 	staleHash, staleSummary := indexsig.ComputeEmbedding(
 		modelID, "legacy-blob", dim, "vec0", "l2",
-		"CREATE VIRTUAL TABLE vec_objects USING vec0(id TEXT PRIMARY KEY, embedding float[4])")
+		"CREATE VIRTUAL TABLE vec_objects USING vec0(id TEXT PRIMARY KEY, embedding float[1536])")
 	if err := UpsertIndexSignature(ctx, d.db, sigID, staleHash, staleSummary); err != nil {
 		t.Fatalf("regress stamp: %v", err)
 	}
@@ -113,10 +112,9 @@ func TestMigration035_RestampsStaleSignatureOnUpgradedDB(t *testing.T) {
 // TestMigration035_Idempotent pins that re-running the re-stamp on an
 // already-correct DB rewrites the same values — no error, no drift.
 func TestMigration035_Idempotent(t *testing.T) {
-	const dim = 4
-	d := newTestDriverDim(t, dim)
+	const dim = legacyVectorDimension
+	d := newSchema35Driver(t)
 	ctx := context.Background()
-	seedLegacyPlaceholder(t, d)
 
 	modelID, wantHash, _ := expectedEmbeddingStamp(t, d, dim)
 

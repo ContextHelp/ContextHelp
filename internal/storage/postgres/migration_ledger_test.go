@@ -38,7 +38,7 @@ func freshIntegrationDriver(t *testing.T) (*pgdrv.Driver, string) {
 
 // freshDatabaseDSN provisions a brand-new database on the integration server
 // and returns a DSN pointing at it, without opening a driver — tests that
-// need pre-Init configuration (SetVectorDimension) construct their own.
+// need a database at a historic schema construct their own.
 func freshDatabaseDSN(t *testing.T) (dsn, name string) {
 	t.Helper()
 	baseDSN := integrationDSN()
@@ -136,9 +136,11 @@ func TestPostgres_MigrationLedger_Reentrant(t *testing.T) {
 // TestPostgres_MigrationLedger_AdoptsPreLedgerDatabase simulates a database
 // initialized before the ledger existed (schema present, no schema_version):
 // Migrate must replay the idempotent entries without error and adopt the
-// database into the ledger.
+// database into the ledger. Such a database predates version 15, so the
+// fixture is the full schema through 14, which still has objects.embedding
+// for the frozen baseline's index statement.
 func TestPostgres_MigrationLedger_AdoptsPreLedgerDatabase(t *testing.T) {
-	drv, _ := freshIntegrationDriver(t)
+	drv := schema14Driver(t)
 	db := drv.DB()
 
 	if _, err := db.Exec(`DROP TABLE schema_version`); err != nil {

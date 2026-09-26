@@ -188,9 +188,11 @@ type VectorIndexDescription struct {
 	BuildParams string // WITH (...) content, DDL, or "" when defaults/absent
 }
 
-// PostgresVectorIndex describes the ANN index over objects.embedding.
-// When no index exists (dimension above the HNSW ceiling), the description
-// is the honest fallback: sequential scan with the pinned cosine metric.
+// PostgresVectorIndex describes the pre-registry ANN index over
+// objects.embedding, for historic migration 12 only (15 drops the column;
+// per-model indexes use PostgresVectorIndexFor). When no index exists, the
+// description is the honest fallback: sequential scan with the pinned
+// cosine metric.
 func PostgresVectorIndex(ctx context.Context, db *sql.DB) (VectorIndexDescription, error) {
 	var indexDDL string
 	err := db.QueryRowContext(ctx, `
@@ -219,9 +221,10 @@ func PostgresVectorIndex(ctx context.Context, db *sql.DB) (VectorIndexDescriptio
 	return desc, nil
 }
 
-// SQLiteVectorIndex describes the vec0 virtual table backing ANN search.
-// When the table is absent the driver brute-forces over stored embeddings,
-// still under the pinned cosine contract.
+// SQLiteVectorIndex describes the pre-registry vec_objects vec0 table, for
+// historic migrations 033-035 only (038 drops the table; per-model indexes
+// use SQLiteVectorIndexFor). When the table is absent the description is
+// brute force under the pinned cosine contract.
 func SQLiteVectorIndex(ctx context.Context, db *sql.DB) (VectorIndexDescription, error) {
 	var ddl sql.NullString
 	err := db.QueryRowContext(ctx,

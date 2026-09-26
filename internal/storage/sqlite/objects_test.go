@@ -398,14 +398,11 @@ func TestReinforceKeepsFTSIndexed(t *testing.T) {
 	obj.RawContent = "zebrafish larval locomotion study"
 	obj.ContentHash = "reinf-fts-hash"
 	obj.ReinforcementCount = 1
-	obj.Embeddings = []float32{0.1, 0.2, 0.3}
-	obj.VectorIndexed = true
 	require.NoError(t, d.Objects().Create(ctx, obj))
 
 	before, err := d.Objects().Get(ctx, obj.ID)
 	require.NoError(t, err)
 	require.True(t, before.FTSIndexed, "precondition: Create must FTS-index the object")
-	require.True(t, before.VectorIndexed, "precondition: Create persists vector_indexed")
 
 	_, err = d.Objects().Reinforce(ctx, "reinf-fts-hash", &storage.KnowledgeObject{
 		RawContent: obj.RawContent,
@@ -417,7 +414,6 @@ func TestReinforceKeepsFTSIndexed(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, after.ReinforcementCount)
 	assert.True(t, after.FTSIndexed, "Reinforce must not clear fts_indexed: object stays indexed")
-	assert.True(t, after.VectorIndexed, "Reinforce must not clear vector_indexed: embedding row untouched")
 
 	results, err := d.Objects().FTSSearch(ctx, "zebrafish", storage.ObjectFilter{Limit: 10})
 	require.NoError(t, err)

@@ -25,7 +25,7 @@ type embFixture struct {
 
 func newEmbFixture(t *testing.T, modelID string, dim int) *embFixture {
 	t.Helper()
-	d := newTestDriverDim(t, 4)
+	d := newTestDriver(t)
 	f := &embFixture{d: d, store: d.Embeddings().(*EmbeddingStore)}
 	f.spec = f.registerModel(t, modelID, dim)
 	f.ix = vecIndexFor(modelID)

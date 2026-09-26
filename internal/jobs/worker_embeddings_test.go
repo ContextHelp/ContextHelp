@@ -3,7 +3,6 @@ package jobs
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -122,28 +121,6 @@ func requireCompleted(t *testing.T, job *storage.Job) {
 	}
 }
 
-// legacyVectorRows counts the object's rows in the single-vector path
-// (object_embeddings); 0 once that table is gone.
-func legacyVectorRows(t *testing.T, driver storage.StorageDriver, objectID string) int {
-	t.Helper()
-	db := driver.(interface{ DB() *sql.DB }).DB()
-	ctx := context.Background()
-	var tables int
-	if err := db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'object_embeddings'`).Scan(&tables); err != nil {
-		t.Fatalf("look up object_embeddings: %v", err)
-	}
-	if tables == 0 {
-		return 0
-	}
-	var n int
-	if err := db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM object_embeddings WHERE id = ?`, objectID).Scan(&n); err != nil {
-		t.Fatalf("count object_embeddings: %v", err)
-	}
-	return n
-}
-
 func TestWorker_WritesVectorsForEveryPopulatingModel(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	store := embeddingtest.NewMemStore()
@@ -160,17 +137,6 @@ func TestWorker_WritesVectorsForEveryPopulatingModel(t *testing.T) {
 		if len(rows) != 1 || rows[0].ChunkIdx != 0 || len(rows[0].Vector) != 1024 {
 			t.Errorf("%s: rows %d, want one 1024-dim chunk-0 row for object %s", m.ModelID, len(rows), job.ResultID)
 		}
-	}
-
-	obj, err := driver.Objects().Get(context.Background(), job.ResultID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !obj.VectorIndexed {
-		t.Error("vector_indexed = false after the default model embedded")
-	}
-	if len(obj.Embeddings) != 0 || legacyVectorRows(t, driver, job.ResultID) != 0 {
-		t.Error("ingest still wrote the single-vector path")
 	}
 }
 
@@ -294,9 +260,6 @@ func TestWorker_EmbeddingsEndToEndSQLite(t *testing.T) {
 	}
 	if len(hits) != 1 || hits[0].ObjectID != job.ResultID {
 		t.Errorf("Search = %+v, want the ingested object first", hits)
-	}
-	if legacyVectorRows(t, driver, job.ResultID) != 0 {
-		t.Error("ingest still wrote the single-vector path")
 	}
 	if !strings.Contains(logs.String(), "model_id="+notPulled.ModelID) {
 		t.Errorf("failing model not logged; logs:\n%s", logs.String())

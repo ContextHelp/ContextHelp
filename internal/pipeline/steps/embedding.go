@@ -35,7 +35,7 @@ func NewEmbeddingGenerator(models embeddings.ModelSource, resolver embeddings.Pr
 	return &EmbeddingGenerator{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"Vectors", "VectorIndexed"},
+			Produces: []string{"Vectors"},
 		}),
 		models:   models,
 		resolver: resolver,
@@ -51,15 +51,14 @@ func (s *EmbeddingGenerator) Name() string { return "embedding_generator" }
 //
 // A model that fails (provider unresolvable or unreachable, wrong
 // dimension) is logged with its model_id and skipped: vectors are additive
-// and never fail the ingest, and the missing row is what the migration
-// backfill picks up. VectorIndexed reports whether the default model
-// produced a vector.
+// and never fail the run, and the missing row is what the migration
+// backfill picks up. Whether an object is embedded under a model is read
+// from the embeddings table, never from the draft.
 func (s *EmbeddingGenerator) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	if s.models == nil || s.resolver == nil {
 		return draft, nil
 	}
 	draft.Vectors = nil
-	draft.VectorIndexed = false
 
 	text := projection.EmbeddingText(draft)
 	if text == "" {
@@ -68,7 +67,7 @@ func (s *EmbeddingGenerator) Run(ctx context.Context, draft *storage.KnowledgeOb
 
 	models, err := s.models.Populating(ctx, time.Now())
 	if err != nil {
-		slog.Warn("embedding: read populating models; object stored without vectors", "err", err)
+		slog.Warn("embedding: read populating models; no vectors produced", "err", err)
 		return draft, nil
 	}
 
@@ -79,7 +78,7 @@ func (s *EmbeddingGenerator) Run(ctx context.Context, draft *storage.KnowledgeOb
 		}
 		vec, err := s.embed(ctx, m, text)
 		if err != nil {
-			slog.Warn("embedding: model produced no vector; ingest continues", "model_id", m.ModelID, "err", err)
+			slog.Warn("embedding: model produced no vector; skipping it", "model_id", m.ModelID, "err", err)
 			continue
 		}
 		draft.Vectors = append(draft.Vectors, storage.ObjectVector{
@@ -88,9 +87,6 @@ func (s *EmbeddingGenerator) Run(ctx context.Context, draft *storage.KnowledgeOb
 			Vector:   vec,
 			Text:     text,
 		})
-		if m.IsDefault {
-			draft.VectorIndexed = true
-		}
 	}
 	if !hasDefault {
 		noDefaultWarning.Do(func() {

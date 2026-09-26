@@ -26,7 +26,6 @@ const (
 	ProviderOpenAI = "openai"
 	ProviderOllama = "ollama"
 	ProviderVoyage = "voyage"
-	ProviderLegacy = "legacy-blob"
 )
 
 // Model represents one row in the embedding_models table.

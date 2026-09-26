@@ -106,7 +106,7 @@ func TestEmbeddingGeneratorContract(t *testing.T) {
 	s := NewEmbeddingGenerator(nil, nil)
 	c := s.Contract()
 	assertRequires(t, "embedding_generator", c, []string{"RawContent"})
-	assertProduces(t, "embedding_generator", c, []string{"Vectors", "VectorIndexed"})
+	assertProduces(t, "embedding_generator", c, []string{"Vectors"})
 	assertCapabilities(t, "embedding_generator", c, nil)
 }
 
