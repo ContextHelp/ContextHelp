@@ -210,6 +210,7 @@ func embeddingBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
 	opts := builtins.BuildOpts{
 		Resolver:   embeddings.NewProviderResolver(newEmbeddingResolver()),
 		Embeddings: driver.Embeddings(),
+		Audit:      driver.AuditLog(),
 	}
 	if cfg != nil {
 		opts.Duplicates = cfg.Duplicates
