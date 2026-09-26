@@ -274,6 +274,18 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		return
 	}
 
+	if dupOf, drop := suppressedDuplicate(draft); drop {
+		// duplicates.policy drop: the near-duplicate is not stored. The job
+		// answers with the existing object's ID, as analyze does for an
+		// exact duplicate.
+		slog.Info("jobs: near-duplicate dropped, not stored", "job", job.ID, "duplicate_of", dupOf)
+		if err := p.queue.Complete(ctx, job.ID, dupOf); err != nil {
+			slog.Warn("jobs: mark completed", "job", job.ID, "err", err)
+		}
+		p.emitCompleted(ctx, job.ID, dupOf, durationMs)
+		return
+	}
+
 	draft.ReinforcementCount = 1
 
 	if err := p.store.Objects().Create(ctx, draft); err != nil {
@@ -367,6 +379,16 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	// Fan out per-item jobs if the pipeline staged items for enqueueing.
 	p.fanOutItems(ctx, draft)
+}
+
+// suppressedDuplicate reports whether the dedup step marked draft
+// suppress_output (policy drop), with the existing object it duplicates.
+// A mark without a duplicate_of has no object to answer with, so the draft
+// is stored.
+func suppressedDuplicate(draft *storage.KnowledgeObject) (duplicateOf string, suppressed bool) {
+	suppressed, _ = draft.Metadata["suppress_output"].(bool)
+	duplicateOf, _ = draft.Metadata["duplicate_of"].(string)
+	return duplicateOf, suppressed && duplicateOf != ""
 }
 
 // putVectors persists the embedding step's per-model vectors for the stored
