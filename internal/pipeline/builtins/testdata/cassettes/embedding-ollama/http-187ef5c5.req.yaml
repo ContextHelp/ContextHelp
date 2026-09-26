@@ -1,8 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: 187ef5c5
-recorded_at: "2026-09-26T17:59:28Z"
-payload:
-    method: POST
-    url: http://127.0.0.1:11434/api/embeddings
-    body: '{"model":"snowflake-arctic-embed2","prompt":"Field notes from the Rottnest Island quokka survey. The team walked\nthe northern transects at dawn and logged every animal seen within ten meters\nof the track, with its approximate age and any visible injuries. Numbers were\nhigher than last season near the salt lakes, where the vegetation recovered\nafter the winter rains, and lower near the settlement, where tourist traffic\nkeeps the animals away from the paths during the day. Next season the survey\nwill add night transects to count animals that avoid the paths in daylight.\nField notes from the Rottnest Island quokka survey. The team walked\nthe northern transects at dawn and logged every animal seen within ten meters\nof the track, with its approximate age and any visible injuries. Numbers were\nhigher than last season near the salt lakes, where the vegetation recovered\nafter the winter rains, and lower near the settlement, where tourist traffic\nkeeps the animals away from the paths during the day. Next season the survey\nwill add night transects to count animals that avoid the paths in daylight."}'

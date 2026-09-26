@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 16f66c0d
+recorded_at: "2026-09-26T20:24:55Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"snowflake-arctic-embed2","prompt":"quarterly payroll tax deadlines for small businesses"}'

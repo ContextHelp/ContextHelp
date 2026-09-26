@@ -1,8 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: a9e4e68b
-recorded_at: "2026-09-26T17:55:50Z"
-payload:
-    method: POST
-    url: http://127.0.0.1:11434/api/embeddings
-    body: '{"model":"snowflake-arctic-embed2","prompt":"Numbat recovery \n Survey Rangers counted forty numbats in the Dryandra woodland this spring. \n Threats Feral cats and foxes remain the main predators of the numbat.\nNumbat recovery \n Survey Rangers counted forty numbats in the Dryandra woodland this spring. \n Threats Feral cats and foxes remain the main predators of the numbat."}'

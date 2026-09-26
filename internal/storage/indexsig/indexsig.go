@@ -42,9 +42,11 @@ const FTSSignatureID = "objects_fts"
 // installations. ADR-070 §3 calls this the "projection logic version" hash
 // input.
 //
-// v1 = behaviour after T-0565 (graph-derived FTSBody with flat-text fallback
-// when the graph carries Tag/EntityMention nodes only).
-const ProjectionVersion = "v1"
+// v1 = graph-derived FTSBody with flat-text fallback when the graph carries
+// Tag/EntityMention nodes only.
+// v2 = v1 with repeated segments dropped: a summary, section or body whose
+// text (trimmed) already appeared is indexed once, first occurrence first.
+const ProjectionVersion = "v2"
 
 // SQLiteFTSTokenizer is the tokenizer in use for objects_fts. The DDL does
 // not specify `tokenize=`, so FTS5 falls back to its default ("unicode61"

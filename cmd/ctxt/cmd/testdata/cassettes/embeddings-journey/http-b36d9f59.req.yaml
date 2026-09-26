@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: b36d9f59
+recorded_at: "2026-09-26T20:27:18Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"snowflake-arctic-embed2","prompt":"Dugongs are large marine mammals that live in warm coastal waters. In Shark Bay they spend most of the day feeding in shallow meadows, pulling up whole plants and leaving feeding trails in the sand. A single animal can eat around forty kilograms of plants every day, so the health of the meadows decides how many dugongs the bay can support. Rangers survey the herds from light aircraft each winter, counting calves and mapping where the animals gather. Heatwaves that kill the meadows push the herds into deeper water, where they find less food and face more boat traffic."}'

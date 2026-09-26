@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
 
 func TestComputeFTSSignature_Deterministic(t *testing.T) {
@@ -20,7 +22,7 @@ func TestComputeFTSSignature_Deterministic(t *testing.T) {
 	if !strings.Contains(summary1, "tokenizer=fts5-default") {
 		t.Errorf("summary missing tokenizer: %q", summary1)
 	}
-	if !strings.Contains(summary1, "projection=v1") {
+	if !strings.Contains(summary1, "projection="+indexsig.ProjectionVersion) {
 		t.Errorf("summary missing projection: %q", summary1)
 	}
 

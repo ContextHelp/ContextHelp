@@ -1,8 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: dffa4b86
-recorded_at: "2026-09-26T17:55:49Z"
-payload:
-    method: POST
-    url: http://127.0.0.1:11434/api/embeddings
-    body: '{"model":"snowflake-arctic-embed2","prompt":"[OCR text extracted from image]\n[OCR text extracted from image]"}'

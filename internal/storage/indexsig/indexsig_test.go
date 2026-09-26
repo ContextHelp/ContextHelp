@@ -150,3 +150,53 @@ func TestLoadUpsert_InTransaction(t *testing.T) {
 		t.Errorf("rolled-back stamp visible: %+v, %v", row, err)
 	}
 }
+
+// TestVerifyFTS_PreDedupeStampMismatches pins the projection bump that
+// dropped repeated segments from the FTS body: an index stamped by the
+// previous projection ("v1") must report a mismatch on the next open, and
+// verify re-stamps it so the open after that matches.
+func TestVerifyFTS_PreDedupeStampMismatches(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	ctx := context.Background()
+	// A plain table stands in for the fts5 virtual table: verify reads only
+	// its DDL from sqlite_master.
+	const ddl = `CREATE TABLE objects_fts (id, projected_fts_body)`
+	for _, stmt := range []string{ddl, `CREATE TABLE index_signatures (
+		signature_id TEXT PRIMARY KEY, signature_hash TEXT NOT NULL,
+		computed_at TEXT NOT NULL, inputs_summary TEXT NOT NULL DEFAULT '')`} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	oldHash := HashFTSInputs(SQLiteFTSTokenizer, "v1", ddl)
+	if err := Upsert(ctx, db, DialectSQLite, FTSSignatureID, oldHash, "projection=v1"); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := VerifyFTS(ctx, db, DialectSQLite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Match || res.FirstBoot {
+		t.Fatalf("v1 stamp: Match=%v FirstBoot=%v, want a mismatch (projection version not bumped?)", res.Match, res.FirstBoot)
+	}
+	if res.OldHash != oldHash {
+		t.Errorf("OldHash = %s, want the v1 stamp %s", res.OldHash, oldHash)
+	}
+	if !strings.Contains(res.InputsSummary, "projection="+ProjectionVersion) {
+		t.Errorf("summary %q does not name projection %s", res.InputsSummary, ProjectionVersion)
+	}
+
+	res, err = VerifyFTS(ctx, db, DialectSQLite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Match {
+		t.Errorf("second open after re-stamp: Match=false")
+	}
+}

@@ -47,16 +47,14 @@ func ProjectIndex(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
 	if ko.Graph == nil || len(ko.Graph.Nodes) == 0 {
 		return flatIndexProjection(ko)
 	}
-	var parts []string
+	var parts segments
 	var tags []pluginapi.Tag
 	var mentions []string
 
 	for _, n := range ko.Graph.Nodes {
 		switch n.NodeType {
 		case pluginapi.NodeTypeSummary, pluginapi.NodeTypeSection:
-			if n.Content != "" {
-				parts = append(parts, n.Content)
-			}
+			parts.add(n.Content)
 		case pluginapi.NodeTypeTag:
 			label := n.Label
 			if label == "" {
@@ -69,46 +67,68 @@ func ProjectIndex(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
 			}
 		}
 	}
-	// T-0565: if the graph carries Tag/Mention nodes only (e.g. text.short
+	// If the graph carries Tag/Mention nodes only (e.g. text.short
 	// pipeline runs no markdown_parser/sectioner), `parts` is empty and
 	// FTSBody would be too — making the document invisible to FTS even
 	// though TextContent holds the full body. Fall back to flat text in
 	// that case while keeping the graph-derived Tags and Mentions.
-	if len(parts) == 0 {
+	if len(parts.list) == 0 {
 		flat := flatIndexProjection(ko)
 		flat.Tags = tags
 		flat.Mentions = mentions
 		return flat
 	}
-	body := strings.Join(parts, " ")
 	return pluginapi.IndexProjection{
-		FTSBody:       body,
+		FTSBody:       strings.Join(parts.list, " "),
 		Tags:          tags,
 		Mentions:      mentions,
-		EmbeddingText: strings.Join(parts, "\n"),
+		EmbeddingText: strings.Join(parts.list, "\n"),
 	}
 }
 
 func flatIndexProjection(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
-	var parts []string
-	if ko.TextContent != "" {
-		parts = append(parts, ko.TextContent)
+	var parts segments
+	parts.add(ko.TextContent)
+	for _, s := range ko.Summaries {
+		parts.add(s)
 	}
-	parts = append(parts, ko.Summaries...)
 	for _, s := range ko.Sections {
-		if s.Content != "" {
-			parts = append(parts, s.Content)
-		}
+		parts.add(s.Content)
 	}
 	var mentions []string
 	for i := range ko.Mentions {
 		mentions = append(mentions, ko.Mentions[i].String())
 	}
-	body := strings.Join(parts, " ")
 	return pluginapi.IndexProjection{
-		FTSBody:       body,
+		FTSBody:       strings.Join(parts.list, " "),
 		Tags:          ko.Tags,
 		Mentions:      mentions,
-		EmbeddingText: strings.Join(parts, "\n"),
+		EmbeddingText: strings.Join(parts.list, "\n"),
 	}
+}
+
+// segments collects the text segments of an index projection in order,
+// keeping only the first occurrence of each. A root summary and a section
+// often carry the same text, and a body can repeat its summary; indexing
+// both copies doubles the text in the FTS body and the embedding input.
+// Segments compare after trimming surrounding whitespace; empty segments
+// are dropped.
+type segments struct {
+	list []string
+	seen map[string]struct{}
+}
+
+func (p *segments) add(s string) {
+	key := strings.TrimSpace(s)
+	if key == "" {
+		return
+	}
+	if _, dup := p.seen[key]; dup {
+		return
+	}
+	if p.seen == nil {
+		p.seen = map[string]struct{}{}
+	}
+	p.seen[key] = struct{}{}
+	p.list = append(p.list, s)
 }
