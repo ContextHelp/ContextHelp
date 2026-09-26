@@ -72,7 +72,7 @@ capture:
       brave:
         deny: []                       # every Brave profile
         profiles:
-          Work:                        # the name you pass to --profile
+          Work:                        # the name you pass to --browser-profile
             deny:
               - "*://crm.example.net/*"
               - "*://drive.example.com/*"
