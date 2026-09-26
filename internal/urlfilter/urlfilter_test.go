@@ -17,11 +17,10 @@ func TestUnparseableURLIsDenied(t *testing.T) {
 		"",                       // empty
 	}
 	for _, u := range bad {
-		for name, ev := range map[string]Evaluator{
-			"empty Rules":  Rules{},
-			"nil Filter":   (*Filter)(nil),
+		for name, ev := range map[string]*Filter{
+			"nil Filter":   nil,
 			"empty Filter": mustNew(t),
-			"allow-all":    Rules{AllowOnly: []string{"*"}},
+			"allow-all":    mustNew(t, Layer{Scope: ScopeGlobal, Rules: Rules{AllowOnly: []string{"*://*/*"}}}),
 		} {
 			d := ev.Evaluate(u)
 			if d.Allowed || d.Reason != ReasonUnparseable {
@@ -34,7 +33,7 @@ func TestUnparseableURLIsDenied(t *testing.T) {
 func TestInvalidInternationalHostIsDenied(t *testing.T) {
 	t.Parallel()
 	// U+2028 passes url.Parse but is not a valid IDNA code point.
-	d := Rules{}.Evaluate("https://bad\u2028host.example/")
+	d := (*Filter)(nil).Evaluate("https://bad\u2028host.example/")
 	if d.Allowed || d.Reason != ReasonUnparseable {
 		t.Errorf("invalid IDN host allowed: %+v", d)
 	}
@@ -58,18 +57,6 @@ func TestNewRejectsInvalidRules(t *testing.T) {
 		if _, err := New(Layer{Scope: ScopeGlobal, Rules: Rules{AllowOnly: []string{r}}}); err == nil {
 			t.Errorf("New(allow_only %q): expected error", r)
 		}
-	}
-}
-
-func TestRulesInvalidRuleFailsClosed(t *testing.T) {
-	t.Parallel()
-	d := Rules{Deny: []string{"*://user@crm.example.net/*"}}.Evaluate("https://news.example.org/")
-	if d.Allowed || d.Reason != ReasonInvalidRule {
-		t.Errorf("invalid deny rule: got %+v, want denied %s", d, ReasonInvalidRule)
-	}
-	d = Rules{AllowOnly: []string{"*://user@news.example.org/*"}}.Evaluate("https://news.example.org/")
-	if d.Allowed || d.Reason != ReasonNotAllowListed {
-		t.Errorf("invalid allow_only rule: got %+v, want denied %s", d, ReasonNotAllowListed)
 	}
 }
 
@@ -150,10 +137,13 @@ func TestDenyBeatsAllowOnly(t *testing.T) {
 
 func TestOpaqueURLsOnlyMatchLegacyRules(t *testing.T) {
 	t.Parallel()
-	if !(Rules{Deny: []string{"*://*/*"}}).Matches("about:blank") {
+	deny := func(rule string) *Filter {
+		return mustNew(t, Layer{Scope: ScopeGlobal, Rules: Rules{Deny: []string{rule}}})
+	}
+	if !deny("*://*/*").Matches("about:blank") {
 		t.Error("URL-form rule matched an opaque URL")
 	}
-	if (Rules{Deny: []string{"about:*"}}).Matches("about:blank") {
+	if deny("about:*").Matches("about:blank") {
 		t.Error("legacy about:* did not match about:blank")
 	}
 }

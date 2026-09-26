@@ -22,9 +22,6 @@ import (
 type pattern struct {
 	raw string
 	url bool
-	// never marks an uncompilable allow_only rule kept so its list still
-	// gates; it matches nothing.
-	never bool
 
 	anyScheme bool
 	scheme    string
@@ -238,9 +235,6 @@ var defaultPorts = map[string]string{
 }
 
 func (p pattern) match(t target) bool {
-	if p.never {
-		return false
-	}
 	if !p.url {
 		return matchGlob(p.raw, t.raw)
 	}

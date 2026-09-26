@@ -75,18 +75,16 @@ type BrowserClient interface {
 	VisitsSince(ctx context.Context, since time.Time) ([]Visit, error)
 }
 
-// URLFilter is the shared allow/deny rule list (see package urlfilter).
-type URLFilter = urlfilter.Rules
-
 // Config configures a Source.
 type Config struct {
 	// Browsers is the set of BrowserClients to poll. At least one required.
 	Browsers []BrowserClient
 	// PollInterval is how often each browser is polled. Default: 5 minutes.
 	PollInterval time.Duration
-	// Filter drops visits before emit. A URLFilter or a compiled
-	// *urlfilter.Filter; nil still drops unparseable URLs.
-	Filter urlfilter.Evaluator
+	// Filter drops visits before emit. Compile it with urlfilter.New or
+	// urlfilter.Config.For. Nil means the builtin deny rules only;
+	// unparseable URLs are dropped either way.
+	Filter *urlfilter.Filter
 }
 
 // Source is the browser-history ambient source.
@@ -111,6 +109,13 @@ func New(cfg Config) (*Source, error) {
 	}
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = DefaultPollInterval
+	}
+	if cfg.Filter == nil {
+		f, err := urlfilter.Config{}.For("")
+		if err != nil {
+			return nil, fmt.Errorf("browserhistory: builtin url filter: %w", err)
+		}
+		cfg.Filter = f
 	}
 	return &Source{
 		cfg:      cfg,
@@ -201,12 +206,8 @@ func (s *Source) tick(ctx context.Context, browser BrowserClient) {
 		}
 		return
 	}
-	filter := s.cfg.Filter
-	if filter == nil {
-		filter = URLFilter{}
-	}
 	for _, v := range visits {
-		if d := filter.Evaluate(v.URL); !d.Allowed {
+		if d := s.cfg.Filter.Evaluate(v.URL); !d.Allowed {
 			// The payload names the rule, never the URL: a denied URL is
 			// exactly what must not leave the source.
 			if s.publisher != nil {

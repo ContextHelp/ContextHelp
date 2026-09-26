@@ -496,7 +496,7 @@ func visitsAfter(ctx context.Context, c browserhistory.BrowserClient, since time
 // evaluateVisit runs one visit through the filter; a repeat of an
 // allowed URL already seen this run is a duplicate. Decisions are logged
 // without the URL.
-func evaluateVisit(v browserhistory.Visit, filter urlfilter.Evaluator, seen map[string]bool) visitOutcome {
+func evaluateVisit(v browserhistory.Visit, filter *urlfilter.Filter, seen map[string]bool) visitOutcome {
 	d := filter.Evaluate(v.URL)
 	o := visitOutcome{
 		URL:       v.URL,

@@ -3,15 +3,22 @@
 // stopped. The browser-history source is the first consumer; keys look
 // like "brave:Profile 3".
 //
-// # Incremental vs backfill contract
+// # Incremental, since and backfill contract
 //
-// The store cannot enforce this, so every caller must: only an
-// incremental run (no --since / --until / --range; see
-// internal/timeframe Flags.IsSet) reads or advances positions. A run
-// with an explicit timeframe is a backfill: it neither consults nor
-// advances the store, so replaying an old window never moves a
-// position and never hides newer, not-yet-emitted history. Advance a
-// key only after the events up to that time were handed off
+// The store cannot enforce this, so every caller must. ctxt capture
+// history picks one of three modes from its time flags (see
+// internal/timeframe Flags):
+//
+//   - No time flag: incremental. Start from the saved position (or the
+//     initial lookback when there is none), then advance it.
+//   - --since alone: capture from --since to now regardless of the saved
+//     position, then advance it. Advance is monotonic, so a --since
+//     earlier than the position never moves it back.
+//   - --until or --range: backfill. The store is neither read nor
+//     advanced, so replaying an old window never moves a position and
+//     never hides newer, not-yet-emitted history.
+//
+// Advance a key only after the events up to that time were handed off
 // successfully.
 //
 // # Storage

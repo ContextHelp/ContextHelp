@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/urlfilter"
 )
 
 // fakeBrowser is a controllable BrowserClient.
@@ -176,10 +177,17 @@ func TestSource_FilterDenyDropsURL(t *testing.T) {
 		Visit{URL: "https://example.com/news", VisitedAt: time.Now().Add(time.Second)},
 	)
 	pub := &capturingPub{}
+	f, err := urlfilter.New(urlfilter.Layer{
+		Scope: urlfilter.ScopeGlobal,
+		Rules: urlfilter.Rules{Deny: []string{"*://*.bank.example.com/*"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	s, _ := New(Config{
 		Browsers:     []BrowserClient{br},
 		PollInterval: 50 * time.Millisecond,
-		Filter:       URLFilter{Deny: []string{"*bank.example.com*"}},
+		Filter:       f,
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
