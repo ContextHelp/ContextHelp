@@ -203,6 +203,9 @@ func TestEmbeddingsSetDefault_CoverageGuard(t *testing.T) {
 	evs := captureLifecycleEvents(t)
 
 	out, err := db.exec("embeddings", "set-default", lcB, "--format", "json")
+	if err == nil {
+		t.Fatalf("set-default below the threshold succeeded:\n%s", out)
+	}
 	assertClass(t, err, output.CodeConflict)
 	if !strings.Contains(err.Error(), "0.75") || !strings.Contains(err.Error(), "0.99") {
 		t.Errorf("refusal must name coverage and threshold: %v\n%s", err, out)
@@ -473,16 +476,19 @@ func TestEmbeddingsPurge(t *testing.T) {
 	}
 
 	useLifecycleClock(t, deprecated.Add(30*24*time.Hour-time.Minute))
-	_, err := db.exec("embeddings", "purge", lcB)
+	out, err := db.exec("embeddings", "purge", lcB)
+	if err == nil {
+		t.Fatalf("purge inside the grace period succeeded:\n%s", out)
+	}
 	assertClass(t, err, output.CodeConflict)
-	if err == nil || !strings.Contains(err.Error(), "2026-10-01T00:00:00Z") {
+	if !strings.Contains(err.Error(), "2026-10-01T00:00:00Z") {
 		t.Errorf("grace refusal must name the eligible date: %v", err)
 	}
 	assertModelIntact(t, db, lcB, 3)
 
 	appendConfig(t, db, "embeddings:\n  grace_period: 24h\n")
 	useLifecycleClock(t, deprecated.Add(25*time.Hour))
-	out, err := db.exec("embeddings", "purge", lcB, "--dry-run", "--format", "json")
+	out, err = db.exec("embeddings", "purge", lcB, "--dry-run", "--format", "json")
 	if err != nil {
 		t.Fatalf("purge dry run: %v\n%s", err, out)
 	}
