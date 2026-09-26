@@ -86,7 +86,7 @@ func TestPlugin_IngestsDroppedFile(t *testing.T) {
 
 	fileEvents := 0
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.dir-watcher.file" {
+		if e.Type == dirwatcher.TopicFileDetected {
 			fileEvents++
 		}
 	}
@@ -113,7 +113,7 @@ func TestPlugin_ExtensionFilter(t *testing.T) {
 
 	fileEvents := 0
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.dir-watcher.file" {
+		if e.Type == dirwatcher.TopicFileDetected {
 			fileEvents++
 		}
 	}
@@ -137,7 +137,7 @@ func TestPlugin_DeduplicatesFiles(t *testing.T) {
 
 	fileEvents := 0
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.dir-watcher.file" {
+		if e.Type == dirwatcher.TopicFileDetected {
 			fileEvents++
 		}
 	}
@@ -164,7 +164,7 @@ func TestPlugin_NewFilePickedUpAfterStart(t *testing.T) {
 
 	fileEvents := 0
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.dir-watcher.file" {
+		if e.Type == dirwatcher.TopicFileDetected {
 			fileEvents++
 		}
 	}
@@ -187,7 +187,7 @@ func TestPlugin_IngestedFile_EmitsGraphNode(t *testing.T) {
 
 	var ko pluginapi.KnowledgeObject
 	for _, e := range bus.events {
-		if e.Type == "ctxt.plugin.dir-watcher.file" {
+		if e.Type == dirwatcher.TopicFileDetected {
 			require.NoError(t, json.Unmarshal(e.Data, &ko))
 			break
 		}

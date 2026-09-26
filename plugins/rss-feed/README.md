@@ -23,8 +23,8 @@ plugins:
 
 | Type | When |
 |------|------|
-| `ctxt.plugin.rss-feed.item` | New item detected (not previously seen this session) |
-| `ctxt.plugin.rss-feed.error` | Fetch or parse error for a feed URL |
+| `ctxt.rss_feed.item.detected` | New item detected (not previously seen this session) |
+| `ctxt.rss_feed.feed.failed` | Fetch or parse error for a feed URL |
 
 ## KnowledgeObject shape
 

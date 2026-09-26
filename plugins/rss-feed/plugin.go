@@ -102,7 +102,7 @@ func (p *Plugin) poll(ctx context.Context) {
 				ID:          sha256hex(url + "error"),
 				Source:      "plugin/rss-feed",
 				SpecVersion: "1.0",
-				Type:        "ctxt.plugin.rss-feed.error",
+				Type:        TopicFeedFailed,
 				Time:        time.Now().UTC(),
 				Data:        mustJSON(map[string]string{"url": url, "error": err.Error()}),
 			})
@@ -265,7 +265,7 @@ func objectEvent(obj pluginapi.KnowledgeObject) pluginapi.Event {
 		ID:              obj.ID,
 		Source:          "plugin/rss-feed",
 		SpecVersion:     "1.0",
-		Type:            "ctxt.plugin.rss-feed.item",
+		Type:            TopicItemDetected,
 		DataContentType: "application/json",
 		Time:            time.Now().UTC(),
 		Data:            mustJSON(obj),

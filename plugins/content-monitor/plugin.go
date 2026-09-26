@@ -4,7 +4,7 @@
 //
 // The first successful fetch per target is treated as baseline — no event is
 // emitted on initial capture. Subsequent fetches that differ from the previous
-// hash emit a "ctxt.plugin.content-monitor.change" event whose KnowledgeObject
+// hash emit a TopicPageChanged event whose KnowledgeObject
 // contains a line-level diff summary in TextContent.
 //
 // Config (under plugins.content-monitor):
@@ -191,7 +191,7 @@ func seenEvent(t URLTarget, hash, content string) pluginapi.Event {
 		ID:              hash,
 		Source:          "plugin/content-monitor",
 		SpecVersion:     "1.0",
-		Type:            "ctxt.plugin.content-monitor.seen",
+		Type:            TopicBaselineRecorded,
 		DataContentType: "application/json",
 		Time:            time.Now().UTC(),
 		Data:            mustJSON(obj),
@@ -223,7 +223,7 @@ func changeEvent(t URLTarget, newHash, summary, diff, _, newContent string) plug
 		ID:              newHash,
 		Source:          "plugin/content-monitor",
 		SpecVersion:     "1.0",
-		Type:            "ctxt.plugin.content-monitor.change",
+		Type:            TopicPageChanged,
 		DataContentType: "application/json",
 		Time:            time.Now().UTC(),
 		Data:            mustJSON(obj),
@@ -236,7 +236,7 @@ func errEvent(url string, err error) pluginapi.Event {
 		ID:          fmt.Sprintf("%x", sum),
 		Source:      "plugin/content-monitor",
 		SpecVersion: "1.0",
-		Type:        "ctxt.plugin.content-monitor.error",
+		Type:        TopicCheckFailed,
 		Time:        time.Now().UTC(),
 		Data:        mustJSON(map[string]string{"url": url, "error": err.Error()}),
 	}

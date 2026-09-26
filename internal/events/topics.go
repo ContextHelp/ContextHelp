@@ -85,6 +85,16 @@ const (
 	TopicCtxtEmbeddingsModelPurged bus.Topic = "ctxt.embeddings.model.purged"
 )
 
+// Plugin capability topics, published by the plugin CapabilityEnforcer on
+// behalf of a plugin that holds the matching permission.
+const (
+	// TopicPluginRefreshRequested fires when a plugin asked for a refresh.
+	TopicPluginRefreshRequested bus.Topic = "ctxt.plugin.refresh.requested"
+	// TopicPluginNotificationRequested fires when a plugin asked for a
+	// user notification.
+	TopicPluginNotificationRequested bus.Topic = "ctxt.plugin.notification.requested"
+)
+
 // Ambient capture substrate topics (ADR-066), published on the ctxd daemon
 // bus by the ambient Runner and its Sources. The event source field carries
 // the ambient source name (clipboard, filewatch, meeting, ...).

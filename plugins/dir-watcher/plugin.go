@@ -248,7 +248,7 @@ func objectEvent(obj pluginapi.KnowledgeObject) pluginapi.Event {
 		ID:              obj.ID,
 		Source:          "plugin/dir-watcher",
 		SpecVersion:     "1.0",
-		Type:            "ctxt.plugin.dir-watcher.file",
+		Type:            TopicFileDetected,
 		DataContentType: "application/json",
 		Time:            time.Now().UTC(),
 		Data:            mustJSON(obj),
@@ -261,7 +261,7 @@ func errEvent(path string, err error) pluginapi.Event {
 		ID:          id,
 		Source:      "plugin/dir-watcher",
 		SpecVersion: "1.0",
-		Type:        "ctxt.plugin.dir-watcher.error",
+		Type:        TopicScanFailed,
 		Time:        time.Now().UTC(),
 		Data:        mustJSON(map[string]string{"path": path, "error": err.Error()}),
 	}
