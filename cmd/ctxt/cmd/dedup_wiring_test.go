@@ -21,6 +21,9 @@ func TestNewServiceWiresDuplicatesConfig(t *testing.T) {
 		Duplicates: dup,
 	}
 
+	if embeddingBuildOpts(db.Driver).Audit == nil {
+		t.Error("BuildOpts.Audit is nil; dedup decisions would not reach the audit log")
+	}
 	if got := embeddingBuildOpts(db.Driver).Duplicates; got != dup {
 		t.Errorf("BuildOpts.Duplicates = %+v, want %+v", got, dup)
 	}

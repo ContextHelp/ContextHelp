@@ -276,6 +276,8 @@ What each policy does:
 
 A near-duplicate is recorded in the new object's metadata. dpkms logs `WARN dedup: near-duplicate detected object=… duplicate_of=… similarity=… model_id=…` under `warn`.
 
+Every dedup decision (exact or near) is also written to the audit log as `dedup.exact` or `dedup.similar`, with the duplicate's ID, similarity, policy and model, and no content. List them with `ctxt audit list --event-type dedup.similar`.
+
 ```bash
 curl -s http://localhost:8080/api/v1/objects/<id> | jq '.metadata | {duplicate_of, duplicate_similarity, duplicate_kind}'
 ```

@@ -77,6 +77,7 @@ func embeddingBuildOpts(driver storage.StorageDriver, r *embeddings.Resolver) bu
 	opts := builtins.BuildOpts{
 		Resolver:   embeddings.NewProviderResolver(r),
 		Embeddings: driver.Embeddings(),
+		Audit:      driver.AuditLog(),
 	}
 	if cfg != nil {
 		opts.Duplicates = cfg.Duplicates
