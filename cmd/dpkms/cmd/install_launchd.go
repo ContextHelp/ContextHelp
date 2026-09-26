@@ -27,6 +27,7 @@ import (
 	"text/template"
 
 	"github.com/ideacrafterslabs/ctxt/cmd/dpkms/templates"
+	"github.com/ideacrafterslabs/ctxt/internal/binpath"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
 )
@@ -86,7 +87,10 @@ The platform is auto-detected:
     "systemctl --user enable --now". Restart=always with RestartSec=30.
 
 The binary path is resolved via os.Executable() — whichever dpkms binary
-ran "dpkms install" is the one the service manager will launch.
+ran "dpkms install" is the one the service manager will launch. A
+Homebrew install records the prefix shim (e.g. /opt/homebrew/bin/dpkms)
+rather than the versioned Cellar path, so the service survives
+"brew upgrade".
 
 Logs land at:
 
@@ -167,17 +171,17 @@ func runInstall(cmd *cobra.Command, _ []string) error {
 	}
 }
 
+// currentExecutable is os.Executable; tests replace it.
+var currentExecutable = os.Executable
+
 func newInstaller() (installer, error) {
-	bin, err := os.Executable()
+	exe, err := currentExecutable()
 	if err != nil {
 		return nil, fmt.Errorf("resolve current binary: %w", err)
 	}
-	bin, err = filepath.EvalSymlinks(bin)
-	if err != nil {
-		// EvalSymlinks fails when the binary path doesn't exist on disk
-		// (e.g. the test harness). Fall back to the raw path.
-		bin, _ = os.Executable()
-	}
+	// A Homebrew keg path dies with the next upgrade; record the
+	// prefix shim instead when it points at the same file.
+	bin := binpath.Stable(exe)
 
 	home, err := os.UserHomeDir()
 	if err != nil {
