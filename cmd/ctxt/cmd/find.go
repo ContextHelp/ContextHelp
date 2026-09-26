@@ -65,7 +65,13 @@ Examples:
   ctxt find "standup" --source-type slack --since 2026-04-01
 
   # Show facet breakdown with results
-  ctxt find "architecture" --facets`,
+  ctxt find "architecture" --facets
+
+  # Search trace as a JGF graph document (nodes: query, candidates, entities)
+  ctxt find "deployment" --graph --format json
+
+  # Smaller graph with similarity edges
+  ctxt find "deployment" --graph --graph-max-nodes 50 --graph-similar --format json`,
 	RunE: runFind,
 }
 
@@ -104,6 +110,8 @@ func init() {
 	// Per-run embedding provider overrides (vector and hybrid modes).
 	embeddings.AddFlags(findCmd.Flags(), &findEmbedding)
 
+	registerFindGraphFlags(findCmd)
+
 	viper.BindPFlag("find.limit", findCmd.Flags().Lookup("limit"))
 	viper.BindPFlag("find.semantic", findCmd.Flags().Lookup("semantic"))
 	viper.BindPFlag("find.hybrid", findCmd.Flags().Lookup("hybrid"))
@@ -124,6 +132,16 @@ var findEmbedding embeddings.Overrides
 var findEmbeddingHTTPClient *http.Client
 
 func runFind(cmd *cobra.Command, args []string) error {
+	graphOpts, graph, err := findGraphOptions(cmd)
+	if err != nil {
+		return err
+	}
+	// Human output is where the interactive graph viewer will open;
+	// until it exists, --graph is machine output only.
+	if graph && !isJSONOutput() {
+		return errFindGraphViewerUnavailable()
+	}
+
 	query, source, err := cli.GetInput(args)
 	if err != nil {
 		return err
@@ -192,10 +210,11 @@ func runFind(cmd *cobra.Command, args []string) error {
 	explain, _ := cmd.Flags().GetBool("explain")
 	facets, _ := cmd.Flags().GetBool("facets")
 
-	// vector and hybrid (incl. --explain) search the default embedding
-	// model's index; the default is read per query, never cached.
+	// vector and hybrid (incl. --explain and --graph, which always runs
+	// hybrid) search the default embedding model's index; the default is
+	// read per query, never cached.
 	var sem retrieval.SemanticSource
-	if mode != "fts" {
+	if mode != "fts" || graph {
 		sem, err = findSemanticSource(svc.Store, sessionState)
 		if err != nil {
 			return fmt.Errorf("find: %w", err)
@@ -204,6 +223,11 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 	// Build metadata facet filter from CLI flags.
 	filter := buildFindFilter(cmd, limit)
+
+	// --graph always runs the traced hybrid search, whatever the mode.
+	if graph {
+		return runFindGraph(ctx, cmd, svc, sem, query, filter, searchCfg, graphOpts)
+	}
 
 	// --explain only applies to hybrid mode; it prints per-signal score breakdowns.
 	if explain && mode == "hybrid" {
