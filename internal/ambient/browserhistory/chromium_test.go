@@ -211,11 +211,15 @@ func TestSourceEventMetadataCarriesVisitSource(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("no event")
 	}
-	if ev.Metadata["source"] != "brave:Profile 3" {
-		t.Fatalf("Metadata[source] = %v, want %q", ev.Metadata["source"], "brave:Profile 3")
+	if ev.Metadata["browser_profile"] != "brave:Profile 3" {
+		t.Fatalf("Metadata[browser_profile] = %v, want %q", ev.Metadata["browser_profile"], "brave:Profile 3")
 	}
 	if ev.Metadata["browser"] != "brave" {
 		t.Fatalf("Metadata[browser] = %v, want brave", ev.Metadata["browser"])
+	}
+	// "source" would shadow RawEvent.Source.
+	if v, ok := ev.Metadata["source"]; ok {
+		t.Fatalf("Metadata[source] = %v, want no such key", v)
 	}
 }
 
@@ -225,8 +229,8 @@ func TestSourceEventMetadataOmitsEmptySource(t *testing.T) {
 		t.Fatal(err)
 	}
 	ev := s.toRawEvent(Visit{URL: "https://example.com/", VisitedAt: t0, Browser: "chrome"})
-	if _, ok := ev.Metadata["source"]; ok {
-		t.Fatalf("Metadata[source] set for a visit without Source: %v", ev.Metadata["source"])
+	if _, ok := ev.Metadata["browser_profile"]; ok {
+		t.Fatalf("Metadata[browser_profile] set for a visit without Source: %v", ev.Metadata["browser_profile"])
 	}
 }
 
