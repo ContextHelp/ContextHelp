@@ -188,6 +188,9 @@ func TestLiveServerGuardUserConfigNotRewritten(t *testing.T) {
 	if err != nil {
 		t.Fatalf("guard user config: %v", err)
 	}
+	if want := "server:\n  url: " + testguard.ClosedServerURL + "\n"; string(before) != want {
+		t.Fatalf("guard user config = %q; want only server.url (%q)", before, want)
+	}
 	cfgArgs := serverURLsConfig(t, "http://127.0.0.1:19997")
 	if _, err := executeCommand(append([]string{"config", "paths"}, cfgArgs...)...); err != nil {
 		t.Fatalf("config paths: %v", err)

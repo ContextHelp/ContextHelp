@@ -439,7 +439,6 @@ func TestResolveSearchConfig(t *testing.T) {
 
 func TestProfileSearchStrategyOverride(t *testing.T) {
 	cfg, err := loadFromYAML(t, `
-version: 1
 profile:
   profiles:
     research:
@@ -458,7 +457,7 @@ profile:
 }
 
 func TestSearchConfigDefaults(t *testing.T) {
-	cfg, err := loadFromYAML(t, `version: 1`)
+	cfg, err := loadFromYAML(t, ``)
 	require.NoError(t, err)
 	assert.Equal(t, "hybrid", cfg.Search.DefaultMode)
 	assert.Equal(t, 60, cfg.Search.RRF.K)

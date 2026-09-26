@@ -325,8 +325,6 @@ chmod +x .git/hooks/pre-commit
 
 ```yaml
 # config.dev.yaml
-version: 1
-
 storage:
   type: sqlite
   path: ~/.local/share/contexthelp/dev.db
@@ -357,8 +355,6 @@ providers:
 
 ```yaml
 # config.staging.yaml
-version: 1
-
 storage:
   type: postgres
   connection_string: ${CONTEXTHELP_DB_URL}
@@ -390,8 +386,6 @@ providers:
 
 ```yaml
 # config.production.yaml
-version: 1
-
 storage:
   type: postgres
   connection_string: ${CONTEXTHELP_DB_URL}
@@ -541,7 +535,6 @@ metadata:
   namespace: default
 data:
   config.yaml: |
-    version: 1
     storage:
       type: postgres
       connection_string: "postgresql://contexthelp:${DB_PASSWORD}@postgres:5432/contexthelp"

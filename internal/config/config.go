@@ -26,14 +26,8 @@ const (
 	EnvDPKMSWorkers = "DPKMS_WORKERS"
 )
 
-// currentSchemaVersion is the latest config schema version.
-const currentSchemaVersion = 1
-
 // Config represents the application configuration
 type Config struct {
-	// Version is the schema version. Used for migrations.
-	Version int `mapstructure:"version" yaml:"version"`
-
 	// Storage configuration
 	Storage StorageConfig `mapstructure:"storage" yaml:"storage"`
 
@@ -636,7 +630,7 @@ func (e *ServerEndpoint) UnmarshalYAML(node *yaml.Node) error {
 }
 
 // MarshalYAML writes the bare-string form back when no token is set, so a
-// config written back (schema migration) keeps its original shape.
+// config saved by a command keeps its original shape.
 func (e ServerEndpoint) MarshalYAML() (any, error) {
 	if e.Token == "" {
 		return e.URL, nil
@@ -909,42 +903,7 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 		return nil, err
 	}
 
-	// Run migrations if needed. Write-back targets the highest-precedence
-	// file that actually contributed to the merge (project > user > system),
-	// or the explicit cfgFile/CTXT_CONFIG path when one was used.
-	if cfg.Version < currentSchemaVersion {
-		if migrate(&cfg) {
-			if cfgPath := writeBackTarget(cfgFile, system, user, project); cfgPath != "" {
-				_ = WriteBack(&cfg, cfgPath)
-			}
-		}
-	}
-
 	return &cfg, nil
-}
-
-// writeBackTarget picks the file to write a migrated config to. Priority:
-// explicit override (cfgFile or CTXT_CONFIG) > project > user > system.
-// Returns "" when nothing on the cascade existed.
-func writeBackTarget(cfgFile, system, user, project string) string {
-	if cfgFile != "" {
-		return cfgFile
-	}
-	if env := os.Getenv(EnvConfigPath); env != "" {
-		return env
-	}
-	for _, p := range []string{project, user, system} {
-		if p == "" {
-			continue
-		}
-		// #nosec G703 -- p is a config-file candidate from the XDG
-		// search path or an explicit --config value, both operator
-		// supplied. Stat reads metadata only.
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	return ""
 }
 
 // cascadeSlots returns the system/user/project paths for the given bin.
@@ -1032,20 +991,6 @@ func syncProfileDefault(cfg *Config) error {
 	return nil
 }
 
-// migrate applies schema migrations to cfg in-place and returns true if
-// any migration was applied (caller should write back).
-func migrate(cfg *Config) bool {
-	changed := false
-
-	if cfg.Version < 1 {
-		// v0 → v1: no structural changes; just stamp the version.
-		cfg.Version = 1
-		changed = true
-	}
-
-	return changed
-}
-
 // setDefaults sets default configuration values
 func setDefaults(v *viper.Viper) {
 	dataDir, err := dataDirXDG()
@@ -1095,9 +1040,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.llm.backend", "auto")
 	v.SetDefault("providers.llm.endpoint", "http://localhost:11434")
 	v.SetDefault("providers.llm.model", "")
-
-	// Schema version
-	v.SetDefault("version", 0)
 
 	// Jobs defaults (reproduce current hardcoded values)
 	v.SetDefault("jobs.poll_interval", 500*time.Millisecond)

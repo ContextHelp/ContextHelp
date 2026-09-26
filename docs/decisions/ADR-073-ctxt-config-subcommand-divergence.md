@@ -188,9 +188,8 @@ Annotation invariants (per hand-rolled verb):
 
 - `kit/side-effect` — one of the §7.4 enum, matching the stamps in
   `cmd/ctxt/cmd/config.go`:
-  - `read` for `show`
-  - `write-local` for `validate` (config.Load may rewrite migrations to
-    disk), `edit`, `doctor` (`--fix` chmods the file), `backup`
+  - `read` for `show` and `validate` (loading config never writes)
+  - `write-local` for `edit`, `doctor` (`--fix` chmods the file), `backup`
   - `destructive-local` for `restore`
 - `kit/idempotent` — `yes` for read leaves, `conditional` for `doctor`
   (`--fix` mutates), `no` for `restore`.

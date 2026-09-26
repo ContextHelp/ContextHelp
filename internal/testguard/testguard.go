@@ -129,12 +129,7 @@ func WriteUserConfig(configHome string, bins ...string) error {
 	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
 		return fmt.Errorf("testguard: %w", err)
 	}
-	// version stamps the current config schema: an unversioned file is
-	// "migrated" on load, and the write-back persists the whole merged
-	// config (including a test's -c overlays) into this shared file, so
-	// one test's server and storage settings would leak into every later
-	// test.
-	body := []byte("version: 1\nserver:\n  url: " + ClosedServerURL + "\n")
+	body := []byte("server:\n  url: " + ClosedServerURL + "\n")
 	for _, bin := range bins {
 		if err := os.WriteFile(filepath.Join(cfgDir, bin+".yaml"), body, 0o600); err != nil {
 			return fmt.Errorf("testguard: %w", err)

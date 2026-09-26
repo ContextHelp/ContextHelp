@@ -114,7 +114,7 @@ func TestInitConfig_ValidConfigFlagLoads(t *testing.T) {
 	dir := hermeticConfigEnv(t)
 
 	path := filepath.Join(dir, "custom.yaml")
-	if err := os.WriteFile(path, []byte("version: 1\nserver:\n  port: 4343\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("server:\n  port: 4343\n"), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
