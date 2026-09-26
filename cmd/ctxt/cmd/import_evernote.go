@@ -29,7 +29,7 @@ Examples:
   ctxt import evernote --file ./notes.enex --dry-run
 
   # Import only recent work-tagged notes
-  ctxt import evernote --file ./notes.enex --since 2026-01-01 --tagged work --server http://localhost:8080`,
+  ctxt import evernote --file ./notes.enex --since 2026-01-01 --tagged work`,
 	RunE: runImportEvernote,
 }
 
@@ -40,7 +40,7 @@ func init() {
 	importEvernoteCmd.Flags().String("since", "", "only import notes modified since this time (RFC3339 or YYYY-MM-DD)")
 	importEvernoteCmd.Flags().StringSlice("tagged", nil, "only include notes with at least one of these tags (repeatable)")
 	importEvernoteCmd.Flags().Int("max-items", 0, "maximum notes to import (0 = all)")
-	importEvernoteCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importEvernoteCmd.Flags().String("server", "", serverFlagUsage)
 	importEvernoteCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	importEvernoteCmd.MarkFlagRequired("file")
@@ -69,14 +69,9 @@ func runImportEvernote(cmd *cobra.Command, args []string) error {
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	filterTags, _ := cmd.Flags().GetStringSlice("tagged")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	since, err := parseSinceValue(sinceRaw)
 	if err != nil {
@@ -163,7 +158,7 @@ func runImportEvernote(cmd *cobra.Command, args []string) error {
 			source = "import:evernote"
 		}
 
-		_, err := enqueueContent(serverURL, content, "text", pipelineName, source)
+		_, err := enqueueContent(ep, content, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

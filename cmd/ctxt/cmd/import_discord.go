@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
@@ -39,8 +38,8 @@ Examples:
   # Import only recent messages
   ctxt import discord --file ./export.json --since 2026-01-01
 
-  # Import with a server override
-  ctxt import discord --file ./export.json --server http://localhost:8080`,
+  # Import into a specific server (overrides server.url)
+  ctxt import discord --file ./export.json --server https://dpkms.example.net`,
 	RunE: runImportDiscord,
 }
 
@@ -50,7 +49,7 @@ func init() {
 	importDiscordCmd.Flags().String("file", "", "path to Discord JSON export file")
 	importDiscordCmd.Flags().String("since", "", "only import messages on or after this time (RFC3339 or YYYY-MM-DD)")
 	importDiscordCmd.Flags().Int("max-items", 0, "maximum messages to import (0 = all)")
-	importDiscordCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importDiscordCmd.Flags().String("server", "", serverFlagUsage)
 	importDiscordCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	importDiscordCmd.MarkFlagRequired("file")
@@ -78,14 +77,9 @@ func runImportDiscord(cmd *cobra.Command, args []string) error {
 	file, _ := cmd.Flags().GetString("file")
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	since, err := parseSinceValue(sinceRaw)
 	if err != nil {
@@ -160,7 +154,7 @@ func runImportDiscord(cmd *cobra.Command, args []string) error {
 			source = "import:discord"
 		}
 
-		_, err := enqueueContent(serverURL, content, "text", pipelineName, source)
+		_, err := enqueueContent(ep, content, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

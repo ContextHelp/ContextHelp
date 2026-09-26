@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	gohttp "net/http"
 	"strings"
@@ -19,8 +20,13 @@ import (
 const serverFlagUsage = "dpkms server URL; overrides server.url and server.urls (default " +
 	idxbridge.DefaultBaseURL + " when nothing is configured)"
 
+// pinServerFlagUsage is the --server help text of the failover-routing
+// commands (analyze, capture), where the flag pins one instance.
+const pinServerFlagUsage = "pin routing to this single dpkms instance, bypassing the configured " +
+	"server.urls failover list (default " + idxbridge.DefaultBaseURL + " when nothing is configured)"
+
 // serverEndpoint resolves the one dpkms instance a single-target client
-// command (status, log, upgrade status) talks to, the same way analyze and
+// command (status, log, upgrade status, feed, import) talks to, the same way analyze and
 // capture route: an explicit --server pins that URL, reusing its configured
 // token; otherwise the primary of server.urls, then server.url (config
 // file or -c), then the client default.
@@ -36,13 +42,23 @@ func serverEndpoint(cmd *cobra.Command) idxbridge.Endpoint {
 // timeout) comes back as kit's PREREQUISITE (exit 70): the invocation was
 // right, the daemon is not there.
 func serverGet(ctx context.Context, ep idxbridge.Endpoint, path string, timeout time.Duration) (*gohttp.Response, error) {
+	return serverDo(ctx, ep, gohttp.MethodGet, path, nil, timeout)
+}
+
+// serverDo issues method <ep.URL><path> with ep's bearer token, if any; a
+// non-nil body is sent as JSON. A zero timeout means none. Failures to
+// reach the daemon classify as in serverGet.
+func serverDo(ctx context.Context, ep idxbridge.Endpoint, method, path string, body io.Reader, timeout time.Duration) (*gohttp.Response, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	url := strings.TrimRight(ep.URL, "/") + path
-	req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodGet, url, nil)
+	req, err := gohttp.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	if ep.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+ep.Token)

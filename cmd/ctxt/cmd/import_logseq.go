@@ -31,8 +31,8 @@ Examples:
   # Import only journals modified since a date
   ctxt import logseq --graph ~/Documents/MyGraph --since 2026-01-01 --kind journal
 
-  # Import with a custom server
-  ctxt import logseq --graph ~/Documents/MyGraph --server http://localhost:8080`,
+  # Import into a specific server (overrides server.url)
+  ctxt import logseq --graph ~/Documents/MyGraph --server https://dpkms.example.net`,
 	RunE: runImportLogseq,
 }
 
@@ -43,7 +43,7 @@ func init() {
 	importLogseqCmd.Flags().String("since", "", "only import pages modified since this time (RFC3339 or YYYY-MM-DD)")
 	importLogseqCmd.Flags().String("kind", "", "filter by page kind: journal|page (default: all)")
 	importLogseqCmd.Flags().Int("max-items", 0, "maximum pages to import (0 = all)")
-	importLogseqCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importLogseqCmd.Flags().String("server", "", serverFlagUsage)
 	importLogseqCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	importLogseqCmd.MarkFlagRequired("graph")
@@ -72,14 +72,9 @@ func runImportLogseq(cmd *cobra.Command, args []string) error {
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	kindFilter, _ := cmd.Flags().GetString("kind")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	// Validate kind filter.
 	kindFilter = strings.ToLower(strings.TrimSpace(kindFilter))
@@ -165,7 +160,7 @@ func runImportLogseq(cmd *cobra.Command, args []string) error {
 		content := logseqImporter.RenderContent(p)
 		source := "import:logseq:" + p.RelPath
 
-		_, err := enqueueContent(serverURL, content, "text", pipelineName, source)
+		_, err := enqueueContent(ep, content, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

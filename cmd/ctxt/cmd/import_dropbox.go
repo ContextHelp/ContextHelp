@@ -38,7 +38,7 @@ Examples:
   ctxt import dropbox --access-token $DROPBOX_ACCESS_TOKEN --cursor <saved-cursor>
 
   # Import all Dropbox files, limit to 500
-  ctxt import dropbox --access-token $DROPBOX_ACCESS_TOKEN --recursive --max-items 500 --server http://localhost:8080`,
+  ctxt import dropbox --access-token $DROPBOX_ACCESS_TOKEN --recursive --max-items 500`,
 	RunE: runImportDropbox,
 }
 
@@ -53,7 +53,7 @@ func init() {
 	importDropboxCmd.Flags().String("cursor", "", "resume sync from this cursor (incremental mode)")
 	importDropboxCmd.Flags().Bool("recursive", false, "recurse into sub-folders")
 	importDropboxCmd.Flags().Int("max-items", 0, "maximum number of files to import (0 = all)")
-	importDropboxCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importDropboxCmd.Flags().String("server", "", serverFlagUsage)
 	importDropboxCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	cliconv.WithSideEffect(importDropboxCmd, cliconv.SideEffectWrite)
@@ -85,7 +85,7 @@ func runImportDropbox(cmd *cobra.Command, args []string) error {
 	recursive, _ := cmd.Flags().GetBool("recursive")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 
 	if strings.TrimSpace(accessToken) == "" {
@@ -94,11 +94,6 @@ func runImportDropbox(cmd *cobra.Command, args []string) error {
 	if accessToken == "" {
 		return fmt.Errorf("dropbox token is required: use --access-token or %s (scope: files.content.read)", dropboxAccessTokenEnv)
 	}
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	since, err := parseSinceValue(sinceRaw)
 	if err != nil {
@@ -176,7 +171,7 @@ func runImportDropbox(cmd *cobra.Command, args []string) error {
 		}
 
 		payload := renderDropboxText(f)
-		_, err = enqueueImportItem(serverURL, payload, "text", pipelineName, "import:dropbox")
+		_, err = enqueueContent(ep, payload, "text", pipelineName, "import:dropbox")
 		if err != nil {
 			failed++
 			if firstErr == nil {

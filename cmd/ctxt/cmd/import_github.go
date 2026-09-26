@@ -28,7 +28,7 @@ var newGitHubClient = func(token, baseURL string) githubFetcher {
 }
 
 // enqueueGitHubItem delegates to the shared helper; overridable in tests.
-var enqueueGitHubItem = enqueueImportItem
+var enqueueGitHubItem = enqueueContent
 
 var importGitHubCmd = &cobra.Command{
 	Use:   "github",
@@ -64,7 +64,7 @@ func init() {
 	importGitHubCmd.Flags().StringP("token", "t", "", "GitHub token (or GITHUB_TOKEN env)")
 	importGitHubCmd.Flags().StringP("username", "u", "", "GitHub username (required)")
 	importGitHubCmd.Flags().StringP("lists", "l", "starred", "comma-separated lists: starred,watched,contributed")
-	importGitHubCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importGitHubCmd.Flags().String("server", "", serverFlagUsage)
 	importGitHubCmd.Flags().String("pipeline", "text.long", "pipeline override for enqueued jobs")
 
 	// hidden for test/dev overrides
@@ -113,14 +113,9 @@ func runImportGitHub(cmd *cobra.Command, args []string) error {
 	if outputFmt == "" {
 		outputFmt = "table"
 	}
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	baseURL, _ := cmd.Flags().GetString("github-base-url")
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	client := newGitHubClient(token, baseURL)
 	repos, err := client.Fetch(context.Background(), githubimporter.FetchOptions{
@@ -147,7 +142,7 @@ func runImportGitHub(cmd *cobra.Command, args []string) error {
 	var firstErr error
 	for _, r := range repos {
 		payload := githubimporter.RenderContent(r)
-		_, err := enqueueGitHubItem(serverURL, payload, "text", pipelineName, r.URL)
+		_, err := enqueueGitHubItem(ep, payload, "text", pipelineName, r.URL)
 		if err != nil {
 			failed++
 			if firstErr == nil {

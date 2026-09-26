@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/spf13/cobra"
 )
 
@@ -53,7 +55,7 @@ func init() {
 	importBatchCmd.AddCommand(importBatchStatusCmd)
 
 	// batch flags
-	importBatchCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importBatchCmd.Flags().String("server", "", serverFlagUsage)
 	importBatchCmd.Flags().String("file", "", "path to import file (JSONL, CSV, TSV)")
 	importBatchCmd.Flags().String("dir", "", "directory to scan for markdown files")
 	importBatchCmd.Flags().String("format", "", "file format: jsonl|csv|tsv|markdown (auto-detected from extension)")
@@ -63,7 +65,7 @@ func init() {
 	importBatchCmd.Flags().String("map-tags", "", "column name to use as tags (CSV/TSV imports)")
 
 	// batch status flags
-	importBatchStatusCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importBatchStatusCmd.Flags().String("server", "", serverFlagUsage)
 
 	cliconv.WithSideEffect(importBatchStatusCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(importBatchStatusCmd, cliconv.IdempotencyYes)
@@ -74,19 +76,10 @@ func init() {
 			Command: "ctxt import batch status batch_12345678",
 		},
 		{
-			Title:   "Check status against a custom server",
-			Command: "ctxt import batch status batch_12345678 --server http://localhost:8080",
+			Title:   "Check status against a specific server",
+			Command: "ctxt import batch status batch_12345678 --server https://dpkms.example.net",
 		},
 	})
-}
-
-// batchServerURL returns the server URL from the command flag or the default.
-func batchServerURL(cmd *cobra.Command) string {
-	url, _ := cmd.Flags().GetString("server")
-	if url == "" {
-		url = "http://localhost:8080"
-	}
-	return strings.TrimRight(url, "/")
 }
 
 // detectFormat returns the format string inferred from a filename extension.
@@ -106,7 +99,7 @@ func detectFormat(path string) string {
 }
 
 func runImportBatch(cmd *cobra.Command, args []string) error {
-	serverURL := batchServerURL(cmd)
+	ep := serverEndpoint(cmd)
 	filePath, _ := cmd.Flags().GetString("file")
 	dirPath, _ := cmd.Flags().GetString("dir")
 	format, _ := cmd.Flags().GetString("format")
@@ -123,13 +116,13 @@ func runImportBatch(cmd *cobra.Command, args []string) error {
 	}
 
 	if dirPath != "" {
-		return runImportDir(serverURL, dirPath, dryRun)
+		return runImportDir(ep, dirPath, dryRun)
 	}
 
-	return runImportFile(serverURL, filePath, format, dryRun, mapContent, mapType, mapTags)
+	return runImportFile(ep, filePath, format, dryRun, mapContent, mapType, mapTags)
 }
 
-func runImportFile(serverURL, filePath, format string, dryRun bool, mapContent, mapType, mapTags string) error {
+func runImportFile(ep idxbridge.Endpoint, filePath, format string, dryRun bool, mapContent, mapType, mapTags string) error {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
@@ -163,7 +156,7 @@ func runImportFile(serverURL, filePath, format string, dryRun bool, mapContent, 
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	resp, err := gohttp.Post(serverURL+"/api/v1/import", "application/json", bytes.NewReader(body))
+	resp, err := serverDo(context.Background(), ep, gohttp.MethodPost, "/api/v1/import", bytes.NewReader(body), 0)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
@@ -200,7 +193,7 @@ func runImportFile(serverURL, filePath, format string, dryRun bool, mapContent, 
 	return nil
 }
 
-func runImportDir(serverURL, dirPath string, dryRun bool) error {
+func runImportDir(ep idxbridge.Endpoint, dirPath string, dryRun bool) error {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return fmt.Errorf("read directory: %w", err)
@@ -260,7 +253,7 @@ func runImportDir(serverURL, dirPath string, dryRun bool) error {
 			continue
 		}
 
-		resp, err := gohttp.Post(serverURL+"/api/v1/import", "application/json", bytes.NewReader(body))
+		resp, err := serverDo(context.Background(), ep, gohttp.MethodPost, "/api/v1/import", bytes.NewReader(body), 0)
 		if err != nil {
 			failed++
 			if firstErr == nil {
@@ -305,9 +298,9 @@ type batchStatusResponse struct {
 
 func runImportBatchStatus(cmd *cobra.Command, args []string) error {
 	batchID := args[0]
-	serverURL := batchServerURL(cmd)
+	ep := serverEndpoint(cmd)
 
-	resp, err := gohttp.Get(serverURL + "/api/v1/import/" + batchID)
+	resp, err := serverGet(cmd.Context(), ep, "/api/v1/import/"+batchID, 0)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	pinboardimporter "github.com/ideacrafterslabs/ctxt/internal/importer/pinboard"
 )
 
@@ -162,7 +163,7 @@ func TestImportPinboardEnqueueFromAPIAndFile(t *testing.T) {
 	}
 
 	var enqueueCount int
-	enqueuePinboardItem = func(serverURL, content, contentType, pipelineName, source string) (string, error) {
+	enqueuePinboardItem = func(_ idxbridge.Endpoint, content, contentType, pipelineName, source string) (string, error) {
 		enqueueCount++
 		if contentType != "text" {
 			return "", fmt.Errorf("expected text content, got %s", contentType)
@@ -200,7 +201,7 @@ func writeTempPinboardExport(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "pinboard.json")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write pinboard export fixture: %v", err)
 	}
 	return path

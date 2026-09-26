@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	bookmarksimporter "github.com/ideacrafterslabs/ctxt/internal/importer/bookmarks"
@@ -19,7 +18,7 @@ Examples:
   ctxt import safari --file ./bookmarks.html --dry-run
 
   # Enqueue bookmark URLs for ingestion
-  ctxt import safari --file ./bookmarks.html --server http://localhost:8080`,
+  ctxt import safari --file ./bookmarks.html`,
 	RunE: runImportSafari,
 }
 
@@ -27,7 +26,7 @@ func init() {
 	importCmd.AddCommand(importSafariCmd)
 
 	importSafariCmd.Flags().String("file", "", "path to Safari bookmarks HTML export")
-	importSafariCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importSafariCmd.Flags().String("server", "", serverFlagUsage)
 	importSafariCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 	importSafariCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
 
@@ -54,15 +53,10 @@ func init() {
 
 func runImportSafari(cmd *cobra.Command, args []string) error {
 	file, _ := cmd.Flags().GetString("file")
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	bookmarks, err := bookmarksimporter.ParseBookmarksFile(file)
 	if err != nil {
@@ -107,7 +101,7 @@ func runImportSafari(cmd *cobra.Command, args []string) error {
 	)
 
 	for _, b := range bookmarks {
-		_, err := enqueueBookmark(serverURL, b.URL, pipelineName, "import:safari")
+		_, err := enqueueBookmark(ep, b.URL, pipelineName, "import:safari")
 		if err != nil {
 			failed++
 			if firstErr == nil {

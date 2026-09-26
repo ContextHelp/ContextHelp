@@ -2,13 +2,16 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	gohttp "net/http"
+	"net/url"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/spf13/cobra"
 )
 
@@ -75,7 +78,7 @@ func init() {
 	cliconv.WithSideEffect(feedAddCmd, cliconv.SideEffectWrite)
 	cliconv.WithExamples(feedAddCmd, []cliconv.Example{
 		{Title: "Subscribe to a feed", Command: "ctxt feed add https://example.com/feed.xml"},
-		{Title: "Use a custom dpkms server", Command: "ctxt feed add https://example.com/feed.xml --server http://localhost:9090"},
+		{Title: "Use a specific dpkms server", Command: "ctxt feed add https://example.com/feed.xml --server https://dpkms.example.net"},
 	})
 	cliconv.WithNextSteps(feedAddCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt feed sync --id <feed-id>", Reason: "trigger an immediate first sync"},
@@ -107,32 +110,26 @@ func init() {
 	})
 
 	// feed add flags
-	feedAddCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	feedAddCmd.Flags().String("server", "", serverFlagUsage)
 
 	// feed list flags
 	// NOTE: --output is owned by kit's persistent global flag set; the
 	// inherited flag is resolved through cmd.Flags() at read time, so
 	// no local re-registration is required (12fcc local-global rule).
-	feedListCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	feedListCmd.Flags().String("server", "", serverFlagUsage)
 	feedListCmd.Flags().String("status", "", "filter by status (active|paused|error)")
 
 	// feed sync flags
-	feedSyncCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	feedSyncCmd.Flags().String("server", "", serverFlagUsage)
 	feedSyncCmd.Flags().String("url", "", "feed URL to sync")
 	feedSyncCmd.Flags().String("id", "", "feed ID to sync")
 
 	// feed delete flags
-	feedRemoveCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	feedRemoveCmd.Flags().String("server", "", serverFlagUsage)
 }
 
-// feedServerURL returns the server URL from the command flag or the default.
-func feedServerURL(cmd *cobra.Command) string {
-	url, _ := cmd.Flags().GetString("server")
-	if url == "" {
-		url = "http://localhost:8080"
-	}
-	return strings.TrimRight(url, "/")
-}
+// feedsPath is the dpkms feed subscription collection.
+const feedsPath = "/api/v1/feeds"
 
 // feedResponse represents a single feed returned by the API.
 type feedResponse struct {
@@ -144,7 +141,7 @@ type feedResponse struct {
 
 func runFeedAdd(cmd *cobra.Command, args []string) error {
 	feedURL := args[0]
-	serverURL := feedServerURL(cmd)
+	ep := serverEndpoint(cmd)
 
 	payload := map[string]string{"url": feedURL}
 	body, err := json.Marshal(payload)
@@ -152,7 +149,7 @@ func runFeedAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	resp, err := gohttp.Post(serverURL+"/api/v1/feeds", "application/json", bytes.NewReader(body))
+	resp, err := serverDo(cmd.Context(), ep, gohttp.MethodPost, feedsPath, bytes.NewReader(body), 0)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
@@ -177,15 +174,15 @@ func runFeedAdd(cmd *cobra.Command, args []string) error {
 }
 
 func runFeedList(cmd *cobra.Command, args []string) error {
-	serverURL := feedServerURL(cmd)
+	ep := serverEndpoint(cmd)
 	statusFilter, _ := cmd.Flags().GetString("status")
 
-	reqURL := serverURL + "/api/v1/feeds"
+	path := feedsPath
 	if statusFilter != "" {
-		reqURL += "?status=" + statusFilter
+		path += "?status=" + url.QueryEscape(statusFilter)
 	}
 
-	resp, err := gohttp.Get(reqURL) // #nosec G107 -- URL built from trusted server config
+	resp, err := serverGet(cmd.Context(), ep, path, 0)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
@@ -236,7 +233,7 @@ func runFeedList(cmd *cobra.Command, args []string) error {
 }
 
 func runFeedSync(cmd *cobra.Command, args []string) error {
-	serverURL := feedServerURL(cmd)
+	ep := serverEndpoint(cmd)
 	feedURL, _ := cmd.Flags().GetString("url")
 	feedID, _ := cmd.Flags().GetString("id")
 
@@ -246,14 +243,14 @@ func runFeedSync(cmd *cobra.Command, args []string) error {
 
 	// If URL is given but not ID, resolve the ID first.
 	if feedID == "" {
-		id, err := resolveFeedID(serverURL, feedURL)
+		id, err := resolveFeedID(cmd.Context(), ep, feedURL)
 		if err != nil {
 			return err
 		}
 		feedID = id
 	}
 
-	resp, err := gohttp.Post(serverURL+"/api/v1/feeds/"+feedID+"/sync", "application/json", gohttp.NoBody)
+	resp, err := serverDo(cmd.Context(), ep, gohttp.MethodPost, feedsPath+"/"+feedID+"/sync", nil, 0)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
@@ -282,25 +279,19 @@ func runFeedSync(cmd *cobra.Command, args []string) error {
 
 func runFeedRemove(cmd *cobra.Command, args []string) error {
 	target := args[0]
-	serverURL := feedServerURL(cmd)
+	ep := serverEndpoint(cmd)
 
 	feedID := target
 	// If the arg looks like a URL, resolve the ID.
 	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
-		id, err := resolveFeedID(serverURL, target)
+		id, err := resolveFeedID(cmd.Context(), ep, target)
 		if err != nil {
 			return err
 		}
 		feedID = id
 	}
 
-	req, err := gohttp.NewRequest(gohttp.MethodDelete, serverURL+"/api/v1/feeds/"+feedID, nil)
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-
-	client := &gohttp.Client{}
-	resp, err := client.Do(req)
+	resp, err := serverDo(cmd.Context(), ep, gohttp.MethodDelete, feedsPath+"/"+feedID, nil, 0)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
@@ -317,8 +308,8 @@ func runFeedRemove(cmd *cobra.Command, args []string) error {
 }
 
 // resolveFeedID looks up a feed ID by URL from the server's feed list.
-func resolveFeedID(serverURL, feedURL string) (string, error) {
-	resp, err := gohttp.Get(serverURL + "/api/v1/feeds")
+func resolveFeedID(ctx context.Context, ep idxbridge.Endpoint, feedURL string) (string, error) {
+	resp, err := serverGet(ctx, ep, feedsPath, 0)
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
 	}
