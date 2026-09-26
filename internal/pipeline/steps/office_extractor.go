@@ -50,13 +50,11 @@ func (s *OfficeExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 		draft.Metadata = make(map[string]any)
 	}
 
+	// A failed extraction fails the step: RawContent still holds the file
+	// bytes filereader read, and nothing downstream may index them.
 	result, err := s.provider.ExtractOffice(ctx, draft.Source)
 	if err != nil {
-		// Optional enrichment: the draft keeps its existing RawContent when
-		// the office provider is missing or fails. The error text is kept on
-		// the object so the failure stays visible downstream.
-		draft.Metadata["office_extraction_error"] = err.Error()
-		return draft, nil //nolint:nilerr // optional provider; error preserved in office_extraction_error
+		return nil, fmt.Errorf("office_extractor: %w", err)
 	}
 
 	draft.RawContent = result.FullText

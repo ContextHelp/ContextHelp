@@ -2,6 +2,8 @@ package providers
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -56,5 +58,45 @@ func TestGolibExtractPDFWithoutTool(t *testing.T) {
 	// If pdftotext is not installed, we get an informative result.
 	if result.FullText == "" {
 		t.Error("expected non-empty FullText")
+	}
+}
+
+// testdata/survey.docx was written by macOS textutil from HTML: three
+// paragraphs, the second split across bold and plain runs.
+func TestGolibExtractOfficeDocx(t *testing.T) {
+	p := NewGolibDocumentProvider()
+	result, err := p.ExtractOffice(context.Background(), filepath.Join("testdata", "survey.docx"))
+	if err != nil {
+		t.Fatalf("ExtractOffice: %v", err)
+	}
+	want := "Quokka survey\nMore animals near the salt lakes than last season.\nNight transects start next year."
+	if result.FullText != want {
+		t.Errorf("FullText:\n got %q\nwant %q", result.FullText, want)
+	}
+	if result.PageCount != 1 || len(result.Pages) != 1 || result.Pages[0].Content != want {
+		t.Errorf("pages: count=%d pages=%+v, want one page of the full text", result.PageCount, result.Pages)
+	}
+}
+
+func TestGolibExtractOfficeRejectsUnsupportedFormats(t *testing.T) {
+	p := NewGolibDocumentProvider()
+	for _, ext := range []string{".doc", ".odt", ".rtf", ".epub", ".pptx", ".xlsx"} {
+		path := filepath.Join(t.TempDir(), "survey"+ext)
+		if err := os.WriteFile(path, []byte("quokka"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := p.ExtractOffice(context.Background(), path); err == nil {
+			t.Errorf("%s: extracted %q, want an unsupported-format error", ext, got.FullText)
+		}
+	}
+}
+
+func TestGolibExtractOfficeRejectsCorruptDocx(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "survey.docx")
+	if err := os.WriteFile(path, []byte("Quokka survey report, not a zip archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := NewGolibDocumentProvider().ExtractOffice(context.Background(), path); err == nil {
+		t.Errorf("extracted %q from a non-zip .docx, want an error", got.FullText)
 	}
 }

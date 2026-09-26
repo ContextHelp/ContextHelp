@@ -3,6 +3,8 @@ package providers
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -49,12 +51,21 @@ func (p *GolibDocumentProvider) ExtractPDF(ctx context.Context, pdfPath string) 
 	}, nil
 }
 
+// ExtractOffice extracts the text of a .docx; any other format is an
+// error, so callers never mistake a file's bytes for its text.
 func (p *GolibDocumentProvider) ExtractOffice(_ context.Context, docPath string) (*DocumentResult, error) {
-	// No pure-Go office extraction yet; return informative result.
+	if ext := strings.ToLower(filepath.Ext(docPath)); ext != ".docx" {
+		return nil, fmt.Errorf("golib: office format %q not supported (only .docx)", ext)
+	}
+	text, err := extractDocxText(docPath)
+	if err != nil {
+		return nil, fmt.Errorf("golib: %w", err)
+	}
 	return &DocumentResult{
-		FullText:  "[Office document extraction not yet implemented]",
-		PageCount: 0,
-		Metadata:  map[string]string{"error": "no office backend available", "path": docPath},
+		FullText:  text,
+		PageCount: 1,
+		Pages:     []DocumentPage{{Number: 1, Content: text}},
+		Metadata:  map[string]string{"format": "docx"},
 	}, nil
 }
 
