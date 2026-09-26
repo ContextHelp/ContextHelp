@@ -71,37 +71,6 @@ func TestLifecycleStatesAreDistinct(t *testing.T) {
 	}
 }
 
-// Topic builders MUST follow the 4-segment past-tense convention from ADR-066:
-//
-//	ctxt.<category>.<object>.<action>
-//
-// Tests assert the resulting strings match expected shapes so callers don't
-// drift away from the convention.
-func TestTopicBuildersShape(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name     string
-		got      string
-		expected string
-	}{
-		{"source-lifecycle", SourceLifecycleTopic("started"), "ctxt.ambient.source.started"},
-		{"event-captured", EventTopic("captured"), "ctxt.ambient.event.captured"},
-		{"event-deduped", EventTopic("deduped"), "ctxt.ambient.event.deduped"},
-		{"buffer-appended", BufferTopic("appended"), "ctxt.ambient.buffer.appended"},
-		{"enqueue-succeeded", EnqueueTopic("succeeded"), "ctxt.ambient.enqueue.succeeded"},
-		{"session-opened", SessionTopic("opened"), "ctxt.ambient.session.opened"},
-	}
-	for _, c := range cases {
-		c := c
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			if c.got != c.expected {
-				t.Errorf("got %q, want %q", c.got, c.expected)
-			}
-		})
-	}
-}
-
 // recordingDedup tracks fingerprints seen so tests can assert dedup behaviour
 // without depending on the real LRU implementation (T-0499 lands that).
 type recordingDedup struct {

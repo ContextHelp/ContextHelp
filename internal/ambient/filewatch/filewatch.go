@@ -37,6 +37,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 )
 
 // Defaults per ADR-066 / US-0213.
@@ -146,7 +147,7 @@ func (s *Source) Start(ctx context.Context, b ambient.Publisher) error {
 	s.mu.Unlock()
 
 	if b != nil {
-		_ = b.Publish(ctx, ambient.SourceLifecycleTopic("ready"), SourceName, nil)
+		_ = b.Publish(ctx, string(events.TopicAmbientSourceReadied), SourceName, nil)
 	}
 
 	go s.eventLoop(loopCtx)
@@ -205,7 +206,7 @@ func (s *Source) eventLoop(ctx context.Context) {
 			}
 			// Surface watcher-side errors via failed bus event but keep going.
 			if s.publisher != nil {
-				_ = s.publisher.Publish(ctx, ambient.SourceLifecycleTopic("failed"), SourceName, nil)
+				_ = s.publisher.Publish(ctx, string(events.TopicAmbientSourceFailed), SourceName, nil)
 			}
 		}
 	}
@@ -263,7 +264,7 @@ func (s *Source) processPath(ctx context.Context, path string) {
 	}
 	if info.Size() > s.cfg.MaxFileSizeMB*1024*1024 {
 		if s.publisher != nil {
-			_ = s.publisher.Publish(ctx, ambient.SourceLifecycleTopic("failed"), SourceName,
+			_ = s.publisher.Publish(ctx, string(events.TopicAmbientSourceFailed), SourceName,
 				map[string]any{"path": path, "size": info.Size(), "reason": "exceeds_max_file_size_mb"})
 		}
 		return

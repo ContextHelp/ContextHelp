@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 )
 
 // AutoDetect observes foreground-window events and surfaces a prompt
@@ -117,7 +118,7 @@ func (a *AutoDetect) OnForegroundChange(ctx context.Context, bundleID string) *P
 		// Auto-confirm path; daemon driver should call Source.Trigger
 		// directly. Bus event records the auto-start for audit.
 		if a.publisher != nil {
-			_ = a.publisher.Publish(ctx, "ctxt.ambient.meeting.auto_detected", "meeting",
+			_ = a.publisher.Publish(ctx, string(events.TopicAmbientMeetingAutoDetected), "meeting",
 				map[string]any{
 					"bundle_id": bundleID,
 					"mode":      string(rule.Mode),
@@ -135,7 +136,7 @@ func (a *AutoDetect) OnForegroundChange(ctx context.Context, bundleID string) *P
 	a.pendingPromptFor = bundleID
 	a.pendingExpiresAt = now.Add(a.cfg.PromptTimeout)
 	if a.publisher != nil {
-		_ = a.publisher.Publish(ctx, "ctxt.ambient.meeting.auto_detected", "meeting",
+		_ = a.publisher.Publish(ctx, string(events.TopicAmbientMeetingAutoDetected), "meeting",
 			map[string]any{
 				"bundle_id":       bundleID,
 				"mode":            string(rule.Mode),
@@ -176,7 +177,7 @@ func (a *AutoDetect) Dismiss(ctx context.Context, reason string) {
 	a.pendingExpiresAt = time.Time{}
 	a.mu.Unlock()
 	if pending != "" && a.publisher != nil {
-		_ = a.publisher.Publish(ctx, "ctxt.ambient.meeting.prompt_dismissed", "meeting",
+		_ = a.publisher.Publish(ctx, string(events.TopicAmbientMeetingPromptDismissed), "meeting",
 			map[string]any{"bundle_id": pending, "dismiss_reason": reason})
 	}
 }
@@ -193,7 +194,7 @@ func (a *AutoDetect) CheckPromptTimeout(ctx context.Context) {
 	}
 	a.mu.Unlock()
 	if expired && a.publisher != nil {
-		_ = a.publisher.Publish(ctx, "ctxt.ambient.meeting.prompt_dismissed", "meeting",
+		_ = a.publisher.Publish(ctx, string(events.TopicAmbientMeetingPromptDismissed), "meeting",
 			map[string]any{"bundle_id": pending, "dismiss_reason": "timeout"})
 	}
 }

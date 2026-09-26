@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 )
 
 // fakeReader is a controllable Reader: tests Push focus changes.
@@ -281,8 +282,8 @@ func TestSource_PublishesReadyOnStart(t *testing.T) {
 	_ = s.Start(ctx, pub)
 	t.Cleanup(func() { _ = s.Stop(context.Background()) })
 
-	if !pub.HasTopic("ctxt.ambient.source.ready") {
-		t.Error("expected ctxt.ambient.source.ready on Start")
+	if !pub.HasTopic(string(events.TopicAmbientSourceReadied)) {
+		t.Error("expected ctxt.ambient.source.readied on Start")
 	}
 }
 

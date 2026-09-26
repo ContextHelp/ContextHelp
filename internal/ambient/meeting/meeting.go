@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 )
 
 const (
@@ -205,7 +206,7 @@ func (s *Source) Start(_ context.Context, b ambient.Publisher) error {
 	s.publisher = b
 	s.mu.Unlock()
 	if b != nil {
-		_ = b.Publish(context.Background(), ambient.SourceLifecycleTopic("ready"), SourceName, nil)
+		_ = b.Publish(context.Background(), string(events.TopicAmbientSourceReadied), SourceName, nil)
 	}
 	return nil
 }
@@ -260,14 +261,14 @@ func (s *Source) Trigger(ctx context.Context, opts RecordOptions) error {
 	s.mu.Unlock()
 
 	if s.publisher != nil {
-		_ = s.publisher.Publish(ctx, "ctxt.ambient.meeting.requested", SourceName,
+		_ = s.publisher.Publish(ctx, string(events.TopicAmbientMeetingRequested), SourceName,
 			map[string]any{"mode": string(opts.Mode), "label": opts.Label, "session_id": opts.SessionID})
 	}
 
 	handle, err := s.recorder.Start(ctx, opts)
 	if err != nil {
 		if s.publisher != nil {
-			_ = s.publisher.Publish(ctx, "ctxt.ambient.meeting.failed", SourceName,
+			_ = s.publisher.Publish(ctx, string(events.TopicAmbientMeetingFailed), SourceName,
 				map[string]any{"error": err.Error()})
 		}
 		return err
@@ -278,9 +279,9 @@ func (s *Source) Trigger(ctx context.Context, opts RecordOptions) error {
 	s.mu.Unlock()
 
 	if s.publisher != nil {
-		_ = s.publisher.Publish(ctx, "ctxt.ambient.meeting.started", SourceName,
+		_ = s.publisher.Publish(ctx, string(events.TopicAmbientMeetingStarted), SourceName,
 			map[string]any{"mode": string(opts.Mode), "session_id": opts.SessionID, "started_at": time.Now().Unix()})
-		_ = s.publisher.Publish(ctx, "ctxt.ambient.meeting.indicator_displayed", SourceName, nil)
+		_ = s.publisher.Publish(ctx, string(events.TopicAmbientMeetingIndicatorDisplayed), SourceName, nil)
 	}
 	return nil
 }
@@ -307,7 +308,7 @@ func (s *Source) PauseRecording(ctx context.Context) error {
 		return err
 	}
 	if s.publisher != nil {
-		_ = s.publisher.Publish(ctx, "ctxt.ambient.meeting.paused", SourceName, nil)
+		_ = s.publisher.Publish(ctx, string(events.TopicAmbientMeetingPaused), SourceName, nil)
 	}
 	return nil
 }
@@ -324,7 +325,7 @@ func (s *Source) ResumeRecording(ctx context.Context) error {
 		return err
 	}
 	if s.publisher != nil {
-		_ = s.publisher.Publish(ctx, "ctxt.ambient.meeting.resumed", SourceName, nil)
+		_ = s.publisher.Publish(ctx, string(events.TopicAmbientMeetingResumed), SourceName, nil)
 	}
 	return nil
 }
@@ -345,7 +346,7 @@ func (s *Source) StopRecording(ctx context.Context, reason EndReason) (RecordRes
 	result, err := active.handle.Stop(ctx)
 	if err != nil {
 		if s.publisher != nil {
-			_ = s.publisher.Publish(ctx, "ctxt.ambient.meeting.failed", SourceName,
+			_ = s.publisher.Publish(ctx, string(events.TopicAmbientMeetingFailed), SourceName,
 				map[string]any{"error": err.Error()})
 		}
 		return result, err
@@ -354,7 +355,7 @@ func (s *Source) StopRecording(ctx context.Context, reason EndReason) (RecordRes
 	result.Mode = active.opts.Mode
 
 	if s.publisher != nil {
-		_ = s.publisher.Publish(ctx, "ctxt.ambient.meeting.stopped", SourceName, map[string]any{
+		_ = s.publisher.Publish(ctx, string(events.TopicAmbientMeetingStopped), SourceName, map[string]any{
 			"duration_sec": result.Duration.Seconds(),
 			"bytes":        result.Bytes,
 			"end_reason":   string(reason),
@@ -387,7 +388,7 @@ func (s *Source) StopRecording(ctx context.Context, reason EndReason) (RecordRes
 	select {
 	case s.events <- ev:
 		if s.publisher != nil {
-			_ = s.publisher.Publish(ctx, "ctxt.ambient.meeting.enqueued", SourceName,
+			_ = s.publisher.Publish(ctx, string(events.TopicAmbientMeetingEnqueued), SourceName,
 				map[string]any{"pipeline": pipeline, "file_path": result.FilePath})
 		}
 	case <-ctx.Done():

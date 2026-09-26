@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/urlfilter"
 )
 
@@ -145,7 +146,7 @@ func (s *Source) Start(ctx context.Context, b ambient.Publisher) error {
 	}
 
 	if b != nil {
-		_ = b.Publish(ctx, ambient.SourceLifecycleTopic("ready"), SourceName, nil)
+		_ = b.Publish(ctx, string(events.TopicAmbientSourceReadied), SourceName, nil)
 	}
 	return nil
 }
@@ -201,7 +202,7 @@ func (s *Source) tick(ctx context.Context, browser BrowserClient) {
 	visits, err := browser.VisitsSince(ctx, since)
 	if err != nil {
 		if s.publisher != nil {
-			_ = s.publisher.Publish(ctx, ambient.SourceLifecycleTopic("failed"), SourceName,
+			_ = s.publisher.Publish(ctx, string(events.TopicAmbientSourceFailed), SourceName,
 				map[string]any{"browser": browser.Name(), "error": err.Error()})
 		}
 		return
@@ -220,7 +221,7 @@ func (s *Source) tick(ctx context.Context, browser BrowserClient) {
 				if d.Scheme != "" {
 					payload["scheme"] = d.Scheme
 				}
-				_ = s.publisher.Publish(ctx, ambient.EventTopic("filtered"), SourceName, payload)
+				_ = s.publisher.Publish(ctx, string(events.TopicAmbientEventFiltered), SourceName, payload)
 			}
 			s.bumpLastSeen(browser.Name(), v.VisitedAt)
 			continue

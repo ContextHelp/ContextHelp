@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 )
 
 const (
@@ -167,7 +168,7 @@ func (s *Source) Start(_ context.Context, b ambient.Publisher) error {
 	s.publisher = b
 	s.mu.Unlock()
 	if b != nil {
-		_ = b.Publish(context.Background(), ambient.SourceLifecycleTopic("ready"), SourceName, nil)
+		_ = b.Publish(context.Background(), string(events.TopicAmbientSourceReadied), SourceName, nil)
 	}
 	return nil
 }
@@ -199,7 +200,7 @@ func (s *Source) Trigger(ctx context.Context, req CaptureRequest) (string, error
 		// Source-side deny: log via bus, do NOT invoke Capturer (which
 		// would show an OS permission prompt for nothing).
 		if s.publisher != nil {
-			_ = s.publisher.Publish(ctx, ambient.EventTopic("filtered"), SourceName,
+			_ = s.publisher.Publish(ctx, string(events.TopicAmbientEventFiltered), SourceName,
 				map[string]any{"foreground_bundle_id": req.ForegroundBundleID, "reason": "exclude_bundles"})
 		}
 		return "", nil
@@ -208,7 +209,7 @@ func (s *Source) Trigger(ctx context.Context, req CaptureRequest) (string, error
 	result, err := s.capturer.Capture(ctx, req)
 	if err != nil {
 		if s.publisher != nil {
-			_ = s.publisher.Publish(ctx, ambient.SourceLifecycleTopic("failed"), SourceName,
+			_ = s.publisher.Publish(ctx, string(events.TopicAmbientSourceFailed), SourceName,
 				map[string]any{"error": err.Error()})
 		}
 		return "", err

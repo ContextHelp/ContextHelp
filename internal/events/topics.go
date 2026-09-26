@@ -75,6 +75,51 @@ const (
 	TopicCtxtEmbeddingsModelPurged bus.Topic = "ctxt.embeddings.model.purged"
 )
 
+// Ambient capture substrate topics (ADR-066), published on the ctxd daemon
+// bus by the ambient Runner and its Sources. The event source field carries
+// the ambient source name (clipboard, filewatch, meeting, ...).
+const (
+	// TopicAmbientSourceStarted fires when a Source's Start returned.
+	TopicAmbientSourceStarted bus.Topic = "ctxt.ambient.source.started"
+	// TopicAmbientSourceReadied fires when a Source has declared readiness.
+	TopicAmbientSourceReadied bus.Topic = "ctxt.ambient.source.readied"
+	// TopicAmbientSourceStopped fires when a Source's Stop returned.
+	TopicAmbientSourceStopped bus.Topic = "ctxt.ambient.source.stopped"
+	// TopicAmbientSourceFailed fires on a Source start or runtime error.
+	TopicAmbientSourceFailed bus.Topic = "ctxt.ambient.source.failed"
+
+	// TopicAmbientEventCaptured fires for every RawEvent reaching dispatch.
+	TopicAmbientEventCaptured bus.Topic = "ctxt.ambient.event.captured"
+	// TopicAmbientEventDeduped fires when a fingerprint matched a recent
+	// event and the event was dropped before enqueue.
+	TopicAmbientEventDeduped bus.Topic = "ctxt.ambient.event.deduped"
+	// TopicAmbientEventFiltered fires when a Source dropped an event
+	// (deny list, excluded app, ...).
+	TopicAmbientEventFiltered bus.Topic = "ctxt.ambient.event.filtered"
+
+	// TopicAmbientSessionEventJoined fires when an event was tagged with
+	// the active session.
+	TopicAmbientSessionEventJoined bus.Topic = "ctxt.ambient.session.event_joined"
+
+	// TopicAmbientEnqueueAttempted, TopicAmbientEnqueueSucceeded and
+	// TopicAmbientEnqueueFailed bracket the POST to dpkms.
+	TopicAmbientEnqueueAttempted bus.Topic = "ctxt.ambient.enqueue.attempted"
+	TopicAmbientEnqueueSucceeded bus.Topic = "ctxt.ambient.enqueue.succeeded"
+	TopicAmbientEnqueueFailed    bus.Topic = "ctxt.ambient.enqueue.failed"
+
+	// Meeting source (ADR-066 meeting capture).
+	TopicAmbientMeetingRequested          bus.Topic = "ctxt.ambient.meeting.requested"
+	TopicAmbientMeetingStarted            bus.Topic = "ctxt.ambient.meeting.started"
+	TopicAmbientMeetingIndicatorDisplayed bus.Topic = "ctxt.ambient.meeting.indicator_displayed"
+	TopicAmbientMeetingPaused             bus.Topic = "ctxt.ambient.meeting.paused"
+	TopicAmbientMeetingResumed            bus.Topic = "ctxt.ambient.meeting.resumed"
+	TopicAmbientMeetingStopped            bus.Topic = "ctxt.ambient.meeting.stopped"
+	TopicAmbientMeetingEnqueued           bus.Topic = "ctxt.ambient.meeting.enqueued"
+	TopicAmbientMeetingFailed             bus.Topic = "ctxt.ambient.meeting.failed"
+	TopicAmbientMeetingAutoDetected       bus.Topic = "ctxt.ambient.meeting.auto_detected"
+	TopicAmbientMeetingPromptDismissed    bus.Topic = "ctxt.ambient.meeting.prompt_dismissed"
+)
+
 // Inbound subscription topics.
 const (
 	TopicApsProfileAll = "aps.profile.*"
