@@ -2,72 +2,89 @@ package steps
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"math"
+	"log/slog"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// DedupStep is a pipeline step that checks for near-duplicate objects using
-// vector embeddings after the embedding step has run. It applies the configured
-// policy: warn (annotate + continue), drop (annotate + suppress), keep (pass through).
+// DedupStep is a pipeline step that checks for near-duplicate objects in
+// the default embedding model's index after the embedding step has run. It
+// applies the configured policy: warn (annotate + continue), drop (annotate
+// + suppress), keep (pass through).
 //
-// Register in builtins.go as "dedup" step, inserted after "embedding" when
+// builtins.InjectDedupStep inserts it after "embedding" when
 // cfg.Duplicates.CheckSimilar == true.
 type DedupStep struct {
 	pipeline.BaseContract
-	store storage.ObjectStore
-	cfg   config.DuplicatesConfig
+	models embeddings.ModelSource
+	store  storage.EmbeddingStore
+	cfg    config.DuplicatesConfig
 }
 
-// NewDedupStep creates a DedupStep. Pass nil store for passthrough (no-op) mode.
-func NewDedupStep(store storage.ObjectStore, cfg config.DuplicatesConfig) *DedupStep {
+// NewDedupStep creates a DedupStep over the default model's index. A nil
+// models or store makes it a passthrough.
+func NewDedupStep(models embeddings.ModelSource, store storage.EmbeddingStore, cfg config.DuplicatesConfig) *DedupStep {
 	return &DedupStep{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
-			Requires: []string{"Embeddings"},
+			Requires: []string{"Vectors"},
 			Produces: []string{"Metadata"},
 		}),
-		store: store,
-		cfg:   cfg,
+		models: models,
+		store:  store,
+		cfg:    cfg,
 	}
 }
 
 func (s *DedupStep) Name() string { return "dedup" }
+
+// dedupTopK leaves room for the draft itself (reanalyze keeps the ID) in
+// front of the nearest other object.
+const dedupTopK = 2
 
 func (s *DedupStep) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	if draft.Metadata == nil {
 		draft.Metadata = make(map[string]any)
 	}
 
-	if !s.cfg.CheckSimilar || len(draft.Embeddings) == 0 || s.store == nil {
+	if !s.cfg.CheckSimilar || s.models == nil || s.store == nil {
 		return draft, nil
 	}
 
-	candidates, err := s.store.VectorSearch(ctx, draft.Embeddings, storage.ObjectFilter{Limit: 1})
+	def, err := s.models.Default(ctx)
 	if err != nil {
-		// Non-fatal: log and continue.
-		fmt.Printf("dedup: vector search error (non-fatal): %v\n", err)
+		if !errors.Is(err, registry.ErrNoDefaultModel) {
+			slog.Warn("dedup: read default embedding model (non-fatal)", "err", err)
+		}
+		return draft, nil
+	}
+	query := defaultModelVector(draft.Vectors, def.ModelID)
+	if query == nil {
 		return draft, nil
 	}
 
-	for _, candidate := range candidates {
-		if candidate.ID == draft.ID {
+	hits, err := s.store.Search(ctx, storage.VectorQuery{ModelID: def.ModelID, Vector: query, TopK: dedupTopK})
+	if err != nil {
+		slog.Warn("dedup: vector search (non-fatal)", "model_id", def.ModelID, "err", err)
+		return draft, nil
+	}
+
+	for _, hit := range hits {
+		if hit.ObjectID == draft.ID {
 			continue // skip self
 		}
-		score := 0.0
-		if v, ok := candidate.Metadata["score"].(float64); ok {
-			score = v
-		} else {
-			score = dedupCosineSimilarity(draft.Embeddings, candidate.Embeddings)
-		}
+		score := 1 - hit.Distance
 		if score < s.cfg.SimilarityThreshold {
-			continue
+			break // hits are closest first
 		}
 
 		// Found a near-duplicate. Apply policy.
-		draft.Metadata["duplicate_of"] = candidate.ID
+		draft.Metadata["duplicate_of"] = hit.ObjectID
 		draft.Metadata["duplicate_similarity"] = score
 		draft.Metadata["duplicate_kind"] = "similar"
 
@@ -77,7 +94,7 @@ func (s *DedupStep) Run(ctx context.Context, draft *storage.KnowledgeObject) (*s
 			draft.Metadata["suppress_output"] = true
 		case "warn":
 			fmt.Printf("warning: near-duplicate detected (similarity=%.4f): existing object %s\n",
-				score, candidate.ID)
+				score, hit.ObjectID)
 			// Continue ingestion.
 		case "keep":
 			// Continue silently.
@@ -88,19 +105,12 @@ func (s *DedupStep) Run(ctx context.Context, draft *storage.KnowledgeObject) (*s
 	return draft, nil
 }
 
-// dedupCosineSimilarity is a local copy to avoid an import cycle with the service package.
-func dedupCosineSimilarity(a, b []float32) float64 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0
+// defaultModelVector returns the draft's chunk-0 vector under modelID.
+func defaultModelVector(vectors []storage.ObjectVector, modelID string) []float32 {
+	for _, v := range vectors {
+		if v.ModelID == modelID && v.ChunkIdx == 0 {
+			return v.Vector
+		}
 	}
-	var dot, normA, normB float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
-		normA += float64(a[i]) * float64(a[i])
-		normB += float64(b[i]) * float64(b[i])
-	}
-	if normA == 0 || normB == 0 {
-		return 0
-	}
-	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
+	return nil
 }

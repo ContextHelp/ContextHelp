@@ -9,13 +9,12 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
-
-	"path/filepath"
-	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -205,14 +204,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 		fmt.Printf("IBR browser daemon on port %d\n", browserMgr.Port())
 	}
 
-	pipes := builtins.ConfiguredRegistryWithPipelineOverrides(
-		factory,
-		cfg.Providers,
-		cfg.Pipelines,
-		driver.Blobs(),
-		cfg.Storage.Blob.Threshold,
-		browserClient,
-	)
+	// The embedding resolver is built once here and shared by every
+	// pipeline: ingest embeds each populating model through it.
+	buildOpts := embeddingBuildOpts(driver)
+	buildOpts.Factory = factory
+	buildOpts.BlobStore = driver.Blobs()
+	buildOpts.BlobThreshold = cfg.Storage.Blob.Threshold
+	buildOpts.BrowserClient = browserClient
+	pipes := builtins.ConfiguredRegistryWithPipelineOverrides(buildOpts, cfg.Providers, cfg.Pipelines)
 	fmt.Println("Pipeline runtime initialized (with overrides)")
 	reportEmbeddingProvider(os.Stdout)
 
