@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
-	"time"
+	"log/slog"
 
-	"github.com/google/uuid"
+	"github.com/ideacrafterslabs/ctxt/internal/audit"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -14,11 +14,11 @@ type DuplicateKind string
 
 const (
 	// DuplicateExact means the content_hash matched an existing object exactly.
-	DuplicateExact DuplicateKind = "exact"
+	DuplicateExact DuplicateKind = audit.DedupExact
 	// DuplicateSimilar means cosine similarity exceeded the configured threshold.
-	DuplicateSimilar DuplicateKind = "similar"
+	DuplicateSimilar DuplicateKind = audit.DedupSimilar
 	// DuplicateSourceKey means the source_key matched an existing object.
-	DuplicateSourceKey DuplicateKind = "source_key"
+	DuplicateSourceKey DuplicateKind = audit.DedupSourceKey
 )
 
 // DuplicateResult describes a duplicate match.
@@ -84,20 +84,20 @@ func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, q
 	return nil, nil
 }
 
-// logDedupDecision writes an audit entry recording the dedup outcome.
+// logDedupDecision writes an audit entry recording the dedup outcome. The
+// incoming content has no object yet, so the entry names the existing one.
 func (s *Service) logDedupDecision(ctx context.Context, dup *DuplicateResult, policy string) {
 	if s.Store.AuditLog() == nil {
 		return
 	}
-	_ = s.Store.AuditLog().Append(ctx, &storage.AuditEntry{
-		ID:        uuid.New().String(),
-		EventType: "dedup." + string(dup.Kind),
-		ObjectID:  dup.Existing.ID,
-		Actor:     "system",
-		Payload: map[string]any{
-			"policy":     policy,
-			"similarity": dup.Similarity,
-		},
-		CreatedAt: time.Now().UTC(),
+	entry := audit.DedupEntry(audit.DedupDecision{
+		ObjectID:    dup.Existing.ID,
+		DuplicateOf: dup.Existing.ID,
+		Similarity:  dup.Similarity,
+		Kind:        string(dup.Kind),
+		Policy:      policy,
 	})
+	if err := s.Store.AuditLog().Append(ctx, entry); err != nil {
+		slog.Warn("dedup: audit append (non-fatal)", "duplicate_of", dup.Existing.ID, "err", err)
+	}
 }
