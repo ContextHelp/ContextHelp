@@ -39,6 +39,24 @@ const (
 	// aborts (cancellation, budget exceeded, or worker error). Carries
 	// UpgradeReingestFailedPayload.
 	TopicDpkmsUpgradeReingestFailed bus.Topic = "dpkms.upgrade.reingest.failed"
+
+	// Embedding migration (ADR-071 "Migration job"): the embeddings_migrate
+	// run that fills one model's missing rows. Every event carries
+	// EmbeddingsMigrationPayload.
+	//
+	// TopicDpkmsUpgradeEmbeddingsMigrationStarted fires when the run has
+	// counted the objects missing rows for the target model.
+	TopicDpkmsUpgradeEmbeddingsMigrationStarted bus.Topic = "dpkms.upgrade.embeddings_migration.started"
+	// TopicDpkmsUpgradeEmbeddingsMigrationProgress fires about every
+	// total/100 objects.
+	TopicDpkmsUpgradeEmbeddingsMigrationProgress bus.Topic = "dpkms.upgrade.embeddings_migration.progressed"
+	// TopicDpkmsUpgradeEmbeddingsMigrationCompleted fires when the run has
+	// passed over every missing object. Failed > 0 means some objects are
+	// still missing rows; a re-run retries them.
+	TopicDpkmsUpgradeEmbeddingsMigrationCompleted bus.Topic = "dpkms.upgrade.embeddings_migration.completed"
+	// TopicDpkmsUpgradeEmbeddingsMigrationFailed fires when the run stops
+	// early: cancelled, interrupted by shutdown, or a storage error.
+	TopicDpkmsUpgradeEmbeddingsMigrationFailed bus.Topic = "dpkms.upgrade.embeddings_migration.failed"
 )
 
 // Inbound subscription topics.
@@ -138,4 +156,23 @@ type UpgradeReingestFailedPayload struct {
 	Total    int     `json:"total"`
 	CostUSD  float64 `json:"cost_usd,omitempty"`
 	Reason   string  `json:"reason"`
+}
+
+// EmbeddingsMigrationPayload describes an embeddings_migrate run. Done
+// counts the objects handled so far: Embedded + Failed + Skipped (skipped
+// objects have no embeddable text or were deleted mid-run).
+type EmbeddingsMigrationPayload struct {
+	ModelID  string `json:"model_id"`
+	JobID    string `json:"job_id,omitempty"`
+	Done     int    `json:"done"`
+	Total    int    `json:"total"`
+	Embedded int    `json:"embedded"`
+	Failed   int    `json:"failed"`
+	Skipped  int    `json:"skipped"`
+	// RateLimit is the provider-call cap in calls per second; 0 is none.
+	RateLimit float64 `json:"rate_limit,omitempty"`
+	// FailedObjects lists the first failed object IDs (capped).
+	FailedObjects []string `json:"failed_objects,omitempty"`
+	DurationMs    int64    `json:"duration_ms,omitempty"`
+	Reason        string   `json:"reason,omitempty"`
 }

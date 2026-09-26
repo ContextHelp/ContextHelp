@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -76,6 +77,8 @@ type WorkerPool struct {
 	maxHops      int
 	maxRetries   int
 	fanOut       FanOutFunc
+	handlers     map[string]TaskHandler // task job type -> handler (tasks.go)
+	inflight     sync.Map               // task job IDs running in this pool
 }
 
 // NewWorkerPool creates a worker pool.
@@ -143,6 +146,12 @@ func (p *WorkerPool) workerLoop(acquireCtx, jobCtx context.Context) error {
 					return nil
 				case <-time.After(p.pollInterval):
 				}
+				continue
+			}
+			if h, ok := p.handlers[job.Type]; ok {
+				// Task jobs are long-running and resumable: they stop at
+				// shutdown instead of holding the drain.
+				p.runTask(acquireCtx, job, h)
 				continue
 			}
 			// Use jobCtx so in-flight work is not cancelled immediately on
