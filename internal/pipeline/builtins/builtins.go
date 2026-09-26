@@ -3,12 +3,15 @@ package builtins
 import (
 	"fmt"
 	"log"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
@@ -47,7 +50,6 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"formatdetector":      func() pipeline.PipelineStep { return steps.NewFormatDetector() },
 	"textcleaner":         func() pipeline.PipelineStep { return steps.NewTextCleaner() },
 	"html_cleaner":        func() pipeline.PipelineStep { return steps.NewHTMLCleaner() },
-	"embedding":           func() pipeline.PipelineStep { return steps.NewEmbeddingGenerator(nil) },
 	"entity_extractor":    func() pipeline.PipelineStep { return steps.NewEntityExtractor() },
 	"entity_resolver":     func() pipeline.PipelineStep { return steps.NewEntityResolver() },
 	"timestamp_aligner":   func() pipeline.PipelineStep { return steps.NewTimestampAligner() },
@@ -90,8 +92,6 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"email_parser":   func() pipeline.PipelineStep { return steps.NewEmailParser() },
 	"email_filter":   func() pipeline.PipelineStep { return newDefaultEmailFilter() },
 	"email_enqueuer": func() pipeline.PipelineStep { return steps.NewEmailEnqueuer() },
-	// Dedup step: registered with nil store (passthrough mode); store is injected at runtime.
-	"dedup": func() pipeline.PipelineStep { return steps.NewDedupStep(nil, config.DuplicatesConfig{}) },
 	// Graph enrichment: detects "alternative" relationships and creates proximity edges.
 	// Registered with nil stores (passthrough mode); stores are injected at runtime.
 	"alternative_detector": func() pipeline.PipelineStep { return steps.NewAlternativeDetector() },
@@ -127,6 +127,31 @@ type BuildOpts struct {
 	BlobStore     storage.BlobStore
 	BlobThreshold int64
 	BrowserClient *browser.Client
+
+	// Models is the registry the embedding step reads its populate set
+	// from, and dedup its default model.
+	Models embeddings.ModelSource
+	// Resolver builds each registered model's embedding provider.
+	Resolver embeddings.ProviderResolver
+	// Embeddings is the per-model vector index dedup searches.
+	Embeddings storage.EmbeddingStore
+	// Audit records each dedup decision.
+	Audit storage.AuditStore
+	// Duplicates configures near-duplicate detection. With CheckSimilar
+	// set, every pipeline that embeds runs dedup right after embedding.
+	Duplicates config.DuplicatesConfig
+}
+
+// embeddingStepConstructors maps step names to constructors that take the
+// embedding write path's dependencies. Missing dependencies make the steps
+// no-ops, so these always resolve.
+var embeddingStepConstructors = map[string]func(BuildOpts) pipeline.PipelineStep{
+	"embedding": func(o BuildOpts) pipeline.PipelineStep {
+		return steps.NewEmbeddingGenerator(o.Models, o.Resolver)
+	},
+	"dedup": func(o BuildOpts) pipeline.PipelineStep {
+		return steps.NewDedupStep(o.Models, o.Embeddings, o.Audit, o.Duplicates)
+	},
 }
 
 // providerStepConstructors maps step names to provider-aware constructors.
@@ -177,6 +202,9 @@ var providerStepConstructors = map[string]func(*providers.Factory) pipeline.Pipe
 
 // resolveStep builds a PipelineStep from a step name, using BuildOpts for provider/blob-aware steps.
 func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
+	if ctor, ok := embeddingStepConstructors[name]; ok {
+		return ctor(opts), nil
+	}
 	if opts.Factory != nil {
 		if ctor, ok := providerStepConstructors[name]; ok {
 			return ctor(opts.Factory), nil
@@ -313,39 +341,51 @@ func buildSelectors() []selector {
 	return sels
 }
 
-// selectPipeline picks the best pipeline for the given content string using
-// URL pattern matching first, then extension matching, then content tests,
-// then the url.generic fallback for any HTTP/S URL.
-func selectPipeline(selectors []selector, content string) string {
-	lower := strings.ToLower(content)
-	isURL := strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+// builtinSelectors splits the defs' rules by the signal each one reads: URL
+// patterns and extensions match the source, content tests match the content.
+func builtinSelectors(selectors []selector) pipeline.Selectors {
+	return pipeline.Selectors{
+		Source:  func(source string) (string, bool) { return selectBySource(selectors, source) },
+		Content: func(content string) string { return selectByContent(selectors, content) },
+	}
+}
 
-	// URL pattern matching: runs before the url.generic catch-all.
-	if isURL {
+// selectBySource routes a source that names a location: an http/https URL
+// goes to the first matching URL pattern, else url.generic; a file path goes
+// to the pipeline claiming its extension. Anything else (a capture label, an
+// unknown extension) reports ok=false.
+func selectBySource(selectors []selector, source string) (string, bool) {
+	source = strings.TrimSpace(source)
+	lower := strings.ToLower(source)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
 		for _, sel := range selectors {
-			if sel.URLPattern != nil && sel.URLPattern.MatchString(content) {
-				return sel.PipelineName
+			if sel.URLPattern != nil && sel.URLPattern.MatchString(source) {
+				return sel.PipelineName, true
 			}
 		}
-		return "url.generic"
+		return "url.generic", true
 	}
 
-	// Extension-based matching.
+	ext := filepath.Ext(lower)
+	if ext == "" {
+		return "", false
+	}
 	for _, sel := range selectors {
-		for _, ext := range sel.Extensions {
-			if strings.HasSuffix(lower, ext) {
-				return sel.PipelineName
-			}
+		if slices.Contains(sel.Extensions, ext) {
+			return sel.PipelineName, true
 		}
 	}
+	return "", false
+}
 
-	// Content-based fallback.
+// selectByContent routes by the content's own shape: the first content test
+// that matches, in Priority order; text.short when none does.
+func selectByContent(selectors []selector, content string) string {
 	for _, sel := range selectors {
 		if sel.ContentTest != nil && sel.ContentTest(content) {
 			return sel.PipelineName
 		}
 	}
-
 	return "text.short"
 }
 
@@ -372,27 +412,20 @@ func ConfiguredRegistryStrict(f *providers.Factory) pipeline.Registry {
 	return buildRegistry(BuildOpts{Factory: f}, true)
 }
 
-// ConfiguredRegistryWithPipelineOverrides builds a registry where each pipeline
-// can override individual provider backends via PipelinesConfig.Overrides.
-// It also honors SkipSteps and ExtraSteps structural overrides.
+// ConfiguredRegistryWithPipelineOverrides builds a registry from base where
+// each pipeline can override individual provider backends via
+// PipelinesConfig.Overrides (base.Factory is built from baseCfg). It also
+// honors SkipSteps and ExtraSteps structural overrides.
 func ConfiguredRegistryWithPipelineOverrides(
-	base *providers.Factory,
+	base BuildOpts,
 	baseCfg config.ProvidersConfig,
 	pipelinesCfg config.PipelinesConfig,
-	blobStore storage.BlobStore,
-	blobThreshold int64,
-	browserClient ...*browser.Client,
 ) pipeline.Registry {
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()
 
-	var bc *browser.Client
-	if len(browserClient) > 0 {
-		bc = browserClient[0]
-	}
-
 	// Pre-compute capabilities to skip pipelines with unsatisfied providers.
-	baseCaps := CapabilitiesFromOpts(BuildOpts{Factory: base, BlobStore: blobStore, BlobThreshold: blobThreshold, BrowserClient: bc})
+	baseCaps := CapabilitiesFromOpts(base)
 
 	for name, d := range defs {
 		if !defProvidersSatisfied(d, baseCaps) {
@@ -400,7 +433,8 @@ func ConfiguredRegistryWithPipelineOverrides(
 			continue
 		}
 
-		opts := BuildOpts{Factory: base, BlobStore: blobStore, BlobThreshold: blobThreshold, BrowserClient: bc}
+		opts := base
+		d.Steps = InjectDedupStep(d.Steps, base.Duplicates)
 
 		if override, ok := pipelinesCfg.Overrides[name]; ok {
 			// 1. Handle structural overrides (SkipSteps, ExtraSteps).
@@ -416,7 +450,9 @@ func ConfiguredRegistryWithPipelineOverrides(
 					case "llm":
 						merged.LLM = bc
 					case "embedding":
-						merged.Embedding = bc
+						// Each registered model's entry decides its
+						// provider (ADR-071); a pipeline cannot.
+						log.Printf("builtins: pipeline %q: provider role \"embedding\" cannot be overridden per pipeline (ignored); the embedding model's registry entry decides its provider", name)
 					case "ocr":
 						merged.OCR = bc
 					case "vision":
@@ -446,9 +482,7 @@ func ConfiguredRegistryWithPipelineOverrides(
 		}
 	}
 
-	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {
-		return selectPipeline(selectors, content)
-	}))
+	r.SetSelectors(builtinSelectors(selectors))
 
 	return r
 }
@@ -496,6 +530,7 @@ func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, d.Providers)
 			continue
 		}
+		d.Steps = InjectDedupStep(d.Steps, opts.Duplicates)
 
 		p, err := buildPipeline(name, d, opts, strict)
 		if err != nil {
@@ -506,9 +541,7 @@ func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 		}
 	}
 
-	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {
-		return selectPipeline(selectors, content)
-	}))
+	r.SetSelectors(builtinSelectors(selectors))
 
 	return r
 }
@@ -533,9 +566,13 @@ func Defs() map[string]Def {
 }
 
 // InjectDedupStep inserts the dedup step after the embedding step in a pipeline
-// definition when near-duplicate checking is enabled.
+// definition when near-duplicate checking is enabled. dedup reads the
+// vectors embedding writes, so it never runs before it; a pipeline without
+// an embedding step, or one that already lists dedup, is returned as is.
+// Both registry builders call it before per-pipeline skip_steps apply, so
+// skip_steps: [dedup] opts a pipeline out.
 func InjectDedupStep(stepNames []string, cfg config.DuplicatesConfig) []string {
-	if !cfg.CheckSimilar {
+	if !cfg.CheckSimilar || slices.Contains(stepNames, "dedup") {
 		return stepNames
 	}
 	out := make([]string, 0, len(stepNames)+1)

@@ -18,7 +18,12 @@ import (
 // healthcheck) default to http://localhost:8080, where a developer's real
 // server may listen. See internal/testguard.
 func TestMain(m *testing.M) {
-	os.Exit(testguard.Main(m, nil))
+	os.Exit(testguard.Main(m, func() {
+		// Keep embedding calls off the developer's real Ollama: an
+		// unconfigured run embeds against a closed port. Tests that need
+		// a provider set their own (flag or env).
+		os.Setenv("CTXT_EMBEDDING_ENDPOINT", testguard.ClosedServerURL)
+	}))
 }
 
 // resetAllFlags resets all flags on a command and its subcommands to defaults.

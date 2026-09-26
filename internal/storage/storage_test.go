@@ -34,7 +34,7 @@ func (m *mockDriver) Attachments() AttachmentStore       { return &mockAttachmen
 func (m *mockDriver) Resurfacing() ResurfacingQueueStore { return &mockResurfacingQueueStore{} }
 func (m *mockDriver) Entitlements() EntitlementStore     { return &mockEntitlementStore{} }
 func (m *mockDriver) Metering() MeteringStore            { return &mockMeteringStore{} }
-func (m *mockDriver) Vectors() VectorStore               { return &mockVectorStore{} }
+func (m *mockDriver) Embeddings() EmbeddingStore         { return nil }
 func (m *mockDriver) SavedSearches() SavedSearchStore    { return &mockSavedSearchStore{} }
 func (m *mockDriver) SearchHistory() SearchHistoryStore  { return &mockSearchHistoryStore{} }
 func (m *mockDriver) Watermarks() WatermarkStore         { return &mockWatermarkStore{} }
@@ -48,15 +48,6 @@ func (m *mockWatermarkStore) GetWatermark(_ context.Context, _ string) (time.Tim
 func (m *mockWatermarkStore) SetWatermark(_ context.Context, _ string, _ time.Time) error {
 	return nil
 }
-
-type mockVectorStore struct{}
-
-func (m *mockVectorStore) Upsert(_ context.Context, _ string, _ []float32) error { return nil }
-func (m *mockVectorStore) Search(_ context.Context, _ []float32, _ int) ([]VectorHit, error) {
-	return nil, nil
-}
-func (m *mockVectorStore) Delete(_ context.Context, _ string) error { return nil }
-func (m *mockVectorStore) Count(_ context.Context) (int, error)     { return 0, nil }
 
 type mockBlobStore struct{}
 
@@ -99,13 +90,7 @@ func (m *mockObjectStore) ListBySQL(ctx context.Context, where string, args []an
 func (m *mockObjectStore) Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error) {
 	return "", nil
 }
-func (m *mockObjectStore) ListWithEmbeddings(ctx context.Context) ([]*KnowledgeObject, error) {
-	return nil, nil
-}
-func (m *mockObjectStore) ListWithoutEmbeddings(ctx context.Context) ([]*KnowledgeObject, error) {
-	return nil, nil
-}
-func (m *mockObjectStore) VectorSearch(ctx context.Context, vector []float32, filter ObjectFilter) ([]*KnowledgeObject, error) {
+func (m *mockObjectStore) VectorSearch(ctx context.Context, q VectorQuery, filter ObjectFilter) ([]*KnowledgeObject, error) {
 	return nil, nil
 }
 func (m *mockObjectStore) FTSSearch(ctx context.Context, query string, filter ObjectFilter) ([]*KnowledgeObject, error) {
@@ -114,7 +99,7 @@ func (m *mockObjectStore) FTSSearch(ctx context.Context, query string, filter Ob
 func (m *mockObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
 	return nil, nil
 }
-func (m *mockObjectStore) VectorSearchNodeAware(_ context.Context, _ []float32, _ ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (m *mockObjectStore) VectorSearchNodeAware(_ context.Context, _ VectorQuery, _ ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
 	return nil, nil
 }
 func (m *mockObjectStore) SetReminder(ctx context.Context, id string, at time.Time) error {
@@ -188,6 +173,12 @@ func (m *mockJobStore) Cancel(ctx context.Context, id string) error             
 func (m *mockJobStore) RecoverStale(ctx context.Context, timeout int64) (int, error) {
 	return 0, nil
 }
+
+func (m *mockJobStore) ExtendLease(ctx context.Context, id, claim string, ttl time.Duration) (bool, error) {
+	return false, nil
+}
+
+func (m *mockJobStore) ReleaseLease(ctx context.Context, id, claim string) error { return nil }
 
 type mockPipelineStore struct{}
 

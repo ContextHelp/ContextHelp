@@ -2,6 +2,7 @@ package storagetest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -15,16 +16,8 @@ import (
 type SearchCapabilities struct {
 	// FTS: full-text search (FTSSearch / FTSSearchNodeAware) implemented.
 	FTS bool
-	// Vectors: vector search (VectorSearch / VectorStore) implemented.
+	// Vectors: vector search (EmbeddingStore + VectorSearch) implemented.
 	Vectors bool
-	// StrictDimensionOnWrite: the driver refuses ObjectStore.Create when
-	// the embedding dimension mismatches the configured vector dimension
-	// (Postgres: the typmod'd pgvector column). False: the driver stores
-	// the object and excludes it from the fixed-dimension ANN leg (SQLite:
-	// mixed-dimension embeddings are load-bearing for its brute-force
-	// path). Divergence is deliberate and pinned per driver — neither
-	// silence nor false parity.
-	StrictDimensionOnWrite bool
 }
 
 // searchFixtureObject builds an object whose projected FTS body carries the
@@ -67,9 +60,9 @@ var ftsRankCorpus = []struct {
 var ftsRankOrder = []string{"ftsr-heavy", "ftsr-mid", "ftsr-light"}
 
 // RunSearchConformance runs the cross-driver search assertions against an
-// initialized driver on a FRESH database, configured with
-// VectorRankDimension before Init. Subtests run in declaration order and
-// share the database; each seeds its own uniquely-prefixed rows.
+// initialized driver on a FRESH database. Subtests run in declaration order
+// and share the database; each seeds its own uniquely-prefixed rows. The
+// vector subtests index under VectorFixtureModelID.
 func RunSearchConformance(t *testing.T, drv storage.StorageDriver, caps SearchCapabilities) {
 	t.Helper()
 	ctx := context.Background()
@@ -163,26 +156,27 @@ func RunSearchConformance(t *testing.T, drv storage.StorageDriver, caps SearchCa
 		if !caps.Vectors {
 			t.Skip("PARITY GAP: driver declares Vectors=false — filtered recall unverified")
 		}
+		SeedVectorModel(t, drv)
 		// 12 near-query objects of the majority type, 3 far objects of the
 		// selective type: a selective filter + limit must return ALL
 		// qualifying neighbors even though every unfiltered near neighbor
 		// ranks above them.
 		for i := 0; i < 12; i++ {
 			obj := searchFixtureObject(fkID("fkr-hay", i), "fkr-hay", "haystack filler")
-			obj.Embeddings = []float32{1, float32(i) * 0.001, 0, 0}
 			if err := drv.Objects().Create(ctx, obj); err != nil {
 				t.Fatalf("seed hay %d: %v", i, err)
 			}
+			putFixtureVector(t, drv, obj.ID, []float32{1, float32(i) * 0.001, 0, 0})
 		}
 		for i := 0; i < 3; i++ {
 			obj := searchFixtureObject(fkID("fkr-needle", i), "fkr-needle", "needle fixture")
-			obj.Embeddings = []float32{0, 0, 1, float32(i) * 0.01}
 			if err := drv.Objects().Create(ctx, obj); err != nil {
 				t.Fatalf("seed needle %d: %v", i, err)
 			}
+			putFixtureVector(t, drv, obj.ID, []float32{0, 0, 1, float32(i) * 0.01})
 		}
 
-		results, err := drv.Objects().VectorSearch(ctx, []float32{1, 0, 0, 0},
+		results, err := drv.Objects().VectorSearch(ctx, fixtureQuery([]float32{1, 0, 0, 0}),
 			storage.ObjectFilter{Type: "fkr-needle", Limit: 3})
 		if err != nil {
 			t.Fatalf("filtered VectorSearch: %v", err)
@@ -198,39 +192,16 @@ func RunSearchConformance(t *testing.T, drv storage.StorageDriver, caps SearchCa
 		}
 	})
 
-	t.Run("DimensionMismatchCreate", func(t *testing.T) {
+	t.Run("UnindexedModel", func(t *testing.T) {
 		if !caps.Vectors {
-			t.Skip("PARITY GAP: driver declares Vectors=false — dimension contract unverified")
+			t.Skip("PARITY GAP: driver declares Vectors=false — index-missing contract unverified")
 		}
-		obj := searchFixtureObject("dim-mismatch", "note", "wrong dimension fixture")
-		obj.Embeddings = make([]float32, VectorRankDimension+1)
-		obj.Embeddings[0] = 1
-
-		err := drv.Objects().Create(ctx, obj)
-		if caps.StrictDimensionOnWrite {
-			if err == nil {
-				t.Fatal("Create accepted a wrong-dimension embedding; driver declares strict dimension enforcement")
-			}
-			return
-		}
-
-		// Lenient contract (SQLite): the object is stored and retrievable,
-		// but never surfaces from the fixed-dimension ANN leg — pinned
-		// explicitly instead of inherited as silence.
-		if err != nil {
-			t.Fatalf("Create rejected wrong-dimension embedding; driver declares lenient storage: %v", err)
-		}
-		if _, err := drv.Objects().Get(ctx, "dim-mismatch"); err != nil {
-			t.Fatalf("stored object not retrievable: %v", err)
-		}
-		results, err := drv.Objects().VectorSearch(ctx, vectorRankQuery, storage.ObjectFilter{Limit: 100})
-		if err != nil {
-			t.Fatalf("VectorSearch: %v", err)
-		}
-		for _, r := range results {
-			if r.ID == "dim-mismatch" {
-				t.Error("wrong-dimension object surfaced from the fixed-dimension vector leg")
-			}
+		SeedVectorModel(t, drv)
+		_, err := drv.Objects().VectorSearch(ctx, storage.VectorQuery{
+			ModelID: "fixture-unindexed", Vector: vectorRankQuery,
+		}, storage.ObjectFilter{Limit: 10})
+		if !errors.Is(err, storage.ErrEmbeddingIndexMissing) {
+			t.Fatalf("VectorSearch on an unindexed model: err = %v, want ErrEmbeddingIndexMissing", err)
 		}
 	})
 }

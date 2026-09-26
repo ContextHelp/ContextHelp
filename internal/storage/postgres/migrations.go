@@ -2,15 +2,13 @@ package postgres
 
 import (
 	"context"
-
 	"database/sql"
-	sqldriver "database/sql/driver"
-
 	"errors"
 	"fmt"
-
 	"strconv"
 	"strings"
+
+	sqldriver "database/sql/driver"
 
 	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
@@ -93,10 +91,10 @@ var pgMigrations = []pgMigration{
 	// read) to a real pgvector column, and delete the phantom index
 	// signature stamped for the index that never existed.
 	{Version: 10, Name: "embeddings.vector BYTEA -> pgvector", fn: migrateEmbeddingsHonestVector},
-	// Vector dimension + ANN index: apply the driver-configured dimension
-	// to objects.embedding (dynamic DDL, the analog of SQLite's
+	// Vector dimension + ANN index: apply legacyVectorDimension to
+	// objects.embedding (dynamic DDL, the analog of SQLite's
 	// {DIMENSION}-templated vec0 migration) and replace the legacy ivfflat
-	// index with HNSW cosine ops.
+	// index with HNSW cosine ops. Dropped by 15.
 	{Version: 11, Name: "objects.embedding dimension + HNSW cosine index", fn: migrateObjectsEmbeddingDimension},
 	// ADR-070 provenance for the vector index: stamp the
 	// embeddings_<default-model> signature from the live index description
@@ -109,6 +107,93 @@ var pgMigrations = []pgMigration{
 	{Version: 13, Name: "jobs.idempotency_key", fn: func(ctx context.Context, d *Driver) error {
 		return migrateJobsIdempotencyKey(ctx, d.db)
 	}},
+	// Per-model embeddings (ADR-071 amendment 2026-09-26): object FK with
+	// cascade, non-negative chunk CHECK, placeholder removal, and one
+	// partial HNSW index per registered model. Migrate re-runs the
+	// per-model pass on every open.
+	{Version: 14, Name: "per-model embeddings", fn: migratePerModelEmbeddings},
+	// Drop the single-vector path (ADR-071 amendment 2026-09-26): vectors
+	// live only in embeddings. Dropping objects.embedding also drops its
+	// HNSW index. objects.vector_indexed goes with it: it went stale on
+	// every default flip, and coverage comes from embeddings.
+	{Version: 15, Name: "drop single-vector path", Statements: []string{
+		`ALTER TABLE objects DROP COLUMN IF EXISTS embedding`,
+		`ALTER TABLE objects DROP COLUMN IF EXISTS vector_indexed`,
+	}},
+	// Extracted text, mirroring the SQLite column. Rows written before this
+	// entry never stored TextContent, so the backfill applies the
+	// projection.BodyText rule to what was stored: text_content, else
+	// raw_content.
+	{Version: 16, Name: "objects.text_content", Statements: []string{
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS text_content TEXT NOT NULL DEFAULT ''`,
+		`UPDATE objects SET text_content = raw_content WHERE text_content = '' AND raw_content <> ''`,
+	}},
+	// Task job claim + lease: AcquireNext stamps claim_token; a worker
+	// running a task job renews lease_expires_at (database clock), and
+	// stale recovery leaves a leased job alone until the lease runs out,
+	// so a second dpkms on the same database cannot requeue and re-run
+	// a job another dpkms is running.
+	{Version: 17, Name: "jobs.claim_token + lease_expires_at", Statements: []string{
+		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS claim_token TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`,
+	}},
+}
+
+// migratePerModelEmbeddings moves embeddings to the per-model index schema.
+// Steps 1-3 run in one transaction:
+//
+//  1. Delete rows whose object is gone and rows of legacy-blob models.
+//  2. Add embeddings_object_fk (ON DELETE CASCADE) and
+//     embeddings_chunk_idx_nonneg, each guarded by a pg_constraint lookup.
+//  3. Delete the legacy-blob placeholder models and their signatures.
+//
+// Step 4 builds each remaining model's index (ensureEmbeddingIndexes).
+func migratePerModelEmbeddings(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM embeddings e
+		 WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = e.object_id)
+		    OR e.model_id IN (SELECT model_id FROM embedding_models WHERE provider = 'legacy-blob')`); err != nil {
+		return fmt.Errorf("delete orphaned and placeholder embeddings: %w", err)
+	}
+	for _, c := range []struct{ name, ddl string }{
+		{"embeddings_object_fk", `ALTER TABLE embeddings ADD CONSTRAINT embeddings_object_fk
+			FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE`},
+		{"embeddings_chunk_idx_nonneg", `ALTER TABLE embeddings ADD CONSTRAINT embeddings_chunk_idx_nonneg
+			CHECK (chunk_idx >= 0)`},
+	} {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `
+			SELECT EXISTS (SELECT 1 FROM pg_constraint
+			                WHERE conname = $1 AND conrelid = 'embeddings'::regclass)`,
+			c.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect %s: %w", c.name, err)
+		}
+		if exists {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, c.ddl); err != nil {
+			return fmt.Errorf("add %s: %w", c.name, err)
+		}
+	}
+	for _, stmt := range []string{
+		`DELETE FROM index_signatures
+		  WHERE signature_id IN (SELECT 'embeddings_' || model_id FROM embedding_models WHERE provider = 'legacy-blob')`,
+		`DELETE FROM embedding_models WHERE provider = 'legacy-blob'`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("remove legacy-blob placeholder: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return ensureEmbeddingIndexes(ctx, d)
 }
 
 // migrateStampVectorSignature computes the embedding signature for the
@@ -199,11 +284,16 @@ func migrateEmbeddingsHonestVector(ctx context.Context, d *Driver) error {
 	return nil
 }
 
-// migrateObjectsEmbeddingDimension applies the driver-configured vector
-// dimension to objects.embedding and builds the ANN index.
+// legacyVectorDimension is the fixed vector dimension of the pre-registry
+// objects.embedding column. Only the historic migrations 6 and 11 read it;
+// 15 drops the column.
+const legacyVectorDimension = 1536
+
+// migrateObjectsEmbeddingDimension applies legacyVectorDimension to
+// objects.embedding and builds the ANN index.
 //
 // Dimension: the baseline schema hardcoded vector(1536); this entry re-types
-// the column to the configured dimension when they differ, refusing when
+// the column to legacyVectorDimension when they differ, refusing when
 // stored embeddings exist (they cannot be cast across dimensions — rebuild
 // embeddings first, exactly the flow ADR-070 signatures drive).
 //
@@ -211,10 +301,7 @@ func migrateEmbeddingsHonestVector(ctx context.Context, d *Driver) error {
 // contract. HNSW indexes cap at 2000 dimensions (halfvec extends to 4000);
 // larger dimensions skip the index and search via sequential scan.
 func migrateObjectsEmbeddingDimension(ctx context.Context, d *Driver) error {
-	dim := d.vectorDimension
-	if dim <= 0 {
-		dim = DefaultVectorDimension
-	}
+	dim := legacyVectorDimension
 
 	var colType string
 	err := d.db.QueryRowContext(ctx, `
@@ -271,6 +358,12 @@ func migrateObjectsEmbeddingDimension(ctx context.Context, d *Driver) error {
 const migrateLockKey int64 = 0x63747874 << 20 // "ctxt"
 
 func (d *Driver) Migrate(ctx context.Context) error {
+	return d.migrateThrough(ctx, pgMigrations[len(pgMigrations)-1].Version)
+}
+
+// migrateThrough is Migrate stopping the ledger at target. Tests pass an
+// older version to build a database at a historic schema.
+func (d *Driver) migrateThrough(ctx context.Context, target int) error {
 	// Serialize concurrent initializers. Without the lock two Migrate calls
 	// race everything downstream: CREATE EXTENSION / CREATE TABLE IF NOT
 	// EXISTS collide on catalog unique indexes (23505), and both read the
@@ -298,7 +391,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 		}
 	}()
 
-	// The vector extension is a hard requirement (objects.embedding is a
+	// The vector extension is a hard requirement (embeddings.vector is a
 	// pgvector column). Degrade its failure to one clear error instead of a
 	// numbered migration failure. Runs outside the ledger: it is
 	// server-level state, not schema history.
@@ -320,7 +413,7 @@ func (d *Driver) Migrate(ctx context.Context) error {
 	}
 
 	for _, m := range pgMigrations {
-		if m.Version <= current {
+		if m.Version <= current || m.Version > target {
 			continue
 		}
 		if m.fn != nil {
@@ -351,6 +444,12 @@ func (d *Driver) Migrate(ctx context.Context) error {
 		return fmt.Errorf("detect pgvector version: %w", err)
 	}
 	d.caps.iterativeScan = pgvectorSupportsIterativeScan(extVersion)
+
+	// ADR-070 verify-and-rebuild for every registered model's vector index,
+	// on every open, still under the migration lock.
+	if err := ensureEmbeddingIndexes(ctx, d); err != nil {
+		return fmt.Errorf("ensure embedding indexes: %w", err)
+	}
 	return nil
 }
 
@@ -647,10 +746,7 @@ var baselineSchema = []string{
 // here: signatures describe real indexes, and the composite embeddings table
 // has none yet on this backend.
 func migrateEmbeddingsDefaultSeed(ctx context.Context, d *Driver) error {
-	dim := d.vectorDimension
-	if dim <= 0 {
-		dim = DefaultVectorDimension
-	}
+	dim := legacyVectorDimension
 	modelID := fmt.Sprintf("legacy-blob-%d@2026-05-07", dim)
 	if _, err := d.db.ExecContext(ctx, `
 		INSERT INTO embedding_models
@@ -834,13 +930,15 @@ type ObjectStore struct {
 	db   *sql.DB
 	caps *pgCaps
 }
-type EntityStore struct{ db *sql.DB }
-type EdgeStore struct{ db *sql.DB }
-type JobStore struct{ db *sql.DB }
-type PipelineStore struct{ db *sql.DB }
-type StepStore struct{ db *sql.DB }
-type RegistryStore struct{ db *sql.DB }
-type ReminderStore struct{ db *sql.DB }
-type FeedStore struct{ db *sql.DB }
-type FeedItemStore struct{ db *sql.DB }
-type BatchStore struct{ db *sql.DB }
+type (
+	EntityStore   struct{ db *sql.DB }
+	EdgeStore     struct{ db *sql.DB }
+	JobStore      struct{ db *sql.DB }
+	PipelineStore struct{ db *sql.DB }
+	StepStore     struct{ db *sql.DB }
+	RegistryStore struct{ db *sql.DB }
+	ReminderStore struct{ db *sql.DB }
+	FeedStore     struct{ db *sql.DB }
+	FeedItemStore struct{ db *sql.DB }
+	BatchStore    struct{ db *sql.DB }
+)

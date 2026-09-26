@@ -347,12 +347,15 @@ Core fields:
 - `mentions` — JSON array of `@entity.slug` references
 - `decisions` — JSON array of extracted decisions
 - `tasks` — JSON array of actionable items
-- `embeddings` — Vector representation (BLOB)
 - `pipeline` — Which pipeline processed this
 - `source` — Origin URL/file/clipboard
 - `registry_influences` — Which registries affected enrichment
 - `created_at, updated_at` — Timestamps
-- `fts_indexed, vector_indexed` — Index tracking flags
+- `fts_indexed` — Full-text index tracking flag
+
+Vectors are not object columns: each registered embedding model stores its
+vectors in the `embeddings` table, keyed `(object_id, model_id, chunk_idx)`
+(ADR-071).
 
 ## Additional Tables
 

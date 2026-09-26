@@ -12,37 +12,31 @@ import (
 	blobstub "github.com/ideacrafterslabs/ctxt/internal/storage/blob/stub"
 )
 
-// DefaultVectorDimension is used when no dimension is specified.
-// Matches OpenAI text-embedding-3-small and many open embedding models.
-const DefaultVectorDimension = 1536
-
 // Driver implements storage.StorageDriver for SQLite.
 type Driver struct {
-	db              *sql.DB
-	path            string
-	vectorDimension int
-	objects         *ObjectStore
-	entities        *EntityStore
-	edges           *EdgeStore
-	jobs            *JobStore
-	pipelines       *PipelineStore
-	steps           *StepStore
-	registries      *RegistryStore
-	reminders       *ReminderStore
-	feeds           *FeedStore
-	feedItems       *FeedItemStore
-	batches         *BatchStore
-	detectors       *DetectorStore
-	blobs           storage.BlobStore
-	proximity       *ProximityStore
-	watches         *WatchStore
-	attachments     *AttachmentStore
-	resurfacing     *ResurfacingQueueStore
-	entitlements    *entitlementStore
-	metering        *MeteringStore
-	vectors         *VecStore
-	savedSearches   *SavedSearchStore
-	searchHistory   *SearchHistoryStore
+	db            *sql.DB
+	path          string
+	objects       *ObjectStore
+	entities      *EntityStore
+	edges         *EdgeStore
+	jobs          *JobStore
+	pipelines     *PipelineStore
+	steps         *StepStore
+	registries    *RegistryStore
+	reminders     *ReminderStore
+	feeds         *FeedStore
+	feedItems     *FeedItemStore
+	batches       *BatchStore
+	detectors     *DetectorStore
+	blobs         storage.BlobStore
+	proximity     *ProximityStore
+	watches       *WatchStore
+	attachments   *AttachmentStore
+	resurfacing   *ResurfacingQueueStore
+	entitlements  *entitlementStore
+	metering      *MeteringStore
+	savedSearches *SavedSearchStore
+	searchHistory *SearchHistoryStore
 }
 
 // New creates a new SQLite driver for the given database path.
@@ -66,9 +60,9 @@ func New(path string) (*Driver, error) {
 		return nil, err
 	}
 
-	d := &Driver{db: db, path: path, vectorDimension: DefaultVectorDimension}
-	d.vectors = &VecStore{db: db}
-	d.objects = &ObjectStore{db: db, vec: d.vectors, vecDim: DefaultVectorDimension}
+	d := &Driver{db: db, path: path}
+	d.objects = &ObjectStore{db: db}
+	d.objects.emb = d.Embeddings()
 	d.entities = &EntityStore{db: db}
 	d.edges = &EdgeStore{db: db}
 	d.jobs = &JobStore{db: db}
@@ -94,14 +88,6 @@ func New(path string) (*Driver, error) {
 
 // SetBlobs allows injection of a custom BlobStore implementation.
 func (d *Driver) SetBlobs(bs storage.BlobStore) { d.blobs = bs }
-
-// SetVectorDimension reconfigures the ANN dimension before Init is called.
-// Must be called before Init; updating after migration has no effect on the
-// already-created vec_objects virtual table.
-func (d *Driver) SetVectorDimension(dim int) {
-	d.vectorDimension = dim
-	d.objects.vecDim = dim
-}
 
 func (d *Driver) Init(ctx context.Context) error {
 	return d.Migrate(ctx)
@@ -132,7 +118,6 @@ func (d *Driver) Attachments() storage.AttachmentStore       { return d.attachme
 func (d *Driver) Resurfacing() storage.ResurfacingQueueStore { return d.resurfacing }
 func (d *Driver) Entitlements() storage.EntitlementStore     { return d.entitlements }
 func (d *Driver) Metering() storage.MeteringStore            { return d.metering }
-func (d *Driver) Vectors() storage.VectorStore               { return d.vectors }
 func (d *Driver) SavedSearches() storage.SavedSearchStore    { return d.savedSearches }
 func (d *Driver) SearchHistory() storage.SearchHistoryStore  { return d.searchHistory }
 func (d *Driver) Watermarks() storage.WatermarkStore         { return &watermarkStore{db: d.db} }

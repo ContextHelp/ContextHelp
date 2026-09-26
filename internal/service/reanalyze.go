@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -62,11 +63,7 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 		family = parsed
 	}
 	if family == "" {
-		family = s.Pipes.Detect(pipeline.DetectInput{
-			Source:      obj.Source,
-			ContentType: obj.ContentType,
-			Sniff:       contentSniff(obj.RawContent),
-		})
+		family = s.detectPipeline(obj.Source, obj.ContentType, obj.RawContent)
 	}
 
 	// Pick the registry's currently-installed version for this family.
@@ -132,6 +129,14 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 	draft.UpdatedAt = time.Now().UTC()
 	if err := s.Store.Objects().Update(ctx, draft); err != nil {
 		return "", 0, fmt.Errorf("reanalyze: persist %q: %w", id, err)
+	}
+	// Replace the object's vectors for every model the embedding step
+	// produced; other models' rows stay. Vectors are additive: a failed
+	// write is logged, never fails the re-analysis.
+	if len(draft.Vectors) > 0 {
+		if err := s.Store.Embeddings().Put(ctx, id, draft.Vectors); err != nil {
+			slog.Warn("reanalyze: embeddings not stored", "object", id, "err", err)
+		}
 	}
 
 	// LLM cost: T-0581 ships projection-only re-ingests so always 0.0. The

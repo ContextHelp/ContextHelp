@@ -328,8 +328,11 @@ func TestEmailFilterDefaultRuleset(t *testing.T) {
 	if !match.Matched {
 		t.Fatal("expected default ruleset to match billing message")
 	}
-	if match.Action.RoutePipeline != "email.billing" {
-		t.Errorf("pipeline: got %q, want email.billing", match.Action.RoutePipeline)
+	// The message is ingested on a content pipeline; the rule's subtype
+	// carries the billing classification.
+	if match.Action.RoutePipeline != "text.long" || match.Action.SetSubtype != "billing" {
+		t.Errorf("route: pipeline %q subtype %q, want text.long billing",
+			match.Action.RoutePipeline, match.Action.SetSubtype)
 	}
 }
 

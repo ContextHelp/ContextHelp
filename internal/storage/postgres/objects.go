@@ -35,11 +35,10 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.Status = "active"
 	}
 
-	// For text pipeline objects, populate TextContent from RawContent when
-	// empty so the projection sees the same input as on SQLite.
-	if obj.TextContent == "" && obj.RawContent != "" {
-		obj.TextContent = obj.RawContent
-	}
+	// An empty TextContent defaults to the body the embedding step used
+	// (projection.BodyText), so stored text, the FTS projection and the
+	// embedded text agree, as on SQLite.
+	obj.TextContent = projection.BodyText(obj)
 
 	// Derive FTS body from projection — single source of truth for indexed
 	// text. The generated tsvector column tracks projected_fts_body, so no
@@ -56,25 +55,25 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx, `INSERT INTO objects (
-		id, type, subtype, raw_content, content_type,
+		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
-		decisions, tasks, embedding, pipeline, source,
+		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, graph_json, source_key, projected_fts_body
 	) VALUES (
-		$1, $2, $3, $4, $5,
-		$6, $7, $8, $9, $10,
-		$11, $12, $13, $14, $15,
+		$1, $2, $3, $4, $5, $6,
+		$7, $8, $9, $10, $11,
+		$12, $13, $14, $15,
 		$16, $17, $18, $19, $20,
-		$21, $22, $23, $24, $25, $26,
-		$27, $28, $29, $30, $31
+		$21, $22, $23, $24, $25,
+		$26, $27, $28, $29, $30
 	)`,
-		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
+		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
-		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
+		f.decisions, f.tasks, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
-		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
+		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey, projectedFTSBody,
 	)
 	if err != nil {
@@ -262,20 +261,20 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	defer tx.Rollback()
 
 	result, err := tx.ExecContext(ctx, `UPDATE objects SET
-		type=$1, subtype=$2, raw_content=$3, content_type=$4,
-		metadata=$5, summaries=$6, sections=$7, tags=$8, mentions=$9,
-		decisions=$10, tasks=$11, embedding=$12, pipeline=$13, source=$14,
+		type=$1, subtype=$2, raw_content=$3, content_type=$4, text_content=$5,
+		metadata=$6, summaries=$7, sections=$8, tags=$9, mentions=$10,
+		decisions=$11, tasks=$12, pipeline=$13, source=$14,
 		registry_influences=$15, plugins=$16, content_hash=$17,
 		reinforcement_count=$18, last_reinforced_at=$19,
-		updated_at=$20, fts_indexed=$21, vector_indexed=$22, status=$23, inbox_note=$24,
-		remind_at=$25, reminded_at=$26, graph_json=$27, projected_fts_body=$28
-	WHERE id=$29`,
-		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType,
+		updated_at=$20, fts_indexed=$21, status=$22, inbox_note=$23,
+		remind_at=$24, reminded_at=$25, graph_json=$26, projected_fts_body=$27
+	WHERE id=$28`,
+		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
-		f.decisions, f.tasks, f.embedding, obj.Pipeline, obj.Source,
+		f.decisions, f.tasks, obj.Pipeline, obj.Source,
 		f.influences, f.plugins, obj.ContentHash,
 		obj.ReinforcementCount, f.lastReinforcedAt,
-		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.VectorIndexed, obj.Status, obj.InboxNote,
+		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, projectedFTSBody,
 		obj.ID,
 	)
@@ -344,11 +343,14 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	mergedMentionStrs := mergeStrings(mentionsToStrings(obj.Mentions), mentionsToStrings(mergeData.Mentions))
 	mergedMentionsJSON, _ := json.Marshal(mergedMentionStrs)
 
-	// fts_indexed / vector_indexed are left untouched: Reinforce never
-	// rewrites projected_fts_body (the generated tsvector stays valid) or
-	// the embedding column, and no downstream re-indexer exists to flip
-	// the flags back. Clearing them here misreported reinforced
-	// (deduplicated) objects as unindexed even though FTS still matched.
+	// fts_indexed is left untouched: Reinforce never rewrites
+	// projected_fts_body (the generated tsvector stays valid), and no
+	// downstream re-indexer exists to flip the flag back. Clearing it here
+	// misreported reinforced (deduplicated) objects as unindexed even
+	// though FTS still matched.
+	//
+	// New content rewrites text_content with the same default Create
+	// applies (projection.BodyText), keeping it in step with raw_content.
 	if mergeData.RawContent != "" && mergeData.RawContent != hash {
 		_, err = tx.ExecContext(ctx, `UPDATE objects SET
 			reinforcement_count = reinforcement_count + 1,
@@ -356,10 +358,11 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 			tags = $2,
 			mentions = $3,
 			updated_at = $4,
-			raw_content = $5
-		WHERE content_hash = $6`,
+			raw_content = $5,
+			text_content = $6
+		WHERE content_hash = $7`,
 			now, mergedTagsJSON, mergedMentionsJSON, now,
-			mergeData.RawContent, hash,
+			mergeData.RawContent, projection.BodyText(mergeData), hash,
 		)
 	} else {
 		_, err = tx.ExecContext(ctx, `UPDATE objects SET
@@ -433,62 +436,40 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 	return objects, total, rows.Err()
 }
 
-// ListWithoutEmbeddings returns active objects that have no stored embedding.
-func (s *ObjectStore) ListWithoutEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
-	rows, err := s.db.QueryContext(ctx, objectSelectCols+` FROM objects WHERE embedding IS NULL AND status = 'active'`)
-	if err != nil {
-		return nil, fmt.Errorf("list without embeddings: %w", err)
-	}
-	defer rows.Close()
-
-	var objects []*storage.KnowledgeObject
-	for rows.Next() {
-		obj, err := scanObjectRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		objects = append(objects, obj)
-	}
-	return objects, rows.Err()
-}
-
-func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
-	rows, err := s.db.QueryContext(ctx, objectSelectCols+`, embedding FROM objects WHERE embedding IS NOT NULL`)
-	if err != nil {
-		return nil, fmt.Errorf("list with embeddings: %w", err)
-	}
-	defer rows.Close()
-
-	var objects []*storage.KnowledgeObject
-	for rows.Next() {
-		obj, emb, err := scanObjectRowWithEmbedding(rows)
-		if err != nil {
-			return nil, err
-		}
-		obj.Embeddings = emb
-		objects = append(objects, obj)
-	}
-	return objects, rows.Err()
-}
-
-func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	if len(vector) == 0 {
+// VectorSearch ranks objects through q.ModelID's per-model partial HNSW
+// index, joining the object filters in SQL. The model_id predicate and the
+// vector(<dim>) cast are literals so the planner matches the partial
+// expression index (a bound model_id falls back to a bitmap scan under a
+// generic plan); model_id is safe to inline because the registry restricts
+// its charset (storage.ValidateEmbeddingModelID). Rows are chunks, so the
+// query over-fetches and keeps each object's closest chunk.
+// Metadata["score"] is 1 - cosine distance.
+func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	if len(q.Vector) == 0 {
 		return nil, fmt.Errorf("vector search: empty query vector")
 	}
+	// Cosine distance to a zero-magnitude query is undefined for every
+	// row: nothing can rank, so nothing is returned.
+	if isZeroVector(q.Vector) {
+		return nil, nil
+	}
+	if err := storage.ValidateEmbeddingModelID(q.ModelID); err != nil {
+		return nil, fmt.Errorf("vector search: %w", err)
+	}
+	dim, err := s.indexedDimension(ctx, q.ModelID)
+	if err != nil {
+		return nil, fmt.Errorf("vector search: %w", err)
+	}
+	if len(q.Vector) != dim {
+		return nil, fmt.Errorf("vector search: model %s: query has %d dimensions, index has %d: %w",
+			q.ModelID, len(q.Vector), dim, storage.ErrEmbeddingDimension)
+	}
 
-	// The query vector is bound as $1 (referenced twice: score expression
-	// and ORDER BY); filter conditions number themselves from $2. Binding —
-	// rather than interpolating a '[...]'::vector literal — keeps the
-	// statement cacheable and the parameter path uniform.
-	var conditions []string
-	args := []any{encodePgVector(vector)}
+	// $1 is the query vector (referenced by the score and the ORDER BY);
+	// filter conditions number themselves from $2.
+	conditions := []string{fmt.Sprintf("e.model_id = '%s'", q.ModelID)}
+	args := []any{encodePgVector(q.Vector)}
 	idx := 2
-
-	conditions = append(conditions, "embedding IS NOT NULL")
-	// Cosine distance lives in [0, 2]; the predicate is false for NaN, so
-	// rows holding a zero-magnitude embedding (undefined distance) never
-	// surface — matching the SQLite ANN leg, which refuses to index them.
-	conditions = append(conditions, "(embedding <=> $1::vector) <= 2")
 
 	if filter.Type != "" {
 		conditions = append(conditions, fmt.Sprintf("type = $%d", idx))
@@ -511,28 +492,43 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 	conditions = append(conditions, mc...)
 	args = append(args, ma...)
 
-	where := "WHERE " + strings.Join(conditions, " AND ")
 	limit := filter.Limit
+	if limit <= 0 {
+		limit = q.TopK
+	}
 	if limit <= 0 {
 		limit = 20
 	}
 
-	// Only placeholders and locally-built condition fragments are formatted
-	// into the text here; every caller-supplied value is in args. `where` is
-	// assembled from constant fragments plus $N placeholders above.
-	// #nosec G202 -- no caller string reaches the query text.
+	// The embeddings subquery exposes only object_id, model_id and vector,
+	// so the bare object column names in objectSelectCols and the facet
+	// conditions stay unambiguous; the planner flattens it into a join.
+	// Interpolated: the validated model_id, the integer dimension, the
+	// condition list (literals and generated $N markers) and $N indexes.
+	dist := fmt.Sprintf("e.vector::vector(%d) <=> $1::vector(%d)", dim, dim)
+	// #nosec G201 G202 -- no caller string reaches the query text; values are in args.
 	query := objectSelectCols + fmt.Sprintf(
-		`, 1 - (embedding <=> $1::vector) AS score FROM objects %s ORDER BY embedding <=> $1::vector LIMIT $%d`,
-		where, idx)
-	args = append(args, limit)
+		`, 1 - (%s) AS score
+		  FROM objects
+		  JOIN (SELECT object_id, model_id, vector FROM embeddings) e ON e.object_id = objects.id
+		 WHERE %s
+		 ORDER BY %s
+		 LIMIT $%d`,
+		dist, strings.Join(conditions, " AND "), dist, idx)
+	args = append(args, limit*pgChunkOverfetch)
 
+	seen := map[string]bool{}
 	var objects []*storage.KnowledgeObject
-	err := queryVectorRows(ctx, s.db, s.caps, func(rows *sql.Rows) error {
+	err = queryVectorRows(ctx, s.db, s.caps, func(rows *sql.Rows) error {
 		for rows.Next() {
 			obj, score, err := scanObjectRowWithScore(rows)
 			if err != nil {
 				return err
 			}
+			if seen[obj.ID] || len(objects) >= limit {
+				continue
+			}
+			seen[obj.ID] = true
 			if obj.Metadata == nil {
 				obj.Metadata = make(map[string]any)
 			}
@@ -545,6 +541,33 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter
 		return nil, fmt.Errorf("vector search: %w", err)
 	}
 	return objects, nil
+}
+
+// pgChunkOverfetch bounds how many chunk rows VectorSearch reads per result
+// slot so that collapsing chunks to one hit per object can still fill the
+// limit.
+const pgChunkOverfetch = 4
+
+// indexedDimension returns the registry dimension of modelID when its
+// per-model index exists, and ErrEmbeddingIndexMissing otherwise.
+func (s *ObjectStore) indexedDimension(ctx context.Context, modelID string) (int, error) {
+	var (
+		dim     int
+		indexed bool
+	)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT dimension, to_regclass($2) IS NOT NULL
+		  FROM embedding_models
+		 WHERE model_id = $1`,
+		modelID, "idx_"+storage.EmbeddingIndexName(modelID),
+	).Scan(&dim, &indexed)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (!indexed || dim <= 0)) {
+		return 0, fmt.Errorf("model %s: %w", modelID, storage.ErrEmbeddingIndexMissing)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("model %s index lookup: %w", modelID, err)
+	}
+	return dim, nil
 }
 
 // FTSSearch runs full-text search over the generated tsvector column.
@@ -707,11 +730,11 @@ func (s *ObjectStore) FTSSearchNodeAware(
 // distance ordering is preserved, mirroring the SQLite shape.
 func (s *ObjectStore) VectorSearchNodeAware(
 	ctx context.Context,
-	vector []float32,
+	q storage.VectorQuery,
 	filter storage.ObjectFilter,
 	naf pluginapi.NodeAwareFilter,
 ) ([]*pluginapi.NodeAwareResult, error) {
-	objects, err := s.VectorSearch(ctx, vector, filter)
+	objects, err := s.VectorSearch(ctx, q, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -787,11 +810,11 @@ func queryVectorRows(ctx context.Context, db *sql.DB, caps *pgCaps,
 
 // objectSelectCols is the SELECT column list (no trailing FROM).
 const objectSelectCols = `SELECT
-	id, type, subtype, raw_content, content_type,
+	id, type, subtype, raw_content, content_type, text_content,
 	metadata, summaries, sections, tags, mentions,
 	decisions, tasks, pipeline, source,
 	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
-	created_at, updated_at, fts_indexed, vector_indexed, status, inbox_note,
+	created_at, updated_at, fts_indexed, status, inbox_note,
 	remind_at, reminded_at, graph_json, source_key`
 
 func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
@@ -805,11 +828,11 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		sourceKey                                           sql.NullString
 	)
 	err := row.Scan(
-		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
+		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
+		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &graphJSON, &sourceKey,
 	)
 	if err != nil {
@@ -847,11 +870,11 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		sourceKey                                           sql.NullString
 	)
 	err := rows.Scan(
-		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
+		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
+		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &graphJSON, &sourceKey,
 	)
 	if err != nil {
@@ -875,49 +898,6 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 	return &obj, nil
 }
 
-// scanObjectRowWithEmbedding scans the base cols + embedding column as a pgvector string.
-func scanObjectRowWithEmbedding(rows *sql.Rows) (*storage.KnowledgeObject, []float32, error) {
-	var obj storage.KnowledgeObject
-	var (
-		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
-		mentionsJSON, decisionsJSON, tasksJSON              []byte
-		influencesJSON, pluginsJSON                         []byte
-		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
-		graphJSON                                           []byte
-		sourceKey                                           sql.NullString
-		embStr                                              sql.NullString
-	)
-	err := rows.Scan(
-		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
-		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
-		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
-		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey,
-		&embStr,
-	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("scan object+embedding: %w", err)
-	}
-	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
-		lastReinforcedAt, remindAt, remindedAt); err != nil {
-		return nil, nil, fmt.Errorf("scan object+embedding: %w", err)
-	}
-	if len(graphJSON) > 0 {
-		g, err := unmarshalGraph(string(graphJSON))
-		if err != nil {
-			return nil, nil, fmt.Errorf("unmarshal graph: %w", err)
-		}
-		obj.Graph = g
-	}
-	if sourceKey.Valid {
-		obj.SourceKey = sourceKey.String
-	}
-	vec := parsePgVector(embStr.String)
-	return &obj, vec, nil
-}
-
 // scanObjectRowWithScore scans base cols + a float64 score appended at the end.
 func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, error) {
 	var obj storage.KnowledgeObject
@@ -931,11 +911,11 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		score                                               float64
 	)
 	err := rows.Scan(
-		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType,
+		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.VectorIndexed, &obj.Status, &obj.InboxNote,
+		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &graphJSON, &sourceKey,
 		&score,
 	)
@@ -1008,7 +988,6 @@ type objectFields struct {
 	metadata, summaries, sections, tags    string
 	mentions, decisions, tasks             string
 	influences, plugins                    string
-	embedding                              *string
 	lastReinforcedAt, remindAt, remindedAt sql.NullTime
 }
 
@@ -1074,10 +1053,6 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	f.tasks = marshal("tasks", tasks)
 	f.influences = marshal("influences", influences)
 	f.plugins = marshal("plugins", plugins)
-	if len(obj.Embeddings) > 0 {
-		s := encodePgVector(obj.Embeddings)
-		f.embedding = &s
-	}
 	if obj.LastReinforcedAt != nil {
 		f.lastReinforcedAt = sql.NullTime{Time: *obj.LastReinforcedAt, Valid: true}
 	}
@@ -1102,23 +1077,6 @@ func encodePgVector(v []float32) string {
 	}
 	b.WriteByte(']')
 	return b.String()
-}
-
-// parsePgVector parses a pgvector string like "[0.1,0.2,0.3]" into []float32.
-func parsePgVector(s string) []float32 {
-	s = strings.TrimPrefix(s, "[")
-	s = strings.TrimSuffix(s, "]")
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	out := make([]float32, 0, len(parts))
-	for _, p := range parts {
-		var v float32
-		fmt.Sscanf(strings.TrimSpace(p), "%g", &v)
-		out = append(out, v)
-	}
-	return out
 }
 
 func mergeTags(existing, newTags []storage.Tag) []storage.Tag {
@@ -1264,4 +1222,14 @@ func metadataFacetConditionsPG(f storage.ObjectFilter, idx *int) ([]string, []an
 		*idx++
 	}
 	return conds, args
+}
+
+// isZeroVector reports whether every component is zero.
+func isZeroVector(v []float32) bool {
+	for _, f := range v {
+		if f != 0 {
+			return false
+		}
+	}
+	return true
 }

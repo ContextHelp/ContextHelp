@@ -1,3 +1,5 @@
+// Package storage defines the backend-neutral persistence contracts that
+// the sqlite and postgres drivers implement.
 package storage
 
 import (
@@ -69,7 +71,7 @@ type StorageDriver interface {
 	Resurfacing() ResurfacingQueueStore
 	Entitlements() EntitlementStore
 	Metering() MeteringStore
-	Vectors() VectorStore
+	Embeddings() EmbeddingStore
 	SavedSearches() SavedSearchStore
 	SearchHistory() SearchHistoryStore
 	Watermarks() WatermarkStore
@@ -85,18 +87,6 @@ type WatermarkStore interface {
 	GetWatermark(ctx context.Context, federationName string) (time.Time, error)
 	// SetWatermark upserts last_synced_at for federationName. Idempotent.
 	SetWatermark(ctx context.Context, federationName string, ts time.Time) error
-}
-
-// VectorStore persists and queries ANN (approximate nearest neighbour) embeddings.
-type VectorStore interface {
-	// Upsert inserts or replaces a vector for the given object ID.
-	Upsert(ctx context.Context, id string, vector []float32) error
-	// Search returns the top-K nearest neighbours by L2/cosine distance.
-	Search(ctx context.Context, vector []float32, topK int) ([]VectorHit, error)
-	// Delete removes the vector for the given object ID.
-	Delete(ctx context.Context, id string) error
-	// Count returns the total number of indexed vectors.
-	Count(ctx context.Context) (int, error)
 }
 
 // MeteringStore persists and queries metering events for paid registry access.
@@ -171,9 +161,6 @@ type ObjectStore interface {
 	Delete(ctx context.Context, id string) error
 	ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error)
 	Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error)
-	ListWithEmbeddings(ctx context.Context) ([]*KnowledgeObject, error)
-	// ListWithoutEmbeddings returns objects that have no stored embedding blob.
-	ListWithoutEmbeddings(ctx context.Context) ([]*KnowledgeObject, error)
 	// SetReminder sets remind_at on the object identified by id.
 	SetReminder(ctx context.Context, id string, at time.Time) error
 	// ClearReminder removes remind_at (and reminded_at) from the object.
@@ -184,9 +171,11 @@ type ObjectStore interface {
 	MarkReminded(ctx context.Context, id string, now time.Time) error
 	// ListPendingReminders returns all objects with a non-null remind_at.
 	ListPendingReminders(ctx context.Context) ([]*KnowledgeObject, error)
-	// VectorSearch returns the top-K objects ranked by cosine similarity to
-	// the given vector, optionally filtered by ObjectFilter fields.
-	VectorSearch(ctx context.Context, vector []float32, filter ObjectFilter) ([]*KnowledgeObject, error)
+	// VectorSearch returns objects ranked by q.ModelID's index (cosine
+	// distance, closest first), filtered by filter and capped at
+	// filter.Limit. Each result carries Metadata["score"] = 1 - distance.
+	// Fails with ErrEmbeddingIndexMissing when the model has no index.
+	VectorSearch(ctx context.Context, q VectorQuery, filter ObjectFilter) ([]*KnowledgeObject, error)
 	// FTSSearch queries the objects_fts FTS5 virtual table using SQLite FTS5 MATCH syntax.
 	// Returns results ranked by FTS5 bm25 score, filtered by ObjectFilter.
 	FTSSearch(ctx context.Context, query string, filter ObjectFilter) ([]*KnowledgeObject, error)
@@ -195,7 +184,7 @@ type ObjectStore interface {
 	FTSSearchNodeAware(ctx context.Context, query string, filter ObjectFilter, naf pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error)
 	// VectorSearchNodeAware runs vector search and applies NodeAwareFilter post-query.
 	// When naf.NodeTypes is non-empty, only objects with ALL listed node types are returned.
-	VectorSearchNodeAware(ctx context.Context, vector []float32, filter ObjectFilter, naf pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error)
+	VectorSearchNodeAware(ctx context.Context, q VectorQuery, filter ObjectFilter, naf pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error)
 }
 
 // EntityStore persists and retrieves named entities.
@@ -241,7 +230,20 @@ type JobStore interface {
 	Fail(ctx context.Context, id string, errMsg string) error
 	Retry(ctx context.Context, id string) error
 	Cancel(ctx context.Context, id string) error
+	// RecoverStale requeues running jobs that are no longer being run:
+	// a leased job once its lease has expired, an unleased job once its
+	// started_at is timeout seconds old (0 = every unleased running job,
+	// the startup crash recovery). Requeueing clears claim and lease.
 	RecoverStale(ctx context.Context, timeout int64) (int, error)
+	// ExtendLease sets the lease of running job id, claimed with claim,
+	// to expire ttl from now. It reports false, without error, when the
+	// job is no longer running under that claim (settled, cancelled, or
+	// requeued and claimed again). A live lease keeps RecoverStale off
+	// the job, so only its holder runs it.
+	ExtendLease(ctx context.Context, id, claim string, ttl time.Duration) (bool, error)
+	// ReleaseLease drops the lease of running job id held under claim,
+	// leaving the job running and unleased for RecoverStale.
+	ReleaseLease(ctx context.Context, id, claim string) error
 }
 
 // PipelineStore persists and retrieves pipelines.

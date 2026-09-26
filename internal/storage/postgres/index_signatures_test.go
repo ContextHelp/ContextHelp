@@ -54,11 +54,12 @@ func TestPostgresFTSSignature_VerifyLifecycle(t *testing.T) {
 	}
 }
 
-// TestPostgresVectorIndexDescription pins the catalog reader feeding the
-// embedding signature: an indexable dimension reports the HNSW cosine index;
-// a driver migrated above the HNSW ceiling reports the seq-scan fallback.
+// TestPostgresVectorIndexDescription pins the catalog reader historic
+// migration 12 stamps from, on the schema it ran against: objects.embedding
+// with its HNSW cosine index reports that index; without the index it
+// reports the seq-scan fallback.
 func TestPostgresVectorIndexDescription(t *testing.T) {
-	drv := freshVectorDriver(t, 4)
+	drv := schema14Driver(t)
 	desc, err := indexsig.PostgresVectorIndex(context.Background(), drv.DB())
 	if err != nil {
 		t.Fatalf("describe (indexed): %v", err)
@@ -67,8 +68,10 @@ func TestPostgresVectorIndexDescription(t *testing.T) {
 		t.Errorf("indexed description: got %+v want hnsw/vector_cosine_ops", desc)
 	}
 
-	big := freshVectorDriver(t, 3000) // above HNSW ceiling: no index built
-	desc, err = indexsig.PostgresVectorIndex(context.Background(), big.DB())
+	if _, err := drv.DB().Exec(`DROP INDEX idx_objects_embedding_hnsw`); err != nil {
+		t.Fatal(err)
+	}
+	desc, err = indexsig.PostgresVectorIndex(context.Background(), drv.DB())
 	if err != nil {
 		t.Fatalf("describe (unindexed): %v", err)
 	}
@@ -77,17 +80,22 @@ func TestPostgresVectorIndexDescription(t *testing.T) {
 	}
 }
 
-// TestPostgresMigrate_StampsVectorSignature pins that migration stamps the
-// embeddings_<default-model> signature row from the live index description —
+// TestPostgresMigrate_StampsVectorSignature pins that migration stamps an
+// embeddings_<model> signature row from the model's live per-model index —
 // the Postgres index_signatures table stops being write-only.
 func TestPostgresMigrate_StampsVectorSignature(t *testing.T) {
-	drv := freshVectorDriver(t, 4)
+	drv, _ := freshIntegrationDriver(t)
 	ctx := context.Background()
 
-	var modelID string
-	if err := drv.DB().QueryRowContext(ctx,
-		`SELECT model_id FROM embedding_models WHERE is_default = 1`).Scan(&modelID); err != nil {
-		t.Fatalf("default model: %v", err)
+	const modelID = "stamp-probe@1"
+	if _, err := drv.DB().ExecContext(ctx, `
+		INSERT INTO embedding_models (model_id, provider, dimension, is_default, registered_at)
+		VALUES ($1, 'test', 4, 1, NOW())`, modelID); err != nil {
+		t.Fatalf("register model: %v", err)
+	}
+	// Every Migrate verifies and builds per-model indexes.
+	if err := drv.Migrate(ctx); err != nil {
+		t.Fatalf("migrate: %v", err)
 	}
 
 	row, err := indexsig.Load(ctx, drv.DB(), indexsig.DialectPostgres, indexsig.EmbeddingSignatureID(modelID))

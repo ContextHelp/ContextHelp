@@ -181,6 +181,11 @@ type Job struct {
 	// can be safely retried against the same queue. Empty = no dedupe
 	// (legacy callers); enforced unique for non-empty values.
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
+	// Claim is the token AcquireNext stamps on the row it claims; a new
+	// acquisition mints a new one. Lease calls must present it, so a
+	// worker whose job was requeued and claimed again cannot renew or
+	// release the new owner's lease. Set only on AcquireNext's result.
+	Claim string `json:"-"`
 }
 
 // JobFilter specifies criteria for listing jobs.
@@ -558,12 +563,6 @@ type QuotaConfig struct {
 	WarnAt int `json:"warn_at" yaml:"warn_at"`
 	// ResetsAt is an informational reset timestamp (e.g. billing period end).
 	ResetsAt time.Time `json:"resets_at" yaml:"resets_at"`
-}
-
-// VectorHit is a single result returned by VectorStore.Search.
-type VectorHit struct {
-	ID    string  `json:"id"`
-	Score float64 `json:"score"`
 }
 
 // SavedSearch is a persisted named search query with optional alert config (US-0054).

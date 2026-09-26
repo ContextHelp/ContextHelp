@@ -8,9 +8,12 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// ItemEnqueuer reads new feed items and stages them for ingestion by populating
-// draft.Sections and draft.Metadata["items_to_enqueue"].
-// It does NOT write to a job store to avoid circular dependencies.
+// ItemEnqueuer stages new items (Metadata["feed_items_new"]) for ingestion as
+// objects of their own: one draft.Sections entry each on the container, and
+// one Metadata["items_to_enqueue"] entry the worker turns into an item job.
+// An item runs its own "pipeline" when set, else the text pipeline on its
+// content, else the URL pipeline on its link. It does NOT write to a job
+// store to avoid circular dependencies.
 type ItemEnqueuer struct {
 	pipeline.BaseContract
 }
@@ -34,7 +37,7 @@ func (s *ItemEnqueuer) Run(_ context.Context, draft *storage.KnowledgeObject) (*
 
 	rawItems, ok := draft.Metadata["feed_items_new"]
 	if !ok {
-		draft.Metadata["items_to_enqueue"] = []map[string]any{}
+		draft.Metadata[itemsToEnqueueKey] = []map[string]any{}
 		return draft, nil
 	}
 
@@ -44,27 +47,32 @@ func (s *ItemEnqueuer) Run(_ context.Context, draft *storage.KnowledgeObject) (*
 	}
 
 	sections := make([]storage.Section, 0, len(items))
-	pending := make([]map[string]any, 0, len(items))
-
+	staged := make([]fanOutItem, 0, len(items))
 	for i, item := range items {
 		title, _ := item["title"].(string)
 		link, _ := item["link"].(string)
 		content, _ := item["content"].(string)
 
-		sectionContent := link
+		payload := link
 		if content != "" {
-			sectionContent = content
+			payload = content
 		}
 
 		sections = append(sections, storage.Section{
 			Title:   title,
-			Content: sectionContent,
+			Content: payload,
 			Order:   i,
 		})
-		pending = append(pending, item)
+		staged = append(staged, fanOutItem{
+			Title:    title,
+			Content:  payload,
+			Source:   firstString(item, "source", "link", "guid"),
+			Pipeline: firstString(item, "pipeline"),
+		})
 	}
 
 	draft.Sections = sections
-	draft.Metadata["items_to_enqueue"] = pending
+	draft.Metadata[itemsToEnqueueKey] = []map[string]any{}
+	stageItems(draft, staged)
 	return draft, nil
 }

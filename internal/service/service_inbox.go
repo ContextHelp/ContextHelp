@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/ideacrafterslabs/ctxt/internal/events"
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -88,10 +87,7 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 
 	pipelineName := req.Pipeline
 	if pipelineName == "" {
-		pipelineName = s.Pipes.Detect(pipeline.DetectInput{
-			Source: obj.Source,
-			Sniff:  contentSniff(obj.RawContent),
-		})
+		pipelineName = s.detectPipeline(obj.Source, "", obj.RawContent)
 	}
 
 	now := time.Now().Truncate(time.Second)

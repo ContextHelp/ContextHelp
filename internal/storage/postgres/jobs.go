@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -145,14 +147,18 @@ func (s *JobStore) List(ctx context.Context, filter storage.JobFilter) ([]*stora
 func (s *JobStore) AcquireNext(ctx context.Context) (*storage.Job, error) {
 	now := time.Now().UTC()
 
+	// SKIP LOCKED hands concurrent acquirers different rows. Each claim
+	// mints a new token and starts unleased; see ExtendLease.
+	claim := uuid.NewString()
 	row := s.db.QueryRowContext(ctx, `UPDATE jobs SET
-		status = 'running', started_at = $1, updated_at = $1
+		status = 'running', started_at = $1, updated_at = $1,
+		claim_token = $2, lease_expires_at = NULL
 	WHERE id = (
 		SELECT id FROM jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
-	)
+	) AND status = 'pending'
 	RETURNING id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note, idempotency_key`, now)
+		user_mentions, user_hints, user_profile, user_note, idempotency_key`, now, claim)
 
 	j, err := scanJob(row)
 	if err != nil {
@@ -161,6 +167,7 @@ func (s *JobStore) AcquireNext(ctx context.Context) (*storage.Job, error) {
 		}
 		return nil, fmt.Errorf("acquire next: %w", err)
 	}
+	j.Claim = claim
 	return j, nil
 }
 
@@ -198,6 +205,7 @@ func (s *JobStore) Retry(ctx context.Context, id string) error {
 	now := time.Now().UTC()
 	result, err := s.db.ExecContext(ctx, `UPDATE jobs SET
 		status = 'pending', error = '', started_at = NULL, completed_at = NULL,
+		claim_token = '', lease_expires_at = NULL,
 		retry_count = retry_count + 1, updated_at = $1
 	WHERE id = $2 AND retry_count < max_retries`, now, id)
 	if err != nil {
@@ -229,14 +237,46 @@ func (s *JobStore) RecoverStale(ctx context.Context, timeoutSeconds int64) (int,
 	cutoff := time.Now().Add(-time.Duration(timeoutSeconds) * time.Second).UTC()
 	now := time.Now().UTC()
 
-	result, err := s.db.ExecContext(ctx,
-		"UPDATE jobs SET status = 'pending', started_at = NULL, updated_at = $1 WHERE status = 'running' AND started_at <= $2",
-		now, cutoff)
+	// Leases are stamped and compared on the database clock, so two
+	// hosts with skewed clocks agree on expiry.
+	result, err := s.db.ExecContext(ctx, `UPDATE jobs SET
+		status = 'pending', started_at = NULL, claim_token = '', lease_expires_at = NULL, updated_at = $1
+	WHERE status = 'running' AND CASE
+		WHEN lease_expires_at IS NULL THEN started_at <= $2
+		ELSE lease_expires_at <= now()
+	END`, now, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("recover stale: %w", err)
 	}
 	n, _ := result.RowsAffected()
 	return int(n), nil
+}
+
+func (s *JobStore) ExtendLease(ctx context.Context, id, claim string, ttl time.Duration) (bool, error) {
+	if claim == "" {
+		return false, nil
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE jobs
+		SET lease_expires_at = now() + make_interval(secs => $1)
+		WHERE id = $2 AND claim_token = $3 AND status = 'running'`,
+		ttl.Seconds(), id, claim)
+	if err != nil {
+		return false, fmt.Errorf("extend lease: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	return n == 1, nil
+}
+
+func (s *JobStore) ReleaseLease(ctx context.Context, id, claim string) error {
+	if claim == "" {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx,
+		"UPDATE jobs SET lease_expires_at = NULL WHERE id = $1 AND claim_token = $2 AND status = 'running'",
+		id, claim); err != nil {
+		return fmt.Errorf("release lease: %w", err)
+	}
+	return nil
 }
 
 func scanJob(row *sql.Row) (*storage.Job, error) {

@@ -1,14 +1,14 @@
 # AI Providers Environment Variables
 
-Configuration for OpenAI, Anthropic, and Ollama.
+Configuration for OpenAI, Anthropic, Ollama, and the embedding provider.
 
 ---
 
 ## OpenAI
 
 ### OPENAI_API_KEY
-**Type:** string (secret)  
-**Default:** _(none)_  
+**Type:** string (secret)\
+**Default:** _(none)_\
 **Required:** For OpenAI models
 
 OpenAI API key. **Never commit to version control.**
@@ -23,7 +23,7 @@ OPENAI_API_KEY=$(vault kv get -field=key secret/openai)
 ```
 
 ### OPENAI_MODEL
-**Type:** string  
+**Type:** string\
 **Default:** `gpt-4-turbo-preview`
 
 Default OpenAI model for text generation.
@@ -38,7 +38,7 @@ OPENAI_MODEL=gpt-4-turbo-preview
 - `gpt-3.5-turbo` — Fast, cost-effective
 
 ### OPENAI_MAX_TOKENS
-**Type:** integer  
+**Type:** integer\
 **Default:** `4096`
 
 Maximum tokens per API call.
@@ -48,7 +48,7 @@ OPENAI_MAX_TOKENS=8192
 ```
 
 ### OPENAI_TEMPERATURE
-**Type:** float (0.0-2.0)  
+**Type:** float (0.0-2.0)\
 **Default:** `0.7`
 
 Sampling temperature for generation.
@@ -62,7 +62,7 @@ OPENAI_TEMPERATURE=0.5
 ## Anthropic (Claude)
 
 ### ANTHROPIC_API_KEY
-**Type:** string (secret)  
+**Type:** string (secret)\
 **Default:** _(none)_
 
 Anthropic API key. **Never commit to version control.**
@@ -72,7 +72,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ### ANTHROPIC_MODEL
-**Type:** string  
+**Type:** string\
 **Default:** `claude-3-opus-20240229`
 
 Default Claude model.
@@ -87,7 +87,7 @@ ANTHROPIC_MODEL=claude-3-sonnet-20240229
 - `claude-3-haiku-20240307` — Fast, lightweight
 
 ### ANTHROPIC_MAX_TOKENS
-**Type:** integer  
+**Type:** integer\
 **Default:** `4096`
 
 Maximum tokens per API call.
@@ -101,7 +101,7 @@ ANTHROPIC_MAX_TOKENS=8192
 ## Ollama (Local Models)
 
 ### OLLAMA_ENABLED
-**Type:** boolean  
+**Type:** boolean\
 **Default:** `false`
 
 Enable Ollama for local AI models.
@@ -111,7 +111,7 @@ OLLAMA_ENABLED=true
 ```
 
 ### OLLAMA_HOST
-**Type:** string  
+**Type:** string\
 **Default:** `http://localhost:11434`
 
 Ollama server URL.
@@ -121,7 +121,7 @@ OLLAMA_HOST=http://ollama.internal:11434
 ```
 
 ### OLLAMA_MODEL
-**Type:** string  
+**Type:** string\
 **Default:** `llama2`
 
 Default Ollama model.
@@ -135,6 +135,122 @@ OLLAMA_MODEL=mistral
 - `mistral` — Mistral AI
 - `codellama` — Code-specialized
 - `phi` — Microsoft Phi
+
+---
+
+## Embedding provider
+
+Semantic and hybrid search (`ctxt find`), ingest, and re-embedding
+(`ctxt embeddings migrate`, run by dpkms) use one embedding provider. Set
+it once in config, and override it for a single run without editing
+config.
+
+This section is the settings reference. To turn semantic search on, see
+[Turn on semantic search](../manual/workflows/semantic-search.md); to
+switch or retire models, see
+[Operate embedding models](../manual/operations/embeddings.md).
+
+### Configure it
+
+In `ctxt.yaml` / `dpkms.yaml`:
+
+```yaml
+providers:
+  embedding:
+    backend: ollama                  # ollama | stub
+    model: snowflake-arctic-embed2
+    endpoint: http://localhost:11434
+    api_key_env: ""                  # NAME of the env var holding a key, never the key
+    dimension: 1024                  # optional, informational; register measures it
+```
+
+Every field is optional. Unset fields fall back to `ollama`,
+`nomic-embed-text` and `http://localhost:11434`. `dimension` is shown by
+`ctxt embeddings provider` only: `ctxt embeddings register` always
+measures the dimension from the provider, and checks it only against
+`--dimension`.
+
+### Override it for one run
+
+Each setting is resolved on its own, highest first:
+
+| Layer | Example |
+|-------|---------|
+| Flag (on `find`, `embeddings provider`, `embeddings register`) | `--embedding-provider`, `--embedding-model`, `--embedding-endpoint` |
+| Environment | `CTXT_EMBEDDING_PROVIDER`, `CTXT_EMBEDDING_MODEL`, `CTXT_EMBEDDING_ENDPOINT`, `CTXT_EMBEDDING_API_KEY_ENV` |
+| `-c` override | `-c providers.embedding.model=snowflake-arctic-embed2` |
+| Registered model | the model's endpoint and `api_key_env`, when a command targets a `model_id` |
+| Config file | `providers.embedding` |
+| Built-in default | `ollama`, `nomic-embed-text`, `http://localhost:11434` |
+
+Overriding one setting keeps the others: `--embedding-endpoint` alone
+still uses the model from env or config. The environment outranks `-c`
+for these settings.
+
+```bash
+ctxt find "onboarding" --embedding-model snowflake-arctic-embed2
+CTXT_EMBEDDING_MODEL=snowflake-arctic-embed2 ctxt find "onboarding"
+ctxt find "onboarding" -c providers.embedding.model=snowflake-arctic-embed2
+```
+
+### Use a remote Ollama for one run
+
+Forward a local port to the remote machine's Ollama (port 11434), for
+example with an SSH tunnel on local port 11555, then point the run at it:
+
+```bash
+ctxt find "onboarding" --embedding-endpoint http://127.0.0.1:11555
+CTXT_EMBEDDING_ENDPOINT=http://127.0.0.1:11555 dpkms serve   # ingest + embeddings migrate
+```
+
+The remote Ollama must have the model pulled.
+
+### Check what a command will use
+
+`ctxt embeddings provider` prints the resolved settings and the layer each
+came from. It accepts the same flags, env and `-c` as the commands above,
+and never prints a key value. With the config above and an endpoint flag:
+
+```bash
+ctxt embeddings provider
+ctxt embeddings provider --embedding-endpoint http://127.0.0.1:11555 --format json
+```
+
+```json
+{
+  "model_id": "",
+  "backend": "ollama",
+  "model": "snowflake-arctic-embed2",
+  "endpoint": "http://127.0.0.1:11555",
+  "api_key_env": "",
+  "dimension": 1024,
+  "sources": {
+    "api_key_env": "default",
+    "backend": "config",
+    "dimension": "config",
+    "endpoint": "flag",
+    "model": "config"
+  },
+  "fixed": []
+}
+```
+
+Pass a registered `model_id` to see how a command targeting that model
+resolves it, including the model's own registry settings:
+
+```bash
+ctxt embeddings provider ollama-snowflake-arctic-embed2@2026-09-26
+```
+
+A registered model's backend, model and dimension are fixed by its
+registry entry and shown as "fixed by registry" (and listed under `fixed`
+in JSON): its stored vectors came from that model. Flags, env and `-c` can still change its endpoint and
+`api_key_env`, for example to reach it through a tunnel, but a value that
+would change its backend, model or dimension fails the command
+(`ctxt find` answers from full-text search with a `provider_error` notice
+instead).
+
+`dpkms serve` prints the resolved provider at startup.
 
 ---
 
@@ -198,5 +314,7 @@ OPENAI_TEMPERATURE=0.3  # More deterministic
 
 ## Related
 
+- [../manual/workflows/semantic-search.md](../manual/workflows/semantic-search.md) — Turn on semantic search
+- [../manual/operations/embeddings.md](../manual/operations/embeddings.md) — Operate embedding models
 - [../ctxt/pipelines.md](../ctxt/pipelines.md) — Pipeline AI integration
 - [../scaling.md](../scaling.md#cost-optimization) — Cost optimization

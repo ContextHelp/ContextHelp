@@ -220,14 +220,14 @@ func TestNormalizedItemToDraft(t *testing.T) {
 			},
 		},
 		{
-			name: "embeddings",
+			// ICA's vector comes from a model outside the embedding
+			// registry, so it never lands on the object.
+			name: "embedding dropped",
 			item: &NormalizedItem{
 				Embedding: []float32{0.1, 0.2, 0.3},
 			},
 			assert: func(t *testing.T, ko *pluginapi.KnowledgeObject) {
-				assert.Equal(t,
-					[]float32{0.1, 0.2, 0.3}, ko.Embeddings,
-				)
+				assert.Empty(t, ko.Vectors)
 			},
 		},
 	}
@@ -260,7 +260,6 @@ func TestDraftToNormalizedItem(t *testing.T) {
 				RawContent:  "Body text",
 				ContentHash: "abc123",
 				Source:      "https://example.com/post",
-				Embeddings:  []float32{0.5},
 				Metadata: map[string]any{
 					"title":         "Test Post",
 					"description":   "A test",
@@ -301,7 +300,7 @@ func TestDraftToNormalizedItem(t *testing.T) {
 					item.PublishedAt,
 				)
 				assert.Equal(t, 3, item.ChannelCount)
-				assert.Equal(t, []float32{0.5}, item.Embedding)
+				assert.Nil(t, item.Embedding)
 			},
 		},
 		{
@@ -475,7 +474,7 @@ func TestRoundTrip(t *testing.T) {
 	assert.Equal(t, original.Description, rt.Description)
 	assert.Equal(t, original.ArticleBody, rt.ArticleBody)
 	assert.Equal(t, original.PrimarySource, rt.PrimarySource)
-	assert.Equal(t, original.Embedding, rt.Embedding)
+	assert.Nil(t, rt.Embedding, "ICA's vector is not carried on the object")
 	assert.Equal(t, original.ChannelCount, rt.ChannelCount)
 
 	// media types preserved

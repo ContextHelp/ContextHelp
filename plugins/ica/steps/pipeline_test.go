@@ -185,7 +185,7 @@ func TestICAFeedSyncStepContracts(t *testing.T) {
 			name:     "ica_processor",
 			requires: []string{"RawContent"},
 			produces: []string{
-				"Embeddings", "Metadata", "Sections",
+				"Metadata", "Sections",
 			},
 			caps: []string{"ica_processor"},
 		},

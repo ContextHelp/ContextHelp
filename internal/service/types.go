@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/citation"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	uri "hop.top/cite/scheme"
@@ -169,6 +170,10 @@ type SearchDiagnostics struct {
 	// signal: search still returns the stale results, but the caller knows
 	// to suggest `ctxt upgrade plan` to the operator.
 	StalenessWarning *StalenessWarning `json:"staleness_warning,omitempty"`
+	// Semantic reports the vector leg: whether it searched the default
+	// embedding model's index and, when it could not, why (its Notice is
+	// the one-line operator message). Nil for FTS-only searches.
+	Semantic *retrieval.SemanticReport `json:"semantic,omitempty"`
 }
 
 // StalenessWarning summarises pipeline-version drift in a search result set.

@@ -15,13 +15,20 @@ func TestDevDeprecated(t *testing.T) {
 	}
 }
 
-func TestDevReindexVectorsDeprecated(t *testing.T) {
-	_, err := executeCommand("dev", "reindex-vectors")
-	if err == nil {
-		t.Fatal("dev reindex-vectors should return error (moved to dpkms)")
+// reindex-vectors is gone: `ctxt embeddings migrate` backfills vectors per
+// model, so there is no alias left to forward. The remaining dev aliases
+// and find stay signature-clean.
+func TestDevReindexVectorsRemoved(t *testing.T) {
+	for _, c := range devCmd.Commands() {
+		if c.Name() == "reindex-vectors" {
+			t.Fatal("ctxt dev reindex-vectors still registered")
+		}
 	}
-	if !strings.Contains(err.Error(), "moved to dpkms dev reindex-vectors") {
-		t.Errorf("error should mention dpkms, got: %v", err)
+	resetAllFlags(rootCmd)
+	for _, v := range root.ValidateSignature().Violations {
+		if strings.Contains(v.Path, " dev") || strings.HasSuffix(v.Path, " find") {
+			t.Errorf("signature violation: %s [%s/%s] %s", v.Path, v.Check, v.Severity, v.Detail)
+		}
 	}
 }
 

@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: f35f5011
+recorded_at: "2026-09-26T17:55:49Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"snowflake-arctic-embed2","prompt":"call alice about the quokka survey on friday"}'

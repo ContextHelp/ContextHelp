@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -41,9 +42,11 @@ const FTSSignatureID = "objects_fts"
 // installations. ADR-070 §3 calls this the "projection logic version" hash
 // input.
 //
-// v1 = behaviour after T-0565 (graph-derived FTSBody with flat-text fallback
-// when the graph carries Tag/EntityMention nodes only).
-const ProjectionVersion = "v1"
+// v1 = graph-derived FTSBody with flat-text fallback when the graph carries
+// Tag/EntityMention nodes only.
+// v2 = v1 with repeated segments dropped: a summary, section or body whose
+// text (trimmed) already appeared is indexed once, first occurrence first.
+const ProjectionVersion = "v2"
 
 // SQLiteFTSTokenizer is the tokenizer in use for objects_fts. The DDL does
 // not specify `tokenize=`, so FTS5 falls back to its default ("unicode61"
@@ -187,9 +190,11 @@ type VectorIndexDescription struct {
 	BuildParams string // WITH (...) content, DDL, or "" when defaults/absent
 }
 
-// PostgresVectorIndex describes the ANN index over objects.embedding.
-// When no index exists (dimension above the HNSW ceiling), the description
-// is the honest fallback: sequential scan with the pinned cosine metric.
+// PostgresVectorIndex describes the pre-registry ANN index over
+// objects.embedding, for historic migration 12 only (15 drops the column;
+// per-model indexes use PostgresVectorIndexFor). When no index exists, the
+// description is the honest fallback: sequential scan with the pinned
+// cosine metric.
 func PostgresVectorIndex(ctx context.Context, db *sql.DB) (VectorIndexDescription, error) {
 	var indexDDL string
 	err := db.QueryRowContext(ctx, `
@@ -218,9 +223,10 @@ func PostgresVectorIndex(ctx context.Context, db *sql.DB) (VectorIndexDescriptio
 	return desc, nil
 }
 
-// SQLiteVectorIndex describes the vec0 virtual table backing ANN search.
-// When the table is absent the driver brute-forces over stored embeddings,
-// still under the pinned cosine contract.
+// SQLiteVectorIndex describes the pre-registry vec_objects vec0 table, for
+// historic migrations 033-035 only (038 drops the table; per-model indexes
+// use SQLiteVectorIndexFor). When the table is absent the description is
+// brute force under the pinned cosine contract.
 func SQLiteVectorIndex(ctx context.Context, db *sql.DB) (VectorIndexDescription, error) {
 	var ddl sql.NullString
 	err := db.QueryRowContext(ctx,
@@ -242,6 +248,77 @@ func SQLiteVectorIndex(ctx context.Context, db *sql.DB) (VectorIndexDescription,
 	return desc, nil
 }
 
+// SQLiteVectorIndexFor describes the vec0 virtual table named table (one
+// per-model embedding index). The zero description (Exists() == false)
+// means the table is absent. BuildParams carries the table's DDL as stored
+// in sqlite_master, which is also the signature's params input.
+func SQLiteVectorIndexFor(ctx context.Context, db DBTX, table string) (VectorIndexDescription, error) {
+	var ddl sql.NullString
+	err := db.QueryRowContext(ctx,
+		`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&ddl)
+	if errors.Is(err, sql.ErrNoRows) {
+		return VectorIndexDescription{}, nil
+	}
+	if err != nil {
+		return VectorIndexDescription{}, fmt.Errorf("read %s ddl: %w", table, err)
+	}
+	desc := VectorIndexDescription{
+		Method:      "vec0",
+		OpsClass:    "l2", // vec0's default when distance_metric is unspecified
+		BuildParams: strings.TrimSpace(ddl.String),
+	}
+	if strings.Contains(ddl.String, "distance_metric=cosine") {
+		desc.OpsClass = "cosine"
+	}
+	return desc, nil
+}
+
+// PostgresVectorIndexFor describes the index named indexName (one per-model
+// partial expression index). The zero description (Exists() == false)
+// means the index is absent. Method, operator class and WITH (...) build
+// parameters are read back from pg_get_indexdef, so an index rebuilt by hand
+// with different tuning no longer describes itself as the desired one.
+func PostgresVectorIndexFor(ctx context.Context, db DBTX, indexName string) (VectorIndexDescription, error) {
+	var indexDDL string
+	err := db.QueryRowContext(ctx,
+		`SELECT indexdef FROM pg_indexes WHERE indexname = $1`, indexName).Scan(&indexDDL)
+	if errors.Is(err, sql.ErrNoRows) {
+		return VectorIndexDescription{}, nil
+	}
+	if err != nil {
+		return VectorIndexDescription{}, fmt.Errorf("read %s ddl: %w", indexName, err)
+	}
+	var desc VectorIndexDescription
+	if i := strings.Index(indexDDL, "USING "); i >= 0 {
+		rest := indexDDL[i+len("USING "):]
+		if j := strings.IndexByte(rest, ' '); j > 0 {
+			desc.Method = rest[:j]
+		}
+	}
+	desc.OpsClass = pgOpsClassPattern.FindString(indexDDL)
+	if i := strings.Index(indexDDL, "WITH ("); i >= 0 {
+		rest := indexDDL[i+len("WITH ("):]
+		if j := strings.IndexByte(rest, ')'); j >= 0 {
+			desc.BuildParams = rest[:j]
+		}
+	}
+	return desc, nil
+}
+
+// pgOpsClassPattern matches a pgvector operator class in an index definition.
+var pgOpsClassPattern = regexp.MustCompile(`\b\w+_ops\b`)
+
+// Exists reports whether the description names a live index.
+func (d VectorIndexDescription) Exists() bool { return d.Method != "" }
+
+// DBTX is the query surface shared by *sql.DB, *sql.Conn and *sql.Tx, so
+// signature reads and writes can join the transaction that rebuilds the
+// index they describe.
+type DBTX interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // Row is the on-disk representation of a row in index_signatures.
 type Row struct {
 	SignatureID   string
@@ -252,7 +329,7 @@ type Row struct {
 
 // Load returns the stored signature row for signatureID.
 // Returns (nil, nil) when no row exists yet (first-boot case).
-func Load(ctx context.Context, db *sql.DB, d Dialect, signatureID string) (*Row, error) {
+func Load(ctx context.Context, db DBTX, d Dialect, signatureID string) (*Row, error) {
 	q := `SELECT signature_id, signature_hash, computed_at, inputs_summary
 	        FROM index_signatures WHERE signature_id = ?`
 	if d == DialectPostgres {
@@ -290,7 +367,7 @@ func Load(ctx context.Context, db *sql.DB, d Dialect, signatureID string) (*Row,
 }
 
 // Upsert writes (or replaces) the stored signature for signatureID.
-func Upsert(ctx context.Context, db *sql.DB, d Dialect, signatureID, hash, inputsSummary string) error {
+func Upsert(ctx context.Context, db DBTX, d Dialect, signatureID, hash, inputsSummary string) error {
 	now := time.Now().UTC()
 	var err error
 	if d == DialectPostgres {

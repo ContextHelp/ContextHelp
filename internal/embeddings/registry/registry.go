@@ -1,8 +1,8 @@
-// Package registry implements the embedding-model registry described in
-// ADR-071 Phase 1 (T-0582). It is a thin CRUD layer over the
-// `embedding_models` table created by migration 032: Register, List, Get,
-// SetDefault, Deprecate. Coverage / recall guards on SetDefault are out of
-// scope for Phase 1 (Phase 3, T-0584).
+// Package registry implements the embedding-model registry of ADR-071: a
+// layer over the `embedding_models` table. Register, List, Get and the
+// coverage report serve `ctxt embeddings register` and `list`; the
+// lifecycle operations SetDefault (coverage-guarded, atomic), Deprecate and
+// Purge live in lifecycle.go.
 //
 // The registry is database-backed, not mocked. Every test operates against a
 // real sqlite driver — see registry_test.go.
@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
 
@@ -25,7 +26,6 @@ const (
 	ProviderOpenAI = "openai"
 	ProviderOllama = "ollama"
 	ProviderVoyage = "voyage"
-	ProviderLegacy = "legacy-blob"
 )
 
 // Model represents one row in the embedding_models table.
@@ -60,8 +60,8 @@ var ErrModelAlreadyRegistered = errors.New("embedding model already registered")
 type Store struct {
 	db       *sql.DB
 	postgres bool
-	// maxIndexableDim is the backend's ANN-indexable dimension ceiling;
-	// 0 means unbounded (SQLite brute-forces any dimension).
+	// maxIndexableDim is the backend's ANN-indexable dimension ceiling:
+	// sqlite-vec's vec0 column limit on SQLite, pgvector HNSW on Postgres.
 	maxIndexableDim int
 }
 
@@ -73,11 +73,11 @@ func New(db *sql.DB) *Store {
 
 // NewFor returns a Store speaking the given SQL dialect ("sqlite" or
 // "postgres", matching Driver.SQLDialect()). The Postgres dialect rebinds
-// placeholders and enforces the pgvector HNSW dimension ceiling at Register
-// time: a model SQLite happily brute-forces can be un-indexable there, and
-// that asymmetry must fail loudly at registration, not at first query.
+// placeholders. Each dialect enforces its per-model index dimension ceiling
+// at Register time (8192 for sqlite-vec vec0, 2000 for pgvector HNSW), so an
+// un-indexable model fails loudly at registration, not at first query.
 func NewFor(db *sql.DB, dialect string) *Store {
-	s := &Store{db: db}
+	s := &Store{db: db, maxIndexableDim: storage.SQLiteVecMaxDimension}
 	if dialect == "postgres" {
 		s.postgres = true
 		s.maxIndexableDim = indexsig.PostgresHNSWMaxDimension
@@ -103,7 +103,9 @@ func (s *Store) q(query string) string {
 	return b.String()
 }
 
-// Register inserts a new model row. ConfigJSON defaults to "{}" when empty.
+// Register inserts a new model row. The model_id must pass
+// storage.ValidateEmbeddingModelID (it is embedded as a literal in per-model
+// index DDL). ConfigJSON defaults to "{}" when empty.
 // The first model registered may be marked is_default = 1 by passing
 // makeDefault=true; subsequent registrations must call SetDefault to flip the
 // active model. Returns ErrModelAlreadyRegistered if model_id already exists.
@@ -111,13 +113,23 @@ func (s *Store) Register(ctx context.Context, m Model, makeDefault bool) error {
 	if m.ModelID == "" {
 		return fmt.Errorf("registry.Register: model_id is required")
 	}
+	if err := storage.ValidateEmbeddingModelID(m.ModelID); err != nil {
+		return fmt.Errorf("registry.Register: %w", err)
+	}
 	if m.Dimension < 0 {
 		return fmt.Errorf("registry.Register: dimension must be non-negative")
 	}
-	if s.maxIndexableDim > 0 && m.Dimension > s.maxIndexableDim {
+	if m.Dimension > s.maxIndexableDim {
+		if s.postgres {
+			return fmt.Errorf(
+				"registry.Register: model %s has dimension %d, above this backend's ANN-indexable ceiling of %d (pgvector HNSW; halfvec extends to %d but is not wired) — register a smaller-dimension model or use the sqlite backend",
+				m.ModelID, m.Dimension, s.maxIndexableDim, indexsig.PostgresHalfvecMaxDimension,
+			)
+		}
 		return fmt.Errorf(
-			"registry.Register: model %s has dimension %d, above this backend's ANN-indexable ceiling of %d (pgvector HNSW; halfvec extends to %d but is not wired) — register a smaller-dimension model or use the sqlite backend",
-			m.ModelID, m.Dimension, s.maxIndexableDim, indexsig.PostgresHalfvecMaxDimension)
+			"registry.Register: model %s has dimension %d, above this backend's ANN-indexable ceiling of %d (sqlite-vec vec0) — register a smaller-dimension model",
+			m.ModelID, m.Dimension, s.maxIndexableDim,
+		)
 	}
 	if m.ConfigJSON == "" {
 		m.ConfigJSON = "{}"
@@ -143,14 +155,16 @@ func (s *Store) Register(ctx context.Context, m Model, makeDefault bool) error {
 		// even if a different default already exists, mirroring the
 		// SetDefault semantics. (For Phase 1 this is the only way to swap
 		// a default at register time without going through SetDefault.)
-		if _, err := tx.ExecContext(ctx,
+		if _, err := tx.ExecContext(
+			ctx,
 			`UPDATE embedding_models SET is_default = 0 WHERE is_default = 1`,
 		); err != nil {
 			return fmt.Errorf("registry.Register: clear existing default: %w", err)
 		}
 	}
 
-	res, err := tx.ExecContext(ctx, s.q(`
+	res, err := tx.ExecContext(
+		ctx, s.q(`
 		INSERT INTO embedding_models
 			(model_id, provider, dimension, is_default, registered_at, config_json)
 		VALUES (?, ?, ?, ?, ?, ?)
@@ -223,35 +237,63 @@ func (s *Store) ListWithCoverage(ctx context.Context) ([]ModelWithCoverage, erro
 		return nil, nil
 	}
 
-	var total int64
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM objects`).Scan(&total); err != nil {
-		return nil, fmt.Errorf("registry.ListWithCoverage: total objects: %w", err)
+	total, err := objectCount(ctx, s.db)
+	if err != nil {
+		return nil, fmt.Errorf("registry.ListWithCoverage: %w", err)
 	}
 
 	out := make([]ModelWithCoverage, 0, len(models))
 	for _, m := range models {
-		var covered int64
-		if err := s.db.QueryRowContext(ctx,
-			s.q(`SELECT COUNT(DISTINCT object_id) FROM embeddings WHERE model_id = ?`),
-			m.ModelID,
-		).Scan(&covered); err != nil {
-			return nil, fmt.Errorf("registry.ListWithCoverage: covered count for %s: %w", m.ModelID, err)
-		}
-		var coverage float64
-		if total == 0 {
-			coverage = 1.0
-		} else {
-			coverage = float64(covered) / float64(total)
+		coverage, err := s.coverage(ctx, s.db, m.ModelID, total)
+		if err != nil {
+			return nil, fmt.Errorf("registry.ListWithCoverage: %w", err)
 		}
 		out = append(out, ModelWithCoverage{Model: m, Coverage: coverage})
 	}
 	return out, nil
 }
 
+// queryer is what the read helpers need: a *sql.DB, or a *sql.Tx when the
+// read must see the transaction's own writes and locks.
+type queryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// objectCount is the coverage denominator: every object in the corpus.
+func objectCount(ctx context.Context, q queryer) (int64, error) {
+	var total int64
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM objects`).Scan(&total); err != nil {
+		return 0, fmt.Errorf("total objects: %w", err)
+	}
+	return total, nil
+}
+
+// coverage is the fraction of total objects that have at least one row
+// under modelID; 1.0 on an empty corpus. It is the one coverage definition:
+// `ctxt embeddings list` reports it and the set-default guard compares it.
+func (s *Store) coverage(ctx context.Context, q queryer, modelID string, total int64) (float64, error) {
+	if total == 0 {
+		return 1.0, nil
+	}
+	var covered int64
+	if err := q.QueryRowContext(
+		ctx,
+		s.q(`SELECT COUNT(DISTINCT object_id) FROM embeddings WHERE model_id = ?`),
+		modelID,
+	).Scan(&covered); err != nil {
+		return 0, fmt.Errorf("covered count for %s: %w", modelID, err)
+	}
+	return float64(covered) / float64(total), nil
+}
+
 // Get returns the model row for modelID. Returns ErrModelNotFound when no row
 // matches.
 func (s *Store) Get(ctx context.Context, modelID string) (*Model, error) {
-	row := s.db.QueryRowContext(ctx, s.q(`
+	return s.get(ctx, s.db, modelID)
+}
+
+func (s *Store) get(ctx context.Context, q queryer, modelID string) (*Model, error) {
+	row := q.QueryRowContext(ctx, s.q(`
 		SELECT model_id, provider, dimension, is_default,
 		       registered_at, deprecated_at, config_json
 		  FROM embedding_models
@@ -264,75 +306,6 @@ func (s *Store) Get(ctx context.Context, modelID string) (*Model, error) {
 		return nil, err
 	}
 	return &m, nil
-}
-
-// SetDefault atomically clears the existing is_default = 1 row and marks
-// modelID as the new default. Returns ErrModelNotFound when modelID is not
-// registered.
-//
-// Phase 1 has no coverage / recall guards — those land in Phase 3 (T-0584).
-// Operators are expected to know what they're doing; the CLI surface should
-// surface a confirmation prompt before invoking this in human contexts.
-func (s *Store) SetDefault(ctx context.Context, modelID string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("registry.SetDefault: begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	// Verify target exists before mutating anything.
-	var n int
-	if err := tx.QueryRowContext(ctx,
-		s.q(`SELECT COUNT(*) FROM embedding_models WHERE model_id = ?`), modelID,
-	).Scan(&n); err != nil {
-		return fmt.Errorf("registry.SetDefault: lookup: %w", err)
-	}
-	if n == 0 {
-		return ErrModelNotFound
-	}
-
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE embedding_models SET is_default = 0 WHERE is_default = 1`,
-	); err != nil {
-		return fmt.Errorf("registry.SetDefault: clear existing default: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx,
-		s.q(`UPDATE embedding_models SET is_default = 1 WHERE model_id = ?`), modelID,
-	); err != nil {
-		return fmt.Errorf("registry.SetDefault: mark default: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("registry.SetDefault: commit: %w", err)
-	}
-	return nil
-}
-
-// Deprecate sets the deprecated_at timestamp on modelID. The model row is
-// retained — purge is a separate operation (Phase 4, T-0585). Returns
-// ErrModelNotFound when modelID is not registered.
-//
-// Deprecation does not flip is_default; an operator wanting to retire the
-// active default must call SetDefault on a successor first. This Phase-1
-// behaviour is intentional: the recall-guarded swap belongs to Phase 3.
-func (s *Store) Deprecate(ctx context.Context, modelID string, when time.Time) error {
-	if when.IsZero() {
-		when = time.Now().UTC()
-	}
-	res, err := s.db.ExecContext(ctx,
-		s.q(`UPDATE embedding_models SET deprecated_at = ? WHERE model_id = ?`),
-		when.UTC().Format(time.RFC3339), modelID,
-	)
-	if err != nil {
-		return fmt.Errorf("registry.Deprecate: update: %w", err)
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("registry.Deprecate: rows affected: %w", err)
-	}
-	if rows == 0 {
-		return ErrModelNotFound
-	}
-	return nil
 }
 
 // rowScanner is the minimal interface implemented by *sql.Row and *sql.Rows

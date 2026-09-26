@@ -2,9 +2,11 @@ package lint
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -67,56 +69,79 @@ func (l *Linter) checkMissingMetadata(ctx context.Context) ([]Issue, error) {
 	return issues, nil
 }
 
-// checkDuplicates finds near-duplicate objects using vector similarity.
+// checkDuplicates finds near-duplicate objects by comparing each object's
+// vectors under the default embedding model with that model's index. The
+// store reports cosine distance; the threshold is a similarity, so a pair is
+// a near-duplicate when 1 - distance >= DuplicateThresh.
 func (l *Linter) checkDuplicates(ctx context.Context) ([]Issue, error) {
-	objs, err := l.driver.Objects().ListWithEmbeddings(ctx)
+	models, err := registry.ForDriver(l.driver)
+	if err != nil {
+		return nil, err
+	}
+	model, err := models.Default(ctx)
+	if errors.Is(err, registry.ErrNoDefaultModel) {
+		return []Issue{duplicatesSkipped("no default embedding model to compare vectors under")}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	if len(objs) < 2 {
-		return nil, nil
+	objs, err := l.listObjects(ctx)
+	if err != nil {
+		return nil, err
 	}
 
+	store := l.driver.Embeddings()
 	thresh := l.cfg.DuplicateThresh
 	seen := map[string]bool{}
 	var issues []Issue
 
 	for _, obj := range objs {
-		if len(obj.Embeddings) == 0 {
-			continue
-		}
-		// profile filter
-		if l.cfg.ProfileID != "" && obj.ProfileID != l.cfg.ProfileID {
-			continue
-		}
-
-		hits, err := l.driver.Vectors().Search(ctx, obj.Embeddings, 5)
+		chunks, err := store.Get(ctx, obj.ID, model.ModelID)
 		if err != nil {
 			return nil, err
 		}
-
-		for _, hit := range hits {
-			if hit.ID == obj.ID {
-				continue
+		for _, chunk := range chunks {
+			hits, err := store.Search(ctx, storage.VectorQuery{ModelID: model.ModelID, Vector: chunk.Vector, TopK: 5})
+			if errors.Is(err, storage.ErrEmbeddingIndexMissing) {
+				return []Issue{duplicatesSkipped("default embedding model " + model.ModelID + " has no vector index")}, nil
 			}
-			pairKey := pairKey(obj.ID, hit.ID)
-			if seen[pairKey] {
-				continue
+			if err != nil {
+				return nil, err
 			}
-			if hit.Score >= thresh {
-				seen[pairKey] = true
+			for _, hit := range hits {
+				if hit.ObjectID == obj.ID {
+					continue
+				}
+				key := pairKey(obj.ID, hit.ObjectID)
+				if seen[key] {
+					continue
+				}
+				similarity := 1 - hit.Distance
+				if similarity < thresh {
+					continue
+				}
+				seen[key] = true
 				issues = append(issues, Issue{
 					Check:    "duplicates",
 					Severity: SeverityWarning,
 					ObjectID: obj.ID,
-					Message: "near-duplicate of " + hit.ID +
-						" (similarity " + formatScore(hit.Score) + ")",
+					Message: "near-duplicate of " + hit.ObjectID +
+						" (similarity " + formatScore(similarity) + ")",
 				})
 			}
 		}
 	}
 	return issues, nil
+}
+
+// duplicatesSkipped reports that the duplicates check could not run.
+func duplicatesSkipped(reason string) Issue {
+	return Issue{
+		Check:    "duplicates",
+		Severity: SeverityInfo,
+		Message:  "duplicates check skipped: " + reason,
+	}
 }
 
 // checkStale finds objects not updated in StaleDays with no inbound edges.

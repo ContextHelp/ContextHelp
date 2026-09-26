@@ -9,6 +9,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -215,7 +216,6 @@ func TestAnalyzeRawFlagSkipsEnrichment(t *testing.T) {
 	assert.Equal(t, "raw content no AI", obj.RawContent)
 	assert.Empty(t, obj.Summaries, "no summaries expected — no AI enrichment")
 	assert.Empty(t, obj.Tags, "no tags expected — no AI enrichment")
-	assert.Empty(t, obj.Embeddings, "no embeddings expected — no AI enrichment")
 
 	// No job must have been enqueued.
 	jobs, total, err := svc.ListJobs(ctx, storage.JobFilter{})
@@ -899,7 +899,7 @@ func TestHybridSearchExplain_PopulatesDocumentView(t *testing.T) {
 		FallbackToFTS: true,
 	}
 
-	results, err := svc.HybridSearchExplain(ctx, "document view test", 10, nil, cfg)
+	results, err := svc.HybridSearchExplain(ctx, "document view test", 10, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.NotEmpty(t, results)
 

@@ -24,7 +24,7 @@ func TestPipelineStructuralOverride(t *testing.T) {
 		},
 	}
 
-	reg := builtins.ConfiguredRegistryWithPipelineOverrides(baseFactory, baseCfg, pipelinesCfg, nil, 0)
+	reg := builtins.ConfiguredRegistryWithPipelineOverrides(builtins.BuildOpts{Factory: baseFactory}, baseCfg, pipelinesCfg)
 	pipe, err := reg.Get("text.short")
 	require.NoError(t, err)
 

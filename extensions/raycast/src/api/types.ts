@@ -38,7 +38,6 @@ export interface KnowledgeObject {
   mentions?: string[];
   decisions?: Decision[];
   tasks?: Task[];
-  // embeddings omitted — float32 array not useful in UI
   pipeline?: string;
   source?: string;
   registry_influences?: string[];
@@ -47,7 +46,6 @@ export interface KnowledgeObject {
   reinforcement_count?: number;
   last_reinforced_at?: string;
   fts_indexed?: boolean;
-  vector_indexed?: boolean;
   // inbox fields (Plan 7)
   status?: string;
   inbox_note?: string;

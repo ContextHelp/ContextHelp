@@ -1,31 +1,30 @@
 # `ctxt embeddings list` output contract — Tier-1 deterministic.
 #
-# Locks the JSON shape returned by `ctxt embeddings list` (ADR-071 §"Operator-
-# facing CLI surface"). Authored from the ADR-071 data-model spec; T-0582 is
-# delivering the CLI implementation in parallel and will conform to this
-# contract. If the CLI lands with drift, this contract fails CI and the
-# release-notes operator-impact row notes the tightening pass.
+# Locks the JSON shape returned by `ctxt embeddings list --format json`
+# (ADR-071 §"Operator-facing CLI surface"): one row per registered
+# embedding model.
 #
-# Data model — one row per registered embedding model (ADR-071 §"Data model"):
-#   - model_id      e.g. "openai-text-embedding-3-small@2025-01-15"
-#   - provider      e.g. "openai", "ollama", "voyage"
-#   - dimension     positive integer
-#   - is_default    boolean — at most one row may be true (partial unique
-#                   index enforces this server-side; this contract enforces
-#                   the wire-shape, not the cardinality invariant)
+#   - model_id      e.g. "ollama-nomic-embed-text@2026-09-26"
+#   - provider      the resolved backend, e.g. "ollama"
+#   - dimension     positive integer, measured from the provider at register
+#   - is_default    boolean — at most one row is true (a partial unique index
+#                   enforces it server-side; this contract pins the wire
+#                   shape, not the cross-row cardinality)
 #   - registered_at RFC3339 timestamp
-#   - deprecated_at RFC3339 timestamp or null/absent
-#   - coverage      0.0 .. 1.0 — fraction of distinct objects that have an
-#                   embedding row under this model. Computed at query time.
+#   - deprecated_at RFC3339 timestamp, or null while the model is not
+#                   deprecated. Always present, so a script can tell "not
+#                   deprecated" from a field it does not know.
+#   - coverage      0.0 .. 1.0 — fraction of distinct objects with an
+#                   embedding row under this model; 1.0 on an empty corpus.
 #
-# Pass condition: input MUST be a JSON object with a `models` array of zero
-# or more entries, each conforming to the row schema.
+# Pass condition: a JSON object with a `models` array of zero or more rows
+# conforming to the row schema.
 #
-# T-0582-coordination note: the at-most-one-default invariant is NOT
-# enforceable via JSON Schema (it's a cardinality constraint across rows).
-# The CLI must surface this via SQL constraint + integration test, not
-# this contract. The schema below requires `is_default` to be a boolean
-# but does not constrain the count.
+# Fixtures: embeddings-list-{empty,migrating,lifecycle}.json are recorded by
+# the embeddings journey test (cmd/ctxt/cmd/embeddings_journey_e2e_test.go)
+# from the real command at three points of a model migration; re-recording
+# the journey rewrites them. embeddings-list.json is an illustrative
+# multi-provider example.
 name: ctxt-embeddings-list-0.1
 provider: ctxt
 evaluators:
@@ -40,7 +39,7 @@ evaluators:
           type: array
           items:
             type: object
-            required: [model_id, provider, dimension, is_default, registered_at, coverage]
+            required: [model_id, provider, dimension, is_default, registered_at, deprecated_at, coverage]
             additionalProperties: false
             properties:
               model_id:
@@ -56,13 +55,12 @@ evaluators:
                 type: boolean
               registered_at:
                 type: string
-                minLength: 1
+                pattern: &rfc3339 '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
               deprecated_at:
-                # Nullable per ADR-071 (`TEXT` column, nullable). Absent in
-                # JSON when not deprecated; explicit null also accepted so
-                # operators can distinguish "field is set" from "row predates
-                # the column". String form is RFC3339.
+                # RFC3339 once deprecated, null before (ADR-071: nullable
+                # column).
                 type: [string, "null"]
+                pattern: *rfc3339
               coverage:
                 type: number
                 minimum: 0

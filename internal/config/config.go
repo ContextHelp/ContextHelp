@@ -116,6 +116,45 @@ type Config struct {
 
 	// Capture configures browser capture (open tabs, history).
 	Capture CaptureConfig `mapstructure:"capture" yaml:"capture"`
+
+	// Embeddings configures the embedding-model lifecycle guards of
+	// `ctxt embeddings set-default` and `purge` (ADR-071).
+	Embeddings EmbeddingsConfig `mapstructure:"embeddings" yaml:"embeddings"`
+}
+
+// Embedding-model lifecycle defaults (ADR-071 "Default-flip control").
+const (
+	// DefaultEmbeddingsMinCoverage is the corpus coverage a model needs
+	// before set-default promotes it.
+	DefaultEmbeddingsMinCoverage = 0.99
+	// DefaultEmbeddingsGracePeriod is how long after its deprecation a
+	// model's vectors are kept before purge may delete them.
+	DefaultEmbeddingsGracePeriod = 30 * 24 * time.Hour
+)
+
+// EmbeddingsConfig configures the embedding-model lifecycle guards. The
+// provider a model embeds with is configured under providers.embedding.
+type EmbeddingsConfig struct {
+	// MinCoverage is the fraction of objects (0..1) a model must have
+	// vectors for before `ctxt embeddings set-default` promotes it.
+	// --min-coverage overrides it per call. Default 0.99.
+	MinCoverage float64 `mapstructure:"min_coverage" yaml:"min_coverage"`
+	// GracePeriod is how long after a model's deprecation takes effect
+	// `ctxt embeddings purge` waits before deleting its vectors. Zero
+	// allows a purge as soon as the deprecation is effective. Default
+	// 720h (30 days).
+	GracePeriod time.Duration `mapstructure:"grace_period" yaml:"grace_period"`
+}
+
+// Validate rejects a MinCoverage outside 0..1 and a negative GracePeriod.
+func (c EmbeddingsConfig) Validate() error {
+	if c.MinCoverage < 0 || c.MinCoverage > 1 {
+		return fmt.Errorf("embeddings.min_coverage must be a fraction between 0 and 1 such as 0.99, got %v", c.MinCoverage)
+	}
+	if c.GracePeriod < 0 {
+		return fmt.Errorf("embeddings.grace_period must not be negative (a duration such as 720h), got %s", c.GracePeriod)
+	}
+	return nil
 }
 
 // CaptureConfig configures browser capture.
@@ -311,17 +350,32 @@ type URIConfig struct {
 }
 
 // DuplicatesConfig controls duplicate and near-duplicate detection behaviour at ingest time.
+//
+// Exact and source-key duplicates are checked when content is analyzed,
+// before a job is enqueued. Near-duplicates are checked by the dedup
+// pipeline step, which runs right after the embedding step in every
+// pipeline that embeds.
 type DuplicatesConfig struct {
 	// Policy determines what happens when a duplicate is found.
 	// Valid values: "warn" (default), "drop", "keep".
+	//   - warn: ingest continues; the duplicate is logged as a warning.
+	//     A near-duplicate is also recorded on the new object's metadata
+	//     (duplicate_of, duplicate_similarity, duplicate_kind).
+	//   - keep: as warn, without the warning.
+	//   - drop: an exact or source-key duplicate is not enqueued; analyze
+	//     answers with the existing object's ID. A near-duplicate is not
+	//     stored; its job completes with the existing object's ID.
 	Policy string `mapstructure:"policy" yaml:"policy"`
-	// SimilarityThreshold is the cosine similarity cutoff for near-duplicate detection.
-	// Range: 0.0–1.0. Default: 0.95.
+	// SimilarityThreshold is the cosine similarity (1 - cosine distance)
+	// in the default embedding model's index at or above which an object
+	// is a near-duplicate. Range: 0.0–1.0. Default: 0.95.
 	SimilarityThreshold float64 `mapstructure:"similarity_threshold" yaml:"similarity_threshold"`
 	// CheckExact enables content-hash exact-match deduplication. Default: true.
 	CheckExact bool `mapstructure:"check_exact" yaml:"check_exact"`
-	// CheckSimilar enables vector-embedding near-duplicate detection. Default: false.
-	// Requires embeddings to have been computed (pipeline embedding step must run first).
+	// CheckSimilar enables vector-embedding near-duplicate detection: the
+	// dedup step is inserted after the embedding step. Default: false.
+	// Without a default embedding model, or without the object's vector
+	// under it, the check is skipped.
 	CheckSimilar bool `mapstructure:"check_similar" yaml:"check_similar"`
 }
 
@@ -784,14 +838,35 @@ type I18nConfig struct {
 
 // ProvidersConfig controls backend selection for each provider type.
 type ProvidersConfig struct {
-	Video         ProviderBackendConfig `mapstructure:"video" yaml:"video"`
-	Document      ProviderBackendConfig `mapstructure:"document" yaml:"document"`
-	OCR           ProviderBackendConfig `mapstructure:"ocr" yaml:"ocr"`
-	Transcription ProviderBackendConfig `mapstructure:"transcription" yaml:"transcription"`
-	Vision        ProviderBackendConfig `mapstructure:"vision" yaml:"vision"`
-	Diarization   ProviderBackendConfig `mapstructure:"diarization" yaml:"diarization"`
-	LLM           ProviderBackendConfig `mapstructure:"llm" yaml:"llm"`
-	Embedding     ProviderBackendConfig `mapstructure:"embedding" yaml:"embedding"`
+	Video         ProviderBackendConfig   `mapstructure:"video" yaml:"video"`
+	Document      ProviderBackendConfig   `mapstructure:"document" yaml:"document"`
+	OCR           ProviderBackendConfig   `mapstructure:"ocr" yaml:"ocr"`
+	Transcription ProviderBackendConfig   `mapstructure:"transcription" yaml:"transcription"`
+	Vision        ProviderBackendConfig   `mapstructure:"vision" yaml:"vision"`
+	Diarization   ProviderBackendConfig   `mapstructure:"diarization" yaml:"diarization"`
+	LLM           ProviderBackendConfig   `mapstructure:"llm" yaml:"llm"`
+	Embedding     EmbeddingProviderConfig `mapstructure:"embedding" yaml:"embedding"`
+}
+
+// EmbeddingProviderConfig is the config-file layer of the embedding
+// provider (providers.embedding). Every field is optional: an empty value
+// (or a zero Dimension) means "not set here" and the resolver in
+// internal/embeddings falls through to the next layer. The effective
+// provider is never read from this struct directly; it is resolved from
+// flags, env, -c overrides, the model registry, this block and built-in
+// defaults, per field.
+type EmbeddingProviderConfig struct {
+	// Backend selects the provider implementation (e.g. "ollama").
+	Backend string `mapstructure:"backend,omitempty" yaml:"backend,omitempty"`
+	// Model is the provider-side model name (e.g. "nomic-embed-text").
+	Model string `mapstructure:"model,omitempty" yaml:"model,omitempty"`
+	// Endpoint is the provider base URL (e.g. "http://localhost:11434").
+	Endpoint string `mapstructure:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	// APIKeyEnv names the environment variable that holds the API key.
+	// It is the variable NAME, never the key itself.
+	APIKeyEnv string `mapstructure:"api_key_env,omitempty" yaml:"api_key_env,omitempty"`
+	// Dimension is the expected vector dimension; 0 means unknown.
+	Dimension int `mapstructure:"dimension,omitempty" yaml:"dimension,omitempty"`
 }
 
 // ProviderBackendConfig selects which backend to use for a provider.
@@ -1120,6 +1195,10 @@ func setDefaults(v *viper.Viper) {
 	// Browser history capture: first-run lookback.
 	v.SetDefault("capture.history.initial_lookback", DefaultCaptureHistoryInitialLookback)
 
+	// Embedding-model lifecycle guards.
+	v.SetDefault("embeddings.min_coverage", DefaultEmbeddingsMinCoverage)
+	v.SetDefault("embeddings.grace_period", DefaultEmbeddingsGracePeriod)
+
 	// Security alerting defaults
 	v.SetDefault("security.alerts.auth_failure_threshold", 3)
 	v.SetDefault("security.alerts.acl_denial_threshold", 10)
@@ -1361,8 +1440,13 @@ type PipelinesConfig struct {
 type PipelineOverride struct {
 	// Providers overrides individual provider backends for this pipeline only.
 	// Keys match ProvidersConfig field names in lowercase: "llm", "vision", etc.
+	// An "embedding" key is ignored with a warning: each registered
+	// embedding model's registry entry decides its own provider, for every
+	// pipeline alike.
 	Providers map[string]ProviderBackendConfig `mapstructure:"providers" yaml:"providers"`
 	// SkipSteps is an ordered list of step names to remove from the pipeline.
+	// "dedup" removes the near-duplicate check that duplicates.check_similar
+	// inserts.
 	SkipSteps []string `mapstructure:"skip_steps" yaml:"skip_steps"`
 	// ExtraSteps is an ordered list of step names appended after existing steps.
 	ExtraSteps []string `mapstructure:"extra_steps" yaml:"extra_steps"`

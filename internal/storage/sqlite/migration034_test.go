@@ -2,11 +2,22 @@ package sqlite
 
 import (
 	"context"
-	"strings"
+	"path/filepath"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
+
+// newSchema35Driver opens a database migrated through 035: the state
+// migrations 033-035 operate on, with vec_objects and the legacy-blob
+// placeholder and its stamp still present (037 and 038 remove them). These
+// historic migrations are exercised by calling their fns directly.
+func newSchema35Driver(t *testing.T) *Driver {
+	t.Helper()
+	d := openAtVersion(t, filepath.Join(t.TempDir(), "schema35.db"), 35)
+	t.Cleanup(func() { d.Close(context.Background()) })
+	return d
+}
 
 // expectedEmbeddingStamp computes the signature the stored row must carry:
 // the legacy model identity hashed together with the LIVE vec_objects index
@@ -18,39 +29,10 @@ func expectedEmbeddingStamp(t *testing.T, d *Driver, dim int) (modelID, hash, su
 	if err != nil {
 		t.Fatalf("describe live vector index: %v", err)
 	}
-	modelID = LegacyEmbeddingModelID(dim)
+	modelID = legacyEmbeddingModelID(dim)
 	hash, summary = indexsig.ComputeEmbedding(
 		modelID, "legacy-blob", dim, idx.Method, idx.OpsClass, idx.BuildParams)
 	return modelID, hash, summary
-}
-
-// TestMigration034_FreshInstallStampMatchesLiveIndex pins that a fresh
-// Migrate leaves the embedding index signature describing the index that
-// actually exists. Migration 033 stamps from the pre-cosine vec_objects DDL;
-// 034 drops and recreates the table with distance_metric=cosine, so it must
-// re-stamp — otherwise every fresh install carries provenance for a dropped
-// index and the first verify pass reports spurious drift.
-func TestMigration034_FreshInstallStampMatchesLiveIndex(t *testing.T) {
-	const dim = 4
-	d := newTestDriverDim(t, dim)
-	ctx := context.Background()
-
-	modelID, wantHash, wantSummary := expectedEmbeddingStamp(t, d, dim)
-
-	row, err := LoadIndexSignature(ctx, d.db, EmbeddingSignatureID(modelID))
-	if err != nil {
-		t.Fatalf("load embedding signature: %v", err)
-	}
-	if row == nil {
-		t.Fatalf("no embedding signature row stamped for %s", modelID)
-	}
-	if !strings.Contains(row.InputsSummary, "ops=cosine") {
-		t.Errorf("stamp describes wrong ops class: %q", row.InputsSummary)
-	}
-	if row.SignatureHash != wantHash {
-		t.Errorf("stored hash = %q, want %q (summary: %q, want %q)",
-			row.SignatureHash, wantHash, row.InputsSummary, wantSummary)
-	}
 }
 
 // TestMigration034_RestampsAfterDDLSwap pins the re-stamp inside 034
@@ -58,8 +40,8 @@ func TestMigration034_FreshInstallStampMatchesLiveIndex(t *testing.T) {
 // it must rewrite the stamp, so a DB sitting at exactly version 34 already
 // describes the cosine index it just built.
 func TestMigration034_RestampsAfterDDLSwap(t *testing.T) {
-	const dim = 4
-	d := newTestDriverDim(t, dim)
+	const dim = legacyVectorDimension
+	d := newSchema35Driver(t)
 	ctx := context.Background()
 
 	modelID, wantHash, _ := expectedEmbeddingStamp(t, d, dim)
@@ -69,7 +51,7 @@ func TestMigration034_RestampsAfterDDLSwap(t *testing.T) {
 	// ledger walking 033 → 034 sees when 034's fn starts.
 	staleHash, staleSummary := indexsig.ComputeEmbedding(
 		modelID, "legacy-blob", dim, "vec0", "l2",
-		"CREATE VIRTUAL TABLE vec_objects USING vec0(id TEXT PRIMARY KEY, embedding float[4])")
+		"CREATE VIRTUAL TABLE vec_objects USING vec0(id TEXT PRIMARY KEY, embedding float[1536])")
 	if err := UpsertIndexSignature(ctx, d.db, sigID, staleHash, staleSummary); err != nil {
 		t.Fatalf("regress stamp: %v", err)
 	}
@@ -94,8 +76,8 @@ func TestMigration034_RestampsAfterDDLSwap(t *testing.T) {
 // the dropped L2 table. Migration 035 recomputes the stamp from the live
 // index so those DBs converge with fresh installs.
 func TestMigration035_RestampsStaleSignatureOnUpgradedDB(t *testing.T) {
-	const dim = 4
-	d := newTestDriverDim(t, dim)
+	const dim = legacyVectorDimension
+	d := newSchema35Driver(t)
 	ctx := context.Background()
 
 	modelID, wantHash, _ := expectedEmbeddingStamp(t, d, dim)
@@ -105,19 +87,13 @@ func TestMigration035_RestampsStaleSignatureOnUpgradedDB(t *testing.T) {
 	// model identity hashed with the old L2 vec0 description.
 	staleHash, staleSummary := indexsig.ComputeEmbedding(
 		modelID, "legacy-blob", dim, "vec0", "l2",
-		"CREATE VIRTUAL TABLE vec_objects USING vec0(id TEXT PRIMARY KEY, embedding float[4])")
+		"CREATE VIRTUAL TABLE vec_objects USING vec0(id TEXT PRIMARY KEY, embedding float[1536])")
 	if err := UpsertIndexSignature(ctx, d.db, sigID, staleHash, staleSummary); err != nil {
 		t.Fatalf("regress stamp: %v", err)
 	}
-	// Rewind the ledger so Migrate re-applies 035 (the state of a DB that
-	// upgraded before 035 existed).
-	if _, err := d.db.ExecContext(ctx,
-		`DELETE FROM schema_version WHERE version >= 35`); err != nil {
-		t.Fatalf("rewind schema_version: %v", err)
-	}
-
-	if err := d.Migrate(ctx); err != nil {
-		t.Fatalf("re-run migrate: %v", err)
+	// Apply 035 as a DB that upgraded before 035 existed would.
+	if err := migrate035RestampEmbeddingSignatures(ctx, d); err != nil {
+		t.Fatalf("apply 035: %v", err)
 	}
 
 	row, err := LoadIndexSignature(ctx, d.db, sigID)
@@ -136,8 +112,8 @@ func TestMigration035_RestampsStaleSignatureOnUpgradedDB(t *testing.T) {
 // TestMigration035_Idempotent pins that re-running the re-stamp on an
 // already-correct DB rewrites the same values — no error, no drift.
 func TestMigration035_Idempotent(t *testing.T) {
-	const dim = 4
-	d := newTestDriverDim(t, dim)
+	const dim = legacyVectorDimension
+	d := newSchema35Driver(t)
 	ctx := context.Background()
 
 	modelID, wantHash, _ := expectedEmbeddingStamp(t, d, dim)

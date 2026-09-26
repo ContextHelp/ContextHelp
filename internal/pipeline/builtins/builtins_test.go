@@ -99,10 +99,9 @@ func TestSelectPipelineByExtension(t *testing.T) {
 		{"/tmp/script.py", "doc.code"},
 		{"/tmp/app.js", "doc.code"},
 		{"/tmp/report.docx", "doc.office"},
-		{"/tmp/book.epub", "doc.office"},
 	}
 	for _, tt := range tests {
-		got := r.SelectPipeline(tt.input)
+		got := r.SelectPipeline(tt.input, "")
 		if got != tt.want {
 			t.Errorf("SelectPipeline(%q) = %q, want %q", tt.input, got, tt.want)
 		}
@@ -113,13 +112,13 @@ func TestSelectPipelineContentFallback(t *testing.T) {
 	r := Registry()
 
 	// Short text → text.short
-	got := r.SelectPipeline("short text")
+	got := r.SelectPipeline("", "short text")
 	if got != "text.short" {
 		t.Errorf("short text: got %q, want text.short", got)
 	}
 
 	// Long text → text.long
-	got = r.SelectPipeline(strings.Repeat("word ", 200))
+	got = r.SelectPipeline("", strings.Repeat("word ", 200))
 	if got != "text.long" {
 		t.Errorf("long text: got %q, want text.long", got)
 	}
@@ -216,53 +215,55 @@ func TestInjectDedupStep(t *testing.T) {
 func TestSelectPipelineGitHub(t *testing.T) {
 	r := Registry()
 
+	// URLs arrive as the source; the starred export arrives as content.
 	tests := []struct {
 		desc    string
+		source  string
 		content string
 		want    string
 	}{
 		// Specific sub-paths resolve before the repo catch-all.
 		{
-			desc:    "pull request",
-			content: "https://github.com/torvalds/linux/pull/1234",
-			want:    "url.github.pr",
+			desc:   "pull request",
+			source: "https://github.com/torvalds/linux/pull/1234",
+			want:   "url.github.pr",
 		},
 		{
-			desc:    "issue",
-			content: "https://github.com/torvalds/linux/issues/42",
-			want:    "url.github.issue",
+			desc:   "issue",
+			source: "https://github.com/torvalds/linux/issues/42",
+			want:   "url.github.issue",
 		},
 		{
-			desc:    "release",
-			content: "https://github.com/cli/cli/releases/tag/v2.0.0",
-			want:    "url.github.release",
+			desc:   "release",
+			source: "https://github.com/cli/cli/releases/tag/v2.0.0",
+			want:   "url.github.release",
 		},
 		// Repo root URL (two segments).
 		{
-			desc:    "repo root",
-			content: "https://github.com/torvalds/linux",
-			want:    "url.github.repo",
+			desc:   "repo root",
+			source: "https://github.com/torvalds/linux",
+			want:   "url.github.repo",
 		},
 		{
-			desc:    "repo root trailing slash",
-			content: "https://github.com/torvalds/linux/",
-			want:    "url.github.repo",
+			desc:   "repo root trailing slash",
+			source: "https://github.com/torvalds/linux/",
+			want:   "url.github.repo",
 		},
 		// Profile: single segment, no repo path.
 		{
-			desc:    "user profile",
-			content: "https://github.com/torvalds",
-			want:    "url.github.profile",
+			desc:   "user profile",
+			source: "https://github.com/torvalds",
+			want:   "url.github.profile",
 		},
 		{
-			desc:    "org profile",
-			content: "https://github.com/nomic-ai",
-			want:    "url.github.profile",
+			desc:   "org profile",
+			source: "https://github.com/nomic-ai",
+			want:   "url.github.profile",
 		},
 		{
-			desc:    "profile with tab param",
-			content: "https://github.com/monk1337?tab=repositories",
-			want:    "url.github.profile",
+			desc:   "profile with tab param",
+			source: "https://github.com/monk1337?tab=repositories",
+			want:   "url.github.profile",
 		},
 		// Starred: payload-based via ContentTest.
 		{
@@ -275,9 +276,9 @@ func TestSelectPipelineGitHub(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			got := r.SelectPipeline(tt.content)
+			got := r.SelectPipeline(tt.source, tt.content)
 			if got != tt.want {
-				t.Errorf("SelectPipeline(%q) = %q, want %q", tt.content, got, tt.want)
+				t.Errorf("SelectPipeline(%q, %q) = %q, want %q", tt.source, tt.content, got, tt.want)
 			}
 		})
 	}

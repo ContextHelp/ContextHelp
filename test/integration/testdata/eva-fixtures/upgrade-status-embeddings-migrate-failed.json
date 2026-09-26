@@ -1,0 +1,11 @@
+{
+  "state": "failed",
+  "bucket": "embeddings_migrate",
+  "target": "ollama-nomic-embed-text@2026-09-26",
+  "progress": 1,
+  "done": 5,
+  "total": 5,
+  "failed": 1,
+  "started_at": "2026-09-26T12:00:00Z",
+  "last_error": "1 of 5 objects not embedded under ollama-nomic-embed-text@2026-09-26; re-run `ctxt embeddings migrate --to ollama-nomic-embed-text@2026-09-26` to retry them (first: obj-1: embed: ollama embed error: the input length exceeds the context length)"
+}

@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -10,8 +11,10 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
-	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/repl"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -98,6 +101,9 @@ func init() {
 	findCmd.Flags().String("source-type", "", "filter by source_type")
 	findCmd.Flags().Bool("facets", false, "show metadata type count breakdown")
 
+	// Per-run embedding provider overrides (vector and hybrid modes).
+	embeddings.AddFlags(findCmd.Flags(), &findEmbedding)
+
 	viper.BindPFlag("find.limit", findCmd.Flags().Lookup("limit"))
 	viper.BindPFlag("find.semantic", findCmd.Flags().Lookup("semantic"))
 	viper.BindPFlag("find.hybrid", findCmd.Flags().Lookup("hybrid"))
@@ -109,6 +115,13 @@ func init() {
 	viper.BindPFlag("find.vector_pool", findCmd.Flags().Lookup("vector-pool"))
 	viper.BindPFlag("find.min_score", findCmd.Flags().Lookup("min-score"))
 }
+
+// findEmbedding holds find's --embedding-* flag values.
+var findEmbedding embeddings.Overrides
+
+// findEmbeddingHTTPClient, when set, carries find's embedding requests
+// (tests replay recorded provider traffic through it).
+var findEmbeddingHTTPClient *http.Client
 
 func runFind(cmd *cobra.Command, args []string) error {
 	query, source, err := cli.GetInput(args)
@@ -179,43 +192,42 @@ func runFind(cmd *cobra.Command, args []string) error {
 	explain, _ := cmd.Flags().GetBool("explain")
 	facets, _ := cmd.Flags().GetBool("facets")
 
+	// vector and hybrid (incl. --explain) search the default embedding
+	// model's index; the default is read per query, never cached.
+	var sem retrieval.SemanticSource
+	if mode != "fts" {
+		sem, err = findSemanticSource(svc.Store, sessionState)
+		if err != nil {
+			return fmt.Errorf("find: %w", err)
+		}
+	}
+
 	// Build metadata facet filter from CLI flags.
 	filter := buildFindFilter(cmd, limit)
 
 	// --explain only applies to hybrid mode; it prints per-signal score breakdowns.
 	if explain && mode == "hybrid" {
-		return runFindExplain(cmd, ctx, svc, query, limit, mode, searchCfg)
+		return runFindExplain(ctx, cmd, svc, sem, query, limit, mode, searchCfg)
 	}
 
 	var results []*storage.KnowledgeObject
-	// diagnostics is populated only by hybrid mode. fts/vector modes leave it
-	// at zero values (CandidateCount = 0) so JSON output stays uniform.
+	// fts mode leaves diagnostics at zero values (CandidateCount = 0, no
+	// semantic report) so JSON output stays uniform.
 	var diagnostics service.SearchDiagnostics
 
 	switch mode {
 	case "vector":
-		factory := providers.NewFactory(cfg.Providers, nil)
-		ep := factory.Embedding()
-		ep, originalVec := blendSessionContext(ctx, query, ep, sessionState)
-		results, err = svc.SemanticSearchFiltered(ctx, query, filter, ep)
-		if err == nil && sessionState != nil && originalVec != nil {
-			sessionState.PushQueryVector(originalVec)
-		}
+		results, diagnostics, err = svc.SemanticSearchFiltered(ctx, query, filter, sem, searchCfg)
 	case "fts":
 		results, err = svc.FindByTextFiltered(ctx, query, filter)
 	default: // "hybrid"
-		factory := providers.NewFactory(cfg.Providers, nil)
-		ep := factory.Embedding()
-		ep, originalVec := blendSessionContext(ctx, query, ep, sessionState)
-		results, diagnostics, err = svc.HybridSearchFilteredWithDiagnostics(ctx, query, filter, ep, searchCfg)
-		if err == nil && sessionState != nil && originalVec != nil {
-			sessionState.PushQueryVector(originalVec)
-		}
+		results, diagnostics, err = svc.HybridSearchFilteredWithDiagnostics(ctx, query, filter, sem, searchCfg)
 	}
 
 	if err != nil {
 		return fmt.Errorf("find (%s): %w", mode, err)
 	}
+	printSemanticNotice(cmd, diagnostics)
 
 	// --facets: show metadata type count breakdown before results.
 	if facets {
@@ -289,16 +301,14 @@ func runFind(cmd *cobra.Command, args []string) error {
 }
 
 // runFindExplain executes a hybrid search and prints per-result score breakdowns.
-func runFindExplain(cmd *cobra.Command, ctx context.Context, svc *service.Service, query string, limit int, mode string, searchCfg config.SearchConfig) error {
-	factory := providers.NewFactory(cfg.Providers, nil)
-	ep := factory.Embedding()
-
-	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(ctx, query, storage.ObjectFilter{Limit: limit}, ep, searchCfg)
+func runFindExplain(ctx context.Context, cmd *cobra.Command, svc *service.Service, sem retrieval.SemanticSource, query string, limit int, mode string, searchCfg config.SearchConfig) error {
+	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(ctx, query, storage.ObjectFilter{Limit: limit}, sem, searchCfg)
 	if err != nil {
 		return fmt.Errorf("find explain (%s): %w", mode, err)
 	}
 	explainResults := envelope.Results
 	diagnostics := envelope.Diagnostics
+	printSemanticNotice(cmd, diagnostics)
 
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, map[string]any{
@@ -361,47 +371,42 @@ func pluralS(n int) string {
 	return "s"
 }
 
-// blendSessionContext embeds the query, blends with session context if available,
-// and returns a precomputed provider plus the original (pre-blend) vector.
-// If no session context is available, originalVec is nil and ep is returned unchanged.
-func blendSessionContext(
-	ctx context.Context,
-	query string,
-	ep providers.EmbeddingProvider,
-	state *repl.SessionState,
-) (providers.EmbeddingProvider, []float32) {
-	if state == nil {
-		return ep, nil
+// findSemanticSource builds the semantic leg for one find run: the model
+// registry on the command's store, the embedding resolver with find's
+// --embedding-* flags (transport-only for a registered model), and, inside a
+// REPL session, blending with the session's earlier query vectors of the
+// same model.
+func findSemanticSource(store storage.StorageDriver, state *repl.SessionState) (retrieval.SemanticSource, error) {
+	models, err := registry.ForDriver(store)
+	if err != nil {
+		return retrieval.SemanticSource{}, err
 	}
-	sessionCtxVec := state.SessionContextVector()
-	if sessionCtxVec == nil {
-		// No context yet — embed so we can push after success, but return original ep.
-		originalVec, embedErr := ep.Embed(ctx, query)
-		if embedErr != nil || len(originalVec) == 0 {
-			return ep, nil
+	r := newEmbeddingResolver()
+	r.Registry = models
+	r.Flags = findEmbedding
+	r.HTTPClient = findEmbeddingHTTPClient
+	src := retrieval.SemanticSource{Models: models, Resolver: embeddings.NewProviderResolver(r)}
+	if state != nil {
+		src.Blend = func(modelID string, vec []float32) []float32 {
+			sessionVec := state.SessionContextVector(modelID)
+			state.PushQueryVector(modelID, vec)
+			if sessionVec == nil {
+				return vec
+			}
+			return search.BlendVectors(vec, sessionVec, 0.85)
 		}
-		return &precomputedEmbedProvider{vec: originalVec, inner: ep}, originalVec
 	}
-
-	// Embed, blend, wrap.
-	originalVec, embedErr := ep.Embed(ctx, query)
-	if embedErr != nil || len(originalVec) == 0 {
-		return ep, nil
-	}
-	blended := search.BlendVectors(originalVec, sessionCtxVec, 0.85)
-	return &precomputedEmbedProvider{vec: blended, inner: ep}, originalVec
+	return src, nil
 }
 
-// precomputedEmbedProvider satisfies providers.EmbeddingProvider using a cached vector.
-type precomputedEmbedProvider struct {
-	vec   []float32
-	inner providers.EmbeddingProvider
-}
-
-func (p *precomputedEmbedProvider) Name() string    { return p.inner.Name() }
-func (p *precomputedEmbedProvider) Dimensions() int { return len(p.vec) }
-func (p *precomputedEmbedProvider) Embed(_ context.Context, _ string) ([]float32, error) {
-	return p.vec, nil
+// printSemanticNotice tells the operator, on stderr, when the semantic leg
+// did not run and the results are full-text only. JSON output carries the
+// same report under diagnostics.semantic.
+func printSemanticNotice(cmd *cobra.Command, d service.SearchDiagnostics) {
+	if d.Semantic == nil || d.Semantic.OK() {
+		return
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "notice: %s\n", d.Semantic.Notice)
 }
 
 // printFindSuggestions runs a prefix FTS query and prints "Did you mean?" hints.

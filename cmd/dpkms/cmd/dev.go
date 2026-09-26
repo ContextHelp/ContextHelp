@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,7 +9,6 @@ import (
 	"text/template"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
 	"gopkg.in/yaml.v3"
@@ -22,55 +20,6 @@ var devCmd = &cobra.Command{
 	Use:   "dev",
 	Short: "Developer and maintenance utilities",
 	Long:  `Developer utilities for inspecting, maintaining, and scaffolding ctxt plugins.`,
-}
-
-// ─── reindex-vectors ─────────────────────────────────────────────────────────
-
-var devReindexVectorsCmd = &cobra.Command{
-	Use:   "reindex-vectors",
-	Short: "Re-embed objects that are missing vector embeddings",
-	Long: `Re-embed all active knowledge objects that currently lack a stored embedding
-vector. Uses the configured embedding provider (Ollama by default).
-
-Objects with no raw content or summaries are skipped and counted as failed.
-
-Examples:
-  # Re-index all objects missing embeddings
-  dpkms dev reindex-vectors
-
-  # JSON output (indexed/failed counts + object IDs)
-  dpkms dev reindex-vectors --format json`,
-	RunE: runDevReindexVectors,
-}
-
-func runDevReindexVectors(cmd *cobra.Command, _ []string) error {
-	svc, cleanup, err := newService()
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	ctx := context.Background()
-
-	factory := providers.NewFactory(cfg.Providers, nil)
-	ep := factory.Embedding()
-
-	fmt.Fprintln(cmd.OutOrStdout(), "Starting vector re-indexing...")
-
-	indexed, failed, err := svc.ReindexVectors(ctx, ep)
-	if err != nil {
-		return fmt.Errorf("reindex-vectors: %w", err)
-	}
-
-	if isJSONOutput() {
-		return outputJSON(cmd.OutOrStdout(), map[string]any{
-			"indexed": indexed,
-			"failed":  failed,
-		})
-	}
-
-	fmt.Fprintf(cmd.OutOrStdout(), "Done. indexed=%d  failed=%d\n", indexed, failed)
-	return nil
 }
 
 // ─── validate-registry ───────────────────────────────────────────────────────
@@ -380,16 +329,12 @@ func runDevGenDocs(cmd *cobra.Command, _ []string) error {
 
 func init() {
 	rootCmd.AddCommand(devCmd)
-	devCmd.AddCommand(devReindexVectorsCmd)
 	devCmd.AddCommand(devValidateRegistryCmd)
 	devCmd.AddCommand(devInitPluginCmd)
 	devCmd.AddCommand(devGenDocsCmd)
 
 	// validate-registry only lints a YAML file on disk. Read.
 	cliconv.WithSideEffect(devValidateRegistryCmd, cliconv.SideEffectRead)
-	// reindex-vectors adds missing embeddings; existing vectors are left
-	// alone, so re-running converges. Write.
-	cliconv.WithSideEffect(devReindexVectorsCmd, cliconv.SideEffectWrite)
 	// init-plugin scaffolds a new directory; it refuses to clobber an
 	// existing slug. Write.
 	cliconv.WithSideEffect(devInitPluginCmd, cliconv.SideEffectWrite)

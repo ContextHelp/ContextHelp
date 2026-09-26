@@ -222,9 +222,6 @@ func TestICAFeedSyncEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("processor: %v", err)
 	}
-	if len(draft.Embeddings) == 0 {
-		t.Error("processor: embeddings empty")
-	}
 	isNew, _ := draft.Metadata["ica_is_new_story"].(bool)
 	if !isNew {
 		t.Error("processor: ica_is_new_story not true")
@@ -265,14 +262,6 @@ func TestICAFeedSyncDegradedNoProcessor(t *testing.T) {
 	processed, _ := draft.Metadata["ica_items_processed"].(int)
 	if processed < 1 {
 		t.Errorf("ica_items_processed=%d, want >=1", processed)
-	}
-
-	// Without processor, embeddings stay nil.
-	if draft.Embeddings != nil {
-		t.Errorf(
-			"embeddings should be nil without processor, got %v",
-			draft.Embeddings,
-		)
 	}
 }
 

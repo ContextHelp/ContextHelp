@@ -2,10 +2,9 @@ package service
 
 import (
 	"context"
-	"math"
-	"time"
+	"log/slog"
 
-	"github.com/google/uuid"
+	"github.com/ideacrafterslabs/ctxt/internal/audit"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -15,11 +14,11 @@ type DuplicateKind string
 
 const (
 	// DuplicateExact means the content_hash matched an existing object exactly.
-	DuplicateExact DuplicateKind = "exact"
+	DuplicateExact DuplicateKind = audit.DedupExact
 	// DuplicateSimilar means cosine similarity exceeded the configured threshold.
-	DuplicateSimilar DuplicateKind = "similar"
+	DuplicateSimilar DuplicateKind = audit.DedupSimilar
 	// DuplicateSourceKey means the source_key matched an existing object.
-	DuplicateSourceKey DuplicateKind = "source_key"
+	DuplicateSourceKey DuplicateKind = audit.DedupSourceKey
 )
 
 // DuplicateResult describes a duplicate match.
@@ -31,8 +30,9 @@ type DuplicateResult struct {
 
 // checkDuplicates inspects the store for an exact, source-key, or
 // near-duplicate of the given content, applying the caller's DuplicatesConfig.
-// Returns nil, nil when no duplicate is found.
-func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, embeddings []float32, cfg config.DuplicatesConfig) (*DuplicateResult, error) {
+// The near-duplicate check searches q.ModelID's index with q.Vector; an empty
+// q skips it. Returns nil, nil when no duplicate is found.
+func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, q storage.VectorQuery, cfg config.DuplicatesConfig) (*DuplicateResult, error) {
 	// 1. Exact match via content_hash.
 	if cfg.CheckExact && hash != "" {
 		existing, err := s.Store.Objects().GetByContentHash(ctx, hash)
@@ -63,20 +63,14 @@ func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, e
 		}
 	}
 
-	// 3. Near-duplicate via vector similarity.
-	if cfg.CheckSimilar && len(embeddings) > 0 {
-		filter := storage.ObjectFilter{Limit: 1}
-		candidates, err := s.Store.Objects().VectorSearch(ctx, embeddings, filter)
+	// 3. Near-duplicate via vector similarity (score = 1 - cosine distance).
+	if cfg.CheckSimilar && len(q.Vector) > 0 {
+		candidates, err := s.Store.Objects().VectorSearch(ctx, q, storage.ObjectFilter{Limit: 1})
 		if err != nil {
 			return nil, err
 		}
 		for _, candidate := range candidates {
-			score := 0.0
-			if v, ok := candidate.Metadata["score"].(float64); ok {
-				score = v
-			} else {
-				score = serviceCosineSimilarity(embeddings, candidate.Embeddings)
-			}
+			score, _ := candidate.Metadata["score"].(float64)
 			if score >= cfg.SimilarityThreshold {
 				return &DuplicateResult{
 					Kind:       DuplicateSimilar,
@@ -90,38 +84,20 @@ func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, e
 	return nil, nil
 }
 
-// logDedupDecision writes an audit entry recording the dedup outcome.
+// logDedupDecision writes an audit entry recording the dedup outcome. The
+// incoming content has no object yet, so the entry names the existing one.
 func (s *Service) logDedupDecision(ctx context.Context, dup *DuplicateResult, policy string) {
 	if s.Store.AuditLog() == nil {
 		return
 	}
-	_ = s.Store.AuditLog().Append(ctx, &storage.AuditEntry{
-		ID:        uuid.New().String(),
-		EventType: "dedup." + string(dup.Kind),
-		ObjectID:  dup.Existing.ID,
-		Actor:     "system",
-		Payload: map[string]any{
-			"policy":     policy,
-			"similarity": dup.Similarity,
-		},
-		CreatedAt: time.Now().UTC(),
+	entry := audit.DedupEntry(audit.DedupDecision{
+		ObjectID:    dup.Existing.ID,
+		DuplicateOf: dup.Existing.ID,
+		Similarity:  dup.Similarity,
+		Kind:        string(dup.Kind),
+		Policy:      policy,
 	})
-}
-
-// serviceCosineSimilarity computes cosine similarity between two float32 vectors.
-// Returns 0 for empty or length-mismatched vectors.
-func serviceCosineSimilarity(a, b []float32) float64 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0
+	if err := s.Store.AuditLog().Append(ctx, entry); err != nil {
+		slog.Warn("dedup: audit append (non-fatal)", "duplicate_of", dup.Existing.ID, "err", err)
 	}
-	var dot, normA, normB float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
-		normA += float64(a[i]) * float64(a[i])
-		normB += float64(b[i]) * float64(b[i])
-	}
-	if normA == 0 || normB == 0 {
-		return 0
-	}
-	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
 }

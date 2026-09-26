@@ -73,14 +73,6 @@ func (m *memObjectStore) Reinforce(_ context.Context, _ string, _ *storage.Knowl
 	return "", nil
 }
 
-func (m *memObjectStore) ListWithEmbeddings(_ context.Context) ([]*storage.KnowledgeObject, error) {
-	return nil, nil
-}
-
-func (m *memObjectStore) ListWithoutEmbeddings(_ context.Context) ([]*storage.KnowledgeObject, error) {
-	return nil, nil
-}
-
 func (m *memObjectStore) SetReminder(_ context.Context, _ string, _ time.Time) error {
 	return nil
 }
@@ -99,7 +91,7 @@ func (m *memObjectStore) ListPendingReminders(_ context.Context) ([]*storage.Kno
 	return nil, nil
 }
 
-func (m *memObjectStore) VectorSearch(_ context.Context, _ []float32, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+func (m *memObjectStore) VectorSearch(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
 }
 
@@ -111,7 +103,7 @@ func (m *memObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ stora
 	return nil, nil
 }
 
-func (m *memObjectStore) VectorSearchNodeAware(_ context.Context, _ []float32, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (m *memObjectStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
 	return nil, nil
 }
 

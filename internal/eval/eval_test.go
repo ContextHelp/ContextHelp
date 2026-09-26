@@ -129,7 +129,7 @@ func TestEvalPipelineSelector(t *testing.T) {
 			}
 			fx := fx
 			t.Run(fx.ID+"/selector", func(t *testing.T) {
-				got := reg.SelectPipeline(fx.Input)
+				got := selectFixture(reg, fx)
 				assert.Equal(t, fx.Expect.PipelineSelected, got,
 					"fixture %s: pipeline selector mismatch", fx.ID)
 			})
@@ -275,7 +275,7 @@ func TestEvalAgnosticism(t *testing.T) {
 func runTextShortFixture(
 	t *testing.T,
 	factory *providers.Factory,
-	reg interface{ SelectPipeline(string) string },
+	reg pipelineSelector,
 	fx eval.Fixture,
 ) {
 	t.Helper()
@@ -286,7 +286,7 @@ func runTextShortFixture(
 
 	// Selector assertion.
 	if fx.Expect.PipelineSelected != "" {
-		got := reg.SelectPipeline(fx.Input)
+		got := selectFixture(reg, fx)
 		assert.Equal(t, fx.Expect.PipelineSelected, got, "selector mismatch")
 	}
 
@@ -325,16 +325,30 @@ func runTextShortFixture(
 }
 
 // runSelectorFixture validates only the pipeline selector for non-text fixtures.
-func runSelectorFixture(t *testing.T, reg interface{ SelectPipeline(string) string }, fx eval.Fixture) {
+func runSelectorFixture(t *testing.T, reg pipelineSelector, fx eval.Fixture) {
 	t.Helper()
 	if fx.IsFile {
 		t.Skip("file-based fixture; skipped (requires OCR provider)")
 	}
 	if fx.Expect.PipelineSelected != "" {
-		got := reg.SelectPipeline(fx.Input)
+		got := selectFixture(reg, fx)
 		assert.Equal(t, fx.Expect.PipelineSelected, got,
 			"fixture %s: pipeline selector mismatch", fx.ID)
 	}
+}
+
+// pipelineSelector is the registry method the selector assertions drive.
+type pipelineSelector interface {
+	SelectPipeline(source, content string) string
+}
+
+// selectFixture routes a fixture the way a capture arrives: a file path or
+// URL is the source, anything else is content under no source.
+func selectFixture(reg pipelineSelector, fx eval.Fixture) string {
+	if fx.IsFile || strings.HasPrefix(fx.Input, "http://") || strings.HasPrefix(fx.Input, "https://") {
+		return reg.SelectPipeline(fx.Input, "")
+	}
+	return reg.SelectPipeline("", fx.Input)
 }
 
 func tagExists(tags []storage.Tag, label string) bool {

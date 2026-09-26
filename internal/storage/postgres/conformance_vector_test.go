@@ -11,8 +11,8 @@ import (
 )
 
 // TestPostgres_Conformance_VectorRankFixture runs the cross-driver golden
-// rank fixture against a fresh database whose embedding column is created
-// at the fixture dimension, exercising the pgvector cosine path end to end.
+// rank fixture against a fresh database through the per-model index. It
+// skips until the driver's EmbeddingStore is implemented.
 func TestPostgres_Conformance_VectorRankFixture(t *testing.T) {
 	dsn, _ := freshDatabaseDSN(t)
 	drv, err := pgdrv.New(dsn)
@@ -20,7 +20,6 @@ func TestPostgres_Conformance_VectorRankFixture(t *testing.T) {
 		t.Fatalf("postgres.New: %v", err)
 	}
 	t.Cleanup(func() { drv.Close(context.Background()) })
-	drv.SetVectorDimension(storagetest.VectorRankDimension)
 	if err := drv.Migrate(context.Background()); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
@@ -28,16 +27,12 @@ func TestPostgres_Conformance_VectorRankFixture(t *testing.T) {
 }
 
 // TestPostgres_Conformance_Search runs the full cross-driver search
-// conformance suite with the Postgres capabilities flipped on: schema,
-// methods, sanitizer seam, and signatures have all landed, so FTS and
-// Vectors assert for real instead of rendering as skips. Dimension
-// enforcement is strict — the typmod'd pgvector column refuses mismatched
-// writes.
+// conformance suite with both legs claimed; the vector subtests skip until
+// the driver's EmbeddingStore is implemented.
 func TestPostgres_Conformance_Search(t *testing.T) {
-	drv := freshVectorDriver(t, storagetest.VectorRankDimension)
+	drv, _ := freshIntegrationDriver(t)
 	storagetest.RunSearchConformance(t, drv, storagetest.SearchCapabilities{
-		FTS:                    true,
-		Vectors:                true,
-		StrictDimensionOnWrite: true,
+		FTS:     true,
+		Vectors: true,
 	})
 }

@@ -59,7 +59,11 @@ type State struct {
 	ItemHits     []Hit
 	ResourceHits []Hit
 
-	QueryVector   []float32
+	// QueryVector is the query embedded under the default model; empty
+	// when the semantic leg is unavailable.
+	QueryVector QueryVector
+	// Semantic records the semantic leg's status once it has been tried.
+	Semantic      *SemanticReport
 	NextStepQuery string
 	QueryMode     search.QueryMode
 }
@@ -80,6 +84,8 @@ type Result struct {
 	Categories     []*storage.KnowledgeObject
 	Items          []*storage.KnowledgeObject
 	Resources      []*storage.KnowledgeObject
+	// Semantic is the semantic leg's status; nil when no tier ran.
+	Semantic *SemanticReport
 }
 
 // DefaultConfig returns a sensible default retrieval configuration.

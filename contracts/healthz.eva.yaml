@@ -86,7 +86,10 @@ evaluators:
               enum: [idle, in_progress, awaiting_consent, failed]
             bucket:
               type: string
-              enum: [reindex_auto, reingest_selective, reingest_all]
+              enum: [reindex_auto, reingest_selective, reingest_all, embeddings_migrate]
+            target:
+              # the model an embeddings_migrate run fills (ADR-071)
+              type: string
             progress:
               type: number
               minimum: 0
@@ -95,6 +98,10 @@ evaluators:
               type: integer
               minimum: 0
             total:
+              type: integer
+              minimum: 0
+            failed:
+              # objects skipped after a per-object failure
               type: integer
               minimum: 0
             eta_seconds:

@@ -2,98 +2,114 @@ package steps
 
 import (
 	"context"
-	"encoding/binary"
-	"math"
+	"fmt"
+	"log/slog"
+	"sync"
+	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
-	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// EmbeddingGenerator calls an EmbeddingProvider and stores the result on the draft.
+// noDefaultWarning limits the "no default model" warning to once per process.
+var noDefaultWarning sync.Once
+
+// EmbeddingGenerator embeds the draft once per populating model (ADR-071,
+// amendment 2026-09-26) and attaches the results to draft.Vectors. It never
+// touches storage: whoever persists the draft writes the vectors through
+// EmbeddingStore.Put once the object ID is final.
 type EmbeddingGenerator struct {
 	pipeline.BaseContract
-	provider providers.EmbeddingProvider
+	models   embeddings.ModelSource
+	resolver embeddings.ProviderResolver
 }
 
-// NewEmbeddingGenerator creates an EmbeddingGenerator using the given provider.
-// Passing nil uses a stub (no-op) provider.
-func NewEmbeddingGenerator(provider providers.EmbeddingProvider) *EmbeddingGenerator {
-	if provider == nil {
-		provider = providers.NewStubEmbeddingProvider()
-	}
+// NewEmbeddingGenerator returns the embedding step. models supplies the
+// populate set (the default plus every model not yet effectively
+// deprecated); resolver builds each model's provider from its registry
+// entry. A nil dependency makes the step a no-op.
+func NewEmbeddingGenerator(models embeddings.ModelSource, resolver embeddings.ProviderResolver) *EmbeddingGenerator {
 	return &EmbeddingGenerator{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"Embeddings", "VectorIndexed"},
+			Produces: []string{"Vectors"},
 		}),
-		provider: provider,
+		models:   models,
+		resolver: resolver,
 	}
 }
 
 func (s *EmbeddingGenerator) Name() string { return "embedding_generator" }
 
-// Run embeds the draft using projection.ProjectIndex.EmbeddingText as the
-// canonical text source, ensuring graph-aware content is indexed. Falls back
-// to an empty string check so that objects with no content are skipped cleanly.
+// Run embeds projection.EmbeddingText(draft) as chunk 0 under every
+// populating model. The text takes the body from TextContent, else
+// RawContent, as storage does on persist, so a draft whose pipeline adds
+// no sections or summaries (text.short) still embeds its body.
+//
+// A model that fails (provider unresolvable or unreachable, wrong
+// dimension) is logged with its model_id and skipped: vectors are additive
+// and never fail the run, and the missing row is what the migration
+// backfill picks up. Whether an object is embedded under a model is read
+// from the embeddings table, never from the draft.
 func (s *EmbeddingGenerator) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	text := projection.ProjectIndex(draft).EmbeddingText
+	if s.models == nil || s.resolver == nil {
+		return draft, nil
+	}
+	draft.Vectors = nil
+
+	text := projection.EmbeddingText(draft)
 	if text == "" {
-		draft.VectorIndexed = false
 		return draft, nil
 	}
 
-	vec, err := s.provider.Embed(ctx, text)
-	if err != nil || len(vec) == 0 {
-		// Vector indexing is optional and additive: the object remains fully
-		// usable via keyword search. VectorIndexed=false records the miss so
-		// a re-index pass can pick it up later.
-		draft.VectorIndexed = false
-		return draft, nil //nolint:nilerr // optional step; recorded as VectorIndexed=false for re-index
+	models, err := s.models.Populating(ctx, time.Now())
+	if err != nil {
+		slog.Warn("embedding: read populating models; no vectors produced", "err", err)
+		return draft, nil
 	}
 
-	draft.Embeddings = vec
-	draft.VectorIndexed = true
+	hasDefault := false
+	for _, m := range models {
+		if m.IsDefault {
+			hasDefault = true
+		}
+		vec, err := s.embed(ctx, m, text)
+		if err != nil {
+			slog.Warn("embedding: model produced no vector; skipping it", "model_id", m.ModelID, "err", err)
+			continue
+		}
+		draft.Vectors = append(draft.Vectors, storage.ObjectVector{
+			ModelID:  m.ModelID,
+			ChunkIdx: 0,
+			Vector:   vec,
+			Text:     text,
+		})
+	}
+	if !hasDefault {
+		noDefaultWarning.Do(func() {
+			slog.Warn("embedding: no default embedding model; objects are not vector-indexed until one is registered and set as default")
+		})
+	}
 	return draft, nil
 }
 
-// Float32SliceToBytes encodes a []float32 as little-endian bytes for SQLite BLOB storage.
-func Float32SliceToBytes(v []float32) []byte {
-	buf := make([]byte, len(v)*4)
-	for i, f := range v {
-		binary.LittleEndian.PutUint32(buf[i*4:], math.Float32bits(f))
+// embed resolves m's provider and embeds text, requiring the registry
+// dimension.
+func (s *EmbeddingGenerator) embed(ctx context.Context, m registry.Model, text string) ([]float32, error) {
+	p, err := s.resolver.ForModel(ctx, m)
+	if err != nil {
+		return nil, fmt.Errorf("resolve provider: %w", err)
 	}
-	return buf
-}
-
-// BytesToFloat32Slice decodes little-endian bytes from a SQLite BLOB into []float32.
-func BytesToFloat32Slice(b []byte) []float32 {
-	if len(b)%4 != 0 {
-		return nil
+	vec, err := p.Embed(ctx, text)
+	if err != nil {
+		return nil, fmt.Errorf("embed: %w", err)
 	}
-	v := make([]float32, len(b)/4)
-	for i := range v {
-		bits := binary.LittleEndian.Uint32(b[i*4:])
-		v[i] = math.Float32frombits(bits)
+	if len(vec) != m.Dimension {
+		return nil, fmt.Errorf("provider returned %d dimensions, registry has %d: %w",
+			len(vec), m.Dimension, storage.ErrEmbeddingDimension)
 	}
-	return v
-}
-
-// CosineSimilarity computes the cosine similarity between two vectors.
-// Returns 0 if the vectors are of different lengths or if either has zero norm.
-func CosineSimilarity(a, b []float32) float64 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0
-	}
-	var dot, normA, normB float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
-		normA += float64(a[i]) * float64(a[i])
-		normB += float64(b[i]) * float64(b[i])
-	}
-	if normA == 0 || normB == 0 {
-		return 0
-	}
-	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
+	return vec, nil
 }

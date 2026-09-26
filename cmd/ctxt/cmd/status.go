@@ -4,8 +4,9 @@
 //
 // Exit codes:
 //
-//	0 — server returned 200 + health: healthy or degraded
-//	1 — server returned 503, body decode failure, or unreachable
+//	0  — server returned 200 + health: healthy or degraded
+//	1  — server returned 503 or health failed, or body decode failure
+//	70 — server unreachable
 //
 // The envelope schema is documented in internal/server/http/handlers_healthz.go;
 // keep this file's type mirror in sync if T-0580 (or later) adds top-level
@@ -23,7 +24,9 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/output"
 )
 
 // statusEnvelope mirrors internal/server/http.HealthzEnvelope. Duplicated
@@ -71,7 +74,8 @@ through unchanged.
 
 Exit codes:
   0   server reported healthy or degraded (still serving)
-  1   server unreachable, returned 503, or response could not be parsed
+  1   server returned 503, or response could not be parsed
+  70  server unreachable (nothing answered at the resolved URL)
 
 Examples:
   ctxt status
@@ -93,13 +97,13 @@ func init() {
 	// "status" is not in kit's defaultIdempotency table; mark it explicitly
 	// as idempotent — repeated /healthz polls don't mutate state.
 	cliconv.WithIdempotency(statusCmd, cliconv.IdempotencyYes)
-	statusCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	statusCmd.Flags().String("server", "", serverFlagUsage)
 	statusCmd.Flags().Bool("watch", false, "refresh every --interval seconds until interrupted")
 	statusCmd.Flags().Int("interval", 2, "seconds between refreshes when --watch is set")
 }
 
 func runStatus(cmd *cobra.Command, _ []string) error {
-	serverURL := statusServerURL(cmd)
+	ep := serverEndpoint(cmd)
 	watch, _ := cmd.Flags().GetBool("watch")
 	interval, _ := cmd.Flags().GetInt("interval")
 	if interval < 1 {
@@ -107,7 +111,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	if !watch {
-		return statusOnce(cmd, serverURL)
+		return statusOnce(cmd, ep)
 	}
 
 	// Watch mode: redraw on each tick. Ctrl-C breaks the loop. We do
@@ -124,7 +128,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		// Clear screen between refreshes (ANSI). Falls back to plain
 		// repaint when stdout isn't a TTY — harmless either way.
 		fmt.Fprint(cmd.OutOrStdout(), "\033[H\033[2J")
-		_ = statusOnce(cmd, serverURL) // surface the row, don't exit on transient failure
+		_ = statusOnce(cmd, ep) // surface the row, don't exit on transient failure
 		select {
 		case <-ctx.Done():
 			return nil
@@ -136,10 +140,10 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 // statusOnce performs one /healthz fetch and renders the result. It
 // returns an error (causing a non-zero exit) when the request fails or
 // the envelope reports failed.
-func statusOnce(cmd *cobra.Command, serverURL string) error {
-	env, status, err := fetchHealthz(serverURL)
+func statusOnce(cmd *cobra.Command, ep idxbridge.Endpoint) error {
+	env, status, err := fetchHealthz(cmd.Context(), ep)
 	if err != nil {
-		return fmt.Errorf("healthcheck %s: %w", serverURL, err)
+		return fmt.Errorf("healthcheck %s: %w", ep.URL, err)
 	}
 
 	if isJSONOutput() {
@@ -147,11 +151,13 @@ func statusOnce(cmd *cobra.Command, serverURL string) error {
 			return err
 		}
 	} else {
-		renderStatusTable(cmd.OutOrStdout(), env, serverURL)
+		renderStatusTable(cmd.OutOrStdout(), env, ep.URL)
 	}
 
+	// GENERIC by construction: the daemon answered and reports itself
+	// failed.
 	if status == gohttp.StatusServiceUnavailable || env.Health == "failed" {
-		return fmt.Errorf("dpkms health: %s", env.Health)
+		return output.GenericError("dpkms health: " + env.Health)
 	}
 	return nil
 }
@@ -159,10 +165,8 @@ func statusOnce(cmd *cobra.Command, serverURL string) error {
 // fetchHealthz issues GET /healthz and decodes the envelope. The HTTP
 // status code is returned alongside so the caller can distinguish 200
 // healthy/degraded from 503 failed without re-reading the body.
-func fetchHealthz(serverURL string) (statusEnvelope, int, error) {
-	url := strings.TrimRight(serverURL, "/") + "/healthz"
-	client := &gohttp.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(url) // #nosec G107 -- user-provided server URL
+func fetchHealthz(ctx context.Context, ep idxbridge.Endpoint) (statusEnvelope, int, error) {
+	resp, err := serverGet(ctx, ep, "/healthz", 5*time.Second)
 	if err != nil {
 		return statusEnvelope{}, 0, err
 	}
@@ -224,18 +228,6 @@ func formatUptime(secs int64) string {
 		return d.String()
 	}
 	return d.Truncate(time.Second).String()
-}
-
-// statusServerURL resolves the target URL the same way other CLI
-// commands do: explicit --server flag wins, then viper (which the
-// global --instance / config plumbing populates), then localhost
-// default. We tolerate stdout writes as a side effect.
-func statusServerURL(cmd *cobra.Command) string {
-	url := flagString(cmd, "server", "server.url")
-	if url == "" {
-		url = "http://localhost:8080"
-	}
-	return url
 }
 
 // Re-export os for cobra runtime introspection — kept private to avoid

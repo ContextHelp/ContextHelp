@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: 2c72ce73
+recorded_at: "2026-09-26T18:22:07Z"
+payload:
+    status: 500
+    headers:
+        Content-Type: application/json; charset=utf-8
+    body: '{"error":"the input length exceeds the context length"}'

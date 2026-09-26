@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
-	"github.com/ideacrafterslabs/ctxt/internal/storage/storagetest"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
@@ -18,35 +16,24 @@ import (
 // filter conditions number themselves around it. A mis-numbered placeholder
 // surfaces here as a driver error or a wrong result set.
 func TestPostgres_VectorSearch_FilterWithBoundVector(t *testing.T) {
-	dsn, _ := freshDatabaseDSN(t)
-	drv, err := pgdrv.New(dsn)
-	if err != nil {
-		t.Fatalf("postgres.New: %v", err)
-	}
-	t.Cleanup(func() { drv.Close(context.Background()) })
-	drv.SetVectorDimension(storagetest.VectorRankDimension)
-	if err := drv.Migrate(context.Background()); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	drv, _ := freshIntegrationDriver(t)
 	ctx := context.Background()
+	indexModel(t, drv, "pg-bound", 4)
 
 	mk := func(id, typ, subtype string, emb []float32) {
 		t.Helper()
 		obj := &pluginapi.KnowledgeObject{
 			ID: id, Type: typ, Subtype: subtype, Status: "active",
-			Embeddings: emb,
-			CreatedAt:  time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+			CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 		}
-		if err := drv.Objects().Create(ctx, obj); err != nil {
-			t.Fatalf("create %s: %v", id, err)
-		}
+		vectorObject(t, drv, obj, "pg-bound", emb)
 	}
 	mk("vsf-note", "note", "daily", []float32{1, 0, 0, 0})
 	mk("vsf-article", "article", "", []float32{1, 0, 0, 0})
 	mk("vsf-note-2", "note", "weekly", []float32{0, 1, 0, 0})
 
 	// Two filter params + the bound vector: placeholders must not collide.
-	results, err := drv.Objects().VectorSearch(ctx, []float32{1, 0, 0, 0},
+	results, err := drv.Objects().VectorSearch(ctx, pgQuery("pg-bound", 1, 0, 0, 0),
 		storage.ObjectFilter{Type: "note", Subtype: "daily", Limit: 10})
 	if err != nil {
 		t.Fatalf("filtered VectorSearch: %v", err)

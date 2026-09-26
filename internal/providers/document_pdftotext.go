@@ -64,11 +64,7 @@ func (p *PdftotextDocumentProvider) ExtractPDF(ctx context.Context, pdfPath stri
 }
 
 func (p *PdftotextDocumentProvider) ExtractOffice(_ context.Context, docPath string) (*DocumentResult, error) {
-	return &DocumentResult{
-		FullText:  "[pdftotext does not support office documents]",
-		PageCount: 0,
-		Metadata:  map[string]string{"error": "unsupported format", "path": docPath},
-	}, nil
+	return nil, fmt.Errorf("pdftotext: office documents not supported: %s", docPath)
 }
 
 func (p *PdftotextDocumentProvider) ParseMarkdown(_ context.Context, content string) (*DocumentResult, error) {

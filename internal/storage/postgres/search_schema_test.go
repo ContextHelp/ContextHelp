@@ -6,8 +6,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-
-	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 )
 
 // TestPostgres_SearchSchema_FTSColumns pins the FTS half of the search
@@ -91,7 +89,7 @@ func TestPostgres_SearchSchema_FTSColumns(t *testing.T) {
 // TestPostgres_SearchSchema_HonestVectorColumns pins the vector half:
 // embeddings.vector is a real pgvector column (the dead BYTEA is gone), the
 // phantom index signature stamped for the nonexistent BYTEA index is
-// removed, and the ANN index on objects.embedding is HNSW cosine.
+// removed, and objects carries no vector column or index.
 func TestPostgres_SearchSchema_HonestVectorColumns(t *testing.T) {
 	drv, _ := freshIntegrationDriver(t)
 	db := drv.DB()
@@ -130,56 +128,19 @@ func TestPostgres_SearchSchema_HonestVectorColumns(t *testing.T) {
 		t.Fatalf("iterate signatures: %v", err)
 	}
 
-	// ANN index: HNSW cosine on objects.embedding; the old ivfflat is gone.
-	var hnsw, ivfflat int
+	// ANN indexes live on embeddings, one per model: objects carries no
+	// vector column and no vector index.
+	var vectorIndexes int
 	if err := db.QueryRow(`
-		SELECT
-			COUNT(*) FILTER (WHERE indexdef ILIKE '%USING hnsw%embedding%cosine%'),
-			COUNT(*) FILTER (WHERE indexdef ILIKE '%USING ivfflat%')
-		FROM pg_indexes WHERE tablename = 'objects'`).Scan(&hnsw, &ivfflat); err != nil {
+		SELECT COUNT(*) FROM pg_indexes
+		 WHERE tablename = 'objects'
+		   AND (indexdef ILIKE '%USING hnsw%' OR indexdef ILIKE '%USING ivfflat%')`).Scan(&vectorIndexes); err != nil {
 		t.Fatalf("inspect ANN indexes: %v", err)
 	}
-	if hnsw == 0 {
-		t.Error("no HNSW cosine index on objects.embedding")
+	if vectorIndexes != 0 {
+		t.Errorf("objects still carries %d vector indexes", vectorIndexes)
 	}
-	if ivfflat != 0 {
-		t.Error("stale ivfflat index still present on objects")
-	}
-}
-
-// TestPostgres_SetVectorDimension mirrors the SQLite driver contract: the
-// dimension configured before Init is applied to the schema at migration
-// time (dynamic DDL), and has no effect afterwards.
-func TestPostgres_SetVectorDimension(t *testing.T) {
-	dsn, _ := freshDatabaseDSN(t)
-	drv, err := pgdrv.New(dsn)
-	if err != nil {
-		t.Fatalf("postgres.New: %v", err)
-	}
-	t.Cleanup(func() { drv.Close(context.Background()) })
-
-	drv.SetVectorDimension(8)
-	if err := drv.Migrate(context.Background()); err != nil {
-		t.Fatalf("Migrate with dimension 8: %v", err)
-	}
-
-	var colType string
-	err = drv.DB().QueryRow(`
-		SELECT format_type(a.atttypid, a.atttypmod)
-		  FROM pg_attribute a
-		 WHERE a.attrelid = 'objects'::regclass
-		   AND a.attname = 'embedding' AND NOT a.attisdropped`).Scan(&colType)
-	if err != nil {
-		t.Fatalf("read embedding column type: %v", err)
-	}
-	if colType != "vector(8)" {
-		t.Errorf("embedding column type: got %q want vector(8)", colType)
-	}
-
-	// A vector of the configured dimension must be storable.
-	if _, err := drv.DB().Exec(`
-		INSERT INTO objects (id, type, embedding, created_at, updated_at)
-		VALUES ('dim-8-1', 'note', '[1,2,3,4,5,6,7,8]', NOW(), NOW())`); err != nil {
-		t.Errorf("store 8-dim vector: %v", err)
+	if pgColumnExists(t, db, "objects", "embedding") {
+		t.Error("objects.embedding still present")
 	}
 }

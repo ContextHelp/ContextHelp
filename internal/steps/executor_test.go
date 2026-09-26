@@ -60,7 +60,7 @@ func (d *stubDriver) Attachments() storage.AttachmentStore       { return nil }
 func (d *stubDriver) Resurfacing() storage.ResurfacingQueueStore { return nil }
 func (d *stubDriver) Entitlements() storage.EntitlementStore     { return nil }
 func (d *stubDriver) Metering() storage.MeteringStore            { return nil }
-func (d *stubDriver) Vectors() storage.VectorStore               { return nil }
+func (d *stubDriver) Embeddings() storage.EmbeddingStore         { return nil }
 func (d *stubDriver) SavedSearches() storage.SavedSearchStore    { return nil }
 func (d *stubDriver) SearchHistory() storage.SearchHistoryStore  { return nil }
 func (d *stubDriver) Watermarks() storage.WatermarkStore         { return nil }

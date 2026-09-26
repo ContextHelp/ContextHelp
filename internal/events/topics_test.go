@@ -15,13 +15,20 @@ import (
 
 func TestOutboundTopicsAreKitConformant(t *testing.T) {
 	cases := map[string]bus.Topic{
-		"TopicObjectIngested":                events.TopicObjectIngested,
-		"TopicObjectUpdated":                 events.TopicObjectUpdated,
-		"TopicObjectDeleted":                 events.TopicObjectDeleted,
-		"TopicJobCompleted":                  events.TopicJobCompleted,
-		"TopicJobFailed":                     events.TopicJobFailed,
-		"TopicJobEnqueued":                   events.TopicJobEnqueued,
-		"TopicDpkmsUpgradeSignatureMismatch": events.TopicDpkmsUpgradeSignatureMismatch,
+		"TopicObjectIngested":                           events.TopicObjectIngested,
+		"TopicObjectUpdated":                            events.TopicObjectUpdated,
+		"TopicObjectDeleted":                            events.TopicObjectDeleted,
+		"TopicJobCompleted":                             events.TopicJobCompleted,
+		"TopicJobFailed":                                events.TopicJobFailed,
+		"TopicJobEnqueued":                              events.TopicJobEnqueued,
+		"TopicDpkmsUpgradeSignatureMismatch":            events.TopicDpkmsUpgradeSignatureMismatch,
+		"TopicDpkmsUpgradeEmbeddingsMigrationStarted":   events.TopicDpkmsUpgradeEmbeddingsMigrationStarted,
+		"TopicDpkmsUpgradeEmbeddingsMigrationProgress":  events.TopicDpkmsUpgradeEmbeddingsMigrationProgress,
+		"TopicDpkmsUpgradeEmbeddingsMigrationCompleted": events.TopicDpkmsUpgradeEmbeddingsMigrationCompleted,
+		"TopicDpkmsUpgradeEmbeddingsMigrationFailed":    events.TopicDpkmsUpgradeEmbeddingsMigrationFailed,
+		"TopicCtxtUpgradeEmbeddingModelPromoted":        events.TopicCtxtUpgradeEmbeddingModelPromoted,
+		"TopicCtxtUpgradeEmbeddingModelDeprecated":      events.TopicCtxtUpgradeEmbeddingModelDeprecated,
+		"TopicCtxtUpgradeEmbeddingModelPurged":          events.TopicCtxtUpgradeEmbeddingModelPurged,
 	}
 	for name, topic := range cases {
 		t.Run(name, func(t *testing.T) {

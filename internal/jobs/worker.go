@@ -1,3 +1,5 @@
+// Package jobs runs queued work: ingest jobs through their pipelines and
+// task jobs through registered handlers.
 package jobs
 
 import (
@@ -7,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -76,6 +79,10 @@ type WorkerPool struct {
 	maxHops      int
 	maxRetries   int
 	fanOut       FanOutFunc
+	handlers     map[string]TaskHandler // task job type -> handler (tasks.go)
+	inflight     sync.Map               // task job ID -> *taskClaim, running in this pool
+	leaseTTL     time.Duration          // task job lease; renewed every leaseTTL/3
+	recoverEvery time.Duration          // stale recovery interval
 }
 
 // NewWorkerPool creates a worker pool.
@@ -91,6 +98,8 @@ func NewWorkerPool(queue *Queue, pipelines pipeline.Registry, store storage.Stor
 		drainTimeout: cfg.DrainTimeout,
 		maxHops:      cfg.MaxHops,
 		maxRetries:   cfg.MaxRetries,
+		leaseTTL:     defaultTaskLeaseTTL,
+		recoverEvery: time.Minute,
 	}
 }
 
@@ -143,6 +152,12 @@ func (p *WorkerPool) workerLoop(acquireCtx, jobCtx context.Context) error {
 					return nil
 				case <-time.After(p.pollInterval):
 				}
+				continue
+			}
+			if h, ok := p.handlers[job.Type]; ok {
+				// Task jobs are long-running and resumable: they stop at
+				// shutdown instead of holding the drain.
+				p.runTask(acquireCtx, job, h)
 				continue
 			}
 			// Use jobCtx so in-flight work is not cancelled immediately on
@@ -259,8 +274,21 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 			p.retryOrFail(ctx, job.ID, fmt.Sprintf("reinforce: %s", err), existingID)
 			return
 		}
+		p.putVectors(ctx, existingID, draft)
 		p.queue.Complete(ctx, job.ID, existingID)
 		p.emitCompleted(ctx, job.ID, existingID, durationMs)
+		return
+	}
+
+	if dupOf, drop := suppressedDuplicate(draft); drop {
+		// duplicates.policy drop: the near-duplicate is not stored. The job
+		// answers with the existing object's ID, as analyze does for an
+		// exact duplicate.
+		slog.Info("jobs: near-duplicate dropped, not stored", "job", job.ID, "duplicate_of", dupOf)
+		if err := p.queue.Complete(ctx, job.ID, dupOf); err != nil {
+			slog.Warn("jobs: mark completed", "job", job.ID, "err", err)
+		}
+		p.emitCompleted(ctx, job.ID, dupOf, durationMs)
 		return
 	}
 
@@ -308,6 +336,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 				p.emitFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr), draft.ID)
 				return
 			}
+			p.putVectors(ctx, existingID, draft)
 			p.queue.Complete(ctx, job.ID, existingID)
 			p.emitCompleted(ctx, job.ID, existingID, durationMs)
 			return
@@ -316,6 +345,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		p.emitFailed(ctx, job.ID, fmt.Sprintf("store: %s", err), draft.ID)
 		return
 	}
+	p.putVectors(ctx, draft.ID, draft)
 
 	// Write edges for mentions (ADR-049).
 	// Any edge write failure rolls back by failing the job; the object has
@@ -355,6 +385,29 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	// Fan out per-item jobs if the pipeline staged items for enqueueing.
 	p.fanOutItems(ctx, draft)
+}
+
+// suppressedDuplicate reports whether the dedup step marked draft
+// suppress_output (policy drop), with the existing object it duplicates.
+// A mark without a duplicate_of has no object to answer with, so the draft
+// is stored.
+func suppressedDuplicate(draft *storage.KnowledgeObject) (duplicateOf string, suppressed bool) {
+	suppressed, _ = draft.Metadata["suppress_output"].(bool)
+	duplicateOf, _ = draft.Metadata["duplicate_of"].(string)
+	return duplicateOf, suppressed && duplicateOf != ""
+}
+
+// putVectors persists the embedding step's per-model vectors for the stored
+// object (a new object's ID, or the reinforced one's). Vectors are additive:
+// a failed Put is logged and never fails the job; the object's missing rows
+// are what the embedding migration backfill picks up.
+func (p *WorkerPool) putVectors(ctx context.Context, objectID string, draft *storage.KnowledgeObject) {
+	if len(draft.Vectors) == 0 {
+		return
+	}
+	if err := p.store.Embeddings().Put(ctx, objectID, draft.Vectors); err != nil {
+		slog.Warn("jobs: embeddings not stored; ingest continues", "object", objectID, "err", err)
+	}
 }
 
 // retryOrFail requeues a job after a transient error, failing it once
@@ -477,7 +530,7 @@ func (p *WorkerPool) emitObjectIngested(ctx context.Context, draft *storage.Know
 }
 
 func (p *WorkerPool) recoverStaleLoop(ctx context.Context) error {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(p.recoverEvery)
 	defer ticker.Stop()
 
 	for {

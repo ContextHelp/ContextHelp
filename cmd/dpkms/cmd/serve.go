@@ -9,13 +9,12 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
-
-	"path/filepath"
-	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -205,15 +204,18 @@ func runServe(cmd *cobra.Command, args []string) error {
 		fmt.Printf("IBR browser daemon on port %d\n", browserMgr.Port())
 	}
 
-	pipes := builtins.ConfiguredRegistryWithPipelineOverrides(
-		factory,
-		cfg.Providers,
-		cfg.Pipelines,
-		driver.Blobs(),
-		cfg.Storage.Blob.Threshold,
-		browserClient,
-	)
+	// The embedding resolver is built once here and shared by every
+	// pipeline and the startup report: ingest embeds each populating model
+	// through it.
+	embResolver := newEmbeddingResolver()
+	buildOpts := embeddingBuildOpts(driver, embResolver)
+	buildOpts.Factory = factory
+	buildOpts.BlobStore = driver.Blobs()
+	buildOpts.BlobThreshold = cfg.Storage.Blob.Threshold
+	buildOpts.BrowserClient = browserClient
+	pipes := builtins.ConfiguredRegistryWithPipelineOverrides(buildOpts, cfg.Providers, cfg.Pipelines)
 	fmt.Println("Pipeline runtime initialized (with overrides)")
+	reportEmbeddingProvider(os.Stdout, embResolver)
 
 	// 3b. Wire pipeline preflight validation into the queue.
 	queue.SetPipelineValidator(func(name string) error {
@@ -343,23 +345,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Version: version,
 		Started: time.Now(),
 		Upgrade: func(_ context.Context) *httpserver.UpgradeSnapshot {
-			snap := upgradeMgr.Snapshot()
-			if snap.State == upgrade.StateIdle {
-				return nil
-			}
-			out := &httpserver.UpgradeSnapshot{
-				State:      string(snap.State),
-				Bucket:     string(snap.Bucket),
-				Progress:   snap.Progress,
-				Done:       snap.Done,
-				Total:      snap.Total,
-				EtaSeconds: snap.EtaSeconds,
-				LastError:  snap.LastError,
-			}
-			if !snap.StartedAt.IsZero() {
-				out.StartedAt = snap.StartedAt.UTC().Format(time.RFC3339)
-			}
-			return out
+			return httpserver.NewUpgradeSnapshot(upgradeMgr.Snapshot())
 		},
 	}
 	// Non-private instances authenticate the whole /api/v1 route table
@@ -454,6 +440,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// 10. Init worker pool.
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
+	handleEmbeddingsMigrate(pool, driver, upgradeMgr, svc.Bus)
 
 	// 10pre. Init federation worker set. Cycle detection runs here; an
 	// invalid topology fails serve before any port is bound (US-0318 AC).

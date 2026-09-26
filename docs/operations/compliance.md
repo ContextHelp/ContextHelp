@@ -81,12 +81,8 @@ retention:
 
 A background sweep runs nightly as part of the dpkms job worker.
 Manual sweep is not yet exposed as a CLI command; to trigger expiry processing
-restart the server — it runs the sweep on startup — or use the dev reindex command:
-
-```
-# Reindex (also prunes stale vectors); requires dpkms running
-ctxt dev reindex-vectors
-```
+restart the server — it runs the sweep on startup. Vectors are deleted with
+their object, so an expired object leaves no embeddings behind.
 
 ### Minimisation guidance
 

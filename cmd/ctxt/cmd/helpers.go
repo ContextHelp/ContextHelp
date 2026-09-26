@@ -14,6 +14,8 @@ import (
 	"charm.land/lipgloss/v2/table"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
+	embregistry "github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
@@ -73,7 +75,7 @@ func newService() (*service.Service, func(), error) {
 	}
 
 	queue := jobs.NewQueue(driver.Jobs())
-	pipes := builtins.Registry()
+	pipes := builtins.ConfiguredRegistryWithOpts(embeddingBuildOpts(driver))
 	engine := search.NewEngine(driver)
 
 	// Wire pipeline preflight validation into the queue.
@@ -198,10 +200,35 @@ func dbPathForInstance(nameOrPort string) (string, error) {
 	return "", e
 }
 
+// embeddingBuildOpts wires the embedding write path into the pipeline
+// registry: the populate set from the driver's model registry, each
+// model's provider through one resolver built from config, -c and env, and
+// the driver's per-model vector index. Without a readable registry, ingest
+// writes no vectors. The duplicates config rides along for dedup, which
+// runs on those vectors.
+func embeddingBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
+	opts := builtins.BuildOpts{
+		Resolver:   embeddings.NewProviderResolver(newEmbeddingResolver()),
+		Embeddings: driver.Embeddings(),
+		Audit:      driver.AuditLog(),
+	}
+	if cfg != nil {
+		opts.Duplicates = cfg.Duplicates
+	}
+	reg, err := embregistry.ForDriver(driver)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: embedding model registry unavailable; ingest writes no vectors: %v\n", err)
+		return opts
+	}
+	opts.Models = reg
+	return opts
+}
+
 // loadDetectors reads enabled detectors from the DB and registers them with the registry.
 func loadDetectors(ctx context.Context, driver storage.StorageDriver, pipes interface {
 	RegisterDetector(d pipeline.Detector)
-}) error {
+},
+) error {
 	t := true
 	records, _, err := driver.Detectors().List(ctx, storage.DetectorFilter{Enabled: &t})
 	if err != nil {

@@ -1,0 +1,9 @@
+{
+  "state": "in_progress",
+  "bucket": "embeddings_migrate",
+  "target": "ollama-nomic-embed-text@2026-09-26",
+  "progress": 0.75,
+  "done": 3,
+  "total": 4,
+  "started_at": "2026-09-26T19:58:10Z"
+}

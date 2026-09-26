@@ -45,7 +45,7 @@ func TestRegistryList(t *testing.T) {
 
 func TestSelectPipelineShort(t *testing.T) {
 	r := NewRegistry()
-	name := r.SelectPipeline("short text")
+	name := r.SelectPipeline("", "short text")
 	if name != "text.short" {
 		t.Errorf("got %q, want text.short", name)
 	}
@@ -53,7 +53,7 @@ func TestSelectPipelineShort(t *testing.T) {
 
 func TestSelectPipelineLong(t *testing.T) {
 	r := NewRegistry()
-	name := r.SelectPipeline(strings.Repeat("word ", 200))
+	name := r.SelectPipeline("", strings.Repeat("word ", 200))
 	if name != "text.long" {
 		t.Errorf("got %q, want text.long", name)
 	}
@@ -89,12 +89,61 @@ func TestSelectPipelineMedia(t *testing.T) {
 		{"/tmp/script.py", "doc.code"},
 		{"/tmp/app.js", "doc.code"},
 		{"/tmp/report.docx", "doc.office"},
-		{"/tmp/book.epub", "doc.office"},
 	}
 	for _, tt := range tests {
-		got := r.SelectPipeline(tt.input)
+		got := r.SelectPipeline(tt.input, "")
 		if got != tt.want {
 			t.Errorf("SelectPipeline(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+// doc.office extracts .docx only; other office formats must not reach it.
+func TestSelectPipelineUnextractableOfficeFormats(t *testing.T) {
+	r := NewRegistry()
+	for _, ext := range []string{".doc", ".odt", ".rtf", ".epub"} {
+		if got := r.SelectPipeline("/tmp/report"+ext, ""); got == "doc.office" {
+			t.Errorf("SelectPipeline(%s) = doc.office, which cannot extract it", ext)
+		}
+	}
+}
+
+// Extension rules read only the source; length rules read only the content.
+func TestSelectPipelineSourceVsContent(t *testing.T) {
+	r := NewRegistry()
+	long := strings.Repeat("word ", 200)
+	tests := []struct {
+		source, content, want string
+	}{
+		{"argument", "fixed bug in main.go", "text.short"},
+		{"", "grabbed shot.png", "text.short"},
+		{"stdin", long + "paper.pdf", "text.long"},
+		{"/tmp/shot.png", "tiny", "image.ocr"},
+		{"/tmp/notes.md", long, "doc.markdown"},
+		{"/tmp/notes.txt", "tiny", "text.short"},
+		{"/tmp/notes.txt", long, "text.long"},
+		{"/var/log/app.log", long, "text.long"},
+	}
+	for _, tt := range tests {
+		if got := r.SelectPipeline(tt.source, tt.content); got != tt.want {
+			t.Errorf("SelectPipeline(%q, %d bytes ending %q) = %q, want %q",
+				tt.source, len(tt.content), tt.content[max(0, len(tt.content)-12):], got, tt.want)
+		}
+	}
+}
+
+// Detectors see the source and the full content, each in its own field.
+func TestDetectPassesSourceAndContentApart(t *testing.T) {
+	r := NewRegistry()
+	var seen DetectInput
+	r.RegisterDetector(DetectorFunc(func(in DetectInput) (string, error) {
+		seen = in
+		return "", ErrDelegate
+	}))
+	long := strings.Repeat("word ", 200)
+	r.Detect(DetectInput{Source: "/tmp/notes.txt", Content: long})
+	if seen.Source != "/tmp/notes.txt" || seen.Content != long {
+		t.Errorf("detector saw source %q and %d content bytes; want the source and all %d bytes",
+			seen.Source, len(seen.Content), len(long))
 	}
 }

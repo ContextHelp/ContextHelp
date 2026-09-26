@@ -12,6 +12,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
@@ -137,7 +138,7 @@ func TestGraphIngest_FTSSearch(t *testing.T) {
 		FallbackToFTS: true,
 	}
 
-	results, err := env.svc.HybridSearch(ctx, uniqueTerm, 5, nil, cfg)
+	results, err := env.svc.HybridSearch(ctx, uniqueTerm, 5, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.NotEmpty(t, results, "FTS search must surface the ingested graph KO")
 	assert.Equal(t, ko.ID, results[0].ID,

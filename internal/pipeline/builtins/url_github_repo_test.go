@@ -45,7 +45,7 @@ func TestURLGitHubRepoDetector(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := r.SelectPipeline(tt.url)
+		got := r.SelectPipeline(tt.url, "")
 		if got != tt.want {
 			t.Errorf("%s: SelectPipeline(%q) = %q, want %q", tt.desc, tt.url, got, tt.want)
 		}
