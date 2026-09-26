@@ -127,11 +127,13 @@ Outside a migration window, `populate_models` contains exactly one entry: the cu
 
 The migration is restartable, idempotent, and can be interrupted with `ctxt upgrade run --pause` (per ADR-070 upgrade CLI).
 
+> **As built (2026-09-26):** `migrate` takes `--to`, `--rate-limit`, `--batch` and `--dry-run`. There is no `--budget-usd` cost cap and no pause: a run is stopped with `dpkms job cancel <job-id>` and resumed by running `migrate` again. Progress is reported in `ctxt upgrade status` under bucket `embeddings_migrate`, with `target` and `failed`. See [Operate embedding models](../manual/operations/embeddings.md#migrate).
+
 ### Default-flip control
 
 ```
 ctxt embeddings list                           # show registered models, coverage %, default
-ctxt embeddings register <model_id> <config>   # add a candidate
+ctxt embeddings register <model_id>            # add a candidate
 ctxt embeddings deprecate <model_id> --on <date>  # schedule retirement
 ctxt embeddings set-default <model_id>         # atomic flip
 ```
@@ -141,6 +143,8 @@ ctxt embeddings set-default <model_id>         # atomic flip
 - Refuses unless the candidate has ≥99% coverage (configurable threshold).
 - Optionally runs a `hop.top/ben` recall suite as a pre-flight check; if recall regresses below tolerance, refuses unless `--i-know-recall-regressed` is passed.
 - Atomically updates `is_default` and emits a bus event that invalidates any in-flight query plans.
+
+> **As built (2026-09-26):** only the coverage guard exists (`embeddings.min_coverage`, default 0.99; `--min-coverage` per call). There is no recall pre-flight and no `--i-know-recall-regressed` flag.
 
 The old index is **not deleted** on flip. It remains queryable as fallback for the configured grace period (default 30 days, configurable). Decommissioning happens via a separate `ctxt embeddings deprecate` command that schedules removal.
 
@@ -153,13 +157,13 @@ This is the explicit "design-for, don't-build" line: the table is multi-model, t
 ### Operator-facing CLI surface (added to ADR-070's `ctxt upgrade *` subtree)
 
 - `ctxt embeddings list` — registered models, coverage %, default flag, deprecation status
-- `ctxt embeddings register <model_id>` — add a candidate; opens the model's config in `$EDITOR` (or `--config <path>`)
+- `ctxt embeddings register <model_id>` — add a candidate; the provider comes from the `--embedding-*` flags, `CTXT_EMBEDDING_*` env, `-c providers.embedding.*` or config, and its dimension is measured by embedding a probe string (`--dimension` only checks it)
 - `ctxt embeddings migrate --to <model_id>` — kick off a background migration job
-- `ctxt embeddings set-default <model_id>` — atomic default-flip with coverage + recall guards
+- `ctxt embeddings set-default <model_id>` — atomic default-flip with the coverage guard
 - `ctxt embeddings deprecate <model_id> --on <date>` — schedule retirement
 - `ctxt embeddings purge <model_id>` — actually delete embedding rows for a deprecated model (post-grace-period)
 
-All commands surface progress via the ADR-070 `ctxt upgrade status` infrastructure. Migration jobs are bus-event-emitting per ADR-070 conventions.
+The migration job surfaces progress via the ADR-070 `ctxt upgrade status` infrastructure (bucket `embeddings_migrate`); the other commands complete synchronously. Migration jobs and default flips are bus-event-emitting per ADR-070 conventions.
 
 ### Test strategy
 

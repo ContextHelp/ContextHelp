@@ -352,6 +352,8 @@ Sorted by command path. `Buckets` is the union across `Validate()` + `ValidateSi
 | `ctxt watch status` | missing-idempotency, missing-side-effect | missing kit/side-effect annotation |
 | `ctxt watch stop` | missing-idempotency, missing-side-effect | missing kit/side-effect annotation |
 
+> **Since this baseline (2026-09-26):** `ctxt embeddings register` no longer defines `--config` (nor its later rename `--model-config`) and never opens `$EDITOR`: it resolves the provider from `--embedding-*` flags, `CTXT_EMBEDDING_*` env, `-c` and config, and measures the dimension from the provider. `ctxt dev reindex-vectors` is removed; `ctxt embeddings migrate` replaces it. The rows above are the baseline as recorded.
+
 ## Removal patterns (T-0593 foundation → subtree fan-out)
 
 ### Global-flag collisions (31 leaves)
@@ -506,4 +508,3 @@ Baseline probe (`-tags=ctxtbaselineprobe TestBaselineProbe`) reports the
 **All 6 config subcommands conform.** No fix required. The annotations match
 the runtime side effects, all guidance fields are present in the shapes the
 strict gates require, and the destructive leaf carries its token marker.
-

@@ -287,8 +287,9 @@ func TestListWithCoverage_PartialCoverage(t *testing.T) {
 }
 
 // TestRegister_LargeDimensionAllowedOnSQLite pins the asymmetry contract:
-// SQLite brute-forces any dimension, so no indexability ceiling applies —
-// the ceiling is a Postgres/HNSW property enforced only there.
+// SQLite's vec0 index accepts up to storage.SQLiteVecMaxDimension (8192)
+// dimensions, above the Postgres/HNSW ceiling of 2000, so a 3000-dimension
+// model registers on SQLite but not on Postgres.
 func TestRegister_LargeDimensionAllowedOnSQLite(t *testing.T) {
 	r, _ := newRegistry(t)
 	err := r.Register(context.Background(), registry.Model{
@@ -296,5 +297,5 @@ func TestRegister_LargeDimensionAllowedOnSQLite(t *testing.T) {
 		Provider:  registry.ProviderOpenAI,
 		Dimension: 3000,
 	}, false)
-	require.NoError(t, err, "sqlite has no indexability ceiling")
+	require.NoError(t, err, "3000 is under the sqlite-vec ceiling of 8192")
 }
