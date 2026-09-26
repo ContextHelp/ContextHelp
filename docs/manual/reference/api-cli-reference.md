@@ -25,6 +25,10 @@ ctxt job cancel <job_id>
 
 ```bash
 ctxt find "<natural-language query>" [--limit N]
+ctxt find "<query>" --explain                     # per-signal score breakdown
+ctxt find "<query>" --graph [--no-browser]        # interactive search graph (see workflows/search-graph.md)
+ctxt find "<query>" --graph --format json|yaml    # search graph as JGF
+ctxt find "<query>" --graph -o <file>.html|.json|.yaml|.graphml|.gexf
 ctxt list [--type <type>] [--tag a,b] [--after <ISO>] [--q "<query>"]
 ctxt open <object_id> [--raw] [--output json|yaml|text]
 ```

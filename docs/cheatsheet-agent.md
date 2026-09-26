@@ -158,6 +158,10 @@ Use only when RSQL returns empty or confidence is low.
 ```bash
 ctxt find "recent checkout architecture decisions" --limit 10
 GET /objects?search=<nlq>&limit=10
+
+# Why was a result cut? Full candidate trace as JGF (CLI only; never opens a browser)
+ctxt find "<nlq>" --graph --format json \
+  | jq '.graph.nodes[] | select(.metadata.stage == "cut_limit" or .metadata.stage == "cut_threshold") | .metadata | {object_id, stage, rank, total: .score.total}'
 ```
 
 ---

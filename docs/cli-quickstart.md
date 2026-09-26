@@ -180,6 +180,10 @@ Search and query your knowledge base:
 ./bin/ctxt find "authentication" --fts
 ./bin/ctxt find "authentication" --semantic
 
+# See every candidate the search considered, as an interactive graph
+# (Ctrl-C to stop; see manual/workflows/search-graph.md)
+./bin/ctxt find "authentication" --graph
+
 # View object details
 ./bin/ctxt open obj_12345678
 ```
