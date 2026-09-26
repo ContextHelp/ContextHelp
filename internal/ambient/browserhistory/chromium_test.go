@@ -12,6 +12,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/ideacrafterslabs/ctxt/internal/ambient"
 	"github.com/ideacrafterslabs/ctxt/internal/browser/chromium"
 )
 
@@ -154,6 +155,78 @@ func TestChromiumClientVisitsSincePages(t *testing.T) {
 	}
 	if batches != 3 {
 		t.Fatalf("batches = %d, want 3", batches)
+	}
+}
+
+func TestChromiumClientVisitsCarrySource(t *testing.T) {
+	base := newUserDataDir(t, t0, t0.Add(time.Minute))
+	c, err := NewChromiumClient(chromium.Brave, "Research", chromium.WithUserDataDir(base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	since, err := c.VisitsSince(ctx, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	between, err := c.VisitsBetween(ctx, t0, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, vs := range map[string][]Visit{"VisitsSince": since, "VisitsBetween": between} {
+		if len(vs) != 2 {
+			t.Fatalf("%s returned %d visits, want 2", name, len(vs))
+		}
+		for _, v := range vs {
+			if v.Source != "brave:Profile 3" {
+				t.Fatalf("%s: Source = %q, want %q", name, v.Source, "brave:Profile 3")
+			}
+			if v.Browser != "brave" {
+				t.Fatalf("%s: Browser = %q, want brave", name, v.Browser)
+			}
+		}
+	}
+}
+
+func TestSourceEventMetadataCarriesVisitSource(t *testing.T) {
+	base := newUserDataDir(t, t0)
+	c, err := NewChromiumClient(chromium.Brave, "Research", chromium.WithUserDataDir(base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(Config{Browsers: []BrowserClient{c}, PollInterval: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := s.Start(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Stop(context.Background()) })
+
+	var ev ambient.RawEvent
+	select {
+	case ev = <-s.Events():
+	case <-time.After(5 * time.Second):
+		t.Fatal("no event")
+	}
+	if ev.Metadata["source"] != "brave:Profile 3" {
+		t.Fatalf("Metadata[source] = %v, want %q", ev.Metadata["source"], "brave:Profile 3")
+	}
+	if ev.Metadata["browser"] != "brave" {
+		t.Fatalf("Metadata[browser] = %v, want brave", ev.Metadata["browser"])
+	}
+}
+
+func TestSourceEventMetadataOmitsEmptySource(t *testing.T) {
+	s, err := New(Config{Browsers: []BrowserClient{&fakeBrowser{name: "chrome"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := s.toRawEvent(Visit{URL: "https://example.com/", VisitedAt: t0, Browser: "chrome"})
+	if _, ok := ev.Metadata["source"]; ok {
+		t.Fatalf("Metadata[source] set for a visit without Source: %v", ev.Metadata["source"])
 	}
 }
 

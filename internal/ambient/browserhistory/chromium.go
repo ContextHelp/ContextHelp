@@ -62,9 +62,10 @@ func (c *ChromiumClient) read(ctx context.Context, from, to time.Time, limit int
 	if err != nil {
 		return nil, err
 	}
+	source := c.Name()
 	out := make([]Visit, len(hv))
 	for i, v := range hv {
-		out[i] = Visit{URL: v.URL, Title: v.Title, VisitedAt: v.VisitedAt, Browser: string(c.browser)}
+		out[i] = Visit{URL: v.URL, Title: v.Title, VisitedAt: v.VisitedAt, Browser: string(c.browser), Source: source}
 	}
 	return out, nil
 }

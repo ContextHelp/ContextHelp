@@ -212,6 +212,35 @@ func TestHistoryVisitsDropsSubframes(t *testing.T) {
 	assertURLs(t, got, "https://example.com/top", "https://example.com/form")
 }
 
+func TestHistoryVisitsDropsReloads(t *testing.T) {
+	chain := transitionChainStart | transitionChainEnd
+	dir := newProfile(t, []testRow{
+		{"https://example.com/page", "", at(0), typed},
+		// Reload button, or Enter on the URL already shown.
+		{"https://example.com/page", "", at(1), transitionReload | chain},
+		// Session restore / undo tab close, with a qualifier bit set.
+		{"https://example.com/restored", "", at(2), transitionReload | chain | transitionFromAddressBar},
+		// A reload whose URL now redirects: every hop, the end included,
+		// carries the reload core type.
+		{"https://example.com/stale", "", at(3), transitionReload | transitionChainStart},
+		{"https://example.com/login", "", at(3), transitionReload | transitionServerRedirect | transitionChainEnd},
+		{"https://example.com/next", "", at(4), transitionLink | chain},
+	})
+	ctx := context.Background()
+	got, err := HistoryVisits(ctx, dir, time.Time{}, time.Time{}, 0)
+	if err != nil {
+		t.Fatalf("HistoryVisits: %v", err)
+	}
+	assertURLs(t, got, "https://example.com/page", "https://example.com/next")
+
+	// Reloads never fill a batch.
+	got, err = HistoryVisits(ctx, dir, at(1), time.Time{}, 1)
+	if err != nil {
+		t.Fatalf("HistoryVisits: %v", err)
+	}
+	assertURLs(t, got, "https://example.com/next")
+}
+
 func TestHistoryVisitsCollapsesRedirectChains(t *testing.T) {
 	dir := newProfile(t, []testRow{
 		// Server redirect chain: short link -> tracker -> landing page.
