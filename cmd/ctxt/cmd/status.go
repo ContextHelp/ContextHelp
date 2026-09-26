@@ -4,8 +4,9 @@
 //
 // Exit codes:
 //
-//	0 — server returned 200 + health: healthy or degraded
-//	1 — server returned 503, body decode failure, or unreachable
+//	0  — server returned 200 + health: healthy or degraded
+//	1  — server returned 503 or health failed, or body decode failure
+//	70 — server unreachable
 //
 // The envelope schema is documented in internal/server/http/handlers_healthz.go;
 // keep this file's type mirror in sync if T-0580 (or later) adds top-level
@@ -25,6 +26,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/output"
 )
 
 // statusEnvelope mirrors internal/server/http.HealthzEnvelope. Duplicated
@@ -72,7 +74,8 @@ through unchanged.
 
 Exit codes:
   0   server reported healthy or degraded (still serving)
-  1   server unreachable, returned 503, or response could not be parsed
+  1   server returned 503, or response could not be parsed
+  70  server unreachable (nothing answered at the resolved URL)
 
 Examples:
   ctxt status
@@ -151,8 +154,10 @@ func statusOnce(cmd *cobra.Command, ep idxbridge.Endpoint) error {
 		renderStatusTable(cmd.OutOrStdout(), env, ep.URL)
 	}
 
+	// GENERIC by construction: the daemon answered and reports itself
+	// failed.
 	if status == gohttp.StatusServiceUnavailable || env.Health == "failed" {
-		return fmt.Errorf("dpkms health: %s", env.Health)
+		return output.GenericError("dpkms health: " + env.Health)
 	}
 	return nil
 }
