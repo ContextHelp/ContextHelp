@@ -47,6 +47,7 @@ func (m *mockStore) Resurfacing() storage.ResurfacingQueueStore { return nil }
 func (m *mockStore) Entitlements() storage.EntitlementStore     { return nil }
 func (m *mockStore) Metering() storage.MeteringStore            { return nil }
 func (m *mockStore) Vectors() storage.VectorStore               { return nil }
+func (m *mockStore) Embeddings() storage.EmbeddingStore         { return nil }
 func (m *mockStore) SavedSearches() storage.SavedSearchStore    { return nil }
 func (m *mockStore) SearchHistory() storage.SearchHistoryStore  { return nil }
 func (m *mockStore) Watermarks() storage.WatermarkStore         { return nil }

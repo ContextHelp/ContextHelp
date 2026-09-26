@@ -86,6 +86,7 @@ type KnowledgeObject struct {
 	Decisions          []Decision     `json:"decisions,omitempty"`
 	Tasks              []Task         `json:"tasks,omitempty"`
 	Embeddings         []float32      `json:"embeddings,omitempty"`
+	Vectors            []ObjectVector `json:"-"` // embedding-step output per model; persisted by EmbeddingStore.Put, never serialized
 	Pipeline           string         `json:"pipeline,omitempty"`
 	Source             string         `json:"source,omitempty"`
 	RegistryInfluences []string       `json:"registry_influences,omitempty"`
@@ -109,6 +110,17 @@ type KnowledgeObject struct {
 
 // Draft is an alias for KnowledgeObject being progressively enriched.
 type Draft = KnowledgeObject
+
+// ObjectVector is one embedding a registered model produced for one chunk
+// of an object: a row of the embeddings table keyed (object, model, chunk)
+// minus the object ID, which is known only once the object is persisted.
+type ObjectVector struct {
+	ModelID  string    `json:"model_id"`
+	ChunkIdx int       `json:"chunk_idx"`
+	Vector   []float32 `json:"vector"`
+	// Text is the chunk text that was embedded (eval and debugging).
+	Text string `json:"text,omitempty"`
+}
 
 // Section represents a structural section of a knowledge object.
 type Section struct {
