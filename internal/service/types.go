@@ -191,6 +191,9 @@ type StalenessWarning struct {
 type HybridSearchResult struct {
 	Results     []HybridResult    `json:"results"`
 	Diagnostics SearchDiagnostics `json:"diagnostics"`
+	// Trace lists every scored candidate and its stage. Nil unless the
+	// caller used HybridSearchExplainFilteredWithTrace.
+	Trace *SearchTrace `json:"trace,omitempty"`
 }
 
 // InboxQueueItem is a row in the combined inbox queue view.

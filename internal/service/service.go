@@ -1755,6 +1755,21 @@ func (s *Service) HybridSearchExplainFiltered(ctx context.Context, query string,
 // cases at the CLI: (a) zero candidates from any retrieval leg vs. (b)
 // candidates surfaced but all fell below MinScore.
 func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) (*HybridSearchResult, error) {
+	return s.hybridSearch(ctx, query, filter, sem, cfg, false)
+}
+
+// HybridSearchExplainFilteredWithTrace is HybridSearchExplainFilteredWithDiagnostics
+// plus envelope.Trace: every candidate the search scored, its leg
+// membership, raw and fused scores, final rank, and the stage it reached
+// (returned, cut_limit, cut_threshold). Results and Diagnostics are
+// identical to the untraced call.
+func (s *Service) HybridSearchExplainFilteredWithTrace(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) (*HybridSearchResult, error) {
+	return s.hybridSearch(ctx, query, filter, sem, cfg, true)
+}
+
+// hybridSearch is the shared hybrid pipeline. withTrace adds per-candidate
+// bookkeeping; without it the pipeline does no trace work.
+func (s *Service) hybridSearch(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig, withTrace bool) (*HybridSearchResult, error) {
 	k := cfg.RRF.K
 	if k <= 0 {
 		k = 60
@@ -1853,35 +1868,11 @@ func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context
 		return nil, fmt.Errorf("hybrid search rerank: %w", err)
 	}
 
-	// Partition into above-threshold (kept) vs below-threshold (dropped),
-	// preserving the descending-score order from the reranker.
 	threshold := cfg.MinScore
-	ranked := make([]ranking.Result, 0, len(scored))
-	belowCount := 0
-	topBelowScore := 0.0
-	haveBelow := false
-	for _, r := range scored {
-		if r.Total < threshold {
-			belowCount++
-			if !haveBelow || r.Total > topBelowScore {
-				topBelowScore = r.Total
-				haveBelow = true
-			}
-			continue
-		}
-		ranked = append(ranked, r)
-	}
-
+	ranked, diagnostics := partitionByThreshold(scored, threshold)
+	diagnostics.CandidateCount = len(candidates)
 	semantic := vecRes.report
-	diagnostics := SearchDiagnostics{
-		CandidateCount:      len(candidates),
-		BelowThresholdCount: belowCount,
-		Threshold:           threshold,
-		Semantic:            &semantic,
-	}
-	if haveBelow {
-		diagnostics.TopBelowThresholdScore = topBelowScore
-	}
+	diagnostics.Semantic = &semantic
 
 	// T-0581: count candidates whose pipeline stamp is older than the
 	// registry's installed version for the same family. Surface the count
@@ -1905,19 +1896,53 @@ func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context
 	for i := 0; i < limit; i++ {
 		r := ranked[i]
 		out[i] = HybridResult{
-			Object: r.Object,
-			Breakdown: ScoreBreakdown{
-				FTS:            r.FTS,
-				Vector:         r.Vector,
-				MentionBoost:   r.MentionBoost,
-				GraphRelevance: r.GraphRelevance,
-				WordOverlap:    r.WordOverlap,
-				Total:          r.Total,
-			},
+			Object:       r.Object,
+			Breakdown:    breakdownOf(r),
 			DocumentView: projection.ProjectDocument(r.Object),
 		}
 	}
-	return &HybridSearchResult{Results: out, Diagnostics: diagnostics}, nil
+	envelope := &HybridSearchResult{Results: out, Diagnostics: diagnostics}
+	if withTrace {
+		envelope.Trace = buildSearchTrace(searchTraceInput{
+			query:     query,
+			ftsQuery:  ftsQuery,
+			semantic:  vecRes.report,
+			ftsPool:   ftsPool,
+			vecPool:   vectorPool(cfg),
+			rrf:       cfg.RRF,
+			k:         k,
+			weights:   weights,
+			threshold: threshold,
+			limit:     filter.Limit,
+			kept:      limit,
+			scored:    scored,
+			ftsLeg:    ftsRes.results,
+			vecLeg:    vecRes.results,
+		})
+	}
+	return envelope, nil
+}
+
+// partitionByThreshold splits reranked results into above-threshold (kept)
+// and below-threshold (dropped), preserving the descending-score order from
+// the reranker. The returned diagnostics carry the threshold and the
+// dropped count/top score; the caller fills CandidateCount.
+func partitionByThreshold(scored []ranking.Result, threshold float64) ([]ranking.Result, SearchDiagnostics) {
+	ranked := make([]ranking.Result, 0, len(scored))
+	diag := SearchDiagnostics{Threshold: threshold}
+	haveBelow := false
+	for _, r := range scored {
+		if r.Total < threshold {
+			diag.BelowThresholdCount++
+			if !haveBelow || r.Total > diag.TopBelowThresholdScore {
+				diag.TopBelowThresholdScore = r.Total
+				haveBelow = true
+			}
+			continue
+		}
+		ranked = append(ranked, r)
+	}
+	return ranked, diag
 }
 
 // hybridVectorLeg runs the hybrid search's vector leg: the default
@@ -1925,10 +1950,7 @@ func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context
 // instead of failing the search, unless cfg.FallbackToFTS is off.
 func (s *Service) hybridVectorLeg(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, retrieval.SemanticReport, error) {
 	vecFilter := filter
-	vecFilter.Limit = cfg.CandidatePool.Vector
-	if vecFilter.Limit <= 0 {
-		vecFilter.Limit = 50
-	}
+	vecFilter.Limit = vectorPool(cfg)
 	res, rep, err := sem.Search(ctx, s.Store, search.DecomposeQuery(query, 2), vecFilter)
 	if err != nil {
 		return nil, rep, fmt.Errorf("hybrid search vector leg: %w", err)
@@ -1938,6 +1960,14 @@ func (s *Service) hybridVectorLeg(ctx context.Context, query string, filter stor
 			rep.Status, rep.Detail)
 	}
 	return res, rep, nil
+}
+
+// vectorPool is the effective vector-leg candidate pool size.
+func vectorPool(cfg config.SearchConfig) int {
+	if cfg.CandidatePool.Vector > 0 {
+		return cfg.CandidatePool.Vector
+	}
+	return 50
 }
 
 // EnsureDefaultRegistry caches the bundled default registry manifest if no cache entry
