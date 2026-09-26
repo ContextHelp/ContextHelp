@@ -311,17 +311,33 @@ type URIConfig struct {
 }
 
 // DuplicatesConfig controls duplicate and near-duplicate detection behaviour at ingest time.
+//
+// Exact and source-key duplicates are checked when content is analyzed,
+// before a job is enqueued. Near-duplicates are checked by the dedup
+// pipeline step, which runs right after the embedding step in every
+// pipeline that embeds.
 type DuplicatesConfig struct {
 	// Policy determines what happens when a duplicate is found.
 	// Valid values: "warn" (default), "drop", "keep".
+	//   - warn: ingest continues; the duplicate is logged as a warning.
+	//     A near-duplicate is also recorded on the new object's metadata
+	//     (duplicate_of, duplicate_similarity, duplicate_kind).
+	//   - keep: as warn, without the warning.
+	//   - drop: an exact or source-key duplicate is not enqueued; analyze
+	//     answers with the existing object's ID. A near-duplicate is
+	//     recorded as under warn and marked suppress_output; the object
+	//     is still stored.
 	Policy string `mapstructure:"policy" yaml:"policy"`
-	// SimilarityThreshold is the cosine similarity cutoff for near-duplicate detection.
-	// Range: 0.0–1.0. Default: 0.95.
+	// SimilarityThreshold is the cosine similarity (1 - cosine distance)
+	// in the default embedding model's index at or above which an object
+	// is a near-duplicate. Range: 0.0–1.0. Default: 0.95.
 	SimilarityThreshold float64 `mapstructure:"similarity_threshold" yaml:"similarity_threshold"`
 	// CheckExact enables content-hash exact-match deduplication. Default: true.
 	CheckExact bool `mapstructure:"check_exact" yaml:"check_exact"`
-	// CheckSimilar enables vector-embedding near-duplicate detection. Default: false.
-	// Requires embeddings to have been computed (pipeline embedding step must run first).
+	// CheckSimilar enables vector-embedding near-duplicate detection: the
+	// dedup step is inserted after the embedding step. Default: false.
+	// Without a default embedding model, or without the object's vector
+	// under it, the check is skipped.
 	CheckSimilar bool `mapstructure:"check_similar" yaml:"check_similar"`
 }
 
@@ -1382,10 +1398,13 @@ type PipelinesConfig struct {
 type PipelineOverride struct {
 	// Providers overrides individual provider backends for this pipeline only.
 	// Keys match ProvidersConfig field names in lowercase: "llm", "vision", etc.
-	// "embedding" is not overridable per pipeline: the embedding provider
-	// is resolved once per process (see internal/embeddings).
+	// An "embedding" key is ignored with a warning: each registered
+	// embedding model's registry entry decides its own provider, for every
+	// pipeline alike.
 	Providers map[string]ProviderBackendConfig `mapstructure:"providers" yaml:"providers"`
 	// SkipSteps is an ordered list of step names to remove from the pipeline.
+	// "dedup" removes the near-duplicate check that duplicates.check_similar
+	// inserts.
 	SkipSteps []string `mapstructure:"skip_steps" yaml:"skip_steps"`
 	// ExtraSteps is an ordered list of step names appended after existing steps.
 	ExtraSteps []string `mapstructure:"extra_steps" yaml:"extra_steps"`

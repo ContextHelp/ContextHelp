@@ -3,7 +3,6 @@ package steps
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -14,12 +13,14 @@ import (
 )
 
 // DedupStep is a pipeline step that checks for near-duplicate objects in
-// the default embedding model's index after the embedding step has run. It
-// applies the configured policy: warn (annotate + continue), drop (annotate
-// + suppress), keep (pass through).
+// the default embedding model's index after the embedding step has run.
+// A match at or above the similarity threshold is recorded on the draft's
+// Metadata (duplicate_of, duplicate_similarity, duplicate_kind) and the
+// configured policy applies: warn (the default) also logs a warning, keep
+// records silently, drop also sets suppress_output.
 //
-// builtins.InjectDedupStep inserts it after "embedding" when
-// cfg.Duplicates.CheckSimilar == true.
+// builtins.InjectDedupStep inserts it after "embedding" in every pipeline
+// that embeds when cfg.Duplicates.CheckSimilar == true.
 type DedupStep struct {
 	pipeline.BaseContract
 	models embeddings.ModelSource
@@ -58,13 +59,16 @@ func (s *DedupStep) Run(ctx context.Context, draft *storage.KnowledgeObject) (*s
 
 	def, err := s.models.Default(ctx)
 	if err != nil {
-		if !errors.Is(err, registry.ErrNoDefaultModel) {
+		if errors.Is(err, registry.ErrNoDefaultModel) {
+			slog.Debug("dedup: skipped", "reason", "no default embedding model", "object", draft.ID)
+		} else {
 			slog.Warn("dedup: read default embedding model (non-fatal)", "err", err)
 		}
 		return draft, nil
 	}
 	query := defaultModelVector(draft.Vectors, def.ModelID)
 	if query == nil {
+		slog.Debug("dedup: skipped", "reason", "no vector for the default model", "object", draft.ID, "model_id", def.ModelID)
 		return draft, nil
 	}
 
@@ -92,12 +96,11 @@ func (s *DedupStep) Run(ctx context.Context, draft *storage.KnowledgeObject) (*s
 		case "drop":
 			// Signal to the caller/pipeline executor that this object should not be persisted.
 			draft.Metadata["suppress_output"] = true
-		case "warn":
-			fmt.Printf("warning: near-duplicate detected (similarity=%.4f): existing object %s\n",
-				score, hit.ObjectID)
-			// Continue ingestion.
 		case "keep":
-			// Continue silently.
+			// Recorded above; continue silently.
+		default: // "warn"; config validation reads an empty policy as warn
+			slog.Warn("dedup: near-duplicate detected",
+				"object", draft.ID, "duplicate_of", hit.ObjectID, "similarity", score, "model_id", def.ModelID)
 		}
 		break // only check first match
 	}

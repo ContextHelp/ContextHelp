@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 1a6c3981
+recorded_at: "2026-09-26T17:57:01Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"snowflake-arctic-embed2","prompt":"numbat sighted near the dryandra woodlands\nnumbat sighted near the dryandra woodlands"}'

@@ -2,6 +2,8 @@ package steps
 
 import (
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -122,18 +124,52 @@ func TestDedupStep_CheckSimilarDisabled(t *testing.T) {
 	assert.Nil(t, out.Metadata["duplicate_of"])
 }
 
-func TestDedupStep_NoDefaultOrNoDefaultVectorPassesThrough(t *testing.T) {
+// captureDebugLogs routes slog, debug level included, to a buffer.
+func captureDebugLogs(t *testing.T) *syncBuffer {
+	t.Helper()
+	buf := &syncBuffer{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return buf
+}
+
+// Without a default model, or without the draft's vector under it, dedup
+// is skipped with a debug line and never fails the step.
+func TestDedupStep_NoDefaultOrNoDefaultVectorSkipsWithDebugLog(t *testing.T) {
 	cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95, Policy: "drop"}
 	store := dedupStore(t, map[string][]pluginapi.ObjectVector{"existing": {vec(dedupDefault, 1, 0, 0)}})
 
+	logs := captureDebugLogs(t)
 	noDefault := embeddingtest.Models{registry.Model{ModelID: dedupCandidate, Dimension: 2}}
 	out, err := NewDedupStep(noDefault, store, cfg).Run(context.Background(), dedupDraft("new", vec(dedupDefault, 1, 0, 0)))
 	require.NoError(t, err)
 	assert.Nil(t, out.Metadata["duplicate_of"])
+	assert.Contains(t, logs.String(), "level=DEBUG msg=\"dedup: skipped\" reason=\"no default embedding model\"")
+	assert.NotContains(t, logs.String(), "level=WARN")
 
+	logs = captureDebugLogs(t)
 	out, err = NewDedupStep(dedupModels, store, cfg).Run(context.Background(), dedupDraft("new", vec(dedupCandidate, 1, 0)))
 	require.NoError(t, err)
 	assert.Nil(t, out.Metadata["duplicate_of"])
+	assert.Contains(t, logs.String(), "level=DEBUG msg=\"dedup: skipped\" reason=\"no vector for the default model\"")
+	assert.NotContains(t, logs.String(), "level=WARN")
+}
+
+// warn logs the match; keep records it silently. Both keep the object.
+func TestDedupStep_WarnLogsKeepIsSilent(t *testing.T) {
+	store := dedupStore(t, map[string][]pluginapi.ObjectVector{"existing": {vec(dedupDefault, 1, 0, 0)}})
+	for policy, wantWarn := range map[string]bool{"warn": true, "": true, "keep": false} {
+		logs := captureDebugLogs(t)
+		cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95, Policy: policy}
+		out, err := NewDedupStep(dedupModels, store, cfg).Run(context.Background(), dedupDraft("new", vec(dedupDefault, 1, 0, 0)))
+		require.NoError(t, err, policy)
+		assert.Equal(t, "existing", out.Metadata["duplicate_of"], policy)
+		assert.Nil(t, out.Metadata["suppress_output"], policy)
+		warned := strings.Contains(logs.String(), `level=WARN msg="dedup: near-duplicate detected"`) &&
+			strings.Contains(logs.String(), "duplicate_of=existing")
+		assert.Equal(t, wantWarn, warned, "policy %q; logs:\n%s", policy, logs.String())
+	}
 }
 
 func TestDedupStep_SearchErrorIsNonFatal(t *testing.T) {
