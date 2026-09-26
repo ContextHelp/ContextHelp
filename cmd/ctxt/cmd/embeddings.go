@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
@@ -77,6 +78,27 @@ set-default after coverage + recall verification (Phase 3, T-0584).`,
 	RunE: runEmbeddingsRegister,
 }
 
+// embeddingsProviderFlags holds `embeddings provider`'s --embedding-* values.
+var embeddingsProviderFlags embeddings.Overrides
+
+var embeddingsProviderCmd = &cobra.Command{
+	Use:   "provider [model_id]",
+	Short: "Show the resolved embedding provider and where each setting came from",
+	Long: `Print the embedding provider this command line resolves to: backend,
+model, endpoint, api_key_env (the variable NAME; the key is never printed)
+and dimension, each with the layer that supplied it.
+
+Layers, highest first: flag (--embedding-*), env (CTXT_EMBEDDING_*),
+config-override (-c providers.embedding.*=...), registry (only when a
+model_id is given: that registered model's own settings), config
+(providers.embedding in the config file), default.
+
+With a model_id, the registry entry for that model is consulted, the way a
+command targeting that model resolves it.`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runEmbeddingsProvider,
+}
+
 // Stub-only verbs: the CLI shape is documented in ADR-071 but the
 // implementation lands in later cohort tasks. Each stub exits non-zero with
 // a clear pointer to the owning task so operators are not surprised.
@@ -141,6 +163,7 @@ func init() {
 	rootCmd.AddCommand(embeddingsCmd)
 	embeddingsCmd.AddCommand(embeddingsListCmd)
 	embeddingsCmd.AddCommand(embeddingsRegisterCmd)
+	embeddingsCmd.AddCommand(embeddingsProviderCmd)
 	embeddingsCmd.AddCommand(embeddingsMigrateCmd)
 	embeddingsCmd.AddCommand(embeddingsSetDefaultCmd)
 	embeddingsCmd.AddCommand(embeddingsDeprecateCmd)
@@ -151,6 +174,8 @@ func init() {
 	// state (write-shared, runs against the dpkms DB); deprecate /
 	// purge are destructive (purge especially deletes embedding rows).
 	cliconv.WithSideEffect(embeddingsListCmd, cliconv.SideEffectRead)
+	cliconv.WithSideEffect(embeddingsProviderCmd, cliconv.SideEffectRead)
+	cliconv.WithIdempotency(embeddingsProviderCmd, cliconv.IdempotencyYes)
 	cliconv.WithSideEffect(embeddingsRegisterCmd, cliconv.SideEffectWriteShared)
 	cliconv.WithSideEffect(embeddingsMigrateCmd, cliconv.SideEffectWriteShared)
 	cliconv.WithSideEffect(embeddingsSetDefaultCmd, cliconv.SideEffectWriteShared)
@@ -178,6 +203,11 @@ func init() {
 	cliconv.WithExamples(embeddingsListCmd, []cliconv.Example{
 		{Title: "List registered models", Command: "ctxt embeddings list"},
 		{Title: "JSON for scripting", Command: "ctxt embeddings list --format json"},
+	})
+	cliconv.WithExamples(embeddingsProviderCmd, []cliconv.Example{
+		{Title: "Show the resolved provider", Command: "ctxt embeddings provider"},
+		{Title: "Check a one-run override", Command: "ctxt embeddings provider --embedding-endpoint http://127.0.0.1:11555 --format json"},
+		{Title: "Resolve a registered model", Command: "ctxt embeddings provider ollama-snowflake-arctic-embed2@2026-09-26"},
 	})
 	cliconv.WithExamples(embeddingsRegisterCmd, []cliconv.Example{
 		{Title: "Register from a JSON model-config file", Command: "ctxt embeddings register openai-text-embedding-3-small@2025-01-15 --model-config ./openai-3-small.json"},
@@ -214,6 +244,8 @@ func init() {
 	cliconv.WithNextSteps(embeddingsPurgeCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt embeddings list", Reason: "confirm coverage for remaining models is unaffected"},
 	})
+
+	embeddings.AddFlags(embeddingsProviderCmd.Flags(), &embeddingsProviderFlags)
 
 	// NOTE: --config was renamed to --model-config to avoid shadowing
 	// the kit-owned global -c/--config (ctxt config file loader).
@@ -305,6 +337,77 @@ func runEmbeddingsList(cmd *cobra.Command, _ []string) error {
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Embedding models (%d)\n\n", len(out))
 	printTable(cmd.OutOrStdout(), headers, rows)
+	return nil
+}
+
+// embeddingsProviderDoc is the JSON shape of `ctxt embeddings provider`.
+type embeddingsProviderDoc struct {
+	ModelID   string            `json:"model_id"`
+	Backend   string            `json:"backend"`
+	Model     string            `json:"model"`
+	Endpoint  string            `json:"endpoint"`
+	APIKeyEnv string            `json:"api_key_env"`
+	Dimension int               `json:"dimension"`
+	Sources   map[string]string `json:"sources"`
+}
+
+func runEmbeddingsProvider(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	r := newEmbeddingResolver()
+	req := embeddings.Request{Overrides: embeddingsProviderFlags}
+	if len(args) == 1 {
+		req.ModelID = args[0]
+		reg, cleanup, err := newEmbeddingsRegistry()
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		r.Registry = reg
+	}
+	res, err := r.Resolve(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	doc := embeddingsProviderDoc{
+		ModelID: res.ModelID, Backend: res.Backend, Model: res.Model, Endpoint: res.Endpoint,
+		APIKeyEnv: res.APIKeyEnv, Dimension: res.Dimension, Sources: map[string]string{},
+	}
+	rows := make([][]string, 0, len(embeddings.Fields))
+	for _, e := range res.Explain() {
+		doc.Sources[string(e.Field)] = string(e.Layer)
+		value := e.Value
+		switch {
+		case e.Field == embeddings.FieldDimension && res.Dimension == 0:
+			value = "(unknown)"
+		case value == "":
+			value = "(unset)"
+		}
+		rows = append(rows, []string{string(e.Field), value, string(e.Layer)})
+	}
+
+	if isJSONOutput() {
+		if err := outputJSON(cmd.OutOrStdout(), doc); err != nil {
+			return err
+		}
+	} else {
+		if res.ModelID != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "Embedding provider for %s\n\n", res.ModelID)
+		} else {
+			fmt.Fprintln(cmd.OutOrStdout(), "Embedding provider")
+			fmt.Fprintln(cmd.OutOrStdout())
+		}
+		printTable(cmd.OutOrStdout(), []string{"Setting", "Value", "Source"}, rows)
+	}
+
+	// An unusable resolution (unsupported backend) is reported after the
+	// table so the operator sees which layer supplied it, and fails the run.
+	if _, err := res.Provider(); err != nil {
+		return err
+	}
 	return nil
 }
 

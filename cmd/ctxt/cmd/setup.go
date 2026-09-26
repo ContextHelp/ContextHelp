@@ -218,8 +218,9 @@ func buildConfig(a wizardAnswers) (*config.Config, error) {
 	switch a.Provider {
 	case "openai":
 		if a.APIKey != "" {
+			// Embeddings stay on the resolver defaults: there is no
+			// OpenAI embedding backend.
 			c.Providers.LLM = config.ProviderBackendConfig{Backend: "openai"}
-			c.Providers.Embedding = config.ProviderBackendConfig{Backend: "openai"}
 		}
 	case "anthropic":
 		if a.APIKey != "" {

@@ -214,6 +214,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		browserClient,
 	)
 	fmt.Println("Pipeline runtime initialized (with overrides)")
+	reportEmbeddingProvider(os.Stdout)
 
 	// 3b. Wire pipeline preflight validation into the queue.
 	queue.SetPipelineValidator(func(name string) error {

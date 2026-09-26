@@ -10,7 +10,7 @@ import (
 	"text/template"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
 	"gopkg.in/yaml.v3"
@@ -30,7 +30,8 @@ var devReindexVectorsCmd = &cobra.Command{
 	Use:   "reindex-vectors",
 	Short: "Re-embed objects that are missing vector embeddings",
 	Long: `Re-embed all active knowledge objects that currently lack a stored embedding
-vector. Uses the configured embedding provider (Ollama by default).
+vector. Uses the resolved embedding provider (Ollama by default); the
+--embedding-* flags override it for this run only.
 
 Objects with no raw content or summaries are skipped and counted as failed.
 
@@ -39,9 +40,15 @@ Examples:
   dpkms dev reindex-vectors
 
   # JSON output (indexed/failed counts + object IDs)
-  dpkms dev reindex-vectors --format json`,
+  dpkms dev reindex-vectors --format json
+
+  # Re-embed through a remote Ollama reached via an SSH tunnel
+  dpkms dev reindex-vectors --embedding-endpoint http://127.0.0.1:11555`,
 	RunE: runDevReindexVectors,
 }
+
+// devReindexEmbedding holds reindex-vectors' --embedding-* flag values.
+var devReindexEmbedding embeddings.Overrides
 
 func runDevReindexVectors(cmd *cobra.Command, _ []string) error {
 	svc, cleanup, err := newService()
@@ -52,8 +59,10 @@ func runDevReindexVectors(cmd *cobra.Command, _ []string) error {
 
 	ctx := context.Background()
 
-	factory := providers.NewFactory(cfg.Providers, nil)
-	ep := factory.Embedding()
+	ep, err := resolveEmbeddingProvider(ctx, devReindexEmbedding)
+	if err != nil {
+		return fmt.Errorf("reindex-vectors: %w", err)
+	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), "Starting vector re-indexing...")
 
@@ -390,6 +399,7 @@ func init() {
 	// reindex-vectors adds missing embeddings; existing vectors are left
 	// alone, so re-running converges. Write.
 	cliconv.WithSideEffect(devReindexVectorsCmd, cliconv.SideEffectWrite)
+	embeddings.AddFlags(devReindexVectorsCmd.Flags(), &devReindexEmbedding)
 	// init-plugin scaffolds a new directory; it refuses to clobber an
 	// existing slug. Write.
 	cliconv.WithSideEffect(devInitPluginCmd, cliconv.SideEffectWrite)

@@ -10,6 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/repl"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
@@ -98,6 +99,9 @@ func init() {
 	findCmd.Flags().String("source-type", "", "filter by source_type")
 	findCmd.Flags().Bool("facets", false, "show metadata type count breakdown")
 
+	// Per-run embedding provider overrides (vector and hybrid modes).
+	embeddings.AddFlags(findCmd.Flags(), &findEmbedding)
+
 	viper.BindPFlag("find.limit", findCmd.Flags().Lookup("limit"))
 	viper.BindPFlag("find.semantic", findCmd.Flags().Lookup("semantic"))
 	viper.BindPFlag("find.hybrid", findCmd.Flags().Lookup("hybrid"))
@@ -109,6 +113,9 @@ func init() {
 	viper.BindPFlag("find.vector_pool", findCmd.Flags().Lookup("vector-pool"))
 	viper.BindPFlag("find.min_score", findCmd.Flags().Lookup("min-score"))
 }
+
+// findEmbedding holds find's --embedding-* flag values.
+var findEmbedding embeddings.Overrides
 
 func runFind(cmd *cobra.Command, args []string) error {
 	query, source, err := cli.GetInput(args)
@@ -179,12 +186,21 @@ func runFind(cmd *cobra.Command, args []string) error {
 	explain, _ := cmd.Flags().GetBool("explain")
 	facets, _ := cmd.Flags().GetBool("facets")
 
+	// vector and hybrid (incl. --explain) embed the query.
+	var ep providers.EmbeddingProvider
+	if mode != "fts" {
+		ep, err = resolveEmbeddingProvider(ctx, findEmbedding)
+		if err != nil {
+			return fmt.Errorf("find: %w", err)
+		}
+	}
+
 	// Build metadata facet filter from CLI flags.
 	filter := buildFindFilter(cmd, limit)
 
 	// --explain only applies to hybrid mode; it prints per-signal score breakdowns.
 	if explain && mode == "hybrid" {
-		return runFindExplain(cmd, ctx, svc, query, limit, mode, searchCfg)
+		return runFindExplain(ctx, svc, ep, query, limit, mode, searchCfg)
 	}
 
 	var results []*storage.KnowledgeObject
@@ -194,8 +210,6 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 	switch mode {
 	case "vector":
-		factory := providers.NewFactory(cfg.Providers, nil)
-		ep := factory.Embedding()
 		ep, originalVec := blendSessionContext(ctx, query, ep, sessionState)
 		results, err = svc.SemanticSearchFiltered(ctx, query, filter, ep)
 		if err == nil && sessionState != nil && originalVec != nil {
@@ -204,8 +218,6 @@ func runFind(cmd *cobra.Command, args []string) error {
 	case "fts":
 		results, err = svc.FindByTextFiltered(ctx, query, filter)
 	default: // "hybrid"
-		factory := providers.NewFactory(cfg.Providers, nil)
-		ep := factory.Embedding()
 		ep, originalVec := blendSessionContext(ctx, query, ep, sessionState)
 		results, diagnostics, err = svc.HybridSearchFilteredWithDiagnostics(ctx, query, filter, ep, searchCfg)
 		if err == nil && sessionState != nil && originalVec != nil {
@@ -289,10 +301,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 }
 
 // runFindExplain executes a hybrid search and prints per-result score breakdowns.
-func runFindExplain(cmd *cobra.Command, ctx context.Context, svc *service.Service, query string, limit int, mode string, searchCfg config.SearchConfig) error {
-	factory := providers.NewFactory(cfg.Providers, nil)
-	ep := factory.Embedding()
-
+func runFindExplain(ctx context.Context, svc *service.Service, ep providers.EmbeddingProvider, query string, limit int, mode string, searchCfg config.SearchConfig) error {
 	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(ctx, query, storage.ObjectFilter{Limit: limit}, ep, searchCfg)
 	if err != nil {
 		return fmt.Errorf("find explain (%s): %w", mode, err)
