@@ -104,7 +104,7 @@ func newSNSSReader(r io.Reader) (*snssReader, error) {
 		return nil, &HeaderError{Magic: string(magic), Short: true}
 	}
 	magic := string(hdr[:4])
-	version := int32(binary.LittleEndian.Uint32(hdr[4:])) //nolint:gosec // reinterpreting the on-disk int32
+	version := le32(hdr[4:])
 	if magic != snssMagic || (version != snssVersionPlain && version != snssVersionWithMarker) {
 		return nil, &HeaderError{Magic: magic, Version: version}
 	}
@@ -162,7 +162,7 @@ func (p *payloadReader) int32() int32 {
 	if b == nil {
 		return 0
 	}
-	return int32(binary.LittleEndian.Uint32(b)) //nolint:gosec // reinterpreting the on-disk int32
+	return le32(b)
 }
 
 func (p *payloadReader) uint8() uint8 {
@@ -207,3 +207,9 @@ func (p *payloadReader) pickleString16() string {
 }
 
 func pad4(n int) int { return (4 - n%4) % 4 }
+
+// le32 decodes a little-endian two's-complement int32 from b[0:4].
+func le32(b []byte) int32 {
+	_ = b[3]
+	return int32(b[0]) | int32(b[1])<<8 | int32(b[2])<<16 | int32(b[3])<<24
+}

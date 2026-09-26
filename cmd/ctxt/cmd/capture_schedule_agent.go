@@ -26,6 +26,15 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/binpath"
 )
 
+// goosDarwin is the only GOOS capture schedules support (launchd).
+const goosDarwin = "darwin"
+
+// Plist boolean element names.
+const (
+	plistTrueTag  = "true"
+	plistFalseTag = "false"
+)
+
 // scheduleKind names the capture subcommand an agent runs.
 type scheduleKind string
 
@@ -257,11 +266,11 @@ func decodePlistValue(dec *xml.Decoder, se xml.StartElement) (any, error) {
 			return strconv.ParseInt(strings.TrimSpace(s), 10, 64)
 		}
 		return s, nil
-	case "true", "false":
+	case plistTrueTag, plistFalseTag:
 		if err := dec.Skip(); err != nil {
 			return nil, err
 		}
-		return se.Name.Local == "true", nil
+		return se.Name.Local == plistTrueTag, nil
 	case "array":
 		var out []any
 		for {

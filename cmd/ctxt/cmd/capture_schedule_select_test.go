@@ -160,7 +160,7 @@ func TestCaptureScheduleUninstall_SameResolutionAsInstall(t *testing.T) {
 // schedule path run this way: it reaches neither launchctl nor
 // ~/Library/LaunchAgents (HOME is a temp dir regardless).
 func TestCaptureScheduleInstall_ExitCodes(t *testing.T) {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosDarwin {
 		t.Skip("capture schedule is macOS only")
 	}
 	e := newTabsEnv(t, "", personalAndWork(time.Now())...)

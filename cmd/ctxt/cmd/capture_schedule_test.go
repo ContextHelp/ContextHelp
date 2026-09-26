@@ -88,7 +88,7 @@ func useFakeScheduleEnv(t *testing.T) *scheduleFixture {
 	home := t.TempDir()
 	lc := &fakeLaunchctl{loaded: map[string]bool{}}
 	env := &scheduleEnv{
-		goos:      "darwin",
+		goos:      goosDarwin,
 		home:      home,
 		agentsDir: filepath.Join(home, "Library", "LaunchAgents"),
 		logDir:    filepath.Join(home, "Library", "Logs", "ctxt"),

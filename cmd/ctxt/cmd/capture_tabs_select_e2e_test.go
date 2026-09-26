@@ -141,7 +141,7 @@ func TestCaptureTabs_NoBrowserToPick(t *testing.T) {
 }
 
 func TestCaptureTabs_OSDefaultBrowser(t *testing.T) {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosDarwin {
 		t.Skip("reads a LaunchServices plist with plutil")
 	}
 	e := newTabsEnv(t, "", personalAndWork(time.Now())...)

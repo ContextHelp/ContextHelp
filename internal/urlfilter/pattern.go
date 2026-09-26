@@ -104,7 +104,7 @@ func compileBare(raw string) (pattern, error) {
 		return p, errors.New("a bare * is not a host; use *://*/* to match every URL")
 	}
 	for _, r := range raw {
-		if r < 0x80 && !isHostPatternByte(byte(r)) {
+		if r < 0x80 && !isHostPatternRune(r) {
 			return p, fmt.Errorf("%q is not allowed in a host pattern; use scheme://host[:port][/path] for ports and paths", r)
 		}
 	}
@@ -119,9 +119,9 @@ func compileBare(raw string) (pattern, error) {
 	return p, nil
 }
 
-// isHostPatternByte reports whether an ASCII byte may appear in a bare
+// isHostPatternRune reports whether an ASCII rune may appear in a bare
 // host pattern. Non-ASCII runes are left to IDNA validation.
-func isHostPatternByte(b byte) bool {
+func isHostPatternRune(b rune) bool {
 	switch {
 	case 'a' <= b && b <= 'z', 'A' <= b && b <= 'Z', '0' <= b && b <= '9':
 		return true
