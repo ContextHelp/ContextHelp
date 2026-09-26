@@ -134,6 +134,8 @@ type BuildOpts struct {
 	Resolver embeddings.ProviderResolver
 	// Embeddings is the per-model vector index dedup searches.
 	Embeddings storage.EmbeddingStore
+	// Audit records each dedup decision.
+	Audit storage.AuditStore
 	// Duplicates configures near-duplicate detection. With CheckSimilar
 	// set, every pipeline that embeds runs dedup right after embedding.
 	Duplicates config.DuplicatesConfig
@@ -147,7 +149,7 @@ var embeddingStepConstructors = map[string]func(BuildOpts) pipeline.PipelineStep
 		return steps.NewEmbeddingGenerator(o.Models, o.Resolver)
 	},
 	"dedup": func(o BuildOpts) pipeline.PipelineStep {
-		return steps.NewDedupStep(o.Models, o.Embeddings, o.Duplicates)
+		return steps.NewDedupStep(o.Models, o.Embeddings, o.Audit, o.Duplicates)
 	},
 }
 

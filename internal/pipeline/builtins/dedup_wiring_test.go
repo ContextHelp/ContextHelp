@@ -3,7 +3,9 @@ package builtins
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -75,6 +77,7 @@ func newDedupEnv(t *testing.T, dup config.DuplicatesConfig, defaultModel bool) *
 		Models:     reg,
 		Resolver:   wiringResolver(t),
 		Embeddings: drv.Embeddings(),
+		Audit:      drv.AuditLog(),
 		Duplicates: dup,
 	})
 	q := jobs.NewQueue(drv.Jobs())
@@ -187,6 +190,66 @@ func requireDuplicateOf(t *testing.T, obj *storage.KnowledgeObject, want string)
 	return sim
 }
 
+// similarAudits returns the dedup.similar rows the driver's audit log holds.
+func (e *dedupEnv) similarAudits(t *testing.T) []*storage.AuditEntry {
+	t.Helper()
+	rows, _, err := e.drv.AuditLog().List(context.Background(), storage.AuditFilter{EventType: "dedup.similar", Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
+}
+
+// requireSimilarAudit asserts rows hold exactly one dedup.similar entry
+// for objectID as a duplicate of dupOf at sim under policy, carrying IDs
+// and scores only.
+func requireSimilarAudit(t *testing.T, rows []*storage.AuditEntry, objectID, dupOf string, sim float64, policy string) {
+	t.Helper()
+	if len(rows) != 1 {
+		t.Fatalf("%d dedup.similar audit rows, want 1: %v", len(rows), rows)
+	}
+	row := rows[0]
+	if row.ObjectID != objectID || row.Actor != "system" {
+		t.Errorf("audit row object=%q actor=%q, want %q system", row.ObjectID, row.Actor, objectID)
+	}
+	want := map[string]any{
+		"duplicate_of": dupOf,
+		"similarity":   sim,
+		"kind":         "similar",
+		"policy":       policy,
+		"model_id":     dedupSnowflake.ModelID,
+	}
+	if !maps.Equal(row.Payload, want) {
+		t.Errorf("audit payload = %v, want %v", row.Payload, want)
+	}
+	raw, err := json.Marshal(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, word := range strings.Fields(dedupBase + " " + dedupNear) {
+		if strings.Contains(string(raw), word) {
+			t.Errorf("audit row carries content word %q: %s", word, raw)
+		}
+	}
+}
+
+// requireExactAudit asserts the audit log holds exactly one dedup.exact
+// entry: the hash match against base under policy, without content.
+func requireExactAudit(t *testing.T, e *dedupEnv, base, policy string) {
+	t.Helper()
+	rows, _, err := e.drv.AuditLog().List(context.Background(), storage.AuditFilter{EventType: "dedup.exact", Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("%d dedup.exact audit rows, want 1: %v", len(rows), rows)
+	}
+	want := map[string]any{"duplicate_of": base, "similarity": 1.0, "kind": "exact", "policy": policy}
+	if row := rows[0]; row.ObjectID != base || row.Actor != "system" || !maps.Equal(row.Payload, want) {
+		t.Errorf("audit row object=%q actor=%q payload=%v, want %q system %v", row.ObjectID, row.Actor, row.Payload, base, want)
+	}
+}
+
 func requireNoDuplicate(t *testing.T, obj *storage.KnowledgeObject) {
 	t.Helper()
 	if dup, ok := obj.Metadata["duplicate_of"]; ok {
@@ -216,16 +279,52 @@ func TestDedupE2E_NearDuplicateAboveThresholdIsRecorded(t *testing.T) {
 	}
 }
 
+// The near-duplicate decision reaches the audit log, not just slog: one
+// dedup.similar row naming the new object, the one it duplicates, the
+// score, policy and model, and no content.
+func TestDedupE2E_NearDuplicateIsAudited(t *testing.T) {
+	for _, policy := range []string{"warn", "keep"} {
+		t.Run(policy, func(t *testing.T) {
+			e := newDedupEnv(t, dupCfg(policy, dedupBelowNear), true)
+			base := e.ingest(t, dedupBase)
+			if rows := e.similarAudits(t); len(rows) != 0 {
+				t.Fatalf("first ingest audited as a duplicate: %v", rows)
+			}
+			near := e.ingest(t, dedupNear)
+			sim := requireDuplicateOf(t, e.object(t, near), base)
+			requireSimilarAudit(t, e.similarAudits(t), near, base, sim, policy)
+		})
+	}
+}
+
+// drop audits the decision for the draft it suppresses.
+func TestDedupE2E_DropIsAudited(t *testing.T) {
+	e := newDedupEnv(t, dupCfg("drop", dedupBelowNear), true)
+	base := e.ingest(t, dedupBase)
+	p, err := e.svc.Pipes.Get("text.long")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := runSteps(t, p, &storage.KnowledgeObject{ID: "draft", RawContent: dedupNear, Source: "cli"})
+	requireSimilarAudit(t, e.similarAudits(t), "draft", base, requireDuplicateOf(t, out, base), "drop")
+}
+
 // The same pair under a threshold above its similarity, and an unrelated
-// note under the default, are not duplicates.
+// note under the default, are not duplicates, and nothing is audited.
 func TestDedupE2E_BelowThresholdIsNotADuplicate(t *testing.T) {
 	e := newDedupEnv(t, dupCfg("warn", dedupAboveNear), true)
 	e.ingest(t, dedupBase)
 	requireNoDuplicate(t, e.object(t, e.ingest(t, dedupNear)))
+	if rows := e.similarAudits(t); len(rows) != 0 {
+		t.Errorf("below-threshold pair audited: %v", rows)
+	}
 
 	e = newDedupEnv(t, dupCfg("warn", dedupBelowNear), true)
 	e.ingest(t, dedupBase)
 	requireNoDuplicate(t, e.object(t, e.ingest(t, dedupFar)))
+	if rows := e.similarAudits(t); len(rows) != 0 {
+		t.Errorf("unrelated note audited: %v", rows)
+	}
 }
 
 // check_similar=false leaves dedup out of every pipeline.
@@ -331,6 +430,7 @@ func TestDedupE2E_ExactDuplicate(t *testing.T) {
 				t.Errorf("%d objects after an exact re-ingest, want 1", n)
 			}
 			requireNoDuplicate(t, e.object(t, base))
+			requireExactAudit(t, e, base, policy)
 		})
 	}
 }
