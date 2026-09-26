@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: bc4b3d61
+recorded_at: "2026-09-26T19:58:12Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"nomic-embed-text","prompt":"cassowary casques in the daintree rainforest"}'
