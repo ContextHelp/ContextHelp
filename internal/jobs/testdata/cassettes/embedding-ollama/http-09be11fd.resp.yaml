@@ -1,9 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: 09be11fd
-recorded_at: "2026-09-26T17:12:50Z"
-payload:
-    status: 404
-    headers:
-        Content-Type: application/json; charset=utf-8
-    body: '{"error":"model \"ctxt-test-not-pulled-embed\" not found, try pulling it first"}'

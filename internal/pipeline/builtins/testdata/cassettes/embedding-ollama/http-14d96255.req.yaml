@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 14d96255
+recorded_at: "2026-09-26T20:24:59Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"snowflake-arctic-embed2","prompt":"package survey\n\n// Count returns the quokkas seen on one transect.\nfunc Count(seen []string) int { return len(seen) }\n"}'
