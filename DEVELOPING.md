@@ -91,6 +91,28 @@ No services, no network:
 make test-unit
 ```
 
+#### Tests never touch your real config or server
+
+The `cmd/ctxt/cmd` and `cmd/dpkms/cmd` suites run isolated from your machine,
+so it is safe to run them while your own `dpkms serve` listens on
+`127.0.0.1:8080`. Their `TestMain` calls `testguard.Main`
+(`internal/testguard`), which, before any test runs:
+
+- points `HOME` and the `XDG_*` base dirs at a throwaway directory, which the
+  `ctxt` binaries the e2e tests spawn inherit too;
+- clears every `CTXT_*`, `CH_*` and `DPKMS_*` variable, such as `CTXT_CONFIG`
+  and `CTXT_INSTANCE`;
+- writes a user config whose `server.url` is `http://127.0.0.1:1`, a closed
+  port, so a test that configures no server gets connection-refused;
+- wraps `http.DefaultTransport` to refuse requests to loopback `:8080` and
+  `:8081`. Any refusal prints `live-server guard: refused request to ... from
+  <TestName>` and fails the run, even when the test itself passes.
+
+A test that needs a server starts an `httptest.Server` and points the command
+at it with `-c <config>` or `--server`. A helper that builds its own subprocess
+env must set `server.url` or `server.urls` itself. It must never drop back to
+an empty config dir.
+
 `cmd/ctxt/cmd` currently has a timing-sensitive failure
 (`TestE2ECaptureEveryShortLoop`, "expected 2-5 captures in 280ms ... got 0") that
 reproduces on a clean tree. It is unrelated to any change you are making; if it
