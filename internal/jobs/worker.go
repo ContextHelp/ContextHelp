@@ -259,6 +259,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 			p.retryOrFail(ctx, job.ID, fmt.Sprintf("reinforce: %s", err), existingID)
 			return
 		}
+		p.putVectors(ctx, existingID, draft)
 		p.queue.Complete(ctx, job.ID, existingID)
 		p.emitCompleted(ctx, job.ID, existingID, durationMs)
 		return
@@ -308,6 +309,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 				p.emitFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr), draft.ID)
 				return
 			}
+			p.putVectors(ctx, existingID, draft)
 			p.queue.Complete(ctx, job.ID, existingID)
 			p.emitCompleted(ctx, job.ID, existingID, durationMs)
 			return
@@ -316,6 +318,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		p.emitFailed(ctx, job.ID, fmt.Sprintf("store: %s", err), draft.ID)
 		return
 	}
+	p.putVectors(ctx, draft.ID, draft)
 
 	// Write edges for mentions (ADR-049).
 	// Any edge write failure rolls back by failing the job; the object has
@@ -355,6 +358,19 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	// Fan out per-item jobs if the pipeline staged items for enqueueing.
 	p.fanOutItems(ctx, draft)
+}
+
+// putVectors persists the embedding step's per-model vectors for the stored
+// object (a new object's ID, or the reinforced one's). Vectors are additive:
+// a failed Put is logged and never fails the job; the object's missing rows
+// are what the embedding migration backfill picks up.
+func (p *WorkerPool) putVectors(ctx context.Context, objectID string, draft *storage.KnowledgeObject) {
+	if len(draft.Vectors) == 0 {
+		return
+	}
+	if err := p.store.Embeddings().Put(ctx, objectID, draft.Vectors); err != nil {
+		slog.Warn("jobs: embeddings not stored; ingest continues", "object", objectID, "err", err)
+	}
 }
 
 // retryOrFail requeues a job after a transient error, failing it once

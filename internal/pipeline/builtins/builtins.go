@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
@@ -47,7 +48,6 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"formatdetector":      func() pipeline.PipelineStep { return steps.NewFormatDetector() },
 	"textcleaner":         func() pipeline.PipelineStep { return steps.NewTextCleaner() },
 	"html_cleaner":        func() pipeline.PipelineStep { return steps.NewHTMLCleaner() },
-	"embedding":           func() pipeline.PipelineStep { return steps.NewEmbeddingGenerator(nil) },
 	"entity_extractor":    func() pipeline.PipelineStep { return steps.NewEntityExtractor() },
 	"entity_resolver":     func() pipeline.PipelineStep { return steps.NewEntityResolver() },
 	"timestamp_aligner":   func() pipeline.PipelineStep { return steps.NewTimestampAligner() },
@@ -90,8 +90,6 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"email_parser":   func() pipeline.PipelineStep { return steps.NewEmailParser() },
 	"email_filter":   func() pipeline.PipelineStep { return newDefaultEmailFilter() },
 	"email_enqueuer": func() pipeline.PipelineStep { return steps.NewEmailEnqueuer() },
-	// Dedup step: registered with nil store (passthrough mode); store is injected at runtime.
-	"dedup": func() pipeline.PipelineStep { return steps.NewDedupStep(nil, config.DuplicatesConfig{}) },
 	// Graph enrichment: detects "alternative" relationships and creates proximity edges.
 	// Registered with nil stores (passthrough mode); stores are injected at runtime.
 	"alternative_detector": func() pipeline.PipelineStep { return steps.NewAlternativeDetector() },
@@ -127,6 +125,26 @@ type BuildOpts struct {
 	BlobStore     storage.BlobStore
 	BlobThreshold int64
 	BrowserClient *browser.Client
+
+	// Models is the registry the embedding step reads its populate set
+	// from, and dedup its default model.
+	Models embeddings.ModelSource
+	// Resolver builds each registered model's embedding provider.
+	Resolver embeddings.ProviderResolver
+	// Embeddings is the per-model vector index dedup searches.
+	Embeddings storage.EmbeddingStore
+}
+
+// embeddingStepConstructors maps step names to constructors that take the
+// embedding write path's dependencies. Missing dependencies make the steps
+// no-ops, so these always resolve.
+var embeddingStepConstructors = map[string]func(BuildOpts) pipeline.PipelineStep{
+	"embedding": func(o BuildOpts) pipeline.PipelineStep {
+		return steps.NewEmbeddingGenerator(o.Models, o.Resolver)
+	},
+	"dedup": func(o BuildOpts) pipeline.PipelineStep {
+		return steps.NewDedupStep(o.Models, o.Embeddings, config.DuplicatesConfig{})
+	},
 }
 
 // providerStepConstructors maps step names to provider-aware constructors.
@@ -177,6 +195,9 @@ var providerStepConstructors = map[string]func(*providers.Factory) pipeline.Pipe
 
 // resolveStep builds a PipelineStep from a step name, using BuildOpts for provider/blob-aware steps.
 func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
+	if ctor, ok := embeddingStepConstructors[name]; ok {
+		return ctor(opts), nil
+	}
 	if opts.Factory != nil {
 		if ctor, ok := providerStepConstructors[name]; ok {
 			return ctor(opts.Factory), nil
@@ -372,27 +393,20 @@ func ConfiguredRegistryStrict(f *providers.Factory) pipeline.Registry {
 	return buildRegistry(BuildOpts{Factory: f}, true)
 }
 
-// ConfiguredRegistryWithPipelineOverrides builds a registry where each pipeline
-// can override individual provider backends via PipelinesConfig.Overrides.
-// It also honors SkipSteps and ExtraSteps structural overrides.
+// ConfiguredRegistryWithPipelineOverrides builds a registry from base where
+// each pipeline can override individual provider backends via
+// PipelinesConfig.Overrides (base.Factory is built from baseCfg). It also
+// honors SkipSteps and ExtraSteps structural overrides.
 func ConfiguredRegistryWithPipelineOverrides(
-	base *providers.Factory,
+	base BuildOpts,
 	baseCfg config.ProvidersConfig,
 	pipelinesCfg config.PipelinesConfig,
-	blobStore storage.BlobStore,
-	blobThreshold int64,
-	browserClient ...*browser.Client,
 ) pipeline.Registry {
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()
 
-	var bc *browser.Client
-	if len(browserClient) > 0 {
-		bc = browserClient[0]
-	}
-
 	// Pre-compute capabilities to skip pipelines with unsatisfied providers.
-	baseCaps := CapabilitiesFromOpts(BuildOpts{Factory: base, BlobStore: blobStore, BlobThreshold: blobThreshold, BrowserClient: bc})
+	baseCaps := CapabilitiesFromOpts(base)
 
 	for name, d := range defs {
 		if !defProvidersSatisfied(d, baseCaps) {
@@ -400,7 +414,7 @@ func ConfiguredRegistryWithPipelineOverrides(
 			continue
 		}
 
-		opts := BuildOpts{Factory: base, BlobStore: blobStore, BlobThreshold: blobThreshold, BrowserClient: bc}
+		opts := base
 
 		if override, ok := pipelinesCfg.Overrides[name]; ok {
 			// 1. Handle structural overrides (SkipSteps, ExtraSteps).
@@ -416,9 +430,9 @@ func ConfiguredRegistryWithPipelineOverrides(
 					case "llm":
 						merged.LLM = bc
 					case "embedding":
-						// The embedding provider is resolved once per
-						// process (internal/embeddings), never per pipeline.
-						log.Printf("builtins: pipeline %q: provider role \"embedding\" cannot be overridden per pipeline (ignored); set providers.embedding or use the embedding env/flags", name)
+						// Each registered model's entry decides its
+						// provider (ADR-071); a pipeline cannot.
+						log.Printf("builtins: pipeline %q: provider role \"embedding\" cannot be overridden per pipeline (ignored); the embedding model's registry entry decides its provider", name)
 					case "ocr":
 						merged.OCR = bc
 					case "vision":
