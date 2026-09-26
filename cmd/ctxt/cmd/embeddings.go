@@ -190,7 +190,7 @@ func init() {
 // embeddingsListItem is the JSON shape of one row in `ctxt embeddings list`.
 //
 // The field names here are the contract surface pinned by
-// `contracts/embeddings-list.eva.yaml` (T-0586). Keep them stable: they
+// `contracts/embeddings-list.eva.yaml`. Keep them stable: they
 // appear in dashboards and downstream operator scripts. Adding fields is
 // fine; renaming or removing is a breaking change. `coverage` is the
 // fraction of distinct objects that have an embedding row under this
