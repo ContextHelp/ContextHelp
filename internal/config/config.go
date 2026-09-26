@@ -126,6 +126,12 @@ type Config struct {
 
 // CaptureConfig configures browser capture.
 type CaptureConfig struct {
+	// Browser is the browser capture reads when --browser is not given
+	// (chrome, brave, edge, arc, chromium, vivaldi). Empty, the default,
+	// auto-selects: the one browser holding --browser-profile, else the
+	// OS default browser.
+	Browser string `mapstructure:"browser" yaml:"browser,omitempty"`
+
 	// URLFilter holds the deny/allow rules every browser capture path
 	// applies before sending a URL for ingestion. Rules can be global or
 	// scoped under browsers.<browser>[.profiles.<profile>]. Builtin
