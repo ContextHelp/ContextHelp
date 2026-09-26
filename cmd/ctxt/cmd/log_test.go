@@ -46,12 +46,16 @@ func TestLogInvalidUntil(t *testing.T) {
 func TestLogFromServer(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	entries := []*storage.AuditEntry{
-		{ID: "e1", EventType: "object.created", ObjectID: "obj_01",
+		{
+			ID: "e1", EventType: "object.created", ObjectID: "obj_01",
 			Actor: "system", Payload: map[string]any{"src": "cli"},
-			CreatedAt: now},
-		{ID: "e2", EventType: "fanout.completed", ObjectID: "obj_01",
+			CreatedAt: now,
+		},
+		{
+			ID: "e2", EventType: "fanout.completed", ObjectID: "obj_01",
 			Actor: "system", Payload: map[string]any{},
-			CreatedAt: now.Add(time.Second)},
+			CreatedAt: now.Add(time.Second),
+		},
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(
@@ -86,9 +90,11 @@ func TestLogFromServer(t *testing.T) {
 func TestLogFromServerJSON(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	entries := []*storage.AuditEntry{
-		{ID: "e1", EventType: "object.created", ObjectID: "obj_01",
+		{
+			ID: "e1", EventType: "object.created", ObjectID: "obj_01",
 			Actor: "system", Payload: map[string]any{},
-			CreatedAt: now},
+			CreatedAt: now,
+		},
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(
@@ -164,5 +170,27 @@ func TestFormatPayload(t *testing.T) {
 	got := formatPayload(map[string]any{"k": "v"})
 	if !strings.Contains(got, `"k"`) {
 		t.Errorf("payload should contain key, got %q", got)
+	}
+}
+
+// Without --server, `ctxt log` reads the configured server.url with the
+// configured token (the audit-log route sits behind auth).
+func TestLog_UsesConfiguredServerAndToken(t *testing.T) {
+	srv := newRecordedServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}, "total": 7})
+	}))
+	db := setupTestDB(t)
+	appendConfig(t, db, "server:\n  url: "+srv.URL+"\n  token: tok-log\n")
+
+	out, err := db.exec("log", "--format", "json")
+	if err != nil {
+		t.Fatalf("log: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, `"total": 7`) && !strings.Contains(out, `"total":7`) {
+		t.Fatalf("output is not the configured server's response:\n%s", out)
+	}
+	if got := srv.hits(); len(got) != 1 || got[0] != "Bearer tok-log" {
+		t.Fatalf("server saw Authorization %q, want one request with the configured token", got)
 	}
 }

@@ -7,7 +7,6 @@ import (
 	gohttp "net/http"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
@@ -60,8 +59,7 @@ func init() {
 	logCmd.Flags().String("until", "", "entries before date (YYYY-MM-DD)")
 	logCmd.Flags().String("object", "", "filter by object ID")
 	logCmd.Flags().String("actor", "", "filter by actor")
-	logCmd.Flags().String("server", "",
-		"dpkms server URL (default http://localhost:8080)")
+	logCmd.Flags().String("server", "", serverFlagUsage)
 
 	viper.BindPFlag("log.limit", logCmd.Flags().Lookup("limit"))
 	viper.BindPFlag("log.type", logCmd.Flags().Lookup("type"))
@@ -78,11 +76,7 @@ type logResponse struct {
 }
 
 func runLog(cmd *cobra.Command, _ []string) error {
-	serverURL := flagString(cmd, "server", "server.url")
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
+	ep := serverEndpoint(cmd)
 
 	params := url.Values{}
 	if v := mustGetInt(cmd, "limit"); v > 0 {
@@ -110,8 +104,7 @@ func runLog(cmd *cobra.Command, _ []string) error {
 		params.Set("actor", v)
 	}
 
-	endpoint := serverURL + "/api/v1/audit-log?" + params.Encode()
-	resp, err := gohttp.Get(endpoint) // #nosec G107 -- user-provided server URL
+	resp, err := serverGet(cmd.Context(), ep, "/api/v1/audit-log?"+params.Encode(), 30*time.Second)
 	if err != nil {
 		return fmt.Errorf("audit-log request: %w", err)
 	}
