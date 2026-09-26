@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -242,6 +243,77 @@ func SQLiteVectorIndex(ctx context.Context, db *sql.DB) (VectorIndexDescription,
 	return desc, nil
 }
 
+// SQLiteVectorIndexFor describes the vec0 virtual table named table (one
+// per-model embedding index). The zero description (Exists() == false)
+// means the table is absent. BuildParams carries the table's DDL as stored
+// in sqlite_master, which is also the signature's params input.
+func SQLiteVectorIndexFor(ctx context.Context, db DBTX, table string) (VectorIndexDescription, error) {
+	var ddl sql.NullString
+	err := db.QueryRowContext(ctx,
+		`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&ddl)
+	if errors.Is(err, sql.ErrNoRows) {
+		return VectorIndexDescription{}, nil
+	}
+	if err != nil {
+		return VectorIndexDescription{}, fmt.Errorf("read %s ddl: %w", table, err)
+	}
+	desc := VectorIndexDescription{
+		Method:      "vec0",
+		OpsClass:    "l2", // vec0's default when distance_metric is unspecified
+		BuildParams: strings.TrimSpace(ddl.String),
+	}
+	if strings.Contains(ddl.String, "distance_metric=cosine") {
+		desc.OpsClass = "cosine"
+	}
+	return desc, nil
+}
+
+// PostgresVectorIndexFor describes the index named indexName (one per-model
+// partial expression index). The zero description (Exists() == false)
+// means the index is absent. Method, operator class and WITH (...) build
+// parameters are read back from pg_get_indexdef, so an index rebuilt by hand
+// with different tuning no longer describes itself as the desired one.
+func PostgresVectorIndexFor(ctx context.Context, db DBTX, indexName string) (VectorIndexDescription, error) {
+	var indexDDL string
+	err := db.QueryRowContext(ctx,
+		`SELECT indexdef FROM pg_indexes WHERE indexname = $1`, indexName).Scan(&indexDDL)
+	if errors.Is(err, sql.ErrNoRows) {
+		return VectorIndexDescription{}, nil
+	}
+	if err != nil {
+		return VectorIndexDescription{}, fmt.Errorf("read %s ddl: %w", indexName, err)
+	}
+	var desc VectorIndexDescription
+	if i := strings.Index(indexDDL, "USING "); i >= 0 {
+		rest := indexDDL[i+len("USING "):]
+		if j := strings.IndexByte(rest, ' '); j > 0 {
+			desc.Method = rest[:j]
+		}
+	}
+	desc.OpsClass = pgOpsClassPattern.FindString(indexDDL)
+	if i := strings.Index(indexDDL, "WITH ("); i >= 0 {
+		rest := indexDDL[i+len("WITH ("):]
+		if j := strings.IndexByte(rest, ')'); j >= 0 {
+			desc.BuildParams = rest[:j]
+		}
+	}
+	return desc, nil
+}
+
+// pgOpsClassPattern matches a pgvector operator class in an index definition.
+var pgOpsClassPattern = regexp.MustCompile(`\b\w+_ops\b`)
+
+// Exists reports whether the description names a live index.
+func (d VectorIndexDescription) Exists() bool { return d.Method != "" }
+
+// DBTX is the query surface shared by *sql.DB, *sql.Conn and *sql.Tx, so
+// signature reads and writes can join the transaction that rebuilds the
+// index they describe.
+type DBTX interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // Row is the on-disk representation of a row in index_signatures.
 type Row struct {
 	SignatureID   string
@@ -252,7 +324,7 @@ type Row struct {
 
 // Load returns the stored signature row for signatureID.
 // Returns (nil, nil) when no row exists yet (first-boot case).
-func Load(ctx context.Context, db *sql.DB, d Dialect, signatureID string) (*Row, error) {
+func Load(ctx context.Context, db DBTX, d Dialect, signatureID string) (*Row, error) {
 	q := `SELECT signature_id, signature_hash, computed_at, inputs_summary
 	        FROM index_signatures WHERE signature_id = ?`
 	if d == DialectPostgres {
@@ -290,7 +362,7 @@ func Load(ctx context.Context, db *sql.DB, d Dialect, signatureID string) (*Row,
 }
 
 // Upsert writes (or replaces) the stored signature for signatureID.
-func Upsert(ctx context.Context, db *sql.DB, d Dialect, signatureID, hash, inputsSummary string) error {
+func Upsert(ctx context.Context, db DBTX, d Dialect, signatureID, hash, inputsSummary string) error {
 	now := time.Now().UTC()
 	var err error
 	if d == DialectPostgres {
