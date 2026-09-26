@@ -1,5 +1,5 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0207: Browser Tab and Element Capture
@@ -22,6 +22,14 @@ Knowledge workers spend significant time in the browser -- reading articles, rev
 A browser extension that integrates directly with ctxt eliminates this friction entirely. A single click or keyboard shortcut captures the full page, a text selection, or a specific DOM element -- complete with source URL, page title, capture timestamp, and authentication state. The extension popup shows recent captures with status indicators, providing confidence that captured content is being processed.
 
 Three capture modes address different use cases: full-page capture for articles and reference pages (processed through a domain-aware article extraction pipeline), selection capture for specific paragraphs or quotes (processed through the text pipeline), and element capture for structured data like tables, code blocks, or UI components (preserving both HTML structure and a visual screenshot). Each mode routes to the appropriate pipeline, ensuring the captured content is cleaned, enriched, and indexed optimally.
+
+---
+
+## Delivery Status
+
+Partial. The browser extension, its `/api/v1/capture/*` endpoints and the `web.page`, `web.selection` and `web.element` pipelines are not built, so every acceptance box below is still open.
+
+For open tabs, `ctxt capture tabs --browser <browser> --browser-profile <profile>` is the extension-free path: it reads the tabs of one Chromium-family profile from disk, applies `capture.url_filter`, and enqueues each URL the way `ctxt capture <url>` does. It captures URLs only, not page HTML, selections, elements or auth state. See [Capture Open Browser Tabs](../../manual/workflows/browser-tab-capture.md).
 
 ---
 
