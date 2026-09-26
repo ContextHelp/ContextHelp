@@ -1,5 +1,5 @@
 ---
-status: paper
+status: partial
 adr: ADR-066
 task: T-0502
 ---
@@ -60,6 +60,26 @@ capture:
 - [ ] Last-poll-timestamp persisted per browser in buffer state (so daemon restart doesn't replay old visits)
 - [ ] Bookmark-shaped URLs (search engines: google.com/search, duckduckgo.com/?q=) tagged with `subtype=search-query` so search-engine visits are distinguishable from content visits
 - [ ] Cross-platform: macOS / Linux / Windows (browser SQLite paths differ per OS)
+
+### Progress
+
+Scope so far: Chromium family only (Chrome, Brave, Edge, Arc, Chromium, Vivaldi), via the one-shot `ctxt capture history` command and the Chromium History reader. User doc: [capture-history.md](../../capture-history.md). No box is ticked until the command lands and its e2e passes.
+
+| Criterion | Coverage |
+|---|---|
+| Registered as `browserhistory` in the ambient runner | Open: runner registration |
+| Poll at configurable interval (default 5 min) | `ctxt capture history` on a launchd schedule (5 min) as a stopgap; in-daemon polling open until runner registration |
+| Read-only copy-to-temp | Chromium History reader |
+| Detect new visits since last poll | `ctxt capture history` incremental mode (saved position) |
+| RawEvent per visit (URL, title, visit time, browser) | Chromium History reader; one entry per real navigation, subframes dropped, redirects collapsed |
+| Route `url.generic` / `url.repo` | Not in the command spec; verify when it lands |
+| Fingerprint dedup across polls | Not in the command spec; verify when it lands |
+| Per-browser config | Chromium family via `--browser` / `--browser-profile` plus per-browser and per-profile `capture.url_filter`; Firefox and Safari open |
+| kit/policy CEL veto | Open |
+| Bus events per ADR-066 | Open |
+| Position persisted per browser across restarts | `ctxt capture history`: per browser + profile in `browserhistory.state`; backfills never touch it |
+| `subtype=search-query` tagging | Not in the command spec; verify when it lands |
+| Cross-platform paths | Chromium profile resolver covers macOS / Linux / Windows; scheduling is macOS (launchd) only; Firefox and Safari open |
 
 ---
 
