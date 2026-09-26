@@ -282,7 +282,7 @@ func profileKeys(bc urlfilter.BrowserConfig) []string {
 // evaluateTabs runs every tab through the filter and marks repeats of
 // an allowed URL as duplicates. Every allowed, first-seen URL starts as
 // would_send. Decisions are logged without the URL.
-func evaluateTabs(report *tabsReport, tabs []chromium.Tab, filter urlfilter.Evaluator) {
+func evaluateTabs(report *tabsReport, tabs []chromium.Tab, filter *urlfilter.Filter) {
 	seen := make(map[string]bool, len(tabs))
 	for _, t := range tabs {
 		d := filter.Evaluate(t.URL)

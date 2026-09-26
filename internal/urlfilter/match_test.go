@@ -72,8 +72,8 @@ func TestDenyRuleCases(t *testing.T) {
 	for _, c := range denyCases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			r := Rules{Deny: []string{c.rule}}
-			if got := !r.Matches(c.url); got != c.denied {
+			f := mustNew(t, Layer{Scope: ScopeGlobal, Rules: Rules{Deny: []string{c.rule}}})
+			if got := !f.Matches(c.url); got != c.denied {
 				t.Errorf("deny %q vs %q: denied=%v, want %v", c.rule, c.url, got, c.denied)
 			}
 		})
@@ -100,8 +100,8 @@ func TestAllowOnlyRuleCases(t *testing.T) {
 	for _, c := range allowOnlyCases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			r := Rules{AllowOnly: []string{c.rule}}
-			if got := r.Matches(c.url); got != c.allowed {
+			f := mustNew(t, Layer{Scope: ScopeGlobal, Rules: Rules{AllowOnly: []string{c.rule}}})
+			if got := f.Matches(c.url); got != c.allowed {
 				t.Errorf("allow_only %q vs %q: allowed=%v, want %v", c.rule, c.url, got, c.allowed)
 			}
 		})

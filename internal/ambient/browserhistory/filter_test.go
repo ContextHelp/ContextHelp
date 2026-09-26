@@ -92,3 +92,30 @@ func TestSource_NilFilterDropsUnparseableURL(t *testing.T) {
 		t.Errorf("Payload = %q, want the unparseable URL dropped", ev.Payload)
 	}
 }
+
+func TestSource_NilFilterAppliesBuiltins(t *testing.T) {
+	t.Parallel()
+	br := &fakeBrowser{name: "chrome"}
+	br.AddVisits(
+		Visit{URL: "http://localhost:8080/admin", VisitedAt: time.Now()},
+		Visit{URL: "https://example.com/ok", VisitedAt: time.Now().Add(time.Second)},
+	)
+	pub := &payloadPub{}
+	s, err := New(Config{Browsers: []BrowserClient{br}, PollInterval: 50 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	_ = s.Start(ctx, pub)
+	t.Cleanup(func() { _ = s.Stop(context.Background()) })
+
+	ev := drainEventOrFail(t, s, time.Second)
+	if string(ev.Payload) != "https://example.com/ok" {
+		t.Fatalf("Payload = %q, want the builtin-denied URL dropped", ev.Payload)
+	}
+	got, ok := pub.first()
+	if !ok || got["scope"] != urlfilter.ScopeBuiltin || got["reason"] != "deny_rule" {
+		t.Errorf("filtered payload = %v, want a builtin deny", got)
+	}
+}

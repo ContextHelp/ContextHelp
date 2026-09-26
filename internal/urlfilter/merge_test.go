@@ -99,7 +99,6 @@ func TestMergeAllowOnlyEveryListMustMatch(t *testing.T) {
 	if len(c.moreAllowOnly) != 1 {
 		t.Fatalf("moreAllowOnly = %v, want one extra list", c.moreAllowOnly)
 	}
-	rules := c.Rules
 	for url, allowed := range map[string]bool{
 		"https://a.example.com/": false,
 		"https://b.example.com/": true,
@@ -113,10 +112,6 @@ func TestMergeAllowOnlyEveryListMustMatch(t *testing.T) {
 		if got := f.Evaluate(url); got.Allowed != allowed {
 			t.Errorf("Filter %s: %v, want allowed=%v", url, got, allowed)
 		}
-		// Rules.Evaluate honors the extra lists too.
-		if got := rules.Evaluate(url); got.Allowed != allowed {
-			t.Errorf("Rules %s: %v, want allowed=%v", url, got, allowed)
-		}
 	}
 }
 
@@ -128,10 +123,6 @@ func TestNewRejectsBadRuleInExtraAllowOnlyList(t *testing.T) {
 	)
 	if _, err := c.For(""); err == nil {
 		t.Fatal("want compile error for the second allow_only list")
-	}
-	rules := c.Rules
-	if d := rules.Evaluate("https://a.example.com/"); d.Allowed {
-		t.Fatalf("lenient: uncompilable extra list must match nothing, got %v", d)
 	}
 }
 

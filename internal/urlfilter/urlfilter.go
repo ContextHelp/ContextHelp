@@ -4,8 +4,7 @@
 // browserhistory source) runs URLs through one Filter before anything is
 // sent for ingestion. Deny is a privacy control, so the filter fails
 // closed: an unparseable URL is dropped, and a rule that cannot be
-// compiled is an error at construction (or, for uncompiled Rules, denies
-// everything).
+// compiled is an error at construction.
 //
 // Rule syntax, one string per rule:
 //
@@ -48,9 +47,6 @@ const (
 	ReasonNotAllowListed Reason = "not_allow_listed"
 	// ReasonUnparseable: the URL could not be parsed; dropped fail-closed.
 	ReasonUnparseable Reason = "unparseable_url"
-	// ReasonInvalidRule: Decision.Rule is a deny rule that does not
-	// compile; uncompiled Rules treat it as matching everything.
-	ReasonInvalidRule Reason = "invalid_rule"
 )
 
 // Rule identifies one configured pattern.
@@ -82,8 +78,6 @@ func (d Decision) String() string {
 		return fmt.Sprintf("denied by %s rule %q (%s)", d.Rule.List, d.Rule.Pattern, d.Rule.Scope)
 	case ReasonNotAllowListed:
 		return fmt.Sprintf("denied: no allow_only rule matched (%s)", d.Rule.Scope)
-	case ReasonInvalidRule:
-		return fmt.Sprintf("denied: invalid %s rule %q (%s)", d.Rule.List, d.Rule.Pattern, d.Rule.Scope)
 	default:
 		return "denied: unparseable URL"
 	}
@@ -103,11 +97,6 @@ func (d Decision) LogValue() slog.Value {
 	return slog.GroupValue(attrs...)
 }
 
-// Evaluator is implemented by Rules and *Filter.
-type Evaluator interface {
-	Evaluate(rawURL string) Decision
-}
-
 // Rules is one allow/deny URL-pattern list.
 type Rules struct {
 	// Deny: if any pattern matches, the URL is dropped.
@@ -119,21 +108,6 @@ type Rules struct {
 	// one per config layer whose list differs (see Config.Merge). Each is
 	// a separate gate: a URL must match one pattern of every list.
 	moreAllowOnly [][]string
-}
-
-// Matches reports whether the URL passes the rules.
-func (r Rules) Matches(rawURL string) bool { return r.Evaluate(rawURL).Allowed }
-
-// Evaluate checks the URL against the rules, compiling them on each call.
-// A deny rule that fails to compile denies every URL; an allow_only rule
-// that fails to compile matches none. Use New to surface such errors
-// up front.
-func (r Rules) Evaluate(rawURL string) Decision {
-	t, err := parseTarget(rawURL)
-	if err != nil {
-		return Decision{Reason: ReasonUnparseable}
-	}
-	return evaluate(t, compileLayerLenient(Layer{Scope: "rules", Rules: r}))
 }
 
 // Layer is a Rules list tagged with the scope it came from.
@@ -154,8 +128,6 @@ type compiledLayer struct {
 	scope     string
 	deny      []pattern
 	allowOnly []pattern
-	// invalidDeny holds deny rules that failed to compile (lenient mode).
-	invalidDeny []string
 }
 
 // New compiles layers into a Filter. Any rule that does not compile is
@@ -208,39 +180,8 @@ func (f *Filter) Evaluate(rawURL string) Decision {
 // Matches reports whether the URL passes the filter.
 func (f *Filter) Matches(rawURL string) bool { return f.Evaluate(rawURL).Allowed }
 
-func compileLayerLenient(l Layer) []compiledLayer {
-	cl := compiledLayer{scope: l.Scope}
-	for _, raw := range l.Deny {
-		if p, err := compilePattern(raw); err == nil {
-			cl.deny = append(cl.deny, p)
-		} else {
-			cl.invalidDeny = append(cl.invalidDeny, raw)
-		}
-	}
-	gates := []compiledLayer{cl}
-	for i, list := range l.allowOnlyLists() {
-		if i > 0 {
-			gates = append(gates, compiledLayer{scope: l.Scope})
-		}
-		g := &gates[len(gates)-1]
-		for _, raw := range list {
-			if p, err := compilePattern(raw); err == nil {
-				g.allowOnly = append(g.allowOnly, p)
-			} else {
-				// Keep the list non-empty so the allow_only gate still
-				// applies; an uncompilable rule just matches nothing.
-				g.allowOnly = append(g.allowOnly, pattern{raw: raw, never: true})
-			}
-		}
-	}
-	return gates
-}
-
 func evaluate(t target, layers []compiledLayer) Decision {
 	for _, l := range layers {
-		if len(l.invalidDeny) > 0 {
-			return Decision{Reason: ReasonInvalidRule, Rule: Rule{Pattern: l.invalidDeny[0], List: ListDeny, Scope: l.scope}}
-		}
 		for _, p := range l.deny {
 			if p.match(t) {
 				return Decision{Reason: ReasonDenyRule, Rule: Rule{Pattern: p.raw, List: ListDeny, Scope: l.scope}}
