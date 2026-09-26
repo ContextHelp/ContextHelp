@@ -314,7 +314,6 @@ A per-pipeline `pipelines.overrides.<name>.providers.embedding` is ignored with 
 
 ## Known limitations
 
-- `duplicates.policy: drop` still stores a near-duplicate.
 - Two dpkms processes serving one Postgres database can both run the same migration job. Rows stay correct, but provider calls are wasted. Run one dpkms per database while migrating.
 
 ## Related
