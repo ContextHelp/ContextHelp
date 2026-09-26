@@ -56,8 +56,44 @@ Privacy enforcement happens **before the event leaves your machine** at three la
 For continuous-capture sources (foreground, browser-history), the privacy posture is structural:
 
 - Foreground source captures **bundle id + window title only** — strictly NOT the AX tree, focused-element values, visible text, or keystrokes.
-- Browser-history runs on a configurable poll interval (default 5 min) and supports allow/deny URL patterns.
+- Browser-history runs on a configurable poll interval (default 5 min) and drops URLs matching your [URL filter](#keep-sites-out-of-browser-capture).
 - Meeting capture is **explicit-trigger only**; auto-detect prompt is opt-in and never starts recording without user confirmation.
+
+### Keep sites out of browser capture
+
+Every browser capture path (open tabs, history) checks each URL against `capture.url_filter` before sending it anywhere. Rules can apply everywhere, to one browser, or to one browser profile:
+
+```yaml
+capture:
+  url_filter:
+    deny:                              # every browser, every profile
+      - "*://*.bank.example.com/*"
+    browsers:
+      brave:
+        deny: []                       # every Brave profile
+        profiles:
+          Work:                        # the name you pass to --profile
+            deny:
+              - "*://crm.example.net/*"
+              - "*://drive.example.com/*"
+            allow_only: []             # optional: capture ONLY these
+```
+
+Rule syntax:
+
+| Rule | Matches |
+|---|---|
+| `*://crm.example.net/*` | that host, any scheme, any port, any path or query |
+| `*://*.example.net/*` | `example.net` and every subdomain |
+| `https://drive.example.com/shared` | that path and anything below it |
+| `*://localhost:8080/*` | that port only (no port in the rule = any port) |
+| `about:*`, `example.com` | legacy form: glob, or substring, over the raw URL |
+
+Host matching ignores letter case, userinfo and a trailing dot, and compares internationalized hosts in punycode, so `bücher.example` and `xn--bcher-kva.example` are the same rule.
+
+Scoped rules only narrow: deny lists add up across global, browser and profile, and a URL must satisfy every `allow_only` list that applies. Deny wins over `allow_only`. A URL that cannot be parsed is dropped. localhost, loopback addresses, `file:` and browser-internal pages (`chrome:`, `brave:`, `about:`, ...) are always dropped.
+
+Config layers replace rather than merge: a project or `-c` file that sets `browsers.brave` replaces every Brave rule from your user config, and one that sets `deny` replaces the global list. Keep all rules for a browser in one file.
 
 ## Buffer + retention
 

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/urlfilter"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 	kitconfig "hop.top/kit/go/core/config"
@@ -118,6 +119,19 @@ type Config struct {
 
 	// FanOut controls post-ingest fan-out enrichment.
 	FanOut FanOutConfig `mapstructure:"fanout" yaml:"fanout"`
+
+	// Capture configures browser capture (open tabs, history).
+	Capture CaptureConfig `mapstructure:"capture" yaml:"capture"`
+}
+
+// CaptureConfig configures browser capture.
+type CaptureConfig struct {
+	// URLFilter holds the deny/allow rules every browser capture path
+	// applies before sending a URL for ingestion. Rules can be global or
+	// scoped under browsers.<browser>[.profiles.<profile>]. Builtin
+	// generic denies (localhost, file:, browser-internal schemes) always
+	// apply on top; see urlfilter.BuiltinDeny.
+	URLFilter urlfilter.Config `mapstructure:"url_filter" yaml:"url_filter"`
 }
 
 // FanOutConfig controls post-ingest fan-out enrichment behaviour.
