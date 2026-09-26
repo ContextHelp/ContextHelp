@@ -53,3 +53,13 @@ func TestConformance_Search_MemEmbeddings(t *testing.T) {
 		Vectors: true,
 	})
 }
+
+// TestConformance_EmbeddingsByID runs the cross-driver batch embedding
+// read fixture against the per-model embeddings rows.
+func TestConformance_EmbeddingsByID(t *testing.T) {
+	storagetest.RunEmbeddingsByIDConformance(t, newTestDriver(t))
+}
+
+func TestConformance_EmbeddingsByID_MemEmbeddings(t *testing.T) {
+	storagetest.RunEmbeddingsByIDConformance(t, newMemEmbeddingsDriver(t))
+}

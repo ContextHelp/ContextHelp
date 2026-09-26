@@ -36,3 +36,10 @@ func TestPostgres_Conformance_Search(t *testing.T) {
 		Vectors: true,
 	})
 }
+
+// TestPostgres_Conformance_EmbeddingsByID runs the cross-driver batch
+// embedding read fixture against the per-model embeddings rows.
+func TestPostgres_Conformance_EmbeddingsByID(t *testing.T) {
+	drv, _ := freshIntegrationDriver(t)
+	storagetest.RunEmbeddingsByIDConformance(t, drv)
+}
