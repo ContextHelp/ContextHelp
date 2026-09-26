@@ -2,6 +2,7 @@ package storagetest
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
@@ -31,7 +32,7 @@ func TextContentDefaultConformance(t *testing.T, drv storage.StorageDriver, stor
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			obj := &storage.KnowledgeObject{
-				ID:          "text-default-" + string(rune('a'+i)),
+				ID:          "text-default-" + strconv.Itoa(i),
 				Type:        "note",
 				RawContent:  tc.raw,
 				TextContent: tc.text,
