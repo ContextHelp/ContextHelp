@@ -120,6 +120,14 @@ var pgMigrations = []pgMigration{
 		`ALTER TABLE objects DROP COLUMN IF EXISTS embedding`,
 		`ALTER TABLE objects DROP COLUMN IF EXISTS vector_indexed`,
 	}},
+	// Extracted text, mirroring the SQLite column. Rows written before this
+	// entry never stored TextContent, so the backfill applies the
+	// projection.BodyText rule to what was stored: text_content, else
+	// raw_content.
+	{Version: 16, Name: "objects.text_content", Statements: []string{
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS text_content TEXT NOT NULL DEFAULT ''`,
+		`UPDATE objects SET text_content = raw_content WHERE text_content = '' AND raw_content <> ''`,
+	}},
 }
 
 // migratePerModelEmbeddings moves embeddings to the per-model index schema.

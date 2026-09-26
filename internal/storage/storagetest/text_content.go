@@ -15,10 +15,8 @@ import (
 // explicit TextContent is never overwritten.
 //
 // Create applies the default to the object in place, which is what the
-// FTS projection reads. storesTextContent is false for a driver whose
-// objects table has no text_content column; the round-trip assertion is
-// then a loud skip, so the parity gap stays visible.
-func TextContentDefaultConformance(t *testing.T, drv storage.StorageDriver, storesTextContent bool) {
+// FTS projection reads, and Get reads the stored value back.
+func TextContentDefaultConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
 	cases := []struct {
 		name, raw, text, want string
@@ -48,9 +46,6 @@ func TextContentDefaultConformance(t *testing.T, drv storage.StorageDriver, stor
 			}
 			if obj.TextContent != tc.want {
 				t.Errorf("Create left TextContent %q on the object, want %q", obj.TextContent, tc.want)
-			}
-			if !storesTextContent {
-				t.Skip("driver does not persist text_content; round-trip not checked")
 			}
 			got, err := drv.Objects().Get(ctx, obj.ID)
 			if err != nil {
