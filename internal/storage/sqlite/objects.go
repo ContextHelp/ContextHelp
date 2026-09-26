@@ -432,7 +432,25 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	}
 	defer tx.Rollback()
 
-	// Read existing within the transaction to prevent concurrent merge races.
+	// Write first: a deferred transaction that reads before writing holds a
+	// snapshot, and if another writer commits meanwhile the upgrade fails with
+	// SQLITE_BUSY immediately, bypassing busy_timeout. Taking the write lock
+	// up front makes concurrent reinforcements queue instead of failing, and
+	// the read below then sees the latest committed tags and mentions.
+	now := time.Now().Format(time.RFC3339)
+	res, err := tx.ExecContext(ctx, `UPDATE objects SET
+			reinforcement_count = reinforcement_count + 1,
+			last_reinforced_at = ?
+		WHERE content_hash = ?`, now, hash)
+	if err != nil {
+		return "", fmt.Errorf("reinforce: update: %w", err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return "", fmt.Errorf("reinforce: update: %w", err)
+	} else if n == 0 {
+		return "", fmt.Errorf("reinforce: lookup: %w", sql.ErrNoRows)
+	}
+
 	var obj storage.KnowledgeObject
 	var (
 		tagsJSON, mentionsJSON string
@@ -458,8 +476,6 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	}
 	obj.Mentions = mentions.ParseSlice(mentionStrs)
 
-	now := time.Now().Format(time.RFC3339)
-
 	merged := mergeTags(obj.Tags, mergeData.Tags)
 	mergedTagsJSON, _ := json.Marshal(merged)
 
@@ -468,7 +484,7 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 
 	// Optionally update content if we now have more data (e.g. from text to url fetch)
 	contentUpdate := ""
-	contentArgs := []any{now, string(mergedTagsJSON), string(mergedMentionsJSON), now}
+	contentArgs := []any{string(mergedTagsJSON), string(mergedMentionsJSON), now}
 	if mergeData.RawContent != "" && mergeData.RawContent != hash {
 		tc := mergeData.TextContent
 		if tc == "" {
@@ -486,8 +502,6 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	// unindexed even though FTS still matched them.
 	query := fmt.Sprintf(`
 		UPDATE objects SET
-			reinforcement_count = reinforcement_count + 1,
-			last_reinforced_at = ?,
 			tags = ?,
 			mentions = ?,
 			updated_at = ?
