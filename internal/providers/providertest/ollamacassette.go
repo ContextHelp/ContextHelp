@@ -8,7 +8,11 @@
 //
 // XRR_OLLAMA_UPSTREAM selects the Ollama that answers while recording
 // (default http://127.0.0.1:11434). The recorded models must be pulled
-// there first (ollama pull snowflake-arctic-embed2).
+// there first (ollama pull snowflake-arctic-embed2 nomic-embed-text).
+//
+// An Ollama embedding provider reads the model's context length from
+// /api/show before its first /api/embed call, so a cassette directory
+// holds one show interaction per endpoint and model next to the embeds.
 //
 // Import from _test.go files only.
 package providertest
@@ -34,23 +38,48 @@ const DefaultOllamaUpstream = "http://127.0.0.1:11434"
 
 // OllamaCalls records the requests a provider issued, as seen before the
 // cassette answers them. Tests use it to assert where a provider pointed
-// (for example a tunnel port) even though replay never dials.
+// (for example a tunnel port) and what it sent, even though replay never
+// dials.
 type OllamaCalls struct {
-	mu   sync.Mutex
-	urls []string
+	mu     sync.Mutex
+	urls   []string
+	bodies []string
 }
 
-// URLs returns the request URLs in call order.
+// URLs returns the request URLs in call order: model metadata reads
+// (/api/show) and embed calls (/api/embed) alike.
 func (c *OllamaCalls) URLs() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]string(nil), c.urls...)
 }
 
-func (c *OllamaCalls) add(u string) {
+// EmbedURLs returns the URLs of the embed calls (/api/embed) only, in call
+// order: one per embedded input.
+func (c *OllamaCalls) EmbedURLs() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []string
+	for _, u := range c.urls {
+		if strings.HasSuffix(u, "/api/embed") {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+// Bodies returns the request bodies in call order, aligned with URLs.
+func (c *OllamaCalls) Bodies() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.bodies...)
+}
+
+func (c *OllamaCalls) add(u string, body []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.urls = append(c.urls, u)
+	c.bodies = append(c.bodies, string(body))
 }
 
 // OllamaClient returns an HTTP client that replays Ollama interactions from
@@ -86,7 +115,6 @@ func OllamaClient(t testing.TB, cassetteDir string) (*http.Client, *OllamaCalls)
 	calls := &OllamaCalls{}
 
 	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		calls.add(req.URL.String())
 		var body []byte
 		if req.Body != nil {
 			b, err := io.ReadAll(req.Body)
@@ -96,6 +124,7 @@ func OllamaClient(t testing.TB, cassetteDir string) (*http.Client, *OllamaCalls)
 			_ = req.Body.Close()
 			body = b
 		}
+		calls.add(req.URL.String(), body)
 		xreq := &xhttp.Request{Method: req.Method, URL: req.URL.String(), Body: string(body)}
 
 		resp, err := sess.Record(req.Context(), adapter, xreq, func() (xrr.Response, error) {

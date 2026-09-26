@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
@@ -11,8 +12,21 @@ import (
 
 // providerResolver adapts a Resolver to ProviderResolver. Every call
 // applies the Resolver's env, -c, config and Flags layers.
+//
+// ForModel returns one provider per distinct resolved setting set, so
+// state a provider learns once (the Ollama provider's model context
+// length) is kept across the per-object embed calls of a run.
 type providerResolver struct {
 	r *Resolver
+
+	mu     sync.Mutex
+	cached map[providerKey]providers.EmbeddingProvider
+}
+
+// providerKey is every resolved setting that shapes a provider.
+type providerKey struct {
+	backend, model, endpoint, apiKeyEnv string
+	dimension                           int
 }
 
 var _ ProviderResolver = (*providerResolver)(nil)
@@ -32,7 +46,21 @@ func (p *providerResolver) ForModel(_ context.Context, m registry.Model) (provid
 	if err != nil {
 		return nil, err
 	}
-	return res.Provider()
+	key := providerKey{res.Backend, res.Model, res.Endpoint, res.APIKeyEnv, res.Dimension}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if prov, ok := p.cached[key]; ok {
+		return prov, nil
+	}
+	prov, err := res.Provider()
+	if err != nil {
+		return nil, err
+	}
+	if p.cached == nil {
+		p.cached = map[providerKey]providers.EmbeddingProvider{}
+	}
+	p.cached[key] = prov
+	return prov, nil
 }
 
 // ForRegistration resolves with no registered model (full per-field

@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: ce537ba3
+recorded_at: "2026-09-26T22:45:24Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embed
+    body: '{"model":"snowflake-arctic-embed2","input":"xééééééééééééééééééééééééééé","truncate":false,"options":{"num_ctx":64,"num_batch":64}}'

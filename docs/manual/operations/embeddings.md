@@ -19,6 +19,13 @@ Every registered model that isn't deprecated is embedded on every capture, so ea
 
 The `ctxt embeddings` commands open the instance's database directly: `storage.path`, or the database of the instance named by `--instance` or `ctxt instance use`. Run them where that database can be opened. Only the `migrate` job itself runs in dpkms.
 
+### How much of an object is embedded
+
+The Ollama provider embeds up to the model's context length, read once per process from the model's metadata (`ollama show <model>`, `*.context_length`): 8,192 tokens for `snowflake-arctic-embed2`, 2,048 for `nomic-embed-text`. Each request asks Ollama for that context (`num_ctx` and `num_batch`); with Ollama's defaults (4,096 and 2,048 tokens) longer text fails with `the input length exceeds the context length`.
+
+- Text longer than the context length minus 8, counted in bytes, is cut there, never inside a character: at most 8,184 bytes for `snowflake-arctic-embed2`, 2,040 for `nomic-embed-text`. A token almost always covers at least one byte, so the cut text fits.
+- Ollama is told not to truncate. Text that still overflows, such as a long run of characters its tokenizer expands, fails the object instead of being cut silently. It shows up as a failed object in `migrate`.
+
 ## Switch to another model
 
 This walks an instance from `ollama-nomic-embed-text@2026-09-26` (the current default) to `ollama-snowflake-arctic-embed2@2026-09-26`. Search keeps using the old model until the flip in step 4.
@@ -176,7 +183,7 @@ Upgrade state: failed
   Target:    ollama-nomic-embed-text@2026-09-26
   Progress:  30/30
   Failed:    30 objects
-  Last error: 30 of 30 objects not embedded under ollama-nomic-embed-text@2026-09-26; re-run `ctxt embeddings migrate --to ollama-nomic-embed-text@2026-09-26` to retry them (first: 033b3eca-dac3-4ac0-b3e7-7383fa3a29cc: embed: ollama embed: Post "http://127.0.0.1:11555/api/embeddings": dial tcp 127.0.0.1:11555: connect: connection refused)
+  Last error: 30 of 30 objects not embedded under ollama-nomic-embed-text@2026-09-26; re-run `ctxt embeddings migrate --to ollama-nomic-embed-text@2026-09-26` to retry them (first: 033b3eca-dac3-4ac0-b3e7-7383fa3a29cc: embed: ollama show (model nomic-embed-text): Post "http://127.0.0.1:11555/api/show": dial tcp 127.0.0.1:11555: connect: connection refused)
 ```
 
 The `failed` state stays until the next `migrate` run starts. Fix the cause (here dpkms reached Ollama through a tunnel that was down), then run the same `migrate` again: it retries exactly the objects still missing.
