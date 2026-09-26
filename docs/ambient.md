@@ -93,7 +93,14 @@ Host matching ignores letter case, userinfo and a trailing dot, and compares int
 
 Scoped rules only narrow: deny lists add up across global, browser and profile, and a URL must satisfy every `allow_only` list that applies. Deny wins over `allow_only`. A URL that cannot be parsed is dropped. localhost, loopback addresses, `file:` and browser-internal pages (`chrome:`, `brave:`, `about:`, ...) are always dropped.
 
-Config layers replace rather than merge: a project or `-c` file that sets `browsers.brave` replaces every Brave rule from your user config, and one that sets `deny` replaces the global list. Keep all rules for a browser in one file.
+Rules add up across config layers too. Your user file, a project `.contexthelp/ctxt.yaml`, each `-c <file>` and each `-c key=value` all contribute:
+
+- **Deny lists accumulate.** At every scope (global, `browsers.<b>`, `browsers.<b>.profiles.<p>`) the effective deny list is the union of every layer's list, with duplicates removed. A project file that sets `browsers.brave.profiles.Work.deny` adds to your user file's Work rules, and `-c 'capture.url_filter.deny=["*://crm.example.net/*"]'` adds one rule for a single run.
+- **No layer can remove a deny rule.** An empty list (`deny: []`), `null`, or leaving the key out changes nothing. To stop denying a site, delete the rule from the file that holds it; `ctxt config paths` lists the files in play.
+- **Each `allow_only` list is one more gate.** When two layers set different `allow_only` lists at the same scope, a URL must match both, so a later layer can narrow capture but never widen it.
+- A bare value such as `-c capture.url_filter.deny=crm.example.net` is not a list and fails the command; quote a YAML list as shown above.
+
+Every other config key keeps normal layer precedence: the later layer wins.
 
 ## Buffer + retention
 

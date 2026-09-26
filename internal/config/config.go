@@ -131,6 +131,11 @@ type CaptureConfig struct {
 	// scoped under browsers.<browser>[.profiles.<profile>]. Builtin
 	// generic denies (localhost, file:, browser-internal schemes) always
 	// apply on top; see urlfilter.BuiltinDeny.
+	//
+	// Unlike every other key, config layers do not override this one:
+	// urlfilter.Config merges each layer the loader decodes onto it, so
+	// deny lists are the union of all layers and each layer's allow_only
+	// list is one more gate. See urlfilter.Config.Merge.
 	URLFilter urlfilter.Config `mapstructure:"url_filter" yaml:"url_filter"`
 }
 
@@ -1307,7 +1312,7 @@ func EnsureConfigDir(bin string) error {
 		return fmt.Errorf("failed to determine config path")
 	}
 	configDir := filepath.Dir(configPath)
-	return os.MkdirAll(configDir, 0750)
+	return os.MkdirAll(configDir, 0o750)
 }
 
 // EnsureDataDir ensures the data directory exists.
@@ -1323,7 +1328,7 @@ func EnsureDataDir() error {
 	}
 	// #nosec G703 -- dataDir derives from XDG_DATA_HOME or the
 	// operator's config, not from captured content or a request.
-	return os.MkdirAll(dataDir, 0750)
+	return os.MkdirAll(dataDir, 0o750)
 }
 
 // RunDir returns the directory used for runtime files (pidfiles).
@@ -1339,7 +1344,7 @@ func RunDir() (string, error) {
 	}
 	dir := filepath.Join(base, "run")
 	// #nosec G703 -- base is the operator's XDG state/runtime dir.
-	if err := os.MkdirAll(dir, 0750); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("run dir: %w", err)
 	}
 	return dir, nil

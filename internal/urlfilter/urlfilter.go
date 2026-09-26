@@ -115,6 +115,10 @@ type Rules struct {
 	// AllowOnly: if non-empty, only URLs matching at least one pattern
 	// pass. Empty means allow all (subject to Deny).
 	AllowOnly []string `mapstructure:"allow_only" yaml:"allow_only,omitempty"`
+	// moreAllowOnly holds further allow_only lists for the same scope,
+	// one per config layer whose list differs (see Config.Merge). Each is
+	// a separate gate: a URL must match one pattern of every list.
+	moreAllowOnly [][]string
 }
 
 // Matches reports whether the URL passes the rules.
@@ -129,8 +133,7 @@ func (r Rules) Evaluate(rawURL string) Decision {
 	if err != nil {
 		return Decision{Reason: ReasonUnparseable}
 	}
-	l := compileLayerLenient(Layer{Scope: "rules", Rules: r})
-	return evaluate(t, []compiledLayer{l})
+	return evaluate(t, compileLayerLenient(Layer{Scope: "rules", Rules: r}))
 }
 
 // Layer is a Rules list tagged with the scope it came from.
@@ -168,14 +171,23 @@ func New(layers ...Layer) (*Filter, error) {
 			}
 			cl.deny = append(cl.deny, p)
 		}
-		for _, raw := range l.AllowOnly {
-			p, err := compilePattern(raw)
-			if err != nil {
-				return nil, fmt.Errorf("urlfilter: %s allow_only rule %q: %w", l.Scope, raw, err)
+		// Each further allow_only list of the scope becomes its own
+		// compiled layer, so evaluate requires a match in every one.
+		gates := []compiledLayer{cl}
+		for i, list := range l.allowOnlyLists() {
+			if i > 0 {
+				gates = append(gates, compiledLayer{scope: l.Scope})
 			}
-			cl.allowOnly = append(cl.allowOnly, p)
+			g := &gates[len(gates)-1]
+			for _, raw := range list {
+				p, err := compilePattern(raw)
+				if err != nil {
+					return nil, fmt.Errorf("urlfilter: %s allow_only rule %q: %w", l.Scope, raw, err)
+				}
+				g.allowOnly = append(g.allowOnly, p)
+			}
 		}
-		f.layers = append(f.layers, cl)
+		f.layers = append(f.layers, gates...)
 	}
 	return f, nil
 }
@@ -196,7 +208,7 @@ func (f *Filter) Evaluate(rawURL string) Decision {
 // Matches reports whether the URL passes the filter.
 func (f *Filter) Matches(rawURL string) bool { return f.Evaluate(rawURL).Allowed }
 
-func compileLayerLenient(l Layer) compiledLayer {
+func compileLayerLenient(l Layer) []compiledLayer {
 	cl := compiledLayer{scope: l.Scope}
 	for _, raw := range l.Deny {
 		if p, err := compilePattern(raw); err == nil {
@@ -205,16 +217,23 @@ func compileLayerLenient(l Layer) compiledLayer {
 			cl.invalidDeny = append(cl.invalidDeny, raw)
 		}
 	}
-	for _, raw := range l.AllowOnly {
-		if p, err := compilePattern(raw); err == nil {
-			cl.allowOnly = append(cl.allowOnly, p)
-		} else {
-			// Keep the list non-empty so the allow_only gate still
-			// applies; an uncompilable rule just matches nothing.
-			cl.allowOnly = append(cl.allowOnly, pattern{raw: raw, never: true})
+	gates := []compiledLayer{cl}
+	for i, list := range l.allowOnlyLists() {
+		if i > 0 {
+			gates = append(gates, compiledLayer{scope: l.Scope})
+		}
+		g := &gates[len(gates)-1]
+		for _, raw := range list {
+			if p, err := compilePattern(raw); err == nil {
+				g.allowOnly = append(g.allowOnly, p)
+			} else {
+				// Keep the list non-empty so the allow_only gate still
+				// applies; an uncompilable rule just matches nothing.
+				g.allowOnly = append(g.allowOnly, pattern{raw: raw, never: true})
+			}
 		}
 	}
-	return cl
+	return gates
 }
 
 func evaluate(t target, layers []compiledLayer) Decision {

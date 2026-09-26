@@ -44,7 +44,9 @@ func BuiltinDeny() []string { return slices.Clone(builtinDeny) }
 // capture.url_filter config key. Global rules apply to every browser and
 // profile; browser rules to every profile of that browser; profile rules
 // to that one profile. Scoped rules add to the global ones: deny lists
-// accumulate and every allow_only list must be satisfied.
+// accumulate and every allow_only list must be satisfied. Config layers
+// combine the same way: decoding YAML onto a populated Config merges
+// into it (see Merge), so no layer can drop another layer's deny rule.
 type Config struct {
 	Rules    `mapstructure:",squash" yaml:",inline"`
 	Browsers map[string]BrowserConfig `mapstructure:"browsers" yaml:"browsers,omitempty"`
