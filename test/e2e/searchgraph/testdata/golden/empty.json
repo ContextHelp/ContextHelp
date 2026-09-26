@@ -1,0 +1,60 @@
+{
+  "graph": {
+    "directed": true,
+    "edges": [],
+    "id": "search-graph",
+    "label": "zzqqxx",
+    "metadata": {
+      "caps": {
+        "max_edges": 1500,
+        "max_nodes": 250
+      },
+      "counts": {
+        "both": 0,
+        "candidates": 0,
+        "cut_limit": 0,
+        "cut_threshold": 0,
+        "edges": 0,
+        "entities": 0,
+        "fts_hits": 0,
+        "fts_only": 0,
+        "nodes": 1,
+        "returned": 0,
+        "vector_hits": 0,
+        "vector_only": 0
+      },
+      "fts_pool": 50,
+      "fts_query": "zzqqxx",
+      "fts_weight": 0.5,
+      "generated_at": "\u003cgenerated_at\u003e",
+      "limit": 10,
+      "mode": "fts_fallback",
+      "query": "zzqqxx",
+      "rrf_k": 60,
+      "semantic_status": "provider_error",
+      "threshold": 0,
+      "truncated": false,
+      "vector_error": "\u003cvector_error\u003e",
+      "vector_model": "fixture-e2e-3",
+      "vector_pool": 50,
+      "vector_weight": 0.5,
+      "vocabulary": "ctxt.search-graph/v1",
+      "weights": {
+        "direct_backlink": 0.08,
+        "hop_backlink": 0.03,
+        "max_mention_boost": 1,
+        "mention_boost": 0.05,
+        "word_overlap": 0
+      }
+    },
+    "nodes": {
+      "query": {
+        "label": "zzqqxx",
+        "metadata": {
+          "kind": "query"
+        }
+      }
+    },
+    "type": "ctxt.search-graph"
+  }
+}

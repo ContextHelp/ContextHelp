@@ -36,5 +36,9 @@ done
 pkgs=$(printf '%s\n' $owned | sort -u)
 [ -z "$pkgs" ] && exit 0
 
+# e2e joins fts5 so the black-box suites under test/e2e/ that carry only
+# the e2e tag (and are linted with it, see .golangci.yml build-tags) load
+# as packages instead of failing with "build constraints exclude all Go
+# files"; it selects no file in any other package.
 # shellcheck disable=SC2086 # deliberate word-splitting of the package list
-CGO_ENABLED=1 go vet -tags fts5 $pkgs
+CGO_ENABLED=1 go vet -tags fts5,e2e $pkgs

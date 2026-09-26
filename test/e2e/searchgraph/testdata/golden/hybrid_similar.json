@@ -1,0 +1,456 @@
+{
+  "graph": {
+    "directed": true,
+    "edges": [
+      {
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        },
+        "relation": "co_mention",
+        "source": "obj:budget",
+        "target": "obj:postmortem"
+      },
+      {
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        },
+        "relation": "co_mention",
+        "source": "obj:postmortem",
+        "target": "obj:runbook"
+      },
+      {
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        },
+        "relation": "co_mention",
+        "source": "obj:rollback",
+        "target": "obj:runbook"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        },
+        "relation": "extends",
+        "source": "obj:rollback",
+        "target": "obj:runbook"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.1380645161
+        },
+        "relation": "matched",
+        "source": "query",
+        "target": "obj:budget"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.095889029
+        },
+        "relation": "matched",
+        "source": "query",
+        "target": "obj:freeze"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.08793650794
+        },
+        "relation": "matched",
+        "source": "query",
+        "target": "obj:glossary"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.1955048077
+        },
+        "relation": "matched",
+        "source": "query",
+        "target": "obj:postmortem"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.1457490079
+        },
+        "relation": "matched",
+        "source": "query",
+        "target": "obj:rollback"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.1962612374
+        },
+        "relation": "matched",
+        "source": "query",
+        "target": "obj:runbook"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        },
+        "relation": "mentions",
+        "source": "obj:budget",
+        "target": "ent:team/sre"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        },
+        "relation": "mentions",
+        "source": "obj:postmortem",
+        "target": "ent:person/alice-chen"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        },
+        "relation": "mentions",
+        "source": "obj:postmortem",
+        "target": "ent:team/sre"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        },
+        "relation": "mentions",
+        "source": "obj:rollback",
+        "target": "ent:project/atlas"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        },
+        "relation": "mentions",
+        "source": "obj:runbook",
+        "target": "ent:person/alice-chen"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        },
+        "relation": "mentions",
+        "source": "obj:runbook",
+        "target": "ent:project/atlas"
+      },
+      {
+        "directed": false,
+        "metadata": {
+          "derivation": "stored"
+        },
+        "relation": "related-to",
+        "source": "obj:postmortem",
+        "target": "obj:runbook"
+      },
+      {
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.8999568027
+        },
+        "relation": "similar",
+        "source": "obj:budget",
+        "target": "obj:runbook"
+      },
+      {
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.7999999928
+        },
+        "relation": "similar",
+        "source": "obj:freeze",
+        "target": "obj:postmortem"
+      },
+      {
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.9600000067
+        },
+        "relation": "similar",
+        "source": "obj:postmortem",
+        "target": "obj:rollback"
+      },
+      {
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.7999999928
+        },
+        "relation": "similar",
+        "source": "obj:rollback",
+        "target": "obj:runbook"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        },
+        "relation": "supersedes",
+        "source": "obj:freeze",
+        "target": "obj:glossary"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        },
+        "relation": "supports",
+        "source": "obj:postmortem",
+        "target": "obj:budget"
+      }
+    ],
+    "id": "search-graph",
+    "label": "deployment",
+    "metadata": {
+      "caps": {
+        "max_edges": 1500,
+        "max_nodes": 250
+      },
+      "counts": {
+        "both": 4,
+        "candidates": 6,
+        "cut_limit": 0,
+        "cut_threshold": 0,
+        "edges": 23,
+        "entities": 3,
+        "fts_hits": 5,
+        "fts_only": 1,
+        "nodes": 10,
+        "returned": 6,
+        "vector_hits": 5,
+        "vector_only": 1
+      },
+      "fts_pool": 50,
+      "fts_query": "deployment",
+      "fts_weight": 0.5,
+      "generated_at": "\u003cgenerated_at\u003e",
+      "limit": 10,
+      "mode": "hybrid",
+      "query": "deployment",
+      "rrf_k": 60,
+      "semantic_status": "ok",
+      "threshold": 0,
+      "truncated": false,
+      "vector_model": "fixture-e2e-3",
+      "vector_pool": 50,
+      "vector_weight": 0.5,
+      "vocabulary": "ctxt.search-graph/v1",
+      "weights": {
+        "direct_backlink": 0.08,
+        "hop_backlink": 0.03,
+        "max_mention_boost": 1,
+        "mention_boost": 0.05,
+        "word_overlap": 0
+      }
+    },
+    "nodes": {
+      "ent:person/alice-chen": {
+        "label": "alice chen",
+        "metadata": {
+          "kind": "entity",
+          "mention_count": 2,
+          "slug": "person/alice-chen"
+        }
+      },
+      "ent:project/atlas": {
+        "label": "atlas",
+        "metadata": {
+          "kind": "entity",
+          "mention_count": 2,
+          "slug": "project/atlas"
+        }
+      },
+      "ent:team/sre": {
+        "label": "sre",
+        "metadata": {
+          "kind": "entity",
+          "mention_count": 2,
+          "slug": "team/sre"
+        }
+      },
+      "obj:budget": {
+        "label": "Quarterly budget review for the platform team",
+        "metadata": {
+          "created_at": "\u003ccreated_at\u003e",
+          "kind": "object",
+          "legs": "vector",
+          "object_id": "budget",
+          "object_type": "text",
+          "rank": 4,
+          "rrf": 0.008064516129,
+          "score": {
+            "fts": 0,
+            "graph_relevance": 0.08,
+            "mention_boost": 0.05,
+            "total": 0.1380645161,
+            "vector": 0.008064516129,
+            "word_overlap": 0
+          },
+          "source": "argument",
+          "stage": "returned",
+          "vector_rank": 2,
+          "vector_raw": 0.899957
+        }
+      },
+      "obj:freeze": {
+        "label": "Deployment freeze calendar",
+        "metadata": {
+          "created_at": "\u003ccreated_at\u003e",
+          "fts_rank": 1,
+          "fts_raw": -1.354679803e-06,
+          "kind": "object",
+          "legs": "both",
+          "object_id": "freeze",
+          "object_type": "text",
+          "rank": 5,
+          "rrf": 0.015889029,
+          "score": {
+            "fts": 0.008196721311,
+            "graph_relevance": 0.08,
+            "mention_boost": 0,
+            "total": 0.095889029,
+            "vector": 0.007692307692,
+            "word_overlap": 0
+          },
+          "source": "argument",
+          "stage": "returned",
+          "vector_rank": 5,
+          "vector_raw": 0
+        }
+      },
+      "obj:glossary": {
+        "label": "Glossary of platform terms used in every deployment review and every deployment retrospective",
+        "metadata": {
+          "created_at": "\u003ccreated_at\u003e",
+          "fts_rank": 3,
+          "fts_raw": -1.187904968e-06,
+          "kind": "object",
+          "legs": "fts",
+          "object_id": "glossary",
+          "object_type": "text",
+          "rank": 6,
+          "rrf": 0.007936507937,
+          "score": {
+            "fts": 0.007936507937,
+            "graph_relevance": 0.08,
+            "mention_boost": 0,
+            "total": 0.08793650794,
+            "vector": 0,
+            "word_overlap": 0
+          },
+          "source": "argument",
+          "stage": "returned"
+        }
+      },
+      "obj:postmortem": {
+        "label": "Postmortem of the billing service deployment outage",
+        "metadata": {
+          "created_at": "\u003ccreated_at\u003e",
+          "fts_rank": 5,
+          "fts_raw": -1.070038911e-06,
+          "kind": "object",
+          "legs": "both",
+          "object_id": "postmortem",
+          "object_type": "text",
+          "rank": 2,
+          "rrf": 0.01550480769,
+          "score": {
+            "fts": 0.007692307692,
+            "graph_relevance": 0.08,
+            "mention_boost": 0.1,
+            "total": 0.1955048077,
+            "vector": 0.0078125,
+            "word_overlap": 0
+          },
+          "source": "argument",
+          "stage": "returned",
+          "vector_rank": 4,
+          "vector_raw": 0.6
+        }
+      },
+      "obj:rollback": {
+        "label": "Rollback checklist for a failed atlas deployment",
+        "metadata": {
+          "created_at": "\u003ccreated_at\u003e",
+          "fts_rank": 4,
+          "fts_raw": -1.070038911e-06,
+          "kind": "object",
+          "legs": "both",
+          "object_id": "rollback",
+          "object_type": "text",
+          "rank": 3,
+          "rrf": 0.01574900794,
+          "score": {
+            "fts": 0.0078125,
+            "graph_relevance": 0.08,
+            "mention_boost": 0.05,
+            "total": 0.1457490079,
+            "vector": 0.007936507937,
+            "word_overlap": 0
+          },
+          "source": "argument",
+          "stage": "returned",
+          "vector_rank": 3,
+          "vector_raw": 0.8
+        }
+      },
+      "obj:runbook": {
+        "label": "Deployment runbook for the atlas cluster: deployment order, health checks and rollback triggers",
+        "metadata": {
+          "created_at": "\u003ccreated_at\u003e",
+          "fts_rank": 2,
+          "fts_raw": -1.187904968e-06,
+          "kind": "object",
+          "legs": "both",
+          "object_id": "runbook",
+          "object_type": "text",
+          "rank": 1,
+          "rrf": 0.01626123744,
+          "score": {
+            "fts": 0.008064516129,
+            "graph_relevance": 0.08,
+            "mention_boost": 0.1,
+            "total": 0.1962612374,
+            "vector": 0.008196721311,
+            "word_overlap": 0
+          },
+          "source": "argument",
+          "stage": "returned",
+          "vector_rank": 1,
+          "vector_raw": 1
+        }
+      },
+      "query": {
+        "label": "deployment",
+        "metadata": {
+          "kind": "query"
+        }
+      }
+    },
+    "type": "ctxt.search-graph"
+  }
+}

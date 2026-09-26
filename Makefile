@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-integration-services test-smoke test-all test-cover test-gate test-docker toolchain-check lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-integration-services test-smoke test-e2e test-all test-cover test-gate test-docker toolchain-check lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -103,8 +103,18 @@ test-smoke:
 	@echo "Running smoke tests..."
 	go test -tags=smoke ./test/smoke/...
 
+## test-e2e: Run black-box e2e tests against a freshly built ctxt binary
+##
+## Suites under test/e2e/ carrying the e2e build tag; each builds its own
+## binary and runs in a throwaway HOME. Headless-browser smoke tests run
+## when Chrome/Chromium is found (CTXT_E2E_CHROME=off skips them).
+## Mirrors the e2e step of the test job in .github/workflows/ci.yml.
+test-e2e:
+	@echo "Running e2e tests..."
+	CGO_ENABLED=1 go test -count=1 -tags 'fts5 e2e' ./test/e2e/...
+
 ## test-all: Run all test tiers
-test-all: test-unit test-integration test-smoke
+test-all: test-unit test-integration test-smoke test-e2e
 
 ## test-cover: Generate coverage report
 test-cover:
