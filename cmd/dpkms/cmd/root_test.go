@@ -3,28 +3,22 @@ package cmd
 import (
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
-// TestMain isolates XDG dirs so host state (current-instance file, stored
-// profiles, pidfiles) never leaks into tests, keeping them hermetic on
-// developer machines.
+// TestMain isolates HOME and XDG dirs so host state (current-instance file,
+// stored profiles, pidfiles, config) never leaks into tests, and refuses any
+// request to the default local server ports: the client commands (pipeline,
+// healthcheck) default to http://localhost:8080, where a developer's real
+// server may listen. See internal/testguard.
 func TestMain(m *testing.M) {
-	xdgDir, err := os.MkdirTemp("", "dpkms-cmd-xdg-")
-	if err != nil {
-		panic(err)
-	}
-	os.Setenv("XDG_DATA_HOME", filepath.Join(xdgDir, "data"))
-	os.Setenv("XDG_CONFIG_HOME", filepath.Join(xdgDir, "config"))
-	code := m.Run()
-	os.RemoveAll(xdgDir)
-	os.Exit(code)
+	os.Exit(testguard.Main(m, nil))
 }
 
 // resetAllFlags resets all flags on a command and its subcommands to defaults.

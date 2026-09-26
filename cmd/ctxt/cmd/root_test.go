@@ -3,35 +3,32 @@ package cmd
 import (
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
+// TestMain runs the package isolated from the developer's machine: HOME and
+// XDG dirs point at a throwaway tree (so neither in-process commands nor the
+// binaries e2e tests spawn read the real config, state or data), routing env
+// is cleared, the default server.url is a closed port, and any request to the
+// default local server ports is refused and fails the run. See
+// internal/testguard. Without this, a test that configures no server — or a
+// red run whose routing falls through to the default — posts into whatever
+// real ctxt server listens on 127.0.0.1:8080.
 func TestMain(m *testing.M) {
-	// Disable clipboard access for all tests — avoids non-deterministic behaviour
-	// when tests run with clipboard content present.
-	os.Setenv("CTXT_NO_CLIPBOARD", "1")
-	// Force env secrets backend so tests are not affected by the local config
-	// file (which may configure keychain or another backend).
-	os.Setenv("CTXT_SECRETS_BACKEND", "env")
-	// Isolate XDG dirs so state read from the host (current-instance file,
-	// stored profiles, pidfiles) never leaks into tests. Without this, a
-	// developer machine with e.g. a selected instance named "db" or saved
-	// profiles fails otherwise-hermetic tests.
-	xdgDir, err := os.MkdirTemp("", "ctxt-cmd-xdg-")
-	if err != nil {
-		panic(err)
-	}
-	os.Setenv("XDG_DATA_HOME", filepath.Join(xdgDir, "data"))
-	os.Setenv("XDG_CONFIG_HOME", filepath.Join(xdgDir, "config"))
-	code := m.Run()
-	os.RemoveAll(xdgDir)
-	os.Exit(code)
+	os.Exit(testguard.Main(m, func() {
+		// Disable clipboard access for all tests — avoids non-deterministic
+		// behaviour when tests run with clipboard content present.
+		os.Setenv("CTXT_NO_CLIPBOARD", "1")
+		// Force env secrets backend so tests are not affected by a config
+		// that configures keychain or another backend.
+		os.Setenv("CTXT_SECRETS_BACKEND", "env")
+	}, "ctxt"))
 }
 
 // resetAllFlags resets all flags on a command and its subcommands to defaults.
