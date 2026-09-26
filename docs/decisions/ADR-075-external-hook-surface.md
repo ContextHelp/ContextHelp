@@ -1,12 +1,12 @@
 # ADR-075 – External Hook Surface: Pre and Post Hooks on ctxt and dpkms Events
 
-> **Status:** Proposed
-> **Date:** 2026-09-27
+> **Status:** Accepted (2026-09-26)
+> **Date:** 2026-09-26
 > **Author:** jadb
 > **Applies to:** dPKMS, ctxt
 > **Supersedes:** None
 > **References:** ADR-007 (transactional outbox), ADR-023 (authentication), ADR-065 (adapters; its entity-topic amendment already routes policy-gated mutations through `domain.Service[T]`), ADR-068 (MCP read surface, `/ws/bus`), ADR-070 and ADR-071 (upgrade and embedding-model events), ADR-074 (sync log)
-> **Plan:** [`docs/plans/2026-09-27-external-hooks.md`](../plans/2026-09-27-external-hooks.md) covers the survey, the naming audit, the first increment and the open decisions.
+> **Plan:** [`docs/plans/2026-09-27-external-hooks.md`](../plans/2026-09-27-external-hooks.md) covers the survey, the naming audit, the first increment with its test gates, and the later increments.
 >
 > kit paths below are relative to `poly-kit/go/` at `next` 1059039. ctxt paths are relative to the repository root.
 
@@ -58,6 +58,20 @@ Also relevant, outside kit:
 
 **ctxt and dpkms become hook hosts on kit's existing seams.**
 
+### Owner decisions (final, 2026-09-26)
+
+1. **Contract home.** kit's existing hook points, used as they are. `exec` and `webhook` handlers follow nerv's decision format: decision JSON on stdout; exit 0 allow, 1 warn, 2 block; exit 4 and above is an error. No kit change is requested, now or later.
+2. **Veto only.** Before hooks can allow, warn or block. They never rewrite the payload.
+3. **Failure policy.** A failing `exec` or `webhook` hook fails closed on destructive actions (`purge`, `delete`) and open on every other action. `cel` rules deny on any evaluation error, as kit does (K11).
+4. **Registration.** `exec` hooks come only from local config, never from the database. `webhook` hooks may also be registered in the instance database, and registering one requires admin authentication.
+5. **`/ws/bus`.** After events are mirrored onto it, best effort. `BUS_TOKEN` is never issued to external apps.
+6. **Retention.** 7 days. A subscriber that falls behind the retention window is marked `stale` and must resync.
+7. **Outbox and `sync_log`.** `event_outbox` stays a separate table from ADR-074's `sync_log`.
+
+Sections 1–6 below apply these decisions.
+
+### Shape
+
 - **Before hooks** are synchronous subscribers on the three kit-owned veto topics (K7). ctxt emits those topics for its own mutations and describes each request through `policy.ContextAttrsKey` (K8).
 - **After events** use ctxt-owned topics that pass `ValidateTopic`. They are written to a transactional outbox in the instance database and delivered at least once.
 - **ctxt mints no `pre_*` topics of its own.**
@@ -74,7 +88,7 @@ Also relevant, outside kit:
   - Hook-system events are `ctxt.runtime.hook.failed` and `ctxt.runtime.hook.gap_detected` (a subscriber fell behind retention).
 - **Every new topic is built through `bus.TopicOf` or `PrefixTopics`**, so `ValidateTopic` checks it when the process starts, as `internal/lateral/events/catalog.go` already does. Constants built by string concatenation are not added.
 - **Catalog.** A spec file, `contracts/hooks/events.yaml`, lists what can be hooked:
-  - each before-hook key (kit topic, `kind`, `action`), with which process hosts it and its default failure policy
+  - each before-hook key (kit topic, `kind`, `action`), with which process hosts it and its failure class (closed for destructive actions, open otherwise)
   - each after topic, with its payload schema and which fields are redacted
 - **Existing topics that violate kit's rules** are listed as follow-up work under Consequences. This ADR renames nothing.
 
@@ -98,13 +112,15 @@ Also relevant, outside kit:
   - **No `rewrite`.** kit's pre phases can veto but have no channel for returning a modified payload. Rewriting would also break the destructive-command confirmation token and the audit trail.
 - **Handler kinds:**
   - **`cel`** is kit policy, used exactly as kit ships it: rules in the existing policy file, with `on:` set to one of the three kit topics. Evaluation errors deny (K11).
-  - **`exec`** is a local command. It receives the envelope on stdin, writes the decision JSON on stdout, and exits 0 (allow), 1 (warn), 2 (block), or 4 and above for an error. These are nerv's codes, minus `rewrite`.
+  - **`exec`** is a local command. It receives the envelope on stdin, writes the decision JSON on stdout, and exits 0 (allow), 1 (warn), 2 (block), or 4 and above for an error. These are nerv's codes, minus `rewrite`: exit 3, nerv's `rewrite`, has no meaning here and counts as an error. When the JSON `action` and the exit code disagree, the exit code wins, as in nerv.
   - **`webhook`** is an HTTPS POST whose response body is the same decision JSON.
 - **ctxt's dispatcher** runs the `exec` and `webhook` hooks. It is one synchronous subscriber on each kit pre topic, and it filters on `request_attrs`.
 - **Order.** Policy runs first and short-circuits, then the dispatcher's `exec` hooks, then its `webhook` hooks. Decisions combine deny-overrides, as K11 does.
 - **Timeouts and failure** (for `exec` and `webhook` only):
   - Each hook has a `timeout`: 5 s by default, 30 s at most.
-  - `on_failure: open|closed` defaults to open, as nerv does. Every fail-open is recorded as `ctxt.runtime.hook.failed`.
+  - A hook fails when it times out, cannot start, exits 3 or above, or prints decision JSON that does not parse. A `webhook` also fails when it is unreachable or answers with a non-2xx status.
+  - The action fixes the failure policy (owner decision 3). On `purge` and `delete` a failure blocks the mutation (closed). On every other action the failed hook is skipped and the mutation proceeds (open). This departs from nerv, which fails open everywhere. There is no per-hook setting that loosens it.
+  - Every failure, open or closed, is recorded as `ctxt.runtime.hook.failed`. That row is written in its own transaction, because the mutation may not commit.
   - `cel` keeps kit's closed behavior (K11).
 - **Dry runs.** The pre phases run with `request_attrs.dry_run = true`. A block is reported as "would be blocked", and no outbox row is written.
 - **Pre phases never leave the process.** A bus peer cannot veto (K12), so `/ws/bus` is not a before-hook transport.
@@ -112,21 +128,29 @@ Also relevant, outside kit:
 ### 4. After hooks: transactional outbox, delivered at least once
 
 - **The outbox table.** `event_outbox` has these columns: `seq`, `id` (a UUIDv7), `topic`, `source`, `occurred_at`, `origin`, `actor`, `instance_id` and `payload`.
-- **Writing.** The repository behind the kit service writes the row inside the mutation's transaction. kit's own post publish is best effort and runs after the write (K6), so it cannot give this guarantee. This is ADR-007's outbox pattern applied to announcements. The table is kept separate from ADR-074's `sync_log`.
+- **Writing.** The repository behind the kit service writes the row inside the mutation's transaction. kit's own post publish is best effort and runs after the write (K6), so it cannot give this guarantee. This is ADR-007's outbox pattern applied to announcements.
+- **Separate from `sync_log`.** `event_outbox` holds announcements for other applications; ADR-074's `sync_log` holds replication operations between devices. They stay separate tables (owner decision 7).
 - **Delivery.** The daemon's dispatcher reads rows in `seq` order and delivers each one to every subscription, at least once. Consumers dedupe on `id`.
 - **Ordering.** Order holds per subscription. A failing subscription holds up only itself, retrying with backoff.
-- **While an app is down,** its cursor stays where it was until retention runs out. The proposed retention is 7 days. After that the subscription is marked `lagging`, and `ctxt.runtime.hook.gap_detected` is emitted.
+- **Retention.** Rows are kept for 7 days, then pruned. While an app is down, its cursor stays where it was.
+- **Stale subscribers.** A subscriber whose cursor falls behind the oldest retained row is marked `stale`, and `ctxt.runtime.hook.gap_detected` is emitted. It never receives a silent gap.
+  - A server-held subscription (a webhook) stops receiving deliveries until it is reset.
+  - A pull or SSE client that asks for a `seq` older than the retention floor gets `410 Gone`, naming the oldest retained `seq`.
+  - To recover, the subscriber resyncs: it re-reads current state through the API, then resumes from the current head.
 - **With no daemon running,** rows wait. `ctxt events deliver` drains them without one.
 - **Transports:**
   - pull: `GET /api/v1/events?after=<seq>`
   - SSE on `GET /api/v1/events`, resumable through `Last-Event-ID`
   - webhook push, using kit's `runtime/notify` webhook sink behind the outbox cursor
-  - a live, best-effort mirror of post topics onto `/ws/bus` for trusted peers
+  - a live, best-effort mirror of after events onto `/ws/bus` for trusted peers (owner decision 5)
 - **Local audit copies.** The CLI's local `KIT_BUS_SINK` publish stays as a local audit copy.
 
 ### 5. Registration, authentication and trust
 
-- **Instance registry.** A database table, managed with `ctxt hooks add|list|rm`, which are policy-gated through the same `pre_persisted` seam. It holds `webhook` hooks. `cel` rules stay in kit's policy file.
+- **Instance registry.** A database table that holds `webhook` hooks only, managed with `ctxt hooks add|list|rm`.
+  - Adding or removing a hook requires an authenticated principal with the `admin` role (ADR-023; `auth.Principal.HasRole`). So registration goes through the daemon's authenticated API; `ctxt hooks add|rm` call it and never write the table directly.
+  - Changes are also policy-gated through the same `pre_persisted` seam.
+  - `cel` rules stay in kit's policy file.
 - **Local config.** `$XDG_CONFIG_HOME/contexthelp/hooks.yaml`, plus a project layer, holds `exec` and `webhook` hooks.
 - **`exec` hooks never come from the database.**
 - **Webhooks** must use HTTPS except on loopback. Requests are signed with a per-subscription HMAC-SHA256 over the timestamp plus the body, and receivers enforce a replay window.
@@ -175,6 +199,7 @@ The database stores an `instance_id`, and every event carries it.
 - **Hookable mutations have to go through kit's domain seams.** The embedding-model registry and object delete gain `domain.Service` wrappers.
 - **Performance and connectivity.** Every mutation pays an outbox insert and its before-hook latency. A webhook before hook needs network access.
 - **Two registry sources** to reason about.
+- **A broken hook blocks destructive actions.** Because `purge` and `delete` fail closed, a hook that crashes or times out stops them until it is fixed or removed from local config (or, for a webhook, by an admin).
 
 ### What cannot be expressed within kit today
 
@@ -214,7 +239,7 @@ Every topic below was checked against K1–K4. This ADR fixes none of them.
 - the `ctxt.ambient.meeting.*`, `ctxt.ambient.{event,enqueue,session}.*` and `ctxt.ambient.source.{started,stopped,failed}` topics
 - `dpkms.adapter.lifecycle.*` and `dpkms.<protocol>.entity.*`
 - the `kit.runtime.entity.*` topics from `domain.Service[Pipeline]`
-- the proposed `ctxt.runtime.hook.{failed,gap_detected}`
+- the new `ctxt.runtime.hook.{failed,gap_detected}`
 
 **Not bus topics:** the `security.*` event kinds in `internal/security/events.go:28-32` are stored records. They would need 4-segment names if they ever become hookable.
 
@@ -222,7 +247,7 @@ Every topic below was checked against K1–K4. This ADR fixes none of them.
 
 ## Implementation Notes
 
-The plan holds the first increment, its test gates and the proposed wording for `docs/architecture.md`.
+The plan holds the first increment, its test gates, the later increments and the replacement wording for `docs/architecture.md`.
 
 ---
 
