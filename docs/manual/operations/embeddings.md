@@ -116,7 +116,7 @@ ctxt embeddings register <model_id> [--embedding-provider B] [--embedding-model 
 
 - The provider is resolved like every embedding command: flags, `CTXT_EMBEDDING_*`, `-c providers.embedding.*`, the config file, the defaults. Preview it with `ctxt embeddings provider` and the same flags.
 - Register embeds one fixed string and records the vector's length as the model's dimension. If the provider can't be reached, nothing is registered.
-- `--dimension N` is a check: when the measured dimension differs, the command fails with exit code 4 and registers nothing. `providers.embedding.dimension` in config is informational; register neither uses nor checks it.
+- `--dimension N` is a check: when the measured dimension differs, the command fails with exit code 4 and registers nothing. `providers.embedding.dimension` in config (or `-c`) is checked the same way when it applies to the model being registered; `--dimension` wins when both are set.
 - The registry entry stores the backend, model, endpoint and `api_key_env` (the variable's name, never the key). Backend and model are fixed from then on; endpoint and `api_key_env` stay overridable per run.
 - A model ID may use letters, digits and `. _ : @ / + -`, must start with a letter or digit, and has at most 200 characters. It names one vector space: to register a different model, use a new ID, such as a later date.
 - The dimension limit is 8192 on SQLite and 2000 on Postgres.
