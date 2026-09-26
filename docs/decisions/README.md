@@ -486,7 +486,9 @@ Third replication mode (vs. push federation and backup): 2–5 owned devices, al
 
 ### **ADR-075 – External Hook Surface: Pre and Post Hooks on ctxt and dpkms Events (Proposed)**
 Lets other applications hook in before or after actions in ctxt and dpkms. ctxt and dpkms host hooks at the shared service layer, in whichever process performs the mutation: the CLI for direct writes, the daemon for API and worker work.
-- **Naming.** Before hooks use kit-grammar `pre_<action>` topics. They are veto-only (`allow`/`warn`/`block`, no rewrite), can be `cel`, `exec` or `webhook` handlers, and combine deny-overrides. Each hook has a timeout and an `on_failure` policy (open by default).
+- **Naming.** kit is the naming authority, and no kit change is requested. Before hooks attach to kit's three veto-able topics (`kit.runtime.entity.pre_validated`, `kit.runtime.entity.pre_persisted`, `kit.runtime.state.pre_transitioned`) and are keyed by `request_attrs.kind` and `request_attrs.action`. ctxt mints no `pre_*` topics of its own.
+- **Before hooks.** They are veto-only (`allow`/`warn`/`block`, no rewrite) and can be kit `cel` policy, `exec` or `webhook` handlers, combined deny-overrides. `exec` and `webhook` hooks each have a timeout and an `on_failure` policy (open by default). `cel` keeps kit's deny-on-error behaviour.
+- **After-only events.** Events that are neither entity mutations nor state transitions cannot be vetoed. The ADR lists every existing topic that deviates from kit's rules, with file and line, as follow-up work.
 - **Handler contract.** `exec` hooks use nerv's decision JSON and exit codes, but ctxt events stay out of nerv and axon, whose scope is AI-assistant host CLIs.
 - **After events.** They are appended to an instance-database `event_outbox` in the same transaction as the change. dpkms delivers them at least once, in order per subscription, by pull, resumable SSE, webhooks, and a best-effort `/ws/bus` mirror.
 - **Targeting.** Hooks and events bind to the database, never to a URL, so `--instance`, remote Postgres and running with no daemon behave the same.
