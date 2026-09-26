@@ -80,6 +80,7 @@ func TestStatusHealthyTableOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	t.Cleanup(func() { cmd.SetOut(nil) })
 
 	err := runStatus(cmd, nil)
 	require.NoError(t, err)
@@ -93,8 +94,10 @@ func TestStatusHealthyTableOutput(t *testing.T) {
 func TestStatusJSONOutputPassThrough(t *testing.T) {
 	env := statusEnvelope{
 		Health: "healthy", Version: "v9", UptimeSeconds: 1,
-		Checks: statusChecks{Process: "ok", RESTAPI: "ok", GRPCAPI: "ok",
-			DB: statusDBCheck{Status: "ok"}, Watchers: []statusWatcher{}},
+		Checks: statusChecks{
+			Process: "ok", RESTAPI: "ok", GRPCAPI: "ok",
+			DB: statusDBCheck{Status: "ok"}, Watchers: []statusWatcher{},
+		},
 	}
 	srv := fakeHealthzServer(t, http.StatusOK, env)
 	defer srv.Close()
@@ -107,6 +110,7 @@ func TestStatusJSONOutputPassThrough(t *testing.T) {
 
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	t.Cleanup(func() { cmd.SetOut(nil) })
 
 	require.NoError(t, runStatus(cmd, nil))
 
@@ -122,8 +126,10 @@ func TestStatusJSONOutputPassThrough(t *testing.T) {
 func TestStatusReturnsErrorOn503(t *testing.T) {
 	env := statusEnvelope{
 		Health: "failed", Version: "v0.0.1", UptimeSeconds: 5,
-		Checks: statusChecks{Process: "ok", RESTAPI: "ok", GRPCAPI: "unknown",
-			DB: statusDBCheck{Status: "failed"}, Watchers: []statusWatcher{}},
+		Checks: statusChecks{
+			Process: "ok", RESTAPI: "ok", GRPCAPI: "unknown",
+			DB: statusDBCheck{Status: "failed"}, Watchers: []statusWatcher{},
+		},
 	}
 	srv := fakeHealthzServer(t, http.StatusServiceUnavailable, env)
 	defer srv.Close()
@@ -136,6 +142,7 @@ func TestStatusReturnsErrorOn503(t *testing.T) {
 
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	t.Cleanup(func() { cmd.SetOut(nil) })
 
 	err := runStatus(cmd, nil)
 	require.Error(t, err)
@@ -154,9 +161,26 @@ func TestStatusUnreachableReturnsError(t *testing.T) {
 
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	t.Cleanup(func() { cmd.SetOut(nil) })
 
 	err := runStatus(cmd, nil)
 	require.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "healthcheck") || strings.Contains(err.Error(), "connection"),
 		"error should mention transport/healthcheck failure: %v", err)
+}
+
+// Without --server, `ctxt status` reads the primary of the configured
+// server.urls with that entry's token, never the built-in default.
+func TestStatus_UsesPrimaryConfiguredServer(t *testing.T) {
+	healthy := statusEnvelope{Health: "healthy", Version: "v-primary"}
+	primary := newRecordedServer(t, fakeHealthzServer(t, http.StatusOK, healthy).Config.Handler)
+	secondary := newRecordedServer(t, fakeHealthzServer(t, http.StatusOK, healthy).Config.Handler)
+	db := setupTestDB(t)
+	appendConfig(t, db, "server:\n  urls:\n    - url: "+primary.URL+"\n      token: tok-primary\n    - "+secondary.URL+"\n")
+
+	out, err := db.exec("status", "--format", "json")
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "v-primary")
+	assert.Equal(t, []string{"Bearer tok-primary"}, primary.hits())
+	assert.Empty(t, secondary.hits())
 }

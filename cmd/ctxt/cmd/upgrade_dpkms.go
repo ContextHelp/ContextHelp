@@ -12,9 +12,10 @@
 //	ctxt upgrade plan     — what would 'ctxt upgrade run' do?      (this file)
 //	ctxt upgrade run      — execute pending bucket-2 work           (this file)
 //
-// All three new subcommands talk to the configured dpkms instance via
-// HTTP /healthz; the daemon owns the upgrade state machine
-// (internal/upgrade.Manager).
+// status talks to the configured dpkms instance via HTTP /healthz; the
+// daemon owns the upgrade state machine (internal/upgrade.Manager). plan
+// and run work in-process against the local store (storage.path or
+// --instance), so they take no --server.
 //
 // Output rules mirror `ctxt status`:
 //   - Human-readable table by default.
@@ -30,14 +31,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	gohttp "net/http"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
@@ -137,16 +137,15 @@ func init() {
 	upgradeCmd.AddCommand(upgradeStatusCmd, upgradePlanCmd, upgradeRunCmd)
 
 	// status flags — mirror ctxt status.
-	upgradeStatusCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	upgradeStatusCmd.Flags().String("server", "", serverFlagUsage)
 	upgradeStatusCmd.Flags().Bool("watch", false, "refresh every --interval seconds until idle")
 	upgradeStatusCmd.Flags().Int("interval", 2, "seconds between refreshes when --watch is set")
 
-	// plan flags. --dry-run is inherited from the kit global persistent
-	// flag (plan is read-only anyway; the flag is silently accepted).
-	upgradePlanCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	// plan takes no flags of its own. --dry-run is inherited from the kit
+	// global persistent flag (plan is read-only anyway; the flag is
+	// silently accepted).
 
 	// run flags. --dry-run is inherited from the kit global persistent flag.
-	upgradeRunCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
 	upgradeRunCmd.Flags().String("filter", "", "narrow affected objects (e.g. pipeline=text.short@v0)")
 	upgradeRunCmd.Flags().String("where", "", "SQL WHERE escape hatch (compiles to where:<predicate>)")
 	upgradeRunCmd.Flags().Int("rate-limit", 0, "max re-ingests per second (0 = unbounded)")
@@ -182,7 +181,7 @@ func init() {
 
 // runUpgradeStatus implements `ctxt upgrade status` (+ --watch).
 func runUpgradeStatus(cmd *cobra.Command, _ []string) error {
-	serverURL := upgradeServerURL(cmd)
+	ep := serverEndpoint(cmd)
 	watch, _ := cmd.Flags().GetBool("watch")
 	interval, _ := cmd.Flags().GetInt("interval")
 	if interval < 1 {
@@ -190,7 +189,7 @@ func runUpgradeStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	if !watch {
-		return upgradeStatusOnce(cmd, serverURL)
+		return upgradeStatusOnce(cmd, ep)
 	}
 
 	ticker := time.NewTicker(time.Duration(interval) * time.Second)
@@ -201,11 +200,11 @@ func runUpgradeStatus(cmd *cobra.Command, _ []string) error {
 	}
 	for {
 		fmt.Fprint(cmd.OutOrStdout(), "\033[H\033[2J")
-		err := upgradeStatusOnce(cmd, serverURL)
+		err := upgradeStatusOnce(cmd, ep)
 
 		// Exit cleanly when the upgrade returns to idle so --watch is
 		// usable in scripts ("wait until upgrade is done").
-		env, _, ferr := fetchUpgradeHealthz(serverURL)
+		env, ferr := fetchUpgradeHealthz(ctx, ep)
 		if ferr == nil && (env.Upgrade == nil || env.Upgrade.State == "idle") {
 			return nil
 		}
@@ -223,10 +222,10 @@ func runUpgradeStatus(cmd *cobra.Command, _ []string) error {
 // upgradeStatusOnce performs one /healthz fetch and renders just the
 // upgrade envelope. Returns an error (non-zero exit) only when the
 // envelope reports state=failed or the request itself fails.
-func upgradeStatusOnce(cmd *cobra.Command, serverURL string) error {
-	env, _, err := fetchUpgradeHealthz(serverURL)
+func upgradeStatusOnce(cmd *cobra.Command, ep idxbridge.Endpoint) error {
+	env, err := fetchUpgradeHealthz(cmd.Context(), ep)
 	if err != nil {
-		return fmt.Errorf("healthcheck %s: %w", serverURL, err)
+		return fmt.Errorf("healthcheck %s: %w", ep.URL, err)
 	}
 
 	if isJSONOutput() {
@@ -549,36 +548,23 @@ func runUpgradeRun(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// upgradeServerURL mirrors statusServerURL but is duplicated to avoid
-// invisible coupling — the two CLI commands are siblings and either may
-// grow flags the other doesn't have.
-func upgradeServerURL(cmd *cobra.Command) string {
-	url := flagString(cmd, "server", "server.url")
-	if url == "" {
-		url = "http://localhost:8080"
-	}
-	return url
-}
-
 // fetchUpgradeHealthz issues GET /healthz and decodes only the fields
 // `ctxt upgrade` cares about. Other top-level fields pass through silently.
-func fetchUpgradeHealthz(serverURL string) (upgradeHealthzPayload, int, error) {
-	url := strings.TrimRight(serverURL, "/") + "/healthz"
-	client := &gohttp.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(url) // #nosec G107 -- user-provided server URL
+func fetchUpgradeHealthz(ctx context.Context, ep idxbridge.Endpoint) (upgradeHealthzPayload, error) {
+	resp, err := serverGet(ctx, ep, "/healthz", 5*time.Second)
 	if err != nil {
-		return upgradeHealthzPayload{}, 0, err
+		return upgradeHealthzPayload{}, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return upgradeHealthzPayload{}, resp.StatusCode, err
+		return upgradeHealthzPayload{}, err
 	}
 
 	var env upgradeHealthzPayload
 	if err := json.Unmarshal(body, &env); err != nil {
-		return upgradeHealthzPayload{}, resp.StatusCode, fmt.Errorf("decode response: %w", err)
+		return upgradeHealthzPayload{}, fmt.Errorf("decode response: %w", err)
 	}
-	return env, resp.StatusCode, nil
+	return env, nil
 }

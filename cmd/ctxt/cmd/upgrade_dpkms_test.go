@@ -71,6 +71,7 @@ func TestUpgradeStatusJSONReturnsEnvelope(t *testing.T) {
 
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	t.Cleanup(func() { cmd.SetOut(nil) })
 
 	require.NoError(t, runUpgradeStatus(cmd, nil))
 
@@ -97,6 +98,7 @@ func TestUpgradeStatusIdleHumanReadable(t *testing.T) {
 
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	t.Cleanup(func() { cmd.SetOut(nil) })
 
 	require.NoError(t, runUpgradeStatus(cmd, nil))
 	assert.Contains(t, buf.String(), "Upgrade state: idle")
@@ -124,6 +126,7 @@ func TestUpgradeStatusInProgressHumanReadable(t *testing.T) {
 
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	t.Cleanup(func() { cmd.SetOut(nil) })
 
 	require.NoError(t, runUpgradeStatus(cmd, nil))
 	out := buf.String()
@@ -156,6 +159,7 @@ func TestUpgradeStatusFailedExitsNonZero(t *testing.T) {
 
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	t.Cleanup(func() { cmd.SetOut(nil) })
 
 	err := runUpgradeStatus(cmd, nil)
 	require.Error(t, err)
@@ -180,6 +184,7 @@ func TestUpgradeRunMissingFilterRefuses(t *testing.T) {
 
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	t.Cleanup(func() { cmd.SetOut(nil) })
 
 	err := runUpgradeRun(cmd, nil)
 	require.Error(t, err)
@@ -201,6 +206,7 @@ func TestUpgradeRunAllRefusesAsOutOfScope(t *testing.T) {
 
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
+	t.Cleanup(func() { cmd.SetOut(nil) })
 
 	err := runUpgradeRun(cmd, nil)
 	require.Error(t, err)
