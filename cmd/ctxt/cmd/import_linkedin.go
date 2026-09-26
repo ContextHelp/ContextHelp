@@ -50,7 +50,7 @@ func init() {
 	importLinkedInCmd.Flags().String("articles", "", "path to Articles.csv from your LinkedIn data export")
 	importLinkedInCmd.Flags().String("since", "", "only import content published since RFC3339 or YYYY-MM-DD")
 	importLinkedInCmd.Flags().Int("max-items", 0, "maximum number of items to import (0 = all)")
-	importLinkedInCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importLinkedInCmd.Flags().String("server", "", serverFlagUsage)
 	importLinkedInCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	cliconv.WithSideEffect(importLinkedInCmd, cliconv.SideEffectWrite)
@@ -83,13 +83,8 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	since, err := parseSinceValue(sinceRaw)
 	if err != nil {
@@ -211,7 +206,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 			source = "import:linkedin"
 		}
 
-		_, err := enqueueContent(serverURL, content, "text", pipeline, source)
+		_, err := enqueueContent(ep, content, "text", pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {
@@ -236,7 +231,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 			source = "import:linkedin"
 		}
 
-		_, err := enqueueContent(serverURL, content, "text", pipeline, source)
+		_, err := enqueueContent(ep, content, "text", pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

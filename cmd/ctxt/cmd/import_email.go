@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -49,7 +51,7 @@ func init() {
 	importCmd.AddCommand(importEmailCmd)
 
 	f := importEmailCmd.Flags()
-	f.String("server", "", "dpkms server URL (default http://localhost:8080)")
+	f.String("server", "", serverFlagUsage)
 	f.String("provider", "file", "provider: imap|file")
 
 	// IMAP flags.
@@ -88,18 +90,9 @@ func init() {
 	})
 }
 
-// emailServerURL returns the server URL from the command flag or the default.
-func emailServerURL(cmd *cobra.Command) string {
-	url, _ := cmd.Flags().GetString("server")
-	if url == "" {
-		url = "http://localhost:8080"
-	}
-	return strings.TrimRight(url, "/")
-}
-
 func runImportEmail(cmd *cobra.Command, args []string) error {
 	provider, _ := cmd.Flags().GetString("provider")
-	serverURL := emailServerURL(cmd)
+	ep := serverEndpoint(cmd)
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	rulesFile, _ := cmd.Flags().GetString("rules")
 	pipelineOverride, _ := cmd.Flags().GetString("pipeline")
@@ -122,15 +115,15 @@ func runImportEmail(cmd *cobra.Command, args []string) error {
 
 	switch strings.ToLower(provider) {
 	case "imap":
-		return runImportEmailIMAP(cmd, serverURL, dryRun, rulesPayload, pipelineOverride, maxItems, since)
+		return runImportEmailIMAP(cmd, ep, dryRun, rulesPayload, pipelineOverride, maxItems, since)
 	case "file":
-		return runImportEmailFile(cmd, serverURL, dryRun, rulesPayload, pipelineOverride, maxItems)
+		return runImportEmailFile(cmd, ep, dryRun, rulesPayload, pipelineOverride, maxItems)
 	default:
 		return fmt.Errorf("unknown provider %q; supported: imap, file", provider)
 	}
 }
 
-func runImportEmailIMAP(cmd *cobra.Command, serverURL string, dryRun bool, rules any, pipelineOverride string, maxItems int, since string) error {
+func runImportEmailIMAP(cmd *cobra.Command, ep idxbridge.Endpoint, dryRun bool, rules any, pipelineOverride string, maxItems int, since string) error {
 	host, _ := cmd.Flags().GetString("host")
 	user, _ := cmd.Flags().GetString("user")
 	password, _ := cmd.Flags().GetString("password")
@@ -167,10 +160,10 @@ func runImportEmailIMAP(cmd *cobra.Command, serverURL string, dryRun bool, rules
 		payload["rules"] = rules
 	}
 
-	return sendEmailImportRequest(serverURL, payload, dryRun, cmd.OutOrStdout())
+	return sendEmailImportRequest(cmd.Context(), ep, payload, dryRun, cmd.OutOrStdout())
 }
 
-func runImportEmailFile(cmd *cobra.Command, serverURL string, dryRun bool, rules any, pipelineOverride string, maxItems int) error {
+func runImportEmailFile(cmd *cobra.Command, ep idxbridge.Endpoint, dryRun bool, rules any, pipelineOverride string, maxItems int) error {
 	filePath, _ := cmd.Flags().GetString("file")
 	if filePath == "" {
 		return fmt.Errorf("--file is required for file provider")
@@ -202,16 +195,16 @@ func runImportEmailFile(cmd *cobra.Command, serverURL string, dryRun bool, rules
 		payload["rules"] = rules
 	}
 
-	return sendEmailImportRequest(serverURL, payload, dryRun, cmd.OutOrStdout())
+	return sendEmailImportRequest(cmd.Context(), ep, payload, dryRun, cmd.OutOrStdout())
 }
 
-func sendEmailImportRequest(serverURL string, payload map[string]any, dryRun bool, out io.Writer) error {
+func sendEmailImportRequest(ctx context.Context, ep idxbridge.Endpoint, payload map[string]any, dryRun bool, out io.Writer) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	resp, err := gohttp.Post(serverURL+"/api/v1/importers/email/run", "application/json", bytes.NewReader(body))
+	resp, err := serverDo(ctx, ep, gohttp.MethodPost, "/api/v1/importers/email/run", bytes.NewReader(body), 0)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}

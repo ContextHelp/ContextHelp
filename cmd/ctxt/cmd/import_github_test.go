@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	githubimporter "github.com/ideacrafterslabs/ctxt/internal/importer/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -147,7 +148,7 @@ func TestRunImportGitHubEnqueue(t *testing.T) {
 
 	var enqueuedSources []string
 	origEnqueue := enqueueGitHubItem
-	enqueueGitHubItem = func(serverURL, content, contentType, pipelineName, source string) (string, error) {
+	enqueueGitHubItem = func(_ idxbridge.Endpoint, content, contentType, pipelineName, source string) (string, error) {
 		enqueuedSources = append(enqueuedSources, source)
 		return "job-id", nil
 	}

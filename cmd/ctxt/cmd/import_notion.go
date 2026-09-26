@@ -35,7 +35,7 @@ func init() {
 	importNotionCmd.Flags().String("since", "", "only import pages edited since RFC3339 timestamp")
 	importNotionCmd.Flags().Int("max-items", 0, "maximum pages to import (0 = all)")
 
-	importNotionCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importNotionCmd.Flags().String("server", "", serverFlagUsage)
 	importNotionCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	// For testing and self-hosted proxies.
@@ -90,15 +90,10 @@ func runImportNotion(cmd *cobra.Command, args []string) error {
 		since = &parsed
 	}
 
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	notionBaseURL, _ := cmd.Flags().GetString("notion-base-url")
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	client := notionimporter.NewClient(nil, notionBaseURL, token)
 	ctx := context.Background()
@@ -227,7 +222,7 @@ func runImportNotion(cmd *cobra.Command, args []string) error {
 			source = "import:notion"
 		}
 
-		_, err = enqueueContent(serverURL, content, "text", pipelineName, source)
+		_, err = enqueueContent(ep, content, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

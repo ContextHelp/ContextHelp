@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -37,7 +36,7 @@ Examples:
   ctxt import gdrive --access-token $GDRIVE_ACCESS_TOKEN --folder-id abc123 --since 2026-01-19 --dry-run
 
   # Import only Google Docs and PDFs, limit to 200 files
-  ctxt import gdrive --access-token $GDRIVE_ACCESS_TOKEN --mime-type application/vnd.google-apps.document --mime-type application/pdf --max-items 200 --server http://localhost:8080`,
+  ctxt import gdrive --access-token $GDRIVE_ACCESS_TOKEN --mime-type application/vnd.google-apps.document --mime-type application/pdf --max-items 200`,
 	RunE: runImportGDrive,
 }
 
@@ -52,7 +51,7 @@ func init() {
 	importGDriveCmd.Flags().StringSlice("mime-type", nil, "only import these MIME types")
 	importGDriveCmd.Flags().Bool("include-trashed", false, "include trashed files (default false)")
 	importGDriveCmd.Flags().Int("max-items", 0, "maximum number of files to import (0 = all)")
-	importGDriveCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importGDriveCmd.Flags().String("server", "", serverFlagUsage)
 	importGDriveCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	cliconv.WithSideEffect(importGDriveCmd, cliconv.SideEffectWrite)
@@ -84,7 +83,7 @@ func runImportGDrive(cmd *cobra.Command, args []string) error {
 	includeTrashed, _ := cmd.Flags().GetBool("include-trashed")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 
 	if strings.TrimSpace(accessToken) == "" {
@@ -93,11 +92,6 @@ func runImportGDrive(cmd *cobra.Command, args []string) error {
 	if accessToken == "" {
 		return fmt.Errorf("google drive token is required: use --access-token or %s (scope: drive.readonly)", gdriveAccessTokenEnv)
 	}
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	since, err := parseSinceValue(sinceRaw)
 	if err != nil {
@@ -169,7 +163,7 @@ func runImportGDrive(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		_, err = enqueueImportItem(serverURL, payload, contentType, pipelineName, "import:gdrive")
+		_, err = enqueueContent(ep, payload, contentType, pipelineName, "import:gdrive")
 		if err != nil {
 			failed++
 			if firstErr == nil {
@@ -300,35 +294,4 @@ func renderGDriveText(f gdriveimporter.File, body string) string {
 	b.WriteString(strings.TrimSpace(body))
 	b.WriteString("\n")
 	return b.String()
-}
-
-func enqueueImportItem(serverURL, content, contentType, pipelineName, source string) (string, error) {
-	payload := enqueueRequest{
-		Content:  content,
-		Type:     contentType,
-		Pipeline: pipelineName,
-		Source:   source,
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
-	}
-
-	endpoints := []string{"/api/v1/pipelines/enqueue", "/api/v1/analyze"}
-	for i, endpoint := range endpoints {
-		jobID, statusCode, respBody, err := postEnqueueRequest(serverURL+endpoint, body)
-		if err != nil {
-			return "", err
-		}
-		if statusCode == 404 && i == 0 {
-			continue
-		}
-		if statusCode != 202 && statusCode != 200 {
-			return "", fmt.Errorf("dpkms returned %d: %s", statusCode, strings.TrimSpace(respBody))
-		}
-		return jobID, nil
-	}
-
-	return "", fmt.Errorf("enqueue failed: endpoint unavailable")
 }

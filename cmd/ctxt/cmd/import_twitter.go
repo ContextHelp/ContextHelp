@@ -48,7 +48,7 @@ func init() {
 	importTwitterCmd.Flags().String("username", "", "your Twitter/X username (used for canonical tweet URLs)")
 	importTwitterCmd.Flags().String("since", "", "only import tweets created since RFC3339 or YYYY-MM-DD")
 	importTwitterCmd.Flags().Int("max-items", 0, "maximum number of tweets to import (0 = all)")
-	importTwitterCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importTwitterCmd.Flags().String("server", "", serverFlagUsage)
 	importTwitterCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	cliconv.WithSideEffect(importTwitterCmd, cliconv.SideEffectWrite)
@@ -80,13 +80,8 @@ func runImportTwitter(cmd *cobra.Command, _ []string) error {
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	since, err := parseSinceValue(sinceRaw)
 	if err != nil {
@@ -166,7 +161,7 @@ func runImportTwitter(cmd *cobra.Command, _ []string) error {
 			pipeline = "text.short"
 		}
 
-		_, err := enqueueContent(serverURL, content, "text", pipeline, source)
+		_, err := enqueueContent(ep, content, "text", pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

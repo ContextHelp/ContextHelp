@@ -60,8 +60,7 @@ Examples:
 
   # Import explicit item references and enqueue
   ctxt import onedrive \
-    --item-ref b!abc123/01XQ7M3P5H2QABCD1234EFGH5678IJKL \
-    --server http://localhost:8080`,
+    --item-ref b!abc123/01XQ7M3P5H2QABCD1234EFGH5678IJKL`,
 	RunE: runImportOneDrive,
 }
 
@@ -77,7 +76,7 @@ func init() {
 	importOneDriveCmd.Flags().StringSlice("include-ext", nil, "file extension filter, e.g. .pdf (repeatable)")
 	importOneDriveCmd.Flags().Int("max-items", 0, "maximum files to import (0 = all)")
 
-	importOneDriveCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importOneDriveCmd.Flags().String("server", "", serverFlagUsage)
 	importOneDriveCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	// For testing and self-hosted proxies.
@@ -158,11 +157,7 @@ func runImportOneDrive(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	serverURL, _ := cmd.Flags().GetString("server")
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	graphBaseURL, _ := cmd.Flags().GetString("graph-base-url")
 
@@ -321,7 +316,7 @@ func runImportOneDrive(cmd *cobra.Command, args []string) error {
 			source = "import:onedrive"
 		}
 
-		_, err := enqueueOneDriveContent(serverURL, content, "text", pipelineName, source)
+		_, err := enqueueOneDriveContent(ep, content, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

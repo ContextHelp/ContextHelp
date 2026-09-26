@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	bookmarksimporter "github.com/ideacrafterslabs/ctxt/internal/importer/bookmarks"
 	"github.com/spf13/cobra"
 )
@@ -23,7 +25,7 @@ Examples:
   ctxt import chrome --file ./bookmarks.html --dry-run
 
   # Enqueue bookmark URLs for ingestion
-  ctxt import chrome --file ./bookmarks.html --server http://localhost:8080`,
+  ctxt import chrome --file ./bookmarks.html`,
 	RunE: runImportChrome,
 }
 
@@ -31,7 +33,7 @@ func init() {
 	importCmd.AddCommand(importChromeCmd)
 
 	importChromeCmd.Flags().String("file", "", "path to Chrome bookmarks HTML export")
-	importChromeCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importChromeCmd.Flags().String("server", "", serverFlagUsage)
 	importChromeCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 	importChromeCmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
 
@@ -58,15 +60,10 @@ func init() {
 
 func runImportChrome(cmd *cobra.Command, args []string) error {
 	file, _ := cmd.Flags().GetString("file")
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	bookmarks, err := bookmarksimporter.ParseBookmarksFile(file)
 	if err != nil {
@@ -111,7 +108,7 @@ func runImportChrome(cmd *cobra.Command, args []string) error {
 	)
 
 	for _, b := range bookmarks {
-		_, err := enqueueBookmark(serverURL, b.URL, pipelineName, "import:chrome")
+		_, err := enqueueBookmark(ep, b.URL, pipelineName, "import:chrome")
 		if err != nil {
 			failed++
 			if firstErr == nil {
@@ -146,11 +143,13 @@ type enqueueResponse struct {
 	JobID string `json:"job_id"`
 }
 
-func enqueueBookmark(serverURL, url, pipelineName, source string) (string, error) {
-	return enqueueContent(serverURL, url, "url", pipelineName, source)
+func enqueueBookmark(ep idxbridge.Endpoint, url, pipelineName, source string) (string, error) {
+	return enqueueContent(ep, url, "url", pipelineName, source)
 }
 
-func enqueueContent(serverURL, content, contentType, pipelineName, source string) (string, error) {
+// enqueueContent enqueues one item on the dpkms at ep, falling back to
+// the legacy /api/v1/analyze route on servers without the enqueue route.
+func enqueueContent(ep idxbridge.Endpoint, content, contentType, pipelineName, source string) (string, error) {
 	payload := enqueueRequest{
 		Content:  content,
 		Type:     contentType,
@@ -165,7 +164,7 @@ func enqueueContent(serverURL, content, contentType, pipelineName, source string
 
 	endpoints := []string{"/api/v1/pipelines/enqueue", "/api/v1/analyze"}
 	for i, endpoint := range endpoints {
-		jobID, statusCode, respBody, err := postEnqueueRequest(serverURL+endpoint, body)
+		jobID, statusCode, respBody, err := postEnqueueRequest(ep, endpoint, body)
 		if err != nil {
 			return "", err
 		}
@@ -184,8 +183,8 @@ func enqueueContent(serverURL, content, contentType, pipelineName, source string
 	return "", fmt.Errorf("enqueue failed: endpoint unavailable")
 }
 
-func postEnqueueRequest(url string, body []byte) (jobID string, statusCode int, respBody string, err error) {
-	resp, err := gohttp.Post(url, "application/json", bytes.NewReader(body)) // #nosec G107 -- URL built from trusted server config
+func postEnqueueRequest(ep idxbridge.Endpoint, path string, body []byte) (jobID string, statusCode int, respBody string, err error) {
+	resp, err := serverDo(context.Background(), ep, gohttp.MethodPost, path, bytes.NewReader(body), 0)
 	if err != nil {
 		return "", 0, "", fmt.Errorf("request to dpkms: %w", err)
 	}

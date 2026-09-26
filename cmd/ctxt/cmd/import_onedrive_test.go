@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	onedriveimporter "github.com/ideacrafterslabs/ctxt/internal/importer/onedrive"
 )
 
@@ -187,7 +188,7 @@ func TestImportOneDriveEnqueue(t *testing.T) {
 	}
 
 	var enqueueCalls int
-	enqueueOneDriveContent = func(serverURL, content, contentType, pipelineName, source string) (string, error) {
+	enqueueOneDriveContent = func(_ idxbridge.Endpoint, content, contentType, pipelineName, source string) (string, error) {
 		enqueueCalls++
 		if contentType != "text" {
 			return "", fmt.Errorf("unexpected content type: %s", contentType)

@@ -22,7 +22,7 @@ var newPinboardClient = func(token, baseURL string) pinboardClient {
 	return pinboardimporter.NewClient(nil, baseURL, token)
 }
 
-var enqueuePinboardItem = enqueueImportItem
+var enqueuePinboardItem = enqueueContent
 
 var importPinboardCmd = &cobra.Command{
 	Use:   "pinboard",
@@ -46,7 +46,7 @@ Examples:
   ctxt import pinboard --token $PINBOARD_TOKEN --since 2026-01-01 --tagged go --dry-run
 
   # Import from local export file
-  ctxt import pinboard --file ./pinboard.json --server http://localhost:8080
+  ctxt import pinboard --file ./pinboard.json
 
   # Merge API + file, then enqueue up to 500 bookmarks
   ctxt import pinboard --token $PINBOARD_TOKEN --file ./pinboard.json --max-items 500`,
@@ -62,7 +62,7 @@ func init() {
 	importPinboardCmd.Flags().String("since", "", "import bookmarks saved on/after this time (RFC3339 or YYYY-MM-DD)")
 	importPinboardCmd.Flags().StringSlice("tagged", nil, "require bookmarks to include all specified tags")
 	importPinboardCmd.Flags().Int("max-items", 0, "maximum bookmarks to import (0 = all)")
-	importPinboardCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importPinboardCmd.Flags().String("server", "", serverFlagUsage)
 	importPinboardCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	cliconv.WithSideEffect(importPinboardCmd, cliconv.SideEffectWrite)
@@ -92,7 +92,7 @@ func runImportPinboard(cmd *cobra.Command, args []string) error {
 	tags, _ := cmd.Flags().GetStringSlice("tagged")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 
 	token = strings.TrimSpace(token)
@@ -104,11 +104,6 @@ func runImportPinboard(cmd *cobra.Command, args []string) error {
 	if token == "" && file == "" {
 		return fmt.Errorf("pinboard source is required: use --token/%s and/or --file", pinboardTokenEnv)
 	}
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	since, err := parsePinboardSince(sinceRaw)
 	if err != nil {
@@ -201,7 +196,7 @@ func runImportPinboard(cmd *cobra.Command, args []string) error {
 			source = "import:pinboard"
 		}
 
-		_, err := enqueuePinboardItem(serverURL, payload, "text", pipelineName, source)
+		_, err := enqueuePinboardItem(ep, payload, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

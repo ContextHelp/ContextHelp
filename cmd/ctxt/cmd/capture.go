@@ -100,8 +100,7 @@ func init() {
 	captureCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	captureCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	captureCmd.Flags().Bool("wait", false, "block until job completes")
-	captureCmd.Flags().String("server", "",
-		"pin routing to this single dpkms instance, bypassing the configured server.urls failover list (default http://127.0.0.1:8080 when nothing is configured)")
+	captureCmd.Flags().String("server", "", pinServerFlagUsage)
 
 	// --- Track 2 stubs (defined but error when used) ---
 	captureCmd.Flags().Bool("ambient", false, "(Track 2) sweep every sensor enabled in policy/ambient.yaml")

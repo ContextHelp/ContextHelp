@@ -30,8 +30,8 @@ Examples:
   # Import notes modified since a date
   ctxt import obsidian --vault ~/Documents/MyVault --since 2026-01-01
 
-  # Import with a custom server
-  ctxt import obsidian --vault ~/Documents/MyVault --server http://localhost:8080`,
+  # Import into a specific server (overrides server.url)
+  ctxt import obsidian --vault ~/Documents/MyVault --server https://dpkms.example.net`,
 	RunE: runImportObsidian,
 }
 
@@ -41,7 +41,7 @@ func init() {
 	importObsidianCmd.Flags().String("vault", "", "path to Obsidian vault directory")
 	importObsidianCmd.Flags().String("since", "", "only import notes modified since this time (RFC3339 or YYYY-MM-DD)")
 	importObsidianCmd.Flags().Int("max-items", 0, "maximum notes to import (0 = all)")
-	importObsidianCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	importObsidianCmd.Flags().String("server", "", serverFlagUsage)
 	importObsidianCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	importObsidianCmd.MarkFlagRequired("vault")
@@ -69,14 +69,9 @@ func runImportObsidian(cmd *cobra.Command, args []string) error {
 	vault, _ := cmd.Flags().GetString("vault")
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
-	serverURL, _ := cmd.Flags().GetString("server")
+	ep := serverEndpoint(cmd)
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
 
 	since, err := parseSinceValue(sinceRaw)
 	if err != nil {
@@ -152,7 +147,7 @@ func runImportObsidian(cmd *cobra.Command, args []string) error {
 		content := obsidianImporter.RenderContent(n)
 		source := "import:obsidian:" + n.RelPath
 
-		_, err := enqueueContent(serverURL, content, "text", pipelineName, source)
+		_, err := enqueueContent(ep, content, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {
