@@ -128,6 +128,15 @@ var pgMigrations = []pgMigration{
 		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS text_content TEXT NOT NULL DEFAULT ''`,
 		`UPDATE objects SET text_content = raw_content WHERE text_content = '' AND raw_content <> ''`,
 	}},
+	// Task job claim + lease: AcquireNext stamps claim_token; a worker
+	// running a task job renews lease_expires_at (database clock), and
+	// stale recovery leaves a leased job alone until the lease runs out,
+	// so a second dpkms on the same database cannot requeue and re-run
+	// a job another dpkms is running.
+	{Version: 17, Name: "jobs.claim_token + lease_expires_at", Statements: []string{
+		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS claim_token TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`,
+	}},
 }
 
 // migratePerModelEmbeddings moves embeddings to the per-model index schema.

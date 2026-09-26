@@ -210,40 +210,51 @@ func TestTask_ShutdownLeavesJobForRecovery(t *testing.T) {
 	}
 }
 
-// Stale recovery can requeue a long task this pool is still running; the
-// re-acquired job must not start a second, concurrent run.
+// Stale recovery can requeue a long task this pool is still running once
+// its lease lapsed; the pool re-acquires it. That must not start a second,
+// concurrent run: the running handler takes over the new claim, keeps the
+// lease, and settles the job.
 func TestTask_ReacquiredInFlightJobRunsOnce(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	q := NewQueue(driver.Jobs())
 	pool := NewWorkerPool(q, builtins.Registry(), driver, 2, nil, defaultTestJobsCfg())
+	pool.leaseTTL = 600 * time.Millisecond
 	release := make(chan struct{})
-	started := make(chan struct{}, 2)
+	claims := make(chan string, 2)
 	var calls atomic.Int32
-	pool.Handle(testTaskType, func(ctx context.Context, _ *storage.Job) (string, error) {
+	var cause atomic.Value
+	pool.Handle(testTaskType, func(ctx context.Context, job *storage.Job) (string, error) {
 		calls.Add(1)
-		started <- struct{}{}
+		claims <- job.Claim
 		select {
 		case <-release:
+			return "done", nil
 		case <-ctx.Done():
+			cause.Store(context.Cause(ctx))
+			return "", ctx.Err()
 		}
-		return "done", nil
 	})
 	job := enqueueTask(t, q, "x")
 	stop := startPool(pool)
 	defer stop()
 
-	<-started
-	// What the stale-recovery loop does once started_at is older than
-	// the stale timeout.
-	if _, err := q.RecoverStale(context.Background(), 0); err != nil {
-		t.Fatal(err)
+	claim := <-claims
+	lapseLease(t, driver.Jobs(), driver.Jobs(), job.ID, claim)
+	waitStatus(t, q, job.ID, storage.JobRunning) // the second worker re-acquired it
+	time.Sleep(time.Second)                      // several lease renewals under the new claim
+	if n, err := q.RecoverStale(context.Background(), 0); err != nil || n != 0 {
+		t.Fatalf("RecoverStale = %d, %v; the running handler must hold the new claim's lease", n, err)
 	}
-	waitStatus(t, q, job.ID, storage.JobRunning)
-	time.Sleep(300 * time.Millisecond) // several poll intervals for the second worker
 	close(release)
 
-	waitStatus(t, q, job.ID, storage.JobCompleted)
+	got := waitStatus(t, q, job.ID, storage.JobCompleted)
 	if n := calls.Load(); n != 1 {
 		t.Errorf("handler ran %d times, want 1", n)
+	}
+	if c := cause.Load(); c != nil {
+		t.Errorf("running handler stopped: %v", c)
+	}
+	if got.ResultID != "done" {
+		t.Errorf("result %q, want the running handler's", got.ResultID)
 	}
 }

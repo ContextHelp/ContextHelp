@@ -202,6 +202,11 @@ var migrations = []migration{
 	// 2026-09-26): vec_objects, object_embeddings, objects.embeddings, and
 	// objects.vector_indexed. Vectors live only in embeddings.
 	{Version: 38, fn: migrate038DropSingleVectorPath},
+	// Migration 039: claim_token + lease_expires_at on jobs. A worker
+	// running a task job holds a renewed lease; stale recovery leaves a
+	// leased job alone until the lease runs out, so a second process
+	// cannot requeue and re-run a job another process is running.
+	{Version: 39, fn: migrate039JobsClaimLease},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -639,6 +644,15 @@ func migrate036JobsIdempotencyKey(ctx context.Context, d *Driver) error {
 		idx_jobs_idempotency_key ON jobs(idempotency_key)
 		WHERE idempotency_key != ''`)
 	return err
+}
+
+// migrate039JobsClaimLease adds the claim token AcquireNext stamps and the
+// lease expiry (Unix milliseconds, NULL = unleased) task workers renew.
+func migrate039JobsClaimLease(ctx context.Context, d *Driver) error {
+	if err := addJobsColumnIfMissing(ctx, d, "claim_token", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	return addJobsColumnIfMissing(ctx, d, "lease_expires_at", "INTEGER")
 }
 
 // migrate037PerModelEmbeddings moves embeddings to the per-model index
