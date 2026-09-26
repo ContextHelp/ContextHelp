@@ -4,6 +4,8 @@
 
 This document describes the **embedding lifecycle management** in dPKMS, covering vector storage, semantic similarity search, staleness detection, and provider abstraction.
 
+> **Design notes, not the current interface.** The configuration block and the `dpkms embeddings` commands below are not implemented. Today the embedding provider is configured under `providers.embedding`, the `embeddings:` config key holds only `min_coverage` and `grace_period`, and models are managed with `ctxt embeddings`. See [Turn on semantic search](../manual/workflows/semantic-search.md) and [Operate embedding models](../manual/operations/embeddings.md).
+
 ---
 
 ## Overview

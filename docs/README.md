@@ -391,6 +391,8 @@ Managing secrets, compliance, and secure deployments:
 - [ctxt/hints.md](ctxt/hints.md) - User hints
 
 ### Search & Retrieval
+- [manual/workflows/semantic-search.md](manual/workflows/semantic-search.md) - Turn on semantic search
+- [manual/operations/embeddings.md](manual/operations/embeddings.md) - Operate embedding models
 - [dpkms/query-language-spec.md](dpkms/query-language-spec.md) - Query language
 - [dpkms/ranking-and-reranking.md](dpkms/ranking-and-reranking.md) - Result ranking
 - [dpkms/caching.md](dpkms/caching.md) - Caching strategies

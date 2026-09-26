@@ -96,6 +96,11 @@ Use structured filters to produce a bounded input set before running `ctxt make`
 
 ## Common failure modes
 
+### `find` prints `notice: semantic search unavailable (...)`
+
+- Results are full-text only. The status in parentheses says why; `no_default_model` means no embedding model is set up yet.
+- Set one up: [`semantic-search.md`](./semantic-search.md). All statuses: [Search fallback notice](../operations/embeddings.md#search-fallback-notice).
+
 ### Too many irrelevant semantic matches
 
 - Add profile context and reduce limit.
@@ -114,6 +119,7 @@ Use structured filters to produce a bounded input set before running `ctxt make`
 
 ## Related references
 
+- [`semantic-search.md`](./semantic-search.md)
 - [`../reference/query-language-and-ranking.md`](../reference/query-language-and-ranking.md)
 - [`../reference/api-cli-reference.md`](../reference/api-cli-reference.md)
 - [`../troubleshooting/faq.md`](../troubleshooting/faq.md)
