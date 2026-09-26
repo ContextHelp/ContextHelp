@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 579d541e
+recorded_at: "2026-09-26T20:55:43Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"snowflake-arctic-embed2","prompt":"# Slack message — #wildlife\n\n**From:** alice\n**Time:** 2024-07-01T10:42:00Z\n\nThe echidna was back at the termite mound."}'

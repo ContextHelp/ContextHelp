@@ -1,8 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: b4f8f272
-recorded_at: "2026-09-26T20:26:29Z"
-payload:
-    method: POST
-    url: http://127.0.0.1:11434/api/embeddings
-    body: '{"model":"snowflake-arctic-embed2","prompt":"# Saw a kookaburra at the trailhead\n\nProvider: Twitter/X\nTweet ID: 101\nCreated: 2023-01-02T15:04:05Z\nLanguage: en\n\nSaw a kookaburra at the trailhead\n\n# Saw a kookaburra at the trailhead\n\nProvider: Twitter/X\nTweet ID: 101\nCreated: 2023-01-02T15:04:05Z\nLanguage: en\n\nSaw a kookaburra at the trailhead"}'

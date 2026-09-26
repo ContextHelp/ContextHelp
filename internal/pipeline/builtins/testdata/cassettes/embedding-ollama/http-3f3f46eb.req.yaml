@@ -1,8 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: 3f3f46eb
-recorded_at: "2026-09-26T20:26:28Z"
-payload:
-    method: POST
-    url: http://127.0.0.1:11434/api/embeddings
-    body: '{"model":"snowflake-arctic-embed2","prompt":"The dunnart count doubled along the ridge.\n\n\nThe dunnart count doubled along the ridge."}'
