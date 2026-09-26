@@ -21,7 +21,7 @@ func TestNewServiceWiresDuplicatesConfig(t *testing.T) {
 		Duplicates: dup,
 	}
 
-	if got := embeddingBuildOpts(db.Driver).Duplicates; got != dup {
+	if got := embeddingBuildOpts(db.Driver, newEmbeddingResolver()).Duplicates; got != dup {
 		t.Errorf("BuildOpts.Duplicates = %+v, want %+v", got, dup)
 	}
 

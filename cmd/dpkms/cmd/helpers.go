@@ -45,7 +45,7 @@ func newService() (*service.Service, func(), error) {
 	}
 
 	queue := jobs.NewQueue(driver.Jobs())
-	pipes := builtins.ConfiguredRegistryWithOpts(embeddingBuildOpts(driver))
+	pipes := builtins.ConfiguredRegistryWithOpts(embeddingBuildOpts(driver, newEmbeddingResolver()))
 	engine := search.NewEngine(driver)
 
 	queue.SetPipelineValidator(func(name string) error {
@@ -69,13 +69,13 @@ func newService() (*service.Service, func(), error) {
 
 // embeddingBuildOpts wires the embedding write path into the pipeline
 // registry: the populate set from the driver's model registry, each
-// model's provider through one resolver built from config, -c and env, and
-// the driver's per-model vector index. Without a readable registry, ingest
+// model's provider through r (built from config, -c and env), and the
+// driver's per-model vector index. Without a readable registry, ingest
 // writes no vectors. The duplicates config rides along for dedup, which
 // runs on those vectors.
-func embeddingBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
+func embeddingBuildOpts(driver storage.StorageDriver, r *embeddings.Resolver) builtins.BuildOpts {
 	opts := builtins.BuildOpts{
-		Resolver:   embeddings.NewProviderResolver(newEmbeddingResolver()),
+		Resolver:   embeddings.NewProviderResolver(r),
 		Embeddings: driver.Embeddings(),
 	}
 	if cfg != nil {
