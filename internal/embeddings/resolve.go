@@ -77,8 +77,9 @@ type Overrides struct {
 
 // Request names what to resolve.
 type Request struct {
-	// ModelID, when set, targets a registered embedding model: its registry
-	// entry becomes a layer between -c and the config file.
+	// ModelID, when set, targets a registered embedding model: its entry
+	// fixes backend, model and dimension, and supplies endpoint and
+	// api_key_env between -c and the config file.
 	ModelID string
 	// Overrides are the flag layer.
 	Overrides Overrides
@@ -102,6 +103,9 @@ type Resolver struct {
 	Registry ModelLookup
 	// HTTPClient, when set, is used by providers that make HTTP calls.
 	HTTPClient *http.Client
+	// Flags is the flag layer the ProviderResolver adapter applies
+	// (NewProviderResolver). Resolve takes it from Request.Overrides.
+	Flags Overrides
 }
 
 // Resolved is the effective embedding provider configuration.
@@ -115,6 +119,7 @@ type Resolved struct {
 	Dimension int
 
 	sources    map[Field]Layer
+	fixed      map[Field]bool
 	httpClient *http.Client
 }
 
@@ -123,6 +128,9 @@ type Explanation struct {
 	Field Field  `json:"field"`
 	Value string `json:"value"`
 	Layer Layer  `json:"source"`
+	// Fixed marks a setting a registered model's entry fixes (backend,
+	// model, dimension); runtime layers cannot change it.
+	Fixed bool `json:"fixed,omitempty"`
 }
 
 // settings is one layer's partial view: empty / zero fields are unset.
@@ -139,14 +147,41 @@ type layerSettings struct {
 	origin map[Field]string
 }
 
-// Resolve applies the layers per field and validates the result.
+// Resolve applies the layers per field and validates the result. With a
+// ModelID it looks the model up in Registry and resolves it as ForModel does.
 func (r *Resolver) Resolve(ctx context.Context, req Request) (Resolved, error) {
-	layers, err := r.layers(ctx, req)
+	if req.ModelID == "" {
+		return r.resolve(req.Overrides, nil)
+	}
+	if r.Registry == nil {
+		return Resolved{}, fmt.Errorf("embedding model %s: no model registry available to resolve it", req.ModelID)
+	}
+	m, err := r.Registry.Get(ctx, req.ModelID)
+	if err != nil {
+		return Resolved{}, fmt.Errorf("embedding model %s: %w", req.ModelID, err)
+	}
+	return r.resolve(req.Overrides, m)
+}
+
+// identityFields are fixed by a registered model's entry: they define the
+// vector space its rows live in, so runtime layers cannot change them.
+var identityFields = []Field{FieldBackend, FieldModel, FieldDimension}
+
+// runtimeLayers are the layers a caller sets per run.
+var runtimeLayers = map[Layer]bool{LayerFlag: true, LayerEnv: true, LayerConfigOverride: true}
+
+// resolve applies the layers; m, when non-nil, is the registered model the
+// resolution is for.
+func (r *Resolver) resolve(o Overrides, m *registry.Model) (Resolved, error) {
+	layers, err := r.layers(o, m)
 	if err != nil {
 		return Resolved{}, err
 	}
 
-	out := Resolved{ModelID: req.ModelID, sources: map[Field]Layer{}, httpClient: r.HTTPClient}
+	out := Resolved{sources: map[Field]Layer{}, fixed: map[Field]bool{}, httpClient: r.HTTPClient}
+	if m != nil {
+		out.ModelID = m.ModelID
+	}
 	origin := map[Field]string{}
 	pick := func(f Field, get func(settings) (string, bool), set func(string)) {
 		for _, l := range layers {
@@ -161,16 +196,16 @@ func (r *Resolver) Resolve(ctx context.Context, req Request) (Resolved, error) {
 		out.sources[f] = LayerDefault
 		origin[f] = "default"
 	}
-	str := func(sel func(settings) string) func(settings) (string, bool) {
-		return func(s settings) (string, bool) { v := sel(s); return v, v != "" }
+	for _, f := range Fields {
+		f := f
+		pick(f, func(s settings) (string, bool) { return s.get(f) }, func(v string) { out.set(f, v) })
 	}
-	pick(FieldBackend, str(func(s settings) string { return s.backend }), func(v string) { out.Backend = v })
-	pick(FieldModel, str(func(s settings) string { return s.model }), func(v string) { out.Model = v })
-	pick(FieldEndpoint, str(func(s settings) string { return s.endpoint }), func(v string) { out.Endpoint = v })
-	pick(FieldAPIKeyEnv, str(func(s settings) string { return s.apiKeyEnv }), func(v string) { out.APIKeyEnv = v })
-	pick(FieldDimension, func(s settings) (string, bool) {
-		return strconv.Itoa(s.dimension), s.dimension != 0
-	}, func(v string) { out.Dimension, _ = strconv.Atoi(v) })
+
+	if m != nil {
+		if err := fixIdentity(&out, layers, m.ModelID); err != nil {
+			return Resolved{}, err
+		}
+	}
 
 	if err := validateEndpoint(out.Endpoint); err != nil {
 		return Resolved{}, fmt.Errorf("embedding endpoint %q (from %s): %w", out.Endpoint, origin[FieldEndpoint], err)
@@ -181,8 +216,74 @@ func (r *Resolver) Resolve(ctx context.Context, req Request) (Resolved, error) {
 	return out, nil
 }
 
+// fixIdentity pins backend, model and dimension to the registry layer and
+// refuses any runtime layer that would change them.
+func fixIdentity(out *Resolved, layers []layerSettings, modelID string) error {
+	var reg settings
+	for _, l := range layers {
+		if l.layer == LayerRegistry {
+			reg = l.s
+		}
+	}
+	for _, f := range []Field{FieldBackend, FieldModel} {
+		if v, _ := reg.get(f); v == "" {
+			return fmt.Errorf("embedding model %s: config_json has no %s; the registered entry must name its backend and model", modelID, f)
+		}
+	}
+	for _, f := range identityFields {
+		want, _ := reg.get(f)
+		for _, l := range layers {
+			if !runtimeLayers[l.layer] {
+				continue
+			}
+			if v, ok := l.s.get(f); ok && v != want {
+				return fmt.Errorf(
+					"embedding model %s is registered with %s=%s; %s=%s cannot change it (only endpoint and api_key_env may be overridden for a registered model)",
+					modelID, f, want, l.origin[f], v,
+				)
+			}
+		}
+		out.set(f, want)
+		out.sources[f] = LayerRegistry
+		out.fixed[f] = true
+	}
+	return nil
+}
+
+// get reports f's value in s and whether this layer sets it.
+func (s settings) get(f Field) (string, bool) {
+	switch f {
+	case FieldBackend:
+		return s.backend, s.backend != ""
+	case FieldModel:
+		return s.model, s.model != ""
+	case FieldEndpoint:
+		return s.endpoint, s.endpoint != ""
+	case FieldAPIKeyEnv:
+		return s.apiKeyEnv, s.apiKeyEnv != ""
+	case FieldDimension:
+		return strconv.Itoa(s.dimension), s.dimension != 0
+	}
+	return "", false
+}
+
+func (r *Resolved) set(f Field, v string) {
+	switch f {
+	case FieldBackend:
+		r.Backend = v
+	case FieldModel:
+		r.Model = v
+	case FieldEndpoint:
+		r.Endpoint = v
+	case FieldAPIKeyEnv:
+		r.APIKeyEnv = v
+	case FieldDimension:
+		r.Dimension, _ = strconv.Atoi(v)
+	}
+}
+
 // layers returns every layer, highest precedence first.
-func (r *Resolver) layers(ctx context.Context, req Request) ([]layerSettings, error) {
+func (r *Resolver) layers(o Overrides, m *registry.Model) ([]layerSettings, error) {
 	lookup := r.LookupEnv
 	if lookup == nil {
 		lookup = os.LookupEnv
@@ -191,7 +292,7 @@ func (r *Resolver) layers(ctx context.Context, req Request) ([]layerSettings, er
 
 	flag := layerSettings{
 		layer: LayerFlag,
-		s:     settings{backend: req.Overrides.Backend, model: req.Overrides.Model, endpoint: req.Overrides.Endpoint},
+		s:     settings{backend: o.Backend, model: o.Model, endpoint: o.Endpoint},
 		origin: map[Field]string{
 			FieldBackend: "--" + FlagProvider, FieldModel: "--" + FlagModel, FieldEndpoint: "--" + FlagEndpoint,
 		},
@@ -212,8 +313,8 @@ func (r *Resolver) layers(ctx context.Context, req Request) ([]layerSettings, er
 	}
 
 	out := []layerSettings{flag, envLayer, override}
-	if req.ModelID != "" {
-		reg, err := r.registryLayer(ctx, req.ModelID)
+	if m != nil {
+		reg, err := registryLayer(m)
 		if err != nil {
 			return nil, err
 		}
@@ -278,36 +379,34 @@ func overrideLayer(overrides map[string]any) (layerSettings, error) {
 	return l, nil
 }
 
-// registryModelConfig is the subset of a registry entry's config_json the
-// resolver reads.
-type registryModelConfig struct {
-	Model     string `json:"model"`
-	Endpoint  string `json:"endpoint"`
-	APIKeyEnv string `json:"api_key_env"`
+// ModelConfig is the provider part of a registered model's config_json.
+// Backend and model are the model's identity; endpoint and api_key_env are
+// its default transport. The dimension lives in the registry's dimension
+// column, not here.
+type ModelConfig struct {
+	Backend   string `json:"backend,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Endpoint  string `json:"endpoint,omitempty"`
+	APIKeyEnv string `json:"api_key_env,omitempty"`
 }
 
-func (r *Resolver) registryLayer(ctx context.Context, modelID string) (layerSettings, error) {
-	if r.Registry == nil {
-		return layerSettings{}, fmt.Errorf("embedding model %s: no model registry available to resolve it", modelID)
-	}
-	m, err := r.Registry.Get(ctx, modelID)
-	if err != nil {
-		return layerSettings{}, fmt.Errorf("embedding model %s: %w", modelID, err)
-	}
-	var mc registryModelConfig
+// registryLayer reads a registered model's entry: backend and model from
+// config_json only, dimension from the dimension column.
+func registryLayer(m *registry.Model) (layerSettings, error) {
+	var mc ModelConfig
 	if raw := strings.TrimSpace(m.ConfigJSON); raw != "" {
 		if err := json.Unmarshal([]byte(raw), &mc); err != nil {
-			return layerSettings{}, fmt.Errorf("embedding model %s: config_json: %w", modelID, err)
+			return layerSettings{}, fmt.Errorf("embedding model %s: config_json: %w", m.ModelID, err)
 		}
 	}
 	origin := map[Field]string{}
 	for _, f := range Fields {
-		origin[f] = "registry " + modelID
+		origin[f] = "registry " + m.ModelID
 	}
 	return layerSettings{
 		layer: LayerRegistry,
 		s: settings{
-			backend: m.Provider, model: mc.Model, endpoint: mc.Endpoint,
+			backend: mc.Backend, model: mc.Model, endpoint: mc.Endpoint,
 			apiKeyEnv: mc.APIKeyEnv, dimension: m.Dimension,
 		},
 		origin: origin,
@@ -327,6 +426,9 @@ func validateEndpoint(raw string) error {
 
 // Source reports the layer that supplied f.
 func (r Resolved) Source(f Field) Layer { return r.sources[f] }
+
+// Fixed reports whether f is fixed by a registered model's entry.
+func (r Resolved) Fixed(f Field) bool { return r.fixed[f] }
 
 // Value renders f's resolved value as a string.
 func (r Resolved) Value(f Field) string {
@@ -350,7 +452,7 @@ func (r Resolved) Value(f Field) string {
 func (r Resolved) Explain() []Explanation {
 	out := make([]Explanation, 0, len(Fields))
 	for _, f := range Fields {
-		out = append(out, Explanation{Field: f, Value: r.Value(f), Layer: r.Source(f)})
+		out = append(out, Explanation{Field: f, Value: r.Value(f), Layer: r.Source(f), Fixed: r.Fixed(f)})
 	}
 	return out
 }

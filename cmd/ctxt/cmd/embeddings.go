@@ -94,7 +94,9 @@ model_id is given: that registered model's own settings), config
 (providers.embedding in the config file), default.
 
 With a model_id, the registry entry for that model is consulted, the way a
-command targeting that model resolves it.`,
+command targeting that model resolves it: its backend, model and dimension
+are fixed by the entry (labelled "fixed by registry"), and only endpoint and
+api_key_env can be overridden.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runEmbeddingsProvider,
 }
@@ -349,6 +351,9 @@ type embeddingsProviderDoc struct {
 	APIKeyEnv string            `json:"api_key_env"`
 	Dimension int               `json:"dimension"`
 	Sources   map[string]string `json:"sources"`
+	// Fixed lists the settings a targeted registered model fixes; runtime
+	// overrides cannot change them.
+	Fixed []string `json:"fixed"`
 }
 
 func runEmbeddingsProvider(cmd *cobra.Command, args []string) error {
@@ -375,6 +380,7 @@ func runEmbeddingsProvider(cmd *cobra.Command, args []string) error {
 	doc := embeddingsProviderDoc{
 		ModelID: res.ModelID, Backend: res.Backend, Model: res.Model, Endpoint: res.Endpoint,
 		APIKeyEnv: res.APIKeyEnv, Dimension: res.Dimension, Sources: map[string]string{},
+		Fixed: []string{},
 	}
 	rows := make([][]string, 0, len(embeddings.Fields))
 	for _, e := range res.Explain() {
@@ -386,7 +392,12 @@ func runEmbeddingsProvider(cmd *cobra.Command, args []string) error {
 		case value == "":
 			value = "(unset)"
 		}
-		rows = append(rows, []string{string(e.Field), value, string(e.Layer)})
+		source := string(e.Layer)
+		if e.Fixed {
+			doc.Fixed = append(doc.Fixed, string(e.Field))
+			source = "fixed by registry"
+		}
+		rows = append(rows, []string{string(e.Field), value, source})
 	}
 
 	if isJSONOutput() {
