@@ -132,7 +132,7 @@ func TestPipelineClaimsMatchFormatDetector(t *testing.T) {
 func TestSelectPipelineUnextractableOfficeFormats(t *testing.T) {
 	r := Registry()
 	for _, ext := range []string{".doc", ".odt", ".rtf", ".epub"} {
-		if got := r.SelectPipeline("/tmp/report" + ext); got == "doc.office" {
+		if got := r.SelectPipeline("/tmp/report"+ext, ""); got == "doc.office" {
 			t.Errorf("SelectPipeline(%s) = doc.office, which cannot extract it", ext)
 		}
 	}

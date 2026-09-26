@@ -29,7 +29,7 @@ func TestURLRepoSelectedForRepoURLs(t *testing.T) {
 		"https://bitbucket.org/foo/bar/",
 	}
 	for _, url := range match {
-		got := r.SelectPipeline(url)
+		got := r.SelectPipeline(url, "")
 		if got != "url.repo" {
 			t.Errorf("SelectPipeline(%q) = %q, want url.repo", url, got)
 		}
@@ -47,7 +47,7 @@ func TestURLRepoNotSelectedForNonRepoURLs(t *testing.T) {
 		"https://example.com/foo/bar",
 	}
 	for _, url := range noMatch {
-		got := r.SelectPipeline(url)
+		got := r.SelectPipeline(url, "")
 		if got == "url.repo" {
 			t.Errorf("SelectPipeline(%q) = url.repo, want something else (url.generic or other)", url)
 		}

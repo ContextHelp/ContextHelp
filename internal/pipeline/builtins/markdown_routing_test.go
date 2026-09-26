@@ -41,7 +41,7 @@ func TestSelectPipelineMarkdownStructure(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			got := r.SelectPipeline(tc.content)
+			got := r.SelectPipeline("", tc.content)
 			// Must route to a pipeline whose step list includes
 			// sectioner OR markdown_parser. text.long is the
 			// expected target post-fix.
@@ -73,7 +73,7 @@ func TestSelectPipelineMarkdownStructure(t *testing.T) {
 // structure must keep routing to text.short after the fix.
 func TestSelectPipelineShortPlainTextStillRoutesToTextShort(t *testing.T) {
 	r := Registry()
-	got := r.SelectPipeline("just a short note about today's meeting, nothing fancy here.")
+	got := r.SelectPipeline("", "just a short note about today's meeting, nothing fancy here.")
 	if got != "text.short" {
 		t.Errorf("SelectPipeline(plain short text) = %q, want text.short", got)
 	}

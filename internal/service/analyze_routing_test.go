@@ -41,7 +41,7 @@ func TestRoutingFixturesMatchRegistryContentRules(t *testing.T) {
 		routeLong:       "text.long",
 		routeStructured: "text.long",
 	} {
-		if got := r.SelectPipeline(content); got != want {
+		if got := r.SelectPipeline("", content); got != want {
 			t.Fatalf("SelectPipeline(%q) = %s, want %s", content, got, want)
 		}
 	}

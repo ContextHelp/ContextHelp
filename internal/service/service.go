@@ -2070,14 +2070,3 @@ func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error
 
 	return result, nil
 }
-
-// contentSniff returns the first 512 bytes of content as a string, suitable
-// for use as DetectInput.Sniff when building a source-aware pipeline detection
-// request.
-func contentSniff(content string) string {
-	const sniffLen = 512
-	if len(content) <= sniffLen {
-		return content
-	}
-	return content[:sniffLen]
-}

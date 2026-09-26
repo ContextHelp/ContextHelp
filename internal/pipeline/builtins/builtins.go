@@ -3,6 +3,7 @@ package builtins
 import (
 	"fmt"
 	"log"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -340,39 +341,51 @@ func buildSelectors() []selector {
 	return sels
 }
 
-// selectPipeline picks the best pipeline for the given content string using
-// URL pattern matching first, then extension matching, then content tests,
-// then the url.generic fallback for any HTTP/S URL.
-func selectPipeline(selectors []selector, content string) string {
-	lower := strings.ToLower(content)
-	isURL := strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+// builtinSelectors splits the defs' rules by the signal each one reads: URL
+// patterns and extensions match the source, content tests match the content.
+func builtinSelectors(selectors []selector) pipeline.Selectors {
+	return pipeline.Selectors{
+		Source:  func(source string) (string, bool) { return selectBySource(selectors, source) },
+		Content: func(content string) string { return selectByContent(selectors, content) },
+	}
+}
 
-	// URL pattern matching: runs before the url.generic catch-all.
-	if isURL {
+// selectBySource routes a source that names a location: an http/https URL
+// goes to the first matching URL pattern, else url.generic; a file path goes
+// to the pipeline claiming its extension. Anything else (a capture label, an
+// unknown extension) reports ok=false.
+func selectBySource(selectors []selector, source string) (string, bool) {
+	source = strings.TrimSpace(source)
+	lower := strings.ToLower(source)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
 		for _, sel := range selectors {
-			if sel.URLPattern != nil && sel.URLPattern.MatchString(content) {
-				return sel.PipelineName
+			if sel.URLPattern != nil && sel.URLPattern.MatchString(source) {
+				return sel.PipelineName, true
 			}
 		}
-		return "url.generic"
+		return "url.generic", true
 	}
 
-	// Extension-based matching.
+	ext := filepath.Ext(lower)
+	if ext == "" {
+		return "", false
+	}
 	for _, sel := range selectors {
-		for _, ext := range sel.Extensions {
-			if strings.HasSuffix(lower, ext) {
-				return sel.PipelineName
-			}
+		if slices.Contains(sel.Extensions, ext) {
+			return sel.PipelineName, true
 		}
 	}
+	return "", false
+}
 
-	// Content-based fallback.
+// selectByContent routes by the content's own shape: the first content test
+// that matches, in Priority order; text.short when none does.
+func selectByContent(selectors []selector, content string) string {
 	for _, sel := range selectors {
 		if sel.ContentTest != nil && sel.ContentTest(content) {
 			return sel.PipelineName
 		}
 	}
-
 	return "text.short"
 }
 
@@ -469,9 +482,7 @@ func ConfiguredRegistryWithPipelineOverrides(
 		}
 	}
 
-	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {
-		return selectPipeline(selectors, content)
-	}))
+	r.SetSelectors(builtinSelectors(selectors))
 
 	return r
 }
@@ -530,9 +541,7 @@ func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 		}
 	}
 
-	r.SetSelectors(pipeline.SelectorFunc(func(content string) string {
-		return selectPipeline(selectors, content)
-	}))
+	r.SetSelectors(builtinSelectors(selectors))
 
 	return r
 }

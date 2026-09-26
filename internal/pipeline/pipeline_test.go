@@ -35,6 +35,7 @@ func (m *mockRegistry) Register(name string, p *Pipeline) error {
 	m.pipelines[name] = p
 	return nil
 }
+
 func (m *mockRegistry) Get(name string) (*Pipeline, error) {
 	p, ok := m.pipelines[name]
 	if !ok {
@@ -42,6 +43,7 @@ func (m *mockRegistry) Get(name string) (*Pipeline, error) {
 	}
 	return p, nil
 }
+
 func (m *mockRegistry) List() []string {
 	var names []string
 	for k := range m.pipelines {
@@ -49,16 +51,17 @@ func (m *mockRegistry) List() []string {
 	}
 	return names
 }
-func (m *mockRegistry) SelectPipeline(content string) string {
+
+func (m *mockRegistry) SelectPipeline(_, content string) string {
 	if len(content) < 500 {
 		return "text.short"
 	}
 	return "text.long"
 }
 func (m *mockRegistry) Upsert(name string, p *Pipeline) { m.pipelines[name] = p }
-func (m *mockRegistry) SetSelectors(_ SelectorFunc)     {}
+func (m *mockRegistry) SetSelectors(_ Selectors)        {}
 func (m *mockRegistry) RegisterDetector(_ Detector)     {}
-func (m *mockRegistry) Detect(in DetectInput) string    { return m.SelectPipeline(in.Source) }
+func (m *mockRegistry) Detect(in DetectInput) string    { return m.SelectPipeline(in.Source, in.Content) }
 func (m *mockRegistry) Detectors() []Detector           { return nil }
 
 // Compile-time assertion: *mockRegistry satisfies Registry.

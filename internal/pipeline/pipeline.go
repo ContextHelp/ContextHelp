@@ -16,8 +16,23 @@ type Pipeline struct {
 	Steps        []PipelineStep
 }
 
-// SelectorFunc is a function that selects a pipeline name for the given content.
-type SelectorFunc func(content string) string
+// SourceSelectorFunc routes by where content came from: URL patterns match a
+// URL, extension rules match a file path. It reports ok=false when the source
+// names nothing its rules know (a capture label, an unknown extension), so
+// the content decides instead.
+type SourceSelectorFunc func(source string) (pipelineName string, ok bool)
+
+// ContentSelectorFunc routes by the content itself: length, markdown
+// structure, payload shape. It always picks a pipeline.
+type ContentSelectorFunc func(content string) string
+
+// Selectors are the registry's fallback rules, split by the signal each one
+// reads. Source rules never see the content; content rules never see the
+// source.
+type Selectors struct {
+	Source  SourceSelectorFunc
+	Content ContentSelectorFunc
+}
 
 // Registry manages named pipelines.
 type Registry interface {
@@ -25,8 +40,8 @@ type Registry interface {
 	Upsert(name string, p *Pipeline)
 	Get(name string) (*Pipeline, error)
 	List() []string
-	SelectPipeline(content string) string
-	SetSelectors(fn SelectorFunc)
+	SelectPipeline(source, content string) string
+	SetSelectors(sel Selectors)
 	RegisterDetector(d Detector)
 	Detect(in DetectInput) string
 	Detectors() []Detector

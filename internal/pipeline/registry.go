@@ -4,13 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 	"sort"
 	"strings"
 )
 
 type registry struct {
 	pipelines map[string]*Pipeline
-	selector  SelectorFunc
+	selectors Selectors
 	detectors []Detector
 }
 
@@ -18,7 +19,7 @@ type registry struct {
 func NewRegistry() Registry {
 	return &registry{
 		pipelines: make(map[string]*Pipeline),
-		selector:  defaultSelector,
+		selectors: Selectors{Source: defaultSourceSelector, Content: defaultContentSelector},
 	}
 }
 
@@ -77,13 +78,15 @@ func (r *registry) List() []string {
 	return names
 }
 
-func (r *registry) SelectPipeline(content string) string {
-	return r.Detect(DetectInput{Source: content, Sniff: content})
+// SelectPipeline picks the pipeline for content captured from source: the
+// source's URL or extension when it names one, the content otherwise.
+func (r *registry) SelectPipeline(source, content string) string {
+	return r.Detect(DetectInput{Source: source, Content: content})
 }
 
-// SetSelectors replaces the pipeline selection function.
-func (r *registry) SetSelectors(fn SelectorFunc) {
-	r.selector = fn
+// SetSelectors replaces the fallback source and content rules.
+func (r *registry) SetSelectors(sel Selectors) {
+	r.selectors = sel
 }
 
 // RegisterDetector appends a detector to the selection chain.
@@ -91,7 +94,8 @@ func (r *registry) RegisterDetector(d Detector) {
 	r.detectors = append(r.detectors, d)
 }
 
-// Detect runs registered detectors in order, falling back to the selector.
+// Detect runs registered detectors in order, then the source rules against
+// in.Source, then the content rules against in.Content.
 func (r *registry) Detect(in DetectInput) string {
 	for _, d := range r.detectors {
 		name, err := d.Detect(in)
@@ -102,7 +106,10 @@ func (r *registry) Detect(in DetectInput) string {
 			log.Printf("pipeline: detector error (delegating): %v", err)
 		}
 	}
-	return r.selector(in.Source)
+	if name, ok := r.selectors.Source(in.Source); ok {
+		return name
+	}
+	return r.selectors.Content(in.Content)
 }
 
 // Detectors returns a copy of the registered detectors slice.
@@ -112,51 +119,29 @@ func (r *registry) Detectors() []Detector {
 	return out
 }
 
-// defaultSelector is the fallback when no selectors have been configured.
-// It uses a simple text-length heuristic.
-func defaultSelector(content string) string {
-	lower := strings.ToLower(content)
+// defaultSourceSelector is the source fallback when no selectors have been
+// configured: a file extension names the pipeline.
+func defaultSourceSelector(source string) (string, bool) {
+	name, ok := defaultExtensions[strings.ToLower(filepath.Ext(source))]
+	return name, ok
+}
 
-	// Image formats
-	for _, ext := range []string{".png", ".jpg", ".jpeg", ".webp", ".tiff", ".tif", ".bmp", ".gif"} {
-		if strings.HasSuffix(lower, ext) {
-			return "image.ocr"
-		}
-	}
+var defaultExtensions = map[string]string{
+	".png": "image.ocr", ".jpg": "image.ocr", ".jpeg": "image.ocr", ".webp": "image.ocr",
+	".tiff": "image.ocr", ".tif": "image.ocr", ".bmp": "image.ocr", ".gif": "image.ocr",
+	".mp3": "audio.transcribe", ".wav": "audio.transcribe", ".ogg": "audio.transcribe",
+	".flac": "audio.transcribe", ".m4a": "audio.transcribe",
+	".mp4": "video.full", ".mov": "video.full", ".avi": "video.full", ".mkv": "video.full", ".webm": "video.full",
+	".pdf": "doc.pdf",
+	".md":  "doc.markdown", ".markdown": "doc.markdown",
+	".go": "doc.code", ".py": "doc.code", ".js": "doc.code", ".ts": "doc.code", ".rs": "doc.code",
+	".java": "doc.code", ".rb": "doc.code", ".cpp": "doc.code", ".c": "doc.code", ".cs": "doc.code",
+	".docx": "doc.office",
+}
 
-	// Audio formats
-	for _, ext := range []string{".mp3", ".wav", ".ogg", ".flac", ".m4a"} {
-		if strings.HasSuffix(lower, ext) {
-			return "audio.transcribe"
-		}
-	}
-
-	// Video formats
-	for _, ext := range []string{".mp4", ".mov", ".avi", ".mkv", ".webm"} {
-		if strings.HasSuffix(lower, ext) {
-			return "video.full"
-		}
-	}
-
-	// Document formats
-	if strings.HasSuffix(lower, ".pdf") {
-		return "doc.pdf"
-	}
-	for _, ext := range []string{".md", ".markdown"} {
-		if strings.HasSuffix(lower, ext) {
-			return "doc.markdown"
-		}
-	}
-	for _, ext := range []string{".go", ".py", ".js", ".ts", ".rs", ".java", ".rb", ".cpp", ".c", ".cs"} {
-		if strings.HasSuffix(lower, ext) {
-			return "doc.code"
-		}
-	}
-	if strings.HasSuffix(lower, ".docx") {
-		return "doc.office"
-	}
-
-	// Default: text pipelines by length
+// defaultContentSelector is the content fallback when no selectors have been
+// configured: text pipelines by length.
+func defaultContentSelector(content string) string {
 	if len(content) < 500 {
 		return "text.short"
 	}
