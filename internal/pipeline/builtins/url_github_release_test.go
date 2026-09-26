@@ -25,7 +25,7 @@ func TestURLGitHubReleaseDetector(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := r.SelectPipeline(tt.url)
+		got := r.SelectPipeline(tt.url, "")
 		if got != tt.want {
 			t.Errorf("SelectPipeline(%q) = %q, want %q", tt.url, got, tt.want)
 		}

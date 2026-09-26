@@ -3,12 +3,14 @@ package pipeline
 import "errors"
 
 // DetectInput carries the information available when selecting a pipeline.
-// Detectors may inspect Source (file path or URL), ContentType (MIME), and
-// a short content sniff (first ~512 bytes of RawContent).
+// Source is where the content came from: a URL, a file path, or a capture
+// label ("argument", "stdin", ...) that names no location. Content is the
+// captured text itself. Extension and URL rules read Source only; length and
+// structure rules read Content only.
 type DetectInput struct {
-	Source      string // file path, URL, or empty
+	Source      string // URL, file path, capture label, or empty
 	ContentType string // MIME type if already known, or empty
-	Sniff       string // first ~512 bytes of raw content
+	Content     string // raw content
 }
 
 // ErrDelegate is a sentinel error that a Detector returns when it cannot

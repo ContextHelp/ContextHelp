@@ -33,10 +33,10 @@ func (d *ExtensionDetector) Detect(in DetectInput) (string, error) {
 	return "", ErrDelegate
 }
 
-// ContentTestDetector applies a predicate to in.Sniff to select a pipeline.
+// ContentTestDetector applies a predicate to in.Content to select a pipeline.
 type ContentTestDetector struct {
 	PipelineName string
-	Test         func(sniff string) bool
+	Test         func(content string) bool
 }
 
 // NewContentTestDetector creates a ContentTestDetector.
@@ -46,7 +46,7 @@ func NewContentTestDetector(name string, test func(string) bool) *ContentTestDet
 
 // Detect implements Detector.
 func (d *ContentTestDetector) Detect(in DetectInput) (string, error) {
-	if d.Test(in.Sniff) {
+	if d.Test(in.Content) {
 		return d.PipelineName, nil
 	}
 	return "", ErrDelegate
