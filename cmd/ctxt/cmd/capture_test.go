@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
 // startMockCaptureDPKMS captures the body of every POST to /api/v1/analyze
@@ -330,7 +332,12 @@ func TestCaptureEveryLoops(t *testing.T) {
 	defer srv.Close()
 
 	// Drive RunCapture directly so we can cancel via context — executeCommand's
-	// cobra harness binds context.Background by default.
+	// cobra harness binds context.Background by default. Bypassing Execute
+	// also skips initConfig, so supply the empty config endpoint resolution
+	// reads.
+	prevCfg := cfg
+	t.Cleanup(func() { cfg = prevCfg })
+	cfg = &config.Config{}
 	resetAllFlags(rootCmd)
 	captureCmd.Flags().Set("server", srv.URL)
 	captureCmd.Flags().Set("every", "100ms")

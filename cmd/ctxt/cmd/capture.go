@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	gohttp "net/http"
 	"net/url"
 	"os"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/atotto/clipboard"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/spf13/cobra"
 )
 
@@ -97,7 +100,8 @@ func init() {
 	captureCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	captureCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	captureCmd.Flags().Bool("wait", false, "block until job completes")
-	captureCmd.Flags().String("server", "", "dpkms server URL (default http://localhost:8080)")
+	captureCmd.Flags().String("server", "",
+		"pin routing to this single dpkms instance, bypassing the configured server.urls failover list (default http://127.0.0.1:8080 when nothing is configured)")
 
 	// --- Track 2 stubs (defined but error when used) ---
 	captureCmd.Flags().Bool("ambient", false, "(Track 2) sweep every sensor enabled in policy/ambient.yaml")
@@ -207,10 +211,7 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 		source = override
 	}
 
-	serverURL, _ := cmd.Flags().GetString("server")
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
+	endpoints := captureEndpoints(cmd)
 
 	contentType, _ := cmd.Flags().GetString("type")
 	pipeline, _ := cmd.Flags().GetString("pipeline")
@@ -252,45 +253,112 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 	}
 
 	if inbox {
-		return postInboxCapture(ctx, serverURL, content, source, contentType, hints, mentions, cmd)
+		return postInboxCapture(ctx, endpoints, content, source, contentType, hints, mentions, cmd)
 	}
 
-	endpoint := serverURL + "/api/v1/analyze"
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := captureHTTPClient.Do(req)
+	resp, err := postCapture(ctx, cmd, endpoints, "/api/v1/analyze", body)
 	if err != nil {
 		return fmt.Errorf("request to dpkms: %w", err)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read response: %w", err)
-	}
-	if resp.StatusCode != gohttp.StatusAccepted && resp.StatusCode != gohttp.StatusOK {
-		return fmt.Errorf("dpkms returned %d: %s", resp.StatusCode, string(respBody))
+	if resp.status != gohttp.StatusAccepted && resp.status != gohttp.StatusOK {
+		return fmt.Errorf("dpkms returned %d: %s", resp.status, string(resp.body))
 	}
 
 	var result map[string]string
-	if err := json.Unmarshal(respBody, &result); err != nil {
+	if err := json.Unmarshal(resp.body, &result); err != nil {
 		return fmt.Errorf("parse response: %w", err)
 	}
 	jobID := result["job_id"]
 	fmt.Printf("Job ID: %s\n", jobID)
 
 	if wait && jobID != "" {
-		return waitForCaptureJob(serverURL, jobID)
+		return waitForCaptureJob(ctx, resp.servedBy, jobID)
 	}
 	return nil
+}
+
+// captureEndpoints resolves where capture sends, exactly as `ctxt analyze`
+// does: an explicit --server pins routing to that single instance (reusing
+// its configured token, if any); otherwise the configured server.urls list
+// (primary first), then server.url, then the shared client default.
+// Tokens only ever come from config.
+func captureEndpoints(cmd *cobra.Command) []idxbridge.Endpoint {
+	if f := cmd.Flags().Lookup("server"); f != nil && f.Changed && f.Value.String() != "" {
+		return []idxbridge.Endpoint{pinnedEndpoint(f.Value.String())}
+	}
+	return clientEndpoints()
+}
+
+// captureResponse is one completed HTTP exchange with the instance that
+// served it.
+type captureResponse struct {
+	status   int
+	body     []byte
+	servedBy idxbridge.Endpoint
+}
+
+// postCapture POSTs body to path on the first instance in endpoints that
+// takes it, attaching that instance's bearer token. It walks on — the
+// failover analyze applies — only when nothing can have been stored:
+//   - the instance cannot be dialed (no request byte was sent);
+//   - the instance rejects the credentials (401/403 come from the auth
+//     middleware, before any handler runs), with a warning naming it.
+//
+// Any other answer ends the walk and is returned to the caller: a live
+// instance's decision is never replayed elsewhere, and a request that may
+// have reached an instance is never resent, since capture carries no
+// idempotency key. The last instance's auth rejection is returned as a
+// response so the caller reports its status.
+func postCapture(
+	ctx context.Context,
+	cmd *cobra.Command,
+	endpoints []idxbridge.Endpoint,
+	path string,
+	body []byte,
+) (*captureResponse, error) {
+	for i, ep := range endpoints {
+		last := i == len(endpoints)-1
+		base := strings.TrimRight(ep.URL, "/")
+		req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodPost, base+path, bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("build request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if ep.Token != "" {
+			req.Header.Set("Authorization", "Bearer "+ep.Token)
+		}
+		resp, err := captureHTTPClient.Do(req)
+		if err != nil {
+			if last || ctx.Err() != nil || !isDialError(err) {
+				return nil, err
+			}
+			continue
+		}
+		respBody, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("read response: %w", err)
+		}
+		if !last && (resp.StatusCode == gohttp.StatusUnauthorized || resp.StatusCode == gohttp.StatusForbidden) {
+			fmt.Fprintf(cmd.ErrOrStderr(),
+				"warning: %s rejected credentials (%d); trying next instance\n", base, resp.StatusCode)
+			continue
+		}
+		return &captureResponse{status: resp.StatusCode, body: respBody, servedBy: ep}, nil
+	}
+	return nil, fmt.Errorf("no dpkms instance configured")
+}
+
+// isDialError reports whether err failed while connecting, before any
+// part of the request was written.
+func isDialError(err error) bool {
+	var opErr *net.OpError
+	return errors.As(err, &opErr) && opErr.Op == "dial"
 }
 
 // postInboxCapture POSTs to /api/v1/inbox (the CaptureInbox handler) instead
@@ -302,7 +370,8 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 // (svc.CaptureToInbox). There is no job to poll.
 func postInboxCapture(
 	ctx context.Context,
-	serverURL, content, source, contentType string,
+	endpoints []idxbridge.Endpoint,
+	content, source, contentType string,
 	hints, mentions []string,
 	cmd *cobra.Command,
 ) error {
@@ -326,24 +395,17 @@ func postInboxCapture(
 	if err != nil {
 		return fmt.Errorf("marshal inbox request: %w", err)
 	}
-	req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodPost, serverURL+"/api/v1/inbox", bytes.NewReader(raw))
-	if err != nil {
-		return fmt.Errorf("build inbox request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := captureHTTPClient.Do(req)
+	resp, err := postCapture(ctx, cmd, endpoints, "/api/v1/inbox", raw)
 	if err != nil {
 		return fmt.Errorf("request to dpkms inbox: %w", err)
 	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != gohttp.StatusCreated &&
-		resp.StatusCode != gohttp.StatusAccepted &&
-		resp.StatusCode != gohttp.StatusOK {
-		return fmt.Errorf("dpkms inbox returned %d: %s", resp.StatusCode, string(respBody))
+	if resp.status != gohttp.StatusCreated &&
+		resp.status != gohttp.StatusAccepted &&
+		resp.status != gohttp.StatusOK {
+		return fmt.Errorf("dpkms inbox returned %d: %s", resp.status, string(resp.body))
 	}
 	var obj map[string]any
-	if err := json.Unmarshal(respBody, &obj); err != nil {
+	if err := json.Unmarshal(resp.body, &obj); err != nil {
 		return fmt.Errorf("parse inbox response: %w", err)
 	}
 	if id, ok := obj["id"].(string); ok && id != "" {
@@ -413,15 +475,20 @@ func resolveCaptureInput(cmd *cobra.Command, args []string) (content, source str
 	return c, "clipboard", nil
 }
 
-// waitForCaptureJob polls /api/v1/jobs/<id> until terminal status. Mirrors
+// waitForCaptureJob polls /api/v1/jobs/<id> on the instance that accepted
+// the capture, with that instance's token, until terminal status. Mirrors
 // cmd/dpkms/cmd/pipeline.go::waitForJob's contract.
-func waitForCaptureJob(serverURL, jobID string) error {
-	endpoint := fmt.Sprintf("%s/api/v1/jobs/%s", serverURL, jobID)
+func waitForCaptureJob(ctx context.Context, ep idxbridge.Endpoint, jobID string) error {
+	endpoint := fmt.Sprintf("%s/api/v1/jobs/%s", strings.TrimRight(ep.URL, "/"), jobID)
 	for {
-		// #nosec G107 -- serverURL is the operator's configured dpkms
-		// address (default loopback) and jobID was minted by that same
-		// server; neither is attacker supplied.
-		resp, err := gohttp.Get(endpoint)
+		req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodGet, endpoint, nil)
+		if err != nil {
+			return fmt.Errorf("build poll request: %w", err)
+		}
+		if ep.Token != "" {
+			req.Header.Set("Authorization", "Bearer "+ep.Token)
+		}
+		resp, err := captureHTTPClient.Do(req)
 		if err != nil {
 			return fmt.Errorf("poll job %s: %w", jobID, err)
 		}
