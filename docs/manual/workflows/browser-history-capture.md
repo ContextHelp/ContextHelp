@@ -4,7 +4,7 @@
 
 Supported browsers: Chrome, Brave, Edge, Arc, Chromium and Vivaldi. Firefox and Safari are not supported yet.
 
-> Companion to [`ambient.md`](ambient.md). To capture open tabs instead, see [`capture-tabs.md`](capture-tabs.md). To run captures on a timer, see [`capture-schedule.md`](capture-schedule.md).
+> Companion to [`ambient.md`](../../ambient.md). To capture open tabs instead, see [`browser-tab-capture.md`](browser-tab-capture.md). To run captures on a timer, see [`browser-capture-schedule.md`](browser-capture-schedule.md).
 
 ## First run
 
@@ -26,7 +26,7 @@ Good to know:
 
 - `--browser-profile` takes the name shown in the browser's profile menu (`Work`) or the profile's folder name (`Profile 3`). Don't confuse it with `--profile`, which selects your ctxt focus profile.
 - The browser can stay open. ctxt reads a copy of the browser's history and never changes the browser's own files.
-- Visits go to the ctxt server you're set up for (`server.url` and its token). To send them to a different instance, add `--instance <name>`; see [multiple instances](cheatsheet-human.md#multiple-instances).
+- Visits go to the ctxt server you're set up for (`server.url` and its token). To send them to a different instance, add `--instance <name>`; see [multiple instances](../../cheatsheet-human.md#multiple-instances).
 
 ## Keep it running
 
@@ -41,7 +41,7 @@ This sends every visit newer than the last one sent for that browser profile, th
 - Restarting your machine or ctxt doesn't send anything twice.
 - Visits you made while offline are sent once, on the next run.
 
-To run this automatically, for example every 5 minutes, see [`capture-schedule.md`](capture-schedule.md).
+To run this automatically, for example every 5 minutes, see [`browser-capture-schedule.md`](browser-capture-schedule.md).
 
 ## Backfill a time window
 
@@ -97,7 +97,7 @@ What to expect from the rules:
 - Deny rules add up across every config file (user, project and `-c`). A project or `-c` file can add denies, but it can't remove yours.
 - localhost, `file:`, `about:` and browser-internal pages are always dropped.
 
-Rule syntax, plus rules for every browser or every profile: [URL filter](ambient.md#keep-sites-out-of-browser-capture).
+Rule syntax, plus rules for every browser or every profile: [URL filter](../../ambient.md#keep-sites-out-of-browser-capture).
 
 ## Reference
 
@@ -148,7 +148,7 @@ $XDG_STATE_HOME/ctxt/ambient/browserhistory.state
 
 If `XDG_STATE_HOME` isn't set, that's `~/.local/state/ctxt/ambient/browserhistory.state`. Backfills never read or change this file.
 
-To reset the saved position, pause any scheduled captures (see [`capture-schedule.md`](capture-schedule.md)) and then delete the file:
+To reset the saved position, pause any scheduled captures (see [`browser-capture-schedule.md`](browser-capture-schedule.md)) and then delete the file:
 
 ```bash
 rm "${XDG_STATE_HOME:-$HOME/.local/state}/ctxt/ambient/browserhistory.state"
