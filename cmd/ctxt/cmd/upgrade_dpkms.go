@@ -52,9 +52,11 @@ import (
 type upgradeEnvelope struct {
 	State      string  `json:"state"`
 	Bucket     string  `json:"bucket,omitempty"`
+	Target     string  `json:"target,omitempty"`
 	Progress   float64 `json:"progress,omitempty"`
 	Done       int     `json:"done,omitempty"`
 	Total      int     `json:"total,omitempty"`
+	Failed     int     `json:"failed,omitempty"`
 	EtaSeconds int     `json:"eta_seconds,omitempty"`
 	StartedAt  string  `json:"started_at,omitempty"`
 	LastError  string  `json:"last_error,omitempty"`
@@ -258,6 +260,9 @@ func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 	if up.Bucket != "" {
 		fmt.Fprintf(w, "  Bucket:    %s\n", up.Bucket)
 	}
+	if up.Target != "" {
+		fmt.Fprintf(w, "  Target:    %s\n", up.Target)
+	}
 	if up.State == "in_progress" && up.Total > 0 {
 		pct := int(up.Progress*100 + 0.5)
 		fmt.Fprintf(w, "  Progress:  %d/%d (%d%%)\n", up.Done, up.Total, pct)
@@ -265,6 +270,12 @@ func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 		if up.StartedAt != "" {
 			fmt.Fprintf(w, "  Started:   %s\n", up.StartedAt)
 		}
+	}
+	if up.State == "failed" && up.Total > 0 {
+		fmt.Fprintf(w, "  Progress:  %d/%d\n", up.Done, up.Total)
+	}
+	if up.Failed > 0 {
+		fmt.Fprintf(w, "  Failed:    %d objects\n", up.Failed)
 	}
 	if up.State == "failed" && up.LastError != "" {
 		fmt.Fprintf(w, "  Last error: %s\n", up.LastError)
