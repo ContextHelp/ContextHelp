@@ -116,6 +116,45 @@ type Config struct {
 
 	// Capture configures browser capture (open tabs, history).
 	Capture CaptureConfig `mapstructure:"capture" yaml:"capture"`
+
+	// Embeddings configures the embedding-model lifecycle guards of
+	// `ctxt embeddings set-default` and `purge` (ADR-071).
+	Embeddings EmbeddingsConfig `mapstructure:"embeddings" yaml:"embeddings"`
+}
+
+// Embedding-model lifecycle defaults (ADR-071 "Default-flip control").
+const (
+	// DefaultEmbeddingsMinCoverage is the corpus coverage a model needs
+	// before set-default promotes it.
+	DefaultEmbeddingsMinCoverage = 0.99
+	// DefaultEmbeddingsGracePeriod is how long after its deprecation a
+	// model's vectors are kept before purge may delete them.
+	DefaultEmbeddingsGracePeriod = 30 * 24 * time.Hour
+)
+
+// EmbeddingsConfig configures the embedding-model lifecycle guards. The
+// provider a model embeds with is configured under providers.embedding.
+type EmbeddingsConfig struct {
+	// MinCoverage is the fraction of objects (0..1) a model must have
+	// vectors for before `ctxt embeddings set-default` promotes it.
+	// --min-coverage overrides it per call. Default 0.99.
+	MinCoverage float64 `mapstructure:"min_coverage" yaml:"min_coverage"`
+	// GracePeriod is how long after a model's deprecation takes effect
+	// `ctxt embeddings purge` waits before deleting its vectors. Zero
+	// allows a purge as soon as the deprecation is effective. Default
+	// 720h (30 days).
+	GracePeriod time.Duration `mapstructure:"grace_period" yaml:"grace_period"`
+}
+
+// Validate rejects a MinCoverage outside 0..1 and a negative GracePeriod.
+func (c EmbeddingsConfig) Validate() error {
+	if c.MinCoverage < 0 || c.MinCoverage > 1 {
+		return fmt.Errorf("embeddings.min_coverage must be a fraction between 0 and 1 such as 0.99, got %v", c.MinCoverage)
+	}
+	if c.GracePeriod < 0 {
+		return fmt.Errorf("embeddings.grace_period must not be negative (a duration such as 720h), got %s", c.GracePeriod)
+	}
+	return nil
 }
 
 // CaptureConfig configures browser capture.
@@ -1156,6 +1195,10 @@ func setDefaults(v *viper.Viper) {
 
 	// Browser history capture: first-run lookback.
 	v.SetDefault("capture.history.initial_lookback", DefaultCaptureHistoryInitialLookback)
+
+	// Embedding-model lifecycle guards.
+	v.SetDefault("embeddings.min_coverage", DefaultEmbeddingsMinCoverage)
+	v.SetDefault("embeddings.grace_period", DefaultEmbeddingsGracePeriod)
 
 	// Security alerting defaults
 	v.SetDefault("security.alerts.auth_failure_threshold", 3)

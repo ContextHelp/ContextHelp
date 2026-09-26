@@ -57,6 +57,22 @@ const (
 	// TopicDpkmsUpgradeEmbeddingsMigrationFailed fires when the run stops
 	// early: cancelled, interrupted by shutdown, or a storage error.
 	TopicDpkmsUpgradeEmbeddingsMigrationFailed bus.Topic = "dpkms.upgrade.embeddings_migration.failed"
+
+	// Embedding-model lifecycle (ADR-071 "Default-flip control"), emitted
+	// by `ctxt embeddings` after the change commits. Every event carries
+	// EmbeddingModelLifecyclePayload. The query path reads the default
+	// per query, so no consumer needs these to stay correct; they record
+	// operator actions.
+	//
+	// TopicCtxtUpgradeEmbeddingModelPromoted fires when set-default makes
+	// a model the default.
+	TopicCtxtUpgradeEmbeddingModelPromoted bus.Topic = "ctxt.upgrade.embedding_model.promoted"
+	// TopicCtxtUpgradeEmbeddingModelDeprecated fires when a model's
+	// retirement is scheduled.
+	TopicCtxtUpgradeEmbeddingModelDeprecated bus.Topic = "ctxt.upgrade.embedding_model.deprecated"
+	// TopicCtxtUpgradeEmbeddingModelPurged fires when a deprecated model's
+	// rows, index and registry entry are deleted.
+	TopicCtxtUpgradeEmbeddingModelPurged bus.Topic = "ctxt.upgrade.embedding_model.purged"
 )
 
 // Inbound subscription topics.
@@ -175,4 +191,24 @@ type EmbeddingsMigrationPayload struct {
 	FailedObjects []string `json:"failed_objects,omitempty"`
 	DurationMs    int64    `json:"duration_ms,omitempty"`
 	Reason        string   `json:"reason,omitempty"`
+}
+
+// EmbeddingModelLifecyclePayload describes a set-default, deprecate or
+// purge. Timestamps are RFC 3339 UTC; fields that do not apply to the
+// event are omitted.
+type EmbeddingModelLifecyclePayload struct {
+	ModelID string `json:"model_id"`
+	// PreviousDefault is the default before a promotion; empty when there
+	// was none.
+	PreviousDefault string `json:"previous_default,omitempty"`
+	// Coverage and MinCoverage are the promoted model's measured corpus
+	// coverage and the threshold it met (0..1).
+	Coverage    *float64 `json:"coverage,omitempty"`
+	MinCoverage *float64 `json:"min_coverage,omitempty"`
+	// DeprecatedAt is when the deprecation takes (or took) effect.
+	DeprecatedAt string `json:"deprecated_at,omitempty"`
+	// PurgeEligibleAt is DeprecatedAt plus the grace period.
+	PurgeEligibleAt string `json:"purge_eligible_at,omitempty"`
+	// Rows is the number of embedding rows a purge deleted.
+	Rows *int64 `json:"rows,omitempty"`
 }

@@ -113,7 +113,7 @@ func TestCheckDuplicates_ReadsDefaultModelOnly(t *testing.T) {
 		}
 	}
 
-	if err := f.reg.SetDefault(context.Background(), "dup-other"); err != nil {
+	if _, err := f.reg.SetDefault(context.Background(), "dup-other", 0); err != nil {
 		t.Fatal(err)
 	}
 	if issues := runDuplicates(t, f.driver); len(issues) != 1 {

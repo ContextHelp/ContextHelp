@@ -123,7 +123,8 @@ func TestHybridSearch_SemanticLegReadsDefaultModelPerQuery(t *testing.T) {
 	assert.Contains(t, ids, "vec-a", "vector leg hit from sem-a's index")
 	assert.NotContains(t, ids, "vec-b", "sem-b's index must not be searched while sem-a is the default")
 
-	require.NoError(t, registry.New(f.db).SetDefault(ctx, "sem-b"))
+	_, err = registry.New(f.db).SetDefault(ctx, "sem-b", 0)
+	require.NoError(t, err)
 
 	objs, diag, err = f.svc.HybridSearchFilteredWithDiagnostics(ctx, semanticQuery, storage.ObjectFilter{Limit: 10}, f.sem, semanticCfg(false))
 	require.NoError(t, err)

@@ -110,7 +110,8 @@ func TestPartialUniqueIndex_PreventsTwoDefaults(t *testing.T) {
 
 	// Sanity: directly bypass the registry and try to mark two models
 	// as default. The partial unique index must reject this.
-	_, err = d.DB().ExecContext(ctx,
+	_, err = d.DB().ExecContext(
+		ctx,
 		`UPDATE embedding_models SET is_default = 1 WHERE model_id = ?`,
 		first,
 	)
@@ -135,7 +136,8 @@ func TestSetDefault_FlipsAtomically(t *testing.T) {
 
 	// oldID is currently default. Flip to the new model.
 	newID := "openai-text-embedding-3-small@2025-01-15"
-	require.NoError(t, r.SetDefault(ctx, newID))
+	_, err := r.SetDefault(ctx, newID, 0)
+	require.NoError(t, err)
 
 	got, err := r.Get(ctx, newID)
 	require.NoError(t, err)
@@ -150,7 +152,7 @@ func TestSetDefault_UnknownModelIsRejected(t *testing.T) {
 	r, _ := newRegistry(t)
 	ctx := context.Background()
 
-	err := r.SetDefault(ctx, "does-not-exist@2099-01-01")
+	_, err := r.SetDefault(ctx, "does-not-exist@2099-01-01", 0)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, registry.ErrModelNotFound),
 		"unknown model_id must return ErrModelNotFound, got %v", err)
@@ -237,7 +239,8 @@ func TestListWithCoverage_PartialCoverage(t *testing.T) {
 	// Seed 4 objects so the math (1/4, 2/4) is exact in float64.
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, id := range []string{"o1", "o2", "o3", "o4"} {
-		_, err := d.DB().ExecContext(ctx,
+		_, err := d.DB().ExecContext(
+			ctx,
 			`INSERT INTO objects (id, type, created_at, updated_at) VALUES (?, 'note', ?, ?)`,
 			id, now, now,
 		)
@@ -257,7 +260,8 @@ func TestListWithCoverage_PartialCoverage(t *testing.T) {
 	require.NoError(t, r.Register(ctx, candidate, false))
 
 	for _, id := range []string{"o1", "o2"} {
-		_, err := d.DB().ExecContext(ctx,
+		_, err := d.DB().ExecContext(
+			ctx,
 			`INSERT INTO embeddings (object_id, model_id, chunk_idx, vector, created_at)
 			 VALUES (?, ?, 0, ?, ?)`,
 			id, candidate.ModelID, []byte{0, 1, 2, 3}, time.Now().UTC().Format(time.RFC3339),
