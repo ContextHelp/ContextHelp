@@ -339,7 +339,7 @@ The following sections of this ADR are **superseded**: "Pipeline behavior at ing
 - The pipeline `embedding` step does not touch storage, because the object does not exist yet and a reinforced draft maps to a different object ID. Instead it attaches `[]ObjectVector` (model, chunk, vector, text) to the draft's non-serialized `Vectors` field. Whoever persists the draft calls `Embeddings().Put(objectID, draft.Vectors)` after `Create`, `Reinforce` or `Update`. A failed `Put` is logged per model and never fails the ingest job.
 - `Put` replaces the object's rows for each model present and leaves other models alone. It rejects a vector whose length differs from the model's registry dimension, and it skips zero-magnitude vectors, whose cosine distance is undefined.
 - `embeddings.object_id` gains `REFERENCES objects(id) ON DELETE CASCADE` on both backends, so deleting an object removes its vectors and, on SQLite through triggers, its index entries.
-- A model that fails at ingest (unreachable provider, wrong dimension) leaves no row. The missing row is the durable record: the migration job's `ListMissing` cursor picks it up. The step also logs the model_id and error. `KnowledgeObject.VectorIndexed` means "the default model produced a vector at ingest" and is advisory. The authority is the `embeddings` table.
+- A model that fails at ingest (unreachable provider, wrong dimension) leaves no row. The missing row is the durable record: the migration job's `ListMissing` cursor picks it up. The step also logs the model_id and error. Whether an object is embedded under a model is read from the `embeddings` table only; there is no per-object flag (section 8).
 
 ### 2. Vector index per model, at the registry's dimension
 
@@ -436,7 +436,8 @@ These are forward-only migrations with no compatibility reads.
 - **Placeholder.** Every `legacy-blob` model, its `embeddings` rows and its `embeddings_<model_id>` signature are deleted when the per-model schema lands. Migrations 032–035 on SQLite and 6/10–12 on Postgres keep running on fresh installs and are then superseded. After this, an instance with no registered model has no default, and search reports that it is FTS-only until an operator registers a model, migrates and flips the default.
 - **Single-vector path.** Removed in a final sweep, after both the ingest and query paths have moved to `EmbeddingStore`:
   - on SQLite: the `vec_objects` and `object_embeddings` tables, the `objects.embeddings` column, `VecStore`, the fixed-dimension driver plumbing and `KnowledgeObject.Embeddings`;
-  - on Postgres: `objects.embedding` and its HNSW index.
+  - on Postgres: `objects.embedding` and its HNSW index;
+  - on both: `objects.vector_indexed` and `KnowledgeObject.VectorIndexed`, which went stale on every default flip.
 - **Model-ID charset.** `model_id` is restricted to `^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,199}$` (`storage.ValidateEmbeddingModelID`), because it is embedded as a literal in per-model DDL (SQLite trigger `WHEN` clauses, Postgres partial-index predicates and queries).
 - **Dimension ceilings.** 8192 on SQLite (vec0) and 2000 on Postgres (HNSW). Both are enforced at `register`.
 

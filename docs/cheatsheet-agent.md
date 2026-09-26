@@ -239,7 +239,6 @@ ctxt stats --watch                   # live 3s refresh
 | `created_at` | ISO 8601 | ingestion timestamp |
 | `updated_at` | ISO 8601 | last modification |
 | `fts_indexed` | bool | full-text search ready |
-| `vector_indexed` | bool | semantic search ready |
 
 ---
 
