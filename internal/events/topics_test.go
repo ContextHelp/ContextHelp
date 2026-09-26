@@ -26,6 +26,9 @@ func TestOutboundTopicsAreKitConformant(t *testing.T) {
 		"TopicDpkmsUpgradeEmbeddingsMigrationProgress":  events.TopicDpkmsUpgradeEmbeddingsMigrationProgress,
 		"TopicDpkmsUpgradeEmbeddingsMigrationCompleted": events.TopicDpkmsUpgradeEmbeddingsMigrationCompleted,
 		"TopicDpkmsUpgradeEmbeddingsMigrationFailed":    events.TopicDpkmsUpgradeEmbeddingsMigrationFailed,
+		"TopicCtxtUpgradeEmbeddingModelPromoted":        events.TopicCtxtUpgradeEmbeddingModelPromoted,
+		"TopicCtxtUpgradeEmbeddingModelDeprecated":      events.TopicCtxtUpgradeEmbeddingModelDeprecated,
+		"TopicCtxtUpgradeEmbeddingModelPurged":          events.TopicCtxtUpgradeEmbeddingModelPurged,
 	}
 	for name, topic := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -288,7 +288,7 @@ func TestFindSemantic_DefaultModelEndToEnd(t *testing.T) {
 		t.Fatalf("query embedded at %s, want the --embedding-endpoint override", urls[len(urls)-1])
 	}
 
-	if err := registry.New(d.DB()).SetDefault(ctx, "arctic-e2e-b"); err != nil {
+	if _, err := registry.New(d.DB()).SetDefault(ctx, "arctic-e2e-b", 0); err != nil {
 		t.Fatal(err)
 	}
 	ids, _, model = run()

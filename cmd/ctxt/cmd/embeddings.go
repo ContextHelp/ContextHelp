@@ -20,19 +20,18 @@ import (
 )
 
 // embeddingsCmd implements the operator-facing CLI surface from ADR-071
-// §"Operator-facing CLI surface". `list`, `register` and `migrate`
-// (embeddings_migrate.go) ship; `set-default`, `deprecate` and `purge`
-// follow. The verbs that are still TODO are wired as
-// stubs that exit with a "not yet implemented" error so the CLI shape is
-// discoverable today and the help text is honest.
+// §"Operator-facing CLI surface": `list`, `register` and `provider` here,
+// `migrate` in embeddings_migrate.go, and `set-default`, `deprecate` and
+// `purge` in embeddings_lifecycle.go.
 var embeddingsCmd = &cobra.Command{
 	Use:   "embeddings",
 	Short: "Manage embedding-model registry (ADR-071)",
 	Long: `Manage embedding-model registry and migrations (ADR-071).
 
 The registry tracks every embedding model that has produced rows in the
-embeddings table. list, register and migrate ship today; set-default,
-deprecate and purge follow.
+embeddings table. A model's lifecycle: register a candidate, migrate the
+existing corpus to it, set-default once coverage is high enough, then
+deprecate the old default and purge it after the grace period.
 
 Examples:
   # List registered models, default flag, deprecation status
@@ -44,6 +43,9 @@ Examples:
 
   # Fill its rows for the existing corpus in the background (runs in dpkms)
   ctxt embeddings migrate --to ollama-snowflake-arctic-embed2@2026-09-26
+
+  # Promote it once coverage reaches embeddings.min_coverage (default 0.99)
+  ctxt embeddings set-default ollama-snowflake-arctic-embed2@2026-09-26
 `,
 }
 
@@ -138,88 +140,23 @@ api_key_env can be overridden.`,
 	RunE: runEmbeddingsProvider,
 }
 
-// Stub-only verbs: the CLI shape is documented in ADR-071 but the
-// implementation lands in later cohort tasks. Each stub exits non-zero with
-// a clear pointer to the owning task so operators are not surprised.
-var embeddingsSetDefaultCmd = &cobra.Command{
-	Use:   "set-default <model_id>",
-	Short: "Atomically flip the active default model (T-0584)",
-	Long: `Atomically promote a registered embedding model to the active default.
-
-The flip is gated on coverage and recall verification (see ctxt embeddings
-list). Implementation lands in Phase 3 (T-0584); the stub exits non-zero
-so callers fail loudly.`,
-	Hidden: false,
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		return errors.New("ctxt embeddings set-default: cmd not yet implemented (Phase 3, T-0584)")
-	},
-}
-
-var embeddingsDeprecateCmd = &cobra.Command{
-	Use:   "deprecate <model_id>",
-	Short: "Schedule retirement of a registered model (T-0585)",
-	Long: `Mark a registered embedding model as deprecated.
-
-Sets the deprecated_at timestamp so the model becomes a candidate for
-purge. Already-written embedding rows are preserved until purge runs.
-Implementation lands in Phase 4 (T-0585); the stub exits non-zero so
-callers fail loudly.`,
-	Hidden: false,
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		return errors.New("ctxt embeddings deprecate: cmd not yet implemented (Phase 4, T-0585)")
-	},
-}
-
-var embeddingsPurgeCmd = &cobra.Command{
-	Use:   "purge <model_id>",
-	Short: "Delete embedding rows for a deprecated model (T-0585)",
-	Long: `Delete every embedding row produced by a deprecated model.
-
-Only operates on models that have a non-null deprecated_at timestamp.
-The registry record itself is retained for audit history. Implementation
-lands in Phase 4 (T-0585); the stub exits non-zero so callers fail loudly.`,
-	Hidden: false,
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		return errors.New("ctxt embeddings purge: cmd not yet implemented (Phase 4, T-0585)")
-	},
-}
-
 func init() {
 	rootCmd.AddCommand(embeddingsCmd)
 	embeddingsCmd.AddCommand(embeddingsListCmd)
 	embeddingsCmd.AddCommand(embeddingsRegisterCmd)
 	embeddingsCmd.AddCommand(embeddingsProviderCmd)
-	embeddingsCmd.AddCommand(embeddingsSetDefaultCmd)
-	embeddingsCmd.AddCommand(embeddingsDeprecateCmd)
-	embeddingsCmd.AddCommand(embeddingsPurgeCmd)
 
-	// 12fcc conformance: side-effect + idempotency annotations.
-	// list is read; register / set-default mutate registry
-	// state (write-shared, runs against the dpkms DB); deprecate /
-	// purge are destructive (purge especially deletes embedding rows).
+	// 12fcc conformance: side-effect + idempotency annotations. list and
+	// provider are reads; register mutates registry state (write-shared,
+	// runs against the dpkms DB). The lifecycle verbs annotate themselves
+	// in embeddings_lifecycle.go.
 	cliconv.WithSideEffect(embeddingsListCmd, cliconv.SideEffectRead)
 	cliconv.WithSideEffect(embeddingsProviderCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(embeddingsProviderCmd, cliconv.IdempotencyYes)
 	cliconv.WithSideEffect(embeddingsRegisterCmd, cliconv.SideEffectWriteShared)
-	cliconv.WithSideEffect(embeddingsSetDefaultCmd, cliconv.SideEffectWriteShared)
-	cliconv.WithSideEffect(embeddingsDeprecateCmd, cliconv.SideEffectDestructiveShared)
-	cliconv.WithSideEffect(embeddingsPurgeCmd, cliconv.SideEffectDestructiveShared)
 
-	// 12fcc strict-gate: deprecate flips a model's lifecycle bit and
-	// purge deletes embedding rows for a deprecated model. Both opt
-	// into kit's typed-token confirmation flow.
-	cliconv.WithDestructiveToken(embeddingsDeprecateCmd)
-	cliconv.WithDestructiveToken(embeddingsPurgeCmd)
-
-	// Kit verb defaults only cover "list" here. Tag the rest:
-	// register is non-idempotent (creates a candidate record);
-	// set-default / deprecate / purge are non-idempotent
-	// in the strict sense (replay re-runs the mutation against
-	// changed state).
+	// register is non-idempotent (creates a candidate record).
 	cliconv.WithIdempotency(embeddingsRegisterCmd, cliconv.IdempotencyNo)
-	cliconv.WithIdempotency(embeddingsSetDefaultCmd, cliconv.IdempotencyYes)
-	cliconv.WithIdempotency(embeddingsDeprecateCmd, cliconv.IdempotencyYes)
-	cliconv.WithIdempotency(embeddingsPurgeCmd, cliconv.IdempotencyYes)
 
 	// 12fcc strict-gate: examples + next-steps on every leaf.
 	cliconv.WithExamples(embeddingsListCmd, []cliconv.Example{
@@ -240,27 +177,6 @@ func init() {
 		{When: "on success", Suggest: "ctxt embeddings list", Reason: "confirm coverage + default marker after registration"},
 		{When: "after coverage + recall verification", Suggest: "ctxt embeddings set-default <model_id>", Reason: "promote the candidate once recall guards pass"},
 	})
-	cliconv.WithExamples(embeddingsSetDefaultCmd, []cliconv.Example{
-		{Title: "Promote a registered model to default", Command: "ctxt embeddings set-default voyage-3-large@2025-08-01"},
-		{Title: "JSON output", Command: "ctxt embeddings set-default voyage-3-large@2025-08-01 --format json"},
-	})
-	cliconv.WithNextSteps(embeddingsSetDefaultCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt embeddings list", Reason: "verify the new default marker landed"},
-		{When: "after verification", Suggest: "ctxt embeddings deprecate <old_model_id>", Reason: "schedule the previous default for retirement"},
-	})
-	cliconv.WithExamples(embeddingsDeprecateCmd, []cliconv.Example{
-		{Title: "Mark a model deprecated", Command: "ctxt embeddings deprecate openai-text-embedding-ada-002@2022-12-15"},
-	})
-	cliconv.WithNextSteps(embeddingsDeprecateCmd, []cliconv.NextStep{
-		{When: "after grace period", Suggest: "ctxt embeddings purge <model_id>", Reason: "delete the embedding rows once no consumer is reading them"},
-	})
-	cliconv.WithExamples(embeddingsPurgeCmd, []cliconv.Example{
-		{Title: "Delete rows for a deprecated model", Command: "ctxt embeddings purge openai-text-embedding-ada-002@2022-12-15"},
-	})
-	cliconv.WithNextSteps(embeddingsPurgeCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt embeddings list", Reason: "confirm coverage for remaining models is unaffected"},
-	})
-
 	embeddings.AddFlags(embeddingsProviderCmd.Flags(), &embeddingsProviderFlags)
 
 	embeddings.AddFlags(embeddingsRegisterCmd.Flags(), &embeddingsRegisterFlags)

@@ -62,6 +62,8 @@ type migrateEnv struct {
 	resolver embeddings.ProviderResolver
 	mgr      *upgrade.Manager
 	status   *httptest.Server
+	// ingested numbers ingest jobs across calls.
+	ingested int
 }
 
 // newMigrateEnv registers the source model through the CLI (the register
@@ -106,9 +108,10 @@ func (e *migrateEnv) ingest(t *testing.T, bodies ...string) {
 	})
 	q := jobs.NewQueue(drv.Jobs())
 	var ids []string
-	for i, body := range bodies {
+	for _, body := range bodies {
+		e.ingested++
 		job := &storage.Job{
-			ID: fmt.Sprintf("ingest-%d", i), Type: "ingest:text", Payload: body, Pipeline: "text.long",
+			ID: fmt.Sprintf("ingest-%d", e.ingested), Type: "ingest:text", Payload: body, Pipeline: "text.long",
 			Source: "test", MaxRetries: 1, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 		}
 		if err := q.Enqueue(context.Background(), job); err != nil {

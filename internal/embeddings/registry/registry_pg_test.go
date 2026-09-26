@@ -111,17 +111,22 @@ func TestPgRegistry_CRUDRoundTrip(t *testing.T) {
 	assert.Equal(t, m.ModelID, models[0].ModelID)
 
 	// SetDefault flips atomically.
-	require.NoError(t, r.SetDefault(ctx, m.ModelID))
+	_, err = r.SetDefault(ctx, m.ModelID, 0)
+	require.NoError(t, err)
 	got, err = r.Get(ctx, m.ModelID)
 	require.NoError(t, err)
 	assert.True(t, got.IsDefault)
 
-	// Deprecate stamps the timestamp.
+	// Deprecate refuses the default and stamps any other model.
 	when := time.Now().UTC().Truncate(time.Second)
-	require.NoError(t, r.Deprecate(ctx, m.ModelID, when))
-	got, err = r.Get(ctx, m.ModelID)
+	require.ErrorIs(t, r.Deprecate(ctx, m.ModelID, when), registry.ErrIsDefault)
+	other := registry.Model{ModelID: "text-embedding-3-large", Provider: registry.ProviderOpenAI, Dimension: 1024}
+	require.NoError(t, r.Register(ctx, other, false))
+	require.NoError(t, r.Deprecate(ctx, other.ModelID, when))
+	got, err = r.Get(ctx, other.ModelID)
 	require.NoError(t, err)
 	require.NotNil(t, got.DeprecatedAt)
+	assert.True(t, when.Equal(*got.DeprecatedAt))
 
 	// Coverage: empty corpus reports vacuous 1.0 for every model.
 	withCov, err := r.ListWithCoverage(ctx)
@@ -147,4 +152,13 @@ func TestPgRegistry_DimensionCeiling(t *testing.T) {
 	if !strings.Contains(err.Error(), "giant-embedding") {
 		t.Errorf("error should name the model: %v", err)
 	}
+}
+
+// TestLifecycle_Postgres runs the set-default / deprecate / purge contract
+// against a fresh Postgres database per subtest.
+func TestLifecycle_Postgres(t *testing.T) {
+	runLifecycleSuite(t, func(t *testing.T) lifecycleDriver {
+		_, d := newPgRegistry(t)
+		return d
+	})
 }

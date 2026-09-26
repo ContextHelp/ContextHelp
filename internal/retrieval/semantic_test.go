@@ -177,7 +177,7 @@ func TestSemanticSearch_FollowsDefaultFlip(t *testing.T) {
 	}
 
 	other := registry.New(f.db) // e.g. `ctxt embeddings set-default` in another process
-	if err := other.SetDefault(ctx, modelB); err != nil {
+	if _, err := other.SetDefault(ctx, modelB, 0); err != nil {
 		t.Fatal(err)
 	}
 

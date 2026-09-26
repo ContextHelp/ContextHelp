@@ -48,7 +48,8 @@ func TestDefault_ReturnsFlaggedModel(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "a@1", m.ModelID)
 
-	require.NoError(t, r.SetDefault(ctx, "b@1"))
+	_, err = r.SetDefault(ctx, "b@1", 0)
+	require.NoError(t, err)
 	m, err = r.Default(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "b@1", m.ModelID, "Default must see a flip without caching")
@@ -84,13 +85,19 @@ func TestPopulating(t *testing.T) {
 		"default first; effective deprecation and unprobed dimension excluded")
 }
 
+// Deprecate refuses the default, so this state is not reachable through
+// the registry; if the row says so anyway, the model queries read keeps
+// receiving writes.
 func TestPopulating_DeprecatedDefaultStillWritten(t *testing.T) {
-	r := newEmptyRegistry(t)
+	r, d := newRegistry(t)
 	ctx := context.Background()
 	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
 
 	require.NoError(t, r.Register(ctx, registry.Model{ModelID: "default@1", Provider: "ollama", Dimension: 4}, true))
-	require.NoError(t, r.Deprecate(ctx, "default@1", now.Add(-time.Hour)))
+	require.ErrorIs(t, r.Deprecate(ctx, "default@1", now.Add(-time.Hour)), registry.ErrIsDefault)
+	_, err := d.DB().ExecContext(ctx, `UPDATE embedding_models SET deprecated_at = ? WHERE model_id = ?`,
+		now.Add(-time.Hour).Format(time.RFC3339), "default@1")
+	require.NoError(t, err)
 
 	got, err := r.Populating(ctx, now)
 	require.NoError(t, err)
