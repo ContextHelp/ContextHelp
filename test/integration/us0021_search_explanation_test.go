@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,7 +45,7 @@ func TestUS0021_ExplainReturnsScoreBreakdownPerResult(t *testing.T) {
 		CandidatePool: config.CandidatePoolConfig{FTS: 20, Vector: 20},
 		FallbackToFTS: true,
 	}
-	results, err := env.svc.HybridSearchExplain(ctx, "observability", 10, nil, cfg)
+	results, err := env.svc.HybridSearchExplain(ctx, "observability", 10, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.NotEmpty(t, results, "explain search must return at least one result")
 
@@ -84,7 +85,7 @@ func TestUS0021_ExplainFTSContributesWhenNoEmbeddingProvider(t *testing.T) {
 		CandidatePool: config.CandidatePoolConfig{FTS: 20, Vector: 20},
 		FallbackToFTS: true,
 	}
-	results, err := env.svc.HybridSearchExplain(ctx, "rate limiting", 5, nil, cfg)
+	results, err := env.svc.HybridSearchExplain(ctx, "rate limiting", 5, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.NotEmpty(t, results)
 
@@ -119,11 +120,11 @@ func TestUS0021_ExplainTotalMatchesHybridSearchRRFScore(t *testing.T) {
 		FallbackToFTS: true,
 	}
 
-	plain, err := env.svc.HybridSearch(ctx, "blue green deployment", 5, nil, cfg)
+	plain, err := env.svc.HybridSearch(ctx, "blue green deployment", 5, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.NotEmpty(t, plain)
 
-	explained, err := env.svc.HybridSearchExplain(ctx, "blue green deployment", 5, nil, cfg)
+	explained, err := env.svc.HybridSearchExplain(ctx, "blue green deployment", 5, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.NotEmpty(t, explained)
 
@@ -144,7 +145,7 @@ func TestUS0021_ExplainNoMatchReturnsEmptyList(t *testing.T) {
 		DefaultMode:   "hybrid",
 		FallbackToFTS: true,
 	}
-	results, err := env.svc.HybridSearchExplain(ctx, "zzz_no_match_xyzzy", 5, nil, cfg)
+	results, err := env.svc.HybridSearchExplain(ctx, "zzz_no_match_xyzzy", 5, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	assert.Empty(t, results)
 }

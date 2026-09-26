@@ -24,7 +24,6 @@ func TestPostgresReinforceKeepsIndexFlags(t *testing.T) {
 	obj.RawContent = "zebrafish larval locomotion study"
 	obj.ContentHash = "reinf-pg-hash"
 	obj.ReinforcementCount = 1
-	obj.Embeddings = []float32{0.1, 0.2, 0.3, 0.4}
 	obj.VectorIndexed = true
 	if err := drv.Objects().Create(ctx, obj); err != nil {
 		t.Fatalf("create: %v", err)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/storagetest"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -448,53 +449,82 @@ func TestListBySQL_JSONExtract(t *testing.T) {
 	assert.Equal(t, "meta-1", objs[0].ID)
 }
 
+// vectorTestStore returns d's ObjectStore ranking through an in-memory
+// EmbeddingStore with model "m3" indexed at dimension 3.
+func vectorTestStore(t *testing.T, d *Driver) (*ObjectStore, *storagetest.MemEmbeddingStore) {
+	t.Helper()
+	emb := storagetest.NewMemEmbeddingStore()
+	require.NoError(t, emb.EnsureIndex(context.Background(), storage.EmbeddingModelSpec{ModelID: "m3", Dimension: 3}))
+	return &ObjectStore{db: d.db, emb: emb}, emb
+}
+
+// putVector creates obj and stores vec as its single chunk under "m3".
+func putVector(t *testing.T, s *ObjectStore, emb *storagetest.MemEmbeddingStore, obj *storage.KnowledgeObject, vec []float32) {
+	t.Helper()
+	ctx := context.Background()
+	require.NoError(t, s.Create(ctx, obj))
+	require.NoError(t, emb.Put(ctx, obj.ID, []storage.ObjectVector{{ModelID: "m3", Vector: vec}}))
+}
+
+func m3(vec ...float32) storage.VectorQuery { return storage.VectorQuery{ModelID: "m3", Vector: vec} }
+
 func TestVectorSearch_ReturnsRankedResults(t *testing.T) {
 	d := newTestDriver(t)
+	s, emb := vectorTestStore(t, d)
 	ctx := context.Background()
 
-	// Object A has embedding close to query direction.
-	objA := makeObject("vec-a", "item")
-	objA.Embeddings = []float32{1, 0, 0}
-	require.NoError(t, d.Objects().Create(ctx, objA))
+	putVector(t, s, emb, makeObject("vec-a", "item"), []float32{1, 0, 0})  // aligned
+	putVector(t, s, emb, makeObject("vec-b", "item"), []float32{0, 1, 0})  // orthogonal
+	putVector(t, s, emb, makeObject("vec-c", "item"), []float32{-1, 0, 0}) // opposite
 
-	// Object B has embedding orthogonal to query.
-	objB := makeObject("vec-b", "item")
-	objB.Embeddings = []float32{0, 1, 0}
-	require.NoError(t, d.Objects().Create(ctx, objB))
-
-	// Object C has embedding in opposite direction.
-	objC := makeObject("vec-c", "item")
-	objC.Embeddings = []float32{-1, 0, 0}
-	require.NoError(t, d.Objects().Create(ctx, objC))
-
-	// Query vector aligns with A.
-	query := []float32{1, 0, 0}
-	results, err := d.Objects().VectorSearch(ctx, query, storage.ObjectFilter{Limit: 3})
+	results, err := s.VectorSearch(ctx, m3(1, 0, 0), storage.ObjectFilter{Limit: 3})
 	require.NoError(t, err)
 	require.Len(t, results, 3)
+	assert.Equal(t, []string{"vec-a", "vec-b", "vec-c"}, []string{results[0].ID, results[1].ID, results[2].ID})
 
-	// A should rank first (cosine = 1.0).
-	assert.Equal(t, "vec-a", results[0].ID)
-	// C should rank last (cosine = -1.0).
-	assert.Equal(t, "vec-c", results[2].ID)
-
-	// Scores should be attached in metadata.
+	// score = 1 - cosine distance.
 	assert.InDelta(t, 1.0, results[0].Metadata["score"].(float64), 0.001)
+	assert.InDelta(t, 0.0, results[1].Metadata["score"].(float64), 0.001)
+	assert.InDelta(t, -1.0, results[2].Metadata["score"].(float64), 0.001)
+}
+
+// The search reads the queried model's index only.
+func TestVectorSearch_SearchesQueryModel(t *testing.T) {
+	d := newTestDriver(t)
+	s, emb := vectorTestStore(t, d)
+	ctx := context.Background()
+	require.NoError(t, emb.EnsureIndex(ctx, storage.EmbeddingModelSpec{ModelID: "other", Dimension: 3}))
+
+	putVector(t, s, emb, makeObject("only-m3", "item"), []float32{0, 1, 0})
+	require.NoError(t, s.Create(ctx, makeObject("only-other", "item")))
+	require.NoError(t, emb.Put(ctx, "only-other", []storage.ObjectVector{{ModelID: "other", Vector: []float32{1, 0, 0}}}))
+
+	results, err := s.VectorSearch(ctx, m3(1, 0, 0), storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "only-m3", results[0].ID)
+	searches := emb.Searches()
+	require.Len(t, searches, 1)
+	assert.Equal(t, "m3", searches[0].ModelID)
+	assert.Equal(t, 10*vectorOverfetch, searches[0].TopK, "KNN over-fetch for post-filtering")
+}
+
+func TestVectorSearch_IndexMissing(t *testing.T) {
+	d := newTestDriver(t)
+	s, _ := vectorTestStore(t, d)
+	_, err := s.VectorSearch(context.Background(), storage.VectorQuery{ModelID: "unindexed", Vector: []float32{1, 0, 0}}, storage.ObjectFilter{})
+	assert.ErrorIs(t, err, storage.ErrEmbeddingIndexMissing)
 }
 
 func TestVectorSearch_FiltersByType(t *testing.T) {
 	d := newTestDriver(t)
+	s, emb := vectorTestStore(t, d)
 	ctx := context.Background()
 
-	objA := makeObject("cat-v", "category")
-	objA.Embeddings = []float32{1, 0, 0}
-	require.NoError(t, d.Objects().Create(ctx, objA))
+	putVector(t, s, emb, makeObject("cat-v", "category"), []float32{1, 0, 0})
+	putVector(t, s, emb, makeObject("item-v", "item"), []float32{1, 0, 0})
 
-	objB := makeObject("item-v", "item")
-	objB.Embeddings = []float32{1, 0, 0}
-	require.NoError(t, d.Objects().Create(ctx, objB))
-
-	results, err := d.Objects().VectorSearch(ctx, []float32{1, 0, 0}, storage.ObjectFilter{Type: "category", Limit: 10})
+	results, err := s.VectorSearch(ctx, m3(1, 0, 0), storage.ObjectFilter{Type: "category", Limit: 10})
 	require.NoError(t, err)
 	assert.Len(t, results, 1)
 	assert.Equal(t, "cat-v", results[0].ID)
@@ -502,47 +532,41 @@ func TestVectorSearch_FiltersByType(t *testing.T) {
 
 func TestVectorSearch_EmptyVectorError(t *testing.T) {
 	d := newTestDriver(t)
-	ctx := context.Background()
-
-	_, err := d.Objects().VectorSearch(ctx, nil, storage.ObjectFilter{})
+	s, _ := vectorTestStore(t, d)
+	_, err := s.VectorSearch(context.Background(), storage.VectorQuery{ModelID: "m3"}, storage.ObjectFilter{})
 	assert.Error(t, err)
 }
 
-// TestVectorSearch_ZeroQueryReturnsNothing pins the brute-force leg to the
-// cross-driver contract: cosine similarity is undefined against a
-// zero-magnitude query, so the search returns nothing — matching the ANN
-// leg (vec0 reports unrankable NULL distances) and the Postgres driver
-// (NaN distance fails the range predicate). Without the guard the
-// brute-force scorer hands every candidate back at score 0.
+// Cosine distance to a zero-magnitude query is undefined, so nothing ranks
+// and nothing is returned.
 func TestVectorSearch_ZeroQueryReturnsNothing(t *testing.T) {
 	d := newTestDriver(t)
-	ctx := context.Background()
+	s, emb := vectorTestStore(t, d)
+	putVector(t, s, emb, makeObject("vec-zq", "item"), []float32{1, 0, 0})
 
-	obj := makeObject("vec-zq", "item")
-	obj.Embeddings = []float32{1, 0, 0}
-	require.NoError(t, d.Objects().Create(ctx, obj))
-
-	// Dimension 3 ≠ the driver's ANN dimension, so this exercises the
-	// brute-force scan — the leg that scored zero queries at 0 for
-	// every row.
-	results, err := d.Objects().VectorSearch(ctx, []float32{0, 0, 0}, storage.ObjectFilter{Limit: 10})
+	results, err := s.VectorSearch(context.Background(), m3(0, 0, 0), storage.ObjectFilter{Limit: 10})
 	require.NoError(t, err)
 	assert.Empty(t, results)
+	assert.Empty(t, emb.Searches(), "a zero query never reaches the index")
 }
 
 func TestVectorSearch_RespectsLimit(t *testing.T) {
 	d := newTestDriver(t)
-	ctx := context.Background()
-
+	s, emb := vectorTestStore(t, d)
 	for i := 0; i < 5; i++ {
-		obj := makeObject(fmt.Sprintf("lim-%d", i), "item")
-		obj.Embeddings = []float32{1, 0, 0}
-		require.NoError(t, d.Objects().Create(ctx, obj))
+		putVector(t, s, emb, makeObject(fmt.Sprintf("lim-%d", i), "item"), []float32{1, 0, 0})
 	}
 
-	results, err := d.Objects().VectorSearch(ctx, []float32{1, 0, 0}, storage.ObjectFilter{Type: "item", Limit: 2})
+	results, err := s.VectorSearch(context.Background(), m3(1, 0, 0), storage.ObjectFilter{Type: "item", Limit: 2})
 	require.NoError(t, err)
 	assert.Len(t, results, 2)
+}
+
+// The driver ranks through its own EmbeddingStore.
+func TestDriver_ObjectStoreUsesDriverEmbeddings(t *testing.T) {
+	d := newTestDriver(t)
+	require.NotNil(t, d.objects.emb)
+	assert.IsType(t, d.Embeddings(), d.objects.emb)
 }
 
 // makeFTSObject builds an object whose projected_fts_body contains the given text.
@@ -660,13 +684,6 @@ func TestFTSSearch_RawHostileInput(t *testing.T) {
 	// Truly empty input is still a caller bug.
 	_, err = d.Objects().FTSSearch(ctx, "", storage.ObjectFilter{Limit: 10})
 	require.Error(t, err)
-}
-
-func TestCosineSimilarity(t *testing.T) {
-	assert.InDelta(t, 1.0, cosineSimilarity([]float32{1, 0, 0}, []float32{1, 0, 0}), 0.0001)
-	assert.InDelta(t, 0.0, cosineSimilarity([]float32{1, 0, 0}, []float32{0, 1, 0}), 0.0001)
-	assert.InDelta(t, -1.0, cosineSimilarity([]float32{1, 0, 0}, []float32{-1, 0, 0}), 0.0001)
-	assert.InDelta(t, 0.0, cosineSimilarity([]float32{0, 0, 0}, []float32{1, 0, 0}), 0.0001)
 }
 
 func TestMetadataFacetConditionsSQLite(t *testing.T) {

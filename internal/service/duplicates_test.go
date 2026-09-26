@@ -6,6 +6,8 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/storagetest"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +34,7 @@ func (s *stubObjectsForDup) GetBySourceKey(_ context.Context, key string) (*stor
 	return s.bySourceKey[key], nil
 }
 
-func (s *stubObjectsForDup) VectorSearch(_ context.Context, _ []float32, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+func (s *stubObjectsForDup) VectorSearch(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	out := make([]*storage.KnowledgeObject, 0, len(s.similar))
 	for _, obj := range s.similar {
 		if score, ok := obj.Metadata["score"].(float64); ok && score >= 0 {
@@ -62,7 +64,7 @@ func TestCheckDuplicates(t *testing.T) {
 		name        string
 		hash        string
 		sourceKey   string
-		embeddings  []float32
+		query       storage.VectorQuery
 		cfg         config.DuplicatesConfig
 		byHash      map[string]*storage.KnowledgeObject
 		bySourceKey map[string]*storage.KnowledgeObject
@@ -85,11 +87,11 @@ func TestCheckDuplicates(t *testing.T) {
 			wantKind:    DuplicateSourceKey,
 		},
 		{
-			name:       "similar match found",
-			embeddings: []float32{1, 0, 0},
-			cfg:        config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95},
-			similar:    []*storage.KnowledgeObject{similarObj},
-			wantKind:   DuplicateSimilar,
+			name:     "similar match found",
+			query:    storage.VectorQuery{ModelID: "m", Vector: []float32{1, 0, 0}},
+			cfg:      config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95},
+			similar:  []*storage.KnowledgeObject{similarObj},
+			wantKind: DuplicateSimilar,
 		},
 		{
 			name:    "no match",
@@ -113,11 +115,11 @@ func TestCheckDuplicates(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:       "similar check disabled",
-			embeddings: []float32{1, 0, 0},
-			cfg:        config.DuplicatesConfig{CheckSimilar: false, SimilarityThreshold: 0.95},
-			similar:    []*storage.KnowledgeObject{similarObj},
-			wantNil:    true,
+			name:    "similar check disabled",
+			query:   storage.VectorQuery{ModelID: "m", Vector: []float32{1, 0, 0}},
+			cfg:     config.DuplicatesConfig{CheckSimilar: false, SimilarityThreshold: 0.95},
+			similar: []*storage.KnowledgeObject{similarObj},
+			wantNil: true,
 		},
 		{
 			name:        "source key empty string returns no match",
@@ -140,7 +142,7 @@ func TestCheckDuplicates(t *testing.T) {
 			}
 			svc.Store = stub
 
-			result, err := svc.checkDuplicates(context.Background(), tt.hash, tt.sourceKey, tt.embeddings, tt.cfg)
+			result, err := svc.checkDuplicates(context.Background(), tt.hash, tt.sourceKey, tt.query, tt.cfg)
 			require.NoError(t, err)
 			if tt.wantNil {
 				assert.Nil(t, result)
@@ -150,4 +152,36 @@ func TestCheckDuplicates(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The near-duplicate check searches the query's model index and scores by
+// similarity (1 - cosine distance): identical vectors under another model
+// are not candidates, and a distant neighbour is not a duplicate.
+func TestCheckDuplicates_SearchesQueryModelBySimilarity(t *testing.T) {
+	ctx := context.Background()
+	emb := storagetest.NewMemEmbeddingStore()
+	drv := storagetest.WithEmbeddings(storageutil.NewTestDriver(t), emb)
+	for _, id := range []string{"m-query", "m-other"} {
+		require.NoError(t, emb.EnsureIndex(ctx, storage.EmbeddingModelSpec{ModelID: id, Dimension: 3}))
+	}
+	for id, vs := range map[string][]storage.ObjectVector{
+		"near": {{ModelID: "m-query", Vector: []float32{0.99, 0.14, 0}}},
+		"far":  {{ModelID: "m-query", Vector: []float32{0, 0, 1}}, {ModelID: "m-other", Vector: []float32{1, 0, 0}}},
+	} {
+		require.NoError(t, drv.Objects().Create(ctx, &storage.KnowledgeObject{ID: id, Type: "text", RawContent: id}))
+		require.NoError(t, emb.Put(ctx, id, vs))
+	}
+	svc := &Service{Store: drv}
+	cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95}
+
+	dup, err := svc.checkDuplicates(ctx, "", "", storage.VectorQuery{ModelID: "m-query", Vector: []float32{1, 0, 0}}, cfg)
+	require.NoError(t, err)
+	require.NotNil(t, dup)
+	assert.Equal(t, "near", dup.Existing.ID)
+	assert.InDelta(t, 0.99, dup.Similarity, 0.001)
+
+	cfg.SimilarityThreshold = 0.999
+	dup, err = svc.checkDuplicates(ctx, "", "", storage.VectorQuery{ModelID: "m-query", Vector: []float32{1, 0, 0}}, cfg)
+	require.NoError(t, err)
+	assert.Nil(t, dup, "far (identical only under m-other) must not match an m-query search")
 }

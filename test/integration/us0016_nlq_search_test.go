@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -63,13 +64,13 @@ func TestUS0016_NLQSearchReturnsMatchingObjects(t *testing.T) {
 	}
 
 	// NLQ "authentication" → should surface nlq-auth.
-	results, err := env.svc.HybridSearch(ctx, "authentication", 5, nil, cfg)
+	results, err := env.svc.HybridSearch(ctx, "authentication", 5, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.NotEmpty(t, results, "NLQ query must return at least one result")
 	assert.Equal(t, "nlq-auth", results[0].ID)
 
 	// NLQ "caching eviction" → should surface nlq-cache.
-	results, err = env.svc.HybridSearch(ctx, "caching eviction", 5, nil, cfg)
+	results, err = env.svc.HybridSearch(ctx, "caching eviction", 5, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	require.NotEmpty(t, results)
 	assert.Equal(t, "nlq-cache", results[0].ID)
@@ -117,7 +118,7 @@ func TestUS0016_NLQNoResults(t *testing.T) {
 		DefaultMode:   "hybrid",
 		FallbackToFTS: true,
 	}
-	results, err := env.svc.HybridSearch(ctx, "zzz_no_match_xyzzy", 5, nil, cfg)
+	results, err := env.svc.HybridSearch(ctx, "zzz_no_match_xyzzy", 5, retrieval.SemanticSource{}, cfg)
 	require.NoError(t, err)
 	assert.Empty(t, results, "unmatched NLQ query must return empty list")
 }

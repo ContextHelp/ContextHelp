@@ -25,9 +25,9 @@ import (
 var errObjectNotFound = fmt.Errorf("object %w", storage.ErrNotFound)
 
 type ObjectStore struct {
-	db     *sql.DB
-	vec    *VecStore // optional ANN index; nil = brute-force fallback
-	vecDim int       // configured ANN dimension; 0 means unknown/disabled
+	db *sql.DB
+	// emb is the per-model embedding store VectorSearch ranks through.
+	emb storage.EmbeddingStore
 }
 
 func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) error {
@@ -94,16 +94,6 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("create object: commit: %w", err)
-	}
-
-	// Embeddings are best-effort: stored outside the core transaction.
-	if err := s.upsertEmbedding(ctx, obj.ID, obj.Embeddings); err != nil {
-		return fmt.Errorf("create object embedding: %w", err)
-	}
-	if s.vec != nil && s.vecDim > 0 && len(obj.Embeddings) == s.vecDim {
-		if err := s.vec.Upsert(ctx, obj.ID, obj.Embeddings); err != nil {
-			return fmt.Errorf("create object vec index: %w", err)
-		}
 	}
 	return nil
 }
@@ -363,16 +353,6 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("update object: commit: %w", err)
-	}
-
-	// Embeddings are best-effort: stored outside the core transaction.
-	if err := s.upsertEmbedding(ctx, obj.ID, obj.Embeddings); err != nil {
-		return fmt.Errorf("update object embedding: %w", err)
-	}
-	if s.vec != nil && s.vecDim > 0 && len(obj.Embeddings) == s.vecDim {
-		if err := s.vec.Upsert(ctx, obj.ID, obj.Embeddings); err != nil {
-			return fmt.Errorf("update object vec index: %w", err)
-		}
 	}
 	return nil
 }
@@ -877,164 +857,43 @@ func boolToInt(b bool) int {
 	return 0
 }
 
-// upsertEmbedding stores a float32 slice as a BLOB in object_embeddings.
-// It is a no-op when the slice is empty.
-func (s *ObjectStore) upsertEmbedding(ctx context.Context, id string, vec []float32) error {
-	if len(vec) == 0 {
-		return nil
-	}
-	blob := float32SliceToBlob(vec)
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO object_embeddings(id, embedding, dimensions) VALUES(?,?,?)
-		 ON CONFLICT(id) DO UPDATE SET embedding=excluded.embedding, dimensions=excluded.dimensions`,
-		id, blob, len(vec))
-	return err
-}
+// vectorOverfetch is the KNN over-fetch factor: the index is searched for
+// limit*vectorOverfetch hits so post-filtering by type, subtype, pipeline
+// and metadata facets can still fill limit.
+const vectorOverfetch = 10
 
-// ListWithoutEmbeddings returns all active objects that have no stored embedding blob.
-func (s *ObjectStore) ListWithoutEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT o.id, o.type, o.subtype, o.raw_content, o.content_type, o.text_content,
-		       o.metadata, o.summaries, o.sections, o.tags, o.mentions,
-		       o.decisions, o.tasks, o.pipeline, o.source,
-		       o.registry_influences, o.plugins, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
-		       o.created_at, o.updated_at, o.fts_indexed, o.vector_indexed, o.status, o.inbox_note,
-		       o.remind_at, o.reminded_at
-		FROM objects o
-		LEFT JOIN object_embeddings oe ON o.id = oe.id
-		WHERE oe.id IS NULL AND o.status = 'active'
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("list without embeddings: %w", err)
-	}
-	defer rows.Close()
-
-	var objects []*storage.KnowledgeObject
-	for rows.Next() {
-		var obj storage.KnowledgeObject
-		var (
-			metadataJSON, summariesJSON, sectionsJSON, tagsJSON string
-			mentionsJSON, decisionsJSON, tasksJSON              string
-			influencesJSON, pluginsJSON                         string
-			createdAt, updatedAt                                string
-			ftsIndexed, vectorIndexed                           int
-			lastReinforcedAt                                    sql.NullString
-			remindAt, remindedAt                                sql.NullString
-		)
-		if err := rows.Scan(
-			&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
-			&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
-			&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
-			&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-			&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
-			&remindAt, &remindedAt,
-		); err != nil {
-			return nil, fmt.Errorf("list without embeddings scan: %w", err)
-		}
-		if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
-			createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
-			remindAt, remindedAt); err != nil {
-			return nil, fmt.Errorf("list without embeddings scan: %w", err)
-		}
-		objects = append(objects, &obj)
-	}
-	return objects, rows.Err()
-}
-
-// ListWithEmbeddings returns all objects that have a stored embedding blob.
-func (s *ObjectStore) ListWithEmbeddings(ctx context.Context) ([]*storage.KnowledgeObject, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT o.id, o.type, o.subtype, o.raw_content, o.content_type, o.text_content,
-		       o.metadata, o.summaries, o.sections, o.tags, o.mentions,
-		       o.decisions, o.tasks, o.pipeline, o.source,
-		       o.registry_influences, o.plugins, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
-		       o.created_at, o.updated_at, o.fts_indexed, o.vector_indexed, o.status, o.inbox_note,
-		       o.remind_at, o.reminded_at, o.profile_id,
-		       oe.embedding
-		FROM objects o
-		INNER JOIN object_embeddings oe ON o.id = oe.id
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("list with embeddings: %w", err)
-	}
-	defer rows.Close()
-
-	var objects []*storage.KnowledgeObject
-	for rows.Next() {
-		var obj storage.KnowledgeObject
-		var (
-			metadataJSON, summariesJSON, sectionsJSON, tagsJSON string
-			mentionsJSON, decisionsJSON, tasksJSON              string
-			influencesJSON, pluginsJSON                         string
-			createdAt, updatedAt                                string
-			ftsIndexed, vectorIndexed                           int
-			lastReinforcedAt                                    sql.NullString
-			remindAt, remindedAt                                sql.NullString
-			embeddingBlob                                       []byte
-		)
-		if err := rows.Scan(
-			&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
-			&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
-			&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
-			&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-			&createdAt, &updatedAt, &ftsIndexed, &vectorIndexed, &obj.Status, &obj.InboxNote,
-			&remindAt, &remindedAt, &obj.ProfileID,
-			&embeddingBlob,
-		); err != nil {
-			return nil, fmt.Errorf("scan embedding row: %w", err)
-		}
-		if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
-			createdAt, updatedAt, ftsIndexed, vectorIndexed, lastReinforcedAt,
-			remindAt, remindedAt); err != nil {
-			return nil, fmt.Errorf("scan embedding row: %w", err)
-		}
-		obj.Embeddings = blobToFloat32Slice(embeddingBlob)
-		objects = append(objects, &obj)
-	}
-	return objects, rows.Err()
-}
-
-// VectorSearch returns the top-K objects ranked by vector similarity.
-//
-// When an ANN index (vec field) is available, it delegates to the sqlite-vec
-// KNN query (O(log n)) and hydrates the small result set individually.
-// When no ANN index is wired (e.g. unit tests using small vectors), it falls
-// back to a full scan of object_embeddings with in-process cosine similarity.
-func (s *ObjectStore) VectorSearch(ctx context.Context, vector []float32, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	if len(vector) == 0 {
+// VectorSearch ranks objects through q.ModelID's per-model index: a KNN
+// over-fetch through EmbeddingStore.Search (chunks already collapsed to the
+// best one per object), then hydrate and filter in Go. Metadata["score"] is
+// 1 - cosine distance.
+func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	if len(q.Vector) == 0 {
 		return nil, fmt.Errorf("vector search: empty query vector")
 	}
-	// Cosine similarity is undefined against a zero-magnitude query, so no
-	// row can rank: return nothing, matching the ANN leg (vec0 reports
-	// unrankable NULL distances) and the Postgres driver (NaN distance
-	// fails its range predicate). Without this guard the brute-force
-	// scorer below hands every candidate back at score 0.
-	if isZeroVector(vector) {
+	// Cosine distance to a zero-magnitude query is undefined for every
+	// row: nothing can rank, so nothing is returned.
+	if isZeroVector(q.Vector) {
 		return nil, nil
 	}
-
-	if s.vec != nil && s.vecDim > 0 && len(vector) == s.vecDim {
-		return s.vectorSearchANN(ctx, vector, filter)
+	if s.emb == nil {
+		return nil, fmt.Errorf("vector search: no embedding store")
 	}
-	return s.vectorSearchBruteForce(ctx, vector, filter)
-}
-
-// vectorSearchANN uses the sqlite-vec KNN index for O(log n) approximate search.
-// It over-fetches by a factor of annOverfetch to allow post-filtering by type/subtype/pipeline.
-func (s *ObjectStore) vectorSearchANN(ctx context.Context, vector []float32, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	const annOverfetch = 10
 
 	limit := filter.Limit
 	if limit <= 0 {
+		limit = q.TopK
+	}
+	if limit <= 0 {
 		limit = 50
 	}
-	topK := limit * annOverfetch
 
-	hits, err := s.vec.Search(ctx, vector, topK)
+	hits, err := s.emb.Search(ctx, storage.VectorQuery{
+		ModelID: q.ModelID,
+		Vector:  q.Vector,
+		TopK:    limit * vectorOverfetch,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("vector search ann: %w", err)
+		return nil, fmt.Errorf("vector search: %w", err)
 	}
 
 	var out []*storage.KnowledgeObject
@@ -1042,7 +901,7 @@ func (s *ObjectStore) vectorSearchANN(ctx context.Context, vector []float32, fil
 		if len(out) >= limit {
 			break
 		}
-		obj, err := s.Get(ctx, h.ID)
+		obj, err := s.Get(ctx, h.ObjectID)
 		if err != nil {
 			// Object may have been deleted between index and fetch; skip.
 			continue
@@ -1062,74 +921,20 @@ func (s *ObjectStore) vectorSearchANN(ctx context.Context, vector []float32, fil
 		if obj.Metadata == nil {
 			obj.Metadata = make(map[string]any)
 		}
-		// vec0 reports cosine distance (migration 034 pins the metric);
-		// score = 1 - cosine_distance is the cross-driver mapping shared
-		// with the Postgres driver and the brute-force path below.
-		obj.Metadata["score"] = 1.0 - float64(h.Score)
+		obj.Metadata["score"] = 1.0 - h.Distance
 		out = append(out, obj)
 	}
 	return out, nil
 }
 
-// vectorSearchBruteForce is the legacy O(n) fallback used when no ANN index is
-// wired (e.g. unit tests with non-standard embedding dimensions).
-func (s *ObjectStore) vectorSearchBruteForce(ctx context.Context, vector []float32, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	candidates, err := s.ListWithEmbeddings(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("vector search: %w", err)
+// isZeroVector reports whether every component is zero.
+func isZeroVector(v []float32) bool {
+	for _, f := range v {
+		if f != 0 {
+			return false
+		}
 	}
-
-	type scored struct {
-		obj   *storage.KnowledgeObject
-		score float64
-	}
-
-	var results []scored
-	for _, obj := range candidates {
-		if filter.Type != "" && obj.Type != filter.Type {
-			continue
-		}
-		if filter.Subtype != "" && obj.Subtype != filter.Subtype {
-			continue
-		}
-		if filter.Pipeline != "" && obj.Pipeline != filter.Pipeline {
-			continue
-		}
-		if !matchesMetadataFacets(obj, filter) {
-			continue
-		}
-		if len(obj.Embeddings) == 0 {
-			continue
-		}
-		score := cosineSimilarity(vector, obj.Embeddings)
-		results = append(results, scored{obj: obj, score: score})
-	}
-
-	// Sort descending by similarity (insertion sort; results slice is typically small).
-	for i := 1; i < len(results); i++ {
-		key := results[i]
-		j := i - 1
-		for j >= 0 && results[j].score < key.score {
-			results[j+1] = results[j]
-			j--
-		}
-		results[j+1] = key
-	}
-
-	limit := filter.Limit
-	if limit <= 0 || limit > len(results) {
-		limit = len(results)
-	}
-
-	out := make([]*storage.KnowledgeObject, limit)
-	for i := 0; i < limit; i++ {
-		out[i] = results[i].obj
-		if out[i].Metadata == nil {
-			out[i].Metadata = make(map[string]any)
-		}
-		out[i].Metadata["score"] = results[i].score
-	}
-	return out, nil
+	return true
 }
 
 // FTSSearch queries the objects_fts FTS5 virtual table and returns matching objects
@@ -1239,26 +1044,6 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		results = append(results, &obj)
 	}
 	return results, rows.Err()
-}
-
-// cosineSimilarity returns the cosine similarity between two vectors.
-// Returns 0 when either vector has zero magnitude.
-func cosineSimilarity(a, b []float32) float64 {
-	n := len(a)
-	if n > len(b) {
-		n = len(b)
-	}
-	var dot, normA, normB float64
-	for i := 0; i < n; i++ {
-		fa, fb := float64(a[i]), float64(b[i])
-		dot += fa * fb
-		normA += fa * fa
-		normB += fb * fb
-	}
-	if normA == 0 || normB == 0 {
-		return 0
-	}
-	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
 }
 
 // float32SliceToBlob encodes []float32 as little-endian bytes.
@@ -1371,11 +1156,11 @@ func (s *ObjectStore) FTSSearchNodeAware(
 // returned. Results include a populated DocumentView when naf.ReturnNodeHits is true.
 func (s *ObjectStore) VectorSearchNodeAware(
 	ctx context.Context,
-	vector []float32,
+	q storage.VectorQuery,
 	filter storage.ObjectFilter,
 	naf pluginapi.NodeAwareFilter,
 ) ([]*pluginapi.NodeAwareResult, error) {
-	objects, err := s.VectorSearch(ctx, vector, filter)
+	objects, err := s.VectorSearch(ctx, q, filter)
 	if err != nil {
 		return nil, err
 	}

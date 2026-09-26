@@ -40,7 +40,6 @@ type Driver struct {
 	resurfacing     *ResurfacingQueueStore
 	entitlements    *entitlementStore
 	metering        *MeteringStore
-	vectors         *VecStore
 	savedSearches   *SavedSearchStore
 	searchHistory   *SearchHistoryStore
 }
@@ -67,8 +66,8 @@ func New(path string) (*Driver, error) {
 	}
 
 	d := &Driver{db: db, path: path, vectorDimension: DefaultVectorDimension}
-	d.vectors = &VecStore{db: db}
-	d.objects = &ObjectStore{db: db, vec: d.vectors, vecDim: DefaultVectorDimension}
+	d.objects = &ObjectStore{db: db}
+	d.objects.emb = d.Embeddings()
 	d.entities = &EntityStore{db: db}
 	d.edges = &EdgeStore{db: db}
 	d.jobs = &JobStore{db: db}
@@ -100,7 +99,6 @@ func (d *Driver) SetBlobs(bs storage.BlobStore) { d.blobs = bs }
 // already-created vec_objects virtual table.
 func (d *Driver) SetVectorDimension(dim int) {
 	d.vectorDimension = dim
-	d.objects.vecDim = dim
 }
 
 func (d *Driver) Init(ctx context.Context) error {
@@ -132,7 +130,6 @@ func (d *Driver) Attachments() storage.AttachmentStore       { return d.attachme
 func (d *Driver) Resurfacing() storage.ResurfacingQueueStore { return d.resurfacing }
 func (d *Driver) Entitlements() storage.EntitlementStore     { return d.entitlements }
 func (d *Driver) Metering() storage.MeteringStore            { return d.metering }
-func (d *Driver) Vectors() storage.VectorStore               { return d.vectors }
 func (d *Driver) SavedSearches() storage.SavedSearchStore    { return d.savedSearches }
 func (d *Driver) SearchHistory() storage.SearchHistoryStore  { return d.searchHistory }
 func (d *Driver) Watermarks() storage.WatermarkStore         { return &watermarkStore{db: d.db} }

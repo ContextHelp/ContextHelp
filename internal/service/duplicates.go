@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,8 +30,9 @@ type DuplicateResult struct {
 
 // checkDuplicates inspects the store for an exact, source-key, or
 // near-duplicate of the given content, applying the caller's DuplicatesConfig.
-// Returns nil, nil when no duplicate is found.
-func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, embeddings []float32, cfg config.DuplicatesConfig) (*DuplicateResult, error) {
+// The near-duplicate check searches q.ModelID's index with q.Vector; an empty
+// q skips it. Returns nil, nil when no duplicate is found.
+func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, q storage.VectorQuery, cfg config.DuplicatesConfig) (*DuplicateResult, error) {
 	// 1. Exact match via content_hash.
 	if cfg.CheckExact && hash != "" {
 		existing, err := s.Store.Objects().GetByContentHash(ctx, hash)
@@ -63,20 +63,14 @@ func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, e
 		}
 	}
 
-	// 3. Near-duplicate via vector similarity.
-	if cfg.CheckSimilar && len(embeddings) > 0 {
-		filter := storage.ObjectFilter{Limit: 1}
-		candidates, err := s.Store.Objects().VectorSearch(ctx, embeddings, filter)
+	// 3. Near-duplicate via vector similarity (score = 1 - cosine distance).
+	if cfg.CheckSimilar && len(q.Vector) > 0 {
+		candidates, err := s.Store.Objects().VectorSearch(ctx, q, storage.ObjectFilter{Limit: 1})
 		if err != nil {
 			return nil, err
 		}
 		for _, candidate := range candidates {
-			score := 0.0
-			if v, ok := candidate.Metadata["score"].(float64); ok {
-				score = v
-			} else {
-				score = serviceCosineSimilarity(embeddings, candidate.Embeddings)
-			}
+			score, _ := candidate.Metadata["score"].(float64)
 			if score >= cfg.SimilarityThreshold {
 				return &DuplicateResult{
 					Kind:       DuplicateSimilar,
@@ -106,22 +100,4 @@ func (s *Service) logDedupDecision(ctx context.Context, dup *DuplicateResult, po
 		},
 		CreatedAt: time.Now().UTC(),
 	})
-}
-
-// serviceCosineSimilarity computes cosine similarity between two float32 vectors.
-// Returns 0 for empty or length-mismatched vectors.
-func serviceCosineSimilarity(a, b []float32) float64 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0
-	}
-	var dot, normA, normB float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
-		normA += float64(a[i]) * float64(a[i])
-		normB += float64(b[i]) * float64(b[i])
-	}
-	if normA == 0 || normB == 0 {
-		return 0
-	}
-	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
 }

@@ -63,14 +63,6 @@ func (s *stubObjectStore) Reinforce(_ context.Context, _ string, _ *storage.Know
 	return "", nil
 }
 
-func (s *stubObjectStore) ListWithEmbeddings(_ context.Context) ([]*storage.KnowledgeObject, error) {
-	return nil, nil
-}
-
-func (s *stubObjectStore) ListWithoutEmbeddings(_ context.Context) ([]*storage.KnowledgeObject, error) {
-	return nil, nil
-}
-
 func (s *stubObjectStore) SetReminder(_ context.Context, _ string, _ time.Time) error { return nil }
 func (s *stubObjectStore) ClearReminder(_ context.Context, _ string) error            { return nil }
 func (s *stubObjectStore) ListDueReminders(_ context.Context, _ time.Time) ([]*storage.KnowledgeObject, error) {
@@ -81,7 +73,7 @@ func (s *stubObjectStore) ListPendingReminders(_ context.Context) ([]*storage.Kn
 	return nil, nil
 }
 
-func (s *stubObjectStore) VectorSearch(_ context.Context, _ []float32, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+func (s *stubObjectStore) VectorSearch(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
 }
 
@@ -93,7 +85,7 @@ func (s *stubObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ stor
 	return nil, nil
 }
 
-func (s *stubObjectStore) VectorSearchNodeAware(_ context.Context, _ []float32, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (s *stubObjectStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
 	return nil, nil
 }
 

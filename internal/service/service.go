@@ -23,9 +23,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/plugin"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
-	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/ranking"
 	registrysync "github.com/ideacrafterslabs/ctxt/internal/registry"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -241,7 +241,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		if hashForDedup == "" && s.Cfg.Duplicates.CheckExact {
 			hashForDedup = storageutil.ContentHash(req.Content, jobSource)
 		}
-		dup, err := s.checkDuplicates(ctx, hashForDedup, req.SourceKey, nil, s.Cfg.Duplicates)
+		dup, err := s.checkDuplicates(ctx, hashForDedup, req.SourceKey, storage.VectorQuery{}, s.Cfg.Duplicates)
 		if err != nil {
 			return "", fmt.Errorf("analyze: duplicate check: %w", err)
 		}
@@ -1670,41 +1670,54 @@ func (s *Service) ClearSearchHistory(ctx context.Context, profileID string) erro
 
 // --- Semantic search ---
 
-// SemanticSearch performs vector similarity search using the provided embedding provider.
-func (s *Service) SemanticSearch(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider) ([]*storage.KnowledgeObject, error) {
-	return s.SemanticSearchFiltered(ctx, query, storage.ObjectFilter{Limit: limit}, ep)
-}
-
-// SemanticSearchFiltered is like SemanticSearch but accepts a full ObjectFilter
-// for metadata facet filtering.
-func (s *Service) SemanticSearchFiltered(ctx context.Context, query string, filter storage.ObjectFilter, ep providers.EmbeddingProvider) ([]*storage.KnowledgeObject, error) {
-	vec, err := ep.Embed(ctx, search.DecomposeQuery(query, 2))
+// SemanticSearchFiltered runs a vector-only search over the default
+// embedding model's index (read now, never cached), filtered by filter.
+// When the semantic leg cannot run (no default model, provider failure,
+// dimension mismatch, missing index or no coverage) it falls back to FTS if
+// cfg.FallbackToFTS is set and fails otherwise; either way the reason is in
+// the returned diagnostics' Semantic report, so the degradation is visible.
+func (s *Service) SemanticSearchFiltered(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, SearchDiagnostics, error) {
+	objs, rep, err := sem.Search(ctx, s.Store, search.DecomposeQuery(query, 2), filter)
 	if err != nil {
-		return nil, fmt.Errorf("embed query: %w", err)
+		return nil, SearchDiagnostics{}, fmt.Errorf("semantic search: %w", err)
 	}
-	return s.Store.Objects().VectorSearch(ctx, vec, filter)
+	diagnostics := SearchDiagnostics{Semantic: &rep}
+	if rep.OK() {
+		diagnostics.CandidateCount = len(objs)
+		return objs, diagnostics, nil
+	}
+	if !cfg.FallbackToFTS {
+		return nil, diagnostics, fmt.Errorf("semantic search unavailable (%s): %s", rep.Status, rep.Detail)
+	}
+	objs, err = s.Store.Objects().FTSSearch(ctx, query, filter)
+	if err != nil {
+		return nil, diagnostics, fmt.Errorf("semantic search fts fallback: %w", err)
+	}
+	diagnostics.CandidateCount = len(objs)
+	return objs, diagnostics, nil
 }
 
 // HybridSearch runs FTS and vector search concurrently, merges results with
-// Reciprocal Rank Fusion (RRF), and returns the top-limit objects.
-// If ep is nil and cfg.FallbackToFTS is true, degrades to FTS-only.
-// If ep is nil and cfg.FallbackToFTS is false, returns an error.
-func (s *Service) HybridSearch(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]*storage.KnowledgeObject, error) {
-	return s.HybridSearchFiltered(ctx, query, storage.ObjectFilter{Limit: limit}, ep, cfg)
+// Reciprocal Rank Fusion (RRF), and returns the top-limit objects. The
+// vector leg searches the default embedding model's index through sem.
+// When that leg cannot run, cfg.FallbackToFTS degrades to FTS-only (the
+// reason is in the diagnostics); otherwise the search fails.
+func (s *Service) HybridSearch(ctx context.Context, query string, limit int, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, error) {
+	return s.HybridSearchFiltered(ctx, query, storage.ObjectFilter{Limit: limit}, sem, cfg)
 }
 
 // HybridSearchFiltered is like HybridSearch but accepts a full ObjectFilter
 // for metadata facet filtering.
-func (s *Service) HybridSearchFiltered(ctx context.Context, query string, filter storage.ObjectFilter, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]*storage.KnowledgeObject, error) {
-	objs, _, err := s.HybridSearchFilteredWithDiagnostics(ctx, query, filter, ep, cfg)
+func (s *Service) HybridSearchFiltered(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, error) {
+	objs, _, err := s.HybridSearchFilteredWithDiagnostics(ctx, query, filter, sem, cfg)
 	return objs, err
 }
 
 // HybridSearchFilteredWithDiagnostics is like HybridSearchFiltered but also
 // returns SearchDiagnostics describing candidates that surfaced from the FTS
 // or vector legs and were dropped by the reranker MinScore threshold (T-0574).
-func (s *Service) HybridSearchFilteredWithDiagnostics(ctx context.Context, query string, filter storage.ObjectFilter, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]*storage.KnowledgeObject, SearchDiagnostics, error) {
-	envelope, err := s.HybridSearchExplainFilteredWithDiagnostics(ctx, query, filter, ep, cfg)
+func (s *Service) HybridSearchFilteredWithDiagnostics(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, SearchDiagnostics, error) {
+	envelope, err := s.HybridSearchExplainFilteredWithDiagnostics(ctx, query, filter, sem, cfg)
 	if err != nil {
 		return nil, SearchDiagnostics{}, err
 	}
@@ -1722,16 +1735,16 @@ func (s *Service) HybridSearchFilteredWithDiagnostics(ctx context.Context, query
 
 // HybridSearchExplain is like HybridSearch but returns per-result score breakdowns
 // so callers can explain why each result ranked where it did.
-func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit int, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]HybridResult, error) {
-	return s.HybridSearchExplainFiltered(ctx, query, storage.ObjectFilter{Limit: limit}, ep, cfg)
+func (s *Service) HybridSearchExplain(ctx context.Context, query string, limit int, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]HybridResult, error) {
+	return s.HybridSearchExplainFiltered(ctx, query, storage.ObjectFilter{Limit: limit}, sem, cfg)
 }
 
 // HybridSearchExplainFiltered is like HybridSearchExplain but accepts a full
 // ObjectFilter for metadata facet filtering. Diagnostics about dropped
 // candidates are discarded; call HybridSearchExplainFilteredWithDiagnostics
 // for the full envelope.
-func (s *Service) HybridSearchExplainFiltered(ctx context.Context, query string, filter storage.ObjectFilter, ep providers.EmbeddingProvider, cfg config.SearchConfig) ([]HybridResult, error) {
-	envelope, err := s.HybridSearchExplainFilteredWithDiagnostics(ctx, query, filter, ep, cfg)
+func (s *Service) HybridSearchExplainFiltered(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]HybridResult, error) {
+	envelope, err := s.HybridSearchExplainFilteredWithDiagnostics(ctx, query, filter, sem, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -1746,7 +1759,7 @@ func (s *Service) HybridSearchExplainFiltered(ctx context.Context, query string,
 // Diagnostics let callers distinguish two visually identical "no results"
 // cases at the CLI: (a) zero candidates from any retrieval leg vs. (b)
 // candidates surfaced but all fell below MinScore.
-func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context, query string, filter storage.ObjectFilter, ep providers.EmbeddingProvider, cfg config.SearchConfig) (*HybridSearchResult, error) {
+func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) (*HybridSearchResult, error) {
 	k := cfg.RRF.K
 	if k <= 0 {
 		k = 60
@@ -1778,30 +1791,16 @@ func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context
 		ftsCh <- legResult{res, err}
 	}()
 
-	vecCh := make(chan legResult, 1)
-	if ep != nil {
-		vecPool := cfg.CandidatePool.Vector
-		if vecPool <= 0 {
-			vecPool = 50
-		}
-		vecFilter := filter
-		vecFilter.Limit = vecPool
-		go func() {
-			vec, err := ep.Embed(ctx, search.DecomposeQuery(query, 2))
-			if err != nil {
-				vecCh <- legResult{nil, err}
-				return
-			}
-			res, err := s.Store.Objects().VectorSearch(ctx, vec, vecFilter)
-			vecCh <- legResult{res, err}
-		}()
-	} else {
-		if !cfg.FallbackToFTS {
-			<-ftsCh // drain
-			return nil, fmt.Errorf("hybrid search: no embedding provider and fallback_to_fts is false")
-		}
-		vecCh <- legResult{nil, nil}
+	type vecLegResult struct {
+		results []*storage.KnowledgeObject
+		report  retrieval.SemanticReport
+		err     error
 	}
+	vecCh := make(chan vecLegResult, 1)
+	go func() {
+		res, rep, err := s.hybridVectorLeg(ctx, query, filter, sem, cfg)
+		vecCh <- vecLegResult{res, rep, err}
+	}()
 
 	ftsRes := <-ftsCh
 	vecRes := <-vecCh
@@ -1810,11 +1809,7 @@ func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context
 		return nil, fmt.Errorf("hybrid search fts leg: %w", ftsRes.err)
 	}
 	if vecRes.err != nil {
-		if !cfg.FallbackToFTS {
-			return nil, fmt.Errorf("hybrid search vector leg: %w", vecRes.err)
-		}
-		// Vector leg failed but FallbackToFTS is true — degrade to FTS-only.
-		vecRes.results = nil
+		return nil, vecRes.err
 	}
 
 	// Build per-leg RRF scores and collect candidates for the reranker.
@@ -1882,10 +1877,12 @@ func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context
 		ranked = append(ranked, r)
 	}
 
+	semantic := vecRes.report
 	diagnostics := SearchDiagnostics{
 		CandidateCount:      len(candidates),
 		BelowThresholdCount: belowCount,
 		Threshold:           threshold,
+		Semantic:            &semantic,
 	}
 	if haveBelow {
 		diagnostics.TopBelowThresholdScore = topBelowScore
@@ -1926,6 +1923,26 @@ func (s *Service) HybridSearchExplainFilteredWithDiagnostics(ctx context.Context
 		}
 	}
 	return &HybridSearchResult{Results: out, Diagnostics: diagnostics}, nil
+}
+
+// hybridVectorLeg runs the hybrid search's vector leg: the default
+// embedding model is read per query, and a leg that cannot run reports why
+// instead of failing the search, unless cfg.FallbackToFTS is off.
+func (s *Service) hybridVectorLeg(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, retrieval.SemanticReport, error) {
+	vecFilter := filter
+	vecFilter.Limit = cfg.CandidatePool.Vector
+	if vecFilter.Limit <= 0 {
+		vecFilter.Limit = 50
+	}
+	res, rep, err := sem.Search(ctx, s.Store, search.DecomposeQuery(query, 2), vecFilter)
+	if err != nil {
+		return nil, rep, fmt.Errorf("hybrid search vector leg: %w", err)
+	}
+	if !rep.OK() && !cfg.FallbackToFTS {
+		return nil, rep, fmt.Errorf("hybrid search: semantic search unavailable (%s) and fallback_to_fts is false: %s",
+			rep.Status, rep.Detail)
+	}
+	return res, rep, nil
 }
 
 // EnsureDefaultRegistry caches the bundled default registry manifest if no cache entry
@@ -1991,42 +2008,6 @@ func (s *Service) SearchRemoteBookmarks(
 	raw := registrysync.ScatterGather(ctx, client, urls, query)
 	merged := registrysync.MergeResults(raw)
 	return merged, raw, nil
-}
-
-// ReindexVectors re-embeds all active knowledge objects that currently lack an
-// embedding vector. Returns the count of objects successfully re-embedded and the
-// count that failed (non-fatal per object; caller receives the aggregate counts).
-func (s *Service) ReindexVectors(ctx context.Context, ep providers.EmbeddingProvider) (indexed int, failed int, err error) {
-	pending, err := s.Store.Objects().ListWithoutEmbeddings(ctx)
-	if err != nil {
-		return 0, 0, fmt.Errorf("reindex-vectors: list pending: %w", err)
-	}
-
-	for _, obj := range pending {
-		text := obj.RawContent
-		if text == "" && len(obj.Summaries) > 0 {
-			text = obj.Summaries[0]
-		}
-		if text == "" {
-			failed++
-			continue
-		}
-
-		vec, embedErr := ep.Embed(ctx, text)
-		if embedErr != nil || len(vec) == 0 {
-			failed++
-			continue
-		}
-
-		obj.Embeddings = vec
-		obj.VectorIndexed = true
-		if updateErr := s.Store.Objects().Update(ctx, obj); updateErr != nil {
-			failed++
-			continue
-		}
-		indexed++
-	}
-	return indexed, failed, nil
 }
 
 // RecordMeteringEvent records a metering event for a paid registry access.

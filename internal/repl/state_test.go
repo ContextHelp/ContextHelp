@@ -62,7 +62,7 @@ func TestSessionState_PushQueryVector_SlidingWindow(t *testing.T) {
 	s := &SessionState{}
 
 	for i := 0; i < 7; i++ {
-		s.PushQueryVector([]float32{float32(i), 0})
+		s.PushQueryVector("m1", []float32{float32(i), 0})
 	}
 
 	assert.Len(t, s.QueryHistory, 5, "window must cap at QueryHistoryMax (5)")
@@ -73,20 +73,20 @@ func TestSessionState_PushQueryVector_SlidingWindow(t *testing.T) {
 
 func TestSessionState_SessionContextVector_NilWhenFewEntries(t *testing.T) {
 	s := &SessionState{}
-	assert.Nil(t, s.SessionContextVector(), "nil when empty")
+	assert.Nil(t, s.SessionContextVector("m1"), "nil when empty")
 
-	s.PushQueryVector([]float32{1, 0})
-	assert.Nil(t, s.SessionContextVector(), "nil with only 1 entry")
+	s.PushQueryVector("m1", []float32{1, 0})
+	assert.Nil(t, s.SessionContextVector("m1"), "nil with only 1 entry")
 }
 
 func TestSessionState_SessionContextVector_WeightsMostRecent(t *testing.T) {
 	s := &SessionState{}
 	// Push 3 orthogonal-ish vectors.
-	s.PushQueryVector([]float32{1, 0, 0}) // oldest
-	s.PushQueryVector([]float32{0, 1, 0})
-	s.PushQueryVector([]float32{0, 0, 1}) // most recent → weight 0.4
+	s.PushQueryVector("m1", []float32{1, 0, 0}) // oldest
+	s.PushQueryVector("m1", []float32{0, 1, 0})
+	s.PushQueryVector("m1", []float32{0, 0, 1}) // most recent → weight 0.4
 
-	ctx := s.SessionContextVector()
+	ctx := s.SessionContextVector("m1")
 	require.NotNil(t, ctx)
 	require.Len(t, ctx, 3)
 
@@ -97,4 +97,19 @@ func TestSessionState_SessionContextVector_WeightsMostRecent(t *testing.T) {
 	// After normalization the largest component should be dim 2.
 	assert.Greater(t, ctx[2], ctx[0], "most-recent dim should dominate after blending")
 	assert.Greater(t, ctx[2], ctx[1], "most-recent dim should dominate after blending")
+}
+
+// Query vectors are kept per embedding model: a vector from a different
+// model is never blended, and switching models starts a fresh history.
+func TestSessionState_QueryHistoryIsPerModel(t *testing.T) {
+	s := &SessionState{}
+	s.PushQueryVector("m1", []float32{1, 0, 0})
+	s.PushQueryVector("m1", []float32{0, 1, 0})
+	require.NotNil(t, s.SessionContextVector("m1"))
+	assert.Nil(t, s.SessionContextVector("m2"), "m1 vectors must not blend into an m2 query")
+
+	s.PushQueryVector("m2", []float32{0, 0, 1, 0})
+	assert.Equal(t, "m2", s.QueryModelID)
+	assert.Len(t, s.QueryHistory, 1, "switching models drops the other model's vectors")
+	assert.Nil(t, s.SessionContextVector("m1"))
 }
