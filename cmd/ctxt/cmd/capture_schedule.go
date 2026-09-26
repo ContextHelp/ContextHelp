@@ -182,7 +182,7 @@ func scheduleEnvForRun(cmd *cobra.Command) (*scheduleEnv, error) {
 	if err != nil {
 		return nil, err
 	}
-	if env.goos != "darwin" {
+	if env.goos != goosDarwin {
 		return nil, output.GenericError(fmt.Sprintf(
 			"%s is unsupported on %s: it installs macOS LaunchAgents only", cmd.CommandPath(), env.goos))
 	}
@@ -349,7 +349,7 @@ func runCaptureScheduleInstall(cmd *cobra.Command, _ []string) error {
 		// Unload first: launchd refuses to bootstrap a label it
 		// already has, and the old job must not keep the old interval.
 		env.launchctl.Bootout(label, path)
-		if err := os.WriteFile(path, []byte(p.plist), 0o644); err != nil { //nolint:gosec // launchd requires a world-readable agent plist
+		if err := os.WriteFile(path, []byte(p.plist), 0o600); err != nil {
 			return fmt.Errorf("write %s: %w", path, err)
 		}
 		if err := env.launchctl.Bootstrap(path); err != nil {
