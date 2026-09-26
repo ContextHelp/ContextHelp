@@ -1,0 +1,395 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="g_type" for="graph" attr.name="type" attr.type="string"/>
+  <key id="g_label" for="graph" attr.name="label" attr.type="string"/>
+  <key id="g_vocabulary" for="graph" attr.name="vocabulary" attr.type="string"/>
+  <key id="g_generated_at" for="graph" attr.name="generated_at" attr.type="string"/>
+  <key id="g_query" for="graph" attr.name="query" attr.type="string"/>
+  <key id="g_fts_query" for="graph" attr.name="fts_query" attr.type="string"/>
+  <key id="g_mode" for="graph" attr.name="mode" attr.type="string"/>
+  <key id="g_vector_error" for="graph" attr.name="vector_error" attr.type="string"/>
+  <key id="g_vector_model" for="graph" attr.name="vector_model" attr.type="string"/>
+  <key id="g_semantic_status" for="graph" attr.name="semantic_status" attr.type="string"/>
+  <key id="g_fts_pool" for="graph" attr.name="fts_pool" attr.type="int"/>
+  <key id="g_vector_pool" for="graph" attr.name="vector_pool" attr.type="int"/>
+  <key id="g_rrf_k" for="graph" attr.name="rrf_k" attr.type="int"/>
+  <key id="g_limit" for="graph" attr.name="limit" attr.type="int"/>
+  <key id="g_fts_weight" for="graph" attr.name="fts_weight" attr.type="double"/>
+  <key id="g_vector_weight" for="graph" attr.name="vector_weight" attr.type="double"/>
+  <key id="g_threshold" for="graph" attr.name="threshold" attr.type="double"/>
+  <key id="g_weights_mention_boost" for="graph" attr.name="weights_mention_boost" attr.type="double"/>
+  <key id="g_weights_max_mention_boost" for="graph" attr.name="weights_max_mention_boost" attr.type="double"/>
+  <key id="g_weights_direct_backlink" for="graph" attr.name="weights_direct_backlink" attr.type="double"/>
+  <key id="g_weights_hop_backlink" for="graph" attr.name="weights_hop_backlink" attr.type="double"/>
+  <key id="g_weights_word_overlap" for="graph" attr.name="weights_word_overlap" attr.type="double"/>
+  <key id="g_counts_fts_hits" for="graph" attr.name="counts_fts_hits" attr.type="int"/>
+  <key id="g_counts_vector_hits" for="graph" attr.name="counts_vector_hits" attr.type="int"/>
+  <key id="g_counts_candidates" for="graph" attr.name="counts_candidates" attr.type="int"/>
+  <key id="g_counts_both" for="graph" attr.name="counts_both" attr.type="int"/>
+  <key id="g_counts_fts_only" for="graph" attr.name="counts_fts_only" attr.type="int"/>
+  <key id="g_counts_vector_only" for="graph" attr.name="counts_vector_only" attr.type="int"/>
+  <key id="g_counts_returned" for="graph" attr.name="counts_returned" attr.type="int"/>
+  <key id="g_counts_cut_limit" for="graph" attr.name="counts_cut_limit" attr.type="int"/>
+  <key id="g_counts_cut_threshold" for="graph" attr.name="counts_cut_threshold" attr.type="int"/>
+  <key id="g_counts_nodes" for="graph" attr.name="counts_nodes" attr.type="int"/>
+  <key id="g_counts_edges" for="graph" attr.name="counts_edges" attr.type="int"/>
+  <key id="g_counts_entities" for="graph" attr.name="counts_entities" attr.type="int"/>
+  <key id="g_truncated" for="graph" attr.name="truncated" attr.type="boolean"/>
+  <key id="g_caps_max_nodes" for="graph" attr.name="caps_max_nodes" attr.type="int"/>
+  <key id="g_caps_max_edges" for="graph" attr.name="caps_max_edges" attr.type="int"/>
+  <key id="n_label" for="node" attr.name="label" attr.type="string"/>
+  <key id="n_kind" for="node" attr.name="kind" attr.type="string"/>
+  <key id="n_object_id" for="node" attr.name="object_id" attr.type="string"/>
+  <key id="n_stage" for="node" attr.name="stage" attr.type="string"/>
+  <key id="n_legs" for="node" attr.name="legs" attr.type="string"/>
+  <key id="n_rank" for="node" attr.name="rank" attr.type="int"/>
+  <key id="n_fts_rank" for="node" attr.name="fts_rank" attr.type="int"/>
+  <key id="n_vector_rank" for="node" attr.name="vector_rank" attr.type="int"/>
+  <key id="n_fts_raw" for="node" attr.name="fts_raw" attr.type="double"/>
+  <key id="n_vector_raw" for="node" attr.name="vector_raw" attr.type="double"/>
+  <key id="n_rrf" for="node" attr.name="rrf" attr.type="double"/>
+  <key id="n_score_fts" for="node" attr.name="score_fts" attr.type="double"/>
+  <key id="n_score_vector" for="node" attr.name="score_vector" attr.type="double"/>
+  <key id="n_score_mention_boost" for="node" attr.name="score_mention_boost" attr.type="double"/>
+  <key id="n_score_graph_relevance" for="node" attr.name="score_graph_relevance" attr.type="double"/>
+  <key id="n_score_word_overlap" for="node" attr.name="score_word_overlap" attr.type="double"/>
+  <key id="n_score_total" for="node" attr.name="score_total" attr.type="double"/>
+  <key id="n_object_type" for="node" attr.name="object_type" attr.type="string"/>
+  <key id="n_source" for="node" attr.name="source" attr.type="string"/>
+  <key id="n_created_at" for="node" attr.name="created_at" attr.type="string"/>
+  <key id="n_slug" for="node" attr.name="slug" attr.type="string"/>
+  <key id="n_mention_count" for="node" attr.name="mention_count" attr.type="int"/>
+  <key id="e_relation" for="edge" attr.name="relation" attr.type="string"/>
+  <key id="e_directed" for="edge" attr.name="directed" attr.type="boolean"/>
+  <key id="e_derivation" for="edge" attr.name="derivation" attr.type="string"/>
+  <key id="e_weight" for="edge" attr.name="weight" attr.type="double"/>
+  <graph id="search-graph" edgedefault="directed">
+    <data key="g_type">ctxt.search-graph</data>
+    <data key="g_label">hybrid search tuning</data>
+    <data key="g_vocabulary">ctxt.search-graph/v1</data>
+    <data key="g_generated_at">2026-09-26T12:00:00Z</data>
+    <data key="g_query">hybrid search tuning</data>
+    <data key="g_fts_query">"hybrid" OR "search" OR "tuning"</data>
+    <data key="g_mode">hybrid</data>
+    <data key="g_vector_model">fixture-embed</data>
+    <data key="g_semantic_status">ok</data>
+    <data key="g_fts_pool">50</data>
+    <data key="g_vector_pool">50</data>
+    <data key="g_rrf_k">60</data>
+    <data key="g_limit">4</data>
+    <data key="g_fts_weight">1</data>
+    <data key="g_vector_weight">1</data>
+    <data key="g_threshold">0.3</data>
+    <data key="g_weights_mention_boost">0.05</data>
+    <data key="g_weights_max_mention_boost">0.3</data>
+    <data key="g_weights_direct_backlink">0.1</data>
+    <data key="g_weights_hop_backlink">0.05</data>
+    <data key="g_weights_word_overlap">0.2</data>
+    <data key="g_counts_fts_hits">6</data>
+    <data key="g_counts_vector_hits">6</data>
+    <data key="g_counts_candidates">9</data>
+    <data key="g_counts_both">3</data>
+    <data key="g_counts_fts_only">3</data>
+    <data key="g_counts_vector_only">3</data>
+    <data key="g_counts_returned">4</data>
+    <data key="g_counts_cut_limit">2</data>
+    <data key="g_counts_cut_threshold">3</data>
+    <data key="g_counts_nodes">8</data>
+    <data key="g_counts_edges">25</data>
+    <data key="g_counts_entities">0</data>
+    <data key="g_truncated">true</data>
+    <data key="g_caps_max_nodes">8</data>
+    <data key="g_caps_max_edges">1500</data>
+    <node id="obj:kb-bm25">
+      <data key="n_label">BM25 scoring in SQLite FTS5</data>
+      <data key="n_kind">object</data>
+      <data key="n_object_id">kb-bm25</data>
+      <data key="n_stage">returned</data>
+      <data key="n_legs">fts</data>
+      <data key="n_rank">2</data>
+      <data key="n_fts_rank">2</data>
+      <data key="n_fts_raw">-6.5</data>
+      <data key="n_rrf">0.016</data>
+      <data key="n_score_fts">0.016</data>
+      <data key="n_score_vector">0</data>
+      <data key="n_score_mention_boost">0.15</data>
+      <data key="n_score_graph_relevance">0.2</data>
+      <data key="n_score_word_overlap">0.2</data>
+      <data key="n_score_total">0.566</data>
+      <data key="n_object_type">article</data>
+      <data key="n_source">web</data>
+      <data key="n_created_at">2026-09-01T12:30:00Z</data>
+    </node>
+    <node id="obj:kb-pgvec">
+      <data key="n_label">pgvector HNSW index tuning</data>
+      <data key="n_kind">object</data>
+      <data key="n_object_id">kb-pgvec</data>
+      <data key="n_stage">returned</data>
+      <data key="n_legs">both</data>
+      <data key="n_rank">4</data>
+      <data key="n_fts_rank">4</data>
+      <data key="n_vector_rank">3</data>
+      <data key="n_fts_raw">-3.1</data>
+      <data key="n_vector_raw">0.79</data>
+      <data key="n_rrf">0.031</data>
+      <data key="n_score_fts">0.015</data>
+      <data key="n_score_vector">0.016</data>
+      <data key="n_score_mention_boost">0.15</data>
+      <data key="n_score_graph_relevance">0.15</data>
+      <data key="n_score_word_overlap">0.1</data>
+      <data key="n_score_total">0.431</data>
+      <data key="n_object_type">note</data>
+      <data key="n_source">cli</data>
+      <data key="n_created_at">2026-09-01T12:30:00Z</data>
+    </node>
+    <node id="obj:kb-rrf">
+      <data key="n_label">Reciprocal rank fusion notes</data>
+      <data key="n_kind">object</data>
+      <data key="n_object_id">kb-rrf</data>
+      <data key="n_stage">returned</data>
+      <data key="n_legs">both</data>
+      <data key="n_rank">1</data>
+      <data key="n_fts_rank">1</data>
+      <data key="n_vector_rank">2</data>
+      <data key="n_fts_raw">-7.25</data>
+      <data key="n_vector_raw">0.83</data>
+      <data key="n_rrf">0.032</data>
+      <data key="n_score_fts">0.016</data>
+      <data key="n_score_vector">0.016</data>
+      <data key="n_score_mention_boost">0.15</data>
+      <data key="n_score_graph_relevance">0.3</data>
+      <data key="n_score_word_overlap">0.2</data>
+      <data key="n_score_total">0.682</data>
+      <data key="n_object_type">note</data>
+      <data key="n_source">cli</data>
+      <data key="n_created_at">2026-09-01T12:30:00Z</data>
+    </node>
+    <node id="obj:kb-sqlite-vec">
+      <data key="n_label">sqlite-vec brute force fallback</data>
+      <data key="n_kind">object</data>
+      <data key="n_object_id">kb-sqlite-vec</data>
+      <data key="n_stage">cut_limit</data>
+      <data key="n_legs">both</data>
+      <data key="n_rank">5</data>
+      <data key="n_fts_rank">5</data>
+      <data key="n_vector_rank">4</data>
+      <data key="n_fts_raw">-2.4</data>
+      <data key="n_vector_raw">0.74</data>
+      <data key="n_rrf">0.031</data>
+      <data key="n_score_fts">0.015</data>
+      <data key="n_score_vector">0.016</data>
+      <data key="n_score_mention_boost">0.1</data>
+      <data key="n_score_graph_relevance">0.1</data>
+      <data key="n_score_word_overlap">0.15</data>
+      <data key="n_score_total">0.381</data>
+      <data key="n_object_type">note</data>
+      <data key="n_source">cli</data>
+      <data key="n_created_at">2026-09-01T12:30:00Z</data>
+    </node>
+    <node id="obj:kb-tsrank">
+      <data key="n_label">Postgres ts_rank_cd</data>
+      <data key="n_kind">object</data>
+      <data key="n_object_id">kb-tsrank</data>
+      <data key="n_stage">cut_threshold</data>
+      <data key="n_legs">fts</data>
+      <data key="n_rank">7</data>
+      <data key="n_fts_rank">3</data>
+      <data key="n_fts_raw">-4.8</data>
+      <data key="n_rrf">0.016</data>
+      <data key="n_score_fts">0.016</data>
+      <data key="n_score_vector">0</data>
+      <data key="n_score_mention_boost">0.1</data>
+      <data key="n_score_graph_relevance">0.1</data>
+      <data key="n_score_word_overlap">0.05</data>
+      <data key="n_score_total">0.266</data>
+      <data key="n_object_type">note</data>
+      <data key="n_created_at">2026-09-01T12:30:00Z</data>
+    </node>
+    <node id="obj:kb-weights">
+      <data key="n_label">Leg weights: 1.0 / 1.0</data>
+      <data key="n_kind">object</data>
+      <data key="n_object_id">kb-weights</data>
+      <data key="n_stage">cut_limit</data>
+      <data key="n_legs">vector</data>
+      <data key="n_rank">6</data>
+      <data key="n_vector_rank">5</data>
+      <data key="n_vector_raw">0.7</data>
+      <data key="n_rrf">0.015</data>
+      <data key="n_score_fts">0</data>
+      <data key="n_score_vector">0.015</data>
+      <data key="n_score_mention_boost">0.05</data>
+      <data key="n_score_graph_relevance">0.2</data>
+      <data key="n_score_word_overlap">0.1</data>
+      <data key="n_score_total">0.365</data>
+      <data key="n_object_type">decision</data>
+      <data key="n_created_at">2026-09-01T12:30:00Z</data>
+    </node>
+    <node id="obj:kb-xss">
+      <data key="n_label">&lt;img src=x onerror=alert(1)&gt; RRF &amp; BM25 &lt;/script&gt;</data>
+      <data key="n_kind">object</data>
+      <data key="n_object_id">kb-xss</data>
+      <data key="n_stage">returned</data>
+      <data key="n_legs">vector</data>
+      <data key="n_rank">3</data>
+      <data key="n_vector_rank">1</data>
+      <data key="n_vector_raw">0.88</data>
+      <data key="n_rrf">0.016</data>
+      <data key="n_score_fts">0</data>
+      <data key="n_score_vector">0.016</data>
+      <data key="n_score_mention_boost">0.1</data>
+      <data key="n_score_graph_relevance">0.1</data>
+      <data key="n_score_word_overlap">0.3</data>
+      <data key="n_score_total">0.516</data>
+      <data key="n_object_type">note</data>
+      <data key="n_created_at">2026-09-01T12:30:00Z</data>
+    </node>
+    <node id="query">
+      <data key="n_label">hybrid search tuning</data>
+      <data key="n_kind">query</data>
+    </node>
+    <edge id="e0" source="query" target="obj:kb-rrf">
+      <data key="e_relation">matched</data>
+      <data key="e_directed">true</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">0.682</data>
+    </edge>
+    <edge id="e1" source="query" target="obj:kb-bm25">
+      <data key="e_relation">matched</data>
+      <data key="e_directed">true</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">0.566</data>
+    </edge>
+    <edge id="e2" source="query" target="obj:kb-xss">
+      <data key="e_relation">matched</data>
+      <data key="e_directed">true</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">0.516</data>
+    </edge>
+    <edge id="e3" source="query" target="obj:kb-pgvec">
+      <data key="e_relation">matched</data>
+      <data key="e_directed">true</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">0.431</data>
+    </edge>
+    <edge id="e4" source="query" target="obj:kb-sqlite-vec">
+      <data key="e_relation">matched</data>
+      <data key="e_directed">true</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">0.381</data>
+    </edge>
+    <edge id="e5" source="query" target="obj:kb-weights">
+      <data key="e_relation">matched</data>
+      <data key="e_directed">true</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">0.365</data>
+    </edge>
+    <edge id="e6" source="query" target="obj:kb-tsrank">
+      <data key="e_relation">matched</data>
+      <data key="e_directed">true</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">0.266</data>
+    </edge>
+    <edge id="e7" source="obj:kb-pgvec" target="obj:kb-sqlite-vec">
+      <data key="e_relation">related-to</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">stored</data>
+    </edge>
+    <edge id="e8" source="obj:kb-pgvec" target="obj:kb-sqlite-vec">
+      <data key="e_relation">supersedes</data>
+      <data key="e_directed">true</data>
+      <data key="e_derivation">stored</data>
+    </edge>
+    <edge id="e9" source="obj:kb-rrf" target="obj:kb-bm25">
+      <data key="e_relation">extends</data>
+      <data key="e_directed">true</data>
+      <data key="e_derivation">stored</data>
+    </edge>
+    <edge id="e10" source="obj:kb-rrf" target="obj:kb-weights">
+      <data key="e_relation">related-to</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">stored</data>
+    </edge>
+    <edge id="e11" source="obj:kb-tsrank" target="obj:kb-bm25">
+      <data key="e_relation">derived-from</data>
+      <data key="e_directed">true</data>
+      <data key="e_derivation">stored</data>
+    </edge>
+    <edge id="e12" source="obj:kb-xss" target="obj:kb-weights">
+      <data key="e_relation">contradicts</data>
+      <data key="e_directed">true</data>
+      <data key="e_derivation">stored</data>
+    </edge>
+    <edge id="e13" source="obj:kb-bm25" target="obj:kb-tsrank">
+      <data key="e_relation">co_mention</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">2</data>
+    </edge>
+    <edge id="e14" source="obj:kb-bm25" target="obj:kb-pgvec">
+      <data key="e_relation">co_mention</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">1</data>
+    </edge>
+    <edge id="e15" source="obj:kb-bm25" target="obj:kb-rrf">
+      <data key="e_relation">co_mention</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">1</data>
+    </edge>
+    <edge id="e16" source="obj:kb-bm25" target="obj:kb-sqlite-vec">
+      <data key="e_relation">co_mention</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">1</data>
+    </edge>
+    <edge id="e17" source="obj:kb-pgvec" target="obj:kb-rrf">
+      <data key="e_relation">co_mention</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">1</data>
+    </edge>
+    <edge id="e18" source="obj:kb-pgvec" target="obj:kb-sqlite-vec">
+      <data key="e_relation">co_mention</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">1</data>
+    </edge>
+    <edge id="e19" source="obj:kb-pgvec" target="obj:kb-tsrank">
+      <data key="e_relation">co_mention</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">1</data>
+    </edge>
+    <edge id="e20" source="obj:kb-rrf" target="obj:kb-sqlite-vec">
+      <data key="e_relation">co_mention</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">1</data>
+    </edge>
+    <edge id="e21" source="obj:kb-rrf" target="obj:kb-tsrank">
+      <data key="e_relation">co_mention</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">1</data>
+    </edge>
+    <edge id="e22" source="obj:kb-rrf" target="obj:kb-weights">
+      <data key="e_relation">co_mention</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">1</data>
+    </edge>
+    <edge id="e23" source="obj:kb-rrf" target="obj:kb-xss">
+      <data key="e_relation">co_mention</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">1</data>
+    </edge>
+    <edge id="e24" source="obj:kb-weights" target="obj:kb-xss">
+      <data key="e_relation">co_mention</data>
+      <data key="e_directed">false</data>
+      <data key="e_derivation">derived</data>
+      <data key="e_weight">1</data>
+    </edge>
+  </graph>
+</graphml>

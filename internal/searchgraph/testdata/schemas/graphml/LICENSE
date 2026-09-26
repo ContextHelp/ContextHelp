@@ -1,0 +1,15 @@
+The *.xsd files in this directory are vendored unmodified from the GraphML
+project (http://graphml.graphdrawing.org/):
+
+  http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd
+  http://graphml.graphdrawing.org/xmlns/1.0/graphml-structure.xsd
+  http://graphml.graphdrawing.org/xmlns/1.0/graphml-attributes.xsd
+  http://graphml.graphdrawing.org/xmlns/1.0/graphml-parseinfo.xsd
+  http://graphml.graphdrawing.org/xmlns/1.0/xlink.xsd
+
+GraphML is (c) the GraphML Working Group and is licensed under the Creative
+Commons Attribution 3.0 License
+(https://creativecommons.org/licenses/by/3.0/). No changes were made.
+
+catalog.xml is not part of GraphML: it maps the schemas' absolute
+schemaLocation URLs onto these local copies so validation runs offline.
