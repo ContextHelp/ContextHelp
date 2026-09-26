@@ -145,6 +145,11 @@ Semantic and hybrid search (`ctxt find`), ingest, and re-embedding
 it once in config, and override it for a single run without editing
 config.
 
+This section is the settings reference. To turn semantic search on, see
+[Turn on semantic search](../manual/workflows/semantic-search.md); to
+switch or retire models, see
+[Operate embedding models](../manual/operations/embeddings.md).
+
 ### Configure it
 
 In `ctxt.yaml` / `dpkms.yaml`:
@@ -156,11 +161,14 @@ providers:
     model: snowflake-arctic-embed2
     endpoint: http://localhost:11434
     api_key_env: ""                  # NAME of the env var holding a key, never the key
-    dimension: 1024                  # optional; 0 or omitted = unknown
+    dimension: 1024                  # optional, informational; register measures it
 ```
 
 Every field is optional. Unset fields fall back to `ollama`,
-`nomic-embed-text` and `http://localhost:11434`.
+`nomic-embed-text` and `http://localhost:11434`. `dimension` is shown by
+`ctxt embeddings provider` only: `ctxt embeddings register` always
+measures the dimension from the provider, and checks it only against
+`--dimension`.
 
 ### Override it for one run
 
@@ -200,8 +208,8 @@ The remote Ollama must have the model pulled.
 ### Check what a command will use
 
 `ctxt embeddings provider` prints the resolved settings and the layer each
-came from. With the config above: It accepts the same flags, env and `-c` as the commands above,
-and never prints a key value.
+came from. It accepts the same flags, env and `-c` as the commands above,
+and never prints a key value. With the config above and an endpoint flag:
 
 ```bash
 ctxt embeddings provider
@@ -222,7 +230,8 @@ ctxt embeddings provider --embedding-endpoint http://127.0.0.1:11555 --format js
     "dimension": "config",
     "endpoint": "flag",
     "model": "config"
-  }
+  },
+  "fixed": []
 }
 ```
 
@@ -234,10 +243,12 @@ ctxt embeddings provider ollama-snowflake-arctic-embed2@2026-09-26
 ```
 
 A registered model's backend, model and dimension are fixed by its
-registry entry and shown as "fixed by registry": its stored vectors came
-from that model. Flags, env and `-c` can still change its endpoint and
+registry entry and shown as "fixed by registry" (and listed under `fixed`
+in JSON): its stored vectors came from that model. Flags, env and `-c` can still change its endpoint and
 `api_key_env`, for example to reach it through a tunnel, but a value that
-would change its backend, model or dimension fails the command.
+would change its backend, model or dimension fails the command
+(`ctxt find` answers from full-text search with a `provider_error` notice
+instead).
 
 `dpkms serve` prints the resolved provider at startup.
 
@@ -303,5 +314,7 @@ OPENAI_TEMPERATURE=0.3  # More deterministic
 
 ## Related
 
+- [../manual/workflows/semantic-search.md](../manual/workflows/semantic-search.md) — Turn on semantic search
+- [../manual/operations/embeddings.md](../manual/operations/embeddings.md) — Operate embedding models
 - [../ctxt/pipelines.md](../ctxt/pipelines.md) — Pipeline AI integration
 - [../scaling.md](../scaling.md#cost-optimization) — Cost optimization
