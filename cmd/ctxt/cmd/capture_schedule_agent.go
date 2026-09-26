@@ -23,6 +23,7 @@ import (
 	"unicode"
 
 	"github.com/ideacrafterslabs/ctxt/cmd/ctxt/templates"
+	"github.com/ideacrafterslabs/ctxt/internal/binpath"
 )
 
 // scheduleKind names the capture subcommand an agent runs.
@@ -395,16 +396,19 @@ type scheduleEnv struct {
 // newScheduleEnv resolves the real host environment. Replaced in tests.
 var newScheduleEnv = defaultScheduleEnv
 
+// scheduleExecutable is os.Executable; tests replace it.
+var scheduleExecutable = os.Executable
+
 func defaultScheduleEnv() (*scheduleEnv, error) {
 	// Same binary resolution as dpkms install: the ctxt that ran
-	// install is the one launchd will exec.
-	bin, err := os.Executable()
+	// install is the one launchd will exec, recorded through the
+	// Homebrew prefix shim when there is one so `brew upgrade` does
+	// not strand the agents on a removed keg.
+	exe, err := scheduleExecutable()
 	if err != nil {
 		return nil, fmt.Errorf("resolve current binary: %w", err)
 	}
-	if resolved, err := filepath.EvalSymlinks(bin); err == nil {
-		bin = resolved
-	}
+	bin := binpath.Stable(exe)
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("resolve home dir: %w", err)
