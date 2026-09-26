@@ -10,6 +10,7 @@ Use this section when you want task-oriented execution, regardless of persona.
 | Capture continuously while you work | [`ambient-capture.md`](./ambient-capture.md) |
 | Send the tabs open in a browser profile | [`browser-tab-capture.md`](./browser-tab-capture.md) |
 | Send a browser profile's history, or backfill a time range | [`browser-history-capture.md`](./browser-history-capture.md) |
+| Capture browser tabs and history on a timer (macOS) | [`browser-capture-schedule.md`](./browser-capture-schedule.md) |
 | Record video calls + transcribe + frame-OCR | [`meeting-capture.md`](./meeting-capture.md) |
 | Group captures into work units | [`sessions.md`](./sessions.md) |
 | Expose the graph to AI agents | [`mcp-agents.md`](./mcp-agents.md) |
