@@ -324,11 +324,19 @@ func projectHeaders(headers, selected []string) ([]string, error) {
 // fallback that threaded Bind's command through here instead turned
 // out to be dead code.
 func EncodeTo(cmd *cobra.Command, w io.Writer, v any) error {
+	return WriteTo(cmd, w, func(out io.Writer) error { return Encode(out, v) })
+}
+
+// WriteTo runs write against the destination EncodeTo would use: the
+// file named by -o when one was given, otherwise w. It serves documents
+// that own their encoding (a fixed wire format Encode must not
+// re-render) but still owe the caller the -o contract.
+func WriteTo(cmd *cobra.Command, w io.Writer, write func(io.Writer) error) error {
 	out, closer, err := resolveRowsWriter(cmd, w)
 	if err != nil {
 		return err
 	}
-	err = Encode(out, v)
+	err = write(out)
 	if closer != nil {
 		if cerr := closer(); err == nil {
 			err = cerr
