@@ -1,13 +1,13 @@
 # ADR-076 – Media as Text Representations: Provenance, Originals and Chunks
 
-> **Status:** Proposed
-> **Date:** 2026-09-27
+> **Status:** Accepted
+> **Date:** 2026-09-26
 > **Author:** jadb
-> **Applies to:** dPKMS, ctxt: pipelines, projection, embedding step, blob storage
+> **Applies to:** dPKMS, ctxt: provider roles, pipelines, projection, embedding step, blob storage
 > **Supersedes:** None
 > **Amends:** ADR-046 (long text is now chunked for embedding), ADR-071 §6 "Chunking: single chunk for now" (Amendment 2026-09-26)
 > **References:** ADR-063 (graph-canonical knowledge object), ADR-069 (meeting capture), ADR-070 (pipeline versioning), ADR-071 (per-model embedding index), P-060 (blob storage)
-> **Plan:** [`docs/plans/2026-09-27-multimodal-content.md`](../plans/2026-09-27-multimodal-content.md) holds the survey, the increments and the open decisions.
+> **Plan:** [`docs/plans/2026-09-27-multimodal-content.md`](../plans/2026-09-27-multimodal-content.md) holds the survey, the provider roles and their defaults, the increments and the resolved decisions.
 
 ---
 
@@ -26,21 +26,31 @@ The survey in the plan shows the pieces exist but do not compose:
 - **The original media is lost.** Extraction overwrites it, and no pipeline stores it.
 - **Embedding takes one chunk cut at 8192 bytes,** so long transcripts are mostly unindexed.
 - **Missing providers and stub fallbacks can put placeholder text, or raw file bytes, into the index.**
+- **Provider resolution quietly prefers the cloud.** `auto` for vision and for the LLM picks whichever cloud API key is set, so client media or its transcript can leave the machine without anyone choosing that.
 
-These are cross-cutting. Every media pipeline, the projection, the embedding step and storage must agree, so the convention is decided here once.
+These are cross-cutting. Every media pipeline, the provider factory, the projection, the embedding step and storage must agree, so the convention is decided here once.
 
 ---
 
 ## Decision
 
-**We will represent every non-text medium as typed text representations, stored as graph nodes carrying a provenance convention; keep the original bytes in the blob store; embed representations in provenance-carrying chunks; and never index placeholder or undecoded content.**
+**Every media-to-text process is a swappable, config-selected provider with a working local default and opt-in cloud. Every non-text medium becomes typed text representations, stored as graph nodes carrying a provenance convention. Originals are kept as bytes in a configurable blob store. Representations are embedded in provenance-carrying chunks, and placeholder or undecoded content is never indexed.**
+
+### 0. Swappable providers, local by default
+
+- **Every media-to-text process is a provider role behind a Go interface:** OCR, captioning (vision), speech recognition, diarization, frame extraction, summarization, and any added later. Steps depend on the interface only.
+- **Config selects the backend:** `providers.<role>.backend`, overridable per pipeline with `pipelines.overrides.<pipeline>.providers.<role>`.
+- **Every role has a working local default.**
+- **Cloud backends are opt-in only.** They run only when config names them for that role. `auto` resolves to local backends or to "unavailable", never to a cloud backend, and no code path decides what to run by looking at cloud API keys. This applies to all roles, including the general `llm` role.
+- **A named backend that is unavailable is a configuration error.** It never falls back to a stub or to another backend.
 
 ### 1. Representations
 
 - A representation is a graph node holding text derived from the original.
   - Summaries are `summary` nodes; every other representation is a `section` node.
-- Each node carries `representation` in its metadata, from this closed set: `caption`, `ocr`, `transcript`, `frame_caption`, `frame_ocr`, `summary`, `sound_description`, `extracted_text`.
+- Each node carries `representation` in its metadata, from this closed set: `caption`, `ocr`, `transcript`, `frame_caption`, `frame_ocr`, `summary`, `extracted_text`.
   - A new kind needs an amendment to this ADR.
+- Non-speech sound has no representation in phase 1 and is not tracked.
 
 ### 2. Provenance keys
 
@@ -62,11 +72,14 @@ Representation nodes use these metadata keys. The existing keys are reused, not 
 
 ### 3. Originals
 
-- Before any step runs, the original is stored as bytes in the blob store, content-addressed by SHA-256.
-- An `artifact` node represents it, with `blob_key`, `content_type`, `size_bytes`, `sha256` and `file_name`. Selected video frames may have artifact nodes of their own.
-- Each representation node has a `derives_from` edge **from the representation to the artifact** it came from.
-- Steps read media only through the blob store. `Source` is the human-readable origin and is never opened as a path.
-- The local filesystem store is the default; the no-op stub is not a production default.
+- **Every original is kept.** Before any step runs, the original is stored as bytes in the blob store, content-addressed by SHA-256. There is no size cap.
+- **An `artifact` node represents the original,** with `blob_key`, `content_type`, `size_bytes`, `sha256` and `file_name`. Selected video frames are kept as blobs with artifact nodes of their own.
+- **Each representation node has a `derives_from` edge from the representation to the artifact** it came from.
+- **Storage and delivery targets are configurable.**
+  - The store is `storage.blob` (local filesystem by default, S3-compatible opt-in).
+  - How clients fetch an original is a delivery setting: served directly (default), by presigned URL, or through a configured CDN base URL.
+  - The local blob store is the default. The no-op stub is not a production default.
+- **Steps read media only through the blob store.** `Source` is the human-readable origin and is never opened as a path.
 
 ### 4. Chunks
 
@@ -85,14 +98,12 @@ Representation nodes use these metadata keys. The existing keys are reused, not 
 - Stub providers are for tests only.
 - Pipelines declare which representations are required (a failure fails the job) and which are optional (a failure is recorded as `<representation>_error` in metadata).
 
-### 6. Local by default
-
-- Media roles resolve to local backends unless the operator opts a role into a cloud backend explicitly: OCR, vision, transcription, diarization and video, plus LLM steps that read media-derived text.
-
 ---
 
 ## Rationale
 
+- **Swappable providers keep the model choices reversible.** OCR engines, vision models, ASR models and frame extractors improve quickly. The owner is also bringing his own frame-extraction package. An interface per role lets each be replaced by config, and one contract test per role can hold every backend to the same behaviour.
+- **Local-only `auto` makes the privacy property structural.** Today a cloud key set for an unrelated reason silently routes client media to that vendor. Making cloud a named choice per role removes that path entirely instead of documenting it.
 - **Graph nodes are already canonical (ADR-063),** and the transcriber and vision steps already emit them. Putting provenance there, not in flat sections, gives one source for the projection, the document view and chunking.
 - **A closed set of representation kinds lets retrieval, UI and evaluation reason about kinds,** for example "down-weight OCR noise" or "show the timestamp". Free-form labels would not.
 - **Content-addressed originals give three things at once.** They are the only way to re-process with a better model, to add a native image model later without re-capture, and to fix processing that only works when CLI and daemon share a host.
@@ -101,10 +112,12 @@ Representation nodes use these metadata keys. The existing keys are reused, not 
 
 ### Alternatives considered
 
+- **Keep `auto` as "best available, cloud included".** Rejected by the owner: cloud must be an explicit choice for every role.
 - **Keep the single chunk and raise the cut.** The model's context is 8192 tokens, and a one-hour transcript exceeds it. One vector for a whole meeting also retrieves poorly.
 - **One knowledge object per representation (caption object, OCR object, transcript object) linked by edges.** This multiplies objects, breaks "one capture = one object" for tags, profiles and dedup, and moves provenance into cross-object edges (ADR-049) meant for knowledge relations.
 - **Provenance in flat `Section.Metadata` only.** The graph-first projection ignores flat sections whenever graph nodes exist, which is why video frame OCR is lost today.
 - **Store only a path to the original.** It breaks on remote daemons and on moved or deleted files, and makes a later native embedding backfill impossible.
+- **Cap stored originals by size.** Rejected by the owner: keep them all, and make the storage and delivery target configurable instead.
 
 ---
 
@@ -113,12 +126,16 @@ Representation nodes use these metadata keys. The existing keys are reused, not 
 ### Positive
 
 - Images, audio, video and meetings become searchable through one text index, and each hit can name its representation and time or page.
+- Every model and tool choice can be swapped by config, and a new backend proves itself against the role's contract tests.
+- Client media stays on the machine unless the operator names a cloud backend.
 - Re-processing with better models, and adding native multimodal models, needs no re-capture.
 - Placeholder text and undecoded bytes cannot reach the index by construction.
 
 ### Negative
 
-- **Disk.** Originals are stored, and video is large, so a retention or size policy is needed.
+- **Behaviour change for cloud users.** Installs that relied on an API key being picked up by `auto` (vision, LLM) must now name the cloud backend explicitly.
+- **Local setup.** Each role's local default must be installed and pulled (a vision model, whisper.cpp with its model, tesseract, a chat model), which `ctxt doctor` must make easy to see.
+- **Disk.** All originals are stored, and video is large. Operators who cannot hold them locally point `storage.blob` at S3-compatible storage.
 - **Migration.** A forward-only migration on both engines adds `embeddings.meta`, and objects re-embed under the chunker (an ADR-070 `reindex_auto`).
 - **Latency.** Media ingest is slower: vision and ASR models run locally.
 - **Edge direction.** The two existing `derives_from` edges point the wrong way and must be flipped. Any reader of those edges changes with them.
@@ -127,12 +144,14 @@ Representation nodes use these metadata keys. The existing keys are reused, not 
 
 - Registry entries gain an input modality before any non-text model is registered. Until then, every model embeds text chunks.
 - Chunk indices are stable per model. An image model's rows reference artifact and frame nodes through `meta`, never through text.
+- Native embedding models follow §0: a local default, cloud opt-in.
 
 ---
 
 ## Implementation Notes
 
-- The increments, test gates and install instructions are in the plan.
+- The provider roles, their local defaults, the files where cloud-preferring `auto` is removed, the increments and the test gates are in the plan.
+- The frame-extraction provider's default is the owner's own package. Its integration details are pending; ffmpeg serves as the interim local default behind the same interface.
 - Every defect listed in the plan's survey gets a regression test that fails on the code at `2b57f39`.
 
 ## References
