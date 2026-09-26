@@ -494,6 +494,14 @@ Lets other applications hook in before or after actions in ctxt and dpkms. ctxt 
 - **Targeting.** Hooks and events bind to the database, never to a URL, so `--instance`, remote Postgres and running with no daemon behave the same.
 - **Trust.** `BUS_TOKEN` stays peer-only. `exec` hooks come only from local config; `webhook` hooks may be registered in the instance database, which requires the `admin` role.
 
+### **ADR-076 – Media as Text Representations: Provenance, Originals and Chunks (Proposed)**
+Phase 1 of multimodal content: images, audio, video and meetings become typed text representations embedded by the text model, with native multimodal embeddings left to a later phase. Plan: [`docs/plans/2026-09-27-multimodal-content.md`](../plans/2026-09-27-multimodal-content.md).
+- **Representations.** Graph nodes carry `representation` (`caption`, `ocr`, `transcript`, `frame_caption`, `frame_ocr`, `summary`, `sound_description`, `extracted_text`) with anchor keys (`start_ms`/`end_ms`, `speaker`, `page_number`, `frame_index`/`frame_ms`, `image_index`) and `provider`/`model`.
+- **Originals.** Bytes are stored content-addressed in the blob store before any step runs. An `artifact` node holds the blob key, representations point to it with `derives_from`, and steps never open `Source` as a path.
+- **Chunks.** Chunk 0 is the object card, and chunks 1..n follow representation boundaries, each with a `meta` column (representation, source nodes, anchor span). Amends ADR-046 and ADR-071 §6.
+- **No placeholders.** Failed or empty representations are absent, never stubbed; stub providers are test-only.
+- **Local by default.** Media roles and LLM steps over media-derived text stay local unless explicitly opted into a cloud backend.
+
 ---
 
 ## Purpose of This Directory
