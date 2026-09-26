@@ -19,7 +19,7 @@ brave profile "Work" (Profile 1): visits since --since; saved position not read
   2026-09-19 11:14:13 EDT .. now: 11 visits: 8 allowed, 2 denied, 1 deduped
   would send  2026-09-20 05:13:24  https://example.com/recent/150h  "Recent 150h"  allowed
   ...
-  denied      2026-09-26 07:13:24  https://crm.example.net/deal/7   "Deal 7"       denied by deny rule "*://crm.example.net/*" (profile:brave/Work)
+  denied      2026-09-26 07:13:24  https://crm.example.net/deal/7   "Deal 7"       denied by deny rule "crm.example.net" (profile:brave/Work)
   denied      2026-09-26 07:43:24  http://localhost:3000/admin      "Local dev"    denied by deny rule "*://localhost/*" (builtin)
 dry run: 8 would be sent, 2 denied, 1 deduped (11 visits); nothing sent
 ```
@@ -127,8 +127,8 @@ capture:
         profiles:
           Work:                    # the same name you pass to --browser-profile
             deny:
-              - "*://crm.example.net/*"
-              - "*://files.example.net/*"
+              - "crm.example.net"          # that host, any path
+              - "*.files.example.net"      # the domain and every subdomain
 ```
 
 Then check that the rules work:
@@ -143,7 +143,8 @@ What to expect from the rules:
 
 - They're applied on your machine, before anything is sent.
 - Deny rules add up across every config file (user, project and `-c`). A project or `-c` file can add denies, but it can't remove yours.
-- localhost, `file:`, `about:` and browser-internal pages are always dropped.
+- A rule without `://` names a host, never part of a URL: `crm.example.net` matches every page on that host and nothing else. A rule with a path or port, such as `crm.example.net/deals`, stops the command with an error; write it as a URL, `https://crm.example.net/deals`.
+- Only `http` and `https` pages are captured. localhost and every other scheme (`file:`, `about:`, `chrome:`, ...) are always dropped; the preview shows `builtin: scheme not captured (<scheme>)`.
 - If a profile key under `capture.url_filter.browsers.<browser>.profiles` names no profile of that browser, the command warns that its rules apply to nothing.
 
 Rule syntax, plus rules for every browser or every profile: [URL filter](../../ambient.md#keep-sites-out-of-browser-capture).
