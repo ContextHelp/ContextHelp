@@ -1,0 +1,22 @@
+{
+  "models": [
+    {
+      "model_id": "ollama-snowflake-arctic-embed2@2026-09-26",
+      "provider": "ollama",
+      "dimension": 1024,
+      "is_default": true,
+      "registered_at": "2026-09-26T19:58:07Z",
+      "deprecated_at": null,
+      "coverage": 1
+    },
+    {
+      "model_id": "ollama-nomic-embed-text@2026-09-26",
+      "provider": "ollama",
+      "dimension": 768,
+      "is_default": false,
+      "registered_at": "2026-09-26T19:58:09Z",
+      "deprecated_at": null,
+      "coverage": 0.2
+    }
+  ]
+}
