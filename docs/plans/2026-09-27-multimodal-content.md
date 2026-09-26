@@ -202,7 +202,7 @@ Summaries are local-first and customisable, with a default fallback.
     - `skip_steps: [summarizer]` turns summaries off;
     - cloud only by naming a cloud backend.
   - Fallback: without an override the default local backend and prompt apply. If no local chat model is available, the summary is an optional representation. The job keeps its transcript and records `summary_error`; nothing stands in for the summary.
-- **Open detail.** Which local chat model is the default is not fixed by the owner's answer ("local-first"). The plan proposes a 7–8B instruct model from Ollama, set in `providers.summarization.model`. It must be pulled before summaries appear.
+- **Chat model is configuration, not code.** No chat model is baked into ctxt. The summarization (and `llm`) backend, endpoint and model are configuration values (`providers.summarization.*`, `providers.llm.*`) resolved local-first. An OpenAI-compatible backend pointed at a local or LAN endpoint (for example a larger model served on another machine the operator owns) counts as local; only a cloud endpoint needs the per-role opt-in. With nothing configured and no local chat model reachable, the summary is simply absent (an optional representation) and the job keeps its other representations.
 
 ### Chunking (accepted as proposed)
 
@@ -230,7 +230,7 @@ Single-chunk embedding cannot hold a transcript. Phase 1 therefore lands a chunk
 | `frames` | the owner's package (pending); interim ffmpeg | ffmpeg already installed |
 | `video` | ffmpeg | already installed |
 | `diarization` | pyannote, local, opt-in | pipx `pyannote-audio` (installed), a one-time Hugging Face token for the gated model, and a working torchcodec (broken locally today) |
-| `summarization`, `llm` | Ollama chat model | `ollama pull` a 7–8B instruct model (none pulled today) |
+| `summarization`, `llm` | configured local chat model | point `providers.summarization.*` / `providers.llm.*` at a local backend (Ollama, or an OpenAI-compatible local/LAN server) |
 
 `ctxt doctor` (and `ctxt setup`) report each role as available, missing (with the exact install command) or misconfigured.
 
@@ -331,6 +331,4 @@ The owner resolved these on 2026-09-26.
 
 ### Pending from the owner
 
-- **The frame-extraction package:** location, API, dependency route and how it expresses scene detection and rate bounds.
-- **The default local chat model** for summaries and the `llm` role. The plan proposes a 7–8B Ollama instruct model.
-- **The term "ingestion strategies".** The owner used it, but the repository has no such concept. This plan maps it to `pipelines.overrides`; if the owner meant something else, the summary design changes accordingly.
+- **The frame-extraction package:** location, API, dependency route and how it expresses scene detection and rate bounds. Scheduled last; ffmpeg remains the interim local default until then.
