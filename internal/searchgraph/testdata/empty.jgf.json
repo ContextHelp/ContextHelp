@@ -1,0 +1,59 @@
+{
+  "graph": {
+    "id": "search-graph",
+    "type": "ctxt.search-graph",
+    "label": "nothing matches",
+    "directed": true,
+    "metadata": {
+      "vocabulary": "ctxt.search-graph/v1",
+      "generated_at": "2026-09-26T12:00:00Z",
+      "query": "nothing matches",
+      "fts_query": "nothing matches",
+      "mode": "fts_only",
+      "vector_model": "fixture-embed",
+      "semantic_status": "ok",
+      "fts_pool": 50,
+      "vector_pool": 0,
+      "rrf_k": 60,
+      "limit": 4,
+      "fts_weight": 1,
+      "vector_weight": 1,
+      "threshold": 0.3,
+      "weights": {
+        "mention_boost": 0.05,
+        "max_mention_boost": 0.3,
+        "direct_backlink": 0.1,
+        "hop_backlink": 0.05,
+        "word_overlap": 0.2
+      },
+      "counts": {
+        "fts_hits": 0,
+        "vector_hits": 0,
+        "candidates": 0,
+        "both": 0,
+        "fts_only": 0,
+        "vector_only": 0,
+        "returned": 0,
+        "cut_limit": 0,
+        "cut_threshold": 0,
+        "nodes": 1,
+        "edges": 0,
+        "entities": 0
+      },
+      "truncated": false,
+      "caps": {
+        "max_nodes": 250,
+        "max_edges": 1500
+      }
+    },
+    "nodes": {
+      "query": {
+        "label": "nothing matches",
+        "metadata": {
+          "kind": "query"
+        }
+      }
+    },
+    "edges": []
+  }
+}

@@ -81,6 +81,19 @@ type EmbeddingStore interface {
 	PurgeModel(ctx context.Context, modelID string) error
 }
 
+// EmbeddingReader is an optional EmbeddingStore capability: read one
+// model's stored chunks for a known set of objects in one round trip (Get
+// is one object per call). Callers type-assert an EmbeddingStore to it;
+// stores that cannot serve it simply don't implement it.
+type EmbeddingReader interface {
+	// EmbeddingsByID returns, for each id with rows under modelID, its
+	// chunks ordered by chunk index: the same canonical rows modelID's
+	// index is built from. Ids without a row under modelID (or unknown
+	// ids) are absent from the map; that is not an error. Duplicate ids
+	// are tolerated.
+	EmbeddingsByID(ctx context.Context, modelID string, ids []string) (map[string][]ObjectVector, error)
+}
+
 // ErrEmbeddingIndexMissing is returned when a model has no ANN index
 // (unregistered, unprobed dimension, or not yet built).
 var ErrEmbeddingIndexMissing = errors.New("embedding index missing")

@@ -32,6 +32,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/peterh/liner v1.2.2
 	github.com/pkg/sftp v1.13.11
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/yuin/goldmark v1.8.6
 	golang.org/x/crypto v0.57.0
 	golang.org/x/mod v0.41.0

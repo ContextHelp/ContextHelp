@@ -1,0 +1,797 @@
+{
+  "graph": {
+    "id": "search-graph",
+    "type": "ctxt.search-graph",
+    "label": "hybrid search tuning",
+    "directed": true,
+    "metadata": {
+      "vocabulary": "ctxt.search-graph/v1",
+      "generated_at": "2026-09-26T12:00:00Z",
+      "query": "hybrid search tuning",
+      "fts_query": "\"hybrid\" OR \"search\" OR \"tuning\"",
+      "mode": "hybrid",
+      "vector_model": "fixture-embed",
+      "semantic_status": "ok",
+      "fts_pool": 50,
+      "vector_pool": 50,
+      "rrf_k": 60,
+      "limit": 4,
+      "fts_weight": 1,
+      "vector_weight": 1,
+      "threshold": 0.3,
+      "weights": {
+        "mention_boost": 0.05,
+        "max_mention_boost": 0.3,
+        "direct_backlink": 0.1,
+        "hop_backlink": 0.05,
+        "word_overlap": 0.2
+      },
+      "counts": {
+        "fts_hits": 6,
+        "vector_hits": 6,
+        "candidates": 9,
+        "both": 3,
+        "fts_only": 3,
+        "vector_only": 3,
+        "returned": 4,
+        "cut_limit": 2,
+        "cut_threshold": 3,
+        "nodes": 17,
+        "edges": 49,
+        "entities": 7
+      },
+      "truncated": false,
+      "caps": {
+        "max_nodes": 250,
+        "max_edges": 1500
+      }
+    },
+    "nodes": {
+      "ent:db/pgvector": {
+        "label": "db/pgvector",
+        "metadata": {
+          "kind": "entity",
+          "slug": "db/pgvector",
+          "mention_count": 2
+        }
+      },
+      "ent:db/postgres": {
+        "label": "PostgreSQL",
+        "metadata": {
+          "kind": "entity",
+          "slug": "db/postgres",
+          "mention_count": 3
+        }
+      },
+      "ent:db/sqlite": {
+        "label": "db/sqlite",
+        "metadata": {
+          "kind": "entity",
+          "slug": "db/sqlite",
+          "mention_count": 2
+        }
+      },
+      "ent:ml/embeddings": {
+        "label": "Embeddings",
+        "metadata": {
+          "kind": "entity",
+          "slug": "ml/embeddings",
+          "mention_count": 4
+        }
+      },
+      "ent:people/ada": {
+        "label": "Ada Lovelace & <co>",
+        "metadata": {
+          "kind": "entity",
+          "slug": "people/ada",
+          "mention_count": 1
+        }
+      },
+      "ent:search/bm25": {
+        "label": "BM25",
+        "metadata": {
+          "kind": "entity",
+          "slug": "search/bm25",
+          "mention_count": 3
+        }
+      },
+      "ent:search/rrf": {
+        "label": "Reciprocal Rank Fusion",
+        "metadata": {
+          "kind": "entity",
+          "slug": "search/rrf",
+          "mention_count": 3
+        }
+      },
+      "obj:kb-bm25": {
+        "label": "BM25 scoring in SQLite FTS5",
+        "metadata": {
+          "kind": "object",
+          "object_id": "kb-bm25",
+          "stage": "returned",
+          "legs": "fts",
+          "rank": 2,
+          "fts_rank": 2,
+          "fts_raw": -6.5,
+          "rrf": 0.016,
+          "score": {
+            "fts": 0.016,
+            "vector": 0,
+            "mention_boost": 0.15,
+            "graph_relevance": 0.2,
+            "word_overlap": 0.2,
+            "total": 0.566
+          },
+          "object_type": "article",
+          "source": "web",
+          "created_at": "2026-09-01T12:30:00Z"
+        }
+      },
+      "obj:kb-embed": {
+        "label": "Embedding model migration checklist",
+        "metadata": {
+          "kind": "object",
+          "object_id": "kb-embed",
+          "stage": "cut_threshold",
+          "legs": "vector",
+          "rank": 9,
+          "vector_rank": 6,
+          "vector_raw": 0.61,
+          "rrf": 0.015,
+          "score": {
+            "fts": 0,
+            "vector": 0.015,
+            "mention_boost": 0.1,
+            "graph_relevance": 0,
+            "word_overlap": 0,
+            "total": 0.115
+          },
+          "object_type": "note",
+          "source": "import",
+          "created_at": "2026-09-01T12:30:00Z"
+        }
+      },
+      "obj:kb-orphan": {
+        "label": "kb-orphan",
+        "metadata": {
+          "kind": "object",
+          "object_id": "kb-orphan",
+          "stage": "cut_threshold",
+          "legs": "fts",
+          "rank": 8,
+          "fts_rank": 6,
+          "fts_raw": -1.2,
+          "rrf": 0.015,
+          "score": {
+            "fts": 0.015,
+            "vector": 0,
+            "mention_boost": 0,
+            "graph_relevance": 0,
+            "word_overlap": 0.1,
+            "total": 0.115
+          }
+        }
+      },
+      "obj:kb-pgvec": {
+        "label": "pgvector HNSW index tuning",
+        "metadata": {
+          "kind": "object",
+          "object_id": "kb-pgvec",
+          "stage": "returned",
+          "legs": "both",
+          "rank": 4,
+          "fts_rank": 4,
+          "vector_rank": 3,
+          "fts_raw": -3.1,
+          "vector_raw": 0.79,
+          "rrf": 0.031,
+          "score": {
+            "fts": 0.015,
+            "vector": 0.016,
+            "mention_boost": 0.15,
+            "graph_relevance": 0.15,
+            "word_overlap": 0.1,
+            "total": 0.431
+          },
+          "object_type": "note",
+          "source": "cli",
+          "created_at": "2026-09-01T12:30:00Z"
+        }
+      },
+      "obj:kb-rrf": {
+        "label": "Reciprocal rank fusion notes",
+        "metadata": {
+          "kind": "object",
+          "object_id": "kb-rrf",
+          "stage": "returned",
+          "legs": "both",
+          "rank": 1,
+          "fts_rank": 1,
+          "vector_rank": 2,
+          "fts_raw": -7.25,
+          "vector_raw": 0.83,
+          "rrf": 0.032,
+          "score": {
+            "fts": 0.016,
+            "vector": 0.016,
+            "mention_boost": 0.15,
+            "graph_relevance": 0.3,
+            "word_overlap": 0.2,
+            "total": 0.682
+          },
+          "object_type": "note",
+          "source": "cli",
+          "created_at": "2026-09-01T12:30:00Z"
+        }
+      },
+      "obj:kb-sqlite-vec": {
+        "label": "sqlite-vec brute force fallback",
+        "metadata": {
+          "kind": "object",
+          "object_id": "kb-sqlite-vec",
+          "stage": "cut_limit",
+          "legs": "both",
+          "rank": 5,
+          "fts_rank": 5,
+          "vector_rank": 4,
+          "fts_raw": -2.4,
+          "vector_raw": 0.74,
+          "rrf": 0.031,
+          "score": {
+            "fts": 0.015,
+            "vector": 0.016,
+            "mention_boost": 0.1,
+            "graph_relevance": 0.1,
+            "word_overlap": 0.15,
+            "total": 0.381
+          },
+          "object_type": "note",
+          "source": "cli",
+          "created_at": "2026-09-01T12:30:00Z"
+        }
+      },
+      "obj:kb-tsrank": {
+        "label": "Postgres ts_rank_cd",
+        "metadata": {
+          "kind": "object",
+          "object_id": "kb-tsrank",
+          "stage": "cut_threshold",
+          "legs": "fts",
+          "rank": 7,
+          "fts_rank": 3,
+          "fts_raw": -4.8,
+          "rrf": 0.016,
+          "score": {
+            "fts": 0.016,
+            "vector": 0,
+            "mention_boost": 0.1,
+            "graph_relevance": 0.1,
+            "word_overlap": 0.05,
+            "total": 0.266
+          },
+          "object_type": "note",
+          "created_at": "2026-09-01T12:30:00Z"
+        }
+      },
+      "obj:kb-weights": {
+        "label": "Leg weights: 1.0 / 1.0",
+        "metadata": {
+          "kind": "object",
+          "object_id": "kb-weights",
+          "stage": "cut_limit",
+          "legs": "vector",
+          "rank": 6,
+          "vector_rank": 5,
+          "vector_raw": 0.7,
+          "rrf": 0.015,
+          "score": {
+            "fts": 0,
+            "vector": 0.015,
+            "mention_boost": 0.05,
+            "graph_relevance": 0.2,
+            "word_overlap": 0.1,
+            "total": 0.365
+          },
+          "object_type": "decision",
+          "created_at": "2026-09-01T12:30:00Z"
+        }
+      },
+      "obj:kb-xss": {
+        "label": "<img src=x onerror=alert(1)> RRF & BM25 </script>",
+        "metadata": {
+          "kind": "object",
+          "object_id": "kb-xss",
+          "stage": "returned",
+          "legs": "vector",
+          "rank": 3,
+          "vector_rank": 1,
+          "vector_raw": 0.88,
+          "rrf": 0.016,
+          "score": {
+            "fts": 0,
+            "vector": 0.016,
+            "mention_boost": 0.1,
+            "graph_relevance": 0.1,
+            "word_overlap": 0.3,
+            "total": 0.516
+          },
+          "object_type": "note",
+          "created_at": "2026-09-01T12:30:00Z"
+        }
+      },
+      "query": {
+        "label": "hybrid search tuning",
+        "metadata": {
+          "kind": "query"
+        }
+      }
+    },
+    "edges": [
+      {
+        "source": "query",
+        "target": "obj:kb-rrf",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.682
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:kb-bm25",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.566
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:kb-xss",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.516
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:kb-pgvec",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.431
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:kb-sqlite-vec",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.381
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:kb-weights",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.365
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:kb-tsrank",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.266
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:kb-orphan",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.115
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:kb-embed",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.115
+        }
+      },
+      {
+        "source": "obj:kb-pgvec",
+        "target": "obj:kb-embed",
+        "relation": "supports",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-pgvec",
+        "target": "obj:kb-sqlite-vec",
+        "relation": "related-to",
+        "directed": false,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-pgvec",
+        "target": "obj:kb-sqlite-vec",
+        "relation": "supersedes",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-rrf",
+        "target": "obj:kb-bm25",
+        "relation": "extends",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-rrf",
+        "target": "obj:kb-weights",
+        "relation": "related-to",
+        "directed": false,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-tsrank",
+        "target": "obj:kb-bm25",
+        "relation": "derived-from",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-xss",
+        "target": "obj:kb-weights",
+        "relation": "contradicts",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-rrf",
+        "target": "ent:ml/embeddings",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-rrf",
+        "target": "ent:search/bm25",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-rrf",
+        "target": "ent:search/rrf",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-bm25",
+        "target": "ent:db/postgres",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-bm25",
+        "target": "ent:db/sqlite",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-bm25",
+        "target": "ent:search/bm25",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-xss",
+        "target": "ent:people/ada",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-xss",
+        "target": "ent:search/rrf",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-pgvec",
+        "target": "ent:db/pgvector",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-pgvec",
+        "target": "ent:db/postgres",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-pgvec",
+        "target": "ent:ml/embeddings",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-sqlite-vec",
+        "target": "ent:db/sqlite",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-sqlite-vec",
+        "target": "ent:ml/embeddings",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-weights",
+        "target": "ent:search/rrf",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-tsrank",
+        "target": "ent:db/postgres",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-tsrank",
+        "target": "ent:search/bm25",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-embed",
+        "target": "ent:db/pgvector",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-embed",
+        "target": "ent:ml/embeddings",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:kb-bm25",
+        "target": "obj:kb-tsrank",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 2
+        }
+      },
+      {
+        "source": "obj:kb-embed",
+        "target": "obj:kb-pgvec",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 2
+        }
+      },
+      {
+        "source": "obj:kb-bm25",
+        "target": "obj:kb-pgvec",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:kb-bm25",
+        "target": "obj:kb-rrf",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:kb-bm25",
+        "target": "obj:kb-sqlite-vec",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:kb-embed",
+        "target": "obj:kb-rrf",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:kb-embed",
+        "target": "obj:kb-sqlite-vec",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:kb-pgvec",
+        "target": "obj:kb-rrf",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:kb-pgvec",
+        "target": "obj:kb-sqlite-vec",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:kb-pgvec",
+        "target": "obj:kb-tsrank",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:kb-rrf",
+        "target": "obj:kb-sqlite-vec",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:kb-rrf",
+        "target": "obj:kb-tsrank",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:kb-rrf",
+        "target": "obj:kb-weights",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:kb-rrf",
+        "target": "obj:kb-xss",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:kb-weights",
+        "target": "obj:kb-xss",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      }
+    ]
+  }
+}

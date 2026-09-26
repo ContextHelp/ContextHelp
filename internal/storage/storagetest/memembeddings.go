@@ -32,7 +32,10 @@ type MemEmbeddingStore struct {
 	searches []storage.VectorQuery
 }
 
-var _ storage.EmbeddingStore = (*MemEmbeddingStore)(nil)
+var (
+	_ storage.EmbeddingStore  = (*MemEmbeddingStore)(nil)
+	_ storage.EmbeddingReader = (*MemEmbeddingStore)(nil)
+)
 
 // NewMemEmbeddingStore returns an empty store with no indexes.
 func NewMemEmbeddingStore() *MemEmbeddingStore {
@@ -110,6 +113,20 @@ func (m *MemEmbeddingStore) Get(_ context.Context, objectID, modelID string) ([]
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]storage.ObjectVector(nil), m.rows[modelID][objectID]...), nil
+}
+
+// EmbeddingsByID implements storage.EmbeddingReader over the same rows Get
+// reads.
+func (m *MemEmbeddingStore) EmbeddingsByID(_ context.Context, modelID string, ids []string) (map[string][]storage.ObjectVector, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string][]storage.ObjectVector, len(ids))
+	for _, id := range ids {
+		if rows := m.rows[modelID][id]; len(rows) > 0 {
+			out[id] = append([]storage.ObjectVector(nil), rows...)
+		}
+	}
+	return out, nil
 }
 
 // Search returns object-level hits, closest first.
