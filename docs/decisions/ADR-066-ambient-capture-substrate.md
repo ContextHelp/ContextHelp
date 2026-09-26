@@ -66,7 +66,7 @@ The brainstorm produced this analysis (see `~/.claude/plans/check-p-sandbox-open
 |-------|--------------|
 | **Source lifecycle** | |
 | `ctxt.ambient.source.started` | Source's `Start()` returned successfully |
-| `ctxt.ambient.source.ready` | Source has produced its first event or declared readiness |
+| `ctxt.ambient.source.readied` | Source has produced its first event or declared readiness |
 | `ctxt.ambient.source.drained` | `Drain()` returned (in-flight events flushed) |
 | `ctxt.ambient.source.stopped` | `Stop()` returned (hard stop) |
 | `ctxt.ambient.source.failed` | Source error (will trigger restart per policy) |

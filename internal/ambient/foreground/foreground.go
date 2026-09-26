@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 )
 
 // Defaults per ADR-066 / US-0215.
@@ -142,7 +143,7 @@ func (s *Source) Start(ctx context.Context, b ambient.Publisher) error {
 		s.mu.Unlock()
 		if errors.Is(err, ErrNotSupported) {
 			if b != nil {
-				_ = b.Publish(ctx, ambient.SourceLifecycleTopic("failed"), SourceName,
+				_ = b.Publish(ctx, string(events.TopicAmbientSourceFailed), SourceName,
 					map[string]any{"reason": "not_supported_on_platform"})
 			}
 			return ErrNotSupported
@@ -154,7 +155,7 @@ func (s *Source) Start(ctx context.Context, b ambient.Publisher) error {
 	s.mu.Unlock()
 
 	if b != nil {
-		_ = b.Publish(ctx, ambient.SourceLifecycleTopic("ready"), SourceName, nil)
+		_ = b.Publish(ctx, string(events.TopicAmbientSourceReadied), SourceName, nil)
 	}
 	return nil
 }
@@ -240,7 +241,7 @@ func (s *Source) onWindowChanged(w Window) {
 	default:
 		if s.publisher != nil {
 			_ = s.publisher.Publish(context.Background(),
-				ambient.SourceLifecycleTopic("failed"), SourceName,
+				string(events.TopicAmbientSourceFailed), SourceName,
 				map[string]any{"reason": "events_channel_full"})
 		}
 	}

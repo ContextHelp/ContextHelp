@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 )
 
 // drainEventOrFail reads one event from src.Events() or fails the test.
@@ -225,8 +226,8 @@ func TestSource_PublishesReadyOnStart(t *testing.T) {
 
 	// give async lifecycle a moment
 	time.Sleep(10 * time.Millisecond)
-	if !pub.HasTopic("ctxt.ambient.source.ready") {
-		t.Error("expected ctxt.ambient.source.ready on Start")
+	if !pub.HasTopic(string(events.TopicAmbientSourceReadied)) {
+		t.Error("expected ctxt.ambient.source.readied on Start")
 	}
 }
 

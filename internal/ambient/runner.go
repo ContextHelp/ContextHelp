@@ -7,6 +7,8 @@ import (
 	"sync"
 
 	"hop.top/kit/go/runtime/bus"
+
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 )
 
 // Enqueuer is the contract the Runner uses to deliver RawEvents to dpkms. A
@@ -179,14 +181,14 @@ func (r *Runner) Start(ctx context.Context) error {
 			r.starts[name] = err
 			r.mu.Unlock()
 			_ = r.bus.Publish(ctx, bus.NewEvent(
-				bus.Topic(SourceLifecycleTopic("failed")),
+				events.TopicAmbientSourceFailed,
 				name,
 				map[string]any{"error": err.Error()},
 			))
 			continue
 		}
 		_ = r.bus.Publish(ctx, bus.NewEvent(
-			bus.Topic(SourceLifecycleTopic("started")),
+			events.TopicAmbientSourceStarted,
 			name,
 			nil,
 		))
@@ -251,7 +253,7 @@ func (r *Runner) Start(ctx context.Context) error {
 			firstErr = fmt.Errorf("source %s stop: %w", name, err)
 		}
 		_ = r.bus.Publish(shutdownCtx, bus.NewEvent(
-			bus.Topic(SourceLifecycleTopic("stopped")),
+			events.TopicAmbientSourceStopped,
 			name,
 			nil,
 		))
@@ -282,7 +284,7 @@ func (r *Runner) Start(ctx context.Context) error {
 // policy hooks compose via bus subscriptions, not hard-coded gates.
 func (r *Runner) dispatch(ctx context.Context, ev RawEvent) {
 	_ = r.bus.Publish(ctx, bus.NewEvent(
-		bus.Topic(EventTopic("captured")),
+		events.TopicAmbientEventCaptured,
 		ev.Source,
 		ev,
 	))
@@ -292,7 +294,7 @@ func (r *Runner) dispatch(ctx context.Context, ev RawEvent) {
 	ev.SessionID = r.cutter.ActiveID()
 	if ev.SessionID != "" {
 		_ = r.bus.Publish(ctx, bus.NewEvent(
-			bus.Topic(SessionTopic("event_joined")),
+			events.TopicAmbientSessionEventJoined,
 			ev.Source,
 			map[string]any{"session_id": ev.SessionID, "fingerprint": ev.Fingerprint},
 		))
@@ -301,7 +303,7 @@ func (r *Runner) dispatch(ctx context.Context, ev RawEvent) {
 	// Fingerprint dedup. Empty fingerprint is a Source-side opt-out (rare).
 	if ev.Fingerprint != "" && r.dedup.IsDuplicate(ev.Fingerprint) {
 		_ = r.bus.Publish(ctx, bus.NewEvent(
-			bus.Topic(EventTopic("deduped")),
+			events.TopicAmbientEventDeduped,
 			ev.Source,
 			map[string]any{"fingerprint": ev.Fingerprint},
 		))
@@ -310,20 +312,20 @@ func (r *Runner) dispatch(ctx context.Context, ev RawEvent) {
 
 	// Enqueue.
 	_ = r.bus.Publish(ctx, bus.NewEvent(
-		bus.Topic(EnqueueTopic("attempted")),
+		events.TopicAmbientEnqueueAttempted,
 		ev.Source,
 		map[string]any{"fingerprint": ev.Fingerprint, "session_id": ev.SessionID},
 	))
 	if err := r.enqueue.Enqueue(ctx, ev); err != nil {
 		_ = r.bus.Publish(ctx, bus.NewEvent(
-			bus.Topic(EnqueueTopic("failed")),
+			events.TopicAmbientEnqueueFailed,
 			ev.Source,
 			map[string]any{"fingerprint": ev.Fingerprint, "error": err.Error()},
 		))
 		return
 	}
 	_ = r.bus.Publish(ctx, bus.NewEvent(
-		bus.Topic(EnqueueTopic("succeeded")),
+		events.TopicAmbientEnqueueSucceeded,
 		ev.Source,
 		map[string]any{"fingerprint": ev.Fingerprint, "session_id": ev.SessionID},
 	))

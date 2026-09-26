@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 )
 
 // Default config values per ADR-066 + US-0211.
@@ -140,7 +141,7 @@ func (s *Source) Start(ctx context.Context, b ambient.Publisher) error {
 	s.mu.Unlock()
 
 	if b != nil {
-		_ = b.Publish(ctx, ambient.SourceLifecycleTopic("ready"), SourceName, nil)
+		_ = b.Publish(ctx, string(events.TopicAmbientSourceReadied), SourceName, nil)
 	}
 	go s.pollLoop(pollCtx)
 	return nil
@@ -201,7 +202,7 @@ func (s *Source) tick(ctx context.Context) {
 		// Reader-side failure (OS denied, lib uninitialised). Surface via
 		// bus event but don't crash the loop.
 		if s.publisher != nil {
-			_ = s.publisher.Publish(ctx, ambient.SourceLifecycleTopic("failed"), SourceName,
+			_ = s.publisher.Publish(ctx, string(events.TopicAmbientSourceFailed), SourceName,
 				map[string]any{"error": err.Error()})
 		}
 		return

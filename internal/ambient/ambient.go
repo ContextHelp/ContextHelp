@@ -101,7 +101,7 @@ type Source interface {
 	// Start begins emitting events. Returns once the source is ready or with
 	// the start error. The bus is the ctxd daemon's kit/runtime/bus; sources
 	// publish their lifecycle topics on it (e.g.
-	// ctxt.ambient.source.<name>.started).
+	// events.TopicAmbientSourceReadied, source field = the source name).
 	Start(ctx context.Context, b Publisher) error
 	// Events returns the source's outbound event channel. Callers must read
 	// promptly to avoid backpressure; the Runner does this for production use.
@@ -138,41 +138,8 @@ const (
 	StateFailed   LifecycleState = "failed"
 )
 
-// Topic builders for the kit/runtime/bus 4-segment past-tense convention used
-// throughout ADR-066. Source authors should call these instead of hand-rolling
-// strings; tests assert the resulting strings match expected shapes.
-//
-// Shape: ctxt.ambient.<object>.<action>.
-
-// SourceLifecycleTopic returns the topic for source lifecycle transitions:
-// started, ready, drained, stopped, failed.
-func SourceLifecycleTopic(action string) string {
-	return "ctxt.ambient.source." + action
-}
-
-// EventTopic returns the topic for per-event transformations: captured,
-// redacted, filtered, deduped, debounced, compressed.
-func EventTopic(action string) string {
-	return "ctxt.ambient.event." + action
-}
-
-// BufferTopic returns the topic for buffer transitions: appended, evicted,
-// replayed.
-func BufferTopic(action string) string {
-	return "ctxt.ambient.buffer." + action
-}
-
-// EnqueueTopic returns the topic for enqueue transitions: queued, waiting,
-// attempted, succeeded, failed.
-func EnqueueTopic(action string) string {
-	return "ctxt.ambient.enqueue." + action
-}
-
-// SessionTopic returns the topic for session transitions per ADR-067: opened,
-// closed, event_joined, cut_evaluated.
-func SessionTopic(action string) string {
-	return "ctxt.ambient.session." + action
-}
+// Ambient bus topics are the TopicAmbient* constants in internal/events;
+// Sources publish those, never hand-built strings.
 
 // ErrSourceAlreadyRegistered indicates an attempt to register a second source
 // under a name that is already registered. The Runner enforces unique names.
