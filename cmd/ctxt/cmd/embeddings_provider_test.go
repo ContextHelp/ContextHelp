@@ -21,6 +21,7 @@ type providerDoc struct {
 	APIKeyEnv string            `json:"api_key_env"`
 	Dimension int               `json:"dimension"`
 	Sources   map[string]string `json:"sources"`
+	Fixed     []string          `json:"fixed"`
 }
 
 // embeddingTestDB is setupTestDB plus a providers.embedding block in the
@@ -119,22 +120,34 @@ func TestEmbeddingsProvider_TextNeverPrintsTheKey(t *testing.T) {
 	}
 }
 
-// A targeted model_id resolves through its registry entry.
-func TestEmbeddingsProvider_TargetedModelUsesRegistryEntry(t *testing.T) {
+const targetedModelID = "ollama-snowflake-arctic-embed2@2026-09-26"
+
+// registeredModelDB is a test DB with one registered snowflake model.
+func registeredModelDB(t *testing.T) *testDB {
+	t.Helper()
 	db := embeddingTestDB(t, "    model: cfg-model\n")
 	d, ok := db.Driver.(*sqlite.Driver)
 	if !ok {
 		t.Fatal("driver must be *sqlite.Driver")
 	}
-	const id = "ollama-snowflake-arctic-embed2@2026-09-26"
 	if err := registry.New(d.DB()).Register(context.Background(), registry.Model{
-		ModelID: id, Provider: "ollama", Dimension: 1024,
-		ConfigJSON: `{"model":"snowflake-arctic-embed2","endpoint":"http://m3:11434"}`,
+		ModelID: targetedModelID, Provider: "ollama", Dimension: 1024,
+		ConfigJSON: `{"backend":"ollama","model":"snowflake-arctic-embed2","endpoint":"http://m3:11434"}`,
 	}, false); err != nil {
 		t.Fatal(err)
 	}
+	return db
+}
+
+// A targeted model_id resolves through its registry entry.
+func TestEmbeddingsProvider_TargetedModelUsesRegistryEntry(t *testing.T) {
+	db := registeredModelDB(t)
+	const id = targetedModelID
 
 	doc := providerJSON(t, db, id, "--embedding-endpoint", "http://127.0.0.1:11555")
+	if strings.Join(doc.Fixed, ",") != "backend,model,dimension" {
+		t.Errorf("fixed = %v, want backend, model, dimension", doc.Fixed)
+	}
 	if doc.ModelID != id || doc.Model != "snowflake-arctic-embed2" || doc.Sources["model"] != "registry" {
 		t.Errorf("model = %q from %q (model_id %q), want the registry entry", doc.Model, doc.Sources["model"], doc.ModelID)
 	}
@@ -143,6 +156,30 @@ func TestEmbeddingsProvider_TargetedModelUsesRegistryEntry(t *testing.T) {
 	}
 	if doc.Endpoint != "http://127.0.0.1:11555" || doc.Sources["endpoint"] != "flag" {
 		t.Errorf("endpoint = %q from %q, want the flag", doc.Endpoint, doc.Sources["endpoint"])
+	}
+}
+
+func TestEmbeddingsProvider_TargetedModelLabelsFixedFields(t *testing.T) {
+	db := registeredModelDB(t)
+	out, err := db.exec("embeddings", "provider", targetedModelID)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if n := strings.Count(out, "fixed by registry"); n != 3 {
+		t.Errorf("%d rows labelled fixed by registry, want 3 (backend, model, dimension):\n%s", n, out)
+	}
+}
+
+func TestEmbeddingsProvider_TargetedModelRefusesIdentityOverride(t *testing.T) {
+	db := registeredModelDB(t)
+	out, err := db.exec("embeddings", "provider", targetedModelID, "--embedding-model", "nomic-embed-text")
+	if err == nil || !strings.Contains(err.Error(), "--embedding-model") {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	t.Setenv(embeddings.EnvProvider, "stub")
+	out, err = db.exec("embeddings", "provider", targetedModelID)
+	if err == nil || !strings.Contains(err.Error(), embeddings.EnvProvider) {
+		t.Fatalf("err = %v\n%s", err, out)
 	}
 }
 

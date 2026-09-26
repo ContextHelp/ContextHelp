@@ -170,7 +170,7 @@ Each setting is resolved on its own, highest first:
 | Flag (on `find`, `embeddings provider`, `dpkms dev reindex-vectors`) | `--embedding-provider`, `--embedding-model`, `--embedding-endpoint` |
 | Environment | `CTXT_EMBEDDING_PROVIDER`, `CTXT_EMBEDDING_MODEL`, `CTXT_EMBEDDING_ENDPOINT`, `CTXT_EMBEDDING_API_KEY_ENV` |
 | `-c` override | `-c providers.embedding.model=snowflake-arctic-embed2` |
-| Registered model | the model's own settings, when a command targets a `model_id` |
+| Registered model | the model's endpoint and `api_key_env`, when a command targets a `model_id` |
 | Config file | `providers.embedding` |
 | Built-in default | `ollama`, `nomic-embed-text`, `http://localhost:11434` |
 
@@ -231,6 +231,12 @@ resolves it, including the model's own registry settings:
 ```bash
 ctxt embeddings provider ollama-snowflake-arctic-embed2@2026-09-26
 ```
+
+A registered model's backend, model and dimension are fixed by its
+registry entry and shown as "fixed by registry": its stored vectors came
+from that model. Flags, env and `-c` can still change its endpoint and
+`api_key_env`, for example to reach it through a tunnel, but a value that
+would change its backend, model or dimension fails the command.
 
 `dpkms serve` prints the resolved provider at startup.
 

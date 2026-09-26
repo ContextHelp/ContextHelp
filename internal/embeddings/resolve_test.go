@@ -225,7 +225,7 @@ func registerRemote(t *testing.T, reg *registry.Store) {
 		ModelID:    remoteModelID,
 		Provider:   "ollama",
 		Dimension:  1024,
-		ConfigJSON: `{"model":"snowflake-arctic-embed2","endpoint":"http://m3:11434","api_key_env":"M3_KEY"}`,
+		ConfigJSON: `{"backend":"ollama","model":"snowflake-arctic-embed2","endpoint":"http://m3:11434","api_key_env":"M3_KEY"}`,
 	}, false)
 	if err != nil {
 		t.Fatalf("Register: %v", err)
@@ -251,26 +251,121 @@ func TestResolve_RegistryEntryAppliesToTargetedModel(t *testing.T) {
 	assertField(t, got, embeddings.FieldEndpoint, "http://m3:11434", embeddings.LayerRegistry)
 	assertField(t, got, embeddings.FieldAPIKeyEnv, "M3_KEY", embeddings.LayerRegistry)
 	assertField(t, got, embeddings.FieldDimension, "1024", embeddings.LayerRegistry)
+	for _, f := range []embeddings.Field{embeddings.FieldBackend, embeddings.FieldModel, embeddings.FieldDimension} {
+		if !got.Fixed(f) {
+			t.Errorf("%s not reported as fixed by the registry", f)
+		}
+	}
+	for _, f := range []embeddings.Field{embeddings.FieldEndpoint, embeddings.FieldAPIKeyEnv} {
+		if got.Fixed(f) {
+			t.Errorf("%s reported as fixed; transport stays overridable", f)
+		}
+	}
 }
 
-// Flags, env and -c still override a targeted model's registry settings.
-func TestResolve_HigherLayersBeatRegistryEntry(t *testing.T) {
+// Flags, env and -c still override a registered model's transport:
+// endpoint and api_key_env.
+func TestResolve_TransportOverridesBeatRegistryEntry(t *testing.T) {
 	reg := newRegistry(t)
 	registerRemote(t, reg)
 	r := &embeddings.Resolver{
 		ConfigOverrides: cOverrides(t, "providers.embedding.api_key_env=C_KEY"),
 		Registry:        reg,
-		LookupEnv:       env(map[string]string{embeddings.EnvModel: "env-model"}),
+		LookupEnv:       env(map[string]string{embeddings.EnvEndpoint: "http://env:11434"}),
 	}
 	got := resolve(t, r, embeddings.Request{
 		ModelID:   remoteModelID,
 		Overrides: embeddings.Overrides{Endpoint: "http://127.0.0.1:11555"},
 	})
 	assertField(t, got, embeddings.FieldEndpoint, "http://127.0.0.1:11555", embeddings.LayerFlag)
-	assertField(t, got, embeddings.FieldModel, "env-model", embeddings.LayerEnv)
 	assertField(t, got, embeddings.FieldAPIKeyEnv, "C_KEY", embeddings.LayerConfigOverride)
 	assertField(t, got, embeddings.FieldBackend, "ollama", embeddings.LayerRegistry)
+	assertField(t, got, embeddings.FieldModel, "snowflake-arctic-embed2", embeddings.LayerRegistry)
 	assertField(t, got, embeddings.FieldDimension, "1024", embeddings.LayerRegistry)
+
+	r.LookupEnv = env(map[string]string{embeddings.EnvEndpoint: "http://env:11434"})
+	got = resolve(t, r, embeddings.Request{ModelID: remoteModelID})
+	assertField(t, got, embeddings.FieldEndpoint, "http://env:11434", embeddings.LayerEnv)
+}
+
+// A registered model's backend, model and dimension are its vector-space
+// identity: a runtime override that would change them fails instead of
+// writing or querying foreign vectors under that model_id.
+func TestResolve_RegisteredIdentityCannotBeOverridden(t *testing.T) {
+	cases := []struct {
+		name      string
+		flags     embeddings.Overrides
+		env       map[string]string
+		overrides []string
+		want      string
+	}{
+		{name: "flag backend", flags: embeddings.Overrides{Backend: "stub"}, want: "--embedding-provider"},
+		{name: "flag model", flags: embeddings.Overrides{Model: "nomic-embed-text"}, want: "--embedding-model"},
+		{name: "env backend", env: map[string]string{embeddings.EnvProvider: "stub"}, want: embeddings.EnvProvider},
+		{name: "env model", env: map[string]string{embeddings.EnvModel: "nomic-embed-text"}, want: embeddings.EnvModel},
+		{name: "-c backend", overrides: []string{"providers.embedding.backend=stub"}, want: "providers.embedding.backend"},
+		{name: "-c model", overrides: []string{"providers.embedding.model=nomic-embed-text"}, want: "providers.embedding.model"},
+		{name: "-c dimension", overrides: []string{"providers.embedding.dimension=768"}, want: "providers.embedding.dimension"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := newRegistry(t)
+			registerRemote(t, reg)
+			r := &embeddings.Resolver{Registry: reg, LookupEnv: env(tc.env)}
+			if len(tc.overrides) > 0 {
+				r.ConfigOverrides = cOverrides(t, tc.overrides...)
+			}
+			_, err := r.Resolve(context.Background(), embeddings.Request{ModelID: remoteModelID, Overrides: tc.flags})
+			if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), remoteModelID) {
+				t.Fatalf("err = %v, want a refusal naming %q and the model", err, tc.want)
+			}
+		})
+	}
+}
+
+// Restating the registered value is not a change.
+func TestResolve_RegisteredIdentityRestatedIsAllowed(t *testing.T) {
+	reg := newRegistry(t)
+	registerRemote(t, reg)
+	r := &embeddings.Resolver{Registry: reg, LookupEnv: env(map[string]string{embeddings.EnvProvider: "ollama"})}
+	got := resolve(t, r, embeddings.Request{ModelID: remoteModelID, Overrides: embeddings.Overrides{Model: "snowflake-arctic-embed2"}})
+	assertField(t, got, embeddings.FieldModel, "snowflake-arctic-embed2", embeddings.LayerRegistry)
+	assertField(t, got, embeddings.FieldBackend, "ollama", embeddings.LayerRegistry)
+}
+
+// Backend and model come only from config_json: a registration without them
+// cannot be resolved (the provider column and config file do not fill in).
+func TestResolve_RegisteredModelNeedsIdentityInConfigJSON(t *testing.T) {
+	for name, cj := range map[string]string{
+		"no backend": `{"model":"snowflake-arctic-embed2"}`,
+		"no model":   `{"backend":"ollama"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			reg := newRegistry(t)
+			if err := reg.Register(context.Background(), registry.Model{
+				ModelID: "partial@2026-09-26", Provider: "ollama", Dimension: 1024, ConfigJSON: cj,
+			}, false); err != nil {
+				t.Fatal(err)
+			}
+			r := &embeddings.Resolver{
+				Registry: reg, LookupEnv: env(nil),
+				Config: config.EmbeddingProviderConfig{Backend: "ollama", Model: "cfg-model"},
+			}
+			_, err := r.Resolve(context.Background(), embeddings.Request{ModelID: "partial@2026-09-26"})
+			if err == nil || !strings.Contains(err.Error(), "config_json") {
+				t.Fatalf("err = %v, want a config_json identity error", err)
+			}
+		})
+	}
+}
+
+func TestResolve_NothingFixedWithoutModelID(t *testing.T) {
+	got := resolve(t, &embeddings.Resolver{LookupEnv: env(nil)}, embeddings.Request{})
+	for _, f := range embeddings.Fields {
+		if got.Fixed(f) {
+			t.Errorf("%s fixed without a targeted model", f)
+		}
+	}
 }
 
 func TestResolve_RegistryUnusedWithoutModelID(t *testing.T) {

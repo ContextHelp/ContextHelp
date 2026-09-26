@@ -28,11 +28,22 @@
 //  2. env: CTXT_EMBEDDING_PROVIDER, CTXT_EMBEDDING_MODEL,
 //     CTXT_EMBEDDING_ENDPOINT, CTXT_EMBEDDING_API_KEY_ENV
 //  3. -c providers.embedding.<field>=<value>
-//  4. the model registry entry, only when Request.ModelID names one:
-//     backend from its provider column, dimension from its dimension
-//     column, model / endpoint / api_key_env from its config_json
+//  4. the model registry entry, only when resolving for a registered model
+//     (Request.ModelID or ProviderResolver.ForModel): endpoint and
+//     api_key_env from its config_json
 //  5. providers.embedding in the config files
 //  6. built-in defaults (ollama, nomic-embed-text, http://localhost:11434)
+//
+// A registered model's backend and model (from its config_json) and its
+// dimension (from the dimension column) are its vector-space identity and
+// are fixed: layers 1-3 may restate them but a different value fails the
+// resolution, and layers 5-6 never apply to them. Only endpoint and
+// api_key_env stay overridable. Without a registered model every field
+// takes the full order above.
+//
+// NewProviderResolver adapts a Resolver to ProviderResolver: ForModel for
+// a registered model, ForRegistration for a new one (it also returns the
+// config_json to store: backend, model, endpoint, api_key_env).
 //
 // Env outranks -c here, although for other config keys kit applies -c
 // after env. The resolver reads both layers itself, so the order above
