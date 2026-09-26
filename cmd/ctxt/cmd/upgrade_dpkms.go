@@ -21,7 +21,8 @@
 //   - Human-readable table by default.
 //   - --format json emits the daemon's upgrade envelope verbatim.
 //   - --watch loops until state goes idle (or the user interrupts).
-//   - Exit 1 when state == "failed" or the daemon is unreachable.
+//   - status exits 1 when state == "failed", 70 when the daemon is
+//     unreachable.
 package cmd
 
 import (
@@ -43,6 +44,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/output"
 )
 
 // upgradeEnvelope is a thin reflection of the upgrade sub-object on the
@@ -78,7 +80,8 @@ through unchanged.
 
 Exit codes:
   0   server reports state idle, in_progress, or awaiting_consent
-  1   server reports state failed, or is unreachable
+  1   server reports state failed
+  70  server unreachable (nothing answered at the resolved URL)
 
 Examples:
   ctxt upgrade status
@@ -243,8 +246,11 @@ func upgradeStatusOnce(cmd *cobra.Command, ep idxbridge.Endpoint) error {
 		renderUpgradeStatus(cmd.OutOrStdout(), env.Upgrade)
 	}
 
+	// GENERIC by construction: the daemon answered, the upgrade failed.
+	// last_error is free text from the worker (often a provider's
+	// "connection refused"), so it must not reach the message classifier.
 	if env.Upgrade != nil && env.Upgrade.State == "failed" {
-		return fmt.Errorf("upgrade failed: %s", env.Upgrade.LastError)
+		return output.GenericError("upgrade failed: " + env.Upgrade.LastError)
 	}
 	return nil
 }
