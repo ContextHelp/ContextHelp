@@ -46,7 +46,7 @@ export $(cat .env | xargs)
 - **[pipelines.md](pipelines.md)** — Pipelines & profiles (99 lines)
 
 ### External Integrations
-- **[ai-providers.md](ai-providers.md)** — OpenAI, Anthropic, Ollama (202 lines)
+- **[ai-providers.md](ai-providers.md)** — OpenAI, Anthropic, Ollama, embedding provider
 - **[registries.md](registries.md)** — Registry sync (95 lines)
 
 ### Security & Development
