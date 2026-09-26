@@ -109,6 +109,68 @@ var pgMigrations = []pgMigration{
 	{Version: 13, Name: "jobs.idempotency_key", fn: func(ctx context.Context, d *Driver) error {
 		return migrateJobsIdempotencyKey(ctx, d.db)
 	}},
+	// Per-model embeddings (ADR-071 amendment 2026-09-26): object FK with
+	// cascade, non-negative chunk CHECK, placeholder removal, and one
+	// partial HNSW index per registered model. Migrate re-runs the
+	// per-model pass on every open.
+	{Version: 14, Name: "per-model embeddings", fn: migratePerModelEmbeddings},
+}
+
+// migratePerModelEmbeddings moves embeddings to the per-model index schema.
+// Steps 1-3 run in one transaction:
+//
+//  1. Delete rows whose object is gone and rows of legacy-blob models.
+//  2. Add embeddings_object_fk (ON DELETE CASCADE) and
+//     embeddings_chunk_idx_nonneg, each guarded by a pg_constraint lookup.
+//  3. Delete the legacy-blob placeholder models and their signatures.
+//
+// Step 4 builds each remaining model's index (ensureEmbeddingIndexes).
+func migratePerModelEmbeddings(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM embeddings e
+		 WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = e.object_id)
+		    OR e.model_id IN (SELECT model_id FROM embedding_models WHERE provider = 'legacy-blob')`); err != nil {
+		return fmt.Errorf("delete orphaned and placeholder embeddings: %w", err)
+	}
+	for _, c := range []struct{ name, ddl string }{
+		{"embeddings_object_fk", `ALTER TABLE embeddings ADD CONSTRAINT embeddings_object_fk
+			FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE`},
+		{"embeddings_chunk_idx_nonneg", `ALTER TABLE embeddings ADD CONSTRAINT embeddings_chunk_idx_nonneg
+			CHECK (chunk_idx >= 0)`},
+	} {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `
+			SELECT EXISTS (SELECT 1 FROM pg_constraint
+			                WHERE conname = $1 AND conrelid = 'embeddings'::regclass)`,
+			c.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect %s: %w", c.name, err)
+		}
+		if exists {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, c.ddl); err != nil {
+			return fmt.Errorf("add %s: %w", c.name, err)
+		}
+	}
+	for _, stmt := range []string{
+		`DELETE FROM index_signatures
+		  WHERE signature_id IN (SELECT 'embeddings_' || model_id FROM embedding_models WHERE provider = 'legacy-blob')`,
+		`DELETE FROM embedding_models WHERE provider = 'legacy-blob'`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("remove legacy-blob placeholder: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return ensureEmbeddingIndexes(ctx, d)
 }
 
 // migrateStampVectorSignature computes the embedding signature for the
@@ -351,6 +413,12 @@ func (d *Driver) Migrate(ctx context.Context) error {
 		return fmt.Errorf("detect pgvector version: %w", err)
 	}
 	d.caps.iterativeScan = pgvectorSupportsIterativeScan(extVersion)
+
+	// ADR-070 verify-and-rebuild for every registered model's vector index,
+	// on every open, still under the migration lock.
+	if err := ensureEmbeddingIndexes(ctx, d); err != nil {
+		return fmt.Errorf("ensure embedding indexes: %w", err)
+	}
 	return nil
 }
 
