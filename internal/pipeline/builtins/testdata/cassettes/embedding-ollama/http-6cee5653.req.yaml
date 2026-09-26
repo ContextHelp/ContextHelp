@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 6cee5653
+recorded_at: "2026-09-26T20:55:43Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"snowflake-arctic-embed2","prompt":"# Saving the bilby\n\nProvider: LinkedIn\nContent Type: Article\nPublished: 2023-05-01T00:00:00Z\nURL: https://linkedin.com/pulse/bilby\n\nHow fences brought the bilby back.\n"}'

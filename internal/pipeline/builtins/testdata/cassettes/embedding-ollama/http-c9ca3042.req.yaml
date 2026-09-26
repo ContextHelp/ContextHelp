@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: c9ca3042
+recorded_at: "2026-09-26T20:55:43Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"snowflake-arctic-embed2","prompt":"# Volunteers counted every quokka on the island.\n\nProvider: LinkedIn\nContent Type: Post\nPublished: 2023-03-16T10:30:00Z\nMedia Category: NONE\n\nVolunteers counted every quokka on the island.\n"}'

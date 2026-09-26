@@ -1,8 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: b0c25340
-recorded_at: "2026-09-26T20:26:28Z"
-payload:
-    method: POST
-    url: http://127.0.0.1:11434/api/embeddings
-    body: '{"model":"snowflake-arctic-embed2","prompt":"This week the numbat colony grew by four joeys.\n\nThis week the numbat colony grew by four joeys."}'

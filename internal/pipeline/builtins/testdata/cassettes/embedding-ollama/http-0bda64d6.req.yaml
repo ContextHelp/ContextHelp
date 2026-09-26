@@ -1,8 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: 0bda64d6
-recorded_at: "2026-09-26T20:26:27Z"
-payload:
-    method: POST
-    url: http://127.0.0.1:11434/api/embeddings
-    body: '{"model":"snowflake-arctic-embed2","prompt":"A sugar glider nested in the box.\nA sugar glider nested in the box."}'

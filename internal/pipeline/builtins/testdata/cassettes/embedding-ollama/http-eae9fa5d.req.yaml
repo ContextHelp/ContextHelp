@@ -1,8 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: eae9fa5d
-recorded_at: "2026-09-26T20:26:28Z"
-payload:
-    method: POST
-    url: http://127.0.0.1:11434/api/embeddings
-    body: '{"model":"snowflake-arctic-embed2","prompt":"A quoll raided the bait station.\n\nA quoll raided the bait station."}'

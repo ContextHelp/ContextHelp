@@ -1,8 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: ddc0490b
-recorded_at: "2026-09-26T20:26:30Z"
-payload:
-    method: POST
-    url: http://127.0.0.1:11434/api/embeddings
-    body: '{"model":"snowflake-arctic-embed2","prompt":"# A goanna sunning on the rocks\n\nProvider: Twitter/X\nTweet ID: 102\nCreated: 2023-01-03T15:04:05Z\nLanguage: en\n\nA goanna sunning on the rocks\n\n# A goanna sunning on the rocks\n\nProvider: Twitter/X\nTweet ID: 102\nCreated: 2023-01-03T15:04:05Z\nLanguage: en\n\nA goanna sunning on the rocks"}'

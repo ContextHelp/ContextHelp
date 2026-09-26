@@ -1,8 +1,0 @@
-xrr: "1"
-adapter: http
-fingerprint: d5117de7
-recorded_at: "2026-09-26T20:26:29Z"
-payload:
-    method: POST
-    url: http://127.0.0.1:11434/api/embeddings
-    body: '{"model":"snowflake-arctic-embed2","prompt":"# Discord message — Rangers / #sightings\n\n**From:** bob\n**Time:** 2024-07-01T08:01:00Z\n\nTwo dingoes crossed the firebreak.\n# Discord message — Rangers / #sightings\n\n**From:** bob\n**Time:** 2024-07-01T08:01:00Z\n\nTwo dingoes crossed the firebreak."}'
