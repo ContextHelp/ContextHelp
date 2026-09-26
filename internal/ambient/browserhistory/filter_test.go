@@ -98,7 +98,8 @@ func TestSource_NilFilterAppliesBuiltins(t *testing.T) {
 	br := &fakeBrowser{name: "chrome"}
 	br.AddVisits(
 		Visit{URL: "http://localhost:8080/admin", VisitedAt: time.Now()},
-		Visit{URL: "https://example.com/ok", VisitedAt: time.Now().Add(time.Second)},
+		Visit{URL: "view-source:https://crm.example.net/deals/42", VisitedAt: time.Now().Add(time.Second)},
+		Visit{URL: "https://example.com/ok", VisitedAt: time.Now().Add(2 * time.Second)},
 	)
 	pub := &payloadPub{}
 	s, err := New(Config{Browsers: []BrowserClient{br}, PollInterval: 50 * time.Millisecond})
@@ -117,5 +118,17 @@ func TestSource_NilFilterAppliesBuiltins(t *testing.T) {
 	got, ok := pub.first()
 	if !ok || got["scope"] != urlfilter.ScopeBuiltin || got["reason"] != "deny_rule" {
 		t.Errorf("filtered payload = %v, want a builtin deny", got)
+	}
+	pub.mu.Lock()
+	defer pub.mu.Unlock()
+	if len(pub.filtered) != 2 {
+		t.Fatalf("filtered events = %v, want 2", pub.filtered)
+	}
+	got = pub.filtered[1]
+	if got["reason"] != "scheme_not_captured" || got["scheme"] != "view-source" || got["scope"] != urlfilter.ScopeBuiltin {
+		t.Errorf("filtered payload = %v, want scheme view-source not captured", got)
+	}
+	if s := fmt.Sprint(got); strings.Contains(s, "crm.example.net") {
+		t.Errorf("filtered payload leaks URL: %v", got)
 	}
 }

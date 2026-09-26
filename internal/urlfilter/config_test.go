@@ -1,6 +1,9 @@
 package urlfilter
 
 import (
+	"bytes"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -92,9 +95,8 @@ func TestConfigForBuiltinDefaultsAlwaysOn(t *testing.T) {
 	}
 	for _, u := range []string{
 		"http://localhost/", "http://localhost:8080/x", "http://app.localhost:5173/",
-		"http://127.0.0.1:9000/", "http://[::1]:3000/", "file:///Users/someone/notes.md",
-		"about:blank", "chrome://settings", "brave://rewards", "chrome-extension://abc/popup.html",
-		"edge://flags", "view-source:https://example.com/", "javascript:void(0)", "data:text/plain,hi",
+		"http://127.0.0.1:9000/", "http://[::1]:3000/", "https://localhost/",
+		"file:///Users/someone/notes.md", "about:blank", "chrome://settings",
 	} {
 		if d := f.Evaluate(u); d.Allowed || d.Rule.Scope != ScopeBuiltin {
 			t.Errorf("%q: want builtin deny, got %v", u, d)
@@ -102,6 +104,94 @@ func TestConfigForBuiltinDefaultsAlwaysOn(t *testing.T) {
 	}
 	if !f.Matches("https://news.example.org/") {
 		t.Error("ordinary URL denied")
+	}
+}
+
+func TestConfigForAdmitsOnlyHTTPSchemes(t *testing.T) {
+	t.Parallel()
+	// allow_only everything: the scheme gate still runs first.
+	c := Config{Rules: Rules{AllowOnly: []string{"*://*/*"}, Deny: []string{"*://*.example.com/*"}}}
+	f, err := c.For("brave", "Work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for u, scheme := range map[string]string{
+		"ws://news.example.org/socket":            "ws",
+		"wss://news.example.org/socket":           "wss",
+		"ftp://ftp.example.org/pub/":              "ftp",
+		"file:///Users/someone/notes.md":          "file",
+		"about:blank":                             "about",
+		"chrome://settings/passwords":             "chrome",
+		"brave://rewards":                         "brave",
+		"edge://flags":                            "edge",
+		"chrome-extension://abc/popup.html":       "chrome-extension",
+		"devtools://devtools/bundled/inspector":   "devtools",
+		"data:text/plain,hi":                      "data",
+		"blob:https://news.example.org/uuid":      "blob",
+		"javascript:void(0)":                      "javascript",
+		"view-source:https://news.example.org/":   "view-source",
+		"mailto:someone@example.org":              "mailto",
+		"notion://www.notion.so/page":             "notion",
+		"ws://localhost:8080/":                    "ws",
+		"HTTPX://news.example.org/":               "httpx",
+		"ftp://crm.example.com/":                  "ftp",
+		"view-source:https://crm.example.com/x?a": "view-source",
+	} {
+		d := f.Evaluate(u)
+		if d.Allowed || d.Reason != ReasonSchemeNotCaptured || d.Rule.Scope != ScopeBuiltin || d.Scheme != scheme {
+			t.Errorf("%q: want scheme %q not captured, got %+v", u, scheme, d)
+			continue
+		}
+		if got, want := d.String(), "builtin: scheme not captured ("+scheme+")"; got != want {
+			t.Errorf("%q: String = %q, want %q", u, got, want)
+		}
+	}
+	for _, u := range []string{"http://news.example.org/", "https://news.example.org/a?b=c", "HTTPS://news.example.org/"} {
+		if d := f.Evaluate(u); !d.Allowed {
+			t.Errorf("%q: want allowed, got %v", u, d)
+		}
+	}
+	if d := f.Evaluate("https://crm.example.com/"); d.Reason != ReasonDenyRule {
+		t.Errorf("http(s) URL still goes through the rules: got %v", d)
+	}
+}
+
+func TestSchemeDecisionLogOmitsURL(t *testing.T) {
+	t.Parallel()
+	f, err := Config{}.For("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	slog.New(slog.NewTextHandler(&buf, nil)).Info("capture dropped", "decision", f.Evaluate("view-source:https://crm.example.net/deals/42"))
+	out := buf.String()
+	if strings.Contains(out, "deals/42") || strings.Contains(out, "crm.example.net") {
+		t.Errorf("log leaked URL: %s", out)
+	}
+	for _, want := range []string{"reason=scheme_not_captured", "scope=builtin", "scheme=view-source"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log %q missing %q", out, want)
+		}
+	}
+}
+
+func TestNewWithoutBuiltinHasNoSchemeGate(t *testing.T) {
+	t.Parallel()
+	f, err := New(Layer{Scope: ScopeGlobal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.Matches("ftp://ftp.example.org/") {
+		t.Error("the scheme gate belongs to the builtin layer of Config.For only")
+	}
+}
+
+func TestBuiltinDenyIsURLForm(t *testing.T) {
+	t.Parallel()
+	for _, r := range BuiltinDeny() {
+		if !strings.Contains(r, "://") {
+			t.Errorf("builtin rule %q is not in the scheme://host form", r)
+		}
 	}
 }
 

@@ -3,6 +3,7 @@ package urlfilter
 import (
 	"bytes"
 	"log/slog"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -48,11 +49,29 @@ func TestNewRejectsInvalidRules(t *testing.T) {
 		"*://[::1/*",                // unterminated IPv6
 		"*://*.bad\u2028host.test/", // invalid IDN
 		"*://ex*ämple.test/*",       // non-ASCII glob host
+		// Bare patterns are hosts only.
+		"crm.example.net/deals",   // path
+		"crm.example.net/",        // trailing slash
+		"localhost:8080",          // port
+		"[::1]",                   // bracketed IPv6
+		"user@crm.example.net",    // userinfo
+		"crm.example.net?x=1",     // query
+		"crm.example.net#top",     // fragment
+		"crm example.net",         // whitespace
+		" crm.example.net",        // leading whitespace
+		"*",                       // any host
+		"",                        // empty
+		".",                       // empty host
+		"*.",                      // empty domain
+		"about:*",                 // scheme glob
+		"file:*",                  // scheme glob
+		"crm.example.net%2fdeals", // escape
+		"bad\u2028host.test",      // invalid IDN
 	} {
 		if _, err := New(Layer{Scope: ScopeGlobal, Rules: Rules{Deny: []string{r}}}); err == nil {
 			t.Errorf("New(deny %q): expected error", r)
-		} else if !strings.Contains(err.Error(), ScopeGlobal) {
-			t.Errorf("New(deny %q) error %q does not name the scope", r, err)
+		} else if !strings.Contains(err.Error(), ScopeGlobal) || !strings.Contains(err.Error(), strconv.Quote(r)) {
+			t.Errorf("New(deny %q) error %q does not name the scope and rule", r, err)
 		}
 		if _, err := New(Layer{Scope: ScopeGlobal, Rules: Rules{AllowOnly: []string{r}}}); err == nil {
 			t.Errorf("New(allow_only %q): expected error", r)
@@ -135,7 +154,7 @@ func TestDenyBeatsAllowOnly(t *testing.T) {
 	}
 }
 
-func TestOpaqueURLsOnlyMatchLegacyRules(t *testing.T) {
+func TestOpaqueURLsMatchNoRule(t *testing.T) {
 	t.Parallel()
 	deny := func(rule string) *Filter {
 		return mustNew(t, Layer{Scope: ScopeGlobal, Rules: Rules{Deny: []string{rule}}})
@@ -143,8 +162,8 @@ func TestOpaqueURLsOnlyMatchLegacyRules(t *testing.T) {
 	if !deny("*://*/*").Matches("about:blank") {
 		t.Error("URL-form rule matched an opaque URL")
 	}
-	if deny("about:*").Matches("about:blank") {
-		t.Error("legacy about:* did not match about:blank")
+	if !deny("example.com").Matches("mailto:someone@example.com") {
+		t.Error("bare host rule matched an opaque URL")
 	}
 }
 

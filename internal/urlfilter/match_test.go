@@ -59,12 +59,33 @@ var denyCases = []struct {
 	{"scheme/internal", "chrome://*", "chrome://settings/passwords", true},
 	{"scheme/ipv6 loopback", "*://[::1]/*", "http://[::1]:3000/", true},
 
-	// Legacy rules (no "://") keep their raw-string semantics.
-	{"legacy/substring", "bank.example.com", "https://www.bank.example.com/", true},
-	{"legacy/glob", "*bank.example.com*", "https://bank.example.com/account", true},
-	{"legacy/prefix glob", "about:*", "about:blank", true},
-	{"legacy/file prefix", "file:*", "file:///Users/someone/notes.md", true},
-	{"legacy/no match", "*bank.example.com*", "https://example.com/news", false},
+	// Bare patterns (no "://") are host patterns: any scheme, port, path.
+	{"bare/host", "crm.example.net", "https://crm.example.net/deals/42?owner=someone", true},
+	{"bare/host root", "crm.example.net", "http://crm.example.net", true},
+	{"bare/host any port", "crm.example.net", "https://crm.example.net:8443/x", true},
+	{"bare/host any scheme", "crm.example.net", "ws://crm.example.net/socket", true},
+	{"bare/host not subdomain", "crm.example.net", "https://eu.crm.example.net/", false},
+	{"bare/host not substring", "bank.example.com", "https://www.bank.example.com/", false},
+	{"bare/host not suffix", "bank.example.com", "https://evilbank.example.com/", false},
+	{"bare/host in query only", "crm.example.net", "https://news.example.org/?ref=https://crm.example.net/", false},
+	{"bare/host in path only", "crm.example.net", "https://news.example.org/crm.example.net/x", false},
+	{"bare/host as userinfo", "crm.example.net", "https://crm.example.net@news.example.org/", false},
+	{"bare/userinfo on host", "crm.example.net", "https://user:pw@crm.example.net/", true},
+	{"bare/subdomain apex", "*.bank.example.com", "https://bank.example.com/account", true},
+	{"bare/subdomain", "*.bank.example.com", "https://www.bank.example.com/account", true},
+	{"bare/deep subdomain", "*.bank.example.com", "https://a.b.bank.example.com/", true},
+	{"bare/subdomain lookalike", "*.bank.example.com", "https://evilbank.example.com/", false},
+	{"bare/subdomain lookalike prefix", "*.bank.example.com", "https://bank.example.com.evil.test/", false},
+	{"bare/glob", "crm*.example.net", "https://crm2.example.net/", true},
+	{"bare/glob no match", "crm*.example.net", "https://eu.crm.example.net/", false},
+	{"bare/upper rule", "CRM.Example.NET", "https://crm.example.net/x", true},
+	{"bare/upper url", "crm.example.net", "HTTPS://CRM.EXAMPLE.NET/x", true},
+	{"bare/trailing dot rule", "crm.example.net.", "https://crm.example.net/x", true},
+	{"bare/trailing dot url", "crm.example.net", "https://crm.example.net./x", true},
+	{"bare/idn unicode rule", "bücher.example", "https://xn--bcher-kva.example/", true},
+	{"bare/idn punycode rule", "*.xn--bcher-kva.example", "https://shop.bücher.example/", true},
+	{"bare/ipv4", "10.0.0.5", "http://10.0.0.5:9000/", true},
+	{"bare/opaque url", "example.com", "mailto:someone@example.com", false},
 }
 
 func TestDenyRuleCases(t *testing.T) {
@@ -93,6 +114,10 @@ var allowOnlyCases = []struct {
 	{"allow/host in query", "*://*.example.org/*", "https://tracker.example.net/?u=https://news.example.org/", false},
 	{"allow/host as userinfo", "*://*.example.org/*", "https://news.example.org@tracker.example.net/", false},
 	{"allow/lookalike", "*://*.example.org/*", "https://example.org.tracker.example.net/", false},
+	{"allow/bare host", "news.example.org", "https://news.example.org/a", true},
+	{"allow/bare subdomain apex", "*.example.org", "https://example.org/", true},
+	{"allow/bare host in query", "*.example.org", "https://tracker.example.net/?u=https://news.example.org/", false},
+	{"allow/bare host in path", "news.example.org", "https://tracker.example.net/news.example.org", false},
 }
 
 func TestAllowOnlyRuleCases(t *testing.T) {
