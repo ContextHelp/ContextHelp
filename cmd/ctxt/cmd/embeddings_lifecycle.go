@@ -233,7 +233,7 @@ func runEmbeddingsSetDefault(cmd *cobra.Command, args []string) error {
 		doc.PreviousDefault = &prev
 	}
 	if p.Changed && !dryRun {
-		publishLifecycleEvent(cmd, events.TopicCtxtUpgradeEmbeddingModelPromoted, events.EmbeddingModelLifecyclePayload{
+		publishLifecycleEvent(cmd, events.TopicCtxtEmbeddingsModelPromoted, events.EmbeddingModelLifecyclePayload{
 			ModelID: modelID, PreviousDefault: p.Previous, Coverage: &p.Coverage, MinCoverage: &p.MinCoverage,
 		})
 	}
@@ -332,7 +332,7 @@ func runEmbeddingsDeprecate(cmd *cobra.Command, args []string) error {
 		GracePeriod: lc.GracePeriod.String(), Changed: changed, DryRun: dryRun,
 	}
 	if changed && !dryRun {
-		publishLifecycleEvent(cmd, events.TopicCtxtUpgradeEmbeddingModelDeprecated, events.EmbeddingModelLifecyclePayload{
+		publishLifecycleEvent(cmd, events.TopicCtxtEmbeddingsModelDeprecated, events.EmbeddingModelLifecyclePayload{
 			ModelID: modelID, DeprecatedAt: doc.DeprecatedAt, PurgeEligibleAt: doc.PurgeEligibleAt,
 		})
 	}
@@ -426,7 +426,7 @@ func runEmbeddingsPurge(cmd *cobra.Command, args []string) error {
 		Rows: p.Rows, DryRun: dryRun,
 	}
 	if !dryRun {
-		publishLifecycleEvent(cmd, events.TopicCtxtUpgradeEmbeddingModelPurged, events.EmbeddingModelLifecyclePayload{
+		publishLifecycleEvent(cmd, events.TopicCtxtEmbeddingsModelPurged, events.EmbeddingModelLifecyclePayload{
 			ModelID: modelID, DeprecatedAt: doc.DeprecatedAt, PurgeEligibleAt: doc.PurgeEligibleAt, Rows: &p.Rows,
 		})
 	}

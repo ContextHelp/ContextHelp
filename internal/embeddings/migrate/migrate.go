@@ -302,7 +302,7 @@ func (x *run) execute(ctx context.Context) (Result, error) {
 			return x.res, fmt.Errorf("upgrade status: %w", err)
 		}
 	}
-	x.publish(ctx, events.TopicDpkmsUpgradeEmbeddingsMigrationStarted, "")
+	x.publish(ctx, events.TopicDpkmsEmbeddingsMigrationStarted, "")
 
 	// The step embeds only the target: its model source yields just that
 	// model, and its resolver meters and records every provider call.
@@ -336,12 +336,12 @@ func (x *run) execute(ctx context.Context) (Result, error) {
 				}
 			}
 			if x.res.Done()%progressEvery == 0 {
-				x.publish(ctx, events.TopicDpkmsUpgradeEmbeddingsMigrationProgress, "")
+				x.publish(ctx, events.TopicDpkmsEmbeddingsMigrationProgressed, "")
 			}
 		}
 	}
 
-	x.publish(ctx, events.TopicDpkmsUpgradeEmbeddingsMigrationCompleted, "")
+	x.publish(ctx, events.TopicDpkmsEmbeddingsMigrationCompleted, "")
 	if x.Progress != nil {
 		if x.res.Failed > 0 {
 			// Sticky: the status stays failed until the next run, so the
@@ -425,7 +425,7 @@ func (x *run) stop(ctx context.Context, cause error) (Result, error) {
 		_ = x.Progress.Fail(fmt.Errorf("embeddings migrate to %s stopped after %d of %d objects: %w",
 			x.model.ModelID, x.res.Done(), x.res.Total, cause))
 	}
-	x.publish(context.WithoutCancel(ctx), events.TopicDpkmsUpgradeEmbeddingsMigrationFailed, cause.Error())
+	x.publish(context.WithoutCancel(ctx), events.TopicDpkmsEmbeddingsMigrationFailed, cause.Error())
 	return x.res, cause
 }
 
@@ -454,7 +454,7 @@ func (x *run) publish(ctx context.Context, topic bus.Topic, reason string) {
 		FailedObjects: x.res.FailedObjects,
 		Reason:        reason,
 	}
-	if topic == events.TopicDpkmsUpgradeEmbeddingsMigrationCompleted || topic == events.TopicDpkmsUpgradeEmbeddingsMigrationFailed {
+	if topic == events.TopicDpkmsEmbeddingsMigrationCompleted || topic == events.TopicDpkmsEmbeddingsMigrationFailed {
 		payload.DurationMs = x.clock.Now().Sub(x.start).Milliseconds()
 	}
 	ev, err := events.NewEvent(eventSource, string(topic), payload)

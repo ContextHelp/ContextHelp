@@ -44,19 +44,19 @@ const (
 	// run that fills one model's missing rows. Every event carries
 	// EmbeddingsMigrationPayload.
 	//
-	// TopicDpkmsUpgradeEmbeddingsMigrationStarted fires when the run has
+	// TopicDpkmsEmbeddingsMigrationStarted fires when the run has
 	// counted the objects missing rows for the target model.
-	TopicDpkmsUpgradeEmbeddingsMigrationStarted bus.Topic = "dpkms.upgrade.embeddings_migration.started"
-	// TopicDpkmsUpgradeEmbeddingsMigrationProgress fires about every
+	TopicDpkmsEmbeddingsMigrationStarted bus.Topic = "dpkms.embeddings.migration.started"
+	// TopicDpkmsEmbeddingsMigrationProgressed fires about every
 	// total/100 objects.
-	TopicDpkmsUpgradeEmbeddingsMigrationProgress bus.Topic = "dpkms.upgrade.embeddings_migration.progressed"
-	// TopicDpkmsUpgradeEmbeddingsMigrationCompleted fires when the run has
+	TopicDpkmsEmbeddingsMigrationProgressed bus.Topic = "dpkms.embeddings.migration.progressed"
+	// TopicDpkmsEmbeddingsMigrationCompleted fires when the run has
 	// passed over every missing object. Failed > 0 means some objects are
 	// still missing rows; a re-run retries them.
-	TopicDpkmsUpgradeEmbeddingsMigrationCompleted bus.Topic = "dpkms.upgrade.embeddings_migration.completed"
-	// TopicDpkmsUpgradeEmbeddingsMigrationFailed fires when the run stops
+	TopicDpkmsEmbeddingsMigrationCompleted bus.Topic = "dpkms.embeddings.migration.completed"
+	// TopicDpkmsEmbeddingsMigrationFailed fires when the run stops
 	// early: cancelled, interrupted by shutdown, or a storage error.
-	TopicDpkmsUpgradeEmbeddingsMigrationFailed bus.Topic = "dpkms.upgrade.embeddings_migration.failed"
+	TopicDpkmsEmbeddingsMigrationFailed bus.Topic = "dpkms.embeddings.migration.failed"
 
 	// Embedding-model lifecycle (ADR-071 "Default-flip control"), emitted
 	// by `ctxt embeddings` after the change commits. Every event carries
@@ -64,15 +64,15 @@ const (
 	// per query, so no consumer needs these to stay correct; they record
 	// operator actions.
 	//
-	// TopicCtxtUpgradeEmbeddingModelPromoted fires when set-default makes
+	// TopicCtxtEmbeddingsModelPromoted fires when set-default makes
 	// a model the default.
-	TopicCtxtUpgradeEmbeddingModelPromoted bus.Topic = "ctxt.upgrade.embedding_model.promoted"
-	// TopicCtxtUpgradeEmbeddingModelDeprecated fires when a model's
+	TopicCtxtEmbeddingsModelPromoted bus.Topic = "ctxt.embeddings.model.promoted"
+	// TopicCtxtEmbeddingsModelDeprecated fires when a model's
 	// retirement is scheduled.
-	TopicCtxtUpgradeEmbeddingModelDeprecated bus.Topic = "ctxt.upgrade.embedding_model.deprecated"
-	// TopicCtxtUpgradeEmbeddingModelPurged fires when a deprecated model's
+	TopicCtxtEmbeddingsModelDeprecated bus.Topic = "ctxt.embeddings.model.deprecated"
+	// TopicCtxtEmbeddingsModelPurged fires when a deprecated model's
 	// rows, index and registry entry are deleted.
-	TopicCtxtUpgradeEmbeddingModelPurged bus.Topic = "ctxt.upgrade.embedding_model.purged"
+	TopicCtxtEmbeddingsModelPurged bus.Topic = "ctxt.embeddings.model.purged"
 )
 
 // Inbound subscription topics.

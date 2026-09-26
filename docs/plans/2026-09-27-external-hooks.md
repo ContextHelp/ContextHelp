@@ -82,9 +82,9 @@ All of these topics already exist or pass `ValidateTopic`.
 
 | Topic | Host | Increment |
 |---|---|---|
-| `ctxt.upgrade.embedding_model.{promoted,deprecated,purged}` | CLI | 1 |
+| `ctxt.embeddings.model.{promoted,deprecated,purged}` | CLI | 1 |
 | `ctxt.runtime.object.deleted` (the declared constant, replacing the two-segment `object.deleted`) | CLI or daemon | 1 |
-| `dpkms.upgrade.embeddings_migration.{completed,failed}` | daemon | 1 |
+| `dpkms.embeddings.migration.{completed,failed}` | daemon | 1 |
 | `ctxt.runtime.hook.failed` | both | 1 |
 | `ctxt.runtime.object.ingested`, `ctxt.runtime.job.{completed,failed}`, `dpkms.upgrade.reingest.{completed,failed}` | daemon | 2 |
 
@@ -145,14 +145,13 @@ It proves both hook kinds end to end with no kit change and no webhooks.
 
 ## Follow-up work: the naming audit
 
-ADR-075 lists every deviation with its file and line. The work groups into six items:
+ADR-075 lists every deviation with its file and line. The work groups into five items:
 
 1. `ctxt.ambient.source.ready` → `readied` (six publish sites and the builder in `internal/ambient/ambient.go:149`), following the ADR-065 adapter precedent.
 2. Replace the two-segment `svc.Bus` event types (`object.raw_stored`, `job.enqueued`, `object.updated`, `object.deleted`, `inbox.captured`, `inbox.triaged`) with 4-segment topics built by `TopicOf`, and drop the duplicate `job.enqueued`.
 3. Rename the plugin event types, which contain hyphens and use actions that are not past tense (`ctxt.plugin.<name>.<noun>`), and the capability events `ctxt.refresh.trigger` and `ctxt.notification.create`.
-4. Make the catalog name the Object explicitly for `embedding_model` and `embeddings_migration`, whose first underscore reads as a modifier.
-5. Re-enable topic validation in `cmd/ctxt/cmd/lateral.go:191`, which uses `ModeOff`.
-6. Consider strict enforcement (`kit.bus.enforce=strict`) in tests, so that deviations fail CI.
+4. Re-enable topic validation in `cmd/ctxt/cmd/lateral.go:191`, which uses `ModeOff`.
+5. Consider strict enforcement (`kit.bus.enforce=strict`) in tests, so that deviations fail CI.
 
 Renames break subscribers, so each rename is its own change with a release-notes row.
 

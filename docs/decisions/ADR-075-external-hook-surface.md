@@ -69,7 +69,7 @@ Also relevant, outside kit:
   - Descriptor: ctxt stamps `request_attrs = {kind, id, action, dry_run}` on every pre phase it raises (K8, K10). Hooks and CEL rules select on `context.request_attrs.kind` and `context.request_attrs.action`. ctxt already follows this precedent: `internal/policy/policies_default.yaml` gates a pipeline archive on `context.request_attrs.action == "archive"`.
   - `kind` ∈ `object`, `embedding_model`, `pipeline`.
   - `action` is the operator verb: `delete`, `purge`, `promote`, `deprecate`, `archive`.
-- **After events are ctxt-owned topics** that pass `ValidateTopic` (K1–K2). They keep every topic that already passes: `ctxt.runtime.object.deleted`, `ctxt.upgrade.embedding_model.{promoted,deprecated,purged}`, `dpkms.upgrade.embeddings_migration.{completed,failed}`, and so on.
+- **After events are ctxt-owned topics** that pass `ValidateTopic` (K1–K2). They keep every topic that already passes: `ctxt.runtime.object.deleted`, `ctxt.embeddings.model.{promoted,deprecated,purged}`, `dpkms.embeddings.migration.{completed,failed}`, and so on.
   - When a mutation goes through `domain.Service[T]`, its post phases are rebranded to these topics with `WithTopics` (K9), and the pre phases stay on kit's defaults so policy still sees them.
   - Hook-system events are `ctxt.runtime.hook.failed` and `ctxt.runtime.hook.gap_detected` (a subscriber fell behind retention).
 - **Every new topic is built through `bus.TopicOf` or `PrefixTopics`**, so `ValidateTopic` checks it when the process starts, as `internal/lateral/events/catalog.go` already does. Constants built by string concatenation are not added.
@@ -203,13 +203,6 @@ Every topic below was checked against K1–K4. This ADR fixes none of them.
   - `ctxt.plugin.dir-watcher.{file,error}` at `plugins/dir-watcher/plugin.go:251` and `:264`
   - `ctxt.plugin.rss-feed.{error,item}` at `plugins/rss-feed/plugin.go:105` and `:268`
 - **Plugin capability events.** `ctxt.refresh.trigger` (`internal/plugin/capability.go:88`) and `ctxt.notification.create` (`:98`) have three segments and imperative actions.
-
-**Grammar-valid, but the Object segment misreads under K4:**
-
-- `ctxt.upgrade.embedding_model.*` (`internal/events/topics.go:69-75`) parses as object `embedding` with modifier `model`.
-- `dpkms.upgrade.embeddings_migration.*` (`internal/events/topics.go:49-59`) parses as object `embeddings` with modifier `migration`.
-
-Both are acceptable under kit's rules, because a modifier is allowed. They are recorded so that the catalog's schema names the object explicitly.
 
 **Validation is switched off:** `cmd/ctxt/cmd/lateral.go:191` builds its bus with `bus.WithEnforce(bus.ModeOff)`.
 
