@@ -2,17 +2,22 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 )
 
 // runCaptureBinary runs the built ctxt binary with args under a scratch
 // XDG tree and no inherited instance selector, so host config and state
-// never steer routing.
+// never steer routing. The scratch user config routes to the guard's closed
+// port, so a run given no -c (or one whose -c is ignored) never falls back
+// to the built-in default a real local server listens on.
 func runCaptureBinary(t *testing.T, args ...string) (stdout, stderr string, exit int) {
 	t.Helper()
 	if testing.Short() {
@@ -20,6 +25,9 @@ func runCaptureBinary(t *testing.T, args ...string) (stdout, stderr string, exit
 	}
 	bin := e2eBinary(t)
 	xdg := t.TempDir()
+	if err := testguard.WriteUserConfig(filepath.Join(xdg, "config"), "ctxt"); err != nil {
+		t.Fatal(err)
+	}
 	cmd := exec.Command(bin, args...)
 	var env []string
 	for _, kv := range os.Environ() {
@@ -49,6 +57,37 @@ func runCaptureBinary(t *testing.T, args ...string) (stdout, stderr string, exit
 		exit = ee.ExitCode()
 	}
 	return so.String(), se.String(), exit
+}
+
+// TestE2ECaptureBinaryUnconfiguredStaysOffDefault: under runCaptureBinary's
+// scratch XDG tree, a binary given no -c resolves the closed-port guard
+// endpoint, never the built-in loopback :8080 a real server listens on,
+// and a capture dials only that closed port.
+func TestE2ECaptureBinaryUnconfiguredStaysOffDefault(t *testing.T) {
+	stdout, stderr, exit := runCaptureBinary(t, "config", "show", "--format", "json")
+	if exit != 0 {
+		t.Fatalf("config show: exit = %d; stderr=%q", exit, stderr)
+	}
+	var shown struct{ Server struct{ URL string } }
+	if err := json.Unmarshal([]byte(stdout), &shown); err != nil {
+		t.Fatalf("config show json: %v\n%s", err, stdout)
+	}
+	// Interlock: never run the capture below unless routing is proven to
+	// be the closed port — otherwise it would post to the real default.
+	if shown.Server.URL != testguard.ClosedServerURL {
+		t.Fatalf("unconfigured binary resolves server.url %q; want %s", shown.Server.URL, testguard.ClosedServerURL)
+	}
+
+	// The capture itself must target the closed port: connection refused,
+	// named in the error, and nothing accepted.
+	stdout, stderr, exit = runCaptureBinary(t, "capture", "e2e unconfigured")
+	closed := strings.TrimPrefix(testguard.ClosedServerURL, "http://")
+	if exit == 0 || !strings.Contains(stderr, closed) {
+		t.Errorf("unconfigured capture: exit = %d, want a refused dial to %s; stdout=%q stderr=%q", exit, closed, stdout, stderr)
+	}
+	if strings.Contains(stdout, "Job ID") {
+		t.Errorf("unconfigured capture was accepted by some server: %q", stdout)
+	}
 }
 
 // TestE2ECaptureRoutesToConfiguredInstance: the built binary, given only a
