@@ -31,8 +31,8 @@ A future enhancement (browser extension for live tab events) is out of v1 scope;
 
 - [ ] Source registered as `browserhistory` in the ambient runner
 - [ ] Polls browser SQLite history files at configurable interval (default 5 min)
-- [ ] Read-only access via copy-to-temp (avoids lock contention with running browser)
-- [ ] Detects new visits since last poll (using browser-specific visit-time column)
+- [x] Read-only access via copy-to-temp (avoids lock contention with running browser)
+- [x] Detects new visits since last poll (using browser-specific visit-time column)
 - [ ] Emits RawEvent per new visit with: URL, page title, visit timestamp, browser identifier
 - [ ] Routes to `url.generic` pipeline by default; `url.repo` for github.com/gitlab.com/bitbucket.org URLs
 - [ ] Fingerprint = SHA-256 of `(url + visit_timestamp_minute_bucket)`; substrate dedup catches re-emissions across polls
@@ -57,16 +57,31 @@ capture:
 
 - [ ] kit/policy CEL veto on `ctxt.ambient.event.captured` for `source=browserhistory` can drop sensitive URLs (sensitive bank, healthcare, internal domains) before enqueue
 - [ ] Bus events emit per ADR-066 taxonomy
-- [ ] Last-poll-timestamp persisted per browser in buffer state (so daemon restart doesn't replay old visits)
+- [x] Last-poll-timestamp persisted per browser in buffer state (so daemon restart doesn't replay old visits)
 - [ ] Bookmark-shaped URLs (search engines: google.com/search, duckduckgo.com/?q=) tagged with `subtype=search-query` so search-engine visits are distinguishable from content visits
 - [ ] Cross-platform: macOS / Linux / Windows (browser SQLite paths differ per OS)
 
 ### Progress
 
-Scope so far: Chromium family only (Chrome, Brave, Edge, Arc, Chromium, Vivaldi), via the one-shot `ctxt capture history` command and the Chromium History reader. User doc: [browser-history-capture.md](../../manual/workflows/browser-history-capture.md). No box is ticked until the command lands and its e2e passes.
+Scope so far: Chromium family only (Chrome, Brave, Edge, Arc, Chromium, Vivaldi), via the `ctxt capture history` command and the Chromium History reader; the ambient runner does not poll history yet. User doc: [browser-history-capture.md](../../manual/workflows/browser-history-capture.md). Command e2e: `cmd/ctxt/cmd/capture_history_e2e_test.go` (built binary, synthetic History database). A box is ticked when the command or the reader meets it, with tests; the rest wait for runner registration.
 
 | Criterion | Coverage |
 |---|---|
+| Registered as `browserhistory` in the ambient runner | Open: runner registration |
+| Poll at configurable interval (default 5 min) | Open. Stopgap: `ctxt capture schedule` runs `ctxt capture history` every 5 min on macOS (launchd) |
+| Read-only copy-to-temp | Met: Chromium History reader copies History and its journal to a temp dir; the live file is never opened |
+| Detect new visits since last poll | Met for Chromium: `ctxt capture history` incremental mode sends visits strictly after the saved position; first run reads back `capture.history.initial_lookback` (default 24h); offline gap picked up exactly once (e2e) |
+| RawEvent per visit (URL, title, visit time, browser) | Open: the command sends each URL as an analyze request (same shape as `ctxt capture <url>`), not a RawEvent. Reader yields one entry per real navigation, subframes dropped, redirects collapsed |
+| Route `url.generic` / `url.repo` | Open: the command sets no pipeline; the server picks |
+| Fingerprint dedup across polls | Open: the command dedupes identical URLs within a run; across runs the saved position prevents replay |
+| Per-browser config | Partial: Chromium family via `--browser` / `--browser-profile`, per-browser and per-profile `capture.url_filter`, `capture.history.initial_lookback`; Firefox and Safari open |
+| kit/policy CEL veto | Open |
+| Bus events per ADR-066 | Open |
+| Position persisted per browser across restarts | Met: per browser + profile in `browserhistory.state`; advances only past visits handed off (stops before the first failed send); `--since` alone moves it forward only; `--until` / `--range` backfills and dry runs never read or write it; `--reset-position` clears one key; a damaged file stops the run (exit 3) and is never rewritten |
+| `subtype=search-query` tagging | Open: not done by the command |
+| Cross-platform paths | Partial: Chromium profile resolver covers macOS / Linux / Windows; scheduling is macOS (launchd) only; Firefox and Safari open |
+
+---|---|
 | Registered as `browserhistory` in the ambient runner | Open: runner registration |
 | Poll at configurable interval (default 5 min) | `ctxt capture history` on a launchd schedule (5 min) as a stopgap; in-daemon polling open until runner registration |
 | Read-only copy-to-temp | Chromium History reader |
