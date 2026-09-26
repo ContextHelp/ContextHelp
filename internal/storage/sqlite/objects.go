@@ -44,10 +44,9 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.Status = "active"
 	}
 
-	// For text pipeline objects, populate TextContent from RawContent when empty.
-	if obj.TextContent == "" && obj.RawContent != "" {
-		obj.TextContent = obj.RawContent
-	}
+	// An empty TextContent defaults to the body the embedding step used
+	// (projection.BodyText), so stored text and embedded text agree.
+	obj.TextContent = projection.BodyText(obj)
 
 	// Derive FTS body from projection — single source of truth for indexed text.
 	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
