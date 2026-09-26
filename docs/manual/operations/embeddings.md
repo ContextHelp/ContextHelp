@@ -246,7 +246,7 @@ With `--format json` the same report is under `diagnostics.semantic` (`status`, 
 | `no_default_model` | No model is the default: none registered yet, or none promoted. | `register`, `migrate --to`, `set-default`. |
 | `provider_error` | The default model's provider failed: unreachable, no vector returned, or an override tried to change its backend or model. | `ctxt embeddings provider <default id>` shows what was used; fix the endpoint or drop the override. |
 | `dimension_mismatch` | The provider returned vectors of another length than the model's registered dimension; a different model is answering at that endpoint. | Point the endpoint at the registered model, or register the new one under a new ID and switch. |
-| `index_missing` | The default model has no measured dimension or no vector index. | Restart dpkms: every database open rebuilds missing indexes. |
+| `index_missing` | The default model has no measured dimension, or has no vector index even though opening the database rebuilds every missing index. | No index: the open skipped the model and logged why just before the notice (`embedding index skipped`), usually stored vectors whose length differs from the registered dimension. Restarting doesn't help. For either cause, register the model under a new model_id (register measures the dimension), `migrate --to` it, then `set-default`. |
 | `low_coverage` | The default model's index holds no vectors at all. | `ctxt embeddings migrate --to <default id>`. |
 
 With `search.fallback_to_fts: false`, `find` fails instead (exit code 70) when the status isn't `ok`. The default is `true`.

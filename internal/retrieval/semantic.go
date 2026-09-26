@@ -93,8 +93,7 @@ func (s SemanticSource) Embed(ctx context.Context, text string) (QueryVector, Se
 		return QueryVector{}, SemanticReport{}, fmt.Errorf("read default embedding model: %w", err)
 	}
 	if m.Dimension <= 0 {
-		return QueryVector{}, semanticSkipped(SemanticIndexMissing, m.ModelID,
-			fmt.Sprintf("model %s has no measured dimension, so it has no index", m.ModelID)), nil
+		return QueryVector{}, semanticSkipped(SemanticIndexMissing, m.ModelID, noDimensionDetail(m.ModelID)), nil
 	}
 	if s.Resolver == nil {
 		return QueryVector{}, semanticSkipped(SemanticProviderError, m.ModelID,
@@ -122,6 +121,22 @@ func (s SemanticSource) Embed(ctx context.Context, text string) (QueryVector, Se
 }
 
 const noDefaultDetail = "no default embedding model; register one with 'ctxt embeddings register' and make it the default"
+
+// noDimensionDetail explains an index_missing model without a dimension.
+// The model's registry row cannot be fixed in place; registering the model
+// again under a new model_id measures its dimension.
+func noDimensionDetail(modelID string) string {
+	return fmt.Sprintf("model %s has no measured dimension, so it has no index; "+
+		"register the model under a new model_id, which measures it, then migrate to it and set it as the default", modelID)
+}
+
+// noIndexDetail explains an index_missing model with a dimension. Opening
+// the database rebuilds every registered model's missing index, and the
+// query path opened it, so the open skipped this model and logged why.
+func noIndexDetail(modelID string) string {
+	return fmt.Sprintf("model %s has no vector index and opening the database did not rebuild it; "+
+		"the 'embedding index skipped' warning says why", modelID)
+}
 
 // Search runs the semantic leg for text: Embed, the optional Blend, then
 // VectorSearch over the default model's index with filter. A model whose
@@ -162,8 +177,7 @@ func (s SemanticSource) Search(ctx context.Context, drv storage.StorageDriver, t
 func classifyVectorError(modelID string, err error) (SemanticReport, bool) {
 	switch {
 	case errors.Is(err, storage.ErrEmbeddingIndexMissing):
-		return semanticSkipped(SemanticIndexMissing, modelID,
-			fmt.Sprintf("model %s has no vector index; re-run 'ctxt embeddings register' or reopen the store to rebuild it", modelID)), true
+		return semanticSkipped(SemanticIndexMissing, modelID, noIndexDetail(modelID)), true
 	case errors.Is(err, storage.ErrEmbeddingDimension):
 		return semanticSkipped(SemanticDimensionMismatch, modelID,
 			fmt.Sprintf("model %s: %v", modelID, err)), true

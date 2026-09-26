@@ -305,6 +305,66 @@ func TestSemanticSearch_UnavailableLegIsReported(t *testing.T) {
 	}
 }
 
+// The index_missing notice gives advice that works. Every database open
+// rebuilds missing indexes, so an index still missing after the open was
+// skipped by it: the notice points at the open's warning, and never at
+// re-running register, which fails for a registered model. A model without
+// a dimension is fixed by registering it again under a new model_id.
+func TestSemanticSearch_IndexMissingNoticeAdvice(t *testing.T) {
+	ctx := context.Background()
+	cases := map[string]struct {
+		setup func(t *testing.T, f *queryPathFixture)
+		want  []string
+	}{
+		"index not rebuilt": {
+			setup: func(t *testing.T, f *queryPathFixture) {
+				if err := f.emb.PurgeModel(ctx, modelA); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: []string{
+				"model " + modelA + " has no vector index",
+				"opening the database did not rebuild it",
+				"'embedding index skipped' warning",
+			},
+		},
+		"no measured dimension": {
+			setup: func(t *testing.T, f *queryPathFixture) {
+				if _, err := f.db.Exec(`UPDATE embedding_models SET dimension = 0 WHERE model_id = ?`, modelA); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: []string{
+				"model " + modelA + " has no measured dimension",
+				"register the model under a new model_id",
+			},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newQueryPathFixture(t)
+			tc.setup(t, f)
+			_, rep, err := f.source().Search(ctx, f.drv, query, storage.ObjectFilter{Limit: 5})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.Status != retrieval.SemanticIndexMissing {
+				t.Fatalf("status = %s, want %s", rep.Status, retrieval.SemanticIndexMissing)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(rep.Notice, w) {
+					t.Errorf("notice %q does not contain %q", rep.Notice, w)
+				}
+			}
+			for _, bad := range []string{"re-run", "reopen the store"} {
+				if strings.Contains(rep.Notice, bad) {
+					t.Errorf("notice %q still advises %q", rep.Notice, bad)
+				}
+			}
+		})
+	}
+}
+
 // The session blend hook sees the vector with the model it belongs to, and
 // the search uses what it returns.
 func TestSemanticSearch_BlendIsKeyedByModel(t *testing.T) {
