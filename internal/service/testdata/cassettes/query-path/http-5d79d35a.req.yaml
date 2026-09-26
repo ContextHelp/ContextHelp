@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 5d79d35a
+recorded_at: "2026-09-26T22:55:15Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11556/api/embed
+    body: '{"model":"snowflake-arctic-embed2","input":"Vectors for vec-b describe embedding migration between registered encoders.","truncate":false,"options":{"num_ctx":8192,"num_batch":8192}}'

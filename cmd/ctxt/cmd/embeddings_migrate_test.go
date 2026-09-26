@@ -43,9 +43,15 @@ var migrateBodies = []string{
 	"dugong feeding grounds in shark bay",
 }
 
-// digitTable exceeds nomic-embed-text's context even after the provider's
-// 8192-byte cut: Ollama rejects it for real.
-var digitTable = strings.Repeat("0 1 2 3 4 5 6 7 8 9 ", 500)
+// rejectedText overflows snowflake-arctic-embed2's context even after the
+// provider's context-sized byte cut: its tokenizer NFKC-normalizes U+FDFA
+// (3 bytes) into 18 characters, so the 8,184 bytes sent are more than
+// 8,192 tokens and Ollama rejects them for real.
+var rejectedText = strings.Repeat("\uFDFA", 3000)
+
+// rejectTargetID is a second snowflake-arctic-embed2 entry, migrated to by
+// the test whose one object Ollama rejects.
+const rejectTargetID = "ollama-snowflake-arctic-embed2-b@2026-09-26"
 
 type migrateDoc struct {
 	ModelID   string  `json:"model_id"`
@@ -291,7 +297,7 @@ func TestEmbeddingsMigrate_EndToEnd(t *testing.T) {
 		t.Errorf("second migrate = %+v, want already_queued %s", again, doc.JobID)
 	}
 
-	before := len(e.calls.URLs())
+	before := len(e.calls.EmbedURLs())
 	clock := &pausingClock{paused: make(chan struct{}), release: make(chan struct{})}
 	pool, q := e.worker(t, clock)
 	done := make(chan struct{})
@@ -315,8 +321,8 @@ func TestEmbeddingsMigrate_EndToEnd(t *testing.T) {
 	}
 	close(clock.release)
 	<-done
-	if n := len(e.calls.URLs()) - before; n != len(migrateBodies) {
-		t.Errorf("migration made %d provider calls, want %d (one per object)", n, len(migrateBodies))
+	if n := len(e.calls.EmbedURLs()) - before; n != len(migrateBodies) {
+		t.Errorf("migration made %d embed calls, want %d (one per object)", n, len(migrateBodies))
 	}
 
 	if c := e.coverage(t, migrateToID); c != 1 {
@@ -351,8 +357,9 @@ func TestEmbeddingsMigrate_EndToEnd(t *testing.T) {
 // embedded, and `ctxt upgrade status` reports the failure count and exits
 // non-zero until a re-run.
 func TestEmbeddingsMigrate_FailedObjectIsReported(t *testing.T) {
-	e := newMigrateEnv(t, append([]string{digitTable}, migrateBodies...)...)
-	doc := e.migrate(t, "--to", migrateToID)
+	e := newMigrateEnv(t, append([]string{rejectedText}, migrateBodies...)...)
+	registerJSON(t, e.db, rejectTargetID, "--embedding-model", "snowflake-arctic-embed2", "--embedding-endpoint", registerEndpoint)
+	doc := e.migrate(t, "--to", rejectTargetID)
 	if doc.Missing != len(migrateBodies)+1 {
 		t.Fatalf("migrate = %+v, want %d missing", doc, len(migrateBodies)+1)
 	}
@@ -360,20 +367,20 @@ func TestEmbeddingsMigrate_FailedObjectIsReported(t *testing.T) {
 	e.runPool(t, pool, q, doc.JobID)
 
 	want := float64(len(migrateBodies)) / float64(len(migrateBodies)+1)
-	if c := e.coverage(t, migrateToID); c < want-0.001 || c > want+0.001 {
+	if c := e.coverage(t, rejectTargetID); c < want-0.001 || c > want+0.001 {
 		t.Errorf("coverage = %.3f, want %.3f (all but the rejected object)", c, want)
 	}
 	st, err := e.upgradeStatus(t)
 	if err == nil {
 		t.Error("upgrade status exited 0 with a failed object")
 	}
-	if st.State != "failed" || st.Failed != 1 || st.Done != len(migrateBodies)+1 || st.Target != migrateToID ||
-		!strings.Contains(st.LastError, "ctxt embeddings migrate --to "+migrateToID) {
+	if st.State != "failed" || st.Failed != 1 || st.Done != len(migrateBodies)+1 || st.Target != rejectTargetID ||
+		!strings.Contains(st.LastError, "ctxt embeddings migrate --to "+rejectTargetID) {
 		t.Errorf("status = %+v, want failed with 1 failure and a re-run hint", st)
 	}
 
 	out, _ := e.db.exec("upgrade", "status", "--server", e.status.URL)
-	for _, want := range []string{"embeddings_migrate", migrateToID, "Failed:"} {
+	for _, want := range []string{"embeddings_migrate", rejectTargetID, "Failed:"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("human status lacks %q:\n%s", want, out)
 		}

@@ -132,8 +132,9 @@ func TestHybridSearch_SemanticLegReadsDefaultModelPerQuery(t *testing.T) {
 	ids = resultIDs(objs)
 	assert.Contains(t, ids, "vec-b")
 	assert.NotContains(t, ids, "vec-a")
-	urls := f.calls.URLs()
-	assert.Equal(t, "http://127.0.0.1:11556/api/embeddings", urls[len(urls)-1], "query embedded by sem-b's provider")
+	urls := f.calls.EmbedURLs()
+	require.NotEmpty(t, urls)
+	assert.Equal(t, "http://127.0.0.1:11556/api/embed", urls[len(urls)-1], "query embedded by sem-b's provider")
 }
 
 // No default model: hybrid returns the FTS results and says why the vector

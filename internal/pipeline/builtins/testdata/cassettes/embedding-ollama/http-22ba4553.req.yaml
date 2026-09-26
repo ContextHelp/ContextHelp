@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 22ba4553
+recorded_at: "2026-09-26T22:57:15Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embed
+    body: '{"model":"snowflake-arctic-embed2","input":"[Extracted PDF text content]\n[Page 1 content]\n[Page 2 content]\n[Page 3 content]","truncate":false,"options":{"num_ctx":8192,"num_batch":8192}}'
