@@ -49,6 +49,14 @@ Writes ~/Library/LaunchAgents/<label>.plist per kind and loads it with
 launchctl. Re-running install replaces the agents in place, so it is
 also how you change an interval.
 
+--browser and --browser-profile are optional and resolve like
+"ctxt capture tabs": capture.browser, then the one installed browser
+holding the profile, then the OS default browser; an omitted profile is
+the browser's last-used one ("ctxt capture browsers" shows the pick).
+Install resolves once and writes the browser and the profile folder
+into the agents, so scheduled runs never auto-select. A profile that
+matches nothing, or several, is refused (exit 2) with the candidates.
+
 --instance and --profile given here are baked into the scheduled
 command line, so the scheduled runs target the same ctxt instance.
 
@@ -65,7 +73,11 @@ var captureScheduleUninstallCmd = &cobra.Command{
 
 Removes both kinds unless --no-tabs or --no-history keeps one. Log
 files are left in place. Uninstalling a profile with no agents is a
-no-op.`,
+no-op.
+
+--browser and --browser-profile resolve as they do for install. For a
+profile since deleted from the browser, pass --browser and the profile
+folder shown by "ctxt capture schedule list".`,
 	Args: cobra.NoArgs,
 	RunE: runCaptureScheduleUninstall,
 }
@@ -86,8 +98,8 @@ func init() {
 	captureScheduleCmd.AddCommand(captureScheduleInstallCmd, captureScheduleUninstallCmd, captureScheduleListCmd)
 
 	for _, c := range []*cobra.Command{captureScheduleInstallCmd, captureScheduleUninstallCmd} {
-		c.Flags().String("browser", "", "browser to capture: "+browserNames())
-		c.Flags().String("browser-profile", "", "browser profile display name or folder (e.g. \"Work\", \"Profile 1\")")
+		c.Flags().String("browser", "", "browser to capture: "+browserNames()+" (default: capture.browser, else auto-select)")
+		c.Flags().String("browser-profile", "", "browser profile display name or folder (e.g. \"Work\", \"Profile 1\"; default: last used)")
 		c.Flags().Bool("no-tabs", false, "leave the tabs agent out")
 		c.Flags().Bool("no-history", false, "leave the history agent out")
 		// Both are always reversible (re-run install / uninstall) and
@@ -102,6 +114,7 @@ func init() {
 		{Title: "Capture a Chrome profile on the default timers", Command: `ctxt capture schedule install --browser chrome --browser-profile Work`},
 		{Title: "History only, every 10 minutes", Command: `ctxt capture schedule install --browser brave --browser-profile Work --no-tabs --history-every 10m`},
 		{Title: "Preview the plists", Command: `ctxt capture schedule install --browser chrome --browser-profile Work --dry-run`},
+		{Title: "Whichever browser holds the Work profile", Command: `ctxt capture schedule install --browser-profile Work`},
 	})
 	cliconv.WithNextSteps(captureScheduleInstallCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt capture schedule list", Reason: "confirm the agents are loaded"},
@@ -176,33 +189,61 @@ func scheduleEnvForRun(cmd *cobra.Command) (*scheduleEnv, error) {
 	return env, nil
 }
 
-// scheduleTarget reads and validates --browser, --browser-profile and
-// the kind selectors shared by install and uninstall.
-func scheduleTarget(cmd *cobra.Command) (browser, profile string, kinds []scheduleKind, err error) {
-	rawBrowser, _ := cmd.Flags().GetString("browser")
-	if strings.TrimSpace(rawBrowser) == "" {
-		return "", "", nil, output.UsageError("--browser is required (" + browserNames() + ")")
-	}
-	b, perr := chromium.ParseBrowser(rawBrowser)
-	if perr != nil {
-		return "", "", nil, output.UsageError(fmt.Sprintf("--browser: %v", perr))
-	}
-	profile, _ = cmd.Flags().GetString("browser-profile")
-	if verr := validateBrowserProfile(profile); verr != nil {
-		return "", "", nil, output.UsageError(verr.Error())
-	}
+// scheduleKindsFor reads --no-tabs / --no-history.
+func scheduleKindsFor(cmd *cobra.Command) ([]scheduleKind, error) {
 	noTabs, _ := cmd.Flags().GetBool("no-tabs")
 	noHistory, _ := cmd.Flags().GetBool("no-history")
 	if noTabs && noHistory {
-		return "", "", nil, output.UsageError("--no-tabs and --no-history together leave nothing to do")
+		return nil, output.UsageError("--no-tabs and --no-history together leave nothing to do")
 	}
+	kinds := make([]scheduleKind, 0, len(scheduleKinds))
 	for _, k := range scheduleKinds {
 		if (k == kindTabs && noTabs) || (k == kindHistory && noHistory) {
 			continue
 		}
 		kinds = append(kinds, k)
 	}
-	return string(b), profile, kinds, nil
+	return kinds, nil
+}
+
+// scheduleTargetFlags returns --browser and --browser-profile,
+// rejecting values launchd cannot carry.
+func scheduleTargetFlags(cmd *cobra.Command) (browserFlag, profileFlag string, err error) {
+	browserFlag, _ = cmd.Flags().GetString("browser")
+	profileFlag, _ = cmd.Flags().GetString("browser-profile")
+	if cmd.Flags().Changed("browser") && strings.TrimSpace(browserFlag) == "" {
+		return "", "", output.UsageError("--browser is blank (" + browserNames() + ")")
+	}
+	if cmd.Flags().Changed("browser-profile") {
+		if verr := validateBrowserProfile(profileFlag); verr != nil {
+			return "", "", output.UsageError(verr.Error())
+		}
+	}
+	return browserFlag, profileFlag, nil
+}
+
+// scheduleTarget resolves the browser profile the agents capture — the
+// flags, capture.browser, or auto-selection — and the kinds selected.
+// Resolution happens here, once: the agents are pinned to the browser
+// and profile folder found, so a later change of OS default browser or
+// last-used profile does not move them.
+func scheduleTarget(cmd *cobra.Command) (chromium.Profile, []scheduleKind, error) {
+	kinds, err := scheduleKindsFor(cmd)
+	if err != nil {
+		return chromium.Profile{}, nil, err
+	}
+	browserFlag, profileFlag, err := scheduleTargetFlags(cmd)
+	if err != nil {
+		return chromium.Profile{}, nil, err
+	}
+	p, err := resolveCaptureTarget(cmd, browserFlag, profileFlag)
+	if err != nil {
+		return chromium.Profile{}, nil, err
+	}
+	if verr := validateBrowserProfile(p.DirName); verr != nil {
+		return chromium.Profile{}, nil, output.UsageError(verr.Error())
+	}
+	return p, kinds, nil
 }
 
 // changedGlobal returns a global flag's value only when the caller set
@@ -235,7 +276,7 @@ func runCaptureScheduleInstall(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	browser, profile, kinds, err := scheduleTarget(cmd)
+	target, kinds, err := scheduleTarget(cmd)
 	if err != nil {
 		return err
 	}
@@ -258,8 +299,8 @@ func runCaptureScheduleInstall(cmd *cobra.Command, _ []string) error {
 	for _, k := range kinds {
 		a := scheduleAgent{
 			Kind:           k,
-			Browser:        browser,
-			BrowserProfile: profile,
+			Browser:        string(target.Browser),
+			BrowserProfile: target.DirName,
 			Instance:       changedGlobal(cmd, "instance"),
 			FocusProfile:   changedGlobal(cmd, "profile"),
 			Binary:         env.binary,
@@ -341,7 +382,7 @@ func runCaptureScheduleUninstall(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	browser, profile, kinds, err := scheduleTarget(cmd)
+	browser, profile, kinds, err := scheduleUninstallTarget(cmd, env)
 	if err != nil {
 		return err
 	}
@@ -351,8 +392,7 @@ func runCaptureScheduleUninstall(cmd *cobra.Command, _ []string) error {
 	for _, k := range kinds {
 		label := scheduleLabel(k, browser, profile)
 		path := env.plistPath(label)
-		_, statErr := os.Stat(path)
-		if statErr == nil || env.launchctl.Loaded(label) {
+		if env.installed(label) {
 			targets = append(targets, target{label: label, path: path})
 		}
 	}
@@ -397,9 +437,43 @@ func runCaptureScheduleUninstall(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
+// scheduleUninstallTarget resolves the agents uninstall removes. It
+// resolves like install, so the same flags reach the same agents. When
+// the browser or profile is gone from disk but --browser and
+// --browser-profile name agents that are still installed (by the
+// profile folder pinned in them), those agents are the target: a
+// deleted profile must stay uninstallable.
+func scheduleUninstallTarget(cmd *cobra.Command, env *scheduleEnv) (browser, profile string, kinds []scheduleKind, err error) {
+	target, kinds, err := scheduleTarget(cmd)
+	if err == nil {
+		return string(target.Browser), target.DirName, kinds, nil
+	}
+	kinds, kerr := scheduleKindsFor(cmd)
+	browserFlag, _ := cmd.Flags().GetString("browser")
+	profileFlag, _ := cmd.Flags().GetString("browser-profile")
+	b, perr := chromium.ParseBrowser(browserFlag)
+	if kerr != nil || perr != nil || validateBrowserProfile(profileFlag) != nil {
+		return "", "", nil, err
+	}
+	for _, k := range kinds {
+		if env.installed(scheduleLabel(k, string(b), profileFlag)) {
+			return string(b), profileFlag, kinds, nil
+		}
+	}
+	return "", "", nil, err
+}
+
 // scheduleRemoval is uninstall's machine-readable result.
 type scheduleRemoval struct {
 	Removed []string `json:"removed"`
+}
+
+// installed reports whether label has a plist or is loaded.
+func (e *scheduleEnv) installed(label string) bool {
+	if _, err := os.Stat(e.plistPath(label)); err == nil {
+		return true
+	}
+	return e.launchctl.Loaded(label)
 }
 
 func runCaptureScheduleList(cmd *cobra.Command, _ []string) error {
