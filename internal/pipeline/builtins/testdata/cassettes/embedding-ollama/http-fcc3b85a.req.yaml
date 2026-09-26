@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: fcc3b85a
+recorded_at: "2026-09-26T17:55:49Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embeddings
+    body: '{"model":"snowflake-arctic-embed2","prompt":"Quokka survey report: more animals near the salt lakes than last season.\nQuokka survey report: more animals near the salt lakes than last season."}'

@@ -116,7 +116,7 @@ func TestEmbeddingGenerator_EveryPopulatingModelGetsAVector(t *testing.T) {
 	if len(got.Vectors) != 2 {
 		t.Fatalf("vectors = %d, want one per populating model (2)", len(got.Vectors))
 	}
-	text := projection.ProjectIndex(draft).EmbeddingText
+	text := projection.EmbeddingText(draft)
 	for _, m := range models {
 		v := vectorFor(t, got, m.ModelID)
 		if v == nil {
@@ -285,31 +285,60 @@ func TestEmbeddingGenerator_NilDependenciesAreANoOp(t *testing.T) {
 	}
 }
 
-// The embedding text is projection.ProjectIndex(draft).EmbeddingText:
-// RawContent alone projects to nothing, so the step embeds nothing.
+// An object with no content projects to no embedding text, so the step
+// embeds nothing.
 func TestEmbeddingGenerator_EmptyEmbeddingTextSkips(t *testing.T) {
 	resolver, calls := ollamaResolver(t)
 	step := NewEmbeddingGenerator(embeddingtest.Models{snowflake("snowflake-arctic-embed2@default", true)}, resolver)
 
+	got, err := step.Run(context.Background(), &storage.KnowledgeObject{ID: "obj-empty"})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(got.Vectors) != 0 || got.VectorIndexed {
+		t.Errorf("vectors=%d indexed=%v, want nothing embedded", len(got.Vectors), got.VectorIndexed)
+	}
+	if urls := calls.URLs(); len(urls) != 0 {
+		t.Errorf("provider called %v for empty embedding text", urls)
+	}
+}
+
+// Storage defaults TextContent from RawContent only after the pipeline,
+// so a draft carrying RawContent alone (a short note: no sectioner, a
+// graph of tags and mentions only) must still embed its raw body.
+func TestEmbeddingGenerator_RawContentOnlyDraftEmbeds(t *testing.T) {
+	resolver, _ := ollamaResolver(t)
+	step := NewEmbeddingGenerator(embeddingtest.Models{snowflake("snowflake-arctic-embed2@default", true)}, resolver)
+
 	for name, draft := range map[string]*storage.KnowledgeObject{
-		"empty":    {},
-		"raw only": {RawContent: "only raw content, not indexed"},
+		"no graph": {ID: "obj-raw", RawContent: "wombat burrow census at mount buller"},
+		"tag-only graph": {
+			ID:         "obj-tags",
+			RawContent: "wombat burrow census at mount buller",
+			Graph: &pluginapi.ObjectGraph{Nodes: []pluginapi.GraphNode{
+				{NodeType: pluginapi.NodeTypeTag, Label: "wombat"},
+				{NodeType: pluginapi.NodeTypeEntityMention, Content: "@place.mount-buller"},
+			}},
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if projection.ProjectIndex(draft).EmbeddingText != "" {
-				t.Fatal("fixture projects to non-empty embedding text")
-			}
 			got, err := step.Run(context.Background(), draft)
 			if err != nil {
 				t.Fatalf("run: %v", err)
 			}
-			if len(got.Vectors) != 0 || got.VectorIndexed {
-				t.Errorf("vectors=%d indexed=%v, want nothing embedded", len(got.Vectors), got.VectorIndexed)
+			if len(got.Vectors) != 1 || len(got.Vectors[0].Vector) != 1024 {
+				t.Fatalf("vectors = %d, want one 1024-dim vector of the raw body", len(got.Vectors))
+			}
+			if got.Vectors[0].Text != "wombat burrow census at mount buller" {
+				t.Errorf("embedded %q, want the raw body", got.Vectors[0].Text)
+			}
+			if !got.VectorIndexed {
+				t.Error("VectorIndexed = false after the default model embedded")
+			}
+			if got.TextContent != "" {
+				t.Error("step wrote TextContent; storage owns that default")
 			}
 		})
-	}
-	if urls := calls.URLs(); len(urls) != 0 {
-		t.Errorf("provider called %v for empty embedding text", urls)
 	}
 }
 

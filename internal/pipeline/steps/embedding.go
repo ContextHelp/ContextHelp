@@ -44,12 +44,16 @@ func NewEmbeddingGenerator(models embeddings.ModelSource, resolver embeddings.Pr
 
 func (s *EmbeddingGenerator) Name() string { return "embedding_generator" }
 
-// Run embeds projection.ProjectIndex(draft).EmbeddingText as chunk 0 under
-// every populating model. A model that fails (provider unresolvable or
-// unreachable, wrong dimension) is logged with its model_id and skipped:
-// vectors are additive and never fail the ingest, and the missing row is
-// what the migration backfill picks up. VectorIndexed reports whether the
-// default model produced a vector.
+// Run embeds projection.EmbeddingText(draft) as chunk 0 under every
+// populating model. The text takes the body from TextContent, else
+// RawContent, as storage does on persist, so a draft whose pipeline adds
+// no sections or summaries (text.short) still embeds its body.
+//
+// A model that fails (provider unresolvable or unreachable, wrong
+// dimension) is logged with its model_id and skipped: vectors are additive
+// and never fail the ingest, and the missing row is what the migration
+// backfill picks up. VectorIndexed reports whether the default model
+// produced a vector.
 func (s *EmbeddingGenerator) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	if s.models == nil || s.resolver == nil {
 		return draft, nil
@@ -57,7 +61,7 @@ func (s *EmbeddingGenerator) Run(ctx context.Context, draft *storage.KnowledgeOb
 	draft.Vectors = nil
 	draft.VectorIndexed = false
 
-	text := projection.ProjectIndex(draft).EmbeddingText
+	text := projection.EmbeddingText(draft)
 	if text == "" {
 		return draft, nil
 	}
