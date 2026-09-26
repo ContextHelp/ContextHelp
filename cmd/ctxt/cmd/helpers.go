@@ -204,11 +204,15 @@ func dbPathForInstance(nameOrPort string) (string, error) {
 // registry: the populate set from the driver's model registry, each
 // model's provider through one resolver built from config, -c and env, and
 // the driver's per-model vector index. Without a readable registry, ingest
-// writes no vectors.
+// writes no vectors. The duplicates config rides along for dedup, which
+// runs on those vectors.
 func embeddingBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
 	opts := builtins.BuildOpts{
 		Resolver:   embeddings.NewProviderResolver(newEmbeddingResolver()),
 		Embeddings: driver.Embeddings(),
+	}
+	if cfg != nil {
+		opts.Duplicates = cfg.Duplicates
 	}
 	reg, err := embregistry.ForDriver(driver)
 	if err != nil {

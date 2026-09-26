@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -133,6 +134,9 @@ type BuildOpts struct {
 	Resolver embeddings.ProviderResolver
 	// Embeddings is the per-model vector index dedup searches.
 	Embeddings storage.EmbeddingStore
+	// Duplicates configures near-duplicate detection. With CheckSimilar
+	// set, every pipeline that embeds runs dedup right after embedding.
+	Duplicates config.DuplicatesConfig
 }
 
 // embeddingStepConstructors maps step names to constructors that take the
@@ -143,7 +147,7 @@ var embeddingStepConstructors = map[string]func(BuildOpts) pipeline.PipelineStep
 		return steps.NewEmbeddingGenerator(o.Models, o.Resolver)
 	},
 	"dedup": func(o BuildOpts) pipeline.PipelineStep {
-		return steps.NewDedupStep(o.Models, o.Embeddings, config.DuplicatesConfig{})
+		return steps.NewDedupStep(o.Models, o.Embeddings, o.Duplicates)
 	},
 }
 
@@ -415,6 +419,7 @@ func ConfiguredRegistryWithPipelineOverrides(
 		}
 
 		opts := base
+		d.Steps = InjectDedupStep(d.Steps, base.Duplicates)
 
 		if override, ok := pipelinesCfg.Overrides[name]; ok {
 			// 1. Handle structural overrides (SkipSteps, ExtraSteps).
@@ -512,6 +517,7 @@ func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, d.Providers)
 			continue
 		}
+		d.Steps = InjectDedupStep(d.Steps, opts.Duplicates)
 
 		p, err := buildPipeline(name, d, opts, strict)
 		if err != nil {
@@ -549,9 +555,13 @@ func Defs() map[string]Def {
 }
 
 // InjectDedupStep inserts the dedup step after the embedding step in a pipeline
-// definition when near-duplicate checking is enabled.
+// definition when near-duplicate checking is enabled. dedup reads the
+// vectors embedding writes, so it never runs before it; a pipeline without
+// an embedding step, or one that already lists dedup, is returned as is.
+// Both registry builders call it before per-pipeline skip_steps apply, so
+// skip_steps: [dedup] opts a pipeline out.
 func InjectDedupStep(stepNames []string, cfg config.DuplicatesConfig) []string {
-	if !cfg.CheckSimilar {
+	if !cfg.CheckSimilar || slices.Contains(stepNames, "dedup") {
 		return stepNames
 	}
 	out := make([]string, 0, len(stepNames)+1)
