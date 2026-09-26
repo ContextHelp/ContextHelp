@@ -16,6 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/output"
 )
 
 // embeddingsCmd implements the operator-facing CLI surface from ADR-071
@@ -475,10 +476,10 @@ func runEmbeddingsRegister(cmd *cobra.Command, args []string) error {
 	}
 	modelID := args[0]
 	if err := storage.ValidateEmbeddingModelID(modelID); err != nil {
-		return err
+		return output.UsageError(err.Error()).Retaining(err)
 	}
 	if embeddingsRegisterDimension < 0 {
-		return fmt.Errorf("--dimension %d must not be negative", embeddingsRegisterDimension)
+		return output.UsageError(fmt.Sprintf("--dimension %d must not be negative", embeddingsRegisterDimension))
 	}
 
 	reg, driver, cleanup, err := openEmbeddingsBackend()
@@ -491,7 +492,9 @@ func runEmbeddingsRegister(cmd *cobra.Command, args []string) error {
 	// a model_id that cannot be registered.
 	switch _, err := reg.Get(ctx, modelID); {
 	case err == nil:
-		return fmt.Errorf("register %s: %w", modelID, registry.ErrModelAlreadyRegistered)
+		e := output.ConflictError(fmt.Sprintf("register %s: %v", modelID, registry.ErrModelAlreadyRegistered))
+		e.SuggestedFix = "a model_id names one vector space; register the new model under a new model_id (for example a later date), or run `ctxt embeddings list`"
+		return e.Retaining(registry.ErrModelAlreadyRegistered)
 	case !errors.Is(err, registry.ErrModelNotFound):
 		return fmt.Errorf("register %s: %w", modelID, err)
 	}
@@ -516,13 +519,18 @@ func runEmbeddingsRegister(cmd *cobra.Command, args []string) error {
 
 	dim, err := probeEmbeddingDimension(ctx, prov, mc)
 	if err != nil {
-		return fmt.Errorf("register %s: %w", modelID, err)
+		e := output.PrerequisiteError(fmt.Sprintf("register %s: %v", modelID, err))
+		e.SuggestedFix = probeFixHint(mc)
+		return e.Retaining(err)
 	}
 	if embeddingsRegisterDimension != 0 && embeddingsRegisterDimension != dim {
-		return fmt.Errorf(
+		e := output.ConflictError(fmt.Sprintf(
 			"register %s: --dimension %d does not match the measured dimension %d of %s model %q; nothing was registered",
 			modelID, embeddingsRegisterDimension, dim, mc.Backend, mc.Model,
-		)
+		))
+		e.SuggestedFix = fmt.Sprintf("drop --dimension to register the measured %d, or select the model that produces %d vectors with --embedding-model",
+			dim, embeddingsRegisterDimension)
+		return e
 	}
 
 	m := registry.Model{
