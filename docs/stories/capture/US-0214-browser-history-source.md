@@ -63,7 +63,7 @@ capture:
 
 ### Progress
 
-Scope so far: Chromium family only (Chrome, Brave, Edge, Arc, Chromium, Vivaldi), via the one-shot `ctxt capture history` command and the Chromium History reader. User doc: [capture-history.md](../../capture-history.md). No box is ticked until the command lands and its e2e passes.
+Scope so far: Chromium family only (Chrome, Brave, Edge, Arc, Chromium, Vivaldi), via the one-shot `ctxt capture history` command and the Chromium History reader. User doc: [browser-history-capture.md](../../manual/workflows/browser-history-capture.md). No box is ticked until the command lands and its e2e passes.
 
 | Criterion | Coverage |
 |---|---|

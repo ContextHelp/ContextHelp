@@ -43,6 +43,8 @@ capture:
 
 `*://crm.example.net/*` matches that host on any scheme, port and path; `*://*.example.net/*` adds every subdomain. localhost, `file:` and browser-internal pages are always dropped. Full rule syntax and `allow_only` lists: [Keep sites out of browser capture](../../ambient.md#keep-sites-out-of-browser-capture).
 
+Deny rules add up across config files: your user config, a project `.contexthelp/ctxt.yaml`, each `-c <file>` and each `-c key=value`. No project or `-c` file can drop a rule from your user config; to stop denying a site, delete the rule from the file that holds it (`ctxt config paths` lists them). Each layer's `allow_only` list is one more list a URL must match, so a later layer can narrow capture but never widen it.
+
 ### Step 2: Preview with a dry run
 
 ```bash
@@ -132,5 +134,6 @@ The listing shows each failed URL with the server's reply. Check the server, the
 ## Related references
 
 - [`ingestion-capture.md`](./ingestion-capture.md)
-- [`../../ambient.md`](../../ambient.md) (browser history capture and the full filter rules)
+- [`browser-history-capture.md`](./browser-history-capture.md) (browser history and backfill)
+- [`../../ambient.md`](../../ambient.md) (full filter rules)
 - [`../../stories/capture/US-0207-web-tab-capture.md`](../../stories/capture/US-0207-web-tab-capture.md)
