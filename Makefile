@@ -309,6 +309,12 @@ build-ui:
 
 .PHONY: build-ui
 
+## build-searchgraph-viewer: Rebuild the embedded search-graph viewer into internal/searchgraph/viewer/dist
+build-searchgraph-viewer:
+	cd web/searchgraph && pnpm install --frozen-lockfile && pnpm run build
+
+.PHONY: build-searchgraph-viewer
+
 ## security-scan: Run gitleaks secret scanning on entire repo history
 security-scan:
 	@echo "Running gitleaks secret scan..."

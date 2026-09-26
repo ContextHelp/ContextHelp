@@ -37,11 +37,13 @@ repos:
       - id: end-of-file-fixer
         # Conformance captures are recorded stdout/stderr bytes, asserted on
         # verbatim by the grading service. Normalizing them rewrites evidence.
-        exclude: ^e2e/conformance/cassettes/
+        # The embedded search-graph viewer bundle is generated; whitespace
+        # inside its template literals is content.
+        exclude: ^(e2e/conformance/cassettes/|internal/searchgraph/viewer/dist/)
       - id: trailing-whitespace
         # Same: kit's error blocks are space-padded, and stripping that
         # padding corrupts the capture (see e2e/conformance/README.md).
-        exclude: ^e2e/conformance/cassettes/
+        exclude: ^(e2e/conformance/cassettes/|internal/searchgraph/viewer/dist/)
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
       - id: check-merge-conflict

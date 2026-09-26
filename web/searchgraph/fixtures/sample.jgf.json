@@ -1,0 +1,822 @@
+{
+  "graph": {
+    "id": "search-graph",
+    "type": "ctxt.search-graph",
+    "label": "hybrid search ranking",
+    "directed": true,
+    "metadata": {
+      "vocabulary": "ctxt.search-graph/v1",
+      "generated_at": "2026-09-26T12:00:00Z",
+      "query": "hybrid search ranking",
+      "fts_query": "hybrid* OR search* OR ranking*",
+      "mode": "hybrid",
+      "fts_pool": 50,
+      "vector_pool": 50,
+      "rrf_k": 60,
+      "fts_weight": 1,
+      "vector_weight": 1,
+      "weights": {
+        "mention_boost": 0.001,
+        "max_mention_boost": 0.01,
+        "direct_backlink": 0.002,
+        "hop_backlink": 0.001,
+        "word_overlap": 0.004
+      },
+      "threshold": 0.015,
+      "limit": 8,
+      "counts": {
+        "fts_hits": 9,
+        "vector_hits": 10,
+        "candidates": 13,
+        "both": 6,
+        "fts_only": 3,
+        "vector_only": 4,
+        "returned": 8,
+        "cut_limit": 3,
+        "cut_threshold": 2,
+        "nodes": 20,
+        "edges": 41,
+        "entities": 6
+      },
+      "truncated": false,
+      "caps": {
+        "max_nodes": 500,
+        "max_edges": 2000
+      }
+    },
+    "nodes": {
+      "query": {
+        "label": "hybrid search ranking",
+        "metadata": {
+          "kind": "query"
+        }
+      },
+      "obj:0b6f9c1e-3d2a-4f6e-9a51-1c2d3e4f5a01": {
+        "label": "Hybrid search: RRF fusion of FTS and vector legs",
+        "metadata": {
+          "kind": "object",
+          "object_id": "0b6f9c1e-3d2a-4f6e-9a51-1c2d3e4f5a01",
+          "stage": "returned",
+          "legs": "both",
+          "rank": 1,
+          "fts_rank": 1,
+          "vector_rank": 2,
+          "fts_raw": -12.41,
+          "vector_raw": 0.83,
+          "rrf": 0.032522,
+          "score": {
+            "fts": 0.016393,
+            "vector": 0.016129,
+            "mention_boost": 0.004,
+            "graph_relevance": 0.006,
+            "word_overlap": 0.012,
+            "total": 0.054522
+          },
+          "object_type": "note",
+          "source": "cli",
+          "created_at": "2026-08-02T10:15:00Z"
+        }
+      },
+      "obj:1c7a0d2f-4e3b-4a7f-8b62-2d3e4f5a6b02": {
+        "label": "SQLite FTS5 tokenizer notes",
+        "metadata": {
+          "kind": "object",
+          "object_id": "1c7a0d2f-4e3b-4a7f-8b62-2d3e4f5a6b02",
+          "stage": "returned",
+          "legs": "both",
+          "rank": 2,
+          "fts_rank": 2,
+          "vector_rank": 5,
+          "fts_raw": -11.02,
+          "vector_raw": 0.71,
+          "rrf": 0.031514,
+          "score": {
+            "fts": 0.016129,
+            "vector": 0.015385,
+            "mention_boost": 0.002,
+            "graph_relevance": 0.003,
+            "word_overlap": 0.01,
+            "total": 0.046514
+          },
+          "object_type": "note",
+          "source": "cli",
+          "created_at": "2026-07-21T08:00:00Z"
+        }
+      },
+      "obj:5abe4b6d-8c7f-4eb3-8fa6-6b7c8d9eaf06": {
+        "label": "Reranker weights: mention boost & backlinks",
+        "metadata": {
+          "kind": "object",
+          "object_id": "5abe4b6d-8c7f-4eb3-8fa6-6b7c8d9eaf06",
+          "stage": "returned",
+          "legs": "both",
+          "rank": 3,
+          "fts_rank": 5,
+          "vector_rank": 7,
+          "fts_raw": -8.1,
+          "vector_raw": 0.66,
+          "rrf": 0.03031,
+          "score": {
+            "fts": 0.015385,
+            "vector": 0.014925,
+            "mention_boost": 0.003,
+            "graph_relevance": 0.004,
+            "word_overlap": 0.006,
+            "total": 0.04331
+          },
+          "object_type": "note",
+          "source": "cli",
+          "created_at": "2026-08-15T16:20:00Z"
+        }
+      },
+      "obj:7cd06d8f-ae91-40d5-a1c8-8d9eafb0c108": {
+        "label": "Search graph viewer design",
+        "metadata": {
+          "kind": "object",
+          "object_id": "7cd06d8f-ae91-40d5-a1c8-8d9eafb0c108",
+          "stage": "returned",
+          "legs": "both",
+          "rank": 4,
+          "fts_rank": 6,
+          "vector_rank": 6,
+          "fts_raw": -7.5,
+          "vector_raw": 0.69,
+          "rrf": 0.030303,
+          "score": {
+            "fts": 0.015152,
+            "vector": 0.015152,
+            "mention_boost": 0.002,
+            "graph_relevance": 0.003,
+            "word_overlap": 0.004,
+            "total": 0.039303
+          },
+          "object_type": "note",
+          "source": "cli",
+          "created_at": "2026-09-25T13:05:00Z"
+        }
+      },
+      "obj:4fad3a5c-7b6e-4da2-9e95-5a6b7c8d9e05": {
+        "label": "</script><script>alert(1)</script>",
+        "metadata": {
+          "kind": "object",
+          "object_id": "4fad3a5c-7b6e-4da2-9e95-5a6b7c8d9e05",
+          "stage": "returned",
+          "legs": "both",
+          "rank": 5,
+          "fts_rank": 4,
+          "vector_rank": 4,
+          "fts_raw": -8.9,
+          "vector_raw": 0.74,
+          "rrf": 0.03125,
+          "score": {
+            "fts": 0.015625,
+            "vector": 0.015625,
+            "mention_boost": 0,
+            "graph_relevance": 0,
+            "word_overlap": 0.003,
+            "total": 0.03425
+          },
+          "object_type": "snippet",
+          "source": "clipboard",
+          "created_at": "2026-09-20T22:10:00Z"
+        }
+      },
+      "obj:a0f390b2-d1c4-4308-94fb-b0c1d2e3f40b": {
+        "label": "<!-- meeting --> notes on search latency",
+        "metadata": {
+          "kind": "object",
+          "object_id": "a0f390b2-d1c4-4308-94fb-b0c1d2e3f40b",
+          "stage": "returned",
+          "legs": "both",
+          "rank": 6,
+          "fts_rank": 8,
+          "vector_rank": 9,
+          "fts_raw": -5.2,
+          "vector_raw": 0.55,
+          "rrf": 0.029199,
+          "score": {
+            "fts": 0.014706,
+            "vector": 0.014493,
+            "mention_boost": 0,
+            "graph_relevance": 0,
+            "word_overlap": 0,
+            "total": 0.029199
+          },
+          "object_type": "transcript",
+          "source": "meeting",
+          "created_at": "2026-09-12T15:00:00Z"
+        }
+      },
+      "obj:2d8b1e3a-5f4c-4b80-9c73-3e4f5a6b7c03": {
+        "label": "Postgres ts_rank_cd vs bm25",
+        "metadata": {
+          "kind": "object",
+          "object_id": "2d8b1e3a-5f4c-4b80-9c73-3e4f5a6b7c03",
+          "stage": "returned",
+          "legs": "fts",
+          "rank": 7,
+          "fts_rank": 3,
+          "fts_raw": -9.87,
+          "rrf": 0.015873,
+          "score": {
+            "fts": 0.015873,
+            "vector": 0,
+            "mention_boost": 0.002,
+            "graph_relevance": 0,
+            "word_overlap": 0.009,
+            "total": 0.026873
+          },
+          "object_type": "article",
+          "source": "https://example.com/pg-ranking",
+          "created_at": "2026-06-11T14:30:00Z"
+        }
+      },
+      "obj:3e9c2f4b-6a5d-4c91-8d84-4f5a6b7c8d04": {
+        "label": "Embedding model comparison",
+        "metadata": {
+          "kind": "object",
+          "object_id": "3e9c2f4b-6a5d-4c91-8d84-4f5a6b7c8d04",
+          "stage": "returned",
+          "legs": "vector",
+          "rank": 8,
+          "vector_rank": 1,
+          "vector_raw": 0.88,
+          "rrf": 0.016393,
+          "score": {
+            "fts": 0,
+            "vector": 0.016393,
+            "mention_boost": 0,
+            "graph_relevance": 0.002,
+            "word_overlap": 0.004,
+            "total": 0.022393
+          },
+          "object_type": "note",
+          "source": "ambient",
+          "created_at": "2026-09-01T09:45:00Z"
+        }
+      },
+      "obj:8de17e90-bfa2-41e6-b2d9-9eafb0c1d209": {
+        "label": "Old search notes (superseded)",
+        "metadata": {
+          "kind": "object",
+          "object_id": "8de17e90-bfa2-41e6-b2d9-9eafb0c1d209",
+          "stage": "cut_limit",
+          "legs": "fts",
+          "rank": 9,
+          "fts_rank": 7,
+          "fts_raw": -6.9,
+          "rrf": 0.014925,
+          "score": {
+            "fts": 0.014925,
+            "vector": 0,
+            "mention_boost": 0.001,
+            "graph_relevance": 0.002,
+            "word_overlap": 0.001,
+            "total": 0.018925
+          },
+          "object_type": "note",
+          "source": "cli",
+          "created_at": "2025-11-03T10:00:00Z"
+        }
+      },
+      "obj:6bcf5c7e-9d80-4fc4-90b7-7c8d9eafb007": {
+        "label": "<img src=x onerror=\"alert(2)\"> & \"quotes\" 'single'",
+        "metadata": {
+          "kind": "object",
+          "object_id": "6bcf5c7e-9d80-4fc4-90b7-7c8d9eafb007",
+          "stage": "cut_limit",
+          "legs": "vector",
+          "rank": 10,
+          "vector_rank": 3,
+          "vector_raw": 0.79,
+          "rrf": 0.015873,
+          "score": {
+            "fts": 0,
+            "vector": 0.015873,
+            "mention_boost": 0,
+            "graph_relevance": 0.001,
+            "word_overlap": 0.002,
+            "total": 0.018873
+          },
+          "object_type": "bookmark",
+          "source": "browser",
+          "created_at": "2026-09-10T11:00:00Z"
+        }
+      },
+      "obj:9ef28fa1-c0b3-42f7-83ea-afb0c1d2e30a": {
+        "label": "Vector index tuning",
+        "metadata": {
+          "kind": "object",
+          "object_id": "9ef28fa1-c0b3-42f7-83ea-afb0c1d2e30a",
+          "stage": "cut_limit",
+          "legs": "vector",
+          "rank": 11,
+          "vector_rank": 8,
+          "vector_raw": 0.61,
+          "rrf": 0.014706,
+          "score": {
+            "fts": 0,
+            "vector": 0.014706,
+            "mention_boost": 0,
+            "graph_relevance": 0.001,
+            "word_overlap": 0.001,
+            "total": 0.016706
+          },
+          "object_type": "article",
+          "source": "https://example.com/hnsw",
+          "created_at": "2026-05-30T07:40:00Z"
+        }
+      },
+      "obj:b10a1c3d-e2d5-4419-a50c-c1d2e3f4051c": {
+        "label": "Grocery list",
+        "metadata": {
+          "kind": "object",
+          "object_id": "b10a1c3d-e2d5-4419-a50c-c1d2e3f4051c",
+          "stage": "cut_threshold",
+          "legs": "fts",
+          "rank": 12,
+          "fts_rank": 12,
+          "fts_raw": -1.1,
+          "rrf": 0.013889,
+          "score": {
+            "fts": 0.013889,
+            "vector": 0,
+            "mention_boost": 0,
+            "graph_relevance": 0,
+            "word_overlap": 0,
+            "total": 0.013889
+          },
+          "object_type": "note",
+          "source": "mobile",
+          "created_at": "2026-09-24T18:00:00Z"
+        }
+      },
+      "obj:c21b2d4e-f3e6-452a-b61d-d2e3f405162d": {
+        "label": "Weekend plans",
+        "metadata": {
+          "kind": "object",
+          "object_id": "c21b2d4e-f3e6-452a-b61d-d2e3f405162d",
+          "stage": "cut_threshold",
+          "legs": "vector",
+          "rank": 13,
+          "vector_rank": 14,
+          "vector_raw": 0.22,
+          "rrf": 0.013514,
+          "score": {
+            "fts": 0,
+            "vector": 0.013514,
+            "mention_boost": 0,
+            "graph_relevance": 0,
+            "word_overlap": 0,
+            "total": 0.013514
+          },
+          "object_type": "note",
+          "source": "mobile",
+          "created_at": "2026-09-19T19:30:00Z"
+        }
+      },
+      "ent:sqlite": {
+        "label": "SQLite",
+        "metadata": {
+          "kind": "entity",
+          "slug": "sqlite",
+          "mention_count": 3
+        }
+      },
+      "ent:postgres": {
+        "label": "PostgreSQL",
+        "metadata": {
+          "kind": "entity",
+          "slug": "postgres",
+          "mention_count": 1
+        }
+      },
+      "ent:rrf": {
+        "label": "Reciprocal Rank Fusion",
+        "metadata": {
+          "kind": "entity",
+          "slug": "rrf",
+          "mention_count": 3
+        }
+      },
+      "ent:embeddings": {
+        "label": "embeddings",
+        "metadata": {
+          "kind": "entity",
+          "slug": "embeddings",
+          "mention_count": 2
+        }
+      },
+      "ent:bm25": {
+        "label": "BM25",
+        "metadata": {
+          "kind": "entity",
+          "slug": "bm25",
+          "mention_count": 2
+        }
+      },
+      "ent:xss-test": {
+        "label": "<b onmouseover=alert(3)>entity</b>",
+        "metadata": {
+          "kind": "entity",
+          "slug": "xss-test",
+          "mention_count": 1
+        }
+      }
+    },
+    "edges": [
+      {
+        "source": "query",
+        "target": "obj:0b6f9c1e-3d2a-4f6e-9a51-1c2d3e4f5a01",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.054522
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:1c7a0d2f-4e3b-4a7f-8b62-2d3e4f5a6b02",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.046514
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:5abe4b6d-8c7f-4eb3-8fa6-6b7c8d9eaf06",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.04331
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:7cd06d8f-ae91-40d5-a1c8-8d9eafb0c108",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.039303
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:4fad3a5c-7b6e-4da2-9e95-5a6b7c8d9e05",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.03425
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:a0f390b2-d1c4-4308-94fb-b0c1d2e3f40b",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.029199
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:2d8b1e3a-5f4c-4b80-9c73-3e4f5a6b7c03",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.026873
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:3e9c2f4b-6a5d-4c91-8d84-4f5a6b7c8d04",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.022393
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:8de17e90-bfa2-41e6-b2d9-9eafb0c1d209",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.018925
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:6bcf5c7e-9d80-4fc4-90b7-7c8d9eafb007",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.018873
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:9ef28fa1-c0b3-42f7-83ea-afb0c1d2e30a",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.016706
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:b10a1c3d-e2d5-4419-a50c-c1d2e3f4051c",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.013889
+        }
+      },
+      {
+        "source": "query",
+        "target": "obj:c21b2d4e-f3e6-452a-b61d-d2e3f405162d",
+        "relation": "matched",
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.013514
+        }
+      },
+      {
+        "source": "obj:0b6f9c1e-3d2a-4f6e-9a51-1c2d3e4f5a01",
+        "target": "ent:rrf",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:0b6f9c1e-3d2a-4f6e-9a51-1c2d3e4f5a01",
+        "target": "ent:sqlite",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:1c7a0d2f-4e3b-4a7f-8b62-2d3e4f5a6b02",
+        "target": "ent:sqlite",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:2d8b1e3a-5f4c-4b80-9c73-3e4f5a6b7c03",
+        "target": "ent:postgres",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:2d8b1e3a-5f4c-4b80-9c73-3e4f5a6b7c03",
+        "target": "ent:bm25",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:3e9c2f4b-6a5d-4c91-8d84-4f5a6b7c8d04",
+        "target": "ent:embeddings",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:5abe4b6d-8c7f-4eb3-8fa6-6b7c8d9eaf06",
+        "target": "ent:rrf",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:7cd06d8f-ae91-40d5-a1c8-8d9eafb0c108",
+        "target": "ent:rrf",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:9ef28fa1-c0b3-42f7-83ea-afb0c1d2e30a",
+        "target": "ent:embeddings",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:4fad3a5c-7b6e-4da2-9e95-5a6b7c8d9e05",
+        "target": "ent:sqlite",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:4fad3a5c-7b6e-4da2-9e95-5a6b7c8d9e05",
+        "target": "ent:xss-test",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:1c7a0d2f-4e3b-4a7f-8b62-2d3e4f5a6b02",
+        "target": "ent:bm25",
+        "relation": "mentions",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:7cd06d8f-ae91-40d5-a1c8-8d9eafb0c108",
+        "target": "obj:0b6f9c1e-3d2a-4f6e-9a51-1c2d3e4f5a01",
+        "relation": "extends",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:5abe4b6d-8c7f-4eb3-8fa6-6b7c8d9eaf06",
+        "target": "obj:0b6f9c1e-3d2a-4f6e-9a51-1c2d3e4f5a01",
+        "relation": "supports",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:2d8b1e3a-5f4c-4b80-9c73-3e4f5a6b7c03",
+        "target": "obj:1c7a0d2f-4e3b-4a7f-8b62-2d3e4f5a6b02",
+        "relation": "contradicts",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:0b6f9c1e-3d2a-4f6e-9a51-1c2d3e4f5a01",
+        "target": "obj:8de17e90-bfa2-41e6-b2d9-9eafb0c1d209",
+        "relation": "supersedes",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:9ef28fa1-c0b3-42f7-83ea-afb0c1d2e30a",
+        "target": "obj:3e9c2f4b-6a5d-4c91-8d84-4f5a6b7c8d04",
+        "relation": "derived-from",
+        "directed": true,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:6bcf5c7e-9d80-4fc4-90b7-7c8d9eafb007",
+        "target": "obj:5abe4b6d-8c7f-4eb3-8fa6-6b7c8d9eaf06",
+        "relation": "related-to",
+        "directed": false,
+        "metadata": {
+          "derivation": "stored"
+        }
+      },
+      {
+        "source": "obj:0b6f9c1e-3d2a-4f6e-9a51-1c2d3e4f5a01",
+        "target": "obj:1c7a0d2f-4e3b-4a7f-8b62-2d3e4f5a6b02",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:0b6f9c1e-3d2a-4f6e-9a51-1c2d3e4f5a01",
+        "target": "obj:5abe4b6d-8c7f-4eb3-8fa6-6b7c8d9eaf06",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:0b6f9c1e-3d2a-4f6e-9a51-1c2d3e4f5a01",
+        "target": "obj:7cd06d8f-ae91-40d5-a1c8-8d9eafb0c108",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:0b6f9c1e-3d2a-4f6e-9a51-1c2d3e4f5a01",
+        "target": "obj:4fad3a5c-7b6e-4da2-9e95-5a6b7c8d9e05",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:1c7a0d2f-4e3b-4a7f-8b62-2d3e4f5a6b02",
+        "target": "obj:2d8b1e3a-5f4c-4b80-9c73-3e4f5a6b7c03",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:1c7a0d2f-4e3b-4a7f-8b62-2d3e4f5a6b02",
+        "target": "obj:4fad3a5c-7b6e-4da2-9e95-5a6b7c8d9e05",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:3e9c2f4b-6a5d-4c91-8d84-4f5a6b7c8d04",
+        "target": "obj:9ef28fa1-c0b3-42f7-83ea-afb0c1d2e30a",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:5abe4b6d-8c7f-4eb3-8fa6-6b7c8d9eaf06",
+        "target": "obj:7cd06d8f-ae91-40d5-a1c8-8d9eafb0c108",
+        "relation": "co_mention",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 1
+        }
+      },
+      {
+        "source": "obj:3e9c2f4b-6a5d-4c91-8d84-4f5a6b7c8d04",
+        "target": "obj:9ef28fa1-c0b3-42f7-83ea-afb0c1d2e30a",
+        "relation": "similar",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.87
+        }
+      },
+      {
+        "source": "obj:1c7a0d2f-4e3b-4a7f-8b62-2d3e4f5a6b02",
+        "target": "obj:2d8b1e3a-5f4c-4b80-9c73-3e4f5a6b7c03",
+        "relation": "similar",
+        "directed": false,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.81
+        }
+      }
+    ]
+  }
+}

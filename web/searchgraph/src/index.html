@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="light dark">
+<title>ctxt search graph</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+<header id="summary" aria-label="Search summary">
+  <h1><span class="muted">search graph</span> <q id="query"></q></h1>
+  <dl id="facts"></dl>
+  <p id="notice" role="status" hidden></p>
+</header>
+<main>
+  <div id="graph" aria-label="Search result graph"></div>
+  <p id="error" role="alert" hidden></p>
+</main>
+<aside id="panel" aria-label="Legend and filters">
+  <fieldset id="kinds"><legend>Nodes</legend></fieldset>
+  <fieldset id="stages"><legend>Object stage</legend></fieldset>
+  <fieldset id="relations"><legend>Edges</legend></fieldset>
+  <p id="hint" class="hint">Drag to rotate, scroll to zoom, click an object for its id.</p>
+  <footer><a id="notices" href="viewer.js.LEGAL.txt">Third-party notices</a></footer>
+</aside>
+<section id="details" aria-label="Selected node" aria-live="polite" hidden>
+  <button type="button" id="details-close" aria-label="Close details">×</button>
+  <p id="details-kind" class="muted"></p>
+  <p id="details-label"></p>
+  <div id="details-object" hidden>
+    <p><span class="muted">object_id</span> <code id="details-id"></code></p>
+    <p class="cmd"><code id="details-cmd"></code> <button type="button" id="details-copy">Copy</button> <span id="details-copied" class="muted" role="status"></span></p>
+  </div>
+</section>
+<script src="viewer.js"></script>
+</body>
+</html>
