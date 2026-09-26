@@ -363,9 +363,8 @@ type DuplicatesConfig struct {
 	//     (duplicate_of, duplicate_similarity, duplicate_kind).
 	//   - keep: as warn, without the warning.
 	//   - drop: an exact or source-key duplicate is not enqueued; analyze
-	//     answers with the existing object's ID. A near-duplicate is
-	//     recorded as under warn and marked suppress_output; the object
-	//     is still stored.
+	//     answers with the existing object's ID. A near-duplicate is not
+	//     stored; its job completes with the existing object's ID.
 	Policy string `mapstructure:"policy" yaml:"policy"`
 	// SimilarityThreshold is the cosine similarity (1 - cosine distance)
 	// in the default embedding model's index at or above which an object

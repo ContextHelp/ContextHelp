@@ -272,7 +272,7 @@ What each policy does:
 |---|---|---|
 | `warn` (default) | Queued as usual; the server logs a warning. | Stored and recorded on the new object; warning logged. |
 | `keep` | Queued as usual. | Stored and recorded on the new object. |
-| `drop` | Not queued; submitting answers with the existing object's ID. | Recorded and marked `suppress_output`, but **still stored**. This is a known defect: `drop` should not store it. |
+| `drop` | Not queued; submitting answers with the existing object's ID. | Not stored; the job completes with the existing object's ID. dpkms logs `INFO jobs: near-duplicate dropped, not stored job=… duplicate_of=…`. |
 
 A near-duplicate is recorded in the new object's metadata. dpkms logs `WARN dedup: near-duplicate detected object=… duplicate_of=… similarity=… model_id=…` under `warn`.
 
