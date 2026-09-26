@@ -35,11 +35,10 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.Status = "active"
 	}
 
-	// For text pipeline objects, populate TextContent from RawContent when
-	// empty so the projection sees the same input as on SQLite.
-	if obj.TextContent == "" && obj.RawContent != "" {
-		obj.TextContent = obj.RawContent
-	}
+	// An empty TextContent defaults to the body the embedding step used
+	// (projection.BodyText), so the FTS projection sees the same input as
+	// on SQLite.
+	obj.TextContent = projection.BodyText(obj)
 
 	// Derive FTS body from projection — single source of truth for indexed
 	// text. The generated tsvector column tracks projected_fts_body, so no
