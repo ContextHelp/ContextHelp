@@ -190,6 +190,11 @@ var migrations = []migration{
 	// the existing job instead of minting a duplicate. Idempotent Go fn
 	// (pragma_table_info check before ALTER; IF NOT EXISTS on the index).
 	{Version: 36, fn: migrate036JobsIdempotencyKey},
+	// Migration 037: per-model embeddings (ADR-071 amendment 2026-09-26).
+	// Rebuilds embeddings with a stable rowid alias and an object FK,
+	// deletes the legacy-blob placeholder, and builds one vec0 index per
+	// registered model. Migrate re-runs the per-model pass on every open.
+	{Version: 37, fn: migrate037PerModelEmbeddings},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -318,6 +323,12 @@ func (d *Driver) Migrate(ctx context.Context) error {
 		}
 	}
 
+	// ADR-070 verify-and-rebuild for every registered model's vector index,
+	// on every open: a signature that drifted since the last open (new
+	// index DDL, registry dimension change, a dropped table) converges here.
+	if err := ensureEmbeddingIndexes(ctx, d); err != nil {
+		return fmt.Errorf("ensure embedding indexes: %w", err)
+	}
 	return nil
 }
 
@@ -620,6 +631,86 @@ func migrate036JobsIdempotencyKey(ctx context.Context, d *Driver) error {
 		idx_jobs_idempotency_key ON jobs(idempotency_key)
 		WHERE idempotency_key != ''`)
 	return err
+}
+
+// migrate037PerModelEmbeddings moves embeddings to the per-model index
+// schema. Steps 1 and 2 run in one transaction:
+//
+//  1. Rebuild embeddings with id INTEGER PRIMARY KEY (vec0 rowid linkage;
+//     VACUUM may renumber implicit rowids), UNIQUE (object_id, model_id,
+//     chunk_idx), and an ON DELETE CASCADE foreign key to objects. Rows of
+//     placeholder models and rows whose object is gone are not copied.
+//     Skipped when the table already has an id column.
+//  2. Delete the legacy-blob placeholder models, their rows and signatures.
+//
+// Step 3 builds each remaining model's index (ensureEmbeddingIndexes).
+func migrate037PerModelEmbeddings(ctx context.Context, d *Driver) error {
+	hasID, err := tableHasColumn(ctx, d, "embeddings", "id")
+	if err != nil {
+		return err
+	}
+
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if !hasID {
+		for _, stmt := range []string{
+			`CREATE TABLE embeddings_v2 (
+			    id          INTEGER PRIMARY KEY,
+			    object_id   TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+			    model_id    TEXT NOT NULL REFERENCES embedding_models(model_id),
+			    chunk_idx   INTEGER NOT NULL DEFAULT 0 CHECK (chunk_idx >= 0),
+			    vector      BLOB NOT NULL,
+			    text        TEXT,
+			    created_at  TEXT NOT NULL,
+			    UNIQUE (object_id, model_id, chunk_idx)
+			)`,
+			`INSERT INTO embeddings_v2 (object_id, model_id, chunk_idx, vector, text, created_at)
+			     SELECT e.object_id, e.model_id, e.chunk_idx, e.vector, e.text, e.created_at
+			       FROM embeddings e
+			       JOIN embedding_models m ON m.model_id = e.model_id
+			       JOIN objects o          ON o.id = e.object_id
+			      WHERE m.provider <> 'legacy-blob'`,
+			`DROP TABLE embeddings`,
+			`ALTER TABLE embeddings_v2 RENAME TO embeddings`,
+			`CREATE INDEX idx_embeddings_model ON embeddings (model_id, object_id)`,
+		} {
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				return fmt.Errorf("rebuild embeddings: %w", err)
+			}
+		}
+	}
+
+	for _, stmt := range []string{
+		`DELETE FROM embeddings
+		  WHERE model_id IN (SELECT model_id FROM embedding_models WHERE provider = 'legacy-blob')`,
+		`DELETE FROM index_signatures
+		  WHERE signature_id IN (SELECT 'embeddings_' || model_id FROM embedding_models WHERE provider = 'legacy-blob')`,
+		`DELETE FROM embedding_models WHERE provider = 'legacy-blob'`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("remove legacy-blob placeholder: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	return ensureEmbeddingIndexes(ctx, d)
+}
+
+// tableHasColumn reports whether pragma_table_info(table) lists column.
+func tableHasColumn(ctx context.Context, d *Driver, table, column string) (bool, error) {
+	var n int
+	err := d.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, table, column).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("inspect %s.%s: %w", table, column, err)
+	}
+	return n > 0, nil
 }
 
 // migrate033EmbeddingsBackfill copies legacy object_embeddings rows into the

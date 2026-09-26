@@ -104,10 +104,11 @@ func TestPgRegistry_CRUDRoundTrip(t *testing.T) {
 	err = r.Register(ctx, m, false)
 	assert.ErrorIs(t, err, registry.ErrModelAlreadyRegistered)
 
-	// List includes the migration-seeded default plus ours.
+	// Migrations seed no placeholder: List holds exactly ours.
 	models, err := r.List(ctx)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(models), 2)
+	require.Len(t, models, 1)
+	assert.Equal(t, m.ModelID, models[0].ModelID)
 
 	// SetDefault flips atomically.
 	require.NoError(t, r.SetDefault(ctx, m.ModelID))

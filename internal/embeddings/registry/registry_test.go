@@ -30,28 +30,16 @@ func newRegistry(t testing.TB) (*registry.Store, *sqlite.Driver) {
 	return registry.New(d.DB()), d
 }
 
-func TestBackfill_SeedsDefaultModelOnFreshInstall(t *testing.T) {
+func TestFreshInstall_HasNoModels(t *testing.T) {
 	r, _ := newRegistry(t)
 	ctx := context.Background()
 
 	models, err := r.List(ctx)
 	require.NoError(t, err)
-	require.Len(t, models, 1, "fresh install must seed the legacy/default model")
+	assert.Empty(t, models, "fresh install must not seed a placeholder model")
 
-	want := registry.Model{
-		ModelID:   sqlite.LegacyEmbeddingModelID(sqlite.DefaultVectorDimension),
-		Provider:  "legacy-blob",
-		Dimension: sqlite.DefaultVectorDimension,
-		IsDefault: true,
-	}
-	got := models[0]
-	assert.Equal(t, want.ModelID, got.ModelID, "model_id")
-	assert.Equal(t, want.Provider, got.Provider, "provider")
-	assert.Equal(t, want.Dimension, got.Dimension, "dimension")
-	assert.True(t, got.IsDefault, "is_default")
-	assert.Equal(t, "{}", got.ConfigJSON, "config_json default")
-	assert.False(t, got.RegisteredAt.IsZero(), "registered_at must be set")
-	assert.Nil(t, got.DeprecatedAt, "deprecated_at must be nil")
+	_, err = r.Default(ctx)
+	assert.ErrorIs(t, err, registry.ErrNoDefaultModel, "no default until an operator registers one")
 }
 
 func TestRegister_RoundTrip(t *testing.T) {
@@ -96,9 +84,15 @@ func TestPartialUniqueIndex_PreventsTwoDefaults(t *testing.T) {
 	r, d := newRegistry(t)
 	ctx := context.Background()
 
-	// The migration already seeded the legacy default; try to register a
-	// second model with makeDefault=true and confirm Register clears the
-	// previous default rather than violating the unique index.
+	// Register a default, then a second model with makeDefault=true and
+	// confirm Register clears the previous default rather than violating
+	// the unique index.
+	first := "ollama-nomic-embed-text@2025-01-15"
+	require.NoError(t, r.Register(ctx, registry.Model{
+		ModelID:   first,
+		Provider:  registry.ProviderOllama,
+		Dimension: 768,
+	}, true))
 	require.NoError(t, r.Register(ctx, registry.Model{
 		ModelID:   "openai-text-embedding-3-small@2025-01-15",
 		Provider:  registry.ProviderOpenAI,
@@ -119,7 +113,7 @@ func TestPartialUniqueIndex_PreventsTwoDefaults(t *testing.T) {
 	// as default. The partial unique index must reject this.
 	_, err = d.DB().ExecContext(ctx,
 		`UPDATE embedding_models SET is_default = 1 WHERE model_id = ?`,
-		sqlite.LegacyEmbeddingModelID(sqlite.DefaultVectorDimension),
+		first,
 	)
 	require.Error(t, err, "second is_default=1 must be rejected by partial unique index")
 }
@@ -128,13 +122,19 @@ func TestSetDefault_FlipsAtomically(t *testing.T) {
 	r, _ := newRegistry(t)
 	ctx := context.Background()
 
+	oldID := "ollama-nomic-embed-text@2025-01-15"
+	require.NoError(t, r.Register(ctx, registry.Model{
+		ModelID:   oldID,
+		Provider:  registry.ProviderOllama,
+		Dimension: 768,
+	}, true))
 	require.NoError(t, r.Register(ctx, registry.Model{
 		ModelID:   "openai-text-embedding-3-small@2025-01-15",
 		Provider:  registry.ProviderOpenAI,
 		Dimension: 1536,
 	}, false))
 
-	// Seeded legacy is currently default. Flip to the new model.
+	// oldID is currently default. Flip to the new model.
 	newID := "openai-text-embedding-3-small@2025-01-15"
 	require.NoError(t, r.SetDefault(ctx, newID))
 
@@ -142,9 +142,9 @@ func TestSetDefault_FlipsAtomically(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, got.IsDefault, "newly-promoted model is default")
 
-	legacy, err := r.Get(ctx, sqlite.LegacyEmbeddingModelID(sqlite.DefaultVectorDimension))
+	previous, err := r.Get(ctx, oldID)
 	require.NoError(t, err)
-	assert.False(t, legacy.IsDefault, "previous default must be demoted")
+	assert.False(t, previous.IsDefault, "previous default must be demoted")
 }
 
 func TestSetDefault_UnknownModelIsRejected(t *testing.T) {
@@ -202,124 +202,23 @@ func TestList_OrdersByRegisteredAt(t *testing.T) {
 
 	models, err := r.List(ctx)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(models), 4) // legacy + 3 new
-
-	// The three newly-registered models should appear in registered_at
-	// order. Walk past the legacy seed row.
 	got := []string{}
 	for _, m := range models {
-		if m.Provider == registry.ProviderOpenAI {
-			got = append(got, m.ModelID)
-		}
+		got = append(got, m.ModelID)
 	}
 	assert.Equal(t, []string{"a@2025-01-01", "b@2025-02-01", "c@2025-03-01"}, got)
 }
 
-// TestBackfill_PreservesLegacyEmbeddings simulates the old-schema layout: a
-// row in object_embeddings before migration 032 ran. After migration, the
-// row must be present in the new embeddings table under the synthetic
-// model_id. Idempotent — re-running the migration must not produce
-// duplicate-key errors.
-func TestBackfill_PreservesLegacyEmbeddings(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "test.db")
-
-	// Stand up a driver, seed an old-schema row, then close so the second
-	// driver pass starts from disk.
-	d1, err := sqlite.New(dbPath)
-	require.NoError(t, err)
-	require.NoError(t, d1.Init(context.Background()))
-
-	// Insert a fake object + fake legacy embedding before T-0582 migration
-	// would have run. Since migration 032 runs as part of Init, we already
-	// have the new schema. We simulate the legacy state by inserting
-	// directly into object_embeddings (still present for backwards-compat)
-	// and re-running the backfill. The composite key prevents duplicates.
-	now := time.Now().UTC().Format(time.RFC3339)
-	objID := "obj_legacy_a"
-	_, err = d1.DB().ExecContext(context.Background(), `
-		INSERT INTO objects (id, type, created_at, updated_at)
-		VALUES (?, 'note', ?, ?)`,
-		objID, now, now,
-	)
-	require.NoError(t, err)
-	// Bytes mimic a tiny float32 vector (4 floats = 16 bytes).
-	blob := []byte{
-		0x00, 0x00, 0x80, 0x3f, // 1.0
-		0x00, 0x00, 0x00, 0x40, // 2.0
-		0x00, 0x00, 0x40, 0x40, // 3.0
-		0x00, 0x00, 0x80, 0x40, // 4.0
-	}
-	_, err = d1.DB().ExecContext(context.Background(),
-		`INSERT INTO object_embeddings (id, embedding, dimensions) VALUES (?, ?, ?)`,
-		objID, blob, 4,
-	)
-	require.NoError(t, err)
-
-	// Run Init again — the schema_version table already records 33 so no
-	// migration fires. Manually re-run the backfill to confirm it picks up
-	// the row inserted directly into object_embeddings.
-	r := registry.New(d1.DB())
-	require.NoError(t, runBackfill(t, d1))
-
-	// Lookup via the embeddings table.
-	modelID := sqlite.LegacyEmbeddingModelID(sqlite.DefaultVectorDimension)
-	var (
-		gotObj   string
-		gotModel string
-		gotChunk int
-		gotVec   []byte
-	)
-	err = d1.DB().QueryRowContext(context.Background(), `
-		SELECT object_id, model_id, chunk_idx, vector
-		  FROM embeddings WHERE object_id = ?`, objID,
-	).Scan(&gotObj, &gotModel, &gotChunk, &gotVec)
-	require.NoError(t, err, "legacy embedding must be present in embeddings")
-	assert.Equal(t, objID, gotObj)
-	assert.Equal(t, modelID, gotModel)
-	assert.Equal(t, 0, gotChunk)
-	assert.Equal(t, blob, gotVec)
-
-	// Idempotency: re-run the backfill, expect no duplicate-key error and
-	// the same row count.
-	require.NoError(t, runBackfill(t, d1))
-	var n int
-	require.NoError(t, d1.DB().QueryRowContext(context.Background(),
-		`SELECT COUNT(*) FROM embeddings WHERE object_id = ?`, objID,
-	).Scan(&n))
-	assert.Equal(t, 1, n, "backfill must be idempotent")
-
-	// Index signature row exists for the legacy model.
-	var sigCount int
-	require.NoError(t, d1.DB().QueryRowContext(context.Background(),
-		`SELECT COUNT(*) FROM index_signatures WHERE signature_id = ?`,
-		sqlite.EmbeddingSignatureID(modelID),
-	).Scan(&sigCount))
-	assert.Equal(t, 1, sigCount, "embeddings_<model_id> signature must be stamped")
-
-	// And the registry sees the legacy default.
-	def, err := r.Get(context.Background(), modelID)
-	require.NoError(t, err)
-	assert.True(t, def.IsDefault)
-
-	require.NoError(t, d1.Close(context.Background()))
-}
-
-// runBackfill exposes the migration's idempotency surface to tests by calling
-// the public hooks the migration uses, rather than re-running the whole
-// Migrate() (which would no-op once schema_version is current).
-func runBackfill(t testing.TB, d *sqlite.Driver) error {
-	t.Helper()
-	return sqlite.RunEmbeddingsBackfillForTest(context.Background(), d)
-}
-
 // TestListWithCoverage_EmptyCorpus verifies that on a fresh DB with no
-// objects, the seeded legacy model reports coverage = 1.0 (the
+// objects, a registered model reports coverage = 1.0 (the
 // vacuous-coverage convention — operators reading `ctxt embeddings list`
 // should not see 0.0 just because nothing has been ingested yet).
 func TestListWithCoverage_EmptyCorpus(t *testing.T) {
 	r, _ := newRegistry(t)
 	ctx := context.Background()
+	require.NoError(t, r.Register(ctx, registry.Model{
+		ModelID: "ollama-nomic-embed-text@2025-01-15", Provider: registry.ProviderOllama, Dimension: 768,
+	}, true))
 
 	models, err := r.ListWithCoverage(ctx)
 	require.NoError(t, err)
@@ -346,7 +245,11 @@ func TestListWithCoverage_PartialCoverage(t *testing.T) {
 		require.NoError(t, err, "seed object %s", id)
 	}
 
-	// Register the candidate model and embed 2 of the 4 objects under it.
+	// Register a default and a candidate; embed 2 of the 4 objects under
+	// the candidate.
+	require.NoError(t, r.Register(ctx, registry.Model{
+		ModelID: "ollama-nomic-embed-text@2025-01-15", Provider: registry.ProviderOllama, Dimension: 768,
+	}, true))
 	candidate := registry.Model{
 		ModelID:   "test-candidate@2026-05-07",
 		Provider:  "test",
@@ -365,19 +268,19 @@ func TestListWithCoverage_PartialCoverage(t *testing.T) {
 
 	models, err := r.ListWithCoverage(ctx)
 	require.NoError(t, err)
-	require.Len(t, models, 2, "legacy default + candidate")
+	require.Len(t, models, 2, "default + candidate")
 
-	var legacyCov, candidateCov float64
+	var defaultCov, candidateCov float64
 	for _, m := range models {
 		switch m.ModelID {
 		case candidate.ModelID:
 			candidateCov = m.Coverage
 		default:
-			legacyCov = m.Coverage
+			defaultCov = m.Coverage
 		}
 	}
 	assert.InDelta(t, 0.5, candidateCov, 1e-9, "2 of 4 objects covered under candidate")
-	assert.InDelta(t, 0.0, legacyCov, 1e-9, "legacy model has no embeddings rows under it yet")
+	assert.InDelta(t, 0.0, defaultCov, 1e-9, "default model has no embeddings rows under it yet")
 }
 
 // TestRegister_LargeDimensionAllowedOnSQLite pins the asymmetry contract:
