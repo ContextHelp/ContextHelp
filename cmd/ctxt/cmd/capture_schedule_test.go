@@ -99,6 +99,7 @@ func useFakeScheduleEnv(t *testing.T) *scheduleFixture {
 	prev := newScheduleEnv
 	newScheduleEnv = func() (*scheduleEnv, error) { return env, nil }
 	t.Cleanup(func() { newScheduleEnv = prev })
+	useStandardBrowsers(t)
 	return &scheduleFixture{env: env, lc: lc}
 }
 
@@ -118,9 +119,9 @@ func (f *scheduleFixture) plists(t *testing.T) []string {
 	return names
 }
 
-func (f *scheduleFixture) agent(t *testing.T, kind scheduleKind, profile string) scheduleAgent {
+func (f *scheduleFixture) agent(t *testing.T, kind scheduleKind, profileDir string) scheduleAgent {
 	t.Helper()
-	p := filepath.Join(f.env.agentsDir, scheduleLabel(kind, "chrome", profile)+".plist")
+	p := filepath.Join(f.env.agentsDir, scheduleLabel(kind, "chrome", profileDir)+".plist")
 	b, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatalf("read %s: %v", p, err)
@@ -141,11 +142,11 @@ func TestCaptureScheduleInstall_WritesBothAgents(t *testing.T) {
 	if got := f.plists(t); len(got) != 2 {
 		t.Fatalf("plists = %v, want 2", got)
 	}
-	h := f.agent(t, kindHistory, "Work")
-	if h.Interval != 5*time.Minute || h.Browser != "chrome" || h.BrowserProfile != "Work" {
+	h := f.agent(t, kindHistory, workDir)
+	if h.Interval != 5*time.Minute || h.Browser != "chrome" || h.BrowserProfile != workDir {
 		t.Errorf("history agent = %+v", h)
 	}
-	tb := f.agent(t, kindTabs, "Work")
+	tb := f.agent(t, kindTabs, workDir)
 	if tb.Interval != 30*time.Minute {
 		t.Errorf("tabs interval = %v, want 30m", tb.Interval)
 	}
@@ -153,7 +154,7 @@ func TestCaptureScheduleInstall_WritesBothAgents(t *testing.T) {
 		t.Errorf("log dir not created: %v", err)
 	}
 	for _, k := range scheduleKinds {
-		l := scheduleLabel(k, "chrome", "Work")
+		l := scheduleLabel(k, "chrome", workDir)
 		if !f.lc.loaded[l] {
 			t.Errorf("%s not bootstrapped; calls=%v", l, f.lc.calls)
 		}
@@ -176,12 +177,12 @@ func TestCaptureScheduleInstall_ReinstallBootsOutFirst(t *testing.T) {
 	if out, err := execSchedule(t, append(args, "--history-every", "10m")...); err != nil {
 		t.Fatalf("second install: %v\n%s", err, out)
 	}
-	l := scheduleLabel(kindHistory, "chrome", "Work")
+	l := scheduleLabel(kindHistory, "chrome", workDir)
 	want := []string{"bootout " + l, "bootstrap " + filepath.Join(f.env.agentsDir, l+".plist")}
 	if !slices.Equal(f.lc.calls, want) {
 		t.Errorf("calls = %q, want %q", f.lc.calls, want)
 	}
-	if got := f.agent(t, kindHistory, "Work").Interval; got != 10*time.Minute {
+	if got := f.agent(t, kindHistory, workDir).Interval; got != 10*time.Minute {
 		t.Errorf("interval after reinstall = %v, want 10m", got)
 	}
 }
@@ -208,9 +209,9 @@ func TestCaptureScheduleInstall_Passthrough(t *testing.T) {
 			if out, err := execSchedule(t, args...); err != nil {
 				t.Fatalf("install: %v\n%s", err, out)
 			}
-			a := f.agent(t, kindHistory, oddProfile)
+			a := f.agent(t, kindHistory, oddDir)
 			want := []string{
-				"/opt/ctxt/bin/ctxt", "capture", "history", "--browser", "chrome", "--browser-profile", oddProfile,
+				"/opt/ctxt/bin/ctxt", "capture", "history", "--browser", "chrome", "--browser-profile", oddDir,
 				"--instance", "work", "--profile", "research",
 			}
 			if got := a.ProgramArguments(); !slices.Equal(got, want) {
@@ -226,7 +227,7 @@ func TestCaptureScheduleInstall_NoPassthroughWhenUnset(t *testing.T) {
 	if out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work"); err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
-	for _, arg := range f.agent(t, kindHistory, "Work").ProgramArguments() {
+	for _, arg := range f.agent(t, kindHistory, workDir).ProgramArguments() {
 		if arg == "--instance" || arg == "--profile" {
 			t.Errorf("unexpected passthrough %q in args", arg)
 		}
@@ -248,7 +249,7 @@ func TestCaptureScheduleInstall_DryRunWritesNothing(t *testing.T) {
 	if len(f.lc.calls) != 0 {
 		t.Errorf("dry-run called launchctl: %v", f.lc.calls)
 	}
-	l := scheduleLabel(kindHistory, "chrome", "Work")
+	l := scheduleLabel(kindHistory, "chrome", workDir)
 	for _, want := range []string{filepath.Join(f.env.agentsDir, l+".plist"), "<plist version=\"1.0\">", "<string>" + l + "</string>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dry-run output missing %q:\n%s", want, out)
@@ -273,13 +274,16 @@ func TestCaptureScheduleInstall_JSONResult(t *testing.T) {
 
 func TestCaptureScheduleInstall_Rejects(t *testing.T) {
 	cases := map[string][]string{
-		"no browser":       {"--browser-profile", "Work"},
-		"no profile":       {"--browser", "chrome"},
-		"blank profile":    {"--browser", "chrome", "--browser-profile", "  "},
-		"unknown browser":  {"--browser", "netscape", "--browser-profile", "Work"},
-		"both kinds off":   {"--browser", "chrome", "--browser-profile", "Work", "--no-tabs", "--no-history"},
-		"interval too low": {"--browser", "chrome", "--browser-profile", "Work", "--history-every", "30s"},
-		"interval sub-sec": {"--browser", "chrome", "--browser-profile", "Work", "--tabs-every", "90500ms"},
+		"blank profile":     {"--browser", "chrome", "--browser-profile", "  "},
+		"blank browser":     {"--browser", " ", "--browser-profile", "Work"},
+		"unknown browser":   {"--browser", "netscape", "--browser-profile", "Work"},
+		"unknown profile":   {"--browser", "chrome", "--browser-profile", "Nope"},
+		"profile elsewhere": {"--browser", "brave", "--browser-profile", "Work"},
+		"not installed":     {"--browser", "edge", "--browser-profile", "Work"},
+		"ambiguous search":  {"--browser-profile", oddProfile},
+		"both kinds off":    {"--browser", "chrome", "--browser-profile", "Work", "--no-tabs", "--no-history"},
+		"interval too low":  {"--browser", "chrome", "--browser-profile", "Work", "--history-every", "30s"},
+		"interval sub-sec":  {"--browser", "chrome", "--browser-profile", "Work", "--tabs-every", "90500ms"},
 		"every on off kind": {
 			"--browser", "chrome", "--browser-profile", "Work", "--no-tabs", "--tabs-every", "1h",
 		},
@@ -362,12 +366,12 @@ func TestCaptureScheduleUninstall(t *testing.T) {
 		t.Fatalf("after uninstall plists = %v, want the Work pair", got)
 	}
 	for _, name := range got {
-		if !strings.Contains(name, ".work-") {
+		if !strings.Contains(name, ".profile-1-") {
 			t.Errorf("wrong agent survived: %s", name)
 		}
 	}
 	for _, k := range scheduleKinds {
-		l := scheduleLabel(k, "chrome", oddProfile)
+		l := scheduleLabel(k, "chrome", oddDir)
 		if !slices.Contains(f.lc.calls, "bootout "+l) {
 			t.Errorf("%s not booted out; calls=%v", l, f.lc.calls)
 		}
@@ -388,7 +392,7 @@ func TestCaptureScheduleUninstall_JSONResult(t *testing.T) {
 	if out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work", "--no-tabs"); err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
-	for _, want := range [][]string{{scheduleLabel(kindHistory, "chrome", "Work")}, {}} {
+	for _, want := range [][]string{{scheduleLabel(kindHistory, "chrome", workDir)}, {}} {
 		out, err := execSchedule(t, "--format", "json", "capture", "schedule", "uninstall", "--browser", "chrome", "--browser-profile", "Work")
 		if err != nil {
 			t.Fatalf("uninstall: %v\n%s", err, out)
@@ -447,7 +451,7 @@ func TestCaptureScheduleList(t *testing.T) {
 		t.Fatalf("rows = %+v, want 1", rows)
 	}
 	r := rows[0]
-	if r.Kind != "history" || r.Browser != "brave" || r.BrowserProfile != oddProfile || r.Instance != "work" || r.Every != "5m0s" || !r.Loaded {
+	if r.Kind != "history" || r.Browser != "brave" || r.BrowserProfile != "Default" || r.Instance != "work" || r.Every != "5m0s" || !r.Loaded {
 		t.Errorf("row = %+v", r)
 	}
 

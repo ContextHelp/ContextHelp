@@ -100,6 +100,9 @@ type tabsEnv struct {
 	reqs []tabsReq
 	// fail makes the server reject an analyze request for these URLs.
 	fail map[string]bool
+	// extraEnv is appended to the process environment, e.g. a second
+	// browser's CTXT_<BROWSER>_USER_DATA_DIR.
+	extraEnv []string
 }
 
 // newTabsEnv writes a brave user data dir holding profiles and starts a
@@ -177,7 +180,7 @@ func (e *tabsEnv) env() []string {
 		}
 		out = append(out, kv)
 	}
-	return append(
+	return append(append(
 		out,
 		"HOME="+e.home,
 		"XDG_CONFIG_HOME="+filepath.Join(e.home, "config"),
@@ -188,7 +191,7 @@ func (e *tabsEnv) env() []string {
 		"CTXT_DATA_DIR="+filepath.Join(e.home, "data", "ctxt"),
 		"CTXT_NO_CLIPBOARD=1",
 		"CTXT_BRAVE_USER_DATA_DIR="+e.udd,
-	)
+	), e.extraEnv...)
 }
 
 func (e *tabsEnv) run(args ...string) (stdout, stderr string, exit int) {
@@ -411,18 +414,6 @@ func TestCaptureTabs_ProfileResolutionErrors(t *testing.T) {
 			args:    []string{"capture", "tabs", "--browser", "netscape", "--browser-profile", "Work"},
 			code:    2,
 			stderrs: []string{"unknown browser", "brave"},
-		},
-		{
-			name:    "missing --browser",
-			args:    []string{"capture", "tabs", "--browser-profile", "Work"},
-			code:    2,
-			stderrs: []string{"--browser"},
-		},
-		{
-			name:    "missing --browser-profile",
-			args:    []string{"capture", "tabs", "--browser", "brave"},
-			code:    2,
-			stderrs: []string{"--browser-profile"},
 		},
 	}
 	for _, tc := range cases {

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
 	"sort"
 	"strings"
@@ -60,13 +59,20 @@ pipeline.
 ("Work") or the profile folder name ("Profile 1"); a folder name
 disambiguates two profiles with the same name.
 
+Both flags are optional. Without --browser the browser is
+capture.browser from the config; failing that, the one installed
+browser holding --browser-profile; failing that, the OS default
+browser. Without --browser-profile the browser's last-used profile is
+read. Whatever is picked automatically is named on stderr; run
+"ctxt capture browsers" to see the candidates.
+
 Run with --dry-run first: it lists every tab with the filter's decision
 and the reason, and sends nothing.
 
 Exit status: 0 when every allowed URL was accepted, 1 when any send
 failed (the rest are still sent), 2 for a bad invocation (unknown
-browser, unknown or ambiguous profile), 3 when the browser, profile
-folder or session file is not on disk.`,
+browser, unknown or ambiguous profile, nothing to auto-select), 3 when
+the browser, profile folder or session file is not on disk.`,
 	Args: cobra.NoArgs,
 	RunE: runCaptureTabs,
 }
@@ -79,6 +85,7 @@ func init() {
 	cliconv.WithIdempotency(captureTabsCmd, cliconv.IdempotencyConditional)
 	cliconv.WithExamples(captureTabsCmd, []cliconv.Example{
 		{Title: "Preview what would be sent", Command: "ctxt capture tabs --browser brave --browser-profile Work --dry-run"},
+		{Title: "Auto-select the browser holding a profile", Command: "ctxt capture tabs --browser-profile Work --dry-run"},
 		{Title: "Capture the open tabs", Command: "ctxt capture tabs --browser brave --browser-profile Work"},
 		{Title: "Pick a profile by folder name", Command: `ctxt capture tabs --browser chrome --browser-profile "Profile 1"`},
 	})
@@ -87,8 +94,8 @@ func init() {
 		{When: "on success", Suggest: "ctxt find <query>", Reason: "search the captured pages"},
 	})
 
-	captureTabsCmd.Flags().String("browser", "", "browser to read: "+browserList())
-	captureTabsCmd.Flags().String("browser-profile", "", `browser profile: display name ("Work") or folder name ("Profile 1")`)
+	captureTabsCmd.Flags().String("browser", "", "browser to read: "+browserList()+" (default: capture.browser, else auto-select)")
+	captureTabsCmd.Flags().String("browser-profile", "", `browser profile: display name ("Work") or folder name ("Profile 1") (default: last used)`)
 }
 
 func browserList() string {
@@ -160,10 +167,13 @@ func runCaptureTabs(cmd *cobra.Command, _ []string) error {
 	stderr := cmd.ErrOrStderr()
 	verbose, _ := cmd.Root().PersistentFlags().GetCount("verbose")
 
-	browser, profile, err := resolveTabsProfile(cmd)
+	browserFlag, _ := cmd.Flags().GetString("browser")
+	profileFlag, _ := cmd.Flags().GetString("browser-profile")
+	profile, err := resolveCaptureTarget(cmd, browserFlag, profileFlag)
 	if err != nil {
 		return err
 	}
+	browser := profile.Browser
 
 	report := tabsReport{
 		Command:  cmd.CommandPath(),
@@ -224,43 +234,6 @@ func runCaptureTabs(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("capture tabs: %d of %d sends failed", report.Summary.Failed, attempted)
 	}
 	return nil
-}
-
-// resolveTabsProfile validates --browser / --browser-profile and maps
-// them to a profile on disk. A bad name is a usage error listing the
-// candidates; state missing from disk is NOT_FOUND.
-func resolveTabsProfile(cmd *cobra.Command) (chromium.Browser, chromium.Profile, error) {
-	browserName, _ := cmd.Flags().GetString("browser")
-	profileName, _ := cmd.Flags().GetString("browser-profile")
-	if strings.TrimSpace(browserName) == "" {
-		return "", chromium.Profile{}, output.UsageError("--browser is required (one of: " + browserList() + ")")
-	}
-	if strings.TrimSpace(profileName) == "" {
-		return "", chromium.Profile{}, output.UsageError(`--browser-profile is required (a profile name such as "Work", or a folder name such as "Profile 1")`)
-	}
-	browser, err := chromium.ParseBrowser(browserName)
-	if err != nil {
-		return "", chromium.Profile{}, output.UsageError(err.Error())
-	}
-
-	profile, err := chromium.ResolveProfile(browser, profileName)
-	switch {
-	case err == nil:
-		return browser, profile, nil
-	case errors.Is(err, chromium.ErrProfileNotFound), errors.Is(err, chromium.ErrAmbiguousProfile),
-		errors.Is(err, chromium.ErrUnsupported):
-		return "", chromium.Profile{}, output.UsageError(err.Error())
-	case errors.Is(err, chromium.ErrProfileDirMissing):
-		return "", chromium.Profile{}, output.NotFoundError(err.Error())
-	case errors.Is(err, fs.ErrNotExist):
-		dir, _ := chromium.UserDataDir(browser)
-		e := output.NotFoundError(fmt.Sprintf("%s: no %q in %s; is %s installed?",
-			browser, chromium.LocalStateFile, dir, browser))
-		e.SuggestedFix = fmt.Sprintf("set %s to the browser's user data directory", chromium.EnvUserDataDir(browser))
-		return "", chromium.Profile{}, e
-	default:
-		return "", chromium.Profile{}, err
-	}
 }
 
 // unmatchedProfileKeys returns the capture.url_filter.browsers.<b>.profiles
