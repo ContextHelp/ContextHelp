@@ -13,6 +13,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/providers/providertest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"hop.top/kit/go/console/output"
 )
 
 // Cassettes under testdata/cassettes/embeddings-register were recorded
@@ -84,6 +85,19 @@ func assertNotRegistered(t *testing.T, db *testDB, id string) {
 	m, err := registryOf(t, db).Get(context.Background(), id)
 	if !errors.Is(err, registry.ErrModelNotFound) {
 		t.Fatalf("registry row for %s after a failed register: %+v (err %v)", id, m, err)
+	}
+}
+
+// assertClass fails unless err is a kit envelope of class code.
+func assertClass(t *testing.T, err error, code string) {
+	t.Helper()
+	var env *output.Error
+	if !errors.As(err, &env) || env.Code != code {
+		t.Errorf("error class of %v = %v, want %s", err, env, code)
+		return
+	}
+	if env.SuggestedFix == "" && code != output.CodeUsage {
+		t.Errorf("%s error carries no suggested fix: %v", code, err)
 	}
 }
 
@@ -180,6 +194,7 @@ func TestEmbeddingsRegister_DimensionFlagMismatchFails(t *testing.T) {
 			t.Errorf("error %q does not name %s", err, want)
 		}
 	}
+	assertClass(t, err, output.CodeConflict)
 	assertNotRegistered(t, db, registerModelID)
 }
 
@@ -209,6 +224,7 @@ func TestEmbeddingsRegister_UnreachableProviderRegistersNothing(t *testing.T) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}
 	}
+	assertClass(t, err, output.CodePrerequisite)
 	assertNotRegistered(t, db, registerModelID)
 }
 
@@ -228,6 +244,7 @@ func TestEmbeddingsRegister_ModelNotPulledRegistersNothing(t *testing.T) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}
 	}
+	assertClass(t, err, output.CodePrerequisite)
 	assertNotRegistered(t, db, "ollama-ctxt-missing-embed-model@2026-09-26")
 }
 
@@ -238,6 +255,7 @@ func TestEmbeddingsRegister_EmptyVectorRegistersNothing(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "empty vector") {
 		t.Fatalf("err = %v\n%s", err, out)
 	}
+	assertClass(t, err, output.CodePrerequisite)
 	assertNotRegistered(t, db, "stub@2026-09-26")
 }
 
@@ -252,6 +270,7 @@ func TestEmbeddingsRegister_InvalidModelIDRejectedBeforeProbe(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "invalid embedding model_id") {
 			t.Errorf("register %q: err = %v\n%s", id, err, out)
 		}
+		assertClass(t, err, output.CodeUsage)
 	}
 	if got := calls.URLs(); len(got) != 0 {
 		t.Errorf("provider probed for an invalid id: %v", got)
@@ -276,6 +295,7 @@ func TestEmbeddingsRegister_DuplicateFailsWithoutReprobing(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "already registered") {
 		t.Fatalf("second register: err = %v\n%s", err, out)
 	}
+	assertClass(t, err, output.CodeConflict)
 	if got := calls.URLs(); len(got) != 1 {
 		t.Errorf("provider calls = %v, want exactly one (the duplicate must fail before probing)", got)
 	}
