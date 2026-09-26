@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/browser/chromium/chromiumtest"
 )
 
 func readTabs(t *testing.T, data []byte) []Tab {
@@ -28,16 +30,16 @@ func assertTabs(t *testing.T, got, want []Tab) {
 }
 
 func TestReadTabs_MultiWindow(t *testing.T) {
-	data := newSNSS(3).
+	data := chromiumtest.NewSNSS(3).
 		// Window 2 declared first to prove windows sort by id.
-		tab(2, 20, 0, "https://example.com/personal", "Personal").
-		tab(1, 11, 1, "https://example.com/b", "Work B").
-		tab(1, 10, 0, "https://example.com/a", "Work A").
-		selectedTab(1, 1).
-		selectedTab(2, 0).
-		activeWindow(1).
-		marker().
-		bytes()
+		Tab(2, 20, 0, "https://example.com/personal", "Personal").
+		Tab(1, 11, 1, "https://example.com/b", "Work B").
+		Tab(1, 10, 0, "https://example.com/a", "Work A").
+		SelectedTab(1, 1).
+		SelectedTab(2, 0).
+		ActiveWindow(1).
+		Marker().
+		Bytes()
 
 	assertTabs(t, readTabs(t, data), []Tab{
 		{WindowID: 1, TabID: 10, Index: 0, URL: "https://example.com/a", Title: "Work A"},
@@ -47,16 +49,16 @@ func TestReadTabs_MultiWindow(t *testing.T) {
 }
 
 func TestReadTabs_TabClosed(t *testing.T) {
-	data := newSNSS(3).
-		tab(1, 10, 0, "https://example.com/a", "Work A").
-		tab(1, 11, 1, "https://example.com/b", "Work B").
-		tab(1, 12, 2, "https://example.com/c", "Work C").
-		selectedTab(1, 0).
-		marker().
-		tabClosed(11).
-		tabIndex(12, 1).
-		selectedTab(1, 1).
-		bytes()
+	data := chromiumtest.NewSNSS(3).
+		Tab(1, 10, 0, "https://example.com/a", "Work A").
+		Tab(1, 11, 1, "https://example.com/b", "Work B").
+		Tab(1, 12, 2, "https://example.com/c", "Work C").
+		SelectedTab(1, 0).
+		Marker().
+		TabClosed(11).
+		TabIndex(12, 1).
+		SelectedTab(1, 1).
+		Bytes()
 
 	assertTabs(t, readTabs(t, data), []Tab{
 		{WindowID: 1, TabID: 10, Index: 0, URL: "https://example.com/a", Title: "Work A"},
@@ -65,14 +67,14 @@ func TestReadTabs_TabClosed(t *testing.T) {
 }
 
 func TestReadTabs_WindowClosed(t *testing.T) {
-	data := newSNSS(3).
-		tab(1, 10, 0, "https://example.com/a", "Work").
-		tab(2, 20, 0, "https://example.com/p", "Personal").
-		selectedTab(1, 0).
-		selectedTab(2, 0).
-		marker().
-		windowClosed(2).
-		bytes()
+	data := chromiumtest.NewSNSS(3).
+		Tab(1, 10, 0, "https://example.com/a", "Work").
+		Tab(2, 20, 0, "https://example.com/p", "Personal").
+		SelectedTab(1, 0).
+		SelectedTab(2, 0).
+		Marker().
+		WindowClosed(2).
+		Bytes()
 
 	assertTabs(t, readTabs(t, data), []Tab{
 		{WindowID: 1, TabID: 10, Index: 0, URL: "https://example.com/a", Title: "Work", Active: true},
@@ -80,14 +82,14 @@ func TestReadTabs_WindowClosed(t *testing.T) {
 }
 
 func TestReadTabs_TabMovedBetweenWindows(t *testing.T) {
-	data := newSNSS(3).
-		tab(1, 10, 0, "https://example.com/a", "Work").
-		tab(1, 11, 1, "https://example.com/b", "Personal").
-		marker().
-		tabWindow(2, 11).
-		tabIndex(11, 0).
-		selectedTab(2, 0).
-		bytes()
+	data := chromiumtest.NewSNSS(3).
+		Tab(1, 10, 0, "https://example.com/a", "Work").
+		Tab(1, 11, 1, "https://example.com/b", "Personal").
+		Marker().
+		TabWindow(2, 11).
+		TabIndex(11, 0).
+		SelectedTab(2, 0).
+		Bytes()
 
 	assertTabs(t, readTabs(t, data), []Tab{
 		{WindowID: 1, TabID: 10, Index: 0, URL: "https://example.com/a", Title: "Work"},
@@ -96,17 +98,17 @@ func TestReadTabs_TabMovedBetweenWindows(t *testing.T) {
 }
 
 func TestReadTabs_NavigationBack(t *testing.T) {
-	data := newSNSS(3).
-		tabWindow(1, 10).
-		tabIndex(10, 0).
-		nav(10, 0, "https://example.com/1", "One").
-		nav(10, 1, "https://example.com/2", "Two").
-		nav(10, 2, "https://example.com/3", "Three").
-		selectedNav(10, 2).
-		marker().
+	data := chromiumtest.NewSNSS(3).
+		TabWindow(1, 10).
+		TabIndex(10, 0).
+		Nav(10, 0, "https://example.com/1", "One").
+		Nav(10, 1, "https://example.com/2", "Two").
+		Nav(10, 2, "https://example.com/3", "Three").
+		SelectedNav(10, 2).
+		Marker().
 		// User goes back one entry: selected index is no longer the last.
-		selectedNav(10, 1).
-		bytes()
+		SelectedNav(10, 1).
+		Bytes()
 
 	got := readTabs(t, data)
 	if len(got) != 1 || got[0].URL != "https://example.com/2" || got[0].Title != "Two" {
@@ -115,12 +117,12 @@ func TestReadTabs_NavigationBack(t *testing.T) {
 }
 
 func TestReadTabs_NavigationOverwrite(t *testing.T) {
-	data := newSNSS(3).
-		tab(1, 10, 0, "https://example.com/loading", "").
-		marker().
+	data := chromiumtest.NewSNSS(3).
+		Tab(1, 10, 0, "https://example.com/loading", "").
+		Marker().
 		// Title arrives after load: same index, rewritten entry.
-		nav(10, 0, "https://example.com/loaded", "Work").
-		bytes()
+		Nav(10, 0, "https://example.com/loaded", "Work").
+		Bytes()
 
 	got := readTabs(t, data)
 	if len(got) != 1 || got[0].URL != "https://example.com/loaded" || got[0].Title != "Work" {
@@ -129,17 +131,17 @@ func TestReadTabs_NavigationOverwrite(t *testing.T) {
 }
 
 func TestReadTabs_NavigationPathPruned(t *testing.T) {
-	data := newSNSS(3).
-		tabWindow(1, 10).
-		nav(10, 0, "https://example.com/0", "Zero").
-		nav(10, 1, "https://example.com/1", "One").
-		nav(10, 2, "https://example.com/2", "Two").
-		nav(10, 3, "https://example.com/3", "Three").
-		selectedNav(10, 3).
-		marker().
+	data := chromiumtest.NewSNSS(3).
+		TabWindow(1, 10).
+		Nav(10, 0, "https://example.com/0", "Zero").
+		Nav(10, 1, "https://example.com/1", "One").
+		Nav(10, 2, "https://example.com/2", "Two").
+		Nav(10, 3, "https://example.com/3", "Three").
+		SelectedNav(10, 3).
+		Marker().
 		// Drop entries 0-1 from the front: entry 3 shifts down to index 1.
-		pruned(10, 0, 2).
-		bytes()
+		Pruned(10, 0, 2).
+		Bytes()
 
 	got := readTabs(t, data)
 	if len(got) != 1 || got[0].Title != "Three" {
@@ -148,15 +150,15 @@ func TestReadTabs_NavigationPathPruned(t *testing.T) {
 }
 
 func TestReadTabs_NavigationPrunedFromBack(t *testing.T) {
-	data := newSNSS(3).
-		tabWindow(1, 10).
-		nav(10, 0, "https://example.com/0", "Zero").
-		nav(10, 1, "https://example.com/1", "One").
-		nav(10, 2, "https://example.com/2", "Two").
-		selectedNav(10, 2).
-		marker().
-		prunedFromBack(10, 2).
-		bytes()
+	data := chromiumtest.NewSNSS(3).
+		TabWindow(1, 10).
+		Nav(10, 0, "https://example.com/0", "Zero").
+		Nav(10, 1, "https://example.com/1", "One").
+		Nav(10, 2, "https://example.com/2", "Two").
+		SelectedNav(10, 2).
+		Marker().
+		PrunedFromBack(10, 2).
+		Bytes()
 
 	got := readTabs(t, data)
 	if len(got) != 1 || got[0].Title != "One" {
@@ -165,14 +167,14 @@ func TestReadTabs_NavigationPrunedFromBack(t *testing.T) {
 }
 
 func TestReadTabs_Pinned(t *testing.T) {
-	data := newSNSS(3).
-		tab(1, 10, 0, "https://example.com/mail", "Work").
-		tab(1, 11, 1, "https://example.com/news", "Personal").
-		pinned(10, true).
-		pinned(11, true).
-		marker().
-		pinned(11, false).
-		bytes()
+	data := chromiumtest.NewSNSS(3).
+		Tab(1, 10, 0, "https://example.com/mail", "Work").
+		Tab(1, 11, 1, "https://example.com/news", "Personal").
+		Pinned(10, true).
+		Pinned(11, true).
+		Marker().
+		Pinned(11, false).
+		Bytes()
 
 	got := readTabs(t, data)
 	if len(got) != 2 || !got[0].Pinned || got[1].Pinned {
@@ -182,7 +184,7 @@ func TestReadTabs_Pinned(t *testing.T) {
 
 func TestReadTabs_UTF16Title(t *testing.T) {
 	title := "Café ☕ 𝄞 Work"
-	data := newSNSS(3).tab(1, 10, 0, "https://example.com/", title).marker().bytes()
+	data := chromiumtest.NewSNSS(3).Tab(1, 10, 0, "https://example.com/", title).Marker().Bytes()
 
 	got := readTabs(t, data)
 	if len(got) != 1 || got[0].Title != title {
@@ -191,12 +193,12 @@ func TestReadTabs_UTF16Title(t *testing.T) {
 }
 
 func TestReadTabs_TabWithoutNavigationOmitted(t *testing.T) {
-	data := newSNSS(3).
-		tab(1, 10, 0, "https://example.com/", "Work").
-		tabWindow(1, 11).
-		tabIndex(11, 1).
-		marker().
-		bytes()
+	data := chromiumtest.NewSNSS(3).
+		Tab(1, 10, 0, "https://example.com/", "Work").
+		TabWindow(1, 11).
+		TabIndex(11, 1).
+		Marker().
+		Bytes()
 
 	got := readTabs(t, data)
 	if len(got) != 1 || got[0].TabID != 10 {
@@ -205,15 +207,15 @@ func TestReadTabs_TabWithoutNavigationOmitted(t *testing.T) {
 }
 
 func TestReadTabs_UnknownAndMalformedCommandsSkipped(t *testing.T) {
-	data := newSNSS(3).
-		command(200, []byte{1, 2, 3, 4, 5}).
-		tab(1, 10, 0, "https://example.com/", "Work").
+	data := chromiumtest.NewSNSS(3).
+		Command(200, []byte{1, 2, 3, 4, 5}).
+		Tab(1, 10, 0, "https://example.com/", "Work").
 		// Payload too short for SetTabWindow: ignored, tab stays in window 1.
-		command(cmdSetTabWindow, []byte{9}).
+		Command(cmdSetTabWindow, []byte{9}).
 		// Navigation pickle whose declared URL length overruns the payload.
-		command(cmdUpdateTabNavigation, pack(uint32(12), int32(10), int32(0), uint32(999))).
-		marker().
-		bytes()
+		Command(cmdUpdateTabNavigation, chromiumtest.Pack(uint32(12), int32(10), int32(0), uint32(999))).
+		Marker().
+		Bytes()
 
 	assertTabs(t, readTabs(t, data), []Tab{
 		{WindowID: 1, TabID: 10, Index: 0, URL: "https://example.com/", Title: "Work"},
@@ -221,15 +223,15 @@ func TestReadTabs_UnknownAndMalformedCommandsSkipped(t *testing.T) {
 }
 
 func TestReadTabs_TruncatedTail(t *testing.T) {
-	full := newSNSS(3).
-		tab(1, 10, 0, "https://example.com/a", "Work").
-		marker().
-		tab(1, 11, 1, "https://example.com/b", "Personal").
-		bytes()
-	base := newSNSS(3).
-		tab(1, 10, 0, "https://example.com/a", "Work").
-		marker().
-		bytes()
+	full := chromiumtest.NewSNSS(3).
+		Tab(1, 10, 0, "https://example.com/a", "Work").
+		Marker().
+		Tab(1, 11, 1, "https://example.com/b", "Personal").
+		Bytes()
+	base := chromiumtest.NewSNSS(3).
+		Tab(1, 10, 0, "https://example.com/a", "Work").
+		Marker().
+		Bytes()
 
 	// Cut anywhere inside the trailing commands: the complete prefix
 	// still parses, the partial record is dropped, and nothing errors.
@@ -248,10 +250,10 @@ func TestReadTabs_BadHeader(t *testing.T) {
 	cases := map[string][]byte{
 		"empty":         {},
 		"short":         []byte("SNS"),
-		"bad magic":     append([]byte("SSNS"), pack(int32(3))...),
-		"encrypted v2":  newSNSS(2).bytes(),
-		"encrypted v4":  newSNSS(4).bytes(),
-		"unknown v99":   newSNSS(99).bytes(),
+		"bad magic":     append([]byte("SSNS"), chromiumtest.Pack(int32(3))...),
+		"encrypted v2":  chromiumtest.NewSNSS(2).Bytes(),
+		"encrypted v4":  chromiumtest.NewSNSS(4).Bytes(),
+		"unknown v99":   chromiumtest.NewSNSS(99).Bytes(),
 		"magic no vers": []byte("SNSS"),
 	}
 	for name, data := range cases {
@@ -269,12 +271,12 @@ func TestReadTabs_BadHeader(t *testing.T) {
 }
 
 func TestReadTabs_MarkerRequiredForVersion3(t *testing.T) {
-	noMarker := newSNSS(3).tab(1, 10, 0, "https://example.com/", "Work").bytes()
+	noMarker := chromiumtest.NewSNSS(3).Tab(1, 10, 0, "https://example.com/", "Work").Bytes()
 	if _, err := ReadTabs(bytes.NewReader(noMarker)); !errors.Is(err, ErrIncompleteSession) {
 		t.Fatalf("v3 without marker: err = %v, want ErrIncompleteSession", err)
 	}
 
-	v1 := newSNSS(1).tab(1, 10, 0, "https://example.com/", "Work").bytes()
+	v1 := chromiumtest.NewSNSS(1).Tab(1, 10, 0, "https://example.com/", "Work").Bytes()
 	if tabs, err := ReadTabs(bytes.NewReader(v1)); err != nil || len(tabs) != 1 {
 		t.Fatalf("v1 without marker: tabs=%+v err=%v", tabs, err)
 	}
@@ -304,7 +306,7 @@ func TestOpenTabs_EmptyProfileDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Tabs_* files hold closed-tab history, not the open session.
-	writeSession(t, dir, "Tabs_13400000000000000", newSNSS(3).marker().bytes(), time.Now())
+	writeSession(t, dir, "Tabs_13400000000000000", chromiumtest.NewSNSS(3).Marker().Bytes(), time.Now())
 	if _, err := OpenTabs(context.Background(), dir); !errors.Is(err, ErrNoSessionFile) {
 		t.Fatalf("empty Sessions dir: err = %v, want ErrNoSessionFile", err)
 	}
@@ -313,8 +315,8 @@ func TestOpenTabs_EmptyProfileDir(t *testing.T) {
 func TestOpenTabs_UsesNewestSessionFile(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()
-	older := newSNSS(3).tab(1, 10, 0, "https://example.com/old", "Personal").marker().bytes()
-	newer := newSNSS(3).tab(1, 20, 0, "https://example.com/new", "Work").marker().bytes()
+	older := chromiumtest.NewSNSS(3).Tab(1, 10, 0, "https://example.com/old", "Personal").Marker().Bytes()
+	newer := chromiumtest.NewSNSS(3).Tab(1, 20, 0, "https://example.com/new", "Work").Marker().Bytes()
 	// Name order disagrees with mtime order: mtime wins.
 	writeSession(t, dir, "Session_13400000000000002", older, now.Add(-time.Hour))
 	writeSession(t, dir, "Session_13400000000000001", newer, now)
@@ -331,9 +333,9 @@ func TestOpenTabs_UsesNewestSessionFile(t *testing.T) {
 func TestOpenTabs_FallsBackWhenNewestIncomplete(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()
-	complete := newSNSS(3).tab(1, 10, 0, "https://example.com/", "Work").marker().bytes()
+	complete := chromiumtest.NewSNSS(3).Tab(1, 10, 0, "https://example.com/", "Work").Marker().Bytes()
 	// Newest file caught mid-rewrite: initial state written, marker not yet.
-	partial := newSNSS(3).tab(1, 20, 0, "https://example.com/", "Personal").bytes()
+	partial := chromiumtest.NewSNSS(3).Tab(1, 20, 0, "https://example.com/", "Personal").Bytes()
 	writeSession(t, dir, "Session_13400000000000001", complete, now.Add(-time.Minute))
 	writeSession(t, dir, "Session_13400000000000002", partial, now)
 
@@ -348,7 +350,7 @@ func TestOpenTabs_FallsBackWhenNewestIncomplete(t *testing.T) {
 
 func TestOpenTabs_BadHeaderSurfaces(t *testing.T) {
 	dir := t.TempDir()
-	writeSession(t, dir, "Session_13400000000000001", newSNSS(2).bytes(), time.Now())
+	writeSession(t, dir, "Session_13400000000000001", chromiumtest.NewSNSS(2).Bytes(), time.Now())
 	if _, err := OpenTabs(context.Background(), dir); !errors.Is(err, ErrBadHeader) {
 		t.Fatalf("err = %v, want ErrBadHeader", err)
 	}
@@ -357,7 +359,7 @@ func TestOpenTabs_BadHeaderSurfaces(t *testing.T) {
 func TestOpenTabs_ContextCanceled(t *testing.T) {
 	dir := t.TempDir()
 	writeSession(t, dir, "Session_13400000000000001",
-		newSNSS(3).tab(1, 10, 0, "https://example.com/", "Work").marker().bytes(), time.Now())
+		chromiumtest.NewSNSS(3).Tab(1, 10, 0, "https://example.com/", "Work").Marker().Bytes(), time.Now())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := OpenTabs(ctx, dir); !errors.Is(err, context.Canceled) {
@@ -370,10 +372,10 @@ func TestOpenSession_ReportsFileUsed(t *testing.T) {
 	// Whole seconds: some filesystems truncate sub-second mtimes.
 	complete := time.Now().Add(-time.Minute).Truncate(time.Second)
 	writeSession(t, dir, "Session_13400000000000001",
-		newSNSS(3).tab(1, 10, 0, "https://example.com/", "Work").marker().bytes(), complete)
+		chromiumtest.NewSNSS(3).Tab(1, 10, 0, "https://example.com/", "Work").Marker().Bytes(), complete)
 	// Newest file lacks its marker, so the session comes from the older one.
 	writeSession(t, dir, "Session_13400000000000002",
-		newSNSS(3).tab(1, 20, 0, "https://example.com/", "Personal").bytes(), time.Now())
+		chromiumtest.NewSNSS(3).Tab(1, 20, 0, "https://example.com/", "Personal").Bytes(), time.Now())
 
 	s, err := OpenSession(context.Background(), dir)
 	if err != nil {
@@ -394,5 +396,64 @@ func TestOpenSession_NoSessionFile(t *testing.T) {
 	s, err := OpenSession(context.Background(), t.TempDir())
 	if !errors.Is(err, ErrNoSessionFile) || s != nil {
 		t.Fatalf("session=%+v err=%v, want nil and ErrNoSessionFile", s, err)
+	}
+}
+
+// The test encoder keeps its own copy of the command ids; drift would
+// make every fixture silently encode the wrong commands.
+func TestChromiumtestCommandIDsMatch(t *testing.T) {
+	pairs := map[string][2]uint8{
+		"SetTabWindow":                    {cmdSetTabWindow, chromiumtest.CmdSetTabWindow},
+		"SetTabIndexInWindow":             {cmdSetTabIndexInWindow, chromiumtest.CmdSetTabIndexInWindow},
+		"TabNavigationPathPrunedFromBack": {cmdTabNavigationPathPrunedFromBack, chromiumtest.CmdTabNavigationPathPrunedFromBack},
+		"UpdateTabNavigation":             {cmdUpdateTabNavigation, chromiumtest.CmdUpdateTabNavigation},
+		"SetSelectedNavigationIndex":      {cmdSetSelectedNavigationIndex, chromiumtest.CmdSetSelectedNavigationIndex},
+		"SetSelectedTabInIndex":           {cmdSetSelectedTabInIndex, chromiumtest.CmdSetSelectedTabInIndex},
+		"SetPinnedState":                  {cmdSetPinnedState, chromiumtest.CmdSetPinnedState},
+		"TabClosed":                       {cmdTabClosed, chromiumtest.CmdTabClosed},
+		"WindowClosed":                    {cmdWindowClosed, chromiumtest.CmdWindowClosed},
+		"SetActiveWindow":                 {cmdSetActiveWindow, chromiumtest.CmdSetActiveWindow},
+		"TabNavigationPathPruned":         {cmdTabNavigationPathPruned, chromiumtest.CmdTabNavigationPathPruned},
+		"InitialStateMarker":              {cmdInitialStateMarker, chromiumtest.CmdInitialStateMarker},
+	}
+	for name, p := range pairs {
+		if p[0] != p[1] {
+			t.Errorf("%s: chromium id %d, chromiumtest id %d", name, p[0], p[1])
+		}
+	}
+	if snssVersionPlain != chromiumtest.VersionPlain || snssVersionWithMarker != chromiumtest.VersionWithMarker {
+		t.Errorf("SNSS versions drifted")
+	}
+}
+
+// WriteUserDataDir must produce a tree ResolveProfile and OpenSession
+// read back: the contract the CLI tests build on.
+func TestChromiumtestUserDataDirRoundTrip(t *testing.T) {
+	mtime := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	base := chromiumtest.WriteUserDataDir(
+		t,
+		chromiumtest.Profile{
+			DirName: "Profile 1", Name: "Work", ModTime: mtime,
+			Session: chromiumtest.Session(chromiumtest.Tab{URL: "https://example.com/a", Title: "A"}),
+		},
+		chromiumtest.Profile{DirName: "Profile 2", Name: "Gone", Missing: true},
+	)
+	p, err := ResolveProfile(Brave, "work", WithUserDataDir(base))
+	if err != nil {
+		t.Fatalf("ResolveProfile: %v", err)
+	}
+	if !p.LastUsed || p.DirName != "Profile 1" {
+		t.Fatalf("profile = %+v", p)
+	}
+	s, err := OpenSession(context.Background(), p.Dir)
+	if err != nil {
+		t.Fatalf("OpenSession: %v", err)
+	}
+	if !s.ModTime.Equal(mtime) {
+		t.Errorf("ModTime = %v, want %v", s.ModTime, mtime)
+	}
+	assertTabs(t, s.Tabs, []Tab{{WindowID: 1, TabID: 100, Index: 0, URL: "https://example.com/a", Title: "A"}})
+	if _, err := ResolveProfile(Brave, "Gone", WithUserDataDir(base)); !errors.Is(err, ErrProfileDirMissing) {
+		t.Fatalf("missing dir: err = %v", err)
 	}
 }
