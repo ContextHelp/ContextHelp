@@ -66,6 +66,10 @@ const (
 	// BucketReingestAll — full-corpus re-ingest. Requires explicit operator
 	// consent via --i-understand-the-cost <sha>.
 	BucketReingestAll Bucket = "reingest_all"
+	// BucketEmbeddingsMigrate — background re-embed of the objects missing
+	// rows for one registered embedding model (ADR-071 "Migration job").
+	// Status.Target names the model.
+	BucketEmbeddingsMigrate Bucket = "embeddings_migrate"
 )
 
 // Status is the wire form consumed by /healthz, the CLI, and the shadow
@@ -74,9 +78,11 @@ const (
 type Status struct {
 	State      State     `json:"state"`
 	Bucket     Bucket    `json:"bucket,omitempty"`
+	Target     string    `json:"target,omitempty"`
 	Progress   float64   `json:"progress,omitempty"`
 	Done       int       `json:"done,omitempty"`
 	Total      int       `json:"total,omitempty"`
+	Failed     int       `json:"failed,omitempty"`
 	EtaSeconds int       `json:"eta_seconds,omitempty"`
 	StartedAt  time.Time `json:"started_at,omitempty"`
 	LastError  string    `json:"last_error,omitempty"`
@@ -116,6 +122,12 @@ func NewManager(shadowPath string) *Manager {
 // the state machine from idle (or failed — a fresh attempt is allowed) to
 // in_progress. Returns an error if a run is already in flight.
 func (m *Manager) Start(bucket Bucket, total int) error {
+	return m.StartTarget(bucket, "", total)
+}
+
+// StartTarget is Start for a run that works on one named target, such as
+// the embedding model an embeddings_migrate run fills.
+func (m *Manager) StartTarget(bucket Bucket, target string, total int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -129,6 +141,7 @@ func (m *Manager) Start(bucket Bucket, total int) error {
 	m.status = Status{
 		State:     StateInProgress,
 		Bucket:    bucket,
+		Target:    target,
 		Total:     total,
 		Done:      0,
 		StartedAt: m.now(),
@@ -149,6 +162,28 @@ func (m *Manager) Tick(done int) error {
 	if done < 0 {
 		return fmt.Errorf("upgrade: done must be >= 0 (got %d)", done)
 	}
+	return m.tickLocked(done)
+}
+
+// TickFailed is Tick for runs that skip objects they could not process:
+// done counts every object handled, failed the subset that failed.
+func (m *Manager) TickFailed(done, failed int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.status.State != StateInProgress {
+		return ErrNotRunning
+	}
+	if done < 0 || failed < 0 || failed > done {
+		return fmt.Errorf("upgrade: need 0 <= failed <= done (got done %d, failed %d)", done, failed)
+	}
+	m.status.Failed = failed
+	return m.tickLocked(done)
+}
+
+// tickLocked records done and recomputes progress and ETA. Must be called
+// with m.mu held.
+func (m *Manager) tickLocked(done int) error {
 	m.status.Done = done
 
 	if m.status.Total > 0 {
