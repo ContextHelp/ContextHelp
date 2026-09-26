@@ -158,8 +158,16 @@ func IsStructured(format string) bool {
 // rather than null when nothing matched. Without this an empty
 // collection is indistinguishable from a missing field on the wire.
 func Encode(w io.Writer, v any) error {
+	return EncodeAs(w, Active(), v)
+}
+
+// EncodeAs is Encode in the format the caller names rather than the
+// one --format selects: yaml renders YAML, anything else JSON. It
+// serves a command whose document format comes from somewhere other
+// than --format, such as an output file's extension.
+func EncodeAs(w io.Writer, format string, v any) error {
 	v = normalizeEmpty(v)
-	if Active() == output.YAML {
+	if format == output.YAML {
 		doc, err := jsonShaped(v)
 		if err != nil {
 			return err

@@ -245,6 +245,17 @@ func resolveRowsWriter(cmd *cobra.Command, w io.Writer) (io.Writer, func() error
 	return f, f.Close, nil
 }
 
+// OutputPath returns the file -o/--output names for this run, and
+// whether it names one at all. "" and "-" (stdout by kit's convention)
+// are not paths. The lookup is the one WriteTo uses, so a caller that
+// branches on it agrees with where WriteTo will write.
+func OutputPath(cmd *cobra.Command) (string, bool) {
+	if !outputPathSet(cmd) {
+		return "", false
+	}
+	return outputPath(cmd), true
+}
+
 // outputPath returns the -o value, preferring the typed flag over
 // viper for the same reason outputPathSet does.
 func outputPath(cmd *cobra.Command) string {

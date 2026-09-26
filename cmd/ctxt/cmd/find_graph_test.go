@@ -325,8 +325,20 @@ func TestFindGraph_UsageErrors(t *testing.T) {
 		{"zero node cap", []string{"--format", "json", "find", "q", "--graph", "--graph-max-nodes", "0"}, []string{"--graph-max-nodes"}},
 		{"negative edge cap", []string{"--format", "json", "find", "q", "--graph", "--graph-max-edges", "-1"}, []string{"--graph-max-edges"}},
 		{"threshold out of range", []string{"--format", "json", "find", "q", "--graph", "--graph-similar", "--graph-similar-threshold", "1.5"}, []string{"--graph-similar-threshold"}},
-		{"human output", []string{"find", "q", "--graph"}, []string{"--graph", "--format json", "viewer"}},
-		{"table output", []string{"--format", "table", "find", "--graph", "q"}, []string{"--graph", "--format json", "viewer"}},
+		{"csv output", []string{"--format", "csv", "find", "--graph", "q"}, []string{"--graph", "csv", "--format json", ".gexf", "viewer"}},
+		{"text output", []string{"--format", "text", "find", "q", "--graph"}, []string{"--graph", "text"}},
+		{"no-browser without graph", []string{"find", "q", "--no-browser"}, []string{"--no-browser", "--graph"}},
+		{"idle timeout without graph", []string{"find", "q", "--graph-idle-timeout", "1m"}, []string{"--graph-idle-timeout", "--graph"}},
+		{"no-browser with json", []string{"--format", "json", "find", "q", "--graph", "--no-browser"}, []string{"--no-browser", "viewer"}},
+		{"idle timeout with yaml", []string{"--format", "yaml", "find", "q", "--graph", "--graph-idle-timeout", "1m"}, []string{"--graph-idle-timeout", "viewer"}},
+		{"no-browser with file", []string{"find", "q", "--graph", "-o", "g.html", "--no-browser"}, []string{"--no-browser", "viewer"}},
+		{"zero idle timeout", []string{"find", "q", "--graph", "--graph-idle-timeout", "0s"}, []string{"--graph-idle-timeout", "positive"}},
+		{"negative idle timeout", []string{"find", "q", "--graph", "--graph-idle-timeout", "-1m"}, []string{"--graph-idle-timeout", "positive"}},
+		{"unknown extension", []string{"find", "q", "--graph", "-o", "g.txt"}, []string{"-o g.txt", `".txt"`, ".gexf", ".graphml", ".html", ".json", ".yaml"}},
+		{"no extension", []string{"find", "q", "--graph", "-o", "graph"}, []string{"no file extension", ".gexf"}},
+		{"json format, gexf file", []string{"--format", "json", "find", "q", "--graph", "-o", "g.gexf"}, []string{"--format json", "g.gexf", "GEXF"}},
+		{"yaml format, json file", []string{"--format", "yaml", "find", "q", "--graph", "-o", "g.json"}, []string{"--format yaml", "g.json", "JSON Graph Format"}},
+		{"json format, html file", []string{"--format", "json", "find", "q", "--graph", "-o", "g.html"}, []string{"--format json", "g.html"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

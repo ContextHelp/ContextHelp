@@ -547,3 +547,31 @@ func TestOutputSentinelViaViper(t *testing.T) {
 		t.Error(`a file named "-" was created from the viper value`)
 	}
 }
+
+// TestOutputPath agrees with WriteTo on what counts as a file: a named
+// path does, the stdout sentinel and an absent flag do not.
+func TestOutputPath(t *testing.T) {
+	prev := viper.GetString("output")
+	viper.Set("output", "")
+	t.Cleanup(func() { viper.Set("output", prev) })
+
+	cases := []struct {
+		name     string
+		args     []string
+		wantPath string
+		wantOK   bool
+	}{
+		{"absent", nil, "", false},
+		{"stdout sentinel", []string{"--output", "-"}, "", false},
+		{"path", []string{"-o", "graph.gexf"}, "graph.gexf", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := dispatchCmd(t, tc.args...)
+			path, ok := OutputPath(cmd)
+			if path != tc.wantPath || ok != tc.wantOK {
+				t.Errorf("OutputPath = (%q, %v), want (%q, %v)", path, ok, tc.wantPath, tc.wantOK)
+			}
+		})
+	}
+}
