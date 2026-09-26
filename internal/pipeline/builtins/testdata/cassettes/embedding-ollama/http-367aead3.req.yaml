@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 367aead3
+recorded_at: "2026-09-26T22:57:19Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embed
+    body: '{"model":"snowflake-arctic-embed2","input":"# Discord message — Rangers / #sightings\n\n**From:** bob\n**Time:** 2024-07-01T08:01:00Z\n\nTwo dingoes crossed the firebreak.","truncate":false,"options":{"num_ctx":8192,"num_batch":8192}}'

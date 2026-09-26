@@ -139,8 +139,8 @@ func TestEmbeddingsRegister_MeasuresAndStoresDimension(t *testing.T) {
 			t.Errorf("source of %s = %q, want %q", f, doc.Sources[f], w)
 		}
 	}
-	if got := calls.URLs(); len(got) != 1 || got[0] != registerEndpoint+"/api/embeddings" {
-		t.Errorf("probe URLs = %v, want one call to %s/api/embeddings", got, registerEndpoint)
+	if got := calls.EmbedURLs(); len(got) != 1 || got[0] != registerEndpoint+"/api/embed" {
+		t.Errorf("probe URLs = %v, want one embed call to %s/api/embed", got, registerEndpoint)
 	}
 
 	m, err := registryOf(t, db).Get(context.Background(), registerModelID)
@@ -217,7 +217,7 @@ func TestEmbeddingsRegister_ConfigDimensionMismatchFails(t *testing.T) {
 			}
 			assertClass(t, err, output.CodeConflict)
 			assertNotRegistered(t, db, registerModelID)
-			if len(calls.URLs()) != 1 {
+			if len(calls.EmbedURLs()) != 1 {
 				t.Errorf("provider calls = %v, want the one probe", calls.URLs())
 			}
 		})
@@ -371,8 +371,8 @@ func TestEmbeddingsRegister_DuplicateFailsWithoutReprobing(t *testing.T) {
 		t.Fatalf("second register: err = %v\n%s", err, out)
 	}
 	assertClass(t, err, output.CodeConflict)
-	if got := calls.URLs(); len(got) != 1 {
-		t.Errorf("provider calls = %v, want exactly one (the duplicate must fail before probing)", got)
+	if got := calls.EmbedURLs(); len(got) != 1 {
+		t.Errorf("embed calls = %v, want exactly one (the duplicate must fail before probing)", got)
 	}
 }
 
@@ -426,8 +426,8 @@ func TestEmbeddingsRegister_DryRunWritesNothing(t *testing.T) {
 	}
 	assertNotRegistered(t, db, registerModelID)
 	assertNoIndex(t, db, registerModelID)
-	if got := calls.URLs(); len(got) != 2 {
-		t.Errorf("provider calls = %v, want one probe per dry run", got)
+	if got := calls.EmbedURLs(); len(got) != 2 {
+		t.Errorf("embed calls = %v, want one probe per dry run", got)
 	}
 
 	real := registerJSON(t, db, args...)

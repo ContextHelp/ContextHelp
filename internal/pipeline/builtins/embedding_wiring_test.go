@@ -21,7 +21,7 @@ import (
 // Ollama calls replay cassettes recorded against a real Ollama serving
 // snowflake-arctic-embed2 (1024 dimensions). Re-record:
 //
-//	XRR_MODE=record go test -tags fts5 -count=1 -run Embedding ./internal/pipeline/builtins/
+//	XRR_MODE=record go test -tags fts5 -count=1 ./internal/pipeline/builtins/
 const embeddingCassettes = "testdata/cassettes/embedding-ollama"
 
 func wiringModels() embeddingtest.Models {

@@ -49,7 +49,7 @@ func TestProviderResolver_ForModelUsesConfigJSONWithTransportOverride(t *testing
 	if len(vec) != 1024 {
 		t.Fatalf("dimension = %d, want 1024", len(vec))
 	}
-	if urls := calls.URLs(); len(urls) != 1 || urls[0] != "http://127.0.0.1:11555/api/embeddings" {
+	if urls := calls.EmbedURLs(); len(urls) != 1 || urls[0] != "http://127.0.0.1:11555/api/embed" {
 		t.Fatalf("provider called %v, want the tunnel endpoint", urls)
 	}
 }

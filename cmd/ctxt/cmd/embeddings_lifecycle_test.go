@@ -815,12 +815,12 @@ func TestEmbeddingsSetDefault_NextQueryFollows(t *testing.T) {
 	if out, err := db.exec("embeddings", "set-default", b.ModelID, "--min-coverage", "0.5"); err != nil {
 		t.Fatalf("set-default: %v\n%s", err, out)
 	}
-	before := len(calls.URLs())
+	before := len(calls.EmbedURLs())
 	if ids, model := find(); model != b.ModelID || len(ids) != 1 || ids[0] != "note-b" {
 		t.Fatalf("after the flip got %v under %s, want [note-b] under %s", ids, model, b.ModelID)
 	}
-	if n := len(calls.URLs()) - before; n != 1 {
-		t.Errorf("post-flip query made %d provider calls, want 1", n)
+	if n := len(calls.EmbedURLs()) - before; n != 1 {
+		t.Errorf("post-flip query made %d embed calls, want 1", n)
 	}
 }
 
@@ -831,26 +831,26 @@ func TestEmbeddingsDeprecate_StopsDualWrite(t *testing.T) {
 	e := newMigrateEnv(t)
 	rows := func(modelID string) int { return embeddingRows(t, e.db, modelID) }
 
-	before := len(e.calls.URLs())
+	before := len(e.calls.EmbedURLs())
 	e.ingest(t, migrateBodies[0])
 	if rows(migrateFromID) != 1 || rows(migrateToID) != 1 {
 		t.Fatalf("dual-write before deprecation: %s=%d %s=%d, want 1 each",
 			migrateFromID, rows(migrateFromID), migrateToID, rows(migrateToID))
 	}
-	if n := len(e.calls.URLs()) - before; n != 2 {
-		t.Errorf("ingest before deprecation made %d provider calls, want 2", n)
+	if n := len(e.calls.EmbedURLs()) - before; n != 2 {
+		t.Errorf("ingest before deprecation made %d embed calls, want 2", n)
 	}
 
 	if out, err := e.db.exec("embeddings", "deprecate", migrateToID); err != nil {
 		t.Fatalf("deprecate: %v\n%s", err, out)
 	}
-	before = len(e.calls.URLs())
+	before = len(e.calls.EmbedURLs())
 	e.ingest(t, migrateBodies[1])
 	if rows(migrateFromID) != 2 || rows(migrateToID) != 1 {
 		t.Errorf("after deprecation: %s=%d %s=%d, want 2 and 1 (no new row for the deprecated model)",
 			migrateFromID, rows(migrateFromID), migrateToID, rows(migrateToID))
 	}
-	if n := len(e.calls.URLs()) - before; n != 1 {
-		t.Errorf("ingest after deprecation made %d provider calls, want 1", n)
+	if n := len(e.calls.EmbedURLs()) - before; n != 1 {
+		t.Errorf("ingest after deprecation made %d embed calls, want 1", n)
 	}
 }

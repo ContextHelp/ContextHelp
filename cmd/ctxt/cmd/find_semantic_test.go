@@ -284,7 +284,7 @@ func TestFindSemantic_DefaultModelEndToEnd(t *testing.T) {
 	if scores[0] < 0.999 {
 		t.Errorf("identical vector score = %v, want ~1 (1 - distance)", scores[0])
 	}
-	if urls := calls.URLs(); urls[len(urls)-1] != "http://127.0.0.1:11555/api/embeddings" {
+	if urls := calls.URLs(); urls[len(urls)-1] != "http://127.0.0.1:11555/api/embed" {
 		t.Fatalf("query embedded at %s, want the --embedding-endpoint override", urls[len(urls)-1])
 	}
 

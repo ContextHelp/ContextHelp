@@ -117,11 +117,11 @@ func (f *queryPathFixture) source() retrieval.SemanticSource {
 // lastCall returns the endpoint the most recent embedding request went to.
 func (f *queryPathFixture) lastCall(t *testing.T) string {
 	t.Helper()
-	urls := f.calls.URLs()
+	urls := f.calls.EmbedURLs()
 	if len(urls) == 0 {
 		t.Fatal("no embedding request was made")
 	}
-	return strings.TrimSuffix(urls[len(urls)-1], "/api/embeddings")
+	return strings.TrimSuffix(urls[len(urls)-1], "/api/embed")
 }
 
 func ids(objs []*storage.KnowledgeObject) []string {

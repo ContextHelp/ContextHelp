@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 725ce323
+recorded_at: "2026-09-26T22:55:07Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/show
+    body: '{"model":"ctxt-test-not-pulled-embed"}'

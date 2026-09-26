@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: "41760e11"
+recorded_at: "2026-09-26T22:53:24Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embed
+    body: '{"model":"nomic-embed-text","input":"dugong feeding grounds in shark bay","truncate":false,"options":{"num_ctx":2048,"num_batch":2048}}'

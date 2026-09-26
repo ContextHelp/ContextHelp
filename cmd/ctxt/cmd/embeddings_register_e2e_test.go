@@ -73,8 +73,8 @@ func TestEmbeddingsRegister_DryRunBinary(t *testing.T) {
 	if !doc.DryRun || doc.Dimension != snowflakeDimension || doc.Provider != embeddings.BackendOllama || doc.Index != registerIndexSkipped {
 		t.Errorf("json dry run = %+v, want dry_run, dimension %d, ollama, index %q", doc, snowflakeDimension, registerIndexSkipped)
 	}
-	if got := len(e.calls.URLs()); got != 3 {
-		t.Errorf("provider calls = %d, want one probe per dry run", got)
+	if got := len(e.calls.EmbedURLs()); got != 3 {
+		t.Errorf("embed calls = %d, want one probe per dry run", got)
 	}
 
 	e.store.connect(t)

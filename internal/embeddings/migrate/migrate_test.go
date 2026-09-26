@@ -25,7 +25,8 @@ import (
 )
 
 // Cassettes were recorded against a real local Ollama serving
-// nomic-embed-text (768 dimensions). Re-record:
+// nomic-embed-text (768 dimensions) and snowflake-arctic-embed2 (1024).
+// Re-record:
 //
 //	XRR_MODE=record go test -tags fts5 -count=1 ./internal/embeddings/migrate/
 const cassettes = "testdata/cassettes/ollama"
@@ -48,10 +49,21 @@ var texts = []string{
 	"thorny devil basking near uluru",
 }
 
-// longText is a digit table whose first 8192 bytes (all the Ollama
-// provider sends) still exceed nomic-embed-text's context: Ollama rejects
-// it for real ("the input length exceeds the context length").
-var longText = strings.Repeat("0 1 2 3 4 5 6 7 8 9 ", 500)
+// snowflake is registered only where a test needs Ollama to reject an
+// object.
+var snowflake = registry.Model{
+	ModelID:    "ollama-snowflake-arctic-embed2@2026-09-26",
+	Provider:   "ollama",
+	Dimension:  1024,
+	ConfigJSON: `{"backend":"ollama","model":"snowflake-arctic-embed2","endpoint":"http://127.0.0.1:11434"}`,
+}
+
+// rejectedText overflows snowflake-arctic-embed2's context even after the
+// provider's context-sized byte cut: its tokenizer NFKC-normalizes U+FDFA
+// (3 bytes) into 18 characters, so the 8,184 bytes sent are more than
+// 8,192 tokens and Ollama rejects them for real ("the input length exceeds
+// the context length").
+var rejectedText = strings.Repeat("\uFDFA", 3000)
 
 type fixture struct {
 	drv      storage.StorageDriver
@@ -70,13 +82,7 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
-	if err := reg.Register(ctx, nomic, false); err != nil {
-		t.Fatal(err)
-	}
-	if err := drv.Embeddings().EnsureIndex(ctx, embeddings.SpecFor(nomic)); err != nil {
-		t.Fatal(err)
-	}
+	registerModel(t, drv, reg, nomic)
 	client, calls := providertest.OllamaClient(t, cassettes)
 	shadow := filepath.Join(t.TempDir(), "upgrade-state.json")
 	return &fixture{
@@ -88,6 +94,17 @@ func newFixture(t *testing.T) *fixture {
 		mgr:    upgrade.NewManager(shadow),
 		shadow: shadow,
 		bus:    &recBus{},
+	}
+}
+
+func registerModel(t *testing.T, drv storage.StorageDriver, reg *registry.Store, m registry.Model) {
+	t.Helper()
+	ctx := context.Background()
+	if err := reg.Register(ctx, m, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := drv.Embeddings().EnsureIndex(ctx, embeddings.SpecFor(m)); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -153,8 +170,8 @@ func (f *fixture) coverage(t *testing.T, modelID string) float64 {
 	return 0
 }
 
-// embedCalls counts provider calls for nomic.
-func (f *fixture) embedCalls() int { return len(f.calls.URLs()) }
+// embedCalls counts embed calls.
+func (f *fixture) embedCalls() int { return len(f.calls.EmbedURLs()) }
 
 func requireOneRowEach(t *testing.T, rows map[string]int, ids ...string) {
 	t.Helper()
@@ -304,13 +321,14 @@ func TestRun_EmbedsOnlyMissingObjectsAndIsIdempotent(t *testing.T) {
 // a re-run retries only the missing object.
 func TestRun_ProviderErrorIsRecordedAndSkipped(t *testing.T) {
 	f := newFixture(t)
+	registerModel(t, f.drv, f.reg, snowflake)
 	ctx := context.Background()
 	f.object(t, "obj-01", texts[0])
-	f.object(t, "obj-02-long", longText)
+	f.object(t, "obj-02-long", rejectedText)
 	f.object(t, "obj-03", texts[2])
 	f.object(t, "obj-04", texts[3])
 
-	job := &storage.Job{ID: "job-fail", Type: migrate.JobType, Payload: `{"model_id":"` + nomic.ModelID + `"}`}
+	job := &storage.Job{ID: "job-fail", Type: migrate.JobType, Payload: `{"model_id":"` + snowflake.ModelID + `"}`}
 	out, err := f.runner(nil).Handle(ctx, job)
 	if err != nil {
 		t.Fatalf("one object's provider error failed the job: %v", err)
@@ -322,11 +340,11 @@ func TestRun_ProviderErrorIsRecordedAndSkipped(t *testing.T) {
 	if res.Embedded != 3 || res.Failed != 1 || len(res.FailedObjects) != 1 || res.FailedObjects[0] != "obj-02-long" {
 		t.Fatalf("result = %+v, want 3 embedded and obj-02-long failed", res)
 	}
-	requireOneRowEach(t, f.rows(t, nomic.ModelID), "obj-01", "obj-03", "obj-04")
-	f.requireFailureRecorded(t, "job-fail", "obj-02-long")
+	requireOneRowEach(t, f.rows(t, snowflake.ModelID), "obj-01", "obj-03", "obj-04")
+	f.requireFailureRecorded(t, snowflake.ModelID, "job-fail", "obj-02-long")
 
 	calls := f.embedCalls()
-	res2, err := f.runner(nil).Run(ctx, "job-retry", migrate.Request{ModelID: nomic.ModelID})
+	res2, err := f.runner(nil).Run(ctx, "job-retry", migrate.Request{ModelID: snowflake.ModelID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,12 +354,12 @@ func TestRun_ProviderErrorIsRecordedAndSkipped(t *testing.T) {
 }
 
 // requireFailureRecorded checks the status and the completed event carry
-// one failure of 4, naming failedID.
-func (f *fixture) requireFailureRecorded(t *testing.T, jobID, failedID string) {
+// one failure of 4 under modelID, naming failedID.
+func (f *fixture) requireFailureRecorded(t *testing.T, modelID, jobID, failedID string) {
 	t.Helper()
 	st := f.mgr.Snapshot()
 	if st.State != upgrade.StateFailed || st.Failed != 1 || st.Done != 4 || st.Total != 4 ||
-		st.Target != nomic.ModelID || !strings.Contains(st.LastError, failedID) {
+		st.Target != modelID || !strings.Contains(st.LastError, failedID) {
 		t.Errorf("status = %+v, want failed with 1 of 4 failed naming %s", st, failedID)
 	}
 	p, ok := f.bus.last(string(events.TopicDpkmsEmbeddingsMigrationCompleted))
