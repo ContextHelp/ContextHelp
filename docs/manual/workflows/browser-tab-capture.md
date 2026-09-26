@@ -87,7 +87,48 @@ The tabs come from the session file the browser keeps in the profile folder. "Se
 
 When the session is older than 15 minutes, the command warns that the browser may be closed. The capture still runs. For the current tabs, open the browser and run the command again.
 
-## Choosing the profile
+## Choosing the browser and profile
+
+Both flags are optional. When `--browser` is left out, the browser is, first hit wins:
+
+1. `capture.browser` in your config (`capture: {browser: brave}`)
+2. with `--browser-profile` given: the one installed browser that has a profile of that name or folder
+3. the OS default browser, if it is one of the supported browsers
+
+When `--browser-profile` is left out, the browser's last-used profile is read. Anything picked this way is named on stderr before the capture runs:
+
+```text
+using brave profile "Work" (Profile 1): the only browser with that profile
+```
+
+If the name matches profiles in several browsers, or nothing can be picked, the command stops with exit status `2` and lists the candidates:
+
+```text
+USAGE: profile not found: no installed browser has profile "Nope" (available: chrome:"Person 1" (Default), chrome:"Research" (Profile 2), brave:"Personal" (Default), brave:"Work" (Profile 1))
+```
+
+To see the installed browsers, their profiles and what would be picked right now, before capturing anything:
+
+```bash
+ctxt capture browsers
+```
+
+```text
+chrome  ~/Library/Application Support/Google/Chrome
+  * Person 1  (Default)
+    Research  (Profile 2)
+brave (OS default)  ~/Library/Application Support/BraveSoftware/Brave-Browser
+  * Personal  (Default)
+    Work      (Profile 1)
+* last-used profile
+
+OS default browser: brave (com.brave.browser)
+would use: brave profile "Personal" (Default); browser: OS default, profile: last used
+```
+
+Pass the same `--browser` / `--browser-profile` you plan to use to preview their pick, for example `ctxt capture browsers --browser-profile Work`. `--format json` prints the same as one document. No URLs are read or shown.
+
+### Profile names
 
 `--browser-profile` takes the name shown in the browser's profile picker (`Work`, any letter case) or the profile folder name (`"Profile 1"`). If two profiles share a name, the command stops and lists the folders; pass the folder name instead:
 
@@ -105,7 +146,9 @@ The browser's own `chrome://version` page (`brave://version` in Brave) shows the
 ctxt capture tabs --browser brave --browser-profile Work --dry-run --format json | jq '.summary'
 ```
 
-Exit status: `0` all allowed tabs sent, `1` at least one send failed (the others were still sent), `2` bad invocation (unknown browser, unknown or ambiguous profile), `3` the browser, profile folder or session file is not on disk.
+Exit status: `0` all allowed tabs sent, `1` at least one send failed (the others were still sent), `2` bad invocation (unknown browser, unknown or ambiguous profile, nothing to auto-select), `3` the browser, profile folder or session file is not on disk.
+
+Scripts that must always read the same profile should pass both `--browser` and `--browser-profile`: auto-selection follows the OS default browser and the last-used profile, which change.
 
 ## Outputs to validate
 
@@ -118,6 +161,14 @@ Exit status: `0` all allowed tabs sent, `1` at least one send failed (the others
 ### `warning: capture.url_filter.browsers.brave.profiles.<key> matches no brave profile`
 
 The profile key in your config names no profile of that browser, so its rules protect nothing. Fix the key to the profile's name or folder name.
+
+### `USAGE: no browser selected (installed: ...; OS default ... is not a supported Chromium-family browser)`
+
+`--browser` was left out, `capture.browser` is not set, and the OS default browser is not one ctxt reads (or is not installed). Pass `--browser`, or set `capture.browser`.
+
+### `USAGE: no profile selected: ... has no unambiguous last-used profile`
+
+`--browser-profile` was left out and the browser does not record which profile it used last. Pass `--browser-profile`.
 
 ### `NOT_FOUND: brave: no "Local State" in ...`
 
