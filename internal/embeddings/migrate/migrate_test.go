@@ -344,7 +344,7 @@ func (f *fixture) requireFailureRecorded(t *testing.T, jobID, failedID string) {
 		st.Target != nomic.ModelID || !strings.Contains(st.LastError, failedID) {
 		t.Errorf("status = %+v, want failed with 1 of 4 failed naming %s", st, failedID)
 	}
-	p, ok := f.bus.last(string(events.TopicDpkmsUpgradeEmbeddingsMigrationCompleted))
+	p, ok := f.bus.last(string(events.TopicDpkmsEmbeddingsMigrationCompleted))
 	if !ok || p.Failed != 1 || p.Embedded != 3 || p.JobID != jobID {
 		t.Errorf("completed event = %+v (seen %v)", p, ok)
 	}
@@ -403,9 +403,9 @@ func TestRun_StatusVisibleWhileRunning(t *testing.T) {
 	}
 	got := strings.Join(f.bus.topics(), " ")
 	for _, want := range []string{
-		string(events.TopicDpkmsUpgradeEmbeddingsMigrationStarted),
-		string(events.TopicDpkmsUpgradeEmbeddingsMigrationProgress),
-		string(events.TopicDpkmsUpgradeEmbeddingsMigrationCompleted),
+		string(events.TopicDpkmsEmbeddingsMigrationStarted),
+		string(events.TopicDpkmsEmbeddingsMigrationProgressed),
+		string(events.TopicDpkmsEmbeddingsMigrationCompleted),
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("events %q lack %s", got, want)

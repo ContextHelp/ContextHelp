@@ -231,8 +231,8 @@ func TestEmbeddingsSetDefault_CoverageGuard(t *testing.T) {
 	}
 
 	got := evs()
-	if len(got) != 1 || got[0].Topic != events.TopicCtxtUpgradeEmbeddingModelPromoted {
-		t.Fatalf("events = %+v, want one %s", got, events.TopicCtxtUpgradeEmbeddingModelPromoted)
+	if len(got) != 1 || got[0].Topic != events.TopicCtxtEmbeddingsModelPromoted {
+		t.Fatalf("events = %+v, want one %s", got, events.TopicCtxtEmbeddingsModelPromoted)
 	}
 	p := lifecyclePayload(t, got[0])
 	if p.ModelID != lcB || p.PreviousDefault != lcA || p.Coverage == nil || *p.Coverage != 0.75 ||
@@ -420,7 +420,7 @@ func TestEmbeddingsDeprecate(t *testing.T) {
 		t.Fatalf("events = %+v, want two deprecations", got)
 	}
 	for i, id := range []string{lcB, lcC} {
-		if got[i].Topic != events.TopicCtxtUpgradeEmbeddingModelDeprecated || lifecyclePayload(t, got[i]).ModelID != id {
+		if got[i].Topic != events.TopicCtxtEmbeddingsModelDeprecated || lifecyclePayload(t, got[i]).ModelID != id {
 			t.Errorf("event %d = %+v", i, got[i])
 		}
 	}
@@ -514,7 +514,7 @@ func TestEmbeddingsPurge(t *testing.T) {
 	}
 
 	got := evs()
-	if len(got) != 1 || got[0].Topic != events.TopicCtxtUpgradeEmbeddingModelPurged {
+	if len(got) != 1 || got[0].Topic != events.TopicCtxtEmbeddingsModelPurged {
 		t.Fatalf("events = %+v, want one purge", got)
 	}
 	if p := lifecyclePayload(t, got[0]); p.ModelID != lcB || p.Rows == nil || *p.Rows != 3 {
