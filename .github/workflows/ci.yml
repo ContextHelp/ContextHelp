@@ -257,6 +257,17 @@ jobs:
           flags: unittests
           name: codecov-umbrella
 
+      # Black-box suites under test/e2e/ tagged e2e: each builds ctxt,
+      # seeds a throwaway store through the binary and asserts exit codes,
+      # output and files. Headless-browser smoke tests run when the runner
+      # has Chrome and skip otherwise. Other test/e2e suites carry their
+      # own tags and are not selected here.
+      - name: Run e2e tests
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        run: go test -v -count=1 -tags 'fts5 e2e' ./test/e2e/...
+
   integration:
     name: Integration Tests
     needs: toolchain

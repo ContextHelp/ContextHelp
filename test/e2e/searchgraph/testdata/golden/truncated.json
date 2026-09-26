@@ -1,0 +1,163 @@
+{
+  "graph": {
+    "directed": true,
+    "edges": [
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.1876923077
+        },
+        "relation": "matched",
+        "source": "query",
+        "target": "obj:postmortem"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.1378125
+        },
+        "relation": "matched",
+        "source": "query",
+        "target": "obj:rollback"
+      },
+      {
+        "directed": true,
+        "metadata": {
+          "derivation": "derived",
+          "weight": 0.1880645161
+        },
+        "relation": "matched",
+        "source": "query",
+        "target": "obj:runbook"
+      }
+    ],
+    "id": "search-graph",
+    "label": "deployment",
+    "metadata": {
+      "caps": {
+        "max_edges": 3,
+        "max_nodes": 4
+      },
+      "counts": {
+        "both": 0,
+        "candidates": 5,
+        "cut_limit": 1,
+        "cut_threshold": 2,
+        "edges": 3,
+        "entities": 0,
+        "fts_hits": 5,
+        "fts_only": 5,
+        "nodes": 4,
+        "returned": 2,
+        "vector_hits": 0,
+        "vector_only": 0
+      },
+      "fts_pool": 50,
+      "fts_query": "deployment",
+      "fts_weight": 0.5,
+      "generated_at": "\u003cgenerated_at\u003e",
+      "limit": 2,
+      "mode": "fts_fallback",
+      "query": "deployment",
+      "rrf_k": 60,
+      "semantic_status": "provider_error",
+      "threshold": 0.1,
+      "truncated": true,
+      "vector_error": "\u003cvector_error\u003e",
+      "vector_model": "fixture-e2e-3",
+      "vector_pool": 50,
+      "vector_weight": 0.5,
+      "vocabulary": "ctxt.search-graph/v1",
+      "weights": {
+        "direct_backlink": 0.08,
+        "hop_backlink": 0.03,
+        "max_mention_boost": 1,
+        "mention_boost": 0.05,
+        "word_overlap": 0
+      }
+    },
+    "nodes": {
+      "obj:postmortem": {
+        "label": "Postmortem of the billing service deployment outage",
+        "metadata": {
+          "created_at": "\u003ccreated_at\u003e",
+          "fts_rank": 5,
+          "fts_raw": -1.070038911e-06,
+          "kind": "object",
+          "legs": "fts",
+          "object_id": "postmortem",
+          "object_type": "text",
+          "rank": 2,
+          "rrf": 0.007692307692,
+          "score": {
+            "fts": 0.007692307692,
+            "graph_relevance": 0.08,
+            "mention_boost": 0.1,
+            "total": 0.1876923077,
+            "vector": 0,
+            "word_overlap": 0
+          },
+          "source": "argument",
+          "stage": "returned"
+        }
+      },
+      "obj:rollback": {
+        "label": "Rollback checklist for a failed atlas deployment",
+        "metadata": {
+          "created_at": "\u003ccreated_at\u003e",
+          "fts_rank": 4,
+          "fts_raw": -1.070038911e-06,
+          "kind": "object",
+          "legs": "fts",
+          "object_id": "rollback",
+          "object_type": "text",
+          "rank": 3,
+          "rrf": 0.0078125,
+          "score": {
+            "fts": 0.0078125,
+            "graph_relevance": 0.08,
+            "mention_boost": 0.05,
+            "total": 0.1378125,
+            "vector": 0,
+            "word_overlap": 0
+          },
+          "source": "argument",
+          "stage": "cut_limit"
+        }
+      },
+      "obj:runbook": {
+        "label": "Deployment runbook for the atlas cluster: deployment order, health checks and rollback triggers",
+        "metadata": {
+          "created_at": "\u003ccreated_at\u003e",
+          "fts_rank": 2,
+          "fts_raw": -1.187904968e-06,
+          "kind": "object",
+          "legs": "fts",
+          "object_id": "runbook",
+          "object_type": "text",
+          "rank": 1,
+          "rrf": 0.008064516129,
+          "score": {
+            "fts": 0.008064516129,
+            "graph_relevance": 0.08,
+            "mention_boost": 0.1,
+            "total": 0.1880645161,
+            "vector": 0,
+            "word_overlap": 0
+          },
+          "source": "argument",
+          "stage": "returned"
+        }
+      },
+      "query": {
+        "label": "deployment",
+        "metadata": {
+          "kind": "query"
+        }
+      }
+    },
+    "type": "ctxt.search-graph"
+  }
+}
