@@ -55,6 +55,10 @@ type Visit struct {
 	VisitedAt time.Time
 	// Browser identifies the source browser ("chrome", "firefox", ...).
 	Browser string
+	// Source is the Name() of the client that read the visit, e.g.
+	// "brave:Profile 3", naming the profile as well as the browser.
+	// Empty when the client does not set it.
+	Source string
 }
 
 // BrowserClient is the abstraction over per-browser SQLite history reads.
@@ -241,6 +245,9 @@ func (s *Source) toRawEvent(v Visit) ambient.RawEvent {
 	}
 	if subtype != "" {
 		meta["subtype"] = subtype
+	}
+	if v.Source != "" {
+		meta["source"] = v.Source
 	}
 	return ambient.RawEvent{
 		Source:            SourceName,

@@ -24,9 +24,15 @@ const (
 	// is on, so it is not a visit of its own here.
 	transitionManualSubframe uint32 = 4
 	transitionFormSubmit     uint32 = 7
+	// transitionReload is a reload (button, or Enter on the URL already
+	// shown), and also session restore, undo tab close and opening a tab
+	// from another device. Chromium itself does not count it in
+	// urls.visit_count: the page was already open, not navigated to.
+	transitionReload uint32 = 8
 
 	// Qualifiers.
-	transitionChainStart uint32 = 0x10000000
+	transitionFromAddressBar uint32 = 0x02000000
+	transitionChainStart     uint32 = 0x10000000
 	// transitionChainEnd marks the last visit of a redirect chain. A visit
 	// that was not redirected is a chain of one, with both bits set.
 	transitionChainEnd       uint32 = 0x20000000
@@ -38,10 +44,13 @@ const (
 // user navigation:
 //
 //   - subframe loads (auto and manual) are dropped;
+//   - reloads are dropped. Every hop of a reloaded page's redirect chain,
+//     its end included, carries the reload core type, so the whole chain
+//     goes;
 //   - of a redirect chain only the end is kept: the chain start and every
 //     intermediate redirect carry no CHAIN_END bit.
 var keptVisitSQL = fmt.Sprintf(
-	"(v.transition & %d) NOT IN (%d, %d) AND (v.transition & %d) != 0",
+	"(v.transition & %d) NOT IN (%d, %d, %d) AND (v.transition & %d) != 0",
 	transitionCoreMask, transitionAutoSubframe, transitionManualSubframe,
-	transitionChainEnd,
+	transitionReload, transitionChainEnd,
 )

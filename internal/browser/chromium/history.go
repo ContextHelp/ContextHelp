@@ -47,8 +47,8 @@ type HistoryVisit struct {
 // time is in the half-open range [from, to), oldest first. A zero to means
 // no upper bound; a zero from starts at the beginning of history.
 //
-// Only one visit per user navigation is returned: subframe loads are
-// dropped and a redirect chain collapses to its final visit.
+// Only one visit per user navigation is returned: subframe loads and
+// reloads are dropped, and a redirect chain collapses to its final visit.
 //
 // limit caps the batch when > 0. Visits sharing the last returned
 // visit's time are all included (the batch may exceed limit), so a caller
