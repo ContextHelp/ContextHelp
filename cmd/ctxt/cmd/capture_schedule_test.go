@@ -35,6 +35,47 @@ func (f *fakeLaunchctl) Bootout(label, _ string) {
 
 func (f *fakeLaunchctl) Loaded(label string) bool { return f.loaded[label] }
 
+// execSchedule runs args only when they resolve to a capture schedule
+// leaf. `ctxt capture` itself posts to a server that defaults to
+// localhost:8080, so a schedule subcommand that failed to register
+// must stop the test here instead of falling through to capture.
+func execSchedule(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	if !isScheduleLeaf(args) {
+		t.Fatalf("%q does not resolve to a capture schedule leaf; refusing to run it", args)
+	}
+	return executeCommand(args...)
+}
+
+func isScheduleLeaf(args []string) bool {
+	target, _, err := rootCmd.Find(args)
+	return err == nil && target != nil && target.Parent() == captureScheduleCmd
+}
+
+// TestExecScheduleGuard proves the guard without executing anything:
+// every rejected case here would otherwise reach capture's RunE.
+func TestExecScheduleGuard(t *testing.T) {
+	for _, args := range [][]string{
+		{"capture", "list"},
+		{"capture", "schedule"},
+		{"capture", "schedules", "list"},
+		{"capture", "https://example.com"},
+	} {
+		if isScheduleLeaf(args) {
+			t.Errorf("guard accepted %q", args)
+		}
+	}
+	for _, args := range [][]string{
+		{"capture", "schedule", "list"},
+		{"--format", "json", "capture", "schedule", "uninstall", "--browser", "chrome"},
+		{"--instance", "work", "capture", "schedule", "install"},
+	} {
+		if !isScheduleLeaf(args) {
+			t.Errorf("guard rejected %q", args)
+		}
+	}
+}
+
 type scheduleFixture struct {
 	env *scheduleEnv
 	lc  *fakeLaunchctl
@@ -93,7 +134,7 @@ func (f *scheduleFixture) agent(t *testing.T, kind scheduleKind, profile string)
 
 func TestCaptureScheduleInstall_WritesBothAgents(t *testing.T) {
 	f := useFakeScheduleEnv(t)
-	out, err := executeCommand("capture", "schedule", "install", "--browser", "Chrome", "--browser-profile", "Work")
+	out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "Chrome", "--browser-profile", "Work")
 	if err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
@@ -128,11 +169,11 @@ func TestCaptureScheduleInstall_WritesBothAgents(t *testing.T) {
 func TestCaptureScheduleInstall_ReinstallBootsOutFirst(t *testing.T) {
 	f := useFakeScheduleEnv(t)
 	args := []string{"capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work", "--no-tabs"}
-	if out, err := executeCommand(args...); err != nil {
+	if out, err := execSchedule(t, args...); err != nil {
 		t.Fatalf("first install: %v\n%s", err, out)
 	}
 	f.lc.calls = nil
-	if out, err := executeCommand(append(args, "--history-every", "10m")...); err != nil {
+	if out, err := execSchedule(t, append(args, "--history-every", "10m")...); err != nil {
 		t.Fatalf("second install: %v\n%s", err, out)
 	}
 	l := scheduleLabel(kindHistory, "chrome", "Work")
@@ -147,7 +188,7 @@ func TestCaptureScheduleInstall_ReinstallBootsOutFirst(t *testing.T) {
 
 func TestCaptureScheduleInstall_KindSelection(t *testing.T) {
 	f := useFakeScheduleEnv(t)
-	if out, err := executeCommand("capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work", "--no-history"); err != nil {
+	if out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work", "--no-history"); err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
 	got := f.plists(t)
@@ -164,7 +205,7 @@ func TestCaptureScheduleInstall_Passthrough(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := useFakeScheduleEnv(t)
-			if out, err := executeCommand(args...); err != nil {
+			if out, err := execSchedule(t, args...); err != nil {
 				t.Fatalf("install: %v\n%s", err, out)
 			}
 			a := f.agent(t, kindHistory, oddProfile)
@@ -182,7 +223,7 @@ func TestCaptureScheduleInstall_Passthrough(t *testing.T) {
 func TestCaptureScheduleInstall_NoPassthroughWhenUnset(t *testing.T) {
 	f := useFakeScheduleEnv(t)
 	t.Setenv("CTXT_INSTANCE", "from-env")
-	if out, err := executeCommand("capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work"); err != nil {
+	if out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work"); err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
 	for _, arg := range f.agent(t, kindHistory, "Work").ProgramArguments() {
@@ -194,7 +235,7 @@ func TestCaptureScheduleInstall_NoPassthroughWhenUnset(t *testing.T) {
 
 func TestCaptureScheduleInstall_DryRunWritesNothing(t *testing.T) {
 	f := useFakeScheduleEnv(t)
-	out, err := executeCommand("capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work", "--dry-run")
+	out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work", "--dry-run")
 	if err != nil {
 		t.Fatalf("dry-run: %v\n%s", err, out)
 	}
@@ -217,7 +258,7 @@ func TestCaptureScheduleInstall_DryRunWritesNothing(t *testing.T) {
 
 func TestCaptureScheduleInstall_JSONResult(t *testing.T) {
 	useFakeScheduleEnv(t)
-	out, err := executeCommand("capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work", "--no-tabs", "--format", "json")
+	out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work", "--no-tabs", "--format", "json")
 	if err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
@@ -246,7 +287,7 @@ func TestCaptureScheduleInstall_Rejects(t *testing.T) {
 	for name, extra := range cases {
 		t.Run(name, func(t *testing.T) {
 			f := useFakeScheduleEnv(t)
-			out, err := executeCommand(append([]string{"capture", "schedule", "install"}, extra...)...)
+			out, err := execSchedule(t, append([]string{"capture", "schedule", "install"}, extra...)...)
 			if err == nil {
 				t.Fatalf("want error, got success:\n%s", out)
 			}
@@ -263,7 +304,7 @@ func TestCaptureScheduleInstall_Rejects(t *testing.T) {
 func TestCaptureScheduleInstall_BootstrapFailureSurfaces(t *testing.T) {
 	f := useFakeScheduleEnv(t)
 	f.lc.bootstrapErr = errors.New("boom")
-	out, err := executeCommand("capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work")
+	out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work")
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("want bootstrap error, got %v\n%s", err, out)
 	}
@@ -283,7 +324,7 @@ func TestCaptureSchedule_UnsupportedPlatform(t *testing.T) {
 	} {
 		f := useFakeScheduleEnv(t)
 		f.env.goos = "linux"
-		out, err := executeCommand(args...)
+		out, err := execSchedule(t, args...)
 		if err == nil || !strings.Contains(err.Error(), "unsupported") {
 			t.Errorf("%v: want unsupported error, got %v\n%s", args, err, out)
 		}
@@ -295,15 +336,15 @@ func TestCaptureSchedule_UnsupportedPlatform(t *testing.T) {
 
 func TestCaptureScheduleUninstall(t *testing.T) {
 	f := useFakeScheduleEnv(t)
-	if out, err := executeCommand("capture", "schedule", "install", "--browser", "chrome", "--browser-profile", oddProfile); err != nil {
+	if out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "chrome", "--browser-profile", oddProfile); err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
 	// A second profile must survive the first one's uninstall.
-	if out, err := executeCommand("capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work"); err != nil {
+	if out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work"); err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
 
-	out, err := executeCommand("capture", "schedule", "uninstall", "--browser", "chrome", "--browser-profile", oddProfile, "--dry-run")
+	out, err := execSchedule(t, "capture", "schedule", "uninstall", "--browser", "chrome", "--browser-profile", oddProfile, "--dry-run")
 	if err != nil {
 		t.Fatalf("uninstall --dry-run: %v\n%s", err, out)
 	}
@@ -312,7 +353,7 @@ func TestCaptureScheduleUninstall(t *testing.T) {
 	}
 
 	f.lc.calls = nil
-	out, err = executeCommand("capture", "schedule", "uninstall", "--browser", "chrome", "--browser-profile", oddProfile)
+	out, err = execSchedule(t, "capture", "schedule", "uninstall", "--browser", "chrome", "--browser-profile", oddProfile)
 	if err != nil {
 		t.Fatalf("uninstall: %v\n%s", err, out)
 	}
@@ -333,7 +374,7 @@ func TestCaptureScheduleUninstall(t *testing.T) {
 	}
 
 	// Idempotent: nothing left for this profile is still success.
-	out, err = executeCommand("capture", "schedule", "uninstall", "--browser", "chrome", "--browser-profile", oddProfile)
+	out, err = execSchedule(t, "capture", "schedule", "uninstall", "--browser", "chrome", "--browser-profile", oddProfile)
 	if err != nil {
 		t.Fatalf("second uninstall: %v\n%s", err, out)
 	}
@@ -344,11 +385,11 @@ func TestCaptureScheduleUninstall(t *testing.T) {
 
 func TestCaptureScheduleUninstall_JSONResult(t *testing.T) {
 	useFakeScheduleEnv(t)
-	if out, err := executeCommand("capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work", "--no-tabs"); err != nil {
+	if out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work", "--no-tabs"); err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
 	for _, want := range [][]string{{scheduleLabel(kindHistory, "chrome", "Work")}, {}} {
-		out, err := executeCommand("--format", "json", "capture", "schedule", "uninstall", "--browser", "chrome", "--browser-profile", "Work")
+		out, err := execSchedule(t, "--format", "json", "capture", "schedule", "uninstall", "--browser", "chrome", "--browser-profile", "Work")
 		if err != nil {
 			t.Fatalf("uninstall: %v\n%s", err, out)
 		}
@@ -364,10 +405,10 @@ func TestCaptureScheduleUninstall_JSONResult(t *testing.T) {
 
 func TestCaptureScheduleUninstall_KindSelection(t *testing.T) {
 	f := useFakeScheduleEnv(t)
-	if out, err := executeCommand("capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work"); err != nil {
+	if out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "chrome", "--browser-profile", "Work"); err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
-	if out, err := executeCommand("capture", "schedule", "uninstall", "--browser", "chrome", "--browser-profile", "Work", "--no-history"); err != nil {
+	if out, err := execSchedule(t, "capture", "schedule", "uninstall", "--browser", "chrome", "--browser-profile", "Work", "--no-history"); err != nil {
 		t.Fatalf("uninstall: %v\n%s", err, out)
 	}
 	got := f.plists(t)
@@ -378,7 +419,7 @@ func TestCaptureScheduleUninstall_KindSelection(t *testing.T) {
 
 func TestCaptureScheduleList(t *testing.T) {
 	f := useFakeScheduleEnv(t)
-	out, err := executeCommand("capture", "schedule", "list", "--format", "json")
+	out, err := execSchedule(t, "capture", "schedule", "list", "--format", "json")
 	if err != nil {
 		t.Fatalf("list empty: %v\n%s", err, out)
 	}
@@ -386,7 +427,7 @@ func TestCaptureScheduleList(t *testing.T) {
 		t.Errorf("empty list = %q, want []", out)
 	}
 
-	if out, err := executeCommand("capture", "schedule", "install", "--browser", "brave", "--browser-profile", oddProfile, "--no-tabs", "--instance", "work"); err != nil {
+	if out, err := execSchedule(t, "capture", "schedule", "install", "--browser", "brave", "--browser-profile", oddProfile, "--no-tabs", "--instance", "work"); err != nil {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
 	// Unrelated agents in the same dir are ignored.
@@ -394,7 +435,7 @@ func TestCaptureScheduleList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err = executeCommand("capture", "schedule", "list", "--format", "json")
+	out, err = execSchedule(t, "capture", "schedule", "list", "--format", "json")
 	if err != nil {
 		t.Fatalf("list: %v\n%s", err, out)
 	}
@@ -410,7 +451,7 @@ func TestCaptureScheduleList(t *testing.T) {
 		t.Errorf("row = %+v", r)
 	}
 
-	out, err = executeCommand("capture", "schedule", "list")
+	out, err = execSchedule(t, "capture", "schedule", "list")
 	if err != nil {
 		t.Fatalf("list table: %v\n%s", err, out)
 	}
