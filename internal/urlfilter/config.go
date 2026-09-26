@@ -55,7 +55,8 @@ type Config struct {
 // BrowserConfig holds rules for one browser and its profiles.
 type BrowserConfig struct {
 	Rules `mapstructure:",squash" yaml:",inline"`
-	// Profiles is keyed by profile name as passed to --profile.
+	// Profiles is keyed by profile display name or folder name, as passed
+	// to ctxt capture tabs --browser-profile.
 	Profiles map[string]Rules `mapstructure:"profiles" yaml:"profiles,omitempty"`
 }
 
