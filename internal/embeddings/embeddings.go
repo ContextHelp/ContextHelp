@@ -1,11 +1,3 @@
-// Package embeddings holds the consumer-side contracts the embedding write
-// and query paths depend on (ADR-071, amendment 2026-09-26): where the set of
-// active models comes from, and how a model's provider is resolved.
-//
-// Implementations live elsewhere: *registry.Store satisfies ModelSource; the
-// provider resolver satisfies ProviderResolver structurally, without
-// importing this package (providers must not depend on it, since it depends
-// on providers).
 package embeddings
 
 import (
