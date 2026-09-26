@@ -127,12 +127,18 @@ func e2eDpkmsBinary(t *testing.T) string {
 
 // --- recorded Ollama --------------------------------------------------------------
 
-// startJourneyOllama serves Ollama's API from the journey cassettes (or, when
-// recording, from the real Ollama), so binaries that cannot be handed an
-// *http.Client still make only recorded calls.
+// startJourneyOllama serves Ollama's API from the journey cassettes.
 func startJourneyOllama(t *testing.T) (string, *providertest.OllamaCalls) {
 	t.Helper()
-	client, calls := providertest.OllamaClient(t, journeyCassettes)
+	return startRecordedOllama(t, journeyCassettes)
+}
+
+// startRecordedOllama serves Ollama's API from cassettes (or, when
+// recording, from the real Ollama), so binaries that cannot be handed an
+// *http.Client still make only recorded calls.
+func startRecordedOllama(t *testing.T, cassettes string) (string, *providertest.OllamaCalls) {
+	t.Helper()
+	client, calls := providertest.OllamaClient(t, cassettes)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {

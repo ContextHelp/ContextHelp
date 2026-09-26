@@ -39,6 +39,7 @@ type registerDoc struct {
 	ConfigJSON json.RawMessage   `json:"config_json"`
 	Sources    map[string]string `json:"sources"`
 	Index      string            `json:"index"`
+	DryRun     bool              `json:"dry_run"`
 }
 
 // recordedOllama routes register's provider through the Ollama cassettes
@@ -84,7 +85,7 @@ func assertNotRegistered(t *testing.T, db *testDB, id string) {
 	t.Helper()
 	m, err := registryOf(t, db).Get(context.Background(), id)
 	if !errors.Is(err, registry.ErrModelNotFound) {
-		t.Fatalf("registry row for %s after a failed register: %+v (err %v)", id, m, err)
+		t.Fatalf("unexpected registry row for %s: %+v (err %v)", id, m, err)
 	}
 }
 
@@ -373,6 +374,90 @@ func TestEmbeddingsRegister_DuplicateFailsWithoutReprobing(t *testing.T) {
 	if got := calls.URLs(); len(got) != 1 {
 		t.Errorf("provider calls = %v, want exactly one (the duplicate must fail before probing)", got)
 	}
+}
+
+// assertNoIndex fails when id has a per-model index table.
+func assertNoIndex(t *testing.T, db *testDB, id string) {
+	t.Helper()
+	d, ok := db.Driver.(*sqlite.Driver)
+	if !ok {
+		t.Fatal("driver must be *sqlite.Driver")
+	}
+	var n int
+	if err := d.DB().QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name LIKE ?`,
+		"vec_"+storage.EmbeddingIndexName(id)+"%").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("%s has %d index objects after a dry run", id, n)
+	}
+}
+
+// --dry-run resolves the provider and probes the dimension like a real run,
+// and writes nothing: no registry row, no index. A real register afterwards
+// succeeds.
+func TestEmbeddingsRegister_DryRunWritesNothing(t *testing.T) {
+	db := setupTestDB(t)
+	calls := recordedOllama(t)
+	args := []string{registerModelID, "--embedding-model", registerModel, "--embedding-endpoint", registerEndpoint}
+
+	doc := registerJSON(t, db, append(args, "--dry-run")...)
+	if !doc.DryRun || doc.ModelID != registerModelID || doc.Provider != embeddings.BackendOllama || doc.Dimension != snowflakeDimension {
+		t.Errorf("dry-run output = %+v, want dry_run, %s / ollama / %d", doc, registerModelID, snowflakeDimension)
+	}
+	if doc.Index != registerIndexSkipped || doc.Sources["dimension"] != dimensionSourceMeasured {
+		t.Errorf("dry-run index %q, dimension source %q; want %q, %q",
+			doc.Index, doc.Sources["dimension"], registerIndexSkipped, dimensionSourceMeasured)
+	}
+	assertNotRegistered(t, db, registerModelID)
+	assertNoIndex(t, db, registerModelID)
+
+	out, err := db.exec(append([]string{"--dry-run", "embeddings", "register"}, args...)...)
+	if err != nil {
+		t.Fatalf("text dry run: %v\n%s", err, out)
+	}
+	for _, want := range []string{"Dry run: would register " + registerModelID, "Nothing was registered", "1024", "measured"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("text dry run missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Registered ") || strings.Contains(out, "set-default") {
+		t.Errorf("text dry run reads like a registration:\n%s", out)
+	}
+	assertNotRegistered(t, db, registerModelID)
+	assertNoIndex(t, db, registerModelID)
+	if got := calls.URLs(); len(got) != 2 {
+		t.Errorf("provider calls = %v, want one probe per dry run", got)
+	}
+
+	real := registerJSON(t, db, args...)
+	if real.DryRun || real.Index != registerIndexReady {
+		t.Errorf("register after dry runs = %+v, want a real registration with a ready index", real)
+	}
+}
+
+// A dry run applies every check a real run does: a duplicate or a dimension
+// mismatch fails the same way.
+func TestEmbeddingsRegister_DryRunKeepsChecks(t *testing.T) {
+	db := setupTestDB(t)
+	recordedOllama(t)
+	args := []string{"embeddings", "register", registerModelID, "--embedding-model", registerModel, "--embedding-endpoint", registerEndpoint}
+
+	out, err := db.exec(append(args, "--dry-run", "--dimension", "768")...)
+	if err == nil {
+		t.Fatalf("dry run with --dimension 768 against a 1024-d model succeeded:\n%s", out)
+	}
+	assertClass(t, err, output.CodeConflict)
+	assertNotRegistered(t, db, registerModelID)
+
+	if out, err := db.exec(args...); err != nil {
+		t.Fatalf("register: %v\n%s", err, out)
+	}
+	out, err = db.exec(append(args, "--dry-run")...)
+	if err == nil || !strings.Contains(err.Error(), "already registered") {
+		t.Fatalf("dry run of a registered model: err = %v\n%s", err, out)
+	}
+	assertClass(t, err, output.CodeConflict)
 }
 
 // config_json names the key variable, never its value; neither does the

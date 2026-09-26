@@ -121,7 +121,7 @@ ctxt embeddings register <model_id> [--embedding-provider B] [--embedding-model 
 - A model ID may use letters, digits and `. _ : @ / + -`, must start with a letter or digit, and has at most 200 characters. It names one vector space: to register a different model, use a new ID, such as a later date.
 - The dimension limit is 8192 on SQLite and 2000 on Postgres.
 - Registering never changes the default. It builds the model's vector index right away (`Index: ready`).
-- `register` does not honour `--dry-run` yet: it registers the model. Use `ctxt embeddings provider` to preview instead.
+- `--dry-run` resolves the provider, probes the dimension and runs every check a real run does, then prints what would be registered. It writes nothing: no registry entry, no index. With `--format json` the output has `"dry_run": true` and `"index": "skipped"`.
 
 ### `list`
 
@@ -314,7 +314,6 @@ A per-pipeline `pipelines.overrides.<name>.providers.embedding` is ignored with 
 
 ## Known limitations
 
-- `ctxt embeddings register --dry-run` registers the model.
 - `duplicates.policy: drop` still stores a near-duplicate.
 - Two dpkms processes serving one Postgres database can both run the same migration job. Rows stay correct, but provider calls are wasted. Run one dpkms per database while migrating.
 
