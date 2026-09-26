@@ -6,28 +6,57 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // OllamaEmbeddingProvider generates embeddings via Ollama's /api/embeddings endpoint.
+//
+// It applies no defaults of its own: endpoint and model come from the
+// embedding provider resolver (internal/embeddings), which owns defaults
+// and precedence.
 type OllamaEmbeddingProvider struct {
-	endpoint string
-	model    string
-	client   *http.Client
+	endpoint  string
+	model     string
+	dimension int
+	client    *http.Client
 }
 
-// NewOllamaEmbeddingProvider creates an Ollama embedding provider.
-func NewOllamaEmbeddingProvider(endpoint, model string) *OllamaEmbeddingProvider {
-	if endpoint == "" {
-		endpoint = "http://localhost:11434"
+// OllamaEmbeddingOption configures an OllamaEmbeddingProvider.
+type OllamaEmbeddingOption func(*OllamaEmbeddingProvider)
+
+// WithOllamaEmbeddingHTTPClient sets the HTTP client used for embed calls.
+func WithOllamaEmbeddingHTTPClient(c *http.Client) OllamaEmbeddingOption {
+	return func(p *OllamaEmbeddingProvider) {
+		if c != nil {
+			p.client = c
+		}
 	}
-	if model == "" {
-		model = "nomic-embed-text"
-	}
-	return &OllamaEmbeddingProvider{endpoint: endpoint, model: model, client: &http.Client{}}
 }
 
-func (p *OllamaEmbeddingProvider) Name() string    { return "ollama-embed" }
-func (p *OllamaEmbeddingProvider) Dimensions() int { return 768 } // nomic-embed-text default
+// WithOllamaEmbeddingDimension records the expected vector dimension
+// reported by Dimensions. Without it Dimensions reports 0 (unknown).
+func WithOllamaEmbeddingDimension(n int) OllamaEmbeddingOption {
+	return func(p *OllamaEmbeddingProvider) { p.dimension = n }
+}
+
+// NewOllamaEmbeddingProvider creates an Ollama embedding provider for the
+// given base endpoint (e.g. "http://localhost:11434") and model.
+func NewOllamaEmbeddingProvider(endpoint, model string, opts ...OllamaEmbeddingOption) *OllamaEmbeddingProvider {
+	p := &OllamaEmbeddingProvider{
+		endpoint: strings.TrimRight(endpoint, "/"),
+		model:    model,
+		client:   &http.Client{},
+	}
+	for _, o := range opts {
+		o(p)
+	}
+	return p
+}
+
+func (p *OllamaEmbeddingProvider) Name() string { return "ollama-embed" }
+
+// Dimensions reports the configured vector dimension; 0 means unknown.
+func (p *OllamaEmbeddingProvider) Dimensions() int { return p.dimension }
 
 // Embed calls the Ollama embedding API and returns a float32 vector.
 func (p *OllamaEmbeddingProvider) Embed(ctx context.Context, text string) ([]float32, error) {

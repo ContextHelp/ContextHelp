@@ -15,6 +15,10 @@ import (
 )
 
 // Factory resolves the best available provider for each type based on configuration.
+//
+// The embedding provider is not built here: it has its own layered
+// resolution (flags, env, -c, model registry, config, defaults) in
+// internal/embeddings, which every embedding consumer goes through.
 type Factory struct {
 	cfg     config.ProvidersConfig
 	secrets secret.Store
@@ -179,18 +183,6 @@ func (f *Factory) LLM() LLMProvider {
 			endpoint = "http://localhost:11434"
 		}
 		return NewOllamaLLMProvider(endpoint, f.cfg.LLM.Model)
-	}
-}
-
-// Embedding returns the best available EmbeddingProvider.
-func (f *Factory) Embedding() EmbeddingProvider {
-	switch f.cfg.Embedding.Backend {
-	case "ollama":
-		return NewOllamaEmbeddingProvider(f.cfg.Embedding.Endpoint, f.cfg.Embedding.Model)
-	case "stub":
-		return NewStubEmbeddingProvider()
-	default: // "auto" or empty
-		return NewOllamaEmbeddingProvider(f.cfg.Embedding.Endpoint, f.cfg.Embedding.Model)
 	}
 }
 

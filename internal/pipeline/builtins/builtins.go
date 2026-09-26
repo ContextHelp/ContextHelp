@@ -416,7 +416,9 @@ func ConfiguredRegistryWithPipelineOverrides(
 					case "llm":
 						merged.LLM = bc
 					case "embedding":
-						merged.Embedding = bc
+						// The embedding provider is resolved once per
+						// process (internal/embeddings), never per pipeline.
+						log.Printf("builtins: pipeline %q: provider role \"embedding\" cannot be overridden per pipeline (ignored); set providers.embedding or use the embedding env/flags", name)
 					case "ocr":
 						merged.OCR = bc
 					case "vision":

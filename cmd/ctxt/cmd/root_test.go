@@ -28,6 +28,10 @@ func TestMain(m *testing.M) {
 		// Force env secrets backend so tests are not affected by a config
 		// that configures keychain or another backend.
 		os.Setenv("CTXT_SECRETS_BACKEND", "env")
+		// Keep embedding calls off the developer's real Ollama: an
+		// unconfigured run embeds against a closed port and degrades to
+		// FTS. Tests that need a provider set their own (flag or env).
+		os.Setenv("CTXT_EMBEDDING_ENDPOINT", testguard.ClosedServerURL)
 	}, "ctxt"))
 }
 

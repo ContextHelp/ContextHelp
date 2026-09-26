@@ -784,14 +784,35 @@ type I18nConfig struct {
 
 // ProvidersConfig controls backend selection for each provider type.
 type ProvidersConfig struct {
-	Video         ProviderBackendConfig `mapstructure:"video" yaml:"video"`
-	Document      ProviderBackendConfig `mapstructure:"document" yaml:"document"`
-	OCR           ProviderBackendConfig `mapstructure:"ocr" yaml:"ocr"`
-	Transcription ProviderBackendConfig `mapstructure:"transcription" yaml:"transcription"`
-	Vision        ProviderBackendConfig `mapstructure:"vision" yaml:"vision"`
-	Diarization   ProviderBackendConfig `mapstructure:"diarization" yaml:"diarization"`
-	LLM           ProviderBackendConfig `mapstructure:"llm" yaml:"llm"`
-	Embedding     ProviderBackendConfig `mapstructure:"embedding" yaml:"embedding"`
+	Video         ProviderBackendConfig   `mapstructure:"video" yaml:"video"`
+	Document      ProviderBackendConfig   `mapstructure:"document" yaml:"document"`
+	OCR           ProviderBackendConfig   `mapstructure:"ocr" yaml:"ocr"`
+	Transcription ProviderBackendConfig   `mapstructure:"transcription" yaml:"transcription"`
+	Vision        ProviderBackendConfig   `mapstructure:"vision" yaml:"vision"`
+	Diarization   ProviderBackendConfig   `mapstructure:"diarization" yaml:"diarization"`
+	LLM           ProviderBackendConfig   `mapstructure:"llm" yaml:"llm"`
+	Embedding     EmbeddingProviderConfig `mapstructure:"embedding" yaml:"embedding"`
+}
+
+// EmbeddingProviderConfig is the config-file layer of the embedding
+// provider (providers.embedding). Every field is optional: an empty value
+// (or a zero Dimension) means "not set here" and the resolver in
+// internal/embeddings falls through to the next layer. The effective
+// provider is never read from this struct directly; it is resolved from
+// flags, env, -c overrides, the model registry, this block and built-in
+// defaults, per field.
+type EmbeddingProviderConfig struct {
+	// Backend selects the provider implementation (e.g. "ollama").
+	Backend string `mapstructure:"backend,omitempty" yaml:"backend,omitempty"`
+	// Model is the provider-side model name (e.g. "nomic-embed-text").
+	Model string `mapstructure:"model,omitempty" yaml:"model,omitempty"`
+	// Endpoint is the provider base URL (e.g. "http://localhost:11434").
+	Endpoint string `mapstructure:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	// APIKeyEnv names the environment variable that holds the API key.
+	// It is the variable NAME, never the key itself.
+	APIKeyEnv string `mapstructure:"api_key_env,omitempty" yaml:"api_key_env,omitempty"`
+	// Dimension is the expected vector dimension; 0 means unknown.
+	Dimension int `mapstructure:"dimension,omitempty" yaml:"dimension,omitempty"`
 }
 
 // ProviderBackendConfig selects which backend to use for a provider.
@@ -1361,6 +1382,8 @@ type PipelinesConfig struct {
 type PipelineOverride struct {
 	// Providers overrides individual provider backends for this pipeline only.
 	// Keys match ProvidersConfig field names in lowercase: "llm", "vision", etc.
+	// "embedding" is not overridable per pipeline: the embedding provider
+	// is resolved once per process (see internal/embeddings).
 	Providers map[string]ProviderBackendConfig `mapstructure:"providers" yaml:"providers"`
 	// SkipSteps is an ordered list of step names to remove from the pipeline.
 	SkipSteps []string `mapstructure:"skip_steps" yaml:"skip_steps"`

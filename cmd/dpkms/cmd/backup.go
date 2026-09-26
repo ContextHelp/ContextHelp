@@ -135,10 +135,7 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 		ConfigPath:     configPath,
 		IncludeConfigs: includeConfigs,
 		ConfigDir:      configDir,
-		EmbeddingInfo: service.EmbeddingInfo{
-			Backend: cfg.Providers.Embedding.Backend,
-			Model:   cfg.Providers.Embedding.Model,
-		},
+		EmbeddingInfo:  backupEmbeddingInfo(),
 	}
 
 	fmt.Fprintf(os.Stderr, "-> snapshot db...\n")
