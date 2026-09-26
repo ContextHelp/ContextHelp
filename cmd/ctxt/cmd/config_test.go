@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 )
 
 func TestConfigShow(t *testing.T) {
@@ -128,11 +131,9 @@ func TestConfigHelp(t *testing.T) {
 	}
 }
 
-// lintConfigYAML returns a minimal valid config YAML with version: 1.
-// Including version:1 prevents the Load() migration write-back from
-// rewriting the file at 0600, which would mask intentional 0644 test setups.
+// lintConfigYAML returns a minimal valid config YAML.
 func lintConfigYAML(extra string) []byte {
-	return []byte("version: 1\nstorage:\n  type: sqlite\n" + extra)
+	return []byte("storage:\n  type: sqlite\n" + extra)
 }
 
 // TestConfigLintClean verifies exit 0 on a clean, well-permissioned config.
@@ -155,7 +156,6 @@ func TestConfigLintClean(t *testing.T) {
 func TestConfigLintPermissionWarn(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	// version:1 prevents migration write-back from resetting permissions.
 	if err := os.WriteFile(cfgPath, lintConfigYAML(""), 0644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -172,8 +172,7 @@ func TestConfigLintPermissionWarn(t *testing.T) {
 func TestConfigLintSecretWarn(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	// version:1 prevents migration write-back from interfering.
-	content := "version: 1\nstorage:\n  blob:\n    s3:\n      secret_key: \"sk-ant-verysecretvalue123456\"\n"
+	content := "storage:\n  blob:\n    s3:\n      secret_key: \"sk-ant-verysecretvalue123456\"\n"
 	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -190,7 +189,6 @@ func TestConfigLintSecretWarn(t *testing.T) {
 func TestConfigLintFix(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
-	// version:1 prevents migration write-back from masking the permission change.
 	if err := os.WriteFile(cfgPath, lintConfigYAML(""), 0644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -215,5 +213,83 @@ func TestConfigLintHelp(t *testing.T) {
 	}
 	if !strings.Contains(out, "--fix") {
 		t.Error("lint help should document --fix flag")
+	}
+}
+
+// TestConfigLoadNeverWritesFiles: no command writes a config file just by
+// loading config. An unversioned user config, an unversioned -c file and
+// -c key=value overlays stay byte-identical with unchanged mtimes across
+// read-only commands, including validate, which re-loads the -c file.
+func TestConfigLoadNeverWritesFiles(t *testing.T) {
+	root := t.TempDir()
+	xdg := filepath.Join(root, "config")
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	t.Setenv("CTXT_CONFIG", "")
+
+	old := time.Now().Add(-time.Hour).Truncate(time.Second)
+	write := func(p, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	userCfg := filepath.Join(xdg, "contexthelp", "ctxt.yaml")
+	write(userCfg, "server:\n  url: "+testguard.ClosedServerURL+"\n")
+	cliCfg := filepath.Join(root, "cli", "ctxt.yaml")
+	write(cliCfg, "server:\n  urls:\n    - http://127.0.0.1:19997\n")
+
+	snapshot := func() map[string]string {
+		t.Helper()
+		out := map[string]string{}
+		err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			body, err := os.ReadFile(p) // #nosec G304 -- test tempdir
+			if err != nil {
+				return err
+			}
+			out[p] = info.ModTime().String() + "\n" + string(body)
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	overlay := []string{"-c", cliCfg, "-c", "storage.path=" + filepath.Join(t.TempDir(), "db.sqlite")}
+	for _, args := range [][]string{
+		{"config", "show"},
+		{"config", "show", "--format", "json"},
+		{"config", "validate", "--check-secrets=false"},
+		{"config", "paths"},
+		{"config", "doctor"},
+		{"profile", "list"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			before := snapshot()
+			_, _ = executeCommand(append(args, overlay...)...)
+			after := snapshot()
+			for p, a := range after {
+				b, ok := before[p]
+				switch {
+				case !ok && filepath.Dir(p) == filepath.Dir(userCfg), !ok && filepath.Dir(p) == filepath.Dir(cliCfg):
+					t.Errorf("%v created %s", args, p)
+				case ok && a != b:
+					t.Errorf("%v rewrote %s:\nbefore: %s\nafter: %s", args, p, b, a)
+				}
+			}
+		})
 	}
 }

@@ -70,10 +70,14 @@ func TestSetupWritesValidYAML(t *testing.T) {
 
 	content := string(data)
 	// Expect key fields written.
-	for _, want := range []string{"version:", "storage:", "sqlite"} {
+	for _, want := range []string{"storage:", "sqlite"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("config missing %q:\n%s", want, content)
 		}
+	}
+	// No schema version stamp: config carries no version key.
+	if strings.HasPrefix(content, "version:") || strings.Contains(content, "\nversion:") {
+		t.Errorf("config carries a top-level version key:\n%s", content)
 	}
 }
 

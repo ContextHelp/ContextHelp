@@ -156,14 +156,14 @@ func init() {
 		kitconfigcli.WithResolver(configpath.Resolver(binName)))
 
 	// 12fcc conformance: side-effect + idempotency annotations.
-	// show is pure read. validate calls config.Load which may
-	// rewrite migrations on disk; doctor --fix chmods the config file.
+	// show and validate are pure reads (loading config never writes);
+	// doctor --fix chmods the config file.
 	// edit invokes $EDITOR; backup writes a bundle. restore is
 	// destructive (overwrites config). path/paths are pre-stamped by
 	// kitconfigcli.RegisterPathSubcommands above.
 	cliconv.WithSideEffect(configShowCmd, cliconv.SideEffectRead)
-	cliconv.WithSideEffect(configLintCmd, cliconv.SideEffectWriteLocal)     // doctor: --fix chmods the config
-	cliconv.WithSideEffect(configValidateCmd, cliconv.SideEffectWriteLocal) // validate may rewrite migrations
+	cliconv.WithSideEffect(configLintCmd, cliconv.SideEffectWriteLocal) // doctor: --fix chmods the config
+	cliconv.WithSideEffect(configValidateCmd, cliconv.SideEffectRead)
 	cliconv.WithSideEffect(configEditCmd, cliconv.SideEffectWriteLocal)
 	cliconv.WithSideEffect(configBackupCmd, cliconv.SideEffectWriteLocal)
 	cliconv.WithSideEffect(configRestoreCmd, cliconv.SideEffectDestructiveLocal)
@@ -202,7 +202,7 @@ func init() {
 		{Title: "Skip the secret scan", Command: "ctxt config validate --check-secrets=false"},
 	})
 	cliconv.WithNextSteps(configValidateCmd, []cliconv.NextStep{
-		{When: "after a migration write-back", Suggest: "ctxt config show", Reason: "review the post-migration config that was just written"},
+		{When: "when validation fails", Suggest: "ctxt config edit", Reason: "fix the reported problem in the config file"},
 	})
 	cliconv.WithExamples(configEditCmd, []cliconv.Example{
 		{Title: "Open in $EDITOR", Command: "ctxt config edit"},
@@ -314,8 +314,6 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 	fmt.Println("Validating configuration...")
 
 	// Re-load to get a fresh validation result (cfg may have been loaded early).
-	// If load fails, report error; otherwise use cfg (already loaded by initConfig)
-	// to avoid the migration write-back corrupting a temporary test file.
 	if _, err := config.Load(binName, cfgFile); err != nil {
 		fmt.Printf("  ✗ Configuration is invalid: %v\n", err)
 		return err
@@ -328,9 +326,7 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Use cfg (loaded by initConfig before migration write-back can affect the
-	// file) rather than re-loading, which risks seeing the post-migration YAML
-	// that may have field-name differences due to missing yaml struct tags.
+	// Scan cfg, the config initConfig loaded with every -c layer applied.
 	warnings := config.ScanSecrets(cfg)
 	if len(warnings) == 0 {
 		fmt.Println("  ✓ No plaintext secrets detected")

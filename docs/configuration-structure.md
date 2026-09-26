@@ -18,8 +18,6 @@ Both `dpkms` and `ctxt` binaries read from this single file but consume differen
 ## Full Configuration Example
 
 ```yaml
-version: 1
-
 #############################################################################
 # dPKMS Configuration (Substrate)
 #############################################################################
@@ -267,7 +265,6 @@ Both binaries validate:
 
 ### Both Read
 
-- `version`
 - `plugins.load` (both packages may load different plugins)
 
 ---
@@ -302,23 +299,21 @@ ctxt profile use engineer
 
 ---
 
-## Migration Path
+## Upgrading
+
+Config files carry no schema version and are never migrated or rewritten
+on load. Only commands that change configuration on request (`ctxt setup`,
+`ctxt profile create|rm|set|unset`, `ctxt profile schema ...`,
+`ctxt registry remove`, `ctxt watch enable|disable`) write the file.
 
 When upgrading ContextHelp:
 
-1. Check config version compatibility:
-   ```bash
-   ctxt version --check-config
-   ```
-
-2. Backup current config:
+1. Backup current config:
    ```bash
    dpkms housekeeping backup --include-config
    ```
 
-3. Review migration notes for config changes
-
-4. Validate after upgrade:
+2. Validate after upgrade:
    ```bash
    ctxt config validate
    dpkms config validate

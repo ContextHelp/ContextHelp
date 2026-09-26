@@ -10,7 +10,7 @@ The configuration system is designed to be:
 - Extensible
 - Plugin-friendly
 - Local-first
-- Backward-compatible via schema versioning
+- Read-only on load: loading configuration never writes a file
 
 Plugins may introduce entirely new configuration blocks without requiring core changes.
 
@@ -33,8 +33,6 @@ Higher layers override all lower layers. Plugins may also define new configurati
 # Example Configuration File
 
 ```yaml
-version: 1
-
 storage:
   type: sqlite
   path: ~/.local/share/contexthelp/bookmarks.db
@@ -189,14 +187,6 @@ plugins:
           - match: "amazon[.]com/.+"
             extract_regex: "\\$([0-9]+[.][0-9]{2})"
 ```
-
----
-
-# Top-Level Keys
-
-## `version`
-
-Schema version of the configuration file. Used for compatibility and migrations.
 
 ---
 
@@ -668,6 +658,5 @@ The ContextHelp configuration system is:
 - **Deterministic** and safe
 - **Local-first** with privacy defaults
 - **Declarative** for agents, pipelines, refresh, and plugins
-- **Future-proof** with schema versioning
 
 The addition of **refresh configuration**, **plugin-defined namespaces**, and **pipeline extensibility** ensures that plugins such as RSS Feed, Price Monitor, and Notifications can operate fully without touching the core engine.

@@ -9,6 +9,10 @@ import (
 
 // WriteBack marshals cfg to YAML and atomically writes it to path.
 // The write is atomic: it writes to <path>.tmp then renames.
+//
+// Only explicit, user-initiated commands that change configuration call it
+// (setup, profile and registry mutations, watch toggles). Loading config
+// never writes a file.
 func WriteBack(cfg *Config, path string) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {

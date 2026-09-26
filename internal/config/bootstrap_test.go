@@ -80,7 +80,7 @@ func TestBootstrap_ValidPathLoads(t *testing.T) {
 	dir := hermeticEnv(t)
 
 	path := filepath.Join(dir, "extra.yaml")
-	if err := os.WriteFile(path, []byte("version: 1\nserver:\n  port: 4343\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("server:\n  port: 4343\n"), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -106,10 +106,10 @@ func TestBootstrap_LastPathWins(t *testing.T) {
 
 	first := filepath.Join(dir, "first.yaml")
 	second := filepath.Join(dir, "second.yaml")
-	if err := os.WriteFile(first, []byte("version: 1\nserver:\n  port: 1111\n"), 0o600); err != nil {
+	if err := os.WriteFile(first, []byte("server:\n  port: 1111\n"), 0o600); err != nil {
 		t.Fatalf("write first: %v", err)
 	}
-	if err := os.WriteFile(second, []byte("version: 1\nserver:\n  port: 2222\n"), 0o600); err != nil {
+	if err := os.WriteFile(second, []byte("server:\n  port: 2222\n"), 0o600); err != nil {
 		t.Fatalf("write second: %v", err)
 	}
 
@@ -150,7 +150,7 @@ func TestBootstrap_BrokenFileIsFatal(t *testing.T) {
 	dir := hermeticEnv(t)
 
 	path := filepath.Join(dir, "broken.yaml")
-	if err := os.WriteFile(path, []byte("version: 1\n  bad: [unclosed\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("server:\n  port: 1\n  bad: [unclosed\n"), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -199,13 +199,13 @@ func TestBootstrap_ExplicitPathStillBeatsEnvConfig(t *testing.T) {
 	dir := hermeticEnv(t)
 
 	envPath := filepath.Join(dir, "from-env.yaml")
-	if err := os.WriteFile(envPath, []byte("version: 1\nserver:\n  port: 1111\n"), 0o600); err != nil {
+	if err := os.WriteFile(envPath, []byte("server:\n  port: 1111\n"), 0o600); err != nil {
 		t.Fatalf("write env config: %v", err)
 	}
 	t.Setenv(EnvConfigPath, envPath)
 
 	flagPath := filepath.Join(dir, "from-flag.yaml")
-	if err := os.WriteFile(flagPath, []byte("version: 1\nserver:\n  port: 2222\n"), 0o600); err != nil {
+	if err := os.WriteFile(flagPath, []byte("server:\n  port: 2222\n"), 0o600); err != nil {
 		t.Fatalf("write flag config: %v", err)
 	}
 

@@ -201,7 +201,6 @@ func buildConfig(a wizardAnswers) (*config.Config, error) {
 	blobPath := filepath.Join(a.StoragePath, "blobs")
 
 	c := &config.Config{
-		Version: 1,
 		Storage: config.StorageConfig{
 			Type: "sqlite",
 			Path: dbPath,
