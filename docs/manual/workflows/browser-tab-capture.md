@@ -18,7 +18,7 @@ Send the tabs open in one browser profile to ctxt with one command, without a br
 
 ## Prerequisites
 
-1. A dpkms instance your client resolves (`--instance`, `ctxt instance use`, else the first `server.urls` entry or `server.url`). Tabs go to that instance, with its token, exactly as `ctxt analyze` routes; other `server.urls` entries are never tried. If it doesn't answer, each URL is queued locally and runs when `dpkms serve` starts.
+1. A dpkms instance your client resolves (`--instance`, `ctxt instance use`, else the first `server.urls` entry or `server.url`). Tabs go to that instance, with its token, exactly as `ctxt analyze` routes; other `server.urls` entries are never tried, and nothing is queued on this machine. If it doesn't answer, the command stops with exit status `70`; if it rejects the token, with `5`.
 2. You have used the browser profile at least once, so it has a session on disk. The browser does not need to be running.
 
 ## Procedure
@@ -147,7 +147,7 @@ The browser's own `chrome://version` page (`brave://version` in Brave) shows the
 ctxt capture tabs --browser brave --browser-profile Work --dry-run --format json | jq '.summary'
 ```
 
-Exit status: `0` all allowed tabs sent, `1` at least one send failed (the others were still sent), `2` bad invocation (unknown browser, unknown or ambiguous profile, nothing to auto-select), `3` the browser, profile folder or session file is not on disk.
+Exit status: `0` all allowed tabs sent, `1` at least one send failed (the others were still sent), `2` bad invocation (unknown browser, unknown or ambiguous profile, nothing to auto-select), `3` the browser, profile folder or session file is not on disk, `5` the instance rejected the token, `70` nothing answered at the instance. On `5` and `70` the run stops at the first tab: nothing is retried, and the summary counts the tabs it never sent as `not sent`.
 
 Scripts that must always read the same profile should pass both `--browser` and `--browser-profile`: auto-selection follows the OS default browser and the last-used profile, which change.
 
