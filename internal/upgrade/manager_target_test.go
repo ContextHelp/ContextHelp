@@ -71,3 +71,22 @@ func counts(s Status) Status {
 	s.EtaSeconds = 0
 	return s
 }
+
+// A second run while one is in flight is refused with ErrBusy, which the
+// re-projection job waits out instead of failing.
+func TestManager_StartWhileRunningIsErrBusy(t *testing.T) {
+	m := NewManager("")
+	if err := m.StartTarget(BucketEmbeddingsMigrate, "nomic@1", 1); err != nil {
+		t.Fatal(err)
+	}
+	err := m.StartTarget(BucketReindexAuto, "projection@v2", 1)
+	if !errors.Is(err, ErrBusy) {
+		t.Fatalf("second start: %v, want ErrBusy", err)
+	}
+	if err := m.Complete(); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.StartTarget(BucketReindexAuto, "projection@v2", 1); err != nil {
+		t.Fatalf("start after complete: %v", err)
+	}
+}

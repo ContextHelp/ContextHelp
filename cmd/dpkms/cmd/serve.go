@@ -238,12 +238,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 	events.SetupSubscriber(bus, cfg, config.GetConfigPath(binName))
 
 	// 6.0 ADR-070 §3: verify the FTS index signature on startup, on either
-	// backend. Detection only — the reindex worker acts separately. A
-	// mismatch (or first boot) logs a warning and emits a bus event; the
-	// daemon proceeds.
+	// backend. A mismatch logs a warning and emits a bus event; once the
+	// worker pool is up, it schedules the re-projection job (10e), which
+	// stamps the signature when done. The daemon proceeds meanwhile.
 	var (
 		sigDB      *sql.DB
 		sigDialect indexsig.Dialect
+		ftsVerify  *indexsig.VerifyResult
 	)
 	switch drv := driver.(type) {
 	case *sqlite.Driver:
@@ -255,13 +256,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 		if res, err := indexsig.VerifyFTS(context.Background(), sigDB, sigDialect); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: fts signature verify: %v\n", err)
 		} else if !res.Match {
+			ftsVerify = res
 			if res.FirstBoot {
 				fmt.Printf("FTS signature: first-boot stamp %s (inputs: %s)\n",
-					res.NewHash[:12], res.InputsSummary)
+					shortHash(res.NewHash), res.InputsSummary)
 			} else {
 				fmt.Fprintf(os.Stderr,
-					"warning: FTS signature mismatch: old=%s new=%s inputs=%s — reindex_auto pending\n",
-					res.OldHash[:12], res.NewHash[:12], res.InputsSummary,
+					"warning: FTS signature mismatch: old=%s new=%s inputs=%s — reindex_auto: re-projecting stored objects\n",
+					shortHash(res.OldHash), shortHash(res.NewHash), res.InputsSummary,
 				)
 			}
 			ev, err := events.NewEvent(
@@ -441,6 +443,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 10. Init worker pool.
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
 	handleEmbeddingsMigrate(pool, driver, upgradeMgr, svc.Bus)
+	handleReproject(pool, driver, upgradeMgr, svc.Bus)
 
 	// 10pre. Init federation worker set. Cycle detection runs here; an
 	// invalid topology fails serve before any port is bound (US-0318 AC).
@@ -506,6 +509,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 	} else if n > 0 {
 		fmt.Printf("Crash recovery: reset %d stale job(s) to pending\n", n)
 	}
+
+	// 10e. ADR-070 reindex_auto: a stale FTS signature schedules the
+	// re-projection of stored objects (resumes a pending run instead).
+	scheduleReproject(context.Background(), os.Stdout, queue, ftsVerify, svc.Bus)
 
 	// 11. Start everything via errgroup.
 	ctx, cancel := context.WithCancel(context.Background())

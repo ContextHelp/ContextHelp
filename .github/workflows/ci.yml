@@ -326,13 +326,13 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
 
-      # Task-job claim scenarios: two drivers (two dpkms) on one Postgres
-      # database. They live next to the worker pool; only the Postgres
-      # variants run here (the SQLite ones run in the unit job).
-      - name: Run task-job claim tests on Postgres
+      # Task-job claim and re-projection scenarios on Postgres. They live
+      # next to the worker pool; only the Postgres variants run here (the
+      # SQLite ones run in the unit job).
+      - name: Run task-job claim and re-projection tests on Postgres
         run: >-
           go test -v -tags=integration,fts5 -count=1
-          -run 'TestClaim_.*_Postgres' ./internal/jobs/
+          -run 'Test(Claim|Reproject)_.*_Postgres' ./internal/jobs/
         env:
           CGO_ENABLED: '1'
           POSTGRES_HOST: localhost

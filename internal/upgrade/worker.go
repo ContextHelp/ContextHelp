@@ -125,7 +125,7 @@ func (w *Worker) Run(ctx context.Context, sel *Selector, opts WorkerOpts) error 
 	if err := w.mgr.Start(BucketReingestSelective, total); err != nil {
 		// Distinguish "already running" from other start failures so
 		// callers can surface the right CLI message.
-		if isAlreadyInProgress(err) {
+		if errors.Is(err, ErrBusy) {
 			return ErrAlreadyInProgress
 		}
 		return fmt.Errorf("upgrade run: start: %w", err)
@@ -273,37 +273,4 @@ func (w *Worker) publish(ctx context.Context, topic bus.Topic, payload any) {
 		return
 	}
 	_ = w.bus.Publish(ctx, ev)
-}
-
-// isAlreadyInProgress detects the "another run in progress" error from
-// Manager.Start without coupling to its exact wording. Manager.Start
-// formats its message as `upgrade: another <bucket> run is already in
-// progress` (see manager.go); we match on the stable substring.
-func isAlreadyInProgress(err error) bool {
-	if err == nil {
-		return false
-	}
-	return contains(err.Error(), "already in progress")
-}
-
-// contains is a tiny strings.Contains shim so we don't import "strings"
-// just for this one call site.
-func contains(haystack, needle string) bool {
-	return len(haystack) >= len(needle) && indexOf(haystack, needle) >= 0
-}
-
-func indexOf(s, sub string) int {
-	if len(sub) == 0 {
-		return 0
-	}
-outer:
-	for i := 0; i+len(sub) <= len(s); i++ {
-		for j := 0; j < len(sub); j++ {
-			if s[i+j] != sub[j] {
-				continue outer
-			}
-		}
-		return i
-	}
-	return -1
 }
