@@ -224,6 +224,49 @@ func runServe(cmd *cobra.Command, args []string) error {
 		},
 	}
 
+	// 5a. Determine bind address. Only private instances stay on
+	// loopback; protected/public bind all interfaces (and are already
+	// guaranteed to have inbound auth configured above).
+	bind := "127.0.0.1"
+	if access != config.AccessPrivate {
+		bind = "0.0.0.0"
+	}
+
+	// 5b. Init federation worker set. Cycle detection runs here; an
+	// invalid topology fails serve before any port is bound (US-0318 AC).
+	fedSet, err := federation.New(*cfg, driver)
+	if err != nil {
+		return fmt.Errorf("federation: %w", err)
+	}
+	if n := fedSet.Len(); n > 0 {
+		fmt.Printf("Federation: %d async target(s) configured\n", n)
+	}
+
+	// 5c. Bind every listener once, before the stack (the Host
+	// allowlist names the port actually bound), the pidfile or any
+	// background goroutine, and hand each bound listener to its server.
+	// Nothing probes a port and re-binds it later: two instances started
+	// together can no longer both be told a port is free. Ports the
+	// operator set (--port, --grpc-port) are bound exactly or serve
+	// fails; built-in defaults fall back to an OS-assigned port. The
+	// deferred close releases every port on an early return; after a
+	// server has taken its listener the extra Close is a no-op.
+	lns, err := acquireListeners(os.Stderr, []listenSpec{
+		{name: "HTTP", bind: bind, port: port, explicit: cmd.Flags().Changed("port")},
+		{name: "gRPC", bind: bind, port: grpcPort, explicit: cmd.Flags().Changed("grpc-port")},
+		{name: "cookie bridge", bind: "127.0.0.1", port: wsserver.DefaultCookieBridgePort},
+	})
+	if err != nil {
+		return err
+	}
+	defer closeListeners(lns)
+	httpLn, grpcLn, cookieLn := lns[0], lns[1], lns[2]
+	port, grpcPort = listenerPort(httpLn), listenerPort(grpcLn)
+	cookieBridgePort := listenerPort(cookieLn)
+	addr := httpLn.Addr().String()
+	grpcBind := grpcLn.Addr().String()
+	cookieBridgeAddr := cookieLn.Addr().String()
+
 	// 6. Request-serving stack: queue, pipeline runtime, search engine,
 	// event bus, policy engine, service, watcher manager, security
 	// emitter, entitlement gate and HTTP router. The in-process test
@@ -241,6 +284,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		ConfigPath: config.GetConfigPath(binName),
 		Probes:     healthProbes,
 		DevCORS:    viper.GetBool("server.dev"),
+		HTTPPort:   port,
 		Warnings:   os.Stderr,
 	})
 	if err != nil {
@@ -304,31 +348,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Federation push: refused — no federation.token configured (mandatory on %s instances)\n", access)
 	}
 
-	router := st.Router
-	router.Handle("/ws/bus", hubNet.Handler())
-
-	// 8. Determine bind address. Only private instances stay on
-	// loopback; protected/public bind all interfaces (and are already
-	// guaranteed to have inbound auth configured above).
-	bind := "127.0.0.1"
-	if access != config.AccessPrivate {
-		bind = "0.0.0.0"
-	}
-
 	// 10. Init worker pool.
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
 	handleEmbeddingsMigrate(pool, driver, upgradeMgr, svc.Bus)
 	handleReproject(pool, driver, upgradeMgr, svc.Bus)
-
-	// 10pre. Init federation worker set. Cycle detection runs here; an
-	// invalid topology fails serve before any port is bound (US-0318 AC).
-	fedSet, err := federation.New(*cfg, driver)
-	if err != nil {
-		return fmt.Errorf("federation: %w", err)
-	}
-	if n := fedSet.Len(); n > 0 {
-		fmt.Printf("Federation: %d async target(s) configured\n", n)
-	}
 
 	// 10a. Wire fan-out enrichment (bidirectional edges + audit log).
 	if cfg.FanOut.Enabled {
@@ -338,29 +361,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 		})
 	}
 
-	// 10b. Bind every listener once, before the pidfile or any
-	// background goroutine, and hand each bound listener to its server.
-	// Nothing probes a port and re-binds it later: two instances started
-	// together can no longer both be told a port is free. Ports the
-	// operator set (--port, --grpc-port) are bound exactly or serve
-	// fails; built-in defaults fall back to an OS-assigned port. The
-	// deferred close releases every port on an early return; after a
-	// server has taken its listener the extra Close is a no-op.
-	lns, err := acquireListeners(os.Stderr, []listenSpec{
-		{name: "HTTP", bind: bind, port: port, explicit: cmd.Flags().Changed("port")},
-		{name: "gRPC", bind: bind, port: grpcPort, explicit: cmd.Flags().Changed("grpc-port")},
-		{name: "cookie bridge", bind: "127.0.0.1", port: wsserver.DefaultCookieBridgePort},
-	})
-	if err != nil {
-		return err
-	}
-	defer closeListeners(lns)
-	httpLn, grpcLn, cookieLn := lns[0], lns[1], lns[2]
-	port, grpcPort = listenerPort(httpLn), listenerPort(grpcLn)
-	cookieBridgePort := listenerPort(cookieLn)
-	addr := httpLn.Addr().String()
-	grpcBind := grpcLn.Addr().String()
-	cookieBridgeAddr := cookieLn.Addr().String()
+	router := st.Router
+	router.Handle("/ws/bus", hubNet.Handler())
 
 	httpSrv := &gohttp.Server{
 		Addr:              addr,

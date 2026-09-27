@@ -13,6 +13,8 @@ package stack
 import (
 	"fmt"
 	"io"
+	"net"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -68,6 +70,11 @@ type Inputs struct {
 	Probes httpserver.HealthzProbes
 	// DevCORS enables CORS for the Vite dev server.
 	DevCORS bool
+	// HTTPPort is the port the HTTP listener actually bound; the Host
+	// allowlist (see HostAllowlist) names it. 0 means no listener
+	// serves Router by name (tests driving Router in-process) and
+	// disables the Host check.
+	HTTPPort int
 	// Warnings receives non-fatal assembly warnings. nil discards them.
 	Warnings io.Writer
 }
@@ -169,6 +176,31 @@ func QuerySemantic(driver storage.StorageDriver, r *embeddings.Resolver, warn io
 	return src
 }
 
+// HostAllowlist returns the Host header check for an HTTP server bound
+// to port, or nil when none applies. Private instances always check
+// Host, against the loopback names for the bound port plus extra
+// (server.allowed_hosts): a hostile page that rebinds its DNS name to
+// 127.0.0.1 is otherwise same-origin with an unauthenticated API.
+// Protected and public instances bind every interface and are reached
+// by names dpkms cannot know (LAN addresses, proxies), so they check
+// Host only when extra is set; the loopback names stay allowed then so
+// local clients keep working.
+func HostAllowlist(access string, port int, extra []string) (*httpserver.HostAllowlist, error) {
+	if access != config.AccessPrivate && len(extra) == 0 {
+		return nil, nil
+	}
+	p := strconv.Itoa(port)
+	entries := append([]string{
+		net.JoinHostPort("127.0.0.1", p),
+		net.JoinHostPort("localhost", p),
+	}, extra...)
+	hosts, err := httpserver.NewHostAllowlist(entries)
+	if err != nil {
+		return nil, fmt.Errorf("config: server.%w", err)
+	}
+	return hosts, nil
+}
+
 // Build assembles the stack over in.Driver.
 func Build(in Inputs) (*Stack, error) {
 	cfg := in.Config
@@ -188,6 +220,14 @@ func Build(in Inputs) (*Stack, error) {
 	access := in.Access
 	if access == "" {
 		access = config.AccessPrivate
+	}
+
+	var hosts *httpserver.HostAllowlist
+	if in.HTTPPort != 0 {
+		var err error
+		if hosts, err = HostAllowlist(access, in.HTTPPort, cfg.Server.AllowedHosts); err != nil {
+			return nil, err
+		}
 	}
 
 	s := &Stack{Queue: jobs.NewQueue(in.Driver.Jobs())}
@@ -276,6 +316,7 @@ func Build(in Inputs) (*Stack, error) {
 		// per federation.token, never by a principal token alone.
 		RequireFederationCredential: access != config.AccessPrivate,
 		RedactHealthz:               access == config.AccessPublic,
+		Hosts:                       hosts,
 	})
 	return s, nil
 }

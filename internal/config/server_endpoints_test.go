@@ -185,6 +185,38 @@ func TestServerURLsBadNamesRejected(t *testing.T) {
 	}
 }
 
+func TestAllowedHostsParse(t *testing.T) {
+	cfg, err := loadFromYAML(t, `server:
+  allowed_hosts:
+    - dpkms.lan
+    - Proxy.Example.net:8443
+    - "[::1]:18080"
+`)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"dpkms.lan", "Proxy.Example.net:8443", "[::1]:18080"}, cfg.Server.AllowedHosts)
+}
+
+func TestParseAllowedHost(t *testing.T) {
+	cases := []struct{ in, host, port string }{
+		{"dpkms.lan", "dpkms.lan", ""},
+		{"DPKMS.Lan", "dpkms.lan", ""},
+		{"dpkms.lan:8443", "dpkms.lan", "8443"},
+		{"192.168.1.20", "192.168.1.20", ""},
+		{"192.168.1.20:8080", "192.168.1.20", "8080"},
+		{"::1", "::1", ""},
+		{"[::1]", "::1", ""},
+		{"[::1]:8080", "::1", "8080"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			host, port, err := ParseAllowedHost(tc.in)
+			require.NoError(t, err)
+			assert.Equal(t, tc.host, host)
+			assert.Equal(t, tc.port, port)
+		})
+	}
+}
+
 // TestServerEndpointMarshalKeepsName: a named entry never collapses to
 // the bare-string form, which would drop the name.
 func TestServerEndpointMarshalKeepsName(t *testing.T) {
@@ -199,4 +231,27 @@ func TestServerEndpointMarshalKeepsName(t *testing.T) {
 	assert.Equal(t, "home", back[0].Name)
 	assert.Equal(t, "https://a.example.net", back[0].URL)
 	assert.Contains(t, string(out), "- http://127.0.0.1:8080")
+}
+
+// A malformed entry fails the load and names the key: silently dropping
+// it would lock its users out with a Host rejection.
+func TestAllowedHostsMalformedRejected(t *testing.T) {
+	for _, entry := range []string{
+		`""`,
+		"http://dpkms.lan",
+		"dpkms.lan/ui",
+		`"*.example.net"`,
+		"dpkms.lan:0",
+		"dpkms.lan:99999",
+		"dpkms.lan:http",
+		"not:an:ipv6",
+		"'dpkms lan'",
+		`"[::1"`,
+	} {
+		t.Run(entry, func(t *testing.T) {
+			_, err := loadFromYAML(t, "server:\n  allowed_hosts:\n    - "+entry+"\n")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "server.allowed_hosts[0]")
+		})
+	}
 }

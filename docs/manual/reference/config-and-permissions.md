@@ -92,6 +92,30 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 
 `POST /api/v1/federation/push` needs `write:objects` and, on non-private instances, the `federation.token` credential as well: the federation token must be a static token whose principal holds `writer` or `admin`. `/health`, `/healthz` and gRPC health are open.
 
+### Reach dpkms by another host name
+
+dpkms checks the `Host` header of every HTTP request, so a web page
+that points its own DNS name at your machine cannot use the API. A
+private instance (the default) answers only to `127.0.0.1:<port>` and
+`localhost:<port>`, where `<port>` is the port it bound. Any other name
+gets `403` with the error code `HOST_NOT_ALLOWED`.
+
+To reach it by another name, list that name under `server.allowed_hosts`:
+
+```yaml
+server:
+  allowed_hosts:
+    - dpkms.lan          # this host on any port
+    - 192.168.1.20:8080  # this host on port 8080 only
+```
+
+Entries are host names or IP addresses, with an optional port. They are
+not URLs: no scheme, path or wildcard.
+
+Protected and public instances check `Host` only when
+`server.allowed_hosts` is set. Set it to the names your clients and
+reverse proxy use; `127.0.0.1:<port>` and `localhost:<port>` stay allowed.
+
 ### Profile controls
 
 ```bash

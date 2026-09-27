@@ -579,6 +579,13 @@ type ServerConfig struct {
 	// entitlement grants are data (entitlement rows keyed by principal
 	// ID); quotas are operator config, applied at serve start.
 	Quotas []ServerQuotaConfig `mapstructure:"quotas" yaml:"quotas"`
+	// AllowedHosts lists extra Host header values the HTTP server
+	// answers to, for names other than 127.0.0.1 and localhost (a LAN
+	// name, a reverse proxy's public host). Each entry is a host, which
+	// matches on any port, or host:port. Private instances always check
+	// Host (loopback names plus these); protected and public instances
+	// check it only when this list is set. See ParseAllowedHost.
+	AllowedHosts []string `mapstructure:"allowed_hosts" yaml:"allowed_hosts,omitempty"`
 
 	// URL is the single dpkms instance clients route to when URLs is
 	// empty (also settable per command with --server where the flag
@@ -1013,6 +1020,11 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	// permanently "down" instance and silently shift traffic to the next
 	// instance or the local fallback.
 	if err := cfg.validateServerEndpoints(); err != nil {
+		return nil, err
+	}
+	// A malformed server.allowed_hosts entry would lock its users out
+	// with a Host rejection that reads like a network fault; fail here.
+	if err := cfg.validateAllowedHosts(); err != nil {
 		return nil, err
 	}
 
