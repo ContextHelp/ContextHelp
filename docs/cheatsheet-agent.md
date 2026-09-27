@@ -256,7 +256,7 @@ Endpoint: `http://<dpkms-host>/api/v1/mcp/` (default localhost). 10 read-only to
 
 | Tool | Args | Use when |
 |---|---|---|
-| `search(query, top_k=10, since?, until?, profile?, kinds?)` | hybrid FTS+vector | Specific keywords (person, project, error, file path) |
+| `search(query, top_k=10, mode=hybrid, profile?, min_score?, meta_type?, topic?, person?, source_type?, since?, until?)` | hybrid FTS+vector, scored; `executed_mode` shows a full-text fallback | Specific keywords (person, project, error, file path) |
 | `list(kind, filter?, limit=20, profile?)` | rows of `kind` | Browsing by type |
 | `get(id, profile?)` | one KnowledgeObject | After search/list pinpoints it |
 | `entity(slug, profile?)` | entity + facts + backlinks | Resolving `@person.alice` or `@project.q3` |
@@ -290,7 +290,7 @@ The user asks "what was I doing this afternoon?":
 
 The user asks "summarize yesterday's Q3 meeting":
 
-1. `search(query="Q3", kinds=["meeting"], since="yesterday")`
+1. `search(query="Q3 planning meeting")`
 2. `get(id=<top result>)` for the transcript
 3. `compose(template="meeting-recap", scope="object:<id>")`
 
