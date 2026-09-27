@@ -19,13 +19,16 @@ const SearchGraphViewerPath = "/ui/searchgraph/"
 // fetch the graph from the REST endpoint on the same origin with the
 // page's own query string, and link a clicked object to the web UI's
 // object page. The fetch is same-origin, so it carries whatever
-// credential the browser holds for /api/v1.
+// credential the browser holds for /api/v1; when that is none (401), the
+// page tells the user to run `ctxt ui open` and links the web UI's
+// sign-in page.
 func SearchGraphViewerConfig() viewer.Config {
 	return viewer.Config{
 		DataURL:      "/api/v1/search/graph",
 		ForwardQuery: true,
 		ObjectAction: viewer.ObjectLink,
 		ObjectHref:   "/ui/objects/" + viewer.IDPlaceholder,
+		SignInHref:   "/ui/auth",
 	}
 }
 

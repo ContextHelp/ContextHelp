@@ -27,11 +27,12 @@ const (
 // object id.
 const IDPlaceholder = "{id}"
 
-// Config is how a host tells the page where its graph document lives and
-// what a click on an object offers. The page reads it from a JSON element
-// the host injects (see AssetsWith); the page's own URL never chooses
-// either target, so a crafted link cannot point the viewer elsewhere.
-// Both targets must resolve on the page's own origin.
+// Config is how a host tells the page where its graph document lives,
+// what a click on an object offers, and where a signed-out browser signs
+// in. The page reads it from a JSON element the host injects (see
+// AssetsWith); the page's own URL never chooses any target, so a crafted
+// link cannot point the viewer elsewhere. Every target must resolve on
+// the page's own origin.
 type Config struct {
 	// DataURL is the graph document the page fetches: a path, absolute or
 	// relative to the page, on the page's origin. Default DataFile.
@@ -45,6 +46,11 @@ type Config struct {
 	// ObjectHref is the link for ObjectLink: a path on the page's origin
 	// containing IDPlaceholder, e.g. "/ui/objects/{id}".
 	ObjectHref string `json:"objectHref,omitempty"`
+	// SignInHref is the host's sign-in page, a path on the page's origin,
+	// e.g. "/ui/auth". When set, a 401 from DataURL shows how to sign in
+	// (run `ctxt ui open`, with a link here) instead of the generic HTTP
+	// error. Empty (default) keeps the generic error for every status.
+	SignInHref string `json:"signInHref,omitempty"`
 }
 
 // DefaultConfig is what the page does with no injected config: fetch
@@ -74,6 +80,11 @@ func (c Config) Validate() error {
 		}
 	default:
 		return fmt.Errorf("%w: unknown objectAction %q", ErrInvalidConfig, c.ObjectAction)
+	}
+	if c.SignInHref != "" {
+		if err := checkSameOrigin(c.SignInHref); err != nil {
+			return fmt.Errorf("%w: signInHref %q: %w", ErrInvalidConfig, c.SignInHref, err)
+		}
 	}
 	return nil
 }

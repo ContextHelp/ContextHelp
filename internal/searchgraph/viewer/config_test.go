@@ -21,6 +21,7 @@ var hostedConfig = Config{
 	ForwardQuery: true,
 	ObjectAction: ObjectLink,
 	ObjectHref:   "/ui/objects/{id}",
+	SignInHref:   "/ui/auth",
 }
 
 // The served page carries no config, so the page runs on the defaults the
@@ -42,7 +43,7 @@ func TestDefaultConfigMatchesServedPage(t *testing.T) {
 	}
 	// The script's built-in defaults, as minified by the bundler.
 	script, _ := fs.ReadFile(Assets(), ScriptFile)
-	for _, frag := range []string{`dataUrl:"graph.json"`, `forwardQuery:!1`, `objectAction:"copy-cli"`} {
+	for _, frag := range []string{`dataUrl:"graph.json"`, `forwardQuery:!1`, `objectAction:"copy-cli"`, `signInHref:""`} {
 		if !bytes.Contains(script, []byte(frag)) {
 			t.Errorf("%s: default %s not found", ScriptFile, frag)
 		}
@@ -55,6 +56,7 @@ func TestConfigValidate(t *testing.T) {
 		hostedConfig,
 		{DataURL: "graph.json", ObjectAction: ObjectLink, ObjectHref: "../objects/{id}"},
 		{DataURL: "/g?format=jgf", ObjectAction: ObjectLink, ObjectHref: "/ui/objects?id={id}"},
+		{DataURL: "graph.json", ObjectAction: ObjectCopyCLI, SignInHref: "../auth"},
 	}
 	for _, c := range valid {
 		if err := c.Validate(); err != nil {
@@ -81,6 +83,9 @@ func TestConfigValidate(t *testing.T) {
 		"relative-proto link":   {DataURL: "graph.json", ObjectAction: ObjectLink, ObjectHref: "//evil.example/{id}"},
 		"javascript link":       {DataURL: "graph.json", ObjectAction: ObjectLink, ObjectHref: "javascript:alert('{id}')"},
 		"scheme from id":        {DataURL: "graph.json", ObjectAction: ObjectLink, ObjectHref: "{id}:x"},
+		"absolute sign-in":      {DataURL: "graph.json", ObjectAction: ObjectCopyCLI, SignInHref: "https://evil.example/auth"},
+		"relative-proto signin": {DataURL: "graph.json", ObjectAction: ObjectCopyCLI, SignInHref: "//evil.example/auth"},
+		"javascript sign-in":    {DataURL: "graph.json", ObjectAction: ObjectCopyCLI, SignInHref: "javascript:alert(1)"},
 	}
 	for name, c := range invalid {
 		if err := c.Validate(); !errors.Is(err, ErrInvalidConfig) {
@@ -133,6 +138,7 @@ func TestIndexEscapesConfig(t *testing.T) {
 		DataURL:      "/g?x=</script><script>alert(1)</script>&y=<!--",
 		ObjectAction: ObjectLink,
 		ObjectHref:   "/o/{id}?z=</SCRIPT/><b>&amp;\u2028",
+		SignInHref:   "/auth?next=</script><img/src=x>",
 	}
 	page, err := Index(cfg)
 	if err != nil {

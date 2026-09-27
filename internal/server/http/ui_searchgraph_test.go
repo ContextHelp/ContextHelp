@@ -20,8 +20,8 @@ var viewerConfigElem = regexp.MustCompile(`<script type="application/json" id="v
 
 // The page at /ui/searchgraph/ is the viewer, not the SPA shell, and it
 // carries the dpkms host config: the REST graph endpoint on this origin
-// with the page's query forwarded, and object clicks linking to the web
-// UI's object page. The values are spelled out, not read back from
+// with the page's query forwarded, object clicks linking to the web UI's
+// object page, and a 401 pointing at the web UI's sign-in page. The values are spelled out, not read back from
 // SearchGraphViewerConfig, so a changed config fails here.
 func TestSearchGraphViewerIndexCarriesHostConfig(t *testing.T) {
 	router := uiRouter(t)
@@ -44,6 +44,7 @@ func TestSearchGraphViewerIndexCarriesHostConfig(t *testing.T) {
 				"forwardQuery": true,
 				"objectAction": "link",
 				"objectHref":   "/ui/objects/{id}",
+				"signInHref":   "/ui/auth",
 			}, got)
 		})
 	}

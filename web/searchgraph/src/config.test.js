@@ -1,13 +1,29 @@
 // Unit tests for the host configuration. Run: pnpm test (node --test).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ConfigError, DEFAULT_CONFIG, checkLink, dataURL, objectHref, parseConfig } from "./config.js";
+import {
+  ConfigError,
+  DEFAULT_CONFIG,
+  SIGN_IN_COMMAND,
+  checkLink,
+  dataURL,
+  fetchFailure,
+  objectHref,
+  parseConfig,
+  signInURL,
+} from "./config.js";
 
 const PAGE = "http://127.0.0.1:8123/ui/searchgraph/?q=deploy%20x&limit=5";
 
 test("no config element means today's behaviour", () => {
   const cfg = parseConfig(null);
-  assert.deepEqual(cfg, { dataUrl: "graph.json", forwardQuery: false, objectAction: "copy-cli", objectHref: "" });
+  assert.deepEqual(cfg, {
+    dataUrl: "graph.json",
+    forwardQuery: false,
+    objectAction: "copy-cli",
+    objectHref: "",
+    signInHref: "",
+  });
   assert.equal(dataURL(cfg, "http://127.0.0.1:9/tok/"), "http://127.0.0.1:9/tok/graph.json");
   // The page's query string is not forwarded by default.
   assert.equal(dataURL(cfg, "http://127.0.0.1:9/tok/?q=a"), "http://127.0.0.1:9/tok/graph.json");
@@ -30,6 +46,7 @@ test("malformed configs are rejected", () => {
     '{"objectAction":"exec"}',
     '{"objectAction":"link"}',
     '{"objectAction":"link","objectHref":"/ui/objects/"}',
+    '{"signInHref":true}',
   ]) {
     assert.throws(() => parseConfig(text), ConfigError, text);
   }
@@ -95,4 +112,40 @@ test("link templates off the page's origin are refused", () => {
 
 test("copy-cli mode never checks the link template", () => {
   checkLink(parseConfig('{"objectHref":"https://evil.example/{id}"}'), PAGE);
+});
+
+const HOSTED = '{"dataUrl":"/api/v1/search/graph","forwardQuery":true,"signInHref":"/ui/auth"}';
+
+test("a 401 from a host with a sign-in page asks the user to sign in", () => {
+  assert.equal(SIGN_IN_COMMAND, "ctxt ui open");
+  assert.deepEqual(fetchFailure(parseConfig(HOSTED), 401, PAGE), {
+    signIn: { command: "ctxt ui open", href: "http://127.0.0.1:8123/ui/auth" },
+  });
+});
+
+test("other failures keep the generic message", () => {
+  const hosted = parseConfig(HOSTED);
+  for (const status of [400, 403, 404, 500, 502]) {
+    assert.deepEqual(fetchFailure(hosted, status, PAGE), {
+      message: `No embedded graph data, and /api/v1/search/graph returned HTTP ${status}.`,
+    });
+  }
+  // A host without a sign-in page, like the CLI, keeps the generic 401 message.
+  assert.deepEqual(fetchFailure(parseConfig(null), 401, PAGE), {
+    message: "No embedded graph data, and graph.json returned HTTP 401.",
+  });
+});
+
+test("the sign-in page must stay on the page's origin", () => {
+  assert.equal(signInURL(parseConfig(null), PAGE), "");
+  assert.equal(signInURL(parseConfig('{"signInHref":"../../ui/auth"}'), PAGE), "http://127.0.0.1:8123/ui/auth");
+  for (const signInHref of [
+    "https://evil.example/auth",
+    "//evil.example/auth",
+    "/\\evil.example/auth",
+    "javascript:alert(1)",
+  ]) {
+    const cfg = parseConfig(JSON.stringify({ signInHref }));
+    assert.throws(() => signInURL(cfg, PAGE), ConfigError, signInHref);
+  }
 });
