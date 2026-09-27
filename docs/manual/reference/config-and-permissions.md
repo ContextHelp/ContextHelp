@@ -81,7 +81,7 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 | `read:system` | reader, writer, admin | `GET /whoami`, `GET /system/reminders`; gRPC reflection |
 | `read:pipelines` | reader, writer, admin | `GET` pipelines and steps |
 | `read:watches` | reader, writer, admin | `GET` watches and watch files |
-| `write:objects` | writer, admin | `POST /analyze`, `capture/*`, `import`, `importers/*/run`, `pipelines/enqueue`, `aliases`, `saved-searches`, suggestion approve and reject, `entities/{slug}/pull`; `PATCH /objects/{id}`; gRPC `AnalyzeService/Analyze` |
+| `write:objects` | writer, admin | `POST /analyze`, `capture/*`, `import`, `importers/*/run`, `pipelines/enqueue`, `aliases`, `saved-searches`, suggestion approve and reject, `entities/{slug}/pull`; `PATCH /objects/{id}`, `POST /objects/{id}/reprocess`; gRPC `AnalyzeService/Analyze` |
 | `write:inbox` | writer, admin | `POST /inbox` |
 | `write:feeds` | writer, admin | `POST /feeds`, `feeds/sync`, `feeds/{id}/sync` |
 | `write:jobs` | writer, admin | `POST /jobs/{id}/retry` |

@@ -360,6 +360,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
 	handleEmbeddingsMigrate(pool, driver, upgradeMgr, svc.Bus)
 	handleReproject(pool, driver, upgradeMgr, svc.Bus)
+	handleReprocess(pool, st)
 
 	// 10a. Wire fan-out enrichment (bidirectional edges + audit log).
 	if cfg.FanOut.Enabled {

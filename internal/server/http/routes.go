@@ -39,6 +39,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: get, Pattern: "/objects/{id}/related", Scope: authn.ScopeReadObjects, Handler: RelatedObjects(svc)},
 		{Method: patch, Pattern: "/objects/{id}", Scope: authn.ScopeWriteObjects, Handler: UpdateObject(svc)},
 		{Method: del, Pattern: "/objects/{id}", Scope: authn.ScopeDeleteObjects, Handler: DeleteObject(svc)},
+		{Method: post, Pattern: "/objects/{id}/reprocess", Scope: authn.ScopeWriteObjects, Handler: ReprocessObject(svc)},
 
 		// Analyze
 		{Method: post, Pattern: "/analyze", Scope: authn.ScopeWriteObjects, Handler: Analyze(svc)},
