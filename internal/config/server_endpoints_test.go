@@ -1,6 +1,8 @@
 package config
 
 import (
+	"time"
+
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -252,6 +254,36 @@ func TestAllowedHostsMalformedRejected(t *testing.T) {
 			_, err := loadFromYAML(t, "server:\n  allowed_hosts:\n    - "+entry+"\n")
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "server.allowed_hosts[0]")
+		})
+	}
+}
+
+func TestUISessionConfig(t *testing.T) {
+	cfg, err := loadFromYAML(t, `server:
+  ui:
+    session:
+      idle_ttl: 2h
+      max_ttl: 48h
+`)
+	require.NoError(t, err)
+	assert.Equal(t, 2*time.Hour, cfg.Server.UI.Session.IdleTTL)
+	assert.Equal(t, 48*time.Hour, cfg.Server.UI.Session.MaxTTL)
+
+	cfg, err = loadFromYAML(t, "server:\n  port: 1\n")
+	require.NoError(t, err)
+	assert.Zero(t, cfg.Server.UI.Session, "unset means the built-in defaults")
+}
+
+func TestUISessionConfigRejected(t *testing.T) {
+	for name, yaml := range map[string]string{
+		"negative idle": "server:\n  ui:\n    session:\n      idle_ttl: -1h\n",
+		"negative max":  "server:\n  ui:\n    session:\n      max_ttl: -1h\n",
+		"idle over max": "server:\n  ui:\n    session:\n      idle_ttl: 48h\n      max_ttl: 24h\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadFromYAML(t, yaml)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "server.ui.session")
 		})
 	}
 }

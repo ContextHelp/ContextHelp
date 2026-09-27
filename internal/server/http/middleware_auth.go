@@ -55,8 +55,11 @@ func remoteHost(r *http.Request) string {
 }
 
 // credentialFromRequest normalizes transport-level credential material
-// (Authorization: Bearer, X-API-Key, TLS state) into an authn.Credential
-// so providers never parse headers themselves.
+// (Authorization: Bearer, X-API-Key, the instance's web UI session
+// cookie, TLS state) into an authn.Credential so providers never parse
+// headers themselves. A header credential wins over the cookie: a
+// browser never sends one, so a request carrying both is a script
+// that chose its identity.
 func credentialFromRequest(r *http.Request) authn.Credential {
 	cred := authn.Credential{TLS: r.TLS}
 	if h := r.Header.Get("Authorization"); h != "" {
@@ -69,6 +72,11 @@ func credentialFromRequest(r *http.Request) authn.Credential {
 	if k := r.Header.Get(HeaderAPIKey); k != "" {
 		cred.Scheme = authn.SchemeAPIKey
 		cred.Token = k
+		return cred
+	}
+	if c, err := r.Cookie(SessionCookieName(r.Host)); err == nil && c.Value != "" {
+		cred.Scheme = authn.SchemeSession
+		cred.Token = c.Value
 	}
 	return cred
 }
