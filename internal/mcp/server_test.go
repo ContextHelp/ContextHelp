@@ -16,14 +16,14 @@ import (
 // useful for isolating MCP wire behavior from real storage.
 func fakeContext() ToolContext {
 	return ToolContext{
-		SearchHandler: func(_ context.Context, query string, topK int) ([]any, error) {
-			if query == "force-error" {
+		SearchHandler: func(_ context.Context, req SearchRequest) (*SearchResult, error) {
+			if req.Query == "force-error" {
 				return nil, errors.New("simulated search failure")
 			}
-			return []any{
-				map[string]any{"id": "obj_1", "title": "first match for " + query, "score": 0.95},
+			return &SearchResult{ExecutedMode: req.Mode, Results: []any{
+				map[string]any{"id": "obj_1", "title": "first match for " + req.Query, "score": 0.95},
 				map[string]any{"id": "obj_2", "title": "second match", "score": 0.81},
-			}, nil
+			}}, nil
 		},
 		SchemaHandler: func(_ context.Context) (map[string]any, error) {
 			return map[string]any{

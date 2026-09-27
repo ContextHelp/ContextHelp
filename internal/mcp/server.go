@@ -21,6 +21,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -57,9 +58,10 @@ type Tool interface {
 // transitively pull in storage / pipeline / etc. dependencies. The caller
 // (cmd/dpkms's serve wiring) supplies them.
 type ToolContext struct {
-	// SearchHandler is called by the search tool. Returns matched
-	// objects as opaque JSON-encodable values.
-	SearchHandler func(ctx context.Context, query string, topK int) ([]any, error)
+	// SearchHandler runs the search tool's validated request. Results
+	// are opaque JSON-encodable values. Returning an error wrapped with
+	// InvalidParams reports it as a caller error (-32602).
+	SearchHandler func(ctx context.Context, req SearchRequest) (*SearchResult, error)
 
 	// SchemaHandler returns the storage taxonomy. Static-ish; cached at
 	// startup but the handler is supplied so test doubles can inject.
@@ -242,7 +244,12 @@ func (s *Server) handleToolsCall(ctx context.Context, req *JSONRPCRequest) *JSON
 
 	result, err := tool.Invoke(ctx, args)
 	if err != nil {
-		return errorResponse(req.ID, ErrInternalError, fmt.Sprintf("%s: %v", name, err))
+		code := ErrInternalError
+		var invalid *InvalidParamsError
+		if errors.As(err, &invalid) {
+			code = ErrInvalidParams
+		}
+		return errorResponse(req.ID, code, fmt.Sprintf("%s: %v", name, err))
 	}
 	return &JSONRPCResponse{
 		JSONRPC: JSONRPCVersion,
@@ -255,6 +262,17 @@ func (s *Server) handleToolsCall(ctx context.Context, req *JSONRPCRequest) *JSON
 		},
 	}
 }
+
+// InvalidParamsError marks a tool failure caused by the caller's
+// arguments; tools/call answers it with ErrInvalidParams instead of
+// ErrInternalError.
+type InvalidParamsError struct{ Err error }
+
+func (e *InvalidParamsError) Error() string { return e.Err.Error() }
+func (e *InvalidParamsError) Unwrap() error { return e.Err }
+
+// InvalidParams wraps err as an InvalidParamsError.
+func InvalidParams(err error) error { return &InvalidParamsError{Err: err} }
 
 func (s *Server) writeError(w http.ResponseWriter, id any, code int, message string) {
 	resp := errorResponse(id, code, message)

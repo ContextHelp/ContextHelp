@@ -159,7 +159,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// MCP read surface (ADR-068): JSON-RPC 2.0 over POST, mounted
 		// as a sibling of the REST routes. Tool dispatch happens inside
 		// the handler; every tool is a read.
-		{Pattern: "/mcp/", Scope: authn.ScopeReadObjects, Handler: mountMCP(svc)},
-		{Pattern: "/mcp", Scope: authn.ScopeReadObjects, Handler: mountMCP(svc)},
+		{Pattern: "/mcp/", Scope: authn.ScopeReadObjects, Handler: mountMCP(svc, rc.Semantic)},
+		{Pattern: "/mcp", Scope: authn.ScopeReadObjects, Handler: mountMCP(svc, rc.Semantic)},
 	}
 }

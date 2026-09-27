@@ -111,7 +111,8 @@ func NewHybridFixture(t testing.TB, drv storage.StorageDriver, withModel bool) *
 }
 
 // Seed stores a graph-canonical object owned by profileID ("" = global)
-// whose text is content; a non-nil vec is indexed under ModelID.
+// whose text is content; a non-nil vec is indexed under ModelID when the
+// fixture registered it.
 func (f *HybridFixture) Seed(t testing.TB, id, typ, profileID, content string, vec []float32) *storage.KnowledgeObject {
 	t.Helper()
 	ctx := context.Background()
@@ -120,7 +121,7 @@ func (f *HybridFixture) Seed(t testing.TB, id, typ, profileID, content string, v
 	if err := f.Drv.Objects().Create(ctx, obj); err != nil {
 		t.Fatalf("seed %s: %v", id, err)
 	}
-	if vec != nil {
+	if vec != nil && f.Embeds != nil {
 		if err := f.Drv.Embeddings().Put(ctx, id, []storage.ObjectVector{{ModelID: ModelID, Vector: vec}}); err != nil {
 			t.Fatalf("index %s: %v", id, err)
 		}
