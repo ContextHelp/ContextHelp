@@ -37,13 +37,14 @@ repos:
       - id: end-of-file-fixer
         # Conformance captures are recorded stdout/stderr bytes, asserted on
         # verbatim by the grading service. Normalizing them rewrites evidence.
-        # Generated viewer bundle (whitespace inside template literals is
-        # content) and vendored XML schemas (byte-identical to upstream).
-        exclude: ^(e2e/conformance/cassettes/|internal/searchgraph/viewer/dist/|internal/searchgraph/testdata/schemas/)
+        # Generated viewer and web UI bundles (whitespace inside template
+        # literals is content; drift gates compare them byte for byte) and
+        # vendored XML schemas (byte-identical to upstream).
+        exclude: ^(e2e/conformance/cassettes/|internal/searchgraph/viewer/dist/|internal/ui/dist/|internal/searchgraph/testdata/schemas/)
       - id: trailing-whitespace
         # Same: kit's error blocks are space-padded, and stripping that
         # padding corrupts the capture (see e2e/conformance/README.md).
-        exclude: ^(e2e/conformance/cassettes/|internal/searchgraph/viewer/dist/|internal/searchgraph/testdata/schemas/)
+        exclude: ^(e2e/conformance/cassettes/|internal/searchgraph/viewer/dist/|internal/ui/dist/|internal/searchgraph/testdata/schemas/)
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
       - id: check-merge-conflict

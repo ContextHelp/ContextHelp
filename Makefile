@@ -312,11 +312,14 @@ trivy-scan:
 		echo "Run 'make docker-build' first, or set TRIVY_IMAGE=<image> explicitly."; \
 	fi
 
-## build-ui: Build web UI assets and copy into internal/ui/dist
+## build-ui: Rebuild the embedded web UI into internal/ui/dist
+##
+## Vite's outDir is ../../internal/ui/dist (web/ui/vite.config.ts), with
+## emptyOutDir, so the build replaces the embedded bundle in place; there is
+## no web/ui/dist. web/ui pins pnpm via packageManager and carries its own
+## pnpm-workspace.yaml, so pnpm never resolves an enclosing workspace.
 build-ui:
-	cd web/ui && npm ci && npm run build
-	rm -rf internal/ui/dist
-	cp -r web/ui/dist internal/ui/dist
+	cd web/ui && pnpm install --frozen-lockfile && pnpm run build
 
 .PHONY: build-ui
 

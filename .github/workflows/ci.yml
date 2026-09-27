@@ -272,7 +272,7 @@ jobs:
   # gate on the bundle the Go binary embeds from
   # internal/searchgraph/viewer/dist. No Go toolchain needed. pnpm's version
   # comes from packageManager in web/searchgraph/package.json; node stays on
-  # the major of the Dockerfile's ui-builder stage (node:22).
+  # the 22 LTS line.
   viewer:
     name: Search-graph viewer
     runs-on: ubuntu-latest
