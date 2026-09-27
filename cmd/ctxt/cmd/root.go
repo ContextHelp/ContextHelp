@@ -218,6 +218,7 @@ var commandGroups = map[string]string{
 
 	// INTERACT — interactive surfaces
 	"shell": "interact", "tui": "interact", "setup": "interact",
+	"ui": "interact",
 
 	// INSTANCE — talk to a specific dpkms
 	"instance": "instance", "audit": "instance",
