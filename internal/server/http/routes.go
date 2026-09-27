@@ -119,6 +119,8 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// Inbox
 		{Method: post, Pattern: "/inbox", Scope: authn.ScopeWriteInbox, Handler: CaptureInbox(svc)},
 		{Method: get, Pattern: "/inbox", Scope: authn.ScopeReadInbox, Handler: ListInbox(svc)},
+		{Method: get, Pattern: "/inbox/queue", Scope: authn.ScopeReadInbox, Handler: ListInboxQueue(svc)},
+		{Method: post, Pattern: "/inbox/clear", Scope: authn.ScopeProcessInbox, Handler: ClearInbox(svc)},
 		{Method: post, Pattern: "/inbox/{id}/triage", Scope: authn.ScopeProcessInbox, Handler: TriageInbox(svc)},
 		{Method: post, Pattern: "/inbox/{id}/discard", Scope: authn.ScopeProcessInbox, Handler: DiscardInbox(svc)},
 

@@ -227,19 +227,36 @@ func objectToQueueItem(o *storage.KnowledgeObject) *InboxQueueItem {
 	}
 }
 
-// ClearInbox discards all current inbox items, returning the count cleared.
+// clearInboxPage is how many inbox items ClearInbox reads per page.
+var clearInboxPage = 500
+
+// ClearInbox discards every current inbox item, page by page until none
+// is left, and returns how many it discarded. Objects in any other
+// status are untouched.
 func (s *Service) ClearInbox(ctx context.Context) (int, error) {
-	items, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{Status: "inbox", Limit: 10000})
-	if err != nil {
-		return 0, fmt.Errorf("clear inbox list: %w", err)
-	}
 	now := time.Now().Truncate(time.Second)
-	for _, obj := range items {
-		obj.Status = "discarded"
-		obj.UpdatedAt = now
-		if err := s.Store.Objects().Update(ctx, obj); err != nil {
-			return 0, fmt.Errorf("clear inbox update %s: %w", obj.ID, err)
+	seen := map[string]bool{}
+	for {
+		items, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{Status: "inbox", Limit: clearInboxPage})
+		if err != nil {
+			return len(seen), fmt.Errorf("clear inbox list: %w", err)
+		}
+		if len(items) == 0 {
+			return len(seen), nil
+		}
+		for _, obj := range items {
+			// A discarded item never lists as inbox again; seeing one
+			// twice means the update did not take, and the loop would
+			// never end.
+			if seen[obj.ID] {
+				return len(seen), fmt.Errorf("clear inbox: %s is still in the inbox after discarding it", obj.ID)
+			}
+			seen[obj.ID] = true
+			obj.Status = "discarded"
+			obj.UpdatedAt = now
+			if err := s.Store.Objects().Update(ctx, obj); err != nil {
+				return len(seen) - 1, fmt.Errorf("clear inbox update %s: %w", obj.ID, err)
+			}
 		}
 	}
-	return len(items), nil
 }
