@@ -915,6 +915,9 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 		if filter.Pipeline != "" && obj.Pipeline != filter.Pipeline {
 			continue
 		}
+		if filter.ProfileID != "" && obj.ProfileID != filter.ProfileID {
+			continue
+		}
 		if !matchesMetadataFacets(obj, filter) {
 			continue
 		}
@@ -974,6 +977,10 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 	if filter.Type != "" {
 		q += " AND o.type = ?"
 		args = append(args, filter.Type)
+	}
+	if filter.ProfileID != "" {
+		q += " AND o.profile_id = ?"
+		args = append(args, filter.ProfileID)
 	}
 
 	// Metadata facet filters (US-0407). metadataFacetConditionsSQLite

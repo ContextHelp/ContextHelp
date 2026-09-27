@@ -192,6 +192,39 @@ func RunSearchConformance(t *testing.T, drv storage.StorageDriver, caps SearchCa
 		}
 	})
 
+	t.Run("FTSProfileScope", func(t *testing.T) {
+		if !caps.FTS {
+			t.Skip("PARITY GAP: driver declares FTS=false — FTS profile scoping unverified")
+		}
+		seedProfileScopeCorpus(t, drv, "ftsp", "note", nil)
+		assertProfileScope(t, "FTSSearch", func(profileID string) ([]*storage.KnowledgeObject, error) {
+			return drv.Objects().FTSSearch(ctx, profileScopeToken,
+				storage.ObjectFilter{ProfileID: profileID, Limit: 10})
+		}, "ftsp")
+
+		// List is the reference the search legs mirror; it must persist
+		// and filter the profile the same way on every driver.
+		listed, _, err := drv.Objects().List(ctx, storage.ObjectFilter{ProfileID: "alpha"})
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		if len(listed) != 1 || listed[0].ID != "ftsp-alpha" || listed[0].ProfileID != "alpha" {
+			t.Errorf("List profile alpha: got %v want [ftsp-alpha]", resultIDs(listed))
+		}
+	})
+
+	t.Run("VectorProfileScope", func(t *testing.T) {
+		if !caps.Vectors {
+			t.Skip("PARITY GAP: driver declares Vectors=false — vector profile scoping unverified")
+		}
+		SeedVectorModel(t, drv)
+		seedProfileScopeCorpus(t, drv, "vecp", "vecp-scope", []float32{0, 0, 0, 1})
+		assertProfileScope(t, "VectorSearch", func(profileID string) ([]*storage.KnowledgeObject, error) {
+			return drv.Objects().VectorSearch(ctx, fixtureQuery([]float32{0, 0, 0, 1}),
+				storage.ObjectFilter{Type: "vecp-scope", ProfileID: profileID, Limit: 10})
+		}, "vecp")
+	})
+
 	t.Run("UnindexedModel", func(t *testing.T) {
 		if !caps.Vectors {
 			t.Skip("PARITY GAP: driver declares Vectors=false — index-missing contract unverified")
@@ -204,6 +237,67 @@ func RunSearchConformance(t *testing.T, drv storage.StorageDriver, caps SearchCa
 			t.Fatalf("VectorSearch on an unindexed model: err = %v, want ErrEmbeddingIndexMissing", err)
 		}
 	})
+}
+
+// profileScopeToken is the FTS term every profile-scope fixture shares, so
+// only the profile filter can tell the rows apart.
+const profileScopeToken = "zephyrscope"
+
+// profileScopeProfiles are the owners of the profile-scope fixture rows;
+// "" is the global scope.
+var profileScopeProfiles = []string{"alpha", "beta", ""}
+
+// seedProfileScopeCorpus stores one object per profileScopeProfiles entry,
+// all with the same text and, when vec is non-nil, the same vector under
+// the fixture model. IDs are "<prefix>-<profile>" ("<prefix>-global" for "").
+func seedProfileScopeCorpus(t *testing.T, drv storage.StorageDriver, prefix, typ string, vec []float32) {
+	t.Helper()
+	for _, p := range profileScopeProfiles {
+		obj := searchFixtureObject(profileScopeID(prefix, p), typ, profileScopeToken+" shared fixture text")
+		obj.ProfileID = p
+		if err := drv.Objects().Create(context.Background(), obj); err != nil {
+			t.Fatalf("seed %s: %v", obj.ID, err)
+		}
+		if vec != nil {
+			putFixtureVector(t, drv, obj.ID, vec)
+		}
+	}
+}
+
+func profileScopeID(prefix, profile string) string {
+	if profile == "" {
+		return prefix + "-global"
+	}
+	return prefix + "-" + profile
+}
+
+// assertProfileScope pins the ObjectFilter.ProfileID contract for a search
+// leg, the same one List and the query-language engine honor: a non-empty
+// ProfileID returns only that profile's objects (each carrying its
+// ProfileID); an empty one does not scope.
+func assertProfileScope(t *testing.T, leg string, search func(profileID string) ([]*storage.KnowledgeObject, error), prefix string) {
+	t.Helper()
+	for _, p := range []string{"alpha", "beta"} {
+		res, err := search(p)
+		if err != nil {
+			t.Fatalf("%s profile %q: %v", leg, p, err)
+		}
+		want := profileScopeID(prefix, p)
+		if len(res) != 1 || res[0].ID != want {
+			t.Errorf("%s profile %q: got %v want [%s] (another profile's objects leaked)", leg, p, resultIDs(res), want)
+			continue
+		}
+		if res[0].ProfileID != p {
+			t.Errorf("%s profile %q: result %s has ProfileID %q", leg, p, res[0].ID, res[0].ProfileID)
+		}
+	}
+	res, err := search("")
+	if err != nil {
+		t.Fatalf("%s unscoped: %v", leg, err)
+	}
+	if len(res) != len(profileScopeProfiles) {
+		t.Errorf("%s unscoped: got %v want all %d profiles' objects", leg, resultIDs(res), len(profileScopeProfiles))
+	}
 }
 
 func fkID(prefix string, i int) string {

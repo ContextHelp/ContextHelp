@@ -232,7 +232,7 @@ func cosineDistance(a, b []float32) float64 {
 // WithEmbeddings wraps drv so Embeddings() returns emb and
 // Objects().VectorSearch ranks through emb the way the drivers do: search the
 // model's index with over-fetch, hydrate each hit with Get, apply the
-// type/subtype/pipeline filter, and set Metadata["score"] = 1 - distance.
+// type/subtype/pipeline/profile filter, and set Metadata["score"] = 1 - distance.
 // Every other store is drv's own. DB() forwards to drv when it has one, so
 // registry.ForDriver works on the wrapper.
 func WithEmbeddings(drv storage.StorageDriver, emb storage.EmbeddingStore) storage.StorageDriver {
@@ -288,7 +288,8 @@ func (o *embeddingsObjects) VectorSearch(ctx context.Context, q storage.VectorQu
 		}
 		if (filter.Type != "" && obj.Type != filter.Type) ||
 			(filter.Subtype != "" && obj.Subtype != filter.Subtype) ||
-			(filter.Pipeline != "" && obj.Pipeline != filter.Pipeline) {
+			(filter.Pipeline != "" && obj.Pipeline != filter.Pipeline) ||
+			(filter.ProfileID != "" && obj.ProfileID != filter.ProfileID) {
 			continue
 		}
 		if obj.Metadata == nil {

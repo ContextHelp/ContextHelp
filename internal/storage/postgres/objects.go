@@ -62,7 +62,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, graph_json, source_key, projected_fts_body,
-		projection_version
+		projection_version, profile_id
 	) VALUES (
 		$1, $2, $3, $4, $5, $6,
 		$7, $8, $9, $10, $11,
@@ -70,7 +70,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		$16, $17, $18, $19, $20,
 		$21, $22, $23, $24, $25,
 		$26, $27, $28, $29, $30,
-		$31
+		$31, $32
 	)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
@@ -78,7 +78,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey, projectedFTSBody,
-		indexsig.ProjectionVersion,
+		indexsig.ProjectionVersion, obj.ProfileID,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
@@ -166,6 +166,11 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		} else {
 			conditions = append(conditions, "1 = 0")
 		}
+	}
+	if filter.ProfileID != "" {
+		conditions = append(conditions, fmt.Sprintf("profile_id = $%d", idx))
+		args = append(args, filter.ProfileID)
+		idx++
 	}
 	if filter.After != nil {
 		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", idx))
@@ -272,8 +277,8 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		reinforcement_count=$18, last_reinforced_at=$19,
 		updated_at=$20, fts_indexed=$21, status=$22, inbox_note=$23,
 		remind_at=$24, reminded_at=$25, graph_json=$26, projected_fts_body=$27,
-		projection_version=$28
-	WHERE id=$29`,
+		projection_version=$28, profile_id=$29
+	WHERE id=$30`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
@@ -281,7 +286,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, projectedFTSBody,
-		indexsig.ProjectionVersion, obj.ID,
+		indexsig.ProjectionVersion, obj.ProfileID, obj.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update object: %w", err)
@@ -491,6 +496,11 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 		args = append(args, filter.Pipeline)
 		idx++
 	}
+	if filter.ProfileID != "" {
+		conditions = append(conditions, fmt.Sprintf("profile_id = $%d", idx))
+		args = append(args, filter.ProfileID)
+		idx++
+	}
 
 	// Metadata facet filters (US-0407).
 	mc, ma := metadataFacetConditionsPG(filter, &idx)
@@ -604,7 +614,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 	// $1 is the raw query text; the tsquery is computed once in the FROM
 	// clause and shared by the match predicate and the rank expression.
 	// Filter placeholders number themselves from $2, mirroring the SQLite
-	// filter shape (type + metadata facets).
+	// filter shape (type + profile + metadata facets).
 	conditions := []string{"fts @@ q"}
 	args := []any{query}
 	idx := 2
@@ -612,6 +622,11 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 	if filter.Type != "" {
 		conditions = append(conditions, fmt.Sprintf("type = $%d", idx))
 		args = append(args, filter.Type)
+		idx++
+	}
+	if filter.ProfileID != "" {
+		conditions = append(conditions, fmt.Sprintf("profile_id = $%d", idx))
+		args = append(args, filter.ProfileID)
 		idx++
 	}
 
@@ -820,7 +835,7 @@ const objectSelectCols = `SELECT
 	decisions, tasks, pipeline, source,
 	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 	created_at, updated_at, fts_indexed, status, inbox_note,
-	remind_at, reminded_at, graph_json, source_key`
+	remind_at, reminded_at, graph_json, source_key, profile_id`
 
 func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 	var obj storage.KnowledgeObject
@@ -838,7 +853,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -880,7 +895,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
@@ -921,7 +936,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID,
 		&score,
 	)
 	if err != nil {
