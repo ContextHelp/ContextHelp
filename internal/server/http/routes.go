@@ -48,6 +48,8 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// Search
 		{Method: get, Pattern: "/search", Scope: authn.ScopeReadObjects, Handler: Search(svc)},
 		{Method: post, Pattern: "/find", Scope: authn.ScopeReadObjects, Handler: Find(svc, rc.Semantic)},
+		{Method: get, Pattern: "/search/graph", Scope: authn.ScopeReadObjects,
+			Handler: SearchGraph(svc, rc.Semantic, GateEntityVisibility(rc.Entitlements))},
 
 		// Entities. The entity-serving surface is where inbound
 		// entitlements and metering bite for non-admin principals.
