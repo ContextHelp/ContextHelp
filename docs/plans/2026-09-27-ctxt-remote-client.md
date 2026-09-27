@@ -4,18 +4,30 @@ tracks:
   - ctxt-remote-client
 tasks:
   # ── phase 0: gate and foundations ────────────────────────────────
-  - title: "Owner review: ADR-077 and the remote-client plan's open questions"
+  - title: "Amend ADR-075: the daemon is the only hook host"
     description: |
-      Gate for every implementation task.
-      - Review ADR-077 (docs/decisions/ADR-077-ctxt-pure-api-client.md), which is Proposed.
-      - Review the plan's "Open questions" section: scopes vs a writer role, failover, offline capture, the ADR-075 amendment, profile placement, registry tokens, per-instance history position, `upgrade run` placement, owner metering.
-      - Record each answer in the plan's "Resolved decisions" section and flip the ADR status.
-      Acceptance: every open question has a recorded answer, and the ADR is Accepted or amended.
+      ADR-077 makes the CLI a pure API client, so it never performs a mutation itself. ADR-075 still assumes it does.
+      Add an "Amendment 2026-09-27 (ADR-077)" section to docs/decisions/ADR-075-external-hook-surface.md covering:
+      - §2 Hook hosts (ADR-075:99-110): the daemon is the only host. The "CLI action that writes directly" case (:107) is gone, and only the daemon wires `policy.Wire` and the dispatcher (:105).
+      - `exec` hooks load from the dpkms host's config (its hooks.yaml), not the operator's laptop.
+      - §4 (:144): `ctxt events deliver` loses its purpose. Drop it, because the daemon drains and prunes the outbox. `ctxt events tail` stays as a client of the pull endpoint.
+      - Rationale (:174) and the rejected "daemon as the only host" alternative (:185): record the reversal and its reason.
+      Also update the documents that carry the old wording:
+      - docs/plans/2026-09-27-external-hooks.md:
+        - the survey row (:22);
+        - the "Host" column of both catalogs (:70-72, :87): CLI → daemon;
+        - first increment, step 2 (:116): daemon only;
+        - steps 5-6 (:127, :129): no `ctxt events deliver`;
+        - the replay test gate (:144);
+        - the later `cel` wiring (:159);
+        - the proposed architecture text (:179).
+      - The ADR-075 entry in docs/decisions/README.md (:488, :494).
+      Acceptance: no document still says the CLI hosts hooks or drains the outbox without a daemon.
       Operator-Impact: none.
-      Action: record the owner's answers in the plan and set ADR-077's status.
-    effort: XS
+      Action: write the ADR-075 amendment section and update the hooks plan and the README entry to match.
+    effort: S
     priority: P0
-    tags: [phase:0, type:docs, domain:cli]
+    tags: [phase:0, type:docs, domain:hooks]
     blocked-by: []
 
   - title: "Test substrate: in-process dpkms for ctxt command tests, built-binary launcher for e2e"
@@ -50,9 +62,8 @@ tasks:
       - idxbridge's endpoint and probe handling (internal/idxbridge/idxbridge.go).
       Behaviour:
       - Sends the bearer token and JSON.
-      - Mints an Idempotency-Key per logical submission, reused across a failover walk.
-      - Walks to the next endpoint only on a dial or DNS failure, and prints which instance served when it wasn't the primary.
-      - A 401 or 403 is terminal.
+      - Talks to exactly one endpoint. There is no failover: a dial failure is final.
+      - Carries the analyze request's idempotency key as today.
       Error mapping to kit envelopes:
       | Condition | Class | Exit |
       |---|---|---|
@@ -65,15 +76,15 @@ tasks:
       The dpkms error body's code and message are carried into the envelope.
       Tests:
       - httptest-backed, table-driven over every status class.
-      - Mutation check: make a 403 walk on to the next endpoint, and the test goes red.
+      - Mutation check: map 401 to TRANSIENT, and the test goes red.
       - testguard TestMain.
       Acceptance: the package exists with tests; no command uses it yet.
       Operator-Impact: none.
-      Action: implement internal/dpkmsclient with the error-class table and the failover walk.
+      Action: implement internal/dpkmsclient with the error-class table.
     effort: M
     priority: P0
     tags: [phase:0, type:feat, domain:cli]
-    blocked-by: [0]
+    blocked-by: []
 
   - title: "Named endpoints: --instance and CTXT_INSTANCE select a URL plus token for every HTTP command"
     description: |
@@ -81,9 +92,11 @@ tasks:
       - Add an optional unique `name` to `ServerEndpoint` (internal/config/config.go:661), accepted in YAML and mapstructure.
       - Validation rejects duplicate or empty-when-present names.
       Resolver (ADR-077 §3):
-      - Order: `--server` > `--instance` / `CTXT_INSTANCE` > current-instance state > `server.urls` > `server.url` > default.
+      - Order: `--server` > `--instance` / `CTXT_INSTANCE` > current-instance state > the first `server.urls` entry > `server.url` > default.
+      - Every step yields exactly one endpoint. Other `server.urls` entries are reachable only by name or `--server`.
       - A name matches the named entry first, then a running local pidfile instance by name or port, as `http://127.0.0.1:<port>` with `server.token`.
       - An unknown name exits 70, and the SuggestedFix lists the configured names.
+      - The resolver also returns the instance key (the entry name, else the normalized URL). Client-side state files use it.
       Callers:
       - Replace `clientEndpoints`, `pinnedEndpoint` (cmd/ctxt/cmd/helpers.go:109-142) and `serverEndpoint` (server_endpoint.go:33) with the resolver.
       - Today every HTTP command ignores `--instance`; this fixes it.
@@ -105,7 +118,7 @@ tasks:
     tags: [phase:0, type:feat, domain:cli]
     blocked-by: [2]
 
-  - title: "dpkms authorization: route scopes, admin/reader bundles, gRPC parity, whoami"
+  - title: "dpkms authorization: route scopes, admin/writer/reader bundles, gRPC parity, whoami, admin gate bypass"
     description: |
       Nothing enforces roles today: `Principal.HasRole` (internal/auth/auth.go:72) has no caller.
       Route table:
@@ -113,23 +126,32 @@ tasks:
       - Mount routes through a route-to-scope table.
       Enforcement:
       - The middleware reads the principal attached by `RequireAuth` (middleware_auth.go:42) and returns 403 with a named missing scope.
-      - The static provider's roles expand to fixed bundles: `admin` gets every scope, `reader` gets every `read:*` scope.
+      - The static provider's roles expand to fixed bundles:
+        - `admin` gets every scope.
+        - `writer` gets every `read:*` and `write:*` scope. It's meant for capture-only devices, and gets no delete, inbox processing or admin scopes.
+        - `reader` gets every `read:*` scope.
       - The gRPC unary and stream interceptors (internal/server/grpc/auth.go:33,49) enforce the same per-method scopes.
       - Private instances with no auth provider grant every scope.
       whoami: add GET /api/v1/whoami, which returns the principal ID and its effective scopes.
+      Admin gate bypass:
+      - A principal holding the `admin` role skips the inbound entitlement and metering gate on entity reads.
+      - Affected: the ListEntities filter (internal/server/http/handlers_entities.go:30-38), GetEntity's metered Authorize (:57), backlinks, and the entity pull (handlers_entity_pull.go:36).
+      - The gate stays for every other principal.
       Tests:
       - Walk the chi router and fail when a route has no scope.
       - A reader token gets 403 on POST /analyze over both HTTP and gRPC.
+      - A writer token passes POST /analyze and gets 403 on DELETE /objects/{id} and on an admin route.
       - An admin token passes.
       - A private instance passes with no token.
-      Mutation checks: remove the middleware, or the gRPC check, and the tests go red.
-      Acceptance: release-notes `none` row saying reader tokens lose write access.
+      - An admin entity read records no metering event and ignores entitlements; a reader's read is still metered.
+      Mutation checks: remove the middleware, the gRPC check or the admin bypass, and the tests go red.
+      Acceptance: release-notes `none` row saying reader tokens lose write access and introducing the writer role.
       Operator-Impact: none.
-      Action: add scope enforcement to every HTTP route and gRPC method, plus GET /api/v1/whoami.
+      Action: add scope enforcement with the three role bundles to every HTTP route and gRPC method, add GET /api/v1/whoami, and let admin principals bypass the entity gate.
     effort: M
     priority: P0
     tags: [phase:0, type:feat, domain:server, domain:auth]
-    blocked-by: [0]
+    blocked-by: []
 
   # ── phase 1: stop the silent local writes ────────────────────────
   - title: "Enqueue path without local fallback: analyze, bare content, capture, capture tabs, capture history"
@@ -145,13 +167,18 @@ tasks:
       - the "Queued locally" branches;
       - the QueuedLocally fields and their renderers (capture_tabs.go:383, capture_history.go:652).
       Keep: capture history advances its position only after a successful handoff.
+      Browser-history position per instance:
+      - Today the position store (internal/ambient/position, used at capture_history.go:220) keys only by `browser:profile`, so switching instances skips history the other instance never received.
+      - Key positions by the resolver's instance key plus `browser:profile`.
+      - Bump the file's version. A version-1 file then hits the existing unknown-version error, which never rewrites the file. The error gains a reset hint. There's no migration.
       Tests, written first and red on the current code:
       - An unreachable endpoint exits 70 and creates no db.sqlite under XDG_DATA_HOME.
       - A 401 exits 5, makes no second request, and writes nothing locally.
-      - A dial failure on the primary is served by the secondary and announced on stderr.
+      - With two `server.urls` entries, a dial failure on the first exits 70 and never contacts the second.
+      - Capturing history into instance A, then B, sends the full window to B.
       Acceptance: release-notes `none` row.
       Operator-Impact: none.
-      Action: move the enqueue commands onto dpkmsclient and delete the local-write fallback.
+      Action: move the enqueue commands onto dpkmsclient, delete the local-write fallback, and key the history position per instance.
     effort: M
     priority: P0
     tags: [phase:1, type:fix, domain:cli, domain:capture]
@@ -484,21 +511,29 @@ tasks:
     tags: [phase:3, type:feat, domain:server, domain:cli, domain:embeddings]
     blocked-by: [21]
 
-  - title: "Upgrade: GET /api/v1/upgrade/plan for ctxt; move upgrade run to dpkms"
+  - title: "Upgrade: plan and run over the API; filter-only selector"
     description: |
       upgrade plan (cmd/ctxt/cmd/upgrade_dpkms.go:304):
       - It reads the SQLite handle directly (upgradeServiceDB, :426).
       - Add GET /api/v1/upgrade/plan, which returns the same buckets and transitions JSON. Scope: `read:system`.
-      upgrade run (:483):
-      - It takes a raw SQL `--where` predicate, runs the reingest worker in-process and writes the shadow file.
-      - Move it to `dpkms upgrade run` with identical flags and consent guards (ADR-070 §1), beside the existing `dpkms upgrade` group (cmd/dpkms/cmd/upgrade.go).
-      - Delete `ctxt upgrade run` outright. There's no alias.
+      upgrade run (:449-483):
+      - It runs the reingest worker in-process against the local database and takes a raw SQL `--where` predicate (parsed with a live DB handle, internal/upgrade/selector.go:135,171).
+      - Add POST /api/v1/upgrade/runs {filter, rate_limit, budget, dry_run}. Scope: `admin:upgrade`.
+      - The server parses the filter with the pipeline-filter parser only (`ParseSelector`, selector.go:128,152), and never accepts SQL.
+      - The daemon's worker pool runs the reingest job, reporting progress through the upgrade manager that already feeds /healthz and `ctxt upgrade status`.
+      - dry_run returns the matching count and writes nothing. A run while another upgrade is in flight returns 409.
+      - `ctxt upgrade run --filter …` calls the endpoint and prints the job ID.
+      - Delete `--where` and its parsing path from ctxt outright.
+      - The `--all` / `--i-understand-the-cost` refusal stays as it is, because ADR-070 bucket 3 is not implemented.
       Tests, written first:
       - ctxt upgrade plan golden JSON from the fixture.
-      - dpkms upgrade run: dry-run, the `--filter` / `--where` exclusivity, and the consent refusal.
-      Acceptance: release-notes `none` row pointing operators to `dpkms upgrade run`.
+      - A run with a filter enqueues one job, and dry_run enqueues none.
+      - A body carrying a `where` field returns 400.
+      - Writer and reader tokens get 403.
+      - A concurrent run returns 409 (exit 4).
+      Acceptance: release-notes `none` row saying `--where` is gone and `upgrade run` needs an admin token.
       Operator-Impact: none.
-      Action: add the upgrade plan endpoint, port upgrade run to the dpkms CLI, and delete it from ctxt.
+      Action: add the upgrade plan and runs endpoints and switch ctxt upgrade plan and run to them.
     effort: M
     priority: P2
     tags: [phase:3, type:refactor, domain:server, domain:cli, domain:upgrade]
@@ -603,11 +638,12 @@ tasks:
     description: |
       The suite runs under the e2e build tag with the launcher from the test-substrate task.
       Setup:
-      - `dpkms serve` with `server.access: protected` and static tokens for an admin principal and a reader principal, on a free port.
+      - `dpkms serve` with `server.access: protected` and static tokens for an admin, a writer and a reader principal, on a free port.
       - ctxt configured with a named `server.urls` entry and selected with `--instance`.
       Scenarios:
       - One command per resource group succeeds with the admin token.
       - A reader token exits 5 on a write.
+      - A writer token captures successfully and exits 5 on delete and on an admin command.
       - A wrong token exits 5.
       - A stopped server exits 70.
       - No db.sqlite appears under ctxt's XDG_DATA_HOME.
@@ -625,9 +661,9 @@ tasks:
 # ctxt as a pure dpkms API client
 
 > **Date:** 2026-09-27
-> **Decision record:** [ADR-077 – ctxt Is a Pure dpkms API Client; Instances Resolve to Endpoints](../decisions/ADR-077-ctxt-pure-api-client.md) (Proposed)
-> **Status:** design only. Nothing here is implemented yet. The first task is the owner's review of the open questions.
-> **Audience:** whoever implements the tasks, and the owner reviewing the open questions
+> **Decision record:** [ADR-077 – ctxt Is a Pure dpkms API Client; Instances Resolve to Endpoints](../decisions/ADR-077-ctxt-pure-api-client.md) (Accepted 2026-09-27)
+> **Status:** accepted design. Nothing here is implemented yet. The owner's answers are recorded in [Resolved decisions](#resolved-decisions).
+> **Audience:** whoever implements the tasks
 
 ## Goal
 
@@ -749,7 +785,7 @@ In the endpoint column, **✓** marks an existing route. The scope column uses t
 | `embeddings purge` | `embeddings_lifecycle.go:408` | `DELETE /embeddings/models/{id}` | `admin:embeddings` | ctxt |
 | `embeddings migrate` | `embeddings_migrate.go:105-135` (jobs-table handoff) | `POST /embeddings/migrations` | `admin:embeddings` | ctxt |
 | `upgrade plan` | `upgrade_dpkms.go:304`, `:426` | `GET /upgrade/plan` | `read:system` | ctxt |
-| `upgrade run` | `upgrade_dpkms.go:483` (raw SQL `--where`, SQLite only, in-process worker) | — | — | **moves to `dpkms upgrade run`**. It is substrate maintenance over the storage schema |
+| `upgrade run` | `upgrade_dpkms.go:449-483` (raw SQL `--where`, SQLite only, in-process worker) | `POST /upgrade/runs` (filter only) | `admin:upgrade` | ctxt. The daemon runs the reingest job; `--where` is deleted |
 | `watch start` | `watch.go:142`, `:159`, `:175` | `POST /analyze` ✓, `GET /jobs/{id}` ✓, `DELETE /objects/{id}` ✓ | `write:objects`, `delete:objects` | ctxt. Watchers and dedup state are local |
 | `watch stop\|status` | `watch.go:222`, `:247` | — | — | ctxt. Local process and state file only |
 | `shell` | `shell.go:54`, `internal/repl/session.go:55` | as its subcommands, plus `GET /events` ✓ (SSE) | `read:*` | ctxt |
@@ -773,7 +809,6 @@ It provides:
 - a bearer token on every request;
 - JSON encode and decode;
 - an `Idempotency-Key` per logical submission;
-- the failover walk (dial or DNS failures only, announced on stderr);
 - error bodies decoded into kit envelopes with ADR-077's exit classes;
 - typed methods per resource.
 
@@ -784,8 +819,9 @@ Commands never build URLs themselves.
 This is ADR-077 §3. In short: `--server` > `--instance` / `CTXT_INSTANCE` > state file > `server.urls` > `server.url` > `http://127.0.0.1:8080`.
 
 - A name resolves to a named `server.urls` entry first, then to a running local instance by pidfile name or port.
-- Steps 1 to 3 give one endpoint. Steps 4 to 6 give an ordered list for the failover walk.
-- The resolved endpoint also keys client-side state: the watch state file and, pending an open question, the browser-history position.
+- Every step gives exactly one endpoint. Step 4 takes the first `server.urls` entry; other entries are reachable only by name or `--server`.
+- There is no failover. A dial failure exits 70, even when other entries are configured.
+- The resolver also returns an instance key: the entry's name, else the normalized URL. It keys client-side state: the watch state file and the browser-history position.
 
 Example laptop config:
 
@@ -805,15 +841,17 @@ server:
 Every route declares one scope. The static provider's roles expand to bundles:
 
 - `admin` holds every scope.
+- `writer` holds every `read:*` and `write:*` scope. It's meant for capture-only devices, and gets no delete, inbox processing or admin scopes.
 - `reader` holds every `read:*` scope.
 - Private instances grant every scope.
+- An `admin` principal bypasses the inbound entitlement and metering gate on entity reads. That gate exists for third-party consumers, not the owner.
 
 | Class | Routes |
 |---|---|
 | `read:*` (reader) | every `GET` under `/api/v1` except the audit log; `POST /find`; `POST /lint`; `GET /events`; the MCP mount; `GET /whoami` |
 | `write:objects`, `write:inbox`, `write:feeds`, `write:jobs` | analyze, capture, inbox capture, object `PATCH`, reprocess, edges, reminders, resurfacing, pages refresh, topic-index rebuild, ingest, import and importer runs, `pipelines/enqueue`, feed mutations, job retry and cancel, aliases, saved searches, suggestions approve and reject, `system/reminders` dismiss, entity pull |
 | `delete:objects`, `process:inbox` | object and edge deletes, clearing search history; inbox triage, discard and clear |
-| admin-only (`admin:*`, `sync:registries`) | pipeline create, delete and archive; step install and uninstall; registry fetch, update, delete and sync; `entities/registry-sync`; server-side watch mutations (they read the server's filesystem); the embedding lifecycle; the audit log |
+| admin-only (`admin:*`, `sync:registries`) | pipeline create, delete and archive; step install and uninstall; registry fetch, update, delete and sync; `entities/registry-sync`; server-side watch mutations (they read the server's filesystem); the embedding lifecycle; upgrade runs; the audit log |
 | unchanged | `POST /federation/push` keeps its own credential rule (`server.go:241`) |
 
 gRPC methods get the same scopes through the interceptors in `internal/server/grpc/auth.go:33`, `:49`. Otherwise gRPC would bypass the HTTP checks.
@@ -875,9 +913,10 @@ These are new or widened. Scopes are as in the table above.
 | 43 | `GET /api/v1/upgrade/plan` | upgrade plan |
 | 44 | `POST /api/v1/jobs/{id}/cancel` | TUI |
 | 45 | `GET /api/v1/whoami` | status, instance current |
+| 46 | `POST /api/v1/upgrade/runs` (filter only, no SQL) | upgrade run |
 | — | `X-Dpkms-Upgrade` response header (not an endpoint) | the ADR-070 banner |
 
-One command moves to the `dpkms` CLI: `ctxt upgrade run` becomes `dpkms upgrade run`.
+No command moves to the `dpkms` CLI.
 
 ## Phases
 
@@ -891,12 +930,12 @@ Indices match the frontmatter's 0-based `blocked-by`.
 
 | Phase | Idx | Task |
 |---|---|---|
-| 0: gate and foundations | 0 | Owner review of ADR-077 and the open questions |
+| 0: foundations | 0 | Amend ADR-075: the daemon is the only hook host |
 | | 1 | Test substrate: in-process dpkms, built-binary launcher |
 | | 2 | `internal/dpkmsclient` with the exit-class mapping |
 | | 3 | Named endpoints; `--instance` for every HTTP command |
-| | 4 | Route scopes, role bundles, gRPC parity, `whoami` |
-| 1: stop silent local writes | 5 | Enqueue path without fallback (analyze, bare, capture, tabs, history) |
+| | 4 | Route scopes, admin/writer/reader bundles, gRPC parity, `whoami`, admin gate bypass |
+| 1: stop silent local writes | 5 | Enqueue path without fallback (analyze, bare, capture, tabs, history); history position per instance |
 | | 6 | `list --q` remote only; delete `idxbridge` |
 | 2: reads onto the API | 7 | Object read surface (filters, facets, related) |
 | | 8 | list, show, export, classify, compose, schema evolve |
@@ -914,7 +953,7 @@ Indices match the frontmatter's 0-based `blocked-by`.
 | | 20 | registry |
 | | 21 | embeddings reads |
 | | 22 | embeddings lifecycle (admin) |
-| | 23 | upgrade plan endpoint; `upgrade run` → `dpkms` |
+| | 23 | upgrade plan and runs endpoints (filter only) |
 | 4: local capture and interactive | 24 | `ctxt watch` local state, HTTP ingest |
 | | 25 | shell, TUI, job cancel |
 | | 26 | Upgrade banner from the response header |
@@ -938,47 +977,32 @@ Tasks 7 to 23 can run in parallel once tasks 1, 3 and 4 have landed, apart from 
   - A task that changes what an operator sees adds a `none` row to the day's `docs/release-notes/` file. Examples: new exit codes, lost reader write access, a moved command.
 - **Docs.** Each task updates its own manual or API section. The closing task does the architecture page and the final scrub.
 
-## Related, not in this plan
+## Not in this plan
 
 - **Browser extension cookie bridge** reachability from a remote dpkms.
 - **`/ws/bus`** reachability from a remote dpkms. The shell uses SSE on `/api/v1/events` instead.
-- **Offline capture buffering** through ADR-066's buffer, which would replay captures once dpkms is reachable again.
-- **Per-token explicit scopes** in `server.auth.static.tokens`, for capture-only devices.
+- **A local capture buffer** on the capture machine (ADR-066's buffer), which would replay captures once dpkms is reachable again. Until then, offline capture exits 70.
+- **Per-token scopes** in `server.auth.static.tokens`. The `writer` bundle covers capture-only devices until then.
+- **Profiles held by dpkms** and served through the API. Until then, profiles stay in ctxt config and their values travel with each request.
+- **Registry credentials as secrets on the dpkms host.** Today `ctxt registry login` stores tokens in the laptop keychain (`registry.go:803`), and nothing reads them. This is a separate task.
 - **The `dpkms` CLI's own direct-store commands** (`job`, `detector`, `housekeeping`) are host-local by design and stay that way. `cmd/dpkms/cmd/api_client.go` could later reuse `dpkmsclient`.
 - **Dead `capture` flags** `--ambient`, `--input`, `--skip` and `--window` (Track 2, `capture.go:106-108`).
 - **Registry route naming.** Knowledge registries are listed and fetched under `/api/v1/steps/registries` (`server.go:165-167`).
 - **An unrouted retrieval handler,** `Retrieve` (`internal/server/http/handlers_retrieve.go:30`), is mounted nowhere.
 
-## Open questions
-
-The owner decides these in task 0.
-
-1. **Scopes versus a `writer` role.**
-   - ADR-023 (Accepted) chose capability scopes and rejected RBAC. The static provider issues `admin` and `reader` roles.
-   - This plan enforces scopes per route, with the two roles as fixed bundles. A capture-only token then needs admin until per-token scopes exist.
-   - Recommendation: accept the bundles now, and add per-token `scopes` as the follow-up instead of a third role.
-2. **Failover across `server.urls`.**
-   - A laptop listing a remote instance and then a local one would, on a dial failure, write to the local instance: a different corpus, but announced.
-   - Recommendation: keep the failover, restricted to dial failures and announced on stderr. The alternative is exactly one endpoint per invocation.
-3. **Offline capture.**
-   - With no fallback, capturing while the remote instance is unreachable exits 70.
-   - Recommendation: accept this for now. A local dpkms (ADR-074's hub topology) or the ADR-066 buffer is the later answer.
-4. **ADR-075 amendment.**
-   - The CLI stops being a hook host. Before-hooks and outbox writes run only in the daemon.
-   - `exec` hooks come from the daemon host's config.
-   - `ctxt events deliver`, which drains the outbox without a daemon, loses its purpose.
-   - Confirm the amendment, and that ADR-075's first increment hosts its `domain.Service` wrappers in the daemon only.
-5. **Profile placement.** Profiles stay in ctxt config, and their values travel with each request. Server-side pipelines that read profile config (for example analyze with `--profile`) still read the server's copy. Should profiles eventually be held by dpkms and served through the API?
-6. **Registry tokens.**
-   - `ctxt registry login` stores tokens in the laptop keychain (`registry.go:803`).
-   - Nothing reads that store: `NewTokenStore` has no other caller.
-   - Registry sync now runs on the dpkms host. Should registry credentials become dpkms host secrets?
-7. **Browser-history position per instance.**
-   - The history position file (`internal/ambient/position`) isn't keyed by instance, so switching instances skips history that was already sent elsewhere.
-   - Recommendation: key it by the resolved endpoint, as the watch state is keyed.
-8. **`upgrade run` placement.** Moving it to `dpkms upgrade run` needs a shell on the dpkms host. The alternative is an admin endpoint that enqueues the reingest job and accepts only `--filter` (no raw SQL).
-9. **Owner metering.** On protected instances, the inbound entitlement gate filters the owner's own entity lists and meters each entity read (`handlers_entities.go:30-38`, `:57`; wired at `serve.go:369-371`). Should admin principals bypass the gate?
-
 ## Resolved decisions
 
-None yet. Task 0 fills this in.
+The owner accepted the plan and ADR-077 on 2026-09-27 and answered every open question:
+
+1. **Capture-only devices.** Add a third `writer` role now, as a fixed scope bundle next to `admin` and `reader` (task 4). Per-token scopes come later.
+2. **No failover.** When the selected endpoint can't be dialled, ctxt exits 70. It never tries the next `server.urls` entry (tasks 2, 3, 5).
+3. **Offline capture** exits 70. A local capture buffer (ADR-066) is a separate, later item.
+4. **ADR-075 is amended first** (task 0):
+   - the CLI stops hosting hooks;
+   - `exec` hooks come from the dpkms host's config;
+   - `ctxt events deliver` is dropped.
+5. **Profiles held by dpkms:** later, not in this plan.
+6. **Registry credentials as secrets on the dpkms host:** a separate task, not in this plan.
+7. **The browser-history capture position is kept per instance,** like the watch state (task 5).
+8. **`upgrade run` stays in ctxt.** It calls an admin endpoint that accepts a pipeline filter only; the raw SQL `--where` is deleted (task 23).
+9. **Admin principals bypass the entitlement and metering gate** on entity reads (task 4).
