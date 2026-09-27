@@ -31,9 +31,20 @@ Configurable in ContextHelp settings.
 
 Supported modes:
 
-- API key via `Authorization: Bearer <token>`
+- API key via `Authorization: Bearer <token>` or `X-API-Key: <token>`
 - Optional mTLS
 - Optional reverse-proxy auth integration
+
+Private instances (loopback, no `server.auth`) accept requests without a token. On protected and public instances:
+
+- Every `/api/v1` route requires one scope (`read:objects`, `write:objects`, `delete:objects`, `process:inbox`, `admin:audit`, ...). A token's roles (`admin`, `writer`, `reader`) expand to its scopes. Route-to-scope table: [config-and-permissions](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
+- A missing or invalid token gets 401 `UNAUTHORIZED`.
+- A valid token without the route's scope gets 403 `INSUFFICIENT_SCOPE`, with `details.required_scope` and a `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."` header (RFC 6750).
+- `GET /api/v1/whoami` returns the caller:
+
+```json
+{"principal": "phone", "provider": "static", "roles": ["writer"], "scopes": ["read:objects", "write:objects", "..."]}
+```
 
 ## Content Types
 
@@ -59,7 +70,8 @@ Common error codes:
 - `UNKNOWN_ENTITY`
 - `VALIDATION_FAILED`
 - `NOT_FOUND`
-- `AUTH_REQUIRED`
+- `UNAUTHORIZED` (401)
+- `INSUFFICIENT_SCOPE` (403)
 - `INTERNAL_ERROR`
 - `PLUGIN_ERROR` (plugin-defined error states surfaced via API)
 
