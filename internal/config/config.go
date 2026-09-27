@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/urlfilter"
@@ -564,11 +565,13 @@ type ServerConfig struct {
 	// empty (also settable per command with --server where the flag
 	// exists). Validated at load: scheme http/https + host required.
 	URL string `mapstructure:"url" yaml:"url,omitempty"`
-	// URLs is the ordered client-routing list, primary first. Takes
-	// precedence over URL. Each entry is a bare URL string or a
-	// {url, token} mapping (see ServerEndpoint). Validated at load —
-	// a malformed entry fails the load instead of silently probing as
-	// a permanently "down" instance.
+	// URLs lists the dpkms instances this client knows. Without a
+	// selection (--server, --instance, CTXT_INSTANCE, `ctxt instance
+	// use`) clients talk to the first entry and never to the others:
+	// those are reachable only by name or --server. Takes precedence
+	// over URL. Each entry is a bare URL string or a {name, url, token}
+	// mapping (see ServerEndpoint). Validated at load: a malformed
+	// entry or name fails the load.
 	URLs []ServerEndpoint `mapstructure:"urls" yaml:"urls,omitempty"`
 	// Token is the default bearer token clients attach to requests
 	// against instances whose URLs entry carries no token of its own.
@@ -656,25 +659,29 @@ func (a AuthConfig) HasInboundAuth() bool {
 
 // ServerEndpoint is one client-routing target: a dpkms base URL plus an
 // optional bearer token overriding the server.token default for that
-// instance. In YAML an entry is either a bare string URL (no token) or a
-// mapping:
+// instance, and an optional name that --instance, CTXT_INSTANCE and
+// `ctxt instance use` select it by. In YAML an entry is either a bare
+// string URL (no name, no token) or a mapping:
 //
 //	server:
 //	  urls:
 //	    - http://127.0.0.1:8080
-//	    - url: https://primary.example.net:7700
+//	    - name: home
+//	      url: https://primary.example.net:7700
 //	      token: s3cret
 type ServerEndpoint struct {
+	Name  string `mapstructure:"name,omitempty" yaml:"name,omitempty"`
 	URL   string `mapstructure:"url" yaml:"url"`
 	Token string `mapstructure:"token,omitempty" yaml:"token,omitempty"`
 }
 
 // UnmarshalYAML accepts both entry forms: a bare string URL and a
-// {url, token} mapping.
+// {name, url, token} mapping. A name key that is present must not be
+// empty.
 func (e *ServerEndpoint) UnmarshalYAML(node *yaml.Node) error {
 	switch node.Kind {
 	case yaml.ScalarNode:
-		e.Token = ""
+		*e = ServerEndpoint{}
 		return node.Decode(&e.URL)
 	case yaml.MappingNode:
 		type plain ServerEndpoint
@@ -682,17 +689,23 @@ func (e *ServerEndpoint) UnmarshalYAML(node *yaml.Node) error {
 		if err := node.Decode(&p); err != nil {
 			return err
 		}
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			if node.Content[i].Value == "name" && strings.TrimSpace(node.Content[i+1].Value) == "" {
+				return fmt.Errorf("server.urls entry %q: name is empty; drop the key or give the entry a name", p.URL)
+			}
+		}
 		*e = ServerEndpoint(p)
 		return nil
 	default:
-		return fmt.Errorf("server.urls entry must be a URL string or a {url, token} mapping")
+		return fmt.Errorf("server.urls entry must be a URL string or a {name, url, token} mapping")
 	}
 }
 
-// MarshalYAML writes the bare-string form back when no token is set, so a
-// config saved by a command keeps its original shape.
+// MarshalYAML writes the bare-string form back when the entry has neither
+// a name nor a token, so a config saved by a command keeps its original
+// shape.
 func (e ServerEndpoint) MarshalYAML() (any, error) {
-	if e.Token == "" {
+	if e.Token == "" && e.Name == "" {
 		return e.URL, nil
 	}
 	type plain ServerEndpoint
