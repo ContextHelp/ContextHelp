@@ -61,7 +61,8 @@ func orderedPair(x, y string) pairKey {
 // coMentions emits one undirected edge per pair of kept objects that share
 // at least one mentioned entity, weighted by the shared entity count. All
 // stored mentions of the pair count, including entities dropped by the
-// node cap.
+// node cap, but never entities Options.EntityVisible hides: loadEdges has
+// already removed those.
 func (b *builder) coMentions() []Edge {
 	byEntity := make(map[string][]string)
 	for _, c := range b.objects {

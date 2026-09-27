@@ -33,6 +33,12 @@ const (
 // the source cannot read stored embeddings.
 var ErrSimilarUnsupported = errors.New("searchgraph: similar edges not supported: embedding store cannot read embeddings by id")
 
+// ErrEntityVisibilityRequired is returned when Options.RequireEntityVisibility
+// is set without an Options.EntityVisible predicate: a caller serving
+// principals must state its entity policy, so a forgotten predicate fails
+// the build instead of exposing every entity.
+var ErrEntityVisibilityRequired = errors.New("searchgraph: entity visibility predicate required")
+
 // EdgeLister lists stored edges leaving a node (storage.EdgeStore).
 type EdgeLister interface {
 	ListFrom(ctx context.Context, fromType, fromID string) ([]*storage.Edge, error)
@@ -64,6 +70,12 @@ func SourceFrom(d storage.StorageDriver) Source {
 	return src
 }
 
+// EntityVisibility reports whether an entity may appear in a document —
+// the caller's access policy (dpkms: the principal's namespace
+// entitlements). ent is the stored entity, nil when the store holds no
+// record for slug. It is called once per distinct mentioned slug.
+type EntityVisibility func(ctx context.Context, slug string, ent *storage.Entity) bool
+
 // Options tunes a build. Zero values select defaults.
 type Options struct {
 	// MaxNodes caps nodes, the query node included (<= 0: DefaultMaxNodes).
@@ -76,6 +88,17 @@ type Options struct {
 	// SimilarThreshold is the minimum cosine for a similar edge
 	// (<= 0: DefaultSimilarThreshold).
 	SimilarThreshold float64
+	// EntityVisible hides entities from the document (nil: every entity
+	// is visible). The predicate runs before anything is derived from
+	// mentions, so a hidden entity is as absent as one never mentioned:
+	// no node, no mentions edge, no share of a co_mention weight, a
+	// mention count, a count or the node cap.
+	EntityVisible EntityVisibility
+	// RequireEntityVisibility makes EntityVisible mandatory: Build fails
+	// with ErrEntityVisibilityRequired when it is nil. Servers set it so
+	// the ungated default (nil: all visible, what the local CLI wants)
+	// can never be reached by accident.
+	RequireEntityVisibility bool
 	// Now stamps generated_at (nil: time.Now).
 	Now func() time.Time
 }
@@ -113,13 +136,18 @@ func (o Options) withDefaults() Options {
 // Store round trips: one ListFrom per kept object and one entity Get per
 // kept entity (the stores offer no batch variants), both bounded by
 // MaxNodes, plus one EmbeddingsByID call when Similar is set and the trace
-// names a vector model.
+// names a vector model. With EntityVisible set, the entity Gets cover
+// every distinct slug the kept objects mention instead, since visibility
+// is decided before the node cap ranks entities.
 func Build(ctx context.Context, tr *service.SearchTrace, src Source, opts Options) (*Document, error) {
 	if tr == nil {
 		return nil, errors.New("searchgraph: nil trace")
 	}
 	if src.Edges == nil || src.Entities == nil {
 		return nil, errors.New("searchgraph: source needs edges and entities")
+	}
+	if opts.RequireEntityVisibility && opts.EntityVisible == nil {
+		return nil, ErrEntityVisibilityRequired
 	}
 	opts = opts.withDefaults()
 	if opts.Similar && src.Embeddings == nil {
@@ -158,6 +186,9 @@ type builder struct {
 	entities  []entityNode              // kept, in priority order
 	keptEnt   map[string]bool           // kept entity slugs
 	truncated bool
+
+	stored  map[string]*storage.Entity // looked-up entities; nil value: no record
+	visible map[string]bool            // EntityVisible verdicts by slug
 }
 
 type entityNode struct {
@@ -234,7 +265,11 @@ func (b *builder) loadEdges(ctx context.Context) error {
 			}
 		}
 		slices.Sort(slugs)
-		b.mentions[c.ID] = slices.Compact(slugs)
+		slugs, err = b.visibleOnly(ctx, slices.Compact(slugs))
+		if err != nil {
+			return err
+		}
+		b.mentions[c.ID] = slugs
 	}
 	b.links = make([]Edge, 0, len(links))
 	for _, l := range links {
@@ -284,18 +319,64 @@ func (b *builder) selectEntities(ctx context.Context) error {
 	return nil
 }
 
-func (b *builder) entityLabel(ctx context.Context, slug string) (string, error) {
+// visibleOnly drops the slugs EntityVisible hides, in place. Every
+// relation, count and cap is derived from the mentions it leaves, so a
+// hidden entity cannot surface anywhere in the document. Without a
+// predicate every slug is visible and no entity is looked up here.
+func (b *builder) visibleOnly(ctx context.Context, slugs []string) ([]string, error) {
+	if b.opts.EntityVisible == nil {
+		return slugs, nil
+	}
+	if b.visible == nil {
+		b.visible = make(map[string]bool)
+	}
+	out := slugs[:0]
+	for _, s := range slugs {
+		ok, seen := b.visible[s]
+		if !seen {
+			ent, err := b.entity(ctx, s)
+			if err != nil {
+				return nil, err
+			}
+			ok = b.opts.EntityVisible(ctx, s, ent)
+			b.visible[s] = ok
+		}
+		if ok {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+// entity looks slug up once per build; a slug without a stored record
+// yields nil. Any other store error fails the build.
+func (b *builder) entity(ctx context.Context, slug string) (*storage.Entity, error) {
+	if ent, ok := b.stored[slug]; ok {
+		return ent, nil
+	}
 	ent, err := b.src.Entities.Get(ctx, slug)
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
-		return cleanLabel(slug), nil
+		ent = nil
 	case err != nil:
-		return "", fmt.Errorf("searchgraph: get entity %s: %w", slug, err)
-	case ent == nil:
-		return cleanLabel(slug), nil
+		return nil, fmt.Errorf("searchgraph: get entity %s: %w", slug, err)
 	}
-	if l := cleanLabel(ent.Title); l != "" {
-		return l, nil
+	if b.stored == nil {
+		b.stored = make(map[string]*storage.Entity)
+	}
+	b.stored[slug] = ent
+	return ent, nil
+}
+
+func (b *builder) entityLabel(ctx context.Context, slug string) (string, error) {
+	ent, err := b.entity(ctx, slug)
+	if err != nil {
+		return "", err
+	}
+	if ent != nil {
+		if l := cleanLabel(ent.Title); l != "" {
+			return l, nil
+		}
 	}
 	return cleanLabel(slug), nil
 }
