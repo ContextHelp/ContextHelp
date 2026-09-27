@@ -4,7 +4,6 @@ import (
 	"context"
 	"io/fs"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -103,24 +102,24 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 	}
 	r.Get("/manifest.json", ManifestJSON())
 
-	// GET /ui → redirect to /ui/
-	r.Get("/ui", func(w http.ResponseWriter, r *http.Request) {
+	// GET|HEAD /ui → redirect to /ui/
+	uiRoot := func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/", http.StatusMovedPermanently)
-	})
+	}
+	r.Get("/ui", uiRoot)
+	r.Head("/ui", uiRoot)
 
-	// GET /ui/* → serve embedded SPA assets
+	// GET|HEAD /ui/* → embedded SPA: files as-is, client routes get
+	// the shell, missing assets 404.
 	distFS, err := fs.Sub(ui.FS, "dist")
 	if err != nil {
 		panic("ui: failed to sub embedded FS: " + err.Error())
 	}
-	fileServer := http.FileServer(http.FS(distFS))
-	r.Handle("/ui/*", http.StripPrefix("/ui", fileServer))
+	spa := http.StripPrefix("/ui", SPAHandler(distFS))
+	r.Get("/ui/*", spa.ServeHTTP)
+	r.Head("/ui/*", spa.ServeHTTP)
 
 	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
-		if strings.HasPrefix(req.URL.Path, "/ui/") {
-			http.ServeFileFS(w, req, distFS, "index.html")
-			return
-		}
 		WriteError(w, http.StatusNotFound, "NOT_FOUND", "resource not found")
 	})
 
