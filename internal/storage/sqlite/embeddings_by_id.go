@@ -41,7 +41,7 @@ func (s *EmbeddingStore) embeddingsChunk(ctx context.Context, modelID string, id
 		args = append(args, id)
 	}
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
-	//nolint:gosec // placeholders are literal "?" markers; model and ids are bound.
+	// #nosec G202 -- placeholders are literal "?" markers; model and ids are bound.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT object_id, chunk_idx, vector, text FROM embeddings
 		 WHERE model_id = ? AND object_id IN (`+placeholders+`)

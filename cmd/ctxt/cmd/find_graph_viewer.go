@@ -128,7 +128,7 @@ func (h *viewerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !hasSlash {
 		// The page loads its assets by relative URL, so it needs the
 		// trailing slash to resolve them under the token.
-		http.Redirect(w, r, "/"+seg+"/", http.StatusFound)
+		http.Redirect(w, r, "/"+string(h.token)+"/", http.StatusFound)
 		return
 	}
 	if rest == "" {

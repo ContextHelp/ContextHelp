@@ -48,7 +48,7 @@ func (System) Open(ctx context.Context, url string) error {
 	if !ok {
 		return fmt.Errorf("no default browser handler known for %s", runtime.GOOS)
 	}
-	c := exec.CommandContext(context.WithoutCancel(ctx), name, args...) //nolint:gosec // fixed handler; url cannot be read as a switch
+	c := exec.CommandContext(context.WithoutCancel(ctx), name, args...) // #nosec G204 -- fixed handler; url cannot be read as a switch
 	if err := c.Start(); err != nil {
 		return fmt.Errorf("start %s: %w", name, err)
 	}

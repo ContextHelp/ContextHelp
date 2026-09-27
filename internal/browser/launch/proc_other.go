@@ -19,7 +19,7 @@ func killGroup(cmd *exec.Cmd) error {
 	}
 	if runtime.GOOS == goosWindows {
 		pid := strconv.Itoa(cmd.Process.Pid)
-		if err := exec.CommandContext(context.Background(), "taskkill", "/T", "/F", "/PID", pid).Run(); err == nil { //nolint:gosec // fixed tool; pid is ours
+		if err := exec.CommandContext(context.Background(), "taskkill", "/T", "/F", "/PID", pid).Run(); err == nil { // #nosec G204 -- fixed tool; pid is ours
 			return nil
 		}
 	}

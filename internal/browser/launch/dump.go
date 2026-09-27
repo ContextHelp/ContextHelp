@@ -125,7 +125,7 @@ func dumpOnce(ctx context.Context, url string, opts Options) (_ string, err erro
 
 	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, opts.Chrome, argv...) //nolint:gosec // browser executable chosen by the caller or FindChrome; switches fixed here
+	cmd := exec.CommandContext(ctx, opts.Chrome, argv...) // #nosec G204 -- browser executable chosen by the caller or FindChrome; switches fixed here
 	cmd.Env = opts.Env
 	cmd.Dir = opts.Dir
 	setGroup(cmd)
