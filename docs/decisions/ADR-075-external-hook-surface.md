@@ -1,10 +1,11 @@
 # ADR-075 – External Hook Surface: Pre and Post Hooks on ctxt and dpkms Events
 
-> **Status:** Accepted (2026-09-26)
+> **Status:** Accepted (2026-09-26), amended 2026-09-27 (see [Amendment 2026-09-27](#amendment-2026-09-27))
 > **Date:** 2026-09-26
 > **Author:** jadb
 > **Applies to:** dPKMS, ctxt
 > **Supersedes:** None
+> **Amended by:** ADR-077 (ctxt is a pure dpkms API client): the daemon is the only hook host
 > **References:** ADR-007 (transactional outbox), ADR-023 (authentication), ADR-065 (adapters; its entity-topic amendment already routes policy-gated mutations through `domain.Service[T]`), ADR-068 (MCP read surface, `/ws/bus`), ADR-070 and ADR-071 (upgrade and embedding-model events), ADR-074 (sync log)
 > **Plan:** [`docs/plans/2026-09-27-external-hooks.md`](../plans/2026-09-27-external-hooks.md) covers the survey, the naming audit, the first increment with its test gates, and the later increments.
 >
@@ -23,6 +24,8 @@ The owner's rule for this design: **kit is the authority on event naming and on 
 - **Two kinds of writer.**
   - Most mutating `ctxt` commands write the instance database directly. `newService` opens whatever `--instance` or config names, and `ctxt delete` calls `service.DeleteObject` itself.
   - The HTTP commands (`capture`, `analyze`, `import …`) pick their URL from `server.urls`. That choice ignores `--instance`, so an announcement sent by URL can land on a different instance from the one whose database changed.
+
+  > **Amended 2026-09-27.** ADR-077 removes the direct writer: every ctxt command reaches dpkms through its API, and `--instance` resolves to one endpoint. This paragraph describes the code this ADR was written against; it is no longer a premise for where hooks run. See [Amendment 2026-09-27](#amendment-2026-09-27).
 - **Domain events stay on ctxt's in-process `events.LocalBus` (`svc.Bus`).** `GET /api/v1/events` streams that bus as SSE. The stream carries no event IDs and cannot be resumed.
 - **`/ws/bus` carries no domain events.** It is a kit `NetworkAdapter` behind one shared `BUS_TOKEN` with no principal attached. Relay mode is off, and nothing is bridged onto it.
 - **The veto seams already in use are kit's own.**
@@ -58,12 +61,14 @@ Also relevant, outside kit:
 
 **ctxt and dpkms become hook hosts on kit's existing seams.**
 
+> **Amended 2026-09-27.** The dpkms daemon is the only process that hosts hooks, for actions started from the CLI and for daemon-internal work alike. ctxt actions reach it through the API (ADR-077). See [Amendment 2026-09-27](#amendment-2026-09-27).
+
 ### Owner decisions (final, 2026-09-26)
 
 1. **Contract home.** kit's existing hook points, used as they are. `exec` and `webhook` handlers follow nerv's decision format: decision JSON on stdout; exit 0 allow, 1 warn, 2 block; exit 4 and above is an error. No kit change is requested, now or later.
 2. **Veto only.** Before hooks can allow, warn or block. They never rewrite the payload.
 3. **Failure policy.** A failing `exec` or `webhook` hook fails closed on destructive actions (`purge`, `delete`) and open on every other action. `cel` rules deny on any evaluation error, as kit does (K11).
-4. **Registration.** `exec` hooks come only from local config, never from the database. `webhook` hooks may also be registered in the instance database, and registering one requires admin authentication.
+4. **Registration.** `exec` hooks come only from local config, never from the database. `webhook` hooks may also be registered in the instance database, and registering one requires admin authentication. *Amended 2026-09-27: "local config" is the config on the dpkms host, not on the operator's machine ([amendment §2](#2-exec-hooks-come-from-the-dpkms-hosts-config)).*
 5. **`/ws/bus`.** After events are mirrored onto it, best effort. `BUS_TOKEN` is never issued to external apps.
 6. **Retention.** 7 days. A subscriber that falls behind the retention window is marked `stale` and must resync.
 7. **Outbox and `sync_log`.** `event_outbox` stays a separate table from ADR-074's `sync_log`.
@@ -98,16 +103,18 @@ Sections 1–6 below apply these decisions.
 
 ### 2. Hook hosts
 
-- **The host is `internal/service`**, the layer both processes share. The CLI builds it in `newService`, and the daemon builds it in `dpkms serve` for HTTP, gRPC, MCP and the worker pool.
+> **Amended 2026-09-27.** The daemon is the only hook host. Struck-through text below is superseded; see [amendment §1](#1-the-daemon-is-the-only-hook-host) and [§4](#4-targeting).
+
+- **The host is `internal/service`**, ~~the layer both processes share. The CLI builds it in `newService`, and~~ the daemon builds it in `dpkms serve` for HTTP, gRPC, MCP and the worker pool.
 - **Mutations that hooks cover go through kit's seams:**
   - **Object delete** goes through `domain.Service[object]`.
   - **The embedding-model lifecycle** is modeled as entity mutations. Promote and deprecate are updates with `request_attrs.action`, and purge is a delete. This mirrors how a pipeline archive is plumbed through an update. The mutations go through a `domain.Service[embedding_model]` wrapper around the registry.
-  - **Wiring.** Both processes wire the same `policy.Wire` and ctxt's dispatcher onto the bus that these services publish to.
+  - **Wiring.** ~~Both processes wire~~ The daemon wires the same `policy.Wire` and ctxt's dispatcher onto the bus that these services publish to. The CLI wires neither.
 - **Which process runs the hooks for an action:**
-  - A CLI action that writes directly runs its hooks in the CLI process.
-  - An action that goes over HTTP runs them in the daemon.
+  - ~~A CLI action that writes directly runs its hooks in the CLI process.~~ No CLI action writes directly any more (ADR-077).
+  - An action that goes over HTTP runs them in the daemon. Every CLI action now does.
   - Daemon-internal work runs them in the daemon.
-- **Nothing is announced by URL**, so `--instance`, remote Postgres and running with no daemon all resolve to the right database.
+- **Nothing is announced by URL**, so `--instance`~~, remote Postgres and running with no daemon all resolve~~ and remote Postgres resolve to the right database. Running with no daemon is no longer a case: ctxt does nothing without a reachable dpkms (ADR-077).
 
 ### 3. Before hooks: veto only, and only in process
 
@@ -116,7 +123,7 @@ Sections 1–6 below apply these decisions.
   - **No `rewrite`.** kit's pre phases can veto but have no channel for returning a modified payload. Rewriting would also break the destructive-command confirmation token and the audit trail.
 - **Handler kinds:**
   - **`cel`** is kit policy, used exactly as kit ships it: rules in the existing policy file, with `on:` set to one of the three kit topics. Evaluation errors deny (K11).
-  - **`exec`** is a local command. It receives the envelope on stdin, writes the decision JSON on stdout, and exits 0 (allow), 1 (warn), 2 (block), or 4 and above for an error. These are nerv's codes, minus `rewrite`: exit 3, nerv's `rewrite`, has no meaning here and counts as an error. When the JSON `action` and the exit code disagree, the exit code wins, as in nerv.
+  - **`exec`** is a local command, local to the dpkms host (amended 2026-09-27). It receives the envelope on stdin, writes the decision JSON on stdout, and exits 0 (allow), 1 (warn), 2 (block), or 4 and above for an error. These are nerv's codes, minus `rewrite`: exit 3, nerv's `rewrite`, has no meaning here and counts as an error. When the JSON `action` and the exit code disagree, the exit code wins, as in nerv.
   - **`webhook`** is an HTTPS POST whose response body is the same decision JSON.
 - **ctxt's dispatcher** runs the `exec` and `webhook` hooks. It is one synchronous subscriber on each kit pre topic, and it filters on `request_attrs`.
 - **Order.** Policy runs first and short-circuits, then the dispatcher's `exec` hooks, then its `webhook` hooks. Decisions combine deny-overrides, as K11 does.
@@ -141,13 +148,13 @@ Sections 1–6 below apply these decisions.
   - A server-held subscription (a webhook) stops receiving deliveries until it is reset.
   - A pull or SSE client that asks for a `seq` older than the retention floor gets `410 Gone`, naming the oldest retained `seq`.
   - To recover, the subscriber resyncs: it re-reads current state through the API, then resumes from the current head.
-- **With no daemon running,** rows wait. `ctxt events deliver` drains them without one.
+- ~~**With no daemon running,** rows wait. `ctxt events deliver` drains them without one.~~ *Superseded 2026-09-27:* only the daemon writes rows, and its relay drains them and its timer prunes them. `ctxt events deliver` is dropped; `ctxt events tail` stays as a client of the pull endpoint ([amendment §3](#3-ctxt-events-deliver-is-dropped)).
 - **Transports:**
   - pull: `GET /api/v1/events?after=<seq>`
   - SSE on `GET /api/v1/events`, resumable through `Last-Event-ID`
   - webhook push, using kit's `runtime/notify` webhook sink behind the outbox cursor
   - a live, best-effort mirror of after events onto `/ws/bus` for trusted peers (owner decision 5)
-- **Local audit copies.** The CLI's local `KIT_BUS_SINK` publish stays as a local audit copy.
+- ~~**Local audit copies.** The CLI's local `KIT_BUS_SINK` publish stays as a local audit copy.~~ *Superseded 2026-09-27:* the CLI performs no mutation, so it has no after event to copy. The outbox is the record.
 
 ### 5. Registration, authentication and trust
 
@@ -155,7 +162,7 @@ Sections 1–6 below apply these decisions.
   - Adding or removing a hook requires an authenticated principal with the `admin` role (ADR-023; `auth.Principal.HasRole`). So registration goes through the daemon's authenticated API; `ctxt hooks add|rm` call it and never write the table directly.
   - Changes are also policy-gated through the same `pre_persisted` seam.
   - `cel` rules stay in kit's policy file.
-- **Local config.** `$XDG_CONFIG_HOME/contexthelp/hooks.yaml`, plus a project layer, holds `exec` and `webhook` hooks.
+- **Local config.** `$XDG_CONFIG_HOME/contexthelp/hooks.yaml`, plus a project layer, holds `exec` and `webhook` hooks. *Amended 2026-09-27:* this is the config on the dpkms host, read by the daemon in the layers it uses for `dpkms.yaml`. A `hooks.yaml` on the operator's machine has no effect ([amendment §2](#2-exec-hooks-come-from-the-dpkms-hosts-config)).
 - **`exec` hooks never come from the database.**
 - **Webhooks** must use HTTPS except on loopback. Requests are signed with a per-subscription HMAC-SHA256 over the timestamp plus the body, and receivers enforce a replay window.
 - **Pull and SSE consumers** authenticate through the existing `/api/v1` `RequireAuth` (ADR-023).
@@ -171,7 +178,7 @@ The database stores an `instance_id`, and every event carries it.
 ## Rationale
 
 - **Conformance over invention.** kit's three veto topics plus `request_attrs` can already describe every before hook the goal needs. ctxt does exactly this for pipeline archive and delete, and for lateral promote and reject. Minting `ctxt.*.pre_*` topics would pass the grammar, but kit policy would reject them (K7), so they could never be gated. That is kit adapting to ctxt, which the owner ruled out.
-- **Binding to the database, not a URL,** is the only way to be correct across `--instance`, remote Postgres and running with no daemon.
+- **Binding to the database, not a URL,** is the only way to be correct across `--instance`, remote Postgres and running with no daemon. *Amended 2026-09-27:* the binding stands, held by the daemon that serves the database; running with no daemon is no longer a case (ADR-077).
 - **kit, not nerv,** is the contract for hop-top's own events. axon excludes them by rule. nerv's decision JSON is still reused, so existing handlers carry over.
 - **Only the outbox can reach an app that is down.** A bus cannot, because kit's post phases are best effort (K6).
 
@@ -182,7 +189,7 @@ The database stores an `instance_id`, and every event carries it.
 - **kit's `ai/ext/hook` bus**: rejected. It is in process, meant for extension lifecycles, and its hook names are not conformant topics (K13).
 - **nerv as the dispatcher**: rejected. It is out of nerv's and axon's scope, runs per machine, and has no host on the daemon side.
 - **Everything over `/ws/bus`**: rejected. There is no veto path (K12), one shared secret with no principal, no durability, and announcements would still be targeted by URL.
-- **The daemon as the only host**: deferred. It breaks running with no daemon.
+- **The daemon as the only host**: ~~deferred. It breaks running with no daemon.~~ adopted 2026-09-27. ADR-077 removed running with no daemon, which was the only objection ([amendment §5](#5-why-the-reversal)).
 - **Server-side change detection**: rejected. It loses intent.
 - **One `jobs` row per event**: superseded by the outbox.
 - **Rewrite-capable before hooks**: rejected. kit's pre phases have no channel for it.
@@ -194,7 +201,7 @@ The database stores an `instance_id`, and every event carries it.
 ### Positive
 
 - There is no kit dependency to wait on. Every before hook lands on a seam kit already evaluates, so `cel` rules work today.
-- One contract covers both processes and both kinds of origin. After-event delivery survives an app being down, the daemon being down, and remote instances.
+- One contract covers both processes and both kinds of origin. After-event delivery survives an app being down, the daemon being down, and remote instances. *Amended 2026-09-27:* one process, the daemon, hosts the contract for both kinds of origin. Rows written before the daemon stops are relayed when it restarts.
 - SSE becomes resumable, and `/ws/bus` carries domain events.
 
 ### Negative
@@ -203,7 +210,7 @@ The database stores an `instance_id`, and every event carries it.
 - **Hookable mutations have to go through kit's domain seams.** The embedding-model registry and object delete gain `domain.Service` wrappers.
 - **Performance and connectivity.** Every mutation pays an outbox insert and its before-hook latency. A webhook before hook needs network access.
 - **Two registry sources** to reason about.
-- **A broken hook blocks destructive actions.** Because `purge` and `delete` fail closed, a hook that crashes or times out stops them until it is fixed or removed from local config (or, for a webhook, by an admin).
+- **A broken hook blocks destructive actions.** Because `purge` and `delete` fail closed, a hook that crashes or times out stops them until it is fixed or removed from local config (or, for a webhook, by an admin). *Amended 2026-09-27:* "local config" is the dpkms host's `hooks.yaml`.
 
 ### What cannot be expressed within kit today
 
@@ -269,3 +276,72 @@ The plan holds the first increment, its test gates, the later increments and the
 - nerv: `spec/handler-contract.md`. axon: `spec/events.yaml` (the scope rule).
 - ctxt: `internal/adapter/events.go:32-55` (the ADR-065 precedent for routing policy-gated mutations through `domain.Service[T]`), `internal/policy/policies_default.yaml`, `internal/lateral/promote/handler.go:30`
 - ADR-007, ADR-023, ADR-065, ADR-068, ADR-070, ADR-071, ADR-074
+- ADR-077 (ctxt is a pure dpkms API client), the source of the 2026-09-27 amendment
+
+---
+
+## Amendment 2026-09-27
+
+> **Status:** Accepted
+> **Source:** [ADR-077 – ctxt Is a Pure dpkms API Client](ADR-077-ctxt-pure-api-client.md), which lists this amendment among its consequences
+> **Implementation plan:** [`docs/plans/2026-09-27-external-hooks.md`](../plans/2026-09-27-external-hooks.md), revised to match
+
+ADR-077 makes ctxt a pure dpkms API client. ctxt never opens the store, so it never performs a mutation itself. This ADR assumed a second writer, the CLI, and made it a hook host. That writer is gone, so the daemon is the only hook host.
+
+Everything else stands: kit's seams (K1–K13), the before-hook keys and `request_attrs`, the handler kinds, nerv's decision format, the failure policy, the outbox, retention, the transports and the trust rules.
+
+The following statements of this ADR are **superseded**. Each is struck through or marked where it appears:
+
+- Context, "Two kinds of writer", as a premise for where hooks run;
+- owner decision 4, where "local config" meant the operator's machine;
+- §2, the CLI building `internal/service`, "Wiring", "A CLI action that writes directly", and "running with no daemon";
+- §3, `exec` as a command local to the operator's machine;
+- §4, "With no daemon running" (`ctxt events deliver`) and "Local audit copies";
+- §5, "Local config", where it meant the operator's machine;
+- Rationale, "running with no daemon";
+- Alternatives, "The daemon as the only host: deferred";
+- Consequences, "One contract covers both processes" and the config location in "A broken hook blocks destructive actions".
+
+### 1. The daemon is the only hook host
+
+- **One host process.** `dpkms serve` is the only process that builds `internal/service` for mutations. It alone raises kit's pre phases for ctxt mutations, runs ctxt's dispatcher and writes `event_outbox` rows. It alone wires `policy.Wire` and the dispatcher onto the bus that the `domain.Service` wrappers publish to.
+- **Both origins.**
+  - **CLI-originated actions** (`ctxt delete`, `ctxt embeddings set-default|deprecate|purge`, and so on) reach the daemon as authenticated `/api/v1` requests (ADR-077 §1). The handler calls the same service method, so the pre phases, the hooks and the outbox write run in the daemon, inside the request.
+  - **Daemon-internal work** (the worker pool, jobs, migrations) runs in the daemon, as before.
+- **The CLI hosts nothing.** It raises no pre phase, runs no hook and writes no outbox row. It wires neither `policy.Wire` nor the dispatcher.
+- **What crosses the API:**
+  - The daemon stamps `request_attrs`. `kind` and `action` follow from the route and the operation, and `id` from the request.
+  - `dry_run` is a request parameter on each covered endpoint, so a CLI dry run still reaches the pre phases with `dry_run = true`.
+  - A `block` is kit's pre-phase veto error, returned as a conflict that names the hook. ctxt maps it to exit 4 `CONFLICT` (ADR-077 §2).
+  - A `warn` lets the mutation proceed. The daemon returns the hook's message in the response, and the CLI prints it.
+  - The outbox row's `actor` is the request's authenticated principal (ADR-023).
+
+### 2. `exec` hooks come from the dpkms host's config
+
+- **Where they are read.** The daemon reads `hooks.yaml` on the machine that runs `dpkms serve`, from the same config layers it uses for `dpkms.yaml` (`.contexthelp/`, `$XDG_CONFIG_HOME/contexthelp/`, `/etc/contexthelp/`; `cmd/dpkms/cmd/config.go:19-20`). An `exec` hook runs on that host, as the daemon's user.
+- **The laptop's config has no effect.** The CLI never reads `hooks.yaml`, and no API accepts `exec` hooks, so a client can never make the daemon run a command. Owner decision 4 stands, with "local" now meaning local to the dpkms host.
+- **Operators without access to the dpkms host** use `webhook` hooks, registered in the instance database by an admin (§5, a later increment).
+
+### 3. `ctxt events deliver` is dropped
+
+- **Its purpose is gone.** It drained the outbox with no daemon running. Under ADR-077 nothing mutates an instance without its daemon, since ctxt exits 70 when its endpoint doesn't answer. So no row can exist that only the CLI could deliver.
+- **The daemon drains and prunes.** Its relay delivers rows, and its timer runs the 7-day prune. Rows written before the daemon stops stay in the outbox and are relayed from each subscription's cursor when it restarts.
+- **`ctxt events tail` stays**, as a client of the pull endpoint (`GET /api/v1/events?after=<seq>`), authenticated like every other ctxt command. It never reads the outbox table.
+
+### 4. Targeting
+
+- **The binding to the database stands**, held by the daemon: its hooks and its outbox belong to the database it serves.
+- **`--instance` resolves to exactly one endpoint** (ADR-077 §3), so a CLI action, its hooks and its events land on the instance the operator chose. The mismatch §2 guarded against, a write to one database announced to another URL, cannot happen, because the CLI no longer writes.
+- **Running with no daemon** is no longer a case to support.
+
+### 5. Why the reversal
+
+- **The objection is gone.** "The daemon as the only host" was deferred because it broke running with no daemon. ADR-077 removed that mode, and the owner accepted that ctxt does nothing without a reachable dpkms.
+- **One host is simpler.** There is one dispatcher, one policy wiring and one hooks config, and no duplicate `domain.Service` wiring in the CLI.
+- **It puts `exec` hooks where the actions happen.** With dpkms on another machine, a hook hosted on the laptop would have seen only the laptop's own actions and missed daemon-internal work. A hook on the dpkms host sees both.
+
+### Consequences of this amendment
+
+- **Positive:** every covered mutation runs its hooks in one process, whatever its origin. A hook cannot be skipped by choosing a different client. The first increment wires the `domain.Service` wrappers, the dispatcher and `policy.Wire` in the daemon only, and the later `cel` increment needs no CLI wiring.
+- **Negative:** configuring an `exec` hook needs write access to the dpkms host's config. Before-hook time now adds to an API request's latency, so the CLI's request timeout for covered mutations must allow for it (up to 30 s per hook).
+- **Neutral:** the first increment's scope is unchanged apart from dropping `ctxt events deliver`. `ctxt events tail` stays.
