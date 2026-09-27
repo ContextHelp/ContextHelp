@@ -144,9 +144,10 @@ Core endpoints:
 - `POST /compose`
 - `GET /registries`
 - `GET /registries/{id}`
-- `GET /entities`
+- `GET /entities` (`?q=` searches)
+- `GET /entities/resolve`
 - `GET /entities/{slug}`
-- `GET /entities/{slug}/related`
+- `GET /entities/{slug}/backlinks`
 - `GET /suggest/tags` (optional)
 - `GET /suggest/mentions` (optional)
 
@@ -703,17 +704,47 @@ Generate compositions (briefs, plans, summaries, drafts) from knowledge objects.
 
 ## Entities & Mentions
 
+Every entity read needs `read:objects`. On a non-private instance the inbound entitlement gate applies to every principal except `admin`: listings drop entities outside the principal's granted namespaces, and a read of one entity is refused with 403 `ENTITLEMENT_REQUIRED` outside them. A metered read past the principal's quota is a 429 `QUOTA_EXHAUSTED`. Admin principals are neither gated nor metered.
+
+Search and resolve are REST only. gRPC `EntityService` has `ListEntities`, `GetEntity` and `GetEntityBacklinks`, with no query field and no resolve method; ctxt uses REST.
+
 ### `GET /entities`
 
-List and search entities.
+Lists entities by slug, one page at a time. With `q`, only the entities whose slug, title or any alias contains `q` are listed. The match ignores ASCII case, and `%` and `_` match literally. Unmetered.
+
+| Parameter | Matches | Default |
+|---|---|---|
+| `q` | substring of the slug, title or an alias | every entity |
+| `namespace` | the entity's namespace, exactly | every namespace |
+| `limit` | page size; applied after `q` | `20` |
+| `offset` | entities to skip | `0` |
+
+```json
+{"data": [{"slug": "ui.checkout-flow", "title": "Checkout Flow", "namespace": "ui", "created_at": "2026-01-10T09:00:00Z", "updated_at": "2026-01-10T09:00:00Z"}]}
+```
+
+No match returns `{"data": []}`.
+
+### `GET /entities/resolve?mention=`
+
+Returns the entity a mention names: the entity whose slug equals `mention`, else the one carrying `mention` as an alias. Both comparisons are exact, and a leading `@` is part of the mention. The read is metered as an `entity_resolve`, like `GET /entities/{slug}`. The body is the entity object that `GET /entities/{slug}` returns.
+
+The static path takes precedence over `/entities/{slug}`, so an entity whose slug is `resolve` is read with `?mention=resolve`.
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `INVALID_PARAM` | `mention` is missing or empty |
+| 403 | `ENTITLEMENT_REQUIRED` | The entity's namespace is outside the principal's grant |
+| 404 | `NOT_FOUND` | No slug or alias equals `mention` |
+| 429 | `QUOTA_EXHAUSTED` | The principal's `entity_resolve` quota is spent |
 
 ### `GET /entities/{slug}`
 
-Get entity details including aliases, translations, and backlinks.
+Returns one entity by exact slug, with its aliases, description and provenance (`content_status`, `version_hash`, `registry_url`). Metered as an `entity_resolve`. An unknown slug is a 404 `NOT_FOUND`.
 
-### `GET /entities/{slug}/related`
+### `GET /entities/{slug}/backlinks`
 
-Get related entities through graph connections.
+Lists the objects that mention the entity: `{"data": [...objects]}`. The gate check is unmetered. An unknown slug returns `{"data": []}` to an ungated caller and a 404 to a gated one.
 
 ---
 

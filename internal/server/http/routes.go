@@ -57,6 +57,9 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// Entities. The entity-serving surface is where inbound
 		// entitlements and metering bite for non-admin principals.
 		{Method: get, Pattern: "/entities", Scope: authn.ScopeReadObjects, Handler: ListEntities(svc, rc.Entitlements)},
+		// Static, so it wins over /entities/{slug}; an entity whose slug
+		// is "resolve" resolves through ?mention=resolve.
+		{Method: get, Pattern: "/entities/resolve", Scope: authn.ScopeReadObjects, Handler: ResolveEntity(svc, rc.Entitlements)},
 		{Method: get, Pattern: "/entities/{slug}", Scope: authn.ScopeReadObjects, Handler: GetEntity(svc, rc.Entitlements)},
 		{Method: get, Pattern: "/entities/{slug}/backlinks", Scope: authn.ScopeReadObjects, Handler: EntityBacklinks(svc, rc.Entitlements)},
 		// Thin sync: promote a thin entity to full on demand.

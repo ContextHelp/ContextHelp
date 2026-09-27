@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -10,13 +11,16 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// ListEntities returns a paginated list of entities. With an inbound
-// gate wired (non-private instances), the listing is filtered to the
-// namespaces the authenticated principal is entitled to — an index
-// browse, so no metering charge. Admin principals see every entity.
+// ListEntities returns a paginated list of entities; q narrows it to
+// entities whose slug, title or an alias contains q, ignoring ASCII case.
+// With an inbound gate wired (non-private instances), the listing is
+// filtered to the namespaces the authenticated principal is entitled to
+// — an index browse, so no metering charge. Admin principals see every
+// entity.
 func ListEntities(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		filter := storage.EntityFilter{
+			Query:     r.URL.Query().Get("q"),
 			Namespace: r.URL.Query().Get("namespace"),
 			Limit:     parseIntDefault(r.URL.Query().Get("limit"), 20),
 			Offset:    parseIntDefault(r.URL.Query().Get("offset"), 0),
@@ -53,6 +57,39 @@ func GetEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFun
 		entity, err := svc.GetEntity(r.Context(), slug)
 		if err != nil || entity == nil {
 			WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
+			return
+		}
+		if err := entityGate(r, gate).Authorize(r.Context(), gatePrincipal(r), entity.Namespace,
+			storage.MeteringEventEntityResolve); err != nil {
+			if writeInboundGateError(w, r, err) {
+				return
+			}
+			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			return
+		}
+		WriteJSON(w, http.StatusOK, entity)
+	}
+}
+
+// ResolveEntity returns the entity a mention names: the entity with that
+// exact slug, else the one carrying it as an alias. Like GetEntity, a
+// wired inbound gate charges the read as a metered entity_resolve, and
+// admin principals are neither gated nor metered. A missing mention is a
+// 400 and a mention that names nothing a 404.
+func ResolveEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		mention := r.URL.Query().Get("mention")
+		if mention == "" {
+			WriteError(w, http.StatusBadRequest, "INVALID_PARAM", "mention is required")
+			return
+		}
+		entity, err := svc.ResolveEntity(r.Context(), mention)
+		if errors.Is(err, storage.ErrNotFound) {
+			WriteError(w, http.StatusNotFound, "NOT_FOUND", "no entity matches the mention")
+			return
+		}
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
 		if err := entityGate(r, gate).Authorize(r.Context(), gatePrincipal(r), entity.Namespace,
