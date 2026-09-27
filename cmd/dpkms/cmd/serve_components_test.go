@@ -125,7 +125,7 @@ func TestComponentRunner_StartFailureStopsHTTPAndReturnsError(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	_ = bridgeLn.Close()
-	bridge := wsserver.NewCookieBridgeServer(wsserver.NewCookieCache())
+	bridge := wsserver.NewCookieBridgeServer(wsserver.NewCookieCache(), nil)
 	httpUp := make(chan struct{})
 
 	log := &syncBuffer{}

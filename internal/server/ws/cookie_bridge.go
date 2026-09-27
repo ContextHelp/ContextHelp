@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 )
 
 // CookieEntry represents a single browser cookie.
@@ -72,11 +74,11 @@ func (c *CookieCache) Get(domain string) []CookieEntry {
 	return e.cookies
 }
 
+// upgrader re-checks the extension origin, so the bridge never falls
+// back to gorilla's default (Origin absent or matching Host).
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		// Only accept connections from localhost or extension origins.
-		host, _, _ := net.SplitHostPort(r.RemoteAddr)
-		return host == "127.0.0.1" || host == "::1" || host == "localhost"
+		return httpserver.IsExtensionOrigin(r.Header.Get("Origin"))
 	},
 }
 
@@ -91,16 +93,45 @@ type CookieBridgeServer struct {
 
 // NewCookieBridgeServer creates a CookieBridgeServer. Serve it on a
 // listener the caller has already bound (preferred port
-// DefaultCookieBridgePort).
-func NewCookieBridgeServer(cache *CookieCache) *CookieBridgeServer {
+// DefaultCookieBridgePort). hosts lists the Host headers the bridge
+// answers to (the loopback names on the port it bound); nil refuses
+// every request.
+func NewCookieBridgeServer(cache *CookieCache, hosts *httpserver.HostAllowlist) *CookieBridgeServer {
 	mux := http.NewServeMux()
 	srv := &CookieBridgeServer{cache: cache}
-	mux.HandleFunc("/", srv.handleWS)
+	mux.Handle("/", guardBridge(hosts, http.HandlerFunc(srv.handleWS)))
 	srv.server = &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return srv
+}
+
+// guardBridge answers 403 before any upgrade unless the request names an
+// allowed Host and comes from a browser-extension origin.
+//
+// The bridge listens on loopback outside the main router, and the peer
+// address is always loopback, so it says nothing about the sender: any
+// web page open in the browser can open a WebSocket to 127.0.0.1 (the
+// same-origin policy does not apply to WebSockets). Browsers always send
+// Origin on the handshake and pages cannot forge it, so Origin is the
+// check. A request without Origin is not from a browser; the extension
+// is the bridge's only client, so it is refused too. The Host check
+// defeats DNS rebinding, as on the main server.
+func guardBridge(hosts *httpserver.HostAllowlist, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hosts == nil || !hosts.Allows(r.Host, r.TLS != nil) {
+			httpserver.WriteError(w, http.StatusForbidden, "HOST_NOT_ALLOWED",
+				fmt.Sprintf("host %q is not allowed: the cookie bridge answers only to its loopback address", r.Host))
+			return
+		}
+		if !httpserver.IsExtensionOrigin(r.Header.Get("Origin")) {
+			httpserver.WriteError(w, http.StatusForbidden, "CROSS_ORIGIN_REQUEST",
+				"cross-origin request refused: the cookie bridge accepts only the ctxt browser extension")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // cookieBridgeShutdownTimeout bounds Serve's graceful shutdown after ctx
