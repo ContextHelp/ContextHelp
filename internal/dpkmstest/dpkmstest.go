@@ -225,7 +225,7 @@ func writeConfig(t testing.TB, dir string, customAuth bool, tokens map[string]st
 		server = map[string]any{
 			"access": config.AccessProtected,
 			"auth": map[string]any{"provider": authn.ProviderStatic, "static": map[string]any{"tokens": []map[string]any{
-				{"token": "dpkmstest-unused-" + randomHex(t), "principal": "dpkmstest-unused"},
+				{"token": "dpkmstest-unused-" + randomHex(t), "principal": "dpkmstest-unused", "roles": []string{RoleReader}},
 			}}},
 		}
 	}

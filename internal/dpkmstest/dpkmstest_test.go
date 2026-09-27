@@ -106,7 +106,7 @@ func (p oneTokenProvider) Authenticate(_ context.Context, c authn.Credential) (*
 	if c.Token != p.token {
 		return nil, authn.ErrInvalidCredential
 	}
-	return &authn.Principal{ID: "custom", Roles: []string{dpkmstest.RoleReader}}, nil
+	return &authn.Principal{ID: "custom", Roles: []string{dpkmstest.RoleReader}, Scopes: authn.ScopesForRoles([]string{dpkmstest.RoleReader})}, nil
 }
 
 // TestWithAuthProviderIsTheSeam: an injected provider, not the static
