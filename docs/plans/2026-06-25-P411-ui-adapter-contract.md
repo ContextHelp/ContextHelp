@@ -105,7 +105,7 @@ Operations (each maps to today's REST, with gRPC/MCP as equivalent bindings):
 | `listObjects` | `GET /api/v1/objects` | `{data:[KnowledgeObject], total}` |
 | `listEntities` | `GET /api/v1/entities` | `{data:[Entity], total}` |
 | `getEntity` | `GET /api/v1/entities/{slug}` | `Entity` |
-| `searchGraph` | none — planned `GET /api/v1/search/graph` (see below) | JGF document, `ctxt.search-graph/v1` |
+| `searchGraph` | `GET /api/v1/search/graph?q=&profile=&limit=&min_score=&max_nodes=&max_edges=&similar=` (see below) | JGF document, `ctxt.search-graph/v1` |
 
 Contract rules:
 
@@ -117,14 +117,17 @@ Contract rules:
 - gRPC `QueryService` and MCP `search`/`schema` are declared **alternative
   bindings** of the same operations — same semantics, same payloads.
 
-#### `searchGraph` (proposal — endpoint not built)
+#### `searchGraph`
 
-**Status:** the producer ships in the CLI today: `ctxt find "<q>" --graph`
-(`cmd/ctxt/cmd/find_graph.go`, `internal/searchgraph`). The dpkms endpoint
-**`GET /api/v1/search/graph`** is planned, not built; the manual says the
-graph is CLI-only for now
-([search-graph workflow](../manual/workflows/search-graph.md#limits)).
-Parameter names below are a proposal.
+**Status:** implemented. dpkms serves **`GET /api/v1/search/graph`**
+(`internal/server/http/handlers_search_graph.go`,
+[api-rest.md](../api/api-rest.md#get-searchgraph)); the CLI producer is
+`ctxt find "<q>" --graph` (`cmd/ctxt/cmd/find_graph.go`). Both run one
+pipeline — `service.Find` with `Trace` (the hybrid trace), then
+`searchgraph.Build` — and for the same query, filters and caps return the
+same document modulo `generated_at` (pinned by
+`TestFindGraph_EndpointParity`). The capability advertisement below is
+still a proposal: `/capabilities` is not built.
 
 `searchGraph` returns every candidate a hybrid search considered — returned,
 cut by limit, cut by threshold — with scores, and the entities and links
@@ -139,16 +142,19 @@ the query-language search REST `search` serves today
 | `q` (required) | positional query | — |
 | `profile` | — | none; see scoping below |
 | `limit` | `--limit` | `10` |
-| `min_score` | `--min-score` | search config |
+| `min_score` | `--min-score` | search config (CLI); `0`, `POST /find`'s built-in default (endpoint) |
 | `meta_type`, `topic`, `person`, `since`, `until`, `source_type` | same-named filters | none |
-| `max_nodes` | `--graph-max-nodes` | `250` (query node included) |
-| `max_edges` | `--graph-max-edges` | `1500` |
+| `max_nodes` | `--graph-max-nodes` | `250` (query node included); endpoint maximum `1000` |
+| `max_edges` | `--graph-max-edges` | `1500`; endpoint maximum `10000` |
 | `similar` | `--graph-similar` | `false` |
 | `similar_threshold` | `--graph-similar-threshold` | `0.8`, in `(0,1]` |
 
-No mode, `explain` or `facets` parameter: the graph is always the hybrid
-trace, which is why the CLI rejects `--fts`, `--semantic`, `--explain` and
-`--facets` with `--graph`.
+No mode, `offset`, `explain` or `facets` parameter: the graph is always the
+full hybrid trace, which is why the CLI rejects `--fts`, `--semantic`,
+`--explain` and `--facets` with `--graph`; the endpoint answers `mode` and
+`offset` with `400`. The CLI has no upper bound on the caps; the endpoint
+refuses values past its maxima rather than clamping them, so one request
+cannot make the server build an unbounded document.
 
 **Output:** `200`, body is the bare JGF v2.1 single-graph document
 `{"graph": {...}}` — the bytes `ctxt find --graph --format json` prints, not
@@ -163,11 +169,11 @@ breaking document change.
 
 | Case | Response |
 |---|---|
-| `q` missing | `400 INVALID_REQUEST`, as `search` |
-| `max_nodes` / `max_edges` < 1; `similar_threshold` outside `(0,1]` or given without `similar=true` | `400 INVALID_REQUEST` (CLI: usage error) |
+| `q` missing; `mode` or `offset` given; malformed value (validated as a `POST /find` request) | `400 INVALID_REQUEST`, as `POST /find` |
+| `max_nodes` / `max_edges` < 1 or past the endpoint maximum; `similar_threshold` outside `(0,1]` or given without `similar=true` | `400 INVALID_REQUEST` (CLI: usage error) |
 | `similar=true` but the store cannot read embeddings by id (`searchgraph.ErrSimilarUnsupported`) | `400 INVALID_REQUEST`; adapters avoid it by reading the capability below |
-| No default embedding model, provider unreachable, no vectors yet | **Not an error.** `200`, full-text-only graph: `metadata.mode` is `fts_only` or `fts_fallback`, `metadata.semantic_status` names the reason, `metadata.vector_error` explains a failure. No `similar` edges without `metadata.vector_model`. |
-| Entitlement / quota | per the notes below |
+| No default embedding model, provider unreachable, no vectors yet | **Not an error.** `200`, full-text-only graph: `metadata.mode` is `fts_only` or `fts_fallback`, `metadata.semantic_status` names the reason, `metadata.vector_error` explains a failure. No `similar` edges without `metadata.vector_model`. The endpoint keeps `fallback_to_fts` on. |
+| Entitlement / quota | never an error: hidden entities are left out (notes below); not metered, like `search` |
 
 **Security and entitlements:**
 
@@ -175,12 +181,22 @@ breaking document change.
   escape it before rendering as HTML. The encoder deliberately does not.
 - **Entities pass the same entitlement gate as entity reads.** With an
   inbound gate wired, an entity whose namespace the principal is not
-  entitled to is left out, with its `mentions` edges — the unmetered filter
-  `listEntities` applies (`handlers_entities.go`). The filter must run
-  before the builder derives edges: `co_mention` weights count every stored
-  mention of a pair, including entities the node cap drops
-  (`internal/searchgraph/relations.go`), so filtering nodes after the build
-  would leak hidden entities through edge weights.
+  entitled to is left out — the unmetered check `listEntities` filters with
+  (`handlers_entities.go`); an entity without a stored record has no
+  namespace to check and is left out too. The gate is an input to the
+  builder (`searchgraph.Options.EntityVisible`), applied before any mention
+  is recorded: `co_mention` weights count every stored mention of a pair,
+  including entities the node cap drops (`internal/searchgraph/relations.go`),
+  so filtering nodes after the build would leak hidden entities through
+  edge weights. A hidden entity is as absent as one never mentioned: no
+  node, no `mentions` edge, no `co_mention` share, no `mention_count`,
+  `counts.entities` or node-cap slot. The endpoint builds with
+  `RequireEntityVisibility`, so a missing policy fails the request instead
+  of serving every entity; without a gate (private instance) every entity
+  is visible, as on the other entity routes. The CLI passes no predicate
+  and stays ungated. Object-level scores (`score.mention_boost`) come from
+  the object's own content, which `search` and `getObject` already serve
+  ungated; they are not entity reads.
 - **Objects are `profile`-scoped** like every Part A read. Both hybrid legs
   honor `ObjectFilter.ProfileID` on SQLite and Postgres (as `POST /find`'s
   `profile` does); `ctxt find` sets no profile, so the CLI graph stays
