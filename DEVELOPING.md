@@ -188,13 +188,15 @@ sync, no extensions), and a test there fails if a headless switch appears
 anywhere else. For a manual look at a page with the same rules:
 
 ```bash
-scripts/headless-chrome.sh dump http://127.0.0.1:PORT/TOKEN/   # print the rendered DOM
-scripts/headless-chrome.sh dump --attempts 3 --until 'data-renderer=' graph.html
-scripts/headless-chrome.sh path                                # which Chrome would run
+scripts/headless-chrome.sh dump graph.html                        # print the rendered DOM
+scripts/headless-chrome.sh dump http://127.0.0.1:PORT/TOKEN/ -- --virtual-time-budget=1000
+scripts/headless-chrome.sh path                                   # which Chrome would run
 ```
 
 Extra Chrome switches go after `--`; a switch the package sets itself is
-refused rather than overridden.
+refused rather than overridden. A plain dump happens on the load event, before
+any fetch the page starts then; `--virtual-time-budget` makes Chrome wait for
+those fetches first, which is how the e2e suite checks the served viewer.
 
 ### Smoke tests
 

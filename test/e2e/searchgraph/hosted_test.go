@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -144,26 +143,24 @@ func (s *hostedSite) fetched() []string {
 	return append([]string(nil), s.fetches...)
 }
 
-var errorShown = func(dom string) bool { return strings.Contains(dom, `<p id="error" role="alert">`) }
-
-// renderHosted dumps target once the probe has clicked, or the page
-// shows an error.
+// renderHosted dumps target once the page has settled: its data fetch
+// resolved, so the probe has clicked or the page shows an error. As in
+// renderDOM, a virtual time budget waits for that fetch; the load event
+// does not.
 func renderHosted(t *testing.T, target string) *html.Node {
 	t.Helper()
 	chrome := chromePath(t)
 	e := newEnv(t)
 	dom, err := launch.DumpDOM(context.Background(), target, launch.Options{
-		Chrome:   chrome,
-		Timeout:  chromeDeadline,
-		Attempts: chromeAttempts,
-		Accept: func(dom string) bool {
-			return strings.Contains(dom, `data-probe=`) || errorShown(dom)
-		},
-		Env:     e.environ(),
-		Dir:     e.dir,
-		TempDir: e.dir,
+		Chrome:            chrome,
+		Timeout:           chromeDeadline,
+		Attempts:          chromeAttempts,
+		VirtualTimeBudget: chromeSettle,
+		Env:               e.environ(),
+		Dir:               e.dir,
+		TempDir:           e.dir,
 	})
-	if err != nil && !errors.Is(err, launch.ErrRejected) {
+	if err != nil {
 		t.Fatalf("headless chrome, %d attempts: %v", chromeAttempts, err)
 	}
 	assertRendered(t, dom, "deploy x")

@@ -5,8 +5,13 @@ package searchgraph_test
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -98,30 +103,34 @@ func chromePath(t *testing.T) string {
 }
 
 // chromeDeadline bounds one headless page render; chromeAttempts is how
-// many renders a test tries before failing.
+// many renders a test tries when Chrome produces no document at all, as
+// a cold start can stall. chromeSettle is the virtual time the page gets
+// once its network is idle.
 const (
 	chromeDeadline = 20 * time.Second
 	chromeAttempts = 3
+	chromeSettle   = time.Second
 )
 
-// renderDOM renders target in headless Chrome and returns the DOM once
-// the viewer script has picked a renderer. A served page fetches
-// graph.json after its script loads and Chrome may dump the DOM on the
-// load event before that fetch resolves, and a cold Chrome start can
-// stall; either way the render is retried. A viewer that never renders
-// returns its last DOM for assertRendered to report.
+// renderDOM renders target in headless Chrome and returns its DOM once
+// the page has settled. The served viewer fetches graph.json after its
+// script loads, and the load event, where a plain dump happens, does not
+// wait for that fetch; a virtual time budget does, since virtual time
+// stands still while a fetch is pending. The viewer picks its renderer
+// synchronously once the document arrives, so the dump is the rendered
+// page, or a viewer that did not render, for assertRendered to report.
 func renderDOM(t *testing.T, e *env, chrome, target string) string {
 	t.Helper()
 	dom, err := launch.DumpDOM(context.Background(), target, launch.Options{
-		Chrome:   chrome,
-		Timeout:  chromeDeadline,
-		Attempts: chromeAttempts,
-		Accept:   bodyRenderer.MatchString,
-		Env:      e.environ(),
-		Dir:      e.dir,
-		TempDir:  e.dir,
+		Chrome:            chrome,
+		Timeout:           chromeDeadline,
+		Attempts:          chromeAttempts,
+		VirtualTimeBudget: chromeSettle,
+		Env:               e.environ(),
+		Dir:               e.dir,
+		TempDir:           e.dir,
 	})
-	if err != nil && !errors.Is(err, launch.ErrRejected) {
+	if err != nil {
 		t.Fatalf("headless chrome, %d attempts: %v", chromeAttempts, err)
 	}
 	return dom
@@ -161,6 +170,30 @@ func TestHeadless_ServedViewer(t *testing.T) {
 	if code := v.wait(15 * time.Second); code != 0 {
 		t.Errorf("viewer exit %d after SIGINT, want 0", code)
 	}
+}
+
+// A graph.json that arrives well after the load event still renders:
+// the check waits for the page's own fetch rather than racing it. A
+// proxy in front of the viewer holds the document back.
+func TestHeadless_ServedViewerLateDocument(t *testing.T) {
+	chrome := chromePath(t)
+	e := newEnv(t)
+	v := e.startViewer(args(stageSplitArgs, "--graph-idle-timeout", "2m")...)
+	target, err := url.Parse(v.url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := &httputil.ReverseProxy{Rewrite: func(r *httputil.ProxyRequest) {
+		r.SetURL(&url.URL{Scheme: target.Scheme, Host: target.Host})
+	}}
+	late := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if path.Base(r.URL.Path) == "graph.json" {
+			time.Sleep(time.Second)
+		}
+		proxy.ServeHTTP(w, r)
+	}))
+	defer late.Close()
+	assertRendered(t, renderDOM(t, e, chrome, late.URL+target.Path), "deployment")
 }
 
 func TestHeadless_StandaloneHTML(t *testing.T) {

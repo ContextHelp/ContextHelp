@@ -42,11 +42,18 @@ type Options struct {
 	// PageTimeout is Chrome's own budget for the page (--timeout) before
 	// it dumps whatever it has.
 	PageTimeout time.Duration
+	// VirtualTimeBudget, when positive, makes Chrome wait for the page
+	// to settle before the dump (--virtual-time-budget): the network
+	// idle and this much virtual time passed. Virtual time stands still
+	// while a fetch is pending, so a page that fills itself in from a
+	// fetch it starts on load is dumped after that fetch resolves. Zero
+	// dumps on the load event, which may come first.
+	VirtualTimeBudget time.Duration
 	// Attempts is how many renders to try before giving up; at least 1.
 	Attempts int
 	// Accept, when set, decides whether a complete document is the one
-	// wanted; a refused document is retried. A page that fills itself in
-	// from script may be dumped before it has.
+	// wanted; a refused document is retried. It is no substitute for
+	// VirtualTimeBudget: a retry repeats the same race with the page.
 	Accept func(dom string) bool
 	// Env is Chrome's environment; nil inherits this process's.
 	Env []string
@@ -116,6 +123,9 @@ func dumpOnce(ctx context.Context, url string, opts Options) (_ string, err erro
 	owned := []string{
 		"--timeout=" + strconv.FormatInt(opts.PageTimeout.Milliseconds(), 10),
 		"--dump-dom",
+	}
+	if opts.VirtualTimeBudget > 0 {
+		owned = append(owned, "--virtual-time-budget="+strconv.FormatInt(opts.VirtualTimeBudget.Milliseconds(), 10))
 	}
 	argv, err := headlessArgs(profile, needsNoSandbox(os.Geteuid(), runtime.GOOS, os.Getenv("CI") != ""),
 		opts.Args, owned, []string{url})
