@@ -44,6 +44,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/testguard"
+	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 )
 
 // Roles the static test tokens grant. They are plain role strings on the
@@ -103,6 +104,7 @@ type options struct {
 	provider    authn.Provider
 	unreachable bool
 	embedClient *http.Client
+	upgrade     *upgrade.Manager
 }
 
 // Option configures Start.
@@ -130,6 +132,13 @@ func WithAuthProvider(p authn.Provider) Option {
 // answer.
 func WithEmbeddingHTTPClient(c *http.Client) Option {
 	return func(o *options) { o.embedClient = c }
+}
+
+// WithUpgrade reports m's state as the instance's upgrade state: on
+// /healthz and in the upgrade header on /api/v1 responses. Tests drive m
+// (Start, Tick, Fail, Complete) to put the instance mid-upgrade.
+func WithUpgrade(m *upgrade.Manager) Option {
+	return func(o *options) { o.upgrade = m }
 }
 
 // Unreachable returns a Server whose URL points at a closed port: no
@@ -180,6 +189,13 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 		provider = o.provider
 	}
 
+	probes := httpserver.HealthzProbes{Version: "dpkmstest", Started: time.Now()}
+	if m := o.upgrade; m != nil {
+		probes.Upgrade = func(context.Context) *httpserver.UpgradeSnapshot {
+			return httpserver.NewUpgradeSnapshot(m.Snapshot())
+		}
+	}
+
 	bus := kitbus.New()
 	t.Cleanup(func() { _ = bus.Close(context.Background()) })
 	st, err := stack.Build(stack.Inputs{
@@ -191,7 +207,7 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 		Embeddings: hermeticEmbeddings(cfg, o.embedClient),
 		StepsPath:  filepath.Join(dir, "steps"),
 		ConfigPath: cfgPath,
-		Probes:     httpserver.HealthzProbes{Version: "dpkmstest", Started: time.Now()},
+		Probes:     probes,
 		Warnings:   io.Discard,
 	})
 	if err != nil {

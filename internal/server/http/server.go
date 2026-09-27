@@ -122,6 +122,7 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		if rc.Auth != nil {
 			r.Use(RequireAuth(rc.Auth, rc.Security))
 		}
+		r.Use(UpgradeHeader(probes.Upgrade))
 		mountAPIRoutes(r, apiRoutes(svc, rc), rc)
 	})
 
