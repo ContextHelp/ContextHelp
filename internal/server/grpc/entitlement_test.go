@@ -28,9 +28,24 @@ import (
 // newGatedGRPCServer mirrors the HTTP entitlement harness on the gRPC
 // transport: an authenticated EntityService with the inbound gate and a
 // threshold-1 security emitter, seeded with one entity in a granted
-// namespace and one outside it. The test principal "ops" (token
-// tok-valid) is granted "ai.*".
+// namespace and one outside it. The gated principal "ops" (token
+// tok-valid, role reader) and the admin principal "owner" (token
+// tok-admin) are both granted "ai.*"; only the admin bypasses the gate.
 func newGatedGRPCServer(t *testing.T) (pb.EntityServiceClient, *registry.InboundGate, <-chan security.Alert) {
+	t.Helper()
+	h := startGatedGRPC(t)
+	return pb.NewEntityServiceClient(h.conn), h.gate, h.alerts
+}
+
+// gatedGRPC is a running gated gRPC server and a client connection.
+type gatedGRPC struct {
+	conn   *grpc.ClientConn
+	gate   *registry.InboundGate
+	alerts <-chan security.Alert
+	driver storage.StorageDriver
+}
+
+func startGatedGRPC(t *testing.T) gatedGRPC {
 	t.Helper()
 	driver := storageutil.NewTestDriver(t)
 	q := jobs.NewQueue(driver.Jobs())
@@ -48,13 +63,15 @@ func newGatedGRPCServer(t *testing.T) (pb.EntityServiceClient, *registry.Inbound
 			t.Fatalf("seed entity %s: %v", slug, err)
 		}
 	}
-	if err := driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
-		RegistryName: "ops",
-		Plan:         "inbound",
-		Namespaces:   []string{"ai.*"},
-		FetchedAt:    now,
-	}); err != nil {
-		t.Fatalf("seed entitlement: %v", err)
+	for _, principal := range []string{"ops", "owner"} {
+		if err := driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
+			RegistryName: principal,
+			Plan:         "inbound",
+			Namespaces:   []string{"ai.*"},
+			FetchedAt:    now,
+		}); err != nil {
+			t.Fatalf("seed entitlement: %v", err)
+		}
 	}
 
 	gate := registry.NewInboundGate(driver.Entitlements(), driver.Metering())
@@ -64,10 +81,17 @@ func newGatedGRPCServer(t *testing.T) (pb.EntityServiceClient, *registry.Inbound
 		WindowDuration:       time.Minute,
 	}, nil)
 	alerts := make(chan security.Alert, 8)
-	em.AddHandler(func(_ context.Context, a security.Alert) { alerts <- a })
+	em.AddHandler(func(_ context.Context, a security.Alert) {
+		select {
+		case alerts <- a:
+		default:
+		}
+	})
 
 	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-valid", Principal: "ops", Roles: []string{"admin"}},
+		{Token: "tok-valid", Principal: "ops", Roles: []string{authn.RoleReader}},
+		{Token: "tok-writer", Principal: "phone", Roles: []string{authn.RoleWriter}},
+		{Token: "tok-admin", Principal: "owner", Roles: []string{authn.RoleAdmin}},
 	})
 	if err != nil {
 		t.Fatalf("NewStatic: %v", err)
@@ -101,14 +125,17 @@ func newGatedGRPCServer(t *testing.T) (pb.EntityServiceClient, *registry.Inbound
 	}
 	t.Cleanup(func() { conn.Close() })
 
-	return pb.NewEntityServiceClient(conn), gate, alerts
+	return gatedGRPC{conn: conn, gate: gate, alerts: alerts, driver: driver}
+}
+
+// tokenCtx returns an outgoing context carrying token.
+func tokenCtx(token string) context.Context {
+	return metadata.NewOutgoingContext(context.Background(),
+		metadata.Pairs("authorization", "Bearer "+token))
 }
 
 // opsCtx returns an outgoing context authenticated as principal "ops".
-func opsCtx() context.Context {
-	return metadata.NewOutgoingContext(context.Background(),
-		metadata.Pairs("authorization", "Bearer tok-valid"))
-}
+func opsCtx() context.Context { return tokenCtx("tok-valid") }
 
 func waitGRPCAlert(t *testing.T, ch <-chan security.Alert) security.Alert {
 	t.Helper()

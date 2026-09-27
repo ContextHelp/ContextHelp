@@ -629,9 +629,15 @@ type StaticTokenConfig struct {
 	Token string `mapstructure:"token" yaml:"token"`
 	// Principal is the stable identity assigned to callers of this token.
 	Principal string `mapstructure:"principal" yaml:"principal"`
-	// Roles grants coarse roles to the principal (e.g. "admin", "reader").
+	// Roles grants fixed scope bundles to the principal: one or more of
+	// AuthRoles. admin holds every scope; writer every read and write
+	// scope; reader every read scope.
 	Roles []string `mapstructure:"roles" yaml:"roles"`
 }
+
+// AuthRoles are the roles a static token may carry, most to least
+// privileged. The scope each one grants lives in internal/auth.
+var AuthRoles = []string{"admin", "writer", "reader"}
 
 // HasInboundAuth reports whether the auth config carries a usable
 // credential set: a provider is selected and (for the static provider)

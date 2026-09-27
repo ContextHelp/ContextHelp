@@ -29,7 +29,8 @@ func newEntityHandler(svc *service.Service, gate *registry.InboundGate, sec *sec
 // ListEntities returns a paginated entity listing. With an inbound gate
 // wired (non-private instances), the listing is filtered to the
 // namespaces the authenticated principal is entitled to — an index
-// browse, so no metering charge. Mirrors the HTTP handler exactly.
+// browse, so no metering charge. Admin principals see every entity.
+// Mirrors the HTTP handler exactly.
 func (h *entityHandler) ListEntities(ctx context.Context, req *pb.ListEntitiesRequest) (*pb.ListEntitiesResponse, error) {
 	limit := int(req.Limit)
 	if limit <= 0 {
@@ -44,11 +45,11 @@ func (h *entityHandler) ListEntities(ctx context.Context, req *pb.ListEntitiesRe
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "list entities: %v", err)
 	}
-	if h.gate != nil {
+	if gate := entityGateFor(ctx, h.gate); gate != nil {
 		principal := principalID(ctx)
 		entitled := make([]*storage.Entity, 0, len(entities))
 		for _, e := range entities {
-			if h.gate.Check(ctx, principal, e.Namespace) == nil {
+			if gate.Check(ctx, principal, e.Namespace) == nil {
 				entitled = append(entitled, e)
 			}
 		}
@@ -66,7 +67,7 @@ func (h *entityHandler) ListEntities(ctx context.Context, req *pb.ListEntitiesRe
 // GetEntity returns a single entity by slug. A wired inbound gate
 // charges the access as a metered entity_resolve against the
 // principal's namespace entitlement and quota, exactly like the HTTP
-// surface.
+// surface. Admin principals are neither gated nor metered.
 func (h *entityHandler) GetEntity(ctx context.Context, req *pb.GetEntityRequest) (*pb.Entity, error) {
 	if req.Slug == "" {
 		return nil, status.Error(codes.InvalidArgument, "slug is required")
@@ -79,8 +80,8 @@ func (h *entityHandler) GetEntity(ctx context.Context, req *pb.GetEntityRequest)
 	if e == nil {
 		return nil, status.Errorf(codes.NotFound, "entity %s not found", req.Slug)
 	}
-	if h.gate != nil {
-		if gerr := h.gate.Authorize(ctx, principalID(ctx), e.Namespace,
+	if gate := entityGateFor(ctx, h.gate); gate != nil {
+		if gerr := gate.Authorize(ctx, principalID(ctx), e.Namespace,
 			storage.MeteringEventEntityResolve); gerr != nil {
 			return nil, h.gateStatus(ctx, gerr)
 		}
@@ -92,7 +93,8 @@ func (h *entityHandler) GetEntity(ctx context.Context, req *pb.GetEntityRequest)
 // GetEntityBacklinks returns objects that mention the given entity. The
 // gate check is unmetered — backlinks ride on the entity's namespace
 // entitlement without a quota charge. An entity the store cannot
-// resolve fails CLOSED: the gate is never skipped.
+// resolve fails CLOSED: the gate is never skipped. Admin principals
+// skip the gate.
 func (h *entityHandler) GetEntityBacklinks(
 	ctx context.Context,
 	req *pb.GetEntityBacklinksRequest,
@@ -101,12 +103,12 @@ func (h *entityHandler) GetEntityBacklinks(
 		return nil, status.Error(codes.InvalidArgument, "slug is required")
 	}
 
-	if h.gate != nil {
+	if gate := entityGateFor(ctx, h.gate); gate != nil {
 		e, err := h.svc.GetEntity(ctx, req.Slug)
 		if err != nil || e == nil {
 			return nil, status.Errorf(codes.NotFound, "entity %s not found", req.Slug)
 		}
-		if gerr := h.gate.Check(ctx, principalID(ctx), e.Namespace); gerr != nil {
+		if gerr := gate.Check(ctx, principalID(ctx), e.Namespace); gerr != nil {
 			return nil, h.gateStatus(ctx, gerr)
 		}
 	}

@@ -18,6 +18,17 @@ func gatePrincipal(r *http.Request) string {
 	return ""
 }
 
+// entityGate returns the inbound gate that applies to this request:
+// nil (no entitlement filter, no metering) for a principal that
+// bypasses it, the admin owner of the instance; gate otherwise. The
+// gate exists for third-party consumers, not the owner.
+func entityGate(r *http.Request, gate *registry.InboundGate) *registry.InboundGate {
+	if p, ok := authn.FromContext(r.Context()); ok && p.BypassesEntityGate() {
+		return nil
+	}
+	return gate
+}
+
 // writeInboundGateError maps InboundGate authorization errors onto the
 // HTTP surface: ErrEntitlementRequired → 403, ErrQuotaExhausted → 429.
 // Each denial is recorded as a security event against the principal

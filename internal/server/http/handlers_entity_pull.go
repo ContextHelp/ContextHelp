@@ -17,7 +17,8 @@ import (
 //
 // A wired inbound gate charges the access as a metered content_pull
 // against the principal's namespace entitlement and quota before the
-// definition fetch runs.
+// definition fetch runs. Admin principals are neither gated nor
+// metered.
 func PullEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")
@@ -27,13 +28,13 @@ func PullEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFu
 		}
 		// An entity the store cannot resolve fails CLOSED: a lookup
 		// error never skips the gate.
-		if gate != nil {
+		if g := entityGate(r, gate); g != nil {
 			existing, err := svc.GetEntity(r.Context(), slug)
 			if err != nil || existing == nil {
 				WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
 				return
 			}
-			if aerr := gate.Authorize(r.Context(), gatePrincipal(r), existing.Namespace,
+			if aerr := g.Authorize(r.Context(), gatePrincipal(r), existing.Namespace,
 				storage.MeteringEventContentPull); aerr != nil {
 				if writeInboundGateError(w, r, aerr) {
 					return
