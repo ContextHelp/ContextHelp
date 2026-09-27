@@ -74,7 +74,7 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 |---|---|---|
 | `read:objects` | reader, writer, admin | `GET` objects (list, facets, show, related), search, the search graph, entities (list, show, backlinks), aliases, saved searches, search history, suggestions; `POST /find`; `GET /events`; gRPC `QueryService/*`, `EntityService/*` |
 | `read:mcp` | reader, writer, admin | the MCP mount (`/mcp`) |
-| `read:inbox` | reader, writer, admin | `GET /inbox` |
+| `read:inbox` | reader, writer, admin | `GET /inbox`, `inbox/queue` |
 | `read:feeds` | reader, writer, admin | `GET /feeds` |
 | `read:jobs` | reader, writer, admin | `GET` jobs, `import/{id}`, `importers/runs/{id}`, `capture/recent`; gRPC `JobService/*` |
 | `read:registries` | reader, writer, admin | `GET /steps/registries` |
@@ -90,7 +90,7 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 | `delete:aliases` | admin | `DELETE /aliases/{alias}` |
 | `delete:searches` | admin | `DELETE /saved-searches/{name}`, `DELETE /search-history` |
 | `delete:feeds` | admin | `DELETE /feeds/{id}` |
-| `process:inbox` | admin | `POST /inbox/{id}/triage`, `inbox/{id}/discard` |
+| `process:inbox` | admin | `POST /inbox/{id}/triage`, `inbox/{id}/discard`, `inbox/clear` |
 | `sync:registries` | admin | `POST /steps/registries/fetch`, `steps/registries/{url}/update`, `entities/registry-sync` |
 | `admin:pipelines` | admin | `POST /pipelines`, `pipelines/{name}/archive`, `pipelines/{name}/unarchive`; `DELETE /pipelines/{name}` |
 | `admin:plugins` | admin | `POST /steps/install`; `DELETE /steps/{name}` |

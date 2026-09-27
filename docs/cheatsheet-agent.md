@@ -47,14 +47,18 @@ An agent may triage them to kick off pipeline processing:
 ```bash
 ctxt inbox list --output json        # enumerate pending items
 ctxt inbox triage <id>               # → {"job_id":"<id>"} — then poll as normal
-ctxt inbox discard <id>              # mark noise
-ctxt inbox clear                     # bulk-discard all
+ctxt inbox discard <id> --confirm-token=<token>  # mark noise
+ctxt inbox clear --confirm-token=<token>         # bulk-discard all
 
 # REST equivalents
 GET  /api/v1/inbox
+GET  /api/v1/inbox/queue             # ?pending=true&failed=true&raw=true
 POST /api/v1/inbox/{id}/triage       # body: {"pipeline":"<name>"}  (optional)
 POST /api/v1/inbox/{id}/discard
+POST /api/v1/inbox/clear             # → {"cleared": <n>}
 ```
+
+Triage, discard and clear need an `admin` token (`process:inbox`); a `writer` or `reader` token exits 5. The token for `--confirm-token` is printed by the first refused run.
 
 ---
 
