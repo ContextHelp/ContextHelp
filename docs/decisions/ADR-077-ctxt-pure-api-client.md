@@ -40,12 +40,15 @@ There is no local write, local read or local search fallback. Failures map onto 
 
 | Condition | Exit |
 |---|---|
-| Nothing answers at the endpoint (dial or DNS failure) | 70 `PREREQUISITE` |
+| Nothing answers at the endpoint (dial or DNS failure, or a timeout before connecting) | 70 `PREREQUISITE` |
+| TLS failure (untrusted certificate, https to a plain-http port) | 70 `PREREQUISITE`, with a TLS hint |
 | 401 or 403 | 5 `UNAUTHORIZED` |
 | 404 | 3 `NOT_FOUND` |
 | 409, or a policy veto | 4 `CONFLICT` |
 | 400 or 422 | 2 `USAGE` |
-| 5xx, or a timeout after connecting | 6 `TRANSIENT` |
+| 429 | 64 `RATE_LIMITED` (kit's own 429 mapping) |
+| 5xx, or a timeout or dropped connection after connecting | 6 `TRANSIENT` |
+| Any other status (405, 413, ...) | 1 `GENERIC` |
 
 A 401 or 403 always ends the request. It is never retried against another instance.
 
