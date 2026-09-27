@@ -5,7 +5,8 @@
   "type": "module",
   "packageManager": "pnpm@11.24.0",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "test": "node --test \"src/**/*.test.js\""
   },
   "dependencies": {
     "3d-force-graph": "1.80.0",

@@ -7,9 +7,12 @@
 // The assets under dist/ are generated from web/searchgraph by
 // `make build-searchgraph-viewer` and committed; do not edit them by hand.
 //
-// Two ways to ship it:
+// Three ways to ship it:
 //   - Served: expose Assets() over HTTP and serve the graph document as
 //     DataFile next to IndexFile; the page fetches it on load.
+//   - Hosted: expose AssetsWith(cfg) over HTTP; cfg names a same-origin
+//     data URL (optionally carrying the page's query string) and what a
+//     click on an object offers, e.g. a link to the host's object page.
 //   - Standalone: Standalone(doc) returns one self-contained HTML file with
 //     the script, styles, license notices and the document inlined.
 package viewer

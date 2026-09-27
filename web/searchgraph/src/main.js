@@ -10,6 +10,7 @@ import {
   tooltipHTML,
   validate,
 } from "./jgf.js";
+import { DEFAULT_CONFIG, ConfigError, checkLink, dataURL, objectHref, parseConfig } from "./config.js";
 
 const PALETTES = {
   light: {
@@ -63,6 +64,9 @@ const STAGE_LABELS = { returned: "returned", cut_limit: "cut by limit", cut_thre
 
 const $ = (id) => document.getElementById(id);
 
+// The host's configuration, read once on start.
+let config = DEFAULT_CONFIG;
+
 const darkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 const palette = () => (darkQuery && darkQuery.matches ? PALETTES.dark : PALETTES.light);
 
@@ -78,7 +82,14 @@ function showNotice(message) {
   el.hidden = false;
 }
 
-async function loadDocument() {
+function loadConfig() {
+  const el = $("viewer-config");
+  const cfg = parseConfig(el ? el.textContent : null);
+  checkLink(cfg, window.location.href);
+  return cfg;
+}
+
+async function loadDocument(cfg) {
   const inline = $("graph-data");
   if (inline) {
     try {
@@ -87,19 +98,21 @@ async function loadDocument() {
       throw new GraphDocumentError(`Embedded graph data is not valid JSON: ${err.message}`);
     }
   }
+  const name = cfg.dataUrl;
+  const url = dataURL(cfg, window.location.href);
   let res;
   try {
-    res = await fetch("graph.json", { cache: "no-store" });
+    res = await fetch(url, { cache: "no-store" });
   } catch (err) {
-    throw new GraphDocumentError(`No embedded graph data, and graph.json could not be fetched: ${err.message}`);
+    throw new GraphDocumentError(`No embedded graph data, and ${name} could not be fetched: ${err.message}`);
   }
   if (!res.ok) {
-    throw new GraphDocumentError(`No embedded graph data, and graph.json returned HTTP ${res.status}.`);
+    throw new GraphDocumentError(`No embedded graph data, and ${name} returned HTTP ${res.status}.`);
   }
   try {
     return await res.json();
   } catch (err) {
-    throw new GraphDocumentError(`graph.json is not valid JSON: ${err.message}`);
+    throw new GraphDocumentError(`${name} is not valid JSON: ${err.message}`);
   }
 }
 
@@ -413,16 +426,35 @@ function showDetails(n) {
     .join(" · ");
   $("details-label").textContent = n.label;
   const obj = $("details-object");
+  let focus = $("details-close");
   if (n.kind === "object" && typeof n.object_id === "string" && n.object_id !== "") {
     $("details-id").textContent = n.object_id;
-    $("details-cmd").textContent = `ctxt show ${shellQuote(n.object_id)}`;
-    $("details-copied").textContent = "";
+    const cmdRow = $("details-cmd-row");
+    const linkRow = $("details-link-row");
+    cmdRow.hidden = true;
+    linkRow.hidden = true;
+    if (config.objectAction === "link") {
+      const href = objectHref(config, n.object_id, window.location.href);
+      const a = $("details-link");
+      if (href) {
+        a.href = href;
+        linkRow.hidden = false;
+        focus = a;
+      } else {
+        a.removeAttribute("href");
+      }
+    } else {
+      $("details-cmd").textContent = `ctxt show ${shellQuote(n.object_id)}`;
+      $("details-copied").textContent = "";
+      cmdRow.hidden = false;
+      focus = $("details-copy");
+    }
     obj.hidden = false;
   } else {
     obj.hidden = true;
   }
   $("details").hidden = false;
-  (obj.hidden ? $("details-close") : $("details-copy")).focus({ preventScroll: true });
+  focus.focus({ preventScroll: true });
 }
 
 async function copyCommand() {
@@ -453,10 +485,14 @@ function start() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") hideDetails();
   });
-  loadDocument()
+  Promise.resolve()
+    .then(() => {
+      config = loadConfig();
+      return loadDocument(config);
+    })
     .then(main)
     .catch((err) => {
-      if (err instanceof GraphDocumentError || err instanceof RendererError) {
+      if (err instanceof GraphDocumentError || err instanceof RendererError || err instanceof ConfigError) {
         showError(err.message);
       } else {
         showError(`The search graph could not be rendered: ${errText(err)}`);
