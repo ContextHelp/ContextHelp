@@ -47,6 +47,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 
 		// Search
 		{Method: get, Pattern: "/search", Scope: authn.ScopeReadObjects, Handler: Search(svc)},
+		{Method: post, Pattern: "/find", Scope: authn.ScopeReadObjects, Handler: Find(svc, rc.Semantic)},
 
 		// Entities. The entity-serving surface is where inbound
 		// entitlements and metering bite for non-admin principals.

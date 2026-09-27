@@ -11,6 +11,7 @@ import (
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/mcp"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/ui"
@@ -47,6 +48,11 @@ type RouterConfig struct {
 	// depths, upgrade progress) from unauthenticated callers — public
 	// instances set it. Bare /health stays open for LB probes either way.
 	RedactHealthz bool
+	// Semantic reaches the default embedding model's index for
+	// POST /find: the model registry and the provider resolver of the
+	// host dpkms runs on. The zero value has no model, so vector and
+	// hybrid finds answer full-text only and report no_default_model.
+	Semantic retrieval.SemanticSource
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
