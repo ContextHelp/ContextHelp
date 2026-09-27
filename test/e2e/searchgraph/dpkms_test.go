@@ -67,12 +67,23 @@ func (d *daemon) output() string {
 	return d.out.String()
 }
 
-var httpListenLine = regexp.MustCompile(`HTTP server listening on (127\.0\.0\.1:\d+)`)
+// httpListenLine is serve's bind line: loopback for a private instance,
+// every interface for a protected one, which the tests reach on loopback.
+// Serve prints the bound listener's address, so an all-interfaces bind
+// may read [::] rather than 0.0.0.0.
+var httpListenLine = regexp.MustCompile(`HTTP server listening on (?:127\.0\.0\.1|0\.0\.0\.0|\[::\])(:\d+)`)
 
 // startDpkms serves e's database from a private dpkms instance (no
 // inbound auth, loopback only) on free high ports, and stops it, with
 // anything it spawned, when the test ends.
 func (e *env) startDpkms() *daemon {
+	e.t.Helper()
+	return e.startDpkmsWith(e.cfg, "searchgraph-e2e")
+}
+
+// startDpkmsWith is startDpkms for the dpkms config at cfg, as instance
+// name: whatever store and access that config sets, on free high ports.
+func (e *env) startDpkmsWith(cfg, name string) *daemon {
 	e.t.Helper()
 	bin, err := dpkmsBin()
 	if err != nil {
@@ -83,8 +94,8 @@ func (e *env) startDpkms() *daemon {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	cmd := e.commandOf(ctx, bin, "--config", e.cfg, "serve",
-		"--name", "searchgraph-e2e", "--workers", "1",
+	cmd := e.commandOf(ctx, bin, "--config", cfg, "serve",
+		"--name", name, "--workers", "1",
 		"--port", freePort(e.t), "--grpc-port", freePort(e.t))
 	cmd.Env = append(cmd.Env, "BUS_TOKEN=searchgraph-e2e")
 	pipe, err := cmd.StdoutPipe()
@@ -122,8 +133,8 @@ func (e *env) startDpkms() *daemon {
 	})
 
 	select {
-	case addr := <-addrs:
-		d.url = "http://" + addr
+	case port := <-addrs:
+		d.url = "http://127.0.0.1" + port
 	case <-done:
 		e.t.Fatalf("dpkms exited before listening\n%s", d.output())
 	case <-time.After(time.Minute):
