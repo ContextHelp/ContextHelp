@@ -16,11 +16,19 @@ export class ApiError extends Error {
 }
 
 export const AUTH_REQUIRED_MESSAGE =
-  'Authentication required: this dpkms instance only answers authenticated clients, ' +
-  'and the web UI cannot sign in yet. Use the ctxt CLI (with server.token configured) ' +
-  'or open the UI of a private instance.';
+  'Sign-in required: this dpkms instance only answers signed-in clients. ' +
+  'Run `ctxt ui open` on a machine whose ctxt has a token for this instance; ' +
+  'it opens a single-use sign-in link.';
 
-/** The instance answered 401: it requires credentials the web UI does not send. */
+/**
+ * Sent with every request. A browser only adds a custom header to a
+ * cross-origin request after a CORS preflight, which dpkms never
+ * approves, so the server takes it as proof a write comes from its own
+ * pages. Cookie-authenticated writes without it are refused.
+ */
+export const CSRF_HEADER = 'X-Ctxt-CSRF';
+
+/** The instance answered 401: no session cookie, or it ended. */
 export class AuthRequiredError extends ApiError {
   constructor(code: string | undefined) {
     super(401, code, AUTH_REQUIRED_MESSAGE);
@@ -37,7 +45,8 @@ type ErrorEnvelope = { error?: { code?: string; message?: string } };
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', [CSRF_HEADER]: '1', ...init?.headers },
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as ErrorEnvelope;
@@ -114,4 +123,41 @@ export const registries = {
 // ── System ────────────────────────────────────────────────────────────────────
 export const system = {
   health: () => req<{ status: string }>(`/../../health`),
+};
+
+// ── Browser session ───────────────────────────────────────────────────────────
+
+/** Who the browser is signed in as (GET /api/v1/ui/session). */
+export interface WhoAmI {
+  authenticated: boolean;
+  /** False on a private instance: nothing to sign in to. */
+  session_required: boolean;
+  principal?: string;
+  via?: 'session' | 'token';
+  scope?: string;
+  session?: { id: string; created_at: string; idle_expires_at: string; expires_at: string };
+  /** A condition that will break the session, e.g. plain HTTP. */
+  warning?: string;
+}
+
+/** Where `ctxt ui open` links point; the code rides in the fragment. */
+export const LOGIN_PATH = '/ui/auth';
+
+export const session = {
+  whoami: () => req<WhoAmI>('/ui/session'),
+  signOut: () => req<void>('/ui/session', { method: 'DELETE' }),
+  /** Trades a login code for the session cookie (outside /api/v1). */
+  exchange: async (code: string): Promise<WhoAmI> => {
+    const res = await fetch('/ui/auth/session', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', [CSRF_HEADER]: '1' },
+      body: JSON.stringify({ code }),
+    });
+    const body = (await res.json().catch(() => ({}))) as WhoAmI & ErrorEnvelope;
+    if (!res.ok) {
+      throw new ApiError(res.status, body.error?.code, body.error?.message ?? res.statusText);
+    }
+    return body;
+  },
 };
