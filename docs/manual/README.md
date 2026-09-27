@@ -14,6 +14,7 @@ It is aligned to `docs/stories/*` and `docs/personas/*`.
 - Task-based help: go to [`workflows/README.md`](./workflows/README.md)
 - Setup and extension: go to [`admin-extensibility/README.md`](./admin-extensibility/README.md)
 - Production operations: go to [`operations/README.md`](./operations/README.md)
+- Web UI on a remote instance: go to [`operations/reverse-proxy.md`](./operations/reverse-proxy.md)
 - Command and API details: go to [`reference/README.md`](./reference/README.md)
 - Troubleshooting: go to [`troubleshooting/README.md`](./troubleshooting/README.md)
 - Indexes and maturity: go to [`appendix/README.md`](./appendix/README.md)
