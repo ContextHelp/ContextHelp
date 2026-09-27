@@ -157,26 +157,13 @@ func mountAPIRoutes(r chi.Router, routes []apiRoute, rc RouterConfig) {
 }
 
 // mountMCP constructs the MCP server with handlers wired to the supplied
-// service.Service. Per ADR-068 §Implementation Notes, the MCP package
+// service.Service; sem is the semantic leg the search tool hands to
+// service.Find, as POST /find does. Per ADR-068 §Implementation Notes, the MCP package
 // owns the JSON-RPC dispatch + tool registry; this function is the
 // dpkms-side wiring (the single place service.Service connects to MCP).
-func mountMCP(svc *service.Service) http.Handler {
+func mountMCP(svc *service.Service, sem retrieval.SemanticSource) http.Handler {
 	server := mcp.New(mcp.ToolContext{
-		SearchHandler: func(ctx context.Context, query string, topK int) ([]any, error) {
-			objs, _, err := svc.SearchObjects(ctx, query, topK, 0)
-			if err != nil {
-				return nil, err
-			}
-			out := make([]any, 0, len(objs))
-			for _, o := range objs {
-				out = append(out, map[string]any{
-					"id":      o.ID,
-					"type":    o.Type,
-					"subtype": o.Subtype,
-				})
-			}
-			return out, nil
-		},
+		SearchHandler: mcpSearchHandler(svc, sem),
 		SchemaHandler: func(_ context.Context) (map[string]any, error) {
 			return map[string]any{
 				"object_kinds": []string{"text", "url", "image", "audio", "video", "file", "meeting"},

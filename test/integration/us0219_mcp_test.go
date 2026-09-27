@@ -136,19 +136,19 @@ func newXRRSession(t *testing.T, cassetteName string) *xrr.FileSession {
 // mode never invokes the handlers.
 func fakeContext() mcp.ToolContext {
 	return mcp.ToolContext{
-		SearchHandler: func(_ context.Context, query string, topK int) ([]any, error) {
-			if query == "force-error" {
+		SearchHandler: func(_ context.Context, req mcp.SearchRequest) (*mcp.SearchResult, error) {
+			if req.Query == "force-error" {
 				return nil, errors.New("simulated search failure")
 			}
-			out := make([]any, 0, topK)
-			for i := 0; i < topK && i < 2; i++ {
+			out := make([]any, 0, req.TopK)
+			for i := 0; i < req.TopK && i < 2; i++ {
 				out = append(out, map[string]any{
 					"id":    "obj_test_" + string(rune('a'+i)),
-					"title": "Test result for query: " + query,
+					"title": "Test result for query: " + req.Query,
 					"score": 0.9 - float64(i)*0.1,
 				})
 			}
-			return out, nil
+			return &mcp.SearchResult{ExecutedMode: req.Mode, Results: out}, nil
 		},
 		SchemaHandler: func(_ context.Context) (map[string]any, error) {
 			return map[string]any{
