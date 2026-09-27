@@ -18,7 +18,6 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"golang.org/x/sync/errgroup"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
@@ -507,38 +506,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// re-projection of stored objects (resumes a pending run instead).
 	scheduleReproject(context.Background(), os.Stdout, queue, ftsVerify, svc.Bus)
 
-	// 11. Start everything via errgroup.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	g, ctx := errgroup.WithContext(ctx)
-
-	// HTTP server — listener already bound above.
-	g.Go(func() error {
-		fmt.Printf("HTTP server listening on %s\n", addr)
-		if err := httpSrv.Serve(httpLn); err != nil && err != gohttp.ErrServerClosed {
-			return err
-		}
-		return nil
-	})
-
-	// gRPC server — listener already bound above.
-	g.Go(func() error {
-		fmt.Printf("gRPC server listening on %s\n", grpcBind)
-		return grpcSrv.Serve(ctx, grpcLn)
-	})
-
-	// Worker pool.
-	g.Go(func() error {
-		fmt.Printf("Worker pool started (%d workers)\n", workers)
-		return pool.Start(ctx)
-	})
-
-	// Watcher manager.
-	g.Go(func() error {
-		fmt.Println("Watcher manager started")
-		return watchMgr.Start(ctx)
-	})
+	// Drain timeout: how long components get to stop after a signal or
+	// a component failure before serve exits regardless.
+	drainTimeout := cfg.Jobs.DrainTimeout
+	if drainTimeout == 0 {
+		drainTimeout = 30 * time.Second
+	}
 
 	// Reminder checker.
 	reminderBackend := &remind.ServiceBackend{
@@ -569,75 +542,63 @@ func runServe(cmd *cobra.Command, args []string) error {
 		MarkDone: svc.MarkReminded,
 	}
 	checker := remind.NewChecker(reminderBackend, reminderInterval)
-	g.Go(func() error {
-		fmt.Printf("Reminder checker started (interval: %s)\n", reminderInterval)
-		return checker.Run(ctx)
-	})
 
-	// Cookie bridge (for browser extension) — listener already bound above.
+	// Cookie bridge (for browser extension).
 	cookieBridge := wsserver.NewCookieBridgeServer(wsserver.NewCookieCache())
-	g.Go(func() error {
-		fmt.Printf("Cookie bridge listening on ws://%s\n", cookieBridgeAddr)
-		return cookieBridge.Serve(ctx, cookieLn)
-	})
 
-	// Federation async workers (US-0319). Spawns one goroutine per async
-	// target; honours ctx for graceful shutdown (Stop drains within 5s).
-	fedSet.Start(ctx)
-	defer func() {
-		stopCtx, stopCancel := context.WithTimeout(context.Background(), 6*time.Second)
-		defer stopCancel()
-		if err := fedSet.Stop(stopCtx); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: federation workers stop: %v\n", err)
-		}
-	}()
-
-	// Drain timeout: how long in-flight jobs get to finish after signal.
-	drainTimeout := cfg.Jobs.DrainTimeout
-	if drainTimeout == 0 {
-		drainTimeout = 30 * time.Second
+	// 11. Run every component as one unit: the first failure, or a
+	// shutdown signal, stops all of them (HTTP included) and serve exits
+	// within the drain timeout. A failure exits non-zero so a supervisor
+	// (launchd KeepAlive, systemd Restart=always) restarts the daemon.
+	fmt.Printf("HTTP server listening on %s\n", addr)
+	fmt.Printf("gRPC server listening on %s\n", grpcBind)
+	fmt.Printf("Cookie bridge listening on ws://%s\n", cookieBridgeAddr)
+	fmt.Printf("Worker pool started (%d workers)\n", workers)
+	fmt.Println("Watcher manager started")
+	fmt.Printf("Reminder checker started (interval: %s)\n", reminderInterval)
+	runner := &componentRunner{
+		components: []component{
+			httpComponent("http", httpSrv, httpLn, drainTimeout),
+			{name: "grpc", run: func(ctx context.Context) error { return grpcSrv.Serve(ctx, grpcLn) }},
+			{name: "cookie-bridge", run: func(ctx context.Context) error { return cookieBridge.Serve(ctx, cookieLn) }},
+			{name: "workers", run: pool.Start},
+			{name: "watcher", run: watchMgr.Start},
+			{name: "reminders", run: checker.Run},
+			// Federation async workers (US-0319): one goroutine per async
+			// target; Stop drains them within its own bound.
+			{name: "federation", run: func(ctx context.Context) error {
+				fedSet.Start(ctx)
+				<-ctx.Done()
+				stopCtx, stopCancel := context.WithTimeout(context.Background(), 6*time.Second)
+				defer stopCancel()
+				if err := fedSet.Stop(stopCtx); err != nil {
+					fmt.Fprintf(os.Stderr, "warning: federation workers stop: %v\n", err)
+				}
+				return nil
+			}},
+		},
+		drain: drainTimeout,
+		log:   os.Stderr,
 	}
 
-	// Wait for shutdown signal.
-	g.Go(func() error {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-		select {
-		case sig := <-sigChan:
-			fmt.Println()
-			if sig == syscall.SIGHUP {
-				fmt.Println("Received SIGHUP — restarting...")
-			} else {
-				fmt.Println("Shutting down gracefully...")
-			}
-		case <-ctx.Done():
-			return nil
-		}
-
-		// Stop accepting new jobs and requests.
-		cancel()
-
-		// Give in-flight jobs time to finish, then shut down HTTP/gRPC.
-		shutCtx, shutCancel := context.WithTimeout(context.Background(), drainTimeout)
-		defer shutCancel()
-		fmt.Printf("Draining workers (up to %s)...\n", drainTimeout)
-		httpSrv.Shutdown(shutCtx)
-		// gRPC server stops via ctx cancellation in grpcSrv.Serve.
-		return nil
-	})
+	// The signal channel is read for the runner's whole lifetime and
+	// released right after, so a signal is never parked on a channel
+	// nobody reads: during cleanup below it takes its default action.
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	runner.signals = sigCh
 
 	fmt.Println()
 	fmt.Println("dPKMS is ready. Press Ctrl+C to stop.")
 
-	if err := g.Wait(); err != nil {
-		return err
-	}
+	runErr := runner.run(context.Background())
+	signal.Stop(sigCh)
 
 	// Cleanup.
 	driver.Close(context.Background())
 	fmt.Println("Storage closed")
 
-	return nil
+	return runErr
 }
 
 // resolveInboundAuth folds the --public flag into the loaded config,
