@@ -107,7 +107,8 @@ test-smoke:
 ##
 ## Suites under test/e2e/ carrying the e2e build tag; each builds its own
 ## binary and runs in a throwaway HOME. Headless-browser smoke tests run
-## when Chrome/Chromium is found (CTXT_E2E_CHROME=off skips them).
+## when Chrome/Chromium is found (CTXT_CHROME picks one; CTXT_CHROME=off
+## skips them).
 ## Mirrors the e2e step of the test job in .github/workflows/ci.yml.
 test-e2e:
 	@echo "Running e2e tests..."

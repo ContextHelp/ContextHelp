@@ -12,12 +12,11 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
-	"runtime"
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/browser/launch"
 	"github.com/ideacrafterslabs/ctxt/internal/searchgraph/viewer"
 	"golang.org/x/term"
 )
@@ -163,45 +162,6 @@ func newViewerToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// urlOpener opens a URL in the user's browser.
-type urlOpener interface {
-	Open(ctx context.Context, url string) error
-}
-
-// systemOpener opens a URL with the platform's default handler.
-type systemOpener struct{}
-
-// browserCommand returns the command that opens url on goos, and false
-// on a platform with no known default handler.
-func browserCommand(goos, url string) (name string, args []string, ok bool) {
-	switch goos {
-	case "darwin":
-		return "open", []string{url}, true
-	case "windows":
-		return "rundll32", []string{"url.dll,FileProtocolHandler", url}, true
-	case "linux", "freebsd", "openbsd", "netbsd", "dragonfly", "solaris", "illumos":
-		return "xdg-open", []string{url}, true
-	}
-	return "", nil, false
-}
-
-// Open starts the platform handler and does not wait for it: some
-// handlers stay up as long as the browser does. The handler outlives a
-// cancelled ctx on purpose, since killing it could take the browser
-// window down with it; it is reaped in the background.
-func (systemOpener) Open(ctx context.Context, url string) error {
-	name, args, ok := browserCommand(runtime.GOOS, url)
-	if !ok {
-		return fmt.Errorf("no default browser handler known for %s", runtime.GOOS)
-	}
-	c := exec.CommandContext(context.WithoutCancel(ctx), name, args...) //nolint:gosec // fixed handler; url is the server's own loopback address
-	if err := c.Start(); err != nil {
-		return fmt.Errorf("start %s: %w", name, err)
-	}
-	go func() { _ = c.Wait() }()
-	return nil
-}
-
 // isTerminal reports whether w is a terminal.
 func isTerminal(w io.Writer) bool {
 	f, ok := w.(*os.File)
@@ -213,7 +173,7 @@ type graphViewerServer struct {
 	// Log receives the URL and lifecycle messages (stderr).
 	Log io.Writer
 	// Opener opens the URL when OpenBrowser is set.
-	Opener urlOpener
+	Opener launch.Opener
 	// OpenBrowser asks for the browser to be opened: the caller sets it
 	// only for an interactive terminal session without --no-browser.
 	OpenBrowser bool

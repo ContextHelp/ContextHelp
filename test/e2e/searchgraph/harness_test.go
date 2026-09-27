@@ -11,10 +11,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/browser/launch"
 )
 
 // runTimeout bounds every one-shot invocation; a hang fails the test
@@ -58,13 +61,16 @@ providers:
 	if err := os.WriteFile(h.cfg, []byte(cfg), 0o600); err != nil {
 		return nil, err
 	}
-	// The viewer opens a browser with `open` (macOS) or `xdg-open`;
-	// both resolve through PATH, so these record the launch instead.
+	// The viewer opens a browser with the platform handler launch.Open
+	// execs, which resolves through PATH, so this records the launch
+	// instead.
+	name, _, ok := launch.OpenCommand(runtime.GOOS, "")
+	if !ok {
+		return nil, fmt.Errorf("no default browser handler on %s", runtime.GOOS)
+	}
 	opener := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$*\" >> %q\n", h.openLog)
-	for _, name := range []string{"open", "xdg-open"} {
-		if err := os.WriteFile(filepath.Join(h.fakeBin, name), []byte(opener), 0o700); err != nil { //nolint:gosec // test-only executable stub
-			return nil, err
-		}
+	if err := os.WriteFile(filepath.Join(h.fakeBin, name), []byte(opener), 0o700); err != nil { //nolint:gosec // test-only executable stub
+		return nil, err
 	}
 	return h, nil
 }

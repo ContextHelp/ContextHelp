@@ -218,24 +218,6 @@ func TestNewViewerToken(t *testing.T) {
 	}
 }
 
-func TestBrowserCommand(t *testing.T) {
-	const url = "http://127.0.0.1:1/t/"
-	cases := map[string][]string{
-		"darwin":  {"open", url},
-		"linux":   {"xdg-open", url},
-		"windows": {"rundll32", "url.dll,FileProtocolHandler", url},
-	}
-	for goos, want := range cases {
-		name, args, ok := browserCommand(goos, url)
-		if got := append([]string{name}, args...); !ok || strings.Join(got, " ") != strings.Join(want, " ") {
-			t.Errorf("%s: %v (ok=%v), want %v", goos, got, ok, want)
-		}
-	}
-	if _, _, ok := browserCommand("plan9", url); ok {
-		t.Error("plan9 should have no handler")
-	}
-}
-
 // fakeOpener records the URLs it was asked to open.
 type fakeOpener struct {
 	mu   sync.Mutex
