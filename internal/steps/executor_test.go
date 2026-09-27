@@ -64,6 +64,7 @@ func (d *stubDriver) Embeddings() storage.EmbeddingStore         { return nil }
 func (d *stubDriver) SavedSearches() storage.SavedSearchStore    { return nil }
 func (d *stubDriver) SearchHistory() storage.SearchHistoryStore  { return nil }
 func (d *stubDriver) Watermarks() storage.WatermarkStore         { return nil }
+func (d *stubDriver) UISessions() storage.UISessionStore         { return nil }
 func (d *stubDriver) Health(_ context.Context) error             { return nil }
 
 // buildPayload encodes a KnowledgeObject as the `object` field of an

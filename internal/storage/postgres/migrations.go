@@ -142,6 +142,36 @@ var pgMigrations = []pgMigration{
 	// reports a mismatch and schedules the re-projection job, which stamps
 	// rows and signature again.
 	{Version: 18, Name: "objects.projection_version", fn: migrateProjectionVersion},
+	// Web UI browser sessions and their one-time login codes, mirroring
+	// SQLite migration 041. Only SHA-256 hashes of the cookie secret, the
+	// code and the minting static token are stored.
+	{Version: 19, Name: "ui_sessions + ui_login_codes", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS ui_sessions (
+			id              TEXT PRIMARY KEY,
+			secret_hash     TEXT NOT NULL UNIQUE,
+			principal_id    TEXT NOT NULL,
+			token_hash      TEXT NOT NULL,
+			scope           TEXT NOT NULL,
+			user_agent      TEXT NOT NULL DEFAULT '',
+			remote_addr     TEXT NOT NULL DEFAULT '',
+			created_at      TIMESTAMPTZ NOT NULL,
+			last_seen_at    TIMESTAMPTZ NOT NULL,
+			idle_expires_at TIMESTAMPTZ NOT NULL,
+			expires_at      TIMESTAMPTZ NOT NULL,
+			revoked_at      TIMESTAMPTZ,
+			revoke_reason   TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ui_sessions_token_hash ON ui_sessions (token_hash)`,
+		`CREATE INDEX IF NOT EXISTS idx_ui_sessions_principal ON ui_sessions (principal_id)`,
+		`CREATE TABLE IF NOT EXISTS ui_login_codes (
+			code_hash    TEXT PRIMARY KEY,
+			principal_id TEXT NOT NULL,
+			token_hash   TEXT NOT NULL,
+			scope        TEXT NOT NULL,
+			created_at   TIMESTAMPTZ NOT NULL,
+			expires_at   TIMESTAMPTZ NOT NULL
+		)`,
+	}},
 }
 
 // migrateProjectionVersion adds objects.projection_version, the projection

@@ -75,6 +75,7 @@ type StorageDriver interface {
 	SavedSearches() SavedSearchStore
 	SearchHistory() SearchHistoryStore
 	Watermarks() WatermarkStore
+	UISessions() UISessionStore
 	Health(ctx context.Context) error
 }
 
