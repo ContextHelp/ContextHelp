@@ -184,9 +184,11 @@ PWA Web Share Target, or any other capture path that defers pipeline scheduling.
 ctxt inbox list                      # list pending inbox items
 ctxt inbox triage <id>               # promote to active and enqueue for processing
 ctxt inbox triage <id> --pipeline <name>  # triage with a specific pipeline
-ctxt inbox discard <id>              # mark item as discarded
-ctxt inbox clear                     # discard all inbox items
+ctxt inbox discard <id> --confirm-token=<token>  # mark item as discarded
+ctxt inbox clear --confirm-token=<token>         # discard all inbox items
 ```
+
+Every subcommand calls the dpkms API of the resolved instance (`--server`, `--instance`, `CTXT_INSTANCE`, `ctxt instance use`, then config); nothing reads the local store. `list` needs the `read:inbox` scope; `triage`, `discard` and `clear` need `process:inbox`, which only an `admin` token holds. A `writer` or `reader` token exits 5, an unreachable instance exits 70 and an unknown item ID exits 3.
 
 ### `inbox list` Options
 
@@ -196,7 +198,12 @@ ctxt inbox clear                     # discard all inbox items
 | `--offset <n>` | Pagination offset |
 | `--before <RFC3339>` | Created before |
 | `--after <RFC3339>` | Created after |
+| `--pending` | Queue view: pending and running jobs |
+| `--failed` | Queue view: failed jobs |
+| `--raw` | Queue view: raw (unenriched) objects |
 | `--output json` | JSON output |
+
+`--pending`, `--failed` and `--raw` switch to the queue view (`GET /api/v1/inbox/queue`) and combine; `--before` and `--after` apply to the inbox view only.
 
 ### `inbox triage` Options
 
@@ -208,7 +215,8 @@ ctxt inbox clear                     # discard all inbox items
 
 - `triage` promotes the item to `active` status, then enqueues a job. Returns the **Job ID**.
 - `discard` marks the item as `discarded`; it is excluded from all future queries.
-- `clear` discards all current inbox items in one shot and prints the count cleared.
+- `clear` discards every current inbox item and prints the count cleared.
+- `discard` and `clear` are destructive: they need `--confirm-token`. Run them once without it and the refusal prints the token.
 
 ### Examples
 
@@ -220,10 +228,10 @@ ctxt inbox list
 ctxt inbox triage 4a3b1c2d --pipeline text.long
 
 # Discard noise
-ctxt inbox discard 9f8e7d6c
+ctxt inbox discard 9f8e7d6c --confirm-token=<token>
 
 # Nuke everything
-ctxt inbox clear
+ctxt inbox clear --confirm-token=<token>
 ```
 
 ---

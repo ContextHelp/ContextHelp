@@ -133,6 +133,12 @@ Core endpoints:
 - `DELETE /objects/{id}`
 - `POST /find`
 - `GET /search/graph`
+- `POST /inbox`
+- `GET /inbox`
+- `GET /inbox/queue`
+- `POST /inbox/{id}/triage`
+- `POST /inbox/{id}/discard`
+- `POST /inbox/clear`
 - `GET /profiles`
 - `GET /profiles/{name}`
 - `POST /compose`
@@ -552,6 +558,70 @@ Errors use the standard envelope.
 | `q` missing; `mode` or `offset` given; malformed number, boolean or date; negative `limit` or `min_score` | `400 INVALID_REQUEST` |
 | `max_nodes` or `max_edges` outside its range; `similar_threshold` outside `(0,1]` or without `similar=true` | `400 INVALID_REQUEST` |
 | `similar=true` on a store that cannot read embeddings by id | `400 INVALID_REQUEST` |
+
+---
+
+## Inbox
+
+Captured content parked for a decision (`status: inbox`) before any pipeline runs. REST only; gRPC has no inbox methods.
+
+| Route | Scope | Does |
+|---|---|---|
+| `POST /inbox` | `write:inbox` | Captures content as an inbox item |
+| `GET /inbox` | `read:inbox` | Lists inbox items |
+| `GET /inbox/queue` | `read:inbox` | Lists the processing queue: pending, running and failed jobs, and raw objects |
+| `POST /inbox/{id}/triage` | `process:inbox` | Makes the item `active` and enqueues it. Body `{"pipeline": "<name>"}` is optional. Returns `{"job_id": "…"}` |
+| `POST /inbox/{id}/discard` | `process:inbox` | Marks the item `discarded`. Returns 204 |
+| `POST /inbox/clear` | `process:inbox` | Discards every inbox item |
+
+`process:inbox` is in the `admin` bundle only. A `writer` token captures but gets 403 `INSUFFICIENT_SCOPE` on triage, discard and clear. Triage and discard answer 404 for an unknown ID.
+
+### `GET /inbox`
+
+Query parameters: `limit` (default 20), `offset`, and `before` / `after` (RFC 3339) bounding the creation time.
+
+```json
+{ "items": [ { "id": "4a3b1c2d-…", "type": "text", "status": "inbox", "inbox_note": "read later", "created_at": "2026-04-10T09:00:00Z" } ], "total": 1 }
+```
+
+`items` are knowledge objects, as `GET /objects/{id}` returns them.
+
+### `GET /inbox/queue`
+
+| Parameter | Meaning |
+|---|---|
+| `pending` | `true` includes pending and running jobs |
+| `failed` | `true` includes failed jobs |
+| `raw` | `true` includes raw (unenriched) objects |
+| `limit` | Page size, at least 1; default 50 |
+| `offset` | Items to skip in the combined list; default 0 |
+
+With none of `pending`, `failed` and `raw` set to `true`, all three categories are listed. Each parameter takes exactly one value. An unknown, repeated, empty or malformed parameter, or a boolean other than `true` / `false`, gets 400 `INVALID_PARAM` with `details.param` naming it.
+
+```json
+{
+  "items": [
+    { "id": "job-7f…", "kind": "job", "status": "failed", "type": "url", "source": "https://example.com", "pipeline": "url.generic", "created_at": "2026-04-12T09:00:00Z", "error": "fetch: 503" },
+    { "id": "obj-1c…", "kind": "object", "status": "raw", "type": "note", "source": "", "pipeline": "", "created_at": "2026-04-11T09:00:00Z" }
+  ],
+  "total": 2
+}
+```
+
+- `kind` is `job` (the `id` is a job ID) or `object` (an object ID).
+- `status` is the job status (`pending`, `running`, `failed`) or `raw`.
+- `error` is present on failed jobs only.
+- `items` is `[]`, never `null`, when the queue is empty.
+
+### `POST /inbox/clear`
+
+Discards every item with `status: inbox`, however many there are. Objects in any other status are untouched. No body.
+
+```json
+{ "cleared": 2 }
+```
+
+`cleared` is 0 when the inbox was already empty.
 
 ---
 

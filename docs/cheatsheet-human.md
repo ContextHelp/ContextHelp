@@ -178,8 +178,8 @@ Items captured with deferred processing (e.g. via mobile share, PWA, or `--inbox
 ctxt inbox list                      # see what's waiting
 ctxt inbox triage <id>               # enqueue for processing → returns job ID
 ctxt inbox triage <id> --pipeline text.long  # force a pipeline
-ctxt inbox discard <id>              # remove noise
-ctxt inbox clear                     # discard everything at once
+ctxt inbox discard <id> --confirm-token=<token>  # remove noise
+ctxt inbox clear --confirm-token=<token>         # discard everything at once
 ```
 
 ---
