@@ -15,7 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const key = "brave:Profile 3"
+// key is one source position on one instance.
+var key = Key{Instance: "home", Source: "brave:Profile 3"}
 
 func tempStore(t *testing.T) *Store {
 	t.Helper()
@@ -67,7 +68,7 @@ func TestAdvanceAndGet(t *testing.T) {
 	assert.True(t, read.Equal(ts))
 	assert.Equal(t, time.UTC, read.Location())
 
-	other, ok, err := s.Get("chrome:Default")
+	other, ok, err := s.Get(Key{Instance: "home", Source: "chrome:Default"})
 	require.NoError(t, err)
 	assert.False(t, ok, "keys are independent")
 	assert.True(t, other.IsZero())
@@ -101,13 +102,15 @@ func TestAdvanceNeverMovesBackwards(t *testing.T) {
 
 func TestAdvanceRejectsBadInput(t *testing.T) {
 	s := tempStore(t)
-	_, err := s.Advance("", time.Now())
-	require.ErrorIs(t, err, ErrEmptyKey)
-	_, err = s.Advance(key, time.Time{})
+	for _, k := range []Key{{}, {Instance: "home"}, {Source: "brave:Profile 3"}} {
+		_, err := s.Advance(k, time.Now())
+		require.ErrorIs(t, err, ErrEmptyKey, "%+v", k)
+		_, _, err = s.Get(k)
+		require.ErrorIs(t, err, ErrEmptyKey, "%+v", k)
+		require.ErrorIs(t, s.Reset(k), ErrEmptyKey, "%+v", k)
+	}
+	_, err := s.Advance(key, time.Time{})
 	require.ErrorIs(t, err, ErrZeroTime)
-	_, _, err = s.Get("")
-	require.ErrorIs(t, err, ErrEmptyKey)
-	require.ErrorIs(t, s.Reset(""), ErrEmptyKey)
 }
 
 func TestTimestampsUTCMicrosecondRoundTrip(t *testing.T) {
@@ -124,10 +127,12 @@ func TestTimestampsUTCMicrosecondRoundTrip(t *testing.T) {
 	raw, err := os.ReadFile(s.Path())
 	require.NoError(t, err)
 	var f struct {
-		Positions map[string]string `json:"positions"`
+		Version   int                          `json:"version"`
+		Instances map[string]map[string]string `json:"instances"`
 	}
 	require.NoError(t, json.Unmarshal(raw, &f))
-	assert.Equal(t, want.Format("2006-01-02T15:04:05.000000Z"), f.Positions[key])
+	assert.Equal(t, 2, f.Version)
+	assert.Equal(t, want.Format("2006-01-02T15:04:05.000000Z"), f.Instances[key.Instance][key.Source])
 
 	// A fresh Store reading the file sees the exact instant.
 	read, _, err := New(s.Path()).Get(key)
@@ -146,14 +151,14 @@ func TestReset(t *testing.T) {
 	ts := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 	_, err := s.Advance(key, ts)
 	require.NoError(t, err)
-	_, err = s.Advance("chrome:Default", ts)
+	_, err = s.Advance(Key{Instance: "home", Source: "chrome:Default"}, ts)
 	require.NoError(t, err)
 
 	require.NoError(t, s.Reset(key))
 	_, ok, err := s.Get(key)
 	require.NoError(t, err)
 	assert.False(t, ok)
-	_, ok, err = s.Get("chrome:Default")
+	_, ok, err = s.Get(Key{Instance: "home", Source: "chrome:Default"})
 	require.NoError(t, err)
 	assert.True(t, ok, "Reset touches only its key")
 
@@ -163,7 +168,7 @@ func TestReset(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, got.Equal(earlier))
 
-	require.NoError(t, s.Reset("never-set"), "resetting an absent key is a no-op")
+	require.NoError(t, s.Reset(Key{Instance: "home", Source: "never-set"}), "resetting an absent key is a no-op")
 }
 
 func TestPermissions(t *testing.T) {
@@ -190,10 +195,11 @@ func TestCorruptFileIsAnError(t *testing.T) {
 	cases := map[string]string{
 		"garbage":         "not json",
 		"empty":           "",
-		"truncated":       `{"version":1,"positions":{"a":"2026-09-10T12:00:00.000000Z"`,
-		"bad timestamp":   `{"version":1,"positions":{"a":"yesterday"}}`,
-		"unknown version": `{"version":99,"positions":{}}`,
-		"missing version": `{"positions":{}}`,
+		"truncated":       `{"version":2,"instances":{"i":{"a":"2026-09-10T12:00:00.000000Z"`,
+		"bad timestamp":   `{"version":2,"instances":{"i":{"a":"yesterday"}}}`,
+		"unknown version": `{"version":99,"instances":{}}`,
+		"version 1":       `{"version":1,"positions":{"a":"2026-09-10T12:00:00.000000Z"}}`,
+		"missing version": `{"instances":{}}`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -201,13 +207,14 @@ func TestCorruptFileIsAnError(t *testing.T) {
 			require.NoError(t, os.MkdirAll(filepath.Dir(s.Path()), 0o700))
 			require.NoError(t, os.WriteFile(s.Path(), []byte(body), 0o600))
 
-			_, _, err := s.Get("a")
+			k := Key{Instance: "i", Source: "a"}
+			_, _, err := s.Get(k)
 			require.ErrorIs(t, err, ErrCorrupt)
 			assert.Contains(t, err.Error(), s.Path(), "error names the file")
 
-			_, err = s.Advance("a", time.Now())
+			_, err = s.Advance(k, time.Now())
 			require.ErrorIs(t, err, ErrCorrupt)
-			require.ErrorIs(t, s.Reset("a"), ErrCorrupt)
+			require.ErrorIs(t, s.Reset(k), ErrCorrupt)
 			_, err = s.All()
 			require.ErrorIs(t, err, ErrCorrupt)
 
@@ -232,7 +239,7 @@ func TestConcurrentAdvanceInProcess(t *testing.T) {
 			for i := range steps {
 				// Writers interleave, so each key sees out-of-order proposals.
 				ts := base.Add(time.Duration(i*writers+w) * time.Second)
-				_, err := s.Advance(fmt.Sprintf("k%d", i%3), ts)
+				_, err := s.Advance(Key{Instance: "home", Source: fmt.Sprintf("k%d", i%3)}, ts)
 				assert.NoError(t, err)
 			}
 		}()
@@ -243,10 +250,11 @@ func TestConcurrentAdvanceInProcess(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, all, 3)
 	for k, got := range all {
+		require.Equal(t, "home", k.Instance)
 		var want time.Time
 		for w := range writers {
 			for i := range steps {
-				if fmt.Sprintf("k%d", i%3) != k {
+				if fmt.Sprintf("k%d", i%3) != k.Source {
 					continue
 				}
 				ts := base.Add(time.Duration(i*writers+w) * time.Second)
@@ -288,12 +296,13 @@ func TestConcurrentAdvanceAcrossProcesses(t *testing.T) {
 	require.NoError(t, err, "file stays valid under concurrent writers")
 	base := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	for p := range procs {
-		k := "proc:" + strconv.Itoa(p)
+		k := Key{Instance: "home", Source: "proc:" + strconv.Itoa(p)}
 		assert.True(t, all[k].Equal(base.Add(time.Duration(steps-1)*time.Second)), "%s: %s", k, all[k])
 	}
 	// Every writer also advances one shared key; the highest wins.
-	assert.True(t, all["shared"].Equal(base.Add(time.Duration(procs*steps-1)*time.Second)),
-		"shared: %s", all["shared"])
+	shared := Key{Instance: "home", Source: "shared"}
+	assert.True(t, all[shared].Equal(base.Add(time.Duration(procs*steps-1)*time.Second)),
+		"shared: %s", all[shared])
 }
 
 func TestHelperWriter(t *testing.T) {
@@ -305,14 +314,71 @@ func TestHelperWriter(t *testing.T) {
 	s := New(os.Getenv("POSITION_TEST_PATH"))
 	base := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	for i := range steps {
-		if _, err := s.Advance("proc:"+strconv.Itoa(w), base.Add(time.Duration(i)*time.Second)); err != nil {
+		own := Key{Instance: "home", Source: "proc:" + strconv.Itoa(w)}
+		if _, err := s.Advance(own, base.Add(time.Duration(i)*time.Second)); err != nil {
 			t.Fatalf("advance own key: %v", err)
 		}
 		// Writers interleave on the shared key: w, w+4, ... up to
 		// 4*steps-1 overall (4 = procs in the parent test).
 		shared := base.Add(time.Duration(i*4+w) * time.Second)
-		if _, err := s.Advance("shared", shared); err != nil {
+		if _, err := s.Advance(Key{Instance: "home", Source: "shared"}, shared); err != nil {
 			t.Fatalf("advance shared key: %v", err)
 		}
 	}
+}
+
+// TestPositionsArePerInstance: the same source key on two instances
+// holds two independent positions, so history one instance received is
+// never skipped for the other.
+func TestPositionsArePerInstance(t *testing.T) {
+	s := tempStore(t)
+	a := Key{Instance: "home", Source: "brave:Profile 3"}
+	b := Key{Instance: "http://127.0.0.1:7700", Source: "brave:Profile 3"}
+	ts := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+
+	_, err := s.Advance(a, ts)
+	require.NoError(t, err)
+
+	_, ok, err := s.Get(b)
+	require.NoError(t, err)
+	assert.False(t, ok, "advancing one instance leaves the other unset")
+
+	_, err = s.Advance(b, ts.Add(-time.Hour))
+	require.NoError(t, err)
+	gotA, _, err := s.Get(a)
+	require.NoError(t, err)
+	gotB, _, err := s.Get(b)
+	require.NoError(t, err)
+	assert.True(t, gotA.Equal(ts))
+	assert.True(t, gotB.Equal(ts.Add(-time.Hour)), "an earlier position on another instance is its own")
+
+	require.NoError(t, s.Reset(a))
+	_, ok, err = s.Get(b)
+	require.NoError(t, err)
+	assert.True(t, ok, "Reset touches only its instance")
+
+	all, err := s.All()
+	require.NoError(t, err)
+	assert.Equal(t, map[Key]time.Time{b: ts.Add(-time.Hour)}, all)
+}
+
+// TestVersionOneFileNeedsReset: a file from before per-instance
+// positions is refused as an unsupported version, with nothing
+// rewritten, and the error says how to start over.
+func TestVersionOneFileNeedsReset(t *testing.T) {
+	s := tempStore(t)
+	body := `{"version":1,"positions":{"brave:Profile 3":"2026-09-10T12:00:00.000000Z"}}`
+	require.NoError(t, os.MkdirAll(filepath.Dir(s.Path()), 0o700))
+	require.NoError(t, os.WriteFile(s.Path(), []byte(body), 0o600))
+
+	_, _, err := s.Get(key)
+	require.ErrorIs(t, err, ErrUnsupportedVersion)
+	require.ErrorIs(t, err, ErrCorrupt)
+	assert.Contains(t, err.Error(), "version 1")
+
+	_, err = s.Advance(key, time.Now())
+	require.ErrorIs(t, err, ErrUnsupportedVersion)
+	after, err := os.ReadFile(s.Path())
+	require.NoError(t, err)
+	assert.Equal(t, body, string(after), "an old file is never migrated or rewritten")
 }

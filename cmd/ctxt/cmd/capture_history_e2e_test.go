@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/browser/chromium/chromiumtest"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 )
 
 // These tests drive a built ctxt binary against a synthetic brave user
@@ -46,8 +47,13 @@ func (e *tabsEnv) statePath() string {
 	return filepath.Join(e.home, "state", "ctxt", "ambient", "browserhistory.state")
 }
 
-// positions reads the state file; a missing file is nil.
-func (e *tabsEnv) positions() map[string]time.Time {
+// instanceKey is the position file's instance key for the env's
+// server: its server.url has no name, so the normalized URL.
+func (e *tabsEnv) instanceKey() string { return dpkmsclient.NormalizeURL(e.srv.URL) }
+
+// allPositions reads the state file, by instance then source key; a
+// missing file is nil.
+func (e *tabsEnv) allPositions() map[string]map[string]time.Time {
 	e.t.Helper()
 	data, err := os.ReadFile(e.statePath())
 	if os.IsNotExist(err) {
@@ -57,12 +63,38 @@ func (e *tabsEnv) positions() map[string]time.Time {
 		e.t.Fatal(err)
 	}
 	var f struct {
-		Positions map[string]time.Time `json:"positions"`
+		Version   int                             `json:"version"`
+		Instances map[string]map[string]time.Time `json:"instances"`
 	}
-	if err := json.Unmarshal(data, &f); err != nil {
-		e.t.Fatalf("state file: %v\n%s", err, data)
+	if err := json.Unmarshal(data, &f); err != nil || f.Version != 2 {
+		e.t.Fatalf("state file (version %d): %v\n%s", f.Version, err, data)
 	}
-	return f.Positions
+	return f.Instances
+}
+
+// positions returns the env server's positions by source key; a
+// missing file is nil.
+func (e *tabsEnv) positions() map[string]time.Time {
+	e.t.Helper()
+	all := e.allPositions()
+	if all == nil {
+		return nil
+	}
+	return all[e.instanceKey()]
+}
+
+// statePositions renders a version-2 state file holding the env
+// server's positions.
+func (e *tabsEnv) statePositions(sources map[string]string) string {
+	e.t.Helper()
+	body, err := json.Marshal(map[string]any{
+		"version":   2,
+		"instances": map[string]any{e.instanceKey(): sources},
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return string(body)
 }
 
 func (e *tabsEnv) writeState(body string) {
@@ -282,7 +314,7 @@ func TestCaptureHistory_BoundedBackfillLeavesPositionUntouched(t *testing.T) {
 	}
 
 	// A saved position is neither read nor moved.
-	e.writeState(`{"version":1,"positions":{"brave:Profile 1":"2000-01-01T00:00:00.000000Z"}}`)
+	e.writeState(e.statePositions(map[string]string{historyKey: "2000-01-01T00:00:00.000000Z"}))
 	before := e.stateBytes()
 	for _, args := range [][]string{
 		historyArgs("--since", "6h", "--until", "90m"),
@@ -410,8 +442,10 @@ func TestCaptureHistory_ResetPosition(t *testing.T) {
 	now := hNow()
 	a := hVisit("https://example.com/a", now.Add(-3*time.Hour))
 	e := newHistoryEnv(t, "", a)
-	e.writeState(`{"version":1,"positions":{"brave:Profile 1":"` + now.Format("2006-01-02T15:04:05.000000Z07:00") +
-		`","brave:Profile 9":"2026-01-01T00:00:00.000000Z"}}`)
+	e.writeState(e.statePositions(map[string]string{
+		historyKey:        now.Format("2006-01-02T15:04:05.000000Z07:00"),
+		"brave:Profile 9": "2026-01-01T00:00:00.000000Z",
+	}))
 
 	e.mustRun(0, historyArgs()...)
 	assertSent(t, e) // position is newer than every visit
@@ -584,11 +618,12 @@ type historyDoc struct {
 		Deduped int        `json:"deduped"`
 	} `json:"ranges"`
 	Position *struct {
-		Key    string     `json:"key"`
-		Path   string     `json:"path"`
-		Start  string     `json:"start"`
-		Before *time.Time `json:"before"`
-		After  *time.Time `json:"after"`
+		Instance string     `json:"instance"`
+		Key      string     `json:"key"`
+		Path     string     `json:"path"`
+		Start    string     `json:"start"`
+		Before   *time.Time `json:"before"`
+		After    *time.Time `json:"after"`
 	} `json:"position"`
 	Visits []struct {
 		URL       string    `json:"url"`
@@ -663,7 +698,7 @@ func TestCaptureHistory_JSONShape(t *testing.T) {
 		t.Errorf("real run doc = %+v", doc)
 	}
 	p := doc.Position
-	if p == nil || p.Key != historyKey || p.Path != e.statePath() || p.Start != "initial_lookback" ||
+	if p == nil || p.Key != historyKey || p.Instance != e.instanceKey() || p.Path != e.statePath() || p.Start != "initial_lookback" ||
 		p.Before != nil || p.After == nil || !p.After.Equal(a2.At) {
 		t.Errorf("position = %+v", p)
 	}

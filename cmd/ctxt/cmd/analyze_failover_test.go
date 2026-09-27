@@ -2,19 +2,25 @@ package cmd
 
 import (
 	"context"
+	"errors"
+	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
-	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/dblock"
-	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"hop.top/kit/go/console/output"
+
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
+	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 )
 
 // deadServerURL points at a port nothing listens on.
-const deadServerURL = "http://127.0.0.1:19999"
+const deadServerURL = testguard.ClosedServerURL
 
 var jobIDRe = regexp.MustCompile(`Job ID: (\S+)`)
 
@@ -30,154 +36,169 @@ func storageOverride(dbPath string) []string {
 	return []string{"-c", "storage.path=" + dbPath}
 }
 
-// TestAnalyzeDaemonDownFallsBackToLocalEnqueue: with no daemon listening the
-// write must not fail — it enqueues directly into local storage, gated by the
-// advisory database lock, and the job is present locally afterwards.
-func TestAnalyzeDaemonDownFallsBackToLocalEnqueue(t *testing.T) {
-	dbPath := tempDB(t)
-
-	out, err := executeCommand(append([]string{"analyze", "offline insight", "--server", deadServerURL}, storageOverride(dbPath)...)...)
-	if err != nil {
-		t.Fatalf("analyze with daemon down should fall back locally: %v", err)
-	}
-	m := jobIDRe.FindStringSubmatch(out)
-	if m == nil {
-		t.Fatalf("output lacks Job ID line: %q", out)
-	}
-	jobID := m[1]
-
-	// The job row must exist in the local queue.
-	driver, err := storageutil.NewDriver("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("open local storage: %v", err)
-	}
-	ctx := context.Background()
-	if err := driver.Init(ctx); err != nil {
-		t.Fatalf("init local storage: %v", err)
-	}
-	defer driver.Close(ctx)
-
-	job, err := driver.Jobs().Get(ctx, jobID)
-	if err != nil {
-		t.Fatalf("job %s not found in local queue: %v", jobID, err)
-	}
-	if job.Payload != "offline insight" {
-		t.Errorf("job payload = %q, want the analyzed content", job.Payload)
-	}
-
-	// The write path must have taken (and released) the advisory lock:
-	// the sidecar exists and records this process as last CLI holder.
-	holder, err := dblock.ReadHolder(dbPath)
-	if err != nil {
-		t.Fatalf("lock sidecar unreadable after local enqueue: %v", err)
-	}
-	if holder.Role != dblock.RoleCLI {
-		t.Errorf("lock holder role = %q, want %q", holder.Role, dblock.RoleCLI)
+// assertKitExit fails unless err is a kit envelope with code and exit.
+func assertKitExit(t *testing.T, err error, code string, exit int) {
+	t.Helper()
+	var ke *output.Error
+	if !errors.As(err, &ke) || ke.Code != code || ke.ExitCode != exit {
+		t.Fatalf("err = %v (%#v); want %s, exit %d", err, ke, code, exit)
 	}
 }
 
-// TestAnalyzeDaemonDownLocalWaitDoesNotHang: --wait against the local queue
-// has no worker to wait on; the CLI must say so and exit promptly.
-func TestAnalyzeDaemonDownLocalWaitDoesNotHang(t *testing.T) {
-	dbPath := tempDB(t)
+// isolateDataDirs gives the test its own empty HOME and XDG data dir, so
+// assertNoLocalDB sees only what this test's command wrote (the package
+// shares one testguard tree that other tests fill with databases).
+func isolateDataDirs(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", filepath.Join(dir, "data"))
+	t.Setenv("HOME", filepath.Join(dir, "home"))
+	t.Setenv("CTXT_DATA_DIR", "")
+}
 
-	start := time.Now()
-	out, err := executeCommand(append([]string{"analyze", "queued content", "--wait", "--server", deadServerURL}, storageOverride(dbPath)...)...)
+// assertNoLocalDB fails when a ctxt database file exists under the
+// test's HOME or XDG data dir: an enqueue must never land locally.
+func assertNoLocalDB(t *testing.T, dirs ...string) {
+	t.Helper()
+	dirs = append(dirs, os.Getenv("XDG_DATA_HOME"), os.Getenv("HOME"))
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err // a dir that doesn't exist holds no database
+			}
+			if !d.IsDir() && strings.HasPrefix(d.Name(), "db.sqlite") {
+				t.Errorf("local database file created: %s", path)
+			}
+			return nil
+		})
+	}
+}
+
+// enqueueCommands are the invocations that enqueue content: analyze and
+// bare `ctxt` fed on stdin. (A positional argument to bare `ctxt` is
+// rejected by cobra as an unknown command before the root runs.)
+var enqueueCommands = []struct {
+	name  string
+	args  []string
+	stdin string
+}{
+	{"analyze", []string{"analyze", "offline insight"}, ""},
+	{"bare content", nil, "offline insight"},
+}
+
+// pipeStdin makes os.Stdin a pipe carrying content for the rest of the
+// test; "" leaves it alone.
+func pipeStdin(t *testing.T, content string) {
+	t.Helper()
+	if content == "" {
+		return
+	}
+	r, w, err := os.Pipe()
 	if err != nil {
-		t.Fatalf("analyze --wait with daemon down should enqueue locally: %v", err)
+		t.Fatal(err)
 	}
-	if elapsed := time.Since(start); elapsed > 30*time.Second {
-		t.Fatalf("analyze --wait took %v; must not poll a dead daemon", elapsed)
+	if _, err := w.WriteString(content); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(out, "Job ID:") {
-		t.Errorf("output lacks Job ID: %q", out)
-	}
-	if !strings.Contains(out, "dpkms serve") {
-		t.Errorf("output should tell the operator the job runs when the daemon starts: %q", out)
+	_ = w.Close()
+	orig := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = orig; _ = r.Close() })
+}
+
+// With nothing answering at the resolved instance the enqueue fails as
+// PREREQUISITE (exit 70): no local queue, no database, no Job ID.
+func TestEnqueueUnreachableExits70WritesNothingLocally(t *testing.T) {
+	for _, tc := range enqueueCommands {
+		t.Run(tc.name, func(t *testing.T) {
+			setupTestDB(t, dpkmstest.Unreachable())
+			dbPath := tempDB(t)
+			pipeStdin(t, tc.stdin)
+
+			out, err := executeCommand(append(append([]string(nil), tc.args...), storageOverride(dbPath)...)...)
+			assertKitExit(t, err, output.CodePrerequisite, output.ExitPrerequisite)
+			if strings.Contains(out, "Job ID:") || strings.Contains(strings.ToLower(out), "queued locally") {
+				t.Errorf("output claims an enqueue: %q", out)
+			}
+			assertNoLocalDB(t, filepath.Dir(dbPath))
+		})
 	}
 }
 
-// TestAnalyzeDaemonHoldsLockButNotHealth: the false-negative window — a
-// daemon that holds the DB lock (e.g. still inside storage init) while not
-// answering /health. The CLI must fail fast with an instructive, attributed
-// error: no hang, no CLI-side write, no local enqueue. The daemon-side lock
-// is simulated (the production serve path does not yet acquire it); this
-// pins the CLI half of the single-writer contract.
-func TestAnalyzeDaemonHoldsLockButNotHealth(t *testing.T) {
-	dbPath := tempDB(t)
+// rejectingDaemon answers every request with status and counts analyze
+// requests.
+func rejectingDaemon(t *testing.T, status int, hits *atomic.Int64) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/analyze" {
+			hits.Add(1)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"error":{"code":"UNAUTHORIZED","message":"invalid token"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
 
-	l, lockErr := dblock.Acquire(dbPath, dblock.Info{Role: dblock.RoleDaemon, Instance: "main"})
-	if lockErr != nil {
-		t.Fatalf("daemon-side lock: %v", lockErr)
-	}
-	defer l.Release()
+// A 401 or 403 is final: exit 5, exactly one request, nothing local.
+func TestEnqueueRejectedTokenExits5WithoutRetry(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		for _, tc := range enqueueCommands {
+			t.Run(tc.name+"/"+http.StatusText(status), func(t *testing.T) {
+				setupTestDB(t, dpkmstest.Unreachable())
+				dbPath := tempDB(t)
+				var hits atomic.Int64
+				srv := rejectingDaemon(t, status, &hits)
+				pipeStdin(t, tc.stdin)
 
-	start := time.Now()
-	out, err := executeCommand(append([]string{"analyze", "contended content", "--server", deadServerURL}, storageOverride(dbPath)...)...)
-	elapsed := time.Since(start)
-
-	if err == nil {
-		t.Fatalf("analyze must fail while a daemon holds the lock and health is down; got %q", out)
-	}
-	if elapsed > 10*time.Second {
-		t.Fatalf("contention error took %v; must fail fast, not hang", elapsed)
-	}
-	msg := err.Error()
-	if !strings.Contains(msg, "dpkms") {
-		t.Errorf("error must attribute the holder as the daemon: %v", err)
-	}
-	if !strings.Contains(msg, "pid") {
-		t.Errorf("error must name the holder pid: %v", err)
-	}
-	if strings.Contains(out, "Job ID:") {
-		t.Errorf("no Job ID may be printed when the write was refused: %q", out)
-	}
-	// Storage must never have been opened: the gate fires before the DB.
-	if _, statErr := os.Stat(dbPath); statErr == nil {
-		t.Error("database file created despite held lock; direct write happened")
+				out, err := executeCommand(append(append(append([]string(nil), tc.args...), "--server", srv.URL), storageOverride(dbPath)...)...)
+				assertKitExit(t, err, output.CodeUnauthorized, output.ExitUnauthorized)
+				if n := hits.Load(); n != 1 {
+					t.Errorf("analyze requests = %d; want exactly 1 (no retry)", n)
+				}
+				if strings.Contains(out, "Job ID:") {
+					t.Errorf("output claims an enqueue: %q", out)
+				}
+				assertNoLocalDB(t, filepath.Dir(dbPath))
+			})
+		}
 	}
 }
 
-// TestAnalyzeAnotherCLIReleasesWithinBudget: contention against another CLI
-// is transient; the bounded retry must win once the peer releases.
-func TestAnalyzeAnotherCLIReleasesWithinBudget(t *testing.T) {
-	dbPath := tempDB(t)
+// Against a protected instance: a reader token is refused (exit 5), a
+// writer token enqueues on the instance, and the job is in its queue.
+func TestEnqueueRolesOnProtectedInstance(t *testing.T) {
+	for _, tc := range enqueueCommands {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupTestDB(t, dpkmstest.WithStaticTokens())
 
-	l, lockErr := dblock.Acquire(dbPath, dblock.Info{Role: dblock.RoleCLI})
-	if lockErr != nil {
-		t.Fatalf("peer-CLI lock: %v", lockErr)
-	}
-	go func() {
-		time.Sleep(300 * time.Millisecond)
-		_ = l.Release()
-	}()
+			db.useRole(t, dpkmstest.RoleReader)
+			pipeStdin(t, tc.stdin)
+			_, err := executeCommand(tc.args...)
+			assertKitExit(t, err, output.CodeUnauthorized, output.ExitUnauthorized)
 
-	out, err := executeCommand(append([]string{"analyze", "patient content", "--server", deadServerURL}, storageOverride(dbPath)...)...)
-	if err != nil {
-		t.Fatalf("analyze should win the lock once the peer CLI releases: %v", err)
-	}
-	if !strings.Contains(out, "Job ID:") {
-		t.Errorf("output lacks Job ID: %q", out)
-	}
-}
-
-// TestAnalyzeAnotherCLIHoldsPastBudget: a peer CLI that never releases gets
-// the instructive contention error after the bounded retry.
-func TestAnalyzeAnotherCLIHoldsPastBudget(t *testing.T) {
-	dbPath := tempDB(t)
-
-	l, lockErr := dblock.Acquire(dbPath, dblock.Info{Role: dblock.RoleCLI})
-	if lockErr != nil {
-		t.Fatalf("peer-CLI lock: %v", lockErr)
-	}
-	defer l.Release()
-
-	out, err := executeCommand(append([]string{"analyze", "blocked content", "--server", deadServerURL}, storageOverride(dbPath)...)...)
-	if err == nil {
-		t.Fatalf("analyze must fail when the peer CLI never releases; got %q", out)
-	}
-	if !strings.Contains(err.Error(), "ctxt") {
-		t.Errorf("error should attribute the holder as another ctxt command: %v", err)
+			db.useRole(t, dpkmstest.RoleWriter)
+			pipeStdin(t, tc.stdin)
+			out, err := executeCommand(tc.args...)
+			if err != nil {
+				t.Fatalf("writer enqueue: %v\n%s", err, out)
+			}
+			m := jobIDRe.FindStringSubmatch(out)
+			if m == nil {
+				t.Fatalf("output lacks the Job ID: %q", out)
+			}
+			job, err := db.Driver.Jobs().Get(context.Background(), m[1])
+			if err != nil {
+				t.Fatalf("job %s is not in the instance's queue: %v", m[1], err)
+			}
+			if job.Payload != "offline insight" {
+				t.Errorf("job payload = %q", job.Payload)
+			}
+		})
 	}
 }
 
@@ -198,8 +219,5 @@ func TestAnalyzeLiveDaemonLeavesLocalStorageUntouched(t *testing.T) {
 	}
 	if _, statErr := os.Stat(dbPath); statErr == nil {
 		t.Error("local database opened despite live daemon; write must route via API")
-	}
-	if _, statErr := os.Stat(dblock.Path(dbPath)); statErr == nil {
-		t.Error("lock sidecar created despite live daemon; gate must not fire on the remote path")
 	}
 }

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"hop.top/kit/go/console/output"
 )
 
 // serverURLsConfig writes a config file routing clients at the given ordered
@@ -49,15 +51,19 @@ func countingAnalyzeDaemon(t *testing.T, jobID string, hits *atomic.Int64) *http
 
 // TestAnalyzeNeverFailsOverToSecondInstance: with server.urls listing a
 // dead first entry and a live second one, the write never reaches the
-// second: every invocation talks to exactly one endpoint.
+// second: every invocation talks to exactly one endpoint, and the dead
+// one is PREREQUISITE (exit 70).
 func TestAnalyzeNeverFailsOverToSecondInstance(t *testing.T) {
+	isolateDataDirs(t)
 	dbPath := tempDB(t)
 
 	var hits atomic.Int64
 	srv := countingAnalyzeDaemon(t, "job_failover_1", &hits)
 	cfgArgs := serverURLsConfig(t, deadServerURL, srv.URL)
 
-	out, _ := executeCommand(append(append([]string{"analyze", "failover content"}, cfgArgs...), storageOverride(dbPath)...)...)
+	out, err := executeCommand(append(append([]string{"analyze", "failover content"}, cfgArgs...), storageOverride(dbPath)...)...)
+	assertKitExit(t, err, output.CodePrerequisite, output.ExitPrerequisite)
+	assertNoLocalDB(t, filepath.Dir(dbPath))
 	if hits.Load() != 0 {
 		t.Errorf("second server.urls entry served %d requests; want 0 (no failover)", hits.Load())
 	}
@@ -66,28 +72,11 @@ func TestAnalyzeNeverFailsOverToSecondInstance(t *testing.T) {
 	}
 }
 
-// TestAnalyzeAllInstancesDownFallsBackLocally: every listed instance dead —
-// the write lands in the gated local queue.
-func TestAnalyzeAllInstancesDownFallsBackLocally(t *testing.T) {
-	dbPath := tempDB(t)
-	cfgArgs := serverURLsConfig(t, deadServerURL, "http://127.0.0.1:19998")
-
-	out, err := executeCommand(append(append([]string{"analyze", "fully offline"}, cfgArgs...), storageOverride(dbPath)...)...)
-	if err != nil {
-		t.Fatalf("analyze with all instances down should fall back locally: %v", err)
-	}
-	if !strings.Contains(out, "Job ID:") {
-		t.Errorf("output lacks Job ID: %q", out)
-	}
-	if !strings.Contains(out, "dpkms serve") {
-		t.Errorf("output should carry the queued-locally notice: %q", out)
-	}
-}
-
 // TestAnalyzeServerFlagPinsRouting: an explicit --server bypasses the
-// configured list entirely — dead pinned instance means local fallback, even
-// while a listed instance is live.
+// configured list entirely: a dead pinned instance is exit 70 even while
+// a listed instance is live.
 func TestAnalyzeServerFlagPinsRouting(t *testing.T) {
+	isolateDataDirs(t)
 	dbPath := tempDB(t)
 
 	var hits atomic.Int64
@@ -95,18 +84,14 @@ func TestAnalyzeServerFlagPinsRouting(t *testing.T) {
 	cfgArgs := serverURLsConfig(t, srv.URL)
 
 	out, err := executeCommand(append(append([]string{"analyze", "pinned content", "--server", deadServerURL}, cfgArgs...), storageOverride(dbPath)...)...)
-	if err != nil {
-		t.Fatalf("analyze with pinned dead server should fall back locally: %v", err)
-	}
+	assertKitExit(t, err, output.CodePrerequisite, output.ExitPrerequisite)
 	if hits.Load() != 0 {
 		t.Errorf("listed instance served %d requests despite --server pin", hits.Load())
 	}
-	if !strings.Contains(out, "Job ID:") {
-		t.Errorf("output lacks Job ID: %q", out)
+	if strings.Contains(out, "Job ID:") {
+		t.Errorf("output claims an enqueue: %q", out)
 	}
-	if !strings.Contains(out, "dpkms serve") {
-		t.Errorf("output should carry the queued-locally notice: %q", out)
-	}
+	assertNoLocalDB(t, filepath.Dir(dbPath))
 }
 
 // TestListQueryNeverFailsOverToSecondInstance: the read surface talks

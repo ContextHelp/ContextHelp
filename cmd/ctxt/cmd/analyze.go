@@ -2,19 +2,17 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	gohttp "net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
-	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -25,6 +23,11 @@ var analyzeCmd = &cobra.Command{
 	Long: `Analyze enqueues content into the ingestion pipeline.
 
 This does not run pipelines directly; the worker (dpkms serve) handles execution.
+The content goes only to the one dpkms instance ctxt resolves (--server,
+--instance, CTXT_INSTANCE, the current instance, then server.urls or
+server.url). When nothing answers there the command exits 70; when the
+instance rejects the token it exits 5. Nothing is queued locally and no
+other instance is tried.
 
 Content can be provided as:
   - Command argument: ctxt analyze "some text"
@@ -63,10 +66,8 @@ func init() {
 		{When: "after enrichment completes", Suggest: "ctxt find <topic>", Reason: "discover related items"},
 	})
 	// "analyze" is not in kit's defaultIdempotency table. Each invocation
-	// is one logical submission: the client mints an idempotency key per
-	// call, so transport replays within the failover walk are deduped
-	// server-side — but running the command twice is two submissions and
-	// mints two jobs.
+	// is one logical submission with its own idempotency key: running the
+	// command twice is two submissions and mints two jobs.
 	cliconv.WithIdempotency(analyzeCmd, cliconv.IdempotencyConditional)
 
 	// Register flags on analyzeCmd for `ctxt analyze --help`.
@@ -124,7 +125,7 @@ func flagString(cmd *cobra.Command, name, viperKey string) string {
 
 func RunAnalyze(cmd *cobra.Command, args []string) error {
 	// The one instance this invocation talks to (see resolveEndpoint).
-	endpoints, err := bridgeEndpoints(cmd)
+	client, _, err := enqueueClient(cmd)
 	if err != nil {
 		return err
 	}
@@ -197,8 +198,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	// fetchable URLs — downstream steps (url_fetcher) must validate before use.
 	reqSource := source
 
-	// Build the analyze request (also the daemon's wire format).
-	req := service.AnalyzeRequest{
+	req := dpkmsclient.AnalyzeRequest{
 		Content:   content,
 		Type:      flagString(cmd, "type", "analyze.type"),
 		Pipeline:  flagString(cmd, "pipeline", "analyze.pipeline"),
@@ -216,34 +216,15 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		ctx = context.Background()
 	}
 
-	// Route: first live instance in the ordered list via POST
-	// /api/v1/analyze; when none answers, fall back to the dblock-gated
-	// local direct enqueue. A live instance's rejection is surfaced, never
-	// replayed against another instance or the local queue.
-	bridge := idxbridge.New(idxbridge.Config{
-		Endpoints:       endpoints,
-		AnalyzeFallback: idxbridge.AnalyzeFunc(localDirectAnalyze),
-	})
-
-	jobID, servedBy, err := bridge.Analyze(ctx, req)
+	// One request to the resolved instance. Its failure is final: exit 70
+	// when nothing answered, 5 for a rejected token, 2 for a request the
+	// instance refused (a 422 names the unrouted type or pipeline).
+	jobID, err := client.Analyze(ctx, req)
 	if err != nil {
-		var rerr *idxbridge.RemoteError
-		if errors.As(err, &rerr) {
-			// T-0562: 422 from the analyze endpoint signals an unrouted type
-			// (e.g. `--type document` with no document.* pipeline registered).
-			// Surface the server-supplied message verbatim so the user sees
-			// exactly which type/pipeline pairing was rejected — previously
-			// this path returned a Job ID and silently dropped the work.
-			if rerr.StatusCode == gohttp.StatusUnprocessableEntity {
-				return fmt.Errorf("dpkms refused the request (422): %s", strings.TrimSpace(rerr.Body))
-			}
-			return fmt.Errorf("dpkms returned %d: %s", rerr.StatusCode, rerr.Body)
-		}
 		return err
 	}
 
 	fmt.Printf("Job ID: %s\n", jobID)
-	usedLocal := servedBy == ""
 
 	// Resolve --wait flag (present on both analyzeCmd and rootCmd).
 	wait := false
@@ -253,14 +234,6 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		wait = viper.GetBool("analyze.wait")
 	}
 	if !wait || jobID == "" {
-		if usedLocal {
-			fmt.Println("Queued locally; the job will run when the daemon starts (`dpkms serve`).")
-		}
-		return nil
-	}
-	if usedLocal {
-		// No daemon means no worker: polling would hang. Say so and return.
-		fmt.Println("Queued locally; the job will run when the daemon starts (`dpkms serve`).")
 		return nil
 	}
 
@@ -270,57 +243,39 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	// on the instance that accepted the enqueue and fail loudly if the ID
 	// can't be located within a short window — that 404 is the canonical
 	// "silently dropped" signal.
-	return waitForJob(cmd.Context(), servedBy, endpoints[0].Token, jobID)
+	return waitForJob(ctx, client, jobID)
 }
 
 // waitForJob polls GET /api/v1/jobs/{id} on the instance that accepted the
 // enqueue until the job reaches a terminal state, the context is cancelled,
-// or pollTimeout elapses. Every poll request is context-bound and capped by
-// a per-request timeout (the default client would hang indefinitely on a
-// stalled connection), and carries the instance's bearer token when one is
-// configured. If the job ID is not present in the queue within
+// or pollTimeout elapses. If the job ID is not present in the queue within
 // notFoundTimeout, return a clear error pointing at the silent-drop class
 // of bug — the worker may have rejected the job before persistence.
-func waitForJob(ctx context.Context, serverURL, token, jobID string) error {
+func waitForJob(ctx context.Context, client *dpkmsclient.Client, jobID string) error {
 	const (
 		pollTimeout     = 5 * time.Minute
 		notFoundTimeout = 5 * time.Second
 		pollInterval    = 500 * time.Millisecond
-		requestTimeout  = 10 * time.Second
 	)
 
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	ctx, cancel := context.WithTimeout(ctx, pollTimeout)
 	defer cancel()
 
-	url := serverURL + "/api/v1/jobs/" + jobID
+	path := "/api/v1/jobs/" + url.PathEscape(jobID)
 	deadline404 := time.Now().Add(notFoundTimeout)
-	client := &gohttp.Client{Timeout: requestTimeout}
 
 	for {
-		select {
-		case <-ctx.Done():
+		var job struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+			Error  string `json:"error,omitempty"`
+		}
+		err := client.Get(ctx, path, nil, &job)
+		var re *dpkmsclient.RemoteError
+		switch {
+		case ctx.Err() != nil:
 			return fmt.Errorf("wait: timed out after %s polling for job %s", pollTimeout, jobID)
-		default:
-		}
-
-		req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodGet, url, nil)
-		if err != nil {
-			return fmt.Errorf("wait: build request %s: %w", url, err)
-		}
-		if token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			return fmt.Errorf("wait: GET %s: %w", url, err)
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		if resp.StatusCode == gohttp.StatusNotFound {
+		case errors.As(err, &re) && re.StatusCode == gohttp.StatusNotFound:
 			if time.Now().After(deadline404) {
 				return fmt.Errorf(
 					"error: job %s not found in queue after %s; the job may have been silently dropped — please report this",
@@ -328,19 +283,8 @@ func waitForJob(ctx context.Context, serverURL, token, jobID string) error {
 			}
 			time.Sleep(pollInterval)
 			continue
-		}
-
-		if resp.StatusCode != gohttp.StatusOK {
-			return fmt.Errorf("wait: unexpected status %d: %s", resp.StatusCode, string(body))
-		}
-
-		var job struct {
-			ID     string `json:"id"`
-			Status string `json:"status"`
-			Error  string `json:"error,omitempty"`
-		}
-		if err := json.Unmarshal(body, &job); err != nil {
-			return fmt.Errorf("wait: parse job response: %w", err)
+		case err != nil:
+			return fmt.Errorf("wait for job %s: %w", jobID, err)
 		}
 
 		switch job.Status {

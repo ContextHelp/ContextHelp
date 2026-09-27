@@ -1,7 +1,7 @@
 // Package idxbridge provides a client-side bridge that routes index/search
-// (RSQL idx) queries and the analyze/ingest enqueue write surface to a running
-// dpkms daemon via HTTP, falling back to a direct local implementation when
-// no daemon is reachable.
+// (RSQL idx) queries to a running dpkms daemon via HTTP, falling back to a
+// direct local implementation when no daemon is reachable. Enqueueing
+// content never goes through it: that is dpkmsclient, with no fallback.
 //
 // The bridge accepts an ordered list of daemon base URLs (primary first —
 // e.g. a remote instance, then a local one). Every request walks the list in
@@ -13,15 +13,13 @@
 // Usage:
 //
 //	bridge := idxbridge.New(idxbridge.Config{
-//	    BaseURLs:        []string{"https://m3.example.net:7700", "http://127.0.0.1:8080"},
-//	    ProbeTimeout:    500 * time.Millisecond,
-//	    Fallback:        svc, // *service.Service or any IdxSearcher
-//	    AnalyzeFallback: svc, // *service.Service or any IdxAnalyzer
+//	    BaseURLs:     []string{"https://m3.example.net:7700", "http://127.0.0.1:8080"},
+//	    ProbeTimeout: 500 * time.Millisecond,
+//	    Fallback:     svc, // *service.Service or any IdxSearcher
 //	})
 //
 //	// Bridge auto-detects daemons on first call; results are cached per instance.
 //	results, total, err := bridge.SearchObjects(ctx, "type==article", 20, 0)
-//	jobID, servedBy, err := bridge.Analyze(ctx, req)
 package idxbridge
 
 import (
@@ -68,8 +66,8 @@ type IdxSearcher interface {
 }
 
 // Endpoint is one configured dpkms instance: base URL plus an optional
-// bearer token. The token authenticates every non-probe request (analyze
-// POST, search GET); health probes stay unauthenticated — /health is public.
+// bearer token. The token authenticates every search request; health
+// probes stay unauthenticated — /health is public.
 type Endpoint struct {
 	URL   string
 	Token string
@@ -99,13 +97,8 @@ type Config struct {
 	// Defaults to DefaultNegativeProbeInterval.
 	NegativeProbeInterval time.Duration
 	// Fallback is the local searcher used when no daemon is reachable.
-	// Optional when AnalyzeFallback is set; at least one fallback is
-	// required.
+	// Required.
 	Fallback IdxSearcher
-	// AnalyzeFallback is the local enqueue path used when no daemon is
-	// reachable — typically the dblock-gated direct storage path.
-	// Optional when Fallback is set.
-	AnalyzeFallback IdxAnalyzer
 	// RequestTimeout bounds non-probe daemon requests when HTTPClient is
 	// not supplied. Defaults to DefaultRequestTimeout.
 	RequestTimeout time.Duration
@@ -127,9 +120,9 @@ type serverState struct {
 	probedAt time.Time
 }
 
-// IdxBridge routes SearchObjects and Analyze calls to the first reachable
-// dpkms instance in its ordered server list, and falls back to the local
-// Fallback implementations when none answers.
+// IdxBridge routes SearchObjects calls to the first reachable dpkms
+// instance in its ordered server list, and falls back to the local
+// Fallback when none answers.
 type IdxBridge struct {
 	cfg       Config
 	client    *http.Client // probe client, ProbeTimeout-bound
@@ -138,11 +131,11 @@ type IdxBridge struct {
 }
 
 // New creates an IdxBridge with the given Config.
-// Panics when no fallback at all is configured — a bridge that can neither
-// search nor enqueue locally is a misconstruction, not a runtime condition.
+// Panics when no Fallback is configured — a bridge that cannot search
+// locally is a misconstruction, not a runtime condition.
 func New(cfg Config) *IdxBridge {
-	if cfg.Fallback == nil && cfg.AnalyzeFallback == nil {
-		panic("idxbridge.New: at least one of Fallback or AnalyzeFallback must be set")
+	if cfg.Fallback == nil {
+		panic("idxbridge.New: Fallback must be set")
 	}
 	endpoints := cfg.Endpoints
 	if len(endpoints) == 0 {
@@ -314,6 +307,24 @@ func (b *IdxBridge) SearchObjects(
 			"warning: results come from the local corpus — remote instance(s) rejected credentials")
 	}
 	return b.cfg.Fallback.SearchObjects(ctx, query, limit, offset, profileID...)
+}
+
+// RemoteError is an application-level response from a live daemon: a non-2xx
+// status on a completed HTTP exchange. The daemon answered and made a
+// decision, so routing must NOT fall back on a 4xx — the rejected query
+// would otherwise be silently re-run against the next instance or the
+// local corpus.
+type RemoteError struct {
+	// StatusCode is the daemon's HTTP status.
+	StatusCode int
+	// Body is the daemon's response body (truncated), preserved verbatim so
+	// callers can surface the daemon's own message.
+	Body string
+}
+
+// Error renders the daemon's status and message.
+func (e *RemoteError) Error() string {
+	return fmt.Sprintf("daemon returned %d: %s", e.StatusCode, e.Body)
 }
 
 // isAuthRejection reports whether a live instance rejected our credentials

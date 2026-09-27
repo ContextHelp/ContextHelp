@@ -18,8 +18,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/browser/chromium"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
-	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/timeframe"
 	"github.com/ideacrafterslabs/ctxt/internal/urlfilter"
 	"github.com/spf13/cobra"
@@ -51,23 +50,28 @@ var captureHistoryCmd = &cobra.Command{
 	Use:   "history",
 	Short: "Capture the browsing history of one browser profile",
 	Long: `Send the pages visited in one profile of a Chromium-family browser
-(chrome, brave, edge, arc, chromium, vivaldi) to the configured ctxt
-server. History is read from a copy of the profile's History database;
+(chrome, brave, edge, arc, chromium, vivaldi) to the dpkms instance ctxt
+resolves. History is read from a copy of the profile's History database;
 the browser can stay open.
 
 Three modes, picked by the time flags:
 
   no time flag      incremental: send visits newer than the saved
-                    position for this browser profile, then move the
-                    position to the last one handed off. The first run
-                    reads back capture.history.initial_lookback (24h).
+                    position for this browser profile on this instance,
+                    then move the position to the last one handed off.
+                    The first run on an instance reads back
+                    capture.history.initial_lookback (24h).
   --since X alone   send visits from X to now, then move the position
                     forward to the last one handed off (never back).
   --until, --range  bounded backfill: send that window; the saved
                     position is neither read nor changed.
 
 When a send fails, the position stops just before that visit, so the
-next run retries it and skips nothing.
+next run retries it and skips nothing. Positions are kept per instance:
+switching instances never skips history the other one did not receive.
+When nothing answers at the instance the run stops with exit 70, and
+when the instance rejects the token it stops with exit 5; nothing is
+queued locally or retried.
 
 Every URL goes through the capture.url_filter rules for that browser and
 profile first. Identical URLs are sent once per run.
@@ -76,13 +80,16 @@ profile first. Identical URLs are sent once per run.
 visits with the reason, sends nothing and neither reads nor writes the
 saved position; an incremental dry run previews the first-run window.
 
---reset-position forgets this browser profile's saved position and
-exits; the next incremental run starts from the initial lookback.
+--reset-position forgets this browser profile's saved position on this
+instance and exits; the next incremental run starts from the initial
+lookback.
 
 Exit status: 0 every allowed visit was accepted, 1 any send failed, 2 bad
 invocation (unknown browser or profile, bad time value, bad
 capture.history.initial_lookback), 3 the browser, profile folder or
-History database is not on disk, or the position file is corrupt.`,
+History database is not on disk, or the position file is corrupt or from
+another version, 5 the instance rejected the token, 70 the instance could
+not be reached.`,
 	Args: cobra.NoArgs,
 	RunE: runCaptureHistory,
 }
@@ -113,7 +120,7 @@ func init() {
 	f.String("until", "", "bounded backfill: send visits before this time (a bare date includes that day)")
 	f.StringArray("range", nil, "bounded backfill window FROM..TO, or one YYYY-MM-DD; repeatable")
 	f.String("tz", "", "IANA time zone for dates and display (default: local)")
-	f.Bool("reset-position", false, "forget this browser profile's saved position, then exit")
+	f.Bool("reset-position", false, "forget this browser profile's saved position on this instance, then exit")
 }
 
 // historyReport is the structured result of one capture history run.
@@ -145,6 +152,9 @@ type historyRange struct {
 
 // historyPosition reports the saved position of a run that uses one.
 type historyPosition struct {
+	// Instance is the dpkms instance key the position belongs to.
+	Instance string `json:"instance"`
+	// Key is the browser profile's source key.
 	Key    string     `json:"key"`
 	Path   string     `json:"path"`
 	Start  string     `json:"start"`
@@ -162,9 +172,6 @@ type visitOutcome struct {
 	JobID     string    `json:"job_id,omitempty"`
 	Error     string    `json:"error,omitempty"`
 	Allowed   bool      `json:"allowed"`
-	// QueuedLocally marks a URL enqueued on the local queue because no
-	// configured server answered.
-	QueuedLocally bool `json:"queued_locally,omitempty"`
 }
 
 type historySummary struct {
@@ -211,7 +218,17 @@ func runCaptureHistory(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("open %s profile %q history: %w", profile.Browser, profile.Name, err)
 	}
-	key := client.Name()
+	// The instance the visits go to; its key scopes the saved position.
+	// A dry run that resets nothing sends nothing and reads no position.
+	var api *dpkmsclient.Client
+	var key position.Key
+	if !opts.dryRun || opts.reset {
+		var r dpkmsclient.Resolved
+		if api, r, err = enqueueClient(cmd); err != nil {
+			return err
+		}
+		key = position.Key{Instance: r.Key, Source: client.Name()}
+	}
 
 	statePath, err := position.DefaultPath()
 	if err != nil {
@@ -289,7 +306,7 @@ func runCaptureHistory(cmd *cobra.Command, _ []string) error {
 		}
 		windows = []window{{from: start}}
 		if !opts.dryRun {
-			pos = &historyPosition{Key: key, Path: statePath, Start: startKind, Before: before}
+			pos = &historyPosition{Instance: key.Instance, Key: key.Source, Path: statePath, Start: startKind, Before: before}
 		}
 	case opts.tf.Since != "" && opts.tf.Until == "" && len(opts.tf.Ranges) == 0:
 		report.Mode = historyModeSince
@@ -300,7 +317,7 @@ func runCaptureHistory(cmd *cobra.Command, _ []string) error {
 			if err != nil {
 				return positionError(err)
 			}
-			pos = &historyPosition{Key: key, Path: statePath, Start: historyStartSince}
+			pos = &historyPosition{Instance: key.Instance, Key: key.Source, Path: statePath, Start: historyStartSince}
 			if ok {
 				pos.Before = &saved
 			}
@@ -345,12 +362,12 @@ func runCaptureHistory(cmd *cobra.Command, _ []string) error {
 		report.Ranges = append(report.Ranges, hr)
 	}
 
+	var sendErr error
 	if opts.dryRun {
 		report.Visits = historySample(all)
 	} else {
-		if err := sendVisits(ctx, cmd, all, &report.Summary); err != nil {
-			return err
-		}
+		focusProfile, _ := cmd.Flags().GetString("profile")
+		sendErr = sendVisits(ctx, api, focusProfile, all, &report.Summary)
 		for _, o := range all {
 			if o.Status == tabStatusSent || o.Status == tabStatusFailed {
 				report.Visits = append(report.Visits, o)
@@ -374,6 +391,9 @@ func runCaptureHistory(cmd *cobra.Command, _ []string) error {
 
 	if err := renderHistoryReport(cmd.OutOrStdout(), report, opts); err != nil {
 		return err
+	}
+	if sendErr != nil {
+		return sendErr
 	}
 	if report.Summary.Failed > 0 {
 		attempted := report.Summary.Sent + report.Summary.Failed
@@ -442,10 +462,11 @@ func historyFlags(cmd *cobra.Command) (historyOptions, error) {
 }
 
 // resetHistoryPosition implements --reset-position.
-func resetHistoryPosition(cmd *cobra.Command, store *position.Store, key string, o historyOptions) error {
+func resetHistoryPosition(cmd *cobra.Command, store *position.Store, key position.Key, o historyOptions) error {
 	w := cmd.OutOrStdout()
 	if o.dryRun {
-		_, err := fmt.Fprintf(w, "dry run: would reset the saved position %q in %s; nothing changed\n", key, store.Path())
+		_, err := fmt.Fprintf(w, "dry run: would reset the saved position %q for instance %s in %s; nothing changed\n",
+			key.Source, key.Instance, store.Path())
 		return err
 	}
 	if err := store.Reset(key); err != nil {
@@ -453,25 +474,33 @@ func resetHistoryPosition(cmd *cobra.Command, store *position.Store, key string,
 	}
 	if isJSONOutput() {
 		return outputJSON(w, map[string]any{
-			"command": cmd.CommandPath(),
-			"reset":   key,
-			"path":    store.Path(),
+			"command":  cmd.CommandPath(),
+			"reset":    key.Source,
+			"instance": key.Instance,
+			"path":     store.Path(),
 		})
 	}
-	_, err := fmt.Fprintf(w, "reset the saved position %q in %s; the next incremental run starts from capture.history.initial_lookback\n",
-		key, store.Path())
+	_, err := fmt.Fprintf(w, "reset the saved position %q for instance %s in %s; "+
+		"the next incremental run starts from capture.history.initial_lookback\n",
+		key.Source, key.Instance, store.Path())
 	return err
 }
 
-// positionError maps a position store failure: a corrupt file is exit 3
-// and is never reset or rewritten.
+// positionError maps a position store failure: a corrupt file, or one
+// from another format version, is exit 3 and is never reset, migrated or
+// rewritten.
 func positionError(err error) error {
-	if errors.Is(err, position.ErrCorrupt) {
-		e := output.WrapError(err, output.CodeNotFound, 3)
-		e.SuggestedFix = "fix the file by hand, or delete it (that resets every browser profile)"
-		return e
+	if !errors.Is(err, position.ErrCorrupt) {
+		return err
 	}
-	return err
+	e := output.WrapError(err, output.CodeNotFound, 3)
+	e.SuggestedFix = "fix the file by hand, or delete it (that resets every browser profile on every instance)"
+	if errors.Is(err, position.ErrUnsupportedVersion) {
+		e.SuggestedFix = "the file predates per-instance positions, or comes from another ctxt version: " +
+			"delete it to start over; the next incremental run for each browser profile starts from " +
+			"capture.history.initial_lookback, and visits already sent are deduplicated by the server"
+	}
+	return e
 }
 
 // visitsAfter pages through VisitsSince until it comes back empty.
@@ -521,46 +550,34 @@ func evaluateVisit(v browserhistory.Visit, filter *urlfilter.Filter, seen map[st
 	return o
 }
 
-// sendVisits enqueues every would_send visit through the resolved
-// endpoint with the request `ctxt capture <url>` builds, like capture
-// tabs. A failure is recorded on its visit and the loop moves on; only an
-// endpoint that does not resolve fails the whole send.
-func sendVisits(ctx context.Context, cmd *cobra.Command, visits []visitOutcome, s *historySummary) error {
-	endpoints, err := bridgeEndpoints(cmd)
-	if err != nil {
-		return err
-	}
-	bridge := idxbridge.New(idxbridge.Config{
-		Endpoints:       endpoints,
-		AnalyzeFallback: idxbridge.AnalyzeFunc(localDirectAnalyze),
-		WarnWriter:      cmd.ErrOrStderr(),
-	})
-	focusProfile, _ := cmd.Flags().GetString("profile")
-
+// sendVisits enqueues every would_send visit on client's instance with
+// the request `ctxt capture <url>` builds, like capture tabs. A failure is
+// recorded on its visit and the loop moves on, except one that ends the
+// batch (see endsBatch): that stops the loop and is returned, and the
+// visits not yet sent stay would_send. Either way safeAdvancePoint stops
+// the position before the first failed visit.
+func sendVisits(ctx context.Context, client *dpkmsclient.Client, focusProfile string, visits []visitOutcome, s *historySummary) error {
 	for i := range visits {
 		o := &visits[i]
 		if o.Status != tabStatusWouldSend {
 			continue
 		}
-		jobID, servedBy, err := bridge.Analyze(ctx, service.AnalyzeRequest{
-			Content: o.URL,
-			Source:  o.URL,
-			Type:    "text",
-			Profile: focusProfile,
-		})
+		s.WouldSend--
+		jobID, err := client.Analyze(ctx, urlCaptureRequest(o.URL, focusProfile))
 		if err != nil {
 			o.Status = tabStatusFailed
-			o.Error = sendError(err)
+			o.Error = sendFailure(err)
 			s.Failed++
 			slog.Debug("capture history: send failed")
+			if endsBatch(err) {
+				return err
+			}
 			continue
 		}
 		o.Status = tabStatusSent
 		o.JobID = jobID
-		o.QueuedLocally = servedBy == ""
 		s.Sent++
 	}
-	s.WouldSend = 0
 	return nil
 }
 
@@ -656,11 +673,7 @@ func renderHistoryReport(w io.Writer, r historyReport, o historyOptions) error {
 			fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\n", statusLabel(v.Status),
 				v.VisitedAt.In(o.loc).Format(time.DateTime), v.URL, displayTitle(v.Title), v.Reason)
 		case v.Status == tabStatusSent:
-			detail := "job " + v.JobID
-			if v.QueuedLocally {
-				detail += " (queued locally)"
-			}
-			fmt.Fprintf(tw, "  %s\t%s\t%s\n", statusLabel(v.Status), v.URL, detail)
+			fmt.Fprintf(tw, "  %s\t%s\t%s\n", statusLabel(v.Status), v.URL, "job "+v.JobID)
 		case v.Status == tabStatusFailed:
 			fmt.Fprintf(tw, "  %s\t%s\t%s\n", statusLabel(v.Status), v.URL, v.Error)
 		}
@@ -678,19 +691,19 @@ func renderHistoryReport(w io.Writer, r historyReport, o historyOptions) error {
 			s.WouldSend, s.Denied, s.Deduped, visitCount(s.Total))
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "sent %d, denied %d, deduped %d, failed %d (%s)\n",
-		s.Sent, s.Denied, s.Deduped, s.Failed, visitCount(s.Total)); err != nil {
+	if _, err := fmt.Fprintf(w, "sent %d, denied %d, deduped %d, failed %d%s (%s)\n",
+		s.Sent, s.Denied, s.Deduped, s.Failed, notSent(s.WouldSend), visitCount(s.Total)); err != nil {
 		return err
 	}
 	if p := r.Position; p != nil {
 		var err error
 		switch {
 		case p.After == nil:
-			_, err = fmt.Fprintf(w, "position %q: none saved yet (nothing handed off)\n", p.Key)
+			_, err = fmt.Fprintf(w, "position %q on %s: none saved yet (nothing handed off)\n", p.Key, p.Instance)
 		case p.Before != nil && p.After.Equal(*p.Before):
-			_, err = fmt.Fprintf(w, "position %q: unchanged at %s\n", p.Key, at(p.After, ""))
+			_, err = fmt.Fprintf(w, "position %q on %s: unchanged at %s\n", p.Key, p.Instance, at(p.After, ""))
 		default:
-			_, err = fmt.Fprintf(w, "position %q: saved at %s\n", p.Key, at(p.After, ""))
+			_, err = fmt.Fprintf(w, "position %q on %s: saved at %s\n", p.Key, p.Instance, at(p.After, ""))
 		}
 		return err
 	}
