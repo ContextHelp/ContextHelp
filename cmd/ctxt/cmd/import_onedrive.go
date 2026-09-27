@@ -157,7 +157,10 @@ func runImportOneDrive(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	graphBaseURL, _ := cmd.Flags().GetString("graph-base-url")
 
@@ -316,7 +319,7 @@ func runImportOneDrive(cmd *cobra.Command, args []string) error {
 			source = "import:onedrive"
 		}
 
-		_, err := enqueueOneDriveContent(ep, content, "text", pipelineName, source)
+		_, err := enqueueOneDriveContent(dc, content, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

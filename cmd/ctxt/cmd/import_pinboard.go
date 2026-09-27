@@ -92,7 +92,10 @@ func runImportPinboard(cmd *cobra.Command, args []string) error {
 	tags, _ := cmd.Flags().GetStringSlice("tagged")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 
 	token = strings.TrimSpace(token)
@@ -196,7 +199,7 @@ func runImportPinboard(cmd *cobra.Command, args []string) error {
 			source = "import:pinboard"
 		}
 
-		_, err := enqueuePinboardItem(ep, payload, "text", pipelineName, source)
+		_, err := enqueuePinboardItem(dc, payload, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

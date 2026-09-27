@@ -1,16 +1,11 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	gohttp "net/http"
-	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	bookmarksimporter "github.com/ideacrafterslabs/ctxt/internal/importer/bookmarks"
 	"github.com/spf13/cobra"
 )
@@ -60,7 +55,10 @@ func init() {
 
 func runImportChrome(cmd *cobra.Command, args []string) error {
 	file, _ := cmd.Flags().GetString("file")
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -108,7 +106,7 @@ func runImportChrome(cmd *cobra.Command, args []string) error {
 	)
 
 	for _, b := range bookmarks {
-		_, err := enqueueBookmark(ep, b.URL, pipelineName, "import:chrome")
+		_, err := enqueueBookmark(dc, b.URL, pipelineName, "import:chrome")
 		if err != nil {
 			failed++
 			if firstErr == nil {
@@ -143,62 +141,22 @@ type enqueueResponse struct {
 	JobID string `json:"job_id"`
 }
 
-func enqueueBookmark(ep idxbridge.Endpoint, url, pipelineName, source string) (string, error) {
-	return enqueueContent(ep, url, "url", pipelineName, source)
+func enqueueBookmark(dc *dpkmsclient.Client, url, pipelineName, source string) (string, error) {
+	return enqueueContent(dc, url, "url", pipelineName, source)
 }
 
-// enqueueContent enqueues one item on the dpkms at ep, falling back to
-// the legacy /api/v1/analyze route on servers without the enqueue route.
-func enqueueContent(ep idxbridge.Endpoint, content, contentType, pipelineName, source string) (string, error) {
+// enqueueContent enqueues one item on the dpkms dc talks to and returns
+// its job ID.
+func enqueueContent(dc *dpkmsclient.Client, content, contentType, pipelineName, source string) (string, error) {
 	payload := enqueueRequest{
 		Content:  content,
 		Type:     contentType,
 		Pipeline: pipelineName,
 		Source:   source,
 	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
+	var out enqueueResponse
+	if err := dc.Post(context.Background(), "/api/v1/pipelines/enqueue", payload, &out); err != nil {
+		return "", fmt.Errorf("enqueue: %w", err)
 	}
-
-	endpoints := []string{"/api/v1/pipelines/enqueue", "/api/v1/analyze"}
-	for i, endpoint := range endpoints {
-		jobID, statusCode, respBody, err := postEnqueueRequest(ep, endpoint, body)
-		if err != nil {
-			return "", err
-		}
-
-		// Backward compatibility fallback for older servers.
-		if statusCode == gohttp.StatusNotFound && i == 0 {
-			continue
-		}
-		if statusCode != gohttp.StatusAccepted && statusCode != gohttp.StatusOK {
-			return "", fmt.Errorf("dpkms returned %d: %s", statusCode, strings.TrimSpace(respBody))
-		}
-
-		return jobID, nil
-	}
-
-	return "", fmt.Errorf("enqueue failed: endpoint unavailable")
-}
-
-func postEnqueueRequest(ep idxbridge.Endpoint, path string, body []byte) (jobID string, statusCode int, respBody string, err error) {
-	resp, err := serverDo(context.Background(), ep, gohttp.MethodPost, path, bytes.NewReader(body), 0)
-	if err != nil {
-		return "", 0, "", fmt.Errorf("request to dpkms: %w", err)
-	}
-	defer resp.Body.Close()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", resp.StatusCode, "", fmt.Errorf("read response: %w", err)
-	}
-
-	var parsed enqueueResponse
-	if err := json.Unmarshal(data, &parsed); err == nil {
-		return parsed.JobID, resp.StatusCode, string(data), nil
-	}
-
-	return "", resp.StatusCode, string(data), nil
+	return out.JobID, nil
 }

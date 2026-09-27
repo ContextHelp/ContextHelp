@@ -103,16 +103,16 @@ func TestAnalyzeWaitPollSendsToken(t *testing.T) {
 	}
 }
 
-// TestAnalyzeServerFlagHelpMentionsPinning: --server pins/bypasses the
-// configured list; the help text must say so instead of citing a stale
+// TestAnalyzeServerFlagHelpMentionsPrecedence: --server outranks every
+// other selection; the help text must say so instead of citing a stale
 // default.
-func TestAnalyzeServerFlagHelpMentionsPinning(t *testing.T) {
+func TestAnalyzeServerFlagHelpMentionsPrecedence(t *testing.T) {
 	out, err := executeCommand("analyze", "--help")
 	if err != nil {
 		t.Fatalf("analyze --help: %v", err)
 	}
-	if !strings.Contains(out, "pin") || !strings.Contains(out, "server.urls") {
-		t.Errorf("--server help must explain pinning/bypass of server.urls; got %q", out)
+	if !strings.Contains(out, "overrides --instance") || !strings.Contains(out, "server.urls") {
+		t.Errorf("--server help must say it overrides --instance and server.urls; got %q", out)
 	}
 	if strings.Contains(out, "http://localhost:8080") {
 		t.Errorf("--server help still cites the stale default: %q", out)

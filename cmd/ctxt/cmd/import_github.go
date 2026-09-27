@@ -113,7 +113,10 @@ func runImportGitHub(cmd *cobra.Command, args []string) error {
 	if outputFmt == "" {
 		outputFmt = "table"
 	}
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	baseURL, _ := cmd.Flags().GetString("github-base-url")
 
@@ -142,7 +145,7 @@ func runImportGitHub(cmd *cobra.Command, args []string) error {
 	var firstErr error
 	for _, r := range repos {
 		payload := githubimporter.RenderContent(r)
-		_, err := enqueueGitHubItem(ep, payload, "text", pipelineName, r.URL)
+		_, err := enqueueGitHubItem(dc, payload, "text", pipelineName, r.URL)
 		if err != nil {
 			failed++
 			if firstErr == nil {

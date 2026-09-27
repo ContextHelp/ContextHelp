@@ -1,17 +1,15 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	gohttp "net/http"
 	"net/url"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 )
 
@@ -141,72 +139,30 @@ type feedResponse struct {
 
 func runFeedAdd(cmd *cobra.Command, args []string) error {
 	feedURL := args[0]
-	ep := serverEndpoint(cmd)
-
-	payload := map[string]string{"url": feedURL}
-	body, err := json.Marshal(payload)
+	client, err := newDpkmsClient(cmd, 0)
 	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
+		return err
 	}
 
-	resp, err := serverDo(cmd.Context(), ep, gohttp.MethodPost, feedsPath, bytes.NewReader(body), 0)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read response: %w", err)
+	var result map[string]any
+	if err := client.Post(cmd.Context(), feedsPath, map[string]string{"url": feedURL}, &result); err != nil {
+		return fmt.Errorf("add feed: %w", err)
 	}
 
-	if resp.StatusCode != gohttp.StatusCreated && resp.StatusCode != gohttp.StatusOK {
-		return fmt.Errorf("server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
-	}
-
-	var result map[string]string
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return fmt.Errorf("parse response: %w", err)
-	}
-
-	fmt.Printf("Feed ID: %s\n", result["id"])
+	fmt.Printf("Feed ID: %v\n", result["id"])
 	return nil
 }
 
 func runFeedList(cmd *cobra.Command, args []string) error {
-	ep := serverEndpoint(cmd)
+	client, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	statusFilter, _ := cmd.Flags().GetString("status")
 
-	path := feedsPath
-	if statusFilter != "" {
-		path += "?status=" + url.QueryEscape(statusFilter)
-	}
-
-	resp, err := serverGet(cmd.Context(), ep, path, 0)
+	feeds, err := listFeeds(cmd.Context(), client, statusFilter)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != gohttp.StatusOK {
-		return fmt.Errorf("server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
-	}
-
-	var feeds []feedResponse
-	if err := json.Unmarshal(respBody, &feeds); err != nil {
-		// Try unwrapping {"feeds": [...]}
-		var wrapper struct {
-			Feeds []feedResponse `json:"feeds"`
-		}
-		if err2 := json.Unmarshal(respBody, &wrapper); err2 != nil {
-			return fmt.Errorf("parse response: %w", err)
-		}
-		feeds = wrapper.Feeds
+		return err
 	}
 
 	// Read --format from the cobra persistent flag directly (kit owns
@@ -233,7 +189,10 @@ func runFeedList(cmd *cobra.Command, args []string) error {
 }
 
 func runFeedSync(cmd *cobra.Command, args []string) error {
-	ep := serverEndpoint(cmd)
+	client, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	feedURL, _ := cmd.Flags().GetString("url")
 	feedID, _ := cmd.Flags().GetString("id")
 
@@ -243,34 +202,20 @@ func runFeedSync(cmd *cobra.Command, args []string) error {
 
 	// If URL is given but not ID, resolve the ID first.
 	if feedID == "" {
-		id, err := resolveFeedID(cmd.Context(), ep, feedURL)
+		id, err := resolveFeedID(cmd.Context(), client, feedURL)
 		if err != nil {
 			return err
 		}
 		feedID = id
 	}
 
-	resp, err := serverDo(cmd.Context(), ep, gohttp.MethodPost, feedsPath+"/"+feedID+"/sync", nil, 0)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+	var result map[string]any
+	if err := client.Post(cmd.Context(), feedsPath+"/"+url.PathEscape(feedID)+"/sync", nil, &result); err != nil {
+		return fmt.Errorf("sync feed %s: %w", feedID, err)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != gohttp.StatusAccepted && resp.StatusCode != gohttp.StatusOK {
-		return fmt.Errorf("server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
-	}
-
-	var result map[string]string
-	if err := json.Unmarshal(respBody, &result); err == nil {
-		if jobID := result["job_id"]; jobID != "" {
-			fmt.Printf("Sync job: %s\n", jobID)
-			return nil
-		}
+	if jobID, _ := result["job_id"].(string); jobID != "" {
+		fmt.Printf("Sync job: %s\n", jobID)
+		return nil
 	}
 
 	fmt.Printf("Feed %s sync triggered\n", feedID)
@@ -279,67 +224,64 @@ func runFeedSync(cmd *cobra.Command, args []string) error {
 
 func runFeedRemove(cmd *cobra.Command, args []string) error {
 	target := args[0]
-	ep := serverEndpoint(cmd)
+	client, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 
 	feedID := target
 	// If the arg looks like a URL, resolve the ID.
 	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
-		id, err := resolveFeedID(cmd.Context(), ep, target)
+		id, err := resolveFeedID(cmd.Context(), client, target)
 		if err != nil {
 			return err
 		}
 		feedID = id
 	}
 
-	resp, err := serverDo(cmd.Context(), ep, gohttp.MethodDelete, feedsPath+"/"+feedID, nil, 0)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != gohttp.StatusOK && resp.StatusCode != gohttp.StatusNoContent {
-		return fmt.Errorf("server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	req := dpkmsclient.Request{Method: gohttp.MethodDelete, Path: feedsPath + "/" + url.PathEscape(feedID)}
+	if err := client.Do(cmd.Context(), req, nil); err != nil {
+		return fmt.Errorf("remove feed %s: %w", feedID, err)
 	}
 
 	fmt.Printf("Feed %s removed\n", feedID)
 	return nil
 }
 
-// resolveFeedID looks up a feed ID by URL from the server's feed list.
-func resolveFeedID(ctx context.Context, ep idxbridge.Endpoint, feedURL string) (string, error) {
-	resp, err := serverGet(ctx, ep, feedsPath, 0)
-	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+// listFeeds fetches the feed subscriptions, optionally filtered by
+// status. The list arrives bare or wrapped as {"feeds": [...]}.
+func listFeeds(ctx context.Context, client *dpkmsclient.Client, status string) ([]feedResponse, error) {
+	var q url.Values
+	if status != "" {
+		q = url.Values{"status": {status}}
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read response: %w", err)
+	var raw json.RawMessage
+	if err := client.Get(ctx, feedsPath, q, &raw); err != nil {
+		return nil, fmt.Errorf("list feeds: %w", err)
 	}
-
-	if resp.StatusCode != gohttp.StatusOK {
-		return "", fmt.Errorf("server returned %d", resp.StatusCode)
-	}
-
 	var feeds []feedResponse
-	if err := json.Unmarshal(respBody, &feeds); err != nil {
+	if err := json.Unmarshal(raw, &feeds); err != nil {
 		var wrapper struct {
 			Feeds []feedResponse `json:"feeds"`
 		}
-		if err2 := json.Unmarshal(respBody, &wrapper); err2 != nil {
-			return "", fmt.Errorf("parse response: %w", err)
+		if err2 := json.Unmarshal(raw, &wrapper); err2 != nil {
+			return nil, fmt.Errorf("parse feed list: %w", err)
 		}
 		feeds = wrapper.Feeds
 	}
+	return feeds, nil
+}
 
+// resolveFeedID looks up a feed ID by URL from the server's feed list.
+func resolveFeedID(ctx context.Context, client *dpkmsclient.Client, feedURL string) (string, error) {
+	feeds, err := listFeeds(ctx, client, "")
+	if err != nil {
+		return "", err
+	}
 	for _, f := range feeds {
 		if f.URL == feedURL {
 			return f.ID, nil
 		}
 	}
-
 	return "", fmt.Errorf("no feed found with URL %s", feedURL)
 }

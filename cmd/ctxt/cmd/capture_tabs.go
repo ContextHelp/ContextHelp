@@ -223,7 +223,9 @@ func runCaptureTabs(cmd *cobra.Command, _ []string) error {
 	evaluateTabs(&report, sess.Tabs, filter)
 
 	if !report.DryRun {
-		sendTabs(ctx, cmd, &report)
+		if err := sendTabs(ctx, cmd, &report); err != nil {
+			return err
+		}
 	}
 
 	if err := renderTabsReport(cmd.OutOrStdout(), report); err != nil {
@@ -314,13 +316,18 @@ func evaluateTabs(report *tabsReport, tabs []chromium.Tab, filter *urlfilter.Fil
 	report.Summary.Total = len(tabs)
 }
 
-// sendTabs enqueues every would_send URL through the configured
-// endpoints — the routing, tokens and local fallback `ctxt analyze`
-// uses — with the request `ctxt capture <url>` builds. A failure is
-// recorded on its tab and the loop moves on.
-func sendTabs(ctx context.Context, cmd *cobra.Command, report *tabsReport) {
+// sendTabs enqueues every would_send URL through the resolved endpoint —
+// the routing, token and local fallback `ctxt analyze` uses — with the
+// request `ctxt capture <url>` builds. A failure is recorded on its tab
+// and the loop moves on; only an endpoint that does not resolve fails the
+// whole send.
+func sendTabs(ctx context.Context, cmd *cobra.Command, report *tabsReport) error {
+	endpoints, err := bridgeEndpoints(cmd)
+	if err != nil {
+		return err
+	}
 	bridge := idxbridge.New(idxbridge.Config{
-		Endpoints:       clientEndpoints(),
+		Endpoints:       endpoints,
 		AnalyzeFallback: idxbridge.AnalyzeFunc(localDirectAnalyze),
 		WarnWriter:      cmd.ErrOrStderr(),
 	})
@@ -350,6 +357,7 @@ func sendTabs(ctx context.Context, cmd *cobra.Command, report *tabsReport) {
 		report.Summary.Sent++
 	}
 	report.Summary.WouldSend = 0
+	return nil
 }
 
 func sendError(err error) string {

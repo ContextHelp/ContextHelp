@@ -153,8 +153,12 @@ func runList(cmd *cobra.Command, args []string) error {
 	if q := viper.GetString("list.q"); q != "" {
 		limit := viper.GetInt("list.limit")
 		offset := viper.GetInt("list.start")
+		endpoints, err := bridgeEndpoints(cmd)
+		if err != nil {
+			return err
+		}
 		bridge := idxbridge.New(idxbridge.Config{
-			Endpoints: clientEndpoints(),
+			Endpoints: endpoints,
 			Fallback:  svc,
 		})
 		objects, total, err := bridge.SearchObjects(ctx, q, limit, offset)

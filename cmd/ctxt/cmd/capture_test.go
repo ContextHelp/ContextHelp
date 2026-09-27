@@ -345,6 +345,9 @@ func TestCaptureEveryLoops(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	captureCmd.SetContext(ctx)
+	// cobra keeps a subcommand's context across Execute calls: leave a
+	// live one behind, or every later capture test runs canceled.
+	t.Cleanup(func() { captureCmd.SetContext(context.Background()) })
 
 	done := make(chan error, 1)
 	go func() {

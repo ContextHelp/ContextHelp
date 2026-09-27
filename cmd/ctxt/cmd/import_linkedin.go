@@ -83,7 +83,10 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 
 	since, err := parseSinceValue(sinceRaw)
@@ -206,7 +209,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 			source = "import:linkedin"
 		}
 
-		_, err := enqueueContent(ep, content, "text", pipeline, source)
+		_, err := enqueueContent(dc, content, "text", pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {
@@ -231,7 +234,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 			source = "import:linkedin"
 		}
 
-		_, err := enqueueContent(ep, content, "text", pipeline, source)
+		_, err := enqueueContent(dc, content, "text", pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

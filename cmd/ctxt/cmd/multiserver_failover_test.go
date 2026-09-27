@@ -47,31 +47,22 @@ func countingAnalyzeDaemon(t *testing.T, jobID string, hits *atomic.Int64) *http
 	return srv
 }
 
-// TestAnalyzePrimaryDownRoutesToFallbackInstance: with server.urls listing a
-// dead primary and a live fallback instance, the write routes to the fallback
-// instance — never the local direct path.
-func TestAnalyzePrimaryDownRoutesToFallbackInstance(t *testing.T) {
+// TestAnalyzeNeverFailsOverToSecondInstance: with server.urls listing a
+// dead first entry and a live second one, the write never reaches the
+// second: every invocation talks to exactly one endpoint.
+func TestAnalyzeNeverFailsOverToSecondInstance(t *testing.T) {
 	dbPath := tempDB(t)
 
 	var hits atomic.Int64
 	srv := countingAnalyzeDaemon(t, "job_failover_1", &hits)
 	cfgArgs := serverURLsConfig(t, deadServerURL, srv.URL)
 
-	out, err := executeCommand(append(append([]string{"analyze", "failover content"}, cfgArgs...), storageOverride(dbPath)...)...)
-	if err != nil {
-		t.Fatalf("analyze with live fallback instance: %v", err)
+	out, _ := executeCommand(append(append([]string{"analyze", "failover content"}, cfgArgs...), storageOverride(dbPath)...)...)
+	if hits.Load() != 0 {
+		t.Errorf("second server.urls entry served %d requests; want 0 (no failover)", hits.Load())
 	}
-	if !strings.Contains(out, "Job ID: job_failover_1") {
-		t.Errorf("output should carry the fallback instance's job ID: %q", out)
-	}
-	if hits.Load() != 1 {
-		t.Errorf("fallback instance analyze hits = %d; want 1", hits.Load())
-	}
-	if strings.Contains(out, "Queued locally") {
-		t.Errorf("no queued-locally notice when an instance accepted the write: %q", out)
-	}
-	if _, statErr := os.Stat(dbPath); statErr == nil {
-		t.Error("local database opened despite a live instance; write must route via API")
+	if strings.Contains(out, "job_failover_1") {
+		t.Errorf("output carries the second instance's job ID: %q", out)
 	}
 }
 
@@ -118,9 +109,10 @@ func TestAnalyzeServerFlagPinsRouting(t *testing.T) {
 	}
 }
 
-// TestListQueryPrimaryDownFallsBackToSecondInstance: the read surface walks
-// the same list — dead primary routes the RSQL search to the next instance.
-func TestListQueryPrimaryDownFallsBackToSecondInstance(t *testing.T) {
+// TestListQueryNeverFailsOverToSecondInstance: the read surface talks
+// to the one resolved endpoint; a dead first entry never routes the RSQL
+// search to the next instance.
+func TestListQueryNeverFailsOverToSecondInstance(t *testing.T) {
 	dbPath := tempDB(t)
 
 	var hits atomic.Int64
@@ -128,14 +120,8 @@ func TestListQueryPrimaryDownFallsBackToSecondInstance(t *testing.T) {
 	defer srv.Close()
 	cfgArgs := serverURLsConfig(t, deadServerURL, srv.URL)
 
-	out, err := executeCommand(append(append([]string{"list", "--q", "type==note"}, cfgArgs...), storageOverride(dbPath)...)...)
-	if err != nil {
-		t.Fatalf("list --q with live second instance: %v", err)
-	}
-	if hits.Load() != 1 {
-		t.Fatalf("second instance search hits = %d; want 1", hits.Load())
-	}
-	if !strings.Contains(out, "daemon-obj-1") {
-		t.Errorf("output should contain the instance-served object: %q", out)
+	_, _ = executeCommand(append(append([]string{"list", "--q", "type==note"}, cfgArgs...), storageOverride(dbPath)...)...)
+	if hits.Load() != 0 {
+		t.Fatalf("second instance search hits = %d; want 0 (no failover)", hits.Load())
 	}
 }

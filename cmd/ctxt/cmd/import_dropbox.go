@@ -85,7 +85,10 @@ func runImportDropbox(cmd *cobra.Command, args []string) error {
 	recursive, _ := cmd.Flags().GetBool("recursive")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 
 	if strings.TrimSpace(accessToken) == "" {
@@ -171,7 +174,7 @@ func runImportDropbox(cmd *cobra.Command, args []string) error {
 		}
 
 		payload := renderDropboxText(f)
-		_, err = enqueueContent(ep, payload, "text", pipelineName, "import:dropbox")
+		_, err = enqueueContent(dc, payload, "text", pipelineName, "import:dropbox")
 		if err != nil {
 			failed++
 			if firstErr == nil {

@@ -3,8 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	gohttp "net/http"
 	"net/url"
 	"os"
 	"time"
@@ -76,7 +74,10 @@ type logResponse struct {
 }
 
 func runLog(cmd *cobra.Command, _ []string) error {
-	ep := serverEndpoint(cmd)
+	client, err := newDpkmsClient(cmd, 30*time.Second)
+	if err != nil {
+		return err
+	}
 
 	params := url.Values{}
 	if v := mustGetInt(cmd, "limit"); v > 0 {
@@ -104,20 +105,9 @@ func runLog(cmd *cobra.Command, _ []string) error {
 		params.Set("actor", v)
 	}
 
-	resp, err := serverGet(cmd.Context(), ep, "/api/v1/audit-log?"+params.Encode(), 30*time.Second)
-	if err != nil {
-		return fmt.Errorf("audit-log request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != gohttp.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("server error %d: %s", resp.StatusCode, body)
-	}
-
 	var result logResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("decode response: %w", err)
+	if err := client.Get(cmd.Context(), "/api/v1/audit-log", params, &result); err != nil {
+		return fmt.Errorf("audit-log request: %w", err)
 	}
 
 	if isJSONOutput() {

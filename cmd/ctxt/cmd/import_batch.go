@@ -1,18 +1,15 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	gohttp "net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 )
 
@@ -99,7 +96,10 @@ func detectFormat(path string) string {
 }
 
 func runImportBatch(cmd *cobra.Command, args []string) error {
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	filePath, _ := cmd.Flags().GetString("file")
 	dirPath, _ := cmd.Flags().GetString("dir")
 	format, _ := cmd.Flags().GetString("format")
@@ -116,13 +116,13 @@ func runImportBatch(cmd *cobra.Command, args []string) error {
 	}
 
 	if dirPath != "" {
-		return runImportDir(ep, dirPath, dryRun)
+		return runImportDir(dc, dirPath, dryRun)
 	}
 
-	return runImportFile(ep, filePath, format, dryRun, mapContent, mapType, mapTags)
+	return runImportFile(dc, filePath, format, dryRun, mapContent, mapType, mapTags)
 }
 
-func runImportFile(ep idxbridge.Endpoint, filePath, format string, dryRun bool, mapContent, mapType, mapTags string) error {
+func runImportFile(dc *dpkmsclient.Client, filePath, format string, dryRun bool, mapContent, mapType, mapTags string) error {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
@@ -151,29 +151,9 @@ func runImportFile(ep idxbridge.Endpoint, filePath, format string, dryRun bool, 
 		payload["map_tags"] = mapTags
 	}
 
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
-	}
-
-	resp, err := serverDo(context.Background(), ep, gohttp.MethodPost, "/api/v1/import", bytes.NewReader(body), 0)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != gohttp.StatusAccepted && resp.StatusCode != gohttp.StatusOK {
-		return fmt.Errorf("server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
-	}
-
 	var result map[string]any
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return fmt.Errorf("parse response: %w", err)
+	if err := dc.Post(context.Background(), "/api/v1/import", payload, &result); err != nil {
+		return fmt.Errorf("import %s: %w", filepath.Base(filePath), err)
 	}
 
 	if dryRun {
@@ -193,7 +173,7 @@ func runImportFile(ep idxbridge.Endpoint, filePath, format string, dryRun bool, 
 	return nil
 }
 
-func runImportDir(ep idxbridge.Endpoint, dirPath string, dryRun bool) error {
+func runImportDir(dc *dpkmsclient.Client, dirPath string, dryRun bool) error {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return fmt.Errorf("read directory: %w", err)
@@ -244,29 +224,10 @@ func runImportDir(ep idxbridge.Endpoint, dirPath string, dryRun bool) error {
 			"filename": filepath.Base(f),
 			"dry_run":  false,
 		}
-		body, err := json.Marshal(payload)
-		if err != nil {
+		if err := dc.Post(context.Background(), "/api/v1/import", payload, nil); err != nil {
 			failed++
 			if firstErr == nil {
-				firstErr = err
-			}
-			continue
-		}
-
-		resp, err := serverDo(context.Background(), ep, gohttp.MethodPost, "/api/v1/import", bytes.NewReader(body), 0)
-		if err != nil {
-			failed++
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
-		}
-		resp.Body.Close()
-
-		if resp.StatusCode != gohttp.StatusAccepted && resp.StatusCode != gohttp.StatusOK {
-			failed++
-			if firstErr == nil {
-				firstErr = fmt.Errorf("server returned %d for %s", resp.StatusCode, filepath.Base(f))
+				firstErr = fmt.Errorf("%s: %w", filepath.Base(f), err)
 			}
 			continue
 		}
@@ -298,26 +259,14 @@ type batchStatusResponse struct {
 
 func runImportBatchStatus(cmd *cobra.Command, args []string) error {
 	batchID := args[0]
-	ep := serverEndpoint(cmd)
-
-	resp, err := serverGet(cmd.Context(), ep, "/api/v1/import/"+batchID, 0)
+	dc, err := newDpkmsClient(cmd, 0)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != gohttp.StatusOK {
-		return fmt.Errorf("server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return err
 	}
 
 	var status batchStatusResponse
-	if err := json.Unmarshal(respBody, &status); err != nil {
-		return fmt.Errorf("parse response: %w", err)
+	if err := dc.Get(cmd.Context(), "/api/v1/import/"+url.PathEscape(batchID), nil, &status); err != nil {
+		return fmt.Errorf("batch %s: %w", batchID, err)
 	}
 
 	if isJSONOutput() {

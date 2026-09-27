@@ -11,7 +11,8 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
+	"hop.top/kit/go/console/output"
 )
 
 // endpointHit is one request a mock dpkms instance received.
@@ -230,50 +231,44 @@ func TestCaptureWaitPollsServingInstanceWithToken(t *testing.T) {
 	}
 }
 
-// TestCaptureFailsOverWhenPrimaryUnreachable: a primary that cannot be
-// dialed passes the capture to the next configured instance, as analyze
-// does.
-func TestCaptureFailsOverWhenPrimaryUnreachable(t *testing.T) {
+// TestCaptureNeverFailsOverWhenPrimaryUnreachable: an unreachable
+// endpoint fails the capture with exit 70; the next configured instance
+// is never tried.
+func TestCaptureNeverFailsOverWhenPrimaryUnreachable(t *testing.T) {
 	secondary := startEndpointRecorder(t, "tok-2")
 	cfgPath := writeCaptureConfig(t, "server:\n  urls:\n    - "+closedServerURL(t)+
 		"\n    - url: "+secondary.URL()+"\n      token: tok-2\n")
 
 	out, err := executeCommand("capture", "failover content", "--wait", "-c", cfgPath)
-	if err != nil {
-		t.Fatalf("capture with unreachable primary: %v (out=%q)", err, out)
+	if got := ExitCodeFor(err); got != output.ExitPrerequisite {
+		t.Fatalf("capture with unreachable endpoint: exit %d (%v); want %d (out=%q)",
+			got, err, output.ExitPrerequisite, out)
 	}
-	hits := secondary.hitsOn("/api/v1/analyze")
-	if len(hits) != 1 || hits[0].Auth != "Bearer tok-2" {
-		t.Errorf("secondary analyze hits = %+v; want one with Bearer tok-2", hits)
-	}
-	if polls := secondary.hitsOn("/api/v1/jobs/job_routed"); len(polls) == 0 {
-		t.Error("--wait should poll the secondary that accepted the capture")
+	if n := len(secondary.Hits()); n != 0 {
+		t.Errorf("secondary got %d hits; capture must never fail over", n)
 	}
 }
 
-// TestCaptureFailsOverOnCredentialRejection: a primary that rejects the
-// credentials (refused before anything is stored) passes the capture on,
-// with a warning naming the instance.
-func TestCaptureFailsOverOnCredentialRejection(t *testing.T) {
+// TestCaptureCredentialRejectionEndsTheRequest: a 401 exits 5 and is
+// never retried against the next configured instance.
+func TestCaptureCredentialRejectionEndsTheRequest(t *testing.T) {
 	primary := startEndpointRecorder(t, "tok-real")
 	secondary := startEndpointRecorder(t, "")
 	cfgPath := writeCaptureConfig(t, "server:\n  urls:\n    - url: "+primary.URL()+
 		"\n      token: tok-wrong\n    - "+secondary.URL()+"\n")
 
 	out, err := executeCommand("capture", "auth content", "-c", cfgPath)
-	if err != nil {
-		t.Fatalf("capture with rejected primary credentials: %v (out=%q)", err, out)
+	if got := ExitCodeFor(err); got != output.ExitUnauthorized {
+		t.Fatalf("capture with rejected credentials: exit %d (%v); want %d (out=%q)",
+			got, err, output.ExitUnauthorized, out)
 	}
-	if len(secondary.hitsOn("/api/v1/analyze")) != 1 {
-		t.Error("capture should fall through to the secondary after a 401")
-	}
-	if !strings.Contains(out, primary.URL()) || !strings.Contains(out, "rejected credentials") {
-		t.Errorf("expected a warning naming the rejecting instance; got %q", out)
+	if n := len(secondary.Hits()); n != 0 {
+		t.Errorf("secondary got %d hits; a 401 must end the request", n)
 	}
 }
 
-// TestCaptureDoesNotReplayLiveRejection: a live instance's non-auth
-// rejection is surfaced, never replayed against the next instance.
+// TestCaptureDoesNotReplayLiveRejection: a live instance's rejection is
+// surfaced (5xx is TRANSIENT), never replayed against the next instance.
 func TestCaptureDoesNotReplayLiveRejection(t *testing.T) {
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -284,26 +279,32 @@ func TestCaptureDoesNotReplayLiveRejection(t *testing.T) {
 	cfgPath := writeCaptureConfig(t, "server:\n  urls:\n    - "+primary.URL+"\n    - "+secondary.URL()+"\n")
 
 	_, err := executeCommand("capture", "rejected content", "-c", cfgPath)
-	if err == nil || !strings.Contains(err.Error(), "dpkms returned 500") {
-		t.Fatalf("expected the primary's 500 to surface; got %v", err)
+	if got := ExitCodeFor(err); got != output.ExitTransient || !strings.Contains(err.Error(), "500") {
+		t.Fatalf("expected the primary's 500 to surface as exit %d; got exit %d: %v", output.ExitTransient, got, err)
 	}
 	if n := len(secondary.Hits()); n != 0 {
 		t.Errorf("secondary got %d hits; a live rejection must not be replayed", n)
 	}
 }
 
-// TestCaptureEndpointsUnconfiguredDefault: with nothing configured and no
-// --server, capture targets the shared client default (loopback :8080),
+// TestCaptureEndpointUnconfiguredDefault: with nothing configured and no
+// selection, capture targets the shared client default (loopback :8080),
 // unauthenticated.
-func TestCaptureEndpointsUnconfiguredDefault(t *testing.T) {
+func TestCaptureEndpointUnconfiguredDefault(t *testing.T) {
 	prev := cfg
 	t.Cleanup(func() { cfg = prev })
 	cfg = &config.Config{}
 	resetAllFlags(rootCmd)
+	t.Setenv("CTXT_INSTANCE", "")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("CTXT_DATA_DIR", "")
 
-	got := captureEndpoints(captureCmd)
-	want := []idxbridge.Endpoint{{URL: "http://127.0.0.1:8080"}}
-	if len(got) != 1 || got[0] != want[0] {
-		t.Errorf("captureEndpoints() = %+v; want %+v", got, want)
+	got, err := resolveEndpoint(captureCmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := dpkmsclient.Endpoint{URL: "http://127.0.0.1:8080"}
+	if got.Endpoint != want || got.Layer != dpkmsclient.LayerDefault {
+		t.Errorf("resolveEndpoint() = %+v; want %+v from the default layer", got, want)
 	}
 }

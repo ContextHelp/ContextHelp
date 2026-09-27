@@ -7,8 +7,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-
-	"github.com/spf13/viper"
 )
 
 // startMockSearchDaemon fakes the daemon's health + search surface.
@@ -41,10 +39,7 @@ func TestListQueryRoutesViaDaemon(t *testing.T) {
 	srv := startMockSearchDaemon(t, &hits)
 	defer srv.Close()
 
-	viper.Set("server.url", srv.URL)
-	t.Cleanup(func() { viper.Set("server.url", "") })
-
-	out, err := executeCommand(append([]string{"list", "--q", "type==note"}, storageOverride(dbPath)...)...)
+	out, err := executeCommand(append([]string{"list", "--q", "type==note", "-c", "server.url=" + srv.URL}, storageOverride(dbPath)...)...)
 	if err != nil {
 		t.Fatalf("list --q via live daemon: %v", err)
 	}
@@ -61,10 +56,7 @@ func TestListQueryRoutesViaDaemon(t *testing.T) {
 func TestListQueryFallsBackWhenDaemonDown(t *testing.T) {
 	dbPath := tempDB(t)
 
-	viper.Set("server.url", deadServerURL)
-	t.Cleanup(func() { viper.Set("server.url", "") })
-
-	out, err := executeCommand(append([]string{"list", "--q", "type==note"}, storageOverride(dbPath)...)...)
+	out, err := executeCommand(append([]string{"list", "--q", "type==note", "-c", "server.url=" + deadServerURL}, storageOverride(dbPath)...)...)
 	if err != nil {
 		t.Fatalf("list --q with daemon down should fall back locally: %v", err)
 	}

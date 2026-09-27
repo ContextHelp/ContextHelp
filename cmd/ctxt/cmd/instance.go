@@ -3,63 +3,87 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/spf13/cobra"
-	"hop.top/kit/go/console/output"
 )
 
-type instanceRow struct {
-	Name   string `table:"NAME"`
-	PID    int    `table:"PID"`
-	Port   int    `table:"PORT"`
-	GRPC   int    `table:"GRPC"`
-	DB     string `table:"DB"`
-	Uptime string `table:"UPTIME"`
+// instanceEntry is one row of `ctxt instance list`: a named server.urls
+// entry or a dpkms running on this machine. It never carries a token,
+// only whether one is attached.
+type instanceEntry struct {
+	Name    string `json:"name"`
+	Kind    string `json:"kind"` // "endpoint" or "local"
+	URL     string `json:"url"`
+	Token   bool   `json:"token"`
+	Current bool   `json:"current"`
+	PID     int    `json:"pid,omitempty"`
+	DB      string `json:"db,omitempty"`
+	Uptime  string `json:"uptime,omitempty"`
 }
 
 var instanceCmd = &cobra.Command{
 	Use:   "instance",
-	Short: "Manage the active dpkms instance",
-	Long: `Manage which dpkms instance ctxt commands target.
+	Short: "Select the dpkms instance ctxt talks to",
+	Long: `Select which dpkms instance ctxt commands talk to.
 
-When multiple dpkms instances are running (each with its own DB), use these
-commands to select which one receives ctxt commands.
+An instance is either a named server.urls entry (a URL plus its token,
+local or remote) or a dpkms running on this machine, found through its
+pidfile by name or port:
 
-The active instance is stored in:
+  server:
+    token: <default token>
+    urls:
+      - name: home
+        url: https://dpkms.example.ts.net:7700
+        token: <token for home>
+
+Every command talks to exactly one instance, resolved in this order:
+--server, --instance or CTXT_INSTANCE, the current instance set by
+` + "`ctxt instance use`" + `, the first server.urls entry, server.url, then
+http://127.0.0.1:8080. An unknown or stale name exits 70; ctxt never
+falls back to another instance.
+
+The current instance is stored in:
   $XDG_DATA_HOME/contexthelp/run/current-instance
 
 Per-call override (takes precedence over the state file):
-  ctxt --instance <name> stats
-  CTXT_INSTANCE=work ctxt stats`,
+  ctxt --instance home status
+  CTXT_INSTANCE=home ctxt log`,
 }
 
 var instanceListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List running dpkms instances",
-	Long: `List every running dpkms instance discovered via PID files.
+	Short:   "List named endpoints and running local dpkms instances",
+	Long: `List every named server.urls entry and every dpkms running on this
+machine (discovered via pidfiles).
 
-Each row reports name, PID, REST port, gRPC port, DB path, and uptime. A
-leading "* " marks the currently active instance (per the state file).
-Use ctxt instance use <name> to switch the active instance.`,
+Each row reports the name, kind (endpoint or local), URL and whether a
+token is attached; local rows add PID, database and uptime. A leading
+"* " marks the instance this invocation resolves to. Tokens are never
+printed. Use ctxt instance use <name> to switch.`,
 	RunE: runInstanceList,
 }
 
 var instanceUseCmd = &cobra.Command{
-	Use:   "use <name|-|port>",
+	Use:   "use <name|port|->",
 	Short: "Set the current instance (persisted to state file)",
-	Long: `Set the active dpkms instance for all subsequent ctxt commands.
+	Long: `Set the dpkms instance subsequent ctxt commands talk to.
 
-Pass '-' to clear the selection and revert to config-file storage.path.
-Pass a name (e.g. 'work') or a port number (e.g. '8081').
+Pass a server.urls entry name (e.g. 'home'), or the name or port of a
+dpkms running on this machine (e.g. 'work' or '8081'); a local instance
+is stored by name. Pass '-' to clear the selection. A name that matches
+neither exits 70 and lists what is configured.
 
 Examples:
-  ctxt instance use work
+  ctxt instance use home
   ctxt instance use 8081
   ctxt instance use -`,
 	Args: cobra.ExactArgs(1),
@@ -68,13 +92,12 @@ Examples:
 
 var instanceCurrentCmd = &cobra.Command{
 	Use:   "current",
-	Short: "Print the active instance name",
-	Long: `Print the name of the currently active dpkms instance.
-
-When a per-call override is set (CTXT_INSTANCE env var or --instance flag),
-that takes precedence. Otherwise the state file under
-$XDG_DATA_HOME/contexthelp/run/current-instance is consulted. Prints
-"(none — using config storage.path)" when no instance is selected.`,
+	Short: "Print the instance this invocation talks to",
+	Long: `Print the dpkms instance ctxt resolves to: its name, URL, the layer
+that chose it (--server, --instance, CTXT_INSTANCE, current-instance,
+server.urls, server.url or default) and whether a token is attached. The
+token itself is never printed. A stale current-instance selection exits
+70.`,
 	RunE: runInstanceCurrent,
 }
 
@@ -95,7 +118,7 @@ func init() {
 
 	// 12fcc strict-gate: examples + next-steps on every leaf.
 	cliconv.WithExamples(instanceListCmd, []cliconv.Example{
-		{Title: "List running dpkms instances", Command: "ctxt instance list"},
+		{Title: "List named endpoints and running dpkms instances", Command: "ctxt instance list"},
 		{Title: "Alias", Command: "ctxt instance ls"},
 	})
 	cliconv.WithExamples(instanceCurrentCmd, []cliconv.Example{
@@ -103,7 +126,7 @@ func init() {
 		{Title: "JSON for scripting", Command: "ctxt instance current --format json"},
 	})
 	cliconv.WithExamples(instanceUseCmd, []cliconv.Example{
-		{Title: "Switch to a named instance", Command: "ctxt instance use work"},
+		{Title: "Switch to a named endpoint", Command: "ctxt instance use home"},
 		{Title: "Clear the selection", Command: "ctxt instance use -"},
 	})
 	cliconv.WithNextSteps(instanceUseCmd, []cliconv.NextStep{
@@ -112,41 +135,75 @@ func init() {
 }
 
 func runInstanceList(cmd *cobra.Command, _ []string) error {
-	runDir, err := config.RunDir()
-	if err != nil {
-		return fmt.Errorf("run dir: %w", err)
+	var sc config.ServerConfig
+	if cfg != nil {
+		sc = cfg.Server
 	}
-	instances, err := pidfile.Scan(runDir)
+	locals, err := localInstances()
 	if err != nil {
-		return fmt.Errorf("scan: %w", err)
+		return fmt.Errorf("list local dpkms instances: %w", err)
 	}
-	if len(instances) == 0 {
-		fmt.Println("No running dpkms instances.")
+	fixed := func() ([]pidfile.Info, error) { return locals, nil }
+
+	// The marker shows where this invocation goes; a stale selection
+	// still lists, with a warning instead of a marker.
+	current, curErr := resolveEndpoint(cmd)
+	if curErr != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", curErr)
+	}
+
+	entries := make([]instanceEntry, 0, len(sc.URLs)+len(locals))
+	for _, e := range sc.URLs {
+		if e.Name == "" {
+			continue
+		}
+		r, err := dpkmsclient.Resolve(sc, dpkmsclient.Selection{Instance: e.Name}, fixed)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, instanceEntry{
+			Name: e.Name, Kind: "endpoint", URL: e.URL, Token: r.Token != "",
+			Current: curErr == nil && !current.Local && current.Name == e.Name,
+		})
+	}
+	for _, info := range locals {
+		r, err := dpkmsclient.Resolve(sc, dpkmsclient.Selection{Instance: strconv.Itoa(info.Port)}, fixed)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, instanceEntry{
+			Name: info.Name, Kind: "local", URL: r.URL, Token: r.Token != "",
+			Current: curErr == nil && current.Local && current.Name == info.Name,
+			PID:     info.PID, DB: info.DBPath,
+			Uptime: time.Since(info.StartedAt).Truncate(time.Second).String(),
+		})
+	}
+
+	if isJSONOutput() {
+		return outputJSON(cmd.OutOrStdout(), entries)
+	}
+	if len(entries) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "No named endpoints (server.urls) and no running dpkms instances.")
 		return nil
 	}
-
-	current := activeInstanceName()
-
-	rows := make([]instanceRow, len(instances))
-	for i, info := range instances {
+	rows := make([][]string, len(entries))
+	for i, e := range entries {
 		marker := "  "
-		if info.Name == current || fmt.Sprintf("%d", info.Port) == current {
+		if e.Current {
 			marker = "* "
 		}
-		rows[i] = instanceRow{
-			Name:   marker + info.Name,
-			PID:    info.PID,
-			Port:   info.Port,
-			GRPC:   info.GRPCPort,
-			DB:     info.DBPath,
-			Uptime: time.Since(info.StartedAt).Truncate(time.Second).String(),
+		pid := ""
+		if e.PID != 0 {
+			pid = strconv.Itoa(e.PID)
 		}
+		rows[i] = []string{marker + e.Name, e.Kind, e.URL, yesNo(e.Token), pid, e.DB, e.Uptime}
 	}
-	return output.Render(os.Stdout, output.Table, rows, output.WithTableStyle(root.TableStyle()))
+	printTable(cmd.OutOrStdout(), []string{"NAME", "KIND", "URL", "TOKEN", "PID", "DB", "UPTIME"}, rows)
+	return nil
 }
 
 func runInstanceUse(cmd *cobra.Command, args []string) error {
-	target := args[0]
+	target := strings.TrimSpace(args[0])
 
 	stateFile, err := config.CurrentInstanceFile()
 	if err != nil {
@@ -158,81 +215,60 @@ func runInstanceUse(cmd *cobra.Command, args []string) error {
 		if err := os.Remove(stateFile); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("clear instance: %w", err)
 		}
-		fmt.Println("Current instance cleared. Using config storage.path.")
+		fmt.Fprintln(cmd.OutOrStdout(), "Current instance cleared.")
 		return nil
 	}
 
-	// Validate: must match a live instance.
-	runDir, err := config.RunDir()
+	var sc config.ServerConfig
+	if cfg != nil {
+		sc = cfg.Server
+	}
+	r, err := dpkmsclient.Resolve(sc, dpkmsclient.Selection{Instance: target}, localInstances)
 	if err != nil {
-		return fmt.Errorf("run dir: %w", err)
-	}
-	infos, err := pidfile.Scan(runDir)
-	if err != nil {
-		return fmt.Errorf("scan: %w", err)
-	}
-	var found *pidfile.Info
-	for i := range infos {
-		if infos[i].Name == target || fmt.Sprintf("%d", infos[i].Port) == target {
-			found = &infos[i]
-			break
-		}
-	}
-	if found == nil {
-		e := output.PrerequisiteError(fmt.Sprintf("no running dpkms instance named %q", target))
-		e.SuggestedFix = "run `ctxt instance list` (or `dpkms ps`) to see running instances"
-		return e
+		return err
 	}
 
-	// Normalise to name so the state file is stable across port reassignments.
-	if err := os.WriteFile(stateFile, []byte(found.Name), 0600); err != nil {
+	// A local instance is stored by name, so the selection survives a
+	// port reassignment.
+	if err := os.WriteFile(stateFile, []byte(r.Name), 0o600); err != nil {
 		return fmt.Errorf("write state file: %w", err)
 	}
-	fmt.Printf("Current instance set to %q (port %d, db %s)\n", found.Name, found.Port, found.DBPath)
+	fmt.Fprintf(cmd.OutOrStdout(), "Current instance set to %q (%s, token: %s)\n", r.Name, r.URL, yesNo(r.Token != ""))
 	return nil
 }
 
+// instanceCurrent is `ctxt instance current --format json`.
+type instanceCurrent struct {
+	Name  string `json:"name"`
+	URL   string `json:"url"`
+	Key   string `json:"key"`
+	Layer string `json:"layer"`
+	Token bool   `json:"token"`
+	Local bool   `json:"local"`
+}
+
 func runInstanceCurrent(cmd *cobra.Command, _ []string) error {
-	current := activeInstanceName()
-	if current == "" {
-		runDir, err := config.RunDir()
-		if err == nil {
-			stateFile, _ := config.CurrentInstanceFile()
-			if _, statErr := os.Stat(stateFile); statErr == nil {
-				// State file exists but was empty/whitespace after trim — unusual.
-				_ = runDir
-			}
-		}
-		fmt.Println("(none — using config storage.path)")
-		return nil
-	}
-
-	// Resolve to full info if possible. Both lookups are enrichment only:
-	// the selected instance name is already known and printed either way,
-	// so a failure to resolve port/db details degrades to the bare name
-	// rather than failing the command.
-	runDir, err := config.RunDir()
+	r, err := resolveEndpoint(cmd)
 	if err != nil {
-		fmt.Println(current)
-		return nil //nolint:nilerr // enrichment only; the instance name is still printed
+		return err
 	}
-	infos, err := pidfile.Scan(runDir)
-	if err != nil {
-		fmt.Println(current)
-		return nil //nolint:nilerr // enrichment only; the instance name is still printed
+	cur := instanceCurrent{
+		Name: r.Name, URL: r.URL, Key: r.Key, Layer: string(r.Layer),
+		Token: r.Token != "", Local: r.Local,
 	}
-	for _, info := range infos {
-		if info.Name == current || fmt.Sprintf("%d", info.Port) == current {
-			if isJSONOutput() {
-				return outputJSON(os.Stdout, info)
-			}
-			fmt.Printf("%s (port %d, db %s)\n", info.Name, info.Port, info.DBPath)
-			return nil
-		}
+	if isJSONOutput() {
+		return outputJSON(cmd.OutOrStdout(), cur)
 	}
-
-	// Selected but not running.
-	fmt.Printf("%s (not running — use `ctxt instance use -` to clear)\n",
-		strings.TrimSpace(current))
+	w := cmd.OutOrStdout()
+	name := cur.Name
+	if name == "" {
+		name = "(unnamed)"
+	}
+	fmt.Fprintf(w, "%s  %s\n", name, cur.URL)
+	fmt.Fprintf(w, "  layer: %s\n", cur.Layer)
+	fmt.Fprintf(w, "  token: %s\n", yesNo(cur.Token))
+	if cur.Local {
+		fmt.Fprintln(w, "  local: running on this machine")
+	}
 	return nil
 }

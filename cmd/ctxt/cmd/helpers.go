@@ -16,7 +16,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	embregistry "github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -100,47 +99,6 @@ func newService() (*service.Service, func(), error) {
 	return svc, cleanup, nil
 }
 
-// clientEndpoints resolves the ordered dpkms endpoint list for client-side
-// routing, primary first, with per-instance credentials. Order:
-// config server.urls (each entry a URL or {url, token}; server.token fills
-// entries without their own) > server.url (bound to --server where the flag
-// exists, config otherwise) > the bridge default. Tokens only ever come
-// from config, never from flags.
-func clientEndpoints() []idxbridge.Endpoint {
-	def := cfg.Server.Token
-	if urls := cfg.Server.URLs; len(urls) > 0 {
-		eps := make([]idxbridge.Endpoint, len(urls))
-		for i, u := range urls {
-			tok := u.Token
-			if tok == "" {
-				tok = def
-			}
-			eps[i] = idxbridge.Endpoint{URL: u.URL, Token: tok}
-		}
-		return eps
-	}
-	if v := viper.GetString("server.url"); v != "" {
-		return []idxbridge.Endpoint{{URL: v, Token: def}}
-	}
-	if v := cfg.Server.URL; v != "" {
-		return []idxbridge.Endpoint{{URL: v, Token: def}}
-	}
-	return []idxbridge.Endpoint{{URL: idxbridge.DefaultBaseURL, Token: def}}
-}
-
-// pinnedEndpoint resolves an explicit --server URL to a single endpoint,
-// reusing the configured token when the URL matches a server.urls entry and
-// falling back to the server.token default otherwise.
-func pinnedEndpoint(rawURL string) idxbridge.Endpoint {
-	base := strings.TrimRight(rawURL, "/")
-	for _, ep := range clientEndpoints() {
-		if strings.TrimRight(ep.URL, "/") == base {
-			return idxbridge.Endpoint{URL: rawURL, Token: ep.Token}
-		}
-	}
-	return idxbridge.Endpoint{URL: rawURL, Token: cfg.Server.Token}
-}
-
 // resolveStoragePath returns the DB path to open, applying instance routing.
 // Resolution order: --instance flag / CTXT_INSTANCE env > state file > config.
 func resolveStoragePath() (string, error) {
@@ -161,15 +119,7 @@ func activeInstanceName() string {
 	if v := viper.GetString("instance"); v != "" {
 		return v
 	}
-	stateFile, err := config.CurrentInstanceFile()
-	if err != nil {
-		return ""
-	}
-	data, err := os.ReadFile(stateFile)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
+	return currentInstance()
 }
 
 // dbPathForInstance resolves a DB path from an instance name or port string.

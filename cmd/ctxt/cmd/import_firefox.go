@@ -53,7 +53,10 @@ func init() {
 
 func runImportFirefox(cmd *cobra.Command, args []string) error {
 	file, _ := cmd.Flags().GetString("file")
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -101,7 +104,7 @@ func runImportFirefox(cmd *cobra.Command, args []string) error {
 	)
 
 	for _, b := range bookmarks {
-		_, err := enqueueBookmark(ep, b.URL, pipelineName, "import:firefox")
+		_, err := enqueueBookmark(dc, b.URL, pipelineName, "import:firefox")
 		if err != nil {
 			failed++
 			if firstErr == nil {

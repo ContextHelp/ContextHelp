@@ -348,7 +348,9 @@ func runCaptureHistory(cmd *cobra.Command, _ []string) error {
 	if opts.dryRun {
 		report.Visits = historySample(all)
 	} else {
-		sendVisits(ctx, cmd, all, &report.Summary)
+		if err := sendVisits(ctx, cmd, all, &report.Summary); err != nil {
+			return err
+		}
 		for _, o := range all {
 			if o.Status == tabStatusSent || o.Status == tabStatusFailed {
 				report.Visits = append(report.Visits, o)
@@ -519,12 +521,17 @@ func evaluateVisit(v browserhistory.Visit, filter *urlfilter.Filter, seen map[st
 	return o
 }
 
-// sendVisits enqueues every would_send visit through the configured
-// endpoints with the request `ctxt capture <url>` builds, like capture
-// tabs. A failure is recorded on its visit and the loop moves on.
-func sendVisits(ctx context.Context, cmd *cobra.Command, visits []visitOutcome, s *historySummary) {
+// sendVisits enqueues every would_send visit through the resolved
+// endpoint with the request `ctxt capture <url>` builds, like capture
+// tabs. A failure is recorded on its visit and the loop moves on; only an
+// endpoint that does not resolve fails the whole send.
+func sendVisits(ctx context.Context, cmd *cobra.Command, visits []visitOutcome, s *historySummary) error {
+	endpoints, err := bridgeEndpoints(cmd)
+	if err != nil {
+		return err
+	}
 	bridge := idxbridge.New(idxbridge.Config{
-		Endpoints:       clientEndpoints(),
+		Endpoints:       endpoints,
 		AnalyzeFallback: idxbridge.AnalyzeFunc(localDirectAnalyze),
 		WarnWriter:      cmd.ErrOrStderr(),
 	})
@@ -554,6 +561,7 @@ func sendVisits(ctx context.Context, cmd *cobra.Command, visits []visitOutcome, 
 		s.Sent++
 	}
 	s.WouldSend = 0
+	return nil
 }
 
 // safeAdvancePoint returns the newest visit time the position may move
