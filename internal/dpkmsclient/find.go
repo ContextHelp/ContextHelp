@@ -26,6 +26,9 @@ type FindRequest struct {
 	Mode string `json:"mode,omitempty"`
 	// Limit caps the result list; 0 means dpkms's default (10).
 	Limit int `json:"limit,omitempty"`
+	// Profile restricts the search and facet counts to objects owned by
+	// that profile; empty means no profile filter.
+	Profile string `json:"profile,omitempty"`
 	// Filter narrows the search to objects matching metadata facets.
 	Filter FindFilter `json:"filter,omitzero"`
 	// Search holds the resolved retrieval knobs; nil fields take dpkms's

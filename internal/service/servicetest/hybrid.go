@@ -158,7 +158,8 @@ func ProfileCorpusID(profile, kind string) string {
 
 // RunHybridProfileScope asserts that every text search mode scopes to
 // ObjectFilter.ProfileID on drv (a fresh database): hybrid (both legs),
-// semantic and FTS return only the named profile's objects, and an empty
+// semantic and FTS return only the named profile's objects, as does Find
+// with FindRequest.Profile in each mode (facets too), and an empty
 // ProfileID does not scope — the same contract List and the query-language
 // engine honor.
 func RunHybridProfileScope(t *testing.T, drv storage.StorageDriver) {
@@ -212,6 +213,8 @@ func RunHybridProfileScope(t *testing.T, drv storage.StorageDriver) {
 		}
 	})
 
+	t.Run("find", func(t *testing.T) { runFindProfileScope(t, f) })
+
 	t.Run("fts", func(t *testing.T) {
 		objs, err := f.Svc.FindByTextFiltered(ctx, ProfileQuery, storage.ObjectFilter{ProfileID: "alpha", Limit: 20})
 		if err != nil {
@@ -222,6 +225,43 @@ func RunHybridProfileScope(t *testing.T, drv storage.StorageDriver) {
 			t.Errorf("got %v want %v", got, want)
 		}
 	})
+}
+
+// runFindProfileScope asserts Find with FindRequest.Profile answers only
+// that profile's objects in every mode, facet counts included, and an
+// unscoped Find answers every profile's.
+func runFindProfileScope(t *testing.T, f *HybridFixture) {
+	t.Helper()
+	ctx := context.Background()
+	for _, mode := range []string{service.FindModeHybrid, service.FindModeVector, service.FindModeFTS} {
+		res, err := f.Svc.Find(ctx, service.FindRequest{
+			Query: ProfileQuery, Mode: mode, Profile: "alpha", Limit: 20, Facets: true,
+		}, f.Sem)
+		if err != nil {
+			t.Fatalf("find %s: %v", mode, err)
+		}
+		want := []string{ProfileCorpusID("alpha", "text"), ProfileCorpusID("alpha", "vec")}
+		if mode == service.FindModeFTS {
+			want = want[:1]
+		}
+		if got := ids(res.Objects); !equal(got, want) {
+			t.Errorf("find %s, profile alpha: got %v want %v", mode, got, want)
+		}
+		counted := 0
+		for _, n := range res.Facets {
+			counted += n
+		}
+		if counted != 2 {
+			t.Errorf("find %s, profile alpha: facets %v count %d objects, want the profile's 2", mode, res.Facets, counted)
+		}
+	}
+	res, err := f.Svc.Find(ctx, service.FindRequest{Query: ProfileQuery, Limit: 20}, f.Sem)
+	if err != nil {
+		t.Fatalf("find unscoped: %v", err)
+	}
+	if len(res.Objects) != 2*len(ProfileCorpusProfiles) {
+		t.Errorf("find unscoped: got %v want all %d objects", ids(res.Objects), 2*len(ProfileCorpusProfiles))
+	}
 }
 
 func ids(objs []*storage.KnowledgeObject) []string {
