@@ -77,6 +77,10 @@ func (m *memObjectStore) SetReminder(_ context.Context, _ string, _ time.Time) e
 	return nil
 }
 
+func (m *memObjectStore) TransitionStatus(_ context.Context, _, _, _ string, _ time.Time) error {
+	return nil
+}
+
 func (m *memObjectStore) ClearReminder(_ context.Context, _ string) error { return nil }
 
 func (m *memObjectStore) ListDueReminders(_ context.Context, _ time.Time) ([]*storage.KnowledgeObject, error) {

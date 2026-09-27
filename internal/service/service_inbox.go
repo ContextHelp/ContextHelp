@@ -13,6 +13,11 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
+// inboxStatus is the status that makes an object an inbox item: capture
+// sets it, the inbox list and clear select on it, and triage and discard
+// act only on an object that has it.
+const inboxStatus = "inbox"
+
 // CaptureToInbox stores content as an inbox item without enqueuing a job.
 func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (*storage.KnowledgeObject, error) {
 	now := time.Now().Truncate(time.Second)
@@ -32,7 +37,7 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 		RawContent:  req.Content,
 		Source:      req.Source,
 		ContentHash: hash,
-		Status:      "inbox",
+		Status:      inboxStatus,
 		InboxNote:   req.InboxNote,
 		Mentions:    req.Mentions,
 		// T-0573: caller-asserted hints land directly on Tags (Source:"user")
@@ -59,7 +64,7 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 // ListInbox returns inbox items matching the filter.
 func (s *Service) ListInbox(ctx context.Context, filter InboxFilter) ([]*storage.KnowledgeObject, int, error) {
 	f := storage.ObjectFilter{
-		Status: "inbox",
+		Status: inboxStatus,
 		Limit:  filter.Limit,
 		Offset: filter.Offset,
 	}
@@ -72,25 +77,26 @@ func (s *Service) ListInbox(ctx context.Context, filter InboxFilter) ([]*storage
 	return s.Store.Objects().List(ctx, f)
 }
 
-// TriageInbox promotes an inbox item to "active" status and enqueues it for pipeline processing.
+// TriageInbox promotes an inbox item to "active" status and enqueues it
+// for pipeline processing. An object that is not an inbox item, or no
+// object at all, wraps storage.ErrNotFound and nothing changes.
 func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest) (string, error) {
 	obj, err := s.Store.Objects().Get(ctx, id)
 	if err != nil {
-		return "", fmt.Errorf("triage inbox: %w", err)
+		return "", fmt.Errorf("triage inbox item %s: %w", id, err)
 	}
-
+	now := time.Now().Truncate(time.Second)
+	if err := s.Store.Objects().TransitionStatus(ctx, id, inboxStatus, "active", now); err != nil {
+		return "", fmt.Errorf("triage inbox item %s: %w", id, err)
+	}
 	obj.Status = "active"
-	obj.UpdatedAt = time.Now().Truncate(time.Second)
-	if err := s.Store.Objects().Update(ctx, obj); err != nil {
-		return "", fmt.Errorf("triage inbox update: %w", err)
-	}
+	obj.UpdatedAt = now
 
 	pipelineName := req.Pipeline
 	if pipelineName == "" {
 		pipelineName = s.detectPipeline(obj.Source, "", obj.RawContent)
 	}
 
-	now := time.Now().Truncate(time.Second)
 	job := &storage.Job{
 		ID:         uuid.New().String(),
 		Type:       "ingest:" + obj.Type,
@@ -106,10 +112,8 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 		UserHints: req.Hints,
 	}
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
-		// Compensate: revert status if enqueueing fails.
-		obj.Status = "inbox"
-		obj.UpdatedAt = time.Now().Truncate(time.Second)
-		_ = s.Store.Objects().Update(ctx, obj)
+		// Compensate: return the item to the inbox.
+		_ = s.Store.Objects().TransitionStatus(ctx, id, "active", inboxStatus, time.Now().Truncate(time.Second))
 		return "", fmt.Errorf("triage inbox enqueue: %w", err)
 	}
 
@@ -119,15 +123,14 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 	return job.ID, nil
 }
 
-// DiscardInbox marks an inbox item as discarded.
+// DiscardInbox marks an inbox item as discarded. An object that is not
+// an inbox item, or no object at all, wraps storage.ErrNotFound and
+// nothing changes.
 func (s *Service) DiscardInbox(ctx context.Context, id string) error {
-	obj, err := s.Store.Objects().Get(ctx, id)
-	if err != nil {
-		return fmt.Errorf("discard inbox: %w", err)
+	if err := s.Store.Objects().TransitionStatus(ctx, id, inboxStatus, "discarded", time.Now().Truncate(time.Second)); err != nil {
+		return fmt.Errorf("discard inbox item %s: %w", id, err)
 	}
-	obj.Status = "discarded"
-	obj.UpdatedAt = time.Now().Truncate(time.Second)
-	return s.Store.Objects().Update(ctx, obj)
+	return nil
 }
 
 // ListInboxQueue returns a combined view of pending/running/failed jobs and raw objects.
@@ -237,7 +240,7 @@ func (s *Service) ClearInbox(ctx context.Context) (int, error) {
 	now := time.Now().Truncate(time.Second)
 	seen := map[string]bool{}
 	for {
-		items, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{Status: "inbox", Limit: clearInboxPage})
+		items, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{Status: inboxStatus, Limit: clearInboxPage})
 		if err != nil {
 			return len(seen), fmt.Errorf("clear inbox list: %w", err)
 		}

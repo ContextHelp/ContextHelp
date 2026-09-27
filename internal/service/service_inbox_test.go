@@ -97,3 +97,68 @@ func TestClearInboxClearsEveryPageAndOnlyInbox(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, n)
 }
+
+// Triage and discard act on inbox items only: an object in any other
+// status, or no object at all, is storage.ErrNotFound, and nothing is
+// written or enqueued.
+func TestTriageDiscardRefuseNonInboxObjects(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	created := time.Date(2026, 4, 1, 9, 0, 0, 0, time.UTC)
+	for id, status := range map[string]string{"o-active": "active", "o-discarded": "discarded", "o-raw": "raw"} {
+		require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+			ID: id, Type: "text", Status: status, RawContent: id, CreatedAt: created, UpdatedAt: created,
+		}))
+	}
+	jobCount := func() int {
+		_, n, err := svc.Store.Jobs().List(ctx, storage.JobFilter{Limit: 100})
+		require.NoError(t, err)
+		return n
+	}
+	jobsBefore := jobCount()
+
+	for id, status := range map[string]string{"o-active": "active", "o-discarded": "discarded", "o-raw": "raw", "o-missing": ""} {
+		jobID, err := svc.TriageInbox(ctx, id, TriageRequest{})
+		require.ErrorIs(t, err, storage.ErrNotFound, "triage %s", id)
+		assert.Empty(t, jobID, "triage %s", id)
+		require.ErrorIs(t, svc.DiscardInbox(ctx, id), storage.ErrNotFound, "discard %s", id)
+		if status == "" {
+			continue
+		}
+		got, err := svc.Store.Objects().Get(ctx, id)
+		require.NoError(t, err)
+		assert.Equal(t, status, got.Status, id)
+		assert.True(t, got.UpdatedAt.Equal(created), "%s updated_at moved to %s", id, got.UpdatedAt)
+	}
+	assert.Equal(t, jobsBefore, jobCount(), "a refused triage enqueued a job")
+}
+
+// A real inbox item still triages (active, one job) and discards.
+func TestTriageDiscardInboxItems(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	a, err := svc.CaptureToInbox(ctx, InboxCaptureRequest{Content: "to triage", Type: "text"})
+	require.NoError(t, err)
+	b, err := svc.CaptureToInbox(ctx, InboxCaptureRequest{Content: "to discard", Type: "text"})
+	require.NoError(t, err)
+
+	jobID, err := svc.TriageInbox(ctx, a.ID, TriageRequest{})
+	require.NoError(t, err)
+	require.NotEmpty(t, jobID)
+	job, err := svc.Store.Jobs().Get(ctx, jobID)
+	require.NoError(t, err)
+	assert.Equal(t, "to triage", job.Payload)
+	require.NoError(t, svc.DiscardInbox(ctx, b.ID))
+
+	got, err := svc.Store.Objects().Get(ctx, a.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "active", got.Status)
+	got, err = svc.Store.Objects().Get(ctx, b.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "discarded", got.Status)
+
+	// Once out of the inbox, neither can be processed again.
+	_, err = svc.TriageInbox(ctx, a.ID, TriageRequest{})
+	require.ErrorIs(t, err, storage.ErrNotFound)
+	require.ErrorIs(t, svc.DiscardInbox(ctx, b.ID), storage.ErrNotFound)
+}

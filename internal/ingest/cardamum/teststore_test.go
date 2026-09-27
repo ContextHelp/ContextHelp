@@ -57,7 +57,11 @@ func (m *testStore) Reinforce(_ context.Context, _ string, _ *storage.KnowledgeO
 }
 
 func (m *testStore) SetReminder(_ context.Context, _ string, _ time.Time) error { return nil }
-func (m *testStore) ClearReminder(_ context.Context, _ string) error            { return nil }
+func (m *testStore) TransitionStatus(_ context.Context, _, _, _ string, _ time.Time) error {
+	return nil
+}
+
+func (m *testStore) ClearReminder(_ context.Context, _ string) error { return nil }
 
 func (m *testStore) ListDueReminders(_ context.Context, _ time.Time) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
