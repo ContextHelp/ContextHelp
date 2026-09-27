@@ -149,13 +149,24 @@ func TestVerifyFTSSignature_MutationTriggersMismatch(t *testing.T) {
 		t.Errorf("NewHash should be the freshly computed value, not the perturbed one")
 	}
 
-	// Third call now matches — the new hash was persisted.
+	// A mismatch is never healed by verify: the stored bodies still carry
+	// the old projection until the re-projection job stamps the row.
 	res2, err := VerifyFTSSignature(ctx, d.db)
 	if err != nil {
 		t.Fatalf("fourth verify: %v", err)
 	}
-	if !res2.Match {
-		t.Errorf("expected Match=true after mismatch upsert healed the row")
+	if res2.Match || res2.OldHash != "deadbeef" {
+		t.Errorf("verify healed the mismatch: Match=%v OldHash=%q", res2.Match, res2.OldHash)
+	}
+	if err := indexsig.StampFTS(ctx, d.db, indexsig.DialectSQLite); err != nil {
+		t.Fatalf("stamp: %v", err)
+	}
+	res3, err := VerifyFTSSignature(ctx, d.db)
+	if err != nil {
+		t.Fatalf("fifth verify: %v", err)
+	}
+	if !res3.Match {
+		t.Errorf("expected Match=true after StampFTS")
 	}
 }
 

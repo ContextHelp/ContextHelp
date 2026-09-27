@@ -412,16 +412,18 @@ type VerifyResult struct {
 	// computation. Used in startup logs / bus payloads.
 	InputsSummary string
 	// FirstBoot is true when no prior signature row existed (the mismatch
-	// is expected; rebuild workers gate on this to skip the rebuild path).
+	// is expected, and verify stamped the row: nothing needs re-projecting).
 	FirstBoot bool
 }
 
 // VerifyFTS computes the current FTS signature, compares it against the
-// stored row, persists the freshly computed signature on mismatch, and
-// returns a VerifyResult describing what happened.
+// stored row, and returns a VerifyResult describing what happened.
 //
-// Detection-only per ADR-070 §3: callers may log and / or publish a bus
-// event on Match=false; the reindex worker acts separately.
+// Only a first boot (no row yet) is stamped here: an empty index has no
+// stale bodies. A mismatch is reported and left unstamped, because the
+// stored projected_fts_body values still carry the old projection; the
+// re-projection job stamps the row (StampFTS) once every object is
+// re-projected, so a run cut short is detected again on the next start.
 func VerifyFTS(ctx context.Context, db *sql.DB, d Dialect) (*VerifyResult, error) {
 	newHash, summary, err := ComputeFTS(ctx, db, d)
 	if err != nil {
@@ -445,12 +447,17 @@ func VerifyFTS(ctx context.Context, db *sql.DB, d Dialect) (*VerifyResult, error
 		return res, nil
 	}
 	res.OldHash = stored.SignatureHash
-	if stored.SignatureHash == newHash {
-		res.Match = true
-		return res, nil
-	}
-	if err := Upsert(ctx, db, d, FTSSignatureID, newHash, summary); err != nil {
-		return nil, err
-	}
+	res.Match = stored.SignatureHash == newHash
 	return res, nil
+}
+
+// StampFTS computes the current FTS signature and stores it. The
+// re-projection job calls it after the last stale object is re-projected;
+// nothing else stamps a mismatched signature.
+func StampFTS(ctx context.Context, db *sql.DB, d Dialect) error {
+	hash, summary, err := ComputeFTS(ctx, db, d)
+	if err != nil {
+		return fmt.Errorf("compute fts signature: %w", err)
+	}
+	return Upsert(ctx, db, d, FTSSignatureID, hash, summary)
 }
