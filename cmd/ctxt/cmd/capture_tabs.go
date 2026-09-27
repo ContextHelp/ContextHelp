@@ -14,8 +14,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/browser/chromium"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
-	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/urlfilter"
 	"github.com/spf13/cobra"
 	kitcli "hop.top/kit/go/console/cli"
@@ -69,10 +68,15 @@ read. Whatever is picked automatically is named on stderr; run
 Run with --dry-run first: it lists every tab with the filter's decision
 and the reason, and sends nothing.
 
+Tabs go only to the one instance ctxt resolves. When nothing answers
+there the command stops with exit 70, and when the instance rejects the
+token it stops with exit 5; nothing is queued locally or retried.
+
 Exit status: 0 when every allowed URL was accepted, 1 when any send
 failed (the rest are still sent), 2 for a bad invocation (unknown
 browser, unknown or ambiguous profile, nothing to auto-select), 3 when
-the browser, profile folder or session file is not on disk.`,
+the browser, profile folder or session file is not on disk, 5 when the
+instance rejected the token, 70 when the instance could not be reached.`,
 	Args: cobra.NoArgs,
 	RunE: runCaptureTabs,
 }
@@ -145,9 +149,6 @@ type tabOutcome struct {
 	Index    int    `json:"index"`
 	Window   int32  `json:"window"`
 	Allowed  bool   `json:"allowed"`
-	// QueuedLocally marks a URL enqueued on the local queue because no
-	// configured server answered.
-	QueuedLocally bool `json:"queued_locally,omitempty"`
 }
 
 type tabsSummary struct {
@@ -175,11 +176,19 @@ func runCaptureTabs(cmd *cobra.Command, _ []string) error {
 	}
 	browser := profile.Browser
 
+	dryRun := kitcli.IsDryRun(cmd)
+	var client *dpkmsclient.Client
+	if !dryRun {
+		if client, _, err = enqueueClient(cmd); err != nil {
+			return err
+		}
+	}
+
 	report := tabsReport{
 		Command:  cmd.CommandPath(),
 		Browser:  string(browser),
 		Profile:  tabsProfile{Name: profile.Name, Dir: profile.DirName},
-		DryRun:   kitcli.IsDryRun(cmd),
+		DryRun:   dryRun,
 		Tabs:     []tabOutcome{},
 		Warnings: []string{},
 	}
@@ -222,14 +231,17 @@ func runCaptureTabs(cmd *cobra.Command, _ []string) error {
 
 	evaluateTabs(&report, sess.Tabs, filter)
 
+	var sendErr error
 	if !report.DryRun {
-		if err := sendTabs(ctx, cmd, &report); err != nil {
-			return err
-		}
+		focusProfile, _ := cmd.Flags().GetString("profile")
+		sendErr = sendTabs(ctx, client, focusProfile, &report)
 	}
 
 	if err := renderTabsReport(cmd.OutOrStdout(), report); err != nil {
 		return err
+	}
+	if sendErr != nil {
+		return sendErr
 	}
 	if report.Summary.Failed > 0 {
 		attempted := report.Summary.Sent + report.Summary.Failed
@@ -316,56 +328,34 @@ func evaluateTabs(report *tabsReport, tabs []chromium.Tab, filter *urlfilter.Fil
 	report.Summary.Total = len(tabs)
 }
 
-// sendTabs enqueues every would_send URL through the resolved endpoint —
-// the routing, token and local fallback `ctxt analyze` uses — with the
+// sendTabs enqueues every would_send URL on client's instance with the
 // request `ctxt capture <url>` builds. A failure is recorded on its tab
-// and the loop moves on; only an endpoint that does not resolve fails the
-// whole send.
-func sendTabs(ctx context.Context, cmd *cobra.Command, report *tabsReport) error {
-	endpoints, err := bridgeEndpoints(cmd)
-	if err != nil {
-		return err
-	}
-	bridge := idxbridge.New(idxbridge.Config{
-		Endpoints:       endpoints,
-		AnalyzeFallback: idxbridge.AnalyzeFunc(localDirectAnalyze),
-		WarnWriter:      cmd.ErrOrStderr(),
-	})
-	focusProfile, _ := cmd.Flags().GetString("profile")
-
+// and the loop moves on, except one that ends the batch (see endsBatch):
+// that stops the loop and is returned, and the tabs not yet sent stay
+// would_send.
+func sendTabs(ctx context.Context, client *dpkmsclient.Client, focusProfile string, report *tabsReport) error {
 	for i := range report.Tabs {
 		o := &report.Tabs[i]
 		if o.Status != tabStatusWouldSend {
 			continue
 		}
-		jobID, servedBy, err := bridge.Analyze(ctx, service.AnalyzeRequest{
-			Content: o.URL,
-			Source:  o.URL,
-			Type:    "text",
-			Profile: focusProfile,
-		})
+		report.Summary.WouldSend--
+		jobID, err := client.Analyze(ctx, urlCaptureRequest(o.URL, focusProfile))
 		if err != nil {
 			o.Status = tabStatusFailed
-			o.Error = sendError(err)
+			o.Error = sendFailure(err)
 			report.Summary.Failed++
 			slog.Debug("capture tabs: send failed", "window", o.Window, "index", o.Index)
+			if endsBatch(err) {
+				return err
+			}
 			continue
 		}
 		o.Status = tabStatusSent
 		o.JobID = jobID
-		o.QueuedLocally = servedBy == ""
 		report.Summary.Sent++
 	}
-	report.Summary.WouldSend = 0
 	return nil
-}
-
-func sendError(err error) string {
-	var rerr *idxbridge.RemoteError
-	if errors.As(err, &rerr) {
-		return fmt.Sprintf("server returned %d: %s", rerr.StatusCode, strings.TrimSpace(rerr.Body))
-	}
-	return err.Error()
 }
 
 func renderTabsReport(w io.Writer, r tabsReport) error {
@@ -387,11 +377,7 @@ func renderTabsReport(w io.Writer, r tabsReport) error {
 			}
 			fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", statusLabel(o.Status), o.URL, displayTitle(o.Title), reason)
 		case o.Status == tabStatusSent:
-			detail := "job " + o.JobID
-			if o.QueuedLocally {
-				detail += " (queued locally)"
-			}
-			fmt.Fprintf(tw, "  %s\t%s\t%s\n", statusLabel(o.Status), o.URL, detail)
+			fmt.Fprintf(tw, "  %s\t%s\t%s\n", statusLabel(o.Status), o.URL, "job "+o.JobID)
 		case o.Status == tabStatusFailed:
 			fmt.Fprintf(tw, "  %s\t%s\t%s\n", statusLabel(o.Status), o.URL, o.Error)
 		}
@@ -406,9 +392,17 @@ func renderTabsReport(w io.Writer, r tabsReport) error {
 			s.WouldSend, s.Denied, s.Deduped, tabCount(s.Total))
 		return err
 	}
-	_, err := fmt.Fprintf(w, "sent %d, denied %d, deduped %d, failed %d (%s)\n",
-		s.Sent, s.Denied, s.Deduped, s.Failed, tabCount(s.Total))
+	_, err := fmt.Fprintf(w, "sent %d, denied %d, deduped %d, failed %d%s (%s)\n",
+		s.Sent, s.Denied, s.Deduped, s.Failed, notSent(s.WouldSend), tabCount(s.Total))
 	return err
+}
+
+// notSent renders the allowed items a stopped run never attempted.
+func notSent(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf(", not sent %d", n)
 }
 
 func tabCount(n int) string {

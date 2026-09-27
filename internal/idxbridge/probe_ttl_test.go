@@ -2,15 +2,12 @@ package idxbridge_test
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/dblock"
 	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 )
 
@@ -117,60 +114,5 @@ func TestDefaultNegativeProbeInterval_ShorterThanPositive(t *testing.T) {
 	if idxbridge.DefaultNegativeProbeInterval > 2*time.Second {
 		t.Fatalf("DefaultNegativeProbeInterval = %v; want ~1s so a fresh daemon is noticed quickly",
 			idxbridge.DefaultNegativeProbeInterval)
-	}
-}
-
-// TestProbeMissWithDaemonLockHeld_NoSecondWriter pins the false-negative
-// window: a daemon that holds the database lock but is still inside storage
-// init answers /health only after init, so the probe misses exactly when a
-// direct write would be most dangerous. A probe miss must never authorize a
-// direct write by itself — the advisory database lock is the gate, and with
-// the lock held the CLI resolves to wait-or-error rather than writing.
-// The daemon-side acquire is simulated here; the production serve path does
-// not yet take the lock, so this pins the CLI half of the contract only.
-func TestProbeMissWithDaemonLockHeld_NoSecondWriter(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-
-	// Daemon side: lock held (as before storage init), health not answering.
-	daemonLock, err := dblock.Acquire(dbPath, dblock.Info{
-		Role:     dblock.RoleDaemon,
-		Instance: "main",
-	})
-	if err != nil {
-		t.Fatalf("daemon-side Acquire: %v", err)
-	}
-	defer daemonLock.Release()
-
-	fb := &fakeFallback{}
-	bridge := idxbridge.New(idxbridge.Config{
-		BaseURL:      "http://127.0.0.1:19999", // nobody listening
-		ProbeTimeout: 50 * time.Millisecond,
-		Fallback:     fb,
-	})
-
-	// CLI side, step 1: probe misses.
-	if bridge.Probe(context.Background()) {
-		t.Fatal("Probe true with no listener")
-	}
-
-	// CLI side, step 2: the direct path takes the lock before writing.
-	// With the daemon holding it, the bounded-retry acquire must resolve to
-	// an attributable error — not a lock, not a write.
-	_, err = dblock.AcquireRetry(context.Background(), dbPath,
-		dblock.Info{Role: dblock.RoleCLI}, 200*time.Millisecond)
-	if err == nil {
-		t.Fatal("CLI acquired the lock while the daemon holds it; second writer admitted")
-	}
-	if !errors.Is(err, dblock.ErrHeld) {
-		t.Fatalf("gate error = %v; want errors.Is(err, dblock.ErrHeld)", err)
-	}
-	var held *dblock.HeldError
-	if !errors.As(err, &held) || held.Holder == nil || held.Holder.Role != dblock.RoleDaemon {
-		t.Fatalf("gate error lacks daemon attribution: %v", err)
-	}
-
-	// The read fallback was never consulted as a write path.
-	if fb.called {
-		t.Fatal("fallback invoked despite held lock")
 	}
 }

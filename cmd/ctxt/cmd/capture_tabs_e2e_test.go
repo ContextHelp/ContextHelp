@@ -100,6 +100,9 @@ type tabsEnv struct {
 	reqs []tabsReq
 	// fail makes the server reject an analyze request for these URLs.
 	fail map[string]bool
+	// status, when set, answers every analyze request with this status
+	// and a dpkms error envelope, e.g. 401 for a rejected token.
+	status int
 	// extraEnv is appended to the process environment, e.g. a second
 	// browser's CTXT_<BROWSER>_USER_DATA_DIR.
 	extraEnv []string
@@ -139,8 +142,14 @@ func (e *tabsEnv) serve(w http.ResponseWriter, r *http.Request) {
 		e.reqs = append(e.reqs, tabsReq{Auth: r.Header.Get("Authorization"), Body: body})
 		n := len(e.reqs)
 		fail := e.fail[body.Content]
+		status := e.status
 		e.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
+		if status != 0 {
+			w.WriteHeader(status)
+			_, _ = fmt.Fprintf(w, `{"error":{"code":"REJECTED","message":"test server answers %d"}}`, status)
+			return
+		}
 		if fail {
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"error":"boom"}`))
