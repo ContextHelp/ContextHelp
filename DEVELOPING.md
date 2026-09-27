@@ -79,7 +79,7 @@ Docker.
 |---|---|---|
 | `make test-unit` | `./cmd/...`, `./internal/...` | nothing |
 | `make test-integration` | `./test/integration/...` | Postgres + Redis |
-| `make test-smoke` | `./test/smoke/...` | `BUS_TOKEN` set |
+| `make test-smoke` | `./test/smoke/...` | nothing |
 | `make test-e2e` | `./test/e2e/...` against a built binary | Chrome/Chromium for the headless checks (optional) |
 | `make test` | everything, with coverage | as above |
 | `make test-all` | unit + integration + smoke | as above |
@@ -105,14 +105,69 @@ so it is safe to run them while your own `dpkms serve` listens on
   and `CTXT_INSTANCE`;
 - writes a user config whose `server.url` is `http://127.0.0.1:1`, a closed
   port, so a test that configures no server gets connection-refused;
-- wraps `http.DefaultTransport` to refuse requests to loopback `:8080` and
-  `:8081`. Any refusal prints `live-server guard: refused request to ... from
-  <TestName>` and fails the run, even when the test itself passes.
+- wraps `http.DefaultTransport` to refuse requests to the loopback ports a
+  real instance listens on: `:8080` and `:8081` (HTTP), `:9090` and `:9091`
+  (gRPC), `:9377` (cookie bridge). Any refusal prints `live-server guard:
+  refused request to ... from <TestName>` and fails the run, even when the
+  test itself passes.
 
-A test that needs a server starts an `httptest.Server` and points the command
-at it with `-c <config>` or `--server`. A helper that builds its own subprocess
-env must set `server.url` or `server.urls` itself. It must never drop back to
-an empty config dir.
+Every new test package gets the same `TestMain`:
+
+```go
+func TestMain(m *testing.M) { os.Exit(testguard.Main(m, nil, "ctxt")) }
+```
+
+A helper that builds its own subprocess env must set `server.url` or
+`server.urls` itself. It must never drop back to an empty config dir.
+
+#### A dpkms for command tests
+
+`setupTestDB(t)` in `cmd/ctxt/cmd` creates a temporary SQLite database and
+starts an in-process dpkms over it (`internal/dpkmstest`). The instance is the
+real router and service, built by the same `internal/server/stack.Build` that
+`dpkms serve` uses, behind an `httptest` server on an ephemeral loopback port.
+Seed through `db.Driver`; a command reaches the same data over the API.
+
+```go
+db := setupTestDB(t, dpkmstest.WithStaticTokens()) // protected; admin/writer/reader tokens
+db.useRole(t, dpkmstest.RoleReader)                // the client now sends the reader token
+out, err := db.exec("status")                      // routed to db.Server.URL
+resp := db.Server.Request(t, http.MethodGet, "/api/v1/objects/"+id, dpkmstest.RoleAdmin, nil)
+```
+
+- `server.url`, plus `server.token` for a protected instance, goes into the
+  user-level config (`db.ClientConfigPath`). `--config` layers over it, so a
+  test that writes its own `server` section wins.
+- Options: `WithStaticTokens()`, `WithAuthProvider(p)` to plug in another
+  `auth.Provider`, `Unreachable()` for a closed port.
+- The fixture is hermetic. Every provider backend is the stub, and the
+  embedding provider is a stub on a closed port. No worker pool runs, so
+  enqueued jobs stay pending.
+- Outside `cmd/ctxt/cmd`, call `dpkmstest.Start(t, driver, opts...)`
+  directly.
+- A hand-built `httptest.Server` is still right for simulating a specific
+  response that the real API can't produce on demand.
+
+#### A dpkms binary for e2e tests
+
+`testutil.StartDpkms(t)` (`test/testutil`) builds `./cmd/dpkms` once per test
+binary and runs `dpkms serve` for the test:
+
+- in a hermetic HOME and XDG root, with `CTXT_*`, `CH_*`, `DPKMS_*` and
+  `BUS_TOKEN` removed from the inherited env;
+- with a protected config (mode 0600), static admin, writer and reader tokens,
+  and stub providers;
+- on free ephemeral HTTP and gRPC ports. It reads the actual ports back from
+  the instance's pidfile.
+
+The process leads its own process group. Cleanup, or any failed start, sends
+SIGTERM and then SIGKILL to the whole group. `d.WriteCtxtConfig(t, role)`
+points a built `ctxt`, run with `d.Env`, at the instance. It is skipped under
+`-short`.
+
+A protected instance binds `0.0.0.0`, as `dpkms serve` does for every
+non-private access class. Tests reach it on `127.0.0.1`. `PrivateDpkms()`
+keeps it on loopback, without auth.
 
 `cmd/ctxt/cmd` currently has a timing-sensitive failure
 (`TestE2ECaptureEveryShortLoop`, "expected 2-5 captures in 280ms ... got 0") that
@@ -143,13 +198,12 @@ refused rather than overridden.
 
 ### Smoke tests
 
-These boot a real `dpkms serve` and poll its health endpoint. The server
-refuses to start without a bus token, so the tier fails with
-`bus auth: set BUS_TOKEN or DPKMS_BUS_TOKEN env var` unless you export one.
-Any non-empty value works locally:
+These boot a real `dpkms serve` through `testutil.StartDpkms`, with its own
+bus token and hermetic dirs, then poll its health endpoint and round-trip an
+analyze job:
 
 ```bash
-BUS_TOKEN=devtoken make test-smoke
+make test-smoke
 ```
 
 ### Integration tests — the Docker tier
