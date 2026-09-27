@@ -121,6 +121,7 @@ Core endpoints:
 - `GET /objects/{id}/related`
 - `PATCH /objects/{id}`
 - `DELETE /objects/{id}`
+- `POST /find`
 - `GET /profiles`
 - `GET /profiles/{name}`
 - `POST /compose`
@@ -359,6 +360,104 @@ Any other parameter is a 400 `INVALID_PARAM`. An unknown `{id}` is a 404 `NOT_FO
   }
 }
 ```
+
+---
+
+## Search: Find
+
+### `POST /find`
+
+Full-text, vector or hybrid search, with the diagnostics `ctxt find` prints and, on request, a per-result score breakdown and facet counts. Scope: `read:objects`. REST only; gRPC has no equivalent method.
+
+dpkms embeds the query itself, with the default embedding model's provider as configured on the dpkms host. The client doesn't embed anything. The caller resolves its profile and search strategy and sends the resulting values (ADR-077 §6).
+
+#### Request
+
+```json
+{
+  "query": "rotating signing keys",
+  "mode": "hybrid",
+  "limit": 10,
+  "filter": {
+    "meta_type": "task",
+    "topic": "security",
+    "person": "alice-chen",
+    "source_type": "slack",
+    "since": "2026-04-01",
+    "until": "2026-04-30"
+  },
+  "search": {
+    "rrf_k": 60,
+    "fts_weight": 0.5,
+    "vector_weight": 0.5,
+    "fts_pool": 50,
+    "vector_pool": 50,
+    "min_score": 0,
+    "fallback_to_fts": true,
+    "mention_boost_per_mention": 0.05,
+    "max_mention_boost": 1.0,
+    "direct_backlink_boost": 0.08,
+    "hop_backlink_boost": 0.03
+  },
+  "explain": false,
+  "facets": false
+}
+```
+
+- `query` is required.
+- `mode` is `fts`, `vector` or `hybrid`. It defaults to `hybrid`.
+- `limit` defaults to 10.
+- `filter` and each of its fields are optional. `since` and `until` are dates (`YYYY-MM-DD`), compared with an object's `dates_mentioned`.
+- In `search`, any knob you leave out takes the built-in default shown above, which is also ctxt's config default. `rrf_k` and the pools must be positive. The weights, `min_score` and the boosts must not be negative. `min_score` applies to hybrid results.
+- `explain` applies to `hybrid` mode only. Other modes ignore it.
+- `facets` counts metadata types over every object `filter` matches, whatever the `limit`.
+- An unknown field gets 400, so a misspelled knob never silently falls back to its default.
+
+#### Response
+
+```json
+{
+  "query": "rotating signing keys",
+  "mode": "hybrid",
+  "objects": [{"id": "o_123", "type": "text", "metadata": {"rrf_score": 0.0164}}],
+  "total": 1,
+  "diagnostics": {
+    "candidate_count": 3,
+    "below_threshold_count": 0,
+    "threshold": 0,
+    "staleness_warning": {"count": 1, "reason": "1 objects in this result set are pending pipeline upgrade — run 'ctxt upgrade plan' to see what's affected"},
+    "semantic": {"status": "ok", "model_id": "arctic"}
+  },
+  "explain": [
+    {
+      "id": "o_123",
+      "score_breakdown": {"fts": 0.0082, "vector": 0.0082, "mention_boost": 0, "graph_relevance": 0, "word_overlap": 0, "total": 0.0164},
+      "document_view": {"title": "Key rotation runbook"}
+    }
+  ],
+  "facets": {"task": 1, "(none)": 2}
+}
+```
+
+- `objects` lists the results, best first. It is `[]`, never `null`, when nothing matched. In hybrid mode without `explain`, each object's `metadata.rrf_score` is its total score. In vector mode, `metadata.score` is its similarity.
+- `diagnostics` is zero-valued, with no `semantic` block, in `fts` mode:
+  - `candidate_count` counts the objects either leg returned before the threshold.
+  - `below_threshold_count`, `top_below_threshold_score` and `threshold` describe the candidates `min_score` dropped. When there are no results but `below_threshold_count` is positive, everything that matched fell below the threshold.
+  - `staleness_warning` appears when hybrid candidates are pending a pipeline upgrade.
+  - `semantic.status` is `ok`, `no_default_model`, `provider_error`, `dimension_mismatch`, `index_missing` or `low_coverage`. Any status except `ok` comes with a `detail` and a one-line `notice`, and means the results are full-text only.
+- `explain` has one entry per object, in the same order. It is present only for `hybrid` with `explain: true`.
+- `facets` maps metadata type to count, with `(none)` for objects without one. It is present only when requested.
+
+#### Errors
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | The body isn't valid JSON, has an unknown field, lacks `query`, or has a bad `mode`, date or knob |
+| 401 | `UNAUTHORIZED` | The token is missing or invalid (protected and public instances) |
+| 403 | `INSUFFICIENT_SCOPE` | The token lacks `read:objects` |
+| 422 | `SEMANTIC_UNAVAILABLE` | The request sets `fallback_to_fts: false` and the semantic leg can't run. `details.status` gives the reason, and `details.model_id` the model when there is one |
+
+With `fallback_to_fts` on (the default), a semantic leg that can't run, for example because the embedding provider is down, doesn't fail the search. Vector and hybrid modes answer full-text only and report the reason in `diagnostics.semantic`.
 
 ---
 

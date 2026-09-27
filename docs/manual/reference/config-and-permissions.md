@@ -70,7 +70,7 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 
 | Scope | Bundles | Routes (under `/api/v1`) and gRPC methods |
 |---|---|---|
-| `read:objects` | reader, writer, admin | `GET` objects (list, facets, show, related), search, entities (list, show, backlinks), aliases, saved searches, search history, suggestions; `GET /events`; the MCP mount; gRPC `QueryService/*`, `EntityService/*` |
+| `read:objects` | reader, writer, admin | `GET` objects (list, facets, show, related), search, entities (list, show, backlinks), aliases, saved searches, search history, suggestions; `POST /find`; `GET /events`; the MCP mount; gRPC `QueryService/*`, `EntityService/*` |
 | `read:inbox` | reader, writer, admin | `GET /inbox` |
 | `read:feeds` | reader, writer, admin | `GET /feeds` |
 | `read:jobs` | reader, writer, admin | `GET` jobs, `import/{id}`, `importers/runs/{id}`, `capture/recent`; gRPC `JobService/*` |
