@@ -422,6 +422,22 @@ jobs:
           POSTGRES_PASSWORD: test_password
           POSTGRES_DB: contexthelp_test
 
+      # The search-graph endpoint's black-box suite drives the built ctxt
+      # and dpkms binaries over throwaway databases; its Postgres run needs
+      # both the e2e and integration tags, so only that test runs here (the
+      # SQLite run is part of the test job's e2e step).
+      - name: Run search-graph endpoint e2e on Postgres
+        run: >-
+          go test -v -count=1 -tags 'fts5 e2e integration'
+          -run TestDpkmsGraph_Postgres ./test/e2e/searchgraph/
+        env:
+          CGO_ENABLED: '1'
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: contexthelp
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: contexthelp_test
+
   build:
     name: Build
     runs-on: ubuntu-latest

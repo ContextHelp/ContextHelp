@@ -85,7 +85,8 @@ test-integration:
 # the same POSTGRES_* env block, so all three must be listed or the Postgres
 # coverage never runs. The embeddings journey's Postgres variant lives in
 # cmd/ctxt/cmd and the task-job claim tests in internal/jobs; both run by
-# name. Mirrors the integration job in
+# name, as does the search-graph endpoint's Postgres e2e run (e2e tag too).
+# Mirrors the integration job in
 # .github/workflows/ci.yml; the devcontainer supplies the env block.
 test-integration-services:
 	@echo "Running integration tests (requires Postgres + Redis)..."
@@ -97,6 +98,8 @@ test-integration-services:
 		-run 'TestClaim_.*_Postgres' ./internal/jobs/
 	go test -v -tags=integration,fts5 -count=1 \
 		-run TestEmbeddingsJourney_Postgres ./cmd/ctxt/cmd/
+	CGO_ENABLED=1 go test -v -tags 'fts5 e2e integration' -count=1 \
+		-run TestDpkmsGraph_Postgres ./test/e2e/searchgraph/
 
 ## test-smoke: Run binary smoke tests
 test-smoke:
