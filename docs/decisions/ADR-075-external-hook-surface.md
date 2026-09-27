@@ -86,7 +86,11 @@ Sections 1–6 below apply these decisions.
 - **After events are ctxt-owned topics** that pass `ValidateTopic` (K1–K2). They keep every topic that already passes: `ctxt.runtime.object.deleted`, `ctxt.embeddings.model.{promoted,deprecated,purged}`, `dpkms.embeddings.migration.{completed,failed}`, and so on.
   - When a mutation goes through `domain.Service[T]`, its post phases are rebranded to these topics with `WithTopics` (K9), and the pre phases stay on kit's defaults so policy still sees them.
   - Hook-system events are `ctxt.runtime.hook.failed` and `ctxt.runtime.hook.gap_detected` (a subscriber fell behind retention).
-- **Every new topic is built through `bus.TopicOf` or `PrefixTopics`**, so `ValidateTopic` checks it when the process starts, as `internal/lateral/events/catalog.go` already does. Constants built by string concatenation are not added.
+- **Every new topic is a declared constant that passes `ValidateTopic`.** Either form is accepted:
+  - a `bus.Topic` string constant, as in `internal/events/topics.go` and each plugin's `topics.go`, checked by the repo-wide guard test (it reads constants from source and round-trips each through `ParseTopic` and `TopicOf`);
+  - a catalog built through `bus.TopicOf` or `PrefixTopics`, checked when the process starts, as in `internal/lateral/events/catalog.go`.
+
+  Topics built by string concatenation, and inline literals at publish sites, are not added.
 - **Catalog.** A spec file, `contracts/hooks/events.yaml`, lists what can be hooked:
   - each before-hook key (kit topic, `kind`, `action`), with which process hosts it and its failure class (closed for destructive actions, open otherwise)
   - each after topic, with its payload schema and which fields are redacted
