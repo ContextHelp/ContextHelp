@@ -202,3 +202,169 @@ func TestEveryPluginTopicFollowsKitGrammar(t *testing.T) {
 		t.Fatal("found no plugin topic constants; the scan is broken")
 	}
 }
+
+// literalTopicAllowlist names publish sites outside this change's scope
+// that still pass an inline literal. Each entry must still be a valid
+// kit topic; the guard checks that too. Remove entries as they move to
+// catalog constants.
+var literalTopicAllowlist = map[string]bool{
+	"internal/lateral/daemon/lifecycle.go": true,
+}
+
+// containsStringLit reports whether expr builds its value from a string
+// literal anywhere (a literal, a conversion of one, a concatenation).
+func containsStringLit(expr ast.Expr) (string, bool) {
+	var found string
+	ast.Inspect(expr, func(n ast.Node) bool {
+		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING && found == "" {
+			found = lit.Value
+		}
+		return found == ""
+	})
+	return found, found != ""
+}
+
+// importPaths maps each import's local name to its path for one file.
+func importPaths(f *ast.File) map[string]string {
+	m := map[string]string{}
+	for _, imp := range f.Imports {
+		p, _ := strconv.Unquote(imp.Path.Value)
+		name := filepath.Base(p)
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		m[name] = p
+	}
+	return m
+}
+
+const (
+	eventsPkg    = "github.com/ideacrafterslabs/ctxt/internal/events"
+	kitBusPkg    = "hop.top/kit/go/runtime/bus"
+	pluginapiPkg = "github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+)
+
+// selectorPkg returns the import path and selected name of pkg.Name.
+func selectorPkg(expr ast.Expr, imports map[string]string) (string, string) {
+	sel, ok := expr.(*ast.SelectorExpr)
+	if !ok {
+		return "", ""
+	}
+	id, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return "", ""
+	}
+	return imports[id.Name], sel.Sel.Name
+}
+
+// topicArgs returns the expressions that name a published topic in n.
+func topicArgs(n ast.Node, imports map[string]string) []ast.Expr {
+	switch x := n.(type) {
+	case *ast.CallExpr:
+		return callTopicArgs(x, imports)
+	case *ast.CompositeLit:
+		return eventTypeArgs(x, imports)
+	}
+	return nil
+}
+
+// callTopicArgs handles events.NewEvent, bus.NewEvent, bus.Topic and the
+// Publisher.Publish(ctx, topic, source, payload) shape used by the
+// ambient and lateral publishers.
+func callTopicArgs(x *ast.CallExpr, imports map[string]string) []ast.Expr {
+	pkg, name := selectorPkg(x.Fun, imports)
+	switch {
+	case pkg == eventsPkg && name == "NewEvent" && len(x.Args) >= 2:
+		return []ast.Expr{x.Args[1]}
+	case pkg == kitBusPkg && (name == "NewEvent" || name == "Topic") && len(x.Args) >= 1:
+		return []ast.Expr{x.Args[0]}
+	}
+	if sel, ok := x.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Publish" && len(x.Args) >= 3 {
+		return []ast.Expr{x.Args[1]}
+	}
+	return nil
+}
+
+// eventTypeArgs handles events.Event{Type: ...} and
+// pluginapi.Event{Type: ...} literals.
+func eventTypeArgs(x *ast.CompositeLit, imports map[string]string) []ast.Expr {
+	pkg, name := selectorPkg(x.Type, imports)
+	if name != "Event" || (pkg != eventsPkg && pkg != pluginapiPkg) {
+		return nil
+	}
+	for _, elt := range x.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "Type" {
+			return []ast.Expr{kv.Value}
+		}
+	}
+	return nil
+}
+
+// TestPublishSitesUseTopicConstants walks every non-test Go file in the
+// repo and fails on a publish whose topic is an inline string literal
+// instead of a declared topic constant (internal/events, a plugin's
+// Topic* constants, or the lateral TopicOf catalog).
+func TestPublishSitesUseTopicConstants(t *testing.T) {
+	root := repoRoot(t)
+	sites := 0
+	reported := map[string]bool{} // a bus.Topic(lit) inside bus.NewEvent is one site
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		name := d.Name()
+		if d.IsDir() {
+			if path != root && (strings.HasPrefix(name, ".") || name == "vendor" || name == "node_modules" ||
+				name == "testdata" || name == "docs") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, path)
+		rel = filepath.ToSlash(rel)
+		imports := importPaths(f)
+		ast.Inspect(f, func(n ast.Node) bool {
+			for _, arg := range topicArgs(n, imports) {
+				sites++
+				lit, ok := containsStringLit(arg)
+				if !ok {
+					continue
+				}
+				at := rel + ":" + strconv.Itoa(fset.Position(arg.Pos()).Line)
+				if reported[at+lit] {
+					continue
+				}
+				reported[at+lit] = true
+				if !literalTopicAllowlist[rel] {
+					t.Errorf("%s: topic %s is an inline literal; publish a declared topic constant", at, lit)
+					continue
+				}
+				if val, err := strconv.Unquote(lit); err == nil {
+					if err := bus.ValidateTopic(bus.Topic(val)); err != nil {
+						t.Errorf("%s: allowlisted literal topic: %v", at, err)
+					}
+				}
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sites < 50 {
+		t.Fatalf("found %d publish sites; the scan is broken", sites)
+	}
+}

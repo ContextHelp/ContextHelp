@@ -90,7 +90,7 @@ Sections 1–6 below apply these decisions.
 - **Catalog.** A spec file, `contracts/hooks/events.yaml`, lists what can be hooked:
   - each before-hook key (kit topic, `kind`, `action`), with which process hosts it and its failure class (closed for destructive actions, open otherwise)
   - each after topic, with its payload schema and which fields are redacted
-- **Existing topics that violate kit's rules** are listed as follow-up work under Consequences. This ADR renames nothing.
+- **Existing topics that violated kit's rules** are listed in the naming audit under Consequences, with their renames.
 
 ### 2. Hook hosts
 
@@ -211,25 +211,33 @@ These limits are accepted, with no kit change requested.
 4. **A remote veto over `/ws/bus`** is impossible (K12). Remote before hooks are webhooks called by the host.
 5. **Rewriting a payload** is impossible (K6 has no channel for it).
 
-### Naming audit: follow-up work
+### Naming audit
 
-Every topic below was checked against K1–K4. This ADR fixes none of them.
+Every topic below was checked against K1–K4. They were renamed outright in a follow-up change, with no aliases, since ctxt has not been released.
 
-**Topics that fail `ValidateTopic` (K2), or fail the grammar outright (K1):**
+**Fixed: topics that failed `ValidateTopic` (K2) or the grammar (K1):**
 
-- **`ctxt.ambient.source.ready`.** "ready" is not past tense. It is published at `internal/ambient/filewatch/filewatch.go:149`, `internal/ambient/screenshot/screenshot.go:170`, `internal/ambient/foreground/foreground.go:157`, `internal/ambient/meeting/meeting.go:208`, `internal/ambient/browserhistory/browserhistory.go:148` and `internal/ambient/clipboard/clipboard.go:143`, and built by the string concatenation in `internal/ambient/ambient.go:149-151`. The ADR-065 adapter lifecycle already renamed the same word to `readied` (`internal/adapter/events.go:21-27`).
-- **Two-segment event types on `svc.Bus`.** These bypass kit validation entirely, because `events.LocalBus` never validates:
-  - `object.raw_stored` at `internal/service/service.go:205`
-  - `job.enqueued` at `internal/service/service.go:294` and `:722`. It also duplicates `ctxt.runtime.job.enqueued`, which `internal/jobs/worker.go:440` publishes.
-  - `object.updated` at `internal/service/service.go:440` and `object.deleted` at `:454`. The conformant constants `ctxt.runtime.object.{updated,deleted}` are declared at `internal/events/topics.go:13-14` but never used.
-  - `inbox.captured` at `internal/service/service_inbox.go:54` and `inbox.triaged` at `:120`.
-- **Plugin event types.** Their segments contain hyphens (invalid characters under K1), and some actions are not past tense:
-  - `ctxt.plugin.content-monitor.{seen,change,error}` at `plugins/content-monitor/plugin.go:194`, `:226` and `:239`
-  - `ctxt.plugin.dir-watcher.{file,error}` at `plugins/dir-watcher/plugin.go:251` and `:264`
-  - `ctxt.plugin.rss-feed.{error,item}` at `plugins/rss-feed/plugin.go:105` and `:268`
-- **Plugin capability events.** `ctxt.refresh.trigger` (`internal/plugin/capability.go:88`) and `ctxt.notification.create` (`:98`) have three segments and imperative actions.
+| Was | Now | Where |
+|---|---|---|
+| `ctxt.ambient.source.ready` | `ctxt.ambient.source.readied` | six ambient sources; follows the ADR-065 adapter precedent (`internal/adapter/events.go`) |
+| `object.raw_stored` | `ctxt.runtime.object.raw_stored` | `internal/service/service.go` |
+| `job.enqueued` | `ctxt.runtime.job.enqueued` | `internal/service/service.go`; the same topic the worker fan-out publishes, one event per enqueue |
+| `object.updated`, `object.deleted` | `ctxt.runtime.object.{updated,deleted}` | `internal/service/service.go`, with `ObjectUpdatedPayload` / `ObjectDeletedPayload` |
+| `inbox.captured`, `inbox.triaged` | `ctxt.runtime.inbox.{captured,triaged}` | `internal/service/service_inbox.go` |
+| `ctxt.plugin.content-monitor.{seen,change,error}` | `ctxt.content_monitor.{baseline.recorded,page.changed,check.failed}` | `plugins/content-monitor` |
+| `ctxt.plugin.dir-watcher.{file,error}` | `ctxt.dir_watcher.{file.detected,scan.failed}` | `plugins/dir-watcher` |
+| `ctxt.plugin.rss-feed.{item,error}` | `ctxt.rss_feed.{item.detected,feed.failed}` | `plugins/rss-feed` |
+| `ctxt.refresh.trigger` | `ctxt.plugin.refresh.requested` | `internal/plugin/capability.go` |
+| `ctxt.notification.create` | `ctxt.plugin.notification.requested` | `internal/plugin/capability.go` |
 
-**Validation is switched off:** `cmd/ctxt/cmd/lateral.go:191` builds its bus with `bus.WithEnforce(bus.ModeOff)`.
+The two `svc.Bus` subscribers that still listened on `job.completed` / `job.failed` (the REPL job watcher and gRPC `WatchJob`) now subscribe to `ctxt.runtime.job.{completed,failed}`.
+
+**Fixed: validation switched off.** `cmd/ctxt/cmd/lateral.go` built its bus with `bus.WithEnforce(bus.ModeOff)`. It now uses kit's default mode and reports invalid topics on stderr. Nothing was masked: every lateral topic comes from the `TopicOf` catalog.
+
+**Guard.** `internal/events/topics_guard_test.go` keeps this fixed:
+
+- Every topic constant in `internal/events`, and every `Topic*` constant of a plugin under `plugins/`, passes `ValidateTopic`, round-trips through `ParseTopic` and `TopicOf`, and carries no unintended object modifier. Constants are read from source, so a new one is checked without registering it.
+- No publish site passes an inline string literal as its topic. The one remaining exception is `internal/lateral/daemon/lifecycle.go` (`ctxt.lateral.scan.{failed,completed}`), which is conformant and allowlisted until it uses the lateral catalog.
 
 **Already conformant:**
 
