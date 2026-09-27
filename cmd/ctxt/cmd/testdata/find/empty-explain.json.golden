@@ -1,0 +1,15 @@
+{
+  "diagnostics": {
+    "candidate_count": 0,
+    "below_threshold_count": 0,
+    "threshold": 0,
+    "semantic": {
+      "status": "ok",
+      "model_id": "arctic-find"
+    }
+  },
+  "mode": "hybrid",
+  "query": "rotating signing keys without downtime",
+  "results": [],
+  "total": 0
+}

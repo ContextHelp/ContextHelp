@@ -1,0 +1,68 @@
+{
+  "diagnostics": {
+    "candidate_count": 2,
+    "below_threshold_count": 0,
+    "threshold": 0,
+    "semantic": {
+      "status": "ok",
+      "model_id": "arctic-find"
+    }
+  },
+  "mode": "hybrid",
+  "query": "rotating signing keys without downtime",
+  "results": [
+    {
+      "object": {
+        "id": "note-fts",
+        "type": "note",
+        "raw_content": "",
+        "metadata": {
+          "fts_score": -0.8827586549672107
+        },
+        "summaries": [
+          "runbook: rotating signing keys without downtime"
+        ],
+        "status": "active",
+        "created_at": "2026-03-04T05:06:07Z",
+        "updated_at": "2026-03-04T05:06:07Z",
+        "fts_indexed": true
+      },
+      "score_breakdown": {
+        "fts": 0.00819672131147541,
+        "vector": 0,
+        "mention_boost": 0,
+        "graph_relevance": 0,
+        "word_overlap": 0,
+        "total": 0.00819672131147541
+      },
+      "document_view": {}
+    },
+    {
+      "object": {
+        "id": "note-vec",
+        "type": "note",
+        "raw_content": "unrelated wording",
+        "text_content": "unrelated wording",
+        "metadata": {
+          "score": 1
+        },
+        "status": "active",
+        "created_at": "2026-03-04T05:06:07Z",
+        "updated_at": "2026-03-04T05:06:07Z",
+        "fts_indexed": true
+      },
+      "score_breakdown": {
+        "fts": 0,
+        "vector": 0.00819672131147541,
+        "mention_boost": 0,
+        "graph_relevance": 0,
+        "word_overlap": 0,
+        "total": 0.00819672131147541
+      },
+      "document_view": {
+        "body": "unrelated wording"
+      }
+    }
+  ],
+  "total": 2
+}

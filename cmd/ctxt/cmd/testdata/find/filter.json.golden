@@ -1,0 +1,11 @@
+{
+  "diagnostics": {
+    "candidate_count": 0,
+    "below_threshold_count": 0,
+    "threshold": 0
+  },
+  "mode": "fts",
+  "objects": [],
+  "query": "rotating signing keys without downtime",
+  "total": 0
+}

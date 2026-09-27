@@ -1,0 +1,50 @@
+{
+  "diagnostics": {
+    "candidate_count": 2,
+    "below_threshold_count": 0,
+    "threshold": 0,
+    "semantic": {
+      "status": "ok",
+      "model_id": "arctic-find"
+    }
+  },
+  "facets": {
+    "(none)": 2,
+    "task": 1
+  },
+  "mode": "hybrid",
+  "objects": [
+    {
+      "id": "note-fts",
+      "type": "note",
+      "raw_content": "",
+      "metadata": {
+        "fts_score": -0.8827586549672107,
+        "rrf_score": 0.00819672131147541
+      },
+      "summaries": [
+        "runbook: rotating signing keys without downtime"
+      ],
+      "status": "active",
+      "created_at": "2026-03-04T05:06:07Z",
+      "updated_at": "2026-03-04T05:06:07Z",
+      "fts_indexed": true
+    },
+    {
+      "id": "note-vec",
+      "type": "note",
+      "raw_content": "unrelated wording",
+      "text_content": "unrelated wording",
+      "metadata": {
+        "rrf_score": 0.00819672131147541,
+        "score": 1
+      },
+      "status": "active",
+      "created_at": "2026-03-04T05:06:07Z",
+      "updated_at": "2026-03-04T05:06:07Z",
+      "fts_indexed": true
+    }
+  ],
+  "query": "rotating signing keys without downtime",
+  "total": 2
+}
