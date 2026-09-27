@@ -109,6 +109,16 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 	if filter.ContentStatus != "" {
 		query += fmt.Sprintf(" AND content_status = $%d", argIdx)
 		args = append(args, string(filter.ContentStatus))
+		argIdx++
+	}
+	if filter.Query != "" {
+		// aliases may hold a JSON null (an entity stored without any);
+		// jsonb_array_elements_text rejects a scalar, so read it as [].
+		query += fmt.Sprintf(` AND (lower(slug) LIKE $%[1]d ESCAPE '\' OR lower(title) LIKE $%[1]d ESCAPE '\'
+			OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(
+				CASE WHEN jsonb_typeof(aliases) = 'array' THEN aliases ELSE '[]'::jsonb END) AS a(v)
+				WHERE lower(a.v) LIKE $%[1]d ESCAPE '\'))`, argIdx)
+		args = append(args, storage.ContainsPattern(filter.Query))
 	}
 
 	query += " ORDER BY slug ASC"
@@ -148,12 +158,17 @@ func (s *EntityStore) Resolve(ctx context.Context, mention string) (*storage.Ent
 		return entity, nil
 	}
 
-	// Try alias match using JSONB containment.
+	// Try alias match using JSONB containment. The probe is JSON-encoded:
+	// Go's %q quoting is not JSON for every mention.
+	probe, err := json.Marshal([]string{mention})
+	if err != nil {
+		return nil, fmt.Errorf("resolve entity: %w", err)
+	}
 	row = s.db.QueryRowContext(ctx, `SELECT
 		slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at
-	FROM entities WHERE aliases @> $1::jsonb`, fmt.Sprintf(`[%q]`, mention))
+	FROM entities WHERE aliases @> $1::jsonb`, string(probe))
 	return scanEntity(row)
 }
 

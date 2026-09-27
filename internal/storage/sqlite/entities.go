@@ -114,6 +114,12 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 		query += " AND content_status = ?"
 		args = append(args, string(filter.ContentStatus))
 	}
+	if filter.Query != "" {
+		query += ` AND (lower(slug) LIKE ? ESCAPE '\' OR lower(title) LIKE ? ESCAPE '\'
+			OR EXISTS (SELECT 1 FROM json_each(aliases) WHERE lower(json_each.value) LIKE ? ESCAPE '\'))`
+		p := storage.ContainsPattern(filter.Query)
+		args = append(args, p, p, p)
+	}
 
 	query += " ORDER BY slug ASC"
 
