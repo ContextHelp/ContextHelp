@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/fs"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -60,6 +61,9 @@ type RouterConfig struct {
 	// on an authenticated instance; Auth must then be
 	// Sessions.Provider(base). nil = no browser sessions.
 	Sessions *authn.Sessions
+	// SessionRecheck is how often an open event stream re-checks its
+	// session; zero means DefaultSessionRecheck.
+	SessionRecheck time.Duration
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -142,6 +146,7 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		// consumes authn.Provider, never a scheme.
 		if rc.Auth != nil {
 			r.Use(RequireAuth(rc.Auth, rc.Security))
+			r.Use(SessionGuard(rc.Sessions, rc.Security, rc.DevCORS, rc.SessionRecheck))
 		}
 		r.Use(UpgradeHeader(probes.Upgrade))
 		mountAPIRoutes(r, apiRoutes(svc, rc), rc)
