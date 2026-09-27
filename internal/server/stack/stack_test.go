@@ -1,4 +1,4 @@
-package cmd
+package stack
 
 import (
 	"testing"
@@ -17,7 +17,7 @@ func staticAuthCfg() config.AuthConfig {
 
 func TestResolveInboundAuthPrivateDefault(t *testing.T) {
 	cfg := &config.Config{}
-	access, provider, err := resolveInboundAuth(cfg, false)
+	access, provider, err := ResolveInboundAuth(cfg, false)
 	if err != nil {
 		t.Fatalf("resolveInboundAuth: %v", err)
 	}
@@ -32,14 +32,14 @@ func TestResolveInboundAuthPrivateDefault(t *testing.T) {
 func TestResolveInboundAuthProtectedWithoutCredentialsRefuses(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Server.Access = config.AccessProtected
-	if _, _, err := resolveInboundAuth(cfg, false); err == nil {
+	if _, _, err := ResolveInboundAuth(cfg, false); err == nil {
 		t.Fatal("expected refusal for protected instance without credentials")
 	}
 }
 
 func TestResolveInboundAuthPublicFlagWithoutCredentialsRefuses(t *testing.T) {
 	cfg := &config.Config{}
-	if _, _, err := resolveInboundAuth(cfg, true); err == nil {
+	if _, _, err := ResolveInboundAuth(cfg, true); err == nil {
 		t.Fatal("expected refusal for --public without credentials")
 	}
 }
@@ -48,7 +48,7 @@ func TestResolveInboundAuthExplicitPrivatePlusPublicFlagRefuses(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Server.Access = config.AccessPrivate
 	cfg.Server.Auth = staticAuthCfg()
-	if _, _, err := resolveInboundAuth(cfg, true); err == nil {
+	if _, _, err := ResolveInboundAuth(cfg, true); err == nil {
 		t.Fatal("expected hard error for access: private + --public")
 	}
 }
@@ -57,7 +57,7 @@ func TestResolveInboundAuthProtectedWithCredentials(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Server.Access = config.AccessProtected
 	cfg.Server.Auth = staticAuthCfg()
-	access, provider, err := resolveInboundAuth(cfg, false)
+	access, provider, err := ResolveInboundAuth(cfg, false)
 	if err != nil {
 		t.Fatalf("resolveInboundAuth: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestResolveInboundAuthProtectedWithCredentials(t *testing.T) {
 func TestResolveInboundAuthPublicShorthandWithCredentials(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Server.Auth = staticAuthCfg()
-	access, provider, err := resolveInboundAuth(cfg, true)
+	access, provider, err := ResolveInboundAuth(cfg, true)
 	if err != nil {
 		t.Fatalf("resolveInboundAuth: %v", err)
 	}
