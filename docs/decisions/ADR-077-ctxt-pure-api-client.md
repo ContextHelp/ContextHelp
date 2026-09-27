@@ -1,6 +1,6 @@
 # ADR-077 – ctxt Is a Pure dpkms API Client; Instances Resolve to Endpoints
 
-> **Status:** Proposed
+> **Status:** Accepted (2026-09-27)
 > **Date:** 2026-09-27
 > **Author:** jadb
 > **Applies to:** ctxt CLI (every command), dPKMS HTTP and gRPC surface, client endpoint configuration
@@ -71,10 +71,11 @@ A 401 or 403 always ends the request. It is never retried against another instan
      - otherwise, a running local dpkms whose pidfile name or port matches, as `http://127.0.0.1:<port>` with `server.token`;
      - otherwise, exit 70, and the error lists the configured names.
   3. The current-instance state file written by `ctxt instance use`, resolved as in step 2. A stale selection is an error, not a silent fall-through.
-  4. `server.urls` in order. The first entry is the primary.
+  4. The first `server.urls` entry. Other entries are reachable only by name or `--server`.
   5. `server.url`.
   6. The default, `http://127.0.0.1:8080`.
-- **Failover.** Steps 4 to 6 may yield several endpoints. The client moves to the next one only after a dial or DNS failure, when no request byte was sent. It then prints to stderr which instance answered. Steps 1 to 3 always yield exactly one endpoint.
+- **No failover.** Every step yields exactly one endpoint. When it can't be dialled, ctxt exits 70. It never tries another `server.urls` entry, because that would write into, or read from, a different corpus.
+- **Instance key.** The resolver also returns a key: the entry's name, else the normalized URL. Client-side state (watch records, the browser-history position) is kept per key.
 - **Tokens come only from config,** never from flags. This is unchanged.
 - **`ctxt instance list | use | current`** shows and selects named endpoints as well as running local instances. `current` prints the resolved URL, the layer that chose it, and whether a token is attached.
 
@@ -82,13 +83,15 @@ A 401 or 403 always ends the request. It is never retried against another instan
 
 This follows ADR-023's capability model:
 
-- **Every `/api/v1` route declares a required scope** in ADR-023's `verb:resource` grammar, for example `read:objects`, `write:objects`, `delete:objects`, `write:inbox`, `process:inbox`, `sync:registries`, `admin:plugins`, `admin:embeddings`, `admin:audit`.
+- **Every `/api/v1` route declares a required scope** in ADR-023's `verb:resource` grammar, for example `read:objects`, `write:objects`, `delete:objects`, `write:inbox`, `process:inbox`, `sync:registries`, `admin:plugins`, `admin:embeddings`, `admin:upgrade`, `admin:audit`.
 - **Every gRPC method declares one too,** through a matching interceptor, so gRPC cannot be used to bypass the HTTP checks.
 - **The static provider's roles are fixed bundles of scopes:**
   - `admin` holds every scope.
+  - `writer` holds every `read:*` and `write:*` scope. It's meant for capture-only devices, and gets no delete, inbox processing or admin scopes.
   - `reader` holds every `read:*` scope.
 - A principal without the scope gets 403. A route with no declared scope fails a test, so every new route has to choose one.
 - **Private instances** (no auth provider, loopback only) grant every scope, as today.
+- **Admin principals bypass the inbound entitlement and metering gate** on entity reads. That gate exists for third-party consumers, not the owner.
 - **`GET /api/v1/whoami`** returns the principal ID and its effective scopes, so `ctxt status` and `ctxt instance current` can show who the client is.
 
 ### 5. Where each operator command lives
@@ -98,7 +101,10 @@ The rule follows the ctxt/dpkms boundary (`docs/dpkms-or-ctxt.md`): ctxt decides
 - **Commands stay in ctxt and call admin-scoped endpoints when they:**
   - express a decision about what knowledge the instance holds or how it is retrieved, such as the embedding-model lifecycle, registry subscriptions and knowledge lint;
   - or need a component that is only reachable where dpkms runs, such as the embedding provider probe.
-- **Commands move to the `dpkms` CLI when they are substrate maintenance** that takes a raw predicate over the storage schema or runs a long in-process worker against the database. The only case is `ctxt upgrade run`, which becomes `dpkms upgrade run`, with its `--where` SQL escape hatch. `ctxt upgrade plan` and `ctxt upgrade status` stay as reads.
+- **No command moves to the `dpkms` CLI.** Work that used to run in-process against the database becomes a job the daemon runs behind an admin endpoint.
+  - `ctxt upgrade run` calls `POST /api/v1/upgrade/runs`, which accepts a pipeline filter only.
+  - The raw SQL `--where` escape hatch is deleted, because the storage schema is not part of the API.
+  - `ctxt upgrade plan` and `ctxt upgrade status` stay as reads.
 
 ### 6. Brain settings travel with the request
 
@@ -111,6 +117,7 @@ Profile definitions, search strategy, resurfacing and lint thresholds are ctxt c
   - The paths are private to the laptop and mean nothing on the dpkms host.
   - An API for them would couple dpkms to a client concern.
   - dpkms's content-hash dedup after the pipeline stays the safety net.
+- **The browser-history capture position is kept per instance** in the same way, so switching instances never skips history the other instance didn't receive.
 - **`ctxt watch status` reports the local watcher only:** whether the process is running, the clipboard setting, and per-directory counts and last error.
 - `ctxt watch` stops writing watch rows into the dpkms database.
 
@@ -130,7 +137,9 @@ Profile definitions, search strategy, resurfacing and lint thresholds are ctxt c
 | Keep the direct-store path for local instances, and use HTTP only for remote ones | Rejected | Two implementations of every command, and `--instance` still means different things. It is also the mode switch the owner ruled out. |
 | Keep the local fallback, but make it loud | Rejected | The write still lands in a store the remote daemon never reads. |
 | ctxt over gRPC | Rejected | The gRPC surface covers only analyze, jobs, search, object reads and entities (`api/proto`). REST already serves most commands, and ctxt already uses it. |
-| A third `writer` role | Deferred | Capture-only tokens are expressible as scopes. Letting a token list scopes directly is a follow-up, not a new role. |
+| Per-token scopes instead of a `writer` role | Deferred | Capture-only devices need a bounded token now. The `writer` bundle provides it; per-token scopes come later. |
+| Failover to the next `server.urls` entry on a dial failure | Rejected | The next entry is a different corpus, so a capture or a search would land somewhere the operator didn't choose. |
+| Move `upgrade run` to the `dpkms` CLI | Rejected | It needs a shell on the dpkms host. A filter-only admin endpoint keeps the laptop as the control plane and removes raw SQL from the interface. |
 | Server-side directory-watch state (an API) | Rejected | It exposes client-private paths to the server and couples dedup to server storage for no gain. |
 | Move the whole embedding and registry lifecycle to the `dpkms` CLI | Rejected | It forces an operator shell on the dpkms host for routine knowledge decisions. The provider probe has to run server-side anyway, and ADR-071 made `ctxt embeddings` the operator surface. |
 
@@ -148,20 +157,20 @@ Profile definitions, search strategy, resurfacing and lint thresholds are ctxt c
 
 ### Negative
 
-- **With no reachable dpkms, ctxt does nothing useful.** Capturing offline needs a local dpkms instance (ADR-074) or a later client-side buffer (ADR-066's buffer).
+- **With no reachable dpkms, ctxt does nothing useful.** Offline capture exits 70; the owner accepted this. A local capture buffer on the capture machine (ADR-066) is a separate, later item, and a local dpkms instance (ADR-074) remains an option.
 - **About forty endpoints have to be added or widened** before the direct paths can be removed. The plan lists them.
 - **Commands that iterate** (bulk delete by filter, compose) make more round trips than an in-process loop did.
-- **ADR-075 amendment.**
+- **ADR-075 amendment.** This is the plan's first task:
   - The CLI stops being a hook host. Every covered mutation now runs its before-hooks and writes its outbox rows in the daemon.
   - `exec` hooks come from the daemon host's config, not the laptop's.
-  - `ctxt events deliver` loses its "no daemon" purpose.
+  - `ctxt events deliver` loses its "no daemon" purpose and is dropped.
   - ADR-075's first increment must host its `domain.Service` wrappers in the daemon only.
 - **The ADR-070 upgrade banner** reads a shadow file next to the local pidfiles (`cmd/ctxt/cmd/root.go:126-130`). Against a remote instance it has to come from the API response instead. The plan covers this.
 - **`storage.*` keys in a ctxt-only config file become inert.** `ctxt config validate` reports them.
 
 ## Implementation Notes
 
-- **Order.** The plan lands the client package, the endpoint resolver and route authorization first. It then removes the local fallbacks, moves commands resource by resource, and finally deletes `newService`, `resolveStoragePath`, `dbPathForInstance`, `write_gate.go` and the `idxbridge` fallbacks.
+- **Order.** The plan first amends ADR-075. It then lands the client package, the endpoint resolver and route authorization first. It then removes the local fallbacks, moves commands resource by resource, and finally deletes `newService`, `resolveStoragePath`, `dbPathForInstance`, `write_gate.go` and the `idxbridge` fallbacks.
 - **Tests.**
   - ctxt command tests run against an in-process dpkms (`httptest` around the real router on a temporary SQLite).
   - Every test binary goes through `internal/testguard`, and none reaches `127.0.0.1:8080` or `:8081`.

@@ -502,13 +502,13 @@ Phase 1 of multimodal content: images, audio, video and meetings become typed te
 - **Chunks.** Chunk 0 is the object card, and chunks 1..n follow representation boundaries, each with a `meta` column (representation, source nodes, anchor span). Amends ADR-046 and ADR-071 §6.
 - **No placeholders.** Failed or empty representations are absent, never stubbed; stub providers are test-only.
 
-### **ADR-077 – ctxt Is a Pure dpkms API Client; Instances Resolve to Endpoints (Proposed)**
+### **ADR-077 – ctxt Is a Pure dpkms API Client; Instances Resolve to Endpoints (Accepted)**
 ctxt never opens the dpkms store. Every command reaches dpkms through its REST API over one code path, whether dpkms is local or remote. Plan: [`docs/plans/2026-09-27-ctxt-remote-client.md`](../plans/2026-09-27-ctxt-remote-client.md).
-- **No fallback.** The local write, read and search fallbacks are deleted. An unreachable instance exits 70, a 401 or 403 exits 5 and is never retried elsewhere, and nothing in ctxt creates or migrates a database.
-- **Instances are endpoints.** `server.urls` entries take an optional `name`. Resolution order: `--server` > `--instance` / `CTXT_INSTANCE` (named entry, then a running local pidfile instance) > `ctxt instance use` state > `server.urls` > `server.url` > default. Failover walks the unpinned list only after a dial failure.
-- **Authorization.** Every HTTP route and gRPC method declares an ADR-023 scope. The static provider's `admin` and `reader` roles are fixed scope bundles. Private instances grant everything.
-- **Placement.** Knowledge-level operator commands (embedding lifecycle, registries, lint) stay in ctxt behind admin-scoped endpoints. `upgrade run`, with its raw SQL selector, moves to `dpkms upgrade run`. Brain settings (profiles, search knobs) are resolved by ctxt and sent with each request.
-- **Local capture stays local.** Watchers, clipboard, browser and adapter sources enqueue over HTTP. Directory-watch dedup state moves to a ctxt-owned state file keyed per instance. Amends ADR-075 §2: the CLI is no longer a hook host.
+- **No fallback.** The local write, read and search fallbacks are deleted. An unreachable instance exits 70, a 401 or 403 exits 5, and nothing in ctxt creates or migrates a database.
+- **Instances are endpoints.** `server.urls` entries take an optional `name`. Resolution order: `--server` > `--instance` / `CTXT_INSTANCE` (named entry, then a running local pidfile instance) > `ctxt instance use` state > first `server.urls` entry > `server.url` > default. Every step yields one endpoint, and there is no failover.
+- **Authorization.** Every HTTP route and gRPC method declares an ADR-023 scope. The static provider's `admin`, `writer` (capture devices) and `reader` roles are fixed scope bundles. Private instances grant everything. Admin principals bypass the inbound entitlement and metering gate.
+- **Placement.** Every operator command stays in ctxt. The embedding lifecycle, registries, lint and upgrade runs sit behind admin-scoped endpoints; `upgrade run` accepts a pipeline filter only, with no raw SQL. Brain settings (profiles, search knobs) are resolved by ctxt and sent with each request.
+- **Local capture stays local.** Watchers, clipboard, browser and adapter sources enqueue over HTTP. Directory-watch dedup state and the browser-history position are kept client-side, per instance. Amends ADR-075 §2: the CLI is no longer a hook host.
 
 ---
 
