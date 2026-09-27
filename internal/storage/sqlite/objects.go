@@ -339,7 +339,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("object %s not found", obj.ID)
+		return fmt.Errorf("update object %s: %w", obj.ID, storage.ErrNotFound)
 	}
 	if err := s.upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
 		return fmt.Errorf("update object nodes: %w", err)
@@ -376,7 +376,7 @@ func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("object %s not found", id)
+		return fmt.Errorf("delete object %s: %w", id, storage.ErrNotFound)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("delete object: commit: %w", err)

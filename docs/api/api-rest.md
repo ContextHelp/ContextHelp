@@ -131,6 +131,7 @@ Core endpoints:
 - `GET /objects/{id}/related`
 - `PATCH /objects/{id}`
 - `DELETE /objects/{id}`
+- `POST /objects/{id}/reprocess`
 - `POST /find`
 - `GET /search/graph`
 - `POST /inbox`
@@ -363,6 +364,57 @@ Any other parameter is a 400 `INVALID_PARAM`. An unknown `{id}` is a 404 `NOT_FO
 ```json
 {"data": [{"id": "o-b", "type": "note", "...": "..."}]}
 ```
+
+### `PATCH /objects/{id}`
+
+Changes an object's editable metadata and returns the stored object. Scope: `write:objects`. REST only; gRPC has no equivalent method.
+
+Send only the fields to change. Each field is optional, but the body needs at least one:
+
+| Field | Type | Effect |
+|---|---|---|
+| `type` | string | replaces the type |
+| `subtype` | string | replaces the subtype |
+| `title` | string | replaces the summaries with this one; `ctxt list` and `show` print the first summary as the title |
+| `summary` | string | replaces the first summary and keeps the others |
+| `tags` | string array | replaces the tags; each label is trimmed, empty labels are dropped, and each tag gets `source: "manual"`. `[]` clears the tags |
+| `mentions` | string array | replaces the mentions; each is `@namespace.slug` or `ctxt://entity/<namespace>/<slug>`. `[]` clears them |
+
+`updated_at` moves to the time of the update.
+
+```json
+{"title": "Onboarding notes", "tags": ["ux", "onboarding"], "mentions": ["@ux.onboarding"]}
+```
+
+Errors, with nothing written:
+
+- 400 `INVALID_REQUEST`: a body that isn't JSON, an unknown field, a field of the wrong type, no field, or `title` together with `summary` (both set the first summary).
+- 400 `INVALID_MENTION`: a mention that doesn't parse.
+- 404 `NOT_FOUND`: no object with that ID.
+
+### `DELETE /objects/{id}`
+
+Deletes the object and its edges. Answers 204 with no body. Scope: `delete:objects`, which only `admin` tokens hold: a `writer` gets 403 `INSUFFICIENT_SCOPE`. An unknown ID is a 404 `NOT_FOUND`. REST only; gRPC has no equivalent method.
+
+To delete by filter, list the IDs with `GET /objects` and delete each one; `ctxt delete` does this.
+
+### `POST /objects/{id}/reprocess`
+
+Queues a job that re-runs one enrichment step on a stored object and writes the result back to it. The job runs on the dpkms host with that host's providers and configuration. Scope: `write:objects`. REST only; gRPC has no equivalent method.
+
+```json
+{"step": "tagger"}
+```
+
+`step` is required and is one of `structured_metadata`, `entity_extractor` or `tagger`. The response is 202:
+
+```json
+{"job_id": "5f0c…", "object_id": "o-a", "step": "tagger"}
+```
+
+Follow the job with `GET /jobs/{job_id}`. Its type is `object:reprocess`, and on completion `result_id` is the object ID. A job whose object was deleted in the meantime fails without a retry.
+
+Errors: 400 `INVALID_REQUEST` for an unknown or missing `step`, an unknown field or a body that isn't JSON; 404 `NOT_FOUND` for an unknown object. Nothing is queued on an error.
 
 ### Plugin Metadata
 

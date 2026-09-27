@@ -89,6 +89,9 @@ type Stack struct {
 	Queue     *jobs.Queue
 	Pipelines pipeline.Registry
 	Engine    *search.Engine
+	// Providers builds the configured providers (LLM, OCR, ...) the
+	// pipelines use; task jobs that run steps outside a pipeline use it too.
+	Providers *providers.Factory
 	// Bus is the in-process event bus the service publishes on.
 	Bus     events.Bus
 	Service *service.Service
@@ -290,6 +293,7 @@ func Build(in Inputs) (*Stack, error) {
 	}
 	buildOpts := EmbeddingBuildOpts(in.Driver, resolver, cfg.Duplicates, in.Warnings)
 	buildOpts.Factory = providers.NewFactory(cfg.Providers, secretsStore)
+	s.Providers = buildOpts.Factory
 	buildOpts.BlobStore = in.Driver.Blobs()
 	buildOpts.BlobThreshold = cfg.Storage.Blob.Threshold
 	buildOpts.BrowserClient = in.Browser
