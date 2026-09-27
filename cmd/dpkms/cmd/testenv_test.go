@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/testguard"
-	"github.com/spf13/viper"
 )
 
 // TestLiveServerGuardCoversClientCommands: the dpkms client commands dial
@@ -31,9 +30,7 @@ func TestLiveServerGuardCoversClientCommands(t *testing.T) {
 	addr := srv.Listener.Addr().String()
 	defer testguard.Active.Block(addr)()
 
-	prev := viper.GetString("server.url")
-	viper.Set("server.url", srv.URL)
-	defer viper.Set("server.url", prev)
+	pinServerURL(t, srv.URL)
 
 	var buf bytes.Buffer
 	healthcheckCmd.SetOut(&buf)

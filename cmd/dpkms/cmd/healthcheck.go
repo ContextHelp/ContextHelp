@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"hop.top/kit/go/console/output"
@@ -63,11 +64,7 @@ type healthcheckRow struct {
 }
 
 func runHealthcheck(cmd *cobra.Command, _ []string) error {
-	serverURL := viper.GetString("server.url")
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-	serverURL = strings.TrimRight(serverURL, "/")
+	ep := serverEndpoint()
 
 	watch, _ := cmd.Flags().GetBool("watch")
 	interval, _ := cmd.Flags().GetInt("interval")
@@ -77,7 +74,7 @@ func runHealthcheck(cmd *cobra.Command, _ []string) error {
 	quiet, _ := cmd.Flags().GetBool("quiet")
 
 	if !watch {
-		return healthcheckOnce(cmd, serverURL, quiet)
+		return healthcheckOnce(cmd, ep, quiet)
 	}
 
 	ticker := time.NewTicker(time.Duration(interval) * time.Second)
@@ -88,7 +85,7 @@ func runHealthcheck(cmd *cobra.Command, _ []string) error {
 	}
 	for {
 		fmt.Fprint(cmd.OutOrStdout(), "\033[H\033[2J")
-		_ = healthcheckOnce(cmd, serverURL, quiet)
+		_ = healthcheckOnce(cmd, ep, quiet)
 		select {
 		case <-ctx.Done():
 			return nil
@@ -97,8 +94,9 @@ func runHealthcheck(cmd *cobra.Command, _ []string) error {
 	}
 }
 
-func healthcheckOnce(cmd *cobra.Command, serverURL string, quiet bool) error {
-	client := NewAPIClient(serverURL)
+func healthcheckOnce(cmd *cobra.Command, ep idxbridge.Endpoint, quiet bool) error {
+	client := newEndpointClient(ep)
+	serverURL := strings.TrimRight(ep.URL, "/")
 	env, status, err := client.Healthz()
 	if err != nil {
 		// No hand-written stderr line here. The returned error is

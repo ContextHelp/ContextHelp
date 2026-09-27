@@ -36,11 +36,10 @@ func TestHealthcheckHealthyTable(t *testing.T) {
 	srv := fakeDpkmsHealthzServer(t, http.StatusOK, env)
 	defer srv.Close()
 
-	prevServer := viper.GetString("server.url")
+	pinServerURL(t, srv.URL)
 	prevFormat := viper.GetString("output.format")
-	viper.Set("server.url", srv.URL)
 	viper.Set("output.format", "")
-	defer func() { viper.Set("server.url", prevServer); viper.Set("output.format", prevFormat) }()
+	defer viper.Set("output.format", prevFormat)
 
 	var buf bytes.Buffer
 	healthcheckCmd.SetOut(&buf)
@@ -64,11 +63,10 @@ func TestHealthcheckJSONPassThrough(t *testing.T) {
 	srv := fakeDpkmsHealthzServer(t, http.StatusOK, env)
 	defer srv.Close()
 
-	prevServer := viper.GetString("server.url")
+	pinServerURL(t, srv.URL)
 	prevFormat := viper.GetString("output.format")
-	viper.Set("server.url", srv.URL)
 	viper.Set("output.format", "json")
-	defer func() { viper.Set("server.url", prevServer); viper.Set("output.format", prevFormat) }()
+	defer viper.Set("output.format", prevFormat)
 
 	var buf bytes.Buffer
 	healthcheckCmd.SetOut(&buf)
@@ -92,9 +90,7 @@ func TestHealthcheckExitsNonZeroOn503(t *testing.T) {
 	srv := fakeDpkmsHealthzServer(t, http.StatusServiceUnavailable, env)
 	defer srv.Close()
 
-	prevServer := viper.GetString("server.url")
-	viper.Set("server.url", srv.URL)
-	defer viper.Set("server.url", prevServer)
+	pinServerURL(t, srv.URL)
 
 	var buf bytes.Buffer
 	healthcheckCmd.SetOut(&buf)
@@ -106,9 +102,7 @@ func TestHealthcheckExitsNonZeroOn503(t *testing.T) {
 }
 
 func TestHealthcheckUnreachable(t *testing.T) {
-	prevServer := viper.GetString("server.url")
-	viper.Set("server.url", "http://127.0.0.1:1")
-	defer viper.Set("server.url", prevServer)
+	pinServerURL(t, "http://127.0.0.1:1")
 
 	var buf bytes.Buffer
 	healthcheckCmd.SetOut(&buf)
@@ -136,9 +130,7 @@ func TestHealthcheckQuietSuppressesStdout(t *testing.T) {
 	srv := fakeDpkmsHealthzServer(t, http.StatusOK, env)
 	defer srv.Close()
 
-	prevServer := viper.GetString("server.url")
-	viper.Set("server.url", srv.URL)
-	defer viper.Set("server.url", prevServer)
+	pinServerURL(t, srv.URL)
 
 	var stdout bytes.Buffer
 	healthcheckCmd.SetOut(&stdout)
@@ -148,4 +140,19 @@ func TestHealthcheckQuietSuppressesStdout(t *testing.T) {
 
 	require.NoError(t, runHealthcheck(healthcheckCmd, nil))
 	assert.Empty(t, stdout.String(), "--quiet must not write to stdout")
+}
+
+// pinServerURL sets --server-url for a direct runHealthcheck call, the way
+// the command line would, and clears it when t ends.
+func pinServerURL(t *testing.T, url string) {
+	t.Helper()
+	f := rootCmd.PersistentFlags().Lookup("server-url")
+	if err := f.Value.Set(url); err != nil {
+		t.Fatal(err)
+	}
+	f.Changed = true
+	t.Cleanup(func() {
+		_ = f.Value.Set(f.DefValue)
+		f.Changed = false
+	})
 }

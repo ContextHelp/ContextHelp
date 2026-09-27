@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"hop.top/kit/go/console/output"
@@ -243,8 +244,8 @@ func init() {
 	cliconv.WithSideEffect(stepUninstallCmd, cliconv.SideEffectDestructive)
 }
 
-func initPipelineClient(serverURL string) {
-	apiClient = NewAPIClient(serverURL)
+func initPipelineClient(ep idxbridge.Endpoint) {
+	apiClient = newEndpointClient(ep)
 }
 
 func runPipelineCreate(cmd *cobra.Command, args []string) error {
