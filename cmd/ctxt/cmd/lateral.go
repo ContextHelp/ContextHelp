@@ -169,6 +169,13 @@ func loadOptionsFromCmd(cmd *cobra.Command) daemon.LoadOptions {
 	return opts
 }
 
+// newLateralBus builds the daemon's in-memory bus with kit's default
+// topic enforcement (warn): a publish on a topic that breaks kit's
+// grammar still goes out, and report is told about it.
+func newLateralBus(report bus.ErrFunc) bus.Bus {
+	return bus.New(bus.WithInvalidTopicReporter(report))
+}
+
 // runLateralStart is the daemon entrypoint. Loads config, builds an
 // in-memory bus + registry (no adapters wired in v1 — they're plumbed
 // per-strategy by operators), starts the lifecycle layer, and runs
@@ -188,7 +195,9 @@ func runLateralStart(cmd *cobra.Command, _ []string) error {
 	// In-memory bus is the v1 default. Operators wiring kit's
 	// network adapter, sqlite adapter, etc. extend cmd/ctxt/cmd/
 	// lateral_wiring.go (P5 follow-on).
-	b := bus.New(bus.WithEnforce(bus.ModeOff))
+	b := newLateralBus(func(err error) {
+		fmt.Fprintf(cmd.ErrOrStderr(), "lateral: invalid bus topic: %v\n", err)
+	})
 	defer func() { _ = b.Close(context.Background()) }()
 	pub := adapterbus.New(b)
 
