@@ -63,7 +63,6 @@ func TestUISession_ScopeRefusals(t *testing.T) {
 		{http.MethodGet, "/api/v1/pipelines"},
 		{http.MethodPost, "/api/v1/pipelines/enqueue"},
 		{http.MethodGet, "/api/v1/steps"},
-		{http.MethodGet, "/api/v1/steps/registries"},
 		{http.MethodPost, "/api/v1/steps/registries/fetch"},
 		{http.MethodPost, "/api/v1/inbox"},
 		{http.MethodGet, "/api/v1/watches"},
@@ -176,7 +175,6 @@ func TestAPIRouteClasses_SensitiveRoutesTokenOnly(t *testing.T) {
 		{http.MethodGet, "/api/v1/mcp/"},
 		{http.MethodPost, "/api/v1/pipelines/enqueue"},
 		{http.MethodPost, "/api/v1/steps/install"},
-		{http.MethodGet, "/api/v1/steps/registries"},
 		{http.MethodPost, "/api/v1/entities/registry-sync"},
 		{http.MethodGet, "/api/v1/watches"},
 	} {
@@ -184,6 +182,28 @@ func TestAPIRouteClasses_SensitiveRoutesTokenOnly(t *testing.T) {
 		assert.True(t, ok, "%s %s unclassified", key[0], key[1])
 		assert.Equal(t, RouteTokenOnly, class, "%s %s", key[0], key[1])
 	}
+}
+
+// The web UI's Registry page lists registries, so that one read is open to
+// browser sessions; every registry write stays token-only.
+func TestUISession_RegistryListAllowedWritesRefused(t *testing.T) {
+	class, ok := ClassifyRoute(http.MethodGet, "/api/v1/steps/registries")
+	assert.True(t, ok)
+	assert.Equal(t, RouteUI, class)
+	for _, key := range [][2]string{
+		{http.MethodPost, "/api/v1/steps/registries/fetch"},
+		{http.MethodPost, "/api/v1/steps/registries/{url}/update"},
+	} {
+		class, ok := ClassifyRoute(key[0], key[1])
+		assert.True(t, ok, "%s %s unclassified", key[0], key[1])
+		assert.Equal(t, RouteTokenOnly, class, "%s %s", key[0], key[1])
+	}
+
+	f := newUIFixture(t)
+	c := f.signIn()
+	resp := f.do(http.MethodGet, "/api/v1/steps/registries", nil, withCookie(c), fromUI)
+	assert.NotEqual(t, http.StatusForbidden, resp.StatusCode)
+	assert.NotEqual(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
 // The mint handler refuses a session principal on its own, whatever the

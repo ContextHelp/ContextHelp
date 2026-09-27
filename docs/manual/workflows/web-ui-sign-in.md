@@ -57,11 +57,11 @@ The session acts as your token's principal, so entitlements and quotas apply as 
 
 | Allowed | Refused (`403 SESSION_SCOPE`) |
 |---|---|
-| Reading and searching objects, entities, jobs, inbox, feeds, aliases, suggestions, saved searches, search history, reminders, import runs | Pipelines, steps, registries, watches, the audit log, federation, the MCP mount |
+| Reading and searching objects, entities, jobs, inbox, feeds, aliases, suggestions, saved searches, search history, reminders, import runs, and the step registry list | Pipelines, steps, registry changes, watches, the audit log, federation, the MCP mount |
 | The web UI's own actions: delete an object, retry a job, sign out | Every other write (capture, analyze, inbox triage, feed and alias changes, …) |
 | The live event stream | Minting new sign-in links |
 
-The Registry page therefore shows a scope error in a browser session; use `ctxt registry` or `dpkms step registry` instead.
+The Registry page lists registries in a browser session; to fetch or update one, use `ctxt registry` or `dpkms step registry`.
 
 ## How long a session lasts
 

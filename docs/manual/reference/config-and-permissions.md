@@ -176,9 +176,9 @@ server:
   with its roles; the session ends when that token leaves
   `server.auth.static.tokens` (every request checks the tokens dpkms
   loaded at start, so a removal takes effect on restart).
-- **Scope**: reads, search and the web UI's own writes. Pipelines, steps,
-  registries, watches, the audit log, federation, the MCP mount and login
-  links answer `403` `SESSION_SCOPE`. `/ws/bus` keeps its own bus token
+- **Scope**: reads, search, the step registry list and the web UI's own
+  writes. Pipelines, steps, registry changes, watches, the audit log,
+  federation, the MCP mount and login links answer `403` `SESSION_SCOPE`. `/ws/bus` keeps its own bus token
   and gRPC keeps API tokens only; a session cookie opens neither.
 - **CSRF**: a request carrying the cookie must come from the instance's
   own pages: writes need `Sec-Fetch-Site: same-origin` or a matching
