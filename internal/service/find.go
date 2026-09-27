@@ -65,6 +65,11 @@ type FindRequest struct {
 	Explain bool `json:"explain,omitempty"`
 	// Facets adds metadata type counts over the objects Filter matches.
 	Facets bool `json:"facets,omitempty"`
+	// Trace asks for the search trace a search graph is built from:
+	// every candidate the search scored, with its stage. Hybrid mode
+	// only; any other mode is an ErrInvalidFind. In-process callers
+	// only: it is not part of the request body.
+	Trace bool `json:"-"`
 }
 
 // FindFilter is find's metadata facet filter. Since and Until are dates
@@ -118,6 +123,8 @@ type FindResult struct {
 	Explain []FindExplanation `json:"explain,omitempty"`
 	// Facets maps metadata type to object count, when requested.
 	Facets map[string]int `json:"facets,omitempty"`
+	// Trace is the search trace, when requested. Never encoded.
+	Trace *SearchTrace `json:"-"`
 }
 
 // FindExplanation is the score breakdown of one find result.
@@ -127,7 +134,8 @@ type FindExplanation struct {
 	DocumentView pluginapi.DocumentProjection `json:"document_view"`
 }
 
-// Find runs a find request. sem reaches the default embedding model's
+// Find runs a find request; with Trace set it also returns the hybrid
+// search trace search graphs are built from. sem reaches the default embedding model's
 // index for vector and hybrid modes; its provider embeds the query here,
 // where dpkms runs. A malformed request is an ErrInvalidFind; a semantic
 // leg that cannot run with fallback_to_fts off is a
@@ -140,17 +148,27 @@ func (s *Service) Find(ctx context.Context, req FindRequest, sem retrieval.Seman
 	res := &FindResult{Query: req.Query, Mode: mode}
 
 	switch {
-	case mode == FindModeHybrid && req.Explain:
-		env, err := s.HybridSearchExplainFilteredWithDiagnostics(ctx, req.Query, filter, sem, cfg)
+	case mode == FindModeHybrid && (req.Explain || req.Trace):
+		var env *HybridSearchResult
+		if req.Trace {
+			env, err = s.HybridSearchExplainFilteredWithTrace(ctx, req.Query, filter, sem, cfg)
+		} else {
+			env, err = s.HybridSearchExplainFilteredWithDiagnostics(ctx, req.Query, filter, sem, cfg)
+		}
 		if err != nil {
 			return nil, err
 		}
 		res.Diagnostics = env.Diagnostics
+		res.Trace = env.Trace
 		res.Objects = make([]*storage.KnowledgeObject, len(env.Results))
-		res.Explain = make([]FindExplanation, len(env.Results))
 		for i, r := range env.Results {
 			res.Objects[i] = r.Object
-			res.Explain[i] = FindExplanation{ID: r.Object.ID, Breakdown: r.Breakdown, DocumentView: r.DocumentView}
+		}
+		if req.Explain {
+			res.Explain = make([]FindExplanation, len(env.Results))
+			for i, r := range env.Results {
+				res.Explain[i] = FindExplanation{ID: r.Object.ID, Breakdown: r.Breakdown, DocumentView: r.DocumentView}
+			}
 		}
 	case mode == FindModeHybrid:
 		res.Objects, res.Diagnostics, err = s.HybridSearchFilteredWithDiagnostics(ctx, req.Query, filter, sem, cfg)
@@ -192,6 +210,9 @@ func resolveFind(req FindRequest) (string, storage.ObjectFilter, config.SearchCo
 	case FindModeFTS, FindModeVector, FindModeHybrid:
 	default:
 		return invalid("mode %q: want fts, vector or hybrid", req.Mode)
+	}
+	if req.Trace && mode != FindModeHybrid {
+		return invalid("a search trace is always hybrid, not mode %q", req.Mode)
 	}
 	if req.Limit < 0 {
 		return invalid("limit must not be negative")
