@@ -368,8 +368,9 @@ The UI lives in `web/ui` (React 19 + Vite + TypeScript, pnpm):
 cd web/ui && pnpm install && pnpm dev
 ```
 
-`make build-ui` builds it and copies the output into `internal/ui/dist` for
-embedding.
+`make build-ui` rebuilds it straight into `internal/ui/dist` (Vite's
+`outDir`), the committed bundle `go:embed` serves at `/ui`. Commit the result
+alongside any `web/ui` source change.
 
 ---
 

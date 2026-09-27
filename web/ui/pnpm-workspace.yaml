@@ -1,0 +1,8 @@
+# Standalone workspace root: keeps pnpm from resolving an enclosing
+# workspace when this directory sits inside a larger checkout.
+packages:
+  - .
+# esbuild's postinstall only verifies its platform binary; the JS API
+# resolves @esbuild/<platform> without it.
+allowBuilds:
+  esbuild: false

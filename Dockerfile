@@ -1,13 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# ─── Stage 1: UI builder ─────────────────────────────────────────────────────
-FROM node:22-alpine AS ui-builder
-
-WORKDIR /ui
-# placeholder until web/ui is scaffolded
-RUN mkdir -p dist && echo '{}' > dist/.keep
-
-# ─── Stage 2: Go builder ─────────────────────────────────────────────────────
+# ─── Stage 1: Go builder ─────────────────────────────────────────────────────
 FROM golang:1.26.8-bookworm AS go-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,8 +14,8 @@ RUN go mod download
 
 COPY . .
 
-# Copy UI dist from ui-builder (embedded into dpkms binary or served from /app/web)
-COPY --from=ui-builder /ui/dist ./web/ui/dist
+# The web UI is the committed internal/ui/dist bundle, brought in by COPY . .
+# and embedded via go:embed; `make build-ui` refreshes it. No node stage.
 
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown
@@ -43,7 +36,7 @@ RUN GOWORK=off CGO_ENABLED=1 GOOS=linux go build -tags fts5 \
       -X main.BuildTime=${BUILD_TIME}" \
     -o /out/ctxt ./cmd/ctxt
 
-# ─── Stage 3: Runtime ────────────────────────────────────────────────────────
+# ─── Stage 2: Runtime ────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
