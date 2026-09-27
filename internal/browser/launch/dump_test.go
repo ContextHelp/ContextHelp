@@ -244,6 +244,42 @@ func TestDumpDOM_ReturnsDocumentAndCleansUp(t *testing.T) {
 	f.assertReaped(1)
 }
 
+// TestDumpDOM_VirtualTimeBudget pins the settle switch: passed in whole
+// milliseconds when set, absent when not, and owned while set.
+func TestDumpDOM_VirtualTimeBudget(t *testing.T) {
+	const flag = "--virtual-time-budget"
+	hasFlag := func(argv []string) bool {
+		return slices.ContainsFunc(argv, func(a string) bool { return strings.HasPrefix(a, flag) })
+	}
+
+	f := newFakeChrome(t)
+	o := f.opts("ok")
+	o.VirtualTimeBudget = 1500 * time.Millisecond
+	if _, err := DumpDOM(context.Background(), "http://127.0.0.1:1/", o); err != nil {
+		t.Fatal(err)
+	}
+	if argv := strings.Split(f.read("args", 1), "\n"); !slices.Contains(argv, flag+"=1500") {
+		t.Errorf("argv lacks %s=1500: %q", flag, argv)
+	}
+
+	o.VirtualTimeBudget = 0
+	if _, err := DumpDOM(context.Background(), "http://127.0.0.1:1/", o); err != nil {
+		t.Fatal(err)
+	}
+	if argv := strings.Split(f.read("args", 2), "\n"); hasFlag(argv) {
+		t.Errorf("argv has %s without a budget: %q", flag, argv)
+	}
+
+	o.VirtualTimeBudget = time.Second
+	o.Args = []string{flag + "=1"}
+	if _, err := DumpDOM(context.Background(), "http://127.0.0.1:1/", o); !errors.Is(err, ErrReservedFlag) {
+		t.Errorf("caller %s with a budget set: err = %v, want ErrReservedFlag", flag, err)
+	}
+	if f.runs() != 2 {
+		t.Errorf("chrome ran %d times, want 2", f.runs())
+	}
+}
+
 func TestDumpDOM_RetriesUntilAccepted(t *testing.T) {
 	f := newFakeChrome(t)
 	o := f.opts("flaky")
