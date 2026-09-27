@@ -1,14 +1,16 @@
-// Package banner injects a one-line upgrade banner into ctxt/dpkms CLI
-// commands while a dpkms upgrade is in flight (ADR-070 §5, T-0580).
+// Package banner renders the one-line ADR-070 §5 upgrade banner that
+// CLI commands print on stderr while a dpkms upgrade is not idle.
 //
-// The banner reads the local shadow file at
-// $XDG_DATA_HOME/contexthelp/run/upgrade-state.json — written by the
-// upgrade.Manager on the daemon side — so each CLI invocation pays only a
-// single os.Stat + small read. No HTTP round-trip is in the hot path.
+// Two sources feed it:
 //
-// The banner is a no-op when the shadow file is absent, malformed, or
-// older than upgrade.ShadowStaleAfter (guards against a daemon that died
-// mid-upgrade leaving a stranded file behind).
+//   - ctxt: the X-Dpkms-Upgrade header on dpkms API responses
+//     (upgrade.DecodeHeader), printed once per invocation through Once. The
+//     banner follows the instance a command talks to, local or remote.
+//   - dpkms: Inject reads the local shadow file at
+//     $XDG_DATA_HOME/contexthelp/run/upgrade-state.json, written by the
+//     upgrade.Manager of the daemon on the same host. It is a no-op when
+//     the file is absent, malformed, or older than upgrade.ShadowStaleAfter
+//     (a daemon that died mid-upgrade leaves a stranded file behind).
 package banner
 
 import (
