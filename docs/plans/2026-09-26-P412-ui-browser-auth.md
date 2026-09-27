@@ -343,6 +343,8 @@ Recorded 2026-09-26.
 | 2 | Session persistence | **Persisted** in the storage driver, listable and revocable; idle 12 h, max 7 d. |
 | 3 | Revocation coupling | **Yes**: a session ends when the static token that minted it is removed from config (token hash stored per session). |
 | 5 | Private-instance hardening | **On by default**; extra hostnames via `server.allowed_hosts`. |
+| — | Registry list in the "ui" scope | **Allowed**: `GET /steps/registries` (the web UI Registry page); registry writes stay token-only. |
+| — | Watches in the "ui" scope | **Token-only**: `GET /watches` exposes host filesystem paths. |
 | 4, 6, 7, 8 | B′, tenant isolation, extension CORS, plain-HTTP remote | Open. |
 
 ## Open questions for the owner

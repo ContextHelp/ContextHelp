@@ -62,7 +62,8 @@ var apiRouteClasses = map[string]RouteClass{
 	"POST /api/v1/entities/{slug}/pull":     RouteTokenOnly,
 	"POST /api/v1/entities/registry-sync":   RouteTokenOnly,
 
-	// Pipelines, steps and registries: never a browser session.
+	// Pipelines, steps and registries: token only, except the registry list
+	// the web UI Registry page reads.
 	"POST /api/v1/pipelines":                     RouteTokenOnly,
 	"GET /api/v1/pipelines":                      RouteTokenOnly,
 	"GET /api/v1/pipelines/{name}":               RouteTokenOnly,
@@ -76,7 +77,7 @@ var apiRouteClasses = map[string]RouteClass{
 	"DELETE /api/v1/steps/{name}":                RouteTokenOnly,
 	"POST /api/v1/steps/registries/fetch":        RouteTokenOnly,
 	"POST /api/v1/steps/registries/{url}/update": RouteTokenOnly,
-	"GET /api/v1/steps/registries":               RouteTokenOnly,
+	"GET /api/v1/steps/registries":               RouteUI, // the web UI Registry page lists them; writes stay token-only
 	"POST /api/v1/feeds":                         RouteTokenOnly,
 	"GET /api/v1/feeds":                          RouteUI,
 	"POST /api/v1/feeds/sync":                    RouteTokenOnly,
