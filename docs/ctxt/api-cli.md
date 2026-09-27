@@ -567,33 +567,70 @@ ctxt config edit
 
 ## `ctxt instance`
 
-Select which dpkms instance `ctxt` commands target when multiple instances
-are running. The selection is persisted to
-`$XDG_DATA_HOME/contexthelp/run/current-instance`.
+Pick the one dpkms instance `ctxt` commands talk to. An instance is either
+a named `server.urls` entry (a URL plus its token, local or remote) or a
+dpkms running on this machine, found through its pidfile by name or port.
+
+```yaml
+server:
+  token: <default token>          # sent to entries without their own
+  urls:
+    - name: home
+      url: https://dpkms.example.ts.net:7700
+      token: <token for home>
+    - name: laptop
+      url: http://127.0.0.1:8080
+```
+
+A `name` is optional and unique: lowercase letters, digits and hyphens,
+not all digits (a bare number selects a local instance by port).
 
 ### Commands
 
 ```bash
-ctxt instance list              # table of running instances; * marks current
-ctxt instance use <name>        # set current instance by name
-ctxt instance use <port>        # set by port number
-ctxt instance use -             # clear — revert to config storage.path
-ctxt instance current           # print active instance
+ctxt instance list              # named endpoints + running local instances; * marks the one in use
+ctxt instance use home          # persist a named endpoint
+ctxt instance use 8081          # persist a running local instance (stored by name)
+ctxt instance use -             # clear the selection
+ctxt instance current           # name, URL, layer that chose it, token: yes/no
 ```
+
+The selection is persisted to `$XDG_DATA_HOME/contexthelp/run/current-instance`.
+Tokens are never printed; `list` and `current` only say whether one is attached.
 
 ### Per-call override (not persisted)
 
 ```bash
-ctxt --instance work stats
-ctxt --instance personal find "auth patterns"
-CTXT_INSTANCE=work ctxt stats   # env var; same precedence as flag
+ctxt --instance home status
+ctxt log --instance home
+CTXT_INSTANCE=home ctxt feed list   # env var; same step as the flag
 ```
 
 ### Resolution order
 
-1. `--instance` flag / `CTXT_INSTANCE` env var
-2. State file set by `ctxt instance use`
-3. `storage.path` in config (original behaviour)
+Every command that talks to dpkms over its API (`status`, `log`,
+`upgrade status`, `feed`, `import`, `capture`, `analyze`, `capture tabs`,
+`capture history`, `list --q`) resolves exactly one endpoint:
+
+1. `--server <url>`: the token of the `server.urls` entry with that URL, else `server.token`
+2. `--instance` flag, else `CTXT_INSTANCE`
+3. The current instance set by `ctxt instance use`
+4. The first `server.urls` entry
+5. `server.url`
+6. `http://127.0.0.1:8080`
+
+Steps 2 and 3 take a `server.urls` name first, then a running local
+instance by name or port (as `http://127.0.0.1:<port>`, with the token of
+a `server.urls` entry at that URL, else `server.token`). A name that
+matches neither exits 70 and lists the configured names; a stale
+`ctxt instance use` selection exits 70 too. Other `server.urls` entries
+are reachable only by name or `--server`: when the resolved endpoint does
+not answer, ctxt exits 70 and never tries another one.
+
+Commands that still open the database directly (`stats`, `find`, `show`
+and the rest) resolve `--instance` only to a running local instance's
+database; a remote name fails with "no running dpkms instance" until they
+move onto the API.
 
 ---
 

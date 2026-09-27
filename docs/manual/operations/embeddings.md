@@ -168,7 +168,7 @@ Upgrade state: in_progress
   Started:   2026-09-26T19:56:26Z
 ```
 
-- `ctxt upgrade status` reads the configured instance: the first `server.urls` entry, else `server.url`, with its token. Pass `--server` for any other instance. It exits 70 when nothing answers there.
+- `ctxt upgrade status` reads the instance ctxt resolves: `--instance`, `CTXT_INSTANCE` or `ctxt instance use`, else the first `server.urls` entry, else `server.url`, with its token. Pass `--server` for any other URL. It exits 70 when nothing answers there.
 - `--watch` refreshes until the state is idle. `--format json` returns the `/healthz` upgrade envelope: `state`, `bucket` (`embeddings_migrate`), `target` (the model ID), `done`, `total`, `failed`, `eta_seconds`, `last_error`.
 - While a job runs, every `ctxt` command prints a one-line `ℹ ctxt: upgrading embeddings_migrate; …` banner on stderr.
 - When a run ends it goes back to `idle`, unless objects failed.
