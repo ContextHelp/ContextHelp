@@ -559,6 +559,11 @@ Designs the audited, time-boxed access ADR-082 left for business-owned instances
 - **Audit.** Every elevated request is recorded with grant ID and reason joined, durably and before release, in a hash chain exempt from the 90-day object-list prune; per-grant activity report and signed-manifest export.
 - **Limits.** Access is not preservation; no per-document source ACL mirroring; a steward who exports has the data. Steward agents, CLI and a preserve-in-place hold are deferred.
 
+### **ADR-084 – dpkms Operator Verbs Stay Plain `/api/v1` Routes; No kit Command Projection (Not adopted)**
+Serving operator verbs through kit's command projection beside the resource routes is not adopted. The remaining verbs (lint/doctor, upgrade plan/run, the embeddings lifecycle) become plain `/api/v1` routes per the ADR-077 plan, and admin verbs are not exposed over MCP.
+- **Why.** The route table is the single place routes and their scope and capability gates are declared; a projection would need re-wiring, a second error envelope and lax unknown-query handling, for MCP access nobody wants.
+- **Revisit if.** Agents need admin verbs over MCP, or kit closes the error-envelope and unknown-parameter gaps.
+
 ---
 
 ## Purpose of This Directory
