@@ -95,7 +95,7 @@ type ObjectFilter struct {
 	Tag       string
 	Mention   string
 	Pipeline  string
-	ProfileID string // non-empty → restrict to this profile; empty → global objects only
+	ProfileID string // non-empty → restrict to this profile; empty → no profile scope
 	After     *time.Time
 	Before    *time.Time
 	Limit     int
