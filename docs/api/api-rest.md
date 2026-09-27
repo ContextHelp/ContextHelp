@@ -623,11 +623,11 @@ Captured content parked for a decision (`status: inbox`) before any pipeline run
 | `POST /inbox` | `write:inbox` | Captures content as an inbox item |
 | `GET /inbox` | `read:inbox` | Lists inbox items |
 | `GET /inbox/queue` | `read:inbox` | Lists the processing queue: pending, running and failed jobs, and raw objects |
-| `POST /inbox/{id}/triage` | `process:inbox` | Makes the item `active` and enqueues it. Body `{"pipeline": "<name>"}` is optional. Returns `{"job_id": "…"}` |
-| `POST /inbox/{id}/discard` | `process:inbox` | Marks the item `discarded`. Returns 204 |
+| `POST /inbox/{id}/triage` | `process:inbox` | Makes the inbox item `active` and enqueues it. Body `{"pipeline": "<name>"}` is optional. Returns `{"job_id": "…"}` |
+| `POST /inbox/{id}/discard` | `process:inbox` | Marks the inbox item `discarded`. Returns 204 |
 | `POST /inbox/clear` | `process:inbox` | Discards every inbox item |
 
-`process:inbox` is in the `admin` bundle only. A `writer` token captures but gets 403 `INSUFFICIENT_SCOPE` on triage, discard and clear. Triage and discard answer 404 for an unknown ID.
+`process:inbox` is in the `admin` bundle only. A `writer` token captures but gets 403 `INSUFFICIENT_SCOPE` on triage, discard and clear. Triage and discard act only on an inbox item: an object with `status: inbox`, the set `GET /inbox` lists. Any other ID answers 404 `NOT_FOUND` (`no inbox item <id>`) and changes nothing: an unknown ID, or an object that is `active`, `discarded` or `raw` (already triaged, discarded or still in the pipeline). The status check and the change are one write, so two concurrent triages of the same item enqueue one job; the other gets 404.
 
 ### `GET /inbox`
 

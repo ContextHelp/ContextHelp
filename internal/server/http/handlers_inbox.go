@@ -2,16 +2,17 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // CaptureInbox handles POST /api/v1/inbox.
@@ -167,7 +168,19 @@ func ClearInbox(svc *service.Service) http.HandlerFunc {
 	}
 }
 
-// TriageInbox handles POST /api/v1/inbox/{id}/triage.
+// writeInboxItemError answers a failed triage or discard of id: 404
+// NOT_FOUND when id is not an inbox item (whatever else it may be), 500
+// otherwise.
+func writeInboxItemError(w http.ResponseWriter, id string, err error) {
+	if errors.Is(err, storage.ErrNotFound) {
+		WriteError(w, http.StatusNotFound, "NOT_FOUND", "no inbox item "+id)
+		return
+	}
+	WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+}
+
+// TriageInbox handles POST /api/v1/inbox/{id}/triage. Only an inbox
+// item can be triaged; anything else is a 404.
 func TriageInbox(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
@@ -176,27 +189,20 @@ func TriageInbox(svc *service.Service) http.HandlerFunc {
 
 		jobID, err := svc.TriageInbox(r.Context(), id, req)
 		if err != nil {
-			statusCode := http.StatusInternalServerError
-			if strings.Contains(err.Error(), "not found") {
-				statusCode = http.StatusNotFound
-			}
-			WriteError(w, statusCode, "INTERNAL_ERROR", err.Error())
+			writeInboxItemError(w, id, err)
 			return
 		}
 		WriteJSON(w, http.StatusOK, map[string]string{"job_id": jobID})
 	}
 }
 
-// DiscardInbox handles POST /api/v1/inbox/{id}/discard.
+// DiscardInbox handles POST /api/v1/inbox/{id}/discard. Only an inbox
+// item can be discarded; anything else is a 404.
 func DiscardInbox(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 		if err := svc.DiscardInbox(r.Context(), id); err != nil {
-			statusCode := http.StatusInternalServerError
-			if strings.Contains(err.Error(), "not found") {
-				statusCode = http.StatusNotFound
-			}
-			WriteError(w, statusCode, "INTERNAL_ERROR", err.Error())
+			writeInboxItemError(w, id, err)
 			return
 		}
 		WriteJSON(w, http.StatusNoContent, nil)

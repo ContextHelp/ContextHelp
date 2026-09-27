@@ -358,6 +358,25 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	return nil
 }
 
+// TransitionStatus implements storage.ObjectStore. Status is not part of
+// the FTS projection, so the index is left alone.
+func (s *ObjectStore) TransitionStatus(ctx context.Context, id, from, to string, at time.Time) error {
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE objects SET status=?, updated_at=? WHERE id=? AND status=?`,
+		to, at.Format(time.RFC3339), id, from)
+	if err != nil {
+		return fmt.Errorf("transition object %s to %s: %w", id, to, err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("transition object %s to %s: %w", id, to, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("object %s with status %s: %w", id, from, storage.ErrNotFound)
+	}
+	return nil
+}
+
 func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

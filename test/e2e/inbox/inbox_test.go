@@ -210,4 +210,43 @@ func TestInboxOverAPIAgainstProtectedDpkms(t *testing.T) {
 		}
 		expect(t, dpkmstest.RoleAdmin, 3, "inbox", "discard", discardOK, "no-such-item")
 	})
+	t.Run("triage and discard refuse what left the inbox with exit 3", func(t *testing.T) {
+		// first is active (triaged), second discarded (cleared).
+		for id, status := range map[string]string{first: "active", second: "discarded"} {
+			for _, args := range [][]string{
+				{"inbox", "triage", id},
+				{"inbox", "discard", discardOK, id},
+			} {
+				out := expect(t, dpkmstest.RoleAdmin, 3, args...)
+				if !strings.Contains(out, "no inbox item "+id) || !strings.Contains(out, "ctxt inbox list") {
+					t.Fatalf("ctxt %s: unclear refusal:\n%s", strings.Join(args, " "), out)
+				}
+			}
+			if got := objectStatus(t, d, id); got != status {
+				t.Fatalf("%s: status %q after refused triage/discard; want %q", id, got, status)
+			}
+		}
+	})
+}
+
+// objectStatus reads object id's status through the API as a reader.
+func objectStatus(t *testing.T, d *testutil.Dpkms, id string) string {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, d.URL+"/api/v1/objects/"+id, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+d.Token(dpkmstest.RoleReader))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var obj struct {
+		Status string `json:"status"`
+	}
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&obj) != nil {
+		t.Fatalf("get object %s: %d", id, resp.StatusCode)
+	}
+	return obj.Status
 }

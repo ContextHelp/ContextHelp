@@ -159,6 +159,12 @@ type ObjectStore interface {
 	GetBySourceKey(ctx context.Context, key string) (*KnowledgeObject, error)
 	List(ctx context.Context, filter ObjectFilter) ([]*KnowledgeObject, int, error)
 	Update(ctx context.Context, obj *KnowledgeObject) error
+	// TransitionStatus moves object id from status from to status to and
+	// sets updated_at to at, in one conditional write: nothing changes
+	// unless the object is in from when the write lands, so two callers
+	// racing on the same object cannot both move it. A missing object,
+	// or one in any other status, wraps ErrNotFound.
+	TransitionStatus(ctx context.Context, id, from, to string, at time.Time) error
 	Delete(ctx context.Context, id string) error
 	ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error)
 	Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error)

@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -354,6 +355,52 @@ func TestInboxMissingItemIsNotFound(t *testing.T) {
 		out, err := db.exec(args...)
 		if got := ExitCodeFor(err); got != output.ExitNotFound {
 			t.Errorf("%v: exit %d (%v); want %d\n%s", args, got, err, output.ExitNotFound, out)
+		}
+	}
+}
+
+// An object that is not an inbox item is NOT_FOUND (exit 3) for triage
+// and discard, with a message naming the ID and a pointer to the inbox
+// list, and the object keeps its status.
+func TestInboxNonInboxObjectIsNotFound(t *testing.T) {
+	db := setupTestDB(t)
+	now := time.Now().Truncate(time.Second)
+	for id, status := range map[string]string{"obj-active": "active", "obj-discarded": "discarded"} {
+		if err := db.Driver.Objects().Create(context.Background(), &storage.KnowledgeObject{
+			ID: id, Type: "text", RawContent: id, Status: status, CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	for id, status := range map[string]string{"obj-active": "active", "obj-discarded": "discarded", "nonexistent": ""} {
+		for _, args := range [][]string{
+			{"inbox", "triage", id},
+			{"inbox", "discard", "--confirm=yes", id},
+		} {
+			out, err := db.exec(args...)
+			if got := ExitCodeFor(err); got != output.ExitNotFound {
+				t.Fatalf("%v: exit %d (%v); want %d\n%s", args, got, err, output.ExitNotFound, out)
+			}
+			var oe *output.Error
+			if !errors.As(err, &oe) {
+				t.Fatalf("%v: %T is not a kit error", args, err)
+			}
+			if !strings.Contains(oe.Message, "no inbox item "+id) {
+				t.Errorf("%v: message %q does not say %s is not an inbox item", args, oe.Message, id)
+			}
+			if !strings.Contains(oe.SuggestedFix, "ctxt inbox list") {
+				t.Errorf("%v: suggested fix %q does not point at ctxt inbox list", args, oe.SuggestedFix)
+			}
+		}
+		if status == "" {
+			continue
+		}
+		got, err := db.Driver.Objects().Get(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != status {
+			t.Errorf("%s: status %q after refused triage/discard; want %q", id, got.Status, status)
 		}
 	}
 }

@@ -304,6 +304,25 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	return nil
 }
 
+// TransitionStatus implements storage.ObjectStore. The FTS tsvector
+// derives from projected_fts_body, which a status change leaves alone.
+func (s *ObjectStore) TransitionStatus(ctx context.Context, id, from, to string, at time.Time) error {
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE objects SET status=$1, updated_at=$2 WHERE id=$3 AND status=$4`,
+		to, at.UTC(), id, from)
+	if err != nil {
+		return fmt.Errorf("transition object %s to %s: %w", id, to, err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("transition object %s to %s: %w", id, to, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("object %s with status %s: %w", id, from, storage.ErrNotFound)
+	}
+	return nil
+}
+
 func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 	result, err := s.db.ExecContext(ctx, "DELETE FROM objects WHERE id = $1", id)
 	if err != nil {

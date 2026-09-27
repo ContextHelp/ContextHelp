@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
@@ -268,7 +270,7 @@ func runInboxTriage(cmd *cobra.Command, args []string) error {
 
 	jobID, err := client.TriageInbox(cmd.Context(), id, pipeline)
 	if err != nil {
-		return fmt.Errorf("triage inbox item %s: %w", id, err)
+		return inboxItemError("triage", id, err)
 	}
 
 	if isJSONOutput() {
@@ -285,7 +287,7 @@ func runInboxDiscard(cmd *cobra.Command, args []string) error {
 	}
 	id := args[0]
 	if err := client.DiscardInbox(cmd.Context(), id); err != nil {
-		return fmt.Errorf("discard inbox item %s: %w", id, err)
+		return inboxItemError("discard", id, err)
 	}
 
 	if isJSONOutput() {
@@ -293,6 +295,21 @@ func runInboxDiscard(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Discarded %s\n", id)
 	return nil
+}
+
+// inboxItemError classifies a failed triage or discard of id. dpkms
+// answers 404 for anything that is not an inbox item right now (never
+// captured, already triaged, discarded): NOT_FOUND, exit 3, pointing at
+// the list of items that can be processed. Every other failure keeps the
+// class the dpkms client gave it.
+func inboxItemError(verb, id string, err error) error {
+	var re *dpkmsclient.RemoteError
+	if !errors.As(err, &re) || re.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("%s inbox item %s: %w", verb, id, err)
+	}
+	e := output.NotFoundError(fmt.Sprintf("%s: no inbox item %s; only items still in the inbox can be triaged or discarded", verb, id))
+	e.SuggestedFix = "run `ctxt inbox list` to see the items awaiting triage"
+	return e
 }
 
 func runInboxClear(cmd *cobra.Command, _ []string) error {

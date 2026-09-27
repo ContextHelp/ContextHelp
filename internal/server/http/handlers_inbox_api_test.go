@@ -24,8 +24,8 @@ func TestInboxAPI_SQLite(t *testing.T) {
 	RunInboxSuite(t, storageutil.NewTestDriver)
 }
 
-// seedInboxCorpus writes two inbox items, one active and one raw object,
-// and one job per status.
+// seedInboxCorpus writes two inbox items, one active, one discarded and
+// one raw object, and one job per status.
 func seedInboxCorpus(t *testing.T, driver storage.StorageDriver) {
 	t.Helper()
 	ctx := context.Background()
@@ -34,6 +34,7 @@ func seedInboxCorpus(t *testing.T, driver storage.StorageDriver) {
 		{ID: "i-2", Type: "text", Status: "inbox", RawContent: "two", CreatedAt: day("2026-04-11T09:00:00Z"), UpdatedAt: day("2026-04-11T09:00:00Z")},
 		{ID: "a-1", Type: "note", Status: "active", RawContent: "kept", CreatedAt: day("2026-04-12T09:00:00Z"), UpdatedAt: day("2026-04-12T09:00:00Z")},
 		{ID: "r-1", Type: "note", Status: "raw", RawContent: "raw", CreatedAt: day("2026-04-13T09:00:00Z"), UpdatedAt: day("2026-04-13T09:00:00Z")},
+		{ID: "d-1", Type: "note", Status: "discarded", RawContent: "gone", CreatedAt: day("2026-04-13T10:00:00Z"), UpdatedAt: day("2026-04-13T10:00:00Z")},
 	}
 	for _, o := range objs {
 		require.NoError(t, driver.Objects().Create(ctx, o), o.ID)
@@ -113,6 +114,7 @@ func RunInboxSuite(t *testing.T, newDriver func(*testing.T) storage.StorageDrive
 	t.Run("QueueEmpty", func(t *testing.T) { testInboxQueueEmpty(t, newDriver) })
 	t.Run("Clear", func(t *testing.T) { testInboxClear(t, fresh(t)) })
 	t.Run("Roles", func(t *testing.T) { testInboxRoles(t, fresh(t)) })
+	t.Run("TriageDiscardOnlyInboxItems", func(t *testing.T) { testInboxTriageDiscardOnlyInbox(t, fresh(t)) })
 }
 
 func testInboxQueue(t *testing.T, env inboxEnv) {
@@ -217,4 +219,47 @@ func testInboxRoles(t *testing.T, env inboxEnv) {
 	}
 	code, _ := env.do(t, http.MethodPost, "/api/v1/inbox/clear", "")
 	assert.Equal(t, http.StatusUnauthorized, code, "no token POST /inbox/clear")
+}
+
+// Triage and discard answer 404 NOT_FOUND for anything that is not
+// currently an inbox item (active, discarded, raw or unknown) and change
+// nothing; inbox items still triage and discard.
+func testInboxTriageDiscardOnlyInbox(t *testing.T, env inboxEnv) {
+	ctx := context.Background()
+	jobCount := func() int {
+		_, n, err := env.srv.Driver.Jobs().List(ctx, storage.JobFilter{Limit: 100})
+		require.NoError(t, err)
+		return n
+	}
+	jobsBefore := jobCount()
+	for id, status := range map[string]string{"a-1": "active", "d-1": "discarded", "r-1": "raw", "no-such": ""} {
+		for _, action := range []string{"triage", "discard"} {
+			path := "/api/v1/inbox/" + id + "/" + action
+			code, body := env.do(t, http.MethodPost, path, dpkmstest.RoleAdmin)
+			require.Equal(t, http.StatusNotFound, code, "POST %s: %s", path, body)
+			var out struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			require.NoError(t, json.Unmarshal(body, &out), "%s", body)
+			assert.Equal(t, "NOT_FOUND", out.Error.Code, "POST %s", path)
+			assert.Contains(t, out.Error.Message, id, "POST %s", path)
+		}
+		if status != "" {
+			assert.Equal(t, status, env.status(t, id), "a refused request changed %s", id)
+		}
+	}
+	assert.Equal(t, jobsBefore, jobCount(), "a refused triage enqueued a job")
+
+	code, body := env.do(t, http.MethodPost, "/api/v1/inbox/i-1/triage", dpkmstest.RoleAdmin)
+	require.Equal(t, http.StatusOK, code, "%s", body)
+	assert.Contains(t, string(body), "job_id")
+	assert.Equal(t, "active", env.status(t, "i-1"))
+	assert.Equal(t, jobsBefore+1, jobCount())
+
+	code, body = env.do(t, http.MethodPost, "/api/v1/inbox/i-2/discard", dpkmstest.RoleAdmin)
+	require.Equal(t, http.StatusNoContent, code, "%s", body)
+	assert.Equal(t, "discarded", env.status(t, "i-2"))
 }

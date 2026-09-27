@@ -122,6 +122,10 @@ func (m *mockObjectStore2) VectorSearchNodeAware(_ context.Context, _ storage.Ve
 func (m *mockObjectStore2) SetReminder(_ context.Context, _ string, _ time.Time) error {
 	return nil
 }
+func (m *mockObjectStore2) TransitionStatus(_ context.Context, _, _, _ string, _ time.Time) error {
+	return nil
+}
+
 func (m *mockObjectStore2) ClearReminder(_ context.Context, _ string) error { return nil }
 func (m *mockObjectStore2) ListDueReminders(_ context.Context, _ time.Time) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
