@@ -39,8 +39,10 @@ import (
 const ClosedServerURL = "http://127.0.0.1:1"
 
 // GuardedPorts are the local ports a real ctxt/dpkms server listens on:
-// the built-in default (8080) and the conventional second instance (8081).
-var GuardedPorts = []string{"8080", "8081"}
+// the built-in HTTP default (8080) and the conventional second instance
+// (8081), the gRPC default and a second instance's (9090, 9091), and the
+// browser-extension cookie bridge (9377).
+var GuardedPorts = []string{"8080", "8081", "9090", "9091", "9377"}
 
 // clearedPrefixes name the env families that steer config, routing or
 // storage: CTXT_CONFIG / CTXT_INSTANCE / CTXT_DATA_DIR / CTXT_PROFILE,

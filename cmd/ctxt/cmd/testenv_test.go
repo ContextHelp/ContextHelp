@@ -71,7 +71,7 @@ func TestLiveServerGuardDefaultEndpointIsClosedPort(t *testing.T) {
 
 // TestLiveServerGuardCoversDefaultPorts pins which addresses the dial guard
 // refuses: every spelling of the built-in default and the second local
-// instance, and nothing else.
+// instance, the default gRPC ports and the cookie bridge, and nothing else.
 func TestLiveServerGuardCoversDefaultPorts(t *testing.T) {
 	def, err := url.Parse(idxbridge.DefaultBaseURL)
 	if err != nil {
@@ -80,12 +80,14 @@ func TestLiveServerGuardCoversDefaultPorts(t *testing.T) {
 	for _, addr := range []string{
 		def.Host, "127.0.0.1:8080", "localhost:8080", "[::1]:8080", "0.0.0.0:8080", ":8080",
 		"127.0.0.1:8081", "localhost:8081",
+		"127.0.0.1:9090", "localhost:9090", "127.0.0.1:9091",
+		"127.0.0.1:9377", "localhost:9377",
 	} {
 		if !testguard.Guarded(addr) {
 			t.Errorf("Guarded(%q) = false; want true", addr)
 		}
 	}
-	for _, addr := range []string{"127.0.0.1:1", "127.0.0.1:18080", "example.com:8080", "10.0.0.5:8080"} {
+	for _, addr := range []string{"127.0.0.1:1", "127.0.0.1:18080", "example.com:8080", "10.0.0.5:8080", "10.0.0.5:9377"} {
 		if testguard.Guarded(addr) {
 			t.Errorf("Guarded(%q) = true; want false", addr)
 		}
