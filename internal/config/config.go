@@ -586,6 +586,8 @@ type ServerConfig struct {
 	// Host (loopback names plus these); protected and public instances
 	// check it only when this list is set. See ParseAllowedHost.
 	AllowedHosts []string `mapstructure:"allowed_hosts" yaml:"allowed_hosts,omitempty"`
+	// UI configures the web UI served at /ui on non-private instances.
+	UI ServerUIConfig `mapstructure:"ui" yaml:"ui,omitempty"`
 
 	// URL is the single dpkms instance clients route to when URLs is
 	// empty (also settable per command with --server where the flag
@@ -603,6 +605,21 @@ type ServerConfig struct {
 	// against instances whose URLs entry carries no token of its own.
 	// Empty = unauthenticated.
 	Token string `mapstructure:"token" yaml:"token,omitempty"`
+}
+
+// ServerUIConfig configures the web UI.
+type ServerUIConfig struct {
+	// Session bounds browser sessions minted by `ctxt ui open`.
+	Session UISessionConfig `mapstructure:"session" yaml:"session,omitempty"`
+}
+
+// UISessionConfig bounds web UI browser sessions. Zero values take the
+// defaults: idle 12h, max 168h (7 days).
+type UISessionConfig struct {
+	// IdleTTL ends a session this long after its last request.
+	IdleTTL time.Duration `mapstructure:"idle_ttl" yaml:"idle_ttl,omitempty"`
+	// MaxTTL ends a session this long after sign-in, however active.
+	MaxTTL time.Duration `mapstructure:"max_ttl" yaml:"max_ttl,omitempty"`
 }
 
 // ServerQuotaConfig caps one principal's metered usage of the
@@ -1024,6 +1041,9 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	}
 	// A malformed server.allowed_hosts entry would lock its users out
 	// with a Host rejection that reads like a network fault; fail here.
+	if err := cfg.validateUISession(); err != nil {
+		return nil, err
+	}
 	if err := cfg.validateAllowedHosts(); err != nil {
 		return nil, err
 	}

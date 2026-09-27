@@ -24,6 +24,7 @@ type apiRoute struct {
 // apiRoutes is the /api/v1 route-to-scope table.
 func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 	mgr := rc.Watcher
+	ui := newUISessionRoutes(rc)
 	get, post, patch, del := http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete
 	return []apiRoute{
 		// Identity
@@ -163,5 +164,10 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// the handler; every tool is a read.
 		{Pattern: "/mcp/", Scope: authn.ScopeReadObjects, Handler: mountMCP(svc, rc.Semantic)},
 		{Pattern: "/mcp", Scope: authn.ScopeReadObjects, Handler: mountMCP(svc, rc.Semantic)},
+
+		// Web UI sign-in: mint login codes, the session's whoami, sign out.
+		{Method: post, Pattern: "/ui/login-codes", Scope: authn.ScopeReadSystem, Handler: http.HandlerFunc(ui.mintCode)},
+		{Method: get, Pattern: "/ui/session", Scope: authn.ScopeReadSystem, Handler: http.HandlerFunc(ui.whoami)},
+		{Method: del, Pattern: "/ui/session", Scope: authn.ScopeReadSystem, Handler: http.HandlerFunc(ui.signOut)},
 	}
 }

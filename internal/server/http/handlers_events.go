@@ -30,6 +30,9 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
+		// Send the headers now: until they arrive, a browser EventSource
+		// stays "connecting" and never fires open.
+		flusher.Flush()
 
 		// Channel for events delivered to this connection.
 		ch := make(chan events.Event, 64)

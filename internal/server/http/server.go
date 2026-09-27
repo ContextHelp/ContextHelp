@@ -56,6 +56,10 @@ type RouterConfig struct {
 	// on the list, on every route (routes added to the returned router
 	// later included). nil = no Host check.
 	Hosts *HostAllowlist
+	// Sessions enables web UI sign-in (login codes, session cookies)
+	// on an authenticated instance; Auth must then be
+	// Sessions.Provider(base). nil = no browser sessions.
+	Sessions *authn.Sessions
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -101,6 +105,10 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		r.Get("/healthz", Healthz(svc, probes))
 	}
 	r.Get("/manifest.json", ManifestJSON())
+
+	// Web UI sign-in: login code → session cookie (see ui_session.go).
+	uiSessions := newUISessionRoutes(rc)
+	r.Post("/ui/auth/session", uiSessions.exchange)
 
 	// GET|HEAD /ui → redirect to /ui/
 	uiRoot := func(w http.ResponseWriter, r *http.Request) {

@@ -289,6 +289,23 @@ func validateEndpointName(name string) error {
 	return nil
 }
 
+// validateUISession checks the web UI session bounds: no negative
+// duration, and an idle timeout no longer than the absolute lifetime
+// when both are set.
+func (c *Config) validateUISession() error {
+	s := c.Server.UI.Session
+	if s.IdleTTL < 0 {
+		return fmt.Errorf("config: server.ui.session.idle_ttl must not be negative; got %s", s.IdleTTL)
+	}
+	if s.MaxTTL < 0 {
+		return fmt.Errorf("config: server.ui.session.max_ttl must not be negative; got %s", s.MaxTTL)
+	}
+	if s.IdleTTL > 0 && s.MaxTTL > 0 && s.IdleTTL > s.MaxTTL {
+		return fmt.Errorf("config: server.ui.session.idle_ttl (%s) must not exceed max_ttl (%s)", s.IdleTTL, s.MaxTTL)
+	}
+	return nil
+}
+
 // validateAllowedHosts checks every server.allowed_hosts entry parses.
 func (c *Config) validateAllowedHosts() error {
 	for i, entry := range c.Server.AllowedHosts {

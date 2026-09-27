@@ -396,3 +396,9 @@ func truncate(s string, n int) string {
 	}
 	return s[:n]
 }
+
+// Get returns the session with id whatever its state; an unknown id is
+// storage.ErrNotFound.
+func (s *Sessions) Get(ctx context.Context, id string) (*storage.UISession, error) {
+	return s.store.Get(ctx, id)
+}
