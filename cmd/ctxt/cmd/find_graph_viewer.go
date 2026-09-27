@@ -181,8 +181,10 @@ type graphViewerServer struct {
 	Idle time.Duration
 	// Addr is the listen address; empty means 127.0.0.1:0.
 	Addr string
-	// ready, when set, receives the URL once the server accepts
-	// connections. Tests use it; the CLI prints the URL instead.
+	// ready, when set, receives the URL once startup is over: the
+	// server accepts connections and the browser, when asked for, has
+	// been opened or its failure logged. Tests use it; the CLI prints
+	// the URL instead.
 	ready func(url string)
 }
 
@@ -226,13 +228,13 @@ func (s graphViewerServer) Run(ctx context.Context, doc []byte) error {
 	url := "http://" + host + "/" + token + "/"
 	fmt.Fprintf(s.Log, "Search graph viewer: %s\n", url)
 	fmt.Fprintf(s.Log, "Serving on loopback only; stops after %s without a request. Press Ctrl-C to stop.\n", s.Idle)
-	if s.ready != nil {
-		s.ready(url)
-	}
 	if s.OpenBrowser && s.Opener != nil {
 		if err := s.Opener.Open(ctx, url); err != nil {
 			fmt.Fprintf(s.Log, "Warning: could not open a browser (%v); open the URL above.\n", err)
 		}
+	}
+	if s.ready != nil {
+		s.ready(url)
 	}
 
 	idle := time.NewTimer(s.Idle)
