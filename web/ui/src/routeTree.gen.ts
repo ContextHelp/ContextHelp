@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as RegistryRouteImport } from './routes/registry'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ObjectsIndexRouteImport } from './routes/objects/index'
 import { Route as JobsIndexRouteImport } from './routes/jobs/index'
@@ -24,6 +25,11 @@ const SearchRoute = SearchRouteImport.update({
 const RegistryRoute = RegistryRouteImport.update({
   id: '/registry',
   path: '/registry',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -49,6 +55,7 @@ const ObjectsIdRoute = ObjectsIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/registry': typeof RegistryRoute
   '/search': typeof SearchRoute
   '/objects/$id': typeof ObjectsIdRoute
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/registry': typeof RegistryRoute
   '/search': typeof SearchRoute
   '/objects/$id': typeof ObjectsIdRoute
@@ -66,6 +74,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/registry': typeof RegistryRoute
   '/search': typeof SearchRoute
   '/objects/$id': typeof ObjectsIdRoute
@@ -76,16 +85,25 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/auth'
     | '/registry'
     | '/search'
     | '/objects/$id'
     | '/jobs/'
     | '/objects/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/registry' | '/search' | '/objects/$id' | '/jobs' | '/objects'
+  to:
+    | '/'
+    | '/auth'
+    | '/registry'
+    | '/search'
+    | '/objects/$id'
+    | '/jobs'
+    | '/objects'
   id:
     | '__root__'
     | '/'
+    | '/auth'
     | '/registry'
     | '/search'
     | '/objects/$id'
@@ -95,6 +113,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthRoute: typeof AuthRoute
   RegistryRoute: typeof RegistryRoute
   SearchRoute: typeof SearchRoute
   ObjectsIdRoute: typeof ObjectsIdRoute
@@ -116,6 +135,13 @@ declare module '@tanstack/react-router' {
       path: '/registry'
       fullPath: '/registry'
       preLoaderRoute: typeof RegistryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -151,6 +177,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthRoute: AuthRoute,
   RegistryRoute: RegistryRoute,
   SearchRoute: SearchRoute,
   ObjectsIdRoute: ObjectsIdRoute,
