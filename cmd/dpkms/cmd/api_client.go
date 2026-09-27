@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -33,6 +35,16 @@ func NewAPIClient(baseURL string) *APIClient {
 		baseURL: baseURL,
 		client:  &http.Client{},
 	}
+}
+
+// newEndpointClient is an APIClient for ep, sending ep's bearer token, if
+// any, with every request.
+func newEndpointClient(ep idxbridge.Endpoint) *APIClient {
+	c := NewAPIClient(strings.TrimRight(ep.URL, "/"))
+	if ep.Token != "" {
+		c.client.Transport = bearerTransport{token: ep.Token}
+	}
+	return c
 }
 
 // withNoteHeader sets the X-Ctxt-Note header on req when note is

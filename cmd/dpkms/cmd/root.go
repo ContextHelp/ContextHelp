@@ -56,7 +56,7 @@ var (
 		},
 		Globals: []kitcli.Flag{
 			{Name: "data-dir", Usage: "data directory override"},
-			{Name: "server-url", Default: "http://localhost:8080", Usage: "dpkms server URL"},
+			{Name: "server-url", Usage: serverURLFlagUsage},
 			{Name: "instance", Usage: "name of dpkms instance to target (default: unnamed)"},
 		},
 		// Hook runs after kit's built-in chain (chdir → identity → peer →
@@ -118,14 +118,13 @@ func init() {
 
 	// Mirror kit/cli bindings into the global viper used throughout the codebase.
 	pf := rootCmd.PersistentFlags()
-	for _, name := range []string{"format", "quiet", "no-color", "verbose", "no-hints", "chdir", "config", "data-dir", "server-url", "offline", "instance", "output"} {
+	for _, name := range []string{"format", "quiet", "no-color", "verbose", "no-hints", "chdir", "config", "data-dir", "offline", "instance", "output"} {
 		if f := pf.Lookup(name); f != nil {
 			_ = viper.BindPFlag(name, f)
 		}
 	}
 	// Aliases used by the rest of the codebase.
 	viper.RegisterAlias("storage.path", "data-dir")
-	viper.RegisterAlias("server.url", "server-url")
 	viper.RegisterAlias("output.format", "format")
 	viper.RegisterAlias("offline.enabled", "offline")
 	viper.RegisterAlias("cli.verbose", "verbose")
@@ -369,8 +368,7 @@ func initConfig() {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure data directory: %v\n", err)
 	}
 
-	serverURL := viper.GetString("server.url")
-	initPipelineClient(serverURL)
+	initPipelineClient(serverEndpoint())
 }
 
 func SetVersionInfo(v, bt, gc string) {

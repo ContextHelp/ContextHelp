@@ -13,17 +13,19 @@ import (
 )
 
 // TestMain isolates HOME and XDG dirs so host state (current-instance file,
-// stored profiles, pidfiles, config) never leaks into tests, and refuses any
-// request to the default local server ports: the client commands (pipeline,
-// healthcheck) default to http://localhost:8080, where a developer's real
-// server may listen. See internal/testguard.
+// stored profiles, pidfiles, config) never leaks into tests, gives dpkms a
+// user config whose server.url is a closed port (so the client commands,
+// pipeline and healthcheck, and the binaries e2e tests spawn never fall
+// through to the built-in default, where a developer's real server may
+// listen), and refuses any request to the default local server ports. See
+// internal/testguard.
 func TestMain(m *testing.M) {
 	os.Exit(testguard.Main(m, func() {
 		// Keep embedding calls off the developer's real Ollama: an
 		// unconfigured run embeds against a closed port. Tests that need
 		// a provider set their own (flag or env).
 		os.Setenv("CTXT_EMBEDDING_ENDPOINT", testguard.ClosedServerURL)
-	}))
+	}, "dpkms"))
 }
 
 // resetAllFlags resets all flags on a command and its subcommands to defaults.

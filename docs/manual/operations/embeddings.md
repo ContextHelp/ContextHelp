@@ -191,8 +191,8 @@ The `failed` state stays until the next `migrate` run starts. Fix the cause (her
 #### Stop a migration
 
 ```bash
-dpkms job list --server-url http://localhost:8080
-dpkms job cancel <job-id> --server-url http://localhost:8080 --confirm yes
+dpkms job list
+dpkms job cancel <job-id> --confirm yes
 ```
 
 Outside a terminal, `cancel` refuses without `--confirm yes`. The run stops after the object in flight and the status turns `failed` ("stopped after 22 of 30 objects"). Vectors written so far are kept; `ctxt embeddings migrate --to <model_id>` continues from there.
