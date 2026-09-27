@@ -116,6 +116,25 @@ Protected and public instances check `Host` only when
 `server.allowed_hosts` is set. Set it to the names your clients and
 reverse proxy use; `127.0.0.1:<port>` and `localhost:<port>` stay allowed.
 
+### Send write requests from scripts
+
+A `POST`, `PATCH`, `PUT` or `DELETE` that carries a body must send
+`Content-Type: application/json`; anything else gets `415` with the error
+code `UNSUPPORTED_MEDIA_TYPE`. `curl -d` sends a form type by default, so
+add the header:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/inbox \
+  -H 'Content-Type: application/json' \
+  -d '{"content":"remember this"}'
+```
+
+Web pages from other origins cannot change anything: dpkms answers `403`
+`CROSS_ORIGIN_REQUEST` to a write whose `Sec-Fetch-Site` or `Origin`
+header names another site, including another port on `localhost`. The
+web UI served by the instance, the ctxt CLI and the ctxt browser
+extension are not affected.
+
 ### Profile controls
 
 ```bash

@@ -155,6 +155,9 @@ func roleDo(t *testing.T, method, url, token string, body any) (*http.Response, 
 	}
 	req, err := http.NewRequest(method, url, rd)
 	require.NoError(t, err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -288,6 +291,7 @@ func TestFederationPushRequiresWriteObjects(t *testing.T) {
 		p := &authn.Principal{ID: role, Roles: []string{role}, Scopes: authn.ScopesForRoles([]string{role})}
 		router := NewRouterWithConfig(svc, RouterConfig{Auth: fixedProvider{p: p}})
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/federation/push", strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer any")
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)

@@ -88,6 +88,8 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		r.Use(rc.Hosts.Middleware)
 	}
 	r.Use(CORS(rc.DevCORS))
+	r.Use(CrossOriginGuard(rc.DevCORS))
+	r.Use(RequireJSONBody)
 	if rc.Security != nil {
 		r.Use(WithSecurityEvents(rc.Security))
 	}
