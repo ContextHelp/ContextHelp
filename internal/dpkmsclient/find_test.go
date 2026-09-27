@@ -311,6 +311,9 @@ func wireShape(typ reflect.Type) []string {
 			}
 			for f := range t.Fields() {
 				tag := f.Tag.Get("json")
+				if tag == "-" {
+					continue // in-process only, never on the wire
+				}
 				name, opts, _ := strings.Cut(tag, ",")
 				walk(prefix+"."+name+"("+opts+")", f.Type)
 			}
