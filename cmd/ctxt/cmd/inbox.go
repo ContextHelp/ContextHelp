@@ -1,14 +1,13 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
-	"os"
-	"strings"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/output"
 )
 
 var inboxCmd = &cobra.Command{
@@ -18,6 +17,11 @@ var inboxCmd = &cobra.Command{
 
 Inbox items are captured content awaiting a decision — triage to enqueue
 for pipeline processing, or discard to remove from the inbox.
+
+Every subcommand calls the dpkms API of the resolved instance (--server,
+--instance, CTXT_INSTANCE, the current instance, then config). Listing
+needs the read:inbox scope; triage, discard and clear need process:inbox,
+which only the admin role holds.
 
 Examples:
   # List inbox items
@@ -29,11 +33,11 @@ Examples:
   # Triage with a specific pipeline
   ctxt inbox triage <id> --pipeline default
 
-  # Discard an item
-  ctxt inbox discard <id>
+  # Discard an item (the first run prints the confirm token)
+  ctxt inbox discard <id> --confirm-token=<token>
 
   # Clear all inbox items
-  ctxt inbox clear`,
+  ctxt inbox clear --confirm-token=<token>`,
 }
 
 var inboxListCmd = &cobra.Command{
@@ -67,13 +71,14 @@ Examples:
 var inboxDiscardCmd = &cobra.Command{
 	Use:   "discard <id>",
 	Short: "Discard an inbox item",
-	Long: `Permanently discard a single inbox item by ID. The item is removed
-from the inbox queue and cannot be recovered.
+	Long: `Discard a single inbox item by ID: it leaves the inbox and is never
+processed.
 
-Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).
+Requires --confirm-token: run it once without and the refusal prints the
+token.
 
 Examples:
-  ctxt inbox discard abc123`,
+  ctxt inbox discard abc123 --confirm-token=<token>`,
 	Args: cobra.ExactArgs(1),
 	RunE: runInboxDiscard,
 }
@@ -82,12 +87,13 @@ var inboxClearCmd = &cobra.Command{
 	Use:   "clear",
 	Short: "Discard all inbox items",
 	Long: `Discard every item currently sitting in the inbox. Destructive — the
-discarded items cannot be recovered.
+discarded items are never processed.
 
-Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).
+Requires --confirm-token: run it once without and the refusal prints the
+token.
 
 Examples:
-  ctxt inbox clear`,
+  ctxt inbox clear --confirm-token=<token>`,
 	RunE: runInboxClear,
 }
 
@@ -117,8 +123,7 @@ func init() {
 	cliconv.WithDestructiveToken(inboxDiscardCmd)
 	cliconv.WithIdempotency(inboxDiscardCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(inboxDiscardCmd, []cliconv.Example{
-		{Title: "Discard an inbox item", Command: "ctxt inbox discard abc123 --confirm=yes"},
-		{Title: "Prompt for confirmation", Command: "ctxt inbox discard abc123 --confirm=prompt"},
+		{Title: "Discard an inbox item", Command: "ctxt inbox discard abc123 --confirm-token=<token>"},
 	})
 	cliconv.WithNextSteps(inboxDiscardCmd, []cliconv.NextStep{
 		{When: "after discard", Suggest: "ctxt inbox list", Reason: "verify the remaining inbox state"},
@@ -127,8 +132,7 @@ func init() {
 	cliconv.WithDestructiveToken(inboxClearCmd)
 	cliconv.WithIdempotency(inboxClearCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(inboxClearCmd, []cliconv.Example{
-		{Title: "Clear every inbox item", Command: "ctxt inbox clear --confirm=yes"},
-		{Title: "Prompt for confirmation", Command: "ctxt inbox clear --confirm=prompt"},
+		{Title: "Clear every inbox item", Command: "ctxt inbox clear --confirm-token=<token>"},
 	})
 	cliconv.WithNextSteps(inboxClearCmd, []cliconv.NextStep{
 		{When: "after clear", Suggest: "ctxt inbox list", Reason: "confirm the inbox is empty"},
@@ -143,38 +147,45 @@ func init() {
 	inboxListCmd.Flags().Bool("raw", false, "show only unenriched raw objects")
 
 	inboxTriageCmd.Flags().String("pipeline", "", "pipeline to use (default: auto-detect)")
+
+	for _, c := range []*cobra.Command{inboxListCmd, inboxTriageCmd, inboxDiscardCmd, inboxClearCmd} {
+		c.Flags().String("server", "", serverFlagUsage)
+	}
 }
 
 func runInboxList(cmd *cobra.Command, _ []string) error {
-	svc, cleanup, err := newService()
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
 	limit, _ := cmd.Flags().GetInt("limit")
 	offset, _ := cmd.Flags().GetInt("offset")
 	pending, _ := cmd.Flags().GetBool("pending")
 	failed, _ := cmd.Flags().GetBool("failed")
 	raw, _ := cmd.Flags().GetBool("raw")
+	before, err := inboxTimeFlag(cmd, "before")
+	if err != nil {
+		return err
+	}
+	after, err := inboxTimeFlag(cmd, "after")
+	if err != nil {
+		return err
+	}
 
-	// Queue view: --pending/--failed/--raw queries jobs+raw objects.
+	client, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
+	out := cmd.OutOrStdout()
+
+	// Queue view: --pending/--failed/--raw lists jobs and raw objects.
 	if pending || failed || raw {
-		qf := service.InboxQueueFilter{
-			Pending: pending,
-			Failed:  failed,
-			Raw:     raw,
-			Limit:   limit,
-			Offset:  offset,
-		}
-		items, total, err := svc.ListInboxQueue(context.Background(), qf)
+		items, total, err := client.ListInboxQueue(cmd.Context(), dpkmsclient.InboxQueueRequest{
+			Pending: pending, Failed: failed, Raw: raw, Limit: limit, Offset: offset,
+		})
 		if err != nil {
 			return fmt.Errorf("list inbox queue: %w", err)
 		}
 		if isJSONOutput() {
-			return outputJSON(os.Stdout, map[string]any{"items": items, "total": total})
+			return outputJSON(out, map[string]any{"items": items, "total": total})
 		}
-		fmt.Printf("Inbox queue (%d total)\n\n", total)
+		fmt.Fprintf(out, "Inbox queue (%d total)\n\n", total)
 		headers := []string{"ID", "Kind", "Status", "Type", "Source", "Pipeline", "Created"}
 		var rows [][]string
 		for _, item := range items {
@@ -192,23 +203,22 @@ func runInboxList(cmd *cobra.Command, _ []string) error {
 				item.CreatedAt.Format("2006-01-02 15:04"),
 			})
 		}
-		printTable(os.Stdout, headers, rows)
+		printTable(out, headers, rows)
 		return nil
 	}
 
-	// Traditional inbox view (no queue flags set).
-	filter := service.InboxFilter{Limit: limit, Offset: offset}
-
-	objs, total, err := svc.ListInbox(context.Background(), filter)
+	objs, total, err := client.ListInbox(cmd.Context(), dpkmsclient.InboxListRequest{
+		Limit: limit, Offset: offset, Before: before, After: after,
+	})
 	if err != nil {
 		return fmt.Errorf("list inbox: %w", err)
 	}
 
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, map[string]any{"items": objs, "total": total})
+		return outputJSON(out, map[string]any{"items": objs, "total": total})
 	}
 
-	fmt.Printf("Inbox (%d total)\n\n", total)
+	fmt.Fprintf(out, "Inbox (%d total)\n\n", total)
 	headers := []string{"ID", "Type", "Source", "Note", "Created"}
 	var rows [][]string
 	for _, obj := range objs {
@@ -228,72 +238,76 @@ func runInboxList(cmd *cobra.Command, _ []string) error {
 			obj.CreatedAt.Format("2006-01-02 15:04"),
 		})
 	}
-	printTable(os.Stdout, headers, rows)
+	printTable(out, headers, rows)
 	return nil
 }
 
+// inboxTimeFlag parses an RFC 3339 --before/--after value; unset is the
+// zero time. A malformed value is a usage error.
+func inboxTimeFlag(cmd *cobra.Command, name string) (time.Time, error) {
+	v, _ := cmd.Flags().GetString(name)
+	if v == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		e := output.UsageError(fmt.Sprintf("--%s %q: want an RFC 3339 timestamp", name, v))
+		e.SuggestedFix = "e.g. --" + name + " 2026-04-15T00:00:00Z"
+		return time.Time{}, e
+	}
+	return t, nil
+}
+
 func runInboxTriage(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	client, err := newDpkmsClient(cmd, 0)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
 	id := args[0]
 	pipeline, _ := cmd.Flags().GetString("pipeline")
 
-	jobID, err := svc.TriageInbox(context.Background(), id, service.TriageRequest{Pipeline: pipeline})
+	jobID, err := client.TriageInbox(cmd.Context(), id, pipeline)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return fmt.Errorf("inbox item %s not found", id)
-		}
-		return fmt.Errorf("triage: %w", err)
+		return fmt.Errorf("triage inbox item %s: %w", id, err)
 	}
 
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, map[string]string{"job_id": jobID})
+		return outputJSON(cmd.OutOrStdout(), map[string]string{"job_id": jobID})
 	}
-	fmt.Printf("Triaged %s → job %s\n", id, jobID)
+	fmt.Fprintf(cmd.OutOrStdout(), "Triaged %s → job %s\n", id, jobID)
 	return nil
 }
 
 func runInboxDiscard(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	client, err := newDpkmsClient(cmd, 0)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
 	id := args[0]
-	if err := svc.DiscardInbox(context.Background(), id); err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return fmt.Errorf("inbox item %s not found", id)
-		}
-		return fmt.Errorf("discard: %w", err)
+	if err := client.DiscardInbox(cmd.Context(), id); err != nil {
+		return fmt.Errorf("discard inbox item %s: %w", id, err)
 	}
 
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, map[string]string{"id": id, "status": "discarded"})
+		return outputJSON(cmd.OutOrStdout(), map[string]string{"id": id, "status": "discarded"})
 	}
-	fmt.Printf("Discarded %s\n", id)
+	fmt.Fprintf(cmd.OutOrStdout(), "Discarded %s\n", id)
 	return nil
 }
 
-func runInboxClear(_ *cobra.Command, _ []string) error {
-	svc, cleanup, err := newService()
+func runInboxClear(cmd *cobra.Command, _ []string) error {
+	client, err := newDpkmsClient(cmd, 0)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	n, err := svc.ClearInbox(context.Background())
+	n, err := client.ClearInbox(cmd.Context())
 	if err != nil {
 		return fmt.Errorf("clear inbox: %w", err)
 	}
 
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, map[string]int{"cleared": n})
+		return outputJSON(cmd.OutOrStdout(), map[string]int{"cleared": n})
 	}
-	fmt.Printf("Cleared %d inbox item(s)\n", n)
+	fmt.Fprintf(cmd.OutOrStdout(), "Cleared %d inbox item(s)\n", n)
 	return nil
 }
