@@ -11,12 +11,13 @@ import (
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
-	embregistry "github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
+	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -67,28 +68,14 @@ func newService() (*service.Service, func(), error) {
 	return svc, cleanup, nil
 }
 
-// embeddingBuildOpts wires the embedding write path into the pipeline
-// registry: the populate set from the driver's model registry, each
-// model's provider through r (built from config, -c and env), and the
-// driver's per-model vector index. Without a readable registry, ingest
-// writes no vectors. The duplicates config rides along for dedup, which
-// runs on those vectors.
+// embeddingBuildOpts is the dpkms CLI's embedding write path for the
+// loaded config; see stack.EmbeddingBuildOpts.
 func embeddingBuildOpts(driver storage.StorageDriver, r *embeddings.Resolver) builtins.BuildOpts {
-	opts := builtins.BuildOpts{
-		Resolver:   embeddings.NewProviderResolver(r),
-		Embeddings: driver.Embeddings(),
-		Audit:      driver.AuditLog(),
-	}
+	var dups config.DuplicatesConfig
 	if cfg != nil {
-		opts.Duplicates = cfg.Duplicates
+		dups = cfg.Duplicates
 	}
-	reg, err := embregistry.ForDriver(driver)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: embedding model registry unavailable; ingest writes no vectors: %v\n", err)
-		return opts
-	}
-	opts.Models = reg
-	return opts
+	return stack.EmbeddingBuildOpts(driver, r, dups, os.Stderr)
 }
 
 // loadDetectors reads enabled detectors from the DB and registers them.

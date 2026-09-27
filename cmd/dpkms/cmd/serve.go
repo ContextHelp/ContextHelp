@@ -19,7 +19,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -27,25 +26,16 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/federation"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
-	"github.com/ideacrafterslabs/ctxt/internal/policy"
-	"github.com/ideacrafterslabs/ctxt/internal/providers"
-	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/remind"
-	"github.com/ideacrafterslabs/ctxt/internal/search"
-	"github.com/ideacrafterslabs/ctxt/internal/secrets"
-	"github.com/ideacrafterslabs/ctxt/internal/security"
 	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
+	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
-	"github.com/ideacrafterslabs/ctxt/internal/service"
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
-	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 
 	kitbus "hop.top/kit/go/runtime/bus"
 )
@@ -144,7 +134,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// resource is initialized: a protected/public instance with no
 	// credentials refuses to start rather than exposing an open
 	// listener.
-	access, authProvider, err := resolveInboundAuth(cfg, public)
+	access, authProvider, err := stack.ResolveInboundAuth(cfg, public)
 	if err != nil {
 		return err
 	}
@@ -174,18 +164,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println("Storage initialized")
 
-	// 2. Init queue.
-	queue := jobs.NewQueue(driver.Jobs())
-	fmt.Println("Job queue initialized")
-
-	// 3. Init pipeline registry with configured providers and overrides.
-	secretsStore, err := secrets.New(cfg.Secrets)
-	if err != nil {
-		return fmt.Errorf("init secrets: %w", err)
-	}
-	factory := providers.NewFactory(cfg.Providers, secretsStore)
-
-	// 3b. Browser automation daemon (optional).
+	// 2. Browser automation daemon (optional).
 	var browserMgr *browser.Manager
 	var browserClient *browser.Client
 	if cfg.Browser.Enabled {
@@ -202,40 +181,78 @@ func runServe(cmd *cobra.Command, args []string) error {
 		fmt.Printf("IBR browser daemon on port %d\n", browserMgr.Port())
 	}
 
-	// The embedding resolver is built once here and shared by every
-	// pipeline and the startup report: ingest embeds each populating model
-	// through it.
-	embResolver := newEmbeddingResolver()
-	buildOpts := embeddingBuildOpts(driver, embResolver)
-	buildOpts.Factory = factory
-	buildOpts.BlobStore = driver.Blobs()
-	buildOpts.BlobThreshold = cfg.Storage.Blob.Threshold
-	buildOpts.BrowserClient = browserClient
-	pipes := builtins.ConfiguredRegistryWithPipelineOverrides(buildOpts, cfg.Providers, cfg.Pipelines)
-	fmt.Println("Pipeline runtime initialized (with overrides)")
-	reportEmbeddingProvider(os.Stdout, embResolver)
+	// 3. Cross-process event bus hub. The policy engine subscribes to
+	// it, so it exists before the stack. Remote apps (aps, tlc) connect
+	// to /ws/bus to share events.
+	auth, ok := kitbus.AuthFromEnv("DPKMS_BUS_TOKEN", "BUS_TOKEN")
+	if !ok {
+		return fmt.Errorf("bus auth: set BUS_TOKEN or DPKMS_BUS_TOKEN env var")
+	}
+	hubBus := kitbus.New()
+	hubNet := kitbus.NewNetworkAdapter(hubBus,
+		kitbus.WithAuth(auth),
+	)
+	defer func() {
+		_ = hubNet.Close()
+		_ = hubBus.Close(context.Background())
+	}()
 
-	// 3b. Wire pipeline preflight validation into the queue.
-	queue.SetPipelineValidator(func(name string) error {
-		_, err := pipes.Get(name)
-		return err
-	})
-
-	// 4. Init search engine.
-	engine := search.NewEngine(driver)
-
-	// 5. Get steps path.
+	// 4. Get steps path.
 	stepsPath := viper.GetString("steps.path")
 	if stepsPath == "" {
 		homeDir, _ := os.UserHomeDir()
 		stepsPath = homeDir + "/.config/contexthelp/steps"
 	}
 
-	// 6. Init service layer.
-	bus := events.NewLocalBus()
-	events.SetupSubscriber(bus, cfg, config.GetConfigPath(binName))
+	// 5. Upgrade-state manager (ADR-070 §5). The shadow file lives
+	// next to pidfiles so CLI-side banner injection finds it without an
+	// HTTP roundtrip. RunDir errors are non-fatal: a missing run dir
+	// just disables the shadow (the in-memory state still feeds /healthz).
+	var upgradeMgr *upgrade.Manager
+	if runDir, runDirErr := config.RunDir(); runDirErr == nil {
+		upgradeMgr = upgrade.NewManager(filepath.Join(runDir, "upgrade-state.json"))
+	} else {
+		upgradeMgr = upgrade.NewManager("")
+	}
 
-	// 6.0 ADR-070 §3: verify the FTS index signature on startup, on either
+	// /healthz reports the binary's compiled version + serve start time.
+	healthProbes := httpserver.HealthzProbes{
+		Version: version,
+		Started: time.Now(),
+		Upgrade: func(_ context.Context) *httpserver.UpgradeSnapshot {
+			return httpserver.NewUpgradeSnapshot(upgradeMgr.Snapshot())
+		},
+	}
+
+	// 6. Request-serving stack: queue, pipeline runtime, search engine,
+	// event bus, policy engine, service, watcher manager, security
+	// emitter, entitlement gate and HTTP router. The in-process test
+	// server builds the same stack.
+	embResolver := newEmbeddingResolver()
+	st, err := stack.Build(stack.Inputs{
+		Config:     cfg,
+		Driver:     driver,
+		Access:     access,
+		Auth:       authProvider,
+		PolicyBus:  hubBus,
+		Embeddings: embResolver,
+		Browser:    browserClient,
+		StepsPath:  stepsPath,
+		ConfigPath: config.GetConfigPath(binName),
+		Probes:     healthProbes,
+		DevCORS:    viper.GetBool("server.dev"),
+		Warnings:   os.Stderr,
+	})
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	queue, pipes, svc, watchMgr := st.Queue, st.Pipelines, st.Service, st.Watcher
+	fmt.Println("Job queue initialized")
+	fmt.Println("Pipeline runtime initialized (with overrides)")
+	reportEmbeddingProvider(os.Stdout, embResolver)
+
+	// 6a. ADR-070 §3: verify the FTS index signature on startup, on either
 	// backend. A mismatch logs a warning and emits a bus event; once the
 	// worker pool is up, it schedules the re-projection job (10e), which
 	// stamps the signature when done. The daemon proceeds meanwhile.
@@ -275,124 +292,19 @@ func runServe(cmd *cobra.Command, args []string) error {
 				},
 			)
 			if err == nil {
-				_ = bus.Publish(context.Background(), ev)
+				_ = st.Bus.Publish(context.Background(), ev)
 			}
-		}
-	}
-
-	// 6a. Cross-process event bus hub. Constructed before service.New
-	// so the kit/runtime/policy engine can subscribe and the resulting
-	// EventPublisher can be wired into domain.Service[Pipeline]
-	// inside service.NewWithOptions. Remote apps (aps, tlc) connect to
-	// /ws/bus to share events.
-	auth, ok := kitbus.AuthFromEnv("DPKMS_BUS_TOKEN", "BUS_TOKEN")
-	if !ok {
-		return fmt.Errorf("bus auth: set BUS_TOKEN or DPKMS_BUS_TOKEN env var")
-	}
-	hubBus := kitbus.New()
-	hubNet := kitbus.NewNetworkAdapter(hubBus,
-		kitbus.WithAuth(auth),
-	)
-	defer func() {
-		_ = hubNet.Close()
-		_ = hubBus.Close(context.Background())
-	}()
-
-	// 6b. Wire kit/runtime/policy on the hub bus. Misconfig (bad YAML,
-	// unknown topic, broken CEL) fails loud here so the daemon never
-	// serves traffic against an unenforced ruleset.
-	// policy.Init already prefixes returned errors with "policy:" so
-	// we surface them as-is rather than re-wrap and produce
-	// "policy: policy: ...".
-	// Non-private instances refuse the env principal fallback: a remote
-	// caller with no authenticated principal must resolve as anonymous,
-	// never as the daemon operator's $USER/$KIT_POLICY_ROLE.
-	var polOpts []policy.Option
-	if access != config.AccessPrivate {
-		polOpts = append(polOpts, policy.WithoutEnvPrincipal())
-	}
-	pol, err := policy.Init(hubBus, polOpts...)
-	if err != nil {
-		return err
-	}
-	defer pol.Close()
-
-	svc := service.NewWithOptions(driver, queue, pipes, engine, stepsPath, bus,
-		[]service.Option{service.WithPolicyPublisher(pol.Publisher())},
-		*cfg,
-	)
-
-	// 6c. Init watcher manager.
-	watchMgr := watcher.NewManager(driver.Watches(), svc)
-
-	// 7. Build HTTP router. Inject /healthz probes so the envelope
-	// reports the binary's compiled version + serve start time. gRPC
-	// probe is wired below once grpcSrv is constructed.
-	devCORS := viper.GetBool("server.dev")
-
-	// Upgrade-state manager (ADR-070 §5, T-0580). The shadow file lives
-	// next to pidfiles so CLI-side banner injection finds it without an
-	// HTTP roundtrip. RunDir errors are non-fatal: a missing run dir
-	// just disables the shadow (the in-memory state still feeds /healthz).
-	var upgradeMgr *upgrade.Manager
-	if runDir, runDirErr := config.RunDir(); runDirErr == nil {
-		upgradeMgr = upgrade.NewManager(filepath.Join(runDir, "upgrade-state.json"))
-	} else {
-		upgradeMgr = upgrade.NewManager("")
-	}
-
-	healthProbes := httpserver.HealthzProbes{
-		Version: version,
-		Started: time.Now(),
-		Upgrade: func(_ context.Context) *httpserver.UpgradeSnapshot {
-			return httpserver.NewUpgradeSnapshot(upgradeMgr.Snapshot())
-		},
-	}
-	// Non-private instances authenticate the whole /api/v1 route table
-	// (MCP mount included) through the provider-agnostic middleware.
-	var routeAuth authn.Provider
-	if access != config.AccessPrivate {
-		routeAuth = authProvider
-	}
-	// Security event emitter: auth failures and ACL denials feed the
-	// audit log (event_class=security) plus optional webhook/SMTP
-	// alerting from config. Wired on every instance — policy denials
-	// matter on private ones too.
-	secEmitter := security.New(security.ConfigFromAlerts(cfg.Security.Alerts), driver.AuditLog())
-
-	// Inbound entitlement/metering gate for the entity-serving surface.
-	// Only authenticated (non-private) instances construct one: grants
-	// are entitlement rows keyed by principal ID, quotas come from
-	// server.quotas config. nil on private instances = no gating.
-	var inboundGate *registry.InboundGate
-	if routeAuth != nil {
-		inboundGate = registry.NewInboundGate(driver.Entitlements(), driver.Metering())
-		for _, q := range cfg.Server.Quotas {
-			inboundGate.SetQuota(q.Principal, storage.MeteringEventType(q.Event), storage.QuotaConfig{
-				Limit:  q.Limit,
-				WarnAt: q.WarnAt,
-			})
 		}
 	}
 
 	// Serve-time federation-credential validation: on non-private
 	// instances the push route is gated per federation.token, never by
 	// a principal token alone; without one the route refuses requests.
-	requireFedCred := access != config.AccessPrivate
-	if requireFedCred && cfg.Federation.Token == "" {
+	if access != config.AccessPrivate && cfg.Federation.Token == "" {
 		fmt.Printf("Federation push: refused — no federation.token configured (mandatory on %s instances)\n", access)
 	}
 
-	router := httpserver.NewRouterWithConfig(svc, httpserver.RouterConfig{
-		DevCORS:                     devCORS,
-		Watcher:                     watchMgr,
-		Probes:                      healthProbes,
-		Auth:                        routeAuth,
-		Security:                    secEmitter,
-		Entitlements:                inboundGate,
-		RequireFederationCredential: requireFedCred,
-		RedactHealthz:               access == config.AccessPublic,
-	})
+	router := st.Router
 	router.Handle("/ws/bus", hubNet.Handler())
 
 	// 8. Determine bind address. Only private instances stay on
@@ -458,9 +370,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Reflection advertises the API surface; keep it for private
 	// instances only.
 	grpcSrv := grpcserver.New(grpcBind, svc,
-		grpcserver.WithAuth(routeAuth),
-		grpcserver.WithSecurity(secEmitter),
-		grpcserver.WithEntitlements(inboundGate),
+		grpcserver.WithAuth(st.RouteAuth),
+		grpcserver.WithSecurity(st.Security),
+		grpcserver.WithEntitlements(st.Entitlements),
 		grpcserver.WithReflection(access == config.AccessPrivate),
 	)
 
@@ -599,34 +511,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 	fmt.Println("Storage closed")
 
 	return runErr
-}
-
-// resolveInboundAuth folds the --public flag into the loaded config,
-// enforces the access-class rules, and constructs the configured
-// authentication provider. Returns the effective access class and the
-// provider (nil when no auth is configured, which is only legal for
-// private instances). Any misconfiguration — unknown class, explicit
-// private + --public, non-private without credentials, broken provider
-// config — refuses serve before a single port is bound.
-func resolveInboundAuth(c *config.Config, publicFlag bool) (string, authn.Provider, error) {
-	folded := *c
-	folded.Server.Public = folded.Server.Public || publicFlag
-	if err := folded.ValidateAccess(); err != nil {
-		return "", nil, err
-	}
-	access := folded.Server.EffectiveAccess()
-
-	provider, err := authn.FromConfig(c.Server.Auth)
-	if err != nil {
-		return "", nil, err
-	}
-	if access != config.AccessPrivate && provider == nil {
-		// Unreachable while ValidateAccess covers credential presence;
-		// kept as a hard stop so a validation regression can never
-		// expose an unauthenticated non-private listener.
-		return "", nil, fmt.Errorf("config: %s instance requires inbound authentication (server.auth)", access)
-	}
-	return access, provider, nil
 }
 
 // resolveInstanceName returns the instance name for this serve invocation.
