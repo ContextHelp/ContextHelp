@@ -95,7 +95,15 @@ Which instances it works on:
 
 - **Private instances** (the default, loopback only): open the URL; there's nothing to sign in to.
 - **Behind a reverse proxy that signs you in**: works as soon as you've signed in to the proxy, like the rest of the web UI. See [Put dpkms behind a reverse proxy](../operations/reverse-proxy.md).
-- **Instances that check tokens themselves** (`server.access: protected` or `public`): the page loads, but the web UI can't sign in yet, so the graph request is refused and the page shows `No embedded graph data, and /api/v1/search/graph returned HTTP 401.` Use `ctxt find --graph` or call the endpoint with your token until browser sign-in is available.
+- **Instances that check tokens themselves** (`server.access: protected` or `public`): sign the browser in once with `ctxt ui open`, then open the URL. Until you do, the page shows how to sign in instead of the graph:
+
+  ```text
+  Sign in to this dpkms first: run
+  ctxt ui open   [Copy]
+  then reload this page. How to sign in
+  ```
+
+  **Copy** puts the command on the clipboard, and **How to sign in** opens the web UI's sign-in page. Run the command on a machine whose ctxt has a token for this instance (add `--server <instance URL>` if it isn't your default), continue on the sign-in page, then reload the graph. See [Sign in to the web UI](./web-ui-sign-in.md).
 
 ## Save or share a graph
 
@@ -222,6 +230,10 @@ ctxt find "deployment" --graph --graph-max-nodes 50 --graph-similar -o deploymen
 
 - The viewer stops after `--graph-idle-timeout` without a request (10 minutes by default) or when you press Ctrl-C. Run the command again; you'll get a new URL. To keep a graph around, save it with `-o graph.html`.
 
+### The web UI page says "Sign in to this dpkms first"
+
+- The instance checks tokens and this browser has no session, or its session ended. Run `ctxt ui open`, continue on the sign-in page, then reload. If the hint comes back straight after signing in, the browser didn't keep the session cookie: see [Sign-in does not stick](./web-ui-sign-in.md#sign-in-does-not-stick).
+
 ### The graph shows only the query
 
 - The search found no candidates (`metadata.counts.candidates` is `0`). Try broader words, or drop filters such as `--source-type` or `--since`.
@@ -247,6 +259,7 @@ ctxt find "deployment" --graph --graph-max-nodes 50 --graph-similar -o deploymen
 ## Related references
 
 - [`search-retrieval.md`](./search-retrieval.md) — the search workflow this page builds on
+- [`web-ui-sign-in.md`](./web-ui-sign-in.md) — sign a browser in to a protected or public instance before opening the web UI's graph
 - [`semantic-search.md`](./semantic-search.md) — turn on the vector search the graph's `vector` leg and `similar` edges need
 - [`../reference/query-language-and-ranking.md`](../reference/query-language-and-ranking.md) — how ranking works
 - [`../reference/api-cli-reference.md`](../reference/api-cli-reference.md) — command map
