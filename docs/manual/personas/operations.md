@@ -39,6 +39,9 @@ If needed for remote access:
 dpkms serve --public
 ```
 
+To use the web UI of a remote instance in a browser, see
+[Put dpkms behind a reverse proxy](../operations/reverse-proxy.md).
+
 Health check:
 
 ```bash

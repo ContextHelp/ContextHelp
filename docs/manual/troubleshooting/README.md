@@ -16,4 +16,5 @@ Start here: [`faq.md`](./faq.md)
 
 - Runtime/queue incidents: [`../operations/runbook.md`](../operations/runbook.md)
 - Config and permission issues: [`../reference/config-and-permissions.md`](../reference/config-and-permissions.md)
+- Web UI or API behind a reverse proxy (`HOST_NOT_ALLOWED`, `401`, `415`, live updates): [`../operations/reverse-proxy.md#troubleshooting`](../operations/reverse-proxy.md#troubleshooting)
 - Pipeline and plugin issues: [`../admin-extensibility/pipeline-management.md`](../admin-extensibility/pipeline-management.md), [`../admin-extensibility/plugin-development.md`](../admin-extensibility/plugin-development.md)

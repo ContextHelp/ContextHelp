@@ -116,6 +116,10 @@ Protected and public instances check `Host` only when
 `server.allowed_hosts` is set. Set it to the names your clients and
 reverse proxy use; `127.0.0.1:<port>` and `localhost:<port>` stay allowed.
 
+To open the web UI of a remote instance in a browser, put it behind a
+reverse proxy that signs you in and adds the token:
+[Put dpkms behind a reverse proxy](../operations/reverse-proxy.md).
+
 ### Send write requests from scripts
 
 A `POST`, `PATCH`, `PUT` or `DELETE` that carries a body must send
