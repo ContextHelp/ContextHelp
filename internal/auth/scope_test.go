@@ -16,22 +16,27 @@ func TestMain(m *testing.M) {
 }
 
 // The bundles are pinned scope by scope: a new scope must land in the
-// bundle its verb implies, and nowhere else.
+// bundle its verb implies, and nowhere else. read:ui (mint a login code)
+// is a read, so every role holds it; signout:ui is session-only, so no
+// role does, admin included.
 func TestRoleBundles(t *testing.T) {
 	cases := map[string][]Scope{
 		RoleReader: {
-			ScopeReadObjects, ScopeReadInbox, ScopeReadFeeds, ScopeReadJobs,
-			ScopeReadRegistries, ScopeReadSystem,
+			ScopeReadObjects, ScopeReadMCP, ScopeReadInbox, ScopeReadFeeds, ScopeReadJobs,
+			ScopeReadRegistries, ScopeReadSystem, ScopeReadPipelines, ScopeReadWatches,
+			ScopeReadUI,
 		},
 		RoleWriter: {
-			ScopeReadObjects, ScopeWriteObjects,
+			ScopeReadObjects, ScopeWriteObjects, ScopeReadMCP,
 			ScopeReadInbox, ScopeWriteInbox,
 			ScopeReadFeeds, ScopeWriteFeeds,
 			ScopeReadJobs, ScopeWriteJobs,
 			ScopeReadRegistries,
 			ScopeReadSystem, ScopeWriteSystem,
+			ScopeReadPipelines, ScopeReadWatches,
+			ScopeReadUI,
 		},
-		RoleAdmin: AllScopes,
+		RoleAdmin: slices.DeleteFunc(slices.Clone(AllScopes), func(s Scope) bool { return s == ScopeSignoutUI }),
 	}
 	for role, want := range cases {
 		got, ok := Bundle(role)
@@ -53,10 +58,84 @@ func TestWriterBundleExcludesDeleteProcessSyncAdmin(t *testing.T) {
 			t.Errorf("writer bundle holds %q", s)
 		}
 	}
-	for _, s := range []Scope{ScopeDeleteObjects, ScopeProcessInbox, ScopeSyncRegistries, ScopeAdminAudit} {
+	for _, s := range []Scope{
+		ScopeDeleteObjects, ScopeDeleteAliases, ScopeDeleteSearches, ScopeProcessInbox,
+		ScopeSyncRegistries, ScopeAdminAudit, ScopeSignoutUI,
+	} {
 		if slices.Contains(got, s) {
 			t.Errorf("writer bundle must not hold %q", s)
 		}
+	}
+}
+
+// signout:ui belongs to browser sessions only; read:ui (minting) to
+// every role and never to a session.
+func TestUIScopesPlacement(t *testing.T) {
+	for _, role := range Roles {
+		b, _ := Bundle(role)
+		if slices.Contains(b, ScopeSignoutUI) {
+			t.Errorf("role %s holds %s: only browser sessions may", role, ScopeSignoutUI)
+		}
+		if !slices.Contains(b, ScopeReadUI) {
+			t.Errorf("role %s lacks %s: every role may sign a browser in", role, ScopeReadUI)
+		}
+	}
+	if slices.Contains(UISessionScopes, ScopeReadUI) {
+		t.Errorf("the session ui set holds %s: a session could mint sessions", ScopeReadUI)
+	}
+	if !slices.Contains(UISessionScopes, ScopeSignoutUI) {
+		t.Errorf("the session ui set lacks %s: a session could not sign out", ScopeSignoutUI)
+	}
+}
+
+// The web UI session set is pinned: the reads the web UI makes, its own
+// writes (delete an object, retry a job, sign out), nothing else.
+func TestUISessionScopesPinned(t *testing.T) {
+	want := []Scope{
+		ScopeReadObjects, ScopeDeleteObjects,
+		ScopeReadInbox, ScopeReadFeeds,
+		ScopeReadJobs, ScopeWriteJobs,
+		ScopeReadRegistries, ScopeReadSystem,
+		ScopeSignoutUI,
+	}
+	if !slices.Equal(UISessionScopes, want) {
+		t.Errorf("UISessionScopes =\n  %v\nwant\n  %v", UISessionScopes, want)
+	}
+	for _, s := range UISessionScopes {
+		if !slices.Contains(AllScopes, s) {
+			t.Errorf("ui set holds unknown scope %q", s)
+		}
+		switch s.Verb() {
+		case "admin", "sync", "process":
+			t.Errorf("ui set holds %q", s)
+		}
+	}
+	for _, s := range []Scope{
+		ScopeReadUI, ScopeReadMCP, ScopeWriteObjects, ScopeDeleteAliases, ScopeDeleteSearches,
+		ScopeReadPipelines, ScopeReadWatches, ScopeWriteSystem, ScopeAdminAudit,
+	} {
+		if slices.Contains(UISessionScopes, s) {
+			t.Errorf("ui set must not hold %q", s)
+		}
+	}
+	if SessionScopes(SessionKindUI) == nil || SessionScopes("full") != nil {
+		t.Error("SessionScopes: ui kind maps to the ui set, unknown kinds to nothing")
+	}
+}
+
+// A session holds its principal's scopes intersected with the kind's
+// set, plus signout:ui whatever the principal holds; nothing for an
+// unknown kind.
+func TestSessionScopesFor(t *testing.T) {
+	principal := []Scope{ScopeWriteJobs, ScopeReadObjects, ScopeAdminAudit, ScopeReadUI}
+	if got, want := SessionScopesFor(principal, SessionKindUI), []Scope{ScopeReadObjects, ScopeWriteJobs, ScopeSignoutUI}; !slices.Equal(got, want) {
+		t.Errorf("SessionScopesFor = %v, want %v", got, want)
+	}
+	if got, want := SessionScopesFor(nil, SessionKindUI), []Scope{ScopeSignoutUI}; !slices.Equal(got, want) {
+		t.Errorf("SessionScopesFor(nil) = %v, want %v", got, want)
+	}
+	if got := SessionScopesFor(AllScopes, "full"); got == nil || len(got) != 0 {
+		t.Errorf("SessionScopesFor(all, unknown kind) = %#v, want empty non-nil", got)
 	}
 }
 

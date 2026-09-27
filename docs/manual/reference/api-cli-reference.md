@@ -104,10 +104,10 @@ Core routes:
 
 Web UI sign-in routes (see [Sign in to the web UI](../workflows/web-ui-sign-in.md)):
 
-- `POST /api/v1/ui/login-codes` (API token only): single-use login code, 60 s
+- `POST /api/v1/ui/login-codes` (`read:ui`, API token only): single-use login code, 60 s
 - `POST /ui/auth/session`: login code for the session cookie (same-origin, `X-Ctxt-CSRF: 1`)
-- `GET /api/v1/ui/session`: who the caller is (`via`: `token` or `session`)
-- `DELETE /api/v1/ui/session`: sign the browser out
+- `GET /api/v1/whoami`: who the caller is (`via`: `token`, `session` or `none`), its scopes and, for a session, the session
+- `DELETE /api/v1/ui/session` (`signout:ui`, browser sessions only): sign the browser out
 
 Importer routes (story-target contract):
 

@@ -32,7 +32,7 @@ Configurable in ContextHelp settings.
 Supported modes:
 
 - API key via `Authorization: Bearer <token>` or `X-API-Key: <token>`
-- Web UI session cookie, browser only, with a reduced scope; minted by `ctxt ui open` (see [Sign in to the web UI](../manual/workflows/web-ui-sign-in.md))
+- Web UI session cookie, browser only; minted by `ctxt ui open` (see [Sign in to the web UI](../manual/workflows/web-ui-sign-in.md)). Its scopes are the minting token's intersected with the web UI's set
 - Optional mTLS
 - Optional reverse-proxy auth integration
 
@@ -41,10 +41,19 @@ Private instances (loopback, no `server.auth`) accept requests without a token. 
 - Every `/api/v1` route requires one scope (`read:objects`, `write:objects`, `delete:objects`, `process:inbox`, `admin:audit`, ...). A token's roles (`admin`, `writer`, `reader`) expand to its scopes. Route-to-scope table: [config-and-permissions](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
 - A missing or invalid token gets 401 `UNAUTHORIZED`.
 - A valid token without the route's scope gets 403 `INSUFFICIENT_SCOPE`, with `details.required_scope` and a `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."` header (RFC 6750).
-- `GET /api/v1/whoami` returns the caller:
+- `GET /api/v1/whoami` returns the caller, with `via` (`token`, `session`, or `none` on a private instance):
 
 ```json
-{"principal": "phone", "provider": "static", "roles": ["writer"], "scopes": ["read:objects", "write:objects", "..."]}
+{"principal": "phone", "provider": "static", "roles": ["writer"], "scopes": ["read:objects", "write:objects", "..."], "via": "token"}
+```
+
+A web UI session cookie reports the session's narrowed scopes and the session itself:
+
+```json
+{"principal": "phone", "provider": "static", "roles": ["writer"],
+ "scopes": ["read:objects", "read:inbox", "read:feeds", "read:jobs", "write:jobs", "read:registries", "read:system", "signout:ui"],
+ "via": "session",
+ "session": {"id": "uis_3f2a…", "kind": "ui", "created_at": "…", "idle_expires_at": "…", "expires_at": "…"}}
 ```
 
 ## Content Types

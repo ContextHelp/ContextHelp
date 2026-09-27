@@ -186,11 +186,12 @@ func TestUISignIn_MintAndExchange(t *testing.T) {
 	resp = f.exchange(lc.Code)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
-	who := decodeBody[uiSessionResponse](t, resp)
+	who := decodeBody[exchangeResponse](t, resp)
 	assert.Equal(t, "ops", who.Principal)
 	assert.Equal(t, authn.ViaSession, who.Via)
-	assert.Equal(t, authn.ScopeUI, who.Scope)
+	assert.Equal(t, authn.UISessionScopes, who.Scopes)
 	require.NotNil(t, who.Session)
+	assert.Equal(t, authn.SessionKindUI, who.Session.Kind)
 	assert.Empty(t, who.Warning, "loopback sign-in raises no plain-HTTP warning")
 }
 
@@ -231,15 +232,15 @@ func TestUISession_CookieAuthenticatesAndBearerUnchanged(t *testing.T) {
 	resp := f.do(http.MethodGet, "/api/v1/objects", nil, withCookie(c), fromUI)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	resp = f.do(http.MethodGet, "/api/v1/ui/session", nil, withCookie(c), fromUI)
+	resp = f.do(http.MethodGet, "/api/v1/whoami", nil, withCookie(c), fromUI)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	who := decodeBody[uiSessionResponse](t, resp)
+	who := decodeBody[whoamiResponse](t, resp)
 	assert.Equal(t, "ops", who.Principal)
 	assert.Equal(t, authn.ViaSession, who.Via)
 	require.NotNil(t, who.Session)
 
-	resp = f.do(http.MethodGet, "/api/v1/ui/session", nil, withBearer(uiOpsToken))
-	who = decodeBody[uiSessionResponse](t, resp)
+	resp = f.do(http.MethodGet, "/api/v1/whoami", nil, withBearer(uiOpsToken))
+	who = decodeBody[whoamiResponse](t, resp)
 	assert.Equal(t, "token", who.Via)
 	assert.Nil(t, who.Session)
 
@@ -308,9 +309,12 @@ func TestUISession_SignOutRevokes(t *testing.T) {
 	resp = f.do(http.MethodGet, "/api/v1/objects", nil, withCookie(c), fromUI)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, "revoked cookie")
 
+	// signout:ui is session-only: even an admin token lacks it.
 	resp = f.do(http.MethodDelete, "/api/v1/ui/session", nil, withBearer(uiOpsToken))
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	assert.Equal(t, "NO_SESSION", errCode(t, resp))
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	env := decodeBody[ErrorEnvelope](t, resp)
+	assert.Equal(t, CodeInsufficientScope, env.Error.Code)
+	assert.Equal(t, string(authn.ScopeSignoutUI), env.Error.Details["required_scope"])
 }
 
 func TestUISession_TokenRemovedFromConfig(t *testing.T) {
@@ -428,7 +432,7 @@ func TestUISignIn_PlainHTTPRemoteWarns(t *testing.T) {
 	rr := httptest.NewRecorder()
 	routes.exchange(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
-	var who uiSessionResponse
+	var who exchangeResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &who))
 	assert.Equal(t, plainHTTPWarning, who.Warning)
 	assert.Contains(t, warned.String(), "plain HTTP")

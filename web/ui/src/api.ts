@@ -127,15 +127,24 @@ export const system = {
 
 // ── Browser session ───────────────────────────────────────────────────────────
 
-/** Who the browser is signed in as (GET /api/v1/ui/session). */
+/**
+ * Who the caller is (GET /api/v1/whoami): principal, roles and the
+ * effective scopes. A browser session holds its token's scopes narrowed
+ * to the web UI's set.
+ */
 export interface WhoAmI {
-  authenticated: boolean;
-  /** False on a private instance: nothing to sign in to. */
-  session_required: boolean;
-  principal?: string;
-  via?: 'session' | 'token';
-  scope?: string;
-  session?: { id: string; created_at: string; idle_expires_at: string; expires_at: string };
+  principal: string;
+  name?: string;
+  provider: string;
+  roles: string[];
+  scopes: string[];
+  /** token, session (this browser's sign-in) or none (private instance: nothing to sign in to). */
+  via: 'token' | 'session' | 'none';
+  session?: { id: string; kind: string; created_at: string; idle_expires_at: string; expires_at: string };
+}
+
+/** The code exchange answers the new session's whoami, plus a warning. */
+export interface SignedIn extends WhoAmI {
   /** A condition that will break the session, e.g. plain HTTP. */
   warning?: string;
 }
@@ -144,17 +153,17 @@ export interface WhoAmI {
 export const LOGIN_PATH = '/ui/auth';
 
 export const session = {
-  whoami: () => req<WhoAmI>('/ui/session'),
+  whoami: () => req<WhoAmI>('/whoami'),
   signOut: () => req<void>('/ui/session', { method: 'DELETE' }),
   /** Trades a login code for the session cookie (outside /api/v1). */
-  exchange: async (code: string): Promise<WhoAmI> => {
+  exchange: async (code: string): Promise<SignedIn> => {
     const res = await fetch('/ui/auth/session', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', [CSRF_HEADER]: '1' },
       body: JSON.stringify({ code }),
     });
-    const body = (await res.json().catch(() => ({}))) as WhoAmI & ErrorEnvelope;
+    const body = (await res.json().catch(() => ({}))) as SignedIn & ErrorEnvelope;
     if (!res.ok) {
       throw new ApiError(res.status, body.error?.code, body.error?.message ?? res.statusText);
     }

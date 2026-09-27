@@ -299,3 +299,124 @@ func TestFederationPushRequiresWriteObjects(t *testing.T) {
 		assert.Equal(t, wantScopeDenied, denied, "%s: status %d body %s", role, rec.Code, rec.Body.String())
 	}
 }
+
+// uiSessionRoutes is every route a web UI browser session can reach:
+// the routes whose scope is in authn.UISessionScopes. Pinned here so a
+// new route declaring a ui-set scope, or a change to the set, fails
+// until someone decides a browser session should have it.
+var uiSessionRouteSet = []string{
+	"GET /api/v1/whoami",
+	"GET /api/v1/objects",
+	"GET /api/v1/objects/facets",
+	"GET /api/v1/objects/{id}",
+	"GET /api/v1/objects/{id}/related",
+	"DELETE /api/v1/objects/{id}",
+	"GET /api/v1/jobs",
+	"GET /api/v1/jobs/{id}",
+	"POST /api/v1/jobs/{id}/retry",
+	"GET /api/v1/search",
+	"POST /api/v1/find",
+	"GET /api/v1/search/graph",
+	"GET /api/v1/entities",
+	"GET /api/v1/entities/{slug}",
+	"GET /api/v1/entities/{slug}/backlinks",
+	"GET /api/v1/steps/registries",
+	"GET /api/v1/feeds",
+	"GET /api/v1/import/{id}",
+	"GET /api/v1/importers/runs/{id}",
+	"GET /api/v1/system/reminders",
+	"GET /api/v1/inbox",
+	"GET /api/v1/events",
+	"GET /api/v1/suggestions",
+	"GET /api/v1/aliases",
+	"GET /api/v1/aliases/{alias}",
+	"GET /api/v1/capture/recent",
+	"GET /api/v1/saved-searches",
+	"GET /api/v1/saved-searches/{name}",
+	"GET /api/v1/search-history",
+	"DELETE /api/v1/ui/session",
+}
+
+// The ui scope set, applied to the route table, yields exactly the web
+// UI's routes: its reads, its own writes (delete an object, retry a job,
+// sign out) and the registry list. The routes a session must never
+// reach declare scopes outside the set.
+func TestUISessionRouteSetPinned(t *testing.T) {
+	svc := newScopeTestService(t)
+	rc := RouterConfig{Auth: fixedProvider{p: &authn.Principal{ID: "none"}}}
+	table := apiRoutes(svc, rc)
+
+	var got []string
+	for _, w := range walkAPIRoutes(t, NewRouterWithConfig(svc, rc)) {
+		rt, ok := tableEntry(table, w)
+		require.True(t, ok, "%s missing from the table", w)
+		if slices.Contains(authn.UISessionScopes, rt.Scope) {
+			got = append(got, w)
+		}
+	}
+	assert.ElementsMatch(t, uiSessionRouteSet, got)
+
+	// Minting takes read:ui, which every role holds and no session; the
+	// sign-out route takes signout:ui, which only sessions hold.
+	mint, _ := tableEntry(table, "POST /api/v1/ui/login-codes")
+	assert.Equal(t, authn.ScopeReadUI, mint.Scope)
+	signOut, _ := tableEntry(table, "DELETE /api/v1/ui/session")
+	assert.Equal(t, authn.ScopeSignoutUI, signOut.Scope)
+
+	for _, w := range []string{
+		"POST /api/v1/ui/login-codes",
+		"GET /api/v1/audit-log",
+		"POST /api/v1/federation/push",
+		"POST /api/v1/mcp", "GET /api/v1/mcp/",
+		"GET /api/v1/watches", "GET /api/v1/watches/{id}/files",
+		"GET /api/v1/pipelines", "GET /api/v1/steps",
+		"POST /api/v1/pipelines/enqueue", "POST /api/v1/steps/install",
+		"POST /api/v1/steps/registries/fetch", "POST /api/v1/entities/registry-sync",
+		"DELETE /api/v1/aliases/{alias}", "DELETE /api/v1/saved-searches/{name}", "DELETE /api/v1/search-history",
+		"PATCH /api/v1/objects/{id}", "POST /api/v1/analyze",
+	} {
+		rt, ok := tableEntry(table, w)
+		require.True(t, ok, "%s missing from the table", w)
+		assert.False(t, slices.Contains(authn.UISessionScopes, rt.Scope), "%s: scope %s is in the ui set", w, rt.Scope)
+	}
+}
+
+// Behavioral half: a session principal holding the whole ui set is
+// refused by every route outside the pinned set with 403 naming the
+// route's scope. Handlers never run.
+func TestUISessionRefusedOutsideRouteSet(t *testing.T) {
+	svc := newScopeTestService(t)
+	sess := &authn.Principal{
+		ID: "ops", Roles: []string{authn.RoleAdmin}, Scopes: authn.UISessionScopes,
+		Meta: map[string]string{authn.MetaVia: authn.ViaSession, authn.MetaSessionKind: authn.SessionKindUI},
+	}
+	rc := RouterConfig{Auth: fixedProvider{p: sess}}
+	table := apiRoutes(svc, rc)
+	router := NewRouterWithConfig(svc, rc)
+
+	refused := 0
+	for _, w := range walkAPIRoutes(t, router) {
+		if slices.Contains(uiSessionRouteSet, w) {
+			continue
+		}
+		rt, _ := tableEntry(table, w)
+		method, pattern, _ := strings.Cut(w, " ")
+		req := httptest.NewRequest(method, urlParam.ReplaceAllString(pattern, "x"), strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer any")
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		req.Header.Set(HeaderCSRF, "1")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if !assert.Equal(t, http.StatusForbidden, rec.Code, "%s: session got through", w) {
+			continue
+		}
+		var env ErrorEnvelope
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &env), w)
+		assert.Equal(t, CodeInsufficientScope, env.Error.Code, w)
+		assert.Equal(t, string(rt.Scope), env.Error.Details["required_scope"], w)
+		refused++
+	}
+	assert.Greater(t, refused, 50, "walked the routes outside the ui set")
+}

@@ -34,6 +34,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -525,6 +526,13 @@ func exchange(t *testing.T, base, code string) (*http.Cookie, int) {
 // sendWithCookie sends a same-origin web UI request carrying cookie.
 func sendWithCookie(t *testing.T, cookie *http.Cookie, base, method, path, body string) int {
 	t.Helper()
+	status, _ := sendWithCookieBody(t, cookie, base, method, path, body)
+	return status
+}
+
+// sendWithCookieBody is sendWithCookie returning the response body too.
+func sendWithCookieBody(t *testing.T, cookie *http.Cookie, base, method, path, body string) (int, []byte) {
+	t.Helper()
 	req, err := http.NewRequest(method, base+path, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -540,8 +548,12 @@ func sendWithCookie(t *testing.T, cookie *http.Cookie, base, method, path, body 
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
-	return resp.StatusCode
+	defer resp.Body.Close()
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, out
 }
 
 // busAuth opens /ws/bus carrying cookie and offers secret as the bus
@@ -572,8 +584,10 @@ func busAuth(base string, cookie *http.Cookie, secret string) error {
 }
 
 // A session cookie opens neither the MCP mount, federation push, the
-// audit log, login-code minting nor the cross-process bus, and a spent
-// code does not sign in again.
+// audit log, server-side watches, login-code minting nor the
+// cross-process bus, and a spent code does not sign in again. Each
+// refusal is the route scope the session lacks, although the admin token
+// that minted it holds them all.
 func TestSessionCookieRefusedOffScope(t *testing.T) {
 	in := startInstance(t)
 	base := in.proxy.URL
@@ -589,15 +603,41 @@ func TestSessionCookieRefusedOffScope(t *testing.T) {
 	if got := sendWithCookie(t, cookie, base, http.MethodGet, "/api/v1/objects", ""); got != http.StatusOK {
 		t.Fatalf("cookie read: %d, want 200", got)
 	}
-	for _, tc := range []struct{ method, path, body string }{
-		{http.MethodPost, "/api/v1/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`},
-		{http.MethodPost, "/api/v1/federation/push", `{}`},
-		{http.MethodGet, "/api/v1/audit-log", ""},
-		{http.MethodPost, "/api/v1/ui/login-codes", ""},
+	for _, tc := range []struct{ method, path, body, scope string }{
+		{http.MethodPost, "/api/v1/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, "read:mcp"},
+		{http.MethodPost, "/api/v1/federation/push", `{}`, "write:objects"},
+		{http.MethodGet, "/api/v1/audit-log", "", "admin:audit"},
+		{http.MethodGet, "/api/v1/watches", "", "read:watches"},
+		{http.MethodPost, "/api/v1/ui/login-codes", "", "read:ui"},
 	} {
-		if got := sendWithCookie(t, cookie, base, tc.method, tc.path, tc.body); got != http.StatusForbidden {
-			t.Errorf("%s %s with a session cookie: %d, want 403", tc.method, tc.path, got)
+		got, body := sendWithCookieBody(t, cookie, base, tc.method, tc.path, tc.body)
+		var env struct {
+			Error struct {
+				Code    string         `json:"code"`
+				Details map[string]any `json:"details"`
+			} `json:"error"`
 		}
+		_ = json.Unmarshal(body, &env)
+		if got != http.StatusForbidden || env.Error.Code != "INSUFFICIENT_SCOPE" || env.Error.Details["required_scope"] != tc.scope {
+			t.Errorf("%s %s with a session cookie: %d %s, want 403 INSUFFICIENT_SCOPE for %s", tc.method, tc.path, got, body, tc.scope)
+		}
+	}
+	for _, path := range []string{"/api/v1/steps/registries", "/api/v1/whoami"} {
+		if got := sendWithCookie(t, cookie, base, http.MethodGet, path, ""); got != http.StatusOK {
+			t.Errorf("GET %s with a session cookie: %d, want 200", path, got)
+		}
+	}
+	_, who := sendWithCookieBody(t, cookie, base, http.MethodGet, "/api/v1/whoami", "")
+	var whoami struct {
+		Via     string   `json:"via"`
+		Scopes  []string `json:"scopes"`
+		Session *struct {
+			Kind string `json:"kind"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(who, &whoami); err != nil || whoami.Via != "session" || whoami.Session == nil ||
+		whoami.Session.Kind != "ui" || slices.Contains(whoami.Scopes, "admin:audit") || !slices.Contains(whoami.Scopes, "delete:objects") {
+		t.Errorf("whoami with a session cookie: %s, want via session, kind ui, the ui scope set", who)
 	}
 
 	// The bus accepts the WebSocket upgrade and authenticates the first

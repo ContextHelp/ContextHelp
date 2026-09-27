@@ -23,8 +23,10 @@ type UISession struct {
 	// TokenHash is the hex SHA-256 of the static token that minted the
 	// session. The session ends when that token leaves the config.
 	TokenHash string `json:"-"`
-	// Scope names the route set the session may reach ("ui").
-	Scope string `json:"scope"`
+	// Scope holds the session kind ("ui", stored in the scope column).
+	// The kind fixes the scope set the session narrows its token's
+	// scopes to (auth.SessionScopes).
+	Scope string `json:"kind"`
 	// UserAgent and RemoteAddr describe the browser that signed in, for
 	// listing only.
 	UserAgent  string `json:"user_agent,omitempty"`
@@ -54,6 +56,7 @@ type UILoginCode struct {
 	// TokenHash is the hex SHA-256 of the static token that minted the
 	// code; the session inherits it.
 	TokenHash string
+	// Scope holds the kind of the session the code opens ("ui").
 	Scope     string
 	CreatedAt time.Time
 	ExpiresAt time.Time

@@ -79,7 +79,8 @@ func TestSessions_ExchangeActsAsMintingPrincipal(t *testing.T) {
 	assert.Equal(t, "ops", m.Principal.ID)
 	assert.Equal(t, []string{"admin", "reader"}, m.Principal.Roles)
 	assert.True(t, m.Principal.IsSession())
-	assert.Equal(t, auth.ScopeUI, m.Principal.SessionScope())
+	assert.Equal(t, auth.SessionKindUI, m.Principal.SessionKind())
+	assert.Equal(t, auth.UISessionScopes, m.Principal.Scopes, "an admin token's session holds the ui set, no more")
 	assert.Equal(t, m.Session.ID, m.Principal.Meta[auth.MetaSessionID])
 	assert.Equal(t, f.clock.t.Add(auth.DefaultSessionIdleTTL), m.Session.IdleExpiresAt)
 	assert.Equal(t, f.clock.t.Add(auth.DefaultSessionMaxTTL), m.Session.ExpiresAt)
@@ -243,7 +244,7 @@ func TestSessions_RolesFollowConfig(t *testing.T) {
 	p, _, err := f.sessions.Authenticate(context.Background(), m.Secret)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"reader"}, p.Roles)
-	assert.Equal(t, auth.ScopesForRoles([]string{"reader"}), p.Scopes)
+	assert.Equal(t, auth.SessionScopesFor(auth.ScopesForRoles([]string{"reader"}), auth.SessionKindUI), p.Scopes)
 }
 
 func TestSessions_SweepRemovedTokens(t *testing.T) {
@@ -313,8 +314,66 @@ func TestStatic_PrincipalForTokenHash(t *testing.T) {
 func TestSessionPrincipal_MetaIsolated(t *testing.T) {
 	f := newSessionFixture(t)
 	m := f.signIn(t)
-	m.Principal.Meta[auth.MetaScope] = "full"
+	m.Principal.Meta[auth.MetaSessionKind] = "full"
+	m.Principal.Scopes[0] = auth.ScopeAdminAudit
 	p, _, err := f.sessions.Authenticate(context.Background(), m.Secret)
 	require.NoError(t, err)
-	assert.Equal(t, auth.ScopeUI, p.SessionScope())
+	assert.Equal(t, auth.SessionKindUI, p.SessionKind())
+	assert.Equal(t, auth.UISessionScopes, p.Scopes)
+}
+
+// A session's effective scopes are its minting principal's intersected
+// with the ui set: a reader token's session reads only, a writer's may
+// also retry jobs, an admin's holds exactly the ui set. None may mint
+// login codes, whatever the token.
+func TestSessions_ScopesIntersectTokenAndUISet(t *testing.T) {
+	uiRead := []auth.Scope{
+		auth.ScopeReadObjects, auth.ScopeReadInbox, auth.ScopeReadFeeds, auth.ScopeReadJobs,
+		auth.ScopeReadRegistries, auth.ScopeReadSystem,
+	}
+	cases := map[string][]auth.Scope{
+		auth.RoleReader: append(append([]auth.Scope{}, uiRead...), auth.ScopeSignoutUI),
+		auth.RoleWriter: {
+			auth.ScopeReadObjects, auth.ScopeReadInbox, auth.ScopeReadFeeds, auth.ScopeReadJobs, auth.ScopeWriteJobs,
+			auth.ScopeReadRegistries, auth.ScopeReadSystem, auth.ScopeSignoutUI,
+		},
+		auth.RoleAdmin: auth.UISessionScopes,
+	}
+	for role, want := range cases {
+		t.Run(role, func(t *testing.T) {
+			f := newSessionFixture(t)
+			f.restart(t, auth.StaticToken{Token: opsToken.Token, Principal: "ops", Roles: []string{role}})
+			m := f.signIn(t)
+			assert.Equal(t, want, m.Principal.Scopes)
+			p, _, err := f.sessions.Authenticate(context.Background(), m.Secret)
+			require.NoError(t, err)
+			assert.Equal(t, want, p.Scopes)
+			token, err := f.static.Authenticate(context.Background(), auth.Credential{Scheme: auth.SchemeBearer, Token: opsToken.Token})
+			require.NoError(t, err)
+			for _, s := range p.Scopes {
+				if s == auth.ScopeSignoutUI {
+					continue // session-only: no token holds it
+				}
+				assert.True(t, token.HasScope(s), "session holds %s its token lacks", s)
+			}
+			assert.False(t, p.HasScope(auth.ScopeReadUI), "a session never mints login codes")
+			assert.True(t, token.HasScope(auth.ScopeReadUI), "every role may sign a browser in")
+			assert.True(t, p.HasScope(auth.ScopeSignoutUI), "every session may sign itself out")
+			assert.False(t, token.HasScope(auth.ScopeSignoutUI), "signout:ui is session-only")
+		})
+	}
+}
+
+// A stored session of a kind this build does not know reaches nothing.
+func TestSessions_UnknownKindHasNoScopes(t *testing.T) {
+	f := newSessionFixture(t)
+	now := f.clock.t
+	require.NoError(t, f.store.Create(context.Background(), &storage.UISession{
+		ID: "uis_future", SecretHash: auth.HashSecret("secret-future"), PrincipalID: "ops",
+		TokenHash: auth.HashSecret(opsToken.Token), Scope: "full",
+		CreatedAt: now, LastSeenAt: now, IdleExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour),
+	}))
+	p, _, err := f.sessions.Authenticate(context.Background(), "secret-future")
+	require.NoError(t, err)
+	assert.Empty(t, p.Scopes)
 }

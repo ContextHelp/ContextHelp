@@ -20,17 +20,26 @@ import (
 // session secret pasted into Authorization is just an invalid bearer.
 const SchemeSession = "session"
 
-// ScopeUI is the route set a browser session may reach: reads, search
-// and the web UI's own writes. The HTTP layer owns the route table.
-const ScopeUI = "ui"
+// SessionKindUI is the kind of a web UI browser session, stored with
+// each session and login code. Its scopes are UISessionScopes.
+const SessionKindUI = "ui"
+
+// SessionScopes returns the fixed scope set of a session kind: nil for
+// a kind this build does not know, so such a session reaches nothing.
+func SessionScopes(kind string) []Scope {
+	if kind == SessionKindUI {
+		return UISessionScopes
+	}
+	return nil
+}
 
 // Principal.Meta keys set on a principal that authenticated with a
 // session cookie.
 const (
 	// MetaVia is "session" for a cookie-authenticated principal.
 	MetaVia = "via"
-	// MetaScope names the session's route scope (ScopeUI).
-	MetaScope = "scope"
+	// MetaSessionKind names the session's kind (SessionKindUI).
+	MetaSessionKind = "session_kind"
 	// MetaSessionID is the session's public ID.
 	MetaSessionID = "session_id"
 	// ViaSession is the MetaVia value of a session principal.
@@ -62,13 +71,13 @@ func (p *Principal) IsSession() bool {
 	return p != nil && p.Meta[MetaVia] == ViaSession
 }
 
-// SessionScope returns the route scope of a session principal, or ""
+// SessionKind returns the kind of a session principal's session, or ""
 // for any other principal.
-func (p *Principal) SessionScope() string {
+func (p *Principal) SessionKind() string {
 	if !p.IsSession() {
 		return ""
 	}
-	return p.Meta[MetaScope]
+	return p.Meta[MetaSessionKind]
 }
 
 // HashSecret returns the hex SHA-256 of a token, login code or cookie
@@ -135,7 +144,8 @@ type Minted struct {
 
 // Sessions mints login codes, exchanges them for browser sessions and
 // authenticates session cookies. A session acts as the principal of the
-// static token that minted its code, with a reduced scope (ScopeUI),
+// static token that minted its code, with that principal's scopes
+// narrowed to its kind's (SessionScopes),
 // and ends at its idle or absolute expiry, on revocation, or as soon as
 // that token is no longer configured.
 type Sessions struct {
@@ -203,7 +213,7 @@ func (s *Sessions) MintCode(ctx context.Context, token string) (string, time.Tim
 		CodeHash:    HashSecret(code),
 		PrincipalID: p.ID,
 		TokenHash:   tokenHash,
-		Scope:       ScopeUI,
+		Scope:       SessionKindUI,
 		CreatedAt:   now,
 		ExpiresAt:   expires,
 	}); err != nil {
@@ -347,16 +357,19 @@ func (s *Sessions) SweepRemovedTokens(ctx context.Context) (int, error) {
 }
 
 // sessionPrincipal is p acting through sess: same ID, name, provider
-// and roles, so entitlements, metering and policy apply unchanged, plus
-// the session markers the HTTP scope guard reads.
+// and roles, so entitlements, metering and policy apply unchanged; its
+// effective scopes are p's intersected with the session kind's fixed
+// set, plus the session-only signout:ui (SessionScopesFor), so a
+// session never holds more than its token, nor more than a browser
+// needs. Plus the session markers the HTTP layer reads.
 func sessionPrincipal(p *Principal, sess *storage.UISession) *Principal {
 	out := *p
 	out.Roles = append([]string(nil), p.Roles...)
-	out.Scopes = append([]Scope(nil), p.Scopes...)
+	out.Scopes = SessionScopesFor(p.Scopes, sess.Scope)
 	out.Meta = make(map[string]string, len(p.Meta)+3)
 	maps.Copy(out.Meta, p.Meta)
 	out.Meta[MetaVia] = ViaSession
-	out.Meta[MetaScope] = sess.Scope
+	out.Meta[MetaSessionKind] = sess.Scope
 	out.Meta[MetaSessionID] = sess.ID
 	return &out
 }
