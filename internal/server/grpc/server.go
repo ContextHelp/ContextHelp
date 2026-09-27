@@ -108,7 +108,15 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("grpc: listen %s: %w", s.addr, err)
 	}
-	slog.Info("grpc: listening", "addr", s.addr)
+	return s.Serve(ctx, ln)
+}
+
+// Serve serves on an already-bound listener and blocks until ctx is
+// cancelled or a fatal error occurs. The server owns ln from here on.
+// Callers that must hold the port from the moment they choose it bind
+// first and pass the listener, rather than letting Start re-bind.
+func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	slog.Info("grpc: listening", "addr", ln.Addr().String())
 
 	// Stop when context cancelled.
 	go func() {

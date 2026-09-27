@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"net"
 	gohttp "net/http"
 	"os"
 	"os/exec"
@@ -405,41 +404,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		bind = "0.0.0.0"
 	}
 
-	// 9. Auto-assign HTTP port if preferred is busy.
-	port, err = findFreePort(bind, port)
-	if err != nil {
-		return fmt.Errorf("http port: %w", err)
-	}
-	addr := fmt.Sprintf("%s:%d", bind, port)
-
-	// 9a. Create HTTP server.
-	httpSrv := &gohttp.Server{
-		Addr:    addr,
-		Handler: router,
-	}
-
-	// 9b. Auto-assign gRPC port if preferred is busy.
-	grpcPort, err = findFreePort(bind, grpcPort)
-	if err != nil {
-		return fmt.Errorf("grpc port: %w", err)
-	}
-	grpcBind := fmt.Sprintf("%s:%d", bind, grpcPort)
-	// Reflection advertises the API surface; keep it for private
-	// instances only.
-	grpcSrv := grpcserver.New(grpcBind, svc,
-		grpcserver.WithAuth(routeAuth),
-		grpcserver.WithSecurity(secEmitter),
-		grpcserver.WithEntitlements(inboundGate),
-		grpcserver.WithReflection(access == config.AccessPrivate),
-	)
-
-	// 9c. Auto-assign cookie-bridge port if preferred is busy.
-	cookieBridgePort, err := findFreePort("127.0.0.1", wsserver.DefaultCookieBridgePort)
-	if err != nil {
-		return fmt.Errorf("cookie bridge port: %w", err)
-	}
-	cookieBridgeAddr := fmt.Sprintf("127.0.0.1:%d", cookieBridgePort)
-
 	// 10. Init worker pool.
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
 	handleEmbeddingsMigrate(pool, driver, upgradeMgr, svc.Bus)
@@ -463,22 +427,51 @@ func runServe(cmd *cobra.Command, args []string) error {
 		})
 	}
 
-	// 10b. Bind HTTP port early so port conflicts fail before we write the
-	// pidfile or start any background goroutines.
-	httpLn, err := net.Listen("tcp", addr)
+	// 10b. Bind every listener once, before the pidfile or any
+	// background goroutine, and hand each bound listener to its server.
+	// Nothing probes a port and re-binds it later: two instances started
+	// together can no longer both be told a port is free. Ports the
+	// operator set (--port, --grpc-port) are bound exactly or serve
+	// fails; built-in defaults fall back to an OS-assigned port. The
+	// deferred close releases every port on an early return; after a
+	// server has taken its listener the extra Close is a no-op.
+	lns, err := acquireListeners(os.Stderr, []listenSpec{
+		{name: "HTTP", bind: bind, port: port, explicit: cmd.Flags().Changed("port")},
+		{name: "gRPC", bind: bind, port: grpcPort, explicit: cmd.Flags().Changed("grpc-port")},
+		{name: "cookie bridge", bind: "127.0.0.1", port: wsserver.DefaultCookieBridgePort},
+	})
 	if err != nil {
-		return fmt.Errorf("listen: %w", err)
+		return err
 	}
+	defer closeListeners(lns)
+	httpLn, grpcLn, cookieLn := lns[0], lns[1], lns[2]
+	port, grpcPort = listenerPort(httpLn), listenerPort(grpcLn)
+	cookieBridgePort := listenerPort(cookieLn)
+	addr := httpLn.Addr().String()
+	grpcBind := grpcLn.Addr().String()
+	cookieBridgeAddr := cookieLn.Addr().String()
+
+	httpSrv := &gohttp.Server{
+		Addr:              addr,
+		Handler:           router,
+		ReadHeaderTimeout: 30 * time.Second,
+	}
+	// Reflection advertises the API surface; keep it for private
+	// instances only.
+	grpcSrv := grpcserver.New(grpcBind, svc,
+		grpcserver.WithAuth(routeAuth),
+		grpcserver.WithSecurity(secEmitter),
+		grpcserver.WithEntitlements(inboundGate),
+		grpcserver.WithReflection(access == config.AccessPrivate),
+	)
 
 	// 10c. Write pidfile so dpkms ps can discover this instance.
 	// Deferred removal covers both clean shutdown and error paths.
 	runDir, err := config.RunDir()
 	if err != nil {
-		httpLn.Close()
 		return fmt.Errorf("run dir: %w", err)
 	}
 	if err := pidfile.CheckNameConflict(runDir, instanceName); err != nil {
-		httpLn.Close()
 		return err
 	}
 	configPath := cfgFile
@@ -529,10 +522,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return nil
 	})
 
-	// gRPC server.
+	// gRPC server — listener already bound above.
 	g.Go(func() error {
 		fmt.Printf("gRPC server listening on %s\n", grpcBind)
-		return grpcSrv.Start(ctx)
+		return grpcSrv.Serve(ctx, grpcLn)
 	})
 
 	// Worker pool.
@@ -581,12 +574,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return checker.Run(ctx)
 	})
 
-	// Cookie bridge (for browser extension).
-	cookieCache := wsserver.NewCookieCache()
-	cookieBridge := wsserver.NewCookieBridgeServer(cookieCache, cookieBridgeAddr)
+	// Cookie bridge (for browser extension) — listener already bound above.
+	cookieBridge := wsserver.NewCookieBridgeServer(wsserver.NewCookieCache())
 	g.Go(func() error {
 		fmt.Printf("Cookie bridge listening on ws://%s\n", cookieBridgeAddr)
-		return cookieBridge.Start(ctx)
+		return cookieBridge.Serve(ctx, cookieLn)
 	})
 
 	// Federation async workers (US-0319). Spawns one goroutine per async
@@ -630,7 +622,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		defer shutCancel()
 		fmt.Printf("Draining workers (up to %s)...\n", drainTimeout)
 		httpSrv.Shutdown(shutCtx)
-		// gRPC server stops via ctx cancellation in grpcSrv.Start.
+		// gRPC server stops via ctx cancellation in grpcSrv.Serve.
 		return nil
 	})
 
@@ -676,9 +668,6 @@ func resolveInboundAuth(c *config.Config, publicFlag bool) (string, authn.Provid
 	return access, provider, nil
 }
 
-// findFreePort tries to bind preferred on the given bind address.
-// If preferred is busy, it asks the OS for any free port.
-// The listener is closed immediately; the caller owns the port convention.
 // resolveInstanceName returns the instance name for this serve invocation.
 // Priority: --name flag > derive from DB basename.
 // Validates the name is URI-safe (lowercase alphanumeric + hyphens).
@@ -729,24 +718,6 @@ func instanceNameFromDBPath(dbPath string) string {
 		return "default"
 	}
 	return name
-}
-
-func findFreePort(bind string, preferred int) (int, error) {
-	addr := fmt.Sprintf("%s:%d", bind, preferred)
-	ln, err := net.Listen("tcp", addr)
-	if err == nil {
-		ln.Close()
-		return preferred, nil
-	}
-	// Preferred port is busy — let the OS pick one on the same bind
-	// address, so the returned port is actually bindable there.
-	ln, err = net.Listen("tcp", fmt.Sprintf("%s:0", bind))
-	if err != nil {
-		return 0, fmt.Errorf("no free port available: %w", err)
-	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	ln.Close()
-	return port, nil
 }
 
 // daemonize re-executes the current binary in the background without the

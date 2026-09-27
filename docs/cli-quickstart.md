@@ -100,8 +100,8 @@ For full functionality, start the background worker and API server:
 
 This starts:
 - Background job worker for processing ingestion
-- REST API on port 8080 (auto-assigned if busy)
-- gRPC API on port 9090 (auto-assigned if busy)
+- REST API on port 8080 (a free port if 8080 is busy; `--port` requires that exact port)
+- gRPC API on port 9090 (a free port if 9090 is busy; `--grpc-port` requires that exact port)
 
 Manage running instances:
 
