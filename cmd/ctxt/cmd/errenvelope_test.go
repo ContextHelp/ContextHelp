@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
@@ -21,7 +21,7 @@ import (
 // envelope carrying the exit code and the recovery action, not as a
 // bare wrapped error that renders as GENERIC.
 func TestRefLookupError_NotFoundIsStructured(t *testing.T) {
-	err := refLookupError("object", "obj_deadbeef", fmt.Errorf("object %w", storage.ErrNotFound))
+	err := refLookupError("object", "obj_deadbeef", remoteMiss())
 
 	var env *output.Error
 	if !errors.As(err, &env) {
@@ -46,20 +46,34 @@ func TestRefLookupError_NotFoundIsStructured(t *testing.T) {
 	}
 }
 
-// TestRefLookupError_RealFailureStaysUncharacterized guards the other
-// direction. Claiming NOT_FOUND for a store that failed to answer would
-// tell an agent to go re-search when the right move is to stop, so a
-// non-sentinel error must NOT be converted into a NOT_FOUND envelope.
-func TestRefLookupError_RealFailureStaysUncharacterized(t *testing.T) {
-	boom := errors.New("database is locked")
-	err := refLookupError("object", "obj_deadbeef", boom)
+// remoteMiss is the error the dpkms client returns for a 404.
+func remoteMiss() error {
+	return output.WrapError(&dpkmsclient.RemoteError{StatusCode: http.StatusNotFound, Code: "NOT_FOUND"},
+		output.CodeNotFound, output.ExitNotFound)
+}
 
-	var env *output.Error
-	if errors.As(err, &env) && env.Code == output.CodeNotFound {
-		t.Fatalf("a storage failure was misclassified as %s", env.Code)
+// TestRefLookupError_RealFailureStaysUncharacterized guards the other
+// direction. Claiming NOT_FOUND for an instance that failed to answer
+// would tell an agent to go re-search when the right move is to stop, so
+// any other failure keeps its own class.
+func TestRefLookupError_RealFailureStaysUncharacterized(t *testing.T) {
+	boom := errors.New("connection reset")
+	transient := output.WrapError(&dpkmsclient.RemoteError{StatusCode: http.StatusInternalServerError},
+		output.CodeTransient, output.ExitTransient)
+	for _, cause := range []error{boom, transient} {
+		err := refLookupError("object", "obj_deadbeef", cause)
+
+		var env *output.Error
+		if errors.As(err, &env) && env.Code == output.CodeNotFound {
+			t.Fatalf("%v was misclassified as %s", cause, env.Code)
+		}
+		if !errors.Is(err, cause) {
+			t.Errorf("underlying error %v was not preserved for errors.Is", cause)
+		}
 	}
-	if !errors.Is(err, boom) {
-		t.Errorf("underlying error was not preserved for errors.Is")
+	var env *output.Error
+	if err := refLookupError("object", "obj_deadbeef", transient); !errors.As(err, &env) || env.ExitCode != output.ExitTransient {
+		t.Errorf("a 5xx lost its TRANSIENT class: %v", err)
 	}
 }
 
@@ -67,7 +81,7 @@ func TestRefLookupError_RealFailureStaysUncharacterized(t *testing.T) {
 // what reaches stderr under --format json must be one parseable
 // document with the fields a caller branches on.
 func TestRefLookupError_RendersAsJSON(t *testing.T) {
-	err := refLookupError("entity", "@nosuch", fmt.Errorf("entity %w", storage.ErrNotFound))
+	err := refLookupError("entity", "@nosuch", remoteMiss())
 
 	var env *output.Error
 	if !errors.As(err, &env) {

@@ -4,10 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"reflect"
 
 	"charm.land/fang/v2"
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"hop.top/kit/go/console/output"
 )
 
@@ -81,17 +82,15 @@ func alreadyRendered(err error) bool {
 // refLookupError classifies a failed lookup of ref (a "object" or
 // "entity" kind) into kit's envelope.
 //
-// A ref that does not exist is NOT_FOUND (exit 3, permanent) and gets
-// the recovery action the caller actually needs: search for it. Every
-// other failure — a broken query, an unreadable database — is left
-// uncharacterized so the middleware wraps it as GENERIC, because
-// claiming NOT_FOUND for a store that failed to answer would tell an
-// agent to go re-search when the right move is to stop.
-//
-// The distinction rests on storage.ErrNotFound, which both the sqlite
-// and postgres drivers now wrap, rather than on the message text.
+// A ref dpkms answered 404 for does not exist: NOT_FOUND (exit 3,
+// permanent), with the recovery action the caller actually needs:
+// search for it. Every other failure keeps the class the dpkms client
+// gave it (UNAUTHORIZED, PREREQUISITE, TRANSIENT, ...), because claiming
+// NOT_FOUND for an instance that failed to answer would tell an agent to
+// go re-search when the right move is to stop.
 func refLookupError(kind, ref string, err error) error {
-	if !errors.Is(err, storage.ErrNotFound) {
+	var re *dpkmsclient.RemoteError
+	if !errors.As(err, &re) || re.StatusCode != http.StatusNotFound {
 		return fmt.Errorf("resolve %s %q: %w", kind, ref, err)
 	}
 	e := output.NotFoundError(fmt.Sprintf("no %s matching %q", kind, ref))

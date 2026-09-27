@@ -3,13 +3,17 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"gopkg.in/yaml.v3"
+	"hop.top/kit/go/console/output"
 )
 
 func seedResolveObject(t *testing.T, db *testDB) {
@@ -151,12 +155,51 @@ func TestResolveEntityJSONProvenance(t *testing.T) {
 	}
 }
 
+// A ref that names nothing is NOT_FOUND (exit 3), for entities and
+// objects alike.
 func TestResolveNotFound(t *testing.T) {
 	db := setupTestDB(t)
 
-	_, err := db.exec("resolve", "@no.such-entity")
-	if err == nil {
-		t.Fatal("resolve of a missing ref should fail")
+	for _, ref := range []string{"@no.such-entity", "no.such-entity", "obj_nosuch"} {
+		_, err := db.exec("resolve", ref)
+		assertExit(t, "resolve "+ref, err, output.ExitNotFound)
+	}
+}
+
+// resolve reads through the API with a reader token, by slug, alias and
+// object ID, and never opens the store the config names. No token is
+// UNAUTHORIZED (exit 5).
+func TestResolveOverAPI(t *testing.T) {
+	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	seedResolveObject(t, db)
+	seedResolveEntity(t, db)
+	now := time.Now().Truncate(time.Second)
+	if err := db.Driver.Entities().Upsert(context.Background(), &storage.Entity{
+		Slug: "ui.cart", Title: "Shopping Cart", Aliases: []string{"basket"}, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db.useRole(t, dpkmstest.RoleReader)
+	local := detachLocalStore(t, db)
+
+	for ref, want := range map[string]string{
+		"@ui.best-practice": "High-quality UI design guidelines.",
+		"@basket":           "# Shopping Cart",
+		"obj_resolve1":      "Signup flows should use progressive disclosure.",
+	} {
+		out, err := db.exec("resolve", ref)
+		if err != nil || !strings.Contains(out, want) {
+			t.Errorf("resolve %s: %v\n%s", ref, err, out)
+		}
+	}
+	if _, err := os.Stat(local); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("resolve opened the local store %s: %v", local, err)
+	}
+
+	db.useRole(t, "none")
+	for _, ref := range []string{"@ui.best-practice", "obj_resolve1"} {
+		_, err := db.exec("resolve", ref)
+		assertExit(t, "resolve "+ref+" without a token", err, output.ExitUnauthorized)
 	}
 }
 

@@ -1,13 +1,13 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
@@ -15,10 +15,10 @@ import (
 )
 
 // resolveCmd is the one-shot resolver contract for external consumers
-// (agents, scripts, editor integrations). It wraps the existing
-// retrieval paths — Service.GetObject for knowledge objects,
-// EntityStore.Resolve (alias-aware) for entities — and adds nothing
-// beyond ref dispatch and output shaping.
+// (agents, scripts, editor integrations). It reads through the dpkms
+// API — GET /api/v1/objects/{id} for knowledge objects,
+// GET /api/v1/entities/resolve (slug, else alias) for entities — and adds
+// nothing beyond ref dispatch and output shaping.
 var resolveCmd = &cobra.Command{
 	Use:   "resolve <ref>",
 	Short: "Resolve a ref to its body and provenance (one-shot)",
@@ -39,9 +39,14 @@ An entity whose content status is "thin" or "pending_pull" is an
 index-only stub: its body is empty until the content is pulled, and a
 warning is written to stderr.
 
+The ref is read from the dpkms instance --server, --instance or the
+config selects. An entity ref matches a slug exactly, else an alias
+exactly.
+
 Exit codes follow the standard class table: 0 on success, 2 for an
 unsupported --format or a bad invocation, 3 when the ref names
-nothing, 1 for any other failure.
+nothing, 5 when the token is missing or lacks read:objects, 70 when
+nothing answers at the endpoint, 6 for a dpkms-side failure.
 
 Examples:
   # Resolve a knowledge object to markdown
@@ -58,6 +63,7 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(resolveCmd)
+	resolveCmd.Flags().String("server", "", serverFlagUsage)
 
 	cliconv.WithSideEffect(resolveCmd, cliconv.SideEffectRead)
 	// "resolve" is not in the kit default verb table; tag explicitly.
@@ -123,17 +129,15 @@ func runResolve(cmd *cobra.Command, args []string) error {
 			"unsupported format %q for resolve (want: markdown, json)", format))
 	}
 
-	svc, cleanup, err := newService()
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	ctx := context.Background()
+	ctx := cmd.Context()
 
 	var res resolveResult
 	if strings.HasPrefix(ref, "obj_") {
-		obj, err := svc.GetObject(ctx, ref)
+		obj, err := client.GetObject(ctx, ref)
 		if err != nil {
 			return refLookupError("object", ref, err)
 		}
@@ -183,7 +187,7 @@ func runResolve(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		slug := strings.TrimPrefix(ref, "@")
-		entity, err := svc.Store.Entities().Resolve(ctx, slug)
+		entity, err := client.ResolveEntity(ctx, slug)
 		if err != nil {
 			return refLookupError("entity", ref, err)
 		}
