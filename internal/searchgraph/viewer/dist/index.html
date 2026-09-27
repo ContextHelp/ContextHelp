@@ -18,6 +18,11 @@
 <main>
   <div id="graph" aria-label="Search result graph"></div>
   <p id="error" role="alert" hidden></p>
+  <section id="signin" role="alert" aria-label="Sign in required" hidden>
+    <p>Sign in to this dpkms first: run</p>
+    <p class="cmd"><code id="signin-cmd"></code> <button type="button" id="signin-copy">Copy</button> <span id="signin-copied" class="muted" role="status"></span></p>
+    <p>then reload this page. <a id="signin-link">How to sign in</a></p>
+  </section>
 </main>
 <aside id="panel" aria-label="Legend and filters">
   <fieldset id="kinds"><legend>Nodes</legend></fieldset>

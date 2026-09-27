@@ -10,7 +10,16 @@ import {
   tooltipHTML,
   validate,
 } from "./jgf.js";
-import { DEFAULT_CONFIG, ConfigError, checkLink, dataURL, objectHref, parseConfig } from "./config.js";
+import {
+  DEFAULT_CONFIG,
+  ConfigError,
+  checkLink,
+  dataURL,
+  fetchFailure,
+  objectHref,
+  parseConfig,
+  signInURL,
+} from "./config.js";
 
 const PALETTES = {
   light: {
@@ -82,10 +91,27 @@ function showNotice(message) {
   el.hidden = false;
 }
 
+// showSignIn replaces the generic error with how to sign in: the command,
+// copyable, and a link to the host's sign-in page.
+function showSignIn({ command, href }) {
+  $("signin-cmd").textContent = command;
+  $("signin-link").href = href;
+  $("signin").hidden = false;
+}
+
+// SignInRequired is a 401 from a host that has a sign-in page.
+class SignInRequired extends Error {
+  constructor(hint) {
+    super("sign-in required");
+    this.hint = hint;
+  }
+}
+
 function loadConfig() {
   const el = $("viewer-config");
   const cfg = parseConfig(el ? el.textContent : null);
   checkLink(cfg, window.location.href);
+  signInURL(cfg, window.location.href);
   return cfg;
 }
 
@@ -107,7 +133,9 @@ async function loadDocument(cfg) {
     throw new GraphDocumentError(`No embedded graph data, and ${name} could not be fetched: ${err.message}`);
   }
   if (!res.ok) {
-    throw new GraphDocumentError(`No embedded graph data, and ${name} returned HTTP ${res.status}.`);
+    const failure = fetchFailure(cfg, res.status, window.location.href);
+    if (failure.signIn) throw new SignInRequired(failure.signIn);
+    throw new GraphDocumentError(failure.message);
   }
   try {
     return await res.json();
@@ -457,9 +485,11 @@ function showDetails(n) {
   focus.focus({ preventScroll: true });
 }
 
-async function copyCommand() {
-  const text = $("details-cmd").textContent;
-  const status = $("details-copied");
+// copyCommand copies the text of the code element cmdId and reports it in
+// the status element statusId.
+async function copyCommand(cmdId, statusId) {
+  const text = $(cmdId).textContent;
+  const status = $(statusId);
   try {
     await navigator.clipboard.writeText(text);
     status.textContent = "Copied";
@@ -467,7 +497,7 @@ async function copyCommand() {
     // Clipboard API unavailable (e.g. file:// in some browsers): select the
     // text so the user can copy it by hand.
     const range = document.createRange();
-    range.selectNodeContents($("details-cmd"));
+    range.selectNodeContents($(cmdId));
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
@@ -481,7 +511,8 @@ function hideDetails() {
 
 function start() {
   $("details-close").addEventListener("click", hideDetails);
-  $("details-copy").addEventListener("click", copyCommand);
+  $("details-copy").addEventListener("click", () => copyCommand("details-cmd", "details-copied"));
+  $("signin-copy").addEventListener("click", () => copyCommand("signin-cmd", "signin-copied"));
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") hideDetails();
   });
@@ -492,7 +523,9 @@ function start() {
     })
     .then(main)
     .catch((err) => {
-      if (err instanceof GraphDocumentError || err instanceof RendererError || err instanceof ConfigError) {
+      if (err instanceof SignInRequired) {
+        showSignIn(err.hint);
+      } else if (err instanceof GraphDocumentError || err instanceof RendererError || err instanceof ConfigError) {
         showError(err.message);
       } else {
         showError(`The search graph could not be rendered: ${errText(err)}`);

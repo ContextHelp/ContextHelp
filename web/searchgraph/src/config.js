@@ -1,8 +1,8 @@
-// Host configuration: where the page loads its graph document and what a
-// click on an object offers. The host (ctxt's local server, or dpkms)
-// injects it as <script type="application/json" id="viewer-config">; with
-// no such element the defaults apply, which is how the CLI serves the
-// page. Nothing here reads the page's own URL except to forward its query
+// Host configuration: where the page loads its graph document, what a
+// click on an object offers, and where a signed-out browser signs in. The
+// host (ctxt's local server, or dpkms) injects it as
+// <script type="application/json" id="viewer-config">; with no such
+// element the defaults apply, which is how the CLI serves the page. Nothing here reads the page's own URL except to forward its query
 // string to a data URL the host already fixed. No DOM access here.
 
 export const OBJECT_ACTIONS = ["copy-cli", "link"];
@@ -14,7 +14,11 @@ export const DEFAULT_CONFIG = Object.freeze({
   forwardQuery: false,
   objectAction: "copy-cli",
   objectHref: "",
+  signInHref: "",
 });
+
+// The command that signs a browser in to a dpkms instance.
+export const SIGN_IN_COMMAND = "ctxt ui open";
 
 export class ConfigError extends Error {}
 
@@ -86,6 +90,24 @@ export function dataURL(cfg, pageHref) {
     }
   }
   return url.href;
+}
+
+// signInURL is the host's sign-in page, or "" when the host names none.
+// A sign-in page off the page's origin is an error.
+export function signInURL(cfg, pageHref) {
+  if (cfg.signInHref === "") return "";
+  return sameOrigin(cfg.signInHref, pageHref, "signInHref").href;
+}
+
+// fetchFailure is what the page shows when the data URL answers status
+// (not 2xx): a sign-in hint for a 401 from a host with a sign-in page,
+// i.e. a dpkms instance the browser holds no session for, otherwise the
+// generic message.
+export function fetchFailure(cfg, status, pageHref) {
+  if (status === 401 && cfg.signInHref !== "") {
+    return { signIn: { command: SIGN_IN_COMMAND, href: signInURL(cfg, pageHref) } };
+  }
+  return { message: `No embedded graph data, and ${cfg.dataUrl} returned HTTP ${status}.` };
 }
 
 // objectHref is the link for an object id in "link" mode: the host's
