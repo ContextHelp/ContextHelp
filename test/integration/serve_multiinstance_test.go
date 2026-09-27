@@ -37,9 +37,9 @@ func TestMultiInstanceAutoPort(t *testing.T) {
 	cfg2 := writeServeConfig(t, dataDir, "beta")
 
 	// Both instances request the same default HTTP (8080) and gRPC (9090) ports.
-	// The second must auto-assign free alternatives. Wait for the first
-	// instance to claim its ports before starting the second so findFreePort's
-	// TOCTOU window is closed (otherwise both can probe 9090 as free).
+	// The second must auto-assign free alternatives. Starting the first
+	// before the second keeps the pidfile order deterministic; serve binds
+	// each listener once, so simultaneous starts no longer race.
 	p1 := startServeProcessWithName(t, bin, cfg1, "alpha", env)
 	defer p1.Process.Kill()
 

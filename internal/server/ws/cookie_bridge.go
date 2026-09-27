@@ -3,6 +3,8 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -87,35 +89,44 @@ type CookieBridgeServer struct {
 	server *http.Server
 }
 
-// NewCookieBridgeServer creates a CookieBridgeServer bound to addr (e.g. "127.0.0.1:9377").
-func NewCookieBridgeServer(cache *CookieCache, addr string) *CookieBridgeServer {
+// NewCookieBridgeServer creates a CookieBridgeServer. Serve it on a
+// listener the caller has already bound (preferred port
+// DefaultCookieBridgePort).
+func NewCookieBridgeServer(cache *CookieCache) *CookieBridgeServer {
 	mux := http.NewServeMux()
 	srv := &CookieBridgeServer{cache: cache}
 	mux.HandleFunc("/", srv.handleWS)
 	srv.server = &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return srv
 }
 
-// Addr returns the address the server is configured to listen on.
-func (s *CookieBridgeServer) Addr() string { return s.server.Addr }
+// cookieBridgeShutdownTimeout bounds Serve's graceful shutdown after ctx
+// is cancelled.
+const cookieBridgeShutdownTimeout = 5 * time.Second
 
-// Start starts the WebSocket server and blocks until ctx is cancelled.
-func (s *CookieBridgeServer) Start(ctx context.Context) error {
+// Serve serves the WebSocket endpoint on ln and blocks until ctx is
+// cancelled or serving fails. The server owns ln from here on.
+func (s *CookieBridgeServer) Serve(ctx context.Context, ln net.Listener) error {
 	errCh := make(chan error, 1)
-	go func() {
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- err
-		}
-	}()
+	go func() { errCh <- s.server.Serve(ln) }()
 
 	select {
 	case err := <-errCh:
-		return err
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return fmt.Errorf("cookie bridge: serve: %w", err)
 	case <-ctx.Done():
-		return s.server.Shutdown(context.Background())
+		shutCtx, cancel := context.WithTimeout(context.Background(), cookieBridgeShutdownTimeout)
+		defer cancel()
+		if err := s.server.Shutdown(shutCtx); err != nil {
+			_ = s.server.Close()
+			return fmt.Errorf("cookie bridge: shutdown: %w", err)
+		}
+		return nil
 	}
 }
 
