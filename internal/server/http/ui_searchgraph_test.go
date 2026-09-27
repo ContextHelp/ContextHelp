@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"regexp"
 	"strings"
 	"testing"
@@ -102,11 +103,18 @@ func TestSearchGraphViewerRedirectKeepsQuery(t *testing.T) {
 	for target, want := range map[string]string{
 		"/ui/searchgraph":                      "/ui/searchgraph/",
 		"/ui/searchgraph?q=deploy%20x&limit=3": "/ui/searchgraph/?q=deploy%20x&limit=3",
+		"/ui/searchgraph?q=%2F%2Fevil.example": "/ui/searchgraph/?q=%2F%2Fevil.example",
 	} {
 		for _, method := range []string{http.MethodGet, http.MethodHead} {
 			rr := serveUI(router, method, target)
 			assert.Equal(t, http.StatusMovedPermanently, rr.Code, method+" "+target)
-			assert.Equal(t, want, rr.Header().Get("Location"), method+" "+target)
+			got, err := url.Parse(rr.Header().Get("Location"))
+			require.NoError(t, err)
+			wantURL, err := url.Parse(want)
+			require.NoError(t, err)
+			assert.Empty(t, got.Host, "redirect must stay same-origin")
+			assert.Equal(t, wantURL.Path, got.Path, method+" "+target)
+			assert.Equal(t, wantURL.Query(), got.Query(), method+" "+target)
 		}
 	}
 
