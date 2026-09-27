@@ -122,6 +122,7 @@ Core endpoints:
 - `PATCH /objects/{id}`
 - `DELETE /objects/{id}`
 - `POST /find`
+- `GET /search/graph`
 - `GET /profiles`
 - `GET /profiles/{name}`
 - `POST /compose`
@@ -462,6 +463,83 @@ dpkms embeds the query itself, with the default embedding model's provider as co
 With `fallback_to_fts` on (the default), a semantic leg that can't run, for example because the embedding provider is down, doesn't fail the search. Vector and hybrid modes answer full-text only and report the reason in `diagnostics.semantic`.
 
 The MCP `search` tool runs this search for agents; see [MCP agents](../manual/workflows/mcp-agents.md).
+
+### `GET /search/graph`
+
+Served by dpkms at `/api/v1/search/graph`. Returns the hybrid search trace as a graph: every candidate the search scored (returned, cut by `limit`, cut by `min_score`) with its scores, the entities those candidates mention, and the links between them. It is the document `ctxt find "<q>" --graph --format json` prints, built by the same pipeline; see the [search graph workflow](../manual/workflows/search-graph.md) for how to read it.
+
+```
+GET /api/v1/search/graph?q=signup+friction&profile=work&max_nodes=100&similar=true
+```
+
+`200`, `Content-Type: application/json`. The body is the bare [JGF v2.1](https://jsongraphformat.info/) single-graph document, **not** the `{data, total}` envelope:
+
+```json
+{
+  "graph": {
+    "id": "search-graph",
+    "type": "ctxt.search-graph",
+    "label": "signup friction",
+    "directed": true,
+    "metadata": {
+      "vocabulary": "ctxt.search-graph/v1",
+      "mode": "hybrid",
+      "semantic_status": "ok",
+      "limit": 10,
+      "counts": { "candidates": 12, "returned": 10, "nodes": 19, "edges": 41, "entities": 6, "...": "..." },
+      "truncated": false,
+      "caps": { "max_nodes": 100, "max_edges": 1500 },
+      "...": "..."
+    },
+    "nodes": {
+      "query": { "label": "signup friction", "metadata": { "kind": "query" } },
+      "obj:6a8cf2a4-…": { "label": "Signup funnel review", "metadata": { "kind": "object", "stage": "returned", "rank": 1, "...": "..." } },
+      "ent:ux.signup": { "label": "Signup", "metadata": { "kind": "entity", "slug": "ux.signup", "mention_count": 3 } }
+    },
+    "edges": [
+      { "source": "query", "target": "obj:6a8cf2a4-…", "relation": "matched", "directed": true, "metadata": { "derivation": "derived", "weight": 0.0164 } }
+    ]
+  }
+}
+```
+
+Keys and relations are defined by the `ctxt.search-graph/v1` vocabulary ([workflow key table](../manual/workflows/search-graph.md#useful-keys)). Every string, labels included, is untrusted text: escape it before rendering as HTML.
+
+#### Parameters
+
+| Param | Default | Meaning |
+|---|---|---|
+| `q` (required) | — | free-text query |
+| `profile` | none | only this profile's objects |
+| `limit` | `10` | results the search returns; candidates past it stay in the graph as `cut_limit` |
+| `min_score` | `0` | results scoring below it stay in the graph as `cut_threshold` |
+| `meta_type`, `topic`, `person`, `source_type`, `since`, `until` | none | the filters of `POST /find`; `since` and `until` are `YYYY-MM-DD` |
+| `max_nodes` | `250` | node cap, query node included; `1`–`1000` |
+| `max_edges` | `1500` | edge cap; `1`–`10000` |
+| `similar` | `false` | add `similar` edges from stored embeddings of the default model |
+| `similar_threshold` | `0.8` | minimum cosine for a `similar` edge, in `(0,1]`; only with `similar=true` |
+
+Defaults are `ctxt find --graph`'s; every other search setting takes `POST /find`'s built-in default. There is no `mode` or `offset`: the graph is always the full hybrid trace. Caps outside their range are refused, not clamped. Objects are also bounded by the search's candidate pools (`search.candidate_pool`, 50 full-text + 50 vector by default), so the node cap mostly limits entities. When a cap drops nodes or edges, `metadata.truncated` is `true`.
+
+#### Entities and profiles
+
+- **Entities follow the entity entitlements.** On an instance with inbound entitlements, an entity whose namespace the caller is not entitled to is left out entirely: no node, no `mentions` edge, no share of a `co_mention` weight, not in `counts.entities` or any `mention_count`. The document reads as if the entity were never mentioned. An entity without a stored record is left out too. The check is the unmetered one `GET /entities` filters with. On a private instance every entity is shown.
+- **Objects follow `profile`**, like `POST /find`. `profile` is chosen by the caller, not an access control.
+- Like search, the graph is not metered.
+
+#### When semantic search can't run
+
+Not an error: `200` with a full-text-only graph. `metadata.mode` is `fts_only` (no default embedding model) or `fts_fallback` (the vector leg failed), `metadata.semantic_status` names the reason and `metadata.vector_error` explains a failure. There are no `similar` edges without `metadata.vector_model`.
+
+#### Errors
+
+Errors use the standard envelope.
+
+| Case | Response |
+|---|---|
+| `q` missing; `mode` or `offset` given; malformed number, boolean or date; negative `limit` or `min_score` | `400 INVALID_REQUEST` |
+| `max_nodes` or `max_edges` outside its range; `similar_threshold` outside `(0,1]` or without `similar=true` | `400 INVALID_REQUEST` |
+| `similar=true` on a store that cannot read embeddings by id | `400 INVALID_REQUEST` |
 
 ---
 
