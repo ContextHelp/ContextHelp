@@ -15,7 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ideacrafterslabs/ctxt/internal/citation"
+	"github.com/ideacrafterslabs/ctxt/internal/composition"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
@@ -1070,108 +1070,23 @@ func (s *Service) fetchRemoteEntityDefinition(ctx context.Context, registryURL, 
 	return &entity, nil
 }
 
-// Compose generates a markdown composition from knowledge objects.
-// This is a fallback implementation that concatenates objects.
+// Compose generates a markdown composition from knowledge objects
+// (composition.Compose).
 func (s *Service) Compose(ctx context.Context, objects []*storage.KnowledgeObject, compositionType string) (string, error) {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n", compositionType)
-	fmt.Fprintf(&b, "Generated from %d knowledge objects.\n\n", len(objects))
-
-	for _, obj := range objects {
-		fmt.Fprintf(&b, "## %s\n", obj.ID)
-		snippet := objectSnippet(obj)
-		if snippet != "" {
-			b.WriteString(snippet)
-			b.WriteString("\n\n")
-		}
-	}
-	return b.String(), nil
+	return composition.Compose(objects, compositionType), nil
 }
 
-// ComposeWithCitations generates a markdown composition from knowledge objects
-// with inline [ref:ID] citation markers and an appended reference table.
-//
-// The fallback implementation injects citation markers after each object's
-// content snippet. When an AI provider is wired up it should emit markers
-// itself; this layer then parses and validates them regardless of origin.
+// ComposeWithCitations generates a markdown composition with inline
+// [ref:ID] citation markers and an appended reference table
+// (composition.WithCitations).
 func (s *Service) ComposeWithCitations(ctx context.Context, objects []*storage.KnowledgeObject, compositionType string) (*CompositionResult, error) {
-	cctx := citation.NewCompositionContext(objects)
-
-	// Collect source IDs.
-	sourceIDs := make([]string, 0, len(objects))
-	for _, obj := range objects {
-		sourceIDs = append(sourceIDs, obj.ID)
-	}
-
-	// Build citation-annotated body.
-	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n", compositionType)
-	fmt.Fprintf(&b, "Generated from %d knowledge objects.\n\n", len(objects))
-
-	for _, obj := range objects {
-		fmt.Fprintf(&b, "## %s\n", obj.ID)
-		snippet := objectSnippet(obj)
-		if snippet != "" {
-			fmt.Fprintf(&b, "%s [ref:%s]\n\n", snippet, obj.ID)
-		} else {
-			fmt.Fprintf(&b, "[ref:%s]\n\n", obj.ID)
-		}
-	}
-
-	body := b.String()
-
-	// Parse citations from generated content.
-	citations := citation.ParseCitations(body)
-
-	// Enrich citations with entity mentions.
-	citation.EnrichCitationsWithEntities(citations, cctx.ObjectMap)
-
-	// Append reference table.
-	refTable := citation.BuildReferenceTable(citations, cctx.ObjectMap)
-	content := body + refTable
-
-	return &CompositionResult{
-		Type:        compositionType,
-		Content:     content,
-		Citations:   citations,
-		SourceIDs:   sourceIDs,
-		GeneratedAt: time.Now(),
-	}, nil
+	return composition.WithCitations(objects, compositionType), nil
 }
 
-// objectSnippet returns the best short text snippet for an object using
-// projection helpers. Prefers graph-derived body; falls back to flat
-// Summaries, then RawContent (truncated to 500 chars).
+// objectSnippet returns the best short text snippet for an object
+// (composition.Snippet).
 func objectSnippet(obj *storage.KnowledgeObject) string {
-	doc := projection.ProjectDocument(obj)
-	// Graph-canonical path: use first non-empty section content.
-	if obj.Graph != nil && len(obj.Graph.Nodes) > 0 {
-		if doc.Body != "" {
-			if len(doc.Body) > 500 {
-				return doc.Body[:500] + "..."
-			}
-			return doc.Body
-		}
-		for _, sec := range doc.Sections {
-			if sec.Content != "" {
-				if len(sec.Content) > 500 {
-					return sec.Content[:500] + "..."
-				}
-				return sec.Content
-			}
-		}
-	}
-	// Flat-field fallback: Summaries first, then RawContent.
-	if len(obj.Summaries) > 0 {
-		return obj.Summaries[0]
-	}
-	if obj.RawContent != "" {
-		if len(obj.RawContent) > 500 {
-			return obj.RawContent[:500] + "..."
-		}
-		return obj.RawContent
-	}
-	return ""
+	return composition.Snippet(obj)
 }
 
 // SearchObjectsNodeAware runs an RSQL query and post-filters results by

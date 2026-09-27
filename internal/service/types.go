@@ -3,7 +3,7 @@ package service
 import (
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/citation"
+	"github.com/ideacrafterslabs/ctxt/internal/composition"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
@@ -65,19 +65,7 @@ type CreatePipelineRequest struct {
 }
 
 // CompositionResult is the structured output of ComposeWithCitations.
-type CompositionResult struct {
-	// Type is the requested composition type (brief, plan, summary, draft).
-	Type string `json:"type"`
-	// Content is the full markdown body including inline [ref:ID] markers
-	// and an appended reference table.
-	Content string `json:"content"`
-	// Citations is the parsed list of inline citations found in Content.
-	Citations []citation.Citation `json:"citations"`
-	// SourceIDs are the IDs of every object used as input.
-	SourceIDs []string `json:"source_ids"`
-	// GeneratedAt records when the composition was produced.
-	GeneratedAt time.Time `json:"generated_at"`
-}
+type CompositionResult = composition.Result
 
 // InboxCaptureRequest carries data for a fast-path inbox capture.
 type InboxCaptureRequest struct {
