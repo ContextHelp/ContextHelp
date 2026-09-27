@@ -451,7 +451,7 @@ func dpkmsBinary() (string, error) {
 			return
 		}
 		bin := filepath.Join(dir, "dpkms")
-		build := exec.Command("go", "build", "-tags", "fts5", "-buildvcs=false", "-o", bin, "./cmd/dpkms") // #nosec G204 -- fixed args; bin is a fresh temp path
+		build := exec.Command("go", "build", "-tags", "fts5", "-buildvcs=false", "-o", bin, "./cmd/dpkms") // #nosec G204 G702 -- fixed args; bin is a fresh temp path
 		build.Dir = root
 		build.Env = append(os.Environ(), "CGO_ENABLED=1")
 		if out, err := build.CombinedOutput(); err != nil {
