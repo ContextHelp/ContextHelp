@@ -30,6 +30,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/policy"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
+	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
@@ -150,6 +151,24 @@ func EmbeddingBuildOpts(driver storage.StorageDriver, r *embeddings.Resolver, du
 	return opts
 }
 
+// QuerySemantic is the query path's reach into the default embedding
+// model's index: the driver's model registry, read per query, and each
+// model's provider through r, so POST /find embeds its query on this
+// host. Without a readable registry there is no default model and
+// vector and hybrid finds answer full-text only (reported on warn).
+func QuerySemantic(driver storage.StorageDriver, r *embeddings.Resolver, warn io.Writer) retrieval.SemanticSource {
+	src := retrieval.SemanticSource{Resolver: embeddings.NewProviderResolver(r)}
+	reg, err := embregistry.ForDriver(driver)
+	if err != nil {
+		if warn != nil {
+			fmt.Fprintf(warn, "Warning: embedding model registry unavailable; find answers full-text only: %v\n", err)
+		}
+		return src
+	}
+	src.Models = reg
+	return src
+}
+
 // Build assembles the stack over in.Driver.
 func Build(in Inputs) (*Stack, error) {
 	cfg := in.Config
@@ -246,6 +265,7 @@ func Build(in Inputs) (*Stack, error) {
 	}
 
 	s.Router = httpserver.NewRouterWithConfig(s.Service, httpserver.RouterConfig{
+		Semantic:     QuerySemantic(in.Driver, resolver, in.Warnings),
 		DevCORS:      in.DevCORS,
 		Watcher:      s.Watcher,
 		Probes:       in.Probes,

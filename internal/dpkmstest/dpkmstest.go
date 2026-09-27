@@ -15,8 +15,10 @@
 //
 // The instance is hermetic: every provider backend is the stub and the
 // embedding resolver sees only a stub provider on a closed port, so
-// nothing reaches a local model server. No worker pool runs: enqueued
-// jobs stay pending. Import it from test files only.
+// nothing reaches a local model server. WithEmbeddingHTTPClient lets a
+// registered model's own provider run over a recorded transport instead.
+// No worker pool runs: enqueued jobs stay pending. Import it from test
+// files only.
 package dpkmstest
 
 import (
@@ -100,6 +102,7 @@ type options struct {
 	tokens      bool
 	provider    authn.Provider
 	unreachable bool
+	embedClient *http.Client
 }
 
 // Option configures Start.
@@ -118,6 +121,15 @@ func WithStaticTokens() Option {
 // Server.Token returns "" for every role; the test owns the credentials.
 func WithAuthProvider(p authn.Provider) Option {
 	return func(o *options) { o.provider = p }
+}
+
+// WithEmbeddingHTTPClient carries the instance's embedding requests over c,
+// typically a providertest cassette client. A registered model then
+// resolves to its own provider (the env layer no longer pins the stub
+// backend); its endpoint stays pinned to a closed port, so only c can
+// answer.
+func WithEmbeddingHTTPClient(c *http.Client) Option {
+	return func(o *options) { o.embedClient = c }
 }
 
 // Unreachable returns a Server whose URL points at a closed port: no
@@ -176,7 +188,7 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 		Access:     access,
 		Auth:       provider,
 		PolicyBus:  bus,
-		Embeddings: hermeticEmbeddings(cfg),
+		Embeddings: hermeticEmbeddings(cfg, o.embedClient),
 		StepsPath:  filepath.Join(dir, "steps"),
 		ConfigPath: cfgPath,
 		Probes:     httpserver.HealthzProbes{Version: "dpkmstest", Started: time.Now()},
@@ -244,17 +256,20 @@ func writeConfig(t testing.TB, dir string, customAuth bool, tokens map[string]st
 }
 
 // hermeticEmbeddings resolves the embedding provider from the config
-// alone, with the env layer pinned to a stub backend on a closed port:
-// the registry layer (a model's recorded provider) sits below env, so no
-// ingest or query embedding can reach a real model server.
-func hermeticEmbeddings(cfg *config.Config) *embeddings.Resolver {
-	env := map[string]string{
-		embeddings.EnvProvider: embeddings.BackendStub,
-		embeddings.EnvEndpoint: testguard.ClosedServerURL,
+// alone, with the env layer pinned to a closed-port endpoint. Without
+// client it also pins the stub backend: the registry layer (a model's
+// recorded provider) sits below env, so no ingest or query embedding can
+// reach a real model server. With client, a registered model keeps its
+// own backend and every request goes through client.
+func hermeticEmbeddings(cfg *config.Config, client *http.Client) *embeddings.Resolver {
+	env := map[string]string{embeddings.EnvEndpoint: testguard.ClosedServerURL}
+	if client == nil {
+		env[embeddings.EnvProvider] = embeddings.BackendStub
 	}
 	return &embeddings.Resolver{
-		Config:    cfg.Providers.Embedding,
-		LookupEnv: func(k string) (string, bool) { v, ok := env[k]; return v, ok },
+		Config:     cfg.Providers.Embedding,
+		LookupEnv:  func(k string) (string, bool) { v, ok := env[k]; return v, ok },
+		HTTPClient: client,
 	}
 }
 

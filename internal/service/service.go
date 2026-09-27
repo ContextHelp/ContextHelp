@@ -1682,7 +1682,7 @@ func (s *Service) SemanticSearchFiltered(ctx context.Context, query string, filt
 		return objs, diagnostics, nil
 	}
 	if !cfg.FallbackToFTS {
-		return nil, diagnostics, fmt.Errorf("semantic search unavailable (%s): %s", rep.Status, rep.Detail)
+		return nil, diagnostics, &SemanticUnavailableError{Report: rep}
 	}
 	objs, err = s.Store.Objects().FTSSearch(ctx, query, filter)
 	if err != nil {
@@ -1956,8 +1956,7 @@ func (s *Service) hybridVectorLeg(ctx context.Context, query string, filter stor
 		return nil, rep, fmt.Errorf("hybrid search vector leg: %w", err)
 	}
 	if !rep.OK() && !cfg.FallbackToFTS {
-		return nil, rep, fmt.Errorf("hybrid search: semantic search unavailable (%s) and fallback_to_fts is false: %s",
-			rep.Status, rep.Detail)
+		return nil, rep, fmt.Errorf("hybrid search: %w", &SemanticUnavailableError{Report: rep})
 	}
 	return res, rep, nil
 }
