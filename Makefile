@@ -321,7 +321,25 @@ trivy-scan:
 build-ui:
 	cd web/ui && pnpm install --frozen-lockfile && pnpm run build
 
-.PHONY: build-ui
+## check-ui-dist: Rebuild the web UI; fail if the committed bundle drifts
+##
+## Rebuilds internal/ui/dist in place, then compares it with the index:
+## unstaged edits or new untracked files mean the committed bundle does not
+## match web/ui. Overwrites any unstaged dist edits. Fix a failure with
+## `make build-ui` and commit the result. Mirrors the webui job in
+## .github/workflows/ci.yml.
+UI_DIST := internal/ui/dist
+check-ui-dist: build-ui
+	@untracked=$$(git ls-files --others --exclude-standard -- $(UI_DIST)); \
+	if ! git diff --quiet -- $(UI_DIST) || [ -n "$$untracked" ]; then \
+		git diff --stat -- $(UI_DIST); \
+		[ -z "$$untracked" ] || printf 'untracked: %s\n' $$untracked; \
+		echo "ERROR: $(UI_DIST) is stale; run 'make build-ui' and commit it" >&2; \
+		exit 1; \
+	fi
+	@echo "✓ $(UI_DIST) matches web/ui sources"
+
+.PHONY: build-ui check-ui-dist
 
 ## build-searchgraph-viewer: Rebuild the embedded search-graph viewer into internal/searchgraph/viewer/dist
 build-searchgraph-viewer:
