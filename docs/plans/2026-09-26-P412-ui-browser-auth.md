@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26
 **Plan:** P412
-**Status:** Proposed. Needs an owner decision; nothing here is implemented.
+**Status:** Accepted 2026-09-26: option A, phases 0, 1 and 1b. See [Decisions](#decisions). Not yet implemented.
 **Related:** P410 (web-ui), P411 (UI adapter contract; this answers its
 live-stream auth question), ADR-023 (auth model), ADR-032 (entitlements)
 
@@ -332,7 +332,22 @@ so it is not wasted if the owner later adds OIDC or mTLS.
 
 ---
 
+## Decisions
+
+Recorded 2026-09-26.
+
+| # | Question | Decision |
+|---|---|---|
+| — | Browser path | **A** (CLI-minted login link → session cookie), with phase 0 hardening and 1b proxy docs. |
+| 1 | Session scope | **Reduced "ui" scope**: read and search plus the SPA's own mutations; no pipeline, step, registry, federation or admin routes. Needs a scope → route table. |
+| 2 | Session persistence | **Persisted** in the storage driver, listable and revocable; idle 12 h, max 7 d. |
+| 3 | Revocation coupling | **Yes**: a session ends when the static token that minted it is removed from config (token hash stored per session). |
+| 5 | Private-instance hardening | **On by default**; extra hostnames via `server.allowed_hosts`. |
+| 4, 6, 7, 8 | B′, tenant isolation, extension CORS, plain-HTTP remote | Open. |
+
 ## Open questions for the owner
+
+Questions 1, 2, 3 and 5 are decided above.
 
 1. **Session scope.** Should a browser session carry the minting
    principal's **full** rights, or a reduced "ui" scope (read plus the
@@ -362,4 +377,4 @@ so it is not wasted if the owner later adds OIDC or mTLS.
 
 ---
 
-**Status: Proposed.** Not approved or implemented.
+**Status: Accepted** (option A, phases 0, 1, 1b). Not yet implemented.
