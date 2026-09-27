@@ -53,6 +53,7 @@ func UISessionConformance(t *testing.T, drv storage.StorageDriver) {
 		{"create, lookup and get", uiConfCreateLookupAndGet},
 		{"idle expiry and touch", uiConfIdleExpiryAndTouch},
 		{"max expiry caps touch", uiConfMaxExpiryCapsTouch},
+		{"max expiry holds without idle", uiConfMaxExpiryIndependentOfIdle},
 		{"revoke", uiConfRevoke},
 		{"revoke by token hash", uiConfRevokeByTokenHash},
 		{"list", uiConfList},
@@ -211,6 +212,29 @@ func uiConfMaxExpiryCapsTouch(t *testing.T, st storage.UISessionStore) {
 	}
 	if _, err := st.Lookup(ctx, s.SecretHash, s.ExpiresAt); !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("Lookup at max expiry: err = %v, want ErrNotFound", err)
+	}
+}
+
+// uiConfMaxExpiryIndependentOfIdle pins the absolute expiry on its own:
+// a row whose idle expiry lies past it (Touch never writes one, a
+// buggy or older writer could) still ends at ExpiresAt.
+func uiConfMaxExpiryIndependentOfIdle(t *testing.T, st storage.UISessionStore) {
+	ctx := context.Background()
+	s := uiSession("ses-max-only", "ops", "tok-a", uiT0, 48*time.Hour, time.Hour)
+	if err := st.Create(ctx, s); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := st.Lookup(ctx, s.SecretHash, uiT0.Add(time.Hour)); !errors.Is(err, storage.ErrNotFound) {
+		t.Errorf("Lookup at max expiry with a later idle expiry: err = %v, want ErrNotFound", err)
+	}
+	active, err := st.List(ctx, storage.UISessionFilter{ActiveOnly: true, Now: uiT0.Add(time.Hour), PrincipalID: "ops"})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, a := range active {
+		if a.ID == s.ID {
+			t.Error("session past its max expiry listed as active")
+		}
 	}
 }
 
