@@ -13,7 +13,7 @@ import (
 // ListEntities returns a paginated list of entities. With an inbound
 // gate wired (non-private instances), the listing is filtered to the
 // namespaces the authenticated principal is entitled to — an index
-// browse, so no metering charge.
+// browse, so no metering charge. Admin principals see every entity.
 func ListEntities(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		filter := storage.EntityFilter{
@@ -27,11 +27,11 @@ func ListEntities(svc *service.Service, gate *registry.InboundGate) http.Handler
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
-		if gate != nil {
+		if g := entityGate(r, gate); g != nil {
 			principal := gatePrincipal(r)
 			entitled := make([]*storage.Entity, 0, len(entities))
 			for _, e := range entities {
-				if gate.Check(r.Context(), principal, e.Namespace) == nil {
+				if g.Check(r.Context(), principal, e.Namespace) == nil {
 					entitled = append(entitled, e)
 				}
 			}
@@ -45,7 +45,8 @@ func ListEntities(svc *service.Service, gate *registry.InboundGate) http.Handler
 
 // GetEntity returns a single entity by slug. A wired inbound gate
 // charges the access as a metered entity_resolve against the
-// principal's namespace entitlement and quota.
+// principal's namespace entitlement and quota. Admin principals are
+// neither gated nor metered.
 func GetEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")
@@ -54,7 +55,7 @@ func GetEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFun
 			WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
 			return
 		}
-		if err := gate.Authorize(r.Context(), gatePrincipal(r), entity.Namespace,
+		if err := entityGate(r, gate).Authorize(r.Context(), gatePrincipal(r), entity.Namespace,
 			storage.MeteringEventEntityResolve); err != nil {
 			if writeInboundGateError(w, r, err) {
 				return
@@ -69,17 +70,18 @@ func GetEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFun
 // EntityBacklinks returns objects that mention the given entity. The
 // gate check is unmetered — backlinks ride on the entity's namespace
 // entitlement without a quota charge. An entity the store cannot
-// resolve fails CLOSED: a lookup error never skips the gate.
+// resolve fails CLOSED: a lookup error never skips the gate. Admin
+// principals skip the gate.
 func EntityBacklinks(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")
-		if gate != nil {
+		if g := entityGate(r, gate); g != nil {
 			entity, err := svc.GetEntity(r.Context(), slug)
 			if err != nil || entity == nil {
 				WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
 				return
 			}
-			if cerr := gate.Check(r.Context(), gatePrincipal(r), entity.Namespace); cerr != nil {
+			if cerr := g.Check(r.Context(), gatePrincipal(r), entity.Namespace); cerr != nil {
 				if writeInboundGateError(w, r, cerr) {
 					return
 				}

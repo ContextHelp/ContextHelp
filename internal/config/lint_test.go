@@ -220,7 +220,7 @@ func TestLintPublicFlagDeprecationShorthand(t *testing.T) {
 	cfg.Server.Public = true
 	cfg.Server.Auth = AuthConfig{
 		Provider: "static",
-		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p"}}},
+		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p", Roles: []string{"admin"}}}},
 	}
 
 	findings := LintConfig(cfg, "")
@@ -242,7 +242,7 @@ func TestLintAccessProtectedWithFederationTokenIsQuiet(t *testing.T) {
 	cfg.Server.Access = AccessProtected
 	cfg.Server.Auth = AuthConfig{
 		Provider: "static",
-		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p"}}},
+		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p", Roles: []string{"admin"}}}},
 	}
 	cfg.Federation.Token = "push-secret"
 
@@ -259,7 +259,7 @@ func TestLintAccessNonPrivateWithoutFederationToken(t *testing.T) {
 	cfg.Server.Access = AccessProtected
 	cfg.Server.Auth = AuthConfig{
 		Provider: "static",
-		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p"}}},
+		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p", Roles: []string{"admin"}}}},
 	}
 
 	findings := LintConfig(cfg, "")

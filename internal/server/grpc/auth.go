@@ -27,9 +27,11 @@ const (
 const healthMethodPrefix = "/grpc.health.v1.Health/"
 
 // authUnaryInterceptor authenticates every unary call through the
-// configured provider. Provider-agnostic: it only lifts credentials out
-// of metadata and forwards them. Failures are recorded on the security
-// emitter (nil-safe), keyed by peer address since no principal exists.
+// configured provider, then checks the method's scope (methodScopes).
+// Provider-agnostic: it only lifts credentials out of metadata and
+// forwards them. Authentication failures are recorded on the security
+// emitter (nil-safe), keyed by peer address since no principal exists;
+// scope denials are recorded against the principal.
 func authUnaryInterceptor(provider authn.Provider, sec *security.Emitter) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
@@ -40,7 +42,11 @@ func authUnaryInterceptor(provider authn.Provider, sec *security.Emitter) grpc.U
 			recordAuthFailure(ctx, sec)
 			return nil, unauthenticatedStatus(err)
 		}
-		return handler(authn.Attach(ctx, princ), req)
+		ctx = authn.Attach(ctx, princ)
+		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
+			return nil, err
+		}
+		return handler(ctx, req)
 	}
 }
 
@@ -56,10 +62,11 @@ func authStreamInterceptor(provider authn.Provider, sec *security.Emitter) grpc.
 			recordAuthFailure(ss.Context(), sec)
 			return unauthenticatedStatus(err)
 		}
-		return handler(srv, &authenticatedStream{
-			ServerStream: ss,
-			ctx:          authn.Attach(ss.Context(), princ),
-		})
+		ctx := authn.Attach(ss.Context(), princ)
+		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
+			return err
+		}
+		return handler(srv, &authenticatedStream{ServerStream: ss, ctx: ctx})
 	}
 }
 

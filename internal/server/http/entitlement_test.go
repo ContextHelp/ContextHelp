@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
@@ -24,11 +25,20 @@ import (
 
 // newGatedServer builds an authenticated router with the inbound
 // entitlement gate and a threshold-1 security emitter, seeded with one
-// entity in a granted namespace and one outside it. The test principal
-// "ops" (token tok-valid) is granted "ai.*".
+// entity in a granted namespace and one outside it. The gated test
+// principal "ops" (token tok-valid, role writer) and the admin
+// principal "owner" (token tok-admin) are both granted "ai.*"; only the
+// admin bypasses the gate.
 func newGatedServer(t *testing.T) (*httptest.Server, *registry.InboundGate, <-chan security.Alert) {
 	t.Helper()
-	driver := storageutil.NewTestDriver(t)
+	ts, gate, alerts, _ := newGatedServerWithDriver(t, storageutil.NewTestDriver(t))
+	return ts, gate, alerts
+}
+
+// newGatedServerWithDriver is newGatedServer over a given storage
+// driver, which it also returns so tests can read metering rows.
+func newGatedServerWithDriver(t *testing.T, driver storage.StorageDriver) (*httptest.Server, *registry.InboundGate, <-chan security.Alert, storage.StorageDriver) {
+	t.Helper()
 	q := jobs.NewQueue(driver.Jobs())
 	svc := service.New(driver, q, builtins.Registry(), search.NewEngine(driver), "", nil)
 
@@ -42,29 +52,43 @@ func newGatedServer(t *testing.T) (*httptest.Server, *registry.InboundGate, <-ch
 			Slug: slug, Title: slug, Namespace: ns, CreatedAt: now, UpdatedAt: now,
 		}))
 	}
-	require.NoError(t, driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
-		RegistryName: "ops",
-		Plan:         "inbound",
-		Namespaces:   []string{"ai.*"},
-		FetchedAt:    now,
-	}))
+	// Both principals hold a grant limited to ai.*: only the admin
+	// bypass lets "owner" past it.
+	for _, principal := range []string{"ops", "owner"} {
+		require.NoError(t, driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
+			RegistryName: principal,
+			Plan:         "inbound",
+			Namespaces:   []string{"ai.*"},
+			FetchedAt:    now,
+		}))
+	}
 
 	gate := registry.NewInboundGate(driver.Entitlements(), driver.Metering())
 	em, alerts := newAlertCapture(t)
+	provider, err := authn.NewStatic([]authn.StaticToken{
+		{Token: "tok-valid", Principal: "ops", Roles: []string{authn.RoleWriter}},
+		{Token: "tok-admin", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+	})
+	require.NoError(t, err)
 	ts := httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{
-		Auth:         testProvider(t),
+		Auth:         provider,
 		Security:     em,
 		Entitlements: gate,
 	}))
 	t.Cleanup(ts.Close)
-	return ts, gate, alerts
+	return ts, gate, alerts, driver
 }
 
 func gatedDo(t *testing.T, method, url string) (*http.Response, []byte) {
 	t.Helper()
+	return gatedDoAs(t, "tok-valid", method, url)
+}
+
+func gatedDoAs(t *testing.T, token, method, url string) (*http.Response, []byte) {
+	t.Helper()
 	req, err := http.NewRequest(method, url, nil)
 	require.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer tok-valid")
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)

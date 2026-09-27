@@ -62,8 +62,14 @@ type Principal struct {
 	// Provider records which backend authenticated the caller
 	// (ProviderStatic, ProviderOIDC, ProviderMTLS).
 	Provider string
-	// Roles carries coarse role grants (e.g. "admin", "reader").
+	// Roles carries the role grants (RoleAdmin, RoleWriter,
+	// RoleReader). Only the entity-gate bypass reads them; route
+	// authorization reads Scopes.
 	Roles []string
+	// Scopes is the effective scope set every route and RPC is checked
+	// against. The static provider expands Roles into it; other
+	// providers may map claims onto it directly.
+	Scopes []Scope
 	// Meta holds provider-specific attributes (claims, cert fields).
 	Meta map[string]string
 }

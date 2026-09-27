@@ -12,7 +12,9 @@ type StaticToken struct {
 	Token string
 	// Principal is the stable identity assigned to callers of this token.
 	Principal string
-	// Roles are coarse role grants attached to the principal.
+	// Roles are the role grants attached to the principal; each one
+	// must be a known role (see Roles). They expand to the principal's
+	// scopes.
 	Roles []string
 }
 
@@ -30,8 +32,9 @@ type staticEntry struct {
 }
 
 // NewStatic builds a StaticProvider from the configured token table.
-// Every entry needs a non-empty token and principal; tokens must be
-// unique so a credential resolves to exactly one identity.
+// Every entry needs a non-empty token, a principal and at least one
+// known role; tokens must be unique so a credential resolves to exactly
+// one identity.
 func NewStatic(tokens []StaticToken) (*StaticProvider, error) {
 	if len(tokens) == 0 {
 		return nil, fmt.Errorf("auth: static provider requires at least one token")
@@ -45,6 +48,9 @@ func NewStatic(tokens []StaticToken) (*StaticProvider, error) {
 		if t.Principal == "" {
 			return nil, fmt.Errorf("auth: static token [%d]: principal must not be empty", i)
 		}
+		if err := ValidateRoles(t.Roles); err != nil {
+			return nil, fmt.Errorf("auth: static token [%d]: %w", i, err)
+		}
 		if _, dup := seen[t.Token]; dup {
 			return nil, fmt.Errorf("auth: static token [%d]: duplicate token (tokens must be unique)", i)
 		}
@@ -56,6 +62,7 @@ func NewStatic(tokens []StaticToken) (*StaticProvider, error) {
 				Name:     t.Principal,
 				Provider: ProviderStatic,
 				Roles:    append([]string(nil), t.Roles...),
+				Scopes:   ScopesForRoles(t.Roles),
 			},
 		})
 	}
@@ -87,5 +94,6 @@ func (p *StaticProvider) Authenticate(_ context.Context, cred Credential) (*Prin
 	// Copy so callers cannot mutate provider state through the result.
 	out := match.principal
 	out.Roles = append([]string(nil), match.principal.Roles...)
+	out.Scopes = append([]Scope(nil), match.principal.Scopes...)
 	return &out, nil
 }

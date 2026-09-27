@@ -7,14 +7,14 @@ import (
 )
 
 func TestNewStaticRejectsEmptyToken(t *testing.T) {
-	_, err := NewStatic([]StaticToken{{Token: "", Principal: "ci"}})
+	_, err := NewStatic([]StaticToken{{Token: "", Principal: "ci", Roles: []string{RoleReader}}})
 	if err == nil {
 		t.Fatal("expected error for empty token")
 	}
 }
 
 func TestNewStaticRejectsEmptyPrincipal(t *testing.T) {
-	_, err := NewStatic([]StaticToken{{Token: "tok-1", Principal: ""}})
+	_, err := NewStatic([]StaticToken{{Token: "tok-1", Principal: "", Roles: []string{RoleReader}}})
 	if err == nil {
 		t.Fatal("expected error for empty principal")
 	}
@@ -22,8 +22,8 @@ func TestNewStaticRejectsEmptyPrincipal(t *testing.T) {
 
 func TestNewStaticRejectsDuplicateToken(t *testing.T) {
 	_, err := NewStatic([]StaticToken{
-		{Token: "tok-1", Principal: "a"},
-		{Token: "tok-1", Principal: "b"},
+		{Token: "tok-1", Principal: "a", Roles: []string{RoleReader}},
+		{Token: "tok-1", Principal: "b", Roles: []string{RoleReader}},
 	})
 	if err == nil {
 		t.Fatal("expected error for duplicate token")
@@ -33,7 +33,7 @@ func TestNewStaticRejectsDuplicateToken(t *testing.T) {
 func TestStaticAuthenticateValid(t *testing.T) {
 	p, err := NewStatic([]StaticToken{
 		{Token: "tok-admin", Principal: "ops", Roles: []string{"admin"}},
-		{Token: "tok-read", Principal: "reader"},
+		{Token: "tok-read", Principal: "reader", Roles: []string{RoleReader}},
 	})
 	if err != nil {
 		t.Fatalf("NewStatic: %v", err)
@@ -58,7 +58,7 @@ func TestStaticAuthenticateValid(t *testing.T) {
 }
 
 func TestStaticAuthenticateMissingCredential(t *testing.T) {
-	p, err := NewStatic([]StaticToken{{Token: "tok-1", Principal: "a"}})
+	p, err := NewStatic([]StaticToken{{Token: "tok-1", Principal: "a", Roles: []string{RoleReader}}})
 	if err != nil {
 		t.Fatalf("NewStatic: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestStaticAuthenticateMissingCredential(t *testing.T) {
 }
 
 func TestStaticAuthenticateInvalidToken(t *testing.T) {
-	p, err := NewStatic([]StaticToken{{Token: "tok-1", Principal: "a"}})
+	p, err := NewStatic([]StaticToken{{Token: "tok-1", Principal: "a", Roles: []string{RoleReader}}})
 	if err != nil {
 		t.Fatalf("NewStatic: %v", err)
 	}
@@ -97,6 +97,15 @@ func TestStaticAuthenticateCopiesRoles(t *testing.T) {
 	}
 	if again.Roles[0] != "admin" {
 		t.Errorf("provider state mutated through returned principal: %q", again.Roles[0])
+	}
+
+	princ.Scopes[0] = "mutated"
+	again, err = p.Authenticate(context.Background(), Credential{Token: "tok-1"})
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+	if again.Scopes[0] != AllScopes[0] {
+		t.Errorf("provider scopes mutated through returned principal: %q", again.Scopes[0])
 	}
 }
 

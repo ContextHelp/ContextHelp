@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidate(t *testing.T) {
@@ -93,7 +94,7 @@ func staticAuth() AuthConfig {
 	return AuthConfig{
 		Provider: "static",
 		Static: StaticAuthConfig{
-			Tokens: []StaticTokenConfig{{Token: "tok-1", Principal: "ops"}},
+			Tokens: []StaticTokenConfig{{Token: "tok-1", Principal: "ops", Roles: []string{"admin"}}},
 		},
 	}
 }
@@ -206,4 +207,35 @@ func TestValidateQuotasValid(t *testing.T) {
 		{Principal: "other", Event: "taxonomy_sync", Limit: 5},
 	}
 	assert.Empty(t, Validate(cfg))
+}
+
+// Every static token needs at least one known role: roles are the only
+// source of a token's scopes.
+func TestValidateAuthRoles(t *testing.T) {
+	cases := []struct {
+		name    string
+		roles   []string
+		wantMsg string // "" = expect no errors
+	}{
+		{name: "known roles", roles: []string{"writer", "reader"}},
+		{name: "no role", roles: nil, wantMsg: "at least one role"},
+		{name: "unknown role", roles: []string{"admin", "owner"}, wantMsg: `unknown role "owner"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{}
+			cfg.Server.Auth = AuthConfig{
+				Provider: "static",
+				Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p", Roles: tc.roles}}},
+			}
+			errs := Validate(cfg)
+			if tc.wantMsg == "" {
+				assert.Empty(t, errs)
+				return
+			}
+			require.Len(t, errs, 1)
+			assert.Equal(t, "server.auth.static.tokens[0].roles", errs[0].Field)
+			assert.Contains(t, errs[0].Message, tc.wantMsg)
+		})
+	}
 }

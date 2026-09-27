@@ -68,7 +68,6 @@ func NewRouterWithProbes(svc *service.Service, devCORS bool, mgr *watcher.Manage
 
 // NewRouterWithConfig is the full constructor used by dpkms serve.
 func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
-	mgr := rc.Watcher
 	probes := rc.Probes
 
 	r := chi.NewRouter()
@@ -111,145 +110,34 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Inbound authentication ahead of the whole route table
-		// (REST, SSE, federation push, and the MCP mount below all
-		// inherit it). Provider-agnostic by construction: the
-		// middleware consumes authn.Provider, never a scheme.
+		// (REST, SSE, federation push, and the MCP mount all inherit
+		// it). Provider-agnostic by construction: the middleware
+		// consumes authn.Provider, never a scheme.
 		if rc.Auth != nil {
 			r.Use(RequireAuth(rc.Auth, rc.Security))
 		}
-
-		// Objects
-		r.Get("/objects", ListObjects(svc))
-		r.Get("/objects/{id}", GetObject(svc))
-		r.Patch("/objects/{id}", UpdateObject(svc))
-		r.Delete("/objects/{id}", DeleteObject(svc))
-
-		// Analyze
-		r.Post("/analyze", Analyze(svc))
-
-		// Jobs
-		r.Get("/jobs", ListJobs(svc))
-		r.Get("/jobs/{id}", GetJob(svc))
-		r.Post("/jobs/{id}/retry", RetryJob(svc))
-
-		// Search
-		r.Get("/search", Search(svc))
-
-		// Entities. The entity-serving surface is where inbound
-		// entitlements and metering bite: resolves and pulls are
-		// charged per principal when a gate is wired.
-		r.Get("/entities", ListEntities(svc, rc.Entitlements))
-		r.Get("/entities/{slug}", GetEntity(svc, rc.Entitlements))
-		r.Get("/entities/{slug}/backlinks", EntityBacklinks(svc, rc.Entitlements))
-		// Thin sync: promote a thin entity to full on demand.
-		r.Post("/entities/{slug}/pull", PullEntity(svc, rc.Entitlements))
-		// Thin sync: trigger entity index sync for a registry.
-		r.Post("/entities/registry-sync", SyncRegistryEntities(svc))
-
-		// Pipelines
-		r.Post("/pipelines", CreatePipeline(svc))
-		r.Get("/pipelines", ListPipelines(svc))
-		r.Get("/pipelines/{name}", GetPipeline(svc))
-		r.Delete("/pipelines/{name}", DeletePipeline(svc))
-		r.Post("/pipelines/{name}/archive", ArchivePipeline(svc))
-		r.Post("/pipelines/{name}/unarchive", UnarchivePipeline(svc))
-		r.Post("/pipelines/enqueue", Enqueue(svc))
-
-		// Steps
-		r.Get("/steps", ListSteps(svc))
-		r.Get("/steps/{name}", GetStep(svc))
-		r.Post("/steps/install", InstallStep(svc))
-		r.Delete("/steps/{name}", UninstallStep(svc))
-
-		// Registries
-		r.Post("/steps/registries/fetch", FetchRegistry(svc))
-		r.Post("/steps/registries/{url}/update", UpdateRegistry(svc))
-		r.Get("/steps/registries", ListRegistries(svc))
-
-		// Feeds
-		r.Post("/feeds", CreateFeed(svc))
-		r.Get("/feeds", ListFeeds(svc))
-		r.Post("/feeds/sync", SyncAllFeeds(svc))
-		r.Post("/feeds/{id}/sync", SyncFeed(svc))
-		r.Delete("/feeds/{id}", DeleteFeed(svc))
-
-		// Import
-		r.Post("/import", CreateImport(svc))
-		r.Get("/import/{id}", GetImport(svc))
-
-		// Importers
-		r.Post("/importers/dropbox/run", RunDropboxImport(svc))
-		r.Post("/importers/slack/run", RunSlackImport(svc))
-		r.Post("/importers/discord/run", RunDiscordImport(svc))
-		r.Get("/importers/runs/{id}", GetImporterRun(svc))
-
-		// System
-		r.Get("/system/reminders", ListReminders(svc))
-		r.Post("/system/reminders/{id}/dismiss", DismissReminder(svc))
-
-		// Watches
-		r.Post("/watches", CreateWatch(svc, mgr))
-		r.Get("/watches", ListWatches(svc))
-		r.Get("/watches/{id}", GetWatch(svc))
-		r.Patch("/watches/{id}", UpdateWatch(svc, mgr))
-		r.Delete("/watches/{id}", DeleteWatch(svc, mgr))
-		r.Post("/watches/{id}/pause", PauseWatch(mgr))
-		r.Post("/watches/{id}/resume", ResumeWatch(mgr))
-		r.Get("/watches/{id}/files", ListWatchFiles(svc))
-
-		// Inbox
-		r.Post("/inbox", CaptureInbox(svc))
-		r.Get("/inbox", ListInbox(svc))
-		r.Post("/inbox/{id}/triage", TriageInbox(svc))
-		r.Post("/inbox/{id}/discard", DiscardInbox(svc))
-
-		// SSE event stream (real-time updates)
-		r.Get("/events", HandleSSE(svc))
-
-		// Suggestions (autosuggest plugin)
-		r.Get("/suggestions", ListSuggestions(svc))
-		r.Post("/suggestions/{id}/approve", ApproveSuggestion(svc))
-		r.Post("/suggestions/{id}/reject", RejectSuggestion(svc))
-
-		// Aliases (aliasing plugin)
-		r.Post("/aliases", CreateAlias(svc))
-		r.Get("/aliases", ListAliases(svc))
-		r.Get("/aliases/{alias}", ResolveAlias(svc))
-		r.Delete("/aliases/{alias}", DeleteAlias(svc))
-
-		// Capture (browser extension)
-		r.Post("/capture/page", CapturePage(svc))
-		r.Post("/capture/selection", CaptureSelection(svc))
-		r.Post("/capture/element", CaptureElement(svc))
-		r.Get("/capture/recent", ListRecentCaptures(svc))
-
-		// Saved searches (US-0054)
-		r.Post("/saved-searches", CreateSavedSearch(svc))
-		r.Get("/saved-searches", ListSavedSearches(svc))
-		r.Get("/saved-searches/{name}", GetSavedSearch(svc))
-		r.Delete("/saved-searches/{name}", DeleteSavedSearch(svc))
-
-		// Search history (US-0055)
-		r.Get("/search-history", ListSearchHistory(svc))
-		r.Delete("/search-history", ClearSearchHistory(svc))
-
-		// Audit log (US-0405)
-		r.Get("/audit-log", ListAuditLog(svc))
-
-		// Federation push (Phase 2). On non-private instances the
-		// federation credential is mandatory, not just any principal.
-		r.Post("/federation/push", FederationPush(svc, rc.RequireFederationCredential))
-
-		// MCP read-surface (per ADR-068).
-		// Mounted at /api/v1/mcp/ as a sibling of REST routes. JSON-RPC 2.0
-		// over POST per MCP spec 2025-03-26 (streamable-HTTP transport).
-		// Handler is a single endpoint; tool dispatch happens inside the
-		// handler based on the JSON-RPC method/params.
-		r.Handle("/mcp/", mountMCP(svc))
-		r.Handle("/mcp", mountMCP(svc))
+		mountAPIRoutes(r, apiRoutes(svc, rc), rc)
 	})
 
 	return r
+}
+
+// mountAPIRoutes mounts the route-to-scope table. With an auth
+// provider, every route except the federation push (its own credential
+// rule) sits behind RequireScope. A private instance (no provider)
+// grants every scope, so its routes are mounted bare.
+func mountAPIRoutes(r chi.Router, routes []apiRoute, rc RouterConfig) {
+	for _, rt := range routes {
+		h := rt.Handler
+		if rc.Auth != nil && !rt.OwnCredential {
+			h = RequireScope(rt.Scope, rc.Security)(h)
+		}
+		if rt.Method == "" {
+			r.Handle(rt.Pattern, h)
+			continue
+		}
+		r.Method(rt.Method, rt.Pattern, h)
+	}
 }
 
 // mountMCP constructs the MCP server with handlers wired to the supplied

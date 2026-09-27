@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -38,6 +39,7 @@ func Validate(c *Config) []ValidationError {
 	}
 
 	errs = append(errs, validateAccess(c)...)
+	errs = append(errs, validateAuthRoles(c)...)
 	errs = append(errs, validateQuotas(c)...)
 
 	if c.Jobs.PollInterval != 0 && c.Jobs.PollInterval < 50*time.Millisecond {
@@ -108,6 +110,33 @@ func validateAccess(c *Config) []ValidationError {
 		})
 	}
 
+	return errs
+}
+
+// validateAuthRoles requires every static token to carry at least one
+// known role. Roles are fixed scope bundles; a token without one could
+// reach no route, and a misspelled role must not silently lock a device
+// out.
+func validateAuthRoles(c *Config) []ValidationError {
+	var errs []ValidationError
+	for i, t := range c.Server.Auth.Static.Tokens {
+		field := fmt.Sprintf("server.auth.static.tokens[%d].roles", i)
+		if len(t.Roles) == 0 {
+			errs = append(errs, ValidationError{
+				Field:   field,
+				Message: fmt.Sprintf("at least one role is required; must be one of %s", strings.Join(AuthRoles, ", ")),
+			})
+			continue
+		}
+		for _, r := range t.Roles {
+			if !slices.Contains(AuthRoles, r) {
+				errs = append(errs, ValidationError{
+					Field:   field,
+					Message: fmt.Sprintf("unknown role %q; must be one of %s", r, strings.Join(AuthRoles, ", ")),
+				})
+			}
+		}
+	}
 	return errs
 }
 
