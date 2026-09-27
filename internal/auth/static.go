@@ -28,6 +28,7 @@ type StaticProvider struct {
 
 type staticEntry struct {
 	token     []byte
+	tokenHash []byte // HashSecret(token), for session revocation coupling
 	principal Principal
 }
 
@@ -56,7 +57,8 @@ func NewStatic(tokens []StaticToken) (*StaticProvider, error) {
 		}
 		seen[t.Token] = struct{}{}
 		entries = append(entries, staticEntry{
-			token: []byte(t.Token),
+			token:     []byte(t.Token),
+			tokenHash: []byte(HashSecret(t.Token)),
 			principal: Principal{
 				ID:       t.Principal,
 				Name:     t.Principal,
@@ -79,6 +81,10 @@ func (p *StaticProvider) Authenticate(_ context.Context, cred Credential) (*Prin
 	if cred.Empty() {
 		return nil, ErrNoCredential
 	}
+	// A session cookie is never a static token, even by accident.
+	if cred.Scheme == SchemeSession {
+		return nil, ErrInvalidCredential
+	}
 	presented := []byte(cred.Token)
 	var match *staticEntry
 	for i := range p.entries {
@@ -96,4 +102,26 @@ func (p *StaticProvider) Authenticate(_ context.Context, cred Credential) (*Prin
 	out.Roles = append([]string(nil), match.principal.Roles...)
 	out.Scopes = append([]Scope(nil), match.principal.Scopes...)
 	return &out, nil
+}
+
+// PrincipalForTokenHash implements TokenHashResolver: it returns the
+// principal of the configured token whose HashSecret is hash. Every
+// entry is compared in constant time.
+func (p *StaticProvider) PrincipalForTokenHash(hash string) (*Principal, bool) {
+	presented := []byte(hash)
+	var match *staticEntry
+	for i := range p.entries {
+		e := &p.entries[i]
+		if len(e.tokenHash) == len(presented) &&
+			subtle.ConstantTimeCompare(e.tokenHash, presented) == 1 && match == nil {
+			match = e
+		}
+	}
+	if match == nil {
+		return nil, false
+	}
+	out := match.principal
+	out.Roles = append([]string(nil), match.principal.Roles...)
+	out.Scopes = append([]Scope(nil), match.principal.Scopes...)
+	return &out, true
 }
