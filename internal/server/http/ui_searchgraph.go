@@ -2,6 +2,7 @@ package http
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -54,11 +55,10 @@ func mountSearchGraphViewer(r chi.Router) {
 	slashless := strings.TrimSuffix(SearchGraphViewerPath, "/")
 	files := http.StripPrefix(slashless, h)
 	redirect := func(w http.ResponseWriter, req *http.Request) {
-		target := SearchGraphViewerPath
-		if req.URL.RawQuery != "" {
-			target += "?" + req.URL.RawQuery
-		}
-		http.Redirect(w, req, target, http.StatusMovedPermanently)
+		// Fixed same-origin path; only the re-encoded query carries over,
+		// so the target can never leave the viewer.
+		target := url.URL{Path: SearchGraphViewerPath, RawQuery: req.URL.Query().Encode()}
+		http.Redirect(w, req, target.String(), http.StatusMovedPermanently)
 	}
 	r.Get(slashless, redirect)
 	r.Head(slashless, redirect)
