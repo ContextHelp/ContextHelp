@@ -1,6 +1,7 @@
 package upgrade
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -142,16 +143,28 @@ func TestComputeETAEdgeCases(t *testing.T) {
 	}
 }
 
-// TestReadShadowRoundtrip writes a Status to disk and reads it back,
-// then exercises the staleness gate.
-func TestReadShadowRoundtrip(t *testing.T) {
-	dir := t.TempDir()
-	shadow := filepath.Join(dir, "upgrade-state.json")
+// readShadowFile decodes the shadow file a Manager writes.
+func readShadowFile(t *testing.T, path string) Status {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read shadow: %v", err)
+	}
+	var st Status
+	if err := json.Unmarshal(data, &st); err != nil {
+		t.Fatalf("decode shadow: %v", err)
+	}
+	return st
+}
+
+// TestShadowFileCarriesStatus: the shadow file a Manager writes decodes to
+// the current status.
+func TestShadowFileCarriesStatus(t *testing.T) {
+	shadow := filepath.Join(t.TempDir(), "upgrade-state.json")
 	m := NewManager(shadow)
 
 	t0 := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	m.now = func() time.Time { return t0 }
-
 	if err := m.Start(BucketReingestSelective, 120); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -160,45 +173,8 @@ func TestReadShadowRoundtrip(t *testing.T) {
 		t.Fatalf("Tick: %v", err)
 	}
 
-	got, modTime, err := ReadShadow(shadow)
-	if err != nil {
-		t.Fatalf("ReadShadow: %v", err)
-	}
-	if got.State != StateInProgress || got.Bucket != BucketReingestSelective {
-		t.Fatalf("ReadShadow shape mismatch: %+v", got)
-	}
-	if got.Done != 47 || got.Total != 120 {
-		t.Fatalf("ReadShadow done/total: %+v", got)
-	}
-
-	// ReadShadowFresh: still fresh.
-	st, ok, err := ReadShadowFresh(shadow, modTime.Add(time.Second))
-	if err != nil {
-		t.Fatalf("ReadShadowFresh fresh: %v", err)
-	}
-	if !ok {
-		t.Fatal("expected fresh=true")
-	}
-	if st.Done != 47 {
-		t.Fatalf("fresh content: %+v", st)
-	}
-
-	// ReadShadowFresh: stale (mod time + StaleAfter + 1s).
-	_, ok, err = ReadShadowFresh(shadow, modTime.Add(ShadowStaleAfter+time.Second))
-	if err != nil {
-		t.Fatalf("ReadShadowFresh stale: %v", err)
-	}
-	if ok {
-		t.Fatal("expected stale=false past ShadowStaleAfter")
-	}
-
-	// Missing file maps to (zero, false, nil).
-	missing := filepath.Join(dir, "no-such.json")
-	_, ok, err = ReadShadowFresh(missing, time.Now())
-	if err != nil {
-		t.Fatalf("ReadShadowFresh missing: %v", err)
-	}
-	if ok {
-		t.Fatal("expected ok=false on missing file")
+	got := readShadowFile(t, shadow)
+	if got.State != StateInProgress || got.Bucket != BucketReingestSelective || got.Done != 47 || got.Total != 120 {
+		t.Fatalf("shadow = %+v", got)
 	}
 }

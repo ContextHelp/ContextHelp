@@ -2,8 +2,10 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -172,7 +174,7 @@ func runReprojectStaleDatabaseOnStart(t *testing.T, drv storage.StorageDriver, p
 			return
 		}
 		st := mgr.Snapshot()
-		disk, _, _ := upgrade.ReadShadow(shadow)
+		disk := readShadow(shadow)
 		if st.State == upgrade.StateInProgress && st.Bucket == upgrade.BucketReindexAuto &&
 			st.Target == "projection@"+indexsig.ProjectionVersion && st.Total == len(ids) &&
 			disk.Bucket == upgrade.BucketReindexAuto {
@@ -445,4 +447,14 @@ func TestScheduleReprojection_OnlyOnMismatch(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, job)
 	require.Equal(t, ReprojectJobType, job.Type)
+}
+
+// readShadow decodes the shadow file an upgrade.Manager writes; a missing
+// or unreadable file decodes to the zero status.
+func readShadow(path string) upgrade.Status {
+	var st upgrade.Status
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, &st)
+	}
+	return st
 }

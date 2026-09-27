@@ -1,85 +1,18 @@
-// Package banner renders the one-line ADR-070 §5 upgrade banner that
-// CLI commands print on stderr while a dpkms upgrade is not idle.
+// Package banner renders the one-line ADR-070 §5 upgrade banner that the
+// ctxt and dpkms CLIs print on stderr while a dpkms upgrade is not idle.
 //
-// Two sources feed it:
-//
-//   - ctxt: the X-Dpkms-Upgrade header on dpkms API responses
-//     (upgrade.DecodeHeader), printed once per invocation through Once. The
-//     banner follows the instance a command talks to, local or remote.
-//   - dpkms: Inject reads the local shadow file at
-//     $XDG_DATA_HOME/contexthelp/run/upgrade-state.json, written by the
-//     upgrade.Manager of the daemon on the same host. It is a no-op when
-//     the file is absent, malformed, or older than upgrade.ShadowStaleAfter
-//     (a daemon that died mid-upgrade leaves a stranded file behind).
+// The state comes from the X-Dpkms-Upgrade header on dpkms API responses
+// (upgrade.DecodeHeader): Arm hooks every response of one CLI invocation
+// and prints the first state it sees, once. The banner follows the
+// instance a command talks to, local or remote. Commands that never call
+// the API print none.
 package banner
 
 import (
 	"fmt"
-	"io"
-	"path/filepath"
-	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 )
-
-// shadowFileName is the basename of the shadow file under config.RunDir().
-// Kept private so the daemon and CLI never disagree on path semantics.
-const shadowFileName = "upgrade-state.json"
-
-// ShadowPath returns the canonical shadow-file path under the user's
-// run-dir. Empty string + nil error is impossible — RunDir errors propagate.
-func ShadowPath() (string, error) {
-	dir, err := config.RunDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, shadowFileName), nil
-}
-
-// Inject writes the upgrade banner to stderr when an in-flight upgrade is
-// reflected in the local shadow file. No-ops cleanly when the file is
-// missing, stale, malformed, or unreachable — banner failure must NEVER
-// interfere with the underlying CLI command's exit code.
-//
-// Format (matches ADR-070 §5):
-//
-//	ℹ ctxt: upgrading reingest_selective; 47/120 objects (39%); ETA 32s; details: ctxt upgrade status
-func Inject(stderr io.Writer) error {
-	path, err := ShadowPath()
-	if err != nil {
-		// Couldn't resolve the run dir — silently no-op. Banner is a
-		// nice-to-have; surfacing this on every command would be noise,
-		// and per the contract above it must never affect the exit code.
-		return nil //nolint:nilerr // banner is advisory; must never affect the command's exit code
-	}
-	return injectFromPath(stderr, path, time.Now())
-}
-
-// injectFromPath is the testable inner: reads from path, treats now as
-// "current time" for the staleness gate. Exposed only inside the package.
-func injectFromPath(stderr io.Writer, path string, now time.Time) error {
-	st, ok, err := upgrade.ReadShadowFresh(path, now)
-	if err != nil {
-		// A corrupt shadow file is the daemon's problem to clean up; do
-		// not let it break the CLI. We choose to silently skip rather
-		// than warn, mirroring the "banner is non-essential" contract.
-		return nil //nolint:nilerr // banner is advisory; must never affect the command's exit code
-	}
-	if !ok {
-		return nil
-	}
-	// Only render the banner for in-flight or failed runs. Any other
-	// state (e.g. awaiting_consent reserved for T-0581+) renders too,
-	// because the operator needs to act.
-	if st.State == upgrade.StateIdle {
-		return nil
-	}
-
-	line := Format(st)
-	_, _ = fmt.Fprintln(stderr, line)
-	return nil
-}
 
 // Format renders a Status into the canonical one-line banner. Exported so
 // tests and any future TUI consumer can use the same renderer.
