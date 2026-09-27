@@ -2,10 +2,14 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	"hop.top/kit/go/console/output"
+
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -206,5 +210,173 @@ func TestInboxListQueueHeader(t *testing.T) {
 	}
 	if !strings.Contains(out, "Inbox queue") {
 		t.Errorf("output should contain Inbox queue header, got: %s", out)
+	}
+}
+
+func inboxStatus(t *testing.T, db *testDB, id string) string {
+	t.Helper()
+	obj, err := db.Driver.Objects().Get(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get %s: %v", id, err)
+	}
+	return obj.Status
+}
+
+// A reader lists the inbox and its queue; writer and reader tokens are
+// refused triage, discard and clear with exit 5 and change nothing; an
+// admin token does all of it.
+func TestInboxOverAPIRoles(t *testing.T) {
+	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	seedInboxItem(t, db, "inbox_role_01", "first")
+	seedInboxItem(t, db, "inbox_role_02", "second")
+	seedRawObject(t, db, "raw_role_01", "raw")
+
+	db.useRole(t, dpkmstest.RoleReader)
+	out, err := db.exec("inbox", "list")
+	if err != nil || !strings.Contains(out, "inbox_role_01") || !strings.Contains(out, "2 total") {
+		t.Fatalf("reader inbox list: %v\n%s", err, out)
+	}
+	out, err = db.exec("inbox", "list", "--raw")
+	if err != nil || !strings.Contains(out, "raw_role_01") {
+		t.Fatalf("reader inbox list --raw: %v\n%s", err, out)
+	}
+
+	for _, role := range []string{dpkmstest.RoleWriter, dpkmstest.RoleReader} {
+		db.useRole(t, role)
+		for _, args := range [][]string{
+			{"inbox", "triage", "inbox_role_01"},
+			{"inbox", "discard", "--confirm=yes", "inbox_role_01"},
+			{"inbox", "clear", "--confirm=yes"},
+		} {
+			out, err := db.exec(args...)
+			if got := ExitCodeFor(err); got != output.ExitUnauthorized {
+				t.Errorf("%s %v: exit %d (%v); want %d\n%s", role, args, got, err, output.ExitUnauthorized, out)
+			}
+		}
+	}
+	for _, id := range []string{"inbox_role_01", "inbox_role_02"} {
+		if s := inboxStatus(t, db, id); s != "inbox" {
+			t.Fatalf("a refused command changed %s: %q", id, s)
+		}
+	}
+
+	db.useRole(t, dpkmstest.RoleAdmin)
+	out, err = db.exec("inbox", "triage", "inbox_role_01", "--pipeline", "text.short")
+	if err != nil || !strings.Contains(out, "inbox_role_01") {
+		t.Fatalf("admin triage: %v\n%s", err, out)
+	}
+	if s := inboxStatus(t, db, "inbox_role_01"); s != "active" {
+		t.Fatalf("triaged item status %q", s)
+	}
+	out, err = db.exec("inbox", "clear", "--confirm=yes")
+	if err != nil || !strings.Contains(out, "Cleared 1 inbox item(s)") {
+		t.Fatalf("admin clear: %v\n%s", err, out)
+	}
+	if s := inboxStatus(t, db, "inbox_role_02"); s != "discarded" {
+		t.Fatalf("cleared item status %q", s)
+	}
+	if s := inboxStatus(t, db, "raw_role_01"); s != "raw" {
+		t.Fatalf("clear touched a raw object: %q", s)
+	}
+}
+
+// Without a token a protected instance answers 401: exit 5.
+func TestInboxNoTokenIsUnauthorized(t *testing.T) {
+	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db.useRole(t, "none")
+	for _, args := range [][]string{{"inbox", "list"}, {"inbox", "list", "--pending"}} {
+		out, err := db.exec(args...)
+		if got := ExitCodeFor(err); got != output.ExitUnauthorized {
+			t.Errorf("%v: exit %d (%v); want %d\n%s", args, got, err, output.ExitUnauthorized, out)
+		}
+	}
+}
+
+// Nothing answering is exit 70: no command reads or writes the local
+// store instead.
+func TestInboxUnreachableHasNoLocalFallback(t *testing.T) {
+	db := setupTestDB(t, dpkmstest.Unreachable())
+	seedInboxItem(t, db, "inbox_down_01", "local only")
+	for _, args := range [][]string{
+		{"inbox", "list"},
+		{"inbox", "list", "--failed"},
+		{"inbox", "triage", "inbox_down_01"},
+		{"inbox", "discard", "--confirm=yes", "inbox_down_01"},
+		{"inbox", "clear", "--confirm=yes"},
+	} {
+		out, err := db.exec(args...)
+		if got := ExitCodeFor(err); got != output.ExitPrerequisite {
+			t.Errorf("%v: exit %d (%v); want %d\n%s", args, got, err, output.ExitPrerequisite, out)
+		}
+		if strings.Contains(out, "inbox_down_01") {
+			t.Errorf("%v read the local store:\n%s", args, out)
+		}
+	}
+	if s := inboxStatus(t, db, "inbox_down_01"); s != "inbox" {
+		t.Fatalf("an unreachable instance still changed the local store: %q", s)
+	}
+}
+
+// --before and --after reach the server; a malformed value is a usage
+// error before any request.
+func TestInboxListTimeFilters(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+	for id, created := range map[string]string{"inbox_t_old": "2026-04-10T09:00:00Z", "inbox_t_new": "2026-04-20T09:00:00Z"} {
+		at, _ := time.Parse(time.RFC3339, created)
+		if err := db.Driver.Objects().Create(ctx, &storage.KnowledgeObject{
+			ID: id, Type: "text", Status: "inbox", CreatedAt: at, UpdatedAt: at,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, err := db.exec("inbox", "list", "--after", "2026-04-15T00:00:00Z")
+	if err != nil || !strings.Contains(out, "inbox_t_new") || strings.Contains(out, "inbox_t_old") {
+		t.Fatalf("--after: %v\n%s", err, out)
+	}
+	out, err = db.exec("inbox", "list", "--before", "2026-04-15T00:00:00Z")
+	if err != nil || !strings.Contains(out, "inbox_t_old") || strings.Contains(out, "inbox_t_new") {
+		t.Fatalf("--before: %v\n%s", err, out)
+	}
+	out, err = db.exec("inbox", "list", "--before", "yesterday")
+	if got := ExitCodeFor(err); got != output.ExitUsage {
+		t.Fatalf("--before yesterday: exit %d (%v); want %d\n%s", got, err, output.ExitUsage, out)
+	}
+}
+
+// A missing item is exit 3.
+func TestInboxMissingItemIsNotFound(t *testing.T) {
+	db := setupTestDB(t)
+	for _, args := range [][]string{
+		{"inbox", "triage", "nonexistent"},
+		{"inbox", "discard", "--confirm=yes", "nonexistent"},
+	} {
+		out, err := db.exec(args...)
+		if got := ExitCodeFor(err); got != output.ExitNotFound {
+			t.Errorf("%v: exit %d (%v); want %d\n%s", args, got, err, output.ExitNotFound, out)
+		}
+	}
+}
+
+func TestInboxListJSON(t *testing.T) {
+	db := setupTestDB(t)
+	seedJob(t, db, "job_json_01", "ingest:text", "text.short", storage.JobFailed)
+	out, err := db.exec("inbox", "list", "--failed", "--format", "json")
+	if err != nil {
+		t.Fatalf("inbox list --failed --format json: %v\n%s", err, out)
+	}
+	var got struct {
+		Items []map[string]any `json:"items"`
+		Total int              `json:"total"`
+	}
+	start := strings.Index(out, "{")
+	if start < 0 {
+		t.Fatalf("no JSON in output:\n%s", out)
+	}
+	if err := json.Unmarshal([]byte(out[start:]), &got); err != nil {
+		t.Fatalf("decode: %v\n%s", err, out)
+	}
+	if got.Total != 1 || len(got.Items) != 1 || got.Items[0]["id"] != "job_json_01" || got.Items[0]["kind"] != "job" {
+		t.Fatalf("json: %+v", got)
 	}
 }
