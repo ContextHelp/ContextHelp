@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -89,6 +90,80 @@ func ListInbox(svc *service.Service) http.HandlerFunc {
 			return
 		}
 		WriteJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
+	}
+}
+
+// inboxQueueParams are the parameters GET /inbox/queue takes.
+var inboxQueueParams = []string{"pending", "failed", "raw", "limit", "offset"}
+
+const defaultInboxQueueLimit = 50
+
+// ListInboxQueue handles GET /api/v1/inbox/queue: pending and running
+// jobs, failed jobs and raw (unenriched) objects in one view. pending,
+// failed and raw select categories; none selects all three.
+func ListInboxQueue(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if perr := checkParams(q, inboxQueueParams); perr != nil {
+			writeParamError(w, perr)
+			return
+		}
+		var f service.InboxQueueFilter
+		for _, p := range []struct {
+			name string
+			dst  *bool
+		}{{"pending", &f.Pending}, {"failed", &f.Failed}, {"raw", &f.Raw}} {
+			v, perr := boolParam(q, p.name)
+			if perr != nil {
+				writeParamError(w, perr)
+				return
+			}
+			*p.dst = v
+		}
+		var perr *paramError
+		if f.Limit, perr = intParam(q, "limit", defaultInboxQueueLimit, 1, 0); perr != nil {
+			writeParamError(w, perr)
+			return
+		}
+		if f.Offset, perr = intParam(q, "offset", 0, 0, 0); perr != nil {
+			writeParamError(w, perr)
+			return
+		}
+
+		items, total, err := svc.ListInboxQueue(r.Context(), f)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			return
+		}
+		if items == nil {
+			items = []*service.InboxQueueItem{}
+		}
+		WriteJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
+	}
+}
+
+// boolParam parses true or false; an absent parameter is false.
+func boolParam(q url.Values, name string) (bool, *paramError) {
+	switch v := q.Get(name); v {
+	case "", strconv.FormatBool(false):
+		return false, nil
+	case strconv.FormatBool(true):
+		return true, nil
+	default:
+		return false, badParam(name, "%s must be true or false", name)
+	}
+}
+
+// ClearInbox handles POST /api/v1/inbox/clear: every inbox item is
+// discarded, and the response reports how many.
+func ClearInbox(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		n, err := svc.ClearInbox(r.Context())
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			return
+		}
+		WriteJSON(w, http.StatusOK, map[string]int{"cleared": n})
 	}
 }
 

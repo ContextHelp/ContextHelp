@@ -35,11 +35,11 @@ const (
 	// surface.
 	ScopeReadMCP Scope = "read:mcp"
 
-	// ScopeReadInbox lists inbox items.
+	// ScopeReadInbox lists inbox items and the inbox queue.
 	ScopeReadInbox Scope = "read:inbox"
 	// ScopeWriteInbox adds items to the inbox.
 	ScopeWriteInbox Scope = "write:inbox"
-	// ScopeProcessInbox triages and discards inbox items.
+	// ScopeProcessInbox triages, discards and clears inbox items.
 	ScopeProcessInbox Scope = "process:inbox"
 
 	// ScopeReadFeeds lists feed subscriptions.
