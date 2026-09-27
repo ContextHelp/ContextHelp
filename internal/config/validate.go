@@ -252,10 +252,37 @@ func (c *Config) validateServerEndpoints() error {
 			return fmt.Errorf("config: server.url: %w", err)
 		}
 	}
+	seen := make(map[string]int, len(c.Server.URLs))
 	for i, ep := range c.Server.URLs {
 		if err := validateEndpointURL(ep.URL); err != nil {
 			return fmt.Errorf("config: server.urls[%d]: %w", i, err)
 		}
+		if ep.Name == "" {
+			continue
+		}
+		if err := validateEndpointName(ep.Name); err != nil {
+			return fmt.Errorf("config: server.urls[%d]: %w", i, err)
+		}
+		if j, dup := seen[ep.Name]; dup {
+			return fmt.Errorf("config: server.urls[%d]: duplicate name %q (also server.urls[%d])", i, ep.Name, j)
+		}
+		seen[ep.Name] = i
+	}
+	return nil
+}
+
+// endpointName is the shape of a server.urls entry name: the URI-safe
+// slug dpkms instance names use.
+var endpointName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// validateEndpointName requires a lowercase slug that is not all digits:
+// --instance reads a bare number as a local instance's port.
+func validateEndpointName(name string) error {
+	if !endpointName.MatchString(name) {
+		return fmt.Errorf("invalid name %q: use lowercase letters, digits and hyphens", name)
+	}
+	if strings.Trim(name, "0123456789") == "" {
+		return fmt.Errorf("invalid name %q: an all-digit name reads as a port", name)
 	}
 	return nil
 }
