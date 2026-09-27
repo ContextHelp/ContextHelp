@@ -47,7 +47,7 @@ Good to know:
 
 - `--browser-profile` takes the name shown in the browser's profile menu (`Work`) or the profile's folder name (`Profile 3`). Don't confuse it with `--profile`, which selects your ctxt focus profile.
 - The browser can stay open. ctxt reads a copy of the browser's history and never changes the browser's own files.
-- Visits go to the ctxt server your client is set up for (`server.url` or `server.urls`, with its token), the same way `ctxt analyze` routes. If no configured server answers, each URL is queued locally and runs when `dpkms serve` starts.
+- Visits go to the one dpkms instance ctxt resolves (`--instance`, `ctxt instance use`, else the first `server.urls` entry or `server.url`), with its token, the same way `ctxt analyze` routes. Other `server.urls` entries are never tried. If that instance doesn't answer, each URL is queued locally and runs when `dpkms serve` starts.
 - The same URL visited several times is sent once per run.
 
 ## Keep it running

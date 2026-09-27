@@ -18,7 +18,7 @@ Send the tabs open in one browser profile to ctxt with one command, without a br
 
 ## Prerequisites
 
-1. A ctxt server your client is configured to use (`server.url` or `server.urls`). Tabs go to that server, with its token, exactly as `ctxt analyze` routes. If no configured server answers, each URL is queued locally and runs when `dpkms serve` starts.
+1. A dpkms instance your client resolves (`--instance`, `ctxt instance use`, else the first `server.urls` entry or `server.url`). Tabs go to that instance, with its token, exactly as `ctxt analyze` routes; other `server.urls` entries are never tried. If it doesn't answer, each URL is queued locally and runs when `dpkms serve` starts.
 2. You have used the browser profile at least once, so it has a session on disk. The browser does not need to be running.
 
 ## Procedure

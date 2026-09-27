@@ -479,6 +479,26 @@ server:
     port: 7701
 ```
 
+## Client endpoints (ctxt)
+
+`ctxt` talks to exactly one dpkms instance per command. `server.urls`
+lists the instances it knows; `server.token` is the default bearer token.
+
+```yaml
+server:
+  token: <default token>
+  urls:
+    - name: home                         # optional, unique; select with --instance home
+      url: https://dpkms.example.ts.net:7700
+      token: <token for home>            # overrides server.token for this entry
+    - http://127.0.0.1:8080              # bare URL: no name, no own token
+```
+
+Without `--server`, `--instance`, `CTXT_INSTANCE` or `ctxt instance use`,
+commands use the first entry and never fall back to another. See
+[`ctxt instance`](api-cli.md#ctxt-instance) for the resolution order.
+Tokens come only from config, never from flags.
+
 ---
 
 # Federation Configuration
