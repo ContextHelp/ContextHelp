@@ -7,12 +7,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// WriteBack marshals cfg to YAML and atomically writes it to path.
-// The write is atomic: it writes to <path>.tmp then renames.
+// WriteBack marshals the whole of cfg to YAML and atomically writes it to
+// path (writes <path>.tmp, then renames).
 //
-// Only explicit, user-initiated commands that change configuration call it
-// (setup, profile and registry mutations, watch toggles). Loading config
-// never writes a file.
+// A loaded Config is the merge of every layer (cascade files, -c overlays,
+// env values, defaults), so WriteBack of one copies all of them into path.
+// Commands that change one setting edit the target file's own layer with
+// [EditLayer] instead. Loading config never writes a file.
 func WriteBack(cfg *Config, path string) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
