@@ -81,7 +81,7 @@ All 10 tools are read-only. They wrap existing service-layer queries (FTS5 + vec
 
 | Tool | Args | Returns | When the agent should use it |
 |---|---|---|---|
-| `search` | query, top_k=10, since?, until?, profile?, kinds? | hybrid FTS+vector results | Specific keywords (person, project, error msg, file path) |
+| `search` | query, top_k=10, mode=hybrid\|fts\|vector, profile?, min_score? (hybrid), meta_type?, topic?, person?, source_type?, since?, until? | ranked results with title, snippet, score and (hybrid) score_breakdown; `executed_mode` and `diagnostics.semantic` say when semantic search could not run and full-text answered | Specific keywords (person, project, error msg, file path) or related wording. Same search as `POST /api/v1/find`. Without `profile` it searches every profile. `since`/`until` are `YYYY-MM-DD` dates mentioned in the object |
 | `list` | kind, filter?, limit=20, profile? | rows of `kind` matching filter | Browsing by type (objects, entities, watches, etc.) |
 | `get` | id, profile? | one KnowledgeObject | After search/list points at it |
 | `entity` | slug, profile? | entity + facts + backlinks | Resolving `@person.alice` or `@project.q3` |
@@ -160,7 +160,7 @@ Agent flow:
 ### "Agent: summarize yesterday's Q3 planning meeting"
 
 ```
-search(query="Q3 planning", kinds=["meeting"], since="yesterday")
+search(query="Q3 planning meeting")
 → get(id=<top result>)
 → compose(template="meeting-recap", scope="object:<id>")
 ```

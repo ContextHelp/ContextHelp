@@ -47,7 +47,7 @@ is a live stream and a *declared* contract, not raw capability.
 
 | Surface | What exists | Adapter-ready? |
 |---|---|---|
-| REST search | `GET /api/v1/search?q=&limit=&offset=&profile=` → `{data:[KnowledgeObject], total}` (`internal/server/http/handlers_search.go`) | Yes — formalize |
+| REST search | `GET /api/v1/search?q=&limit=&offset=&profile=` → `{data:[KnowledgeObject], total}` (RSQL, `internal/server/http/handlers_search.go`); `POST /api/v1/find` runs fts, vector or hybrid with diagnostics and scores ([api-rest.md](../api/api-rest.md#search-find)) | Yes — formalize |
 | REST objects | `GET /api/v1/objects`, `/api/v1/objects/{id}` | Yes — formalize |
 | REST entities | `GET /api/v1/entities`, `/api/v1/entities/{slug}` | Yes — formalize |
 | gRPC | `QueryService.Search / ListObjects / GetObject / NodeAwareSearch` (`api/proto/dpkms.proto:179-190`) | Yes — already typed |
@@ -181,10 +181,11 @@ breaking document change.
   mention of a pair, including entities the node cap drops
   (`internal/searchgraph/relations.go`), so filtering nodes after the build
   would leak hidden entities through edge weights.
-- **Objects are `profile`-scoped** like every Part A read. Not true of the
-  pipeline today: the hybrid legs ignore `ObjectFilter.ProfileID` (SQLite and
-  Postgres `FTSSearch` never read it), and the CLI never sets it. Scoping
-  both legs is a prerequisite for the endpoint.
+- **Objects are `profile`-scoped** like every Part A read. Both hybrid legs
+  honor `ObjectFilter.ProfileID` on SQLite and Postgres (as `POST /find`'s
+  `profile` does); `ctxt find` sets no profile, so the CLI graph stays
+  unscoped.
+  `profile` is caller-asserted, not an access control.
 - The endpoint sits under `/api/v1` and inherits its auth (`RequireAuth`
   when configured). The CLI viewer's rules — loopback-only bind, per-run
   256-bit URL token, `Host` check, idle shutdown

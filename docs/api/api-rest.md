@@ -461,6 +461,8 @@ dpkms embeds the query itself, with the default embedding model's provider as co
 
 With `fallback_to_fts` on (the default), a semantic leg that can't run, for example because the embedding provider is down, doesn't fail the search. Vector and hybrid modes answer full-text only and report the reason in `diagnostics.semantic`.
 
+The MCP `search` tool runs this search for agents; see [MCP agents](../manual/workflows/mcp-agents.md).
+
 ---
 
 ## Focus Profiles
