@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build smoke && unix
 
 package smoke
 
@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 	"github.com/ideacrafterslabs/ctxt/test/testutil"
 )
 
@@ -23,7 +24,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "SKIP: %v\n", err)
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	os.Exit(testguard.Main(m, nil, "ctxt", "dpkms"))
 }
 
 func TestCtxtVersion(t *testing.T) {
@@ -63,8 +64,7 @@ func TestDpkmsVersion(t *testing.T) {
 }
 
 func TestDpkmsServeHealthAndShutdown(t *testing.T) {
-	baseURL, cleanup := testutil.StartServer(t)
-	defer cleanup()
+	baseURL := testutil.StartDpkms(t, testutil.PrivateDpkms()).URL
 
 	// Verify /health returns 200.
 	resp, err := http.Get(baseURL + "/health")
@@ -76,13 +76,11 @@ func TestDpkmsServeHealthAndShutdown(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
 	assert.Equal(t, "ok", body["status"], "health status should be 'ok'")
 
-	// Cleanup sends SIGTERM; verify it completes (no panic, no hang).
-	// The deferred cleanup() handles this.
+	// Test cleanup stops the process group; a hang or leak fails the run.
 }
 
 func TestRoundTrip(t *testing.T) {
-	baseURL, cleanup := testutil.StartServer(t)
-	defer cleanup()
+	baseURL := testutil.StartDpkms(t, testutil.PrivateDpkms()).URL
 
 	// POST /api/v1/analyze with test content.
 	analyzeBody, _ := json.Marshal(map[string]string{
