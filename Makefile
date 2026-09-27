@@ -101,7 +101,7 @@ test-integration-services:
 ## test-smoke: Run binary smoke tests
 test-smoke:
 	@echo "Running smoke tests..."
-	go test -tags=smoke ./test/smoke/...
+	CGO_ENABLED=1 go test -count=1 -tags 'fts5 smoke' ./test/smoke/...
 
 ## test-e2e: Run black-box e2e tests against a freshly built ctxt binary
 ##
