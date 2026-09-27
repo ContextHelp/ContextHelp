@@ -63,6 +63,12 @@ The session acts as your token's principal, so entitlements and quotas apply as 
 
 The Registry page lists registries in a browser session; to fetch or update one, use `ctxt registry` or `dpkms step registry`.
 
+## See a search as a graph
+
+On the Search page, type a query and click **View as graph** next to **Search**. The search graph viewer opens in the same tab for the query in the box (`/ui/searchgraph/?q=<query>`), showing every candidate the search scored and why; browser Back returns to the Search page. The action is greyed out while the box is empty.
+
+The graph always runs the free-text hybrid search, so a query-language expression such as `type==note` is searched as plain words there. How to read it: [Search graph](search-graph.md#read-the-graph).
+
 ## How long a session lasts
 
 A session ends:
