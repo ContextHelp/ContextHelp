@@ -662,7 +662,7 @@ ctxt registry sync <name>
 
 ## `ctxt entity`
 
-Query and inspect entities (canonical concepts).
+Query and inspect entities (canonical concepts). Every leaf reads the dpkms instance `--server`, `--instance` or the config selects, through `/api/v1/entities` (scope `read:objects`). `search` matches a substring of the slug, title or an alias, ignoring ASCII case. An unknown slug exits 3.
 
 ### Examples
 

@@ -1,12 +1,11 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -36,7 +35,7 @@ Examples:
 var entitiesListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all entities",
-	Long: `Print every canonical entity in the local store.
+	Long: `Print the canonical entities of the dpkms instance, by slug.
 
 The table reports slug, title, and namespace. Use --namespace to filter and
 --limit to bound the result set. JSON output (--format json) emits the
@@ -49,9 +48,9 @@ var entitiesShowCmd = &cobra.Command{
 	Short: "Show entity details",
 	Long: `Print the full record for a single canonical entity.
 
-Resolves <slug> via the local entity store and prints title, namespace,
+Looks up <slug> exactly on the dpkms instance and prints title, namespace,
 description, creation time, and the list of aliases. JSON output emits
-the raw entity object.`,
+the raw entity object. An unknown slug exits 3.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runEntitiesShow,
 }
@@ -61,7 +60,8 @@ var entitiesSearchCmd = &cobra.Command{
 	Short: "Search for entities",
 	Long: `Search entities by free-text query.
 
-Returns up to 50 entities whose title, slug, or aliases match <query>.
+Returns up to 50 entities whose slug, title, or an alias contains <query>,
+ignoring ASCII case.
 The result table reports slug, title, and namespace; JSON output emits
 each hit as a full entity record.`,
 	Args: cobra.ExactArgs(1),
@@ -73,8 +73,7 @@ var entitiesBacklinksCmd = &cobra.Command{
 	Short: "Show entity backlinks",
 	Long: `List every knowledge object that references the named entity.
 
-Returns the set of objects whose body or metadata mentions @<slug> (or one of
-its aliases). The table reports object ID, type, and creation time; JSON
+Returns the set of objects with a mention edge to the entity. The table reports object ID, type, and creation time; JSON
 output emits the full object records.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runEntitiesBacklinks,
@@ -123,25 +122,29 @@ func init() {
 	// List flags
 	entitiesListCmd.Flags().Int("limit", 50, "maximum results")
 	entitiesListCmd.Flags().String("namespace", "", "filter by namespace")
+	for _, c := range []*cobra.Command{entitiesListCmd, entitiesShowCmd, entitiesSearchCmd, entitiesBacklinksCmd} {
+		c.Flags().String("server", "", serverFlagUsage)
+	}
 
 	// Bind flags to viper
 	viper.BindPFlag("entities.limit", entitiesListCmd.Flags().Lookup("limit"))
 	viper.BindPFlag("entities.namespace", entitiesListCmd.Flags().Lookup("namespace"))
 }
 
+// newEntityClient returns the dpkms client the entity leaves use.
+func newEntityClient(cmd *cobra.Command) (*dpkmsclient.Client, error) {
+	return newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
+}
+
 func runEntitiesList(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	client, err := newEntityClient(cmd)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	ctx := context.Background()
-	filter := storage.EntityFilter{
+	entities, err := client.ListEntities(cmd.Context(), dpkmsclient.EntityQuery{
 		Namespace: viper.GetString("entities.namespace"),
 		Limit:     viper.GetInt("entities.limit"),
-	}
-	entities, err := svc.ListEntities(ctx, filter)
+	})
 	if err != nil {
 		return fmt.Errorf("list entities: %w", err)
 	}
@@ -163,14 +166,11 @@ func runEntitiesList(cmd *cobra.Command, args []string) error {
 func runEntitiesShow(cmd *cobra.Command, args []string) error {
 	slug := args[0]
 
-	svc, cleanup, err := newService()
+	client, err := newEntityClient(cmd)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	ctx := context.Background()
-	entity, err := svc.GetEntity(ctx, slug)
+	entity, err := client.GetEntity(cmd.Context(), slug)
 	if err != nil {
 		return fmt.Errorf("get entity: %w", err)
 	}
@@ -195,17 +195,17 @@ func runEntitiesShow(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// entitySearchLimit caps entity search results.
+const entitySearchLimit = 50
+
 func runEntitiesSearch(cmd *cobra.Command, args []string) error {
 	query := args[0]
 
-	svc, cleanup, err := newService()
+	client, err := newEntityClient(cmd)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	ctx := context.Background()
-	results, err := svc.SearchEntities(ctx, query, 50)
+	results, err := client.ListEntities(cmd.Context(), dpkmsclient.EntityQuery{Query: query, Limit: entitySearchLimit})
 	if err != nil {
 		return fmt.Errorf("search entities: %w", err)
 	}
@@ -227,14 +227,11 @@ func runEntitiesSearch(cmd *cobra.Command, args []string) error {
 func runEntitiesBacklinks(cmd *cobra.Command, args []string) error {
 	slug := args[0]
 
-	svc, cleanup, err := newService()
+	client, err := newEntityClient(cmd)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	ctx := context.Background()
-	objects, err := svc.EntityBacklinks(ctx, slug)
+	objects, err := client.EntityBacklinks(cmd.Context(), slug)
 	if err != nil {
 		return fmt.Errorf("backlinks: %w", err)
 	}

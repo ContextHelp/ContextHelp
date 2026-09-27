@@ -1,6 +1,6 @@
 # Resolver contract (`ctxt resolve`)
 
-`ctxt resolve <ref>` is the one-shot resolution contract for **external consumers** — agents, scripts, editors, CI steps — that need a single knowledge item's body and provenance without driving the interactive surfaces (`show`, `find`, `entity show`). It is a thin wrapper over the existing retrieval paths; it adds no retrieval logic of its own.
+`ctxt resolve <ref>` is the one-shot resolution contract for **external consumers** — agents, scripts, editors, CI steps — that need a single knowledge item's body and provenance without driving the interactive surfaces (`show`, `find`, `entity show`). It reads through the dpkms API of the instance `--server`, `--instance` or the config selects, and adds no retrieval logic of its own. The token needs `read:objects`.
 
 ## Invocation
 
@@ -14,9 +14,9 @@ One ref in, one result out, exit. No prompts, no pagination, no clipboard fallba
 
 | Form | Resolves via | Notes |
 |---|---|---|
-| `obj_<id>` | knowledge-object store (`GetObject`) | exact ID match |
-| `@<slug>` | entity store, alias-aware resolve | leading `@` stripped; matches slug or any alias |
-| `<slug>` | entity store, alias-aware resolve | same as `@<slug>` — the `@` is optional |
+| `obj_<id>` | `GET /api/v1/objects/{id}` | exact ID match |
+| `@<slug>` | `GET /api/v1/entities/resolve?mention=<slug>` | leading `@` stripped; matches slug or any alias |
+| `<slug>` | `GET /api/v1/entities/resolve?mention=<slug>` | same as `@<slug>` — the `@` is optional |
 
 Dispatch is prefix-based: refs starting with `obj_` are objects; everything else is treated as an entity ref. Entity resolution tries exact slug first, then aliases — the same resolution used for `@mention` handling.
 
@@ -77,14 +77,18 @@ Follows the CLI-wide convention:
 | Code | Meaning |
 |---|---|
 | `0` | Ref resolved; body written to stdout |
-| `1` | Any error, including ref not found and an unsupported `--format` (message on stderr; JSON errors carry `CTXT-XXXX` codes per [../errors.md](../errors.md)) |
-| `2` | CLI validation failure (kit strict-gate / flag parsing) |
+| `2` | Unsupported `--format` or a bad invocation |
+| `3` | The ref names nothing (`NOT_FOUND`, with a `ctxt find` suggestion) |
+| `5` | The token is missing or lacks `read:objects`, or the entity is outside the token's entitlement |
+| `6` | dpkms failed to answer the request (5xx, or a connection dropped mid-request) |
+| `70` | Nothing answers at the endpoint |
+| `64` | The entity read quota is spent |
 
 ## Guarantees
 
 - **Read-only** (`kit/side-effect: read`) and **idempotent** — safe to call in retry loops. Retrying does not hydrate content: a `thin` entity resolves to the same empty body every time, so check `content_status` rather than looping.
-- **Formats are markdown (default) or `json`** — any other `--format` is rejected with exit 1 rather than silently falling back.
-- **One-shot** — no daemon required beyond the storage backend the CLI already uses; no watch mode.
+- **Formats are markdown (default) or `json`** — any other `--format` is rejected with exit 2 rather than silently falling back.
+- **One-shot** — one request to one dpkms instance; no fallback to a local store or another instance; no watch mode.
 - **Stable envelope** — `ref`, `kind`, `body`, `provenance` are the contract surface; new provenance fields may be added, existing ones will not be renamed.
 
 ## See also
