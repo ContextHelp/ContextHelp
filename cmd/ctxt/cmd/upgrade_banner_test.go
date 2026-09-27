@@ -141,8 +141,8 @@ func TestUpgradeBanner_OncePerInvocation(t *testing.T) {
 	}
 }
 
-// No banner when the instance is idle, when --quiet is set, or when
-// stderr is not a terminal (kit's rule for hints: piped output stays
+// No banner when the instance is idle, when --quiet or --no-hints is
+// set, or when stderr is not a terminal (kit's rule for hints: piped output stays
 // machine-clean).
 func TestUpgradeBanner_Suppressed(t *testing.T) {
 	cases := []struct {
@@ -153,6 +153,7 @@ func TestUpgradeBanner_Suppressed(t *testing.T) {
 	}{
 		{"idle instance", false, true, nil},
 		{"quiet", true, true, []string{"--quiet"}},
+		{"no-hints", true, true, []string{"--no-hints"}},
 		{"stderr not a terminal", true, false, nil},
 	}
 	for _, tc := range cases {

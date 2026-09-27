@@ -30,13 +30,15 @@ var (
 // about to run: the first dpkms API response carrying the upgrade header
 // prints one line on cmd's stderr, whichever instance, local or remote,
 // the command talks to. Like kit's hints, it stays silent under --quiet
-// or when stderr is not a terminal.
+// or --no-hints, or when stderr is not a terminal.
 func armUpgradeBanner(cmd *cobra.Command) {
 	installUpgradeObserver.Do(func() {
 		http.DefaultTransport = dpkmsclient.ObserveUpgrade(http.DefaultTransport, showUpgradeBanner)
 	})
 	w := cmd.ErrOrStderr()
-	if quiet, _ := cmd.Flags().GetBool("quiet"); quiet || !upgradeBannerTTY(w) {
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	noHints, _ := cmd.Flags().GetBool("no-hints")
+	if quiet || noHints || !upgradeBannerTTY(w) {
 		upgradeBannerSink.Store(nil)
 		return
 	}
