@@ -3,7 +3,9 @@
 // Package searchgraph_test drives `ctxt find --graph` end to end: a ctxt
 // binary built once per run, a fixture corpus seeded through the binary's
 // own commands, and black-box assertions on exit codes, stdout, stderr,
-// written files and the ephemeral viewer server.
+// written files and the ephemeral viewer server. The dpkms-hosted viewer
+// runs against a private `dpkms serve` over the same corpus, with a dpkms
+// binary built on first use.
 //
 // Run with:
 //
@@ -33,6 +35,7 @@ var update = flag.Bool("update", false, "rewrite JGF goldens under testdata/gold
 
 // suite is the per-run shared state TestMain prepares.
 var suite struct {
+	work   string // per-run scratch directory
 	bin    string // built ctxt binary
 	corpus *corpus
 }
@@ -58,6 +61,7 @@ func setup(m *testing.M) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	suite.work = work
 	suite.bin = filepath.Join(work, "ctxt")
 	build := exec.Command("go", "build", "-tags", "fts5", "-buildvcs=false", "-o", suite.bin, "./cmd/ctxt")
 	build.Dir = root

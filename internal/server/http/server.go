@@ -119,6 +119,10 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 	r.Get("/ui/*", spa.ServeHTTP)
 	r.Head("/ui/*", spa.ServeHTTP)
 
+	// GET|HEAD /ui/searchgraph/ → embedded search-graph viewer, ahead of
+	// the SPA fallback; /ui/searchgraph redirects with its query.
+	mountSearchGraphViewer(r)
+
 	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
 		WriteError(w, http.StatusNotFound, "NOT_FOUND", "resource not found")
 	})
