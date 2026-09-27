@@ -378,6 +378,7 @@ dpkms embeds the query itself, with the default embedding model's provider as co
   "query": "rotating signing keys",
   "mode": "hybrid",
   "limit": 10,
+  "profile": "work",
   "filter": {
     "meta_type": "task",
     "topic": "security",
@@ -407,6 +408,7 @@ dpkms embeds the query itself, with the default embedding model's provider as co
 - `query` is required.
 - `mode` is `fts`, `vector` or `hybrid`. It defaults to `hybrid`.
 - `limit` defaults to 10.
+- `profile` restricts both legs and the facet counts to objects owned by that profile. Leave it out for no profile filter, as when listing objects. The caller picks the profile; any token with `read:objects` can name any profile, so it scopes a search and is not access control.
 - `filter` and each of its fields are optional. `since` and `until` are dates (`YYYY-MM-DD`), compared with an object's `dates_mentioned`.
 - In `search`, any knob you leave out takes the built-in default shown above, which is also ctxt's config default. `rrf_k` and the pools must be positive. The weights, `min_score` and the boosts must not be negative. `min_score` applies to hybrid results.
 - `explain` applies to `hybrid` mode only. Other modes ignore it.
