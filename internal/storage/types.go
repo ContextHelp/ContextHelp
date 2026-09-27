@@ -117,8 +117,12 @@ type ObjectFilter struct {
 type EntityFilter struct {
 	Namespace     string
 	ContentStatus ContentStatus // if non-empty, filter by content_status
-	Limit         int
-	Offset        int
+	// Query, when non-empty, keeps entities whose slug, title or any
+	// alias contains it, ignoring ASCII case. LIKE metacharacters in it
+	// match literally. Applied before Limit and Offset.
+	Query  string
+	Limit  int
+	Offset int
 }
 
 // JobStatus represents the state of a job.

@@ -11,3 +11,9 @@ import (
 func TestConformance_ThinEntity(t *testing.T) {
 	storagetest.ThinEntityConformance(t, newTestDriver(t))
 }
+
+// TestConformance_EntityQuery runs the cross-driver entity search and
+// resolve contract against a fresh SQLite database.
+func TestConformance_EntityQuery(t *testing.T) {
+	storagetest.EntityQueryConformance(t, newTestDriver(t))
+}
