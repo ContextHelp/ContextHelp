@@ -176,7 +176,7 @@ This uses the **ctxd-side** MCP — agents on remote-dpkms deployments only see 
 
 ## Outputs to validate
 
-- Both endpoints reachable: `curl -X POST http://127.0.0.1:8080/api/v1/mcp/ -d '{"method":"tools/list"}'`
+- Both endpoints reachable: `curl -X POST http://127.0.0.1:8080/api/v1/mcp/ -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'` (dpkms answers `415` to a body without `Content-Type: application/json`)
 - Tool schemas valid (use the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) for interactive testing)
 - Bus events fire for every tool call (`ctxt watch --topic 'dpkms.mcp.*'`)
 - Profile scoping respected (queries with `profile=work` don't leak personal-profile data)
