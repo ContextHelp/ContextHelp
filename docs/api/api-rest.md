@@ -32,6 +32,7 @@ Configurable in ContextHelp settings.
 Supported modes:
 
 - API key via `Authorization: Bearer <token>` or `X-API-Key: <token>`
+- Web UI session cookie, browser only, with a reduced scope; minted by `ctxt ui open` (see [Sign in to the web UI](../manual/workflows/web-ui-sign-in.md))
 - Optional mTLS
 - Optional reverse-proxy auth integration
 
