@@ -69,6 +69,7 @@ go build -o dpkms cmd/dpkms/main.go
 | `ctxt open <id>` | Display knowledge object details (supports clipboard fallback) |
 | `ctxt delete` | Remove knowledge objects |
 | `ctxt edit` | Modify knowledge object metadata |
+| `ctxt reprocess` | Re-run an enrichment step on an object, as a dpkms job |
 | `ctxt profile` | Manage focus profiles |
 | `ctxt make` | Generate compositions (briefs, plans) |
 | `ctxt stats` | Live at-a-glance system summary |
@@ -335,47 +336,67 @@ Options:
 
 ## `ctxt delete`
 
-Delete knowledge objects using IDs or filters.
+Delete knowledge objects on the dpkms instance, by ID or by filter.
 
 ### Usage
 
 ```bash
-ctxt delete <filters> <options>
+ctxt delete <selector> --confirm=yes --confirm-token=<sha>
 ```
 
-### Filters
+### Selectors
 
 | Flag | Description |
 |------|-------------|
-| `--id <id>` | Delete specific knowledge object |
-| `--index <i1,i2>` | Delete by list index |
-| `--tagged <t>` | Delete by tag |
-| `--hint <#h>` | Delete by hint |
-| `--mention <@slug>` | Delete by mention |
-| `--type <type>` | Delete by type |
-| `--subtype <subtype>` | Delete by subtype |
-| `--all` | Delete all |
+| `--id <id>` | Delete one object |
+| `--tagged <tag>` | Delete the active objects carrying the tag |
+| `--mention <@ns.slug>` | Delete the active objects mentioning the entity |
+| `--type <type>` | Delete the active objects of the type |
+| `--all` | Delete every active object |
+
+`--tagged`, `--mention` and `--type` combine with AND. `--id` wins over the filters, and `--all` over `--tagged`, `--mention` and `--type`.
+
+- **Admin only.** Deleting needs `delete:objects`, which only the `admin` role holds. A `writer` or `reader` token exits 5 and deletes nothing.
+- **How it runs.** A filter lists its matches with `GET /api/v1/objects`, then deletes each one with `DELETE /api/v1/objects/{id}`. A 401 or 403 stops at the first refused request; an object deleted by someone else in the meantime is noted and skipped. Any other failed delete makes the command exit non-zero after the rest have run.
+- **Confirmation.** kit's `--confirm` policy applies: the command refuses without `--confirm-token=<sha>` and prints the token to echo back.
+- **Preview.** `--dry-run` prints the plan: the objects a committed run deletes. `--confirm=no` prints the same targets as a refusal. Neither deletes anything, and both need only a read token.
+- **Exit codes.** Unreachable instance 70, 401/403 5, unknown `--id` 3, no selector 2.
 
 ---
 
 ## `ctxt edit`
 
-Modify knowledge object metadata.
+Modify a knowledge object's metadata on the dpkms instance (`PATCH /api/v1/objects/{id}`; needs `write:objects`, held by `writer` and `admin`).
 
 ```bash
-ctxt edit --id <id> <fields>
+ctxt edit <id> <fields>
 ```
 
 Editable fields:
 
 | Flag | Field |
 |------|--------|
-| `--title <text>` | Title |
-| `--summary <text>` | Summary |
-| `--tags <t1,t2>` | Replace tag list |
-| `--hints "<#h1 #h2>"` | Replace hints |
-| `--mentions "<@m1 @m2>"` | Replace mentions |
-| `--subtype <name>` | Update subtype |
+| `--title <text>` | Replaces the summaries with this title. `list` and `show` print the first summary as the title |
+| `--summary <text>` | Replaces the first summary and keeps the others |
+| `--tags <t1,t2>` | Replaces the tags |
+| `--mention "<@m1 @m2>"` | Replaces the mentions |
+| `--subtype <name>` | Replaces the subtype |
+
+`--title` and `--summary` both set the first summary, so they can't be combined (exit 2). No field is exit 2, an unknown ID exit 3, a reader token exit 5.
+
+---
+
+## `ctxt reprocess`
+
+Queue a job on the dpkms instance that re-runs one enrichment step on an object and writes the result back (`POST /api/v1/objects/{id}/reprocess`; needs `write:objects`).
+
+```bash
+ctxt reprocess <id> [--step structured_metadata|entity_extractor|tagger]
+```
+
+- The step runs where dpkms runs, with that instance's providers and configuration. ctxt only queues it and prints the job ID; `--format json` prints `{id, step, job_id, status: "queued"}`.
+- `--step` defaults to `structured_metadata`. An unknown step exits 2, an unknown ID 3, a reader token 5.
+- The job's type is `object:reprocess`. Once it completes, `ctxt show <id>` shows the result.
 
 ---
 

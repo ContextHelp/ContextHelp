@@ -88,7 +88,7 @@ their object, so an expired object leaves no embeddings behind.
 
 - Do not ingest documents containing bulk PII unless the object store is
   encrypted at rest (`security.encryption.enabled: true`).
-- Use `ctxt edit --id <id>` to add a `pii:true` hint to mark objects for expedited review.
+- Use `ctxt edit <id> --tags pii` to mark objects for expedited review (this replaces the object's tags; list the existing ones too).
 - Scope pipeline outputs to exclude PII fields before storing enrichment results.
 
 ---
@@ -101,8 +101,10 @@ command and its bulk variants.
 ### Single-object deletion
 
 ```
-ctxt delete --id <id>
+ctxt delete --id <id> --confirm=yes --confirm-token=<sha>
 ```
+
+Deleting needs an `admin` token: `writer` and `reader` tokens exit 5 and delete nothing. Without `--confirm-token` the command refuses and prints the token to echo back; `--dry-run` lists what it would delete.
 
 Cascade effects:
 - Removes the object row from SQLite
@@ -114,17 +116,15 @@ Cascade effects:
 ### Bulk deletion
 
 ```
-# Delete all objects (confirmation prompt)
-ctxt delete --all
-
-# Skip confirmation
-ctxt delete --all --yes
+# Preview, then delete every active object
+ctxt delete --all --dry-run
+ctxt delete --all --confirm=yes --confirm-token=<sha>
 
 # Delete by tag
-ctxt delete --tag temporary
+ctxt delete --tagged temporary --confirm=yes --confirm-token=<sha>
 
 # Delete by mention
-ctxt delete --mention @project.archived
+ctxt delete --mention @project.archived --confirm=yes --confirm-token=<sha>
 ```
 
 > **Note:** `--before <date>` date-range bulk deletion is not yet implemented in the
@@ -133,7 +133,7 @@ ctxt delete --mention @project.archived
 >
 > ```bash
 > ctxt list --output json | jq -r '.[] | select(.created_at < "2025-01-01") | .id' \
->   | xargs -I{} ctxt delete --id {} --yes
+>   | xargs -I{} ctxt delete --id {} --confirm=yes --confirm-token=<sha>
 > ```
 
 ### Cascade effects summary
