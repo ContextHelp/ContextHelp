@@ -293,6 +293,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		DevCORS:    viper.GetBool("server.dev"),
 		HTTPPort:   port,
 		Warnings:   os.Stderr,
+		Notes:      os.Stdout,
 	})
 	if err != nil {
 		return err

@@ -11,10 +11,12 @@
 package stack
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -77,6 +79,9 @@ type Inputs struct {
 	HTTPPort int
 	// Warnings receives non-fatal assembly warnings. nil discards them.
 	Warnings io.Writer
+	// Notes receives startup notes (web UI sign-in availability and
+	// session sweeps). nil discards them.
+	Notes io.Writer
 }
 
 // Stack is the assembled request-serving stack.
@@ -88,9 +93,14 @@ type Stack struct {
 	Bus     events.Bus
 	Service *service.Service
 	Watcher *watcher.Manager
-	// RouteAuth is the provider guarding the route table; nil on
-	// private instances.
-	RouteAuth    authn.Provider
+	// RouteAuth is the token provider guarding the route table (and
+	// gRPC); nil on private instances.
+	RouteAuth authn.Provider
+	// UISessions is the web UI sign-in session manager; nil when the
+	// instance offers no browser sign-in (private instances, providers
+	// that cannot resolve token hashes). The HTTP route table accepts
+	// its session cookies on top of RouteAuth's tokens; gRPC does not.
+	UISessions   *authn.Sessions
 	Security     *security.Emitter
 	Entitlements *registry.InboundGate
 	Router       chi.Router
@@ -201,6 +211,46 @@ func HostAllowlist(access string, port int, extra []string) (*httpserver.HostAll
 	return hosts, nil
 }
 
+// uiSessionRetention keeps ended sessions listable this long before
+// Build prunes them.
+const uiSessionRetention = 30 * 24 * time.Hour
+
+// newUISessions builds the web UI session manager for a non-private
+// instance, or returns nil (private instances need no sign-in; a
+// provider that cannot resolve token hashes cannot mint sessions). At
+// start it revokes sessions whose minting token left the config, and
+// prunes sessions that ended more than uiSessionRetention ago.
+func newUISessions(ctx context.Context, out io.Writer, store storage.UISessionStore, provider authn.Provider, access string, bounds config.UISessionConfig) (*authn.Sessions, error) {
+	if access == config.AccessPrivate || provider == nil {
+		return nil, nil
+	}
+	resolver, ok := provider.(authn.TokenHashResolver)
+	if !ok {
+		fmt.Fprintf(out, "Web UI sign-in: unavailable with the %s provider\n", provider.Name())
+		return nil, nil
+	}
+	sessions, err := authn.NewSessions(store, resolver, authn.SessionOptions{
+		IdleTTL: bounds.IdleTTL,
+		MaxTTL:  bounds.MaxTTL,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("web UI sessions: %w", err)
+	}
+	n, err := sessions.SweepRemovedTokens(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("web UI sessions: %w", err)
+	}
+	if n > 0 {
+		fmt.Fprintf(out, "Web UI sign-in: revoked %d session(s) whose token is no longer configured\n", n)
+	}
+	if _, err := store.Prune(ctx, time.Now().Add(-uiSessionRetention)); err != nil {
+		return nil, fmt.Errorf("web UI sessions: prune: %w", err)
+	}
+	fmt.Fprintf(out, "Web UI sign-in: ctxt ui open (sessions end after %s idle, %s at most)\n",
+		sessions.IdleTTL(), sessions.MaxTTL())
+	return sessions, nil
+}
+
 // Build assembles the stack over in.Driver.
 func Build(in Inputs) (*Stack, error) {
 	cfg := in.Config
@@ -304,12 +354,30 @@ func Build(in Inputs) (*Stack, error) {
 		}
 	}
 
+	// Web UI sign-in (`ctxt ui open`): browser sessions persisted in the
+	// store, acting as the principal of the token that minted them. The
+	// HTTP route table takes session cookies; gRPC keeps tokens only.
+	httpAuth := s.RouteAuth
+	notes := in.Notes
+	if notes == nil {
+		notes = io.Discard
+	}
+	s.UISessions, err = newUISessions(context.Background(), notes, in.Driver.UISessions(), s.RouteAuth, access, cfg.Server.UI.Session)
+	if err != nil {
+		s.policy.Close()
+		return nil, err
+	}
+	if s.UISessions != nil {
+		httpAuth = s.UISessions.Provider(s.RouteAuth)
+	}
+
 	s.Router = httpserver.NewRouterWithConfig(s.Service, httpserver.RouterConfig{
 		Semantic:     QuerySemantic(in.Driver, resolver, in.Warnings),
 		DevCORS:      in.DevCORS,
 		Watcher:      s.Watcher,
 		Probes:       in.Probes,
-		Auth:         s.RouteAuth,
+		Auth:         httpAuth,
+		Sessions:     s.UISessions,
 		Security:     s.Security,
 		Entitlements: s.Entitlements,
 		// On non-private instances the federation push route is gated

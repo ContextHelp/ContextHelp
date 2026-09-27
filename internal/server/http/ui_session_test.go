@@ -77,8 +77,9 @@ func (f *uiFixture) start(toks ...authn.StaticToken) {
 		f.ts.Close()
 	}
 	f.ts = httptest.NewServer(NewRouterWithConfig(f.bundle.svc, RouterConfig{
-		Auth:     f.sessions.Provider(static),
-		Sessions: f.sessions,
+		Auth:           f.sessions.Provider(static),
+		Sessions:       f.sessions,
+		SessionRecheck: 20 * time.Millisecond,
 	}))
 	f.t.Cleanup(f.ts.Close)
 	f.origin = f.ts.URL
