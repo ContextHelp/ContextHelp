@@ -53,6 +53,10 @@ type RouterConfig struct {
 	// host dpkms runs on. The zero value has no model, so vector and
 	// hybrid finds answer full-text only and report no_default_model.
 	Semantic retrieval.SemanticSource
+	// Hosts, when set, rejects every request whose Host header is not
+	// on the list, on every route (routes added to the returned router
+	// later included). nil = no Host check.
+	Hosts *HostAllowlist
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -80,6 +84,9 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 
 	r.Use(RequestID)
 	r.Use(Recoverer)
+	if rc.Hosts != nil {
+		r.Use(rc.Hosts.Middleware)
+	}
 	r.Use(CORS(rc.DevCORS))
 	if rc.Security != nil {
 		r.Use(WithSecurityEvents(rc.Security))

@@ -2,9 +2,11 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -285,6 +287,55 @@ func validateEndpointName(name string) error {
 		return fmt.Errorf("invalid name %q: an all-digit name reads as a port", name)
 	}
 	return nil
+}
+
+// validateAllowedHosts checks every server.allowed_hosts entry parses.
+func (c *Config) validateAllowedHosts() error {
+	for i, entry := range c.Server.AllowedHosts {
+		if _, _, err := ParseAllowedHost(entry); err != nil {
+			return fmt.Errorf("config: server.allowed_hosts[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// ParseAllowedHost splits a server.allowed_hosts entry into a lower-cased
+// host and an optional port. A bare host name or IP ("dpkms.lan",
+// "192.168.1.20", "::1", "[::1]") matches that host on any port;
+// host:port ("dpkms.lan:8443", "[::1]:8080") matches only that port.
+// Entries are compared with the request's Host header, so schemes,
+// paths, wildcards and whitespace are rejected.
+func ParseAllowedHost(entry string) (host, port string, err error) {
+	if entry == "" {
+		return "", "", fmt.Errorf("empty entry (want a host such as dpkms.lan or dpkms.lan:8443)")
+	}
+	if strings.ContainsAny(entry, " \t\r\n/\\*@?#,") {
+		return "", "", fmt.Errorf("invalid entry %q: want a host or host:port, not a URL or pattern", entry)
+	}
+	switch {
+	case strings.HasPrefix(entry, "[") && strings.HasSuffix(entry, "]"):
+		host = entry[1 : len(entry)-1]
+	case strings.HasPrefix(entry, "["), strings.Count(entry, ":") == 1:
+		host, port, err = net.SplitHostPort(entry)
+		if err != nil {
+			return "", "", fmt.Errorf("invalid entry %q: %w", entry, err)
+		}
+	default:
+		host = entry
+	}
+	if host == "" {
+		return "", "", fmt.Errorf("invalid entry %q: missing host", entry)
+	}
+	if strings.Contains(host, ":") && net.ParseIP(host) == nil {
+		return "", "", fmt.Errorf("invalid entry %q: not an IPv6 address", entry)
+	}
+	if port != "" {
+		n, perr := strconv.Atoi(port)
+		if perr != nil || n < 1 || n > 65535 {
+			return "", "", fmt.Errorf("invalid entry %q: port must be 1-65535", entry)
+		}
+	}
+	return strings.ToLower(host), port, nil
 }
 
 // validateEndpointURL requires an absolute http/https URL with a host — the
