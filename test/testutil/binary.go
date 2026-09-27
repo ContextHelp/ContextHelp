@@ -2,15 +2,10 @@ package testutil
 
 import (
 	"fmt"
-	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
-	"syscall"
 	"testing"
-	"time"
 )
 
 // projectRoot walks up from the current working directory until it finds go.mod.
@@ -124,79 +119,4 @@ func Run(t *testing.T, name string, args ...string) (string, error) {
 	cmd := exec.Command(bin, args...) // #nosec G204 -- test helper runs built test binaries
 	out, err := cmd.CombinedOutput()
 	return string(out), err
-}
-
-// StartServer starts "bin/dpkms serve" on a random port. It waits for
-// /health to return 200 (retry up to 5s). Returns the base URL and a
-// cleanup function that sends SIGTERM and waits for exit.
-func StartServer(t *testing.T, extraArgs ...string) (url string, cleanup func()) {
-	t.Helper()
-
-	// Find a free port by binding then releasing.
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("find free port: %v", err)
-	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	ln.Close()
-
-	bin := BinaryPath("dpkms")
-	args := []string{"serve", "--port", fmt.Sprintf("%d", port)}
-	args = append(args, extraArgs...)
-
-	cmd := exec.Command(bin, args...) // #nosec G204 -- test helper runs built test binaries
-	// Use a temp dir for the database so tests are isolated.
-	tmpDir := t.TempDir()
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("HOME=%s", tmpDir),
-		fmt.Sprintf("XDG_CONFIG_HOME=%s", filepath.Join(tmpDir, ".config")),
-		fmt.Sprintf("XDG_DATA_HOME=%s", filepath.Join(tmpDir, ".local", "share")),
-	)
-	cmd.Dir = tmpDir
-
-	// Capture output for debugging.
-	var outBuf strings.Builder
-	cmd.Stdout = &outBuf
-	cmd.Stderr = &outBuf
-
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start dpkms serve: %v", err)
-	}
-
-	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
-
-	// Wait for health endpoint.
-	deadline := time.Now().Add(5 * time.Second)
-	healthy := false
-	for time.Now().Before(deadline) {
-		resp, err := http.Get(baseURL + "/health")
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				healthy = true
-				break
-			}
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !healthy {
-		// Kill the process since it never became healthy.
-		cmd.Process.Kill()
-		cmd.Wait()
-		t.Fatalf("dpkms serve did not become healthy within 5s\nOutput:\n%s", outBuf.String())
-	}
-
-	cleanup = func() {
-		cmd.Process.Signal(syscall.SIGTERM)
-		done := make(chan error, 1)
-		go func() { done <- cmd.Wait() }()
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			cmd.Process.Kill()
-			<-done
-		}
-	}
-
-	return baseURL, cleanup
 }
