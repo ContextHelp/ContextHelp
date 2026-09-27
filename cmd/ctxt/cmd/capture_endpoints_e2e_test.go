@@ -139,14 +139,14 @@ func TestE2ECaptureServerFlagOverridesConfig(t *testing.T) {
 }
 
 // TestE2ECaptureRejectedCredentialsExitCode: the only configured instance
-// rejecting the token surfaces as a failure exit, not a silent success.
+// rejecting the token surfaces as UNAUTHORIZED (5, ADR-077), not a silent success.
 func TestE2ECaptureRejectedCredentialsExitCode(t *testing.T) {
 	inst := startEndpointRecorder(t, "tok-real")
 	cfgPath := writeServerConfig(t, inst.URL(), "tok-wrong")
 
 	stdout, stderr, exit := runCaptureBinary(t, "capture", "e2e rejected", "-c", cfgPath)
-	if exit != 1 {
-		t.Errorf("exit = %d; want 1 (stdout=%q stderr=%q)", exit, stdout, stderr)
+	if exit != 5 {
+		t.Errorf("exit = %d; want 5 (stdout=%q stderr=%q)", exit, stdout, stderr)
 	}
 	if !strings.Contains(stderr, "401") {
 		t.Errorf("stderr should carry the instance's 401; got %q", stderr)

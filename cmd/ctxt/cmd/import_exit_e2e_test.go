@@ -10,7 +10,7 @@ import (
 // The feed and import commands on the built binary: with no --server they
 // reach the configured server.url (here the guard's closed port, or a -c
 // overlay) and never a built-in default; nothing answering is
-// PREREQUISITE (70), a server error is GENERIC (1).
+// PREREQUISITE (70), a server error is TRANSIENT (6) per ADR-077.
 func TestE2EFeedImportServerExitCodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e: -short")
@@ -28,7 +28,7 @@ func TestE2EFeedImportServerExitCodes(t *testing.T) {
 	}{
 		{"feed list, configured server down", []string{"feed", "list"}, 70},
 		{"feed list, --server down", []string{"feed", "list", "--server", testguard.ClosedServerURL}, 70},
-		{"feed list, server error", []string{"feed", "list", "--server", broken.URL}, 1},
+		{"feed list, server error", []string{"feed", "list", "--server", broken.URL}, 6},
 		{"feed list, -c server.url", []string{"-c", "server.url=" + ok.URL, "feed", "list"}, 0},
 		{"import chrome, configured server down", []string{"import", "chrome", "--file", bookmarks}, 70},
 		{"import chrome, -c server.url", []string{"-c", "server.url=" + ok.URL, "import", "chrome", "--file", bookmarks}, 0},
