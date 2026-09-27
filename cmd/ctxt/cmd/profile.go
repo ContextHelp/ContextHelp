@@ -261,11 +261,27 @@ func init() {
 	})
 }
 
+// configPath is the file config-changing commands write: the last
+// `-c <path>` when one was given, else the user config file.
 func configPath() string {
 	if cfgFile != "" {
 		return cfgFile
 	}
 	return config.GetConfigPath(binName)
+}
+
+// editConfig applies edit to the write target's own layer and saves it.
+// The merged cfg is for validation only: writing it would copy other
+// files, -c overrides, env values and defaults into the target.
+func editConfig(edit func(*config.Layer) error) error {
+	return config.EditLayer(configPath(), edit)
+}
+
+// errNotInLayer reports an entry that is visible in the merged config but
+// set by a file other than the one this command writes.
+func errNotInLayer(kind, name, path string) error {
+	return fmt.Errorf("%s %q is not defined in %s (another config layer sets it); edit that file instead",
+		kind, name, path)
 }
 
 func runProfileList(cmd *cobra.Command, args []string) error {
@@ -412,10 +428,6 @@ func runProfileView(cmd *cobra.Command, args []string) error {
 func runProfileCreate(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	if cfg.Profile.Profiles == nil {
-		cfg.Profile.Profiles = make(map[string]config.FocusProfile)
-	}
-
 	if _, exists := cfg.Profile.Profiles[name]; exists {
 		// The name is taken: kit's CONFLICT (exit 4, permanent). A
 		// retry of the identical command cannot clear it, so the
@@ -426,11 +438,10 @@ func runProfileCreate(cmd *cobra.Command, args []string) error {
 		return e
 	}
 
-	cfg.Profile.Profiles[name] = config.FocusProfile{
-		Description: fmt.Sprintf("Profile for %s", name),
-	}
-
-	if err := config.WriteBack(cfg, configPath()); err != nil {
+	err := editConfig(func(l *config.Layer) error {
+		return l.Set(fmt.Sprintf("Profile for %s", name), "profile", "profiles", name, "description")
+	})
+	if err != nil {
 		return fmt.Errorf("failed to save profile: %w", err)
 	}
 
@@ -456,12 +467,16 @@ func runProfileRm(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("profile not found: %s", name)
 	}
 
-	delete(cfg.Profile.Profiles, name)
-	if cfg.Profile.Default == name {
-		cfg.Profile.Default = ""
-	}
-
-	if err := config.WriteBack(cfg, configPath()); err != nil {
+	err := editConfig(func(l *config.Layer) error {
+		if !l.Delete("profile", "profiles", name) {
+			return errNotInLayer("profile", name, l.Path())
+		}
+		if cfg.Profile.Default == name {
+			return l.Set("", "profile", "default")
+		}
+		return nil
+	})
+	if err != nil {
 		return fmt.Errorf("failed to remove profile: %w", err)
 	}
 
@@ -516,12 +531,16 @@ func runProfileDefaultDeprecated(cmd *cobra.Command, args []string) error {
 	return runProfileSet(cmd, args)
 }
 
-// writeDefaultProfile persists cfg.Profile.Default and reports the
-// change. An empty name clears the default.
+// writeDefaultProfile persists profile.default and reports the change.
+// An empty name clears the default.
 func writeDefaultProfile(name string) error {
-	cfg.Profile.Default = name
-
-	if err := config.WriteBack(cfg, configPath()); err != nil {
+	err := editConfig(func(l *config.Layer) error {
+		if err := l.Set(name, "profile", "default"); err != nil {
+			return err
+		}
+		return dropInlineDefaults(l, name)
+	})
+	if err != nil {
 		return fmt.Errorf("failed to set default profile: %w", err)
 	}
 
@@ -541,6 +560,26 @@ func writeDefaultProfile(name string) error {
 		fmt.Println("Cleared default profile")
 	} else {
 		fmt.Printf("Set default profile to: %s\n", name)
+	}
+	return nil
+}
+
+// dropInlineDefaults removes `default: true` from every profile in l
+// other than keep. That flag is the inline spelling of profile.default;
+// left in place it would contradict the pointer just written (a load
+// error) or, on a clear, re-pin its profile.
+func dropInlineDefaults(l *config.Layer, keep string) error {
+	for _, p := range l.Keys("profile", "profiles") {
+		if p == keep {
+			continue
+		}
+		var inline bool
+		if _, err := l.Decode(&inline, "profile", "profiles", p, "default"); err != nil {
+			return err
+		}
+		if inline {
+			l.Delete("profile", "profiles", p, "default")
+		}
 	}
 	return nil
 }

@@ -199,12 +199,50 @@ func getProfile(name string) (*config.FocusProfile, error) {
 	return &p, nil
 }
 
-func saveProfile(name string, p config.FocusProfile) error {
-	if cfg.Profile.Profiles == nil {
-		cfg.Profile.Profiles = make(map[string]config.FocusProfile)
+// editProfileSchema applies mutate to the named profile's schema as the
+// write target's own layer holds it, bumps the version, and writes back
+// only the version and the schema fields mutate names. The profile must
+// be defined in that file: a profile from another layer is edited there.
+func editProfileSchema(name string, mutate func(s *config.ProfileSchema) (fields []string, err error)) (int, error) {
+	if _, err := getProfile(name); err != nil {
+		return 0, err
 	}
-	cfg.Profile.Profiles[name] = p
-	return config.WriteBack(cfg, configPath())
+	l, err := config.OpenLayer(configPath())
+	if err != nil {
+		return 0, err
+	}
+	if !l.Has("profile", "profiles", name) {
+		return 0, errNotInLayer("profile", name, l.Path())
+	}
+	schemaKey := func(field ...string) []string {
+		return append([]string{"profile", "profiles", name, "schema"}, field...)
+	}
+	var s config.ProfileSchema
+	if _, err := l.Decode(&s, schemaKey()...); err != nil {
+		return 0, err
+	}
+	fields, err := mutate(&s)
+	if err != nil {
+		return 0, err
+	}
+	s.Version++
+	values := map[string]any{
+		"entity_types":         s.EntityTypes,
+		"topic_vocabulary":     s.TopicVocabulary,
+		"classification_rules": s.ClassificationRules,
+	}
+	for _, f := range fields {
+		if err := l.Set(values[f], schemaKey(f)...); err != nil {
+			return 0, err
+		}
+	}
+	if err := l.Set(s.Version, schemaKey("version")...); err != nil {
+		return 0, err
+	}
+	if err := l.Save(); err != nil {
+		return 0, fmt.Errorf("failed to save schema: %w", err)
+	}
+	return s.Version, nil
 }
 
 func runSchemaShow(cmd *cobra.Command, args []string) error {
@@ -264,141 +302,109 @@ func runSchemaShow(cmd *cobra.Command, args []string) error {
 
 func runSchemaAddType(cmd *cobra.Command, args []string) error {
 	name, typ := args[0], strings.ToLower(args[1])
-	p, err := getProfile(name)
+	version, err := editProfileSchema(name, func(s *config.ProfileSchema) ([]string, error) {
+		for _, t := range s.EntityTypes {
+			if t == typ {
+				return nil, fmt.Errorf("entity type %q already exists in profile %q", typ, name)
+			}
+		}
+		s.EntityTypes = append(s.EntityTypes, typ)
+		return []string{"entity_types"}, nil
+	})
 	if err != nil {
 		return err
 	}
 
-	for _, t := range p.Schema.EntityTypes {
-		if t == typ {
-			return fmt.Errorf("entity type %q already exists in profile %q", typ, name)
-		}
-	}
-
-	p.Schema.EntityTypes = append(p.Schema.EntityTypes, typ)
-	p.Schema.Version++
-
-	if err := saveProfile(name, *p); err != nil {
-		return fmt.Errorf("failed to save schema: %w", err)
-	}
-
-	fmt.Printf("Added entity type %q to profile %q (v%d)\n",
-		typ, name, p.Schema.Version)
+	fmt.Printf("Added entity type %q to profile %q (v%d)\n", typ, name, version)
 	return nil
 }
 
 func runSchemaAddTopic(cmd *cobra.Command, args []string) error {
 	name, topic := args[0], strings.ToLower(args[1])
-	p, err := getProfile(name)
+	version, err := editProfileSchema(name, func(s *config.ProfileSchema) ([]string, error) {
+		for _, t := range s.TopicVocabulary {
+			if t == topic {
+				return nil, fmt.Errorf("topic %q already exists in profile %q", topic, name)
+			}
+		}
+		s.TopicVocabulary = append(s.TopicVocabulary, topic)
+		return []string{"topic_vocabulary"}, nil
+	})
 	if err != nil {
 		return err
 	}
 
-	for _, t := range p.Schema.TopicVocabulary {
-		if t == topic {
-			return fmt.Errorf("topic %q already exists in profile %q", topic, name)
-		}
-	}
-
-	p.Schema.TopicVocabulary = append(p.Schema.TopicVocabulary, topic)
-	p.Schema.Version++
-
-	if err := saveProfile(name, *p); err != nil {
-		return fmt.Errorf("failed to save schema: %w", err)
-	}
-
-	fmt.Printf("Added topic %q to profile %q (v%d)\n",
-		topic, name, p.Schema.Version)
+	fmt.Printf("Added topic %q to profile %q (v%d)\n", topic, name, version)
 	return nil
 }
 
 func runSchemaAddRule(cmd *cobra.Command, args []string) error {
 	name, pattern, typ := args[0], args[1], strings.ToLower(args[2])
-	p, err := getProfile(name)
-	if err != nil {
-		return err
-	}
 
 	// Validate pattern compiles.
 	if _, err := regexp.Compile(pattern); err != nil {
 		return fmt.Errorf("invalid regex pattern %q: %w", pattern, err)
 	}
 
-	p.Schema.ClassificationRules = append(p.Schema.ClassificationRules,
-		config.ClassificationRule{Pattern: pattern, Type: typ})
-	p.Schema.Version++
-
-	if err := saveProfile(name, *p); err != nil {
-		return fmt.Errorf("failed to save schema: %w", err)
+	version, err := editProfileSchema(name, func(s *config.ProfileSchema) ([]string, error) {
+		s.ClassificationRules = append(s.ClassificationRules,
+			config.ClassificationRule{Pattern: pattern, Type: typ})
+		return []string{"classification_rules"}, nil
+	})
+	if err != nil {
+		return err
 	}
 
 	fmt.Printf("Added classification rule %q -> %q to profile %q (v%d)\n",
-		pattern, typ, name, p.Schema.Version)
+		pattern, typ, name, version)
 	return nil
 }
 
 func runSchemaRemoveType(cmd *cobra.Command, args []string) error {
 	name, typ := args[0], strings.ToLower(args[1])
-	p, err := getProfile(name)
+	version, err := editProfileSchema(name, func(s *config.ProfileSchema) ([]string, error) {
+		kept, found := without(s.EntityTypes, typ)
+		if !found {
+			return nil, fmt.Errorf("entity type %q not found in profile %q", typ, name)
+		}
+		s.EntityTypes = kept
+		return []string{"entity_types"}, nil
+	})
 	if err != nil {
 		return err
 	}
 
-	found := false
-	filtered := p.Schema.EntityTypes[:0]
-	for _, t := range p.Schema.EntityTypes {
-		if t == typ {
-			found = true
-			continue
-		}
-		filtered = append(filtered, t)
-	}
-	if !found {
-		return fmt.Errorf("entity type %q not found in profile %q", typ, name)
-	}
-
-	p.Schema.EntityTypes = filtered
-	p.Schema.Version++
-
-	if err := saveProfile(name, *p); err != nil {
-		return fmt.Errorf("failed to save schema: %w", err)
-	}
-
-	fmt.Printf("Removed entity type %q from profile %q (v%d)\n",
-		typ, name, p.Schema.Version)
+	fmt.Printf("Removed entity type %q from profile %q (v%d)\n", typ, name, version)
 	return nil
 }
 
 func runSchemaRemoveTopic(cmd *cobra.Command, args []string) error {
 	name, topic := args[0], strings.ToLower(args[1])
-	p, err := getProfile(name)
+	version, err := editProfileSchema(name, func(s *config.ProfileSchema) ([]string, error) {
+		kept, found := without(s.TopicVocabulary, topic)
+		if !found {
+			return nil, fmt.Errorf("topic %q not found in profile %q", topic, name)
+		}
+		s.TopicVocabulary = kept
+		return []string{"topic_vocabulary"}, nil
+	})
 	if err != nil {
 		return err
 	}
 
-	found := false
-	filtered := p.Schema.TopicVocabulary[:0]
-	for _, t := range p.Schema.TopicVocabulary {
-		if t == topic {
-			found = true
-			continue
-		}
-		filtered = append(filtered, t)
-	}
-	if !found {
-		return fmt.Errorf("topic %q not found in profile %q", topic, name)
-	}
-
-	p.Schema.TopicVocabulary = filtered
-	p.Schema.Version++
-
-	if err := saveProfile(name, *p); err != nil {
-		return fmt.Errorf("failed to save schema: %w", err)
-	}
-
-	fmt.Printf("Removed topic %q from profile %q (v%d)\n",
-		topic, name, p.Schema.Version)
+	fmt.Printf("Removed topic %q from profile %q (v%d)\n", topic, name, version)
 	return nil
+}
+
+// without returns list minus every occurrence of v, and whether v was in it.
+func without(list []string, v string) ([]string, bool) {
+	kept := make([]string, 0, len(list))
+	for _, x := range list {
+		if x != v {
+			kept = append(kept, x)
+		}
+	}
+	return kept, len(kept) != len(list)
 }
 
 func runSchemaEvolve(cmd *cobra.Command, args []string) error {

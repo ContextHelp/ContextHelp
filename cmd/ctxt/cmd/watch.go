@@ -326,10 +326,13 @@ func runWatchDisable(cmd *cobra.Command, args []string) error {
 	}
 }
 
-// setClipboardEnabled writes the enabled flag to config.
+// setClipboardEnabled writes watch.clipboard.enabled to the write
+// target's own layer.
 func setClipboardEnabled(cmd *cobra.Command, enabled bool) error {
-	cfg.Watch.Clipboard.Enabled = enabled
-	if err := writeWatchConfig(); err != nil {
+	err := editConfig(func(l *config.Layer) error {
+		return l.Set(enabled, "watch", "clipboard", "enabled")
+	})
+	if err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 	state := "enabled"
@@ -341,9 +344,4 @@ func setClipboardEnabled(cmd *cobra.Command, enabled bool) error {
 		fmt.Fprintln(cmd.OutOrStdout(), "Run 'ctxt watch start' to begin monitoring.")
 	}
 	return nil
-}
-
-// writeWatchConfig persists the current cfg back to the config file.
-func writeWatchConfig() error {
-	return config.WriteBack(cfg, configPath())
 }

@@ -304,7 +304,21 @@ ctxt profile use engineer
 Config files carry no schema version and are never migrated or rewritten
 on load. Only commands that change configuration on request (`ctxt setup`,
 `ctxt profile create|rm|set|unset`, `ctxt profile schema ...`,
-`ctxt registry remove`, `ctxt watch enable|disable`) write the file.
+`ctxt registry delete`, `ctxt watch enable|disable`) write a file, and each
+changes only the keys it is about:
+
+- **Which file**: the last `-c <path>` when one is given, else the user
+  file (`$CTXT_CONFIG`, or `$XDG_CONFIG_HOME/contexthelp/ctxt.yaml`).
+  `ctxt setup` always writes the user file. The project
+  `.contexthelp/ctxt.yaml` is never written.
+- **What lands in it**: the edit alone. Values from other files,
+  `-c key=value`, environment variables and built-in defaults stay out.
+  Comments, key order, quoting and blank lines are kept.
+- **Entries from another file**: a profile or registry that another config
+  file defines can't be removed or edited through this one. The command
+  fails, names the file it writes, and changes nothing; edit the file that
+  defines the entry.
+- **Missing file**: created holding only the keys the command sets.
 
 When upgrading ContextHelp:
 
