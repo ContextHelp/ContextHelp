@@ -1,34 +1,30 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
-	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 )
 
-// knownEnrichSteps lists steps available for on-demand enrichment.
-var knownEnrichSteps = map[string]bool{
-	"structured_metadata": true,
-	"entity_extractor":    true,
-	"tagger":              true,
-}
-
 var reprocessCmd = &cobra.Command{
 	Use:   "reprocess <id>",
-	Short: "Re-run enrichment step on an existing object",
-	Long: `Run a specific enrichment step against an already-ingested object.
+	Short: "Re-run an enrichment step on an existing object",
+	Long: `Queue a job on the dpkms instance that runs one enrichment step against
+an already-ingested object and writes the result back to it.
 
-The step reads the object's content, extracts metadata, and updates
-the object in storage. Useful for backfilling structured metadata on
-objects ingested before a step was added to the pipeline.
+The step runs where dpkms runs, with that instance's providers and
+configuration; ctxt only queues it and prints the job ID. Useful for
+backfilling structured metadata on objects ingested before a step was
+added to the pipeline. Needs a token with write:objects (the writer or
+admin role).
+
+Steps: structured_metadata (the default), entity_extractor, tagger.
 
 Examples:
-  ctxt reprocess abc123 --step structured-metadata
+  ctxt reprocess abc123 --step structured_metadata
   ctxt reprocess abc123 --step entity_extractor`,
 	Args: cobra.ExactArgs(1),
 	RunE: runReprocess,
@@ -43,78 +39,36 @@ func init() {
 		{Title: "Re-run tagger", Command: "ctxt reprocess obj_abc123 --step tagger"},
 	})
 	cliconv.WithNextSteps(reprocessCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt show <id>", Reason: "confirm the updated enrichment fields"},
+		{When: "once the job completes", Suggest: "ctxt show <id>", Reason: "confirm the updated enrichment fields"},
 	})
 	// "reprocess" is in kit's defaultIdempotency table (yes); no override
 	// needed.
 	reprocessCmd.Flags().String("step", "structured_metadata",
 		"enrichment step to run (structured_metadata|entity_extractor|tagger)")
+	reprocessCmd.Flags().String("server", "", serverFlagUsage)
 }
 
 func runReprocess(cmd *cobra.Command, args []string) error {
 	objID := args[0]
-	stepName, _ := cmd.Flags().GetString("step")
+	step, _ := cmd.Flags().GetString("step")
 
-	// Normalize: accept both hyphen and underscore forms.
-	if stepName == "structured-metadata" {
-		stepName = "structured_metadata"
-	}
-
-	if !knownEnrichSteps[stepName] {
-		return fmt.Errorf("unknown step %q; choose from: structured_metadata, entity_extractor, tagger", stepName)
-	}
-
-	svc, cleanup, err := newService()
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	ctx := context.Background()
-
-	obj, err := svc.GetObject(ctx, objID)
+	jobID, err := client.ReprocessObject(cmd.Context(), objID, step)
 	if err != nil {
-		return fmt.Errorf("get object %q: %w", objID, err)
-	}
-
-	factory := providers.NewFactory(cfg.Providers, nil)
-
-	switch stepName {
-	case "structured_metadata":
-		s := steps.NewStructuredMetadataExtractorWithLLM(factory.LLM())
-		result, err := s.Run(ctx, obj)
-		if err != nil {
-			return fmt.Errorf("step %q: %w", stepName, err)
-		}
-		obj = result
-	case "entity_extractor":
-		s := steps.NewEntityExtractorWithLLM(factory.LLM())
-		result, err := s.Run(ctx, obj)
-		if err != nil {
-			return fmt.Errorf("step %q: %w", stepName, err)
-		}
-		obj = result
-	case "tagger":
-		s := steps.NewTaggerWithLLM(factory.LLM())
-		result, err := s.Run(ctx, obj)
-		if err != nil {
-			return fmt.Errorf("step %q: %w", stepName, err)
-		}
-		obj = result
-	}
-
-	if err := svc.UpdateObject(ctx, obj); err != nil {
-		return fmt.Errorf("update object %q: %w", objID, err)
+		return err
 	}
 
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, map[string]any{
 			"id":     objID,
-			"step":   stepName,
-			"status": "complete",
+			"step":   step,
+			"job_id": jobID,
+			"status": "queued",
 		})
 	}
-
-	fmt.Fprintf(cmd.OutOrStdout(), "Enriched %s with %s\n", objID, stepName)
+	fmt.Fprintf(cmd.OutOrStdout(), "Queued %s on %s: job %s\n", step, objID, jobID)
 	return nil
 }
