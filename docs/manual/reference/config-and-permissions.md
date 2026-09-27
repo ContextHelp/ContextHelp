@@ -90,7 +90,7 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 | `admin:watches` | admin | `POST /watches`, `watches/{id}/pause`, `watches/{id}/resume`; `PATCH` and `DELETE /watches/{id}` |
 | `admin:audit` | admin | `GET /audit-log` |
 
-`POST /api/v1/federation/push` keeps its own `federation.token` rule instead of a scope. `/health`, `/healthz` and gRPC health are open.
+`POST /api/v1/federation/push` needs `write:objects` and, on non-private instances, the `federation.token` credential as well: the federation token must be a static token whose principal holds `writer` or `admin`. `/health`, `/healthz` and gRPC health are open.
 
 ### Profile controls
 

@@ -17,12 +17,8 @@ type apiRoute struct {
 	// Pattern is the chi pattern relative to /api/v1.
 	Pattern string
 	// Scope is the scope a principal needs to reach the route.
-	Scope authn.Scope
-	// OwnCredential marks the one route that keeps its own credential
-	// rule instead of a scope: federation push checks federation.token
-	// itself. Scope is empty on such a route.
-	OwnCredential bool
-	Handler       http.Handler
+	Scope   authn.Scope
+	Handler http.Handler
 }
 
 // apiRoutes is the /api/v1 route-to-scope table.
@@ -151,10 +147,10 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// Audit log
 		{Method: get, Pattern: "/audit-log", Scope: authn.ScopeAdminAudit, Handler: ListAuditLog(svc)},
 
-		// Federation push. On non-private instances the federation
-		// credential is mandatory, not just any principal; the handler
-		// checks federation.token itself.
-		{Method: post, Pattern: "/federation/push", OwnCredential: true,
+		// Federation push needs write:objects AND the federation
+		// credential: on non-private instances federation.token is
+		// mandatory and the handler checks it itself.
+		{Method: post, Pattern: "/federation/push", Scope: authn.ScopeWriteObjects,
 			Handler: FederationPush(svc, rc.RequireFederationCredential)},
 
 		// MCP read surface (ADR-068): JSON-RPC 2.0 over POST, mounted
