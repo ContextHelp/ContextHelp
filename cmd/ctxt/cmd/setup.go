@@ -22,7 +22,9 @@ The wizard prompts for:
   - Storage path (default: ~/.local/share/ctxt)
   - Default pipeline (text / url / auto)
 
-The resulting config is written to ~/.config/contexthelp/ctxt.yaml.
+The answers are written to ~/.config/contexthelp/ctxt.yaml ($CTXT_CONFIG
+when set). Only the keys the wizard asks about change; every other key,
+comment and blank line in an existing file is kept.
 
 Examples:
   # Interactive wizard
@@ -46,7 +48,7 @@ func init() {
 	})
 	// "setup" is not in kit's defaultIdempotency table; re-running the
 	// wizard re-prompts (or re-writes defaults in --non-interactive),
-	// converging to a deterministic config file. Mark idempotent.
+	// setting the same keys to the same values. Mark idempotent.
 	cliconv.WithIdempotency(setupCmd, cliconv.IdempotencyYes)
 	setupCmd.Flags().Bool("non-interactive", false, "skip all prompts and write defaults (also triggered by CI=true)")
 }
@@ -69,7 +71,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	// Check if config already exists.
 	if _, err := os.Stat(cfgPath); err == nil && !nonInteractive {
-		fmt.Fprintf(cmd.OutOrStdout(), "Config already exists at %s, overwrite? [y/N] ", cfgPath)
+		fmt.Fprintf(cmd.OutOrStdout(), "Config already exists at %s, update it? [y/N] ", cfgPath)
 		ans := prompt(os.Stdin)
 		if !strings.EqualFold(ans, "y") && !strings.EqualFold(ans, "yes") {
 			fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
@@ -88,16 +90,15 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	newCfg, err := buildConfig(answers)
+	err := config.EditLayer(cfgPath, func(l *config.Layer) error {
+		for _, e := range setupEdits(answers) {
+			if err := l.Set(e.value, e.keys...); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("build config: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0750); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
-	}
-
-	if err := config.WriteBack(newCfg, cfgPath); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 
@@ -192,43 +193,31 @@ func runWizard(cmd *cobra.Command) (wizardAnswers, error) {
 	}, nil
 }
 
-// buildConfig constructs a Config from wizard answers.
-func buildConfig(a wizardAnswers) (*config.Config, error) {
-	// Start from a clean Config; setDefaults will not run here — we set
-	// only what the wizard asked about and leave everything else at zero
-	// so that config.Load() fills in viper defaults on next run.
-	dbPath := filepath.Join(a.StoragePath, "db.sqlite")
-	blobPath := filepath.Join(a.StoragePath, "blobs")
+// setupEdit is one key the wizard writes.
+type setupEdit struct {
+	keys  []string
+	value any
+}
 
-	c := &config.Config{
-		Storage: config.StorageConfig{
-			Type: "sqlite",
-			Path: dbPath,
-			Blob: config.BlobConfig{
-				Backend: "local",
-				Local:   config.BlobLocalConfig{Path: blobPath},
-			},
-		},
-		Inbox: config.InboxConfig{
-			Pipeline: pipelineToInboxValue(a.Pipeline),
-		},
+// setupEdits lists the keys the wizard's answers set. Only these reach
+// the file: every other key keeps whatever the file already says, and
+// anything the file leaves unset falls back to the built-in defaults on
+// load.
+func setupEdits(a wizardAnswers) []setupEdit {
+	edits := []setupEdit{
+		{[]string{"storage", "type"}, "sqlite"},
+		{[]string{"storage", "path"}, filepath.Join(a.StoragePath, "db.sqlite")},
+		{[]string{"storage", "blob", "backend"}, "local"},
+		{[]string{"storage", "blob", "local", "path"}, filepath.Join(a.StoragePath, "blobs")},
+		{[]string{"inbox", "pipeline"}, pipelineToInboxValue(a.Pipeline)},
 	}
-
-	// Embed API key as env-var reference when the user chose a provider.
-	switch a.Provider {
-	case "openai":
-		if a.APIKey != "" {
-			// Embeddings stay on the resolver defaults: there is no
-			// OpenAI embedding backend.
-			c.Providers.LLM = config.ProviderBackendConfig{Backend: "openai"}
-		}
-	case "anthropic":
-		if a.APIKey != "" {
-			c.Providers.LLM = config.ProviderBackendConfig{Backend: "anthropic"}
-		}
+	// A chosen provider with a key selects that LLM backend; the key
+	// itself stays in the environment. Embeddings stay on the resolver
+	// defaults: there is no OpenAI embedding backend.
+	if a.APIKey != "" && (a.Provider == "openai" || a.Provider == "anthropic") {
+		edits = append(edits, setupEdit{[]string{"providers", "llm", "backend"}, a.Provider})
 	}
-
-	return c, nil
+	return edits
 }
 
 // pipelineToInboxValue maps wizard choice to an inbox pipeline name.

@@ -16,6 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var registryCmd = &cobra.Command{
@@ -412,6 +413,27 @@ func runRegistryRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("registry %q not found in config", name)
 	}
 
+	// Drop the entry from the write target's own layer. It is staged
+	// before the cache is touched, so an entry that another config file
+	// sets fails the command without deleting anything.
+	layer, err := config.OpenLayer(configPath())
+	if err != nil {
+		return fmt.Errorf("failed to update config: %w", err)
+	}
+	removed, err := layer.RemoveItems(func(item *yaml.Node) (bool, error) {
+		var r config.RegistryConfig
+		if err := item.Decode(&r); err != nil {
+			return false, err
+		}
+		return r.Name == name, nil
+	}, "registries")
+	if err != nil {
+		return fmt.Errorf("failed to update config: %w", err)
+	}
+	if removed == 0 {
+		return errNotInLayer("registry", name, layer.Path())
+	}
+
 	svc, cleanup, err := newService()
 	if err != nil {
 		return err
@@ -423,16 +445,7 @@ func runRegistryRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("remove registry cache: %w", err)
 	}
 
-	// Remove from config
-	updated := cfg.Registries[:0]
-	for _, r := range cfg.Registries {
-		if r.Name != name {
-			updated = append(updated, r)
-		}
-	}
-	cfg.Registries = updated
-
-	if err := config.WriteBack(cfg, configPath()); err != nil {
+	if err := layer.Save(); err != nil {
 		return fmt.Errorf("failed to update config: %w", err)
 	}
 
