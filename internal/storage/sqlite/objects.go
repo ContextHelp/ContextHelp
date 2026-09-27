@@ -217,12 +217,16 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		conditions = append(conditions, "profile_id = ?")
 		args = append(args, filter.ProfileID)
 	}
+	// created_at holds RFC 3339 text in whatever offset the writer used
+	// (the daemon stamps its local zone), so the bounds compare as
+	// instants: datetime() normalizes both sides to UTC. A plain text
+	// comparison is off by the offset difference.
 	if filter.After != nil {
-		conditions = append(conditions, "created_at >= ?")
+		conditions = append(conditions, "datetime(created_at) >= datetime(?)")
 		args = append(args, filter.After.Format(time.RFC3339))
 	}
 	if filter.Before != nil {
-		conditions = append(conditions, "created_at <= ?")
+		conditions = append(conditions, "datetime(created_at) <= datetime(?)")
 		args = append(args, filter.Before.Format(time.RFC3339))
 	}
 
