@@ -482,6 +482,12 @@ func (s *Service) GetEntity(ctx context.Context, slug string) (*storage.Entity, 
 	return s.Store.Entities().Get(ctx, slug)
 }
 
+// ResolveEntity returns the entity whose slug, else one of whose
+// aliases, equals mention exactly. A miss wraps storage.ErrNotFound.
+func (s *Service) ResolveEntity(ctx context.Context, mention string) (*storage.Entity, error) {
+	return s.Store.Entities().Resolve(ctx, mention)
+}
+
 // ListEntities lists entities matching the filter.
 func (s *Service) ListEntities(ctx context.Context, filter storage.EntityFilter) ([]*storage.Entity, error) {
 	return s.Store.Entities().List(ctx, filter)
@@ -902,26 +908,6 @@ func (s *Service) FindByTextFiltered(ctx context.Context, query string, filter s
 // CancelJob cancels a pending or running job.
 func (s *Service) CancelJob(ctx context.Context, id string) error {
 	return s.Store.Jobs().Cancel(ctx, id)
-}
-
-// SearchEntities searches entities by slug/title prefix matching.
-func (s *Service) SearchEntities(ctx context.Context, query string, limit int) ([]*storage.Entity, error) {
-	all, err := s.Store.Entities().List(ctx, storage.EntityFilter{Limit: 1000})
-	if err != nil {
-		return nil, err
-	}
-	q := strings.ToLower(query)
-	var results []*storage.Entity
-	for _, e := range all {
-		if strings.Contains(strings.ToLower(e.Slug), q) ||
-			strings.Contains(strings.ToLower(e.Title), q) {
-			results = append(results, e)
-			if len(results) >= limit {
-				break
-			}
-		}
-	}
-	return results, nil
 }
 
 // SyncRegistryEntities syncs entity index from a configured registry.

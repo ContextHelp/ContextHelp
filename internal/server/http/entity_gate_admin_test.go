@@ -49,6 +49,16 @@ func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver, readMe
 	resp, body = gatedDoAs(t, "tok-admin", http.MethodGet, ts.URL+"/api/v1/entities/med.claims/backlinks")
 	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 
+	// Search is not filtered by the grant; resolve is neither gated nor
+	// metered, past the same quota of one.
+	resp, body = gatedDoAs(t, "tok-admin", http.MethodGet, ts.URL+"/api/v1/entities?q=.")
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+	assert.Equal(t, []string{"ai.bert", "med.claims"}, entitySlugs(t, body), "admin search must include every namespace")
+	for i := 0; i < 2; i++ {
+		resp, body = gatedDoAs(t, "tok-admin", http.MethodGet, ts.URL+"/api/v1/entities/resolve?mention=med.claims")
+		require.Equal(t, http.StatusOK, resp.StatusCode, "admin resolve %d: %s", i+1, body)
+	}
+
 	// The pull passes the gate; it then fails on the missing registry
 	// definition, never on entitlement or quota.
 	for i := 0; i < 2; i++ {

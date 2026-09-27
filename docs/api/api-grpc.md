@@ -521,10 +521,11 @@ service RegistryService {
 service EntityService {
   rpc ListEntities(ListEntitiesRequest) returns (ListEntitiesResponse);
   rpc GetEntity(GetEntityRequest) returns (Entity);
-  rpc ResolveEntity(ResolveEntityRequest) returns (Entity);
-  rpc ListEntityBacklinks(ListEntityBacklinksRequest) returns (ListEntityBacklinksResponse);
+  rpc GetEntityBacklinks(GetEntityBacklinksRequest) returns (GetEntityBacklinksResponse);
 }
 ```
+
+Entity search (`GET /api/v1/entities?q=`) and mention resolution (`GET /api/v1/entities/resolve`) are REST only. `ListEntitiesRequest` has no query field, and there is no resolve method.
 
 ### SuggestionService (Optional)
 
