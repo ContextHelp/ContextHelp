@@ -8,7 +8,7 @@ import (
 )
 
 // An embedding migration names its target model and counts per-object
-// failures; both reach the shadow file the CLI banner reads.
+// failures; both reach the shadow file.
 func TestManager_TargetAndFailedCount(t *testing.T) {
 	shadow := filepath.Join(t.TempDir(), "upgrade-state.json")
 	m := NewManager(shadow)
@@ -23,11 +23,7 @@ func TestManager_TargetAndFailedCount(t *testing.T) {
 	if got := counts(m.Snapshot()); got != want {
 		t.Fatalf("snapshot = %+v, want %+v", got, want)
 	}
-	disk, _, err := ReadShadow(shadow)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if disk.Target != "nomic@1" || disk.Failed != 1 {
+	if disk := readShadowFile(t, shadow); disk.Target != "nomic@1" || disk.Failed != 1 {
 		t.Errorf("shadow = %+v, want target and failed count", disk)
 	}
 

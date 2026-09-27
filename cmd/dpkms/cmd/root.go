@@ -81,11 +81,10 @@ var (
 				}
 				count, _ := cmd.Root().PersistentFlags().GetCount("verbose")
 				logger.Init(count > 0)
-				// Upgrade banner (ADR-070 §5, T-0580). Reads the
-				// shadow file under config.RunDir(); no-op when no
-				// upgrade is in flight. Failure to render the banner
-				// MUST NOT block the underlying command.
-				_ = banner.Inject(cmd.ErrOrStderr())
+				// Upgrade banner (ADR-070 §5): printed from the
+				// upgrade header on dpkms API responses, so it
+				// follows the instance a client command talks to.
+				banner.Arm(cmd, upgradeBannerTTY)
 				return nil
 			},
 		},

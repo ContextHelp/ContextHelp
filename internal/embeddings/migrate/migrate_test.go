@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -402,7 +403,7 @@ func TestRun_StatusVisibleWhileRunning(t *testing.T) {
 	clock.onSleep = func(_ context.Context, n int) error {
 		if n == 2 { // before the third provider call
 			mid = f.mgr.Snapshot()
-			disk, _, _ = upgrade.ReadShadow(f.shadow)
+			disk = readShadow(f.shadow)
 		}
 		return nil
 	}
@@ -568,4 +569,14 @@ func TestParseRate(t *testing.T) {
 			t.Errorf("ParseRate(%q) accepted", in)
 		}
 	}
+}
+
+// readShadow decodes the shadow file an upgrade.Manager writes; a missing
+// or unreadable file decodes to the zero status.
+func readShadow(path string) upgrade.Status {
+	var st upgrade.Status
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, &st)
+	}
+	return st
 }

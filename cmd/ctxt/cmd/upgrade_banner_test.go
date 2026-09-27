@@ -125,9 +125,9 @@ func TestUpgradeBanner_OncePerInvocation(t *testing.T) {
 	var errBuf bytes.Buffer
 	c := &cobra.Command{Use: "probe"}
 	c.Flags().Bool("quiet", false, "")
+	c.Flags().Bool("no-hints", false, "")
 	c.SetErr(&errBuf)
 	armUpgradeBanner(c)
-	t.Cleanup(func() { upgradeBannerSink.Store(nil) })
 
 	for range 3 {
 		resp := db.Server.Request(t, http.MethodGet, "/api/v1/objects/obj_missing", dpkmstest.RoleAdmin, nil)

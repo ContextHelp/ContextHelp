@@ -204,10 +204,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		stepsPath = homeDir + "/.config/contexthelp/steps"
 	}
 
-	// 5. Upgrade-state manager (ADR-070 §5). The shadow file lives
-	// next to pidfiles so CLI-side banner injection finds it without an
-	// HTTP roundtrip. RunDir errors are non-fatal: a missing run dir
-	// just disables the shadow (the in-memory state still feeds /healthz).
+	// 5. Upgrade-state manager (ADR-070 §5). Its in-memory state feeds
+	// /healthz and the upgrade header on /api/v1 responses, which the CLI
+	// banners read. It still writes the shadow file next to the pidfiles,
+	// though nothing reads it any more; RunDir errors just disable it.
 	var upgradeMgr *upgrade.Manager
 	if runDir, runDirErr := config.RunDir(); runDirErr == nil {
 		upgradeMgr = upgrade.NewManager(filepath.Join(runDir, "upgrade-state.json"))

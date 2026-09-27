@@ -1,15 +1,15 @@
 // Package upgrade owns the in-flight upgrade state machine for ADR-070
 // bucket upgrades (T-0580, ADR-070 Phase 2).
 //
-// State is in-memory and JSON-shadowed to disk for the CLI banner so each
-// CLI invocation can decide whether to print the upgrade-in-progress banner
-// without paying an HTTP round-trip to /healthz on the daemon. Writers
-// (the daemon, while running an upgrade bucket) call Start, Tick, Complete
-// or Fail; readers (CLI banner middleware) call ReadShadow on the file
-// directly with no Manager instance.
+// State is in-memory. The daemon serves it on /healthz and in the
+// X-Dpkms-Upgrade header on /api/v1 responses (header.go), which the CLI
+// banner reads. Writers (the daemon, while running an upgrade bucket) call
+// Start, Tick, Complete or Fail.
 //
-// The shadow file lives at $XDG_DATA_HOME/contexthelp/run/upgrade-state.json
-// (the same RunDir() used for pidfiles per internal/config/config.go).
+// A Manager built with a path also writes the state as JSON to that
+// shadow file, conventionally $XDG_DATA_HOME/contexthelp/run/upgrade-state.json.
+// Nothing in ctxt or dpkms reads it any more; the write stays until the
+// local `ctxt upgrade run` moves to the API.
 //
 // State machine:
 //
@@ -46,8 +46,9 @@ const (
 	// StateAwaitingConsent — bucket-3 work is queued but the daemon refuses
 	// to run it until operator confirms (reserved for T-0581+).
 	StateAwaitingConsent State = "awaiting_consent"
-	// StateFailed — the most recent run failed. Shadow file persists so the
-	// CLI banner keeps reminding the operator until they acknowledge.
+	// StateFailed — the most recent run failed. The state (and the upgrade
+	// header) persists so the CLI banner keeps reminding the operator until
+	// the next run.
 	StateFailed State = "failed"
 )
 
