@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 )
@@ -16,11 +17,26 @@ import (
 type testDB struct {
 	Driver     storage.StorageDriver
 	ConfigPath string
+	// Server is the in-process dpkms serving Driver.
+	Server *dpkmstest.Server
+	// ClientConfigPath is the user-level ctxt config (the cascade's user
+	// slot under the test's XDG_CONFIG_HOME) routing commands to Server.
+	ClientConfigPath string
 }
 
-// setupTestDB creates a temp SQLite database and a config file that points to it.
+// setupTestDB creates a temp SQLite database and a config file that points
+// to it, and starts an in-process dpkms over the same database (see
+// internal/dpkmstest). Seed through Driver; commands reach the data
+// directly or over the API.
+//
+// server.url (plus server.token for a protected instance) goes into the
+// user-level config, which --config layers over: a test that writes its
+// own server section into ConfigPath still wins. opts configure the
+// instance: dpkmstest.WithStaticTokens() makes it protected and the
+// client authenticates as admin (see useRole); dpkmstest.Unreachable()
+// routes the client to a closed port.
 // The config path must be passed as "--config", configPath to executeCommand args.
-func setupTestDB(t *testing.T) *testDB {
+func setupTestDB(t *testing.T, opts ...dpkmstest.Option) *testDB {
 	t.Helper()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
@@ -62,11 +78,35 @@ func setupTestDB(t *testing.T) *testDB {
 
 	configPath := filepath.Join(dir, "config.yaml")
 	configContent := fmt.Sprintf("storage:\n  type: sqlite\n  path: %s\n", dbPath)
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
-	return &testDB{Driver: driver, ConfigPath: configPath}
+	db := &testDB{
+		Driver:           driver,
+		ConfigPath:       configPath,
+		Server:           dpkmstest.Start(t, driver, opts...),
+		ClientConfigPath: filepath.Join(dir, "contexthelp", "ctxt.yaml"),
+	}
+	db.useRole(t, dpkmstest.RoleAdmin)
+	return db
+}
+
+// useRole rewrites the client config so commands authenticate as role
+// (dpkmstest.RoleAdmin, RoleWriter, RoleReader) against a protected
+// instance. A role the instance has no token for sends none.
+func (db *testDB) useRole(t *testing.T, role string) {
+	t.Helper()
+	body := "server:\n  url: " + db.Server.URL + "\n"
+	if tok := db.Server.Token(role); tok != "" {
+		body += "  token: " + tok + "\n"
+	}
+	if err := os.MkdirAll(filepath.Dir(db.ClientConfigPath), 0o700); err != nil {
+		t.Fatalf("client config dir: %v", err)
+	}
+	if err := os.WriteFile(db.ClientConfigPath, []byte(body), 0o600); err != nil {
+		t.Fatalf("write client config: %v", err)
+	}
 }
 
 // exec runs a command with the test database config prepended.
