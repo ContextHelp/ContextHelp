@@ -10,7 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/cursor"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
@@ -104,6 +104,7 @@ func init() {
 		"use named cursor; returns items added after cursor's last_seen_at")
 	listCmd.Flags().Bool("advance", false,
 		"advance the cursor after a successful list (requires --cursor)")
+	listCmd.Flags().String("server", "", serverFlagUsage)
 
 	// Bind flags to viper
 	viper.BindPFlag("list.type", listCmd.Flags().Lookup("type"))
@@ -134,12 +135,6 @@ func init() {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
 	ctx := context.Background()
 
 	cursorName := viper.GetString("list.cursor")
@@ -148,22 +143,20 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--advance requires --cursor <name>")
 	}
 
-	// If RSQL query is provided, use the search engine — routed via a live
-	// dpkms daemon when one answers, direct local search otherwise.
+	// --q is an RSQL query the instance's search engine answers
+	// (GET /api/v1/search). There is no local search.
 	if q := viper.GetString("list.q"); q != "" {
-		limit := viper.GetInt("list.limit")
-		offset := viper.GetInt("list.start")
-		endpoints, err := bridgeEndpoints(cmd)
+		client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 		if err != nil {
 			return err
 		}
-		bridge := idxbridge.New(idxbridge.Config{
-			Endpoints: endpoints,
-			Fallback:  svc,
+		objects, total, err := client.Search(ctx, dpkmsclient.SearchRequest{
+			Query:  q,
+			Limit:  viper.GetInt("list.limit"),
+			Offset: viper.GetInt("list.start"),
 		})
-		objects, total, err := bridge.SearchObjects(ctx, q, limit, offset)
 		if err != nil {
-			return fmt.Errorf("search: %w", err)
+			return err
 		}
 		// Cursor with --q: out of scope for predicate composition; emit warning.
 		if cursorName != "" {
@@ -171,6 +164,12 @@ func runList(cmd *cobra.Command, args []string) error {
 		}
 		return printObjectResults(cmd, objects, total)
 	}
+
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
 	filter := buildObjectFilter()
 	if cursorName != "" {

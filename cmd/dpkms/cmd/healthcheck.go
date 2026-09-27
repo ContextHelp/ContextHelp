@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"hop.top/kit/go/console/output"
@@ -94,7 +94,7 @@ func runHealthcheck(cmd *cobra.Command, _ []string) error {
 	}
 }
 
-func healthcheckOnce(cmd *cobra.Command, ep idxbridge.Endpoint, quiet bool) error {
+func healthcheckOnce(cmd *cobra.Command, ep dpkmsclient.Endpoint, quiet bool) error {
 	client := newEndpointClient(ep)
 	serverURL := strings.TrimRight(ep.URL, "/")
 	env, status, err := client.Healthz()

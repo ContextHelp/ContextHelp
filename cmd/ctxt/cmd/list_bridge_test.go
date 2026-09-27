@@ -7,6 +7,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"hop.top/kit/go/console/output"
 )
 
 // startMockSearchDaemon fakes the daemon's health + search surface.
@@ -30,8 +34,8 @@ func startMockSearchDaemon(t *testing.T, hits *atomic.Int64) *httptest.Server {
 	return httptest.NewServer(mux)
 }
 
-// TestListQueryRoutesViaDaemon: `list --q` must route the RSQL search through
-// a live daemon instead of querying local storage directly.
+// TestListQueryRoutesViaDaemon: `list --q` sends the RSQL search to the
+// resolved instance.
 func TestListQueryRoutesViaDaemon(t *testing.T) {
 	dbPath := tempDB(t)
 
@@ -51,16 +55,61 @@ func TestListQueryRoutesViaDaemon(t *testing.T) {
 	}
 }
 
-// TestListQueryFallsBackWhenDaemonDown: with no daemon, `list --q` answers
-// from local storage (empty here) instead of failing.
-func TestListQueryFallsBackWhenDaemonDown(t *testing.T) {
-	dbPath := tempDB(t)
+// TestListQueryAnswersWithoutLocalStore: `list --q` answers from the
+// instance and never opens the store the config names.
+func TestListQueryAnswersWithoutLocalStore(t *testing.T) {
+	db := setupTestDB(t)
+	seedObj(t, db, &storage.KnowledgeObject{ID: "o-note", Type: "note", Summaries: []string{"a note"}})
+	seedObj(t, db, &storage.KnowledgeObject{ID: "o-url", Type: "url"})
+	local := pointStorageElsewhere(t, db)
 
-	out, err := executeCommand(append([]string{"list", "--q", "type==note", "-c", "server.url=" + deadServerURL}, storageOverride(dbPath)...)...)
+	out, err := db.exec("list", "--q", "type==note")
 	if err != nil {
-		t.Fatalf("list --q with daemon down should fall back locally: %v", err)
+		t.Fatalf("list --q: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "No results") && !strings.Contains(out, "0") {
-		t.Errorf("expected an empty local result set, got: %q", out)
+	if !strings.Contains(out, "o-note") || strings.Contains(out, "o-url") {
+		t.Errorf("list --q type==note output:\n%s", out)
+	}
+	assertNoLocalStore(t, local)
+}
+
+// TestListQueryUnreachableHasNoLocalFallback: with nothing answering,
+// `list --q` exits 70 and never searches (or creates) a local store.
+func TestListQueryUnreachableHasNoLocalFallback(t *testing.T) {
+	db := setupTestDB(t, dpkmstest.Unreachable())
+	local := pointStorageElsewhere(t, db)
+
+	out, err := db.exec("list", "--q", "type==note")
+	if got := exitOf(err); got != output.ExitPrerequisite {
+		t.Fatalf("exit %d (%v); want 70\n%s", got, err, out)
+	}
+	assertNoLocalStore(t, local)
+}
+
+// TestListQueryRejectedTokenHasNoLocalFallback: a 401 exits 5 after one
+// request and searches nothing locally.
+func TestListQueryRejectedTokenHasNoLocalFallback(t *testing.T) {
+	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	seedObj(t, db, &storage.KnowledgeObject{ID: "o-note", Type: "note"})
+	db.useRole(t, "none")
+	local := pointStorageElsewhere(t, db)
+
+	out, err := db.exec("list", "--q", "type==note")
+	if got := exitOf(err); got != output.ExitUnauthorized {
+		t.Fatalf("exit %d (%v); want 5\n%s", got, err, out)
+	}
+	if strings.Contains(out, "o-note") {
+		t.Errorf("a rejected search printed results:\n%s", out)
+	}
+	assertNoLocalStore(t, local)
+}
+
+// TestListQueryMalformedIsUsage: the instance refuses a query it cannot
+// parse (400), and list exits 2.
+func TestListQueryMalformedIsUsage(t *testing.T) {
+	db := setupTestDB(t)
+	out, err := db.exec("list", "--q", "type=bogus=(")
+	if got := exitOf(err); got != output.ExitUsage {
+		t.Fatalf("exit %d (%v); want 2\n%s", got, err, out)
 	}
 }

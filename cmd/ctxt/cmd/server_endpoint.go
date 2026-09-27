@@ -7,7 +7,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/spf13/cobra"
 )
@@ -80,15 +79,4 @@ func newDpkmsClient(cmd *cobra.Command, timeout time.Duration) (*dpkmsclient.Cli
 		return nil, err
 	}
 	return dpkmsclient.New(r.Endpoint, dpkmsclient.WithTimeout(timeout))
-}
-
-// bridgeEndpoints resolves this invocation's endpoint for the commands
-// still routed through idxbridge. The list always holds exactly one
-// endpoint, so the bridge never walks to another instance.
-func bridgeEndpoints(cmd *cobra.Command) ([]idxbridge.Endpoint, error) {
-	r, err := resolveEndpoint(cmd)
-	if err != nil {
-		return nil, err
-	}
-	return []idxbridge.Endpoint{{URL: r.URL, Token: r.Token}}, nil
 }
