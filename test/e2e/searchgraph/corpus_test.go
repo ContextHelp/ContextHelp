@@ -9,11 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
+	"github.com/ideacrafterslabs/ctxt/internal/jobs"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/search"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -108,15 +111,13 @@ type corpus struct {
 	ids map[string]string // alias -> object id
 }
 
-var jobIDLine = regexp.MustCompile(`(?m)^Job ID: ([0-9a-f-]{36})$`)
-
-// seedCorpus builds the fixture database through the binary itself:
-// `analyze --raw --mention` stores each object with its entity mentions
-// (the dpkms server is unreachable, so the CLI takes its local direct
-// path) and `link create` stores each typed link with its inverse. Only
-// the default model and its vectors go in through the storage driver:
-// registering through the CLI probes a live provider, and vectors are
-// written by the dpkms migration job.
+// seedCorpus builds the fixture database. Objects go in through the
+// service's raw analyze path, what `ctxt analyze --raw --mention` asks
+// dpkms to run (ctxt itself never writes a store), so each object keeps
+// its entity mentions. `link create` then stores each typed link with its
+// inverse through the binary. The default model and its vectors go in
+// through the storage driver: registering through the CLI probes a live
+// provider, and vectors are written by the dpkms migration job.
 func seedCorpus(bin, dir string) (*corpus, error) {
 	h, err := newHome(dir, closedURL(), closedURL())
 	if err != nil {
@@ -134,20 +135,8 @@ func seedCorpus(bin, dir string) (*corpus, error) {
 	}
 
 	c := &corpus{db: h.db, ids: map[string]string{}}
-	for _, o := range fixtureObjects {
-		args := []string{"analyze", "--raw"}
-		if o.mentions != "" {
-			args = append(args, "--mention", o.mentions)
-		}
-		out, err := run(append(args, o.content)...)
-		if err != nil {
-			return nil, err
-		}
-		m := jobIDLine.FindStringSubmatch(out)
-		if m == nil {
-			return nil, fmt.Errorf("analyze %s: no object id in output %q", o.alias, out)
-		}
-		c.ids[o.alias] = m[1]
+	if err := storeObjects(c); err != nil {
+		return nil, err
 	}
 	for _, l := range fixtureLinks {
 		if _, err := run("link", "create", c.ids[l.from], c.ids[l.to], "--type", l.typ); err != nil {
@@ -158,6 +147,36 @@ func seedCorpus(bin, dir string) (*corpus, error) {
 		return nil, err
 	}
 	return c, nil
+}
+
+// storeObjects stores each fixture object through the service's raw
+// analyze path as `ctxt analyze --raw` stored it (source "argument"),
+// with its --mention value split as the CLI splits it.
+func storeObjects(c *corpus) error {
+	ctx := context.Background()
+	if err := os.MkdirAll(filepath.Dir(c.db), 0o700); err != nil {
+		return err
+	}
+	d, err := storageutil.NewDriver("sqlite", c.db)
+	if err != nil {
+		return err
+	}
+	if err := d.Init(ctx); err != nil {
+		return err
+	}
+	defer d.Close(ctx)
+	svc := service.NewWithOptions(d, jobs.NewQueue(d.Jobs()), pipeline.DefaultRegistry(), search.NewEngine(d), "", nil, nil)
+	for _, o := range fixtureObjects {
+		id, err := svc.Analyze(ctx, service.AnalyzeRequest{
+			Content: o.content, Type: "text", Source: "argument", Raw: true, NoFanout: true,
+			Mentions: strings.Fields(o.mentions),
+		})
+		if err != nil {
+			return fmt.Errorf("store %s: %w", o.alias, err)
+		}
+		c.ids[o.alias] = id
+	}
+	return nil
 }
 
 // storeEmbeddings registers fixtureModel as the default, builds its index
