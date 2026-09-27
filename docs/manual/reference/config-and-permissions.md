@@ -135,6 +135,18 @@ header names another site, including another port on `localhost`. The
 web UI served by the instance, the ctxt CLI and the ctxt browser
 extension are not affected.
 
+### Browser-extension cookie bridge
+
+`dpkms serve` also listens on `127.0.0.1:9377` (or a free port, printed
+as `Cookie bridge listening on ws://…`) for the ctxt browser extension
+to sync cookies. Whatever the instance's access class, the bridge accepts
+only WebSocket handshakes that come from a browser extension
+(`chrome-extension://`, `moz-extension://` or `safari-web-extension://`
+origin) and name `127.0.0.1:<port>` or `localhost:<port>` in `Host`.
+Web pages, other local tools and clients that send no `Origin` get `403`
+`CROSS_ORIGIN_REQUEST`; other host names get `403` `HOST_NOT_ALLOWED`.
+`server.allowed_hosts` does not apply to the bridge.
+
 ### Profile controls
 
 ```bash

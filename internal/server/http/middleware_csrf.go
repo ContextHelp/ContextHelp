@@ -6,11 +6,12 @@ import (
 	"strings"
 )
 
-// isExtensionOrigin reports whether origin is a browser extension's.
+// IsExtensionOrigin reports whether origin is a browser extension's.
 // Extensions are trusted the same way CORS trusts them (see
 // corsAllowedPrefixes): they hold host permissions for dpkms and can
-// reach it whatever this server answers.
-func isExtensionOrigin(origin string) bool {
+// reach it whatever this server answers. The cookie bridge admits only
+// these origins.
+func IsExtensionOrigin(origin string) bool {
 	for _, prefix := range corsAllowedPrefixes {
 		if strings.HasPrefix(origin, prefix) {
 			return true
@@ -46,7 +47,7 @@ func CrossOriginGuard(devCORS bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		guarded := cop.Handler(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if isExtensionOrigin(r.Header.Get("Origin")) {
+			if IsExtensionOrigin(r.Header.Get("Origin")) {
 				next.ServeHTTP(w, r)
 				return
 			}

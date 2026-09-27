@@ -266,6 +266,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 	addr := httpLn.Addr().String()
 	grpcBind := grpcLn.Addr().String()
 	cookieBridgeAddr := cookieLn.Addr().String()
+	// The bridge binds loopback whatever the access class, so it gets the
+	// private rule: loopback names on the port it actually bound, nothing
+	// else.
+	cookieBridgeHosts, err := stack.HostAllowlist(config.AccessPrivate, cookieBridgePort, nil)
+	if err != nil {
+		return fmt.Errorf("cookie bridge hosts: %w", err)
+	}
 
 	// 6. Request-serving stack: queue, pipeline runtime, search engine,
 	// event bus, policy engine, service, watcher manager, security
@@ -458,7 +465,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	checker := remind.NewChecker(reminderBackend, reminderInterval)
 
 	// Cookie bridge (for browser extension).
-	cookieBridge := wsserver.NewCookieBridgeServer(wsserver.NewCookieCache())
+	cookieBridge := wsserver.NewCookieBridgeServer(wsserver.NewCookieCache(), cookieBridgeHosts)
 
 	// 11. Run every component as one unit: the first failure, or a
 	// shutdown signal, stops all of them (HTTP included) and serve exits
