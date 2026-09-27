@@ -468,6 +468,8 @@ The MCP `search` tool runs this search for agents; see [MCP agents](../manual/wo
 
 Served by dpkms at `/api/v1/search/graph`. Returns the hybrid search trace as a graph: every candidate the search scored (returned, cut by `limit`, cut by `min_score`) with its scores, the entities those candidates mention, and the links between them. It is the document `ctxt find "<q>" --graph --format json` prints, built by the same pipeline; see the [search graph workflow](../manual/workflows/search-graph.md) for how to read it.
 
+The web UI draws it at `/ui/searchgraph/?q=<query>`: the page forwards its own query string to this endpoint, so every parameter below works there too. See [Open it in the web UI](../manual/workflows/search-graph.md#open-it-in-the-web-ui).
+
 ```
 GET /api/v1/search/graph?q=signup+friction&profile=work&max_nodes=100&similar=true
 ```

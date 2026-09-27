@@ -69,6 +69,34 @@ Object nodes are sized by their final score: the bigger the node, the higher it 
 
 The viewer draws in 3D with WebGL. Without WebGL it switches to a 2D view and says so at the top: `2D mode: WebGL is unavailable.`
 
+## Open it in the web UI
+
+dpkms serves the same viewer at `/ui/searchgraph/`. Put the search in the URL:
+
+```text
+http://127.0.0.1:8080/ui/searchgraph/?q=deployment
+```
+
+The page asks dpkms for [`GET /api/v1/search/graph`](../../api/api-rest.md#get-searchgraph) with the same query string, so every parameter of that endpoint works here too:
+
+```text
+http://127.0.0.1:8080/ui/searchgraph/?q=deployment&limit=5&profile=work&similar=true
+```
+
+Bookmark it or share it with someone who uses the same instance; the URL is the whole search. Reload to rerun the search on the current data. There's no search box yet: change `q` in the address bar.
+
+What's different from `ctxt find --graph`:
+
+- **Click** an object and the details show an **Open object** link to its page in the web UI (`/ui/objects/<id>`) instead of a `ctxt show` command.
+- Nothing stops by itself: the page lives as long as dpkms runs, and there's no token in the URL.
+- Search flags become parameters: `--limit` is `limit`, `--min-score` is `min_score`, `--graph-max-nodes` is `max_nodes`, `--graph-similar` is `similar=true`.
+
+Which instances it works on:
+
+- **Private instances** (the default, loopback only): open the URL; there's nothing to sign in to.
+- **Behind a reverse proxy that signs you in**: works as soon as you've signed in to the proxy, like the rest of the web UI. See [Put dpkms behind a reverse proxy](../operations/reverse-proxy.md).
+- **Instances that check tokens themselves** (`server.access: protected` or `public`): the page loads, but the web UI can't sign in yet, so the graph request is refused and the page shows `No embedded graph data, and /api/v1/search/graph returned HTTP 401.` Use `ctxt find --graph` or call the endpoint with your token until browser sign-in is available.
+
 ## Save or share a graph
 
 Give `-o` a file name; the extension picks the format:
@@ -177,7 +205,7 @@ ctxt find "deployment" --graph --graph-max-nodes 50 --graph-similar -o deploymen
 
 - `--format` accepts `json` or `yaml` with `--graph`; for other formats use `-o` with a graph extension.
 - When the vector search can't run (no default embedding model, the provider can't be reached, the model has no index or no vectors yet), the search falls back to full-text only, as plain `ctxt find` does, and prints the same `notice:` line on stderr. The graph still works: `metadata.mode` is `fts_only` or `fts_fallback`, `metadata.semantic_status` names the reason, `metadata.vector_error` explains it, and the viewer shows a **vector error** badge. Fixes: [Turn on semantic search](./semantic-search.md).
-- dpkms serves the same document at [`GET /api/v1/search/graph`](../../api/api-rest.md#get-searchgraph), with entities filtered by the caller's entitlements; the dpkms web UI doesn't show it yet.
+- dpkms serves the same document at [`GET /api/v1/search/graph`](../../api/api-rest.md#get-searchgraph), with entities filtered by the caller's entitlements, and draws it at `/ui/searchgraph/` ([Open it in the web UI](#open-it-in-the-web-ui)).
 
 ## Common failure modes
 
