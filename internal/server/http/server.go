@@ -129,7 +129,7 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 func mountAPIRoutes(r chi.Router, routes []apiRoute, rc RouterConfig) {
 	for _, rt := range routes {
 		h := rt.Handler
-		if rc.Auth != nil && !rt.OwnCredential {
+		if rc.Auth != nil {
 			h = RequireScope(rt.Scope, rc.Security)(h)
 		}
 		if rt.Method == "" {

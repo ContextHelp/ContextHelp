@@ -46,10 +46,6 @@ func (f fixedProvider) Authenticate(_ context.Context, cred authn.Credential) (*
 	return &out, nil
 }
 
-// ownCredentialRoutes is the complete list of /api/v1 routes allowed to
-// skip the scope check. Adding to it is a security decision.
-var ownCredentialRoutes = []string{"POST /api/v1/federation/push"}
-
 func newScopeTestService(t *testing.T) *service.Service {
 	t.Helper()
 	driver := storageutil.NewTestDriver(t)
@@ -98,11 +94,6 @@ func TestRouteCoverageEveryRouteDeclaresAScope(t *testing.T) {
 		if !assert.True(t, ok, "%s is served but missing from the route-to-scope table", w) {
 			continue
 		}
-		if rt.OwnCredential {
-			assert.Contains(t, ownCredentialRoutes, w, "%s skips the scope check without being an approved exception", w)
-			assert.Empty(t, rt.Scope, "%s: an own-credential route declares no scope", w)
-			continue
-		}
 		assert.True(t, slices.Contains(authn.AllScopes, rt.Scope), "%s declares unknown scope %q", w, rt.Scope)
 	}
 }
@@ -117,9 +108,6 @@ func TestRouteCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 	router := NewRouterWithConfig(svc, rc)
 
 	for _, w := range walkAPIRoutes(t, router) {
-		if slices.Contains(ownCredentialRoutes, w) {
-			continue
-		}
 		rt, ok := tableEntry(table, w)
 		require.True(t, ok, "%s missing from the table", w)
 		method, pattern, _ := strings.Cut(w, " ")
@@ -289,4 +277,21 @@ func TestWhoamiReportsPrincipalRolesScopes(t *testing.T) {
 
 	resp, _ := roleDo(t, http.MethodGet, ts.URL+"/api/v1/whoami", "", nil)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+// Federation push needs write:objects on top of its federation.token
+// rule: a reader principal is refused before the handler runs; a writer
+// reaches the handler (which then applies the federation credential).
+func TestFederationPushRequiresWriteObjects(t *testing.T) {
+	svc := newScopeTestService(t)
+	for role, wantScopeDenied := range map[string]bool{authn.RoleReader: true, authn.RoleWriter: false, authn.RoleAdmin: false} {
+		p := &authn.Principal{ID: role, Roles: []string{role}, Scopes: authn.ScopesForRoles([]string{role})}
+		router := NewRouterWithConfig(svc, RouterConfig{Auth: fixedProvider{p: p}})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/federation/push", strings.NewReader("{}"))
+		req.Header.Set("Authorization", "Bearer any")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		denied := rec.Code == http.StatusForbidden && strings.Contains(rec.Body.String(), "INSUFFICIENT_SCOPE")
+		assert.Equal(t, wantScopeDenied, denied, "%s: status %d body %s", role, rec.Code, rec.Body.String())
+	}
 }
