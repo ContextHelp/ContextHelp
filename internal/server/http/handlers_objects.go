@@ -8,7 +8,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ideacrafterslabs/ctxt/internal/service"
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // GetObject returns a single object by ID.
@@ -21,31 +20,6 @@ func GetObject(svc *service.Service) http.HandlerFunc {
 			return
 		}
 		WriteJSON(w, http.StatusOK, obj)
-	}
-}
-
-// ListObjects returns a paginated list of objects.
-func ListObjects(svc *service.Service) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		filter := storage.ObjectFilter{
-			Type:    r.URL.Query().Get("type"),
-			Subtype: r.URL.Query().Get("subtype"),
-			Limit:   parseIntDefault(r.URL.Query().Get("limit"), 20),
-			Offset:  parseIntDefault(r.URL.Query().Get("offset"), 0),
-		}
-
-		objs, total, err := svc.ListObjects(r.Context(), filter)
-		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
-			return
-		}
-		if objs == nil {
-			objs = []*storage.KnowledgeObject{}
-		}
-		WriteJSON(w, http.StatusOK, map[string]any{
-			"data":  objs,
-			"total": total,
-		})
 	}
 }
 

@@ -67,6 +67,7 @@ Common error codes:
 
 - `INVALID_QUERY`
 - `INVALID_MENTION`
+- `INVALID_PARAM` (400; `details.param` names the query parameter)
 - `UNKNOWN_ENTITY`
 - `VALIDATION_FAILED`
 - `NOT_FOUND`
@@ -115,7 +116,9 @@ Core endpoints:
 - `GET /jobs/{id}`
 - `POST /jobs/{id}/retry`
 - `GET /objects`
+- `GET /objects/facets`
 - `GET /objects/{id}`
+- `GET /objects/{id}/related`
 - `PATCH /objects/{id}`
 - `DELETE /objects/{id}`
 - `GET /profiles`
@@ -272,14 +275,75 @@ Knowledge objects include **tags**, **hints**, **mentions**, and **plugin metada
 
 ### `GET /objects`
 
-Supports:
+Lists the objects that match a filter, one page at a time. Scope: `read:objects`.
 
-- metadata filters
-- Query Language (`q`)
-- mention-based filters
-- i18n
-- plugin-defined filters (`plugin=<pluginName>`)
-- pagination and sorting
+#### Query Parameters
+
+Every parameter is optional and takes exactly one non-empty value. An unknown, repeated, empty or malformed parameter is a 400 `INVALID_PARAM` whose `details.param` names it. Filters combine with AND.
+
+| Parameter | Matches |
+|---|---|
+| `type`, `subtype` | the object's type or subtype |
+| `tag` | objects carrying the tag label |
+| `mention` | objects mentioning the entity, as `@ns.slug` or `ctxt://entity/...` |
+| `pipeline` | the pipeline that produced the object |
+| `status` | `active` (the default), `inbox`, `discarded`, `raw`, or `all` for every status |
+| `after`, `before` | `created_at` at or after / at or before the instant: RFC 3339 (`2026-02-10T09:00:00Z`) or a date (`2026-02-10`, midnight UTC) |
+| `meta_type` | `metadata.type` |
+| `topic`, `person` | an element of `metadata.topics` / `metadata.people` |
+| `source_type` | `metadata.source_type` |
+| `since`, `until` | a `metadata.dates_mentioned` date on or after / on or before the date (`YYYY-MM-DD` only) |
+
+Order and paging:
+
+| Parameter | Values | Default |
+|---|---|---|
+| `sort` | `created_at`, `updated_at` | `created_at` |
+| `dir` | `asc`, `desc` | `desc` |
+| `limit` | integer >= 0; `0` returns every match | `20` |
+| `offset` | integer >= 0 | `0` |
+
+RSQL queries go to `GET /search?q=`; `q` is not a parameter here.
+
+#### Response
+
+`total` counts every match; `data` holds one page.
+
+```json
+{
+  "data": [
+    {"id": "o-a", "type": "article", "status": "active", "tags": [{"label": "ux"}], "created_at": "2026-01-10T09:00:00Z", "updated_at": "2026-06-01T09:00:00Z"}
+  ],
+  "total": 1
+}
+```
+
+### `GET /objects/facets`
+
+Counts the objects that match a filter by `metadata.type`. Objects without one count under `(none)`. Scope: `read:objects`.
+
+Takes the filter parameters of `GET /objects` (`type` through `until`), with the same validation. `limit`, `offset`, `sort` and `dir` are rejected: counts cover every match.
+
+```json
+{"data": {"observation": 1, "task": 1, "(none)": 1}}
+```
+
+No match returns `{"data": {}}`.
+
+### `GET /objects/{id}/related`
+
+Objects that share a mention target with the object, following shared targets up to `depth` hops. The object itself is never included. Scope: `read:objects`.
+
+| Parameter | Values | Default |
+|---|---|---|
+| `depth` | 1 to 3 | `1` |
+| `limit` | 1 to 100 | `10` |
+
+Any other parameter is a 400 `INVALID_PARAM`. An unknown `{id}` is a 404 `NOT_FOUND`.
+
+```json
+{"data": [{"id": "o-b", "type": "note", "...": "..."}]}
+```
 
 ### Plugin Metadata
 
@@ -295,78 +359,6 @@ Supports:
   }
 }
 ```
-
-#### Query Parameters
-
-Core:
-
-- `type`
-- `tag`
-- `mention`
-- `profile`
-- `pipeline`
-- `after`, `before`
-- `limit`
-- `offset`
-- `q`
-
-Plugin:
-
-- `plugin=<pluginName>`
-- plugin-defined fields inside `q`
-
-#### Response
-
-```json
-{
-  "objects": [
-    {
-      "id": "obj_abc",
-      "createdAt": "2025-01-01T12:00:02Z",
-      "type": "text",
-      "subtype": "text.short",
-      "title": "Signup flow friction",
-      "summary": "The signup flow has too many steps.",
-      "language": "en",
-      "tags": [
-        {
-          "label": "ux.signup.antipattern",
-          "weight": 0.92,
-          "polarity": "negative"
-        }
-      ],
-      "hints": ["#ux", "#bad"],
-      "mention_uris": [
-        "ctxt://entity/ui/best-practice",
-        "ctxt://entity/stripe/api.checkout"
-      ],
-      "plugins": {
-        "price_monitor": {
-          "current_price": 1199.00,
-          "threshold_percent": 10
-        }
-      },
-      "pipeline": "text.short"
-    }
-  ],
-  "plugins": {
-    "notifications": {
-      "pending": [
-        {
-          "id": "note1",
-          "type": "price_drop",
-          "level": "warning"
-        }
-      ]
-    }
-  },
-  "limit": 50,
-  "offset": 0,
-  "total": 1
-}
-```
-
-Plugins may surface alerts or supplemental data in responses.
 
 ---
 
