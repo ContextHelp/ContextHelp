@@ -153,8 +153,9 @@ func TestLoadUpsert_InTransaction(t *testing.T) {
 
 // TestVerifyFTS_PreDedupeStampMismatches pins the projection bump that
 // dropped repeated segments from the FTS body: an index stamped by the
-// previous projection ("v1") must report a mismatch on the next open, and
-// verify re-stamps it so the open after that matches.
+// previous projection ("v1") must report a mismatch on every open until
+// the re-projection stamps it (StampFTS). Verify never stamps a mismatch
+// itself: the stored bodies still carry the old projection.
 func TestVerifyFTS_PreDedupeStampMismatches(t *testing.T) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
@@ -196,7 +197,18 @@ func TestVerifyFTS_PreDedupeStampMismatches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if res.Match || res.OldHash != oldHash {
+		t.Fatalf("second open before re-projection: Match=%v OldHash=%s, want the v1 stamp kept", res.Match, res.OldHash)
+	}
+
+	if err := StampFTS(ctx, db, DialectSQLite); err != nil {
+		t.Fatal(err)
+	}
+	res, err = VerifyFTS(ctx, db, DialectSQLite)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !res.Match {
-		t.Errorf("second open after re-stamp: Match=false")
+		t.Errorf("open after StampFTS: Match=false")
 	}
 }

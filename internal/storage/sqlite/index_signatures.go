@@ -41,10 +41,9 @@ func LoadIndexSignature(ctx context.Context, db *sql.DB, signatureID string) (*I
 	return indexsig.Load(ctx, db, indexsig.DialectSQLite, signatureID)
 }
 
-// VerifyFTSSignature computes the current FTS signature, compares it against
-// the stored row, persists the freshly computed signature on mismatch, and
-// returns a VerifyResult describing what happened. Detection-only per
-// ADR-070 §3.
+// VerifyFTSSignature computes the current FTS signature and compares it
+// against the stored row (indexsig.VerifyFTS): a first boot is stamped, a
+// mismatch is left for the re-projection job to stamp.
 func VerifyFTSSignature(ctx context.Context, db *sql.DB) (*VerifyResult, error) {
 	return indexsig.VerifyFTS(ctx, db, indexsig.DialectSQLite)
 }

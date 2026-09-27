@@ -137,6 +137,47 @@ var pgMigrations = []pgMigration{
 		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS claim_token TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`,
 	}},
+	// Per-row projection_version stamp. Rows written before it carry no
+	// stamp, so the stored FTS signature is cleared with it: the next start
+	// reports a mismatch and schedules the re-projection job, which stamps
+	// rows and signature again.
+	{Version: 18, Name: "objects.projection_version", fn: migrateProjectionVersion},
+}
+
+// migrateProjectionVersion adds objects.projection_version, the projection
+// version (indexsig.ProjectionVersion) each row's projected_fts_body was
+// derived under, and clears the stored FTS signature hash: unstamped rows
+// may hold any earlier projection, so the signature no longer vouches for
+// them. Both happen only when the column is added, in one transaction.
+func migrateProjectionVersion(ctx context.Context, d *Driver) error {
+	var exists bool
+	if err := d.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = current_schema()
+			  AND table_name = 'objects' AND column_name = 'projection_version'
+		)`).Scan(&exists); err != nil {
+		return fmt.Errorf("check projection_version column: %w", err)
+	}
+	if exists {
+		return nil
+	}
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx,
+		`ALTER TABLE objects ADD COLUMN projection_version TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("add objects.projection_version: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE index_signatures
+		SET signature_hash = '', inputs_summary = $1
+		WHERE signature_id = $2`,
+		"cleared by migration 18: rows carry no projection_version stamp", indexsig.FTSSignatureID); err != nil {
+		return fmt.Errorf("clear fts signature: %w", err)
+	}
+	return tx.Commit()
 }
 
 // migratePerModelEmbeddings moves embeddings to the per-model index schema.

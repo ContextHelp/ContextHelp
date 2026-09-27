@@ -207,6 +207,11 @@ var migrations = []migration{
 	// leased job alone until the lease runs out, so a second process
 	// cannot requeue and re-run a job another process is running.
 	{Version: 39, fn: migrate039JobsClaimLease},
+	// Migration 040: projection_version stamp on objects. Rows written
+	// before it carry no stamp, so the fn also clears the stored FTS
+	// signature: the next start reports a mismatch and schedules the
+	// re-projection job, which stamps rows and signature again.
+	{Version: 40, fn: migrate040ProjectionVersion},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -648,6 +653,35 @@ func migrate036JobsIdempotencyKey(ctx context.Context, d *Driver) error {
 
 // migrate039JobsClaimLease adds the claim token AcquireNext stamps and the
 // lease expiry (Unix milliseconds, NULL = unleased) task workers renew.
+// migrate040ProjectionVersion adds objects.projection_version, the
+// projection version (indexsig.ProjectionVersion) each row's
+// projected_fts_body was derived under, and clears the stored FTS signature
+// hash: unstamped rows may hold any earlier projection, so the signature
+// no longer vouches for them. Both happen only when the column is added,
+// in one transaction.
+func migrate040ProjectionVersion(ctx context.Context, d *Driver) error {
+	has, err := tableHasColumn(ctx, d, "objects", "projection_version")
+	if err != nil || has {
+		return err
+	}
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx,
+		`ALTER TABLE objects ADD COLUMN projection_version TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("add objects.projection_version: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE index_signatures
+		SET signature_hash = '', inputs_summary = ?
+		WHERE signature_id = ?`,
+		"cleared by migration 040: rows carry no projection_version stamp", indexsig.FTSSignatureID); err != nil {
+		return fmt.Errorf("clear fts signature: %w", err)
+	}
+	return tx.Commit()
+}
+
 func migrate039JobsClaimLease(ctx context.Context, d *Driver) error {
 	if err := addJobsColumnIfMissing(ctx, d, "claim_token", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
