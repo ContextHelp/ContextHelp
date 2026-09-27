@@ -467,6 +467,9 @@ func TestSearchConfigDefaults(t *testing.T) {
 	assert.Equal(t, 50, cfg.Search.CandidatePool.Vector)
 	assert.InDelta(t, 0.0, cfg.Search.MinScore, 0.001)
 	assert.True(t, cfg.Search.FallbackToFTS)
+	// A config with no search block loads exactly the built-in defaults
+	// dpkms applies to a find request that leaves a setting out.
+	assert.Equal(t, DefaultSearchConfig(), cfg.Search)
 }
 
 func TestBackupConfigDefaults(t *testing.T) {

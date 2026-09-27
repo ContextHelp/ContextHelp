@@ -434,6 +434,25 @@ type RerankerConfig struct {
 	HopBacklinkBoost float64 `mapstructure:"hop_backlink_boost" yaml:"hop_backlink_boost"`
 }
 
+// DefaultSearchConfig returns the built-in search settings: the defaults
+// a config file overrides, and what dpkms applies to a find request that
+// leaves a setting out.
+func DefaultSearchConfig() SearchConfig {
+	return SearchConfig{
+		DefaultMode:   "hybrid",
+		RRF:           RRFConfig{K: 60, FTSWeight: 0.5, VectorWeight: 0.5},
+		CandidatePool: CandidatePoolConfig{FTS: 50, Vector: 50},
+		MinScore:      0,
+		FallbackToFTS: true,
+		Reranker: RerankerConfig{
+			MentionBoostPerMention: 0.05,
+			MaxMentionBoost:        1.0,
+			DirectBacklinkBoost:    0.08,
+			HopBacklinkBoost:       0.03,
+		},
+	}
+}
+
 // RRFConfig controls Reciprocal Rank Fusion parameters.
 type RRFConfig struct {
 	// K is the rank constant (default 60). Higher values reduce the impact of top ranks.
@@ -1168,21 +1187,20 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("duplicates.check_exact", true)
 	v.SetDefault("duplicates.check_similar", false)
 
-	// Search defaults
-	v.SetDefault("search.default_mode", "hybrid")
-	v.SetDefault("search.rrf.k", 60)
-	v.SetDefault("search.rrf.fts_weight", 0.5)
-	v.SetDefault("search.rrf.vector_weight", 0.5)
-	v.SetDefault("search.candidate_pool.fts", 50)
-	v.SetDefault("search.candidate_pool.vector", 50)
-	v.SetDefault("search.min_score", 0.0)
-	v.SetDefault("search.fallback_to_fts", true)
-
-	// Reranker signal weight defaults.
-	v.SetDefault("search.reranker.mention_boost_per_mention", 0.05)
-	v.SetDefault("search.reranker.max_mention_boost", 1.0)
-	v.SetDefault("search.reranker.direct_backlink_boost", 0.08)
-	v.SetDefault("search.reranker.hop_backlink_boost", 0.03)
+	// Search defaults, reranker signal weights included.
+	sd := DefaultSearchConfig()
+	v.SetDefault("search.default_mode", sd.DefaultMode)
+	v.SetDefault("search.rrf.k", sd.RRF.K)
+	v.SetDefault("search.rrf.fts_weight", sd.RRF.FTSWeight)
+	v.SetDefault("search.rrf.vector_weight", sd.RRF.VectorWeight)
+	v.SetDefault("search.candidate_pool.fts", sd.CandidatePool.FTS)
+	v.SetDefault("search.candidate_pool.vector", sd.CandidatePool.Vector)
+	v.SetDefault("search.min_score", sd.MinScore)
+	v.SetDefault("search.fallback_to_fts", sd.FallbackToFTS)
+	v.SetDefault("search.reranker.mention_boost_per_mention", sd.Reranker.MentionBoostPerMention)
+	v.SetDefault("search.reranker.max_mention_boost", sd.Reranker.MaxMentionBoost)
+	v.SetDefault("search.reranker.direct_backlink_boost", sd.Reranker.DirectBacklinkBoost)
+	v.SetDefault("search.reranker.hop_backlink_boost", sd.Reranker.HopBacklinkBoost)
 
 	// Privacy defaults — telemetry off by default (local-first)
 	v.SetDefault("privacy.telemetry", false)
