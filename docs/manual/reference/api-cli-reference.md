@@ -70,6 +70,13 @@ dpkms pipeline enqueue [--pipeline <name>] [--type <type>] [--wait] <content>
 dpkms pipeline step list|install|uninstall
 dpkms pipeline step registry list|add|update|autoupdate
 dpkms housekeeping vacuum|reindex|compact|prune
+dpkms session list [--all] [--principal <p>] | revoke <id> | revoke --principal <p>
+```
+
+### Web UI
+
+```bash
+ctxt ui open [--server <url> | --instance <name>] [--no-browser]
 ```
 
 ## REST endpoint map (from current spec)
@@ -94,6 +101,13 @@ Core routes:
 - `GET /entities`
 - `GET /entities/{slug}`
 - `GET /entities/{slug}/related`
+
+Web UI sign-in routes (see [Sign in to the web UI](../workflows/web-ui-sign-in.md)):
+
+- `POST /api/v1/ui/login-codes` (API token only): single-use login code, 60 s
+- `POST /ui/auth/session`: login code for the session cookie (same-origin, `X-Ctxt-CSRF: 1`)
+- `GET /api/v1/ui/session`: who the caller is (`via`: `token` or `session`)
+- `DELETE /api/v1/ui/session`: sign the browser out
 
 Importer routes (story-target contract):
 

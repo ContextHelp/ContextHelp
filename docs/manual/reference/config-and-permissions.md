@@ -151,6 +151,46 @@ Web pages, other local tools and clients that send no `Origin` get `403`
 `CROSS_ORIGIN_REQUEST`; other host names get `403` `HOST_NOT_ALLOWED`.
 `server.allowed_hosts` does not apply to the bridge.
 
+### Web UI sessions
+
+On a protected or public instance the web UI needs a browser session;
+`ctxt ui open` signs a browser in (see
+[Sign in to the web UI](../workflows/web-ui-sign-in.md)). A private
+instance has no sessions.
+
+```yaml
+server:
+  ui:
+    session:
+      idle_ttl: 12h   # ends this long after the last request (default 12h)
+      max_ttl: 168h   # ends this long after sign-in (default 7 days)
+```
+
+`idle_ttl` may not exceed `max_ttl`; negative values fail the config load.
+
+- **Cookie**: `__Host-dpkms_<16 hex>`, named after the `Host` the browser
+  used (two instances on one machine get different cookies), `HttpOnly`,
+  `Secure`, `SameSite=Strict`, `Path=/`, expiring with the session.
+  Browsers keep it only over HTTPS or on `localhost`.
+- **Principal**: the principal of the static token that minted the link,
+  with its roles; the session ends when that token leaves
+  `server.auth.static.tokens` (every request checks the tokens dpkms
+  loaded at start, so a removal takes effect on restart).
+- **Scope**: reads, search and the web UI's own writes. Pipelines, steps,
+  registries, watches, the audit log, federation, the MCP mount and login
+  links answer `403` `SESSION_SCOPE`. `/ws/bus` keeps its own bus token
+  and gRPC keeps API tokens only; a session cookie opens neither.
+- **CSRF**: a request carrying the cookie must come from the instance's
+  own pages: writes need `Sec-Fetch-Site: same-origin` or a matching
+  `Origin` (`403` `CROSS_ORIGIN_REQUEST`) and the header `X-Ctxt-CSRF: 1`
+  (`403` `CSRF_HEADER_REQUIRED`); reads sent by another site or another
+  port on the host are refused. Requests with `Authorization` or
+  `X-API-Key` are unaffected, and those headers win over the cookie.
+
+`dpkms session list [--all] [--principal P]` and
+`dpkms session revoke <id> | --principal P` manage sessions on the server
+host.
+
 ### Profile controls
 
 ```bash
