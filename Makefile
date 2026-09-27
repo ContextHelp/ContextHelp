@@ -114,8 +114,8 @@ test-e2e:
 	@echo "Running e2e tests..."
 	CGO_ENABLED=1 go test -count=1 -tags 'fts5 e2e' ./test/e2e/...
 
-## test-all: Run all test tiers
-test-all: test-unit test-integration test-smoke test-e2e
+## test-all: Run all test tiers (Go tiers + search-graph viewer JS unit tests)
+test-all: test-unit test-searchgraph-viewer-js test-integration test-smoke test-e2e
 
 ## test-cover: Generate coverage report
 test-cover:
@@ -324,7 +324,35 @@ build-ui:
 build-searchgraph-viewer:
 	cd web/searchgraph && pnpm install --frozen-lockfile && pnpm run build
 
-.PHONY: build-searchgraph-viewer
+## test-searchgraph-viewer-js: Run the search-graph viewer's JS unit tests
+##
+## Dependency-free `node --test` over web/searchgraph/src/*.test.js, so no
+## install step. web/searchgraph pins pnpm via packageManager and carries its
+## own pnpm-workspace.yaml, so pnpm never resolves an enclosing workspace.
+## Mirrors the viewer job in .github/workflows/ci.yml.
+test-searchgraph-viewer-js:
+	@echo "Running search-graph viewer JS tests..."
+	cd web/searchgraph && pnpm test
+
+## check-searchgraph-viewer-dist: Rebuild the viewer; fail if the committed bundle drifts
+##
+## Rebuilds internal/searchgraph/viewer/dist in place, then compares it with
+## the index: unstaged edits or new untracked files mean the committed bundle
+## does not match its sources. Overwrites any unstaged dist edits. Fix a
+## failure with `make build-searchgraph-viewer` and commit the result.
+## Mirrors the viewer job in .github/workflows/ci.yml.
+SEARCHGRAPH_VIEWER_DIST := internal/searchgraph/viewer/dist
+check-searchgraph-viewer-dist: build-searchgraph-viewer
+	@untracked=$$(git ls-files --others --exclude-standard -- $(SEARCHGRAPH_VIEWER_DIST)); \
+	if ! git diff --quiet -- $(SEARCHGRAPH_VIEWER_DIST) || [ -n "$$untracked" ]; then \
+		git diff --stat -- $(SEARCHGRAPH_VIEWER_DIST); \
+		[ -z "$$untracked" ] || printf 'untracked: %s\n' $$untracked; \
+		echo "ERROR: $(SEARCHGRAPH_VIEWER_DIST) is stale; run 'make build-searchgraph-viewer' and commit it" >&2; \
+		exit 1; \
+	fi
+	@echo "✓ $(SEARCHGRAPH_VIEWER_DIST) matches web/searchgraph sources"
+
+.PHONY: build-searchgraph-viewer test-searchgraph-viewer-js check-searchgraph-viewer-dist
 
 ## security-scan: Run gitleaks secret scanning on entire repo history
 security-scan:
