@@ -72,7 +72,10 @@ func runImportLogseq(cmd *cobra.Command, args []string) error {
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	kindFilter, _ := cmd.Flags().GetString("kind")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
@@ -160,7 +163,7 @@ func runImportLogseq(cmd *cobra.Command, args []string) error {
 		content := logseqImporter.RenderContent(p)
 		source := "import:logseq:" + p.RelPath
 
-		_, err := enqueueContent(ep, content, "text", pipelineName, source)
+		_, err := enqueueContent(dc, content, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

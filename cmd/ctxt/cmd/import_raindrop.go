@@ -95,7 +95,10 @@ func runImportRaindrop(cmd *cobra.Command, args []string) error {
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	baseURL, _ := cmd.Flags().GetString("raindrop-base-url")
 
@@ -183,7 +186,7 @@ func runImportRaindrop(cmd *cobra.Command, args []string) error {
 			source = "import:raindrop"
 		}
 
-		_, err := enqueueContent(ep, content, "text", pipelineName, source)
+		_, err := enqueueContent(dc, content, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

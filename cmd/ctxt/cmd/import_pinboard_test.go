@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	pinboardimporter "github.com/ideacrafterslabs/ctxt/internal/importer/pinboard"
 )
 
@@ -163,7 +163,7 @@ func TestImportPinboardEnqueueFromAPIAndFile(t *testing.T) {
 	}
 
 	var enqueueCount int
-	enqueuePinboardItem = func(_ idxbridge.Endpoint, content, contentType, pipelineName, source string) (string, error) {
+	enqueuePinboardItem = func(_ *dpkmsclient.Client, content, contentType, pipelineName, source string) (string, error) {
 		enqueueCount++
 		if contentType != "text" {
 			return "", fmt.Errorf("expected text content, got %s", contentType)

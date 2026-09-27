@@ -38,7 +38,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
@@ -184,7 +184,10 @@ func init() {
 
 // runUpgradeStatus implements `ctxt upgrade status` (+ --watch).
 func runUpgradeStatus(cmd *cobra.Command, _ []string) error {
-	ep := serverEndpoint(cmd)
+	client, err := newDpkmsClient(cmd, statusTimeout)
+	if err != nil {
+		return err
+	}
 	watch, _ := cmd.Flags().GetBool("watch")
 	interval, _ := cmd.Flags().GetInt("interval")
 	if interval < 1 {
@@ -192,7 +195,7 @@ func runUpgradeStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	if !watch {
-		return upgradeStatusOnce(cmd, ep)
+		return upgradeStatusOnce(cmd, client)
 	}
 
 	ticker := time.NewTicker(time.Duration(interval) * time.Second)
@@ -203,11 +206,11 @@ func runUpgradeStatus(cmd *cobra.Command, _ []string) error {
 	}
 	for {
 		fmt.Fprint(cmd.OutOrStdout(), "\033[H\033[2J")
-		err := upgradeStatusOnce(cmd, ep)
+		err := upgradeStatusOnce(cmd, client)
 
 		// Exit cleanly when the upgrade returns to idle so --watch is
 		// usable in scripts ("wait until upgrade is done").
-		env, ferr := fetchUpgradeHealthz(ctx, ep)
+		env, ferr := fetchUpgradeHealthz(ctx, client)
 		if ferr == nil && (env.Upgrade == nil || env.Upgrade.State == "idle") {
 			return nil
 		}
@@ -225,10 +228,10 @@ func runUpgradeStatus(cmd *cobra.Command, _ []string) error {
 // upgradeStatusOnce performs one /healthz fetch and renders just the
 // upgrade envelope. Returns an error (non-zero exit) only when the
 // envelope reports state=failed or the request itself fails.
-func upgradeStatusOnce(cmd *cobra.Command, ep idxbridge.Endpoint) error {
-	env, err := fetchUpgradeHealthz(cmd.Context(), ep)
+func upgradeStatusOnce(cmd *cobra.Command, client *dpkmsclient.Client) error {
+	env, err := fetchUpgradeHealthz(cmd.Context(), client)
 	if err != nil {
-		return fmt.Errorf("healthcheck %s: %w", ep.URL, err)
+		return fmt.Errorf("healthcheck %s: %w", client.URL(), err)
 	}
 
 	if isJSONOutput() {
@@ -555,22 +558,17 @@ func runUpgradeRun(cmd *cobra.Command, _ []string) error {
 }
 
 // fetchUpgradeHealthz issues GET /healthz and decodes only the fields
-// `ctxt upgrade` cares about. Other top-level fields pass through silently.
-func fetchUpgradeHealthz(ctx context.Context, ep idxbridge.Endpoint) (upgradeHealthzPayload, error) {
-	resp, err := serverGet(ctx, ep, "/healthz", 5*time.Second)
-	if err != nil {
-		return upgradeHealthzPayload{}, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return upgradeHealthzPayload{}, err
-	}
-
+// `ctxt upgrade` cares about. Other top-level fields pass through
+// silently. A 503 (a failed health check) still carries the upgrade
+// sub-envelope, so its body is decoded like a 200's.
+func fetchUpgradeHealthz(ctx context.Context, client *dpkmsclient.Client) (upgradeHealthzPayload, error) {
 	var env upgradeHealthzPayload
-	if err := json.Unmarshal(body, &env); err != nil {
-		return upgradeHealthzPayload{}, fmt.Errorf("decode response: %w", err)
+	err := client.Get(ctx, "/healthz", nil, &env)
+	if body, ok := unavailableBody(err); ok {
+		if jerr := json.Unmarshal(body, &env); jerr != nil {
+			return upgradeHealthzPayload{}, err
+		}
+		return env, nil
 	}
-	return env, nil
+	return env, err
 }

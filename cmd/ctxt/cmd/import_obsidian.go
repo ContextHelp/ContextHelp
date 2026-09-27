@@ -69,7 +69,10 @@ func runImportObsidian(cmd *cobra.Command, args []string) error {
 	vault, _ := cmd.Flags().GetString("vault")
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
@@ -147,7 +150,7 @@ func runImportObsidian(cmd *cobra.Command, args []string) error {
 		content := obsidianImporter.RenderContent(n)
 		source := "import:obsidian:" + n.RelPath
 
-		_, err := enqueueContent(ep, content, "text", pipelineName, source)
+		_, err := enqueueContent(dc, content, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

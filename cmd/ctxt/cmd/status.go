@@ -16,6 +16,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	gohttp "net/http"
@@ -24,7 +25,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/output"
 )
@@ -103,7 +104,10 @@ func init() {
 }
 
 func runStatus(cmd *cobra.Command, _ []string) error {
-	ep := serverEndpoint(cmd)
+	client, err := newDpkmsClient(cmd, statusTimeout)
+	if err != nil {
+		return err
+	}
 	watch, _ := cmd.Flags().GetBool("watch")
 	interval, _ := cmd.Flags().GetInt("interval")
 	if interval < 1 {
@@ -111,7 +115,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	if !watch {
-		return statusOnce(cmd, ep)
+		return statusOnce(cmd, client)
 	}
 
 	// Watch mode: redraw on each tick. Ctrl-C breaks the loop. We do
@@ -128,7 +132,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		// Clear screen between refreshes (ANSI). Falls back to plain
 		// repaint when stdout isn't a TTY — harmless either way.
 		fmt.Fprint(cmd.OutOrStdout(), "\033[H\033[2J")
-		_ = statusOnce(cmd, ep) // surface the row, don't exit on transient failure
+		_ = statusOnce(cmd, client) // surface the row, don't exit on transient failure
 		select {
 		case <-ctx.Done():
 			return nil
@@ -137,13 +141,16 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	}
 }
 
+// statusTimeout bounds one /healthz fetch.
+const statusTimeout = 5 * time.Second
+
 // statusOnce performs one /healthz fetch and renders the result. It
 // returns an error (causing a non-zero exit) when the request fails or
 // the envelope reports failed.
-func statusOnce(cmd *cobra.Command, ep idxbridge.Endpoint) error {
-	env, status, err := fetchHealthz(cmd.Context(), ep)
+func statusOnce(cmd *cobra.Command, client *dpkmsclient.Client) error {
+	env, failed, err := fetchHealthz(cmd.Context(), client)
 	if err != nil {
-		return fmt.Errorf("healthcheck %s: %w", ep.URL, err)
+		return fmt.Errorf("healthcheck %s: %w", client.URL(), err)
 	}
 
 	if isJSONOutput() {
@@ -151,37 +158,38 @@ func statusOnce(cmd *cobra.Command, ep idxbridge.Endpoint) error {
 			return err
 		}
 	} else {
-		renderStatusTable(cmd.OutOrStdout(), env, ep.URL)
+		renderStatusTable(cmd.OutOrStdout(), env, client.URL())
 	}
 
 	// GENERIC by construction: the daemon answered and reports itself
 	// failed.
-	if status == gohttp.StatusServiceUnavailable || env.Health == "failed" {
+	if failed || env.Health == "failed" {
 		return output.GenericError("dpkms health: " + env.Health)
 	}
 	return nil
 }
 
-// fetchHealthz issues GET /healthz and decodes the envelope. The HTTP
-// status code is returned alongside so the caller can distinguish 200
-// healthy/degraded from 503 failed without re-reading the body.
-func fetchHealthz(ctx context.Context, ep idxbridge.Endpoint) (statusEnvelope, int, error) {
-	resp, err := serverGet(ctx, ep, "/healthz", 5*time.Second)
-	if err != nil {
-		return statusEnvelope{}, 0, err
+// fetchHealthz issues GET /healthz and decodes the envelope. A 503 still
+// carries the health report: it is decoded and reported as failed, so
+// the caller renders it before exiting non-zero.
+func fetchHealthz(ctx context.Context, client *dpkmsclient.Client) (env statusEnvelope, failed bool, err error) {
+	err = client.Get(ctx, "/healthz", nil, &env)
+	if body, ok := unavailableBody(err); ok {
+		if jerr := json.Unmarshal(body, &env); jerr != nil {
+			return statusEnvelope{}, true, err
+		}
+		return env, true, nil
 	}
-	defer resp.Body.Close()
+	return env, false, err
+}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return statusEnvelope{}, resp.StatusCode, err
+// unavailableBody returns the body of a 503 answer from dpkms.
+func unavailableBody(err error) ([]byte, bool) {
+	var re *dpkmsclient.RemoteError
+	if errors.As(err, &re) && re.StatusCode == gohttp.StatusServiceUnavailable {
+		return re.Body, true
 	}
-
-	var env statusEnvelope
-	if err := json.Unmarshal(body, &env); err != nil {
-		return statusEnvelope{}, resp.StatusCode, fmt.Errorf("decode response: %w", err)
-	}
-	return env, resp.StatusCode, nil
+	return nil, false
 }
 
 // renderStatusTable prints a one-row-per-subsystem human-readable view.

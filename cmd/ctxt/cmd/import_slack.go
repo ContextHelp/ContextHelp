@@ -76,7 +76,10 @@ func runImportSlack(cmd *cobra.Command, args []string) error {
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	channels, _ := cmd.Flags().GetStringSlice("channel")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
@@ -162,7 +165,7 @@ func runImportSlack(cmd *cobra.Command, args []string) error {
 			source = "import:slack"
 		}
 
-		_, err := enqueueContent(ep, content, "text", pipelineName, source)
+		_, err := enqueueContent(dc, content, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

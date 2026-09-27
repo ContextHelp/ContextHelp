@@ -12,8 +12,9 @@ import (
 	onedriveimporter "github.com/ideacrafterslabs/ctxt/internal/importer/onedrive"
 )
 
-// fakeDpkmsAPI answers every dpkms route the feed and import commands
-// call with a minimal success body.
+// fakeDpkmsAPI answers every dpkms route the HTTP commands (feed,
+// import, status, log, upgrade status, capture) call with a minimal
+// success body.
 func fakeDpkmsAPI() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -39,6 +40,16 @@ func fakeDpkmsAPI() http.Handler {
 			_ = json.NewEncoder(w).Encode(map[string]string{"job_id": "job_sync"})
 		case r.Method == http.MethodDelete && strings.HasPrefix(p, "/api/v1/feeds/"):
 			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && p == "/healthz":
+			_ = json.NewEncoder(w).Encode(statusEnvelope{Health: "healthy"})
+		case r.Method == http.MethodGet && p == "/api/v1/audit-log":
+			_ = json.NewEncoder(w).Encode(logResponse{})
+		case r.Method == http.MethodPost && p == "/api/v1/analyze":
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(map[string]string{"job_id": "job_capture"})
+		case r.Method == http.MethodPost && p == "/api/v1/inbox":
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "obj_inbox"})
 		default:
 			http.NotFound(w, r)
 		}

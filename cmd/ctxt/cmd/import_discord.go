@@ -77,7 +77,10 @@ func runImportDiscord(cmd *cobra.Command, args []string) error {
 	file, _ := cmd.Flags().GetString("file")
 	sinceRaw, _ := cmd.Flags().GetString("since")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
-	ep := serverEndpoint(cmd)
+	dc, err := newDpkmsClient(cmd, 0)
+	if err != nil {
+		return err
+	}
 	pipelineName, _ := cmd.Flags().GetString("pipeline")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
@@ -154,7 +157,7 @@ func runImportDiscord(cmd *cobra.Command, args []string) error {
 			source = "import:discord"
 		}
 
-		_, err := enqueueContent(ep, content, "text", pipelineName, source)
+		_, err := enqueueContent(dc, content, "text", pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

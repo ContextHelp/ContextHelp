@@ -1,88 +1,94 @@
 package cmd
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"io"
-	"net"
-	gohttp "net/http"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/spf13/cobra"
-	"hop.top/kit/go/console/output"
 )
 
-// serverFlagUsage is the --server help text of the single-target client
-// commands that route through serverEndpoint.
-const serverFlagUsage = "dpkms server URL; overrides server.url and server.urls (default " +
-	idxbridge.DefaultBaseURL + " when nothing is configured)"
+// serverFlagUsage is the --server help text of every command that talks
+// to dpkms over its API.
+const serverFlagUsage = "dpkms server URL; overrides --instance, CTXT_INSTANCE, the current instance, " +
+	"server.urls and server.url (default " + dpkmsclient.DefaultURL + " when nothing is configured)"
 
-// pinServerFlagUsage is the --server help text of the failover-routing
-// commands (analyze, capture), where the flag pins one instance.
-const pinServerFlagUsage = "pin routing to this single dpkms instance, bypassing the configured " +
-	"server.urls failover list (default " + idxbridge.DefaultBaseURL + " when nothing is configured)"
-
-// serverEndpoint resolves the one dpkms instance a single-target client
-// command (status, log, upgrade status, feed, import) talks to, the same way analyze and
-// capture route: an explicit --server pins that URL, reusing its configured
-// token; otherwise the primary of server.urls, then server.url (config
-// file or -c), then the client default.
-func serverEndpoint(cmd *cobra.Command) idxbridge.Endpoint {
-	if f := cmd.Flags().Lookup("server"); f != nil && f.Changed && f.Value.String() != "" {
-		return pinnedEndpoint(f.Value.String())
+// resolveEndpoint picks the one dpkms endpoint this invocation talks to
+// (ADR-077 §3): --server, then --instance or CTXT_INSTANCE, then the
+// current-instance state, then the first server.urls entry, then
+// server.url, then the default. An unknown or stale name is a
+// PREREQUISITE error (exit 70). There is no failover.
+func resolveEndpoint(cmd *cobra.Command) (dpkmsclient.Resolved, error) {
+	var sel dpkmsclient.Selection
+	if f := cmd.Flag("server"); f != nil && f.Changed {
+		sel.Server = f.Value.String()
 	}
-	return clientEndpoints()[0]
+	sel.Instance, sel.InstanceLayer = instanceSelector(cmd)
+	sel.Current = currentInstance()
+	var sc config.ServerConfig
+	if cfg != nil {
+		sc = cfg.Server
+	}
+	return dpkmsclient.Resolve(sc, sel, localInstances)
 }
 
-// serverGet issues GET <ep.URL><path> with ep's bearer token, if any. A
-// request nothing answered (connection refused, unknown host, dial
-// timeout) comes back as kit's PREREQUISITE (exit 70): the invocation was
-// right, the daemon is not there.
-func serverGet(ctx context.Context, ep idxbridge.Endpoint, path string, timeout time.Duration) (*gohttp.Response, error) {
-	return serverDo(ctx, ep, gohttp.MethodGet, path, nil, timeout)
+// instanceSelector returns the --instance flag, else CTXT_INSTANCE, and
+// the layer it came from.
+func instanceSelector(cmd *cobra.Command) (string, dpkmsclient.Layer) {
+	if f := cmd.Flag("instance"); f != nil && f.Changed {
+		return strings.TrimSpace(f.Value.String()), dpkmsclient.LayerInstanceFlag
+	}
+	if v := strings.TrimSpace(os.Getenv("CTXT_INSTANCE")); v != "" {
+		return v, dpkmsclient.LayerInstanceEnv
+	}
+	return "", ""
 }
 
-// serverDo issues method <ep.URL><path> with ep's bearer token, if any; a
-// non-nil body is sent as JSON. A zero timeout means none. Failures to
-// reach the daemon classify as in serverGet.
-func serverDo(ctx context.Context, ep idxbridge.Endpoint, method, path string, body io.Reader, timeout time.Duration) (*gohttp.Response, error) {
-	if ctx == nil {
-		ctx = context.Background()
+// currentInstance returns the selection `ctxt instance use` persisted,
+// or "" when there is none.
+func currentInstance() string {
+	stateFile, err := config.CurrentInstanceFile()
+	if err != nil {
+		return ""
 	}
-	url := strings.TrimRight(ep.URL, "/") + path
-	req, err := gohttp.NewRequestWithContext(ctx, method, url, body)
+	data, err := os.ReadFile(stateFile)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// localInstances lists the dpkms instances running on this machine, from
+// their pidfiles.
+func localInstances() ([]pidfile.Info, error) {
+	runDir, err := config.RunDir()
 	if err != nil {
 		return nil, err
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if ep.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+ep.Token)
-	}
-	client := &gohttp.Client{Timeout: timeout}
-	resp, err := client.Do(req) // #nosec G107 -- operator-configured server URL
-	if err != nil {
-		return nil, contactError(ep.URL, err)
-	}
-	return resp, nil
+	return pidfile.Scan(runDir)
 }
 
-// contactError classifies a failed request. Dial and DNS failures mean
-// nothing answered at url, which is PREREQUISITE; anything else (a timeout
-// after connecting, a TLS failure) is returned unchanged for the central
-// classifier.
-func contactError(url string, err error) error {
-	var opErr *net.OpError
-	var dnsErr *net.DNSError
-	if (errors.As(err, &opErr) && opErr.Op == "dial") || errors.As(err, &dnsErr) {
-		e := output.WrapError(fmt.Errorf("dpkms at %s unreachable: %w", url, err),
-			output.CodePrerequisite, output.ExitPrerequisite)
-		e.SuggestedFix = "start dpkms (`dpkms serve`), or point server.url or --server at a running instance"
-		return e
+// newDpkmsClient resolves this invocation's endpoint and returns a client
+// for it. timeout bounds each request; 0 means none.
+func newDpkmsClient(cmd *cobra.Command, timeout time.Duration) (*dpkmsclient.Client, error) {
+	r, err := resolveEndpoint(cmd)
+	if err != nil {
+		return nil, err
 	}
-	return err
+	return dpkmsclient.New(r.Endpoint, dpkmsclient.WithTimeout(timeout))
+}
+
+// bridgeEndpoints resolves this invocation's endpoint for the commands
+// still routed through idxbridge. The list always holds exactly one
+// endpoint, so the bridge never walks to another instance.
+func bridgeEndpoints(cmd *cobra.Command) ([]idxbridge.Endpoint, error) {
+	r, err := resolveEndpoint(cmd)
+	if err != nil {
+		return nil, err
+	}
+	return []idxbridge.Endpoint{{URL: r.URL, Token: r.Token}}, nil
 }

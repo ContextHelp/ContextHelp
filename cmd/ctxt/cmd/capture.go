@@ -1,14 +1,9 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net"
-	gohttp "net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -18,7 +13,7 @@ import (
 
 	"github.com/atotto/clipboard"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 )
 
@@ -100,7 +95,7 @@ func init() {
 	captureCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	captureCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	captureCmd.Flags().Bool("wait", false, "block until job completes")
-	captureCmd.Flags().String("server", "", pinServerFlagUsage)
+	captureCmd.Flags().String("server", "", serverFlagUsage)
 
 	// --- Track 2 stubs (defined but error when used) ---
 	captureCmd.Flags().Bool("ambient", false, "(Track 2) sweep every sensor enabled in policy/ambient.yaml")
@@ -129,12 +124,11 @@ func validateCaptureFlags(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// captureHTTPClient is the HTTP client used for all capture-side POSTs
-// to dpkms. The 30s timeout protects against an unreachable server
-// hanging the CLI indefinitely; in --every loops the per-request
-// context is also cancellable via SIGINT so Ctrl-C interrupts an
-// in-flight POST instead of waiting for the timeout.
-var captureHTTPClient = &gohttp.Client{Timeout: 30 * time.Second}
+// captureTimeout bounds each capture-side request to dpkms, so an
+// unreachable server cannot hang the CLI; in --every loops the
+// per-request context is also cancellable via SIGINT so Ctrl-C
+// interrupts an in-flight POST instead of waiting for the timeout.
+const captureTimeout = 30 * time.Second
 
 // RunCapture is the entry point for `ctxt capture`. Implements positional /
 // file / stdin / clipboard capture by POSTing to /api/v1/analyze. When
@@ -155,7 +149,7 @@ func RunCapture(cmd *cobra.Command, args []string) error {
 // stderr and don't kill the loop — only ctx cancellation does. The loop
 // context threads into each captureOnce call so an in-flight HTTP
 // request cancels promptly on Ctrl-C instead of waiting for the
-// per-request 30s timeout.
+// per-request timeout.
 func captureLoop(cmd *cobra.Command, args []string, every time.Duration) error {
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
@@ -210,7 +204,10 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 		source = override
 	}
 
-	endpoints := captureEndpoints(cmd)
+	client, err := newDpkmsClient(cmd, captureTimeout)
+	if err != nil {
+		return err
+	}
 
 	contentType, _ := cmd.Flags().GetString("type")
 	pipeline, _ := cmd.Flags().GetString("pipeline")
@@ -252,112 +249,21 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 	}
 
 	if inbox {
-		return postInboxCapture(ctx, endpoints, content, source, contentType, hints, mentions, cmd)
+		return postInboxCapture(ctx, client, content, source, contentType, hints, mentions, cmd)
 	}
 
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
+	var result struct {
+		JobID string `json:"job_id"`
 	}
+	if err := client.Post(ctx, "/api/v1/analyze", reqBody, &result); err != nil {
+		return err
+	}
+	fmt.Printf("Job ID: %s\n", result.JobID)
 
-	resp, err := postCapture(ctx, cmd, endpoints, "/api/v1/analyze", body)
-	if err != nil {
-		return fmt.Errorf("request to dpkms: %w", err)
-	}
-	if resp.status != gohttp.StatusAccepted && resp.status != gohttp.StatusOK {
-		return fmt.Errorf("dpkms returned %d: %s", resp.status, string(resp.body))
-	}
-
-	var result map[string]string
-	if err := json.Unmarshal(resp.body, &result); err != nil {
-		return fmt.Errorf("parse response: %w", err)
-	}
-	jobID := result["job_id"]
-	fmt.Printf("Job ID: %s\n", jobID)
-
-	if wait && jobID != "" {
-		return waitForCaptureJob(ctx, resp.servedBy, jobID)
+	if wait && result.JobID != "" {
+		return waitForCaptureJob(ctx, client, result.JobID)
 	}
 	return nil
-}
-
-// captureEndpoints resolves where capture sends, exactly as `ctxt analyze`
-// does: an explicit --server pins routing to that single instance (reusing
-// its configured token, if any); otherwise the configured server.urls list
-// (primary first), then server.url, then the shared client default.
-// Tokens only ever come from config.
-func captureEndpoints(cmd *cobra.Command) []idxbridge.Endpoint {
-	if f := cmd.Flags().Lookup("server"); f != nil && f.Changed && f.Value.String() != "" {
-		return []idxbridge.Endpoint{pinnedEndpoint(f.Value.String())}
-	}
-	return clientEndpoints()
-}
-
-// captureResponse is one completed HTTP exchange with the instance that
-// served it.
-type captureResponse struct {
-	status   int
-	body     []byte
-	servedBy idxbridge.Endpoint
-}
-
-// postCapture POSTs body to path on the first instance in endpoints that
-// takes it, attaching that instance's bearer token. It walks on — the
-// failover analyze applies — only when nothing can have been stored:
-//   - the instance cannot be dialed (no request byte was sent);
-//   - the instance rejects the credentials (401/403 come from the auth
-//     middleware, before any handler runs), with a warning naming it.
-//
-// Any other answer ends the walk and is returned to the caller: a live
-// instance's decision is never replayed elsewhere, and a request that may
-// have reached an instance is never resent, since capture carries no
-// idempotency key. The last instance's auth rejection is returned as a
-// response so the caller reports its status.
-func postCapture(
-	ctx context.Context,
-	cmd *cobra.Command,
-	endpoints []idxbridge.Endpoint,
-	path string,
-	body []byte,
-) (*captureResponse, error) {
-	for i, ep := range endpoints {
-		last := i == len(endpoints)-1
-		base := strings.TrimRight(ep.URL, "/")
-		req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodPost, base+path, bytes.NewReader(body))
-		if err != nil {
-			return nil, fmt.Errorf("build request: %w", err)
-		}
-		req.Header.Set("Content-Type", "application/json")
-		if ep.Token != "" {
-			req.Header.Set("Authorization", "Bearer "+ep.Token)
-		}
-		resp, err := captureHTTPClient.Do(req)
-		if err != nil {
-			if last || ctx.Err() != nil || !isDialError(err) {
-				return nil, err
-			}
-			continue
-		}
-		respBody, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return nil, fmt.Errorf("read response: %w", err)
-		}
-		if !last && (resp.StatusCode == gohttp.StatusUnauthorized || resp.StatusCode == gohttp.StatusForbidden) {
-			fmt.Fprintf(cmd.ErrOrStderr(),
-				"warning: %s rejected credentials (%d); trying next instance\n", base, resp.StatusCode)
-			continue
-		}
-		return &captureResponse{status: resp.StatusCode, body: respBody, servedBy: ep}, nil
-	}
-	return nil, fmt.Errorf("no dpkms instance configured")
-}
-
-// isDialError reports whether err failed while connecting, before any
-// part of the request was written.
-func isDialError(err error) bool {
-	var opErr *net.OpError
-	return errors.As(err, &opErr) && opErr.Op == "dial"
 }
 
 // postInboxCapture POSTs to /api/v1/inbox (the CaptureInbox handler) instead
@@ -369,7 +275,7 @@ func isDialError(err error) bool {
 // (svc.CaptureToInbox). There is no job to poll.
 func postInboxCapture(
 	ctx context.Context,
-	endpoints []idxbridge.Endpoint,
+	client *dpkmsclient.Client,
 	content, source, contentType string,
 	hints, mentions []string,
 	cmd *cobra.Command,
@@ -390,22 +296,9 @@ func postInboxCapture(
 	if profile, _ := cmd.Flags().GetString("profile"); profile != "" {
 		body["profile"] = profile
 	}
-	raw, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf("marshal inbox request: %w", err)
-	}
-	resp, err := postCapture(ctx, cmd, endpoints, "/api/v1/inbox", raw)
-	if err != nil {
-		return fmt.Errorf("request to dpkms inbox: %w", err)
-	}
-	if resp.status != gohttp.StatusCreated &&
-		resp.status != gohttp.StatusAccepted &&
-		resp.status != gohttp.StatusOK {
-		return fmt.Errorf("dpkms inbox returned %d: %s", resp.status, string(resp.body))
-	}
 	var obj map[string]any
-	if err := json.Unmarshal(resp.body, &obj); err != nil {
-		return fmt.Errorf("parse inbox response: %w", err)
+	if err := client.Post(ctx, "/api/v1/inbox", body, &obj); err != nil {
+		return err
 	}
 	if id, ok := obj["id"].(string); ok && id != "" {
 		fmt.Printf("Inbox object: %s\n", id)
@@ -475,33 +368,16 @@ func resolveCaptureInput(cmd *cobra.Command, args []string) (content, source str
 }
 
 // waitForCaptureJob polls /api/v1/jobs/<id> on the instance that accepted
-// the capture, with that instance's token, until terminal status. Mirrors
+// the capture until terminal status. Mirrors
 // cmd/dpkms/cmd/pipeline.go::waitForJob's contract.
-func waitForCaptureJob(ctx context.Context, ep idxbridge.Endpoint, jobID string) error {
-	endpoint := fmt.Sprintf("%s/api/v1/jobs/%s", strings.TrimRight(ep.URL, "/"), jobID)
+func waitForCaptureJob(ctx context.Context, client *dpkmsclient.Client, jobID string) error {
 	for {
-		req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodGet, endpoint, nil)
-		if err != nil {
-			return fmt.Errorf("build poll request: %w", err)
-		}
-		if ep.Token != "" {
-			req.Header.Set("Authorization", "Bearer "+ep.Token)
-		}
-		resp, err := captureHTTPClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("poll job %s: %w", jobID, err)
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if resp.StatusCode != gohttp.StatusOK {
-			return fmt.Errorf("dpkms returned %d polling %s: %s", resp.StatusCode, jobID, string(body))
-		}
 		var job struct {
 			Status string `json:"status"`
 			Error  string `json:"error,omitempty"`
 		}
-		if err := json.Unmarshal(body, &job); err != nil {
-			return fmt.Errorf("parse job %s: %w", jobID, err)
+		if err := client.Get(ctx, "/api/v1/jobs/"+url.PathEscape(jobID), nil, &job); err != nil {
+			return fmt.Errorf("poll job %s: %w", jobID, err)
 		}
 		switch job.Status {
 		case "completed":
@@ -509,6 +385,10 @@ func waitForCaptureJob(ctx context.Context, ep idxbridge.Endpoint, jobID string)
 		case "failed":
 			return fmt.Errorf("job %s failed: %s", jobID, job.Error)
 		}
-		time.Sleep(1 * time.Second)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
 	}
 }

@@ -82,7 +82,7 @@ func init() {
 	analyzeCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	analyzeCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	analyzeCmd.Flags().Bool("wait", false, "block until job completes")
-	analyzeCmd.Flags().String("server", "", pinServerFlagUsage)
+	analyzeCmd.Flags().String("server", "", serverFlagUsage)
 
 	// Mirror flags on rootCmd (local, not persistent) so `ctxt <content> --type url` works
 	// without leaking these flags into every subcommand's help.
@@ -98,7 +98,7 @@ func init() {
 	rootCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	rootCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	rootCmd.Flags().Bool("wait", false, "block until job completes")
-	rootCmd.Flags().String("server", "", pinServerFlagUsage)
+	rootCmd.Flags().String("server", "", serverFlagUsage)
 
 	// Bind viper keys: RunAnalyze reads from cmd.Flags() directly, so viper bindings
 	// here are for config-file fallback only (flag values take precedence via cmd.Flags()).
@@ -111,7 +111,6 @@ func init() {
 	viper.BindPFlag("analyze.translate", analyzeCmd.Flags().Lookup("translate"))
 	viper.BindPFlag("analyze.raw", analyzeCmd.Flags().Lookup("raw"))
 	viper.BindPFlag("analyze.wait", analyzeCmd.Flags().Lookup("wait"))
-	viper.BindPFlag("server.url", analyzeCmd.Flags().Lookup("server"))
 }
 
 // flagString reads a string flag from cmd.Flags(), falling back to viper.
@@ -124,6 +123,12 @@ func flagString(cmd *cobra.Command, name, viperKey string) string {
 }
 
 func RunAnalyze(cmd *cobra.Command, args []string) error {
+	// The one instance this invocation talks to (see resolveEndpoint).
+	endpoints, err := bridgeEndpoints(cmd)
+	if err != nil {
+		return err
+	}
+
 	var content string
 	var source string
 
@@ -146,18 +151,6 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 
 	if source == "clipboard" {
 		fmt.Fprintf(os.Stderr, "Using content from clipboard...\n")
-	}
-
-	// Determine the ordered endpoint list. An explicit --server pins
-	// routing to that single instance (reusing its configured token, if
-	// any); otherwise config server.urls (primary first), then
-	// server.url, then the default.
-	var endpoints []idxbridge.Endpoint
-	if f := cmd.Flags().Lookup("server"); f != nil && f.Changed {
-		v, _ := cmd.Flags().GetString("server")
-		endpoints = []idxbridge.Endpoint{pinnedEndpoint(v)}
-	} else {
-		endpoints = clientEndpoints()
 	}
 
 	// Resolve --raw flag (present on both analyzeCmd and rootCmd).
@@ -277,19 +270,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	// on the instance that accepted the enqueue and fail loudly if the ID
 	// can't be located within a short window — that 404 is the canonical
 	// "silently dropped" signal.
-	return waitForJob(cmd.Context(), servedBy, endpointToken(endpoints, servedBy), jobID)
-}
-
-// endpointToken returns the bearer token of the endpoint matching baseURL,
-// or "" when none matches or the endpoint is unauthenticated.
-func endpointToken(endpoints []idxbridge.Endpoint, baseURL string) string {
-	base := strings.TrimRight(baseURL, "/")
-	for _, ep := range endpoints {
-		if strings.TrimRight(ep.URL, "/") == base {
-			return ep.Token
-		}
-	}
-	return ""
+	return waitForJob(cmd.Context(), servedBy, endpoints[0].Token, jobID)
 }
 
 // waitForJob polls GET /api/v1/jobs/{id} on the instance that accepted the

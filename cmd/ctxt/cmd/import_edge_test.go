@@ -60,32 +60,6 @@ func TestImportEdgeEnqueueSuccess(t *testing.T) {
 	}
 }
 
-func TestImportEdgeFallbackToAnalyzeEndpoint(t *testing.T) {
-	file := writeTempBookmarks(t, edgeBookmarksFixture)
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/pipelines/enqueue":
-			http.NotFound(w, r)
-		case "/api/v1/analyze":
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusAccepted)
-			_ = json.NewEncoder(w).Encode(map[string]string{"job_id": "job_edge_legacy"})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer srv.Close()
-
-	out, err := executeCommand("import", "edge", "--file", file, "--server", srv.URL)
-	if err != nil {
-		t.Fatalf("import edge fallback should succeed: %v", err)
-	}
-	if !strings.Contains(out, "Jobs enqueued: 2") {
-		t.Fatalf("expected fallback enqueue success, got:\n%s", out)
-	}
-}
-
 func TestImportEdgeRequiresFile(t *testing.T) {
 	_, err := executeCommand("import", "edge")
 	if err == nil {

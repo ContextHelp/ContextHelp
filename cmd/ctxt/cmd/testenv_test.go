@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 )
 
@@ -62,10 +62,13 @@ func TestLiveServerGuardDefaultEndpointIsClosedPort(t *testing.T) {
 	if initConfigErr != nil {
 		t.Fatalf("initConfig: %v", initConfigErr)
 	}
-	eps := clientEndpoints()
-	if len(eps) != 1 || eps[0].URL != testguard.ClosedServerURL {
-		t.Fatalf("clientEndpoints() = %+v; want only %s (tests must not resolve %s)",
-			eps, testguard.ClosedServerURL, idxbridge.DefaultBaseURL)
+	got, err := resolveEndpoint(rootCmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.URL != testguard.ClosedServerURL {
+		t.Fatalf("resolveEndpoint() = %+v; want %s (tests must not resolve %s)",
+			got, testguard.ClosedServerURL, dpkmsclient.DefaultURL)
 	}
 }
 
@@ -73,7 +76,7 @@ func TestLiveServerGuardDefaultEndpointIsClosedPort(t *testing.T) {
 // refuses: every spelling of the built-in default and the second local
 // instance, the default gRPC ports and the cookie bridge, and nothing else.
 func TestLiveServerGuardCoversDefaultPorts(t *testing.T) {
-	def, err := url.Parse(idxbridge.DefaultBaseURL)
+	def, err := url.Parse(dpkmsclient.DefaultURL)
 	if err != nil {
 		t.Fatal(err)
 	}
