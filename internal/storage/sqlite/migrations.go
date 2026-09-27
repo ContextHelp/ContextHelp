@@ -94,6 +94,9 @@ var migration032 string
 //go:embed migrations/034_vec_objects_cosine.sql
 var migration034 string
 
+//go:embed migrations/041_ui_sessions.sql
+var migration041 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -212,6 +215,9 @@ var migrations = []migration{
 	// signature: the next start reports a mismatch and schedules the
 	// re-projection job, which stamps rows and signature again.
 	{Version: 40, fn: migrate040ProjectionVersion},
+	// Migration 041: ui_sessions + ui_login_codes for web UI browser
+	// sign-in. New tables only; IF NOT EXISTS guards make it re-runnable.
+	{Version: 41, SQL: migration041},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
