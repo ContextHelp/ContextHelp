@@ -52,7 +52,7 @@ func (s *EntityStore) UpsertThin(ctx context.Context, entity *storage.Entity) er
 		slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at
-	) VALUES ($1, $2, '', $3, $4, '[]',
+	) VALUES ($1, $2, '', $3, $4, '{}',
 		'thin', $5, $6, $7, $8)
 	ON CONFLICT (slug) DO UPDATE SET
 		title        = EXCLUDED.title,

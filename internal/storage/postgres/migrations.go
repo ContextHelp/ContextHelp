@@ -172,6 +172,13 @@ var pgMigrations = []pgMigration{
 			expires_at   TIMESTAMPTZ NOT NULL
 		)`,
 	}},
+	// Thin entities (UpsertThin: registry thin sync, mentions) were stored
+	// with metadata '[]' instead of '{}', so every read of one failed to
+	// decode into the metadata map. Only the empty array is rewritten: no
+	// writer ever stored a non-empty array, and one would still fail loudly.
+	{Version: 20, Name: "entities.metadata empty array -> object", Statements: []string{
+		`UPDATE entities SET metadata = '{}'::jsonb WHERE metadata = '[]'::jsonb`,
+	}},
 }
 
 // migrateProjectionVersion adds objects.projection_version, the projection
