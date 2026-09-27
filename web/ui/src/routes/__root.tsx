@@ -48,7 +48,7 @@ function Shell() {
   const who = useQuery({ queryKey: ['whoami'], queryFn: () => session.whoami(), retry: false });
   const onSignIn = loc.pathname === '/auth';
   const needsSignIn = isAuthRequired(who.error);
-  const live = useLiveEvents(who.isSuccess && (who.data.authenticated || !who.data.session_required));
+  const live = useLiveEvents(who.isSuccess);
 
   const signOut = async () => {
     await session.signOut().catch(() => undefined);

@@ -62,26 +62,33 @@ Every `/api/v1` route and gRPC method requires one scope. A role is a fixed bund
 
 | Role | Scopes |
 |---|---|
-| `admin` | every scope; also skips the entity entitlement and metering gate |
+| `admin` | every scope except `signout:ui`; also skips the entity entitlement and metering gate |
 | `writer` | every `read:*` and `write:*` scope |
 | `reader` | every `read:*` scope |
 
-A token needs at least one known role; an unknown or missing role fails `ctxt config validate` and stops `dpkms serve`. A token without a route's scope gets 403 `INSUFFICIENT_SCOPE` naming the scope; a missing or invalid token gets 401. `GET /api/v1/whoami` shows a token's principal, roles and scopes.
+`read:ui` (mint a web UI sign-in link) is a read scope, so every role holds it; a browser session never does, so a session cannot mint another. `signout:ui` (end your own browser session) belongs to browser sessions only: no role holds it.
+
+A token needs at least one known role; an unknown or missing role fails `ctxt config validate` and stops `dpkms serve`. A token without a route's scope gets 403 `INSUFFICIENT_SCOPE` naming the scope; a missing or invalid token gets 401. `GET /api/v1/whoami` shows the caller's principal, roles and scopes, and how it signed in (`via`: `token`, `session` or `none` on a private instance).
 
 | Scope | Bundles | Routes (under `/api/v1`) and gRPC methods |
 |---|---|---|
-| `read:objects` | reader, writer, admin | `GET` objects (list, facets, show, related), search, entities (list, show, backlinks), aliases, saved searches, search history, suggestions; `POST /find`; `GET /events`; the MCP mount; gRPC `QueryService/*`, `EntityService/*` |
+| `read:objects` | reader, writer, admin | `GET` objects (list, facets, show, related), search, the search graph, entities (list, show, backlinks), aliases, saved searches, search history, suggestions; `POST /find`; `GET /events`; gRPC `QueryService/*`, `EntityService/*` |
+| `read:mcp` | reader, writer, admin | the MCP mount (`/mcp`) |
 | `read:inbox` | reader, writer, admin | `GET /inbox` |
 | `read:feeds` | reader, writer, admin | `GET /feeds` |
 | `read:jobs` | reader, writer, admin | `GET` jobs, `import/{id}`, `importers/runs/{id}`, `capture/recent`; gRPC `JobService/*` |
 | `read:registries` | reader, writer, admin | `GET /steps/registries` |
-| `read:system` | reader, writer, admin | `GET /whoami`; `GET` pipelines, steps, watches, watch files, system reminders; gRPC reflection |
+| `read:system` | reader, writer, admin | `GET /whoami`, `GET /system/reminders`; gRPC reflection |
+| `read:pipelines` | reader, writer, admin | `GET` pipelines and steps |
+| `read:watches` | reader, writer, admin | `GET` watches and watch files |
 | `write:objects` | writer, admin | `POST /analyze`, `capture/*`, `import`, `importers/*/run`, `pipelines/enqueue`, `aliases`, `saved-searches`, suggestion approve and reject, `entities/{slug}/pull`; `PATCH /objects/{id}`; gRPC `AnalyzeService/Analyze` |
 | `write:inbox` | writer, admin | `POST /inbox` |
 | `write:feeds` | writer, admin | `POST /feeds`, `feeds/sync`, `feeds/{id}/sync` |
 | `write:jobs` | writer, admin | `POST /jobs/{id}/retry` |
 | `write:system` | writer, admin | `POST /system/reminders/{id}/dismiss` |
-| `delete:objects` | admin | `DELETE` objects, aliases, saved searches, search history |
+| `delete:objects` | admin | `DELETE /objects/{id}` |
+| `delete:aliases` | admin | `DELETE /aliases/{alias}` |
+| `delete:searches` | admin | `DELETE /saved-searches/{name}`, `DELETE /search-history` |
 | `delete:feeds` | admin | `DELETE /feeds/{id}` |
 | `process:inbox` | admin | `POST /inbox/{id}/triage`, `inbox/{id}/discard` |
 | `sync:registries` | admin | `POST /steps/registries/fetch`, `steps/registries/{url}/update`, `entities/registry-sync` |
@@ -89,6 +96,8 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 | `admin:plugins` | admin | `POST /steps/install`; `DELETE /steps/{name}` |
 | `admin:watches` | admin | `POST /watches`, `watches/{id}/pause`, `watches/{id}/resume`; `PATCH` and `DELETE /watches/{id}` |
 | `admin:audit` | admin | `GET /audit-log` |
+| `read:ui` | reader, writer, admin; never a browser session | `POST /ui/login-codes` (`ctxt ui open`) |
+| `signout:ui` | browser sessions only | `DELETE /ui/session` |
 
 `POST /api/v1/federation/push` needs `write:objects` and, on non-private instances, the `federation.token` credential as well: the federation token must be a static token whose principal holds `writer` or `admin`. `/health`, `/healthz` and gRPC health are open.
 
@@ -176,10 +185,19 @@ server:
   with its roles; the session ends when that token leaves
   `server.auth.static.tokens` (every request checks the tokens dpkms
   loaded at start, so a removal takes effect on restart).
-- **Scope**: reads, search, the step registry list and the web UI's own
-  writes. Pipelines, steps, registry changes, watches, the audit log,
-  federation, the MCP mount and login links answer `403` `SESSION_SCOPE`. `/ws/bus` keeps its own bus token
-  and gRPC keeps API tokens only; a session cookie opens neither.
+- **Scopes**: the token's scopes narrowed to the web UI's set: `read:objects`,
+  `read:inbox`, `read:feeds`, `read:jobs`, `read:registries`,
+  `read:system`, `delete:objects`, `write:jobs`, plus `signout:ui`, which
+  only sessions hold. Apart from signing itself out, a session never
+  holds a scope its token lacks: a `reader` token's session only reads,
+  a `writer` token's may also retry jobs, an `admin` token's gets the
+  whole set and nothing more. It never holds `read:ui`, so it cannot
+  mint sign-in links. Every other route (pipelines, steps,
+  registry changes, watches, the audit log, federation, the MCP mount,
+  login links, other writes) answers `403` `INSUFFICIENT_SCOPE` naming
+  the scope. `/ws/bus` keeps its own bus token and gRPC keeps API tokens
+  only; a session cookie opens neither. `GET /api/v1/whoami` with the
+  cookie shows the session's scopes and times.
 - **CSRF**: a request carrying the cookie must come from the instance's
   own pages: writes need `Sec-Fetch-Site: same-origin` or a matching
   `Origin` (`403` `CROSS_ORIGIN_REQUEST`) and the header `X-Ctxt-CSRF: 1`

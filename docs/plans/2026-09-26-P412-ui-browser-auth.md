@@ -339,12 +339,13 @@ Recorded 2026-09-26.
 | # | Question | Decision |
 |---|---|---|
 | — | Browser path | **A** (CLI-minted login link → session cookie), with phase 0 hardening and 1b proxy docs. |
-| 1 | Session scope | **Reduced "ui" scope**: read and search plus the SPA's own mutations; no pipeline, step, registry, federation or admin routes. Needs a scope → route table. |
+| 1 | Session scope | **Reduced "ui" scope**: read and search plus the SPA's own mutations; no pipeline, step, registry, federation or admin routes. Needs a scope → route table (since 2026-09-27: the route-scope model's table, see "One scope system"). |
 | 2 | Session persistence | **Persisted** in the storage driver, listable and revocable; idle 12 h, max 7 d. |
 | 3 | Revocation coupling | **Yes**: a session ends when the static token that minted it is removed from config (token hash stored per session). |
 | 5 | Private-instance hardening | **On by default**; extra hostnames via `server.allowed_hosts`. |
 | — | Registry list in the "ui" scope | **Allowed**: `GET /steps/registries` (the web UI Registry page); registry writes stay token-only. |
 | — | Watches in the "ui" scope | **Token-only**: `GET /watches` exposes host filesystem paths. |
+| — | One scope system (2026-09-27) | **The "ui" scope is expressed in the route-scope model** (ADR-023 `verb:resource` scopes, role bundles, `GET /api/v1/whoami`). No separate route table: every `/api/v1` route declares one scope, and a session's effective scopes are its minting principal's **intersected** with a fixed ui set (`read:objects`, `read:inbox`, `read:feeds`, `read:jobs`, `read:registries`, `read:system`, `delete:objects`, `write:jobs`, `signout:ui`); a reader token yields a read-only session, an admin token no more than the set. To express the set, `read:mcp` (MCP mount), `read:pipelines` (pipeline and step reads), `read:watches`, `delete:aliases` and `delete:searches` split from coarser scopes (role reach unchanged); `read:ui` (mint login codes) is a read scope, so every role holds it, and it is never in the ui set, so a session cannot mint; `signout:ui` (sign out) sits only in the ui set, in no role bundle, and a session holds it whatever its token. The reader role stays `read:*` only; `delete:aliases` and `delete:searches` stay admin-only. Tests pin the bundles, the ui set, the routes it reaches, and that it never holds `read:ui`. One whoami: `GET /api/v1/whoami` adds `via` and the session; `/api/v1/ui/session` keeps only `DELETE` (sign out). |
 | 4, 6, 7, 8 | B′, tenant isolation, extension CORS, plain-HTTP remote | Open. |
 
 ## Open questions for the owner

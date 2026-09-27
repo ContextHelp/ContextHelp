@@ -35,7 +35,7 @@ func sessionDB(t *testing.T) *testDB {
 		{ID: "uis_old", PrincipalID: "ops", TokenHash: authn.HashSecret("tok-ops"), CreatedAt: now.Add(-48 * time.Hour)},
 	} {
 		s.SecretHash = "secret-" + s.ID
-		s.Scope = authn.ScopeUI
+		s.Scope = authn.SessionKindUI
 		s.LastSeenAt = s.CreatedAt
 		s.IdleExpiresAt = s.CreatedAt.Add(12 * time.Hour)
 		s.ExpiresAt = s.CreatedAt.Add(7 * 24 * time.Hour)

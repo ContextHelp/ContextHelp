@@ -27,7 +27,7 @@ func TestNewUISessions_ProtectedSweepsRemovedTokens(t *testing.T) {
 	now := time.Now().UTC()
 	for id, hash := range map[string]string{"uis_gone": authn.HashSecret("tok-removed"), "uis_kept": authn.HashSecret("tok-1")} {
 		if err := store.Create(ctx, &storage.UISession{
-			ID: id, SecretHash: "s-" + id, PrincipalID: "ops", TokenHash: hash, Scope: authn.ScopeUI,
+			ID: id, SecretHash: "s-" + id, PrincipalID: "ops", TokenHash: hash, Scope: authn.SessionKindUI,
 			CreatedAt: now, LastSeenAt: now, IdleExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour),
 		}); err != nil {
 			t.Fatal(err)

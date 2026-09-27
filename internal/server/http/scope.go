@@ -32,7 +32,7 @@ func RequireScope(scope authn.Scope, sec *security.Emitter) func(http.Handler) h
 				if sec != nil {
 					sec.RecordACLDenial(r.Context(), p.ID)
 				}
-				writeInsufficientScope(w, scope)
+				writeInsufficientScope(w, scope, p.IsSession())
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -40,17 +40,32 @@ func RequireScope(scope authn.Scope, sec *security.Emitter) func(http.Handler) h
 	}
 }
 
-func writeInsufficientScope(w http.ResponseWriter, scope authn.Scope) {
+// writeInsufficientScope answers 403 INSUFFICIENT_SCOPE naming scope.
+// A browser session is told where the scope lives: its set is the web
+// UI's, whatever its token holds.
+func writeInsufficientScope(w http.ResponseWriter, scope authn.Scope, session bool) {
 	w.Header().Set("WWW-Authenticate",
 		fmt.Sprintf(`Bearer realm="dpkms", error="insufficient_scope", scope=%q`, string(scope)))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusForbidden)
+	msg := fmt.Sprintf("missing scope %s", scope)
+	if session {
+		msg += ": not available to a web UI session; use the ctxt CLI or an API token"
+	}
 	_ = json.NewEncoder(w).Encode(ErrorEnvelope{Error: ErrorBody{
 		Code:    CodeInsufficientScope,
-		Message: fmt.Sprintf("missing scope %s", scope),
+		Message: msg,
 		Details: map[string]any{"required_scope": string(scope)},
 	}})
 }
+
+// How a whoami caller authenticated (whoamiResponse.Via).
+const (
+	viaToken   = "token"
+	viaSession = authn.ViaSession
+	// viaNone is a private instance's caller: no credential at all.
+	viaNone = "none"
+)
 
 // whoamiResponse is the body of GET /api/v1/whoami.
 type whoamiResponse struct {
@@ -59,28 +74,51 @@ type whoamiResponse struct {
 	Provider  string        `json:"provider"`
 	Roles     []string      `json:"roles"`
 	Scopes    []authn.Scope `json:"scopes"`
+	// Via is how the caller authenticated: token, session (a web UI
+	// browser session) or none (private instance).
+	Via string `json:"via"`
+	// Session describes the browser session of a session caller.
+	Session *sessionInfo `json:"session,omitempty"`
 }
 
 // Whoami handles GET /api/v1/whoami: the caller's principal, roles and
-// effective scopes. A private instance (authEnabled false) reports
+// effective scopes, how it authenticated and, for a web UI browser
+// session, the session itself (sessions, nil-safe, supplies its
+// times). A private instance (authEnabled false) reports
 // authn.LocalPrincipal, which holds every scope.
-func Whoami(authEnabled bool) http.HandlerFunc {
+func Whoami(authEnabled bool, sessions *authn.Sessions) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		via := viaToken
 		p, ok := authn.FromContext(r.Context())
 		if !ok {
 			if authEnabled {
 				WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
 				return
 			}
-			p = authn.LocalPrincipal()
+			p, via = authn.LocalPrincipal(), viaNone
 		}
-		resp := whoamiResponse{
-			Principal: p.ID,
-			Name:      p.Name,
-			Provider:  p.Provider,
-			Roles:     append([]string{}, p.Roles...),
-			Scopes:    append([]authn.Scope{}, p.Scopes...),
-		}
-		WriteJSON(w, http.StatusOK, resp)
+		WriteJSON(w, http.StatusOK, whoamiFor(r, p, via, sessions))
 	}
+}
+
+// whoamiFor builds the whoami body of p.
+func whoamiFor(r *http.Request, p *authn.Principal, via string, sessions *authn.Sessions) whoamiResponse {
+	resp := whoamiResponse{
+		Principal: p.ID,
+		Name:      p.Name,
+		Provider:  p.Provider,
+		Roles:     append([]string{}, p.Roles...),
+		Scopes:    append([]authn.Scope{}, p.Scopes...),
+		Via:       via,
+	}
+	if p.IsSession() {
+		resp.Via = viaSession
+		if sessions != nil {
+			if s, err := sessions.Get(r.Context(), p.Meta[authn.MetaSessionID]); err == nil {
+				resp.Session = toSessionInfo(s)
+			}
+		}
+	}
+	return resp
 }

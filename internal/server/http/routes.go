@@ -10,7 +10,9 @@ import (
 // apiRoute is one /api/v1 route and the scope it requires. The table
 // in apiRoutes is the only place /api/v1 routes are declared: the
 // router mounts every entry through RequireScope, and a test walks the
-// router so a route added any other way fails.
+// router so a route added any other way fails. A web UI browser session
+// reaches a route only when its scope is in authn.UISessionScopes (and
+// the minting token holds it); a test pins that route set too.
 type apiRoute struct {
 	// Method is the HTTP method; "" mounts the handler for every method.
 	Method string
@@ -28,7 +30,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 	get, post, patch, del := http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete
 	return []apiRoute{
 		// Identity
-		{Method: get, Pattern: "/whoami", Scope: authn.ScopeReadSystem, Handler: Whoami(rc.Auth != nil)},
+		{Method: get, Pattern: "/whoami", Scope: authn.ScopeReadSystem, Handler: Whoami(rc.Auth != nil, rc.Sessions)},
 
 		// Objects
 		{Method: get, Pattern: "/objects", Scope: authn.ScopeReadObjects, Handler: ListObjects(svc)},
@@ -64,16 +66,16 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 
 		// Pipelines
 		{Method: post, Pattern: "/pipelines", Scope: authn.ScopeAdminPipelines, Handler: CreatePipeline(svc)},
-		{Method: get, Pattern: "/pipelines", Scope: authn.ScopeReadSystem, Handler: ListPipelines(svc)},
-		{Method: get, Pattern: "/pipelines/{name}", Scope: authn.ScopeReadSystem, Handler: GetPipeline(svc)},
+		{Method: get, Pattern: "/pipelines", Scope: authn.ScopeReadPipelines, Handler: ListPipelines(svc)},
+		{Method: get, Pattern: "/pipelines/{name}", Scope: authn.ScopeReadPipelines, Handler: GetPipeline(svc)},
 		{Method: del, Pattern: "/pipelines/{name}", Scope: authn.ScopeAdminPipelines, Handler: DeletePipeline(svc)},
 		{Method: post, Pattern: "/pipelines/{name}/archive", Scope: authn.ScopeAdminPipelines, Handler: ArchivePipeline(svc)},
 		{Method: post, Pattern: "/pipelines/{name}/unarchive", Scope: authn.ScopeAdminPipelines, Handler: UnarchivePipeline(svc)},
 		{Method: post, Pattern: "/pipelines/enqueue", Scope: authn.ScopeWriteObjects, Handler: Enqueue(svc)},
 
 		// Steps
-		{Method: get, Pattern: "/steps", Scope: authn.ScopeReadSystem, Handler: ListSteps(svc)},
-		{Method: get, Pattern: "/steps/{name}", Scope: authn.ScopeReadSystem, Handler: GetStep(svc)},
+		{Method: get, Pattern: "/steps", Scope: authn.ScopeReadPipelines, Handler: ListSteps(svc)},
+		{Method: get, Pattern: "/steps/{name}", Scope: authn.ScopeReadPipelines, Handler: GetStep(svc)},
 		{Method: post, Pattern: "/steps/install", Scope: authn.ScopeAdminPlugins, Handler: InstallStep(svc)},
 		{Method: del, Pattern: "/steps/{name}", Scope: authn.ScopeAdminPlugins, Handler: UninstallStep(svc)},
 
@@ -106,13 +108,13 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// Watches. Mutations are admin-only: a server-side watch reads
 		// the server's filesystem.
 		{Method: post, Pattern: "/watches", Scope: authn.ScopeAdminWatches, Handler: CreateWatch(svc, mgr)},
-		{Method: get, Pattern: "/watches", Scope: authn.ScopeReadSystem, Handler: ListWatches(svc)},
-		{Method: get, Pattern: "/watches/{id}", Scope: authn.ScopeReadSystem, Handler: GetWatch(svc)},
+		{Method: get, Pattern: "/watches", Scope: authn.ScopeReadWatches, Handler: ListWatches(svc)},
+		{Method: get, Pattern: "/watches/{id}", Scope: authn.ScopeReadWatches, Handler: GetWatch(svc)},
 		{Method: patch, Pattern: "/watches/{id}", Scope: authn.ScopeAdminWatches, Handler: UpdateWatch(svc, mgr)},
 		{Method: del, Pattern: "/watches/{id}", Scope: authn.ScopeAdminWatches, Handler: DeleteWatch(svc, mgr)},
 		{Method: post, Pattern: "/watches/{id}/pause", Scope: authn.ScopeAdminWatches, Handler: PauseWatch(mgr)},
 		{Method: post, Pattern: "/watches/{id}/resume", Scope: authn.ScopeAdminWatches, Handler: ResumeWatch(mgr)},
-		{Method: get, Pattern: "/watches/{id}/files", Scope: authn.ScopeReadSystem, Handler: ListWatchFiles(svc)},
+		{Method: get, Pattern: "/watches/{id}/files", Scope: authn.ScopeReadWatches, Handler: ListWatchFiles(svc)},
 
 		// Inbox
 		{Method: post, Pattern: "/inbox", Scope: authn.ScopeWriteInbox, Handler: CaptureInbox(svc)},
@@ -132,7 +134,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: post, Pattern: "/aliases", Scope: authn.ScopeWriteObjects, Handler: CreateAlias(svc)},
 		{Method: get, Pattern: "/aliases", Scope: authn.ScopeReadObjects, Handler: ListAliases(svc)},
 		{Method: get, Pattern: "/aliases/{alias}", Scope: authn.ScopeReadObjects, Handler: ResolveAlias(svc)},
-		{Method: del, Pattern: "/aliases/{alias}", Scope: authn.ScopeDeleteObjects, Handler: DeleteAlias(svc)},
+		{Method: del, Pattern: "/aliases/{alias}", Scope: authn.ScopeDeleteAliases, Handler: DeleteAlias(svc)},
 
 		// Capture (browser extension)
 		{Method: post, Pattern: "/capture/page", Scope: authn.ScopeWriteObjects, Handler: CapturePage(svc)},
@@ -144,11 +146,11 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: post, Pattern: "/saved-searches", Scope: authn.ScopeWriteObjects, Handler: CreateSavedSearch(svc)},
 		{Method: get, Pattern: "/saved-searches", Scope: authn.ScopeReadObjects, Handler: ListSavedSearches(svc)},
 		{Method: get, Pattern: "/saved-searches/{name}", Scope: authn.ScopeReadObjects, Handler: GetSavedSearch(svc)},
-		{Method: del, Pattern: "/saved-searches/{name}", Scope: authn.ScopeDeleteObjects, Handler: DeleteSavedSearch(svc)},
+		{Method: del, Pattern: "/saved-searches/{name}", Scope: authn.ScopeDeleteSearches, Handler: DeleteSavedSearch(svc)},
 
 		// Search history
 		{Method: get, Pattern: "/search-history", Scope: authn.ScopeReadObjects, Handler: ListSearchHistory(svc)},
-		{Method: del, Pattern: "/search-history", Scope: authn.ScopeDeleteObjects, Handler: ClearSearchHistory(svc)},
+		{Method: del, Pattern: "/search-history", Scope: authn.ScopeDeleteSearches, Handler: ClearSearchHistory(svc)},
 
 		// Audit log
 		{Method: get, Pattern: "/audit-log", Scope: authn.ScopeAdminAudit, Handler: ListAuditLog(svc)},
@@ -162,12 +164,13 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// MCP read surface (ADR-068): JSON-RPC 2.0 over POST, mounted
 		// as a sibling of the REST routes. Tool dispatch happens inside
 		// the handler; every tool is a read.
-		{Pattern: "/mcp/", Scope: authn.ScopeReadObjects, Handler: mountMCP(svc, rc.Semantic)},
-		{Pattern: "/mcp", Scope: authn.ScopeReadObjects, Handler: mountMCP(svc, rc.Semantic)},
+		{Pattern: "/mcp/", Scope: authn.ScopeReadMCP, Handler: mountMCP(svc, rc.Semantic)},
+		{Pattern: "/mcp", Scope: authn.ScopeReadMCP, Handler: mountMCP(svc, rc.Semantic)},
 
-		// Web UI sign-in: mint login codes, the session's whoami, sign out.
-		{Method: post, Pattern: "/ui/login-codes", Scope: authn.ScopeReadSystem, Handler: http.HandlerFunc(ui.mintCode)},
-		{Method: get, Pattern: "/ui/session", Scope: authn.ScopeReadSystem, Handler: http.HandlerFunc(ui.whoami)},
-		{Method: del, Pattern: "/ui/session", Scope: authn.ScopeReadSystem, Handler: http.HandlerFunc(ui.signOut)},
+		// Web UI sign-in: mint a login code (a token signs a browser in
+		// as itself), sign the browser out. GET /whoami describes the
+		// session.
+		{Method: post, Pattern: "/ui/login-codes", Scope: authn.ScopeReadUI, Handler: http.HandlerFunc(ui.mintCode)},
+		{Method: del, Pattern: "/ui/session", Scope: authn.ScopeSignoutUI, Handler: http.HandlerFunc(ui.signOut)},
 	}
 }

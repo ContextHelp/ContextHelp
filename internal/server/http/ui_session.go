@@ -28,7 +28,9 @@ import (
 //     session cookie: HttpOnly, Secure, SameSite=Strict, named per
 //     instance (SessionCookieName).
 //
-// GET /api/v1/ui/session says who the caller is; DELETE signs out.
+// A session holds its minting principal's scopes intersected with
+// authn.UISessionScopes. GET /api/v1/whoami says who the caller is and
+// describes the session; DELETE /api/v1/ui/session signs out.
 
 // HeaderCSRF must accompany every cookie-authenticated write and the
 // code exchange. A cross-origin page cannot set it without a CORS
@@ -121,16 +123,14 @@ type loginCodeResponse struct {
 	LoginPath string `json:"login_path"`
 }
 
-// mintCode handles POST /api/v1/ui/login-codes. Only a token caller may
-// mint: a browser session minting codes could extend itself forever.
+// mintCode handles POST /api/v1/ui/login-codes, behind read:ui. Only a
+// token caller may mint: no session holds read:ui (a session minting
+// codes could extend itself forever), and the code is bound to
+// the presented token, so the new session's scopes derive from it.
 func (u *uiSessionRoutes) mintCode(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if u.sessions == nil {
 		WriteJSON(w, http.StatusOK, loginCodeResponse{SessionRequired: false, LoginPath: "/ui/"})
-		return
-	}
-	if p, _ := authn.FromContext(r.Context()); p.IsSession() {
-		WriteError(w, http.StatusForbidden, "SESSION_SCOPE", "a browser session cannot mint login codes")
 		return
 	}
 	cred := credentialFromRequest(r)
@@ -156,52 +156,34 @@ func (u *uiSessionRoutes) mintCode(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// sessionInfo describes a browser session in whoami bodies.
 type sessionInfo struct {
-	ID            string    `json:"id"`
+	ID string `json:"id"`
+	// Kind is the session kind; its scopes are fixed per kind ("ui":
+	// authn.UISessionScopes).
+	Kind          string    `json:"kind"`
 	CreatedAt     time.Time `json:"created_at"`
 	IdleExpiresAt time.Time `json:"idle_expires_at"`
 	ExpiresAt     time.Time `json:"expires_at"`
 }
 
-type uiSessionResponse struct {
-	Authenticated   bool         `json:"authenticated"`
-	SessionRequired bool         `json:"session_required"`
-	Principal       string       `json:"principal,omitempty"`
-	Via             string       `json:"via,omitempty"`
-	Scope           string       `json:"scope,omitempty"`
-	Session         *sessionInfo `json:"session,omitempty"`
+func toSessionInfo(s *storage.UISession) *sessionInfo {
+	return &sessionInfo{ID: s.ID, Kind: s.Scope, CreatedAt: s.CreatedAt, IdleExpiresAt: s.IdleExpiresAt, ExpiresAt: s.ExpiresAt}
+}
+
+// exchangeResponse is the body of a successful code exchange: the new
+// session's whoami, plus a warning when the cookie will not stick.
+type exchangeResponse struct {
+	whoamiResponse
 	// Warning names a condition that will break the session, such as
 	// plain HTTP to a remote host.
 	Warning string `json:"warning,omitempty"`
 }
 
-func toSessionInfo(s *storage.UISession) *sessionInfo {
-	return &sessionInfo{ID: s.ID, CreatedAt: s.CreatedAt, IdleExpiresAt: s.IdleExpiresAt, ExpiresAt: s.ExpiresAt}
-}
-
-// whoami handles GET /api/v1/ui/session.
-func (u *uiSessionRoutes) whoami(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	p, ok := authn.FromContext(r.Context())
-	if !ok {
-		WriteJSON(w, http.StatusOK, uiSessionResponse{SessionRequired: u.sessions != nil})
-		return
-	}
-	resp := uiSessionResponse{Authenticated: true, SessionRequired: u.sessions != nil, Principal: p.ID, Via: "token"}
-	if p.IsSession() {
-		resp.Via = authn.ViaSession
-		resp.Scope = p.SessionScope()
-		if u.sessions != nil {
-			if s, err := u.sessions.Get(r.Context(), p.Meta[authn.MetaSessionID]); err == nil {
-				resp.Session = toSessionInfo(s)
-			}
-		}
-	}
-	WriteJSON(w, http.StatusOK, resp)
-}
-
-// signOut handles DELETE /api/v1/ui/session: it revokes the caller's
-// session and clears the cookie.
+// signOut handles DELETE /api/v1/ui/session, behind signout:ui: it
+// revokes the caller's session and clears the cookie. Only sessions
+// hold signout:ui; a private instance's local principal has no session
+// to end.
 func (u *uiSessionRoutes) signOut(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	p, _ := authn.FromContext(r.Context())
@@ -258,14 +240,9 @@ func (u *uiSessionRoutes) exchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, sessionCookie(r, m.Secret, m.Session.ExpiresAt))
-	resp := uiSessionResponse{
-		Authenticated:   true,
-		SessionRequired: true,
-		Principal:       m.Principal.ID,
-		Via:             authn.ViaSession,
-		Scope:           m.Session.Scope,
-		Session:         toSessionInfo(m.Session),
-	}
+	who := whoamiFor(r, m.Principal, viaSession, nil)
+	who.Session = toSessionInfo(m.Session)
+	resp := exchangeResponse{whoamiResponse: who}
 	if plainHTTPRemote(r) {
 		resp.Warning = plainHTTPWarning
 		fmt.Fprintf(u.warn, "warning: web UI sign-in over plain HTTP from %s to %s: browsers drop the Secure session cookie there; serve dpkms behind TLS\n",

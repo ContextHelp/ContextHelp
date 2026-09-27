@@ -53,13 +53,15 @@ The link works once, for 60 seconds. Run `ctxt ui open` again for a new one.
 
 ## What the browser session can do
 
-The session acts as your token's principal, so entitlements and quotas apply as for the token, but with a reduced scope:
+The session acts as your token's principal, so entitlements and quotas apply as for the token. Its scopes are your token's, narrowed to what the web UI needs: it never holds a scope your token lacks, and never more than the web UI's set, whatever your token's role.
 
-| Allowed | Refused (`403 SESSION_SCOPE`) |
+| Allowed, if your token's role has it | Refused (`403 INSUFFICIENT_SCOPE`) |
 |---|---|
-| Reading and searching objects, entities, jobs, inbox, feeds, aliases, suggestions, saved searches, search history, reminders, import runs, and the step registry list | Pipelines, steps, registry changes, watches, the audit log, federation, the MCP mount |
-| The web UI's own actions: delete an object, retry a job, sign out | Every other write (capture, analyze, inbox triage, feed and alias changes, …) |
-| The live event stream | Minting new sign-in links |
+| Reading and searching objects, entities, jobs, inbox, feeds, aliases, suggestions, saved searches, search history, reminders, import runs, and the step registry list (every role) | Pipelines, steps, registry changes, watches, the audit log, federation, the MCP mount |
+| Retrying a job (`writer`, `admin`); deleting an object (`admin`) | Every other write (capture, analyze, inbox triage, feed and alias changes, …) |
+| The live event stream (every role); signing out (every session) | Minting new sign-in links |
+
+A session signed in with a `reader` token only reads. To see what your session holds, open `/api/v1/whoami` in the signed-in browser: it lists the session's `scopes` and its expiry.
 
 The Registry page lists registries in a browser session; to fetch or update one, use `ctxt registry` or `dpkms step registry`.
 
@@ -103,7 +105,7 @@ The page says the browser did not keep the session cookie. The cookie is `Secure
 
 ### Not available to a web UI session
 
-The page or call needs more than the browser scope allows (see the table above). Use the ctxt CLI or an API token.
+The page or call needs a scope the session does not hold (`403 INSUFFICIENT_SCOPE`, naming the scope): either it is outside the web UI's set (see the table above), or your token's role lacks it. Use the ctxt CLI or an API token with that scope.
 
 ## For operators
 
