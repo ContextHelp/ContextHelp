@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"charm.land/fang/v2"
-	"github.com/ideacrafterslabs/ctxt/internal/cli/banner"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -123,11 +122,10 @@ var (
 				}
 				count, _ := cmd.Root().PersistentFlags().GetCount("verbose")
 				logger.Init(count > 0)
-				// Upgrade banner (ADR-070 §5, T-0580). Reads the
-				// shadow file under config.RunDir(); no-op when no
-				// upgrade is in flight. Failure to render the banner
-				// MUST NOT block the underlying command.
-				_ = banner.Inject(cmd.ErrOrStderr())
+				// Upgrade banner (ADR-070 §5): printed from the
+				// upgrade header on dpkms API responses, so it
+				// follows the instance this command talks to.
+				armUpgradeBanner(cmd)
 				return nil
 			},
 		},

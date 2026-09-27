@@ -170,7 +170,7 @@ Upgrade state: in_progress
 
 - `ctxt upgrade status` reads the instance ctxt resolves: `--instance`, `CTXT_INSTANCE` or `ctxt instance use`, else the first `server.urls` entry, else `server.url`, with its token. Pass `--server` for any other URL. It exits 70 when nothing answers there.
 - `--watch` refreshes until the state is idle. `--format json` returns the `/healthz` upgrade envelope: `state`, `bucket` (`embeddings_migrate`), `target` (the model ID), `done`, `total`, `failed`, `eta_seconds`, `last_error`.
-- While a job runs, every `ctxt` command prints a one-line `ℹ ctxt: upgrading embeddings_migrate; …` banner on stderr.
+- While a job runs, a `ctxt` command that calls the instance's API prints a one-line `ℹ ctxt: upgrading embeddings_migrate; …` banner on stderr, once per command. It comes from the `X-Dpkms-Upgrade` response header, so it shows for a remote instance too. `--quiet`, or a stderr that is not a terminal, hides it.
 - When a run ends it goes back to `idle`, unless objects failed.
 
 #### When objects fail
