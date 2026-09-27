@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/browser/launch"
 	"github.com/ideacrafterslabs/ctxt/internal/searchgraph"
 	"github.com/ideacrafterslabs/ctxt/internal/searchgraph/viewer"
 )
@@ -192,7 +193,7 @@ func TestFindGraph_StructuredOutputFile(t *testing.T) {
 
 // swapGraphViewerSeams replaces the browser opener and terminal check
 // for one test.
-func swapGraphViewerSeams(t *testing.T, op urlOpener, terminal func(io.Writer) bool) {
+func swapGraphViewerSeams(t *testing.T, op launch.Opener, terminal func(io.Writer) bool) {
 	t.Helper()
 	origOpener, origTerminal := graphViewerOpener, graphTerminal
 	t.Cleanup(func() { graphViewerOpener, graphTerminal = origOpener, origTerminal })

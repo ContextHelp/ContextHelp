@@ -3,18 +3,18 @@
 package searchgraph_test
 
 import (
-	"bufio"
 	"context"
-	"fmt"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/browser/launch"
 )
 
 // ttyCommand wraps argv so it runs with stdout and stderr on a
@@ -79,35 +79,22 @@ func TestViewer_BrowserOnlyAtTerminal(t *testing.T) {
 	}
 }
 
-// chromePath finds a Chrome or Chromium for the headless smoke tests.
-// CTXT_E2E_CHROME names one explicitly, or "off" disables them.
+// chromePath finds a Chrome or Chromium for the headless smoke tests
+// through launch.FindChrome: CTXT_CHROME names one explicitly, or "off"
+// disables them.
 func chromePath(t *testing.T) string {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("headless browser smoke: -short")
 	}
-	switch v := os.Getenv("CTXT_E2E_CHROME"); v {
-	case "off", "0", "false":
-		t.Skip("headless browser smoke disabled by CTXT_E2E_CHROME")
-	case "":
-	default:
-		return v
+	p, err := launch.FindChrome()
+	switch {
+	case errors.Is(err, launch.ErrDisabled), errors.Is(err, launch.ErrNotFound):
+		t.Skip(err)
+	case err != nil:
+		t.Fatal(err)
 	}
-	for _, p := range []string{
-		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-		"/Applications/Chromium.app/Contents/MacOS/Chromium",
-	} {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	for _, name := range []string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser"} {
-		if p, err := exec.LookPath(name); err == nil {
-			return p
-		}
-	}
-	t.Skip("no Chrome or Chromium found; set CTXT_E2E_CHROME to one")
-	return ""
+	return p
 }
 
 // chromeDeadline bounds one headless page render; chromeAttempts is how
@@ -122,99 +109,22 @@ const (
 // graph.json after its script loads and Chrome may dump the DOM on the
 // load event before that fetch resolves, and a cold Chrome start can
 // stall; either way the render is retried. A viewer that never renders
-// fails every attempt.
+// returns its last DOM for assertRendered to report.
 func renderDOM(t *testing.T, e *env, chrome, target string) string {
 	t.Helper()
-	var dom string
-	var err error
-	for range chromeAttempts {
-		dom, err = dumpDOM(e, chrome, target)
-		if err == nil && bodyRenderer.MatchString(dom) {
-			return dom
-		}
-	}
-	if err != nil {
+	dom, err := launch.DumpDOM(context.Background(), target, launch.Options{
+		Chrome:   chrome,
+		Timeout:  chromeDeadline,
+		Attempts: chromeAttempts,
+		Accept:   bodyRenderer.MatchString,
+		Env:      e.environ(),
+		Dir:      e.dir,
+		TempDir:  e.dir,
+	})
+	if err != nil && !errors.Is(err, launch.ErrRejected) {
 		t.Fatalf("headless chrome, %d attempts: %v", chromeAttempts, err)
 	}
 	return dom
-}
-
-// dumpDOM runs one headless Chrome --dump-dom of target. Chrome writes
-// the DOM, then may keep running while the 3D view animates, so the
-// process group is killed once the document is complete rather than
-// waited for.
-func dumpDOM(e *env, chrome, target string) (string, error) {
-	profile, err := os.MkdirTemp(e.dir, "chrome-")
-	if err != nil {
-		return "", err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), chromeDeadline)
-	defer cancel()
-	argv := []string{
-		"--headless=new", "--no-first-run", "--no-default-browser-check",
-		"--disable-extensions", "--disable-background-networking", "--disable-component-update",
-		"--disable-sync", "--disable-default-apps", "--mute-audio",
-		// Never touch the OS credential store: no macOS keychain prompt
-		// ("Chrome Safe Storage"), no Linux keyring.
-		"--use-mock-keychain", "--password-store=basic",
-		"--user-data-dir=" + profile,
-		"--timeout=10000", "--dump-dom", target,
-	}
-	// Chrome refuses its sandbox as root, and Linux CI runners may deny
-	// the unprivileged user namespaces it needs. The page is this test's
-	// own loopback or file output, rendered in a throwaway profile.
-	if os.Geteuid() == 0 || (runtime.GOOS == "linux" && os.Getenv("CI") != "") {
-		argv = append([]string{"--no-sandbox"}, argv...)
-	}
-	cmd := e.commandOf(ctx, chrome, argv...)
-	var stderr tailBuffer
-	cmd.Stderr = &stderr
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		return "", err
-	}
-	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("start chrome: %w", err)
-	}
-	defer func() {
-		_ = killGroup(cmd)
-		_ = cmd.Wait()
-	}()
-	var dom strings.Builder
-	sc := bufio.NewScanner(out)
-	sc.Buffer(make([]byte, 64*1024), 16*1024*1024)
-	for sc.Scan() {
-		dom.WriteString(sc.Text() + "\n")
-		if strings.Contains(sc.Text(), "</html>") {
-			return dom.String(), nil
-		}
-	}
-	if ctx.Err() != nil {
-		return "", fmt.Errorf("no complete DOM: %w; chrome stderr tail:\n%s", ctx.Err(), stderr.String())
-	}
-	return "", fmt.Errorf("no complete DOM: chrome exited; stderr tail:\n%s", stderr.String())
-}
-
-// tailBuffer keeps the last 4 KiB written to it.
-type tailBuffer struct {
-	mu  sync.Mutex
-	buf []byte
-}
-
-func (b *tailBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.buf = append(b.buf, p...)
-	if n := len(b.buf) - 4096; n > 0 {
-		b.buf = b.buf[n:]
-	}
-	return len(p), nil
-}
-
-func (b *tailBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return string(b.buf)
 }
 
 var (

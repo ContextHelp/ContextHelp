@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/browser/launch"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
@@ -44,7 +45,7 @@ var graphViewerFlags = []string{flagGraphNoBrowser, flagGraphIdleTimeout}
 
 // graphViewerOpener opens the viewer URL. A variable so tests can
 // swap in a fake and never launch a real browser.
-var graphViewerOpener urlOpener = systemOpener{}
+var graphViewerOpener launch.Opener = launch.System{}
 
 // graphTerminal reports whether a writer is a terminal. A variable so
 // tests can stand in for a TTY.

@@ -80,6 +80,7 @@ Docker.
 | `make test-unit` | `./cmd/...`, `./internal/...` | nothing |
 | `make test-integration` | `./test/integration/...` | Postgres + Redis |
 | `make test-smoke` | `./test/smoke/...` | `BUS_TOKEN` set |
+| `make test-e2e` | `./test/e2e/...` against a built binary | Chrome/Chromium for the headless checks (optional) |
 | `make test` | everything, with coverage | as above |
 | `make test-all` | unit + integration + smoke | as above |
 
@@ -117,6 +118,28 @@ an empty config dir.
 (`TestE2ECaptureEveryShortLoop`, "expected 2-5 captures in 280ms ... got 0") that
 reproduces on a clean tree. It is unrelated to any change you are making; if it
 is the only red package, you have not broken anything.
+
+### E2E tests and headless Chrome
+
+`make test-e2e` builds `ctxt` and drives it black-box in a throwaway `HOME`.
+The search-graph suite also renders the viewer in headless Chrome when it finds
+one; set `CTXT_CHROME` to a Chrome or Chromium binary to pick one, or
+`CTXT_CHROME=off` to skip those checks.
+
+Every browser ctxt starts, in the CLI or in tests, goes through
+`internal/browser/launch`: it owns the default-browser handlers and the
+headless switches (mock keychain, a throwaway profile removed afterwards, no
+sync, no extensions), and a test there fails if a headless switch appears
+anywhere else. For a manual look at a page with the same rules:
+
+```bash
+scripts/headless-chrome.sh dump http://127.0.0.1:PORT/TOKEN/   # print the rendered DOM
+scripts/headless-chrome.sh dump --attempts 3 --until 'data-renderer=' graph.html
+scripts/headless-chrome.sh path                                # which Chrome would run
+```
+
+Extra Chrome switches go after `--`; a switch the package sets itself is
+refused rather than overridden.
 
 ### Smoke tests
 
