@@ -18,13 +18,13 @@ Capture raw content quickly and reliably so it becomes searchable and composable
 
 ## Prerequisites
 
-1. `dpkms` server is running:
+1. `dpkms` server is running and reachable from this machine:
 
 ```bash
 dpkms serve
 ```
 
-2. `ctxt` client is configured (`~/.config/contexthelp/config.yaml`).
+2. `ctxt` client is configured (`~/.config/contexthelp/config.yaml`) with that instance's URL and a token that may write (`writer` or `admin`). `ctxt analyze`, bare `ctxt` fed on stdin, `ctxt capture` and the browser captures send to the one instance ctxt resolves (`--server`, `--instance`, `ctxt instance use`, else the first `server.urls` entry or `server.url`). Nothing is queued on this machine.
 3. You know the content type you are ingesting (`text`, `url`, `image`, `audio`, `video`, `feed`, or `auto`).
 
 ## Procedure
@@ -160,6 +160,17 @@ find ./imports -type f -name "*.md" -print0 | xargs -0 -I{} ctxt analyze --file 
 - Importer runs report scanned/imported/skipped/failed counts
 
 ## Common failure modes
+
+### `PREREQUISITE: dpkms at <url> unreachable` (exit 70)
+
+- Nothing answered at the resolved instance, and nothing was queued: run the command again once it answers.
+- Start `dpkms serve` there, or select another instance with `--instance <name>`.
+- ctxt never tries the next `server.urls` entry.
+
+### `UNAUTHORIZED: dpkms at <url> returned 401` or `403` (exit 5)
+
+- The token is missing, wrong, or a `reader` token without `write:objects`.
+- Set `server.token` (or the entry's `token`) to a `writer` or `admin` token. The request is not retried.
 
 ### Jobs remain pending too long
 

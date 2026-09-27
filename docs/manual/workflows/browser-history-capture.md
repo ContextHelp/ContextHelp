@@ -38,7 +38,7 @@ brave profile "Work" (Profile 1): visits since --since; the saved position moves
   sent  https://example.com/recent/150h  job job_1
   ...
 sent 8, denied 2, deduped 1, failed 0 (11 visits)
-position "brave:Profile 1": saved at 2026-09-26 10:13:24 EDT
+position "brave:Profile 1" on home: saved at 2026-09-26 10:13:24 EDT
 ```
 
 This also saves your position, so from now on a plain run (see [Keep it running](#keep-it-running)) picks up after the last visit sent.
@@ -47,7 +47,8 @@ Good to know:
 
 - `--browser-profile` takes the name shown in the browser's profile menu (`Work`) or the profile's folder name (`Profile 3`). Don't confuse it with `--profile`, which selects your ctxt focus profile.
 - The browser can stay open. ctxt reads a copy of the browser's history and never changes the browser's own files.
-- Visits go to the one dpkms instance ctxt resolves (`--instance`, `ctxt instance use`, else the first `server.urls` entry or `server.url`), with its token, the same way `ctxt analyze` routes. Other `server.urls` entries are never tried. If that instance doesn't answer, each URL is queued locally and runs when `dpkms serve` starts.
+- Visits go to the one dpkms instance ctxt resolves (`--instance`, `ctxt instance use`, else the first `server.urls` entry or `server.url`), with its token, the same way `ctxt analyze` routes. Other `server.urls` entries are never tried, and nothing is queued on this machine. If that instance doesn't answer, the run stops with exit status 70; if it rejects the token, with 5. Either way the position stays where it was.
+- The saved position belongs to that instance: `home` in the output above is the `server.urls` entry's name (a URL for an unnamed one). Sending to another instance starts from its own position, so it gets the history the first one already has.
 - The same URL visited several times is sent once per run.
 
 ## Keep it running
@@ -62,10 +63,10 @@ ctxt capture history --browser brave --browser-profile Work
 brave profile "Work" (Profile 1): incremental, new visits since the saved position
   2026-09-26 10:13:24 EDT .. now: 0 visits: 0 allowed, 0 denied, 0 deduped
 sent 0, denied 0, deduped 0, failed 0 (0 visits)
-position "brave:Profile 1": unchanged at 2026-09-26 10:13:24 EDT
+position "brave:Profile 1" on home: unchanged at 2026-09-26 10:13:24 EDT
 ```
 
-Each run sends every visit newer than the saved position for that browser profile, then moves the position to the last visit it handed off:
+Each run sends every visit newer than the saved position for that browser profile on that instance, then moves the position to the last visit it handed off:
 
 - Restarting your machine or ctxt doesn't send anything twice.
 - Visits you made while offline are sent once, on the next run.
@@ -151,13 +152,13 @@ Rule syntax, plus rules for every browser or every profile: [URL filter](../../a
 
 ## Start over
 
-To forget the saved position of one browser profile:
+To forget the saved position of one browser profile on the instance ctxt resolves:
 
 ```bash
 ctxt capture history --browser brave --browser-profile Work --reset-position
 ```
 
-Other browser profiles keep their positions. The next plain run starts again from `capture.history.initial_lookback`. `--reset-position` does nothing else and can't be combined with `--since`, `--until` or `--range`. Add `--dry-run` to see which position it would reset.
+Other browser profiles, and the same profile on other instances, keep their positions. The next plain run starts again from `capture.history.initial_lookback`. `--reset-position` does nothing else and can't be combined with `--since`, `--until` or `--range`. Add `--dry-run` to see which position it would reset.
 
 ## Reference
 
@@ -180,7 +181,7 @@ Other browser profiles keep their positions. The next plain run starts again fro
 | `--until <time>` | Backfill up to this time. |
 | `--range <from>..<to>` | Backfill this window. Repeatable. Can't be combined with `--since` or `--until`. |
 | `--tz <zone>` | IANA time zone for reading and showing dates, e.g. `Europe/Paris`. Default: your local time zone. |
-| `--reset-position` | Forget this browser profile's saved position, then exit. |
+| `--reset-position` | Forget this browser profile's saved position on this instance, then exit. |
 | `--dry-run` | Show the count per window and a sample of allowed and denied URLs, with reasons. Sends nothing; doesn't read or change the saved position. |
 | `--profile <name>` | Global flag: your ctxt focus profile, forwarded with every URL. Not the browser profile. |
 | `--format json` | Global flag: print one JSON document (see [Scripting](#scripting)). |
@@ -209,17 +210,19 @@ One entry for each page you actually opened, sent as its URL the same way `ctxt 
 
 ### Saved position
 
-Positions are kept per browser and browser profile (for example `brave:Profile 1`) in one file:
+Positions are kept per dpkms instance and per browser profile (for example `brave:Profile 1` on `home`) in one file. The instance is the `server.urls` entry's name, or its URL when it has none, so switching instances never skips history the other one didn't receive:
 
 - `$XDG_STATE_HOME/ctxt/ambient/browserhistory.state` when `XDG_STATE_HOME` is set;
 - otherwise `~/Library/Application Support/ctxt/ambient/browserhistory.state` on macOS and `~/.local/state/ctxt/ambient/browserhistory.state` on Linux;
 - or the path in `CTXT_AMBIENT_HISTORY_STATE_FILE`.
 
-Run with `-V` to print the path. If the file can't be read as a position file, the command stops before sending anything, names the file and exits with status 3. It never rewrites or resets a damaged file: fix it by hand, or delete it, which resets every browser profile. A bounded backfill still works while the file is damaged, because it doesn't read it.
+Run with `-V` to print the path. If the file can't be read as a position file, the command stops before sending anything, names the file and exits with status 3. It never rewrites or resets a damaged file: fix it by hand, or delete it, which resets every browser profile on every instance. A bounded backfill still works while the file is damaged, because it doesn't read it.
+
+A file written before positions were kept per instance (`"version": 1`) is refused the same way, with `unsupported position file version: version 1`. It is not converted. Delete it: the next plain run for each browser profile starts from `capture.history.initial_lookback`, and the server drops pages it already has.
 
 ### Scripting
 
-`--format json` prints one document: the mode (`incremental`, `since` or `backfill`), each window with its counts, the saved position before and after the run, the listed visits with their status (`would_send`, `sent`, `failed`, `denied`) and reason, and a summary:
+`--format json` prints one document: the mode (`incremental`, `since` or `backfill`), each window with its counts, the saved position (its `instance` and `key`) before and after the run, the listed visits with their status (`would_send`, `sent`, `failed`, `denied`) and reason, and a summary:
 
 ```bash
 ctxt capture history --browser brave --browser-profile Work --since 7d --dry-run --format json | jq '.summary'
@@ -234,7 +237,9 @@ A real run lists every URL it sent or failed to send; a dry run lists the sample
 | `0` | Every allowed visit was accepted. |
 | `1` | At least one send failed. The others were still sent; the position stops before the first failure. |
 | `2` | Bad invocation: unknown browser, unknown or ambiguous profile, bad time value or `--tz`, conflicting flags, or a bad `capture.history.initial_lookback`. Nothing was sent. |
-| `3` | The browser, the profile folder or its History database is not on disk, or the saved-position file is damaged. Nothing was sent. |
+| `3` | The browser, the profile folder or its History database is not on disk, or the saved-position file is damaged or from an older version. Nothing was sent. |
+| `5` | The instance rejected the token. The run stopped at the first visit and nothing was retried; the position stops before it. |
+| `70` | Nothing answered at the instance. The run stopped at the first visit; the position stops before it. |
 
 ## Troubleshooting
 
@@ -246,7 +251,11 @@ A real run lists every URL it sent or failed to send; a dry run lists the sample
 
 **`NOT_FOUND: ... has no History database`**: the profile has never been used. Open it in the browser once, then re-run.
 
-**`NOT_FOUND: position state file is corrupt: <path>`**: see [Saved position](#saved-position).
+**`NOT_FOUND: position state file is corrupt: <path>`**: see [Saved position](#saved-position). With `unsupported position file version: version 1`, delete the file.
+
+**`PREREQUISITE: dpkms at <url> unreachable`** (exit 70): start dpkms there, or pick a reachable instance with `--instance`. Nothing was queued on this machine; run the same command again once the instance answers.
+
+**`UNAUTHORIZED: dpkms at <url> returned 401`** or `403` (exit 5): the token for that instance is missing, wrong, or lacks `write:objects` (a `reader` token). Use a `writer` or `admin` token.
 
 **Do I need to close the browser?** No. Whether the browser is open or closed, ctxt reads a copy of its history.
 

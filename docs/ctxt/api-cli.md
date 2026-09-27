@@ -150,6 +150,8 @@ Plugins such as the Refresh Plugin and RSS Feed Plugin may add:
 - Returns a **Job ID**.
 - With `--wait`, returns the resulting **Knowledge Object ID**.
 - Plugins may intercept or extend `ctxt analyze` behavior via lifecycle hooks.
+- Content goes only to the one instance ctxt resolves (see [Resolution order](#resolution-order)). Nothing is queued on this machine and no other instance is tried.
+- Exit status: `70` nothing answered at the instance, `5` the instance rejected the token (not retried; a `reader` token lacks `write:objects`), `2` the instance refused the request (a `422` names the unrouted type or pipeline), `6` a server error.
 
 ### Examples
 
