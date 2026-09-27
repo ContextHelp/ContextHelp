@@ -1,0 +1,10 @@
+{
+  "state": "in_progress",
+  "bucket": "reindex_auto",
+  "target": "projection@v2",
+  "progress": 0.4,
+  "done": 400,
+  "total": 1000,
+  "eta_seconds": 3,
+  "started_at": "2026-09-27T09:00:00Z"
+}

@@ -116,6 +116,26 @@ dpkms pipeline step registry autoupdate <registry-url> --enable
 dpkms pipeline step registry autoupdate <registry-url> --disable
 ```
 
+## After upgrading dpkms
+
+A release that changes how objects are indexed for full-text search is re-applied automatically: on its first start, `dpkms serve` prints
+
+```text
+warning: FTS signature mismatch: old=… new=… — reindex_auto: re-projecting stored objects
+FTS re-projection to projection@v2: job <job-id> (follow with: ctxt upgrade status)
+```
+
+and re-projects every stored object in the background. Search keeps serving throughout; each object switches to its new index text as it is reached. Follow it:
+
+```bash
+ctxt upgrade status --watch   # bucket reindex_auto, target projection@vN
+```
+
+- **Stopped part-way** (shutdown, crash, `dpkms job cancel <job-id>`): the next start resumes with the objects not yet done. Nothing finished is redone.
+- **`failed` with a `failed` count**: those objects could not be re-projected and keep their old index text. The next start retries them; `last_error` names the first one.
+- **Embeddings are not refreshed** by this: stored vectors keep the text they were embedded from. See [Operate embedding models](./embeddings.md).
+- `dpkms housekeeping reindex` rebuilds the SQLite FTS table from the stored text; it does not re-project.
+
 ## Incident response playbook
 
 ### Severity model

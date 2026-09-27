@@ -106,6 +106,10 @@ type Manager struct {
 // not in the StateInProgress state. Callers can errors.Is-check it.
 var ErrNotRunning = errors.New("upgrade: no upgrade is in progress")
 
+// ErrBusy is returned by Start / StartTarget while another run is in
+// progress. Callers can errors.Is-check it.
+var ErrBusy = errors.New("upgrade: another run is in progress")
+
 // NewManager constructs a Manager that shadows its state to shadowPath.
 // Empty shadowPath disables shadowing (useful for tests that don't want a
 // stray file). The caller is responsible for ensuring the parent directory
@@ -132,7 +136,7 @@ func (m *Manager) StartTarget(bucket Bucket, target string, total int) error {
 	defer m.mu.Unlock()
 
 	if m.status.State == StateInProgress {
-		return fmt.Errorf("upgrade: another %s run is already in progress", m.status.Bucket)
+		return fmt.Errorf("%w: %s is already in progress", ErrBusy, m.status.Bucket)
 	}
 	if total < 0 {
 		return fmt.Errorf("upgrade: total must be >= 0 (got %d)", total)

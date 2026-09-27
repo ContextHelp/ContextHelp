@@ -1,0 +1,11 @@
+{
+  "state": "failed",
+  "bucket": "reindex_auto",
+  "target": "projection@v2",
+  "progress": 1,
+  "done": 1000,
+  "total": 1000,
+  "failed": 1,
+  "started_at": "2026-09-27T09:00:00Z",
+  "last_error": "1 objects still carry an older projection than projection@v2; the next dpkms start retries them (first failure: reproject obj-7: load: scan graph_json)"
+}

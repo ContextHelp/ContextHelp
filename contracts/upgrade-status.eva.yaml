@@ -34,7 +34,9 @@ evaluators:
           type: string
           enum: [reindex_auto, reingest_selective, reingest_all, embeddings_migrate]
         target:
-          # the model an embeddings_migrate run fills (ADR-071)
+          # the model an embeddings_migrate run fills (ADR-071), or the
+          # projection a reindex_auto re-projection brings objects to
+          # (projection@vN)
           type: string
         progress:
           type: number
