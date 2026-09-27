@@ -105,6 +105,7 @@ Operations (each maps to today's REST, with gRPC/MCP as equivalent bindings):
 | `listObjects` | `GET /api/v1/objects` | `{data:[KnowledgeObject], total}` |
 | `listEntities` | `GET /api/v1/entities` | `{data:[Entity], total}` |
 | `getEntity` | `GET /api/v1/entities/{slug}` | `Entity` |
+| `searchGraph` | none — planned `GET /api/v1/search/graph` (see below) | JGF document, `ctxt.search-graph/v1` |
 
 Contract rules:
 
@@ -115,6 +116,80 @@ Contract rules:
 - Envelope shape `{data, total}` is normative for list/search responses.
 - gRPC `QueryService` and MCP `search`/`schema` are declared **alternative
   bindings** of the same operations — same semantics, same payloads.
+
+#### `searchGraph` (proposal — endpoint not built)
+
+**Status:** the producer ships in the CLI today: `ctxt find "<q>" --graph`
+(`cmd/ctxt/cmd/find_graph.go`, `internal/searchgraph`). The dpkms endpoint
+**`GET /api/v1/search/graph`** is planned, not built; the manual says the
+graph is CLI-only for now
+([search-graph workflow](../manual/workflows/search-graph.md#limits)).
+Parameter names below are a proposal.
+
+`searchGraph` returns every candidate a hybrid search considered — returned,
+cut by limit, cut by threshold — with scores, and the entities and links
+between them. It traces the hybrid FTS+vector pipeline `ctxt find` runs, not
+the query-language search REST `search` serves today
+(`internal/search/engine.go`), so its candidates can differ from `search`.
+
+**Inputs** (query parameters; defaults are `ctxt find --graph`'s):
+
+| Param | CLI flag | Default |
+|---|---|---|
+| `q` (required) | positional query | — |
+| `profile` | — | none; see scoping below |
+| `limit` | `--limit` | `10` |
+| `min_score` | `--min-score` | search config |
+| `meta_type`, `topic`, `person`, `since`, `until`, `source_type` | same-named filters | none |
+| `max_nodes` | `--graph-max-nodes` | `250` (query node included) |
+| `max_edges` | `--graph-max-edges` | `1500` |
+| `similar` | `--graph-similar` | `false` |
+| `similar_threshold` | `--graph-similar-threshold` | `0.8`, in `(0,1]` |
+
+No mode, `explain` or `facets` parameter: the graph is always the hybrid
+trace, which is why the CLI rejects `--fts`, `--semantic`, `--explain` and
+`--facets` with `--graph`.
+
+**Output:** `200`, body is the bare JGF v2.1 single-graph document
+`{"graph": {...}}` — the bytes `ctxt find --graph --format json` prints, not
+wrapped in `{data, total}` (an exception to the envelope rule above). The
+vocabulary is `graph.metadata.vocabulary = "ctxt.search-graph/v1"`, defined
+in the `internal/searchgraph` package doc (`document.go`) and the
+[workflow's key table](../manual/workflows/search-graph.md#useful-keys);
+`ctxt.search-graph/v1` is versioned independently of `ui/v1` and bumps on a
+breaking document change.
+
+**Errors:**
+
+| Case | Response |
+|---|---|
+| `q` missing | `400 INVALID_REQUEST`, as `search` |
+| `max_nodes` / `max_edges` < 1; `similar_threshold` outside `(0,1]` or given without `similar=true` | `400 INVALID_REQUEST` (CLI: usage error) |
+| `similar=true` but the store cannot read embeddings by id (`searchgraph.ErrSimilarUnsupported`) | `400 INVALID_REQUEST`; adapters avoid it by reading the capability below |
+| No default embedding model, provider unreachable, no vectors yet | **Not an error.** `200`, full-text-only graph: `metadata.mode` is `fts_only` or `fts_fallback`, `metadata.semantic_status` names the reason, `metadata.vector_error` explains a failure. No `similar` edges without `metadata.vector_model`. |
+| Entitlement / quota | per the notes below |
+
+**Security and entitlements:**
+
+- Every string in the document (labels included) is untrusted text; adapters
+  escape it before rendering as HTML. The encoder deliberately does not.
+- **Entities pass the same entitlement gate as entity reads.** With an
+  inbound gate wired, an entity whose namespace the principal is not
+  entitled to is left out, with its `mentions` edges — the unmetered filter
+  `listEntities` applies (`handlers_entities.go`). The filter must run
+  before the builder derives edges: `co_mention` weights count every stored
+  mention of a pair, including entities the node cap drops
+  (`internal/searchgraph/relations.go`), so filtering nodes after the build
+  would leak hidden entities through edge weights.
+- **Objects are `profile`-scoped** like every Part A read. Not true of the
+  pipeline today: the hybrid legs ignore `ObjectFilter.ProfileID` (SQLite and
+  Postgres `FTSSearch` never read it), and the CLI never sets it. Scoping
+  both legs is a prerequisite for the endpoint.
+- The endpoint sits under `/api/v1` and inherits its auth (`RequireAuth`
+  when configured). The CLI viewer's rules — loopback-only bind, per-run
+  256-bit URL token, `Host` check, idle shutdown
+  (`cmd/ctxt/cmd/find_graph_viewer.go`) — and the `0600` mode of `-o` files
+  apply only to the CLI; they are not part of this contract.
 
 ### Part B — Live event contract (hardens existing raw SSE)
 
@@ -196,12 +271,17 @@ flags:
   "events": ["transcript.appended", "session.state", "suggestion.pushed",
              "notification.pushed", "object.changed"],
   "auth": "none",
-  "profiles": ["work", "personal"]
+  "profiles": ["work", "personal"],
+  "search_graph": {"vocabulary": "ctxt.search-graph/v1", "similar": true}
 }
 ```
 
 An adapter reads this first and adapts: e.g. fall back to SSE if `ws` absent,
-hide suggestion UI if `suggestion.pushed` not advertised. Negotiation makes
+hide suggestion UI if `suggestion.pushed` not advertised. `search_graph`
+(proposal) is present only when the engine serves `searchGraph`: absent, or
+a `vocabulary` the adapter does not understand, means hide the graph view
+and keep the plain `search` list; `similar: false` means hide the similar
+toggle (the store cannot read embeddings by id). Negotiation makes
 the contract forward-compatible — older adapters ignore unknown event types;
 newer adapters feature-detect.
 
