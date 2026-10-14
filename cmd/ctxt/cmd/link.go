@@ -184,8 +184,10 @@ var linkDeleteCmd = &cobra.Command{
 	Long: `Remove all associative links between two knowledge objects.
 Both forward and reverse edges are removed.
 
+` + cliconv.DestructiveTokenHelp + `
+
 Examples:
-  ctxt link delete obj_abc obj_xyz`,
+  ctxt link delete obj_abc obj_xyz --confirm-token=<sha>`,
 	Args: cobra.ExactArgs(2),
 	RunE: runLinkDelete,
 }
@@ -206,7 +208,7 @@ func init() {
 
 	// 12fcc strict-gate: examples + next-steps on the destructive leaf.
 	cliconv.WithExamples(linkDeleteCmd, []cliconv.Example{
-		{Title: "Remove every link between two objects", Command: "ctxt link delete obj_abc obj_xyz"},
+		{Title: "Remove every link between two objects", Command: "ctxt link delete obj_abc obj_xyz --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(linkDeleteCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt link list obj_abc", Reason: "verify the forward + reverse edges are gone"},

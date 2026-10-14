@@ -366,7 +366,7 @@ Delete knowledge objects on the dpkms instance, by ID or by filter.
 ### Usage
 
 ```bash
-ctxt delete <selector> --confirm=yes --confirm-token=<sha>
+ctxt delete <selector> --confirm-token=<sha>
 ```
 
 ### Selectors
@@ -452,7 +452,7 @@ Manage focus profiles.
 ctxt profile list
 ctxt profile view <name>
 ctxt profile create <name> --config <path>
-ctxt profile rm <name> --confirm=yes
+ctxt profile rm <name> --confirm-token=<sha>
 ctxt profile set <name>
 ctxt profile unset <name>
 ctxt profile schema evolve <name>
@@ -755,13 +755,13 @@ Manage registry subscriptions and metadata.
 ```bash
 ctxt registry list
 ctxt registry add <name> <url>
-ctxt registry delete <name> --confirm=yes
+ctxt registry delete <name> --confirm-token=<sha>
 ctxt registry info <name>
 ctxt registry sync <name>
 ctxt registry pending [--registry <name>]
-ctxt registry approve <id>... --confirm=yes --confirm-token=<sha>
-ctxt registry approve --all --registry <name> --confirm=yes --confirm-token=<sha>
-ctxt registry reject <id>... --confirm=yes --confirm-token=<sha>
+ctxt registry approve <id>... --confirm-token=<sha>
+ctxt registry approve --all --registry <name> --confirm-token=<sha>
+ctxt registry reject <id>...
 ```
 
 `list` shows the cached registry manifests (what `add` and `sync`
@@ -798,9 +798,10 @@ trusted registries' entities take part in reconciliation.
   when an ID is not queued; a registry that is now `sandboxed` cannot
   have its queued entities approved. A later sync of a version already
   approved does not queue it again, and a new version replaces the
-  queued one. Both commands are gated like `delete` (`--confirm=yes`
-  plus the `--confirm-token` the refusal prints); `--dry-run` lists
-  what they would touch. Setting `trust_level: trusted` and syncing
+  queued one. `approve` is gated like `delete`: it needs the
+  `--confirm-token` the refusal prints, and `--confirm=yes` alone is
+  refused. `reject` needs no confirmation. `--dry-run` lists what
+  either would touch. Setting `trust_level: trusted` and syncing
   again also writes them and empties the registry's queue.
 - `sandboxed`: blocked (`N blocked`), never queued: a sandboxed
   registry never writes to the local graph.

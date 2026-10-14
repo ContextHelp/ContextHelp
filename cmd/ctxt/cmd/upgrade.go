@@ -91,7 +91,7 @@ func init() {
 	cliconv.WithIdempotency(upgradeCheckCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(upgradeCheckCmd, []cliconv.Example{
 		{Title: "Check for a new release", Command: "ctxt upgrade check"},
-		{Title: "Check and emit JSON", Command: "ctxt upgrade check --json"},
+		{Title: "Check and emit JSON", Command: "ctxt upgrade check --format json"},
 	})
 
 	cliconv.WithSideEffect(upgradeInstallCmd, cliconv.SideEffectWrite)

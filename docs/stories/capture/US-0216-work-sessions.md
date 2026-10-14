@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-067
-task: T-0505
 ---
 
 # US-0216: Work Sessions (Temporal Grouping of Captures)
@@ -178,7 +177,7 @@ Items (34):
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-067 — see `tlc track show ambient-capture`, task **T-0505**.
+Implements ADR-067.
 
 ---
 

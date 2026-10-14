@@ -25,7 +25,7 @@ OpenChronicle (`~/.p/sandbox/OpenChronicle`) demonstrates a working ambient-capt
 
 This rules out the obvious-but-wrong design of putting an ambient runner inside `cmd/dpkms/`. The ambient substrate belongs on the client side.
 
-The brainstorm produced this analysis (see `~/.claude/plans/check-p-sandbox-openchronicle-which-capt-structured-shell.md`). The track `ambient-capture` carries the implementation plan; this ADR locks the substrate decisions before any code lands.
+The brainstorm produced this analysis; this ADR locks the substrate decisions before any code lands.
 
 **The question:** What substrate shape supports pluggable ambient sources running on the user's local machine, feeding cheap-deduped events into the existing dpkms enqueue API, while integrating with kit/bus + kit/policy and composing cleanly with the ADR-065 typed adapter substrate?
 
@@ -350,5 +350,3 @@ Local-filesystem (default, XDG-compliant), S3-compatible (AWS/R2/B2/MinIO), and 
 - ADR-067 *(planned)* — Session/WorkUnit as a first-class type
 - ADR-068 *(planned)* — dpkms MCP read-surface (and possible local-side mirror)
 - OpenChronicle prior art: `~/.p/sandbox/OpenChronicle` — patterns borrowed: event dispatcher dedup (`capture/event_dispatcher.py`), session cutter (`session/manager.py`), tiered retention (`docs/architecture.md`), MCP-as-read-surface (`mcp/server.py`).
-- Brainstorm + scope analysis: `~/.claude/plans/check-p-sandbox-openchronicle-which-capt-structured-shell.md`
-- tlc track: `ambient-capture` — `tlc track show ambient-capture`

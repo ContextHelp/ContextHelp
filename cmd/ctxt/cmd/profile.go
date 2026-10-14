@@ -37,7 +37,7 @@ Examples:
   ctxt profile unset founder
 
   # Remove a profile
-  ctxt profile rm myproject --confirm=yes`,
+  ctxt profile rm myproject --confirm-token=<sha>`,
 }
 
 var profileListCmd = &cobra.Command{
@@ -75,7 +75,7 @@ var profileRmCmd = &cobra.Command{
 profile was the default, the default is also cleared. The change is
 persisted by rewriting the resolved config file.
 
-Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
+` + cliconv.DestructiveTokenHelp,
 	Args: cobra.ExactArgs(1),
 	RunE: runProfileRm,
 }
@@ -174,8 +174,7 @@ func init() {
 	// error, but re-running against the same end state is safe.
 	cliconv.WithIdempotency(profileRmCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(profileRmCmd, []cliconv.Example{
-		{Title: "Remove a profile", Command: "ctxt profile rm myproject --confirm=yes"},
-		{Title: "Remove with interactive confirmation", Command: "ctxt profile rm myproject --confirm=prompt"},
+		{Title: "Remove a profile", Command: "ctxt profile rm myproject --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(profileRmCmd, []cliconv.NextStep{
 		{Suggest: "ctxt profile list", Reason: "confirm the profile is gone and review remaining ones"},

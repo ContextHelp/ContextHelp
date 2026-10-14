@@ -47,7 +47,7 @@ Examples:
   ctxt registry sync --dry-run uxpatterns
 
   # Remove a registry
-  ctxt registry delete uxpatterns`,
+  ctxt registry delete uxpatterns --confirm-token=<sha>`,
 }
 
 var registryListCmd = &cobra.Command{
@@ -88,7 +88,7 @@ var registryRemoveCmd = &cobra.Command{
 matching entry from the config file. Fails when the registry is not
 present in the config.
 
-Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
+` + cliconv.DestructiveTokenHelp,
 	Args: cobra.ExactArgs(1),
 	RunE: runRegistryRemove,
 }
@@ -292,8 +292,7 @@ func init() {
 	cliconv.WithSideEffect(registryRemoveCmd, cliconv.SideEffectDestructive)
 	cliconv.WithDestructiveToken(registryRemoveCmd)
 	cliconv.WithExamples(registryRemoveCmd, []cliconv.Example{
-		{Title: "Delete a registry", Command: "ctxt registry delete uxpatterns --confirm=yes"},
-		{Title: "Delete with interactive confirmation", Command: "ctxt registry delete uxpatterns --confirm=prompt"},
+		{Title: "Delete a registry", Command: "ctxt registry delete uxpatterns --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(registryRemoveCmd, []cliconv.NextStep{
 		{Suggest: "ctxt config show", Reason: "confirm the entry is gone from the configured registries"},

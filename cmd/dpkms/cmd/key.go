@@ -34,8 +34,8 @@ The public key is written to:
 
   ~/.config/contexthelp/keys/<fingerprint>.pub
 
-Use "dpkms config backup" to produce a signed config bundle.
-Use "dpkms config restore --verify" to verify before restoring.`,
+Use "ctxt config backup" to produce a signed config bundle.
+Use "ctxt config restore --verify" to verify it while restoring.`,
 	RunE: runKeyInit,
 }
 

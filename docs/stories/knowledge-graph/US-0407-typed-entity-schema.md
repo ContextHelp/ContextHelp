@@ -10,7 +10,6 @@ status: shipped-no-e2e
 
 **Status:** paper
 **Author:** $USER
-**Task:** T-0109
 
 ---
 

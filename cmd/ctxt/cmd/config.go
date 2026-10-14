@@ -129,11 +129,11 @@ The signature file is expected alongside the zip: <bundle>.zip.sig
 
 Without --verify, the bundle is extracted without signature checking.
 
-Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).
+` + cliconv.DestructiveTokenHelp + `
 
 Examples:
-  ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --verify
-  ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip`,
+  ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --verify --confirm-token=<sha>
+  ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --confirm-token=<sha>`,
 	RunE: runConfigRestore,
 }
 
@@ -229,10 +229,10 @@ func init() {
 		{Title: "Backup to a specific directory", Command: "ctxt config backup --output /tmp/my-backup"},
 	})
 	cliconv.WithNextSteps(configBackupCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt config restore --verify <bundle.zip>", Reason: "verify the bundle signature round-trips before relying on it"},
+		{When: "on success", Suggest: "ctxt config restore --verify --dry-run <bundle.zip>", Reason: "verify the bundle signature round-trips before relying on it"},
 	})
 	cliconv.WithExamples(configRestoreCmd, []cliconv.Example{
-		{Title: "Restore with signature verification", Command: "ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --verify"},
+		{Title: "Restore with signature verification", Command: "ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --verify --confirm-token=<sha>"},
 		{Title: "Dry-run a restore to inspect contents", Command: "ctxt config restore ctxt-config-bundle.zip --verify --dry-run"},
 	})
 	cliconv.WithNextSteps(configRestoreCmd, []cliconv.NextStep{
@@ -513,7 +513,7 @@ func runConfigBackup(cmd *cobra.Command, _ []string) error {
 	if encrypt {
 		fmt.Fprintf(cmd.OutOrStdout(), "  encrypted:   yes (AES-256-GCM + Argon2id)\n")
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "\nVerify with: ctxt config restore --verify %s\n", result.ZipPath)
+	fmt.Fprintf(cmd.OutOrStdout(), "\nVerify with: ctxt config restore --verify --dry-run %s\n", result.ZipPath)
 	return nil
 }
 

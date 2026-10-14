@@ -1277,7 +1277,7 @@ govulncheck ./...
    - Self-owned package at `hop.top/hdl`
    - Replaces manual OS-specific code (LSSetDefaultHandlerForURLScheme, xdg-mime, registry)
    - Used by `ctxt uri register` to make `ctxt://` links OS-clickable
-   - Phase 9 (T-0158)
+   - Phase 9
 
 **Comparison with awesome-go:**
 - Validated choices against community standards

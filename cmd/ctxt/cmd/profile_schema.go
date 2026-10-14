@@ -26,8 +26,8 @@ Examples:
   ctxt profile schema add-type founder decision
   ctxt profile schema add-topic founder security
   ctxt profile schema add-rule founder "(?i)deploy" task
-  ctxt profile schema remove-type founder decision
-  ctxt profile schema remove-topic founder security
+  ctxt profile schema remove-type founder decision --confirm-token=<sha>
+  ctxt profile schema remove-topic founder security --confirm-token=<sha>
   ctxt profile schema evolve founder`,
 }
 
@@ -80,7 +80,7 @@ vocabulary. Fails when the type is not present. The schema version
 is bumped and the change is persisted by rewriting the resolved
 config file.
 
-Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
+` + cliconv.DestructiveTokenHelp,
 	Args: cobra.ExactArgs(2),
 	RunE: runSchemaRemoveType,
 }
@@ -93,7 +93,7 @@ vocabulary. Fails when the topic is not present. The schema version
 is bumped and the change is persisted by rewriting the resolved
 config file.
 
-Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
+` + cliconv.DestructiveTokenHelp,
 	Args: cobra.ExactArgs(2),
 	RunE: runSchemaRemoveTopic,
 }
@@ -124,7 +124,7 @@ func init() {
 	cliconv.WithSideEffect(schemaShowCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(schemaShowCmd, []cliconv.Example{
 		{Title: "Show schema for a profile", Command: "ctxt profile schema show founder"},
-		{Title: "Show schema as JSON", Command: "ctxt profile schema show founder --json"},
+		{Title: "Show schema as JSON", Command: "ctxt profile schema show founder --format json"},
 	})
 
 	cliconv.WithSideEffect(schemaAddTypeCmd, cliconv.SideEffectWrite)
@@ -164,8 +164,7 @@ func init() {
 	cliconv.WithDestructiveToken(schemaRemoveTypeCmd)
 	cliconv.WithIdempotency(schemaRemoveTypeCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(schemaRemoveTypeCmd, []cliconv.Example{
-		{Title: "Remove an entity type", Command: "ctxt profile schema remove-type founder decision --confirm=yes"},
-		{Title: "Remove with interactive confirmation", Command: "ctxt profile schema remove-type founder risk --confirm=prompt"},
+		{Title: "Remove an entity type", Command: "ctxt profile schema remove-type founder decision --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(schemaRemoveTypeCmd, []cliconv.NextStep{
 		{Suggest: "ctxt profile schema show <profile>", Reason: "confirm the type was dropped and the schema version bumped"},
@@ -176,8 +175,7 @@ func init() {
 	cliconv.WithDestructiveToken(schemaRemoveTopicCmd)
 	cliconv.WithIdempotency(schemaRemoveTopicCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(schemaRemoveTopicCmd, []cliconv.Example{
-		{Title: "Remove a topic", Command: "ctxt profile schema remove-topic founder security --confirm=yes"},
-		{Title: "Remove with interactive confirmation", Command: "ctxt profile schema remove-topic founder pricing --confirm=prompt"},
+		{Title: "Remove a topic", Command: "ctxt profile schema remove-topic founder security --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(schemaRemoveTopicCmd, []cliconv.NextStep{
 		{Suggest: "ctxt profile schema show <profile>", Reason: "confirm the topic was dropped and the schema version bumped"},
@@ -188,7 +186,7 @@ func init() {
 	cliconv.WithIdempotency(schemaEvolveCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(schemaEvolveCmd, []cliconv.Example{
 		{Title: "Suggest schema improvements", Command: "ctxt profile schema evolve founder"},
-		{Title: "Emit suggestions as JSON", Command: "ctxt profile schema evolve founder --json"},
+		{Title: "Emit suggestions as JSON", Command: "ctxt profile schema evolve founder --format json"},
 	})
 	cliconv.WithNextSteps(schemaEvolveCmd, []cliconv.NextStep{
 		{When: "for each suggested type", Suggest: "ctxt profile schema add-type <profile> <type>", Reason: "apply a recommended entity type"},

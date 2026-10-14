@@ -343,13 +343,13 @@ lifecycle:
 
 ### New Tasks Required
 
-- `T-XXXX implement(schema): migration 022 — lifecycle fields on objects`
-- `T-XXXX implement(engine): decay calculator + lazy score recomputation`
-- `T-XXXX implement(engine): tier transition evaluator + background observer hook`
-- `T-XXXX implement(engine): tier-aware resurfacing queue filter`
-- `T-XXXX implement(cli): ctxt inbox --stale surface + promote/discard UX`
-- `T-XXXX implement(export): tier-aware inclusion defaults`
-- `T-XXXX implement(sync): tier → local_copy mapping for thin sync`
+- `implement(schema): migration 022 — lifecycle fields on objects`
+- `implement(engine): decay calculator + lazy score recomputation`
+- `implement(engine): tier transition evaluator + background observer hook`
+- `implement(engine): tier-aware resurfacing queue filter`
+- `implement(cli): ctxt inbox --stale surface + promote/discard UX`
+- `implement(export): tier-aware inclusion defaults`
+- `implement(sync): tier → local_copy mapping for thin sync`
 - `T-XXXX docs(config): lifecycle config block in configuration.md`
 
 ### Phasing

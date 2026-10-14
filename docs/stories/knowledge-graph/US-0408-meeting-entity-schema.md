@@ -10,7 +10,6 @@ status: paper
 
 **Status:** paper
 **Author:** $USER
-**Task:** T-0147
 
 ---
 

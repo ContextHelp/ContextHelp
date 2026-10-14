@@ -28,22 +28,20 @@ holds: a writer token exits 5 and deletes nothing. A filter selects the
 instance's active objects (GET /api/v1/objects); each match is then
 deleted with its own DELETE /api/v1/objects/{id}.
 
-Confirmation is governed by kit's global --confirm flag (auto|yes|no|prompt).
-Pass --confirm=yes to bypass the prompt non-interactively. The kit-owned
---confirm-token=<sha> is also required (the printed token must be echoed back).
+` + cliconv.DestructiveTokenHelp + `
 
 Examples:
   # Delete specific object
-  ctxt delete --id obj_12345678 --confirm=yes --confirm-token=<sha>
+  ctxt delete --id obj_12345678 --confirm-token=<sha>
 
   # Delete by tag
-  ctxt delete --tagged temporary --confirm=yes --confirm-token=<sha>
+  ctxt delete --tagged temporary --confirm-token=<sha>
 
   # Delete by mention
-  ctxt delete --mention @project.archived --confirm=yes --confirm-token=<sha>
+  ctxt delete --mention @project.archived --confirm-token=<sha>
 
   # Delete all (requires confirmation)
-  ctxt delete --all --confirm=yes --confirm-token=<sha>`,
+  ctxt delete --all --confirm-token=<sha>`,
 	PreRunE: previewDelete,
 	RunE:    runDelete,
 }
@@ -52,9 +50,9 @@ func init() {
 	rootCmd.AddCommand(deleteCmd)
 	cliconv.WithSideEffect(deleteCmd, cliconv.SideEffectDestructive)
 	cliconv.WithExamples(deleteCmd, []cliconv.Example{
-		{Title: "Delete a specific object", Command: "ctxt delete --id obj_12345678 --confirm=yes --confirm-token=<sha>"},
-		{Title: "Delete by tag", Command: "ctxt delete --tagged temporary --confirm=yes --confirm-token=<sha>"},
-		{Title: "Delete everything (destructive)", Command: "ctxt delete --all --confirm=yes --confirm-token=<sha>"},
+		{Title: "Delete a specific object", Command: "ctxt delete --id obj_12345678 --confirm-token=<sha>"},
+		{Title: "Delete by tag", Command: "ctxt delete --tagged temporary --confirm-token=<sha>"},
+		{Title: "Delete everything (destructive)", Command: "ctxt delete --all --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(deleteCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt list", Reason: "confirm the matching objects are gone"},

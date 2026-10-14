@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-069
-task: T-0517
 ---
 
 # US-0221: Meeting Auto-Detect Prompt (Opt-In)
@@ -176,7 +175,7 @@ ctxt capture meeting auto-detect forget --bundle us.zoom.xos
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-069 Phase 5 (auto-detect prompt) — see `tlc track show ambient-capture`, task **T-0517**.
+Implements ADR-069 Phase 5 (auto-detect prompt).
 
 ---
 

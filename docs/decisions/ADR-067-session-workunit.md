@@ -342,4 +342,3 @@ Demonstrates soft-FK behavior: events tagged with a session_id can arrive at dpk
   - `~/.p/sandbox/OpenChronicle/src/openchronicle/session/manager.py` — three-rule cutter; ports verbatim to Go
   - `~/.p/sandbox/OpenChronicle/docs/session.md` — rationale, tuning table, post-mortem on per-capture vs. session-level writes
 - OC v1→v2 post-mortem (`docs/session.md` lines 93–100): why per-capture writes failed and session-level fixed it
-- tlc track: `ambient-capture` — `tlc track show ambient-capture` (T-0496 carries this ADR; T-0505 carries the implementation)

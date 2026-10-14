@@ -211,7 +211,7 @@ ctxt registry list
 ctxt registry add uxpatterns https://uxpatterns.example.com
 ctxt registry info uxpatterns
 ctxt registry sync uxpatterns
-ctxt registry delete uxpatterns --confirm=yes
+ctxt registry delete uxpatterns --confirm-token=<sha>
 
 # Entities
 ctxt entity list

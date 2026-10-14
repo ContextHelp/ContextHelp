@@ -325,4 +325,3 @@ Every tool invocation passes through bus event emission for observability + CEL 
   - `~/.p/sandbox/OpenChronicle/src/openchronicle/mcp/server.py` — FastMCP server pattern
   - `~/.p/sandbox/OpenChronicle/src/openchronicle/mcp/captures.py` — raw-layer tools (analog to ctxd-side)
 - MCP spec 2025-03-26 (Streamable-HTTP transport)
-- tlc track: `ambient-capture` — `tlc track show ambient-capture` (T-0497 carries this ADR)

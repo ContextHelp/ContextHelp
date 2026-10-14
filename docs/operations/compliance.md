@@ -14,18 +14,23 @@ Related: [Security Model](../security/security-model.md) |
 
 **Default behaviour: all data stays on the local machine.**
 
-| Layer | Location | Cloud egress? |
-|-------|----------|--------------|
-| Primary store | `~/.local/share/contexthelp/db.sqlite` | No |
-| Object cache | `~/.cache/contexthelp/` | No |
-| Audit log | `~/.local/share/contexthelp/audit.log` | No |
-| Vector index | `~/.local/share/contexthelp/vecs/` | No |
+Everything lives under the data directory (`storage.data_dir`; default
+`$XDG_DATA_HOME/contexthelp`: `~/.local/share/contexthelp` on Linux,
+`~/Library/Application Support/contexthelp` on macOS).
+
+| Data | Location | Cloud egress? |
+|------|----------|--------------|
+| Database: objects, embeddings and vector indexes, jobs, audit log | `<data dir>/db.sqlite` (`storage.path`) | No |
+| Blobs (externalized object content) | `<data dir>/blobs/` (`storage.blob.local.path`) | No |
+| Pre-migration database snapshots | `<data dir>/backups/` | No |
 
 External egress only occurs when **explicitly configured**:
 
 - AI provider API calls (OpenAI, Anthropic) — opt-in via `providers.*` and the provider API key env vars
-- Registry sync — opt-in via `registries.*`
-- Remote dPKMS backend (Postgres, S3) — opt-in via `storage.type`
+- Registry sync — opt-in via `registries`
+- Remote database — opt-in via `storage.type: postgres`
+- Remote blob store — opt-in via `storage.blob.backend: s3` (`storage.blob.s3.*`)
+- Security alert webhook — opt-in via `security.alerts.webhook_url`
 
 The `--offline` global flag refuses outbound HTTP for one invocation. Any
 request a command makes through Go's default HTTP transport on the
@@ -81,82 +86,75 @@ dpkms housekeeping prune --before 2025-01-01
 ## Right to Erasure
 
 ctxt supports GDPR Art. 17 / CCPA right-to-delete via the `ctxt delete`
-command and its bulk variants.
+command and its filters.
 
 ### Single-object deletion
 
 ```
-ctxt delete --id <id> --confirm=yes --confirm-token=<sha>
+ctxt delete --id <id> --confirm-token=<sha>
 ```
 
-Deleting needs an `admin` token: `writer` and `reader` tokens exit 5 and delete nothing. Without `--confirm-token` the command refuses and prints the token to echo back; `--dry-run` lists what it would delete.
-
-Cascade effects:
-- Removes the object row from SQLite
-- Removes associated vector embeddings
-- Removes backlink edges from the entity graph
-- Removes mention records referencing the object
-- Does NOT remove audit log entries (immutable by design)
+Deleting needs a token with `delete:objects` on a protected or public instance, and only the `admin` role holds it. `writer` and `reader` tokens exit 5 and delete nothing. A private instance (the default) authenticates nobody, so every local caller can delete. Without `--confirm-token` the command refuses and prints the token to echo back; `--dry-run` lists what it would delete.
 
 ### Bulk deletion
 
 ```
 # Preview, then delete every active object
 ctxt delete --all --dry-run
-ctxt delete --all --confirm=yes --confirm-token=<sha>
+ctxt delete --all --confirm-token=<sha>
 
 # Delete by tag
-ctxt delete --tagged temporary --confirm=yes --confirm-token=<sha>
+ctxt delete --tagged temporary --confirm-token=<sha>
 
 # Delete by mention
-ctxt delete --mention @project.archived --confirm=yes --confirm-token=<sha>
+ctxt delete --mention @project.archived --confirm-token=<sha>
 ```
 
-> **Note:** `--before <date>` date-range bulk deletion is not yet implemented in the
-> shipped `ctxt delete` command. As a workaround, list objects with `ctxt list`,
-> filter by date in a script, then delete by ID in a loop:
->
-> ```bash
-> ctxt list --output json | jq -r '.[] | select(.created_at < "2025-01-01") | .id' \
->   | xargs -I{} ctxt delete --id {} --confirm=yes --confirm-token=<sha>
-> ```
+A filter (`--all`, `--tagged`, `--mention`, `--type`) matches active objects only. Objects in the inbox, raw or discarded state are deleted by `--id`; find them with `ctxt list --status all`.
+
+`ctxt delete` has no date filter. `dpkms housekeeping prune --before` deletes every object created before a date. It runs on the dpkms host, opens the database directly, and handles up to 10,000 objects per run, so repeat it until the preview finds none:
+
+```bash
+dpkms housekeeping prune --before 2025-01-01 --dry-run   # preview
+dpkms housekeeping prune --before 2025-01-01
+```
 
 ### Cascade effects summary
 
+Every hard delete (`DELETE /api/v1/objects/{id}`, which `ctxt delete` calls, and `dpkms housekeeping prune`) takes the same path. On the SQLite driver:
+
 | Affected store | Action on delete |
 |----------------|-----------------|
-| `objects` table | Hard delete |
-| `vectors` table | Cascade delete |
-| `mentions` table | Cascade delete |
-| `backlinks` table | Edge removed |
-| `entity_refs` table | Orphan check; stub if no other refs |
-| `audit_log` | Immutable; deletion event appended |
+| `objects` row (with its tags and mentions) and its full-text index entry | Hard delete |
+| `attachments` | Deleted with the row |
+| `embeddings` and the per-model vector indexes | Cascade delete |
+| `aliases`, `object_nodes`, `resurfacing_queue` | Cascade delete |
+| `edges` from or to the object (backlinks, mention links) | Deleted before the row |
+| Blobs holding the object's content | Deleted when no other object refers to them and they are over an hour old; younger ones are left for `dpkms housekeeping run` |
+| `object_proximity` | Not deleted |
+| Entities | Kept |
+| `audit_log` | Untouched; no deletion event is written |
+
+Deleting an object does not reach copies of the database. Each schema migration first copies a SQLite database into `backups/` beside it (the last 3 are kept; `storage.migrate_snapshot` turns this off), and `dpkms backup` writes archives wherever the operator points it. Both still hold deleted objects. Rotate or delete them to complete an erasure.
 
 ### Verification
 
 After a deletion run, confirm with:
 
 ```
-ctxt list --output json | jq 'length'
+ctxt list --tagged temporary --status all --format json | jq '.total'
 # Should return 0 for the relevant subset
 ```
 
-For regulated environments, export the audit log entry as evidence:
-
-```
-ctxt audit export --event-type object.delete --since 2025-01-01 --format json
-```
+Object deletions are not written to the audit log. The audit log records deduplication decisions, fan-out edge creation, security alerts and `ctxt doctor` runs. To keep evidence of an erasure, save the dry-run plan (`--dry-run --format json`) alongside the request.
 
 ### Full database wipe
 
-`ctxt db drop` is not yet implemented. To destroy all data (unrecoverable):
+There is no wipe command. To destroy all data, which cannot be undone, stop dpkms and remove its data directory (`storage.data_dir`). It holds the database (objects, embeddings, jobs and the audit log), `blobs/`, `backups/` and `run/`. A `storage.path` or `storage.blob.local.path` set outside it must be removed as well.
 
 ```bash
-# Stop the dpkms server first, then remove all data files:
-rm ~/.local/share/contexthelp/db.sqlite
-rm -rf ~/.local/share/contexthelp/vecs/
-# Optionally remove audit log too (default: preserved):
-# rm ~/.local/share/contexthelp/audit.log
+dpkms shutdown
+rm -rf "<data dir>"   # see Data Residency for the default
 ```
 
 ---
@@ -166,33 +164,33 @@ rm -rf ~/.local/share/contexthelp/vecs/
 Mapping of SOC 2 Trust Service Criteria to ctxt implementation controls.
 Reference: AICPA TSC 2017.
 
-> **Pre-alpha status:** auth (ADR-023) and encryption at rest (ADR-019) are designed
-> but not yet shipped. "Partial" = design exists; runtime control not yet active.
+> **Pre-alpha status:** encryption at rest (ADR-019) is designed but not yet
+> active. API authentication is active on protected and public instances.
+> "Partial" = the control exists only for some deployments, or is designed
+> but not active.
 
 | SOC 2 Criterion | Control description | ctxt implementation | Status |
 |-----------------|--------------------|--------------------|--------|
 | CC1.1 — Integrity & ethics | Commitment to security values | Local-first design; no auto-telemetry | Met |
-| CC2.2 — Information communication | Security events communicated | Structured audit log; syslog integration | Met |
+| CC2.2 — Information communication | Security events communicated | Append-only audit log; `ctxt audit export` as JSON, CEF or syslog text; security alert webhook (`security.alerts.webhook_url`) | Met |
 | CC3.2 — Risk assessment | Identify and analyse risks | Threat model in `docs/security/model/threat.md` | Met |
-| CC4.1 — Monitoring | Ongoing control evaluation | `govulncheck` in CI; quarterly audit review | Met |
-| CC5.2 — Control activities | Select/develop controls | Multi-layer defence; file perms enforced | Met |
-| CC6.1 — Logical access (ACL) | Restrict access to authorised users | File permissions 0600; localhost-only bind | Partial |
-| CC6.6 — External threats | Protect against external attacks | Localhost-only binding; registry untrusted by default | Met |
+| CC4.1 — Monitoring | Ongoing control evaluation | `govulncheck` and `nancy` on every PR and nightly; Trivy on PRs touching `go.mod` or Docker files, and nightly | Met |
+| CC5.2 — Control activities | Select/develop controls | Multi-layer defence; config file permission check (`ctxt config doctor --fix` sets 0600) | Met |
+| CC6.1 — Logical access (ACL) | Restrict access to authorised users | Static tokens with roles on protected/public instances; loopback-only bind on private ones | Partial |
+| CC6.6 — External threats | Protect against external attacks | Loopback bind by default; Host allowlist; capture fetches refuse private addresses (`fetch.allow_private`); registry data untrusted | Met |
 | CC6.7 — Encryption at rest | Protect data from unauthorised access | AES-256-GCM planned (ADR-019); not yet active | Partial |
-| CC7.1 — Detection (signed artefacts) | Detect configuration tampering | GPG release signing optional (skipped if secret absent) | Partial |
-| CC7.2 — Audit log monitoring | Monitor security events | Append-only audit log; `ctxt audit list`; syslog | Met |
-| CC7.4 — Incident response | Respond to security events | IR procedures in `docs/SECURITY.md#incident-response` | Met |
+| CC7.1 — Detection (signed artefacts) | Detect configuration tampering | Ed25519-signed config bundles; GPG release signing optional (skipped if secret absent) | Partial |
+| CC7.2 — Audit log monitoring | Monitor security events | Append-only audit log; `ctxt audit list` / `ctxt audit export` | Met |
+| CC7.4 — Incident response | Respond to security events | IR runbook in `docs/operations/incident-response.md` | Met |
 | CC8.1 — Change management | Authorise and test changes | Conventional Commits; PR gate; `govulncheck` | Met |
 | CC9.2 — Third-party risk | Vendor risk management | Dependency assessment process (see below) | Met |
 
 Notes:
 
-- **CC6.1 partial**: JWT auth planned (ADR-023); not yet enforced. There is no plugin system (ADR-078).
-  Current protection: localhost-only bind + OS file permissions.
+- **CC6.1 partial**: protected and public instances require static tokens with roles (`admin`, `writer`, `reader`) on REST, gRPC and MCP. A private instance (the default) binds `127.0.0.1` and authenticates nobody, so any local process holds every scope; OS file permissions and the loopback bind are its only access control. There is no plugin system (ADR-078).
 - **CC6.7 partial**: Encryption not active; operators handling PII **must** use OS-level
   disk encryption (FileVault / LUKS / BitLocker) until ADR-019 ships.
-- **CC7.1 partial**: GPG release signing is conditional — skipped when `GPG_PRIVATE_KEY`
-  secret is absent from CI. HMAC bundle verification is also planned.
+- **CC7.1 partial**: GPG release signing is conditional, skipped when the `GPG_PRIVATE_KEY` secret is absent from CI. Config bundles are Ed25519-signed (`ctxt config backup`; `ctxt config restore --verify` checks the signature). Signed knowledge objects (HMAC or Ed25519, ADR-024) are designed, not active.
 
 Full compliance evidence checklist for auditors: `docs/security/model/compliance.md`.
 
@@ -228,24 +226,22 @@ go-licenses check ./... --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Cla
 go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
 # Run
-govulncheck ./...
+govulncheck -tags fts5 ./...
 ```
 
-`govulncheck` runs automatically in CI (`just check`). PRs introducing new
-deps with known CVEs are blocked until the vulnerability is fixed or a waiver
-is recorded in `docs/decisions/`.
+`govulncheck` and `nancy` run in CI on every pull request and nightly. A HIGH or CRITICAL finding fails the build. Locally, `make vuln-scan` runs both. A `nancy` finding that cannot be fixed by upgrading is suppressed in `.nancy-ignore`, following the process in `.github/workflows/vuln-scan.yml`. CI does not check licences: run `go-licenses` before adding a dependency.
 
 ### Approval workflow
 
 1. Open PR; include rationale in description.
-2. CI runs `govulncheck` and `go-licenses check`.
+2. CI runs `govulncheck`, `nancy` and Trivy; the author runs `go-licenses check`.
 3. Reviewer confirms criteria above; approves or requests alternatives.
 4. For high-impact deps (crypto, networking, parsing): second reviewer required.
 
 ### Ongoing monitoring
 
-- `govulncheck` runs on every PR and nightly via scheduled CI.
-- `dependabot` (or equivalent) opens PRs for patch/minor updates weekly.
+- `govulncheck` and `nancy` run on every PR and nightly; Trivy runs on PRs touching `go.mod` or Docker files, and nightly.
+- Dependabot opens grouped update PRs weekly for Go modules and GitHub Actions (`.github/dependabot.yml`).
 - Quarterly review of all direct deps for maintenance status.
 
 ---
@@ -263,7 +259,7 @@ The following sections are placeholders for future regulatory work.
 > - Business Associate Agreement (BAA) template
 > - PHI data-flow mapping
 > - Minimum Necessary Standard implementation
-> - Breach notification runbook (72-hour rule)
+> - Breach notification runbook (60-day rule, 45 CFR 164.404)
 > - Audit controls per 164.312(b)
 
 ### CCPA (stub)
@@ -292,6 +288,6 @@ The following sections are placeholders for future regulatory work.
 
 ---
 
-**Last updated:** 2026-03-25
+**Last updated:** 2026-10-14
 **Owner:** $USER
 **Status:** Active — stubs pending

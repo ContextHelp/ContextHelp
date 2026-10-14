@@ -5,7 +5,7 @@
 > **Author:** jadb
 > **Applies to:** dpkms, ctxt CLI, storage layer, pipeline registry
 > **Supersedes:** None
-> **References:** ADR-004 (step-based pipeline), ADR-007 (transactional outbox), ADR-013 (knowledge graph), ADR-061 (search quality tiers), ADR-064 (federation), T-0565 (search-recall fix that prompted this ADR), T-0576 (config regression that compounded the upgrade pain), T-0577 (this ADR's source task)
+> **References:** ADR-004 (step-based pipeline), ADR-007 (transactional outbox), ADR-013 (knowledge graph), ADR-061 (search quality tiers), ADR-064 (federation), commit `232cd8f` (search-recall fix that prompted this ADR), commit `493e469` (config regression that compounded the upgrade pain)
 
 ---
 
@@ -13,14 +13,14 @@
 
 In a 72-hour window in May 2026, two consecutive ctxt releases — both small, both individually defensible — required every operator to take manual action to recover from silent regressions:
 
-1. **T-0565** (commit `232cd8f`) fixed a search-recall bug. The fix changed how `ProjectIndex` derives `FTSBody` for objects whose graph carries no `Summary`/`Section` nodes. **Existing objects ingested under the old code remained mis-projected** until they were re-ingested. From the operator's POV, search continued to return 0 results for documents already in the corpus until they manually re-ran the analyze step.
+1. **The search-recall fix** (commit `232cd8f`) fixed a search-recall bug. The fix changed how `ProjectIndex` derives `FTSBody` for objects whose graph carries no `Summary`/`Section` nodes. **Existing objects ingested under the old code remained mis-projected** until they were re-ingested. From the operator's POV, search continued to return 0 results for documents already in the corpus until they manually re-ran the analyze step.
 
-2. **T-0576** (commit `493e469`) fixed config auto-discovery. The fix renamed `$XDG_CONFIG_HOME/contexthelp/config.yaml` to per-binary `$XDG_CONFIG_HOME/contexthelp/{ctxt,dpkms}.yaml`. Existing operators silently fell through to defaults until they renamed the file.
+2. **The config auto-discovery fix** (commit `493e469`) fixed config auto-discovery. The fix renamed `$XDG_CONFIG_HOME/contexthelp/config.yaml` to per-binary `$XDG_CONFIG_HOME/contexthelp/{ctxt,dpkms}.yaml`. Existing operators silently fell through to defaults until they renamed the file.
 
 Neither bug was a one-off. Each was a *category* of upgrade pain that the system has no established protocol for:
 
-- **Index-shape changes** (T-0565: tokenizer / FTS schema / projection logic) require rebuilding the index but stored content is fine.
-- **Pipeline-behavior changes** (T-0565 second-order: the same fix also implies that documents previously routed to `text.short` should be re-routed) require re-ingesting a *subset* of objects.
+- **Index-shape changes** (`232cd8f`: tokenizer / FTS schema / projection logic) require rebuilding the index but stored content is fine.
+- **Pipeline-behavior changes** (`232cd8f` second-order: the same fix also implies that documents previously routed to `text.short` should be re-routed) require re-ingesting a *subset* of objects.
 - **Hard contract breaks** (config rename, embedding model swap) require deliberate operator-driven migration.
 
 These three shapes are not interchangeable, and conflating them — or worse, shipping them as "just a bugfix" — burns operator trust. The user feedback after the second incident was unambiguous: *"these kinds of updates should be kept to a strict minimum"* and *"make sure user is aware system being upgraded, something showing progress is a must."*
@@ -59,7 +59,7 @@ Every change that affects stored knowledge, the index, or the pipeline contract 
 | Bucket | What it covers | Daemon behavior on detection | Operator action |
 |---|---|---|---|
 | **`reindex_auto`** | Tokenizer changes, FTS schema bumps, embedding-index format changes — anything where stored content is correct but the *index* needs rebuilding. | Detect signature mismatch on startup, run reindex automatically, surface visible progress (CLI banner + `/healthz` upgrade-state field + completion notification). Search continues to serve from the old index until the new one is hot, then atomic swap. | None unless reindex fails. |
-| **`reingest_selective`** | Pipeline behavior changes that affect a specific subset of stored objects. T-0565 is the canonical example: only `text.short`-routed documents with bullet-list bodies are stale. | Detect via `pipeline_version` mismatch, mark affected objects `pending_upgrade`. Search returns those objects with `staleness_warning` set. `ctxt upgrade plan` shows a SQL-predicate-narrow selectivity preview; `ctxt upgrade run` executes. | Run `ctxt upgrade run` (with optional `--dry-run`, `--filter <selector>`, `--rate-limit`). |
+| **`reingest_selective`** | Pipeline behavior changes that affect a specific subset of stored objects. The search-recall fix (`232cd8f`) is the canonical example: only `text.short`-routed documents with bullet-list bodies are stale. | Detect via `pipeline_version` mismatch, mark affected objects `pending_upgrade`. Search returns those objects with `staleness_warning` set. `ctxt upgrade plan` shows a SQL-predicate-narrow selectivity preview; `ctxt upgrade run` executes. | Run `ctxt upgrade run` (with optional `--dry-run`, `--filter <selector>`, `--rate-limit`). |
 | **`reingest_all`** | Full-corpus re-ingest. Embedding model swap, fundamental pipeline rewrite, ontology change. | Daemon refuses to run on a stale corpus; requires explicit `ctxt upgrade run --all --i-understand-the-cost <SHA256>` confirmation where the SHA256 is printed in the release notes for that release. | Deliberate, planned, rare. Often paired with operator-side LLM-cost budgeting. |
 
 The operator's mental model collapses to **"did the daemon ask for my consent?"** Most upgrades are bucket 1 (invisible automatic). A few per quarter are bucket 2 (one CLI command). At most one per year should be bucket 3.
@@ -185,7 +185,7 @@ All three are already vetted; xrr is in production use already. The marginal cos
 
 - **"Just bump a global migration version, force operators to opt in on each release"**: rejected — exactly the bucket-3-as-default failure mode.
 - **"Ship a `migrate.sh` script per release"**: rejected — works for stateful ops tooling (Rails, Django) but doesn't fit a query-system that needs to keep serving during upgrade. Also indistinguishable from "no upgrade plan at all" in the failure modes the user is rightly pushing back on.
-- **"Add a single `corpus_pending_upgrade` boolean and re-ingest everything"**: rejected — collapses bucket 2 into bucket 3, which is the failure mode T-0565 already manifested.
+- **"Add a single `corpus_pending_upgrade` boolean and re-ingest everything"**: rejected — collapses bucket 2 into bucket 3, which is the failure mode the search-recall fix already manifested.
 - **"Defer all of this until the operator complains again"**: rejected — the operator already complained twice in 72 hours. The cost of this framework is one ADR + one set of CLI commands; the cost of *not* having it is every future bug-fix landing as a bucket-2 release by default.
 
 ---
@@ -220,44 +220,44 @@ All three are already vetted; xrr is in production use already. The marginal cos
 
 This ADR is the framework. Implementation landed across the following PRs/tasks (all on 2026-05-07):
 
-### Phase 1 — Storage & detection foundations (T-0579, **shipped**)
+### Phase 1 — Storage & detection foundations (`39dc3d8`, **shipped**)
 
 - `index_signatures` table (migration 029); signature compute + verify on daemon startup; mismatch emits `dpkms.upgrade.signature.mismatched` bus event.
 - `objects.pipeline` value-format convention (`name@vN`); migration 030 stamps existing rows as `@v0`. `pipeline.ParseVersionedName` + registry lookup for `@v0` fallback.
 - Tests: in-package unit tests for signature compute + version parsing.
 - xrr cassettes were optional and skipped — the signature-verify path is local SQLite only; the rebuild worker (Phase 3) is the right cassette layer.
 
-### Phase 2 — Upgrade CLI surface (T-0580, **shipped**)
+### Phase 2 — Upgrade CLI surface (`a6badb9`, **shipped**)
 
 - `ctxt upgrade {status,plan,run}` commands; `ctxt upgrade status --watch` + `--interval`.
-- `/healthz` upgrade envelope (extends T-0564's healthcheck): top-level `health` flips to `"upgrading"` when an upgrade is in flight; new `upgrade` field carries `{state, bucket, progress, done, total, eta_seconds, started_at}`.
+- `/healthz` upgrade envelope (extends the `/healthz` endpoint from `718e8bd`): top-level `health` flips to `"upgrading"` when an upgrade is in flight; new `upgrade` field carries `{state, bucket, progress, done, total, eta_seconds, started_at}`.
 - `internal/upgrade/` package owns the state machine + JSON-shadowed disk file at `$XDG_DATA_HOME/contexthelp/run/upgrade-state.json` so the banner reads from disk (no per-command HTTP latency).
 - `internal/cli/banner/` middleware injected into both `cmd/ctxt/cmd/root.go` and `cmd/dpkms/cmd/root.go` `Hooks.PrePersistentRunE`.
 - Tests: 15 in-package unit tests covering the state machine, banner format, healthz envelope.
-- eva contracts and xrr cassettes deferred to T-0586/T-0587 (the eva/ben adoption tasks).
+- eva contracts and xrr cassettes deferred to the eva/ben adoption.
 
-### Phase 3 — Selective re-ingest engine (T-0581, **shipped**)
+### Phase 3 — Selective re-ingest engine (`c019bb4`, **shipped**)
 
 - `internal/upgrade/selector.go`: `Selector` parses `pipeline=<name>@vN` (most common) or `where:<sql-where-clause>` (escape hatch with strict regexp validation against DDL/DML/semicolons/comments). `CountMatching` and `IterateMatching` against the SQLite store.
 - `internal/upgrade/worker.go`: `Worker.Run` acquires the upgrade-state lock, iterates the selector, calls `service.ReanalyzeObject` per ID, ticks progress, honors `--rate-limit`, tracks running LLM cost against `--budget-usd`. Emits 5 bus events (`plan.computed`, `reingest.{started,progressed,completed,failed}`).
 - `internal/service/reanalyze.go`: new `Service.ReanalyzeObject(ctx, id) (newVersion, llmCostUSD, error)` method.
 - `internal/service/staleness.go`: `CurrentVersionForFamily(reg, name)` walks the registry returning `max(@vN)`; used by both staleness-warning population and `ctxt upgrade plan`.
-- `staleness_warning` field on `SearchDiagnostics` (extended from T-0574's diagnostics block) populated in `HybridSearch` by counting candidates whose `pipeline` parses to a version older than the registry's current.
+- `staleness_warning` field on `SearchDiagnostics` (extended from the diagnostics block added in `fad9d56`) populated in `HybridSearch` by counting candidates whose `pipeline` parses to a version older than the registry's current.
 - Tests: 23 cases across selector + worker + service.
-- xrr cassettes skipped for now — `Service.Analyze`'s test infrastructure didn't admit cassette-replay cleanly at the worker layer; worker tests use a `fakeReanalyzer` interface. Cassette work is queued behind T-0586/T-0587.
+- xrr cassettes skipped for now — `Service.Analyze`'s test infrastructure didn't admit cassette-replay cleanly at the worker layer; worker tests use a `fakeReanalyzer` interface. Cassette work is queued behind the eva/ben adoption.
 
-### Phase 4 — Release-notes scaffolding (T-0577, **shipped**)
+### Phase 4 — Release-notes scaffolding (`b1dcb53`, **shipped**)
 
 - `docs/release-notes/template.md` — fillable template.
 - `docs/release-notes/2026-05-07.md` — retroactive + ongoing notes for the 2026-05-07 cohort.
 - `.github/PULL_REQUEST_TEMPLATE.md` — checkbox + bucket prompt.
 - `.github/workflows/release-notes-check.yml` — CI gate that reads commit trailers and fails on missing release-notes rows.
 
-> **Process note (2026-05-07)**: the CI gate enforces the contract on PRs, not on direct merges to main. T-0579/T-0580/T-0581 were ff-merged from worktree branches without going through PR review. The release-notes rows for those commits were authored by hand at merge time. Future work that lands via PR will trigger the gate automatically.
+> **Process note (2026-05-07)**: the CI gate enforces the contract on PRs, not on direct merges to main. Phases 1–3 were ff-merged from worktree branches without going through PR review. The release-notes rows for those commits were authored by hand at merge time. Future work that lands via PR will trigger the gate automatically.
 
 ### Backward compatibility
 
-- Existing rows with `pipeline = 'text.short'` (no `@vN`) are interpreted as `@v0` by the registry. The registry holds a `@v0` entry for every pre-versioning pipeline that mirrors the pre-T-0565 step list. New ingests use whatever the current default is (likely `@v1` post-T-0565).
+- Existing rows with `pipeline = 'text.short'` (no `@vN`) are interpreted as `@v0` by the registry. The registry holds a `@v0` entry for every pre-versioning pipeline that mirrors the step list from before `232cd8f`. New ingests use whatever the current default is (likely `@v1` after `232cd8f`).
 - No data migration runs at the schema level. The next time a `reingest_selective` upgrade fires for `text.short`, only objects with `@v0` (or any pre-`@v_current` value) are picked up.
 
 ### Out of scope (deferred to future ADRs)
@@ -271,10 +271,9 @@ This ADR is the framework. Implementation landed across the following PRs/tasks 
 
 ## References
 
-- T-0565 — search recall regression that prompted this work
-- T-0576 — config regression that compounded operator pain
-- T-0577 — task this ADR closes
-- T-0578 / ADR-071 — embedding-index versioning, builds on this framework
+- `232cd8f` — search recall regression fix that prompted this work
+- `493e469` — config regression fix that compounded operator pain
+- ADR-071 — embedding-index versioning, builds on this framework
 - ADR-004 — step-based pipeline; this ADR adds versioning to step compositions
 - ADR-061 — search quality tiers; this ADR adds the `staleness_warning` honesty layer
 - ADR-064 — federation; per-object pipeline_version is the compat token

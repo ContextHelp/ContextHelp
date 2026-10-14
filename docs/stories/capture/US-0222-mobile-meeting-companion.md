@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-069
-task: T-0520, T-0521
 phase: 6, 7
 ---
 
@@ -39,7 +38,7 @@ On-device transcript pipelines are out of v1 mobile scope — recording uploads 
 
 ## Acceptance Criteria
 
-### iOS app (`mobile/ios/`, Phase 6, T-0520)
+### iOS app (`mobile/ios/`, Phase 6)
 
 - [ ] Swift project at `mobile/ios/` (monorepo per ADR-069 §1); distributed via App Store
 - [ ] iOS 17+ minimum (ReplayKit broadcast extensions + Share Extension stable)
@@ -73,7 +72,7 @@ On-device transcript pipelines are out of v1 mobile scope — recording uploads 
 - [ ] Active SessionID attached to every POSTed event (for grouping with prep/follow-up shares)
 - [ ] PUT to `/api/v1/sessions/{id}` on session open and close (idempotent, per ADR-067 §Wire shape)
 
-### Android app (`mobile/android/`, Phase 7, T-0521)
+### Android app (`mobile/android/`, Phase 7)
 
 - [ ] Kotlin project at `mobile/android/`; distributed via Play Store
 - [ ] Android 10+ minimum (AudioPlaybackCapture API)
@@ -194,7 +193,7 @@ MediaProjection requires a foreground service with a persistent notification —
 
 ## Sprint
 
-**Phase 6 / Phase 7** — separate from `ambient-capture` track; tracked under future mobile-companion tracks per [ADR-069 §Phasing](../../decisions/ADR-069-meeting-capture-source.md). Tasks **T-0520** (iOS) and **T-0521** (Android) carry the work scaffolding under the parent track for now.
+**Phase 6 / Phase 7** per [ADR-069 §Phasing](../../decisions/ADR-069-meeting-capture-source.md): iOS is Phase 6, Android Phase 7.
 
 ---
 

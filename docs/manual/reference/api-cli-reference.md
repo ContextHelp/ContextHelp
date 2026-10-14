@@ -48,7 +48,7 @@ ctxt profile view <name>
 ctxt profile create <name> --config <file>
 ctxt profile set <name>
 ctxt profile unset <name>
-ctxt profile rm <name> --confirm=yes
+ctxt profile rm <name> --confirm-token=<sha>
 ctxt config show|path|validate|edit
 ```
 
@@ -60,9 +60,9 @@ ctxt registry info <name>
 ctxt registry add <name> <url>
 ctxt registry sync <name>
 ctxt registry pending [--registry <name>]
-ctxt registry approve <id>... | --all --registry <name>   # --confirm=yes --confirm-token=<sha>
-ctxt registry reject <id>...                              # --confirm=yes --confirm-token=<sha>
-ctxt registry delete <name> --confirm=yes
+ctxt registry approve <id>... | --all --registry <name>   # --confirm-token=<sha>
+ctxt registry reject <id>...
+ctxt registry delete <name> --confirm-token=<sha>
 ```
 
 ### Pipeline and infrastructure (`dpkms`)

@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-068
-task: T-0497-impl
 ---
 
 # US-0219: MCP Agent Integration (dpkms-side)
@@ -174,7 +173,7 @@ Use the official Go MCP SDK (`github.com/modelcontextprotocol/go-sdk` or current
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-068 dpkms-side surface — see `tlc track show ambient-capture`, task **T-0497** (ADR) and substrate work in Phase 5.
+Implements ADR-068 dpkms-side surface; substrate work in Phase 5.
 
 ---
 
