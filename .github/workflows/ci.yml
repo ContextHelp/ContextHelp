@@ -144,6 +144,51 @@ jobs:
       - name: Run go vet
         run: go vet -tags fts5 ./...
 
+  # GoReleaser ships windows/amd64 binaries, cross-compiled with CGO and
+  # mingw-w64 (release.yml). Type-check every package, tests included, for
+  # that target with the same toolchain so Unix-only syscalls fail here
+  # instead of at tag time, then build the two binaries as GoReleaser does
+  # (the C amalgamations compile and link only in that step).
+  windows:
+    name: Windows compile check
+    needs: toolchain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ needs.toolchain.outputs.go-version }}
+          cache: true
+
+      # go.mod ships local-path replace directives for hop.top/kit and
+      # hop.top/c12n (developer convenience). Strip them before any Go
+      # step so published tags resolve via the module proxy. No-op when
+      # the directives are absent (e.g. on main after rollout).
+      - name: Drop local-path replaces
+        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
+
+      - name: Install mingw-w64 (Windows CGO cross-compilation)
+        run: sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Vet for windows/amd64
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '1'
+          CC: x86_64-w64-mingw32-gcc
+        run: go vet -tags fts5 ./...
+
+      - name: Build ctxt and dpkms for windows/amd64
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '1'
+          CC: x86_64-w64-mingw32-gcc
+        run: go build -tags fts5 ./cmd/ctxt ./cmd/dpkms
+
   security:
     name: Security Scan
     needs: toolchain
