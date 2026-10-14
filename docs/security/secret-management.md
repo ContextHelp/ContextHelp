@@ -83,10 +83,12 @@ The config entry holds only the mechanism (`registries[].auth.type`:
 **On a dpkms host** there is no login keychain. `dpkms serve` (manifest
 fetch and update, entity sync and pull, step install, bookmark search)
 reads a registry's token from the `secrets.backend` store under the key
-`registry/<name>`. The value is JSON holding the origin the token is
-bound to and the token; the same rules apply as to a `ctxt registry
-login` token (sent only to that origin, over https or to a loopback
-host):
+`registry/<name>`, where every character of the name other than an ASCII
+letter, digit or `_` becomes `_` (`team-ops` is `registry/team_ops`,
+`acme.io` is `registry/acme_io`). The value is JSON holding the origin
+the token is bound to and the token; the same rules apply as to a `ctxt
+registry login` token (sent only to that origin, over https or to a
+loopback host):
 
 ```bash
 # GOOD - JSON from stdin; the token never reaches argv
@@ -95,10 +97,11 @@ pass show registries/private-token |
   dpkms secret set registry/private
 ```
 
-With `secrets.backend: env`, set the variable instead: `registry/<name>`
-is `REGISTRY_<NAME>` (upper-cased, `/` as `_`), so pick registry names of
-letters, digits and `_` there. A 401 or 403 from the registry names the
-key to set.
+With `secrets.backend: env`, set the variable instead: the key
+upper-cased with `/` as `_`, so `registry/team_ops` is
+`REGISTRY_TEAM_OPS`. Names that differ only in those replaced characters
+(`team-ops`, `team.ops`) share one key. A 401 or 403 from the registry
+names the key to set.
 
 ### Encryption Keys
 

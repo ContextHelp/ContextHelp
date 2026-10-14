@@ -34,7 +34,7 @@ Examples:
   # List all registries
   ctxt registry list
 
-  # Add a new registry
+  # Cache a registry's manifest (subscribe in the config file's registries list)
   ctxt registry add uxpatterns https://uxpatterns.example.com
 
   # Show registry information
@@ -60,11 +60,19 @@ fetch timestamp recorded in the local cache. Read-only.`,
 
 var registryAddCmd = &cobra.Command{
 	Use:   "add <name> <url>",
-	Short: "Add a new registry",
-	Long: `Fetch the manifest for the registry at <url>, cache it locally,
-and record the named subscription in the config file. Idempotent at
-the cache layer (the manifest is overwritten) but not idempotent at
-the config layer (each call appends a row).`,
+	Short: "Fetch and cache a registry's manifest",
+	Long: `Fetch the manifest for the registry at <url> and cache it locally,
+so it shows in ctxt registry list. Idempotent: a repeat call overwrites
+the cached manifest.
+
+add does not write the config file, and <name> only labels the output.
+sync, info, login and delete find a registry by name in the config
+file's registries list: add an entry there to subscribe (ctxt config
+edit opens the file):
+
+  registries:
+    - name: uxpatterns
+      url: https://uxpatterns.example.com`,
 	Args: cobra.ExactArgs(2),
 	RunE: runRegistryAdd,
 }
@@ -97,8 +105,11 @@ var registrySyncCmd = &cobra.Command{
 	Short: "Sync registry metadata",
 	Long: `Sync registry metadata from the remote source: fetch the registry's
 manifest from its url and replace the cached copy, so Last Fetched and
-the ETag advance (see ctxt registry info). A registry with auth.type gets
-the token ctxt registry login stored.
+the ETag advance (see ctxt registry info). When the manifest advertises
+capabilities.entity_sync, also sync the registry's entity index
+(/entities/index) into the local entity store; a registry that serves
+steps only is not asked for entities. A registry with auth.type gets the
+token ctxt registry login stored.
 
 With --dry-run, fetches the remote manifest and shows a diff of would-be
 additions, updates, and removals without writing anything to storage.`,
@@ -267,11 +278,11 @@ func init() {
 	cliconv.WithSideEffect(registryAddCmd, cliconv.SideEffectWrite)
 	cliconv.WithExamples(registryAddCmd, []cliconv.Example{
 		{Title: "Add a registry by URL", Command: "ctxt registry add uxpatterns https://uxpatterns.example.com"},
-		{Title: "Add then inspect", Command: "ctxt registry add uxpatterns https://uxpatterns.example.com && ctxt registry info uxpatterns"},
+		{Title: "Add then list cached registries", Command: "ctxt registry add uxpatterns https://uxpatterns.example.com && ctxt registry list"},
 	})
 	cliconv.WithNextSteps(registryAddCmd, []cliconv.NextStep{
-		{Suggest: "ctxt registry info <name>", Reason: "review the cached manifest, trust status, and version"},
-		{Suggest: "ctxt registry sync <name>", Reason: "pull entities and taxonomies from the freshly-added registry"},
+		{Suggest: "ctxt config edit", Reason: "add a registries entry (name, url) so sync, info, login and delete find the registry"},
+		{Suggest: "ctxt registry sync <name>", Reason: "once configured: refresh the manifest, plus the entity index when the manifest advertises capabilities.entity_sync"},
 	})
 
 	cliconv.WithSideEffect(registryRemoveCmd, cliconv.SideEffectDestructive)
@@ -412,8 +423,22 @@ func runRegistryAdd(cmd *cobra.Command, args []string) error {
 	if err := svc.FetchRegistry(ctx, url); err != nil {
 		return fmt.Errorf("fetch registry: %w", err)
 	}
-	fmt.Println("Registry added and metadata cached")
+	fmt.Println("Registry manifest cached")
+	if !registryConfigured(name, url) {
+		fmt.Printf("Not in config: add a registries entry (name: %s, url: %s) with ctxt config edit so sync, info, login and delete find it\n", name, url)
+	}
 	return nil
+}
+
+// registryConfigured reports whether the loaded config's registries list
+// has an entry with this name and url.
+func registryConfigured(name, url string) bool {
+	for _, r := range cfg.Registries {
+		if r.Name == name && r.URL == url {
+			return true
+		}
+	}
+	return false
 }
 
 func runRegistryRemove(cmd *cobra.Command, args []string) error {
@@ -571,10 +596,16 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Syncing registry %s...\n", name)
-	if err := svc.UpdateRegistry(ctx, registryURL); err != nil {
+	res, err := svc.SyncRegistry(ctx, registryURL)
+	if err != nil {
 		return fmt.Errorf("sync registry: %w", err)
 	}
 	fmt.Println("Registry synced")
+	if res.EntitySync {
+		fmt.Printf("Entities synced: %d\n", res.Entities)
+	} else {
+		fmt.Println("Entities: none (manifest does not advertise capabilities.entity_sync)")
+	}
 	return nil
 }
 
