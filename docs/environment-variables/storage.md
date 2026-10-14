@@ -23,23 +23,47 @@ CH_STORAGE_TYPE=postgres
 
 ---
 
+## Data Directory
+
+### CTXT_DATA_DIR
+**Type:** directory path\
+**Default:** `$XDG_DATA_HOME/contexthelp` (OS data directory when
+`XDG_DATA_HOME` is unset)\
+**Config key:** `storage.data_dir`
+
+Base directory for local state. Both binaries create it at startup. Under
+it:
+
+| Path | Holds |
+|------|-------|
+| `run/` | pidfiles, the `ctxt instance use` selection, upgrade state |
+| `db.sqlite` | the database, unless `storage.path` is set |
+| `blobs/` | the `local` blob store, unless `storage.blob.local.path` is set |
+| `repl_history` | `ctxt shell` history |
+
+It always names a directory, never the database file.
+
+```bash
+CTXT_DATA_DIR=/srv/contexthelp dpkms serve   # database: /srv/contexthelp/db.sqlite
+```
+
+`ctxt` finds local dpkms instances through the pidfiles in its own
+`run/`, so give `ctxt` the same data directory as the `dpkms serve` it
+should find.
+
+---
+
 ## Database Location
 
 `storage.path` holds the SQLite database file, or the PostgreSQL
-connection string when `storage.type` is `postgres`. Default:
-`$XDG_DATA_HOME/contexthelp/db.sqlite` (OS data directory when
-`XDG_DATA_HOME` is unset).
+connection string when `storage.type` is `postgres`. No environment
+variable sets it. Default: `<data dir>/db.sqlite`.
 
 Set it in the config file or with `-c`:
 
 ```bash
 dpkms serve -c storage.path=/data/dpkms.db
 ```
-
-`CTXT_DATA_DIR` also writes `storage.path`, but `ctxt` and `dpkms` treat
-the same value as a directory: they create it at startup and keep pidfiles
-in its `run/` subdirectory. It cannot name the database file; use
-`storage.path`.
 
 ### PostgreSQL connection
 

@@ -96,7 +96,7 @@ config. An empty value is ignored (the lower layer stays in effect).
 | Env var | Config key | Default |
 |---------|------------|---------|
 | `CH_STORAGE_TYPE` | `storage.type` | `sqlite` |
-| `CTXT_DATA_DIR` | `storage.path` | `$XDG_DATA_HOME/contexthelp/db.sqlite` |
+| `CTXT_DATA_DIR` | `storage.data_dir` | `$XDG_DATA_HOME/contexthelp` |
 | `CTXT_BLOB_BACKEND` | `storage.blob.backend` | `local` |
 | `CTXT_BLOB_THRESHOLD` | `storage.blob.threshold` | `65536` |
 | `CTXT_BLOB_S3_ENDPOINT` | `storage.blob.s3.endpoint` | _(empty)_ |
@@ -121,11 +121,13 @@ config. An empty value is ignored (the lower layer stays in effect).
 | `CTXT_BROWSER_BINARY` | `browser.binary` | `ibr` |
 | `CTXT_BROWSER_PORT` | `browser.port` | `0` |
 
-`CTXT_DATA_DIR` does two jobs. It is bound to `storage.path`, so for the
-SQLite backend its value is the database path. It is also the base
-directory for runtime files (`<value>/run/`: pidfiles and the
-`ctxt instance use` selection), and both binaries create it as a
-directory at startup.
+`CTXT_DATA_DIR` is a directory. It is the base for runtime files
+(`<data dir>/run/`: pidfiles and the `ctxt instance use` selection) and
+supplies the defaults `storage.path` = `<data dir>/db.sqlite` and
+`storage.blob.local.path` = `<data dir>/blobs`. An explicit
+`storage.path` or `storage.blob.local.path` from any layer is kept. Both
+binaries create the data directory at startup. `storage.path` has no
+environment variable.
 
 `server.public` / `CH_PUBLIC` selects public access only while
 `server.access` is unset; an explicit `server.access` wins.

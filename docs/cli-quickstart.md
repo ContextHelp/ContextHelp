@@ -65,7 +65,7 @@ $EDITOR ~/.config/contexthelp/config.yaml
 You can override configuration using environment variables:
 
 ```bash
-# Data directory
+# Data directory (database defaults to $CTXT_DATA_DIR/db.sqlite)
 export CTXT_DATA_DIR=~/.local/share/contexthelp
 
 # Default profile
