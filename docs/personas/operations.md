@@ -180,7 +180,8 @@ dpkms restore backup.tar.gz --skip-configs
   must be empty.
 - Every backup holds the dpkms config file (`--config`, then `CTXT_CONFIG`,
   then `$XDG_CONFIG_HOME/contexthelp/dpkms.yaml`) as `config.yaml`;
-  `--include-configs` adds every file in its directory (`keys/` too). Restore
+  `--include-configs` adds every other file in its directory (`keys/` too) under
+  `config/`; the config file itself is archived once, as `config.yaml`. Restore
   writes `config.yaml` back to the config file it resolves the same way, and the
   directory's files into that directory; `--skip-configs` skips both. That file
   carries the `federations:` targets, so restoring it restores the push topology.

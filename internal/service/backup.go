@@ -116,23 +116,34 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 
 	// 1b. Optional config.yaml — non-fatal if missing.
 	configIncluded := false
+	var activeConfig os.FileInfo
 	if opts.ConfigPath != "" {
-		if _, serr := os.Stat(opts.ConfigPath); serr == nil {
+		if cfgInfo, serr := os.Stat(opts.ConfigPath); serr == nil {
 			if terr := addFileToTar(tw, opts.ConfigPath, "ctxt-backup/config.yaml"); terr != nil {
 				return abort(fmt.Errorf("backup: tar config: %w", terr))
 			}
 			configIncluded = true
+			activeConfig = cfgInfo
 		} else {
 			fmt.Fprintf(os.Stderr, "backup: config file not found, skipping: %s\n", opts.ConfigPath)
 		}
 	}
 
-	// 1c. Optional full config dir (keys/, etc.).
+	// 1c. Optional full config dir (keys/, etc.). The active config
+	// file, already archived as config.yaml, is skipped when it lives
+	// here (dpkms's config dir is its directory): config.yaml restores
+	// it to the target's own config file, whatever that is named, so a
+	// second copy under config/ would only restore it twice.
 	if opts.IncludeConfigs && opts.ConfigDir != "" {
 		if cInfo, serr := os.Stat(opts.ConfigDir); serr == nil && cInfo.IsDir() {
 			err := filepath.Walk(opts.ConfigDir, func(path string, info os.FileInfo, werr error) error {
 				if werr != nil || info.IsDir() {
 					return werr
+				}
+				if activeConfig != nil {
+					if fi, serr := os.Stat(path); serr == nil && os.SameFile(fi, activeConfig) {
+						return nil
+					}
 				}
 				rel, _ := filepath.Rel(opts.ConfigDir, path)
 				return addFileToTar(tw, path, filepath.Join("ctxt-backup/config", rel))
