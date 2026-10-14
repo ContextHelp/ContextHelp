@@ -146,6 +146,10 @@ func getJSON(t *testing.T, srv *dpkmstest.Server, method, path, role string, out
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
+	if resp.StatusCode/100 != 2 {
+		// Callers assert on the status alone; the body carries the cause.
+		t.Logf("%s %s as %s: %d %s", method, path, role, resp.StatusCode, body)
+	}
 	if out != nil && resp.StatusCode/100 == 2 {
 		require.NoError(t, json.Unmarshal(body, out), string(body))
 	}
