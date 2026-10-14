@@ -1,767 +1,93 @@
 # Security Controls
 
-Security controls implementation in ContextHelp.
+The controls ctxt and dpkms implement, with their config keys, and the ones they do not.
 
----
+## Inbound authentication
 
-## Overview
+dpkms has three access classes (`server.access`):
 
-ContextHelp implements comprehensive security controls across multiple layers:
+| Class | Binds | Auth |
+|-------|-------|------|
+| `private` (default) | `127.0.0.1` | none; every local caller holds every scope |
+| `protected` | all interfaces | `server.auth` required, or `dpkms serve` refuses to start |
+| `public` | all interfaces | as `protected`; `/healthz` details hidden from anonymous callers |
 
-- **Authentication & Authorization** — Identity verification and access control
-- **Encryption** — Data protection at rest and in transit
-- **Data Validation** — Input sanitization and schema enforcement
-- **Process Isolation** — Plugin and pipeline sandboxing
-- **Audit Logging** — Security event tracking
-
----
-
-## Authentication & Authorization
-
-### REST API Authentication
-
-**JWT Token Authentication**:
-
-```go
-type JWTClaims struct {
-    UserID    string   `json:"user_id"`
-    Email     string   `json:"email"`
-    Scopes    []string `json:"scopes"`
-    ExpiresAt int64    `json:"exp"`
-}
-
-func ValidateJWT(tokenString string) (*JWTClaims, error) {
-    token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
-        return []byte(os.Getenv("JWT_SECRET")), nil
-    })
-
-    if err != nil {
-        return nil, err
-    }
-
-    if claims, ok := token.Claims.(*JWTClaims); ok && token.Valid {
-        return claims, nil
-    }
-
-    return nil, fmt.Errorf("invalid token")
-}
-```
-
-**Configuration**:
+The only provider is `static`:
 
 ```yaml
-security:
-  authentication:
-    enabled: true
-    jwt:
-      secret: <jwt-secret>   # literal: config files do not expand env vars
-      expiration: 24h
-      issuer: "contexthelp"
+server:
+  access: protected
+  auth:
+    provider: static
+    static:
+      tokens:
+        - token: <32+ random characters>   # literal value; env references are not expanded
+          principal: laptop
+          roles: [writer]                  # admin | writer | reader
 ```
 
-**Session-Based Authentication**:
+- Clients send `Authorization: Bearer <token>` or `X-API-Key: <token>`. Tokens shorter than 32 characters or containing `REPLACE_ME` fail validation; comparison is constant-time.
+- Roles expand to scopes: `admin` holds every scope, `writer` every read and write scope, `reader` every read scope. Each `/api/v1` route and gRPC method requires one scope; `401` without a valid token, `403 INSUFFICIENT_SCOPE` without the scope.
+- Web UI: `ctxt ui open` mints a single-use sign-in link. The browser session holds the web UI's scopes intersected with its token's, ends after `server.ui.session.idle_ttl` (12h) or `max_ttl` (7 days), and ends when the token is removed. `dpkms session list|revoke` manage sessions.
+- Federation push on non-private instances also needs `federation.token`.
+- Not implemented: `oidc` and `mtls` providers (reserved names), per-user accounts.
 
-```go
-type Session struct {
-    ID        string
-    UserID    string
-    CreatedAt time.Time
-    ExpiresAt time.Time
-}
+Clients: `ctxt` sends `server.token` (or the matching `server.urls[].token`). Keep tokens out of shared config: load them from a gitignored second `--config` file ([configuration-structure.md](../../configuration-structure.md)).
 
-func CreateSession(userID string) (*Session, error) {
-    session := &Session{
-        ID:        generateSecureID(),
-        UserID:    userID,
-        CreatedAt: time.Now(),
-        ExpiresAt: time.Now().Add(24 * time.Hour),
-    }
+Reference: [Inbound auth, roles and scopes](../../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
 
-    return session, sessionStore.Save(session)
-}
-```
+## Browser and request guards
 
-### gRPC API Authentication
+- **Host allowlist** (DNS rebinding): a `private` instance rejects any `Host` other than `127.0.0.1` / `localhost` on its port or an entry in `server.allowed_hosts`. `protected` / `public` instances check `Host` only when `server.allowed_hosts` is set.
+- **Cross-origin guard** (every instance): state-changing browser requests from another origin get `403 CROSS_ORIGIN_REQUEST`. Requests without `Sec-Fetch-Site` / `Origin` (CLI, federation peers, MCP clients) and browser-extension origins pass; `--dev` / `server.dev` adds the Vite dev server origins.
+- **JSON-only bodies** (every instance): a state-changing request with a body not labelled `application/json` gets `415`.
 
-**Per-Connection Authentication**:
+## Secrets
 
-```go
-func (s *Server) Authenticate(ctx context.Context) error {
-    md, ok := metadata.FromIncomingContext(ctx)
-    if !ok {
-        return status.Error(codes.Unauthenticated, "missing metadata")
-    }
+- **Provider API keys**: the secrets backend (`secrets.backend`: `env`, `keyring`, `agefile`, `onepassword`, `ghsecrets`) or the env var of the same name. `dpkms secret set` reads from stdin, `--from-file` or `--prompt`, never a positional argument. See [../secrets-backends.md](../secrets-backends.md).
+- **Registry credentials**: OS keychain.
+- **Config scan**: `ctxt config validate` and `ctxt config doctor` flag plaintext-looking secrets (printing a 4-character hint) and reject `${VAR}` values; `doctor` warns on loose file permissions and `--fix` sets `0600`.
 
-    tokens := md.Get("authorization")
-    if len(tokens) == 0 {
-        return status.Error(codes.Unauthenticated, "missing token")
-    }
+Not implemented: log sanitization. `ctxt config show --format json|yaml` prints tokens. See [../secrets-validation-and-log-sanitization.md](../secrets-validation-and-log-sanitization.md).
 
-    claims, err := ValidateJWT(tokens[0])
-    if err != nil {
-        return status.Error(codes.Unauthenticated, "invalid token")
-    }
+## Policy rules
 
-    // Attach claims to context
-    return nil
-}
-```
+`dpkms serve` loads kit CEL rules from `$XDG_CONFIG_HOME/contexthelp/policy/ctxt.yaml` (or `CTXT_POLICY_FILE`). The seeded rules require a `--note` on pipeline archive and remove. See [../../ctxt/policies.md](../../ctxt/policies.md).
 
-**Stream-Level Authorization**:
+Destructive CLI commands (`ctxt delete`, `ctxt inbox discard|clear`, ...) also require the `--confirm-token` the command prints.
 
-```go
-func (s *Server) StreamObjects(req *StreamRequest, stream pb.ObjectService_StreamObjectsServer) error {
-    // Authenticate connection
-    if err := s.Authenticate(stream.Context()); err != nil {
-        return err
-    }
+## Data validation
 
-    // Check authorization for each object
-    for {
-        obj := getNextObject()
-        if !HasPermission(userID, "read", obj.ID) {
-            continue  // Skip unauthorized objects
-        }
-        stream.Send(obj)
-    }
-}
-```
+- Config: decoded strictly and validated (`ctxt config validate`); unknown backends, short tokens, `${VAR}` values fail.
+- Registry data: Ed25519 signatures when the registry declares a key, entity integrity guard, trust levels ([boundaries.md](boundaries.md#boundary-2-external-registries)).
+- Request bodies: JSON decoding per handler; size limits only on `/api/v1/find` and the web UI sign-in exchange.
+- Storage: parameterized SQL on SQLite and PostgreSQL.
 
-### CLI Authentication
+## Audit log and alerts
 
-**Local User Authentication**:
-
-```go
-func ValidateLocalUser() error {
-    // Check process owner matches file owner
-    configOwner := getFileOwner(configPath)
-    currentUser := os.Getuid()
-
-    if configOwner != currentUser {
-        return fmt.Errorf("configuration file not owned by current user")
-    }
-
-    return nil
-}
-```
-
-**No Network Authentication Needed**:
-
-```bash
-# CLI runs locally, authenticates via file permissions
-ctxt analyze "input"  # No token needed
-```
-
----
+- The audit log is an append-only table in the dpkms database. It records security alerts (`security.auth_failure` and `security.acl_denial` once a principal reaches the threshold below; every `security.quota_exhausted`), duplicate detection, fan-out enrichment and `ctxt doctor` runs. Object creates, edits and deletes are not recorded.
+- Read it with `ctxt audit list` / `ctxt audit export` (`admin:audit` scope over HTTP).
+- `security.alerts`: reaching `auth_failure_threshold` (3) auth failures or `acl_denial_threshold` (10) ACL denials per principal in 60s writes the alert entry above and, if set, posts to `webhook_url` or sends mail via `smtp`.
+- The `audit:` config block (`audit_log`, `syslog`, `webhook`) is read by no code; nothing forwards the audit log.
 
 ## Encryption
 
-### At Rest Encryption
+- **At rest**: none. Use OS disk encryption. [ADR-019](../../decisions/ADR-019-encryption-and-privacy.md) is design.
+- **In transit**: dpkms serves plain HTTP and gRPC. Terminate TLS at a reverse proxy; use `sslmode=require` in a PostgreSQL DSN. Outbound HTTPS calls verify certificates.
+- **Config bundles**: `ctxt config backup` writes a signed bundle (`.zip` + `.sig`). `dpkms backup` archives are not encrypted.
 
-**AES-256-GCM Encryption**:
+## Untrusted code
 
-```go
-func Encrypt(plaintext []byte, key []byte) ([]byte, error) {
-    block, err := aes.NewCipher(key)
-    if err != nil {
-        return nil, err
-    }
+No plugin is loaded and no installed external step is executed at runtime, so there is no sandbox to configure. See [boundaries.md](boundaries.md#boundary-4-plugins-and-installed-steps).
 
-    gcm, err := cipher.NewGCM(block)
-    if err != nil {
-        return nil, err
-    }
+## Deployment
 
-    nonce := make([]byte, gcm.NonceSize())
-    if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-        return nil, err
-    }
+- Local: the defaults are local-only (`private`, SQLite, no telemetry). Nothing to set.
+- Remote access: `server.access: protected` with static tokens, behind a TLS-terminating reverse proxy ([Put dpkms Behind a Reverse Proxy](../../manual/operations/reverse-proxy.md)), or an SSH tunnel to a `private` instance. Never put a `private` instance behind a proxy: it authenticates nobody.
+- Containers: [../../deployment/docker.md](../../deployment/docker.md) (tokens via a mounted secrets file).
+- Liveness: `dpkms healthcheck`, `GET /health`, `GET /healthz`.
 
-    ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
-    return ciphertext, nil
-}
-```
+## Related
 
-**Key Derivation (PBKDF2)**:
-
-```go
-func DeriveKey(passphrase string, salt []byte) []byte {
-    return pbkdf2.Key([]byte(passphrase), salt, 100000, 32, sha256.New)
-}
-```
-
-**Key Derivation (Argon2)**:
-
-```go
-func DeriveKeyArgon2(passphrase string, salt []byte) []byte {
-    return argon2.IDKey([]byte(passphrase), salt, 1, 64*1024, 4, 32)
-}
-```
-
-**Configuration**:
-
-```yaml
-security:
-  encryption:
-    enabled: true
-    key_derivation: argon2  # or pbkdf2
-    # Passphrase from environment
-```
-
-**Transparent Encryption/Decryption**:
-
-```go
-type EncryptedStorage struct {
-    backend Storage
-    cipher  *Cipher
-}
-
-func (es *EncryptedStorage) Save(obj Object) error {
-    // Encrypt before saving
-    encrypted, err := es.cipher.Encrypt(obj.Data)
-    if err != nil {
-        return err
-    }
-    obj.Data = encrypted
-    return es.backend.Save(obj)
-}
-
-func (es *EncryptedStorage) Load(id string) (Object, error) {
-    obj, err := es.backend.Load(id)
-    if err != nil {
-        return Object{}, err
-    }
-
-    // Decrypt after loading
-    decrypted, err := es.cipher.Decrypt(obj.Data)
-    if err != nil {
-        return Object{}, err
-    }
-    obj.Data = decrypted
-    return obj, nil
-}
-```
-
-### In Transit Encryption
-
-**Mandatory TLS 1.2+ for External Connections**:
-
-```go
-func NewTLSConfig() *tls.Config {
-    return &tls.Config{
-        MinVersion: tls.VersionTLS12,
-        CipherSuites: []uint16{
-            tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-            tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-            tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-            tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-        },
-        PreferServerCipherSuites: true,
-    }
-}
-```
-
-**Certificate Validation**:
-
-```go
-func ValidateCertificate(conn *tls.Conn) error {
-    state := conn.ConnectionState()
-
-    // Check certificate validity
-    for _, cert := range state.PeerCertificates {
-        if time.Now().After(cert.NotAfter) {
-            return fmt.Errorf("certificate expired")
-        }
-
-        if time.Now().Before(cert.NotBefore) {
-            return fmt.Errorf("certificate not yet valid")
-        }
-    }
-
-    return nil
-}
-```
-
-**HSTS Headers for HTTP APIs**:
-
-```go
-func HSTSMiddleware(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-        next.ServeHTTP(w, r)
-    })
-}
-```
-
----
-
-## Data Validation
-
-### Input Validation
-
-**JSON Schema Validation**:
-
-```go
-type Validator struct {
-    schemas map[string]*jsonschema.Schema
-}
-
-func (v *Validator) Validate(input interface{}, schemaName string) error {
-    schema := v.schemas[schemaName]
-    if schema == nil {
-        return fmt.Errorf("unknown schema: %s", schemaName)
-    }
-
-    return schema.Validate(input)
-}
-```
-
-**Size Limits**:
-
-```go
-const (
-    MaxRequestSize  = 10 * MB
-    MaxQueryLength  = 1000
-    MaxResultLimit  = 100
-    MaxBatchSize    = 50
-)
-
-func ValidateSize(data []byte) error {
-    if len(data) > MaxRequestSize {
-        return fmt.Errorf("request too large (max %d bytes)", MaxRequestSize)
-    }
-    return nil
-}
-```
-
-**Type Checking**:
-
-```go
-type SearchRequest struct {
-    Query  string `json:"query" validate:"required,max=1000"`
-    Limit  int    `json:"limit" validate:"min=1,max=100"`
-    Offset int    `json:"offset" validate:"min=0"`
-    SortBy string `json:"sort_by" validate:"oneof=relevance date title"`
-}
-
-func ValidateRequest(req *SearchRequest) error {
-    validate := validator.New()
-    return validate.Struct(req)
-}
-```
-
-**Whitelist-Based Validation**:
-
-```go
-var AllowedSortFields = []string{"relevance", "date", "title", "size"}
-
-func ValidateSortField(field string) error {
-    for _, allowed := range AllowedSortFields {
-        if field == allowed {
-            return nil
-        }
-    }
-    return fmt.Errorf("invalid sort field: %s", field)
-}
-```
-
-### Configuration Validation
-
-**YAML/JSON Schema Validation**:
-
-```go
-func ValidateConfig(config *Config) error {
-    // Type checking
-    if config.Storage.Type != "sqlite" && config.Storage.Type != "postgres" {
-        return fmt.Errorf("invalid storage type: %s", config.Storage.Type)
-    }
-
-    // Enum validation
-    if config.Logging.Level != "debug" && config.Logging.Level != "info" &&
-       config.Logging.Level != "warn" && config.Logging.Level != "error" {
-        return fmt.Errorf("invalid log level: %s", config.Logging.Level)
-    }
-
-    // URL format validation
-    for _, registry := range config.Registries {
-        if _, err := url.Parse(registry.URL); err != nil {
-            return fmt.Errorf("invalid registry URL: %s", registry.URL)
-        }
-    }
-
-    return nil
-}
-```
-
-**Path Traversal Prevention**:
-
-```go
-func ValidatePath(path string, baseDir string) error {
-    cleanPath := filepath.Clean(path)
-    absPath, err := filepath.Abs(cleanPath)
-    if err != nil {
-        return err
-    }
-
-    absBase, err := filepath.Abs(baseDir)
-    if err != nil {
-        return err
-    }
-
-    if !strings.HasPrefix(absPath, absBase) {
-        return fmt.Errorf("path traversal detected: %s", path)
-    }
-
-    return nil
-}
-```
-
----
-
-## Process Isolation
-
-### Plugin Isolation
-
-**Memory Limits**:
-
-```go
-func SetMemoryLimit(limit int64) error {
-    return syscall.Setrlimit(syscall.RLIMIT_AS, &syscall.Rlimit{
-        Cur: uint64(limit),
-        Max: uint64(limit),
-    })
-}
-
-// Default: 256 MB
-SetMemoryLimit(256 * 1024 * 1024)
-```
-
-**CPU Time Limits**:
-
-```go
-func ExecuteWithTimeout(ctx context.Context, fn func() error, timeout time.Duration) error {
-    ctx, cancel := context.WithTimeout(ctx, timeout)
-    defer cancel()
-
-    errChan := make(chan error, 1)
-    go func() {
-        errChan <- fn()
-    }()
-
-    select {
-    case err := <-errChan:
-        return err
-    case <-ctx.Done():
-        return fmt.Errorf("execution timeout")
-    }
-}
-
-// Default: 5 minutes
-ExecuteWithTimeout(ctx, pluginProcess, 5*time.Minute)
-```
-
-**File System Restrictions**:
-
-```go
-func RestrictFileAccess(pluginDir string) error {
-    // Chroot to plugin directory
-    if err := syscall.Chroot(pluginDir); err != nil {
-        return err
-    }
-
-    // Change to root of chroot
-    return os.Chdir("/")
-}
-```
-
-**Network Access Restrictions**:
-
-```go
-type NetworkPolicy struct {
-    Allowed []string  // Whitelisted domains
-}
-
-func (np *NetworkPolicy) CheckAccess(destination string) error {
-    for _, allowed := range np.Allowed {
-        if strings.HasSuffix(destination, allowed) {
-            return nil
-        }
-    }
-    return fmt.Errorf("network access denied: %s", destination)
-}
-```
-
-### Pipeline Isolation
-
-**Separate Execution Context**:
-
-```go
-type PipelineContext struct {
-    ID        string
-    Input     interface{}
-    Output    interface{}
-    Timeout   time.Duration
-    Memory    int64
-    Variables map[string]interface{}
-}
-
-func (pc *PipelineContext) Execute(pipeline *Pipeline) error {
-    // Set resource limits
-    SetMemoryLimit(pc.Memory)
-
-    // Execute with timeout
-    ctx, cancel := context.WithTimeout(context.Background(), pc.Timeout)
-    defer cancel()
-
-    return pipeline.Run(ctx, pc.Input)
-}
-```
-
-**No Cross-Pipeline Data Access**:
-
-```go
-func (ps *PipelineService) GetData(pipelineID string, key string) (interface{}, error) {
-    // Each pipeline has isolated storage
-    storage := ps.storages[pipelineID]
-    if storage == nil {
-        return nil, fmt.Errorf("pipeline storage not found")
-    }
-
-    return storage.Get(key)
-}
-```
-
----
-
-## Audit Logging
-
-### Events Logged
-
-```go
-type AuditEvent struct {
-    Timestamp  time.Time
-    EventType  string
-    UserID     string
-    ResourceID string
-    Action     string
-    Result     string  // success, failure, denied
-    Details    map[string]interface{}
-}
-
-const (
-    EventAuthAttempt       = "auth.attempt"
-    EventAuthSuccess       = "auth.success"
-    EventAuthFailure       = "auth.failure"
-    EventPermissionCheck   = "permission.check"
-    EventPermissionDenied  = "permission.denied"
-    EventConfigChange      = "config.change"
-    EventPluginInstall     = "plugin.install"
-    EventPluginRemove      = "plugin.remove"
-    EventRegistryAccess    = "registry.access"
-    EventSecretDetected    = "secret.detected"
-    EventDataAccess        = "data.access"
-)
-```
-
-### Log Protection
-
-**Automatic Sanitization**:
-
-```go
-func AuditLog(event *AuditEvent) {
-    // Sanitize before logging
-    sanitized := SanitizeAuditEvent(event)
-
-    // Structured logging
-    log.Info("audit",
-        "event_type", sanitized.EventType,
-        "user_id", sanitized.UserID,
-        "action", sanitized.Action,
-        "result", sanitized.Result,
-        "details", sanitized.Details,
-    )
-}
-
-func SanitizeAuditEvent(event *AuditEvent) *AuditEvent {
-    sanitized := *event
-
-    // Remove sensitive fields
-    for key := range sanitized.Details {
-        if IsSensitiveField(key) {
-            sanitized.Details[key] = "<REDACTED>"
-        }
-    }
-
-    return &sanitized
-}
-```
-
-**Immutable Log Appending**:
-
-```go
-func AppendAuditLog(event *AuditEvent) error {
-    // Open in append-only mode
-    f, err := os.OpenFile(auditLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-    if err != nil {
-        return err
-    }
-    defer f.Close()
-
-    // Write JSON line
-    encoder := json.NewEncoder(f)
-    return encoder.Encode(event)
-}
-```
-
-**Syslog Integration**:
-
-```go
-func SendToSyslog(event *AuditEvent) error {
-    syslogWriter, err := syslog.New(syslog.LOG_INFO|syslog.LOG_LOCAL0, "contexthelp")
-    if err != nil {
-        return err
-    }
-    defer syslogWriter.Close()
-
-    message := fmt.Sprintf("event=%s user=%s action=%s result=%s",
-        event.EventType, event.UserID, event.Action, event.Result)
-
-    return syslogWriter.Info(message)
-}
-```
-
----
-
-## Deployment Security
-
-### Local Development
-
-```bash
-# Secure defaults
-export ENV=development
-export LOG_LEVEL=debug
-export ENCRYPTION_ENABLED=false  # OK for local dev
-export CH_SERVER_PORT=7700  # private access (default) binds 127.0.0.1
-```
-
-### Server Deployment
-
-```bash
-# Production requirements
-export ENV=production
-export ENCRYPTION_ENABLED=true
-export ENCRYPTION_PASSPHRASE=$(vault kv get -field=passphrase secret/encryption)
-export CH_SERVER_PORT=8080  # server.access protected/public binds 0.0.0.0
-export TLS_ENABLED=true
-export TLS_CERT_FILE=/etc/contexthelp/tls/server.crt
-export TLS_KEY_FILE=/etc/contexthelp/tls/server.key
-```
-
-### Container Security
-
-**Dockerfile Security**:
-
-```dockerfile
-FROM alpine:latest
-
-# Non-root user
-RUN addgroup -S contexthelp && adduser -S contexthelp -G contexthelp
-
-# Copy binary
-COPY --chown=contexthelp:contexthelp bin/dpkms /usr/local/bin/dpkms
-
-# Run as non-root
-USER contexthelp
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s \
-  CMD wget --quiet --tries=1 --spider http://localhost:7700/health || exit 1
-
-ENTRYPOINT ["/usr/local/bin/dpkms"]
-CMD ["serve"]
-```
-
-**Kubernetes Security**:
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: contexthelp
-spec:
-  securityContext:
-    runAsNonRoot: true
-    runAsUser: 1000
-    fsGroup: 1000
-  containers:
-  - name: contexthelp
-    image: contexthelp:latest
-    securityContext:
-      allowPrivilegeEscalation: false
-      readOnlyRootFilesystem: true
-      capabilities:
-        drop:
-        - ALL
-    resources:
-      limits:
-        memory: "512Mi"
-        cpu: "500m"
-```
-
----
-
-## Security Testing
-
-### Unit Tests
-
-```go
-func TestEncryption(t *testing.T) {
-    key := make([]byte, 32)
-    rand.Read(key)
-
-    plaintext := []byte("sensitive data")
-    ciphertext, err := Encrypt(plaintext, key)
-    require.NoError(t, err)
-
-    decrypted, err := Decrypt(ciphertext, key)
-    require.NoError(t, err)
-    require.Equal(t, plaintext, decrypted)
-}
-```
-
-### Integration Tests
-
-```go
-func TestDatabaseEncryption(t *testing.T) {
-    storage := NewEncryptedStorage(sqliteBackend, cipher)
-
-    obj := Object{ID: "test", Data: []byte("secret")}
-    err := storage.Save(obj)
-    require.NoError(t, err)
-
-    // Verify encrypted in database
-    rawData := sqliteBackend.LoadRaw(obj.ID)
-    require.NotEqual(t, obj.Data, rawData)
-
-    // Verify decrypted on load
-    loaded, err := storage.Load(obj.ID)
-    require.NoError(t, err)
-    require.Equal(t, obj.Data, loaded.Data)
-}
-```
-
----
-
-## Related Documentation
-
-- [threat.md](threat.md) — Threat model
-- [boundaries.md](boundaries.md) — Security boundaries
-- [compliance.md](compliance.md) — Compliance standards
-- [../secret-management.md](../secret-management.md) — Secret lifecycle
-
----
-
-**Last Updated**: 2026-01-26
-**Version**: 1.0
-**Status**: Active
-**Maintained by**: Security Team
+- [threat.md](threat.md), [boundaries.md](boundaries.md), [compliance.md](compliance.md)
+- [../../dpkms/security.md](../../dpkms/security.md)

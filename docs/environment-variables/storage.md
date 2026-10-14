@@ -125,7 +125,7 @@ Externalizes oversized object content out of the database into a pluggable blob 
 **Values:** `local`, `s3`, `garage`\
 **Config key:** `storage.blob.backend`
 
-Selects the blob store implementation. `garage` is a preset on the `s3` backend that auto-applies path-style addressing and a default region — see [Garage example](../ctxt/configuration.md#garage-self-hosted-distributed).
+Selects the blob store implementation. `garage` is a preset on the `s3` backend that auto-applies path-style addressing and a default region — see [Backends](../ctxt/configuration.md#backends) and the [Garage example](#s3-compatible-blob-store-garage) below.
 
 ```bash
 CTXT_BLOB_BACKEND=garage

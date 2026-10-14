@@ -1,4 +1,7 @@
 ```mermaid
+---
+title: "Design only (ADR-066): no command runs this event flow"
+---
 flowchart TB
     src[Source emits RawEvent] -->|captured| redact[Source-side redaction]
     redact -->|redacted?| filter{kit/policy CEL}

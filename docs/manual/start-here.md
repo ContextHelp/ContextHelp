@@ -8,7 +8,7 @@ This page gives a single onboarding path before you branch into role-specific ma
 - `dpkms (self-hosted)`: local or enterprise-managed substrate
 - `dpkms cloud`: managed substrate with reduced ops overhead
 
-Reference: [`../stories/README.md`](../stories/README.md)
+Reference: [`docs/stories/README.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/stories/README.md)
 
 ## 2. Verify your runtime
 

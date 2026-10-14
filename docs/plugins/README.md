@@ -23,15 +23,12 @@ the interfaces in `pkg/pluginapi` are design notes, not the running system.
 - [patterns-url-adapter-post-processor.md](patterns-url-adapter-post-processor.md) - URL adapter +
   post-processor patterns: interface contracts, annotated examples, composition guide
 
-### Plugin Examples
-- [plugins-notifications.md](plugins-notifications.md) - Notification plugin example
-- [plugins-refresh.md](plugins-refresh.md) - Refresh policy plugin example
-- [plugins-github-pr-review-watcher.md](plugins-github-pr-review-watcher.md) - GitHub PR review watcher plugin
-- [examples/plugins-sample-price-monitor.md](examples/plugins-sample-price-monitor.md) - Price monitoring plugin
-
-### Annotated Walkthroughs
-- [examples/plugins-example-github-annotated.md](examples/plugins-example-github-annotated.md) -
-  Step-by-step tutorial: GitHub PR watcher from scratch, inline design annotations
+### Design examples (not buildable on the current API)
+- [plugins-notifications.md](plugins-notifications.md) - Notification plugin; what exists instead
+- [plugins-refresh.md](plugins-refresh.md) - Refresh plugin; what exists instead
+- [plugins-github-pr-review-watcher.md](plugins-github-pr-review-watcher.md) - GitHub PR review watcher plugin spec
+- [examples/plugins-sample-price-monitor.md](examples/plugins-sample-price-monitor.md) - Price monitoring plugin; closest real code
+- [examples/plugins-example-github-annotated.md](examples/plugins-example-github-annotated.md) - GitHub plugin walkthrough; GitHub support today
 
 ## Plugin Capabilities
 

@@ -391,8 +391,7 @@ Reference: [Inbound auth, roles and scopes](../manual/reference/config-and-permi
 **Events Logged**:
 - Repeated authentication failures and ACL denials past the
   `security.alerts` thresholds (`security.auth_failure`,
-  `security.acl_denial`), quota exhaustion, signing failures, worker crash
-  loops
+  `security.acl_denial`) and quota exhaustion (`security.quota_exhausted`)
 - Duplicate detection (`dedup.*`) and fan-out enrichment (`fanout.completed`)
 - `ctxt doctor` runs (`doctor.run`)
 - Not recorded: successful sign-ins, configuration changes, plugin installs
@@ -400,7 +399,7 @@ Reference: [Inbound auth, roles and scopes](../manual/reference/config-and-permi
 **Log Protection**:
 - The audit log lives in the dpkms database; read it with `ctxt audit list`
   / `ctxt audit export` (`admin:audit` scope over HTTP)
-- Forwarding via `audit.syslog` and `audit.webhook`
+- No forwarding: the `audit:` config block (`syslog`, `webhook`) is read by no code
 - Security alerts (`security.alerts`) to the audit log, a webhook or SMTP.
   Their audit rows go through a bounded queue (1024 rows) with one writer:
   `dpkms serve` writes the queued rows before it closes the store on
@@ -424,7 +423,7 @@ Reference: [Inbound auth, roles and scopes](../manual/reference/config-and-permi
 | A06 Vulnerable Components | Dependency scanning, version management |
 | A07 Authentication Failure | Mandatory static-token auth off loopback, 32-char minimum, placeholder rejection, constant-time compare |
 | A08 Data Integrity | Schema validation, HMAC verification |
-| A09 Logging & Monitoring | Audit log, syslog/webhook forwarding, security alerts (no log sanitization) |
+| A09 Logging & Monitoring | Audit log, security alerts to webhook/SMTP (no audit forwarding, no log sanitization) |
 | A10 SSRF | No automatic external calls, whitelisting |
 
 ### Security Standards

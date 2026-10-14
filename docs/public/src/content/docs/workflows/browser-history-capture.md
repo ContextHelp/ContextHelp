@@ -7,7 +7,7 @@ description: `ctxt capture history` sends the pages you visited in a Chromium-fa
 
 Supported browsers: Chrome, Brave, Edge, Arc, Chromium and Vivaldi. Firefox and Safari are not supported yet.
 
-> Companion to [`ambient.md`](../../ambient.md). To capture open tabs instead, see [`browser-tab-capture.md`](browser-tab-capture.md). To run captures on a timer, see [`browser-capture-schedule.md`](browser-capture-schedule.md).
+> Companion to [`ambient.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/ambient.md). To capture open tabs instead, see [`browser-tab-capture.md`](browser-tab-capture.md). To run captures on a timer, see [`browser-capture-schedule.md`](browser-capture-schedule.md).
 
 ## First run
 
@@ -151,7 +151,7 @@ What to expect from the rules:
 - Only `http` and `https` pages are captured. localhost and every other scheme (`file:`, `about:`, `chrome:`, ...) are always dropped; the preview shows `builtin: scheme not captured (<scheme>)`.
 - If a profile key under `capture.url_filter.browsers.<browser>.profiles` names no profile of that browser, the command warns that its rules apply to nothing.
 
-Rule syntax, plus rules for every browser or every profile: [URL filter](../../ambient.md#keep-sites-out-of-browser-capture).
+Rule syntax, plus rules for every browser or every profile: [URL filter](https://github.com/ContextHelp/ContextHelp/blob/next/docs/ambient.md#keep-sites-out-of-browser-capture).
 
 ## Start over
 

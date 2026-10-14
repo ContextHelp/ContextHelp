@@ -11,4 +11,4 @@ Use this section if you want role-specific onboarding.
 | Maintainers | Contract stability, governance, long-term evolution | [`maintainers.md`](./maintainers.md) |
 
 Source personas:
-- [`../../personas/README.md`](../../personas/README.md)
+- [`docs/personas/README.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/personas/README.md)

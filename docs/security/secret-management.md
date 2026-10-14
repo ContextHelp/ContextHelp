@@ -831,7 +831,7 @@ contexthelp_unauthorized_access_attempts_total
 
 - [Secrets Validation & Log Sanitization](./secrets-validation-and-log-sanitization.md)
 - [Configuration Security](./configuration-security.md)
-- [Environment Variables - Security Section](../environment-variables.md#security-best-practices)
+- [Security Environment Variables](../environment-variables/security.md)
 - [dPKMS Security](../dpkms/security.md)
 
 ---

@@ -54,7 +54,7 @@ dpkms healthcheck                     # /healthz envelope: db, queue, watchers, 
 
 For a supervised service (launchd/systemd) use `dpkms install`; for backups,
 `dpkms backup` / `dpkms restore` (SQLite only). See the
-[operations persona](../../personas/operations.md) for details.
+[operations persona](https://github.com/ContextHelp/ContextHelp/blob/next/docs/personas/operations.md) for details.
 
 ### 2. Monitor queue health and flow
 

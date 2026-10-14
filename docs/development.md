@@ -648,22 +648,15 @@ go tool pprof cpu.prof
 
 ## Release Process
 
-See [docs/release-process.md](release-process.md) for complete release guide.
+ctxt has no published release yet. The release path is a `v*.*.*` tag:
+pushing one runs `.github/workflows/release.yml` (lint, security scan,
+tests, integration, build smoke, then GoReleaser per `.goreleaser.yaml`).
+Release notes for operators live in [release-notes/](release-notes/); the
+`Operator-Impact:` commit trailer feeds them (see
+[release-notes/template.md](release-notes/template.md)).
 
-### Quick Release
-
-```bash
-# 1. Update version
-git tag -a v0.2.0 -m "Release v0.2.0"
-
-# 2. Build release binaries
-task release:build
-
-# 3. Push tag
-git push origin v0.2.0
-
-# 4. GitHub Actions will create release
-```
+`task release:build` packs `bin/` into `dist/contexthelp-<tag>.tar.gz` for
+a local check; it does not publish anything.
 
 ---
 

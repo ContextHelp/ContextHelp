@@ -267,21 +267,13 @@ Retryable() bool
 ---
 
 ## 10. Caching Domain
-**Location:** none; there is no general caching layer
+**Location:** none; there is no caching layer
 
-**Responsibilities:**
-- Query result caching
-- Pipeline step caching
-- Embedding caching
-- Cache invalidation policies
-- Cache storage backends
-- TTL and eviction strategies
+There is no `cache:` config key, no cache command, and no cache for query results, pipeline step outputs, LLM, embedding or OCR results, so no TTL, eviction or invalidation policy. What exists is a few purpose-specific mechanisms owned by other domains:
 
-**Cache Types:**
-- Query cache — Search results
-- Step cache — Pipeline outputs
-- Embedding cache — Vector representations
-- Metadata cache — Registry data
+- **Ingest dedup** (Jobs & Ingestion): workers hash incoming content (`ContentHash`); a repeat capture reinforces the existing object instead of reprocessing it (`internal/jobs/worker.go`).
+- **Registry manifest cache** (Registry & Federation): fetched manifests are stored in the database (`RegistryCache`, `internal/storage/sqlite/registry_cache.go`) and step-registry indexes are refetched with `If-None-Match` on their ETag (`internal/steps/discovery.go`).
+- **Browser-extension cookies**: the cookie bridge keeps cookies per domain in memory for 1 hour (`internal/server/ws/cookie_bridge.go`).
 
 ---
 

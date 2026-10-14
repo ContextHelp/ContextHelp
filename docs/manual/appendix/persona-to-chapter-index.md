@@ -19,4 +19,4 @@ Use this index to choose the fastest manual path for each role.
 
 ## Source personas
 
-- [`../../personas/README.md`](../../personas/README.md)
+- [`docs/personas/README.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/personas/README.md)

@@ -41,7 +41,7 @@ capture:
               - "drive.example.com"
 ```
 
-`crm.example.net` matches that host on any scheme, port and path; `*.example.net` matches `example.net` and every subdomain. To deny only part of a site, write the URL: `https://drive.example.com/shared`. Only `http` and `https` pages are captured; localhost and every other scheme (`file:`, `about:`, `chrome:`, ...) are always dropped. Full rule syntax and `allow_only` lists: [Keep sites out of browser capture](../../ambient.md#keep-sites-out-of-browser-capture).
+`crm.example.net` matches that host on any scheme, port and path; `*.example.net` matches `example.net` and every subdomain. To deny only part of a site, write the URL: `https://drive.example.com/shared`. Only `http` and `https` pages are captured; localhost and every other scheme (`file:`, `about:`, `chrome:`, ...) are always dropped. Full rule syntax and `allow_only` lists: [Keep sites out of browser capture](https://github.com/ContextHelp/ContextHelp/blob/next/docs/ambient.md#keep-sites-out-of-browser-capture).
 
 Deny rules add up across config files: your user config, a project `.contexthelp/ctxt.yaml`, each `-c <file>` and each `-c key=value`. No project or `-c` file can drop a rule from your user config; to stop denying a site, delete the rule from the file that holds it (`ctxt config paths` lists them). Each layer's `allow_only` list is one more list a URL must match, so a later layer can narrow capture but never widen it.
 
@@ -187,5 +187,5 @@ The listing shows each failed URL with the server's reply. Check the server, the
 
 - [`ingestion-capture.md`](./ingestion-capture.md)
 - [`browser-history-capture.md`](./browser-history-capture.md) (browser history and backfill)
-- [`../../ambient.md`](../../ambient.md) (full filter rules)
-- [`../../stories/capture/US-0207-web-tab-capture.md`](../../stories/capture/US-0207-web-tab-capture.md)
+- [`docs/ambient.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/ambient.md) (full filter rules)
+- [`docs/stories/capture/US-0207-web-tab-capture.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/stories/capture/US-0207-web-tab-capture.md)

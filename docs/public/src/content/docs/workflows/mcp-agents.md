@@ -107,12 +107,12 @@ Without `profile`, `search` covers every profile.
 
 ## Not implemented
 
-The tools `list`, `get`, `entity`, `recent`, `sessions`, `session`, `compose` and `mentions`, the local `ctxd` MCP server and its tools, `ctxt mcp install|status|uninstall`, MCP bus events and an `mcp:` config block are described in [ADR-068](../../decisions/ADR-068-mcp-read-surface.md) but do not exist.
+The tools `list`, `get`, `entity`, `recent`, `sessions`, `session`, `compose` and `mentions`, the local `ctxd` MCP server and its tools, `ctxt mcp install|status|uninstall`, MCP bus events and an `mcp:` config block are described in [ADR-068](https://github.com/ContextHelp/ContextHelp/blob/next/docs/decisions/ADR-068-mcp-read-surface.md) but do not exist.
 
 ## Related references
 
 - [`search-retrieval.md`](search-retrieval.md) and [`semantic-search.md`](semantic-search.md) — the search the `search` tool runs
 - [`../reference/config-and-permissions.md`](../reference/config-and-permissions.md) — inbound auth, roles, `read:mcp`
-- [`../../decisions/ADR-068-mcp-read-surface.md`](../../decisions/ADR-068-mcp-read-surface.md) — design record (includes unbuilt parts)
-- [`../../decisions/ADR-038-supermemory-not-adopted.md`](../../decisions/ADR-038-supermemory-not-adopted.md)
+- [`docs/decisions/ADR-068-mcp-read-surface.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/decisions/ADR-068-mcp-read-surface.md) — design record (includes unbuilt parts)
+- [`docs/decisions/ADR-038-supermemory-not-adopted.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/decisions/ADR-038-supermemory-not-adopted.md)
 - [MCP Specification](https://modelcontextprotocol.io)

@@ -116,7 +116,7 @@ Importer routes (story-target contract):
 - `POST /api/v1/importers/{source}/run`
 - `GET /api/v1/importers/runs/{run_id}`
 
-Reference: [`../../api/api-rest.md`](../../api/api-rest.md)
+Reference: [`docs/api/api-rest.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/api/api-rest.md)
 
 ## gRPC service map (from current spec)
 
@@ -129,7 +129,7 @@ Reference: [`../../api/api-rest.md`](../../api/api-rest.md)
 - `EntityService`
 - `SuggestionService` (optional)
 
-Reference: [`../../api/api-grpc.md`](../../api/api-grpc.md)
+Reference: [`docs/api/api-grpc.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/api/api-grpc.md)
 
 ## Runtime-vs-story note
 

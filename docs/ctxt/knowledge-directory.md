@@ -34,51 +34,36 @@ The directory stays a plain folder of plain files: editable in any editor, revie
 
 ## Wiring it in as a source
 
-Two ambient sensors cover the file-watching use case (sensor catalog and `policy/ambient.yaml` design: [ADR-065 amendment](../decisions/ADR-065-pluggable-adapters.md#amendment-2026-05-06--service-vs-sensor-distinction-ambient-capture-os-platform-slots)):
+Use the directory watcher in `ctxt watch`. It runs on your machine and sends each file's content to the dpkms instance ctxt resolves, over the API.
 
-- **`files.local-fs`** — scan-on-tick: each sweep walks the tree and emits the full state. Best default for a knowledge directory; every sweep reconciles the index with reality.
-- **`watched-fs`** — fsnotify event stream: emits deltas (created/modified files) since the last sweep. Lower latency between save and ingestion, but a daemon restart loses pending events (Phase 2 limitation noted in the adapter).
-
-### Runnable source config
-
-`$XDG_CONFIG_HOME/contexthelp/policy/ambient.yaml`:
+`ctxt.yaml`:
 
 ```yaml
-sensors:
-  - name: files.local-fs
-    enabled: true
-    config:
-      roots:
-        - path: ~/work/my-repo/knowhow
-          recursive: true
-          ignore: [".DS_Store", "*.tmp"]
+watch:
+  dirs:
+    - ~/work/my-repo/knowhow         # a leading ~ is expanded; must exist
+  patterns: ["**/*.md"]
+  debounce: 500ms
 ```
 
-Then sweep:
+Then:
 
 ```bash
-ctxt capture --ambient
+ctxt watch start     # blocks; Ctrl-C or `ctxt watch stop` to end
+ctxt watch status
 ```
 
-Or, for save-to-index latency, watch instead of scan:
+On start each directory is scanned once and files changed since the last run against this instance are sent; after that, saves are sent as they happen. What was already sent is recorded per instance under `$XDG_STATE_HOME/ctxt/watch/`. A deleted file deletes the object it produced (that needs an `admin` token on a protected instance).
 
-```yaml
-sensors:
-  - name: watched-fs
-    enabled: true
-    platform: [darwin, linux]
-    config:
-      paths:
-        - ~/work/my-repo/knowhow
-```
+Each file is sent whole as one object (`type` from the extension, `source` = `watch:<mode>:<relative path>`). A directory containing `.obsidian/` or `logseq/` is tagged with that mode in `source`; the content is sent the same way.
 
-Both sensors are **metadata-only emitters**: they produce one ingest object per file carrying `path`, `size`, `modtime`, and `root` — file bodies are loaded downstream by pipelines, not by the sensor. This keeps sweeps cheap even over large trees.
+> The `files.local-fs` and `watched-fs` sensors and `policy/ambient.yaml` from the [ADR-065 amendment](../decisions/ADR-065-pluggable-adapters.md#amendment-2026-05-06--service-vs-sensor-distinction-ambient-capture-os-platform-slots) are not run by any command: `ctxt capture --ambient` exits "not yet implemented" and nothing reads `policy/ambient.yaml`. See [../ambient.md](../ambient.md#not-implemented).
 
 ### One-shot alternative: the Obsidian importer
 
-If the knowledge directory is (or resembles) an Obsidian vault, `ctxt import obsidian --vault <dir>` performs a one-shot batch import with markdown-aware parsing — frontmatter, inline `#tags`, wikilinks, attachments. Use the importer for the initial backfill, the ambient sensor for ongoing freshness.
+If the knowledge directory is (or resembles) an Obsidian vault, `ctxt import obsidian --vault <dir>` performs a one-shot batch import with markdown-aware parsing — frontmatter, inline `#tags`, wikilinks, attachments. Use the importer for a backfill that maps titles and tags, `ctxt watch` for ongoing freshness.
 
-> **Requires a running dpkms server.** Unlike the local-first paths above, `import obsidian` enqueues a batch job over HTTP against `--server` (default `http://localhost:8080`). Start the server first, or use the ambient sensor for a purely local ingest.
+Like `ctxt watch`, it sends to the dpkms instance ctxt resolves (`--server`, `--instance`, the current instance, then config); start dpkms first.
 
 ```bash
 ctxt import obsidian --vault ~/work/my-repo/knowhow --dry-run   # preview
@@ -99,25 +84,25 @@ Frontmatter handling differs by path, and today only the **importer** path parse
 | `weight` | **Not yet mapped.** Parsed but unused. ctxt tag `weight` (see [schema-tag.md](schema-tag.md)) is pipeline-assigned per tag, not read from frontmatter. |
 | anything else | Parsed into the raw frontmatter map; not mapped. |
 
-### Via ambient sensors (`files.local-fs`, `watched-fs`)
+### Via `ctxt watch`
 
-No frontmatter parsing at the sensor layer. Sensors emit file metadata only; body loading and any semantic extraction happen in downstream pipelines. The watcher performs one lightweight pre-semantic pass — `@namespace.slug` mention-hint extraction from paths and metadata — but hints are optimization only; pipelines remain authoritative.
+No frontmatter parsing. The file is sent as text with its frontmatter block included; the markdown pipeline splits sections by heading and does not read frontmatter keys, so `title`, `tags`, `description` and `weight` are not mapped to fields.
 
-> **Honest gap**: there is currently no ingestion path that maps frontmatter `description` or `weight` into ctxt fields, and the ambient file sensors do not parse frontmatter at all. If you rely on `description:` or `weight:` in your knowledge files today, treat them as author-facing metadata that ctxt preserves in raw form (importer path) or ignores (ambient path). Tags are the reliable frontmatter → ctxt signal, via the importer.
+> **Gap**: no ingestion path maps frontmatter `description` or `weight` into ctxt fields, and `ctxt watch` maps no frontmatter at all. Tags are the reliable frontmatter → ctxt signal, via the importer.
 
 Frontmatter `tags` are also distinct from ctxt **hints** (`#hint` markers — see [hints.md](hints.md)): hints are transient pipeline guidance, while frontmatter/inline tags feed the tagging step that produces persistent tags.
 
 ## Authority rule
 
 - **Filesystem is truth.** The markdown files are the canonical artifact — versioned, reviewed, merged like any other repo content.
-- **ctxt is index.** Re-ingesting the same content is idempotent: dedup by content hash reinforces the existing object instead of duplicating it (see [../dpkms/jobs-and-ingestion.md](../dpkms/jobs-and-ingestion.md), Step 5). Deleting the index loses nothing; a fresh sweep rebuilds it.
-- **ctxt never writes into the watched directory.** Export flows (`ctxt export --format obsidian-md --dest <dir>`) target a destination the operator names explicitly; pointing an export at a watched knowledge directory is an operator choice, not something ctxt does on its own.
+- **ctxt is index.** Re-ingesting the same content is idempotent: dedup by content hash reinforces the existing object instead of duplicating it (see [../dpkms/jobs-and-ingestion.md](../dpkms/jobs-and-ingestion.md), Step 5). Deleting the index loses nothing: re-run `ctxt import obsidian`, or remove the instance's state file under `$XDG_STATE_HOME/ctxt/watch/` so `ctxt watch start` sends every file again.
+- **ctxt never writes into the watched directory.** `ctxt watch` and the importer only read it. `ctxt export` prints one object as JSON or YAML to stdout; there is no directory export.
 
 For the outbound direction — materializing selected entities into a generated markdown directory — see the [export design note](knowledge-directory-export.md).
 
 ## See also
 
-- [ADR-065 amendment](../decisions/ADR-065-pluggable-adapters.md#amendment-2026-05-06--service-vs-sensor-distinction-ambient-capture-os-platform-slots) — sensor catalog and `policy/ambient.yaml` design
+- [ADR-065 amendment](../decisions/ADR-065-pluggable-adapters.md#amendment-2026-05-06--service-vs-sensor-distinction-ambient-capture-os-platform-slots) — sensor catalog and `policy/ambient.yaml` design (not implemented)
 - [../ambient.md](../ambient.md) — local capture that runs today
 - [capture.md](capture.md) — `ctxt capture` command spec
 - [hints.md](hints.md) — hints vs tags vs mentions

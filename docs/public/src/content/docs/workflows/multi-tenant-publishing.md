@@ -157,9 +157,9 @@ Removing the registry subscription cuts the lens; cursor file can be deleted or 
 
 ## Related references
 
-- [`../../dpkms/decentralization.md`](../../dpkms/decentralization.md)
-- [`../../dpkms/registries.md`](../../dpkms/registries.md)
-- [`../../dpkms/registry-syncing-and-retrieval.md`](../../dpkms/registry-syncing-and-retrieval.md)
-- [`../../dpkms/mentions.md`](../../dpkms/mentions.md)
+- [`docs/dpkms/decentralization.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/dpkms/decentralization.md)
+- [`docs/dpkms/registries.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/dpkms/registries.md)
+- [`docs/dpkms/registry-syncing-and-retrieval.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/dpkms/registry-syncing-and-retrieval.md)
+- [`docs/dpkms/mentions.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/dpkms/mentions.md)
 - `../../stories/admin/US-0030-set-up-focus-profiles.md`
 - `../../stories/federation/US-0318-configure-federation-targets.md`

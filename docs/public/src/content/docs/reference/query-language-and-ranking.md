@@ -87,9 +87,9 @@ Semantic mode is best for discovery and ideation.
 
 ## Canonical references
 
-- [`../../dpkms/query-language-spec.md`](../../dpkms/query-language-spec.md)
-- [`../../dpkms/ranking-and-reranking.md`](../../dpkms/ranking-and-reranking.md)
-- [`../../stories/search/US-0017-structured-rsql-query.md`](../../stories/search/US-0017-structured-rsql-query.md)
+- [`docs/dpkms/query-language-spec.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/dpkms/query-language-spec.md)
+- [`docs/dpkms/ranking-and-reranking.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/dpkms/ranking-and-reranking.md)
+- [`docs/stories/search/US-0017-structured-rsql-query.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/stories/search/US-0017-structured-rsql-query.md)
 
 ## Story alignment
 

@@ -90,8 +90,8 @@ For non-CLI agents, use:
 
 References:
 
-- [`../../api/api-rest.md`](../../api/api-rest.md)
-- [`../../api/api-grpc.md`](../../api/api-grpc.md)
+- [`docs/api/api-rest.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/api/api-rest.md)
+- [`docs/api/api-grpc.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/api/api-grpc.md)
 
 ## Story-Target Path (Planned/Spec-Oriented)
 

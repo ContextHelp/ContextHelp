@@ -10,8 +10,8 @@ Quick reference for daily capture. Scannable in 30 seconds.
 dpkms serve                          # start worker + REST/gRPC (keep running)
 dpkms serve --daemon                 # detach from terminal (background daemon)
 dpkms serve --name work              # named instance for multi-instance setups
-ctxt version                         # verify client is connected
-curl http://127.0.0.1:8080/health    # optional health probe
+ctxt status                          # health of the instance ctxt resolves (GET /healthz)
+curl http://127.0.0.1:8080/health    # bare liveness probe: {"status":"ok"}
 ```
 
 Config: `~/.config/contexthelp/ctxt.yaml` (ctxt), `~/.config/contexthelp/dpkms.yaml` (dpkms)
@@ -19,8 +19,8 @@ Config: `~/.config/contexthelp/ctxt.yaml` (ctxt), `~/.config/contexthelp/dpkms.y
 ### Multiple instances
 
 ```bash
-dpkms serve --name work    --config ~/.config/contexthelp/work.yaml
-dpkms serve --name personal --config ~/.config/contexthelp/personal.yaml --daemon
+dpkms serve --name work     --port 8080 --data-dir ~/kb/work
+dpkms serve --name personal --port 8081 --data-dir ~/kb/personal --daemon
 dpkms ps                             # NAME  PID  PORT  GRPC  DB  UPTIME
 ctxt instance use work               # persist active instance
 ctxt instance list                   # * marks current
@@ -53,7 +53,8 @@ ctxt analyze --file ./meeting.md --type text
 
 ```bash
 ctxt analyze https://example.com/postmortem --type url
-ctxt analyze https://example.com/feed.xml --type feed --fetch-new
+ctxt feed add https://example.com/feed.xml         # subscribe
+ctxt feed sync --url https://example.com/feed.xml  # fetch new items (nothing polls feeds on a timer)
 ```
 
 ### Image / Audio / Video
@@ -68,16 +69,16 @@ ctxt analyze --file ./demo.mp4      --type video
 
 ```bash
 ctxt analyze "Pricing experiment notes" --type text \
-  --hints "#checkout #pricing" \
-  --mentions "@project.checkout-redesign" \
+  --hint checkout,pricing \
+  --mention "@project.checkout-redesign" \
   --profile growth \
   --pipeline text.long
 ```
 
 | Flag | Purpose |
 |------|---------|
-| `--hints "#tag"` | Influence AI tagging |
-| `--mentions "@ns.slug"` | Attach explicit entity references |
+| `--hint <tag>` | Tagging hints (repeatable, CSV) |
+| `--mention "@ns.slug"` | Attach explicit entity references |
 | `--profile <name>` | Apply focus profile (Founder, Engineer, …) |
 | `--pipeline <name>` | Force a specific pipeline |
 | `--wait` | Block until job completes; returns object ID |
@@ -144,7 +145,7 @@ Full reference (tokens, tool arguments): [`manual/workflows/mcp-agents.md`](manu
 
 ## Inbox Triage
 
-Items captured with deferred processing (e.g. via mobile share, PWA, or `--inbox`) land here.
+Items captured with deferred processing (`ctxt capture <source> --inbox`, or a client posting to `/api/v1/inbox`) land here.
 
 ```bash
 ctxt inbox list                      # see what's waiting
@@ -163,9 +164,9 @@ ctxt import chrome  --file bookmarks.html [--dry-run] [--max-items 200]
 ctxt import safari  --file bookmarks.html
 ctxt import firefox --file bookmarks.html
 
-ctxt import pinboard  [--token <tok>] [--since 2026-01-01] [--tag research]
+ctxt import pinboard  [--token <tok>] [--since 2026-01-01] [--tagged research]
 ctxt import raindrop  --all [--token <tok>] [--since 2026-01-01]
-ctxt import onedrive  --drive-id <id> [--since 2026-01-01] [--include-ext .pdf]
+ctxt import onedrive  --drive-id <id> [--since 2026-01-01T00:00:00Z] [--include-ext .pdf]
 ```
 
 Batch from a URL list:
@@ -184,13 +185,15 @@ find ./imports -name "*.md" -print0 | xargs -0 -I{} ctxt analyze --file "{}" --t
 
 ## Track Jobs
 
+Job commands live on `dpkms` and read the local data directory, so run them on the dpkms host:
+
 ```bash
-ctxt job list                        # recent jobs
-ctxt job list --state failed         # failed only
-ctxt job status <job_id>             # single job state
-ctxt job log    <job_id>             # execution log
-ctxt job retry  <job_id>             # re-queue failed job
-ctxt job cancel <job_id>
+dpkms job list                       # recent jobs
+dpkms job list --state failed        # failed only
+dpkms job status <job_id>            # single job state
+dpkms job log    <job_id>            # execution log
+dpkms job retry  <job_id>            # re-queue failed job
+dpkms job cancel <job_id>
 ```
 
 States: `pending` → `running` → `completed` / `failed` / `cancelled`
@@ -202,9 +205,9 @@ States: `pending` → `running` → `completed` / `failed` / `cancelled`
 ```bash
 ctxt list                            # all recent objects
 ctxt list --type url --after 2026-02-01 --limit 20
-ctxt list --tag checkout,conversion
-ctxt open <object_id>                # human-readable view
-ctxt open <object_id> --output json  # full structured view
+ctxt list --tagged checkout          # one tag
+ctxt show <object_id>                # human-readable view
+ctxt show <object_id> --format json  # full structured view
 ```
 
 ---
@@ -223,7 +226,7 @@ ctxt find "deployment" --graph -o deployment.html    # save: .html .json .yaml .
 ctxt list --q "type==url;tag=in=(checkout,pricing)"  # structured (deterministic)
 ctxt list --mention @project.checkout-redesign
 ctxt list --q "related==@arch.decision"              # graph traversal (shared mention targets)
-ctxt open obj_12345678                               # See Also section shows related objects
+ctxt show obj_12345678                               # lists objects related through shared mentions
 ```
 
 ---
@@ -231,10 +234,11 @@ ctxt open obj_12345678                               # See Also section shows re
 ## Compose
 
 ```bash
-ctxt make brief   --tag checkout,funnel --since 2026-02-01 --output-file brief.md
-ctxt make plan    --mention @project.checkout-redesign --since 2026-02-01
-ctxt make summary --tag incident --since 2026-01-01
-ctxt make draft   --tag blog,launch --output-file post.md
+ctxt compose brief   --tagged checkout --since 2026-02-01 --output-file brief.md
+ctxt compose plan    --mention @project.checkout-redesign --since 2026-02-01
+ctxt compose summary --tagged incident --since 2026-01-01
+ctxt compose draft   --tagged launch --output-file post.md
+ctxt compose brief   --tagged launch --export json   # structured citations
 ```
 
 ---
@@ -243,7 +247,7 @@ ctxt make draft   --tag blog,launch --output-file post.md
 
 ```bash
 ctxt stats                           # object counts, job states, feeds, profiles
-ctxt stats --output json             # machine-readable snapshot
+ctxt stats --format json             # machine-readable snapshot
 ctxt stats --watch                   # live refresh every 3s (Ctrl-C to exit)
 ```
 
@@ -255,9 +259,9 @@ ctxt stats --watch                   # live refresh every 3s (Ctrl-C to exit)
 |---------|-----|
 | Jobs stuck on `pending` | Confirm `dpkms serve` is running; check `ctxt instance current` |
 | Stats from wrong DB | `ctxt instance use <name>` or `ctxt --instance <name> stats` |
-| Object missing expected tags | Re-ingest with `--hints` and `--mentions` |
+| Object missing expected tags | Re-capture with `--hint` and `--mention` |
 | Wrong type detected | Set `--type` explicitly |
 | Captured object needs specific pipeline | Add `--pipeline text.long` (or matching name) |
-| Verify what was captured | `ctxt open <id> --output json` |
-| Feed not updating | Use `--fetch-new` flag when analyzing the feed URL |
+| Verify what was captured | `ctxt show <id> --format json` |
+| Feed not updating | `ctxt feed sync --url <feed-url>` (or `--id <feed-id>`) |
 | Server won't stop | `dpkms shutdown --port <port>` or `dpkms ps` to find the right port |
