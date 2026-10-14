@@ -164,11 +164,32 @@ func TestRunDir_UnderDataDir(t *testing.T) {
 	assert.Equal(t, filepath.Join(dataDir, "run", "current-instance"), state)
 }
 
+// RunDirPath and CurrentInstanceFile name the run dir and its state
+// file without creating anything: read paths (ps, restore, instance
+// routing) must leave a data dir as they found it.
+func TestRunDirPath_CreatesNothing(t *testing.T) {
+	root := hermeticDataDir(t)
+	dataDir := filepath.Join(root, "d")
+
+	got, err := RunDirPath(dataDir)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(dataDir, "run"), got)
+
+	state, err := CurrentInstanceFile(dataDir)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(dataDir, "run", "current-instance"), state)
+
+	_, err = os.Stat(dataDir)
+	assert.True(t, os.IsNotExist(err), "lookup created %s: %v", dataDir, err)
+}
+
 // An empty data dir is a caller bug, never a silent fallback to the
 // process-wide default.
 func TestRunDir_EmptyDataDirErrors(t *testing.T) {
 	hermeticDataDir(t)
 	_, err := RunDir("")
+	require.Error(t, err)
+	_, err = RunDirPath("")
 	require.Error(t, err)
 	require.Error(t, EnsureDataDir(""))
 }

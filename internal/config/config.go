@@ -1629,12 +1629,13 @@ func EnsureDataDir(dataDir string) error {
 
 // RunDir returns <dataDir>/run, the directory for runtime files
 // (pidfiles, upgrade state, the current-instance selection), creating
-// it on demand. Pass cfg.Storage.DataDir.
+// it on demand: for writers. Readers use RunDirPath. Pass
+// cfg.Storage.DataDir.
 func RunDir(dataDir string) (string, error) {
-	if dataDir == "" {
-		return "", errNoDataDir
+	dir, err := RunDirPath(dataDir)
+	if err != nil {
+		return "", err
 	}
-	dir := filepath.Join(dataDir, runDirName)
 	// #nosec G703 -- dataDir is the operator's data dir, not request input.
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("run dir: %w", err)
@@ -1642,11 +1643,22 @@ func RunDir(dataDir string) (string, error) {
 	return dir, nil
 }
 
+// RunDirPath returns <dataDir>/run without creating it, for readers
+// (ps, restore, instance routing): a run dir that does not exist holds
+// no pidfiles, and a read must not leave one behind.
+func RunDirPath(dataDir string) (string, error) {
+	if dataDir == "" {
+		return "", errNoDataDir
+	}
+	return filepath.Join(dataDir, runDirName), nil
+}
+
 // CurrentInstanceFile returns the path to the state file that stores the
 // user's chosen current instance name (written by `ctxt instance use`):
-// <dataDir>/run/current-instance.
+// <dataDir>/run/current-instance. It creates nothing; a writer creates
+// the run dir first (RunDir).
 func CurrentInstanceFile(dataDir string) (string, error) {
-	dir, err := RunDir(dataDir)
+	dir, err := RunDirPath(dataDir)
 	if err != nil {
 		return "", err
 	}

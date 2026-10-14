@@ -64,7 +64,7 @@ func currentInstance() string {
 // localInstances lists the dpkms instances running on this machine, from
 // their pidfiles.
 func localInstances() ([]pidfile.Info, error) {
-	runDir, err := config.RunDir(dataDir())
+	runDir, err := config.RunDirPath(dataDir())
 	if err != nil {
 		return nil, err
 	}

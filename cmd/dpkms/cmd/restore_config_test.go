@@ -119,3 +119,24 @@ func TestRestoreRefusesWhileServing(t *testing.T) {
 		t.Errorf("refused restore wrote the config file: %v", err)
 	}
 }
+
+// dpkms restore --dry-run writes nothing: not even the data dir's run
+// dir, which it only reads for live pidfiles.
+func TestRestoreDryRunCreatesNoRunDir(t *testing.T) {
+	f := newRestoreFixture(t)
+	restoreCmd.InheritedFlags() // merge the root's persistent --dry-run
+	if err := restoreCmd.Flags().Set("dry-run", "true"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = restoreCmd.Flags().Set("dry-run", "false") })
+
+	if err := runRestore(restoreCmd, []string{f.archive}); err != nil {
+		t.Fatalf("restore --dry-run: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(f.dataDir, "run")); !os.IsNotExist(err) {
+		t.Errorf("dry run created the run dir: %v", err)
+	}
+	if _, err := os.Stat(f.dbPath); !os.IsNotExist(err) {
+		t.Errorf("dry run wrote the database: %v", err)
+	}
+}

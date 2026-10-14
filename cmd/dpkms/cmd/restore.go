@@ -79,7 +79,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 
 	// Running instances of this data dir record their database in
 	// their pidfiles; restore refuses while one serves dbPath.
-	runDir, err := config.RunDir(dataDir())
+	runDir, err := config.RunDirPath(dataDir())
 	if err != nil {
 		return fmt.Errorf("restore: %w", err)
 	}
