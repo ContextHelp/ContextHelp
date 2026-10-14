@@ -2,6 +2,7 @@ package federation
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -24,10 +25,28 @@ type Pusher interface {
 	// Push upserts objects, edges, and entities into the target. Idempotent
 	// via content-hash dedup on objects and slug-based upsert on entities.
 	// objects are in ChangeSeq order: once the target has acknowledged
-	// them, the watermark moves to the last one's ChangeSeq. On error it stays at the
-	// last object acknowledged before the failure.
+	// them, the watermark moves to the last one's ChangeSeq. On error it
+	// stays at the last object acknowledged before the failure. A failure
+	// down to one object rather than the target is an *ObjectError.
 	Push(ctx context.Context,
 		objects []storage.KnowledgeObject,
 		edges []storage.Edge,
 		entities []storage.Entity) error
+	// Advance moves the watermark to seq. Sync calls it once every
+	// object up to seq is acknowledged or skipped, when the last of
+	// them was skipped and Push could not move it there.
+	Advance(ctx context.Context, seq int64) error
 }
+
+// ObjectError is a push failure down to one object, not the target:
+// its content cannot be read from the source, or the receiver refuses
+// it even sent alone. Retrying the target does not help; Sync skips
+// the object after maxObjectFailures in a row.
+type ObjectError struct {
+	ID  string // the object's id
+	Err error
+}
+
+func (e *ObjectError) Error() string { return fmt.Sprintf("object %q: %v", e.ID, e.Err) }
+
+func (e *ObjectError) Unwrap() error { return e.Err }

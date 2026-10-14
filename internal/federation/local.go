@@ -35,7 +35,8 @@ func NewLocalPusher(name, targetPath string, targetBlob *config.BlobConfig, blob
 }
 
 // copyBlobs copies the blobs obj's content refs name from src to dst,
-// skipping those dst already holds.
+// skipping those dst already holds. A blob it cannot read from src is
+// an *ObjectError.
 func copyBlobs(ctx context.Context, src, dst storage.BlobStore, obj *storage.KnowledgeObject) error {
 	for _, content := range []string{obj.RawContent, obj.TextContent} {
 		key, ok := blob.BlobKey(content)
@@ -48,11 +49,11 @@ func copyBlobs(ctx context.Context, src, dst storage.BlobStore, obj *storage.Kno
 			continue
 		}
 		if src == nil {
-			return fmt.Errorf("blob %s: %w", key, blob.ErrNoStore)
+			return &ObjectError{ID: obj.ID, Err: fmt.Errorf("blob %s: %w", key, blob.ErrNoStore)}
 		}
 		rc, meta, err := src.Get(ctx, key)
 		if err != nil {
-			return fmt.Errorf("blob %s: read source: %w", key, err)
+			return &ObjectError{ID: obj.ID, Err: fmt.Errorf("blob %s: read source: %w", key, err)}
 		}
 		err = dst.Put(ctx, key, rc, meta)
 		rc.Close()
@@ -177,6 +178,9 @@ func (p *LocalPusher) Push(
 		}
 		// Content first: a row never lands without the blob its ref names.
 		if err := copyBlobs(ctx, p.blobs, targetBlobs, obj); err != nil {
+			if oe := (*ObjectError)(nil); errors.As(err, &oe) {
+				return fmt.Errorf("federation local push: %w", err)
+			}
 			return fmt.Errorf("federation local push: object %q: %w", obj.ID, err)
 		}
 		if err := objs.Create(ctx, obj); err != nil {
@@ -217,6 +221,19 @@ func (p *LocalPusher) Push(
 	last := objects[len(objects)-1].ChangeSeq
 	if err := drv.Watermarks().SetWatermark(ctx, p.name, last); err != nil {
 		return fmt.Errorf("federation local push: advance watermark for %q: %w", p.name, err)
+	}
+	return nil
+}
+
+// Advance moves the watermark the target database keeps to seq.
+func (p *LocalPusher) Advance(ctx context.Context, seq int64) error {
+	drv, _, err := p.openTarget(ctx)
+	if err != nil {
+		return fmt.Errorf("federation local advance: %w", err)
+	}
+	defer func() { _ = drv.Close(ctx) }()
+	if err := drv.Watermarks().SetWatermark(ctx, p.name, seq); err != nil {
+		return fmt.Errorf("federation local advance %q: %w", p.name, err)
 	}
 	return nil
 }

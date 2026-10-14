@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -35,7 +36,10 @@ type pushBody struct {
 
 // DefaultMaxRequestBytes caps the encoded objects one push request
 // carries. Content travels inline, so a batch of large objects is split
-// across requests.
+// across requests. An object larger than the cap still goes, alone:
+// FederationPush reads a body of any size. A receiver that refuses it
+// anyway (HTTP 413, from a proxy in front) fails it with an
+// *ObjectError, so Sync eventually skips it.
 const DefaultMaxRequestBytes = 4 << 20
 
 // RemotePusher pushes objects to a remote dpkms instance via HTTP POST.
@@ -98,17 +102,29 @@ func (p *RemotePusher) Watermark(ctx context.Context) (int64, error) {
 	return p.watermarks.GetWatermark(ctx, p.name)
 }
 
+// Advance moves the watermark kept in the source's store to seq; a
+// no-op without one.
+func (p *RemotePusher) Advance(ctx context.Context, seq int64) error {
+	if p.watermarks == nil {
+		return nil
+	}
+	if err := p.watermarks.SetWatermark(ctx, p.name, seq); err != nil {
+		return fmt.Errorf("federation remote advance %q: %w", p.name, err)
+	}
+	return nil
+}
+
 // encodeInline returns o encoded for the wire, every blob:// ref
 // replaced by the content it names, read from the source's store. o is
-// not modified.
+// not modified. Content it cannot read is an *ObjectError.
 func (p *RemotePusher) encodeInline(ctx context.Context, o storage.KnowledgeObject) (json.RawMessage, error) {
 	raw, err := blob.Content(ctx, p.blobs, o.RawContent)
 	if err != nil {
-		return nil, fmt.Errorf("object %q: %w", o.ID, err)
+		return nil, &ObjectError{ID: o.ID, Err: err}
 	}
 	text, err := blob.Content(ctx, p.blobs, o.TextContent)
 	if err != nil {
-		return nil, fmt.Errorf("object %q: %w", o.ID, err)
+		return nil, &ObjectError{ID: o.ID, Err: err}
 	}
 	o.RawContent, o.TextContent = raw, text
 	enc, err := json.Marshal(o)
@@ -138,9 +154,15 @@ func (p *RemotePusher) Push(
 	body := pushBody{Edges: loose, Entities: entities}
 	size := 0
 	var last int64
+	var lastID string
 
 	flush := func() error {
 		if err := p.send(ctx, body); err != nil {
+			var se *statusError
+			if len(body.Objects) == 1 && errors.As(err, &se) && se.code == http.StatusRequestEntityTooLarge {
+				return &ObjectError{ID: lastID, Err: fmt.Errorf(
+					"%d bytes encoded, sent alone: the receiver refuses it as too large (HTTP 413): %w", size, err)}
+			}
 			return err
 		}
 		if p.watermarks != nil && len(body.Objects) > 0 {
@@ -170,7 +192,7 @@ func (p *RemotePusher) Push(
 		body.Objects = append(body.Objects, enc)
 		body.Edges = append(body.Edges, edgesOf[i]...)
 		size += len(enc)
-		last = objects[i].ChangeSeq
+		last, lastID = objects[i].ChangeSeq, objects[i].ID
 	}
 	return flush()
 }
@@ -252,7 +274,7 @@ func (p *RemotePusher) send(ctx context.Context, payload pushBody) error {
 
 		// 4xx (except 429) are non-retriable.
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
-			return fmt.Errorf("federation remote push %q: non-retriable HTTP %d", p.name, resp.StatusCode)
+			return &statusError{name: p.name, code: resp.StatusCode}
 		}
 
 		// 5xx and 429 are transient — retry.
@@ -260,4 +282,14 @@ func (p *RemotePusher) send(ctx context.Context, payload pushBody) error {
 	}
 
 	return fmt.Errorf("federation remote push %q: all %d attempts failed: %w", p.name, maxAttempts, lastErr)
+}
+
+// statusError is a non-retriable HTTP status from the receiver.
+type statusError struct {
+	name string
+	code int
+}
+
+func (e *statusError) Error() string {
+	return fmt.Sprintf("federation remote push %q: non-retriable HTTP %d", e.name, e.code)
 }

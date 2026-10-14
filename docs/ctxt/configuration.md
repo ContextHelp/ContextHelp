@@ -232,9 +232,13 @@ next change sequence, so an import, a restore or an object a receiver
 forwards on is pushed whatever `updated_at` it carries. A `file://` target keeps its watermark in its own database,
 an `http(s)` target's watermark lives in the source's, both under `name`.
 Objects go 100 per batch; to an `http(s)` target, in requests of at most
-4 MiB of objects, content inline. A refused batch leaves the watermark
-where it was and is re-sent on the next tick. Renaming an entry starts its
-watermark over.
+4 MiB of objects, content inline; a larger object goes alone. A refused
+batch leaves the watermark where it was and is re-sent on the next tick.
+An object that fails 3 ticks in a row on its own — its source blob is
+gone, or the receiver answers 413 to it sent alone — is skipped: dpkms
+logs `federation: skipping object after repeated push failures` with its
+id, and the rest of the batch goes through. Editing the object sends it
+again. Renaming an entry starts its watermark over.
 
 ### Inbound auth (`federation`)
 

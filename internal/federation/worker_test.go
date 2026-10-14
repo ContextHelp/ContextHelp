@@ -50,6 +50,13 @@ func (p *fakePusher) Push(_ context.Context, objects []storage.KnowledgeObject, 
 	return nil
 }
 
+func (p *fakePusher) Advance(_ context.Context, seq int64) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.watermark = seq
+	return nil
+}
+
 func (p *fakePusher) Calls() int32 { return atomic.LoadInt32(&p.calls) }
 
 func (p *fakePusher) PushedCount() int {

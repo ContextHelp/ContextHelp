@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -263,5 +266,41 @@ func TestFederationPush_MandatoryCredentialGatesPerToken(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("correct token status: got %d, want 200", resp.StatusCode)
+	}
+}
+
+// An object larger than the pusher's request cap goes out alone, and
+// the receiver takes it: FederationPush reads a body of any size.
+func TestFederationPush_AcceptsObjectOverRequestCap(t *testing.T) {
+	ts := newFedTestBundle(t, "")
+	defer ts.Close()
+	var mu sync.Mutex
+	var sizes []int
+	counting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		sizes = append(sizes, len(b))
+		mu.Unlock()
+		r.Body = io.NopCloser(bytes.NewReader(b))
+		ts.Config.Handler.ServeHTTP(w, r)
+	}))
+	defer counting.Close()
+
+	big := makeKO("o-big", "h-big")
+	big.RawContent = strings.Repeat("x", federation.DefaultMaxRequestBytes+1<<20)
+	objects := []storage.KnowledgeObject{makeKO("o-small", "h-small"), big}
+	src := storageutil.NewTestDriver(t)
+	p := federation.NewRemotePusherWithWatermarks("big", counting.URL, "", src.Watermarks(), src.Blobs())
+	if err := p.Push(context.Background(), objects, nil, nil); err != nil {
+		t.Fatalf("Push of an object over the request cap: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(sizes) != 2 || sizes[1] <= federation.DefaultMaxRequestBytes {
+		t.Errorf("request sizes = %v, want the big object alone in a second request over %d bytes",
+			sizes, federation.DefaultMaxRequestBytes)
+	}
+	if got, err := ts.svc.Store.Objects().Get(context.Background(), "o-big"); err != nil || got == nil {
+		t.Errorf("o-big not stored at the receiver: %v", err)
 	}
 }
