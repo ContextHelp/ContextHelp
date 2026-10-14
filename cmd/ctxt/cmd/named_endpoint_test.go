@@ -41,7 +41,7 @@ func namedEndpoints(decoy, home string) string {
 // writeCurrentInstance persists sel as `ctxt instance use` would.
 func writeCurrentInstance(t *testing.T, sel string) {
 	t.Helper()
-	path, err := config.CurrentInstanceFile()
+	path, err := config.CurrentInstanceFile(testDataDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestStatus_InstanceAgainstProtectedDpkms(t *testing.T) {
 // a local dpkms named name on port.
 func startLocalInstance(t *testing.T, name string, port int) {
 	t.Helper()
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDir(testDataDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestInstanceUse_NamedEndpointAndLocal(t *testing.T) {
 	db := setupTestDB(t)
 	appendConfig(t, db, namedEndpoints("http://127.0.0.1:1", "https://home.example.net:7700"))
 	startLocalInstance(t, "work", 18093)
-	state, err := config.CurrentInstanceFile()
+	state, err := config.CurrentInstanceFile(testDataDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}

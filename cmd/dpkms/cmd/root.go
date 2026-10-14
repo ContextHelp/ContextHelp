@@ -55,7 +55,7 @@ var (
 			},
 		},
 		Globals: []kitcli.Flag{
-			{Name: "data-dir", Usage: "data directory override"},
+			{Name: "data-dir", Usage: "data directory (storage.data_dir; overrides CTXT_DATA_DIR and config)"},
 			{Name: "server-url", Usage: serverURLFlagUsage},
 			{Name: "instance", Usage: "name of dpkms instance to target (default: unnamed)"},
 		},
@@ -117,15 +117,15 @@ func init() {
 
 	// Mirror kit/cli bindings into the global viper used throughout the codebase.
 	pf := rootCmd.PersistentFlags()
-	for _, name := range []string{"format", "quiet", "no-color", "verbose", "no-hints", "chdir", "config", "data-dir", "offline", "instance", "output"} {
+	// --data-dir is read in initConfig and --offline is kit's own
+	// (enforced on http.DefaultTransport), so neither is mirrored here.
+	for _, name := range []string{"format", "quiet", "no-color", "verbose", "no-hints", "chdir", "config", "instance", "output"} {
 		if f := pf.Lookup(name); f != nil {
 			_ = viper.BindPFlag(name, f)
 		}
 	}
 	// Aliases used by the rest of the codebase.
-	viper.RegisterAlias("storage.path", "data-dir")
 	viper.RegisterAlias("output.format", "format")
-	viper.RegisterAlias("offline.enabled", "offline")
 	viper.RegisterAlias("cli.verbose", "verbose")
 
 	// PersistentPreRunE chain is wired via kitcli.Config.Hooks.PrePersistentRunE
@@ -347,6 +347,12 @@ func initConfig() {
 	// explicitly passed -c and it is invalid — fatal, never a fallback to
 	// the default config (see config.Bootstrap).
 	paths, overrides, parseErr := root.ConfigArgs()
+	// --data-dir, when passed, is the top layer of storage.data_dir:
+	// applied after -c key=value so it wins over it, CTXT_DATA_DIR and
+	// every file.
+	if f := rootCmd.PersistentFlags().Lookup("data-dir"); f != nil && f.Changed {
+		overrides = config.WithOverride(overrides, "storage.data_dir", f.Value.String())
+	}
 	// Legacy global: subcommands read this for the user-supplied path.
 	// With kit's repeatable -c, later paths layer on top of earlier
 	// ones, so the LAST is the effective (highest-precedence) file —
@@ -363,11 +369,21 @@ func initConfig() {
 	if err := config.EnsureConfigDir(binName); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure config directory: %v\n", err)
 	}
-	if err := config.EnsureDataDir(); err != nil {
+	if err := config.EnsureDataDir(cfg.Storage.DataDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure data directory: %v\n", err)
 	}
 
 	initPipelineClient(serverEndpoint())
+}
+
+// dataDir is the resolved storage.data_dir (--data-dir > -c >
+// CTXT_DATA_DIR > file > XDG default), the base of the run/ dir. Empty
+// before config loads, which config.RunDir rejects.
+func dataDir() string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.Storage.DataDir
 }
 
 func SetVersionInfo(v, bt, gc string) {

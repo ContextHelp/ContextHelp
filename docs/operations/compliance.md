@@ -28,8 +28,11 @@ External egress only occurs when **explicitly configured**:
 - Registry sync — opt-in via `registries.*`
 - Remote dPKMS backend (Postgres, S3) — opt-in via `storage.type`
 
-Strict offline mode blocks all egress unconditionally. Use the `--offline` flag on
-any command (there is no env var):
+The `--offline` global flag refuses outbound HTTP for one invocation. Any
+request a command makes through Go's default HTTP transport on the
+command's context fails with `network disabled by --offline`; loopback
+(`127.0.0.1`, `localhost`) stays reachable, so a local dpkms still works.
+It is per-invocation only: no env var or config key turns it on.
 
 ```
 ctxt --offline find "query"

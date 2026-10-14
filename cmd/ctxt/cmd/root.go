@@ -177,7 +177,9 @@ func init() {
 	// codebase (helpers.go, stats.go, etc. read from viper.Get*). Kit owns
 	// its private viper for parsing; we re-bind every persistent flag here.
 	pf := rootCmd.PersistentFlags()
-	for _, name := range []string{"format", "quiet", "no-color", "verbose", "config", "profile", "offline", "instance", "output", "no-hints", "chdir"} {
+	// --offline is kit's own (enforced on http.DefaultTransport), so it
+	// is not mirrored here.
+	for _, name := range []string{"format", "quiet", "no-color", "verbose", "config", "profile", "instance", "output", "no-hints", "chdir"} {
 		if f := pf.Lookup(name); f != nil {
 			_ = viper.BindPFlag(name, f)
 		}
@@ -185,7 +187,6 @@ func init() {
 	// Aliases the rest of the codebase reads.
 	viper.RegisterAlias("output.format", "format")
 	viper.RegisterAlias("profile.default", "profile")
-	viper.RegisterAlias("offline.enabled", "offline")
 	viper.RegisterAlias("cli.verbose", "verbose")
 	_ = viper.BindEnv("instance", "CTXT_INSTANCE")
 	_ = v.BindEnv("instance", "CTXT_INSTANCE")
@@ -482,11 +483,21 @@ func initConfig() {
 	if err := config.EnsureConfigDir(binName); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure config directory: %v\n", err)
 	}
-	if err := config.EnsureDataDir(); err != nil {
+	if err := config.EnsureDataDir(cfg.Storage.DataDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure data directory: %v\n", err)
 	}
 
 	tel = telemetry.New(cfg)
+}
+
+// dataDir is the resolved storage.data_dir (-c > CTXT_DATA_DIR > file >
+// XDG default), the base of the run/ dir. Empty before config loads,
+// which config.RunDir rejects.
+func dataDir() string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.Storage.DataDir
 }
 
 func SetVersionInfo(v, bt, gc string) {

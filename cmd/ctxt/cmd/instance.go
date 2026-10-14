@@ -51,7 +51,8 @@ http://127.0.0.1:8080. An unknown or stale name exits 70; ctxt never
 falls back to another instance.
 
 The current instance is stored in:
-  $XDG_DATA_HOME/contexthelp/run/current-instance
+  <data dir>/run/current-instance (data dir: CTXT_DATA_DIR or
+  storage.data_dir, default $XDG_DATA_HOME/contexthelp)
 
 Per-call override (takes precedence over the state file):
   ctxt --instance home status
@@ -205,7 +206,7 @@ func runInstanceList(cmd *cobra.Command, _ []string) error {
 func runInstanceUse(cmd *cobra.Command, args []string) error {
 	target := strings.TrimSpace(args[0])
 
-	stateFile, err := config.CurrentInstanceFile()
+	stateFile, err := config.CurrentInstanceFile(dataDir())
 	if err != nil {
 		return fmt.Errorf("state file: %w", err)
 	}

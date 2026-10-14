@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
@@ -49,17 +50,14 @@ func setupTestDB(t *testing.T, opts ...dpkmstest.Option) *testDB {
 	// XDG_* + HOME redirect file-based lookups into the per-test tempdir.
 	// CTXT_DATA_DIR and CTXT_INSTANCE are explicitly cleared because both
 	// take precedence over the XDG path:
-	//   - config.RunDir() reads $CTXT_DATA_DIR before $XDG_DATA_HOME, so a
-	//     dev with CTXT_DATA_DIR exported in their shell would still hit
-	//     the prod run/ dir.
+	//   - CTXT_DATA_DIR sets storage.data_dir, the base of the run/ dir,
+	//     over the XDG default, so a dev with it exported in their shell
+	//     would still hit the prod run/ dir.
 	//   - activeInstanceName() reads CTXT_INSTANCE (via viper.BindEnv on
 	//     "instance" in root.go) before the state file, so a dev with
 	//     CTXT_INSTANCE=work exported would still route to that instance.
 	//
-	// Setting CTXT_DATA_DIR="" works (vs the obvious worry that it would
-	// clobber storage.path) because viper's bound-env-var lookup treats an
-	// empty env value as unset — see cascade_test.go:98 which uses the same
-	// pattern to let file values win in TestLoad_PicksUpUserConfigPerBinary.
+	// An empty env value counts as unset, so the XDG default applies.
 	t.Setenv("XDG_DATA_HOME", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("HOME", dir)
@@ -131,4 +129,16 @@ func seedJob(t *testing.T, db *testDB, id, typ, pipeline string, status storage.
 	if err := db.Driver.Jobs().Create(context.Background(), job); err != nil {
 		t.Fatalf("seed job %s: %v", id, err)
 	}
+}
+
+// testDataDir is the data dir a CLI run under setupTestDB resolves:
+// CTXT_DATA_DIR is cleared and no config sets storage.data_dir, so it is
+// the XDG default inside the test's tempdir.
+func testDataDir(t *testing.T) string {
+	t.Helper()
+	dir, err := config.DefaultDataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }

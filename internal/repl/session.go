@@ -49,7 +49,7 @@ func (s *Session) Run(ctx context.Context) error {
 		return completer.Complete(line)
 	})
 
-	_ = LoadHistory(l)
+	_ = LoadHistory(l, s.dataDir())
 
 	if s.svc != nil {
 		s.watch = NewJobWatcher(s.svc.Bus, replPrompt, os.Stdout)
@@ -90,8 +90,16 @@ func (s *Session) Run(ctx context.Context) error {
 	if s.watch != nil {
 		s.watch.Stop()
 	}
-	_ = SaveHistory(l)
+	_ = SaveHistory(l, s.dataDir())
 	return nil
+}
+
+// dataDir is the session config's storage.data_dir, or "" without one.
+func (s *Session) dataDir() string {
+	if s.cfg == nil {
+		return ""
+	}
+	return s.cfg.Storage.DataDir
 }
 
 // buildCobraExecutor returns the function that re-enters the cobra command tree.
