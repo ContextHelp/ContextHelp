@@ -4,14 +4,28 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"hop.top/kit/go/storage/secret"
 )
 
 // SecretTokenKey is the secrets-store key that holds registry name's
-// token on a dpkms host: "registry/<name>".
-func SecretTokenKey(registryName string) string { return "registry/" + registryName }
+// token on a dpkms host: "registry/<name>", with every character of name
+// other than an ASCII letter, digit or "_" replaced by "_". kit's env
+// backend reads key k from the variable upper(k) with "/" as "_", so the
+// key of registry "team-ops" is the exportable REGISTRY_TEAM_OPS, not
+// REGISTRY_TEAM-OPS. Every backend uses the same key.
+func SecretTokenKey(registryName string) string {
+	return "registry/" + strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_':
+			return r
+		default:
+			return '_'
+		}
+	}, registryName)
+}
 
 // SecretTokens returns a TokenSource over a secrets store (dpkms's
 // secrets.backend, the store `dpkms secret set|get` use). A server has

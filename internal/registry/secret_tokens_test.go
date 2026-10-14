@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"hop.top/kit/go/storage/secret"
+	"hop.top/kit/go/storage/secret/env"
 	"hop.top/kit/go/storage/secret/memory"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -141,5 +142,60 @@ func TestSecretTokens_OpenErrorSurfaces(t *testing.T) {
 	tokens := registry.SecretTokens(func() (secret.Store, error) { return nil, errors.New("no backend") })
 	if _, err := tokens.Get("paid"); err == nil || !strings.Contains(err.Error(), "no backend") {
 		t.Fatalf("Get = %v, want the open error", err)
+	}
+}
+
+func TestSecretTokenKey_NormalisesName(t *testing.T) {
+	for name, want := range map[string]string{
+		"paid":        "registry/paid",
+		"team-ops":    "registry/team_ops",
+		"acme.io/eu":  "registry/acme_io_eu",
+		"Mixed_Case9": "registry/Mixed_Case9",
+		"café":        "registry/caf_",
+	} {
+		if got := registry.SecretTokenKey(name); got != want {
+			t.Errorf("SecretTokenKey(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// A hyphenated registry name reads its token from an exportable
+// variable under the env backend: team-ops is REGISTRY_TEAM_OPS.
+func TestSecretTokens_EnvBackendHyphenatedName(t *testing.T) {
+	srv := protectedRegistry(t, "Authorization", "Bearer "+fakeToken)
+	origin, err := registry.CanonicalOrigin(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := json.Marshal(registry.StoredToken{Origin: origin, Token: fakeToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REGISTRY_TEAM_OPS", string(value))
+	cfg := config.RegistryConfig{
+		Name: "team-ops", URL: srv.URL,
+		Auth:       config.RegistryAuthConfig{Type: config.RegistryAuthBearer},
+		TrustLevel: config.RegistryTrustLevelTrusted,
+	}
+
+	res, err := syncOne(t, cfg, registry.SecretTokens(openStore(env.New(""))))
+	if err != nil {
+		t.Fatalf("Sync with REGISTRY_TEAM_OPS set: %v", err)
+	}
+	if res.Upserted != 1 {
+		t.Errorf("Upserted = %d, want 1", res.Upserted)
+	}
+}
+
+// The remedy names the normalised key, the one a lookup reads.
+func TestSecretTokens_HintNamesNormalisedKey(t *testing.T) {
+	srv := protectedRegistry(t, "Authorization", "Bearer "+fakeToken)
+	cfg := config.RegistryConfig{
+		Name: "team-ops", URL: srv.URL,
+		Auth: config.RegistryAuthConfig{Type: config.RegistryAuthBearer},
+	}
+	_, err := syncOne(t, cfg, registry.SecretTokens(openStore(memory.New())))
+	if err == nil || !strings.Contains(err.Error(), "dpkms secret set registry/team_ops") {
+		t.Errorf("error %v lacks the normalised key registry/team_ops", err)
 	}
 }
