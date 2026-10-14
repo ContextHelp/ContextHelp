@@ -7,8 +7,12 @@ provider.
 
 ## API keys
 
-Provider API keys are read from the environment of the process that runs
-the step — usually `dpkms serve`. **Never commit them to version control.**
+Each key is looked up by its name in the active secrets store
+(`secrets.backend`, set with `dpkms secret set <KEY>`) first, then in the
+environment of the process that runs the step — usually `dpkms serve`.
+When both hold a key, the secrets store wins. The provider factory
+resolves the key once and hands it to the client, so the key that selects
+a provider is the key it sends. **Never commit them to version control.**
 
 | Env var | Used by |
 |---------|---------|
@@ -27,7 +31,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=$(vault kv get -field=key secret/openai)
 ```
 
-With `backend: auto` (the default), a set key also selects the provider:
+With `backend: auto` (the default), a key found in either place also
+selects the provider:
 the LLM tries Anthropic, then OpenAI, then falls back to Ollama; vision
 tries a local Ollama first, then OpenAI, Anthropic, Gemini, OpenRouter.
 

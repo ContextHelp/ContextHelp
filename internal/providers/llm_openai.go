@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 )
 
 // OpenAILLMProvider generates text using the OpenAI chat completions API.
@@ -16,14 +15,14 @@ type OpenAILLMProvider struct {
 	client *http.Client
 }
 
-// NewOpenAILLMProvider creates an OpenAI LLM provider. API key is read from
-// the OPENAI_API_KEY environment variable.
-func NewOpenAILLMProvider(model string) *OpenAILLMProvider {
+// NewOpenAILLMProvider creates an OpenAI LLM provider that authenticates with apiKey.
+// An empty apiKey makes every request fail; the caller resolves the key.
+func NewOpenAILLMProvider(apiKey, model string) *OpenAILLMProvider {
 	if model == "" {
 		model = "gpt-4o-mini"
 	}
 	return &OpenAILLMProvider{
-		apiKey: os.Getenv("OPENAI_API_KEY"),
+		apiKey: apiKey,
 		model:  model,
 		client: &http.Client{},
 	}
@@ -41,7 +40,7 @@ func (p *OpenAILLMProvider) Name() string { return "openai" }
 
 func (p *OpenAILLMProvider) Generate(ctx context.Context, prompt string) (string, error) {
 	if p.apiKey == "" {
-		return "", fmt.Errorf("OPENAI_API_KEY not set")
+		return "", fmt.Errorf("OPENAI_API_KEY not set in the secrets store or environment")
 	}
 	reqBody := map[string]interface{}{
 		"model": p.model,

@@ -8,30 +8,39 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 )
 
 // GeminiProvider analyzes images using the Google Gemini API.
 type GeminiProvider struct {
 	apiKey string
 	model  string
+	client *http.Client
 }
 
-func NewGeminiProvider(model string) *GeminiProvider {
+// NewGeminiProvider creates an Gemini vision provider that authenticates with
+// apiKey. An empty apiKey makes every request fail; the caller resolves the key.
+func NewGeminiProvider(apiKey, model string) *GeminiProvider {
 	if model == "" {
 		model = "gemini-2.0-flash"
 	}
 	return &GeminiProvider{
-		apiKey: os.Getenv("GEMINI_API_KEY"),
+		apiKey: apiKey,
 		model:  model,
 	}
+}
+
+// WithHTTPClient returns a copy of the provider that sends requests through c.
+func (p *GeminiProvider) WithHTTPClient(c *http.Client) *GeminiProvider {
+	cp := *p
+	cp.client = c
+	return &cp
 }
 
 func (p *GeminiProvider) Name() string { return "gemini" }
 
 func (p *GeminiProvider) Analyze(ctx context.Context, imageData []byte, contentType string) (*Result, error) {
 	if p.apiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY not set")
+		return nil, fmt.Errorf("GEMINI_API_KEY not set in the secrets store or environment")
 	}
 
 	b64 := base64.StdEncoding.EncodeToString(imageData)
@@ -64,7 +73,7 @@ func (p *GeminiProvider) Analyze(ctx context.Context, imageData []byte, contentT
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := clientOr(p.client).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("gemini vision: %w", err)
 	}

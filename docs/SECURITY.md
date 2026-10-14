@@ -89,9 +89,9 @@ Config files (`ctxt.yaml`, `dpkms.yaml`) take every value literally:
 `${VAR_NAME}` is not expanded, so `token: ${MY_TOKEN}` sets the token to
 the string `${MY_TOKEN}`. Keep secrets out of the shared config:
 
-- Provider clients read their key from the environment variable of the
-  same name (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
-  `OPENROUTER_API_KEY`).
+- Provider keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
+  `OPENROUTER_API_KEY`) resolve from the secrets store under that name,
+  then from the environment variable of the same name; the store wins.
 - The embedding provider's `providers.embedding.api_key_env` names the
   variable holding its key, never the key itself.
 - S3 blob credentials: `CTXT_BLOB_S3_ACCESS_KEY` /
