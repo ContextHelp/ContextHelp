@@ -139,7 +139,7 @@ ctxt embeddings register <model_id> [--embedding-provider B] [--embedding-model 
 
 ### `provider`
 
-`ctxt embeddings provider [model_id]` prints the backend, model, endpoint, `api_key_env` and dimension a command would use, with the layer each came from. It accepts the same `--embedding-*` flags, env and `-c` as the other commands and never prints a key. With a `model_id` it resolves the way a command targeting that model does: backend, model and dimension show as "fixed by registry". Details: [Check what a command will use](../../environment-variables/ai-providers.md#check-what-a-command-will-use).
+`ctxt embeddings provider [model_id]` prints the backend, model, endpoint, `api_key_env` and dimension a command would use, with the layer each came from. It accepts the same `--embedding-*` flags, env and `-c` as the other commands and never prints a key. With a `model_id` it resolves the way a command targeting that model does: backend, model and dimension show as "fixed by registry". Details: [Check what a command will use](https://github.com/ContextHelp/ContextHelp/blob/next/docs/environment-variables/ai-providers.md#check-what-a-command-will-use).
 
 ### `migrate`
 
@@ -314,7 +314,7 @@ pipelines:
 
 | Key | Default | Used by |
 |---|---|---|
-| `providers.embedding.backend` / `model` / `endpoint` / `api_key_env` | `ollama` / `nomic-embed-text` / `http://localhost:11434` / unset | `register`, and ingest and `find` queries on the dpkms host when no model is registered ([reference](../../environment-variables/ai-providers.md#embedding-provider)) |
+| `providers.embedding.backend` / `model` / `endpoint` / `api_key_env` | `ollama` / `nomic-embed-text` / `http://localhost:11434` / unset | `register`, and ingest and `find` queries on the dpkms host when no model is registered ([reference](https://github.com/ContextHelp/ContextHelp/blob/next/docs/environment-variables/ai-providers.md#embedding-provider)) |
 | `providers.embedding.dimension` | unset | Shown by `provider`; `register` checks it against the measured dimension |
 | `embeddings.min_coverage` | `0.99` | `set-default` |
 | `embeddings.grace_period` | `720h` | `purge` |
@@ -326,5 +326,5 @@ A per-pipeline `pipelines.overrides.<name>.providers.embedding` is ignored with 
 ## Related
 
 - [Turn on semantic search](../workflows/semantic-search.md)
-- [Embedding provider settings](../../environment-variables/ai-providers.md#embedding-provider)
+- [Embedding provider settings](https://github.com/ContextHelp/ContextHelp/blob/next/docs/environment-variables/ai-providers.md#embedding-provider)
 - [Runbook](./runbook.md)

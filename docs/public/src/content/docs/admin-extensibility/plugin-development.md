@@ -33,8 +33,8 @@ Before coding:
 
 Reference implementation contracts:
 
-- [`../../plugins/plugins-api.md`](../../plugins/plugins-api.md)
-- [`../../plugins/plugin-isolation.md`](../../plugins/plugin-isolation.md)
+- [`docs/plugins/plugins-api.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/plugins/plugins-api.md)
+- [`docs/plugins/plugin-isolation.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/plugins/plugin-isolation.md)
 
 Guideline:
 
@@ -97,7 +97,7 @@ with a log line:
 builtins: pipeline "X": pruning step "Y" (missing capability)
 ```
 
-See [`../../architecture/pipeline-capabilities.md`](../../architecture/pipeline-capabilities.md)
+See [`docs/architecture/pipeline-capabilities.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/architecture/pipeline-capabilities.md)
 for the full capability reference, how each one is probed, and a diagnostic
 checklist.
 

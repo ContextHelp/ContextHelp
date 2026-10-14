@@ -80,7 +80,7 @@ dpkms serves the same viewer at `/ui/searchgraph/`. Put the search in the URL:
 http://127.0.0.1:8080/ui/searchgraph/?q=deployment
 ```
 
-The page asks dpkms for [`GET /api/v1/search/graph`](../../api/api-rest.md#get-searchgraph) with the same query string, so every parameter of that endpoint works here too:
+The page asks dpkms for [`GET /api/v1/search/graph`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/api/api-rest.md#get-searchgraph) with the same query string, so every parameter of that endpoint works here too:
 
 ```text
 http://127.0.0.1:8080/ui/searchgraph/?q=deployment&limit=5&profile=work&similar=true
@@ -216,7 +216,7 @@ ctxt find "deployment" --graph --graph-max-nodes 50 --graph-similar -o deploymen
 
 - `--format` accepts `json` or `yaml` with `--graph`; for other formats use `-o` with a graph extension.
 - When the vector search can't run (no default embedding model, the provider can't be reached, the model has no index or no vectors yet), the search falls back to full-text only, as plain `ctxt find` does, and prints the same `notice:` line on stderr. The graph still works: `metadata.mode` is `fts_only` or `fts_fallback`, `metadata.semantic_status` names the reason, `metadata.vector_error` explains it, and the viewer shows a **vector error** badge. Fixes: [Turn on semantic search](./semantic-search.md).
-- dpkms serves the same document at [`GET /api/v1/search/graph`](../../api/api-rest.md#get-searchgraph), with entities filtered by the caller's entitlements, and draws it at `/ui/searchgraph/` ([Open it in the web UI](#open-it-in-the-web-ui)).
+- dpkms serves the same document at [`GET /api/v1/search/graph`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/api/api-rest.md#get-searchgraph), with entities filtered by the caller's entitlements, and draws it at `/ui/searchgraph/` ([Open it in the web UI](#open-it-in-the-web-ui)).
 
 ## Common failure modes
 

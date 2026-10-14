@@ -1040,13 +1040,13 @@ git push --force --tags
 
 ### Documentation
 
-- [Environment Variables Reference](docs/environment-variables.md)
-- [Configuration Guide](docs/ctxt/configuration.md)
-- [CLI Flag Binding](docs/ctxt/cli-flag-binding.md)
+- [Environment Variables Reference](environment-variables/README.md)
+- [Configuration Guide](ctxt/configuration.md)
+- [CLI Flag Binding](ctxt/cli-flag-binding.md)
 - [ADR-019: Encryption Architecture](decisions/ADR-019-encryption-and-privacy.md)
 - [ADR-023: Authentication Model](decisions/ADR-023-authentication-authorization-model.md)
-- [Security Design](docs/dpkms/security.md)
-- [Compliance — GDPR, SOC 2, erasure, dependency assessment](docs/operations/compliance.md)
+- [Security Design](dpkms/security.md)
+- [Compliance — GDPR, SOC 2, erasure, dependency assessment](operations/compliance.md)
 
 ### External Resources
 

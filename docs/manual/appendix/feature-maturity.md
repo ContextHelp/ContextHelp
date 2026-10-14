@@ -4,7 +4,7 @@ Snapshot date: February 18, 2026.
 
 ## Source references
 
-- Story catalog: [`../../stories/README.md`](../../stories/README.md)
+- Story catalog: [`docs/stories/README.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/stories/README.md)
 - Story files: `docs/stories/*/US-*.md`
 
 ## Observed inventory

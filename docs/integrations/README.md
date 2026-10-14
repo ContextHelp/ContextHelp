@@ -1,42 +1,37 @@
 # External Integrations
 
-This directory contains documentation for integrations with external systems and AI models.
+How external systems and AI models connect to ctxt and dpkms.
 
-## Available Integrations
+## Ingestion adapters
 
-### AI Model Integrations
-- [glm-pov.md](glm-pov.md) - GLM (General Language Model) integration perspective
-- [gemini-pov.md](gemini-pov.md) - Google Gemini integration perspective
-
-### Ingestion Adapters
-- [ingestion-adapters.md](ingestion-adapters.md) - Pluggable data ingestion (cardamum contacts, himalaya email)
+- [ingestion-adapters.md](ingestion-adapters.md) - Adapters run by `ctxt ingest` (cardamum contacts, himalaya email)
 - [inbound-contract.md](inbound-contract.md) - Contract for hooks/adapters writing to ctxt
   (mention conventions, identity rules, idempotency)
 
-## Integration Architecture
+Bulk importers (`ctxt import chrome|pinboard|notion|slack|...`) are built in; `ctxt import --help` lists them.
 
-Integrations typically extend the system through:
+## AI providers
 
-1. **Plugin System** - Most integrations are implemented as plugins
-2. **API Providers** - AI models, external services
-3. **Data Connectors** - Import/export, sync mechanisms
+Providers are compiled into dpkms and picked by config (`providers.<role>.backend`), not plugins:
 
-## Integration Patterns
+| Role | Backends |
+|------|----------|
+| LLM | `anthropic`, `openai`, `ollama`, `stub` (`auto` picks Anthropic, then OpenAI by available key, else Ollama) |
+| Vision | `ollama`, `openai`, `anthropic`, `gemini`, `openrouter`, `stub` |
+| Embeddings | `ollama`, `stub` |
+| Transcription | `whisper-cli`, `ollama`, `stub` |
+| OCR / documents / video / diarization | `tesseract`; `pdftotext`, `golib`; `ffmpeg`; `pyannote` (each with `stub`) |
 
-### AI Provider Integration
-- Implement provider interface
-- Configure in `configuration.md`
-- Used by enrichment pipelines
-- Examples: OpenAI, Anthropic, GLM, Gemini
+Configuration and keys: [../environment-variables/ai-providers.md](../environment-variables/ai-providers.md).
 
-### External System Integration
-- Define connector plugin
-- Map external schema to internal objects
-- Handle sync and updates
-- Preserve provenance
+## Other paths in
+
+- **REST API** - any client can post to `/api/v1/analyze`, `/api/v1/capture/*` or `/api/v1/inbox`; see [../api/](../api/).
+- **Federation** - push-only replication between dpkms instances; see [../ctxt/configuration.md#federation-configuration](../ctxt/configuration.md#federation-configuration).
+- **MCP** - dpkms serves `/api/v1/mcp/` with the read tools `search` and `schema`; see [../manual/workflows/mcp-agents.md](../manual/workflows/mcp-agents.md).
 
 ## See Also
 
-- [../plugins/](../plugins/) - Plugin system documentation
+- [../plugins/](../plugins/) - Plugin API (not loaded at runtime yet)
 - [../ctxt/pipelines.md](../ctxt/pipelines.md) - Enrichment pipelines using AI providers
 - [../dpkms/registries.md](../dpkms/registries.md) - External registry integration

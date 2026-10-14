@@ -193,4 +193,4 @@ find ./imports -type f -name "*.md" -print0 | xargs -0 -I{} ctxt analyze --file 
 - [`../reference/api-cli-reference.md`](../reference/api-cli-reference.md)
 - [`../operations/runbook.md`](../operations/runbook.md)
 - [`../troubleshooting/faq.md`](../troubleshooting/faq.md)
-- [`../../stories/ingestion/US-0300-importer-extension-interface.md`](../../stories/ingestion/US-0300-importer-extension-interface.md)
+- [`docs/stories/ingestion/US-0300-importer-extension-interface.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/stories/ingestion/US-0300-importer-extension-interface.md)

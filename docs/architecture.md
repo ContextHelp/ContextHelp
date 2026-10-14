@@ -1451,7 +1451,7 @@ ctxt analyze --mention @usp.session.<id> @agent.<id> \
 <session body via stdin>
 ```
 
-Mentions identity model (post-T-0068):
+Mentions identity model:
 - `@usp.session.<id>` — canonical session identity
 - `@agent.<id>` — producer (aps profile ID)
 - `@cli.<name>` — originating CLI (claude / codex / gemini / opencode)

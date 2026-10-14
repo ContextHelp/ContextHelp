@@ -44,7 +44,7 @@ providers:
     endpoint: http://localhost:11434
 ```
 
-Every field is optional; see [Embedding provider](../../environment-variables/ai-providers.md#embedding-provider) for all of them, including `api_key_env`.
+Every field is optional; see [Embedding provider](https://github.com/ContextHelp/ContextHelp/blob/next/docs/environment-variables/ai-providers.md#embedding-provider) for all of them, including `api_key_env`.
 
 ### Step 2: Check what ctxt will use
 
@@ -148,7 +148,7 @@ CTXT_EMBEDDING_ENDPOINT=http://127.0.0.1:11555 ctxt find "onboarding" --graph
 ctxt find "onboarding" --graph -c providers.embedding.endpoint=http://127.0.0.1:11555
 ```
 
-The flags exist on `find` (with `--graph` only), `embeddings provider` and `embeddings register`. Plain `find` refuses them with exit 2: its query is embedded on the dpkms host. The env variables are `CTXT_EMBEDDING_PROVIDER`, `CTXT_EMBEDDING_MODEL`, `CTXT_EMBEDDING_ENDPOINT` and `CTXT_EMBEDDING_API_KEY_ENV`. Full table: [Override it for one run](../../environment-variables/ai-providers.md#override-it-for-one-run).
+The flags exist on `find` (with `--graph` only), `embeddings provider` and `embeddings register`. Plain `find` refuses them with exit 2: its query is embedded on the dpkms host. The env variables are `CTXT_EMBEDDING_PROVIDER`, `CTXT_EMBEDDING_MODEL`, `CTXT_EMBEDDING_ENDPOINT` and `CTXT_EMBEDDING_API_KEY_ENV`. Full table: [Override it for one run](https://github.com/ContextHelp/ContextHelp/blob/next/docs/environment-variables/ai-providers.md#override-it-for-one-run).
 
 ### Use a remote Ollama through a tunnel
 
@@ -220,5 +220,5 @@ Objects created outside an embedding pipeline, such as entity pages, get vectors
 ## Related references
 
 - [Operate embedding models](../operations/embeddings.md): switching models, migration status, retiring models, duplicates
-- [Embedding provider settings](../../environment-variables/ai-providers.md#embedding-provider)
+- [Embedding provider settings](https://github.com/ContextHelp/ContextHelp/blob/next/docs/environment-variables/ai-providers.md#embedding-provider)
 - [Search and retrieval](./search-retrieval.md)
