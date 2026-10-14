@@ -310,6 +310,7 @@ Content above `storage.blob.threshold` is stored in the blob store, but no respo
 - **One object** (`GET /objects/{id}`, `PATCH /objects/{id}`): the whole content.
 - **Lists and searches** (`GET /objects`, `/objects/{id}/related`, `/search`, `POST /find`, entity backlinks, inbox, reminders): at most `storage.blob.threshold` bytes of it, the size an object stored inline can have. A cut preview sets `metadata.content_truncated: true`; `metadata.blob_original_size` is the full length. Read the object by ID for all of it.
 - A blob that cannot be read fails the request with 500, never a reference or empty content.
+- **Search** indexes the first `storage.blob.threshold` bytes of such content, never the reference. List results flag that stored prefix `metadata.text_content_truncated: true`; a read by ID returns the whole content as `text_content`.
 
 ### `GET /objects`
 

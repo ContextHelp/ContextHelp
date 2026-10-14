@@ -1,17 +1,24 @@
 package projection
 
-import "github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+import (
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+)
 
 // BodyText returns the object's body under the defaulting rule storage
-// applies when it persists an object: TextContent, else RawContent.
+// applies when it persists an object: TextContent, else RawContent. A
+// blob:// ref is a pointer to content, not text, and is never the body:
+// an object whose content is a ref and that carries no text has none.
 func BodyText(ko *pluginapi.KnowledgeObject) string {
 	if ko == nil {
 		return ""
 	}
-	if ko.TextContent == "" {
-		return ko.RawContent
+	for _, s := range []string{ko.TextContent, ko.RawContent} {
+		if s != "" && !blobref.Is(s) {
+			return s
+		}
 	}
-	return ko.TextContent
+	return ""
 }
 
 // EmbeddingText returns the text ingest embeds for ko: ProjectIndex's
@@ -27,6 +34,6 @@ func EmbeddingText(ko *pluginapi.KnowledgeObject) string {
 		return ProjectIndex(ko).EmbeddingText
 	}
 	defaulted := *ko
-	defaulted.TextContent = ko.RawContent
+	defaulted.TextContent = BodyText(ko)
 	return ProjectIndex(&defaulted).EmbeddingText
 }

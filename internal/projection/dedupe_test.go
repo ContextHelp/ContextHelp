@@ -112,12 +112,13 @@ func TestEmbeddingText_DefaultedBodyEqualToSummaryNotRepeated(t *testing.T) {
 // existing index its bodies are stale. When this test fails, the projection
 // changed: bump indexsig.ProjectionVersion and add its digest here.
 var projectionGolden = map[string]string{
-	"v2": "909d8cb69b6e32369ec136ee652f1c0149ae8a792fff40e1d249a548e471359a",
+	"v3": "e54352516ce44f81ead09346edfe05c4b0d468353fdbf2642f565a9399aecdc8",
 }
 
 var projectionCorpus = []*pluginapi.KnowledgeObject{
 	{TextContent: "body", Summaries: []string{"body", "gist"}, Sections: []pluginapi.Section{{Content: "gist"}, {Content: " tail "}}},
 	{RawContent: "raw only"},
+	{RawContent: "blob://k", TextContent: "blob://k", Summaries: []string{"externalized gist"}},
 	{TextContent: "text", Graph: &pluginapi.ObjectGraph{Nodes: []pluginapi.GraphNode{
 		{NodeType: pluginapi.NodeTypeTag, Label: "tag"},
 		{NodeType: pluginapi.NodeTypeEntityMention, Content: "@people.alice"},

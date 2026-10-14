@@ -134,3 +134,50 @@ func TestExternalizeName(t *testing.T) {
 		t.Errorf("name: got %q, want %q", step.Name(), "externalize_content")
 	}
 }
+
+// The externalized object keeps text to index: a prefix of the content
+// when the text is the content, flagged; text set apart is left alone.
+func TestExternalizeKeepsTextNotRef(t *testing.T) {
+	bs, _ := local.New(t.TempDir())
+	content := "quokka marmalade " + strings.Repeat("é", 50) // multi-byte runes past the cap
+	cases := map[string]struct {
+		text, want string
+		flagged    bool
+	}{
+		"empty text":     {text: "", want: TextPrefix(content, 20), flagged: true},
+		"text is raw":    {text: content, want: TextPrefix(content, 20), flagged: true},
+		"text set apart": {text: "extracted text", want: "extracted text"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, err := NewExternalizer(bs, 20).Run(context.Background(), &storage.KnowledgeObject{
+				RawContent: content, TextContent: tc.text, Source: "test",
+			})
+			if err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			if !blob.IsBlobRef(got.RawContent) {
+				t.Fatalf("content not externalized: %q", got.RawContent)
+			}
+			if got.TextContent != tc.want {
+				t.Errorf("TextContent = %q, want %q", got.TextContent, tc.want)
+			}
+			if flagged, _ := got.Metadata[MetaTextTruncated].(bool); flagged != tc.flagged {
+				t.Errorf("%s = %v, want %v", MetaTextTruncated, flagged, tc.flagged)
+			}
+		})
+	}
+}
+
+func TestTextPrefixCutsAtRuneBoundary(t *testing.T) {
+	s := "ab" + "é" + "cd" // é is 2 bytes: a cap of 3 splits it
+	if got := TextPrefix(s, 3); got != "ab" {
+		t.Errorf("TextPrefix(3) = %q, want %q", got, "ab")
+	}
+	if got := TextPrefix(s, 4); got != "abé" {
+		t.Errorf("TextPrefix(4) = %q, want %q", got, "abé")
+	}
+	if got := TextPrefix(s, 0); got != s {
+		t.Errorf("TextPrefix(0) = %q, want the whole string", got)
+	}
+}
