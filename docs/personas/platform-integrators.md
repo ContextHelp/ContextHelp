@@ -1,279 +1,123 @@
 # Persona: Platform Integrators
 
-**Primary Role:** Third-party developers extending dPKMS + `ctxt` with custom implementations
+**Primary Role:** Third-party developers extending dPKMS + `ctxt` with custom pipelines, steps and integrations
 
 ---
 
 ## Goals
 
-- Extend dPKMS with custom storage backends, encryption providers, query operators
-- Implement custom AI providers for enrichment and NLQ normalization
-- Build tailored capture and composition UI layers (web, mobile, IDE plugins)
-- Integrate with external knowledge sources (industry registries, APIs, data lakes)
-- Improve extraction quality for difficult websites and feed-linked articles with domain-specific rules
-- Monetize or white-label the system for specific domains or use cases
+- Add custom processing: pipelines built from existing steps, plus external steps of their own
+- Distribute steps and knowledge (taxonomies, entities) through registries
+- Pick the AI and media backends a deployment uses (LLM, embeddings, OCR, transcription, vision)
+- Push knowledge between instances (federation)
+- Build capture or composition front ends on top of the dpkms REST API
 
 ---
 
-## Interaction Pattern
+## What Exists Today
 
-### Plugin Development Workflow
+| Extension point | How | Reference |
+|-----------------|-----|-----------|
+| Custom pipelines | `dpkms pipeline create <file>`, then `list`, `show`, `archive`, `unarchive`, `remove` | [manual guide](../manual/personas/platform-integrators.md), [pipelines](../ctxt/pipelines.md) |
+| External steps | A directory per step under `steps.path` (default `~/.config/contexthelp/steps`), described by a `SKILL.md`. The step executable reads `{"config": ..., "object": ...}` as JSON on stdin and writes the resulting object as JSON on stdout. | `internal/steps/` |
+| Step registries | `dpkms pipeline step registry add\|list\|update\|autoupdate`, `dpkms pipeline step install <name> --registry <url>` | `dpkms pipeline step --help` |
+| Knowledge registries | `registries:` config entries (`name`, `url`, `auth`, `sync_mode`, `trust_level`, `entitlement_url`); `ctxt registry add\|sync\|info\|delete` | `ctxt registry --help` |
+| Provider selection | `providers.<kind>.backend` (plus `model`, `endpoint`, `language`) for `llm`, `vision`, `ocr`, `transcription`, `document`, `video`, `diarization`; `providers.embedding` | [design: provider configuration](../design.md#provider-configuration) |
+| Federation | `federations:` entries pushed by dpkms | [Federation](#federation-configuration) below |
+| Go plugin API | `pkg/pluginapi` types and an in-process registry (`internal/plugin`); see the limits below | `pkg/pluginapi/README.md` |
 
-#### 1. Choose Plugin Type
-- **Pipeline Extension** — Custom enrichment step (e.g., "extract code metrics", "detect toxicity", "extract product specs")
-- **Storage Backend** — Alternative to SQLite (e.g., Postgres, DynamoDB, MongoDB)
-- **Registry Adapter** — Connect to external knowledge sources (e.g., "GitHub repository registry", "ArXiv paper registry")
-- **Query Operator** — Extend RSQL with domain operators (e.g., `similar_code==`, `architecture_layer==`)
-- **AI Provider** — Custom LLM backend or constrained generation library (e.g., LMQL plugin, specialized encoder)
-- **Background Observer** — Monitor system events (e.g., screen watcher, clipboard monitor, Git activity)
-- **Translation Provider** — Custom language translation (e.g., industry terminology translator)
-- **Ranking Algorithm** — Custom result reranking (e.g., domain-expertise weighting, time-decay)
+Provider backends are a fixed set compiled into dpkms (for example `llm`: `openai`,
+`anthropic`, `ollama`, `stub`, or auto). There is no API for registering a new
+provider, ranking method, RSQL operator or storage backend from outside the
+codebase; those change only by changing ctxt itself.
 
-#### 2. Implement Required Interfaces
+### Go Plugin API (limits)
+
+`pkg/pluginapi` defines the contract third-party Go code compiles against:
+
 ```go
-// Example: Pipeline Extension Plugin
-func (p *MyPlugin) Register(ctx HostContext) error {
-  return ctx.RegisterPipelineStep(&MyEnrichmentStep{})
+type Plugin interface {
+    Name() string
+    Version() string
+    Init(ctx context.Context, cfg map[string]interface{}, deps Deps) error
+    PipelineSteps() []PipelineStep
+    Close(ctx context.Context) error
 }
-
-type MyEnrichmentStep struct{}
-
-func (s *MyEnrichmentStep) Name() string { return "extract-code-metrics" }
-
-func (s *MyEnrichmentStep) Execute(ctx ExecutionContext, input interface{}) (interface{}, error) {
-  // Structured extraction with hard output guarantees
-  // Return JSON directly; no post-hoc parsing
-  return map[string]interface{}{
-    "complexity": 3,
-    "lines_of_code": 124,
-    "cyclomatic": 4,
-  }, nil
-}
-
-func (s *MyEnrichmentStep) Retryable() bool { return true }
 ```
 
-#### 3. Declare Permissions
+Optional interfaces: `PostIngestHook`, `AliasResolver`, `OutputGenerator`,
+`PluginRegistryProvider`. A plugin directory carries a `manifest.json` or
+`manifest.yaml`:
+
 ```yaml
-apiVersion: dpkms/v1
-kind: Plugin
-metadata:
-  name: code-metrics-extractor
-  version: 0.1.0
-spec:
-  pluginPath: ./plugins/code-metrics.so
-  permissions:
-    # Declare what this plugin needs
-    subprocess: true          # Can run external CLI tools
-    network: false            # No network access
-    filesystem: read          # Can only read files
-    clipboard: false          # No clipboard access
-    screen_capture: false     # No screen access
-    modify_bookmarks: false   # Cannot modify objects
-  configSchema:
-    type: object
-    properties:
-      type: { const: "code-metrics" }
-      language: { enum: ["go", "python", "typescript"] }
-      threshold_complexity: { type: integer, minimum: 1 }
+apiVersion: v1             # required; only v1 is accepted
+name: code-metrics         # required; must match Name()
+slug: code-metrics
+version: 0.1.0             # required
+description: Extract code metrics
+type: registry_provider    # optional; the only recognised value
+permissions:               # each must be a known permission
+  - read_objects
+  - network
 ```
 
-#### 4. Extend Config Schema (Optional)
+Known permissions: `read_objects`, `write_objects`, `call_llm`, `network`,
+`filesystem`, `clipboard`, `refresh`, `notifications`, `entity.write`,
+`entity.alias`, `registry.read`. `entity.write` and `entity.alias` are privileged.
+`internal/plugin.CapabilityEnforcer` denies network, filesystem and clipboard calls
+the manifest does not grant.
+
+`dpkms dev init-plugin <slug>` scaffolds a plugin directory (manifest, Go stub,
+README). In-tree examples live under `plugins/`.
+
+Limits:
+
+- Plugins are Go packages compiled into a build. There is no dynamic loading
+  (no `.so` files, no `--plugin` flag).
+- The shipped `ctxt` and `dpkms` binaries do not construct a plugin registry, so
+  a plugin is not run unless code that registers it is added to the build. The
+  `plugins:` config key (`type`, `plugin`, `config`) is parsed but not consumed.
+
+### Federation Configuration
+
+dpkms pushes objects, edges and entities to the targets listed under `federations`
+in `dpkms.yaml`:
+
 ```yaml
-# In main configuration.yaml, if integrator adds new provider type:
-myPlugin:
-  type: code-metrics           # Custom type value
-  language: python
-  threshold_complexity: 5
-  # More custom properties...
-```
-
-#### 5. Test in Isolation
-```bash
-# Load plugin without full system
-dpkms --plugin ./plugins/code-metrics.so --no-enrichment
-
-# Test pipeline step directly
-dpkms test-step --plugin code-metrics --input example.py
-
-# Integration test with real storage
-dpkms --plugin code-metrics --storage sqlite:test.db analyze example.py
-```
-
-### Integration Points
-
-#### AI Provider Plugin Example
-```go
-// Implement AI provider interface for constrained extraction
-type LMQLProvider struct {
-  config Config
-}
-
-func (p *LMQLProvider) Call(ctx context.Context, prompt string,
-    constraints Constraints) (ConstrainedOutput, error) {
-  // Execute LMQL with token-level constraints
-  // Return structured output (intent, entities, decisions)
-  // No parsing errors possible (hard constraints enforced)
-}
-
-// Register as AI provider
-func (p *Plugin) Register(ctx HostContext) error {
-  return ctx.RegisterAIProvider("lmql", p.lmqlProvider)
-}
-
-// Then use in config:
-// aiProvider:
-//   type: lmql
-//   backend: local
-//   model: llama3
-```
-
-#### Registry Adapter Plugin Example
-```go
-// Implement registry connector for external knowledge source
-type GitHubRepoRegistry struct {
-  token string
-  org   string
-}
-
-func (r *GitHubRepoRegistry) Search(ctx context.Context,
-    query string) ([]RegistryResult, error) {
-  // Scatter: query GitHub repos, issues, discussions
-  // Return results with canonical IDs
-}
-
-func (r *GitHubRepoRegistry) GetMetadata(ctx context.Context,
-    id string) (RegistryMetadata, error) {
-  // Get full details (stars, contributors, language, topics)
-}
-
-// Register as registry
-func (p *Plugin) Register(ctx HostContext) error {
-  return ctx.RegisterRegistry("github-org", r)
-}
-
-// Then use in config:
-// registries:
-//   - name: github-org
-//     type: github
-//     org: mycompany
-//     token: <github-token>   // literal: config files do not expand env vars
-```
-
-#### Custom Ranking Algorithm Plugin Example
-```go
-// Implement reranking for domain-specific relevance
-type DomainExpertiseRanker struct {
-  expertise map[string]float64  // domain → weight
-}
-
-func (r *DomainExpertiseRanker) Rank(ctx context.Context,
-    results []SearchResult) ([]SearchResult, error) {
-  // Rerank by domain expertise + recency + popularity
-  // Return reordered results with new scores
-}
-
-// Register as ranking method
-func (p *Plugin) Register(ctx HostContext) error {
-  return ctx.RegisterRankingMethod("domain-expertise", r)
-}
-
-// Then use in config:
-// rankingMethod: domain-expertise
-```
-
-#### Federation Configuration
-
-Configure federation targets in config.yaml; mix local SQLite paths + remote HTTP.
-
-```
-# config.yaml — federation targets
 federations:
-  - name: local-merged          # local SQLite; background sync every 5m
+  - name: local-merged          # local SQLite target; pushed every 5m
     url: /path/to/merged.sqlite
     interval: 5m
     sync_mode: async
 
-  - name: team                  # remote HTTP; background sync every 1h
+  - name: team                  # remote dpkms over HTTP; pushed every 1h
     url: https://team.internal:8080
     interval: 1h
     sync_mode: async
-
-  - name: realtime-mirror       # local SQLite; inline (synchronous pipeline step)
-    url: /path/to/mirror.sqlite
-    sync_mode: inline
+    token: <bearer token the remote expects>
 ```
 
-Sync modes:
-- `async` — background goroutine; interval-based; non-blocking ingestion
-- `inline` — synchronous pipeline step; push on every object write; adds latency
+- `sync_mode: async` runs one background worker per target on its `interval`
+  (required, > 0). Each successful batch advances a watermark at the target.
+- `sync_mode: inline` is accepted by the validator, but no inline push is
+  implemented: inline targets are skipped.
+- `token` is sent as a Bearer token to HTTP targets. On the receiving instance,
+  `federation.token` sets the token it expects (empty accepts any).
+- Startup rejects duplicate target names and a local target that points back at
+  the instance's own database. Remote topologies (A to B to A over HTTP) are not
+  checked.
 
-DAG topology:
-- Chain instances as federation targets (A → B → C)
-- Cycle detection built-in; misconfigured cycles rejected at startup
-- Each hop copies objects + watermarks forward; no central coordinator
-
-Token auth (Phase 2 — not yet implemented):
-- Shape: per-target `token:` field in federation config entry
-- Exact token management TBD; placeholder in config schema for forward compat
-
-Refs: US-0318 (configure targets), US-0320 (inline push), US-0323 (DAG chain)
+Refs: US-0318 (configure targets), US-0320 (inline push, not implemented), US-0323 (DAG chain)
 
 ---
 
 ## Key Pain Points
 
 - **Plugin Versioning:** Which core version is my plugin compatible with? Breaking changes in interfaces
-- **Permission Model Friction:** Too strict (plugin blocked at runtime), too loose (security risk)
+- **No runtime plugin loading:** Go plugins need a custom build to run at all
 - **Documentation Lag:** Interface changes faster than plugin development guides
-- **Testing Isolation:** Hard to test plugin without full system (storage, jobs, registries)
-- **Deployment Friction:** Getting users to approve plugin installation (permissions, code review)
-- **Monetization:** How do I charge for a plugin? License key management?
-- **White-Labeling:** How do I customize UI/branding for a specific customer?
-
----
-
-## System Leverage
-
-### Capability Scoping
-- Plugins declare required permissions upfront
-- Host rejects calls exceeding declared capabilities
-- Users can inspect plugin permissions before installation
-- Reduces blast radius of malicious or buggy plugins
-
-### Plugin Interfaces
-- Well-defined interfaces for each plugin type
-- Versioned contracts (v1, v2) support backwards compatibility
-- Type-safe (Go/TypeScript) prevents runtime surprises
-
-### Polymorphic Config System
-- Register custom config schema for new `type:` values
-- Config loader auto-dispatches on type key
-- Environment variable overrides for deployment flexibility
-
-### Extraction Rule Maintenance
-- Integrators can ship curated scraper rules for domains their users rely on
-- The same rule set can improve browser capture, authenticated fetch, and feed enrichment together
-- Rule-hit and fallback metadata make it easier to validate extraction quality in production
-
-### Event-Driven Job Queue
-- Plugins hook into ingestion + enrichment pipeline
-- Can observe and react to job state changes (pending → running → completed)
-- Plugins add enrichment steps to existing pipelines without modifying core
-
-### Pluggable Everything
-- Storage backends: implement `ObjectStore`, `JobStore`, `GraphStore`, `VectorStore` interfaces
-- Encryption providers: implement key management, at-rest encryption
-- Query operators: add new RSQL operators (e.g., `similar_code==`, `architecture_layer==`)
-- Enrichment steps: implement extraction logic (tag assignment, entity extraction)
-- Ranking algorithms: implement custom reranking strategies
-- Translation providers: implement language detection and translation
-
-### Registry Protocol
-- Well-defined registry API (`/search`, `/metadata`, `/tags`, `/vocabulary`, `/embeddings`)
-- Conflict resolution rules for federated searches
-- Weighting and domain specificity scoring for result merging
-- No schema coupling (registry schema independent of core schema)
+- **Testing Isolation:** Hard to test an external step without a running dpkms and its storage
+- **Deployment Friction:** Getting users to trust and install a step registry
 
 ---
 
@@ -305,29 +149,30 @@ Platform integrators interact with the system through these key stories:
 - [US-0041](../stories/agents/US-0041-agent-uses-constrained-enrichment.md) — Agent Uses Constrained Enrichment (constraint patterns)
 
 ### Federation Configuration
-- US-0318 — Configure federation targets (local SQLite + remote HTTP in config.yaml)
-- US-0320 — Inline push (synchronous pipeline step; realtime mirror)
-- US-0323 — DAG chain (multi-hop federation topology; cycle detection)
+- US-0318 — Configure federation targets (local SQLite + remote HTTP in `dpkms.yaml`)
+- US-0320 — Inline push (synchronous pipeline step; not implemented)
+- US-0323 — DAG chain (multi-hop federation topology)
 
 ### Registry & Ranking
 - [US-0044](../stories/plugins/US-0044-implement-registry-adapter-plugin.md) — Implement Registry Adapter Plugin (external knowledge sources)
 - [US-0045](../stories/plugins/US-0045-implement-custom-ranking-algorithm.md) — Implement Custom Ranking Algorithm (relevance algorithms)
 
+Stories describe intended behavior; several (LMQL, scraper rules, custom AI
+providers, custom ranking) are not implemented.
+
 ---
 
 ## Success Metrics
 
-- **Plugin adoption:** Number of publicly listed plugins, download counts, active installations
-- **Plugin reliability:** Plugin crash rate, permissions denied rate, user complaints
-- **Time to develop:** Hours to build and ship a basic plugin (target: <4 hours for simple extension)
-- **Monetization:** Revenue from premium plugins, subscription models
-- **White-label adoption:** # of customers using customized versions
+- **Time to develop:** Hours to build and ship a basic external step or pipeline
+- **Step reliability:** Step failure and retry rates in `dpkms job list`
+- **Registry adoption:** Number of step and knowledge registries in use
 
 ---
 
 ## Collaboration with Other Personas
 
 - **Maintainers:** Integrators submit plugin PRs, request interface additions, report compatibility issues
-- **Agents/LLMs:** Agents may leverage custom AI providers and ranking algorithms
-- **Knowledge Workers:** Workers benefit from domain-specific plugins (e.g., "code extraction", "design analysis")
-- **Operations:** Operations need clear deployment guidance for plugin management and updates
+- **Agents/LLMs:** Agents use the pipelines and steps integrators add
+- **Knowledge Workers:** Workers benefit from domain-specific pipelines and steps
+- **Operations:** Operations need clear deployment guidance for step registries and updates

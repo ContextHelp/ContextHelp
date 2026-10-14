@@ -6,11 +6,11 @@
 
 ## Goals
 
-- Deploy and scale the system reliably with minimal downtime
-- Monitor jobs, queries, and enrichment pipeline health continuously
-- Manage secrets securely (API keys, encryption keys, federation credentials)
-- Perform backups, upgrades, and disaster recovery with confidence
-- Optimize storage and query performance for user experience
+- Deploy and run the system reliably with minimal downtime
+- Watch job and pipeline health
+- Manage secrets securely (API keys, inbound auth tokens, federation tokens)
+- Perform backups, upgrades, and recovery with confidence
+- Keep storage and search fast
 
 ---
 
@@ -18,77 +18,28 @@
 
 ### Deployment
 
-#### Local Development (Single User)
+#### Local (Single User)
 ```bash
-# SQLite backend (default, zero-install)
-export CH_STORAGE_TYPE=sqlite
-export CH_STORAGE_PATH=./data/db.sqlite
+# SQLite backend (default); database at $CTXT_DATA_DIR/db.sqlite
+export CTXT_DATA_DIR=~/.local/share/contexthelp
 
-# Optional: OpenAI for NLQ + enrichment
-export CH_OPENAI_API_KEY=sk-...
-export CH_OPENAI_MODEL=gpt-4
+# Optional: hosted LLM for enrichment (read under its own name)
+export OPENAI_API_KEY=sk-...
 
-dpkms serve --listen localhost:8080
+dpkms serve                  # REST on 127.0.0.1:8080, gRPC on 9090
+dpkms serve --port 8080      # require that exact port
+dpkms install --launchd      # or --systemd: run under the service manager
 ```
 
-#### Containerized Production (Team/Organization)
-```dockerfile
-FROM golang:1.23-alpine
-RUN apk add --no-cache sqlite postgresql-client
-COPY dpkms /usr/local/bin/
-EXPOSE 8080
-CMD ["dpkms", "serve"]
-```
+`dpkms serve` binds loopback only; `--public` (or `CH_PUBLIC`) allows remote
+connections, and a non-private `server.access` requires inbound auth.
 
-```bash
-docker run -e CH_STORAGE_TYPE=postgres \
-  -e CH_STORAGE_URL=postgres://user:pass@db:5432/ctxt \
-  -e CH_OPENAI_API_KEY=${OPENAI_KEY} \
-  -e CH_ENCRYPTION_KEY_PROVIDER=vault \
-  -e CH_VAULT_ADDR=http://vault:8200 \
-  -p 8080:8080 \
-  dpkms:latest
-```
+#### Containers
 
-#### Kubernetes Production
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: dpkms
-spec:
-  replicas: 3
-  template:
-    spec:
-      containers:
-      - name: dpkms
-        image: dpkms:v0.1.0
-        env:
-        - name: CH_STORAGE_TYPE
-          value: postgres
-        - name: CH_STORAGE_URL
-          valueFrom:
-            secretKeyRef:
-              name: db-credentials
-              key: postgres-url
-        - name: CH_OPENAI_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: ai-credentials
-              key: openai-key
-        ports:
-        - containerPort: 8080
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8080
-```
+The supported container setup is the Docker Compose stack in the repo (dpkms
+behind Caddy for TLS): [../deployment/docker.md](../deployment/docker.md). No
+Kubernetes manifests or Helm chart ship with the project. For any orchestrator,
+probe `GET /health` (`{"status":"ok"}`, 503 when the store is unhealthy).
 
 ### Configuration Management
 
@@ -175,264 +126,166 @@ gitignored secrets file loaded as a second `--config`
 
 #### Health Checks
 ```bash
-# Liveness (is process running?)
+# Bare liveness: 200 {"status":"ok"}, 503 when the store is unhealthy
 curl http://localhost:8080/health
-# → {"status":"ok","uptime":"2h30m"}
 
-# Readiness (can handle requests?)
-curl http://localhost:8080/ready
-# → {"status":"ready","storageHealthy":true,"registriesHealthy":true}
+# Verbose envelope: health, version, uptime_seconds, checks
+# (process, rest_api, grpc_api, db, queue, watchers), upgrade progress.
+# 503 only when health is "failed". Public instances return the bare
+# verdict to unauthenticated callers.
+curl http://localhost:8080/healthz
+
+# Same envelope as a table; exit 0 healthy/degraded, 1 otherwise
+dpkms healthcheck
+dpkms healthcheck --watch --interval 5
 ```
 
-#### Metrics (Prometheus)
-```
-# Job queue
-ch_jobs_pending{env="prod"}        # how many jobs waiting
-ch_jobs_running{env="prod"}         # how many jobs executing
-ch_jobs_completed_total{env="prod"} # cumulative completed
-ch_jobs_failed_total{env="prod"}    # cumulative failed
-ch_job_duration_seconds{env="prod"} # histogram of execution times
+`ctxt status` shows the same health from the client side.
 
-# Query performance
-ch_search_duration_seconds{strategy="metadata",env="prod"}   # SQL query time
-ch_search_duration_seconds{strategy="fts",env="prod"}        # FTS query time
-ch_search_duration_seconds{strategy="vector",env="prod"}     # Vector search time
-ch_search_duration_seconds{strategy="graph",env="prod"}      # Graph traversal time
-ch_search_results_merged{env="prod"}                         # results before dedup/reranking
+#### Metrics, Logs, Tracing
 
-# Storage
-ch_storage_objects{env="prod"}      # total knowledge objects
-ch_storage_entities{env="prod"}     # total entities
-ch_storage_edges{env="prod"}        # total graph edges
-ch_storage_size_bytes{env="prod"}   # database size
-
-# AI Provider
-ch_ai_calls_total{provider="openai",env="prod"}
-ch_ai_errors_total{provider="openai",env="prod"}
-ch_ai_tokens_used{provider="openai",model="gpt-4o",env="prod"}
-ch_ai_cost_usd{provider="openai",env="prod"}
-
-# Registry
-ch_registry_queries_total{registry="api1",env="prod"}
-ch_registry_errors_total{registry="api1",env="prod"}
-ch_registry_latency{registry="api1",env="prod"}
-```
-
-#### Logging
-```
-# Structured JSON logs
-{
-  "timestamp":"2025-01-18T10:30:45Z",
-  "level":"info",
-  "component":"job.executor",
-  "job_id":"j-abc123",
-  "pipeline":"text.short",
-  "status":"completed",
-  "duration_ms":1234,
-  "steps_executed":5,
-  "objects_written":1
-}
-
-{
-  "timestamp":"2025-01-18T10:31:02Z",
-  "level":"info",
-  "component":"search.executor",
-  "query":"type==decision",
-  "strategies":["metadata","graph"],
-  "total_results":42,
-  "merged_results":38,
-  "duration_ms":567
-}
-
-{
-  "timestamp":"2025-01-18T10:32:15Z",
-  "level":"error",
-  "component":"ai.provider",
-  "provider":"openai",
-  "error":"rate_limit_exceeded",
-  "retry_after_seconds":60
-}
-```
-
-#### Distributed Tracing (Jaeger)
-- Trace ingestion job: capture → pipeline selection → step execution → storage write
-- Trace search query: query parsing → strategy selection → parallel execution → merging → reranking
-- Trace composition: object retrieval → graph traversal → template application → rendering
+- No metrics endpoint (no Prometheus exporter) and no tracing.
+- Logs are human-readable text on stderr, Warn level by default; `-V` raises to
+  debug, `-VV` to trace. Under `dpkms install` they land in
+  `~/Library/Logs/dpkms/{out,err}.log` (macOS) or
+  `~/.local/share/dpkms/dpkms.{out,err}.log` (Linux).
+- Audit events can be forwarded to syslog or a webhook (`audit:` config); see
+  [../operations/siem-integration.md](../operations/siem-integration.md).
+- Job state: `dpkms job list`, `dpkms job status <id>`, `dpkms job log <id>`.
 
 ### Maintenance & Upgrades
 
 #### Database Migrations
-```bash
-# List available migrations
-dpkms migrate --list
 
-# Run all pending migrations (idempotent)
-dpkms migrate --up
-
-# Rollback to specific version
-dpkms migrate --rollback-to v0.0.5
-
-# Check current schema version
-dpkms migrate --status
-```
+Schema migrations run automatically when dpkms opens the database (SQLite and
+Postgres). There is no migrate command and no rollback; take a backup before
+upgrading. Self-upgrades: `dpkms upgrade --help`.
 
 #### Backup & Recovery
 ```bash
-# Export all data (portable format)
-dpkms export --format ndjson > backup-2025-01-18.ndjson
+# Timestamped .tar.gz: SQLite snapshot, optionally blobs and config files + keys
+dpkms backup --output-dir /var/backups/ctxt --include-blobs --include-configs
+dpkms backup --async                    # enqueue as a background job
 
-# Import from backup
-dpkms import < backup-2025-01-18.ndjson
-
-# Incremental snapshot (for large deployments)
-dpkms export-delta --since 2025-01-17T00:00:00Z > delta.ndjson
+# Restore an archive or extracted directory (overwrites existing files)
+dpkms restore ctxt-backup-2026-04-25T13-51-54Z.tar.gz
+dpkms restore backup.tar.gz --data-dir /new/location
+dpkms restore backup.tar.gz --skip-configs
 ```
 
-#### Backup + Federation Rebuild
+- `dpkms backup` supports SQLite storage only; back up Postgres with its own tools
+  (`pg_dump`).
+- The output directory defaults to `backup.dir`, then the current directory; it
+  must be empty.
+- `--include-configs` takes the dpkms config file (`--config`, then `CTXT_CONFIG`,
+  then `$XDG_CONFIG_HOME/contexthelp/dpkms.yaml`). That file carries the
+  `federations:` targets, so restoring it restores the push topology.
+- Client config backups are separate: `ctxt config backup` exports a signed
+  bundle of the ctxt config, `ctxt config restore <bundle.zip>` restores it.
 
-Backup scope: DB file + config.yaml only. No special federation state needed.
+#### Federation Watermarks
 
-```
-# backup a single instance (SQLite)
-cp ~/.local/share/dpkms/<profile>/db.sqlite  backup-<profile>-$(date +%F).sqlite
-cp ~/.config/dpkms/<profile>/config.yaml     backup-<profile>-config.yaml
-
-# restore: copy files back, then start
-cp backup-<profile>-*.sqlite ~/.local/share/dpkms/<profile>/db.sqlite
-cp backup-<profile>-config.yaml ~/.config/dpkms/<profile>/config.yaml
-dpkms start --profile <profile>
-```
-
-- On `dpkms serve` / start: downstream federation DBs rebuild automatically
-- No need to back up downstream DBs; they are derived from source instances
-- Restore one instance → downstream consumers re-sync from watermark 0
-- Config.yaml carries federation targets; restoring it restores topology
-- Ref: US-0322 (backup + rebuild)
-
-#### Reindex (After Schema Changes)
-```bash
-# Rebuild FTS index (offline safe)
-dpkms reindex --fts
-
-# Rebuild vector index (requires embeddings)
-dpkms reindex --vector
-
-# Rebuild graph index
-dpkms reindex --graph
-```
-
-#### Multi-Instance Lifecycle
-
-One instance per profile; each has separate DB, config.yaml, port, pidfile.
-
-```
-# list running instances + their PIDs, ports, profiles
-dpkms ps
-
-# start/stop/reboot a specific instance by profile
-dpkms start  --profile work
-dpkms stop   --profile work
-dpkms reboot --profile work
-```
-
-- `dpkms ps` — shows all running instances; pid, port, profile, uptime
-- `dpkms stop` — graceful shutdown; waits for in-flight jobs
-- `dpkms reboot` — stop + start in sequence; use after config change
-- Pidfile location: `~/.local/share/dpkms/<profile>/dpkms.pid`
-- Port conflicts: assign distinct ports per profile in each config.yaml
-- Ref: US-0321 (multi-instance lifecycle)
-
-#### Federation Health
-
-Watermark table tracks per-source sync progress.
+Each push target has a `federation_watermarks` row (`federation_name`,
+`last_synced_at` as RFC 3339 UTC). For a local SQLite target the row lives in the
+target database; for an HTTP target it lives in the source instance's database.
+A missing row counts as the Unix epoch, so a new or emptied target receives a
+full push on the next tick.
 
 ```sql
--- check lag per federation source
-SELECT source, last_synced_at,
+-- lag per federation target (run against the database holding the rows)
+SELECT federation_name, last_synced_at,
        strftime('%s','now') - strftime('%s', last_synced_at) AS lag_sec
 FROM   federation_watermarks
 ORDER  BY lag_sec DESC;
 ```
 
-- Expected: `lag_sec` < configured interval (e.g. 5m async = < 300)
-- Stale watermark: re-check source reachability; inspect job queue for errors
-- `last_synced_at NULL` → source never synced; check federation config + connectivity
+- Expected: `lag_sec` below the target's `interval` (e.g. 5m = under 300)
+- Stale watermark: check target reachability and the dpkms log for push errors
 
-#### Plugin Management
+#### Reindex and Housekeeping
 ```bash
-# List installed plugins
-dpkms plugins list
-
-# Load new plugin
-dpkms plugins install ./plugins/code-metrics.so
-
-# Unload plugin (does not remove)
-dpkms plugins unload code-metrics
-
-# Verify plugin safety (sandboxing, permissions)
-dpkms plugins verify ./plugins/code-metrics.so
+dpkms housekeeping reindex      # rebuild FTS and vector indexes
+dpkms housekeeping vacuum       # reclaim space
+dpkms housekeeping compact      # optimize the database file
+dpkms housekeeping prune --before 2024-01-01
+dpkms housekeeping run          # WAL checkpoint, vacuum, orphaned blobs,
+                                # embeddings compaction, job history >30d,
+                                # zombie job detection, stats
 ```
 
-### Scaling Strategies
+#### Multi-Instance Lifecycle
 
-#### Vertical Scaling (Single Machine)
-- Increase `server.workers` / `DPKMS_WORKERS` (parallel enrichment)
-- Upgrade storage backend from SQLite to Postgres
-- Tune database parameters (connection pooling, query cache)
+Several dpkms instances can run on one machine. Give each its own port and, for
+separate data, its own data directory (and config file via `CTXT_CONFIG` or
+`--config`).
 
-#### Horizontal Scaling (Multiple Machines)
-- Deploy multiple `dpkms` instances behind load balancer
-- Share Postgres database (all instances read/write)
-- Distribute jobs across worker pool (transactional outbox handles distribution)
-- Scale registries independently (each registry behind its own load balancer)
+```bash
+dpkms serve --name work     --port 8080 --data-dir ~/.local/share/contexthelp-work
+dpkms serve --name personal --port 8081 --data-dir ~/.local/share/contexthelp-personal
 
-#### Federation Optimization
-- Use `sync_mode: thin` on large registries (index and taxonomy only)
-- Batch registry queries when possible
-- Cache registry results aggressively
+dpkms ps                         # running instances from <data dir>/run/ pidfiles
+dpkms shutdown --port 8081       # SIGTERM: drain in-flight jobs, exit
+dpkms reboot --port 8081         # SIGHUP: drain and exit; a supervisor relaunches
+```
+
+- There is no `dpkms start` or per-profile instance selection; `serve` starts an
+  instance and `--name` labels it (defaults to the database basename).
+- `dpkms reboot` does not relaunch on its own: run under `dpkms install` (or
+  another supervisor) so the process comes back.
+- Pidfiles: `<data dir>/run/<port>.pid` (default data dir
+  `$XDG_DATA_HOME/contexthelp`). `dpkms ps` removes stale entries.
+- Clients pick an instance with `--instance`, `CTXT_INSTANCE` or
+  `ctxt instance use`.
+
+#### Plugins and Steps
+
+There is no plugin install/load command; Go plugins are compiled in. External
+pipeline steps are managed with `dpkms pipeline step list|install|uninstall` and
+`dpkms pipeline step registry ...`.
+
+### Scaling
+
+#### Single Machine
+- Increase `server.workers` / `DPKMS_WORKERS` / `--workers` (parallel jobs)
+- Move from SQLite to Postgres (`storage.type: postgres`, DSN in `storage.path`)
+
+#### Shared Postgres
+- On Postgres, job claims use `FOR UPDATE SKIP LOCKED`, so workers do not pick
+  the same job. Running several dpkms processes against one database is not a
+  documented topology beyond that: each process also runs its own federation
+  workers and reminders.
+
+#### Registries
+- Use `sync_mode: thin` on large registries (registry config)
 
 ---
 
 ## Key Pain Points
 
-- **Storage Backend Choice:** SQLite for dev, Postgres for prod; migration path is tedious
-- **Encryption Key Management:** Key rotation without downtime, HSM integration
-- **AI Provider Dependency:** OpenAI rate limits, API downtime, cost spikes
-- **Registry Availability:** Federated queries slow if registries are slow; cascading failures
+- **Storage Backend Choice:** SQLite for dev, Postgres for prod; `dpkms backup` covers SQLite only
+- **AI Provider Dependency:** Hosted LLM rate limits, API downtime, cost spikes
+- **Registry Availability:** Slow or unreachable registries slow sync
 - **Job Queue Overload:** Too many pending jobs → worker backlog → user-facing latency
-- **Schema Migration Risk:** Upgrading schema while serving traffic (zero-downtime migration hard)
-- **Plugin Compatibility:** Plugins may break across core versions; no automated dependency tracking
-- **Observability Gaps:** Hard to debug slow queries or failed enrichments without full tracing
+- **Schema Migration Risk:** Migrations run on open with no rollback
+- **Observability Gaps:** No metrics or tracing; debugging relies on logs, `/healthz` and job logs
 
 ---
 
 ## System Leverage
 
 ### Transactional Job Queue
-- Automatic recovery from worker crashes (stale jobs reset to pending)
-- Idempotent job execution (safe to retry)
-- Full job history with error logs
-- No data loss (outbox pattern ensures writes before acknowledgment)
+- Stale running jobs reset to pending after `jobs.stale_timeout` (`DPKMS_STALE_TIMEOUT`)
+- Failed jobs retry up to `jobs.max_retries`; `dpkms job retry` reruns one by hand
+- Job history with per-job logs (`dpkms job log`)
+- Graceful drain on shutdown (`jobs.drain_timeout`)
 
-### Pluggable Storage Backends
-- Start with SQLite (zero install, WAL mode, FTS5)
-- Switch to Postgres when scaling (shared database, replication, connection pooling)
-- Support for other backends (MySQL, DynamoDB) via plugin interface
+### Storage Backends
+- SQLite (default, zero install, FTS5)
+- Postgres for shared deployments
 
-### Deterministic Replay
-- Same query + same config → same results
-- Facilitates debugging, auditing, capacity planning
-- Enables result caching (query as cache key)
-
-### Federated Registries
-- Distribute load across multiple registry sources
-- Conflict resolution rules prevent data corruption
-- Registry weighting guides resource allocation
-
-### Distributed Tracing
-- End-to-end visibility: ingestion → enrichment → storage → search → ranking
-- Debug slow operations (which strategy is slow?)
-- Capacity planning (which components are bottlenecks?)
+### Registries
+- Per-registry `trust_level` (`trusted`, `untrusted`, `sandboxed`) bounds what a registry may change
+- `ctxt registry sync --reconcile --merge-strategy last-write-wins|trust-score` across registries
 
 ---
 
@@ -457,8 +310,8 @@ Operations teams interact with the system through these key stories:
 - [US-0033](../stories/operations/US-0033-debug-failed-enrichment-job.md) — Debug Failed Enrichment Job (troubleshooting)
 
 ### Multi-Instance & Federation
-- US-0321 — Multi-instance lifecycle (ps/start/stop/reboot per profile)
-- US-0322 — Backup + federation rebuild (DB + config.yaml; downstream auto-rebuilds)
+- US-0321 — Multi-instance lifecycle (`serve --name`, `ps`, `shutdown`, `reboot`)
+- US-0322 — Backup + federation rebuild (`dpkms backup --include-configs`; watermarks)
 
 ### Backup & Migration
 - [US-0034](../stories/operations/US-0034-export-and-backup-all-knowledge.md) — Export and Backup All Knowledge (disaster recovery)
@@ -494,7 +347,6 @@ Operations teams interact with the system through these key stories:
 - **Query latency:** P99 < 500ms (local), P99 < 2s (with registries)
 - **Enrichment latency:** 95th percentile job completion < 5 minutes
 - **Storage efficiency:** Cost per GB of knowledge stored
-- **Plugin reliability:** Zero critical plugin crashes per week
 - **MTTR (Mean Time To Recovery):** < 5 minutes for common failure modes
 
 ---
@@ -504,4 +356,4 @@ Operations teams interact with the system through these key stories:
 - **Maintainers:** Operations provide reliability feedback, suggest config improvements, report scaling bottlenecks
 - **Agents/LLMs:** Operations ensure query latency SLOs, monitor AI provider costs
 - **Knowledge Workers:** Operations monitor enrichment job completion rates, ensure fast search
-- **Integrators:** Operations need clear plugin deployment docs, versioning strategy, safe rollback procedures
+- **Integrators:** Operations need clear deployment docs for pipelines and step registries, versioning strategy, safe rollback procedures

@@ -57,48 +57,31 @@ For each non-Charmbracelet dependency, we evaluate:
    - WAL mode provides adequate concurrency
    - Can achieve similar performance to crawshaw.io with proper pooling
 
-#### Configuration: YAML/TOML Parser
+#### Configuration: YAML Loader
 
-**Selected:** `github.com/ilyakaznacheev/cleanenv` (~1.6k stars)
+**Selected:** `hop.top/kit/go/core/config` on top of `github.com/spf13/viper`,
+with `gopkg.in/yaml.v3` for YAML.
 
-**Why:**
-- Struct-tag based validation (declarative approach)
-- Simple, minimal API
-- Built-in env var mapping
-- Perfect for dPKMS: one config struct, zero boilerplate
-- 1 day integration
+**How it is used** (`internal/config/config.go`):
+- `kitconfig.Load` reads the per-binary file cascade (`/etc/contexthelp/<bin>.yaml`,
+  `$XDG_CONFIG_HOME/contexthelp/<bin>.yaml`, nearest `.contexthelp/<bin>.yaml`)
+  into the typed `Config` struct via `mapstructure`/`yaml` tags.
+- `kitconfig.ParseConfigArgs` / `ApplyOverrides` apply `-c key=value` overrides.
+- A fixed `envBindings` list maps env vars onto keys (env > file); viper is also
+  bound for code paths that still call `viper.Get*`.
+- `${VAR}` is never expanded in config values.
 
 **Example:**
 ```go
-type Config struct {
-    DBPath string `yaml:"db_path" env:"DPKMS_DB_PATH" env-default:"./dpkms.db"`
-    Port   int    `yaml:"port" env:"DPKMS_PORT" env-default:"8080"`
+type StorageConfig struct {
+    Type    string `mapstructure:"type" yaml:"type"`
+    DataDir string `mapstructure:"data_dir" yaml:"data_dir"`
+    Path    string `mapstructure:"path" yaml:"path"`
 }
-// Load with: cleanenv.ReadConfig("config.yaml", &cfg)
+// storage.type is also bound to CH_STORAGE_TYPE through envBindings.
 ```
 
-**Optional Addition:** `github.com/joho/godotenv` (~8k stars)
-- Load `.env` files for profile-specific overrides
-- 0.5 days integration
-- Use with cleanenv for `.env` + YAML support
-
-**Alternatives:**
-
-1. **Popular:** `github.com/spf13/viper` (~27k stars)
-   - Watch files, env vars, remote config
-   - Overkill for local-first use case
-   - 3-4 days (complex API)
-
-2. **Complementary:** `github.com/knadh/koanf` (~2.7k stars)
-   - More composable than viper
-   - Clean separation of providers
-   - 2 days integration
-   - Choose if you need 3+ config sources or file watching
-
-3. **Why cleanenv wins:**
-   - Simplest for single YAML + env vars pattern
-   - Validation built-in
-   - Less code to maintain
+No `.env` loader (`godotenv`) and no `cleanenv` or `koanf` dependency.
 
 #### Migrations
 

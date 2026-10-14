@@ -415,7 +415,7 @@ vectors in the `embeddings` table, keyed `(object_id, model_id, chunk_idx)`
 
 ## Purpose
 
-Defines dual-path query architecture: RSQL for agents/deterministic queries, NLQ for humans/semantic queries (ADR-010).
+Defines the two query paths: RSQL for agents/deterministic queries, free-text search for humans (ADR-010 describes the original NLQ design; the AI normalizer it proposed is not implemented).
 
 ## Dual-Path Query Architecture
 
@@ -431,72 +431,31 @@ Used by agents and systems requiring explicit, reproducible queries.
 
 **Example:** `mentions=="user errors";type=in=summary,decision;created_at>2025-01-01`
 
-### Path 2: Natural Language (Human/Semantic)
+### Path 2: Free-Text Search (Human)
 
-Used by humans and contexts requiring natural query expression.
+Natural-language or keyword text goes to `ctxt find` (`POST /api/v1/find`).
+There is no AI-backed NLQ normalizer: no intent classification, entity
+extraction or AI strategy selection, and no LMQL/instructor/outlines constrained
+generation. What runs instead:
 
-**NLQ Normalization Process:**
+- **Hybrid search (default):** FTS and vector legs fused with reciprocal rank
+  fusion (RRF). `--fts` or `--semantic` runs one leg; `--fts-weight`,
+  `--vector-weight`, `--rrf-k` and the pool sizes override the profile's
+  `search_strategy` and the global `search` config.
+- **Query clean-up:** common stopwords are stripped before the query is embedded.
+- **Reranking:** the default reranker adds small mention, backlink and
+  word-overlap bonuses on top of RRF order (`internal/ranking`).
+- **Filters:** `--meta-type`, `--topic`, `--person`, `--source-type`, `--since`,
+  `--until`, and the active focus profile.
 
-1. User inputs: `"how does the system handle user errors"`
-2. Semantic Normalizer (AI-backed) performs:
-   - **Intent Classification:** Detects intent type (relationship, summary, temporal, similarity, discovery)
-   - **Entity Extraction:** Identifies entities and context ("system", "user errors")
-   - **Strategy Selection:** Determines optimal query strategy mix based on intent:
-     - Relationship queries → Graph traversal primary
-     - Semantic/pattern queries → Vector search primary
-     - Keyword/mention queries → FTS primary
-     - Temporal/filtered queries → Metadata filters
-   - **Context Injection:** Applies focus profile constraints
-3. Normalizer emits **Direct Query Plan** (multi-strategy parallel execution):
-   ```
-   [
-     { strategy: "graph", intent: "traverse mentions of 'user errors'" },
-     { strategy: "vector", intent: "semantically similar to error handling patterns" },
-     { strategy: "metadata", filter: { type: { in: ["concept", "decision"] } } }
-   ]
-   ```
-4. Query Plan executes strategies in parallel, results merged and reranked.
-
-#### LMQL-Constrained Normalization (Optional)
-
-For locally-hosted models, LMQL replaces the free-form AI call with single-pass multi-slot constrained extraction.
-The normalizer can enforce:
-- **Intent** — closed set of 6 intent types (relationship, summary, temporal, similarity, discovery, metadata-filter)
-- **Entities** — regex-constrained to `@namespace.slug` format with automatic validation
-- **Strategy Selection** — yes/no per strategy (graph, vector, fts, metadata) with inter-slot constraints
-
-This eliminates post-hoc validation and ensures output is always parseable. For API-hosted models (OpenAI, Anthropic), use `type: instructor` with Pydantic dataclass constraints as the fallback, or `type: outlines` for regex-constrained generation.
-
-**Important:** Full token-level constraint enforcement requires locally-hosted backends. API-hosted models fall back to prompt-engineering hints only.
-
-**Intent Pattern Examples:**
-
-| Natural Language | Detected Intent | Primary Strategy | Secondary |
-|---|---|---|---|
-| "what are insights on X" | Semantic summary | Vector (similarity) | Metadata (type=summary) |
-| "how does A handle B" | Relationship pattern | Graph (traversal) | Vector (pattern matching) |
-| "find recent decisions about X" | Temporal entity | Metadata (date filter) | FTS (keyword) |
-| "show related work on X" | Similarity discovery | Vector (embeddings) | Graph (relationships) |
+`ctxt list --q "<rsql>"` runs an RSQL query instead.
 
 **Agent Query Support:**
 
-Agents have two modes:
-
-1. **Structured Mode (Recommended):** Use RSQL for deterministic queries
-   - Agent receives `/query-schema` endpoint: list of queryable properties, operators, examples
-   - Agent constructs explicit RSQL: `type==article;tags=in=recommended;created_at>2025-01-01`
-   - Deterministic, cacheable, audit-friendly
-
-2. **Natural Mode (Fallback):** Ask in natural language, system translates
-   - Agent asks: `"show me recent recommended articles"`
-   - System translates via normalizer → multi-strategy execution
-   - Useful for ad-hoc queries but less reproducible
-
-**Recommended Agent Pattern:**
-- Agent receives query schema and intent examples on startup
-- Agent constructs RSQL for primary/deterministic queries
-- Agent may use NLQ for refinement or clarification follow-ups
-- System logs both agent intent (NLQ) and execution query (RSQL/plan) for transparency
+- Agents construct RSQL for deterministic queries (`ctxt list --q`), or call
+  `ctxt find` for ranked free-text results.
+- The dpkms MCP endpoint (`/api/v1/mcp`) exposes a `schema` tool (object kinds,
+  edge types, pipelines) and a `search` tool.
 
 ## RSQL Core Operators
 
@@ -537,10 +496,9 @@ Nodes:
 - AST → Query Plan (compiler)
 - Single-strategy dispatch (primarily SQL metadata filtering)
 
-### NLQ Path (Semantic)
-- NLQ → Intent + Entities (normalizer)
-- Intent → Multi-Strategy Query Plan (direct, no AST)
-- Parallel execution of optimal strategies
+### Free-Text Path
+- Query → FTS leg + vector leg (dpkms embeds the query with its default model)
+- RRF fusion, then reranking
 
 ### Query Plan Execution (Both Paths)
 
@@ -762,76 +720,66 @@ Formalizes polymorphic config system (ADR-005, ADR-012).
 
 ## Config Loader
 
-Loads YAML/JSON with:
-
-- `type` tag dispatching
-- plugin schema registration
-- environment variable overrides
+Each binary loads its own YAML file (`ctxt.yaml` or `dpkms.yaml`) through viper
+and `hop.top/kit/go/core/config`: `/etc/contexthelp/<bin>.yaml`, then
+`$XDG_CONFIG_HOME/contexthelp/<bin>.yaml`, then the nearest
+`.contexthelp/<bin>.yaml` walking up from the working directory. `CTXT_CONFIG`
+replaces the cascade; `-c/--config <file>` layers extra files and `-c key=value`
+overrides single keys. A fixed list of env vars maps onto keys. There is no
+`type:`-tag dispatch or plugin schema registration. Values are literal: `${VAR}`
+is not expanded. `ctxt config validate` checks the result.
 
 ## Example Config
 
-```
+```yaml
 storage:
   type: sqlite
   path: ./data/db.sqlite
 
-# Required for NLQ (Natural Language Query) support
-aiProvider:
-  type: openai
-  model: gpt-4
-  # API key: OPENAI_API_KEY in the environment (config files do not expand env vars)
-
-# Optional: for semantic/vector search
-embeddingProvider:
-  type: openai
-  model: text-embedding-3-large
-
-# Optional: NLQ Normalizer configuration
-nlqNormalizer:
-  enabled: true
-  provider: openai  # same provider as aiProvider above
-  intentPatterns: ./config/intent-patterns.yaml
-  strategy_selection: adaptive  # or fixed
+# AI backends used by pipeline steps (tagging, sectioning, entity and
+# metadata extraction). Keys come from OPENAI_API_KEY / ANTHROPIC_API_KEY
+# (or the secrets backend), never from this file.
+providers:
+  llm:
+    backend: openai          # openai | anthropic | ollama | stub | auto (empty)
+    model: gpt-4o
+  embedding:
+    backend: ollama          # ollama (default) | stub
+    model: nomic-embed-text
+    endpoint: http://localhost:11434
 
 registries:
   - name: uxpatterns
     url: https://uxpatterns.example.com
-
-plugins:
-  - type: plugin
-    plugin: ./plugins/screensuggester.so
 ```
 
-## AI Provider Options
+There is no `aiProvider`, `embeddingProvider` or `nlqNormalizer` key.
 
-The `aiProvider` (and per-step `enrichmentProvider`) config block dispatches on the `type` key.
+## Provider Configuration
 
-| `type` | Runtime | Constraint enforcement | Notes |
-|---|---|---|---|
-| `openai` | OpenAI Chat API | Prompt-engineering only | Default |
-| `anthropic` | Anthropic Messages API | Prompt-engineering only | |
-| `ollama` | Local Ollama server | Full token-level (LMQL) | Requires local model |
-| `lmql` | LMQL Python runtime | Full token-level | Local models only |
-| `instructor` | Instructor + Pydantic | Schema-guided retry | API-hosted models |
-| `outlines` | Outlines library | Regex/schema constrained | Local models preferred |
+`providers.<kind>` takes `backend`, plus optional `model`, `endpoint` and
+`language`. Backends are a fixed set compiled into dpkms
+(`internal/providers/factory.go`):
 
-**LMQL config example:**
+| Kind | Backends | Empty / `auto` |
+|---|---|---|
+| `llm` | `openai`, `anthropic`, `ollama`, `stub` | Anthropic if `ANTHROPIC_API_KEY` resolves, else OpenAI if `OPENAI_API_KEY` resolves, else Ollama at `http://localhost:11434` |
+| `vision` | `ollama`, `openai`, `anthropic`, `gemini`, `openrouter`, `stub` | Ollama if reachable, else the first hosted key that resolves (OpenAI, Anthropic, Gemini, OpenRouter), else `stub` |
+| `transcription` | `whisper-cli`, `ollama`, `stub` | `whisper-cli` if installed, else `stub` |
+| `ocr` | `tesseract`, `stub` | `tesseract` if installed, else `stub` |
+| `document` | `pdftotext`, `golib`, `stub` | `golib` (pure Go) |
+| `video` | `ffmpeg`, `stub` | `ffmpeg` if installed, else `stub` |
+| `diarization` | `pyannote`, `stub` | `pyannote` if installed, else `stub` |
 
-```yaml
-aiProvider:
-  type: lmql
-  backend: local
-  model: llama3
-  endpoint: http://localhost:8080
-  fallback:
-    type: openai
-    model: gpt-4o
-    # API key: OPENAI_API_KEY in the environment
-```
+`providers.embedding` takes `backend`, `model`, `endpoint`, `api_key_env` (the
+name of the env var holding the key) and `dimension`; the effective embedding
+provider is resolved per field from flags, env, `-c` overrides, the model
+registry (`embeddings:`), this block and built-in defaults.
 
-**Important:** LMQL token-level logit masking operates only against locally-hosted backends.
-When `backend: api-fallback`, LMQL degrades to prompt-engineering hints with no hard enforcement.
-For API-hosted constrained extraction, prefer `type: instructor` or `type: outlines`.
+API keys are read from the secrets backend first, then the process environment:
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`.
+Constrained generation (LMQL, instructor, outlines) and provider fallback chains
+are not implemented.
 
 ## Environment Overrides
 
