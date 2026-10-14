@@ -31,20 +31,9 @@ const findCassettes = "testdata/cassettes/find-query-path"
 // separately, so tests can tell the notice line from the result output.
 func execFind(t *testing.T, db *testDB, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
-	return execFindWith(t, db, nil, args...)
-}
-
-// execFindWith is execFind with set run after the viper reset, for tests
-// that pin a viper key the reset clears.
-func execFindWith(t *testing.T, db *testDB, set func(), args ...string) (stdout, stderr string, err error) {
-	t.Helper()
 	resetAllFlags(rootCmd)
 	for _, k := range []string{"format", "output", "output.format", "verbose", "quiet", "no-color", "no-hints", "profile", "profile.default", "offline", "offline.enabled", "instance"} {
 		viper.Set(k, "")
-	}
-	if set != nil {
-		set()
-		defer viper.Set("profile", "")
 	}
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()

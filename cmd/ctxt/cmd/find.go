@@ -189,7 +189,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 		ctx = context.Background()
 	}
 	limit := viper.GetInt("find.limit")
-	profile := viper.GetString("profile.default")
+	profile := activeProfileName(cmd)
 	searchCfg := resolveFindSearch(profile)
 
 	// --graph always runs the traced hybrid search, whatever the mode.

@@ -136,6 +136,8 @@ func TestResolveDefaultProfile(t *testing.T) {
 		{name: "config default", body: twoProfiles, want: "b"},
 		{name: "env over config", body: twoProfiles, env: map[string]string{config.EnvProfile: "a"}, want: "a"},
 		{name: "flag over config", body: twoProfiles, args: []string{"--profile", "a"}, want: "a"},
+		{name: "flag over env", body: twoProfiles, env: map[string]string{config.EnvProfile: "b"}, args: []string{"--profile", "a"}, want: "a"},
+		{name: "empty flag selects none", body: "profile:\n  default: solo\n  profiles:\n    solo: {}\n", args: []string{"--profile", ""}, want: ""},
 		{name: "single profile", body: "profile:\n  profiles:\n    solo: {}\n", want: "solo"},
 		{name: "no profiles", want: ""},
 	} {

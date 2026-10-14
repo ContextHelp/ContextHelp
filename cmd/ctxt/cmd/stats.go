@@ -60,9 +60,9 @@ type statsData struct {
 }
 
 // gatherStats fetches the instance's counts, scoping the resurfacing
-// count to the default profile, and adds the configured profiles.
-func gatherStats(ctx context.Context, client *dpkmsclient.Client) (*statsData, error) {
-	st, err := client.Stats(ctx, activeProfileName())
+// count to the active profile, and adds the configured profiles.
+func gatherStats(ctx context.Context, client *dpkmsclient.Client, profile string) (*statsData, error) {
+	st, err := client.Stats(ctx, profile)
 	if err != nil {
 		return nil, fmt.Errorf("stats: %w", err)
 	}
@@ -128,6 +128,7 @@ func printStats(w io.Writer, d *statsData) {
 
 func runStats(cmd *cobra.Command, _ []string) error {
 	watch, _ := cmd.Flags().GetBool("watch")
+	profile := activeProfileName(cmd)
 	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
 		return err
@@ -151,7 +152,7 @@ func runStats(cmd *cobra.Command, _ []string) error {
 
 	// The first snapshot decides the exit: a refused token or an instance
 	// that does not answer fails the command, with or without --watch.
-	d, err := gatherStats(ctx, client)
+	d, err := gatherStats(ctx, client, profile)
 	if err != nil {
 		return err
 	}
@@ -167,7 +168,7 @@ func runStats(cmd *cobra.Command, _ []string) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			d, err := gatherStats(ctx, client)
+			d, err := gatherStats(ctx, client, profile)
 			if err != nil {
 				if ctx.Err() != nil {
 					return nil

@@ -40,8 +40,8 @@ func init() {
 	doctorCmd.Flags().StringSlice("check", nil,
 		"checks to run (orphans,missing_metadata,duplicates,stale); default: all")
 	// --profile is inherited from kit's persistent flag set; do not
-	// re-register it locally. doctor reads it via cmd.Flags().GetString("profile")
-	// at run time (cobra resolves inherited persistent flags through Flags()).
+	// re-register it locally. doctor resolves it via activeProfileName at run
+	// time (cobra resolves inherited persistent flags through Flags()).
 	doctorCmd.Flags().Int("limit", 0, "max issues to report (0 = unlimited)")
 	doctorCmd.Flags().Int("stale-days", 90, "days without update before flagging as stale")
 	doctorCmd.Flags().Float64("duplicate-threshold", 0.95,
@@ -56,7 +56,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	defer cleanup()
 
 	checks, _ := cmd.Flags().GetStringSlice("check")
-	profile, _ := cmd.Flags().GetString("profile")
+	profile := activeProfileName(cmd)
 	limit, _ := cmd.Flags().GetInt("limit")
 	staleDays, _ := cmd.Flags().GetInt("stale-days")
 	dupThresh, _ := cmd.Flags().GetFloat64("duplicate-threshold")

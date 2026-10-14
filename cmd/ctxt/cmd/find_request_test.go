@@ -16,7 +16,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/spf13/viper"
 	"hop.top/kit/go/console/output"
 
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
@@ -89,12 +88,10 @@ func recordFind(t *testing.T, db *testDB, role string) *findRecorder {
 	return rec
 }
 
-// execFindAs is execFind with the active profile set the way --profile
-// sets it: execFind pins viper's profile key to "", and a viper.Set
-// outranks the flag binding.
+// execFindAs is execFind run under --profile profile.
 func execFindAs(t *testing.T, db *testDB, profile string, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
-	return execFindWith(t, db, func() { viper.Set("profile", profile) }, append([]string{"--profile", profile}, args...)...)
+	return execFind(t, db, append([]string{"--profile", profile}, args...)...)
 }
 
 // writeFindProfileConfig writes a ctxt config naming the local store and
@@ -326,7 +323,7 @@ func TestREPLFindOverFind(t *testing.T) {
 	state := &repl.SessionState{}
 	ctx := context.WithValue(context.Background(), repl.SessionContextKey{}, state)
 	exec := func(args []string) error {
-		_, stderr, err := execFindWith(t, db, nil, args...)
+		_, stderr, err := execFind(t, db, args...)
 		if err != nil {
 			t.Logf("stderr: %s", stderr)
 		}

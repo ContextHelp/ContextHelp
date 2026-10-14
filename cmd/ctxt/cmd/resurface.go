@@ -10,7 +10,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/resurfacing"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var resurfaceCmd = &cobra.Command{
@@ -94,22 +93,6 @@ func init() {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-func activeProfileName() string {
-	if cfg != nil && cfg.Profile.Default != "" {
-		return cfg.Profile.Default
-	}
-	return viper.GetString("profile.default")
-}
-
-func activeProfile() (string, config.FocusProfile, bool) {
-	name := activeProfileName()
-	if name == "" || cfg == nil {
-		return "", config.FocusProfile{}, false
-	}
-	p, ok := cfg.Profile.Profiles[name]
-	return name, p, ok
-}
-
 func resurfacingCfg() config.ResurfacingConfig {
 	if cfg != nil {
 		return cfg.Resurfacing
@@ -147,7 +130,7 @@ func runResurfaceShow(cmd *cobra.Command, _ []string) error {
 		minScore = rcfg.MinScore
 	}
 
-	profileName := activeProfileName()
+	profileName := activeProfileName(cmd)
 
 	entries, err := svc.ListResurfacing(ctx, profileName, limit, minScore)
 	if err != nil {
@@ -191,7 +174,7 @@ func runResurfaceShow(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runResurfaceRefresh(_ *cobra.Command, _ []string) error {
+func runResurfaceRefresh(cmd *cobra.Command, _ []string) error {
 	svc, cleanup, err := newService()
 	if err != nil {
 		return err
@@ -201,7 +184,7 @@ func runResurfaceRefresh(_ *cobra.Command, _ []string) error {
 	ctx := context.Background()
 	rcfg := resurfacingCfg()
 
-	profileName, profile, ok := activeProfile()
+	profileName, profile, ok := activeProfile(cmd)
 	if !ok && profileName != "" {
 		return fmt.Errorf("active profile %q not found in config", profileName)
 	}
