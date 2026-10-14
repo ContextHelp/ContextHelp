@@ -3,7 +3,7 @@
   "actions": [
     {
       "kind": "vacuum",
-      "target": "database:/var/folders/x6/lrc3lbzd1gs0wvmn_z_t76780000gn/T/dpkms-12fcc-record/maintenance-preview/data/contexthelp/db.sqlite",
+      "target": "database:/tmp/dpkms-12fcc-record/maintenance-preview/data/contexthelp/db.sqlite",
       "detail": "reclaim 20 KB of 552 KB (5 of 138 pages free)",
       "count": 5,
       "reversible": false
