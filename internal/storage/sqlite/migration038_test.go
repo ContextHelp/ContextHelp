@@ -233,7 +233,7 @@ func TestMigration038_DependentFailsLoudly(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := d.Migrate(ctx)
-	if err == nil || !strings.Contains(err.Error(), "view indexed_objects") {
+	if err == nil || !strings.Contains(err.Error(), "drop objects.vector_indexed: still referenced by view indexed_objects") {
 		t.Fatalf("Migrate with a dependent view: %v, want it to name view indexed_objects", err)
 	}
 	if n := scalarInt(t, d, `SELECT COUNT(*) FROM sqlite_master WHERE name = 'vec_objects'`); n != 1 {

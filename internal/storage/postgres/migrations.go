@@ -216,6 +216,12 @@ var pgMigrations = []pgMigration{
 			UNIQUE (registry_name, slug, version)
 		)`,
 	}},
+	// Drop objects.plugins, mirroring SQLite migration 045: there is no
+	// plugin system (ADR-078) and no code reads or writes the column.
+	// Not part of the tsvector expression, so no re-projection follows.
+	{Version: 25, Name: "drop objects.plugins", Statements: []string{
+		`ALTER TABLE objects DROP COLUMN IF EXISTS plugins`,
+	}},
 }
 
 // migrateAliasesObjectFK deletes aliases whose object is gone, then adds

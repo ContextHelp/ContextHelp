@@ -163,10 +163,8 @@ only two values and fails startup on anything else.
 | `sqlite` (default) | database file | `sqlite-vec` `vec0` table, cosine distance |
 | `postgres` | connection string | `pgvector`, cosine `<=>` |
 
-Both drivers keep `mentions` and `plugins` as JSON columns on the object row
-(`JSON` on SQLite, `JSONB` on PostgreSQL). `plugins` (`KnowledgeObject.Plugins`)
-is a free-form map left from the removed plugin layer: storage round-trips it,
-and no ctxt or dpkms code sets it ([ADR-078](../decisions/ADR-078-no-plugin-system.md)). Content above `storage.blob.threshold` is
+Both drivers keep `mentions` as a JSON column on the object row (`JSON` on
+SQLite, `JSONB` on PostgreSQL). Content above `storage.blob.threshold` is
 written to the blob store set by `storage.blob.backend`: `local` (default),
 `s3`, or `garage` (S3 with Garage defaults).
 

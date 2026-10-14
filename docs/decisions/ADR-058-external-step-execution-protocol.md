@@ -75,8 +75,7 @@ dPKMS sends JSON-serialized knowledge object to step's stdin:
   "tags": [],
   "mentions": [],
   "pipeline": "text.short",
-  "source": "cli",
-  "plugins": {}
+  "source": "cli"
 }
 ```
 

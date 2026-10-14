@@ -58,7 +58,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
-		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
+		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, graph_json, source_key, projected_fts_body,
 		projection_version, profile_id
@@ -66,15 +66,15 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		$1, $2, $3, $4, $5, $6,
 		$7, $8, $9, $10, $11,
 		$12, $13, $14, $15,
-		$16, $17, $18, $19, $20,
-		$21, $22, $23, $24, $25,
-		$26, $27, $28, $29, $30,
-		$31, $32
+		$16, $17, $18, $19,
+		$20, $21, $22, $23, $24,
+		$25, $26, $27, $28, $29,
+		$30, $31
 	)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
-		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
+		f.influences, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey, projectedFTSBody,
 		indexsig.ProjectionVersion, obj.ProfileID,
@@ -282,16 +282,16 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		type=$1, subtype=$2, raw_content=$3, content_type=$4, text_content=$5,
 		metadata=$6, summaries=$7, sections=$8, tags=$9, mentions=$10,
 		decisions=$11, tasks=$12, pipeline=$13, source=$14,
-		registry_influences=$15, plugins=$16, content_hash=$17,
-		reinforcement_count=$18, last_reinforced_at=$19,
-		updated_at=$20, fts_indexed=$21, status=$22, inbox_note=$23,
-		remind_at=$24, reminded_at=$25, graph_json=$26, projected_fts_body=$27,
-		projection_version=$28, profile_id=$29
-	WHERE id=$30`,
+		registry_influences=$15, content_hash=$16,
+		reinforcement_count=$17, last_reinforced_at=$18,
+		updated_at=$19, fts_indexed=$20, status=$21, inbox_note=$22,
+		remind_at=$23, reminded_at=$24, graph_json=$25, projected_fts_body=$26,
+		projection_version=$27, profile_id=$28
+	WHERE id=$29`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
-		f.influences, f.plugins, obj.ContentHash,
+		f.influences, obj.ContentHash,
 		obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, projectedFTSBody,
@@ -898,7 +898,7 @@ const objectSelectCols = `SELECT
 	id, type, subtype, raw_content, content_type, text_content,
 	metadata, summaries, sections, tags, mentions,
 	decisions, tasks, pipeline, source,
-	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
+	registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 	created_at, updated_at, fts_indexed, status, inbox_note,
 	remind_at, reminded_at, graph_json, source_key, profile_id, change_seq`
 
@@ -907,7 +907,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 	var (
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
-		influencesJSON, pluginsJSON                         []byte
+		influencesJSON                                      []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		graphJSON                                           []byte
 		sourceKey                                           sql.NullString
@@ -916,7 +916,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
-		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
+		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq,
 	)
@@ -927,7 +927,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		return nil, fmt.Errorf("scan object: %w", err)
 	}
 	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
 		lastReinforcedAt, remindAt, remindedAt); err != nil {
 		return nil, fmt.Errorf("scan object: %w", err)
 	}
@@ -949,7 +949,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 	var (
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
-		influencesJSON, pluginsJSON                         []byte
+		influencesJSON                                      []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		graphJSON                                           []byte
 		sourceKey                                           sql.NullString
@@ -958,7 +958,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
-		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
+		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq,
 	)
@@ -966,7 +966,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		return nil, fmt.Errorf("scan object row: %w", err)
 	}
 	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
 		lastReinforcedAt, remindAt, remindedAt); err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
 	}
@@ -989,7 +989,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 	var (
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
-		influencesJSON, pluginsJSON                         []byte
+		influencesJSON                                      []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		graphJSON                                           []byte
 		sourceKey                                           sql.NullString
@@ -999,7 +999,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
-		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
+		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq,
 		&score,
@@ -1008,7 +1008,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		return nil, 0, fmt.Errorf("scan object+score: %w", err)
 	}
 	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
 		lastReinforcedAt, remindAt, remindedAt); err != nil {
 		return nil, 0, fmt.Errorf("scan object+score: %w", err)
 	}
@@ -1028,7 +1028,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 func unmarshalObjectFields(obj *storage.KnowledgeObject,
 	metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 	mentionsJSON, decisionsJSON, tasksJSON,
-	influencesJSON, pluginsJSON []byte,
+	influencesJSON []byte,
 	lastReinforcedAt, remindAt, remindedAt sql.NullTime,
 ) error {
 	for _, col := range []struct {
@@ -1043,7 +1043,6 @@ func unmarshalObjectFields(obj *storage.KnowledgeObject,
 		{decisionsJSON, "decisions", &obj.Decisions},
 		{tasksJSON, "tasks", &obj.Tasks},
 		{influencesJSON, "registry_influences", &obj.RegistryInfluences},
-		{pluginsJSON, "plugins", &obj.Plugins},
 	} {
 		if err := decodeJSONColumn(col.raw, col.name, col.dst); err != nil {
 			return err
@@ -1072,7 +1071,7 @@ func unmarshalObjectFields(obj *storage.KnowledgeObject,
 type objectFields struct {
 	metadata, summaries, sections, tags    string
 	mentions, decisions, tasks             string
-	influences, plugins                    string
+	influences                             string
 	lastReinforcedAt, remindAt, remindedAt sql.NullTime
 }
 
@@ -1084,10 +1083,6 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	metadata := obj.Metadata
 	if metadata == nil {
 		metadata = map[string]any{}
-	}
-	plugins := obj.Plugins
-	if plugins == nil {
-		plugins = map[string]any{}
 	}
 	summaries := obj.Summaries
 	if summaries == nil {
@@ -1137,7 +1132,6 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	f.decisions = marshal("decisions", decisions)
 	f.tasks = marshal("tasks", tasks)
 	f.influences = marshal("influences", influences)
-	f.plugins = marshal("plugins", plugins)
 	if obj.LastReinforcedAt != nil {
 		f.lastReinforcedAt = sql.NullTime{Time: *obj.LastReinforcedAt, Valid: true}
 	}

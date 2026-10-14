@@ -63,15 +63,15 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
-		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
+		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, projected_fts_body, source_key,
 		projection_version
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
-		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
+		f.influences, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.Format(time.RFC3339), obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
@@ -102,7 +102,7 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
-		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
+		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
 	FROM objects WHERE id = ?`, id)
@@ -141,7 +141,7 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
-		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
+		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
 	FROM objects WHERE content_hash = ? LIMIT 1`, hash)
@@ -160,7 +160,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
-		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
+		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
 	FROM objects WHERE source_key = ? LIMIT 1`, key)
@@ -270,7 +270,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
-		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
+		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
 	FROM objects %s ORDER BY %s`, where, order)
@@ -332,7 +332,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		type=?, subtype=?, raw_content=?, content_type=?, text_content=?,
 		metadata=?, summaries=?, sections=?, tags=?, mentions=?,
 		decisions=?, tasks=?, pipeline=?, source=?,
-		registry_influences=?, plugins=?, content_hash=?, reinforcement_count=?, last_reinforced_at=?,
+		registry_influences=?, content_hash=?, reinforcement_count=?, last_reinforced_at=?,
 		updated_at=?, fts_indexed=?, status=?, inbox_note=?,
 		remind_at=?, reminded_at=?, profile_id=?, graph_json=?, projected_fts_body=?, source_key=?,
 		projection_version=?
@@ -340,7 +340,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
-		f.influences, f.plugins, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
+		f.influences, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
@@ -596,7 +596,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
 		decisions, tasks, pipeline, source,
-		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
+		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
 	FROM objects`
@@ -646,7 +646,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 	var (
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON string
 		mentionsJSON, decisionsJSON, tasksJSON              string
-		influencesJSON, pluginsJSON                         string
+		influencesJSON                                      string
 		createdAt, updatedAt                                string
 		ftsIndexed                                          int
 		lastReinforcedAt, remindAt, remindedAt              sql.NullString
@@ -658,7 +658,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
-		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
+		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&createdAt, &updatedAt, &ftsIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey, &obj.ChangeSeq,
 	)
@@ -670,7 +670,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 	}
 
 	if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
 		createdAt, updatedAt, ftsIndexed, lastReinforcedAt,
 		remindAt, remindedAt); err != nil {
 		return nil, fmt.Errorf("scan object: %w", err)
@@ -693,7 +693,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 	var (
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON string
 		mentionsJSON, decisionsJSON, tasksJSON              string
-		influencesJSON, pluginsJSON                         string
+		influencesJSON                                      string
 		createdAt, updatedAt                                string
 		ftsIndexed                                          int
 		lastReinforcedAt, remindAt, remindedAt              sql.NullString
@@ -705,7 +705,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
-		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
+		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&createdAt, &updatedAt, &ftsIndexed, &obj.Status, &obj.InboxNote,
 		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey, &obj.ChangeSeq,
 	)
@@ -714,7 +714,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 	}
 
 	if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
 		createdAt, updatedAt, ftsIndexed, lastReinforcedAt,
 		remindAt, remindedAt); err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
@@ -735,7 +735,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 func unmarshalObjectJSON(obj *storage.KnowledgeObject,
 	metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 	mentionsJSON, decisionsJSON, tasksJSON,
-	influencesJSON, pluginsJSON,
+	influencesJSON,
 	createdAt, updatedAt string,
 	ftsIndexed int,
 	lastReinforcedAt, remindAt, remindedAt sql.NullString,
@@ -752,7 +752,6 @@ func unmarshalObjectJSON(obj *storage.KnowledgeObject,
 		{decisionsJSON, "decisions", &obj.Decisions},
 		{tasksJSON, "tasks", &obj.Tasks},
 		{influencesJSON, "registry_influences", &obj.RegistryInfluences},
-		{pluginsJSON, "plugins", &obj.Plugins},
 	} {
 		if err := decodeJSONColumn(col.raw, col.name, col.dst); err != nil {
 			return err
@@ -784,7 +783,7 @@ func unmarshalObjectJSON(obj *storage.KnowledgeObject,
 type objectFields struct {
 	metadata, summaries, sections, tags    string
 	mentions, decisions, tasks             string
-	influences, plugins                    string
+	influences                             string
 	lastReinforcedAt, remindAt, remindedAt sql.NullString
 }
 
@@ -811,7 +810,6 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	f.decisions = marshal("decisions", obj.Decisions)
 	f.tasks = marshal("tasks", obj.Tasks)
 	f.influences = marshal("influences", obj.RegistryInfluences)
-	f.plugins = marshal("plugins", obj.Plugins)
 
 	if obj.LastReinforcedAt != nil {
 		f.lastReinforcedAt = sql.NullString{String: obj.LastReinforcedAt.Format(time.RFC3339), Valid: true}
@@ -1004,7 +1002,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		SELECT o.id, o.type, o.subtype, o.raw_content, o.content_type, o.text_content,
 		       o.metadata, o.summaries, o.sections, o.tags, o.mentions,
 		       o.decisions, o.tasks, o.pipeline, o.source,
-		       o.registry_influences, o.plugins, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
+		       o.registry_influences, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
 		       o.created_at, o.updated_at, o.fts_indexed, o.status, o.inbox_note,
 		       o.remind_at, o.reminded_at, o.profile_id, o.graph_json,
 		       bm25(objects_fts) AS score
@@ -1051,7 +1049,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		var (
 			metadataJSON, summariesJSON, sectionsJSON, tagsJSON string
 			mentionsJSON, decisionsJSON, tasksJSON              string
-			influencesJSON, pluginsJSON                         string
+			influencesJSON                                      string
 			createdAt, updatedAt                                string
 			ftsIndexed                                          int
 			lastReinforcedAt, remindAt, remindedAt              sql.NullString
@@ -1062,7 +1060,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 			&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 			&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 			&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
-			&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
+			&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 			&createdAt, &updatedAt, &ftsIndexed, &obj.Status, &obj.InboxNote,
 			&remindAt, &remindedAt, &obj.ProfileID, &graphJSON,
 			&score,
@@ -1071,7 +1069,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 			return nil, fmt.Errorf("fts search scan: %w", err)
 		}
 		if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON, pluginsJSON,
+			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
 			createdAt, updatedAt, ftsIndexed, lastReinforcedAt,
 			remindAt, remindedAt); err != nil {
 			return nil, fmt.Errorf("fts search scan: %w", err)

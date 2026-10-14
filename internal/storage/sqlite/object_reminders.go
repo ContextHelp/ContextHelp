@@ -82,7 +82,7 @@ const reminderSelectCols = `SELECT
 	id, type, subtype, raw_content, content_type, text_content,
 	metadata, summaries, sections, tags, mentions,
 	decisions, tasks, pipeline, source,
-	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
+	registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 	created_at, updated_at, fts_indexed, status, inbox_note,
 	remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
 `

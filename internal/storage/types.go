@@ -26,7 +26,6 @@ type KnowledgeObject struct {
 	Pipeline           string         `json:"pipeline,omitempty"`
 	Source             string         `json:"source,omitempty"`
 	RegistryInfluences []string       `json:"registry_influences,omitempty"`
-	Plugins            map[string]any `json:"plugins,omitempty"`
 	ContentHash        string         `json:"content_hash,omitempty"`
 	SourceKey          string         `json:"source_key,omitempty"` // external dedup key (Slack ts, tweet ID, etc.)
 	Status             string         `json:"status,omitempty"`

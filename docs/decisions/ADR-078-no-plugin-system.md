@@ -48,7 +48,7 @@ Authentication is extended by putting dpkms behind a trusted proxy or an OIDC pr
 - `plugins/`, `internal/plugin`, `pkg/pluginapi`, `pkg/projection`, `dpkms dev init-plugin` and the `/api/v1/suggestions` routes are removed.
 - The knowledge-object model (`KnowledgeObject`, `ObjectGraph`, node identity, `NodeAwareFilter`) is defined in `internal/storage`. The step contract (`PipelineStep`, `StepContract`) is defined in `internal/pipeline`.
 - A `plugins:` key in a config file is an unknown key: `ctxt config validate` warns about it like any other.
-- `KnowledgeObject.Plugins` (the `objects.plugins` column) and the `admin:plugins` scope that guards step install and uninstall keep their names: renaming them changes stored data and issued tokens, which needs its own change.
+- `KnowledgeObject.Plugins` (the `objects.plugins` column) and the `admin:plugins` scope that guards step install and uninstall keep their names: renaming them changes stored data and issued tokens, which needs its own change. See the 2026-10-14 amendment.
 - ADR-012 and ADR-027 stay as historical record, marked superseded.
 
 ---
@@ -58,3 +58,13 @@ Authentication is extended by putting dpkms behind a trusted proxy or an OIDC pr
 - **Keep the interfaces, load nothing.** This was the state before this ADR. Rejected: it documented an extension model that did not work.
 - **Implement in-process loading (Go `plugin` package or embedded modules).** Rejected: the Go `plugin` package ties plugins to the exact toolchain and dependency versions of the binary, compiled-in modules are not plugins, and both run third-party code inside the daemon.
 - **Out-of-process plugins over RPC.** Rejected: external steps (ADR-058) and hooks (ADR-075) are designed as that, scoped to the places where extension is needed.
+
+---
+
+## Amendment 2026-10-14
+
+> **Status:** Accepted
+
+ctxt is unreleased, so the leftovers the consequences above kept are removed outright, with no aliases:
+
+- `KnowledgeObject.Plugins` and the `objects.plugins` column are gone. SQLite migration 045 and Postgres migration 25 drop the column; any value stored there is discarded. The column was never an FTS input, so no re-projection follows.

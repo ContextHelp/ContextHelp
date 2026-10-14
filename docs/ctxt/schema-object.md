@@ -49,7 +49,6 @@ Below is the conceptual structure including the `mention_uris` field:
   "related": [],
   "registry": {},
   "metadata": {},
-  "plugins": {},
   "debug": {}
 }
 ```
@@ -380,12 +379,6 @@ The pipeline converts these to `ctxt://entity/...` URIs automatically.
 - resolvable via registries
 - non-influential (do not affect tags)
 - not automatically produced from hints
-
----
-
-## `plugins`
-
-`plugins` is a free-form JSON object stored with every object and returned as stored. It is left from the removed plugin layer ([ADR-078](../decisions/ADR-078-no-plugin-system.md)): no ctxt or dpkms code sets it, and core never interprets it.
 
 ---
 

@@ -607,9 +607,6 @@ edges:
 - Vector indexes on embeddings (optional)
 - Graph adjacency indexes on edges
 
-**`plugins` column:** a free-form JSON map on each object, left from the
-removed plugin layer; storage round-trips it and no code sets it.
-
 **Migrations:**
 - SQL migrations in `migrations/` directory
 - Stable ID preservation across versions

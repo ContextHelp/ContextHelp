@@ -491,10 +491,6 @@ An alias that resolves to nothing is a 404 `NOT_FOUND`.
 
 Deletes one alias by its key. Scope: `delete:aliases`, which only `admin` tokens hold: a `writer` gets 403 `INSUFFICIENT_SCOPE`. `?scope=` defaults to `global`; `?scope=profile` needs `?profile=`. Answers 204 with no body. No alias with that key is a 404 `NOT_FOUND`; a scope/profile mismatch is a 400 `INVALID_REQUEST`.
 
-### `plugins` field
-
-`plugins` is a free-form object kept on every knowledge object and returned as stored. It is left from the removed plugin layer: no ctxt or dpkms code sets it.
-
 ---
 
 ## Search: Find

@@ -236,6 +236,10 @@ var migrations = []migration{
 	// entities untrusted registries serve. New table only; IF NOT
 	// EXISTS makes it re-runnable.
 	{Version: 44, SQL: migration044},
+	// Migration 045: drop objects.plugins. There is no plugin system
+	// (ADR-078) and no code reads or writes the column. Not part of the
+	// FTS input, so no re-projection follows.
+	{Version: 45, fn: migrate045DropObjectsPlugins},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -808,29 +812,57 @@ func migrate038DropSingleVectorPath(ctx context.Context, d *Driver) error {
 		}
 	}
 	for _, col := range []string{"embeddings", "vector_indexed"} {
-		var n int
-		if err := tx.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM pragma_table_info('objects') WHERE name = ?`, col).Scan(&n); err != nil {
-			return fmt.Errorf("inspect objects.%s: %w", col, err)
+		if err := dropObjectsColumn(ctx, tx, col); err != nil {
+			return err
 		}
-		if n == 0 {
-			continue
-		}
-		var dependent string
-		err := tx.QueryRowContext(ctx, `
-			SELECT type || ' ' || name FROM sqlite_master
-			 WHERE ((type IN ('index', 'trigger') AND tbl_name = 'objects') OR type = 'view')
-			   AND sql LIKE '%' || ? || '%'
-			 LIMIT 1`, col).Scan(&dependent)
-		switch {
-		case err == nil:
-			return fmt.Errorf("drop objects.%s: still referenced by %s", col, dependent)
-		case !errors.Is(err, sql.ErrNoRows):
-			return fmt.Errorf("inspect dependents of objects.%s: %w", col, err)
-		}
-		if _, err := tx.ExecContext(ctx, `ALTER TABLE objects DROP COLUMN `+col); err != nil {
-			return fmt.Errorf("drop objects.%s: %w", col, err)
-		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// dropObjectsColumn drops objects.col inside tx. A missing column is a
+// no-op. A column still referenced by an index, trigger or view on
+// objects fails with that object named, rather than letting DROP COLUMN
+// fail on a schema error.
+func dropObjectsColumn(ctx context.Context, tx *sql.Tx, col string) error {
+	has, err := txTableHasColumn(ctx, tx, "objects", col)
+	if err != nil {
+		return fmt.Errorf("inspect objects.%s: %w", col, err)
+	}
+	if !has {
+		return nil
+	}
+	var dependent string
+	err = tx.QueryRowContext(ctx, `
+		SELECT type || ' ' || name FROM sqlite_master
+		 WHERE ((type IN ('index', 'trigger') AND tbl_name = 'objects') OR type = 'view')
+		   AND sql LIKE '%' || ? || '%'
+		 LIMIT 1`, col).Scan(&dependent)
+	switch {
+	case err == nil:
+		return fmt.Errorf("drop objects.%s: still referenced by %s", col, dependent)
+	case !errors.Is(err, sql.ErrNoRows):
+		return fmt.Errorf("inspect dependents of objects.%s: %w", col, err)
+	}
+	if _, err := tx.ExecContext(ctx, `ALTER TABLE objects DROP COLUMN `+col); err != nil {
+		return fmt.Errorf("drop objects.%s: %w", col, err)
+	}
+	return nil
+}
+
+// migrate045DropObjectsPlugins drops objects.plugins, a free-form map no
+// code reads or writes (ADR-078: no plugin system). One transaction;
+// idempotent and guarded like 038.
+func migrate045DropObjectsPlugins(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := dropObjectsColumn(ctx, tx, "plugins"); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
