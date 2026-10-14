@@ -226,108 +226,31 @@ Storage places no constraints on plugin metadata except:
 - must be valid JSON
 - must not alter core table schemas
 
-Plugins may also maintain private persistent files under:
-
-```
-~/.contexthelp/plugins/<pluginName>/
-```
-
-This supports:
-
-- notifications
-- price histories
-- feed sync state
-- cached query results
-- plugin-specific indices
+The host gives plugins no private directory: no plugin is loaded at runtime
+(see [../plugin-authoring-guide.md](../plugin-authoring-guide.md#1-current-state)),
+and any file a plugin keeps is its own choice.
 
 ---
 
 ## Storage Backends
 
-Backends must support mention persistence, backlinking, and plugin metadata storage.
+`storage.type` selects the driver; `internal/storageutil/factory.go` accepts
+only two values and fails startup on anything else.
 
-### JSON Storage
+| `storage.type` | `storage.path` | Vector search |
+|---|---|---|
+| `sqlite` (default) | database file | `sqlite-vec` `vec0` table, cosine distance |
+| `postgres` | connection string | `pgvector`, cosine `<=>` |
 
-Pros: simple, inspectable
-Cons: full scans for mention queries
+Both drivers keep `mentions` and `plugins` as JSON columns on the object row
+(`JSON` on SQLite, `JSONB` on PostgreSQL). Content above `storage.blob.threshold` is
+written to the blob store set by `storage.blob.backend`: `local` (default),
+`s3`, or `garage` (S3 with Garage defaults).
 
-Expectations:
-- store `mentions` and `plugins` JSON fields inside each file
-- plugin-specific state remains outside core storage
-- optional in-memory backlink index may improve repeated queries
-
-### SQLite (recommended)
-
-Pros: fast, reliable, ideal for mention + entity graph behavior
-
-Recommended tables:
-```
-bookmarks (JSON columns allowed)
-bookmark_mentions (bookmark_id, entity_id)
-```
-
-Additional expectations:
-- plugin metadata stored inside JSON field `plugins`
-- entity backlinks indexed
-- plugin-defined bookmark types stored in `type` column
-
-### Postgres
-
-Use JSONB + GIN for:
-- mentions
-- plugin metadata
-
-Use join table for backlink index when needed.
-
-### LEANN (experimental, highly efficient)
-
-**[LEANN](https://github.com/yichuan-w/LEANN)** is a graph-based RAG system with 97% storage efficiency through on-demand embedding recomputation.
-
-Pros:
-- **97% storage savings** vs traditional vector DBs (no pre-computed embeddings)
-- Faster query performance via graph-based selective traversal
-- Local-first, 100% private (zero telemetry)
-- Multimodal support (text + vision via ColQwen)
-- Built-in MCP integration for live data sources
-
-Cons:
-- Slower index build (graph construction)
-- Experimental, less mature ecosystem than SQLite/Postgres
-- Requires separate installation and configuration
-
-**Integration approach:**
-- **Hybrid storage**: LEANN for vector/similarity search, SQLite for entities/backlinks
-- **Backend plugin**: ContextHelp plugin wraps LEANN as storage interface
-- **MCP connector**: ContextHelp queries LEANN via MCP for data sources
-
-**Configuration:**
-```yaml
-storage:
-  type: leann
-  path: ~/.local/share/contexthelp/leann
-  options:
-    recompute: true  # Enable on-demand embedding generation
-    graph_degree: 32
-    build_complexity: 64
-    compact: true
-    backend: hnsw  # or diskann
-```
-
-**Data separation:**
-- **LEANN**: Stores chunks, embeddings (recomputed on demand), similarity index
-- **ContextHelp (SQLite)**: Stores bookmarks, mentions, entities, backlinks, plugin metadata
-- **Query flow**: Metadata/mentions/graph → SQLite; Similarity → LEANN; Merge → ContextHelp
-
-See [LEANN Integration Documentation](./leann-integration.md) for complete details.
-
-### Custom Backends
-
-Must support:
-- mentions
-- backlink lookups
-- plugin metadata persistence
-
-Graph DBs may handle backlinks natively.
+There is no JSON-file backend, no LEANN backend and no custom-backend hook:
+adding a backend means adding a case to the factory. See
+[embeddings.md](embeddings.md) for vector indexing and
+[../scaling.md](../scaling.md) for choosing between the two drivers.
 
 ---
 
