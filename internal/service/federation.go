@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 )
 
 // FederationAccept stores incoming pushed objects, edges, and entities,
@@ -59,6 +60,9 @@ func (s *Service) FederationAccept(
 			return created, fmt.Errorf("federation accept: create object %q: %w", obj.ID, err)
 		}
 		created++
+		if err := blob.Ensure(ctx, s.Store.Blobs(), row); err != nil {
+			return created, fmt.Errorf("federation accept: object %q: %w", obj.ID, err)
+		}
 
 		for j := range edges {
 			e := &edges[j]

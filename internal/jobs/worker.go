@@ -20,6 +20,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	uri "hop.top/cite/scheme"
 )
@@ -343,6 +344,13 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		}
 		p.queue.Fail(ctx, job.ID, fmt.Sprintf("store: %s", err))
 		p.emitFailed(ctx, job.ID, fmt.Sprintf("store: %s", err), draft.ID)
+		return
+	}
+	// A delete or sweep of the same blob key may have deleted the blob
+	// the externalize step put before this row landed: put it back. If
+	// that fails, the retry runs the pipeline again, which puts it.
+	if err := blob.Ensure(ctx, p.store.Blobs(), draft); err != nil {
+		p.retryOrFail(ctx, job.ID, fmt.Sprintf("store: %s", err), draft.ID)
 		return
 	}
 	p.putVectors(ctx, draft.ID, draft)

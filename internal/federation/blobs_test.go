@@ -83,6 +83,55 @@ func TestLocalPusher_CopiesBlobsToTargetStore(t *testing.T) {
 	}
 }
 
+// blobLostOnCreate is a target object store that deletes the blobs an
+// object refers to as its row lands: a delete or sweep at the target
+// that counted no references to a blob the target already held, and
+// deletes it, before the pushed row is written.
+type blobLostOnCreate struct {
+	storage.ObjectStore
+	blobs storage.BlobStore
+}
+
+func (o blobLostOnCreate) Create(ctx context.Context, obj *storage.KnowledgeObject) error {
+	if err := o.ObjectStore.Create(ctx, obj); err != nil {
+		return err
+	}
+	for _, key := range blob.Keys(obj) {
+		if err := o.blobs.Delete(ctx, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// A blob the target already holds is not copied, so its age at the
+// target is whatever it was: an unreferenced one may be deleted there
+// as the pushed row lands. The push copies it again once the row is
+// written.
+func TestLocalPusher_RecopiesTargetBlobDeletedAsRowLands(t *testing.T) {
+	ctx := context.Background()
+	src := storageutil.NewTestBlobStore(t)
+	body := strings.Repeat("federated blob ", 30)
+	obj := blobBackedObject(t, src, "fb-race", body)
+	target := storageutil.NewTestDriver(t)
+	dst := target.Blobs()
+	if err := dst.Put(ctx, pushBlobKey, strings.NewReader(body), storage.BlobMeta{}); err != nil {
+		t.Fatal(err)
+	}
+
+	objs := blobLostOnCreate{ObjectStore: target.Objects(), blobs: dst}
+	if err := writeObject(ctx, objs, src, dst, &obj); err != nil {
+		t.Fatalf("writeObject: %v", err)
+	}
+	content, err := blob.Content(ctx, dst, obj.RawContent)
+	if err != nil {
+		t.Fatalf("the pushed row names a blob the target deleted: %v", err)
+	}
+	if content != body {
+		t.Errorf("target content = %.40q, want the source blob", content)
+	}
+}
+
 // A ref whose blob is gone at the source fails the batch: no row lands
 // without its content and the watermark stays put for the retry.
 func TestLocalPusher_MissingSourceBlobFailsPush(t *testing.T) {

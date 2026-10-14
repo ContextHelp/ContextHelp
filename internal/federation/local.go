@@ -65,6 +65,25 @@ func copyBlobs(ctx context.Context, src, dst storage.BlobStore, obj *storage.Kno
 	return nil
 }
 
+// writeObject writes obj's row into objs, its blobs into dst first: a
+// row never lands without the blob its ref names. Once the row is
+// written it copies again any blob dst no longer holds.
+//
+// A blob dst already holds is not copied, and its age is not refreshed:
+// no target object may refer to it, and a delete or sweep at the target
+// may be deleting it as this row lands. A delete deleting it after the
+// second copy finds the row and puts it back (blob.Ensure has the same
+// contract on ingest).
+func writeObject(ctx context.Context, objs storage.ObjectStore, src, dst storage.BlobStore, obj *storage.KnowledgeObject) error {
+	if err := copyBlobs(ctx, src, dst, obj); err != nil {
+		return err
+	}
+	if err := objs.Create(ctx, obj); err != nil {
+		return fmt.Errorf("create object %q: %w", obj.ID, err)
+	}
+	return copyBlobs(ctx, src, dst, obj)
+}
+
 // Name returns the federation entry name from config.
 func (p *LocalPusher) Name() string { return p.name }
 
@@ -177,11 +196,7 @@ func (p *LocalPusher) Push(
 				continue
 			}
 		}
-		// Content first: a row never lands without the blob its ref names.
-		if err := copyBlobs(ctx, p.blobs, targetBlobs, obj); err != nil {
-			return fmt.Errorf("federation local push: %w", err)
-		}
-		if err := objs.Create(ctx, obj); err != nil {
+		if err := writeObject(ctx, objs, p.blobs, targetBlobs, obj); err != nil {
 			// Defensive: a concurrent peer may have inserted this row
 			// between our Get and Create. Treat UNIQUE-constraint races as
 			// no-op skips so the rest of the batch + watermark still land.
@@ -190,7 +205,7 @@ func (p *LocalPusher) Push(
 					"federation", p.name, "id", obj.ID, "err", err)
 				continue
 			}
-			return fmt.Errorf("federation local push: create object %q: %w", obj.ID, err)
+			return fmt.Errorf("federation local push: %w", err)
 		}
 		// Insert edges that belong to this object (dedup within this batch).
 		for j := range edges {

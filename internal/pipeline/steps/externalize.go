@@ -75,6 +75,12 @@ func (e *Externalizer) Run(ctx context.Context, draft *storage.KnowledgeObject) 
 		draft.Metadata[MetaTextTruncated] = true
 	}
 
+	// Kept until the row is written: if a delete of the same key
+	// removes the blob meanwhile, ingest puts it back (blob.Ensure).
+	if draft.BlobContent == nil {
+		draft.BlobContent = make(map[string]string)
+	}
+	draft.BlobContent[hash] = draft.RawContent
 	draft.RawContent = blobref.For(hash)
 	return draft, nil
 }
