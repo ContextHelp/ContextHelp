@@ -273,6 +273,7 @@ jobs:
           go test -v -tags=integration,fts5
           ./test/integration/...
           ./internal/storage/postgres/...
+          ./internal/storageutil/...
           ./internal/embeddings/registry/...
         env:
           CGO_ENABLED: '1'
@@ -289,6 +290,21 @@ jobs:
         run: >-
           go test -v -tags=integration,fts5 -count=1
           -run 'Test(Claim|Reproject)_.*_Postgres' ./internal/jobs/
+        env:
+          CGO_ENABLED: '1'
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: contexthelp
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: contexthelp_test
+
+      # HTTP handlers against a Postgres store (object reads and writes,
+      # inbox, pages/index/stats, the entity gate). They need the
+      # integration tag; the package's other tests run in the unit job.
+      - name: Run HTTP handler tests on Postgres
+        run: >-
+          go test -v -tags=integration,fts5 -count=1
+          -run '_Postgres$' ./internal/server/http/
         env:
           CGO_ENABLED: '1'
           POSTGRES_HOST: localhost
