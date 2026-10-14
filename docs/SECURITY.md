@@ -65,11 +65,13 @@ ContextHelp requires various secrets (API keys, tokens, passwords) to function. 
 # Set environment variables
 export OPENAI_API_KEY="sk-proj-..."
 export ANTHROPIC_API_KEY="sk-ant-..."
-export CH_REGISTRY_TOKEN_UXPATTERNS="token_..."
 
 # Run ContextHelp
 ctxt analyze "content"
 ```
+
+Registry tokens are not environment variables: `ctxt registry login <name>`
+stores them in the OS keychain (see [Registry Tokens](#registry-tokens)).
 
 **Advantages:**
 - ✅ Simple to use
@@ -81,9 +83,30 @@ ctxt analyze "content"
 - ⚠️ Inherited by child processes
 - ⚠️ No encryption at rest
 
-#### 2. A Separate Secrets Config File
+#### 2. Config Files: No `${VAR}`, Secrets in Their Own File
 
-Config files do not expand `${VAR}`: a value is used exactly as written, so `token: ${MY_TOKEN}` sets the token to the string `${MY_TOKEN}`. Secrets that have no environment variable (for example `server.auth` tokens, registry and federation tokens) go into the config literally. Keep them in their own file, outside version control, and layer it with a second `--config`:
+Config files (`ctxt.yaml`, `dpkms.yaml`) take every value literally:
+`${VAR_NAME}` is not expanded, so `token: ${MY_TOKEN}` sets the token to
+the string `${MY_TOKEN}`. Keep secrets out of the shared config:
+
+- Provider clients read their key from the environment variable of the
+  same name (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
+  `OPENROUTER_API_KEY`).
+- The embedding provider's `providers.embedding.api_key_env` names the
+  variable holding its key, never the key itself.
+- S3 blob credentials: `CTXT_BLOB_S3_ACCESS_KEY` /
+  `CTXT_BLOB_S3_SECRET_KEY` override `storage.blob.s3.access_key` /
+  `secret_key`.
+- Registry tokens: `ctxt registry login <name>` stores them in the OS
+  keychain.
+- `secrets.backend` (`env` by default; `keyring`, `agefile`,
+  `onepassword`, `ghsecrets`) is the store `dpkms secret set|get|list`
+  manage. `auto` provider selection checks it for a key, but the provider
+  client itself reads the environment variable, so export the key too.
+
+Secrets that have no environment variable (`server.auth` tokens,
+`federation.token`) go into the config literally. Keep them in their own
+file, outside version control, and layer it with a second `--config`:
 
 **dpkms-secrets.yaml** (mode 0600, gitignored):
 ```yaml
@@ -110,6 +133,7 @@ dpkms serve --config dpkms.yaml --config dpkms-secrets.yaml
 - Never put plaintext secrets in a committed config file
 - Prefer an env var where the code reads one (`OPENAI_API_KEY`, `CTXT_BLOB_S3_SECRET_KEY`, `PGPASSWORD`)
 - Add the secrets file to `.gitignore`
+- `ctxt config validate` flags plaintext secrets it finds
 
 #### 3. .env Files (Recommended for Local Development)
 
@@ -133,10 +157,15 @@ nano .env
 git check-ignore .env  # Should output: .env
 ```
 
+Neither `ctxt` nor `dpkms` loads `.env`; export it into the shell first:
+
+```bash
+set -a; . ./.env; set +a
+```
+
 **Advantages:**
 - ✅ Centralized secret management
 - ✅ Easy to rotate secrets
-- ✅ Automatically loaded by many tools
 
 **Important:** `.env` files are in `.gitignore` - verify before committing!
 
@@ -298,19 +327,22 @@ curl https://api.anthropic.com/v1/messages \
 3. Set expiration dates
 4. Use separate tokens per environment
 
-**Configuration:**
+#### Registry Tokens
+
+The config names the registry and its auth mechanism only; the token
+never goes in a config file or an environment variable:
+
 ```yaml
 registries:
-  enabled:
-    - name: uxpatterns
-      url: https://api.uxpatterns.io
-      auth:
-        token: <uxpatterns-token>   # literal: config files do not expand env vars
+  - name: uxpatterns
+    url: https://api.uxpatterns.io
+    auth:
+      type: bearer          # bearer | api_key | oauth2
 ```
 
-**Environment variable:**
 ```bash
-export CH_REGISTRY_TOKEN_UXPATTERNS="eyJhbGc..."
+ctxt registry login uxpatterns    # prompts; stores the token in the OS keychain
+ctxt registry logout uxpatterns   # removes it
 ```
 
 ---
@@ -374,7 +406,7 @@ registries:
 
 **Current Mitigations:**
 1. Use encrypted filesystems (FileVault, LUKS, BitLocker)
-2. Restrict file permissions: `chmod 600 ~/.config/contexthelp/config.yaml`
+2. Restrict file permissions: `chmod 600 ~/.config/contexthelp/ctxt.yaml ~/.config/contexthelp/dpkms.yaml`
 3. Use encrypted backups
 4. Consider full-disk encryption
 
@@ -404,11 +436,6 @@ ls -l ~/.local/share/contexthelp/data.db
 storage:
   type: sqlite
   path: ~/.local/share/contexthelp/data.db
-  concurrency: safe
-  options:
-    journal_mode: WAL
-    synchronous: NORMAL
-    foreign_keys: ON
 ```
 
 ### PostgreSQL
@@ -422,11 +449,11 @@ storage:
   path: "postgresql://user:password@localhost/contexthelp"
 ```
 
-**✅ Use environment variables:** config files do not expand `${VAR}`, so leave the password out of the DSN and let libpq read `PGPASSWORD` (or the other `PG*` variables):
+**✅ Leave the password out of the DSN:** config files do not expand `${VAR}`, so let libpq read `PGPASSWORD` (or the other `PG*` variables):
 ```yaml
 storage:
   type: postgres
-  path: "postgresql://ctxt_user@localhost/contexthelp"
+  path: "postgresql://ctxt_user@db.internal/contexthelp"
 ```
 
 ```bash
@@ -455,7 +482,7 @@ user=ctxt_user
 ```
 
 ```yaml
-# config.yaml
+# dpkms.yaml
 storage:
   path: "service=contexthelp"
 ```
@@ -464,12 +491,8 @@ storage:
 ```yaml
 storage:
   type: postgres
-  path: "postgresql://user@host/db?sslmode=require"
-  options:
-    sslmode: require  # or verify-ca, verify-full
-    sslcert: /path/to/client.crt
-    sslkey: /path/to/client.key
-    sslrootcert: /path/to/ca.crt
+  # sslmode: require | verify-ca | verify-full
+  path: "postgresql://user@host/db?sslmode=verify-full&sslcert=/path/to/client.crt&sslkey=/path/to/client.key&sslrootcert=/path/to/ca.crt"
 ```
 
 ---
@@ -506,7 +529,7 @@ security:
 
 Registry `login` / `logout` is shipped:
 ```bash
-ctxt registry login <name>    # prompts for token; stores in secrets backend
+ctxt registry login <name>    # prompts for token; stores it in the OS keychain
 ctxt registry logout <name>
 ```
 
@@ -535,9 +558,8 @@ export CTXT_CONFIG=./config.dev.yaml
 # Use separate data directory
 export CTXT_DATA_DIR=./dev-data
 
-# Enable debug logging
-export CH_LOG_LEVEL=debug
-export CH_DEBUG=true
+# Debug logging: no env var, pass --verbose
+dpkms serve --verbose
 ```
 
 ### Production Environment
@@ -712,14 +734,9 @@ spec:
 - Full connection strings (sanitized)
 - User content (unless explicitly enabled)
 
-**Audit log location:**
-```bash
-# Default location
-~/.local/share/contexthelp/audit.log
-
-# Custom location
-export CH_AUDIT_LOG=/var/log/ctxt/audit.log
-```
+**Audit log location:** the audit log is kept by dpkms, not in a file.
+Read it with `ctxt audit list` / `ctxt audit export`; forward it with the
+`audit.syslog` and `audit.webhook` config keys.
 
 **Review audit logs:**
 ```bash
@@ -799,11 +816,10 @@ export OPENAI_API_KEY_NEW="sk-proj-new..."
 curl https://api.openai.com/v1/models \
   -H "Authorization: Bearer $OPENAI_API_KEY_NEW"
 
-# 3. Update configuration — edit config file or update env var
-# Option A: edit config.yaml directly
-$EDITOR ~/.config/contexthelp/config.yaml
-# Option B: set env var (overrides config)
+# 3. Update the env var the provider client reads
+#    (and the secrets store, if you keep the key there too)
 export OPENAI_API_KEY="${OPENAI_API_KEY_NEW}"
+printf '%s' "$OPENAI_API_KEY_NEW" | dpkms secret set OPENAI_API_KEY
 
 # 4. Restart services
 systemctl restart dpkms
@@ -838,16 +854,13 @@ systemctl restart dpkms
 
 ```bash
 # 1. Generate new token in registry dashboard
-# 2. Update environment variable
-export CH_REGISTRY_TOKEN_UXPATTERNS="new_token_..."
+# 2. Replace the stored token (overwrites the keychain entry)
+ctxt registry login uxpatterns
 
 # 3. Test registry access
 ctxt registry sync uxpatterns
 
-# 4. Persist to environment
-echo "export CH_REGISTRY_TOKEN_UXPATTERNS='new_token_...'" >> ~/.bashrc
-
-# 5. Revoke old token
+# 4. Revoke old token
 ```
 
 ---
@@ -905,7 +918,7 @@ echo "export CH_REGISTRY_TOKEN_UXPATTERNS='new_token_...'" >> ~/.bashrc
 
 ```bash
 # 1. Remove from current repository
-git filter-repo --invert-paths --path config.yaml
+git filter-repo --invert-paths --path path/to/leaked-file
 
 # 2. Force push (CAUTION: coordinate with team)
 git push --force --all
@@ -926,7 +939,7 @@ git push --force --tags
 - [ ] Review `.env.example` and create `.env` with your secrets
 - [ ] Verify `.env` is in `.gitignore`
 - [ ] Set file permissions: `chmod 600 .env`
-- [ ] Keep secrets out of committed config files: env vars where the code reads them, otherwise a gitignored file passed as a second `--config` (config files do not expand `${VAR}`)
+- [ ] Keep secrets out of committed `ctxt.yaml` / `dpkms.yaml`: env vars where the code reads them, otherwise a gitignored file passed as a second `--config` (config files do not expand `${VAR}`)
 - [ ] Validate configuration: `ctxt config validate`
 - [ ] Enable OS-level disk encryption (FileVault / LUKS / BitLocker) until ADR-019 ships
 

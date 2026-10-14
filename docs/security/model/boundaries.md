@@ -32,7 +32,8 @@ The local machine is partially trusted:
 
 ```bash
 # Sensitive files
-~/.config/contexthelp/config.yaml          # 0600 (rw-------)
+~/.config/contexthelp/ctxt.yaml            # 0600 (rw-------)
+~/.config/contexthelp/dpkms.yaml           # 0600 (rw-------)
 ~/.local/share/contexthelp/contexthelp.db  # 0600 (rw-------)
 ~/.config/contexthelp/secrets/*            # 0600 (rw-------)
 

@@ -25,20 +25,20 @@ Here are the detailed personas for roles 2 through 19.
 ### 5. System Administrator
 *   **Name:** **Alex**
 *   **Context:** Responsible for the standard operating environment (SOE) for a team of 50 developers.
-*   **Motivation:** He deploys the global `/etc/contexthelp/config.yaml`. He hates it when a syntax error in a config file takes down the service during a deployment.
+*   **Motivation:** He deploys the global `/etc/contexthelp/ctxt.yaml` and `/etc/contexthelp/dpkms.yaml`. He hates it when a syntax error in a config file takes down the service during a deployment.
 *   **Key Objective:** Validate configuration syntax via CI/CD pipelines before pushing changes to production machines.
 
 ### 6. Security Engineer
 *   **Name:** **Sam**
 *   **Context:** Audits internal tools for credential leaks.
 *   **Motivation:** She strictly forbids storing API keys or auth tokens in static text files (YAML/JSON) that might get checked into Git.
-*   **Key Objective:** Inject all registry tokens and sensitive paths via `CH_REGISTRY_TOKEN_*` environment variables so no secrets exist on disk.
+*   **Key Objective:** Keep registry tokens in the OS keychain (`ctxt registry login`) and provider API keys in the environment, so no secrets sit in config files.
 
 ### 7. Performance Engineer
 *   **Name:** **Pat**
 *   **Context:** Tuning the ingestion engine to process terabytes of documentation overnight.
 *   **Motivation:** The default settings choke when processing 10,000 PDFs at once.
-*   **Key Objective:** Fine-tune `queue.workers` and `queue.retry_limits` to maximize CPU utilization without crashing the memory backend.
+*   **Key Objective:** Fine-tune `server.workers` and `jobs.max_retries` to maximize CPU utilization without crashing the memory backend.
 
 ### 8. Researcher
 *   **Name:** **Dr. Riya**

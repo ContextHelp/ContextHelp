@@ -14,7 +14,7 @@ ctxt version                         # verify client is connected
 curl http://127.0.0.1:8080/health    # optional health probe
 ```
 
-Config: `~/.config/contexthelp/config.yaml`
+Config: `~/.config/contexthelp/ctxt.yaml` (ctxt), `~/.config/contexthelp/dpkms.yaml` (dpkms)
 
 ### Multiple instances
 

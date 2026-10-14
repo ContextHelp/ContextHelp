@@ -414,29 +414,31 @@ ContextHelp protects the following critical assets:
 
 ### Local Development
 
-**Secure Defaults**:
+**Secure Defaults**: the defaults are already local-only. `dpkms serve`
+binds 127.0.0.1 while `server.access` is `private` (the default), storage
+is SQLite, telemetry is off. No env var is needed:
+
 ```bash
-# Dev config
-CH_DEBUG=true
-CH_LOG_LEVEL=debug
-CH_SECURITY_LOGGING_SANITIZE=true  # Even in dev
-CH_STORAGE_TYPE=sqlite
-CH_STORAGE_ENCRYPTION=false        # OK for local dev
+dpkms serve --verbose   # debug logs; there is no log-level env var
 ```
+
+There is no storage-encryption or log-sanitization setting; see
+[Encryption](#encryption) for at-rest protection.
 
 ### Server Deployment
 
 **Production Requirements**:
 ```bash
-# Production config
-CH_SERVER_PORT=8080
-CH_PUBLIC=false                    # Local only, or use reverse proxy
-ENCRYPTION_ENABLED=true
-ENCRYPTION_PASSPHRASE=${VAULT_KEY}
-POSTGRES_HOST=db.internal.local
-POSTGRES_PASSWORD=${VAULT_DB_PASS}
+CH_STORAGE_TYPE=postgres           # DSN goes in storage.path
+PGPASSWORD=$(vault kv get -field=password secret/db)
+CTXT_SECRETS_BACKEND=keyring       # provider API keys from the OS keychain
 CH_DISABLE_TELEMETRY=true
 ```
+
+Keep `server.access: private` behind a reverse proxy on the same host.
+`protected` and `public` instances need inbound auth under `server.auth`,
+or serve refuses to start — see
+[Inbound auth, roles and scopes](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
 
 **Network Security**:
 - Run behind reverse proxy (nginx, HAProxy)

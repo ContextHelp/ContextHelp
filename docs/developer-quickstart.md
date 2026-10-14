@@ -186,14 +186,17 @@ go install golang.org/x/vuln/cmd/govulncheck@latest
 go install github.com/securego/gosec/v2/cmd/gosec@latest
 ```
 
-### 5. Create Environment File
+### 5. Environment Overrides (Optional)
+
+The defaults work for local development, so this step is optional.
+Nothing loads a `.env` file automatically: not `ctxt`, `dpkms`, `task`,
+`make` nor the compose files. To keep overrides in one, copy the template
+and export it into your shell:
 
 ```bash
-# Copy example environment file
 cp .env.example .env
-
-# Edit as needed (defaults work for local development)
-vim .env
+$EDITOR .env               # uncomment what you need
+set -a; . ./.env; set +a   # export it into the current shell
 ```
 
 ---
@@ -303,8 +306,8 @@ Export overrides in the shell (neither binary loads a `.env` file):
 # Storage
 CH_STORAGE_TYPE=sqlite
 
-# Workers
-WORKER_COUNT=4
+# Workers (config key server.workers)
+DPKMS_WORKERS=4
 
 # API
 CH_SERVER_PORT=8080

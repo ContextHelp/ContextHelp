@@ -1,6 +1,6 @@
 # Core Environment Variables
 
-Config file, instance routing and logging.
+Config file, development mode, instance routing and logging.
 
 ---
 
@@ -25,17 +25,15 @@ The database location is `storage.path` — see
 
 ---
 
-## Environment
+## Development Mode
 
-### DEV_MODE
-**Type:** boolean\
-**Default:** `false`\
-**Values:** `true`, `false`
-
-Enables development features (verbose logging, profiling, etc.).
+No env var. `dpkms serve`'s one development setting, CORS for the Vite
+dev server at `http://localhost:5173`, is the config key `server.dev`
+(default `false`) or the `--dev` flag, which wins over it. See
+[Server settings](../manual/reference/config-and-permissions.md#server-settings).
 
 ```bash
-DEV_MODE=true
+dpkms serve --dev
 ```
 
 ---
@@ -76,12 +74,10 @@ dpkms serve --verbose
 
 ### Development
 ```bash
-DEV_MODE=true
-CTXT_CONFIG=./dev/dpkms.yaml
+CTXT_CONFIG=./dev/dpkms.yaml dpkms serve --dev
 ```
 
 ### Production
 ```bash
-DEV_MODE=false
-CTXT_CONFIG=/etc/contexthelp/prod/dpkms.yaml
+CTXT_CONFIG=/etc/contexthelp/prod/dpkms.yaml dpkms serve
 ```

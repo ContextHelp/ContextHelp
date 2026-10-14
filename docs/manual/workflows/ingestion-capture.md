@@ -24,7 +24,7 @@ Capture raw content quickly and reliably so it becomes searchable and composable
 dpkms serve
 ```
 
-2. `ctxt` client is configured (`~/.config/contexthelp/config.yaml`) with that instance's URL and a token that may write (`writer` or `admin`). `ctxt analyze`, bare `ctxt` fed on stdin, `ctxt capture` and the browser captures send to the one instance ctxt resolves (`--server`, `--instance`, `ctxt instance use`, else the first `server.urls` entry or `server.url`). Nothing is queued on this machine.
+2. `ctxt` client is configured (`~/.config/contexthelp/ctxt.yaml`) with that instance's URL and a token that may write (`writer` or `admin`). `ctxt analyze`, bare `ctxt` fed on stdin, `ctxt capture` and the browser captures send to the one instance ctxt resolves (`--server`, `--instance`, `ctxt instance use`, else the first `server.urls` entry or `server.url`). Nothing is queued on this machine.
 3. You know the content type you are ingesting (`text`, `url`, `image`, `audio`, `video`, `feed`, or `auto`).
 
 ## Procedure

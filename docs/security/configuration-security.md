@@ -1,710 +1,221 @@
 # Configuration Security
 
-This document provides guidance on securing ContextHelp configuration files and handling sensitive configuration values.
+Keeping `ctxt.yaml` and `dpkms.yaml` free of secrets, readable only by
+their owner, and checked before they ship.
 
 ## Overview
 
-Configuration files often contain secrets and sensitive information. ContextHelp provides multiple mechanisms to protect configuration while keeping it flexible and maintainable.
+Config files hold structure; secrets come from elsewhere. Every value in a
+config file is taken literally: `${VAR}` is **not** expanded, so a config
+file cannot reference an environment variable. The file names, cascade and
+keys are described in [../configuration-structure.md](../configuration-structure.md).
 
 ## Configuration File Security
 
 ### File Permissions
 
-Configuration files should have restricted permissions to prevent unauthorized access:
+```bash
+# User files
+chmod 600 ~/.config/contexthelp/ctxt.yaml ~/.config/contexthelp/dpkms.yaml
+
+# System files
+sudo chmod 600 /etc/contexthelp/ctxt.yaml /etc/contexthelp/dpkms.yaml
+
+# Verify: should show -rw------- (600)
+ls -l ~/.config/contexthelp/
+```
+
+`ctxt config doctor` reports a world- or group-readable config file;
+`ctxt config doctor --fix` tightens it. Both check the file `ctxt` reads
+(`CTXT_CONFIG`, else `$XDG_CONFIG_HOME/contexthelp/ctxt.yaml`); point
+`CTXT_CONFIG` at `dpkms.yaml` to check that one:
 
 ```bash
-# Secure main configuration
-chmod 600 ~/.config/contexthelp/config.yaml
-chmod 700 ~/.config/contexthelp/
-
-# System-wide configuration
-sudo chmod 600 /etc/contexthelp/config.yaml
-sudo chmod 700 /etc/contexthelp/
-
-# Secret files
-chmod 600 ~/.config/contexthelp/secrets/*
-chmod 700 ~/.config/contexthelp/secrets/
-
-# Verify permissions
-ls -la ~/.config/contexthelp/config.yaml
-# Should show: -rw------- (600)
-
-ls -la ~/.config/contexthelp/
-# Should show: drwx------ (700)
+ctxt config doctor --fix
+CTXT_CONFIG=~/.config/contexthelp/dpkms.yaml ctxt config doctor --fix
 ```
 
 ### File Ownership
 
-Configuration files should be owned by the user running ContextHelp:
-
 ```bash
-# Check ownership
-ls -la ~/.config/contexthelp/config.yaml
+# Personal use
+chown "$USER" ~/.config/contexthelp/*.yaml
 
-# Correct ownership (for personal use)
-chown $USER:$USER ~/.config/contexthelp/config.yaml
-
-# For system daemon
-sudo chown contexthelp:contexthelp /etc/contexthelp/config.yaml
+# System daemon running as its own user
+sudo chown contexthelp:contexthelp /etc/contexthelp/dpkms.yaml
 ```
 
-### File Encryption
+## Where Secrets Go
 
-Optionally encrypt configuration files:
+| Secret | Where it comes from | Never |
+|--------|---------------------|-------|
+| Provider API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`) | Environment variable of that name | Config file |
+| Embedding provider key | Variable named by `providers.embedding.api_key_env` | The key itself in config |
+| Registry tokens | OS keychain, via `ctxt registry login <name>` | Config file, environment |
+| PostgreSQL password | libpq environment (`PGPASSWORD`) or `~/.pgpass`; DSN in `storage.path` without it | Password inside the DSN |
+| S3 blob credentials | `CTXT_BLOB_S3_ACCESS_KEY`, `CTXT_BLOB_S3_SECRET_KEY` | `storage.blob.s3.*` in a committed file |
+| Config-bundle passphrase | `CTXT_BACKUP_PASSPHRASE`, OS keychain or prompt | Config file |
+| Other secrets `dpkms secret` manages | Backend chosen by `secrets.backend` (`env`, `keyring`, `agefile`, `onepassword`, `ghsecrets`) | — |
 
-```bash
-# Using GPG
-gpg --symmetric ~/.config/contexthelp/config.yaml
-# Creates config.yaml.gpg
-
-# Using git-crypt
-git-crypt init
-echo "*.secret.yaml filter=git-crypt diff=git-crypt" > .gitattributes
-git-crypt lock
-
-# Using OpenSSL
-openssl enc -aes-256-cbc -in config.yaml -out config.yaml.enc
-# Requires password to decrypt
-
-# Using SOPS
-sops config.yaml
-# Opens encrypted file in editor
-```
-
-## Managing Secrets in Configuration
-
-### Best Practice: Keep Secrets Out of Committed Config
-
-Config files do not expand `${VAR}`: every value is used exactly as written, so `token: ${CH_REGISTRY_TOKEN_PRIVATE}` sets the token to that string. Keep secrets out of committed config two ways:
-
-- **Env vars the code reads**, for the secrets that have one: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CTXT_BLOB_S3_ACCESS_KEY` / `CTXT_BLOB_S3_SECRET_KEY`, libpq's `PGPASSWORD`. See [docs/environment-variables/](../environment-variables/README.md).
-- **A separate secrets file** for the rest (`server.auth` tokens, registry and federation tokens), written literally, mode 0600, gitignored, and layered with a second `--config` (later files win). In containers, mount it as a secret ([Docker: Secrets](../deployment/docker.md#secrets)).
+Registry entries carry only the mechanism:
 
 ```yaml
-# secrets.yaml (0600, never committed)
 registries:
   - name: private-registry
     url: https://registry.example.com
     auth:
-      token: <private-registry-token>
+      type: bearer          # bearer | api_key | oauth2
 ```
-
-Set environment variables and layer the secrets file before running:
 
 ```bash
-# Load from environment file
-export $(cat ~/.config/contexthelp/.env | xargs)
-
-# Load from secret manager
-export CH_REGISTRY_TOKEN_PRIVATE=$(pass show registries/private)
-export CONTEXTHELP_DB_URL=$(vault kv get -field=url secret/prod/postgres)
-export OPENAI_API_KEY=$(aws secretsmanager get-secret-value --secret-id openai-key --query SecretString --output text)
-
-# Run application
-dpkms serve --config ~/.config/contexthelp/dpkms.yaml --config ~/.config/contexthelp/secrets.yaml
+ctxt registry login private-registry   # prompts; stores in the OS keychain
 ```
 
-### Alternative: External Secret Files
+### Secrets that live in config
 
-> **Not implemented:** no config key reads a secret from a file today; `token_file`, `connection_file` and `api_key_file` below are a proposal and are ignored. Use the separate secrets config file above.
+A few settings have no other source: inbound auth tokens
+(`server.auth.static.tokens[].token`), client tokens (`server.token`,
+`server.urls[].token`) and federation tokens (`federation.token`,
+`federations[].token`). Write them literally (no `${VAR}`) in their own
+file, `0600`, owned by the user that runs the binary and kept out of
+version control, and layer it on the main config with a second
+`--config` (later files win):
 
-Reference external secret files instead of embedding them:
+```bash
+dpkms serve --config ~/.config/contexthelp/dpkms.yaml \
+  --config ~/.config/contexthelp/dpkms-secrets.yaml
+```
+
+No config key reads a secret from a file: there is no `token_file`,
+`connection_file` or `api_key_file`, and such keys are ignored like any
+other unknown key.
+
+### Anti-Pattern: Hardcoded Secrets
 
 ```yaml
-# config.yaml
-registries:
-  - name: private-registry
-    url: https://registry.example.com
-    auth:
-      token_file: ~/.config/contexthelp/secrets/registry-token
-
+# BAD - the value is used literally, and it is now in your repo
+server:
+  token: s3cret-literal
 storage:
-  type: postgres
-  # Connection string in separate file
-  connection_file: ~/.config/contexthelp/secrets/postgres-url
+  path: "postgresql://ctxt:password@db/contexthelp"
 
-providers:
-  openai:
-    api_key_file: ~/.config/contexthelp/secrets/openai-key
-    model: gpt-4o
 ```
 
-Structure:
-```
-~/.config/contexthelp/
-├── config.yaml          (0600)
-└── secrets/             (0700)
-    ├── registry-token   (0600)
-    ├── postgres-url     (0600)
-    └── openai-key       (0600)
-```
-
-Create and protect secret files:
-
-```bash
-# Create secrets directory
-mkdir -p ~/.config/contexthelp/secrets
-chmod 700 ~/.config/contexthelp/secrets
-
-# Add secrets
-echo "ghp_abc123def456" > ~/.config/contexthelp/secrets/registry-token
-echo "postgresql://user:pass@host/db" > ~/.config/contexthelp/secrets/postgres-url
-echo "sk-proj-123456789" > ~/.config/contexthelp/secrets/openai-key
-
-# Restrict permissions
-chmod 600 ~/.config/contexthelp/secrets/*
-
-# Set environment variable
-export SECRETS_DIR="$HOME/.config/contexthelp/secrets"
-```
-
-### Anti-Pattern: Hardcoded Secrets in Config
-
-Never hardcode secrets in configuration files:
-
-```yaml
-# BAD - Never do this
-registries:
-  - name: private-registry
-    url: https://registry.example.com
-    auth:
-      token: ghp_abc123def456  # DON'T HARDCODE SECRETS
-
-storage:
-  type: postgres
-  connection_string: postgresql://user:SecurePass123@db.example.com/contexthelp  # DON'T
-
-providers:
-  openai:
-    api_key: sk-proj-abc123def456  # DON'T
-```
+Also wrong: `api_key_env: ${OPENAI_API_KEY}` is not expanded, so it names
+a variable literally called `${OPENAI_API_KEY}`. Write the variable's
+name: `api_key_env: OPENAI_API_KEY`.
 
 ## Configuration Validation
 
-### Syntax Validation
-
-Validate configuration file syntax:
-
 ```bash
-# Validate YAML syntax
+# Loads the config and scans it for plaintext secrets (exit 1 on findings)
 ctxt config validate
 
-# Check with verbose output
-ctxt config validate --verbose
+# Load errors only
+ctxt config validate --check-secrets=false
 
-# Export validation report
-ctxt config validate --output json > validation-report.json
+# Schema, secrets, permissions and deprecated keys
+ctxt config doctor
+
+# Merged result after files, env and -c
+ctxt config show --format json
 ```
 
-### Security Validation
-
-Check configuration for security issues:
-
-```bash
-# Scan for hardcoded secrets
-ctxt security validate config.yaml
-
-# Check file permissions
-ls -la ~/.config/contexthelp/config.yaml
-chmod 600 ~/.config/contexthelp/config.yaml  # If needed
-
-# Verify environment variables are set
-ctxt config check-env-vars
-```
+The secret scan flags values starting with `sk-`, `sk-ant-`, `eyJ` or
+`ghp_`, and values longer than 8 characters (other than paths and backend
+names) in fields whose name contains `token`, `password`, `secret` or
+`key`. It skips values written as `${VAR}` or `$VAR`; those are not
+expanded either, so such a value is a literal string that silently does
+not work.
 
 ### Configuration Review Checklist
 
-Before deploying configuration:
-
-- [ ] No hardcoded secrets in YAML/JSON files
-- [ ] All secrets use environment variables or external files
-- [ ] Configuration files have mode 0600 or 0700
-- [ ] Secret files have mode 0600
-- [ ] Secret directories have mode 0700
-- [ ] File ownership is correct
-- [ ] No plaintext passwords in `.env` files
-- [ ] `.env` files are `.gitignore`d
-- [ ] No test/mock secrets that look real
-- [ ] No config file relies on `${VARIABLE}` expansion (config files do not expand env vars)
+- [ ] No literal secret in any config file
+- [ ] No `${VAR}` value anywhere (it is not expanded)
+- [ ] Registry tokens stored with `ctxt registry login`
+- [ ] Files holding auth or federation tokens are `0600`
+- [ ] `ctxt config validate` and `ctxt config doctor` pass
 
 ## Configuration as Code
-
-When storing configuration in version control, be extra careful:
 
 ### What to Commit
 
 ```yaml
-# GOOD - Safe configuration structure
+# .contexthelp/ctxt.yaml — project layer, safe to commit
+profile:
+  default: engineer
 registries:
-  - name: private-registry
-    url: https://registry.example.com  # No credentials in URL
-    type: taxonomy
-
-storage:
-  type: postgres
-  # No hardcoded password
-
-providers:
-  openai:
-    model: gpt-4o
-    max_tokens: 4096
-    # No API key
+  - name: team-taxonomy
+    url: https://registry.example.com
+    auth:
+      type: bearer
+search:
+  default_mode: hybrid
 ```
+
+Unknown keys are ignored without an error, so review committed files with
+`ctxt config show --format json` rather than trusting that a key took
+effect.
 
 ### What NOT to Commit
 
-```yaml
-# BAD - Never commit secrets
-registries:
-  - name: private-registry
-    url: https://registry.example.com
-    auth:
-      token: ghp_abc123def456  # DON'T COMMIT
+- Any file with `server.auth`, `server.token`, `server.urls[].token`,
+  `federation.token` or `federations[].token` values
+- `.env` files
+- `storage.path` values that embed a database password
 
-# BAD - Never commit passwords
-storage:
-  type: postgres
-  connection_string: postgresql://user:password@host/db  # DON'T COMMIT
-
-# BAD - Never commit in environment variables
-providers:
-  openai:
-    api_key: sk-proj-abc123def456  # DON'T COMMIT
-```
-
-### Git Hooks for Configuration
-
-Use pre-commit hooks to prevent committing secrets:
-
-```bash
-#!/bin/bash
-# .git/hooks/pre-commit
-
-echo "Checking configuration files for secrets..."
-
-# Check staged files
-STAGED_FILES=$(git diff --cached --name-only)
-
-for file in $STAGED_FILES; do
-    # Skip test files
-    if [[ $file == *"test"* ]]; then
-        continue
-    fi
-
-    # Check for secrets patterns in YAML/JSON config files
-    if [[ $file == *.yaml ]] || [[ $file == *.yml ]] || [[ $file == *.json ]]; then
-        if git diff --cached -- "$file" | grep -E "api_key:|password:|token:|secret:" > /dev/null; then
-            # Check if it's a reference or actual value
-            if git diff --cached -- "$file" | grep -E "(api_key:|password:|token:|secret:)\s+\$\{" > /dev/null; then
-                continue  # OK - it's a variable reference
-            else
-                echo "ERROR: Found potential secret in $file"
-                exit 1
-            fi
-        fi
-    fi
-done
-
-echo "✓ Configuration security check passed"
-exit 0
-```
-
-Install:
-```bash
-cp hooks/pre-commit .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
-```
+The repository's pre-commit hooks scan staged files for secrets; see
+[../git-hooks.md](../git-hooks.md).
 
 ## Configuration for Different Environments
 
-### Development Configuration
-
-```yaml
-# config.dev.yaml
-storage:
-  type: sqlite
-  path: ~/.local/share/contexthelp/dev.db
-
-server:
-  http:
-    port: 7700
-    public: false
-  grpc:
-    port: 7701
-
-logging:
-  level: debug
-  format: console
-  sanitize: true
-
-privacy:
-  telemetry: false
-  allow_external_pipelines: false
-
-providers:
-  openai:
-    # API key: OPENAI_API_KEY in the environment
-    model: gpt-4o
-```
-
-### Staging Configuration
-
-```yaml
-# config.staging.yaml
-storage:
-  type: postgres
-  # DSN without a password; libpq reads PGPASSWORD (config files do not expand env vars)
-  connection_string: postgresql://contexthelp@db.internal/contexthelp
-
-server:
-  http:
-    port: 8080
-    public: false
-  grpc:
-    port: 8081
-
-logging:
-  level: info
-  format: json
-  sanitize: true
-
-security:
-  encryption:
-    enabled: true
-    key_derivation: pbkdf2
-
-providers:
-  openai:
-    # API key: OPENAI_API_KEY in the environment
-    model: gpt-4o
-```
-
-### Production Configuration
-
-```yaml
-# config.production.yaml
-storage:
-  type: postgres
-  # DSN without a password; libpq reads PGPASSWORD (config files do not expand env vars)
-  connection_string: postgresql://contexthelp@db.internal/contexthelp
-
-server:
-  http:
-    port: 8080
-    public: false  # Behind reverse proxy
-  grpc:
-    port: 8081
-
-logging:
-  level: warn
-  format: json
-  sanitize: true
-  outputs:
-    - type: file
-      path: /var/log/contexthelp/contexthelp.log
-    - type: syslog
-      facility: local0
-
-security:
-  encryption:
-    enabled: true
-    key_derivation: argon2
-
-providers:
-  openai:
-    # API key: OPENAI_API_KEY in the environment
-    model: gpt-4o
-
-registries:
-  - name: company-registry
-    url: https://registry.company.com
-    # auth.token: in the uncommitted secrets file, written literally
-```
-
-Load the correct configuration:
+Pick the file per environment instead of templating one:
 
 ```bash
-#!/bin/bash
-# Run with environment-specific config
+# One file for both binaries, replacing the system/user/project cascade
+CTXT_CONFIG=/etc/contexthelp/prod/dpkms.yaml dpkms serve
 
-ENV=${ENVIRONMENT:-development}
-CONFIG_FILE="config.$ENV.yaml"
+# Layer an environment file on top of the cascade
+dpkms serve -c /etc/contexthelp/staging.yaml
 
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "ERROR: Configuration file not found: $CONFIG_FILE"
-    exit 1
-fi
-
-# Load environment secrets
-export $(cat .env.$ENV | xargs)
-
-# Run application
-ctxt --config "$CONFIG_FILE" serve
+# Override one key for one run
+dpkms serve -c server.workers=8
 ```
+
+Bound environment variables (`CH_SERVER_PORT`, `DPKMS_WORKERS`,
+`CTXT_BLOB_*`, ...) sit above every file and below `-c key=value`; the full
+list and precedence are in [../ctxt/cli-flag-binding.md](../ctxt/cli-flag-binding.md).
 
 ## Container Configuration
 
-### Docker Best Practices
-
-```dockerfile
-FROM alpine:latest
-
-# Create unprivileged user
-RUN addgroup -S contexthelp && adduser -S contexthelp -G contexthelp
-
-# Copy configuration template (no secrets)
-COPY config.yaml.template /etc/contexthelp/config.yaml.template
-
-# Create secrets directory
-RUN mkdir -p /var/contexthelp/secrets && \
-    chmod 700 /var/contexthelp/secrets && \
-    chown contexthelp:contexthelp /var/contexthelp/secrets
-
-# Switch to unprivileged user
-USER contexthelp
-
-# Secrets provided via:
-# - Environment variables (for container orchestration)
-# - Secret volumes (for Docker/Kubernetes)
-# - Secret manager sidecars
-```
+- Mount the config file read-only and point `CTXT_CONFIG` at it.
+- Inject secrets as environment variables from the orchestrator's secret
+  store: provider API keys, `PGPASSWORD`, `CTXT_BLOB_S3_*`.
+- Keep auth tokens in a mounted secret file loaded as a second
+  `--config` (or `-c <path>` layer), not in an image layer. The repo's
+  image loads `/run/secrets/dpkms-auth.yaml` this way (template:
+  `docker/dpkms-auth.example.yaml`); see
+  [Docker: Secrets](../deployment/docker.md#secrets).
 
 ```yaml
-# docker-compose.yml
-version: '3.8'
-
+# docker-compose.yml (excerpt)
 services:
-  contexthelp:
-    image: contexthelp:latest
+  dpkms:
     environment:
-      # Load secrets from .env file or Docker secrets
-      CONTEXTHELP_DB_URL: ${CONTEXTHELP_DB_URL}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      CH_REGISTRY_TOKEN_PRIVATE: ${CH_REGISTRY_TOKEN_PRIVATE}
+      CTXT_CONFIG: /etc/contexthelp/dpkms.yaml
+      OPENAI_API_KEY: ${OPENAI_API_KEY}   # expanded by compose, not by dpkms
+      PGPASSWORD: ${PGPASSWORD}
     volumes:
-      # Mount secrets directory
-      - contexthelp_secrets:/var/contexthelp/secrets:ro
-    env_file:
-      - .env.production
-    depends_on:
-      - postgres
-
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: contexthelp
-      POSTGRES_USER: contexthelp
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-secrets:
-  contexthelp_db_password:
-    external: true  # Managed by Docker/Swarm
-
-volumes:
-  contexthelp_secrets:
-  postgres_data:
+      - ./dpkms.yaml:/etc/contexthelp/dpkms.yaml:ro
 ```
 
-### Kubernetes Configuration
-
-```yaml
-# kubernetes/secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: contexthelp-secrets
-  namespace: default
-type: Opaque
-data:
-  # Use kubectl create secret to populate these
-  openai-api-key: <base64-encoded-key>
-  registry-token: <base64-encoded-token>
-  db-password: <base64-encoded-password>
-
----
-# kubernetes/configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: contexthelp-config
-  namespace: default
-data:
-  config.yaml: |
-    storage:
-      type: postgres
-      # No password here: config files do not expand env vars; libpq reads PGPASSWORD
-      connection_string: "postgresql://contexthelp@postgres:5432/contexthelp"
-    providers:
-      openai:
-        # API key: OPENAI_API_KEY from the Secret, via envFrom
-        model: gpt-4o
-
----
-# kubernetes/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: contexthelp
-  namespace: default
-spec:
-  replicas: 2
-  template:
-    spec:
-      containers:
-      - name: contexthelp
-        image: contexthelp:latest
-        envFrom:
-        - secretRef:
-            name: contexthelp-secrets
-        env:
-        - name: CONTEXTHELP_CONFIG
-          value: /etc/contexthelp/config.yaml
-        volumeMounts:
-        - name: config
-          mountPath: /etc/contexthelp
-          readOnly: true
-      volumes:
-      - name: config
-        configMap:
-          name: contexthelp-config
-```
-
-Create secrets:
-
-```bash
-# Create from environment variables
-kubectl create secret generic contexthelp-secrets \
-  --from-literal=openai-api-key="$OPENAI_API_KEY" \
-  --from-literal=registry-token="$REGISTRY_TOKEN" \
-  --from-literal=db-password="$DB_PASSWORD"
-
-# Or from files
-kubectl create secret generic contexthelp-secrets \
-  --from-file=openai-api-key=./secrets/openai-key \
-  --from-file=registry-token=./secrets/registry-token \
-  --from-file=db-password=./secrets/db-password
-```
-
-## Configuration Documentation
-
-Document how to configure securely:
-
-```markdown
-# Configuration Guide
-
-## Prerequisites
-
-Ensure you have:
-1. Configuration file (created with `ctxt config init`)
-2. Secret files or environment variables for:
-   - Database URL
-   - OpenAI API key
-   - Registry tokens
-
-## Setting Up Configuration
-
-### 1. Create Configuration File
-
-\`\`\`bash
-mkdir -p ~/.config/contexthelp
-touch ~/.config/contexthelp/config.yaml
-chmod 600 ~/.config/contexthelp/config.yaml
-\`\`\`
-
-### 2. Keep Secrets Out of It
-
-Config files do not expand environment variables. Leave secrets that have an env var out of `config.yaml`, and write the rest literally into a gitignored file passed as a second `--config`:
-
-\`\`\`yaml
-storage:
-  type: postgres
-  connection_string: postgresql://user@host/db   # PGPASSWORD from the environment
-\`\`\`
-
-### 3. Set Environment Variables
-
-\`\`\`bash
-export PGPASSWORD=...
-export OPENAI_API_KEY=sk-proj-...
-
-ctxt serve
-\`\`\`
-
-## Securing Configuration
-
-- Always use environment variables for secrets
-- Never commit configuration with secrets
-- Keep configuration files mode 0600
-- Rotate secrets regularly
-- Use secret managers in production
-```
-
-## Validation Tools
-
-Create a validation script:
-
-```bash
-#!/bin/bash
-# validate-config.sh
-
-set -euo pipefail
-
-CONFIG_FILE="${1:-.config/contexthelp/config.yaml}"
-
-echo "Validating configuration: $CONFIG_FILE"
-
-# Check file exists
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "ERROR: Configuration file not found: $CONFIG_FILE"
-    exit 1
-fi
-
-# Check file permissions
-PERMS=$(stat -c %a "$CONFIG_FILE" 2>/dev/null || stat -f %OLp "$CONFIG_FILE" 2>/dev/null)
-if [ "$PERMS" != "600" ] && [ "$PERMS" != "0600" ]; then
-    echo "WARNING: Configuration file has insecure permissions: $PERMS (should be 0600)"
-fi
-
-# Check for hardcoded secrets
-if grep -E "(api_key|password|token|secret):\s+['\"]?[a-zA-Z0-9_\-\.]+['\"]?" "$CONFIG_FILE" > /dev/null; then
-    # Check if they're variable references
-    if ! grep -E "(api_key|password|token|secret):\s+\$\{" "$CONFIG_FILE" > /dev/null; then
-        echo "ERROR: Found potential hardcoded secrets in configuration"
-        exit 1
-    fi
-fi
-
-# Check YAML syntax
-if ! python3 -m yaml.load "$CONFIG_FILE" > /dev/null 2>&1; then
-    echo "ERROR: Invalid YAML syntax in configuration"
-    exit 1
-fi
-
-# Check required keys
-required_keys=("storage.type" "providers.openai.model")
-for key in "${required_keys[@]}"; do
-    if ! grep -q "$key" "$CONFIG_FILE"; then
-        echo "ERROR: Missing required configuration key: $key"
-        exit 1
-    fi
-done
-
-echo "✓ Configuration validation passed"
-exit 0
-```
+See [../deployment/docker.md](../deployment/docker.md) for the image itself.
 
 ## Related Documentation
 
+- [Configuration structure](../configuration-structure.md)
+- [CLI flags, env vars and precedence](../ctxt/cli-flag-binding.md)
+- [Environment variables](../environment-variables/README.md)
 - [Secret Management Best Practices](./secret-management.md)
-- [Secrets Validation & Log Sanitization](./secrets-validation-and-log-sanitization.md)
-- [Environment Variables Reference](../environment-variables.md)
+- [Secrets backends](./secrets-backends.md)
 - [Security Model](./security-model.md)
-
----
-
-**Last Updated**: 2025-01-26
-**Version**: 1.0
-**Status**: Active
-**Maintained by**: Security Team

@@ -93,89 +93,83 @@ spec:
 ### Configuration Management
 
 #### Environment Variables (Container-Friendly)
+
+Only an explicit list of variables maps to config keys; the full table is
+in [../ctxt/cli-flag-binding.md](../ctxt/cli-flag-binding.md).
+
 ```bash
-# Storage
+# Storage (the Postgres DSN itself is storage.path in the config file)
 CH_STORAGE_TYPE=postgres              # sqlite, postgres
-CH_STORAGE_URL=postgres://...         # for postgres
+PGPASSWORD=...                        # read by the Postgres driver
 
-# AI Provider
-CH_OPENAI_API_KEY=sk-...
-CH_OPENAI_MODEL=gpt-4o
+# Listeners and workers
+CH_SERVER_PORT=8080
+CH_GRPC_PORT=9090
+DPKMS_WORKERS=4                       # server.workers
 
-# Encryption
-CH_ENCRYPTION_KEY_PROVIDER=vault      # vault, kms, file
-CH_VAULT_ADDR=http://vault:8200
+# Jobs
+DPKMS_MAX_RETRIES=3
+DPKMS_STALE_TIMEOUT=30m
 
-# Registry Federation
-CH_REGISTRY_URLS=https://api1.example.com,https://api2.example.com
-CH_REGISTRY_TOKENS=token1,token2      # one per registry
+# AI provider keys (read under their own names)
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
 
-# Observability
-CH_LOG_LEVEL=info                     # debug, info, warn, error
-CH_METRICS_ENABLED=true
-CH_METRICS_PORT=9090
-CH_JAEGER_ENDPOINT=http://jaeger:14268/api/traces
-
-# Performance
-CH_JOB_WORKERS=4                      # parallel job executors
-CH_JOB_TIMEOUT=30m                    # per-job timeout
-CH_CACHE_SIZE_MB=512                  # in-memory query result cache
+# Secrets backend
+CTXT_SECRETS_BACKEND=keyring          # env, keyring, agefile, onepassword, ghsecrets
 ```
 
+No env var sets the log level (pass `--verbose` for debug output), and
+there are no metrics or tracing endpoints. Registry tokens are not env
+vars: `ctxt registry login <name>` stores them in the OS keychain.
+
 #### Configuration File (Complex Deployments)
+
+`dpkms` reads `dpkms.yaml` (`/etc/contexthelp/dpkms.yaml`,
+`$XDG_CONFIG_HOME/contexthelp/dpkms.yaml`, or the file `CTXT_CONFIG`
+names). Values are literal: `${VAR}` is not expanded.
+
 ```yaml
-# config.yaml
+# /etc/contexthelp/dpkms.yaml
 storage:
   type: postgres
-  url: <postgres-dsn>   # literal: config files do not expand env vars
-  pool:
-    minConnections: 5
-    maxConnections: 20
-  migrations:
-    autoRun: true
-    logAll: true
+  path: postgres://ctxt@db.internal:5432/ctxt?sslmode=require
 
-aiProvider:
-  type: openai
-  model: gpt-4o
-  # API key: OPENAI_API_KEY in the environment
-  rateLimit: 100/min
-  timeout: 30s
+server:
+  workers: 4
+  access: protected                   # needs server.auth; see config reference
 
-encryption:
-  provider: vault
-  vaultAddr: https://vault.example.com:8200
-  keyRotation: 90d
+jobs:
+  stale_timeout: 30m
+  max_retries: 3
+  drain_timeout: 30s
+
+providers:
+  llm:
+    backend: openai                   # key from OPENAI_API_KEY
+    model: gpt-4o
 
 registries:
   - name: api1
     url: https://api1.example.com
-    token: <api1-token>
-    timeout: 10s
-    weight: 0.6
+    auth:
+      type: bearer
+    trust_level: untrusted
 
-observability:
-  logging:
-    level: info
-    format: json
-  metrics:
+audit:
+  syslog:
     enabled: true
-    port: 9090
-  tracing:
-    jaegerEndpoint: http://jaeger.example.com:14268
-    sampleRate: 0.1
-
-plugins:
-  - path: ./plugins/code-metrics.so
-    permissions:
-      subprocess: true
-
-performance:
-  jobWorkers: 4
-  jobTimeout: 30m
-  cacheSize: 512MB
-  ftsIndexing: parallel
+    protocol: tcp
+    address: siem.internal:514
 ```
+
+Keys and structure: [../configuration-structure.md](../configuration-structure.md).
+Inbound auth for `protected` / `public`:
+[../manual/reference/config-and-permissions.md](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
+Keep the `server.auth` tokens out of this file: write them literally in a
+gitignored secrets file loaded as a second `--config`
+([../deployment/docker.md#secrets](../deployment/docker.md#secrets),
+`docker/dpkms-auth.example.yaml`).
 
 ### Monitoring & Observability
 
@@ -382,8 +376,7 @@ dpkms plugins verify ./plugins/code-metrics.so
 ### Scaling Strategies
 
 #### Vertical Scaling (Single Machine)
-- Increase `CH_JOB_WORKERS` (parallel enrichment)
-- Increase `CH_CACHE_SIZE_MB` (query result cache)
+- Increase `server.workers` / `DPKMS_WORKERS` (parallel enrichment)
 - Upgrade storage backend from SQLite to Postgres
 - Tune database parameters (connection pooling, query cache)
 
@@ -394,8 +387,7 @@ dpkms plugins verify ./plugins/code-metrics.so
 - Scale registries independently (each registry behind its own load balancer)
 
 #### Federation Optimization
-- Add registry weight filters: `CH_REGISTRY_WEIGHT_THRESHOLD=0.5`
-- Configure per-registry timeouts: `CH_REGISTRY_TIMEOUT=5s`
+- Use `sync_mode: thin` on large registries (index and taxonomy only)
 - Batch registry queries when possible
 - Cache registry results aggressively
 

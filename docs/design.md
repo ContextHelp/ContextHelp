@@ -836,8 +836,10 @@ For API-hosted constrained extraction, prefer `type: instructor` or `type: outli
 ## Environment Overrides
 
 - `CH_STORAGE_TYPE=postgres`
-- `CH_OPENAI_API_KEY=<key>`
-- `CH_PREF_LANG=fr`
+- `OPENAI_API_KEY=<key>` (provider keys use their own names)
+
+Language preferences have no env var: set `i18n.preferred_languages`.
+Full list: [environment-variables/README.md](environment-variables/README.md).
 
 ---
 

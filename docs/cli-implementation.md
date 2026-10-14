@@ -56,7 +56,9 @@ Both CLIs are built with:
 
 ### Configuration File
 
-Default location: `~/.config/contexthelp/config.yaml`
+Default location: `~/.config/contexthelp/ctxt.yaml` for `ctxt`,
+`~/.config/contexthelp/dpkms.yaml` for `dpkms` (cascade and precedence:
+[configuration-structure.md](configuration-structure.md))
 
 Example configuration:
 

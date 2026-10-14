@@ -63,18 +63,22 @@ POSTGRES_PASSWORD=my_database_password  # DON'T
 **Examples**: GitHub, GitLab, private registries
 **Sensitivity**: High
 **Rotation**: Quarterly or on scope change
-**Storage**: Environment variables or secret files
+**Storage**: OS keychain, via `ctxt registry login` (never the config
+file or an environment variable)
 
 ```bash
-# GOOD - From environment
-export CH_REGISTRY_TOKEN_PRIVATE=$(pass show registries/private-token)
+# GOOD - Prompt; the token goes straight to the OS keychain
+ctxt registry login private
 
-# GOOD - From secret file with restricted permissions
-export CH_REGISTRY_TOKEN_PRIVATE=$(cat /etc/contexthelp/secrets/registry-token)
+# GOOD - Non-interactive, from secure storage
+ctxt registry login private --token "$(pass show registries/private-token)"
 
-# BAD - Hardcoded in config
-CH_REGISTRY_TOKEN_PRIVATE: "ghp_abc123def456"  # DON'T
+# Rotate: login again overwrites the stored token; logout removes it
+ctxt registry logout private
 ```
+
+The config entry holds only the mechanism (`registries[].auth.type`:
+`bearer`, `api_key` or `oauth2`).
 
 ### Encryption Keys
 

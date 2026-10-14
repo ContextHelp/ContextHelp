@@ -24,22 +24,16 @@ Related: [Security Model](../security/security-model.md) |
 
 External egress only occurs when **explicitly configured**:
 
-- AI provider API calls (OpenAI, Anthropic) — opt-in via `ai_providers.*`
+- AI provider API calls (OpenAI, Anthropic) — opt-in via `providers.*` and the provider API key env vars
 - Registry sync — opt-in via `registries.*`
 - Remote dPKMS backend (Postgres, S3) — opt-in via `storage.type`
 
 Strict offline mode blocks all egress unconditionally. Use the `--offline` flag on
-any command, or set the env var permanently:
+any command (there is no env var):
 
 ```
-# Per-invocation:
 ctxt --offline find "query"
-
-# Persistent (add to shell profile):
-export CTXT_OFFLINE=true
 ```
-
-See also: sprint 007 task 1.3 for a hard-blocking config option (not yet shipped).
 
 For multi-region or sovereign-cloud deployments that use a remote backend, configure
 the backend to remain within the required jurisdiction and disable AI providers that
@@ -60,34 +54,23 @@ A ctxt object may contain PII when the ingested source includes any of:
 
 ctxt does **not** add PII. It preserves whatever the source contained.
 
-### Retention policy defaults
+### Retention
 
-| Data class | Default TTL | Configurable? |
-|------------|-------------|---------------|
-| Knowledge objects | Indefinite | Yes — `retention.objects_days` |
-| Audit log entries | 90 days | Yes — `retention.audit_days` |
-| Pipeline run logs | 30 days | Yes — `retention.pipeline_logs_days` |
-| Vector embeddings | Tied to parent object | No (cascade delete) |
-| Temp import buffers | Deleted on completion | No |
+There are no retention settings and no automatic expiry: knowledge objects
+are kept until deleted. Remove old objects explicitly:
 
-Configure auto-expiry in `~/.config/contexthelp/config.yaml`:
-
-```yaml
-retention:
-  objects_days: 365       # 0 = keep forever
-  audit_days: 90
-  pipeline_logs_days: 30
+```bash
+dpkms housekeeping prune --before 2025-01-01 --dry-run   # preview what goes
+dpkms housekeeping prune --before 2025-01-01
 ```
 
-A background sweep runs nightly as part of the dpkms job worker.
-Manual sweep is not yet exposed as a CLI command; to trigger expiry processing
-restart the server — it runs the sweep on startup. Vectors are deleted with
-their object, so an expired object leaves no embeddings behind.
+`dpkms housekeeping run` also prunes job history older than 30 days.
 
 ### Minimisation guidance
 
 - Do not ingest documents containing bulk PII unless the object store is
-  encrypted at rest (`security.encryption.enabled: true`).
+  encrypted at rest (OS-level disk encryption; ctxt has no storage-encryption
+  setting).
 - Use `ctxt edit <id> --tags pii` to mark objects for expedited review (this replaces the object's tags; list the existing ones too).
 - Scope pipeline outputs to exclude PII fields before storing enrichment results.
 

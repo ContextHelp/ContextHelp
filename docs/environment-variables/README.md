@@ -56,7 +56,7 @@ service unit or the container environment.
 | **Basic Setup** | [core.md](core.md) | `CTXT_CONFIG`, `CTXT_INSTANCE` |
 | **Storage** | [storage.md](storage.md) | `CH_STORAGE_TYPE`, `CTXT_BLOB_*`, `PG*` |
 | **API** | [api.md](api.md) | `CH_SERVER_PORT`, `CH_GRPC_PORT`, `CH_COOKIE_BRIDGE_PORT` |
-| **Workers** | [workers.md](workers.md) | `WORKER_COUNT`, `DPKMS_POLL_INTERVAL`, `DPKMS_MAX_RETRIES` |
+| **Workers** | [workers.md](workers.md) | `DPKMS_WORKERS`, `DPKMS_POLL_INTERVAL`, `DPKMS_MAX_RETRIES` |
 | **AI** | [ai-providers.md](ai-providers.md) | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CTXT_EMBEDDING_*` |
 | **Security** | [security.md](security.md) | `CTXT_SECRETS_BACKEND`, `CTXT_BACKUP_PASSPHRASE` |
 
@@ -86,7 +86,7 @@ service unit or the container environment.
 
 ```bash
 CH_STORAGE_TYPE=sqlite
-WORKER_COUNT=2
+DPKMS_WORKERS=2
 ```
 
 with `storage.path` pointing at the database file (see
@@ -97,7 +97,7 @@ with `storage.path` pointing at the database file (see
 ```bash
 CH_STORAGE_TYPE=postgres
 PGPASSWORD=$(vault kv get -field=password secret/db)
-WORKER_COUNT=8
+DPKMS_WORKERS=8
 ```
 
 with `storage.path` set to the PostgreSQL connection string (see
@@ -107,7 +107,7 @@ with `storage.path` set to the PostgreSQL connection string (see
 
 ```bash
 CH_STORAGE_TYPE=postgres
-WORKER_COUNT=16
+DPKMS_WORKERS=16
 CTXT_SECRETS_BACKEND=keyring
 CTXT_BLOB_BACKEND=s3
 ```

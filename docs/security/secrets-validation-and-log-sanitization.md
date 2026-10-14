@@ -72,7 +72,6 @@ ContextHelp automatically detects potential secrets matching these patterns:
 | Pattern | Examples | Priority |
 |---------|----------|----------|
 | Key-value secrets | `POSTGRES_PASSWORD=...` | High |
-| Prefixed secrets | `CH_REGISTRY_TOKEN_*=...` | High |
 | Quoted values | `"api_key": "sk_..."` | High |
 | YAML nested secrets | `auth: token: sk_...` | High |
 
@@ -520,70 +519,44 @@ ls -la ~/.config/contexthelp/config.yaml
 
 ### Safe Configuration Patterns
 
-Keep secrets out of committed config. Config files do not expand `${VAR}`, so a token goes in literally, in a gitignored file layered with a second `--config`:
+Config files take every value literally: `${VAR}` is not expanded, so a
+config file cannot pull a secret from the environment. Keep secrets out of
+committed config instead: provider API keys in the env vars the provider
+reads (`OPENAI_API_KEY`, ...), S3 blob credentials in
+`CTXT_BLOB_S3_ACCESS_KEY` / `CTXT_BLOB_S3_SECRET_KEY`, and tokens that
+must live in a config key (`server.auth`, `federation.token`) written
+literally in a gitignored file (0600) layered with a second `--config`
+(see [../deployment/docker.md#secrets](../deployment/docker.md#secrets)).
+
+Registry tokens never appear in config. The registry entry names the auth
+mechanism only; `ctxt registry login` stores the token in the OS keychain:
 
 ```yaml
-# GOOD - secrets.yaml (0600, never committed)
 registries:
   - name: private-registry
     url: https://registry.example.com
     auth:
-      token: <private-registry-token>
-
-# GOOD - Use file-based secrets
-registries:
-  - name: private-registry
-    url: https://registry.example.com
-    auth:
-      token_file: /etc/contexthelp/secrets/registry-token  # From file
+      type: bearer          # bearer | api_key | oauth2
 ```
 
 ```bash
-# BAD - Don't do this
-# Hardcoding secrets in config
-CH_REGISTRY_TOKEN_PRIVATE="ghp_abc123def456"  # DON'T
+# Prompts for the token; nothing lands in shell history
+ctxt registry login private-registry
 
-# GOOD - Source from secure storage
-export CH_REGISTRY_TOKEN_PRIVATE=$(pass show contexthelp/registry-token)
-export CH_REGISTRY_TOKEN_PRIVATE=$(aws secretsmanager get-secret-value --secret-id contexthelp/registry --query SecretString --output text)
+# Non-interactive: pass it from secure storage
+ctxt registry login private-registry --token "$(pass show contexthelp/registry-token)"
+
+# Remove it
+ctxt registry logout private-registry
 ```
 
 ### Configuration as Code
 
-When managing configuration in code:
-
-```go
-// BAD - Hardcoded secret
-cfg := &config.Config{
-    Registries: []config.RegistryConfig{
-        {
-            Name:  "private",
-            Token: "ghp_hardcoded_secret_xyz",  // DON'T
-        },
-    },
-}
-
-// GOOD - Load from environment
-cfg := &config.Config{
-    Registries: []config.RegistryConfig{
-        {
-            Name:  "private",
-            Token: os.Getenv("CH_REGISTRY_TOKEN_PRIVATE"),
-        },
-    },
-}
-
-// GOOD - Load from secret file
-token, err := ioutil.ReadFile("/etc/contexthelp/secrets/registry-token")
-cfg := &config.Config{
-    Registries: []config.RegistryConfig{
-        {
-            Name:  "private",
-            Token: string(token),
-        },
-    },
-}
-```
+`config.RegistryConfig` has no token field, so code that builds a
+`config.Config` cannot carry a registry token either. Provider API keys
+come from the environment (`OPENAI_API_KEY`, ...); never assign a literal
+secret to a config struct field such as `server.token` or
+`federation.token` in source.
 
 ## Verifying Log Sanitization
 
@@ -936,31 +909,27 @@ type SanitizedLogger interface {
 ### Example 1: Secure Registry Configuration
 
 ```yaml
-# config.yaml
+# ~/.config/contexthelp/ctxt.yaml
 registries:
   - name: company-registry
     url: https://registry.company.com
-    type: taxonomy
     auth:
-      token_file: ~/.config/contexthelp/secrets/registry-token
+      type: bearer          # no token here; there is no token_file key
 ```
 
 ```bash
-# Store token securely
-mkdir -p ~/.config/contexthelp/secrets
-chmod 700 ~/.config/contexthelp/secrets
-echo "ghp_abc123def456" > ~/.config/contexthelp/secrets/registry-token
-chmod 600 ~/.config/contexthelp/secrets/registry-token
+# Token goes to the OS keychain, never to a file in the config tree
+ctxt registry login company-registry
 ```
 
 ### Example 2: Database Connection with Rotation
 
 ```yaml
-# config.yaml
+# ~/.config/contexthelp/dpkms.yaml
 storage:
   type: postgres
   # No password here: config files do not expand env vars; libpq reads PGPASSWORD
-  connection_string: postgresql://contexthelp@db.internal/contexthelp
+  path: postgresql://contexthelp@db.internal/contexthelp
 ```
 
 ```bash
@@ -978,20 +947,19 @@ dpkms serve
 ```bash
 # .envrc (using direnv)
 # Development
-export CH_STORAGE_TYPE=sqlite
-export CH_DEBUG=true
+export CH_STORAGE_TYPE=sqlite   # debug output: pass --verbose
 
 # Staging
 if [ "$ENVIRONMENT" = "staging" ]; then
   export CH_STORAGE_TYPE=postgres
-  export POSTGRES_PASSWORD=$(pass show staging/db)
+  export PGPASSWORD=$(pass show staging/db)
   export OPENAI_API_KEY=$(pass show staging/openai-key)
 fi
 
 # Production
 if [ "$ENVIRONMENT" = "production" ]; then
   export CH_STORAGE_TYPE=postgres
-  export POSTGRES_PASSWORD=$(aws secretsmanager get-secret-value --secret-id prod/db --query SecretString --output text)
+  export PGPASSWORD=$(aws secretsmanager get-secret-value --secret-id prod/db --query SecretString --output text)
   export OPENAI_API_KEY=$(aws secretsmanager get-secret-value --secret-id prod/openai --query SecretString --output text)
 fi
 ```
