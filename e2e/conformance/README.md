@@ -30,9 +30,9 @@ outcome, not a broken pipeline. Re-records churn only `recorded_at`,
 `binary_version`, and `duration_ms`; captures are byte-stable.
 
 Each scenario runs in its own throwaway work dir with `HOME` and all
-four XDG roots pointed inside it and `CTXT_*` / `DPKMS_*` / `KIT_*`
-env scrubbed (the ctxt recorder also scrubs `CH_*` and `BUS_TOKEN`),
-so the knowledge database a scenario writes never leaks between
+four XDG roots pointed inside it and `CTXT_*` / `CH_*` / `DPKMS_*` /
+`KIT_*` / `BUS_TOKEN` env scrubbed (`CH_*` binds config keys, so an
+exported `CH_SERVER_URL` would re-route a step), so the knowledge database a scenario writes never leaks between
 scenarios or into the developer's real data. `USER` and `LOGNAME` are
 pinned to a fixed token so the recording host's account name can never
 reach a committed capture.
@@ -75,6 +75,38 @@ the scenario's config file, and a fixed root keeps that capture stable
 and free of host-specific temp paths. Overriding it with
 `CTXT_12FCC_WORK` changes that capture.
 
+### dpkms scenarios and the server
+
+The dpkms scenarios probe the substrate stopped: no scenario starts a
+daemon (`dpkms serve` needs `DPKMS_BUS_TOKEN`, which the scrub
+removes). The client commands still dial `server.url`, though —
+`daemon-unreachable` runs `dpkms healthcheck` — and with nothing
+configured that is the default endpoint (`127.0.0.1:8080`), where a
+developer's real instance may answer. `12fcc-record-dpkms.sh` writes
+`server.url: http://127.0.0.1:1` (a port nothing listens on, the Go
+test guard's closed endpoint) into every scenario's own user config
+(`$XDG_CONFIG_HOME/contexthelp/dpkms.yaml`). Before recording it
+checks that `dpkms config path` reports exactly that file and that a
+`dpkms healthcheck` run as the steps run dials that URL and is
+refused there; on a mismatch it refuses to record. It also refuses
+when anything accepts connections on port 1. Routing goes through
+config, not `--server-url` or env, so the scenario steps run as
+written.
+
+After each scenario the recorder fails the run if any capture names a
+default-port endpoint, the repo path, or the operator's
+`HOME`/`TMPDIR`. The one exempt default-port mention is the exact
+`--server-url` help phrase `(default http://127.0.0.1:8080 when
+nothing is configured)`, which `output-flag-contract` records from
+`dpkms healthcheck --help`; any other mention, on the same line or
+not, still fails.
+
+The work root is a fixed `/tmp/dpkms-12fcc-record`: the housekeeping
+previews in `maintenance-preview` and `preview-idempotent` name the
+scenario's database file, and a fixed root keeps those captures
+stable and free of host-specific temp paths. Overriding it with
+`DPKMS_12FCC_WORK` changes those captures.
+
 ## Keeping `verify-no-leak` clean
 
 Scenario rubrics are exactly the shape `kit conformance verify-no-leak`
@@ -103,7 +135,8 @@ gate went green.
 Record fresh cassettes (builds the binary with the `fts5` tag —
 the ctxt recorder builds `dpkms` too, for its throwaway instance —
 isolates a work dir per scenario, runs every scenario step as a real
-subprocess; the ctxt recorder needs `curl` and `python3`):
+subprocess; both recorders need `python3`, the ctxt recorder also
+`curl`):
 
 ```sh
 KIT_BIN=/path/to/kit scripts/12fcc-record.sh        # ctxt scenarios
