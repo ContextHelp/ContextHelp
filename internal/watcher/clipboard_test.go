@@ -2,31 +2,30 @@ package watcher_test
 
 import (
 	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
 
 // captureIngester records all calls to Analyze.
 type captureIngester struct {
-	mu  sync.Mutex
-	got []service.AnalyzeRequest
+	mu   sync.Mutex
+	got  []watcher.Request
+	fail error
 }
 
-func (c *captureIngester) Analyze(_ context.Context, req service.AnalyzeRequest) (string, error) {
+func (c *captureIngester) Analyze(_ context.Context, req watcher.Request) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.fail != nil {
+		return "", c.fail
+	}
 	c.got = append(c.got, req)
 	return "job-" + req.Source, nil
 }
-
-func (c *captureIngester) DeleteObject(_ context.Context, _ string) error { return nil }
 
 func (c *captureIngester) count() int {
 	c.mu.Lock()
@@ -34,7 +33,7 @@ func (c *captureIngester) count() int {
 	return len(c.got)
 }
 
-func (c *captureIngester) latest() service.AnalyzeRequest {
+func (c *captureIngester) latest() watcher.Request {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.got[len(c.got)-1]
@@ -197,22 +196,38 @@ func TestClipboardWatcher_IngestsFencedCodeBlock(t *testing.T) {
 	}
 }
 
-func TestClipboardWatcher_PersistsHashToStateFile(t *testing.T) {
-	dir := t.TempDir()
-	stateFile := filepath.Join(dir, "watcher-state.json")
+// memDedup is an in-memory ClipboardDedup.
+type memDedup struct {
+	mu   sync.Mutex
+	hash string
+	sets int
+}
 
+func (d *memDedup) ClipboardHash() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.hash
+}
+
+func (d *memDedup) SetClipboardHash(h string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.hash, d.sets = h, d.sets+1
+	return nil
+}
+
+func TestClipboardWatcher_PersistsHashAfterEnqueue(t *testing.T) {
 	ing := &captureIngester{}
 	url := "https://example.com/persist-test"
-	reader := func() (string, error) { return url, nil }
-
+	dedup := &memDedup{}
 	cfg := watcher.ClipboardConfig{
 		Enabled:      true,
 		PollInterval: 5 * time.Millisecond,
 		MinLength:    80,
 		AutoIngest:   true,
-		StateFile:    stateFile,
+		Dedup:        dedup,
 	}
-	cw := watcher.NewClipboardWatcher(cfg, ing, reader)
+	cw := watcher.NewClipboardWatcher(cfg, ing, func() (string, error) { return url, nil })
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
 	defer cancel()
@@ -221,65 +236,63 @@ func TestClipboardWatcher_PersistsHashToStateFile(t *testing.T) {
 	if ing.count() != 1 {
 		t.Fatalf("expected 1 ingestion, got %d", ing.count())
 	}
-
-	// State file must exist and contain a hash (never raw content).
-	data, err := os.ReadFile(stateFile)
-	if err != nil {
-		t.Fatalf("state file not created: %v", err)
-	}
-	var sf map[string]any
-	if err := json.Unmarshal(data, &sf); err != nil {
-		t.Fatalf("state file not valid JSON: %v", err)
-	}
-	clip, ok := sf["clipboard"].(map[string]any)
-	if !ok {
-		t.Fatalf("state file missing clipboard key")
-	}
-	hash, ok := clip["last_hash"].(string)
-	if !ok || hash == "" {
-		t.Errorf("state file missing last_hash")
-	}
-	// Verify raw URL is NOT stored in state file.
-	rawContent := string(data)
-	if rawContent == url {
-		t.Errorf("state file must not contain raw clipboard content")
+	if got := dedup.ClipboardHash(); got == "" || got == url {
+		t.Errorf("persisted hash = %q; want the content hash, never the content", got)
 	}
 }
 
-func TestClipboardWatcher_ResumesFromPersistedHash(t *testing.T) {
-	dir := t.TempDir()
-	stateFile := filepath.Join(dir, "watcher-state.json")
-
-	url := "https://example.com/resume-test"
-
-	// Pre-populate state file with the hash of the URL.
-	// Simulates a previous session that already ingested this URL.
-	ing1 := &captureIngester{}
+// A failed enqueue persists nothing, so the next start sends the clip.
+func TestClipboardWatcher_FailedEnqueueNotPersisted(t *testing.T) {
+	ing := &captureIngester{fail: errors.New("dpkms unreachable")}
+	dedup := &memDedup{}
+	var errs []error
 	cfg := watcher.ClipboardConfig{
 		Enabled:      true,
 		PollInterval: 5 * time.Millisecond,
 		MinLength:    80,
 		AutoIngest:   true,
-		StateFile:    stateFile,
+		Dedup:        dedup,
+		OnError:      func(err error) { errs = append(errs, err) },
+	}
+	cw := watcher.NewClipboardWatcher(cfg, ing, func() (string, error) { return "https://example.com/x", nil })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	cw.Run(ctx)
+
+	if dedup.sets != 0 {
+		t.Errorf("a failed enqueue persisted the hash")
+	}
+	if len(errs) != 1 {
+		t.Errorf("OnError called %d times; want once for the one clip", len(errs))
+	}
+}
+
+func TestClipboardWatcher_ResumesFromPersistedHash(t *testing.T) {
+	url := "https://example.com/resume-test"
+	dedup := &memDedup{}
+	cfg := watcher.ClipboardConfig{
+		Enabled:      true,
+		PollInterval: 5 * time.Millisecond,
+		MinLength:    80,
+		AutoIngest:   true,
+		Dedup:        dedup,
 	}
 	reader := func() (string, error) { return url, nil }
 
-	cw1 := watcher.NewClipboardWatcher(cfg, ing1, reader)
+	ing1 := &captureIngester{}
 	ctx1, cancel1 := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	cw1.Run(ctx1)
+	watcher.NewClipboardWatcher(cfg, ing1, reader).Run(ctx1)
 	cancel1()
-
 	if ing1.count() != 1 {
 		t.Fatalf("first run: expected 1 ingestion, got %d", ing1.count())
 	}
 
-	// Second watcher run with same URL — should skip due to persisted hash.
+	// Second run with the same clip: skipped through the persisted hash.
 	ing2 := &captureIngester{}
-	cw2 := watcher.NewClipboardWatcher(cfg, ing2, reader)
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel2()
-	cw2.Run(ctx2)
-
+	watcher.NewClipboardWatcher(cfg, ing2, reader).Run(ctx2)
 	if ing2.count() != 0 {
 		t.Errorf("second run: expected 0 ingestions (hash persisted), got %d", ing2.count())
 	}

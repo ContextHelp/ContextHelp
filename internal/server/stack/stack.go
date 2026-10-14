@@ -332,7 +332,7 @@ func Build(in Inputs) (*Stack, error) {
 		[]service.Option{service.WithPolicyPublisher(pol.Publisher())},
 		*cfg,
 	)
-	s.Watcher = watcher.NewManager(in.Driver.Watches(), s.Service)
+	s.Watcher = watcher.NewManager(in.Driver.Watches(), watcher.StoreRecords(in.Driver.Watches()), serviceIngester{s.Service})
 
 	// Non-private instances authenticate the whole /api/v1 route table
 	// (MCP mount included) through the provider-agnostic middleware.

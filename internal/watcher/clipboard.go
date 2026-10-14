@@ -2,16 +2,13 @@ package watcher
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/atotto/clipboard"
-	"github.com/ideacrafterslabs/ctxt/internal/service"
 )
 
 // ClipboardConfig holds clipboard watcher configuration.
@@ -25,9 +22,18 @@ type ClipboardConfig struct {
 	MinLength int
 	// AutoIngest enqueues content immediately without user prompt.
 	AutoIngest bool
-	// StateFile is the path for persisted dedup state. Defaults to
-	// ~/.local/share/contexthelp/watcher-state.json.
-	StateFile string
+	// Dedup keeps the hash of the last clip handed off across restarts.
+	// nil keeps it in memory only.
+	Dedup ClipboardDedup
+	// OnError is told about each failed enqueue; nil ignores them.
+	OnError func(error)
+}
+
+// ClipboardDedup persists the hash of the last clip handed off. Raw
+// clipboard content is never stored.
+type ClipboardDedup interface {
+	ClipboardHash() string
+	SetClipboardHash(hash string) error
 }
 
 // DefaultClipboardConfig returns a sensible default config.
@@ -38,18 +44,6 @@ func DefaultClipboardConfig() ClipboardConfig {
 		MinLength:    80,
 		AutoIngest:   true,
 	}
-}
-
-// clipboardState is the persisted dedup record for the clipboard watcher.
-// Raw content is never stored — only the hash and a timestamp.
-type clipboardState struct {
-	LastHash string    `json:"last_hash"`
-	LastSeen time.Time `json:"last_seen"`
-}
-
-// clipboardStateFile is the top-level JSON envelope persisted on disk.
-type clipboardStateFile struct {
-	Clipboard clipboardState `json:"clipboard"`
 }
 
 // urlRE matches http(s) URLs.
@@ -80,24 +74,25 @@ func qualifiesForIngest(text string, minLength int) bool {
 // content changes and passes heuristics.
 type ClipboardWatcher struct {
 	cfg      ClipboardConfig
-	ingester Ingester
+	analyzer Analyzer
 	read     func() (string, error) // injectable for tests
-	mu       sync.Mutex
 }
 
 // NewClipboardWatcher creates a ClipboardWatcher.
 // reader is the clipboard-read function; pass nil to use the real clipboard.
-func NewClipboardWatcher(cfg ClipboardConfig, ingester Ingester, reader func() (string, error)) *ClipboardWatcher {
+func NewClipboardWatcher(cfg ClipboardConfig, analyzer Analyzer, reader func() (string, error)) *ClipboardWatcher {
 	if reader == nil {
 		reader = clipboard.ReadAll
 	}
-	return &ClipboardWatcher{cfg: cfg, ingester: ingester, read: reader}
+	return &ClipboardWatcher{cfg: cfg, analyzer: analyzer, read: reader}
 }
 
 // Run polls the clipboard until ctx is cancelled.
 // Deduplication: only enqueues when the SHA-256 hash of the content differs
-// from the last enqueued hash. The hash is persisted to StateFile across
-// restarts — raw content is never logged or stored.
+// from the last one seen. The hash of the last clip handed off persists
+// through Dedup, and only after a successful enqueue, so a clip whose
+// enqueue failed is sent again on the next start. Raw content is never
+// logged or stored.
 func (cw *ClipboardWatcher) Run(ctx context.Context) {
 	if os.Getenv("CTXT_NO_CLIPBOARD") == "1" {
 		return
@@ -115,8 +110,10 @@ func (cw *ClipboardWatcher) Run(ctx context.Context) {
 		minLen = 80
 	}
 
-	// Load persisted state (last hash survives restarts).
-	lastHash := cw.loadLastHash()
+	var lastHash string
+	if cw.cfg.Dedup != nil {
+		lastHash = cw.cfg.Dedup.ClipboardHash()
+	}
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -135,86 +132,35 @@ func (cw *ClipboardWatcher) Run(ctx context.Context) {
 			if h == lastHash {
 				continue // no change
 			}
+			// Seen: not re-checked on every tick, whatever happens next.
+			lastHash = h
 
 			if !qualifiesForIngest(text, minLen) {
-				// Update hash so we don't re-check same short content on every tick.
-				lastHash = h
+				continue
+			}
+			if !cw.cfg.AutoIngest || cw.analyzer == nil {
 				continue
 			}
 
-			lastHash = h
-			// Persist hash immediately (before ingest) to prevent re-ingest on restart.
-			cw.saveLastHash(h)
-
-			if !cw.cfg.AutoIngest || cw.ingester == nil {
-				continue
-			}
-
-			contentType := detectClipboardType(text)
-			req := service.AnalyzeRequest{
+			req := Request{
 				Content:   text,
-				Type:      contentType,
+				Type:      detectClipboardType(text),
 				Source:    "watcher/clipboard",
 				KnownHash: h,
 			}
-			_, _ = cw.ingester.Analyze(ctx, req)
+			if _, err := cw.analyzer.Analyze(ctx, req); err != nil {
+				if ctx.Err() == nil && cw.cfg.OnError != nil {
+					cw.cfg.OnError(fmt.Errorf("clipboard: enqueue: %w", err))
+				}
+				continue
+			}
+			if cw.cfg.Dedup != nil {
+				if err := cw.cfg.Dedup.SetClipboardHash(h); err != nil && cw.cfg.OnError != nil {
+					cw.cfg.OnError(fmt.Errorf("clipboard: record hash: %w", err))
+				}
+			}
 		}
 	}
-}
-
-// loadLastHash reads the persisted clipboard hash from StateFile.
-// Returns "" on any error (fresh start).
-func (cw *ClipboardWatcher) loadLastHash() string {
-	path := cw.resolvedStatePath()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	var sf clipboardStateFile
-	if err := json.Unmarshal(data, &sf); err != nil {
-		return ""
-	}
-	return sf.Clipboard.LastHash
-}
-
-// saveLastHash persists only the content hash (never raw content) to StateFile.
-func (cw *ClipboardWatcher) saveLastHash(h string) {
-	cw.mu.Lock()
-	defer cw.mu.Unlock()
-
-	path := cw.resolvedStatePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return
-	}
-
-	// Read existing file to preserve other watcher states.
-	var sf clipboardStateFile
-	if data, err := os.ReadFile(path); err == nil {
-		_ = json.Unmarshal(data, &sf)
-	}
-
-	sf.Clipboard = clipboardState{
-		LastHash: h,
-		LastSeen: time.Now().UTC(),
-	}
-
-	data, err := json.MarshalIndent(sf, "", "  ")
-	if err != nil {
-		return
-	}
-	_ = os.WriteFile(path, data, 0o600)
-}
-
-// resolvedStatePath returns the state file path, using default if not set.
-func (cw *ClipboardWatcher) resolvedStatePath() string {
-	if cw.cfg.StateFile != "" {
-		return cw.cfg.StateFile
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "watcher-state.json"
-	}
-	return filepath.Join(home, ".local", "share", "contexthelp", "watcher-state.json")
 }
 
 // detectClipboardType infers a content type for clipboard text.

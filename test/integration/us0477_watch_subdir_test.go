@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
@@ -39,7 +40,8 @@ func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	mgr := watcher.NewManager(env.svc.Store.Watches(), env.svc)
+	ws := env.svc.Store.Watches()
+	mgr := watcher.NewManager(ws, watcher.StoreRecords(ws), stack.ServiceIngester(env.svc))
 	t.Cleanup(mgr.Stop)
 
 	cfg := &storage.WatchConfig{

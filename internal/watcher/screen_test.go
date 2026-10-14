@@ -22,7 +22,7 @@ func fakeCapture(data []byte, err error) func(string) ([]byte, error) {
 func newTestScreenWatcher(
 	t *testing.T,
 	cfg watcher.ScreenConfig,
-	ing watcher.Ingester,
+	ing watcher.Analyzer,
 	capture func(string) ([]byte, error),
 ) *watcher.ScreenWatcher {
 	t.Helper()
