@@ -161,36 +161,6 @@ func TestLoadWithRegistries(t *testing.T) {
 	}
 }
 
-func TestLoadWithPlugins(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.yaml")
-
-	content := []byte(`plugins:
-  - type: enrichment
-    plugin: custom-extractor
-    config:
-      model: gpt-4
-`)
-	if err := os.WriteFile(cfgPath, content, 0644); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
-
-	cfg, err := Load("ctxt", cfgPath)
-	if err != nil {
-		t.Fatalf("Load should succeed: %v", err)
-	}
-
-	if len(cfg.Plugins) != 1 {
-		t.Fatalf("expected 1 plugin, got %d", len(cfg.Plugins))
-	}
-	if cfg.Plugins[0].Type != "enrichment" {
-		t.Errorf("expected plugin type=enrichment, got %s", cfg.Plugins[0].Type)
-	}
-	if cfg.Plugins[0].Plugin != "custom-extractor" {
-		t.Errorf("expected plugin name=custom-extractor, got %s", cfg.Plugins[0].Plugin)
-	}
-}
-
 func TestLoadWithI18n(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")

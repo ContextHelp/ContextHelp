@@ -47,9 +47,6 @@ type Config struct {
 	// RegistriesGlobal holds registry-wide settings that apply to all registries.
 	RegistriesGlobal RegistriesGlobalConfig `mapstructure:"registries_global" yaml:"registries_global"`
 
-	// Plugins configuration
-	Plugins []PluginConfig `mapstructure:"plugins" yaml:"plugins"`
-
 	// I18n configuration
 	I18n I18nConfig `mapstructure:"i18n" yaml:"i18n"`
 
@@ -1066,13 +1063,6 @@ func (r RegistryConfig) EffectiveTrustLevel() RegistryTrustLevel {
 	default:
 		return RegistryTrustLevelUntrusted
 	}
-}
-
-// PluginConfig represents a plugin configuration
-type PluginConfig struct {
-	Type   string                 `mapstructure:"type" yaml:"type"`
-	Plugin string                 `mapstructure:"plugin" yaml:"plugin"`
-	Config map[string]interface{} `mapstructure:"config" yaml:"config" secret:"keys"`
 }
 
 // I18nConfig represents i18n configuration

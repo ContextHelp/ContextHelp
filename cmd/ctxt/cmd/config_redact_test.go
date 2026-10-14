@@ -43,13 +43,6 @@ federations:
     sync_mode: async
     interval: 1h
     token: FEDERATION-PEER-TOKEN-SECRET-0008
-plugins:
-  - type: source
-    plugin: demo
-    config:
-      api_key: PLUGIN-API-KEY-SECRET-0009
-      nested:
-        password: PLUGIN-NESTED-PASSWORD-0010
 audit:
   webhook:
     enabled: true
@@ -69,8 +62,6 @@ var redactFixtureSecrets = []string{
 	"STATIC-AUTH-TOKEN-0006-abcdefghij",
 	"FEDERATION-INBOUND-TOKEN-0007",
 	"FEDERATION-PEER-TOKEN-SECRET-0008",
-	"PLUGIN-API-KEY-SECRET-0009",
-	"PLUGIN-NESTED-PASSWORD-0010",
 	"WEBHOOK-CAPABILITY-0011",
 	"ALERT-CAPABILITY-0012",
 }

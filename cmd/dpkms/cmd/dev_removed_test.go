@@ -21,3 +21,12 @@ func TestDevReindexVectorsRemoved(t *testing.T) {
 		}
 	}
 }
+
+// dpkms dev init-plugin is removed: dpkms loads no plugins.
+func TestDevInitPluginRemoved(t *testing.T) {
+	for _, c := range devCmd.Commands() {
+		if c.Name() == "init-plugin" {
+			t.Fatal("dpkms dev init-plugin still registered: dpkms loads no plugins")
+		}
+	}
+}

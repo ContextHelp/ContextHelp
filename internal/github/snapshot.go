@@ -13,7 +13,7 @@ import (
 // RepoSnapshot is the normalised view of a GitHub repository page.
 //
 // Populated by FetchRepo; consumed by the github_repo_mapper pipeline step and
-// repo_health_enricher / alternative_detector / dependency_enricher plugins.
+// repo_health_enricher / alternative_detector / dependency_enricher steps.
 type RepoSnapshot struct {
 	// Identity
 	Owner    string `json:"owner"`

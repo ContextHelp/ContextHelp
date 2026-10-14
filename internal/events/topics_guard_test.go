@@ -87,7 +87,7 @@ func isSubscriptionPattern(s string) bool {
 
 // collectTopicConsts returns every topic constant declared in dir: each
 // const or var typed bus.Topic, plus each untyped string const named
-// Topic* (plugin modules cannot import kit's bus). Wildcard subscription
+// Topic*. Wildcard subscription
 // patterns are skipped. A topic constant whose value is not a plain
 // string literal is reported: the guard must be able to read it.
 func collectTopicConsts(t *testing.T, dir string) []topicConst {
@@ -177,32 +177,6 @@ func TestEveryEventsTopicFollowsKitGrammar(t *testing.T) {
 	}
 }
 
-// TestEveryPluginTopicFollowsKitGrammar checks the Topic* constants of
-// every plugin under plugins/. Plugins are separate modules that cannot
-// import internal/events, so each declares its own topics.
-func TestEveryPluginTopicFollowsKitGrammar(t *testing.T) {
-	pluginsDir := filepath.Join(repoRoot(t), "plugins")
-	entries, err := os.ReadDir(pluginsDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	total := 0
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		consts := collectTopicConsts(t, filepath.Join(pluginsDir, e.Name()))
-		total += len(consts)
-		for _, c := range consts {
-			c.pos = e.Name() + "/" + c.pos
-			t.Run(e.Name()+"/"+c.name, func(t *testing.T) { assertKitTopic(t, c) })
-		}
-	}
-	if total == 0 {
-		t.Fatal("found no plugin topic constants; the scan is broken")
-	}
-}
-
 // literalTopicAllowlist names publish sites outside this change's scope
 // that still pass an inline literal. Each entry must still be a valid
 // kit topic; the guard checks that too. Remove entries as they move to
@@ -239,9 +213,8 @@ func importPaths(f *ast.File) map[string]string {
 }
 
 const (
-	eventsPkg    = "github.com/ideacrafterslabs/ctxt/internal/events"
-	kitBusPkg    = "hop.top/kit/go/runtime/bus"
-	pluginapiPkg = "github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	eventsPkg = "github.com/ideacrafterslabs/ctxt/internal/events"
+	kitBusPkg = "hop.top/kit/go/runtime/bus"
 )
 
 // selectorPkg returns the import path and selected name of pkg.Name.
@@ -285,11 +258,10 @@ func callTopicArgs(x *ast.CallExpr, imports map[string]string) []ast.Expr {
 	return nil
 }
 
-// eventTypeArgs handles events.Event{Type: ...} and
-// pluginapi.Event{Type: ...} literals.
+// eventTypeArgs handles events.Event{Type: ...} literals.
 func eventTypeArgs(x *ast.CompositeLit, imports map[string]string) []ast.Expr {
 	pkg, name := selectorPkg(x.Type, imports)
-	if name != "Event" || (pkg != eventsPkg && pkg != pluginapiPkg) {
+	if name != "Event" || pkg != eventsPkg {
 		return nil
 	}
 	for _, elt := range x.Elts {
@@ -306,8 +278,8 @@ func eventTypeArgs(x *ast.CompositeLit, imports map[string]string) []ast.Expr {
 
 // TestPublishSitesUseTopicConstants walks every non-test Go file in the
 // repo and fails on a publish whose topic is an inline string literal
-// instead of a declared topic constant (internal/events, a plugin's
-// Topic* constants, or the lateral TopicOf catalog).
+// instead of a declared topic constant (internal/events or the lateral
+// TopicOf catalog).
 func TestPublishSitesUseTopicConstants(t *testing.T) {
 	root := repoRoot(t)
 	sites := 0

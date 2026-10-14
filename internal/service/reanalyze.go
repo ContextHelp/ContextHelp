@@ -73,7 +73,7 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 
 	// Pick the registry's currently-installed version for this family.
 	// CurrentVersionForFamily returns the highest @vN registered. Fall
-	// back to v0 when nothing matches (e.g. a custom plugin with a bare
+	// back to v0 when nothing matches (e.g. a custom pipeline with a bare
 	// registration only) — pipeline.Registry.Get resolves that back to
 	// the bare registration via the @v0 alias.
 	curVer, known := CurrentVersionForFamily(s.Pipes, family)

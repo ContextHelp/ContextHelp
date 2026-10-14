@@ -147,11 +147,6 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// SSE event stream (real-time updates)
 		{Method: get, Pattern: "/events", Scope: authn.ScopeReadObjects, Handler: HandleSSE(svc)},
 
-		// Suggestions (autosuggest plugin)
-		{Method: get, Pattern: "/suggestions", Scope: authn.ScopeReadObjects, Handler: ListSuggestions(svc)},
-		{Method: post, Pattern: "/suggestions/{id}/approve", Scope: authn.ScopeWriteObjects, Handler: ApproveSuggestion(svc)},
-		{Method: post, Pattern: "/suggestions/{id}/reject", Scope: authn.ScopeWriteObjects, Handler: RejectSuggestion(svc)},
-
 		// Aliases (core alias store)
 		{Method: post, Pattern: "/aliases", Scope: authn.ScopeWriteObjects, Handler: CreateAlias(svc)},
 		{Method: get, Pattern: "/aliases", Scope: authn.ScopeReadObjects, Handler: ListAliases(svc)},

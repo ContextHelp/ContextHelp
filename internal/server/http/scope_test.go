@@ -330,7 +330,6 @@ var uiSessionRouteSet = []string{
 	"GET /api/v1/inbox",
 	"GET /api/v1/inbox/queue",
 	"GET /api/v1/events",
-	"GET /api/v1/suggestions",
 	"GET /api/v1/aliases",
 	"GET /api/v1/aliases/{alias}",
 	"GET /api/v1/capture/recent",

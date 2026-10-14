@@ -44,7 +44,7 @@ in_workspace() {
 	[ -f go.work ] && grep -Eq "^[[:space:]]*(use[[:space:]]+)?\./$1[[:space:]]*$" go.work
 }
 
-# Packages in nested modules (plugins/*/go.mod) outside go.work are not
+# Packages in nested modules (a directory with its own go.mod) outside go.work are not
 # part of the build: golangci-lint run from the root cannot type-check
 # them, and CI's `golangci-lint run ./...` never lints them either. Skip
 # them here too.

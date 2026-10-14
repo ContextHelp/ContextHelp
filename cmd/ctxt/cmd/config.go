@@ -355,16 +355,6 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 		for _, u := range unknown {
 			fmt.Fprintf(out, "  ! unknown key in %s: %s\n", f, u)
 		}
-		// Declared but unread keys (plugins:) are warnings for the
-		// same reason: setting them changes nothing.
-		ignored, err := config.IgnoredKeys(f)
-		if err != nil {
-			fmt.Fprintf(out, "  ! %s: %v\n", f, err)
-			continue
-		}
-		for _, u := range ignored {
-			fmt.Fprintf(out, "  ! ignored key in %s: %s\n", f, u)
-		}
 	}
 
 	var secrets []config.SecretWarning

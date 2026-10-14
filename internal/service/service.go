@@ -22,7 +22,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
-	"github.com/ideacrafterslabs/ctxt/internal/plugin"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/ranking"
 	registrysync "github.com/ideacrafterslabs/ctxt/internal/registry"
@@ -39,15 +38,14 @@ import (
 
 // Service coordinates all business operations.
 type Service struct {
-	Store          storage.StorageDriver
-	Queue          *jobs.Queue
-	Pipes          pipeline.Registry
-	Search         *search.Engine
-	Discovery      *steps.StepDiscovery
-	Executor       *steps.StepExecutor
-	Bus            events.Bus
-	Cfg            config.Config
-	PluginRegistry *plugin.Registry
+	Store     storage.StorageDriver
+	Queue     *jobs.Queue
+	Pipes     pipeline.Registry
+	Search    *search.Engine
+	Discovery *steps.StepDiscovery
+	Executor  *steps.StepExecutor
+	Bus       events.Bus
+	Cfg       config.Config
 
 	// pipelineSvc delegates pipeline CRUD to kit/runtime/domain so
 	// pre_validated / pre_persisted veto seams fire on every

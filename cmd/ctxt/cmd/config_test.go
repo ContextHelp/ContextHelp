@@ -159,9 +159,9 @@ func TestConfigValidateWarnsUnknownKeys(t *testing.T) {
 	}
 }
 
-// plugins: parses but no binary loads plugins: config validate warns,
-// naming the file, and still exits 0.
-func TestConfigValidateWarnsPluginsIgnored(t *testing.T) {
+// ctxt has no plugin system and Config declares no plugins: key, so a
+// file that sets one gets the ordinary unknown-key warning; exit 0.
+func TestConfigValidateWarnsPluginsUnknown(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
 	content := "storage:\n  type: sqlite\nplugins:\n  - type: enrichment\n    plugin: custom-extractor\n"
@@ -172,9 +172,9 @@ func TestConfigValidateWarnsPluginsIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("plugins: must not fail validate: %v\noutput: %s", err, out)
 	}
-	want := "! ignored key in " + cfgPath + ": line 3: plugins"
-	if !strings.Contains(out, want) || !strings.Contains(out, "not loaded") {
-		t.Errorf("expected %q warning saying plugins are not loaded; got: %s", want, out)
+	want := "! unknown key in " + cfgPath + ": line 3: field plugins not found"
+	if !strings.Contains(out, want) {
+		t.Errorf("expected %q; got: %s", want, out)
 	}
 }
 
