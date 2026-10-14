@@ -383,15 +383,16 @@ jobs:
       - name: Drop local-path replaces
         run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
 
-      # Postgres driver + embeddings registry conformance suites live next
-      # to the code, not under test/integration/. They carry the same
-      # integration build tag and read the same POSTGRES_* env block, so
-      # they must be listed here explicitly or CI never runs them.
+      # Postgres driver, storage factory and embeddings registry suites
+      # live next to the code, not under test/integration/. They carry the
+      # same integration build tag and read the same POSTGRES_* env block,
+      # so they must be listed here explicitly or CI never runs them.
       - name: Run integration tests
         run: >-
           go test -v -tags=integration,fts5
           ./test/integration/...
           ./internal/storage/postgres/...
+          ./internal/storageutil/...
           ./internal/embeddings/registry/...
         env:
           CGO_ENABLED: '1'
@@ -410,6 +411,21 @@ jobs:
         run: >-
           go test -v -tags=integration,fts5 -count=1
           -run 'Test(Claim|Reproject)_.*_Postgres' ./internal/jobs/
+        env:
+          CGO_ENABLED: '1'
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: contexthelp
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: contexthelp_test
+
+      # HTTP handlers against a Postgres store (object reads and writes,
+      # inbox, pages/index/stats, the entity gate). They need the
+      # integration tag; the package's other tests run in the unit job.
+      - name: Run HTTP handler tests on Postgres
+        run: >-
+          go test -v -tags=integration,fts5 -count=1
+          -run '_Postgres$' ./internal/server/http/
         env:
           CGO_ENABLED: '1'
           POSTGRES_HOST: localhost
