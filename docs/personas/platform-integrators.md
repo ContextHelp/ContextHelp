@@ -46,7 +46,7 @@ type Plugin interface {
 ```
 
 Optional interfaces: `PostIngestHook`, `AliasResolver`, `OutputGenerator`,
-`PluginRegistryProvider`. A plugin directory carries a `manifest.json` or
+`PluginRegistryProvider`. A plugin directory carries one `manifest.json` or
 `manifest.yaml`:
 
 ```yaml

@@ -49,6 +49,9 @@ config (`pipelines.overrides`), or install steps from a step registry with
 `pluginapi.PluginManifest` (`pkg/pluginapi/manifest.go`) is read from
 `manifest.json` or `manifest.yaml` in a plugin directory by
 `plugin.LoadManifest(dir)`. No host code calls `LoadManifest` yet.
+Ship one of the two: `LoadManifest` reads `manifest.json` first and never
+looks at a `manifest.yaml` beside it. The contribution manifest in
+[manifest-spec.md](manifest-spec.md) is for `extensions/` and `skills/`, not plugins.
 
 ```yaml
 apiVersion: v1
@@ -72,8 +75,9 @@ permissions:
 | `permissions` | no | list; unknown values fail validation (see §6) |
 
 Examples: `plugins/local-registry-plugin/manifest.yaml`,
-`plugins/rss-feed/manifest.yaml`. Note `plugins/dir-watcher/manifest.json` uses a
-different, older shape and does not pass `Validate()`.
+`plugins/rss-feed/manifest.yaml`. `internal/plugin/repo_manifests_test.go` loads
+every manifest under `plugins/` with `LoadManifest` and fails on a directory
+with both files.
 
 ---
 

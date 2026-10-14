@@ -18,7 +18,7 @@
     "name": { "type": "string", "minLength": 1 },
     "slug": { "type": "string", "pattern": "^[a-z0-9-]+$" },
     "description": { "type": "string" },
-    "category": { "type": "string", "enum": ["extensions", "plugins", "skills", "schemas"] },
+    "category": { "type": "string", "enum": ["extensions", "skills", "schemas"] },
     "author": {
       "type": "object",
       "required": ["name"],

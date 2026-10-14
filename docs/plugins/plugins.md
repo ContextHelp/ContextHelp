@@ -49,9 +49,10 @@ persisted as a JSON column on SQLite and PostgreSQL. Core treats it as opaque.
 
 ## Manifest
 
-`manifest.json` or `manifest.yaml` in the plugin directory: `apiVersion: v1`,
-`name`, `version`, optional `slug`, `description`, `type: registry_provider`,
-`permissions`. `plugin.LoadManifest(dir)` validates it; no host code calls it.
+One `manifest.json` or `manifest.yaml` in the plugin directory (`manifest.json`
+wins if both exist): `apiVersion: v1`, `name`, `version`, optional `slug`,
+`description`, `type: registry_provider`, `permissions`. `plugin.LoadManifest(dir)`
+validates it; no host code calls it.
 See [the authoring guide §2](../plugin-authoring-guide.md#2-plugin-manifest).
 
 ## Bundled plugin packages
