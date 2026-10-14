@@ -178,8 +178,10 @@ func TestSyncer_UntrustedRegistry_QueuesNotWrites(t *testing.T) {
 	if result.Upserted != 0 {
 		t.Errorf("Upserted: got %d, want 0 (untrusted)", result.Upserted)
 	}
-	if result.Skipped != 1 {
-		t.Errorf("Skipped: got %d, want 1", result.Skipped)
+	// Held for approval, counted as such: not lumped in with Skipped.
+	if result.PendingApproval != 1 || result.Blocked != 0 || result.Skipped != 0 {
+		t.Errorf("PendingApproval/Blocked/Skipped = %d/%d/%d, want 1/0/0",
+			result.PendingApproval, result.Blocked, result.Skipped)
 	}
 	if len(store.full) != 0 {
 		t.Errorf("no entities should be written for untrusted registry")
@@ -217,8 +219,9 @@ func TestSyncer_SandboxedRegistry_BlocksNoQueue(t *testing.T) {
 	if result.Upserted != 0 {
 		t.Errorf("Upserted: got %d, want 0 (sandboxed)", result.Upserted)
 	}
-	if result.Skipped != 1 {
-		t.Errorf("Skipped: got %d, want 1", result.Skipped)
+	if result.Blocked != 1 || result.PendingApproval != 0 || result.Skipped != 0 {
+		t.Errorf("Blocked/PendingApproval/Skipped = %d/%d/%d, want 1/0/0",
+			result.Blocked, result.PendingApproval, result.Skipped)
 	}
 	// Sandboxed: no pending approvals (hard block).
 	pending := syncer.TrustGateState().PendingApprovals()

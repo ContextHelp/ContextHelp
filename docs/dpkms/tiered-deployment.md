@@ -85,7 +85,7 @@ registries:
   - name: org
     url: https://registry.example-corp.internal/org
     sync_mode: thin             # index-only; pull bodies on demand
-    trust_level: untrusted      # entity writes require approval
+    trust_level: untrusted      # entity writes need approval; ctxt has no approve step yet, so sync skips them
     auth:
       type: api_key
 ```

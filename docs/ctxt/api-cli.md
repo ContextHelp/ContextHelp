@@ -765,13 +765,15 @@ Manage registry subscriptions and metadata.
 ```bash
 ctxt registry list
 ctxt registry add <name> <url>
-ctxt registry remove <name>
+ctxt registry delete <name> --confirm=yes
 ctxt registry info <name>
 ctxt registry sync <name>
 ```
 
-`add` fetches and caches a registry's manifest (shown by `list`); it
-does not write the config file. `sync`, `info`, `login` and `delete`
+`list` shows the cached registry manifests (what `add` and `sync`
+fetched), not the config file's `registries` list; `ctxt config show`
+prints that. `add` fetches and caches a registry's manifest (shown by
+`list`); it does not write the config file. `sync`, `info`, `login` and `delete`
 find a registry by name in the config file's `registries` list, so
 subscribe by adding an entry there (`ctxt config edit`):
 
@@ -785,7 +787,12 @@ registries:
 When the manifest advertises `capabilities.entity_sync`, it also pulls
 the entity index (`/entities/index`) into the local entity store; a
 registry that serves steps only is never asked for entities. Entities
-from a registry whose `trust_level` is not `trusted` are not written.
+from a registry whose `trust_level` is not `trusted` (unset means
+`untrusted`) are not written; `sync` counts them as `Entities not
+written: N` with the reason and still exits 0. An `untrusted`
+registry's writes need approval, which ctxt does not offer yet, so set
+`trust_level: trusted` on its entry to sync its entities; a `sandboxed`
+registry never writes to the local graph.
 
 ---
 

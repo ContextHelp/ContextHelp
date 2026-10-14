@@ -53,11 +53,16 @@ func syncRegistry(t *testing.T, entitySync bool) (*httptest.Server, func() []str
 
 func newSyncSvc(t *testing.T, regURL string) *Service {
 	t.Helper()
+	return newSyncSvcTrust(t, regURL, config.RegistryTrustLevelTrusted)
+}
+
+func newSyncSvcTrust(t *testing.T, regURL string, trust config.RegistryTrustLevel) *Service {
+	t.Helper()
 	driver := storageutil.NewTestDriver(t)
 	cfg := config.Config{Registries: []config.RegistryConfig{{
 		Name: "pub", URL: regURL,
 		SyncMode:   config.RegistrySyncModeThin,
-		TrustLevel: config.RegistryTrustLevelTrusted,
+		TrustLevel: trust,
 	}}}
 	return NewWithOptions(driver, jobs.NewQueue(driver.Jobs()), pipeline.DefaultRegistry(),
 		search.NewEngine(driver), "", nil, nil, cfg)
@@ -74,7 +79,7 @@ func TestSyncRegistry_EntitySyncAdvertised(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SyncRegistry: %v", err)
 	}
-	if !res.EntitySync || res.Entities != 1 {
+	if !res.EntitySync || res.Upserted != 1 {
 		t.Errorf("SyncRegistry = %+v, want EntitySync and 1 entity", res)
 	}
 	if _, err := svc.Store.Entities().Get(ctx, "ai.bert"); err != nil {
@@ -98,11 +103,46 @@ func TestSyncRegistry_StepsOnlyRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SyncRegistry: %v", err)
 	}
-	if res.EntitySync || res.Entities != 0 {
+	if res.EntitySync || res.Upserted != 0 {
 		t.Errorf("SyncRegistry = %+v, want no entity sync", res)
 	}
 	if got := paths(); len(got) != 1 || got[0] != "/" {
 		t.Errorf("registry served %v, want the manifest only", got)
+	}
+}
+
+// TestSyncRegistry_NotTrustedReportsHeldEntities: entities a registry
+// that is not trusted serves are not written, and the result counts them
+// by why (approval for untrusted, including an unset trust_level; blocked
+// for sandboxed) instead of reporting a bare zero.
+func TestSyncRegistry_NotTrustedReportsHeldEntities(t *testing.T) {
+	for _, tc := range []struct {
+		trust          config.RegistryTrustLevel
+		wantLevel      config.RegistryTrustLevel
+		pending, block int
+	}{
+		{"", config.RegistryTrustLevelUntrusted, 1, 0},
+		{config.RegistryTrustLevelUntrusted, config.RegistryTrustLevelUntrusted, 1, 0},
+		{config.RegistryTrustLevelSandboxed, config.RegistryTrustLevelSandboxed, 0, 1},
+	} {
+		t.Run(string(tc.wantLevel)+"/"+string(tc.trust), func(t *testing.T) {
+			srv, _ := syncRegistry(t, true)
+			svc := newSyncSvcTrust(t, srv.URL, tc.trust)
+			ctx := context.Background()
+
+			res, err := svc.SyncRegistry(ctx, srv.URL)
+			if err != nil {
+				t.Fatalf("SyncRegistry: %v", err)
+			}
+			if res.Upserted != 0 || res.PendingApproval != tc.pending || res.Blocked != tc.block ||
+				res.TrustLevel != tc.wantLevel {
+				t.Errorf("SyncRegistry = %+v, want 0 upserted, %d pending, %d blocked, trust %q",
+					res, tc.pending, tc.block, tc.wantLevel)
+			}
+			if e, err := svc.Store.Entities().Get(ctx, "ai.bert"); err == nil && e != nil {
+				t.Errorf("entity from a %q registry was written: %+v", tc.wantLevel, e)
+			}
+		})
 	}
 }
 

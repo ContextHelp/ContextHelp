@@ -111,8 +111,8 @@ func TestService_RegistryRequestsCarryStoredToken(t *testing.T) {
 	if _, err := svc.DiffRegistrySync(ctx, reg.URL); err != nil {
 		t.Errorf("DiffRegistrySync: %v", err)
 	}
-	if n, err := svc.SyncRegistryEntities(ctx, reg.URL); err != nil || n != 1 {
-		t.Errorf("SyncRegistryEntities = %d, %v; want 1, nil", n, err)
+	if n, err := svc.SyncRegistryEntities(ctx, reg.URL); err != nil || n.Upserted != 1 {
+		t.Errorf("SyncRegistryEntities = %+v, %v; want 1 upserted, nil", n, err)
 	}
 	if _, err := svc.SyncAllRegistriesWithReconciliation(ctx, "", nil); err != nil {
 		t.Errorf("SyncAllRegistriesWithReconciliation: %v", err)

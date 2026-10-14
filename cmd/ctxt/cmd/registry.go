@@ -31,7 +31,7 @@ Registries provide shared taxonomies, entities, and knowledge objects
 for federated search and enrichment.
 
 Examples:
-  # List all registries
+  # List cached registry manifests
   ctxt registry list
 
   # Cache a registry's manifest (subscribe in the config file's registries list)
@@ -52,9 +52,13 @@ Examples:
 
 var registryListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all registries",
-	Long: `List every configured registry alongside the URL and the last
-fetch timestamp recorded in the local cache. Read-only.`,
+	Short: "List cached registry manifests",
+	Long: `List the registry manifests in the local cache (what add and sync
+fetched), with each URL and its last fetch timestamp. Read-only.
+
+The config file's registries list is a separate set: a cached manifest
+need not be configured, and a configured registry shows here only once
+it has been fetched. ctxt config show prints the configured list.`,
 	RunE: runRegistryList,
 }
 
@@ -271,7 +275,7 @@ func init() {
 
 	cliconv.WithSideEffect(registryListCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(registryListCmd, []cliconv.Example{
-		{Title: "List all registries", Command: "ctxt registry list"},
+		{Title: "List cached registry manifests", Command: "ctxt registry list"},
 		{Title: "List as JSON", Command: "ctxt registry list --json"},
 	})
 
@@ -292,7 +296,7 @@ func init() {
 		{Title: "Delete with interactive confirmation", Command: "ctxt registry delete uxpatterns --confirm=prompt"},
 	})
 	cliconv.WithNextSteps(registryRemoveCmd, []cliconv.NextStep{
-		{Suggest: "ctxt registry list", Reason: "confirm the entry is gone from the configured set"},
+		{Suggest: "ctxt config show", Reason: "confirm the entry is gone from the configured registries"},
 		{Suggest: "ctxt registry logout <name>", Reason: "drop any leftover keychain token tied to the registry"},
 	})
 
@@ -392,8 +396,8 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Registries (%d)\n\n", total)
 	if total == 0 {
-		fmt.Println("  No registries configured.")
-		fmt.Println("  Add one with: ctxt registry add <name> <url>")
+		fmt.Println("  No registry manifests cached.")
+		fmt.Println("  Fetch one with: ctxt registry add <name> <url>")
 		return nil
 	}
 	headers := []string{"URL", "Last Fetched"}
@@ -601,12 +605,34 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("sync registry: %w", err)
 	}
 	fmt.Println("Registry synced")
-	if res.EntitySync {
-		fmt.Printf("Entities synced: %d\n", res.Entities)
-	} else {
+	if !res.EntitySync {
 		fmt.Println("Entities: none (manifest does not advertise capabilities.entity_sync)")
+		return nil
 	}
+	fmt.Printf("Entities synced: %d\n", res.Upserted)
+	printHeldEntities(os.Stdout, name, res.RegistryEntityCounts)
 	return nil
+}
+
+// printHeldEntities says how many entities the registry's trust_level
+// kept out of the local store, and why, so an untrusted registry does
+// not read as an empty one. Prints nothing when none were held.
+func printHeldEntities(w io.Writer, name string, c service.RegistryEntityCounts) {
+	level := "trust_level " + string(c.TrustLevel)
+	for _, r := range cfg.Registries {
+		if r.Name == name && r.TrustLevel == "" {
+			level = "trust_level unset, so untrusted"
+			break
+		}
+	}
+	if c.PendingApproval > 0 {
+		fmt.Fprintf(w, "Entities not written: %d (registry not trusted: %s)\n", c.PendingApproval, level)
+		fmt.Fprintln(w, "  An untrusted registry's entity writes need approval, which ctxt does not offer yet;")
+		fmt.Fprintln(w, "  set trust_level: trusted on its registries entry (ctxt config edit) and sync again to write them.")
+	}
+	if c.Blocked > 0 {
+		fmt.Fprintf(w, "Entities not written: %d (registry sandboxed: %s never writes to the local graph)\n", c.Blocked, level)
+	}
 }
 
 // runRegistrySyncReconcile syncs all configured registries with multi-registry

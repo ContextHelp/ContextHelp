@@ -74,15 +74,21 @@ func SyncRegistryEntities(svc *service.Service) http.HandlerFunc {
 			return
 		}
 
-		count, err := svc.SyncRegistryEntities(r.Context(), req.URL)
+		counts, err := svc.SyncRegistryEntities(r.Context(), req.URL)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
 
+		// pending_approval and blocked count the entities the registry's
+		// trust_level kept out of the store; upserted alone reads as an
+		// empty registry.
 		WriteJSON(w, http.StatusOK, map[string]any{
-			"status":   "synced",
-			"upserted": count,
+			"status":           "synced",
+			"upserted":         counts.Upserted,
+			"pending_approval": counts.PendingApproval,
+			"blocked":          counts.Blocked,
+			"trust_level":      counts.TrustLevel,
 		})
 	}
 }

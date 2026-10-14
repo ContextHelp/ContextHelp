@@ -296,6 +296,66 @@ func TestRegistrySyncPullsAdvertisedEntities(t *testing.T) {
 	}
 }
 
+// TestRegistrySyncNotTrustedSaysEntitiesHeld: a registry that is not
+// trusted gets its entities refused, and sync says how many and why
+// instead of a bare "Entities synced: 0"; it still exits 0.
+func TestRegistrySyncNotTrustedSaysEntitiesHeld(t *testing.T) {
+	for _, tc := range []struct {
+		name, trustYAML string
+		want            []string
+	}{
+		{"unset", "", []string{
+			"Entities not written: 1", "trust_level unset, so untrusted",
+			"approval", "trust_level: trusted",
+		}},
+		{"untrusted", "    trust_level: untrusted\n", []string{
+			"Entities not written: 1", "trust_level untrusted",
+			"approval", "trust_level: trusted",
+		}},
+		{"sandboxed", "    trust_level: sandboxed\n", []string{
+			"Entities not written: 1", "trust_level sandboxed",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, indexHits := syncTestRegistry(t, true)
+			db := setupTestDB(t)
+			withRegistry(t, db, "sync-cli", srv.URL, "")
+			if tc.trustYAML != "" {
+				appendConfig(t, db, tc.trustYAML)
+			}
+
+			out, err := db.exec("registry", "sync", "sync-cli")
+			if err != nil {
+				t.Fatalf("registry sync: %v\n%s", err, out)
+			}
+			if indexHits.Load() == 0 {
+				t.Fatalf("sync never requested /entities/index; output:\n%s", out)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("output lacks %q:\n%s", w, out)
+				}
+			}
+		})
+	}
+}
+
+// TestRegistryListHelpSaysCachedManifests: list reads the manifest
+// cache (what add and sync fetched), not the config's registries list,
+// and its help says so.
+func TestRegistryListHelpSaysCachedManifests(t *testing.T) {
+	help, err := executeCommand("registry", "list", "--help")
+	if err != nil {
+		t.Fatalf("registry list --help: %v", err)
+	}
+	if strings.Contains(help, "every configured registry") {
+		t.Errorf("help claims list shows configured registries:\n%s", help)
+	}
+	if !strings.Contains(help, "cached") || !strings.Contains(help, "registries list") {
+		t.Errorf("help does not say list shows cached manifests, not the config:\n%s", help)
+	}
+}
+
 // TestRegistrySyncStepsOnlySkipsEntities: no capabilities.entity_sync, no
 // /entities/index request, and the output says so.
 func TestRegistrySyncStepsOnlySkipsEntities(t *testing.T) {
