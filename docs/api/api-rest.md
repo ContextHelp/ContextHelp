@@ -303,6 +303,14 @@ Plugins may attach job metadata.
 
 Knowledge objects include **tags**, **hints**, **mentions**, and **plugin metadata**.
 
+#### Object content
+
+Content above `storage.blob.threshold` is stored in the blob store, but no response carries the `blob://<key>` reference it is stored as: `raw_content` and `text_content` always hold content, on REST, gRPC and MCP alike.
+
+- **One object** (`GET /objects/{id}`, `PATCH /objects/{id}`): the whole content.
+- **Lists and searches** (`GET /objects`, `/objects/{id}/related`, `/search`, `POST /find`, entity backlinks, inbox, reminders): at most `storage.blob.threshold` bytes of it, the size an object stored inline can have. A cut preview sets `metadata.content_truncated: true`; `metadata.blob_original_size` is the full length. Read the object by ID for all of it.
+- A blob that cannot be read fails the request with 500, never a reference or empty content.
+
 ### `GET /objects`
 
 Lists the objects that match a filter, one page at a time. Scope: `read:objects`.
