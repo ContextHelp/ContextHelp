@@ -19,12 +19,26 @@ func (s *Service) ClearObjectReminder(ctx context.Context, id string) error {
 
 // ListPendingReminders returns all objects that have a scheduled reminder (regardless of due state).
 func (s *Service) ListPendingReminders(ctx context.Context) ([]*storage.KnowledgeObject, error) {
-	return s.Store.Objects().ListPendingReminders(ctx)
+	objs, err := s.Store.Objects().ListPendingReminders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, err
+	}
+	return objs, nil
 }
 
 // ListDueReminders returns objects whose reminder is due (remind_at <= now, not yet notified).
 func (s *Service) ListDueReminders(ctx context.Context, now time.Time) ([]*storage.KnowledgeObject, error) {
-	return s.Store.Objects().ListDueReminders(ctx, now)
+	objs, err := s.Store.Objects().ListDueReminders(ctx, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, err
+	}
+	return objs, nil
 }
 
 // MarkReminded marks a reminder as delivered.

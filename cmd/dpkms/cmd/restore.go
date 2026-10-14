@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 )
 
 var restoreCmd = &cobra.Command{
@@ -19,7 +20,7 @@ var restoreCmd = &cobra.Command{
 Restores:
   - SQLite database
   - Config files + keys (if present in backup)
-  - Blob files (if present in backup)
+  - Blobs (if present in backup), into the storage.blob store
 
 The database is restored to storage.path, which defaults to db.sqlite in
 the data directory (--data-dir, CTXT_DATA_DIR or storage.data_dir), so
@@ -68,6 +69,15 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		ConfigDir:   configPath,
 		SkipConfigs: skipConfigs,
 		DryRun:      dryRun,
+	}
+	// Blobs go to the configured store (storage.blob), not a path
+	// derived here. A dry run writes nothing, so opens none.
+	if !dryRun {
+		bs, err := blob.New(cfg.Storage.Blob)
+		if err != nil {
+			return fmt.Errorf("restore: open blob store: %w", err)
+		}
+		opts.Blobs = bs
 	}
 
 	fmt.Fprintf(os.Stderr, "-> restoring from %s...\n", source)

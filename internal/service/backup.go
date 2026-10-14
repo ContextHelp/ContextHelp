@@ -142,8 +142,11 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 		}
 	}
 
-	// 2. Optional blobs (local backend only).
-	if opts.IncludeBlobs && opts.BlobCfg.Backend == "local" {
+	// 2. Optional blobs (local backend only; blob.New reads an empty
+	// backend as local). Each is archived as blobs/<key> and read
+	// through the store, so its on-disk layout never leaks into the
+	// archive; Restore writes it back through the target's store.
+	if opts.IncludeBlobs && (opts.BlobCfg.Backend == "" || opts.BlobCfg.Backend == "local") {
 		bs, err := blobfactory.New(opts.BlobCfg)
 		if err != nil {
 			return abort(fmt.Errorf("backup: open blob store: %w", err))

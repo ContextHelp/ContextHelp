@@ -19,7 +19,7 @@ func GetObject(svc *service.Service) http.HandlerFunc {
 		id := chi.URLParam(r, "id")
 		obj, err := svc.GetObject(r.Context(), id)
 		if err != nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "object not found")
+			writeObjectError(w, err)
 			return
 		}
 		WriteJSON(w, http.StatusOK, obj)

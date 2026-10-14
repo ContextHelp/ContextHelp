@@ -47,6 +47,10 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 	if obj == nil {
 		return "", 0, fmt.Errorf("reanalyze: object %q not found", id)
 	}
+	// The pipeline runs on the content, not on its blob:// ref.
+	if err := s.resolveContent(ctx, obj); err != nil {
+		return "", 0, fmt.Errorf("reanalyze: %w", err)
+	}
 	if obj.RawContent == "" {
 		// Re-running the pipeline against an empty RawContent would
 		// destroy the projection without rebuilding it. Refuse loudly so
@@ -127,7 +131,13 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 	// every projection column so the new pipeline output overwrites the old.
 	draft.Pipeline = versionedName
 	draft.UpdatedAt = time.Now().UTC()
-	if err := s.Store.Objects().Update(ctx, draft); err != nil {
+	// Content above the threshold is stored externalized, whether or
+	// not the pipeline has an externalize_content step.
+	row, err := s.storable(ctx, draft)
+	if err != nil {
+		return "", 0, fmt.Errorf("reanalyze: persist %q: %w", id, err)
+	}
+	if err := s.Store.Objects().Update(ctx, row); err != nil {
 		return "", 0, fmt.Errorf("reanalyze: persist %q: %w", id, err)
 	}
 	// Replace the object's vectors for every model the embedding step

@@ -74,7 +74,14 @@ func (s *Service) ListInbox(ctx context.Context, filter InboxFilter) ([]*storage
 	if !filter.After.IsZero() {
 		f.After = &filter.After
 	}
-	return s.Store.Objects().List(ctx, f)
+	objs, total, err := s.Store.Objects().List(ctx, f)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, 0, err
+	}
+	return objs, total, nil
 }
 
 // TriageInbox promotes an inbox item to "active" status and enqueues it

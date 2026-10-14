@@ -49,7 +49,13 @@ func (s *Service) FederationAccept(
 				continue // dedup — already present
 			}
 		}
-		if err := objs.Create(ctx, obj); err != nil {
+		// Pushed content arrives inline (the wire has no blob channel):
+		// this instance's threshold decides what is externalized.
+		row, err := s.storable(ctx, obj)
+		if err != nil {
+			return created, fmt.Errorf("federation accept: object %q: %w", obj.ID, err)
+		}
+		if err := objs.Create(ctx, row); err != nil {
 			return created, fmt.Errorf("federation accept: create object %q: %w", obj.ID, err)
 		}
 		created++

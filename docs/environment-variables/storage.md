@@ -116,7 +116,7 @@ CTXT_BLOB_BACKEND=garage
 **Default:** `65536`\
 **Config key:** `storage.blob.threshold`
 
-Object content above this size is externalized to the blob store and replaced with a `blob://<sha256>` reference. `0` disables externalization.
+Object content above this size is externalized to the blob store and replaced with a `blob://<sha256>` reference. `0` disables externalization. Reads resolve the reference: a single-object read returns the whole content, list and search reads at most this many bytes of it (see [Object content](../api/api-rest.md#object-content)). Updates externalize content above the threshold too.
 
 ```bash
 CTXT_BLOB_THRESHOLD=131072

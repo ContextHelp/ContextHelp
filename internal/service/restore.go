@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // RestoreOpts configures a restore operation.
@@ -19,6 +22,10 @@ type RestoreOpts struct {
 	ConfigDir   string // target config directory
 	SkipConfigs bool
 	DryRun      bool
+	// Blobs receives the backup's blobs through its own Put, so they
+	// land wherever storage.blob puts them, in its layout. Required
+	// when the backup holds blobs, except for a dry run.
+	Blobs storage.BlobStore
 }
 
 // RestoreResult summarises a completed restore.
@@ -29,20 +36,42 @@ type RestoreResult struct {
 }
 
 // Restore reads a backup archive (.tar.gz) or directory and writes
-// DB, config, and blob files to their target locations.
-func Restore(_ context.Context, opts RestoreOpts) (RestoreResult, error) {
+// DB and config files to their target locations and blobs to
+// opts.Blobs.
+func Restore(ctx context.Context, opts RestoreOpts) (RestoreResult, error) {
 	info, err := os.Stat(opts.Source)
 	if err != nil {
 		return RestoreResult{}, fmt.Errorf("restore: %w", err)
 	}
 
 	if info.IsDir() {
-		return restoreFromDir(opts)
+		return restoreFromDir(ctx, opts)
 	}
-	return restoreFromArchive(opts)
+	return restoreFromArchive(ctx, opts)
 }
 
-func restoreFromArchive(opts RestoreOpts) (RestoreResult, error) {
+// restoreBlob writes one backed-up blob, named by its key relative to
+// the backup's blobs/ directory, to opts.Blobs.
+func restoreBlob(ctx context.Context, opts RestoreOpts, rel string, r io.Reader, size int64) error {
+	key := filepath.ToSlash(rel)
+	// Backup names each blob by its bare key; anything with a path in
+	// it would let the archive write outside the store.
+	if key == "" || key == "." || key == ".." || strings.ContainsAny(key, `/\`) {
+		return fmt.Errorf("restore: blob %q: not a blob key", rel)
+	}
+	if opts.DryRun {
+		return nil
+	}
+	if opts.Blobs == nil {
+		return fmt.Errorf("restore: blob %s: no blob store to restore into", key)
+	}
+	if err := opts.Blobs.Put(ctx, key, r, storage.BlobMeta{Size: size}); err != nil {
+		return fmt.Errorf("restore: write blob %s: %w", key, err)
+	}
+	return nil
+}
+
+func restoreFromArchive(ctx context.Context, opts RestoreOpts) (RestoreResult, error) {
 	f, err := os.Open(opts.Source)
 	if err != nil {
 		return RestoreResult{}, fmt.Errorf("restore: open archive: %w", err)
@@ -82,15 +111,8 @@ func restoreFromArchive(opts RestoreOpts) (RestoreResult, error) {
 			}
 
 		case name == "ctxt.db":
-			if opts.DryRun {
-				result.DBSize = hdr.Size
-				continue
-			}
-			if err := os.MkdirAll(filepath.Dir(opts.DBPath), 0750); err != nil {
-				return RestoreResult{}, fmt.Errorf("restore: mkdir for db: %w", err)
-			}
-			if err := writeFile(opts.DBPath, tr, hdr.FileInfo().Mode()); err != nil {
-				return RestoreResult{}, fmt.Errorf("restore: write db: %w", err)
+			if err := restoreArchiveDB(opts, hdr, tr); err != nil {
+				return RestoreResult{}, err
 			}
 			result.DBSize = hdr.Size
 
@@ -98,60 +120,75 @@ func restoreFromArchive(opts RestoreOpts) (RestoreResult, error) {
 			if opts.SkipConfigs {
 				continue
 			}
-			rel := strings.TrimPrefix(name, "config/")
-			target := filepath.Join(filepath.Dir(opts.ConfigDir), rel)
-			if opts.DryRun {
-				result.ConfigCount++
-				continue
-			}
-			if err := os.MkdirAll(filepath.Dir(target), 0750); err != nil {
-				return RestoreResult{}, fmt.Errorf("restore: mkdir config: %w", err)
-			}
-			if err := writeFile(target, tr, hdr.FileInfo().Mode()); err != nil {
-				return RestoreResult{}, fmt.Errorf("restore: write config %s: %w", rel, err)
+			if err := restoreArchiveConfig(opts, strings.TrimPrefix(name, "config/"), hdr, tr); err != nil {
+				return RestoreResult{}, err
 			}
 			result.ConfigCount++
 
-		case strings.HasPrefix(name, "blobs/"):
-			// Blob restore: write to same relative path under data dir.
-			rel := strings.TrimPrefix(name, "blobs/")
-			blobDir := filepath.Join(filepath.Dir(opts.DBPath), "blobs")
-			target := filepath.Join(blobDir, rel)
-			if opts.DryRun {
-				result.BlobCount++
-				continue
-			}
-			if err := os.MkdirAll(filepath.Dir(target), 0750); err != nil {
-				return RestoreResult{}, fmt.Errorf("restore: mkdir blob: %w", err)
-			}
-			if err := writeFile(target, tr, 0644); err != nil {
-				return RestoreResult{}, fmt.Errorf("restore: write blob %s: %w", rel, err)
+		case strings.HasPrefix(name, "blobs/") && hdr.Typeflag == tar.TypeReg:
+			if err := restoreBlob(ctx, opts, strings.TrimPrefix(name, "blobs/"), tr, hdr.Size); err != nil {
+				return RestoreResult{}, err
 			}
 			result.BlobCount++
 		}
 	}
 
-	// Validate manifest.
-	if manifest != nil {
-		if v, ok := manifest["schema_version"].(float64); ok && v > 2 {
-			return RestoreResult{},
-				fmt.Errorf("restore: unsupported backup schema version %.0f (max 2)", v)
-		}
-		// Warn if embedding model differs from backup.
-		if emb, ok := manifest["embedding"].(map[string]any); ok {
-			model, _ := emb["model"].(string)
-			if model != "" {
-				fmt.Fprintf(os.Stderr,
-					"note: backup was created with embedding model %q; "+
-						"reindex vectors if your current model differs\n", model)
-			}
-		}
+	if err := checkManifest(manifest); err != nil {
+		return RestoreResult{}, err
 	}
-
 	return result, nil
 }
 
-func restoreFromDir(opts RestoreOpts) (RestoreResult, error) {
+// checkManifest refuses a backup schema newer than this build reads and
+// notes the embedding model the backup was made with. A nil manifest
+// passes.
+func checkManifest(manifest map[string]any) error {
+	if manifest == nil {
+		return nil
+	}
+	if v, ok := manifest["schema_version"].(float64); ok && v > 2 {
+		return fmt.Errorf("restore: unsupported backup schema version %.0f (max 2)", v)
+	}
+	// Warn if embedding model differs from backup.
+	if emb, ok := manifest["embedding"].(map[string]any); ok {
+		model, _ := emb["model"].(string)
+		if model != "" {
+			fmt.Fprintf(os.Stderr,
+				"note: backup was created with embedding model %q; "+
+					"reindex vectors if your current model differs\n", model)
+		}
+	}
+	return nil
+}
+
+func restoreArchiveDB(opts RestoreOpts, hdr *tar.Header, r io.Reader) error {
+	if opts.DryRun {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(opts.DBPath), 0750); err != nil {
+		return fmt.Errorf("restore: mkdir for db: %w", err)
+	}
+	if err := writeFile(opts.DBPath, r, hdr.FileInfo().Mode()); err != nil {
+		return fmt.Errorf("restore: write db: %w", err)
+	}
+	return nil
+}
+
+func restoreArchiveConfig(opts RestoreOpts, rel string, hdr *tar.Header, r io.Reader) error {
+	if opts.DryRun {
+		return nil
+	}
+	target := filepath.Join(filepath.Dir(opts.ConfigDir), rel)
+	if err := os.MkdirAll(filepath.Dir(target), 0750); err != nil {
+		return fmt.Errorf("restore: mkdir config: %w", err)
+	}
+	if err := writeFile(target, r, hdr.FileInfo().Mode()); err != nil {
+		return fmt.Errorf("restore: write config %s: %w", rel, err)
+	}
+	return nil
+}
+
+func restoreFromDir(ctx context.Context, opts RestoreOpts) (RestoreResult, error) {
 	var result RestoreResult
 	base := opts.Source
 
@@ -192,23 +229,46 @@ func restoreFromDir(opts RestoreOpts) (RestoreResult, error) {
 	// Blobs
 	blobSrc := filepath.Join(base, "blobs")
 	if info, err := os.Stat(blobSrc); err == nil && info.IsDir() {
-		blobDir := filepath.Join(filepath.Dir(opts.DBPath), "blobs")
-		filepath.Walk(blobSrc, func(path string, fi os.FileInfo, werr error) error {
-			if werr != nil || fi.IsDir() {
-				return werr
-			}
-			rel, _ := filepath.Rel(blobSrc, path)
-			target := filepath.Join(blobDir, rel)
-			result.BlobCount++
-			if opts.DryRun {
-				return nil
-			}
-			os.MkdirAll(filepath.Dir(target), 0750)
-			return copyFile(path, target)
-		})
+		n, err := restoreBlobDir(ctx, opts, blobSrc)
+		if err != nil {
+			return RestoreResult{}, err
+		}
+		result.BlobCount = n
 	}
 
 	return result, nil
+}
+
+// restoreBlobDir restores every file under dir as a blob named by its
+// path relative to dir, read through an os.Root so a symlink cannot
+// reach outside it.
+func restoreBlobDir(ctx context.Context, opts RestoreOpts, dir string) (int, error) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return 0, fmt.Errorf("restore: open blobs: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+	n := 0
+	err = fs.WalkDir(root.FS(), ".", func(rel string, d fs.DirEntry, werr error) error {
+		if werr != nil || d.IsDir() {
+			return werr
+		}
+		f, err := root.Open(rel)
+		if err != nil {
+			return fmt.Errorf("restore: open blob %s: %w", rel, err)
+		}
+		defer f.Close()
+		fi, err := f.Stat()
+		if err != nil {
+			return fmt.Errorf("restore: stat blob %s: %w", rel, err)
+		}
+		if err := restoreBlob(ctx, opts, filepath.FromSlash(rel), f, fi.Size()); err != nil {
+			return err
+		}
+		n++
+		return nil
+	})
+	return n, err
 }
 
 func writeFile(path string, r io.Reader, mode os.FileMode) error {

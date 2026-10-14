@@ -46,7 +46,7 @@ func newService() (*service.Service, func(), error) {
 	}
 
 	queue := jobs.NewQueue(driver.Jobs())
-	pipes := builtins.ConfiguredRegistryWithOpts(embeddingBuildOpts(driver, newEmbeddingResolver()))
+	pipes := builtins.ConfiguredRegistryWithOpts(registryBuildOpts(driver))
 	engine := search.NewEngine(driver)
 
 	queue.SetPipelineValidator(func(name string) error {
@@ -66,6 +66,19 @@ func newService() (*service.Service, func(), error) {
 	}
 
 	return svc, cleanup, nil
+}
+
+// registryBuildOpts is the direct-store pipeline registry's wiring, as
+// serve's (stack.New): the embedding write path plus the driver's blob
+// store and storage.blob.threshold, without which externalize_content
+// is pruned.
+func registryBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
+	opts := embeddingBuildOpts(driver, newEmbeddingResolver())
+	opts.BlobStore = driver.Blobs()
+	if cfg != nil {
+		opts.BlobThreshold = cfg.Storage.Blob.Threshold
+	}
+	return opts
 }
 
 // embeddingBuildOpts is the dpkms CLI's embedding write path for the

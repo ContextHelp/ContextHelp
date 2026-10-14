@@ -66,7 +66,7 @@ func (s *Service) CreateLink(ctx context.Context, req LinkRequest) ([]*storage.E
 		return nil, err
 	}
 	for _, end := range [][2]string{{"source", req.Source}, {"target", req.Target}} {
-		if _, err := s.GetObject(ctx, end[1]); err != nil {
+		if _, err := s.Store.Objects().Get(ctx, end[1]); err != nil {
 			return nil, fmt.Errorf("%s object %q: %w", end[0], end[1], err)
 		}
 	}
@@ -174,7 +174,7 @@ func (s *Service) ListLinks(ctx context.Context, q LinkQuery) ([]LinkHop, error)
 	if q.Depth < 0 || q.Depth > MaxLinkDepth {
 		return nil, invalidLink("depth %d: want 1 to %d", q.Depth, MaxLinkDepth)
 	}
-	if _, err := s.GetObject(ctx, q.ObjectID); err != nil {
+	if _, err := s.Store.Objects().Get(ctx, q.ObjectID); err != nil {
 		return nil, err
 	}
 	if q.Depth == 0 {
