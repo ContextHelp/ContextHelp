@@ -3,8 +3,10 @@ package local
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,8 +67,11 @@ func (s *Store) Put(_ context.Context, key string, data io.Reader, meta storage.
 func (s *Store) Get(_ context.Context, key string) (io.ReadCloser, storage.BlobMeta, error) {
 	path := s.blobPath(key)
 	f, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, storage.BlobMeta{}, fmt.Errorf("blob %q: %w: %w", key, storage.ErrBlobNotFound, err)
+	}
 	if err != nil {
-		return nil, storage.BlobMeta{}, fmt.Errorf("blob %q not found: %w", key, err)
+		return nil, storage.BlobMeta{}, fmt.Errorf("blob local get %q: %w", key, err)
 	}
 
 	var meta storage.BlobMeta

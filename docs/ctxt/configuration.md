@@ -238,8 +238,10 @@ An object that fails 3 ticks in a row on its own — its source blob is
 gone, or the receiver answers 413 to it sent alone (over the receiver's
 `federation.max_request_bytes` or a proxy's limit) — is skipped: dpkms
 logs `federation: skipping object after repeated push failures` with its
-id, and the rest of the batch goes through. Editing the object sends it
-again. Renaming an entry starts its watermark over.
+id, and the rest of the batch goes through. Only a blob the source store
+reports missing counts: a store that cannot be read (network, timeout,
+S3 5xx or access denied) fails the tick and the next one retries, however
+long it lasts. Editing the object sends it again. Renaming an entry starts its watermark over.
 
 ### Inbound auth (`federation`)
 

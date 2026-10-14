@@ -118,15 +118,16 @@ func (p *RemotePusher) Advance(ctx context.Context, seq int64) error {
 
 // encodeInline returns o encoded for the wire, every blob:// ref
 // replaced by the content it names, read from the source's store. o is
-// not modified. Content it cannot read is an *ObjectError.
+// not modified. A blob the store does not hold is an *ObjectError; any
+// other read failure is the store's, not the object's.
 func (p *RemotePusher) encodeInline(ctx context.Context, o storage.KnowledgeObject) (json.RawMessage, error) {
 	raw, err := blob.Content(ctx, p.blobs, o.RawContent)
 	if err != nil {
-		return nil, &ObjectError{ID: o.ID, Err: err}
+		return nil, objectBlobError(o.ID, err)
 	}
 	text, err := blob.Content(ctx, p.blobs, o.TextContent)
 	if err != nil {
-		return nil, &ObjectError{ID: o.ID, Err: err}
+		return nil, objectBlobError(o.ID, err)
 	}
 	o.RawContent, o.TextContent = raw, text
 	enc, err := json.Marshal(o)

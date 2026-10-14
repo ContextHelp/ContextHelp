@@ -2,6 +2,7 @@ package federation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -39,7 +40,7 @@ type Pusher interface {
 }
 
 // ObjectError is a push failure down to one object, not the target:
-// its content cannot be read from the source, or the receiver refuses
+// the source blob store does not hold its blob, or the receiver refuses
 // it even sent alone. Retrying the target does not help; Sync skips
 // the object after maxObjectFailures in a row.
 type ObjectError struct {
@@ -50,3 +51,15 @@ type ObjectError struct {
 func (e *ObjectError) Error() string { return fmt.Sprintf("object %q: %v", e.ID, e.Err) }
 
 func (e *ObjectError) Unwrap() error { return e.Err }
+
+// objectBlobError classifies err, reading object id's source blob: a
+// blob the store reports missing (storage.ErrBlobNotFound) is the
+// object's failure, an *ObjectError. Anything else — the store
+// unreachable, timing out, answering 5xx, or no store at all — fails
+// the push without counting toward a skip, so the next sync retries.
+func objectBlobError(id string, err error) error {
+	if errors.Is(err, storage.ErrBlobNotFound) {
+		return &ObjectError{ID: id, Err: err}
+	}
+	return fmt.Errorf("object %q: %w", id, err)
+}

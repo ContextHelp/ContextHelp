@@ -2,6 +2,7 @@ package s3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -145,5 +146,46 @@ func TestListFollowsContinuation(t *testing.T) {
 	}
 	if len(keys) != 2 || keys[0] != "abcdfirst" || keys[1] != "ef01second" {
 		t.Errorf("List keys = %v, want [abcdfirst ef01second] (calls: %d)", keys, calls)
+	}
+}
+
+// Get pins the not-found half of the BlobStore contract: S3's
+// NoSuchKey is storage.ErrBlobNotFound; any other failure is an error
+// that is not, so callers can tell a blob that is gone from a store
+// they could not read. A bare 404 names no key: S3, MinIO and Garage
+// all answer a missing key with NoSuchKey, so a bare one is more likely
+// a misrouted endpoint than a lost blob.
+func TestGetNotFound(t *testing.T) {
+	const noSuchKey = `<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>`
+	for _, tc := range []struct {
+		name     string
+		status   int
+		body     string
+		notFound bool
+	}{
+		{"NoSuchKey", http.StatusNotFound, noSuchKey, true},
+		{"bare 404", http.StatusNotFound, "", false},
+		{"access denied", http.StatusForbidden,
+			`<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tc.body != "" {
+					w.Header().Set("Content-Type", "application/xml")
+				}
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+
+			_, _, err := newTestStore(t, srv).Get(context.Background(), "abcdef1234")
+			if err == nil {
+				t.Fatal("Get: no error")
+			}
+			if got := errors.Is(err, storage.ErrBlobNotFound); got != tc.notFound {
+				t.Errorf("errors.Is(err, ErrBlobNotFound) = %v, want %v; err = %v", got, tc.notFound, err)
+			}
+		})
 	}
 }

@@ -35,8 +35,9 @@ func NewLocalPusher(name, targetPath string, targetBlob *config.BlobConfig, blob
 }
 
 // copyBlobs copies the blobs obj's content refs name from src to dst,
-// skipping those dst already holds. A blob it cannot read from src is
-// an *ObjectError.
+// skipping those dst already holds. A blob src does not hold is an
+// *ObjectError; any other read failure is the store's, not the
+// object's.
 func copyBlobs(ctx context.Context, src, dst storage.BlobStore, obj *storage.KnowledgeObject) error {
 	for _, content := range []string{obj.RawContent, obj.TextContent} {
 		key, ok := blob.BlobKey(content)
@@ -44,21 +45,21 @@ func copyBlobs(ctx context.Context, src, dst storage.BlobStore, obj *storage.Kno
 			continue
 		}
 		if have, err := dst.Exists(ctx, key); err != nil {
-			return fmt.Errorf("blob %s: check target: %w", key, err)
+			return fmt.Errorf("object %q: blob %s: check target: %w", obj.ID, key, err)
 		} else if have {
 			continue
 		}
 		if src == nil {
-			return &ObjectError{ID: obj.ID, Err: fmt.Errorf("blob %s: %w", key, blob.ErrNoStore)}
+			return fmt.Errorf("object %q: blob %s: %w", obj.ID, key, blob.ErrNoStore)
 		}
 		rc, meta, err := src.Get(ctx, key)
 		if err != nil {
-			return &ObjectError{ID: obj.ID, Err: fmt.Errorf("blob %s: read source: %w", key, err)}
+			return objectBlobError(obj.ID, fmt.Errorf("blob %s: read source: %w", key, err))
 		}
 		err = dst.Put(ctx, key, rc, meta)
 		rc.Close()
 		if err != nil {
-			return fmt.Errorf("blob %s: write target: %w", key, err)
+			return fmt.Errorf("object %q: blob %s: write target: %w", obj.ID, key, err)
 		}
 	}
 	return nil
@@ -178,10 +179,7 @@ func (p *LocalPusher) Push(
 		}
 		// Content first: a row never lands without the blob its ref names.
 		if err := copyBlobs(ctx, p.blobs, targetBlobs, obj); err != nil {
-			if oe := (*ObjectError)(nil); errors.As(err, &oe) {
-				return fmt.Errorf("federation local push: %w", err)
-			}
-			return fmt.Errorf("federation local push: object %q: %w", obj.ID, err)
+			return fmt.Errorf("federation local push: %w", err)
 		}
 		if err := objs.Create(ctx, obj); err != nil {
 			// Defensive: a concurrent peer may have inserted this row
