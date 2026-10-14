@@ -20,6 +20,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -85,7 +86,9 @@ func newService() (*service.Service, func(), error) {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load detectors: %v\n", err)
 	}
 
-	svc := service.New(driver, queue, pipes, engine, "", nil, *cfg)
+	// Registry requests carry the token `ctxt registry login` stored.
+	svc := service.NewWithOptions(driver, queue, pipes, engine, "", nil,
+		[]service.Option{service.WithRegistryTokens(registry.KeychainTokens())}, *cfg)
 	cleanup := func() { driver.Close(context.Background()) }
 
 	// Ensure bundled default registry is always present in the cache.

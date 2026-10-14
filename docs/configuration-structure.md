@@ -169,6 +169,16 @@ stores them in the OS keychain. `registries[].auth` holds only the
 mechanism (`type`) and, for `api_key`, the header name (`header_name`,
 default `X-API-Key`).
 
+Every request ctxt makes to a registry with an `auth.type` (manifest,
+entity index, entity pull, entitlements, step download, bookmark search)
+carries its stored token: `bearer` and `oauth2` as `Authorization: Bearer
+<token>`, `api_key` as `<header_name>: <token>`. The token goes only to
+the host in the registry's `url`, same scheme; a redirect elsewhere drops
+it. With no token stored the request goes out unauthenticated, and a 401
+or 403 names `ctxt registry login <name>`. A registry without `auth` is
+public: the keychain is never read for it. `ctxt config doctor` rejects an
+unknown `auth.type`.
+
 ---
 
 ## Top-Level Keys

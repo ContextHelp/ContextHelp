@@ -59,6 +59,13 @@ type Service struct {
 	// nil in tests and outside dpkms serve; non-nil when the daemon
 	// has wired kit/runtime/policy on the bus.
 	policyPub domain.EventPublisher
+
+	// registryTokens is where stored registry tokens are read from
+	// (WithRegistryTokens); registryAuth applies them to every request
+	// to a configured registry. Both nil: registry requests go
+	// unauthenticated.
+	registryTokens registrysync.TokenSource
+	registryAuth   *registrysync.Credentials
 }
 
 // Option configures a Service at construction time. Existing call
@@ -73,6 +80,14 @@ type Option func(*Service)
 // publisher from internal/policy.Init.
 func WithPolicyPublisher(p domain.EventPublisher) Option {
 	return func(s *Service) { s.policyPub = p }
+}
+
+// WithRegistryTokens makes every request to a configured registry
+// (manifest fetch, entity sync, entitlements, entity pull, step download,
+// bookmark search) carry that registry's stored token per its auth
+// config. ctxt passes the OS keychain store.
+func WithRegistryTokens(tokens registrysync.TokenSource) Option {
+	return func(s *Service) { s.registryTokens = tokens }
 }
 
 // New creates a new service instance.
@@ -110,6 +125,10 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 		if opt != nil {
 			opt(s)
 		}
+	}
+	if s.registryTokens != nil {
+		s.registryAuth = registrysync.NewCredentials(c.Registries, s.registryTokens)
+		discovery.WithCredentials(s.registryAuth)
 	}
 	if store != nil {
 		s.pipelineSvc = newPipelineService(store.Pipelines(), s.policyPub)
@@ -938,7 +957,8 @@ func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) 
 	syncer := registrysync.New(s.Store.Entities()).
 		WithEntitlements(s.Store.Entitlements()).
 		WithRegistryStore(s.Store.Registries()).
-		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures)
+		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures).
+		WithCredentials(s.registryAuth)
 	result, err := syncer.Sync(ctx, cfg)
 	if err != nil {
 		return 0, fmt.Errorf("sync registry entities: %w", err)
@@ -977,7 +997,8 @@ func (s *Service) SyncAllRegistriesWithReconciliation(
 
 	syncer := registrysync.New(s.Store.Entities()).
 		WithRegistryStore(s.Store.Registries()).
-		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures)
+		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures).
+		WithCredentials(s.registryAuth)
 	multi := registrysync.MultiSyncConfig{
 		Registries:  s.Cfg.Registries,
 		Strategy:    strategy,
@@ -1050,12 +1071,15 @@ func (s *Service) fetchRemoteEntityDefinition(ctx context.Context, registryURL, 
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.registryAuth.Client(http.DefaultClient).Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
+	if err := s.registryAuth.CheckResponse(resp); err != nil {
+		return nil, err
+	}
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, storage.ErrEntityDefinitionUnavailable
 	}
@@ -1929,7 +1953,7 @@ func (s *Service) SearchRemoteBookmarks(
 		return nil, nil, nil
 	}
 
-	client := registrysync.NewBookmarkSearchClient(timeout)
+	client := registrysync.NewBookmarkSearchClient(timeout).WithCredentials(s.registryAuth)
 	raw := registrysync.ScatterGather(ctx, client, urls, query)
 	merged := registrysync.MergeResults(raw)
 	return merged, raw, nil

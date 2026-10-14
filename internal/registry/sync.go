@@ -79,6 +79,7 @@ type Syncer struct {
 	guard             *graph.EntityIntegrityGuard
 	trustGate         *TrustGate
 	client            *http.Client
+	creds             *Credentials
 	requireSignatures bool
 }
 
@@ -108,6 +109,16 @@ func (s *Syncer) WithEntitlements(es storage.EntitlementStore) *Syncer {
 // manifests for public key material and update trust status after each sync.
 func (s *Syncer) WithRegistryStore(rs storage.RegistryStore) *Syncer {
 	s.registryStore = rs
+	return s
+}
+
+// WithCredentials authenticates every request the syncer makes (entity
+// index, signature sidecar, entitlements) with the stored token of the
+// registry it targets. A 401/403 from a registry becomes an
+// ErrRegistryAuth naming the login command.
+func (s *Syncer) WithCredentials(c *Credentials) *Syncer {
+	s.creds = c
+	s.client = c.Client(s.client)
 	return s
 }
 
@@ -144,8 +155,8 @@ func (s *Syncer) Sync(ctx context.Context, cfg config.RegistryConfig) (*SyncResu
 
 	// Entitlement pre-check: call /entitlements if declared in manifest and store is wired.
 	if cfg.EntitlementURL != "" && s.entitlements != nil {
-		checker := NewEntitlementChecker(s.entitlements)
-		if _, err := checker.FetchAndStore(ctx, cfg.Name, cfg.EntitlementURL, ""); err != nil {
+		checker := NewEntitlementChecker(s.entitlements).WithCredentials(s.creds)
+		if _, err := checker.FetchAndStore(ctx, cfg.Name, cfg.EntitlementURL); err != nil {
 			return nil, fmt.Errorf("entitlement check for %s: %w", cfg.Name, err)
 		}
 	}
@@ -449,6 +460,9 @@ func (s *Syncer) fetchEntityIndex(ctx context.Context, registryURL string) ([]En
 	}
 	defer resp.Body.Close()
 
+	if err := s.creds.CheckResponse(resp); err != nil {
+		return nil, err
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("registry returned HTTP %d", resp.StatusCode)
 	}
@@ -502,6 +516,9 @@ func (s *Syncer) fetchAndVerifyEntityIndex(ctx context.Context, registryURL stri
 	}
 	defer resp.Body.Close()
 
+	if err := s.creds.CheckResponse(resp); err != nil {
+		return nil, err
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("registry returned HTTP %d", resp.StatusCode)
 	}

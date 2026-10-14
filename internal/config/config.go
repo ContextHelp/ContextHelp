@@ -930,10 +930,31 @@ const (
 	RegistryAuthOAuth2 RegistryAuthType = "oauth2"
 )
 
+// DefaultRegistryAPIKeyHeader is the header api_key auth uses when
+// header_name is unset.
+const DefaultRegistryAPIKeyHeader = "X-API-Key"
+
+// Known reports whether t is a supported auth mechanism. The empty type
+// (no auth block) is not one: such a registry is public.
+func (t RegistryAuthType) Known() bool {
+	switch t {
+	case RegistryAuthBearer, RegistryAuthAPIKey, RegistryAuthOAuth2:
+		return true
+	}
+	return false
+}
+
 // RegistryAuthConfig holds auth metadata for a registry.
 // Tokens are NEVER stored here — they live in the OS keychain.
+//
+// A registry with a Type gets its stored token (ctxt registry login) on
+// every request to its host: bearer and oauth2 as "Authorization: Bearer
+// <token>", api_key as "<HeaderName>: <token>". A registry without one is
+// public: no token is looked up or sent.
 type RegistryAuthConfig struct {
 	// Type selects the auth mechanism: bearer | api_key | oauth2.
+	// oauth2 sends a stored access token as a bearer token; there is no
+	// refresh flow.
 	Type RegistryAuthType `mapstructure:"type" yaml:"type"`
 	// HeaderName overrides the HTTP header used for api_key auth.
 	// Defaults to "X-API-Key". Ignored for bearer and oauth2 types.

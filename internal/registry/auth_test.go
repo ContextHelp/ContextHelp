@@ -56,14 +56,14 @@ func TestTokenStore_DeleteMissing(t *testing.T) {
 }
 
 func TestTokenStore_SetEmptyName(t *testing.T) {
-	s := NewTokenStore()
+	s := &TokenStore{kc: newTestResolver(t)}
 	err := s.Set("", "sometoken")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "name must not be empty")
 }
 
 func TestTokenStore_SetEmptyToken(t *testing.T) {
-	s := NewTokenStore()
+	s := &TokenStore{kc: newTestResolver(t)}
 	err := s.Set("myregistry", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "token must not be empty")

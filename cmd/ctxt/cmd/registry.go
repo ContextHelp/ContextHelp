@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -806,6 +807,11 @@ func runRegistryLogin(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Token stored securely in keychain for registry %q.\n", name)
+	if r, ok := registryConfigByName(name); ok && r.Auth.Type == "" {
+		fmt.Fprintf(cmd.ErrOrStderr(),
+			"note: registry %q has no auth.type, so the token is not sent; set registries[].auth.type (bearer | api_key | oauth2)\n",
+			name)
+	}
 	return nil
 }
 
@@ -828,15 +834,21 @@ func runRegistryLogout(cmd *cobra.Command, args []string) error {
 
 // registryExistsInConfig reports whether name appears in cfg.Registries.
 func registryExistsInConfig(name string) bool {
+	_, ok := registryConfigByName(name)
+	return ok
+}
+
+// registryConfigByName returns the cfg.Registries entry named name.
+func registryConfigByName(name string) (config.RegistryConfig, bool) {
 	if cfg == nil {
-		return false
+		return config.RegistryConfig{}, false
 	}
 	for _, r := range cfg.Registries {
 		if r.Name == name {
-			return true
+			return r, true
 		}
 	}
-	return false
+	return config.RegistryConfig{}, false
 }
 
 // runRegistryCapabilities fetches the cached manifest for name and runs the
@@ -963,8 +975,16 @@ func runRegistrySearch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("index-url flag: %w", err)
 	}
 
+	// An index served by a configured registry gets that registry's token.
+	var regs []config.RegistryConfig
+	if cfg != nil {
+		regs = cfg.Registries
+	}
+	client := registry.NewCredentials(regs, registry.KeychainTokens()).
+		Client(&http.Client{Timeout: 15 * time.Second})
+
 	ctx := context.Background()
-	idx, err := registry.FetchIndex(ctx, nil, indexURL)
+	idx, err := registry.FetchIndex(ctx, client, indexURL)
 	if err != nil {
 		return fmt.Errorf("fetch registry index: %w", err)
 	}

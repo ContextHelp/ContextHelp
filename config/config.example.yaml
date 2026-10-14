@@ -60,37 +60,26 @@ queue:
 
 # Registry Configuration
 # External sources of taxonomy, weights, or bookmarks
+# Tokens never go here: `ctxt registry login <name>` stores them in the OS
+# keychain, and every request to a registry with an `auth.type` carries its
+# token. A registry without `auth` is public; no token is read or sent.
 registries:
-  enabled:
-    # Local taxonomy registry (file-based)
-    - name: local-taxonomy
-      url: file://~/.config/contexthelp/taxonomy/
-      type: taxonomy
-      # No auth required for local registries
+  # Local taxonomy registry (file-based, no auth)
+  - name: local-taxonomy
+    url: file://~/.config/contexthelp/taxonomy/
 
-    # External UX patterns taxonomy with authentication
-    - name: uxpatterns
-      url: https://api.uxpatterns.io
-      type: taxonomy
-      auth:
-        # The token itself: config files do not expand env vars.
-        # Keep a real one out of version control.
-        token: <uxpatterns-token>
+  # Authenticated registry: "Authorization: Bearer <token>"
+  - name: uxpatterns
+    url: https://api.uxpatterns.io
+    auth:
+      type: bearer            # bearer | api_key | oauth2
 
-    # Growth weights registry
-    - name: growth-weights
-      url: https://weights.growth.dev
-      type: weights
-      # Optional: Add auth if required
-      # auth:
-      #   token: <growth-weights-token>
-
-    # Example: Shared bookmarks registry
-    # - name: team-bookmarks
-    #   url: https://bookmarks.company.internal
-    #   type: bookmarks
-    #   auth:
-    #     token: <team-bookmarks-token>
+  # API-key registry: "<header_name>: <token>"
+  # - name: team-bookmarks
+  #   url: https://bookmarks.company.internal
+  #   auth:
+  #     type: api_key
+  #     header_name: X-API-Key   # default
 
 # Pipeline Configuration
 # Controls pipeline availability and default routing
