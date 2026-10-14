@@ -41,5 +41,15 @@ pkgs=$(printf '%s\n' $owned | sort -u)
 # .golangci.yml build-tags) load as packages instead of failing with
 # "build constraints exclude all Go files"; they select no file in any
 # other package.
+tags=fts5,e2e,watch_e2e
+
+# Drop packages this tag set excludes entirely (test/e2e/federation
+# carries only federation_e2e). `go vet ./...` skips them the same way;
+# naming one fails with "build constraints exclude all Go files".
 # shellcheck disable=SC2086 # deliberate word-splitting of the package list
-CGO_ENABLED=1 go vet -tags fts5,e2e,watch_e2e $pkgs
+pkgs=$(CGO_ENABLED=1 go list -e -tags "$tags" \
+	-f '{{if or .GoFiles .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' $pkgs)
+[ -z "$pkgs" ] && exit 0
+
+# shellcheck disable=SC2086 # deliberate word-splitting of the package list
+CGO_ENABLED=1 go vet -tags "$tags" $pkgs

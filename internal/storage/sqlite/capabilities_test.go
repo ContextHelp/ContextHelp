@@ -112,7 +112,7 @@ func TestProbeCapabilities_AggregateProbeCannotDetectAbsence(t *testing.T) {
 
 // TestNew_ProbesBeforeMigrations asserts the probe runs on the real open path.
 func TestNew_ProbesBeforeMigrations(t *testing.T) {
-	d, err := New(filepath.Join(t.TempDir(), "store.db"))
+	d, err := New(filepath.Join(t.TempDir(), "store.db"), testBlobStore(t))
 	if err != nil {
 		t.Fatalf("New on canonical build: %v", err)
 	}

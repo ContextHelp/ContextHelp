@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // TestPgMigration16_BackfillsTextContent migrates a schema-15 database
@@ -17,7 +18,7 @@ import (
 // is always raw_content.
 func TestPgMigration16_BackfillsTextContent(t *testing.T) {
 	dsn, _ := freshDatabaseDSN(t)
-	drv, err := pgdrv.New(dsn)
+	drv, err := pgdrv.New(dsn, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("postgres.New: %v", err)
 	}

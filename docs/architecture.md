@@ -377,7 +377,7 @@ dPKMS is the execution and data layer. It is designed to be **agent-ready**, not
 
 **Storage + Indexing**
 - Local-first database with SQLite default (Postgres optional)
-- Pluggable blob store for oversized content (images, audio, video, documents) — backends: `local`, `s3`-compatible (AWS / R2 / B2 / MinIO / Spaces / Wasabi), `garage`, `stub`. See [`docs/ctxt/configuration.md`](ctxt/configuration.md#blob-storage-configuration)
+- Pluggable blob store for oversized content (images, audio, video, documents) — backends: `local`, `s3`-compatible (AWS / R2 / B2 / MinIO / Spaces / Wasabi), `garage`. See [`docs/ctxt/configuration.md`](ctxt/configuration.md#blob-storage-configuration)
 - FTS indexing (SQLite FTS5)
 - Vector index hook (pluggable interface)
 - Graph adjacency indexes (object ↔ entity, entity ↔ entity)

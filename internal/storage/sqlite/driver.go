@@ -3,13 +3,13 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	blobstub "github.com/ideacrafterslabs/ctxt/internal/storage/blob/stub"
 )
 
 // Driver implements storage.StorageDriver for SQLite.
@@ -39,8 +39,18 @@ type Driver struct {
 	searchHistory *SearchHistoryStore
 }
 
-// New creates a new SQLite driver for the given database path.
-func New(path string) (*Driver, error) {
+// ErrNoBlobStore is returned by New when it is given no blob store.
+// Content above storage.blob.threshold is written to that store, so a
+// driver without one would lose it.
+var ErrNoBlobStore = errors.New("sqlite: blob store is required")
+
+// New creates a new SQLite driver for the given database path. blobs is
+// where externalized content lives: build it with blob.New from
+// storage.blob, or open both through storageutil.Open.
+func New(path string, blobs storage.BlobStore) (*Driver, error) {
+	if blobs == nil {
+		return nil, ErrNoBlobStore
+	}
 	sqlite_vec.Auto()
 	// Encode pragmas in the DSN so every pooled connection inherits them.
 	// go-sqlite3 requires file: URI prefix for query parameters to be
@@ -74,7 +84,7 @@ func New(path string) (*Driver, error) {
 	d.feedItems = &FeedItemStore{db: db}
 	d.batches = &BatchStore{db: db}
 	d.detectors = &DetectorStore{db: db}
-	d.blobs = blobstub.New()
+	d.blobs = blobs
 	d.proximity = &ProximityStore{db: db}
 	d.watches = &WatchStore{db: db}
 	d.attachments = &AttachmentStore{db: db}
@@ -85,9 +95,6 @@ func New(path string) (*Driver, error) {
 	d.searchHistory = &SearchHistoryStore{db: db}
 	return d, nil
 }
-
-// SetBlobs allows injection of a custom BlobStore implementation.
-func (d *Driver) SetBlobs(bs storage.BlobStore) { d.blobs = bs }
 
 func (d *Driver) Init(ctx context.Context) error {
 	return d.Migrate(ctx)

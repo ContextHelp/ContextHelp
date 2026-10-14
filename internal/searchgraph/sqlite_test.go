@@ -14,6 +14,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // TestBuildAgainstSQLite runs the builder over a real SQLite store: link
@@ -141,7 +142,7 @@ func TestBuildAgainstSQLite(t *testing.T) {
 func graphSQLite(t *testing.T) *sqlite.Driver {
 	t.Helper()
 	ctx := context.Background()
-	drv, err := sqlite.New(filepath.Join(t.TempDir(), "graph.db"))
+	drv, err := sqlite.New(filepath.Join(t.TempDir(), "graph.db"), storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}

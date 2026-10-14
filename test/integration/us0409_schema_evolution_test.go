@@ -12,12 +12,13 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // TestUS0409_SchemaEvolution verifies per-profile schema co-evolution.
 func TestUS0409_SchemaEvolution(t *testing.T) {
 	dir := t.TempDir()
-	driver, err := sqlite.New(dir + "/test.db")
+	driver, err := sqlite.New(dir+"/test.db", storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	ctx := context.Background()
 	require.NoError(t, driver.Init(ctx))

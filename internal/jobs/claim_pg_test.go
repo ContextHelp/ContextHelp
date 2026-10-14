@@ -24,6 +24,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // pgBaseDSN mirrors the integration env contract: POSTGRES_DSN wins,
@@ -73,7 +74,7 @@ func sharedPostgres(t *testing.T) (a, b storage.StorageDriver) {
 	require.NoError(t, err)
 	u.Path = "/" + name
 	open := func() storage.StorageDriver {
-		d, err := postgres.New(u.String())
+		d, err := postgres.New(u.String(), storageutil.NewTestBlobStore(t))
 		require.NoError(t, err)
 		require.NoError(t, d.Init(context.Background()))
 		t.Cleanup(func() { _ = d.Close(context.Background()) })

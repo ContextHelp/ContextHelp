@@ -12,6 +12,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // newRegistry stands up a real sqlite driver (per the no-mocks policy) and
@@ -22,7 +23,7 @@ import (
 func newRegistry(t testing.TB) (*registry.Store, *sqlite.Driver) {
 	t.Helper()
 	dir := t.TempDir()
-	d, err := sqlite.New(filepath.Join(dir, "test.db"))
+	d, err := sqlite.New(filepath.Join(dir, "test.db"), storageutil.NewTestBlobStore(t))
 	require.NoError(t, err, "sqlite.New")
 	require.NoError(t, d.Init(context.Background()), "driver.Init")
 	t.Cleanup(func() { _ = d.Close(context.Background()) })

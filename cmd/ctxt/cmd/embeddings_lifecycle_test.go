@@ -29,6 +29,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // Lifecycle fixture models: 4-dimension vectors written straight into the
@@ -346,7 +347,7 @@ func TestEmbeddingsSetDefault_DryRun(t *testing.T) {
 // default per query, so there is nothing to invalidate.
 func TestEmbeddingsSetDefault_VisibleToOtherHandle(t *testing.T) {
 	db := newLifecycleDB(t)
-	other, err := sqlite.New(dbFile(db))
+	other, err := sqlite.New(dbFile(db), storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/federation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // TestFederation_AsyncPush_ObjectAppearsAtMergedDB verifies AC #1:
@@ -100,7 +101,7 @@ func TestFederation_AsyncPush_CrashRecovery(t *testing.T) {
 	// matches the "nothing to recover" branch.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path)
+	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path, storageutil.NewTestBlobStore(t))
 	if err := pusher.Push(ctx, []storage.KnowledgeObject{}, nil, nil); err != nil {
 		t.Logf("Push on canceled empty batch: %v (expected nil or canceled)", err)
 	}

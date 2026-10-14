@@ -17,11 +17,14 @@ import (
 type LocalPusher struct {
 	name       string
 	targetPath string
+	blobs      storage.BlobStore
 }
 
-// NewLocalPusher returns a LocalPusher that writes to targetPath.
-func NewLocalPusher(name, targetPath string) *LocalPusher {
-	return &LocalPusher{name: name, targetPath: targetPath}
+// NewLocalPusher returns a LocalPusher that writes to targetPath. Pushed
+// objects keep their blob:// refs, which resolve in blobs (the source's
+// store); the pusher copies rows only, never blob content.
+func NewLocalPusher(name, targetPath string, blobs storage.BlobStore) *LocalPusher {
+	return &LocalPusher{name: name, targetPath: targetPath, blobs: blobs}
 }
 
 // Name returns the federation entry name from config.
@@ -60,7 +63,7 @@ func (p *LocalPusher) Push(
 		return fmt.Errorf("federation local push: resolve target %q: %w", p.targetPath, err)
 	}
 
-	drv, err := storageutil.NewDriver("sqlite", targetPath)
+	drv, err := storageutil.NewDriver("sqlite", targetPath, p.blobs)
 	if err != nil {
 		return fmt.Errorf("federation local push: open target %q: %w", targetPath, err)
 	}

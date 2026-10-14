@@ -13,6 +13,7 @@ import (
 	"time"
 
 	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
@@ -25,7 +26,7 @@ import (
 func freshIntegrationDriver(t *testing.T) (*pgdrv.Driver, string) {
 	t.Helper()
 	dsn, name := freshDatabaseDSN(t)
-	drv, err := pgdrv.New(dsn)
+	drv, err := pgdrv.New(dsn, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("postgres.New(fresh): %v", err)
 	}

@@ -9,7 +9,7 @@ import (
 func newTestDriver(t testing.TB) *Driver {
 	t.Helper()
 	dir := t.TempDir()
-	d, err := New(filepath.Join(dir, "test.db"))
+	d, err := New(filepath.Join(dir, "test.db"), testBlobStore(t))
 	if err != nil {
 		t.Fatalf("new driver: %v", err)
 	}
@@ -22,7 +22,7 @@ func newTestDriver(t testing.TB) *Driver {
 
 func TestInit(t *testing.T) {
 	dir := t.TempDir()
-	d, err := New(filepath.Join(dir, "test.db"))
+	d, err := New(filepath.Join(dir, "test.db"), testBlobStore(t))
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestHealth(t *testing.T) {
 
 func TestClose(t *testing.T) {
 	dir := t.TempDir()
-	d, err := New(filepath.Join(dir, "test.db"))
+	d, err := New(filepath.Join(dir, "test.db"), testBlobStore(t))
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}

@@ -133,7 +133,7 @@ func (s *graphStore) alias(v string) string {
 func seedGraphStore(t *testing.T, typ, path string, withModel bool) *graphStore {
 	t.Helper()
 	ctx := context.Background()
-	drv, err := storageutil.NewDriver(typ, path)
+	drv, err := storageutil.NewDriver(typ, path, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}

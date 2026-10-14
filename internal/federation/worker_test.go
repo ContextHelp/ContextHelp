@@ -51,7 +51,7 @@ func (p *fakePusher) PushedCount() int {
 func newSourceDB(t *testing.T, ids ...string) (storage.StorageDriver, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "src.db")
-	drv, err := storageutil.NewDriver("sqlite", path)
+	drv, err := storageutil.NewDriver("sqlite", path, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("newSourceDB: %v", err)
 	}

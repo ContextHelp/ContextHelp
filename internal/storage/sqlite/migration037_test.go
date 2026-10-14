@@ -27,7 +27,7 @@ func TestMigration037_UpgradedDatabase(t *testing.T) {
 	ctx := context.Background()
 	legacy := seedPre037Database(t, path)
 
-	d, err := New(path)
+	d, err := New(path, testBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}

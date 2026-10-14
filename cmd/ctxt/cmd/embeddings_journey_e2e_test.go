@@ -42,6 +42,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 const journeyCassettes = "testdata/cassettes/embeddings-journey"
@@ -190,7 +191,7 @@ func sqliteJourneyStore(t *testing.T) *journeyStore {
 	return &journeyStore{
 		kind: "sqlite", storageType: "sqlite", storagePath: path, dialect: indexsig.DialectSQLite,
 		open: func() (*sql.DB, func(), error) {
-			d, err := sqlite.New(path)
+			d, err := sqlite.New(path, storageutil.NewTestBlobStore(t))
 			if err != nil {
 				return nil, nil, err
 			}

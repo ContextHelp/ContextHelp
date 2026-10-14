@@ -127,7 +127,7 @@ func openSessionStore(ctx context.Context) (storage.StorageDriver, error) {
 	if cfg.Storage.Path == "" {
 		return nil, errors.New("storage path not configured")
 	}
-	driver, err := storageutil.NewDriver(storageType, cfg.Storage.Path)
+	driver, err := storageutil.Open(storageType, cfg.Storage.Path, cfg.Storage.Blob)
 	if err != nil {
 		return nil, fmt.Errorf("init storage: %w", err)
 	}

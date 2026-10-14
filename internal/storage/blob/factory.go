@@ -7,10 +7,10 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 	s3store "github.com/ideacrafterslabs/ctxt/internal/storage/blob/s3"
-	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/stub"
 )
 
-// New creates a BlobStore based on the configuration.
+// New creates the BlobStore that storage.blob configures. It is the one
+// constructor for the blob store a storage driver writes through.
 func New(cfg config.BlobConfig) (storage.BlobStore, error) {
 	backend := cfg.Backend
 	if backend == "" {
@@ -19,6 +19,9 @@ func New(cfg config.BlobConfig) (storage.BlobStore, error) {
 
 	switch backend {
 	case "local":
+		if cfg.Local.Path == "" {
+			return nil, fmt.Errorf("blob: local backend requires storage.blob.local.path")
+		}
 		return local.New(cfg.Local.Path)
 	case "s3":
 		return s3store.New(cfg.S3)
@@ -27,10 +30,8 @@ func New(cfg config.BlobConfig) (storage.BlobStore, error) {
 			return nil, fmt.Errorf("blob: garage backend requires s3.endpoint (e.g. http://localhost:3900)")
 		}
 		return s3store.New(garageDefaults(cfg.S3))
-	case "stub":
-		return stub.New(), nil
 	default:
-		return nil, fmt.Errorf("blob: unknown backend %q (valid: local, s3, garage, stub)", backend)
+		return nil, fmt.Errorf("blob: unknown backend %q (valid: local, s3, garage)", backend)
 	}
 }
 

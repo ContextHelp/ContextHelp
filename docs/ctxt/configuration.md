@@ -44,12 +44,11 @@ storage:
   path: ~/.local/share/contexthelp/bookmarks.db
   concurrency: safe
   options: {}
-
-blob:
-  backend: local
-  threshold: 65536
-  local:
-    path: ~/.local/share/contexthelp/blobs
+  blob:
+    backend: local
+    threshold: 65536
+    local:
+      path: ~/.local/share/contexthelp/blobs
 
 ingestion:
   mode: jobs
@@ -280,22 +279,29 @@ configured threshold, `KnowledgeObject.RawContent` is replaced with a
 `blob://<sha256>` reference; the original is fetched on demand via
 `BlobStore.Get`. Below the threshold, content stays inline.
 
+The keys live under `storage.blob`. `dpkms serve` and every command
+that opens the store use this blob store. With nothing configured it is
+the `local` backend in `blobs/` under the data directory. An unknown
+backend, or `local` with an empty `local.path`, stops the command at
+startup.
+
 ```yaml
-blob:
-  backend: local | s3 | garage | stub
-  threshold: 65536               # bytes; 0 disables externalization
-  local:
-    path: ~/.local/share/contexthelp/blobs
-  s3:
-    endpoint: ""                 # custom endpoint for non-AWS providers
-    region: us-east-1
-    bucket: ""
-    prefix: ""                   # key prefix within the bucket
-    access_key: ""               # or AWS_ACCESS_KEY_ID env var
-    secret_key: ""               # or AWS_SECRET_ACCESS_KEY env var
-    use_path_style: false        # true for MinIO / Garage / many self-hosted
-    presign_expiry: 1h
-    max_retries: 3
+storage:
+  blob:
+    backend: local | s3 | garage
+    threshold: 65536               # bytes; 0 disables externalization
+    local:
+      path: ~/.local/share/contexthelp/blobs
+    s3:
+      endpoint: ""                 # custom endpoint for non-AWS providers
+      region: us-east-1
+      bucket: ""
+      prefix: ""                   # key prefix within the bucket
+      access_key: ""               # or AWS_ACCESS_KEY_ID env var
+      secret_key: ""               # or AWS_SECRET_ACCESS_KEY env var
+      use_path_style: false        # true for MinIO / Garage / many self-hosted
+      presign_expiry: 1h
+      max_retries: 3
 ```
 
 ## Backends
@@ -305,7 +311,6 @@ blob:
 | `local` | Default. Single-machine; sharded directory under `local.path`. |
 | `s3` | AWS S3, Cloudflare R2, Backblaze B2, DigitalOcean Spaces, MinIO, Wasabi, Linode Object Storage, etc. SigV4 with optional custom `endpoint`. |
 | `garage` | [Garage](https://garagehq.deuxfleurs.fr) — self-hosted, distributed, Rust-built S3-compat object store. Preset that auto-applies `use_path_style: true` and defaults `region: garage`. Requires `s3.endpoint`. |
-| `stub` | Tests / dev. `Put` succeeds silently, `Get` returns not-found. |
 
 ## Key path layout (s3 / garage / local)
 
@@ -316,44 +321,47 @@ blob:
 ### Cloudflare R2
 
 ```yaml
-blob:
-  backend: s3
-  threshold: 65536
-  s3:
-    endpoint: https://<account>.r2.cloudflarestorage.com
-    region: auto
-    bucket: ctxt-blobs
-    access_key: <r2-access-key-id>
-    secret_key: <r2-secret-access-key>
+storage:
+  blob:
+    backend: s3
+    threshold: 65536
+    s3:
+      endpoint: https://<account>.r2.cloudflarestorage.com
+      region: auto
+      bucket: ctxt-blobs
+      access_key: <r2-access-key-id>
+      secret_key: <r2-secret-access-key>
 ```
 
 ### MinIO (self-hosted)
 
 ```yaml
-blob:
-  backend: s3
-  threshold: 65536
-  s3:
-    endpoint: http://minio:9000
-    region: us-east-1
-    bucket: ctxt-blobs
-    use_path_style: true            # required for MinIO
-    access_key: <minio-access-key>
-    secret_key: <minio-secret-key>
+storage:
+  blob:
+    backend: s3
+    threshold: 65536
+    s3:
+      endpoint: http://minio:9000
+      region: us-east-1
+      bucket: ctxt-blobs
+      use_path_style: true            # required for MinIO
+      access_key: <minio-access-key>
+      secret_key: <minio-secret-key>
 ```
 
 ### Garage (self-hosted, distributed)
 
 ```yaml
-blob:
-  backend: garage
-  threshold: 65536
-  s3:
-    endpoint: http://garage:3900
-    bucket: ctxt-blobs
-    access_key: <garage-key-id>
-    secret_key: <garage-secret-key>
-    # use_path_style and region defaulted by the garage preset
+storage:
+  blob:
+    backend: garage
+    threshold: 65536
+    s3:
+      endpoint: http://garage:3900
+      bucket: ctxt-blobs
+      access_key: <garage-key-id>
+      secret_key: <garage-secret-key>
+      # use_path_style and region defaulted by the garage preset
 ```
 
 Config files do not expand `${VAR}`: `access_key` and `secret_key` are the literal credentials. To keep them out of the file, leave both keys unset and export `CTXT_BLOB_S3_ACCESS_KEY` and `CTXT_BLOB_S3_SECRET_KEY`, which override the file.
@@ -370,8 +378,7 @@ which embeds a complete `garage.toml` and bootstrap sequence.
   `RawContent` with `blob://<hash>`, set
   `Metadata.blob_key`, `blob_original_size`, `blob_content_type`.
 - `threshold: 0` — disables externalization entirely. Useful when you
-  want all content in SQLite (small corpora) or when running with
-  `backend: stub`.
+  want all content in SQLite (small corpora).
 
 ## Presigned URLs
 

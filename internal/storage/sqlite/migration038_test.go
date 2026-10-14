@@ -14,7 +14,7 @@ import (
 // the schema an install that stopped at that release still carries.
 func openAtVersion(t *testing.T, path string, version int) *Driver {
 	t.Helper()
-	d, err := New(path)
+	d, err := New(path, testBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestMigration038_UpgradedDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d, err := New(path)
+	d, err := New(path, testBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}

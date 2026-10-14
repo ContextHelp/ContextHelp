@@ -13,6 +13,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	kitcli "hop.top/kit/go/console/cli"
@@ -95,11 +96,16 @@ func openDB() (*sqlite.Driver, func(), error) {
 		return nil, nil, fmt.Errorf("storage path not configured")
 	}
 
-	driver, err := sqlite.New(storagePath)
+	opened, err := storageutil.Open(storageType, storagePath, cfg.Storage.Blob)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open database: %w", err)
 	}
 	ctx := context.Background()
+	driver, ok := opened.(*sqlite.Driver)
+	if !ok {
+		_ = opened.Close(ctx)
+		return nil, nil, fmt.Errorf("open database: %T is not a sqlite driver", opened)
+	}
 	if err := driver.Init(ctx); err != nil {
 		driver.Close(ctx)
 		return nil, nil, fmt.Errorf("init database: %w", err)

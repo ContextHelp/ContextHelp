@@ -34,7 +34,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
-	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 
 	kitbus "hop.top/kit/go/runtime/bus"
@@ -145,21 +144,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// 1. Init storage.
-	storageType := cfg.Storage.Type
-	if storageType == "" {
-		storageType = "sqlite"
-	}
-	storagePath := cfg.Storage.Path
-	if storagePath == "" {
-		storagePath = "dpkms.db"
-	}
-
-	driver, err := storageutil.NewDriver(storageType, storagePath)
+	_, dbPath := serveStorageTarget(cfg)
+	driver, err := openServeStorage(context.Background(), cfg)
 	if err != nil {
-		return fmt.Errorf("init storage: %w", err)
-	}
-	if err := driver.Init(context.Background()); err != nil {
-		return fmt.Errorf("init storage: %w", err)
+		return err
 	}
 	fmt.Println("Storage initialized")
 
@@ -404,7 +392,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		GRPCPort:         grpcPort,
 		CookieBridgePort: cookieBridgePort,
 		BrowserPort:      browserPort,
-		DBPath:           storagePath,
+		DBPath:           dbPath,
 		StartedAt:        time.Now(),
 	}); err != nil {
 		// Non-fatal: ps won't show this instance but serve still works.

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // Every lowercase allowlisted identifier is an objects column; each must
@@ -14,7 +15,7 @@ import (
 // predicate on a column a migration dropped.
 func TestAllowedIdentifiers_ColumnsExistOnMigratedSchema(t *testing.T) {
 	ctx := context.Background()
-	d, err := sqlite.New(filepath.Join(t.TempDir(), "selector.db"))
+	d, err := sqlite.New(filepath.Join(t.TempDir(), "selector.db"), storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}

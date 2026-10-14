@@ -10,17 +10,29 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/require"
 )
+
+// NewTestBlobStore returns a local blob store rooted in a temp directory,
+// for tests that construct a storage driver directly.
+func NewTestBlobStore(t testing.TB) storage.BlobStore {
+	t.Helper()
+	bs, err := local.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new test blob store: %v", err)
+	}
+	return bs
+}
 
 // NewTestDriver creates an initialized SQLite driver in a temp directory.
 // It registers cleanup to close the driver when the test finishes.
 func NewTestDriver(t *testing.T) storage.StorageDriver {
 	t.Helper()
 	dir := t.TempDir()
-	driver, err := sqlite.New(filepath.Join(dir, "test.db"))
+	driver, err := sqlite.New(filepath.Join(dir, "test.db"), NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("new test driver: %v", err)
 	}

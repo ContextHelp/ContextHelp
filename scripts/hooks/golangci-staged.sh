@@ -60,5 +60,14 @@ done | sort -u)
 
 [ -z "$pkgs" ] && exit 0
 
+# Drop packages the lint tag set (.golangci.yml run.build-tags; keep in
+# sync) excludes entirely, e.g. test/e2e/federation (federation_e2e
+# only). `golangci-lint run ./...` skips them; naming one fails the
+# type check with "build constraints exclude all Go files".
+# shellcheck disable=SC2086 # deliberate word-splitting of the package list
+pkgs=$(CGO_ENABLED=1 go list -e -tags integration,e2e,fts5,watch_e2e \
+	-f '{{if or .GoFiles .TestGoFiles .XTestGoFiles}}{{.Dir}}{{end}}' $pkgs)
+[ -z "$pkgs" ] && exit 0
+
 # shellcheck disable=SC2086 # deliberate word-splitting of the package list
 golangci-lint run --timeout=5m --new-from-rev=HEAD $pkgs

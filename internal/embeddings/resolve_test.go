@@ -12,6 +12,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/providers/providertest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	kitconfig "hop.top/kit/go/core/config"
 )
 
@@ -205,7 +206,7 @@ func TestResolve_InvalidInputs(t *testing.T) {
 // newRegistry stands up a real sqlite registry.
 func newRegistry(t *testing.T) *registry.Store {
 	t.Helper()
-	d, err := sqlite.New(filepath.Join(t.TempDir(), "test.db"))
+	d, err := sqlite.New(filepath.Join(t.TempDir(), "test.db"), storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("sqlite.New: %v", err)
 	}

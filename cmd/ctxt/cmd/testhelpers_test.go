@@ -12,6 +12,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // testDB holds the temp database state for a test.
@@ -64,7 +65,7 @@ func setupTestDB(t *testing.T, opts ...dpkmstest.Option) *testDB {
 	t.Setenv("CTXT_DATA_DIR", "")
 	t.Setenv("CTXT_INSTANCE", "")
 
-	driver, err := sqlite.New(dbPath)
+	driver, err := sqlite.New(dbPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("new sqlite: %v", err)
 	}

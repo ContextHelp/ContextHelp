@@ -23,6 +23,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/storagetest"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 )
 
@@ -33,7 +34,7 @@ import (
 func sqliteReprojectDriver(t *testing.T) (storage.StorageDriver, storagetest.ProjectionDB) {
 	t.Helper()
 	dsn := filepath.Join(t.TempDir(), "reproject.db") + "?_pragma=busy_timeout(5000)"
-	d, err := sqlite.New(dsn)
+	d, err := sqlite.New(dsn, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	require.NoError(t, d.Init(context.Background()))
 	t.Cleanup(func() { d.Close(context.Background()) })
