@@ -76,8 +76,8 @@ const (
 	// ScopeAdminPipelines creates, deletes, archives and unarchives
 	// pipelines.
 	ScopeAdminPipelines Scope = "admin:pipelines"
-	// ScopeAdminPlugins installs and uninstalls pipeline steps.
-	ScopeAdminPlugins Scope = "admin:plugins"
+	// ScopeAdminSteps installs and uninstalls pipeline steps.
+	ScopeAdminSteps Scope = "admin:steps"
 
 	// ScopeReadWatches reads server-side watches and their files: the
 	// server's filesystem layout.
@@ -109,7 +109,7 @@ var AllScopes = []Scope{
 	ScopeReadJobs, ScopeWriteJobs,
 	ScopeReadRegistries, ScopeSyncRegistries,
 	ScopeReadSystem, ScopeWriteSystem,
-	ScopeReadPipelines, ScopeAdminPipelines, ScopeAdminPlugins,
+	ScopeReadPipelines, ScopeAdminPipelines, ScopeAdminSteps,
 	ScopeReadWatches, ScopeAdminWatches,
 	ScopeAdminAudit,
 	ScopeReadUI, ScopeSignoutUI,

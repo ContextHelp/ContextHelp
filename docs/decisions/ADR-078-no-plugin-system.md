@@ -68,3 +68,4 @@ Authentication is extended by putting dpkms behind a trusted proxy or an OIDC pr
 ctxt is unreleased, so the leftovers the consequences above kept are removed outright, with no aliases:
 
 - `KnowledgeObject.Plugins` and the `objects.plugins` column are gone. SQLite migration 045 and Postgres migration 25 drop the column; any value stored there is discarded. The column was never an FTS input, so no re-projection follows.
+- The scope that guards step install and uninstall (`POST /steps/install`, `DELETE /steps/{name}`) is `admin:steps`, named after the resource those routes act on, as `admin:pipelines` and `admin:watches` are. `admin:plugins` is gone with no alias. Tokens get scopes from their roles, so an `admin` token holds `admin:steps` with no config change.

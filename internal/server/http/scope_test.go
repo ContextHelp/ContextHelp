@@ -206,7 +206,10 @@ func TestWriterWritesButCannotDeleteOrAdminister(t *testing.T) {
 	assertScopeDenied(t, resp, body, authn.ScopeAdminAudit)
 
 	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/steps/install", "tok-writer-fixture-0123456789abcdef0123456789", map[string]string{})
-	assertScopeDenied(t, resp, body, authn.ScopeAdminPlugins)
+	assertScopeDenied(t, resp, body, "admin:steps")
+
+	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/steps/some-step", "tok-writer-fixture-0123456789abcdef0123456789", nil)
+	assertScopeDenied(t, resp, body, "admin:steps")
 }
 
 func TestAdminPassesEveryScope(t *testing.T) {

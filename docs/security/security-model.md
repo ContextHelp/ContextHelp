@@ -118,7 +118,7 @@ ContextHelp protects the following critical assets:
 
 **Mitigations**:
 - Steps are designed to run out of process (ADR-058), never inside dpkms; no pipeline executes installed steps yet
-- Step install and uninstall need the `admin:plugins` scope (admin role)
+- Step install and uninstall need the `admin:steps` scope (admin role)
 - Sandbox isolation levels per pipeline (ADR-055)
 - Restricted file system access
 - No direct network access without permission

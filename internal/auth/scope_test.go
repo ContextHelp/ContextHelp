@@ -239,3 +239,22 @@ func TestConfigAuthRolesMatchRoles(t *testing.T) {
 		t.Errorf("config.AuthRoles = %v, auth.Roles = %v", config.AuthRoles, Roles)
 	}
 }
+
+// Step install and uninstall are guarded by admin:steps, named after the
+// resource the routes act on (/steps), like admin:pipelines and
+// admin:watches. There is no plugin system, and no admin:plugins alias:
+// a scope string that names no scope grants nothing.
+func TestStepAdminScopeName(t *testing.T) {
+	if ScopeAdminSteps != "admin:steps" {
+		t.Errorf("ScopeAdminSteps = %q, want admin:steps", ScopeAdminSteps)
+	}
+	b, _ := Bundle(RoleAdmin)
+	if !slices.Contains(b, ScopeAdminSteps) {
+		t.Errorf("admin bundle lacks %s", ScopeAdminSteps)
+	}
+	for _, s := range AllScopes {
+		if strings.Contains(string(s), "plugin") {
+			t.Errorf("scope %q names plugins: there is no plugin system", s)
+		}
+	}
+}

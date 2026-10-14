@@ -103,8 +103,8 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// Steps
 		{Method: get, Pattern: "/steps", Scope: authn.ScopeReadPipelines, Handler: ListSteps(svc)},
 		{Method: get, Pattern: "/steps/{name}", Scope: authn.ScopeReadPipelines, Handler: GetStep(svc)},
-		{Method: post, Pattern: "/steps/install", Scope: authn.ScopeAdminPlugins, Handler: InstallStep(svc)},
-		{Method: del, Pattern: "/steps/{name}", Scope: authn.ScopeAdminPlugins, Handler: UninstallStep(svc)},
+		{Method: post, Pattern: "/steps/install", Scope: authn.ScopeAdminSteps, Handler: InstallStep(svc)},
+		{Method: del, Pattern: "/steps/{name}", Scope: authn.ScopeAdminSteps, Handler: UninstallStep(svc)},
 
 		// Registries
 		{Method: post, Pattern: "/steps/registries/fetch", Scope: authn.ScopeSyncRegistries, Handler: FetchRegistry(svc)},
