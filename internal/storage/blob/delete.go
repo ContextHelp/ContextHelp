@@ -22,7 +22,9 @@ func (o Orphan) String() string { return fmt.Sprintf("%s: %v", o.Key, o.Err) }
 // hard-delete path: DELETE /objects/{id} and prune both go through it.
 //
 // Edges go first: no foreign key cascades them, and an edge left naming
-// a deleted object is never cleaned up. The row goes before its blobs. A
+// a deleted object is never cleaned up. Aliases and embeddings need no
+// step here: their foreign keys cascade from the row's delete on both
+// drivers. The row goes before its blobs. A
 // failure after it leaves at worst an orphan blob, returned in orphans
 // with the object deleted and err nil, never a row whose ref names a
 // deleted blob. err reports that the object could not be read, or its

@@ -4,12 +4,33 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
-	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
+
+// checkResponse returns nil for a 2xx response and otherwise an error
+// carrying the status and the server's error: the code and message of a
+// dpkms error envelope, else the raw body.
+func checkResponse(resp *http.Response) error {
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	var env struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &env) == nil && env.Error.Message != "" {
+		return fmt.Errorf("%d %s: %s", resp.StatusCode, env.Error.Code, env.Error.Message)
+	}
+	return fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(body)))
+}
 
 // NewCLICommands returns a cobra.Command subtree for the aliasing plugin.
 // Mount it as: rootCmd.AddCommand(aliasing.NewCLICommands(baseURL))
@@ -38,7 +59,10 @@ func NewCLICommands(baseURL string) *cobra.Command {
 				return err
 			}
 			defer resp.Body.Close()
-			fmt.Fprintf(os.Stdout, "alias %q → %s\n", args[0], args[1])
+			if err := checkResponse(resp); err != nil {
+				return fmt.Errorf("alias set: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "alias %q → %s\n", args[0], args[1])
 			return nil
 		},
 	}
@@ -59,10 +83,15 @@ func NewCLICommands(baseURL string) *cobra.Command {
 				return err
 			}
 			defer resp.Body.Close()
+			if err := checkResponse(resp); err != nil {
+				return fmt.Errorf("alias list: %w", err)
+			}
 			var items []map[string]interface{}
-			json.NewDecoder(resp.Body).Decode(&items)
+			if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+				return fmt.Errorf("alias list: decode response: %w", err)
+			}
 			for _, item := range items {
-				fmt.Fprintf(os.Stdout, "%s → %s (scope=%s)\n",
+				fmt.Fprintf(cmd.OutOrStdout(), "%s → %s (scope=%s)\n",
 					item["alias"], item["object_id"], item["scope"])
 			}
 			return nil
@@ -80,15 +109,20 @@ func NewCLICommands(baseURL string) *cobra.Command {
 			if profile != "" {
 				q.Set("profile", profile)
 			}
-			req, _ := http.NewRequest(http.MethodDelete,
-				baseURL+"/api/v1/aliases/"+args[0]+"?"+q.Encode(), nil)
-			client := &http.Client{}
-			resp, err := client.Do(req)
+			req, err := http.NewRequestWithContext(cmd.Context(), http.MethodDelete,
+				baseURL+"/api/v1/aliases/"+url.PathEscape(args[0])+"?"+q.Encode(), nil)
+			if err != nil {
+				return err
+			}
+			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				return err
 			}
 			defer resp.Body.Close()
-			fmt.Fprintf(os.Stdout, "removed alias %q\n", args[0])
+			if err := checkResponse(resp); err != nil {
+				return fmt.Errorf("alias remove: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "removed alias %q\n", args[0])
 			return nil
 		},
 	}

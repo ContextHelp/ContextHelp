@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
@@ -27,21 +29,24 @@ func newStorageAliasResolver(store storage.AliasStore, profile string) *storageA
 }
 
 // ResolveAliases resolves each term to its sibling aliases via the alias store.
-// Terms that do not resolve to a known object, or whose object has no siblings,
-// are silently omitted.
+// Terms that are not an alias (the store answers storage.ErrNotFound), or
+// whose object has no siblings, are omitted. Any other store error is
+// returned.
 func (r *storageAliasResolver) ResolveAliases(ctx context.Context, terms []string) (map[string][]string, error) {
 	out := make(map[string][]string, len(terms))
 
 	for _, term := range terms {
 		objectID, err := r.store.Resolve(ctx, term, r.profile)
-		if err != nil {
-			// Term is not a known alias — skip.
+		if errors.Is(err, storage.ErrNotFound) {
 			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("resolve alias %q: %w", term, err)
 		}
 
 		siblings, err := r.store.List(ctx, pluginapi.AliasFilter{ObjectID: objectID})
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("list aliases of %s: %w", objectID, err)
 		}
 
 		var aliases []string

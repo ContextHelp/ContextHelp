@@ -14,7 +14,8 @@ import (
 // object's content is externalized to: CountBlobRefs sees every way an
 // object refers to a key, and blob.DeleteObject deletes the blob with
 // the object unless another object still refers to it. It also deletes
-// the object's edges, which no foreign key cascades.
+// the object's edges, which no foreign key cascades, and its aliases,
+// which one does.
 func BlobDeleteConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
 	ctx := context.Background()
@@ -136,6 +137,42 @@ func BlobDeleteConformance(t *testing.T, drv storage.StorageDriver) {
 		}
 		if len(kept) != 1 || kept[0].ID != "bedge-unrelated" {
 			t.Errorf("edges of other objects = %v, want [bedge-unrelated]", kept)
+		}
+	})
+
+	// Aliases name an object by a foreign key that cascades: the hard
+	// delete leaves no alias naming the deleted object, in any scope, and
+	// leaves other objects' aliases.
+	t.Run("aliases", func(t *testing.T) {
+		create(t, &storage.KnowledgeObject{ID: "balias-gone", RawContent: "inline"})
+		create(t, &storage.KnowledgeObject{ID: "balias-kept", RawContent: "inline"})
+		for _, a := range []*storage.Alias{
+			{Alias: "gone-global", ObjectID: "balias-gone", Scope: "global"},
+			{Alias: "gone-profile", ObjectID: "balias-gone", Scope: "profile", Profile: "work"},
+			{Alias: "kept-global", ObjectID: "balias-kept", Scope: "global"},
+		} {
+			a.CreatedAt, a.UpdatedAt = fixtureTime(), fixtureTime()
+			if err := drv.Aliases().Create(ctx, a); err != nil {
+				t.Fatalf("create alias %s: %v", a.Alias, err)
+			}
+		}
+		if _, err := blob.DeleteObject(ctx, drv, "balias-gone"); err != nil {
+			t.Fatalf("DeleteObject: %v", err)
+		}
+		left, err := drv.Aliases().List(ctx, storage.AliasFilter{ObjectID: "balias-gone"})
+		if err != nil {
+			t.Fatalf("list aliases: %v", err)
+		}
+		if len(left) != 0 {
+			t.Errorf("deleted object still has %d alias(es), first %q", len(left), left[0].Alias)
+		}
+		for _, alias := range []string{"gone-global", "gone-profile"} {
+			if id, err := drv.Aliases().Resolve(ctx, alias, "work"); !errors.Is(err, storage.ErrNotFound) {
+				t.Errorf("Resolve(%s) after delete = %q, %v; want ErrNotFound", alias, id, err)
+			}
+		}
+		if id, err := drv.Aliases().Resolve(ctx, "kept-global", ""); err != nil || id != "balias-kept" {
+			t.Errorf("Resolve(kept-global) = %q, %v; want balias-kept", id, err)
 		}
 	})
 
