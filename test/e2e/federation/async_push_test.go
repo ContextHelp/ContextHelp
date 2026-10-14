@@ -53,7 +53,7 @@ func TestFederation_AsyncPush_DedupeByContentHash(t *testing.T) {
 
 // TestFederation_AsyncPush_WatermarkAdvances verifies AC #3:
 // "federation_watermarks table updated after each successful batch" —
-// with the change position of the batch's last object.
+// with the ChangeSeq of the batch's last object.
 //
 // Backed by T-0173 (Watermarks().GetWatermark/SetWatermark API) and T-0174
 // (LocalPusher advances watermark on success).
@@ -69,9 +69,13 @@ func TestFederation_AsyncPush_WatermarkAdvances(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWatermark: %v", err)
 	}
-	// The watermark is the change position of the last object pushed.
-	if got.ID != "obj-wm-1" {
-		t.Fatalf("watermark = %+v, want the pushed object's position", got)
+	// The watermark is the ChangeSeq of the last object pushed.
+	obj, err := ix.src.drv.Objects().Get(context.Background(), "obj-wm-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got != obj.ChangeSeq || got == 0 {
+		t.Fatalf("watermark = %d, want the pushed object's ChangeSeq %d", got, obj.ChangeSeq)
 	}
 }
 
@@ -106,8 +110,8 @@ func TestFederation_AsyncPush_CrashRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readWatermark: %v", err)
 	}
-	if wm != "" {
-		t.Errorf("watermark advanced despite crash: got %q, want empty", wm)
+	if wm != 0 {
+		t.Errorf("watermark advanced despite crash: got %d, want 0", wm)
 	}
 
 	// Restart: object should appear on next tick (proves source data is
@@ -122,8 +126,8 @@ func TestFederation_AsyncPush_CrashRecovery(t *testing.T) {
 	if gerr != nil {
 		t.Fatalf("GetWatermark after recovery: %v", gerr)
 	}
-	if got.ID != "obj-crash-1" {
-		t.Errorf("watermark not advanced after successful recovery push: %+v", got)
+	if got == 0 {
+		t.Errorf("watermark not advanced after successful recovery push: %d", got)
 	}
 }
 
@@ -260,8 +264,8 @@ func TestFederation_AsyncPush_NoChangesNoOp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readWatermark: %v", err)
 	}
-	if got != "" {
-		t.Errorf("no-op tick advanced watermark: got %q, want empty", got)
+	if got != 0 {
+		t.Errorf("no-op tick advanced watermark: got %d, want 0", got)
 	}
 }
 

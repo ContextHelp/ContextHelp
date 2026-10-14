@@ -183,17 +183,9 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		idx++
 	}
 
-	// Change order compares ids byte-wise (COLLATE "C"), as the SQLite
-	// driver does; the expression matches idx_objects_change_order.
-	if c := filter.ChangedAfter; c != nil {
-		conditions = append(conditions, fmt.Sprintf(
-			`(updated_at, id COLLATE "C") > ($%d, $%d)`, idx, idx+1))
-		args = append(args, c.UpdatedAt.UTC(), c.ID)
-		idx += 2
-	}
-	if filter.ChangedUntil != nil {
-		conditions = append(conditions, fmt.Sprintf("updated_at <= $%d", idx))
-		args = append(args, filter.ChangedUntil.UTC())
+	if filter.ChangedAfter != nil {
+		conditions = append(conditions, fmt.Sprintf("change_seq > $%d", idx))
+		args = append(args, *filter.ChangedAfter)
 		idx++
 	}
 
@@ -218,7 +210,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 	// are resolved through a closed allowlist: the only reachable values
 	// are the literals below. filter.Sort / filter.Dir are compared, never
 	// interpolated, so caller input cannot reach the query text.
-	order := `updated_at ASC, id COLLATE "C" ASC` // change order
+	order := "change_seq ASC" // change order
 	if filter.ChangedAfter == nil {
 		sortCol := "created_at"
 		if filter.Sort == "updated_at" {
@@ -872,7 +864,7 @@ const objectSelectCols = `SELECT
 	decisions, tasks, pipeline, source,
 	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 	created_at, updated_at, fts_indexed, status, inbox_note,
-	remind_at, reminded_at, graph_json, source_key, profile_id`
+	remind_at, reminded_at, graph_json, source_key, profile_id, change_seq`
 
 func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 	var obj storage.KnowledgeObject
@@ -890,7 +882,7 @@ func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -932,7 +924,7 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
@@ -973,7 +965,7 @@ func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, 
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq,
 		&score,
 	)
 	if err != nil {

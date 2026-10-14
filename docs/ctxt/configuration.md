@@ -226,13 +226,19 @@ federations:
 | `blob` | object | File targets only: the target instance's blob store, same keys as `storage.blob` (`backend`, `threshold`, `local.path`, `s3.*`). A local push copies each pushed object's blob into it. Unset, or `local` without `local.path`: `blobs/` beside the target database. `ctxt config validate` checks it like `storage.blob`; set on an `http(s)` target it is an error |
 
 Each `async` tick pushes only the objects changed since the target's
-watermark: the `updated_at` and id of the last object the target
-acknowledged. A `file://` target keeps its watermark in its own database,
+watermark: the change sequence of the last object the target
+acknowledged. The store stamps every object insert and update with the
+next change sequence, so an import, a restore or an object a receiver
+forwards on is pushed whatever `updated_at` it carries. A `file://` target keeps its watermark in its own database,
 an `http(s)` target's watermark lives in the source's, both under `name`.
 Objects go 100 per batch; to an `http(s)` target, in requests of at most
-4 MiB of objects, content inline. A refused batch leaves the watermark
-where it was and is re-sent on the next tick. Renaming an entry starts its
-watermark over.
+4 MiB of objects, content inline; a larger object goes alone. A refused
+batch leaves the watermark where it was and is re-sent on the next tick.
+An object that fails 3 ticks in a row on its own — its source blob is
+gone, or the receiver answers 413 to it sent alone — is skipped: dpkms
+logs `federation: skipping object after repeated push failures` with its
+id, and the rest of the batch goes through. Editing the object sends it
+again. Renaming an entry starts its watermark over.
 
 ### Inbound auth (`federation`)
 

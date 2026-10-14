@@ -43,10 +43,10 @@ func (m *mockDriver) Health(ctx context.Context) error   { return nil }
 
 type mockWatermarkStore struct{}
 
-func (m *mockWatermarkStore) GetWatermark(_ context.Context, _ string) (ChangeCursor, error) {
-	return ChangeCursor{}, nil
+func (m *mockWatermarkStore) GetWatermark(_ context.Context, _ string) (int64, error) {
+	return 0, nil
 }
-func (m *mockWatermarkStore) SetWatermark(_ context.Context, _ string, _ ChangeCursor) error {
+func (m *mockWatermarkStore) SetWatermark(_ context.Context, _ string, _ int64) error {
 	return nil
 }
 

@@ -35,7 +35,8 @@ func NewLocalPusher(name, targetPath string, targetBlob *config.BlobConfig, blob
 }
 
 // copyBlobs copies the blobs obj's content refs name from src to dst,
-// skipping those dst already holds.
+// skipping those dst already holds. A blob it cannot read from src is
+// an *ObjectError.
 func copyBlobs(ctx context.Context, src, dst storage.BlobStore, obj *storage.KnowledgeObject) error {
 	for _, content := range []string{obj.RawContent, obj.TextContent} {
 		key, ok := blob.BlobKey(content)
@@ -48,11 +49,11 @@ func copyBlobs(ctx context.Context, src, dst storage.BlobStore, obj *storage.Kno
 			continue
 		}
 		if src == nil {
-			return fmt.Errorf("blob %s: %w", key, blob.ErrNoStore)
+			return &ObjectError{ID: obj.ID, Err: fmt.Errorf("blob %s: %w", key, blob.ErrNoStore)}
 		}
 		rc, meta, err := src.Get(ctx, key)
 		if err != nil {
-			return fmt.Errorf("blob %s: read source: %w", key, err)
+			return &ObjectError{ID: obj.ID, Err: fmt.Errorf("blob %s: read source: %w", key, err)}
 		}
 		err = dst.Put(ctx, key, rc, meta)
 		rc.Close()
@@ -89,18 +90,18 @@ func (p *LocalPusher) openTarget(ctx context.Context) (storage.StorageDriver, st
 }
 
 // Watermark returns the watermark the target database keeps for this
-// federation; the zero position when the database does not exist yet.
-func (p *LocalPusher) Watermark(ctx context.Context) (storage.ChangeCursor, error) {
+// federation; 0 when the database does not exist yet.
+func (p *LocalPusher) Watermark(ctx context.Context) (int64, error) {
 	targetPath, err := canonicalPath(p.targetPath)
 	if err != nil {
-		return storage.ChangeCursor{}, fmt.Errorf("federation local watermark: resolve target %q: %w", p.targetPath, err)
+		return 0, fmt.Errorf("federation local watermark: resolve target %q: %w", p.targetPath, err)
 	}
 	if _, err := os.Stat(targetPath); errors.Is(err, fs.ErrNotExist) {
-		return storage.ChangeCursor{}, nil
+		return 0, nil
 	}
 	drv, _, err := p.openTarget(ctx)
 	if err != nil {
-		return storage.ChangeCursor{}, fmt.Errorf("federation local watermark: %w", err)
+		return 0, fmt.Errorf("federation local watermark: %w", err)
 	}
 	defer func() { _ = drv.Close(ctx) }()
 	return drv.Watermarks().GetWatermark(ctx, p.name)
@@ -113,7 +114,7 @@ func (p *LocalPusher) Watermark(ctx context.Context) (storage.ChangeCursor, erro
 // clobbered by a thin federation row — see ADR-049 + EntityStore.UpsertThin.
 //
 // On a successful non-empty batch, the federation_watermarks row at the
-// target moves to the change position of the last object (US-0319 AC #3).
+// target moves to the ChangeSeq of the last object (US-0319 AC #3).
 // Empty batches are a no-op: no writes, no watermark advance (US-0319 AC #7).
 //
 // The watermark is written as the last step after all objects + edges +
@@ -177,6 +178,9 @@ func (p *LocalPusher) Push(
 		}
 		// Content first: a row never lands without the blob its ref names.
 		if err := copyBlobs(ctx, p.blobs, targetBlobs, obj); err != nil {
+			if oe := (*ObjectError)(nil); errors.As(err, &oe) {
+				return fmt.Errorf("federation local push: %w", err)
+			}
 			return fmt.Errorf("federation local push: object %q: %w", obj.ID, err)
 		}
 		if err := objs.Create(ctx, obj); err != nil {
@@ -214,9 +218,22 @@ func (p *LocalPusher) Push(
 
 	// Advance watermark only after the batch has fully committed. If any
 	// upsert above failed we returned early — watermark stays at last value.
-	last := storage.ChangeCursorOf(&objects[len(objects)-1])
+	last := objects[len(objects)-1].ChangeSeq
 	if err := drv.Watermarks().SetWatermark(ctx, p.name, last); err != nil {
 		return fmt.Errorf("federation local push: advance watermark for %q: %w", p.name, err)
+	}
+	return nil
+}
+
+// Advance moves the watermark the target database keeps to seq.
+func (p *LocalPusher) Advance(ctx context.Context, seq int64) error {
+	drv, _, err := p.openTarget(ctx)
+	if err != nil {
+		return fmt.Errorf("federation local advance: %w", err)
+	}
+	defer func() { _ = drv.Close(ctx) }()
+	if err := drv.Watermarks().SetWatermark(ctx, p.name, seq); err != nil {
+		return fmt.Errorf("federation local advance %q: %w", p.name, err)
 	}
 	return nil
 }

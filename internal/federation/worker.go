@@ -37,6 +37,10 @@ type Worker struct {
 	pusher Pusher
 	// batchSize caps the objects per Push; <= 0 means DefaultBatchSize.
 	batchSize int
+	// syncer carries failures and skipped objects from tick to tick;
+	// the first tick creates it.
+	syncer   *Syncer
+	syncOnce sync.Once
 
 	done chan struct{} // closed when run() returns
 }
@@ -180,14 +184,31 @@ func (w *Worker) run(ctx context.Context) {
 	}
 }
 
-// tick pushes the objects changed since the target's watermark, up to
-// settleLag ago, in batches; see Sync.
+// tick pushes the objects changed since the target's watermark, in
+// batches; see Syncer.Sync.
 func (w *Worker) tick(ctx context.Context) error {
-	n, err := Sync(ctx, w.src, w.pusher, time.Now().Add(-settleLag), w.batchSize)
+	n, err := w.sync().Sync(ctx)
 	if n > 0 {
 		slog.Debug("federation: pushed changes", "name", w.target.Name, "objects", n)
 	}
 	return err
+}
+
+func (w *Worker) sync() *Syncer {
+	w.syncOnce.Do(func() { w.syncer = NewSyncer(w.src, w.pusher, w.batchSize) })
+	return w.syncer
+}
+
+// Skipped returns, per target name, the objects its worker gave up
+// pushing (see Syncer.Skipped); targets with none are left out.
+func (ws *WorkerSet) Skipped() map[string][]SkippedObject {
+	out := map[string][]SkippedObject{}
+	for _, w := range ws.workers {
+		if s := w.sync().Skipped(); len(s) > 0 {
+			out[w.target.Name] = s
+		}
+	}
+	return out
 }
 
 // collectEntitiesForEdges returns the entity rows referenced by any edge

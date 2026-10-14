@@ -162,6 +162,9 @@ func TestLocalPusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 		makeObject("wm-2", "wm-hash-2"),
 		makeObject("wm-3", "wm-hash-3"),
 	}
+	for i := range objects {
+		objects[i].ChangeSeq = int64(10 + i)
+	}
 	pusher := NewLocalPusher("wm-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
 	if err := pusher.Push(context.Background(), objects, nil, nil); err != nil {
@@ -186,12 +189,12 @@ func TestLocalPusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWatermark: %v", err)
 	}
-	if want := storage.ChangeCursorOf(&objects[2]); got.ID != want.ID || !got.UpdatedAt.Equal(want.UpdatedAt) {
-		t.Errorf("watermark = %+v, want the last object's position %+v", got, want)
+	if got != 12 {
+		t.Errorf("watermark = %d, want the last object's ChangeSeq 12", got)
 	}
 	viaPusher, err := pusher.Watermark(context.Background())
-	if err != nil || viaPusher.ID != "wm-3" {
-		t.Errorf("pusher.Watermark = %+v, %v; want wm-3", viaPusher, err)
+	if err != nil || viaPusher != 12 {
+		t.Errorf("pusher.Watermark = %d, %v; want 12", viaPusher, err)
 	}
 }
 
@@ -210,8 +213,8 @@ func TestLocalPusher_NoObjectsLeavesWatermarkUntouched(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Watermark: %v", err)
 	}
-	if got != (storage.ChangeCursor{}) {
-		t.Errorf("no-op tick advanced watermark: got %+v, want zero", got)
+	if got != 0 {
+		t.Errorf("no-op tick advanced watermark: got %d, want 0", got)
 	}
 }
 
@@ -220,8 +223,8 @@ func TestLocalPusher_NoObjectsLeavesWatermarkUntouched(t *testing.T) {
 func TestLocalPusher_WatermarkOfMissingTargetIsZero(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "absent.db")
 	got, err := NewLocalPusher("absent-fed", target, nil, nil).Watermark(context.Background())
-	if err != nil || got != (storage.ChangeCursor{}) {
-		t.Fatalf("Watermark = %+v, %v; want zero, nil", got, err)
+	if err != nil || got != 0 {
+		t.Fatalf("Watermark = %d, %v; want 0, nil", got, err)
 	}
 	if _, err := os.Stat(target); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("reading the watermark created the target: %v", err)
@@ -413,6 +416,9 @@ func TestFederation_EntityPageDupeDoesNotAbortBatch(t *testing.T) {
 		makeObject("capture-A", "hash-cap-A"),
 		makeObject("capture-B", "hash-cap-B"),
 	}
+	for i := range objects {
+		objects[i].ChangeSeq = int64(i + 1)
+	}
 
 	pusher := NewLocalPusher("dupe-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
@@ -443,8 +449,8 @@ func TestFederation_EntityPageDupeDoesNotAbortBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWatermark: %v", err)
 	}
-	if wm.ID != "capture-B" {
-		t.Errorf("watermark not advanced after dupe-skip batch: got %+v", wm)
+	if wm != 3 {
+		t.Errorf("watermark not advanced after dupe-skip batch: got %d, want 3", wm)
 	}
 }
 

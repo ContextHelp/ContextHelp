@@ -104,6 +104,12 @@ type KnowledgeObject struct {
 	ProfileID          string         `json:"profile_id,omitempty"` // owning profile; empty = global
 	AttachmentIDs      []string       `json:"attachment_ids,omitempty"`
 	Graph              *ObjectGraph   `json:"graph,omitempty"`
+	// ChangeSeq is the object's position in its store's change order:
+	// the store stamps it from a counter on every insert and update, so
+	// a later change always has a greater value whatever the object's
+	// timestamps say. Read-only — stores ignore it on write — and local
+	// to one store, so it never travels on the wire.
+	ChangeSeq int64 `json:"-"`
 }
 
 // Draft is an alias for KnowledgeObject being progressively enriched.

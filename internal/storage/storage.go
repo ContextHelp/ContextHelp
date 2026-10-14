@@ -83,17 +83,17 @@ type StorageDriver interface {
 	Health(ctx context.Context) error
 }
 
-// WatermarkStore keeps, per federation target, the change position of
-// the last object the target acknowledged (federation_watermarks, one
-// row per federation name). Federation pushes only objects changed
-// after it.
+// WatermarkStore keeps, per federation target, the ChangeSeq of the
+// last object the target acknowledged (federation_watermarks, one row
+// per federation name). Federation pushes only objects with a greater
+// ChangeSeq.
 type WatermarkStore interface {
-	// GetWatermark returns the position stored for federationName; the
-	// zero ChangeCursor, which precedes every object, when none is.
-	GetWatermark(ctx context.Context, federationName string) (ChangeCursor, error)
-	// SetWatermark stores pos for federationName, replacing any
+	// GetWatermark returns the ChangeSeq stored for federationName; 0,
+	// which precedes every object, when none is.
+	GetWatermark(ctx context.Context, federationName string) (int64, error)
+	// SetWatermark stores seq for federationName, replacing any
 	// previous one.
-	SetWatermark(ctx context.Context, federationName string, pos ChangeCursor) error
+	SetWatermark(ctx context.Context, federationName string, seq int64) error
 }
 
 // MeteringStore persists and queries metering events for paid registry access.

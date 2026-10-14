@@ -193,20 +193,24 @@ dpkms restore backup.tar.gz --skip-configs
 #### Federation Watermarks
 
 Each push target has a `federation_watermarks` row (`federation_name`,
-`last_synced_at` as RFC 3339 UTC). For a local SQLite target the row lives in the
-target database; for an HTTP target it lives in the source instance's database.
-A missing row counts as the Unix epoch, so a new or emptied target receives a
-full push on the next tick.
+`last_change_seq`): the source's `objects.change_seq` of the last object the
+target acknowledged. Every object insert and update takes the next
+`change_seq`. For a local SQLite target the row lives in the target database;
+for an HTTP target it lives in the source instance's database. A missing row
+counts as 0, so a new or emptied target receives a full push on the next tick.
 
 ```sql
--- lag per federation target (run against the database holding the rows)
-SELECT federation_name, last_synced_at,
-       strftime('%s','now') - strftime('%s', last_synced_at) AS lag_sec
-FROM   federation_watermarks
-ORDER  BY lag_sec DESC;
+-- objects not yet pushed, per HTTP target (run against the source database)
+SELECT w.federation_name,
+       (SELECT COUNT(*) FROM objects o WHERE o.change_seq > w.last_change_seq) AS behind
+FROM   federation_watermarks w
+ORDER  BY behind DESC;
 ```
 
-- Expected: `lag_sec` below the target's `interval` (e.g. 5m = under 300)
+For a local target, read `last_change_seq` from the target database and count
+the source's objects above it the same way.
+
+- Expected: `behind` back to 0 within the target's `interval`
 - Stale watermark: check target reachability and the dpkms log for push errors
 
 #### Reindex and Housekeeping
