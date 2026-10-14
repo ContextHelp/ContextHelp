@@ -8,30 +8,39 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 )
 
 // AnthropicProvider analyzes images using the Anthropic Messages API.
 type AnthropicProvider struct {
 	apiKey string
 	model  string
+	client *http.Client
 }
 
-func NewAnthropicProvider(model string) *AnthropicProvider {
+// NewAnthropicProvider creates an Anthropic vision provider that authenticates with
+// apiKey. An empty apiKey makes every request fail; the caller resolves the key.
+func NewAnthropicProvider(apiKey, model string) *AnthropicProvider {
 	if model == "" {
 		model = "claude-3-5-sonnet-20241022"
 	}
 	return &AnthropicProvider{
-		apiKey: os.Getenv("ANTHROPIC_API_KEY"),
+		apiKey: apiKey,
 		model:  model,
 	}
+}
+
+// WithHTTPClient returns a copy of the provider that sends requests through c.
+func (p *AnthropicProvider) WithHTTPClient(c *http.Client) *AnthropicProvider {
+	cp := *p
+	cp.client = c
+	return &cp
 }
 
 func (p *AnthropicProvider) Name() string { return "anthropic" }
 
 func (p *AnthropicProvider) Analyze(ctx context.Context, imageData []byte, contentType string) (*Result, error) {
 	if p.apiKey == "" {
-		return nil, fmt.Errorf("ANTHROPIC_API_KEY not set")
+		return nil, fmt.Errorf("ANTHROPIC_API_KEY not set in the secrets store or environment")
 	}
 
 	b64 := base64.StdEncoding.EncodeToString(imageData)
@@ -70,7 +79,7 @@ func (p *AnthropicProvider) Analyze(ctx context.Context, imageData []byte, conte
 	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := clientOr(p.client).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("anthropic vision: %w", err)
 	}

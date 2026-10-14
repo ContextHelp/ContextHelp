@@ -8,30 +8,39 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 )
 
 // OpenRouterProvider analyzes images using the OpenRouter API (OpenAI-compatible).
 type OpenRouterProvider struct {
 	apiKey string
 	model  string
+	client *http.Client
 }
 
-func NewOpenRouterProvider(model string) *OpenRouterProvider {
+// NewOpenRouterProvider creates an OpenRouter vision provider that authenticates with
+// apiKey. An empty apiKey makes every request fail; the caller resolves the key.
+func NewOpenRouterProvider(apiKey, model string) *OpenRouterProvider {
 	if model == "" {
 		model = "google/gemini-2.0-flash-lite"
 	}
 	return &OpenRouterProvider{
-		apiKey: os.Getenv("OPENROUTER_API_KEY"),
+		apiKey: apiKey,
 		model:  model,
 	}
+}
+
+// WithHTTPClient returns a copy of the provider that sends requests through c.
+func (p *OpenRouterProvider) WithHTTPClient(c *http.Client) *OpenRouterProvider {
+	cp := *p
+	cp.client = c
+	return &cp
 }
 
 func (p *OpenRouterProvider) Name() string { return "openrouter" }
 
 func (p *OpenRouterProvider) Analyze(ctx context.Context, imageData []byte, contentType string) (*Result, error) {
 	if p.apiKey == "" {
-		return nil, fmt.Errorf("OPENROUTER_API_KEY not set")
+		return nil, fmt.Errorf("OPENROUTER_API_KEY not set in the secrets store or environment")
 	}
 
 	b64 := base64.StdEncoding.EncodeToString(imageData)
@@ -63,7 +72,7 @@ func (p *OpenRouterProvider) Analyze(ctx context.Context, imageData []byte, cont
 	req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := clientOr(p.client).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("openrouter vision: %w", err)
 	}

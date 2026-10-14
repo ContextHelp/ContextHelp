@@ -35,7 +35,6 @@ func TestGraphExtractorOpenAI(t *testing.T) {
 		// Dummy key so the provider doesn't short-circuit; VCR intercepts the request.
 		apiKey = "sk-vcr-replay"
 	}
-	t.Setenv("OPENAI_API_KEY", apiKey)
 
 	// Strip Authorization before saving so the cassette is safe to commit.
 	scrubAuth := func(i *cassette.Interaction) error {
@@ -54,7 +53,7 @@ func TestGraphExtractorOpenAI(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, rec.Stop()) })
 
-	llm := providers.NewOpenAILLMProvider("gpt-4o-mini").WithHTTPClient(rec.GetDefaultClient())
+	llm := providers.NewOpenAILLMProvider(apiKey, "gpt-4o-mini").WithHTTPClient(rec.GetDefaultClient())
 	step := NewGraphExtractorWithLLM(llm)
 
 	ko := &storage.KnowledgeObject{

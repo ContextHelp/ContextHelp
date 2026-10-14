@@ -116,8 +116,8 @@ Config files do not expand `${VAR}`: every value is used exactly as
 written, so `token: ${X}` sets the literal string `${X}`. Keep secrets
 out of the shared config file:
 
-- **Provider API keys**: in the env vars the provider reads
-  (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`).
+- **Provider API keys**: in the secrets store (`dpkms secret set
+  OPENAI_API_KEY`) or the env var of the same name; the store wins.
 - **S3 blob credentials**: `CTXT_BLOB_S3_ACCESS_KEY` /
   `CTXT_BLOB_S3_SECRET_KEY`.
 - **Everything else** (`server.auth` tokens, `federation.token`): the

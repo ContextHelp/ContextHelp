@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 )
 
 // AnthropicLLMProvider generates text using the Anthropic Messages API.
@@ -16,24 +15,31 @@ type AnthropicLLMProvider struct {
 	client *http.Client
 }
 
-// NewAnthropicLLMProvider creates an Anthropic LLM provider. API key is read from
-// the ANTHROPIC_API_KEY environment variable.
-func NewAnthropicLLMProvider(model string) *AnthropicLLMProvider {
+// NewAnthropicLLMProvider creates an Anthropic LLM provider that authenticates with apiKey.
+// An empty apiKey makes every request fail; the caller resolves the key.
+func NewAnthropicLLMProvider(apiKey, model string) *AnthropicLLMProvider {
 	if model == "" {
 		model = "claude-haiku-4-5-20251001"
 	}
 	return &AnthropicLLMProvider{
-		apiKey: os.Getenv("ANTHROPIC_API_KEY"),
+		apiKey: apiKey,
 		model:  model,
 		client: &http.Client{},
 	}
+}
+
+// WithHTTPClient returns a copy of the provider that sends requests through c.
+func (p *AnthropicLLMProvider) WithHTTPClient(c *http.Client) *AnthropicLLMProvider {
+	cp := *p
+	cp.client = c
+	return &cp
 }
 
 func (p *AnthropicLLMProvider) Name() string { return "anthropic" }
 
 func (p *AnthropicLLMProvider) Generate(ctx context.Context, prompt string) (string, error) {
 	if p.apiKey == "" {
-		return "", fmt.Errorf("ANTHROPIC_API_KEY not set")
+		return "", fmt.Errorf("ANTHROPIC_API_KEY not set in the secrets store or environment")
 	}
 	reqBody := map[string]interface{}{
 		"model":      p.model,

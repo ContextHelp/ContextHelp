@@ -22,10 +22,13 @@ import (
 type Factory struct {
 	cfg     config.ProvidersConfig
 	secrets secret.Store
+	// httpClient, when set, carries every hosted-API client's requests.
+	// Nil means each client's default.
+	httpClient *http.Client
 }
 
 // NewFactory creates a Factory from the providers configuration.
-// If store is nil, an env-backed store is used (backward-compatible default).
+// If store is nil, an env-backed store is used.
 func NewFactory(cfg config.ProvidersConfig, store secret.Store) *Factory {
 	if store == nil {
 		store = env.New("")
@@ -33,12 +36,44 @@ func NewFactory(cfg config.ProvidersConfig, store secret.Store) *Factory {
 	return &Factory{cfg: cfg, secrets: store}
 }
 
-// apiKey fetches a secret by key via the store, falling back to os.Getenv.
-func (f *Factory) apiKey(key string) string {
-	if got, err := f.secrets.Get(context.Background(), key); err == nil {
+// WithHTTPClient returns a copy of f whose hosted-API clients (OpenAI,
+// Anthropic, Gemini, OpenRouter) send their requests through c.
+func (f *Factory) WithHTTPClient(c *http.Client) *Factory {
+	cp := *f
+	cp.httpClient = c
+	return &cp
+}
+
+// WithConfig returns a Factory for cfg that resolves API keys through the
+// same secrets store as f. A nil f gets the env-backed store.
+func (f *Factory) WithConfig(cfg config.ProvidersConfig) *Factory {
+	if f == nil {
+		return NewFactory(cfg, nil)
+	}
+	c := *f
+	c.cfg = cfg
+	return &c
+}
+
+// Hosted provider API key names: the secrets store key and the
+// environment variable share the name.
+const (
+	keyOpenAI     = "OPENAI_API_KEY"
+	keyAnthropic  = "ANTHROPIC_API_KEY"
+	keyGemini     = "GEMINI_API_KEY"
+	keyOpenRouter = "OPENROUTER_API_KEY"
+)
+
+// apiKey resolves a hosted provider's API key: the secrets store first,
+// then the process environment. It is the only place provider keys are
+// read; the factory passes the result to the client constructor, so the
+// key that selects a provider in auto mode is the key that client sends.
+// An empty value in the store counts as unset. "" means neither has it.
+func (f *Factory) apiKey(name string) string {
+	if got, err := f.secrets.Get(context.Background(), name); err == nil && len(got.Value) > 0 {
 		return string(got.Value)
 	}
-	return os.Getenv(key)
+	return os.Getenv(name)
 }
 
 // Video returns the best available VideoProvider.
@@ -112,30 +147,30 @@ func (f *Factory) Vision() vision.Provider {
 	case "ollama":
 		return f.newOllamaVision()
 	case "openai":
-		return f.newOpenAIVision()
+		return f.openAIVision(f.apiKey(keyOpenAI))
 	case "anthropic":
-		return f.newAnthropicVision()
+		return f.anthropicVision(f.apiKey(keyAnthropic))
 	case "gemini":
-		return f.newGeminiVision()
+		return f.geminiVision(f.apiKey(keyGemini))
 	case "openrouter":
-		return f.newOpenRouterVision()
+		return f.openRouterVision(f.apiKey(keyOpenRouter))
 	case "stub":
 		return vision.NewStubProvider()
 	default: // "auto"
 		if p := f.tryOllamaVision(); p != nil {
 			return p
 		}
-		if f.apiKey("OPENAI_API_KEY") != "" {
-			return f.newOpenAIVision()
+		if key := f.apiKey(keyOpenAI); key != "" {
+			return f.openAIVision(key)
 		}
-		if f.apiKey("ANTHROPIC_API_KEY") != "" {
-			return f.newAnthropicVision()
+		if key := f.apiKey(keyAnthropic); key != "" {
+			return f.anthropicVision(key)
 		}
-		if f.apiKey("GEMINI_API_KEY") != "" {
-			return f.newGeminiVision()
+		if key := f.apiKey(keyGemini); key != "" {
+			return f.geminiVision(key)
 		}
-		if f.apiKey("OPENROUTER_API_KEY") != "" {
-			return f.newOpenRouterVision()
+		if key := f.apiKey(keyOpenRouter); key != "" {
+			return f.openRouterVision(key)
 		}
 		slog.Debug("providers: no vision backend found, using stub")
 		return vision.NewStubProvider()
@@ -162,20 +197,20 @@ func (f *Factory) Diarization() DiarizationProvider {
 func (f *Factory) LLM() LLMProvider {
 	switch f.cfg.LLM.Backend {
 	case "openai":
-		return NewOpenAILLMProvider(f.cfg.LLM.Model)
+		return f.openAILLM(f.apiKey(keyOpenAI))
 	case "anthropic":
-		return NewAnthropicLLMProvider(f.cfg.LLM.Model)
+		return f.anthropicLLM(f.apiKey(keyAnthropic))
 	case "ollama":
 		return NewOllamaLLMProvider(f.cfg.LLM.Endpoint, f.cfg.LLM.Model)
 	case "stub":
 		return NewStubLLMProvider()
 	default: // "auto" or empty
-		// Try env vars in priority order.
-		if f.apiKey("ANTHROPIC_API_KEY") != "" {
-			return NewAnthropicLLMProvider(f.cfg.LLM.Model)
+		// A resolved key selects the hosted provider, in priority order.
+		if key := f.apiKey(keyAnthropic); key != "" {
+			return f.anthropicLLM(key)
 		}
-		if f.apiKey("OPENAI_API_KEY") != "" {
-			return NewOpenAILLMProvider(f.cfg.LLM.Model)
+		if key := f.apiKey(keyOpenAI); key != "" {
+			return f.openAILLM(key)
 		}
 		// Fall back to Ollama (local).
 		endpoint := f.cfg.LLM.Endpoint
@@ -184,6 +219,24 @@ func (f *Factory) LLM() LLMProvider {
 		}
 		return NewOllamaLLMProvider(endpoint, f.cfg.LLM.Model)
 	}
+}
+
+// --- Hosted LLMs ---
+
+func (f *Factory) openAILLM(key string) LLMProvider {
+	p := NewOpenAILLMProvider(key, f.cfg.LLM.Model)
+	if f.httpClient != nil {
+		p = p.WithHTTPClient(f.httpClient)
+	}
+	return p
+}
+
+func (f *Factory) anthropicLLM(key string) LLMProvider {
+	p := NewAnthropicLLMProvider(key, f.cfg.LLM.Model)
+	if f.httpClient != nil {
+		p = p.WithHTTPClient(f.httpClient)
+	}
+	return p
 }
 
 // --- FFmpeg ---
@@ -312,20 +365,36 @@ func (f *Factory) newOllamaVision() vision.Provider {
 	return vision.NewOllamaProvider(f.ollamaVisionEndpoint(), model)
 }
 
-func (f *Factory) newOpenAIVision() vision.Provider {
-	return vision.NewOpenAIProvider(f.cfg.Vision.Model)
+func (f *Factory) openAIVision(key string) vision.Provider {
+	p := vision.NewOpenAIProvider(key, f.cfg.Vision.Model)
+	if f.httpClient != nil {
+		p = p.WithHTTPClient(f.httpClient)
+	}
+	return p
 }
 
-func (f *Factory) newAnthropicVision() vision.Provider {
-	return vision.NewAnthropicProvider(f.cfg.Vision.Model)
+func (f *Factory) anthropicVision(key string) vision.Provider {
+	p := vision.NewAnthropicProvider(key, f.cfg.Vision.Model)
+	if f.httpClient != nil {
+		p = p.WithHTTPClient(f.httpClient)
+	}
+	return p
 }
 
-func (f *Factory) newGeminiVision() vision.Provider {
-	return vision.NewGeminiProvider(f.cfg.Vision.Model)
+func (f *Factory) geminiVision(key string) vision.Provider {
+	p := vision.NewGeminiProvider(key, f.cfg.Vision.Model)
+	if f.httpClient != nil {
+		p = p.WithHTTPClient(f.httpClient)
+	}
+	return p
 }
 
-func (f *Factory) newOpenRouterVision() vision.Provider {
-	return vision.NewOpenRouterProvider(f.cfg.Vision.Model)
+func (f *Factory) openRouterVision(key string) vision.Provider {
+	p := vision.NewOpenRouterProvider(key, f.cfg.Vision.Model)
+	if f.httpClient != nil {
+		p = p.WithHTTPClient(f.httpClient)
+	}
+	return p
 }
 
 // --- Pyannote ---
