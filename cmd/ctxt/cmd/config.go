@@ -272,6 +272,7 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println("  storage:")
 	fmt.Printf("    type:       %s\n", cfg.Storage.Type)
+	fmt.Printf("    data_dir:   %s\n", cfg.Storage.DataDir)
 	fmt.Printf("    path:       %s\n", cfg.Storage.Path)
 	fmt.Println()
 	fmt.Println("  server:")

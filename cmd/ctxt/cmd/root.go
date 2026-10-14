@@ -482,11 +482,21 @@ func initConfig() {
 	if err := config.EnsureConfigDir(binName); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure config directory: %v\n", err)
 	}
-	if err := config.EnsureDataDir(); err != nil {
+	if err := config.EnsureDataDir(cfg.Storage.DataDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure data directory: %v\n", err)
 	}
 
 	tel = telemetry.New(cfg)
+}
+
+// dataDir is the resolved storage.data_dir (-c > CTXT_DATA_DIR > file >
+// XDG default), the base of the run/ dir. Empty before config loads,
+// which config.RunDir rejects.
+func dataDir() string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.Storage.DataDir
 }
 
 func SetVersionInfo(v, bt, gc string) {

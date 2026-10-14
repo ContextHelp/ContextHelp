@@ -40,7 +40,7 @@ func signalTarget(t *testing.T, port int) *exec.Cmd {
 			_ = child.Wait()
 		}
 	})
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDir(os.Getenv(config.EnvDataDir))
 	if err != nil {
 		t.Fatalf("run dir: %v", err)
 	}

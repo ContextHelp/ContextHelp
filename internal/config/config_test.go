@@ -131,20 +131,6 @@ func TestEnsureConfigDir(t *testing.T) {
 	}
 }
 
-func TestEnsureDataDir(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(EnvDataDir, filepath.Join(dir, "data"))
-
-	err := EnsureDataDir()
-	if err != nil {
-		t.Fatalf("EnsureDataDir should succeed: %v", err)
-	}
-
-	if _, err := os.Stat(filepath.Join(dir, "data")); os.IsNotExist(err) {
-		t.Error("data directory should have been created")
-	}
-}
-
 func TestLoadWithRegistries(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")

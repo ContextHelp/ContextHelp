@@ -38,7 +38,8 @@ var psCmd = &cobra.Command{
 	Short: "List running dpkms instances",
 	Long: `List all dpkms processes running on this machine.
 
-Scans $XDG_DATA_HOME/contexthelp/run/ for pidfiles and validates each
+Scans <data dir>/run/ (CTXT_DATA_DIR or storage.data_dir;
+default $XDG_DATA_HOME/contexthelp) for pidfiles and validates each
 process is still alive. Stale entries (from crashes or reboots) are
 removed automatically.
 
@@ -63,7 +64,7 @@ func init() {
 }
 
 func runPS(cmd *cobra.Command, _ []string) error {
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDir(dataDir())
 	if err != nil {
 		return fmt.Errorf("run dir: %w", err)
 	}

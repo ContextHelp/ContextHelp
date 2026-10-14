@@ -208,7 +208,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// banners read. It still writes the shadow file next to the pidfiles,
 	// though nothing reads it any more; RunDir errors just disable it.
 	var upgradeMgr *upgrade.Manager
-	if runDir, runDirErr := config.RunDir(); runDirErr == nil {
+	if runDir, runDirErr := config.RunDir(dataDir()); runDirErr == nil {
 		upgradeMgr = upgrade.NewManager(filepath.Join(runDir, "upgrade-state.json"))
 	} else {
 		upgradeMgr = upgrade.NewManager("")
@@ -384,7 +384,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// 10c. Write pidfile so dpkms ps can discover this instance.
 	// Deferred removal covers both clean shutdown and error paths.
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDir(dataDir())
 	if err != nil {
 		return fmt.Errorf("run dir: %w", err)
 	}

@@ -50,7 +50,7 @@ func instanceSelector(cmd *cobra.Command) (string, dpkmsclient.Layer) {
 // currentInstance returns the selection `ctxt instance use` persisted,
 // or "" when there is none.
 func currentInstance() string {
-	stateFile, err := config.CurrentInstanceFile()
+	stateFile, err := config.CurrentInstanceFile(dataDir())
 	if err != nil {
 		return ""
 	}
@@ -64,7 +64,7 @@ func currentInstance() string {
 // localInstances lists the dpkms instances running on this machine, from
 // their pidfiles.
 func localInstances() ([]pidfile.Info, error) {
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDir(dataDir())
 	if err != nil {
 		return nil, err
 	}

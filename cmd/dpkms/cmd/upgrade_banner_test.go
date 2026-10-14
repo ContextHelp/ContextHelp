@@ -62,7 +62,11 @@ func isolatedRunDir(t *testing.T) string {
 	t.Helper()
 	t.Setenv("CTXT_DATA_DIR", "")
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	dir, err := config.RunDir()
+	dataDir, err := config.DefaultDataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := config.RunDir(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -18,7 +19,8 @@ import (
 const (
 	// EnvConfigPath is the environment variable for config path override
 	EnvConfigPath = "CTXT_CONFIG"
-	// EnvDataDir is the environment variable for data directory override
+	// EnvDataDir is the environment variable for the data directory
+	// (storage.data_dir). It names a directory, never the database file.
 	EnvDataDir = "CTXT_DATA_DIR"
 	// EnvProfile is the environment variable for default focus profile
 	EnvProfile = "CTXT_PROFILE"
@@ -520,9 +522,47 @@ type BackupConfig struct {
 
 // StorageConfig represents storage configuration
 type StorageConfig struct {
-	Type string     `mapstructure:"type" yaml:"type"`
+	Type string `mapstructure:"type" yaml:"type"`
+	// DataDir is the base data directory: the run/ dir (pidfiles,
+	// instance selection) and the defaults for Path and Blob.Local.Path
+	// live under it. Default: the XDG data dir for contexthelp.
+	DataDir string `mapstructure:"data_dir" yaml:"data_dir"`
+	// Path is the SQLite database file, or the PostgreSQL connection
+	// string. Default: <DataDir>/db.sqlite.
 	Path string     `mapstructure:"path" yaml:"path"`
 	Blob BlobConfig `mapstructure:"blob" yaml:"blob"`
+}
+
+// Names of the default entries under the data directory.
+const (
+	// DBFileName is the default SQLite database file in the data dir.
+	DBFileName = "db.sqlite"
+	// BlobDirName is the default local blob directory in the data dir.
+	BlobDirName = "blobs"
+	// runDirName holds pidfiles and other runtime state.
+	runDirName = "run"
+)
+
+// resolveDataPaths fills every storage default that derives from the
+// data directory. It runs after all layers merged, so a data dir set by
+// a file, env or override moves the defaults with it, while an explicit
+// storage.path or storage.blob.local.path is left alone. This is the one
+// place those defaults are computed.
+func (s *StorageConfig) resolveDataPaths() error {
+	if s.DataDir == "" {
+		dir, err := DefaultDataDir()
+		if err != nil {
+			return err
+		}
+		s.DataDir = dir
+	}
+	if s.Path == "" {
+		s.Path = filepath.Join(s.DataDir, DBFileName)
+	}
+	if s.Blob.Local.Path == "" {
+		s.Blob.Local.Path = filepath.Join(s.DataDir, BlobDirName)
+	}
+	return nil
 }
 
 // BlobConfig holds configuration for the blob storage backend.
@@ -1117,6 +1157,9 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 	cfg.Server.resolveListenPorts()
+	if err := cfg.Storage.resolveDataPaths(); err != nil {
+		return nil, err
+	}
 
 	// Sync FocusProfile.Default bool → ProfileConfig.Default string.
 	if err := syncProfileDefault(&cfg); err != nil {
@@ -1229,21 +1272,14 @@ func syncProfileDefault(cfg *Config) error {
 
 // setDefaults sets default configuration values
 func setDefaults(v *viper.Viper) {
-	dataDir, err := dataDirXDG()
-	if err != nil {
-		// Fallback only when XDG resolution fails (e.g. no $HOME).
-		home, _ := os.UserHomeDir()
-		dataDir = filepath.Join(home, ".local", "share", "contexthelp")
-	}
-
-	// Storage defaults
+	// Storage defaults. storage.data_dir, storage.path and
+	// storage.blob.local.path carry no viper default: they derive from
+	// the merged data dir after load (StorageConfig.resolveDataPaths).
 	v.SetDefault("storage.type", "sqlite")
-	v.SetDefault("storage.path", filepath.Join(dataDir, "db.sqlite"))
 
 	// Blob storage defaults
 	v.SetDefault("storage.blob.backend", "local")
 	v.SetDefault("storage.blob.threshold", int64(65536))
-	v.SetDefault("storage.blob.local.path", filepath.Join(dataDir, "blobs"))
 	v.SetDefault("storage.blob.s3.region", "us-east-1")
 	v.SetDefault("storage.blob.s3.use_path_style", false)
 	v.SetDefault("storage.blob.s3.presign_expiry", time.Hour)
@@ -1387,7 +1423,7 @@ func bindEnvVars(v *viper.Viper) {
 // viper.Get*; this list drives env > file overlay on the typed Config.
 var envBindings = []struct{ Key, Env string }{
 	{"storage.type", "CH_STORAGE_TYPE"},
-	{"storage.path", EnvDataDir},
+	{"storage.data_dir", EnvDataDir},
 	{"storage.blob.backend", "CTXT_BLOB_BACKEND"},
 	{"storage.blob.threshold", "CTXT_BLOB_THRESHOLD"},
 	{"storage.blob.s3.endpoint", "CTXT_BLOB_S3_ENDPOINT"},
@@ -1478,9 +1514,16 @@ func configDirXDG() (string, error) {
 	return xdg.RawConfigDir(xdgTool)
 }
 
-// dataDirXDG returns the XDG-resolved data directory for contexthelp.
-func dataDirXDG() (string, error) {
-	return xdg.RawDataDir(xdgTool)
+// DefaultDataDir returns the built-in data directory: the XDG data dir
+// for contexthelp. It is the bottom layer of storage.data_dir
+// (-c > CTXT_DATA_DIR > file > this); code holding a loaded
+// Config reads cfg.Storage.DataDir instead.
+func DefaultDataDir() (string, error) {
+	dir, err := xdg.RawDataDir(xdgTool)
+	if err != nil {
+		return "", fmt.Errorf("data dir: %w", err)
+	}
+	return dir, nil
 }
 
 // walkUpForMarker walks up from cwd looking for `.contexthelp/<bin>.yaml`,
@@ -1531,35 +1574,29 @@ func EnsureConfigDir(bin string) error {
 	return os.MkdirAll(configDir, 0o750)
 }
 
-// EnsureDataDir ensures the data directory exists.
-// Resolution order: $CTXT_DATA_DIR > kit/xdg DataDir.
-func EnsureDataDir() error {
-	dataDir := os.Getenv(EnvDataDir)
+// errNoDataDir rejects an unresolved data dir rather than falling back
+// to a process-wide default the caller's config may not point at.
+var errNoDataDir = errors.New("data dir: not resolved (storage.data_dir is empty)")
+
+// EnsureDataDir creates dataDir (cfg.Storage.DataDir).
+func EnsureDataDir(dataDir string) error {
 	if dataDir == "" {
-		var err error
-		dataDir, err = dataDirXDG()
-		if err != nil {
-			return fmt.Errorf("data dir: %w", err)
-		}
+		return errNoDataDir
 	}
 	// #nosec G703 -- dataDir derives from XDG_DATA_HOME or the
 	// operator's config, not from captured content or a request.
 	return os.MkdirAll(dataDir, 0o750)
 }
 
-// RunDir returns the directory used for runtime files (pidfiles).
-// Resolution order: $CTXT_DATA_DIR/run > kit/xdg DataDir/run.
-func RunDir() (string, error) {
-	base := os.Getenv(EnvDataDir)
-	if base == "" {
-		var err error
-		base, err = dataDirXDG()
-		if err != nil {
-			return "", fmt.Errorf("data dir: %w", err)
-		}
+// RunDir returns <dataDir>/run, the directory for runtime files
+// (pidfiles, upgrade state, the current-instance selection), creating
+// it on demand. Pass cfg.Storage.DataDir.
+func RunDir(dataDir string) (string, error) {
+	if dataDir == "" {
+		return "", errNoDataDir
 	}
-	dir := filepath.Join(base, "run")
-	// #nosec G703 -- base is the operator's XDG state/runtime dir.
+	dir := filepath.Join(dataDir, runDirName)
+	// #nosec G703 -- dataDir is the operator's data dir, not request input.
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("run dir: %w", err)
 	}
@@ -1567,10 +1604,10 @@ func RunDir() (string, error) {
 }
 
 // CurrentInstanceFile returns the path to the state file that stores the
-// user's chosen current instance name (written by `ctxt instance use`).
-// Stored alongside pidfiles: $XDG_DATA_HOME/contexthelp/run/current-instance
-func CurrentInstanceFile() (string, error) {
-	dir, err := RunDir()
+// user's chosen current instance name (written by `ctxt instance use`):
+// <dataDir>/run/current-instance.
+func CurrentInstanceFile(dataDir string) (string, error) {
+	dir, err := RunDir(dataDir)
 	if err != nil {
 		return "", err
 	}

@@ -506,7 +506,7 @@ func runUpgradeRun(cmd *cobra.Command, _ []string) error {
 	// (e.g. flock on the shadow path) is a follow-up — for now the
 	// worker's Manager.Start guard is single-process.
 	shadowPath := ""
-	if runDir, runErr := config.RunDir(); runErr == nil {
+	if runDir, runErr := config.RunDir(dataDir()); runErr == nil {
 		shadowPath = filepath.Join(runDir, "upgrade-state.json")
 	}
 	mgr := upgrade.NewManager(shadowPath)

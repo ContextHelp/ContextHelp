@@ -642,7 +642,7 @@ func TestEmbeddingsLifecycle_ConfirmToken(t *testing.T) {
 func TestEmbeddingsLifecycle_InstanceTargeting(t *testing.T) {
 	db := setupTestDB(t) // the configured database: stays empty
 	inst := newLifecycleDB(t)
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDir(testDataDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}

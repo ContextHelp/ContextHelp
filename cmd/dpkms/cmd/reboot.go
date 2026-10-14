@@ -46,7 +46,7 @@ func runReboot(cmd *cobra.Command, _ []string) error {
 		port = cfg.Server.Port
 	}
 
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDir(dataDir())
 	if err != nil {
 		return fmt.Errorf("run dir: %w", err)
 	}

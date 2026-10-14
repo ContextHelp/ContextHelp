@@ -184,7 +184,7 @@ func TestUpgradeBanner_Suppressed(t *testing.T) {
 func TestUpgradeBanner_IgnoresLocalShadowFile(t *testing.T) {
 	asTerminal(t)
 	db := setupTestDB(t)
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDir(testDataDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}

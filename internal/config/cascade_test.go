@@ -92,10 +92,6 @@ func TestLoad_NoProjectMarker_FallsBackToDefaults(t *testing.T) {
 // hardcoded defaults.
 func TestLoad_PicksUpUserConfigPerBinary(t *testing.T) {
 	home := hermeticHome(t)
-	// CTXT_DATA_DIR is bound to viper's storage.path key, so unset it
-	// here — otherwise the env var would shadow the file value the
-	// test asserts against.
-	t.Setenv(EnvDataDir, "")
 	confDir := filepath.Join(home, ".config", "contexthelp")
 	require.NoError(t, os.MkdirAll(confDir, 0o755))
 
