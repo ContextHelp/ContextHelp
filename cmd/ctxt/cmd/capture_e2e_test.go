@@ -23,6 +23,10 @@ type e2eFixture struct {
 	binary string
 	server *httptest.Server
 	calls  *sync.Map // path -> *[]captureRecord
+	// mu guards the record slices; arrived is signaled (without
+	// blocking) after each request is recorded.
+	mu      sync.Mutex
+	arrived chan struct{}
 }
 
 // e2eBinary returns a path to a built `ctxt` binary, lazily compiled and
@@ -66,16 +70,20 @@ func newE2EFixture(t *testing.T) *e2eFixture {
 	if testing.Short() {
 		t.Skip("e2e: -short")
 	}
-	bin := e2eBinary(t)
-
-	calls := &sync.Map{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	f := &e2eFixture{binary: e2eBinary(t), calls: &sync.Map{}, arrived: make(chan struct{}, 1)}
+	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body := map[string]any{}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		rec := captureRecord{Path: r.URL.Path, Method: r.Method, Body: body}
-		v, _ := calls.LoadOrStore(r.URL.Path, &[]captureRecord{})
+		v, _ := f.calls.LoadOrStore(r.URL.Path, &[]captureRecord{})
 		recs := v.(*[]captureRecord)
+		f.mu.Lock()
 		*recs = append(*recs, rec)
+		f.mu.Unlock()
+		select {
+		case f.arrived <- struct{}{}:
+		default:
+		}
 		switch {
 		case r.URL.Path == "/api/v1/analyze" && r.Method == http.MethodPost:
 			w.Header().Set("Content-Type", "application/json")
@@ -92,9 +100,8 @@ func newE2EFixture(t *testing.T) *e2eFixture {
 			http.NotFound(w, r)
 		}
 	}))
-	t.Cleanup(srv.Close)
-
-	return &e2eFixture{binary: bin, server: srv, calls: calls}
+	t.Cleanup(f.server.Close)
+	return f
 }
 
 func (f *e2eFixture) recordsFor(path string) []captureRecord {
@@ -102,7 +109,25 @@ func (f *e2eFixture) recordsFor(path string) []captureRecord {
 	if !ok {
 		return nil
 	}
-	return *v.(*[]captureRecord)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]captureRecord(nil), *v.(*[]captureRecord)...)
+}
+
+// waitForRecords blocks until the server has recorded n requests to
+// path, failing the test when timeout passes first. It wakes on each
+// request, so it returns as soon as the n-th arrives.
+func (f *e2eFixture) waitForRecords(t *testing.T, path string, n int, timeout time.Duration) {
+	t.Helper()
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	for len(f.recordsFor(path)) < n {
+		select {
+		case <-f.arrived:
+		case <-deadline.C:
+			t.Fatalf("%s: %d of %d requests after %v", path, len(f.recordsFor(path)), n, timeout)
+		}
+	}
 }
 
 func (f *e2eFixture) run(t *testing.T, stdin string, args ...string) (stdout, stderr string, exit int) {
@@ -281,24 +306,51 @@ func TestE2ECaptureWait(t *testing.T) {
 	}
 }
 
+// --every captures at once, then on every tick, until SIGINT ends the
+// loop with exit 0. The test waits for the captures themselves, not for
+// a fixed window: start-up alone (a fresh binary's first exec on a
+// loaded machine) can outlast any window, and the signal then lands
+// before the first capture.
 func TestE2ECaptureEveryShortLoop(t *testing.T) {
+	const every = 100 * time.Millisecond
 	f := newE2EFixture(t)
-	full := append([]string{"capture", "--server", f.server.URL}, "loop content", "--every", "100ms")
-	cmd := exec.Command(f.binary, full...)
+	cmd := exec.Command(f.binary, "capture", "--server", f.server.URL, "loop content", "--every", every.String())
 	var so, se bytes.Buffer
 	cmd.Stdout = &so
 	cmd.Stderr = &se
 	cmd.Env = append(os.Environ(), "CTXT_NO_CLIPBOARD=1")
+	start := time.Now()
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	time.Sleep(280 * time.Millisecond)
-	_ = cmd.Process.Signal(os.Interrupt)
-	_ = cmd.Wait()
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	t.Cleanup(func() {
+		if cmd.ProcessState == nil {
+			_ = cmd.Process.Kill()
+			<-exited
+		}
+	})
 
+	// The immediate capture plus two ticks: the loop repeats.
+	f.waitForRecords(t, "/api/v1/analyze", 3, time.Minute)
+
+	_ = cmd.Process.Signal(os.Interrupt)
+	select {
+	case err := <-exited:
+		if err != nil {
+			t.Fatalf("SIGINT should end the loop with exit 0: %v\nstderr=%s", err, se.String())
+		}
+	case <-time.After(time.Minute):
+		t.Fatalf("loop still running a minute after SIGINT\nstderr=%s", se.String())
+	}
+	elapsed := time.Since(start)
+
+	// Tick k fires no earlier than k intervals after the loop starts,
+	// which is after start: the cadence bounds the count from above.
 	count := len(f.recordsFor("/api/v1/analyze"))
-	if count < 2 || count > 5 {
-		t.Errorf("expected 2-5 captures in 280ms with --every 100ms, got %d", count)
+	if limit := 1 + int(elapsed/every); count > limit {
+		t.Errorf("%d captures in %v: --every %v allows at most %d", count, elapsed, every, limit)
 	}
 }
 
