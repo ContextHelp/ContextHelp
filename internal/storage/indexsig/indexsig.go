@@ -46,7 +46,9 @@ const FTSSignatureID = "objects_fts"
 // Tag/EntityMention nodes only.
 // v2 = v1 with repeated segments dropped: a summary, section or body whose
 // text (trimmed) already appeared is indexed once, first occurrence first.
-const ProjectionVersion = "v2"
+// v3 = v2 with blob:// refs dropped: an externalized object's ref is
+// never indexed text.
+const ProjectionVersion = "v3"
 
 // SQLiteFTSTokenizer is the tokenizer in use for objects_fts. The DDL does
 // not specify `tokenize=`, so FTS5 falls back to its default ("unicode61"

@@ -12,6 +12,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/spf13/cobra"
@@ -493,15 +494,27 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Each object goes with the blob its content is externalized to,
+	// row first: a blob that can't be deleted is left as an orphan and
+	// listed, never a row whose ref names no blob.
 	deleted := 0
+	var orphans []blob.Orphan
 	for _, obj := range objects {
-		if err := driver.Objects().Delete(ctx, obj.ID); err != nil {
+		left, err := blob.DeleteObject(ctx, driver, obj.ID)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "  warning: delete %s: %v\n", obj.ID, err)
 			continue
 		}
 		deleted++
+		orphans = append(orphans, left...)
 	}
 	fmt.Printf("\nPruned %d objects\n", deleted)
+	if len(orphans) > 0 {
+		fmt.Printf("Left %d orphan blob(s): their objects are gone, deleting them failed:\n", len(orphans))
+		for _, o := range orphans {
+			fmt.Printf("  %s\n", o)
+		}
+	}
 	return nil
 }
 

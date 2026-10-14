@@ -490,12 +490,10 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	contentUpdate := ""
 	contentArgs := []any{string(mergedTagsJSON), string(mergedMentionsJSON), now}
 	if mergeData.RawContent != "" && mergeData.RawContent != hash {
-		tc := mergeData.TextContent
-		if tc == "" {
-			tc = mergeData.RawContent
-		}
+		// text_content takes the default Create applies
+		// (projection.BodyText), so a blob:// ref never becomes text.
 		contentUpdate = ", raw_content = ?, text_content = ?"
-		contentArgs = append(contentArgs, mergeData.RawContent, tc)
+		contentArgs = append(contentArgs, mergeData.RawContent, projection.BodyText(mergeData))
 	}
 	contentArgs = append(contentArgs, hash)
 

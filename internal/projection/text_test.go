@@ -18,6 +18,10 @@ func TestBodyText_DefaultsToRawContent(t *testing.T) {
 		"text wins":     {&pluginapi.KnowledgeObject{RawContent: "raw body", TextContent: "clean body"}, "clean body"},
 		"text only":     {&pluginapi.KnowledgeObject{TextContent: "clean body"}, "clean body"},
 		"blank text ok": {&pluginapi.KnowledgeObject{RawContent: "raw", TextContent: " "}, " "},
+		"raw ref":       {&pluginapi.KnowledgeObject{RawContent: "blob://abc123"}, ""},
+		"raw ref, text": {&pluginapi.KnowledgeObject{RawContent: "blob://abc123", TextContent: "clean body"}, "clean body"},
+		"text ref":      {&pluginapi.KnowledgeObject{RawContent: "raw body", TextContent: "blob://abc123"}, "raw body"},
+		"both refs":     {&pluginapi.KnowledgeObject{RawContent: "blob://abc123", TextContent: "blob://abc123"}, ""},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -94,5 +98,33 @@ func TestEmbeddingText_EmptyObject(t *testing.T) {
 	}
 	if got := projection.EmbeddingText(&pluginapi.KnowledgeObject{}); got != "" {
 		t.Errorf("empty: %q", got)
+	}
+}
+
+// A blob:// ref points at content; it is never indexed or embedded,
+// wherever it sits.
+func TestIndexText_NeverABlobRef(t *testing.T) {
+	cases := map[string]*pluginapi.KnowledgeObject{
+		"raw ref, no text": {RawContent: "blob://abc123", Summaries: []string{"numbat gist"}},
+		"text ref":         {RawContent: "blob://abc123", TextContent: "blob://abc123", Summaries: []string{"numbat gist"}},
+		"section ref":      {TextContent: "numbat gist", Sections: []pluginapi.Section{{Content: "blob://abc123"}}},
+		"graph section ref": {Graph: &pluginapi.ObjectGraph{Nodes: []pluginapi.GraphNode{
+			{NodeType: pluginapi.NodeTypeSummary, Content: "numbat gist"},
+			{NodeType: pluginapi.NodeTypeSection, Content: "blob://abc123"},
+		}}},
+	}
+	for name, ko := range cases {
+		t.Run(name, func(t *testing.T) {
+			idx := projection.ProjectIndex(ko)
+			for field, got := range map[string]string{
+				"FTSBody":                    idx.FTSBody,
+				"ProjectIndex.EmbeddingText": idx.EmbeddingText,
+				"EmbeddingText":              projection.EmbeddingText(ko),
+			} {
+				if got != "numbat gist" {
+					t.Errorf("%s = %q, want only the text", field, got)
+				}
+			}
+		})
 	}
 }

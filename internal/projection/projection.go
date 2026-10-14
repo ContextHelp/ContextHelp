@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
@@ -112,7 +113,7 @@ func flatIndexProjection(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjectio
 // often carry the same text, and a body can repeat its summary; indexing
 // both copies doubles the text in the FTS body and the embedding input.
 // Segments compare after trimming surrounding whitespace; empty segments
-// are dropped.
+// and blob:// refs (pointers to content, not text) are dropped.
 type segments struct {
 	list []string
 	seen map[string]struct{}
@@ -120,7 +121,7 @@ type segments struct {
 
 func (p *segments) add(s string) {
 	key := strings.TrimSpace(s)
-	if key == "" {
+	if key == "" || blobref.Is(key) {
 		return
 	}
 	if _, dup := p.seen[key]; dup {

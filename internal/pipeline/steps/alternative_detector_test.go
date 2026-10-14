@@ -55,6 +55,8 @@ func (s *stubObjectStore) List(_ context.Context, filter storage.ObjectFilter) (
 
 func (s *stubObjectStore) Update(_ context.Context, _ *storage.KnowledgeObject) error { return nil }
 func (s *stubObjectStore) Delete(_ context.Context, _ string) error                   { return nil }
+func (s *stubObjectStore) CountBlobRefs(_ context.Context, _ string) (int, error)     { return 0, nil }
+
 func (s *stubObjectStore) ListBySQL(_ context.Context, _ string, _ []any, _, _ int) ([]*storage.KnowledgeObject, int, error) {
 	return nil, 0, nil
 }

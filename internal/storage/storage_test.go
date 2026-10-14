@@ -85,6 +85,8 @@ func (m *mockObjectStore) List(ctx context.Context, filter ObjectFilter) ([]*Kno
 }
 func (m *mockObjectStore) Update(ctx context.Context, obj *KnowledgeObject) error { return nil }
 func (m *mockObjectStore) Delete(ctx context.Context, id string) error            { return nil }
+func (m *mockObjectStore) CountBlobRefs(_ context.Context, _ string) (int, error) { return 0, nil }
+
 func (m *mockObjectStore) ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error) {
 	return nil, 0, nil
 }

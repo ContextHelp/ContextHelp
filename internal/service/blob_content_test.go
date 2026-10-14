@@ -346,3 +346,56 @@ func TestFederationAcceptExternalizesByReceiverThreshold(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, body, got.RawContent)
 }
+
+// Search indexes what an externalized object says, never its blob://
+// ref: its words find it, the ref's tokens (the scheme, the key) do not.
+func TestSearchIndexesExternalizedContentNotRef(t *testing.T) {
+	svc := blobTestService(t)
+	ctx := context.Background()
+	body := "quokka marmalade " + bigBody(500)
+	seedBlobObject(t, svc, "obj-big", body)
+	stored, err := svc.Store.Objects().Get(ctx, "obj-big")
+	require.NoError(t, err)
+	key, _ := blob.BlobKey(stored.RawContent)
+	require.False(t, blob.IsBlobRef(stored.TextContent), "stored text_content is the blob ref")
+
+	hits, err := svc.FindByText(ctx, "quokka marmalade", 10)
+	require.NoError(t, err)
+	require.Len(t, hits, 1, "content words do not find the externalized object")
+	require.Equal(t, "obj-big", hits[0].ID)
+
+	for _, q := range []string{"blob", key} {
+		hits, err := svc.FindByText(ctx, q, 10)
+		require.NoError(t, err)
+		require.Empty(t, hits, "the blob ref was indexed: %q finds the object", q)
+	}
+
+	got, err := svc.GetObject(ctx, "obj-big")
+	require.NoError(t, err)
+	require.Equal(t, body, got.TextContent, "text_content read back is not the whole content")
+	require.NotContains(t, got.Metadata, psteps.MetaTextTruncated)
+}
+
+// Deleting an object deletes its blob, unless another object still
+// refers to it.
+func TestDeleteObjectDeletesUnsharedBlob(t *testing.T) {
+	svc := blobTestService(t)
+	ctx := context.Background()
+	seedBlobObject(t, svc, "obj-big", bigBody(500))
+	stored, err := svc.Store.Objects().Get(ctx, "obj-big")
+	require.NoError(t, err)
+	key, _ := blob.BlobKey(stored.RawContent)
+	twin := *stored
+	twin.ID, twin.ContentHash = "obj-twin", ""
+	require.NoError(t, svc.Store.Objects().Create(ctx, &twin))
+
+	exists := func() bool {
+		ok, err := svc.Store.Blobs().Exists(ctx, key)
+		require.NoError(t, err)
+		return ok
+	}
+	require.NoError(t, svc.DeleteObject(ctx, "obj-big"))
+	require.True(t, exists(), "deleted a blob another object refers to")
+	require.NoError(t, svc.DeleteObject(ctx, "obj-twin"))
+	require.False(t, exists(), "deleting the last object left its blob behind")
+}

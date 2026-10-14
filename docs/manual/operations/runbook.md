@@ -108,6 +108,8 @@ Optional retention prune (policy-controlled):
 dpkms housekeeping prune --before 2025-01-01
 ```
 
+Prune deletes each object with the blob its content is stored in (content above `storage.blob.threshold`), unless another object still refers to that blob. A blob it can't delete is listed as an orphan blob; its object is deleted either way.
+
 ### 2. Pipeline and step governance
 
 ```bash

@@ -8,6 +8,7 @@ import (
 	psteps "github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 )
 
 // MetaContentTruncated is the metadata flag a list-style read sets on an
@@ -26,6 +27,11 @@ const defaultPreviewBytes = 65536
 // inline object can have — flagged MetaContentTruncated, so no client
 // ever sees a ref and a list stays bounded. The write path re-applies the
 // threshold, so content read here and written back stays externalized.
+//
+// text_content is never a ref: it is what search and embeddings index.
+// When it is the content, the externalizer keeps a threshold-sized prefix
+// of it inline, flagged psteps.MetaTextTruncated, and a single-object read
+// hands back the whole content as the text.
 
 // resolveContent replaces obj's blob refs with the content they point to.
 func (s *Service) resolveContent(ctx context.Context, obj *storage.KnowledgeObject) error {
@@ -39,6 +45,12 @@ func (s *Service) resolveContent(ctx context.Context, obj *storage.KnowledgeObje
 	text, err := blob.Content(ctx, s.Store.Blobs(), obj.TextContent)
 	if err != nil {
 		return fmt.Errorf("object %s: %w", obj.ID, err)
+	}
+	// The text is the content when it is a prefix of it, or when there
+	// is none: the default storage applies to inline content.
+	if truncated, _ := obj.Metadata[psteps.MetaTextTruncated].(bool); truncated || text == "" {
+		text = raw
+		delete(obj.Metadata, psteps.MetaTextTruncated)
 	}
 	obj.RawContent, obj.TextContent = raw, text
 	return nil
@@ -91,16 +103,20 @@ func (s *Service) storable(ctx context.Context, obj *storage.KnowledgeObject) (*
 	cp := *obj
 	cp.Metadata = maps.Clone(obj.Metadata)
 
+	textTruncated, _ := cp.Metadata[psteps.MetaTextTruncated].(bool)
+	delete(cp.Metadata, psteps.MetaTextTruncated)
+
 	if truncated, _ := cp.Metadata[MetaContentTruncated].(bool); truncated {
 		key, _ := cp.Metadata["blob_key"].(string)
 		if key == "" {
 			return nil, fmt.Errorf("object %s: content is a truncated preview with no blob_key; write the full content", obj.ID)
 		}
-		ref := "blob://" + key
-		if cp.TextContent == cp.RawContent {
-			cp.TextContent = ref
+		// The text a preview carries is the stored prefix, or the
+		// content's own preview: a prefix of the content either way.
+		if textTruncated || cp.TextContent == cp.RawContent {
+			cp.Metadata[psteps.MetaTextTruncated] = true
 		}
-		cp.RawContent = ref
+		cp.RawContent = blobref.For(key)
 		delete(cp.Metadata, MetaContentTruncated)
 		return &cp, nil
 	}
@@ -108,15 +124,14 @@ func (s *Service) storable(ctx context.Context, obj *storage.KnowledgeObject) (*
 
 	threshold := s.Cfg.Storage.Blob.Threshold
 	if threshold <= 0 || s.Store.Blobs() == nil || blob.IsBlobRef(cp.RawContent) || int64(len(cp.RawContent)) <= threshold {
+		if textTruncated && blob.IsBlobRef(cp.RawContent) {
+			cp.Metadata[psteps.MetaTextTruncated] = true
+		}
 		return &cp, nil
 	}
-	sameText := cp.TextContent == cp.RawContent
 	out, err := psteps.NewExternalizer(s.Store.Blobs(), threshold).Run(ctx, &cp)
 	if err != nil {
 		return nil, fmt.Errorf("object %s: %w", obj.ID, err)
-	}
-	if sameText {
-		out.TextContent = out.RawContent
 	}
 	return out, nil
 }
