@@ -10,6 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // stubEntityStore is an in-memory EntityStore for testing.
@@ -155,6 +156,21 @@ func TestSyncer_RegistryError_ReturnsError(t *testing.T) {
 	}
 }
 
+// newQueue is a fresh SQLite approval queue.
+func newQueue(t *testing.T) storage.PendingEntityStore {
+	t.Helper()
+	return storageutil.NewTestDriver(t).PendingEntities()
+}
+
+func listQueue(t *testing.T, q storage.PendingEntityStore, registry string) []*storage.PendingEntity {
+	t.Helper()
+	got, err := q.List(context.Background(), storage.PendingEntityFilter{RegistryName: registry})
+	if err != nil {
+		t.Fatalf("List queue: %v", err)
+	}
+	return got
+}
+
 func TestSyncer_UntrustedRegistry_QueuesNotWrites(t *testing.T) {
 	entries := []registry.EntityIndexEntry{
 		{Slug: "ai.bert", Title: "BERT", Namespace: "ai", VersionHash: "v1"},
@@ -163,9 +179,11 @@ func TestSyncer_UntrustedRegistry_QueuesNotWrites(t *testing.T) {
 	defer srv.Close()
 
 	store := &stubEntityStore{}
-	syncer := registry.New(store)
+	q := newQueue(t)
+	syncer := registry.New(store).WithPendingQueue(q)
 
 	result, err := syncer.Sync(context.Background(), config.RegistryConfig{
+		Name:       "pub",
 		URL:        srv.URL,
 		SyncMode:   config.RegistrySyncModeFull,
 		TrustLevel: config.RegistryTrustLevelUntrusted,
@@ -187,13 +205,16 @@ func TestSyncer_UntrustedRegistry_QueuesNotWrites(t *testing.T) {
 		t.Errorf("no entities should be written for untrusted registry")
 	}
 
-	// Trust gate should have 1 pending approval.
-	pending := syncer.TrustGateState().PendingApprovals()
+	// The persistent queue holds it, with what review needs.
+	pending := listQueue(t, q, "pub")
 	if len(pending) != 1 {
-		t.Fatalf("pending approvals: got %d, want 1", len(pending))
+		t.Fatalf("queued: got %d, want 1", len(pending))
 	}
-	if pending[0].Entity.Slug != "ai.bert" {
-		t.Errorf("pending slug: got %q", pending[0].Entity.Slug)
+	p := pending[0]
+	if p.Slug != "ai.bert" || p.Version != "v1" || p.RegistryURL != srv.URL ||
+		p.SignatureStatus != storage.SignatureUnsigned || p.Entity == nil || p.Entity.Title != "BERT" ||
+		p.ID != storage.PendingEntityID("pub", "ai.bert", "v1") {
+		t.Errorf("queued = %+v", p)
 	}
 }
 
@@ -205,9 +226,11 @@ func TestSyncer_SandboxedRegistry_BlocksNoQueue(t *testing.T) {
 	defer srv.Close()
 
 	store := &stubEntityStore{}
-	syncer := registry.New(store)
+	q := newQueue(t)
+	syncer := registry.New(store).WithPendingQueue(q)
 
 	result, err := syncer.Sync(context.Background(), config.RegistryConfig{
+		Name:       "box",
 		URL:        srv.URL,
 		SyncMode:   config.RegistrySyncModeFull,
 		TrustLevel: config.RegistryTrustLevelSandboxed,
@@ -223,10 +246,72 @@ func TestSyncer_SandboxedRegistry_BlocksNoQueue(t *testing.T) {
 		t.Errorf("Blocked/PendingApproval/Skipped = %d/%d/%d, want 1/0/0",
 			result.Blocked, result.PendingApproval, result.Skipped)
 	}
-	// Sandboxed: no pending approvals (hard block).
-	pending := syncer.TrustGateState().PendingApprovals()
-	if len(pending) != 0 {
-		t.Errorf("sandboxed should not queue, got %d pending", len(pending))
+	// Sandboxed: a hard block, nothing to approve.
+	if got := listQueue(t, q, ""); len(got) != 0 {
+		t.Errorf("sandboxed should not queue, got %d queued", len(got))
+	}
+}
+
+// TestSyncer_TrustedSyncDrainsQueue: once the registry is trusted, the
+// next sync writes the entity and it leaves the queue.
+func TestSyncer_TrustedSyncDrainsQueue(t *testing.T) {
+	srv := makeTestServer([]registry.EntityIndexEntry{
+		{Slug: "ai.bert", Title: "BERT", Namespace: "ai", VersionHash: "v1"},
+	})
+	defer srv.Close()
+	store := &stubEntityStore{}
+	q := newQueue(t)
+	syncer := registry.New(store).WithPendingQueue(q)
+	cfg := config.RegistryConfig{Name: "pub", URL: srv.URL}
+
+	if _, err := syncer.Sync(context.Background(), cfg); err != nil {
+		t.Fatalf("untrusted Sync: %v", err)
+	}
+	if got := listQueue(t, q, "pub"); len(got) != 1 {
+		t.Fatalf("queued after untrusted sync: %d, want 1", len(got))
+	}
+
+	cfg.TrustLevel = config.RegistryTrustLevelTrusted
+	res, err := syncer.Sync(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("trusted Sync: %v", err)
+	}
+	if res.Upserted != 1 || len(store.full) != 1 {
+		t.Fatalf("trusted sync wrote %d (%d stored), want 1", res.Upserted, len(store.full))
+	}
+	if got := listQueue(t, q, "pub"); len(got) != 0 {
+		t.Errorf("queue after trusted sync = %+v, want empty", got)
+	}
+}
+
+// TestSyncer_Approve: approval writes the queued entity through the
+// sync write path with provenance and drops it from the queue.
+func TestSyncer_Approve(t *testing.T) {
+	srv := makeTestServer([]registry.EntityIndexEntry{
+		{Slug: "ai.bert", Title: "BERT", Namespace: "ai", VersionHash: "v1"},
+	})
+	defer srv.Close()
+	store := &stubEntityStore{}
+	q := newQueue(t)
+	syncer := registry.New(store).WithPendingQueue(q)
+	if _, err := syncer.Sync(context.Background(), config.RegistryConfig{Name: "pub", URL: srv.URL}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	p := listQueue(t, q, "pub")[0]
+
+	if err := syncer.Approve(context.Background(), p, config.RegistrySyncModeFull); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
+	if len(store.full) != 1 {
+		t.Fatalf("approved entity not written: %+v", store.full)
+	}
+	got := store.full[0]
+	if got.Slug != "ai.bert" || got.RegistryURL != srv.URL || got.ContentStatus != storage.ContentStatusFull ||
+		got.Metadata[registry.ProvenanceKey] != "approved from pub" {
+		t.Errorf("written = %+v", got)
+	}
+	if rest := listQueue(t, q, ""); len(rest) != 0 {
+		t.Errorf("queue after approve = %+v, want empty", rest)
 	}
 }
 
@@ -250,7 +335,8 @@ func TestSyncer_MultiSync_TrustGate(t *testing.T) {
 	defer sandboxed.Close()
 
 	store := &stubEntityStore{}
-	out, err := registry.New(store).MultiSync(context.Background(), registry.MultiSyncConfig{
+	q := newQueue(t)
+	out, err := registry.New(store).WithPendingQueue(q).MultiSync(context.Background(), registry.MultiSyncConfig{
 		Registries: []config.RegistryConfig{
 			{Name: "u", URL: untrusted.URL, TrustLevel: config.RegistryTrustLevelUntrusted},
 			{Name: "s", URL: sandboxed.URL, TrustLevel: config.RegistryTrustLevelSandboxed},
@@ -271,6 +357,12 @@ func TestSyncer_MultiSync_TrustGate(t *testing.T) {
 	}
 	if len(out.Conflicts) != 0 {
 		t.Errorf("conflicts = %+v; held entities must not take part in reconciliation", out.Conflicts)
+	}
+	if got := listQueue(t, q, "u"); len(got) != 2 {
+		t.Errorf("untrusted registry queued %d, want 2", len(got))
+	}
+	if got := listQueue(t, q, ""); len(got) != 2 {
+		t.Errorf("queue holds %d, want only the untrusted registry's 2", len(got))
 	}
 	want := map[string][2]int{untrusted.URL: {2, 0}, sandboxed.URL: {0, 1}, trusted.URL: {0, 0}}
 	for _, r := range out.PerRegistry {

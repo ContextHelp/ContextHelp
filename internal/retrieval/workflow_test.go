@@ -26,35 +26,36 @@ func newMockStore(objs ...*storage.KnowledgeObject) *mockStore {
 	return &mockStore{objects: &mockObjectStore2{objs: objs}}
 }
 
-func (m *mockStore) Init(_ context.Context) error               { return nil }
-func (m *mockStore) Close(_ context.Context) error              { return nil }
-func (m *mockStore) Objects() storage.ObjectStore               { return m.objects }
-func (m *mockStore) Entities() storage.EntityStore              { return nil }
-func (m *mockStore) Edges() storage.EdgeStore                   { return nil }
-func (m *mockStore) Jobs() storage.JobStore                     { return nil }
-func (m *mockStore) Pipelines() storage.PipelineStore           { return nil }
-func (m *mockStore) Steps() storage.StepStore                   { return nil }
-func (m *mockStore) Registries() storage.RegistryStore          { return nil }
-func (m *mockStore) Reminders() storage.ReminderStore           { return nil }
-func (m *mockStore) Feeds() storage.FeedStore                   { return nil }
-func (m *mockStore) FeedItems() storage.FeedItemStore           { return nil }
-func (m *mockStore) Batches() storage.BatchStore                { return nil }
-func (m *mockStore) Detectors() storage.DetectorStore           { return nil }
-func (m *mockStore) Blobs() storage.BlobStore                   { return nil }
-func (m *mockStore) Proximity() storage.ProximityStore          { return nil }
-func (m *mockStore) Watches() storage.WatchStore                { return nil }
-func (m *mockStore) Aliases() storage.AliasStore                { return nil }
-func (m *mockStore) AuditLog() storage.AuditStore               { return nil }
-func (m *mockStore) Attachments() storage.AttachmentStore       { return nil }
-func (m *mockStore) Resurfacing() storage.ResurfacingQueueStore { return nil }
-func (m *mockStore) Entitlements() storage.EntitlementStore     { return nil }
-func (m *mockStore) Metering() storage.MeteringStore            { return nil }
-func (m *mockStore) Embeddings() storage.EmbeddingStore         { return nil }
-func (m *mockStore) SavedSearches() storage.SavedSearchStore    { return nil }
-func (m *mockStore) SearchHistory() storage.SearchHistoryStore  { return nil }
-func (m *mockStore) Watermarks() storage.WatermarkStore         { return nil }
-func (m *mockStore) UISessions() storage.UISessionStore         { return nil }
-func (m *mockStore) Health(_ context.Context) error             { return nil }
+func (m *mockStore) Init(_ context.Context) error                { return nil }
+func (m *mockStore) Close(_ context.Context) error               { return nil }
+func (m *mockStore) Objects() storage.ObjectStore                { return m.objects }
+func (m *mockStore) Entities() storage.EntityStore               { return nil }
+func (m *mockStore) Edges() storage.EdgeStore                    { return nil }
+func (m *mockStore) Jobs() storage.JobStore                      { return nil }
+func (m *mockStore) Pipelines() storage.PipelineStore            { return nil }
+func (m *mockStore) Steps() storage.StepStore                    { return nil }
+func (m *mockStore) Registries() storage.RegistryStore           { return nil }
+func (m *mockStore) Reminders() storage.ReminderStore            { return nil }
+func (m *mockStore) Feeds() storage.FeedStore                    { return nil }
+func (m *mockStore) FeedItems() storage.FeedItemStore            { return nil }
+func (m *mockStore) Batches() storage.BatchStore                 { return nil }
+func (m *mockStore) Detectors() storage.DetectorStore            { return nil }
+func (m *mockStore) Blobs() storage.BlobStore                    { return nil }
+func (m *mockStore) Proximity() storage.ProximityStore           { return nil }
+func (m *mockStore) Watches() storage.WatchStore                 { return nil }
+func (m *mockStore) Aliases() storage.AliasStore                 { return nil }
+func (m *mockStore) AuditLog() storage.AuditStore                { return nil }
+func (m *mockStore) Attachments() storage.AttachmentStore        { return nil }
+func (m *mockStore) Resurfacing() storage.ResurfacingQueueStore  { return nil }
+func (m *mockStore) Entitlements() storage.EntitlementStore      { return nil }
+func (m *mockStore) Metering() storage.MeteringStore             { return nil }
+func (m *mockStore) PendingEntities() storage.PendingEntityStore { return nil }
+func (m *mockStore) Embeddings() storage.EmbeddingStore          { return nil }
+func (m *mockStore) SavedSearches() storage.SavedSearchStore     { return nil }
+func (m *mockStore) SearchHistory() storage.SearchHistoryStore   { return nil }
+func (m *mockStore) Watermarks() storage.WatermarkStore          { return nil }
+func (m *mockStore) UISessions() storage.UISessionStore          { return nil }
+func (m *mockStore) Health(_ context.Context) error              { return nil }
 
 // mockObjectStore2 is a simple in-memory object store for tests.
 type mockObjectStore2 struct {

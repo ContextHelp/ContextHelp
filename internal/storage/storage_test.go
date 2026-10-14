@@ -11,35 +11,36 @@ import (
 // mockDriver verifies that a concrete type can satisfy StorageDriver.
 type mockDriver struct{}
 
-func (m *mockDriver) Init(ctx context.Context) error     { return nil }
-func (m *mockDriver) Close(ctx context.Context) error    { return nil }
-func (m *mockDriver) Objects() ObjectStore               { return &mockObjectStore{} }
-func (m *mockDriver) Entities() EntityStore              { return &mockEntityStore{} }
-func (m *mockDriver) Edges() EdgeStore                   { return &mockEdgeStore{} }
-func (m *mockDriver) Jobs() JobStore                     { return &mockJobStore{} }
-func (m *mockDriver) Pipelines() PipelineStore           { return &mockPipelineStore{} }
-func (m *mockDriver) Steps() StepStore                   { return &mockStepStore{} }
-func (m *mockDriver) Registries() RegistryStore          { return &mockRegistryStore{} }
-func (m *mockDriver) Reminders() ReminderStore           { return &mockReminderStore{} }
-func (m *mockDriver) Feeds() FeedStore                   { return &mockFeedStore{} }
-func (m *mockDriver) FeedItems() FeedItemStore           { return &mockFeedItemStore{} }
-func (m *mockDriver) Batches() BatchStore                { return &mockBatchStore{} }
-func (m *mockDriver) Detectors() DetectorStore           { return &mockDetectorStore{} }
-func (m *mockDriver) Blobs() BlobStore                   { return &mockBlobStore{} }
-func (m *mockDriver) Proximity() ProximityStore          { return &mockProximityStore{} }
-func (m *mockDriver) Watches() WatchStore                { return &mockWatchStore{} }
-func (m *mockDriver) Aliases() AliasStore                { return &mockAliasStore{} }
-func (m *mockDriver) AuditLog() AuditStore               { return &mockAuditLogStore{} }
-func (m *mockDriver) Attachments() AttachmentStore       { return &mockAttachmentStore{} }
-func (m *mockDriver) Resurfacing() ResurfacingQueueStore { return &mockResurfacingQueueStore{} }
-func (m *mockDriver) Entitlements() EntitlementStore     { return &mockEntitlementStore{} }
-func (m *mockDriver) Metering() MeteringStore            { return &mockMeteringStore{} }
-func (m *mockDriver) Embeddings() EmbeddingStore         { return nil }
-func (m *mockDriver) SavedSearches() SavedSearchStore    { return &mockSavedSearchStore{} }
-func (m *mockDriver) SearchHistory() SearchHistoryStore  { return &mockSearchHistoryStore{} }
-func (m *mockDriver) Watermarks() WatermarkStore         { return &mockWatermarkStore{} }
-func (m *mockDriver) UISessions() UISessionStore         { return nil }
-func (m *mockDriver) Health(ctx context.Context) error   { return nil }
+func (m *mockDriver) Init(ctx context.Context) error      { return nil }
+func (m *mockDriver) Close(ctx context.Context) error     { return nil }
+func (m *mockDriver) Objects() ObjectStore                { return &mockObjectStore{} }
+func (m *mockDriver) Entities() EntityStore               { return &mockEntityStore{} }
+func (m *mockDriver) Edges() EdgeStore                    { return &mockEdgeStore{} }
+func (m *mockDriver) Jobs() JobStore                      { return &mockJobStore{} }
+func (m *mockDriver) Pipelines() PipelineStore            { return &mockPipelineStore{} }
+func (m *mockDriver) Steps() StepStore                    { return &mockStepStore{} }
+func (m *mockDriver) Registries() RegistryStore           { return &mockRegistryStore{} }
+func (m *mockDriver) Reminders() ReminderStore            { return &mockReminderStore{} }
+func (m *mockDriver) Feeds() FeedStore                    { return &mockFeedStore{} }
+func (m *mockDriver) FeedItems() FeedItemStore            { return &mockFeedItemStore{} }
+func (m *mockDriver) Batches() BatchStore                 { return &mockBatchStore{} }
+func (m *mockDriver) Detectors() DetectorStore            { return &mockDetectorStore{} }
+func (m *mockDriver) Blobs() BlobStore                    { return &mockBlobStore{} }
+func (m *mockDriver) Proximity() ProximityStore           { return &mockProximityStore{} }
+func (m *mockDriver) Watches() WatchStore                 { return &mockWatchStore{} }
+func (m *mockDriver) Aliases() AliasStore                 { return &mockAliasStore{} }
+func (m *mockDriver) AuditLog() AuditStore                { return &mockAuditLogStore{} }
+func (m *mockDriver) Attachments() AttachmentStore        { return &mockAttachmentStore{} }
+func (m *mockDriver) Resurfacing() ResurfacingQueueStore  { return &mockResurfacingQueueStore{} }
+func (m *mockDriver) Entitlements() EntitlementStore      { return &mockEntitlementStore{} }
+func (m *mockDriver) Metering() MeteringStore             { return &mockMeteringStore{} }
+func (m *mockDriver) PendingEntities() PendingEntityStore { return nil }
+func (m *mockDriver) Embeddings() EmbeddingStore          { return nil }
+func (m *mockDriver) SavedSearches() SavedSearchStore     { return &mockSavedSearchStore{} }
+func (m *mockDriver) SearchHistory() SearchHistoryStore   { return &mockSearchHistoryStore{} }
+func (m *mockDriver) Watermarks() WatermarkStore          { return &mockWatermarkStore{} }
+func (m *mockDriver) UISessions() UISessionStore          { return nil }
+func (m *mockDriver) Health(ctx context.Context) error    { return nil }
 
 type mockWatermarkStore struct{}
 

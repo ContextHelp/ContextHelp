@@ -306,15 +306,15 @@ func TestRegistrySyncNotTrustedSaysEntitiesHeld(t *testing.T) {
 		want            []string
 	}{
 		{"unset", "", []string{
-			"Entities not written: 1", "trust_level unset, so untrusted",
-			"approval", "trust_level: trusted",
+			"1 pending approval (ctxt registry pending --registry sync-cli)",
+			"trust_level unset, so untrusted", "ctxt registry approve", "trust_level: trusted",
 		}},
 		{"untrusted", "    trust_level: untrusted\n", []string{
-			"Entities not written: 1", "trust_level untrusted",
-			"approval", "trust_level: trusted",
+			"1 pending approval (ctxt registry pending --registry sync-cli)",
+			"trust_level untrusted", "ctxt registry approve", "trust_level: trusted",
 		}},
 		{"sandboxed", "    trust_level: sandboxed\n", []string{
-			"Entities not written: 1", "trust_level sandboxed",
+			"Entities not written from sync-cli: 1 blocked", "trust_level sandboxed",
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -417,8 +417,8 @@ func TestRegistrySyncReconcileHonoursTrustLevel(t *testing.T) {
 	}
 	for _, w := range []string{
 		"Entities merged: 1",
-		"Entities not written: 1 from u", "trust_level unset, so untrusted",
-		"Entities not written: 1 from s", "trust_level sandboxed",
+		"Entities not written from u: 1 pending approval", "trust_level unset, so untrusted",
+		"Entities not written from s: 1 blocked", "trust_level sandboxed",
 	} {
 		if !strings.Contains(out, w) {
 			t.Errorf("output lacks %q:\n%s", w, out)

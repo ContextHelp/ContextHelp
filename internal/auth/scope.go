@@ -60,7 +60,9 @@ const (
 
 	// ScopeReadRegistries lists subscribed knowledge registries.
 	ScopeReadRegistries Scope = "read:registries"
-	// ScopeSyncRegistries fetches, updates and syncs registries.
+	// ScopeSyncRegistries fetches, updates and syncs registries, and
+	// lists, approves and rejects the entities untrusted registries
+	// served (the approval queue).
 	ScopeSyncRegistries Scope = "sync:registries"
 
 	// ScopeReadSystem reads system reminders and the caller's own

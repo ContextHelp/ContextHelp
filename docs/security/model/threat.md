@@ -48,7 +48,7 @@ Threats to ctxt and dpkms, what mitigates each one today, and what does not.
 **Mitigations**:
 - Ed25519 signature check on sync responses when the registry declares a public key; `registries_global.require_signatures: true` refuses unsigned registries.
 - Entity integrity guard rejects malformed entities before write.
-- Trust levels: only `trust_level: trusted` registries write entities; `untrusted` (the default) and `sandboxed` registries' entities are skipped.
+- Trust levels: only `trust_level: trusted` registries write entities, in a single sync and in `--reconcile` alike. `untrusted` (the default) registries' entities wait in the approval queue until an admin approves or rejects them (`ctxt registry pending|approve|reject`; the API routes need `sync:registries`); `sandboxed` registries' entities are blocked and never queued.
 
 **Gaps**: signatures are optional by default.
 

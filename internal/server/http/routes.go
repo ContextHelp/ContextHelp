@@ -73,6 +73,13 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: post, Pattern: "/entities/{slug}/pull", Scope: authn.ScopeWriteObjects, Handler: PullEntity(svc, rc.Entitlements)},
 		// Thin sync: trigger entity index sync for a registry.
 		{Method: post, Pattern: "/entities/registry-sync", Scope: authn.ScopeSyncRegistries, Handler: SyncRegistryEntities(svc)},
+		// Approval queue: entities untrusted registries served. Admin
+		// only, listing included: the payloads are unreviewed content
+		// from registries the instance does not trust. Static, so the
+		// GET wins over /entities/{slug}.
+		{Method: get, Pattern: "/entities/registry-pending", Scope: authn.ScopeSyncRegistries, Handler: ListPendingEntities(svc)},
+		{Method: post, Pattern: "/entities/registry-pending/approve", Scope: authn.ScopeSyncRegistries, Handler: ApprovePendingEntities(svc)},
+		{Method: post, Pattern: "/entities/registry-pending/reject", Scope: authn.ScopeSyncRegistries, Handler: RejectPendingEntities(svc)},
 
 		// Entity pages, the topic index and stats. Reads are knowledge
 		// reads a browser session may make; refresh and rebuild write.

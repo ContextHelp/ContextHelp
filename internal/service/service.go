@@ -844,7 +844,7 @@ type RegistryEntityCounts struct {
 	// Upserted entities were written to the local entity store.
 	Upserted int `json:"upserted"`
 	// PendingApproval entities came from an untrusted registry and were
-	// not written: their writes need approval.
+	// not written: they wait in the approval queue (ListPendingEntities).
 	PendingApproval int `json:"pending_approval"`
 	// Blocked entities came from a sandboxed registry, which never
 	// writes to the local graph.
@@ -1067,7 +1067,8 @@ func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) 
 		WithEntitlements(s.Store.Entitlements()).
 		WithRegistryStore(s.Store.Registries()).
 		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures).
-		WithCredentials(s.registryAuth)
+		WithCredentials(s.registryAuth).
+		WithPendingQueue(s.Store.PendingEntities())
 	result, err := syncer.Sync(ctx, cfg)
 	if err != nil {
 		return RegistryEntityCounts{}, fmt.Errorf("sync registry entities: %w", err)
@@ -1127,7 +1128,8 @@ func (s *Service) SyncAllRegistriesWithReconciliation(
 	syncer := registrysync.New(s.Store.Entities()).
 		WithRegistryStore(s.Store.Registries()).
 		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures).
-		WithCredentials(s.registryAuth)
+		WithCredentials(s.registryAuth).
+		WithPendingQueue(s.Store.PendingEntities())
 	multi := registrysync.MultiSyncConfig{
 		Registries:  s.Cfg.Registries,
 		Strategy:    strategy,

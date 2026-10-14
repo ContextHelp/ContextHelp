@@ -770,6 +770,10 @@ ctxt registry add <name> <url>
 ctxt registry delete <name> --confirm=yes
 ctxt registry info <name>
 ctxt registry sync <name>
+ctxt registry pending [--registry <name>]
+ctxt registry approve <id>... --confirm=yes --confirm-token=<sha>
+ctxt registry approve --all --registry <name> --confirm=yes --confirm-token=<sha>
+ctxt registry reject <id>... --confirm=yes --confirm-token=<sha>
 ```
 
 `list` shows the cached registry manifests (what `add` and `sync`
@@ -790,11 +794,28 @@ When the manifest advertises `capabilities.entity_sync`, it also pulls
 the entity index (`/entities/index`) into the local entity store; a
 registry that serves steps only is never asked for entities. Entities
 from a registry whose `trust_level` is not `trusted` (unset means
-`untrusted`) are not written; `sync` counts them as `Entities not
-written: N` with the reason and still exits 0. An `untrusted`
-registry's writes need approval, which ctxt does not offer yet, so set
-`trust_level: trusted` on its entry to sync its entities; a `sandboxed`
-registry never writes to the local graph.
+`untrusted`) are not written; `sync` reports them and still exits 0.
+`--reconcile` applies each registry's `trust_level` the same way: only
+trusted registries' entities take part in reconciliation.
+
+- `untrusted`: the entities wait in the approval queue (`Entities not
+  written from <name>: N pending approval (ctxt registry pending)`).
+  `pending` lists them with an ID, the version, whether the registry's
+  index signature was verified (`verified`, `unsigned`) and when sync
+  first and last saw them. `approve` writes them as a trusted sync
+  would (the registry's `sync_mode`), with metadata `provenance:
+  approved from <name>` on full writes, and takes them off the queue;
+  `reject` takes them off unwritten (the next sync queues them again
+  while the registry still serves them). Nothing is written or dropped
+  when an ID is not queued; a registry that is now `sandboxed` cannot
+  have its queued entities approved. A later sync of a version already
+  approved does not queue it again, and a new version replaces the
+  queued one. Both commands are gated like `delete` (`--confirm=yes`
+  plus the `--confirm-token` the refusal prints); `--dry-run` lists
+  what they would touch. Setting `trust_level: trusted` and syncing
+  again also writes them and empties the registry's queue.
+- `sandboxed`: blocked (`N blocked`), never queued: a sandboxed
+  registry never writes to the local graph.
 
 ---
 

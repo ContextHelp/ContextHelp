@@ -646,7 +646,9 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 
 // printHeldEntities says how many entities the registry's trust_level
 // kept out of the local store, and why, so an untrusted registry does
-// not read as an empty one. Prints nothing when none were held.
+// not read as an empty one: an untrusted registry's wait in the approval
+// queue, a sandboxed one's are blocked. Prints nothing when none were
+// held.
 func printHeldEntities(w io.Writer, name string, c service.RegistryEntityCounts) {
 	level := "trust_level " + string(c.TrustLevel)
 	for _, r := range cfg.Registries {
@@ -656,12 +658,14 @@ func printHeldEntities(w io.Writer, name string, c service.RegistryEntityCounts)
 		}
 	}
 	if c.PendingApproval > 0 {
-		fmt.Fprintf(w, "Entities not written: %d from %s (registry not trusted: %s)\n", c.PendingApproval, name, level)
-		fmt.Fprintln(w, "  An untrusted registry's entity writes need approval, which ctxt does not offer yet;")
-		fmt.Fprintln(w, "  set trust_level: trusted on its registries entry (ctxt config edit) and sync again to write them.")
+		fmt.Fprintf(w, "Entities not written from %s: %d pending approval (ctxt registry pending --registry %s)\n",
+			name, c.PendingApproval, name)
+		fmt.Fprintf(w, "  registry not trusted (%s): review them, then ctxt registry approve or reject;\n", level)
+		fmt.Fprintln(w, "  or set trust_level: trusted on its registries entry (ctxt config edit) and sync again.")
 	}
 	if c.Blocked > 0 {
-		fmt.Fprintf(w, "Entities not written: %d from %s (registry sandboxed: %s never writes to the local graph)\n", c.Blocked, name, level)
+		fmt.Fprintf(w, "Entities not written from %s: %d blocked (registry sandboxed: %s never writes to the local graph)\n",
+			name, c.Blocked, level)
 	}
 }
 
