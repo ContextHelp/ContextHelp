@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -385,6 +386,7 @@ func TestDeleteObjectDeletesUnsharedBlob(t *testing.T) {
 	stored, err := svc.Store.Objects().Get(ctx, "obj-big")
 	require.NoError(t, err)
 	key, _ := blob.BlobKey(stored.RawContent)
+	ageBlob(t, svc, key)
 	twin := *stored
 	twin.ID, twin.ContentHash = "obj-twin", ""
 	require.NoError(t, svc.Store.Objects().Create(ctx, &twin))
@@ -410,6 +412,17 @@ func storedBlobKey(t *testing.T, svc *Service, id string) string {
 	return key
 }
 
+// ageBlob backdates blob key past the grace period a delete or update
+// waits out before deleting a blob it frees. The test store is the
+// local backend: its URL is the blob's file.
+func ageBlob(t *testing.T, svc *Service, key string) {
+	t.Helper()
+	u, err := svc.Store.Blobs().URL(context.Background(), key)
+	require.NoError(t, err)
+	at := time.Now().Add(-2 * blob.DefaultSweepGrace)
+	require.NoError(t, os.Chtimes(strings.TrimPrefix(u, "file://"), at, at))
+}
+
 func blobExists(t *testing.T, svc *Service, key string) bool {
 	t.Helper()
 	ok, err := svc.Store.Blobs().Exists(context.Background(), key)
@@ -424,6 +437,7 @@ func TestUpdateObjectReplacingContentDeletesOldBlob(t *testing.T) {
 	ctx := context.Background()
 	seedBlobObject(t, svc, "obj-big", bigBody(500))
 	oldKey := storedBlobKey(t, svc, "obj-big")
+	ageBlob(t, svc, oldKey)
 
 	obj, err := svc.GetObject(ctx, "obj-big")
 	require.NoError(t, err)
@@ -444,6 +458,7 @@ func TestReanalyzeReplacingContentDeletesOldBlob(t *testing.T) {
 	ctx := context.Background()
 	seedBlobObject(t, svc, "obj-big", bigBody(500))
 	oldKey := storedBlobKey(t, svc, "obj-big")
+	ageBlob(t, svc, oldKey)
 	stored, err := svc.Store.Objects().Get(ctx, "obj-big")
 	require.NoError(t, err)
 	stored.Pipeline = "rewrite@v1"
