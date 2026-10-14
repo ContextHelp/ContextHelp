@@ -16,9 +16,9 @@ var secretPatterns = []*regexp.Regexp{
 }
 
 // secretFieldNames are substrings that, when found in a field name, flag the
-// value. Redaction reuses the list: free-form keys and connection-string
-// parameters matching it are masked, and every Config string field whose
-// name matches must carry a `secret` tag (see redact.go).
+// value. Redaction reuses the list: connection-string parameters matching
+// it are masked, and every Config string field whose name matches must
+// carry a `secret` tag (see redact.go).
 var secretFieldNames = []string{"token", "password", "secret", "key"}
 
 // shellEnvRef is a shell-style ${VAR} or ${VAR:-default} reference

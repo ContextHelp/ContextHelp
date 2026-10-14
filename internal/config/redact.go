@@ -18,8 +18,6 @@ import (
 //	                capability URL
 //	secret:"dsn"    a locator (URL, connection string) that may embed a
 //	                password; only the embedded credential is masked
-//	secret:"keys"   a free-form map: string values under keys whose name
-//	                suggests a secret (secretFieldNames) are masked
 //	secret:"false"  not a credential, though the name looks like one
 //
 // A string field whose name contains one of secretFieldNames must carry
@@ -28,7 +26,6 @@ const (
 	secretTag   = "secret"
 	secretWhole = "true"
 	secretDSN   = "dsn"
-	secretKeys  = "keys"
 	secretNone  = "false"
 )
 
@@ -115,12 +112,6 @@ func RedactURLError(err error) error {
 	}
 }
 
-// nameLooksSecret reports whether a field or key name contains one of
-// secretFieldNames.
-func nameLooksSecret(name string) bool {
-	return secretKeyword(name) != ""
-}
-
 // secretKeyword returns the first secretFieldNames entry found in name,
 // or "" when none is.
 func secretKeyword(name string) string {
@@ -175,8 +166,6 @@ func redactStruct(v reflect.Value) {
 			fv.Set(mapStrings(fv, RedactSecret))
 		case secretDSN:
 			fv.Set(mapStrings(fv, RedactDSN))
-		case secretKeys:
-			fv.Set(redactFreeForm(fv, false))
 		default:
 			fv.Set(cloneRedacted(fv))
 		}
@@ -252,51 +241,6 @@ func mapStrings(v reflect.Value, fn func(string) string) reflect.Value {
 	}
 }
 
-// redactFreeForm returns a deep copy of a free-form value (maps,
-// slices, interfaces, scalars, as YAML decodes them) with every string
-// under a secret-looking key masked. secret is true when an enclosing
-// key already looked secret.
-func redactFreeForm(v reflect.Value, secret bool) reflect.Value {
-	switch v.Kind() {
-	case reflect.Interface:
-		if v.IsNil() {
-			return v
-		}
-		c := reflect.New(v.Type()).Elem()
-		c.Set(redactFreeForm(v.Elem(), secret))
-		return c
-	case reflect.Map:
-		if v.IsNil() {
-			return v
-		}
-		c := reflect.MakeMapWithSize(v.Type(), v.Len())
-		iter := v.MapRange()
-		for iter.Next() {
-			k := fmt.Sprint(iter.Key().Interface())
-			c.SetMapIndex(iter.Key(), redactFreeForm(iter.Value(), secret || nameLooksSecret(k)))
-		}
-		return c
-	case reflect.Slice:
-		if v.IsNil() {
-			return v
-		}
-		c := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
-		for i := 0; i < v.Len(); i++ {
-			c.Index(i).Set(redactFreeForm(v.Index(i), secret))
-		}
-		return c
-	case reflect.String:
-		if !secret {
-			return v
-		}
-		c := reflect.New(v.Type()).Elem()
-		c.SetString(RedactSecret(v.String()))
-		return c
-	default:
-		return v
-	}
-}
-
 // collectSecrets walks v and records each credential under its config
 // path. tag is the `secret` tag of the field v came from.
 func collectSecrets(v reflect.Value, path, tag string, out map[string]string) {
@@ -328,26 +272,12 @@ func collectSecrets(v reflect.Value, path, tag string, out map[string]string) {
 		iter := v.MapRange()
 		for iter.Next() {
 			k := fmt.Sprint(iter.Key().Interface())
-			collectSecrets(iter.Value(), path+"."+k, mapEntryTag(tag, k), out)
+			collectSecrets(iter.Value(), path+"."+k, tag, out)
 		}
 	case reflect.String:
 		if isCredential(v.String(), tag) {
 			out[path] = v.String()
 		}
-	}
-}
-
-// mapEntryTag is the secret tag a map entry under key inherits from
-// its map's tag: a secret-looking key in a free-form map is a whole
-// credential, and a whole-credential or free-form map passes its tag on.
-func mapEntryTag(tag, key string) string {
-	switch {
-	case tag == secretKeys && nameLooksSecret(key):
-		return secretWhole
-	case tag == secretKeys || tag == secretWhole:
-		return tag
-	default:
-		return ""
 	}
 }
 

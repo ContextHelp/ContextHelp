@@ -107,10 +107,6 @@ func TestSecretTagCoversSecretLookingFields(t *testing.T) {
 				if !isStringLeaf(f.Type) {
 					t.Errorf("%s: secret:%q on %s; want string or []string", path, tag, f.Type)
 				}
-			case secretKeys:
-				if !isFreeForm(f.Type) {
-					t.Errorf("%s: secret:%q on %s; want a free-form map", path, tag, f.Type)
-				}
 			case secretNone:
 			default:
 				t.Errorf("%s: unknown secret tag %q", path, tag)
@@ -119,14 +115,14 @@ func TestSecretTagCoversSecretLookingFields(t *testing.T) {
 		}
 		name := f.Name + " " + fieldNameFromTag(f)
 		switch {
-		case isStringLeaf(f.Type) && nameLooksSecret(name):
+		case isStringLeaf(f.Type) && secretKeyword(name) != "":
 			t.Errorf("%s (%s): name suggests a credential (%s); tag it secret:\"true\" or secret:\"false\"",
 				path, f.Name, secretKeyword(name))
 		case isStringLeaf(f.Type) && containsAny(name, locatorKeywords):
 			t.Errorf("%s (%s): locator may embed a password; tag it secret:\"dsn\", secret:\"true\" or secret:\"false\"",
 				path, f.Name)
 		case isFreeForm(f.Type):
-			t.Errorf("%s (%s): free-form map may hold credentials; tag it secret:\"keys\" or secret:\"false\"",
+			t.Errorf("%s (%s): free-form map may hold credentials and nothing redacts one; use a struct with tagged fields, or tag it secret:\"false\"",
 				path, f.Name)
 		}
 	})
@@ -153,8 +149,8 @@ func containsAny(s string, subs []string) bool {
 
 // populate fills every string reachable from v with a unique value
 // derived from its path. Tagged secrets get a long marker; dsn fields a
-// URL with a password; free-form maps one secret and one plain key.
-// Slices get one element, maps one entry, pointers a fresh value.
+// URL with a password. Slices get one element, maps one entry, pointers
+// a fresh value.
 func populate(v reflect.Value, path, tag string) {
 	switch v.Kind() {
 	case reflect.Ptr:
@@ -175,10 +171,7 @@ func populate(v reflect.Value, path, tag string) {
 		v.Set(s)
 	case reflect.Map:
 		m := reflect.MakeMap(v.Type())
-		if tag == secretKeys {
-			m.SetMapIndex(reflect.ValueOf("api_key"), reflect.ValueOf("FREEFORM-SECRET"+path+"-WXYZ"))
-			m.SetMapIndex(reflect.ValueOf("region"), reflect.ValueOf("plain"+path))
-		} else if v.Type().Key().Kind() == reflect.String {
+		if v.Type().Key().Kind() == reflect.String {
 			e := reflect.New(v.Type().Elem()).Elem()
 			populate(e, path+".k", tag)
 			m.SetMapIndex(reflect.ValueOf("k").Convert(v.Type().Key()), e)
@@ -221,7 +214,7 @@ func TestRedactedMasksEveryTaggedField(t *testing.T) {
 	// up in SecretValues.
 	walkConfigFields(func(path string, f reflect.StructField) {
 		tag := f.Tag.Get(secretTag)
-		if tag != secretWhole && tag != secretDSN && tag != secretKeys {
+		if tag != secretWhole && tag != secretDSN {
 			return
 		}
 		found := false
@@ -244,7 +237,7 @@ func TestRedactedMasksEveryTaggedField(t *testing.T) {
 			t.Errorf("%s: raw value %q survives redaction", path, sec)
 		}
 	}
-	for _, marker := range []string{"DSNPASS", "FREEFORM-SECRET", "SECRET."} {
+	for _, marker := range []string{"DSNPASS", "SECRET."} {
 		if strings.Contains(all, marker) {
 			t.Errorf("redacted config still contains %q", marker)
 		}
