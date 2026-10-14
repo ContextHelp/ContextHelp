@@ -17,6 +17,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
@@ -62,6 +63,9 @@ Examples:
   # Start with custom ports
   dpkms serve --port 8080 --grpc-port 9090
 
+  # Throwaway instance: every listener on an OS-assigned port
+  dpkms serve --port 0 --grpc-port 0 --cookie-bridge-port 0
+
   # Start with more workers
   dpkms serve --workers 8
 
@@ -88,6 +92,7 @@ func init() {
 	serveCmd.Flags().String("name", "", "instance name (URI-safe slug, e.g. 'work'); defaults to DB basename")
 	serveCmd.Flags().Int("port", 8080, "HTTP port")
 	serveCmd.Flags().Int("grpc-port", 9090, "gRPC port")
+	serveCmd.Flags().Int("cookie-bridge-port", wsserver.DefaultCookieBridgePort, "browser-extension cookie bridge port (loopback only)")
 	serveCmd.Flags().Int("workers", 4, "number of worker threads")
 	serveCmd.Flags().Bool("public", false, "allow remote connections")
 	serveCmd.Flags().String("profile", "", "default focus profile")
@@ -99,6 +104,7 @@ func init() {
 	// Bind flags to viper
 	viper.BindPFlag("server.port", serveCmd.Flags().Lookup("port"))
 	viper.BindPFlag("server.grpc_port", serveCmd.Flags().Lookup("grpc-port"))
+	viper.BindPFlag("server.cookie_bridge_port", serveCmd.Flags().Lookup("cookie-bridge-port"))
 	viper.BindPFlag("server.workers", serveCmd.Flags().Lookup("workers"))
 	viper.BindPFlag("server.public", serveCmd.Flags().Lookup("public"))
 	viper.BindPFlag("profile.default", serveCmd.Flags().Lookup("profile"))
@@ -124,8 +130,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	port := viper.GetInt("server.port")
-	grpcPort := viper.GetInt("server.grpc_port")
 	workers := viper.GetInt("server.workers")
 	public := viper.GetBool("server.public")
 	reminderInterval := viper.GetDuration("server.reminder_interval")
@@ -247,21 +251,18 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// background goroutine, and hand each bound listener to its server.
 	// Nothing probes a port and re-binds it later: two instances started
 	// together can no longer both be told a port is free. Ports the
-	// operator set (--port, --grpc-port) are bound exactly or serve
-	// fails; built-in defaults fall back to an OS-assigned port. The
+	// operator set (--port, --grpc-port, --cookie-bridge-port) are bound
+	// exactly or serve fails; built-in defaults fall back to an
+	// OS-assigned port. The
 	// deferred close releases every port on an early return; after a
 	// server has taken its listener the extra Close is a no-op.
-	lns, err := acquireListeners(os.Stderr, []listenSpec{
-		{name: "HTTP", bind: bind, port: port, explicit: cmd.Flags().Changed("port")},
-		{name: "gRPC", bind: bind, port: grpcPort, explicit: cmd.Flags().Changed("grpc-port")},
-		{name: "cookie bridge", bind: "127.0.0.1", port: wsserver.DefaultCookieBridgePort},
-	})
+	lns, err := acquireListeners(os.Stderr, serveListenSpecs(cmd.Flags(), bind))
 	if err != nil {
 		return err
 	}
 	defer closeListeners(lns)
 	httpLn, grpcLn, cookieLn := lns[0], lns[1], lns[2]
-	port, grpcPort = listenerPort(httpLn), listenerPort(grpcLn)
+	port, grpcPort := listenerPort(httpLn), listenerPort(grpcLn)
 	cookieBridgePort := listenerPort(cookieLn)
 	addr := httpLn.Addr().String()
 	grpcBind := grpcLn.Addr().String()
@@ -522,6 +523,19 @@ func runServe(cmd *cobra.Command, args []string) error {
 	fmt.Println("Storage closed")
 
 	return runErr
+}
+
+// serveListenSpecs lists the listeners serve binds, in order: HTTP and
+// gRPC on bind, then the cookie bridge, which stays on loopback whatever
+// the access class. A port passed as a flag is explicit (bound exactly
+// or serve fails); a built-in default falls back when busy. Port 0
+// binds an OS-assigned port.
+func serveListenSpecs(flags *pflag.FlagSet, bind string) []listenSpec {
+	return []listenSpec{
+		{name: "HTTP", bind: bind, port: viper.GetInt("server.port"), explicit: flags.Changed("port")},
+		{name: "gRPC", bind: bind, port: viper.GetInt("server.grpc_port"), explicit: flags.Changed("grpc-port")},
+		{name: "cookie bridge", bind: "127.0.0.1", port: viper.GetInt("server.cookie_bridge_port"), explicit: flags.Changed("cookie-bridge-port")},
+	}
 }
 
 // resolveInstanceName returns the instance name for this serve invocation.

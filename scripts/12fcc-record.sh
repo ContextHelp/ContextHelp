@@ -37,8 +37,9 @@
 #           private access (loopback only, no inbound tokens), its own
 #           HOME/XDG tree and SQLite database, a per-run random bus
 #           token held only in the daemon's env, stub providers and
-#           embeddings, HTTP and gRPC on OS-assigned ports (never one
-#           of the default ports). It leads its own process group and
+#           embeddings, HTTP, gRPC and the cookie bridge on
+#           OS-assigned ports (never one of the default ports). It
+#           leads its own process group and
 #           is stopped, group and all, before the next scenario starts
 #           and on every exit path, and the recorder waits until its
 #           port no longer accepts connections.
@@ -234,7 +235,7 @@ EOF
       DPKMS_BUS_TOKEN="$DAEMON_TOKEN" \
       CTXT_EMBEDDING_PROVIDER=stub \
       CTXT_EMBEDDING_ENDPOINT="$CLOSED_URL" \
-      "$DPKMS_BIN" serve --port 0 --grpc-port 0 --workers 1
+      "$DPKMS_BIN" serve --port 0 --grpc-port 0 --cookie-bridge-port 0 --workers 1
   ) >"$dd/serve.log" 2>&1 &
   DAEMON_PID=$!
   set +m
@@ -265,11 +266,16 @@ EOF
     fi
     sleep 0.1
   done
+  # Every listener the pidfile names: HTTP, gRPC, cookie bridge.
+  local bound
+  bound="$(grep -hoE '"(port|grpc_port|cookie_bridge_port)":[0-9]+' "$dd"/data/contexthelp/run/*.pid | sed 's/.*://')"
   for p in $GUARDED_PORTS; do
-    if [ "$DAEMON_PORT" = "$p" ]; then
-      echo "ERROR: throwaway dpkms bound default port $p" >&2
-      return 1
-    fi
+    for b in $DAEMON_PORT $bound; do
+      if [ "$b" = "$p" ]; then
+        echo "ERROR: throwaway dpkms bound default port $p" >&2
+        return 1
+      fi
+    done
   done
 }
 

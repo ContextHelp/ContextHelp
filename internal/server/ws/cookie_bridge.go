@@ -82,7 +82,9 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// DefaultCookieBridgePort is the preferred port for the cookie bridge server.
+// DefaultCookieBridgePort is the preferred port for the cookie bridge
+// server and the one the browser extension connects to. dpkms serve
+// --cookie-bridge-port moves it.
 const DefaultCookieBridgePort = 9377
 
 // CookieBridgeServer is a standalone WebSocket server for browser-extension cookie sync.

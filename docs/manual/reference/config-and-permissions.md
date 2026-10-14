@@ -153,10 +153,15 @@ extension are not affected.
 
 `dpkms serve` also listens on `127.0.0.1:9377` (or a free port, printed
 as `Cookie bridge listening on ws://…`) for the ctxt browser extension
-to sync cookies. Whatever the instance's access class, the bridge accepts
-only WebSocket handshakes that come from a browser extension
-(`chrome-extension://`, `moz-extension://` or `safari-web-extension://`
-origin) and name `127.0.0.1:<port>` or `localhost:<port>` in `Host`.
+to sync cookies. `--cookie-bridge-port N` binds exactly `N` instead, and
+`0` an OS-assigned port. The extension connects to
+`ws://127.0.0.1:9377`, so move the bridge only if the extension is
+pointed at the new port too.
+
+Whatever the instance's access class, the bridge accepts only WebSocket
+handshakes that come from a browser extension (`chrome-extension://`,
+`moz-extension://` or `safari-web-extension://` origin) and name
+`127.0.0.1:<port>` or `localhost:<port>` in `Host`.
 Web pages, other local tools and clients that send no `Origin` get `403`
 `CROSS_ORIGIN_REQUEST`; other host names get `403` `HOST_NOT_ALLOWED`.
 `server.allowed_hosts` does not apply to the bridge.

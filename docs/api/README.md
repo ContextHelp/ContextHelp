@@ -62,6 +62,7 @@ dpkms serve [options]
 Options:
 - `--port <number>` - HTTP port (default: 8080)
 - `--grpc-port <number>` - gRPC port (default: 9090)
+- `--cookie-bridge-port <number>` - browser-extension cookie bridge port, loopback only (default: 9377)
 - `--public` - Allow remote connections
 - `--workers <n>` - Number of worker threads
 

@@ -65,7 +65,7 @@ ctxt registry remove <name>
 ### Pipeline and infrastructure (`dpkms`)
 
 ```bash
-dpkms serve [--port 8080] [--grpc-port 9090] [--workers N] [--public]
+dpkms serve [--port 8080] [--grpc-port 9090] [--cookie-bridge-port 9377] [--workers N] [--public]
 dpkms pipeline list|show|create|archive|unarchive|remove
 dpkms pipeline enqueue [--pipeline <name>] [--type <type>] [--wait] <content>
 dpkms pipeline step list|install|uninstall

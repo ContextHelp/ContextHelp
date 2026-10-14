@@ -222,7 +222,7 @@ func TestServeHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("serve --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--port", "--grpc-port", "--workers", "--public", "--profile"} {
+	for _, flag := range []string{"--port", "--grpc-port", "--cookie-bridge-port", "--workers", "--public", "--profile"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("serve help should list flag %s", flag)
 		}

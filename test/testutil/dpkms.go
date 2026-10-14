@@ -166,7 +166,8 @@ func withReadyTimeout(d time.Duration) DpkmsOption {
 //     (admin, writer, reader), every provider backend the stub and the
 //     embedding provider a stub on a closed port;
 //   - HTTP and gRPC on free ephemeral ports (never the 8080/9090
-//     defaults), actual ports read back from the instance's pidfile;
+//     defaults), the cookie bridge on an OS-assigned one (never 9377),
+//     actual ports read back from the instance's pidfile;
 //   - its own process group, killed on cleanup and whenever start-up
 //     fails.
 //
@@ -252,7 +253,8 @@ func startDpkms(t testing.TB, opts ...DpkmsOption) (*Dpkms, error) {
 	defer logFile.Close()
 
 	d.cmd = exec.Command(bin, "serve", // #nosec G204 -- test helper runs the dpkms built from this checkout
-		"--port", strconv.Itoa(ports[0]), "--grpc-port", strconv.Itoa(ports[1]), "--workers", "1")
+		"--port", strconv.Itoa(ports[0]), "--grpc-port", strconv.Itoa(ports[1]),
+		"--cookie-bridge-port", "0", "--workers", "1")
 	d.cmd.Dir = root
 	d.cmd.Env = d.Env
 	d.cmd.Stdout = logFile

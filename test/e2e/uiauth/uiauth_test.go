@@ -115,18 +115,6 @@ func freePort(t *testing.T) int {
 	return ln.Addr().(*net.TCPAddr).Port
 }
 
-// holdCookieBridgePort keeps dpkms's preferred cookie-bridge port busy
-// for the test, so the instance under test takes another one and never
-// sits where a developer's own dpkms expects to bind.
-func holdCookieBridgePort(t *testing.T) {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:9377")
-	if err != nil {
-		return // already taken: dpkms falls back on its own
-	}
-	t.Cleanup(func() { ln.Close() })
-}
-
 // hermeticEnv is the process environment with nothing ctxt, dpkms, kit
 // or XDG inherited, and HOME and the XDG roots under dir.
 func hermeticEnv(dir string, extra ...string) []string {
@@ -162,7 +150,6 @@ type instance struct {
 
 func startInstance(t *testing.T) *instance {
 	t.Helper()
-	holdCookieBridgePort(t)
 	dir := t.TempDir()
 	port, grpcPort := freePort(t), freePort(t)
 	in := &instance{
@@ -200,7 +187,7 @@ server:
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, bins.dpkms, "--config", in.dpkmsCfg, "serve", //nolint:gosec // the binary under test
-		"--port", strconv.Itoa(port), "--grpc-port", strconv.Itoa(grpcPort), "--name", "uiauth-e2e")
+		"--port", strconv.Itoa(port), "--grpc-port", strconv.Itoa(grpcPort), "--cookie-bridge-port", "0", "--name", "uiauth-e2e")
 	cmd.Env = hermeticEnv(dir, "BUS_TOKEN="+busToken)
 	cmd.Dir = dir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -32,11 +31,6 @@ import (
 // These smoke tests serve the viewer from a real, private `dpkms serve`
 // over a copy of the fixture corpus: the page, its assets and the graph
 // document all come from the daemon, under its own headers.
-
-// cookieBridgePort is the port dpkms prefers for its cookie bridge. The
-// tests hold it while a daemon starts, so a test daemon never takes it
-// from a developer's own.
-const cookieBridgePort = 9377
 
 var dpkmsBin = sync.OnceValues(func() (string, error) {
 	root, err := repoRoot()
@@ -89,14 +83,10 @@ func (e *env) startDpkmsWith(cfg, name string) *daemon {
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	if ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(cookieBridgePort))); err == nil {
-		defer ln.Close() // held until the daemon has bound its own ports
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	cmd := e.commandOf(ctx, bin, "--config", cfg, "serve",
 		"--name", name, "--workers", "1",
-		"--port", freePort(e.t), "--grpc-port", freePort(e.t))
+		"--port", freePort(e.t), "--grpc-port", freePort(e.t), "--cookie-bridge-port", "0")
 	cmd.Env = append(cmd.Env, "BUS_TOKEN=searchgraph-e2e")
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {

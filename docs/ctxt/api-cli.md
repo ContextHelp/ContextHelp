@@ -524,6 +524,7 @@ dpkms serve <options>
 | `--name <slug>` | Instance name (URI-safe, e.g. `work`); derived from DB basename if omitted. Must be unique across running instances |
 | `--port <number>` | HTTP port (default: 8080; auto-assigns if busy) |
 | `--grpc-port <number>` | gRPC port (default: 9090; auto-assigned if busy) |
+| `--cookie-bridge-port <number>` | Browser-extension cookie bridge port, loopback only (default: 9377; auto-assigned if busy; `0` = OS-assigned) |
 | `--daemon` | Detach from terminal (background daemon) |
 | `--profile <name>` | Default focus profile (interactive picker if unset and multiple exist) |
 | `--public` | Allow remote connections |

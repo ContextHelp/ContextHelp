@@ -87,7 +87,7 @@ func TestMultiInstanceNameConflict(t *testing.T) {
 	waitForPidfiles(t, runDir, 1, 10*time.Second)
 
 	// Second instance with the same name should exit non-zero.
-	c := exec.Command(bin, "--config", cfg2, "serve", "--name", "shared")
+	c := exec.Command(bin, "--config", cfg2, "serve", "--name", "shared", "--cookie-bridge-port", "0")
 	c.Env = env
 	err := c.Run()
 	if err == nil {
@@ -173,7 +173,7 @@ func writeServeConfig(t *testing.T, dir, id string) string {
 // startServeProcessWithName launches dpkms serve with an explicit --name flag.
 func startServeProcessWithName(t *testing.T, bin, configPath, name string, env []string) *exec.Cmd {
 	t.Helper()
-	c := exec.Command(bin, "--config", configPath, "serve", "--name", name)
+	c := exec.Command(bin, "--config", configPath, "serve", "--name", name, "--cookie-bridge-port", "0")
 	c.Env = env
 	c.Stdout = os.Stderr
 	c.Stderr = os.Stderr
