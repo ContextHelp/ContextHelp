@@ -30,10 +30,13 @@ const (
 // on first use or when changed.
 var PrivilegedPermissions = []string{PermEntityWrite, PermEntityAlias}
 
+// ManifestAPIVersion is the only manifest schema version Validate accepts.
+const ManifestAPIVersion = "v1"
+
 // PluginManifest declares identity, version, and permissions for a plugin.
 // Loaded from manifest.json or manifest.yaml in the plugin's directory.
 type PluginManifest struct {
-	// APIVersion is the manifest schema version (currently "v1").
+	// APIVersion is the manifest schema version (ManifestAPIVersion).
 	APIVersion string `yaml:"apiVersion" json:"apiVersion"`
 	// Name must match the plugin's Name() return value.
 	Name string `yaml:"name" json:"name"`
@@ -68,7 +71,7 @@ func (m *PluginManifest) Validate() error {
 	if m.APIVersion == "" {
 		return &ManifestError{Name: m.Name, Reason: "apiVersion is required"}
 	}
-	if m.APIVersion != "v1" {
+	if m.APIVersion != ManifestAPIVersion {
 		return &ManifestError{Name: m.Name, Reason: "unsupported apiVersion: " + m.APIVersion}
 	}
 	if m.Name == "" {

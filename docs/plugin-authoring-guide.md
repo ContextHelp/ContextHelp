@@ -292,9 +292,8 @@ dpkms dev init-plugin my-plugin --dir ./x  # creates ./x/my-plugin/
 ```
 
 It writes `manifest.yaml`, `plugin.go` (a `pluginapi.Plugin` stub) and
-`README.md`. The generated manifest has no `apiVersion`, so add `apiVersion: v1`
-before it will pass `Validate()`. The `plugins:` snippet in the generated README
-does not match the config schema and has no effect.
+`README.md`. The generated manifest carries `apiVersion: v1` and passes
+`Validate()` as written; the stub compiles against `pluginapi.Plugin`.
 
 ---
 

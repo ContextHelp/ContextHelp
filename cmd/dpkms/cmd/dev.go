@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
 	"gopkg.in/yaml.v3"
@@ -147,7 +148,7 @@ var devInitPluginCmd = &cobra.Command{
 	Use:   "init-plugin <slug>",
 	Short: "Scaffold a new plugin with manifest, Go stub, and README",
 	Long: `Scaffold a new ctxt plugin directory under plugins/<slug>/:
-  - manifest.yaml   — plugin manifest (name, version, description)
+  - manifest.yaml   — plugin manifest (apiVersion, name, version, permissions)
   - plugin.go       — Go stub implementing pluginapi.Plugin
   - README.md       — minimal plugin documentation
 
@@ -163,10 +164,14 @@ func init() {
 		"parent directory for the new plugin")
 }
 
-const pluginManifestTmpl = `name: {{ .Slug }}
+// pluginManifestTmpl must pass plugin.ParseManifest (pluginapi
+// PluginManifest.Validate): apiVersion, name and version are required.
+const pluginManifestTmpl = `apiVersion: {{ .APIVersion }}
+name: {{ .Slug }}
+slug: {{ .Slug }}
 version: "0.1.0"
 description: "TODO: describe {{ .Slug }}"
-author: ""
+permissions: []
 `
 
 const pluginGoTmpl = `// Package {{ .PkgName }} is a ctxt plugin scaffold.
@@ -180,6 +185,8 @@ import (
 
 // Plugin implements pluginapi.Plugin.
 type Plugin struct{}
+
+var _ pluginapi.Plugin = (*Plugin)(nil)
 
 // New returns an uninitialised Plugin for registration.
 func New() *Plugin { return &Plugin{} }
@@ -204,22 +211,15 @@ A ctxt plugin.
 
 TODO: describe what this plugin does.
 
-## Configuration
-
-` + "```yaml" + `
-plugins:
-  {{ .Slug }}:
-    enabled: true
-` + "```" + `
-
 ## Development
 
-See [ctxt plugin development guide](../../docs/plugins.md).
+See the [plugin authoring guide](../../docs/plugin-authoring-guide.md).
 `
 
 type pluginTmplData struct {
-	Slug    string
-	PkgName string
+	APIVersion string
+	Slug       string
+	PkgName    string
 }
 
 func runDevInitPlugin(cmd *cobra.Command, args []string) error {
@@ -240,7 +240,7 @@ func runDevInitPlugin(cmd *cobra.Command, args []string) error {
 	}
 
 	pkgName := strings.ReplaceAll(slug, "-", "")
-	data := pluginTmplData{Slug: slug, PkgName: pkgName}
+	data := pluginTmplData{APIVersion: pluginapi.ManifestAPIVersion, Slug: slug, PkgName: pkgName}
 
 	files := []struct {
 		name string
