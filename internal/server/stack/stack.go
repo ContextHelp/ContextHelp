@@ -21,6 +21,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	kitbus "hop.top/kit/go/runtime/bus"
+	"hop.top/kit/go/storage/secret"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
@@ -329,7 +330,12 @@ func Build(in Inputs) (*Stack, error) {
 
 	s.Service = service.NewWithOptions(
 		in.Driver, s.Queue, s.Pipelines, s.Engine, in.StepsPath, bus,
-		[]service.Option{service.WithPolicyPublisher(pol.Publisher())},
+		[]service.Option{
+			service.WithPolicyPublisher(pol.Publisher()),
+			// A server has no login keychain: registry tokens come from
+			// secrets.backend under registry/<name>.
+			service.WithRegistryTokens(registry.SecretTokens(func() (secret.Store, error) { return secretsStore, nil })),
+		},
 		*cfg,
 	)
 	s.Watcher = watcher.NewManager(in.Driver.Watches(), watcher.StoreRecords(in.Driver.Watches()), serviceIngester{s.Service})

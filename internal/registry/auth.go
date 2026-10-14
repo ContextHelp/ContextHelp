@@ -80,8 +80,14 @@ func (s *TokenStore) Get(registryName string) (StoredToken, error) {
 		}
 		return StoredToken{}, fmt.Errorf("registry: retrieve token: %w", err)
 	}
+	return decodeStoredToken(registryName, got.Value)
+}
+
+// decodeStoredToken parses a stored {origin, token} entry. An entry that
+// is not that JSON, or lacks either field, counts as no token.
+func decodeStoredToken(registryName string, value []byte) (StoredToken, error) {
 	var st StoredToken
-	if json.Unmarshal(got.Value, &st) != nil || st.Origin == "" || st.Token == "" {
+	if json.Unmarshal(value, &st) != nil || st.Origin == "" || st.Token == "" {
 		return StoredToken{}, ErrNoToken{RegistryName: registryName}
 	}
 	return st, nil

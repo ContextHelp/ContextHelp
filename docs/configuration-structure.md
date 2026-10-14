@@ -186,6 +186,13 @@ goes out unauthenticated, and a 401 or 403 names `ctxt registry login <name>`. A
 public: the keychain is never read for it. `ctxt config doctor` rejects an
 unknown `auth.type`.
 
+dpkms has no login keychain: it reads a registry's token from
+`secrets.backend` under the key `registry/<name>`, a JSON value
+`{"origin": "https://registry.example.com", "token": "..."}`, and sends it
+under the same origin and https rules. Store it with `dpkms secret set
+registry/<name>` (value on stdin); see
+[secret management](security/secret-management.md#registry-tokens).
+
 ---
 
 ## Top-Level Keys
