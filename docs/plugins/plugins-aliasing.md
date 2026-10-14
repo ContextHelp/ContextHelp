@@ -73,7 +73,7 @@ What the code in `plugins/aliasing/` does if a host registers and initialises it
 | `plugins/aliasing/plugin.go` | `Plugin`: `Init`, `ResolveID`, `SetAliasOp`, `ListAliases`, `RemoveAlias` (the REST routes call none of them) |
 | `plugins/aliasing/store.go` | `SetAlias`, `ResolveAlias` over `pluginapi.AliasStore` |
 | `plugins/aliasing/config.go` | `AliasConfig`, `DefaultConfig`, `ConfigFromMap` |
-| `plugins/aliasing/cli.go` | Unmounted cobra subtree (`alias set/list/remove`) that calls the REST routes |
+| `plugins/aliasing/cli.go` | Unmounted cobra subtree (`alias set/list/remove`) that calls the REST routes; a non-2xx answer fails the command with the server's error code and message |
 | `internal/service/aliases.go` | `CreateAlias`, `ListAliases`, `ResolveAlias`, `DeleteAlias`: what the REST routes run |
 | `internal/storage/sqlite/aliases.go` | SQLite `AliasStore` |
 | `internal/storage/sqlite/migrations/010_aliases.sql` | Table schema |
