@@ -4,7 +4,6 @@ import (
 	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/modals"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/panes"
@@ -42,31 +41,33 @@ type Model struct {
 	initialObjectID string
 }
 
-// New constructs the root model. cfg may be nil (uses zero-value defaults).
-func New(adapter ServiceAdapter, cfg *config.Config) Model {
+// New constructs the root model from opts.
+func New(adapter ServiceAdapter, opts StartOpts) Model {
 	theme := DefaultTheme()
-	profile := ""
-	if cfg != nil {
-		profile = cfg.Profile.Default
+	activePane := PaneSearch
+	if opts.InitialObjectID != "" {
+		activePane = PanePreview
 	}
 
 	return Model{
-		adapter:      adapter,
-		theme:        theme,
-		keys:         DefaultKeyMap(),
-		search:       panes.NewSearchPane(adapter, theme),
-		preview:      panes.NewPreviewPane(theme),
-		graph:        panes.NewGraphPane(theme),
-		captureModal: modals.NewCaptureModal(adapter, theme),
-		composeModal: modals.NewComposeModal(adapter, theme),
-		activePane:   PaneSearch,
-		profile:      profile,
-		help:         help.New(),
+		adapter:         adapter,
+		theme:           theme,
+		keys:            DefaultKeyMap(),
+		search:          panes.NewSearchPane(adapter, theme),
+		preview:         panes.NewPreviewPane(theme),
+		graph:           panes.NewGraphPane(theme),
+		captureModal:    modals.NewCaptureModal(adapter, theme),
+		composeModal:    modals.NewComposeModal(adapter, theme),
+		activePane:      activePane,
+		profile:         opts.Profile,
+		help:            help.New(),
+		initialQuery:    opts.InitialQuery,
+		initialObjectID: opts.InitialObjectID,
 	}
 }
 
 // Init implements tea.Model. Starts the job poller and fires any initial
-// query/object load requested via RunWithOpts.
+// query/object load requested via StartOpts.
 func (m Model) Init() tea.Cmd {
 	m.search.Focus()
 	cmds := []tea.Cmd{PollJobsCmd(m.adapter)}
