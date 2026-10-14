@@ -159,6 +159,25 @@ func TestConfigValidateWarnsUnknownKeys(t *testing.T) {
 	}
 }
 
+// plugins: parses but no binary loads plugins: config validate warns,
+// naming the file, and still exits 0.
+func TestConfigValidateWarnsPluginsIgnored(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	content := "storage:\n  type: sqlite\nplugins:\n  - type: enrichment\n    plugin: custom-extractor\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	out, err := executeCommand("--config", cfgPath, "config", "validate")
+	if err != nil {
+		t.Fatalf("plugins: must not fail validate: %v\noutput: %s", err, out)
+	}
+	want := "! ignored key in " + cfgPath + ": line 3: plugins"
+	if !strings.Contains(out, want) || !strings.Contains(out, "not loaded") {
+		t.Errorf("expected %q warning saying plugins are not loaded; got: %s", want, out)
+	}
+}
+
 // Config never expands ${VAR}: config validate rejects such a value
 // instead of skipping it as an env-var reference.
 func TestConfigValidateRejectsEnvRef(t *testing.T) {

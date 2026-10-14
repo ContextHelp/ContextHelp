@@ -12,7 +12,8 @@ is the reference.
   initialised or called. Plugins under `plugins/` run in their own unit tests and
   in integration tests that register them by hand.
 - **No configuration.** The top-level `plugins:` key is parsed into
-  `[]PluginConfig{type, plugin, config}` and read by no code. There is no
+  `[]PluginConfig{type, plugin, config}` and read by no code; `ctxt config
+  validate` warns (`! ignored key`) when a config file sets it. There is no
   `plugins.<name>` block.
 - **No plugin directory, commands or routes.** No `~/.contexthelp/plugins/`,
   no `ctxt plugin` / `dpkms plugin` command, no plugin-contributed CLI
@@ -49,9 +50,10 @@ persisted as a JSON column on SQLite and PostgreSQL. Core treats it as opaque.
 
 ## Manifest
 
-`manifest.json` or `manifest.yaml` in the plugin directory: `apiVersion: v1`,
-`name`, `version`, optional `slug`, `description`, `type: registry_provider`,
-`permissions`. `plugin.LoadManifest(dir)` validates it; no host code calls it.
+One `manifest.json` or `manifest.yaml` in the plugin directory (`manifest.json`
+wins if both exist): `apiVersion: v1`, `name`, `version`, optional `slug`,
+`description`, `type: registry_provider`, `permissions`. `plugin.LoadManifest(dir)`
+validates it; no host code calls it.
 See [the authoring guide §2](../plugin-authoring-guide.md#2-plugin-manifest).
 
 ## Bundled plugin packages
