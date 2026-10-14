@@ -290,19 +290,18 @@ ctxt/
 ### Default Configuration (Zero-Config)
 
 The system works out-of-the-box with sensible defaults:
-- **Storage:** SQLite at `./data/sqlite/contexthelp.db`
+- **Storage:** SQLite at `$XDG_DATA_HOME/contexthelp/db.sqlite`
 - **Workers:** 4 background workers
 - **Jobs:** Persistent queue in SQLite
 - **API:** REST on `:8080`, gRPC on `:9090`
 
 ### Custom Configuration
 
-Create `.env` from `.env.example`:
+Export overrides in the shell (neither binary loads a `.env` file):
 
 ```bash
 # Storage
-STORAGE_BACKEND=sqlite
-SQLITE_PATH=./data/sqlite/contexthelp.db
+CH_STORAGE_TYPE=sqlite
 
 # Workers
 WORKER_COUNT=4
@@ -310,13 +309,12 @@ WORKER_COUNT=4
 # API
 CH_SERVER_PORT=8080
 CH_GRPC_PORT=9090
-
-# Logging
-LOG_LEVEL=debug
-LOG_FORMAT=console
 ```
 
-See `docs/environment-variables.md` for complete reference.
+The database path is the `storage.path` config key (`-c storage.path=...`);
+logging has no env var: pass `--verbose` for debug output.
+
+See [environment-variables/README.md](environment-variables/README.md) for the complete reference.
 
 ---
 
@@ -439,7 +437,7 @@ CH_SERVER_PORT=8081 CH_GRPC_PORT=9091 dpkms serve
 **For DevOps:**
 1. Review [ci-cd.md](ci-cd.md) — CI/CD pipeline
 2. Check [scaling.md](scaling.md) — Deployment patterns
-3. Read [environment-variables.md](environment-variables.md) — Configuration reference
+3. Read [environment-variables/README.md](environment-variables/README.md) — Environment variable reference
 
 ---
 

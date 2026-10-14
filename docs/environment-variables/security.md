@@ -1,125 +1,69 @@
 # Security Environment Variables
 
-Encryption, authentication, and secret management.
+Secrets backend and backup-bundle encryption. Inbound auth has no env
+vars: set `server.access` and `server.auth` in the config file — see
+[Inbound auth, roles and scopes](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
 
 ---
 
-## Encryption
+## Secrets backend
 
-### ENCRYPTION_ENABLED
-**Type:** boolean  
-**Default:** `false`
+Where `ctxt` and `dpkms` look up secrets such as provider API keys.
 
-Enable at-rest encryption for storage.
+### CTXT_SECRETS_BACKEND
+**Type:** string\
+**Default:** `env`\
+**Values:** `env`, `keyring`, `agefile`, `onepassword`, `ghsecrets`\
+**Config key:** `secrets.backend`
 
-```bash
-ENCRYPTION_ENABLED=true
-```
-
-### ENCRYPTION_KEY_DERIVATION
-**Type:** string  
-**Default:** `pbkdf2`  
-**Values:** `pbkdf2`, `argon2`
-
-Key derivation function.
+`env` reads each secret from the environment variable of the same name.
 
 ```bash
-ENCRYPTION_KEY_DERIVATION=argon2
+CTXT_SECRETS_BACKEND=keyring
 ```
 
-### ENCRYPTION_PASSPHRASE
-**Type:** string (secret)  
-**Default:** _(none)_  
-**Required:** When encryption enabled
+### CTXT_AGE_FILE
+**Type:** string\
+**Default:** _(none)_\
+**Config key:** `secrets.age_file`
 
-Encryption passphrase. **Never commit to version control.**
+Path to the age-encrypted YAML secrets file. Required by the `agefile`
+backend.
+
+### CTXT_AGE_IDENTITY
+**Type:** string\
+**Default:** _(none)_\
+**Config key:** `secrets.age_identity_file`
+
+Path to the age identity (private key) file. Required by the `agefile`
+backend.
 
 ```bash
-ENCRYPTION_PASSPHRASE=strong_passphrase_here
+CTXT_SECRETS_BACKEND=agefile
+CTXT_AGE_FILE=~/.config/contexthelp/secrets.age
+CTXT_AGE_IDENTITY=~/.config/contexthelp/age.key
 ```
 
-**Security best practices:**
-```bash
-# Use secret management
-ENCRYPTION_PASSPHRASE=$(vault kv get -field=passphrase secret/encryption)
-
-# Or prompt user
-read -s -p "Encryption passphrase: " ENCRYPTION_PASSPHRASE
-export ENCRYPTION_PASSPHRASE
-```
+Config-file only: `secrets.keychain_service` (default `ctxt`),
+`secrets.onepassword_vault`, `secrets.gh_repo`.
 
 ---
 
-## Authentication
+## Backup encryption
 
-### AUTH_ENABLED
-**Type:** boolean  
-**Default:** `false`
+### CTXT_BACKUP_PASSPHRASE
+**Type:** string (secret)\
+**Default:** _(none)_
 
-Enable authentication for API access.
-
-```bash
-AUTH_ENABLED=true
-```
-
-### JWT_SECRET
-**Type:** string (secret)  
-**Default:** _(none)_  
-**Required:** When auth enabled
-
-JWT signing secret. **Never commit to version control.**
+Passphrase for encrypting `ctxt config backup` bundles and decrypting them
+on `ctxt config restore`. Resolution order: `--passphrase` flag (backup
+only), this env var, the OS keychain, then an interactive prompt.
+`backup.encrypt_by_default: true` encrypts every backup. **Never commit it
+to version control.**
 
 ```bash
-JWT_SECRET=random_secret_key_here
-```
-
-**Generate secure secret:**
-```bash
-# 32-byte random secret
-JWT_SECRET=$(openssl rand -base64 32)
-export JWT_SECRET
-```
-
-### JWT_EXPIRATION
-**Type:** duration  
-**Default:** `24h`
-
-JWT token expiration time.
-
-```bash
-JWT_EXPIRATION=12h
-```
-
----
-
-## Examples
-
-### Development (No Security)
-```bash
-ENCRYPTION_ENABLED=false
-AUTH_ENABLED=false
-```
-
-### Staging (Basic Security)
-```bash
-ENCRYPTION_ENABLED=true
-ENCRYPTION_KEY_DERIVATION=pbkdf2
-ENCRYPTION_PASSPHRASE=$(vault kv get -field=passphrase secret/staging/encryption)
-
-AUTH_ENABLED=true
-JWT_SECRET=$(vault kv get -field=secret secret/staging/jwt)
-JWT_EXPIRATION=24h
-```
-
-### Production (Full Security)
-```bash
-ENCRYPTION_ENABLED=true
-ENCRYPTION_KEY_DERIVATION=argon2
-ENCRYPTION_PASSPHRASE=$(vault kv get -field=passphrase secret/prod/encryption)
-
-AUTH_ENABLED=true
-JWT_SECRET=$(vault kv get -field=secret secret/prod/jwt)
-JWT_EXPIRATION=12h
+CTXT_BACKUP_PASSPHRASE=$(vault kv get -field=passphrase secret/ctxt-backup) \
+  ctxt config backup --encrypt
 ```
 
 ---
@@ -128,94 +72,25 @@ JWT_EXPIRATION=12h
 
 ### AWS Secrets Manager
 ```bash
-ENCRYPTION_PASSPHRASE=$(aws secretsmanager get-secret-value \
-  --secret-id encryption_passphrase \
-  --query SecretString --output text)
-
-JWT_SECRET=$(aws secretsmanager get-secret-value \
-  --secret-id jwt_secret \
+CTXT_BACKUP_PASSPHRASE=$(aws secretsmanager get-secret-value \
+  --secret-id ctxt_backup_passphrase \
   --query SecretString --output text)
 ```
 
 ### HashiCorp Vault
 ```bash
-ENCRYPTION_PASSPHRASE=$(vault kv get -field=passphrase secret/encryption)
-JWT_SECRET=$(vault kv get -field=secret secret/jwt)
+OPENAI_API_KEY=$(vault kv get -field=key secret/openai)
+CTXT_BLOB_S3_SECRET_KEY=$(vault kv get -field=blob_secret secret/ctxt)
 ```
 
 ### Kubernetes Secrets
 ```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: contexthelp-secrets
-type: Opaque
-data:
-  encryption-passphrase: <base64-encoded>
-  jwt-secret: <base64-encoded>
-```
-
-Mount as environment variables:
-```yaml
 env:
-  - name: ENCRYPTION_PASSPHRASE
+  - name: ANTHROPIC_API_KEY
     valueFrom:
       secretKeyRef:
         name: contexthelp-secrets
-        key: encryption-passphrase
-  - name: JWT_SECRET
-    valueFrom:
-      secretKeyRef:
-        name: contexthelp-secrets
-        key: jwt-secret
-```
-
----
-
-## Security Checklist
-
-### Never Do This ❌
-```bash
-# .env file (committed to git)
-ENCRYPTION_PASSPHRASE=my_password
-JWT_SECRET=secret123
-```
-
-### Always Do This ✅
-```bash
-# .env.example (template, committed)
-ENCRYPTION_PASSPHRASE=
-JWT_SECRET=
-
-# .env (actual values, in .gitignore)
-ENCRYPTION_PASSPHRASE=actual_secure_passphrase
-JWT_SECRET=actual_random_jwt_secret
-
-# Or use secret management
-ENCRYPTION_PASSPHRASE=$(vault kv get -field=passphrase secret/encryption)
-JWT_SECRET=$(vault kv get -field=secret secret/jwt)
-```
-
-### Validation Script
-```bash
-#!/bin/bash
-# validate-secrets.sh
-
-required_secrets=("ENCRYPTION_PASSPHRASE" "JWT_SECRET")
-for secret in "${required_secrets[@]}"; do
-  if [ -z "${!secret}" ]; then
-    echo "Error: $secret is not set"
-    exit 1
-  fi
-  
-  # Check minimum length
-  if [ ${#!secret} -lt 16 ]; then
-    echo "Error: $secret must be at least 16 characters"
-    exit 1
-  fi
-done
-
-echo "✓ All secrets validated"
+        key: anthropic-api-key
 ```
 
 ---

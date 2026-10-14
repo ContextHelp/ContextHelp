@@ -1,94 +1,33 @@
 # Pipelines & Profiles Environment Variables
 
-Pipeline execution and focus profile configuration.
-
----
-
-## Pipeline Configuration
-
-### PIPELINE_DEFAULT_TIMEOUT
-**Type:** duration  
-**Default:** `5m`
-
-Default pipeline execution timeout.
-
-```bash
-PIPELINE_DEFAULT_TIMEOUT=10m
-```
-
-### PIPELINE_CACHE_ENABLED
-**Type:** boolean  
-**Default:** `true`
-
-Enable pipeline step caching.
-
-```bash
-PIPELINE_CACHE_ENABLED=true
-```
-
-### PIPELINE_MAX_CONCURRENT
-**Type:** integer  
-**Default:** `4`
-
-Maximum concurrent pipeline executions.
-
-```bash
-PIPELINE_MAX_CONCURRENT=8
-```
+Focus profile selection. Pipelines have no env vars: per-pipeline settings
+live under `pipelines.overrides` in the config file.
 
 ---
 
 ## Profile Configuration
 
-### PROFILE_DEFAULT
-**Type:** string  
-**Default:** `general`
+### CTXT_PROFILE
+**Type:** string\
+**Default:** _(none)_\
+**Config key:** `profile.default`\
+**Flag:** `--profile`
 
-Default focus profile.
+Default focus profile: the name of an entry under `profile.profiles` in the
+config file.
 
 ```bash
-PROFILE_DEFAULT=founder
+CTXT_PROFILE=founder
 ```
 
-**Available profiles:**
-- `general` — General-purpose
-- `founder` — Founder/CEO focus
-- `engineer` — Engineering focus
-- `research` — Research focus
-- Custom profiles in `PROFILE_DIRECTORY`
+Profiles are defined in the config file, not in a separate directory:
 
-### PROFILE_DIRECTORY
-**Type:** string  
-**Default:** `./config/profiles`
-
-Directory containing profile configurations.
-
-```bash
-PROFILE_DIRECTORY=~/.config/contexthelp/profiles
-```
-
----
-
-## Examples
-
-### Development
-```bash
-PIPELINE_DEFAULT_TIMEOUT=5m
-PIPELINE_CACHE_ENABLED=true
-PIPELINE_MAX_CONCURRENT=2
-
-PROFILE_DEFAULT=general
-PROFILE_DIRECTORY=./config/profiles
-```
-
-### Production
-```bash
-PIPELINE_DEFAULT_TIMEOUT=10m
-PIPELINE_CACHE_ENABLED=true
-PIPELINE_MAX_CONCURRENT=8
-
-PROFILE_DEFAULT=founder
-PROFILE_DIRECTORY=/etc/contexthelp/profiles
+```yaml
+profile:
+  default: founder
+  profiles:
+    founder:
+      description: Founder/CEO focus
 ```
 
 ---
@@ -97,3 +36,4 @@ PROFILE_DIRECTORY=/etc/contexthelp/profiles
 
 - [../ctxt/pipelines.md](../ctxt/pipelines.md) — Pipeline architecture
 - [../ctxt/configuration.md](../ctxt/configuration.md) — Focus profiles
+- [../manual/reference/config-and-permissions.md](../manual/reference/config-and-permissions.md#profile-controls) — Profile controls
