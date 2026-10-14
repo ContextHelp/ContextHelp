@@ -23,6 +23,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/safefs"
 )
 
 const (
@@ -245,6 +247,20 @@ func Build(opts BuildOpts) (BuildResult, error) {
 	return BuildResult{ZipPath: zipPath, SigPath: sigPath, Fingerprint: fp}, nil
 }
 
+// checkEntry refuses a bundle file entry that restore could not write
+// safely inside the config dir: a name that is not a plain relative
+// path (absolute, "..", backslashes) or an entry that is not a regular
+// file (symlink, device, directory).
+func checkEntry(f *zip.File) error {
+	if _, err := safefs.LocalName(f.Name); err != nil {
+		return fmt.Errorf("bundle: entry %w", err)
+	}
+	if !f.Mode().IsRegular() {
+		return fmt.Errorf("bundle: entry %q: not a regular file", f.Name)
+	}
+	return nil
+}
+
 // ExtractOnly opens a bundle zip and returns its file contents without verifying the signature.
 // Suitable for restore without --verify. The caller is responsible for trust decisions.
 func ExtractOnly(zipPath string) (map[string][]byte, error) {
@@ -260,6 +276,9 @@ func ExtractOnly(zipPath string) (map[string][]byte, error) {
 	for _, f := range zr.File {
 		if f.Name == ManifestName {
 			continue
+		}
+		if err := checkEntry(f); err != nil {
+			return nil, err
 		}
 		rc, err := f.Open()
 		if err != nil {
@@ -320,6 +339,11 @@ func VerifyAndOpen(opts VerifyOpts) (VerifyResult, error) {
 	files := make(map[string][]byte)
 
 	for _, f := range zr.File {
+		if f.Name != ManifestName {
+			if err := checkEntry(f); err != nil {
+				return VerifyResult{}, err
+			}
+		}
 		rc, err := f.Open()
 		if err != nil {
 			return VerifyResult{}, fmt.Errorf("bundle: open zip entry %s: %w", f.Name, err)

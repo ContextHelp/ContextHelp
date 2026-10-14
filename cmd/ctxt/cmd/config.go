@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +11,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/configpath"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/safefs"
 	"github.com/spf13/cobra"
 	kitconfigcli "hop.top/kit/go/console/cli/config"
 )
@@ -607,11 +609,17 @@ func writeRestoredFiles(cmd *cobra.Command, files map[string][]byte) error {
 	configPath := config.GetConfigPath(binName)
 	configDir := filepath.Dir(configPath)
 	for name, data := range files {
-		dst := filepath.Join(configDir, name)
-		if err := os.WriteFile(dst, data, 0600); err != nil {
+		// Bundle entry names are untrusted: each must land inside
+		// configDir (safefs refuses "..", absolute paths and symlink
+		// escapes).
+		rel, err := safefs.LocalName(name)
+		if err != nil {
+			return fmt.Errorf("config restore: entry %w", err)
+		}
+		if err := safefs.WriteFile(configDir, rel, bytes.NewReader(data), 0o600); err != nil {
 			return fmt.Errorf("config restore: write %s: %w", name, err)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "  restored: %s\n", dst)
+		fmt.Fprintf(cmd.OutOrStdout(), "  restored: %s\n", filepath.Join(configDir, rel))
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "\nRestart ctxt for changes to take effect.\n")
 	return nil
