@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -77,7 +78,7 @@ func (c *BookmarkSearchClient) Search(
 	endpoint := registryURL + "/bookmarks/search"
 	u, err := url.Parse(endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("bookmark search: invalid registry URL %q: %w", registryURL, err)
+		return nil, fmt.Errorf("bookmark search: invalid registry URL %q: %w", config.RedactDSN(registryURL), config.RedactURLError(err))
 	}
 
 	q := u.Query()
@@ -92,7 +93,7 @@ func (c *BookmarkSearchClient) Search(
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("bookmark search: %s: %w", registryURL, err)
+		return nil, fmt.Errorf("bookmark search: %s: %w", config.RedactDSN(registryURL), config.RedactURLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -104,12 +105,12 @@ func (c *BookmarkSearchClient) Search(
 		return nil, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("bookmark search: %s returned HTTP %d", registryURL, resp.StatusCode)
+		return nil, fmt.Errorf("bookmark search: %s returned HTTP %d", config.RedactDSN(registryURL), resp.StatusCode)
 	}
 
 	var results []RemoteBookmark
 	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
-		return nil, fmt.Errorf("bookmark search: decode response from %s: %w", registryURL, err)
+		return nil, fmt.Errorf("bookmark search: decode response from %s: %w", config.RedactDSN(registryURL), err)
 	}
 
 	// Stamp registry source on each result.

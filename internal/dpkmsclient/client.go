@@ -34,6 +34,8 @@ import (
 	"time"
 
 	"hop.top/kit/go/console/output"
+
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
 // DefaultTimeout bounds a whole request, connection through response body,
@@ -49,7 +51,10 @@ type Endpoint struct {
 
 // Client sends requests to one dpkms endpoint.
 type Client struct {
-	base  string
+	base string
+	// shown is base with any credential it embeds (a userinfo password,
+	// a token= query parameter) masked: what output and errors print.
+	shown string
 	token string
 	hc    *http.Client
 }
@@ -77,7 +82,7 @@ func WithTransport(rt http.RoundTripper) Option {
 func New(ep Endpoint, opts ...Option) (*Client, error) {
 	u, err := url.Parse(ep.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		e := output.UsageError(fmt.Sprintf("invalid dpkms server URL %q: want http(s)://host[:port]", ep.URL))
+		e := output.UsageError(fmt.Sprintf("invalid dpkms server URL %q: want http(s)://host[:port]", config.RedactDSN(ep.URL)))
 		e.SuggestedFix = "check --server, server.url and server.urls in the ctxt config"
 		return nil, e
 	}
@@ -85,8 +90,10 @@ func New(ep Endpoint, opts ...Option) (*Client, error) {
 	for _, opt := range opts {
 		opt(&o)
 	}
+	base := strings.TrimRight(ep.URL, "/")
 	return &Client{
-		base:  strings.TrimRight(ep.URL, "/"),
+		base:  base,
+		shown: config.RedactDSN(base),
 		token: ep.Token,
 		// A nil Transport resolves http.DefaultTransport per request, so
 		// wrappers installed on it later (test guards, kit's offline
@@ -95,9 +102,15 @@ func New(ep Endpoint, opts ...Option) (*Client, error) {
 	}, nil
 }
 
-// URL returns the endpoint's base URL, without a trailing slash. It never
-// carries the token, so it is safe to print.
-func (c *Client) URL() string { return c.base }
+// URL returns the endpoint's base URL for display, without a trailing
+// slash: it never carries the token, and a credential the configured URL
+// embeds (user:password@, ?token=) is masked, so it is safe to print.
+func (c *Client) URL() string { return c.shown }
+
+// BaseURL returns the endpoint's base URL as configured, without a
+// trailing slash, credentials included. Use it to build a link the user
+// follows; print URL instead.
+func (c *Client) BaseURL() string { return c.base }
 
 // Request is one call to the dpkms API.
 type Request struct {
@@ -159,7 +172,7 @@ func (c *Client) Do(ctx context.Context, r Request, out any) error {
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return output.WrapError(
-			fmt.Errorf("decode %s %s response from dpkms at %s: %w", r.Method, r.Path, c.base, err),
+			fmt.Errorf("decode %s %s response from dpkms at %s: %w", r.Method, r.Path, c.shown, err),
 			output.CodeGeneric, output.ExitGeneric)
 	}
 	return nil
@@ -180,7 +193,7 @@ func (c *Client) newRequest(ctx context.Context, r Request) (*http.Request, erro
 	}
 	req, err := http.NewRequestWithContext(ctx, r.Method, target, body)
 	if err != nil {
-		return nil, fmt.Errorf("build %s %s request: %w", r.Method, r.Path, err)
+		return nil, fmt.Errorf("build %s %s request: %w", r.Method, r.Path, config.RedactURLError(err))
 	}
 	for k, vs := range r.Header {
 		for _, v := range vs {

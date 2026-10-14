@@ -165,7 +165,7 @@ func (s *Syncer) Sync(ctx context.Context, cfg config.RegistryConfig) (*SyncResu
 
 	entries, err := s.fetchAndVerifyEntityIndex(ctx, cfg.URL)
 	if err != nil {
-		return nil, fmt.Errorf("fetch entity index from %s: %w", cfg.URL, err)
+		return nil, fmt.Errorf("fetch entity index from %s: %w", config.RedactDSN(cfg.URL), err)
 	}
 
 	now := time.Now().Truncate(time.Second)
@@ -232,7 +232,7 @@ func (s *Syncer) SyncWithOfflineFallback(
 
 	// Registry unreachable: surface warning; use local cache (no-write).
 	slog.WarnContext(ctx, "registry unreachable; using cached local entities",
-		"registry", cfg.URL, "err", err)
+		"registry", config.RedactDSN(cfg.URL), "err", err)
 
 	offlineResult := &SyncResult{
 		RegistryURL: cfg.URL,
@@ -269,7 +269,7 @@ func (s *Syncer) MultiSync(ctx context.Context, cfg MultiSyncConfig) (*MultiSync
 		entries, fetchErr := s.fetchAndVerifyEntityIndex(ctx, regCfg.URL)
 		if fetchErr != nil {
 			slog.WarnContext(ctx, "multi-sync: registry unreachable",
-				"registry", regCfg.URL, "err", fetchErr)
+				"registry", config.RedactDSN(regCfg.URL), "err", fetchErr)
 			out.OfflineRegistries = append(out.OfflineRegistries, regCfg.URL)
 			out.PerRegistry = append(out.PerRegistry, &SyncResult{
 				RegistryURL: regCfg.URL,
@@ -456,7 +456,7 @@ func (s *Syncer) fetchEntityIndex(ctx context.Context, registryURL string) ([]En
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, config.RedactURLError(err)
 	}
 	defer resp.Body.Close()
 
@@ -512,7 +512,7 @@ func (s *Syncer) fetchAndVerifyEntityIndex(ctx context.Context, registryURL stri
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, config.RedactURLError(err)
 	}
 	defer resp.Body.Close()
 
@@ -550,11 +550,11 @@ func (s *Syncer) fetchAndVerifyEntityIndex(ctx context.Context, registryURL stri
 		if errors.As(verifyErr, &missing) {
 			// Missing sig on a declared-key registry → abort sync.
 			slog.ErrorContext(ctx, "registry sync: signature missing",
-				"registry", registryURL, "fingerprint", fingerprint)
+				"registry", config.RedactDSN(registryURL), "fingerprint", fingerprint)
 			return nil, verifyErr
 		}
 		slog.ErrorContext(ctx, "registry sync: signature verification failed",
-			"registry", registryURL, "fingerprint", fingerprint, "err", verifyErr)
+			"registry", config.RedactDSN(registryURL), "fingerprint", fingerprint, "err", verifyErr)
 		return nil, verifyErr
 	}
 
@@ -565,7 +565,7 @@ func (s *Syncer) fetchAndVerifyEntityIndex(ctx context.Context, registryURL stri
 		_ = s.registryStore.CacheManifest(ctx, cachedManifest)
 	}
 	slog.DebugContext(ctx, "registry sync: signature verified",
-		"registry", registryURL, "fingerprint", fingerprint)
+		"registry", config.RedactDSN(registryURL), "fingerprint", fingerprint)
 
 	var entries []EntityIndexEntry
 	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&entries); err != nil {

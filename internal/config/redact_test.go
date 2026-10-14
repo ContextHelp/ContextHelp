@@ -2,7 +2,9 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -339,3 +341,37 @@ func TestValidateEndpointURLRedactsPassword(t *testing.T) {
 		}
 	}
 }
+
+// A *url.Error in the chain quotes its URL redacted; the rest of the
+// message is kept.
+func TestRedactURLError(t *testing.T) {
+	inner := &url.Error{
+		Op:  "Get",
+		URL: "https://reg.example.net/index?token=QUERY-TOKEN-SEC-77",
+		Err: errors.New("connection refused"),
+	}
+	// A lazily rendered wrapper, as the transport's own errors are: the
+	// walk must reach the *url.Error below it.
+	err := fmt.Errorf("fetch manifest: %w", RedactURLError(lazyWrap{inner}))
+	got := err.Error()
+	if strings.Contains(got, "QUERY-TOKEN-SEC") {
+		t.Fatalf("token survives: %s", got)
+	}
+	for _, want := range []string{"fetch manifest: Get", "token=****C-77", "connection refused"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %q in %q", want, got)
+		}
+	}
+	if !errors.Is(err, inner.Err) {
+		t.Error("chain lost")
+	}
+	if RedactURLError(nil) != nil {
+		t.Error("nil error must stay nil")
+	}
+}
+
+// lazyWrap renders its wrapped error when asked, not when built.
+type lazyWrap struct{ err error }
+
+func (w lazyWrap) Error() string { return w.err.Error() }
+func (w lazyWrap) Unwrap() error { return w.err }

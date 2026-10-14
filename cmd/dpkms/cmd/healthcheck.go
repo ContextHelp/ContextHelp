@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -99,7 +100,8 @@ func runHealthcheck(cmd *cobra.Command, _ []string) error {
 
 func healthcheckOnce(ctx context.Context, cmd *cobra.Command, ep dpkmsclient.Endpoint, quiet bool) error {
 	client := newEndpointClient(ep)
-	serverURL := strings.TrimRight(ep.URL, "/")
+	// For display: a credential the configured URL embeds is masked.
+	serverURL := config.RedactDSN(strings.TrimRight(ep.URL, "/"))
 	env, status, err := client.Healthz(ctx)
 	if err != nil {
 		// No hand-written stderr line here. The returned error is

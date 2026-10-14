@@ -16,7 +16,8 @@ import (
 
 // instanceEntry is one row of `ctxt instance list`: a named server.urls
 // entry or a dpkms running on this machine. It never carries a token,
-// only whether one is attached.
+// only whether one is attached, and URL and DB mask any credential they
+// embed (config.RedactDSN).
 type instanceEntry struct {
 	Name    string `json:"name"`
 	Kind    string `json:"kind"` // "endpoint" or "local"
@@ -69,7 +70,8 @@ machine (discovered via pidfiles).
 Each row reports the name, kind (endpoint or local), URL and whether a
 token is attached; local rows add PID, database and uptime. A leading
 "* " marks the instance this invocation resolves to. Tokens are never
-printed. Use ctxt instance use <name> to switch.`,
+printed, and a password or token= parameter inside a URL or database
+connection string is masked. Use ctxt instance use <name> to switch.`,
 	RunE: runInstanceList,
 }
 
@@ -97,8 +99,8 @@ var instanceCurrentCmd = &cobra.Command{
 	Long: `Print the dpkms instance ctxt resolves to: its name, URL, the layer
 that chose it (--server, --instance, CTXT_INSTANCE, current-instance,
 server.urls, server.url or default) and whether a token is attached. The
-token itself is never printed. A stale current-instance selection exits
-70.`,
+token itself is never printed, and a password or token= parameter inside
+the URL is masked. A stale current-instance selection exits 70.`,
 	RunE: runInstanceCurrent,
 }
 
@@ -163,7 +165,7 @@ func runInstanceList(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 		entries = append(entries, instanceEntry{
-			Name: e.Name, Kind: "endpoint", URL: e.URL, Token: r.Token != "",
+			Name: e.Name, Kind: "endpoint", URL: config.RedactDSN(e.URL), Token: r.Token != "",
 			Current: curErr == nil && !current.Local && current.Name == e.Name,
 		})
 	}
@@ -173,9 +175,9 @@ func runInstanceList(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 		entries = append(entries, instanceEntry{
-			Name: info.Name, Kind: "local", URL: r.URL, Token: r.Token != "",
+			Name: info.Name, Kind: "local", URL: config.RedactDSN(r.URL), Token: r.Token != "",
 			Current: curErr == nil && current.Local && current.Name == info.Name,
-			PID:     info.PID, DB: info.DBPath,
+			PID:     info.PID, DB: config.RedactDSN(info.DBPath),
 			Uptime: time.Since(info.StartedAt).Truncate(time.Second).String(),
 		})
 	}
@@ -234,11 +236,13 @@ func runInstanceUse(cmd *cobra.Command, args []string) error {
 	if err := os.WriteFile(stateFile, []byte(r.Name), 0o600); err != nil {
 		return fmt.Errorf("write state file: %w", err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Current instance set to %q (%s, token: %s)\n", r.Name, r.URL, yesNo(r.Token != ""))
+	fmt.Fprintf(cmd.OutOrStdout(), "Current instance set to %q (%s, token: %s)\n",
+		r.Name, config.RedactDSN(r.URL), yesNo(r.Token != ""))
 	return nil
 }
 
-// instanceCurrent is `ctxt instance current --format json`.
+// instanceCurrent is `ctxt instance current --format json`. URL masks
+// any credential it embeds.
 type instanceCurrent struct {
 	Name  string `json:"name"`
 	URL   string `json:"url"`
@@ -254,7 +258,7 @@ func runInstanceCurrent(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	cur := instanceCurrent{
-		Name: r.Name, URL: r.URL, Key: r.Key, Layer: string(r.Layer),
+		Name: r.Name, URL: config.RedactDSN(r.URL), Key: r.Key, Layer: string(r.Layer),
 		Token: r.Token != "", Local: r.Local,
 	}
 	if isJSONOutput() {

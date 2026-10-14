@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -77,7 +78,7 @@ func (c *EntitlementChecker) FetchAndStore(
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch entitlements from %s: %w", entitlementURL, err)
+		return nil, fmt.Errorf("fetch entitlements from %s: %w", config.RedactDSN(entitlementURL), config.RedactURLError(err))
 	}
 	defer resp.Body.Close()
 

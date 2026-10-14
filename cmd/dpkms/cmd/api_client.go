@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -48,6 +49,13 @@ func newEndpointClient(ep dpkmsclient.Endpoint) *APIClient {
 	return c
 }
 
+// do sends req. Its error quotes the request URL with any credential
+// the endpoint URL embeds (?token=) masked.
+func (c *APIClient) do(req *http.Request) (*http.Response, error) {
+	resp, err := c.client.Do(req) // #nosec G704 -- operator-configured dpkms endpoint
+	return resp, config.RedactURLError(err)
+}
+
 // withNoteHeader sets the X-Ctxt-Note header on req when note is
 // non-empty. The daemon's HTTP layer copies the value into ctx via
 // policy.ContextAttrsKey before invoking the service.
@@ -64,7 +72,7 @@ func (c *APIClient) get(ctx context.Context, url string) (*http.Response, error)
 	if err != nil {
 		return nil, err
 	}
-	return c.client.Do(req)
+	return c.do(req)
 }
 
 // postJSON sends POST url with a JSON body on ctx.
@@ -74,7 +82,7 @@ func (c *APIClient) postJSON(ctx context.Context, url string, body []byte) (*htt
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	return c.client.Do(req)
+	return c.do(req)
 }
 
 func (c *APIClient) CreatePipeline(ctx context.Context, req service.CreatePipelineRequest, note string) (string, error) {
@@ -90,7 +98,7 @@ func (c *APIClient) CreatePipeline(ctx context.Context, req service.CreatePipeli
 	httpReq.Header.Set("Content-Type", "application/json")
 	withNoteHeader(httpReq, note)
 
-	resp, err := c.client.Do(httpReq)
+	resp, err := c.do(httpReq)
 	if err != nil {
 		return "", err
 	}
@@ -114,7 +122,7 @@ func (c *APIClient) DeletePipeline(ctx context.Context, name, note string) error
 		return err
 	}
 	withNoteHeader(req, note)
-	resp, err := c.client.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -132,7 +140,7 @@ func (c *APIClient) ListPipelines(ctx context.Context, filter storage.PipelineFi
 	if err != nil {
 		return nil, 0, err
 	}
-	resp, err := c.client.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -183,7 +191,7 @@ func (c *APIClient) ArchivePipeline(ctx context.Context, name, note string) erro
 		return err
 	}
 	withNoteHeader(req, note)
-	resp, err := c.client.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -202,7 +210,7 @@ func (c *APIClient) UnarchivePipeline(ctx context.Context, name, note string) er
 		return err
 	}
 	withNoteHeader(req, note)
-	resp, err := c.client.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -315,7 +323,7 @@ func (c *APIClient) UninstallStep(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := c.client.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -462,7 +470,7 @@ func (c *APIClient) Healthz(ctx context.Context) (HealthzEnvelope, int, error) {
 	if err != nil {
 		return HealthzEnvelope{}, 0, err
 	}
-	resp, err := c.client.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return HealthzEnvelope{}, 0, err
 	}

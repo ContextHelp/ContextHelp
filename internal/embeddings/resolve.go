@@ -448,11 +448,16 @@ func (r Resolved) Value(f Field) string {
 }
 
 // Explain lists every setting with its value and source, in display order.
-// api_key_env is reported by name only.
+// api_key_env is reported by name only, and the endpoint with any
+// credential it embeds (user:password@, ?token=) masked.
 func (r Resolved) Explain() []Explanation {
 	out := make([]Explanation, 0, len(Fields))
 	for _, f := range Fields {
-		out = append(out, Explanation{Field: f, Value: r.Value(f), Layer: r.Source(f), Fixed: r.Fixed(f)})
+		v := r.Value(f)
+		if f == FieldEndpoint {
+			v = config.RedactDSN(v)
+		}
+		out = append(out, Explanation{Field: f, Value: v, Layer: r.Source(f), Fixed: r.Fixed(f)})
 	}
 	return out
 }
