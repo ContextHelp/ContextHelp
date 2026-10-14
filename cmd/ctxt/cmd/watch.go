@@ -1,18 +1,22 @@
 package cmd
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/output"
+
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
-	"github.com/spf13/cobra"
+	"github.com/ideacrafterslabs/ctxt/internal/watcher/watchstate"
 )
 
 // watchCmd is the top-level "watcher" command group.
@@ -21,11 +25,21 @@ var watchCmd = &cobra.Command{
 	Short: "Manage passive background watchers (clipboard, directories)",
 	Long: `Start, stop, inspect, and configure passive background watchers.
 
-Watchers monitor the clipboard and filesystem directories, silently enqueueing
-ingestion jobs when new or changed content is detected.
+Watchers run on this machine. They monitor the clipboard and the
+directories in watch.dirs and enqueue new or changed content on the one
+dpkms instance ctxt resolves (--server, --instance, CTXT_INSTANCE, the
+current instance, then server.urls / server.url), over its API.
+
+What was already sent is ctxt's own record, one state file per instance
+under $XDG_STATE_HOME/ctxt/watch/: switching instances sends each file
+to the new one once. dpkms's server-side watches (/api/v1/watches) are
+separate and never see these records.
 
 Configuration (config.yaml):
   watch:
+    dirs: [~/notes]
+    patterns: ["**/*.md"]
+    debounce: 500ms
     clipboard:
       enabled: false       # must opt-in explicitly
       poll_interval: 2s
@@ -44,24 +58,37 @@ Examples:
 var watchStartCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Start all configured watchers and block",
-	Long: `Start clipboard and directory watchers as configured in config.yaml.
+	Long: `Start the clipboard and directory watchers configured in config.yaml,
+sending to the resolved dpkms instance, and block until interrupted
+(Ctrl-C, SIGTERM, or 'ctxt watch stop').
 
-Blocks until interrupted (Ctrl-C or SIGTERM).`,
+On start each directory is scanned once: files that changed since the
+last run against this instance are sent, unchanged ones are not. A
+deleted file deletes the object it produced (that needs a token with
+delete:objects, i.e. an admin token on protected instances).
+
+Exits 70 when nothing answers at the instance and 5 when it rejects the
+token, before watching anything; 4 when a watcher for the same instance
+is already running; 2 when there is nothing to watch.`,
 	RunE: runWatchStart,
 }
 
 var watchStopCmd = &cobra.Command{
 	Use:   "stop",
-	Short: "Stop all active directory watchers",
-	Long:  `Mark all active directory watch configs as paused in storage.`,
-	RunE:  runWatchStop,
+	Short: "Stop the running watcher for the resolved instance",
+	Long: `Signal the 'ctxt watch start' running for the resolved instance to stop,
+and wait for it to exit. Succeeds when none is running.`,
+	RunE: runWatchStop,
 }
 
 var watchStatusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Show status of all configured watchers",
-	Long:  `Display clipboard watcher status and all directory watch configurations.`,
-	RunE:  runWatchStatus,
+	Short: "Show the local watcher's state",
+	Long: `Show whether a watcher runs for the resolved instance, the clipboard
+setting, and per directory the files sent and the last error.
+
+Reads this machine's run and state files only; it never calls dpkms.`,
+	RunE: runWatchStatus,
 }
 
 var watchEnableCmd = &cobra.Command{
@@ -80,8 +107,8 @@ var watchDisableCmd = &cobra.Command{
 	Short: "Disable a watcher by name (e.g. clipboard)",
 	Long: `Disable a named watcher. Supported names: clipboard.
 
-This writes the change to the active config. The running watcher will stop
-at the next poll cycle if already running.`,
+This writes the change to the active config. Restart 'ctxt watch start'
+to apply.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runWatchDisable,
 }
@@ -93,6 +120,9 @@ func init() {
 	watchCmd.AddCommand(watchStatusCmd)
 	watchCmd.AddCommand(watchEnableCmd)
 	watchCmd.AddCommand(watchDisableCmd)
+	for _, c := range []*cobra.Command{watchStartCmd, watchStopCmd, watchStatusCmd} {
+		c.Flags().String("server", "", serverFlagUsage)
+	}
 
 	// start blocks running watchers; treat as a Write effect (it
 	// enqueues ingestion jobs while running).
@@ -100,19 +130,20 @@ func init() {
 	cliconv.WithIdempotency(watchStartCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(watchStartCmd, []cliconv.Example{
 		{Title: "Start every configured watcher", Command: "ctxt watch start"},
+		{Title: "Send to a named instance", Command: "ctxt watch start --instance home"},
 		{Title: "Run without the clipboard watcher", Command: "CTXT_NO_CLIPBOARD=1 ctxt watch start"},
 	})
 	cliconv.WithNextSteps(watchStartCmd, []cliconv.NextStep{
-		{When: "in another shell", Suggest: "ctxt watch status", Reason: "verify the watchers report active"},
-		{When: "to stop", Suggest: "ctxt watch stop", Reason: "pause every active directory watcher"},
+		{When: "in another shell", Suggest: "ctxt watch status", Reason: "verify the watcher runs and files are sent"},
+		{When: "to stop", Suggest: "ctxt watch stop", Reason: "stop the running watcher"},
 	})
 	cliconv.WithSideEffect(watchStopCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(watchStopCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(watchStopCmd, []cliconv.Example{
-		{Title: "Pause every active watcher", Command: "ctxt watch stop"},
+		{Title: "Stop the running watcher", Command: "ctxt watch stop"},
 	})
 	cliconv.WithNextSteps(watchStopCmd, []cliconv.NextStep{
-		{When: "after stop", Suggest: "ctxt watch status", Reason: "confirm every watcher moved to paused"},
+		{When: "after stop", Suggest: "ctxt watch status", Reason: "confirm no watcher runs"},
 	})
 	cliconv.WithSideEffect(watchStatusCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(watchStatusCmd, cliconv.IdempotencyYes)
@@ -138,170 +169,218 @@ func init() {
 	})
 }
 
+// watchScanHook, when set (tests), is told when a directory's initial
+// scan has finished.
+var watchScanHook func(watchID string)
+
+// clipboardState describes the configured clipboard watcher.
+func clipboardState() (status string, on bool) {
+	switch {
+	case os.Getenv("CTXT_NO_CLIPBOARD") == "1":
+		return "disabled (CTXT_NO_CLIPBOARD=1)", false
+	case cfg.Watch.Clipboard.Enabled:
+		return "enabled", true
+	default:
+		return "disabled", false
+	}
+}
+
 func runWatchStart(cmd *cobra.Command, _ []string) error {
-	svc, cleanup, err := newService()
+	out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
+	dirs, err := watchDirs()
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	clipStatus, clipOn := clipboardState()
+	if len(dirs) == 0 && !clipOn {
+		e := output.UsageError("nothing to watch: watch.dirs is empty and the clipboard watcher is " + clipStatus)
+		e.SuggestedFix = "add directories to watch.dirs, or run `ctxt watch enable clipboard`"
+		return e
+	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	r, err := resolveEndpoint(cmd)
+	if err != nil {
+		return err
+	}
+	client, err := dpkmsclient.New(r.Endpoint)
+	if err != nil {
+		return err
+	}
+	stateDir, err := watchstate.Dir()
+	if err != nil {
+		return err
+	}
 
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigs
-		fmt.Fprintln(cmd.OutOrStdout(), "\nStopping watchers...")
-		cancel()
+	run, err := watchstate.AcquireRun(watchstate.RunPath(stateDir, r.Key), watchstate.RunInfo{
+		Instance: r.Key, Endpoint: client.URL(), Dirs: dirs, Clipboard: clipOn,
+	})
+	if err != nil {
+		var running *watchstate.RunningError
+		if errors.As(err, &running) {
+			e := output.WrapError(err, output.CodeConflict, output.ExitConflict)
+			e.SuggestedFix = "stop it with `ctxt watch stop`, or watch another instance with --instance"
+			return e
+		}
+		return err
+	}
+	defer func() { _ = run.Release() }()
+
+	store, err := watchstate.Open(watchstate.StatePath(stateDir, r.Key), r.Key)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			fmt.Fprintf(errOut, "Warning: save watch state: %v\n", err)
+		}
 	}()
 
-	mgr := watcher.NewManager(svc.Store.Watches(), svc)
+	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	// Start clipboard watcher if enabled.
-	clipCfg := watcher.ClipboardConfig{
-		Enabled:      cfg.Watch.Clipboard.Enabled,
-		PollInterval: cfg.Watch.Clipboard.PollInterval,
-		MinLength:    cfg.Watch.Clipboard.MinLength,
-		AutoIngest:   cfg.Watch.Clipboard.AutoIngest,
-	}
-	if clipCfg.PollInterval == 0 {
-		clipCfg.PollInterval = 2 * time.Second
-	}
-	if clipCfg.MinLength == 0 {
-		clipCfg.MinLength = 80
+	// Loud failure before watching anything: nothing answering is 70, a
+	// rejected token 5 (ADR-077 §2). Later failures are per file: each
+	// is recorded as its directory's last error and retried by the
+	// file's next change or the next start.
+	if err := client.Get(ctx, "/api/v1/whoami", nil, nil); err != nil {
+		return err
 	}
 
-	clipWatcher := watcher.NewClipboardWatcher(clipCfg, svc, nil)
+	ing := watchIngester{client}
+	records := loggedRecords{FileRecords: store, w: errOut}
+	fmt.Fprintf(out, "Watching for instance %s (%s)\n", r.Key, client.URL())
+	fmt.Fprintf(out, "State file: %s\n", store.Path())
 
-	noClip := os.Getenv("CTXT_NO_CLIPBOARD") == "1"
-	if cfg.Watch.Clipboard.Enabled && !noClip {
-		fmt.Fprintln(cmd.OutOrStdout(), "Clipboard watcher: enabled")
-		go clipWatcher.Run(ctx)
-	} else if noClip {
-		fmt.Fprintln(cmd.OutOrStdout(), "Clipboard watcher: disabled (CTXT_NO_CLIPBOARD=1)")
-	} else {
-		fmt.Fprintln(cmd.OutOrStdout(),
-			"Clipboard watcher: disabled (use 'ctxt watch enable clipboard' to activate)")
+	mgr := watcher.NewManager(nil, records, ing, watcher.WithInitialScan(), watcher.WithScanDone(func(id string) {
+		if watchScanHook != nil {
+			watchScanHook(id)
+		}
+	}))
+	defer mgr.Stop()
+
+	fmt.Fprintf(out, "Clipboard watcher: %s\n", clipStatus)
+	if clipOn {
+		clip := watcher.NewClipboardWatcher(watcher.ClipboardConfig{
+			Enabled:      true,
+			PollInterval: cfg.Watch.Clipboard.PollInterval,
+			MinLength:    cfg.Watch.Clipboard.MinLength,
+			AutoIngest:   cfg.Watch.Clipboard.AutoIngest,
+			Dedup:        store,
+			OnError:      func(err error) { fmt.Fprintf(errOut, "watch: %v\n", err) },
+		}, ing, nil)
+		go clip.Run(ctx)
 	}
 
-	// Directory watchers.
-	dirs := cfg.Watch.Dirs
-	if len(dirs) == 0 {
-		dirs = cfg.Watch.Paths
+	debounce := int(cfg.Watch.Debounce.Milliseconds())
+	if debounce <= 0 {
+		debounce = 500
 	}
 	for _, dir := range dirs {
 		mode := watcher.DetectMode(dir)
-		wcfg := &storage.WatchConfig{
-			ID:              "dir:" + dir,
+		_ = mgr.AddWatch(ctx, &watcher.WatchConfig{
+			ID:              dir,
 			Path:            dir,
 			Mode:            mode,
 			IncludePatterns: cfg.Watch.Patterns,
-			DebounceMS:      int(cfg.Watch.Debounce.Milliseconds()),
+			DebounceMS:      debounce,
 			Status:          "active",
-			CreatedAt:       time.Now(),
-			UpdatedAt:       time.Now(),
-		}
-		if wcfg.DebounceMS <= 0 {
-			wcfg.DebounceMS = 500
-		}
-		if err := mgr.AddWatch(ctx, wcfg); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to start watch for %s: %v\n", dir, err)
-		} else {
-			fmt.Fprintf(cmd.OutOrStdout(), "Directory watcher: %s (mode=%s)\n", dir, mode)
-		}
+		})
+		fmt.Fprintf(out, "Directory watcher: %s (mode=%s)\n", dir, mode)
 	}
 
-	fmt.Fprintln(cmd.OutOrStdout(), "Watchers running. Press Ctrl-C to stop.")
+	fmt.Fprintln(out, "Watchers running. Press Ctrl-C or run 'ctxt watch stop' to stop.")
 	<-ctx.Done()
-	mgr.Stop()
+	fmt.Fprintln(out, "Stopping watchers...")
 	return nil
 }
+
+// watchDirs returns watch.dirs as absolute, cleaned paths, with a
+// leading ~ expanded. A directory that doesn't exist is a USAGE error.
+func watchDirs() ([]string, error) {
+	var dirs []string
+	seen := map[string]bool{}
+	for _, raw := range cfg.Watch.Dirs {
+		dir, err := absWatchDir(raw)
+		if err != nil {
+			return nil, err
+		}
+		if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+			e := output.UsageError(fmt.Sprintf("watch.dirs entry %q is not a directory", raw))
+			e.SuggestedFix = "create it, or remove it from watch.dirs"
+			return nil, e
+		}
+		if !seen[dir] {
+			seen[dir] = true
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs, nil
+}
+
+func absWatchDir(raw string) (string, error) {
+	p := raw
+	if p == "~" || len(p) > 1 && p[:2] == "~/" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("expand %q: %w", raw, err)
+		}
+		p = home + p[1:]
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", fmt.Errorf("watch.dirs entry %q: %w", raw, err)
+	}
+	return abs, nil
+}
+
+// watchStopTimeout bounds how long stop waits for the watcher to exit.
+const watchStopTimeout = 15 * time.Second
 
 func runWatchStop(cmd *cobra.Command, _ []string) error {
-	svc, cleanup, err := newService()
+	out := cmd.OutOrStdout()
+	r, err := resolveEndpoint(cmd)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	ctx := context.Background()
-	watches, err := svc.Store.Watches().ListWatches(ctx, "active")
-	if err != nil {
-		return fmt.Errorf("list watches: %w", err)
-	}
-
-	for _, w := range watches {
-		w.Status = "paused"
-		w.UpdatedAt = time.Now()
-		if err := svc.Store.Watches().UpdateWatch(ctx, w); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to pause watch %s: %v\n", w.ID, err)
-		}
-	}
-
-	fmt.Fprintf(cmd.OutOrStdout(), "Stopped %d watch(es)\n", len(watches))
-	return nil
-}
-
-func runWatchStatus(cmd *cobra.Command, _ []string) error {
-	svc, cleanup, err := newService()
+	stateDir, err := watchstate.Dir()
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	ctx := context.Background()
-
-	active, err := svc.Store.Watches().ListWatches(ctx, "active")
+	path := watchstate.RunPath(stateDir, r.Key)
+	info, alive, err := watchstate.ReadRun(path)
 	if err != nil {
-		return fmt.Errorf("list active watches: %w", err)
+		return err
 	}
-	paused, err := svc.Store.Watches().ListWatches(ctx, "paused")
-	if err != nil {
-		return fmt.Errorf("list paused watches: %w", err)
-	}
-
-	all := append(active, paused...)
-
-	clipStatus := "disabled"
-	if cfg.Watch.Clipboard.Enabled {
-		clipStatus = "enabled"
-	}
-	if os.Getenv("CTXT_NO_CLIPBOARD") == "1" {
-		clipStatus = "disabled (CTXT_NO_CLIPBOARD)"
-	}
-
-	if isJSONOutput() {
-		type clipInfo struct {
-			Status       string        `json:"status"`
-			PollInterval time.Duration `json:"poll_interval"`
-			MinLength    int           `json:"min_length"`
+	if !alive {
+		removed, err := watchstate.RemoveStale(path)
+		if err != nil {
+			return err
 		}
-		return outputJSON(cmd.OutOrStdout(), map[string]any{
-			"clipboard": clipInfo{
-				Status:       clipStatus,
-				PollInterval: cfg.Watch.Clipboard.PollInterval,
-				MinLength:    cfg.Watch.Clipboard.MinLength,
-			},
-			"directory_watches": all,
-		})
-	}
-
-	fmt.Fprintf(cmd.OutOrStdout(), "Clipboard watcher : %s\n", clipStatus)
-	fmt.Fprintln(cmd.OutOrStdout())
-
-	if len(all) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No directory watches configured.")
+		msg := fmt.Sprintf("No watcher running for instance %s.", r.Key)
+		if removed {
+			msg += " Removed a stale run file."
+		}
+		fmt.Fprintln(out, msg)
 		return nil
 	}
-
-	headers := []string{"ID", "Path", "Mode", "Status", "Last Error"}
-	rows := make([][]string, 0, len(all))
-	for _, w := range all {
-		rows = append(rows, []string{w.ID, w.Path, w.Mode, w.Status, w.LastError})
+	if info.PID <= 0 {
+		return fmt.Errorf("the watcher for instance %s is starting; its run file %s has no pid yet, retry", r.Key, path)
 	}
-	printTable(cmd.OutOrStdout(), headers, rows)
-	return nil
+	if err := syscall.Kill(info.PID, syscall.SIGTERM); err != nil {
+		return fmt.Errorf("signal watcher pid %d: %w", info.PID, err)
+	}
+	deadline := time.Now().Add(watchStopTimeout)
+	for time.Now().Before(deadline) {
+		if _, alive, err := watchstate.ReadRun(path); err == nil && !alive {
+			fmt.Fprintf(out, "Stopped the watcher for instance %s (pid %d).\n", r.Key, info.PID)
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	e := output.WrapError(fmt.Errorf("the watcher for instance %s (pid %d) did not stop within %s", r.Key, info.PID, watchStopTimeout),
+		output.CodeTransient, output.ExitTransient)
+	e.SuggestedFix = fmt.Sprintf("check it with `ctxt watch status`; `kill %d` ends it", info.PID)
+	return e
 }
 
 // runWatchEnable handles: ctxt watch enable <name>
