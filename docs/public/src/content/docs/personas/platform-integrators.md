@@ -65,10 +65,14 @@ dpkms pipeline enqueue --pipeline custom-text-long --type text "Pipeline integra
 ### 3. Manage lifecycle: archive, unarchive, remove
 
 ```bash
-dpkms pipeline archive custom-text-long
+dpkms pipeline archive custom-text-long --note "superseded by v2"
 dpkms pipeline unarchive custom-text-long
-dpkms pipeline remove custom-text-long
+dpkms pipeline remove custom-text-long --note "integration test cleanup"
 ```
+
+The default policy bundle (`internal/policy/policies_default.yaml`, seeded to
+`$XDG_CONFIG_HOME/contexthelp/policies.yaml`) denies `archive` and `remove`
+without a non-empty `--note`.
 
 ### 4. Discover and install pipeline steps
 

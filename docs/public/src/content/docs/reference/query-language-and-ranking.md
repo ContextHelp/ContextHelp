@@ -37,6 +37,14 @@ ctxt list --mention @project.checkout-redesign
 ctxt list --q "mention:project.checkout-redesign"
 ```
 
+### Related objects (graph traversal)
+
+Find objects that share mention targets with a given entity (1-hop neighbourhood):
+
+```bash
+ctxt list --q "related==@arch.decision"
+```
+
 ### Time-bounded retrieval
 
 ```bash
@@ -52,6 +60,8 @@ Expected ranking inputs include:
 - mention/entity alignment
 - profile context
 - optional federated sources
+
+To see how a specific query ranked every candidate, including the ones it cut, use `ctxt find "<query>" --graph`: [`../workflows/search-graph.md`](../workflows/search-graph.md).
 
 For day-to-day usage:
 

@@ -1,9 +1,7 @@
 ---
 title: Jurisdiction Registry Recipes
-description: Map Canadian provincial and US state headquarters jurisdictions to business registries with starter kit/ibr warmup recipes.
+description: Map Canadian provincial/territorial and US state headquarters jurisdictions to
 ---
-
-# Jurisdiction Registry Recipes
 
 ## Purpose
 

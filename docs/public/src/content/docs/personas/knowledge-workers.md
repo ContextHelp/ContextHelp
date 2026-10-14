@@ -12,7 +12,7 @@ Use `ctxt` to move from raw notes and links to a shareable brief with provenance
 ## Prerequisites
 
 1. `ctxt` and `dpkms` binaries are installed.
-2. A config file exists at `~/.config/contexthelp/config.yaml`.
+2. A config file exists at `~/.config/contexthelp/ctxt.yaml` (`ctxt setup` creates it).
 3. `dpkms` server is running in a separate terminal:
 
 ```bash
@@ -87,7 +87,7 @@ ctxt find "signup friction causes" --limit 5
 Switch to object listing when you need filter control:
 
 ```bash
-ctxt list --type url --tag signup,onboarding
+ctxt list --type url --tagged signup
 ctxt list --after 2026-02-01 --before 2026-02-18
 ```
 
@@ -168,7 +168,7 @@ ctxt make brief --tag signup,onboarding --since 2026-02-01 --output-file onboard
 ### Search feels irrelevant
 
 - Add profile context with `--profile`.
-- Narrow with `ctxt list` filters (`--tag`, `--after`, `--type`).
+- Narrow with `ctxt list` filters (`--tagged`, `--after`, `--type`).
 - Reduce result count and iterate query phrasing.
 
 ### Results are missing after capture
