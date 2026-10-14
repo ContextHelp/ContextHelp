@@ -375,3 +375,27 @@ func TestSearchIndexesExternalizedContentNotRef(t *testing.T) {
 	require.Equal(t, body, got.TextContent, "text_content read back is not the whole content")
 	require.NotContains(t, got.Metadata, psteps.MetaTextTruncated)
 }
+
+// Deleting an object deletes its blob, unless another object still
+// refers to it.
+func TestDeleteObjectDeletesUnsharedBlob(t *testing.T) {
+	svc := blobTestService(t)
+	ctx := context.Background()
+	seedBlobObject(t, svc, "obj-big", bigBody(500))
+	stored, err := svc.Store.Objects().Get(ctx, "obj-big")
+	require.NoError(t, err)
+	key, _ := blob.BlobKey(stored.RawContent)
+	twin := *stored
+	twin.ID, twin.ContentHash = "obj-twin", ""
+	require.NoError(t, svc.Store.Objects().Create(ctx, &twin))
+
+	exists := func() bool {
+		ok, err := svc.Store.Blobs().Exists(ctx, key)
+		require.NoError(t, err)
+		return ok
+	}
+	require.NoError(t, svc.DeleteObject(ctx, "obj-big"))
+	require.True(t, exists(), "deleted a blob another object refers to")
+	require.NoError(t, svc.DeleteObject(ctx, "obj-twin"))
+	require.False(t, exists(), "deleting the last object left its blob behind")
+}

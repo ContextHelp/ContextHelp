@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"sort"
@@ -29,6 +30,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	uri "hop.top/cite/scheme"
@@ -483,13 +485,19 @@ func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject
 	return nil
 }
 
-// DeleteObject deletes a knowledge object and its edges.
+// DeleteObject deletes a knowledge object, its edges and the blob its
+// content is externalized to (see blob.DeleteObject). A blob that could
+// not be deleted is logged as an orphan; the object is gone either way.
 func (s *Service) DeleteObject(ctx context.Context, id string) error {
 	if err := s.Store.Edges().DeleteByObject(ctx, id); err != nil {
 		return err
 	}
-	if err := s.Store.Objects().Delete(ctx, id); err != nil {
+	orphans, err := blob.DeleteObject(ctx, s.Store, id)
+	if err != nil {
 		return err
+	}
+	for _, o := range orphans {
+		slog.Warn("delete object: orphan blob left behind", "object", id, "blob", o.Key, "err", o.Err)
 	}
 	if ev, err := events.NewEvent("service.objects", string(events.TopicObjectDeleted), events.ObjectDeletedPayload{ObjectID: id}); err == nil {
 		_ = s.Bus.Publish(ctx, ev)

@@ -172,7 +172,14 @@ type ObjectStore interface {
 	// racing on the same object cannot both move it. A missing object,
 	// or one in any other status, wraps ErrNotFound.
 	TransitionStatus(ctx context.Context, id, from, to string, at time.Time) error
+	// Delete removes the object's row only. A hard delete goes through
+	// blob.DeleteObject, which also deletes the blob its content is
+	// externalized to.
 	Delete(ctx context.Context, id string) error
+	// CountBlobRefs counts the objects that refer to blob key: their
+	// raw_content or text_content is its blob:// ref, or metadata.blob_key
+	// names it. Keys are content hashes, so objects can share one.
+	CountBlobRefs(ctx context.Context, key string) (int, error)
 	ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error)
 	Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error)
 	// SetReminder sets remind_at on the object identified by id.
