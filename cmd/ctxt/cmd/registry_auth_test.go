@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -256,4 +257,56 @@ func TestRegistryLoginOwnConfigPrintsOrigin(t *testing.T) {
 		t.Errorf("login output lacks the bound origin: %q", out)
 	}
 	assertStoredOrigin(t, "own-cli", "https://registry.example.com")
+}
+
+// TestRegistrySyncFetchesManifest: plain `registry sync <name>` fetches
+// the registry's manifest, with the stored token, and caches it.
+func TestRegistrySyncFetchesManifest(t *testing.T) {
+	var mu sync.Mutex
+	var authed, unauthed int
+	version := "1.0.0"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if r.Header.Get("Authorization") != "Bearer "+fakeRegistryToken {
+			unauthed++
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		authed++
+		w.Header().Set("ETag", `"`+version+`"`)
+		_ = json.NewEncoder(w).Encode(storage.RegistryManifest{Name: "paid-cli", Version: version})
+	}))
+	defer srv.Close()
+
+	db := setupTestDB(t)
+	withRegistry(t, db, "paid-cli", srv.URL, "bearer")
+
+	_, err := db.exec("registry", "sync", "paid-cli")
+	if err == nil || !strings.Contains(err.Error(), "ctxt registry login paid-cli") {
+		t.Fatalf("sync before login: err = %v, want login hint", err)
+	}
+
+	if _, err := db.exec("registry", "login", "paid-cli", "--token", fakeRegistryToken); err != nil {
+		t.Fatalf("registry login: %v", err)
+	}
+	mu.Lock()
+	version = "1.1.0"
+	mu.Unlock()
+	if _, err := db.exec("registry", "sync", "paid-cli"); err != nil {
+		t.Fatalf("sync after login: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if unauthed != 1 || authed != 1 {
+		t.Errorf("registry saw %d unauthenticated and %d authenticated requests, want 1 and 1", unauthed, authed)
+	}
+	cache, err := db.Driver.Registries().GetCachedManifest(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("cached manifest: %v", err)
+	}
+	if cache.Manifest == nil || cache.Manifest.Version != "1.1.0" || cache.ETag != `"1.1.0"` {
+		t.Errorf("cached manifest = %+v, want version 1.1.0 with its ETag", cache)
+	}
 }

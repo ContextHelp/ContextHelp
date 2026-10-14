@@ -95,7 +95,10 @@ count). Read-only.`,
 var registrySyncCmd = &cobra.Command{
 	Use:   "sync <name>",
 	Short: "Sync registry metadata",
-	Long: `Sync registry metadata from the remote source.
+	Long: `Sync registry metadata from the remote source: fetch the registry's
+manifest from its url and replace the cached copy, so Last Fetched and
+the ETag advance (see ctxt registry info). A registry with auth.type gets
+the token ctxt registry login stored.
 
 With --dry-run, fetches the remote manifest and shows a diff of would-be
 additions, updates, and removals without writing anything to storage.`,
