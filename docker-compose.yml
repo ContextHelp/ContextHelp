@@ -107,7 +107,9 @@ services:
 
   # ── Vite dev server ──────────────────────────────────────────────────────
   ui-dev:
-    image: node:22-alpine
+    # Same Node patch as the CI workflow's node-version. Every image here
+    # names an exact release (scripts/check-toolchain-pins.sh enforces it).
+    image: node:22.23.3-alpine3.24
     container_name: ctxt-ui-dev
     working_dir: /app/web/ui
     command: >
@@ -129,7 +131,7 @@ services:
 
   # ── Caddy reverse proxy (prod only) ─────────────────────────────────────
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.4-alpine
     container_name: ctxt-caddy
     restart: unless-stopped
     ports:

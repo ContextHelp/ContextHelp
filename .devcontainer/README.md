@@ -10,8 +10,8 @@ further setup, including the Postgres-backed integration suites.
 | Go | matches `GO_VERSION` in `.github/workflows/ci.yml` |
 | golangci-lint | matches the version the CI workflow installs |
 | SQLite headers | `libsqlite3-dev`, for the `CGO_ENABLED=1` + `-tags fts5` build |
-| Postgres | `pgvector/pgvector:pg16`, same image and credentials as CI |
-| Redis | `redis:7-alpine`, same image as CI |
+| Postgres | `pgvector/pgvector:0.8.6-pg16-bookworm`, same image and credentials as CI |
+| Redis | `redis:7.4.11-alpine3.21`, same image as CI |
 
 ## Using it
 

@@ -8,7 +8,9 @@
 #
 # Checks:
 #   1. Dockerfile golang base image == mise go pin, and so is every golang
-#      image a compose file runs (docker-compose*.yml, docker/, .devcontainer/)
+#      image a compose file runs (docker-compose*.yml, docker/, .devcontainer/);
+#      every other compose image and Dockerfile base image names an exact
+#      release (X.Y.Z tag, dated tag or digest), never a floating tag
 #   2. go.mod `go` directive is satisfied by the mise go pin (pin >= directive)
 #   3. no workflow hardcodes a go-version literal instead of deriving it
 set -euo pipefail
@@ -67,6 +69,110 @@ for cf in docker-compose*.yml docker/docker-compose*.yml .devcontainer/docker-co
 			echo "ok: $cf -> $img"
 		fi
 	done < <(grep -E '^[[:space:]]*image:' "$cf" | grep -oE "\bgolang:[^ \"'#]*" || true)
+done
+
+# Every other image must name one release as well. mise.toml pins no
+# service versions, so the tag itself is the pin: a major or minor tag
+# (redis:7-alpine, node:22.23-alpine), a codename (debian:bookworm-slim),
+# latest or no tag at all pulls whatever the registry points at today.
+#
+# exact_ref <ref>: true when ref is a digest, or its tag carries a full
+# X.Y.Z version or a YYYYMMDD date stamp (debian:bookworm-20260918-slim).
+exact_ref() {
+	local ref=$1 name tag
+	case "$ref" in *@sha256:*) return 0 ;; esac
+	name=${ref##*/} # registry.local:5000/redis:7 -> redis:7
+	case "$name" in
+	*:*) tag=${name##*:} ;;
+	*) return 1 ;;
+	esac
+	[[ "$tag" =~ (^|[^0-9.])[0-9]+\.[0-9]+\.[0-9]+([^0-9.]|$) ]] && return 0
+	[[ "$tag" =~ (^|-)20[0-9]{6}(-|$) ]] && return 0
+	return 1
+}
+floating="a floating tag; pin an exact release (X.Y.Z or a dated tag) or a digest"
+
+for cf in docker-compose*.yml docker/docker-compose*.yml .devcontainer/docker-compose*.yml; do
+	[ -f "$cf" ] || continue
+	while read -r img; do
+		[ -n "$img" ] || continue
+		# The project's own image is the local build output (`build:`),
+		# tagged by $TAG; nothing pulls it from a registry.
+		case "$img" in ctxt/*) continue ;; esac
+		ref=$img
+		# ${VAR:-default} / ${VAR-default}: check the default compose uses.
+		while [[ "$ref" =~ \$\{[A-Za-z_][A-Za-z0-9_]*:?-([^}]*)\} ]]; do
+			ref=${ref/"${BASH_REMATCH[0]}"/"${BASH_REMATCH[1]}"}
+		done
+		if [[ "$ref" == *'$'* ]]; then
+			err "$cf runs image $img, which has no default to check; give it an exact default"
+		elif ! exact_ref "$ref"; then
+			err "$cf runs image $img, $floating"
+		else
+			echo "ok: $cf -> $img"
+		fi
+	done < <(sed -n "s/^[[:space:]]*image:[[:space:]]*//p" "$cf" | sed -e 's/[[:space:]]#.*$//' -e 's/[[:space:]]*$//' -e "s/^[\"']//" -e "s/[\"']\$//")
+done
+
+# Dockerfile base images: every FROM that pulls an image. ARG defaults are
+# substituted; earlier build stages and scratch pull nothing.
+for df in Dockerfile Dockerfile.* docker/Dockerfile* docker/*/Dockerfile* .devcontainer/Dockerfile*; do
+	[ -f "$df" ] || continue
+	# `# syntax=` pulls the BuildKit frontend image before any FROM. Parser
+	# directives are only directives on the leading comment lines.
+	while IFS= read -r line; do
+		[[ "$line" =~ ^#[[:space:]]*([A-Za-z]+)[[:space:]]*=[[:space:]]*([^[:space:]]+) ]] || break
+		[[ "${BASH_REMATCH[1]}" == [Ss][Yy][Nn][Tt][Aa][Xx] ]] || continue
+		fe=${BASH_REMATCH[2]}
+		if exact_ref "$fe"; then
+			echo "ok: $df -> syntax $fe"
+		else
+			err "$df uses frontend $fe, $floating"
+		fi
+	done <"$df"
+
+	arg_names=()
+	arg_values=()
+	stages=" scratch "
+	while IFS= read -r line; do
+		if [[ "$line" =~ ^[[:space:]]*[Aa][Rr][Gg][[:space:]]+([A-Za-z_][A-Za-z0-9_]*)=([^[:space:]]+) ]]; then
+			v=${BASH_REMATCH[2]}
+			v=${v#[\"\']}
+			v=${v%[\"\']}
+			arg_names+=("${BASH_REMATCH[1]}")
+			arg_values+=("$v")
+			continue
+		fi
+		[[ "$line" =~ ^[[:space:]]*[Ff][Rr][Oo][Mm][[:space:]]+(.*)$ ]] || continue
+		set -f
+		# shellcheck disable=SC2086 # split FROM into its words
+		set -- ${BASH_REMATCH[1]}
+		set +f
+		while [ $# -gt 0 ] && [[ "$1" == --* ]]; do shift; done # --platform=...
+		img=${1:-}
+		stage=""
+		if [ $# -ge 3 ] && [[ "$2" == [Aa][Ss] ]]; then stage=$3; fi
+		ref=$img
+		i=${#arg_names[@]}
+		while [ "$i" -gt 0 ]; do
+			i=$((i - 1))
+			n=${arg_names[$i]}
+			# shellcheck disable=SC2016 # literal ${NAME} pattern
+			pat='${'"$n"'}'
+			ref=${ref//"$pat"/${arg_values[$i]}}
+			ref=${ref//"\$$n"/${arg_values[$i]}}
+		done
+		if [[ "$stages" == *" $ref "* ]]; then
+			: # an earlier stage, or scratch
+		elif [[ "$ref" == *'$'* ]]; then
+			err "$df builds FROM $img, which has no ARG default to check; give it an exact default"
+		elif ! exact_ref "$ref"; then
+			err "$df builds FROM $img, $floating"
+		else
+			echo "ok: $df -> FROM $ref"
+		fi
+		[ -n "$stage" ] && stages="$stages$stage "
+	done <"$df"
 done
 
 # The devcontainer parameterises its base image via ARG, so the literal-tag

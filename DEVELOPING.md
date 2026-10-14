@@ -221,8 +221,8 @@ side-services first:
 docker compose -f docker-compose.dev.yml up -d postgres redis
 ```
 
-Postgres **must** be the pgvector-bundled image (`pgvector/pgvector:pg16`, which
-is what the compose file pins). The Postgres driver's first migration is
+Postgres **must** be the pgvector-bundled image
+(`pgvector/pgvector:0.8.6-pg16-bookworm`, which is what the compose file pins). The Postgres driver's first migration is
 `CREATE EXTENSION vector`; a plain `postgres:16` image cannot load it and every
 test fails at migration 1.
 

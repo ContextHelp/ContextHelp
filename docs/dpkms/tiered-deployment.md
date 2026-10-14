@@ -104,7 +104,7 @@ name: knowledge-registries
 
 services:
   registry-org:
-    image: caddy:2-alpine            # static file server is protocol-sufficient
+    image: caddy:2.11.4-alpine     # static file server is protocol-sufficient
     restart: unless-stopped
     volumes:
       - ./org:/srv/registry:ro       # capabilities.json, taxonomy.json, entities.json ...
@@ -112,7 +112,7 @@ services:
     networks: [registries]
 
   registry-team-platform:
-    image: caddy:2-alpine
+    image: caddy:2.11.4-alpine
     restart: unless-stopped
     volumes:
       - ./team-platform:/srv/registry:ro

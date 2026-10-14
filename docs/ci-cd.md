@@ -157,7 +157,7 @@ integration:
   runs-on: ubuntu-latest
   services:
     postgres:
-      image: postgres:16-alpine
+      image: pgvector/pgvector:0.8.6-pg16-bookworm
       env:
         POSTGRES_USER: contexthelp
         POSTGRES_PASSWORD: test_password
@@ -167,15 +167,15 @@ integration:
         --health-interval 10s
       ports:
         - 5432:5432
-    
+
     redis:
-      image: redis:7-alpine
+      image: redis:7.4.11-alpine3.21
       options: >-
         --health-cmd "redis-cli ping"
         --health-interval 10s
       ports:
         - 6379:6379
-  
+
   steps:
     - name: Run integration tests
       run: go test -v -tags=integration ./test/integration/...
@@ -342,7 +342,7 @@ builds:
     main: ./cmd/dpkms
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
-    
+
   - id: ctxt
     binary: ctxt
     main: ./cmd/ctxt
