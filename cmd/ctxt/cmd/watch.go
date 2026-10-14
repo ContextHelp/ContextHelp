@@ -35,7 +35,7 @@ under $XDG_STATE_HOME/ctxt/watch/: switching instances sends each file
 to the new one once. dpkms's server-side watches (/api/v1/watches) are
 separate and never see these records.
 
-Configuration (config.yaml):
+Configuration (ctxt.yaml; 'ctxt config path' shows which file):
   watch:
     dirs: [~/notes]
     patterns: ["**/*.md"]
@@ -58,7 +58,7 @@ Examples:
 var watchStartCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Start all configured watchers and block",
-	Long: `Start the clipboard and directory watchers configured in config.yaml,
+	Long: `Start the clipboard and directory watchers configured in ctxt.yaml,
 sending to the resolved dpkms instance, and block until interrupted
 (Ctrl-C, SIGTERM, or 'ctxt watch stop').
 
