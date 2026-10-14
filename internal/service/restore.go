@@ -27,8 +27,9 @@ type RestoreOpts struct {
 	ConfigDir   string
 	SkipConfigs bool
 	DryRun      bool
-	// Blobs receives the backup's blobs through its own Put, so they
-	// land wherever storage.blob puts them, in its layout. Required
+	// Blobs receives the backup's blobs, each with its backed-up
+	// metadata, through its own Put, so they land wherever
+	// storage.blob puts them, in its layout. Required
 	// when the backup holds blobs, except for a dry run.
 	Blobs storage.BlobStore
 }
@@ -70,7 +71,11 @@ const (
 	entryDB
 	entryConfig
 	entryBlob
+	entryBlobMeta
 )
+
+// blobMetaDir holds one <key>.json BlobMeta sidecar per backed-up blob.
+const blobMetaDir = "blobmeta/"
 
 // backupEntry is one classified entry: rel is the config path (OS
 // form, relative to the config dir) or the blob key.
@@ -98,12 +103,16 @@ func classifyEntry(name string, regular bool) (backupEntry, error) {
 		e = backupEntry{kind: entryConfig, rel: rel}
 	case strings.HasPrefix(name, "blobs/"):
 		key := strings.TrimPrefix(name, "blobs/")
-		// Backup names each blob by its bare key; anything with a path
-		// in it would let the archive write outside the store.
-		if key == "" || key == "." || key == ".." || strings.ContainsAny(key, "/\\\x00") {
+		if !isBlobKey(key) {
 			return e, fmt.Errorf("restore: blob %q: not a blob key", key)
 		}
 		e = backupEntry{kind: entryBlob, rel: key}
+	case strings.HasPrefix(name, blobMetaDir):
+		key, ok := strings.CutSuffix(strings.TrimPrefix(name, blobMetaDir), ".json")
+		if !ok || !isBlobKey(key) {
+			return e, fmt.Errorf("restore: blob metadata %q: not <blob key>.json", name)
+		}
+		e = backupEntry{kind: entryBlobMeta, rel: key}
 	default:
 		return backupEntry{kind: entrySkip}, nil
 	}
@@ -111,6 +120,26 @@ func classifyEntry(name string, regular bool) (backupEntry, error) {
 		return e, fmt.Errorf("restore: entry %q: not a regular file", name)
 	}
 	return e, nil
+}
+
+// isBlobKey reports whether key is a bare blob key. Backup names each
+// blob by its bare key; anything with a path in it would let the
+// archive write outside the store.
+func isBlobKey(key string) bool {
+	return key != "" && key != "." && key != ".." && !strings.ContainsAny(key, "/\\\x00")
+}
+
+// parseBlobMeta decodes one blob's metadata sidecar.
+func parseBlobMeta(key string, r io.Reader) (storage.BlobMeta, error) {
+	var meta storage.BlobMeta
+	data, err := io.ReadAll(io.LimitReader(r, 1<<20))
+	if err != nil {
+		return meta, fmt.Errorf("restore: read blob metadata %s: %w", key, err)
+	}
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return meta, fmt.Errorf("restore: parse blob metadata %s: %w", key, err)
+	}
+	return meta, nil
 }
 
 // preflight refuses a restore whose entries have nowhere to go, before
@@ -130,9 +159,12 @@ func preflight(opts RestoreOpts, hasConfigs, hasBlobs bool) error {
 
 // restorer writes classified entries to their targets.
 type restorer struct {
-	ctx    context.Context
-	opts   RestoreOpts
-	result RestoreResult
+	ctx  context.Context
+	opts RestoreOpts
+	// blobMeta is each blob's backed-up metadata, by key, read in the
+	// check pass so a blob restores with it whatever the entry order.
+	blobMeta map[string]storage.BlobMeta
+	result   RestoreResult
 }
 
 func (r *restorer) write(e backupEntry, src io.Reader, size int64, perm fs.FileMode) error {
@@ -164,7 +196,9 @@ func (r *restorer) write(e backupEntry, src io.Reader, size int64, perm fs.FileM
 		if r.opts.DryRun {
 			return nil
 		}
-		if err := r.opts.Blobs.Put(r.ctx, e.rel, src, storage.BlobMeta{Size: size}); err != nil {
+		meta := r.blobMeta[e.rel]
+		meta.Size = size
+		if err := r.opts.Blobs.Put(r.ctx, e.rel, src, meta); err != nil {
 			return fmt.Errorf("restore: write blob %s: %w", e.rel, err)
 		}
 	}
@@ -221,6 +255,7 @@ func restoreFromArchive(ctx context.Context, opts RestoreOpts) (RestoreResult, e
 	// Pass 1: check every entry and the manifest; write nothing.
 	var hasConfigs, hasBlobs bool
 	var manifest map[string]any
+	blobMeta := map[string]storage.BlobMeta{}
 	err := walkArchive(opts.Source, func(e backupEntry, _ *tar.Header, r io.Reader) error {
 		switch e.kind {
 		case entryManifest:
@@ -229,6 +264,12 @@ func restoreFromArchive(ctx context.Context, opts RestoreOpts) (RestoreResult, e
 				return err
 			}
 			manifest = m
+		case entryBlobMeta:
+			meta, err := parseBlobMeta(e.rel, r)
+			if err != nil {
+				return err
+			}
+			blobMeta[e.rel] = meta
 		case entryConfig:
 			hasConfigs = true
 		case entryBlob:
@@ -248,7 +289,7 @@ func restoreFromArchive(ctx context.Context, opts RestoreOpts) (RestoreResult, e
 
 	// Pass 2: write. Each entry is classified again, so an archive
 	// that changed since pass 1 is still held to the same rules.
-	rs := &restorer{ctx: ctx, opts: opts}
+	rs := &restorer{ctx: ctx, opts: opts, blobMeta: blobMeta}
 	err = walkArchive(opts.Source, func(e backupEntry, hdr *tar.Header, r io.Reader) error {
 		return rs.write(e, r, hdr.Size, hdr.FileInfo().Mode())
 	})
@@ -313,6 +354,7 @@ func restoreFromDir(ctx context.Context, opts RestoreOpts) (RestoreResult, error
 	var entries []dirEntry
 	var manifest map[string]any
 	var hasConfigs, hasBlobs bool
+	blobMeta := map[string]storage.BlobMeta{}
 	err = fs.WalkDir(root.FS(), ".", func(name string, d fs.DirEntry, werr error) error {
 		if werr != nil || d.IsDir() {
 			return werr
@@ -336,6 +378,18 @@ func restoreFromDir(ctx context.Context, opts RestoreOpts) (RestoreResult, error
 			}
 			manifest = m
 			return nil
+		case entryBlobMeta:
+			f, err := root.Open(name)
+			if err != nil {
+				return fmt.Errorf("restore: open blob metadata: %w", err)
+			}
+			defer f.Close()
+			meta, err := parseBlobMeta(e.rel, f)
+			if err != nil {
+				return err
+			}
+			blobMeta[e.rel] = meta
+			return nil
 		case entryConfig:
 			hasConfigs = true
 		case entryBlob:
@@ -355,7 +409,7 @@ func restoreFromDir(ctx context.Context, opts RestoreOpts) (RestoreResult, error
 	}
 
 	// Pass 2: write.
-	rs := &restorer{ctx: ctx, opts: opts}
+	rs := &restorer{ctx: ctx, opts: opts, blobMeta: blobMeta}
 	for _, e := range entries {
 		if err := restoreDirEntry(rs, root, e.backupEntry, e.name); err != nil {
 			return RestoreResult{}, err
