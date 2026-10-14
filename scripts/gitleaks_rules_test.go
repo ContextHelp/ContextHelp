@@ -177,12 +177,13 @@ func TestGitleaksAllowlistRegexesSpareProviderKeys(t *testing.T) {
 	}
 }
 
-// TestGitleaksReportsKeysInDocsAndTests plants every provider key in the
-// file kinds the allowlists are scoped around (docs, markdown, Go tests,
-// testdata) and checks gitleaks reports each one: no path allowlist may
-// hide a whole doc or fixture, and the fixture-token allowlist must need
-// both a test path and the fixture shape.
-func TestGitleaksReportsKeysInDocsAndTests(t *testing.T) {
+// TestGitleaksReportsKeysInDocsTestsAndExamples plants every provider key
+// in the file kinds the allowlists are scoped around (docs, markdown, Go
+// tests, testdata, .env.example and config.*.yaml samples) and checks
+// gitleaks reports each one: no path allowlist may hide a whole doc,
+// fixture or sample config, and the fixture-token allowlist must need both
+// a test path and the fixture shape.
+func TestGitleaksReportsKeysInDocsTestsAndExamples(t *testing.T) {
 	gitleaks, err := exec.LookPath("gitleaks")
 	if err != nil {
 		t.Skip("gitleaks not on PATH")
@@ -197,10 +198,16 @@ func TestGitleaksReportsKeysInDocsAndTests(t *testing.T) {
 	// The fixture token shape is allowlisted only in test files.
 	fixture := "tok-ops-fixture-0123456789abcdef0123456789"
 	files := map[string]func(name, key string) string{
-		"docs/setup.md":              func(n, k string) string { return fmt.Sprintf("Set the %s key: `%s`", n, k) },
-		"README.md":                  func(n, k string) string { return fmt.Sprintf("    token: %s", k) },
-		"testdata/fixture.env":       func(n, k string) string { return fmt.Sprintf("TOKEN=%s", k) },
-		"internal/x/client_test.go":  func(n, k string) string { return fmt.Sprintf("\ttoken := %q // %s", k, n) },
+		"docs/setup.md":             func(n, k string) string { return fmt.Sprintf("Set the %s key: `%s`", n, k) },
+		"README.md":                 func(n, k string) string { return fmt.Sprintf("    token: %s", k) },
+		"testdata/fixture.env":      func(n, k string) string { return fmt.Sprintf("TOKEN=%s", k) },
+		"internal/x/client_test.go": func(n, k string) string { return fmt.Sprintf("\ttoken := %q // %s", k, n) },
+		// Sample configs are copied to real ones and filled in: a key
+		// pasted into the sample is a leak like any other.
+		".env.example":               func(n, k string) string { return fmt.Sprintf("API_TOKEN=%s", k) },
+		"config/config.example.yaml": func(n, k string) string { return fmt.Sprintf("  api_key: %s", k) },
+		"config/config.minimal.yaml": func(n, k string) string { return fmt.Sprintf("  token: %s", k) },
+		"docker/config.docker.yaml":  func(n, k string) string { return fmt.Sprintf("  secret_key: %s", k) },
 		"docs/fixture-in-prose.md":   nil,
 		"internal/x/fixture_prod.go": nil,
 	}

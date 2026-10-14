@@ -126,10 +126,10 @@ regexes = [
 ]
 ```
 
-There is deliberately no path allowlist for `docs/`, `*.md` or `testdata/`:
-a path entry skips every rule for the whole file, so a real key pasted
-there would pass. Only the `config.*.yaml` examples, `.env.example` and a
-checksum file are path-allowlisted. To scope a regex to some paths, use
+There is deliberately no path allowlist for `docs/`, `*.md`, `testdata/`,
+`.env.example` or the `config.*.yaml` samples: a path entry skips every
+rule for the whole file, so a real key pasted there would pass. Only a
+checksum file is path-allowlisted. To scope a regex to some paths, use
 `condition = "AND"` with `targetRules` (see the fixture-token entry):
 gitleaks 8.30 ignores `condition` for a global entry's paths in `gitleaks
 dir`, skipping matching files outright.
@@ -164,7 +164,8 @@ gitleaks skips by design, such as `abcdefghijklmnopqrstuvwxyz` runs or
 AWS's documented `AKIAIOSFODNN7EXAMPLE`. `go test ./scripts/` runs the
 script against the real gitleaks binary when it is installed, scans the
 full tree (skipped with `-short`), and checks no allowlist entry hides a
-provider key planted in docs, markdown, Go tests or testdata.
+provider key planted in docs, markdown, Go tests, testdata, `.env.example`
+or a `config.*.yaml` sample.
 
 Each scenario is staged in a throwaway repo, so your index, working tree
 and `.env` are not touched. The script needs gitleaks installed and exits
