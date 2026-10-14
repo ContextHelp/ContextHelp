@@ -579,7 +579,7 @@ Sends SIGTERM to the target instance. The instance drains in-flight jobs, closes
 
 | Flag | Description |
 |------|-------------|
-| `--port <number>` | Port of the instance to stop (default: server-url port) |
+| `--port <number>` | Port of the instance to stop (default: `server.port`, overridden by `CH_SERVER_PORT`) |
 
 ---
 
@@ -595,7 +595,7 @@ Sends SIGHUP. The instance drains in-flight jobs and exits. The caller (or proce
 
 | Flag | Description |
 |------|-------------|
-| `--port <number>` | Port of the instance to restart (default: server-url port) |
+| `--port <number>` | Port of the instance to restart (default: `server.port`, overridden by `CH_SERVER_PORT`) |
 
 ---
 
