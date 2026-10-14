@@ -10,6 +10,16 @@ on:
       - main
       - next
   workflow_dispatch:
+  # release.yml runs this whole workflow as the gate in front of a
+  # release, so a tag ships only after every job here passes on it. In a
+  # called run the github context is the caller's (event push, ref
+  # refs/tags/v*), so a job-level `if:` written for the triggers above can
+  # skip a gate on release; scripts/check-toolchain-pins.sh refuses one.
+  workflow_call:
+    outputs:
+      go-version:
+        description: Go version pinned in mise.toml
+        value: ${{ jobs.toolchain.outputs.go-version }}
 
 jobs:
   # mise.toml is the single source of truth for tool versions. This job parses
@@ -344,7 +354,6 @@ jobs:
     name: Integration Tests
     needs: toolchain
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next'
     services:
       postgres:
         # pgvector-bundled image: the Postgres driver's first migration is

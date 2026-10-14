@@ -21,8 +21,9 @@
 #      or a >= minimum the pin satisfies
 #   5. no workflow names a floating ref: @master/@main/@latest on an action
 #      or a `go install`, a `~>` range, or `version: latest`
-#   6. release.yml's integration job runs every command ci.yml's integration
-#      job runs (a release gates on at least what a merge gates on)
+#   6. release.yml runs ci.yml as a reusable workflow ahead of every other
+#      job, and ci.yml has nothing that skips a job in that called run (a
+#      release gates on at least what a merge gates on)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -387,72 +388,146 @@ if [ ${#workflows[@]} -gt 0 ]; then
 	done < <(floating_refs "${workflows[@]}")
 fi
 
-# ── 6. release gates on at least what CI gates on ────────────────────────────
-# release.yml publishes a tag, so its integration job must run every command
-# ci.yml's integration job runs; it may run more. Commands are compared after
-# folding block scalars (>-, |) and collapsing whitespace.
+# ── 6. release gates on everything CI gates on ───────────────────────────────
+# release.yml publishes a tag, so it must gate on at least what a merge
+# gates on. It does that by running ci.yml itself as a reusable workflow
+# rather than a hand-kept copy of its jobs, which drifted (unit tests on
+# Linux only, no e2e, no drop-replaces step). The gate holds the three
+# things that arrangement depends on:
+#   - ci.yml declares `workflow_call`, so release.yml can run it;
+#   - no ci.yml job carries a job-level `if:`: in a called run the github
+#     context is the caller's (event push, ref refs/tags/v*), so a
+#     condition written for ci.yml's own triggers can skip a gate on release;
+#   - release.yml has a job that `uses:` ci.yml, and every other job needs
+#     it, directly or through another job, so nothing (above all the
+#     publish job) starts before CI has passed on the tag.
+# Jobs are read at two-space indentation, keys at four, as in every
+# workflow here.
 #
-# job_runs <workflow> <job>: one line per `run:` command in that job, or
-# nothing when the job is absent.
-job_runs() {
-	awk -v job="$2" '
-		function flush() {
-			if (inrun) {
-				gsub(/[ \t]+/, " ", cmd)
-				sub(/^ /, "", cmd)
-				sub(/ $/, "", cmd)
-				if (cmd != "") print cmd
-			}
-			inrun = 0
-			cmd = ""
-		}
-		/^[^ \t#]/ { flush(); injob = 0; next }
-		/^  [A-Za-z0-9_-]+:[ \t]*$/ {
-			flush()
-			injob = ($0 ~ ("^  " job ":"))
+# ci_workflow_problems <ci.yml>: one line per violation.
+ci_workflow_problems() {
+	awk -v wf="$1" '
+		{ line = $0; sub(/(^|[ \t])#.*$/, "", line) }
+		line ~ /^[^ \t]/ {
+			top = line
+			sub(/:.*/, "", top)
+			gsub(/["\047]/, "", top)
+			job = ""
+			if (top == "on" && line ~ /workflow_call/) called = 1
 			next
 		}
-		!injob { next }
-		inrun {
-			if ($0 ~ /^[ \t]*$/) next
-			match($0, /^ */)
-			if (RLENGTH > runcol) { cmd = cmd " " $0; next }
-			flush()
+		top == "on" && line ~ /^  workflow_call:/ { called = 1 }
+		top == "jobs" && line ~ /^  [A-Za-z0-9_-]+:[ \t]*$/ {
+			job = line
+			sub(/^  /, "", job)
+			sub(/:.*/, "", job)
+			next
 		}
-		/^[ \t]*(- )?run:/ {
-			runcol = index($0, "run:") - 1
-			v = substr($0, runcol + 5)
-			sub(/^[ \t]+/, "", v)
-			sub(/[ \t]+$/, "", v)
-			inrun = 1
-			cmd = (v ~ /^[|>][-+]?$/) ? "" : v
-			if (cmd != "") flush()
+		top == "jobs" && job != "" && line ~ /^    if:/ {
+			printf "%s job %s has a job-level if:, which can skip it when release.yml runs %s as its gate (the github context there is the tag push); move the condition into its steps\n", wf, job, wf
 		}
-		END { flush() }
+		END {
+			if (!called) printf "%s has no workflow_call trigger, so release.yml cannot run it as its gate\n", wf
+		}
 	' "$1"
 }
+
+# release_workflow_problems <release.yml> <ci.yml>: one line per violation,
+# or "ok <job>" naming the job that runs ci.yml.
+release_workflow_problems() {
+	awk -v wf="$1" -v ci="$2" '
+		function add_need(j, n) {
+			gsub(/["\047 \t]/, "", n)
+			if (n != "") needs[j] = needs[j] " " n " "
+		}
+		{ line = $0; sub(/(^|[ \t])#.*$/, "", line) }
+		line ~ /^[^ \t]/ {
+			top = line
+			sub(/:.*/, "", top)
+			job = ""
+			inneeds = 0
+			next
+		}
+		top != "jobs" { next }
+		line ~ /^  [A-Za-z0-9_-]+:[ \t]*$/ {
+			job = line
+			sub(/^  /, "", job)
+			sub(/:.*/, "", job)
+			jobs[++njobs] = job
+			inneeds = 0
+			next
+		}
+		job == "" { next }
+		inneeds && line ~ /^      - / {
+			v = line
+			sub(/^      - /, "", v)
+			add_need(job, v)
+			next
+		}
+		line ~ /^    [A-Za-z]/ { inneeds = 0 }
+		line ~ /^    uses:/ {
+			v = line
+			sub(/^    uses:[ \t]*/, "", v)
+			gsub(/["\047 \t]/, "", v)
+			if (v == "./" ci) caller = job
+		}
+		line ~ /^    needs:/ {
+			v = line
+			sub(/^    needs:[ \t]*/, "", v)
+			if (v == "") { inneeds = 1; next }
+			gsub(/[][]/, "", v)
+			n = split(v, parts, ",")
+			for (i = 1; i <= n; i++) add_need(job, parts[i])
+		}
+		END {
+			if (caller == "") {
+				printf "%s has no job that runs %s (uses: ./%s); a release must gate on everything CI gates on\n", wf, ci, ci
+				exit
+			}
+			# A job is gated once it needs the caller or a gated job.
+			gated[caller] = 1
+			do {
+				changed = 0
+				for (i = 1; i <= njobs; i++) {
+					j = jobs[i]
+					if (gated[j]) continue
+					m = split(needs[j], ns, " ")
+					for (k = 1; k <= m; k++) if (gated[ns[k]]) { gated[j] = 1; changed = 1; break }
+				}
+			} while (changed)
+			bad = 0
+			for (i = 1; i <= njobs; i++) {
+				j = jobs[i]
+				if (gated[j]) continue
+				printf "%s job %s does not need %s, directly or through another job, so it can run before CI passes on the tag\n", wf, j, caller
+				bad = 1
+			}
+			if (!bad) printf "ok %s\n", caller
+		}
+	' "$1"
+}
+
 ci_wf=.github/workflows/ci.yml
 rel_wf=.github/workflows/release.yml
 if [ -f "$ci_wf" ] && [ -f "$rel_wf" ]; then
-	ci_runs=$(job_runs "$ci_wf" integration)
-	if [ -n "$ci_runs" ]; then
-		rel_runs=$(job_runs "$rel_wf" integration)
-		if [ -z "$rel_runs" ]; then
-			err "$rel_wf has no integration job, but $ci_wf's integration job gates every merge"
-		else
-			n=0
-			missing=0
-			while IFS= read -r c; do
-				n=$((n + 1))
-				if ! grep -qxF -- "$c" <<<"$rel_runs"; then
-					err "$rel_wf integration job does not run '$c', which $ci_wf's integration job runs"
-					missing=1
-				fi
-			done <<<"$ci_runs"
-			[ "$missing" -ne 0 ] ||
-				echo "ok: $rel_wf integration job runs all $n of $ci_wf's integration commands"
-		fi
-	fi
+	gate_ok=1
+	while IFS= read -r p; do
+		[ -n "$p" ] || continue
+		err "$p"
+		gate_ok=0
+	done < <(ci_workflow_problems "$ci_wf")
+	while IFS= read -r p; do
+		[ -n "$p" ] || continue
+		case "$p" in
+		"ok "*) caller=${p#ok } ;;
+		*)
+			err "$p"
+			gate_ok=0
+			;;
+		esac
+	done < <(release_workflow_problems "$rel_wf" "$ci_wf")
+	[ "$gate_ok" -eq 0 ] ||
+		echo "ok: $rel_wf runs $ci_wf (job $caller) before every other job"
 fi
 
 if [ "$fail" -ne 0 ]; then

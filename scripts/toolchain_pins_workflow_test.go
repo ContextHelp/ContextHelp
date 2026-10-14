@@ -70,43 +70,52 @@ func TestCheckToolchainPins_WorkflowFloatingRef(t *testing.T) {
 }
 
 // release.yml publishes a tag, so it must gate on at least what ci.yml
-// gates a merge on. Its integration job once ran only test/integration/...
-// while CI also ran the Postgres driver, embeddings registry and job-queue
-// suites, so a release could ship code whose Postgres path CI had never
-// seen pass. Every command ci.yml's integration job runs must also run in
-// release.yml's; release may run more.
-func TestCheckToolchainPins_ReleaseIntegrationParity(t *testing.T) {
+// gates a merge on. Hand-kept copies of ci.yml's jobs drifted (Linux-only
+// unit tests, no e2e run, no drop-replaces step), so release.yml runs
+// ci.yml itself as a reusable workflow. The gate holds what that depends
+// on: ci.yml is callable, none of its jobs can be skipped in a called run,
+// and nothing in release.yml starts before the ci.yml job passes.
+func TestCheckToolchainPins_ReleaseRunsCI(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not on PATH")
 	}
 	mise := readMise(t)
 
-	wf := func(job, steps string) string {
-		return "name: t\non: push\njobs:\n  lint:\n    runs-on: ubuntu-latest\n    steps:\n" +
-			"      - run: go test ./lint/...\n" +
-			"  " + job + ":\n    runs-on: ubuntu-latest\n    steps:\n" + steps +
-			"  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go build ./...\n"
+	ciJobs := "jobs:\n" +
+		"  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go vet ./...\n" +
+		"  test:\n    runs-on: ${{ matrix.os }}\n    steps:\n" +
+		"      - if: matrix.os == 'ubuntu-latest'\n        run: go test ./...\n"
+	ciOn := "name: CI\non:\n  push:\n    branches: [main]\n  workflow_call:\n    outputs:\n      go-version:\n        value: x\n"
+	ci := ciOn + ciJobs
+	caller := "  ci:\n    uses: ./.github/workflows/ci.yml\n"
+	gate := func(needs string) string {
+		return "  trivy:\n" + needs + "    runs-on: ubuntu-latest\n    steps:\n      - run: trivy fs .\n"
 	}
-	drop := "      - name: Drop local-path replaces\n        run: go mod edit -dropreplace=hop.top/kit\n"
-	folded := "      - name: Run integration tests\n        run: >-\n          go test -v -tags=integration,fts5\n          ./test/integration/...\n          ./internal/storage/postgres/...\n        env:\n          POSTGRES_HOST: localhost\n"
-	foldedReflowed := "      - name: Integration\n        run: >-\n          go test -v -tags=integration,fts5 ./test/integration/...\n          ./internal/storage/postgres/...\n"
-	short := "      - name: Run integration tests\n        run: go test -v -tags=integration,fts5 ./test/integration/...\n"
-	jobs := "      # Postgres job-queue scenarios\n      - run: >-\n          go test -tags=integration,fts5 -run 'TestClaim_.*_Postgres' ./internal/jobs/\n"
-	ci := wf("integration", drop+folded+jobs)
+	publish := func(needs string) string {
+		return "  goreleaser:\n    runs-on: ubuntu-latest\n" + needs +
+			"    steps:\n      - uses: goreleaser/goreleaser-action@v7\n        with:\n          version: 'v2.18.2'\n"
+	}
+	rel := func(jobs ...string) string {
+		return "name: Release\non:\n  push:\n    tags: ['v*']\njobs:\n" + strings.Join(jobs, "\n")
+	}
 
 	cases := []struct {
 		name, ci, release, want string
 	}{
-		{"mirrored", ci, wf("integration", drop+folded+jobs), ""},
-		{"reflowed folded scalar", ci, wf("integration", drop+foldedReflowed+jobs), ""},
-		{"release runs more", ci, wf("integration", drop+folded+jobs+"      - run: go test ./extra/...\n"), ""},
-		{"no integration job in ci", wf("other", short), wf("integration", short), ""},
+		{"flow list needs", ci, rel(caller, gate("    needs: ci\n"), publish("    needs: [ci, trivy]\n")), ""},
+		{"block list needs", ci, rel(caller, gate("    needs:\n      - ci\n"), publish("    needs:\n      - trivy\n      - ci\n")), ""},
+		{"gated through another job", ci, rel(caller, gate("    needs: ci\n"), publish("    needs: trivy\n")), ""},
+		{"quoted caller", ci, rel("  ci:\n    uses: './.github/workflows/ci.yml'\n", publish("    needs: ci\n")), ""},
+		{"inline on list", "name: CI\non: [push, workflow_call]\n" + ciJobs, rel(caller, publish("    needs: ci\n")), ""},
 		{"no release workflow", ci, "", ""},
-		{"release runs a subset", ci, wf("integration", short), "./internal/storage/postgres/..."},
-		{"release lacks drop step", ci, wf("integration", folded+jobs), "go mod edit -dropreplace=hop.top/kit"},
-		{"release lacks job-queue suite", ci, wf("integration", drop+folded), "TestClaim_.*_Postgres"},
-		{"suite in another release job", ci, strings.Replace(wf("integration", drop+folded), "go build ./...", "go test -tags=integration,fts5 -run 'TestClaim_.*_Postgres' ./internal/jobs/", 1), "TestClaim_.*_Postgres"},
-		{"release has no integration job", ci, wf("other", drop+folded+jobs), "release.yml has no integration job"},
+		{"publish job ungated", ci, rel(caller, gate("    needs: ci\n"), publish("")), "job goreleaser does not need ci"},
+		{"needs only an ungated job", ci, rel(caller, gate(""), publish("    needs: trivy\n")), "job goreleaser does not need ci"},
+		{"needs commented out", ci, rel(caller, publish("    # needs: ci\n")), "job goreleaser does not need ci"},
+		{"release copies ci jobs", ci, rel("  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go vet ./...\n", publish("    needs: lint\n")), "has no job that runs .github/workflows/ci.yml"},
+		{"release calls another workflow", ci, rel("  ci:\n    uses: ./.github/workflows/lint.yml\n", publish("    needs: ci\n")), "has no job that runs .github/workflows/ci.yml"},
+		{"ci not callable", "name: CI\non:\n  push:\n    branches: [main]\n" + ciJobs, rel(caller, publish("    needs: ci\n")), "ci.yml has no workflow_call trigger"},
+		{"ci job-level if", ciOn + ciJobs + "  integration:\n    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    steps:\n      - run: go test -tags=integration ./...\n",
+			rel(caller, publish("    needs: ci\n")), "ci.yml job integration has a job-level if:"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -126,17 +135,17 @@ func TestCheckToolchainPins_ReleaseIntegrationParity(t *testing.T) {
 			if err == nil {
 				t.Fatalf("passed the gate:\nci:\n%s\nrelease:\n%s\n%s", tc.ci, tc.release, out)
 			}
-			if !strings.Contains(string(out), "FAIL: .github/workflows/release.yml") || !strings.Contains(string(out), tc.want) {
-				t.Errorf("failure does not name release.yml and %q:\n%s", tc.want, out)
+			if !strings.Contains(string(out), "FAIL: .github/workflows/") || !strings.Contains(string(out), tc.want) {
+				t.Errorf("failure does not say %q:\n%s", tc.want, out)
 			}
 		})
 	}
 }
 
-// The parity check skips when ci.yml has no integration job, so renaming
-// that job would silently switch it off. On this checkout it must have
-// compared real commands.
-func TestCheckToolchainPins_RepoIntegrationParityRuns(t *testing.T) {
+// The release check skips when either workflow is missing, so renaming
+// one would silently switch it off. On this checkout it must have checked
+// the real pair.
+func TestCheckToolchainPins_RepoReleaseRunsCI(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not on PATH")
 	}
@@ -144,7 +153,7 @@ func TestCheckToolchainPins_RepoIntegrationParityRuns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check-toolchain-pins.sh: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "ok: .github/workflows/release.yml integration job runs all ") {
-		t.Errorf("parity check did not run against the repo's workflows:\n%s", out)
+	if !strings.Contains(string(out), "ok: .github/workflows/release.yml runs .github/workflows/ci.yml (job ") {
+		t.Errorf("release check did not run against the repo's workflows:\n%s", out)
 	}
 }

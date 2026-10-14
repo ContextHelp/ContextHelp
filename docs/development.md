@@ -649,8 +649,9 @@ go tool pprof cpu.prof
 ## Release Process
 
 ctxt has no published release yet. The release path is a `v*.*.*` tag:
-pushing one runs `.github/workflows/release.yml` (lint, security scan,
-tests, integration, build smoke, then GoReleaser per `.goreleaser.yaml`).
+pushing one runs `.github/workflows/release.yml`, which runs all of
+`.github/workflows/ci.yml` on the tag, then a blocking Trivy scan, then
+GoReleaser per `.goreleaser.yaml` (see [ci-cd.md](ci-cd.md)).
 Release notes for operators live in [release-notes/](release-notes/); the
 `Operator-Impact:` commit trailer feeds them (see
 [release-notes/template.md](release-notes/template.md)).
