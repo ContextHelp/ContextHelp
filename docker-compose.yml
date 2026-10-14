@@ -18,6 +18,7 @@ x-dpkms-common: &dpkms-common
   restart: unless-stopped
   # No storage / server env: docker/config.docker.yaml (the image's
   # /app/config.yaml) is the single source, and env would override it.
+  # The one exception is the non-secret S3 settings below.
 
 # serve's bus hub refuses to start without a token; `up` fails here
 # instead when it is unset.
@@ -32,6 +33,17 @@ x-dpkms-provider-keys: &dpkms-provider-keys
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   GEMINI_API_KEY: ${GEMINI_API_KEY:-}
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+
+# Non-secret S3 settings from the env file. Unset ones reach dpkms
+# empty, which reads as not set: docker/dpkms-local.yaml keeps its value.
+# A set one overrides that file. The S3 access and secret keys are never
+# passed here: they stay in docker/dpkms-local.yaml.
+x-dpkms-s3-settings: &dpkms-s3-settings
+  CTXT_BLOB_S3_ENDPOINT: ${CTXT_BLOB_S3_ENDPOINT:-}
+  CTXT_BLOB_S3_REGION: ${CTXT_BLOB_S3_REGION:-}
+  CTXT_BLOB_S3_BUCKET: ${CTXT_BLOB_S3_BUCKET:-}
+  CTXT_BLOB_S3_PREFIX: ${CTXT_BLOB_S3_PREFIX:-}
+  CTXT_BLOB_S3_USE_PATH_STYLE: ${CTXT_BLOB_S3_USE_PATH_STYLE:-}
 
 # The operator's files, read by serve as extra --config layers after the
 # image's config (root Dockerfile CMD, docker/air.toml):
@@ -58,7 +70,7 @@ services:
         BUILD_TIME: ${BUILD_TIME:-unknown}
     container_name: ctxt-dpkms
     environment:
-      <<: [*dpkms-bus-token, *dpkms-provider-keys]
+      <<: [*dpkms-bus-token, *dpkms-provider-keys, *dpkms-s3-settings]
     secrets: *dpkms-secrets
     volumes:
       - ctxt_data:/data
@@ -93,10 +105,11 @@ services:
     ports:
       - "8080:8080"   # HTTP API
       - "9090:9090"   # gRPC
-    # Build env plus the bus token and provider keys; serve settings come
-    # from docker/config.docker.yaml and the operator's secrets.
+    # Build env plus the bus token, provider keys and non-secret S3
+    # settings; other serve settings come from docker/config.docker.yaml
+    # and the operator's secrets.
     environment:
-      <<: [*dpkms-bus-token, *dpkms-provider-keys]
+      <<: [*dpkms-bus-token, *dpkms-provider-keys, *dpkms-s3-settings]
       CGO_ENABLED: "1"
       GOOS: linux
     secrets: *dpkms-secrets

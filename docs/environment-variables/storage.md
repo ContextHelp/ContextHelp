@@ -140,6 +140,17 @@ CTXT_BLOB_S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com  # R2
 
 Bucket location, name, and key prefix.
 
+### CTXT_BLOB_S3_USE_PATH_STYLE
+**Type:** bool\
+**Default:** `false` (forced `true` under `backend: garage`)\
+**Config key:** `storage.blob.s3.use_path_style`
+
+Path-style addressing (`endpoint/bucket/key`); required for MinIO and Garage.
+
+```bash
+CTXT_BLOB_S3_USE_PATH_STYLE=true
+```
+
 ### Credentials
 
 `CTXT_BLOB_S3_ACCESS_KEY` / `CTXT_BLOB_S3_SECRET_KEY` (`storage.blob.s3.access_key` / `storage.blob.s3.secret_key`) configure static credentials. Unless both are set, the AWS SDK's default credential chain applies (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE`, SSO, IMDS), so most production deployments leave them empty.
@@ -155,7 +166,6 @@ No env var for these; set them in the config file or with `-c`:
 
 | Config key | Default | Purpose |
 |------------|---------|---------|
-| `storage.blob.s3.use_path_style` | `false` (auto-true under `backend: garage`) | Path-style addressing (`endpoint/bucket/key`); required for MinIO and Garage |
 | `storage.blob.s3.presign_expiry` | `1h` | TTL for presigned GET URLs |
 | `storage.blob.s3.max_retries` | `3` | S3 request retries |
 | `storage.blob.local.path` | `<data dir>/blobs` | Directory for the `local` backend |

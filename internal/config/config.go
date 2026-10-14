@@ -1442,6 +1442,7 @@ var envBindings = []struct{ Key, Env string }{
 	{"storage.blob.s3.region", "CTXT_BLOB_S3_REGION"},
 	{"storage.blob.s3.bucket", "CTXT_BLOB_S3_BUCKET"},
 	{"storage.blob.s3.prefix", "CTXT_BLOB_S3_PREFIX"},
+	{"storage.blob.s3.use_path_style", "CTXT_BLOB_S3_USE_PATH_STYLE"},
 	{"storage.blob.s3.access_key", "CTXT_BLOB_S3_ACCESS_KEY"},
 	{"storage.blob.s3.secret_key", "CTXT_BLOB_S3_SECRET_KEY"},
 	{"server.port", "CH_SERVER_PORT"},

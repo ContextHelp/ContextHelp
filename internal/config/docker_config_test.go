@@ -88,22 +88,78 @@ func TestDockerAirBuild_UsesMakefileBuildTags(t *testing.T) {
 	assert.Contains(t, air.Build.Cmd, "CGO_ENABLED=1", "docker/air.toml build.cmd")
 }
 
+// dockerS3EnvSettings are the env vars bound to the non-secret
+// storage.blob.s3.* keys. Compose passes each one from the env file to
+// both dpkms services; unset, it is empty, which config reads as not set.
+var dockerS3EnvSettings = []string{
+	"CTXT_BLOB_S3_ENDPOINT",
+	"CTXT_BLOB_S3_REGION",
+	"CTXT_BLOB_S3_BUCKET",
+	"CTXT_BLOB_S3_PREFIX",
+	"CTXT_BLOB_S3_USE_PATH_STYLE",
+}
+
+// dockerS3EnvCredentials returns the env vars bound to the S3
+// credentials (storage.blob.s3.access_key / secret_key). They stay in
+// docker/dpkms-local.yaml: compose must never pass them.
+func dockerS3EnvCredentials(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	for _, b := range envBindings {
+		if isS3CredentialKey(b.Key) {
+			out = append(out, b.Env)
+		}
+	}
+	require.Len(t, out, 2, "env bindings for the S3 access and secret keys")
+	return out
+}
+
+func isS3CredentialKey(key string) bool {
+	return key == "storage.blob.s3.access_key" || key == "storage.blob.s3.secret_key"
+}
+
+// The S3 allowlist is exactly the non-secret storage.blob.s3.* bindings:
+// a new S3 binding must be sorted into the settings or the credentials.
+func TestDockerS3EnvSettings_AreTheNonSecretS3Bindings(t *testing.T) {
+	var settings []string
+	for _, b := range envBindings {
+		if strings.HasPrefix(b.Key, "storage.blob.s3.") && !isS3CredentialKey(b.Key) {
+			settings = append(settings, b.Env)
+		}
+	}
+	assert.ElementsMatch(t, dockerS3EnvSettings, settings, "non-secret storage.blob.s3.* env bindings")
+}
+
 // The container's config file is the single source for its settings:
 // compose and the image must not set an env var that overrides a key
-// (env beats the file), nor one nothing reads.
+// (env beats the file), nor one nothing reads. The one exception is
+// compose's pass-through of the non-secret S3 settings from the env
+// file; the S3 credentials never reach compose.
 func TestDockerRuntime_EnvDoesNotRestateConfig(t *testing.T) {
 	denied := map[string]string{EnvDPKMSDataDir: "nothing reads it"}
 	for _, b := range envBindings {
 		denied[b.Env] = "overrides " + b.Key + " from " + dockerConfigPath
 	}
+	composeAllowed := map[string]bool{}
+	for _, k := range dockerS3EnvSettings {
+		composeAllowed[k] = true
+	}
 
 	compose := loadCompose(t)
 	for name, svc := range compose.Services {
 		for k := range svc.Environment {
-			if why, bad := denied[k]; bad {
+			if why, bad := denied[k]; bad && !composeAllowed[k] {
 				t.Errorf("docker-compose.yml service %s sets %s: %s", name, k, why)
 			}
 		}
+	}
+
+	// The credentials stay in docker/dpkms-local.yaml: compose neither
+	// sets nor interpolates them anywhere.
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docker-compose.yml"))
+	require.NoError(t, err)
+	for _, k := range dockerS3EnvCredentials(t) {
+		assert.NotContains(t, string(raw), k, "docker-compose.yml must never pass the S3 credential %s", k)
 	}
 
 	dockerfile, err := os.ReadFile(filepath.Join("..", "..", "Dockerfile"))
@@ -308,6 +364,85 @@ func TestDockerRuntime_ProviderKeysFromEnvFile(t *testing.T) {
 			assert.Regexp(t, `(?m)^#?\s*`+k+`=`, string(data), "%s does not show %s", example, k)
 		}
 	}
+}
+
+// Compose passes the non-secret S3 settings from the env file to both
+// dpkms services, empty when unset; the env examples show each one and
+// never the credentials, which belong in docker/dpkms-local.yaml.
+func TestDockerRuntime_S3SettingsFromEnvFile(t *testing.T) {
+	compose := loadCompose(t)
+	for _, name := range []string{"dpkms", "dpkms-dev"} {
+		env := compose.Services[name].Environment
+		for _, k := range dockerS3EnvSettings {
+			assert.Equal(t, "${"+k+":-}", env[k], "service %s %s", name, k)
+		}
+	}
+	for example := range dockerEnvExamples {
+		data, err := os.ReadFile(filepath.Join("..", "..", example))
+		require.NoError(t, err)
+		for _, k := range dockerS3EnvSettings {
+			assert.Regexp(t, `(?m)^#?\s*`+k+`=`, string(data), "%s does not show %s", example, k)
+		}
+		for _, k := range dockerS3EnvCredentials(t) {
+			assert.NotContains(t, string(data), k, "%s shows the S3 credential %s", example, k)
+		}
+	}
+}
+
+// Compose passes an unset S3 setting as an empty value. Empty must read
+// as not set, so the operator's file keeps its value; a set one wins
+// over the file.
+func TestDockerRuntime_S3SettingsEnvOverFile(t *testing.T) {
+	clearPortEnv(t)
+	for _, b := range envBindings {
+		t.Setenv(b.Env, "")
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(EnvConfigPath, "")
+
+	local := filepath.Join(t.TempDir(), "dpkms-local.yaml")
+	require.NoError(t, os.WriteFile(local, []byte(`storage:
+  blob:
+    backend: s3
+    s3:
+      endpoint: https://file.example.com
+      region: file-region
+      bucket: file-bucket
+      prefix: file/
+      use_path_style: true
+      access_key: file-access
+      secret_key: file-secret
+`), 0o600))
+	layers := []string{dockerConfigPath, local}
+
+	// Every pass-through set, but empty, as compose does when the env
+	// file leaves them out.
+	for _, k := range dockerS3EnvSettings {
+		t.Setenv(k, "")
+	}
+	cfg, err := LoadWithOverrides("dpkms", "", layers, nil)
+	require.NoError(t, err)
+	assert.Equal(t, BlobS3Config{
+		Endpoint: "https://file.example.com", Region: "file-region", Bucket: "file-bucket",
+		Prefix: "file/", UsePathStyle: true, AccessKey: "file-access", SecretKey: "file-secret",
+		PresignExpiry: cfg.Storage.Blob.S3.PresignExpiry, MaxRetries: cfg.Storage.Blob.S3.MaxRetries,
+	}, cfg.Storage.Blob.S3, "empty pass-through keeps the file's values")
+
+	t.Setenv("CTXT_BLOB_S3_ENDPOINT", "https://env.example.com")
+	t.Setenv("CTXT_BLOB_S3_REGION", "env-region")
+	t.Setenv("CTXT_BLOB_S3_BUCKET", "env-bucket")
+	t.Setenv("CTXT_BLOB_S3_PREFIX", "env/")
+	t.Setenv("CTXT_BLOB_S3_USE_PATH_STYLE", "false")
+	cfg, err = LoadWithOverrides("dpkms", "", layers, nil)
+	require.NoError(t, err)
+	s3 := cfg.Storage.Blob.S3
+	assert.Equal(t, "https://env.example.com", s3.Endpoint, "endpoint")
+	assert.Equal(t, "env-region", s3.Region, "region")
+	assert.Equal(t, "env-bucket", s3.Bucket, "bucket")
+	assert.Equal(t, "env/", s3.Prefix, "prefix")
+	assert.False(t, s3.UsePathStyle, "use_path_style")
+	assert.Equal(t, "file-access", s3.AccessKey, "access_key stays the file's")
+	assert.Equal(t, "file-secret", s3.SecretKey, "secret_key stays the file's")
 }
 
 // Serve refuses to start without a bus token. Compose must pass one to

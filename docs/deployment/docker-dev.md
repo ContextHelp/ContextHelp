@@ -24,7 +24,7 @@ Services started:
 
 ## Configure
 
-dpkms settings (storage, workers) are config keys in `docker/config.docker.yaml`, which air serves with; edits reload like code. Blob storage and provider settings for your own setup go in `docker/dpkms-local.yaml` and provider API keys in `docker/.env.dev` ([Blob storage and providers](docker.md#blob-storage-and-providers)); air does not watch the secret, so restart `dpkms-dev` after editing either.
+dpkms settings (storage, workers) are config keys in `docker/config.docker.yaml`, which air serves with; edits reload like code. Blob storage and provider settings for your own setup go in `docker/dpkms-local.yaml`, provider API keys and optionally the non-secret S3 settings in `docker/.env.dev` ([Blob storage and providers](docker.md#blob-storage-and-providers)); air does not watch the secret, so restart `dpkms-dev` after editing either.
 
 ## Verify
 

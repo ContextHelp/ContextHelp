@@ -135,11 +135,21 @@ Keys set there win over `/app/config.yaml`; the database path and every other im
 
 Provider API keys have no config key: providers read them from the environment. Set them in the env file; compose passes `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` and `OPENROUTER_API_KEY` to dpkms, empty when unset, which reads as not set. For an embedding provider, point `providers.embedding.api_key_env` at one of these names.
 
-The S3 settings also have env vars, which win over every config file: `CTXT_BLOB_BACKEND`, `CTXT_BLOB_S3_ENDPOINT`, `CTXT_BLOB_S3_REGION`, `CTXT_BLOB_S3_BUCKET`, `CTXT_BLOB_S3_PREFIX`, `CTXT_BLOB_S3_ACCESS_KEY` and `CTXT_BLOB_S3_SECRET_KEY`. Compose does not pass them, so `docker/dpkms-local.yaml` stays the one place a compose deployment sets blob storage. With `docker run`, `-e CTXT_BLOB_S3_SECRET_KEY=...` keeps the secret key out of the file.
+The non-secret S3 settings can also come from the env file. Compose passes these to dpkms, empty when unset:
+
+| Env var (env file) | Config key (`docker/dpkms-local.yaml`) |
+|--------------------|----------------------------------------|
+| `CTXT_BLOB_S3_ENDPOINT` | `storage.blob.s3.endpoint` |
+| `CTXT_BLOB_S3_REGION` | `storage.blob.s3.region` |
+| `CTXT_BLOB_S3_BUCKET` | `storage.blob.s3.bucket` |
+| `CTXT_BLOB_S3_PREFIX` | `storage.blob.s3.prefix` |
+| `CTXT_BLOB_S3_USE_PATH_STYLE` | `storage.blob.s3.use_path_style` |
+
+A set env var wins over the file for its key; an empty one reads as not set, so the file's value stays. Everything else about blob storage is set in `docker/dpkms-local.yaml` only: `storage.blob.backend`, `presign_expiry`, `max_retries`, and the credentials `access_key` / `secret_key`. Compose never passes `CTXT_BLOB_S3_ACCESS_KEY` or `CTXT_BLOB_S3_SECRET_KEY`, so the keys stay in the secret file. With `docker run`, `-e CTXT_BLOB_S3_SECRET_KEY=...` keeps the secret key out of the file.
 
 ## Data persistence
 
-`docker/config.docker.yaml` (copied into the image as `/app/config.yaml`) is the one place that sets in-container paths. Compose and the image set no storage env var: env overrides the file.
+`docker/config.docker.yaml` (copied into the image as `/app/config.yaml`) is the one place that sets in-container paths. Compose and the image set no storage path env var: env overrides the file.
 
 | Volume | Contents |
 |--------|----------|
