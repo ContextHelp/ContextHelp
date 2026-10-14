@@ -5,17 +5,19 @@
   turning knowledge into movement.
 
 - **Ambient Capture**
-  Long-running, local-machine subsystem (`ctxd`) that produces a steady stream of
-  small captures from the user's working environment (clipboard, file-watch,
-  browser history, foreground window, screenshots, meetings) into the knowledge
-  graph automatically, without explicit user action per capture. See
-  [ADR-066](decisions/ADR-066-ambient-capture-substrate.md).
+  Planned local-machine subsystem that would stream clipboard, file, browser,
+  window, screenshot and meeting signals into the graph without a command per
+  capture ([ADR-066](decisions/ADR-066-ambient-capture-substrate.md)). Not
+  built: library code under `internal/ambient/`, no daemon, and
+  `ctxt capture --ambient` exits with "not yet implemented". Local capture that
+  runs today is `ctxt watch` and `ctxt capture tabs|history`. See
+  [architecture/ambient-capture.md](architecture/ambient-capture.md).
 
 - **Ambient Source**
-  Independent event producer inside `ctxd` that reads one local-machine signal
-  (clipboard, file system, browser SQLite history, foreground window, etc.)
-  and emits `RawEvent` values. Multiple sources run concurrently. Distinct from
-  ADR-065 adapters (which are protocol-shaped).
+  Implementation of the `ambient.Source` interface (`internal/ambient/`) that
+  reads one local signal and emits `RawEvent` values. Only the browser-history
+  reader is used by a command (`ctxt capture history`); the others are library
+  code. Distinct from ADR-065 adapters (which are protocol-shaped).
 
 - **Attachment Store**
   The storage layer for binary content such as files, images, audio, video, and
@@ -26,11 +28,9 @@
   graph exploration.
 
 - **Buffer (Ambient)**
-  Pluggable client-side staging area in `ctxd` that holds RawEvents while waiting
-  for dpkms enqueue. Three backends: local-FS XDG-compliant (default), S3-compatible
-  (AWS / R2 / B2 / MinIO), in-memory (tests). Tiered retention: raw 7d / normalized
-  30d / durable forever (in dpkms). Media files (meetings) get their own retention
-  tier. See [ADR-066](decisions/ADR-066-ambient-capture-substrate.md).
+  Event staging for the planned ambient runner (`internal/ambient/buffer/`):
+  local filesystem, S3-compatible and in-memory backends. Library code; no
+  command uses it. See [ADR-066](decisions/ADR-066-ambient-capture-substrate.md).
 
 - **Bundle (Knowledge Pack)**
   A portable export/import artifact preserving knowledge objects, entities,
@@ -49,19 +49,16 @@
   packets, drafts) assembled from atomic knowledge and graph context.
 
 - **`ctxd`**
-  The standalone local daemon binary that hosts the ambient capture substrate.
-  Runs on the user's machine (because dpkms is often remote and cannot read
-  local signals). Launchable via `ctxt capture --ambient` (auto-config CLI),
-  `brew services start ctxd`, `launchctl`, or `systemctl --user enable --now
-  ctxd.service`. All paths share `internal/ambient/`. See
-  [ADR-066](decisions/ADR-066-ambient-capture-substrate.md).
+  The planned standalone local daemon for ambient capture
+  ([ADR-066](decisions/ADR-066-ambient-capture-substrate.md)). It does not
+  exist: no binary, no Homebrew service, launchd plist or systemd unit. See
+  [architecture/ambient-capture.md](architecture/ambient-capture.md).
 
 - **Cutter (Session Cutter)**
-  Three-rule state machine in `ctxd` that decides when to end the active session.
-  Idle (gap > `gap_minutes`, default 5), soft cut (single-app focus >
-  `soft_cut_minutes` AND not frequent-switching), or hard timeout
-  (> `max_session_hours`, default 2). Ported verbatim from OpenChronicle's
-  `session/manager.py`. See [ADR-067](decisions/ADR-067-session-workunit.md).
+  Three-rule state machine (`internal/ambient/session/`) that would end the
+  active session: idle gap (default 5 min), single-app soft cut (3 min, unless
+  frequent-switching) or hard timeout (2 h). Library code; no command runs it.
+  See [ADR-067](decisions/ADR-067-session-workunit.md).
 
 - **dPKMS**
   A decentralized Personal Knowledge Management Substrate that provides durable
@@ -93,10 +90,9 @@
   results into a single ranked response.
 
 - **Fingerprint (RawEvent)**
-  SHA-256 hash over a RawEvent's normalized payload, used for client-side dedup
-  at the enqueue boundary in `ctxd`. Cheap pre-enqueue dedup eliminates no-op
-  events (e.g. lock-screen spam, idle-app repeats) before they cost pipeline
-  enrichment. Configurable window (default 60s for ambient sources).
+  SHA-256 over a RawEvent's normalized payload, used by `internal/ambient/dedup`
+  to drop repeated events before enqueue. Library code for the planned ambient
+  runner.
 
 - **Focus Profile (Profile)**
   A role or project lens that changes ranking, default pipelines, surfacing
@@ -131,21 +127,18 @@
   each other, used for navigation, retrieval, and reasoning.
 
 - **MCP Read-Surface**
-  Two MCP servers exposing read-only tools to AI agents. **dpkms-side**
-  (`/api/v1/mcp/`) is authoritative: 10 tools spanning search, list, get, entity,
-  recent, sessions, session, compose, mentions, schema. **ctxd-side**
-  (`:8744/mcp`) is local-only: 5 tools surfacing live local state (current_session,
-  recent_local, pending_enqueue, sources, health) that dpkms cannot see when
-  remote. Both use streamable-HTTP per MCP spec 2025-03-26. See
-  [ADR-068](decisions/ADR-068-mcp-read-surface.md).
+  The read-only MCP endpoint dpkms serves at `/api/v1/mcp/` (streamable HTTP,
+  protocol 2025-03-26) with two tools, `search` and `schema`. The other dpkms
+  tools and the local `ctxd`-side server in
+  [ADR-068](decisions/ADR-068-mcp-read-surface.md) were not built. See
+  [manual/workflows/mcp-agents.md](manual/workflows/mcp-agents.md).
 
 - **Meeting Capture**
-  Specialized ambient source for recording video calls (Zoom, Meet, Teams,
-  FaceTime, Discord). Captures system audio + window framebuffer via OS-blessed
-  public APIs (ScreenCaptureKit on macOS 13+, WASAPI loopback + Graphics Capture
-  on Windows 10+, xdg-desktop-portal + PipeWire on Linux). Routes to existing
-  `audio.transcribe` or `video.full` pipelines. Explicit-trigger only in v1
-  (no always-on). See [ADR-069](decisions/ADR-069-meeting-capture-source.md).
+  Planned ambient source for recording calls
+  ([ADR-069](decisions/ADR-069-meeting-capture-source.md)). Not built: no
+  `ctxt capture meeting` command and no per-OS recorder. A recording made with
+  another tool can be captured as a file, which routes to `audio.transcribe`
+  or `video.full`. See [manual/workflows/meeting-capture.md](manual/workflows/meeting-capture.md).
 
 - **Knowledge Object**
   A structured unit of stored knowledge produced from an input (text, URL, file,
@@ -170,12 +163,8 @@
   video, documents, and code.
 
 - **MeetingRecorder**
-  Cross-platform Go interface (`internal/ambient/meeting/recorder.go`) that
-  abstracts per-OS recording implementations. Three implementations behind build
-  tags: `recorder_darwin.go` (Swift bridge to ScreenCaptureKit + AVCaptureSession),
-  `recorder_windows.go` (C++ bridge to WASAPI + Graphics Capture + Media Foundation),
-  `recorder_linux.go` (D-Bus to xdg-desktop-portal + gstreamer pipeline). Mobile
-  companions (iOS / Android) implement the same semantics in native code.
+  Go interface in `internal/ambient/meeting/meeting.go` that per-OS recorders
+  (ScreenCaptureKit, WASAPI, PipeWire) would implement. None exists.
 
 - **Pipeline**
   A sequence of deterministic steps that transforms an input into a structured
@@ -187,8 +176,10 @@
   logging, retries, and deterministic replay guarantees.
 
 - **Plugin**
-  An extension unit that adds new pipelines, query operators, registry providers,
-  storage backends, outputs, or integrations through a formal contract.
+  An in-process Go extension implementing `pkg/pluginapi` interfaces: pipeline
+  steps, post-ingest hooks, alias resolvers, output generators, registry
+  providers. No plugin is loaded at runtime yet — see
+  [plugin-authoring-guide.md](plugin-authoring-guide.md#1-current-state).
 
 - **Portable Storage Contract**
   Guarantees that storage backends preserve stable IDs, graph meaning, and
@@ -207,25 +198,19 @@
   pipeline steps, registry influences, models used).
 
 - **RawEvent**
-  Typed envelope produced by an ambient source carrying `Source`, `OccurredAt`,
-  `Kind` (text/url/image/file/window-focus/meeting), `Payload`, `Fingerprint`,
-  `SuggestedPipeline`, `SessionID`, and per-source `Metadata`. Pre-redacted by
-  the source before emission. Traversed by the runner through redaction →
-  policy filter → fingerprint dedup → compression → session-tag → buffer →
-  enqueue.
+  Typed envelope (`internal/ambient`) produced by an ambient source: `Source`,
+  `OccurredAt`, `Kind`, `Payload`, `Fingerprint`, `SuggestedPipeline`,
+  `SessionID`, `Metadata`. Library code for the planned ambient runner.
 
 - **Recording Indicator**
-  Mandatory UI element shown while meeting capture is active (menubar/tray icon
-  pulse, OS-native indicator). Emits `ctxt.ambient.meeting.indicator_displayed`
-  bus event on display; absence during active recording is observably alarming
-  and CEL-rule detectable.
+  Mandatory on-screen indicator planned for meeting capture
+  ([ADR-069](decisions/ADR-069-meeting-capture-source.md)). Not built.
 
 - **Redact-as-Supersede**
-  Privacy operation that removes a transcript segment by writing a new
-  KnowledgeObject revision with the segment removed AND deleting the
-  corresponding media segment from local disk + S3 archive. Original record
-  is marked `superseded_by` the new revision rather than hard-deleted; preserves
-  audit trail. Per ADR-069 §6.
+  Planned meeting-capture operation that removes a transcript segment by writing
+  a superseding revision and deleting the matching media
+  ([ADR-069 §6](decisions/ADR-069-meeting-capture-source.md)). No command
+  performs it.
 
 - **Registry**
   A decentralized source of structured semantics or behavior such as taxonomies,
@@ -248,20 +233,15 @@
   signing of bundles, registries, or revisions.
 
 - **Session (WorkUnit)**
-  Bounded chunk of focused work, cut by the three-rule cutter in `ctxd`.
-  Groups ambient captures (clipboard, browser, foreground, meeting, etc.)
-  into a queryable unit identified by `sess_<12-hex>`. Schema: id, started_at,
-  ended_at, end_reason (idle/soft_cut/timeout/shutdown/daily_safety_net),
-  app_mix, event_count, source_mix, profile_id. `KnowledgeObject` gains an
-  optional `SessionID`. Soft-FK to absorb network-loss replay ordering.
-  See [ADR-067](decisions/ADR-067-session-workunit.md).
+  Planned bounded chunk of focused work that groups ambient captures
+  ([ADR-067](decisions/ADR-067-session-workunit.md)). Only the cutter exists, as
+  library code; there is no session type in storage and no
+  `objects.session_id` column.
 
 - **Soft-FK**
-  Foreign key relationship enforced semantically rather than by RDBMS constraint.
-  In ADR-067, `objects.session_id` is a soft-FK to `sessions.id`: a
-  KnowledgeObject can reference a session row that doesn't yet exist. Required
-  because network-loss replay can deliver events tagged with a session_id
-  before the session-opened event lands at dpkms.
+  Foreign key enforced by convention rather than by an RDBMS constraint. ADR-067
+  planned `objects.session_id` as a soft-FK to `sessions.id` so replayed events
+  could arrive before their session row; neither column nor table exists.
 
 - **Sovereignty**
   The user owns the data, controls sharing, and can export or migrate without

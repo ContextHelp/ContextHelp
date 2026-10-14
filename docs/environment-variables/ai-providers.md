@@ -205,4 +205,3 @@ dpkms serve -c providers.llm.backend=ollama -c providers.llm.model=mistral
 - [../manual/workflows/semantic-search.md](../manual/workflows/semantic-search.md) — Turn on semantic search
 - [../manual/operations/embeddings.md](../manual/operations/embeddings.md) — Operate embedding models
 - [../ctxt/pipelines.md](../ctxt/pipelines.md) — Pipeline AI integration
-- [../scaling.md](../scaling.md#cost-optimization) — Cost optimization

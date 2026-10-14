@@ -1,5 +1,10 @@
 # Plugin API Specification
 
+> **Design notes, not the current interface.** The binaries load no plugins,
+> and most hooks, storage paths, config blocks and services below do not exist.
+> The implemented interfaces are in `pkg/pluginapi` — see
+> [plugins.md](plugins.md) and the [authoring guide](../plugin-authoring-guide.md).
+
 This document defines the **official, stable Plugin API** for ContextHelp.
 It describes all extension points, hooks, storage mechanisms, configuration rules, and interaction patterns available to plugins.
 The goal is to guarantee that **plugins never require changes to core** and can safely provide powerful functionality—pipelines, job generation, notifications, semantic extensions, refresh rules, etc.—in a controlled, sandboxed manner.

@@ -43,8 +43,11 @@ service unit or the container environment.
 - **[ai-providers.md](ai-providers.md)** — Provider API keys, embedding provider
 - **[registries.md](registries.md)** — none: config file + OS keychain
 
+### Local Capture
+- **[capture.md](capture.md)** — Clipboard opt-out, browser-history position file
+
 ### Security & Development
-- **[security.md](security.md)** — Secrets backend, backup encryption
+- **[security.md](security.md)** — Secrets backend, policy rules file, backup encryption
 - **[development.md](development.md)** — Debug output, test suites
 
 ---
@@ -58,7 +61,8 @@ service unit or the container environment.
 | **API** | [api.md](api.md) | `CH_SERVER_PORT`, `CH_GRPC_PORT`, `CH_COOKIE_BRIDGE_PORT` |
 | **Workers** | [workers.md](workers.md) | `DPKMS_WORKERS`, `DPKMS_POLL_INTERVAL`, `DPKMS_MAX_RETRIES` |
 | **AI** | [ai-providers.md](ai-providers.md) | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CTXT_EMBEDDING_*` |
-| **Security** | [security.md](security.md) | `CTXT_SECRETS_BACKEND`, `CTXT_BACKUP_PASSPHRASE` |
+| **Local capture** | [capture.md](capture.md) | `CTXT_NO_CLIPBOARD`, `CTXT_AMBIENT_HISTORY_STATE_FILE` |
+| **Security** | [security.md](security.md) | `CTXT_SECRETS_BACKEND`, `CTXT_POLICY_FILE`, `CTXT_BACKUP_PASSPHRASE` |
 
 ---
 

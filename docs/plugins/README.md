@@ -1,18 +1,19 @@
 # Plugin System Documentation
 
-This directory contains documentation for the **plugin system** — the extensibility layer for both dPKMS and `ctxt`.
+Documentation for the plugin API (`pkg/pluginapi`). The binaries do not load
+plugins yet: no plugin runs at runtime, `plugins:` config is read by no code,
+and there is no plugin command, directory or sandbox. Start with
+[plugins.md](plugins.md) for the current state, then the
+[authoring guide](../plugin-authoring-guide.md).
 
-Plugins enable powerful extensions without modifying core code, using stable, documented interfaces.
-
-## Plugin Architecture
-
-The plugin system is **cross-cutting** — plugins can extend both dPKMS (substrate) and `ctxt` (brain) layers through capability-based contracts.
+Pages describing hooks, events, refresh, notification or storage APIs beyond
+the interfaces in `pkg/pluginapi` are design notes, not the running system.
 
 ## Documentation Index
 
 ### Core Documentation
-- [plugins.md](plugins.md) - Plugin system overview and architecture
-- [plugins-api.md](plugins-api.md) - Plugin API contract and interfaces
+- [plugins.md](plugins.md) - Current state, extension points, manifest
+- [plugins-api.md](plugins-api.md) - Plugin API design notes (hooks and services beyond `pkg/pluginapi` are not implemented)
 
 ### Bundled Plugins
 - [plugins-aliasing.md](plugins-aliasing.md) - Aliasing plugin: human-readable names for knowledge objects
@@ -34,48 +35,13 @@ The plugin system is **cross-cutting** — plugins can extend both dPKMS (substr
 
 ## Plugin Capabilities
 
-### dPKMS Plugin Extensions
-- Storage backends
-- Encryption providers
-- Query operators
-- Registry connectors
-- Graph algorithms
-- Job types
-- Pipeline runtime hooks
-
-### `ctxt` Plugin Extensions
-- Capture interfaces
-- Enrichment recipes and pipeline steps
-- Focus profiles and surfacing rules
-- Composition templates
-- Action extraction logic
-- CLI commands and output formatters
-- Translation and localization
-
-### Cross-Layer Extensions
-- AI providers (used by both)
-- Background observers (screen watcher, etc.)
-- Notification handlers
-- Export/import formats
-
-## Plugin Development
-
-### Key Principles
-- **Capability-scoped** - Explicit permissions required
-- **Isolated** - Plugins own their storage and state
-- **Versioned** - Stable API contracts
-- **Safe** - Sandboxed execution
-
-### Plugin Types
-1. **Pipeline extensions** - Add new enrichment steps
-2. **Storage backends** - Custom storage implementations
-3. **Query operators** - New search capabilities
-4. **Registry providers** - Custom registry connectors
-5. **UI extensions** - Commands, formatters, interfaces
-6. **Observers** - Background monitors and triggers
+Interfaces a plugin can implement: `Plugin`, `PipelineStep`, `PostIngestHook`,
+`AliasResolver`, `OutputGenerator`, `PluginRegistryProvider`. Storage backends,
+encryption, query operators, CLI commands, formatters and background observers
+are not plugin points. See [plugins.md](plugins.md#extension-points).
 
 ## See Also
 
-- [../dpkms/](../dpkms/) - dPKMS substrate (provides plugin runtime)
+- [../dpkms/](../dpkms/) - dPKMS substrate
 - [../ctxt/](../ctxt/) - `ctxt` brain (uses plugins for enrichment)
 - [../architecture.md](../architecture.md) - System architecture with plugin integration points

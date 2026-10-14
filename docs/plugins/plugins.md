@@ -1,428 +1,70 @@
 # Plugins
 
-ContextHelp provides a powerful, modular plugin architecture enabling developers to extend or override nearly every subsystem **without modifying core**. Plugins remain isolated, sandboxed, composable, deterministic, and fully optional.
+A plugin is an in-process Go package that implements interfaces from
+`pkg/pluginapi` ([ADR-012](../decisions/ADR-012-use-plugins-to-extend-any-layer.md)).
+This page is the overview; [plugin-authoring-guide.md](../plugin-authoring-guide.md)
+is the reference.
 
-This document defines the plugin model, lifecycle events, allowed extension points, plugin-owned storage, configuration patterns, and the isolation guarantees that ensure plugins never need direct access to core internals.
+## Current state
 
----
+- **No runtime loading.** Neither `ctxt` nor `dpkms` creates a plugin registry
+  (`Service.PluginRegistry` is set only in tests), so no plugin is registered,
+  initialised or called. Plugins under `plugins/` run in their own unit tests and
+  in integration tests that register them by hand.
+- **No configuration.** The top-level `plugins:` key is parsed into
+  `[]PluginConfig{type, plugin, config}` and read by no code. There is no
+  `plugins.<name>` block.
+- **No plugin directory, commands or routes.** No `~/.contexthelp/plugins/`,
+  no `ctxt plugin` / `dpkms plugin` command, no plugin-contributed CLI
+  commands, REST or gRPC routes.
+- **No sandbox.** Plugins are in-process code. Manifest `permissions` are
+  validated; nothing enforces them.
 
-## Overview
+## Extension points
 
-A **plugin** is an extension package that registers itself with the engine at startup and declares:
+| Interface | What it adds | Host accessor on `internal/plugin.Registry` |
+|---|---|---|
+| `Plugin` | `Name`, `Version`, `Init(ctx, cfg, deps)`, `PipelineSteps`, `Close` | `Register`, `InitAll`, `CloseAll` |
+| `PipelineStep` | a step with a `Requires` / `Produces` contract | `ExtraSteps()` |
+| `PostIngestHook` | `PostIngest(ctx, obj)` after an object is stored | `PostIngestHooks()` |
+| `AliasResolver` | alias → object ID | `AliasResolvers()`, `ResolveID()` |
+| `OutputGenerator` | an output format | `OutputGenerators()`, `FindOutputGenerator()` |
+| `PluginRegistryProvider` | taxonomy + entities for registry sync | `RegistryProviders()` |
 
-- capabilities
-- event subscriptions
-- pipeline extensions
-- storage usage
-- configuration schema
-- optional CLI/API routes
-- optional background behavior
+Apart from the alias REST handlers (`internal/server/http/handlers_aliases.go`),
+no core code calls these accessors. `Init` receives a raw config map and `Deps`
+with a CloudEvents `Bus` and a `Store` exposing only `Aliases()`; either may be
+nil.
 
-Plugins can safely add new behaviors by relying on:
+## Per-object plugin data
 
-- **plugin event hooks**
-- **plugin-defined pipelines**
-- **plugin-owned storage**
-- **plugin-owned knowledge object metadata**
-- **plugin-defined knowledge object types**
-- **job enqueue API**
-- **refresh configuration API**
-- **inter-plugin services**
+Knowledge objects carry a `plugins` map (`object.plugins.<pluginName>`),
+persisted as a JSON column on SQLite and PostgreSQL. Core treats it as opaque.
 
-Plugins do not modify the core database schema, query engine, pipeline engine, or storage layer directly.
-
----
-
-## Design Principles
-
-### Local-first
-
-Plugins default to offline-safe behavior. Any network usage requires explicit opt-in via configuration.
-
-### Decentralized
-
-Plugins may introduce new registries or remote services but must not assume any global central authority.
-
-### Composable
-
-Plugins should extend the system without interfering with other plugins unless explicitly configured to do so.
-
-### Deterministic
-
-Plugins should yield stable results given the same input and configuration.
-
-### Isolated
-
-Plugins must operate strictly through sanctioned APIs, events, and namespaces.
-
----
-
-## Plugin Capabilities
-
-A plugin can independently provide any of the following capabilities:
-
-- new pipelines or pipeline steps
-- new knowledge object types
-- new query operators or AST visitors
-- new scoring/reranking logic
-- new translation or localization engines
-- new storage backends
-- new registry providers
-- new focus profile extensions
-- new background tasks
-- new CLI or API routes
-- new analysis flows
-- new notifier services (e.g., notification plugin)
-
-Plugins declare capabilities at registration.
-
----
-
-## Plugin Registration
-
-Plugins register using a standard manifest and initialization function.
-
-Conceptual example:
-
-```
-RegisterPlugin({
-  name: "rss-feed",
-  version: "1.0.0",
-  capabilities: ["pipeline", "bookmark-type", "scheduler"],
-  configKey: "rssFeed",
-  events: [
-    "pipeline.infer.after",
-    "bookmark.create.after",
-    "refresh.configure"
-  ]
-})
-```
-
-A plugin must declare:
-
-- name
-- version
-- supported config block
-- event subscriptions
-- optional CLI/API contributions
-- pipeline registrations
-- knowledge object type declarations
-
----
-
-## Plugin Storage Model
-
-Plugins may store their own state under:
-
-```
-~/.contexthelp/plugins/<plugin_name>/
-```
-
-Recommended structure:
-
-```
-state.json
-history.json
-cache/
-```
-
-Rules:
-
-- plugins **must not** modify the core SQLite/Postgres storage
-- plugin storage is fully isolated
-- plugins manage their own migrations and cleanup
-- storage format must remain JSON-compatible
-
-This enables plugins like:
-
-- RSS Feed Plugin
-- Notification Plugin
-- Price Monitor Plugin
-
-without any core schema changes.
-
----
-
-## Plugin Metadata Namespace in Knowledge Objects
-
-Plugins store metadata under:
-
-```
-object.plugins.<pluginName>
-```
-
-Example:
-
-```
+```json
 "plugins": {
-  "rssFeed": {
-    "item_pipeline": "text.long",
-    "guid": "abc123",
-    "first_seen": 1710000000
-  },
-  "priceMonitor": {
-    "current_price": 199.99,
-    "threshold_percent": 10
-  }
+  "rss-feed": { "guid": "abc123", "first_seen": 1710000000 }
 }
 ```
 
-This guarantees that plugin data remains isolated and conflict-free.
+## Manifest
 
----
+`manifest.json` or `manifest.yaml` in the plugin directory: `apiVersion: v1`,
+`name`, `version`, optional `slug`, `description`, `type: registry_provider`,
+`permissions`. `plugin.LoadManifest(dir)` validates it; no host code calls it.
+See [the authoring guide §2](../plugin-authoring-guide.md#2-plugin-manifest).
 
-## Plugin-Defined Knowledge Object Types
+## Bundled plugin packages
 
-Plugins may introduce new knowledge object types:
+`plugins/aliasing`, `autosuggest`, `content-monitor`, `dir-watcher`, `ica`,
+`local-registry-plugin`, `markdown-export`, `rss-feed`.
 
-- `feed`
-- `feed_item`
-- `price_monitored`
-- `api_resource`
-- domain-specific types
+## Extending a running dpkms today
 
-The plugin declares these types during registration.
+Use built-in steps and `pipelines.overrides`, or install steps from a step
+registry with `dpkms pipeline step install <name> --registry <url>`.
 
-Core guarantees:
+## Related
 
-- knowledge object type registration is dynamic
-- plugins may override pipeline inference for their types
-- queries may filter on plugin types via `type:<name>`
-
-No schema changes are required.
-
----
-
-## Plugin Pipelines
-
-Plugins may register:
-
-- new pipeline kinds
-- new pipeline steps
-- pipeline decorators
-- pipeline inference extensions
-
-Example:
-
-```
-pipelines.register("feed.fetch", steps=[...])
-pipelines.register("feed.parse", steps=[...])
-```
-
-Plugins can also enqueue jobs for their own pipelines using the Job API.
-
----
-
-## Job Enqueue API for Plugins
-
-Plugins may schedule jobs without core modification:
-
-```
-jobs.Enqueue({
-  pipeline: "feed.parse",
-  input: {...},
-  metadata: { plugin: "rssFeed" }
-})
-```
-
-Plugins may schedule:
-
-- refresh jobs
-- parsing jobs
-- monitoring jobs
-- enrichment jobs
-
-Jobs remain isolated and traceable.
-
----
-
-## Plugin Integration with Refresh System
-
-Plugins may require refresh behavior for certain knowledge objects:
-
-```
-refresh.ConfigureForObject(objectID, {
-  enabled: true,
-  interval_seconds: 3600,
-  fetch_new: true
-})
-```
-
-Available to any plugin:
-
-- RSS feed plugins force periodic checks
-- Price monitor plugins require price refresh
-- API resource plugins require stale-check intervals
-
-Core validates permissions and merges with global refresh rules.
-
----
-
-## Inter-Plugin Communication
-
-Plugins may expose lightweight internal service APIs.
-
-Example (Notification Plugin):
-
-```
-notifications.Create({
-  type: "price_drop",
-  level: "warning",
-  payload: {...}
-})
-```
-
-Plugins must explicitly import the other plugin’s service by name.
-
-Core does not mediate inter-plugin calls; plugins only communicate through declared service interfaces.
-
----
-
-## Event System
-
-Plugins subscribe to engine events.
-
-### Pipeline Events
-
-- `pipeline.infer.before`
-- `pipeline.infer.after`
-- `pipeline.execute.before`
-- `pipeline.execute.after`
-- `pipeline.error`
-- `pipeline.complete`
-
-### Knowledge Object Events
-
-- `object.create.before`
-- `object.create.after`
-- `object.update.before`
-- `object.update.after`
-
-### Job Events
-
-- `job.create`
-- `job.start`
-- `job.complete`
-- `job.fail`
-
-### Refresh Events
-
-- `refresh.configure`
-- `refresh.evaluate.before`
-- `refresh.evaluate.after`
-- `refresh.error`
-
-### CLI/API Events
-
-- `cli.start`
-- `cli.finish`
-- `api.response.before`
-- `api.response.after`
-
-### Focus Profile Events
-
-- `profile.prepare`
-- `profile.query.before`
-- `profile.query.after`
-
-Plugins use these to extend system behavior deterministically.
-
----
-
-## CLI & API Extensions
-
-Plugins may:
-
-- add new CLI commands
-- wrap CLI output (e.g., show notifications)
-- expose REST endpoints under namespaced routes
-- expose gRPC services under plugin namespaces
-
-Plugins may **not** override core commands unless explicitly configured.
-
----
-
-## Configuration System
-
-Plugins define configuration schemas under:
-
-```
-plugins.<pluginName>
-```
-
-Example:
-
-```
-plugins:
-  rssFeed:
-    enabled: true
-    default_interval_seconds: 3600
-  priceMonitor:
-    enabled: true
-    threshold_percent: 10
-```
-
-Plugins receive validated configuration blocks at initialization.
-
----
-
-## Security & Isolation Rules
-
-Plugins operate under strict boundaries:
-
-- no direct DB access
-- no global mutable state
-- no unauthorized network calls
-- no file writes outside plugin directory
-- no SQL injections or schema alterations
-- no overriding core types unless explicitly configured
-
-These boundaries prevent plugin-induced core instability.
-
----
-
-## Recommended Architectural Patterns
-
-- **Event-driven design** for all plugin behaviors
-- **Decorator patterns** for pipeline enrichment
-- **Adapter patterns** for remote services
-- **Visitor patterns** for AST query extension
-- **Command patterns** for CLI tooling
-- **State isolation** for plugin-owned data
-
----
-
-## Example Plugins (Realistic Workflows)
-
-- **RSS Feed Plugin**
-  Fetches feed, parses items, schedules item ingestion.
-
-- **Price Monitor Plugin**
-  Extracts prices, tracks changes, triggers notifications.
-
-- **Notification Plugin**
-  Provides inter-plugin alerting system.
-
-- **Refresh Plugin**
-  Ensures dynamic sources are periodically updated.
-
-- **Custom Storage Backend (Postgres)**
-  Replaces or augments backend.
-
----
-
-## Summary
-
-The plugin system enables ContextHelp to remain:
-
-- minimal
-- fast
-- stable
-- extensible
-- decentralized
-- predictable
-
-Plugins can introduce new semantic layers, pipelines, monitoring logic, feeds, integrations, notifications, and more **without ever touching the core engine**.
-
-Core remains small and permanent.
-Plugins make ContextHelp limitless.
+- [plugin-authoring-guide.md](../plugin-authoring-guide.md) — interfaces, manifest, scaffolding, tests
+- [plugins-aliasing.md](plugins-aliasing.md), [plugins-ica.md](plugins-ica.md) — bundled plugins

@@ -62,9 +62,9 @@ the user policy file.
 > `$XDG_CONFIG_HOME/contexthelp/policies.yaml` (flat) was moved to
 > `policy/ctxt.yaml` (namespaced) by the
 > [ADR-065 amendment](../decisions/ADR-065-pluggable-adapters.md#amendment-2026-05-06--service-vs-sensor-distinction-ambient-capture-os-platform-slots).
-> The new `policy/` subdirectory groups `ctxt.yaml` (CEL gating rules)
-> and `ambient.yaml` ([sensor enablement config](ambient.md)) under one
-> roof. **Migration is automatic** on first boot after the upgrade;
+> The `policy/` subdirectory was meant to also hold `ambient.yaml`
+> (sensor enablement); no code reads that file — see [ambient.md](ambient.md).
+> **Migration is automatic** on first boot after the upgrade;
 > operators with custom `$CTXT_POLICY_FILE` overrides must update them
 > manually.
 

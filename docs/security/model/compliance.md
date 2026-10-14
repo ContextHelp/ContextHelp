@@ -337,7 +337,7 @@ registries:
 
 **Documentation**:
 - [../secret-management.md](../secret-management.md#incident-response)
-- [../../scaling.md](../../scaling.md#backup-strategies)
+- [../../scaling.md](../../scaling.md#backup)
 
 **Compliance**: ✅ Full
 

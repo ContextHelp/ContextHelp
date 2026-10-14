@@ -14,7 +14,7 @@ from
 
 With the introduction of **Mentions**, the system supports canonical references to stable entities, enabling semantic graphs, backlinks, and richer cross-document reasoning.
 
-With the introduction of **Plugin Hooks**, the system supports powerful extensions—such as RSS ingestion, price monitoring, notifications, and custom pipelines—implemented entirely in plugin space without core modification.
+A **plugin API** (`pkg/pluginapi`) defines in-process extension interfaces — pipeline steps, post-ingest hooks, alias resolvers, output generators, registry providers. The binaries do not load plugins yet; see [plugin-authoring-guide.md](plugin-authoring-guide.md#1-current-state).
 
 ---
 
@@ -34,13 +34,12 @@ The system consists of two primary packages, each with distinct subsystems:
 - Registry System (Decentralized, Multi-Source, Federated)
 - Encryption & Key Management
 - Authentication & Authorization
-- **Plugin Layer (Extensibility Hooks & Plugin Runtime)**
+- Plugin API (`pkg/pluginapi`; not loaded at runtime yet)
 - Export/Import Contract (Portable Bundles)
 
 ### `ctxt` (The Agentic Brain)
 - Universal Capture Layer (CLI, TUI, Browser, Mobile)
-- **Ambient Capture Substrate** (`ctxd` daemon + sources: clipboard, file-watch, browser-history, foreground-window, screenshot, meeting) — see [`architecture/ambient-capture.md`](architecture/ambient-capture.md), [ADR-066](decisions/ADR-066-ambient-capture-substrate.md)
-- **Sessions / WorkUnits** (3-rule cutter groups captures into queryable work units) — see [ADR-067](decisions/ADR-067-session-workunit.md)
+- Local Capture (`ctxt watch` clipboard + directory watchers; `ctxt capture tabs|history|schedule` browser capture). The ambient daemon (`ctxd`) and sessions designed in [ADR-066](decisions/ADR-066-ambient-capture-substrate.md) / [ADR-067](decisions/ADR-067-session-workunit.md) are not built — see [`architecture/ambient-capture.md`](architecture/ambient-capture.md)
 - Ingestion Recipes (Multimodal Enrichment Pipelines)
 - Focus Profiles (Role/Project Lenses)
 - Search & Retrieval UX
@@ -49,12 +48,10 @@ The system consists of two primary packages, each with distinct subsystems:
 - Action Layer (Decisions, Tasks, Follow-Ups)
 - Safe Agent Execution (Propose → Dry Run → Apply)
 - Controlled Sharing Workflows
-- **Agent-Native MCP Read-Surface** (dpkms-side authoritative + ctxd-side local) — see [ADR-068](decisions/ADR-068-mcp-read-surface.md)
+- MCP Read-Surface (dpkms `/api/v1/mcp/`, tools `search` + `schema`) — see [manual/workflows/mcp-agents.md](manual/workflows/mcp-agents.md)
 - CLI/REST/gRPC Interfaces
 
-> **Local vs. remote:** dpkms is often deployed remote (managed instance, household NAS, federated peer). Ambient capture, session cutting, and the local MCP surface live **in `ctxd` on the user's machine** because the foreground-window signal, clipboard contents, and meeting audio cannot reach a remote dpkms. See [`dpkms-or-ctxt.md`](dpkms-or-ctxt.md) for the boundary clarification.
-
-Each subsystem is modular and replaceable. Plugins may extend, override, or wrap any part of the architecture through **stable, documented extension interfaces**, without touching the core.
+> **Local vs. remote:** dpkms is often deployed remote (managed instance, household NAS, federated peer). Local capture (clipboard, directories, browser) therefore runs in the `ctxt` process on the user's machine and enqueues to dpkms over HTTP. See [`dpkms-or-ctxt.md`](dpkms-or-ctxt.md) for the boundary clarification.
 
 **Key Principle:** dPKMS runs work correctly. `ctxt` decides which work is valuable.
 
@@ -63,12 +60,10 @@ flowchart TD
     subgraph ctxt["ctxt (Agentic Brain)"]
         A[Universal Capture] --> B[Ingestion Recipe Selection]
         B --> C[Focus Profile Context]
-        AMB[Ambient Capture Substrate<br/>ctxd + sources + cutter] --> A
-        MCP_L[ctxd MCP<br/>local read-surface]
+        W[Local Capture<br/>watch + browser] --> A
         K[Just-In-Time Surfacing]
         L[Composition Engine]
         M[Safe Agent Execution]
-        MCP_D[dpkms MCP<br/>authoritative read-surface]
     end
 
     subgraph dPKMS["dPKMS (Substrate)"]
@@ -77,9 +72,9 @@ flowchart TD
         F[Mention Extraction]
         G[Entity Resolver]
         H[Knowledge Object Construction]
-        I[Storage + Graph Index<br/>+ Sessions]
+        I[Storage + Graph Index]
+        MCP_D[MCP read-surface<br/>search + schema]
         J[Query Engine]
-        N[Plugin Runtime]
     end
 
     C --> D
@@ -92,13 +87,8 @@ flowchart TD
     J --> K
     K --> L
     L --> M
-    E --> N
-    N --> E
     MCP_D -.->|reads| I
-    MCP_L -.->|reads local buffer| AMB
 ```
-
-> **Detail:** for the ambient subsystem's per-event flow, buffer backends, session lifecycle, and MCP topology, see [`architecture/ambient-capture.md`](architecture/ambient-capture.md).
 
 ---
 
@@ -120,170 +110,22 @@ See `docs/cloud/README.md` and `docs/decisions/ADR-031-nodes-and-cloud-boundary.
 
 ---
 
-## Deployment: Web2/Web3 Hybrid Model
+## Deployment
 
-The system is **deployment-agnostic**. The same dPKMS + ctxt node runs on any infrastructure, with pluggable storage and networking.
+A node is one `dpkms serve` process plus any number of `ctxt` clients.
 
-### Storage Drivers (Pluggable)
+- **Storage:** `storage.type` is `sqlite` (default, one file) or `postgres`.
+  Large content goes to a blob store: `local` disk, `s3` or `garage`
+  (`storage.blob.backend`). There are no IPFS, Arweave, blockchain or other
+  storage drivers.
+- **Transport:** the dpkms HTTP API (`/api/v1`) and gRPC API. There is no
+  libp2p or blockchain RPC transport.
+- **Federation:** one-way push of objects to peers listed under `federations`
+  (a `file://` SQLite path or an `http(s)://` dpkms instance). Pull and
+  bidirectional sync are not implemented.
 
-The system is indifferent to where data persists:
-
-- **SQLite** (local machine) — Default, zero-install, high performance for <1M objects
-- **PostgreSQL** (cloud) — Multi-user, replication, high availability
-- **IPFS** (P2P network) — Content-addressed, peer-pinned, DHT-discoverable
-- **Arweave** (permanent) — Immutable archive, permanent storage
-- **Blockchain** (Solana/Ethereum) — Metadata anchoring, proof-of-authorship, smart contracts
-
-### Network Transports (Pluggable)
-
-The system is indifferent to how nodes communicate:
-
-- **HTTP** (cloud APIs) — REST/gRPC for centralized or cloud deployments
-- **libp2p** (P2P networks) — Kademlia DHT for decentralized node discovery and sync
-- **RPC** (blockchain) — Connection to settlement layers for on-chain settlement
-- **Registry Protocol** (federated) — Works identically on any backend
-
-### Five Deployment Models
-
-#### 1. Web2: Managed Cloud (Recommended for Teams)
-```
-Users → SSO/SCIM (cloud identity) → Managed nodes (hosted) → PostgreSQL
-```
-- **Best for:** Teams wanting zero ops
-- **Data location:** context.help cloud (encrypted)
-- **Availability:** 99.99% uptime
-- **Cost:** $15-50/user/month
-- **Ops burden:** None (handled by cloud provider)
-
-#### 2. Web2: Self-Hosted (Recommended for Privacy)
-```
-User machine → dPKMS node (OSS) → SQLite or self-managed Postgres
-```
-- **Best for:** Privacy-first individuals, data residency requirements
-- **Data location:** User's control (local disk, cloud VM, on-prem)
-- **Availability:** User's responsibility
-- **Cost:** Free (your hardware)
-- **Ops burden:** User's responsibility
-
-#### 3. Web3: IPFS (Recommended for Communities)
-```
-P2P nodes → IPFS cluster → DHT discovery → Pinning service
-```
-- **Best for:** Decentralized communities, censorship-resistance
-- **Data location:** IPFS cluster (replicated, peer-pinned)
-- **Availability:** P2P resilience (no single point of failure)
-- **Cost:** Pinning fees (~$0.01/GB/month)
-- **Permanence:** Requires active community pinning
-
-#### 4. Web3: Blockchain (Recommended for Verifiable)
-```
-Nodes → Blockchain anchor (Solana/Ethereum) → Arweave (archival) → Smart contracts
-```
-- **Best for:** Immutable proof, verifiable publishing, monetizable registries
-- **Data location:** Off-chain (encrypted) + on-chain metadata
-- **Availability:** Blockchain consensus
-- **Cost:** Per-transaction fees (~$0.01-0.50/anchor)
-- **Permanence:** Forever (immutable on-chain)
-
-#### 5. Hybrid: Multi-Stack (Recommended for Enterprises)
-```
-Single node → Local (hot) + Cloud (compliance) + IPFS (redundancy) + Arweave (archive) + Blockchain (proof)
-```
-- **Best for:** Enterprises needing maximum resilience
-- **Data location:** All targets simultaneously
-- **Availability:** No single point of failure
-- **Cost:** Sum of all targets
-- **Resilience:** Can recover from any single target failure
-
-### Hybrid Sync Guarantee
-
-A single dPKMS + ctxt node can write once, asynchronously replicate to multiple targets, and serve reads from any target with automatic failover.
-
-**Write Path:**
-```
-User adds content
-    ↓
-Write to local SQLite (immediate)
-    ↓
-Create async outbox jobs:
-├─ Sync to PostgreSQL (if cloud enabled)
-├─ Pin to IPFS cluster (if P2P enabled)
-├─ Archive to Arweave (if archival enabled)
-└─ Anchor to blockchain (if settlement enabled)
-    ↓
-Each job completes independently
-    ↓
-Content is now in all configured targets
-```
-
-**Read Path:**
-```
-User queries
-    ↓
-Query local SQLite (fast)
-    ↓
-In parallel (if configured):
-├─ Query cloud PostgreSQL
-├─ Query IPFS DHT
-├─ Query blockchain events
-└─ Query registered pinners
-    ↓
-Merge + deduplicate results
-    ↓
-Rerank by profile weight
-    ↓
-Return with provenance
-```
-
-If any target fails, reads continue using others. If all targets fail, local SQLite is your recovery point.
-
-### Core Property: Deterministic Sync
-
-All syncing is deterministic:
-- Same data in local SQLite == cloud PostgreSQL == IPFS == Arweave == blockchain metadata
-- Can migrate between models without data loss
-- Can restore from any target with identical result
-- Zero vendor lock-in by design
-
-### Migration Paths
-
-**Web2 Cloud → Web3 Hybrid:**
-```
-1. Export from cloud: ctxt export --format=bundle
-2. Install local node + configure hybrid targets
-3. Import: dpkms import bundle.tar.gz
-4. Configure IPFS + blockchain targets
-5. Jobs sync in background
-```
-
-**Web3 IPFS → Web2 Cloud:**
-```
-1. Export from IPFS: dpkms export --from=ipfs-driver
-2. Set up cloud node
-3. Import: dpkms import bundle.tar.gz
-4. Sync complete, data intact
-```
-
-**Solo Local → Team Hybrid:**
-```
-1. Keep local SQLite (personal copy)
-2. Add cloud node (team collaboration)
-3. Configure hybrid sync (local ↔ cloud ↔ IPFS)
-4. Team members join via cloud identity
-5. Central registries for consistency
-6. Local customization per member
-```
-
-### Implementation Phases
-
-| Phase | Timeline | Components |
-|-------|----------|-----------|
-| **Phase 1** | MVP (exists) | SQLite storage, HTTP transport, Registry protocol |
-| **Phase 2** | 3-6 months | PostgreSQL driver, managed cloud service, Docker packaging |
-| **Phase 3** | 6-12 months | IPFS driver, libp2p transport, Solana integration |
-| **Phase 4** | 12+ months | Arweave driver, Ethereum integration, smart contracts, marketplaces |
-
-**Full specification:** See `docs/deployment/WEB2-WEB3-HYBRID.md`
+See [scaling.md](scaling.md) for sizing and [deployment/docker.md](deployment/docker.md)
+for running dpkms on a server.
 
 ---
 
@@ -353,7 +195,9 @@ Insight must create movement. Every capture becomes a decision, next step, draft
 Given identical inputs, configurations, and registry states, the system must produce identical knowledge objects, tags, mentions, and entity resolutions.
 
 #### Plugin-Centric Customization
-Plugins can safely extend all functional layers without modifying core code:
+Goal: plugins extend functional layers without modifying core code. The
+interfaces exist in `pkg/pluginapi`, but no plugin is loaded at runtime yet
+(see [Plugin Layer](#plugin-layer-extensibility-model)). Intended scope:
 
 - New knowledge object types
 - New pipelines and pipeline steps
@@ -507,122 +351,32 @@ dPKMS is the execution and data layer. It is designed to be **agent-ready**, not
 
 # Plugin Layer (Extensibility Model)
 
-The Plugin Layer provides stable interfaces through which plugins extend both dPKMS and `ctxt`.
-Plugins operate in **complete isolation**, owning their storage, configuration, and behavior.
+**Current state:** `pkg/pluginapi` defines the interfaces and
+`internal/plugin.Registry` holds plugin instances, but neither binary creates a
+registry, so no plugin is registered, initialised or called at runtime. The
+top-level `plugins:` config key is parsed and read by no code. There is no
+plugin directory, no `ctxt plugin` command and no out-of-process plugin model.
+Full detail: [plugin-authoring-guide.md](plugin-authoring-guide.md).
 
-## Plugin Capabilities
+Extension points a plugin implements:
 
-Plugins may:
+| Interface | Purpose |
+|---|---|
+| `Plugin` | `Name`, `Version`, `Init(cfg, deps)`, `PipelineSteps`, `Close` |
+| `PipelineStep` | extra pipeline step with a `Requires` / `Produces` contract |
+| `PostIngestHook` | called after an object is stored |
+| `AliasResolver` | maps human-readable aliases to object IDs (the alias REST handlers call it when a registry is set) |
+| `OutputGenerator` | renders an output format |
+| `PluginRegistryProvider` | supplies taxonomy and entities to registry sync |
 
-**dPKMS Plugin Capabilities:**
-- Register new pipelines and inject pipeline steps
-- Define new knowledge object types
-- Add custom storage backends
-- Provide encryption and key management strategies
-- Implement custom registry connectors
-- Extend query operators and search capabilities
-- Add graph traversal algorithms
-- Provide authentication methods
+A plugin's per-object data lives in the `plugins` field of the knowledge
+object (`object.plugins.<pluginName>`), stored as a JSON column. Plugin
+packages live under `plugins/` and run only in their own tests and in
+integration tests that register them by hand.
 
-**`ctxt` Plugin Capabilities:**
-- Define new capture interfaces
-- Add enrichment recipes and ingestion workflows
-- Create focus profiles and surfacing rules
-- Implement composition templates
-- Add action extraction logic
-- Provide translation and localization
-- Wrap CLI/REST/gRPC output
-- Define notification and sharing behaviors
-
-**Cross-Layer Capabilities:**
-- Attach metadata to objects under `object.plugins.<pluginName>` namespace
-- Enqueue jobs through dPKMS job system
-- Define refresh rules and staleness policies
-- Listen to plugin lifecycle events
-- Provide internal APIs for other plugins
-
-Plugins may NOT:
-- Modify core tables or schema
-- Override entity resolution rules
-- Modify registry definitions not owned by them
-- Access data beyond their permission scope
-- Break determinism or idempotency guarantees
-
-## Plugin Hooks
-
-Plugins use stable lifecycle hooks, including:
-
-- `on_cli_start(ctx)`
-- `post_ingest(ctx, bookmark)`
-- `post_pipeline_step(ctx, step)`
-- `on_refresh(ctx, bookmark)`
-- `on_job_completed(job)`
-- `plugin_event(type, payload)` (plugin-defined event bus)
-- `wrap_cli_output(output)`
-- `wrap_rest_response(response)`
-- `wrap_grpc_response(response)`
-
-These hooks allow rich behaviors such as:
-
-- RSS auto-fetch
-- price monitoring
-- notification routing
-- enrichment sidecars
-- pipeline augmentation
-
-## Plugin Storage
-
-Plugins store all state inside:
-
-**dPKMS plugins:**
-```
-~/.dpkms/plugins/<pluginName>/
-```
-
-**`ctxt` plugins:**
-```
-~/.ctxt/plugins/<pluginName>/
-```
-
-Common patterns:
-- `state.json` — plugin state
-- `rules.json` — plugin configuration
-- Plugin-level caches
-- Per-object metadata stored under `object.plugins.<pluginName>`
-
-No core storage changes are required.
-
-## Plugin-Defined Knowledge Object Types
-
-Plugins may define new object types. Examples:
-
-**dPKMS-level types:**
-- `entity` (canonical concepts)
-- `registry_snapshot` (synced registry data)
-- `signature` (cryptographic attestations)
-
-**`ctxt`-level types:**
-- `feed` (RSS/Atom sources)
-- `feed_item` (individual feed entries)
-- `price_item` (price monitoring snapshots)
-- `monitor_source` (watchable resources)
-- `decision` (extracted decisions)
-- `task` (actionable items)
-
-The core treats them as opaque types, but search, pipelines, and UI surfaces may use the type field to guide behavior.
-
-## Plugin Job Scheduling
-
-Plugins may enqueue new jobs by using the standardized interface exposed through the plugin SDK:
-
-- `jobs.Enqueue(pipeline, input, pluginMetadata)`
-
-This enables:
-
-- feed item ingestion
-- refresh runs
-- periodic evaluations
-- scheduled checks
+To change pipelines in a running dpkms today, use built-in steps and
+`pipelines.overrides`, or install steps from a step registry with
+`dpkms pipeline step install`.
 
 ---
 
@@ -932,13 +686,8 @@ edges:
 - Vector indexes on embeddings (optional)
 - Graph adjacency indexes on edges
 
-**Plugin Storage:**
-
-Plugins store state separately:
-```
-~/.dpkms/plugins/<pluginName>/
-~/.ctxt/plugins/<pluginName>/
-```
+**Plugin data:** the `plugins` JSON column on each object
+(`object.plugins.<pluginName>`). The host provides no plugin directory.
 
 **Migrations:**
 - SQL migrations in `migrations/` directory
@@ -1169,14 +918,9 @@ service ContextService {
 }
 ```
 
-**Plugin Extensions:**
-
-Plugins may:
-- Add namespaced CLI commands (`ctxt plugin:command`)
-- Add REST endpoints under `/api/v1/plugins/:name/`
-- Wrap output formatters
-- Add gRPC service extensions
-- Provide notification handlers
+**Plugin Extensions:** none. Plugins add no CLI commands, REST routes or gRPC
+services. The alias REST handlers consult an `AliasResolver` plugin when a
+plugin registry is set, which only happens in tests.
 
 ---
 
@@ -1495,12 +1239,9 @@ Plugins may add:
 - Reversible writes
 - User confirmation for destructive ops
 
-**Plugin Sandboxing:**
-- Declared capabilities only
-- No filesystem access without permission
-- No network access without permission
-- No storage writes without permission
-- Isolated plugin storage directories
+**Plugin Sandboxing:** none. Plugins are in-process Go code; manifest
+`permissions` are validated but no host code enforces them, and no plugin is
+loaded at runtime yet.
 
 **Input Validation:**
 - Sanitization of HTML/Markdown
@@ -1611,9 +1352,9 @@ Per ADR-001 RED status, **ctxt is NOT hop-managed**. `hop up
 v0.1` does not spawn or control ctxt. Runs as a standalone
 daemon (`docker compose up -d dpkms`) on:
 
-- REST `:8080`
+- REST `:8080` (the MCP endpoint is `/api/v1/mcp/` on this port)
 - gRPC `:9090`
-- MCP `:9377`
+- Browser-extension cookie bridge `:9377` (loopback only)
 
 Data: `~/.config/contexthelp/` (config) +
 `dpkms-data:` Docker volume (SQLite).
