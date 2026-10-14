@@ -429,7 +429,7 @@ CH_STORAGE_ENCRYPTION=false        # OK for local dev
 **Production Requirements**:
 ```bash
 # Production config
-CH_HTTP_PORT=8080
+CH_SERVER_PORT=8080
 CH_PUBLIC=false                    # Local only, or use reverse proxy
 ENCRYPTION_ENABLED=true
 ENCRYPTION_PASSPHRASE=${VAULT_KEY}

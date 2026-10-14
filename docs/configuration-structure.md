@@ -177,40 +177,39 @@ plugins:
 
 ## Configuration Loading Order
 
-Both binaries follow the same loading precedence:
+Each binary reads its own file: `ctxt` reads `ctxt.yaml`, `dpkms` reads
+`dpkms.yaml`. Highest wins:
 
-1. **Defaults** (compiled into binary)
-2. **System config** (`/etc/contexthelp/config.yaml`)
-3. **User config** (`~/.config/contexthelp/config.yaml`)
-4. **Environment variables** (e.g., `CH_STORAGE_TYPE=sqlite`)
-5. **Runtime flags** (e.g., `dpkms serve --workers 8`)
+1. **Command flag**, when passed, on commands that prefer it over config
+   (e.g. `dpkms serve --port 8181`)
+2. **`-c key=value` overrides** (e.g. `-c server.port=8181`)
+3. **Bound environment variables** (e.g. `CH_SERVER_PORT=8181`)
+4. **`-c <path>` files**, later paths win
+5. **Project config** (nearest `.contexthelp/<bin>.yaml` walking up from cwd)
+6. **User config** (`$XDG_CONFIG_HOME/contexthelp/<bin>.yaml`)
+7. **System config** (`/etc/contexthelp/<bin>.yaml`)
+8. **Defaults** (compiled into binary)
 
-Higher layers override lower layers.
+`CTXT_CONFIG=<path>` replaces slots 5–7 with that one file.
 
 ---
 
 ## Environment Variable Overrides
 
-### dPKMS Variables
+Only an explicit list of variables maps to config keys; there is no
+automatic `CH_<KEY>` translation. Common ones:
 
 ```bash
-CH_STORAGE_TYPE=sqlite          # Override storage type
-CH_STORAGE_PATH=/custom/path    # Override storage path
-CH_WORKERS=8                    # Override worker count
-CH_HTTP_PORT=8080               # Override HTTP port
-CH_DISABLE_TELEMETRY=true       # Hard-disable telemetry
-CH_REGISTRY_TOKEN_<NAME>        # Registry auth tokens
+CH_STORAGE_TYPE=sqlite          # storage.type
+CH_SERVER_PORT=8080             # server.port
+CH_GRPC_PORT=9090               # server.grpc_port
+CH_COOKIE_BRIDGE_PORT=9377      # server.cookie_bridge_port
+CTXT_PROFILE=founder            # profile.default
+CH_DISABLE_TELEMETRY=true       # Hard-disable telemetry (not a config key)
 ```
 
-### ctxt Variables
-
-```bash
-OPENAI_API_KEY=sk-...           # OpenAI key
-ANTHROPIC_API_KEY=sk-...        # Anthropic key
-CH_DEFAULT_PIPELINE=text.short  # Override default pipeline
-CH_LANG=fr,en                   # Override language preference
-CH_PROFILE=founder              # Default profile
-```
+Full binding table and precedence examples:
+[ctxt/cli-flag-binding.md](ctxt/cli-flag-binding.md).
 
 ---
 
