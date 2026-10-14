@@ -7,7 +7,7 @@ Job queue and background worker configuration.
 ## Worker Pool
 
 ### WORKER_COUNT
-**Type:** integer  
+**Type:** integer\
 **Default:** `4`
 
 Number of background workers.
@@ -21,49 +21,60 @@ WORKER_COUNT=8
 - **I/O-bound tasks:** Workers = 2-4× CPU cores
 - **Mixed workload:** Start with 2× CPU cores
 
-### WORKER_POLL_INTERVAL
-**Type:** duration  
-**Default:** `1s`
+### DPKMS_POLL_INTERVAL
+**Type:** duration\
+**Default:** `500ms`\
+**Minimum:** `50ms`\
+**Config key:** `jobs.poll_interval`
 
-How often workers poll for new jobs.
+How often idle workers poll for new jobs.
 
 ```bash
-WORKER_POLL_INTERVAL=500ms
+DPKMS_POLL_INTERVAL=250ms
 ```
 
 ---
 
 ## Job Configuration
 
-### JOB_RETRY_LIMIT
-**Type:** integer  
-**Default:** `3`
+### DPKMS_MAX_RETRIES
+**Type:** integer\
+**Default:** `3`\
+**Config key:** `jobs.max_retries`
 
-Maximum retry attempts for failed jobs.
-
-```bash
-JOB_RETRY_LIMIT=5
-```
-
-### JOB_TIMEOUT
-**Type:** duration  
-**Default:** `5m`
-
-Default job execution timeout.
+Default retry limit for fan-out jobs.
 
 ```bash
-JOB_TIMEOUT=10m
+DPKMS_MAX_RETRIES=5
 ```
 
-### JOB_CLEANUP_INTERVAL
-**Type:** duration  
-**Default:** `1h`
+### DPKMS_STALE_TIMEOUT
+**Type:** duration\
+**Default:** `30m`\
+**Config key:** `jobs.stale_timeout`
 
-How often to clean up old completed jobs.
+How long a running job may stay silent before it counts as stale and
+becomes eligible for recovery. Jobs have no execution timeout.
 
 ```bash
-JOB_CLEANUP_INTERVAL=24h
+DPKMS_STALE_TIMEOUT=1h
 ```
+
+### DPKMS_MAX_HOPS
+**Type:** integer\
+**Default:** `5`\
+**Config key:** `jobs.max_hops`
+
+Maximum number of pipeline hops one job can take.
+
+```bash
+DPKMS_MAX_HOPS=8
+```
+
+### Config-file only
+
+`jobs.drain_timeout` (default `30s`): how long `dpkms serve` waits for
+in-flight jobs on graceful shutdown. No env var.
 
 ---
 
@@ -72,33 +83,30 @@ JOB_CLEANUP_INTERVAL=24h
 ### Development (Low Concurrency)
 ```bash
 WORKER_COUNT=2
-WORKER_POLL_INTERVAL=1s
-JOB_RETRY_LIMIT=3
-JOB_TIMEOUT=5m
-JOB_CLEANUP_INTERVAL=1h
+DPKMS_POLL_INTERVAL=500ms
+DPKMS_MAX_RETRIES=3
 ```
 
 ### Production (High Throughput)
 ```bash
 WORKER_COUNT=16
-WORKER_POLL_INTERVAL=500ms
-JOB_RETRY_LIMIT=5
-JOB_TIMEOUT=10m
-JOB_CLEANUP_INTERVAL=6h
+DPKMS_POLL_INTERVAL=250ms
+DPKMS_MAX_RETRIES=5
+DPKMS_STALE_TIMEOUT=1h
 ```
 
 ---
 
 ## Worker Monitoring
 
-Check worker status:
+List jobs and their state:
 ```bash
-./bin/dpkms workers stats
+dpkms job list
 ```
 
-Check queue depth:
+Instance status:
 ```bash
-./bin/dpkms queue stats
+dpkms status
 ```
 
 ---

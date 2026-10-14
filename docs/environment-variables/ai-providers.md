@@ -1,140 +1,62 @@
 # AI Providers Environment Variables
 
-Configuration for OpenAI, Anthropic, Ollama, and the embedding provider.
+API keys for the hosted LLM and vision providers, and the embedding
+provider.
 
 ---
 
-## OpenAI
+## API keys
 
-### OPENAI_API_KEY
-**Type:** string (secret)\
-**Default:** _(none)_\
-**Required:** For OpenAI models
+Provider API keys are read from the environment of the process that runs
+the step — usually `dpkms serve`. **Never commit them to version control.**
 
-OpenAI API key. **Never commit to version control.**
+| Env var | Used by |
+|---------|---------|
+| `OPENAI_API_KEY` | `openai` LLM and vision backends |
+| `ANTHROPIC_API_KEY` | `anthropic` LLM and vision backends |
+| `GEMINI_API_KEY` | `gemini` vision backend |
+| `OPENROUTER_API_KEY` | `openrouter` vision backend |
 
 ```bash
 OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-**Security:** Use secret management:
+**Security:** use secret management:
 ```bash
 OPENAI_API_KEY=$(vault kv get -field=key secret/openai)
 ```
 
-### OPENAI_MODEL
-**Type:** string\
-**Default:** `gpt-4-turbo-preview`
-
-Default OpenAI model for text generation.
-
-```bash
-OPENAI_MODEL=gpt-4-turbo-preview
-```
-
-**Available models:**
-- `gpt-4-turbo-preview` — Latest GPT-4 Turbo
-- `gpt-4` — GPT-4 base
-- `gpt-3.5-turbo` — Fast, cost-effective
-
-### OPENAI_MAX_TOKENS
-**Type:** integer\
-**Default:** `4096`
-
-Maximum tokens per API call.
-
-```bash
-OPENAI_MAX_TOKENS=8192
-```
-
-### OPENAI_TEMPERATURE
-**Type:** float (0.0-2.0)\
-**Default:** `0.7`
-
-Sampling temperature for generation.
-
-```bash
-OPENAI_TEMPERATURE=0.5
-```
+With `backend: auto` (the default), a set key also selects the provider:
+the LLM tries Anthropic, then OpenAI, then falls back to Ollama; vision
+tries a local Ollama first, then OpenAI, Anthropic, Gemini, OpenRouter.
 
 ---
 
-## Anthropic (Claude)
+## Backend, model and endpoint
 
-### ANTHROPIC_API_KEY
-**Type:** string (secret)\
-**Default:** _(none)_
+No env vars. Set them per provider kind (`llm`, `vision`, `ocr`,
+`transcription`, `video`, `document`, `diarization`) in the config file, or
+with `-c`:
 
-Anthropic API key. **Never commit to version control.**
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
+```yaml
+providers:
+  llm:
+    backend: auto                    # auto | anthropic | openai | ollama | stub
+    model: ""                        # empty = backend default
+    endpoint: http://localhost:11434 # Ollama URL
+  vision:
+    backend: auto                    # auto | ollama | openai | anthropic | gemini | openrouter | stub
+    model: llava
+    endpoint: http://localhost:11434
 ```
 
-### ANTHROPIC_MODEL
-**Type:** string\
-**Default:** `claude-3-opus-20240229`
-
-Default Claude model.
+LLM defaults when `model` is empty: `claude-haiku-4-5-20251001`
+(Anthropic), `gpt-4o-mini` (OpenAI), `llama3` (Ollama).
 
 ```bash
-ANTHROPIC_MODEL=claude-3-sonnet-20240229
+dpkms serve -c providers.llm.backend=ollama -c providers.llm.model=mistral
 ```
-
-**Available models:**
-- `claude-3-opus-20240229` — Most capable
-- `claude-3-sonnet-20240229` — Balanced
-- `claude-3-haiku-20240307` — Fast, lightweight
-
-### ANTHROPIC_MAX_TOKENS
-**Type:** integer\
-**Default:** `4096`
-
-Maximum tokens per API call.
-
-```bash
-ANTHROPIC_MAX_TOKENS=8192
-```
-
----
-
-## Ollama (Local Models)
-
-### OLLAMA_ENABLED
-**Type:** boolean\
-**Default:** `false`
-
-Enable Ollama for local AI models.
-
-```bash
-OLLAMA_ENABLED=true
-```
-
-### OLLAMA_HOST
-**Type:** string\
-**Default:** `http://localhost:11434`
-
-Ollama server URL.
-
-```bash
-OLLAMA_HOST=http://ollama.internal:11434
-```
-
-### OLLAMA_MODEL
-**Type:** string\
-**Default:** `llama2`
-
-Default Ollama model.
-
-```bash
-OLLAMA_MODEL=mistral
-```
-
-**Available models (download first):**
-- `llama2` — Meta's Llama 2
-- `mistral` — Mistral AI
-- `codellama` — Code-specialized
-- `phi` — Microsoft Phi
 
 ---
 
@@ -260,58 +182,15 @@ notice instead).
 
 ## Examples
 
-### OpenAI Only
-```bash
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4-turbo-preview
-OPENAI_MAX_TOKENS=4096
-OPENAI_TEMPERATURE=0.7
-```
-
-### Anthropic Only
+### Hosted LLM (Anthropic)
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-3-opus-20240229
-ANTHROPIC_MAX_TOKENS=4096
+dpkms serve -c providers.llm.backend=anthropic
 ```
 
-### Local with Ollama
+### Local only (Ollama)
 ```bash
-OLLAMA_ENABLED=true
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=mistral
-```
-
-### Multi-Provider (with fallback)
-```bash
-# Primary: OpenAI
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4-turbo-preview
-
-# Fallback: Anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-3-sonnet-20240229
-
-# Local development: Ollama
-OLLAMA_ENABLED=true
-OLLAMA_MODEL=llama2
-```
-
----
-
-## Cost Optimization
-
-**High volume, cost-conscious:**
-```bash
-OPENAI_MODEL=gpt-3.5-turbo  # Cheaper
-OPENAI_MAX_TOKENS=2048      # Lower limits
-```
-
-**Quality-focused:**
-```bash
-OPENAI_MODEL=gpt-4-turbo-preview
-OPENAI_MAX_TOKENS=8192
-OPENAI_TEMPERATURE=0.3  # More deterministic
+dpkms serve -c providers.llm.backend=ollama -c providers.llm.model=mistral
 ```
 
 ---

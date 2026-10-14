@@ -1,21 +1,31 @@
 # Core Environment Variables
 
-Basic runtime and logging configuration.
+Config file, instance routing and logging.
+
+---
+
+## Config File
+
+### CTXT_CONFIG
+**Type:** string (path)\
+**Default:** _(none — walks the config cascade)_
+
+Loads this one file in place of the system → user → project cascade
+(`/etc/contexthelp/<bin>.yaml`, `$XDG_CONFIG_HOME/contexthelp/<bin>.yaml`,
+nearest `.contexthelp/<bin>.yaml`). Read by both `ctxt` and `dpkms`. A
+missing file is not an error; `ctxt setup` creates it. `-c <file>` still
+layers on top.
+
+```bash
+CTXT_CONFIG=~/work/contexthelp/ctxt.yaml ctxt status
+```
+
+The database location is `storage.path` — see
+[storage.md](storage.md#database-location).
 
 ---
 
 ## Environment
-
-### ENV
-**Type:** string\
-**Default:** `development`\
-**Values:** `development`, `staging`, `production`
-
-Sets the runtime environment.
-
-```bash
-ENV=production
-```
 
 ### DEV_MODE
 **Type:** boolean\
@@ -53,69 +63,12 @@ Use `ctxt instance use <name>` for a persistent selection instead. See
 
 ## Logging
 
-### LOG_LEVEL
-**Type:** string\
-**Default:** `info`\
-**Values:** `debug`, `info`, `warn`, `error`
-
-Minimum log level to output.
+No env vars. Logs go to stderr at `warn` level; `--verbose` switches to
+debug output, on both `ctxt` and `dpkms`.
 
 ```bash
-LOG_LEVEL=debug
+dpkms serve --verbose
 ```
-
-### LOG_FORMAT
-**Type:** string\
-**Default:** `console`\
-**Values:** `console`, `json`
-
-Log output format.
-
-```bash
-LOG_FORMAT=json  # For production
-```
-
-### LOG_OUTPUT
-**Type:** string\
-**Default:** `stdout`\
-**Values:** `stdout`, `stderr`, `file`
-
-Where to write logs.
-
-```bash
-LOG_OUTPUT=file
-```
-
-### LOG_FILE
-**Type:** string\
-**Default:** `./data/logs/contexthelp.log`
-
-Log file path (when `LOG_OUTPUT=file`).
-
-```bash
-LOG_FILE=/var/log/contexthelp/app.log
-```
-
----
-
----
-
-## Multi-Instance Targeting
-
-### CTXT_INSTANCE
-**Type:** string\
-**Default:** _(none — uses the saved selection, else `server.urls` / `server.url`)_
-
-Selects which dpkms instance `ctxt` commands talk to: a named
-`server.urls` entry or a running local instance.
-Precedence: `--server <url>` > `--instance <name>` flag > `CTXT_INSTANCE` env var > `ctxt instance use` saved state > first `server.urls` entry > `server.url` > `http://127.0.0.1:8080`.
-
-```bash
-CTXT_INSTANCE=home ctxt status
-CTXT_INSTANCE=personal ctxt log
-```
-
-See also: `ctxt instance use`, `ctxt instance list`, `ctxt instance current`.
 
 ---
 
@@ -123,19 +76,12 @@ See also: `ctxt instance use`, `ctxt instance list`, `ctxt instance current`.
 
 ### Development
 ```bash
-ENV=development
 DEV_MODE=true
-LOG_LEVEL=debug
-LOG_FORMAT=console
-LOG_OUTPUT=stdout
+CTXT_CONFIG=./dev/dpkms.yaml
 ```
 
 ### Production
 ```bash
-ENV=production
 DEV_MODE=false
-LOG_LEVEL=warn
-LOG_FORMAT=json
-LOG_OUTPUT=file
-LOG_FILE=/var/log/contexthelp/app.log
+CTXT_CONFIG=/etc/contexthelp/prod/dpkms.yaml
 ```
