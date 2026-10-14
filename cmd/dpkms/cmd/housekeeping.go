@@ -456,7 +456,13 @@ func runPrune(cmd *cobra.Command, args []string) error {
 	// for JSON must get a document rather than the sentence "No
 	// objects found", whose only reading is by eye.
 	if kitcli.IsDryRun(cmd) {
-		actions := make([]cliformat.Action, 0, len(objects))
+		// The blobs a real prune deletes with its objects: those no
+		// object outside the pruned set still refers to.
+		blobKeys, err := blob.PlanDelete(ctx, driver, objects)
+		if err != nil {
+			return fmt.Errorf("plan blob deletes: %w", err)
+		}
+		actions := make([]cliformat.Action, 0, len(objects)+len(blobKeys))
 		for _, obj := range objects {
 			actions = append(actions, cliformat.Action{
 				Kind:       "delete",
@@ -464,6 +470,15 @@ func runPrune(cmd *cobra.Command, args []string) error {
 				Count:      1,
 				Reversible: false,
 				Detail:     "created before " + before,
+			})
+		}
+		for _, key := range blobKeys {
+			actions = append(actions, cliformat.Action{
+				Kind:       "delete",
+				Target:     "blob:" + key,
+				Count:      1,
+				Reversible: false,
+				Detail:     "content of a pruned object; no other object refers to it",
 			})
 		}
 		return renderPreviewPlan(cmd, cliformat.NewPlan(cmd.CommandPath(), actions), func(w *lineWriter) {
@@ -476,6 +491,12 @@ func runPrune(cmd *cobra.Command, args []string) error {
 			w.printf("Would delete %d objects from: %s\n", total, cfg.Storage.Path)
 			for _, obj := range objects {
 				w.printf("  delete object %s\n", obj.ID)
+			}
+			if len(blobKeys) > 0 {
+				w.printf("Would delete %d blob(s) no other object refers to:\n", len(blobKeys))
+				for _, key := range blobKeys {
+					w.printf("  delete blob %s\n", key)
+				}
 			}
 		})
 	}

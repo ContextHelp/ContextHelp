@@ -88,3 +88,30 @@ func Keys(obj *storage.KnowledgeObject) []string {
 	}
 	return keys
 }
+
+// PlanDelete returns the blob keys DeleteObject would delete were every
+// object in objs deleted: each key they refer to that no object outside
+// objs refers to, in the order objs first name them. It reads only.
+func PlanDelete(ctx context.Context, drv storage.StorageDriver, objs []*storage.KnowledgeObject) ([]string, error) {
+	var order []string
+	refs := map[string]int{} // key -> objects in objs referring to it
+	for _, obj := range objs {
+		for _, key := range Keys(obj) {
+			if refs[key] == 0 {
+				order = append(order, key)
+			}
+			refs[key]++
+		}
+	}
+	var keys []string
+	for _, key := range order {
+		n, err := drv.Objects().CountBlobRefs(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if n <= refs[key] {
+			keys = append(keys, key)
+		}
+	}
+	return keys, nil
+}

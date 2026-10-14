@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 	"github.com/stretchr/testify/require"
@@ -132,4 +134,41 @@ func TestHousekeepingPruneReportsOrphanBlobs(t *testing.T) {
 	_, err := f.Driver.Objects().Get(context.Background(), "obj_old_stuck")
 	require.ErrorIs(t, err, storage.ErrNotFound, "the row outlived its failed blob delete")
 	require.True(t, f.blobExists(t, "keystuck"))
+}
+
+// prune --dry-run lists the blobs a real prune would delete: those no
+// object outside the pruned set refers to. It deletes none of them.
+func TestHousekeepingPruneDryRunListsBlobs(t *testing.T) {
+	f := setupPruneBlobDB(t)
+	old := time.Date(2023, 6, 1, 0, 0, 0, 0, time.UTC)
+	recent := time.Now().UTC().Truncate(time.Second)
+	f.seed(t, "obj_old_own", "keyown", old)
+	f.seed(t, "obj_old_both_a", "keyboth", old)
+	f.seed(t, "obj_old_both_b", "keyboth", old)
+	f.seed(t, "obj_old_shared", "keyshared", old)
+	f.seed(t, "obj_new_shared", "keyshared", recent)
+
+	args := []string{"--data-dir", f.dataDir, "housekeeping", "prune", "--before", "2024-01-01", "--dry-run"}
+	out, err := f.run(args...)
+	require.NoError(t, err)
+	require.Contains(t, out, "delete blob keyown")
+	require.Contains(t, out, "delete blob keyboth")
+	require.NotContains(t, out, "keyshared", "a blob an unpruned object refers to is not deleted")
+	require.Contains(t, out, "Would delete 2 blob(s)")
+
+	out, err = f.run(append(args, "--format", "json")...)
+	require.NoError(t, err)
+	var plan cliformat.Plan
+	require.NoError(t, json.Unmarshal([]byte(out), &plan), out)
+	var blobs []string
+	for _, a := range plan.Effects {
+		if strings.HasPrefix(a.Target, "blob:") {
+			blobs = append(blobs, a.Target)
+		}
+	}
+	require.ElementsMatch(t, []string{"blob:keyown", "blob:keyboth"}, blobs)
+
+	for _, key := range []string{"keyown", "keyboth", "keyshared"} {
+		require.True(t, f.blobExists(t, key), "dry-run deleted blob %s", key)
+	}
 }
