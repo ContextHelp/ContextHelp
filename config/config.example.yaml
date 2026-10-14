@@ -291,6 +291,16 @@
 #  history:
 #    initial_lookback: 24h
 
+# Fetches of captured URLs (pages, feeds, their links and redirects).
+# Private-network addresses (loopback, RFC 1918, ULA, link-local incl.
+# 169.254.169.254, CGNAT, multicast) are refused unless allowed here.
+#fetch:
+#  allow_private: false
+#  allowed_hosts:
+#    - wiki.corp.example
+#  allowed_cidrs:
+#    - 10.20.0.0/16
+
 # Filesystem and clipboard watchers (ctxt watch). watch.dirs entries may
 # start with ~. CTXT_NO_CLIPBOARD=1 turns the clipboard watcher off.
 #watch:

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -28,6 +29,14 @@ type URLFetcherOption func(*URLFetcher)
 func WithURLHTTPClient(c *http.Client) URLFetcherOption {
 	return func(f *URLFetcher) {
 		f.bridge = NewClientBridge(WithBridgeHTTPClient(c))
+	}
+}
+
+// WithURLFetchGuard makes the fetcher dial through g, the guard built
+// from the fetch.* config. Without it the default guard applies.
+func WithURLFetchGuard(g *safefetch.Guard) URLFetcherOption {
+	return func(f *URLFetcher) {
+		f.bridge = NewClientBridge(WithBridgeFetchGuard(g))
 	}
 }
 
@@ -136,8 +145,12 @@ var permanentPatterns = []string{
 }
 
 // isPermanentNetError returns true if the error message (via string matching)
-// contains a known non-retryable network failure such as DNS resolution or TLS errors.
+// contains a known non-retryable network failure such as DNS resolution or TLS errors,
+// or if the fetch guard refused the destination.
 func isPermanentNetError(err error) bool {
+	if safefetch.IsBlocked(err) {
+		return true
+	}
 	msg := strings.ToLower(err.Error())
 	for _, pat := range permanentPatterns {
 		if strings.Contains(msg, pat) {

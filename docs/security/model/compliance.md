@@ -17,7 +17,7 @@ Operational guidance (data residency, retention, erasure, dependency review) liv
 | A07 Authentication Failures | 32+ character tokens, placeholder rejection, constant-time compare; auth-failure alerts | no token expiry; no lockout |
 | A08 Data Integrity Failures | registry signatures (optional unless `require_signatures`); entity integrity guard; registry trust levels | installed steps carry no signature check |
 | A09 Logging & Monitoring | append-only audit log for security events; `security.alerts` to webhook / SMTP; `ctxt audit list|export` | logs not sanitized; object edits not audited; no audit forwarding |
-| A10 SSRF | egress only to configured providers, registries and peers | captured URLs are fetched without a private-address block |
+| A10 SSRF | egress only to configured providers, registries and peers; captured URLs, feeds and their redirects refuse private-network addresses at dial time (`fetch.*` allowlist) | browser-rendered fetches (`ibr_fetcher`) are vetted only before the browser runs: its own redirects and subresources are not checked |
 
 ## NIST CSF
 

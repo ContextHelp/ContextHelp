@@ -2,10 +2,14 @@ package steps
 
 import (
 	"context"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 )
 
 // capture records the last request received by a test server.
@@ -182,11 +186,15 @@ func TestClientBridge_Timeout(t *testing.T) {
 	}))
 	defer slow.Close()
 
-	cb := NewClientBridge(WithBridgeTimeout(50 * time.Millisecond))
+	// The slow server is on loopback: allow private addresses so the
+	// request reaches it and the timeout, not the guard, ends it.
+	guard := safefetch.New(safefetch.Options{Policy: safefetch.Policy{AllowPrivate: true}})
+	cb := NewClientBridge(WithBridgeTimeout(50*time.Millisecond), WithBridgeFetchGuard(guard))
 	req, _ := http.NewRequest(http.MethodGet, slow.URL, nil)
 	_, err := cb.Do(req)
-	if err == nil {
-		t.Fatal("expected timeout error, got nil")
+	var ne net.Error
+	if !errors.As(err, &ne) || !ne.Timeout() {
+		t.Fatalf("expected timeout error, got %v", err)
 	}
 }
 

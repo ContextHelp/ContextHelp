@@ -152,6 +152,33 @@ To open the web UI of a remote instance in a browser, put it behind a
 reverse proxy that signs you in and adds the token:
 [Put dpkms behind a reverse proxy](../operations/reverse-proxy.md).
 
+### Fetch intranet pages
+
+When dpkms ingests a URL (a captured page, a feed, the links a feed
+carries, or a redirect from any of them), it refuses to connect to a
+private-network address: loopback, `10/8`, `172.16/12`, `192.168/16`,
+unique-local IPv6, link-local (including the cloud metadata address
+`169.254.169.254`), CGNAT `100.64/10`, multicast and unspecified
+addresses, also in their IPv4-mapped IPv6 form. The job fails with
+`fetch refused: <host> is a <range> address` and is not retried. This
+stops a capture, or a page it redirects to, from making dpkms reach
+the services beside it.
+
+To capture pages from your intranet, allow them by name or by range:
+
+```yaml
+fetch:
+  allowed_hosts:
+    - wiki.corp.example   # exact name, whatever it resolves to
+  allowed_cidrs:
+    - 10.20.0.0/16        # a range, or a single address
+```
+
+`fetch.allow_private: true` turns the block off entirely. Host entries
+are exact names: no scheme, port or wildcard. These fetches ignore
+`HTTP_PROXY` / `HTTPS_PROXY`. Calls to configured endpoints (providers,
+registries, federation peers) are not affected.
+
 ### Send write requests from scripts
 
 A `POST`, `PATCH`, `PUT` or `DELETE` that carries a body must send

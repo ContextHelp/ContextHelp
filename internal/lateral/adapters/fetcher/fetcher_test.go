@@ -10,7 +10,36 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 )
+
+// loopbackOK is a guard that lets the default client reach the
+// httptest servers below, which bind loopback.
+func loopbackOK() *safefetch.Guard {
+	return safefetch.New(safefetch.Options{Policy: safefetch.Policy{AllowPrivate: true}})
+}
+
+// The default client refuses private-network addresses: the URLs it
+// fetches are derived from captured content.
+func TestHTTP_DefaultRefusesPrivateAddress(t *testing.T) {
+	hits := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+	}))
+	defer ts.Close()
+
+	f := NewHTTP(Options{})
+	if _, err := f.Fetch(context.Background(), ts.URL); !errors.Is(err, safefetch.ErrBlocked) {
+		t.Fatalf("Fetch err = %v; want safefetch.ErrBlocked", err)
+	}
+	if _, err := f.Get(context.Background(), ts.URL); !errors.Is(err, safefetch.ErrBlocked) {
+		t.Fatalf("Get err = %v; want safefetch.ErrBlocked", err)
+	}
+	if hits != 0 {
+		t.Fatalf("private server received %d requests", hits)
+	}
+}
 
 func TestHTTP_Fetch_Success(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -21,7 +50,7 @@ func TestHTTP_Fetch_Success(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	f := NewHTTP(Options{})
+	f := NewHTTP(Options{Guard: loopbackOK()})
 	body, err := f.Fetch(context.Background(), ts.URL)
 	if err != nil {
 		t.Fatalf("Fetch err = %v", err)
@@ -38,7 +67,7 @@ func TestHTTP_Fetch_NonOKStatusErrors(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	f := NewHTTP(Options{})
+	f := NewHTTP(Options{Guard: loopbackOK()})
 	body, err := f.Fetch(context.Background(), ts.URL)
 	if err == nil {
 		t.Fatal("expected error on 404")
@@ -60,7 +89,7 @@ func TestHTTP_Get_PreservesStatusAndContentType(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	f := NewHTTP(Options{})
+	f := NewHTTP(Options{Guard: loopbackOK()})
 	res, err := f.Get(context.Background(), ts.URL)
 	if err != nil {
 		t.Fatalf("Get err = %v", err)
@@ -84,7 +113,7 @@ func TestHTTP_RespectsCustomUserAgent(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	f := NewHTTP(Options{UserAgent: "my-bot/2.0"})
+	f := NewHTTP(Options{UserAgent: "my-bot/2.0", Guard: loopbackOK()})
 	if _, err := f.Fetch(context.Background(), ts.URL); err != nil {
 		t.Fatalf("Fetch err = %v", err)
 	}
@@ -102,7 +131,7 @@ func TestHTTP_RespectsContextCancel(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	f := NewHTTP(Options{Timeout: 50 * time.Millisecond})
+	f := NewHTTP(Options{Timeout: 50 * time.Millisecond, Guard: loopbackOK()})
 	_, err := f.Fetch(context.Background(), ts.URL)
 	if err == nil {
 		t.Fatal("expected timeout error")
