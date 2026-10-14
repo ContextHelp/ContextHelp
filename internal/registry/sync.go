@@ -40,9 +40,15 @@ type SyncResult struct {
 	RegistryURL string
 	SyncMode    config.RegistrySyncMode
 	Upserted    int
-	Skipped     int              // full records not overwritten
-	Conflicts   []ConflictReport // non-empty when multi-registry disagreements were resolved
-	Errors      []error
+	Skipped     int // entities the integrity guard rejected
+	// PendingApproval counts entities an untrusted registry served: not
+	// written, since its writes need approval (TrustGate). The queue
+	// lives only as long as the Syncer.
+	PendingApproval int
+	// Blocked counts entities a sandboxed registry served: never written.
+	Blocked   int
+	Conflicts []ConflictReport // non-empty when multi-registry disagreements were resolved
+	Errors    []error
 }
 
 // MultiSyncConfig carries options for a multi-registry sync.
@@ -190,8 +196,12 @@ func (s *Syncer) Sync(ctx context.Context, cfg config.RegistryConfig) (*SyncResu
 		}
 
 		// Trust gate: enforce per-registry trust level before writing.
-		if _, err := s.trustGate.CheckWrite(ctx, e, cfg.URL, cfg.EffectiveTrustLevel()); err != nil {
-			result.Skipped++
+		if rec, err := s.trustGate.CheckWrite(ctx, e, cfg.URL, cfg.EffectiveTrustLevel()); err != nil {
+			if rec != nil {
+				result.PendingApproval++
+			} else {
+				result.Blocked++
+			}
 			continue
 		}
 

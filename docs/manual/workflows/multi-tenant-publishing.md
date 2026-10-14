@@ -112,7 +112,7 @@ the next call returns only newer items.
 ### Step 6: Revoke an employee
 
 ```bash
-ctxt registry remove client-ops   # employee-side
+ctxt registry delete client-ops --confirm=yes   # employee-side
 # Optional: founder rotates registry token via ctxt registry auth-set
 ```
 
@@ -132,7 +132,7 @@ Removing the registry subscription cuts the lens; cursor file can be deleted or 
 
 ### Wrong registry subscribed
 
-- Verify with `ctxt registry list`; confirm role's `--profile` pins the intended registry set.
+- Verify the configured `registries` list with `ctxt config show` (`ctxt registry list` shows cached manifests, not subscriptions); confirm role's `--profile` pins the intended registry set.
 - Re-create profile: `ctxt profile rm <role> && ctxt profile create <role> --registries ...`.
 
 ### Capture not propagating to shared dpkms

@@ -830,9 +830,25 @@ type RegistrySyncResult struct {
 	// EntitySync mirrors the fetched manifest's capabilities.entity_sync:
 	// whether the registry advertises an entity index.
 	EntitySync bool
-	// Entities is the number of entities upserted from the index; zero
-	// when EntitySync is false.
-	Entities int
+	// RegistryEntityCounts is what became of the index's entities; all
+	// zero when EntitySync is false.
+	RegistryEntityCounts
+}
+
+// RegistryEntityCounts is what an entity index sync did with the
+// entities a registry served.
+type RegistryEntityCounts struct {
+	// TrustLevel is the registry's effective trust_level: untrusted
+	// when the config leaves it unset.
+	TrustLevel config.RegistryTrustLevel `json:"trust_level"`
+	// Upserted entities were written to the local entity store.
+	Upserted int `json:"upserted"`
+	// PendingApproval entities came from an untrusted registry and were
+	// not written: their writes need approval.
+	PendingApproval int `json:"pending_approval"`
+	// Blocked entities came from a sandboxed registry, which never
+	// writes to the local graph.
+	Blocked int `json:"blocked"`
 }
 
 // SyncRegistry is `ctxt registry sync`: it re-fetches and caches the
@@ -848,11 +864,11 @@ func (s *Service) SyncRegistry(ctx context.Context, url string) (RegistrySyncRes
 	if !manifest.Capabilities.EntitySync {
 		return RegistrySyncResult{}, nil
 	}
-	n, err := s.SyncRegistryEntities(ctx, url)
+	counts, err := s.SyncRegistryEntities(ctx, url)
 	if err != nil {
 		return RegistrySyncResult{EntitySync: true}, err
 	}
-	return RegistrySyncResult{EntitySync: true, Entities: n}, nil
+	return RegistrySyncResult{EntitySync: true, RegistryEntityCounts: counts}, nil
 }
 
 func (s *Service) ListRegistries(ctx context.Context) ([]*storage.RegistryCache, int, error) {
@@ -1022,11 +1038,12 @@ func (s *Service) CancelJob(ctx context.Context, id string) error {
 }
 
 // SyncRegistryEntities syncs entity index from a configured registry.
-// Uses the registry's sync_mode (thin or full). Returns count of upserted entities.
+// Uses the registry's sync_mode (thin or full). Returns what became of
+// the entities: written, or held back by the registry's trust_level.
 // When the registry manifest declares an entitlement_url, the entitlement is
 // fetched and stored before any sync occurs; ErrEntitlementRequired is returned
 // if the registry denies access.
-func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) (int, error) {
+func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) (RegistryEntityCounts, error) {
 	var cfg config.RegistryConfig
 	for _, r := range s.Cfg.Registries {
 		if r.URL == registryURL {
@@ -1053,9 +1070,14 @@ func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) 
 		WithCredentials(s.registryAuth)
 	result, err := syncer.Sync(ctx, cfg)
 	if err != nil {
-		return 0, fmt.Errorf("sync registry entities: %w", err)
+		return RegistryEntityCounts{}, fmt.Errorf("sync registry entities: %w", err)
 	}
-	return result.Upserted, nil
+	return RegistryEntityCounts{
+		TrustLevel:      cfg.EffectiveTrustLevel(),
+		Upserted:        result.Upserted,
+		PendingApproval: result.PendingApproval,
+		Blocked:         result.Blocked,
+	}, nil
 }
 
 // SyncAllRegistriesResult is the output of SyncAllRegistriesWithReconciliation.

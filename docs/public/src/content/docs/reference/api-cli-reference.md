@@ -62,7 +62,7 @@ ctxt registry list
 ctxt registry info <name>
 ctxt registry add <name> <url>
 ctxt registry sync <name>
-ctxt registry remove <name>
+ctxt registry delete <name> --confirm=yes
 ```
 
 ### Pipeline and infrastructure (`dpkms`)
