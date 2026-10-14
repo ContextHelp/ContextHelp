@@ -19,6 +19,10 @@
 #      every node image (compose, workflows, Dockerfile FROM) runs the pin;
 #      .nvmrc / .node-version equal it; package.json engines.node is the pin
 #      or a >= minimum the pin satisfies
+#   5. no workflow names a floating ref: @master/@main/@latest on an action
+#      or a `go install`, a `~>` range, or `version: latest`
+#   6. release.yml's integration job runs every command ci.yml's integration
+#      job runs (a release gates on at least what a merge gates on)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -352,6 +356,104 @@ while IFS= read -r f; do
 		;;
 	esac
 done < <(find . \( -name node_modules -o -name .git \) -prune -o -type f \( -name .nvmrc -o -name .node-version -o -name package.json \) -print | sort)
+
+# ── 5. floating refs in workflows ────────────────────────────────────────────
+# A branch (@master, @main), @latest or a range (`~> v2`, `version: latest`)
+# runs whatever upstream publishes the day the job starts: a release built
+# from it cannot be rebuilt, and a broken or compromised upstream release
+# lands without a diff. Pin a release tag (or commit SHA) at least two weeks
+# old. Comments are ignored; `image-ref: ...:latest` names a scan target, not
+# a dependency, and does not match.
+floating_refs() {
+	awk '{
+		line = $0
+		sub(/(^|[ \t])#.*$/, "", line)
+		if (line ~ /@(master|main|latest)([^A-Za-z0-9._\/-]|$)/ ||
+			line ~ /~>/ ||
+			line ~ /^[ \t]*version:[ \t]*["\047]?latest["\047]?[ \t]*$/) {
+			sub(/^[ \t]+/, "", line)
+			printf "%s:%d: %s\n", FILENAME, FNR, line
+		}
+	}' "$@"
+}
+workflows=()
+for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
+	[ -f "$wf" ] && workflows+=("$wf")
+done
+if [ ${#workflows[@]} -gt 0 ]; then
+	while read -r hit; do
+		[ -n "$hit" ] || continue
+		err "$hit is floating; pin a release tag or commit SHA"
+	done < <(floating_refs "${workflows[@]}")
+fi
+
+# ── 6. release gates on at least what CI gates on ────────────────────────────
+# release.yml publishes a tag, so its integration job must run every command
+# ci.yml's integration job runs; it may run more. Commands are compared after
+# folding block scalars (>-, |) and collapsing whitespace.
+#
+# job_runs <workflow> <job>: one line per `run:` command in that job, or
+# nothing when the job is absent.
+job_runs() {
+	awk -v job="$2" '
+		function flush() {
+			if (inrun) {
+				gsub(/[ \t]+/, " ", cmd)
+				sub(/^ /, "", cmd)
+				sub(/ $/, "", cmd)
+				if (cmd != "") print cmd
+			}
+			inrun = 0
+			cmd = ""
+		}
+		/^[^ \t#]/ { flush(); injob = 0; next }
+		/^  [A-Za-z0-9_-]+:[ \t]*$/ {
+			flush()
+			injob = ($0 ~ ("^  " job ":"))
+			next
+		}
+		!injob { next }
+		inrun {
+			if ($0 ~ /^[ \t]*$/) next
+			match($0, /^ */)
+			if (RLENGTH > runcol) { cmd = cmd " " $0; next }
+			flush()
+		}
+		/^[ \t]*(- )?run:/ {
+			runcol = index($0, "run:") - 1
+			v = substr($0, runcol + 5)
+			sub(/^[ \t]+/, "", v)
+			sub(/[ \t]+$/, "", v)
+			inrun = 1
+			cmd = (v ~ /^[|>][-+]?$/) ? "" : v
+			if (cmd != "") flush()
+		}
+		END { flush() }
+	' "$1"
+}
+ci_wf=.github/workflows/ci.yml
+rel_wf=.github/workflows/release.yml
+if [ -f "$ci_wf" ] && [ -f "$rel_wf" ]; then
+	ci_runs=$(job_runs "$ci_wf" integration)
+	if [ -n "$ci_runs" ]; then
+		rel_runs=$(job_runs "$rel_wf" integration)
+		if [ -z "$rel_runs" ]; then
+			err "$rel_wf has no integration job, but $ci_wf's integration job gates every merge"
+		else
+			n=0
+			missing=0
+			while IFS= read -r c; do
+				n=$((n + 1))
+				if ! grep -qxF -- "$c" <<<"$rel_runs"; then
+					err "$rel_wf integration job does not run '$c', which $ci_wf's integration job runs"
+					missing=1
+				fi
+			done <<<"$ci_runs"
+			[ "$missing" -ne 0 ] ||
+				echo "ok: $rel_wf integration job runs all $n of $ci_wf's integration commands"
+		fi
+	fi
+fi
 
 if [ "$fail" -ne 0 ]; then
 	echo

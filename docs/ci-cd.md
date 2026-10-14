@@ -75,11 +75,11 @@ security:
   steps:
     - uses: actions/checkout@v4
     - name: Install govulncheck
-      run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
     - name: Run govulncheck
       run: govulncheck ./...
     - name: Run Trivy
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@v0.36.0
       with:
         scan-type: 'fs'
         format: 'sarif'
