@@ -489,9 +489,6 @@ func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject
 // content is externalized to (see blob.DeleteObject). A blob that could
 // not be deleted is logged as an orphan; the object is gone either way.
 func (s *Service) DeleteObject(ctx context.Context, id string) error {
-	if err := s.Store.Edges().DeleteByObject(ctx, id); err != nil {
-		return err
-	}
 	orphans, err := blob.DeleteObject(ctx, s.Store, id)
 	if err != nil {
 		return err

@@ -16,20 +16,26 @@ type Orphan struct {
 
 func (o Orphan) String() string { return fmt.Sprintf("%s: %v", o.Key, o.Err) }
 
-// DeleteObject hard-deletes object id, then each blob its content is
-// externalized to that no other object still refers to (keys are content
-// hashes, so objects can share one).
+// DeleteObject hard-deletes object id: its edges, its row, then each
+// blob its content is externalized to that no other object still refers
+// to (keys are content hashes, so objects can share one). It is the one
+// hard-delete path: DELETE /objects/{id} and prune both go through it.
 //
-// The row goes first. A failure after it leaves at worst an orphan blob,
-// returned in orphans with the object deleted and err nil, never a row
-// whose ref names a deleted blob. err reports that the object could not
-// be read or deleted; nothing was deleted then.
+// Edges go first: no foreign key cascades them, and an edge left naming
+// a deleted object is never cleaned up. The row goes before its blobs. A
+// failure after it leaves at worst an orphan blob, returned in orphans
+// with the object deleted and err nil, never a row whose ref names a
+// deleted blob. err reports that the object could not be read, or its
+// edges or row deleted; its row and blobs are intact then.
 func DeleteObject(ctx context.Context, drv storage.StorageDriver, id string) (orphans []Orphan, err error) {
 	obj, err := drv.Objects().Get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("delete object %s: %w", id, err)
 	}
 	keys := Keys(obj)
+	if err := drv.Edges().DeleteByObject(ctx, id); err != nil {
+		return nil, fmt.Errorf("delete object %s: %w", id, err)
+	}
 	if err := drv.Objects().Delete(ctx, id); err != nil {
 		return nil, err
 	}

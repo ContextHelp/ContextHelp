@@ -495,9 +495,10 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Each object goes with the blob its content is externalized to,
-	// row first: a blob that can't be deleted is left as an orphan and
-	// listed, never a row whose ref names no blob.
+	// Each object goes the way DELETE /objects/{id} deletes it: edges,
+	// row, then the blob its content is externalized to. A blob that
+	// can't be deleted is left as an orphan and listed, never a row
+	// whose ref names no blob.
 	deleted := 0
 	var orphans []blob.Orphan
 	for _, obj := range objects {

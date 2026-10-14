@@ -13,7 +13,8 @@ import (
 // BlobDeleteConformance pins how a hard delete treats the blob an
 // object's content is externalized to: CountBlobRefs sees every way an
 // object refers to a key, and blob.DeleteObject deletes the blob with
-// the object unless another object still refers to it.
+// the object unless another object still refers to it. It also deletes
+// the object's edges, which no foreign key cascades.
 func BlobDeleteConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
 	ctx := context.Background()
@@ -95,6 +96,46 @@ func BlobDeleteConformance(t *testing.T, drv storage.StorageDriver) {
 		}
 		if exists(t, "sharedkey") {
 			t.Error("deleting the last object referring to a blob left the blob behind")
+		}
+	})
+
+	// No foreign key ties edges to objects: the hard delete removes the
+	// object's edges, both directions, and leaves other objects' edges.
+	t.Run("edges", func(t *testing.T) {
+		create(t, &storage.KnowledgeObject{ID: "bedge-gone", RawContent: "inline"})
+		create(t, &storage.KnowledgeObject{ID: "bedge-kept", RawContent: "inline"})
+		create(t, &storage.KnowledgeObject{ID: "bedge-other", RawContent: "inline"})
+		for _, e := range []*storage.Edge{
+			{ID: "bedge-out", FromType: "object", FromID: "bedge-gone", ToType: "object", ToID: "bedge-kept", EdgeType: "links"},
+			{ID: "bedge-in", FromType: "object", FromID: "bedge-kept", ToType: "object", ToID: "bedge-gone", EdgeType: "links"},
+			{ID: "bedge-unrelated", FromType: "object", FromID: "bedge-kept", ToType: "object", ToID: "bedge-other", EdgeType: "links"},
+		} {
+			e.Weight, e.CreatedAt = 1, fixtureTime()
+			if err := drv.Edges().Create(ctx, e); err != nil {
+				t.Fatalf("create edge %s: %v", e.ID, err)
+			}
+		}
+		if _, err := blob.DeleteObject(ctx, drv, "bedge-gone"); err != nil {
+			t.Fatalf("DeleteObject: %v", err)
+		}
+		for _, list := range []func() ([]*storage.Edge, error){
+			func() ([]*storage.Edge, error) { return drv.Edges().ListFrom(ctx, "object", "bedge-gone") },
+			func() ([]*storage.Edge, error) { return drv.Edges().ListTo(ctx, "object", "bedge-gone") },
+		} {
+			edges, err := list()
+			if err != nil {
+				t.Fatalf("list edges: %v", err)
+			}
+			if len(edges) != 0 {
+				t.Errorf("deleted object still has %d edge(s): %s", len(edges), edges[0].ID)
+			}
+		}
+		kept, err := drv.Edges().ListFrom(ctx, "object", "bedge-kept")
+		if err != nil {
+			t.Fatalf("list edges: %v", err)
+		}
+		if len(kept) != 1 || kept[0].ID != "bedge-unrelated" {
+			t.Errorf("edges of other objects = %v, want [bedge-unrelated]", kept)
 		}
 	})
 
