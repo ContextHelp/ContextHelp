@@ -35,6 +35,10 @@ var ErrCapabilityMissing = errors.New("storage capability missing")
 // the driver and unequal between drivers.
 var ErrNotFound = errors.New("not found")
 
+// ErrNotImplemented is returned by a store a backend does not implement
+// yet, so callers can tell a missing capability from a failed query.
+var ErrNotImplemented = errors.New("not implemented by this storage backend")
+
 // Alias represents a human-readable name that resolves to a knowledge object ID.
 // The canonical definition lives in pkg/pluginapi.
 type Alias = pluginapi.Alias
@@ -158,6 +162,9 @@ type ObjectStore interface {
 	GetByContentHash(ctx context.Context, hash string) (*KnowledgeObject, error)
 	GetBySourceKey(ctx context.Context, key string) (*KnowledgeObject, error)
 	List(ctx context.Context, filter ObjectFilter) ([]*KnowledgeObject, int, error)
+	// CountByType counts every stored object, whatever its status, by
+	// type. Types with no object are absent.
+	CountByType(ctx context.Context) (map[string]int, error)
 	Update(ctx context.Context, obj *KnowledgeObject) error
 	// TransitionStatus moves object id from status from to status to and
 	// sets updated_at to at, in one conditional write: nothing changes

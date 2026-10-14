@@ -199,7 +199,8 @@ func (s *Service) ListEntityPages(
 	return objs, err
 }
 
-// RefreshEntityPage regenerates page content from all source objects.
+// RefreshEntityPage regenerates page content from all source objects. A
+// slug without a page wraps storage.ErrNotFound.
 func (s *Service) RefreshEntityPage(
 	ctx context.Context, entitySlug string,
 ) (*storage.KnowledgeObject, error) {
@@ -208,7 +209,7 @@ func (s *Service) RefreshEntityPage(
 		return nil, err
 	}
 	if page == nil {
-		return nil, fmt.Errorf("entity page not found: %s", entitySlug)
+		return nil, fmt.Errorf("entity page %s: %w", entitySlug, storage.ErrNotFound)
 	}
 
 	meta, _ := ExtractPageMeta(page)

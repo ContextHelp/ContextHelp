@@ -428,3 +428,7 @@ func (m *mockSearchHistoryStore) List(
 	return nil, nil
 }
 func (m *mockSearchHistoryStore) ClearByProfile(_ context.Context, _ string) error { return nil }
+
+func (m *mockObjectStore) CountByType(_ context.Context) (map[string]int, error) {
+	return map[string]int{}, nil
+}

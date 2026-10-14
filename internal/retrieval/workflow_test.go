@@ -346,3 +346,7 @@ func (s *stubLLMFunc) Generate(ctx context.Context, prompt string) (string, erro
 	return s.fn(ctx, prompt)
 }
 func (s *stubLLMFunc) Name() string { return "stub-func" }
+
+func (m *mockObjectStore2) CountByType(_ context.Context) (map[string]int, error) {
+	return map[string]int{}, nil
+}

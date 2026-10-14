@@ -448,3 +448,7 @@ func TestAlternativeEdgeExists_NotFound(t *testing.T) {
 		t.Error("mentions edge should not count as alternative")
 	}
 }
+
+func (s *stubObjectStore) CountByType(_ context.Context) (map[string]int, error) {
+	return map[string]int{}, nil
+}

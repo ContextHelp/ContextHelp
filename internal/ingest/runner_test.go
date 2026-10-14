@@ -199,3 +199,7 @@ func TestRunnerSourceKeyFormat(t *testing.T) {
 		t.Error("expected source_key format adapter:id")
 	}
 }
+
+func (m *memObjectStore) CountByType(_ context.Context) (map[string]int, error) {
+	return map[string]int{}, nil
+}

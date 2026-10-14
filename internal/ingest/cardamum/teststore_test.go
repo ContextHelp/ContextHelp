@@ -88,3 +88,7 @@ func (m *testStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.Ob
 func (m *testStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
 	return nil, nil
 }
+
+func (m *testStore) CountByType(_ context.Context) (map[string]int, error) {
+	return map[string]int{}, nil
+}
