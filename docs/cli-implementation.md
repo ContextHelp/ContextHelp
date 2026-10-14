@@ -68,6 +68,7 @@ storage:
 server:
   port: 8080
   grpc_port: 9090
+  cookie_bridge_port: 9377
   workers: 4
   public: false
 
@@ -104,6 +105,7 @@ Configuration can be overridden using environment variables:
 - `CH_STORAGE_TYPE` - Storage backend type
 - `CH_SERVER_PORT` - HTTP port
 - `CH_GRPC_PORT` - gRPC port
+- `CH_COOKIE_BRIDGE_PORT` - browser-extension cookie bridge port
 
 ### Flag Binding
 

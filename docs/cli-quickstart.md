@@ -100,9 +100,9 @@ For full functionality, start the background worker and API server:
 
 This starts:
 - Background job worker for processing ingestion
-- REST API on port 8080 (a free port if 8080 is busy; `--port` requires that exact port)
-- gRPC API on port 9090 (a free port if 9090 is busy; `--grpc-port` requires that exact port)
-- Browser-extension cookie bridge on `127.0.0.1:9377` (a free port if 9377 is busy; `--cookie-bridge-port` requires that exact port)
+- REST API on port 8080 (a free port if 8080 is busy; `--port`, `CH_SERVER_PORT` or `server.port` requires that exact port)
+- gRPC API on port 9090 (a free port if 9090 is busy; `--grpc-port`, `CH_GRPC_PORT` or `server.grpc_port` requires that exact port)
+- Browser-extension cookie bridge on `127.0.0.1:9377` (a free port if 9377 is busy; `--cookie-bridge-port`, `CH_COOKIE_BRIDGE_PORT` or `server.cookie_bridge_port` requires that exact port)
 
 Manage running instances:
 

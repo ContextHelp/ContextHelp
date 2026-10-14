@@ -36,6 +36,16 @@ dpkms serve --port 8080 --grpc-port 9090 --workers 4
 dpkms serve --public
 ```
 
+The listener ports can also live in `dpkms.yaml` or the environment. The flag wins over the env var, the env var over the file:
+
+| Listener | Flag | Env var | Config key | Default |
+|---|---|---|---|---|
+| HTTP | `--port` | `CH_SERVER_PORT` | `server.port` | 8080 |
+| gRPC | `--grpc-port` | `CH_GRPC_PORT` | `server.grpc_port` | 9090 |
+| Cookie bridge (loopback) | `--cookie-bridge-port` | `CH_COOKIE_BRIDGE_PORT` | `server.cookie_bridge_port` | 9377 |
+
+A port set any of these ways is bound exactly; serve exits non-zero when it is busy. `0` takes an OS-assigned port. Only an unset port falls back from a busy default to a free one.
+
 ### Inbound auth, roles and scopes
 
 A private instance (the default: loopback only, no `server.auth`) needs no token and grants every scope. A `protected` or `public` instance requires `server.auth`, and each token carries one or more roles:
