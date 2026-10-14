@@ -4,6 +4,7 @@ run:
     - integration
     - e2e
     - fts5
+    - watch_e2e
   modules-download-mode: readonly
   tests: true
 linters:
