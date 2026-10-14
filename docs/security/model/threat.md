@@ -62,9 +62,9 @@ Threats to ctxt and dpkms, what mitigates each one today, and what does not.
 
 **Vectors**: provider calls, registry sync, federation push, URL capture.
 
-**Mitigations**: nothing leaves the machine unless configured (provider keys/endpoints, `registries`, `federations`, S3 / PostgreSQL). `--offline` refuses outbound HTTP for one invocation (loopback stays reachable).
+**Mitigations**: nothing leaves the machine unless configured (provider keys/endpoints, `registries`, `federations`, S3 / PostgreSQL). `--offline` refuses outbound HTTP for one invocation (loopback stays reachable). Captured URLs, feeds and every redirect they follow refuse private-network addresses (SSRF guard, [controls.md](controls.md#outbound-fetch-guard)).
 
-**Gaps**: dpkms fetches whatever URL is captured, including private-network addresses.
+**Gaps**: a browser-rendered fetch (`url.authenticated`, `url.interactive`) is vetted before the browser runs, but the browser's own DNS lookups, redirects and subresources are not checked.
 
 ### 7. Denial of service
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -25,6 +26,14 @@ type FeedFetcherOption func(*FeedFetcher)
 func WithHTTPClient(c *http.Client) FeedFetcherOption {
 	return func(f *FeedFetcher) {
 		f.bridge = NewClientBridge(WithBridgeHTTPClient(c))
+	}
+}
+
+// WithFeedFetchGuard makes the fetcher dial through g, the guard built
+// from the fetch.* config. Without it the default guard applies.
+func WithFeedFetchGuard(g *safefetch.Guard) FeedFetcherOption {
+	return func(f *FeedFetcher) {
+		f.bridge = NewClientBridge(WithBridgeFetchGuard(g))
 	}
 }
 
@@ -76,7 +85,11 @@ func (s *FeedFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (
 
 	resp, err := s.bridge.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("feed_fetcher: fetch %s: %w", rawURL, err)
+		wrapped := fmt.Errorf("feed_fetcher: fetch %s: %w", rawURL, err)
+		if safefetch.IsBlocked(err) {
+			return nil, pipeline.Permanent(wrapped)
+		}
+		return nil, wrapped
 	}
 	defer resp.Body.Close()
 

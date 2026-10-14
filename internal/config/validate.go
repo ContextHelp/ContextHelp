@@ -70,6 +70,10 @@ func Validate(c *Config) []ValidationError {
 		}
 	}
 	errs = append(errs, validateRegistryAuth(c)...)
+	if _, err := c.Fetch.Policy(); err != nil {
+		field, msg, _ := strings.Cut(err.Error(), ": ")
+		errs = append(errs, ValidationError{Field: field, Message: msg})
+	}
 
 	if c.Jobs.PollInterval != 0 && c.Jobs.PollInterval < 50*time.Millisecond {
 		errs = append(errs, ValidationError{Field: "jobs.poll_interval", Message: fmt.Sprintf("must be ≥50ms, got %s", c.Jobs.PollInterval)})

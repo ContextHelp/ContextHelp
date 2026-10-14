@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/urlfilter"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
@@ -116,6 +117,9 @@ type Config struct {
 	// Capture configures browser capture (open tabs, history).
 	Capture CaptureConfig `mapstructure:"capture" yaml:"capture"`
 
+	// Fetch governs which addresses a fetch of a captured URL may reach.
+	Fetch FetchConfig `mapstructure:"fetch" yaml:"fetch"`
+
 	// Steps locates external pipeline steps.
 	Steps StepsConfig `mapstructure:"steps" yaml:"steps"`
 
@@ -158,6 +162,46 @@ func (c EmbeddingsConfig) Validate() error {
 		return ValidationError{Field: "embeddings.grace_period", Message: fmt.Sprintf("must not be negative (a duration such as 720h), got %s", c.GracePeriod)}
 	}
 	return nil
+}
+
+// FetchConfig governs the fetches of URLs a user or a captured page
+// supplied: captured pages, feeds, the links they carry and every
+// redirect on the way. By default those fetches refuse private-network
+// addresses (loopback, RFC 1918, ULA, link-local including cloud
+// metadata, CGNAT, multicast, unspecified, and their IPv4-mapped IPv6
+// forms), so a capture cannot make dpkms reach the services beside it.
+// Calls to configured endpoints (providers, registries, federation
+// peers) are not governed by it.
+type FetchConfig struct {
+	// AllowPrivate turns the private-network block off. Default false.
+	AllowPrivate bool `mapstructure:"allow_private" yaml:"allow_private"`
+	// AllowedHosts are host names a fetch may reach whatever they
+	// resolve to, such as an intranet wiki. Exact names, matched
+	// case-insensitively; no scheme, port or wildcard.
+	AllowedHosts []string `mapstructure:"allowed_hosts" yaml:"allowed_hosts,omitempty"`
+	// AllowedCIDRs are private ranges (10.20.0.0/16) or addresses
+	// (10.20.0.5) a fetch may reach anyway.
+	AllowedCIDRs []string `mapstructure:"allowed_cidrs" yaml:"allowed_cidrs,omitempty"`
+}
+
+// Policy returns the fetch policy these settings describe, or an error
+// naming the first malformed allowed_hosts / allowed_cidrs entry.
+func (c FetchConfig) Policy() (safefetch.Policy, error) {
+	return safefetch.ParsePolicy("fetch", c.AllowPrivate, c.AllowedHosts, c.AllowedCIDRs)
+}
+
+// FetchGuard returns the guard fetches of captured URLs dial through. A
+// nil cfg, or settings Load would have rejected, yield the default
+// guard: every private range blocked.
+func FetchGuard(cfg *Config) *safefetch.Guard {
+	if cfg == nil {
+		return safefetch.Default()
+	}
+	p, err := cfg.Fetch.Policy()
+	if err != nil {
+		return safefetch.Default()
+	}
+	return safefetch.New(safefetch.Options{Policy: p})
 }
 
 // CaptureConfig configures browser capture.
@@ -1224,6 +1268,11 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	if err := cfg.validateAllowedHosts(); err != nil {
 		return nil, err
 	}
+	// A malformed fetch allowlist entry would silently fall back to
+	// blocking what the operator meant to open; fail here.
+	if _, err := cfg.Fetch.Policy(); err != nil {
+		return nil, fmt.Errorf("config: %w", err)
+	}
 
 	return &cfg, nil
 }
@@ -1461,6 +1510,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("fanout.enabled", true)
 	v.SetDefault("fanout.entities", true)
 	v.SetDefault("fanout.audit_log", true)
+
+	// Fetches of captured URLs refuse private-network addresses.
+	v.SetDefault("fetch.allow_private", false)
 
 	// Browser history capture: first-run lookback.
 	v.SetDefault("capture.history.initial_lookback", DefaultCaptureHistoryInitialLookback)

@@ -220,6 +220,7 @@ registry/<name>` (value on stdin); see
 | `watch` | Filesystem and clipboard watchers: `dirs`, `patterns`, `debounce`, `clipboard` (`enabled`, `paths` are not read) |
 | `inbox` | Default inbox: `path`, `pipeline`, `tags`. Not read |
 | `capture` | Browser capture: `browser`, `url_filter`, `history` |
+| `fetch` | Which addresses fetches of captured URLs may reach: `allow_private`, `allowed_hosts`, `allowed_cidrs` |
 | `browser` | Built-in IBR browser automation daemon |
 | `fanout` | Post-ingest fan-out enrichment |
 | `resurfacing` | Background resurfacing queue |

@@ -317,6 +317,7 @@ func Build(in Inputs) (*Stack, error) {
 	buildOpts.BlobStore = in.Driver.Blobs()
 	buildOpts.BlobThreshold = cfg.Storage.Blob.Threshold
 	buildOpts.BrowserClient = in.Browser
+	buildOpts.FetchGuard = config.FetchGuard(cfg)
 	s.Pipelines = builtins.ConfiguredRegistryWithPipelineOverrides(buildOpts, cfg.Providers, cfg.Pipelines)
 	pipes := s.Pipelines
 	s.Queue.SetPipelineValidator(func(name string) error {

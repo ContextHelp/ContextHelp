@@ -15,6 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -107,10 +108,22 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"ibr_fetcher": func() pipeline.PipelineStep { return steps.NewIBRFetcher(nil) },
 }
 
+// fetchStepConstructors maps the steps that fetch captured URLs to
+// constructors taking the fetch guard (BuildOpts.FetchGuard), so the
+// fetch.* config governs which addresses they may reach.
+var fetchStepConstructors = map[string]func(*safefetch.Guard) pipeline.PipelineStep{
+	"url_fetcher": func(g *safefetch.Guard) pipeline.PipelineStep {
+		return steps.NewURLFetcher(steps.WithURLFetchGuard(g))
+	},
+	"feed_fetcher": func(g *safefetch.Guard) pipeline.PipelineStep {
+		return steps.NewFeedFetcher(steps.WithFeedFetchGuard(g))
+	},
+}
+
 // browserStepConstructors maps step names to browser-client-aware constructors.
-var browserStepConstructors = map[string]func(*browser.Client) pipeline.PipelineStep{
-	"ibr_fetcher": func(c *browser.Client) pipeline.PipelineStep {
-		return steps.NewIBRFetcher(c)
+var browserStepConstructors = map[string]func(*browser.Client, *safefetch.Guard) pipeline.PipelineStep{
+	"ibr_fetcher": func(c *browser.Client, g *safefetch.Guard) pipeline.PipelineStep {
+		return steps.NewIBRFetcher(c, steps.WithIBRFetchGuard(g))
 	},
 }
 
@@ -127,6 +140,10 @@ type BuildOpts struct {
 	BlobStore     storage.BlobStore
 	BlobThreshold int64
 	BrowserClient *browser.Client
+	// FetchGuard is what url_fetcher, feed_fetcher and ibr_fetcher fetch
+	// captured URLs through (config.FetchGuard). Nil uses the default
+	// guard: every private-network address refused.
+	FetchGuard *safefetch.Guard
 
 	// Models is the registry the embedding step reads its populate set
 	// from, and dedup its default model.
@@ -210,9 +227,16 @@ func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
 			return ctor(opts.Factory), nil
 		}
 	}
+	guard := opts.FetchGuard
+	if guard == nil {
+		guard = safefetch.Default()
+	}
+	if ctor, ok := fetchStepConstructors[name]; ok {
+		return ctor(guard), nil
+	}
 	if opts.BrowserClient != nil {
 		if ctor, ok := browserStepConstructors[name]; ok {
-			return ctor(opts.BrowserClient), nil
+			return ctor(opts.BrowserClient, guard), nil
 		}
 	}
 	if opts.BlobStore != nil {

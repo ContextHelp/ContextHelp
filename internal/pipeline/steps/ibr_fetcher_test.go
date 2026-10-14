@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -46,7 +48,10 @@ func TestIBRFetcher_Run_FetchesViaIBRDaemon(t *testing.T) {
 	defer srv.Close()
 
 	client := browser.NewClient(srv.URL, "test")
-	f := NewIBRFetcher(client)
+	guard := safefetch.New(safefetch.Options{Resolver: staticResolver{
+		"example.com": {netip.MustParseAddr("93.184.216.34")},
+	}})
+	f := NewIBRFetcher(client, WithIBRFetchGuard(guard))
 
 	draft := &storage.KnowledgeObject{
 		Source: "https://example.com",

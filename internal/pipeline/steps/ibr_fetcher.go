@@ -11,19 +11,36 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // IBRFetcher fetches web content using the IBR browser automation daemon.
 // Unlike url_fetcher (plain HTTP), this handles JavaScript-rendered pages,
 // login walls, cookie consent, pagination, and structured data extraction.
+//
+// The browser does its own DNS lookups and follows its own redirects, so
+// the fetch guard cannot sit in its dialer: Run vets the URL with
+// safefetch.Guard.CheckURL before handing it over, refusing a host that
+// resolves to a private-network address.
 type IBRFetcher struct {
 	pipeline.BaseContract
 	client *browser.Client
+	guard  *safefetch.Guard
 }
 
 // IBRFetcherOption configures an IBRFetcher.
 type IBRFetcherOption func(*IBRFetcher)
+
+// WithIBRFetchGuard sets the guard that vets each URL, built from the
+// fetch.* config. Without it the default guard applies.
+func WithIBRFetchGuard(g *safefetch.Guard) IBRFetcherOption {
+	return func(f *IBRFetcher) {
+		if g != nil {
+			f.guard = g
+		}
+	}
+}
 
 // NewIBRFetcher creates an IBRFetcher with the given browser client.
 func NewIBRFetcher(client *browser.Client, opts ...IBRFetcherOption) *IBRFetcher {
@@ -34,6 +51,7 @@ func NewIBRFetcher(client *browser.Client, opts ...IBRFetcherOption) *IBRFetcher
 			Capabilities: []string{"browser"},
 		}),
 		client: client,
+		guard:  safefetch.Default(),
 	}
 	for _, opt := range opts {
 		opt(f)
@@ -56,6 +74,14 @@ func (s *IBRFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*
 	}
 	if rawURL == "" {
 		return nil, fmt.Errorf("ibr_fetcher: no URL to fetch")
+	}
+
+	if err := s.guard.CheckURL(ctx, rawURL); err != nil {
+		wrapped := fmt.Errorf("ibr_fetcher: %w", err)
+		if safefetch.IsBlocked(err) {
+			return nil, pipeline.Permanent(wrapped)
+		}
+		return nil, wrapped
 	}
 
 	log.Printf("ibr_fetcher: fetching %s via browser", rawURL)

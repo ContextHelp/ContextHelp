@@ -42,6 +42,18 @@ Reference: [Inbound auth, roles and scopes](../../manual/reference/config-and-pe
 - **Cross-origin guard** (every instance): state-changing browser requests from another origin get `403 CROSS_ORIGIN_REQUEST`. Requests without `Sec-Fetch-Site` / `Origin` (CLI, federation peers, MCP clients) and browser-extension origins pass; `--dev` / `server.dev` adds the Vite dev server origins.
 - **JSON-only bodies** (every instance): a state-changing request with a body not labelled `application/json` gets `415`.
 
+## Outbound fetch guard
+
+Applies to URLs a user or a captured page supplied: captured pages (`url_fetcher`), feeds (`feed_fetcher`), the items and links they fan out to, and every redirect.
+
+- **Blocked ranges**: loopback (`127.0.0.0/8`, `::1`), private (`10/8`, `172.16/12`, `192.168/16`, `fc00::/7`), link-local (`169.254/16` incl. `169.254.169.254`, `fe80::/10`), CGNAT (`100.64/10`), multicast, unspecified, reserved (`240/4`), site-local, and the IPv4-mapped, IPv4-compatible, NAT64 and 6to4 IPv6 forms of an IPv4 address.
+- **Checked at dial time**: the host is resolved and every address is checked in the socket's `Control` hook just before connect, so DNS rebinding and redirects are covered. Only `http` / `https`; at most 10 redirects. `HTTP_PROXY` / `HTTPS_PROXY` are ignored for these fetches.
+- **Browser fetches** (`ibr_fetcher`): every resolved address is checked before the URL is handed to the browser.
+- **Allowlist**: `fetch.allowed_hosts` (exact names), `fetch.allowed_cidrs`, or `fetch.allow_private: true` to turn the block off.
+- Not covered: calls to configured endpoints (providers, registries, federation peers, security webhooks), which the operator chose.
+
+Reference: [Fetch intranet pages](../../manual/reference/config-and-permissions.md#fetch-intranet-pages).
+
 ## Secrets
 
 - **Provider API keys**: the secrets backend (`secrets.backend`: `env`, `keyring`, `agefile`, `onepassword`, `ghsecrets`) or the env var of the same name. `dpkms secret set` reads from stdin, `--from-file` or `--prompt`, never a positional argument. See [../secrets-backends.md](../secrets-backends.md).

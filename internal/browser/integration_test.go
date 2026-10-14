@@ -3,8 +3,10 @@ package browser_test
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,8 +14,19 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
+
+// tableResolver answers host lookups from a fixed table.
+type tableResolver map[string][]netip.Addr
+
+func (r tableResolver) LookupNetIP(_ context.Context, _, host string) ([]netip.Addr, error) {
+	if ips, ok := r[host]; ok {
+		return ips, nil
+	}
+	return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+}
 
 // TestIntegration_IBRFetcherFullFlow tests the end-to-end flow:
 // mock daemon → client → ibr_fetcher step → populated KnowledgeObject.
@@ -64,7 +77,12 @@ func TestIntegration_IBRFetcherFullFlow(t *testing.T) {
 	assert.Equal(t, 9999, health.PID)
 
 	// 2. IBR fetcher step with custom instructions.
-	fetcher := steps.NewIBRFetcher(client)
+	// The fetch guard resolves the captured host before handing it to
+	// the browser; answer from a table so no real DNS lookup happens.
+	guard := safefetch.New(safefetch.Options{Resolver: tableResolver{
+		"js-heavy-site.example.com": {netip.MustParseAddr("93.184.216.34")},
+	}})
+	fetcher := steps.NewIBRFetcher(client, steps.WithIBRFetchGuard(guard))
 	draft := &storage.KnowledgeObject{
 		Source: "https://js-heavy-site.example.com/dashboard",
 		Metadata: map[string]any{

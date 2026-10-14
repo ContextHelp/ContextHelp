@@ -21,6 +21,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -41,7 +42,11 @@ func startTestEnv(t *testing.T) *testEnv {
 
 	driver := storageutil.NewTestDriver(t)
 	queue := jobs.NewQueue(driver.Jobs())
-	pipes := builtins.Registry()
+	// The mock feed and page servers bind loopback, which the default
+	// fetch guard refuses, as fetch.allow_private: true would allow.
+	pipes := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
+		FetchGuard: safefetch.New(safefetch.Options{Policy: safefetch.Policy{AllowPrivate: true}}),
+	})
 	queue.SetPipelineValidator(func(name string) error {
 		// Check in-memory registry first, then DB-stored pipelines.
 		if _, err := pipes.Get(name); err == nil {
