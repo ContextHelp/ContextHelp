@@ -182,13 +182,13 @@ vuln-scan:
 	@echo "Running govulncheck..."
 	@if ! command -v govulncheck >/dev/null 2>&1; then \
 		echo "Installing govulncheck..."; \
-		go install golang.org/x/vuln/cmd/govulncheck@latest; \
+		go install golang.org/x/vuln/cmd/govulncheck@v1.8.0; \
 	fi
 	govulncheck -tags fts5 ./...
 	@echo "Running nancy (Sonatype OSS Index)..."
 	@if ! command -v nancy >/dev/null 2>&1; then \
 		echo "Installing nancy..."; \
-		go install github.com/sonatype-nexus-community/nancy@latest; \
+		go install github.com/sonatype-nexus-community/nancy@v1.2.0; \
 	fi
 	go list -json -deps ./... | nancy sleuth --exclude-vulnerability-file .nancy-ignore
 	@echo "✓ Vulnerability scan complete"

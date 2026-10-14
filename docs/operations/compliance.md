@@ -228,7 +228,7 @@ go-licenses check ./... --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Cla
 
 ```
 # Install
-go install golang.org/x/vuln/cmd/govulncheck@latest
+go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
 # Run
 govulncheck ./...

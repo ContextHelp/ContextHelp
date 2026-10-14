@@ -1243,7 +1243,7 @@ go mod tidy
 
 Use `govulncheck`:
 ```bash
-go install golang.org/x/vuln/cmd/govulncheck@latest
+go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 govulncheck ./...
 ```
 

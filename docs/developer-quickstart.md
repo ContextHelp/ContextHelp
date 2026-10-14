@@ -180,10 +180,10 @@ go build -o bin/dpkms ./cmd/dpkms
 task install:tools
 
 # Or individually
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-go install github.com/go-task/task/v3/cmd/task@latest
-go install golang.org/x/vuln/cmd/govulncheck@latest
-go install github.com/securego/gosec/v2/cmd/gosec@latest
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
+go install github.com/go-task/task/v3/cmd/task@v3.53.1
+go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
 ```
 
 ### 5. Environment Overrides (Optional)

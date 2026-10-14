@@ -97,11 +97,11 @@ info "Step 4: Installing development tools..."
 # golangci-lint
 if ! command_exists golangci-lint; then
     info "Installing golangci-lint..."
-    if [ "$OS" = "macos" ]; then
-        brew install golangci-lint || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(go env GOPATH)/bin"
-    else
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(go env GOPATH)/bin"
-    fi
+    # The mise.toml pin, built from source like CI: lint findings differ
+    # between releases, and the prebuilt binaries are built with a Go too
+    # old to load this module's config.
+    golangci_version=$(sed -n 's/^"go:.*golangci-lint" = "\(.*\)"$/\1/p' mise.toml)
+    go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v${golangci_version}"
     success "golangci-lint installed"
 else
     success "golangci-lint already installed"
@@ -111,9 +111,9 @@ fi
 if ! command_exists task; then
     info "Installing Task..."
     if [ "$OS" = "macos" ]; then
-        brew install go-task/tap/go-task || go install github.com/go-task/task/v3/cmd/task@latest
+        brew install go-task/tap/go-task || go install github.com/go-task/task/v3/cmd/task@v3.53.1
     else
-        go install github.com/go-task/task/v3/cmd/task@latest
+        go install github.com/go-task/task/v3/cmd/task@v3.53.1
     fi
     success "Task installed"
 else
@@ -123,7 +123,7 @@ fi
 # govulncheck (security scanner)
 if ! command_exists govulncheck; then
     info "Installing govulncheck..."
-    go install golang.org/x/vuln/cmd/govulncheck@latest
+    go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
     success "govulncheck installed"
 else
     success "govulncheck already installed"

@@ -24,6 +24,8 @@
 #   6. release.yml runs ci.yml as a reusable workflow ahead of every other
 #      job, and ci.yml has nothing that skips a job in that called run (a
 #      release gates on at least what a merge gates on)
+#   7. Makefile, Taskfile and scripts/ install no go tool at @latest (or a
+#      branch), and any golangci-lint they install is the v2 mise.toml pin
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -528,6 +530,42 @@ if [ -f "$ci_wf" ] && [ -f "$rel_wf" ]; then
 	done < <(release_workflow_problems "$rel_wf" "$ci_wf")
 	[ "$gate_ok" -eq 0 ] ||
 		echo "ok: $rel_wf runs $ci_wf (job $caller) before every other job"
+fi
+
+# ── 7. go tool installs in the Makefile, Taskfile and scripts ────────────────
+# `make vuln-scan`, `task install:tools` and scripts/dev-setup.sh install
+# the same tools CI does. @latest (or a branch) gives each developer
+# whatever was newest the day they ran it, so local scans and lint stop
+# being evidence about CI. golangci-lint must also be the mise.toml pin on
+# the v2 module path. Comments are ignored; *_test.go fixtures are skipped.
+dev_files=()
+for f in Makefile Taskfile.yml Taskfile.yaml; do
+	[ -f "$f" ] && dev_files+=("$f")
+done
+while IFS= read -r f; do
+	dev_files+=("$f")
+done < <(find scripts -type f ! -name '*_test.go' ! -path '*/testdata/*' 2>/dev/null | sort)
+if [ ${#dev_files[@]} -gt 0 ]; then
+	while read -r hit; do
+		[ -n "$hit" ] || continue
+		err "$hit installs a floating version; pin a release (the one the workflows use)"
+	done < <(awk '{
+		line = $0
+		sub(/(^|[ \t])#.*$/, "", line)
+		if (line ~ /go[ \t]+(install|run|get)[ \t].*[^ \t@]@(latest|master|main)([^A-Za-z0-9._\/-]|$)/) {
+			sub(/^[ \t]+/, "", line)
+			printf "%s:%d: %s\n", FILENAME, FNR, line
+		}
+	}' "${dev_files[@]}")
+
+	while IFS=: read -r f n ref; do
+		[ -n "$ref" ] || continue
+		case "$ref" in
+		*/v2/cmd/golangci-lint@v"$mise_lint" | */v2/cmd/golangci-lint@"$mise_lint") ;;
+		*/v2/cmd/*) err "$f:$n installs $ref but mise.toml pins golangci-lint $mise_lint" ;;
+		*) err "$f:$n installs $ref, the v1 module; .golangci.yml needs golangci-lint/v2 at the mise.toml pin $mise_lint" ;;
+		esac
+	done < <(grep -noE 'golangci-lint(/v[0-9]+)?/cmd/golangci-lint@v?[0-9][0-9.]*' "${dev_files[@]}" || true)
 fi
 
 if [ "$fail" -ne 0 ]; then
