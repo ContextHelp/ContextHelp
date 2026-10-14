@@ -303,6 +303,114 @@ func TestCheckToolchainPins_WorkflowImage(t *testing.T) {
 	}
 }
 
+// mise.toml pins node like go. Every place that names a Node version
+// must agree with it: workflows derive node-version instead of
+// hardcoding it, node images run the pin, and .nvmrc/.node-version and
+// package.json engines.node do not contradict it.
+func TestCheckToolchainPins_NodePin(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH")
+	}
+	mise := readMise(t)
+	pin := miseNodePin(t, mise)
+	major, _, _ := strings.Cut(pin, ".") // 22.23.3 -> 22
+
+	setupNode := func(with string) string {
+		return "name: t\non: push\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n" +
+			"      - uses: actions/setup-node@v7\n        with:\n          " + with + "\n"
+	}
+	nodeContainer := func(img string) string {
+		return "name: t\non: push\njobs:\n  j:\n    runs-on: ubuntu-latest\n    container: " + img +
+			"\n    steps:\n      - run: true\n"
+	}
+	pkg := func(engines string) string {
+		return "{\n  \"name\": \"ui\",\n  \"private\": true,\n  \"engines\": {\n    \"node\": \"" + engines + "\"\n  }\n}\n"
+	}
+
+	cases := []struct {
+		name, file, content, want string
+	}{
+		{"derived node-version", ".github/workflows/ci.yml", setupNode("node-version: ${{ needs.toolchain.outputs.node-version }}"), ""},
+		{"literal pin", ".github/workflows/ci.yml", setupNode("node-version: '" + pin + "'"), "FAIL: workflow hardcodes a Node version"},
+		{"literal major", ".github/workflows/ci.yml", setupNode("node-version: " + major), "FAIL: workflow hardcodes a Node version"},
+		{"lts alias", ".github/workflows/ci.yml", setupNode("node-version: lts/*"), "FAIL: workflow hardcodes a Node version"},
+		{"node-version-file", ".github/workflows/ci.yml", setupNode("node-version-file: .nvmrc"), "FAIL: workflow reads node-version-file"},
+		{"workflow node image at pin", ".github/workflows/ci.yml", nodeContainer("node:" + pin + "-alpine3.24"), ""},
+		{"workflow node image off pin", ".github/workflows/ci.yml", nodeContainer("node:20.19.5-alpine"), "FAIL: .github/workflows/ci.yml runs image "},
+		{"compose node at pin", "docker-compose.yml", "services:\n  ui:\n    image: node:" + pin + "-alpine3.24\n", ""},
+		{"compose node off pin", "docker-compose.yml", "services:\n  ui:\n    image: node:20.19.5-alpine3.24\n", "FAIL: docker-compose.yml runs image "},
+		{"dockerfile node at pin", "Dockerfile", "FROM node:" + pin + "-alpine3.24 AS ui\n", ""},
+		{"dockerfile node off pin", "Dockerfile", "FROM node:20.19.5-alpine3.24 AS ui\n", "FAIL: Dockerfile builds FROM "},
+		{"dockerfile node ARG off pin", "Dockerfile", "ARG NODE_VERSION=20.19.5\nFROM node:${NODE_VERSION}-alpine AS ui\n", "FAIL: Dockerfile builds FROM "},
+		{"nvmrc at pin", ".nvmrc", pin + "\n", ""},
+		{"nvmrc v prefix", "web/ui/.nvmrc", "v" + pin + "\n", ""},
+		{"nvmrc major", ".nvmrc", major + "\n", "FAIL: .nvmrc pins node " + major + " but mise.toml pins node " + pin},
+		{"node-version file off pin", "web/ui/.node-version", "20.19.5\n", "FAIL: web/ui/.node-version pins node 20.19.5"},
+		{"engines exact pin", "web/ui/package.json", pkg(pin), ""},
+		{"engines minimum satisfied", "web/ui/package.json", pkg(">=" + major), ""},
+		{"engines exact off pin", "web/ui/package.json", pkg("20.19.5"), "FAIL: web/ui/package.json engines.node"},
+		{"engines minimum above pin", "web/ui/package.json", pkg(">=99"), "FAIL: web/ui/package.json engines.node"},
+		{"engines unverifiable range", "web/ui/package.json", pkg("^" + major), "FAIL: web/ui/package.json engines.node"},
+		{"no engines", "web/ui/package.json", "{\n  \"name\": \"ui\",\n  \"private\": true\n}\n", ""},
+		{"node_modules ignored", "web/ui/node_modules/x/package.json", pkg("20.19.5"), ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := pinsRepo(t, mise)
+			writePinsFile(t, filepath.Join(repo, tc.file), tc.content)
+
+			out, err := exec.Command("bash", filepath.Join(repo, "scripts", "check-toolchain-pins.sh")).CombinedOutput()
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("%s refused: %v\n%s\n%s", tc.file, err, tc.content, out)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("%s passed the gate:\n%s\n%s", tc.file, tc.content, out)
+			}
+			if !strings.Contains(string(out), tc.want) {
+				t.Errorf("failure does not say %q:\n%s", tc.want, out)
+			}
+		})
+	}
+}
+
+// Without a node pin there is nothing to hold the others to.
+func TestCheckToolchainPins_NodePinRequired(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH")
+	}
+	mise := readMise(t)
+	for name, line := range map[string]string{
+		"missing":  "",
+		"floating": "node = \"22\"\n",
+		"latest":   "node = \"latest\"\n",
+		"lts":      "node = \"lts\"\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := regexp.MustCompile(`(?m)^node = ".*"\n`).ReplaceAll(mise, []byte(line))
+			repo := pinsRepo(t, m)
+			out, err := exec.Command("bash", filepath.Join(repo, "scripts", "check-toolchain-pins.sh")).CombinedOutput()
+			if err == nil {
+				t.Fatalf("mise.toml with node line %q passed the gate\n%s", line, out)
+			}
+			if !strings.Contains(string(out), "FAIL: mise.toml") || !strings.Contains(string(out), "node") {
+				t.Errorf("failure does not name the mise.toml node pin:\n%s", out)
+			}
+		})
+	}
+}
+
+func miseNodePin(t *testing.T, mise []byte) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^node = "(.+)"$`).FindSubmatch(mise)
+	if m == nil {
+		t.Fatal("mise.toml has no node pin")
+	}
+	return string(m[1])
+}
+
 func readMise(t *testing.T) []byte {
 	t.Helper()
 	mise, err := os.ReadFile(filepath.Join("..", "mise.toml"))

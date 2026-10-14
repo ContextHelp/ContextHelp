@@ -22,6 +22,7 @@ jobs:
     outputs:
       go-version: ${{ steps.pins.outputs.go-version }}
       golangci-version: ${{ steps.pins.outputs.golangci-version }}
+      node-version: ${{ steps.pins.outputs.node-version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -31,13 +32,17 @@ jobs:
         run: |
           go_version=$(sed -n 's/^go = "\(.*\)"$/\1/p' mise.toml)
           golangci_version=$(sed -n 's/^"go:.*golangci-lint" = "\(.*\)"$/\1/p' mise.toml)
-          if [ -z "$go_version" ] || [ -z "$golangci_version" ]; then
-            echo "mise.toml is missing an exact go or golangci-lint pin" >&2
+          node_version=$(sed -n 's/^node = "\(.*\)"$/\1/p' mise.toml)
+          if [ -z "$go_version" ] || [ -z "$golangci_version" ] || [ -z "$node_version" ]; then
+            echo "mise.toml is missing an exact go, golangci-lint or node pin" >&2
             exit 1
           fi
-          echo "go-version=$go_version" >>"$GITHUB_OUTPUT"
-          echo "golangci-version=$golangci_version" >>"$GITHUB_OUTPUT"
-          echo "go=$go_version golangci-lint=$golangci_version"
+          {
+            echo "go-version=$go_version"
+            echo "golangci-version=$golangci_version"
+            echo "node-version=$node_version"
+          } >>"$GITHUB_OUTPUT"
+          echo "go=$go_version golangci-lint=$golangci_version node=$node_version"
 
       - name: Verify every toolchain declaration agrees
         run: scripts/check-toolchain-pins.sh
@@ -271,10 +276,12 @@ jobs:
   # Search-graph viewer (web/searchgraph): its JS unit tests, plus a drift
   # gate on the bundle the Go binary embeds from
   # internal/searchgraph/viewer/dist. No Go toolchain needed. pnpm's version
-  # comes from packageManager in web/searchgraph/package.json; node stays on
-  # the 22 LTS line.
+  # comes from packageManager in web/searchgraph/package.json; node's from
+  # the mise.toml pin via the toolchain job (setup-node cannot read
+  # mise.toml).
   viewer:
     name: Search-graph viewer
+    needs: toolchain
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -283,7 +290,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: '22.23.3'
+          node-version: ${{ needs.toolchain.outputs.node-version }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -303,6 +310,7 @@ jobs:
   # version comes from packageManager in web/ui/package.json.
   webui:
     name: Web UI bundle
+    needs: toolchain
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -311,7 +319,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: '22.23.3'
+          node-version: ${{ needs.toolchain.outputs.node-version }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
