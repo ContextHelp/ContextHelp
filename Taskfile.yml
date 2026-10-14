@@ -9,8 +9,6 @@ vars:
   BINARY_CTXT: ./bin/ctxt
   MAIN_DPKMS: ./cmd/dpkms
   MAIN_CTXT: ./cmd/ctxt
-  DB_PATH: ./data/sqlite/contexthelp.db
-  MIGRATION_PATH: ./data/migrations
   BUILD_TAGS: -tags fts5 -buildvcs=false
 
 env:
@@ -211,32 +209,9 @@ tasks:
     cmds:
       - task: build
 
-  # Database tasks
-  db:migrate:up:
-    desc: Run database migrations
-    cmds:
-      - migrate -path {{.MIGRATION_PATH}} -database "sqlite3://{{.DB_PATH}}" up
-
-  db:migrate:down:
-    desc: Rollback database migrations
-    cmds:
-      - migrate -path {{.MIGRATION_PATH}} -database "sqlite3://{{.DB_PATH}}" down 1
-
-  db:migrate:create:
-    desc: "Create new migration (usage: task db:migrate:create -- name)"
-    cmds:
-      - migrate create -ext sql -dir {{.MIGRATION_PATH}} -seq {{.CLI_ARGS}}
-
-  db:reset:
-    desc: Reset database (drop all tables and re-run migrations)
-    cmds:
-      - rm -f {{.DB_PATH}}
-      - task: db:migrate:up
-
-  db:seed:
-    desc: Seed database with test data
-    cmds:
-      - go run ./scripts/seed.go
+  # Database: no tasks. Schema lives in migrations embedded in the
+  # binaries (internal/storage/sqlite/migrations, internal/storage/postgres)
+  # and is applied whenever dpkms or ctxt opens the database.
 
   # Docker tasks
   services:up:
@@ -420,7 +395,6 @@ tasks:
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && ok golangci-lint || fail golangci-lint
           go install golang.org/x/vuln/cmd/govulncheck@latest && ok govulncheck || fail govulncheck
           go install github.com/securego/gosec/v2/cmd/gosec@latest && ok gosec || fail gosec
-          go install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest && ok migrate || fail migrate
         fi
 
         echo ""
@@ -502,7 +476,6 @@ tasks:
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && ok "golangci-lint" || fail "golangci-lint"
           go install golang.org/x/vuln/cmd/govulncheck@latest && ok "govulncheck" || fail "govulncheck"
           go install github.com/securego/gosec/v2/cmd/gosec@latest && ok "gosec" || fail "gosec"
-          go install -tags sqlite3 github.com/golang-migrate/migrate/v4/cmd/migrate@latest && ok "migrate" || fail "migrate"
         }
 
         Write-Host ""
@@ -546,7 +519,6 @@ tasks:
         check_bin task         "task (taskfile)"
         check_bin golangci-lint "golangci-lint"
         check_bin govulncheck  "govulncheck"
-        check_bin migrate      "migrate"
 
         echo "── OCR ──────────────────────────────────────────────────────"
         check_bin tesseract    "tesseract"
@@ -624,7 +596,6 @@ tasks:
         check_bin task "task (taskfile)"
         check_bin golangci-lint
         check_bin govulncheck
-        check_bin migrate
 
         Write-Host "── OCR ──────────────────────────────────────────────────────"
         check_bin tesseract
@@ -678,7 +649,6 @@ tasks:
     cmds:
       - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
       - go install github.com/go-task/task/v3/cmd/task@latest
-      - go install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
       - go install golang.org/x/vuln/cmd/govulncheck@latest
       - go install github.com/securego/gosec/v2/cmd/gosec@latest
       - echo "Development tools installed"
@@ -737,9 +707,6 @@ tasks:
       - go version
       - task --version || echo "Task not found"
       - golangci-lint --version || echo "golangci-lint not found"
-      - migrate -version || echo "migrate not found"
       - govulncheck -version || echo "govulncheck not found"
-      - echo "=== Database ==="
-      - 'ls -lh {{.DB_PATH}} || echo "Database not found (run: task db:migrate:up)"'
       - echo "=== Binaries ==="
       - 'ls -lh bin/ || echo "Binaries not found (run: task build)"'

@@ -96,7 +96,6 @@ This document provides an overview of the development infrastructure for Context
 - **Testing:** test, test:unit, test:integration, test:e2e, test:coverage
 - **Quality:** lint, fmt, vet, security
 - **CI:** ci, ci:lint, ci:test, ci:security
-- **Database:** db:migrate:up, db:migrate:down, db:reset, db:seed
 - **Docker:** services:up, services:down, services:logs
 - **Dependencies:** deps, deps:update
 - **Release:** release:prepare, release:build
@@ -239,16 +238,16 @@ This document provides an overview of the development infrastructure for Context
 2. Creates directory structure
 3. Initializes Go modules
 4. Installs development tools
-5. Sets up SQLite database
-6. Creates initial migrations
-7. Generates `.env` file
-8. Installs Git hooks (`make install-hooks`)
-9. Verifies installation
+5. Generates `.env` file
+6. Installs Git hooks (`make install-hooks`)
+7. Verifies installation
+
+It does not create a database: the binaries create and migrate it on first
+run from their embedded migrations.
 
 **Tools Installed:**
 - golangci-lint
 - Task (task runner)
-- golang-migrate
 - govulncheck
 
 **Features:**
@@ -426,18 +425,9 @@ task verify
 
 ### Database Migrations
 
-```bash
-# Create new migration
-task db:migrate:create -- add_new_table
-
-# Edit migration files in data/migrations/
-
-# Apply migration
-task db:migrate:up
-
-# If needed, rollback
-task db:migrate:down
-```
+Migrations are embedded in the binaries and applied on every database
+open; there are no migration tasks. See
+[Database & Migrations](development.md#database--migrations).
 
 ---
 

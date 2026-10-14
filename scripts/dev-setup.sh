@@ -77,7 +77,6 @@ mkdir -p cmd/dpkms cmd/ctxt
 mkdir -p internal/dpkms/storage internal/dpkms/jobs internal/dpkms/graph
 mkdir -p internal/ctxt/pipelines internal/ctxt/profiles
 mkdir -p pkg/dpkms pkg/ctxt
-mkdir -p data/sqlite data/migrations
 mkdir -p configs
 mkdir -p test/integration test/smoke test/testdata test/testutil
 mkdir -p docs/development
@@ -99,9 +98,9 @@ info "Step 4: Installing development tools..."
 if ! command_exists golangci-lint; then
     info "Installing golangci-lint..."
     if [ "$OS" = "macos" ]; then
-        brew install golangci-lint || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+        brew install golangci-lint || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(go env GOPATH)/bin"
     else
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(go env GOPATH)/bin"
     fi
     success "golangci-lint installed"
 else
@@ -130,19 +129,6 @@ else
     success "govulncheck already installed"
 fi
 
-# golang-migrate (database migrations)
-if ! command_exists migrate; then
-    info "Installing golang-migrate..."
-    if [ "$OS" = "macos" ]; then
-        brew install golang-migrate || go install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-    else
-        go install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-    fi
-    success "golang-migrate installed"
-else
-    success "migrate already installed"
-fi
-
 # Step 5: Install Go dependencies
 info "Step 5: Installing Go dependencies..."
 if [ -f "go.mod" ] && grep -q "require" go.mod; then
@@ -153,77 +139,8 @@ else
     info "No dependencies to install yet (go.mod is empty)"
 fi
 
-# Step 6: Setup SQLite database
-info "Step 6: Setting up local SQLite database..."
-mkdir -p data/sqlite
-
-# Create initial migration files if they don't exist
-if [ ! -f "data/migrations/000001_initial_schema.up.sql" ]; then
-    info "Creating initial migration files..."
-
-    cat > data/migrations/000001_initial_schema.up.sql << 'EOF'
--- Initial schema for dPKMS storage
--- Phase 0: Shared Kernel
-
--- Jobs table (transactional outbox pattern)
-CREATE TABLE IF NOT EXISTS jobs (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending', -- pending, running, completed, failed
-    payload TEXT NOT NULL,
-    error TEXT,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    started_at INTEGER,
-    completed_at INTEGER
-);
-
-CREATE INDEX idx_jobs_status ON jobs(status, created_at);
-CREATE INDEX idx_jobs_type ON jobs(type);
-
--- Knowledge objects table (simplified for Phase 0)
-CREATE TABLE IF NOT EXISTS objects (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,
-    source TEXT NOT NULL,
-    content TEXT NOT NULL,
-    metadata TEXT,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-);
-
-CREATE INDEX idx_objects_type ON objects(type);
-CREATE INDEX idx_objects_created_at ON objects(created_at);
-
--- Configuration table
-CREATE TABLE IF NOT EXISTS config (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at INTEGER NOT NULL
-);
-EOF
-
-    cat > data/migrations/000001_initial_schema.down.sql << 'EOF'
--- Rollback initial schema
-DROP TABLE IF EXISTS config;
-DROP TABLE IF EXISTS objects;
-DROP TABLE IF EXISTS jobs;
-EOF
-
-    success "Initial migration files created"
-fi
-
-# Run migrations
-if command_exists migrate; then
-    info "Running database migrations..."
-    migrate -path ./data/migrations -database "sqlite3://./data/sqlite/contexthelp.db" up || warn "Migrations failed or already applied"
-    success "Database initialized at data/sqlite/contexthelp.db"
-else
-    warn "Skipping migrations (migrate tool not found)"
-fi
-
-# Step 7: Create local configuration
-info "Step 7: Creating local configuration..."
+# Step 6: Create local configuration
+info "Step 6: Creating local configuration..."
 if [ ! -f ".env" ]; then
     cat > .env << 'EOF'
 # ContextHelp development environment (subset of .env.example)
@@ -260,11 +177,11 @@ else
     success ".env file already exists"
 fi
 
-# Step 8: Install git hooks
+# Step 7: Install git hooks
 # Delegates to the canonical installer (make install-hooks), which points
 # core.hooksPath at the tracked .githooks directory. That works in linked
 # worktrees too, where .git is a file rather than a directory.
-info "Step 8: Installing git hooks..."
+info "Step 7: Installing git hooks..."
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     warn "Not a git checkout; skipping hooks"
 elif ! command_exists make; then
@@ -274,25 +191,24 @@ else
     success "Git hooks installed ($(git rev-parse --git-path hooks))"
 fi
 
-# Step 9: Verify installation
-info "Step 9: Verifying installation..."
+# Step 8: Verify installation
+info "Step 8: Verifying installation..."
 
 echo ""
 echo "=== Environment Check ==="
 echo "Go version:      $(go version | awk '{print $3}')"
 echo "OS:              $OS"
 echo "Project root:    $PROJECT_ROOT"
-echo "Database:        ./data/sqlite/contexthelp.db"
+echo "Database:        created and migrated on first run (migrations embedded in the binaries)"
 echo ""
 
 echo "=== Tools Check ==="
 command_exists golangci-lint && echo "golangci-lint:   $(golangci-lint --version | head -n1)" || echo "golangci-lint:   NOT FOUND"
 command_exists task && echo "task:            $(task --version)" || echo "task:            NOT FOUND"
-command_exists migrate && echo "migrate:         $(migrate -version 2>&1 | head -n1)" || echo "migrate:         NOT FOUND"
 command_exists govulncheck && echo "govulncheck:     installed" || echo "govulncheck:     NOT FOUND"
 echo ""
 
-# Step 10: Next steps
+# Step 9: Next steps
 success "Development environment setup complete!"
 echo ""
 echo "=== Next Steps ==="
