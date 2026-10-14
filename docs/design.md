@@ -41,7 +41,6 @@ The system consists of two packages:
 - `ctxt` CLI (primary user interface)
 - `dpkms serve` (background worker daemon)
 - HTTP/gRPC API server (for integrations)
-- Plugin-extended modes
 
 ## High-Level Component Diagram
 
@@ -53,7 +52,7 @@ The system consists of two packages:
 - Graph Index (Objects ↔ Entities)
 - Registry Connectors (Federated)
 - Encryption & Auth
-- Plugin System (dPKMS layer)
+- Plugin API (`pkg/pluginapi`; not loaded at runtime)
 
 **`ctxt` Components:**
 - Capture Layer (CLI, TUI, Browser, Mobile)
@@ -62,7 +61,6 @@ The system consists of two packages:
 - Surfacing Engine (Just-In-Time)
 - Composition Engine (Briefs, Plans, Drafts)
 - Search UX
-- Plugin System (`ctxt` layer)
 
 ## Write Path (Ingestion)
 
@@ -109,34 +107,12 @@ The system consists of two packages:
 
 ## Plugin Integration Points
 
-**dPKMS Plugin Points:**
-- Storage backends
-- Encryption providers
-- Query operators (RSQL extensions)
-- Query strategies (FTS, Vector, Graph, Metadata, Registry)
-- NLQ Normalizers (intent classification, strategy selection)
-- Registry connectors
-- Graph algorithms
-- Job types
-- Pipeline runtime hooks
-- Reranking algorithms
-
-**`ctxt` Plugin Points:**
-- Capture interfaces
-- Enrichment recipes
-- Pipeline steps
-- Focus profiles
-- Surfacing rules
-- Composition templates
-- CLI commands
-- Output formatters
-- Query schema providers
-
-**Cross-Layer Plugin Points:**
-- AI providers (used for NLQ normalization, enrichment, ranking)
-- Background observers (screen watcher, etc.)
-- Notification handlers
-- Export/import formats
+`pkg/pluginapi` defines in-process Go interfaces: `Plugin`, `PipelineStep`,
+`PostIngestHook`, `AliasResolver`, `OutputGenerator`, `PluginRegistryProvider`.
+Neither binary loads plugins yet, so none of these points is active at runtime;
+see [plugin-authoring-guide.md](plugin-authoring-guide.md#1-current-state).
+Storage backends, encryption, query operators, CLI commands, capture
+interfaces and observers are not plugin points.
 
 ---
 
@@ -217,11 +193,9 @@ Each step must implement:
 
 ## Custom Pipelines
 
-Plugins may register:
-
-- New pipeline step types
-- Entire pipelines
-- Conditional branching logic
+Pipelines are changed through `pipelines.overrides` in the dpkms config and
+through steps installed from a step registry (`dpkms pipeline step install`).
+`Plugin.PipelineSteps()` exists in the plugin API but no plugin is loaded.
 
 ## AI Step Providers and Constrained Generation
 
@@ -233,9 +207,9 @@ When enrichment steps call AI models for structured extraction, constrained gene
 - **Pipeline Selector at Ingestion** — closed-set constraint over all registered pipeline names (always routes to valid handler)
 - **Inline Branching** — alters extracted fields based on intermediate model decision without extra round-trip
 
-**Constraint Enforcement:**
-- **Local models only** (llama.cpp, HuggingFace) via LMQL token-level logit masking provide full hard constraints.
-- **API-hosted models** (OpenAI, Anthropic) use `type: instructor` (Pydantic retry-on-schema-failure) or `type: outlines` (regex/schema guided sampling).
+**Constraint enforcement:** not implemented. Steps call the configured
+`providers.*` backend and parse its output; there is no LMQL, instructor or
+outlines integration and no token-level constraint.
 
 ## Execution Guarantees
 
@@ -529,17 +503,13 @@ Different sources produce incompatible scores; results must be unified.
 - Reciprocal Rank Fusion (RRF)
 - Weighted Sum Ranking
 - SoftMax normalization
-- Plugin-provided ranking methods
 
-### AI-Backed Reranking
+### Reranking in code
 
-LMQL can express batch scoring in a single multi-slot constrained pass where each result's relevance score is constrained (int 0–10 or categorical label), and cross-variable constraints can enforce monotonic ranking across the batch. This allows a single query to score and rank all results without iterating over items.
-
-For API-hosted models, a cross-encoder reranking model (fine-tuned for relevance) can score batches efficiently, though it requires a separate HTTP call per batch rather than token-level constraint enforcement.
-
-**Constraint Enforcement:**
-- **Local models only** (LMQL) provide full token-level constraint enforcement and batch scoring in a single pass.
-- **API-hosted models** use cross-encoder embeddings or pairwise LLM comparison as reranking fallback.
+`internal/ranking.DefaultReranker` adds outbound-mention and inbound-backlink
+boosts on top of the per-leg RRF scores. There is no AI-backed reranking: no
+LMQL batch scoring, cross-encoder or pairwise LLM comparison, and no
+plugin-provided ranking methods.
 
 ## Deduplication Strategy
 
@@ -597,7 +567,6 @@ Specifies registry protocol & behavior (ADR-008, ADR-009).
 
 - API key
 - OAuth device flow
-- Plugin-driven authentication
 
 ## Conflict Resolution
 
@@ -612,103 +581,29 @@ Specifies registry protocol & behavior (ADR-008, ADR-009).
 
 ## Purpose
 
-Defines plugin model and lifecycle (ADR-012).
+Defines the plugin model (ADR-012). Current state: in-process Go interfaces in
+`pkg/pluginapi`, a host registry in `internal/plugin`, and no runtime loading.
 
-## Goals
+## What exists
 
-- Extensible in all major system layers
-- Safe execution
-- Explicit user permissions
+- **Interfaces:** `Plugin`, `PipelineStep`, `PostIngestHook`, `AliasResolver`,
+  `OutputGenerator`, `PluginRegistryProvider`.
+- **Manifest:** `manifest.json` / `manifest.yaml` with `apiVersion: v1`, `name`,
+  `version`, optional `type: registry_provider` and `permissions`; validated by
+  `plugin.LoadManifest`, which no host code calls.
+- **Permissions:** a fixed list (`read_objects`, `write_objects`, `call_llm`,
+  `network`, `filesystem`, `clipboard`, …), validated, not enforced.
+- **Packages:** `plugins/` (aliasing, autosuggest, ica, rss-feed, …), exercised
+  by their own tests and by integration tests that register them by hand.
 
-## Plugin Types
+## What does not exist
 
-- Pipeline extension
-- Storage backend
-- Registry adapter
-- Query operators
-- AI provider
-- Background observer (screen watcher)
-- Translation provider
-- Alias/command enhancer
+No `.so` or out-of-process plugins, no `Register(HostContext)` entry point, no
+plugin config dispatch (the `plugins:` key is parsed and read by no code), no
+plugin commands, operators or storage backends, and no AI-provider plugins
+(LMQL, instructor, outlines).
 
-### AI Provider Plugin Example: LMQL Provider
-
-An AI provider plugin registers constrained extraction capabilities:
-
-**Plugin Responsibilities:**
-- Implement `EnrichmentProvider` interface (execute AI step with structured output)
-- Implement `ClassifierClient` interface (normalize NLQ intent/entities/strategy-selection)
-- Register config schema extension for `type: lmql` in polymorphic config loader
-
-**Plugin Manifest (YAML):**
-```yaml
-apiVersion: dpkms/v1
-kind: Plugin
-metadata:
-  name: lmql-provider
-  version: 0.1.0
-spec:
-  pluginPath: ./plugins/lmql-provider.so
-  permissions:
-    subprocess: true
-    network: localhost:8080
-  configSchema:
-    type: object
-    properties:
-      type: { const: "lmql" }
-      backend: { enum: ["local", "api-fallback"] }
-      model: { type: string }
-      endpoint: { type: string, format: "url" }
-      fallback: { $ref: "#/definitions/aiProviderConfig" }
-```
-
-**Alternative AI provider plugins:**
-- `instructor` — Pydantic-based schema validation with automatic retry on schema failure
-- `outlines` — Regex or JSON schema-constrained token generation
-
-## Plugin Interface
-
-Plugins expose:
-
-```
-Register(HostContext)
-```
-
-Where HostContext allows registering:
-
-- pipelines
-- commands
-- operators
-- registry connectors
-- config schemas
-
-## Permission Model
-
-User must explicitly approve:
-
-- screen capture
-- clipboard monitoring
-- network calls
-- modifying bookmarks
-- filesystem writes
-
-## Configuration
-
-Polymorphic config loading:
-
-```
-myplugin:
-  type: plugin
-  plugin: "./plugins/myplugin.so"
-  config:
-    foo: bar
-```
-
-## Packaging
-
-- Static linking
-- `.so` dynamic modules
-- Distributed through registries or GitHub
+Full reference: [plugin-authoring-guide.md](plugin-authoring-guide.md).
 
 ---
 
@@ -963,8 +858,6 @@ Defines security model for plugins, registries, and local data.
 
 ## Controls
 
-- explicit permissions for plugins
-- sandbox-like execution
 - registry authentication
 - configurable network restrictions
 - optional storage encryption
