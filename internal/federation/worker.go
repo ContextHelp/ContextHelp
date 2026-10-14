@@ -226,7 +226,7 @@ func pusherFor(entry config.FederationEntry, src storage.StorageDriver) Pusher {
 		return NewRemotePusherWithWatermarks(entry.Name, entry.URL, entry.Token,
 			src.Watermarks(), src.Blobs())
 	}
-	return NewLocalPusher(entry.Name, entry.URL, src.Blobs())
+	return NewLocalPusher(entry.Name, entry.URL, entry.Blob, src.Blobs())
 }
 
 func isHTTP(target string) bool {

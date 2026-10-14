@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -22,23 +21,17 @@ import (
 type LocalPusher struct {
 	name       string
 	targetPath string
+	targetBlob *config.BlobConfig // the entry's blob setting; nil = default
 	blobs      storage.BlobStore
 }
 
 // NewLocalPusher returns a LocalPusher that writes to targetPath. blobs
 // is the source's store: each pushed object's blob is copied from it
-// into the target's store (TargetBlobDir), so the target's blob:// refs
-// resolve without the source.
-func NewLocalPusher(name, targetPath string, blobs storage.BlobStore) *LocalPusher {
-	return &LocalPusher{name: name, targetPath: targetPath, blobs: blobs}
-}
-
-// TargetBlobDir is the blob store of the instance whose database is
-// targetPath: the default storage.blob.local.path of a data dir holding
-// that database (config.BlobDirName beside it). A file target has no
-// config of its own to name another.
-func TargetBlobDir(targetPath string) string {
-	return filepath.Join(filepath.Dir(targetPath), config.BlobDirName)
+// into the target's store, the one targetBlob (the entry's blob setting)
+// configures — config.FileTargetBlob, blobs/ beside the target database
+// when nil — so the target's blob:// refs resolve without the source.
+func NewLocalPusher(name, targetPath string, targetBlob *config.BlobConfig, blobs storage.BlobStore) *LocalPusher {
+	return &LocalPusher{name: name, targetPath: targetPath, targetBlob: targetBlob, blobs: blobs}
 }
 
 // copyBlobs copies the blobs obj's content refs name from src to dst,
@@ -84,14 +77,7 @@ func (p *LocalPusher) openTarget(ctx context.Context) (storage.StorageDriver, st
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve target %q: %w", p.targetPath, err)
 	}
-	targetBlobs, err := blob.New(config.BlobConfig{
-		Backend: "local",
-		Local:   config.BlobLocalConfig{Path: TargetBlobDir(targetPath)},
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("open target blob store: %w", err)
-	}
-	drv, err := storageutil.NewDriver("sqlite", targetPath, targetBlobs)
+	drv, err := storageutil.Open("sqlite", targetPath, config.FileTargetBlob(targetPath, p.targetBlob))
 	if err != nil {
 		return nil, nil, fmt.Errorf("open target %q: %w", targetPath, err)
 	}
@@ -99,7 +85,7 @@ func (p *LocalPusher) openTarget(ctx context.Context) (storage.StorageDriver, st
 		_ = drv.Close(ctx)
 		return nil, nil, fmt.Errorf("init target %q: %w", targetPath, err)
 	}
-	return drv, targetBlobs, nil
+	return drv, drv.Blobs(), nil
 }
 
 // Watermark returns the watermark the target database keeps for this

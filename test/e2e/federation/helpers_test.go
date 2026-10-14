@@ -104,7 +104,7 @@ func captureBookmark(t *testing.T, inst *instance, id, contentHash, content stri
 // up to now settled.
 func pushOnce(t *testing.T, ix instances) error {
 	t.Helper()
-	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path, ix.src.drv.Blobs())
+	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path, nil, ix.src.drv.Blobs())
 	_, err := federation.Sync(context.Background(), ix.src.drv, pusher, time.Now(), 0)
 	return err
 }

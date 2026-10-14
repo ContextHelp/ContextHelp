@@ -256,6 +256,27 @@ type FederationEntry struct {
 	// Token is the Bearer token sent to the remote instance. Empty = no auth header sent.
 	// Tokens are stored here for remote HTTP peers only; local file targets use path-level auth.
 	Token string `mapstructure:"token" yaml:"token"`
+	// Blob is the blob store of a file target, shaped like storage.blob:
+	// a local push copies each pushed object's blob into it. Unset, it is
+	// the default store of a data dir holding the target database — local,
+	// blobs/ beside it; see FileTargetBlob. Only file targets take it.
+	Blob *BlobConfig `mapstructure:"blob" yaml:"blob,omitempty"`
+}
+
+// FileTargetBlob is the blob store of the file federation target whose
+// database is at dbPath: set when the entry has one, else the default
+// store of a data dir holding that database (as resolveDataPaths fills
+// storage.blob): the local backend at BlobDirName beside it. A local set
+// without local.path gets that same path.
+func FileTargetBlob(dbPath string, set *BlobConfig) BlobConfig {
+	var b BlobConfig
+	if set != nil {
+		b = *set
+	}
+	if (b.Backend == "" || b.Backend == "local") && b.Local.Path == "" {
+		b.Local.Path = filepath.Join(filepath.Dir(dbPath), BlobDirName)
+	}
+	return b
 }
 
 // AuditConfig controls SIEM-ready audit log export and real-time forwarding.

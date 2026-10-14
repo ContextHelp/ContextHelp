@@ -137,7 +137,7 @@ func TestSync_UnchangedSourcePushesNothing(t *testing.T) {
 	t.Run("local", func(t *testing.T) {
 		src := seedSource(t, ids...)
 		_, target := newTestDB(t)
-		spy := &spyPusher{Pusher: NewLocalPusher("sync-local", target, src.Blobs())}
+		spy := &spyPusher{Pusher: NewLocalPusher("sync-local", target, nil, src.Blobs())}
 		if n := mustSync(t, src, spy, 0); n != 3 {
 			t.Fatalf("first sync pushed %d objects, want 3", n)
 		}
@@ -210,7 +210,7 @@ func TestSync_FailedPushKeepsWatermarkAndRetries(t *testing.T) {
 func TestSync_BatchesByCount(t *testing.T) {
 	src := seedSource(t, "b-1", "b-2", "b-3", "b-4", "b-5")
 	_, target := newTestDB(t)
-	spy := &spyPusher{Pusher: NewLocalPusher("sync-batches", target, src.Blobs())}
+	spy := &spyPusher{Pusher: NewLocalPusher("sync-batches", target, nil, src.Blobs())}
 	if n := mustSync(t, src, spy, 2); n != 5 {
 		t.Fatalf("pushed %d objects, want 5", n)
 	}
@@ -383,12 +383,12 @@ func TestSync_LocalWatermarkLivesInTarget(t *testing.T) {
 	src := seedSource(t, "t-1", "t-2")
 	dir := t.TempDir()
 	first := filepath.Join(dir, "a.db")
-	mustSync(t, src, NewLocalPusher("same-name", first, src.Blobs()), 0)
-	if n := mustSync(t, src, NewLocalPusher("same-name", first, src.Blobs()), 0); n != 0 {
+	mustSync(t, src, NewLocalPusher("same-name", first, nil, src.Blobs()), 0)
+	if n := mustSync(t, src, NewLocalPusher("same-name", first, nil, src.Blobs()), 0); n != 0 {
 		t.Errorf("re-sync to an up-to-date target pushed %d", n)
 	}
 	other := filepath.Join(dir, "b.db")
-	if n := mustSync(t, src, NewLocalPusher("same-name", other, src.Blobs()), 0); n != 2 {
+	if n := mustSync(t, src, NewLocalPusher("same-name", other, nil, src.Blobs()), 0); n != 2 {
 		t.Errorf("sync to a fresh target pushed %d, want 2", n)
 	}
 }

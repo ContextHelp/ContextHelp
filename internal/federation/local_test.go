@@ -65,7 +65,7 @@ func TestLocalPusher_SingleObject(t *testing.T) {
 	_, targetPath := newTestDB(t)
 
 	obj := makeObject("obj-1", "hash-1")
-	pusher := NewLocalPusher("test-fed", targetPath, storageutil.NewTestBlobStore(t))
+	pusher := NewLocalPusher("test-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
 	if err := pusher.Push(context.Background(), []storage.KnowledgeObject{obj}, nil, nil); err != nil {
 		t.Fatalf("Push: %v", err)
@@ -97,7 +97,7 @@ func TestLocalPusher_Idempotent(t *testing.T) {
 	_, targetPath := newTestDB(t)
 
 	obj := makeObject("obj-2", "hash-2")
-	pusher := NewLocalPusher("test-fed", targetPath, storageutil.NewTestBlobStore(t))
+	pusher := NewLocalPusher("test-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
 	for i := 0; i < 2; i++ {
 		if err := pusher.Push(context.Background(), []storage.KnowledgeObject{obj}, nil, nil); err != nil {
@@ -129,7 +129,7 @@ func TestLocalPusher_MultipleObjects(t *testing.T) {
 		makeObject("obj-b", "hash-b"),
 		makeObject("obj-c", "hash-c"),
 	}
-	pusher := NewLocalPusher("test-fed", targetPath, storageutil.NewTestBlobStore(t))
+	pusher := NewLocalPusher("test-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
 	if err := pusher.Push(context.Background(), objects, nil, nil); err != nil {
 		t.Fatalf("Push: %v", err)
@@ -162,7 +162,7 @@ func TestLocalPusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 		makeObject("wm-2", "wm-hash-2"),
 		makeObject("wm-3", "wm-hash-3"),
 	}
-	pusher := NewLocalPusher("wm-fed", targetPath, storageutil.NewTestBlobStore(t))
+	pusher := NewLocalPusher("wm-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
 	if err := pusher.Push(context.Background(), objects, nil, nil); err != nil {
 		t.Fatalf("Push: %v", err)
@@ -201,7 +201,7 @@ func TestLocalPusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 func TestLocalPusher_NoObjectsLeavesWatermarkUntouched(t *testing.T) {
 	_, targetPath := newTestDB(t)
 
-	pusher := NewLocalPusher("noop-fed", targetPath, storageutil.NewTestBlobStore(t))
+	pusher := NewLocalPusher("noop-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 	if err := pusher.Push(context.Background(), nil, nil, nil); err != nil {
 		t.Fatalf("Push on empty: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestLocalPusher_NoObjectsLeavesWatermarkUntouched(t *testing.T) {
 // reading its watermark does not create it.
 func TestLocalPusher_WatermarkOfMissingTargetIsZero(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "absent.db")
-	got, err := NewLocalPusher("absent-fed", target, nil).Watermark(context.Background())
+	got, err := NewLocalPusher("absent-fed", target, nil, nil).Watermark(context.Background())
 	if err != nil || got != (storage.ChangeCursor{}) {
 		t.Fatalf("Watermark = %+v, %v; want zero, nil", got, err)
 	}
@@ -265,7 +265,7 @@ func TestLocalPusher_PushesMentions(t *testing.T) {
 		CreatedAt: now, UpdatedAt: now,
 	}
 
-	pusher := NewLocalPusher("test-fed", targetPath, storageutil.NewTestBlobStore(t))
+	pusher := NewLocalPusher("test-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 	if err := pusher.Push(context.Background(),
 		[]storage.KnowledgeObject{obj},
 		[]storage.Edge{mentionAlice, mentionBob},
@@ -329,7 +329,7 @@ func TestLocalPusher_EdgesTravelWithObjects(t *testing.T) {
 	obj2 := makeObject("obj-y", "hash-y")
 	edge := makeEdge("edge-xy", "obj-x", "obj-y")
 
-	pusher := NewLocalPusher("test-fed", targetPath, storageutil.NewTestBlobStore(t))
+	pusher := NewLocalPusher("test-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
 	if err := pusher.Push(
 		context.Background(),
@@ -414,7 +414,7 @@ func TestFederation_EntityPageDupeDoesNotAbortBatch(t *testing.T) {
 		makeObject("capture-B", "hash-cap-B"),
 	}
 
-	pusher := NewLocalPusher("dupe-fed", targetPath, storageutil.NewTestBlobStore(t))
+	pusher := NewLocalPusher("dupe-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
 	if err := pusher.Push(context.Background(), objects, nil, nil); err != nil {
 		t.Fatalf("Push: %v", err)
@@ -459,7 +459,7 @@ func TestLocalPusher_FileURLPrefixStripped(t *testing.T) {
 	target := "file://" + absPath
 
 	obj := makeObject("obj-fileurl", "hash-fileurl")
-	pusher := NewLocalPusher("file-url-fed", target, storageutil.NewTestBlobStore(t))
+	pusher := NewLocalPusher("file-url-fed", target, nil, storageutil.NewTestBlobStore(t))
 
 	if err := pusher.Push(context.Background(), []storage.KnowledgeObject{obj}, nil, nil); err != nil {
 		t.Fatalf("Push with file:// URL: %v", err)

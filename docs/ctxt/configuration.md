@@ -530,6 +530,10 @@ federations:
   - name: local-replica
     url: file:///mnt/backup/dpkms.db
     sync_mode: inline
+    blob:                        # optional; file targets only
+      backend: local
+      local:
+        path: /mnt/backup/blobs
 ```
 
 | Field | Type | Description |
@@ -539,6 +543,7 @@ federations:
 | `token` | string | Bearer token sent to the remote instance, written literally (config files do not expand `${VAR}`) |
 | `sync_mode` | string | `async` (scheduled) or `inline` (immediate) |
 | `interval` | duration | How often to sync (`async` mode only) |
+| `blob` | object | File targets only: the target instance's blob store, same keys as `storage.blob` (`backend`, `threshold`, `local.path`, `s3.*`). A local push copies each pushed object's blob into it. Unset, or `local` without `local.path`: `blobs/` beside the target database. `ctxt config validate` checks it like `storage.blob`; set on an `http(s)` target it is an error |
 
 Each `async` tick pushes only the objects changed since the target's
 watermark: the `updated_at` and id of the last object the target

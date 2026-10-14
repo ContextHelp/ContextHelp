@@ -70,7 +70,7 @@ func TestFederation_ConcurrentPush_Idempotent(t *testing.T) {
 		for _, o := range objs {
 			batch = append(batch, *o)
 		}
-		pusher := federation.NewLocalPusher(fedName, tgtPath, storageutil.NewTestBlobStore(t))
+		pusher := federation.NewLocalPusher(fedName, tgtPath, nil, storageutil.NewTestBlobStore(t))
 		return pusher.Push(ctx, batch, nil, nil)
 	}
 

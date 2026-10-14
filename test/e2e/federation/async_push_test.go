@@ -96,7 +96,7 @@ func TestFederation_AsyncPush_CrashRecovery(t *testing.T) {
 	// matches the "nothing to recover" branch.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path, storageutil.NewTestBlobStore(t))
+	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path, nil, storageutil.NewTestBlobStore(t))
 	if err := pusher.Push(ctx, []storage.KnowledgeObject{}, nil, nil); err != nil {
 		t.Logf("Push on canceled empty batch: %v (expected nil or canceled)", err)
 	}
