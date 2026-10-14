@@ -221,7 +221,11 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        # Same images and tags as ci.yml's integration job
+        # (scripts/check-toolchain-pins.sh refuses floating tags here).
+        # pgvector-bundled: the Postgres driver's first migration is
+        # CREATE EXTENSION vector, which plain postgres images cannot load.
+        image: pgvector/pgvector:0.8.6-pg16-bookworm
         env:
           POSTGRES_USER: contexthelp
           POSTGRES_PASSWORD: test_password
@@ -235,7 +239,7 @@ jobs:
           - 5432:5432
 
       redis:
-        image: redis:7-alpine
+        image: redis:7.4.11-alpine3.21
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s

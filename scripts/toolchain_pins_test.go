@@ -47,6 +47,8 @@ func TestCheckToolchainPins_ComposeGoImage(t *testing.T) {
 	}{
 		{"pinned", "docker-compose.yml", "golang:" + pin + "-bookworm", true},
 		{"floating minor", "docker-compose.yml", "golang:" + minor + "-bookworm", false},
+		{"exact off pin", "docker-compose.yml", "golang:1.0.0-bookworm", false},
+		{"exact off pin with digest", "docker-compose.yml", "golang:1.0.0@sha256:" + strings.Repeat("a", 64), false},
 		{"quoted floating", "docker-compose.yml", `"golang:` + minor + `"`, false},
 		{"latest", "docker-compose.dev.yml", "golang:latest", false},
 		{"registry path", "docker-compose.yml", "docker.io/library/golang:" + minor + "-alpine", false},
@@ -226,6 +228,76 @@ func TestCheckToolchainPins_DockerfileSyntaxFrontend(t *testing.T) {
 			}
 			if !strings.Contains(string(out), "FAIL: Dockerfile uses frontend ") {
 				t.Errorf("failure does not name the frontend:\n%s", out)
+			}
+		})
+	}
+}
+
+// Workflow jobs pull images too: service containers, a job's container
+// (shorthand or mapping) and `docker://` steps. They follow the compose
+// rule, and a golang image must run the mise.toml Go pin.
+func TestCheckToolchainPins_WorkflowImage(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH")
+	}
+	mise := readMise(t)
+	pin := misePin(t, mise)
+
+	service := func(img string) string {
+		return "    services:\n      db:\n        image: " + img + "\n        ports:\n          - 5432:5432\n"
+	}
+	container := func(img string) string { return "    container: " + img + "\n" }
+	containerMap := func(img string) string {
+		return "    container:\n      image: " + img + "\n      options: --cpus 1\n"
+	}
+	dockerStep := func(img string) string { return "      - uses: docker://" + img + "\n" }
+
+	cases := []struct {
+		name, file, job, step string
+		ok                    bool
+	}{
+		{"service exact", "ci.yml", service("pgvector/pgvector:0.8.6-pg16-bookworm"), "", true},
+		{"service exact redis", "ci.yml", service("redis:7.4.11-alpine3.21"), "", true},
+		{"service digest", "ci.yml", service("redis@sha256:" + strings.Repeat("a", 64)), "", true},
+		{"container exact", "ci.yml", container("debian:bookworm-20260918-slim"), "", true},
+		{"container mapping exact", "ci.yml", containerMap("alpine:3.22.2"), "", true},
+		{"docker step exact", "ci.yml", "", dockerStep("alpine:3.22.2"), true},
+		{"golang at pin", "ci.yml", container("golang:" + pin + "-bookworm"), "", true},
+		{"commented out", "ci.yml", "    # services:\n    #   db:\n    #     image: redis:7-alpine\n", "", true},
+		{"no images", "ci.yml", "", "", true},
+		{"service floating", "release.yml", service("postgres:16-alpine"), "", false},
+		{"service major only", "release.yml", service("redis:7-alpine"), "", false},
+		{"service quoted floating", "ci.yml", service(`'redis:7-alpine'`), "", false},
+		{"service latest", "ci.yml", service("redis:latest"), "", false},
+		{"service no tag", "ci.yml", service("redis"), "", false},
+		{"service expression", "ci.yml", service("${{ matrix.image }}"), "", false},
+		{"container floating", "ci.yml", container("node:22-alpine"), "", false},
+		{"container mapping floating", "ci.yml", containerMap("debian:bookworm-slim"), "", false},
+		{"docker step floating", "ci.yml", "", dockerStep("alpine:3"), false},
+		{"golang off pin", "ci.yml", container("golang:1.0.0-bookworm"), "", false},
+		{"golang registry path off pin", "ci.yml", containerMap("docker.io/library/golang:1.0.0"), "", false},
+		{"yaml extension", "nightly.yaml", service("redis:7-alpine"), "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := pinsRepo(t, mise)
+			wf := filepath.Join(".github", "workflows", tc.file)
+			body := "name: t\non: push\njobs:\n  j:\n    runs-on: ubuntu-latest\n" + tc.job +
+				"    steps:\n      - run: true\n" + tc.step
+			writePinsFile(t, filepath.Join(repo, wf), body)
+
+			out, err := exec.Command("bash", filepath.Join(repo, "scripts", "check-toolchain-pins.sh")).CombinedOutput()
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("pinned workflow refused: %v\n%s\n%s", err, body, out)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("%s passed the gate:\n%s\n%s", wf, body, out)
+			}
+			if !strings.Contains(string(out), "FAIL: "+wf+" runs image ") {
+				t.Errorf("failure does not name %s:\n%s", wf, out)
 			}
 		})
 	}

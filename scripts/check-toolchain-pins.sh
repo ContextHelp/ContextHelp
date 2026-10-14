@@ -8,9 +8,11 @@
 #
 # Checks:
 #   1. Dockerfile golang base image == mise go pin, and so is every golang
-#      image a compose file runs (docker-compose*.yml, docker/, .devcontainer/);
-#      every other compose image and Dockerfile base image names an exact
-#      release (X.Y.Z tag, dated tag or digest), never a floating tag
+#      image a compose file (docker-compose*.yml, docker/, .devcontainer/) or
+#      a workflow (.github/workflows/*.yml: services, job containers,
+#      docker:// steps) runs; every other image those files pull and every
+#      Dockerfile base image names an exact release (X.Y.Z tag, dated tag or
+#      digest), never a floating tag
 #   2. go.mod `go` directive is satisfied by the mise go pin (pin >= directive)
 #   3. no workflow hardcodes a go-version literal instead of deriving it
 set -euo pipefail
@@ -54,23 +56,6 @@ for df in Dockerfile; do
 	done < <(grep -oE '\bgolang:[0-9][^ ]*' "$df" || true)
 done
 
-# Compose files run golang images directly (the dev service builds and
-# hot-reloads inside one). A floating tag such as golang:1.26-bookworm
-# tracks the newest patch, so the tag must name the exact pin too.
-for cf in docker-compose*.yml docker/docker-compose*.yml .devcontainer/docker-compose*.yml; do
-	[ -f "$cf" ] || continue
-	while read -r img; do
-		[ -n "$img" ] || continue
-		ver=${img#golang:}
-		ver=${ver%%-*}
-		if [ "$ver" != "$mise_go" ]; then
-			err "$cf runs image $img but mise.toml pins go $mise_go (use golang:$mise_go-<variant>)"
-		else
-			echo "ok: $cf -> $img"
-		fi
-	done < <(grep -E '^[[:space:]]*image:' "$cf" | grep -oE "\bgolang:[^ \"'#]*" || true)
-done
-
 # Every other image must name one release as well. mise.toml pins no
 # service versions, so the tag itself is the pin: a major or minor tag
 # (redis:7-alpine, node:22.23-alpine), a codename (debian:bookworm-slim),
@@ -92,6 +77,25 @@ exact_ref() {
 }
 floating="a floating tag; pin an exact release (X.Y.Z or a dated tag) or a digest"
 
+# toolchain_mismatch <ref>: prints why an image that carries a toolchain
+# mise.toml pins (golang) runs a different version; prints nothing for an
+# image that agrees or carries no pinned toolchain. Compose files and
+# workflows run golang images directly (the dev service builds and
+# hot-reloads inside one), so exact is not enough: it must be the pin.
+toolchain_mismatch() {
+	local name=${1##*/} tag ver
+	name=${name%%@*} # golang:1.26.8@sha256:... -> golang:1.26.8
+	case "$name" in
+	golang | golang:*)
+		tag=${name#golang}
+		tag=${tag#:}
+		ver=${tag%%-*}
+		[ "$ver" = "$mise_go" ] ||
+			echo "but mise.toml pins go $mise_go (use golang:$mise_go-<variant>)"
+		;;
+	esac
+}
+
 for cf in docker-compose*.yml docker/docker-compose*.yml .devcontainer/docker-compose*.yml; do
 	[ -f "$cf" ] || continue
 	while read -r img; do
@@ -108,10 +112,41 @@ for cf in docker-compose*.yml docker/docker-compose*.yml .devcontainer/docker-co
 			err "$cf runs image $img, which has no default to check; give it an exact default"
 		elif ! exact_ref "$ref"; then
 			err "$cf runs image $img, $floating"
+		elif why=$(toolchain_mismatch "$ref") && [ -n "$why" ]; then
+			err "$cf runs image $img $why"
 		else
 			echo "ok: $cf -> $img"
 		fi
 	done < <(sed -n "s/^[[:space:]]*image:[[:space:]]*//p" "$cf" | sed -e 's/[[:space:]]#.*$//' -e 's/[[:space:]]*$//' -e "s/^[\"']//" -e "s/[\"']\$//")
+done
+
+# Workflows pull images as well: service containers (services.*.image), a
+# job's container (`container: <image>` or `container: {image: ...}`) and
+# `uses: docker://<image>` steps. Same rule as compose. An expression such
+# as ${{ matrix.image }} resolves at run time, so the gate cannot check it.
+workflow_images() {
+	sed -n -E \
+		-e 's/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]*//p' \
+		-e 's/^[[:space:]]*container:[[:space:]]*([^[:space:]#].*)$/\1/p' \
+		-e 's|^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*["'"'"']?docker://||p' "$1" |
+		sed -e 's/[[:space:]]#.*$//' -e 's/[[:space:]]*$//' -e "s/^[\"']//" -e "s/[\"']\$//"
+}
+
+for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
+	[ -f "$wf" ] || continue
+	while read -r img; do
+		[ -n "$img" ] || continue
+		# shellcheck disable=SC2016 # literal ${{ expression marker
+		if [[ "$img" == *'${{'* ]]; then
+			err "$wf runs image $img, an expression the gate cannot check; name an exact release"
+		elif ! exact_ref "$img"; then
+			err "$wf runs image $img, $floating"
+		elif why=$(toolchain_mismatch "$img") && [ -n "$why" ]; then
+			err "$wf runs image $img $why"
+		else
+			echo "ok: $wf -> $img"
+		fi
+	done < <(workflow_images "$wf")
 done
 
 # Dockerfile base images: every FROM that pulls an image. ARG defaults are
