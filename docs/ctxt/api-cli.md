@@ -719,6 +719,8 @@ ctxt instance current           # name, URL, layer that chose it, token: yes/no
 
 The selection is persisted to `$XDG_DATA_HOME/contexthelp/run/current-instance`.
 Tokens are never printed; `list` and `current` only say whether one is attached.
+A password or `token=` parameter inside a URL (or a local instance's
+connection string) prints masked, as `****` plus its last 4 characters.
 
 ### Per-call override (not persisted)
 

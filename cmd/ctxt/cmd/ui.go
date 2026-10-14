@@ -16,6 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/browser/launch"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 )
 
@@ -126,6 +127,8 @@ func runUIOpen(cmd *cobra.Command, _ []string) error {
 	}
 	noBrowser, _ := cmd.Flags().GetBool("no-browser")
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
+	// base is for display: a credential the configured URL embeds is
+	// masked. Only the sign-in link the user follows carries it.
 	base := client.URL()
 
 	if kitcli.IsDryRun(cmd) {
@@ -150,8 +153,9 @@ func runUIOpen(cmd *cobra.Command, _ []string) error {
 	}
 	if isJSONOutput() {
 		if link.Opened {
-			// The link was spent on the browser; never print a code twice.
-			link.URL = redactLoginCode(link.URL)
+			// The link was spent on the browser; never print a code twice,
+			// nor a credential the configured URL embeds.
+			link.URL = config.RedactDSN(redactLoginCode(link.URL))
 		}
 		return writeUILink(cmd, stdout, link)
 	}
@@ -160,7 +164,7 @@ func runUIOpen(cmd *cobra.Command, _ []string) error {
 		fmt.Fprintf(stderr, "Opened the web UI sign-in for %s in your browser (single-use link, valid until %s).\n",
 			base, link.ExpiresAt.Local().Format("15:04:05"))
 	case link.Opened:
-		fmt.Fprintf(stderr, "Opened %s in your browser (private instance: no sign-in needed).\n", link.URL)
+		fmt.Fprintf(stderr, "Opened %s in your browser (private instance: no sign-in needed).\n", config.RedactDSN(link.URL))
 	case link.SessionRequired:
 		fmt.Fprintf(stderr, "Single-use sign-in link for %s, valid until %s:\n", base, link.ExpiresAt.Local().Format("15:04:05"))
 		fmt.Fprintln(stdout, link.URL)
@@ -174,7 +178,7 @@ func runUIOpen(cmd *cobra.Command, _ []string) error {
 // mintUILink asks the endpoint for a login code and builds the sign-in
 // URL.
 func mintUILink(ctx context.Context, client *dpkmsclient.Client) (uiLink, error) {
-	base := client.URL()
+	base, link := client.URL(), client.BaseURL()
 	var reply loginCodeReply
 	err := client.Post(ctx, "/api/v1/ui/login-codes", nil, &reply)
 	var remote *dpkmsclient.RemoteError
@@ -195,13 +199,13 @@ func mintUILink(ctx context.Context, client *dpkmsclient.Client) (uiLink, error)
 		return uiLink{}, err
 	}
 	if !reply.SessionRequired {
-		return uiLink{URL: base + "/ui/"}, nil
+		return uiLink{URL: link + "/ui/"}, nil
 	}
 	if reply.Code == "" || !strings.HasPrefix(reply.LoginPath, "/") {
 		return uiLink{}, fmt.Errorf("dpkms at %s sent an unusable login code response", base)
 	}
 	return uiLink{
-		URL:             base + reply.LoginPath + "#code=" + reply.Code,
+		URL:             link + reply.LoginPath + "#code=" + reply.Code,
 		SessionRequired: true,
 		ExpiresAt:       reply.ExpiresAt,
 	}, nil

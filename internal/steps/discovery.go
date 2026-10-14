@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -233,7 +234,7 @@ func (sd *StepDiscovery) FetchRemoteManifest(ctx context.Context, url string) (*
 
 	resp, err := sd.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch manifest: %w", err)
+		return nil, fmt.Errorf("fetch manifest: %w", config.RedactURLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -260,7 +261,7 @@ func (sd *StepDiscovery) FetchRegistryManifest(ctx context.Context, url string) 
 
 	resp, err := sd.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch manifest: %w", err)
+		return nil, fmt.Errorf("fetch manifest: %w", config.RedactURLError(err))
 	}
 	defer resp.Body.Close()
 

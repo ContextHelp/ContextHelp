@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"reflect"
@@ -94,6 +95,24 @@ func RedactDSN(s string) string {
 		}
 		return sub[1] + RedactSecret(val)
 	})
+}
+
+// RedactURLError masks, as RedactDSN does, the URL every *url.Error in
+// err's chain quotes. net/http's client errors repeat the request URL,
+// and with it a token= query parameter the configured locator embeds
+// (the client already hides a userinfo password). err is changed in
+// place and returned. Call it on the error as the client returns it,
+// before wrapping: fmt.Errorf renders its message when called, so a
+// wrapper made earlier keeps the unmasked URL.
+func RedactURLError(err error) error {
+	for e := err; ; {
+		var ue *url.Error
+		if !errors.As(e, &ue) {
+			return err
+		}
+		ue.URL = RedactDSN(ue.URL)
+		e = ue.Err
+	}
 }
 
 // nameLooksSecret reports whether a field or key name contains one of

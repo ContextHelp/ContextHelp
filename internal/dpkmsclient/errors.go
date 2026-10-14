@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"hop.top/kit/go/console/output"
+
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
 // maxErrorBody caps how much of a non-2xx body is read and kept.
@@ -25,7 +27,8 @@ const maxMessageBody = 512
 // POLICY_DENIED or ENTITLEMENT_REQUIRED) or decode Body (a 503 from
 // /healthz still carries the health report).
 type RemoteError struct {
-	// URL is the endpoint's base URL.
+	// URL is the endpoint's base URL as Client.URL shows it: any
+	// credential it embeds is masked.
 	URL string
 	// StatusCode is the HTTP status.
 	StatusCode int
@@ -81,7 +84,7 @@ func statusClass(status int) (code string, exit int) {
 
 // statusError builds the envelope for a non-2xx answer.
 func (c *Client) statusError(status int, body []byte) error {
-	re := &RemoteError{URL: c.base, StatusCode: status, Body: body}
+	re := &RemoteError{URL: c.shown, StatusCode: status, Body: body}
 	var env struct {
 		Error struct {
 			Code    string `json:"code"`
@@ -94,7 +97,7 @@ func (c *Client) statusError(status int, body []byte) error {
 	code, exit := statusClass(status)
 	e := output.WrapError(re, code, exit)
 	if code == output.CodeUnauthorized {
-		e.SuggestedFix = "check the token configured for " + c.base +
+		e.SuggestedFix = "check the token configured for " + c.shown +
 			" (server.token, or the token of its server.urls entry), and that it grants this operation"
 	}
 	return e
@@ -105,23 +108,26 @@ func (c *Client) statusError(status int, body []byte) error {
 // connection was up, the request may have reached dpkms and the failure
 // (timeout, dropped connection) is TRANSIENT.
 func (c *Client) transportError(ctx context.Context, err error, connected bool) error {
+	// The transport's *url.Error quotes the request URL, which carries
+	// whatever credential the endpoint URL embeds.
+	err = config.RedactURLError(err)
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return err
 	}
 	if tlsFailure(err) {
-		e := output.WrapError(fmt.Errorf("dpkms at %s: TLS failed: %w", c.base, err),
+		e := output.WrapError(fmt.Errorf("dpkms at %s: TLS failed: %w", c.shown, err),
 			output.CodePrerequisite, output.ExitPrerequisite)
 		e.SuggestedFix = "check the URL scheme (http or https) and that the host's certificate is trusted"
 		return e
 	}
 	if !connected || dialFailure(err) {
-		e := output.WrapError(fmt.Errorf("dpkms at %s unreachable: %w", c.base, err),
+		e := output.WrapError(fmt.Errorf("dpkms at %s unreachable: %w", c.shown, err),
 			output.CodePrerequisite, output.ExitPrerequisite)
 		e.SuggestedFix = "start dpkms (`dpkms serve`) or check the host is reachable; " +
 			"ctxt never falls back to another instance"
 		return e
 	}
-	return output.WrapError(fmt.Errorf("request to dpkms at %s failed after connecting: %w", c.base, err),
+	return output.WrapError(fmt.Errorf("request to dpkms at %s failed after connecting: %w", c.shown, err),
 		output.CodeTransient, output.ExitTransient)
 }
 

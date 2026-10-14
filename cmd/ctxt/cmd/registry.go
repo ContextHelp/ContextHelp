@@ -391,7 +391,11 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 	}
 
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, map[string]any{"registries": registries, "total": total})
+		shown := make([]*storage.RegistryCache, len(registries))
+		for i, r := range registries {
+			shown[i] = redactedRegistryCache(r)
+		}
+		return outputJSON(os.Stdout, map[string]any{"registries": shown, "total": total})
 	}
 
 	fmt.Printf("Registries (%d)\n\n", total)
@@ -404,7 +408,7 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 	var rows [][]string
 	for _, r := range registries {
 		rows = append(rows, []string{
-			r.RegistryURL,
+			config.RedactDSN(r.RegistryURL),
 			r.LastFetched.Format("2006-01-02 15:04"),
 		})
 	}
@@ -423,15 +427,27 @@ func runRegistryAdd(cmd *cobra.Command, args []string) error {
 	defer cleanup()
 
 	ctx := context.Background()
-	fmt.Printf("Adding registry %s (%s)...\n", name, url)
+	fmt.Printf("Adding registry %s (%s)...\n", name, config.RedactDSN(url))
 	if err := svc.FetchRegistry(ctx, url); err != nil {
 		return fmt.Errorf("fetch registry: %w", err)
 	}
 	fmt.Println("Registry manifest cached")
 	if !registryConfigured(name, url) {
-		fmt.Printf("Not in config: add a registries entry (name: %s, url: %s) with ctxt config edit so sync, info, login and delete find it\n", name, url)
+		fmt.Printf("Not in config: add a registries entry (name: %s, url: %s) with ctxt config edit so sync, info, login and delete find it\n",
+			name, config.RedactDSN(url))
 	}
 	return nil
+}
+
+// redactedRegistryCache returns a copy of c for display: its
+// RegistryURL masks any credential the configured url embeds.
+func redactedRegistryCache(c *storage.RegistryCache) *storage.RegistryCache {
+	if c == nil {
+		return nil
+	}
+	shown := *c
+	shown.RegistryURL = config.RedactDSN(c.RegistryURL)
+	return &shown
 }
 
 // registryConfigured reports whether the loaded config's registries list
@@ -526,11 +542,11 @@ func runRegistryInfo(cmd *cobra.Command, args []string) error {
 	}
 
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, cache)
+		return outputJSON(os.Stdout, redactedRegistryCache(cache))
 	}
 
 	fmt.Printf("Registry: %s\n\n", name)
-	fmt.Printf("URL:          %s\n", cache.RegistryURL)
+	fmt.Printf("URL:          %s\n", config.RedactDSN(cache.RegistryURL))
 	fmt.Printf("Last Fetched: %s\n", cache.LastFetched.Format("2006-01-02 15:04:05"))
 	if cache.ETag != "" {
 		fmt.Printf("ETag:         %s\n", cache.ETag)
@@ -651,10 +667,14 @@ func runRegistrySyncReconcile(
 	}
 
 	if isJSONOutput() {
+		offline := make([]string, len(result.OfflineRegistries))
+		for i, u := range result.OfflineRegistries {
+			offline[i] = config.RedactDSN(u)
+		}
 		return outputJSON(cmd.OutOrStdout(), map[string]any{
 			"merged":             result.Merged,
 			"conflicts":          result.Conflicts,
-			"offline_registries": result.OfflineRegistries,
+			"offline_registries": offline,
 		})
 	}
 
@@ -663,7 +683,7 @@ func runRegistrySyncReconcile(
 	if len(result.OfflineRegistries) > 0 {
 		fmt.Fprintf(cmd.OutOrStdout(), "\nOffline registries (cached values preserved):\n")
 		for _, url := range result.OfflineRegistries {
-			fmt.Fprintf(cmd.OutOrStdout(), "  OFFLINE  %s\n", url)
+			fmt.Fprintf(cmd.OutOrStdout(), "  OFFLINE  %s\n", config.RedactDSN(url))
 		}
 	}
 
@@ -700,7 +720,7 @@ func runRegistrySyncDryRun(
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, map[string]any{
 			"registry": name,
-			"url":      registryURL,
+			"url":      config.RedactDSN(registryURL),
 			"dry_run":  true,
 			"changes":  diffs,
 			"total":    len(diffs),
@@ -1064,7 +1084,7 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 
 	result := capResult{
 		Name:         name,
-		URL:          registryURL,
+		URL:          config.RedactDSN(registryURL),
 		Version:      mVersion,
 		MinClient:    mMinClient,
 		Capabilities: caps,
@@ -1076,7 +1096,7 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Registry: %s\n", name)
-	fmt.Fprintf(cmd.OutOrStdout(), "URL:      %s\n", registryURL)
+	fmt.Fprintf(cmd.OutOrStdout(), "URL:      %s\n", result.URL)
 	if mVersion != "" {
 		fmt.Fprintf(cmd.OutOrStdout(), "Version:  %s\n", mVersion)
 	}

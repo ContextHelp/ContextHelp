@@ -84,5 +84,5 @@ func (g *TrustGate) Approve(registryURL, slug string) (*ApprovalRecord, error) {
 			return r, nil
 		}
 	}
-	return nil, fmt.Errorf("no pending approval for slug %q from registry %q", slug, registryURL)
+	return nil, fmt.Errorf("no pending approval for slug %q from registry %q", slug, config.RedactDSN(registryURL))
 }

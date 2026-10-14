@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher/watchstate"
 )
 
@@ -64,7 +65,7 @@ func runWatchStatus(cmd *cobra.Command, _ []string) error {
 
 	clipStatus, _ := clipboardState()
 	rep := watchStatusReport{
-		Instance: r.Key, Endpoint: r.URL, Running: alive, StateFile: statePath,
+		Instance: r.Key, Endpoint: config.RedactDSN(r.URL), Running: alive, StateFile: statePath,
 		Clipboard: watchClipStatus{
 			Status:       clipStatus,
 			PollInterval: cfg.Watch.Clipboard.PollInterval,

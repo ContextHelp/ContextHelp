@@ -89,7 +89,13 @@ func writeRedactFixture(t *testing.T) string {
 // of the rest counts, so a partial hint (a prefix) is a leak too.
 func assertNoSecret(t *testing.T, label, s string) {
 	t.Helper()
-	for _, sec := range redactFixtureSecrets {
+	assertNoSecretOf(t, redactFixtureSecrets, label, s)
+}
+
+// assertNoSecretOf is assertNoSecret over the given secrets.
+func assertNoSecretOf(t *testing.T, secrets []string, label, s string) {
+	t.Helper()
+	for _, sec := range secrets {
 		hidden := sec[:len(sec)-4]
 		for i := 0; i+4 <= len(hidden); i++ {
 			if strings.Contains(s, hidden[i:i+4]) {
