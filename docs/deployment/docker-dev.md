@@ -38,7 +38,6 @@ Edit any `.go` file. Air detects the change, rebuilds in ~3s, restarts.
 | 8080 | dpkms HTTP API |
 | 9090 | dpkms gRPC |
 | 5173 | Vite dev server (UI) |
-| 9377 | WebSocket (future) |
 
 ## Run tests on host (not in container)
 
