@@ -61,7 +61,15 @@ func New(path string, blobs storage.BlobStore, opts ...Option) (*Driver, error) 
 	// Encode pragmas in the DSN so every pooled connection inherits them.
 	// go-sqlite3 requires file: URI prefix for query parameters to be
 	// parsed as connection pragmas (bare path+? is treated as filename).
-	dsn := "file:" + path + "?_journal_mode=WAL&_synchronous=NORMAL&_foreign_keys=ON&_cache_size=-64000&_busy_timeout=5000"
+	//
+	// _txlock=immediate: every transaction here writes, and a deferred
+	// one that reads first (the FTS5 delete that opens Update, Delete and
+	// Reproject reads the content row before writing the index) holds a
+	// read snapshot; if another writer commits meanwhile, the upgrade to a
+	// write lock fails with SQLITE_BUSY at once, bypassing busy_timeout.
+	// BEGIN IMMEDIATE takes the write lock up front, so concurrent writers
+	// queue on busy_timeout instead.
+	dsn := "file:" + path + "?_journal_mode=WAL&_synchronous=NORMAL&_foreign_keys=ON&_cache_size=-64000&_busy_timeout=5000&_txlock=immediate"
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
