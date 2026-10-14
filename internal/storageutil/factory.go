@@ -1,6 +1,7 @@
 package storageutil
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -51,5 +52,19 @@ func NewDriver(typ, path string, blobs storage.BlobStore, opts ...OpenOption) (s
 		return postgres.New(path, blobs)
 	default:
 		return nil, fmt.Errorf("unknown storage type: %s", typ)
+	}
+}
+
+// CheckSchema reports the schema version of the store of type typ at
+// path against the latest this binary migrates to, without opening the
+// store normally: nothing is migrated or snapshotted.
+func CheckSchema(ctx context.Context, typ, path string) (storage.SchemaStatus, error) {
+	switch typ {
+	case "sqlite":
+		return sqlite.CheckSchema(ctx, path)
+	case "postgres":
+		return postgres.CheckSchema(ctx, path)
+	default:
+		return storage.SchemaStatus{}, fmt.Errorf("unknown storage type: %s", typ)
 	}
 }

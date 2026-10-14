@@ -80,7 +80,7 @@ func (d *Driver) snapshotBeforeMigrate(ctx context.Context, from, target int) er
 		return nil
 	}
 	if from == 0 {
-		empty, err := d.hasNoTables(ctx)
+		empty, err := hasNoOwnTables(ctx, d.db)
 		if err != nil {
 			return fmt.Errorf("snapshot before migration: %w", err)
 		}
@@ -105,18 +105,6 @@ func (d *Driver) snapshotBeforeMigrate(ctx context.Context, from, target int) er
 		slog.Warn("pre-migration snapshot retention failed", "dir", dir, "error", err)
 	}
 	return nil
-}
-
-// hasNoTables reports whether the database holds no tables besides the
-// migration ledger and SQLite's own.
-func (d *Driver) hasNoTables(ctx context.Context) (bool, error) {
-	var n int
-	if err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master
-		 WHERE type = 'table' AND name <> 'schema_version' AND name NOT LIKE 'sqlite\_%' ESCAPE '\'`,
-	).Scan(&n); err != nil {
-		return false, fmt.Errorf("inspect schema: %w", err)
-	}
-	return n == 0, nil
 }
 
 // writeMigrateSnapshot copies the database into dir with SQLite's online
