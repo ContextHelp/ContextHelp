@@ -41,8 +41,12 @@ var configShowCmd = &cobra.Command{
 	Long: `Print the loaded ctxt configuration to stdout.
 
 The default human-readable view groups settings under storage, server, profile,
-i18n, and registries. Pass --format json (global) to emit the full config tree
-as a JSON object for scripting.`,
+i18n, and registries. Pass --format json or yaml (global) to emit the full
+config tree for scripting.
+
+Credentials are redacted in every format: tokens, keys and capability URLs
+print as **** (plus the last 4 characters of values of 16 or more), and a
+password inside a connection string or URL is masked in place.`,
 	RunE: runConfigShow,
 }
 
@@ -270,6 +274,9 @@ func init() {
 }
 
 func runConfigShow(cmd *cobra.Command, args []string) error {
+	// Every format renders the redacted copy: credentials (tokens, keys,
+	// a password inside a connection string) never reach the output.
+	cfg := config.Redacted(cfg)
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, cfg)
 	}

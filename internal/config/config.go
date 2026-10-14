@@ -240,7 +240,7 @@ type BrowserConfig struct {
 type FederationConfig struct {
 	// Token is the expected Bearer token for incoming push requests.
 	// Empty = no auth check; any token accepted.
-	Token string `mapstructure:"token" yaml:"token"`
+	Token string `mapstructure:"token" yaml:"token" secret:"true"`
 }
 
 // FederationEntry describes one remote dPKMS instance to federate with.
@@ -248,14 +248,14 @@ type FederationEntry struct {
 	// Name is a unique local identifier for this federation peer.
 	Name string `mapstructure:"name" yaml:"name"`
 	// URL is the address of the remote dPKMS instance (e.g. https://host:8080 or file:///path/to/db).
-	URL string `mapstructure:"url" yaml:"url"`
+	URL string `mapstructure:"url" yaml:"url" secret:"dsn"`
 	// Interval is how often to sync. Required for async mode; zero = no scheduled sync.
 	Interval time.Duration `mapstructure:"interval" yaml:"interval"`
 	// SyncMode controls how sync runs. Valid values: "async" | "inline".
 	SyncMode string `mapstructure:"sync_mode" yaml:"sync_mode"`
 	// Token is the Bearer token sent to the remote instance. Empty = no auth header sent.
 	// Tokens are stored here for remote HTTP peers only; local file targets use path-level auth.
-	Token string `mapstructure:"token" yaml:"token"`
+	Token string `mapstructure:"token" yaml:"token" secret:"true"`
 	// Blob is the blob store of a file target, shaped like storage.blob:
 	// a local push copies each pushed object's blob into it. Unset, it is
 	// the default store of a data dir holding the target database — local,
@@ -304,7 +304,7 @@ type AuditWebhookConfig struct {
 	// Enabled activates webhook delivery. Default: false.
 	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
 	// URL is the HTTP/HTTPS endpoint that receives POST requests.
-	URL string `mapstructure:"url" yaml:"url"`
+	URL string `mapstructure:"url" yaml:"url" secret:"true"`
 }
 
 // SecurityConfig holds security alerting hook settings.
@@ -321,7 +321,7 @@ type SecurityAlertsConfig struct {
 	// Default: 10.
 	ACLDenialThreshold int `mapstructure:"acl_denial_threshold" yaml:"acl_denial_threshold"`
 	// WebhookURL is an optional endpoint for webhook alerts (empty = disabled).
-	WebhookURL string `mapstructure:"webhook_url" yaml:"webhook_url"`
+	WebhookURL string `mapstructure:"webhook_url" yaml:"webhook_url" secret:"true"`
 	// SMTP holds optional SMTP delivery config.
 	SMTP SecuritySMTPConfig `mapstructure:"smtp" yaml:"smtp"`
 }
@@ -535,7 +535,7 @@ type StorageConfig struct {
 	DataDir string `mapstructure:"data_dir" yaml:"data_dir"`
 	// Path is the SQLite database file, or the PostgreSQL connection
 	// string. Default: <DataDir>/db.sqlite.
-	Path string     `mapstructure:"path" yaml:"path"`
+	Path string     `mapstructure:"path" yaml:"path" secret:"dsn"`
 	Blob BlobConfig `mapstructure:"blob" yaml:"blob"`
 	// MigrateSnapshot copies a SQLite database into backups/ beside it
 	// before an open applies pending schema migrations. Default: true.
@@ -590,12 +590,12 @@ type BlobLocalConfig struct {
 
 // BlobS3Config configures the S3-compatible blob backend.
 type BlobS3Config struct {
-	Endpoint      string        `mapstructure:"endpoint" yaml:"endpoint"`
+	Endpoint      string        `mapstructure:"endpoint" yaml:"endpoint" secret:"dsn"`
 	Region        string        `mapstructure:"region" yaml:"region"`
 	Bucket        string        `mapstructure:"bucket" yaml:"bucket"`
 	Prefix        string        `mapstructure:"prefix" yaml:"prefix"`
-	AccessKey     string        `mapstructure:"access_key" yaml:"access_key"`
-	SecretKey     string        `mapstructure:"secret_key" yaml:"secret_key"`
+	AccessKey     string        `mapstructure:"access_key" yaml:"access_key" secret:"true"`
+	SecretKey     string        `mapstructure:"secret_key" yaml:"secret_key" secret:"true"`
 	UsePathStyle  bool          `mapstructure:"use_path_style" yaml:"use_path_style"`
 	PresignExpiry time.Duration `mapstructure:"presign_expiry" yaml:"presign_expiry"`
 	MaxRetries    int           `mapstructure:"max_retries" yaml:"max_retries"`
@@ -677,7 +677,7 @@ type ServerConfig struct {
 	// URL is the single dpkms instance clients route to when URLs is
 	// empty (also settable per command with --server where the flag
 	// exists). Validated at load: scheme http/https + host required.
-	URL string `mapstructure:"url" yaml:"url,omitempty"`
+	URL string `mapstructure:"url" yaml:"url,omitempty" secret:"dsn"`
 	// URLs lists the dpkms instances this client knows. Without a
 	// selection (--server, --instance, CTXT_INSTANCE, `ctxt instance
 	// use`) clients talk to the first entry and never to the others:
@@ -689,7 +689,7 @@ type ServerConfig struct {
 	// Token is the default bearer token clients attach to requests
 	// against instances whose URLs entry carries no token of its own.
 	// Empty = unauthenticated.
-	Token string `mapstructure:"token" yaml:"token,omitempty"`
+	Token string `mapstructure:"token" yaml:"token,omitempty" secret:"true"`
 
 	// portsSet records which listener ports a layer above the built-in
 	// defaults set; filled by Load.
@@ -808,7 +808,7 @@ type StaticAuthConfig struct {
 // authenticates as.
 type StaticTokenConfig struct {
 	// Token is the shared secret presented by the caller.
-	Token string `mapstructure:"token" yaml:"token"`
+	Token string `mapstructure:"token" yaml:"token" secret:"true"`
 	// Principal is the stable identity assigned to callers of this token.
 	Principal string `mapstructure:"principal" yaml:"principal"`
 	// Roles grants fixed scope bundles to the principal: one or more of
@@ -850,8 +850,8 @@ func (a AuthConfig) HasInboundAuth() bool {
 //	      token: s3cret
 type ServerEndpoint struct {
 	Name  string `mapstructure:"name,omitempty" yaml:"name,omitempty"`
-	URL   string `mapstructure:"url" yaml:"url"`
-	Token string `mapstructure:"token,omitempty" yaml:"token,omitempty"`
+	URL   string `mapstructure:"url" yaml:"url" secret:"dsn"`
+	Token string `mapstructure:"token,omitempty" yaml:"token,omitempty" secret:"true"`
 }
 
 // UnmarshalYAML accepts both entry forms: a bare string URL and a
@@ -1016,7 +1016,7 @@ const (
 // RegistryConfig represents a registry configuration
 type RegistryConfig struct {
 	Name     string             `mapstructure:"name"      yaml:"name"`
-	URL      string             `mapstructure:"url"       yaml:"url"`
+	URL      string             `mapstructure:"url"       yaml:"url" secret:"dsn"`
 	Auth     RegistryAuthConfig `mapstructure:"auth,omitempty" yaml:"auth,omitempty"`
 	SyncMode RegistrySyncMode   `mapstructure:"sync_mode" yaml:"sync_mode"`
 	// TrustLevel controls what the registry is allowed to do to the local graph.
@@ -1027,7 +1027,7 @@ type RegistryConfig struct {
 	// When empty, no entitlement check is performed.
 	// Typically populated at runtime from the registry manifest; can also be
 	// declared explicitly in config for override scenarios.
-	EntitlementURL string `mapstructure:"entitlement_url,omitempty" yaml:"entitlement_url,omitempty"`
+	EntitlementURL string `mapstructure:"entitlement_url,omitempty" yaml:"entitlement_url,omitempty" secret:"dsn"`
 }
 
 // EffectiveTrustLevel returns the trust level with a safe default of untrusted.
@@ -1044,7 +1044,7 @@ func (r RegistryConfig) EffectiveTrustLevel() RegistryTrustLevel {
 type PluginConfig struct {
 	Type   string                 `mapstructure:"type" yaml:"type"`
 	Plugin string                 `mapstructure:"plugin" yaml:"plugin"`
-	Config map[string]interface{} `mapstructure:"config" yaml:"config"`
+	Config map[string]interface{} `mapstructure:"config" yaml:"config" secret:"keys"`
 }
 
 // I18nConfig represents i18n configuration
@@ -1080,10 +1080,10 @@ type EmbeddingProviderConfig struct {
 	// Model is the provider-side model name (e.g. "nomic-embed-text").
 	Model string `mapstructure:"model,omitempty" yaml:"model,omitempty"`
 	// Endpoint is the provider base URL (e.g. "http://localhost:11434").
-	Endpoint string `mapstructure:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Endpoint string `mapstructure:"endpoint,omitempty" yaml:"endpoint,omitempty" secret:"dsn"`
 	// APIKeyEnv names the environment variable that holds the API key.
 	// It is the variable NAME, never the key itself.
-	APIKeyEnv string `mapstructure:"api_key_env,omitempty" yaml:"api_key_env,omitempty"`
+	APIKeyEnv string `mapstructure:"api_key_env,omitempty" yaml:"api_key_env,omitempty" secret:"false"`
 	// Dimension is the expected vector dimension; 0 means unknown.
 	Dimension int `mapstructure:"dimension,omitempty" yaml:"dimension,omitempty"`
 }
@@ -1094,7 +1094,7 @@ type ProviderBackendConfig struct {
 	// Model overrides the default model for LLM-based providers (vision, transcription via ollama).
 	Model string `mapstructure:"model,omitempty" yaml:"model,omitempty"`
 	// Endpoint overrides the default API endpoint (e.g. Ollama URL).
-	Endpoint string `mapstructure:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Endpoint string `mapstructure:"endpoint,omitempty" yaml:"endpoint,omitempty" secret:"dsn"`
 	// Language sets a default language hint (e.g. for OCR, transcription).
 	Language string `mapstructure:"language,omitempty" yaml:"language,omitempty"`
 }
@@ -1724,10 +1724,10 @@ type SecretsConfig struct {
 	AgeIdentityFile string `mapstructure:"age_identity_file" yaml:"age_identity_file"`
 	// KeychainService is the macOS/Linux keychain service name.
 	// Defaults to "ctxt".
-	KeychainService string `mapstructure:"keychain_service" yaml:"keychain_service"`
+	KeychainService string `mapstructure:"keychain_service" yaml:"keychain_service" secret:"false"`
 	// OnePasswordVault is the 1Password vault name to read secrets from.
 	// Only used when Backend == "onepassword". Requires `op` CLI.
-	OnePasswordVault string `mapstructure:"onepassword_vault" yaml:"onepassword_vault"`
+	OnePasswordVault string `mapstructure:"onepassword_vault" yaml:"onepassword_vault" secret:"false"`
 	// GHRepo is the GitHub repository (owner/repo) for the ghsecrets backend.
 	// Only used when Backend == "ghsecrets". Defaults to current repo if empty.
 	// Requires `gh` CLI. Get() falls back to env; Set() writes to GitHub Actions secrets.
