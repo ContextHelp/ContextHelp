@@ -118,7 +118,7 @@ func init() {
 		{Title: "Triage with a specific pipeline", Command: "ctxt inbox triage abc123 --pipeline default"},
 	})
 	cliconv.WithNextSteps(inboxTriageCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt job status <job-id>", Reason: "follow the triaged job through the pipeline"},
+		{When: "on success", Suggest: "dpkms job status <job-id>", Reason: "follow the triaged job through the pipeline"},
 		{When: "if triage fails", Suggest: "ctxt inbox list --failed", Reason: "inspect failed jobs and decide on retry"},
 	})
 	cliconv.WithSideEffect(inboxDiscardCmd, cliconv.SideEffectDestructive)

@@ -36,7 +36,7 @@ ctxt analyze myfile.md
 
 `Set()` is not supported — the env backend is read-only.
 
-**`ctxt secret list`:** Key enumeration not supported. Shows backend name only. To see what env vars are set, inspect your shell environment directly.
+**`dpkms secret list`:** Key enumeration not supported. Shows backend name only. To see what env vars are set, inspect your shell environment directly.
 
 ---
 
@@ -70,10 +70,10 @@ security find-generic-password -s ctxt -a OPENAI_API_KEY -w   # macOS
 secret-tool lookup service ctxt account OPENAI_API_KEY         # Linux
 ```
 
-**`ctxt secret list`:** ✓ Key enumeration supported. Parses `security dump-keychain` (macOS) or `secret-tool search` (Linux), filtering by service name. Only shows keys stored under the configured service — no other keychain entries are exposed:
+**`dpkms secret list`:** ✓ Key enumeration supported. Parses `security dump-keychain` (macOS) or `secret-tool search` (Linux), filtering by service name. Only shows keys stored under the configured service — no other keychain entries are exposed:
 
 ```bash
-ctxt secret list
+dpkms secret list
 # Secrets backend: keychain
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
@@ -115,10 +115,10 @@ rm /tmp/secrets.yaml
 
 `Set()` is not supported — edit the plaintext file and re-encrypt.
 
-**`ctxt secret list`:** ✓ Key enumeration supported. Decrypts the age file and lists all key names:
+**`dpkms secret list`:** ✓ Key enumeration supported. Decrypts the age file and lists all key names:
 
 ```bash
-ctxt secret list
+dpkms secret list
 # Secrets backend: age-file
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
@@ -166,7 +166,7 @@ op read "op://MyVault/OPENAI_API_KEY/password"
 
 `Set()` is not supported — manage items via the 1Password app or `op` CLI directly.
 
-**`ctxt secret list`:** Key enumeration not supported — the `op read` command requires knowing the key name upfront. `ctxt secret list` shows the vault name and guidance. To list items:
+**`dpkms secret list`:** Key enumeration not supported — the `op read` command requires knowing the key name upfront. `dpkms secret list` shows the vault name and guidance. To list items:
 
 ```bash
 op item list --vault MyVault
@@ -184,7 +184,7 @@ secrets:
   gh_repo: owner/repo  # optional — defaults to current repository
 ```
 
-> **Note:** GitHub secrets are write-only by design. `Get()` falls back to environment variables. This backend is primarily for `ctxt secret set` to push values into GitHub Actions.
+> **Note:** GitHub secrets are write-only by design. `Get()` falls back to environment variables. This backend is primarily for `dpkms secret set` to push values into GitHub Actions.
 
 **Prerequisites:**
 
@@ -195,8 +195,8 @@ gh auth login
 **Push a secret to GitHub:**
 
 ```bash
-# Via ctxt
-ctxt secret set OPENAI_API_KEY sk-...
+# Via dpkms (reads the value from a hidden prompt)
+dpkms secret set OPENAI_API_KEY --prompt
 
 # Or directly via gh CLI
 gh secret set OPENAI_API_KEY --body "sk-..." --repo owner/repo
@@ -208,16 +208,16 @@ gh secret set OPENAI_API_KEY --body "sk-..." --repo owner/repo
 gh secret list --repo owner/repo
 ```
 
-**`ctxt secret list`:** ✓ Key enumeration supported. Calls `gh secret list` and shows the names of all secrets in the repository:
+**`dpkms secret list`:** ✓ Key enumeration supported. Calls `gh secret list` and shows the names of all secrets in the repository:
 
 ```bash
-ctxt secret list
+dpkms secret list
 # Secrets backend: gh-secrets
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 ```
 
-Note: GitHub secrets are write-only — `ctxt secret list` shows names only, not values. `ctxt secret get` falls back to environment variables.
+Note: GitHub secrets are write-only — `dpkms secret list` shows names only, not values. `dpkms secret get` falls back to environment variables.
 
 ---
 
@@ -237,32 +237,33 @@ Built-in pipeline steps that need API keys should read them through the `secrets
 
 ---
 
-## CLI Interface (`ctxt secret`)
+## CLI Interface (`dpkms secret`)
 
-All backends are accessible through the `ctxt secret` command group:
+All backends are accessible through the `dpkms secret` command group:
 
 ```bash
 # Retrieve a secret from the active backend
-ctxt secret get OPENAI_API_KEY
+dpkms secret get OPENAI_API_KEY
 
-# Store a secret (backend must support Set())
-ctxt secret set OPENAI_API_KEY sk-...
+# Store a secret (backend must support Set()); the value comes from
+# stdin, --from-file or --prompt, never an argument
+dpkms secret set OPENAI_API_KEY --prompt
 
 # Show the active backend and its config metadata
-ctxt secret list
+dpkms secret list
 ```
 
 JSON output is supported for `get` and `list`:
 
 ```bash
-ctxt --output json secret get OPENAI_API_KEY
+dpkms secret get OPENAI_API_KEY --format json
 # → {"key":"OPENAI_API_KEY","value":"sk-..."}
 
-ctxt --output json secret list
+dpkms secret list --format json
 # → {"backend":"keychain","keychain_service":"ctxt",...}
 ```
 
-**Read-only backends** (`env`, `age-file`, `1password`) return a clear error on `set`. **`ctxt secret list`** enumerates keys for backends that support it (`keychain`, `age-file`, `gh-secrets`); for `env` and `1password` it shows config metadata and guidance on how to inspect keys using native tools.
+**Read-only backends** (`env`, `age-file`, `1password`) return a clear error on `set`. **`dpkms secret list`** enumerates keys for backends that support it (`keychain`, `age-file`, `gh-secrets`); for `env` and `1password` it shows config metadata and guidance on how to inspect keys using native tools.
 
 ---
 

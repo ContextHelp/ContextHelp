@@ -20,7 +20,7 @@ Ensure ingested content is transformed into high-quality structured context (ent
 
 1. Ingestion path is operational (`ctxt analyze` or `dpkms pipeline enqueue`).
 2. Pipelines/providers are configured for your environment.
-3. You can inspect jobs and objects (`ctxt job`, `ctxt open`).
+3. You can inspect jobs and objects (`dpkms job`, `ctxt open`).
 
 ## Procedure
 
@@ -64,17 +64,17 @@ ctxt analyze "Investigate auth error surge" --type text --profile engineering
 ### Step 3: Monitor enrichment throughput and failures
 
 ```bash
-ctxt job list --state running --limit 20
-ctxt job list --state completed --limit 20
-ctxt job list --state failed --limit 20
+dpkms job list --state running --limit 20
+dpkms job list --state completed --limit 20
+dpkms job list --state failed --limit 20
 ```
 
 Inspect one failed job:
 
 ```bash
-ctxt job status <job_id>
-ctxt job log <job_id>
-ctxt job retry <job_id>
+dpkms job status <job_id>
+dpkms job log <job_id>
+dpkms job retry <job_id>
 ```
 
 ### Step 4: Inspect enriched outputs

@@ -200,25 +200,17 @@ func TestProfileHelp(t *testing.T) {
 	}
 }
 
-// TestProfileDeprecatedAliases proves every pre-rename spelling still
-// works. The deprecation banner itself is a cobra concern written to
-// stderr; here we only assert the behavior is unchanged.
-func TestProfileDeprecatedAliases(t *testing.T) {
+// TestProfileDefaultDeprecated proves the one pre-rename spelling left
+// still pins and clears. The deprecation banner itself is a cobra
+// concern written to stderr; here we only assert the behavior.
+func TestProfileDefaultDeprecated(t *testing.T) {
 	db := setupTestDB(t)
 
 	if _, err := db.exec("profile", "create", "legacy"); err != nil {
 		t.Fatalf("create should succeed: %v", err)
 	}
 
-	out, err := db.exec("profile", "show", "legacy")
-	if err != nil {
-		t.Fatalf("deprecated 'profile show' should still succeed: %v", err)
-	}
-	if !strings.Contains(out, "Profile: legacy") {
-		t.Errorf("deprecated show should print profile details, got: %q", out)
-	}
-
-	out, err = db.exec("profile", "default", "legacy")
+	out, err := db.exec("profile", "default", "legacy")
 	if err != nil {
 		t.Fatalf("deprecated 'profile default <name>' should still succeed: %v", err)
 	}
@@ -232,13 +224,5 @@ func TestProfileDeprecatedAliases(t *testing.T) {
 	}
 	if !strings.Contains(out, "Cleared default profile") {
 		t.Errorf("deprecated bare default should clear, got: %q", out)
-	}
-
-	out, err = db.exec("profile", "delete", "--confirm=yes", "legacy")
-	if err != nil {
-		t.Fatalf("deprecated 'profile delete' should still succeed: %v", err)
-	}
-	if !strings.Contains(out, "Removed profile: legacy") {
-		t.Errorf("deprecated delete should remove the profile, got: %q", out)
 	}
 }

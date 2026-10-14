@@ -62,7 +62,7 @@ func init() {
 		{Title: "Analyze a URL and wait for the job", Command: "ctxt analyze https://example.com --type url --wait"},
 	})
 	cliconv.WithNextSteps(analyzeCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt job status", Reason: "track the enqueued job"},
+		{When: "on success", Suggest: "dpkms job status", Reason: "track the enqueued job"},
 		{When: "after enrichment completes", Suggest: "ctxt find <topic>", Reason: "discover related items"},
 	})
 	// "analyze" is not in kit's defaultIdempotency table. Each invocation

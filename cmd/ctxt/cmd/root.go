@@ -93,7 +93,6 @@ var (
 				{ID: "organize", Title: "ORGANIZE"},
 				{ID: "interact", Title: "INTERACT"},
 				{ID: "instance", Title: "INSTANCE"},
-				{ID: "deprecated", Title: "DEPRECATED", Hidden: true},
 			},
 		},
 		Globals: []kitcli.Flag{
@@ -235,10 +234,6 @@ var commandGroups = map[string]string{
 	// MANAGEMENT — hidden by default; --help-all to show
 	"config": "management", "uri": "management", "version": "management",
 	"upgrade": "management",
-
-	// DEPRECATED — moved to dpkms; hidden by default
-	"detector": "deprecated", "dev": "deprecated", "job": "deprecated",
-	"key": "deprecated", "secret": "deprecated",
 }
 
 // applyCommandGroups assigns GroupID to every top-level subcommand based

@@ -106,39 +106,17 @@ cleared. Use 'ctxt profile rm <profile>' to remove the profile.`,
 	RunE: runProfileUnset,
 }
 
-// Deprecated verb shims. The canonical surface is set/unset/view/list/rm
-// (see the target-surface rationale: "default" is a noun, not a verb).
-// ctxt is a published CLI, so the pre-rename spellings keep working and
-// only emit a notice. Cobra writes the Deprecated banner through
-// Command.Print → OutOrStderr(), i.e. stderr, which is what keeps
+// profileDefaultDeprecatedCmd is the one pre-rename spelling left (the
+// canonical surface is set/unset/view/list/rm: "default" is a noun, not
+// a verb). The recorded profile-idempotency conformance scenario
+// (e2e/conformance) still invokes it, so it goes when that scenario is
+// re-recorded against `profile set`. Cobra writes the Deprecated banner
+// through Command.Print → OutOrStderr(), i.e. stderr, which keeps
 // `--format json` on stdout machine-parseable.
 //
-// Each shim delegates to the canonical RunE rather than re-implementing
-// the behavior, so the two spellings can never drift.
-
-var profileShowDeprecatedCmd = &cobra.Command{
-	Use:        "show <profile>",
-	Short:      "[deprecated] use 'ctxt profile view'",
-	Long:       `Deprecated spelling of 'ctxt profile view'. Behaves identically and emits a deprecation notice on stderr.`,
-	Deprecated: "use 'ctxt profile view' instead",
-	Hidden:     true,
-	Args:       cobra.ExactArgs(1),
-	RunE:       runProfileView,
-}
-
-var profileDeleteDeprecatedCmd = &cobra.Command{
-	Use:        "delete <profile>",
-	Short:      "[deprecated] use 'ctxt profile rm'",
-	Long:       `Deprecated spelling of 'ctxt profile rm'. Behaves identically and emits a deprecation notice on stderr.`,
-	Deprecated: "use 'ctxt profile rm' instead",
-	Hidden:     true,
-	Args:       cobra.ExactArgs(1),
-	RunE:       runProfileRm,
-}
-
-// profileDefaultDeprecatedCmd keeps the old dual-purpose semantics: with
-// an argument it pins the default, without one it clears the default.
-// The canonical replacement splits those two jobs across set/unset.
+// It keeps the old dual-purpose semantics: with an argument it pins the
+// default, without one it clears the default. The canonical replacement
+// splits those two jobs across set/unset.
 var profileDefaultDeprecatedCmd = &cobra.Command{
 	Use:   "default [profile]",
 	Short: "[deprecated] use 'ctxt profile set' / 'ctxt profile unset'",
@@ -162,8 +140,6 @@ func init() {
 	profileCmd.AddCommand(profileSetCmd)
 	profileCmd.AddCommand(profileUnsetCmd)
 
-	profileCmd.AddCommand(profileShowDeprecatedCmd)
-	profileCmd.AddCommand(profileDeleteDeprecatedCmd)
 	profileCmd.AddCommand(profileDefaultDeprecatedCmd)
 
 	cliconv.WithSideEffect(profileListCmd, cliconv.SideEffectRead)
@@ -230,26 +206,10 @@ func init() {
 		{Suggest: "ctxt profile set <profile>", Reason: "pin a different profile as the new default"},
 	})
 
-	// The deprecated shims stay in the tree, so the strict 12fcc gates
-	// apply to them too: side-effect, idempotency and guidance mirror
-	// the canonical verb each one forwards to, and the examples point at
-	// the replacement spelling so `--help` teaches the new surface.
-	cliconv.WithSideEffect(profileShowDeprecatedCmd, cliconv.SideEffectRead)
-	cliconv.WithExamples(profileShowDeprecatedCmd, []cliconv.Example{
-		{Title: "Deprecated; prefer view", Command: "ctxt profile view founder"},
-		{Title: "Deprecated spelling", Command: "ctxt profile show founder"},
-	})
-
-	cliconv.WithSideEffect(profileDeleteDeprecatedCmd, cliconv.SideEffectDestructive)
-	cliconv.WithDestructiveToken(profileDeleteDeprecatedCmd)
-	cliconv.WithExamples(profileDeleteDeprecatedCmd, []cliconv.Example{
-		{Title: "Deprecated; prefer rm", Command: "ctxt profile rm myproject --confirm=yes"},
-		{Title: "Deprecated spelling", Command: "ctxt profile delete myproject --confirm=yes"},
-	})
-	cliconv.WithNextSteps(profileDeleteDeprecatedCmd, []cliconv.NextStep{
-		{Suggest: "ctxt profile rm <profile> --confirm=yes", Reason: "move scripts to the canonical destructive verb"},
-	})
-
+	// The deprecated shim stays in the tree, so the strict 12fcc gates
+	// apply to it too: side-effect and guidance mirror set/unset, and the
+	// examples point at the replacement spelling so `--help` teaches the
+	// new surface.
 	cliconv.WithSideEffect(profileDefaultDeprecatedCmd, cliconv.SideEffectWrite)
 	cliconv.WithExamples(profileDefaultDeprecatedCmd, []cliconv.Example{
 		{Title: "Deprecated; prefer set", Command: "ctxt profile set founder"},
@@ -433,7 +393,7 @@ func runProfileCreate(cmd *cobra.Command, args []string) error {
 		// retry of the identical command cannot clear it, so the
 		// envelope names the two ways out instead.
 		e := output.ConflictError(fmt.Sprintf("profile already exists: %s", name))
-		e.SuggestedFix = "choose a different name, or run `ctxt profile show " +
+		e.SuggestedFix = "choose a different name, or run `ctxt profile view " +
 			name + "` to inspect the existing one"
 		return e
 	}

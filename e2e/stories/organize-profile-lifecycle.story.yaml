@@ -18,11 +18,11 @@ steps:
     capture: [exit_code, stdout, stderr]
   - id: inspect
     intent: Inspect the newly created profile to see its starting configuration.
-    invoke: ["ctxt", "profile", "show", "myproject", "--format", "json"]
+    invoke: ["ctxt", "profile", "view", "myproject", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: set_default
     intent: Make the profile the default so later commands inherit it.
-    invoke: ["ctxt", "profile", "default", "myproject", "--format", "json"]
+    invoke: ["ctxt", "profile", "set", "myproject", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: use
     intent: Run a query explicitly scoped to the profile.
@@ -30,5 +30,5 @@ steps:
     capture: [exit_code, stdout]
   - id: retire
     intent: Delete the profile once the project is over.
-    invoke: ["ctxt", "profile", "delete", "myproject", "--format", "json"]
+    invoke: ["ctxt", "profile", "rm", "myproject", "--format", "json"]
     capture: [exit_code, stdout, stderr]

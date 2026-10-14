@@ -45,7 +45,7 @@ func init() {
 	})
 	cliconv.WithNextSteps(ingestCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt list", Reason: "browse the freshly ingested objects"},
-		{When: "if a job stalled", Suggest: "ctxt job status", Reason: "inspect the queue"},
+		{When: "if a job stalled", Suggest: "dpkms job status", Reason: "inspect the queue"},
 	})
 	// "ingest" is not in kit's defaultIdempotency table; the runner
 	// dedups against existing objects, so re-ingesting the same adapter

@@ -36,15 +36,15 @@ ctxt analyze https://example.com/incident-postmortem --type url
 Track execution:
 
 ```bash
-ctxt job list
-ctxt job status <job_id>
-ctxt job log <job_id>
+dpkms job list
+dpkms job status <job_id>
+dpkms job log <job_id>
 ```
 
 Retry failures:
 
 ```bash
-ctxt job retry <job_id>
+dpkms job retry <job_id>
 ```
 
 ### 3. Retrieve deterministically first, semantically second
@@ -78,7 +78,7 @@ ctxt make plan --mention @project.checkout-redesign --since 2026-02-01 --output-
 ### 5. Agent loop contract (recommended)
 
 1. Ingest (`ctxt analyze`)
-2. Poll (`ctxt job status`)
+2. Poll (`dpkms job status`)
 3. Deterministic retrieval (`ctxt list --q ...`)
 4. Semantic retrieval (`ctxt find ...`) if confidence is low
 5. Compose (`ctxt make ...`)

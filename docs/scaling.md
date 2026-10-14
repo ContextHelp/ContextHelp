@@ -70,8 +70,7 @@ concurrent workers never claim the same job. On SQLite all writes go through a
 single writer, so adding workers mainly helps I/O-bound pipelines (network
 fetches, remote LLM calls).
 
-Inspect the queue with `dpkms job list` / `dpkms job status <id>` (or
-`ctxt job`). See [environment-variables/workers.md](environment-variables/workers.md)
+Inspect the queue with `dpkms job list` / `dpkms job status <id>`. See [environment-variables/workers.md](environment-variables/workers.md)
 and [dpkms/jobs-and-ingestion.md](dpkms/jobs-and-ingestion.md).
 
 ---

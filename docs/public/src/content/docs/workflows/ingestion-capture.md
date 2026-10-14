@@ -102,27 +102,27 @@ ctxt analyze "Action for checkout redesign" --type text --mention "@project.chec
 List recent jobs:
 
 ```bash
-ctxt job list --limit 20
+dpkms job list --limit 20
 ```
 
 Filter by state:
 
 ```bash
-ctxt job list --state pending --limit 20
-ctxt job list --state failed --limit 20
+dpkms job list --state pending --limit 20
+dpkms job list --state failed --limit 20
 ```
 
 Inspect one job:
 
 ```bash
-ctxt job status <job_id>
-ctxt job log <job_id>
+dpkms job status <job_id>
+dpkms job log <job_id>
 ```
 
 Retry failures:
 
 ```bash
-ctxt job retry <job_id>
+dpkms job retry <job_id>
 ```
 
 ### Step 4: Verify resulting objects
@@ -178,7 +178,7 @@ find ./imports -type f -name "*.md" -print0 | xargs -0 -I{} ctxt analyze --file 
 ### Jobs remain pending too long
 
 - Confirm `dpkms serve` is running.
-- Check worker load via `ctxt job list --state running`.
+- Check worker load via `dpkms job list --state running`.
 - Reduce ingest volume and retry failed jobs.
 
 ### Wrong pipeline/type detected

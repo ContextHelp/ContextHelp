@@ -2,7 +2,7 @@
 //
 // Flow:
 //
-//	ctxt key init       → generate Ed25519 keypair; private key → OS keychain;
+//	dpkms key init      → generate Ed25519 keypair; private key → OS keychain;
 //	                      public key → ~/.config/contexthelp/keys/<fp>.pub
 //	ctxt config backup  → zip config files; sign zip bytes; write .zip + .sig sidecar;
 //	                      embed public key hex in manifest.json inside zip

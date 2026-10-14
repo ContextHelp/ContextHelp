@@ -29,15 +29,15 @@ If these fail, fix runtime/config before deeper troubleshooting.
 Check queue states:
 
 ```bash
-ctxt job list --state pending --limit 50
-ctxt job list --state running --limit 50
+dpkms job list --state pending --limit 50
+dpkms job list --state running --limit 50
 ```
 
 Inspect a blocked job:
 
 ```bash
-ctxt job status <job_id>
-ctxt job log <job_id>
+dpkms job status <job_id>
+dpkms job log <job_id>
 ```
 
 Typical fixes:
@@ -47,7 +47,7 @@ Typical fixes:
 3. Retry failed jobs:
 
 ```bash
-ctxt job retry <job_id>
+dpkms job retry <job_id>
 ```
 
 Related stories: `US-0008`, `US-0015`, `US-0032`, `US-0033`, `US-0036`, `US-0301` to `US-0317`
@@ -57,8 +57,8 @@ Related stories: `US-0008`, `US-0015`, `US-0032`, `US-0033`, `US-0036`, `US-0301
 Capture detailed failure info:
 
 ```bash
-ctxt job status <job_id>
-ctxt job log <job_id>
+dpkms job status <job_id>
+dpkms job log <job_id>
 ```
 
 Then verify the input class and pipeline:

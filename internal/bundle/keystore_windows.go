@@ -36,7 +36,7 @@ func LoadPrivateKey() (ed25519.PrivateKey, error) {
 	)
 	out, err := exec.Command("powershell", "-NoProfile", "-Command", script).Output()
 	if err != nil || strings.TrimSpace(string(out)) == "" {
-		return nil, fmt.Errorf("bundle: load private key (run `ctxt key init` first): %w", err)
+		return nil, fmt.Errorf("bundle: load private key (run `dpkms key init` first): %w", err)
 	}
 	encoded := strings.TrimRight(string(out), "\r\n")
 	decoded, err := hex.DecodeString(encoded)

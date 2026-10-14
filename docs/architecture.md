@@ -751,7 +751,7 @@ ctxt make plan --topic "project X"
 
 # Manage
 ctxt status
-ctxt job list
+dpkms job list
 ctxt sync <registry>
 
 # Focus

@@ -183,9 +183,9 @@ ctxt analyze --file screenshot.png --type image
 ctxt analyze https://example.com --wait
 
 # Manage jobs
-ctxt job list
-ctxt job status job_12345678
-ctxt job retry job_12345678
+dpkms job list
+dpkms job status job_12345678
+dpkms job retry job_12345678
 
 # Query knowledge
 ctxt list --tag ux,onboarding --limit 10

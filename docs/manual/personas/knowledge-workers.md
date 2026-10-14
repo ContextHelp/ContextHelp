@@ -51,20 +51,20 @@ ctxt analyze "Critical decision note" --type text --wait
 List recent jobs:
 
 ```bash
-ctxt job list
+dpkms job list
 ```
 
 Inspect one job:
 
 ```bash
-ctxt job status <job_id>
-ctxt job log <job_id>
+dpkms job status <job_id>
+dpkms job log <job_id>
 ```
 
 If a job fails:
 
 ```bash
-ctxt job retry <job_id>
+dpkms job retry <job_id>
 ```
 
 ### Step 3: Discover context with search
@@ -170,7 +170,7 @@ ctxt make brief --tag signup,onboarding --since 2026-02-01 --output-file onboard
 
 ### Results are missing after capture
 
-- Check `ctxt job list` for pending/running jobs.
+- Check `dpkms job list` for pending/running jobs.
 - Use `--wait` for critical captures.
 - Check failed job logs and retry.
 

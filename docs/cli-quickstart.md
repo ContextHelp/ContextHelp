@@ -166,8 +166,7 @@ echo "UX improvements needed" | ./bin/ctxt
 
 ### 3. Manage Jobs
 
-Monitor and control ingestion jobs with `dpkms job` (`ctxt job` is a deprecated
-alias that forwards to it):
+Monitor and control ingestion jobs with `dpkms job` (ctxt has no job command):
 
 ```bash
 # List all jobs

@@ -62,7 +62,6 @@ go build -o dpkms cmd/dpkms/main.go
 | `ctxt <content>` | (Default) Enqueue content for ingestion (args, stdin, or clipboard) |
 | `ctxt analyze` | Enqueue an ingestion job (supports clipboard fallback) |
 | `ctxt inbox` | Manage inbox items (list, triage, discard, clear) |
-| `ctxt job` | Inspect/manage ingestion jobs |
 | `ctxt list` | Query knowledge objects on the dpkms instance |
 | `ctxt find <query>` | Semantic search (supports clipboard fallback) |
 | `ctxt show <id>` | Display knowledge object details (supports clipboard fallback) |
@@ -80,7 +79,6 @@ go build -o dpkms cmd/dpkms/main.go
 | `ctxt config` | Configuration operations |
 | `ctxt registry` | Manage registries |
 | `ctxt entity` | Query and inspect entities |
-| `ctxt secret` | Manage secrets (get, set, list backend) |
 | `ctxt uri` | Manage ctxt:// URI scheme OS registration |
 
 ### `dpkms` Commands (Infrastructure)
@@ -92,6 +90,8 @@ go build -o dpkms cmd/dpkms/main.go
 | `dpkms shutdown` | Gracefully stop a running instance (alias: `stop`) |
 | `dpkms reboot` | Gracefully restart a running instance (SIGHUP) |
 | `dpkms housekeeping` | Database maintenance and optimization |
+| `dpkms job` | Inspect/manage ingestion jobs |
+| `dpkms secret` | Manage secrets (get, set, list backend) |
 
 ### Version and Verbose Flags
 
@@ -229,18 +229,18 @@ ctxt inbox clear --confirm-token=<token>
 
 ---
 
-## `ctxt job`
+## `dpkms job`
 
-Inspect and control ingestion jobs.
+Inspect and control ingestion jobs. ctxt has no job command.
 
 ### Commands
 
 ```bash
-ctxt job list
-ctxt job status <id>
-ctxt job log <id>
-ctxt job retry <id>
-ctxt job cancel <id>
+dpkms job list [--state pending|running|completed|failed|cancelled] [--limit N]
+dpkms job status <id>
+dpkms job log <id>
+dpkms job retry <id>
+dpkms job cancel <id>
 ```
 
 ---
@@ -822,41 +822,41 @@ ctxt entity backlink <slug>
 
 ---
 
-## `ctxt secret`
+## `dpkms secret`
 
-Read and write secrets from the configured backend.
+Read and write secrets from the configured backend. ctxt has no secret command.
 
 The active backend is set via `secrets.backend` in the config file. Supported backends: `env`, `keychain`, `age-file`, `1password`, `gh-secrets`. See [secrets-backends](../security/secrets-backends.md) for setup.
 
 ### Commands
 
 ```bash
-ctxt secret get <key>        # Print secret value to stdout
-ctxt secret set <key> <val>  # Store secret in the active backend
-ctxt secret list             # Show active backend and its config
+dpkms secret get <key>       # Print secret value to stdout
+dpkms secret set <key>       # Store a secret read from stdin, --from-file or --prompt
+dpkms secret list            # List keys, or show the backend config when it cannot enumerate
 ```
 
 ### Notes
 
 - `secret get` exits non-zero if the key is not found.
 - `secret set` with the `env` or `age-file` backend fails with a clear error — these backends are read-only.
-- `--output json` is supported for `get` (`{"key":"...","value":"..."}`) and `list`.
-- Passing a secret value on the command line exposes it in shell history. For sensitive values, prefer the backend's native tooling (e.g. `security add-generic-password` for keychain).
+- `--format json` is supported for `get` (`{"key":"...","value":"..."}`) and `list`.
+- `secret set` refuses a value passed as an argument (it would leak into shell history, `ps` and CI logs): pipe it on stdin, or use `--from-file` or `--prompt`.
 
 ### Examples
 
 ```bash
 # Get a secret from the active backend
-ctxt secret get OPENAI_API_KEY
+dpkms secret get OPENAI_API_KEY
 
 # Store a secret (keychain backend required)
-ctxt secret set OPENAI_API_KEY sk-...
+dpkms secret set OPENAI_API_KEY --prompt
 
 # Show which backend is active and its config
-ctxt secret list
+dpkms secret list
 
 # Machine-readable output
-ctxt --output json secret get OPENAI_API_KEY
+dpkms secret get OPENAI_API_KEY --format json
 ```
 
 ---

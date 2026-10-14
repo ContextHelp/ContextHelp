@@ -110,7 +110,7 @@ Produces two files in the output directory:
 
 The public key is embedded in the bundle manifest for self-contained verification.
 
-Requires a keypair generated with 'ctxt key init'.
+Requires a keypair generated with 'dpkms key init'.
 
 Examples:
   ctxt config backup
@@ -471,7 +471,7 @@ func runConfigBackup(cmd *cobra.Command, _ []string) error {
 	// Load private key from OS keychain.
 	privKey, err := bundle.LoadPrivateKey()
 	if err != nil {
-		return fmt.Errorf("config backup: %w (run 'ctxt key init' to generate a signing key)", err)
+		return fmt.Errorf("config backup: %w (run 'dpkms key init' to generate a signing key)", err)
 	}
 
 	result, err := bundle.Build(bundle.BuildOpts{

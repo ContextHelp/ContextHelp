@@ -57,22 +57,22 @@ curl http://127.0.0.1:8080/health
 ### 1. Queue health
 
 ```bash
-ctxt job list --state pending --limit 50
-ctxt job list --state running --limit 50
-ctxt job list --state failed --limit 50
+dpkms job list --state pending --limit 50
+dpkms job list --state running --limit 50
+dpkms job list --state failed --limit 50
 ```
 
 If failed jobs exist, drill in:
 
 ```bash
-ctxt job status <job_id>
-ctxt job log <job_id>
+dpkms job status <job_id>
+dpkms job log <job_id>
 ```
 
 Retry if safe:
 
 ```bash
-ctxt job retry <job_id>
+dpkms job retry <job_id>
 ```
 
 ### 2. Read-path smoke checks
@@ -197,15 +197,15 @@ curl http://127.0.0.1:8080/health
 2. Determine queue impact:
 
 ```bash
-ctxt job list --state failed --limit 100
-ctxt job list --state pending --limit 100
+dpkms job list --state failed --limit 100
+dpkms job list --state pending --limit 100
 ```
 
 3. Sample failed job details:
 
 ```bash
-ctxt job status <job_id>
-ctxt job log <job_id>
+dpkms job status <job_id>
+dpkms job log <job_id>
 ```
 
 4. Verify read path:

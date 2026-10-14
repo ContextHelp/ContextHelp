@@ -54,7 +54,7 @@ func LoadPrivateKey() (ed25519.PrivateKey, error) {
 	}
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("bundle: load private key (run `ctxt key init` first): %w", err)
+		return nil, fmt.Errorf("bundle: load private key (run `dpkms key init` first): %w", err)
 	}
 	encoded := strings.TrimRight(string(out), "\n")
 	decoded, err := hex.DecodeString(encoded)

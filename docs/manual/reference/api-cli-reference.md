@@ -14,11 +14,11 @@ ctxt import pinboard [--token <token>] [--file <pinboard.json>] [--since <RFC333
 ctxt import raindrop --collection-id <id>|--all [--token <token>] [--since <RFC3339|YYYY-MM-DD>] [--tag <tag>] [--query <text>] [--max-items N] [--dry-run]
 # Story-target importer surface (US-0300 to US-0317):
 # ctxt import <source> [source-specific flags]
-ctxt job list [--state pending|running|completed|failed|cancelled] [--limit N]
-ctxt job status <job_id>
-ctxt job log <job_id>
-ctxt job retry <job_id>
-ctxt job cancel <job_id>
+dpkms job list [--state pending|running|completed|failed|cancelled] [--limit N]
+dpkms job status <job_id>
+dpkms job log <job_id>
+dpkms job retry <job_id>
+dpkms job cancel <job_id>
 ```
 
 ### Retrieval and inspection
