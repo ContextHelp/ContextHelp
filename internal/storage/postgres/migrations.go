@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -435,6 +436,32 @@ func migrateObjectsEmbeddingDimension(ctx context.Context, d *Driver) error {
 // on one server migrate independently.
 const migrateLockKey int64 = 0x63747874 << 20 // "ctxt"
 
+// pgPendingTarget returns the highest migration version above current
+// and at most target, or 0 when no migration is pending.
+func pgPendingTarget(current, target int) int {
+	to := 0
+	for _, m := range pgMigrations {
+		if m.Version > current && m.Version <= target && m.Version > to {
+			to = m.Version
+		}
+	}
+	return to
+}
+
+// warnUnsnapshottedMigration warns before migrations run against an
+// existing Postgres database. Unlike SQLite, Postgres gets no automatic
+// snapshot: backing it up is the operator's job (pg_dump), so the
+// warning names both versions and the command. A brand-new database
+// (version 0) has nothing to lose and gets no warning.
+func warnUnsnapshottedMigration(current, target int) {
+	to := pgPendingTarget(current, target)
+	if current == 0 || to == 0 {
+		return
+	}
+	slog.Warn(fmt.Sprintf("migrating Postgres schema v%d to v%d without a snapshot: dpkms never backs up Postgres; take a pg_dump before upgrading", current, to),
+		"from", current, "to", to)
+}
+
 func (d *Driver) Migrate(ctx context.Context) error {
 	return d.migrateThrough(ctx, pgMigrations[len(pgMigrations)-1].Version)
 }
@@ -489,6 +516,7 @@ func (d *Driver) migrateThrough(ctx context.Context, target int) error {
 		`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&current); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
+	warnUnsnapshottedMigration(current, target)
 
 	for _, m := range pgMigrations {
 		if m.Version <= current || m.Version > target {

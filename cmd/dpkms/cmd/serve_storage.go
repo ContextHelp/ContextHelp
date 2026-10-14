@@ -24,7 +24,8 @@ func serveStorageTarget(c *config.Config) (typ, path string) {
 // openServeStorage opens and migrates the storage driver serve runs on.
 func openServeStorage(ctx context.Context, c *config.Config) (storage.StorageDriver, error) {
 	storageType, storagePath := serveStorageTarget(c)
-	driver, err := storageutil.Open(storageType, storagePath, c.Storage.Blob)
+	driver, err := storageutil.Open(storageType, storagePath, c.Storage.Blob,
+		storageutil.WithMigrateSnapshot(c.Storage.MigrateSnapshot))
 	if err != nil {
 		return nil, fmt.Errorf("init storage: %w", err)
 	}

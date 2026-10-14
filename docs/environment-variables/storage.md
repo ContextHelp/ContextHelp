@@ -39,6 +39,7 @@ it:
 | `run/` | pidfiles, the `ctxt instance use` selection, upgrade state |
 | `db.sqlite` | the database, unless `storage.path` is set |
 | `blobs/` | the `local` blob store, unless `storage.blob.local.path` is set |
+| `backups/` | pre-migration snapshots of `db.sqlite` (see [Migration snapshot](#migration-snapshot)) |
 | `repl_history` | `ctxt shell` history |
 
 It always names a directory, never the database file. `dpkms --data-dir`
@@ -64,6 +65,25 @@ Set it in the config file or with `-c`:
 
 ```bash
 dpkms serve -c storage.path=/data/dpkms.db
+```
+
+### Migration snapshot
+
+**Config key:** `storage.migrate_snapshot`\
+**Type:** bool\
+**Default:** `true`\
+No environment variable sets it.
+
+Before an open applies pending schema migrations to an existing SQLite
+database, it copies the database to
+`backups/pre-migrate-v<from>-v<to>-<UTC time>.sqlite` beside the database
+file and keeps the newest 3. If the copy fails, the open fails and nothing
+is migrated. `false` migrates without a copy. Blobs are not copied;
+Postgres is never copied. See the
+[runbook](../manual/operations/runbook.md#schema-migrations-snapshot-the-database-first).
+
+```bash
+dpkms serve -c storage.migrate_snapshot=false
 ```
 
 ### PostgreSQL connection

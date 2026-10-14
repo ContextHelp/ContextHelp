@@ -96,7 +96,8 @@ func openDB() (*sqlite.Driver, func(), error) {
 		return nil, nil, fmt.Errorf("storage path not configured")
 	}
 
-	opened, err := storageutil.Open(storageType, storagePath, cfg.Storage.Blob)
+	opened, err := storageutil.Open(storageType, storagePath, cfg.Storage.Blob,
+		storageutil.WithMigrateSnapshot(cfg.Storage.MigrateSnapshot))
 	if err != nil {
 		return nil, nil, fmt.Errorf("open database: %w", err)
 	}

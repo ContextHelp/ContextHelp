@@ -516,6 +516,10 @@ type StorageConfig struct {
 	// string. Default: <DataDir>/db.sqlite.
 	Path string     `mapstructure:"path" yaml:"path"`
 	Blob BlobConfig `mapstructure:"blob" yaml:"blob"`
+	// MigrateSnapshot copies a SQLite database into backups/ beside it
+	// before an open applies pending schema migrations. Default: true.
+	// Postgres is never snapshotted.
+	MigrateSnapshot bool `mapstructure:"migrate_snapshot" yaml:"migrate_snapshot"`
 }
 
 // Names of the default entries under the data directory.
@@ -1291,6 +1295,7 @@ func setDefaults(v *viper.Viper) {
 	// storage.blob.local.path carry no viper default: they derive from
 	// the merged data dir after load (StorageConfig.resolveDataPaths).
 	v.SetDefault("storage.type", "sqlite")
+	v.SetDefault("storage.migrate_snapshot", true)
 
 	// Blob storage defaults
 	v.SetDefault("storage.blob.backend", "local")
