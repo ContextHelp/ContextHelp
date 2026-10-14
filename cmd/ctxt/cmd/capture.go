@@ -86,8 +86,8 @@ func init() {
 	captureCmd.Flags().StringSlice("mention", nil, "mention targets (repeatable, CSV)")
 	captureCmd.Flags().String("note", "", "audit note explaining the capture")
 	// --profile is inherited from kit's persistent flag set; do not
-	// re-register it locally. capture reads it via cmd.Flags().GetString("profile")
-	// at run time (cobra resolves inherited persistent flags through Flags()).
+	// re-register it locally. capture resolves it via activeProfileName at run
+	// time (cobra resolves inherited persistent flags through Flags()).
 
 	// --- Pipeline behavior ---
 	captureCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")
@@ -217,7 +217,7 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 	sourceKey, _ := cmd.Flags().GetString("source-key")
 	hints, _ := cmd.Flags().GetStringSlice("hint")
 	mentions, _ := cmd.Flags().GetStringSlice("mention")
-	profile, _ := cmd.Flags().GetString("profile")
+	profile := activeProfileName(cmd)
 	note, _ := cmd.Flags().GetString("note")
 	wait, _ := cmd.Flags().GetBool("wait")
 	inbox, _ := cmd.Flags().GetBool("inbox")
@@ -293,7 +293,7 @@ func postInboxCapture(
 		body["hints"] = hints
 	}
 	// T-0588: --profile partitions the inbox item to a focus profile.
-	if profile, _ := cmd.Flags().GetString("profile"); profile != "" {
+	if profile := activeProfileName(cmd); profile != "" {
 		body["profile"] = profile
 	}
 	var obj map[string]any

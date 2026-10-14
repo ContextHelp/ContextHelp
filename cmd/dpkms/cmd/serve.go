@@ -665,20 +665,19 @@ func daemonize(cmd *cobra.Command) error {
 
 // resolveDefaultProfile ensures cfg.Profile.Default is set before the server
 // starts. Priority:
-//  1. --profile flag
+//  1. --profile flag, even empty (no default profile)
 //  2. profile.default from CTXT_PROFILE or config file (cfg.Profile.Default, set by Load())
 //  3. If exactly one profile is defined, use it automatically.
 //  4. If multiple profiles and none flagged as default, prompt the user to pick.
 //
+// Steps 1-2 are config.ProfileConfig.Active, the rule ctxt's commands share.
 // Non-interactive contexts (no TTY) fall through without error if no default is
 // set — the server starts with no active profile.
 func resolveDefaultProfile(cmd *cobra.Command) error {
-	if cmd.Flags().Changed("profile") {
-		cfg.Profile.Default, _ = cmd.Flags().GetString("profile")
-		return nil
-	}
-	// Already set via env or config?
-	if cfg.Profile.Default != "" {
+	flag, _ := cmd.Flags().GetString("profile")
+	flagSet := cmd.Flags().Changed("profile")
+	cfg.Profile.Default = cfg.Profile.Active(flag, flagSet)
+	if flagSet || cfg.Profile.Default != "" {
 		return nil
 	}
 

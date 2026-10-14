@@ -220,7 +220,11 @@ profile:
   when `profile.default` is empty it is filled from that entry, and when
   both are set they must agree or loading fails.
 - `--profile <name>` selects a profile for one invocation on commands that
-  read it.
+  read it. Every such command resolves the active profile the same way:
+  `--profile` when passed, then `profile.default` (`CTXT_PROFILE` over the
+  file), then none (a request then carries no profile and dpkms applies its
+  own default). `--profile ""` selects
+  no profile even when a default is set.
 - `ctxt profile set <name>` / `ctxt profile unset <name>` change the
   default; `ctxt profile list` / `ctxt profile view <name>` inspect them.
 
