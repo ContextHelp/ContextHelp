@@ -560,7 +560,7 @@ List all running dpkms instances on this machine.
 dpkms ps [--output json]
 ```
 
-Scans `$XDG_DATA_HOME/contexthelp/run/` for pidfiles, validates each process is alive, and removes stale entries automatically.
+Scans `$XDG_DATA_HOME/contexthelp/run/` for pidfiles, validates each process is alive, and removes stale entries automatically. A pid now held by a process that started after the pidfile's `started_at` (the pid was reused) is stale too; when the OS does not report a process's start time, the entry counts as alive.
 
 Output columns: `NAME  PID  PORT  GRPC  DB  UPTIME` (BROWSER column added when any instance has browser enabled).
 

@@ -6,8 +6,10 @@
 //
 // On clean shutdown the file is removed. Readers (dpkms ps, shutdown,
 // reboot, ctxt) validate each pidfile by checking whether the recorded
-// pid is alive (kill -0); stale files (from crashes or reboots) are
-// silently removed. At startup, serve also treats an entry recording its
+// pid is alive (kill -0) and, when the OS reports it, that the process
+// started no later than the entry's started_at: a later start means the
+// pid was reused by an unrelated process. Stale files (from crashes or
+// reboots) are silently removed. At startup, serve also treats an entry recording its
 // own pid as stale: it has not registered yet, so the entry is a leftover
 // from an earlier process that had the same pid (a container's PID 1).
 package pidfile
@@ -88,7 +90,7 @@ func scan(dir string, self int) ([]Info, error) {
 			os.Remove(path)
 			continue
 		}
-		if (self > 0 && info.PID == self) || !alive(info.PID) {
+		if (self > 0 && info.PID == self) || !alive(info.PID) || !sameProcess(info) {
 			os.Remove(path)
 			continue
 		}
