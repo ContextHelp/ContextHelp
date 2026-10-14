@@ -108,6 +108,7 @@ config. An empty value is ignored (the lower layer stays in effect).
 | `CH_SERVER_PORT` | `server.port` | `8080` |
 | `CH_GRPC_PORT` | `server.grpc_port` | `9090` |
 | `CH_COOKIE_BRIDGE_PORT` | `server.cookie_bridge_port` | `9377` |
+| `DPKMS_WORKERS` | `server.workers` | `4` |
 | `CH_PUBLIC` | `server.public` | `false` |
 | `CTXT_PROFILE` | `profile.default` | _(empty)_ |
 | `DPKMS_POLL_INTERVAL` | `jobs.poll_interval` | `500ms` |
@@ -162,6 +163,18 @@ the [precedence](#precedence) table. A port set by any layer (flag, `-c`,
 env or file) is explicit: serve binds exactly that port or fails. Only an
 untouched built-in default falls back to another port when busy. Port `0`
 binds an OS-assigned port. The cookie bridge always binds `127.0.0.1`.
+
+### `dpkms serve` other settings
+
+| Flag | Config key | Env var | Default |
+|------|------------|---------|---------|
+| `--workers` | `server.workers` | `DPKMS_WORKERS` | `4` |
+| `--dev` | `server.dev` | _(none)_ | `false` |
+| `--reminder-interval` | `server.reminder_interval` | _(none)_ | `1m` |
+| `--steps-path` | `steps.path` | _(none)_ | `~/.config/contexthelp/steps` |
+
+Each is the flag when passed, else the config value. `--dev` enables CORS
+for the Vite dev server at `http://localhost:5173`.
 
 ### `dpkms serve --public`
 

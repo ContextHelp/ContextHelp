@@ -6,14 +6,16 @@ Job queue and background worker configuration.
 
 ## Worker Pool
 
-### WORKER_COUNT
+### DPKMS_WORKERS
 **Type:** integer\
-**Default:** `4`
+**Default:** `4`\
+**Config key:** `server.workers`\
+**Flag:** `dpkms serve --workers`
 
-Number of background workers.
+Number of job workers `dpkms serve` runs. `--workers` wins over it.
 
 ```bash
-WORKER_COUNT=8
+DPKMS_WORKERS=8
 ```
 
 **Scaling guidelines:**
@@ -82,14 +84,14 @@ in-flight jobs on graceful shutdown. No env var.
 
 ### Development (Low Concurrency)
 ```bash
-WORKER_COUNT=2
+DPKMS_WORKERS=2
 DPKMS_POLL_INTERVAL=500ms
 DPKMS_MAX_RETRIES=3
 ```
 
 ### Production (High Throughput)
 ```bash
-WORKER_COUNT=16
+DPKMS_WORKERS=16
 DPKMS_POLL_INTERVAL=250ms
 DPKMS_MAX_RETRIES=5
 DPKMS_STALE_TIMEOUT=1h

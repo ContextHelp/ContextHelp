@@ -72,21 +72,24 @@ Settings (`.vscode/settings.json`):
 
 ### Environment Variables
 
-Create `.env` from `.env.example`:
+None are needed for local development. Nothing loads a `.env` file
+automatically; to keep overrides in one, export it into your shell:
 
 ```bash
 cp .env.example .env
+set -a; . ./.env; set +a
 ```
 
-Key variables for development:
+Variables useful during development:
 ```bash
-ENV=development
-LOG_LEVEL=debug
-STORAGE_BACKEND=sqlite
-SQLITE_PATH=./data/sqlite/contexthelp_dev.db
-WORKER_COUNT=2
-CH_SERVER_PORT=8080
+CH_STORAGE_TYPE=sqlite   # storage.type
+DPKMS_WORKERS=2          # server.workers
+CH_SERVER_PORT=8080      # server.port
 ```
+
+Logging has no env var: pass `--verbose` to `ctxt` or `dpkms` for debug
+output. The database location is the `storage.path` config key. Full
+list: [environment-variables/README.md](environment-variables/README.md).
 
 ---
 
