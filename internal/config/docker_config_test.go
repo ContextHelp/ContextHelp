@@ -141,11 +141,95 @@ func TestDockerRuntime_StoragePathsOnVolumes(t *testing.T) {
 	}
 }
 
+// dockerAuthExamplePath is the committed template for the operator's
+// auth secret; dockerAuthSecretPath is where serve reads it in the
+// container, as a second --config after /app/config.yaml.
+var (
+	dockerAuthExamplePath = filepath.Join("..", "..", "docker", "dpkms-auth.example.yaml")
+	dockerAuthSecretPath  = "/run/secrets/dpkms-auth.yaml"
+)
+
+// The auth example must decode into Config and hold server.auth only:
+// everything else comes from config.docker.yaml.
+func TestDockerAuthExample_HoldsOnlyServerAuth(t *testing.T) {
+	data, err := os.ReadFile(dockerAuthExamplePath)
+	require.NoError(t, err)
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	var cfg Config
+	require.NoError(t, dec.Decode(&cfg), "%s sets a key config.Load never reads", dockerAuthExamplePath)
+
+	var raw map[string]map[string]any
+	require.NoError(t, yaml.Unmarshal(data, &raw))
+	assert.Len(t, raw, 1, "top-level keys")
+	assert.Contains(t, raw, "server")
+	assert.Len(t, raw["server"], 1, "server.* keys")
+	assert.Contains(t, raw["server"], "auth")
+}
+
+// Serve reads server.auth from the operator's secret: compose mounts it
+// at dockerAuthSecretPath in both dpkms services, and the image's CMD and
+// the dev air runner pass that path as a second --config.
+func TestDockerRuntime_ServeLoadsAuthSecret(t *testing.T) {
+	compose := loadCompose(t)
+	secret, ok := compose.Secrets["dpkms-auth"]
+	require.True(t, ok, "docker-compose.yml declares no dpkms-auth secret")
+	assert.Equal(t, "./docker/dpkms-auth.yaml", secret.File, "dpkms-auth secret file")
+	for _, name := range []string{"dpkms", "dpkms-dev"} {
+		svc := compose.Services[name]
+		var mounted bool
+		for _, s := range svc.Secrets {
+			if s.Source == "dpkms-auth" && "/run/secrets/"+s.Target == dockerAuthSecretPath {
+				mounted = true
+			}
+		}
+		assert.True(t, mounted, "service %s mounts no dpkms-auth secret at %s (%v)", name, dockerAuthSecretPath, svc.Secrets)
+	}
+
+	dockerfile, err := os.ReadFile(filepath.Join("..", "..", "Dockerfile"))
+	require.NoError(t, err)
+	m := regexp.MustCompile(`(?m)^CMD\s+(\[.*\])\s*$`).FindSubmatch(dockerfile)
+	require.NotNil(t, m, "Dockerfile has no exec-form CMD")
+	var cmd []string
+	require.NoError(t, yaml.Unmarshal(m[1], &cmd))
+	assert.Equal(t, []string{"serve", "--config", "/app/config.yaml", "--config", dockerAuthSecretPath}, cmd, "Dockerfile CMD")
+
+	data, err := os.ReadFile(filepath.Join("..", "..", "docker", "air.toml"))
+	require.NoError(t, err)
+	var air struct {
+		Build struct {
+			Bin string `toml:"bin"`
+		} `toml:"build"`
+	}
+	require.NoError(t, toml.Unmarshal(data, &air))
+	assert.Contains(t, air.Build.Bin, "--config docker/config.docker.yaml --config "+dockerAuthSecretPath, "docker/air.toml build.bin")
+}
+
+// Serve refuses to start without a bus token. Compose must pass one to
+// both dpkms services and fail at `up` when the operator has not set it,
+// rather than start a container that exits.
+func TestDockerRuntime_BusTokenRequired(t *testing.T) {
+	compose := loadCompose(t)
+	for _, name := range []string{"dpkms", "dpkms-dev"} {
+		v, ok := compose.Services[name].Environment["DPKMS_BUS_TOKEN"]
+		if assert.True(t, ok, "service %s sets no DPKMS_BUS_TOKEN", name) {
+			assert.True(t, strings.HasPrefix(v, "${DPKMS_BUS_TOKEN:?"), "service %s DPKMS_BUS_TOKEN = %q, want required interpolation", name, v)
+		}
+	}
+}
+
 type composeFile struct {
 	Services map[string]struct {
 		Environment map[string]string `yaml:"environment"`
 		Volumes     []string          `yaml:"volumes"`
+		Secrets     []struct {
+			Source string `yaml:"source"`
+			Target string `yaml:"target"`
+		} `yaml:"secrets"`
 	} `yaml:"services"`
+	Secrets map[string]struct {
+		File string `yaml:"file"`
+	} `yaml:"secrets"`
 }
 
 func loadCompose(t *testing.T) composeFile {

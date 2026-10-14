@@ -63,5 +63,10 @@ EXPOSE 8080 9090
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
     CMD wget -q --spider http://127.0.0.1:8080/health || exit 1
 
+# config.yaml sets server.access: public, which needs server.auth. That
+# comes from the operator's secret, never the image: mount it at
+# /run/secrets/dpkms-auth.yaml (docker-compose.yml does; template at
+# docker/dpkms-auth.example.yaml) and set DPKMS_BUS_TOKEN. Without the
+# file serve exits at config load.
 ENTRYPOINT ["/app/dpkms"]
-CMD ["serve", "--config", "/app/config.yaml"]
+CMD ["serve", "--config", "/app/config.yaml", "--config", "/run/secrets/dpkms-auth.yaml"]
