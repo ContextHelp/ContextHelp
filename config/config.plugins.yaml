@@ -44,7 +44,7 @@ server:
 
 ai_providers:
   openai:
-    key: ${OPENAI_API_KEY}
+    # API key: OPENAI_API_KEY in the environment (config files do not expand env vars)
     model: gpt-4o
 
 privacy:
@@ -233,8 +233,9 @@ plugins:
     # ============================================================
     - name: github-plugin
       config:
-        # GitHub API token (optional, increases rate limit)
-        token: ${GITHUB_TOKEN}
+        # GitHub API token (optional, increases rate limit). The token
+        # itself: config files do not expand env vars.
+        token: <github-token>
 
         # Auto-extract repository metadata
         extract_metadata: true

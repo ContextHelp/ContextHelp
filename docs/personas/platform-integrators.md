@@ -157,7 +157,7 @@ func (p *Plugin) Register(ctx HostContext) error {
 //   - name: github-org
 //     type: github
 //     org: mycompany
-//     token: ${GITHUB_TOKEN}
+//     token: <github-token>   // literal: config files do not expand env vars
 ```
 
 #### Custom Ranking Algorithm Plugin Example

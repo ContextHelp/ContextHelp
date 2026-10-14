@@ -341,7 +341,7 @@ registries:
     capabilities: ["taxonomy","entities","bookmarks"]
     auth:
       header: "X-API-Key"
-      token: "${UXP_API_KEY}"
+      token: "<uxpatterns-api-key>"   # literal: config files do not expand env vars
 ```
 
 ---

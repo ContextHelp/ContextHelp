@@ -73,8 +73,9 @@ registries:
       url: https://api.uxpatterns.io
       type: taxonomy
       auth:
-        # Use environment variable for sensitive tokens
-        token: ${CH_REGISTRY_TOKEN_UXPATTERNS}
+        # The token itself: config files do not expand env vars.
+        # Keep a real one out of version control.
+        token: <uxpatterns-token>
 
     # Growth weights registry
     - name: growth-weights
@@ -82,14 +83,14 @@ registries:
       type: weights
       # Optional: Add auth if required
       # auth:
-      #   token: ${CH_REGISTRY_TOKEN_GROWTH}
+      #   token: <growth-weights-token>
 
     # Example: Shared bookmarks registry
     # - name: team-bookmarks
     #   url: https://bookmarks.company.internal
     #   type: bookmarks
     #   auth:
-    #     token: ${CH_REGISTRY_TOKEN_TEAM}
+    #     token: <team-bookmarks-token>
 
 # Pipeline Configuration
 # Controls pipeline availability and default routing
@@ -312,8 +313,7 @@ refresh:
 ai_providers:
   # OpenAI configuration
   openai:
-    # API key from environment variable (recommended)
-    key: ${OPENAI_API_KEY}
+    # API key: OPENAI_API_KEY in the environment (config files do not expand env vars)
 
     # Default model to use
     model: gpt-4o
@@ -324,7 +324,7 @@ ai_providers:
 
   # Anthropic configuration
   anthropic:
-    key: ${ANTHROPIC_API_KEY}
+    # API key: ANTHROPIC_API_KEY in the environment
     model: claude-sonnet-4
     # max_tokens: 4096
 
@@ -440,7 +440,7 @@ plugins:
               # Optional: Authentication
               # auth:
               #   type: bearer
-              #   token: ${WEBHOOK_AUTH_TOKEN}
+              #   token: <webhook-token>
 
         # Notification rules (optional)
         rules:

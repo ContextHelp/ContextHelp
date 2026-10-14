@@ -49,12 +49,12 @@ func ValidateFilePermissions(path string) error {
     if err != nil {
         return err
     }
-    
+
     mode := info.Mode().Perm()
     if mode != 0600 && mode != 0700 {
         return fmt.Errorf("insecure permissions: %o (should be 0600 or 0700)", mode)
     }
-    
+
     return nil
 }
 ```
@@ -67,12 +67,12 @@ func ValidateOwnership(path string) error {
     if err != nil {
         return err
     }
-    
+
     stat := info.Sys().(*syscall.Stat_t)
     if stat.Uid != uint32(os.Getuid()) {
         return fmt.Errorf("file not owned by current user")
     }
-    
+
     return nil
 }
 ```
@@ -174,7 +174,7 @@ func FetchRegistry(url string) (*RegistryResponse, error) {
     if !strings.HasPrefix(url, "https://") {
         return nil, fmt.Errorf("registry must use HTTPS")
     }
-    
+
     // Strict TLS configuration
     transport := &http.Transport{
         TLSClientConfig: &tls.Config{
@@ -185,7 +185,7 @@ func FetchRegistry(url string) (*RegistryResponse, error) {
             },
         },
     }
-    
+
     client := &http.Client{Transport: transport}
     // ... fetch and validate
 }
@@ -240,7 +240,7 @@ No AI provider enabled by default:
 # User must explicitly configure
 providers:
   openai:
-    api_key: ${OPENAI_API_KEY}  # Required
+    # API key: OPENAI_API_KEY in the environment (required)
     enabled: true               # Explicit opt-in
 ```
 
@@ -255,7 +255,7 @@ func CallOpenAI(prompt string) (string, error) {
             },
         },
     }
-    
+
     // All requests over HTTPS
     req, _ := http.NewRequest("POST", "https://api.openai.com/v1/completions", ...)
     // ...
@@ -265,10 +265,10 @@ func CallOpenAI(prompt string) (string, error) {
 #### Credential Storage Security
 
 ```yaml
-# GOOD - From environment
+# GOOD - From environment: no key in the file; the provider reads
+# OPENAI_API_KEY (config files do not expand env vars)
 providers:
-  openai:
-    api_key: ${OPENAI_API_KEY}
+  openai: {}
 
 # GOOD - From secret file
 providers:
@@ -323,9 +323,9 @@ func (rl *RateLimiter) Allow(provider string) bool {
 providers:
   # Primary: OpenAI
   openai:
-    api_key: ${OPENAI_API_KEY}
+    # API key: OPENAI_API_KEY in the environment
     priority: 1
-  
+
   # Fallback: Local Ollama
   ollama:
     host: http://localhost:11434
@@ -395,14 +395,14 @@ func (s *Sandbox) Execute(plugin *Plugin, input interface{}) (interface{}, error
     // Set resource limits
     setRlimit(RLIMIT_AS, s.MemoryLimit)
     setRlimit(RLIMIT_CPU, s.CPULimit)
-    
+
     // Restrict file system
     chroot(fmt.Sprintf("/var/lib/contexthelp/plugins/%s", plugin.Name))
-    
+
     // Execute with timeout
     ctx, cancel := context.WithTimeout(context.Background(), s.CPULimit)
     defer cancel()
-    
+
     return plugin.Process(ctx, input)
 }
 ```
@@ -457,8 +457,8 @@ func (np *NetworkPolicy) Allow(destination string) bool {
 // Plugin can only access objects it created
 func (s *Sandbox) GetObjects(plugin *Plugin) ([]Object, error) {
     return db.Query(`
-        SELECT * FROM objects 
-        WHERE created_by = ? 
+        SELECT * FROM objects
+        WHERE created_by = ?
         OR visibility = 'public'
     `, plugin.Name)
 }
@@ -521,20 +521,20 @@ func AuthMiddleware(next http.Handler) http.Handler {
             http.Error(w, "unauthorized", http.StatusUnauthorized)
             return
         }
-        
+
         // Validate token
         claims, err := ValidateJWT(token)
         if err != nil {
             http.Error(w, "invalid token", http.StatusUnauthorized)
             return
         }
-        
+
         // Check permissions
         if !HasPermission(claims.UserID, r.URL.Path, r.Method) {
             http.Error(w, "forbidden", http.StatusForbidden)
             return
         }
-        
+
         next.ServeHTTP(w, r)
     })
 }
@@ -547,15 +547,15 @@ func ValidateSearchRequest(req *SearchRequest) error {
     if len(req.Query) > MaxQueryLength {
         return fmt.Errorf("query too long (max %d)", MaxQueryLength)
     }
-    
+
     if req.Limit < 0 || req.Limit > MaxResultLimit {
         return fmt.Errorf("invalid limit (0-%d)", MaxResultLimit)
     }
-    
+
     if !IsValidSortField(req.SortBy) {
         return fmt.Errorf("invalid sort field: %s", req.SortBy)
     }
-    
+
     return nil
 }
 ```
@@ -587,13 +587,13 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "search failed", http.StatusInternalServerError)
         return
     }
-    
+
     // Sanitize results
     for i := range results {
         results[i].InternalID = ""  // Don't expose internal IDs
         results[i].CreatedBy = ""   // Don't expose user info
     }
-    
+
     json.NewEncoder(w).Encode(results)
 }
 ```

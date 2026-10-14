@@ -86,7 +86,7 @@ privacy:
 ai_providers:
   # Configure at least one provider
   openai:
-    key: ${OPENAI_API_KEY}
+    # API key: OPENAI_API_KEY in the environment (config files do not expand env vars)
     model: gpt-4o
 
   # Or use local LLM

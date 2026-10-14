@@ -73,29 +73,23 @@ sops config.yaml
 
 ## Managing Secrets in Configuration
 
-### Best Practice: Environment Variables
+### Best Practice: Keep Secrets Out of Committed Config
 
-Store secrets in environment variables, reference them in configuration:
+Config files do not expand `${VAR}`: every value is used exactly as written, so `token: ${CH_REGISTRY_TOKEN_PRIVATE}` sets the token to that string. Keep secrets out of committed config two ways:
+
+- **Env vars the code reads**, for the secrets that have one: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CTXT_BLOB_S3_ACCESS_KEY` / `CTXT_BLOB_S3_SECRET_KEY`, libpq's `PGPASSWORD`. See [docs/environment-variables/](../environment-variables/README.md).
+- **A separate secrets file** for the rest (`server.auth` tokens, registry and federation tokens), written literally, mode 0600, gitignored, and layered with a second `--config` (later files win). In containers, mount it as a secret ([Docker: Secrets](../deployment/docker.md#secrets)).
 
 ```yaml
-# config.yaml
+# secrets.yaml (0600, never committed)
 registries:
   - name: private-registry
     url: https://registry.example.com
     auth:
-      token: ${CH_REGISTRY_TOKEN_PRIVATE}
-
-storage:
-  type: postgres
-  connection_string: ${CONTEXTHELP_DB_URL}
-
-providers:
-  openai:
-    api_key: ${OPENAI_API_KEY}
-    model: gpt-4o
+      token: <private-registry-token>
 ```
 
-Set environment variables before running:
+Set environment variables and layer the secrets file before running:
 
 ```bash
 # Load from environment file
@@ -107,10 +101,12 @@ export CONTEXTHELP_DB_URL=$(vault kv get -field=url secret/prod/postgres)
 export OPENAI_API_KEY=$(aws secretsmanager get-secret-value --secret-id openai-key --query SecretString --output text)
 
 # Run application
-ctxt serve
+dpkms serve --config ~/.config/contexthelp/dpkms.yaml --config ~/.config/contexthelp/secrets.yaml
 ```
 
 ### Alternative: External Secret Files
+
+> **Not implemented:** no config key reads a secret from a file today; `token_file`, `connection_file` and `api_key_file` below are a proposal and are ignored. Use the separate secrets config file above.
 
 Reference external secret files instead of embedding them:
 
@@ -120,16 +116,16 @@ registries:
   - name: private-registry
     url: https://registry.example.com
     auth:
-      token_file: ${SECRETS_DIR}/registry-token
+      token_file: ~/.config/contexthelp/secrets/registry-token
 
 storage:
   type: postgres
   # Connection string in separate file
-  connection_file: ${SECRETS_DIR}/postgres-url
+  connection_file: ~/.config/contexthelp/secrets/postgres-url
 
 providers:
   openai:
-    api_key_file: ${SECRETS_DIR}/openai-key
+    api_key_file: ~/.config/contexthelp/secrets/openai-key
     model: gpt-4o
 ```
 
@@ -229,7 +225,7 @@ Before deploying configuration:
 - [ ] No plaintext passwords in `.env` files
 - [ ] `.env` files are `.gitignore`d
 - [ ] No test/mock secrets that look real
-- [ ] All references use `${VARIABLE}` syntax correctly
+- [ ] No config file relies on `${VARIABLE}` expansion (config files do not expand env vars)
 
 ## Configuration as Code
 
@@ -347,7 +343,7 @@ privacy:
 
 providers:
   openai:
-    api_key: ${OPENAI_API_KEY}  # From environment
+    # API key: OPENAI_API_KEY in the environment
     model: gpt-4o
 ```
 
@@ -357,7 +353,8 @@ providers:
 # config.staging.yaml
 storage:
   type: postgres
-  connection_string: ${CONTEXTHELP_DB_URL}
+  # DSN without a password; libpq reads PGPASSWORD (config files do not expand env vars)
+  connection_string: postgresql://contexthelp@db.internal/contexthelp
 
 server:
   http:
@@ -378,7 +375,7 @@ security:
 
 providers:
   openai:
-    api_key: ${OPENAI_API_KEY}
+    # API key: OPENAI_API_KEY in the environment
     model: gpt-4o
 ```
 
@@ -388,7 +385,8 @@ providers:
 # config.production.yaml
 storage:
   type: postgres
-  connection_string: ${CONTEXTHELP_DB_URL}
+  # DSN without a password; libpq reads PGPASSWORD (config files do not expand env vars)
+  connection_string: postgresql://contexthelp@db.internal/contexthelp
 
 server:
   http:
@@ -414,14 +412,13 @@ security:
 
 providers:
   openai:
-    api_key: ${OPENAI_API_KEY}
+    # API key: OPENAI_API_KEY in the environment
     model: gpt-4o
 
 registries:
   - name: company-registry
-    url: ${COMPANY_REGISTRY_URL}
-    auth:
-      token: ${REGISTRY_TOKEN}
+    url: https://registry.company.com
+    # auth.token: in the uncommitted secrets file, written literally
 ```
 
 Load the correct configuration:
@@ -537,10 +534,11 @@ data:
   config.yaml: |
     storage:
       type: postgres
-      connection_string: "postgresql://contexthelp:${DB_PASSWORD}@postgres:5432/contexthelp"
+      # No password here: config files do not expand env vars; libpq reads PGPASSWORD
+      connection_string: "postgresql://contexthelp@postgres:5432/contexthelp"
     providers:
       openai:
-        api_key: ${OPENAI_API_KEY}
+        # API key: OPENAI_API_KEY from the Secret, via envFrom
         model: gpt-4o
 
 ---
@@ -615,24 +613,20 @@ touch ~/.config/contexthelp/config.yaml
 chmod 600 ~/.config/contexthelp/config.yaml
 \`\`\`
 
-### 2. Add Secret References
+### 2. Keep Secrets Out of It
 
-Edit `config.yaml` and reference environment variables:
+Config files do not expand environment variables. Leave secrets that have an env var out of `config.yaml`, and write the rest literally into a gitignored file passed as a second `--config`:
 
 \`\`\`yaml
 storage:
   type: postgres
-  connection_string: \${CONTEXTHELP_DB_URL}
-
-providers:
-  openai:
-    api_key: \${OPENAI_API_KEY}
+  connection_string: postgresql://user@host/db   # PGPASSWORD from the environment
 \`\`\`
 
 ### 3. Set Environment Variables
 
 \`\`\`bash
-export CONTEXTHELP_DB_URL=postgresql://user:pass@host/db
+export PGPASSWORD=...
 export OPENAI_API_KEY=sk-proj-...
 
 ctxt serve

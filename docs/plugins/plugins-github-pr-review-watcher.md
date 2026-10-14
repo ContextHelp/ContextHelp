@@ -221,8 +221,8 @@ plugins:
       redact_sensitive_patterns: true
 
     github:
-      token: ${GITHUB_TOKEN}
-      webhook_secret: ${GITHUB_WEBHOOK_SECRET}
+      token: <github-token>             # literal: config files do not expand env vars
+      webhook_secret: <webhook-secret>
 ```
 
 ---
