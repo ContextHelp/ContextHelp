@@ -1,4 +1,7 @@
 ```mermaid
+---
+title: "Design only (ADR-066): no client-side buffer or ambient.buffer config exists"
+---
 flowchart LR
     cfg[ambient.buffer.backend] --> sel{which?}
     sel -->|local default| fs[Local FS<br/>$XDG_STATE_HOME/ctxt/ambient/]
