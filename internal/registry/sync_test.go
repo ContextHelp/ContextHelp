@@ -229,3 +229,53 @@ func TestSyncer_SandboxedRegistry_BlocksNoQueue(t *testing.T) {
 		t.Errorf("sandboxed should not queue, got %d pending", len(pending))
 	}
 }
+
+// TestSyncer_MultiSync_TrustGate: reconciliation honours each registry's
+// trust_level like a single sync. Only the trusted registry's entities are
+// written; the untrusted one's count as pending approval and the
+// sandboxed one's as blocked, per registry and in the totals.
+func TestSyncer_MultiSync_TrustGate(t *testing.T) {
+	trusted := makeTestServer([]registry.EntityIndexEntry{
+		{Slug: "ai.bert", Title: "BERT", Namespace: "ai", VersionHash: "v1"},
+	})
+	defer trusted.Close()
+	untrusted := makeTestServer([]registry.EntityIndexEntry{
+		{Slug: "ai.gpt", Title: "GPT", Namespace: "ai", VersionHash: "v1"},
+		{Slug: "ai.bert", Title: "BERT (spoofed)", Namespace: "ai", VersionHash: "v9"},
+	})
+	defer untrusted.Close()
+	sandboxed := makeTestServer([]registry.EntityIndexEntry{
+		{Slug: "ai.t5", Title: "T5", Namespace: "ai", VersionHash: "v1"},
+	})
+	defer sandboxed.Close()
+
+	store := &stubEntityStore{}
+	out, err := registry.New(store).MultiSync(context.Background(), registry.MultiSyncConfig{
+		Registries: []config.RegistryConfig{
+			{Name: "u", URL: untrusted.URL, TrustLevel: config.RegistryTrustLevelUntrusted},
+			{Name: "s", URL: sandboxed.URL, TrustLevel: config.RegistryTrustLevelSandboxed},
+			{Name: "t", URL: trusted.URL, TrustLevel: config.RegistryTrustLevelTrusted},
+		},
+	})
+	if err != nil {
+		t.Fatalf("MultiSync: %v", err)
+	}
+
+	if len(store.full) != 1 || store.full[0].Slug != "ai.bert" || store.full[0].Title != "BERT" ||
+		store.full[0].RegistryURL != trusted.URL {
+		t.Fatalf("written = %+v, want only the trusted registry's ai.bert", store.full)
+	}
+	if out.Merged != 1 || out.PendingApproval != 2 || out.Blocked != 1 {
+		t.Errorf("Merged/PendingApproval/Blocked = %d/%d/%d, want 1/2/1",
+			out.Merged, out.PendingApproval, out.Blocked)
+	}
+	if len(out.Conflicts) != 0 {
+		t.Errorf("conflicts = %+v; held entities must not take part in reconciliation", out.Conflicts)
+	}
+	want := map[string][2]int{untrusted.URL: {2, 0}, sandboxed.URL: {0, 1}, trusted.URL: {0, 0}}
+	for _, r := range out.PerRegistry {
+		if got := [2]int{r.PendingApproval, r.Blocked}; got != want[r.RegistryURL] {
+			t.Errorf("%s pending/blocked = %v, want %v", r.RegistryURL, got, want[r.RegistryURL])
+		}
+	}
+}

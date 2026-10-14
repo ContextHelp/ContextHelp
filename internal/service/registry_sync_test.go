@@ -146,6 +146,69 @@ func TestSyncRegistry_NotTrustedReportsHeldEntities(t *testing.T) {
 	}
 }
 
+// indexRegistry serves one entity index at /entities/index.
+func indexRegistry(t *testing.T, entries ...registrysync.EntityIndexEntry) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/entities/index" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(entries)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// TestSyncAllRegistriesWithReconciliation_TrustGate: `registry sync
+// --reconcile` writes only the trusted registry's entities and reports
+// what each untrusted or sandboxed registry held back.
+func TestSyncAllRegistriesWithReconciliation_TrustGate(t *testing.T) {
+	untrusted := indexRegistry(t, registrysync.EntityIndexEntry{Slug: "ai.gpt", Title: "GPT", Namespace: "ai", VersionHash: "v1"})
+	sandboxed := indexRegistry(t, registrysync.EntityIndexEntry{Slug: "ai.t5", Title: "T5", Namespace: "ai", VersionHash: "v1"})
+	trusted := indexRegistry(t, registrysync.EntityIndexEntry{Slug: "ai.bert", Title: "BERT", Namespace: "ai", VersionHash: "v1"})
+
+	driver := storageutil.NewTestDriver(t)
+	cfg := config.Config{Registries: []config.RegistryConfig{
+		{Name: "u", URL: untrusted}, // trust_level unset: untrusted
+		{Name: "s", URL: sandboxed, TrustLevel: config.RegistryTrustLevelSandboxed},
+		{Name: "t", URL: trusted, TrustLevel: config.RegistryTrustLevelTrusted},
+	}}
+	svc := NewWithOptions(driver, jobs.NewQueue(driver.Jobs()), pipeline.DefaultRegistry(),
+		search.NewEngine(driver), "", nil, nil, cfg)
+	ctx := context.Background()
+
+	res, err := svc.SyncAllRegistriesWithReconciliation(ctx, "", nil)
+	if err != nil {
+		t.Fatalf("SyncAllRegistriesWithReconciliation: %v", err)
+	}
+	if res.Merged != 1 || res.PendingApproval != 1 || res.Blocked != 1 {
+		t.Errorf("Merged/PendingApproval/Blocked = %d/%d/%d, want 1/1/1",
+			res.Merged, res.PendingApproval, res.Blocked)
+	}
+	want := []ReconciledRegistryCounts{
+		{Name: "u", TrustLevel: config.RegistryTrustLevelUntrusted, PendingApproval: 1},
+		{Name: "s", TrustLevel: config.RegistryTrustLevelSandboxed, Blocked: 1},
+		{Name: "t", TrustLevel: config.RegistryTrustLevelTrusted},
+	}
+	if len(res.Registries) != len(want) {
+		t.Fatalf("Registries = %+v, want %+v", res.Registries, want)
+	}
+	for i := range want {
+		if res.Registries[i] != want[i] {
+			t.Errorf("Registries[%d] = %+v, want %+v", i, res.Registries[i], want[i])
+		}
+	}
+	if _, err := svc.Store.Entities().Get(ctx, "ai.bert"); err != nil {
+		t.Errorf("trusted entity ai.bert not written: %v", err)
+	}
+	for _, slug := range []string{"ai.gpt", "ai.t5"} {
+		if e, err := svc.Store.Entities().Get(ctx, slug); err == nil && e != nil {
+			t.Errorf("held entity %s was written: %+v", slug, e)
+		}
+	}
+}
+
 func contains(xs []string, x string) bool {
 	for _, v := range xs {
 		if v == x {

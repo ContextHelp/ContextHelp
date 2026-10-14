@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -337,6 +338,83 @@ func TestRegistrySyncNotTrustedSaysEntitiesHeld(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// indexOnlyRegistry serves an entity index of one entity, slug.
+func indexOnlyRegistry(t *testing.T, slug string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/entities/index" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `[{"slug":%q,"title":%q,"namespace":"ai","version_hash":"v1"}]`, slug, slug)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// TestRegistrySyncReconcileHonoursTrustLevel: `registry sync --reconcile`
+// writes only the trusted registry's entities and reports, in text and
+// JSON, what the untrusted and sandboxed registries held back.
+func TestRegistrySyncReconcileHonoursTrustLevel(t *testing.T) {
+	db := setupTestDB(t)
+	appendConfig(t, db, fmt.Sprintf(`registries:
+  - name: u
+    url: %s
+  - name: s
+    url: %s
+    trust_level: sandboxed
+  - name: t
+    url: %s
+    trust_level: trusted
+`, indexOnlyRegistry(t, "ai.gpt"), indexOnlyRegistry(t, "ai.t5"), indexOnlyRegistry(t, "ai.bert")))
+
+	out, err := db.exec("registry", "sync", "t", "--reconcile")
+	if err != nil {
+		t.Fatalf("registry sync --reconcile: %v\n%s", err, out)
+	}
+	for _, w := range []string{
+		"Entities merged: 1",
+		"Entities not written: 1 from u", "trust_level unset, so untrusted",
+		"Entities not written: 1 from s", "trust_level sandboxed",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("output lacks %q:\n%s", w, out)
+		}
+	}
+	ctx := context.Background()
+	if _, err := db.Driver.Entities().Get(ctx, "ai.bert"); err != nil {
+		t.Errorf("trusted entity not written: %v", err)
+	}
+	for _, slug := range []string{"ai.gpt", "ai.t5"} {
+		if e, err := db.Driver.Entities().Get(ctx, slug); err == nil && e != nil {
+			t.Errorf("held entity %s written", slug)
+		}
+	}
+
+	out, err = db.exec("registry", "sync", "t", "--reconcile", "--format", "json")
+	if err != nil {
+		t.Fatalf("registry sync --reconcile --format json: %v\n%s", err, out)
+	}
+	var doc struct {
+		Merged          int `json:"merged"`
+		PendingApproval int `json:"pending_approval"`
+		Blocked         int `json:"blocked"`
+		Registries      []struct {
+			Name            string `json:"name"`
+			TrustLevel      string `json:"trust_level"`
+			PendingApproval int    `json:"pending_approval"`
+			Blocked         int    `json:"blocked"`
+		} `json:"registries"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("reconcile JSON does not parse: %v\n%s", err, out)
+	}
+	if doc.Merged != 1 || doc.PendingApproval != 1 || doc.Blocked != 1 || len(doc.Registries) != 3 ||
+		doc.Registries[0].TrustLevel != "untrusted" || doc.Registries[1].Blocked != 1 {
+		t.Errorf("reconcile JSON = %+v", doc)
 	}
 }
 

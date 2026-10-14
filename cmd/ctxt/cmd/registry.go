@@ -642,12 +642,12 @@ func printHeldEntities(w io.Writer, name string, c service.RegistryEntityCounts)
 		}
 	}
 	if c.PendingApproval > 0 {
-		fmt.Fprintf(w, "Entities not written: %d (registry not trusted: %s)\n", c.PendingApproval, level)
+		fmt.Fprintf(w, "Entities not written: %d from %s (registry not trusted: %s)\n", c.PendingApproval, name, level)
 		fmt.Fprintln(w, "  An untrusted registry's entity writes need approval, which ctxt does not offer yet;")
 		fmt.Fprintln(w, "  set trust_level: trusted on its registries entry (ctxt config edit) and sync again to write them.")
 	}
 	if c.Blocked > 0 {
-		fmt.Fprintf(w, "Entities not written: %d (registry sandboxed: %s never writes to the local graph)\n", c.Blocked, level)
+		fmt.Fprintf(w, "Entities not written: %d from %s (registry sandboxed: %s never writes to the local graph)\n", c.Blocked, name, level)
 	}
 }
 
@@ -659,7 +659,10 @@ func runRegistrySyncReconcile(
 	svc *service.Service,
 	strategy registry.MergeStrategy,
 ) error {
-	fmt.Printf("Syncing all registries with reconciliation (strategy: %s)...\n", strategy)
+	w := cmd.OutOrStdout()
+	if !isJSONOutput() {
+		fmt.Fprintf(w, "Syncing all registries with reconciliation (strategy: %s)...\n", strategy)
+	}
 
 	result, err := svc.SyncAllRegistriesWithReconciliation(ctx, strategy, nil)
 	if err != nil {
@@ -671,14 +674,22 @@ func runRegistrySyncReconcile(
 		for i, u := range result.OfflineRegistries {
 			offline[i] = config.RedactDSN(u)
 		}
-		return outputJSON(cmd.OutOrStdout(), map[string]any{
+		return outputJSON(w, map[string]any{
 			"merged":             result.Merged,
+			"pending_approval":   result.PendingApproval,
+			"blocked":            result.Blocked,
+			"registries":         result.Registries,
 			"conflicts":          result.Conflicts,
 			"offline_registries": offline,
 		})
 	}
 
-	fmt.Printf("Entities merged: %d\n", result.Merged)
+	fmt.Fprintf(w, "Entities merged: %d\n", result.Merged)
+	for _, r := range result.Registries {
+		printHeldEntities(w, r.Name, service.RegistryEntityCounts{
+			TrustLevel: r.TrustLevel, PendingApproval: r.PendingApproval, Blocked: r.Blocked,
+		})
+	}
 
 	if len(result.OfflineRegistries) > 0 {
 		fmt.Fprintf(cmd.OutOrStdout(), "\nOffline registries (cached values preserved):\n")

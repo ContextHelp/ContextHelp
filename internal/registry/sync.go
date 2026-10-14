@@ -75,6 +75,10 @@ type MultiSyncResult struct {
 	// OfflineRegistries lists registry URLs that were unreachable; their cached
 	// local values were used instead.
 	OfflineRegistries []string
+	// PendingApproval and Blocked total the per-registry counts: entities
+	// the trust gate held back, never reconciled nor written.
+	PendingApproval int
+	Blocked         int
 }
 
 // Syncer performs registry syncs against the entity store.
@@ -195,13 +199,7 @@ func (s *Syncer) Sync(ctx context.Context, cfg config.RegistryConfig) (*SyncResu
 			continue
 		}
 
-		// Trust gate: enforce per-registry trust level before writing.
-		if rec, err := s.trustGate.CheckWrite(ctx, e, cfg.URL, cfg.EffectiveTrustLevel()); err != nil {
-			if rec != nil {
-				result.PendingApproval++
-			} else {
-				result.Blocked++
-			}
+		if !s.admit(ctx, e, cfg, result) {
 			continue
 		}
 
@@ -222,6 +220,22 @@ func (s *Syncer) Sync(ctx context.Context, cfg config.RegistryConfig) (*SyncResu
 	}
 
 	return result, nil
+}
+
+// admit runs e through the trust gate for cfg's effective trust_level.
+// It reports whether e may be written; when not, it counts e on res as
+// pending approval (untrusted) or blocked (sandboxed).
+func (s *Syncer) admit(ctx context.Context, e *storage.Entity, cfg config.RegistryConfig, res *SyncResult) bool {
+	rec, err := s.trustGate.CheckWrite(ctx, e, cfg.URL, cfg.EffectiveTrustLevel())
+	if err == nil {
+		return true
+	}
+	if rec != nil {
+		res.PendingApproval++
+	} else {
+		res.Blocked++
+	}
+	return false
 }
 
 // SyncWithOfflineFallback wraps Sync with offline-first semantics.
@@ -262,6 +276,11 @@ func (s *Syncer) SyncWithOfflineFallback(
 //  2. Among remote registries: strategy resolves per-field conflicts.
 //  3. Unreachable registries: cached local values are kept; registry is listed in
 //     MultiSyncResult.OfflineRegistries.
+//
+// Each registry's trust_level gates its entities exactly as in Sync:
+// an untrusted or sandboxed registry's entities never reach
+// reconciliation, so they are never written; they are counted per
+// registry (PendingApproval, Blocked) and in the totals.
 func (s *Syncer) MultiSync(ctx context.Context, cfg MultiSyncConfig) (*MultiSyncResult, error) {
 	strategy := cfg.Strategy
 	if strategy == "" {
@@ -308,6 +327,11 @@ func (s *Syncer) MultiSync(ctx context.Context, cfg MultiSyncConfig) (*MultiSync
 				perReg.Skipped++
 				continue
 			}
+			// Same trust gate as Sync: reconciliation only ever sees
+			// entities the registry's trust_level lets it write.
+			if !s.admit(ctx, e, regCfg, perReg) {
+				continue
+			}
 			candidate := RegistryEntity{
 				Entity:      e,
 				RegistryURL: regCfg.URL,
@@ -317,6 +341,8 @@ func (s *Syncer) MultiSync(ctx context.Context, cfg MultiSyncConfig) (*MultiSync
 			allCandidates[entry.Slug] = append(allCandidates[entry.Slug], candidate)
 		}
 		out.PerRegistry = append(out.PerRegistry, perReg)
+		out.PendingApproval += perReg.PendingApproval
+		out.Blocked += perReg.Blocked
 	}
 
 	// Phase 2: reconcile and write.
