@@ -18,15 +18,21 @@ Plugins may introduce entirely new configuration blocks without requiring core c
 
 # Configuration Layers
 
-ContextHelp merges configuration from five ordered layers:
+Each binary reads its own file: `ctxt` reads `ctxt.yaml`, `dpkms` reads
+`dpkms.yaml`. Lowest to highest:
 
-1. **Defaults** (compiled into the engine)
-2. **System-level config** (e.g., `/etc/contexthelp/config.yaml`)
-3. **User-level config** (e.g., `~/.config/contexthelp/config.yaml`)
-4. **Environment variables** (e.g., `CH_STORAGE_BACKEND=sqlite`)
-5. **Runtime flags** (e.g., `ch analyze --lang fr`)
+1. **Defaults** (compiled into the binary)
+2. **System config** (`/etc/contexthelp/<bin>.yaml`)
+3. **User config** (`$XDG_CONFIG_HOME/contexthelp/<bin>.yaml`)
+4. **Project config** (nearest `.contexthelp/<bin>.yaml`)
+5. **`-c <path>` files**
+6. **Bound environment variables** (e.g., `CH_STORAGE_TYPE=sqlite`)
+7. **`-c key=value` overrides**
+8. **Command flags**, on commands that prefer them (e.g., `dpkms serve --port 8181`)
 
-Higher layers override all lower layers. Plugins may also define new configuration namespaces, merged in the same hierarchy.
+`CTXT_CONFIG=<path>` replaces layers 2–4 with that one file. Values are
+literal: `${VAR}` is not expanded. Full detail:
+[cli-flag-binding.md](cli-flag-binding.md).
 
 ---
 
@@ -56,20 +62,15 @@ queue:
   options: {}
 
 registries:
-  enabled:
-    - name: local-taxonomy
-      url: file://~/.config/contexthelp/taxonomy/
-      type: taxonomy
+  - name: uxpatterns
+    url: https://api.uxpatterns.io
+    auth:
+      type: bearer          # token: `ctxt registry login uxpatterns` (OS keychain)
+    sync_mode: full         # full | thin
+    trust_level: untrusted  # trusted | untrusted | sandboxed
 
-    - name: uxpatterns
-      url: https://api.uxpatterns.io
-      type: taxonomy
-      auth:
-        token: ${CH_REGISTRY_TOKEN_UXPATTERNS}
-
-    - name: growth-weights
-      url: https://weights.growth.dev
-      type: weights
+  - name: growth-weights
+    url: https://weights.growth.dev
 
 pipelines:
   enabled:
@@ -513,7 +514,7 @@ Each entry describes one remote dPKMS instance to push to or sync with.
 federations:
   - name: home-server
     url: https://home.example.com:8080
-    token: ${DPKMS_FED_TOKEN_HOME}
+    token: s3cret-home       # literal; keep this file 0600
     sync_mode: async
     interval: 5m
 
@@ -534,7 +535,7 @@ federations:
 
 ```yaml
 federation:
-  token: ${DPKMS_FEDERATION_ACCEPT_TOKEN}
+  token: s3cret-accept       # literal; keep this file 0600
 ```
 
 Set `token` to require a Bearer token on incoming push requests.
@@ -627,14 +628,11 @@ Plugins **never** require core modifications.
 
 # Environment Variables
 
-| Variable | Purpose |
-|----------|----------|
-| `CH_CONFIG` | Override config path |
-| `CH_DATA_DIR` | Override storage directory |
-| `CH_STORAGE_BACKEND` | Force backend type |
-| `CH_REGISTRY_TOKEN_*` | Registry tokens |
-| `CH_DISABLE_TELEMETRY` | Hard-disable telemetry |
-| `CH_LANG` | Override preferred language list |
+Only an explicit list of variables maps to config keys; see
+[cli-flag-binding.md](cli-flag-binding.md#environment-variables-bound-to-config-keys)
+and [../environment-variables/README.md](../environment-variables/README.md).
+Registry tokens are not environment variables: `ctxt registry login <name>`
+stores them in the OS keychain.
 
 ---
 

@@ -26,7 +26,7 @@ buildPipeline (non-strict mode)
 ```
 
 The log line is emitted via the standard `log` package (always visible,
-regardless of the `--verbose` / `CTXT_DEBUG` level).
+regardless of `--verbose`).
 
 ---
 

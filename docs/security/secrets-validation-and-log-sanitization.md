@@ -72,7 +72,6 @@ ContextHelp automatically detects potential secrets matching these patterns:
 | Pattern | Examples | Priority |
 |---------|----------|----------|
 | Key-value secrets | `POSTGRES_PASSWORD=...` | High |
-| Prefixed secrets | `CH_REGISTRY_TOKEN_*=...` | High |
 | Quoted values | `"api_key": "sk_..."` | High |
 | YAML nested secrets | `auth: token: sk_...` | High |
 
@@ -520,70 +519,39 @@ ls -la ~/.config/contexthelp/config.yaml
 
 ### Safe Configuration Patterns
 
-Use environment variables for secrets, never hardcode them:
+Config files take every value literally: `${VAR}` is not expanded, so a
+config file cannot pull a secret from the environment. Keep secrets out of
+it instead.
+
+Registry tokens never appear in config. The registry entry names the auth
+mechanism only; `ctxt registry login` stores the token in the OS keychain:
 
 ```yaml
-# GOOD - Use environment variable references
 registries:
   - name: private-registry
     url: https://registry.example.com
     auth:
-      token: ${CH_REGISTRY_TOKEN_PRIVATE}  # From env var
-
-# GOOD - Use file-based secrets
-registries:
-  - name: private-registry
-    url: https://registry.example.com
-    auth:
-      token_file: /etc/contexthelp/secrets/registry-token  # From file
+      type: bearer          # bearer | api_key | oauth2
 ```
 
 ```bash
-# BAD - Don't do this
-# Hardcoding secrets in config
-CH_REGISTRY_TOKEN_PRIVATE="ghp_abc123def456"  # DON'T
+# Prompts for the token; nothing lands in shell history
+ctxt registry login private-registry
 
-# GOOD - Source from secure storage
-export CH_REGISTRY_TOKEN_PRIVATE=$(pass show contexthelp/registry-token)
-export CH_REGISTRY_TOKEN_PRIVATE=$(aws secretsmanager get-secret-value --secret-id contexthelp/registry --query SecretString --output text)
+# Non-interactive: pass it from secure storage
+ctxt registry login private-registry --token "$(pass show contexthelp/registry-token)"
+
+# Remove it
+ctxt registry logout private-registry
 ```
 
 ### Configuration as Code
 
-When managing configuration in code:
-
-```go
-// BAD - Hardcoded secret
-cfg := &config.Config{
-    Registries: []config.RegistryConfig{
-        {
-            Name:  "private",
-            Token: "ghp_hardcoded_secret_xyz",  // DON'T
-        },
-    },
-}
-
-// GOOD - Load from environment
-cfg := &config.Config{
-    Registries: []config.RegistryConfig{
-        {
-            Name:  "private",
-            Token: os.Getenv("CH_REGISTRY_TOKEN_PRIVATE"),
-        },
-    },
-}
-
-// GOOD - Load from secret file
-token, err := ioutil.ReadFile("/etc/contexthelp/secrets/registry-token")
-cfg := &config.Config{
-    Registries: []config.RegistryConfig{
-        {
-            Name:  "private",
-            Token: string(token),
-        },
-    },
-}
-```
+`config.RegistryConfig` has no token field, so code that builds a
+`config.Config` cannot carry a registry token either. Provider API keys
+come from the environment (`OPENAI_API_KEY`, ...); never assign a literal
+secret to a config struct field such as `server.token` or
+`federation.token` in source.
 
 ## Verifying Log Sanitization
 

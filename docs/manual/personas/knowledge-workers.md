@@ -9,7 +9,7 @@ Use `ctxt` to move from raw notes and links to a shareable brief with provenance
 ## Prerequisites
 
 1. `ctxt` and `dpkms` binaries are installed.
-2. A config file exists at `~/.config/contexthelp/config.yaml`.
+2. A config file exists at `~/.config/contexthelp/ctxt.yaml` (`ctxt setup` creates it).
 3. `dpkms` server is running in a separate terminal:
 
 ```bash

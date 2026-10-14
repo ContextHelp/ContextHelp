@@ -373,7 +373,7 @@ ctxt plugin permissions <name>
 ctxt plugin audit <name> --result denied
 
 # Run with verbose logging
-CTXT_PLUGIN_DEBUG=1 ctxt <command>
+ctxt --verbose <command>
 ```
 
 ---

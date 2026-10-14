@@ -115,8 +115,8 @@ err := validate.Struct(request)
 # Configuration validation
 ctxt config validate
 
-# Security scanning
-ctxt security validate config.yaml
+# Lint: schema, plaintext secrets, file permissions
+ctxt config doctor
 ```
 
 **Compliance Level**: ✅ Full

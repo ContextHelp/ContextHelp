@@ -4,7 +4,7 @@ ctxt abstracts secret storage behind a `secrets.backend` config key. Instead of 
 
 ## Quick Start
 
-Add a `secrets` section to `~/.config/contexthelp/config.yaml`:
+Add a `secrets` section to `~/.config/contexthelp/dpkms.yaml` (read by `dpkms serve` and `dpkms secret`):
 
 ```yaml
 secrets:
