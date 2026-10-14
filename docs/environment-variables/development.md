@@ -37,8 +37,7 @@ INTEGRATION=1 go test -tags=integration,fts5 ./test/integration/...
 **Default:** _(unset)_
 
 Server for the Postgres-backed tests. When unset, the tests build the URL
-from the variables below. (The `storageutil` driver smoke test reads
-`POSTGRES_URL` instead.)
+from the variables below.
 
 ```bash
 POSTGRES_DSN=postgres://contexthelp:test_password@localhost:5432/contexthelp_test?sslmode=disable

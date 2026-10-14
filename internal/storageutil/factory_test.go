@@ -26,20 +26,6 @@ func TestNewDriverSQLite(t *testing.T) {
 	}
 }
 
-func TestNewDriverPostgres(t *testing.T) {
-	dsn := os.Getenv("POSTGRES_URL")
-	if dsn == "" {
-		t.Skip("POSTGRES_URL not set; skipping postgres driver test")
-	}
-	driver, err := NewDriver("postgres", dsn, NewTestBlobStore(t))
-	if err != nil {
-		t.Fatalf("new postgres driver: %v", err)
-	}
-	if driver == nil {
-		t.Fatal("driver is nil")
-	}
-}
-
 func TestNewDriverUnknown(t *testing.T) {
 	_, err := NewDriver("foo", "", NewTestBlobStore(t))
 	if err == nil {
