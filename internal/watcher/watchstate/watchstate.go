@@ -41,7 +41,7 @@
 // instance's run lock. It keeps the state in memory and writes it back
 // shortly after a change and on Close, so a scan of thousands of files
 // rewrites the file a few times, not once per file. Every write holds an
-// exclusive flock on "<file>.lock" and replaces the file atomically
+// exclusive lock on "<file>.lock" and replaces the file atomically
 // (temp file in the same directory, fsync, rename), as
 // internal/ambient/position does. Readers (`ctxt watch status`) take no
 // lock. A crash loses at most the last FlushDelay of records; those files
@@ -50,7 +50,7 @@
 //
 // # Run file
 //
-// `ctxt watch start` holds an exclusive flock on the run file for its
+// `ctxt watch start` holds an exclusive lock on the run file for its
 // whole life and writes its pid, endpoint and directories into it. The
 // kernel drops the lock when the process dies, so liveness is "the lock
 // is held", never "a process with that pid exists": a reused pid is
@@ -66,11 +66,11 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	"hop.top/kit/go/core/xdg"
 
+	"github.com/ideacrafterslabs/ctxt/internal/filelock"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
 
@@ -338,13 +338,13 @@ func (s *Store) Close() error {
 	return s.Flush()
 }
 
-// writeLocked replaces path with data under the sidecar flock.
+// writeLocked replaces path with data under the sidecar lock.
 func writeLocked(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return fmt.Errorf("watch state: create %s: %w", dir, err)
 	}
-	release, err := flock(path+".lock", syscall.LOCK_EX)
+	release, err := lockFile(path + ".lock")
 	if err != nil {
 		return err
 	}
@@ -385,21 +385,20 @@ func replaceFile(path string, data []byte) error {
 	return nil
 }
 
-// flock takes an advisory lock of kind on path, blocking, and returns
-// the release func. The lock file is never removed (see
+// lockFile takes an exclusive advisory lock on path, blocking, and
+// returns the release func. The lock file is never removed (see
 // internal/ambient/position).
-func flock(path string, kind int) (func(), error) {
+func lockFile(path string) (func(), error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, filePerm) // #nosec G304 -- derived from the state path
 	if err != nil {
 		return nil, fmt.Errorf("watch state: open lock %s: %w", path, err)
 	}
-	fd := int(f.Fd()) // #nosec G115 -- fd is a small positive int
-	if err := syscall.Flock(fd, kind); err != nil {
+	if err := filelock.Lock(f); err != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("watch state: flock %s: %w", path, err)
+		return nil, fmt.Errorf("watch state: %w", err)
 	}
 	return func() {
-		_ = syscall.Flock(fd, syscall.LOCK_UN)
+		_ = filelock.Unlock(f)
 		_ = f.Close()
 	}, nil
 }

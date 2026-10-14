@@ -3,26 +3,26 @@ package position
 import (
 	"fmt"
 	"os"
-	"syscall"
+
+	"github.com/ideacrafterslabs/ctxt/internal/filelock"
 )
 
-// lock takes an exclusive advisory flock on path, blocking until it is
-// granted, and returns the release func. The kernel drops the lock if
-// the process dies. The lock file is never removed: flock state is
-// per-fd, and unlinking would race waiters holding their own fd (same
+// lock takes an exclusive advisory lock on path, blocking until it is
+// granted, and returns the release func. The OS drops the lock if the
+// process dies. The lock file is never removed: lock state is per open
+// file, and unlinking would race waiters holding their own handle (same
 // rule as internal/cursor and internal/dblock).
 func lock(path string) (release func(), err error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, filePerm) // #nosec G304 -- derived from the configured state path
 	if err != nil {
 		return nil, fmt.Errorf("position: open lock %s: %w", path, err)
 	}
-	fd := int(f.Fd()) // #nosec G115 -- fd is a small positive int
-	if err := syscall.Flock(fd, syscall.LOCK_EX); err != nil {
+	if err := filelock.Lock(f); err != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("position: flock %s: %w", path, err)
+		return nil, fmt.Errorf("position: %w", err)
 	}
 	return func() {
-		_ = syscall.Flock(fd, syscall.LOCK_UN)
+		_ = filelock.Unlock(f)
 		_ = f.Close()
 	}, nil
 }
