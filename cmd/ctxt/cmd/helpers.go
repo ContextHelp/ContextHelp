@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
@@ -20,13 +19,11 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
-	"github.com/ideacrafterslabs/ctxt/internal/plugin"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/spf13/viper"
 	"hop.top/kit/go/console/output"
 	kitstyles "hop.top/kit/go/console/tui/styles"
@@ -264,15 +261,6 @@ func printTable(w io.Writer, headers []string, rows [][]string) {
 	fmt.Fprintln(w, t.Render())
 }
 
-// findOutputGenerator looks up a generator by format name from the plugin registry.
-// Returns nil if reg is nil or no matching generator is found.
-func findOutputGenerator(reg *plugin.Registry, format string) pluginapi.OutputGenerator {
-	if reg == nil {
-		return nil
-	}
-	return reg.FindOutputGenerator(format)
-}
-
 // koLabel returns a short display label for a KO. Uses DocumentProjection.Title when
 // available, then falls back to the first summary, then the object ID.
 // maxLen caps the label length; truncation appends "...".
@@ -292,49 +280,6 @@ func koLabel(ko *storage.KnowledgeObject) string {
 		out = fmt.Sprintf("%s  %s", ko.ID, label)
 	}
 	return out
-}
-
-// buildObjectFilter reads common filter flags from viper and returns an ObjectFilter.
-func buildObjectFilter() storage.ObjectFilter {
-	filter := storage.ObjectFilter{
-		Type:     viper.GetString("list.type"),
-		Subtype:  viper.GetString("list.subtype"),
-		Tag:      viper.GetString("list.tagged"),
-		Mention:  viper.GetString("list.mention"),
-		Pipeline: viper.GetString("list.pipeline"),
-		Status:   viper.GetString("list.status"),
-		Limit:    viper.GetInt("list.limit"),
-		Offset:   viper.GetInt("list.start"),
-		Sort:     viper.GetString("list.sort"),
-		Dir:      viper.GetString("list.dir"),
-	}
-	if before := viper.GetString("list.before"); before != "" {
-		if t, err := time.Parse("2006-01-02", before); err == nil {
-			filter.Before = &t
-		}
-	}
-	if after := viper.GetString("list.after"); after != "" {
-		if t, err := time.Parse("2006-01-02", after); err == nil {
-			filter.After = &t
-		}
-	}
-
-	// Metadata facet filters (US-0407).
-	filter.MetadataType = viper.GetString("list.meta-type")
-	filter.MetadataTopic = viper.GetString("list.topic")
-	filter.MetadataPerson = viper.GetString("list.person")
-	filter.SourceType = viper.GetString("list.source-type")
-	if since := viper.GetString("list.since"); since != "" {
-		if t, err := time.Parse("2006-01-02", since); err == nil {
-			filter.MetadataSince = &t
-		}
-	}
-	if until := viper.GetString("list.until"); until != "" {
-		if t, err := time.Parse("2006-01-02", until); err == nil {
-			filter.MetadataUntil = &t
-		}
-	}
-	return filter
 }
 
 // statusStyle renders a job/feed status string with kit's semantic palette.
