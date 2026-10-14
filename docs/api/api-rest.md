@@ -149,6 +149,13 @@ Core endpoints:
 - `GET /entities/resolve`
 - `GET /entities/{slug}`
 - `GET /entities/{slug}/backlinks`
+- `GET /pages`
+- `GET /pages/{slug}`
+- `POST /pages/{slug}/refresh`
+- `GET /topic-index`
+- `GET /topic-index/{topic}`
+- `POST /topic-index`
+- `GET /stats`
 - `GET /suggest/tags` (optional)
 - `GET /suggest/mentions` (optional)
 
@@ -797,6 +804,73 @@ Returns one entity by exact slug, with its aliases, description and provenance (
 ### `GET /entities/{slug}/backlinks`
 
 Lists the objects that mention the entity: `{"data": [...objects]}`. The gate check is unmetered. An unknown slug returns `{"data": []}` to an ungated caller and a 404 to a gated one.
+
+---
+
+## Entity Pages, Topic Index and Stats
+
+REST only; gRPC has none of these methods.
+
+| Route | Scope | Does |
+|---|---|---|
+| `GET /pages` | `read:objects` | Lists entity pages (objects of type `entity_page`), newest first |
+| `GET /pages/{slug}` | `read:objects` | Returns the entity page of one entity slug |
+| `POST /pages/{slug}/refresh` | `write:objects` | Recompiles the page from its current sources, stores it and returns it |
+| `GET /topic-index` | `read:objects` | Returns the stored topic index |
+| `GET /topic-index/{topic}` | `read:objects` | Returns the entries of one topic |
+| `POST /topic-index` | `write:objects` | Rebuilds the topic index from every object |
+| `GET /stats` | `read:objects` | Counts objects, jobs, entities, feeds, reminders and resurfacing candidates |
+
+A browser session may make the reads; refresh and rebuild need a `writer` or `admin` token. A `reader` token gets 403 `INSUFFICIENT_SCOPE` on both.
+
+### `GET /pages`
+
+Query parameter: `limit`, at least 1, default 50. An unknown, repeated or malformed parameter gets 400 `INVALID_PARAM`.
+
+```json
+{"data": [{"id": "p-alice-0001", "type": "entity_page", "raw_content": "# person.alice …", "metadata": {"entity_page": {"entity_slug": "person.alice", "source_ids": ["s-1", "s-2"], "revision_count": 2, "revision_log": []}}, "updated_at": "2026-10-01T09:00:00Z"}]}
+```
+
+Items are knowledge objects, as `GET /objects/{id}` returns them; `metadata.entity_page` names the entity and its sources. `data` is `[]` when there is no page.
+
+### `GET /pages/{slug}` and `POST /pages/{slug}/refresh`
+
+Both return the page object. A slug without a page is a 404 `NOT_FOUND`. Refresh takes no body; it recompiles `raw_content` from the page's `source_ids` and leaves the revision log as it is.
+
+### `GET /topic-index` and `GET /topic-index/{topic}`
+
+The index groups object summaries by the topics of `enrichment.structured_metadata`:
+
+```json
+{"categories": [{"topic": "go", "entries": [{"object_id": "s-1", "summary": "Alice ships Go"}]}], "object_ids": ["s-1"], "generated_at": "2026-10-01T09:00:00Z"}
+```
+
+`GET /topic-index/{topic}` returns `{"data": [...entries]}` of the first category whose name starts with `topic`, ignoring case, and `{"data": []}` when none does. Before the first rebuild both reads are a 404 `NOT_FOUND`.
+
+### `POST /topic-index`
+
+Rebuilds the index from every object and stores it. No body. Returns `{"id": "<index object ID>"}`.
+
+### `GET /stats`
+
+Query parameter: `profile` scopes the resurfacing count to one focus profile; without it every profile counts.
+
+```json
+{
+  "knowledge_objects": 3,
+  "objects_by_type": {"article": 1, "entity_page": 1, "note": 1},
+  "jobs": {"total": 3, "pending": 1, "running": 0, "completed": 2, "failed": 0},
+  "entities": 1,
+  "feeds": 2,
+  "feeds_active": 1,
+  "reminders_pending": 1,
+  "resurfacing_candidates": 2
+}
+```
+
+- `knowledge_objects` counts every object, whatever its status.
+- `entities` counts only the entities the principal may list: the inbound entitlement gate applies as it does to `GET /entities`.
+- `resurfacing_candidates` counts entries neither surfaced nor dismissed. It is `null` on a storage backend without a resurfacing queue (Postgres, for now): unknown, not zero.
 
 ---
 

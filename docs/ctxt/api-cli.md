@@ -73,6 +73,8 @@ go build -o dpkms cmd/dpkms/main.go
 | `ctxt profile` | Manage focus profiles |
 | `ctxt make` | Generate compositions (briefs, plans) |
 | `ctxt stats` | Live at-a-glance system summary |
+| `ctxt page` | Entity pages (list, show, refresh) |
+| `ctxt index` | Show or rebuild the topic index |
 | `ctxt instance` | Multi-instance targeting (use, list, current) |
 | `ctxt config` | Configuration operations |
 | `ctxt registry` | Manage registries |
@@ -557,6 +559,8 @@ dpkms housekeeping prune --before <ISO>
 
 Live at-a-glance system summary: knowledge objects (by type), jobs (by status), entities, feeds, profiles, pending reminders, and resurfacing candidates.
 
+The counts come from `GET /api/v1/stats` on the dpkms instance `--server`, `--instance` or the config selects (scope `read:objects`); the server counts, nothing is listed. Profiles are this client's configuration, and the resurfacing count is the default profile's. Exit codes follow ADR-077: 70 when nothing answers, 5 without a valid token. `--watch` fails the same way on its first snapshot; later failures are printed and the next tick retries.
+
 ```bash
 ctxt stats
 ctxt stats --output json
@@ -579,7 +583,35 @@ ctxt stats --watch               # re-print every 3s; Ctrl-C to exit
 | `feeds` / `feeds_active` | Total and active feed count |
 | `profiles` / `default_profile` | Profile count and active default |
 | `reminders_pending` | Due or upcoming reminder count |
-| `resurfacing_candidates` | Objects queued for resurfacing |
+| `resurfacing_candidates` | Unseen resurfacing candidates of the default profile; `null` when the instance's storage has no resurfacing queue (Postgres) |
+
+---
+
+## `ctxt page`
+
+Entity pages: compiled objects (type `entity_page`) that gather what the sources mentioning one entity say about it. Every leaf calls the dpkms instance `--server`, `--instance` or the config selects, through `/api/v1/pages`.
+
+```bash
+ctxt page list [--limit 50]          # newest first
+ctxt page show person.alice
+ctxt page refresh person.alice       # recompile from the page's sources
+```
+
+`list` and `show` need `read:objects`; `refresh` needs `write:objects` (`writer` or `admin`), and a `reader` token exits 5. An entity without a page exits 3. `--format json` prints the page objects.
+
+---
+
+## `ctxt index`
+
+The topic index: object summaries grouped by the topics of `enrichment.structured_metadata`, read from `/api/v1/topic-index` on the selected instance.
+
+```bash
+ctxt index                 # every topic
+ctxt index auth            # the first topic starting with "auth", ignoring case
+ctxt index --refresh       # rebuild on dpkms, then print
+```
+
+Reading needs `read:objects`; `--refresh` needs `write:objects`. Before the first rebuild there is no index: `ctxt index` exits 3 and suggests `ctxt index --refresh`. A topic with no match prints `No entries for topic "<topic>"` (`[]` under `--format json`) and exits 0.
 
 ---
 
