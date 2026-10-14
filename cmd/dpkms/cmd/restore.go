@@ -21,9 +21,9 @@ var restoreCmd = &cobra.Command{
 
 Restores:
   - SQLite database, to storage.path
-  - the config file the backup ran with (config.yaml in the backup), to
-    the config file this run uses (--config, CTXT_CONFIG, else
-    contexthelp/dpkms.yaml in the config directory)
+  - the config file the backup ran with, to the config file this run
+    uses (--config, CTXT_CONFIG, else contexthelp/dpkms.yaml in the
+    config directory)
   - the config directory's files, keys/ included, when the backup was
     made with --include-configs, into that same directory
   - blobs, when the backup was made with --include-blobs, into the
