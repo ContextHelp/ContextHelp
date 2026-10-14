@@ -4,7 +4,9 @@ set -euo pipefail
 # dev-setup.sh - Development environment setup for ContextHelp
 # This script sets up a local-first development environment with all necessary tools
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The script lives in scripts/; the repo root is its parent directory.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 cd "$PROJECT_ROOT"
 
 # Color output helpers
@@ -258,27 +260,19 @@ else
     success ".env file already exists"
 fi
 
-# Step 8: Setup pre-commit hooks
-info "Step 8: Setting up Git pre-commit hooks..."
-mkdir -p .git/hooks
-
-cat > .git/hooks/pre-commit << 'EOF'
-#!/usr/bin/env bash
-set -e
-
-# Run linter
-echo "Running golangci-lint..."
-golangci-lint run
-
-# Run tests
-echo "Running tests..."
-go test -short ./...
-
-echo "Pre-commit checks passed!"
-EOF
-
-chmod +x .git/hooks/pre-commit
-success "Git pre-commit hook installed"
+# Step 8: Install git hooks
+# Delegates to the canonical installer (make install-hooks), which points
+# core.hooksPath at the tracked .githooks directory. That works in linked
+# worktrees too, where .git is a file rather than a directory.
+info "Step 8: Installing git hooks..."
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    warn "Not a git checkout; skipping hooks"
+elif ! command_exists make; then
+    warn "make not found; skipping hooks (run 'make install-hooks' later)"
+else
+    make install-hooks
+    success "Git hooks installed ($(git rev-parse --git-path hooks))"
+fi
 
 # Step 9: Verify installation
 info "Step 9: Verifying installation..."

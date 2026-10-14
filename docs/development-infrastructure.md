@@ -242,7 +242,7 @@ This document provides an overview of the development infrastructure for Context
 5. Sets up SQLite database
 6. Creates initial migrations
 7. Generates `.env` file
-8. Installs Git pre-commit hooks
+8. Installs Git hooks (`make install-hooks`)
 9. Verifies installation
 
 **Tools Installed:**
@@ -263,20 +263,15 @@ This document provides an overview of the development infrastructure for Context
 
 ### Pre-commit Hook
 
-**Location:** `.git/hooks/pre-commit`
+**Location:** `.githooks/pre-commit` (tracked; git finds it through
+`core.hooksPath`, so it works in linked worktrees too)
 
 **Actions:**
-1. Run golangci-lint
-2. Run unit tests (`go test -short`)
-3. Report results
+1. gitleaks secret scan on staged changes
+2. Lint gate from `.pre-commit-config.yaml`, scoped to staged files
 
-**Benefits:**
-- Catches issues before push
-- Prevents broken commits
-- Enforces code quality
-- Fast feedback loop
-
-**Installation:** Automatic via `scripts/dev-setup.sh`
+**Installation:** `make install-hooks` (run by `scripts/dev-setup.sh`). See
+[DEVELOPING.md](../DEVELOPING.md#pre-commit-hooks) for details.
 
 ---
 
