@@ -4,7 +4,11 @@
 // ACL denials, quota exhaustion, signing failures, worker crash loops) and
 // dispatches them to one or more AlertHandlers.
 //
-// Default handler: appends to the AuditStore with event_class=security (non-blocking).
+// Default handler: logs the alert and queues an AuditStore row with
+// event_class=security. A single worker owned by the emitter writes the
+// queued rows; the queue is bounded and drops (counted, rate-limited
+// warning) when full, so recording never blocks the request path. Close
+// stops intake and drains the queue; call it before closing the store.
 // Optional handlers: webhook POST (JSON) and SMTP email.
 package security
 
@@ -17,6 +21,7 @@ import (
 	"net/http"
 	"net/smtp"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,7 +75,16 @@ type Config struct {
 	WebhookURL string
 	// SMTP holds optional SMTP config (zero value = disabled).
 	SMTP SMTPConfig
+	// AuditQueueSize bounds the audit rows waiting for the writer.
+	// When full, further rows are dropped and counted. Default: 1024.
+	AuditQueueSize int
 }
+
+const (
+	defaultAuditQueueSize = 1024
+	// dropWarnInterval rate-limits the "audit queue full" warning.
+	dropWarnInterval = 10 * time.Second
+)
 
 // SMTPConfig holds SMTP delivery settings.
 type SMTPConfig struct {
@@ -86,6 +100,7 @@ func DefaultConfig() Config {
 		AuthFailureThreshold: 3,
 		ACLDenialThreshold:   10,
 		WindowDuration:       60 * time.Second,
+		AuditQueueSize:       defaultAuditQueueSize,
 	}
 }
 
@@ -143,18 +158,55 @@ type Emitter struct {
 
 	mu       sync.Mutex
 	counters map[string]*slidingCounter // key: "kind:principal"
+
+	// intake guards closed, queue sends and inflight.Add: dispatch holds
+	// it shared, Close exclusively, so nothing is queued or started
+	// after Close has stopped intake.
+	intake   sync.RWMutex
+	closed   bool
+	queue    chan auditJob  // nil when audit is nil
+	inflight sync.WaitGroup // optional handler goroutines
+	// workerDone closes when the audit writer exits.
+	workerDone chan struct{}
+	// abort ends the drain early: the in-flight write's context is
+	// cancelled and the remaining rows are discarded.
+	abort     context.Context
+	abortFunc context.CancelFunc
+	closeOnce sync.Once
+	closeErr  error
+
+	dropped      atomic.Uint64
+	lastDropWarn atomic.Int64 // unix nanos
+}
+
+// auditJob is one queued audit row with its originating context
+// (cancellation already detached).
+type auditJob struct {
+	ctx   context.Context
+	alert Alert
 }
 
 // New creates an Emitter with the provided config and audit store.
-// audit may be nil (default handler will skip audit writes but still log).
+// audit may be nil (alerts are still logged and dispatched; no rows are
+// written and no writer goroutine starts). Call Close when done.
 func New(cfg Config, audit storage.AuditStore) *Emitter {
 	e := &Emitter{
-		cfg:      cfg,
-		audit:    audit,
-		counters: make(map[string]*slidingCounter),
+		cfg:        cfg,
+		audit:      audit,
+		counters:   make(map[string]*slidingCounter),
+		workerDone: make(chan struct{}),
 	}
-	// Always register the default audit-log handler.
-	e.handlers = append(e.handlers, e.defaultHandler)
+	e.abort, e.abortFunc = context.WithCancel(context.Background()) // #nosec G118 -- abortFunc is stored and invoked by Close
+	if audit != nil {
+		size := cfg.AuditQueueSize
+		if size <= 0 {
+			size = defaultAuditQueueSize
+		}
+		e.queue = make(chan auditJob, size)
+		go e.writeAuditRows()
+	} else {
+		close(e.workerDone)
+	}
 	if cfg.WebhookURL != "" {
 		e.handlers = append(e.handlers, webhookHandler(cfg.WebhookURL))
 	}
@@ -164,9 +216,58 @@ func New(cfg Config, audit storage.AuditStore) *Emitter {
 	return e
 }
 
-// AddHandler appends a custom AlertHandler.
+// AddHandler appends a custom AlertHandler. Call it before the emitter
+// is shared: handlers are not guarded against concurrent dispatch.
 func (e *Emitter) AddHandler(h AlertHandler) {
 	e.handlers = append(e.handlers, h)
+}
+
+// Dropped returns how many audit rows were discarded because the queue
+// was full, or because Close's deadline cut the drain short.
+func (e *Emitter) Dropped() uint64 {
+	return e.dropped.Load()
+}
+
+// Close stops intake (later alerts are logged but neither queued nor
+// dispatched), then waits for the queued audit rows and in-flight
+// handlers to finish. If ctx ends first, the in-flight write's context
+// is cancelled, the remaining rows are discarded (and counted as
+// dropped), and Close returns ctx's error once the writer has exited:
+// no audit write happens after Close returns. Idempotent; later calls
+// return the first call's result.
+func (e *Emitter) Close(ctx context.Context) error {
+	e.closeOnce.Do(func() {
+		e.intake.Lock()
+		e.closed = true
+		if e.queue != nil {
+			close(e.queue)
+		}
+		e.intake.Unlock()
+
+		handlersDone := make(chan struct{})
+		go func() {
+			e.inflight.Wait()
+			close(handlersDone)
+		}()
+
+		select {
+		case <-e.workerDone:
+		case <-ctx.Done():
+			e.abortFunc()
+			<-e.workerDone
+			e.closeErr = fmt.Errorf("security: drain audit queue: %w", ctx.Err())
+		}
+		e.abortFunc()
+		if e.closeErr != nil {
+			return
+		}
+		select {
+		case <-handlersDone:
+		case <-ctx.Done():
+			e.closeErr = fmt.Errorf("security: wait for alert handlers: %w", ctx.Err())
+		}
+	})
+	return e.closeErr
 }
 
 // RecordAuthFailure records one authentication failure for principal.
@@ -261,19 +362,11 @@ func (e *Emitter) count(kind, principal string) int {
 	return c.Add(now)
 }
 
-// dispatch invokes all registered handlers in goroutines (non-blocking).
-// context.WithoutCancel ensures handlers outlive the caller's request scope.
+// dispatch logs the alert, queues its audit row and starts the optional
+// handlers, without blocking: a full queue drops the row. The context
+// passed on is detached from the caller's cancellation so the work can
+// outlive the request; Close bounds it instead.
 func (e *Emitter) dispatch(ctx context.Context, a Alert) {
-	detached := context.WithoutCancel(ctx)
-	for _, h := range e.handlers {
-		go func(handler AlertHandler) {
-			handler(detached, a)
-		}(h)
-	}
-}
-
-// defaultHandler logs the alert and appends to the audit log (event_class=security).
-func (e *Emitter) defaultHandler(ctx context.Context, a Alert) {
 	slog.WarnContext(ctx, "security alert",
 		"kind", a.Kind,
 		"level", string(a.Level),
@@ -281,9 +374,60 @@ func (e *Emitter) defaultHandler(ctx context.Context, a Alert) {
 		"message", a.Message,
 		"count", a.Count,
 	)
-	if e.audit == nil {
+	detached := context.WithoutCancel(ctx)
+
+	e.intake.RLock()
+	defer e.intake.RUnlock()
+	if e.closed {
 		return
 	}
+	if e.queue != nil {
+		select {
+		case e.queue <- auditJob{ctx: detached, alert: a}:
+		default:
+			e.noteDropped(ctx, 1)
+		}
+	}
+	for _, h := range e.handlers {
+		e.inflight.Add(1)
+		go func(handler AlertHandler) {
+			defer e.inflight.Done()
+			handler(detached, a)
+		}(h)
+	}
+}
+
+// noteDropped counts n discarded audit rows and warns at most once per
+// dropWarnInterval.
+func (e *Emitter) noteDropped(ctx context.Context, n uint64) {
+	total := e.dropped.Add(n)
+	now := time.Now().UnixNano()
+	last := e.lastDropWarn.Load()
+	if now-last < int64(dropWarnInterval) || !e.lastDropWarn.CompareAndSwap(last, now) {
+		return
+	}
+	slog.WarnContext(ctx, "security: audit rows dropped", "dropped_total", total)
+}
+
+// writeAuditRows is the single audit writer: it appends queued rows
+// until Close closes the queue, or discards them once abort fires.
+func (e *Emitter) writeAuditRows() {
+	defer close(e.workerDone)
+	for job := range e.queue {
+		if e.abort.Err() != nil {
+			e.noteDropped(job.ctx, 1)
+			continue
+		}
+		ctx, cancel := context.WithCancel(job.ctx)
+		stop := context.AfterFunc(e.abort, cancel)
+		e.writeAuditRow(ctx, job.alert)
+		stop()
+		cancel()
+	}
+}
+
+// writeAuditRow appends a to the audit log (event_class=security).
+func (e *Emitter) writeAuditRow(ctx context.Context, a Alert) {
 	payload := map[string]any{
 		"event_class": "security",
 		"kind":        a.Kind,
@@ -305,8 +449,10 @@ func (e *Emitter) defaultHandler(ctx context.Context, a Alert) {
 		Payload:   payload,
 		CreatedAt: a.OccuredAt,
 	}
-	// Best-effort; do not block or surface errors to callers.
-	_ = e.audit.Append(ctx, entry)
+	// Best-effort: callers never see the error; the operator does.
+	if err := e.audit.Append(ctx, entry); err != nil {
+		slog.WarnContext(ctx, "security: audit append failed", "kind", a.Kind, "err", err)
+	}
 }
 
 // webhookHandler returns an AlertHandler that POSTs alert JSON to url.

@@ -500,7 +500,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 	runErr := runner.run(context.Background())
 	signal.Stop(sigCh)
 
-	// Cleanup.
+	// Cleanup. The stack drains its queued security audit rows before
+	// the store closes under them.
+	shutCtx, shutCancel := context.WithTimeout(context.Background(), drainTimeout)
+	if err := st.Shutdown(shutCtx); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: stack shutdown: %v\n", err)
+	}
+	shutCancel()
 	driver.Close(context.Background())
 	fmt.Println("Storage closed")
 
