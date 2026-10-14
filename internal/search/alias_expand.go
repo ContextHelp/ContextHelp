@@ -2,37 +2,38 @@ package search
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
 // AliasResolver resolves query terms to their known aliases.
 // Implementations should look up alias records and return canonical aliases per term.
 type AliasResolver interface {
-	// ResolveAliases maps each term to a (possibly empty) list of alias strings.
-	// On error, callers fall back to the original query.
+	// ResolveAliases maps each term to a (possibly empty) list of alias
+	// strings. A term that is not an alias is absent from the map; an
+	// error means the lookup itself failed.
 	ResolveAliases(ctx context.Context, terms []string) (map[string][]string, error)
 }
 
 // ExpandQuery expands a free-text query by appending aliases for each term.
 // Tokenises query on whitespace, looks up aliases for meaningful tokens, and
 // appends unique alias terms. Original token order and casing are preserved.
-// Returns the original query unchanged when:
-//   - resolver is nil
-//   - resolver returns an error
-//   - no aliases are found
-func ExpandQuery(ctx context.Context, query string, resolver AliasResolver) string {
+// Returns the original query unchanged when resolver is nil or no aliases
+// are found. A resolver error is returned: searching the unexpanded query
+// would hide a failed alias store behind plausible results.
+func ExpandQuery(ctx context.Context, query string, resolver AliasResolver) (string, error) {
 	if resolver == nil {
-		return query
+		return query, nil
 	}
 
 	terms := tokenize(query)
 	if len(terms) == 0 {
-		return query
+		return query, nil
 	}
 
 	aliasMap, err := resolver.ResolveAliases(ctx, terms)
 	if err != nil {
-		return query
+		return "", fmt.Errorf("expand query aliases: %w", err)
 	}
 
 	// Build a set of existing lowercased tokens to deduplicate.
@@ -58,8 +59,8 @@ func ExpandQuery(ctx context.Context, query string, resolver AliasResolver) stri
 	}
 
 	if len(extra) == 0 {
-		return query
+		return query, nil
 	}
 
-	return query + " " + strings.Join(extra, " ")
+	return query + " " + strings.Join(extra, " "), nil
 }

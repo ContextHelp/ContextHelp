@@ -1814,7 +1814,10 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 	// query. The expanded text stays raw here: each driver applies its own
 	// dialect's FTS quoting at the boundary (search.SanitizeFTSQueryFor),
 	// covering user input and alias-injected punctuation alike.
-	ftsQuery := search.ExpandQuery(ctx, query, newStorageAliasResolver(s.Store.Aliases(), ""))
+	ftsQuery, err := search.ExpandQuery(ctx, query, newStorageAliasResolver(s.Store.Aliases(), ""))
+	if err != nil {
+		return nil, fmt.Errorf("hybrid search: %w", err)
+	}
 
 	// Build per-leg filters: inherit metadata facets but override pool size.
 	ftsFilter := filter
