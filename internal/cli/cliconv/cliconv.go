@@ -92,8 +92,19 @@ func WithDryRunRationale(cmd *cobra.Command, reason string) error {
 	return kitcli.SetDryRunRationale(cmd, reason)
 }
 
+// DestructiveTokenHelp is the paragraph a WithDestructiveToken
+// command's Long carries. Kit's gate checks the token before it reads
+// --confirm: without the token the command is refused whatever
+// --confirm says, and with a matching one it runs whatever --confirm
+// says. The token is a hash of the command path, so it never changes.
+const DestructiveTokenHelp = `Requires --confirm-token=<sha>: run it once without, and the refusal
+prints the token to pass back. The token is the same on every run of
+this command. --confirm does not replace it: --confirm=yes alone is
+refused, and a matching token runs the command whatever --confirm says.`
+
 // WithDestructiveToken stamps kit/destructive-token=required on a
 // destructive leaf, opting it into the typed-token confirmation flow.
+// Its Long must say so: append DestructiveTokenHelp.
 func WithDestructiveToken(cmd *cobra.Command) {
 	kitcli.SetDestructiveToken(cmd)
 }

@@ -75,7 +75,9 @@ grace period short. A time earlier today counts as now.
 
 The default model cannot be deprecated: promote its successor with ctxt
 embeddings set-default first. Deprecating an already deprecated model
-without --on keeps its date; with --on it reschedules.`,
+without --on keeps its date; with --on it reschedules.
+
+` + cliconv.DestructiveTokenHelp,
 	Args: cobra.ExactArgs(1),
 	RunE: runEmbeddingsDeprecate,
 }
@@ -89,7 +91,9 @@ vectors would have to be embedded again under a new registration.
 
 Refused, deleting nothing, unless the model is deprecated and the grace
 period (embeddings.grace_period, default 720h = 30 days) has passed since
-its deprecation took effect. The default model is never purged.`,
+its deprecation took effect. The default model is never purged.
+
+` + cliconv.DestructiveTokenHelp,
 	Args: cobra.ExactArgs(1),
 	RunE: runEmbeddingsPurge,
 }
@@ -125,14 +129,14 @@ func init() {
 	cliconv.WithNextSteps(embeddingsSetDefaultCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt embeddings list", Reason: "verify the new default marker landed"},
 		{When: "when refused for coverage", Suggest: "ctxt embeddings migrate --to <model_id>", Reason: "fill the model's missing vectors"},
-		{When: "after verification", Suggest: "ctxt embeddings deprecate <old_model_id>", Reason: "stop dual-writing the previous default"},
+		{When: "after verification", Suggest: "ctxt embeddings deprecate <old_model_id> --confirm-token=<sha>", Reason: "stop dual-writing the previous default"},
 	})
 	cliconv.WithExamples(embeddingsDeprecateCmd, []cliconv.Example{
 		{Title: "Retire the previous default now", Command: "ctxt embeddings deprecate ollama-nomic-embed-text@2026-09-26 --confirm-token=<sha>"},
 		{Title: "Schedule retirement for a date", Command: "ctxt embeddings deprecate ollama-nomic-embed-text@2026-09-26 --on 2026-10-15 --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(embeddingsDeprecateCmd, []cliconv.NextStep{
-		{When: "after the grace period", Suggest: "ctxt embeddings purge <model_id>", Reason: "delete the model's vectors and index"},
+		{When: "after the grace period", Suggest: "ctxt embeddings purge <model_id> --confirm-token=<sha>", Reason: "delete the model's vectors and index"},
 	})
 	cliconv.WithExamples(embeddingsPurgeCmd, []cliconv.Example{
 		{Title: "Delete a retired model", Command: "ctxt embeddings purge ollama-nomic-embed-text@2026-09-26 --confirm-token=<sha>"},

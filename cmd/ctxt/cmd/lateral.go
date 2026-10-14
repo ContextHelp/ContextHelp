@@ -60,12 +60,9 @@ loads config, builds the strategy registry, wires kit collaborators
 (bus, breaker, job engine), subscribes to capture events, and drives
 the cold-cycle reaper. Stops on SIGINT / SIGTERM.
 
-Note: in T-0321 v1, the daemon ships with stub adapters wired only
-when the corresponding strategy is gated on. Production deployments
-also wire real LLM, GitHub, and platform clients via the lateral
-config; the placeholder daemon here is sufficient for the smoke
-test (T-0322) and serves as the integration surface tracked in PR
-#TBD.`,
+Note: the daemon ships with stub adapters, wired only when the
+corresponding strategy is gated on. Production deployments also wire
+real LLM, GitHub, and platform clients via the lateral config.`,
 	RunE: runLateralStart,
 }
 
@@ -102,7 +99,7 @@ func init() {
 	cliconv.WithSideEffect(lateralCmd, cliconv.SideEffectInteractive)
 	cliconv.WithExamples(lateralCmd, []cliconv.Example{
 		{Title: "Run the daemon in the foreground", Command: "ctxt lateral"},
-		{Title: "Run with an extra config layer", Command: "ctxt lateral --lateral-config ./lateral.yaml"},
+		{Title: "Run with an extra config layer", Command: "ctxt lateral start --lateral-config ./lateral.yaml"},
 	})
 	cliconv.WithNextSteps(lateralCmd, []cliconv.NextStep{
 		{When: "to inspect the resolved config", Suggest: "ctxt lateral config show", Reason: "verify which strategies are gated on"},
@@ -129,7 +126,6 @@ func init() {
 	cliconv.WithIdempotency(lateralStatusCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(lateralStatusCmd, []cliconv.Example{
 		{Title: "Query a running daemon", Command: "ctxt lateral status"},
-		{Title: "Query with extra config", Command: "ctxt lateral status --lateral-config ./lateral.local.yaml"},
 	})
 	// config: intermediate group; mark hierarchical so the shape
 	// validator accepts the depth-3 leaf below.
@@ -146,7 +142,7 @@ func init() {
 	lateralCmd.AddCommand(lateralConfigCmd)
 	lateralConfigCmd.AddCommand(lateralConfigShowCmd)
 
-	// Stable flag surface; documented by T-0323.
+	// Stable flag surface; documented in docs/ctxt/cli-lateral.md.
 	for _, c := range []*cobra.Command{lateralStartCmd, lateralConfigShowCmd} {
 		c.Flags().String("lateral-config", "", "extra config file appended as the highest-priority layer")
 	}

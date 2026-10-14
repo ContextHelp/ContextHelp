@@ -175,7 +175,7 @@ func init() {
 	cliconv.WithIdempotency(upgradePlanCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(upgradePlanCmd, []cliconv.Example{
 		{Title: "Preview pending re-ingest work", Command: "ctxt upgrade plan"},
-		{Title: "Emit plan as JSON", Command: "ctxt upgrade plan --json"},
+		{Title: "Emit plan as JSON", Command: "ctxt upgrade plan --format json"},
 	})
 
 	cliconv.WithSideEffect(upgradeRunCmd, cliconv.SideEffectWrite)

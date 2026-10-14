@@ -44,10 +44,12 @@ as long as it runs) or a live pidfile of this data directory names it:
 stop it first with dpkms shutdown. Restore holds that lock itself while
 it replaces the database.
 
+` + cliconv.DestructiveTokenHelp + `
+
 Examples:
-  dpkms restore ctxt-backup-2026-04-25T13-51-54Z.tar.gz
-  dpkms restore /path/to/extracted/backup/
-  dpkms restore backup.tar.gz --data-dir /new/location`,
+  dpkms restore ctxt-backup-2026-04-25T13-51-54Z.tar.gz --confirm-token=<sha>
+  dpkms restore /path/to/extracted/backup/ --confirm-token=<sha>
+  dpkms restore backup.tar.gz --data-dir /new/location --confirm-token=<sha>`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRestore,
 }

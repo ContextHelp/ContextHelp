@@ -77,7 +77,9 @@ var cursorDeleteCmd = &cobra.Command{
 
 The cursor's state (LastSeenAt, LastObjectID, query snapshot) is dropped.
 Re-creating the cursor on the next ctxt list --cursor invocation will
-start a fresh epoch-0 cursor with the new query snapshot.`,
+start a fresh epoch-0 cursor with the new query snapshot.
+
+` + cliconv.DestructiveTokenHelp,
 	Args: cobra.ExactArgs(1),
 	RunE: runCursorDelete,
 }
@@ -131,7 +133,7 @@ func init() {
 		{When: "on success", Suggest: "ctxt cursor show daily-mentions", Reason: "confirm LastSeenAt landed on the expected moment"},
 	})
 	cliconv.WithExamples(cursorDeleteCmd, []cliconv.Example{
-		{Title: "Remove a cursor record", Command: "ctxt cursor delete daily-mentions"},
+		{Title: "Remove a cursor record", Command: "ctxt cursor delete daily-mentions --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(cursorDeleteCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt cursor list", Reason: "verify the cursor is gone from the store"},

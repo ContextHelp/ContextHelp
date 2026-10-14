@@ -37,8 +37,8 @@ ctxt registry pending lists, or --all --registry <name> for every entity
 that registry has queued. Nothing is written when an ID is not queued or
 its registry is now sandboxed.
 
-Destructive-gated like registry delete: requires --confirm=yes (or
---confirm=prompt) plus the --confirm-token=<sha> the refusal prints.
+Destructive-gated like registry delete: requires the --confirm-token=<sha>
+the refusal prints; --confirm=yes alone is refused.
 --dry-run lists what would be approved and needs neither.`,
 	RunE: runRegistryApprove,
 }
@@ -50,8 +50,8 @@ var registryRejectCmd = &cobra.Command{
 queued again if its registry still serves it at the next sync. Nothing
 is dropped when an ID is not queued.
 
-Destructive-gated like registry delete: requires --confirm=yes (or
---confirm=prompt) plus the --confirm-token=<sha> the refusal prints.
+Destructive-gated like registry delete: requires the --confirm-token=<sha>
+the refusal prints; --confirm=yes alone is refused.
 --dry-run lists what would be rejected and needs neither.`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runRegistryReject,
@@ -73,8 +73,8 @@ func init() {
 		{Title: "One registry's queue as JSON", Command: "ctxt registry pending --registry uxpatterns --format json"},
 	})
 	cliconv.WithNextSteps(registryPendingCmd, []cliconv.NextStep{
-		{Suggest: "ctxt registry approve <id> --dry-run", Reason: "preview, then approve with --confirm=yes --confirm-token=<sha> to write it"},
-		{Suggest: "ctxt registry reject <id> --confirm=yes --confirm-token=<sha>", Reason: "drop an entity you do not want"},
+		{Suggest: "ctxt registry approve <id> --dry-run", Reason: "preview, then approve with --confirm-token=<sha> to write it"},
+		{Suggest: "ctxt registry reject <id> --confirm-token=<sha>", Reason: "drop an entity you do not want"},
 	})
 
 	// Same gate as registry delete: kit's --confirm matrix plus the
@@ -86,8 +86,8 @@ func init() {
 	// fails NOT_FOUND, since approval took them off the queue.
 	cliconv.WithIdempotency(registryApproveCmd, cliconv.IdempotencyConditional)
 	cliconv.WithExamples(registryApproveCmd, []cliconv.Example{
-		{Title: "Approve one entity", Command: "ctxt registry approve 3f9a1c2b7d4e5f60 --confirm=yes --confirm-token=<sha>"},
-		{Title: "Approve everything one registry queued", Command: "ctxt registry approve --all --registry uxpatterns --confirm=yes --confirm-token=<sha>"},
+		{Title: "Approve one entity", Command: "ctxt registry approve 3f9a1c2b7d4e5f60 --confirm-token=<sha>"},
+		{Title: "Approve everything one registry queued", Command: "ctxt registry approve --all --registry uxpatterns --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(registryApproveCmd, []cliconv.NextStep{
 		{Suggest: "ctxt entity show <slug>", Reason: "check the written entity"},
@@ -99,8 +99,8 @@ func init() {
 	// A replay fails NOT_FOUND: the IDs are off the queue.
 	cliconv.WithIdempotency(registryRejectCmd, cliconv.IdempotencyNo)
 	cliconv.WithExamples(registryRejectCmd, []cliconv.Example{
-		{Title: "Reject one entity", Command: "ctxt registry reject 3f9a1c2b7d4e5f60 --confirm=yes --confirm-token=<sha>"},
-		{Title: "Reject several", Command: "ctxt registry reject 3f9a1c2b7d4e5f60 8e21d0c4b5a69f73 --confirm=yes --confirm-token=<sha>"},
+		{Title: "Reject one entity", Command: "ctxt registry reject 3f9a1c2b7d4e5f60 --confirm-token=<sha>"},
+		{Title: "Reject several", Command: "ctxt registry reject 3f9a1c2b7d4e5f60 8e21d0c4b5a69f73 --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(registryRejectCmd, []cliconv.NextStep{
 		{Suggest: "ctxt registry pending", Reason: "review what is still queued"},
