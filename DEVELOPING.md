@@ -348,9 +348,8 @@ make run-dpkms    # start the substrate: API, gRPC, workers
 make run-ctxt     # the CLI
 ```
 
-Copy `.env.example` to `.env` first. `scripts/dev-setup.sh` will also generate a
-starting `.env` if you do not have one; it is not marked executable, so run it
-as `bash scripts/dev-setup.sh`.
+Nothing loads `.env` automatically. To use one, copy `.env.example` to `.env`
+and export it into your shell first: `set -a; . ./.env; set +a`.
 
 For a containerized dev environment with hot reload:
 
