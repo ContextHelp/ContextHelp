@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -109,8 +108,8 @@ func TestLocalPusher_MissingSourceBlobFailsPush(t *testing.T) {
 	if _, err := drv.Objects().Get(ctx, "fb-lost"); err == nil {
 		t.Error("object landed without its blob")
 	}
-	if wm, _ := drv.Watermarks().GetWatermark(ctx, "lost-fed"); wm.After(time.Unix(0, 0)) {
-		t.Errorf("watermark advanced on a failed push: %v", wm)
+	if wm, _ := drv.Watermarks().GetWatermark(ctx, "lost-fed"); wm != (storage.ChangeCursor{}) {
+		t.Errorf("watermark advanced on a failed push: %+v", wm)
 	}
 }
 

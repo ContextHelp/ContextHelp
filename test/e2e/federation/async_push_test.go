@@ -52,8 +52,8 @@ func TestFederation_AsyncPush_DedupeByContentHash(t *testing.T) {
 }
 
 // TestFederation_AsyncPush_WatermarkAdvances verifies AC #3:
-// "federation_watermarks table updated with last_synced_at after each
-// successful batch."
+// "federation_watermarks table updated after each successful batch" —
+// with the change position of the batch's last object.
 //
 // Backed by T-0173 (Watermarks().GetWatermark/SetWatermark API) and T-0174
 // (LocalPusher advances watermark on success).
@@ -61,7 +61,6 @@ func TestFederation_AsyncPush_WatermarkAdvances(t *testing.T) {
 	ix := setupTwoInstances(t)
 	captureBookmark(t, ix.src, "obj-wm-1", "hash-wm-1", "watermark probe", nil)
 
-	before := time.Now().UTC()
 	if err := pushOnce(t, ix); err != nil {
 		t.Fatalf("pushOnce: %v", err)
 	}
@@ -70,13 +69,9 @@ func TestFederation_AsyncPush_WatermarkAdvances(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWatermark: %v", err)
 	}
-	if got.IsZero() {
-		t.Fatal("watermark not written: expected federation_watermarks row " +
-			"after successful push")
-	}
-	// Watermark must be at-or-after the push start (allowing clock equality).
-	if got.Before(before.Add(-time.Second)) {
-		t.Errorf("watermark not advanced: got %v, want >= %v", got, before)
+	// The watermark is the change position of the last object pushed.
+	if got.ID != "obj-wm-1" {
+		t.Fatalf("watermark = %+v, want the pushed object's position", got)
 	}
 }
 
@@ -127,8 +122,8 @@ func TestFederation_AsyncPush_CrashRecovery(t *testing.T) {
 	if gerr != nil {
 		t.Fatalf("GetWatermark after recovery: %v", gerr)
 	}
-	if got.IsZero() {
-		t.Error("watermark not advanced after successful recovery push")
+	if got.ID != "obj-crash-1" {
+		t.Errorf("watermark not advanced after successful recovery push: %+v", got)
 	}
 }
 
@@ -260,9 +255,7 @@ func TestFederation_AsyncPush_NoChangesNoOp(t *testing.T) {
 		t.Errorf("no-op tick wrote rows: before=%d after=%d", before, after)
 	}
 
-	// Watermark must remain unchanged (currently always empty since
-	// nothing writes it; once watermark write lands, this assertion will
-	// need updating along with the AsyncPush_WatermarkAdvances test).
+	// Watermark must remain unwritten: nothing was pushed.
 	got, err := readWatermark(t, ix.tgt.path, ix.fedName)
 	if err != nil {
 		t.Fatalf("readWatermark: %v", err)

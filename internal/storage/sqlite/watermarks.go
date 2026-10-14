@@ -6,46 +6,54 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// watermarkStore persists per-federation last-synced timestamps in the
-// federation_watermarks table (created by migration 025). One row per
-// federation_name; missing rows are treated as the Unix epoch.
+// watermarkStore persists per-federation change positions in the
+// federation_watermarks table (migrations 025 and 042): last_synced_at
+// holds the position's updated_at, last_object_id its id. One row per
+// federation_name.
 type watermarkStore struct{ db *sql.DB }
 
-// GetWatermark returns last_synced_at for federationName or epoch when missing.
-// Empty stored values (the legacy empty-string default) are also normalised
-// to epoch.
-func (s *watermarkStore) GetWatermark(ctx context.Context, federationName string) (time.Time, error) {
-	var stored string
+// GetWatermark returns the position stored for federationName, or the
+// zero position when there is none. An empty last_synced_at (the column
+// default) reads as the zero time.
+func (s *watermarkStore) GetWatermark(ctx context.Context, federationName string) (storage.ChangeCursor, error) {
+	var stored, id string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT last_synced_at FROM federation_watermarks WHERE federation_name = ?`,
+		`SELECT last_synced_at, last_object_id FROM federation_watermarks WHERE federation_name = ?`,
 		federationName,
-	).Scan(&stored)
+	).Scan(&stored, &id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return time.Unix(0, 0).UTC(), nil
+		return storage.ChangeCursor{}, nil
 	}
 	if err != nil {
-		return time.Time{}, fmt.Errorf("watermark get %q: %w", federationName, err)
+		return storage.ChangeCursor{}, fmt.Errorf("watermark get %q: %w", federationName, err)
 	}
+	pos := storage.ChangeCursor{ID: id}
 	if stored == "" {
-		return time.Unix(0, 0).UTC(), nil
+		return pos, nil
 	}
 	ts, err := time.Parse(time.RFC3339Nano, stored)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("watermark get %q: parse %q: %w", federationName, stored, err)
+		return storage.ChangeCursor{}, fmt.Errorf("watermark get %q: parse %q: %w", federationName, stored, err)
 	}
-	return ts.UTC(), nil
+	pos.UpdatedAt = ts.UTC()
+	return pos, nil
 }
 
-// SetWatermark upserts last_synced_at for federationName as RFC3339Nano UTC.
-func (s *watermarkStore) SetWatermark(ctx context.Context, federationName string, ts time.Time) error {
-	encoded := ts.UTC().Format(time.RFC3339Nano)
+// SetWatermark upserts pos for federationName; its time is stored as
+// RFC3339Nano UTC.
+func (s *watermarkStore) SetWatermark(ctx context.Context, federationName string, pos storage.ChangeCursor) error {
+	encoded := pos.UpdatedAt.UTC().Format(time.RFC3339Nano)
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO federation_watermarks (federation_name, last_synced_at)
-         VALUES (?, ?)
-         ON CONFLICT(federation_name) DO UPDATE SET last_synced_at = excluded.last_synced_at`,
-		federationName, encoded,
+		`INSERT INTO federation_watermarks (federation_name, last_synced_at, last_object_id)
+         VALUES (?, ?, ?)
+         ON CONFLICT(federation_name) DO UPDATE SET
+             last_synced_at = excluded.last_synced_at,
+             last_object_id = excluded.last_object_id`,
+		federationName, encoded, pos.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("watermark set %q: %w", federationName, err)

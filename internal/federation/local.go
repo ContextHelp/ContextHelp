@@ -2,11 +2,13 @@ package federation
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -71,6 +73,53 @@ func copyBlobs(ctx context.Context, src, dst storage.BlobStore, obj *storage.Kno
 // Name returns the federation entry name from config.
 func (p *LocalPusher) Name() string { return p.name }
 
+// openTarget opens and migrates the target database and its blob store.
+// The caller closes the driver.
+func (p *LocalPusher) openTarget(ctx context.Context) (storage.StorageDriver, storage.BlobStore, error) {
+	// T-0187: federation entries may declare targets as file:// URIs.
+	// SQLite driver expects a bare filesystem path; canonicalPath strips
+	// the scheme + resolves the absolute path (same helper used by
+	// detectCycles in worker.go).
+	targetPath, err := canonicalPath(p.targetPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve target %q: %w", p.targetPath, err)
+	}
+	targetBlobs, err := blob.New(config.BlobConfig{
+		Backend: "local",
+		Local:   config.BlobLocalConfig{Path: TargetBlobDir(targetPath)},
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("open target blob store: %w", err)
+	}
+	drv, err := storageutil.NewDriver("sqlite", targetPath, targetBlobs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open target %q: %w", targetPath, err)
+	}
+	if err := drv.Init(ctx); err != nil {
+		_ = drv.Close(ctx)
+		return nil, nil, fmt.Errorf("init target %q: %w", targetPath, err)
+	}
+	return drv, targetBlobs, nil
+}
+
+// Watermark returns the watermark the target database keeps for this
+// federation; the zero position when the database does not exist yet.
+func (p *LocalPusher) Watermark(ctx context.Context) (storage.ChangeCursor, error) {
+	targetPath, err := canonicalPath(p.targetPath)
+	if err != nil {
+		return storage.ChangeCursor{}, fmt.Errorf("federation local watermark: resolve target %q: %w", p.targetPath, err)
+	}
+	if _, err := os.Stat(targetPath); errors.Is(err, fs.ErrNotExist) {
+		return storage.ChangeCursor{}, nil
+	}
+	drv, _, err := p.openTarget(ctx)
+	if err != nil {
+		return storage.ChangeCursor{}, fmt.Errorf("federation local watermark: %w", err)
+	}
+	defer func() { _ = drv.Close(ctx) }()
+	return drv.Watermarks().GetWatermark(ctx, p.name)
+}
+
 // Push upserts objects, edges, and entities into the target SQLite database.
 // Objects with a matching ContentHash at the target are skipped (idempotent).
 // Edges are inserted only for objects that were newly created. Entities are
@@ -78,8 +127,8 @@ func (p *LocalPusher) Name() string { return p.name }
 // clobbered by a thin federation row — see ADR-049 + EntityStore.UpsertThin.
 //
 // On a successful non-empty batch, the federation_watermarks row at the
-// target is advanced to time.Now() (US-0319 AC #3). Empty batches are a
-// no-op: no writes, no watermark advance (US-0319 AC #7).
+// target moves to the change position of the last object (US-0319 AC #3).
+// Empty batches are a no-op: no writes, no watermark advance (US-0319 AC #7).
 //
 // The watermark is written as the last step after all objects + edges +
 // entities have been committed. If any per-row call returns an error the
@@ -95,31 +144,11 @@ func (p *LocalPusher) Push(
 		return nil
 	}
 
-	// T-0187: federation entries may declare targets as file:// URIs.
-	// SQLite driver expects a bare filesystem path; canonicalPath strips
-	// the scheme + resolves the absolute path (same helper used by
-	// detectCycles in worker.go).
-	targetPath, err := canonicalPath(p.targetPath)
+	drv, targetBlobs, err := p.openTarget(ctx)
 	if err != nil {
-		return fmt.Errorf("federation local push: resolve target %q: %w", p.targetPath, err)
+		return fmt.Errorf("federation local push: %w", err)
 	}
-
-	targetBlobs, err := blob.New(config.BlobConfig{
-		Backend: "local",
-		Local:   config.BlobLocalConfig{Path: TargetBlobDir(targetPath)},
-	})
-	if err != nil {
-		return fmt.Errorf("federation local push: open target blob store: %w", err)
-	}
-	drv, err := storageutil.NewDriver("sqlite", targetPath, targetBlobs)
-	if err != nil {
-		return fmt.Errorf("federation local push: open target %q: %w", targetPath, err)
-	}
-	defer drv.Close(ctx)
-
-	if err := drv.Init(ctx); err != nil {
-		return fmt.Errorf("federation local push: init target %q: %w", targetPath, err)
-	}
+	defer func() { _ = drv.Close(ctx) }()
 
 	objs := drv.Objects()
 	edgeStore := drv.Edges()
@@ -199,7 +228,8 @@ func (p *LocalPusher) Push(
 
 	// Advance watermark only after the batch has fully committed. If any
 	// upsert above failed we returned early — watermark stays at last value.
-	if err := drv.Watermarks().SetWatermark(ctx, p.name, time.Now().UTC()); err != nil {
+	last := storage.ChangeCursorOf(&objects[len(objects)-1])
+	if err := drv.Watermarks().SetWatermark(ctx, p.name, last); err != nil {
 		return fmt.Errorf("federation local push: advance watermark for %q: %w", p.name, err)
 	}
 	return nil

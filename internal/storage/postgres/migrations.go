@@ -179,6 +179,14 @@ var pgMigrations = []pgMigration{
 	{Version: 20, Name: "entities.metadata empty array -> object", Statements: []string{
 		`UPDATE entities SET metadata = '{}'::jsonb WHERE metadata = '[]'::jsonb`,
 	}},
+	// Federation watermarks become change positions, mirroring SQLite
+	// migration 042: last_synced_at holds the updated_at and
+	// last_object_id the id of the last object a target acknowledged;
+	// objects get an index in that change order.
+	{Version: 21, Name: "federation change cursor", Statements: []string{
+		`ALTER TABLE federation_watermarks ADD COLUMN IF NOT EXISTS last_object_id TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_change_order ON objects (updated_at, (id COLLATE "C"))`,
+	}},
 }
 
 // migrateProjectionVersion adds objects.projection_version, the projection

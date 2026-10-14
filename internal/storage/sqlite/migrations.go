@@ -218,6 +218,11 @@ var migrations = []migration{
 	// Migration 041: ui_sessions + ui_login_codes for web UI browser
 	// sign-in. New tables only; IF NOT EXISTS guards make it re-runnable.
 	{Version: 41, SQL: migration041},
+	// Migration 042: federation watermarks become change positions —
+	// last_synced_at holds the updated_at and the new last_object_id the
+	// id of the last object a target acknowledged — and objects get an
+	// index in that change order, so a push lists only what changed.
+	{Version: 42, fn: migrate042FederationChangeCursor},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -815,6 +820,27 @@ func migrate038DropSingleVectorPath(ctx context.Context, d *Driver) error {
 }
 
 // tableHasColumn reports whether pragma_table_info(table) lists column.
+// migrate042FederationChangeCursor adds federation_watermarks.last_object_id
+// and the objects change-order index. The index expression matches the
+// change-order predicate in ObjectStore.List verbatim, so the planner
+// uses it.
+func migrate042FederationChangeCursor(ctx context.Context, d *Driver) error {
+	has, err := tableHasColumn(ctx, d, "federation_watermarks", "last_object_id")
+	if err != nil {
+		return err
+	}
+	if !has {
+		if _, err := d.db.ExecContext(ctx,
+			`ALTER TABLE federation_watermarks ADD COLUMN last_object_id TEXT NOT NULL DEFAULT ''`,
+		); err != nil {
+			return err
+		}
+	}
+	_, err = d.db.ExecContext(ctx,
+		`CREATE INDEX IF NOT EXISTS idx_objects_change_order ON objects(datetime(updated_at), id)`)
+	return err
+}
+
 func tableHasColumn(ctx context.Context, d *Driver, table, column string) (bool, error) {
 	var n int
 	err := d.db.QueryRowContext(ctx,
