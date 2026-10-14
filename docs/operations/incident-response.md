@@ -13,56 +13,65 @@ Operational playbook for security incidents affecting ctxt / dPKMS deployments.
 | Compromised secret / API key | [§1](#1-compromised-secret) |
 | Secret committed to git history | [§2](#2-secret-in-git-history) |
 | Unauthorized API access | [§3](#3-unauthorized-api-access) |
-| Malicious plugin | [§4](#4-malicious-plugin) |
+| Malicious registry or step | [§4](#4-malicious-registry-or-step) |
+
+---
+
+## Where to look
+
+dpkms has no access log and no rate limiter. The evidence you have:
+
+- **Process logs**: stderr of `dpkms serve`. Under `dpkms install`: `~/Library/Logs/dpkms/{out,err}.log` (macOS), `~/.local/share/dpkms/dpkms.{out,err}.log` (Linux). `-V` / `-VV` raise verbosity; logs are not sanitized, so treat them as sensitive.
+- **Audit log** (in the dpkms database): `ctxt audit list --event-type security.auth_failure` (also `security.acl_denial`, `security.quota_exhausted`), `ctxt audit export`. Needs `admin:audit` over HTTP.
+- **Security alerts**: `security.alerts.webhook_url` / `smtp`, if configured, fire on auth-failure and ACL-denial bursts.
+- **Web UI sessions**: `dpkms session list --all`.
+- **Reverse proxy logs**, if dpkms sits behind one: the only per-request record of source IPs.
 
 ---
 
 ## 1. Compromised Secret
 
-Secret (API key, token, password) obtained or used by unauthorized party.
+Secret (provider API key, dpkms token, registry token, federation token) obtained or used by an unauthorized party.
 
 ### Detection Signals
 
-- Unexpected charges on provider dashboard (OpenAI, Anthropic, etc.)
-- API usage spikes in logs: `grep -r "429\|401" /var/log/ctxt/`
-- Alert from provider's anomaly detection
-- Internal secret scanner (trufflehog, gitleaks) fires
-- Colleague reports seeing key in plain text
+- Unexpected charges or usage on the provider dashboard (OpenAI, Anthropic, Gemini, OpenRouter)
+- `security.auth_failure` entries or alerts from `security.alerts`
+- A secret scanner (gitleaks, trufflehog) fires
+- The secret shows up in a log, `ctxt config show` output, or a shared file
 
 ### Immediate Actions (<1h)
 
-1. **Revoke** the compromised secret — do not wait to confirm misuse:
-   - OpenAI: <https://platform.openai.com/api-keys>
-   - Anthropic: <https://console.anthropic.com/settings/keys>
-   - Registry token: `ctxt config secrets revoke <name>`
-   - Other: contact provider support
-2. **Rotate** — generate replacement key; update config; restart services.
-3. **Scope** — determine which systems held the secret:
+1. **Revoke** the compromised secret; do not wait to confirm misuse:
+   - Provider key: revoke in the provider console (OpenAI <https://platform.openai.com/api-keys>, Anthropic <https://console.anthropic.com/settings/keys>).
+   - dpkms token: delete its entry from `server.auth.static.tokens` and restart dpkms. Web UI sessions minted with it end at once.
+   - Registry token: `ctxt registry logout <name>`, then revoke it on the registry side.
+   - `federation.token`: change it on both peers.
+2. **Rotate**: store the replacement (`dpkms secret set <KEY> --prompt` for provider keys; a new 32+ character token in the gitignored secrets config for `server.auth`), then restart dpkms.
+3. **Scope**: find every copy:
    ```
-   grep -r "<key-prefix>" /var/log/ctxt/ ~/.config/ctxt/
+   grep -rn "<key-prefix>" ~/.config/contexthelp/ ~/Library/Logs/dpkms/ ~/.local/share/dpkms/
    git log -p -S "<key-prefix>" --all
    ```
-4. **Snapshot** — preserve logs and usage records before rotation purges them.
-5. **Notify** security@context.help with timeline draft.
+4. **Snapshot** logs, the audit log (`ctxt audit export > audit.json`) and provider usage records before anything rotates them.
+5. **Notify** the security contact in [SECURITY.md](../SECURITY.md) with a timeline draft.
 
 ### Follow-up Actions (<24h)
 
-6. **Audit** provider usage logs for the exposure window; note anomalous calls.
-7. **Assess data exposure** — what resources could have been read/written?
-8. **Cost impact** — review billing; request credits/dispute if applicable.
-9. **Add monitoring** — alert on sudden usage spikes for the replaced credential.
-10. **Update rotation schedule** — tighten if interval was > 90 days.
-11. **Notify affected users** if their data may have been accessed.
+6. **Audit** provider usage for the exposure window.
+7. **Assess data exposure**: a leaked `reader` token reads every object; `writer` also captures; `admin` also deletes and reads the audit log.
+8. **Cost impact**: review billing; request credits if applicable.
+9. **Close the leak path**: `ctxt config doctor` for plaintext secrets and loose permissions; move secrets to the secrets backend ([../security/secrets-backends.md](../security/secrets-backends.md)).
+10. **Notify affected users** if their data may have been read.
 
 ### Post-Incident Review Checklist
 
 - [ ] Root cause identified (leak path: env, config file, log line, code)
 - [ ] Timeline documented (exposure start → detection → revocation)
 - [ ] All systems holding the old secret updated
-- [ ] Provider usage log reviewed; unauthorized calls enumerated
-- [ ] Monitoring / alerting gap closed
-- [ ] Policy updated (rotation schedule, secret storage guidelines)
-- [ ] Incident report filed in your operational incident log
+- [ ] Provider usage reviewed; unauthorized calls enumerated
+- [ ] Alerting gap closed (`security.alerts`)
+- [ ] Incident report filed
 - [ ] Retrospective scheduled within 7 days
 
 ---
@@ -73,19 +82,17 @@ Sensitive value committed and pushed; may be in forks, CI caches, pull request d
 
 ### Detection Signals
 
-- CI secret-scanner (trufflehog, gitleaks) fails on push / PR
+- CI secret scan (gitleaks) fails on push / PR
 - `git log -p -S "<key-prefix>" --all` returns hits
-- `git filter-repo --analyze` shows secrets in blobs
-- Colleague reports seeing raw key in diff / GitHub UI
+- Someone reports the raw key in a diff or the GitHub UI
 
 ### Immediate Actions (<1h)
 
-1. **Revoke** the exposed secret immediately (see §1 step 1).
-2. **Rotate** — generate replacement; deploy.
-3. **Block public access** if repo is public — make private temporarily or delete
-   the offending commit via GitHub support emergency contact.
-4. **Preserve evidence** — copy raw `git log` output before rewriting history.
-5. **Remove from history** (private coord required if team repo):
+1. **Revoke** the exposed secret (see §1 step 1).
+2. **Rotate**: generate a replacement; deploy.
+3. **Limit access** if the repo is public: make it private temporarily, or contact GitHub support to purge the commit.
+4. **Preserve evidence**: copy the raw `git log` output before rewriting history.
+5. **Remove from history** (coordinate first on a team repo):
    ```
    git filter-repo --invert-paths --path <file-with-secret>
    # or strip by string:
@@ -93,157 +100,100 @@ Sensitive value committed and pushed; may be in forks, CI caches, pull request d
    git push --force --all
    git push --force --tags
    ```
-6. **Invalidate CI caches** — GitHub Actions: Settings → Caches → delete all.
-7. **Notify team** to re-clone; stale local copies still contain the secret.
+6. **Invalidate CI caches**: GitHub Actions → Settings → Caches → delete all.
+7. **Tell collaborators to re-clone**; stale local copies still contain the secret.
 
 ### Follow-up Actions (<24h)
 
-8. **Audit forks** — check if any public forks cached the commit.
-9. **Rotate any secondary secrets** that co-located in the same commit/file.
-10. **Scan full history** for additional secrets:
-    ```
-    trufflehog git file://. --since-commit HEAD~500 --only-verified
-    ```
-11. **Add pre-commit hook** if not present:
-    ```
-    # .pre-commit-config.yaml
-    repos:
-      - repo: https://github.com/gitleaks/gitleaks
-        rev: v8.x.x
-        hooks: [{id: gitleaks}]
-    ```
-12. **Update .gitignore / .ctxtignore** to block future commits of secret files.
+8. **Audit forks** for cached copies of the commit.
+9. **Rotate secondary secrets** from the same commit or file.
+10. **Scan full history** for other secrets: `gitleaks detect --redact` (this repo: `bash scripts/secret-scan-tree.sh` for the working tree).
+11. **Add a pre-commit scanner** if missing (gitleaks pre-commit hook) and gitignore the secrets file.
 
 ### Post-Incident Review Checklist
 
 - [ ] All copies of the secret revoked and rotated
 - [ ] Git history rewritten and force-pushed
 - [ ] CI/CD caches invalidated
-- [ ] Team re-cloned or confirmed clean local state
+- [ ] Collaborators re-cloned
 - [ ] Fork audit completed
-- [ ] Pre-commit scanner added / verified
-- [ ] .gitignore updated
+- [ ] Pre-commit scanner in place
 - [ ] Incident report filed
 
 ---
 
 ## 3. Unauthorized API Access
 
-External party issuing requests to the ctxt HTTP API or dPKMS endpoints
-without authorization, or with a stolen session/token.
+Someone calling the dpkms REST, gRPC or MCP API without authorization, or with a stolen token or web UI session.
 
 ### Detection Signals
 
-- Unexpected source IPs in access logs
-- Requests from unknown user-agents: `grep -v "ctxt/\|curl" /var/log/ctxt/access.log`
-- Rate-limit (429) spikes from a single IP
-- Auth failures (401/403) clustering on one token
-- Audit log entries for operations not initiated by known users
-- Provider billing jump tied to inbound API volume
+- `security.auth_failure` / `security.acl_denial` entries clustering on one principal, or alerts from `security.alerts`
+- Unknown source IPs in reverse proxy logs
+- Objects, captures or deletions nobody on the team made (`ctxt log`, `ctxt list --sort updated`)
+- Unknown web UI sessions in `dpkms session list --all`
+- Provider billing jump from unexpected enrichment volume
 
 ### Immediate Actions (<1h)
 
-1. **Block offending IP(s)** at network/reverse-proxy level:
-   ```
-   # Caddy snippet
-   @blocked { remote_ip <ip>/<cidr> }
-   abort @blocked
-   ```
-2. **Revoke the abused token/session** via `ctxt config secrets revoke <name>`.
-3. **Rotate all tokens** that shared the same scope.
-4. **Enable request logging** at DEBUG level if not already:
-   ```
-   ctxt server --log-level debug 2>/var/log/ctxt/debug.log
-   ```
-5. **Capture snapshot** of current access log before rotation overwrites it.
-6. **Alert** security@context.help.
+1. **Cut access**:
+   - Block the source at the reverse proxy or firewall.
+   - Remove the abused token from `server.auth.static.tokens` and restart dpkms; `dpkms session revoke --principal <name>` signs its browsers out.
+   - If the instance should not be reachable at all: set `server.access: private` (loopback only) and restart.
+2. **Rotate** every token that shared the same role.
+3. **Raise log verbosity** for the investigation: restart with `dpkms serve -V`.
+4. **Snapshot** proxy logs, process logs and `ctxt audit export` output.
+5. **Alert** the security contact in [SECURITY.md](../SECURITY.md).
 
 ### Follow-up Actions (<24h)
 
-7. **Correlate** blocked IPs against known threat-intel feeds.
-8. **Audit** what the attacker read/wrote: replay access log against entity index.
-9. **Assess data exposure** — were private notes, secrets, or PII accessed?
-10. **Review auth configuration** — token expiry, scope restrictions, IP allow-lists.
-11. **Add rate limiting** if absent:
-    ```
-    # Caddy snippet
-    rate_limit {remote_host} 60r/m
-    ```
-12. **Add anomaly alert** — flag >N requests/min from single IP.
-13. **Notify affected users** if their data was accessed.
+6. **Assess what was reachable**: the token's role bounds it (`reader`: read everything incl. MCP; `writer`: also capture and edit; `admin`: also delete, audit, pipelines). Object reads are not audited, so assume a reader saw everything.
+7. **Check for writes**: `ctxt log` (changelog) and `ctxt list --sort updated` for unexpected objects or edits.
+8. **Harden**: one token per client with the lowest role it needs; `server.allowed_hosts` on protected instances; TLS and rate limiting at the proxy ([../manual/operations/reverse-proxy.md](../manual/operations/reverse-proxy.md)); `security.alerts` delivery.
+9. **Notify affected users** if their data was read.
 
 ### Post-Incident Review Checklist
 
-- [ ] Offending source(s) identified and blocked
-- [ ] Abused token(s) revoked and rotated
-- [ ] Access log reviewed; scope of read/write enumerated
-- [ ] Auth hardening applied (expiry, scopes, IP allow-list)
-- [ ] Rate limiting verified active
-- [ ] Anomaly alerting configured
+- [ ] Source(s) identified and blocked
+- [ ] Abused token(s) removed and rotated; sessions revoked
+- [ ] Scope of reads/writes assessed
+- [ ] Proxy rate limiting and TLS verified
+- [ ] `security.alerts` delivery configured
 - [ ] Affected users notified (if applicable)
 - [ ] Incident report filed
 
 ---
 
-## 4. Malicious Plugin
+## 4. Malicious Registry or Step
 
-Plugin (local or registry) found to exfiltrate data, execute arbitrary code,
-or abuse ctxt permissions beyond declared scope.
+No plugin is loaded at runtime and no installed external step is executed today, so the live risk is registry data written into the graph.
 
 ### Detection Signals
 
-- Unexpected outbound network calls from plugin process
-- Plugin accessing file paths outside its declared `allow_paths`
-- Unusual CPU/memory usage by plugin subprocess
-- `ctxt plugin audit <name>` reports undeclared permissions
-- Registry advisory or community report
-- `strace` / `dtrace` on plugin process shows suspicious syscalls
+- Unexpected entities, aliases or taxonomy after `ctxt registry sync`
+- Signature errors on `ctxt registry sync` (signature missing or invalid)
+- A registry advisory or community report
 
 ### Immediate Actions (<1h)
 
-1. **Disable the plugin immediately**:
-   ```
-   ctxt plugin disable <name>
-   # or remove entirely:
-   ctxt plugin remove <name>
-   ```
-2. **Kill any running plugin subprocess**:
-   ```
-   pkill -f "ctxt-plugin-<name>"
-   ```
-3. **Revoke plugin's token/credentials** if it was granted any.
-4. **Isolate** — if plugin had write access to index, freeze mutations:
-   ```
-   ctxt server --read-only
-   ```
-5. **Preserve evidence** — copy plugin binary, config, and logs before cleanup.
-6. **Alert** security@context.help; include plugin name, version, source URL.
+1. **Stop syncing**: set the registry's `trust_level: sandboxed` (no graph writes) or remove it from `registries`, and `ctxt registry delete <name>`.
+2. **Revoke its credentials**: `ctxt registry logout <name>`.
+3. **Require signatures**: `registries_global.require_signatures: true`.
+4. **Remove installed steps** from that source: `dpkms pipeline step list`, then `dpkms pipeline step uninstall <name>`.
+5. **Snapshot** the database (`dpkms backup`) before cleaning up, as evidence.
 
 ### Follow-up Actions (<24h)
 
-7. **Forensic review** — decompile / inspect plugin binary for malicious code.
-8. **Audit permissions** the plugin held: `ctxt plugin show <name> --permissions`.
-9. **Check all data the plugin touched** — entities, notes, secrets read/written.
-10. **Scan other installed plugins** for similar indicators:
-    ```
-    ctxt plugin audit --all
-    ```
-11. **Report to registry** if sourced from ctxt marketplace; request takedown.
-12. **Notify other users** who may have installed the same plugin version.
-13. **Review plugin install policy** — consider requiring signed plugins or
-    allowlist-only installs.
+6. **Find what it wrote**: entities from the registry (`ctxt entity list`), and objects referencing them.
+7. **Restore** from a backup taken before the bad sync if cleanup is not practical (`dpkms restore`).
+8. **Report** to the registry operator.
 
 ### Post-Incident Review Checklist
 
-- [ ] Plugin disabled and removed from all affected systems
-- [ ] Plugin subprocess confirmed dead
-- [ ] Plugin credentials/tokens revoked
-- [ ] Data access scope determined (what was read/written/exfiltrated)
-- [ ] Forensic analysis completed; malicious code documented
-- [ ] Other plugins audited for same indicators
-- [ ] Registry notified; takedown confirmed
-- [ ] Other affected users notified
-- [ ] Plugin install policy tightened (signing, allowlist)
+- [ ] Registry sandboxed or removed; credentials revoked
+- [ ] Signatures required
+- [ ] Written entities identified and removed or restored
+- [ ] Registry operator notified
 - [ ] Incident report filed
 
 ---
@@ -258,7 +208,7 @@ Minimum fields:
 ```
 date_detected:
 date_resolved:
-scenario:          # one of: compromised-secret | secret-in-git | unauth-api | malicious-plugin
+scenario:          # one of: compromised-secret | secret-in-git | unauth-api | malicious-registry
 severity:          # critical | high | medium | low
 summary:
 timeline:          # bullet list: timestamp → action

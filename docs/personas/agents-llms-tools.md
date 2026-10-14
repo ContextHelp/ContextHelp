@@ -6,228 +6,126 @@
 
 ## Goals
 
-- Query knowledge base deterministically and reproducibly for reliable decision-making
-- Extract and structure content with hard guarantees (no post-hoc validation needed)
-- Rank and rerank results efficiently with minimal latency overhead
-- Compose briefs, plans, and drafts from structured knowledge with traceable provenance
-- Integrate seamlessly into workflows without manual intervention
+- Query the knowledge base reproducibly
+- Capture content and know when enrichment has finished
+- Get ranked results with an explanation of why they ranked
+- Compose briefs, plans and drafts with citations back to source objects
+- Run unattended: stable exit codes, machine-readable output, no prompts
 
 ---
 
 ## Interaction Pattern
 
-### Query Path
+### Query path
 
-#### Structured Mode (Recommended)
-- Fetch `/query-schema` endpoint on startup to discover queryable properties, operators, and examples
-- Construct explicit RSQL queries: `type==article;tags=in=recommended;created_at>2025-01-01`
-- Benefits: deterministic results, cacheable, auditable, reproducible across runs
-- Example agent flow:
-  1. Receive `query-schema` with properties: `type`, `tags`, `created_at`, `pipeline`, `source`
-  2. Receive operator examples: `==`, `!=`, `<`, `>`, `=in=`, `;` (AND), `,` (OR)
-  3. Construct RSQL based on reasoning: "find articles tagged 'recommended' from last month"
-  4. Execute deterministically, cache results with query as key
+**MCP (agent clients)** — dpkms serves one read-only MCP endpoint, `/api/v1/mcp/` (scope `read:mcp` on protected instances), with two tools:
 
-#### Natural Language Mode (Fallback)
-- Ask in prose: `"show me recent recommended articles"`
-- System translates via NLQ normalizer → multi-strategy execution
-- Less reproducible (query might change, intent classification might fail)
-- Useful for ad-hoc refinement or clarification follow-ups
-- System logs both natural intent and execution query for transparency
+- `search` — `query` (required), `top_k` (1–100, default 10), `mode` (`hybrid` default, `fts`, `vector`), `min_score`, and filters `profile`, `meta_type`, `topic`, `person`, `source_type`, `since`, `until`.
+- `schema` — the storage taxonomy: object kinds, edge types, pipelines, metadata fields. Call it before building structured queries.
 
-**Agent Query Best Practice:**
-```
-1. Receive /query-schema on startup
-2. For deterministic queries: construct RSQL
-3. For refinement/clarification: use NLQ fallback
-4. Log both intent (why?) and execution query (what?) separately
-5. Cache results keyed by RSQL + profile context
-6. Retry failed queries with explicit error handling
+Guide: [manual/workflows/mcp-agents.md](../manual/workflows/mcp-agents.md).
+
+**REST / CLI (structured, deterministic)**
+
+- RSQL over `GET /api/v1/search?q=<rsql>&limit=&offset=&profile=` or `ctxt list --q "<rsql>"`. Fields: `type`, `subtype`, `pipeline`, `source`, `created_at`, `updated_at`, `tag`, `mention`, `related` (shared mention targets), `similar`.
+- Hybrid ranked search: `POST /api/v1/find` or `ctxt find "<query>"`; `--explain` adds the per-signal score breakdown, `--fts` / `--semantic` pick one leg.
+
+```bash
+ctxt list --q "type==url;tag=in=(checkout,pricing)" --format json
+ctxt find "incident patterns" --explain --format json
 ```
 
-### Enrichment Path
+There is no natural-language query translation on the server; `ctxt shell` only treats unknown input as a `find` query.
 
-#### Constrained Extraction
-- Execute enrichment steps that **guarantee structured output** (no parsing errors)
-- Write intent, entities, decisions as JSON directly to knowledge objects
-- Leverage LMQL (local models) for **token-level logit masking** (hard constraints)
-- Leverage `instructor` (API models) for **Pydantic validation with automatic retry**
-- Leverage `outlines` (local models) for **regex/schema-guided sampling**
+### Capture path
 
-#### Enrichment Step Types
-- **Tag Assignment** — constrained to registry vocabulary set (validated enum)
-- **Mention/Entity Extraction** — regex-constrained to `@namespace.slug` format
-- **Decision/Task Extraction** — dataclass with typed fields (impact: LOW/MEDIUM/HIGH, status: OPEN/RESOLVED/SUPERSEDED)
-- **Pipeline Selector at Ingestion** — closed-set constraint over registered pipeline names
-- **Inline Branching** — conditional extraction based on intermediate model decision (no extra round-trip)
+- `POST /api/v1/analyze` or `ctxt analyze ... --wait` (blocks until the job completes and returns the object ID).
+- Poll `GET /api/v1/jobs/{id}`, or `WatchJob` over gRPC for a stream of status updates.
+- `--idempotency-key` replays the recorded output for a repeated call; `--source-key` deduplicates by an external key (Slack ts, tweet ID).
+- Exit codes: `70` when the instance is unreachable, `5` when it rejects the token. Nothing is queued locally.
 
-### Composition Path
+### Enrichment
 
-#### Programmatic Assembly
+Enrichment runs in dpkms pipelines: language detection, tagging, entity extraction and resolution, summaries and sections, code-block extraction, OCR, transcription, vision, embeddings, c12n classification. Outputs are written to the object (tags, mentions, metadata). There is no constrained-decoding layer (LMQL, `instructor`, `outlines`): structured fields come from the step's own parsing and validation.
+
+### Composition path
+
+`ctxt compose brief|plan|summary|draft` renders locally from up to 100 objects selected by `--tagged`, `--mention`, `--since`, `--until`. Output carries inline `[ref:ID]` citations by default; `--export json` returns structured citations.
+
+```bash
+ctxt compose brief --tagged launch --export json
 ```
-1. Query knowledge base for object IDs: type==decision;tags=in=urgent
-2. Retrieve objects + graph neighbors (entities, mentions, related decisions)
-3. Assemble atomic nodes following entity relationships
-4. Apply composition template (brief, plan, draft)
-5. Generate output with provenance metadata (which objects, which registries)
-6. Return traceable, verifiable composition to user/system
-```
-
-**Example:**
-- Agent query returns 3 decision objects
-- System retrieves: associated entities (stakeholders, systems), mentions (who raised it), related decisions (prior context)
-- Agent applies "decision brief" template
-- Output includes which objects contributed to each section + confidence scores
 
 ---
 
 ## Key Pain Points
 
-- **Schema Drift:** Knowledge object structure changes break parsing logic
-- **Intent Classification Errors:** NLQ normalizer misclassifies intent → wrong strategy selected → irrelevant results
-- **Rate Limiting:** Federated registry queries hit rate limits, slowing down searches
-- **Cold Start:** Agents need `/query-schema` + intent examples on bootstrap to avoid guessing
-- **Result Merging:** Multi-strategy results (graph + vector + FTS + metadata) may conflict; reranking may change order unexpectedly
-- **Constraint Enforcement Fallback:** API-hosted models degrade to prompt-engineering (no hard guarantee)
-
----
-
-## System Leverage
-
-### Deterministic Query API
-- RSQL guarantees same query always produces same result order
-- Query Plan is explicit (what strategies will execute, in what order)
-- Results include `rank.explain` payload (contributing factors, weighted components, source weighting)
-- Auditable for compliance and debugging
-
-### Constrained Extraction
-- LMQL (local models) enforces hard constraints at token level (impossible to violate)
-- `instructor` (API models) validates output against Pydantic schema, retries on failure
-- `outlines` (local models) guides sampling with regex/JSON schema constraints
-- Zero post-hoc validation needed; output is always parseable
-
-### Distributed Tracing
-- Agent intent logged separately from execution query
-- Job state includes retry count, timestamps, error messages
-- Deterministic replay: re-run same query with different AI provider or config
-
-### Registry Weighting
-- Registries supply: default search weight, domain specificity score, trust/credibility metadata
-- Helps agents decide whether to include remote sources in search
-
-### Multi-Strategy Execution
-- Metadata Strategy: SQL queries on object properties (fast, deterministic)
-- FTS Strategy: SQLite FTS5 on full-text content (keyword/phrase matching)
-- Vector Strategy: Optional semantic similarity search
-- Graph Strategy: Entity-aware traversal (relationship discovery)
-- Registry Strategy: Federated `/search` queries (knowledge from external sources)
-- Results merged + reranked using configurable algorithms (RRF, weighted sum, softmax)
+- **Schema drift**: object fields evolve; call `schema` or read [ctxt/schema-object.md](../ctxt/schema-object.md) rather than hard-coding.
+- **Result merging**: hybrid ranking fuses FTS and vector legs with RRF; weights (`--fts-weight`, `--vector-weight`, `--rrf-k`) change order.
+- **Async enrichment**: capture returns before enrichment ends; use `--wait` or poll the job.
+- **Auth on remote instances**: a token with the right role (`reader` for MCP and search, `writer` for capture).
 
 ---
 
 ## User Stories
 
-Agents interact with the system through these key stories:
-
-### Capture Integration
-- [US-0203](../stories/capture/US-0203-arxiv-capture.md) — ArXiv Capture (paper metadata extraction)
-- [US-0205](../stories/capture/US-0205-wikipedia-capture.md) — Wikipedia Capture (structured article extraction)
-- [US-0206](../stories/capture/US-0206-osint-entity-aggregation.md) — OSINT Entity Aggregation (entity resolution)
-- [US-0210](../stories/capture/US-0210-cross-platform-entity-resolution.md) — Cross-Platform Entity Resolution (identity matching)
+Story pages are requirements; several describe behaviour that is not built (noted).
 
 ### Discovery & Bootstrap
-- [US-0037](../stories/agents/US-0037-agent-discovers-query-schema.md) — Agent Discovers Query Schema (closed by ADR-068's `schema()` MCP tool)
+- [US-0037](../stories/agents/US-0037-agent-discovers-query-schema.md) — Agent Discovers Query Schema (served by the MCP `schema` tool)
 - [US-0038](../stories/agents/US-0038-agent-constructs-rsql-query.md) — Agent Constructs RSQL Query
 
 ### Content Ingestion
 - [US-0039](../stories/agents/US-0039-agent-ingests-content-and-waits.md) — Agent Ingests Content and Waits
 
-### MCP Read-Surface (ADR-068) — Native Agent Integration
+### MCP
+- [US-0219](../stories/capture/US-0219-mcp-agent-integration.md) — MCP agent integration (only the dpkms endpoint with `search` and `schema` exists)
+- [US-0220](../stories/capture/US-0220-local-mcp-during-network-loss.md) — Local MCP during network loss (not implemented: no local MCP server)
 
-The MCP servers are the canonical agent-integration surface. ctxt exposes 10 dpkms-side tools (authoritative, full graph) + 5 ctxd-side tools (local-only, live state). Agents on the user's machine attach to both; agents elsewhere attach only to dpkms.
-
-- [US-0219](../stories/capture/US-0219-mcp-agent-integration.md) — MCP agent integration (install matrix, tool reference, default flows)
-- [US-0220](../stories/capture/US-0220-local-mcp-during-network-loss.md) — Local MCP during network loss (agent works even when remote dpkms is unreachable)
-- [US-0216](../stories/capture/US-0216-work-sessions.md) — Sessions surface via `current_session()`, `sessions()`, `session()` MCP tools
-- [US-0217](../stories/capture/US-0217-meeting-capture-desktop.md) — Meeting transcripts queryable via `search()` and `recent()` once `transcript_ready` bus event fires
-
-**Sample use cases for AI agents:**
-
-- *"Read the user's active session before answering"* — Default flow per [`cheatsheet-agent.md` §MCP Read-Surface](../cheatsheet-agent.md): call `current_session()` first; the result tells the agent what apps and topics the user has been engaging with in the last 30 minutes, allowing more contextual responses without explicit context-stuffing.
-- *"Search the user's recent captures"* — `recent(since="today", limit=20)` is a low-latency feed of newest-first KnowledgeObjects across all sources. Beats trying to construct an RSQL query for time-bounded retrieval.
-- *"Observe capture lifecycle for 'is this saved yet?' UX"* — Subscribe to bus events via the existing `/ws/bus` endpoint (or wait for an MCP-bus-tap when ADR-068 ships it). Topics: `ctxt.ambient.meeting.transcript_ready` (new transcript indexed), `dpkms.mcp.tool.*` (agent's own tool calls visible to the user's audit log).
-- *"Read pending-enqueue when dpkms appears slow"* — `pending_enqueue()` from the ctxd-side server surfaces buffered events. Useful when the user complains "I copied that 5 minutes ago — why isn't it searchable?" — the agent can diagnose dpkms-down state directly.
-- *"Discover the schema before constructing RSQL"* — `schema()` returns the storage taxonomy: object types, subtypes, edge types. Closes US-0037 without needing a separate discovery endpoint.
-
-**Bus events agents can subscribe to** (when bus-tap MCP tool ships):
-- `ctxt.ambient.meeting.transcript_ready` — meeting just indexed; agent can fetch via `get(id)`
-- `ctxt.ambient.session.closed` — work session just ended; agent can offer "want a recap?"
-- `dpkms.mcp.tool.invoked` — observe other agents' tool calls (with profile scoping)
-
-**Read-only by design:** no MCP tool mutates. Writes still go through `ctxt analyze` HTTP. If the agent needs to ingest, use the existing US-0039 path.
-
-### Enrichment with Constraints
+### Enrichment
 - [US-0009](../stories/enrichment/US-0009-extract-entities-and-mentions.md) — Extract Entities and Mentions
 - [US-0010](../stories/enrichment/US-0010-extract-decisions-and-tasks.md) — Extract Decisions and Tasks
 - [US-0011](../stories/enrichment/US-0011-assign-tags-from-vocabulary.md) — Assign Tags from Vocabulary
 - [US-0012](../stories/enrichment/US-0012-generate-summaries-and-sections.md) — Generate Summaries and Sections
 - [US-0013](../stories/enrichment/US-0013-detect-and-extract-code-snippets.md) — Detect and Extract Code Snippets
-- [US-0014](../stories/enrichment/US-0014-constrain-extraction-with-lmql.md) — Constrain Extraction with LMQL (token-level hard constraints)
-- [US-0046](../stories/enrichment/US-0046-extract-relationships-between-entities.md) — Extract Relationships Between Entities
-- [US-0047](../stories/enrichment/US-0047-extract-temporal-information.md) — Extract Temporal Information
-- [US-0048](../stories/enrichment/US-0048-detect-sentiment-and-tone.md) — Detect Sentiment and Tone
-- [US-0049](../stories/enrichment/US-0049-classify-content-with-taxonomy.md) — Classify Content with Taxonomy
-- [US-0050](../stories/enrichment/US-0050-extract-code-metrics-and-complexity.md) — Extract Code Metrics and Complexity
+- [US-0014](../stories/enrichment/US-0014-constrain-extraction-with-lmql.md) — Constrain Extraction with LMQL (not implemented)
+- [US-0041](../stories/agents/US-0041-agent-uses-constrained-enrichment.md) — Agent Uses Constrained Enrichment (not implemented)
 
 ### Search & Retrieval
-- [US-0016](../stories/search/US-0016-natural-language-search.md) — Natural Language Search
 - [US-0018](../stories/search/US-0018-multi-strategy-search-execution.md) — Multi-Strategy Search Execution
-- [US-0019](../stories/search/US-0019-federated-registry-search.md) — Federated Registry Search
 - [US-0021](../stories/search/US-0021-search-with-result-explanation.md) — Search with Result Explanation
 - [US-0051](../stories/search/US-0051-semantic-search-with-embeddings.md) — Semantic Search with Embeddings
-- [US-0052](../stories/search/US-0052-graph-based-entity-search.md) — Graph-Based Entity Search
-- [US-0061](../stories/search/US-0061-visual-similarity-search.md) — Visual Similarity Search (multimodal search)
+- [US-0016](../stories/search/US-0016-natural-language-search.md) — Natural Language Search (not implemented)
+- [US-0019](../stories/search/US-0019-federated-registry-search.md) — Federated Registry Search (not implemented)
 
-### Composition & Assembly
-- [US-0024](../stories/composition/US-0024-compose-with-graph-traversal.md) — Compose with Graph Traversal
+### Composition
 - [US-0040](../stories/agents/US-0040-agent-composes-brief-programmatically.md) — Agent Composes Brief Programmatically
-
-### Advanced Integration
-- [US-0041](../stories/agents/US-0041-agent-uses-constrained-enrichment.md) — Agent Uses Constrained Enrichment (LMQL integration)
 
 ---
 
 ## API Contracts
 
-### REST Endpoints
-- `GET /query-schema` — Queryable properties, operators, examples for RSQL
-- `GET /search?q=...&query_mode=rsql` — Execute RSQL query deterministically
-- `GET /search?q=...&query_mode=nlq` — Execute NLQ (auto-detected intent)
-- `POST /analyze` — Ingest content and trigger enrichment pipeline
-- `GET /objects/{id}` — Retrieve specific object + metadata
-- `GET /jobs/{id}` — Poll job status (ingestion, enrichment)
+### REST (`/api/v1`)
+- `GET /search?q=<rsql>` — RSQL query
+- `POST /find` — hybrid ranked search
+- `POST /analyze` — capture and enqueue
+- `GET /objects/{id}`, `GET /objects/{id}/related` — object and related objects
+- `GET /jobs/{id}` — job status
+- `/mcp/` — MCP (`search`, `schema`)
 
-### gRPC Services
-- `Search(query_string, query_mode)` → Stream of results
-- `Analyze(content_type, raw_content)` → Job ID + async acknowledgment
-- `GetJob(job_id)` → Job state, steps, errors
-- Similar contracts to REST, optimized for agent-to-service communication
+Reference: [api/api-rest.md](../api/api-rest.md).
 
----
+### gRPC
+- `AnalyzeService.Analyze`; `JobService.GetJob`, `ListJobs`, `WatchJob` (stream)
+- `QueryService.Search`, `ListObjects`, `GetObject`, `NodeAwareSearch`
+- `EntityService.ListEntities`, `GetEntity`, `GetEntityBacklinks`
 
-## Success Metrics
-
-- **Query determinism:** % of queries with identical result order on repeated execution
-- **Enrichment success rate:** % of ingested content with successfully extracted intents/entities/decisions
-- **Constraint violation rate:** 0 (hard constraints enforced at generation time)
-- **Query latency:** P99 search latency (target: <500ms local, <2s with federated registries)
-- **Reranking accuracy:** Agent feedback on result relevance before and after multi-strategy merging
+Reference: [api/api-grpc.md](../api/api-grpc.md), `api/proto/dpkms.proto`.
 
 ---
 
 ## Collaboration with Other Personas
 
-- **Maintainers:** Agents provide feedback on API stability, query schema usefulness, suggest query operator additions
-- **Knowledge Workers:** Agents consume knowledge written by humans; humans benefit from agent-curated insights
-- **Integrators:** Agents may leverage custom AI providers and ranking algorithms via plugins
-- **Operations:** Agents report slow queries and job failures; operations optimize infrastructure
+- **Maintainers:** agents report API gaps and schema drift
+- **Knowledge Workers:** agents consume what humans capture and return cited compositions
+- **Operations:** agents surface failed jobs (`dpkms job list --state failed`) and slow queries

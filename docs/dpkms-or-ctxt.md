@@ -1,168 +1,53 @@
-# Clear Distinction: dPKMS vs `ctxt` (Jobs + Pipelines)
+# dPKMS vs `ctxt`: Who Owns What
 
-## dPKMS: The Execution Substrate (What it *offers*)
-dPKMS owns the **mechanics of running work safely**.
+One Go module, two binaries. `dpkms` is the substrate: storage, job queue, pipeline runtime and the HTTP/gRPC/MCP API. `ctxt` is the client: it runs on the user's machine, sends work to one dpkms instance over HTTP, and does the local-only parts. Use this page to decide where a capability belongs.
 
-It provides:
-- a transactional **Jobs Queue** (durable outbox)
-- an execution model for **Pipelines**
-- persistence, retries, and recovery guarantees
-- state tracking, logs, and auditability
-- capability-scoped access to storage, graph, query, crypto, registries
+## dpkms: the substrate
 
-It also provides:
-- **multilingual-capable storage and indexing** (Unicode-safe, RTL-safe)
-- **language-aware schemas** (localized labels, aliases, metadata per language)
-- **multilingual query compatibility** (mixed-language inputs remain searchable)
+dpkms owns everything that has to be durable, shared or authoritative:
 
-dPKMS answers:
-- *Can this work run safely?*
-- *Can it resume after a crash?*
-- *Can we replay it deterministically?*
-- *Can we prove what happened and why?*
-- *Can multiple workers run it without corruption?*
-- *Can multilingual data remain portable, queryable, and stable over time?*
+- **Storage**: knowledge objects, entities, edges, pages, feeds, inbox, audit log, in SQLite or PostgreSQL; large content in the blob store (local or S3).
+- **Job queue**: durable jobs with leases, automatic retry on transient errors (`jobs.max_retries`, default 3), stale-job recovery (`jobs.stale_timeout`, default 30m), and manual `dpkms job retry|cancel`.
+- **Pipelines**: the built-in pipelines and steps are compiled into dpkms; detectors pick one per input; `dpkms pipeline create|archive|remove` and `pipelines.overrides` change them. Workers (`dpkms serve --workers`) run them.
+- **AI providers**: LLM, vision, transcription, OCR, embeddings are called from dpkms workers, configured in `dpkms.yaml` (`providers.*`) with keys from `dpkms secret` or env.
+- **Search**: FTS, vector and hybrid search, RSQL queries, the search graph.
+- **API and access control**: REST, gRPC, SSE, MCP (`/api/v1/mcp/`, tools `search` and `schema`), static-token auth with roles and scopes, policy rules.
+- **Registries and federation**: registry sync, step registries, push-only federation to peers.
+- **Operations**: `serve`, `ps`, `shutdown`, `backup`, `restore`, `housekeeping`, `upgrade`, `healthcheck`, `secret`, `key`.
 
-It does **not** decide:
-- *what the work should be*
-- *what language to translate into*
-- *what writing style or interpretation is “best”*
+dpkms does not decide what the user wants to see next or read the user's local machine state.
 
+## ctxt: the client
 
-## `ctxt`: The Brain (What it *decides* and *composes*)
-`ctxt` owns the **intent and meaning of work**.
+ctxt owns the user-facing workflow and anything that needs the local machine:
 
-It defines:
-- what pipelines exist (“summarize”, “extract entities”, “detect decisions”)
-- what steps run per input type and per profile (Founder vs Research vs Project X)
-- what AI providers/models to use for a step
-- how to interpret results (confidence, merging rules, dedupe policy)
-- what actions to produce (tasks, drafts, briefs, alerts)
-- when to refresh and what to resurface “just in time”
+- **Capture and enqueue**: `ctxt analyze`, `ctxt capture <url|file>`, `ctxt import ...`, `ctxt ingest`, `ctxt inbox` — all send content to dpkms (`/api/v1/analyze`, `/api/v1/capture/*`, `/api/v1/inbox`).
+- **Local capture**: clipboard and directory watchers (`ctxt watch`), browser tabs and history (`ctxt capture tabs|history`, `ctxt capture schedule install`). These read local state, filter it with `capture.url_filter`, and send it to dpkms. See [ambient.md](ambient.md).
+- **Reading and composing**: `ctxt find`, `list`, `show`, `stats`, `log`, `page`, `entity`; `ctxt compose brief|plan|summary|draft` renders compositions locally from objects read over the API.
+- **Focus profiles** (`ctxt profile`), hints and mentions attached at capture time.
+- **Instance selection**: `ctxt instance use|list|current`, `server.url` / `server.urls` and the token ctxt sends.
+- **Interfaces**: `ctxt tui`, `ctxt shell`, `ctxt ui open` (signs the browser into the dpkms web UI).
 
-It also defines multilingual *behavior*:
-- whether translation happens at all
-- preferred languages per user/profile
-- how to summarize across languages
-- how to display and compose outputs in Arabic/English/French
-- how mixed-language content should be interpreted
+Every ctxt command talks to exactly one dpkms instance and never falls back to another; nothing is queued locally when it is unreachable.
 
-`ctxt` answers:
-- *What should we do with this input?*
-- *What matters right now?*
-- *How should this be enriched?*
-- *What output should be generated?*
-- *What should be surfaced to the user today?*
-- *What language should this become useful in?*
+## Deciding where something goes
 
+| Question | Owner |
+|----------|-------|
+| Must it survive a client crash, or be shared by several clients? | dpkms |
+| Does it run a pipeline step or call an AI provider? | dpkms |
+| Does it need an auth scope or belong in the API? | dpkms |
+| Does it read the user's clipboard, files, browser or screen? | ctxt |
+| Is it presentation or composition of objects already stored? | ctxt |
+| Is it a choice the user makes per command (profile, hints, pipeline override)? | ctxt flag, enforced by dpkms |
 
-# Jobs: The Boundary Line
+dpkms is often deployed remote (managed instance, household NAS, federated peer). A remote dpkms cannot read the user's clipboard or browser profile, so local capture stays in ctxt and reaches dpkms over HTTP like any other capture.
 
-## dPKMS Jobs (Infrastructure)
-- Enqueue work
-- Persist job state
-- Run workers
-- Retry safely
-- Track progress
-- Store outputs
-- Guarantee crash-safe recovery
+## Not implemented
 
-## `ctxt` Jobs (Behavior)
-- Decide job types (“ingest:url”, “enrich:audio”, “refresh:stale”)
-- Choose pipeline recipes
-- Select plugins and models
-- Score importance and relevance
-- Schedule refresh/surfacing jobs
-- Turn results into user-facing outputs
-- Decide when translation/summarization should be language-specific
+The ambient daemon `ctxd` from [ADR-066](decisions/ADR-066-ambient-capture-substrate.md), work sessions ([ADR-067](decisions/ADR-067-session-workunit.md)), the local MCP server on port 8744 ([ADR-068](decisions/ADR-068-mcp-read-surface.md)) and the meeting recorder ([ADR-069](decisions/ADR-069-meeting-capture-source.md)) are design. If built, they belong on the ctxt side for the reason above. See [ambient.md](ambient.md#not-implemented).
 
+## Related
 
-# Pipelines: The Boundary Line
-
-## dPKMS Pipelines (Runtime)
-dPKMS provides a generic pipeline runtime with:
-- step execution
-- step isolation
-- typed inputs/outputs
-- caching hooks
-- idempotency and replay support
-- permission and capability enforcement
-- structured logs + audit trails
-
-dPKMS does not care whether a pipeline step is:
-- AI summarization
-- OCR
-- entity extraction
-- language detection
-- graph linking
-- anything else
-
-It only guarantees the pipeline can run safely and consistently.
-
-dPKMS also guarantees:
-- multilingual storage remains correct (Unicode/RTL-safe)
-- localized fields remain queryable and portable
-- mixed-language objects won’t break indexing or retrieval
-
-## `ctxt` Pipelines (Meaning + Recipes)
-`ctxt` defines the real pipeline content:
-- how to process text vs image vs audio
-- what “good summaries” look like
-- which entities matter and how to resolve them
-- how to classify and tag knowledge
-- what a “decision” or “task” means
-- how to build outputs (briefs, plans, posts)
-
-It also defines multilingual intelligence:
-- translation and rewriting rules (if enabled)
-- cross-language entity resolution behavior
-- language-specific templates and composition styles
-- multilingual surfacing and ranking policies per profile
-
-It turns:
-- inputs → knowledge objects
-- knowledge → outputs
-- history → resurfacing
-
-
-# The One-Line Summary
-
-- **dPKMS runs jobs and pipelines correctly (including multilingual-safe storage + indexing).**
-- **`ctxt` decides which jobs and pipelines are worth running (and how language is used).**
-
-
-# Where ambient capture lives (and why it can't be in dPKMS)
-
-A common follow-up: *"Where does the ambient capture daemon (`ctxd`) fit in this boundary?"*
-
-**`ctxd` is a `ctxt`-side concern, not a dPKMS-side concern.**
-
-In the canonical deployment topology, **dPKMS is often deployed remote** — managed instance, household NAS, federated peer per ADR-064. A remote dPKMS:
-
-- cannot read the user's clipboard,
-- cannot see what app currently has foreground focus,
-- cannot watch `~/Inbox` for new files,
-- cannot subscribe to browser SQLite history,
-- cannot capture system audio during a video call.
-
-All of these signals are local-machine-only. Any subsystem that depends on them must run on the user's machine, **not** on dPKMS. Therefore:
-
-- The **ambient capture substrate** (sources, runner, fingerprint dedup, session cutter) lives in `ctxd` — `ctxt`-side. See [ADR-066](decisions/ADR-066-ambient-capture-substrate.md).
-- The **session cutter** lives in `ctxd` because the foreground-window signal is local. dPKMS receives `session_id` as opaque metadata. See [ADR-067](decisions/ADR-067-session-workunit.md).
-- The **local MCP read-surface** lives in `ctxd` because it surfaces information dPKMS cannot see when remote (live cutter state, buffered events, fingerprint dedup state). The dpkms-side MCP is the authoritative surface; the ctxd-side MCP is the local complement. Agents on the user's machine attach to both. See [ADR-068](decisions/ADR-068-mcp-read-surface.md).
-- The **meeting capture source** lives in `ctxd` (with mobile companion apps as Phase 6+) because system-audio + window-framebuffer capture requires OS APIs that only run on the device. See [ADR-069](decisions/ADR-069-meeting-capture-source.md).
-
-`ctxd` enqueues against whichever dPKMS is configured (local or remote) via the existing `/api/v1/analyze` HTTP path (per [ADR-056](decisions/ADR-056-unified-enqueue-api.md)). dPKMS remains a pure pipeline+storage worker; it gains zero ambient/capture responsibilities.
-
-**Boundary, restated for the ambient case:**
-
-| Concern | Where it lives | Why |
-|---|---|---|
-| Reading local-machine signals | `ctxd` (`ctxt`-side) | dPKMS may be remote |
-| Cutting sessions | `ctxd` (`ctxt`-side) | Needs foreground-window signal |
-| Privacy/policy gates on capture | `ctxd` (`ctxt`-side, via kit/runtime/policy) | Privacy enforcement must precede network egress |
-| Pipeline execution | dPKMS | Pipeline runtime is dPKMS's job |
-| KnowledgeObject persistence | dPKMS | Storage is dPKMS's job |
-| Federation between instances | dPKMS-to-dPKMS via ADR-064 | Federation is substrate-level |
-| Authoritative MCP read-surface | dPKMS (`/api/v1/mcp/`) | Authoritative graph lives in dPKMS |
-| Local MCP read-surface | `ctxd` (`:8744/mcp`) | Live local state cannot be queried from dPKMS when remote |
+- [cross-package-contracts.md](cross-package-contracts.md) — packages each binary owns, `dpkmsclient`
+- [architecture.md](architecture.md)

@@ -1,213 +1,46 @@
 # Security Model Overview
 
-This directory contains the detailed security model for ContextHelp, decomposed into focused documents.
+The security model for ctxt and dpkms, split by concern. Each page says what the code does today and where there is no protection.
 
----
+## Pages
 
-## Security Model Components
+1. **[threat.md](threat.md)** — threats, the mitigations that exist, and the gaps
+2. **[boundaries.md](boundaries.md)** — trust boundaries: local machine, registries, AI providers, plugins and steps, APIs
+3. **[controls.md](controls.md)** — controls: inbound auth, secrets, policy rules, validation, audit log, deployment
+4. **[compliance.md](compliance.md)** — OWASP Top 10 mapping; GDPR and SOC 2 pointers
 
-### Core Documents
+Supporting: [../secrets-validation-and-log-sanitization.md](../secrets-validation-and-log-sanitization.md) (config secret scan; logs are not sanitized), [../validation.md](../validation.md) (input validation).
 
-1. **[threat.md](threat.md)** — Threat modeling and attack vectors
-2. **[boundaries.md](boundaries.md)** — Trust boundaries and isolation
-3. **[controls.md](controls.md)** — Security controls (auth, encryption, validation)
-4. **[compliance.md](compliance.md)** — Compliance standards (GDPR, SOC 2, OWASP)
+## Summary
 
-### Supporting Documents
+| Property | Today |
+|----------|-------|
+| Loopback by default | `server.access: private` (default) binds `127.0.0.1` and authenticates nobody |
+| Remote access needs auth | `protected` / `public` bind all interfaces and refuse to start without `server.auth.provider: static` and at least one token (32+ characters, roles `admin` / `writer` / `reader`) |
+| Browser attacks on the local API | Host header check (DNS rebinding), cross-origin guard, JSON-only request bodies |
+| No telemetry | Nothing is sent anywhere unless you configure a provider, registry, federation peer or remote store |
+| Secrets in config | `ctxt config validate` / `ctxt config doctor` flag plaintext secrets; provider keys belong in the secrets backend (`dpkms secret set`) or env |
+| Registry data | Ed25519 response signatures when the registry declares a key (`registries_global.require_signatures` makes them mandatory); per-registry trust level gates entity writes |
+| Audit | Append-only audit log in the dpkms database (security events, dedup, fan-out, doctor runs; not object edits); `ctxt audit list`, `ctxt audit export`; `security.alerts` posts auth-failure and ACL-denial bursts to a webhook or SMTP. The `audit:` config block is read by no code |
+| Encryption at rest | **None.** Use OS disk encryption. [ADR-019](../../decisions/ADR-019-encryption-and-privacy.md) is design |
+| TLS | **None in dpkms.** Terminate TLS at a reverse proxy |
+| Log sanitization | **None.** Logs are written as-is |
+| Plugin sandbox | **None.** No plugin is loaded at runtime; [ADR-027](../../decisions/ADR-027-plugin-isolation-sandboxing.md) is design |
+| Rate limiting | **None.** `server.quotas` caps the entity-serving surface per principal |
 
-5. **[../secrets-validation-and-log-sanitization.md](../secrets-validation-and-log-sanitization.md)** — Config secret scan; no log sanitization
-6. **[../validation.md](../validation.md)** — Input validation and secret patterns
+## Quick reference
 
----
+- Building on the API: [controls.md](controls.md#inbound-authentication) and [Inbound auth, roles and scopes](../../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes)
+- Handling secrets: [../secret-management.md](../secret-management.md), [../secrets-backends.md](../secrets-backends.md)
+- Exposing dpkms: [controls.md](controls.md#deployment) and [Put dpkms Behind a Reverse Proxy](../../manual/operations/reverse-proxy.md)
+- Leaked secret: [../secret-management.md](../secret-management.md#incident-response), [../../operations/incident-response.md](../../operations/incident-response.md)
 
-## Security Model Summary
+## Reporting a vulnerability
 
-ContextHelp implements a **local-first, defense-in-depth security model** with:
+See [../../SECURITY.md](../../SECURITY.md).
 
-- **Zero trust** for all external sources (registries, AI providers, plugins)
-- **Minimal attack surface** through localhost-only defaults
-- **Process isolation** for plugins and pipelines
-- **Automatic secret protection** via detection and sanitization
-- **Optional encryption** at rest for sensitive data
-- **Explicit opt-in** for external features
+## Related
 
----
-
-## Core Security Guarantees
-
-> **Pre-alpha note:** encryption at rest and API authentication are
-> designed (ADR-019, ADR-023) but not yet shipped. Controls marked
-> ⚠️ below are planned; all others are active.
-
-| Guarantee | Implementation | Status |
-|-----------|---------------|--------|
-| **Local-First** | No external communication by default | ✅ shipped |
-| **No Auto-Telemetry** | Zero automatic data transmission | ✅ shipped |
-| **Encrypted Storage** | Optional AES-256-GCM at rest (SQLCipher) | ⚠️ planned |
-| **Process Isolation** | Sandboxed plugins with capability-based permissions | ⚠️ planned |
-| **Secrets Protection** | Automatic detection and log sanitization | ✅ shipped |
-| **Schema Validation** | All external inputs validated against strict schemas | ✅ shipped |
-| **Explicit Configuration** | Remote features require opt-in configuration | ✅ shipped |
-
----
-
-## Protected Assets
-
-ContextHelp protects four categories of critical assets:
-
-### 1. User Data
-- Knowledge objects (bookmarks, notes, documents)
-- Entity relationships and knowledge graphs
-- Personal information and preferences
-- Search queries and activity logs
-
-### 2. Credentials & Secrets
-- API keys (OpenAI, Anthropic, etc.)
-- Database passwords
-- Registry authentication tokens
-- Encryption keys and passphrases
-- OAuth tokens
-
-### 3. Configuration
-- System settings and policies
-- Pipeline definitions
-- Agent profiles and scope rules
-- Registry connections
-
-### 4. System Integrity
-- Core application code
-- Plugin manifests
-- Database schemas
-- Configuration files
-
----
-
-## Threat Categories
-
-ContextHelp defends against 8 threat categories:
-
-| Category | Summary | Details |
-|----------|---------|---------|
-| **Unauthorized Access** | File system, network, database access control | [threat.md](threat.md#1-unauthorized-access) |
-| **Credential Exposure** | API keys, passwords leaked in logs/files | [threat.md](threat.md#2-credential-exposure) |
-| **Configuration Injection** | Malicious config modifying behavior | [threat.md](threat.md#3-configuration-injection) |
-| **Plugin/Pipeline Exploitation** | Malicious code execution | [threat.md](threat.md#4-plugin-pipeline-exploitation) |
-| **Data Exfiltration** | Unauthorized data transmission | [threat.md](threat.md#5-data-exfiltration) |
-| **Supply Chain Attacks** | Compromised dependencies/plugins | [threat.md](threat.md#6-supply-chain-attacks) |
-| **Denial of Service** | Resource exhaustion | [threat.md](threat.md#7-denial-of-service) |
-| **Privilege Escalation** | Gaining unauthorized higher privileges | [threat.md](threat.md#8-privilege-escalation) |
-
----
-
-## Security Boundaries
-
-Five trust boundaries with different protection levels:
-
-| Boundary | Trust Level | Protection Summary |
-|----------|-------------|-------------------|
-| **Local Machine** | Medium | File permissions, encryption, log sanitization |
-| **External Registries** | Low (untrusted) | Schema validation, signature verification |
-| **AI Providers** | Medium | TLS-only, credential protection, rate limiting |
-| **Plugins** | Low (untrusted) | Capability-based sandbox, resource limits |
-| **REST/gRPC APIs** | High (localhost), Low (remote) | Authentication, TLS, input validation |
-
-See [boundaries.md](boundaries.md) for detailed boundary definitions.
-
----
-
-## Security Controls
-
-Defense-in-depth controls (⚠️ = designed, not yet shipped):
-
-- **Authentication & Authorization** — ⚠️ JWT tokens, mTLS (planned; see ADR-023)
-- **Encryption** — ⚠️ AES-256-GCM at rest (planned); TLS 1.2+ in transit (operator-configured)
-- **Data Validation** — JSON schema, size limits, type checking ✅
-- **Process Isolation** — ⚠️ Plugin sandboxing, memory/CPU limits (planned; see ADR-027)
-- **Audit Logging** — Comprehensive event logging with sanitization ✅
-
-See [controls.md](controls.md) for implementation details.
-
----
-
-## Compliance & Standards
-
-ContextHelp aligns with industry security standards:
-
-- **OWASP Top 10** — Mitigations for all top 10 vulnerabilities
-- **NIST Cybersecurity Framework** — Identify → Protect → Detect → Respond → Recover
-- **GDPR** — Data protection and privacy by design
-- **SOC 2** — Security, availability, processing integrity
-
-See [compliance.md](compliance.md) for detailed mappings.
-
----
-
-## Quick Reference
-
-### For Developers
-
-1. **Threat Modeling**: Start with [threat.md](threat.md)
-2. **Building Plugins**: Review [boundaries.md](boundaries.md#boundary-4-plugins)
-3. **Handling Secrets**: See [../secret-management.md](../secret-management.md)
-4. **Input Validation**: Check [../validation.md](../validation.md)
-
-### For Security Auditors
-
-1. **Threat Analysis**: [threat.md](threat.md)
-2. **Security Controls**: [controls.md](controls.md)
-3. **Compliance Mapping**: [compliance.md](compliance.md)
-4. **Incident Response**: [../secret-management.md](../secret-management.md#incident-response)
-
-### For DevOps/SREs
-
-1. **Deployment Security**: [controls.md](controls.md#deployment-security)
-2. **Container Security**: [../configuration-security.md](../configuration-security.md#container-configuration)
-3. **Secret Management**: [../secret-management.md](../secret-management.md)
-4. **Monitoring**: [controls.md](controls.md#audit-logging)
-
----
-
-## Future Enhancements
-
-Planned security improvements:
-
-- **WASM Sandboxing**: Replace Go plugin sandbox with WebAssembly
-- **Registry Signatures**: Cryptographic verification of registry data
-- **Distributed Trust**: Multi-signature support for critical operations
-- **Hardware Keys**: Hardware security module support
-- **Zero-Knowledge Proofs**: Privacy-preserving operations
-- **Formal Verification**: Mathematical proof of security properties
-
----
-
-## Security Contacts
-
-For security issues:
-
-- **Security Team**: security@example.com
-- **Responsible Disclosure**: Please follow responsible disclosure process
-- **Hall of Fame**: Acknowledge successful security researchers
-
----
-
-## Related Documentation
-
-### Security Documents
-- [../security-model.md](../security-model.md) — Comprehensive security model
-- [../secret-management.md](../secret-management.md) — Secret lifecycle
-- [../configuration-security.md](../configuration-security.md) — Secure configuration
-- [../secrets-validation-and-log-sanitization.md](../secrets-validation-and-log-sanitization.md) — Pattern detection
-
-### Architecture Documents
-- [../../dpkms/security.md](../../dpkms/security.md) — dPKMS security
-- [../../plugins/plugin-isolation.md](../../plugins/plugin-isolation.md) — Plugin sandboxing
-- [../../decisions/ADR-019-encryption-and-privacy.md](../../decisions/ADR-019-encryption-and-privacy.md) — Encryption ADR
-- [../../decisions/ADR-023-authentication-authorization-model.md](../../decisions/ADR-023-authentication-authorization-model.md) — Auth ADR
-- [../../decisions/ADR-027-plugin-isolation-sandboxing.md](../../decisions/ADR-027-plugin-isolation-sandboxing.md) — Isolation ADR
-
----
-
-**Last Updated**: 2026-01-26
-**Version**: 1.0
-**Status**: Active
-**Maintained by**: Security Team
+- [../security-model.md](../security-model.md) — single-page security model
+- [../../dpkms/security.md](../../dpkms/security.md) — dpkms security
+- [ADR-019](../../decisions/ADR-019-encryption-and-privacy.md), [ADR-023](../../decisions/ADR-023-authentication-authorization-model.md), [ADR-027](../../decisions/ADR-027-plugin-isolation-sandboxing.md)
