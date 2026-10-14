@@ -1,265 +1,126 @@
-# ICA Plugin (Bundled)
+# ICA Plugin
 
-The **ICA plugin** connects ctxt to the ICA content aggregation
-platform. It bridges ICA's feed API and processor service into the
-ctxt pipeline system, enabling automated feed sync, content
-normalization, and enrichment without manual ingestion.
+`plugins/ica/` is a plugin that maps the ICA content aggregator's feed API and
+processor service onto ctxt pipeline steps. The package builds and is tested,
+but **neither the `ctxt` nor the `dpkms` binary loads it**: nothing registers
+plugins at startup, and the `plugins:` config key is parsed but not read. The
+ICA steps are therefore not in any running pipeline registry, and
+`dpkms pipeline step list` does not show them.
 
----
-
-## Overview
-
-ICA (Idea Crafters Aggregator) manages feed discovery, content
-fetching, and structured analysis. The ctxt plugin wraps two
-upstream services:
-
-- **ICA API** — feed CRUD, item fetching, conditional sync
-- **ICA Processor** — NLP enrichment, embeddings, chapter
-  extraction, entity recognition
-
-Both are optional. The plugin probes each service's `/health`
-endpoint at init and gates pipeline steps accordingly. A minimal
-setup with only the API URL still provides feed sync and
-normalization; adding the processor URL enables deep enrichment.
+This page documents the package for contributors.
 
 ---
 
-## Config
+## Init config
 
-Add under `plugins.ica` in `config.yaml`:
+`Init` receives a `map[string]interface{}` parsed by `ConfigFromMap`
+(`plugins/ica/config.go`). No config file key delivers this map today.
 
-```yaml
-plugins:
-  ica:
-    api_url: https://api.example.com
-    processor_url: https://processor.example.com
-    default_feed_pipeline: false
-    dist_channels_as_mentions: false
-```
+| Key | Type | Default | Effect |
+|-----|------|---------|--------|
+| `api_url` | string | `""` | ICA API base URL; validated with `url.ParseRequestURI`. Enables `ica_feed_manager` and `ica_fetcher` |
+| `processor_url` | string | `""` | ICA processor base URL. Enables `ica_processor` |
+| `dist_channels_as_mentions` | bool | `false` | Passed to the normalizer constructor |
+| `default_feed_pipeline` | bool | `false` | Parsed and stored; no code reads it |
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `api_url` | `string` | `""` | Base URL of ICA API server. Must be valid URI. Empty disables API steps. |
-| `processor_url` | `string` | `""` | Base URL of ICA processor service. Empty disables processor step. |
-| `default_feed_pipeline` | `bool` | `false` | When true, ICA becomes the default feed pipeline for all feed-type objects. |
-| `dist_channels_as_mentions` | `bool` | `false` | Map distribution channel URIs to KnowledgeObject mentions. Affects scoring. |
+At `Init` the plugin sends `GET <url>/health` (2 s timeout) to each configured
+URL and records the result, exposed through `HasAPI()` and `HasProcessor()`.
+Probe failures are logged and never fail `Init`. The probe results do **not**
+change which steps `PipelineSteps()` returns: that depends only on which URLs are
+set (and on a step factory being wired, see below).
 
 ---
 
-## Capabilities
+## Pipeline steps
 
-The plugin probes upstream services at init (2s timeout GET to
-`/health`). Results gate which pipeline steps are available.
+`PipelineSteps()` returns nothing unless the plugin was built with
+`NewWithSteps(steps.Factory())`; `New()` has no step factory.
 
-| Capability | Probe | Steps gated |
-|------------|-------|-------------|
-| `ica_api` | `{api_url}/health` returns 200 | `ica_feed_manager`, `ica_fetcher` |
-| `ica_processor` | `{processor_url}/health` returns 200 | `ica_processor` |
+| Step | Requires | Produces | Capabilities | Returned when |
+|------|----------|----------|--------------|---------------|
+| `ica_feed_manager` | `Source` | `Metadata` | `ica_api` | `api_url` set |
+| `ica_fetcher` | `Source` | `RawContent`, `Metadata` | `ica_api` | `api_url` set |
+| `ica_normalizer` | `Metadata` | `Metadata`, `Mentions`, `Sections`, `Tags` | none | always |
+| `ica_processor` | `RawContent` | `Metadata`, `Sections` | `ica_processor` | `processor_url` set |
 
-Probe failures are logged but non-fatal. The plugin initialises
-successfully even when both services are unreachable; gated steps
-simply won't appear in `PipelineSteps()`.
+The `ica_api` and `ica_processor` capability names are not part of the core
+capability set (`internal/pipeline/builtins/capabilities.go`), so a built-in
+pipeline that listed these steps would prune them.
 
----
+### Upstream calls
 
-## Pipeline Steps
+| Step | Request |
+|------|---------|
+| `ica_feed_manager` | `GET {api_url}/api/v1/feeds?url=...`; on 404, `POST {api_url}/api/v1/feeds` |
+| `ica_fetcher` | `GET {api_url}/api/v1/feeds/sync?url=...` with `If-None-Match` / `If-Modified-Since` when known |
+| `ica_processor` | `POST {processor_url}/process` |
 
-| Step | Requires | Produces | Capabilities | Description |
-|------|----------|----------|--------------|-------------|
-| `ica_feed_manager` | `Source` | `Metadata` | `ica_api` | Ensure feed exists in ICA; populate feed metadata (id, status, sync time, item count) |
-| `ica_fetcher` | `Source` | `RawContent`, `Metadata` | `ica_api` | Fetch feed items via `/api/v1/feeds/sync`; supports conditional requests (ETag, Last-Modified) |
-| `ica_normalizer` | `Metadata` | `Metadata`, `Mentions`, `Sections`, `Tags` | *(none)* | Map raw feed items to typed KO fields via `NormalizedItemToDraft` |
-| `ica_processor` | `RawContent` | `Embeddings`, `Metadata`, `Sections` | `ica_processor` | Send content to processor service for NLP enrichment; retry with exponential backoff |
+### Error handling
 
----
+| Step | Condition | Behaviour |
+|------|-----------|-----------|
+| `ica_feed_manager` | Feed not found | Creates the feed, continues |
+| `ica_fetcher` | HTTP 304 | Sets `Metadata["not_modified"] = true` |
+| `ica_fetcher` | HTTP 404 / 410 | Sets `Metadata["feed_gone"] = true` |
+| `ica_normalizer` | No `feed_items` in metadata | No-op |
+| `ica_processor` | HTTP 4xx | Permanent error, no retry |
+| `ica_processor` | HTTP 5xx or network error | Up to 3 attempts, waiting 1 s then 2 s |
 
-## Pipeline: ica.feed_sync
-
-The plugin registers one pipeline definition:
-
-```
-ica.feed_sync
-├── ica_feed_manager       # ensure feed exists (ica_api)
-├── ica_fetcher            # fetch items (ica_api)
-├── ica_normalizer         # normalize items (always)
-├── item_deduplicator      # core step: skip seen hashes
-├── ica_processor          # NLP enrichment (ica_processor)
-├── alternative_detector   # core step: detect duplicates
-└── item_enqueuer          # core step: queue items
-```
-
-### Degradation behavior
-
-Steps requiring unavailable capabilities are skipped at runtime.
-The pipeline remains functional as long as `ica_normalizer` (which
-has no capability requirements) can run.
-
-| Service down | Effect |
-|--------------|--------|
-| API unreachable | `ica_feed_manager` + `ica_fetcher` skipped; pipeline needs pre-populated `Metadata.feed_items` |
-| Processor unreachable | `ica_processor` skipped; no embeddings, chapters, or entity extraction |
-| Both unreachable | Only `ica_normalizer` + core steps run; requires pre-seeded data |
+`plugins/ica/pipeline.go` declares a pipeline definition `ica.feed_sync`
+(`ica_feed_manager`, `ica_fetcher`, `ica_normalizer`, `item_deduplicator`,
+`ica_processor`, `alternative_detector`, `item_enqueuer`) through
+`PipelineDefs()`. No core code reads `PipelineDefs()`, so this pipeline is not
+registered.
 
 ---
 
-## Field Mapping
+## Field mapping
 
-`NormalizedItemToDraft` converts ICA's `NormalizedItem` into a
-ctxt `KnowledgeObject`. Reverse conversion via
-`DraftToNormalizedItem` is used by the processor step.
+`NormalizedItemToDraft` (`plugins/ica/convert.go`) converts an ICA
+`NormalizedItem` into a `KnowledgeObject`; `DraftToNormalizedItem` converts back
+for the processor request.
 
-| NormalizedItem field | KnowledgeObject field | Notes |
-|---------------------|-----------------------|-------|
-| `ID` | `ID` | direct |
-| `ArticleBody` | `RawContent`, `TextContent` | both set to same value |
-| `ContentHash` | `ContentHash` | direct |
-| `CanonicalURL` | `Source` | direct |
-| `Embedding` | `Embeddings` | `[]float32` |
-| `Title` | `Metadata["title"]` | |
-| `Description` | `Metadata["description"]` | |
-| `Language` | `Metadata["language"]` | |
-| `PrimarySource.Domain` | `Metadata["domain"]` | |
-| `PrimarySource.Publisher` | `Metadata["publisher"]` | |
-| `PrimarySource.AuthorOrSpeaker` | `Metadata["author"]` | |
-| `PrimarySource.FeedURL` | `Metadata["feed_url"]` | |
-| `PublishedAt` | `Metadata["published_at"]` | RFC3339 string |
-| `ChannelCount` | `Metadata["channel_count"]` | int; omitted if 0 |
-| `MediaAssets` | `Metadata["media_assets"]` | `[]map` with type, url, duration_seconds |
-| `MediaTypesPresent` | `Tags` | `media:<type>` labels (source=media) |
-| `DistChannels` | `Mentions` | `https://<domain>/<url>` URIs |
-| `ExtractedEntities` | `Mentions` | `ctxt://entity/<type>/<value>` URIs |
-| `StructuredAnalysis.Chapters` | `Sections` | phase → title; voiceover_summary → content |
+| NormalizedItem field | KnowledgeObject field |
+|----------------------|-----------------------|
+| `ID` | `ID` |
+| `ArticleBody` | `RawContent` and `TextContent` |
+| `ContentHash` | `ContentHash` |
+| `CanonicalURL` | `Source` |
+| `Title`, `Description`, `Language` | `Metadata["title"]`, `["description"]`, `["language"]` |
+| `PrimarySource.Domain`, `.Publisher`, `.AuthorOrSpeaker`, `.FeedURL` | `Metadata["domain"]`, `["publisher"]`, `["author"]`, `["feed_url"]` |
+| `PublishedAt` | `Metadata["published_at"]` (RFC 3339) |
+| `ChannelCount` | `Metadata["channel_count"]` (omitted when 0) |
+| `MediaAssets` | `Metadata["media_assets"]` (`type`, `url`, `duration_seconds`) |
+| `MediaTypesPresent` | `Tags` labelled `media:<type>`, source `media` |
+| `DistChannels` | `Mentions` with scheme `https`, namespace = channel domain, ID = channel URL |
+| `ExtractedEntities` | `Mentions` with scheme `ctxt`, namespace `entity`, ID `<type>/<value>` |
+| `StructuredAnalysis.Chapters` | `Sections` (title = phase, content = voiceover summary) |
 
-### Type inference
-
-KO `Type` and `Subtype` are inferred from `MediaTypesPresent`:
-
-| Media types present | Type | Subtype |
-|--------------------|------|---------|
-| contains `video` | `media` | `video` |
-| contains `audio` | `media` | `audio` |
-| contains `image` | `media` | `image` |
-| none / text only | `article` | `""` |
-
-Priority: video > audio > image > article.
+`NormalizedItem.Embedding` is not mapped. `Type`/`Subtype` are inferred from
+`MediaTypesPresent`: video, then audio, then image give `media`/`<kind>`;
+otherwise `article`.
 
 ---
 
-## AlternativeDetector Integration
-
-When `dist_channels_as_mentions` is `true`, distribution channels
-from `NormalizedItem.DistChannels` are appended to
-`KnowledgeObject.Mentions` as `https://` URIs:
-
-```
-scheme: https
-space:  <channel.Domain>    (e.g. "youtube.com")
-id:     <channel.URL>       (e.g. "https://youtube.com/watch?v=...")
-```
-
-The `alternative_detector` core step uses mentions to find
-objects sharing the same content across different distribution
-channels. More mentions = higher chance of deduplication across
-sources, which affects scoring and surfacing.
-
-When `false`, distribution channels are ignored; only extracted
-entities produce mentions.
-
----
-
-## Usage Examples
-
-### Full setup (API + processor)
-
-```yaml
-plugins:
-  ica:
-    api_url: https://ica-api.internal:8080
-    processor_url: https://ica-proc.internal:8081
-    default_feed_pipeline: true
-    dist_channels_as_mentions: true
-```
-
-All four ICA steps active. Feeds auto-sync, items normalized,
-content enriched with embeddings and chapters, cross-channel
-deduplication enabled.
-
-### API only (no processor)
-
-```yaml
-plugins:
-  ica:
-    api_url: https://ica-api.internal:8080
-```
-
-Feed management and fetching via ICA API. Normalization runs
-locally. No embeddings, chapters, or entity extraction.
-`ica_processor` step skipped.
-
-### Mixing ICA steps into other pipelines
-
-ICA steps are registered in the step registry like any plugin
-step. Override a custom pipeline to include specific ICA steps:
-
-```yaml
-pipelines:
-  overrides:
-    my_custom_feed:
-      steps:
-        - url_fetcher
-        - ica_normalizer      # reuse ICA normalization
-        - item_deduplicator
-        - ica_processor       # reuse ICA processor
-        - item_enqueuer
-```
-
-Requires `ica` plugin enabled with appropriate URLs configured.
-Steps requiring unavailable capabilities are skipped.
-
----
-
-## Error Handling
-
-| Step | Error type | Behavior |
-|------|-----------|----------|
-| `ica_feed_manager` | Network / HTTP error | Step fails; pipeline halts |
-| `ica_feed_manager` | Feed not found | Creates new feed via POST; continues |
-| `ica_fetcher` | HTTP 304 Not Modified | Sets `Metadata["not_modified"] = true`; continues |
-| `ica_fetcher` | HTTP 404/410 | Sets `Metadata["feed_gone"] = true`; continues |
-| `ica_fetcher` | Other HTTP error | Step fails; pipeline halts |
-| `ica_normalizer` | No `feed_items` in metadata | No-op; returns draft unchanged |
-| `ica_normalizer` | JSON unmarshal error | Step fails; pipeline halts |
-| `ica_processor` | HTTP 4xx | Permanent error; no retry |
-| `ica_processor` | HTTP 5xx / network | Retries up to 3x with exponential backoff (1s, 2s, 4s) |
-| `ica_processor` | Retries exhausted | Step fails; pipeline halts |
-
----
-
-## Contributor Reference
-
-### Key Files
+## Key files
 
 | File | Purpose |
 |------|---------|
-| `plugins/ica/plugin.go` | Plugin struct; Init, PipelineSteps, capability probing |
-| `plugins/ica/config.go` | Config struct, validation, `ConfigFromMap` |
-| `plugins/ica/pipeline.go` | `PipelineDefs()` — declares `ica.feed_sync` |
-| `plugins/ica/convert.go` | `NormalizedItemToDraft`, `DraftToNormalizedItem`, type inference |
-| `plugins/ica/types.go` | Local mirrors of ICA domain types (NormalizedItem, etc.) |
-| `plugins/ica/steps/feed_manager.go` | `ica_feed_manager` step |
-| `plugins/ica/steps/fetcher.go` | `ica_fetcher` step |
-| `plugins/ica/steps/normalizer.go` | `ica_normalizer` step |
-| `plugins/ica/steps/processor.go` | `ica_processor` step with retry logic |
+| `plugins/ica/plugin.go` | `Plugin`: `Init`, health probes, `PipelineSteps`, no-op `PostIngest` |
+| `plugins/ica/config.go` | `Config`, `ConfigFromMap` |
+| `plugins/ica/pipeline.go` | `PipelineDefs()` (unused by core) |
+| `plugins/ica/convert.go` | Field mapping and type inference |
+| `plugins/ica/types.go` | Local copies of ICA types |
+| `plugins/ica/steps/` | The four steps and `Factory()` |
 
-### Interfaces
-
-The plugin implements:
-
-- **`pluginapi.Plugin`** — `Init`, `Close`, `PipelineSteps`
-- **`pluginapi.PostIngestHook`** — `PostIngest` (currently no-op)
-
-### Running Tests
+### Running tests
 
 ```bash
-GOWORK=off go test ./plugins/ica/...
+go test ./plugins/ica/...
 ```
+
+---
+
+## See also
+
+- [Plugin authoring guide](../plugin-authoring-guide.md) — the plugin API and its current wiring state

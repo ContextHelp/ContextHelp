@@ -28,14 +28,19 @@ ctxt job cancel <job_id>
 
 ```bash
 ctxt find "<natural-language query>" [--limit N]
-ctxt list [--type <type>] [--tag a,b] [--after <ISO>] [--q "<query>"]
-ctxt open <object_id> [--raw] [--output json|yaml|text]
+ctxt find "<query>" --explain                     # per-signal score breakdown
+ctxt find "<query>" --graph [--no-browser]        # interactive search graph (see workflows/search-graph.md)
+ctxt find "<query>" --graph --format json|yaml    # search graph as JGF
+ctxt find "<query>" --graph -o <file>.html|.json|.yaml|.graphml|.gexf
+ctxt list [--type <type>] [--tagged <tag>] [--after <date>] [--q "<query>"]
+ctxt show <object_id> [--raw] [--format json|yaml]
+ctxt export <object_id> [--format yaml]
 ```
 
 ### Composition
 
 ```bash
-ctxt make brief|plan|summary|draft [--tag a,b] [--mention @entity.slug] [--since <ISO>] [--output-file <file>]
+ctxt compose brief|plan|summary|draft [--tagged <tag>] [--mention @entity.slug] [--since <date>] [--until <date>] [--output-file <file>]
 ```
 
 ### Profiles and config
@@ -63,12 +68,19 @@ ctxt registry remove <name>
 ### Pipeline and infrastructure (`dpkms`)
 
 ```bash
-dpkms serve [--port 8080] [--grpc-port 9090] [--workers N] [--public]
+dpkms serve [--port 8080] [--grpc-port 9090] [--cookie-bridge-port 9377] [--workers N] [--public]
 dpkms pipeline list|show|create|archive|unarchive|remove
 dpkms pipeline enqueue [--pipeline <name>] [--type <type>] [--wait] <content>
 dpkms pipeline step list|install|uninstall
 dpkms pipeline step registry list|add|update|autoupdate
 dpkms housekeeping vacuum|reindex|compact|prune
+dpkms session list [--all] [--principal <p>] | revoke <id> | revoke --principal <p>
+```
+
+### Web UI
+
+```bash
+ctxt ui open [--server <url> | --instance <name>] [--no-browser]
 ```
 
 ## REST endpoint map (from current spec)
@@ -93,6 +105,13 @@ Core routes:
 - `GET /entities`
 - `GET /entities/{slug}`
 - `GET /entities/{slug}/related`
+
+Web UI sign-in routes (see [Sign in to the web UI](../workflows/web-ui-sign-in.md)):
+
+- `POST /api/v1/ui/login-codes` (`read:ui`, API token only): single-use login code, 60 s
+- `POST /ui/auth/session`: login code for the session cookie (same-origin, `X-Ctxt-CSRF: 1`)
+- `GET /api/v1/whoami`: who the caller is (`via`: `token`, `session` or `none`), its scopes and, for a session, the session
+- `DELETE /api/v1/ui/session` (`signout:ui`, browser sessions only): sign the browser out
 
 Importer routes (story-target contract):
 

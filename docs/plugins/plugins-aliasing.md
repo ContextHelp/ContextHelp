@@ -1,191 +1,95 @@
-# Aliasing Plugin (Bundled)
+# Aliasing Plugin
 
-The **Aliasing Plugin** lets you assign human-readable names to knowledge objects so you can refer to them by alias instead of opaque object IDs. Aliases are resolved transparently — any command that accepts an object ID (`ctxt open`, `ctxt edit`, `ctxt delete`, etc.) will accept an alias without any extra flags.
-
----
-
-## Overview
-
-Object IDs in ContextHelp are stable but unreadable (`obj_abc123`). The aliasing plugin lets you bind a short, memorable name to any object:
-
-```bash
-ctxt alias set project-charter obj_abc123
-ctxt open project-charter   # works exactly like: ctxt open obj_abc123
-```
-
-Aliases can be **global** (available in all contexts) or **profile-scoped** (active only when a specific focus profile is selected). A profile alias silently shadows a global alias of the same name, so different roles can point the same alias at different objects.
+The aliasing plugin maps human-readable names to knowledge object IDs. The
+plugin code, the storage table and the REST routes exist, but **neither the
+`ctxt` nor the `dpkms` binary loads the plugin**, so aliases cannot be used
+today. This page describes what exists and what is missing.
 
 ---
 
-## Enabling the Plugin
+## Status
 
-Add the following to your `config.yaml`:
+| Piece | State |
+|-------|-------|
+| Plugin module `plugins/aliasing/` | Exists (separate Go module, listed in `go.work`) |
+| `aliases` table | Exists (SQLite migration `010_aliases.sql`; Postgres `internal/storage/postgres/aliases.go`) |
+| REST routes `/api/v1/aliases` | Registered on the dpkms HTTP server |
+| Plugin registration at startup | Not implemented: nothing creates `Service.PluginRegistry` outside tests |
+| `ctxt alias` command | Not available: `plugins/aliasing/cli.go` defines a cobra subtree, but no binary mounts it |
+| Alias resolution in other commands (`ctxt show`, `ctxt edit`, ...) | Not implemented: no core code calls `ResolveID` before an object lookup |
+| Config | None: the `plugins:` config key is parsed but nothing reads it |
 
-```yaml
-plugins:
-  - name: aliasing
-    config:
-      enabled: true          # default: true
-      default_scope: global  # global | profile
-```
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `enabled` | `true` | Set to `false` to disable alias resolution entirely. Existing aliases are preserved in the database. |
-| `default_scope` | `global` | Scope used when `--scope` is not specified on CLI or API calls. |
-
----
-
-## CLI Reference
-
-### `ctxt alias set <alias> <object-id>`
-
-Create an alias pointing to a knowledge object.
-
-```bash
-# Global alias (available everywhere)
-ctxt alias set project-charter obj_abc123
-
-# Profile-scoped alias (only active when the "founder" profile is selected)
-ctxt alias set roadmap obj_xyz789 --scope profile --profile founder
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--scope` | `global` | `global` or `profile` |
-| `--profile` | `""` | Profile name — required when `--scope profile` |
+Entity aliases are a different feature: entities carry an `aliases` list, and
+`ctxt resolve @<slug>` and `ctxt entity` match a slug or an entity alias. See
+`ctxt resolve --help`.
 
 ---
 
-### `ctxt alias list`
+## REST routes
 
-List all aliases, optionally filtered by object ID.
+Defined in `internal/server/http/routes.go` and
+`internal/server/http/handlers_aliases.go`.
 
-```bash
-# List all aliases
-ctxt alias list
+| Method | Path | Scope | Body / query |
+|--------|------|-------|--------------|
+| `POST` | `/api/v1/aliases` | `write:objects` | `{"alias", "object_id", "scope", "profile"}`; `scope` defaults to `global` |
+| `GET` | `/api/v1/aliases` | `read:objects` | `?object_id=` filter |
+| `GET` | `/api/v1/aliases/{alias}` | `read:objects` | `?profile=` |
+| `DELETE` | `/api/v1/aliases/{alias}` | `delete:aliases` | `?scope=` (default `global`), `?profile=` |
 
-# List aliases pointing to a specific object
-ctxt alias list --object obj_abc123
-```
+The handlers delegate to the aliasing plugin through the plugin registry. Because
+the registry is never populated in a running server, the routes currently behave
+as follows:
 
-Output format:
-```
-project-charter → obj_abc123 (scope=global)
-roadmap → obj_xyz789 (scope=profile, profile=founder)
-```
-
-| Flag | Description |
-|------|-------------|
-| `--object <id>` | Filter to aliases for a specific object ID |
-
----
-
-### `ctxt alias remove <alias>`
-
-Delete an alias.
-
-```bash
-# Remove a global alias
-ctxt alias remove project-charter
-
-# Remove a profile-scoped alias
-ctxt alias remove roadmap --scope profile --profile founder
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--scope` | `global` | Scope of the alias to remove |
-| `--profile` | `""` | Profile name — required when `--scope profile` |
+| Route | Response without the plugin |
+|-------|-----------------------------|
+| `POST /aliases` | `201` with the request echoed; **nothing is stored** |
+| `GET /aliases` | `200 []` |
+| `GET /aliases/{alias}` | `404 NOT_FOUND`, "aliasing plugin not configured" |
+| `DELETE /aliases/{alias}` | `204`; nothing is deleted |
 
 ---
 
-## Scope Explained
+## Plugin behaviour (when registered)
 
-| Scope | When it applies | Typical use |
-|-------|----------------|-------------|
-| `global` | Always | Stable, project-wide shorthand |
-| `profile` | Only when the named profile is active | Role-specific views (e.g., "roadmap" means different objects for Founder vs Engineer) |
+What the code in `plugins/aliasing/` does if a host registers and initialises it:
 
-**Shadowing:** if both a profile alias and a global alias exist with the same name, the profile alias wins when that profile is active. This is silent — no warning is shown.
+- **Scopes:** `global` or `profile`. The table key is `(alias, scope, profile)`.
+- **Resolution order** (`AliasStore.Resolve`): a profile-scoped alias for the
+  given profile, then a global alias. If neither exists, `ResolveID` returns the
+  input unchanged and no error.
+- **Init config** (the `map[string]interface{}` passed to `Init`, parsed by
+  `ConfigFromMap` in `plugins/aliasing/config.go`):
 
-**Resolution order** (implemented in `resolver.go`):
-1. Profile-scoped alias matching the active profile
-2. Global alias
-3. Input returned unchanged (treated as a direct object ID — no error)
+  | Key | Default | Meaning |
+  |-----|---------|---------|
+  | `enabled` | `true` | `false` makes `ResolveID` a pass-through |
+  | `default_scope` | `global` | Scope used by `SetAliasOp` when none is given; must be `global` or `profile` |
 
----
+  No config file key delivers this map today.
 
-## Transparent Resolution
-
-Alias resolution happens automatically before every object lookup. You do not need to add any flags or change your workflow:
-
-```bash
-ctxt open project-charter    # resolved transparently
-ctxt edit project-charter    # same
-ctxt delete project-charter  # same
-```
-
-If no alias matches, the input is passed through as-is, so unaliased IDs continue to work normally.
-
----
-
-## Disabling
-
-Set `enabled: false` in config to disable alias resolution. Existing aliases remain stored in the database and are restored if you re-enable the plugin later.
-
-```yaml
-plugins:
-  - name: aliasing
-    config:
-      enabled: false
-```
-
----
-
-## Contributor Reference
-
-### Architecture
-
-The aliasing plugin implements two interfaces from `pkg/pluginapi`:
-
-- **`plugin.Plugin`** — standard lifecycle (`Init`, `Close`, `PipelineSteps`)
-- **`plugin.AliasResolver`** — `ResolveID(ctx, idOrAlias, profile) (string, error)`
-
-It is **not** a pipeline step. Resolution happens at the service layer: `service` calls `registry.ResolveID(id, profile)` before every object lookup. The plugin is registered into the resolver registry during `Init`.
-
-### Key Files
+### Key files
 
 | File | Purpose |
 |------|---------|
-| `plugins/aliasing/plugin.go` | `Plugin` struct; `Init`, `ResolveID`, `SetAliasOp`, `ListAliases`, `RemoveAlias` |
-| `plugins/aliasing/resolver.go` | `ResolveAlias` function and resolution order documentation |
-| `plugins/aliasing/store.go` | `SetAlias` wrapping `AliasStore.Create` |
+| `plugins/aliasing/plugin.go` | `Plugin`: `Init`, `ResolveID`, `SetAliasOp`, `ListAliases`, `RemoveAlias` |
+| `plugins/aliasing/store.go` | `SetAlias`, `ResolveAlias` over `pluginapi.AliasStore` |
 | `plugins/aliasing/config.go` | `AliasConfig`, `DefaultConfig`, `ConfigFromMap` |
-| `plugins/aliasing/cli.go` | Cobra subtree; mounts as `ctxt alias` |
-| `internal/storage/sqlite/migrations/010_aliases.sql` | Database schema |
+| `plugins/aliasing/cli.go` | Unmounted cobra subtree (`alias set/list/remove`) that calls the REST routes |
+| `internal/storage/sqlite/aliases.go` | SQLite `AliasStore` |
+| `internal/storage/sqlite/migrations/010_aliases.sql` | Table schema |
 
-### Storage
-
-The plugin uses `pluginapi.AliasStore`, accessed via `deps.Store.Aliases()` in `Init`. `AliasStore.Resolve` performs the profile→global fallback at the DB layer. The store interface exposes:
-
-- `Create(ctx, alias)` — insert or replace
-- `List(ctx, AliasFilter)` — filter by object ID or scope
-- `Delete(ctx, alias, scope, profile)` — remove a specific alias
-- `Resolve(ctx, alias, profile)` — profile-first lookup (used by `ResolveAlias`)
-
-### Adding a New Scope Type
-
-To add a scope beyond `global` and `profile`:
-
-1. Add the new scope value to `AliasStore` SQL schema and queries
-2. Update `ResolveAlias` in `resolver.go` with the new resolution step
-3. Add validation in `ConfigFromMap` if the scope is configurable
-4. Add `--scope <new-scope>` handling in `cli.go`
-5. Write a migration under `internal/storage/sqlite/migrations/`
-
-### Running Tests
+### Running tests
 
 ```bash
-GOWORK=off go test ./plugins/aliasing/...
+go test ./plugins/aliasing/...
 ```
+
+`go.work` includes the module, so this runs from the repository root.
+
+---
+
+## See also
+
+- [Plugin authoring guide](../plugin-authoring-guide.md) — the plugin API and its current wiring state
+- `pkg/pluginapi/pluginapi.go` — `Alias`, `AliasStore`, `AliasResolver`

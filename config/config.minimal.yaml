@@ -1,111 +1,34 @@
-# ContextHelp Minimal Configuration
-# This file contains the bare minimum required configuration to get started
-# Copy to ~/.config/contexthelp/config.yaml and customize as needed
+# ContextHelp minimal configuration
+#
+# Nothing is required: with no config file at all, ctxt and dpkms run on
+# their built-in defaults (SQLite under $XDG_DATA_HOME/contexthelp, dpkms
+# serve on 127.0.0.1:8080, ctxt talking to it there). This file shows the
+# few settings people change first. Copy it to
+# ~/.config/contexthelp/ctxt.yaml and/or ~/.config/contexthelp/dpkms.yaml.
+#
+# As copied it sets nothing. A commented setting is '#' directly followed by
+# its YAML; remove the '#' to enable it. Every key: config/config.example.yaml.
+# Check the result with `ctxt config validate`.
 
-# Configuration version (required)
-version: 1
+#server:
+# dpkms.yaml: job workers dpkms serve runs.
+#  workers: 4
+# ctxt.yaml: the instance ctxt talks to.
+#  url: http://127.0.0.1:8080
 
-################################################################################
-# Storage (Required)
-################################################################################
+# dpkms.yaml: LLM and embedding providers. auto uses a hosted LLM when its
+# API key is set (ANTHROPIC_API_KEY, OPENAI_API_KEY), else local Ollama.
+#providers:
+#  llm:
+#    backend: auto
+#  embedding:
+#    backend: ollama
+#    model: nomic-embed-text
+#    endpoint: http://localhost:11434
 
-storage:
-  # SQLite is recommended for most users
-  type: sqlite
-
-  # Path to database file (will be created if it doesn't exist)
-  path: ~/.local/share/contexthelp/bookmarks.db
-
-  # Use safe concurrency mode
-  concurrency: safe
-
-################################################################################
-# Ingestion (Required)
-################################################################################
-
-ingestion:
-  # Use jobs mode for reliability
-  mode: jobs
-
-  # Auto-start worker with `ch serve`
-  auto_start_worker: true
-
-################################################################################
-# Queue (Required)
-################################################################################
-
-queue:
-  # Use SQLite-based queue (same as storage)
-  backend: sqlite
-
-  # Number of concurrent workers
-  workers: 4
-
-  # Retry failed jobs up to 3 times
-  retry_limit: 3
-
-################################################################################
-# Pipelines (Required)
-################################################################################
-
-pipelines:
-  # Enable basic pipelines
-  enabled:
-    - text.short
-    - text.long
-    - url.generic
-
-  # Set defaults
-  defaults:
-    text: text.long
-    url: url.generic
-
-################################################################################
-# Server (Optional but recommended)
-################################################################################
-
-server:
-  http:
-    port: 7700
-    public: false
-  grpc:
-    port: 7701
-
-################################################################################
-# Privacy (Recommended)
-################################################################################
-
-privacy:
-  # Disable telemetry for privacy
-  telemetry: false
-
-################################################################################
-# AI Providers (Required for semantic analysis)
-################################################################################
-
-ai_providers:
-  # Configure at least one provider
-  openai:
-    # API key: OPENAI_API_KEY in the environment (config files do not expand env vars)
-    model: gpt-4o
-
-  # Or use local LLM
-  # local:
-  #   ollama_url: http://localhost:11434
-  #   model: llama3
-
-################################################################################
-# Optional: Basic i18n
-################################################################################
-
-i18n:
-  enabled: false
-  preferred_languages:
-    - en
-
-################################################################################
-# Optional: Refresh configuration
-################################################################################
-
-refresh:
-  enabled: false
+# ctxt.yaml: the default focus profile.
+#profile:
+#  default: personal
+#  profiles:
+#    personal:
+#      description: Everything I capture

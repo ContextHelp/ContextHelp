@@ -1,9 +1,7 @@
 ---
 title: "Workflow: Entity Auto-Enrichment"
-description: Set up repeatable enrichment for a real-world entity so captured sources produce a current profile with facts, provenance, confidence, resource mappings, and approval history.
+description: Set up repeatable enrichment for a real-world entity, such as an organization,
 ---
-
-# Workflow: Entity Auto-Enrichment
 
 ## Goal
 

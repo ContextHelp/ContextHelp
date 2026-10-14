@@ -40,8 +40,9 @@ dpkms serve --port 8080 --grpc-port 9090 --workers 4
 
 Ports and exit behaviour:
 
-- A port you pass (`--port`, `--grpc-port`) is bound exactly. If it is in use, serve exits non-zero; it never moves to another port.
-- Without the flag, a busy default port (8080, 9090, cookie bridge 9377) falls back to a free port. Serve prints a `note:` line with the port it bound; `dpkms ps` lists it.
+- Set a port with its flag (`--port`, `--grpc-port`, `--cookie-bridge-port`), env var (`CH_SERVER_PORT`, `CH_GRPC_PORT`, `CH_COOKIE_BRIDGE_PORT`) or config key (`server.port`, `server.grpc_port`, `server.cookie_bridge_port`). The flag wins over the env var, the env var over the config file.
+- A port you set any of these ways is bound exactly. If it is in use, serve exits non-zero; it never moves to another port. `0` binds a port the OS picks; `dpkms ps --format json` shows it.
+- With none of them set, a busy default port (8080, 9090, cookie bridge 9377) falls back to a free port. Serve prints a `note:` line with the port it bound; `dpkms ps` lists it.
 - If any component fails (HTTP, gRPC, cookie bridge, workers), serve logs `error: <component>: ...`, stops every component and exits non-zero. launchd `KeepAlive` or systemd `Restart=always` then restarts it.
 - SIGTERM or SIGINT stops serve within `jobs.drain_timeout` (default 30s). A second signal exits at once.
 
@@ -125,6 +126,26 @@ dpkms pipeline step registry autoupdate <registry-url> --enable
 # or
 dpkms pipeline step registry autoupdate <registry-url> --disable
 ```
+
+## After upgrading dpkms
+
+A release that changes how objects are indexed for full-text search is re-applied automatically: on its first start, `dpkms serve` prints
+
+```text
+warning: FTS signature mismatch: old=… new=… — reindex_auto: re-projecting stored objects
+FTS re-projection to projection@v2: job <job-id> (follow with: ctxt upgrade status)
+```
+
+and re-projects every stored object in the background. Search keeps serving throughout; each object switches to its new index text as it is reached. Follow it:
+
+```bash
+ctxt upgrade status --watch   # bucket reindex_auto, target projection@vN
+```
+
+- **Stopped part-way** (shutdown, crash, `dpkms job cancel <job-id>`): the next start resumes with the objects not yet done. Nothing finished is redone.
+- **`failed` with a `failed` count**: those objects could not be re-projected and keep their old index text. The next start retries them; `last_error` names the first one.
+- **Embeddings are not refreshed** by this: stored vectors keep the text they were embedded from. See [Operate embedding models](./embeddings.md).
+- `dpkms housekeeping reindex` rebuilds the SQLite FTS table from the stored text; it does not re-project.
 
 ## Incident response playbook
 

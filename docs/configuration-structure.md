@@ -48,7 +48,8 @@ Put each setting where the binary that acts on it reads it:
   `secrets`, `browser`, `steps`.
 - **`ctxt.yaml`**: what the client needs: which instance to talk to
   (`server.url`, `server.urls`, `server.token`), `profile`, `capture`,
-  `watch`, `backup`.
+  `watch`, `search` (sent with each `ctxt find` query), `resurfacing`,
+  `embeddings`, `uri`, `backup`.
 
 Both binaries read `storage` (ctxt commands that open the database
 directly) and `registries` (`ctxt registry` commands and dpkms's registry
@@ -68,7 +69,8 @@ storage:
     threshold: 65536           # bytes
 
 server:
-  port: 8080                   # REST; dpkms serve --port wins
+  port: 8080                   # REST; dpkms serve --port wins. Set, it is exact:
+                               # serve exits if busy. Unset, a busy 8080 falls back
   grpc_port: 9090
   cookie_bridge_port: 9377     # always binds 127.0.0.1
   workers: 4                   # job workers; --workers wins
@@ -94,13 +96,6 @@ duplicates:
   policy: warn                 # warn | drop | keep
   check_exact: true
   check_similar: false
-
-search:
-  default_mode: hybrid         # fts | vector | hybrid
-  rrf:
-    k: 60
-    fts_weight: 0.5
-    vector_weight: 0.5
 
 secrets:
   backend: env                 # env | keyring | agefile | onepassword | ghsecrets
@@ -158,8 +153,14 @@ registries:
     sync_mode: full            # full | thin
     trust_level: untrusted     # trusted | untrusted | sandboxed
 
-watch:
-  enabled: false
+search:                        # sent with each ctxt find query
+  default_mode: hybrid         # fts | vector | hybrid
+  rrf:
+    k: 60
+    fts_weight: 0.5
+    vector_weight: 0.5
+
+watch:                         # ctxt watch start
   dirs: ["~/notes"]
   patterns: ["*.md"]
 ```
@@ -195,34 +196,35 @@ unknown `auth.type`.
 | `profile` | Focus profiles: `default`, `profiles.<name>` |
 | `registries` | List of registries: `name`, `url`, `auth`, `sync_mode`, `trust_level`, `entitlement_url` |
 | `registries_global` | `require_signatures` |
-| `plugins` | List of plugins: `type`, `plugin`, `config` |
+| `plugins` | List of plugins: `type`, `plugin`, `config`. Not read: no binary loads plugins |
 | `providers` | Backend per provider: `video`, `document`, `ocr`, `transcription`, `vision`, `diarization`, `llm`, `embedding` |
 | `pipelines` | `overrides.<pipeline>`: `providers`, `skip_steps`, `extra_steps` |
-| `retrieval` | Progressive retrieval: `method`, tier `top_k`s |
+| `retrieval` | Progressive retrieval: `method`, tier `top_k`s. Not read |
 | `search` | Hybrid search: `default_mode`, `rrf`, `candidate_pool`, `min_score`, `fallback_to_fts`, `reranker` |
 | `duplicates` | Duplicate detection: `policy`, `similarity_threshold`, `check_exact`, `check_similar` |
 | `embeddings` | Embedding-model lifecycle guards: `min_coverage`, `grace_period` |
-| `conventions` | Mention-namespace and tag vocabulary rules |
+| `conventions` | Mention-namespace and tag vocabulary rules. Not read |
 | `secrets` | Secrets backend and its settings |
-| `watch` | Filesystem and clipboard watchers |
-| `inbox` | Default inbox: `path`, `pipeline`, `tags` |
+| `watch` | Filesystem and clipboard watchers: `dirs`, `patterns`, `debounce`, `clipboard` (`enabled`, `paths` are not read) |
+| `inbox` | Default inbox: `path`, `pipeline`, `tags`. Not read |
 | `capture` | Browser capture: `browser`, `url_filter`, `history` |
 | `browser` | Built-in IBR browser automation daemon |
 | `fanout` | Post-ingest fan-out enrichment |
 | `resurfacing` | Background resurfacing queue |
 | `federations` | Remote dPKMS peers to sync with |
 | `federation` | Receive-side federation `token` |
-| `audit` | Audit-log forwarding: `syslog`, `webhook` |
+| `audit` | Audit-log forwarding: `syslog`, `webhook`. Not read |
 | `security` | Security alert thresholds and delivery (`alerts`) |
 | `backup` | `ctxt config backup`: `dir`, `encrypt_by_default` |
 | `privacy` | `telemetry` (`CH_DISABLE_TELEMETRY` forces it off) |
-| `offline` | `enabled`: local-only operation |
 | `uri` | `ctxt://` link `handler`: `cli` or `tui` |
-| `i18n` | `enabled`, `preferred_languages`, `auto_translate`, `translate_tags` |
+| `i18n` | `enabled`, `preferred_languages`, `auto_translate`, `translate_tags`. Shown by `ctxt config show`; nothing else reads it |
 | `steps` | External pipeline steps directory (`path`) |
 
 Defaults for each key are in `setDefaults` in `internal/config/config.go`;
-`ctxt config show --format json` prints the merged values.
+`ctxt config show --format json` prints the merged values. A template
+with every key the binaries act on, commented out with its default:
+[`config/config.example.yaml`](../config/config.example.yaml).
 
 ---
 

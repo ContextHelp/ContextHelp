@@ -1,18 +1,10 @@
 # Configuration
 
-ContextHelp uses a declarative, polymorphic, plugin-extensible configuration system that controls every aspect of the engine: storage backends, ingestion & queue behavior, registries, pipelines, agents, server interfaces, privacy rules, localization preferences, and plugin-provided configuration types. Configuration files may be written in **YAML** or **JSON**, merged with environment variables and runtime flags.
-
-The configuration system is designed to be:
-
-- Deterministic
-- Layered
-- Declarative
-- Extensible
-- Plugin-friendly
-- Local-first
-- Read-only on load: loading configuration never writes a file
-
-Plugins may introduce entirely new configuration blocks without requiring core changes.
+`ctxt` and `dpkms` read YAML config files that share one schema: the
+`Config` type in `internal/config/config.go`. Loading a config never writes
+a file. This page covers the layers, the template, and the sections that
+need more than a one-line comment. File locations, which binary reads which
+key, and the full key list: [../configuration-structure.md](../configuration-structure.md).
 
 ---
 
@@ -34,272 +26,87 @@ Each binary reads its own file: `ctxt` reads `ctxt.yaml`, `dpkms` reads
 literal: `${VAR}` is not expanded. Full detail:
 [cli-flag-binding.md](cli-flag-binding.md).
 
+Only the variables listed in
+[cli-flag-binding.md](cli-flag-binding.md#environment-variables-bound-to-config-keys)
+map to config keys; every env var is in
+[../environment-variables/README.md](../environment-variables/README.md).
+Registry tokens are not environment variables: `ctxt registry login <name>`
+stores them in the OS keychain.
+
+Keys the schema does not declare are ignored on load, so a misspelled key
+leaves its setting at the default. `ctxt config validate` lists them as
+warnings.
+
 ---
 
-# Example Configuration File
+# Template
 
-```yaml
-storage:
-  type: sqlite
-  path: ~/.local/share/contexthelp/bookmarks.db
-  concurrency: safe
-  options: {}
-  blob:
-    backend: local
-    threshold: 65536
-    local:
-      path: ~/.local/share/contexthelp/blobs
+[`config/config.example.yaml`](../../config/config.example.yaml) lists the
+keys either binary acts on, each commented out with its default and, for
+enum keys, the accepted values. Copy it to `ctxt.yaml`, `dpkms.yaml` or
+both, and uncomment what you need:
 
-ingestion:
-  mode: jobs
-  auto_start_worker: true
-
-queue:
-  backend: sqlite
-  workers: 4
-  retry_limit: 3
-  options: {}
-
-registries:
-  - name: uxpatterns
-    url: https://api.uxpatterns.io
-    auth:
-      type: bearer          # token: `ctxt registry login uxpatterns` (OS keychain)
-    sync_mode: full         # full | thin
-    trust_level: untrusted  # trusted | untrusted | sandboxed
-
-  - name: growth-weights
-    url: https://weights.growth.dev
-
-pipelines:
-  enabled:
-    - text.short
-    - text.long
-    - url.generic
-    - url.repo
-    - image.ui
-    - image.landing
-  defaults:
-    text: text.long
-    url: url.generic
-    image: image.landing
-
-agents:
-  ux_critic:
-    registries: [local-taxonomy, uxpatterns]
-    weights: [growth-weights]
-    pipelines: [image.landing, text.long]
-    tags:
-      include: ["ui.*"]
-      exclude: ["growth.*"]
-
-  research:
-    registries: [local-taxonomy]
-    pipelines: ["*"]
-    search_strategy:
-      mode: vector
-      rrf:
-        fts_weight: 0.2
-        vector_weight: 0.8
-
-search:
-  default_mode: hybrid
-  rrf:
-    k: 60
-    fts_weight: 0.5
-    vector_weight: 0.5
-  candidate_pool:
-    fts: 50
-    vector: 50
-  min_score: 0.0
-  fallback_to_fts: true
-
-server:
-  http:
-    port: 7700
-    public: false
-  grpc:
-    port: 7701
-
-i18n:
-  enabled: true
-  preferred_languages: ["fr", "en"]
-  auto_translate: true
-  skip_on_analyze_default: false
-  translate_summaries: true
-  translate_sections: true
-  translate_tags: true
-  provider: openai
-
-privacy:
-  telemetry: false
-  allow_external_pipelines: false
-
-refresh:
-  enabled: true
-  min_interval_seconds: 300
-  default_interval_seconds: 86400
-  rules:
-    - match: "github.com/.+"
-      interval_seconds: 43200
-      fetch_new: false
-
-    - match: "youtube.com/channel/.+"
-      interval_seconds: 3600
-      fetch_new: true
-      item_pipeline: url.generic
-
-    - match: "feeds[.]example[.]com/.+"
-      interval_seconds: 7200
-      fetch_new: true
-
-plugins:
-  load:
-    - name: alias-plugin
-      config:
-        definitions:
-          urls: "list --type url"
-          oss-inbox: "analyze --type text --hints '#OSS #inbox'"
-
-    - name: rss-feed
-      config:
-        default_interval_seconds: 3600
-        default_item_pipeline: text.long
-
-    - name: notifications
-      config:
-        enabled: true
-        max_history: 5000
-        channels:
-          cli:
-            - levels: ["info","warning","error"]
-          webhook:
-            - url: "https://hooks.example.com/context"
-              levels: ["update","info"]
-        rules:
-          - type_match: "price_drop"
-            channels: ["cli","webhook"]
-
-    - name: price-monitor
-      config:
-        default_threshold_percent: 5
-        patterns:
-          - match: "amazon[.]com/.+"
-            extract_regex: "\\$([0-9]+[.][0-9]{2})"
+```bash
+cp config/config.example.yaml ~/.config/contexthelp/dpkms.yaml
+$EDITOR ~/.config/contexthelp/dpkms.yaml
+CTXT_CONFIG=~/.config/contexthelp/dpkms.yaml ctxt config validate
 ```
+
+[`config/config.minimal.yaml`](../../config/config.minimal.yaml) holds the
+few settings people change first. A test decodes every `config/*.yaml`
+strictly and validates it, so the templates hold only real keys.
+
+Declared but not read by any command: `plugins`, `retrieval`,
+`conventions`, `inbox`, `audit`, and `i18n` (printed by `ctxt config show`,
+used nowhere else). Setting them has no effect.
 
 ---
 
 # Storage Configuration
 
-Defines where and how bookmarks and jobs are persisted.
-
 ```yaml
 storage:
-  type: sqlite | postgres | json | leann | plugin-<name>
-  path: <path-or-connection-string>
-  concurrency: safe | local
-  options: {}
+  type: sqlite                          # sqlite | postgres
+  data_dir: /srv/contexthelp            # default: $XDG_DATA_HOME/contexthelp
+  path: /srv/contexthelp/db.sqlite      # default: <data_dir>/db.sqlite
 ```
 
-## LEANN Storage Configuration
+- `type`: `sqlite` (default) or `postgres`. There is no other backend.
+- `data_dir`: holds `run/` (pidfiles, `ctxt instance use` selection,
+  upgrade state) and the default database and blob paths. Set it with
+  `CTXT_DATA_DIR` or `dpkms --data-dir` too. `ctxt` finds local instances
+  in its own `<data_dir>/run`, so `ctxt` and `dpkms serve` must share it.
+- `path`: the SQLite file, or the PostgreSQL connection string.
 
-LEANN provides graph-based RAG with 97% storage efficiency. Recommended for large corpora or storage-constrained environments.
-
-```yaml
-storage:
-  type: leann
-  path: ~/.local/share/contexthelp/leann
-  concurrency: safe
-  options:
-    # LEANN-specific options
-    recompute: true              # Enable on-demand embedding generation
-    graph_degree: 32             # Graph degree for index construction
-    build_complexity: 64          # Build complexity for index
-    compact: true                # Use compact storage (CSR format)
-    backend: hnsw                # or diskann for larger indices
-
-    # ContextHelp integration
-    metadata_fields:
-      - tags
-      - mentions
-      - hints
-      - decisions
-      - pipeline
-```
-
-**Hybrid storage (LEANN + SQLite):**
-
-```yaml
-storage:
-  # Primary: SQLite for bookmarks, entities, backlinks
-  type: sqlite
-  path: ~/.local/share/contexthelp/bookmarks.db
-  concurrency: safe
-
-# Vector backend: LEANN for similarity search
-vector_backend:
-  type: leann
-  path: ~/.local/share/contexthelp/leann-vector
-  options:
-    recompute: true
-    backend: hnsw
-
-# Query behavior
-query:
-  vector_provider: leann
-  merge_strategy: weighted  # or rrf, reciprocal_rank_fusion
-  weights:
-    metadata: 0.3
-    mentions: 0.4
-    vector_similarity: 0.3
-```
-
-See [LEANN Integration Documentation](../integrations/leann-integration.md) for complete details.
-
-### Backends
-
-| Type | Description |
-|------|-------------|
-| `json` | Simple, portable, single-user. Not concurrency-safe. |
-| `sqlite` | Recommended default. WAL mode for safe concurrent reads. |
-| `postgres` | For advanced multi-user or server deployments. |
-| `leann` | Graph-based RAG with 97% storage efficiency. See [LEANN Integration](../integrations/leann-integration.md). |
-| `plugin-<name>` | Storage provided by a plugin (remote KV, vector DB, etc.). |
-
-Plugins can register new backend types dynamically.
+Paths are used as written; `~` is not expanded.
 
 ---
 
 # Blob Storage Configuration
 
-Externalizes oversized object content (PDFs, audio, images, long
-documents) out of SQLite into a pluggable blob store. Above the
-configured threshold, `KnowledgeObject.RawContent` is replaced with a
-`blob://<sha256>` reference; the original is fetched on demand via
-`BlobStore.Get`. Below the threshold, content stays inline.
+Externalizes oversized object content out of the database into a blob
+store. Above the threshold, the object's raw content is replaced with a
+`blob://<hash>` reference and read back on demand; at or below it,
+content stays inline.
 
-The keys live under `storage.blob`. `dpkms serve` and every command
-that opens the store use this blob store. With nothing configured it is
-the `local` backend in `blobs/` under the data directory. An unknown
-backend, or `local` with an empty `local.path`, stops the command at
-startup.
+The keys live under `storage.blob`. `dpkms serve` and every command that
+opens the store use this blob store. With nothing configured it is the
+`local` backend in `blobs/` under the data directory. An unknown backend,
+or `local` with an empty `local.path`, stops the command at startup.
 
 ```yaml
 storage:
   blob:
-    backend: local | s3 | garage
+    backend: local                 # local | s3 | garage
     threshold: 65536               # bytes; 0 disables externalization
     local:
-      path: ~/.local/share/contexthelp/blobs
+      path: /srv/contexthelp/blobs # default: <data_dir>/blobs
     s3:
       endpoint: ""                 # custom endpoint for non-AWS providers
       region: us-east-1
-      bucket: ""
+      bucket: ""                   # required for s3 and garage
       prefix: ""                   # key prefix within the bucket
-      access_key: ""               # or AWS_ACCESS_KEY_ID env var
-      secret_key: ""               # or AWS_SECRET_ACCESS_KEY env var
-      use_path_style: false        # true for MinIO / Garage / many self-hosted
+      use_path_style: false        # true for MinIO and many self-hosted stores
       presign_expiry: 1h
       max_retries: 3
 ```
@@ -308,186 +115,59 @@ storage:
 
 | Backend | When to use |
 |---------|-------------|
-| `local` | Default. Single-machine; sharded directory under `local.path`. |
-| `s3` | AWS S3, Cloudflare R2, Backblaze B2, DigitalOcean Spaces, MinIO, Wasabi, Linode Object Storage, etc. SigV4 with optional custom `endpoint`. |
-| `garage` | [Garage](https://garagehq.deuxfleurs.fr) — self-hosted, distributed, Rust-built S3-compat object store. Preset that auto-applies `use_path_style: true` and defaults `region: garage`. Requires `s3.endpoint`. |
+| `local` | Default. Single machine; sharded directory under `local.path`. |
+| `s3` | AWS S3 or any S3-compatible store (R2, B2, Spaces, MinIO, ...), with an optional custom `endpoint`. |
+| `garage` | [Garage](https://garagehq.deuxfleurs.fr), a self-hosted S3-compatible store. Sets `use_path_style: true` and, when `region` is empty, `region: garage`. Requires `s3.endpoint`. |
 
-## Key path layout (s3 / garage / local)
+## Credentials
 
-`{prefix}/{hash[0:2]}/{hash[2:4]}/{hash}` — 2-level sharding prevents huge flat namespaces. A sidecar `.meta.json` object stores `BlobMeta` (content type, original size, content hash, optional filename, extensible properties).
-
-## Backend-specific examples
-
-### Cloudflare R2
-
-```yaml
-storage:
-  blob:
-    backend: s3
-    threshold: 65536
-    s3:
-      endpoint: https://<account>.r2.cloudflarestorage.com
-      region: auto
-      bucket: ctxt-blobs
-      access_key: <r2-access-key-id>
-      secret_key: <r2-secret-access-key>
-```
-
-### MinIO (self-hosted)
+Config files do not expand `${VAR}`: `s3.access_key` and `s3.secret_key`
+would be the literal credentials. Leave both unset and export
+`CTXT_BLOB_S3_ACCESS_KEY` and `CTXT_BLOB_S3_SECRET_KEY`, which override the
+file. Container deployments: [../deployment/docker.md#blob-storage-and-providers](../deployment/docker.md#blob-storage-and-providers).
 
 ```yaml
 storage:
   blob:
     backend: s3
-    threshold: 65536
     s3:
       endpoint: http://minio:9000
-      region: us-east-1
       bucket: ctxt-blobs
-      use_path_style: true            # required for MinIO
-      access_key: <minio-access-key>
-      secret_key: <minio-secret-key>
+      use_path_style: true
 ```
-
-### Garage (self-hosted, distributed)
-
-```yaml
-storage:
-  blob:
-    backend: garage
-    threshold: 65536
-    s3:
-      endpoint: http://garage:3900
-      bucket: ctxt-blobs
-      access_key: <garage-key-id>
-      secret_key: <garage-secret-key>
-      # use_path_style and region defaulted by the garage preset
-```
-
-Config files do not expand `${VAR}`: `access_key` and `secret_key` are the literal credentials. To keep them out of the file, leave both keys unset and export `CTXT_BLOB_S3_ACCESS_KEY` and `CTXT_BLOB_S3_SECRET_KEY`, which override the file.
 
 To stand up a single-node Garage for development, see
-[`test/integration/blob_garage_test.go`](../../test/integration/blob_garage_test.go)
+[`test/integration/blob_garage_test.go`](../../test/integration/blob_garage_test.go),
 which embeds a complete `garage.toml` and bootstrap sequence.
+
+## Key layout
+
+`{prefix}/{hash[0:2]}/{hash[2:4]}/{hash}`, with a `.meta.json` sidecar per
+blob holding its content type, size and content hash. The hash covers the
+content and its source.
 
 ## Behavior at the threshold
 
-- `len(RawContent) <= threshold` — pass through unchanged.
-- `len(RawContent) > threshold` — compute `sha256(content + source)`,
-  `BlobStore.Put` (idempotent — same hash dedupes), replace
-  `RawContent` with `blob://<hash>`, set
-  `Metadata.blob_key`, `blob_original_size`, `blob_content_type`.
-- `threshold: 0` — disables externalization entirely. Useful when you
-  want all content in SQLite (small corpora).
+- Content of `threshold` bytes or less is stored inline.
+- Larger content goes to the blob store (idempotent: the same hash is
+  stored once); the object keeps `blob://<hash>` and the metadata keys
+  `blob_key`, `blob_original_size`, `blob_content_type`.
+- `threshold: 0` disables externalization: all content stays in the
+  database.
 
-## Presigned URLs
-
-`BlobStore.URL(ctx, key)` returns a presigned GET for s3 / garage
-backends, expiring after `presign_expiry`. For `local`, returns
-`file://<absolute_path>`. Used by the API layer when a client requests
-a download link without proxying bytes through the server.
-
----
-
-# Ingestion Configuration
-
-Controls how incoming work (e.g., `ch analyze`) is persisted and executed.
-
-```yaml
-ingestion:
-  mode: jobs | inline
-  auto_start_worker: true
-```
-
-### Modes
-
-- `jobs` → transactional outbox pattern
-- `inline` → synchronous execution
-
-### Worker Behavior
-
-When `auto_start_worker: true`, `ch serve` begins processing jobs.
-
----
-
-# Queue Configuration
-
-Defines how jobs are scheduled and retried.
-
-```yaml
-queue:
-  backend: sqlite | memory | redis | plugin-<name>
-  workers: <int>
-  retry_limit: <int>
-  options: {}
-```
-
-Plugins may define and register queue backends.
-
----
-
-# Registry Configuration
-
-External sources of taxonomy, weights, or bookmarks.
-
-```yaml
-registries:
-  enabled:
-    - name: <id>
-      url: <endpoint-or-path>
-      type: taxonomy | weights | bookmarks
-      auth:
-        token: <env-or-literal>
-```
-
----
-
-# Pipeline Configuration
-
-Controls pipeline availability and routing.
-
-```yaml
-pipelines:
-  enabled:
-    - text.long
-    - url.generic
-  defaults:
-    text: text.long
-    url: url.generic
-```
-
-Plugins may add new pipelines dynamically (e.g., `feed.fetch`, `rss.parse`).
-
----
-
-# Agent Profiles
-
-Define scoped semantic and retrieval worldviews.
-
-```yaml
-agents:
-  myagent:
-    registries: [uxpatterns]
-    pipelines: ["text.long"]
-    tags:
-      include: ["ui.*"]
-      exclude: ["nsfw.*"]
-```
+Reads (API, MCP, direct store) return the content, not the reference: a
+single object whole, list and search results at most `threshold` bytes
+with `metadata.content_truncated` set.
 
 ---
 
 # Server Configuration
 
-Defines bindings for REST and gRPC servers.
-
-```yaml
-server:
-  http:
-    port: 7700
-    public: false
-  grpc:
-    port: 7701
-```
+`dpkms serve` settings (listener ports, `workers`, `access`, `auth`,
+`allowed_hosts`, `ui.session`, `quotas`) are covered in
+[../manual/reference/config-and-permissions.md](../manual/reference/config-and-permissions.md#server-settings).
+A `protected` or `public` instance needs `server.auth`, or serve refuses to
+start.
 
 ## Client endpoints (ctxt)
 
@@ -499,7 +179,7 @@ server:
   token: <default token>
   urls:
     - name: home                         # optional, unique; select with --instance home
-      url: https://dpkms.example.ts.net:7700
+      url: https://dpkms.example.ts.net:8080
       token: <token for home>            # overrides server.token for this entry
     - http://127.0.0.1:8080              # bare URL: no name, no own token
 ```
@@ -513,11 +193,11 @@ Tokens come only from config, never from flags.
 
 # Federation Configuration
 
-Peer replication between dPKMS instances.
+Push replication between dPKMS instances.
 
 ### Outbound peers (`federations`)
 
-Each entry describes one remote dPKMS instance to push to or sync with.
+Each entry describes one remote dPKMS instance to push to.
 
 ```yaml
 federations:
@@ -538,7 +218,7 @@ federations:
 | `url` | string | Remote HTTP endpoint or `file://` path |
 | `token` | string | Bearer token sent to the remote instance, written literally (config files do not expand `${VAR}`) |
 | `sync_mode` | string | `async` (scheduled) or `inline` (immediate) |
-| `interval` | duration | How often to sync (`async` mode only) |
+| `interval` | duration | How often to sync; required for `async` |
 
 ### Inbound auth (`federation`)
 
@@ -552,138 +232,17 @@ Empty = accept any token (use only in trusted network environments).
 
 ---
 
-# I18N / L10N Configuration
-
-Localization and translation settings.
-
-```yaml
-i18n:
-  enabled: true
-  preferred_languages: ["fr", "en"]
-  auto_translate: true
-```
-
----
-
-# Privacy Configuration
-
-Global privacy rules.
-
-```yaml
-privacy:
-  telemetry: false
-  allow_external_pipelines: false
-```
-
----
-
-# Refresh Configuration
-
-Controls system-level refresh logic, including auto-fetch of new content.
-
-```yaml
-refresh:
-  enabled: true
-  min_interval_seconds: 300
-  default_interval_seconds: 86400
-  rules:
-    - match: "github.com/.+"
-      interval_seconds: 43200
-      fetch_new: false
-    - match: "youtube.com/channel/.+"
-      interval_seconds: 3600
-      fetch_new: true
-```
-
-Notes:
-
-- Plugins may programmatically adjust refresh rules for a given bookmark.
-- `fetch_new` enables auto-discovery of new items for feed-like sources.
-- Minimum interval prevents excessive refresh loops.
-
----
-
-# Plugin Configuration
-
-Plugins define their own configuration blocks via polymorphic keys.
-
-```yaml
-plugins:
-  load:
-    - name: notifications
-      config:
-        enabled: true
-        channels:
-          cli:
-            - levels: ["info","warning"]
-```
-
-### Plugin Config Principles
-
-- Plugins may define **any schema shape** within their `config` block.
-- Plugin config merges following the same layer rules as core config.
-- Plugins may add:
-  - pipelines
-  - bookmark types
-  - refresh requirements
-  - storage extensions (JSON only)
-  - CLI commands
-  - queue/storage backends
-  - inter-plugin APIs
-
-Plugins **never** require core modifications.
-
----
-
-# Environment Variables
-
-Only an explicit list of variables maps to config keys; see
-[cli-flag-binding.md](cli-flag-binding.md#environment-variables-bound-to-config-keys)
-and [../environment-variables/README.md](../environment-variables/README.md).
-Registry tokens are not environment variables: `ctxt registry login <name>`
-stores them in the OS keychain.
-
----
-
-# Configuration Resolution Order
-
-1. Defaults
-2. System config
-3. User config
-4. Environment
-5. Runtime flags
-
-Plugins follow the same override logic.
-
----
-
 # Validation Tools
 
 ```bash
-ch config validate
-ch config show
+ctxt config paths              # files ctxt reads, in order
+ctxt config show               # merged config (files + env + -c)
+ctxt config validate           # every validation error, unknown-key warnings, secret scan
+ctxt config doctor             # schema, secrets, permissions, deprecated keys
 ```
 
-Validates:
-
-- schema structure
-- registry availability
-- plugin load success
-- pipeline discovery
-- agent consistency
-- refresh rules
-- plugin-defined config integrity
-
----
-
-# Summary
-
-The ContextHelp configuration system is:
-
-- **Layered** and predictable
-- **Polymorphic** and plugin-extensible
-- **Deterministic** and safe
-- **Local-first** with privacy defaults
-- **Declarative** for agents, pipelines, refresh, and plugins
-
-The addition of **refresh configuration**, **plugin-defined namespaces**, and **pipeline extensibility** ensures that plugins such as RSS Feed, Price Monitor, and Notifications can operate fully without touching the core engine.
+`ctxt config validate` checks ports, `server.access` and auth roles and
+tokens, quotas, `storage.blob`, `duplicates`, `federations`, `embeddings`,
+`secrets.backend`, registry auth, and rejects `${VAR}` values; it exits 1
+on any error. `ctxt config` commands read `ctxt.yaml`; point `CTXT_CONFIG`
+at `dpkms.yaml` to check it. `dpkms config` offers only `path` and `paths`.
