@@ -157,17 +157,14 @@ tags = ["ctxt", "provider", "api-key"]
 [[allowlists]]
 description = "Allowlisted files and patterns"
 
-# Allow example files (they don't contain real secrets).
-#
-# No docs/, \.md$ or testdata/ entries: a path allowlist skips every rule
-# for the whole file, so a real key pasted into a doc or a fixture went
-# through unseen. Docs write placeholders in shapes the regexes below (or
-# gitleaks' own placeholder checks) recognize; deliberate key-shaped test
-# vectors carry an inline gitleaks:allow.
+# Only files that cannot hold a secret. No docs/, \.md$, testdata/,
+# .env.example or config.*.yaml entries: a path allowlist skips every rule
+# for the whole file, so a real key pasted into a doc, a fixture or a
+# sample config went through unseen. Docs and samples write placeholders in
+# shapes the regexes below (or gitleaks' own placeholder checks)
+# recognize; deliberate key-shaped test vectors carry an inline
+# gitleaks:allow.
 paths = [
-  '''.env.example$''',
-  '''config\.example\.yaml$''',
-  '''config\.minimal\.yaml$''',
   # Checksum file shipped with the autosuggest plugin extraction; gitleaks'
   # default allowlist covers go.sum by name, not this suffix.
   '''(?:^|/)go\.sum\.extraction$''',

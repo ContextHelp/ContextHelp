@@ -177,12 +177,13 @@ func TestGitleaksAllowlistRegexesSpareProviderKeys(t *testing.T) {
 	}
 }
 
-// TestGitleaksReportsKeysInDocsAndTests plants every provider key in the
-// file kinds the allowlists are scoped around (docs, markdown, Go tests,
-// testdata) and checks gitleaks reports each one: no path allowlist may
-// hide a whole doc or fixture, and the fixture-token allowlist must need
-// both a test path and the fixture shape.
-func TestGitleaksReportsKeysInDocsAndTests(t *testing.T) {
+// TestGitleaksReportsKeysInDocsTestsAndExamples plants every provider key
+// in the file kinds the allowlists are scoped around (docs, markdown, Go
+// tests, testdata, .env.example and config.*.yaml samples) and checks
+// gitleaks reports each one: no path allowlist may hide a whole doc,
+// fixture or sample config, and the fixture-token allowlist must need both
+// a test path and the fixture shape.
+func TestGitleaksReportsKeysInDocsTestsAndExamples(t *testing.T) {
 	gitleaks, err := exec.LookPath("gitleaks")
 	if err != nil {
 		t.Skip("gitleaks not on PATH")
@@ -197,10 +198,16 @@ func TestGitleaksReportsKeysInDocsAndTests(t *testing.T) {
 	// The fixture token shape is allowlisted only in test files.
 	fixture := "tok-ops-fixture-0123456789abcdef0123456789"
 	files := map[string]func(name, key string) string{
-		"docs/setup.md":              func(n, k string) string { return fmt.Sprintf("Set the %s key: `%s`", n, k) },
-		"README.md":                  func(n, k string) string { return fmt.Sprintf("    token: %s", k) },
-		"testdata/fixture.env":       func(n, k string) string { return fmt.Sprintf("TOKEN=%s", k) },
-		"internal/x/client_test.go":  func(n, k string) string { return fmt.Sprintf("\ttoken := %q // %s", k, n) },
+		"docs/setup.md":             func(n, k string) string { return fmt.Sprintf("Set the %s key: `%s`", n, k) },
+		"README.md":                 func(n, k string) string { return fmt.Sprintf("    token: %s", k) },
+		"testdata/fixture.env":      func(n, k string) string { return fmt.Sprintf("TOKEN=%s", k) },
+		"internal/x/client_test.go": func(n, k string) string { return fmt.Sprintf("\ttoken := %q // %s", k, n) },
+		// Sample configs are copied to real ones and filled in: a key
+		// pasted into the sample is a leak like any other.
+		".env.example":               func(n, k string) string { return fmt.Sprintf("API_TOKEN=%s", k) },
+		"config/config.example.yaml": func(n, k string) string { return fmt.Sprintf("  api_key: %s", k) },
+		"config/config.minimal.yaml": func(n, k string) string { return fmt.Sprintf("  token: %s", k) },
+		"docker/config.docker.yaml":  func(n, k string) string { return fmt.Sprintf("  secret_key: %s", k) },
 		"docs/fixture-in-prose.md":   nil,
 		"internal/x/fixture_prod.go": nil,
 	}
@@ -309,5 +316,51 @@ func TestGitleaksVersionPinned(t *testing.T) {
 		if err == nil || !strings.Contains(out, tc.wantOut) {
 			t.Errorf("gitleaks %s: want exit 1 and %q, got %v: %q", tc.have, tc.wantOut, err, out)
 		}
+	}
+}
+
+// TestGitleaksBaselineEntriesNameACommit checks every .gitleaksignore entry
+// is a commit-scoped fingerprint (commit:file:rule:line). gitleaks also
+// takes file:rule:line, which skips that finding in every commit and in
+// working-tree scans: a key pasted later on a baselined line would pass.
+func TestGitleaksBaselineEntriesNameACommit(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", ".gitleaksignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := regexp.MustCompile(`^[0-9a-f]{40}:[^:]+:[a-z0-9-]+:[0-9]+$`)
+	n := 0
+	for i, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		n++
+		if !entry.MatchString(line) {
+			t.Errorf(".gitleaksignore:%d: %q is not a commit:file:rule:line fingerprint", i+1, line)
+		}
+	}
+	if n == 0 {
+		t.Error(".gitleaksignore has no entries")
+	}
+}
+
+// TestGitleaksHistoryScanClean runs `make security-scan` on the checkout:
+// every finding in the history of HEAD must be baselined in
+// .gitleaksignore, so the scan CI runs passes.
+func TestGitleaksHistoryScanClean(t *testing.T) {
+	if testing.Short() {
+		t.Skip("history scan takes tens of seconds")
+	}
+	for _, tool := range []string{"gitleaks", "git", "make"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s not on PATH", tool)
+		}
+	}
+	cmd := exec.Command("make", "--no-print-directory", "-C", "..", "security-scan")
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &out
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("make security-scan: %v\n%s", err, out.String())
 	}
 }

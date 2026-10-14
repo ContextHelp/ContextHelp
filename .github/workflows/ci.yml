@@ -23,6 +23,7 @@ jobs:
       go-version: ${{ steps.pins.outputs.go-version }}
       golangci-version: ${{ steps.pins.outputs.golangci-version }}
       node-version: ${{ steps.pins.outputs.node-version }}
+      gitleaks-version: ${{ steps.pins.outputs.gitleaks-version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -33,55 +34,60 @@ jobs:
           go_version=$(sed -n 's/^go = "\(.*\)"$/\1/p' mise.toml)
           golangci_version=$(sed -n 's/^"go:.*golangci-lint" = "\(.*\)"$/\1/p' mise.toml)
           node_version=$(sed -n 's/^node = "\(.*\)"$/\1/p' mise.toml)
-          if [ -z "$go_version" ] || [ -z "$golangci_version" ] || [ -z "$node_version" ]; then
-            echo "mise.toml is missing an exact go, golangci-lint or node pin" >&2
+          gitleaks_version=$(sed -n 's/^gitleaks = "\(.*\)"$/\1/p' mise.toml)
+          if [ -z "$go_version" ] || [ -z "$golangci_version" ] || [ -z "$node_version" ] || [ -z "$gitleaks_version" ]; then
+            echo "mise.toml is missing an exact go, golangci-lint, node or gitleaks pin" >&2
             exit 1
           fi
           {
             echo "go-version=$go_version"
             echo "golangci-version=$golangci_version"
             echo "node-version=$node_version"
+            echo "gitleaks-version=$gitleaks_version"
           } >>"$GITHUB_OUTPUT"
-          echo "go=$go_version golangci-lint=$golangci_version node=$node_version"
+          echo "go=$go_version golangci-lint=$golangci_version node=$node_version gitleaks=$gitleaks_version"
 
       - name: Verify every toolchain declaration agrees
         run: scripts/check-toolchain-pins.sh
 
-  # ── DISABLED: secret scanning runs locally ───────────────────────────────
-  # gitleaks-action requires a license for organization-owned repos and this
-  # repo is org-owned, so the job fails with "missing gitleaks license"
-  # before scanning anything. Until a GITLEAKS_LICENSE secret exists, secret
-  # scanning runs locally instead: `make install-hooks` wires a pre-commit
-  # hook, `make secret-scan-local` scans the working tree.
-  #
-  # To re-enable: obtain a free key at gitleaks.io, add it as the
-  # GITLEAKS_LICENSE secret, uncomment this job, and restore secret-scan to
-  # the build job's needs list.
-  # secret-scan:
-  #   name: Secret Scanning (gitleaks)
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: read
-  #     pull-requests: read
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v7
-  #       with:
-  #         fetch-depth: 0
-  #
-  #     - name: Run gitleaks
-  #       uses: gitleaks/gitleaks-action@v3
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #         # Organization-owned repos need a (free) gitleaks license; personal
-  #         # accounts do not. This repo moved to the ContextHelp org, so the
-  #         # scan started failing with "missing gitleaks license". Obtain one
-  #         # at gitleaks.io and store it as the GITLEAKS_LICENSE secret.
-  #         GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-  #         # Scan with the local hook's gitleaks: export the mise.toml
-  #         # `gitleaks` pin from the toolchain job, as go_version is.
-  #         GITLEAKS_VERSION: ${{ needs.toolchain.outputs.gitleaks_version }}
-  #
+  # History secret scan: every commit reachable from the checked-out ref,
+  # minus the reviewed findings baselined in .gitleaksignore, so only new
+  # findings fail. Runs the gitleaks CLI release pinned in mise.toml, not
+  # gitleaks-action: the action needs a GITLEAKS_LICENSE secret for
+  # organization-owned repos, the MIT-licensed CLI needs nothing.
+  secret-scan:
+    name: Secret Scanning (gitleaks)
+    needs: toolchain
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          # Full history: the scan walks every commit, not just the tip.
+          fetch-depth: 0
+
+      # The release tarball, checked against the release's checksum file.
+      # `go install` would build a binary whose `gitleaks version` is a
+      # placeholder, failing the pin check in `make install-gitleaks`.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: ${{ needs.toolchain.outputs.gitleaks-version }}
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o "$tarball" "$base/$tarball"
+          curl -sSfL -o checksums.txt "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " $tarball\$" checksums.txt | sha256sum -c -
+          tar -xzf "$tarball" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan history
+        run: make security-scan
+
   lint:
     name: Lint
     needs: toolchain
@@ -452,8 +458,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    # secret-scan removed from needs while the gitleaks job is disabled above
-    needs: [toolchain, lint, security, test]
+    needs: [toolchain, lint, security, secret-scan, test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
