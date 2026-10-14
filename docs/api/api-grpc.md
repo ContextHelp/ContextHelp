@@ -92,6 +92,8 @@ On protected and public instances, send `authorization: Bearer <token>` (or `x-a
 
 Object updates, deletes and reprocess (`PATCH` and `DELETE /objects/{id}`, `POST /objects/{id}/reprocess`) are REST only: there is no gRPC method for them, so the gRPC surface cannot change or delete objects.
 
+Links (`POST /edges`, `GET /objects/{id}/edges`, `DELETE /edges`) are REST only too. `QueryService` has no edge method, so the gRPC surface can neither read nor change links.
+
 A missing or invalid token gets `UNAUTHENTICATED`; a token without the scope gets `PERMISSION_DENIED` with `INSUFFICIENT_SCOPE: missing scope <scope>`. `grpc.health.v1` is open. Roles and the full scope list: [config-and-permissions](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
 
 ---
