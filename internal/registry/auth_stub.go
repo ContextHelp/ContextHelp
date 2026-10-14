@@ -26,6 +26,12 @@ type TokenStore struct{}
 // NewTokenStore returns a stub TokenStore on unsupported platforms.
 func NewTokenStore() *TokenStore { return &TokenStore{} }
 
-func (s *TokenStore) Set(_, _ string) error        { return errNotSupported }
-func (s *TokenStore) Get(_ string) (string, error) { return "", errNotSupported }
-func (s *TokenStore) Delete(_ string) error        { return errNotSupported }
+// StoredToken is a registry token and the origin it was stored for.
+type StoredToken struct {
+	Origin string `json:"origin"`
+	Token  string `json:"token"`
+}
+
+func (s *TokenStore) Set(_, _, _ string) error          { return errNotSupported }
+func (s *TokenStore) Get(_ string) (StoredToken, error) { return StoredToken{}, errNotSupported }
+func (s *TokenStore) Delete(_ string) error             { return errNotSupported }

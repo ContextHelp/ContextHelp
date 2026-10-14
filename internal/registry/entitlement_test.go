@@ -65,7 +65,7 @@ func TestEntitlementChecker_FetchAndStore(t *testing.T) {
 	store := newStubEntitlementStore()
 	checker := registry.NewEntitlementChecker(store)
 
-	ent, err := checker.FetchAndStore(context.Background(), "my-reg", srv.URL, "")
+	ent, err := checker.FetchAndStore(context.Background(), "my-reg", srv.URL)
 	if err != nil {
 		t.Fatalf("FetchAndStore: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestEntitlementChecker_FetchAndStore_Unauthorized(t *testing.T) {
 	store := newStubEntitlementStore()
 	checker := registry.NewEntitlementChecker(store)
 
-	_, err := checker.FetchAndStore(context.Background(), "paid-reg", srv.URL, "")
+	_, err := checker.FetchAndStore(context.Background(), "paid-reg", srv.URL)
 	if err == nil {
 		t.Fatal("expected error for 401, got nil")
 	}

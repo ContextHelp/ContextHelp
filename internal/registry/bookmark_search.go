@@ -43,6 +43,7 @@ type SourceResult struct {
 // BookmarkSearchClient queries a single registry's bookmark search endpoint.
 type BookmarkSearchClient struct {
 	httpClient *http.Client
+	creds      *Credentials
 	timeout    time.Duration
 }
 
@@ -56,6 +57,14 @@ func NewBookmarkSearchClient(timeout time.Duration) *BookmarkSearchClient {
 		httpClient: &http.Client{Timeout: timeout},
 		timeout:    timeout,
 	}
+}
+
+// WithCredentials authenticates each search with the stored token of the
+// registry it queries.
+func (c *BookmarkSearchClient) WithCredentials(creds *Credentials) *BookmarkSearchClient {
+	c.creds = creds
+	c.httpClient = creds.Client(c.httpClient)
+	return c
 }
 
 // Search calls GET <registryURL>/bookmarks/search?q=<query> and returns results.
@@ -87,6 +96,9 @@ func (c *BookmarkSearchClient) Search(
 	}
 	defer resp.Body.Close()
 
+	if err := c.creds.CheckResponse(resp); err != nil {
+		return nil, fmt.Errorf("bookmark search: %w", err)
+	}
 	if resp.StatusCode == http.StatusNotFound {
 		// Registry does not expose /bookmarks/search — skip silently.
 		return nil, nil

@@ -41,6 +41,7 @@ type entitlementResponse struct {
 type EntitlementChecker struct {
 	store  storage.EntitlementStore
 	client *http.Client
+	creds  *Credentials
 }
 
 // NewEntitlementChecker creates an EntitlementChecker backed by the given store.
@@ -51,23 +52,28 @@ func NewEntitlementChecker(store storage.EntitlementStore) *EntitlementChecker {
 	}
 }
 
+// WithCredentials authenticates the entitlement request with the stored
+// token of the registry whose host serves entitlementURL.
+func (c *EntitlementChecker) WithCredentials(creds *Credentials) *EntitlementChecker {
+	c.creds = creds
+	c.client = creds.Client(c.client)
+	return c
+}
+
 // FetchAndStore calls entitlementURL, parses the response, persists it under
-// registryName, and returns the stored record. The caller supplies the auth
-// token (may be empty for open registries that still publish entitlements).
+// registryName, and returns the stored record. The request carries a stored
+// token when credentials are attached (WithCredentials) and entitlementURL
+// is on a configured registry's host.
 func (c *EntitlementChecker) FetchAndStore(
 	ctx context.Context,
 	registryName string,
 	entitlementURL string,
-	authToken string,
 ) (*storage.RegistryEntitlement, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, entitlementURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build entitlement request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	if authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+authToken)
-	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -75,6 +81,12 @@ func (c *EntitlementChecker) FetchAndStore(
 	}
 	defer resp.Body.Close()
 
+	// A refusal sent without a token means the user has to log in; one
+	// sent with a token means the plan does not cover this registry.
+	var authErr ErrRegistryAuth
+	if err := c.creds.CheckResponse(resp); errors.As(err, &authErr) && !authErr.TokenSent {
+		return nil, err
+	}
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, ErrEntitlementRequired{
 			RegistryName: registryName,

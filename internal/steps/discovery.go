@@ -12,12 +12,14 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 type StepDiscovery struct {
 	store     storage.StorageDriver
 	client    *http.Client
+	creds     *registry.Credentials
 	stepsPath string
 }
 
@@ -27,6 +29,16 @@ func NewStepDiscovery(store storage.StorageDriver, stepsPath string) *StepDiscov
 		client:    &http.Client{Timeout: 30 * time.Second},
 		stepsPath: stepsPath,
 	}
+}
+
+// WithCredentials authenticates manifest fetches, update checks and step
+// downloads with the stored token of the registry each request targets.
+// A 401/403 from a registry becomes a registry.ErrRegistryAuth naming the
+// login command.
+func (sd *StepDiscovery) WithCredentials(c *registry.Credentials) *StepDiscovery {
+	sd.creds = c
+	sd.client = c.Client(sd.client)
+	return sd
 }
 
 func (sd *StepDiscovery) DiscoverAll(ctx context.Context) error {
@@ -225,6 +237,9 @@ func (sd *StepDiscovery) FetchRemoteManifest(ctx context.Context, url string) (*
 	}
 	defer resp.Body.Close()
 
+	if err := sd.creds.CheckResponse(resp); err != nil {
+		return nil, fmt.Errorf("fetch manifest: %w", err)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("fetch manifest: status %d", resp.StatusCode)
 	}
@@ -249,6 +264,9 @@ func (sd *StepDiscovery) FetchRegistryManifest(ctx context.Context, url string) 
 	}
 	defer resp.Body.Close()
 
+	if err := sd.creds.CheckResponse(resp); err != nil {
+		return nil, fmt.Errorf("fetch manifest: %w", err)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("fetch manifest: status %d", resp.StatusCode)
 	}
@@ -349,6 +367,9 @@ func (sd *StepDiscovery) DownloadStep(ctx context.Context, name, fromRegistry st
 	}
 	defer resp.Body.Close()
 
+	if err := sd.creds.CheckResponse(resp); err != nil {
+		return fmt.Errorf("download step: %w", err)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download step: status %d", resp.StatusCode)
 	}

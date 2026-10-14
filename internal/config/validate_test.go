@@ -83,6 +83,26 @@ func TestValidate(t *testing.T) {
 			},
 			wantField: "server.quotas[0].warn_at",
 		},
+		{
+			name: "registry unknown auth type",
+			mutate: func(c *Config) {
+				c.Registries = []RegistryConfig{
+					{Name: "ok", URL: "https://a.example", Auth: RegistryAuthConfig{Type: RegistryAuthBearer}},
+					{Name: "bad", URL: "https://b.example", Auth: RegistryAuthConfig{Type: "basic"}},
+				}
+			},
+			wantField: "registries[1].auth.type",
+		},
+		{
+			name: "registry invalid header name",
+			mutate: func(c *Config) {
+				c.Registries = []RegistryConfig{{
+					Name: "bad", URL: "https://b.example",
+					Auth: RegistryAuthConfig{Type: RegistryAuthAPIKey, HeaderName: "X API Key"},
+				}}
+			},
+			wantField: "registries[0].auth.header_name",
+		},
 	}
 
 	for _, tc := range cases {
@@ -98,6 +118,16 @@ func TestValidate(t *testing.T) {
 
 // testStaticToken is a fake token long enough to pass CheckStaticToken.
 const testStaticToken = "test-static-token-0123456789abcdef"
+
+func TestValidate_RegistryAuthTypesAccepted(t *testing.T) {
+	for _, typ := range []RegistryAuthType{"", RegistryAuthBearer, RegistryAuthAPIKey, RegistryAuthOAuth2} {
+		cfg := &Config{Registries: []RegistryConfig{{
+			Name: "r", URL: "https://r.example",
+			Auth: RegistryAuthConfig{Type: typ, HeaderName: "X-Registry-Key"},
+		}}}
+		assert.Empty(t, Validate(cfg), "auth.type %q", typ)
+	}
+}
 
 func staticAuth() AuthConfig {
 	return AuthConfig{

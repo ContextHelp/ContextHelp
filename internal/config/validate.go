@@ -64,6 +64,7 @@ func Validate(c *Config) []ValidationError {
 			errs = append(errs, ve)
 		}
 	}
+	errs = append(errs, validateRegistryAuth(c)...)
 
 	if c.Jobs.PollInterval != 0 && c.Jobs.PollInterval < 50*time.Millisecond {
 		errs = append(errs, ValidationError{Field: "jobs.poll_interval", Message: fmt.Sprintf("must be ≥50ms, got %s", c.Jobs.PollInterval)})
@@ -241,6 +242,32 @@ func validateQuotas(c *Config) []ValidationError {
 			errs = append(errs, ValidationError{
 				Field:   fmt.Sprintf("server.quotas[%d].warn_at", i),
 				Message: fmt.Sprintf("must not exceed limit %d, got %d", q.Limit, q.WarnAt),
+			})
+		}
+	}
+	return errs
+}
+
+// headerNameRe matches an RFC 9110 field name (a token).
+var headerNameRe = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+
+// validateRegistryAuth requires every registries[].auth.type to be a
+// supported mechanism and header_name to be a valid header field name.
+// An unknown type would otherwise surface only when a request fails.
+func validateRegistryAuth(c *Config) []ValidationError {
+	var errs []ValidationError
+	for i, r := range c.Registries {
+		if r.Auth.Type != "" && !r.Auth.Type.Known() {
+			errs = append(errs, ValidationError{
+				Field: fmt.Sprintf("registries[%d].auth.type", i),
+				Message: fmt.Sprintf("unknown auth type %q; must be one of %s, %s, %s",
+					r.Auth.Type, RegistryAuthBearer, RegistryAuthAPIKey, RegistryAuthOAuth2),
+			})
+		}
+		if r.Auth.HeaderName != "" && !headerNameRe.MatchString(r.Auth.HeaderName) {
+			errs = append(errs, ValidationError{
+				Field:   fmt.Sprintf("registries[%d].auth.header_name", i),
+				Message: fmt.Sprintf("invalid HTTP header name %q", r.Auth.HeaderName),
 			})
 		}
 	}
