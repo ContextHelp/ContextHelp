@@ -364,27 +364,3 @@ func TestSemanticSearch_IndexMissingNoticeAdvice(t *testing.T) {
 		})
 	}
 }
-
-// The session blend hook sees the vector with the model it belongs to, and
-// the search uses what it returns.
-func TestSemanticSearch_BlendIsKeyedByModel(t *testing.T) {
-	f := newQueryPathFixture(t)
-	src := f.source()
-	var gotModel string
-	var gotLen int
-	blended := make([]float32, 1024)
-	blended[0] = 1
-	src.Blend = func(modelID string, vec []float32) []float32 {
-		gotModel, gotLen = modelID, len(vec)
-		return blended
-	}
-	if _, rep, err := src.Search(context.Background(), f.drv, query, storage.ObjectFilter{Limit: 5}); err != nil || !rep.OK() {
-		t.Fatalf("report %+v, err %v", rep, err)
-	}
-	if gotModel != modelA || gotLen != 1024 {
-		t.Fatalf("Blend got model %q with %d dims, want %s with 1024", gotModel, gotLen, modelA)
-	}
-	if s := f.emb.Searches(); s[0].Vector[0] != 1 || s[0].Vector[1] != 0 {
-		t.Fatal("search did not use the blended vector")
-	}
-}

@@ -1,0 +1,27 @@
+{
+  "diagnostics": {
+    "candidate_count": 0,
+    "below_threshold_count": 0,
+    "threshold": 0
+  },
+  "mode": "fts",
+  "objects": [
+    {
+      "id": "note-fts",
+      "type": "note",
+      "raw_content": "",
+      "metadata": {
+        "fts_score": -0.8827586549672107
+      },
+      "summaries": [
+        "runbook: rotating signing keys without downtime"
+      ],
+      "status": "active",
+      "created_at": "2026-03-04T05:06:07Z",
+      "updated_at": "2026-03-04T05:06:07Z",
+      "fts_indexed": true
+    }
+  ],
+  "query": "rotating signing keys without downtime",
+  "total": 1
+}

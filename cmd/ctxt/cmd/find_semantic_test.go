@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/viper"
 
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/providers/providertest"
@@ -30,9 +31,20 @@ const findCassettes = "testdata/cassettes/find-query-path"
 // separately, so tests can tell the notice line from the result output.
 func execFind(t *testing.T, db *testDB, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
+	return execFindWith(t, db, nil, args...)
+}
+
+// execFindWith is execFind with set run after the viper reset, for tests
+// that pin a viper key the reset clears.
+func execFindWith(t *testing.T, db *testDB, set func(), args ...string) (stdout, stderr string, err error) {
+	t.Helper()
 	resetAllFlags(rootCmd)
 	for _, k := range []string{"format", "output", "output.format", "verbose", "quiet", "no-color", "no-hints", "profile", "profile.default", "offline", "offline.enabled", "instance"} {
 		viper.Set(k, "")
+	}
+	if set != nil {
+		set()
+		defer viper.Set("profile", "")
 	}
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -158,46 +170,16 @@ func registerArcticDefault(t *testing.T, db *testDB, modelID, endpoint string) {
 	}
 }
 
-// A registered model's backend and model are its identity: find's flags
-// cannot swap them, and the refusal is a visible provider_error notice.
-func TestFindSemantic_IdentityOverrideRefused(t *testing.T) {
-	db := setupTestDB(t)
-	seedFindCorpus(t, db)
-	registerArcticDefault(t, db, "arctic-find", "http://127.0.0.1:11434")
-
-	client, calls := providertest.OllamaClient(t, findCassettes)
-	findEmbeddingHTTPClient = client
-	t.Cleanup(func() { findEmbeddingHTTPClient = nil })
-
-	for _, flag := range [][]string{{"--embedding-model", "nomic-embed-text"}, {"--embedding-provider", "stub"}} {
-		stdout, stderr, err := execFind(t, db, append([]string{"find", "authentication"}, flag...)...)
-		if err != nil {
-			t.Fatalf("find %v: %v", flag, err)
-		}
-		if !strings.Contains(stderr, "notice: semantic search unavailable (provider_error): model arctic-find") {
-			t.Errorf("find %v: stderr lacks the provider_error notice:\n%s", flag, stderr)
-		}
-		if !strings.Contains(stdout, "obj_sem_1") {
-			t.Errorf("find %v: FTS result missing:\n%s", flag, stdout)
-		}
-	}
-	if urls := calls.URLs(); len(urls) != 0 {
-		t.Fatalf("an identity override still embedded: %v", urls)
-	}
-}
-
-// End to end through the real driver's per-model index: find embeds with the
-// default model's provider (endpoint overridable by flag), searches that
-// model's index with score = 1 - distance, and follows a default flip made
-// through another registry handle. Skips until the driver's EmbeddingStore
-// is implemented.
+// End to end through the real driver's per-model index: dpkms embeds the
+// query with the default model's provider, searches that model's index
+// with score = 1 - distance, and follows a default flip made through
+// another registry handle. Skips until the driver's EmbeddingStore is
+// implemented.
 func TestFindSemantic_DefaultModelEndToEnd(t *testing.T) {
-	db := setupTestDB(t)
+	client, calls := providertest.OllamaClient(t, findCassettes)
+	db := setupTestDB(t, dpkmstest.WithEmbeddingHTTPClient(client))
 	ctx := context.Background()
 	d := sqliteDB(t, db)
-	client, calls := providertest.OllamaClient(t, findCassettes)
-	findEmbeddingHTTPClient = client
-	t.Cleanup(func() { findEmbeddingHTTPClient = nil })
 
 	// The query's own recorded embedding is each note's vector, under one
 	// model only, so a hit names the index that was searched. It is embedded
@@ -245,9 +227,9 @@ func TestFindSemantic_DefaultModelEndToEnd(t *testing.T) {
 		}
 	}
 
-	run := func(args ...string) (ids []string, scores []float64, model string) {
+	run := func() (ids []string, scores []float64, model string) {
 		t.Helper()
-		stdout, stderr, err := execFind(t, db, append([]string{"find", query, "--semantic", "--format", "json"}, args...)...)
+		stdout, stderr, err := execFind(t, db, "find", query, "--semantic", "--format", "json")
 		if err != nil {
 			t.Fatalf("find: %v\n%s", err, stderr)
 		}
@@ -277,15 +259,16 @@ func TestFindSemantic_DefaultModelEndToEnd(t *testing.T) {
 		return ids, scores, out.Diagnostics.Semantic.ModelID
 	}
 
-	ids, scores, model := run("--embedding-endpoint", "http://127.0.0.1:11555")
+	before := len(calls.EmbedURLs())
+	ids, scores, model := run()
 	if model != "arctic-e2e-a" || len(ids) != 1 || ids[0] != "note-a" {
 		t.Fatalf("got %v under %s, want [note-a] under arctic-e2e-a", ids, model)
 	}
 	if scores[0] < 0.999 {
 		t.Errorf("identical vector score = %v, want ~1 (1 - distance)", scores[0])
 	}
-	if urls := calls.URLs(); urls[len(urls)-1] != "http://127.0.0.1:11555/api/embed" {
-		t.Fatalf("query embedded at %s, want the --embedding-endpoint override", urls[len(urls)-1])
+	if n := len(calls.EmbedURLs()) - before; n != 1 {
+		t.Fatalf("dpkms made %d query embed calls, want 1", n)
 	}
 
 	if _, err := registry.New(d.DB()).SetDefault(ctx, "arctic-e2e-b", 0); err != nil {

@@ -191,18 +191,18 @@ func TestEmbeddingsProvider_UnsupportedBackendFails(t *testing.T) {
 	}
 }
 
-// find resolves the default model's provider through the same resolver: a
-// bad endpoint from the flag makes the semantic leg unavailable, and the
-// notice names the flag.
-func TestFind_EmbeddingFlagsReachTheResolver(t *testing.T) {
+// find --graph resolves the default model's provider through the same
+// resolver: a bad endpoint from the flag makes the semantic leg
+// unavailable, and the notice names the flag.
+func TestFindGraph_EmbeddingFlagsReachTheResolver(t *testing.T) {
 	db := setupTestDB(t)
 	registerArcticDefault(t, db, "arctic-flags", "http://127.0.0.1:11434")
-	out, err := db.exec("find", "anything", "--embedding-endpoint", "127.0.0.1:11555")
+	out, err := db.exec("find", "anything", "--graph", "--format", "json", "--embedding-endpoint", "127.0.0.1:11555")
 	if err != nil || !strings.Contains(out, "(provider_error)") || !strings.Contains(out, "--embedding-endpoint") {
 		t.Fatalf("err = %v\n%s", err, out)
 	}
-	if _, err := db.exec("find", "anything", "--embedding-provider", "stub"); err != nil {
-		t.Fatalf("find with the stub provider: %v", err)
+	if _, err := db.exec("find", "anything", "--graph", "--format", "json", "--embedding-provider", "stub"); err != nil {
+		t.Fatalf("find --graph with the stub provider: %v", err)
 	}
 }
 
