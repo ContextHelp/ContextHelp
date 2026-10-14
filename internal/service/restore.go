@@ -68,11 +68,19 @@ type RestoreResult struct {
 // config entry naming a path outside opts.ConfigDir, a blob entry that
 // is not a bare key, or an unsupported manifest refuses the restore
 // with nothing written.
+//
+// Restore refuses, dry runs included, while a process holds the
+// database lock on DBPath (every dpkms serve holds it on its database)
+// and, when opts.RunDir is set, while a live pidfile there names
+// DBPath. The writing pass holds that lock itself.
 func Restore(ctx context.Context, opts RestoreOpts) (RestoreResult, error) {
 	if opts.RunDir != "" {
 		if err := refuseWhileServed(opts.RunDir, opts.DBPath); err != nil {
 			return RestoreResult{}, err
 		}
+	}
+	if err := refuseWhileLocked(opts.DBPath); err != nil {
+		return RestoreResult{}, err
 	}
 	info, err := os.Stat(opts.Source)
 	if err != nil {
@@ -83,6 +91,20 @@ func Restore(ctx context.Context, opts RestoreOpts) (RestoreResult, error) {
 		return restoreFromDir(ctx, opts)
 	}
 	return restoreFromArchive(ctx, opts)
+}
+
+// lockForWrite takes the database lock for the writing pass when it
+// replaces the database; a dry run, or a backup without one, takes
+// none. Call the returned func when done.
+func (opts RestoreOpts) lockForWrite(has entrySet) (func(), error) {
+	if opts.DryRun || !has.db {
+		return func() {}, nil
+	}
+	l, err := acquireRestoreLock(opts.DBPath)
+	if err != nil {
+		return nil, err
+	}
+	return func() { _ = l.Release() }, nil
 }
 
 // entryKind is what a backup entry restores as.
@@ -193,11 +215,13 @@ func preflight(opts RestoreOpts, has entrySet) error {
 
 // entrySet records which kinds of entry a backup holds.
 type entrySet struct {
-	configs, activeConfig, blobs bool
+	db, configs, activeConfig, blobs bool
 }
 
 func (s *entrySet) add(k entryKind) {
 	switch k {
+	case entryDB:
+		s.db = true
 	case entryConfig:
 		s.configs = true
 	case entryActiveConfig:
@@ -361,6 +385,11 @@ func restoreFromArchive(ctx context.Context, opts RestoreOpts) (RestoreResult, e
 
 	// Pass 2: write. Each entry is classified again, so an archive
 	// that changed since pass 1 is still held to the same rules.
+	release, err := opts.lockForWrite(has)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	defer release()
 	rs := &restorer{ctx: ctx, opts: opts, blobMeta: blobMeta}
 	err = walkArchive(opts.Source, func(e backupEntry, hdr *tar.Header, r io.Reader) error {
 		return rs.write(e, r, hdr.Size, hdr.FileInfo().Mode())
@@ -478,6 +507,11 @@ func restoreFromDir(ctx context.Context, opts RestoreOpts) (RestoreResult, error
 	}
 
 	// Pass 2: write.
+	release, err := opts.lockForWrite(has)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	defer release()
 	rs := &restorer{ctx: ctx, opts: opts, blobMeta: blobMeta}
 	for _, e := range entries {
 		if err := restoreDirEntry(rs, root, e.backupEntry, e.name); err != nil {

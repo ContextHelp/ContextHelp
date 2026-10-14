@@ -47,7 +47,7 @@ func runShutdown(cmd *cobra.Command, _ []string) error {
 		port = cfg.Server.Port
 	}
 
-	runDir, err := config.RunDir(dataDir())
+	runDir, err := config.RunDirPath(dataDir())
 	if err != nil {
 		return fmt.Errorf("run dir: %w", err)
 	}

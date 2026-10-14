@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/dblock"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 )
@@ -138,8 +139,11 @@ func targetFiles(t *testing.T, l restoreLayout) map[string]string {
 		t.Fatal(err)
 	}
 	got := map[string]string{}
+	lock := filepath.Base(dblock.Path(l.dbPath))
 	for _, e := range entries {
-		if e.IsDir() {
+		// The database lock's sidecar stays once taken, by design:
+		// it is not a restore leftover.
+		if e.IsDir() || e.Name() == lock {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(l.target, e.Name()))

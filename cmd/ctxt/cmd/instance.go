@@ -231,6 +231,9 @@ func runInstanceUse(cmd *cobra.Command, args []string) error {
 
 	// A local instance is stored by name, so the selection survives a
 	// port reassignment.
+	if _, err := config.RunDir(dataDir()); err != nil {
+		return fmt.Errorf("state file: %w", err)
+	}
 	if err := os.WriteFile(stateFile, []byte(r.Name), 0o600); err != nil {
 		return fmt.Errorf("write state file: %w", err)
 	}

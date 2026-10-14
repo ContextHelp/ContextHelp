@@ -152,7 +152,7 @@ backups/pre-migrate-v40-v41-20261014T091500Z.sqlite
 Roll back a migration that went wrong:
 
 1. Stop every `dpkms serve` and `ctxt` process using the database.
-2. Move `db.sqlite`, `db.sqlite-wal` and `db.sqlite-shm` aside.
+2. Move `db.sqlite`, `db.sqlite-wal` and `db.sqlite-shm` aside. Leave `db.sqlite.lock`: every running `dpkms serve` holds it, and a second serve on the database refuses to start while one does.
 3. Copy the snapshot to `db.sqlite`.
 4. Reinstall the previous binary and start it. The snapshot is at the old schema; the new binary would migrate it again.
 

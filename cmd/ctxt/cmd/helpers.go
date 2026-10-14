@@ -126,7 +126,7 @@ func activeInstanceName() string {
 // dbPathForInstance resolves a DB path from an instance name or port string.
 // Scans live pidfiles; returns an error if no matching instance is found.
 func dbPathForInstance(nameOrPort string) (string, error) {
-	runDir, err := config.RunDir(dataDir())
+	runDir, err := config.RunDirPath(dataDir())
 	if err != nil {
 		return "", fmt.Errorf("instance routing: run dir: %w", err)
 	}

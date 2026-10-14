@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 )
 
 // assertUnder fails unless path sits inside root, so a data-dir test can
@@ -38,9 +39,22 @@ func TestDataDir_EnvIsDirectory(t *testing.T) {
 	root := hermeticConfigEnv(t)
 	dataDir := filepath.Join(root, "env-data")
 	t.Setenv(config.EnvDataDir, dataDir)
+	// A live instance's pidfile in <data dir>/run: ps must list it.
+	// The port only names the pidfile; nothing binds it.
+	runDir := filepath.Join(dataDir, "run")
+	if err := os.MkdirAll(runDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := pidfile.Write(runDir, pidfile.Info{PID: os.Getpid(), Name: "env-probe", Port: 47661}); err != nil {
+		t.Fatal(err)
+	}
 
-	if _, err := runWithConfigFlag(t, "ps"); err != nil {
+	out, err := runWithConfigFlag(t, "ps")
+	if err != nil {
 		t.Fatalf("ps: %v", err)
+	}
+	if !strings.Contains(out, "env-probe") {
+		t.Errorf("ps did not list the instance in %s:\n%s", runDir, out)
 	}
 	if cfg == nil {
 		t.Fatal("cfg not loaded")
@@ -53,7 +67,6 @@ func TestDataDir_EnvIsDirectory(t *testing.T) {
 	}
 	assertUnder(t, root, cfg.Storage.Path)
 	assertDir(t, dataDir)
-	assertDir(t, filepath.Join(dataDir, "run"))
 }
 
 // --data-dir, when passed, outranks -c storage.data_dir, CTXT_DATA_DIR
@@ -82,7 +95,11 @@ func TestDataDir_FlagWins(t *testing.T) {
 		t.Errorf("storage.path = %q, want %q", cfg.Storage.Path, want)
 	}
 	assertUnder(t, root, cfg.Storage.Path)
-	assertDir(t, filepath.Join(flagDir, "run"))
+	assertDir(t, flagDir)
+	// ps only reads the run dir: it creates none.
+	if _, err := os.Stat(filepath.Join(flagDir, "run")); !os.IsNotExist(err) {
+		t.Errorf("ps created %s: %v", filepath.Join(flagDir, "run"), err)
+	}
 
 	// Not passed: the env layer is back in charge.
 	if _, err := runWithConfigFlag(t, "ps"); err != nil {

@@ -1,11 +1,47 @@
 package service
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
+	"github.com/ideacrafterslabs/ctxt/internal/dblock"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 )
+
+// refuseWhileLocked refuses a restore while a process holds dbPath's
+// database lock: every dpkms serve holds it on its database for its
+// whole lifetime, pidfile or not. It only probes, creating nothing, so
+// a dry run stays write-free.
+func refuseWhileLocked(dbPath string) error {
+	if err := dblock.Check(dbPath); err != nil {
+		return lockRefusal(dbPath, err)
+	}
+	return nil
+}
+
+// acquireRestoreLock takes dbPath's database lock for the writing pass, so
+// a serve starting mid-restore cannot open the half-restored database.
+// The database's directory is created first, as writing the database
+// would. Release the returned lock when the restore returns.
+func acquireRestoreLock(dbPath string) (*dblock.Lock, error) {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
+		return nil, fmt.Errorf("restore: database dir: %w", err)
+	}
+	l, err := dblock.Acquire(dbPath, dblock.Info{Role: dblock.RoleCLI, Instance: "restore"})
+	if err != nil {
+		return nil, lockRefusal(dbPath, err)
+	}
+	return l, nil
+}
+
+func lockRefusal(dbPath string, err error) error {
+	if errors.Is(err, dblock.ErrHeld) {
+		return fmt.Errorf("restore: database %s is in use: %w; stop that process first (dpkms shutdown)", dbPath, err)
+	}
+	return fmt.Errorf("restore: database lock: %w", err)
+}
 
 // refuseWhileServed refuses a restore while a live dpkms instance whose
 // pidfile is in runDir serves dbPath: replacing the database under it

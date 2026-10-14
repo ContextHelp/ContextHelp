@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -43,6 +44,9 @@ func writeCurrentInstance(t *testing.T, sel string) {
 	t.Helper()
 	path, err := config.CurrentInstanceFile(testDataDir(t))
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(sel), 0o600); err != nil {
@@ -361,4 +365,26 @@ func assertNoToken(t *testing.T, out string) {
 // asEnvelope reports whether err carries a kit envelope, storing it.
 func asEnvelope(err error, e **output.Error) bool {
 	return errors.As(err, e)
+}
+
+// `instance use` creates the run dir its state file lives in, since
+// looking the file up no longer does.
+func TestInstanceUse_CreatesRunDir(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	db := setupTestDB(t)
+	appendConfig(t, db, namedEndpoints("http://127.0.0.1:1", "https://home.example.net:7700"))
+	state, err := config.CurrentInstanceFile(testDataDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Dir(state)); !os.IsNotExist(err) {
+		t.Fatalf("run dir %s exists before `instance use` (%v); the test needs a fresh one", filepath.Dir(state), err)
+	}
+
+	if out, err := db.exec("instance", "use", "home"); err != nil {
+		t.Fatalf("instance use home: %v\n%s", err, out)
+	}
+	if b, err := os.ReadFile(state); err != nil || string(b) != "home" {
+		t.Fatalf("state file = %q, %v; want home", b, err)
+	}
 }
