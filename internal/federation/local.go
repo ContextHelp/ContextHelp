@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
@@ -20,11 +23,49 @@ type LocalPusher struct {
 	blobs      storage.BlobStore
 }
 
-// NewLocalPusher returns a LocalPusher that writes to targetPath. Pushed
-// objects keep their blob:// refs, which resolve in blobs (the source's
-// store); the pusher copies rows only, never blob content.
+// NewLocalPusher returns a LocalPusher that writes to targetPath. blobs
+// is the source's store: each pushed object's blob is copied from it
+// into the target's store (TargetBlobDir), so the target's blob:// refs
+// resolve without the source.
 func NewLocalPusher(name, targetPath string, blobs storage.BlobStore) *LocalPusher {
 	return &LocalPusher{name: name, targetPath: targetPath, blobs: blobs}
+}
+
+// TargetBlobDir is the blob store of the instance whose database is
+// targetPath: the default storage.blob.local.path of a data dir holding
+// that database (config.BlobDirName beside it). A file target has no
+// config of its own to name another.
+func TargetBlobDir(targetPath string) string {
+	return filepath.Join(filepath.Dir(targetPath), config.BlobDirName)
+}
+
+// copyBlobs copies the blobs obj's content refs name from src to dst,
+// skipping those dst already holds.
+func copyBlobs(ctx context.Context, src, dst storage.BlobStore, obj *storage.KnowledgeObject) error {
+	for _, content := range []string{obj.RawContent, obj.TextContent} {
+		key, ok := blob.BlobKey(content)
+		if !ok {
+			continue
+		}
+		if have, err := dst.Exists(ctx, key); err != nil {
+			return fmt.Errorf("blob %s: check target: %w", key, err)
+		} else if have {
+			continue
+		}
+		if src == nil {
+			return fmt.Errorf("blob %s: %w", key, blob.ErrNoStore)
+		}
+		rc, meta, err := src.Get(ctx, key)
+		if err != nil {
+			return fmt.Errorf("blob %s: read source: %w", key, err)
+		}
+		err = dst.Put(ctx, key, rc, meta)
+		rc.Close()
+		if err != nil {
+			return fmt.Errorf("blob %s: write target: %w", key, err)
+		}
+	}
+	return nil
 }
 
 // Name returns the federation entry name from config.
@@ -63,7 +104,14 @@ func (p *LocalPusher) Push(
 		return fmt.Errorf("federation local push: resolve target %q: %w", p.targetPath, err)
 	}
 
-	drv, err := storageutil.NewDriver("sqlite", targetPath, p.blobs)
+	targetBlobs, err := blob.New(config.BlobConfig{
+		Backend: "local",
+		Local:   config.BlobLocalConfig{Path: TargetBlobDir(targetPath)},
+	})
+	if err != nil {
+		return fmt.Errorf("federation local push: open target blob store: %w", err)
+	}
+	drv, err := storageutil.NewDriver("sqlite", targetPath, targetBlobs)
 	if err != nil {
 		return fmt.Errorf("federation local push: open target %q: %w", targetPath, err)
 	}
@@ -111,6 +159,10 @@ func (p *LocalPusher) Push(
 					"federation", p.name, "id", obj.ID, "type", obj.Type)
 				continue
 			}
+		}
+		// Content first: a row never lands without the blob its ref names.
+		if err := copyBlobs(ctx, p.blobs, targetBlobs, obj); err != nil {
+			return fmt.Errorf("federation local push: object %q: %w", obj.ID, err)
 		}
 		if err := objs.Create(ctx, obj); err != nil {
 			// Defensive: a concurrent peer may have inserted this row

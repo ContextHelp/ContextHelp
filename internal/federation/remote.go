@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 )
 
 // FederationPushRequest is the JSON body sent to POST /api/v1/federation/push.
@@ -40,6 +41,7 @@ type RemotePusher struct {
 	token      string // Bearer token; empty = no auth
 	client     *http.Client
 	watermarks storage.WatermarkStore // optional; nil = no watermark advance
+	blobs      storage.BlobStore      // the source's store; resolves blob:// refs before sending
 }
 
 // NewRemotePusher creates a RemotePusher for the given peer. Watermarks are
@@ -60,14 +62,39 @@ func NewRemotePusher(name, baseURL, token string) *RemotePusher {
 func NewRemotePusherWithWatermarks(
 	name, baseURL, token string,
 	wm storage.WatermarkStore,
+	blobs storage.BlobStore,
 ) *RemotePusher {
 	p := NewRemotePusher(name, baseURL, token)
 	p.watermarks = wm
+	p.blobs = blobs
 	return p
 }
 
 // Name returns the federation entry name from config.
 func (p *RemotePusher) Name() string { return p.name }
+
+// inlineContent returns objects with every blob:// ref replaced by the
+// content it names, read from the source's store. objects is not
+// modified.
+func (p *RemotePusher) inlineContent(ctx context.Context, objects []storage.KnowledgeObject) ([]storage.KnowledgeObject, error) {
+	if objects == nil {
+		return nil, nil
+	}
+	out := make([]storage.KnowledgeObject, len(objects))
+	for i, o := range objects {
+		raw, err := blob.Content(ctx, p.blobs, o.RawContent)
+		if err != nil {
+			return nil, fmt.Errorf("object %q: %w", o.ID, err)
+		}
+		text, err := blob.Content(ctx, p.blobs, o.TextContent)
+		if err != nil {
+			return nil, fmt.Errorf("object %q: %w", o.ID, err)
+		}
+		o.RawContent, o.TextContent = raw, text
+		out[i] = o
+	}
+	return out, nil
+}
 
 // Push sends objects, edges, and entities as JSON to POST /api/v1/federation/push.
 // Retries up to 3 times with exponential backoff (1s, 2s, 4s) on transient errors.
@@ -78,8 +105,14 @@ func (p *RemotePusher) Push(
 	edges []storage.Edge,
 	entities []storage.Entity,
 ) error {
+	// The wire format carries objects only, no blobs: send content
+	// inline; the receiver externalizes it again by its own threshold.
+	inline, err := p.inlineContent(ctx, objects)
+	if err != nil {
+		return fmt.Errorf("federation remote push %q: %w", p.name, err)
+	}
 	payload := FederationPushRequest{
-		Objects:  objects,
+		Objects:  inline,
 		Edges:    edges,
 		Entities: entities,
 	}

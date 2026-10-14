@@ -253,7 +253,7 @@ func collectEntitiesForEdges(
 func pusherFor(entry config.FederationEntry, src storage.StorageDriver) Pusher {
 	if isHTTP(entry.URL) {
 		return NewRemotePusherWithWatermarks(entry.Name, entry.URL, entry.Token,
-			src.Watermarks())
+			src.Watermarks(), src.Blobs())
 	}
 	return NewLocalPusher(entry.Name, entry.URL, src.Blobs())
 }

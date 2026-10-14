@@ -325,3 +325,24 @@ func TestReanalyzeRunsOnResolvedContent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, body, got.RawContent)
 }
+
+// A remote push sends content inline; the receiver externalizes it by
+// its own threshold.
+func TestFederationAcceptExternalizesByReceiverThreshold(t *testing.T) {
+	svc := blobTestService(t)
+	ctx := context.Background()
+	body := bigBody(500)
+	n, err := svc.FederationAccept(ctx, []storage.KnowledgeObject{{
+		ID: "fed-1", Type: "text", RawContent: body, TextContent: body, Source: "peer://x",
+		ContentHash: "fed-hash-1", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}}, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+
+	stored, err := svc.Store.Objects().Get(ctx, "fed-1")
+	require.NoError(t, err)
+	require.True(t, blob.IsBlobRef(stored.RawContent), "accepted content above the threshold stored inline")
+	got, err := svc.GetObject(ctx, "fed-1")
+	require.NoError(t, err)
+	require.Equal(t, body, got.RawContent)
+}

@@ -110,7 +110,7 @@ func TestRemotePusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 
 	src, _ := newTestDB(t)
 
-	p := NewRemotePusherWithWatermarks("rwm-fed", srv.URL, "", src.Watermarks())
+	p := NewRemotePusherWithWatermarks("rwm-fed", srv.URL, "", src.Watermarks(), src.Blobs())
 
 	before := time.Now().UTC()
 	if err := p.Push(context.Background(),
@@ -145,7 +145,7 @@ func TestRemotePusher_DoesNotAdvanceWatermarkOnFailure(t *testing.T) {
 
 	src, _ := newTestDB(t)
 
-	p := NewRemotePusherWithWatermarks("rwm-fail-fed", srv.URL, "", src.Watermarks())
+	p := NewRemotePusherWithWatermarks("rwm-fail-fed", srv.URL, "", src.Watermarks(), src.Blobs())
 
 	if err := p.Push(context.Background(),
 		[]storage.KnowledgeObject{makeObject("rwmf-1", "rwmf-h1")}, nil, nil); err == nil {
