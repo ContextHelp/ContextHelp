@@ -1354,6 +1354,7 @@ daemon (`docker compose up -d dpkms`) on:
 
 - REST `:8080` (the MCP endpoint is `/api/v1/mcp/` on this port)
 - gRPC `:9090`
+- Browser-extension cookie bridge `:9377` (loopback only)
 
 Data: `~/.config/contexthelp/` (config) +
 `dpkms-data:` Docker volume (SQLite).

@@ -65,4 +65,4 @@ go test -tags=integration,fts5 ./internal/storage/postgres/...
 ## Related
 
 - [../development.md](../development.md#debugging) — Development guide
-- [../scaling.md](../scaling.md#monitoring--observability) — Production monitoring
+- [../scaling.md](../scaling.md) — Production sizing (there is no metrics exporter)
