@@ -31,10 +31,49 @@ outcome, not a broken pipeline. Re-records churn only `recorded_at`,
 
 Each scenario runs in its own throwaway work dir with `HOME` and all
 four XDG roots pointed inside it and `CTXT_*` / `DPKMS_*` / `KIT_*`
-env scrubbed, so the knowledge database a scenario writes never leaks
-between scenarios or into the developer's real data. `USER` and
-`LOGNAME` are pinned to a fixed token so the recording host's account
-name can never reach a committed capture.
+env scrubbed (the ctxt recorder also scrubs `CH_*` and `BUS_TOKEN`),
+so the knowledge database a scenario writes never leaks between
+scenarios or into the developer's real data. `USER` and `LOGNAME` are
+pinned to a fixed token so the recording host's account name can never
+reach a committed capture.
+
+### ctxt scenarios and the server
+
+ctxt commands run over the dpkms API, and with nothing configured ctxt
+targets the built-in default endpoint (`127.0.0.1:8080`) — where a
+developer's real instance may be listening. `12fcc-record.sh` never
+lets a scenario reach it. Before recording, it writes `server.url`
+into the scenario's own user config
+(`$XDG_CONFIG_HOME/contexthelp/ctxt.yaml`) and checks, through `ctxt
+config show`, that ctxt resolves exactly that URL; on a mismatch it
+refuses to record. Each scenario has one of two server modes, set per
+scenario in the script's `server_mode` from what the scenario and its
+story say they test (an unclassified scenario is refused):
+
+| Mode | Scenarios | ctxt is routed to |
+|---|---|---|
+| live | `delete-preview`, `format-contract`, `profile-idempotency`, `resolve-contract`, `state-transparency` | a throwaway `dpkms serve` started for that scenario alone |
+| closed | `offline-state-envelope` ("orientation works with nothing running") | `http://127.0.0.1:1`, a port nothing listens on |
+
+The live instance is private (loopback only, no inbound tokens) with
+its own `HOME`/XDG tree and SQLite database, stub providers and stub
+embeddings, a random bus token held only in the daemon's env, and HTTP
+and gRPC on OS-assigned ports. It starts empty: no scenario seeds data,
+and the empty-store expectations (`knowledge_objects: 0`, `total: 0`)
+depend on that. It leads its own process group; the recorder stops the
+group before the next scenario starts and on every exit path, and
+waits until the port stops accepting connections.
+
+The port is random, so byte stability rests on no capture naming it.
+After each scenario the recorder fails the run if any capture contains
+a default-port endpoint, the live instance's address or bus token, the
+repo path, or the operator's `HOME`/`TMPDIR`.
+
+The work root is a fixed `/tmp/ctxt-12fcc-record` rather than a
+`$TMPDIR` path: `ctxt config path` in `offline-state-envelope` reports
+the scenario's config file, and a fixed root keeps that capture stable
+and free of host-specific temp paths. Overriding it with
+`CTXT_12FCC_WORK` changes that capture.
 
 ## Keeping `verify-no-leak` clean
 
@@ -61,9 +100,10 @@ gate went green.
 
 ## Re-running
 
-Record fresh cassettes (builds the binary with the `fts5` tag,
+Record fresh cassettes (builds the binary with the `fts5` tag —
+the ctxt recorder builds `dpkms` too, for its throwaway instance —
 isolates a work dir per scenario, runs every scenario step as a real
-subprocess):
+subprocess; the ctxt recorder needs `curl` and `python3`):
 
 ```sh
 KIT_BIN=/path/to/kit scripts/12fcc-record.sh        # ctxt scenarios
@@ -314,7 +354,8 @@ write a file that stopped parsing as JSON.
 
 ### Not covered
 
-No scenario starts a daemon. `dpkms serve` requires `DPKMS_BUS_TOKEN`,
+No dpkms scenario starts a daemon (the ctxt recorder's throwaway
+instance serves ctxt scenarios only). `dpkms serve` requires `DPKMS_BUS_TOKEN`,
 and the recorders scrub `DPKMS_*` precisely so ambient operator
 environment cannot reach a committed capture; a live-instance scenario
 would have to reintroduce that env. The consequence is that F8 is
