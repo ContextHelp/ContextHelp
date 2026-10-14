@@ -503,14 +503,33 @@ func pgPendingTarget(current, target int) int {
 	return to
 }
 
+// pgRowQuerier is the QueryRowContext of *sql.DB and *sql.Tx.
+type pgRowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// pgHasNoOwnTables reports whether the current schema holds no tables
+// besides the migration ledger: a version-0 database with nothing to
+// lose. A version-0 database with tables (initialized before the
+// ledger existed) is an existing one. SQLite applies the same rule.
+func pgHasNoOwnTables(ctx context.Context, q pgRowQuerier) (bool, error) {
+	var empty bool
+	if err := q.QueryRowContext(ctx, `SELECT NOT EXISTS (
+		SELECT 1 FROM pg_catalog.pg_tables
+		 WHERE schemaname = current_schema() AND tablename <> 'schema_version')`).Scan(&empty); err != nil {
+		return false, fmt.Errorf("list tables: %w", err)
+	}
+	return empty, nil
+}
+
 // warnUnsnapshottedMigration warns before migrations run against an
 // existing Postgres database. Unlike SQLite, Postgres gets no automatic
 // snapshot: backing it up is the operator's job (pg_dump), so the
 // warning names both versions and the command. A brand-new database
-// (version 0) has nothing to lose and gets no warning.
-func warnUnsnapshottedMigration(current, target int) {
+// (version 0, empty) has nothing to lose and gets no warning.
+func warnUnsnapshottedMigration(current, target int, empty bool) {
 	to := pgPendingTarget(current, target)
-	if current == 0 || to == 0 {
+	if to == 0 || (current == 0 && empty) {
 		return
 	}
 	slog.Warn(fmt.Sprintf("migrating Postgres schema v%d to v%d without a snapshot: dpkms never backs up Postgres; take a pg_dump before upgrading", current, to),
@@ -571,7 +590,13 @@ func (d *Driver) migrateThrough(ctx context.Context, target int) error {
 		`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&current); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	warnUnsnapshottedMigration(current, target)
+	empty := false
+	if current == 0 {
+		if empty, err = pgHasNoOwnTables(ctx, d.db); err != nil {
+			return fmt.Errorf("inspect unversioned database: %w", err)
+		}
+	}
+	warnUnsnapshottedMigration(current, target, empty)
 
 	for _, m := range pgMigrations {
 		if m.Version <= current || m.Version > target {
