@@ -34,6 +34,7 @@ require (
 	github.com/pkg/sftp v1.13.11
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/yuin/goldmark v1.8.6
+	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/crypto v0.57.0
 	golang.org/x/mod v0.41.0
 	golang.org/x/term v0.46.0
@@ -86,7 +87,6 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
-	github.com/zalando/go-keyring v0.2.8 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.6 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/tools v0.49.0 // indirect

@@ -4,18 +4,11 @@ package registry
 
 import (
 	"errors"
-	"os/exec"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// hasKeychain reports whether the OS keychain CLI is available.
-func hasKeychain() bool {
-	_, err := exec.LookPath("security")
-	return err == nil
-}
 
 func TestNewTokenStore(t *testing.T) {
 	s := NewTokenStore()
@@ -24,14 +17,6 @@ func TestNewTokenStore(t *testing.T) {
 }
 
 func TestTokenStore_SetGetDelete(t *testing.T) {
-	if !hasKeychain() {
-		t.Skip("security binary not available — skip live keychain test")
-	}
-
-	// Use a unique service to isolate test data.
-	origSvc := keychainService
-	_ = origSvc // ensure constant is accessible
-
 	s := &TokenStore{kc: newTestResolver(t)}
 
 	const regName = "test-registry"
@@ -56,10 +41,6 @@ func TestTokenStore_SetGetDelete(t *testing.T) {
 }
 
 func TestTokenStore_GetMissing(t *testing.T) {
-	if !hasKeychain() {
-		t.Skip("security binary not available — skip live keychain test")
-	}
-
 	s := &TokenStore{kc: newTestResolver(t)}
 	_, err := s.Get("definitely-not-stored-registry")
 	var noToken ErrNoToken
@@ -68,10 +49,6 @@ func TestTokenStore_GetMissing(t *testing.T) {
 }
 
 func TestTokenStore_DeleteMissing(t *testing.T) {
-	if !hasKeychain() {
-		t.Skip("security binary not available — skip live keychain test")
-	}
-
 	s := &TokenStore{kc: newTestResolver(t)}
 	err := s.Delete("definitely-not-stored-registry-del")
 	var noToken ErrNoToken
@@ -99,10 +76,6 @@ func TestErrNoToken_Error(t *testing.T) {
 }
 
 func TestTokenStore_SetOverwrites(t *testing.T) {
-	if !hasKeychain() {
-		t.Skip("security binary not available — skip live keychain test")
-	}
-
 	s := &TokenStore{kc: newTestResolver(t)}
 	const reg = "overwrite-reg"
 
