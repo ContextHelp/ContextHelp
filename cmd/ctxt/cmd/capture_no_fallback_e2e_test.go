@@ -67,7 +67,7 @@ func TestCaptureTabs_RejectedTokenExits5WithoutRetry(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			e := newTabsEnv(t, "", workProfile(time.Now(), tabA, tabB))
-			e.status = status
+			e.setStatus(status)
 
 			_, errOut := e.mustRun(5, tabsArgs()...)
 			if n := len(e.requests()); n != 1 {
@@ -103,7 +103,7 @@ func TestCaptureHistory_RejectedTokenExits5WithoutRetry(t *testing.T) {
 	e := newHistoryEnv(t, "",
 		hVisit("https://example.com/a", now.Add(-2*time.Hour)),
 		hVisit("https://example.com/b", now.Add(-time.Hour)))
-	e.status = http.StatusUnauthorized
+	e.setStatus(http.StatusUnauthorized)
 
 	e.mustRun(5, historyArgs()...)
 	if n := len(e.requests()); n != 1 {

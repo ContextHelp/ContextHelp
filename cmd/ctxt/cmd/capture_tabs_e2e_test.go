@@ -168,6 +168,26 @@ func (e *tabsEnv) requests() []tabsReq {
 	return append([]tabsReq(nil), e.reqs...)
 }
 
+// failOn makes the server reject (on) or accept (!on) analyze requests
+// for url. The handler reads fail under mu, so writes take it too.
+func (e *tabsEnv) failOn(url string, on bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if on {
+		e.fail[url] = true
+	} else {
+		delete(e.fail, url)
+	}
+}
+
+// setStatus makes the server answer every analyze request with status
+// (0 restores normal answers).
+func (e *tabsEnv) setStatus(status int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.status = status
+}
+
 func (e *tabsEnv) sentURLs() []string {
 	var out []string
 	for _, r := range e.requests() {
@@ -390,7 +410,7 @@ func TestCaptureTabs_Dedupe(t *testing.T) {
 
 func TestCaptureTabs_PartialFailure(t *testing.T) {
 	e := newTabsEnv(t, crmDeny, workProfile(time.Now(), tabA, tabB, tabCRM, tabA))
-	e.fail[tabA.URL] = true
+	e.failOn(tabA.URL, true)
 
 	out, errOut, code := e.run(tabsArgs()...)
 	if code != 1 {
@@ -634,7 +654,7 @@ func TestCaptureTabs_JSONShape(t *testing.T) {
 // written to stderr, logs included at -V, may carry them.
 func TestCaptureTabs_StderrNeverCarriesURLs(t *testing.T) {
 	e := newTabsEnv(t, crmDeny, workProfile(time.Now().Add(-2*time.Hour), tabA, tabB, tabCRM))
-	e.fail[tabB.URL] = true
+	e.failOn(tabB.URL, true)
 
 	for _, args := range [][]string{
 		tabsArgs("-V"),
