@@ -158,31 +158,16 @@ This document provides an overview of the development infrastructure for Context
 
 ### 5. YAML Configuration (`config/config.example.yaml`)
 
-**Purpose:** Structured configuration for both dPKMS and ctxt
+**Purpose:** Template for `ctxt.yaml` and `dpkms.yaml`, which share one
+schema (the `Config` type in `internal/config/config.go`).
 
-**dPKMS Configuration:**
-- Storage backend settings
-- Job queue configuration
-- Security and encryption
-- Registry subscriptions
-- Graph settings
-- Query configuration
-- API (REST and gRPC)
-
-**ctxt Configuration:**
-- Pipeline settings
-- AI provider configuration
-- Profile management
-- Search settings
-- Vector search (optional)
-- Surfacing configuration
-- Composition templates
-- CLI preferences
-
-**Additional:**
-- Logging configuration
-- Monitoring and observability
-- Development settings
+- Every setting is commented out, so a fresh copy changes nothing;
+  each section names the binary that acts on it
+- Shows built-in defaults and the accepted values of enum keys
+- `config/config.minimal.yaml`: the few settings people change first
+- `internal/config/config_examples_test.go` decodes every `config/*.yaml`
+  strictly, as copied and with its settings uncommented, and runs
+  `config.Validate` on the result
 
 ---
 
