@@ -33,7 +33,7 @@ repos:
       - id: check-yaml
         # Compose and workflow files use YAML features the default parser
         # rejects; they are covered by actionlint and compose config below.
-        exclude: ^(docker-compose.*\.yml|docker/docker-compose\.yml|\.github/workflows/.*)$
+        exclude: ^(docker-compose.*\.yml|\.github/workflows/.*)$
       - id: end-of-file-fixer
         # Conformance captures are recorded stdout/stderr bytes, asserted on
         # verbatim by the grading service. Normalizing them rewrites evidence.

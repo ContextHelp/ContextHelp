@@ -56,7 +56,6 @@ func canonicalGoMajorMinor(t *testing.T) string {
 func dockerSources() []string {
 	return []string{
 		"Dockerfile",
-		"docker/Dockerfile.dpkms",
 		"docker-compose.yml",
 	}
 }
@@ -66,7 +65,6 @@ func composeFiles() []string {
 	return []string{
 		"docker-compose.yml",
 		"docker-compose.dev.yml",
-		"docker/docker-compose.yml",
 	}
 }
 

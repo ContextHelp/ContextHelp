@@ -7,7 +7,7 @@
 # This script is the gate that keeps all of them in step.
 #
 # Checks:
-#   1. Dockerfile + docker/Dockerfile.dpkms golang base image == mise go pin
+#   1. Dockerfile golang base image == mise go pin
 #   2. go.mod `go` directive is satisfied by the mise go pin (pin >= directive)
 #   3. no workflow hardcodes a go-version literal instead of deriving it
 set -euo pipefail
@@ -36,7 +36,7 @@ echo "mise.toml: go=$mise_go golangci-lint=$mise_lint"
 # ── 1. Dockerfiles ───────────────────────────────────────────────────────────
 # Both build stages must use the same Go as mise/CI, or a container build can
 # succeed (or fail) on a compiler the rest of the toolchain never sees.
-for df in Dockerfile docker/Dockerfile.dpkms; do
+for df in Dockerfile; do
 	[ -f "$df" ] || continue
 	while read -r img; do
 		[ -n "$img" ] || continue

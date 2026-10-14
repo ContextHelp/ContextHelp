@@ -22,8 +22,8 @@ below was executed rather than inferred.
 | `Dockerfile` | **Canonical.** Builds clean. Keep. |
 | `docker-compose.yml` | **Canonical** for dev and prod profiles. Keep. |
 | `docker-compose.dev.yml` | **Keep.** Distinct purpose: side-services for the integration tier. |
-| `docker/Dockerfile.dpkms` | **Dead — recommend deletion.** Provably unbuildable. |
-| `docker/docker-compose.yml` | **Dead — recommend deletion.** Only consumer of the above. |
+| `docker/Dockerfile.dpkms` | **Dead — recommend deletion.** Provably unbuildable. **Deleted 2026-10-14.** |
+| `docker/docker-compose.yml` | **Dead — recommend deletion.** Only consumer of the above. **Deleted 2026-10-14.** |
 | `ui-builder` stage | **Recommend removal.** Vestigial; its output is discarded. |
 
 Nothing was deleted in this pass. See [Why nothing was deleted](#why-nothing-was-deleted).
