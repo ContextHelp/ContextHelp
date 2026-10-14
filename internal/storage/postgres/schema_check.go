@@ -16,7 +16,8 @@ func LatestSchemaVersion() int {
 // CheckSchema reads the schema version of the database at connStr
 // without migrating it: one read-only transaction, no extension, no
 // ledger table, no advisory lock. A database without a ledger (version
-// 0) is reported as new, the same rule the pre-migration warning uses.
+// 0) is reported as new only when it holds no tables, the same rule the
+// pre-migration warning uses.
 func CheckSchema(ctx context.Context, connStr string) (storage.SchemaStatus, error) {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -44,10 +45,13 @@ func CheckSchema(ctx context.Context, connStr string) (storage.SchemaStatus, err
 		}
 	}
 	latest := LatestSchemaVersion()
-	return storage.SchemaStatus{
-		Current: current,
-		Latest:  latest,
-		Target:  pgPendingTarget(current, latest),
-		New:     current == 0,
-	}, nil
+	st := storage.SchemaStatus{Current: current, Latest: latest, Target: pgPendingTarget(current, latest)}
+	if current == 0 {
+		empty, err := pgHasNoOwnTables(ctx, tx)
+		if err != nil {
+			return storage.SchemaStatus{}, fmt.Errorf("check schema: %w", err)
+		}
+		st.New = empty
+	}
+	return st, nil
 }

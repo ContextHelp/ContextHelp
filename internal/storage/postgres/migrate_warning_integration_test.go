@@ -136,3 +136,111 @@ func TestPgMigrate_PendingMigrationWarnsWithVersions(t *testing.T) {
 		t.Errorf("current schema warned: %v", warns)
 	}
 }
+
+// TestPgCheckSchema_CurrentAndEmpty pins the read-only check at both
+// ends: a migrated database reports current with nothing pending, and an
+// empty database (no tables) reports new.
+func TestPgCheckSchema_CurrentAndEmpty(t *testing.T) {
+	ctx := context.Background()
+	latest := pgdrv.LatestSchemaVersion()
+
+	migrated, _ := freshDatabaseDSN(t)
+	drv, err := pgdrv.New(migrated, storageutil.NewTestBlobStore(t))
+	if err != nil {
+		t.Fatalf("postgres.New: %v", err)
+	}
+	t.Cleanup(func() { drv.Close(ctx) })
+	if err := drv.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	st, err := pgdrv.CheckSchema(ctx, migrated)
+	if err != nil {
+		t.Fatalf("CheckSchema(migrated): %v", err)
+	}
+	if st.Current != latest || st.Pending() || st.New {
+		t.Errorf("CheckSchema(migrated) = %+v, want v%d current, nothing pending, not new", st, latest)
+	}
+
+	empty, _ := freshDatabaseDSN(t)
+	st, err = pgdrv.CheckSchema(ctx, empty)
+	if err != nil {
+		t.Fatalf("CheckSchema(empty): %v", err)
+	}
+	if st.Current != 0 || st.Target != latest || !st.New {
+		t.Errorf("CheckSchema(empty) = %+v, want v0 -> v%d, new", st, latest)
+	}
+}
+
+// TestPgMigrate_TablesWithoutLedgerIsNotNew opens a database holding
+// ctxt tables but no schema_version ledger (initialized before the
+// ledger existed): it has data at stake, so the read-only check must not
+// call it new and the open must warn before migrating it, as SQLite
+// snapshots such a database.
+func TestPgMigrate_TablesWithoutLedgerIsNotNew(t *testing.T) {
+	dsn, _ := freshDatabaseDSN(t)
+	ctx := context.Background()
+	latest := pgdrv.LatestSchemaVersion()
+
+	old, err := pgdrv.New(dsn, storageutil.NewTestBlobStore(t))
+	if err != nil {
+		t.Fatalf("postgres.New: %v", err)
+	}
+	// Through 14: the newest schema a pre-ledger database can carry and
+	// still replay the chain (see AdoptsPreLedgerDatabase).
+	if err := old.MigrateThroughForTest(ctx, 14); err != nil {
+		t.Fatalf("migrate through 14: %v", err)
+	}
+	if _, err := old.DB().Exec(`DROP TABLE schema_version`); err != nil {
+		t.Fatalf("drop schema_version: %v", err)
+	}
+	if err := old.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := pgdrv.CheckSchema(ctx, dsn)
+	if err != nil {
+		t.Fatalf("CheckSchema: %v", err)
+	}
+	if st.Current != 0 || st.Target != latest || st.New {
+		t.Errorf("CheckSchema = %+v, want v0 -> v%d, not new", st, latest)
+	}
+
+	buf := captureSlogJSON(t)
+	drv, err := pgdrv.New(dsn, storageutil.NewTestBlobStore(t))
+	if err != nil {
+		t.Fatalf("postgres.New: %v", err)
+	}
+	t.Cleanup(func() { drv.Close(ctx) })
+	if err := drv.Init(ctx); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	warns := migrationWarnings(t, buf.String())
+	if len(warns) != 1 {
+		t.Fatalf("got %d pre-migration warnings, want 1; log:\n%s", len(warns), buf.String())
+	}
+	if from, _ := warns[0]["from"].(float64); int(from) != 0 {
+		t.Errorf("warning from = %v, want 0", warns[0]["from"])
+	}
+	if to, _ := warns[0]["to"].(float64); int(to) != latest {
+		t.Errorf("warning to = %v, want %d", warns[0]["to"], latest)
+	}
+}
+
+// TestPgMigrate_EmptyDatabaseIsSilent pins the other side: a database
+// with no tables has nothing to lose and opens without a warning.
+func TestPgMigrate_EmptyDatabaseIsSilent(t *testing.T) {
+	dsn, _ := freshDatabaseDSN(t)
+	ctx := context.Background()
+	buf := captureSlogJSON(t)
+	drv, err := pgdrv.New(dsn, storageutil.NewTestBlobStore(t))
+	if err != nil {
+		t.Fatalf("postgres.New: %v", err)
+	}
+	t.Cleanup(func() { drv.Close(ctx) })
+	if err := drv.Init(ctx); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if warns := migrationWarnings(t, buf.String()); len(warns) != 0 {
+		t.Errorf("empty database warned: %v", warns)
+	}
+}

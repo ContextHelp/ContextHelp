@@ -22,7 +22,7 @@ func TestWarnUnsnapshottedMigration(t *testing.T) {
 	latest := pgMigrations[len(pgMigrations)-1].Version
 	t.Run("pending on an existing database warns", func(t *testing.T) {
 		buf := captureWarnings(t)
-		warnUnsnapshottedMigration(latest-1, latest)
+		warnUnsnapshottedMigration(latest-1, latest, false)
 		out := buf.String()
 		for _, want := range []string{"level=WARN", "pg_dump",
 			"v" + strconv.Itoa(latest-1) + " to v" + strconv.Itoa(latest)} {
@@ -33,16 +33,23 @@ func TestWarnUnsnapshottedMigration(t *testing.T) {
 	})
 	t.Run("nothing pending is silent", func(t *testing.T) {
 		buf := captureWarnings(t)
-		warnUnsnapshottedMigration(latest, latest)
+		warnUnsnapshottedMigration(latest, latest, false)
 		if buf.Len() != 0 {
 			t.Errorf("unexpected output: %q", buf.String())
 		}
 	})
 	t.Run("fresh database is silent", func(t *testing.T) {
 		buf := captureWarnings(t)
-		warnUnsnapshottedMigration(0, latest)
+		warnUnsnapshottedMigration(0, latest, true)
 		if buf.Len() != 0 {
 			t.Errorf("unexpected output: %q", buf.String())
+		}
+	})
+	t.Run("tables without a ledger warn", func(t *testing.T) {
+		buf := captureWarnings(t)
+		warnUnsnapshottedMigration(0, latest, false)
+		if want := "v0 to v" + strconv.Itoa(latest); !strings.Contains(buf.String(), want) {
+			t.Errorf("warning %q does not contain %q", buf.String(), want)
 		}
 	})
 }
