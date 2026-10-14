@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
+	"github.com/pelletier/go-toml/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -57,4 +59,26 @@ func TestDockerConfig_HasNoUnknownKeys(t *testing.T) {
 	dec.KnownFields(true)
 	var cfg Config
 	require.NoError(t, dec.Decode(&cfg), "%s sets a key config.Load never reads", dockerConfigPath)
+}
+
+// The dev container builds with air, outside the Makefile. Its build must
+// carry the Makefile's tags: without fts5, mattn/go-sqlite3 has no FTS5
+// module and serve fails at the first FTS5 migration.
+func TestDockerAirBuild_UsesMakefileBuildTags(t *testing.T) {
+	makefile, err := os.ReadFile(filepath.Join("..", "..", "Makefile"))
+	require.NoError(t, err)
+	m := regexp.MustCompile(`(?m)^BUILD_TAGS\s*:=\s*(.+?)\s*$`).FindSubmatch(makefile)
+	require.NotNil(t, m, "Makefile declares no BUILD_TAGS")
+	tags := string(m[1])
+
+	data, err := os.ReadFile(filepath.Join("..", "..", "docker", "air.toml"))
+	require.NoError(t, err)
+	var air struct {
+		Build struct {
+			Cmd string `toml:"cmd"`
+		} `toml:"build"`
+	}
+	require.NoError(t, toml.Unmarshal(data, &air))
+	assert.Contains(t, air.Build.Cmd, tags, "docker/air.toml build.cmd")
+	assert.Contains(t, air.Build.Cmd, "CGO_ENABLED=1", "docker/air.toml build.cmd")
 }
