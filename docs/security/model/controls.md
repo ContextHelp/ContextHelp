@@ -21,7 +21,7 @@ server:
     provider: static
     static:
       tokens:
-        - token: <32+ random characters>   # literal; config does not expand ${VAR}
+        - token: <32+ random characters>   # literal value; env references are not expanded
           principal: laptop
           roles: [writer]                  # admin | writer | reader
 ```

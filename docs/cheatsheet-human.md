@@ -53,8 +53,8 @@ ctxt analyze --file ./meeting.md --type text
 
 ```bash
 ctxt analyze https://example.com/postmortem --type url
-ctxt feed add https://example.com/feed.xml         # subscribe; dpkms polls it
-ctxt feed sync --url https://example.com/feed.xml  # fetch new items now
+ctxt feed add https://example.com/feed.xml         # subscribe
+ctxt feed sync --url https://example.com/feed.xml  # fetch new items (nothing polls feeds on a timer)
 ```
 
 ### Image / Audio / Video
@@ -160,7 +160,7 @@ ctxt inbox clear --confirm-token=<token>         # discard everything at once
 ## Import in Bulk
 
 ```bash
-ctxt import chrome  --file bookmarks.html [--max-items 200]
+ctxt import chrome  --file bookmarks.html [--dry-run] [--max-items 200]
 ctxt import safari  --file bookmarks.html
 ctxt import firefox --file bookmarks.html
 
