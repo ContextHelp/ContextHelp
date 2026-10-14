@@ -6,7 +6,6 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -44,7 +43,7 @@ func init() {
 func runShutdown(cmd *cobra.Command, _ []string) error {
 	port, _ := cmd.Flags().GetInt("port")
 	if port == 0 {
-		port = viper.GetInt("server.port")
+		port = cfg.Server.Port
 	}
 
 	runDir, err := config.RunDir()

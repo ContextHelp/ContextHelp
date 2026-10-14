@@ -82,11 +82,6 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// DefaultCookieBridgePort is the preferred port for the cookie bridge
-// server and the one the browser extension connects to. dpkms serve
-// --cookie-bridge-port moves it.
-const DefaultCookieBridgePort = 9377
-
 // CookieBridgeServer is a standalone WebSocket server for browser-extension cookie sync.
 type CookieBridgeServer struct {
 	cache  *CookieCache
@@ -95,7 +90,8 @@ type CookieBridgeServer struct {
 
 // NewCookieBridgeServer creates a CookieBridgeServer. Serve it on a
 // listener the caller has already bound (preferred port
-// DefaultCookieBridgePort). hosts lists the Host headers the bridge
+// config.DefaultCookieBridgePort, the one the browser extension connects
+// to). hosts lists the Host headers the bridge
 // answers to (the loopback names on the port it bound); nil refuses
 // every request.
 func NewCookieBridgeServer(cache *CookieCache, hosts *httpserver.HostAllowlist) *CookieBridgeServer {
