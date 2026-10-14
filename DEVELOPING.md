@@ -85,7 +85,8 @@ Docker.
 | Target | Scope | Needs |
 |---|---|---|
 | `make test-unit` | `./cmd/...`, `./internal/...` | nothing |
-| `make test-integration` | `./test/integration/...` | Postgres + Redis |
+| `make test-integration` | `./test/integration/...` without the `integration` tag | nothing |
+| `make test-integration-services` | the `integration`-tagged suites CI's integration job runs | Postgres |
 | `make test-smoke` | `./test/smoke/...` | nothing |
 | `make test-e2e` | `./test/e2e/...` against a built binary | Chrome/Chromium for the headless checks (optional) |
 | `make test` | everything, with coverage | as above |
@@ -225,7 +226,7 @@ Integration tests are the only tier that needs containers. Bring up the
 side-services first:
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d postgres redis
+docker compose -f docker-compose.dev.yml up -d postgres
 ```
 
 Postgres **must** be the pgvector-bundled image
@@ -238,7 +239,6 @@ Then run the tier, pointing it at those services:
 ```bash
 POSTGRES_HOST=localhost POSTGRES_PORT=5432 \
 POSTGRES_USER=ctxt POSTGRES_PASSWORD=ctxt POSTGRES_DB=ctxt \
-REDIS_HOST=localhost REDIS_PORT=6379 \
 go test -tags=integration,fts5 ./test/integration/...
 ```
 

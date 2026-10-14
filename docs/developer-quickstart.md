@@ -15,7 +15,7 @@ Get up and running with **dPKMS + `ctxt`** development in under 5 minutes.
 
 - **Task** — Modern task runner ([Install](https://taskfile.dev/installation/))
 - **golangci-lint** — Fast linter ([Install](https://golangci-lint.run/usage/install/))
-- **Docker** — For optional services (Postgres, Redis, Qdrant)
+- **Docker** — For the optional Postgres service
 
 ### Media Processing Dependencies
 
@@ -326,7 +326,7 @@ See [environment-variables/README.md](environment-variables/README.md) for the c
 For advanced development, start optional services:
 
 ```bash
-# Start Postgres, Redis, Qdrant via Docker Compose
+# Start Postgres via Docker Compose
 task services:up
 
 # View logs
@@ -338,8 +338,6 @@ task services:down
 
 Services:
 - **PostgreSQL** - Alternative storage backend (`:5432`)
-- **Redis** - Distributed job queue (`:6379`)
-- **Qdrant** - Vector search (`:6333`)
 
 ---
 

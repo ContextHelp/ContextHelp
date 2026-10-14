@@ -215,7 +215,7 @@ tasks:
 
   # Docker tasks
   services:up:
-    desc: Start Docker services (Postgres, Redis)
+    desc: Start Docker services (Postgres)
     cmds:
       - docker-compose -f docker-compose.dev.yml up -d
       - echo "Waiting for services to be ready..."

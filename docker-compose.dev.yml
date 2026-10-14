@@ -1,11 +1,10 @@
 # Optional development side-services for testing non-default backends.
 # Default ctxt dev flow uses SQLite + local job queue + sqlite-vec — these
-# services are NOT required. Spin them up only when validating Postgres
-# or Redis integrations.
+# services are NOT required. Spin them up only when validating the
+# Postgres storage backend.
 #
 # Usage:
 #   docker compose -f docker-compose.dev.yml up postgres
-#   docker compose -f docker-compose.dev.yml up redis
 #
 # Network parity: the `ctxt` network is shared with docker-compose.yml so
 # services started from either file can reach each other by service name.
@@ -37,28 +36,8 @@ services:
     networks:
       - ctxt
 
-  # Redis — distributed job queue and caching
-  redis:
-    image: redis:7.4.11-alpine3.21
-    container_name: ctxt-redis-dev
-    restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - ctxt
-
 volumes:
   postgres_data:
-    driver: local
-  redis_data:
     driver: local
 
 networks:

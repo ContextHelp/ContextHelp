@@ -77,7 +77,7 @@ test-integration:
 	@echo "Running integration tests..."
 	go test $(BUILD_TAGS) -race -count=1 ./test/integration/...
 
-## test-integration-services: Run integration tests needing Postgres/Redis
+## test-integration-services: Run integration tests needing Postgres
 #
 # The build-tagged integration suites are split across three trees: the ones
 # under test/integration/ plus the Postgres driver and embeddings registry
@@ -89,7 +89,7 @@ test-integration:
 # Mirrors the integration job in
 # .github/workflows/ci.yml; the devcontainer supplies the env block.
 test-integration-services:
-	@echo "Running integration tests (requires Postgres + Redis)..."
+	@echo "Running integration tests (requires Postgres)..."
 	go test -v -tags=integration,fts5 -count=1 \
 		./test/integration/... \
 		./internal/storage/postgres/... \

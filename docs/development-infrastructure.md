@@ -75,9 +75,7 @@ This document provides an overview of the development infrastructure for Context
 **Purpose:** Optional development services
 
 **Services Included:**
-- PostgreSQL 16 (alternative to SQLite)
-- Redis 7 (distributed job queue)
-- Qdrant 1.7 (vector search)
+- PostgreSQL 16 with pgvector (alternative to SQLite)
 
 **Features:**
 - Health checks for all services
@@ -140,7 +138,6 @@ This document provides an overview of the development infrastructure for Context
 **Sections:**
 - Environment settings (dev/prod)
 - Storage backends (SQLite, Postgres)
-- Optional services (Redis, Qdrant)
 - AI providers (OpenAI, Anthropic, Ollama)
 - Logging configuration
 - API server settings
@@ -195,7 +192,6 @@ schema (the `Config` type in `internal/config/config.go`).
 
 **Integration Job:**
 - PostgreSQL service
-- Redis service
 - Integration test suite
 - Environment-based configuration
 
@@ -271,8 +267,6 @@ run from their embedded migrations.
 ### 2. Optional Scaling
 
 - **Postgres:** When multi-user testing needed
-- **Redis:** For distributed job queue testing
-- **Qdrant:** For vector search experimentation
 - **Easy toggle:** Environment variable switches
 
 ### 3. Comprehensive Testing
