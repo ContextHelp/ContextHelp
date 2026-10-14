@@ -177,9 +177,12 @@ to the origin (scheme, host, port) of the registry's `url` at that moment;
 it goes only to that origin, over https or to a loopback host. A config
 that later points the name elsewhere (a project-local
 `.contexthelp/ctxt.yaml`, say) gets no token and a one-line warning: run
-`login` again if the move is genuine. A redirect to another host drops
-the token. With no token stored the request goes out unauthenticated, and a 401
-or 403 names `ctxt registry login <name>`. A registry without `auth` is
+`login` again if the move is genuine. `login` prints the origin it binds
+to. When the `registries` list comes from a project `.contexthelp/ctxt.yaml`,
+`login` asks before binding; non-interactively it refuses unless
+`--origin <scheme://host[:port]>` names the registry url's origin. A
+redirect to another host drops the token. With no token stored the request
+goes out unauthenticated, and a 401 or 403 names `ctxt registry login <name>`. A registry without `auth` is
 public: the keychain is never read for it. `ctxt config doctor` rejects an
 unknown `auth.type`.
 
