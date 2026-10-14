@@ -57,8 +57,11 @@ story say they test (an unclassified scenario is refused):
 
 The live instance is private (loopback only, no inbound tokens) with
 its own `HOME`/XDG tree and SQLite database, stub providers and stub
-embeddings, a random bus token held only in the daemon's env, and HTTP
-and gRPC on OS-assigned ports. It starts empty: no scenario seeds data,
+embeddings, and a random bus token held only in the daemon's env.
+Throwaway instances bind HTTP, gRPC and the cookie bridge on
+OS-assigned ports (`--port 0 --grpc-port 0 --cookie-bridge-port 0`);
+the recorder fails the run if the pidfile names any default port
+(8080, 8081, 9090, 9091, 9377). It starts empty: no scenario seeds data,
 and the empty-store expectations (`knowledge_objects: 0`, `total: 0`)
 depend on that. It leads its own process group; the recorder stops the
 group before the next scenario starts and on every exit path, and
