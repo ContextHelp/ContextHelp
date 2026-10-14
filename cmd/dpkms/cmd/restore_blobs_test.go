@@ -50,9 +50,10 @@ func TestRestoreWritesBlobsToConfiguredStore(t *testing.T) {
 	prev := cfg
 	t.Cleanup(func() { cfg = prev })
 	cfg = &config.Config{Storage: config.StorageConfig{
-		Type: "sqlite",
-		Path: filepath.Join(dst, "db.sqlite"),
-		Blob: config.BlobConfig{Backend: "local", Local: config.BlobLocalConfig{Path: dstBlobs}},
+		DataDir: dst,
+		Type:    "sqlite",
+		Path:    filepath.Join(dst, "db.sqlite"),
+		Blob:    config.BlobConfig{Backend: "local", Local: config.BlobLocalConfig{Path: dstBlobs}},
 	}}
 	if err := restoreCmd.Flags().Set("skip-configs", "true"); err != nil {
 		t.Fatal(err)

@@ -24,9 +24,21 @@ type RestoreOpts struct {
 	// ConfigDir is the directory config entries restore into. Every
 	// one must name a path inside it; required when the backup holds
 	// config entries, unless SkipConfigs or DryRun.
-	ConfigDir   string
+	ConfigDir string
+	// ConfigFile is the name, inside ConfigDir, of the config file the
+	// target runs with (dpkms.yaml for dpkms). The backup's config.yaml
+	// entry, a verbatim copy of the config file the backup ran with,
+	// restores to it. Required when the backup holds that entry, unless
+	// SkipConfigs or DryRun.
+	ConfigFile string
+	// SkipConfigs skips every config entry: config.yaml and config/.
 	SkipConfigs bool
 	DryRun      bool
+	// RunDir is the data dir's run directory, where every running dpkms
+	// instance keeps its pidfile. When set, restore refuses, before
+	// anything is read or written, while a live instance there serves
+	// DBPath. Dry runs included: the real restore would be refused.
+	RunDir string
 	// Blobs receives the backup's blobs, each with its backed-up
 	// metadata, through its own Put, so they land wherever
 	// storage.blob puts them, in its layout. Required
@@ -45,12 +57,23 @@ type RestoreResult struct {
 // DB and config files to their target locations and blobs to
 // opts.Blobs.
 //
+// The database is replaced atomically: written to a temporary file
+// beside DBPath, fsynced, renamed over it, and the old database's
+// -wal, -shm and -journal files removed, so a failed restore leaves the
+// old database intact and SQLite never replays the old WAL onto the
+// restored one.
+//
 // The whole backup is checked before anything is written: an entry
 // that is not a regular file (symlink, hard link, device, fifo), a
 // config entry naming a path outside opts.ConfigDir, a blob entry that
 // is not a bare key, or an unsupported manifest refuses the restore
 // with nothing written.
 func Restore(ctx context.Context, opts RestoreOpts) (RestoreResult, error) {
+	if opts.RunDir != "" {
+		if err := refuseWhileServed(opts.RunDir, opts.DBPath); err != nil {
+			return RestoreResult{}, err
+		}
+	}
 	info, err := os.Stat(opts.Source)
 	if err != nil {
 		return RestoreResult{}, fmt.Errorf("restore: %w", err)
@@ -70,6 +93,7 @@ const (
 	entryManifest
 	entryDB
 	entryConfig
+	entryActiveConfig // config.yaml: the config file the backup ran with
 	entryBlob
 	entryBlobMeta
 )
@@ -95,6 +119,8 @@ func classifyEntry(name string, regular bool) (backupEntry, error) {
 		e = backupEntry{kind: entryManifest}
 	case name == "ctxt.db":
 		e = backupEntry{kind: entryDB}
+	case name == "config.yaml":
+		e = backupEntry{kind: entryActiveConfig}
 	case strings.HasPrefix(name, "config/"):
 		rel, err := safefs.LocalName(strings.TrimPrefix(name, "config/"))
 		if err != nil {
@@ -144,18 +170,51 @@ func parseBlobMeta(key string, r io.Reader) (storage.BlobMeta, error) {
 
 // preflight refuses a restore whose entries have nowhere to go, before
 // anything is written.
-func preflight(opts RestoreOpts, hasConfigs, hasBlobs bool) error {
+func preflight(opts RestoreOpts, has entrySet) error {
 	if opts.DryRun {
 		return nil
 	}
-	if hasConfigs && !opts.SkipConfigs && opts.ConfigDir == "" {
+	if (has.configs || has.activeConfig) && !opts.SkipConfigs && opts.ConfigDir == "" {
 		return errors.New("restore: backup holds config files but no config dir was given")
 	}
-	if hasBlobs && opts.Blobs == nil {
+	if has.activeConfig && !opts.SkipConfigs {
+		if opts.ConfigFile == "" {
+			return errors.New("restore: backup holds the config file but no config file name was given")
+		}
+		if _, err := safefs.LocalName(filepath.ToSlash(opts.ConfigFile)); err != nil {
+			return fmt.Errorf("restore: config file: %w", err)
+		}
+	}
+	if has.blobs && opts.Blobs == nil {
 		return errors.New("restore: backup holds blobs but there is no blob store to restore into")
 	}
 	return nil
 }
+
+// entrySet records which kinds of entry a backup holds.
+type entrySet struct {
+	configs, activeConfig, blobs bool
+}
+
+func (s *entrySet) add(k entryKind) {
+	switch k {
+	case entryConfig:
+		s.configs = true
+	case entryActiveConfig:
+		s.activeConfig = true
+	case entryBlob:
+		s.blobs = true
+	}
+}
+
+// staleDBSuffixes name the files SQLite keeps beside a database: a WAL
+// or hot journal left from the old database would be replayed onto the
+// restored one.
+var staleDBSuffixes = []string{"-wal", "-shm", "-journal"}
+
+// dbSourceHook, when set (tests only), wraps the database entry's
+// reader.
+var dbSourceHook func(io.Reader) io.Reader
 
 // restorer writes classified entries to their targets.
 type restorer struct {
@@ -174,10 +233,14 @@ func (r *restorer) write(e backupEntry, src io.Reader, size int64, perm fs.FileM
 		if r.opts.DryRun {
 			return nil
 		}
-		if err := os.MkdirAll(filepath.Dir(r.opts.DBPath), 0750); err != nil {
-			return fmt.Errorf("restore: mkdir for db: %w", err)
+		if dbSourceHook != nil {
+			src = dbSourceHook(src)
 		}
-		if err := writeFile(r.opts.DBPath, src, perm.Perm()); err != nil {
+		dir, name := filepath.Split(r.opts.DBPath)
+		if dir == "" {
+			dir = "."
+		}
+		if err := safefs.ReplaceFile(dir, name, src, perm, staleDBSuffixes...); err != nil {
 			return fmt.Errorf("restore: write db: %w", err)
 		}
 	case entryConfig:
@@ -190,6 +253,17 @@ func (r *restorer) write(e backupEntry, src io.Reader, size int64, perm fs.FileM
 		}
 		if err := safefs.WriteFile(r.opts.ConfigDir, e.rel, src, perm); err != nil {
 			return fmt.Errorf("restore: write config %s: %w", e.rel, err)
+		}
+	case entryActiveConfig:
+		if r.opts.SkipConfigs {
+			return nil
+		}
+		r.result.ConfigCount++
+		if r.opts.DryRun {
+			return nil
+		}
+		if err := safefs.WriteFile(r.opts.ConfigDir, r.opts.ConfigFile, src, perm); err != nil {
+			return fmt.Errorf("restore: write config file %s: %w", r.opts.ConfigFile, err)
 		}
 	case entryBlob:
 		r.result.BlobCount++
@@ -253,7 +327,7 @@ func walkArchive(source string, fn func(e backupEntry, hdr *tar.Header, r io.Rea
 
 func restoreFromArchive(ctx context.Context, opts RestoreOpts) (RestoreResult, error) {
 	// Pass 1: check every entry and the manifest; write nothing.
-	var hasConfigs, hasBlobs bool
+	var has entrySet
 	var manifest map[string]any
 	blobMeta := map[string]storage.BlobMeta{}
 	err := walkArchive(opts.Source, func(e backupEntry, _ *tar.Header, r io.Reader) error {
@@ -270,10 +344,8 @@ func restoreFromArchive(ctx context.Context, opts RestoreOpts) (RestoreResult, e
 				return err
 			}
 			blobMeta[e.rel] = meta
-		case entryConfig:
-			hasConfigs = true
-		case entryBlob:
-			hasBlobs = true
+		default:
+			has.add(e.kind)
 		}
 		return nil
 	})
@@ -283,7 +355,7 @@ func restoreFromArchive(ctx context.Context, opts RestoreOpts) (RestoreResult, e
 	if err := checkManifest(manifest); err != nil {
 		return RestoreResult{}, err
 	}
-	if err := preflight(opts, hasConfigs, hasBlobs); err != nil {
+	if err := preflight(opts, has); err != nil {
 		return RestoreResult{}, err
 	}
 
@@ -353,7 +425,7 @@ func restoreFromDir(ctx context.Context, opts RestoreOpts) (RestoreResult, error
 	}
 	var entries []dirEntry
 	var manifest map[string]any
-	var hasConfigs, hasBlobs bool
+	var has entrySet
 	blobMeta := map[string]storage.BlobMeta{}
 	err = fs.WalkDir(root.FS(), ".", func(name string, d fs.DirEntry, werr error) error {
 		if werr != nil || d.IsDir() {
@@ -390,11 +462,8 @@ func restoreFromDir(ctx context.Context, opts RestoreOpts) (RestoreResult, error
 			}
 			blobMeta[e.rel] = meta
 			return nil
-		case entryConfig:
-			hasConfigs = true
-		case entryBlob:
-			hasBlobs = true
 		}
+		has.add(e.kind)
 		entries = append(entries, dirEntry{backupEntry: e, name: name})
 		return nil
 	})
@@ -404,7 +473,7 @@ func restoreFromDir(ctx context.Context, opts RestoreOpts) (RestoreResult, error
 	if err := checkManifest(manifest); err != nil {
 		return RestoreResult{}, err
 	}
-	if err := preflight(opts, hasConfigs, hasBlobs); err != nil {
+	if err := preflight(opts, has); err != nil {
 		return RestoreResult{}, err
 	}
 
@@ -438,14 +507,4 @@ func restoreDirEntry(rs *restorer, root *os.Root, e backupEntry, name string) er
 		return fmt.Errorf("restore: stat %s: %w", name, err)
 	}
 	return rs.write(e, f, fi.Size(), fi.Mode())
-}
-
-func writeFile(path string, r io.Reader, mode os.FileMode) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = io.Copy(f, r)
-	return err
 }
