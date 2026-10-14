@@ -46,6 +46,16 @@ The listener ports can also live in `dpkms.yaml` or the environment. The flag wi
 
 A port set any of these ways is bound exactly; serve exits non-zero when it is busy. `0` takes an OS-assigned port. Only an unset port falls back from a busy default to a free one.
 
+The other serve settings follow the same order (flag, env var, file, default):
+
+| Setting | Flag | Env var | Config key | Default |
+|---|---|---|---|---|
+| Job workers | `--workers` | `DPKMS_WORKERS` | `server.workers` | 4 |
+| Dev-server CORS | `--dev` | | `server.dev` | false |
+| Reminder check interval | `--reminder-interval` | | `server.reminder_interval` | 1m |
+| External steps directory | `--steps-path` | | `steps.path` | `~/.config/contexthelp/steps` |
+| Default focus profile | `--profile` | `CTXT_PROFILE` | `profile.default` | the only profile, if one is defined |
+
 ### Inbound auth, roles and scopes
 
 A private instance (the default: loopback only, no `server.auth`) needs no token and grants every scope. A `protected` or `public` instance requires `server.auth`, and each token carries one or more roles:
