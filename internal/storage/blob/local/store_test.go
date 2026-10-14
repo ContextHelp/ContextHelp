@@ -155,7 +155,7 @@ func TestPutIdempotent(t *testing.T) {
 func TestKeySharding(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	key := "abcdef1234567890"
+	key := "abcdef1234567890" // gitleaks:allow blob key, not a secret
 
 	_ = s.Put(ctx, key, bytes.NewReader([]byte("x")), storage.BlobMeta{Size: 1})
 

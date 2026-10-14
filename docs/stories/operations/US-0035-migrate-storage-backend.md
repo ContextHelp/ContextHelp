@@ -57,7 +57,7 @@ storage:
 # Destination (future Postgres example)
 storage:
   type: postgres
-  path: postgres://user:pass@localhost:5432/dpkms
+  path: postgres://user:<password>@localhost:5432/dpkms
 ```
 
 ### Migration Steps (pseudocode)

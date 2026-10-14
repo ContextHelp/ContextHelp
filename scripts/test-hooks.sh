@@ -37,6 +37,7 @@ scenario() {
     repo="$SANDBOX/$((passed + failed))"
     git init -q "$repo"
     cp "$ROOT/.gitleaks.toml" "$repo/.gitleaks.toml"
+    mkdir -p "$(dirname "$repo/$file")"
     printf '%s\n' "$content" > "$repo/$file"
     git -C "$repo" add -- "$file"
     if (cd "$repo" && "$HOOK") > "$repo.out" 2>&1; then got=allow; else got=block; fi
@@ -72,6 +73,8 @@ scenario "OpenAI key" openai.txt "sk-proj-$(fill "$FILL" 40)" block
 scenario "Anthropic key" anthropic.yaml "key: sk-ant-api03-$(fill "$FILL" 89)" block
 # shellcheck disable=SC2016
 scenario "markdown docs" docs.md 'Use ${OPENAI_API_KEY} for configuration.' allow
+# A real key pasted into docs is still a leak: no path allowlist skips docs.
+scenario "key pasted into docs" docs/setup.md "Set \`token: ghp_$(fill "$FILL" 36)\`" block
 scenario "AWS access key" aws.yaml "aws_access_key_id: AKIA$(fill "$B32" 16)" block
 scenario "GitHub token" github.yaml "token: ghp_$(fill "$FILL" 36)" block
 # Covered by gitleaks' default rules only: proves [extend] useDefault holds.

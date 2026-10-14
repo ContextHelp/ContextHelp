@@ -36,10 +36,13 @@ is set; `.githooks/pre-commit` chains to `pre-commit hook-impl` instead.
 ### Install gitleaks (required for the scan)
 
 ```bash
-make install-gitleaks   # or: brew install gitleaks
+make install-gitleaks   # installs the mise.toml pin via mise
 ```
 
-Other platforms: <https://github.com/gitleaks/gitleaks#installing>.
+`mise.toml` pins the gitleaks version: rules and default allowlists change
+between releases. The hook and `make secret-scan-local` print a warning when
+the gitleaks on `PATH` is a different version. Without mise, install that
+release from <https://github.com/gitleaks/gitleaks/releases>.
 
 ---
 
@@ -54,6 +57,11 @@ Scan the whole working tree on demand:
 ```bash
 make secret-scan-local
 ```
+
+It scans what git would commit (tracked files plus untracked, non-ignored
+ones), so a local `.env` or build output is not reported. `make
+security-scan` scans the history instead; old commits there still hold
+findings that cannot be rewritten away.
 
 ### Bypass (use sparingly)
 
@@ -104,21 +112,27 @@ tags = ["api-key", "custom"]
 
 ### Allowlist false positives
 
+Prefer fixing the example over allowlisting it. In docs, write a value
+gitleaks recognizes as a placeholder: `<password>`, `<garage-key-id>`,
+`${ENV_VAR}`, `$CTXT_TOKEN` or `sk-proj-...`. For a deliberate key-shaped
+test vector, or a non-secret a rule mistakes for one, end the line with a
+`gitleaks:allow` comment.
+
 ```toml
 [[allowlists]]
-paths = [
-  '''config\.example\.yaml$''',
-  '''testdata/''',
-]
-
 regexes = [
   '''\$\{[A-Z_]+\}''',         # ${ENV_VAR} references
   '''your[_-]?key[_-]?here''', # placeholder text
 ]
 ```
 
-The current allowlist already covers `*.md`, `docs/`, `testdata/`, the
-`config.*.yaml` examples and `.env.example`.
+There is deliberately no path allowlist for `docs/`, `*.md` or `testdata/`:
+a path entry skips every rule for the whole file, so a real key pasted
+there would pass. Only the `config.*.yaml` examples, `.env.example` and a
+checksum file are path-allowlisted. To scope a regex to some paths, use
+`condition = "AND"` with `targetRules` (see the fixture-token entry):
+gitleaks 8.30 ignores `condition` for a global entry's paths in `gitleaks
+dir`, skipping matching files outright.
 
 Allowlist entries must not match real keys. Avoid length-only regexes (a
 regex like `^[a-zA-Z0-9+/=]{8,20}$` matches every AWS access key id) and
@@ -133,21 +147,24 @@ in any case, is skipped.
 ./scripts/test-hooks.sh
 ```
 
-This runs the installed `.githooks/pre-commit` against eight scenarios:
+This runs the installed `.githooks/pre-commit` against nine scenarios:
 
 1. allow: config with an `${ENV_VAR}` reference
 2. block: OpenAI key
 3. block: Anthropic key
 4. allow: markdown documentation
-5. block: AWS access key
-6. block: GitHub token
-7. block: GitLab token (caught by a gitleaks default rule only)
-8. allow: example config with a placeholder
+5. block: key pasted into a file under `docs/`
+6. block: AWS access key
+7. block: GitHub token
+8. block: GitLab token (caught by a gitleaks default rule only)
+9. allow: example config with a placeholder
 
 The fake keys are built at run time and avoid the placeholder shapes
 gitleaks skips by design, such as `abcdefghijklmnopqrstuvwxyz` runs or
 AWS's documented `AKIAIOSFODNN7EXAMPLE`. `go test ./scripts/` runs the
-script against the real gitleaks binary when it is installed.
+script against the real gitleaks binary when it is installed, scans the
+full tree (skipped with `-short`), and checks no allowlist entry hides a
+provider key planted in docs, markdown, Go tests or testdata.
 
 Each scenario is staged in a throwaway repo, so your index, working tree
 and `.env` are not touched. The script needs gitleaks installed and exits

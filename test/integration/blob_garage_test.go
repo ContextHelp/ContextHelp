@@ -270,7 +270,7 @@ db_engine = "sqlite"
 replication_factor = 1
 rpc_bind_addr = "[::]:3901"
 rpc_public_addr = "127.0.0.1:3901"
-rpc_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+rpc_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" # gitleaks:allow throwaway test node
 
 [s3_api]
 s3_region = "garage"

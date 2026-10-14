@@ -15,6 +15,11 @@ title = "ContextHelp Gitleaks Configuration"
 # keyword ("t3blbkfj") then gated this file's sk-proj- regex, so it never
 # matched, and this file's narrower regexes replaced the default
 # generic-api-key and private-key detectors.
+#
+# Groups are (?:...): with no secretGroup gitleaks takes the first capture
+# group as the secret, so a captured keyword was what --redact masked (the
+# value was printed) and what stopwords and allowlist regexes were tested
+# against.
 #############################################################################
 
 [[rules]]
@@ -50,7 +55,7 @@ tags = ["secret"]
 [[rules]]
 id = "ctxt-password-assignment"
 description = "Password in variable assignment"
-regex = '''(?i)(password|passwd|pwd)\s*[:=]\s*['"][^'"\s]{8,}['"]'''
+regex = '''(?i)(?:password|passwd|pwd)\s*[:=]\s*['"][^'"\s]{8,}['"]'''
 tags = ["password"]
 
 [[rules]]
@@ -86,7 +91,10 @@ tags = ["slack", "webhook"]
 [[rules]]
 id = "ctxt-postgres-connection-string"
 description = "PostgreSQL Connection String with Password"
-regex = '''postgres(?:ql)?://[^:]+:[^@]+@[^/]+/[^\s'"]+'''
+# Each part stops at whitespace, and the user part at '@' or '/': an
+# unbounded [^:]+ ran across newlines, so a password-less DSN matched
+# through to the next colon lines further down.
+regex = '''postgres(?:ql)?://[^:@/\s]+:[^@\s]+@[^/\s]+/[^\s'"]+'''
 tags = ["database", "postgres", "connection-string"]
 
 [[rules]]
@@ -110,7 +118,7 @@ tags = ["auth", "bearer-token"]
 [[rules]]
 id = "ctxt-env-var-assignment"
 description = "Environment Variable with Secret"
-regex = '''(?i)(api[_-]?key|secret|password|token)\s*=\s*[a-zA-Z0-9_\-]{20,}'''
+regex = '''(?i)(?:api[_-]?key|secret|password|token)\s*=\s*[a-zA-Z0-9_\-]{20,}'''
 tags = ["env-var"]
 
 #############################################################################
@@ -126,7 +134,7 @@ tags = ["ctxt", "api-key"]
 [[rules]]
 id = "ctxt-secret"
 description = "CTXT Secret or Token"
-regex = '''CTXT_(SECRET|TOKEN|PASSWORD|AUTH_TOKEN|SIGNING_KEY)\s*[:=]\s*['"]?[a-zA-Z0-9_\-\.]{16,}['"]?'''
+regex = '''CTXT_(?:SECRET|TOKEN|PASSWORD|AUTH_TOKEN|SIGNING_KEY)\s*[:=]\s*['"]?[a-zA-Z0-9_\-\.]{16,}['"]?'''
 tags = ["ctxt", "secret"]
 
 [[rules]]
@@ -149,16 +157,22 @@ tags = ["ctxt", "provider", "api-key"]
 [[allowlists]]
 description = "Allowlisted files and patterns"
 
-# Allow example files (they don't contain real secrets)
+# Allow example files (they don't contain real secrets).
+#
+# No docs/, \.md$ or testdata/ entries: a path allowlist skips every rule
+# for the whole file, so a real key pasted into a doc or a fixture went
+# through unseen. Docs write placeholders in shapes the regexes below (or
+# gitleaks' own placeholder checks) recognize; deliberate key-shaped test
+# vectors carry an inline gitleaks:allow.
 paths = [
   '''.env.example$''',
   '''config\.example\.yaml$''',
   '''config\.minimal\.yaml$''',
   '''config\.plugins\.yaml$''',
   '''config\.leann\.yaml$''',
-  '''testdata/''',
-  '''docs/''',
-  '''\.md$''',
+  # Checksum file shipped with the autosuggest plugin extraction; gitleaks'
+  # default allowlist covers go.sum by name, not this suffix.
+  '''(?:^|/)go\.sum\.extraction$''',
 ]
 
 # Allow specific patterns that are false positives
@@ -183,6 +197,11 @@ regexes = [
   # Allow CTXT_* env vars that reference other env vars or are empty/placeholder
   '''CTXT_[A-Z0-9_]+=\s*["']?\$\{?[A-Z_]+\}?["']?''',
   '''CTXT_[A-Z0-9_]+=\s*["']?(your|my|example|test|demo|changeme|<[^>]+>|)["']?$''',
+
+  # Postgres DSN whose password is an <angle-bracket> placeholder, e.g.
+  # postgres://ctxt:<password>@db.internal:5432/ctxt. Anchored to the
+  # password slot: a real password elsewhere in the DSN still matches.
+  '''^postgres(?:ql)?://[^:@/\s]+:<[a-z][a-z0-9_-]*>@''',
 ]
 
 # Commits to exclude from scanning (if any)
@@ -199,6 +218,27 @@ stopwords = [
   "placeholder",
   "changeme",
   "your",
+]
+
+# Fixture tokens in Go tests (tok-<name>-fixture-<hex>), scoped to test
+# files: condition AND needs both the path and the secret shape to match,
+# so the same string in production code or docs is still reported.
+#
+# targetRules is load-bearing, not just narrowing. gitleaks (8.30) checks a
+# GLOBAL allowlist's paths while walking a directory and skips any matching
+# file outright, ignoring condition = "AND": as a global entry this would
+# hide every key in every _test.go file from `gitleaks dir`. A targeted
+# allowlist is attached to the rule instead, where AND is honoured.
+[[allowlists]]
+description = "Go test fixture token shapes"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''_test\.go$''',
+  '''(?:^|/)testdata/''',
+]
+regexes = [
+  '''^tok-[a-z0-9]+-fixture-[0-9a-f]+$''',
 ]
 
 #############################################################################

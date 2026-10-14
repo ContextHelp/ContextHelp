@@ -1470,7 +1470,7 @@ var envBindings = []struct{ Key, Env string }{
 	{"storage.blob.s3.prefix", "CTXT_BLOB_S3_PREFIX"},
 	{"storage.blob.s3.use_path_style", "CTXT_BLOB_S3_USE_PATH_STYLE"},
 	{"storage.blob.s3.access_key", "CTXT_BLOB_S3_ACCESS_KEY"},
-	{"storage.blob.s3.secret_key", "CTXT_BLOB_S3_SECRET_KEY"},
+	{"storage.blob.s3.secret_key", "CTXT_BLOB_S3_SECRET_KEY"}, // gitleaks:allow env var name
 	{"server.port", "CH_SERVER_PORT"},
 	{"server.grpc_port", "CH_GRPC_PORT"},
 	{"server.cookie_bridge_port", "CH_COOKIE_BRIDGE_PORT"},

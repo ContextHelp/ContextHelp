@@ -11,6 +11,9 @@
 
 # `gitleaks git --staged` is the 8.x form; `protect` is the deprecated alias.
 if command -v gitleaks >/dev/null 2>&1; then
+	# Warns (never blocks) when gitleaks differs from the mise.toml pin.
+	check="$(git rev-parse --show-toplevel)/scripts/gitleaks-version-check.sh"
+	if [ -x "$check" ]; then "$check" || true; fi
 	gitleaks git --staged --config .gitleaks.toml --redact --verbose || exit 1
 else
 	echo "gitleaks not found; skipping secret scan." >&2

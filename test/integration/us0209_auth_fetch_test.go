@@ -152,7 +152,7 @@ func TestUS0209_APIKeyAuthSentToServer(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	const apiKey = "super-secret-key-abc"
+	const apiKey = "super-secret-key-abc" // gitleaks:allow test vector
 	const headerName = "X-Api-Key"
 
 	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {

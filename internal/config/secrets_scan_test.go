@@ -33,7 +33,7 @@ func TestScanSecretsFindsPlaintext(t *testing.T) {
 		{
 			name: "JWT token (eyJ prefix)",
 			mutate: func(c *Config) {
-				c.Storage.Blob.S3.AccessKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+				c.Storage.Blob.S3.AccessKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" // gitleaks:allow test vector
 			},
 			wantField:  "storage.blob.s3.access_key",
 			wantInHint: "eyJh",
@@ -41,7 +41,7 @@ func TestScanSecretsFindsPlaintext(t *testing.T) {
 		{
 			name: "GitHub PAT ghp_ prefix",
 			mutate: func(c *Config) {
-				c.Storage.Blob.S3.AccessKey = "ghp_16C7e42F292c6912E7710c838347Ae178B4a"
+				c.Storage.Blob.S3.AccessKey = "ghp_16C7e42F292c6912E7710c838347Ae178B4a" // gitleaks:allow test vector
 			},
 			wantField:  "storage.blob.s3.access_key",
 			wantInHint: "ghp_",

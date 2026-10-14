@@ -34,7 +34,7 @@ export OPENAI_API_KEY=$(aws secretsmanager get-secret-value \
   --output text)
 
 # BAD - Hardcoded
-export OPENAI_API_KEY="sk-proj-hardcoded-key"  # DON'T DO THIS
+export OPENAI_API_KEY="sk-proj-..."  # DON'T DO THIS: a literal key
 ```
 
 ### Database Credentials
@@ -55,7 +55,7 @@ export POSTGRES_PASSWORD=$(aws secretsmanager get-secret-value \
 export POSTGRES_PASSWORD=$(vault kv get -field=password secret/prod/postgres)
 
 # BAD - In config file
-POSTGRES_PASSWORD=my_database_password  # DON'T
+POSTGRES_PASSWORD=<database-password>  # DON'T: a literal password
 ```
 
 ### Registry Tokens
@@ -261,8 +261,8 @@ metadata:
   name: contexthelp-secrets
 type: Opaque
 data:
-  openai-api-key: c2stcHJvai1hYmMxMjM=  # base64 encoded
-  postgres-password: cGFzc3dvcmQxMjM=
+  openai-api-key: <base64-encoded-key>
+  postgres-password: <base64-encoded-password>
 
 ---
 # Use in Pod
@@ -390,7 +390,7 @@ psql -U admin -d contexthelp -c \
   "ALTER USER ctxt_prod WITH PASSWORD '$NEW_PASSWORD';"
 
 # 3. Update in secret manager
-vault kv put secret/prod/postgres password="$NEW_PASSWORD"
+vault kv put secret/prod/postgres password="${NEW_PASSWORD}"
 
 # 4. Restart services (if no connection pooling)
 # Services with connection pooling pick up automatically
@@ -533,7 +533,7 @@ grep "authentication failed" ~/.local/share/contexthelp/logs/*.log
 #!/bin/bash
 # Incident response for exposed OpenAI key
 
-COMPROMISED_KEY="sk-proj-abc123def456"
+COMPROMISED_KEY="sk-proj-..."
 INCIDENT_ID="INC-2025-001"
 
 log() {

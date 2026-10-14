@@ -97,7 +97,7 @@ other unknown key.
 server:
   token: s3cret-literal
 storage:
-  path: "postgresql://ctxt:password@db/contexthelp"
+  path: "postgresql://ctxt:<password>@db/contexthelp"
 
 ```
 
