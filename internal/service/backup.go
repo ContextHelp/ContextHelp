@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	blobfactory "github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -143,9 +144,10 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 	}
 
 	// 2. Optional blobs (local backend only; blob.New reads an empty
-	// backend as local). Each is archived as blobs/<key> and read
-	// through the store, so its on-disk layout never leaks into the
-	// archive; Restore writes it back through the target's store.
+	// backend as local). Each is archived as blobs/<key>, preceded by
+	// its BlobMeta as blobmeta/<key>.json, both read through the
+	// store, so its on-disk layout never leaks into the archive;
+	// Restore writes them back through the target's store.
 	if opts.IncludeBlobs && (opts.BlobCfg.Backend == "" || opts.BlobCfg.Backend == "local") {
 		bs, err := blobfactory.New(opts.BlobCfg)
 		if err != nil {
@@ -156,12 +158,16 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 			return abort(fmt.Errorf("backup: list blobs: %w", err))
 		}
 		for _, item := range items {
-			rc, _, err := bs.Get(ctx, item.Key)
+			rc, meta, err := bs.Get(ctx, item.Key)
 			if err != nil {
 				if opts.SkipBlobErrors {
 					continue
 				}
 				return abort(fmt.Errorf("backup: get blob %q: %w", item.Key, err))
+			}
+			if merr := addBlobMeta(tw, item, meta); merr != nil {
+				rc.Close()
+				return abort(merr)
 			}
 			hdr := &tar.Header{
 				Name:    fmt.Sprintf("ctxt-backup/blobs/%s", item.Key),
@@ -214,6 +220,27 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 
 	result.Duration = time.Since(start)
 	return result, nil
+}
+
+// addBlobMeta archives one blob's metadata as blobmeta/<key>.json.
+func addBlobMeta(tw *tar.Writer, item storage.BlobInfo, meta storage.BlobMeta) error {
+	data, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("backup: marshal blob metadata %q: %w", item.Key, err)
+	}
+	hdr := &tar.Header{
+		Name:    fmt.Sprintf("ctxt-backup/blobmeta/%s.json", item.Key),
+		Size:    int64(len(data)),
+		Mode:    0644,
+		ModTime: item.UpdatedAt,
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		return fmt.Errorf("backup: tar blob metadata header: %w", err)
+	}
+	if _, err := tw.Write(data); err != nil {
+		return fmt.Errorf("backup: tar blob metadata: %w", err)
+	}
+	return nil
 }
 
 func addFileToTar(tw *tar.Writer, srcPath, tarName string) error {

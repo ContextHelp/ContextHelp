@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	kitcli "hop.top/kit/go/console/cli"
@@ -61,12 +62,10 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		dbPath = "dpkms.db"
 	}
 
-	configPath := resolveConfigPath()
-
 	opts := service.RestoreOpts{
 		Source:      source,
 		DBPath:      dbPath,
-		ConfigDir:   configPath,
+		ConfigDir:   filepath.Dir(resolveConfigPath()),
 		SkipConfigs: skipConfigs,
 		DryRun:      dryRun,
 	}
