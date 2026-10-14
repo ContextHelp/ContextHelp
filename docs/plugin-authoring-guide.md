@@ -30,7 +30,8 @@ does **not** exist today:
   is registered, initialised, or called at runtime.
 - **No config.** The top-level `plugins:` config key is parsed into
   `[]PluginConfig{type, plugin, config}` (`internal/config/config.go`), but no
-  code reads it.
+  code reads it. `ctxt config validate` prints an `! ignored key` warning for
+  it and still exits 0.
 - **No out-of-process plugins**, no plugin directory under the config dir, no
   `ctxt plugin` / `dpkms plugin` command.
 

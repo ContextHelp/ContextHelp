@@ -12,7 +12,8 @@ is the reference.
   initialised or called. Plugins under `plugins/` run in their own unit tests and
   in integration tests that register them by hand.
 - **No configuration.** The top-level `plugins:` key is parsed into
-  `[]PluginConfig{type, plugin, config}` and read by no code. There is no
+  `[]PluginConfig{type, plugin, config}` and read by no code; `ctxt config
+  validate` warns (`! ignored key`) when a config file sets it. There is no
   `plugins.<name>` block.
 - **No plugin directory, commands or routes.** No `~/.contexthelp/plugins/`,
   no `ctxt plugin` / `dpkms plugin` command, no plugin-contributed CLI

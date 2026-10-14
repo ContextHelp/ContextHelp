@@ -51,3 +51,36 @@ func UnknownKeys(path string) ([]string, error) {
 	}
 	return unknown, nil
 }
+
+// ignoredKeys are top-level keys Config declares but no code reads, with
+// the reason `config validate` gives for each.
+var ignoredKeys = map[string]string{
+	"plugins": "plugins are not loaded at runtime yet; nothing reads this key",
+}
+
+// IgnoredKeys returns one message per top-level key in the config file at
+// path that Load parses but no code reads, such as "line 3: plugins:
+// plugins are not loaded at runtime yet; nothing reads this key". A key
+// set to null still counts: the file names it.
+func IgnoredKeys(path string) ([]string, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- a config layer the loader already read
+	if err != nil {
+		return nil, err
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", path, err)
+	}
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil, nil
+	}
+	top := doc.Content[0].Content
+	var out []string
+	for i := 0; i+1 < len(top); i += 2 {
+		k := top[i]
+		if reason, ok := ignoredKeys[k.Value]; ok {
+			out = append(out, fmt.Sprintf("line %d: %s: %s", k.Line, k.Value, reason))
+		}
+	}
+	return out, nil
+}

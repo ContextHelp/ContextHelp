@@ -208,7 +208,7 @@ registry/<name>` (value on stdin); see
 | `profile` | Focus profiles: `default`, `profiles.<name>` |
 | `registries` | List of registries: `name`, `url`, `auth`, `sync_mode`, `trust_level`, `entitlement_url` |
 | `registries_global` | `require_signatures` |
-| `plugins` | List of plugins: `type`, `plugin`, `config`. Not read: no binary loads plugins |
+| `plugins` | List of plugins: `type`, `plugin`, `config`. Not read: no binary loads plugins. `ctxt config validate` warns when a file sets it |
 | `providers` | Backend per provider: `video`, `document`, `ocr`, `transcription`, `vision`, `diarization`, `llm`, `embedding` |
 | `pipelines` | `overrides.<pipeline>`: `providers`, `skip_steps`, `extra_steps` |
 | `retrieval` | Progressive retrieval: `method`, tier `top_k`s. Not read |

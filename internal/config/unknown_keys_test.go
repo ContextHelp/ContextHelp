@@ -42,6 +42,37 @@ func TestUnknownKeysClean(t *testing.T) {
 	}
 }
 
+// plugins: is declared but nothing loads plugins; IgnoredKeys names it
+// with its line so `config validate` can warn, even when set to null.
+func TestIgnoredKeys(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"list.yaml": "storage:\n  type: sqlite\nplugins:\n  - type: enrichment\n    plugin: x\n",
+		"null.yaml": "storage:\n  type: sqlite\nplugins:\n",
+	} {
+		got, err := IgnoredKeys(layerFile(t, dir, name, body))
+		require.NoError(t, err, name)
+		require.Len(t, got, 1, name)
+		assert.Contains(t, got[0], "line 3", name)
+		assert.Contains(t, got[0], "plugins", name)
+		assert.Contains(t, got[0], "not loaded", name)
+	}
+}
+
+func TestIgnoredKeysClean(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"known.yaml":  "storage:\n  type: sqlite\nserver:\n  port: 8080\n",
+		"nested.yaml": "profile:\n  plugins: 1\n",
+		"empty.yaml":  "",
+		"blank.yaml":  "# only a comment\n",
+	} {
+		got, err := IgnoredKeys(layerFile(t, dir, name, body))
+		require.NoError(t, err, name)
+		assert.Empty(t, got, name)
+	}
+}
+
 // LayerFiles lists the files LoadWithOverrides merges, lowest precedence
 // first: CTXT_CONFIG short-circuits the cascade, -c paths follow, and a
 // slot whose file does not exist is left out.
