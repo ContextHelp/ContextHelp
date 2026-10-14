@@ -15,6 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // newConcurrentTestDriver creates a SQLite driver with busy_timeout set in the
@@ -24,7 +25,7 @@ func newConcurrentTestDriver(t *testing.T) storage.StorageDriver {
 	t.Helper()
 	dir := t.TempDir()
 	dsn := filepath.Join(dir, "test.db") + "?_pragma=busy_timeout(5000)"
-	driver, err := sqlite.New(dsn)
+	driver, err := sqlite.New(dsn, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	require.NoError(t, driver.Init(context.Background()))
 	t.Cleanup(func() { driver.Close(context.Background()) })

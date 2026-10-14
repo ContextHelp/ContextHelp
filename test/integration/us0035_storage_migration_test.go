@@ -31,7 +31,7 @@ func TestUS0035_ObjectCountIdenticalAfterMigration(t *testing.T) {
 	snapPath := filepath.Join(dstDir, "snap.db")
 
 	// Populate source driver.
-	srcDriver, err := sqlite.New(srcPath)
+	srcDriver, err := sqlite.New(srcPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	require.NoError(t, srcDriver.Init(context.Background()))
 	defer srcDriver.Close(context.Background()) //nolint:errcheck
@@ -55,13 +55,13 @@ func TestUS0035_ObjectCountIdenticalAfterMigration(t *testing.T) {
 	require.NoError(t, storageutil.SQLiteSnapshot(srcPath, snapPath))
 
 	// Open destination driver using the snapshot as the source DB.
-	dstDriver, err := sqlite.New(dstPath)
+	dstDriver, err := sqlite.New(dstPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	require.NoError(t, dstDriver.Init(context.Background()))
 	defer dstDriver.Close(context.Background()) //nolint:errcheck
 
 	// Open a fresh driver on the snapshot to verify counts.
-	snapDriver, err := sqlite.New(snapPath)
+	snapDriver, err := sqlite.New(snapPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	defer snapDriver.Close(context.Background()) //nolint:errcheck
 
@@ -84,7 +84,7 @@ func TestUS0035_ObjectContentIdenticalAfterMigration(t *testing.T) {
 	srcPath := filepath.Join(srcDir, "src.db")
 	snapPath := filepath.Join(snapDir, "snap.db")
 
-	srcDriver, err := sqlite.New(srcPath)
+	srcDriver, err := sqlite.New(srcPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	require.NoError(t, srcDriver.Init(context.Background()))
 	defer srcDriver.Close(context.Background()) //nolint:errcheck
@@ -107,7 +107,7 @@ func TestUS0035_ObjectContentIdenticalAfterMigration(t *testing.T) {
 
 	require.NoError(t, storageutil.SQLiteSnapshot(srcPath, snapPath))
 
-	snapDriver, err := sqlite.New(snapPath)
+	snapDriver, err := sqlite.New(snapPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	defer snapDriver.Close(context.Background()) //nolint:errcheck
 
@@ -128,7 +128,7 @@ func TestUS0035_EdgeCountIdenticalAfterMigration(t *testing.T) {
 	srcPath := filepath.Join(srcDir, "src.db")
 	snapPath := filepath.Join(snapDir, "snap.db")
 
-	srcDriver, err := sqlite.New(srcPath)
+	srcDriver, err := sqlite.New(srcPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	require.NoError(t, srcDriver.Init(context.Background()))
 	defer srcDriver.Close(context.Background()) //nolint:errcheck
@@ -156,7 +156,7 @@ func TestUS0035_EdgeCountIdenticalAfterMigration(t *testing.T) {
 
 	require.NoError(t, storageutil.SQLiteSnapshot(srcPath, snapPath))
 
-	snapDriver, err := sqlite.New(snapPath)
+	snapDriver, err := sqlite.New(snapPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	defer snapDriver.Close(context.Background()) //nolint:errcheck
 
@@ -183,7 +183,7 @@ func TestUS0035_MigrationWithSecondSQLiteDestination(t *testing.T) {
 	dstPath := filepath.Join(dstDir, "dst.db")
 
 	// Populate source.
-	srcDriver, err := sqlite.New(srcPath)
+	srcDriver, err := sqlite.New(srcPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	require.NoError(t, srcDriver.Init(context.Background()))
 	defer srcDriver.Close(context.Background()) //nolint:errcheck
@@ -194,7 +194,7 @@ func TestUS0035_MigrationWithSecondSQLiteDestination(t *testing.T) {
 	objects := storageutil.SeedObjects(t, srcDriver, 7)
 
 	// Migrate: open destination, enumerate source, insert into destination.
-	dstDriver, err := sqlite.New(dstPath)
+	dstDriver, err := sqlite.New(dstPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	require.NoError(t, dstDriver.Init(context.Background()))
 	defer dstDriver.Close(context.Background()) //nolint:errcheck

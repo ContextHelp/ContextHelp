@@ -70,7 +70,7 @@ func TestFederation_ConcurrentPush_Idempotent(t *testing.T) {
 		for _, o := range objs {
 			batch = append(batch, *o)
 		}
-		pusher := federation.NewLocalPusher(fedName, tgtPath)
+		pusher := federation.NewLocalPusher(fedName, tgtPath, storageutil.NewTestBlobStore(t))
 		return pusher.Push(ctx, batch, nil, nil)
 	}
 
@@ -127,7 +127,7 @@ func TestFederation_ConcurrentPush_Idempotent(t *testing.T) {
 // registered via t.Cleanup so the caller doesn't manage the driver.
 func openWatermarkReader(t *testing.T, tgtPath string) func(name string) time.Time {
 	t.Helper()
-	drv, err := storageutil.NewDriver("sqlite", tgtPath)
+	drv, err := storageutil.NewDriver("sqlite", tgtPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("open target for watermark check: %v", err)
 	}

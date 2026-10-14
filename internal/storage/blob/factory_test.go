@@ -20,13 +20,20 @@ func TestFactoryLocal(t *testing.T) {
 	var _ storage.BlobStore = store
 }
 
-func TestFactoryStub(t *testing.T) {
+// The no-op stub that kept nothing is gone: "stub" is an unknown backend.
+func TestFactoryStubIsUnknown(t *testing.T) {
 	cfg := config.BlobConfig{Backend: "stub"}
-	store, err := New(cfg)
-	if err != nil {
-		t.Fatalf("new stub: %v", err)
+	if _, err := New(cfg); err == nil {
+		t.Fatal("expected error for backend \"stub\"")
 	}
-	var _ storage.BlobStore = store
+}
+
+func TestFactoryLocalRequiresPath(t *testing.T) {
+	for _, backend := range []string{"", "local"} {
+		if _, err := New(config.BlobConfig{Backend: backend}); err == nil {
+			t.Errorf("backend %q with empty local.path: expected error", backend)
+		}
+	}
 }
 
 func TestFactoryUnknown(t *testing.T) {

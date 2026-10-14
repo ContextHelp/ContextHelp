@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // TestPostgres_Migrate_ConcurrentInitializersSerialize pins the advisory
@@ -22,7 +23,7 @@ func TestPostgres_Migrate_ConcurrentInitializersSerialize(t *testing.T) {
 	const n = 6
 	drivers := make([]*pgdrv.Driver, n)
 	for i := range drivers {
-		drv, err := pgdrv.New(dsn)
+		drv, err := pgdrv.New(dsn, storageutil.NewTestBlobStore(t))
 		if err != nil {
 			t.Fatalf("postgres.New(%d): %v", i, err)
 		}

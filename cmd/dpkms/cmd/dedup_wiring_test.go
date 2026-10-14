@@ -17,7 +17,11 @@ func TestNewServiceWiresDuplicatesConfig(t *testing.T) {
 	t.Cleanup(func() { cfg = prev })
 	dup := config.DuplicatesConfig{Policy: "keep", SimilarityThreshold: 0.9, CheckExact: true, CheckSimilar: true}
 	cfg = &config.Config{
-		Storage:    config.StorageConfig{Type: "sqlite", Path: filepath.Join(filepath.Dir(db.ConfigPath), "test.db")},
+		Storage: config.StorageConfig{
+			Type: "sqlite",
+			Path: filepath.Join(filepath.Dir(db.ConfigPath), "test.db"),
+			Blob: config.BlobConfig{Backend: "local", Local: config.BlobLocalConfig{Path: t.TempDir()}},
+		},
 		Duplicates: dup,
 	}
 

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -10,7 +11,6 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	blobstub "github.com/ideacrafterslabs/ctxt/internal/storage/blob/stub"
 )
 
 type Driver struct {
@@ -42,7 +42,18 @@ type Driver struct {
 	searchHistory *SearchHistoryStore
 }
 
-func New(connStr string) (*Driver, error) {
+// ErrNoBlobStore is returned by New when it is given no blob store.
+// Content above storage.blob.threshold is written to that store, so a
+// driver without one would lose it.
+var ErrNoBlobStore = errors.New("postgres: blob store is required")
+
+// New creates a Postgres driver for connStr. blobs is where externalized
+// content lives: build it with blob.New from storage.blob, or open both
+// through storageutil.Open.
+func New(connStr string, blobs storage.BlobStore) (*Driver, error) {
+	if blobs == nil {
+		return nil, ErrNoBlobStore
+	}
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
@@ -65,7 +76,7 @@ func New(connStr string) (*Driver, error) {
 	d.feedItems = &FeedItemStore{db: db}
 	d.batches = &BatchStore{db: db}
 	d.detectors = &DetectorStore{db: db}
-	d.blobs = blobstub.New()
+	d.blobs = blobs
 	d.proximity = &ProximityStore{db: db}
 	d.watches = &WatchStore{db: db}
 	d.aliases = &AliasStore{db: db}
@@ -115,9 +126,6 @@ func (d *Driver) SavedSearches() storage.SavedSearchStore    { return d.savedSea
 func (d *Driver) SearchHistory() storage.SearchHistoryStore  { return d.searchHistory }
 func (d *Driver) Watermarks() storage.WatermarkStore         { return &watermarkStore{db: d.db} }
 func (d *Driver) UISessions() storage.UISessionStore         { return &uiSessionStore{db: d.db} }
-
-// SetBlobs allows injection of a custom BlobStore implementation.
-func (d *Driver) SetBlobs(bs storage.BlobStore) { d.blobs = bs }
 
 // SQLDialect implements search.dialectDetector; signals Postgres SQL dialect.
 func (d *Driver) SQLDialect() string { return "postgres" }

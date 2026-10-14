@@ -7,11 +7,12 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 func newTestDriver(t *testing.T) *sqlite.Driver {
 	t.Helper()
-	drv, err := sqlite.New(":memory:")
+	drv, err := sqlite.New(":memory:", storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("new driver: %v", err)
 	}

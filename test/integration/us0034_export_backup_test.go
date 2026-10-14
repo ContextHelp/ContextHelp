@@ -21,6 +21,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -250,7 +251,7 @@ func TestUS0034_BackupWithEdgesIncluded(t *testing.T) {
 // The caller is responsible for closing it.
 func newSQLiteDriver(t *testing.T, path string) (*sqlite.Driver, error) {
 	t.Helper()
-	driver, err := sqlite.New(path)
+	driver, err := sqlite.New(path, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		return nil, err
 	}

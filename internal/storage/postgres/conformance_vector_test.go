@@ -8,6 +8,7 @@ import (
 
 	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/storagetest"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // TestPostgres_Conformance_VectorRankFixture runs the cross-driver golden
@@ -15,7 +16,7 @@ import (
 // skips until the driver's EmbeddingStore is implemented.
 func TestPostgres_Conformance_VectorRankFixture(t *testing.T) {
 	dsn, _ := freshDatabaseDSN(t)
-	drv, err := pgdrv.New(dsn)
+	drv, err := pgdrv.New(dsn, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("postgres.New: %v", err)
 	}

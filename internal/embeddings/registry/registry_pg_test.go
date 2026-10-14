@@ -19,6 +19,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // pgIntegrationDSN mirrors the postgres package's env contract:
@@ -71,7 +72,7 @@ func newPgRegistry(t *testing.T) (*registry.Store, *postgres.Driver) {
 	require.NoError(t, err)
 	u.Path = "/" + name
 
-	drv, err := postgres.New(u.String())
+	drv, err := postgres.New(u.String(), storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
 	t.Cleanup(func() { drv.Close(context.Background()) })
 	require.NoError(t, drv.Migrate(context.Background()))

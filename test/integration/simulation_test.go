@@ -34,6 +34,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -78,7 +79,7 @@ const simModelID = "sim-1536"
 func newSimDriver(t testing.TB) *sqlite.Driver {
 	t.Helper()
 	dir := t.TempDir()
-	d, err := sqlite.New(filepath.Join(dir, "sim.db"))
+	d, err := sqlite.New(filepath.Join(dir, "sim.db"), storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("new sim driver: %v", err)
 	}

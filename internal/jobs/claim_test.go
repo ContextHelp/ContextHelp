@@ -14,6 +14,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // Two dpkms processes on one database are two worker pools, each with its
@@ -26,7 +27,7 @@ func sharedSQLite(t *testing.T) (a, b storage.StorageDriver) {
 	t.Helper()
 	dsn := filepath.Join(t.TempDir(), "shared.db") + "?_pragma=busy_timeout(5000)"
 	open := func() storage.StorageDriver {
-		d, err := sqlite.New(dsn)
+		d, err := sqlite.New(dsn, storageutil.NewTestBlobStore(t))
 		require.NoError(t, err)
 		require.NoError(t, d.Init(context.Background()))
 		t.Cleanup(func() { d.Close(context.Background()) })

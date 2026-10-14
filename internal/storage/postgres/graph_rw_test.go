@@ -12,6 +12,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
@@ -73,7 +74,7 @@ func newIntegrationDriver(t *testing.T) *pgdrv.Driver {
 	if dsn == "" {
 		t.Skip("POSTGRES_DSN (or POSTGRES_HOST + POSTGRES_USER) not set; skipping Postgres integration test")
 	}
-	drv, err := pgdrv.New(dsn)
+	drv, err := pgdrv.New(dsn, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("postgres.New: %v", err)
 	}

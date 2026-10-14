@@ -60,7 +60,7 @@ func newService() (*service.Service, func(), error) {
 		return nil, nil, fmt.Errorf("storage path not configured")
 	}
 
-	driver, err := storageutil.NewDriver(storageType, storagePath)
+	driver, err := storageutil.Open(storageType, storagePath, cfg.Storage.Blob)
 	if err != nil {
 		return nil, nil, fmt.Errorf("init storage: %w", err)
 	}

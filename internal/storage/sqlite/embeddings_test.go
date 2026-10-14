@@ -386,7 +386,7 @@ func TestEmbeddingStore_SearchKCeiling(t *testing.T) {
 func TestEmbeddingIndex_BuiltOnOpen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "open.db")
 	ctx := context.Background()
-	d1, err := New(path)
+	d1, err := New(path, testBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +401,7 @@ func TestEmbeddingIndex_BuiltOnOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d2, err := New(path)
+	d2, err := New(path, testBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}

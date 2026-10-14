@@ -154,7 +154,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		storagePath = "dpkms.db"
 	}
 
-	driver, err := storageutil.NewDriver(storageType, storagePath)
+	driver, err := storageutil.Open(storageType, storagePath, cfg.Storage.Blob)
 	if err != nil {
 		return fmt.Errorf("init storage: %w", err)
 	}

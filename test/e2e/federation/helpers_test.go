@@ -57,7 +57,7 @@ func setupTwoInstances(t *testing.T) instances {
 
 func mustOpenInstance(t *testing.T, name, path string) *instance {
 	t.Helper()
-	drv, err := storageutil.NewDriver("sqlite", path)
+	drv, err := storageutil.NewDriver("sqlite", path, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("setupTwoInstances: open %s: %v", name, err)
 	}
@@ -131,7 +131,7 @@ func pushOnce(t *testing.T, ix instances) error {
 	}
 	// Resolve entities referenced by mention edges (ADR-049).
 	entities := collectEntitiesForEdges(ctx, ix.src.drv, allEdges)
-	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path)
+	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path, storageutil.NewTestBlobStore(t))
 	return pusher.Push(ctx, materialized, allEdges, entities)
 }
 

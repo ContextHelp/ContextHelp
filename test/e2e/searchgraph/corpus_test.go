@@ -16,6 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
@@ -134,6 +135,15 @@ func seedCorpus(dir string) (*corpus, error) {
 	return c, nil
 }
 
+// corpusBlobs is the corpus's blob store, beside its database.
+func corpusBlobs(c *corpus) storage.BlobStore {
+	bs, err := local.New(filepath.Join(filepath.Dir(c.db), "blobs"))
+	if err != nil {
+		panic(err)
+	}
+	return bs
+}
+
 // storeObjects stores each fixture object through the service's raw
 // analyze path as `ctxt analyze --raw` stored it (source "argument"),
 // with its --mention value split as the CLI splits it, then each fixture
@@ -143,7 +153,7 @@ func storeObjects(c *corpus) error {
 	if err := os.MkdirAll(filepath.Dir(c.db), 0o700); err != nil {
 		return err
 	}
-	d, err := storageutil.NewDriver("sqlite", c.db)
+	d, err := storageutil.NewDriver("sqlite", c.db, corpusBlobs(c))
 	if err != nil {
 		return err
 	}
@@ -174,7 +184,7 @@ func storeObjects(c *corpus) error {
 // and writes each fixture embedding as its object's single chunk.
 func storeEmbeddings(c *corpus) error {
 	ctx := context.Background()
-	d, err := storageutil.NewDriver("sqlite", c.db)
+	d, err := storageutil.NewDriver("sqlite", c.db, corpusBlobs(c))
 	if err != nil {
 		return err
 	}

@@ -34,7 +34,7 @@ import (
 func newCycleSrc(t *testing.T) (drv storage.StorageDriver, path string) {
 	t.Helper()
 	path = filepath.Join(t.TempDir(), "self.db")
-	d, err := storageutil.NewDriver("sqlite", path)
+	d, err := storageutil.NewDriver("sqlite", path, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("newCycleSrc: open: %v", err)
 	}
