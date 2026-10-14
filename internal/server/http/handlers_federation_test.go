@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -270,7 +271,7 @@ func TestFederationPush_MandatoryCredentialGatesPerToken(t *testing.T) {
 }
 
 // An object larger than the pusher's request cap goes out alone, and
-// the receiver takes it: FederationPush reads a body of any size.
+// the receiver takes it: its default body limit is well above the cap.
 func TestFederationPush_AcceptsObjectOverRequestCap(t *testing.T) {
 	ts := newFedTestBundle(t, "")
 	defer ts.Close()
@@ -302,5 +303,91 @@ func TestFederationPush_AcceptsObjectOverRequestCap(t *testing.T) {
 	}
 	if got, err := ts.svc.Store.Objects().Get(context.Background(), "o-big"); err != nil || got == nil {
 		t.Errorf("o-big not stored at the receiver: %v", err)
+	}
+}
+
+// newFedLimitBundle is newFedTestBundle with federation.max_request_bytes
+// set to limit.
+func newFedLimitBundle(t *testing.T, limit int64) *testServerBundle {
+	t.Helper()
+	driver := storageutil.NewTestDriver(t)
+	cfg := config.Config{Federation: config.FederationConfig{MaxRequestBytes: limit}}
+	svc := service.New(driver, jobs.NewQueue(driver.Jobs()), builtins.Registry(), search.NewEngine(driver), "", nil, cfg)
+	return &testServerBundle{Server: httptest.NewServer(NewRouter(svc, false, nil)), svc: svc}
+}
+
+// A push body over federation.max_request_bytes is refused with 413
+// PAYLOAD_TOO_LARGE naming the limit, and nothing in it is stored; one
+// within it goes through.
+func TestFederationPush_RefusesBodyOverLimit(t *testing.T) {
+	const limit = 64 << 10
+	ts := newFedLimitBundle(t, limit)
+	defer ts.Close()
+
+	big := makeKO("o-over", "h-over")
+	big.RawContent = strings.Repeat("x", 4*limit)
+	resp, err := http.Post(ts.URL+"/api/v1/federation/push", "application/json",
+		makePushBody(t, []storage.KnowledgeObject{big}, nil))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status: got %d, want 413", resp.StatusCode)
+	}
+	var env ErrorEnvelope
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error.Code != "PAYLOAD_TOO_LARGE" || !strings.Contains(env.Error.Message, "federation.max_request_bytes") ||
+		!strings.Contains(env.Error.Message, "65536") {
+		t.Errorf("error = %+v, want PAYLOAD_TOO_LARGE naming federation.max_request_bytes and 65536", env.Error)
+	}
+	if got, _ := ts.svc.Store.Objects().Get(context.Background(), "o-over"); got != nil {
+		t.Error("o-over stored from a refused body")
+	}
+
+	ok, err := http.Post(ts.URL+"/api/v1/federation/push", "application/json",
+		makePushBody(t, []storage.KnowledgeObject{makeKO("o-under", "h-under")}, nil))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	ok.Body.Close()
+	if ok.StatusCode != http.StatusOK {
+		t.Errorf("body within the limit: status %d, want 200", ok.StatusCode)
+	}
+}
+
+// The pusher sees the receiver's 413 for an object over its limit sent
+// alone — not a broken connection it would retry as a target failure —
+// so the object fails on its own and the rest of the batch lands.
+func TestFederationPush_PusherSeesLimitAsObjectFailure(t *testing.T) {
+	const limit = 64 << 10
+	ts := newFedLimitBundle(t, limit)
+	defer ts.Close()
+
+	big := makeKO("o-big", "h-big")
+	big.RawContent = strings.Repeat("x", 8<<20)
+	src := storageutil.NewTestDriver(t)
+	p := federation.NewRemotePusherWithWatermarks("limited", ts.URL, "", src.Watermarks(), src.Blobs())
+	err := p.Push(context.Background(), []storage.KnowledgeObject{makeKO("o-first", "h-first"), big}, nil, nil)
+	var oe *federation.ObjectError
+	if !errors.As(err, &oe) || oe.ID != "o-big" || !strings.Contains(err.Error(), "413") {
+		t.Fatalf("Push err = %v, want an ObjectError for o-big naming HTTP 413", err)
+	}
+	if got, _ := ts.svc.Store.Objects().Get(context.Background(), "o-first"); got == nil {
+		t.Error("o-first, in the request before o-big, not stored")
+	}
+}
+
+// Unset, the limit is the default, which takes any batch a pusher
+// builds.
+func TestFederationPush_DefaultLimitCoversPusherBatches(t *testing.T) {
+	if got := (config.FederationConfig{}).RequestLimit(); got != config.DefaultFederationMaxRequestBytes {
+		t.Errorf("RequestLimit() unset = %d, want %d", got, config.DefaultFederationMaxRequestBytes)
+	}
+	if config.DefaultFederationMaxRequestBytes <= int64(federation.DefaultMaxRequestBytes) {
+		t.Errorf("default limit %d does not exceed the pusher's request cap %d",
+			config.DefaultFederationMaxRequestBytes, federation.DefaultMaxRequestBytes)
 	}
 }

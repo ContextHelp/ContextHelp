@@ -57,6 +57,11 @@ func Validate(c *Config) []ValidationError {
 	errs = append(errs, validateQuotas(c)...)
 	errs = append(errs, validateDuplicates(c.Duplicates)...)
 	errs = append(errs, validateFederations(c.Federations)...)
+	if n := c.Federation.MaxRequestBytes; n != 0 && n < MinFederationMaxRequestBytes {
+		errs = append(errs, ValidationError{Field: "federation.max_request_bytes", Message: fmt.Sprintf(
+			"must be ≥%d (the objects a pusher sends per request) or 0 for the default; got %d",
+			MinFederationMaxRequestBytes, n)})
+	}
 	errs = append(errs, validateEnvRefs(c)...)
 	if err := c.Embeddings.Validate(); err != nil {
 		var ve ValidationError
