@@ -242,20 +242,13 @@ POSTGRES_USER=ctxt POSTGRES_PASSWORD=ctxt POSTGRES_DB=ctxt \
 go test -tags=integration,fts5 ./test/integration/...
 ```
 
-Note that CI runs a **wider** set than `make test-integration` does. The
-Postgres driver and embeddings-registry conformance suites live next to their
-code, carry the same `integration` tag, and read the same `POSTGRES_*` block,
-so CI lists them explicitly:
-
-```bash
-go test -tags=integration,fts5 \
-  ./test/integration/... \
-  ./internal/storage/postgres/... \
-  ./internal/embeddings/registry/...
-```
-
-Run that form before pushing if you touched either area — `make
-test-integration` alone will not cover them.
+That is only the first tree CI covers. The Postgres driver, storage factory
+and embeddings-registry suites live next to their code, carry the same
+`integration` tag and read the same `POSTGRES_*` block, and the job-queue,
+HTTP handler, embeddings journey and search-graph Postgres tests run by name.
+`make test-integration-services` runs exactly the commands of CI's
+integration job; export the `POSTGRES_*` block above and run it before
+pushing if you touched storage, jobs, the HTTP server or embeddings.
 
 Tear down with `docker compose -f docker-compose.dev.yml down`.
 

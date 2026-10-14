@@ -28,10 +28,12 @@ make test                        # unit tests
 make test-integration-services   # integration suites, needs the services
 ```
 
-`make test-integration-services` covers all three build-tagged trees — the
-suites under `test/integration/` plus the Postgres driver and embeddings
-registry suites that live next to the code they cover. `make
-test-integration` runs only the first of those and needs no services.
+`make test-integration-services` runs the commands of CI's integration job:
+the suites under `test/integration/`, the Postgres driver, storage factory
+and embeddings registry suites that live next to the code they cover, and
+the named Postgres tests for the job queue, HTTP handlers, embeddings journey
+and search-graph endpoint. `make test-integration` runs only the
+`test/integration/` tree without the `integration` tag and needs no services.
 
 ## Notes
 

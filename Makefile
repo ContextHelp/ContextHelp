@@ -79,23 +79,27 @@ test-integration:
 
 ## test-integration-services: Run integration tests needing Postgres
 #
-# The build-tagged integration suites are split across three trees: the ones
-# under test/integration/ plus the Postgres driver and embeddings registry
-# conformance suites, which live next to the code they cover. All three read
-# the same POSTGRES_* env block, so all three must be listed or the Postgres
-# coverage never runs. The embeddings journey's Postgres variant lives in
-# cmd/ctxt/cmd and the task-job claim tests in internal/jobs; both run by
-# name, as does the search-graph endpoint's Postgres e2e run (e2e tag too).
-# Mirrors the integration job in
-# .github/workflows/ci.yml; the devcontainer supplies the env block.
+# Runs the commands of the integration job in .github/workflows/ci.yml, in
+# its order; keep the two in step. The build-tagged suites under
+# test/integration/ plus the Postgres driver, storage factory and embeddings
+# registry suites, which live next to the code they cover, all read the
+# same POSTGRES_* env block, so each tree must be listed or its Postgres
+# coverage never runs. The rest run by name next to the code they drive:
+# task-job claim and re-projection (internal/jobs), HTTP handlers on a
+# Postgres store (internal/server/http), the embeddings journey
+# (cmd/ctxt/cmd) and the search-graph endpoint's Postgres e2e run (e2e tag
+# too). The devcontainer supplies the env block.
 test-integration-services:
 	@echo "Running integration tests (requires Postgres)..."
 	go test -v -tags=integration,fts5 -count=1 \
 		./test/integration/... \
 		./internal/storage/postgres/... \
+		./internal/storageutil/... \
 		./internal/embeddings/registry/...
 	go test -v -tags=integration,fts5 -count=1 \
-		-run 'TestClaim_.*_Postgres' ./internal/jobs/
+		-run 'Test(Claim|Reproject)_.*_Postgres' ./internal/jobs/
+	go test -v -tags=integration,fts5 -count=1 \
+		-run '_Postgres$$' ./internal/server/http/
 	go test -v -tags=integration,fts5 -count=1 \
 		-run TestEmbeddingsJourney_Postgres ./cmd/ctxt/cmd/
 	CGO_ENABLED=1 go test -v -tags 'fts5 e2e integration' -count=1 \
