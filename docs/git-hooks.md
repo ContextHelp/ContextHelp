@@ -68,9 +68,9 @@ no per-check skip variables.
 
 ## Detected Secret Types
 
-Rules live in `.gitleaks.toml` (custom rules, with
-`[extend] useDefault = true` for the gitleaks defaults). The custom rules
-cover:
+Rules live in `.gitleaks.toml`: the gitleaks default rules
+(`[extend] useDefault = true`) plus the custom `ctxt-*` rules below. The
+custom rules cover:
 
 - **AI providers**: OpenAI (`sk-proj-...`, legacy `sk-...`), Anthropic (`sk-ant-...`)
 - **Generic**: `api_key = "..."`, `secret = "..."`, password assignments, env-var assignments
@@ -88,11 +88,15 @@ cover:
 
 ### Add a rule
 
-Add rules to `.gitleaks.toml`, not to the hook:
+Add rules to `.gitleaks.toml`, not to the hook. Give the id the `ctxt-`
+prefix: a rule with the same id as a gitleaks default rule does not add a
+rule, it overrides the default one and keeps its keywords and allowlists,
+which can stop your regex from ever matching. `scripts/` tests fail on an
+unprefixed id.
 
 ```toml
 [[rules]]
-id = "custom-api-key"
+id = "ctxt-custom-api-key"
 description = "My Custom API Key Format"
 regex = '''myapi-[a-zA-Z0-9]{32}'''
 tags = ["api-key", "custom"]
@@ -101,7 +105,7 @@ tags = ["api-key", "custom"]
 ### Allowlist false positives
 
 ```toml
-[allowlist]
+[[allowlists]]
 paths = [
   '''config\.example\.yaml$''',
   '''testdata/''',
@@ -116,6 +120,11 @@ regexes = [
 The current allowlist already covers `*.md`, `docs/`, `testdata/`, the
 `config.*.yaml` examples and `.env.example`.
 
+Allowlist entries must not match real keys. Avoid length-only regexes (a
+regex like `^[a-zA-Z0-9+/=]{8,20}$` matches every AWS access key id) and
+short stopwords: a finding whose secret contains a stopword anywhere,
+in any case, is skipped.
+
 ---
 
 ## Testing
@@ -124,7 +133,7 @@ The current allowlist already covers `*.md`, `docs/`, `testdata/`, the
 ./scripts/test-hooks.sh
 ```
 
-This runs the installed `.githooks/pre-commit` against seven scenarios:
+This runs the installed `.githooks/pre-commit` against eight scenarios:
 
 1. allow: config with an `${ENV_VAR}` reference
 2. block: OpenAI key
@@ -132,7 +141,13 @@ This runs the installed `.githooks/pre-commit` against seven scenarios:
 4. allow: markdown documentation
 5. block: AWS access key
 6. block: GitHub token
-7. allow: example config with a placeholder
+7. block: GitLab token (caught by a gitleaks default rule only)
+8. allow: example config with a placeholder
+
+The fake keys are built at run time and avoid the placeholder shapes
+gitleaks skips by design, such as `abcdefghijklmnopqrstuvwxyz` runs or
+AWS's documented `AKIAIOSFODNN7EXAMPLE`. `go test ./scripts/` runs the
+script against the real gitleaks binary when it is installed.
 
 Each scenario is staged in a throwaway repo, so your index, working tree
 and `.env` are not touched. The script needs gitleaks installed and exits
