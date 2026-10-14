@@ -20,8 +20,9 @@ var rebootCmd = &cobra.Command{
 The target instance drains in-flight jobs, shuts down, then the caller
 is responsible for re-launching dpkms serve (or use a process supervisor).
 
-By default targets the instance on --server-url port. Use --port to target
-a specific instance when multiple are running.
+By default targets the instance listening on server.port (config file,
+overridden by CH_SERVER_PORT). Use --port to target a specific instance
+when multiple are running.
 
 Examples:
   dpkms reboot
@@ -31,7 +32,7 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(rebootCmd)
-	rebootCmd.Flags().Int("port", 0, "port of the instance to reboot (default: server-url port)")
+	rebootCmd.Flags().Int("port", 0, "port of the instance to reboot (default: server.port / CH_SERVER_PORT)")
 
 	// SIGHUP to a live daemon: drains and shuts down, leaving relaunch to
 	// the caller or a supervisor. Same interruption profile as shutdown.

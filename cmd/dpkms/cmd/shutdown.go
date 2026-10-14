@@ -20,8 +20,9 @@ var shutdownCmd = &cobra.Command{
 
 The target instance drains in-flight jobs, closes all servers, and exits.
 
-By default targets the instance on --server-url port. Use --port to target
-a specific instance when multiple are running.
+By default targets the instance listening on server.port (config file,
+overridden by CH_SERVER_PORT). Use --port to target a specific instance
+when multiple are running.
 
 Examples:
   dpkms shutdown
@@ -32,7 +33,7 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(shutdownCmd)
-	shutdownCmd.Flags().Int("port", 0, "port of the instance to shut down (default: server-url port)")
+	shutdownCmd.Flags().Int("port", 0, "port of the instance to shut down (default: server.port / CH_SERVER_PORT)")
 
 	// SIGTERM to a live daemon. The instance drains and exits; in-flight
 	// work is interrupted and the process does not come back on its own.
