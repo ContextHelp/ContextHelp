@@ -770,6 +770,12 @@ ctxt registry info <name>
 ctxt registry sync <name>
 ```
 
+`sync` re-fetches the registry's manifest and replaces the cached copy.
+When the manifest advertises `capabilities.entity_sync`, it also pulls
+the entity index (`/entities/index`) into the local entity store; a
+registry that serves steps only is never asked for entities. Entities
+from a registry whose `trust_level` is not `trusted` are not written.
+
 ---
 
 ## `ctxt entity`

@@ -248,3 +248,69 @@ func TestRegistrySyncDryRunNoArgsError(t *testing.T) {
 		t.Error("registry sync --dry-run without name should fail")
 	}
 }
+
+// syncTestRegistry serves a manifest advertising capabilities.entity_sync
+// as entitySync, an entity index at /entities/index and 404 elsewhere,
+// and counts /entities/index requests.
+func syncTestRegistry(t *testing.T, entitySync bool) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var indexHits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/", "":
+			_ = json.NewEncoder(w).Encode(storage.RegistryManifest{
+				Name: "sync-cli", Version: "1.0.0",
+				Capabilities: storage.RegistryCapabilities{EntitySync: entitySync},
+			})
+		case "/entities/index":
+			indexHits.Add(1)
+			_, _ = w.Write([]byte(`[{"slug":"ai.bert","title":"BERT","namespace":"ai","version_hash":"v1"}]`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &indexHits
+}
+
+// TestRegistrySyncPullsAdvertisedEntities: `registry sync` follows the
+// manifest to the entity index when capabilities.entity_sync is set.
+func TestRegistrySyncPullsAdvertisedEntities(t *testing.T) {
+	srv, indexHits := syncTestRegistry(t, true)
+	db := setupTestDB(t)
+	withRegistry(t, db, "sync-cli", srv.URL, "")
+	// An untrusted registry's entities queue for approval instead of
+	// landing; trust this one so the count is observable.
+	appendConfig(t, db, "    trust_level: trusted\n")
+
+	out, err := db.exec("registry", "sync", "sync-cli")
+	if err != nil {
+		t.Fatalf("registry sync: %v\n%s", err, out)
+	}
+	if indexHits.Load() == 0 {
+		t.Errorf("sync never requested /entities/index; output:\n%s", out)
+	}
+	if !strings.Contains(out, "Entities synced: 1") {
+		t.Errorf("output lacks the entity count:\n%s", out)
+	}
+}
+
+// TestRegistrySyncStepsOnlySkipsEntities: no capabilities.entity_sync, no
+// /entities/index request, and the output says so.
+func TestRegistrySyncStepsOnlySkipsEntities(t *testing.T) {
+	srv, indexHits := syncTestRegistry(t, false)
+	db := setupTestDB(t)
+	withRegistry(t, db, "sync-cli", srv.URL, "")
+
+	out, err := db.exec("registry", "sync", "sync-cli")
+	if err != nil {
+		t.Fatalf("registry sync: %v\n%s", err, out)
+	}
+	if n := indexHits.Load(); n != 0 {
+		t.Errorf("steps-only registry asked for /entities/index %d times", n)
+	}
+	if !strings.Contains(out, "capabilities.entity_sync") {
+		t.Errorf("output does not explain the skipped entities:\n%s", out)
+	}
+}

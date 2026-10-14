@@ -818,6 +818,36 @@ func (s *Service) UpdateRegistry(ctx context.Context, url string) error {
 	return s.FetchRegistry(ctx, url)
 }
 
+// RegistrySyncResult reports what SyncRegistry pulled.
+type RegistrySyncResult struct {
+	// EntitySync mirrors the fetched manifest's capabilities.entity_sync:
+	// whether the registry advertises an entity index.
+	EntitySync bool
+	// Entities is the number of entities upserted from the index; zero
+	// when EntitySync is false.
+	Entities int
+}
+
+// SyncRegistry is `ctxt registry sync`: it re-fetches and caches the
+// manifest at url, then, when that manifest advertises
+// capabilities.entity_sync, syncs the registry's entity index
+// (SyncRegistryEntities). A registry that serves steps only has no
+// /entities/index, so it is never asked for one.
+func (s *Service) SyncRegistry(ctx context.Context, url string) (RegistrySyncResult, error) {
+	manifest, err := s.Discovery.FetchRegistryManifest(ctx, url)
+	if err != nil {
+		return RegistrySyncResult{}, err
+	}
+	if !manifest.Capabilities.EntitySync {
+		return RegistrySyncResult{}, nil
+	}
+	n, err := s.SyncRegistryEntities(ctx, url)
+	if err != nil {
+		return RegistrySyncResult{EntitySync: true}, err
+	}
+	return RegistrySyncResult{EntitySync: true, Entities: n}, nil
+}
+
 func (s *Service) ListRegistries(ctx context.Context) ([]*storage.RegistryCache, int, error) {
 	return s.Store.Registries().List(ctx)
 }

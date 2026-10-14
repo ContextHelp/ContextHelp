@@ -97,8 +97,11 @@ var registrySyncCmd = &cobra.Command{
 	Short: "Sync registry metadata",
 	Long: `Sync registry metadata from the remote source: fetch the registry's
 manifest from its url and replace the cached copy, so Last Fetched and
-the ETag advance (see ctxt registry info). A registry with auth.type gets
-the token ctxt registry login stored.
+the ETag advance (see ctxt registry info). When the manifest advertises
+capabilities.entity_sync, also sync the registry's entity index
+(/entities/index) into the local entity store; a registry that serves
+steps only is not asked for entities. A registry with auth.type gets the
+token ctxt registry login stored.
 
 With --dry-run, fetches the remote manifest and shows a diff of would-be
 additions, updates, and removals without writing anything to storage.`,
@@ -271,7 +274,7 @@ func init() {
 	})
 	cliconv.WithNextSteps(registryAddCmd, []cliconv.NextStep{
 		{Suggest: "ctxt registry info <name>", Reason: "review the cached manifest, trust status, and version"},
-		{Suggest: "ctxt registry sync <name>", Reason: "pull entities and taxonomies from the freshly-added registry"},
+		{Suggest: "ctxt registry sync <name>", Reason: "refresh the manifest, plus the entity index when the manifest advertises capabilities.entity_sync"},
 	})
 
 	cliconv.WithSideEffect(registryRemoveCmd, cliconv.SideEffectDestructive)
@@ -571,10 +574,16 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Syncing registry %s...\n", name)
-	if err := svc.UpdateRegistry(ctx, registryURL); err != nil {
+	res, err := svc.SyncRegistry(ctx, registryURL)
+	if err != nil {
 		return fmt.Errorf("sync registry: %w", err)
 	}
 	fmt.Println("Registry synced")
+	if res.EntitySync {
+		fmt.Printf("Entities synced: %d\n", res.Entities)
+	} else {
+		fmt.Println("Entities: none (manifest does not advertise capabilities.entity_sync)")
+	}
 	return nil
 }
 
