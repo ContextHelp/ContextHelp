@@ -336,6 +336,11 @@ var uiSessionRouteSet = []string{
 	"GET /api/v1/saved-searches",
 	"GET /api/v1/saved-searches/{name}",
 	"GET /api/v1/search-history",
+	"GET /api/v1/pages",
+	"GET /api/v1/pages/{slug}",
+	"GET /api/v1/topic-index",
+	"GET /api/v1/topic-index/{topic}",
+	"GET /api/v1/stats",
 	"DELETE /api/v1/ui/session",
 }
 
@@ -376,6 +381,7 @@ func TestUISessionRouteSetPinned(t *testing.T) {
 		"POST /api/v1/steps/registries/fetch", "POST /api/v1/entities/registry-sync",
 		"DELETE /api/v1/aliases/{alias}", "DELETE /api/v1/saved-searches/{name}", "DELETE /api/v1/search-history",
 		"PATCH /api/v1/objects/{id}", "POST /api/v1/analyze",
+		"POST /api/v1/pages/{slug}/refresh", "POST /api/v1/topic-index",
 	} {
 		rt, ok := tableEntry(table, w)
 		require.True(t, ok, "%s missing from the table", w)

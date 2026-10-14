@@ -68,6 +68,16 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// Thin sync: trigger entity index sync for a registry.
 		{Method: post, Pattern: "/entities/registry-sync", Scope: authn.ScopeSyncRegistries, Handler: SyncRegistryEntities(svc)},
 
+		// Entity pages, the topic index and stats. Reads are knowledge
+		// reads a browser session may make; refresh and rebuild write.
+		{Method: get, Pattern: "/pages", Scope: authn.ScopeReadObjects, Handler: ListPages(svc)},
+		{Method: get, Pattern: "/pages/{slug}", Scope: authn.ScopeReadObjects, Handler: GetPage(svc)},
+		{Method: post, Pattern: "/pages/{slug}/refresh", Scope: authn.ScopeWriteObjects, Handler: RefreshPage(svc)},
+		{Method: get, Pattern: "/topic-index", Scope: authn.ScopeReadObjects, Handler: GetTopicIndex(svc)},
+		{Method: get, Pattern: "/topic-index/{topic}", Scope: authn.ScopeReadObjects, Handler: GetTopicEntries(svc)},
+		{Method: post, Pattern: "/topic-index", Scope: authn.ScopeWriteObjects, Handler: RebuildTopicIndex(svc)},
+		{Method: get, Pattern: "/stats", Scope: authn.ScopeReadObjects, Handler: Stats(svc, rc.Entitlements)},
+
 		// Pipelines
 		{Method: post, Pattern: "/pipelines", Scope: authn.ScopeAdminPipelines, Handler: CreatePipeline(svc)},
 		{Method: get, Pattern: "/pipelines", Scope: authn.ScopeReadPipelines, Handler: ListPipelines(svc)},
