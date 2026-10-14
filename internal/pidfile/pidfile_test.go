@@ -113,7 +113,7 @@ func TestCheckNameConflict_LiveOtherPIDConflicts(t *testing.T) {
 // the instance it inspects, and must keep seeing a live entry as live.
 func TestScan_OwnPIDEntryStaysLive(t *testing.T) {
 	dir := t.TempDir()
-	if err := Write(dir, Info{PID: os.Getpid(), Name: "home", Port: testPort}); err != nil {
+	if err := Write(dir, Info{PID: os.Getpid(), Name: "home", Port: testPort, StartedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	infos, err := Scan(dir)
@@ -137,5 +137,83 @@ func TestCheckNameConflict_DeadPIDIsStale(t *testing.T) {
 	}
 	if err := CheckNameConflict(dir, "home"); err != nil {
 		t.Fatalf("dead pid reported as conflict: %v", err)
+	}
+}
+
+// A pid that the OS handed to an unrelated process after the instance
+// died is not that instance. The process started after the entry was
+// written, so it cannot be the process that wrote it: startup must not
+// report a conflict, and Scan (ps, shutdown, reboot, ctxt) must prune
+// the entry rather than offer the stranger's pid as a signal target.
+func TestReusedPIDIsStale(t *testing.T) {
+	dir := t.TempDir()
+	written := time.Now().Add(-time.Hour)
+	pid := sleeper(t)
+	if err := Write(dir, Info{PID: pid, Name: "home", Port: testPort, StartedAt: written}); err != nil {
+		t.Fatal(err)
+	}
+
+	infos, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(infos) != 0 {
+		t.Fatalf("Scan = %+v, want reused pid %d pruned", infos, pid)
+	}
+	if _, err := os.Stat(filepath.Join(dir, fmt.Sprintf("%d.pid", testPort))); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("reused-pid pidfile not pruned: %v", err)
+	}
+
+	if err := Write(dir, Info{PID: pid, Name: "home", Port: testPort, StartedAt: written}); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckNameConflict(dir, "home"); err != nil {
+		t.Fatalf("reused pid reported as running instance: %v", err)
+	}
+}
+
+// The process that wrote the entry started before it wrote it, so an
+// entry whose pid started earlier than started_at is the live instance.
+func TestPIDStartedBeforeEntryIsLive(t *testing.T) {
+	dir := t.TempDir()
+	pid := sleeper(t)
+	if err := Write(dir, Info{PID: pid, Name: "home", Port: testPort, StartedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+
+	infos, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(infos) != 1 || infos[0].PID != pid {
+		t.Fatalf("Scan = %+v, want live pid %d", infos, pid)
+	}
+	if err := CheckNameConflict(dir, "home"); err == nil {
+		t.Fatal("live instance not reported as conflict")
+	}
+}
+
+// When the OS will not report the start time, identity cannot be
+// checked: the entry stays live, as it was before the check existed.
+func TestUnreadableStartTimeIsLive(t *testing.T) {
+	orig := processStartTime
+	processStartTime = func(int) (time.Time, error) { return time.Time{}, errors.New("permission denied") }
+	t.Cleanup(func() { processStartTime = orig })
+
+	dir := t.TempDir()
+	pid := sleeper(t)
+	if err := Write(dir, Info{PID: pid, Name: "home", Port: testPort, StartedAt: time.Now().Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+
+	infos, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(infos) != 1 || infos[0].PID != pid {
+		t.Fatalf("Scan = %+v, want pid %d kept", infos, pid)
+	}
+	if err := CheckNameConflict(dir, "home"); err == nil {
+		t.Fatal("entry with unreadable start time not reported as conflict")
 	}
 }
