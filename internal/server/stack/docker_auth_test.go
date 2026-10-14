@@ -16,10 +16,11 @@ import (
 
 // The container's config files, as the root Dockerfile and compose
 // pass them to serve: the image's /app/config.yaml, then the
-// operator's auth secret.
+// operator's auth and local secrets.
 var (
-	dockerBaseConfig  = filepath.Join("..", "..", "..", "docker", "config.docker.yaml")
-	dockerAuthExample = filepath.Join("..", "..", "..", "docker", "dpkms-auth.example.yaml")
+	dockerBaseConfig   = filepath.Join("..", "..", "..", "docker", "config.docker.yaml")
+	dockerAuthExample  = filepath.Join("..", "..", "..", "docker", "dpkms-auth.example.yaml")
+	dockerLocalExample = filepath.Join("..", "..", "..", "docker", "dpkms-local.example.yaml")
 )
 
 // loadDockerConfig loads paths the way dpkms serve does (repeated
@@ -49,9 +50,9 @@ func TestDockerConfig_AloneRefusesToServe(t *testing.T) {
 // the repo knows it. Copied unedited, it must stop serve at startup and
 // tell the operator to generate a real token.
 func TestDockerConfig_ExampleAuthSecretRefusesToServe(t *testing.T) {
-	cfg, err := loadDockerConfig(t, dockerBaseConfig, dockerAuthExample)
+	cfg, err := loadDockerConfig(t, dockerBaseConfig, dockerAuthExample, dockerLocalExample)
 	if err != nil {
-		t.Fatalf("load docker config + example auth secret: %v", err)
+		t.Fatalf("load docker config + example secrets: %v", err)
 	}
 	_, _, err = ResolveInboundAuth(cfg, false)
 	if err == nil {
@@ -64,9 +65,10 @@ func TestDockerConfig_ExampleAuthSecretRefusesToServe(t *testing.T) {
 	}
 }
 
-// With every placeholder in the example replaced by a generated token,
-// as its header tells the operator, and a bus token in env, the
-// container config passes every check serve runs before binding a port.
+// With every placeholder in the auth example replaced by a generated
+// token, as its header tells the operator, the local example copied as
+// is, and a bus token in env, the container config passes every check
+// serve runs before binding a port.
 func TestDockerConfig_WithAuthSecretPassesServeStartup(t *testing.T) {
 	example, err := os.ReadFile(dockerAuthExample)
 	if err != nil {
@@ -88,9 +90,9 @@ func TestDockerConfig_WithAuthSecretPassesServeStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, err := loadDockerConfig(t, dockerBaseConfig, secret)
+	cfg, err := loadDockerConfig(t, dockerBaseConfig, secret, dockerLocalExample)
 	if err != nil {
-		t.Fatalf("load docker config + auth secret: %v", err)
+		t.Fatalf("load docker config + operator secrets: %v", err)
 	}
 	access, provider, err := ResolveInboundAuth(cfg, false)
 	if err != nil {
@@ -112,10 +114,14 @@ func TestDockerConfig_WithAuthSecretPassesServeStartup(t *testing.T) {
 }
 
 // A --config path that does not exist fails the load: an image started
-// without the auth secret mounted stops at config, not later.
-func TestDockerConfig_MissingAuthSecretFailsLoad(t *testing.T) {
-	missing := filepath.Join(t.TempDir(), "dpkms-auth.yaml")
-	if _, err := loadDockerConfig(t, dockerBaseConfig, missing); err == nil {
-		t.Fatalf("load with missing %s succeeded", missing)
+// without either operator secret mounted stops at config, not later.
+func TestDockerConfig_MissingOperatorSecretFailsLoad(t *testing.T) {
+	missingAuth := filepath.Join(t.TempDir(), "dpkms-auth.yaml")
+	if _, err := loadDockerConfig(t, dockerBaseConfig, missingAuth, dockerLocalExample); err == nil {
+		t.Fatalf("load with missing %s succeeded", missingAuth)
+	}
+	missingLocal := filepath.Join(t.TempDir(), "dpkms-local.yaml")
+	if _, err := loadDockerConfig(t, dockerBaseConfig, dockerAuthExample, missingLocal); err == nil {
+		t.Fatalf("load with missing %s succeeded", missingLocal)
 	}
 }

@@ -59,7 +59,7 @@ ContextHelp is built as two independent but cooperating packages:
 > [!NOTE]
 > Detailed installation instructions are in [INSTALL.md](./INSTALL.md).
 
-**Docker (Local Dev):** needs `docker/.env.dev` and `docker/dpkms-auth.yaml` first; see [docs/deployment/docker-dev.md](./docs/deployment/docker-dev.md).
+**Docker (Local Dev):** needs `docker/.env.dev`, `docker/dpkms-auth.yaml` and `docker/dpkms-local.yaml` first; see [docs/deployment/docker-dev.md](./docs/deployment/docker-dev.md).
 ```bash
 docker compose --env-file docker/.env.dev --profile dev up
 ```

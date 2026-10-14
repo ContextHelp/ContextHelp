@@ -141,13 +141,24 @@ func TestDockerRuntime_StoragePathsOnVolumes(t *testing.T) {
 	}
 }
 
-// dockerAuthExamplePath is the committed template for the operator's
-// auth secret; dockerAuthSecretPath is where serve reads it in the
-// container, as a second --config after /app/config.yaml.
+// dockerAuthExamplePath and dockerLocalExamplePath are the committed
+// templates for the operator's secrets; the *SecretPath vars are where
+// serve reads them in the container, as --config layers after
+// /app/config.yaml.
 var (
-	dockerAuthExamplePath = filepath.Join("..", "..", "docker", "dpkms-auth.example.yaml")
-	dockerAuthSecretPath  = "/run/secrets/dpkms-auth.yaml"
+	dockerAuthExamplePath  = filepath.Join("..", "..", "docker", "dpkms-auth.example.yaml")
+	dockerAuthSecretPath   = "/run/secrets/dpkms-auth.yaml"
+	dockerLocalExamplePath = filepath.Join("..", "..", "docker", "dpkms-local.example.yaml")
+	dockerLocalSecretPath  = "/run/secrets/dpkms-local.yaml"
 )
+
+// dockerOperatorSecrets maps each compose secret serve loads to the
+// file it is read from on the host and its path in the container, in
+// --config order.
+var dockerOperatorSecrets = []struct{ name, file, target string }{
+	{"dpkms-auth", "./docker/dpkms-auth.yaml", dockerAuthSecretPath},
+	{"dpkms-local", "./docker/dpkms-local.yaml", dockerLocalSecretPath},
+}
 
 // The auth example must decode into Config and hold server.auth only:
 // everything else comes from config.docker.yaml.
@@ -167,23 +178,30 @@ func TestDockerAuthExample_HoldsOnlyServerAuth(t *testing.T) {
 	assert.Contains(t, raw["server"], "auth")
 }
 
-// Serve reads server.auth from the operator's secret: compose mounts it
-// at dockerAuthSecretPath in both dpkms services, and the image's CMD and
-// the dev air runner pass that path as a second --config.
-func TestDockerRuntime_ServeLoadsAuthSecret(t *testing.T) {
+// Serve reads the operator's secrets: compose mounts each one at its
+// /run/secrets path in both dpkms services, and the image's CMD and the
+// dev air runner pass those paths as --config layers after the image's
+// config.
+func TestDockerRuntime_ServeLoadsOperatorSecrets(t *testing.T) {
 	compose := loadCompose(t)
-	secret, ok := compose.Secrets["dpkms-auth"]
-	require.True(t, ok, "docker-compose.yml declares no dpkms-auth secret")
-	assert.Equal(t, "./docker/dpkms-auth.yaml", secret.File, "dpkms-auth secret file")
-	for _, name := range []string{"dpkms", "dpkms-dev"} {
-		svc := compose.Services[name]
-		var mounted bool
-		for _, s := range svc.Secrets {
-			if s.Source == "dpkms-auth" && "/run/secrets/"+s.Target == dockerAuthSecretPath {
-				mounted = true
+	wantArgs := []string{"serve", "--config", "/app/config.yaml"}
+	airArgs := "--config docker/config.docker.yaml"
+	for _, sec := range dockerOperatorSecrets {
+		secret, ok := compose.Secrets[sec.name]
+		require.True(t, ok, "docker-compose.yml declares no %s secret", sec.name)
+		assert.Equal(t, sec.file, secret.File, "%s secret file", sec.name)
+		for _, name := range []string{"dpkms", "dpkms-dev"} {
+			svc := compose.Services[name]
+			var mounted bool
+			for _, s := range svc.Secrets {
+				if s.Source == sec.name && "/run/secrets/"+s.Target == sec.target {
+					mounted = true
+				}
 			}
+			assert.True(t, mounted, "service %s mounts no %s secret at %s (%v)", name, sec.name, sec.target, svc.Secrets)
 		}
-		assert.True(t, mounted, "service %s mounts no dpkms-auth secret at %s (%v)", name, dockerAuthSecretPath, svc.Secrets)
+		wantArgs = append(wantArgs, "--config", sec.target)
+		airArgs += " --config " + sec.target
 	}
 
 	dockerfile, err := os.ReadFile(filepath.Join("..", "..", "Dockerfile"))
@@ -192,7 +210,7 @@ func TestDockerRuntime_ServeLoadsAuthSecret(t *testing.T) {
 	require.NotNil(t, m, "Dockerfile has no exec-form CMD")
 	var cmd []string
 	require.NoError(t, yaml.Unmarshal(m[1], &cmd))
-	assert.Equal(t, []string{"serve", "--config", "/app/config.yaml", "--config", dockerAuthSecretPath}, cmd, "Dockerfile CMD")
+	assert.Equal(t, wantArgs, cmd, "Dockerfile CMD")
 
 	data, err := os.ReadFile(filepath.Join("..", "..", "docker", "air.toml"))
 	require.NoError(t, err)
@@ -202,7 +220,94 @@ func TestDockerRuntime_ServeLoadsAuthSecret(t *testing.T) {
 		} `toml:"build"`
 	}
 	require.NoError(t, toml.Unmarshal(data, &air))
-	assert.Contains(t, air.Build.Bin, "--config docker/config.docker.yaml --config "+dockerAuthSecretPath, "docker/air.toml build.bin")
+	assert.Contains(t, air.Build.Bin, airArgs, "docker/air.toml build.bin")
+}
+
+// uncommentLocalExample returns the local example with its commented
+// settings enabled: a line of '#', an even indent and a key is YAML;
+// every other comment is prose.
+func uncommentLocalExample(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile(dockerLocalExamplePath)
+	require.NoError(t, err)
+	return regexp.MustCompile(`(?m)^#((?:  )*[a-z_][a-z0-9_]*:.*)$`).ReplaceAll(data, []byte("$1"))
+}
+
+// As copied, the local example sets nothing: compose requires the file,
+// so the copy must leave the image's config as it is. Its commented
+// settings must be keys Config declares, under storage.blob and
+// providers only.
+func TestDockerLocalExample_HoldsOnlyBlobAndProviders(t *testing.T) {
+	data, err := os.ReadFile(dockerLocalExamplePath)
+	require.NoError(t, err)
+	var asCopied map[string]any
+	require.NoError(t, yaml.Unmarshal(data, &asCopied))
+	assert.Empty(t, asCopied, "%s sets keys as copied", dockerLocalExamplePath)
+
+	enabled := uncommentLocalExample(t)
+	dec := yaml.NewDecoder(bytes.NewReader(enabled))
+	dec.KnownFields(true)
+	var cfg Config
+	require.NoError(t, dec.Decode(&cfg), "%s comments out a key config.Load never reads", dockerLocalExamplePath)
+
+	var raw map[string]map[string]any
+	require.NoError(t, yaml.Unmarshal(enabled, &raw))
+	assert.ElementsMatch(t, []string{"storage", "providers"}, mapKeys(raw), "top-level keys")
+	assert.ElementsMatch(t, []string{"blob"}, mapKeys(raw["storage"]), "storage.* keys")
+}
+
+// Layered on the image's config the way serve loads it, the local
+// example's settings land in the typed Config and leave the image's
+// other storage keys alone; as copied, it changes nothing.
+func TestDockerLocalExample_LandsInTypedConfig(t *testing.T) {
+	clearPortEnv(t)
+	for _, b := range envBindings {
+		t.Setenv(b.Env, "")
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(EnvConfigPath, "")
+
+	base, err := LoadWithOverrides("dpkms", "", []string{dockerConfigPath}, nil)
+	require.NoError(t, err)
+
+	asCopied, err := LoadWithOverrides("dpkms", "", []string{dockerConfigPath, dockerLocalExamplePath}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, base.Storage, asCopied.Storage, "storage with the example as copied")
+	assert.Equal(t, base.Providers, asCopied.Providers, "providers with the example as copied")
+
+	enabledPath := filepath.Join(t.TempDir(), "dpkms-local.yaml")
+	require.NoError(t, os.WriteFile(enabledPath, uncommentLocalExample(t), 0o600))
+	cfg, err := LoadWithOverrides("dpkms", "", []string{dockerConfigPath, enabledPath}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "s3", cfg.Storage.Blob.Backend, "storage.blob.backend")
+	assert.NotEmpty(t, cfg.Storage.Blob.S3.Bucket, "storage.blob.s3.bucket")
+	assert.NotEmpty(t, cfg.Storage.Blob.S3.SecretKey, "storage.blob.s3.secret_key")
+	assert.NotEmpty(t, cfg.Providers.LLM.Backend, "providers.llm.backend")
+	assert.NotEmpty(t, cfg.Providers.Embedding.Endpoint, "providers.embedding.endpoint")
+	assert.Equal(t, base.Storage.Path, cfg.Storage.Path, "storage.path stays the image's")
+	assert.Equal(t, base.Storage.Type, cfg.Storage.Type, "storage.type stays the image's")
+}
+
+// dockerProviderKeys are the env vars the provider factory reads API
+// keys from. They have no config key, so compose passes each one from
+// the env file to both dpkms services; unset, it is empty.
+var dockerProviderKeys = []string{"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY"}
+
+func TestDockerRuntime_ProviderKeysFromEnvFile(t *testing.T) {
+	compose := loadCompose(t)
+	for _, name := range []string{"dpkms", "dpkms-dev"} {
+		env := compose.Services[name].Environment
+		for _, k := range dockerProviderKeys {
+			assert.Equal(t, "${"+k+":-}", env[k], "service %s %s", name, k)
+		}
+	}
+	for example := range dockerEnvExamples {
+		data, err := os.ReadFile(filepath.Join("..", "..", example))
+		require.NoError(t, err)
+		for _, k := range dockerProviderKeys {
+			assert.Regexp(t, `(?m)^#?\s*`+k+`=`, string(data), "%s does not show %s", example, k)
+		}
+	}
 }
 
 // Serve refuses to start without a bus token. Compose must pass one to
@@ -279,6 +384,14 @@ type composeFile struct {
 	Secrets map[string]struct {
 		File string `yaml:"file"`
 	} `yaml:"secrets"`
+}
+
+func mapKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func loadCompose(t *testing.T) composeFile {

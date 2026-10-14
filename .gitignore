@@ -344,6 +344,8 @@ plugins/*/testdata/secrets/
 .air/
 # Operator-owned dpkms inbound auth (docker/dpkms-auth.example.yaml)
 docker/dpkms-auth.yaml
+# Operator-owned dpkms blob storage + provider settings (docker/dpkms-local.example.yaml)
+docker/dpkms-local.yaml
 
 #############################################################################
 # User-Specific Ignores

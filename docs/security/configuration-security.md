@@ -194,7 +194,9 @@ list and precedence are in [../ctxt/cli-flag-binding.md](../ctxt/cli-flag-bindin
 - Keep auth tokens in a mounted secret file loaded as a second
   `--config` (or `-c <path>` layer), not in an image layer. The repo's
   image loads `/run/secrets/dpkms-auth.yaml` this way (template:
-  `docker/dpkms-auth.example.yaml`); see
+  `docker/dpkms-auth.example.yaml`), and S3 credentials with the other
+  blob and provider settings from `/run/secrets/dpkms-local.yaml`
+  (template: `docker/dpkms-local.example.yaml`); see
   [Docker: Secrets](../deployment/docker.md#secrets).
 
 ```yaml

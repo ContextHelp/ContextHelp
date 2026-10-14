@@ -66,7 +66,9 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
 # config.yaml sets server.access: public, which needs server.auth. That
 # comes from the operator's secret, never the image: mount it at
 # /run/secrets/dpkms-auth.yaml (docker-compose.yml does; template at
-# docker/dpkms-auth.example.yaml) and set DPKMS_BUS_TOKEN. Without the
-# file serve exits at config load.
+# docker/dpkms-auth.example.yaml) and set DPKMS_BUS_TOKEN. Blob storage
+# and provider settings come from /run/secrets/dpkms-local.yaml
+# (template: docker/dpkms-local.example.yaml, which changes nothing as
+# copied). Without either file serve exits at config load.
 ENTRYPOINT ["/app/dpkms"]
-CMD ["serve", "--config", "/app/config.yaml", "--config", "/run/secrets/dpkms-auth.yaml"]
+CMD ["serve", "--config", "/app/config.yaml", "--config", "/run/secrets/dpkms-auth.yaml", "--config", "/run/secrets/dpkms-local.yaml"]
