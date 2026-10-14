@@ -138,6 +138,7 @@ backups/pre-migrate-v40-v41-20261014T091500Z.sqlite
 
 - **Name**: schema version before (`v40`) and after (`v41`), UTC time. Written with SQLite's online backup (`VACUUM INTO`), fsynced, owner-only permissions.
 - **When**: only when migrations are pending on an existing database. No snapshot when the schema is current or the database is new.
+- **Preview**: `ctxt upgrade plan` run with the new binary reads the schema version read-only and prints `v40 → v41 pending; next open will snapshot to <dir>` (or that the open migrates without a snapshot) without migrating anything. With the schema current it prints `v41 current`.
 - **No snapshot, no migration**: if the copy cannot be written (disk full, `backups/` not writable), the open fails with the reason and the database stays at its old version. Free space or fix permissions and start again.
 - **Retention**: the newest 3 `pre-migrate-*` files per `backups/` directory are kept; older ones are deleted after a new snapshot succeeds. Other files in `backups/` are never touched.
 - **Disk**: each snapshot is about the size of the database, so allow up to 3x the database size in `backups/`.

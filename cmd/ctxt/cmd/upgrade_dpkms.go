@@ -41,7 +41,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/output"
@@ -95,7 +97,13 @@ Examples:
 var upgradePlanCmd = &cobra.Command{
 	Use:   "plan",
 	Short: "Preview what 'ctxt upgrade run' would do (read-only)",
-	Long: `plan summarises pending work across the three ADR-070 buckets:
+	Long: `plan first reads the store's schema version read-only and compares it
+with the latest this binary migrates to. When migrations are pending it
+reports them, and where the next open snapshots the database, then stops:
+the buckets below read the migrated schema, and plan never migrates.
+
+With the schema current, plan summarises pending work across the three
+ADR-070 buckets:
 
   reindex_auto        based on the current FTS signature comparison
   reingest_selective  count of objects below the current pipeline @vN
@@ -304,6 +312,31 @@ func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 // daemon's startup path); reingest_all is reserved for embedding-model
 // swaps and out of scope for T-0581.
 func runUpgradePlan(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	out := cmd.OutOrStdout()
+
+	// The schema check runs before anything opens the store: a normal
+	// open (newService) applies pending migrations, so plan reads the
+	// version read-only and stops at the schema section when one is
+	// pending. The re-ingest buckets read the migrated schema.
+	schema, err := previewSchema(ctx)
+	if err != nil {
+		return fmt.Errorf("upgrade plan: %w", err)
+	}
+	if schema.Pending() {
+		if isJSONOutput() {
+			return outputJSON(out, map[string]any{"schema": schema})
+		}
+		fmt.Fprintln(out, "Upgrade plan:")
+		renderSchemaPreview(out, schema)
+		fmt.Fprintln(out, "  reindex_auto, reingest_selective, reingest_all:")
+		fmt.Fprintln(out, "    not computed until the schema migration runs (plan never migrates)")
+		return nil
+	}
+
 	svc, cleanup, err := newService()
 	if err != nil {
 		return fmt.Errorf("upgrade plan: %w", err)
@@ -315,16 +348,16 @@ func runUpgradePlan(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	plan, total, err := computeReingestSelectivePlan(cmd.Context(), db, svc.Pipes)
+	plan, total, err := computeReingestSelectivePlan(ctx, db, svc.Pipes)
 	if err != nil {
 		return fmt.Errorf("upgrade plan: %w", err)
 	}
 
-	out := cmd.OutOrStdout()
 	if isJSONOutput() {
 		// JSON shape mirrors the human-readable layout so jq pipelines can
 		// pluck either the per-bucket sub-tree or just the total.
 		payload := map[string]any{
+			"schema": schema,
 			"reindex_auto": map[string]any{
 				"summary": "objects_fts: signature ok (no rebuild needed)",
 			},
@@ -341,6 +374,7 @@ func runUpgradePlan(cmd *cobra.Command, _ []string) error {
 	}
 
 	fmt.Fprintln(out, "Upgrade plan:")
+	renderSchemaPreview(out, schema)
 	fmt.Fprintln(out, "  reindex_auto:")
 	fmt.Fprintln(out, "    objects_fts: signature ok (no rebuild needed)")
 	fmt.Fprintln(out, "  reingest_selective:")
@@ -366,6 +400,68 @@ func runUpgradePlan(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "Total objects pending: %d\n", total)
 	return nil
+}
+
+// schemaPreview is the schema section of `ctxt upgrade plan`: the
+// configured store's schema version against the latest this binary
+// migrates to, read without migrating.
+type schemaPreview struct {
+	Backend string `json:"backend"`
+	storage.SchemaStatus
+	// Pending mirrors SchemaStatus.Pending for JSON consumers.
+	PendingFlag bool `json:"pending"`
+	// SnapshotDir is where the next open writes its pre-migration
+	// snapshot; empty when it writes none (nothing pending, new
+	// database, Postgres, or storage.migrate_snapshot=false).
+	SnapshotDir string `json:"snapshot_dir,omitempty"`
+}
+
+// previewSchema reads the configured store's schema version read-only
+// (storageutil.CheckSchema), resolving the store the way newService
+// does.
+func previewSchema(ctx context.Context) (schemaPreview, error) {
+	typ := cfg.Storage.Type
+	if typ == "" {
+		typ = "sqlite"
+	}
+	path, err := resolveStoragePath()
+	if err != nil {
+		return schemaPreview{}, err
+	}
+	if path == "" {
+		return schemaPreview{}, errors.New("storage path not configured")
+	}
+	st, err := storageutil.CheckSchema(ctx, typ, path)
+	if err != nil {
+		return schemaPreview{}, err
+	}
+	p := schemaPreview{Backend: typ, SchemaStatus: st, PendingFlag: st.Pending()}
+	if typ == "sqlite" && st.Pending() && !st.New && cfg.Storage.MigrateSnapshot {
+		p.SnapshotDir = sqlite.SnapshotDir(path)
+	}
+	return p, nil
+}
+
+// renderSchemaPreview prints the schema section of the human plan.
+func renderSchemaPreview(w io.Writer, p schemaPreview) {
+	fmt.Fprintln(w, "  schema:")
+	switch {
+	case p.Pending() && p.New:
+		fmt.Fprintf(w, "    new database; next open creates schema v%d\n", p.Target)
+	case p.Pending():
+		next := "next open will snapshot to " + p.SnapshotDir
+		switch {
+		case p.Backend == "postgres":
+			next = "next open migrates without a snapshot (Postgres: take a pg_dump first)"
+		case p.SnapshotDir == "":
+			next = "next open migrates without a snapshot (storage.migrate_snapshot=false)"
+		}
+		fmt.Fprintf(w, "    v%d → v%d pending; %s\n", p.Current, p.Target, next)
+	case p.Ahead():
+		fmt.Fprintf(w, "    v%d is newer than this binary's v%d; upgrade ctxt\n", p.Current, p.Latest)
+	default:
+		fmt.Fprintf(w, "    v%d current\n", p.Current)
+	}
 }
 
 // reingestSelectiveRow is one (from→to) transition in the upgrade plan.
