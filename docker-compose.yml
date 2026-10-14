@@ -1,11 +1,13 @@
 # docker-compose.yml
 # Usage:
-#   dev:  docker compose --profile dev up
-#   prod: docker compose --profile prod up -d
+#   dev:  docker compose --env-file docker/.env.dev --profile dev up
+#   prod: docker compose --env-file docker/.env.prod --profile prod up -d
 #
-# Both dpkms services need docker/dpkms-auth.yaml (server.auth, from
-# docker/dpkms-auth.example.yaml) and DPKMS_BUS_TOKEN set; see
-# docs/deployment/docker.md.
+# The env file (from docker/.env.<profile>.example) feeds ${VAR}
+# interpolation below; compose does not read docker/ env files on its
+# own. Pass it to every command: DPKMS_BUS_TOKEN is required. Both dpkms
+# services also need docker/dpkms-auth.yaml (server.auth, from
+# docker/dpkms-auth.example.yaml); see docs/deployment/docker.md.
 
 name: ctxt
 
@@ -65,7 +67,7 @@ services:
     working_dir: /app
     command: >
       sh -c "apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libsqlite3-dev &&
-             go install github.com/air-verse/air@latest &&
+             go install github.com/air-verse/air@v1.67.4 &&
              air -c docker/air.toml"
     volumes:
       - .:/app
@@ -123,6 +125,7 @@ services:
       - caddy_config:/config
     environment:
       DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
     depends_on:
       dpkms:
         condition: service_healthy

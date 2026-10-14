@@ -218,6 +218,54 @@ func TestDockerRuntime_BusTokenRequired(t *testing.T) {
 	}
 }
 
+// The dev container installs air at start-up, outside mise; an unpinned
+// install changes the dev build whenever air releases.
+func TestDockerDev_PinsAir(t *testing.T) {
+	cmd := loadCompose(t).Services["dpkms-dev"].Command
+	assert.Regexp(t, `go install github\.com/air-verse/air@v\d+\.\d+\.\d+(\s|$)`, cmd,
+		"dpkms-dev must go install an exact air version")
+}
+
+// dockerEnvExamples are the compose env files the docs tell operators to
+// copy, and the flag each docker compose invocation passes to read them.
+var dockerEnvExamples = map[string]string{
+	"docker/.env.dev.example":  "--env-file docker/.env.dev",
+	"docker/.env.prod.example": "--env-file docker/.env.prod",
+}
+
+// Compose reads an --env-file for interpolation only: a key it sets
+// reaches no container unless docker-compose.yml interpolates it. Every
+// key the examples set or show must be one docker-compose.yml uses.
+func TestDockerEnvExamples_OnlyComposeInterpolatedKeys(t *testing.T) {
+	compose, err := os.ReadFile(filepath.Join("..", "..", "docker-compose.yml"))
+	require.NoError(t, err)
+	keyLine := regexp.MustCompile(`(?m)^#?\s*([A-Z][A-Z0-9_]*)=`)
+	for example := range dockerEnvExamples {
+		data, err := os.ReadFile(filepath.Join("..", "..", example))
+		require.NoError(t, err)
+		keys := keyLine.FindAllSubmatch(data, -1)
+		require.NotEmpty(t, keys, "%s sets no key", example)
+		for _, k := range keys {
+			assert.Contains(t, string(compose), "${"+string(k[1]), "%s sets %s, which docker-compose.yml never interpolates", example, k[1])
+		}
+	}
+}
+
+// Compose interpolates the whole file for every command, and
+// DPKMS_BUS_TOKEN is required, so each docker compose invocation the
+// docs and Makefile show must pass the env file the examples become.
+func TestDockerDocs_ComposeCommandsPassEnvFile(t *testing.T) {
+	invocation := regexp.MustCompile(`(?m)^.*\bdocker compose\s+[-a-z].*$`)
+	envFile := regexp.MustCompile(`--env-file (docker/\.env\.(dev|prod)|\$\(DOCKER_ENV_FILE\))`)
+	for _, f := range []string{"README.md", "Makefile", "docs/deployment/docker.md", "docs/deployment/docker-dev.md", "docs/operations/pre-alpha-gate.md"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", f))
+		require.NoError(t, err)
+		for _, line := range invocation.FindAllString(string(data), -1) {
+			assert.Regexp(t, envFile, line, "%s: docker compose without the env file", f)
+		}
+	}
+}
+
 type composeFile struct {
 	Services map[string]struct {
 		Environment map[string]string `yaml:"environment"`
@@ -226,6 +274,7 @@ type composeFile struct {
 			Source string `yaml:"source"`
 			Target string `yaml:"target"`
 		} `yaml:"secrets"`
+		Command string `yaml:"command"`
 	} `yaml:"services"`
 	Secrets map[string]struct {
 		File string `yaml:"file"`

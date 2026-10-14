@@ -261,36 +261,40 @@ docs-dev:
 	@echo "Starting docs dev server..."
 	@cd docs/public && pnpm dev
 
+# Compose env file (docker/.env.<profile>.example): every compose command
+# needs one, since DPKMS_BUS_TOKEN is required. docker-dev uses the dev file.
+DOCKER_ENV_FILE ?= docker/.env.prod
+
 ## docker-build: Build production runtime image
 docker-build:
 	@echo "Building ctxt runtime image..."
-	docker compose build dpkms
+	docker compose --env-file $(DOCKER_ENV_FILE) build dpkms
 	@echo "✓ Image built: ctxt/dpkms:latest"
 
 ## docker-dev: Start dev environment (hot-reload API + Vite UI)
 docker-dev:
 	@echo "Starting ctxt dev environment..."
-	docker compose --profile dev up
+	docker compose --env-file docker/.env.dev --profile dev up
 
 ## docker-prod: Start production stack in background (Caddy + dpkms)
 docker-prod:
 	@echo "Starting ctxt production stack..."
-	docker compose --profile prod up -d
+	docker compose --env-file $(DOCKER_ENV_FILE) --profile prod up -d
 	@echo "✓ Running. Check status: make docker-ps"
 
 ## docker-down: Stop all ctxt containers
 docker-down:
 	@echo "Stopping ctxt containers..."
-	docker compose --profile dev --profile prod down
+	docker compose --env-file $(DOCKER_ENV_FILE) --profile dev --profile prod down
 	@echo "✓ Stopped"
 
 ## docker-logs: Tail logs from all running ctxt containers
 docker-logs:
-	docker compose logs -f
+	docker compose --env-file $(DOCKER_ENV_FILE) logs -f
 
 ## docker-ps: Show status of all ctxt containers
 docker-ps:
-	docker compose ps
+	docker compose --env-file $(DOCKER_ENV_FILE) ps
 
 ## docker-shell: Open a shell in the running dpkms container
 docker-shell:
