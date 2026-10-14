@@ -4,9 +4,9 @@ ContextHelp ships git hooks in the tracked `.githooks/` directory. The
 pre-commit hook scans staged changes for secrets before a commit lands, so
 API keys, passwords and other credentials never reach history.
 
-Secret scanning runs locally rather than in CI: `gitleaks-action` needs a
-license for organization-owned repos (see the disabled `secret-scan` job in
-`.github/workflows/ci.yml`). The hook is the stand-in.
+CI's `secret-scan` job (`.github/workflows/ci.yml`) scans the full
+history with the same gitleaks release; see
+[History scan and baseline](#history-scan-and-baseline).
 
 ---
 
@@ -59,9 +59,36 @@ make secret-scan-local
 ```
 
 It scans what git would commit (tracked files plus untracked, non-ignored
-ones), so a local `.env` or build output is not reported. `make
-security-scan` scans the history instead; old commits there still hold
-findings that cannot be rewritten away.
+ones), so a local `.env` or build output is not reported.
+
+### History scan and baseline
+
+```bash
+make security-scan                  # every commit reachable from HEAD
+make security-scan SCAN_REFS=--all  # every local ref
+```
+
+History cannot be rewritten, and old commits hold findings: placeholders
+in docs, test fixtures, and one Garage access key ID that was rotated.
+`.gitleaksignore` is the baseline. Each entry is the fingerprint
+(`commit:file:rule:line`) of a reviewed finding, grouped under a comment
+saying why it is not a live secret. gitleaks skips those, so the scan
+fails only on new findings. CI's `secret-scan` job runs this target on
+every push and pull request; it installs the gitleaks release `mise.toml`
+pins and needs no secret or license (only `gitleaks-action` does).
+
+When the scan reports a finding in history:
+
+1. Read it unredacted locally and decide whether the value is real.
+2. A real secret: rotate it first. Only then baseline it, with a comment
+   saying it was rotated.
+3. A placeholder or fixture: fix the file if it is still in the tree,
+   then add the fingerprint the scan printed under the matching comment.
+
+Entries must name a commit (`go test ./scripts/` checks): a
+`file:rule:line` entry would skip that line in every commit and in
+working-tree scans. Rewriting history (a rebase or squash merge) changes
+commit ids, so rescan and review again after one.
 
 ### Bypass (use sparingly)
 

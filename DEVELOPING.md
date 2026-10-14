@@ -320,14 +320,18 @@ pre-existing findings).
 
 ### Secret scanning
 
-Secret scanning runs locally rather than in CI, because `gitleaks-action`
-requires a paid license for organization-owned repos:
+The pre-commit hook scans staged changes; CI's `secret-scan` job scans
+the full history with the same pinned gitleaks:
 
 ```bash
 make install-gitleaks   # one-time; the version mise.toml pins
 make install-hooks      # wires .githooks (pre-commit gitleaks, pre-push chain)
 make secret-scan-local  # scan the working tree (tracked + untracked) on demand
+make security-scan      # scan the history of HEAD, minus the .gitleaksignore baseline
 ```
+
+See [docs/git-hooks.md](docs/git-hooks.md#history-scan-and-baseline) for
+the baseline.
 
 ---
 

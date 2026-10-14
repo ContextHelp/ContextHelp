@@ -1,0 +1,119 @@
+# gitleaks baseline for history scans (make security-scan, CI secret-scan).
+#
+# Each line is the fingerprint (commit:file:rule:line) of a finding in a
+# past commit, reviewed and classified below; gitleaks skips it, so a scan
+# reports only new findings. Entries name a commit, so they never hide a
+# finding in the working tree or in a later commit.
+#
+# Add an entry only for a reviewed non-secret in history that cannot be
+# rewritten. A real secret is never baselined: rotate it first, then add
+# it with a comment saying so. Rewritten history (rebase, squash) changes
+# commit ids: rescan and review the reported findings again.
+
+# Garage access key ID (real format, GK + 24 hex) in a docs example.
+# Not a placeholder: the key was rotated, so the ID is dead. The
+# secret half was never committed (the docs read it from vault).
+# Current docs use <garage-key-id>.
+
+d38d159b237d85d7b044dae976fd57b19313f366:docs/environment-variables/storage.md:generic-api-key:242
+f633e85123f898b5fee10b702cfd49957044e94a:docs/environment-variables/storage.md:generic-api-key:160
+
+# Published example values: GitHub's documented example PAT and the
+# jwt.io sample token, used as redaction test vectors.
+
+29a5787872a4bd2eb5e561d0d6d78687c2ac6ded:internal/config/secrets_scan_test.go:ctxt-github-token:44
+29a5787872a4bd2eb5e561d0d6d78687c2ac6ded:internal/config/secrets_scan_test.go:generic-api-key:36
+29a5787872a4bd2eb5e561d0d6d78687c2ac6ded:internal/config/secrets_scan_test.go:github-pat:44
+94d2e1969527fd73318d0c9954c202fbfb77ab88:internal/plugin/redact_test.go:ctxt-env-var-assignment:30
+94d2e1969527fd73318d0c9954c202fbfb77ab88:internal/plugin/redact_test.go:generic-api-key:30
+
+# Test fixtures: fake keys built for redaction and auth tests, and the
+# throwaway Garage rpc_secret of an integration-test container.
+
+94d2e1969527fd73318d0c9954c202fbfb77ab88:internal/plugin/redact_test.go:ctxt-github-token:24
+94d2e1969527fd73318d0c9954c202fbfb77ab88:internal/plugin/redact_test.go:ctxt-github-token:52
+61c2bf683d3082f20d3579c4216cbd8e2120fcae:internal/storage/blob/local/store_test.go:generic-api-key:158
+e7a44d552dbb08d1914e582e76ab29cd4ce62220:test/integration/blob_garage_test.go:ctxt-generic-secret:273
+e7a44d552dbb08d1914e582e76ab29cd4ce62220:test/integration/blob_garage_test.go:generic-api-key:273
+ed2000497a5d8ce44fa5a0a521f5d0c1168d7d1f:test/integration/us0209_auth_fetch_test.go:ctxt-generic-api-key:155
+
+# Local development defaults: ctxt:ctxt Postgres credentials of the
+# docker-compose dev stack.
+
+223ccf5b8df62448bf4af57a8509ca6ba5d754d0:docker/docker-compose.yml:ctxt-postgres-connection-string:56
+78037a58172413732bacdde098e435b7e3e047c3:docs/analysis/2026-08-04-driver-parity-conformance.md:ctxt-postgres-connection-string:162
+84b7d237db549b076084ba2f8f980010af9ce294:docs/analysis/2026-08-04-driver-parity-conformance.md:ctxt-postgres-connection-string:162
+
+# Not secrets: env var and keychain account names a rule mistook for
+# a value, LinkedIn rule hits on identifiers, and PEM header lines
+# in docs tables (no key body).
+
+d36a646dedae4d1387526ae5f7263c36c4b9285f:docs/plans/2026-02-18-s3-media-storage.md:generic-api-key:249
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/log-sanitization.md:ctxt-private-key:363
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/log-sanitization.md:ctxt-private-key:365
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/log-sanitization.md:private-key:363
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:ctxt-private-key:56
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:ctxt-private-key:57
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:private-key:54
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/validation.md:ctxt-private-key:49
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/validation.md:private-key:48
+f4a561488b01b5799cc259d22a41afba483679c0:docs/stories/capture/US-0204-linkedin-capture.md:linkedin-client-id:259
+f4a561488b01b5799cc259d22a41afba483679c0:docs/stories/capture/US-0204-linkedin-capture.md:linkedin-client-id:305
+1f4584ab9fa0f8f3d92c5959df0c355ecfbe936c:internal/bundle/bundle.go:generic-api-key:32
+677888afab07de2f3baacea5160171f87c4800b6:internal/config/config.go:generic-api-key:938
+c3be31713c77a8438111d1d27d65f95d057c8a2b:internal/config/config.go:generic-api-key:255
+
+# Placeholders in docs and sample configs: user:pass DSNs, sk-proj-abc123,
+# ghp_abc123def456, password123, *_here values, $VAR references, and
+# base64 of such placeholders.
+
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:SECURITY.md:ctxt-postgres-connection-string:412
+8ee028843cc72fbcbbd9fa5515dccf39f4617a06:config/config.example.yaml:generic-api-key:203
+01c5782a57375b7d813641772156bfa5f4ca0121:docs/SECURITY.md:ctxt-postgres-connection-string:412
+82679a85165dc866f28269e920417a77727d06c1:docs/decisions/ADR-023-authentication-authorization-model.md:curl-auth-header:404
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/environment-variables/README.md:ctxt-env-var-assignment:145
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/environment-variables/security.md:ctxt-env-var-assignment:192
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/environment-variables/security.md:ctxt-env-var-assignment:73
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/environment-variables/storage.md:ctxt-env-var-assignment:96
+f633e85123f898b5fee10b702cfd49957044e94a:docs/environment-variables/storage.md:ctxt-postgres-connection-string:52
+82679a85165dc866f28269e920417a77727d06c1:docs/git-hooks.md:generic-api-key:415
+a09986d32e5203511e872fa7da3ee1e798513364:docs/personas/operations.md:ctxt-postgres-connection-string:45
+d36a646dedae4d1387526ae5f7263c36c4b9285f:docs/plans/2026-02-18-s3-media-storage.md:generic-api-key:569
+559ef4f5ee58e3d0394ce85803289cfe48bcec04:docs/security/configuration-security.md:ctxt-postgres-connection-string:89
+82679a85165dc866f28269e920417a77727d06c1:docs/security/configuration-security.md:ctxt-password-assignment:590
+82679a85165dc866f28269e920417a77727d06c1:docs/security/configuration-security.md:ctxt-postgres-connection-string:155
+82679a85165dc866f28269e920417a77727d06c1:docs/security/configuration-security.md:ctxt-postgres-connection-string:271
+82679a85165dc866f28269e920417a77727d06c1:docs/security/configuration-security.md:ctxt-postgres-connection-string:642
+82679a85165dc866f28269e920417a77727d06c1:docs/security/configuration-security.md:generic-api-key:175
+82679a85165dc866f28269e920417a77727d06c1:docs/security/configuration-security.md:generic-api-key:183
+82679a85165dc866f28269e920417a77727d06c1:docs/security/configuration-security.md:generic-api-key:266
+82679a85165dc866f28269e920417a77727d06c1:docs/security/configuration-security.md:generic-api-key:276
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/log-sanitization.md:ctxt-postgres-connection-string:312
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/log-sanitization.md:ctxt-postgres-connection-string:349
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/log-sanitization.md:ctxt-postgres-connection-string:74
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/log-sanitization.md:generic-api-key:109
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/log-sanitization.md:generic-api-key:167
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/log-sanitization.md:generic-api-key:181
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/log-sanitization.md:generic-api-key:308
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/log-sanitization.md:generic-api-key:91
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/model/boundaries.md:generic-api-key:281
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secret-management.md:ctxt-env-var-assignment:58
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secret-management.md:ctxt-generic-api-key:37
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secret-management.md:ctxt-password-assignment:366
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secret-management.md:generic-api-key:237
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secret-management.md:generic-api-key:238
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secret-management.md:generic-api-key:509
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secret-management.md:generic-api-key:76
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:ctxt-env-var-assignment:465
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:ctxt-password-assignment:402
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:ctxt-postgres-connection-string:226
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:ctxt-postgres-connection-string:44
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:ctxt-postgres-connection-string:466
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:generic-api-key:243
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:generic-api-key:261
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:generic-api-key:337
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:generic-api-key:412
+82679a85165dc866f28269e920417a77727d06c1:docs/security/secrets-validation-and-log-sanitization.md:generic-api-key:545
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/validation.md:ctxt-postgres-connection-string:39
+54dd5c9db0b2e7c7793fa8c7f9530062016c11ca:docs/security/validation.md:ctxt-postgres-connection-string:402
+627b093447536afe0d062f13f880e537aa086d2b:docs/stories/operations/US-0035-migrate-storage-backend.md:ctxt-postgres-connection-string:56

@@ -382,17 +382,18 @@ check-searchgraph-viewer-dist: build-searchgraph-viewer
 
 .PHONY: build-searchgraph-viewer test-searchgraph-viewer-js check-searchgraph-viewer-dist
 
-## security-scan: Run gitleaks secret scanning on entire repo history
-security-scan:
-	@echo "Running gitleaks secret scan..."
-	@if command -v gitleaks >/dev/null 2>&1; then \
-		gitleaks detect --source . --config .gitleaks.toml --verbose; \
-	else \
-		echo "gitleaks not installed. Install with:"; \
-		echo "  brew install gitleaks"; \
-		echo "  or: https://github.com/gitleaks/gitleaks#installing"; \
-		exit 1; \
-	fi
+## security-scan: Scan git history for secrets not in the baseline
+##
+## Scans every commit reachable from SCAN_REFS (default HEAD; pass
+## SCAN_REFS=--all for every local ref). .gitleaksignore is the baseline:
+## reviewed findings in past commits, skipped by fingerprint, so only new
+## findings fail the scan. CI's secret-scan job runs this target.
+SCAN_REFS ?= HEAD
+security-scan: install-gitleaks
+	@echo "Scanning git history ($(SCAN_REFS)) for secrets..."
+	gitleaks git . --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore \
+		--log-opts="$(SCAN_REFS)" --redact --verbose --no-banner
+	@echo "✓ No new secrets in history"
 
 ## install-hooks: Point git at the repo's .githooks directory
 ##
@@ -413,9 +414,8 @@ install-hooks:
 
 ## install-gitleaks: Install the gitleaks version pinned in mise.toml
 ##
-## Secret scanning runs locally rather than in CI: gitleaks-action requires
-## a license for organization-owned repos. See .github/workflows/ci.yml.
-## Installs through mise (the pin's home); brew cannot pin a version.
+## Installs through mise (the pin's home); brew cannot pin a version. CI
+## installs the same release from GitHub (.github/workflows/ci.yml).
 GITLEAKS_VERSION := $(shell sed -n 's/^gitleaks = "\(.*\)"$$/\1/p' mise.toml)
 install-gitleaks:
 	@have=$$(gitleaks version 2>/dev/null || true); have=$${have#v}; \

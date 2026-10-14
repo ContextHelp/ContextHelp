@@ -318,3 +318,49 @@ func TestGitleaksVersionPinned(t *testing.T) {
 		}
 	}
 }
+
+// TestGitleaksBaselineEntriesNameACommit checks every .gitleaksignore entry
+// is a commit-scoped fingerprint (commit:file:rule:line). gitleaks also
+// takes file:rule:line, which skips that finding in every commit and in
+// working-tree scans: a key pasted later on a baselined line would pass.
+func TestGitleaksBaselineEntriesNameACommit(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", ".gitleaksignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := regexp.MustCompile(`^[0-9a-f]{40}:[^:]+:[a-z0-9-]+:[0-9]+$`)
+	n := 0
+	for i, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		n++
+		if !entry.MatchString(line) {
+			t.Errorf(".gitleaksignore:%d: %q is not a commit:file:rule:line fingerprint", i+1, line)
+		}
+	}
+	if n == 0 {
+		t.Error(".gitleaksignore has no entries")
+	}
+}
+
+// TestGitleaksHistoryScanClean runs `make security-scan` on the checkout:
+// every finding in the history of HEAD must be baselined in
+// .gitleaksignore, so the scan CI runs passes.
+func TestGitleaksHistoryScanClean(t *testing.T) {
+	if testing.Short() {
+		t.Skip("history scan takes tens of seconds")
+	}
+	for _, tool := range []string{"gitleaks", "git", "make"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s not on PATH", tool)
+		}
+	}
+	cmd := exec.Command("make", "--no-print-directory", "-C", "..", "security-scan")
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &out
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("make security-scan: %v\n%s", err, out.String())
+	}
+}
