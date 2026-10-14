@@ -420,7 +420,7 @@ tasks:
       - POST /api/v1/edges {source, target, type, context};
       - GET /api/v1/objects/{id}/edges?direction=in|out|both&type=&depth=, where depth is 1 to 3 and matches `--follow`;
       - DELETE /api/v1/edges?source=&target=&type=.
-      Scopes: `write:objects`, `read:objects`, `delete:objects`.
+      Scopes: `write:objects`, `read:objects`, `delete:edges` (admin only; split from `delete:objects`, which a web UI session holds).
       Move link create, list (including `--follow` traversal) and delete off newService.
       Tests, written first: round-trip create, list and delete; a depth-3 traversal equals today's output (golden).
       Operator-Impact: none.
@@ -765,7 +765,7 @@ In the endpoint column, **✓** marks an existing route. The scope column uses t
 | `inbox list` | `inbox.go:149` | `GET /inbox` ✓, `GET /inbox/queue` | `read:inbox` | ctxt |
 | `inbox triage\|discard` | `inbox.go:236`, `:261` | `POST /inbox/{id}/triage\|discard` ✓ | `process:inbox` | ctxt |
 | `inbox clear` | `inbox.go:283` | `POST /inbox/clear` | `process:inbox` | ctxt |
-| `link create\|list\|delete` | `link.go:85`, `:184`, `:369` | `POST /edges`, `GET /objects/{id}/edges`, `DELETE /edges` | `write:` / `read:` / `delete:objects` | ctxt |
+| `link create\|list\|delete` | `link.go:85`, `:184`, `:369` | `POST /edges`, `GET /objects/{id}/edges`, `DELETE /edges` | `write:` / `read:objects`, `delete:edges` | ctxt |
 | `edit` | `edit.go:98` | `PATCH /objects/{id}` ✓ (widened past type and subtype, `handlers_objects.go:69-74`) | `write:objects` | ctxt. Delete the dead `--hints` and `--decisions` |
 | `delete` | `delete.go:150`, `:366` | `GET /objects` ✓, `DELETE /objects/{id}` ✓ | `delete:objects` | ctxt. Bulk delete runs one request per ID |
 | `reprocess` | `reprocess.go:67-100` (local providers) | `POST /objects/{id}/reprocess` | `write:objects` | the step runs as a dpkms job |
@@ -850,7 +850,7 @@ Every route declares one scope. The static provider's roles expand to bundles:
 |---|---|
 | `read:*` (reader) | every `GET` under `/api/v1` except the audit log; `POST /find`; `POST /lint`; `GET /events`; the MCP mount; `GET /whoami` |
 | `write:objects`, `write:inbox`, `write:feeds`, `write:jobs` | analyze, capture, inbox capture, object `PATCH`, reprocess, edges, reminders, resurfacing, pages refresh, topic-index rebuild, ingest, import and importer runs, `pipelines/enqueue`, feed mutations, job retry and cancel, aliases, saved searches, suggestions approve and reject, `system/reminders` dismiss, entity pull |
-| `delete:objects`, `process:inbox` | object and edge deletes, clearing search history; inbox triage, discard and clear |
+| `delete:objects`, `delete:edges`, `process:inbox` | object and edge deletes, clearing search history; inbox triage, discard and clear |
 | admin-only (`admin:*`, `sync:registries`) | pipeline create, delete and archive; step install and uninstall; registry fetch, update, delete and sync; `entities/registry-sync`; server-side watch mutations (they read the server's filesystem); the embedding lifecycle; upgrade runs; the audit log |
 | unchanged | `POST /federation/push` keeps its own credential rule (`server.go:241`) |
 

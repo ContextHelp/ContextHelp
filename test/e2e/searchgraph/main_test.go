@@ -70,7 +70,7 @@ func setup(m *testing.M) (int, error) {
 		return 0, fmt.Errorf("go build ./cmd/ctxt: %w\n%s", err, out)
 	}
 
-	c, err := seedCorpus(suite.bin, filepath.Join(work, "corpus"))
+	c, err := seedCorpus(filepath.Join(work, "corpus"))
 	if err != nil {
 		return 0, fmt.Errorf("seed corpus: %w", err)
 	}
