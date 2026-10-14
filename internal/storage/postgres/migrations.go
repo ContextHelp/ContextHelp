@@ -194,6 +194,41 @@ var pgMigrations = []pgMigration{
 	// acknowledged change_seq; no position converts, so targets start
 	// from 0 (receivers dedup the re-sent objects).
 	{Version: 22, Name: "objects.change_seq", Statements: objectChangeSeqStatements},
+	// aliases.object_id -> objects(id) ON DELETE CASCADE, mirroring SQLite
+	// migration 010: without it an alias outlived its object and kept
+	// resolving to a deleted id. Orphans are deleted before the constraint.
+	{Version: 23, Name: "aliases object FK with cascade", fn: migrateAliasesObjectFK},
+}
+
+// migrateAliasesObjectFK deletes aliases whose object is gone, then adds
+// aliases_object_fk (ON DELETE CASCADE), guarded by a pg_constraint
+// lookup so a replay is a no-op. One transaction: the constraint never
+// lands without the cleanup it needs.
+func migrateAliasesObjectFK(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM aliases a
+		 WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = a.object_id)`); err != nil {
+		return fmt.Errorf("delete orphaned aliases: %w", err)
+	}
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (SELECT 1 FROM pg_constraint
+		                WHERE conname = 'aliases_object_fk' AND conrelid = 'aliases'::regclass)`).Scan(&exists); err != nil {
+		return fmt.Errorf("inspect aliases_object_fk: %w", err)
+	}
+	if !exists {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE aliases ADD CONSTRAINT aliases_object_fk
+			FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE`); err != nil {
+			return fmt.Errorf("add aliases_object_fk: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // objectChangeSeqStatements install objects.change_seq (migration 22).

@@ -14,7 +14,7 @@ today. This page describes what exists and what is missing.
 | Piece | State |
 |-------|-------|
 | Plugin module `plugins/aliasing/` | Exists (separate Go module, listed in `go.work`) |
-| `aliases` table | Exists (SQLite migration `010_aliases.sql`; Postgres `internal/storage/postgres/aliases.go`) |
+| `aliases` table | Exists (SQLite migration `010_aliases.sql`; Postgres baseline table, foreign key from migration 23). Deleting an object deletes its aliases on both backends |
 | REST routes `/api/v1/aliases` | Working: served by `Service` over the core alias store, plugin or not |
 | Plugin registration at startup | Not implemented: nothing creates `Service.PluginRegistry` outside tests |
 | `ctxt alias` command | Not available: `plugins/aliasing/cli.go` defines a cobra subtree, but no binary mounts it |
