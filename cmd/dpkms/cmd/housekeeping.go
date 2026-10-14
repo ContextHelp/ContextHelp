@@ -173,7 +173,7 @@ var runAllCmd = &cobra.Command{
 	Long: `Run all maintenance tasks in sequence:
   1. WAL checkpoint
   2. VACUUM SQLite DB
-  3. Purge orphaned blobs
+  3. Purge orphaned blobs (no object refers to them, older than --blob-grace)
   4. Compact embeddings table
   5. Prune jobs history >30 days
   6. Detect zombie jobs (running but stale)
@@ -214,6 +214,8 @@ func init() {
 	// use kitcli.IsDryRun(cmd).
 	runAllCmd.Flags().Duration("zombie-threshold", zombieThreshold,
 		"jobs running longer than this are considered zombies")
+	runAllCmd.Flags().Duration("blob-grace", blob.DefaultSweepGrace,
+		"keep unreferenced blobs younger than this (an ingest may not have written its object yet)")
 
 	// Side-effect tiers. Kit refuses --dry-run on any leaf that has not
 	// declared one, and uses the tier to decide whether the confirmation
@@ -543,14 +545,18 @@ func runPrune(cmd *cobra.Command, args []string) error {
 
 // housekeepingStats collects counters during a full maintenance run.
 type housekeepingStats struct {
-	PagesBefore   int64
-	PagesAfter    int64
-	PageSize      int64
-	JobsPruned    int64
-	ZombiesFound  int64
-	ZombiesReset  int64
-	OrphanBlobs   int64
-	EmbeddingsOpt bool
+	PagesBefore  int64
+	PagesAfter   int64
+	PageSize     int64
+	JobsPruned   int64
+	ZombiesFound int64
+	ZombiesReset int64
+	OrphanBlobs  int64
+	// OrphanBlobsYoung are unreferenced blobs inside the grace period,
+	// kept; OrphanBlobsFailed could not be deleted.
+	OrphanBlobsYoung  int64
+	OrphanBlobsFailed int64
+	EmbeddingsOpt     bool
 }
 
 // progress writes a narration line to stderr. A full housekeeping run
@@ -566,13 +572,15 @@ func progress(line string) {
 // precomputed so a caller need not know the page arithmetic.
 func (s housekeepingStats) summary() map[string]any {
 	return map[string]any{
-		"db_size_mb":       s.PagesAfter * s.PageSize / (1024 * 1024),
-		"reclaimed_kb":     (s.PagesBefore - s.PagesAfter) * s.PageSize / 1024,
-		"jobs_pruned":      s.JobsPruned,
-		"zombies_found":    s.ZombiesFound,
-		"zombies_reset":    s.ZombiesReset,
-		"orphan_blobs":     s.OrphanBlobs,
-		"embeddings_optim": s.EmbeddingsOpt,
+		"db_size_mb":          s.PagesAfter * s.PageSize / (1024 * 1024),
+		"reclaimed_kb":        (s.PagesBefore - s.PagesAfter) * s.PageSize / 1024,
+		"jobs_pruned":         s.JobsPruned,
+		"zombies_found":       s.ZombiesFound,
+		"zombies_reset":       s.ZombiesReset,
+		"orphan_blobs":        s.OrphanBlobs,
+		"orphan_blobs_young":  s.OrphanBlobsYoung,
+		"orphan_blobs_failed": s.OrphanBlobsFailed,
+		"embeddings_optim":    s.EmbeddingsOpt,
 	}
 }
 
@@ -588,7 +596,7 @@ func (s housekeepingStats) summary() map[string]any {
 // the help lists, "print stats summary", is not an action: it changes
 // nothing, and padding the plan with it would make the list disagree
 // with the work.
-func (s housekeepingStats) plan(command string, threshold time.Duration) cliformat.Plan {
+func (s housekeepingStats) plan(command string, threshold, grace time.Duration) cliformat.Plan {
 	return cliformat.NewPlan(command, []cliformat.Action{
 		{
 			Kind: "checkpoint", Target: "wal:" + cfg.Storage.Path, Count: 0,
@@ -605,8 +613,9 @@ func (s housekeepingStats) plan(command string, threshold time.Duration) cliform
 			Reversible: true, Detail: "optimize the embeddings index if the table exists",
 		},
 		{
-			Kind: "delete", Target: "table:blobs", Count: s.OrphanBlobs,
-			Reversible: false, Detail: "purge blobs whose object no longer exists",
+			Kind: "delete", Target: "blob-store", Count: s.OrphanBlobs,
+			Reversible: false,
+			Detail:     fmt.Sprintf("purge blobs no object refers to, older than %s", grace),
 		},
 		{
 			Kind: "delete", Target: "table:jobs", Count: s.JobsPruned,
@@ -636,7 +645,8 @@ func (s housekeepingStats) print(w *lineWriter) {
 	w.printf("  Space reclaimed: %d KB\n", reclaimedKB)
 	w.printf("  Jobs pruned    : %d\n", s.JobsPruned)
 	w.printf("  Zombie jobs    : %d found, %d reset to pending\n", s.ZombiesFound, s.ZombiesReset)
-	w.printf("  Orphan blobs   : %d\n", s.OrphanBlobs)
+	w.printf("  Orphan blobs   : %d purged, %d kept (younger than grace), %d failed\n",
+		s.OrphanBlobs, s.OrphanBlobsYoung, s.OrphanBlobsFailed)
 	if s.EmbeddingsOpt {
 		w.println("  Embeddings     : optimized")
 	} else {
@@ -647,6 +657,7 @@ func (s housekeepingStats) print(w *lineWriter) {
 
 func runAll(cmd *cobra.Command, _ []string) error {
 	threshold, _ := cmd.Flags().GetDuration("zombie-threshold")
+	grace, _ := cmd.Flags().GetDuration("blob-grace")
 	dryRun := kitcli.IsDryRun(cmd)
 
 	driver, cleanup, err := openDB()
@@ -697,19 +708,18 @@ func runAll(cmd *cobra.Command, _ []string) error {
 	}
 	progress("done")
 
-	// 5. Orphaned blobs: blobs whose object_id references no known object.
+	// 5. Orphaned blobs: blobs in the blob store no object refers to,
+	// older than the grace period (see blob.Sweep).
 	progress("Purging orphaned blobs...")
-	if !dryRun {
-		res, err := db.ExecContext(ctx, `DELETE FROM blobs WHERE object_id NOT IN (SELECT id FROM objects)`)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: purge blobs: %v\n", err)
-		} else {
-			stats.OrphanBlobs, _ = res.RowsAffected()
-		}
-	} else {
-		_ = db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM blobs WHERE object_id NOT IN (SELECT id FROM objects)`).
-			Scan(&stats.OrphanBlobs)
+	swept, err := blob.Sweep(ctx, driver, blob.SweepOptions{Grace: grace, DryRun: dryRun})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: purge blobs: %v\n", err)
+	}
+	stats.OrphanBlobs = int64(len(swept.Deleted))
+	stats.OrphanBlobsYoung = int64(swept.Young)
+	stats.OrphanBlobsFailed = int64(len(swept.Failed))
+	for _, o := range swept.Failed {
+		fmt.Fprintf(os.Stderr, "warning: purge blob %s\n", o)
 	}
 	progress("done")
 
@@ -758,7 +768,7 @@ func runAll(cmd *cobra.Command, _ []string) error {
 	// from a projection that pruned nothing because it was never
 	// going to. The plan states dry_run outright and names each step.
 	if dryRun {
-		return renderPreviewPlan(cmd, stats.plan(cmd.CommandPath(), threshold), func(w *lineWriter) {
+		return renderPreviewPlan(cmd, stats.plan(cmd.CommandPath(), threshold, grace), func(w *lineWriter) {
 			stats.print(w)
 		})
 	}

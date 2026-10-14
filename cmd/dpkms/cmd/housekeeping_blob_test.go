@@ -172,3 +172,47 @@ func TestHousekeepingPruneDryRunListsBlobs(t *testing.T) {
 		require.True(t, f.blobExists(t, key), "dry-run deleted blob %s", key)
 	}
 }
+
+// putAgedBlob stores a blob in the local store and backdates it.
+func (f *pruneBlobFixture) putAgedBlob(t *testing.T, key string, age time.Duration) {
+	t.Helper()
+	require.NoError(t, f.blobs.Put(context.Background(), key, strings.NewReader("content of "+key), storage.BlobMeta{}))
+	at := time.Now().Add(-age)
+	// local layout: <key[0:2]>/<key[2:4]>/<key>
+	require.NoError(t, os.Chtimes(filepath.Join(f.dataDir, "blobs", key[:2], key[2:4], key), at, at))
+}
+
+// The full maintenance pass sweeps the blob store: it deletes blobs no
+// object refers to once they are older than the grace period, and
+// keeps referenced and young ones. --dry-run deletes nothing.
+func TestHousekeepingRunSweepsOrphanBlobs(t *testing.T) {
+	f := setupPruneBlobDB(t)
+	f.seed(t, "obj_live", "keylive", time.Now().UTC())
+	f.putAgedBlob(t, "keyorphan", 3*time.Hour)
+	f.putAgedBlob(t, "keyyoung", 10*time.Minute)
+	f.putAgedBlob(t, "keylive", 3*time.Hour)
+
+	out, err := f.run("--data-dir", f.dataDir, "housekeeping", "run", "--dry-run", "--format", "json")
+	require.NoError(t, err)
+	var plan cliformat.Plan
+	require.NoError(t, json.Unmarshal([]byte(out), &plan), out)
+	var sweep *cliformat.Action
+	for i, a := range plan.Effects {
+		if a.Target == "blob-store" {
+			sweep = &plan.Effects[i]
+		}
+	}
+	require.NotNil(t, sweep, "plan has no blob-store sweep action: %v", plan.Effects)
+	require.EqualValues(t, 1, sweep.Count)
+	require.True(t, f.blobExists(t, "keyorphan"), "dry run deleted an orphan blob")
+
+	out, err = f.run("--data-dir", f.dataDir, "housekeeping", "run", "--format", "json")
+	require.NoError(t, err)
+	var summary map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &summary), out)
+	require.EqualValues(t, 1, summary["orphan_blobs"])
+	require.EqualValues(t, 1, summary["orphan_blobs_young"])
+	require.False(t, f.blobExists(t, "keyorphan"), "run left an old orphan blob behind")
+	require.True(t, f.blobExists(t, "keyyoung"), "run deleted an orphan blob inside the grace period")
+	require.True(t, f.blobExists(t, "keylive"), "run deleted a blob an object refers to")
+}

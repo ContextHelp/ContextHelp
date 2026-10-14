@@ -196,34 +196,38 @@ func (s *Store) List(ctx context.Context, prefix string) ([]storage.BlobInfo, er
 		}
 	}
 
-	result, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+	// A page holds at most 1000 keys: follow the continuation token to
+	// the end, so a caller (the orphan sweep) sees every blob.
+	var items []storage.BlobInfo
+	pages := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
 		Bucket: &s.bucket,
 		Prefix: &listPrefix,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("blob s3 list: %w", err)
-	}
-
-	var items []storage.BlobInfo
-	for _, obj := range result.Contents {
-		key := path.Base(*obj.Key)
-		// Skip meta files.
-		if len(key) > 10 && key[len(key)-10:] == ".meta.json" {
-			continue
+	for pages.HasMorePages() {
+		result, err := pages.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("blob s3 list: %w", err)
 		}
-		size := int64(0)
-		if obj.Size != nil {
-			size = *obj.Size
+		for _, obj := range result.Contents {
+			key := path.Base(*obj.Key)
+			// Skip meta files.
+			if len(key) > 10 && key[len(key)-10:] == ".meta.json" {
+				continue
+			}
+			size := int64(0)
+			if obj.Size != nil {
+				size = *obj.Size
+			}
+			updatedAt := time.Time{}
+			if obj.LastModified != nil {
+				updatedAt = *obj.LastModified
+			}
+			items = append(items, storage.BlobInfo{
+				Key:       key,
+				Size:      size,
+				UpdatedAt: updatedAt,
+			})
 		}
-		updatedAt := time.Time{}
-		if obj.LastModified != nil {
-			updatedAt = *obj.LastModified
-		}
-		items = append(items, storage.BlobInfo{
-			Key:       key,
-			Size:      size,
-			UpdatedAt: updatedAt,
-		})
 	}
 	return items, nil
 }
