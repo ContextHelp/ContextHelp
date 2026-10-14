@@ -1,10 +1,20 @@
 # Docker runtime configuration for dpkms
 # Every key here must be one internal/config.Config declares;
 # internal/config/docker_config_test.go fails on any other.
+#
+# This file is the single source for in-container settings: the images
+# and compose set no env var that overrides one of these keys.
 
+# Everything persistent lives on the /data volume. Runtime files
+# (pidfiles, upgrade state) stay in the container user's home and go
+# with the container.
 storage:
   type: sqlite
-  path: /data/bookmarks.db
+  path: /data/dpkms.db
+  blob:
+    backend: local
+    local:
+      path: /data/blobs
 
 jobs:
   max_retries: 3
