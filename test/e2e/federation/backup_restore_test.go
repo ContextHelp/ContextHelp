@@ -189,6 +189,6 @@ func pushFromPathFn(t *testing.T, tgtPath string) func(srcPath, fedName string) 
 		for _, o := range objs {
 			batch = append(batch, *o)
 		}
-		return federation.NewLocalPusher(fedName, tgtPath, storageutil.NewTestBlobStore(t)).Push(ctx, batch, nil, nil)
+		return federation.NewLocalPusher(fedName, tgtPath, nil, storageutil.NewTestBlobStore(t)).Push(ctx, batch, nil, nil)
 	}
 }

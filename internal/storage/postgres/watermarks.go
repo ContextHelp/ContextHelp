@@ -5,38 +5,42 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// watermarkStore persists per-federation last-synced timestamps in the
-// federation_watermarks table. One row per federation_name; missing rows
-// are treated as the Unix epoch.
+// watermarkStore persists per-federation change positions in the
+// federation_watermarks table: last_synced_at holds the position's
+// updated_at, last_object_id its id. One row per federation_name.
 type watermarkStore struct{ db *sql.DB }
 
-// GetWatermark returns last_synced_at for federationName or epoch when missing.
-func (s *watermarkStore) GetWatermark(ctx context.Context, federationName string) (time.Time, error) {
-	var ts time.Time
+// GetWatermark returns the position stored for federationName, or the
+// zero position when there is none.
+func (s *watermarkStore) GetWatermark(ctx context.Context, federationName string) (storage.ChangeCursor, error) {
+	var pos storage.ChangeCursor
 	err := s.db.QueryRowContext(ctx,
-		`SELECT last_synced_at FROM federation_watermarks WHERE federation_name = $1`,
+		`SELECT last_synced_at, last_object_id FROM federation_watermarks WHERE federation_name = $1`,
 		federationName,
-	).Scan(&ts)
+	).Scan(&pos.UpdatedAt, &pos.ID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return time.Unix(0, 0).UTC(), nil
+		return storage.ChangeCursor{}, nil
 	}
 	if err != nil {
-		return time.Time{}, fmt.Errorf("watermark get %q: %w", federationName, err)
+		return storage.ChangeCursor{}, fmt.Errorf("watermark get %q: %w", federationName, err)
 	}
-	return ts.UTC(), nil
+	pos.UpdatedAt = pos.UpdatedAt.UTC()
+	return pos, nil
 }
 
-// SetWatermark upserts last_synced_at for federationName.
-func (s *watermarkStore) SetWatermark(ctx context.Context, federationName string, ts time.Time) error {
+// SetWatermark upserts pos for federationName.
+func (s *watermarkStore) SetWatermark(ctx context.Context, federationName string, pos storage.ChangeCursor) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO federation_watermarks (federation_name, last_synced_at)
-         VALUES ($1, $2)
+		`INSERT INTO federation_watermarks (federation_name, last_synced_at, last_object_id)
+         VALUES ($1, $2, $3)
          ON CONFLICT (federation_name)
-         DO UPDATE SET last_synced_at = EXCLUDED.last_synced_at`,
-		federationName, ts.UTC(),
+         DO UPDATE SET last_synced_at = EXCLUDED.last_synced_at,
+                       last_object_id = EXCLUDED.last_object_id`,
+		federationName, pos.UpdatedAt.UTC(), pos.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("watermark set %q: %w", federationName, err)

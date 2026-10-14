@@ -230,6 +230,20 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		args = append(args, filter.Before.Format(time.RFC3339))
 	}
 
+	// Change order compares updated_at as an instant, like After and
+	// Before: datetime() normalizes the stored offset to UTC. The
+	// expression matches idx_objects_change_order (migration 042).
+	if c := filter.ChangedAfter; c != nil {
+		at := c.UpdatedAt.UTC().Format(time.RFC3339)
+		conditions = append(conditions,
+			"(datetime(updated_at) > datetime(?) OR (datetime(updated_at) = datetime(?) AND id > ?))")
+		args = append(args, at, at, c.ID)
+	}
+	if filter.ChangedUntil != nil {
+		conditions = append(conditions, "datetime(updated_at) <= datetime(?)")
+		args = append(args, filter.ChangedUntil.UTC().Format(time.RFC3339))
+	}
+
 	// Metadata facet filters (US-0407).
 	mc, ma := metadataFacetConditionsSQLite(filter)
 	conditions = append(conditions, mc...)
@@ -249,13 +263,17 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 	}
 
 	// Sort.
-	sortCol := "created_at"
-	if filter.Sort == "updated_at" {
-		sortCol = "updated_at"
-	}
-	dir := "DESC"
-	if filter.Dir == "asc" {
-		dir = "ASC"
+	order := "datetime(updated_at) ASC, id ASC" // change order
+	if filter.ChangedAfter == nil {
+		sortCol := "created_at"
+		if filter.Sort == "updated_at" {
+			sortCol = "updated_at"
+		}
+		dir := "DESC"
+		if filter.Dir == "asc" {
+			dir = "ASC"
+		}
+		order = sortCol + " " + dir
 	}
 
 	query := fmt.Sprintf(`SELECT
@@ -265,7 +283,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key
-	FROM objects %s ORDER BY %s %s`, where, sortCol, dir)
+	FROM objects %s ORDER BY %s`, where, order)
 
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", filter.Limit)

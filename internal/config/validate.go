@@ -50,7 +50,7 @@ func Validate(c *Config) []ValidationError {
 		errs = append(errs, ValidationError{Field: "server.cookie_bridge_port", Message: fmt.Sprintf("must be 1024–65535, got %d", c.Server.CookieBridgePort)})
 	}
 
-	errs = append(errs, validateBlob(c.Storage.Blob)...)
+	errs = append(errs, validateBlob(c.Storage.Blob, "storage.blob")...)
 	errs = append(errs, validateAccess(c)...)
 	errs = append(errs, validateAuthRoles(c)...)
 	errs = append(errs, validateAuthTokens(c)...)
@@ -315,7 +315,7 @@ var blobBackends = []string{"local", "s3", "garage"}
 // s3 and garage backends cannot start without. The blob factory calls
 // it before building the store, so `config validate` and startup agree.
 func (b BlobConfig) Validate() error {
-	errs := validateBlob(b)
+	errs := validateBlob(b, "storage.blob")
 	if len(errs) == 0 {
 		return nil
 	}
@@ -326,25 +326,27 @@ func (b BlobConfig) Validate() error {
 	return errors.Join(joined...)
 }
 
-func validateBlob(b BlobConfig) []ValidationError {
+// validateBlob checks the blob store config at field (storage.blob, or a
+// federation target's blob).
+func validateBlob(b BlobConfig, field string) []ValidationError {
 	backend := b.Backend
 	if backend == "" {
 		backend = "local"
 	}
 	if !slices.Contains(blobBackends, backend) {
 		return []ValidationError{{
-			Field:   "storage.blob.backend",
+			Field:   field + ".backend",
 			Message: fmt.Sprintf("unknown backend %q; must be one of %s", b.Backend, strings.Join(blobBackends, ", ")),
 		}}
 	}
 	var errs []ValidationError
 	if backend == "s3" || backend == "garage" {
 		if b.S3.Bucket == "" {
-			errs = append(errs, ValidationError{Field: "storage.blob.s3.bucket", Message: fmt.Sprintf("required for the %s backend", backend)})
+			errs = append(errs, ValidationError{Field: field + ".s3.bucket", Message: fmt.Sprintf("required for the %s backend", backend)})
 		}
 	}
 	if backend == "garage" && b.S3.Endpoint == "" {
-		errs = append(errs, ValidationError{Field: "storage.blob.s3.endpoint", Message: "required for the garage backend (e.g. http://localhost:3900)"})
+		errs = append(errs, ValidationError{Field: field + ".s3.endpoint", Message: "required for the garage backend (e.g. http://localhost:3900)"})
 	}
 	return errs
 }
@@ -378,8 +380,23 @@ func validateFederations(feds []FederationEntry) []ValidationError {
 		if f.SyncMode == "async" && f.Interval <= 0 {
 			errs = append(errs, ValidationError{Field: field + ".interval", Message: "interval is required and must be >0 for async sync_mode"})
 		}
+
+		if f.Blob != nil {
+			if isHTTPURL(f.URL) {
+				errs = append(errs, ValidationError{Field: field + ".blob", Message: "only file targets take a blob store; an http(s) receiver stores pushed content in its own"})
+			} else {
+				errs = append(errs, validateBlob(*f.Blob, field+".blob")...)
+			}
+		}
 	}
 	return errs
+}
+
+// isHTTPURL reports whether a federation url names a remote (http or
+// https) target rather than a file one.
+func isHTTPURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
 }
 
 // validateServerEndpoints checks the client-routing endpoints. Runs at load

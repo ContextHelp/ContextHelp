@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -55,7 +54,7 @@ func TestLocalPusher_CopiesBlobsToTargetStore(t *testing.T) {
 	body := strings.Repeat("federated blob ", 30)
 	obj := blobBackedObject(t, src, "fb-1", body)
 
-	if err := NewLocalPusher("blob-fed", target, src).Push(ctx, []storage.KnowledgeObject{obj}, nil, nil); err != nil {
+	if err := NewLocalPusher("blob-fed", target, nil, src).Push(ctx, []storage.KnowledgeObject{obj}, nil, nil); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 	if err := src.Delete(ctx, pushBlobKey); err != nil {
@@ -95,7 +94,7 @@ func TestLocalPusher_MissingSourceBlobFailsPush(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := NewLocalPusher("lost-fed", target, src).Push(ctx, []storage.KnowledgeObject{obj}, nil, nil); err == nil {
+	if err := NewLocalPusher("lost-fed", target, nil, src).Push(ctx, []storage.KnowledgeObject{obj}, nil, nil); err == nil {
 		t.Fatal("push of a ref with no blob: want error")
 	}
 	drv, err := storageutil.NewDriver("sqlite", target, targetBlobStore(t, target))
@@ -109,8 +108,8 @@ func TestLocalPusher_MissingSourceBlobFailsPush(t *testing.T) {
 	if _, err := drv.Objects().Get(ctx, "fb-lost"); err == nil {
 		t.Error("object landed without its blob")
 	}
-	if wm, _ := drv.Watermarks().GetWatermark(ctx, "lost-fed"); wm.After(time.Unix(0, 0)) {
-		t.Errorf("watermark advanced on a failed push: %v", wm)
+	if wm, _ := drv.Watermarks().GetWatermark(ctx, "lost-fed"); wm != (storage.ChangeCursor{}) {
+		t.Errorf("watermark advanced on a failed push: %+v", wm)
 	}
 }
 
@@ -160,5 +159,31 @@ func TestRemotePusher_RefWithoutStoreFails(t *testing.T) {
 	}
 	if called {
 		t.Error("refs were sent to the receiver")
+	}
+}
+
+// A file target's blob setting names the store a local push copies
+// into: the blob lands there, not beside the target database.
+func TestLocalPusher_CopiesBlobsToConfiguredTargetStore(t *testing.T) {
+	ctx := context.Background()
+	srcDB, _ := newTestDB(t)
+	target := filepath.Join(t.TempDir(), config.DBFileName)
+	custom := &config.BlobConfig{Backend: "local", Local: config.BlobLocalConfig{Path: filepath.Join(t.TempDir(), "replica-blobs")}}
+	obj := blobBackedObject(t, srcDB.Blobs(), "fb-custom", strings.Repeat("custom store ", 30))
+
+	p := pusherFor(config.FederationEntry{Name: "custom-fed", URL: "file://" + target, Blob: custom}, srcDB)
+	if err := p.Push(ctx, []storage.KnowledgeObject{obj}, nil, nil); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+
+	customStore, err := blob.New(*custom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := customStore.Exists(ctx, pushBlobKey); err != nil || !ok {
+		t.Errorf("blob not in the configured target store: exists=%v err=%v", ok, err)
+	}
+	if ok, _ := targetBlobStore(t, target).Exists(ctx, pushBlobKey); ok {
+		t.Error("blob copied beside the target database despite the blob setting")
 	}
 }

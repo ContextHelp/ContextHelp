@@ -183,6 +183,20 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		idx++
 	}
 
+	// Change order compares ids byte-wise (COLLATE "C"), as the SQLite
+	// driver does; the expression matches idx_objects_change_order.
+	if c := filter.ChangedAfter; c != nil {
+		conditions = append(conditions, fmt.Sprintf(
+			`(updated_at, id COLLATE "C") > ($%d, $%d)`, idx, idx+1))
+		args = append(args, c.UpdatedAt.UTC(), c.ID)
+		idx += 2
+	}
+	if filter.ChangedUntil != nil {
+		conditions = append(conditions, fmt.Sprintf("updated_at <= $%d", idx))
+		args = append(args, filter.ChangedUntil.UTC())
+		idx++
+	}
+
 	// Metadata facet filters (US-0407).
 	mc, ma := metadataFacetConditionsPG(filter, &idx)
 	conditions = append(conditions, mc...)
@@ -204,18 +218,22 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 	// are resolved through a closed allowlist: the only reachable values
 	// are the literals below. filter.Sort / filter.Dir are compared, never
 	// interpolated, so caller input cannot reach the query text.
-	sortCol := "created_at"
-	if filter.Sort == "updated_at" {
-		sortCol = "updated_at"
-	}
-	dir := "DESC"
-	if filter.Dir == "asc" {
-		dir = "ASC"
+	order := `updated_at ASC, id COLLATE "C" ASC` // change order
+	if filter.ChangedAfter == nil {
+		sortCol := "created_at"
+		if filter.Sort == "updated_at" {
+			sortCol = "updated_at"
+		}
+		dir := "DESC"
+		if filter.Dir == "asc" {
+			dir = "ASC"
+		}
+		order = sortCol + " " + dir
 	}
 
-	// #nosec G202 -- sortCol/dir are allowlisted literals (see above), not
-	// caller-controlled strings; `where` holds only $N placeholders.
-	query := objectSelectCols + ` FROM objects ` + where + ` ORDER BY ` + sortCol + ` ` + dir
+	// #nosec G202 -- order is built from allowlisted literals (see above),
+	// not caller-controlled strings; `where` holds only $N placeholders.
+	query := objectSelectCols + ` FROM objects ` + where + ` ORDER BY ` + order
 	if filter.Limit > 0 {
 		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
 		query += fmt.Sprintf(" LIMIT $%d", idx)

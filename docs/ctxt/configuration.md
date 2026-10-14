@@ -210,6 +210,10 @@ federations:
   - name: local-replica
     url: file:///mnt/backup/dpkms.db
     sync_mode: inline
+    blob:                        # optional; file targets only
+      backend: local
+      local:
+        path: /mnt/backup/blobs
 ```
 
 | Field | Type | Description |
@@ -219,6 +223,16 @@ federations:
 | `token` | string | Bearer token sent to the remote instance, written literally (config files do not expand `${VAR}`) |
 | `sync_mode` | string | `async` (scheduled) or `inline` (immediate) |
 | `interval` | duration | How often to sync; required for `async` |
+| `blob` | object | File targets only: the target instance's blob store, same keys as `storage.blob` (`backend`, `threshold`, `local.path`, `s3.*`). A local push copies each pushed object's blob into it. Unset, or `local` without `local.path`: `blobs/` beside the target database. `ctxt config validate` checks it like `storage.blob`; set on an `http(s)` target it is an error |
+
+Each `async` tick pushes only the objects changed since the target's
+watermark: the `updated_at` and id of the last object the target
+acknowledged. A `file://` target keeps its watermark in its own database,
+an `http(s)` target's watermark lives in the source's, both under `name`.
+Objects go 100 per batch; to an `http(s)` target, in requests of at most
+4 MiB of objects, content inline. A refused batch leaves the watermark
+where it was and is re-sent on the next tick. Renaming an entry starts its
+watermark over.
 
 ### Inbound auth (`federation`)
 

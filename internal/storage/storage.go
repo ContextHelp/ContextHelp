@@ -83,15 +83,17 @@ type StorageDriver interface {
 	Health(ctx context.Context) error
 }
 
-// WatermarkStore tracks per-federation last-synced timestamps for the
-// federation_watermarks table (US-0319). One row per federation name.
-// Missing rows are treated as the Unix epoch (never synced).
+// WatermarkStore keeps, per federation target, the change position of
+// the last object the target acknowledged (federation_watermarks, one
+// row per federation name). Federation pushes only objects changed
+// after it.
 type WatermarkStore interface {
-	// GetWatermark returns the last_synced_at for federationName.
-	// Missing rows return time.Unix(0, 0).UTC() with nil error.
-	GetWatermark(ctx context.Context, federationName string) (time.Time, error)
-	// SetWatermark upserts last_synced_at for federationName. Idempotent.
-	SetWatermark(ctx context.Context, federationName string, ts time.Time) error
+	// GetWatermark returns the position stored for federationName; the
+	// zero ChangeCursor, which precedes every object, when none is.
+	GetWatermark(ctx context.Context, federationName string) (ChangeCursor, error)
+	// SetWatermark stores pos for federationName, replacing any
+	// previous one.
+	SetWatermark(ctx context.Context, federationName string, pos ChangeCursor) error
 }
 
 // MeteringStore persists and queries metering events for paid registry access.
