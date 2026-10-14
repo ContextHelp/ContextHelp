@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/subtle"
 	"fmt"
+
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
 // StaticToken is one accepted credential and the identity it maps to.
@@ -33,9 +35,10 @@ type staticEntry struct {
 }
 
 // NewStatic builds a StaticProvider from the configured token table.
-// Every entry needs a non-empty token, a principal and at least one
-// known role; tokens must be unique so a credential resolves to exactly
-// one identity.
+// Every entry needs a token that passes config.CheckStaticToken (no
+// example placeholder, at least config.MinStaticTokenLen characters), a
+// principal and at least one known role; tokens must be unique so a
+// credential resolves to exactly one identity.
 func NewStatic(tokens []StaticToken) (*StaticProvider, error) {
 	if len(tokens) == 0 {
 		return nil, fmt.Errorf("auth: static provider requires at least one token")
@@ -45,6 +48,9 @@ func NewStatic(tokens []StaticToken) (*StaticProvider, error) {
 	for i, t := range tokens {
 		if t.Token == "" {
 			return nil, fmt.Errorf("auth: static token [%d]: token must not be empty", i)
+		}
+		if err := config.CheckStaticToken(t.Token); err != nil {
+			return nil, fmt.Errorf("auth: static token [%d]: %w", i, err)
 		}
 		if t.Principal == "" {
 			return nil, fmt.Errorf("auth: static token [%d]: principal must not be empty", i)

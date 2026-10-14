@@ -24,7 +24,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
-const uiTestToken = "tok-ui-open"
+const uiTestToken = "tok-ui-open-fixture-0123456789abcdef0123456789"
 
 // uiDpkms is a real dpkms router with web UI sign-in on, counting the
 // login-code requests it gets.

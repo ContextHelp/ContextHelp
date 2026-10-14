@@ -9,6 +9,10 @@
 #   cp docker/dpkms-auth.example.yaml docker/dpkms-auth.yaml
 #   openssl rand -hex 32    # once per token; paste over each REPLACE_ME
 #
+# serve refuses to start while a token still contains REPLACE_ME or
+# is shorter than 32 characters: this file is public, so its
+# placeholder is no secret.
+#
 # docker/dpkms-auth.yaml is gitignored. docker-compose.yml mounts it as
 # the dpkms-auth secret at /run/secrets/dpkms-auth.yaml, which serve
 # loads as a second --config on top of /app/config.yaml.

@@ -14,7 +14,7 @@ import (
 func testProvider(t *testing.T) authn.Provider {
 	t.Helper()
 	p, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-valid", Principal: "ops", Roles: []string{"admin"}},
+		{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{"admin"}},
 	})
 	require.NoError(t, err)
 	return p
@@ -52,7 +52,7 @@ func TestRequireAuthInvalidBearer(t *testing.T) {
 func TestRequireAuthValidBearer(t *testing.T) {
 	h := RequireAuth(testProvider(t), nil)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
-	req.Header.Set("Authorization", "Bearer tok-valid")
+	req.Header.Set("Authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -63,7 +63,7 @@ func TestRequireAuthValidBearer(t *testing.T) {
 func TestRequireAuthValidAPIKey(t *testing.T) {
 	h := RequireAuth(testProvider(t), nil)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
-	req.Header.Set("X-API-Key", "tok-valid")
+	req.Header.Set("X-API-Key", "tok-valid-fixture-0123456789abcdef0123456789")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -99,7 +99,7 @@ func TestSecuredRouterGuardsAPI(t *testing.T) {
 	// Valid credential passes through to the route table.
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/objects", nil)
 	require.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer tok-valid")
+	req.Header.Set("Authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789")
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()

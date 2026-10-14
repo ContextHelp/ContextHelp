@@ -78,7 +78,7 @@ server:
           roles: [reader]
 ```
 
-Each `token` is the literal secret: config files do not expand `${VAR}`, so `token: ${DPKMS_TOKEN_OWNER}` would accept the string `${DPKMS_TOKEN_OWNER}`. Generate tokens with `openssl rand -hex 32`. To keep them out of a committed config, put `server.auth` in its own file and pass it as a second `--config` (later files win); in a container, mount that file as a secret, as the Docker setup does ([Docker: Secrets](../../deployment/docker.md#secrets)).
+Each `token` is the literal secret: config files do not expand `${VAR}`, so `token: ${DPKMS_TOKEN_OWNER}` would accept the string `${DPKMS_TOKEN_OWNER}`. Generate tokens with `openssl rand -hex 32`. A token shorter than 32 characters, or one containing `REPLACE_ME` (the Docker example's placeholder), fails `ctxt config validate` and stops `dpkms serve`. To keep them out of a committed config, put `server.auth` in its own file and pass it as a second `--config` (later files win); in a container, mount that file as a secret, as the Docker setup does ([Docker: Secrets](../../deployment/docker.md#secrets)).
 
 Every `/api/v1` route and gRPC method requires one scope. A role is a fixed bundle of scopes:
 

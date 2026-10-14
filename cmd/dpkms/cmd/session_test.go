@@ -22,17 +22,17 @@ func sessionDB(t *testing.T) *testDB {
 	db := setupTestDB(t)
 	f, err := os.OpenFile(db.ConfigPath, os.O_APPEND|os.O_WRONLY, 0)
 	require.NoError(t, err)
-	_, err = fmt.Fprint(f, "server:\n  auth:\n    provider: static\n    static:\n      tokens:\n        - token: tok-ops\n          principal: ops\n          roles: [admin]\n")
+	_, err = fmt.Fprint(f, "server:\n  auth:\n    provider: static\n    static:\n      tokens:\n        - token: tok-ops-fixture-0123456789abcdef0123456789\n          principal: ops\n          roles: [admin]\n")
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
 	now := time.Now().UTC()
 	ctx := context.Background()
 	for _, s := range []*storage.UISession{
-		{ID: "uis_active", PrincipalID: "ops", TokenHash: authn.HashSecret("tok-ops"), CreatedAt: now.Add(-time.Minute)},
-		{ID: "uis_orphan", PrincipalID: "ops", TokenHash: authn.HashSecret("tok-gone"), CreatedAt: now.Add(-2 * time.Minute)},
-		{ID: "uis_other", PrincipalID: "other", TokenHash: authn.HashSecret("tok-other"), CreatedAt: now.Add(-3 * time.Minute)},
-		{ID: "uis_old", PrincipalID: "ops", TokenHash: authn.HashSecret("tok-ops"), CreatedAt: now.Add(-48 * time.Hour)},
+		{ID: "uis_active", PrincipalID: "ops", TokenHash: authn.HashSecret("tok-ops-fixture-0123456789abcdef0123456789"), CreatedAt: now.Add(-time.Minute)},
+		{ID: "uis_orphan", PrincipalID: "ops", TokenHash: authn.HashSecret("tok-gone-fixture-0123456789abcdef0123456789"), CreatedAt: now.Add(-2 * time.Minute)},
+		{ID: "uis_other", PrincipalID: "other", TokenHash: authn.HashSecret("tok-other-fixture-0123456789abcdef0123456789"), CreatedAt: now.Add(-3 * time.Minute)},
+		{ID: "uis_old", PrincipalID: "ops", TokenHash: authn.HashSecret("tok-ops-fixture-0123456789abcdef0123456789"), CreatedAt: now.Add(-48 * time.Hour)},
 	} {
 		s.SecretHash = "secret-" + s.ID
 		s.Scope = authn.SessionKindUI

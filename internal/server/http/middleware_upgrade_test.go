@@ -82,7 +82,7 @@ func TestRouterUpgradeHeaderBehindAuth(t *testing.T) {
 		return rec
 	}
 
-	ok := call("tok-valid")
+	ok := call("tok-valid-fixture-0123456789abcdef0123456789")
 	assert.Equal(t, http.StatusNotFound, ok.Code)
 	assert.NotEmpty(t, ok.Header().Get(upgrade.HeaderName), "authenticated API response must carry the header")
 

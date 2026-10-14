@@ -17,7 +17,7 @@ import (
 func TestStatsEntityCountFollowsGate(t *testing.T) {
 	ts, _, _, _ := newGatedServerWithDriver(t, storageutil.NewTestDriver(t))
 
-	for token, want := range map[string]int{"tok-valid": 1, "tok-admin": 2} {
+	for token, want := range map[string]int{"tok-valid-fixture-0123456789abcdef0123456789": 1, "tok-admin-fixture-0123456789abcdef0123456789": 2} {
 		resp, body := gatedDoAs(t, token, http.MethodGet, ts.URL+"/api/v1/stats")
 		require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 		var got struct {

@@ -112,15 +112,15 @@ func TestUISession_ScopeRefusals(t *testing.T) {
 func TestUISession_ScopesFollowMintingToken(t *testing.T) {
 	f := newUIFixture(t,
 		authn.StaticToken{Token: uiOpsToken, Principal: "ops", Roles: []string{authn.RoleAdmin}},
-		authn.StaticToken{Token: "tok-reader", Principal: "tablet", Roles: []string{authn.RoleReader}},
-		authn.StaticToken{Token: "tok-writer", Principal: "phone", Roles: []string{authn.RoleWriter}},
+		authn.StaticToken{Token: "tok-reader-fixture-0123456789abcdef0123456789", Principal: "tablet", Roles: []string{authn.RoleReader}},
+		authn.StaticToken{Token: "tok-writer-fixture-0123456789abcdef0123456789", Principal: "phone", Roles: []string{authn.RoleWriter}},
 	)
 	signInAs := func(tok string) *http.Cookie {
 		resp := f.exchange(f.mint(tok))
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		return sessionCookieOf(t, resp)
 	}
-	reader, writer := signInAs("tok-reader"), signInAs("tok-writer")
+	reader, writer := signInAs("tok-reader-fixture-0123456789abcdef0123456789"), signInAs("tok-writer-fixture-0123456789abcdef0123456789")
 
 	resp := f.do(http.MethodGet, "/api/v1/objects", nil, withCookie(reader), fromUI)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)

@@ -48,7 +48,7 @@ import (
 )
 
 const (
-	token     = "e2e-uiauth-token-5f0c2a"
+	token     = "e2e-uiauth-token-5f0c2a9e1b7d4c3f6a80"
 	principal = "e2e-ops"
 	busToken  = "e2e-uiauth-bus-9d1"
 	probePath = "/__e2e/probe.js"

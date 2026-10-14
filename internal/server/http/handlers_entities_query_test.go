@@ -104,13 +104,13 @@ func TestEntityQueryRoutesRequireReadObjects(t *testing.T) {
 	svc := newScopeTestService(t)
 	seedQueryEntities(t, svc.Store.Entities())
 	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-reader", Principal: "tablet", Roles: []string{authn.RoleReader}},
+		{Token: "tok-reader-fixture-0123456789abcdef0123456789", Principal: "tablet", Roles: []string{authn.RoleReader}},
 	})
 	require.NoError(t, err)
 	ts := newScopedServer(t, svc, provider)
 
 	for _, path := range []string{"/api/v1/entities?q=cart", "/api/v1/entities/resolve?mention=basket"} {
-		resp, body := roleDo(t, http.MethodGet, ts+path, "tok-reader", nil)
+		resp, body := roleDo(t, http.MethodGet, ts+path, "tok-reader-fixture-0123456789abcdef0123456789", nil)
 		assert.Equal(t, http.StatusOK, resp.StatusCode, "reader %s: %s", path, body)
 
 		resp, body = roleDo(t, http.MethodGet, ts+path, "", nil)

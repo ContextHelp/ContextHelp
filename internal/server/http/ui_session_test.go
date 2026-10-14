@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	uiOpsToken   = "tok-ops"
-	uiOtherToken = "tok-other"
+	uiOpsToken   = "tok-ops-fixture-0123456789abcdef0123456789"
+	uiOtherToken = "tok-other-fixture-0123456789abcdef0123456789"
 )
 
 // testClock is a settable, concurrency-safe clock.

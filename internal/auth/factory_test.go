@@ -23,7 +23,7 @@ func TestFromConfigStatic(t *testing.T) {
 		Provider: "static",
 		Static: config.StaticAuthConfig{
 			Tokens: []config.StaticTokenConfig{
-				{Token: "tok-1", Principal: "ops", Roles: []string{"admin"}},
+				{Token: tok1, Principal: "ops", Roles: []string{"admin"}},
 			},
 		},
 	})
@@ -36,7 +36,7 @@ func TestFromConfigStatic(t *testing.T) {
 	if p.Name() != ProviderStatic {
 		t.Errorf("Name = %q, want %q", p.Name(), ProviderStatic)
 	}
-	princ, err := p.Authenticate(context.Background(), Credential{Token: "tok-1"})
+	princ, err := p.Authenticate(context.Background(), Credential{Token: tok1})
 	if err != nil {
 		t.Fatalf("Authenticate: %v", err)
 	}

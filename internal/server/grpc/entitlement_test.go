@@ -29,8 +29,8 @@ import (
 // transport: an authenticated EntityService with the inbound gate and a
 // threshold-1 security emitter, seeded with one entity in a granted
 // namespace and one outside it. The gated principal "ops" (token
-// tok-valid, role reader) and the admin principal "owner" (token
-// tok-admin) are both granted "ai.*"; only the admin bypasses the gate.
+// tok-valid-fixture-0123456789abcdef0123456789, role reader) and the admin principal "owner" (token
+// tok-admin-fixture-0123456789abcdef0123456789) are both granted "ai.*"; only the admin bypasses the gate.
 func newGatedGRPCServer(t *testing.T) (pb.EntityServiceClient, *registry.InboundGate, <-chan security.Alert) {
 	t.Helper()
 	h := startGatedGRPC(t)
@@ -89,9 +89,9 @@ func startGatedGRPC(t *testing.T) gatedGRPC {
 	})
 
 	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-valid", Principal: "ops", Roles: []string{authn.RoleReader}},
-		{Token: "tok-writer", Principal: "phone", Roles: []string{authn.RoleWriter}},
-		{Token: "tok-admin", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+		{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{authn.RoleReader}},
+		{Token: "tok-writer-fixture-0123456789abcdef0123456789", Principal: "phone", Roles: []string{authn.RoleWriter}},
+		{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
 	})
 	if err != nil {
 		t.Fatalf("NewStatic: %v", err)
@@ -135,7 +135,7 @@ func tokenCtx(token string) context.Context {
 }
 
 // opsCtx returns an outgoing context authenticated as principal "ops".
-func opsCtx() context.Context { return tokenCtx("tok-valid") }
+func opsCtx() context.Context { return tokenCtx("tok-valid-fixture-0123456789abcdef0123456789") }
 
 func waitGRPCAlert(t *testing.T, ch <-chan security.Alert) security.Alert {
 	t.Helper()

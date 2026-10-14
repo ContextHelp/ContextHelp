@@ -39,7 +39,7 @@ func graphFixture(t *testing.T, withModel bool) *servicetest.HybridFixture {
 }
 
 // gatedGraphServer serves f behind bearer auth and the inbound gate; the
-// reader "ops" (token tok-valid) and the admin "owner" (token tok-admin)
+// reader "ops" (token tok-valid-fixture-0123456789abcdef0123456789) and the admin "owner" (token tok-admin-fixture-0123456789abcdef0123456789)
 // are both entitled to the open namespace only; the admin bypasses the
 // gate.
 func gatedGraphServer(t *testing.T, f *servicetest.HybridFixture) *httptest.Server {
@@ -51,8 +51,8 @@ func gatedGraphServer(t *testing.T, f *servicetest.HybridFixture) *httptest.Serv
 		}))
 	}
 	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-valid", Principal: "ops", Roles: []string{authn.RoleReader}},
-		{Token: "tok-admin", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+		{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{authn.RoleReader}},
+		{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
 	})
 	require.NoError(t, err)
 	ts := httptest.NewServer(NewRouterWithConfig(f.Svc, RouterConfig{
@@ -263,7 +263,7 @@ func TestSearchGraph_EntitlementHidesEntities(t *testing.T) {
 	require.Equal(t, 1, relationCount(open, searchgraph.RelCoMention))
 
 	ts := gatedGraphServer(t, f)
-	resp, body := getGraph(t, ts, "tok-valid", alphaParams())
+	resp, body := getGraph(t, ts, "tok-valid-fixture-0123456789abcdef0123456789", alphaParams())
 	doc := graphOK(t, resp, body)
 	assert.ElementsMatch(t, []string{"ent:" + servicetest.GraphOpenEntity}, nodesOfKind(doc, searchgraph.KindEntity))
 	assert.Zero(t, relationCount(doc, searchgraph.RelCoMention), "the only shared entity is hidden")
@@ -278,7 +278,7 @@ func TestSearchGraph_EntitlementHidesEntities(t *testing.T) {
 
 	// The admin owner ignores its restrictive grant, as on every entity
 	// route.
-	admin := fetchGraph(t, ts, "tok-admin", alphaParams())
+	admin := fetchGraph(t, ts, "tok-admin-fixture-0123456789abcdef0123456789", alphaParams())
 	assert.Contains(t, admin.Graph.Nodes, "ent:"+servicetest.GraphSecretEntity)
 
 	// The route sits behind the /api/v1 auth middleware.

@@ -1,0 +1,48 @@
+# Operator settings for the dpkms container: blob storage and AI
+# providers. Every key here must be one internal/config.Config declares;
+# internal/config/docker_config_test.go fails on any other, and on any
+# top-level key other than storage (blob only) and providers.
+#
+# Both dpkms compose services need this file, even unchanged:
+#
+#   cp docker/dpkms-local.example.yaml docker/dpkms-local.yaml
+#
+# Every setting below is commented out, so the copy changes nothing:
+# blobs stay on the ctxt_blobs volume and providers auto-detect.
+# Uncomment the blocks you need (drop the leading '#').
+#
+# docker/dpkms-local.yaml is gitignored. docker-compose.yml mounts it as
+# the dpkms-local secret at /run/secrets/dpkms-local.yaml, which serve
+# loads as a third --config, after /app/config.yaml and the auth secret.
+# Keys set here win over /app/config.yaml.
+#
+# Config files do not expand ${VAR}: write values themselves. Provider
+# API keys have no config key: set them in the compose env file
+# (OPENAI_API_KEY=, ANTHROPIC_API_KEY=, GEMINI_API_KEY=,
+# OPENROUTER_API_KEY=), which docker-compose.yml passes to dpkms.
+#
+# S3-compatible blob store instead of the ctxt_blobs volume. The keys
+# are secrets: keep this file readable by uid 1000 only.
+#storage:
+#  blob:
+#    backend: s3
+#    s3:
+#      endpoint: https://s3.example.com
+#      region: us-east-1
+#      bucket: ctxt-blobs
+#      prefix: dpkms/
+#      access_key: change-me
+#      secret_key: change-me
+#
+# AI providers. Endpoints must be reachable from inside the container:
+# host.docker.internal reaches the Docker host on Docker Desktop.
+#providers:
+#  llm:
+#    backend: openai
+#    model: gpt-4o-mini
+#  vision:
+#    backend: openai
+#  embedding:
+#    backend: ollama
+#    model: nomic-embed-text
+#    endpoint: http://host.docker.internal:11434

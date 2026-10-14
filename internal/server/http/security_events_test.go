@@ -62,7 +62,7 @@ func TestRequireAuthSuccessEmitsNoEvent(t *testing.T) {
 	h := RequireAuth(testProvider(t), em)(authedEcho(t))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/objects", nil)
-	req.Header.Set("Authorization", "Bearer tok-valid")
+	req.Header.Set("Authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 

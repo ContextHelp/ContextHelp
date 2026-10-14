@@ -7,7 +7,8 @@
 # This script is the gate that keeps all of them in step.
 #
 # Checks:
-#   1. Dockerfile golang base image == mise go pin
+#   1. Dockerfile golang base image == mise go pin, and so is every golang
+#      image a compose file runs (docker-compose*.yml, docker/, .devcontainer/)
 #   2. go.mod `go` directive is satisfied by the mise go pin (pin >= directive)
 #   3. no workflow hardcodes a go-version literal instead of deriving it
 set -euo pipefail
@@ -49,6 +50,23 @@ for df in Dockerfile; do
 			echo "ok: $df -> golang:$ver"
 		fi
 	done < <(grep -oE '\bgolang:[0-9][^ ]*' "$df" || true)
+done
+
+# Compose files run golang images directly (the dev service builds and
+# hot-reloads inside one). A floating tag such as golang:1.26-bookworm
+# tracks the newest patch, so the tag must name the exact pin too.
+for cf in docker-compose*.yml docker/docker-compose*.yml .devcontainer/docker-compose*.yml; do
+	[ -f "$cf" ] || continue
+	while read -r img; do
+		[ -n "$img" ] || continue
+		ver=${img#golang:}
+		ver=${ver%%-*}
+		if [ "$ver" != "$mise_go" ]; then
+			err "$cf runs image $img but mise.toml pins go $mise_go (use golang:$mise_go-<variant>)"
+		else
+			echo "ok: $cf -> $img"
+		fi
+	done < <(grep -E '^[[:space:]]*image:' "$cf" | grep -oE "\bgolang:[^ \"'#]*" || true)
 done
 
 # The devcontainer parameterises its base image via ARG, so the literal-tag

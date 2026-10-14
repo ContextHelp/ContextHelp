@@ -135,9 +135,9 @@ func TestRouteCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 func roleServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-admin", Principal: "owner", Roles: []string{authn.RoleAdmin}},
-		{Token: "tok-writer", Principal: "phone", Roles: []string{authn.RoleWriter}},
-		{Token: "tok-reader", Principal: "tablet", Roles: []string{authn.RoleReader}},
+		{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+		{Token: "tok-writer-fixture-0123456789abcdef0123456789", Principal: "phone", Roles: []string{authn.RoleWriter}},
+		{Token: "tok-reader-fixture-0123456789abcdef0123456789", Principal: "tablet", Roles: []string{authn.RoleReader}},
 	})
 	require.NoError(t, err)
 	ts := httptest.NewServer(NewRouterWithConfig(newScopeTestService(t), RouterConfig{Auth: provider}))
@@ -183,44 +183,44 @@ func assertScopeDenied(t *testing.T, resp *http.Response, body []byte, scope aut
 func TestReaderCannotWrite(t *testing.T) {
 	ts := roleServer(t)
 
-	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/analyze", "tok-reader", analyzeBody)
+	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/analyze", "tok-reader-fixture-0123456789abcdef0123456789", analyzeBody)
 	assertScopeDenied(t, resp, body, authn.ScopeWriteObjects)
 
-	resp, _ = roleDo(t, http.MethodGet, ts.URL+"/api/v1/objects", "tok-reader", nil)
+	resp, _ = roleDo(t, http.MethodGet, ts.URL+"/api/v1/objects", "tok-reader-fixture-0123456789abcdef0123456789", nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestWriterWritesButCannotDeleteOrAdminister(t *testing.T) {
 	ts := roleServer(t)
 
-	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/analyze", "tok-writer", analyzeBody)
+	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/analyze", "tok-writer-fixture-0123456789abcdef0123456789", analyzeBody)
 	assert.Equal(t, http.StatusAccepted, resp.StatusCode, string(body))
 
-	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/objects/o-1", "tok-writer", nil)
+	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/objects/o-1", "tok-writer-fixture-0123456789abcdef0123456789", nil)
 	assertScopeDenied(t, resp, body, authn.ScopeDeleteObjects)
 
-	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/inbox/i-1/triage", "tok-writer", nil)
+	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/inbox/i-1/triage", "tok-writer-fixture-0123456789abcdef0123456789", nil)
 	assertScopeDenied(t, resp, body, authn.ScopeProcessInbox)
 
-	resp, body = roleDo(t, http.MethodGet, ts.URL+"/api/v1/audit-log", "tok-writer", nil)
+	resp, body = roleDo(t, http.MethodGet, ts.URL+"/api/v1/audit-log", "tok-writer-fixture-0123456789abcdef0123456789", nil)
 	assertScopeDenied(t, resp, body, authn.ScopeAdminAudit)
 
-	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/steps/install", "tok-writer", map[string]string{})
+	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/steps/install", "tok-writer-fixture-0123456789abcdef0123456789", map[string]string{})
 	assertScopeDenied(t, resp, body, authn.ScopeAdminPlugins)
 }
 
 func TestAdminPassesEveryScope(t *testing.T) {
 	ts := roleServer(t)
 
-	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/analyze", "tok-admin", analyzeBody)
+	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/analyze", "tok-admin-fixture-0123456789abcdef0123456789", analyzeBody)
 	assert.Equal(t, http.StatusAccepted, resp.StatusCode, string(body))
 
 	// Past the scope check: the handler answers for the missing object.
-	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/objects/o-missing", "tok-admin", nil)
+	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/objects/o-missing", "tok-admin-fixture-0123456789abcdef0123456789", nil)
 	assert.NotEqual(t, http.StatusForbidden, resp.StatusCode, string(body))
 	assert.NotEqual(t, http.StatusUnauthorized, resp.StatusCode, string(body))
 
-	resp, body = roleDo(t, http.MethodGet, ts.URL+"/api/v1/audit-log", "tok-admin", nil)
+	resp, body = roleDo(t, http.MethodGet, ts.URL+"/api/v1/audit-log", "tok-admin-fixture-0123456789abcdef0123456789", nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 }
 
@@ -263,9 +263,9 @@ func TestWhoamiReportsPrincipalRolesScopes(t *testing.T) {
 		principal string
 		role      string
 	}{
-		"tok-admin":  {"owner", authn.RoleAdmin},
-		"tok-writer": {"phone", authn.RoleWriter},
-		"tok-reader": {"tablet", authn.RoleReader},
+		"tok-admin-fixture-0123456789abcdef0123456789":  {"owner", authn.RoleAdmin},
+		"tok-writer-fixture-0123456789abcdef0123456789": {"phone", authn.RoleWriter},
+		"tok-reader-fixture-0123456789abcdef0123456789": {"tablet", authn.RoleReader},
 	} {
 		resp, body := roleDo(t, http.MethodGet, ts.URL+"/api/v1/whoami", token, nil)
 		require.Equal(t, http.StatusOK, resp.StatusCode, string(body))

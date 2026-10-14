@@ -7,10 +7,11 @@
 
 ## Start
 
-The dev server runs the image's config (`server.access: public`), so it needs the same secrets as prod: the bus token and `docker/dpkms-auth.yaml`. See [Secrets](docker.md#secrets).
+The dev server runs the image's config (`server.access: public`), so it needs the same secrets as prod: the bus token, `docker/dpkms-auth.yaml` and `docker/dpkms-local.yaml`. See [Secrets](docker.md#secrets).
 
     cp docker/dpkms-auth.example.yaml docker/dpkms-auth.yaml
     $EDITOR docker/dpkms-auth.yaml   # replace REPLACE_ME: openssl rand -hex 32
+    cp docker/dpkms-local.example.yaml docker/dpkms-local.yaml   # sets nothing until edited
     cp docker/.env.dev.example docker/.env.dev
     $EDITOR docker/.env.dev          # DPKMS_BUS_TOKEN=: openssl rand -hex 32
     docker compose --env-file docker/.env.dev --profile dev up
@@ -23,7 +24,7 @@ Services started:
 
 ## Configure
 
-dpkms settings (providers, storage, workers) are config keys in `docker/config.docker.yaml`, which air serves with; edits reload like code.
+dpkms settings (storage, workers) are config keys in `docker/config.docker.yaml`, which air serves with; edits reload like code. Blob storage and provider settings for your own setup go in `docker/dpkms-local.yaml` and provider API keys in `docker/.env.dev` ([Blob storage and providers](docker.md#blob-storage-and-providers)); air does not watch the secret, so restart `dpkms-dev` after editing either.
 
 ## Verify
 

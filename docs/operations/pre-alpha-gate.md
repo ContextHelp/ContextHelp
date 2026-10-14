@@ -59,7 +59,7 @@ run the same commands via `mise exec -- task ...`.
 9. If you are publishing the container path, verify the production Docker flow.
 
    ```bash
-   # docker/.env.prod and docker/dpkms-auth.yaml: docs/deployment/docker.md
+   # docker/.env.prod, docker/dpkms-auth.yaml, docker/dpkms-local.yaml: docs/deployment/docker.md
    docker compose --env-file docker/.env.prod build dpkms
    docker compose --env-file docker/.env.prod --profile prod up -d
    docker compose --env-file docker/.env.prod ps

@@ -33,12 +33,12 @@ func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver, readMe
 
 	// Metered read outside the grant, twice past a quota of one.
 	for i := 0; i < 2; i++ {
-		resp, body := gatedDoAs(t, "tok-admin", http.MethodGet, ts.URL+"/api/v1/entities/med.claims")
+		resp, body := gatedDoAs(t, "tok-admin-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities/med.claims")
 		require.Equal(t, http.StatusOK, resp.StatusCode, "admin read %d: %s", i+1, body)
 	}
 
 	// Listing is not filtered by the grant.
-	resp, body := gatedDoAs(t, "tok-admin", http.MethodGet, ts.URL+"/api/v1/entities")
+	resp, body := gatedDoAs(t, "tok-admin-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities")
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 	var list struct {
 		Data []storage.Entity `json:"data"`
@@ -46,23 +46,23 @@ func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver, readMe
 	require.NoError(t, json.Unmarshal(body, &list))
 	assert.Len(t, list.Data, 2, "admin listing must include every namespace")
 
-	resp, body = gatedDoAs(t, "tok-admin", http.MethodGet, ts.URL+"/api/v1/entities/med.claims/backlinks")
+	resp, body = gatedDoAs(t, "tok-admin-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities/med.claims/backlinks")
 	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 
 	// Search is not filtered by the grant; resolve is neither gated nor
 	// metered, past the same quota of one.
-	resp, body = gatedDoAs(t, "tok-admin", http.MethodGet, ts.URL+"/api/v1/entities?q=.")
+	resp, body = gatedDoAs(t, "tok-admin-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities?q=.")
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 	assert.Equal(t, []string{"ai.bert", "med.claims"}, entitySlugs(t, body), "admin search must include every namespace")
 	for i := 0; i < 2; i++ {
-		resp, body = gatedDoAs(t, "tok-admin", http.MethodGet, ts.URL+"/api/v1/entities/resolve?mention=med.claims")
+		resp, body = gatedDoAs(t, "tok-admin-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities/resolve?mention=med.claims")
 		require.Equal(t, http.StatusOK, resp.StatusCode, "admin resolve %d: %s", i+1, body)
 	}
 
 	// The pull passes the gate; it then fails on the missing registry
 	// definition, never on entitlement or quota.
 	for i := 0; i < 2; i++ {
-		resp, body = gatedDoAs(t, "tok-admin", http.MethodPost, ts.URL+"/api/v1/entities/med.claims/pull")
+		resp, body = gatedDoAs(t, "tok-admin-fixture-0123456789abcdef0123456789", http.MethodPost, ts.URL+"/api/v1/entities/med.claims/pull")
 		assert.NotEqual(t, http.StatusForbidden, resp.StatusCode, string(body))
 		assert.NotEqual(t, http.StatusTooManyRequests, resp.StatusCode, string(body))
 	}
@@ -76,14 +76,14 @@ func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver, readMe
 
 	// The gate stays for everyone else: metered inside the grant,
 	// refused outside it.
-	resp, body = gatedDoAs(t, "tok-valid", http.MethodGet, ts.URL+"/api/v1/entities/ai.bert")
+	resp, body = gatedDoAs(t, "tok-valid-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities/ai.bert")
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 	opsEvents, err := driver.Metering().List(context.Background(), storage.MeteringFilter{RegistryName: "ops"})
 	require.NoError(t, err)
 	require.Len(t, opsEvents, 1, "non-admin read must be metered")
 	assert.Equal(t, storage.MeteringEventEntityResolve, opsEvents[0].EventType)
 
-	resp, body = gatedDoAs(t, "tok-valid", http.MethodGet, ts.URL+"/api/v1/entities/med.claims")
+	resp, body = gatedDoAs(t, "tok-valid-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities/med.claims")
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode, string(body))
 	assert.Equal(t, "ENTITLEMENT_REQUIRED", errorCode(t, body))
 }

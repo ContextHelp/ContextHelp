@@ -184,7 +184,7 @@ func TestSearchGraphViewerPageOpenDataGuarded(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search/graph?q=deploy", nil)
-	req.Header.Set("Authorization", "Bearer tok-valid")
+	req.Header.Set("Authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789")
 	rr = httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 	// Past auth; this bare test service may then refuse the search

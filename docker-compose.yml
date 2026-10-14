@@ -7,7 +7,9 @@
 # interpolation below; compose does not read docker/ env files on its
 # own. Pass it to every command: DPKMS_BUS_TOKEN is required. Both dpkms
 # services also need docker/dpkms-auth.yaml (server.auth, from
-# docker/dpkms-auth.example.yaml); see docs/deployment/docker.md.
+# docker/dpkms-auth.example.yaml) and docker/dpkms-local.yaml (blob
+# storage and providers, from docker/dpkms-local.example.yaml); see
+# docs/deployment/docker.md.
 
 name: ctxt
 
@@ -22,12 +24,24 @@ x-dpkms-common: &dpkms-common
 x-dpkms-bus-token: &dpkms-bus-token
   DPKMS_BUS_TOKEN: ${DPKMS_BUS_TOKEN:?set DPKMS_BUS_TOKEN (openssl rand -hex 32), see docs/deployment/docker.md}
 
-# server.auth, which a public instance needs to start. The file is the
-# operator's; serve reads it as a second --config (root Dockerfile CMD,
-# docker/air.toml).
-x-dpkms-auth-secret: &dpkms-auth-secret
+# Provider API keys have no config key: providers read them from env.
+# They come from the env file; unset ones reach dpkms empty, which reads
+# as not set.
+x-dpkms-provider-keys: &dpkms-provider-keys
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+
+# The operator's files, read by serve as extra --config layers after the
+# image's config (root Dockerfile CMD, docker/air.toml):
+#   dpkms-auth   server.auth, which a public instance needs to start
+#   dpkms-local  storage.blob and providers; the example changes nothing
+x-dpkms-secrets: &dpkms-secrets
   - source: dpkms-auth
     target: dpkms-auth.yaml
+  - source: dpkms-local
+    target: dpkms-local.yaml
 
 services:
 
@@ -43,8 +57,9 @@ services:
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
         BUILD_TIME: ${BUILD_TIME:-unknown}
     container_name: ctxt-dpkms
-    environment: *dpkms-bus-token
-    secrets: *dpkms-auth-secret
+    environment:
+      <<: [*dpkms-bus-token, *dpkms-provider-keys]
+    secrets: *dpkms-secrets
     volumes:
       - ctxt_data:/data
       - ctxt_blobs:/data/blobs
@@ -62,7 +77,9 @@ services:
 
   # ── Dev dpkms (hot-reload via air) ──────────────────────────────────────
   dpkms-dev:
-    image: golang:1.26-bookworm
+    # Exact Go patch: mise.toml's go pin, as in the root Dockerfile
+    # (scripts/check-toolchain-pins.sh enforces it).
+    image: golang:1.26.8-bookworm
     container_name: ctxt-dpkms-dev
     working_dir: /app
     command: >
@@ -76,13 +93,13 @@ services:
     ports:
       - "8080:8080"   # HTTP API
       - "9090:9090"   # gRPC
-    # Build env plus the bus token; serve settings come from
-    # docker/config.docker.yaml and the auth secret.
+    # Build env plus the bus token and provider keys; serve settings come
+    # from docker/config.docker.yaml and the operator's secrets.
     environment:
-      <<: *dpkms-bus-token
+      <<: [*dpkms-bus-token, *dpkms-provider-keys]
       CGO_ENABLED: "1"
       GOOS: linux
-    secrets: *dpkms-auth-secret
+    secrets: *dpkms-secrets
     networks:
       - ctxt
     profiles:
@@ -143,6 +160,8 @@ services:
 secrets:
   dpkms-auth:
     file: ./docker/dpkms-auth.yaml
+  dpkms-local:
+    file: ./docker/dpkms-local.yaml
 
 volumes:
   ctxt_data:
