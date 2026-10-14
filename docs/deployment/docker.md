@@ -17,26 +17,84 @@
 
 **2. Configure**
 
-    cp docker/.env.prod.example .env.prod
-    $EDITOR .env.prod   # set DOMAIN= and ACME_EMAIL=
+    cp docker/.env.prod.example docker/.env.prod
+    $EDITOR docker/.env.prod   # set DOMAIN=, ACME_EMAIL= and DPKMS_BUS_TOKEN=
 
-**3. Pull image**
+Compose does not read `docker/.env.prod` on its own: every `docker compose` command below passes `--env-file docker/.env.prod`. The file only feeds `${VAR}` interpolation in `docker-compose.yml` (image tag, Caddy's domain and ACME email, the bus token); dpkms settings live in its config files. Compose's default `.env` at the repo root is left to the host dev environment (`.env.example`).
 
-    docker compose --profile prod pull
+**3. Create the auth secret**
+
+The image's config sets `server.access: public`, and a public instance refuses to start without inbound auth. See [Secrets](#secrets).
+
+    openssl rand -hex 32    # bus token: DPKMS_BUS_TOKEN= in the env file
+    openssl rand -hex 32    # API token: one per device or person
+    cp docker/dpkms-auth.example.yaml docker/dpkms-auth.yaml
+    $EDITOR docker/dpkms-auth.yaml   # replace each REPLACE_ME with a token
+
+**4. Pull image**
+
+    docker compose --env-file docker/.env.prod --profile prod pull
 
     # Or build locally:
-    docker compose build dpkms
+    docker compose --env-file docker/.env.prod build dpkms
 
-**4. Start**
+**5. Start**
 
-    docker compose --profile prod up -d
+    docker compose --env-file docker/.env.prod --profile prod up -d
 
-**5. Verify**
+**6. Verify**
 
-    docker compose ps          # all services: healthy
+    docker compose --env-file docker/.env.prod ps          # all services: healthy
     curl https://your-domain/health   # {"status":"ok"}
 
 Done. Caddy handles TLS automatically via Let's Encrypt.
+
+## Secrets
+
+dpkms needs two secrets, neither of which the image or the repo carries.
+
+| Secret | Where | Read by |
+|--------|-------|---------|
+| Bus token | `DPKMS_BUS_TOKEN` in the env file | the bus hub at `/ws/bus`; serve exits without it |
+| API tokens | `docker/dpkms-auth.yaml` (`server.auth`) | every `/api/v1` request and the web UI sign-in |
+
+Generate each token with `openssl rand -hex 32`. Compose refuses to start the stack while `DPKMS_BUS_TOKEN` is unset or empty.
+
+`docker/dpkms-auth.yaml` is gitignored. Copy it from `docker/dpkms-auth.example.yaml`, which holds only `server.auth`:
+
+```yaml
+server:
+  auth:
+    provider: static
+    static:
+      tokens:
+        - token: 3f9c...   # openssl rand -hex 32
+          principal: admin
+          roles: [admin]
+        - token: 8a1d...
+          principal: phone
+          roles: [writer]   # capture only
+```
+
+Each token needs at least one role: `admin`, `writer` or `reader`. Write the token itself: config files do not expand `${VAR}`.
+
+Compose mounts the file as the `dpkms-auth` secret at `/run/secrets/dpkms-auth.yaml`. The image's command loads it as a second `--config` after `/app/config.yaml`:
+
+    serve --config /app/config.yaml --config /run/secrets/dpkms-auth.yaml
+
+Outside swarm, compose bind-mounts a file secret read-only with its host permissions. The container runs as uid 1000, so that user must be able to read the file: `chmod 600` plus `sudo chown 1000 docker/dpkms-auth.yaml`, or `chmod 644` on a host only you use.
+
+Without compose, mount it yourself:
+
+    docker run -d -p 8080:8080 \
+      -v "$PWD/docker/dpkms-auth.yaml:/run/secrets/dpkms-auth.yaml:ro" \
+      -e DPKMS_BUS_TOKEN=... \
+      -v ctxt_data:/data -v ctxt_blobs:/data/blobs \
+      ctxt/dpkms
+
+serve exits at config load when `/run/secrets/dpkms-auth.yaml` is missing.
+
+To rotate a token, edit the file and `docker compose --env-file docker/.env.prod --profile prod restart dpkms`.
 
 ## Data persistence
 
@@ -55,15 +113,15 @@ Runtime files (pidfiles, upgrade state) stay in the container user's home, outsi
 
 ## Upgrade
 
-    docker compose --profile prod pull
-    docker compose --profile prod up -d
+    docker compose --env-file docker/.env.prod --profile prod pull
+    docker compose --env-file docker/.env.prod --profile prod up -d
 
 Migrations run automatically on startup.
 
 ## Logs
 
-    docker compose logs -f
+    docker compose --env-file docker/.env.prod logs -f
 
 ## Stop
 
-    docker compose --profile prod down
+    docker compose --env-file docker/.env.prod --profile prod down

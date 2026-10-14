@@ -313,7 +313,7 @@ registries:
 # ctxt configuration
 ai_providers:
   openai:
-    key: ${OPENAI_API_KEY}
+    # API key: OPENAI_API_KEY in the environment (config files do not expand env vars)
 
 pipelines:
   defaults:

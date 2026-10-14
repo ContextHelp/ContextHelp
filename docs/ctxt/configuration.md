@@ -65,7 +65,7 @@ registries:
       url: https://api.uxpatterns.io
       type: taxonomy
       auth:
-        token: ${CH_REGISTRY_TOKEN_UXPATTERNS}
+        token: <uxpatterns-token>   # literal: config files do not expand env vars
 
     - name: growth-weights
       url: https://weights.growth.dev
@@ -322,8 +322,8 @@ blob:
     endpoint: https://<account>.r2.cloudflarestorage.com
     region: auto
     bucket: ctxt-blobs
-    access_key: ${R2_ACCESS_KEY}
-    secret_key: ${R2_SECRET_KEY}
+    access_key: <r2-access-key-id>
+    secret_key: <r2-secret-access-key>
 ```
 
 ### MinIO (self-hosted)
@@ -337,8 +337,8 @@ blob:
     region: us-east-1
     bucket: ctxt-blobs
     use_path_style: true            # required for MinIO
-    access_key: ${MINIO_ACCESS_KEY}
-    secret_key: ${MINIO_SECRET_KEY}
+    access_key: <minio-access-key>
+    secret_key: <minio-secret-key>
 ```
 
 ### Garage (self-hosted, distributed)
@@ -350,10 +350,12 @@ blob:
   s3:
     endpoint: http://garage:3900
     bucket: ctxt-blobs
-    access_key: ${GARAGE_ACCESS_KEY}
-    secret_key: ${GARAGE_SECRET_KEY}
+    access_key: <garage-key-id>
+    secret_key: <garage-secret-key>
     # use_path_style and region defaulted by the garage preset
 ```
+
+Config files do not expand `${VAR}`: `access_key` and `secret_key` are the literal credentials. To keep them out of the file, leave both keys unset and export `CTXT_BLOB_S3_ACCESS_KEY` and `CTXT_BLOB_S3_SECRET_KEY`, which override the file.
 
 To stand up a single-node Garage for development, see
 [`test/integration/blob_garage_test.go`](../../test/integration/blob_garage_test.go)
@@ -513,7 +515,7 @@ Each entry describes one remote dPKMS instance to push to or sync with.
 federations:
   - name: home-server
     url: https://home.example.com:8080
-    token: ${DPKMS_FED_TOKEN_HOME}
+    token: <home-server-token>
     sync_mode: async
     interval: 5m
 
@@ -526,7 +528,7 @@ federations:
 |-------|------|-------------|
 | `name` | string | Unique local identifier |
 | `url` | string | Remote HTTP endpoint or `file://` path |
-| `token` | string | Bearer token sent to the remote instance |
+| `token` | string | Bearer token sent to the remote instance, written literally (config files do not expand `${VAR}`) |
 | `sync_mode` | string | `async` (scheduled) or `inline` (immediate) |
 | `interval` | duration | How often to sync (`async` mode only) |
 
@@ -534,7 +536,7 @@ federations:
 
 ```yaml
 federation:
-  token: ${DPKMS_FEDERATION_ACCEPT_TOKEN}
+  token: <accept-token>
 ```
 
 Set `token` to require a Bearer token on incoming push requests.

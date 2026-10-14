@@ -682,8 +682,10 @@ plugins:
   load:
     - name: my-plugin
       config:
-        # GOOD - Reference environment variables
-        api_key: ${MY_PLUGIN_API_KEY}
+        # Config files do not expand env vars: either leave api_key out
+        # and have the plugin read its own env var, or write the value
+        # here in an uncommitted file
+        api_key: <my-plugin-api-key>
 
         # GOOD - Reference config files
         credentials_file: /etc/contexthelp/secrets/my-plugin.yaml

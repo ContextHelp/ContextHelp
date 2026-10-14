@@ -1,0 +1,26 @@
+# Inbound auth for the dpkms container. Every key here must be one
+# internal/config.Config declares; internal/config/docker_config_test.go
+# fails on any other.
+#
+# docker/config.docker.yaml sets server.access: public, and a public
+# instance refuses to start without server.auth. That key lives here,
+# in a file the operator owns, not in the image:
+#
+#   cp docker/dpkms-auth.example.yaml docker/dpkms-auth.yaml
+#   openssl rand -hex 32    # once per token; paste over each REPLACE_ME
+#
+# docker/dpkms-auth.yaml is gitignored. docker-compose.yml mounts it as
+# the dpkms-auth secret at /run/secrets/dpkms-auth.yaml, which serve
+# loads as a second --config on top of /app/config.yaml.
+#
+# Config files do not expand ${VAR}: write the token itself.
+server:
+  auth:
+    provider: static
+    static:
+      tokens:
+        # Roles: admin (every scope), writer (read + write: capture
+        # devices), reader (read only). At least one per token.
+        - token: REPLACE_ME_admin_token
+          principal: admin
+          roles: [admin]

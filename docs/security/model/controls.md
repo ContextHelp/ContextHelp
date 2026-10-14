@@ -54,7 +54,7 @@ security:
   authentication:
     enabled: true
     jwt:
-      secret: ${JWT_SECRET}
+      secret: <jwt-secret>   # literal: config files do not expand env vars
       expiration: 24h
       issuer: "contexthelp"
 ```

@@ -81,24 +81,35 @@ ctxt analyze "content"
 - ⚠️ Inherited by child processes
 - ⚠️ No encryption at rest
 
-#### 2. Configuration Files with Environment Variable References
+#### 2. A Separate Secrets Config File
 
-**config.yaml:**
+Config files do not expand `${VAR}`: a value is used exactly as written, so `token: ${MY_TOKEN}` sets the token to the string `${MY_TOKEN}`. Secrets that have no environment variable (for example `server.auth` tokens, registry and federation tokens) go into the config literally. Keep them in their own file, outside version control, and layer it with a second `--config`:
+
+**dpkms-secrets.yaml** (mode 0600, gitignored):
 ```yaml
-ai_providers:
-  openai:
-    key: ${OPENAI_API_KEY}  # References environment variable
+server:
+  auth:
+    provider: static
+    static:
+      tokens:
+        - token: <owner-token>   # openssl rand -hex 32
+          principal: owner
+          roles: [admin]
+```
+
+```bash
+dpkms serve --config dpkms.yaml --config dpkms-secrets.yaml
 ```
 
 **Advantages:**
-- ✅ Separation of config structure from secrets
-- ✅ Config files can be version controlled
-- ✅ Clear audit trail of what secrets are needed
+- ✅ The main config stays committable
+- ✅ One file to protect, rotate and back up separately
+- ✅ In containers the file mounts as a secret (see [Docker: Secrets](deployment/docker.md#secrets))
 
 **Best Practice:**
-- Always use `${VAR_NAME}` syntax
-- Never put plaintext secrets in config files
-- Add `config.yaml` to `.gitignore` if it contains plaintext secrets
+- Never put plaintext secrets in a committed config file
+- Prefer an env var where the code reads one (`OPENAI_API_KEY`, `CTXT_BLOB_S3_SECRET_KEY`, `PGPASSWORD`)
+- Add the secrets file to `.gitignore`
 
 #### 3. .env Files (Recommended for Local Development)
 
@@ -294,7 +305,7 @@ registries:
     - name: uxpatterns
       url: https://api.uxpatterns.io
       auth:
-        token: ${CH_REGISTRY_TOKEN_UXPATTERNS}
+        token: <uxpatterns-token>   # literal: config files do not expand env vars
 ```
 
 **Environment variable:**
@@ -411,11 +422,15 @@ storage:
   path: "postgresql://user:password@localhost/contexthelp"
 ```
 
-**✅ Use environment variables:**
+**✅ Use environment variables:** config files do not expand `${VAR}`, so leave the password out of the DSN and let libpq read `PGPASSWORD` (or the other `PG*` variables):
 ```yaml
 storage:
   type: postgres
-  path: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}/${POSTGRES_DB}"
+  path: "postgresql://ctxt_user@localhost/contexthelp"
+```
+
+```bash
+PGPASSWORD=$(vault kv get -field=password secret/db) dpkms serve
 ```
 
 **✅ Better: Use .pgpass file:**
@@ -483,7 +498,7 @@ security:
   authentication:
     enabled: true
     jwt:
-      secret: ${JWT_SECRET}
+      secret: <jwt-secret>
       expiration: 24h
 ```
 
@@ -911,7 +926,7 @@ git push --force --tags
 - [ ] Review `.env.example` and create `.env` with your secrets
 - [ ] Verify `.env` is in `.gitignore`
 - [ ] Set file permissions: `chmod 600 .env`
-- [ ] Use `${VAR_NAME}` syntax in `config.yaml`
+- [ ] Keep secrets out of committed config files: env vars where the code reads them, otherwise a gitignored file passed as a second `--config` (config files do not expand `${VAR}`)
 - [ ] Validate configuration: `ctxt config validate`
 - [ ] Enable OS-level disk encryption (FileVault / LUKS / BitLocker) until ADR-019 ships
 

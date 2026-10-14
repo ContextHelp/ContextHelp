@@ -82,7 +82,7 @@ pipelines:
 
 ai_providers:
   openai:
-    key: ${OPENAI_API_KEY}
+    # API key: OPENAI_API_KEY in the environment (config files do not expand env vars)
     model: gpt-4o
 
 server:
@@ -189,7 +189,7 @@ privacy:
 #     config:
 #       index_path: ~/.local/share/leann/chatgpt
 #       # Authentication (if required)
-#       # session_token: ${CHATGPT_SESSION_TOKEN}
+#       # session_token: <chatgpt-session-token>
 #     enrichment:
 #       pipeline: text.long
 #       extract_mentions: true

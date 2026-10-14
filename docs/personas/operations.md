@@ -127,7 +127,7 @@ CH_CACHE_SIZE_MB=512                  # in-memory query result cache
 # config.yaml
 storage:
   type: postgres
-  url: ${CH_STORAGE_URL}
+  url: <postgres-dsn>   # literal: config files do not expand env vars
   pool:
     minConnections: 5
     maxConnections: 20
@@ -138,19 +138,19 @@ storage:
 aiProvider:
   type: openai
   model: gpt-4o
-  apiKey: ${CH_OPENAI_API_KEY}
+  # API key: OPENAI_API_KEY in the environment
   rateLimit: 100/min
   timeout: 30s
 
 encryption:
   provider: vault
-  vaultAddr: ${CH_VAULT_ADDR}
+  vaultAddr: https://vault.example.com:8200
   keyRotation: 90d
 
 registries:
   - name: api1
     url: https://api1.example.com
-    token: ${REGISTRY_TOKEN_1}
+    token: <api1-token>
     timeout: 10s
     weight: 0.6
 
@@ -162,7 +162,7 @@ observability:
     enabled: true
     port: 9090
   tracing:
-    jaegerEndpoint: ${CH_JAEGER_ENDPOINT}
+    jaegerEndpoint: http://jaeger.example.com:14268
     sampleRate: 0.1
 
 plugins:

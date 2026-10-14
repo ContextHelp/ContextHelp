@@ -47,7 +47,7 @@ registries:
       url: https://api.uxpatterns.io
       type: taxonomy
       auth:
-        token: ${CH_REGISTRY_TOKEN_UXPATTERNS}
+        token: <uxpatterns-token>   # literal: config files do not expand env vars
 
     - name: growth-weights
       url: https://weights.growth.dev
@@ -75,11 +75,11 @@ refresh:
 
 ai_providers:
   openai:
-    key: ${OPENAI_API_KEY}
+    # API key: OPENAI_API_KEY in the environment (config files do not expand env vars)
     model: gpt-4o
 
   anthropic:
-    key: ${ANTHROPIC_API_KEY}
+    # API key: ANTHROPIC_API_KEY in the environment
     model: claude-sonnet-4
 
   local:

@@ -141,8 +141,8 @@ plugins:
       anonymize_after_days: 90
 
     github:
-      token: ${GITHUB_TOKEN}            # env var reference — never hard-code
-      webhook_secret: ${GH_WEBHOOK_SECRET}
+      token: <github-token>             # literal: config files do not expand env vars
+      webhook_secret: <webhook-secret>
 ```
 
 Map this to Go structs in `config.go`:
@@ -168,14 +168,16 @@ type RepoConfig struct {
 }
 
 type GitHubCreds struct {
-    Token         string `json:"token"`          // resolved from env by ctxt
-    WebhookSecret string `json:"webhook_secret"` // resolved from env by ctxt
+    Token         string `json:"token"`          // as written in the config file
+    WebhookSecret string `json:"webhook_secret"` // as written in the config file
 }
 ```
 
-Design note: `token` in YAML references `${GITHUB_TOKEN}`. The ctxt config
-resolver expands env refs before passing the map to `plugin.Config()`, so your
-struct receives the plaintext value. Never log it.
+Design note: ctxt does not expand `${VAR}` in config files, so `token` holds
+whatever the file says; `token: ${GITHUB_TOKEN}` would hand your plugin that
+literal string. The operator writes the token into an uncommitted config file,
+or the plugin reads `GITHUB_TOKEN` from its environment when `token` is empty.
+Either way your struct receives the plaintext value. Never log it.
 
 ---
 
@@ -1223,7 +1225,7 @@ export GITHUB_TOKEN=ghp_...
 #          - owner: myorg
 #            repo: my-test-repo
 #        github:
-#          token: ${GITHUB_TOKEN}
+#          token: <github-token>
 
 # 3. Start ctxt with the plugin compiled in.
 ctxt serve --plugin ./github-pr-watcher/code.so

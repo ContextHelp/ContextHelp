@@ -520,15 +520,15 @@ ls -la ~/.config/contexthelp/config.yaml
 
 ### Safe Configuration Patterns
 
-Use environment variables for secrets, never hardcode them:
+Keep secrets out of committed config. Config files do not expand `${VAR}`, so a token goes in literally, in a gitignored file layered with a second `--config`:
 
 ```yaml
-# GOOD - Use environment variable references
+# GOOD - secrets.yaml (0600, never committed)
 registries:
   - name: private-registry
     url: https://registry.example.com
     auth:
-      token: ${CH_REGISTRY_TOKEN_PRIVATE}  # From env var
+      token: <private-registry-token>
 
 # GOOD - Use file-based secrets
 registries:
@@ -942,7 +942,7 @@ registries:
     url: https://registry.company.com
     type: taxonomy
     auth:
-      token_file: ${CH_SECRETS_DIR}/registry-token
+      token_file: ~/.config/contexthelp/secrets/registry-token
 ```
 
 ```bash
@@ -959,12 +959,13 @@ chmod 600 ~/.config/contexthelp/secrets/registry-token
 # config.yaml
 storage:
   type: postgres
-  connection_string: ${CONTEXTHELP_DB_URL}
+  # No password here: config files do not expand env vars; libpq reads PGPASSWORD
+  connection_string: postgresql://contexthelp@db.internal/contexthelp
 ```
 
 ```bash
-# Use connection string from environment
-export CONTEXTHELP_DB_URL=$(aws secretsmanager get-secret-value \
+# Password from the environment
+export PGPASSWORD=$(aws secretsmanager get-secret-value \
   --secret-id contexthelp/db \
   --query SecretString \
   --output text)

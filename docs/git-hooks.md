@@ -359,8 +359,8 @@ SKIP_PATTERNS=1 git commit -m "message"
 # Instead of:
 api_key: sk-proj-actual-key
 
-# Use:
-api_key: ${OPENAI_API_KEY}
+# Use: no key in the file; the provider reads OPENAI_API_KEY from
+# the environment (config files do not expand env vars)
 ```
 
 ### Hook Too Slow
@@ -414,8 +414,8 @@ git commit -m "fix configuration"
 # ❌ Bad: Hardcoded secrets
 api_key: sk-proj-abc123...
 
-# ✓ Good: Environment variable reference
-api_key: ${OPENAI_API_KEY}
+# ✓ Good: no key in the file; OPENAI_API_KEY in the environment
+# (config files do not expand env vars)
 ```
 
 ### 3. Keep .gitignore Updated

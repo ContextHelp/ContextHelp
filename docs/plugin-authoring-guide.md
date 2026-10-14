@@ -371,11 +371,11 @@ plugins:
 Config isolation: each plugin receives only its own `config` block. Other plugins'
 config is never visible.
 
-Environment variable substitution is supported for secret values:
+Config files do not expand environment variables: a value is used as written. Read secrets in the plugin from its own environment variable, or have the operator write the value into an uncommitted config file:
 
 ```yaml
 config:
-  api_key: ${MY_PLUGIN_API_KEY}
+  api_key: <my-plugin-api-key>
 ```
 
 ---

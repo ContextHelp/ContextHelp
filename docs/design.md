@@ -779,7 +779,7 @@ storage:
 aiProvider:
   type: openai
   model: gpt-4
-  apiKey: ${CH_OPENAI_API_KEY}
+  # API key: OPENAI_API_KEY in the environment (config files do not expand env vars)
 
 # Optional: for semantic/vector search
 embeddingProvider:
@@ -789,7 +789,7 @@ embeddingProvider:
 # Optional: NLQ Normalizer configuration
 nlqNormalizer:
   enabled: true
-  provider: ${aiProvider}  # uses configured AI provider
+  provider: openai  # same provider as aiProvider above
   intentPatterns: ./config/intent-patterns.yaml
   strategy_selection: adaptive  # or fixed
 
@@ -826,7 +826,7 @@ aiProvider:
   fallback:
     type: openai
     model: gpt-4o
-    apiKey: ${CH_OPENAI_API_KEY}
+    # API key: OPENAI_API_KEY in the environment
 ```
 
 **Important:** LMQL token-level logit masking operates only against locally-hosted backends.
