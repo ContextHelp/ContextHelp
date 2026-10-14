@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
 )
 
 // freePort returns a loopback port that was free a moment ago. Tests use
@@ -198,5 +200,86 @@ func TestAcquireListeners_DefaultBusyIsAnnounced(t *testing.T) {
 	want := "cookie bridge default port " + strconv.Itoa(busy) + " is in use; bound " + strconv.Itoa(got)
 	if !strings.Contains(log.String(), want) {
 		t.Errorf("fallback not announced; log = %q, want it to contain %q", log.String(), want)
+	}
+}
+
+// Port 0 asks the OS for a port: nothing was busy, so nothing is
+// announced.
+func TestAcquireListeners_PortZeroIsNotAnnounced(t *testing.T) {
+	var log bytes.Buffer
+	lns, err := acquireListeners(&log, []listenSpec{
+		{name: "HTTP", bind: "127.0.0.1", port: 0, explicit: true},
+		{name: "cookie bridge", bind: "127.0.0.1", port: 0, explicit: true},
+	})
+	if err != nil {
+		t.Fatalf("acquireListeners: %v", err)
+	}
+	defer closeListeners(lns)
+	for _, ln := range lns {
+		if listenerPort(ln) <= 0 {
+			t.Errorf("port 0 should bind an OS-assigned port, got %d", listenerPort(ln))
+		}
+	}
+	if log.Len() != 0 {
+		t.Errorf("port 0 announced as a busy default: %q", log.String())
+	}
+}
+
+// serveSpecsFor parses args as serve flags and returns the listeners
+// serve would bind for them.
+func serveSpecsFor(t *testing.T, args ...string) map[string]listenSpec {
+	t.Helper()
+	resetAllFlags(serveCmd)
+	t.Cleanup(func() { resetAllFlags(serveCmd) })
+	if err := serveCmd.ParseFlags(args); err != nil {
+		t.Fatalf("parse %v: %v", args, err)
+	}
+	specs := map[string]listenSpec{}
+	for _, s := range serveListenSpecs(serveCmd.Flags(), "127.0.0.1") {
+		specs[s.name] = s
+	}
+	return specs
+}
+
+// The cookie bridge port is set like --port and --grpc-port: the
+// built-in default is preferred (falls back when busy), a port passed as
+// --cookie-bridge-port is bound exactly, and 0 means OS-assigned.
+func TestServeListenSpecs_CookieBridgePort(t *testing.T) {
+	for _, tc := range []struct {
+		args         []string
+		wantPort     int
+		wantExplicit bool
+	}{
+		{nil, wsserver.DefaultCookieBridgePort, false},
+		{[]string{"--cookie-bridge-port", "0"}, 0, true},
+		{[]string{"--cookie-bridge-port", "19377"}, 19377, true},
+	} {
+		s, ok := serveSpecsFor(t, tc.args...)["cookie bridge"]
+		if !ok {
+			t.Fatalf("%v: no cookie bridge listener", tc.args)
+		}
+		if s.port != tc.wantPort || s.explicit != tc.wantExplicit {
+			t.Errorf("%v: cookie bridge port %d explicit %v, want %d explicit %v",
+				tc.args, s.port, s.explicit, tc.wantPort, tc.wantExplicit)
+		}
+		if s.bind != "127.0.0.1" {
+			t.Errorf("%v: cookie bridge binds %s, want loopback", tc.args, s.bind)
+		}
+	}
+}
+
+// The bridge stays on loopback whatever the access class binds HTTP and
+// gRPC to.
+func TestServeListenSpecs_CookieBridgeAlwaysLoopback(t *testing.T) {
+	resetAllFlags(serveCmd)
+	t.Cleanup(func() { resetAllFlags(serveCmd) })
+	for _, s := range serveListenSpecs(serveCmd.Flags(), "0.0.0.0") {
+		want := "0.0.0.0"
+		if s.name == "cookie bridge" {
+			want = "127.0.0.1"
+		}
+		if s.bind != want {
+			t.Errorf("%s binds %s, want %s", s.name, s.bind, want)
+		}
 	}
 }

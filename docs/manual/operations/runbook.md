@@ -37,7 +37,7 @@ dpkms serve --port 8080 --grpc-port 9090 --workers 4
 
 Ports and exit behaviour:
 
-- A port you pass (`--port`, `--grpc-port`) is bound exactly. If it is in use, serve exits non-zero; it never moves to another port.
+- A port you pass (`--port`, `--grpc-port`, `--cookie-bridge-port`) is bound exactly. If it is in use, serve exits non-zero; it never moves to another port. `0` binds a port the OS picks; `dpkms ps --format json` shows it.
 - Without the flag, a busy default port (8080, 9090, cookie bridge 9377) falls back to a free port. Serve prints a `note:` line with the port it bound; `dpkms ps` lists it.
 - If any component fails (HTTP, gRPC, cookie bridge, workers), serve logs `error: <component>: ...`, stops every component and exits non-zero. launchd `KeepAlive` or systemd `Restart=always` then restarts it.
 - SIGTERM or SIGINT stops serve within `jobs.drain_timeout` (default 30s). A second signal exits at once.

@@ -120,6 +120,10 @@ func TestMain(m *testing.M) { os.Exit(testguard.Main(m, nil, "ctxt")) }
 A helper that builds its own subprocess env must set `server.url` or
 `server.urls` itself. It must never drop back to an empty config dir.
 
+A test that spawns `dpkms serve` passes free ports for `--port` and
+`--grpc-port` and `--cookie-bridge-port 0`, so the instance never binds a
+default port (`test/testutil.StartDpkms` does all three).
+
 #### A dpkms for command tests
 
 `setupTestDB(t)` in `cmd/ctxt/cmd` creates a temporary SQLite database and

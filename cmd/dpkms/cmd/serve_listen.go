@@ -85,7 +85,8 @@ func acquireListeners(w io.Writer, specs []listenSpec) ([]net.Listener, error) {
 			}
 			return nil, fmt.Errorf("%s port: %w", s.name, err)
 		}
-		if got := listenerPort(ln); got != s.port {
+		// Port 0 asks for an OS-assigned port: nothing fell back.
+		if got := listenerPort(ln); s.port != 0 && got != s.port {
 			fmt.Fprintf(w, "note: %s default port %d is in use; bound %d instead\n", s.name, s.port, got)
 		}
 		lns = append(lns, ln)

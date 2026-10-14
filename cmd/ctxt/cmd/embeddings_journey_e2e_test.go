@@ -418,7 +418,7 @@ var dpkmsListening = regexp.MustCompile(`HTTP server listening on (127\.0\.0\.1:
 func (e *journeyEnv) startDpkms(bin string) {
 	t := e.t
 	t.Helper()
-	cmd := exec.Command(bin, "serve", "--port", freePort(t), "--grpc-port", freePort(t), "--workers", "1") // #nosec G204 -- test-built binary
+	cmd := exec.Command(bin, "serve", "--port", freePort(t), "--grpc-port", freePort(t), "--cookie-bridge-port", "0", "--workers", "1") // #nosec G204 -- test-built binary
 	cmd.Env = e.env
 	cmd.Dir = e.dirs["HOME"]
 	cmd.Stdout, cmd.Stderr = e.log, e.log
