@@ -143,7 +143,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Inbound auth: %s provider (%s access)\n", authProvider.Name(), access)
 	}
 
-	// 1. Init storage.
+	// 1. Init storage, under the database lock: held until serve
+	// returns (the kernel drops it if the process dies), it refuses a
+	// second serve or a restore on this database.
+	dbLock, err := acquireServeLock(cfg, instanceName)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dbLock.Release() }()
 	_, dbPath := serveStorageTarget(cfg)
 	driver, err := openServeStorage(context.Background(), cfg)
 	if err != nil {

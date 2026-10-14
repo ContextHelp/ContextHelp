@@ -1,12 +1,12 @@
 // Package dblock coordinates single-writer access to a database file through
 // an advisory flock on a "<dbpath>.lock" sidecar file.
 //
-// Advisory means the gate binds only processes that acquire it. Today that is
-// the CLI's direct write path (RoleCLI); the daemon's serve path does not yet
-// take the lock on startup, so RoleDaemon holders appear only where daemon
-// behavior is simulated (tests) — daemon-side acquisition is pending, and
-// until it lands this package is one half of the single-writer story, not a
-// system-wide guarantee.
+// Advisory means the gate binds only processes that acquire it. dpkms serve
+// holds it (RoleDaemon) on the SQLite database it opens for its whole
+// lifetime, so a second serve on the same database fails fast; dpkms
+// restore, which replaces the database file wholesale, refuses while it is
+// held and holds it (RoleCLI) while it writes. Anything else that opens the
+// database goes through SQLite's own locking and does not take this lock.
 //
 // The flock is the authority: it is kernel-owned, released automatically on
 // process exit (no stale-lock recovery needed), atomic to acquire (no
@@ -198,6 +198,39 @@ func ReadHolder(dbPath string) (*Info, error) {
 		return nil, fmt.Errorf("parse lock body: %w", err)
 	}
 	return &info, nil
+}
+
+// Check reports whether some process holds dbPath's lock, without taking
+// it for longer than the probe and without creating the sidecar: no sidecar
+// means no process has ever locked dbPath, so it is free. A held lock
+// returns a *HeldError wrapping ErrHeld, naming the holder when readable;
+// a free one returns nil.
+//
+// The probe briefly takes the lock itself, so a process acquiring it at
+// that same instant fails as if it were held; callers that go on to write
+// take it with Acquire instead.
+func Check(dbPath string) error {
+	path := Path(dbPath)
+	f, err := os.Open(path) // #nosec G304 -- caller-supplied DB path
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("open lock file: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	fd := int(f.Fd()) // #nosec G115 -- fd is a small positive int
+	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+			holder, _ := ReadHolder(dbPath) // best effort: attribution only
+			return &HeldError{Path: path, Holder: holder}
+		}
+		return fmt.Errorf("flock %s: %w", path, err)
+	}
+	if err := syscall.Flock(fd, syscall.LOCK_UN); err != nil {
+		return fmt.Errorf("funlock %s: %w", path, err)
+	}
+	return nil
 }
 
 // writeBody truncate-writes the JSON body at the start of the lock file.

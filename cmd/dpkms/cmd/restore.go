@@ -38,9 +38,11 @@ atomically: written beside storage.path, fsynced, then renamed over it,
 and the old database's -wal, -shm and -journal files are removed. A
 failed restore leaves the old database as it was.
 
-Restore refuses while a dpkms instance of this data directory is
-serving that database (its pidfile is live): stop it first with
-dpkms shutdown.
+Restore refuses, --dry-run included, while a dpkms serve runs on that
+database (every serve holds the database lock, <storage.path>.lock, for
+as long as it runs) or a live pidfile of this data directory names it:
+stop it first with dpkms shutdown. Restore holds that lock itself while
+it replaces the database.
 
 Examples:
   dpkms restore ctxt-backup-2026-04-25T13-51-54Z.tar.gz

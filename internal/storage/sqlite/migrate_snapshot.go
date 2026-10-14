@@ -63,9 +63,9 @@ func pendingTarget(current, target int) int {
 	return to
 }
 
-// isMemoryPath reports whether path names an in-memory database, which
+// IsMemoryPath reports whether path names an in-memory database, which
 // has nothing on disk to protect and no directory to write beside.
-func isMemoryPath(path string) bool {
+func IsMemoryPath(path string) bool {
 	return path == "" || path == ":memory:" || strings.Contains(path, "mode=memory")
 }
 
@@ -76,7 +76,7 @@ func isMemoryPath(path string) bool {
 // must not migrate without the snapshot.
 func (d *Driver) snapshotBeforeMigrate(ctx context.Context, from, target int) error {
 	to := pendingTarget(from, target)
-	if to == 0 || d.skipMigrateSnapshot || isMemoryPath(d.path) {
+	if to == 0 || d.skipMigrateSnapshot || IsMemoryPath(d.path) {
 		return nil
 	}
 	if from == 0 {

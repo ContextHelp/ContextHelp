@@ -2,10 +2,13 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/dblock"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
@@ -34,4 +37,25 @@ func openServeStorage(ctx context.Context, c *config.Config) (storage.StorageDri
 		return nil, fmt.Errorf("init storage: %w", err)
 	}
 	return driver, nil
+}
+
+// acquireServeLock takes the database lock serve holds, for its whole
+// lifetime, on the SQLite database it opens: a second serve on that
+// database, or a restore over it, fails fast instead of both writing to
+// it. The pidfile cannot say this: it names a port, and writing it is
+// best effort. Postgres and in-memory SQLite have no database file to
+// guard; they get a nil lock and no error.
+func acquireServeLock(c *config.Config, instance string) (*dblock.Lock, error) {
+	typ, path := serveStorageTarget(c)
+	if typ != "sqlite" || sqlite.IsMemoryPath(path) {
+		return nil, nil
+	}
+	l, err := dblock.Acquire(path, dblock.Info{Role: dblock.RoleDaemon, Instance: instance})
+	if errors.Is(err, dblock.ErrHeld) {
+		return nil, fmt.Errorf("database %s is in use: %w; stop that process first (dpkms ps, dpkms shutdown)", path, err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lock database %s: %w", path, err)
+	}
+	return l, nil
 }

@@ -26,7 +26,7 @@ func LatestSchemaVersion() int {
 func CheckSchema(ctx context.Context, path string) (storage.SchemaStatus, error) {
 	latest := LatestSchemaVersion()
 	newDB := storage.SchemaStatus{Latest: latest, Target: pendingTarget(0, latest), New: true}
-	if isMemoryPath(path) {
+	if IsMemoryPath(path) {
 		return newDB, nil
 	}
 	fi, err := os.Stat(path)

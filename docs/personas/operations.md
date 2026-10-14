@@ -185,8 +185,12 @@ dpkms restore backup.tar.gz --skip-configs
   directory's files into that directory; `--skip-configs` skips both. That file
   carries the `federations:` targets, so restoring it restores the push topology.
 - Restore replaces the database atomically (temp file, fsync, rename; stale
-  `-wal`/`-shm`/`-journal` removed) and refuses while a `dpkms serve` of the same
-  data dir runs on it: `dpkms shutdown` first.
+  `-wal`/`-shm`/`-journal` removed) and refuses while a `dpkms serve` runs on
+  it: `dpkms shutdown` first. Every `dpkms serve` holds an advisory lock on
+  `<database>.lock` beside its SQLite database while it runs, so a second serve
+  on the same database exits at once, naming the holder's pid and instance, and
+  restore refuses whatever data dir that serve's pidfile is in. Leave the
+  `.lock` file in place; it is never removed.
 - Client config backups are separate: `ctxt config backup` exports a signed
   bundle of the ctxt config, `ctxt config restore <bundle.zip>` restores it.
 
