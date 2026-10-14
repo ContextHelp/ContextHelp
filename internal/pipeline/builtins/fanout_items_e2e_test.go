@@ -18,7 +18,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // fanOutJob is a container job as its entry point enqueues it, and the
@@ -294,13 +293,13 @@ func requireContainsItems(t *testing.T, parent *storage.KnowledgeObject, items [
 	}
 	contained := map[string]bool{}
 	for _, e := range parent.Graph.Edges {
-		if e.EdgeType == pluginapi.EdgeTypeContains && e.FromID == parent.ID {
+		if e.EdgeType == storage.EdgeTypeContains && e.FromID == parent.ID {
 			contained[e.ToID] = true
 		}
 	}
 	var got []string
 	for _, n := range parent.Graph.Nodes {
-		if n.NodeType == pluginapi.NodeTypeArtifact && contained[n.ID] {
+		if n.NodeType == storage.NodeTypeArtifact && contained[n.ID] {
 			src, _ := n.Metadata["source"].(string)
 			got = append(got, src)
 		}

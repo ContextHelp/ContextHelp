@@ -19,7 +19,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/searchgraph"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"hop.top/kit/go/console/output"
@@ -393,7 +392,7 @@ func renderFind(query string, res *dpkmsclient.FindResponse, facets bool) error 
 type findExplainResult struct {
 	Object       *storage.KnowledgeObject       `json:"object"`
 	Breakdown    dpkmsclient.FindScoreBreakdown `json:"score_breakdown"`
-	DocumentView pluginapi.DocumentProjection   `json:"document_view"`
+	DocumentView storage.DocumentProjection     `json:"document_view"`
 }
 
 // renderFindExplain prints a hybrid find response with its per-result

@@ -9,7 +9,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // DependencyEnricher detects package dependencies from a repo knowledge object
@@ -76,27 +75,27 @@ func (s *DependencyEnricher) Run(_ context.Context, draft *storage.KnowledgeObje
 	// Skip when draft.ID is empty (pre-ID pipeline drafts).
 	if draft.ID != "" && len(deps) > 0 {
 		if draft.Graph == nil {
-			draft.Graph = &pluginapi.ObjectGraph{}
+			draft.Graph = &storage.ObjectGraph{}
 		}
 		for i, dep := range deps {
-			nodeID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeArtifact, i)
+			nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, i)
 			if draft.Graph.FindNode(nodeID) != nil {
 				continue
 			}
-			draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 				ID:       nodeID,
-				NodeType: pluginapi.NodeTypeArtifact,
+				NodeType: storage.NodeTypeArtifact,
 				Label:    dep.URL,
 				Order:    i,
 				Metadata: map[string]any{
 					"pipeline": dep.Pipeline,
 				},
 			})
-			draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+			draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
 				ID:       fmt.Sprintf("%s->%s", draft.ID, nodeID),
 				FromID:   draft.ID,
 				ToID:     nodeID,
-				EdgeType: pluginapi.EdgeTypeContains,
+				EdgeType: storage.EdgeTypeContains,
 			})
 		}
 	}

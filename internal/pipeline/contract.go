@@ -2,13 +2,14 @@ package pipeline
 
 import (
 	"strings"
-
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
-// StepContract declares what a step requires and produces.
-// The canonical definition lives in pkg/pluginapi.
-type StepContract = pluginapi.StepContract
+// StepContract declares what a pipeline step requires and produces.
+type StepContract struct {
+	Requires     []string // KnowledgeObject fields the step reads
+	Produces     []string // KnowledgeObject fields the step writes
+	Capabilities []string // subsystem requirements: "ocr", "vision", "llm", etc.
+}
 
 // BaseContract provides a default Contract() implementation for embedding in step structs.
 type BaseContract struct {

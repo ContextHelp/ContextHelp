@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // storageAliasResolver implements search.AliasResolver backed by the alias store.
@@ -44,7 +43,7 @@ func (r *storageAliasResolver) ResolveAliases(ctx context.Context, terms []strin
 			return nil, fmt.Errorf("resolve alias %q: %w", term, err)
 		}
 
-		siblings, err := r.store.List(ctx, pluginapi.AliasFilter{ObjectID: objectID})
+		siblings, err := r.store.List(ctx, storage.AliasFilter{ObjectID: objectID})
 		if err != nil {
 			return nil, fmt.Errorf("list aliases of %s: %w", objectID, err)
 		}

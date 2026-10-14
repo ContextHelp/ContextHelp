@@ -1,15 +1,15 @@
 package projection
 
 import (
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // BodyText returns the object's body under the defaulting rule storage
 // applies when it persists an object: TextContent, else RawContent. A
 // blob:// ref is a pointer to content, not text, and is never the body:
 // an object whose content is a ref and that carries no text has none.
-func BodyText(ko *pluginapi.KnowledgeObject) string {
+func BodyText(ko *storage.KnowledgeObject) string {
 	if ko == nil {
 		return ""
 	}
@@ -26,7 +26,7 @@ func BodyText(ko *pluginapi.KnowledgeObject) string {
 // BodyText. A pipeline draft has not been through storage's TextContent
 // default yet, so it yields the same text before and after persistence.
 // ko is not modified.
-func EmbeddingText(ko *pluginapi.KnowledgeObject) string {
+func EmbeddingText(ko *storage.KnowledgeObject) string {
 	if ko == nil {
 		return ""
 	}

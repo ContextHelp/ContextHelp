@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -31,7 +32,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	uri "hop.top/cite/scheme"
 	"hop.top/kit/go/runtime/domain"
 )
@@ -1229,7 +1229,7 @@ func objectSnippet(obj *storage.KnowledgeObject) string {
 // NodeAwareFilter constraints (NodeTypes / EdgeTypes). Storage does not yet
 // expose native node-type filtering, so the filtering happens in-process.
 // When filter is nil or empty, behaviour is identical to SearchObjects.
-func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limit, offset int, filter *pluginapi.NodeAwareFilter, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
+func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limit, offset int, filter *storage.NodeAwareFilter, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
 	// Fetch a wider candidate pool when node filtering is active so the final
 	// page still has enough results after the in-process filter.
 	fetchLimit := limit
@@ -1265,34 +1265,9 @@ func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limi
 
 	var filtered []*storage.KnowledgeObject
 	for _, obj := range all {
-		if obj.Graph == nil {
-			continue
+		if graphHasTypes(obj.Graph, nodeTypeSet, edgeTypeSet) {
+			filtered = append(filtered, obj)
 		}
-		if len(nodeTypeSet) > 0 {
-			matched := false
-			for _, n := range obj.Graph.Nodes {
-				if nodeTypeSet[n.NodeType] {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				continue
-			}
-		}
-		if len(edgeTypeSet) > 0 {
-			matched := false
-			for _, e := range obj.Graph.Edges {
-				if edgeTypeSet[e.EdgeType] {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				continue
-			}
-		}
-		filtered = append(filtered, obj)
 	}
 
 	total := len(filtered)
@@ -1309,6 +1284,22 @@ func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limi
 		return nil, 0, err
 	}
 	return page, total, nil
+}
+
+// graphHasTypes reports whether g has a node of one of nodeTypes and an
+// edge of one of edgeTypes; an empty set matches any graph. A nil graph
+// never matches.
+func graphHasTypes(g *storage.ObjectGraph, nodeTypes, edgeTypes map[string]bool) bool {
+	if g == nil {
+		return false
+	}
+	if len(nodeTypes) > 0 && !slices.ContainsFunc(g.Nodes, func(n storage.GraphNode) bool { return nodeTypes[n.NodeType] }) {
+		return false
+	}
+	if len(edgeTypes) > 0 && !slices.ContainsFunc(g.Edges, func(e storage.GraphEdge) bool { return edgeTypes[e.EdgeType] }) {
+		return false
+	}
+	return true
 }
 
 // --- Feed methods ---

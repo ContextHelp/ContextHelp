@@ -7,7 +7,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // Candidate is a pre-merged search result from one or more retrieval legs.
@@ -27,7 +26,7 @@ type Result struct {
 	WordOverlap    float64 // post-retrieval word overlap signal
 	Total          float64 // sum of all signals
 	// DocumentView is pre-computed via ProjectDocument for display surfaces.
-	DocumentView pluginapi.DocumentProjection
+	DocumentView storage.DocumentProjection
 }
 
 // WeightConfig holds the per-signal weight constants for the default reranker.

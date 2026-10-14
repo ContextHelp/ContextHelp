@@ -7,14 +7,18 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
-// ObjectVector is one row of the embeddings table without its object ID.
-// The canonical definition lives in pkg/pluginapi so pipeline drafts can
-// carry vectors from the embedding step to EmbeddingStore.Put.
-type ObjectVector = pluginapi.ObjectVector
+// ObjectVector is one embedding a registered model produced for one chunk
+// of an object: a row of the embeddings table keyed (object, model, chunk)
+// minus the object ID, which is known only once the object is persisted.
+type ObjectVector struct {
+	ModelID  string    `json:"model_id"`
+	ChunkIdx int       `json:"chunk_idx"`
+	Vector   []float32 `json:"vector"`
+	// Text is the chunk text that was embedded (eval and debugging).
+	Text string `json:"text,omitempty"`
+}
 
 // EmbeddingModelSpec is the registry data a per-model vector index is built
 // from. Dimension is the registry's measured dimension, never a driver

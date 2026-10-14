@@ -10,7 +10,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // mentionRe matches @namespace.slug references in text.
@@ -109,24 +108,24 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 	// entity_resolver, NOT here — that is the layer boundary (ADR-063).
 	if draft.ID != "" && len(draft.Mentions) > 0 {
 		if draft.Graph == nil {
-			draft.Graph = &pluginapi.ObjectGraph{}
+			draft.Graph = &storage.ObjectGraph{}
 		}
 		for i, u := range draft.Mentions {
-			nodeID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeEntityMention, i)
+			nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeEntityMention, i)
 			if draft.Graph.FindNode(nodeID) != nil {
 				continue
 			}
-			draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 				ID:       nodeID,
-				NodeType: pluginapi.NodeTypeEntityMention,
+				NodeType: storage.NodeTypeEntityMention,
 				Label:    u.String(),
 				Order:    i,
 			})
-			draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+			draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
 				ID:       fmt.Sprintf("%s->%s", nodeID, u.String()),
 				FromID:   nodeID,
 				ToID:     u.String(),
-				EdgeType: pluginapi.EdgeTypeReferences,
+				EdgeType: storage.EdgeTypeReferences,
 			})
 		}
 	}

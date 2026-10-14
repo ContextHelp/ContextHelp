@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestMarkdownParserCreatesHeadingSections(t *testing.T) {
@@ -63,14 +62,14 @@ func TestMarkdownParserEmitsGraphNodes(t *testing.T) {
 		t.Fatal("graph is nil; expected nodes")
 	}
 
-	rootID := pluginapi.NewNodeID("obj-004", pluginapi.NodeTypeSummary, 0)
+	rootID := storage.NewNodeID("obj-004", storage.NodeTypeSummary, 0)
 	if got.Graph.FindNode(rootID) == nil {
 		t.Errorf("root summary node %q not found", rootID)
 	}
 
 	// Two headings → two section nodes.
 	for i := 0; i < 2; i++ {
-		secID := pluginapi.NewNodeID("obj-004", pluginapi.NodeTypeSection, i)
+		secID := storage.NewNodeID("obj-004", storage.NodeTypeSection, i)
 		if got.Graph.FindNode(secID) == nil {
 			t.Errorf("section node %q not found", secID)
 		}
@@ -80,7 +79,7 @@ func TestMarkdownParserEmitsGraphNodes(t *testing.T) {
 		t.Errorf("edges: got %d, want 2", len(got.Graph.Edges))
 	}
 	for _, e := range got.Graph.Edges {
-		if e.EdgeType != pluginapi.EdgeTypeContains {
+		if e.EdgeType != storage.EdgeTypeContains {
 			t.Errorf("edge type: got %q, want contains", e.EdgeType)
 		}
 	}

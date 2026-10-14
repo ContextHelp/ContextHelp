@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // SearchCapabilities declares which search legs a driver claims to support.
@@ -29,11 +28,11 @@ func searchFixtureObject(id, typ, text string) *storage.KnowledgeObject {
 		Status:    "active",
 		CreatedAt: fixtureTime(),
 		UpdatedAt: fixtureTime(),
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
-					NodeType: pluginapi.NodeTypeSummary,
+					ID:       storage.NewNodeID(id, storage.NodeTypeSummary, 0),
+					NodeType: storage.NodeTypeSummary,
 					Label:    "Summary",
 					Content:  text,
 					Order:    0,

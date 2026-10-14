@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/require"
 	uri "hop.top/cite/scheme"
 )
@@ -28,11 +27,11 @@ func makeObjectWithMentions(id string, ms []uri.URI) *storage.KnowledgeObject {
 			Content: content,
 			Order:   0,
 		}},
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
-					NodeType: pluginapi.NodeTypeSummary,
+					ID:       storage.NewNodeID(id, storage.NodeTypeSummary, 0),
+					NodeType: storage.NodeTypeSummary,
 					Label:    "Summary",
 					Content:  content,
 					Order:    0,

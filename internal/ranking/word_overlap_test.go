@@ -6,7 +6,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/ranking"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -27,11 +26,11 @@ func makeObjWithGraphContent(id, sectionContent string) *storage.KnowledgeObject
 	return &storage.KnowledgeObject{
 		ID:   id,
 		Type: "document",
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSection, 0),
-					NodeType: pluginapi.NodeTypeSection,
+					ID:       storage.NewNodeID(id, storage.NodeTypeSection, 0),
+					NodeType: storage.NodeTypeSection,
 					Label:    "Main",
 					Content:  sectionContent,
 					Order:    0,
@@ -93,17 +92,17 @@ func TestWordOverlapScore_TagsScored(t *testing.T) {
 	obj := &storage.KnowledgeObject{
 		ID:   "f",
 		Type: "text",
-		Tags: []pluginapi.Tag{{Label: "golang"}, {Label: "concurrency"}},
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Tags: []storage.Tag{{Label: "golang"}, {Label: "concurrency"}},
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID("f", pluginapi.NodeTypeTag, 0),
-					NodeType: pluginapi.NodeTypeTag,
+					ID:       storage.NewNodeID("f", storage.NodeTypeTag, 0),
+					NodeType: storage.NodeTypeTag,
 					Label:    "golang",
 				},
 				{
-					ID:       pluginapi.NewNodeID("f", pluginapi.NodeTypeTag, 1),
-					NodeType: pluginapi.NodeTypeTag,
+					ID:       storage.NewNodeID("f", storage.NodeTypeTag, 1),
+					NodeType: storage.NodeTypeTag,
 					Label:    "concurrency",
 				},
 			},

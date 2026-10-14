@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestLanguageDetectorFromSource(t *testing.T) {
@@ -76,8 +75,8 @@ func TestLanguageDetectorGraphNodeEmitted(t *testing.T) {
 		t.Fatalf("Graph.Nodes: got %d, want 1", len(got.Graph.Nodes))
 	}
 	n := got.Graph.Nodes[0]
-	if n.NodeType != pluginapi.NodeTypeTag {
-		t.Errorf("NodeType: got %q, want %q", n.NodeType, pluginapi.NodeTypeTag)
+	if n.NodeType != storage.NodeTypeTag {
+		t.Errorf("NodeType: got %q, want %q", n.NodeType, storage.NodeTypeTag)
 	}
 	if n.Label != "lang:go" {
 		t.Errorf("Label: got %q, want %q", n.Label, "lang:go")

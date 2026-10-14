@@ -8,7 +8,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 var markdownHeadingRe = regexp.MustCompile(`(?m)^(#{1,6})\s+(.+)$`)
@@ -94,36 +93,36 @@ func (s *MarkdownParser) Run(ctx context.Context, draft *storage.KnowledgeObject
 		return draft, nil
 	}
 	if draft.Graph == nil {
-		draft.Graph = &pluginapi.ObjectGraph{}
+		draft.Graph = &storage.ObjectGraph{}
 	}
-	rootID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSummary, 0)
+	rootID := storage.NewNodeID(draft.ID, storage.NodeTypeSummary, 0)
 	if draft.Graph.FindNode(rootID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       rootID,
-			NodeType: pluginapi.NodeTypeSummary,
+			NodeType: storage.NodeTypeSummary,
 			Label:    "root",
 			Content:  draft.RawContent,
 			Order:    0,
 		})
 	}
 	for i, sec := range draft.Sections {
-		secID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSection, i)
+		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, i)
 		if draft.Graph.FindNode(secID) != nil {
 			continue
 		}
-		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       secID,
-			NodeType: pluginapi.NodeTypeSection,
+			NodeType: storage.NodeTypeSection,
 			Label:    sec.Title,
 			Content:  sec.Content,
 			Order:    i,
 			Metadata: sec.Metadata,
 		})
-		draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+		draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
 			ID:       fmt.Sprintf("%s->%s", rootID, secID),
 			FromID:   rootID,
 			ToID:     secID,
-			EdgeType: pluginapi.EdgeTypeContains,
+			EdgeType: storage.EdgeTypeContains,
 		})
 	}
 

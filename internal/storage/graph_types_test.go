@@ -1,16 +1,16 @@
-package pluginapi_test
+package storage_test
 
 import (
 	"testing"
 
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 func TestObjectGraph_AddAndFindNode(t *testing.T) {
-	g := &pluginapi.ObjectGraph{}
-	node := pluginapi.GraphNode{
-		ID:       pluginapi.NewNodeID("obj-1", pluginapi.NodeTypeSection, 0),
-		NodeType: pluginapi.NodeTypeSection,
+	g := &storage.ObjectGraph{}
+	node := storage.GraphNode{
+		ID:       storage.NewNodeID("obj-1", storage.NodeTypeSection, 0),
+		NodeType: storage.NodeTypeSection,
 		Content:  "Introduction",
 	}
 	g.Nodes = append(g.Nodes, node)
@@ -24,18 +24,18 @@ func TestObjectGraph_AddAndFindNode(t *testing.T) {
 }
 
 func TestKnowledgeObject_HasGraphField(t *testing.T) {
-	ko := pluginapi.KnowledgeObject{}
-	ko.Graph = &pluginapi.ObjectGraph{}
+	ko := storage.KnowledgeObject{}
+	ko.Graph = &storage.ObjectGraph{}
 	if ko.Graph == nil {
 		t.Fatal("Graph field missing")
 	}
 }
 
 func TestDocumentProjection_HasSections(t *testing.T) {
-	dp := pluginapi.DocumentProjection{
+	dp := storage.DocumentProjection{
 		Title:    "My Doc",
 		Body:     "body text",
-		Sections: []pluginapi.Section{{Title: "S1", Content: "c1"}},
+		Sections: []storage.Section{{Title: "S1", Content: "c1"}},
 	}
 	if len(dp.Sections) != 1 {
 		t.Fatal("Sections missing")
@@ -43,36 +43,48 @@ func TestDocumentProjection_HasSections(t *testing.T) {
 }
 
 func TestIndexProjection_HasFTSBody(t *testing.T) {
-	ip := pluginapi.IndexProjection{
+	ip := storage.IndexProjection{
 		FTSBody:       "search text",
-		Tags:          []pluginapi.Tag{{Label: "go"}},
+		Tags:          []storage.Tag{{Label: "go"}},
 		EmbeddingText: "embed text",
 	}
 	if ip.FTSBody == "" {
 		t.Fatal("FTSBody missing")
 	}
+	if len(ip.Tags) != 1 || ip.Tags[0].Label != "go" {
+		t.Fatalf("Tags: got %+v", ip.Tags)
+	}
+	if ip.EmbeddingText != "embed text" {
+		t.Fatalf("EmbeddingText: got %q", ip.EmbeddingText)
+	}
 }
 
 func TestObjectGraph_FindNode_NilReceiver(t *testing.T) {
-	var g *pluginapi.ObjectGraph
+	var g *storage.ObjectGraph
 	if g.FindNode("any-id") != nil {
 		t.Fatal("expected nil from nil receiver")
 	}
 }
 
 func TestObjectGraph_FindNode_NotFound(t *testing.T) {
-	g := &pluginapi.ObjectGraph{}
+	g := &storage.ObjectGraph{}
 	if g.FindNode("missing") != nil {
 		t.Fatal("expected nil for missing node")
 	}
 }
 
 func TestGraphNode_HasOrderAndLabel(t *testing.T) {
-	n := pluginapi.GraphNode{
-		ID:       pluginapi.NewNodeID("obj-1", pluginapi.NodeTypeSection, 2),
-		NodeType: pluginapi.NodeTypeSection,
+	n := storage.GraphNode{
+		ID:       storage.NewNodeID("obj-1", storage.NodeTypeSection, 2),
+		NodeType: storage.NodeTypeSection,
 		Label:    "Introduction",
 		Order:    2,
+	}
+	if n.ID != "obj-1/section/2" {
+		t.Errorf("ID: got %q", n.ID)
+	}
+	if n.NodeType != storage.NodeTypeSection {
+		t.Errorf("NodeType: got %q", n.NodeType)
 	}
 	if n.Order != 2 {
 		t.Errorf("Order: got %d", n.Order)
@@ -83,7 +95,7 @@ func TestGraphNode_HasOrderAndLabel(t *testing.T) {
 }
 
 func TestIndexProjection_HasMentions(t *testing.T) {
-	ip := pluginapi.IndexProjection{
+	ip := storage.IndexProjection{
 		Mentions: []string{"@people.alice", "@project.foo"},
 	}
 	if len(ip.Mentions) != 2 {

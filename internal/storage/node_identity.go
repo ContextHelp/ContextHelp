@@ -1,4 +1,4 @@
-package pluginapi
+package storage
 
 import (
 	"fmt"
@@ -45,13 +45,13 @@ type NodeRef struct {
 // Panics (programmer error) if objectID or nodeType is empty, objectID contains '/', or ordinal < 0.
 func NewNodeID(objectID, nodeType string, ordinal int) string {
 	if objectID == "" || nodeType == "" {
-		panic("pluginapi.NewNodeID: objectID and nodeType must be non-empty")
+		panic("storage.NewNodeID: objectID and nodeType must be non-empty")
 	}
 	if strings.Contains(objectID, "/") {
-		panic(fmt.Sprintf("pluginapi.NewNodeID: objectID must not contain '/': %q", objectID))
+		panic(fmt.Sprintf("storage.NewNodeID: objectID must not contain '/': %q", objectID))
 	}
 	if ordinal < 0 {
-		panic(fmt.Sprintf("pluginapi.NewNodeID: ordinal must be >= 0, got %d", ordinal))
+		panic(fmt.Sprintf("storage.NewNodeID: ordinal must be >= 0, got %d", ordinal))
 	}
 	return fmt.Sprintf("%s/%s/%d", objectID, nodeType, ordinal)
 }
@@ -81,13 +81,13 @@ func ParseNodeID(id string) (NodeRef, error) {
 // Panics (programmer error) if objectID or nodeType is empty, objectID contains '/', or ordinal < 0.
 func NodeURI(objectID, nodeType string, ordinal int) string {
 	if objectID == "" || nodeType == "" {
-		panic("pluginapi.NodeURI: objectID and nodeType must be non-empty")
+		panic("storage.NodeURI: objectID and nodeType must be non-empty")
 	}
 	if strings.Contains(objectID, "/") {
-		panic(fmt.Sprintf("pluginapi.NodeURI: objectID must not contain '/': %q", objectID))
+		panic(fmt.Sprintf("storage.NodeURI: objectID must not contain '/': %q", objectID))
 	}
 	if ordinal < 0 {
-		panic(fmt.Sprintf("pluginapi.NodeURI: ordinal must be >= 0, got %d", ordinal))
+		panic(fmt.Sprintf("storage.NodeURI: ordinal must be >= 0, got %d", ordinal))
 	}
 	return fmt.Sprintf("ctxt:node/%s/%s/%d", objectID, nodeType, ordinal)
 }

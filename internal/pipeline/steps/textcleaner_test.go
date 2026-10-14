@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestTextCleanerNormalizesSpaces(t *testing.T) {
@@ -57,13 +56,13 @@ func TestTextCleanerEmitsGraphSummaryNode(t *testing.T) {
 	if got.Graph == nil {
 		t.Fatal("graph is nil; expected summary node")
 	}
-	wantID := pluginapi.NewNodeID("obj-001", pluginapi.NodeTypeSummary, 0)
+	wantID := storage.NewNodeID("obj-001", storage.NodeTypeSummary, 0)
 	node := got.Graph.FindNode(wantID)
 	if node == nil {
 		t.Fatalf("summary node %q not found in graph", wantID)
 	}
-	if node.NodeType != pluginapi.NodeTypeSummary {
-		t.Errorf("node type: got %q, want %q", node.NodeType, pluginapi.NodeTypeSummary)
+	if node.NodeType != storage.NodeTypeSummary {
+		t.Errorf("node type: got %q, want %q", node.NodeType, storage.NodeTypeSummary)
 	}
 	if node.Content != "hello world" {
 		t.Errorf("node content: got %q, want %q", node.Content, "hello world")

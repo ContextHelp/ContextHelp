@@ -7,8 +7,6 @@ import (
 	"errors"
 	"io"
 	"time"
-
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // ErrEntityDefinitionUnavailable is returned when a thin entity's full definition
@@ -47,15 +45,29 @@ var ErrBlobNotFound = errors.New("blob not found")
 var ErrNotImplemented = errors.New("not implemented by this storage backend")
 
 // Alias represents a human-readable name that resolves to a knowledge object ID.
-// The canonical definition lives in pkg/pluginapi.
-type Alias = pluginapi.Alias
+type Alias struct {
+	Alias     string    `json:"alias"`
+	ObjectID  string    `json:"object_id"`
+	Scope     string    `json:"scope"`   // "global" | "profile"
+	Profile   string    `json:"profile"` // empty for global
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
 
 // AliasFilter restricts alias listing results.
-type AliasFilter = pluginapi.AliasFilter
+type AliasFilter struct {
+	ObjectID string
+	Scope    string
+	Profile  string
+}
 
-// AliasStore persists and retrieves object aliases.
-// The canonical definition lives in pkg/pluginapi.
-type AliasStore = pluginapi.AliasStore
+// AliasStore is the persistence interface for aliases.
+type AliasStore interface {
+	Create(ctx context.Context, a *Alias) error
+	Resolve(ctx context.Context, alias, profile string) (string, error)
+	List(ctx context.Context, filter AliasFilter) ([]*Alias, error)
+	Delete(ctx context.Context, alias, scope, profile string) error
+}
 
 // StorageDriver is the top-level interface for all persistence operations.
 type StorageDriver interface {
@@ -214,10 +226,10 @@ type ObjectStore interface {
 	FTSSearch(ctx context.Context, query string, filter ObjectFilter) ([]*KnowledgeObject, error)
 	// FTSSearchNodeAware runs FTS search and applies NodeAwareFilter post-query.
 	// When naf.NodeTypes is non-empty, only objects with ALL listed node types are returned.
-	FTSSearchNodeAware(ctx context.Context, query string, filter ObjectFilter, naf pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error)
+	FTSSearchNodeAware(ctx context.Context, query string, filter ObjectFilter, naf NodeAwareFilter) ([]*NodeAwareResult, error)
 	// VectorSearchNodeAware runs vector search and applies NodeAwareFilter post-query.
 	// When naf.NodeTypes is non-empty, only objects with ALL listed node types are returned.
-	VectorSearchNodeAware(ctx context.Context, q VectorQuery, filter ObjectFilter, naf pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error)
+	VectorSearchNodeAware(ctx context.Context, q VectorQuery, filter ObjectFilter, naf NodeAwareFilter) ([]*NodeAwareResult, error)
 }
 
 // EntityStore persists and retrieves named entities.

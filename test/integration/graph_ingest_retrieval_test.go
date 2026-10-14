@@ -15,7 +15,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,45 +24,45 @@ import (
 func buildGraphKO(objectID, typ, sectionContent, tagLabel, entitySlug string) *storage.KnowledgeObject {
 	now := time.Now().Truncate(time.Second)
 
-	sectionNodeID := pluginapi.NewNodeID(objectID, pluginapi.NodeTypeSection, 0)
-	tagNodeID := pluginapi.NewNodeID(objectID, pluginapi.NodeTypeTag, 0)
-	entityNodeID := pluginapi.NewNodeID(objectID, pluginapi.NodeTypeEntityMention, 0)
+	sectionNodeID := storage.NewNodeID(objectID, storage.NodeTypeSection, 0)
+	tagNodeID := storage.NewNodeID(objectID, storage.NodeTypeTag, 0)
+	entityNodeID := storage.NewNodeID(objectID, storage.NodeTypeEntityMention, 0)
 
-	nodes := []pluginapi.GraphNode{
+	nodes := []storage.GraphNode{
 		{
 			ID:       sectionNodeID,
-			NodeType: pluginapi.NodeTypeSection,
+			NodeType: storage.NodeTypeSection,
 			Label:    "Main",
 			Content:  sectionContent,
 			Order:    0,
 		},
 		{
 			ID:       tagNodeID,
-			NodeType: pluginapi.NodeTypeTag,
+			NodeType: storage.NodeTypeTag,
 			Label:    tagLabel,
 			Content:  tagLabel,
 			Order:    0,
 		},
 		{
 			ID:       entityNodeID,
-			NodeType: pluginapi.NodeTypeEntityMention,
+			NodeType: storage.NodeTypeEntityMention,
 			Label:    entitySlug,
 			Content:  entitySlug,
 			Order:    0,
 		},
 	}
-	edges := []pluginapi.GraphEdge{
+	edges := []storage.GraphEdge{
 		{
 			ID:       objectID + "/edge/0",
 			FromID:   sectionNodeID,
 			ToID:     entityNodeID,
-			EdgeType: pluginapi.EdgeTypeReferences,
+			EdgeType: storage.EdgeTypeReferences,
 		},
 		{
 			ID:       objectID + "/edge/1",
 			FromID:   sectionNodeID,
 			ToID:     tagNodeID,
-			EdgeType: pluginapi.EdgeTypeContains,
+			EdgeType: storage.EdgeTypeContains,
 		},
 	}
 	return &storage.KnowledgeObject{
@@ -71,7 +70,7 @@ func buildGraphKO(objectID, typ, sectionContent, tagLabel, entitySlug string) *s
 		Type:      typ,
 		CreatedAt: now,
 		UpdatedAt: now,
-		Graph: &pluginapi.ObjectGraph{
+		Graph: &storage.ObjectGraph{
 			Nodes: nodes,
 			Edges: edges,
 		},
@@ -98,7 +97,7 @@ func TestGraphIngest_RoundTrip(t *testing.T) {
 
 	// Node IDs stable — ParseNodeID must succeed on every returned node ID.
 	for _, n := range got.Graph.Nodes {
-		ref, err := pluginapi.ParseNodeID(n.ID)
+		ref, err := storage.ParseNodeID(n.ID)
 		require.NoErrorf(t, err, "ParseNodeID(%q) must succeed", n.ID)
 		assert.Equal(t, ko.ID, ref.ObjectID,
 			"node ObjectID component must match KO ID")
@@ -157,10 +156,10 @@ func TestGraphIngest_ProjectionFallback(t *testing.T) {
 		Type:        "note",
 		TextContent: "flat field text content",
 		Summaries:   []string{"flat summary"},
-		Tags: []pluginapi.Tag{
+		Tags: []storage.Tag{
 			{Label: "flat-tag", Weight: 1.0},
 		},
-		Sections: []pluginapi.Section{
+		Sections: []storage.Section{
 			{Title: "Intro", Content: "flat section content", Order: 0},
 		},
 		CreatedAt: now,
@@ -201,20 +200,20 @@ func TestGraphIngest_EdgePreservation(t *testing.T) {
 	require.NotEmpty(t, got.Graph.Edges, "Edges must be non-empty after round-trip")
 
 	// Build a lookup map: edgeID → edge.
-	edgeByID := make(map[string]pluginapi.GraphEdge, len(got.Graph.Edges))
+	edgeByID := make(map[string]storage.GraphEdge, len(got.Graph.Edges))
 	for _, e := range got.Graph.Edges {
 		edgeByID[e.ID] = e
 	}
 
 	// Verify the Contains edge.
-	containsEdge := findEdgeByType(got.Graph.Edges, pluginapi.EdgeTypeContains)
+	containsEdge := findEdgeByType(got.Graph.Edges, storage.EdgeTypeContains)
 	require.NotNil(t, containsEdge,
 		"EdgeTypeContains must be present after round-trip")
 	assert.NotEmpty(t, containsEdge.FromID)
 	assert.NotEmpty(t, containsEdge.ToID)
 
 	// Verify the References edge.
-	refsEdge := findEdgeByType(got.Graph.Edges, pluginapi.EdgeTypeReferences)
+	refsEdge := findEdgeByType(got.Graph.Edges, storage.EdgeTypeReferences)
 	require.NotNil(t, refsEdge,
 		"EdgeTypeReferences must be present after round-trip")
 	assert.NotEmpty(t, refsEdge.FromID)
@@ -226,7 +225,7 @@ func TestGraphIngest_EdgePreservation(t *testing.T) {
 }
 
 // findEdgeByType returns the first edge with the given EdgeType, or nil.
-func findEdgeByType(edges []pluginapi.GraphEdge, edgeType string) *pluginapi.GraphEdge {
+func findEdgeByType(edges []storage.GraphEdge, edgeType string) *storage.GraphEdge {
 	for i := range edges {
 		if edges[i].EdgeType == edgeType {
 			return &edges[i]

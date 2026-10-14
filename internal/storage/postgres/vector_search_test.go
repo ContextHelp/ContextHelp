@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // TestPostgres_VectorSearch_FilterWithBoundVector guards the placeholder
@@ -22,7 +21,7 @@ func TestPostgres_VectorSearch_FilterWithBoundVector(t *testing.T) {
 
 	mk := func(id, typ, subtype string, emb []float32) {
 		t.Helper()
-		obj := &pluginapi.KnowledgeObject{
+		obj := &storage.KnowledgeObject{
 			ID: id, Type: typ, Subtype: subtype, Status: "active",
 			CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 		}

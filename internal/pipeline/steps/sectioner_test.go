@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestSectionByHeadings(t *testing.T) {
@@ -72,14 +71,14 @@ func TestSectionerEmitsGraphNodes(t *testing.T) {
 		t.Fatal("graph is nil; expected nodes")
 	}
 
-	rootID := pluginapi.NewNodeID("obj-002", pluginapi.NodeTypeSummary, 0)
+	rootID := storage.NewNodeID("obj-002", storage.NodeTypeSummary, 0)
 	if got.Graph.FindNode(rootID) == nil {
 		t.Errorf("root summary node %q not found", rootID)
 	}
 
 	// Two sections → two section nodes.
 	for i := 0; i < 2; i++ {
-		secID := pluginapi.NewNodeID("obj-002", pluginapi.NodeTypeSection, i)
+		secID := storage.NewNodeID("obj-002", storage.NodeTypeSection, i)
 		if got.Graph.FindNode(secID) == nil {
 			t.Errorf("section node %q not found", secID)
 		}
@@ -90,8 +89,8 @@ func TestSectionerEmitsGraphNodes(t *testing.T) {
 		t.Errorf("edges: got %d, want 2", len(got.Graph.Edges))
 	}
 	for _, e := range got.Graph.Edges {
-		if e.EdgeType != pluginapi.EdgeTypeContains {
-			t.Errorf("edge type: got %q, want %q", e.EdgeType, pluginapi.EdgeTypeContains)
+		if e.EdgeType != storage.EdgeTypeContains {
+			t.Errorf("edge type: got %q, want %q", e.EdgeType, storage.EdgeTypeContains)
 		}
 		if e.FromID != rootID {
 			t.Errorf("edge from: got %q, want %q", e.FromID, rootID)

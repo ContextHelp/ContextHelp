@@ -10,7 +10,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -121,17 +120,17 @@ func TestFindByText_GraphWithoutSummaryIndexesListItems(t *testing.T) {
 		Subtype:     "long",
 		TextContent: bulletList,
 		RawContent:  bulletList,
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID(koID, pluginapi.NodeTypeTag, 0),
-					NodeType: pluginapi.NodeTypeTag,
+					ID:       storage.NewNodeID(koID, storage.NodeTypeTag, 0),
+					NodeType: storage.NodeTypeTag,
 					Label:    "aws",
 					Content:  "aws",
 				},
 				{
-					ID:       pluginapi.NewNodeID(koID, pluginapi.NodeTypeEntityMention, 0),
-					NodeType: pluginapi.NodeTypeEntityMention,
+					ID:       storage.NewNodeID(koID, storage.NodeTypeEntityMention, 0),
+					NodeType: storage.NodeTypeEntityMention,
 					Content:  "@vendor.aws",
 				},
 			},

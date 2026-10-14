@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // MemEmbeddingStore is an in-memory storage.EmbeddingStore test double that
@@ -301,7 +300,7 @@ func (o *embeddingsObjects) VectorSearch(ctx context.Context, q storage.VectorQu
 	return out, nil
 }
 
-func (o *embeddingsObjects) VectorSearchNodeAware(ctx context.Context, q storage.VectorQuery, filter storage.ObjectFilter, naf pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (o *embeddingsObjects) VectorSearchNodeAware(ctx context.Context, q storage.VectorQuery, filter storage.ObjectFilter, naf storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
 	if len(naf.NodeTypes) > 0 || len(naf.EdgeTypes) > 0 {
 		return nil, errors.New("storagetest.WithEmbeddings: node-aware filters are not supported")
 	}
@@ -309,9 +308,9 @@ func (o *embeddingsObjects) VectorSearchNodeAware(ctx context.Context, q storage
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*pluginapi.NodeAwareResult, len(objs))
+	out := make([]*storage.NodeAwareResult, len(objs))
 	for i, obj := range objs {
-		out[i] = &pluginapi.NodeAwareResult{Object: obj}
+		out[i] = &storage.NodeAwareResult{Object: obj}
 	}
 	return out, nil
 }

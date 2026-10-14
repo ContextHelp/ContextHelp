@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 const testRSS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -149,9 +148,9 @@ func TestFeedParserEmitsGraphNodes(t *testing.T) {
 	if got.Graph == nil {
 		t.Fatal("graph is nil; expected nodes")
 	}
-	var sectionNodes []pluginapi.GraphNode
+	var sectionNodes []storage.GraphNode
 	for _, n := range got.Graph.Nodes {
-		if n.NodeType == pluginapi.NodeTypeSection {
+		if n.NodeType == storage.NodeTypeSection {
 			sectionNodes = append(sectionNodes, n)
 		}
 	}

@@ -14,19 +14,18 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/storagetest"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // makeGraphObject creates a KnowledgeObject with graph nodes for a summary,
 // a section, and a tag. The summary content is the searchable text.
-func makeGraphObject(id, typ, summaryText string, extraNodes ...pluginapi.GraphNode) *storage.KnowledgeObject {
+func makeGraphObject(id, typ, summaryText string, extraNodes ...storage.GraphNode) *storage.KnowledgeObject {
 	now := time.Now().Truncate(time.Second)
-	nodes := []pluginapi.GraphNode{
+	nodes := []storage.GraphNode{
 		{
-			ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
-			NodeType: pluginapi.NodeTypeSummary,
+			ID:       storage.NewNodeID(id, storage.NodeTypeSummary, 0),
+			NodeType: storage.NodeTypeSummary,
 			Label:    "Summary",
 			Content:  summaryText,
 			Order:    0,
@@ -38,7 +37,7 @@ func makeGraphObject(id, typ, summaryText string, extraNodes ...pluginapi.GraphN
 		Type:      typ,
 		CreatedAt: now,
 		UpdatedAt: now,
-		Graph:     &pluginapi.ObjectGraph{Nodes: nodes},
+		Graph:     &storage.ObjectGraph{Nodes: nodes},
 	}
 }
 
@@ -115,9 +114,9 @@ func TestFTSSearchNodeAware_NodeTypeFilter(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()
 
-	decisionNode := pluginapi.GraphNode{
-		ID:       pluginapi.NewNodeID("na-1", pluginapi.NodeTypeDecision, 0),
-		NodeType: pluginapi.NodeTypeDecision,
+	decisionNode := storage.GraphNode{
+		ID:       storage.NewNodeID("na-1", storage.NodeTypeDecision, 0),
+		NodeType: storage.NodeTypeDecision,
 		Label:    "Decision",
 		Content:  "use bcrypt for hashing",
 		Order:    1,
@@ -138,8 +137,8 @@ func TestFTSSearchNodeAware_NodeTypeFilter(t *testing.T) {
 	assert.Len(t, allResults, 2, "both objects match 'security' in flat FTS")
 
 	// NodeAwareFilter requesting decision nodes should return only na-1.
-	nodeFilter := pluginapi.NodeAwareFilter{
-		NodeTypes: []string{pluginapi.NodeTypeDecision},
+	nodeFilter := storage.NodeAwareFilter{
+		NodeTypes: []string{storage.NodeTypeDecision},
 	}
 	filtered, err := d.Objects().FTSSearchNodeAware(ctx, "security",
 		storage.ObjectFilter{Limit: 10}, nodeFilter)
@@ -163,7 +162,7 @@ func TestFTSSearchNodeAware_NoFilter(t *testing.T) {
 
 	// Empty NodeAwareFilter = no restriction.
 	results, err := d.Objects().FTSSearchNodeAware(ctx, "machine",
-		storage.ObjectFilter{Limit: 10}, pluginapi.NodeAwareFilter{})
+		storage.ObjectFilter{Limit: 10}, storage.NodeAwareFilter{})
 	require.NoError(t, err)
 	assert.Len(t, results, 2, "no node-type filter: all FTS matches returned")
 }
@@ -177,9 +176,9 @@ func TestVectorSearchNodeAware_NodeTypeFilter(t *testing.T) {
 	require.NoError(t, emb.EnsureIndex(ctx, storage.EmbeddingModelSpec{ModelID: "m3", Dimension: 3}))
 	s := &ObjectStore{db: d.db, emb: emb}
 
-	decisionNode := pluginapi.GraphNode{
-		ID:       pluginapi.NewNodeID("vs-1", pluginapi.NodeTypeDecision, 0),
-		NodeType: pluginapi.NodeTypeDecision,
+	decisionNode := storage.GraphNode{
+		ID:       storage.NewNodeID("vs-1", storage.NodeTypeDecision, 0),
+		NodeType: storage.NodeTypeDecision,
 		Label:    "Decision",
 		Content:  "adopt microservices",
 		Order:    1,
@@ -199,8 +198,8 @@ func TestVectorSearchNodeAware_NodeTypeFilter(t *testing.T) {
 	assert.Len(t, allResults, 2, "both objects have vectors and should match")
 
 	// NodeAwareFilter restricts to objects with decision nodes only.
-	nodeFilter := pluginapi.NodeAwareFilter{
-		NodeTypes: []string{pluginapi.NodeTypeDecision},
+	nodeFilter := storage.NodeAwareFilter{
+		NodeTypes: []string{storage.NodeTypeDecision},
 	}
 	filtered, err := s.VectorSearchNodeAware(ctx, query,
 		storage.ObjectFilter{Limit: 10}, nodeFilter)
@@ -215,9 +214,9 @@ func TestFTSSearchNodeAware_ReturnNodeHits_PopulatesDocumentView(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()
 
-	sectionNode := pluginapi.GraphNode{
-		ID:       pluginapi.NewNodeID("dv-1", pluginapi.NodeTypeSection, 0),
-		NodeType: pluginapi.NodeTypeSection,
+	sectionNode := storage.GraphNode{
+		ID:       storage.NewNodeID("dv-1", storage.NodeTypeSection, 0),
+		NodeType: storage.NodeTypeSection,
 		Label:    "Intro",
 		Content:  "Introduction to observability",
 		Order:    0,
@@ -230,7 +229,7 @@ func TestFTSSearchNodeAware_ReturnNodeHits_PopulatesDocumentView(t *testing.T) {
 
 	results, err := d.Objects().FTSSearchNodeAware(ctx, "observability",
 		storage.ObjectFilter{Limit: 10},
-		pluginapi.NodeAwareFilter{ReturnNodeHits: true})
+		storage.NodeAwareFilter{ReturnNodeHits: true})
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.NotNil(t, results[0].DocumentView,

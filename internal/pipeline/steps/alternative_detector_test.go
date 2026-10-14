@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	uri "hop.top/cite/scheme"
 )
 
@@ -87,11 +86,11 @@ func (s *stubObjectStore) FTSSearch(_ context.Context, _ string, _ storage.Objec
 	return nil, nil
 }
 
-func (s *stubObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (s *stubObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
 	return nil, nil
 }
 
-func (s *stubObjectStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (s *stubObjectStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
 	return nil, nil
 }
 

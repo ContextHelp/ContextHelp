@@ -8,7 +8,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/storagetest"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	uri "hop.top/cite/scheme"
@@ -33,25 +32,25 @@ func makeObject(id, typ string) *storage.KnowledgeObject {
 			Content: content,
 			Order:   0,
 		}},
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
-					NodeType: pluginapi.NodeTypeSummary,
+					ID:       storage.NewNodeID(id, storage.NodeTypeSummary, 0),
+					NodeType: storage.NodeTypeSummary,
 					Label:    "Summary",
 					Content:  content,
 					Order:    0,
 				},
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSection, 0),
-					NodeType: pluginapi.NodeTypeSection,
+					ID:       storage.NewNodeID(id, storage.NodeTypeSection, 0),
+					NodeType: storage.NodeTypeSection,
 					Label:    "Body",
 					Content:  content,
 					Order:    0,
 				},
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeTag, 0),
-					NodeType: pluginapi.NodeTypeTag,
+					ID:       storage.NewNodeID(id, storage.NodeTypeTag, 0),
+					NodeType: storage.NodeTypeTag,
 					Label:    "design",
 					Content:  "design",
 					Order:    0,
@@ -575,11 +574,11 @@ func makeFTSObject(id, typ, searchableText string) *storage.KnowledgeObject {
 		Type:      typ,
 		CreatedAt: now,
 		UpdatedAt: now,
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
-					NodeType: pluginapi.NodeTypeSummary,
+					ID:       storage.NewNodeID(id, storage.NodeTypeSummary, 0),
+					NodeType: storage.NodeTypeSummary,
 					Label:    "Summary",
 					Content:  searchableText,
 					Order:    0,

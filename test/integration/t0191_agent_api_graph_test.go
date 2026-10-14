@@ -20,8 +20,8 @@ import (
 	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // ─── fixture ─────────────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ func TestT0191_REST_GetObject_GraphRoundTrip(t *testing.T) {
 	defer resp.Body.Close()
 	require.Equal(t, gohttp.StatusOK, resp.StatusCode, "unexpected HTTP status")
 
-	var obj pluginapi.KnowledgeObject
+	var obj storage.KnowledgeObject
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
 
 	assert.Equal(t, objID, obj.ID)
@@ -103,9 +103,9 @@ func TestT0191_REST_GetObject_GraphRoundTrip(t *testing.T) {
 	// summary + section + 2 tag nodes = 4 minimum.
 	assert.GreaterOrEqual(t, len(obj.Graph.Nodes), 4)
 	nodeTypes := nodeTypeSet(obj.Graph.Nodes)
-	assert.True(t, nodeTypes[pluginapi.NodeTypeSummary], "summary node missing")
-	assert.True(t, nodeTypes[pluginapi.NodeTypeSection], "section node missing")
-	assert.True(t, nodeTypes[pluginapi.NodeTypeTag], "tag node missing")
+	assert.True(t, nodeTypes[storage.NodeTypeSummary], "summary node missing")
+	assert.True(t, nodeTypes[storage.NodeTypeSection], "section node missing")
+	assert.True(t, nodeTypes[storage.NodeTypeTag], "tag node missing")
 }
 
 // TestT0191_REST_GetObject_NodeIDsStable verifies that each node ID in the
@@ -122,12 +122,12 @@ func TestT0191_REST_GetObject_NodeIDsStable(t *testing.T) {
 	defer resp.Body.Close()
 	require.Equal(t, gohttp.StatusOK, resp.StatusCode)
 
-	var obj pluginapi.KnowledgeObject
+	var obj storage.KnowledgeObject
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
 	require.NotNil(t, obj.Graph)
 
 	for _, n := range obj.Graph.Nodes {
-		ref, err := pluginapi.ParseNodeID(n.ID)
+		ref, err := storage.ParseNodeID(n.ID)
 		assert.NoError(t, err, "ParseNodeID(%q)", n.ID)
 		assert.Equal(t, objID, ref.ObjectID, "node ObjectID mismatch in %q", n.ID)
 		assert.NotEmpty(t, ref.NodeType, "node NodeType empty in %q", n.ID)
@@ -153,7 +153,7 @@ func TestT0191_REST_GetObject_ProjectionConsistent(t *testing.T) {
 	defer resp.Body.Close()
 	require.Equal(t, gohttp.StatusOK, resp.StatusCode)
 
-	var obj pluginapi.KnowledgeObject
+	var obj storage.KnowledgeObject
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
 
 	tagLabels := make([]string, len(obj.Tags))
@@ -186,8 +186,8 @@ func TestT0191_REST_Search_GraphPreservedInResults(t *testing.T) {
 	require.Equal(t, gohttp.StatusOK, resp.StatusCode)
 
 	var body struct {
-		Data  []pluginapi.KnowledgeObject `json:"data"`
-		Total int                         `json:"total"`
+		Data  []storage.KnowledgeObject `json:"data"`
+		Total int                       `json:"total"`
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
 	require.Equal(t, 1, body.Total)
@@ -216,8 +216,8 @@ func TestT0191_REST_Search_AllResultsHaveGraphs(t *testing.T) {
 	require.Equal(t, gohttp.StatusOK, resp.StatusCode)
 
 	var body struct {
-		Data  []pluginapi.KnowledgeObject `json:"data"`
-		Total int                         `json:"total"`
+		Data  []storage.KnowledgeObject `json:"data"`
+		Total int                       `json:"total"`
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
 	assert.Equal(t, 3, body.Total)
@@ -253,9 +253,9 @@ func TestT0191_GRPC_GetObject_GraphPresent(t *testing.T) {
 	require.NotEmpty(t, protoObj.Graph.Nodes)
 
 	protoNodeTypes := protoNodeTypeSet(protoObj.Graph.Nodes)
-	assert.True(t, protoNodeTypes[pluginapi.NodeTypeSummary], "summary node missing")
-	assert.True(t, protoNodeTypes[pluginapi.NodeTypeSection], "section node missing")
-	assert.True(t, protoNodeTypes[pluginapi.NodeTypeTag], "tag node missing")
+	assert.True(t, protoNodeTypes[storage.NodeTypeSummary], "summary node missing")
+	assert.True(t, protoNodeTypes[storage.NodeTypeSection], "section node missing")
+	assert.True(t, protoNodeTypes[storage.NodeTypeTag], "tag node missing")
 }
 
 // TestT0191_GRPC_GetObject_NodeIDsStable verifies proto node IDs are
@@ -275,7 +275,7 @@ func TestT0191_GRPC_GetObject_NodeIDsStable(t *testing.T) {
 	require.NotNil(t, protoObj.Graph)
 
 	for _, n := range protoObj.Graph.Nodes {
-		ref, err := pluginapi.ParseNodeID(n.Id)
+		ref, err := storage.ParseNodeID(n.Id)
 		assert.NoError(t, err, "ParseNodeID(%q)", n.Id)
 		assert.Equal(t, objID, ref.ObjectID)
 		assert.GreaterOrEqual(t, ref.Ordinal, 0)
@@ -343,7 +343,7 @@ func TestT0191_GRPC_NodeAwareSearch_NodeHits(t *testing.T) {
 		assert.NotEmpty(t, nh.NodeType, "NodeHit.NodeType")
 		assert.Greater(t, nh.Score, float64(0), "NodeHit.Score > 0")
 
-		ref, err := pluginapi.ParseNodeURI(nh.NodeRef)
+		ref, err := storage.ParseNodeURI(nh.NodeRef)
 		assert.NoError(t, err, "ParseNodeURI(%q)", nh.NodeRef)
 		assert.Equal(t, objID, ref.ObjectID, "URI ObjectID")
 	}
@@ -366,7 +366,7 @@ func TestT0191_GRPC_NodeAwareSearch_NodeTypeFilter(t *testing.T) {
 		Query: "type==spec",
 		Limit: 10,
 		Filter: &pb.NodeAwareFilter{
-			NodeTypes: []string{pluginapi.NodeTypeTag},
+			NodeTypes: []string{storage.NodeTypeTag},
 		},
 	})
 	require.NoError(t, err)
@@ -379,7 +379,7 @@ func TestT0191_GRPC_NodeAwareSearch_NodeTypeFilter(t *testing.T) {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-func nodeTypeSet(nodes []pluginapi.GraphNode) map[string]bool {
+func nodeTypeSet(nodes []storage.GraphNode) map[string]bool {
 	m := make(map[string]bool, len(nodes))
 	for _, n := range nodes {
 		m[n.NodeType] = true

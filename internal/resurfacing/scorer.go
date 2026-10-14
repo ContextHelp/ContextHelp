@@ -130,7 +130,7 @@ func tagOverlap(obj *storage.KnowledgeObject, profileTags []string) float64 {
 	return tagOverlapFromIndex(idx.Tags, profileTags)
 }
 
-// tagOverlapFromIndex matches profileTags against pre-projected pluginapi.Tag values.
+// tagOverlapFromIndex matches profileTags against pre-projected storage.Tag values.
 func tagOverlapFromIndex(objTags []storage.Tag, profileTags []string) float64 {
 	if len(profileTags) == 0 || len(objTags) == 0 {
 		return 0

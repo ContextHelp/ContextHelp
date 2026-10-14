@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // stubAdapter returns fixed objects.
@@ -105,11 +104,11 @@ func (m *memObjectStore) FTSSearch(_ context.Context, _ string, _ storage.Object
 	return nil, nil
 }
 
-func (m *memObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (m *memObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
 	return nil, nil
 }
 
-func (m *memObjectStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (m *memObjectStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
 	return nil, nil
 }
 

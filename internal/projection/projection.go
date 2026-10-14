@@ -6,28 +6,28 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // ProjectDocument derives a DocumentProjection from a KnowledgeObject.
 // Uses graph nodes when Graph is non-nil and non-empty; falls back to flat fields.
-func ProjectDocument(ko *pluginapi.KnowledgeObject) pluginapi.DocumentProjection {
+func ProjectDocument(ko *storage.KnowledgeObject) storage.DocumentProjection {
 	if ko == nil {
-		return pluginapi.DocumentProjection{}
+		return storage.DocumentProjection{}
 	}
 	if ko.Graph == nil || len(ko.Graph.Nodes) == 0 {
-		return pluginapi.DocumentProjection{
+		return storage.DocumentProjection{
 			Body:     ko.TextContent,
 			Sections: ko.Sections,
 		}
 	}
-	var sections []pluginapi.Section
+	var sections []storage.Section
 	for _, n := range ko.Graph.Nodes {
-		if n.NodeType != pluginapi.NodeTypeSection {
+		if n.NodeType != storage.NodeTypeSection {
 			continue
 		}
-		sections = append(sections, pluginapi.Section{
+		sections = append(sections, storage.Section{
 			Title:   n.Label,
 			Content: n.Content,
 			Order:   n.Order,
@@ -36,33 +36,33 @@ func ProjectDocument(ko *pluginapi.KnowledgeObject) pluginapi.DocumentProjection
 	sort.SliceStable(sections, func(i, j int) bool {
 		return sections[i].Order < sections[j].Order
 	})
-	return pluginapi.DocumentProjection{Sections: sections}
+	return storage.DocumentProjection{Sections: sections}
 }
 
 // ProjectIndex derives an IndexProjection from a KnowledgeObject.
 // Uses graph nodes when Graph is non-nil and non-empty; falls back to flat fields.
-func ProjectIndex(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
+func ProjectIndex(ko *storage.KnowledgeObject) storage.IndexProjection {
 	if ko == nil {
-		return pluginapi.IndexProjection{}
+		return storage.IndexProjection{}
 	}
 	if ko.Graph == nil || len(ko.Graph.Nodes) == 0 {
 		return flatIndexProjection(ko)
 	}
 	var parts segments
-	var tags []pluginapi.Tag
+	var tags []storage.Tag
 	var mentions []string
 
 	for _, n := range ko.Graph.Nodes {
 		switch n.NodeType {
-		case pluginapi.NodeTypeSummary, pluginapi.NodeTypeSection:
+		case storage.NodeTypeSummary, storage.NodeTypeSection:
 			parts.add(n.Content)
-		case pluginapi.NodeTypeTag:
+		case storage.NodeTypeTag:
 			label := n.Label
 			if label == "" {
 				label = n.Content
 			}
-			tags = append(tags, pluginapi.Tag{Label: label})
-		case pluginapi.NodeTypeEntityMention:
+			tags = append(tags, storage.Tag{Label: label})
+		case storage.NodeTypeEntityMention:
 			if n.Content != "" {
 				mentions = append(mentions, n.Content)
 			}
@@ -79,7 +79,7 @@ func ProjectIndex(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
 		flat.Mentions = mentions
 		return flat
 	}
-	return pluginapi.IndexProjection{
+	return storage.IndexProjection{
 		FTSBody:       strings.Join(parts.list, " "),
 		Tags:          tags,
 		Mentions:      mentions,
@@ -87,7 +87,7 @@ func ProjectIndex(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
 	}
 }
 
-func flatIndexProjection(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
+func flatIndexProjection(ko *storage.KnowledgeObject) storage.IndexProjection {
 	var parts segments
 	parts.add(ko.TextContent)
 	for _, s := range ko.Summaries {
@@ -100,7 +100,7 @@ func flatIndexProjection(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjectio
 	for i := range ko.Mentions {
 		mentions = append(mentions, ko.Mentions[i].String())
 	}
-	return pluginapi.IndexProjection{
+	return storage.IndexProjection{
 		FTSBody:       strings.Join(parts.list, " "),
 		Tags:          ko.Tags,
 		Mentions:      mentions,

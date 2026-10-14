@@ -7,7 +7,7 @@ package github
 import (
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // RepoSnapshot is the normalised view of a GitHub repository page.
@@ -22,12 +22,12 @@ type RepoSnapshot struct {
 	URL      string `json:"url"`
 
 	// Description & content
-	Description string              `json:"description,omitempty"`
-	Language    string              `json:"language,omitempty"`
-	Topics      []string            `json:"topics,omitempty"`
-	License     string              `json:"license,omitempty"`
-	README      string              `json:"readme,omitempty"`
-	Sections    []pluginapi.Section `json:"sections,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Language    string            `json:"language,omitempty"`
+	Topics      []string          `json:"topics,omitempty"`
+	License     string            `json:"license,omitempty"`
+	README      string            `json:"readme,omitempty"`
+	Sections    []storage.Section `json:"sections,omitempty"`
 
 	// Stats
 	Stars      int `json:"stars"`
@@ -74,7 +74,7 @@ type IssueSnapshot struct {
 	LinkedPR int `json:"linked_pr,omitempty"`
 
 	// Sections: extracted comment threads / discussion sections.
-	Sections []pluginapi.Section `json:"sections,omitempty"`
+	Sections []storage.Section `json:"sections,omitempty"`
 
 	// Timestamps
 	CreatedAt time.Time  `json:"created_at"`

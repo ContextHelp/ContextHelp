@@ -6,7 +6,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/composition"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	uri "hop.top/cite/scheme"
 )
 
@@ -129,9 +128,9 @@ type ScoreBreakdown struct {
 // HybridResult pairs a KnowledgeObject with its score breakdown.
 // DocumentView is populated for all results; use it for display surfaces.
 type HybridResult struct {
-	Object       *storage.KnowledgeObject     `json:"object"`
-	Breakdown    ScoreBreakdown               `json:"score_breakdown"`
-	DocumentView pluginapi.DocumentProjection `json:"document_view"`
+	Object       *storage.KnowledgeObject   `json:"object"`
+	Breakdown    ScoreBreakdown             `json:"score_breakdown"`
+	DocumentView storage.DocumentProjection `json:"document_view"`
 }
 
 // SearchDiagnostics captures information about candidates that surfaced from

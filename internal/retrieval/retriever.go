@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // retrieveCategories fetches category-typed objects via the configured method.
@@ -14,7 +13,7 @@ func (w *Workflow) retrieveCategories(
 	ctx context.Context,
 	state *State,
 	filter storage.ObjectFilter,
-	nf *pluginapi.NodeAwareFilter,
+	nf *storage.NodeAwareFilter,
 ) error {
 	return w.ragRetrieve(ctx, state, &state.CategoryHits, "category",
 		w.config.Categories.EffectiveTopK(state.QueryMode), filter, nf)
@@ -25,7 +24,7 @@ func (w *Workflow) retrieveItems(
 	ctx context.Context,
 	state *State,
 	filter storage.ObjectFilter,
-	nf *pluginapi.NodeAwareFilter,
+	nf *storage.NodeAwareFilter,
 ) error {
 	return w.ragRetrieve(ctx, state, &state.ItemHits, "item",
 		w.config.Items.EffectiveTopK(state.QueryMode), filter, nf)
@@ -36,7 +35,7 @@ func (w *Workflow) retrieveResources(
 	ctx context.Context,
 	state *State,
 	filter storage.ObjectFilter,
-	nf *pluginapi.NodeAwareFilter,
+	nf *storage.NodeAwareFilter,
 ) error {
 	return w.ragRetrieve(ctx, state, &state.ResourceHits, "document",
 		w.config.Resources.EffectiveTopK(state.QueryMode), filter, nf)
@@ -59,7 +58,7 @@ func (w *Workflow) ragRetrieve(
 	objType string,
 	topK int,
 	base storage.ObjectFilter,
-	nf *pluginapi.NodeAwareFilter,
+	nf *storage.NodeAwareFilter,
 ) error {
 	if state.Semantic == nil {
 		if err := w.embedQuery(ctx, state); err != nil {
@@ -138,7 +137,7 @@ func (w *Workflow) vectorRetrieve(
 	state *State,
 	hits *[]Hit,
 	f storage.ObjectFilter,
-	nf *pluginapi.NodeAwareFilter,
+	nf *storage.NodeAwareFilter,
 	nodeAware bool,
 ) (bool, error) {
 	q := storage.VectorQuery{
@@ -150,7 +149,7 @@ func (w *Workflow) vectorRetrieve(
 	var objs []*storage.KnowledgeObject
 	var err error
 	if nodeAware {
-		var results []*pluginapi.NodeAwareResult
+		var results []*storage.NodeAwareResult
 		results, err = w.store.Objects().VectorSearchNodeAware(ctx, q, f, *nf)
 		for _, r := range results {
 			if r.Object != nil {

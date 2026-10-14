@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // Find modes.
@@ -115,9 +114,9 @@ func (r FindSemanticReport) OK() bool { return r.Status == "ok" }
 
 // FindExplanation is the score breakdown of one result.
 type FindExplanation struct {
-	ID           string                       `json:"id"`
-	Breakdown    FindScoreBreakdown           `json:"score_breakdown"`
-	DocumentView pluginapi.DocumentProjection `json:"document_view"`
+	ID           string                     `json:"id"`
+	Breakdown    FindScoreBreakdown         `json:"score_breakdown"`
+	DocumentView storage.DocumentProjection `json:"document_view"`
 }
 
 // FindScoreBreakdown is each signal's contribution to a result's score.

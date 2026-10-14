@@ -10,7 +10,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/types"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 type subview string
@@ -193,7 +192,7 @@ func (p *PreviewPane) renderSections() string {
 	var b strings.Builder
 
 	// Graph-aware: surface decision nodes as a grouped block.
-	decisions := graphNodesOfType(p.object, pluginapi.NodeTypeDecision)
+	decisions := graphNodesOfType(p.object, storage.NodeTypeDecision)
 	if len(decisions) > 0 {
 		b.WriteString("── decisions ──\n")
 		for _, n := range decisions {
@@ -219,11 +218,11 @@ func (p *PreviewPane) renderSections() string {
 }
 
 // graphNodesOfType returns all nodes of the given type from ko.Graph, or nil.
-func graphNodesOfType(ko *storage.KnowledgeObject, nodeType string) []pluginapi.GraphNode {
+func graphNodesOfType(ko *storage.KnowledgeObject, nodeType string) []storage.GraphNode {
 	if ko == nil || ko.Graph == nil {
 		return nil
 	}
-	var out []pluginapi.GraphNode
+	var out []storage.GraphNode
 	for _, n := range ko.Graph.Nodes {
 		if n.NodeType == nodeType {
 			out = append(out, n)

@@ -7,24 +7,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 func TestObjectStore_CreateAndGet_GraphRoundtrip(t *testing.T) {
 	drv := newTestDriver(t)
 	ctx := context.Background()
 
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID:        "obj-rw-1",
 		Type:      "note",
 		Status:    "active",
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID("obj-rw-1", pluginapi.NodeTypeSection, 0),
-					NodeType: pluginapi.NodeTypeSection,
+					ID:       storage.NewNodeID("obj-rw-1", storage.NodeTypeSection, 0),
+					NodeType: storage.NodeTypeSection,
 					Label:    "Intro",
 					Content:  "hello",
 					Order:    0,
@@ -58,7 +58,7 @@ func TestObjectStore_Update_GraphRoundtrip(t *testing.T) {
 	drv := newTestDriver(t)
 	ctx := context.Background()
 
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID: "obj-rw-2", Type: "note", Status: "active",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
@@ -66,11 +66,11 @@ func TestObjectStore_Update_GraphRoundtrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ko.Graph = &pluginapi.ObjectGraph{
-		Nodes: []pluginapi.GraphNode{
+	ko.Graph = &storage.ObjectGraph{
+		Nodes: []storage.GraphNode{
 			{
-				ID:       pluginapi.NewNodeID("obj-rw-2", pluginapi.NodeTypeTag, 0),
-				NodeType: pluginapi.NodeTypeTag,
+				ID:       storage.NewNodeID("obj-rw-2", storage.NodeTypeTag, 0),
+				NodeType: storage.NodeTypeTag,
 				Label:    "go",
 				Content:  "go",
 			},
@@ -95,15 +95,15 @@ func TestObjectStore_ObjectNodes_UpsertOnCreate(t *testing.T) {
 	drv := newTestDriver(t)
 	ctx := context.Background()
 
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID: "obj-rw-3", Type: "note", Status: "active",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
-				{ID: pluginapi.NewNodeID("obj-rw-3", pluginapi.NodeTypeTag, 0),
-					NodeType: pluginapi.NodeTypeTag, Label: "go", Content: "go"},
-				{ID: pluginapi.NewNodeID("obj-rw-3", pluginapi.NodeTypeTag, 1),
-					NodeType: pluginapi.NodeTypeTag, Label: "sqlite", Content: "sqlite"},
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
+				{ID: storage.NewNodeID("obj-rw-3", storage.NodeTypeTag, 0),
+					NodeType: storage.NodeTypeTag, Label: "go", Content: "go"},
+				{ID: storage.NewNodeID("obj-rw-3", storage.NodeTypeTag, 1),
+					NodeType: storage.NodeTypeTag, Label: "sqlite", Content: "sqlite"},
 			},
 		},
 	}
@@ -135,7 +135,7 @@ func TestObjectStore_Create_NilGraph_NoObjectNodes(t *testing.T) {
 	drv := newTestDriver(t)
 	ctx := context.Background()
 
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID: "obj-nil-g", Type: "note", Status: "active",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 		// Graph is nil
@@ -162,10 +162,10 @@ func TestObjectStore_Create_EmptyGraph_RoundTrips(t *testing.T) {
 	drv := newTestDriver(t)
 	ctx := context.Background()
 
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID: "obj-empty-g", Type: "note", Status: "active",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
-		Graph: &pluginapi.ObjectGraph{}, // non-nil but zero nodes
+		Graph: &storage.ObjectGraph{}, // non-nil but zero nodes
 	}
 	if err := drv.Objects().Create(ctx, ko); err != nil {
 		t.Fatal(err)
@@ -186,13 +186,13 @@ func TestObjectStore_Update_ClearsGraph(t *testing.T) {
 	drv := newTestDriver(t)
 	ctx := context.Background()
 
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID: "obj-clear-g", Type: "note", Status: "active",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
-				{ID: pluginapi.NewNodeID("obj-clear-g", pluginapi.NodeTypeTag, 0),
-					NodeType: pluginapi.NodeTypeTag, Label: "go", Content: "go"},
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
+				{ID: storage.NewNodeID("obj-clear-g", storage.NodeTypeTag, 0),
+					NodeType: storage.NodeTypeTag, Label: "go", Content: "go"},
 			},
 		},
 	}

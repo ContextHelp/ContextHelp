@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // itemsToEnqueueKey is the metadata key the worker reads once a container
@@ -69,21 +68,21 @@ func stageItems(draft *storage.KnowledgeObject, items []fanOutItem) {
 			continue
 		}
 		if draft.Graph == nil {
-			draft.Graph = &pluginapi.ObjectGraph{}
+			draft.Graph = &storage.ObjectGraph{}
 		}
-		nodeID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeArtifact, ordinal)
-		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+		nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, ordinal)
+		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       nodeID,
-			NodeType: pluginapi.NodeTypeArtifact,
+			NodeType: storage.NodeTypeArtifact,
 			Label:    it.Title,
 			Order:    ordinal,
 			Metadata: map[string]any{"source": it.Source, "pipeline": p},
 		})
-		draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+		draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
 			ID:       fmt.Sprintf("%s->%s", draft.ID, nodeID),
 			FromID:   draft.ID,
 			ToID:     nodeID,
-			EdgeType: pluginapi.EdgeTypeContains,
+			EdgeType: storage.EdgeTypeContains,
 		})
 	}
 	draft.Metadata[itemsToEnqueueKey] = pending

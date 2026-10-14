@@ -11,7 +11,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/embeddingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +26,7 @@ var dedupModels = embeddingtest.Models{
 }
 
 // dedupStore indexes both models and stores existing objects' vectors.
-func dedupStore(t *testing.T, existing map[string][]pluginapi.ObjectVector) *embeddingtest.MemStore {
+func dedupStore(t *testing.T, existing map[string][]storage.ObjectVector) *embeddingtest.MemStore {
 	t.Helper()
 	ctx := context.Background()
 	s := embeddingtest.NewMemStore()
@@ -40,17 +39,17 @@ func dedupStore(t *testing.T, existing map[string][]pluginapi.ObjectVector) *emb
 	return s
 }
 
-func vec(model string, v ...float32) pluginapi.ObjectVector {
-	return pluginapi.ObjectVector{ModelID: model, Vector: v}
+func vec(model string, v ...float32) storage.ObjectVector {
+	return storage.ObjectVector{ModelID: model, Vector: v}
 }
 
-func dedupDraft(id string, vs ...pluginapi.ObjectVector) *storage.KnowledgeObject {
+func dedupDraft(id string, vs ...storage.ObjectVector) *storage.KnowledgeObject {
 	return &storage.KnowledgeObject{ID: id, Vectors: vs, Metadata: map[string]any{}}
 }
 
 func TestDedupStep_NoDuplicatePassesThrough(t *testing.T) {
 	cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95, Policy: "warn"}
-	store := dedupStore(t, map[string][]pluginapi.ObjectVector{"other": {vec(dedupDefault, 0, 1, 0)}})
+	store := dedupStore(t, map[string][]storage.ObjectVector{"other": {vec(dedupDefault, 0, 1, 0)}})
 	out, err := NewDedupStep(dedupModels, store, nil, cfg).Run(context.Background(), dedupDraft("new-1", vec(dedupDefault, 1, 0, 0)))
 	require.NoError(t, err)
 	assert.Nil(t, out.Metadata["duplicate_of"])
@@ -58,7 +57,7 @@ func TestDedupStep_NoDuplicatePassesThrough(t *testing.T) {
 
 func TestDedupStep_SimilarFoundWarnPolicy(t *testing.T) {
 	cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95, Policy: "warn"}
-	store := dedupStore(t, map[string][]pluginapi.ObjectVector{"existing-2": {vec(dedupDefault, 1, 0, 0)}})
+	store := dedupStore(t, map[string][]storage.ObjectVector{"existing-2": {vec(dedupDefault, 1, 0, 0)}})
 	out, err := NewDedupStep(dedupModels, store, nil, cfg).Run(context.Background(), dedupDraft("new-2", vec(dedupDefault, 1, 0.01, 0)))
 	require.NoError(t, err)
 	assert.Equal(t, "existing-2", out.Metadata["duplicate_of"])
@@ -71,7 +70,7 @@ func TestDedupStep_SimilarFoundWarnPolicy(t *testing.T) {
 
 func TestDedupStep_SimilarFoundDropPolicy(t *testing.T) {
 	cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95, Policy: "drop"}
-	store := dedupStore(t, map[string][]pluginapi.ObjectVector{"existing-3": {vec(dedupDefault, 1, 0, 0)}})
+	store := dedupStore(t, map[string][]storage.ObjectVector{"existing-3": {vec(dedupDefault, 1, 0, 0)}})
 	out, err := NewDedupStep(dedupModels, store, nil, cfg).Run(context.Background(), dedupDraft("new-3", vec(dedupDefault, 1, 0, 0)))
 	require.NoError(t, err)
 	assert.Equal(t, "existing-3", out.Metadata["duplicate_of"])
@@ -82,7 +81,7 @@ func TestDedupStep_SimilarFoundDropPolicy(t *testing.T) {
 func TestDedupStep_BelowThresholdIsNotADuplicate(t *testing.T) {
 	cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95, Policy: "drop"}
 	// cos([1,0,0],[1,1,0]) ~ 0.707: distance ~0.29, similarity ~0.71.
-	store := dedupStore(t, map[string][]pluginapi.ObjectVector{"near": {vec(dedupDefault, 1, 1, 0)}})
+	store := dedupStore(t, map[string][]storage.ObjectVector{"near": {vec(dedupDefault, 1, 1, 0)}})
 	out, err := NewDedupStep(dedupModels, store, nil, cfg).Run(context.Background(), dedupDraft("new", vec(dedupDefault, 1, 0, 0)))
 	require.NoError(t, err)
 	assert.Nil(t, out.Metadata["duplicate_of"])
@@ -92,7 +91,7 @@ func TestDedupStep_BelowThresholdIsNotADuplicate(t *testing.T) {
 // model's near-identical neighbour must not flag the draft.
 func TestDedupStep_UsesDefaultModelOnly(t *testing.T) {
 	cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95, Policy: "drop"}
-	store := dedupStore(t, map[string][]pluginapi.ObjectVector{
+	store := dedupStore(t, map[string][]storage.ObjectVector{
 		"cand-twin":   {vec(dedupCandidate, 1, 0)},
 		"default-far": {vec(dedupDefault, 0, 0, 1)},
 	})
@@ -103,7 +102,7 @@ func TestDedupStep_UsesDefaultModelOnly(t *testing.T) {
 
 	// And a default-model twin is found even when the candidate vector
 	// comes first on the draft.
-	store = dedupStore(t, map[string][]pluginapi.ObjectVector{"default-twin": {vec(dedupDefault, 1, 0, 0)}})
+	store = dedupStore(t, map[string][]storage.ObjectVector{"default-twin": {vec(dedupDefault, 1, 0, 0)}})
 	out, err = NewDedupStep(dedupModels, store, nil, cfg).Run(context.Background(), dedupDraft("new", vec(dedupCandidate, 0, 1), vec(dedupDefault, 1, 0, 0)))
 	require.NoError(t, err)
 	assert.Equal(t, "default-twin", out.Metadata["duplicate_of"])
@@ -111,7 +110,7 @@ func TestDedupStep_UsesDefaultModelOnly(t *testing.T) {
 
 func TestDedupStep_SkipsSelf(t *testing.T) {
 	cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95, Policy: "drop"}
-	store := dedupStore(t, map[string][]pluginapi.ObjectVector{"self": {vec(dedupDefault, 1, 0, 0)}})
+	store := dedupStore(t, map[string][]storage.ObjectVector{"self": {vec(dedupDefault, 1, 0, 0)}})
 	out, err := NewDedupStep(dedupModels, store, nil, cfg).Run(context.Background(), dedupDraft("self", vec(dedupDefault, 1, 0, 0)))
 	require.NoError(t, err)
 	assert.Nil(t, out.Metadata["duplicate_of"])
@@ -119,7 +118,7 @@ func TestDedupStep_SkipsSelf(t *testing.T) {
 
 func TestDedupStep_CheckSimilarDisabled(t *testing.T) {
 	cfg := config.DuplicatesConfig{CheckSimilar: false, SimilarityThreshold: 0.95, Policy: "drop"}
-	store := dedupStore(t, map[string][]pluginapi.ObjectVector{"existing-4": {vec(dedupDefault, 1, 0, 0)}})
+	store := dedupStore(t, map[string][]storage.ObjectVector{"existing-4": {vec(dedupDefault, 1, 0, 0)}})
 	out, err := NewDedupStep(dedupModels, store, nil, cfg).Run(context.Background(), dedupDraft("new-4", vec(dedupDefault, 1, 0, 0)))
 	require.NoError(t, err)
 	assert.Nil(t, out.Metadata["duplicate_of"])
@@ -139,7 +138,7 @@ func captureDebugLogs(t *testing.T) *syncBuffer {
 // is skipped with a debug line and never fails the step.
 func TestDedupStep_NoDefaultOrNoDefaultVectorSkipsWithDebugLog(t *testing.T) {
 	cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95, Policy: "drop"}
-	store := dedupStore(t, map[string][]pluginapi.ObjectVector{"existing": {vec(dedupDefault, 1, 0, 0)}})
+	store := dedupStore(t, map[string][]storage.ObjectVector{"existing": {vec(dedupDefault, 1, 0, 0)}})
 
 	logs := captureDebugLogs(t)
 	noDefault := embeddingtest.Models{registry.Model{ModelID: dedupCandidate, Dimension: 2}}
@@ -159,7 +158,7 @@ func TestDedupStep_NoDefaultOrNoDefaultVectorSkipsWithDebugLog(t *testing.T) {
 
 // warn logs the match; keep records it silently. Both keep the object.
 func TestDedupStep_WarnLogsKeepIsSilent(t *testing.T) {
-	store := dedupStore(t, map[string][]pluginapi.ObjectVector{"existing": {vec(dedupDefault, 1, 0, 0)}})
+	store := dedupStore(t, map[string][]storage.ObjectVector{"existing": {vec(dedupDefault, 1, 0, 0)}})
 	for policy, wantWarn := range map[string]bool{"warn": true, "": true, "keep": false} {
 		logs := captureDebugLogs(t)
 		cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95, Policy: policy}
@@ -184,7 +183,7 @@ func TestDedupStep_SearchErrorIsNonFatal(t *testing.T) {
 
 func TestDedupStep_NilDependenciesPassThrough(t *testing.T) {
 	cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95, Policy: "drop"}
-	store := dedupStore(t, map[string][]pluginapi.ObjectVector{"existing": {vec(dedupDefault, 1, 0, 0)}})
+	store := dedupStore(t, map[string][]storage.ObjectVector{"existing": {vec(dedupDefault, 1, 0, 0)}})
 	for name, step := range map[string]*DedupStep{
 		"nil models": NewDedupStep(nil, store, nil, cfg),
 		"nil store":  NewDedupStep(dedupModels, nil, nil, cfg),
@@ -211,7 +210,7 @@ func (failingAudit) Append(context.Context, *storage.AuditEntry) error {
 func TestDedupStep_AuditErrorIsNonFatal(t *testing.T) {
 	logs := captureDebugLogs(t)
 	cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95, Policy: "drop"}
-	store := dedupStore(t, map[string][]pluginapi.ObjectVector{"existing": {vec(dedupDefault, 1, 0, 0)}})
+	store := dedupStore(t, map[string][]storage.ObjectVector{"existing": {vec(dedupDefault, 1, 0, 0)}})
 	out, err := NewDedupStep(dedupModels, store, failingAudit{}, cfg).Run(context.Background(), dedupDraft("new", vec(dedupDefault, 1, 0, 0)))
 	require.NoError(t, err)
 	assert.Equal(t, "existing", out.Metadata["duplicate_of"])

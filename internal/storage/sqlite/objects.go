@@ -14,7 +14,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	uri "hop.top/cite/scheme"
 )
 
@@ -1144,8 +1143,8 @@ func (s *ObjectStore) FTSSearchNodeAware(
 	ctx context.Context,
 	query string,
 	filter storage.ObjectFilter,
-	naf pluginapi.NodeAwareFilter,
-) ([]*pluginapi.NodeAwareResult, error) {
+	naf storage.NodeAwareFilter,
+) ([]*storage.NodeAwareResult, error) {
 	// Run FTS first; node-type pre-filter is applied in-process after the query
 	// so that bm25 ranking is preserved. (object_nodes has an index on node_type;
 	// the pre-filter set is small relative to the full index.)
@@ -1159,14 +1158,14 @@ func (s *ObjectStore) FTSSearchNodeAware(
 		return nil, err
 	}
 
-	var out []*pluginapi.NodeAwareResult
+	var out []*storage.NodeAwareResult
 	for _, obj := range objects {
 		if allowedIDs != nil {
 			if _, ok := allowedIDs[obj.ID]; !ok {
 				continue
 			}
 		}
-		r := &pluginapi.NodeAwareResult{Object: obj}
+		r := &storage.NodeAwareResult{Object: obj}
 		if naf.ReturnNodeHits {
 			dv := projection.ProjectDocument(obj)
 			r.DocumentView = &dv
@@ -1183,8 +1182,8 @@ func (s *ObjectStore) VectorSearchNodeAware(
 	ctx context.Context,
 	q storage.VectorQuery,
 	filter storage.ObjectFilter,
-	naf pluginapi.NodeAwareFilter,
-) ([]*pluginapi.NodeAwareResult, error) {
+	naf storage.NodeAwareFilter,
+) ([]*storage.NodeAwareResult, error) {
 	objects, err := s.VectorSearch(ctx, q, filter)
 	if err != nil {
 		return nil, err
@@ -1195,14 +1194,14 @@ func (s *ObjectStore) VectorSearchNodeAware(
 		return nil, err
 	}
 
-	var out []*pluginapi.NodeAwareResult
+	var out []*storage.NodeAwareResult
 	for _, obj := range objects {
 		if allowedIDs != nil {
 			if _, ok := allowedIDs[obj.ID]; !ok {
 				continue
 			}
 		}
-		r := &pluginapi.NodeAwareResult{Object: obj}
+		r := &storage.NodeAwareResult{Object: obj}
 		if naf.ReturnNodeHits {
 			dv := projection.ProjectDocument(obj)
 			r.DocumentView = &dv

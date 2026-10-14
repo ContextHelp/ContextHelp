@@ -1,4 +1,4 @@
-package pluginapi
+package storage
 
 // NodeHit is a search result pointing to a matching node within an object.
 type NodeHit struct {
