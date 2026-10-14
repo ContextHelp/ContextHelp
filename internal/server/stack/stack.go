@@ -112,12 +112,31 @@ type Stack struct {
 	policy *policy.Bootstrap
 }
 
-// Close releases what Build acquired beyond the driver: it unwires the
-// policy engine from its bus. Idempotent.
-func (s *Stack) Close() {
-	if s != nil {
-		s.policy.Close()
+// closeDrainTimeout bounds Close's wait for queued security audit rows.
+const closeDrainTimeout = 5 * time.Second
+
+// Shutdown releases what Build acquired beyond the driver, and must run
+// before the driver closes: it stops the security emitter and drains its
+// queued audit rows within ctx, then unwires the policy engine from its
+// bus. Idempotent; a drain cut short by ctx is returned as an error.
+func (s *Stack) Shutdown(ctx context.Context) error {
+	if s == nil {
+		return nil
 	}
+	var err error
+	if s.Security != nil {
+		err = s.Security.Close(ctx)
+	}
+	s.policy.Close()
+	return err
+}
+
+// Close is Shutdown bounded by a fixed drain timeout, for deferred and
+// test cleanup use. Idempotent.
+func (s *Stack) Close() {
+	ctx, cancel := context.WithTimeout(context.Background(), closeDrainTimeout)
+	defer cancel()
+	_ = s.Shutdown(ctx)
 }
 
 // ResolveInboundAuth folds the --public flag into the loaded config,
@@ -374,7 +393,7 @@ func Build(in Inputs) (*Stack, error) {
 	}
 	s.UISessions, err = newUISessions(context.Background(), notes, in.Driver.UISessions(), s.RouteAuth, access, cfg.Server.UI.Session)
 	if err != nil {
-		s.policy.Close()
+		s.Close()
 		return nil, err
 	}
 	if s.UISessions != nil {

@@ -401,7 +401,12 @@ Reference: [Inbound auth, roles and scopes](../manual/reference/config-and-permi
 - The audit log lives in the dpkms database; read it with `ctxt audit list`
   / `ctxt audit export` (`admin:audit` scope over HTTP)
 - Forwarding via `audit.syslog` and `audit.webhook`
-- Security alerts (`security.alerts`) to the audit log, a webhook or SMTP
+- Security alerts (`security.alerts`) to the audit log, a webhook or SMTP.
+  Their audit rows go through a bounded queue (1024 rows) with one writer:
+  `dpkms serve` writes the queued rows before it closes the store on
+  shutdown (within `jobs.drain_timeout`). A full queue drops rows instead
+  of slowing requests, with a `security: audit rows dropped` warning
+  (`dropped_total`) at most every 10s
 - No sanitization: process logs are written as-is (see
   [Secrets Validation and Log Sanitization](secrets-validation-and-log-sanitization.md#what-output-shows-secrets))
 
