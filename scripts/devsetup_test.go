@@ -113,7 +113,8 @@ esac`,
 
 // newRepo builds a committed repo holding the real dev-setup.sh,
 // Makefile and .githooks from this checkout, plus a minimal go.mod.
-func (h *harness) newRepo(name string) string {
+// extra names further checkout-relative files to copy in.
+func (h *harness) newRepo(name string, extra ...string) string {
 	h.t.Helper()
 	src, err := filepath.Abs("..")
 	if err != nil {
@@ -128,6 +129,9 @@ func (h *harness) newRepo(name string) string {
 	}
 	for _, hk := range hooks {
 		copyFile(h.t, hk, filepath.Join(repo, ".githooks", filepath.Base(hk)))
+	}
+	for _, p := range extra {
+		copyFile(h.t, filepath.Join(src, p), filepath.Join(repo, p))
 	}
 	writeFile(h.t, filepath.Join(repo, "go.mod"), "module example.com/devsetup\n\ngo 1.21\n", 0o644)
 
