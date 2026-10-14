@@ -50,15 +50,32 @@ scenario() {
     fi
 }
 
+# Fake keys are assembled at run time so this file holds no key-shaped
+# literal for the scan to flag. The fill avoids placeholder shapes gitleaks
+# skips by design (a run of the alphabet, AWS's ...EXAMPLE id), and carries
+# "My" so a too-broad stopword shows up as a missed block.
+FILL=Zq7Lw2Rk9VtXb8Nc3Hd6My
+B32=ZQ7LW2RKMY5VTXB4 # AWS key ids use A-Z and 2-7 only
+# fill <pattern> <n>: <pattern> repeated, cut to n chars.
+fill() {
+    local s=""
+    while [ "${#s}" -lt "$2" ]; do s="$s$1"; done
+    printf '%s' "${s:0:$2}"
+}
+
 # ${VAR} in scenario content is literal on purpose.
 # shellcheck disable=SC2016
 scenario "config with env var reference" safe-config.yaml 'api_key: ${OPENAI_API_KEY}' allow
-scenario "OpenAI key" unsafe-config.yaml 'api_key: sk-proj-abcdefghijklmnopqrstuvwxyz1234567890' block
-scenario "Anthropic key" anthropic.yaml 'key: sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuv' block
+# Bare, with no key-name keyword: only the custom ctxt-openai-api-key rule
+# can catch it (gitleaks' own openai rule wants the T3BlbkFJ marker).
+scenario "OpenAI key" openai.txt "sk-proj-$(fill "$FILL" 40)" block
+scenario "Anthropic key" anthropic.yaml "key: sk-ant-api03-$(fill "$FILL" 89)" block
 # shellcheck disable=SC2016
 scenario "markdown docs" docs.md 'Use ${OPENAI_API_KEY} for configuration.' allow
-scenario "AWS access key" aws.yaml 'aws_access_key_id: AKIAIOSFODNN7EXAMPLE' block
-scenario "GitHub token" github.yaml 'token: ghp_abcdefghijklmnopqrstuvwxyz1234567890' block
+scenario "AWS access key" aws.yaml "aws_access_key_id: AKIA$(fill "$B32" 16)" block
+scenario "GitHub token" github.yaml "token: ghp_$(fill "$FILL" 36)" block
+# Covered by gitleaks' default rules only: proves [extend] useDefault holds.
+scenario "GitLab token (default rule)" gitlab.yaml "token: glpat-$(fill "$FILL" 20)" block
 scenario "example config placeholder" config.example.yaml 'api_key: sk-proj-your-key-here' allow
 
 echo ""

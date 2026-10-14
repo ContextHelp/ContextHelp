@@ -22,7 +22,7 @@ var hookScriptFiles = []string{
 // adds a key-shaped string, as the real scanner would.
 const gitleaksStub = `[ "$1" = version ] && { echo "8.0.0-stub"; exit 0; }
 git diff --cached -U0 | grep -E '^\+' |
-  grep -qE 'sk-proj-[A-Za-z0-9]{32}|sk-ant-[A-Za-z0-9-]{90}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30}' && exit 1
+  grep -qE 'sk-proj-[A-Za-z0-9]{32}|sk-ant-[A-Za-z0-9-]{90}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30}|glpat-[A-Za-z0-9_-]{20}' && exit 1
 exit 0`
 
 // TestInstallHooksScript runs scripts/install-hooks.sh from an unrelated
