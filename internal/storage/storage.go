@@ -221,6 +221,21 @@ type EdgeStore interface {
 	// at least one mention target with objectID; depth=2 extends one more hop.
 	// The seed objectID is never included in the result.
 	RelatedObjectIDs(ctx context.Context, objectID string, depth, limit int) ([]string, error)
+	// CreateAll stores every edge in one transaction: all of them or,
+	// on any error, none. A typed link and its inverse go in this way.
+	CreateAll(ctx context.Context, edges []*Edge) error
+	// DeleteMatching deletes, in one transaction, every edge a match
+	// selects and returns how many it deleted. A match with no edge
+	// types is an error, and nothing is deleted.
+	DeleteMatching(ctx context.Context, matches []EdgeMatch) (int, error)
+}
+
+// EdgeMatch selects the edges running from one node to another whose
+// type is one of EdgeTypes.
+type EdgeMatch struct {
+	FromType, FromID string
+	ToType, ToID     string
+	EdgeTypes        []string
 }
 
 // JobStore persists and retrieves jobs.

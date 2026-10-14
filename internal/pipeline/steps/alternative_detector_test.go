@@ -125,6 +125,17 @@ func (s *stubEdgeStoreAlt) RelatedObjectIDs(_ context.Context, _ string, _, _ in
 	return nil, nil
 }
 
+func (s *stubEdgeStoreAlt) CreateAll(ctx context.Context, edges []*storage.Edge) error {
+	for _, e := range edges {
+		_ = s.Create(ctx, e)
+	}
+	return nil
+}
+
+func (s *stubEdgeStoreAlt) DeleteMatching(_ context.Context, _ []storage.EdgeMatch) (int, error) {
+	return 0, nil
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 func makeTags(labels ...string) []storage.Tag {

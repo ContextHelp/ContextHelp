@@ -98,6 +98,17 @@ func (s *stubEdgeStore) RelatedObjectIDs(_ context.Context, _ string, _, _ int) 
 	return nil, nil
 }
 
+func (s *stubEdgeStore) CreateAll(ctx context.Context, edges []*storage.Edge) error {
+	for _, e := range edges {
+		_ = s.Create(ctx, e)
+	}
+	return nil
+}
+
+func (s *stubEdgeStore) DeleteMatching(_ context.Context, _ []storage.EdgeMatch) (int, error) {
+	return 0, nil
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 func mustURI(t *testing.T, s string) uri.URI {
