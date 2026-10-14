@@ -1,35 +1,23 @@
 # Docker runtime configuration for dpkms
-version: 1
+# Every key here must be one internal/config.Config declares;
+# internal/config/docker_config_test.go fails on any other.
 
 storage:
   type: sqlite
   path: /data/bookmarks.db
-  concurrency: safe
 
-ingestion:
-  mode: jobs
-  auto_start_worker: true
-
-queue:
-  backend: sqlite
-  workers: 4
-  retry_limit: 3
-
-pipelines:
-  enabled:
-    - text.short
-    - text.long
-    - url.generic
-  defaults:
-    text: text.long
-    url: url.generic
+jobs:
+  max_retries: 3
 
 server:
-  http:
-    port: 8080
-    public: true
-  grpc:
-    port: 9090
+  # HTTP and gRPC listeners, published by the images and compose. The
+  # cookie bridge binds loopback only, so it is not set or published.
+  port: 8080
+  grpc_port: 9090
+  # Non-private instances bind 0.0.0.0, so the published ports are
+  # reachable from outside the container. Requires server.auth.
+  access: public
+  workers: 4
 
 privacy:
   telemetry: false
