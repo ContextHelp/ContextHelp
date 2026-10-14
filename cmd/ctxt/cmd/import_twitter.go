@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	twitterimporter "github.com/ideacrafterslabs/ctxt/internal/importer/twitter"
 	"github.com/spf13/cobra"
 )
@@ -51,23 +50,7 @@ func init() {
 	importTwitterCmd.Flags().String("server", "", serverFlagUsage)
 	importTwitterCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
-	cliconv.WithSideEffect(importTwitterCmd, cliconv.SideEffectWrite)
-	cliconv.WithIdempotency(importTwitterCmd, cliconv.IdempotencyConditional)
-
-	cliconv.WithExamples(importTwitterCmd, []cliconv.Example{
-		{
-			Title:   "Import from default source",
-			Command: "ctxt import twitter --file ./tweets.js",
-		},
-		{
-			Title:   "Dry-run preview",
-			Command: "ctxt import twitter --file ./tweets.js --confirm=no --dry-run",
-		},
-	})
-	cliconv.WithNextSteps(importTwitterCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
-		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
-	})
+	markImportCmd(importTwitterCmd, "ctxt import twitter --file ./tweets.js")
 }
 
 func runImportTwitter(cmd *cobra.Command, _ []string) error {

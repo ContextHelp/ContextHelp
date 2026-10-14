@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	onedriveimporter "github.com/ideacrafterslabs/ctxt/internal/importer/onedrive"
 	"github.com/spf13/cobra"
 )
@@ -83,23 +82,7 @@ func init() {
 	importOneDriveCmd.Flags().String("graph-base-url", "", "override Microsoft Graph API base URL")
 	_ = importOneDriveCmd.Flags().MarkHidden("graph-base-url")
 
-	cliconv.WithSideEffect(importOneDriveCmd, cliconv.SideEffectWrite)
-	cliconv.WithIdempotency(importOneDriveCmd, cliconv.IdempotencyConditional)
-
-	cliconv.WithExamples(importOneDriveCmd, []cliconv.Example{
-		{
-			Title:   "Import from default source",
-			Command: "ctxt import onedrive --token $ONEDRIVE_TOKEN",
-		},
-		{
-			Title:   "Dry-run preview",
-			Command: "ctxt import onedrive --token $ONEDRIVE_TOKEN --confirm=no --dry-run",
-		},
-	})
-	cliconv.WithNextSteps(importOneDriveCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
-		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
-	})
+	markImportCmd(importOneDriveCmd, "ctxt import onedrive --token $ONEDRIVE_TOKEN")
 }
 
 type driveFolderScope struct {

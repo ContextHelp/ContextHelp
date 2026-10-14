@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	githubimporter "github.com/ideacrafterslabs/ctxt/internal/importer/github"
 	"github.com/spf13/cobra"
 )
@@ -71,23 +70,7 @@ func init() {
 	importGitHubCmd.Flags().String("github-base-url", "", "override GitHub API base URL")
 	_ = importGitHubCmd.Flags().MarkHidden("github-base-url")
 
-	cliconv.WithSideEffect(importGitHubCmd, cliconv.SideEffectWrite)
-	cliconv.WithIdempotency(importGitHubCmd, cliconv.IdempotencyConditional)
-
-	cliconv.WithExamples(importGitHubCmd, []cliconv.Example{
-		{
-			Title:   "Import from default source",
-			Command: "ctxt import github --username octocat",
-		},
-		{
-			Title:   "Dry-run preview",
-			Command: "ctxt import github --username octocat --confirm=no --dry-run",
-		},
-	})
-	cliconv.WithNextSteps(importGitHubCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
-		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
-	})
+	markImportCmd(importGitHubCmd, "ctxt import github --username octocat")
 }
 
 func runImportGitHub(cmd *cobra.Command, args []string) error {

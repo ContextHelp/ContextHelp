@@ -141,7 +141,7 @@ func init() {
 
 	cursorSetCmd.Flags().String("to", "",
 		"target timestamp: RFC3339 (2026-04-28T14:22:11Z) or signed duration (-7d, +1h)")
-	_ = cursorSetCmd.MarkFlagRequired("to")
+	markFlagsRequired(cursorSetCmd, "to")
 }
 
 func newCursorManager() (*cursor.Manager, error) {

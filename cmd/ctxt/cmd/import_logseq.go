@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	logseqImporter "github.com/ideacrafterslabs/ctxt/internal/importer/logseq"
 	"github.com/spf13/cobra"
 )
@@ -46,25 +45,9 @@ func init() {
 	importLogseqCmd.Flags().String("server", "", serverFlagUsage)
 	importLogseqCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
-	importLogseqCmd.MarkFlagRequired("graph")
+	markFlagsRequired(importLogseqCmd, "graph")
 
-	cliconv.WithSideEffect(importLogseqCmd, cliconv.SideEffectWrite)
-	cliconv.WithIdempotency(importLogseqCmd, cliconv.IdempotencyConditional)
-
-	cliconv.WithExamples(importLogseqCmd, []cliconv.Example{
-		{
-			Title:   "Import from default source",
-			Command: "ctxt import logseq --graph ~/Logseq",
-		},
-		{
-			Title:   "Dry-run preview",
-			Command: "ctxt import logseq --graph ~/Logseq --confirm=no --dry-run",
-		},
-	})
-	cliconv.WithNextSteps(importLogseqCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
-		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
-	})
+	markImportCmd(importLogseqCmd, "ctxt import logseq --graph ~/Logseq")
 }
 
 func runImportLogseq(cmd *cobra.Command, args []string) error {

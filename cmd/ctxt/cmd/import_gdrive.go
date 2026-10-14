@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	gdriveimporter "github.com/ideacrafterslabs/ctxt/internal/importer/gdrive"
 	"github.com/spf13/cobra"
 )
@@ -54,23 +53,7 @@ func init() {
 	importGDriveCmd.Flags().String("server", "", serverFlagUsage)
 	importGDriveCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
-	cliconv.WithSideEffect(importGDriveCmd, cliconv.SideEffectWrite)
-	cliconv.WithIdempotency(importGDriveCmd, cliconv.IdempotencyConditional)
-
-	cliconv.WithExamples(importGDriveCmd, []cliconv.Example{
-		{
-			Title:   "Import from default source",
-			Command: "ctxt import gdrive --access-token $GDRIVE_ACCESS_TOKEN",
-		},
-		{
-			Title:   "Dry-run preview",
-			Command: "ctxt import gdrive --access-token $GDRIVE_ACCESS_TOKEN --confirm=no --dry-run",
-		},
-	})
-	cliconv.WithNextSteps(importGDriveCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
-		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
-	})
+	markImportCmd(importGDriveCmd, "ctxt import gdrive --access-token $GDRIVE_ACCESS_TOKEN")
 }
 
 func runImportGDrive(cmd *cobra.Command, args []string) error {

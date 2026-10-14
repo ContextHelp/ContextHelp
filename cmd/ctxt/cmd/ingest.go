@@ -66,7 +66,7 @@ func init() {
 	ingestCmd.Flags().String("folder", "INBOX", "himalaya IMAP folder")
 	ingestCmd.Flags().Int("max-items", 0, "max items to fetch (0=all)")
 
-	_ = ingestCmd.MarkFlagRequired("source")
+	markFlagsRequired(ingestCmd, "source")
 }
 
 func runIngest(cmd *cobra.Command, _ []string) error {

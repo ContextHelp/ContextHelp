@@ -25,6 +25,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"hop.top/kit/go/console/output"
 	kitstyles "hop.top/kit/go/console/tui/styles"
@@ -329,4 +330,16 @@ func truncate(s string, n int) string {
 		return string(runes[:n])
 	}
 	return string(runes[:n-3]) + "..."
+}
+
+// markFlagsRequired marks each named flag on cmd required. Cobra only
+// fails here when no such flag is defined, which is a wiring bug in the
+// command's init — so it panics at startup instead of silently leaving
+// the flag optional.
+func markFlagsRequired(cmd *cobra.Command, names ...string) {
+	for _, name := range names {
+		if err := cmd.MarkFlagRequired(name); err != nil {
+			panic(fmt.Sprintf("%s: mark --%s required: %v", cmd.CommandPath(), name, err))
+		}
+	}
 }
