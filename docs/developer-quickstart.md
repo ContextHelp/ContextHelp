@@ -308,8 +308,8 @@ SQLITE_PATH=./data/sqlite/contexthelp.db
 WORKER_COUNT=4
 
 # API
-API_PORT=8080
-GRPC_PORT=9090
+CH_SERVER_PORT=8080
+CH_GRPC_PORT=9090
 
 # Logging
 LOG_LEVEL=debug
@@ -419,9 +419,8 @@ task db:reset
 ### Port Already in Use
 
 ```bash
-# Change ports in .env
-API_PORT=8081
-GRPC_PORT=9091
+# Start on other ports (or --port / --grpc-port)
+CH_SERVER_PORT=8081 CH_GRPC_PORT=9091 dpkms serve
 ```
 
 ---

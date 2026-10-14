@@ -34,15 +34,15 @@ func ValidateJWT(tokenString string) (*JWTClaims, error) {
     token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
         return []byte(os.Getenv("JWT_SECRET")), nil
     })
-    
+
     if err != nil {
         return nil, err
     }
-    
+
     if claims, ok := token.Claims.(*JWTClaims); ok && token.Valid {
         return claims, nil
     }
-    
+
     return nil, fmt.Errorf("invalid token")
 }
 ```
@@ -76,7 +76,7 @@ func CreateSession(userID string) (*Session, error) {
         CreatedAt: time.Now(),
         ExpiresAt: time.Now().Add(24 * time.Hour),
     }
-    
+
     return session, sessionStore.Save(session)
 }
 ```
@@ -91,17 +91,17 @@ func (s *Server) Authenticate(ctx context.Context) error {
     if !ok {
         return status.Error(codes.Unauthenticated, "missing metadata")
     }
-    
+
     tokens := md.Get("authorization")
     if len(tokens) == 0 {
         return status.Error(codes.Unauthenticated, "missing token")
     }
-    
+
     claims, err := ValidateJWT(tokens[0])
     if err != nil {
         return status.Error(codes.Unauthenticated, "invalid token")
     }
-    
+
     // Attach claims to context
     return nil
 }
@@ -115,7 +115,7 @@ func (s *Server) StreamObjects(req *StreamRequest, stream pb.ObjectService_Strea
     if err := s.Authenticate(stream.Context()); err != nil {
         return err
     }
-    
+
     // Check authorization for each object
     for {
         obj := getNextObject()
@@ -136,11 +136,11 @@ func ValidateLocalUser() error {
     // Check process owner matches file owner
     configOwner := getFileOwner(configPath)
     currentUser := os.Getuid()
-    
+
     if configOwner != currentUser {
         return fmt.Errorf("configuration file not owned by current user")
     }
-    
+
     return nil
 }
 ```
@@ -166,17 +166,17 @@ func Encrypt(plaintext []byte, key []byte) ([]byte, error) {
     if err != nil {
         return nil, err
     }
-    
+
     gcm, err := cipher.NewGCM(block)
     if err != nil {
         return nil, err
     }
-    
+
     nonce := make([]byte, gcm.NonceSize())
     if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
         return nil, err
     }
-    
+
     ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
     return ciphertext, nil
 }
@@ -231,7 +231,7 @@ func (es *EncryptedStorage) Load(id string) (Object, error) {
     if err != nil {
         return Object{}, err
     }
-    
+
     // Decrypt after loading
     decrypted, err := es.cipher.Decrypt(obj.Data)
     if err != nil {
@@ -266,18 +266,18 @@ func NewTLSConfig() *tls.Config {
 ```go
 func ValidateCertificate(conn *tls.Conn) error {
     state := conn.ConnectionState()
-    
+
     // Check certificate validity
     for _, cert := range state.PeerCertificates {
         if time.Now().After(cert.NotAfter) {
             return fmt.Errorf("certificate expired")
         }
-        
+
         if time.Now().Before(cert.NotBefore) {
             return fmt.Errorf("certificate not yet valid")
         }
     }
-    
+
     return nil
 }
 ```
@@ -311,7 +311,7 @@ func (v *Validator) Validate(input interface{}, schemaName string) error {
     if schema == nil {
         return fmt.Errorf("unknown schema: %s", schemaName)
     }
-    
+
     return schema.Validate(input)
 }
 ```
@@ -375,20 +375,20 @@ func ValidateConfig(config *Config) error {
     if config.Storage.Type != "sqlite" && config.Storage.Type != "postgres" {
         return fmt.Errorf("invalid storage type: %s", config.Storage.Type)
     }
-    
+
     // Enum validation
     if config.Logging.Level != "debug" && config.Logging.Level != "info" &&
        config.Logging.Level != "warn" && config.Logging.Level != "error" {
         return fmt.Errorf("invalid log level: %s", config.Logging.Level)
     }
-    
+
     // URL format validation
     for _, registry := range config.Registries {
         if _, err := url.Parse(registry.URL); err != nil {
             return fmt.Errorf("invalid registry URL: %s", registry.URL)
         }
     }
-    
+
     return nil
 }
 ```
@@ -402,16 +402,16 @@ func ValidatePath(path string, baseDir string) error {
     if err != nil {
         return err
     }
-    
+
     absBase, err := filepath.Abs(baseDir)
     if err != nil {
         return err
     }
-    
+
     if !strings.HasPrefix(absPath, absBase) {
         return fmt.Errorf("path traversal detected: %s", path)
     }
-    
+
     return nil
 }
 ```
@@ -442,12 +442,12 @@ SetMemoryLimit(256 * 1024 * 1024)
 func ExecuteWithTimeout(ctx context.Context, fn func() error, timeout time.Duration) error {
     ctx, cancel := context.WithTimeout(ctx, timeout)
     defer cancel()
-    
+
     errChan := make(chan error, 1)
     go func() {
         errChan <- fn()
     }()
-    
+
     select {
     case err := <-errChan:
         return err
@@ -468,7 +468,7 @@ func RestrictFileAccess(pluginDir string) error {
     if err := syscall.Chroot(pluginDir); err != nil {
         return err
     }
-    
+
     // Change to root of chroot
     return os.Chdir("/")
 }
@@ -508,11 +508,11 @@ type PipelineContext struct {
 func (pc *PipelineContext) Execute(pipeline *Pipeline) error {
     // Set resource limits
     SetMemoryLimit(pc.Memory)
-    
+
     // Execute with timeout
     ctx, cancel := context.WithTimeout(context.Background(), pc.Timeout)
     defer cancel()
-    
+
     return pipeline.Run(ctx, pc.Input)
 }
 ```
@@ -526,7 +526,7 @@ func (ps *PipelineService) GetData(pipelineID string, key string) (interface{}, 
     if storage == nil {
         return nil, fmt.Errorf("pipeline storage not found")
     }
-    
+
     return storage.Get(key)
 }
 ```
@@ -571,7 +571,7 @@ const (
 func AuditLog(event *AuditEvent) {
     // Sanitize before logging
     sanitized := SanitizeAuditEvent(event)
-    
+
     // Structured logging
     log.Info("audit",
         "event_type", sanitized.EventType,
@@ -584,14 +584,14 @@ func AuditLog(event *AuditEvent) {
 
 func SanitizeAuditEvent(event *AuditEvent) *AuditEvent {
     sanitized := *event
-    
+
     // Remove sensitive fields
     for key := range sanitized.Details {
         if IsSensitiveField(key) {
             sanitized.Details[key] = "<REDACTED>"
         }
     }
-    
+
     return &sanitized
 }
 ```
@@ -606,7 +606,7 @@ func AppendAuditLog(event *AuditEvent) error {
         return err
     }
     defer f.Close()
-    
+
     // Write JSON line
     encoder := json.NewEncoder(f)
     return encoder.Encode(event)
@@ -622,10 +622,10 @@ func SendToSyslog(event *AuditEvent) error {
         return err
     }
     defer syslogWriter.Close()
-    
+
     message := fmt.Sprintf("event=%s user=%s action=%s result=%s",
         event.EventType, event.UserID, event.Action, event.Result)
-    
+
     return syslogWriter.Info(message)
 }
 ```
@@ -641,8 +641,7 @@ func SendToSyslog(event *AuditEvent) error {
 export ENV=development
 export LOG_LEVEL=debug
 export ENCRYPTION_ENABLED=false  # OK for local dev
-export API_HOST=localhost
-export API_PORT=7700
+export CH_SERVER_PORT=7700  # private access (default) binds 127.0.0.1
 ```
 
 ### Server Deployment
@@ -652,8 +651,7 @@ export API_PORT=7700
 export ENV=production
 export ENCRYPTION_ENABLED=true
 export ENCRYPTION_PASSPHRASE=$(vault kv get -field=passphrase secret/encryption)
-export API_HOST=0.0.0.0
-export API_PORT=8080
+export CH_SERVER_PORT=8080  # server.access protected/public binds 0.0.0.0
 export TLS_ENABLED=true
 export TLS_CERT_FILE=/etc/contexthelp/tls/server.crt
 export TLS_KEY_FILE=/etc/contexthelp/tls/server.key
@@ -720,11 +718,11 @@ spec:
 func TestEncryption(t *testing.T) {
     key := make([]byte, 32)
     rand.Read(key)
-    
+
     plaintext := []byte("sensitive data")
     ciphertext, err := Encrypt(plaintext, key)
     require.NoError(t, err)
-    
+
     decrypted, err := Decrypt(ciphertext, key)
     require.NoError(t, err)
     require.Equal(t, plaintext, decrypted)
@@ -736,15 +734,15 @@ func TestEncryption(t *testing.T) {
 ```go
 func TestDatabaseEncryption(t *testing.T) {
     storage := NewEncryptedStorage(sqliteBackend, cipher)
-    
+
     obj := Object{ID: "test", Data: []byte("secret")}
     err := storage.Save(obj)
     require.NoError(t, err)
-    
+
     // Verify encrypted in database
     rawData := sqliteBackend.LoadRaw(obj.ID)
     require.NotEqual(t, obj.Data, rawData)
-    
+
     // Verify decrypted on load
     loaded, err := storage.Load(obj.ID)
     require.NoError(t, err)

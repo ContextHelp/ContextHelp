@@ -85,7 +85,7 @@ LOG_LEVEL=debug
 STORAGE_BACKEND=sqlite
 SQLITE_PATH=./data/sqlite/contexthelp_dev.db
 WORKER_COUNT=2
-API_PORT=8080
+CH_SERVER_PORT=8080
 ```
 
 ---
@@ -363,19 +363,19 @@ func TestSQLiteStore_CreateObject(t *testing.T) {
     // Arrange
     store, cleanup := setupTestStore(t)
     defer cleanup()
-    
+
     obj := &Object{
         Type:    "text",
         Content: "test content",
     }
-    
+
     // Act
     err := store.Create(obj)
-    
+
     // Assert
     require.NoError(t, err)
     assert.NotEmpty(t, obj.ID)
-    
+
     // Verify persistence
     retrieved, err := store.Get(obj.ID)
     require.NoError(t, err)
@@ -400,14 +400,14 @@ func TestTextPipeline_EndToEnd(t *testing.T) {
     // Setup test database
     db := setupTestDB(t)
     defer db.Close()
-    
+
     // Create pipeline
     pipeline := pipelines.NewTextLong(db)
-    
+
     // Execute
     ctx := context.Background()
     result, err := pipeline.Execute(ctx, "Long text input...")
-    
+
     // Verify
     require.NoError(t, err)
     assert.NotEmpty(t, result.Summary)
@@ -425,15 +425,15 @@ package helpers
 
 func SetupTestStore(t *testing.T) (*storage.Store, func()) {
     t.Helper()
-    
+
     db := setupTempDB(t)
     store := storage.New(db)
-    
+
     cleanup := func() {
         db.Close()
         os.Remove(db.Path())
     }
-    
+
     return store, cleanup
 }
 ```

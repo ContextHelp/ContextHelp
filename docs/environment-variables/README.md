@@ -41,7 +41,7 @@ export $(cat .env | xargs)
 - **[services.md](services.md)** — Redis & Qdrant (178 lines)
 
 ### Application Layer
-- **[api.md](api.md)** — REST & gRPC API (144 lines)
+- **[api.md](api.md)** — REST, gRPC & cookie bridge listener ports
 - **[workers.md](workers.md)** — Job queue & workers (110 lines)
 - **[pipelines.md](pipelines.md)** — Pipelines & profiles (99 lines)
 
@@ -63,7 +63,7 @@ export $(cat .env | xargs)
 |-------|------|---------------|
 | **Basic Setup** | [core.md](core.md) | `ENV`, `LOG_LEVEL`, `LOG_FORMAT` |
 | **Storage** | [storage.md](storage.md) | `STORAGE_BACKEND`, `SQLITE_PATH`, `POSTGRES_*`, `CTXT_BLOB_*` |
-| **API** | [api.md](api.md) | `API_HOST`, `API_PORT`, `GRPC_PORT` |
+| **API** | [api.md](api.md) | `CH_SERVER_PORT`, `CH_GRPC_PORT`, `CH_COOKIE_BRIDGE_PORT` |
 | **Workers** | [workers.md](workers.md) | `WORKER_COUNT`, `JOB_TIMEOUT` |
 | **AI** | [ai-providers.md](ai-providers.md) | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` |
 | **Security** | [security.md](security.md) | `ENCRYPTION_ENABLED`, `JWT_SECRET` |
@@ -81,7 +81,7 @@ export $(cat .env | xargs)
 1. Review [storage.md](storage.md) — Migrate to PostgreSQL
 2. Enable [services.md](services.md) — Add Redis and Qdrant
 3. Adjust [workers.md](workers.md) — Increase worker count
-4. Configure [api.md](api.md) — Set up CORS and timeouts
+4. Configure [api.md](api.md) — Set listener ports
 
 ### Production Hardening
 1. Enable [security.md](security.md) — Turn on encryption and auth
