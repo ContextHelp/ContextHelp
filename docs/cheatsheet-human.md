@@ -102,7 +102,7 @@ ctxt capture history --browser brave      # visits since the last run
 ctxt capture schedule install             # tabs + history on a timer (macOS)
 ```
 
-Full guide: [`manual/workflows/ambient-capture.md`](manual/workflows/ambient-capture.md).
+Full guide: [`ambient.md`](ambient.md#what-runs-today).
 
 ---
 

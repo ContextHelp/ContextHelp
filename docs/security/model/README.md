@@ -15,7 +15,7 @@ This directory contains the detailed security model for ContextHelp, decomposed 
 
 ### Supporting Documents
 
-5. **[../log-sanitization.md](../log-sanitization.md)** — Log sanitization and secret detection
+5. **[../secrets-validation-and-log-sanitization.md](../secrets-validation-and-log-sanitization.md)** — Config secret scan; no log sanitization
 6. **[../validation.md](../validation.md)** — Input validation and secret patterns
 
 ---

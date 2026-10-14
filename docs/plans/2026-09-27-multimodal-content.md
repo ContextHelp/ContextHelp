@@ -92,7 +92,7 @@ When an explicitly configured backend is missing, the factory silently returns t
 
 - [US-0003](../stories/ingestion/US-0003-image-ocr-and-analysis.md), [US-0004](../stories/ingestion/US-0004-audio-transcription-and-indexing.md) and [US-0005](../stories/ingestion/US-0005-video-processing-with-scenes.md) are marked `shipped`.
 - [US-0061](../stories/search/US-0061-visual-similarity-search.md) (image-as-query, dual embedding) is marked `shipped`.
-- [`docs/meeting-capture.md`](../meeting-capture.md) documents `ctxt capture meeting start|stop|redact|export`. The code has the meeting source's interface ([ADR-069](../decisions/ADR-069-meeting-capture-source.md)) but no per-OS recorder and no CLI.
+- `docs/meeting-capture.md` documents `ctxt capture meeting start|stop|redact|export`. The code has the meeting source's interface ([ADR-069](../decisions/ADR-069-meeting-capture-source.md)) but no per-OS recorder and no CLI.
 
 ### Coverage
 

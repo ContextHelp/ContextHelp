@@ -12,7 +12,7 @@ screenshot and meeting signals into knowledge objects grouped by work session.
 unit-tested, but no binary runs it. There is no `ctxd` daemon, and
 `ctxt capture --ambient` exits with "ambient mode not yet implemented". For what
 runs on a user's machine today, see
-[../manual/workflows/ambient-capture.md](../manual/workflows/ambient-capture.md).
+[../ambient.md](../ambient.md#what-runs-today).
 
 ---
 

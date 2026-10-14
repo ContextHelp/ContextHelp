@@ -168,8 +168,6 @@ paths = [
   '''.env.example$''',
   '''config\.example\.yaml$''',
   '''config\.minimal\.yaml$''',
-  '''config\.plugins\.yaml$''',
-  '''config\.leann\.yaml$''',
   # Checksum file shipped with the autosuggest plugin extraction; gitleaks'
   # default allowlist covers go.sum by name, not this suffix.
   '''(?:^|/)go\.sum\.extraction$''',

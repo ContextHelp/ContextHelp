@@ -23,6 +23,6 @@ Both run on the dpkms host with the `providers.transcription` (and, for `video.f
 
 ## Related references
 
-- [`ambient-capture.md`](ambient-capture.md) — what runs locally today
+- [`browser-tab-capture.md`](browser-tab-capture.md), [`browser-history-capture.md`](browser-history-capture.md), `ctxt watch --help` — what runs locally today
 - [`../../architecture/ambient-capture.md`](../../architecture/ambient-capture.md) — design reference for the unbuilt substrate
 - [`../../decisions/ADR-069-meeting-capture-source.md`](../../decisions/ADR-069-meeting-capture-source.md)

@@ -267,7 +267,7 @@ Retryable() bool
 ---
 
 ## 10. Caching Domain
-**Location:** `docs/dpkms/caching.md`
+**Location:** none; there is no general caching layer
 
 **Responsibilities:**
 - Query result caching

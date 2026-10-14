@@ -13,9 +13,6 @@ This directory contains documentation for integrations with external systems and
 - [inbound-contract.md](inbound-contract.md) - Contract for hooks/adapters writing to ctxt
   (mention conventions, identity rules, idempotency)
 
-### External Systems
-- [leann-integration.md](leann-integration.md) - Leann system integration
-
 ## Integration Architecture
 
 Integrations typically extend the system through:

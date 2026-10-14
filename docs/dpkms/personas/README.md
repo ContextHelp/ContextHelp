@@ -61,7 +61,6 @@ dPKMS is the **mechanical substrate** that provides correctness guarantees. Whil
 **Key Documents:**
 - [../storage.md](../storage.md) - Backend configuration
 - [../queue.md](../queue.md) - Queue backend options
-- [../caching.md](../caching.md) - Cache configuration
 - [../../development-infrastructure.md](../../development-infrastructure.md)
 
 ---

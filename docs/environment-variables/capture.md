@@ -63,4 +63,4 @@ Source: `internal/ambient/position/position.go`. See
 ## Related
 
 - [../ctxt/capture.md](../ctxt/capture.md) — `ctxt capture`
-- [../manual/workflows/ambient-capture.md](../manual/workflows/ambient-capture.md) — what runs locally today
+- [../ambient.md](../ambient.md#what-runs-today) — what runs locally today

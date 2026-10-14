@@ -7,7 +7,6 @@ protection.
 
 - **[Secrets Backends](./secrets-backends.md)** — where ctxt reads API keys from: env, keychain, age-file, 1Password, GitHub secrets
 - **[Secrets Validation and Log Sanitization](./secrets-validation-and-log-sanitization.md)** — the config secret scan, config file permissions, which output shows secrets, security alerts
-- **[Log Sanitization](./log-sanitization.md)** — there is none
 - **[Security Model](./security-model.md)** — threat model and guarantees
 - **[Secret Management Best Practices](./secret-management.md)** — handling and rotating secrets
 - **[Configuration Security](./configuration-security.md)** — securing config files and environment variables

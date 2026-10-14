@@ -82,7 +82,7 @@ ctxt capture "thought I had" --wait
 | `ctxt capture browsers` | Lists installed Chromium browsers and profiles | `ctxt capture browsers --help` |
 
 For clipboard and directory watching, see `ctxt watch --help` and
-[../manual/workflows/ambient-capture.md](../manual/workflows/ambient-capture.md).
+[../ambient.md](../ambient.md#what-runs-today).
 
 ## See also
 

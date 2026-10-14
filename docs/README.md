@@ -102,7 +102,6 @@ docs/
 │   ├── security.md                # Security model
 │   ├── privacy.md                 # Privacy guarantees
 │   ├── decentralization.md        # Decentralization model
-│   ├── caching.md                 # Caching strategies
 │   ├── embeddings.md              # Embedding support
 │   ├── ranking-and-reranking.md    # Result ranking
 │   ├── testing.md                 # Testing strategy
@@ -153,8 +152,7 @@ docs/
 │   └── node-admin-api.md          # Node admin API
 │
 ├── integrations/                  # External integrations
-│   ├── README.md                  # Integration overview
-│   └── leann-integration.md       # LEANN integration
+│   └── README.md                  # Integration overview
 │
 ├── security/                      # Security & secrets management
 │   ├── README.md                  # Security documentation index
@@ -162,7 +160,6 @@ docs/
 │   ├── security-model.md          # Threat model & guarantees
 │   ├── secret-management.md       # Lifecycle & best practices
 │   ├── configuration-security.md  # Securing configuration files
-│   ├── log-sanitization.md        # Log sanitization
 │   ├── validation.md             # Security validation
 │   └── model/                     # Security model docs
 │       ├── README.md
@@ -192,12 +189,7 @@ docs/
 │   └── publishing.md              # Build a registry (thin sync + JIT pull)
 │
 ├── deployment/                    # Deployment documentation
-│   ├── README.md                  # Deployment overview
-│   ├── 00-START-HERE.md           # Deployment guide
-│   ├── WEB2-WEB3-HYBRID.md        # Hybrid deployment
-│   ├── COMPARISON-MATRIX.md      # Deployment comparisons
-│   ├── DEPLOYMENT-SCENARIOS.md   # Deployment scenarios
-│   └── SYNC-ORCHESTRATION.md     # Sync orchestration
+│   └── README.md                  # Deployment overview
 │
 ├── personas/                      # Personas documentation
 │   ├── README.md                  # Personas overview
@@ -338,7 +330,6 @@ Managing secrets, compliance, and secure deployments:
 - [security/security-model.md](security/security-model.md) - Threat model and guarantees
 - [security/secret-management.md](security/secret-management.md) - Rotation, incident response, and best practices
 - [security/configuration-security.md](security/configuration-security.md) - Securing configuration files
-- [security/log-sanitization.md](security/log-sanitization.md) - Log sanitization
 - [security/validation.md](security/validation.md) - Security validation
 - [security/model/](security/model/) - Security model (threat, boundaries, compliance, controls)
 - [environment-variables/security.md](environment-variables/security.md) - Secure environment variable handling
@@ -374,7 +365,6 @@ Managing secrets, compliance, and secure deployments:
 - [dpkms/queue.md](dpkms/queue.md) - Queue implementation
 - [ctxt/schema-object.md](ctxt/schema-object.md) - Knowledge objects
 - [dpkms/embeddings.md](dpkms/embeddings.md) - Embedding support
-- [dpkms/caching.md](dpkms/caching.md) - Caching strategies
 
 ### Semantic Identity
 - [dpkms/knowledge-graph.md](dpkms/knowledge-graph.md) - Graph index
@@ -395,7 +385,6 @@ Managing secrets, compliance, and secure deployments:
 - [manual/operations/embeddings.md](manual/operations/embeddings.md) - Operate embedding models
 - [dpkms/query-language-spec.md](dpkms/query-language-spec.md) - Query language
 - [dpkms/ranking-and-reranking.md](dpkms/ranking-and-reranking.md) - Result ranking
-- [dpkms/caching.md](dpkms/caching.md) - Caching strategies
 
 ### Federation & Registries
 - [dpkms/registries.md](dpkms/registries.md) - Registry system
