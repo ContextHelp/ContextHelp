@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+	kitcli "hop.top/kit/go/console/cli"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -63,25 +65,88 @@ func TestRegistryPendingLists(t *testing.T) {
 	}
 }
 
-// TestRegistryApproveRejectGatedLikeDelete: approve and reject carry
-// the same kit confirmation gate as registry delete (destructive tier
-// plus typed token). The gate itself is kit's, installed by Execute and
-// proven in confirm_gate_test.go; this package's tree runs ungated.
-func TestRegistryApproveRejectGatedLikeDelete(t *testing.T) {
+// TestRegistryApproveGatedRejectNot: approve carries the same typed
+// token as registry delete; reject is a plain write with no token,
+// since it only drops queue rows the next sync brings back.
+func TestRegistryApproveGatedRejectNot(t *testing.T) {
 	want := registryRemoveCmd.Annotations["kit/destructive-token"]
 	if want == "" {
 		t.Fatal("registry delete carries no kit/destructive-token; nothing to be consistent with")
 	}
-	for _, c := range []*cobra.Command{registryApproveCmd, registryRejectCmd} {
-		if got := c.Annotations["kit/destructive-token"]; got != want {
-			t.Errorf("%s kit/destructive-token = %q, want %q", c.CommandPath(), got, want)
-		}
-		if se := c.Annotations["kit/side-effect"]; !strings.HasPrefix(se, "destructive") {
-			t.Errorf("%s kit/side-effect = %q, want destructive", c.CommandPath(), se)
-		}
+	if got := registryApproveCmd.Annotations["kit/destructive-token"]; got != want {
+		t.Errorf("registry approve kit/destructive-token = %q, want %q", got, want)
+	}
+	if se := registryApproveCmd.Annotations["kit/side-effect"]; !strings.HasPrefix(se, "destructive") {
+		t.Errorf("registry approve kit/side-effect = %q, want destructive", se)
+	}
+	if got := registryRejectCmd.Annotations["kit/destructive-token"]; got != "" {
+		t.Errorf("registry reject kit/destructive-token = %q, want none", got)
+	}
+	if se := registryRejectCmd.Annotations["kit/side-effect"]; se != "write" {
+		t.Errorf("registry reject kit/side-effect = %q, want write", se)
 	}
 	if se := registryPendingCmd.Annotations["kit/side-effect"]; se != "read" {
 		t.Errorf("registry pending kit/side-effect = %q, want read", se)
+	}
+}
+
+// TestRegistryApproveRejectUnderKitGate runs leaves carrying approve's
+// and reject's annotations under kit's real gate, on a tree of their
+// own (see confirm_gate_test.go for why the package tree stays
+// ungated): approve is refused without its token, reject has no
+// --confirm-token flag and runs with no confirmation at all.
+func TestRegistryApproveRejectUnderKitGate(t *testing.T) {
+	gated := func(src *cobra.Command) (*kitcli.Root, *cobra.Command, *bool) {
+		ran := false
+		leaf := &cobra.Command{
+			Use:         src.Name(),
+			Annotations: map[string]string{},
+			RunE: func(*cobra.Command, []string) error {
+				ran = true
+				return nil
+			},
+		}
+		for k, v := range src.Annotations {
+			leaf.Annotations[k] = v
+		}
+		r := kitcli.New(kitcli.Config{Name: "gatetest", Version: "test"})
+		r.Cmd.AddCommand(leaf)
+		r.WrapRunE()
+		return r, leaf, &ran
+	}
+	run := func(src *cobra.Command, args ...string) (ran bool, leaf *cobra.Command, out string) {
+		r, leaf, ranp := gated(src)
+		var buf bytes.Buffer
+		r.Cmd.SetOut(&buf)
+		r.Cmd.SetErr(&buf)
+		r.Cmd.SetArgs(append([]string{src.Name()}, args...))
+		_ = r.Cmd.Execute()
+		return *ranp, leaf, buf.String()
+	}
+
+	ran, leaf, out := run(registryRejectCmd)
+	if !ran {
+		t.Errorf("registry reject did not run without confirmation:\n%s", out)
+	}
+	if leaf.Flags().Lookup("confirm-token") != nil {
+		t.Error("registry reject has a --confirm-token flag; it takes no token")
+	}
+
+	ran, leaf, out = run(registryApproveCmd)
+	if ran {
+		t.Error("registry approve ran without its confirmation token")
+	}
+	if !strings.Contains(out, "--confirm-token=") {
+		t.Errorf("approve refusal must print the token to pass back; got:\n%s", out)
+	}
+	if leaf.Flags().Lookup("confirm-token") == nil {
+		t.Error("registry approve has no --confirm-token flag")
+	}
+	if ran, _, _ = run(registryApproveCmd, "--confirm=yes"); ran {
+		t.Error("registry approve ran on --confirm=yes alone")
+	}
+	if ran, _, _ = run(registryApproveCmd, "--confirm-token="+tokenFrom(out)); !ran {
+		t.Error("registry approve refused its own token")
 	}
 }
 
@@ -147,7 +212,7 @@ func TestRegistryRejectDrops(t *testing.T) {
 	db, id := pendingFromSync(t)
 	ctx := context.Background()
 
-	out, err := db.exec("registry", "reject", id, "--confirm=yes")
+	out, err := db.exec("registry", "reject", id)
 	if err != nil || !strings.Contains(out, "Entities rejected: 1") {
 		t.Fatalf("reject: %v\n%s", err, out)
 	}
@@ -157,7 +222,7 @@ func TestRegistryRejectDrops(t *testing.T) {
 	if e, err := db.Driver.Entities().Get(ctx, "ai.bert"); err == nil && e != nil {
 		t.Error("rejected entity written")
 	}
-	if out, err := db.exec("registry", "reject", id, "--confirm=yes"); err == nil {
+	if out, err := db.exec("registry", "reject", id); err == nil {
 		t.Errorf("reject of an ID no longer queued succeeded:\n%s", out)
 	}
 }

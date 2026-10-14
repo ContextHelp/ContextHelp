@@ -56,7 +56,7 @@ ctxt profile view <name>
 ctxt profile create <name> --config <file>
 ctxt profile set <name>
 ctxt profile unset <name>
-ctxt profile rm <name> --confirm=yes
+ctxt profile rm <name> --confirm-token=<sha>
 ```
 
 ### 4. Validate registry configuration

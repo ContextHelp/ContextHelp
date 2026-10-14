@@ -37,9 +37,8 @@ ctxt registry pending lists, or --all --registry <name> for every entity
 that registry has queued. Nothing is written when an ID is not queued or
 its registry is now sandboxed.
 
-Destructive-gated like registry delete: requires the --confirm-token=<sha>
-the refusal prints; --confirm=yes alone is refused.
---dry-run lists what would be approved and needs neither.`,
+` + cliconv.DestructiveTokenHelp + `
+--dry-run lists what would be approved and needs no token.`,
 	RunE: runRegistryApprove,
 }
 
@@ -48,11 +47,9 @@ var registryRejectCmd = &cobra.Command{
 	Short: "Drop entities waiting for approval",
 	Long: `Drop queued entities without writing them. A rejected entity is
 queued again if its registry still serves it at the next sync. Nothing
-is dropped when an ID is not queued.
-
-Destructive-gated like registry delete: requires the --confirm-token=<sha>
-the refusal prints; --confirm=yes alone is refused.
---dry-run lists what would be rejected and needs neither.`,
+is dropped when an ID is not queued. No confirmation: nothing is lost
+that the next sync does not bring back. --dry-run lists what would be
+rejected.`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runRegistryReject,
 }
@@ -74,12 +71,11 @@ func init() {
 	})
 	cliconv.WithNextSteps(registryPendingCmd, []cliconv.NextStep{
 		{Suggest: "ctxt registry approve <id> --dry-run", Reason: "preview, then approve with --confirm-token=<sha> to write it"},
-		{Suggest: "ctxt registry reject <id> --confirm-token=<sha>", Reason: "drop an entity you do not want"},
+		{Suggest: "ctxt registry reject <id>", Reason: "drop an entity you do not want"},
 	})
 
-	// Same gate as registry delete: kit's --confirm matrix plus the
-	// typed token. Approval writes unreviewed registry content into
-	// the graph; reject drops it from review.
+	// Same gate as registry delete: the typed token. Approval writes
+	// unreviewed registry content into the graph.
 	cliconv.WithSideEffect(registryApproveCmd, cliconv.SideEffectDestructive)
 	cliconv.WithDestructiveToken(registryApproveCmd)
 	// Replaying --all --registry approves nothing more; replaying IDs
@@ -94,13 +90,15 @@ func init() {
 		{Suggest: "ctxt registry pending", Reason: "review what is still queued"},
 	})
 
-	cliconv.WithSideEffect(registryRejectCmd, cliconv.SideEffectDestructive)
-	cliconv.WithDestructiveToken(registryRejectCmd)
+	// A plain write, ungated: reject only deletes queue rows, and the
+	// entity is queued again if its registry still serves it at the
+	// next sync.
+	cliconv.WithSideEffect(registryRejectCmd, cliconv.SideEffectWrite)
 	// A replay fails NOT_FOUND: the IDs are off the queue.
 	cliconv.WithIdempotency(registryRejectCmd, cliconv.IdempotencyNo)
 	cliconv.WithExamples(registryRejectCmd, []cliconv.Example{
-		{Title: "Reject one entity", Command: "ctxt registry reject 3f9a1c2b7d4e5f60 --confirm-token=<sha>"},
-		{Title: "Reject several", Command: "ctxt registry reject 3f9a1c2b7d4e5f60 8e21d0c4b5a69f73 --confirm-token=<sha>"},
+		{Title: "Reject one entity", Command: "ctxt registry reject 3f9a1c2b7d4e5f60"},
+		{Title: "Reject several", Command: "ctxt registry reject 3f9a1c2b7d4e5f60 8e21d0c4b5a69f73"},
 	})
 	cliconv.WithNextSteps(registryRejectCmd, []cliconv.NextStep{
 		{Suggest: "ctxt registry pending", Reason: "review what is still queued"},

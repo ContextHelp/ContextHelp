@@ -119,7 +119,7 @@ the next call returns only newer items.
 ### Step 6: Revoke an employee
 
 ```bash
-ctxt registry delete client-ops --confirm=yes   # employee-side
+ctxt registry delete client-ops --confirm-token=<sha>   # employee-side
 ctxt registry logout client-ops                 # drop the stored token, if you logged in
 # Optional: founder rotates the registry token; remaining employees run ctxt registry login client-ops
 ```

@@ -91,7 +91,7 @@ command and its filters.
 ### Single-object deletion
 
 ```
-ctxt delete --id <id> --confirm=yes --confirm-token=<sha>
+ctxt delete --id <id> --confirm-token=<sha>
 ```
 
 Deleting needs a token with `delete:objects` on a protected or public instance, and only the `admin` role holds it. `writer` and `reader` tokens exit 5 and delete nothing. A private instance (the default) authenticates nobody, so every local caller can delete. Without `--confirm-token` the command refuses and prints the token to echo back; `--dry-run` lists what it would delete.
@@ -101,13 +101,13 @@ Deleting needs a token with `delete:objects` on a protected or public instance, 
 ```
 # Preview, then delete every active object
 ctxt delete --all --dry-run
-ctxt delete --all --confirm=yes --confirm-token=<sha>
+ctxt delete --all --confirm-token=<sha>
 
 # Delete by tag
-ctxt delete --tagged temporary --confirm=yes --confirm-token=<sha>
+ctxt delete --tagged temporary --confirm-token=<sha>
 
 # Delete by mention
-ctxt delete --mention @project.archived --confirm=yes --confirm-token=<sha>
+ctxt delete --mention @project.archived --confirm-token=<sha>
 ```
 
 A filter (`--all`, `--tagged`, `--mention`, `--type`) matches active objects only. Objects in the inbox, raw or discarded state are deleted by `--id`; find them with `ctxt list --status all`.
