@@ -64,14 +64,15 @@ go build -o dpkms cmd/dpkms/main.go
 | `ctxt analyze` | Enqueue an ingestion job (supports clipboard fallback) |
 | `ctxt inbox` | Manage inbox items (list, triage, discard, clear) |
 | `ctxt job` | Inspect/manage ingestion jobs |
-| `ctxt list` | Query knowledge objects (local + registries) |
+| `ctxt list` | Query knowledge objects on the dpkms instance |
 | `ctxt find <query>` | Semantic search (supports clipboard fallback) |
-| `ctxt open <id>` | Display knowledge object details (supports clipboard fallback) |
+| `ctxt show <id>` | Display knowledge object details (supports clipboard fallback) |
+| `ctxt export <id>` | Print a knowledge object as JSON or YAML |
 | `ctxt delete` | Remove knowledge objects |
 | `ctxt edit` | Modify knowledge object metadata |
 | `ctxt reprocess` | Re-run an enrichment step on an object, as a dpkms job |
 | `ctxt profile` | Manage focus profiles |
-| `ctxt make` | Generate compositions (briefs, plans) |
+| `ctxt compose` | Generate compositions (briefs, plans) |
 | `ctxt stats` | Live at-a-glance system summary |
 | `ctxt instance` | Multi-instance targeting (use, list, current) |
 | `ctxt config` | Configuration operations |
@@ -255,8 +256,7 @@ ctxt job cancel <id>
 
 ## `ctxt list`
 
-Query knowledge objects across local storage and registries.
-Supports tags, hints, mentions, entities, and AST query language.
+Query the knowledge objects of the dpkms instance ctxt resolves (`--server`, `--instance`, `CTXT_INSTANCE`, `ctxt instance use`, then config). Filters go to `GET /api/v1/objects`, `--facets` also calls `GET /api/v1/objects/facets`, and `--q` calls `GET /api/v1/search`. All need `read:objects`. ctxt never opens a local store.
 
 ### Usage
 
@@ -266,30 +266,35 @@ ctxt list <filters> <options>
 
 ### Filters
 
+Filters combine with AND.
+
 | Flag | Description |
 |------|-------------|
-| `--type <type>` | Filter by knowledge object type |
-| `--tagged <t1,t2>` | Filter by tags |
-| `--hint <#h1,#h2>` | Filter by hints |
-| `--mention <@slug>` | Filter by mention |
-| `--pipeline <name>` | Filter by pipeline |
-| `--subtype <name>` | Filter by subtype |
-| `--before <ISO>` | Created before |
-| `--after <ISO>` | Created after |
-| `--orig-lang <code>` | Original language |
-| `--profile <name>` | Focus profile filter |
-| `--q "<query>"` | AST-based query |
+| `--type <type>` | Knowledge object type |
+| `--subtype <name>` | Subtype |
+| `--tagged <tag>` | One tag. Match several with `--q "tag=in=(a,b)"` |
+| `--mention <@ns.slug>` | Mention (`@ns.slug` or `ctxt://` URI) |
+| `--pipeline <name>` | Pipeline |
+| `--status <s>` | `active` (default), `inbox`, `discarded`, `raw` or `all` |
+| `--after <date>` / `--before <date>` | Created on or after / on or before: `YYYY-MM-DD` (midnight UTC) or RFC 3339 |
+| `--meta-type <type>` | Metadata type (e.g. `observation`, `task`) |
+| `--topic <t>` / `--person <p>` / `--source-type <s>` | Metadata topic, person, source type |
+| `--since <date>` / `--until <date>` | A date mentioned in the content falls in the range: `YYYY-MM-DD` |
+| `--q "<rsql>"` | RSQL query answered by the instance's search, instead of the filters |
 
 ### Options
 
 | Flag | Description |
 |------|-------------|
-| `--limit <n>` | Max results |
-| `--start <offset>` | Pagination |
-| `--sort <view|match|recent|weight|score>` | Sorting |
-| `--dir <asc|desc>` | Sort direction |
-| `--json` | JSON output |
-| `--yaml` | YAML output |
+| `--limit <n>` | Max results (default 50; 0 returns every match) |
+| `--start <offset>` | Pagination offset |
+| `--sort <key>` | `created` (default; `recent` is a synonym) or `updated` |
+| `--dir <asc\|desc>` | Sort direction (default `desc`) |
+| `--facets` | Also print counts by metadata type |
+| `--cursor <name>` / `--advance` | Named cursor, kept in a client file: list only objects created since the cursor's last position, oldest first; `--advance` moves it |
+| `--format json\|yaml` | Structured output |
+
+A malformed date, several tags in `--tagged`, or an unknown `--sort` / `--dir` value exits 2. An unreachable instance exits 70, a refused token 5.
 
 ---
 
@@ -316,21 +321,38 @@ ctxt find <query> <options>
 
 ---
 
-## `ctxt open`
+## `ctxt show`
 
-Display knowledge object details including mentions, resolved entities, and metadata.
+Display a knowledge object's details, read from the dpkms instance (`GET /api/v1/objects/{id}`), with the objects related to it through shared mentions (`GET /api/v1/objects/{id}/related`). Needs `read:objects`.
 
-**If no ID is provided, `ctxt open` will check the system clipboard for an object ID.**
+**If no ID is provided, `ctxt show` will check the system clipboard for an object ID.**
 
 ```bash
-ctxt open <id>
+ctxt show <id> [--raw] [--format json|yaml]
 ```
 
-Options:
+`--raw` and `--format` print the object itself. An unknown ID exits 3, an unreachable instance 70, a refused token 5.
 
-- `--raw`
-- `--json`
-- `--yaml`
+---
+
+## `ctxt export`
+
+Print a knowledge object read from the dpkms instance (`GET /api/v1/objects/{id}`) as JSON, or YAML with `--format yaml`. Same exit codes as `ctxt show`.
+
+```bash
+ctxt export <id> [--format yaml]
+```
+
+---
+
+## `ctxt classify`
+
+Run classification on text, or on an object when the argument starts with `o-`. The object is read from the dpkms instance (`GET /api/v1/objects/{id}`); classification runs in the ctxt process on its first summary, else its text, else its raw content.
+
+```bash
+ctxt classify "<text>"
+ctxt classify <o-id>
+```
 
 ---
 
@@ -413,18 +435,21 @@ ctxt profile create <name> --config <path>
 ctxt profile rm <name> --confirm=yes
 ctxt profile set <name>
 ctxt profile unset <name>
+ctxt profile schema evolve <name>
 ```
+
+`ctxt profile schema evolve` reads the 100 most recently created objects from the dpkms instance (`GET /api/v1/objects`, `read:objects`) and suggests entity types and topics the profile's schema lacks. The analysis runs in the ctxt process; the schema is not changed.
 
 ---
 
-## `ctxt make`
+## `ctxt compose`
 
-Generate compositions from knowledge objects.
+Generate a composition from knowledge objects. ctxt reads the 100 most recently created objects the filters select from the dpkms instance (`GET /api/v1/objects`, `read:objects`) and renders them locally.
 
 ### Usage
 
 ```bash
-ctxt make <type> <options>
+ctxt compose <type> <options>
 ```
 
 ### Types
@@ -440,11 +465,14 @@ ctxt make <type> <options>
 
 | Flag | Description |
 |------|-------------|
-| `--profile <name>` | Use focus profile |
-| `--mention <@slug>` | Focus on specific mentions |
-| `--tagged <t1,t2>` | Focus on specific tags |
-| `--since <ISO>` | Include knowledge since date |
-| `--output <path>` | Write to file |
+| `--mention <@slug>` | Objects that mention the entity |
+| `--tagged <tag>` | Objects carrying one tag |
+| `--since <date>` / `--until <date>` | Created on or after / on or before: `YYYY-MM-DD` or RFC 3339 |
+| `--export markdown\|json` | Output format; `json` includes structured citations |
+| `--no-citations` | No inline `[ref:ID]` markers |
+| `--output-file <path>` | Write to file |
+
+An unknown type, a malformed date or several tags exit 2. An unreachable instance exits 70, a refused token 5.
 
 ---
 

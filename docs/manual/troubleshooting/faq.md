@@ -81,7 +81,7 @@ Start broad, then constrain:
 
 ```bash
 ctxt find "checkout conversion issues" --limit 10
-ctxt list --tag checkout,conversion --after 2026-02-01 --limit 20
+ctxt list --tagged checkout --after 2026-02-01 --limit 20
 ctxt list --q "type==url;tag=in=(checkout,conversion)" --limit 20
 ```
 
@@ -127,7 +127,7 @@ Validate source scope first:
 
 ```bash
 ctxt find "checkout redesign decisions" --limit 10
-ctxt list --tag checkout,decision --after 2026-02-01 --limit 20
+ctxt list --q "tag=in=(checkout,decision)" --limit 20
 ```
 
 Then regenerate with tighter filters:

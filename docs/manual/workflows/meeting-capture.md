@@ -115,7 +115,7 @@ Meeting sess_a1b2c3d4e5f6
 When done, you can find the meeting:
 
 ```bash
-ctxt list --type meeting --since today
+ctxt list --type meeting --after 2026-10-12
 ctxt show <object_id>
 ctxt session show sess_a1b2c3d4e5f6
 ```

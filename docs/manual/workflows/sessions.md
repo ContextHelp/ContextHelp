@@ -76,22 +76,13 @@ ctxt session tail
 
 Streams every event joining the active session as it's captured. Useful during work for "what's ctxt actually picking up right now?"
 
-### Step 4: Compose by session
+### Step 4: Compose a session's time range
+
+`ctxt compose` does not filter by session. Pass the session's start and end times as RFC 3339 timestamps; it composes the objects created in that range:
 
 ```bash
-ctxt compose --session sess_a1b2c3d4e5f6
-ctxt compose --session sess_a1b2c3d4e5f6 --template meeting-recap
-ctxt compose --session sess_a1b2c3d4e5f6 --template followup-actions
+ctxt compose summary --since 2026-10-12T13:00:00Z --until 2026-10-12T15:30:00Z
 ```
-
-Or compose by time-range (auto-resolves to overlapping sessions):
-
-```bash
-ctxt compose --since "2 hours ago" --template work-summary
-ctxt compose --since "yesterday afternoon" --until "yesterday evening"
-```
-
-Template registry is the same one used by other compose commands; sessions just give you a clean scope.
 
 ### Step 5: Tune the cutter
 
@@ -136,8 +127,8 @@ ctxt analyze "..." --session-id sess_a1b2c3d4e5f6
 
 ```bash
 ctxt session list --since today
-# Pick the interesting ones, then:
-ctxt compose --session <id> --template daily-recap
+# Pick the interesting ones, then compose each one's time range:
+ctxt compose summary --since <start> --until <end>
 ```
 
 ### "Pull together the entire investigation of bug #4521"
@@ -145,8 +136,8 @@ ctxt compose --session <id> --template daily-recap
 ```bash
 # If the work spanned several sessions:
 ctxt session list --since "2 weeks ago" | grep -i "4521\|auth"
-# Compose across multiple sessions:
-ctxt compose --session sess_a,sess_b,sess_c --template investigation-summary
+# Compose the range from the first session's start to the last one's end:
+ctxt compose summary --since <first-start> --until <last-end>
 ```
 
 ### "What apps am I spending session time in?"

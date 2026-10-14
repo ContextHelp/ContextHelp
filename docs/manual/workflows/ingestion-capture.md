@@ -128,7 +128,7 @@ List objects by type/tag/date:
 
 ```bash
 ctxt list --type url --limit 20
-ctxt list --tag checkout,conversion --after 2026-02-01
+ctxt list --tagged checkout --after 2026-02-01
 ```
 
 Open a specific object:
