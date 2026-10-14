@@ -27,9 +27,6 @@ func TestTrustGate_Trusted_AllowsWrite(t *testing.T) {
 	if rec != nil {
 		t.Fatal("trusted write should return nil record")
 	}
-	if len(g.PendingApprovals()) != 0 {
-		t.Fatal("no pending approvals expected for trusted write")
-	}
 }
 
 func TestTrustGate_Untrusted_QueuesApproval(t *testing.T) {
@@ -51,10 +48,6 @@ func TestTrustGate_Untrusted_QueuesApproval(t *testing.T) {
 	if rec.Entity.Slug != "ai.bert" {
 		t.Errorf("wrong slug: got %q", rec.Entity.Slug)
 	}
-	pending := g.PendingApprovals()
-	if len(pending) != 1 {
-		t.Fatalf("pending count: got %d, want 1", len(pending))
-	}
 }
 
 func TestTrustGate_Sandboxed_BlocksSilently(t *testing.T) {
@@ -73,10 +66,6 @@ func TestTrustGate_Sandboxed_BlocksSilently(t *testing.T) {
 	if rec != nil {
 		t.Fatal("sandboxed should not produce an approval record")
 	}
-	// Nothing should be queued — sandboxed is a hard block.
-	if len(g.PendingApprovals()) != 0 {
-		t.Fatal("sandboxed should not queue for approval")
-	}
 }
 
 func TestTrustGate_DefaultLevel_TreatsAsUntrusted(t *testing.T) {
@@ -93,32 +82,5 @@ func TestTrustGate_DefaultLevel_TreatsAsUntrusted(t *testing.T) {
 	_, err := g.CheckWrite(context.Background(), e, cfg.URL, level)
 	if !errors.Is(err, registry.ErrEntityRequiresApproval) {
 		t.Fatalf("default-trust should queue for approval, got: %v", err)
-	}
-}
-
-func TestTrustGate_Approve_RemovesFromPending(t *testing.T) {
-	g := registry.NewTrustGate()
-	e := makeEntity("ai.bert")
-	url := "https://untrusted.example.com"
-
-	g.CheckWrite(context.Background(), e, url, config.RegistryTrustLevelUntrusted) //nolint:errcheck
-
-	approved, err := g.Approve(url, "ai.bert")
-	if err != nil {
-		t.Fatalf("Approve: %v", err)
-	}
-	if approved.Entity.Slug != "ai.bert" {
-		t.Errorf("wrong approved slug: %q", approved.Entity.Slug)
-	}
-	if len(g.PendingApprovals()) != 0 {
-		t.Fatal("pending list should be empty after approval")
-	}
-}
-
-func TestTrustGate_Approve_UnknownSlug_ReturnsError(t *testing.T) {
-	g := registry.NewTrustGate()
-	_, err := g.Approve("https://example.com", "nonexistent.slug")
-	if err == nil {
-		t.Fatal("expected error for unknown approval slug")
 	}
 }

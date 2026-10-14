@@ -75,7 +75,11 @@ ctxt registry add client-ops https://founder.example.com/registries/client-ops
 ctxt registry sync client-ops
 ```
 
-Network registry uses the same `ctxt registry sync` surface; auth via `ctxt registry auth-set`.
+Network registry uses the same `ctxt registry sync` surface. A protected registry needs its token first:
+`ctxt registry login client-ops` stores it in the OS keychain. A dpkms host has no keychain and reads
+it from its secrets store instead: `dpkms secret set registry/client_ops` with
+`{"origin": "https://founder.example.com", "token": "…"}` on stdin (see
+[secret management](https://github.com/ContextHelp/ContextHelp/blob/next/docs/security/secret-management.md)).
 
 ### Step 4: Founder captures with mention + routing intent
 
@@ -113,7 +117,8 @@ the next call returns only newer items.
 
 ```bash
 ctxt registry delete client-ops --confirm=yes   # employee-side
-# Optional: founder rotates registry token via ctxt registry auth-set
+ctxt registry logout client-ops                 # drop the stored token, if you logged in
+# Optional: founder rotates the registry token; remaining employees run ctxt registry login client-ops
 ```
 
 Removing the registry subscription cuts the lens; cursor file can be deleted or left dormant.
@@ -148,7 +153,9 @@ Removing the registry subscription cuts the lens; cursor file can be deleted or 
 
 ### Network registry auth failure
 
-- Re-issue token: `ctxt registry auth-set <name>`.
+- Store a fresh token: `ctxt registry login <name>` replaces the keychain entry. On a dpkms host,
+  `dpkms secret set registry/<name>` (characters other than letters, digits and `_` in the name
+  become `_`); a 401 or 403 names the key to set.
 - Confirm registry HTTP endpoint reachable; check firewall + cert.
 - Use `ctxt registry capabilities <name>` to verify protocol compatibility.
 

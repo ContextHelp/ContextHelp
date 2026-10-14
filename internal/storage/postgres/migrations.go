@@ -198,6 +198,24 @@ var pgMigrations = []pgMigration{
 	// migration 010: without it an alias outlived its object and kept
 	// resolving to a deleted id. Orphans are deleted before the constraint.
 	{Version: 23, Name: "aliases object FK with cascade", fn: migrateAliasesObjectFK},
+	// Approval queue for entities untrusted registries serve, mirroring
+	// SQLite migration 044.
+	{Version: 24, Name: "registry_pending_entities", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS registry_pending_entities (
+			id               TEXT PRIMARY KEY,
+			registry_name    TEXT NOT NULL,
+			registry_url     TEXT NOT NULL,
+			slug             TEXT NOT NULL,
+			namespace        TEXT NOT NULL DEFAULT '',
+			title            TEXT NOT NULL DEFAULT '',
+			version          TEXT NOT NULL,
+			payload          JSONB NOT NULL,
+			signature_status TEXT NOT NULL,
+			first_seen_at    TIMESTAMPTZ NOT NULL,
+			last_seen_at     TIMESTAMPTZ NOT NULL,
+			UNIQUE (registry_name, slug, version)
+		)`,
+	}},
 }
 
 // migrateAliasesObjectFK deletes aliases whose object is gone, then adds

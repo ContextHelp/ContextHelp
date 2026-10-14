@@ -42,8 +42,8 @@ type SyncResult struct {
 	Upserted    int
 	Skipped     int // entities the integrity guard rejected
 	// PendingApproval counts entities an untrusted registry served: not
-	// written, since its writes need approval (TrustGate). The queue
-	// lives only as long as the Syncer.
+	// written, since its writes need approval (TrustGate). With a queue
+	// attached (WithPendingQueue) they wait there for approve or reject.
 	PendingApproval int
 	// Blocked counts entities a sandboxed registry served: never written.
 	Blocked   int
@@ -75,6 +75,10 @@ type MultiSyncResult struct {
 	// OfflineRegistries lists registry URLs that were unreachable; their cached
 	// local values were used instead.
 	OfflineRegistries []string
+	// PendingApproval and Blocked total the per-registry counts: entities
+	// the trust gate held back, never reconciled nor written.
+	PendingApproval int
+	Blocked         int
 }
 
 // Syncer performs registry syncs against the entity store.
@@ -87,6 +91,7 @@ type Syncer struct {
 	client            *http.Client
 	creds             *Credentials
 	requireSignatures bool
+	pending           storage.PendingEntityStore
 }
 
 // New returns a Syncer backed by the given entity store.
@@ -99,9 +104,13 @@ func New(store storage.EntityStore) *Syncer {
 	}
 }
 
-// TrustGate returns the Syncer's TrustGate for inspecting pending approvals.
-func (s *Syncer) TrustGateState() *TrustGate {
-	return s.trustGate
+// WithPendingQueue attaches the approval queue: entities an untrusted
+// registry serves are queued there instead of only counted, and an
+// entity a sync or approval writes leaves it. Without one, held
+// entities are counted and dropped.
+func (s *Syncer) WithPendingQueue(q storage.PendingEntityStore) *Syncer {
+	s.pending = q
+	return s
 }
 
 // WithEntitlements attaches an entitlement store so the syncer can check and
@@ -169,7 +178,7 @@ func (s *Syncer) Sync(ctx context.Context, cfg config.RegistryConfig) (*SyncResu
 
 	result := &SyncResult{RegistryURL: cfg.URL, SyncMode: mode}
 
-	entries, err := s.fetchAndVerifyEntityIndex(ctx, cfg.URL)
+	entries, sig, err := s.fetchAndVerifyEntityIndex(ctx, cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("fetch entity index from %s: %w", config.RedactDSN(cfg.URL), err)
 	}
@@ -195,33 +204,133 @@ func (s *Syncer) Sync(ctx context.Context, cfg config.RegistryConfig) (*SyncResu
 			continue
 		}
 
-		// Trust gate: enforce per-registry trust level before writing.
-		if rec, err := s.trustGate.CheckWrite(ctx, e, cfg.URL, cfg.EffectiveTrustLevel()); err != nil {
-			if rec != nil {
-				result.PendingApproval++
-			} else {
-				result.Blocked++
-			}
+		if !s.admit(ctx, e, cfg, sig, result) {
 			continue
 		}
 
-		if mode == config.RegistrySyncModeThin {
-			if err := s.store.UpsertThin(ctx, e); err != nil {
-				result.Errors = append(result.Errors, fmt.Errorf("upsert thin %s: %w", e.Slug, err))
-				continue
-			}
-		} else {
-			// full mode: store with full status; caller fetches definitions separately.
-			e.ContentStatus = storage.ContentStatusFull
-			if err := s.store.Upsert(ctx, e); err != nil {
-				result.Errors = append(result.Errors, fmt.Errorf("upsert %s: %w", e.Slug, err))
-				continue
-			}
+		if err := s.write(ctx, e, mode); err != nil {
+			result.Errors = append(result.Errors, err)
+			continue
 		}
+		s.unqueue(ctx, queueName(cfg), e.Slug, result)
 		result.Upserted++
 	}
 
 	return result, nil
+}
+
+// admit runs e through the trust gate for cfg's effective trust_level.
+// It reports whether e may be written. When not, e counts on res as
+// blocked (sandboxed: never queued) or pending approval (untrusted),
+// and a pending entity goes into the approval queue, when one is
+// attached, with sig, the signature status of the index it came in.
+func (s *Syncer) admit(ctx context.Context, e *storage.Entity, cfg config.RegistryConfig, sig string, res *SyncResult) bool {
+	rec, err := s.trustGate.CheckWrite(ctx, e, cfg.URL, cfg.EffectiveTrustLevel())
+	if err == nil {
+		return true
+	}
+	if rec == nil {
+		res.Blocked++
+		return false
+	}
+	if s.approvedAlready(ctx, e, cfg.URL) {
+		return false
+	}
+	if s.pending != nil {
+		name, version := queueName(cfg), storage.PendingVersion(e)
+		p := &storage.PendingEntity{
+			ID:           storage.PendingEntityID(name, e.Slug, version),
+			RegistryName: name, RegistryURL: cfg.URL,
+			Slug: e.Slug, Namespace: e.Namespace, Title: e.Title, Version: version,
+			Entity: e, SignatureStatus: sig,
+			FirstSeenAt: e.UpdatedAt, LastSeenAt: e.UpdatedAt,
+		}
+		if err := s.pending.Upsert(ctx, p); err != nil {
+			res.Errors = append(res.Errors, fmt.Errorf("queue %s for approval: %w", e.Slug, err))
+			return false
+		}
+	}
+	res.PendingApproval++
+	return false
+}
+
+// approvedAlready reports whether the store holds e at its version from
+// the same registry: an earlier approval wrote it, so there is nothing
+// left to approve and e is neither queued nor counted.
+func (s *Syncer) approvedAlready(ctx context.Context, e *storage.Entity, registryURL string) bool {
+	if e.VersionHash == "" {
+		return false
+	}
+	got, err := s.store.Get(ctx, e.Slug)
+	return err == nil && got != nil && got.RegistryURL == registryURL && got.VersionHash == e.VersionHash
+}
+
+// write stores e the way a sync in mode does: a thin stub, or a full
+// record (definitions are pulled separately).
+func (s *Syncer) write(ctx context.Context, e *storage.Entity, mode config.RegistrySyncMode) error {
+	if mode == config.RegistrySyncModeThin {
+		if err := s.store.UpsertThin(ctx, e); err != nil {
+			return fmt.Errorf("upsert thin %s: %w", e.Slug, err)
+		}
+		return nil
+	}
+	e.ContentStatus = storage.ContentStatusFull
+	if err := s.store.Upsert(ctx, e); err != nil {
+		return fmt.Errorf("upsert %s: %w", e.Slug, err)
+	}
+	return nil
+}
+
+// unqueue drops every queued version of slug from registry: it was just
+// written, so there is nothing left to approve. A failure is reported
+// on res (when given); the write stands.
+func (s *Syncer) unqueue(ctx context.Context, registry, slug string, res *SyncResult) {
+	if s.pending == nil {
+		return
+	}
+	if _, err := s.pending.DeleteEntity(ctx, registry, slug); err != nil && res != nil {
+		res.Errors = append(res.Errors, fmt.Errorf("drop %s from approval queue: %w", slug, err))
+	}
+}
+
+// queueName is the registry name the approval queue files cfg's
+// entities under: its configured name, else its URL.
+func queueName(cfg config.RegistryConfig) string {
+	if cfg.Name != "" {
+		return cfg.Name
+	}
+	return cfg.URL
+}
+
+// ProvenanceKey is the entity metadata key Approve records where an
+// approved entity came from.
+const ProvenanceKey = "provenance"
+
+// Approve writes queued entity p the way a sync in mode writes a
+// trusted registry's entities, with metadata provenance "approved from
+// <registry>" (kept by full writes; a thin stub stores no metadata),
+// then drops every queued version of its slug from that registry.
+func (s *Syncer) Approve(ctx context.Context, p *storage.PendingEntity, mode config.RegistrySyncMode) error {
+	if p.Entity == nil {
+		return fmt.Errorf("pending entity %s has no payload", p.ID)
+	}
+	e := *p.Entity
+	e.Metadata = make(map[string]any, len(p.Entity.Metadata)+1)
+	for k, v := range p.Entity.Metadata {
+		e.Metadata[k] = v
+	}
+	e.Metadata[ProvenanceKey] = "approved from " + p.RegistryName
+	now := time.Now().Truncate(time.Second)
+	e.CreatedAt, e.UpdatedAt = now, now
+	if err := s.write(ctx, &e, mode); err != nil {
+		return err
+	}
+	if s.pending != nil {
+		if _, err := s.pending.DeleteEntity(ctx, p.RegistryName, p.Slug); err != nil {
+			return fmt.Errorf("approved %s, but dropping it from the queue failed: %w", p.Slug, err)
+		}
+	}
+	return nil
 }
 
 // SyncWithOfflineFallback wraps Sync with offline-first semantics.
@@ -262,6 +371,11 @@ func (s *Syncer) SyncWithOfflineFallback(
 //  2. Among remote registries: strategy resolves per-field conflicts.
 //  3. Unreachable registries: cached local values are kept; registry is listed in
 //     MultiSyncResult.OfflineRegistries.
+//
+// Each registry's trust_level gates its entities exactly as in Sync:
+// an untrusted or sandboxed registry's entities never reach
+// reconciliation, so they are never written; they are counted per
+// registry (PendingApproval, Blocked) and in the totals.
 func (s *Syncer) MultiSync(ctx context.Context, cfg MultiSyncConfig) (*MultiSyncResult, error) {
 	strategy := cfg.Strategy
 	if strategy == "" {
@@ -276,7 +390,7 @@ func (s *Syncer) MultiSync(ctx context.Context, cfg MultiSyncConfig) (*MultiSync
 
 	for _, regCfg := range cfg.Registries {
 		trust := cfg.TrustScores[regCfg.URL]
-		entries, fetchErr := s.fetchAndVerifyEntityIndex(ctx, regCfg.URL)
+		entries, sig, fetchErr := s.fetchAndVerifyEntityIndex(ctx, regCfg.URL)
 		if fetchErr != nil {
 			slog.WarnContext(ctx, "multi-sync: registry unreachable",
 				"registry", config.RedactDSN(regCfg.URL), "err", fetchErr)
@@ -308,6 +422,11 @@ func (s *Syncer) MultiSync(ctx context.Context, cfg MultiSyncConfig) (*MultiSync
 				perReg.Skipped++
 				continue
 			}
+			// Same trust gate as Sync: reconciliation only ever sees
+			// entities the registry's trust_level lets it write.
+			if !s.admit(ctx, e, regCfg, sig, perReg) {
+				continue
+			}
 			candidate := RegistryEntity{
 				Entity:      e,
 				RegistryURL: regCfg.URL,
@@ -317,6 +436,8 @@ func (s *Syncer) MultiSync(ctx context.Context, cfg MultiSyncConfig) (*MultiSync
 			allCandidates[entry.Slug] = append(allCandidates[entry.Slug], candidate)
 		}
 		out.PerRegistry = append(out.PerRegistry, perReg)
+		out.PendingApproval += perReg.PendingApproval
+		out.Blocked += perReg.Blocked
 	}
 
 	// Phase 2: reconcile and write.
@@ -325,24 +446,20 @@ func (s *Syncer) MultiSync(ctx context.Context, cfg MultiSyncConfig) (*MultiSync
 		mode = config.RegistrySyncModeFull
 	}
 
+	byURL := make(map[string]config.RegistryConfig, len(cfg.Registries))
+	for _, r := range cfg.Registries {
+		byURL[r.URL] = r
+	}
 	for slug, candidates := range allCandidates {
 		rec := Reconcile(slug, candidates, strategy)
 		out.Conflicts = append(out.Conflicts, rec.Conflicts...)
 
-		e := rec.Merged
-		if mode == config.RegistrySyncModeThin {
-			if err := s.store.UpsertThin(ctx, e); err != nil {
-				slog.WarnContext(ctx, "multi-sync: upsert thin failed",
-					"slug", slug, "err", err)
-				continue
-			}
-		} else {
-			e.ContentStatus = storage.ContentStatusFull
-			if err := s.store.Upsert(ctx, e); err != nil {
-				slog.WarnContext(ctx, "multi-sync: upsert failed",
-					"slug", slug, "err", err)
-				continue
-			}
+		if err := s.write(ctx, rec.Merged, mode); err != nil {
+			slog.WarnContext(ctx, "multi-sync: write failed", "slug", slug, "err", err)
+			continue
+		}
+		for _, c := range candidates {
+			s.unqueue(ctx, queueName(byURL[c.RegistryURL]), slug, nil)
 		}
 		out.Merged++
 	}
@@ -490,7 +607,10 @@ func (s *Syncer) fetchEntityIndex(ctx context.Context, registryURL string) ([]En
 //
 // When requireSignatures is true and the registry has no public_key,
 // ErrSignatureRequired is returned.
-func (s *Syncer) fetchAndVerifyEntityIndex(ctx context.Context, registryURL string) ([]EntityIndexEntry, error) {
+//
+// The returned status is storage.SignatureVerified or
+// storage.SignatureUnsigned.
+func (s *Syncer) fetchAndVerifyEntityIndex(ctx context.Context, registryURL string) ([]EntityIndexEntry, string, error) {
 	// Determine whether we need to verify signatures.
 	var publicKey string
 	var cachedManifest *storage.RegistryCache
@@ -504,39 +624,40 @@ func (s *Syncer) fetchAndVerifyEntityIndex(ctx context.Context, registryURL stri
 
 	// If require_signatures is on and there is no public key, refuse to sync.
 	if s.requireSignatures && publicKey == "" {
-		return nil, ErrSignatureRequired
+		return nil, "", ErrSignatureRequired
 	}
 
 	// If there is no public key declared, skip verification entirely.
 	if publicKey == "" {
-		return s.fetchEntityIndex(ctx, registryURL)
+		entries, err := s.fetchEntityIndex(ctx, registryURL)
+		return entries, storage.SignatureUnsigned, err
 	}
 
 	// --- Verified path ---
 	indexURL := registryURL + "/entities/index"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, indexURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, config.RedactURLError(err)
+		return nil, "", config.RedactURLError(err)
 	}
 	defer resp.Body.Close()
 
 	if err := s.creds.CheckResponse(resp); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("registry returned HTTP %d", resp.StatusCode)
+		return nil, "", fmt.Errorf("registry returned HTTP %d", resp.StatusCode)
 	}
 
 	// Buffer the body so we can both verify and decode it.
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read entity index body: %w", err)
+		return nil, "", fmt.Errorf("read entity index body: %w", err)
 	}
 
 	// Try Content-Signature header first; fall back to .sig sidecar.
@@ -550,36 +671,37 @@ func (s *Syncer) fetchAndVerifyEntityIndex(ctx context.Context, registryURL stri
 
 	verifyErr := VerifyResponseSignature(registryURL, publicKey, body, resp, sigBody)
 	if verifyErr != nil {
-		// Update trust status to failed if we have a registry store.
-		if s.registryStore != nil && cachedManifest != nil {
-			cachedManifest.TrustStatus = storage.RegistryTrustFailed
-			cachedManifest.KeyFingerprint = fingerprint
-			_ = s.registryStore.CacheManifest(ctx, cachedManifest)
-		}
+		s.recordTrust(ctx, cachedManifest, storage.RegistryTrustFailed, fingerprint)
 		var missing ErrSignatureMissing
 		if errors.As(verifyErr, &missing) {
 			// Missing sig on a declared-key registry → abort sync.
 			slog.ErrorContext(ctx, "registry sync: signature missing",
 				"registry", config.RedactDSN(registryURL), "fingerprint", fingerprint)
-			return nil, verifyErr
+			return nil, "", verifyErr
 		}
 		slog.ErrorContext(ctx, "registry sync: signature verification failed",
 			"registry", config.RedactDSN(registryURL), "fingerprint", fingerprint, "err", verifyErr)
-		return nil, verifyErr
+		return nil, "", verifyErr
 	}
 
-	// Update trust status to verified.
-	if s.registryStore != nil && cachedManifest != nil {
-		cachedManifest.TrustStatus = storage.RegistryTrustVerified
-		cachedManifest.KeyFingerprint = fingerprint
-		_ = s.registryStore.CacheManifest(ctx, cachedManifest)
-	}
+	s.recordTrust(ctx, cachedManifest, storage.RegistryTrustVerified, fingerprint)
 	slog.DebugContext(ctx, "registry sync: signature verified",
 		"registry", config.RedactDSN(registryURL), "fingerprint", fingerprint)
 
 	var entries []EntityIndexEntry
 	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&entries); err != nil {
-		return nil, fmt.Errorf("decode entity index: %w", err)
+		return nil, "", fmt.Errorf("decode entity index: %w", err)
 	}
-	return entries, nil
+	return entries, storage.SignatureVerified, nil
+}
+
+// recordTrust stores the outcome of a signature check on the cached
+// manifest, when there is a registry store and a cached manifest.
+func (s *Syncer) recordTrust(ctx context.Context, cache *storage.RegistryCache, status storage.RegistryTrustStatus, fingerprint string) {
+	if s.registryStore == nil || cache == nil {
+		return
+	}
+	cache.TrustStatus = status
+	cache.KeyFingerprint = fingerprint
+	_ = s.registryStore.CacheManifest(ctx, cache)
 }

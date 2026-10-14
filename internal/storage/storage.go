@@ -81,6 +81,7 @@ type StorageDriver interface {
 	Attachments() AttachmentStore
 	Resurfacing() ResurfacingQueueStore
 	Entitlements() EntitlementStore
+	PendingEntities() PendingEntityStore
 	Metering() MeteringStore
 	Embeddings() EmbeddingStore
 	SavedSearches() SavedSearchStore

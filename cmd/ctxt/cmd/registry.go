@@ -151,7 +151,7 @@ var registryEntitlementsCmd = &cobra.Command{
 
 Examples:
   ctxt registry entitlements
-  ctxt registry entitlements --json`,
+  ctxt registry entitlements --format json`,
 	RunE: runRegistryEntitlements,
 }
 
@@ -170,7 +170,7 @@ Examples:
   ctxt registry usage example-paid
 
   # Output as JSON
-  ctxt registry usage --json
+  ctxt registry usage --format json
 
   # Show usage for a custom period (days back from now)
   ctxt registry usage --days 30`,
@@ -192,7 +192,7 @@ Examples:
   ctxt registry search frontend
 
   # Output as JSON
-  ctxt registry search react --json
+  ctxt registry search react --format json
 
   # Use a custom index URL
   ctxt registry search devops --index-url https://myorg.example.com/registry-index.json`,
@@ -276,7 +276,7 @@ func init() {
 	cliconv.WithSideEffect(registryListCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(registryListCmd, []cliconv.Example{
 		{Title: "List cached registry manifests", Command: "ctxt registry list"},
-		{Title: "List as JSON", Command: "ctxt registry list --json"},
+		{Title: "List as JSON", Command: "ctxt registry list --format json"},
 	})
 
 	cliconv.WithSideEffect(registryAddCmd, cliconv.SideEffectWrite)
@@ -303,7 +303,7 @@ func init() {
 	cliconv.WithSideEffect(registryInfoCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(registryInfoCmd, []cliconv.Example{
 		{Title: "Show registry info", Command: "ctxt registry info uxpatterns"},
-		{Title: "Emit info as JSON", Command: "ctxt registry info uxpatterns --json"},
+		{Title: "Emit info as JSON", Command: "ctxt registry info uxpatterns --format json"},
 	})
 
 	cliconv.WithSideEffect(registrySyncCmd, cliconv.SideEffectWrite)
@@ -320,7 +320,7 @@ func init() {
 	cliconv.WithIdempotency(registrySubmitCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(registrySubmitCmd, []cliconv.Example{
 		{Title: "Validate a bundle directory", Command: "ctxt registry submit ./mybundle"},
-		{Title: "Emit PR instructions as JSON", Command: "ctxt registry submit ./mybundle --json"},
+		{Title: "Emit PR instructions as JSON", Command: "ctxt registry submit ./mybundle --format json"},
 	})
 	cliconv.WithNextSteps(registrySubmitCmd, []cliconv.NextStep{
 		{Suggest: "open https://github.com/ideacrafterslabs/registry", Reason: "follow the printed PR template to upstream the bundle"},
@@ -360,7 +360,7 @@ func init() {
 	cliconv.WithIdempotency(registryEntitlementsCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(registryEntitlementsCmd, []cliconv.Example{
 		{Title: "List active entitlements", Command: "ctxt registry entitlements"},
-		{Title: "Emit entitlements as JSON", Command: "ctxt registry entitlements --json"},
+		{Title: "Emit entitlements as JSON", Command: "ctxt registry entitlements --format json"},
 	})
 
 	cliconv.WithSideEffect(registryUsageCmd, cliconv.SideEffectRead)
@@ -373,7 +373,7 @@ func init() {
 	cliconv.WithSideEffect(registrySearchCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(registrySearchCmd, []cliconv.Example{
 		{Title: "Search registries by topic", Command: "ctxt registry search ai"},
-		{Title: "Search and emit JSON", Command: "ctxt registry search react --json"},
+		{Title: "Search and emit JSON", Command: "ctxt registry search react --format json"},
 	})
 }
 
@@ -615,24 +615,40 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 		return runRegistrySyncReconcile(cmd, ctx, svc, registry.MergeStrategy(mergeStrategy))
 	}
 
-	fmt.Printf("Syncing registry %s...\n", name)
+	w := cmd.OutOrStdout()
+	if !isJSONOutput() {
+		fmt.Fprintf(w, "Syncing registry %s...\n", name)
+	}
 	res, err := svc.SyncRegistry(ctx, registryURL)
 	if err != nil {
 		return fmt.Errorf("sync registry: %w", err)
 	}
-	fmt.Println("Registry synced")
+	if isJSONOutput() {
+		return outputJSON(w, map[string]any{
+			"registry":         name,
+			"url":              config.RedactDSN(registryURL),
+			"entity_sync":      res.EntitySync,
+			"trust_level":      res.TrustLevel,
+			"upserted":         res.Upserted,
+			"pending_approval": res.PendingApproval,
+			"blocked":          res.Blocked,
+		})
+	}
+	fmt.Fprintln(w, "Registry synced")
 	if !res.EntitySync {
-		fmt.Println("Entities: none (manifest does not advertise capabilities.entity_sync)")
+		fmt.Fprintln(w, "Entities: none (manifest does not advertise capabilities.entity_sync)")
 		return nil
 	}
-	fmt.Printf("Entities synced: %d\n", res.Upserted)
-	printHeldEntities(os.Stdout, name, res.RegistryEntityCounts)
+	fmt.Fprintf(w, "Entities synced: %d\n", res.Upserted)
+	printHeldEntities(w, name, res.RegistryEntityCounts)
 	return nil
 }
 
 // printHeldEntities says how many entities the registry's trust_level
 // kept out of the local store, and why, so an untrusted registry does
-// not read as an empty one. Prints nothing when none were held.
+// not read as an empty one: an untrusted registry's wait in the approval
+// queue, a sandboxed one's are blocked. Prints nothing when none were
+// held.
 func printHeldEntities(w io.Writer, name string, c service.RegistryEntityCounts) {
 	level := "trust_level " + string(c.TrustLevel)
 	for _, r := range cfg.Registries {
@@ -642,12 +658,14 @@ func printHeldEntities(w io.Writer, name string, c service.RegistryEntityCounts)
 		}
 	}
 	if c.PendingApproval > 0 {
-		fmt.Fprintf(w, "Entities not written: %d (registry not trusted: %s)\n", c.PendingApproval, level)
-		fmt.Fprintln(w, "  An untrusted registry's entity writes need approval, which ctxt does not offer yet;")
-		fmt.Fprintln(w, "  set trust_level: trusted on its registries entry (ctxt config edit) and sync again to write them.")
+		fmt.Fprintf(w, "Entities not written from %s: %d pending approval (ctxt registry pending --registry %s)\n",
+			name, c.PendingApproval, name)
+		fmt.Fprintf(w, "  registry not trusted (%s): review them, then ctxt registry approve or reject;\n", level)
+		fmt.Fprintln(w, "  or set trust_level: trusted on its registries entry (ctxt config edit) and sync again.")
 	}
 	if c.Blocked > 0 {
-		fmt.Fprintf(w, "Entities not written: %d (registry sandboxed: %s never writes to the local graph)\n", c.Blocked, level)
+		fmt.Fprintf(w, "Entities not written from %s: %d blocked (registry sandboxed: %s never writes to the local graph)\n",
+			name, c.Blocked, level)
 	}
 }
 
@@ -659,7 +677,10 @@ func runRegistrySyncReconcile(
 	svc *service.Service,
 	strategy registry.MergeStrategy,
 ) error {
-	fmt.Printf("Syncing all registries with reconciliation (strategy: %s)...\n", strategy)
+	w := cmd.OutOrStdout()
+	if !isJSONOutput() {
+		fmt.Fprintf(w, "Syncing all registries with reconciliation (strategy: %s)...\n", strategy)
+	}
 
 	result, err := svc.SyncAllRegistriesWithReconciliation(ctx, strategy, nil)
 	if err != nil {
@@ -671,14 +692,22 @@ func runRegistrySyncReconcile(
 		for i, u := range result.OfflineRegistries {
 			offline[i] = config.RedactDSN(u)
 		}
-		return outputJSON(cmd.OutOrStdout(), map[string]any{
+		return outputJSON(w, map[string]any{
 			"merged":             result.Merged,
+			"pending_approval":   result.PendingApproval,
+			"blocked":            result.Blocked,
+			"registries":         result.Registries,
 			"conflicts":          result.Conflicts,
 			"offline_registries": offline,
 		})
 	}
 
-	fmt.Printf("Entities merged: %d\n", result.Merged)
+	fmt.Fprintf(w, "Entities merged: %d\n", result.Merged)
+	for _, r := range result.Registries {
+		printHeldEntities(w, r.Name, service.RegistryEntityCounts{
+			TrustLevel: r.TrustLevel, PendingApproval: r.PendingApproval, Blocked: r.Blocked,
+		})
+	}
 
 	if len(result.OfflineRegistries) > 0 {
 		fmt.Fprintf(cmd.OutOrStdout(), "\nOffline registries (cached values preserved):\n")
@@ -710,7 +739,9 @@ func runRegistrySyncDryRun(
 	svc *service.Service,
 	name, registryURL string,
 ) error {
-	fmt.Printf("Dry-run: fetching remote manifest for %s...\n\n", name)
+	if !isJSONOutput() {
+		fmt.Printf("Dry-run: fetching remote manifest for %s...\n\n", name)
+	}
 
 	diffs, err := svc.DiffRegistrySync(ctx, registryURL)
 	if err != nil {

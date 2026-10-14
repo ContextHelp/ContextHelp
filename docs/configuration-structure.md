@@ -151,7 +151,7 @@ registries:
     auth:
       type: bearer             # bearer | api_key | oauth2
     sync_mode: full            # full | thin
-    trust_level: untrusted     # trusted | untrusted | sandboxed
+    trust_level: untrusted     # trusted | untrusted (entities queued for approval) | sandboxed (blocked)
 
 search:                        # sent with each ctxt find query
   default_mode: hybrid         # fts | vector | hybrid

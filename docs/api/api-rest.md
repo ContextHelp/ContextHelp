@@ -156,6 +156,9 @@ Core endpoints:
 - `GET /entities/resolve`
 - `GET /entities/{slug}`
 - `GET /entities/{slug}/backlinks`
+- `GET /entities/registry-pending`
+- `POST /entities/registry-pending/approve`
+- `POST /entities/registry-pending/reject`
 - `GET /pages`
 - `GET /pages/{slug}`
 - `POST /pages/{slug}/refresh`
@@ -916,6 +919,26 @@ Returns one entity by exact slug, with its aliases, description and provenance (
 ### `GET /entities/{slug}/backlinks`
 
 Lists the objects that mention the entity: `{"data": [...objects]}`. The gate check is unmetered. An unknown slug returns `{"data": []}` to an ungated caller and a 404 to a gated one.
+
+### Registry approval queue
+
+Entities an `untrusted` registry serves are not written by sync; they wait here. `sandboxed` registries' entities are blocked, never queued. Every route needs `sync:registries`, which only `admin` holds: listing too, since the payloads are unreviewed content from registries the instance does not trust. `reader` and `writer` tokens get 403 `INSUFFICIENT_SCOPE`.
+
+| Route | Does |
+|---|---|
+| `GET /entities/registry-pending` | Lists the queue; `?registry=<name>` keeps one registry's: `{"pending": [...], "total": N}` |
+| `POST /entities/registry-pending/approve` | Writes the selected entities as a trusted sync would (the registry's `sync_mode`), with metadata `provenance: "approved from <registry>"` on full writes, and drops them from the queue: `{"approved": [...], "total": N}` |
+| `POST /entities/registry-pending/reject` | Drops the selected entities unwritten: `{"rejected": [...], "total": N}` |
+
+A queued entity: `id`, `registry`, `registry_url`, `slug`, `namespace`, `title`, `version` (the `version_hash`, or `sha256:<hex>` of the content when the registry serves none), `entity` (the payload), `signature_status` (`verified` or `unsigned`), `first_seen_at`, `last_seen_at`. The ID is stable for a registry, slug and version.
+
+Approve and reject take `{"ids": ["..."]}`; approve also takes `{"all": true, "registry": "<name>"}`. Unknown fields are rejected.
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | Bad JSON; no IDs and no `all`; `all` without `registry`; IDs together with `all` |
+| 404 | `NOT_FOUND` | An ID is not queued; nothing is written or dropped |
+| 409 | `REGISTRY_SANDBOXED` | Approve of an entity whose registry is now `sandboxed`; nothing is written |
 
 ---
 

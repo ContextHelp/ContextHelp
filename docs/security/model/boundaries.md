@@ -26,7 +26,7 @@ Where data crosses a trust boundary in ctxt and dpkms, and what guards each cros
 
 **Guards**:
 - Signature check: a registry that declares a `public_key` must sign its entity index (Ed25519, `Content-Signature` header or `.sig` sidecar); a bad signature fails the sync. `registries_global.require_signatures: true` refuses registries without a key. Off by default.
-- Trust level per registry (`trust_level`): `trusted` writes entities; `untrusted` (default) and `sandboxed` registries' entities are skipped.
+- Trust level per registry (`trust_level`): `trusted` writes entities; `untrusted` (default) registries' entities are held in the approval queue for an admin to approve or reject; `sandboxed` registries' entities are blocked, never queued.
 - Entity integrity guard rejects malformed or spoofed entities before write.
 - Registry credentials sit in the OS keychain and are never sent over plain `http` to a non-loopback host.
 

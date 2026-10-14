@@ -62,6 +62,9 @@ ctxt registry list
 ctxt registry info <name>
 ctxt registry add <name> <url>
 ctxt registry sync <name>
+ctxt registry pending [--registry <name>]
+ctxt registry approve <id>... | --all --registry <name>   # --confirm=yes --confirm-token=<sha>
+ctxt registry reject <id>...                              # --confirm=yes --confirm-token=<sha>
 ctxt registry delete <name> --confirm=yes
 ```
 

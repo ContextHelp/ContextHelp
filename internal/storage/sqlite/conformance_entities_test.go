@@ -17,3 +17,9 @@ func TestConformance_ThinEntity(t *testing.T) {
 func TestConformance_EntityQuery(t *testing.T) {
 	storagetest.EntityQueryConformance(t, newTestDriver(t))
 }
+
+// TestConformance_PendingEntities runs the cross-driver approval queue
+// contract against a fresh SQLite database.
+func TestConformance_PendingEntities(t *testing.T) {
+	storagetest.PendingEntityConformance(t, newTestDriver(t))
+}

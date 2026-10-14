@@ -844,7 +844,7 @@ type RegistryEntityCounts struct {
 	// Upserted entities were written to the local entity store.
 	Upserted int `json:"upserted"`
 	// PendingApproval entities came from an untrusted registry and were
-	// not written: their writes need approval.
+	// not written: they wait in the approval queue (ListPendingEntities).
 	PendingApproval int `json:"pending_approval"`
 	// Blocked entities came from a sandboxed registry, which never
 	// writes to the local graph.
@@ -1067,7 +1067,8 @@ func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) 
 		WithEntitlements(s.Store.Entitlements()).
 		WithRegistryStore(s.Store.Registries()).
 		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures).
-		WithCredentials(s.registryAuth)
+		WithCredentials(s.registryAuth).
+		WithPendingQueue(s.Store.PendingEntities())
 	result, err := syncer.Sync(ctx, cfg)
 	if err != nil {
 		return RegistryEntityCounts{}, fmt.Errorf("sync registry entities: %w", err)
@@ -1088,6 +1089,21 @@ type SyncAllRegistriesResult struct {
 	Conflicts []registrysync.ConflictReport
 	// OfflineRegistries lists registry URLs that were unreachable.
 	OfflineRegistries []string
+	// PendingApproval and Blocked total what the registries' trust_level
+	// held back; Registries breaks them down per configured registry.
+	PendingApproval int
+	Blocked         int
+	Registries      []ReconciledRegistryCounts
+}
+
+// ReconciledRegistryCounts is what a reconciling sync's trust gate did
+// with one registry's entities. Upserted is absent: written entities
+// are counted after reconciliation (Merged), not per registry.
+type ReconciledRegistryCounts struct {
+	Name            string                    `json:"name"`
+	TrustLevel      config.RegistryTrustLevel `json:"trust_level"`
+	PendingApproval int                       `json:"pending_approval"`
+	Blocked         int                       `json:"blocked"`
 }
 
 // SyncAllRegistriesWithReconciliation syncs all configured registries, reconciles
@@ -1112,7 +1128,8 @@ func (s *Service) SyncAllRegistriesWithReconciliation(
 	syncer := registrysync.New(s.Store.Entities()).
 		WithRegistryStore(s.Store.Registries()).
 		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures).
-		WithCredentials(s.registryAuth)
+		WithCredentials(s.registryAuth).
+		WithPendingQueue(s.Store.PendingEntities())
 	multi := registrysync.MultiSyncConfig{
 		Registries:  s.Cfg.Registries,
 		Strategy:    strategy,
@@ -1123,11 +1140,34 @@ func (s *Service) SyncAllRegistriesWithReconciliation(
 		return nil, fmt.Errorf("multi-registry sync: %w", err)
 	}
 
-	return &SyncAllRegistriesResult{
+	out := &SyncAllRegistriesResult{
 		Merged:            result.Merged,
 		Conflicts:         result.Conflicts,
 		OfflineRegistries: result.OfflineRegistries,
-	}, nil
+		PendingApproval:   result.PendingApproval,
+		Blocked:           result.Blocked,
+	}
+	for _, r := range result.PerRegistry {
+		reg := s.registryByURL(r.RegistryURL)
+		out.Registries = append(out.Registries, ReconciledRegistryCounts{
+			Name:            reg.Name,
+			TrustLevel:      reg.EffectiveTrustLevel(),
+			PendingApproval: r.PendingApproval,
+			Blocked:         r.Blocked,
+		})
+	}
+	return out, nil
+}
+
+// registryByURL is the configured registry at url, or one with just
+// that URL (and so untrusted) when none is configured.
+func (s *Service) registryByURL(url string) config.RegistryConfig {
+	for _, r := range s.Cfg.Registries {
+		if r.URL == url {
+			return r
+		}
+	}
+	return config.RegistryConfig{URL: url}
 }
 
 // PullEntity promotes a thin entity to full by fetching its complete definition

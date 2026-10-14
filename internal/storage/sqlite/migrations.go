@@ -97,6 +97,9 @@ var migration034 string
 //go:embed migrations/041_ui_sessions.sql
 var migration041 string
 
+//go:embed migrations/044_registry_pending_entities.sql
+var migration044 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -229,6 +232,10 @@ var migrations = []migration{
 	// acknowledged change_seq. updated_at is caller-set (imports and
 	// federated rows keep their origin's), so it cannot order changes.
 	{Version: 43, fn: migrate043ObjectChangeSeq},
+	// Migration 044: registry_pending_entities, the approval queue for
+	// entities untrusted registries serve. New table only; IF NOT
+	// EXISTS makes it re-runnable.
+	{Version: 44, SQL: migration044},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
