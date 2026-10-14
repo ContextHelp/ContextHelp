@@ -167,7 +167,8 @@ upgrading. Self-upgrades: `dpkms upgrade --help`.
 dpkms backup --output-dir /var/backups/ctxt --include-blobs --include-configs
 dpkms backup --async                    # enqueue as a background job
 
-# Restore an archive or extracted directory (overwrites existing files)
+# Restore an archive or extracted directory (overwrites existing files;
+# stop the instance first)
 dpkms restore ctxt-backup-2026-04-25T13-51-54Z.tar.gz
 dpkms restore backup.tar.gz --data-dir /new/location
 dpkms restore backup.tar.gz --skip-configs
@@ -177,9 +178,15 @@ dpkms restore backup.tar.gz --skip-configs
   (`pg_dump`).
 - The output directory defaults to `backup.dir`, then the current directory; it
   must be empty.
-- `--include-configs` takes the dpkms config file (`--config`, then `CTXT_CONFIG`,
-  then `$XDG_CONFIG_HOME/contexthelp/dpkms.yaml`). That file carries the
-  `federations:` targets, so restoring it restores the push topology.
+- Every backup holds the dpkms config file (`--config`, then `CTXT_CONFIG`,
+  then `$XDG_CONFIG_HOME/contexthelp/dpkms.yaml`) as `config.yaml`;
+  `--include-configs` adds every file in its directory (`keys/` too). Restore
+  writes `config.yaml` back to the config file it resolves the same way, and the
+  directory's files into that directory; `--skip-configs` skips both. That file
+  carries the `federations:` targets, so restoring it restores the push topology.
+- Restore replaces the database atomically (temp file, fsync, rename; stale
+  `-wal`/`-shm`/`-journal` removed) and refuses while a `dpkms serve` of the same
+  data dir runs on it: `dpkms shutdown` first.
 - Client config backups are separate: `ctxt config backup` exports a signed
   bundle of the ctxt config, `ctxt config restore <bundle.zip>` restores it.
 
