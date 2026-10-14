@@ -94,7 +94,7 @@ string in `storage.path`:
 ```yaml
 storage:
   type: postgres
-  path: postgres://contexthelp:secret@db.internal:5432/contexthelp?sslmode=require
+  path: postgres://contexthelp:<password>@db.internal:5432/contexthelp?sslmode=require
 ```
 
 ```bash
@@ -176,7 +176,7 @@ CTXT_BLOB_S3_USE_PATH_STYLE=true
 `CTXT_BLOB_S3_ACCESS_KEY` / `CTXT_BLOB_S3_SECRET_KEY` (`storage.blob.s3.access_key` / `storage.blob.s3.secret_key`) configure static credentials. Unless both are set, the AWS SDK's default credential chain applies (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE`, SSO, IMDS), so most production deployments leave them empty.
 
 ```bash
-CTXT_BLOB_S3_ACCESS_KEY=GK024bc9cbfaf57489c5ae2d1f
+CTXT_BLOB_S3_ACCESS_KEY=<garage-key-id>
 CTXT_BLOB_S3_SECRET_KEY=$(vault kv get -field=blob_secret secret/ctxt)
 ```
 
@@ -212,7 +212,7 @@ dpkms serve -c storage.path='postgres://contexthelp@db-staging.internal:5432/con
 CTXT_BLOB_BACKEND=garage
 CTXT_BLOB_S3_ENDPOINT=http://localhost:3900
 CTXT_BLOB_S3_BUCKET=ctxt
-CTXT_BLOB_S3_ACCESS_KEY=GK024bc9cbfaf57489c5ae2d1f
+CTXT_BLOB_S3_ACCESS_KEY=<garage-key-id>
 CTXT_BLOB_S3_SECRET_KEY=$(vault kv get -field=blob_secret secret/ctxt)
 ```
 

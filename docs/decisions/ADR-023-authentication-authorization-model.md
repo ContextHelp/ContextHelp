@@ -401,7 +401,7 @@ The authentication and authorization system provides:
    **REST API Token Usage:**
    ```bash
    # Client makes authenticated request
-   curl -H "Authorization: Bearer ctxt_pat_abc123" \
+   curl -H "Authorization: Bearer $CTXT_TOKEN" \
         http://localhost:8080/api/v1/objects
 
    # Response includes rate limit headers

@@ -73,6 +73,9 @@ jobs:
   #         # scan started failing with "missing gitleaks license". Obtain one
   #         # at gitleaks.io and store it as the GITLEAKS_LICENSE secret.
   #         GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+  #         # Scan with the local hook's gitleaks: export the mise.toml
+  #         # `gitleaks` pin from the toolchain job, as go_version is.
+  #         GITLEAKS_VERSION: ${{ needs.toolchain.outputs.gitleaks_version }}
   #
   lint:
     name: Lint

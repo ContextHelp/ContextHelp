@@ -411,25 +411,32 @@ install-hooks:
 		&& pre-commit install-hooks \
 		|| echo "  NOTE: pre-commit not installed; lint gate will be skipped. See https://pre-commit.com"
 
-## install-gitleaks: Install the gitleaks secret scanner locally
+## install-gitleaks: Install the gitleaks version pinned in mise.toml
 ##
 ## Secret scanning runs locally rather than in CI: gitleaks-action requires
 ## a license for organization-owned repos. See .github/workflows/ci.yml.
+## Installs through mise (the pin's home); brew cannot pin a version.
+GITLEAKS_VERSION := $(shell sed -n 's/^gitleaks = "\(.*\)"$$/\1/p' mise.toml)
 install-gitleaks:
-	@if command -v gitleaks >/dev/null 2>&1; then \
-		echo "✓ gitleaks already installed ($$(gitleaks version 2>/dev/null))"; \
-	elif command -v brew >/dev/null 2>&1; then \
-		echo "Installing gitleaks via brew..."; \
-		brew install gitleaks; \
+	@have=$$(gitleaks version 2>/dev/null || true); have=$${have#v}; \
+	if [ "$$have" = "$(GITLEAKS_VERSION)" ]; then \
+		echo "✓ gitleaks $$have installed (mise.toml pin)"; \
+	elif command -v mise >/dev/null 2>&1; then \
+		echo "Installing gitleaks $(GITLEAKS_VERSION) via mise..."; \
+		mise install gitleaks@$(GITLEAKS_VERSION); \
 	else \
-		echo "Installing gitleaks via go install..."; \
-		go install github.com/zricethezav/gitleaks/v8@latest; \
+		echo "gitleaks $(GITLEAKS_VERSION) required (found: $${have:-none})."; \
+		echo "Install mise (https://mise.jdx.dev), then rerun, or fetch the"; \
+		echo "v$(GITLEAKS_VERSION) release: https://github.com/gitleaks/gitleaks/releases"; \
+		exit 1; \
 	fi
 
 ## secret-scan-local: Scan the working tree for secrets with gitleaks
+##
+## Tracked files plus untracked, non-ignored ones; history is `security-scan`.
 secret-scan-local: install-gitleaks
 	@echo "Scanning working tree for secrets..."
-	gitleaks detect --config .gitleaks.toml --redact --verbose
+	scripts/secret-scan-tree.sh
 	@echo "✓ No secrets detected"
 
 ## ben: Run all hop.top/ben recall suites (text-short + vector)

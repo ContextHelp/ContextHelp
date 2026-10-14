@@ -31,3 +31,7 @@ enter = "scripts/motd.sh"
 [tools]
 go = "1.26.8"
 "go:github.com/golangci/golangci-lint/v2/cmd/golangci-lint" = "2.1.6"
+# gitleaks: default rules and allowlists change between releases, so the
+# pre-commit hook and scripts/secret-scan-tree.sh warn when the gitleaks on
+# PATH differs from this pin. `make install-gitleaks` installs it.
+gitleaks = "8.30.1"

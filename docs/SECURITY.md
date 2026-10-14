@@ -446,7 +446,7 @@ storage:
 ```yaml
 # ❌ INSECURE - Password visible in config
 storage:
-  path: "postgresql://user:password@localhost/contexthelp"
+  path: "postgresql://user:<password>@localhost/contexthelp"
 ```
 
 **✅ Leave the password out of the DSN:** config files do not expand `${VAR}`, so let libpq read `PGPASSWORD` (or the other `PG*` variables):

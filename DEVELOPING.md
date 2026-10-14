@@ -320,9 +320,9 @@ Secret scanning runs locally rather than in CI, because `gitleaks-action`
 requires a paid license for organization-owned repos:
 
 ```bash
-make install-gitleaks   # one-time
+make install-gitleaks   # one-time; the version mise.toml pins
 make install-hooks      # wires .githooks (pre-commit gitleaks, pre-push chain)
-make secret-scan-local  # scan the working tree on demand
+make secret-scan-local  # scan the working tree (tracked + untracked) on demand
 ```
 
 ---

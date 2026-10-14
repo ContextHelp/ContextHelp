@@ -21,13 +21,13 @@ func TestRedactSecrets_openAIKey(t *testing.T) {
 }
 
 func TestRedactSecrets_githubToken(t *testing.T) {
-	input := "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	input := "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" // gitleaks:allow test vector
 	out := plugin.RedactSecrets(input)
 	require.Contains(t, out, "[REDACTED]")
 }
 
 func TestRedactSecrets_jwt(t *testing.T) {
-	input := "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ"
+	input := "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ" // gitleaks:allow test vector
 	out := plugin.RedactSecrets(input)
 	require.Contains(t, out, "[REDACTED]")
 }
@@ -49,7 +49,7 @@ func TestRedactMap(t *testing.T) {
 		"msg":   "key=sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ12345",
 		"count": 42,
 		"nested": map[string]any{
-			"token": "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+			"token": "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", // gitleaks:allow test vector
 		},
 	}
 	out := plugin.RedactMap(m)

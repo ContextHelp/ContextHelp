@@ -260,7 +260,7 @@ CookieFetcher -> LinkedInProfileParser -> ExperienceDecomposer -> EntityResolver
 **`social.linkedin.post`** (post capture):
 
 ```
-CookieFetcher -> LinkedInPostParser -> EntityResolver -> Sectioner -> Tagger -> EmbeddingGenerator
+CookieFetcher → LinkedInPostParser → EntityResolver → Sectioner → Tagger → EmbeddingGenerator
 ```
 
 Step responsibilities:
@@ -306,7 +306,7 @@ func (p *LinkedInProfileParser) Run(ctx context.Context, draft *KnowledgeObject)
 
     // Check for anti-scraping detection
     if isAuthWall(doc) {
-        return nil, fmt.Errorf("linkedin_profile_parser: authentication wall detected, cookies may be expired")
+        return nil, fmt.Errorf("linkedin_profile_parser: authentication wall detected, cookies may be expired") // gitleaks:allow prose, not a client id
     }
     if isCaptchaPage(doc) {
         return nil, &CaptchaError{

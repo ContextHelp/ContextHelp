@@ -31,7 +31,7 @@ const (
 	// KeychainService is the OS keychain service name for the signing private key.
 	KeychainService = "ctxt-signing"
 	// KeychainAccount is the keychain account name for the private key.
-	KeychainAccount = "ed25519-private-key"
+	KeychainAccount = "ed25519-private-key" // gitleaks:allow account name, not a key
 	// ManifestName is the entry name inside the bundle zip.
 	ManifestName = "manifest.json"
 	// SchemaVersion identifies the bundle format.

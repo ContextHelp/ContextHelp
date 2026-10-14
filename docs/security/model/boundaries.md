@@ -279,7 +279,7 @@ providers:
 # BAD - Hardcoded (rejected by validation)
 providers:
   openai:
-    api_key: "sk-proj-abc123"  # Validation error
+    api_key: "sk-proj-..."  # Validation error
 ```
 
 #### Request/Response Sanitization

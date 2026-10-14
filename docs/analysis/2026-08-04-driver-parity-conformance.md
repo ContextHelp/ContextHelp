@@ -159,7 +159,7 @@ Two-line change to the integration job (`.github/workflows/ci.yml:228`):
 
 The service container, env block, and DSN builder already exist; this closes the §2 gap and turns the ten existing Postgres tests plus the new conformance run live. The unit lane needs no change — the SQLite conformance wrapper is picked up by `./...` automatically.
 
-Local parity: `docker compose -f docker-compose.dev.yml up postgres`, then `POSTGRES_DSN=postgres://ctxt:ctxt@localhost:5432/ctxt?sslmode=disable go test -tags=integration,fts5 ./internal/storage/postgres/`.
+Local parity: `docker compose -f docker-compose.dev.yml up postgres`, then `POSTGRES_DSN=postgres://ctxt:<password>@localhost:5432/ctxt?sslmode=disable go test -tags=integration,fts5 ./internal/storage/postgres/`.
 
 ### 3.5 Rollout order
 
