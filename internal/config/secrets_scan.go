@@ -15,7 +15,10 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^ghp_`),
 }
 
-// secretFieldNames are substrings that, when found in a field name, flag the value.
+// secretFieldNames are substrings that, when found in a field name, flag the
+// value. Redaction reuses the list: free-form keys and connection-string
+// parameters matching it are masked, and every Config string field whose
+// name matches must carry a `secret` tag (see redact.go).
 var secretFieldNames = []string{"token", "password", "secret", "key"}
 
 // shellEnvRef is a shell-style ${VAR} or ${VAR:-default} reference
@@ -37,7 +40,7 @@ func isEnvRef(val string) bool {
 type SecretWarning struct {
 	// Field is the dot-separated config path (e.g. "storage.blob.s3.secret_key").
 	Field string
-	// Hint is the first 4 chars of the value followed by "****".
+	// Hint is the value as RedactSecret masks it.
 	Hint string
 	// Reason explains why this field was flagged.
 	Reason string
@@ -57,7 +60,7 @@ func ScanSecrets(cfg *Config) []SecretWarning {
 		if reason := secretReason(path, val); reason != "" {
 			warnings = append(warnings, SecretWarning{
 				Field:  path,
-				Hint:   sanitise(val),
+				Hint:   RedactSecret(val),
 				Reason: reason,
 			})
 		}
@@ -146,25 +149,14 @@ func secretReason(fieldPath, value string) string {
 	}
 
 	// Check field name for secret-looking substrings.
-	lower := strings.ToLower(fieldPath)
-	for _, keyword := range secretFieldNames {
-		if strings.Contains(lower, keyword) {
-			// Only flag if it looks non-trivial (>8 chars, not a path/backend name).
-			if len(value) > 8 && !looksLikeFilePath(value) && !looksLikeBackendName(value) {
-				return "field name suggests secret (" + keyword + ")"
-			}
+	if keyword := secretKeyword(fieldPath); keyword != "" {
+		// Only flag if it looks non-trivial (>8 chars, not a path/backend name).
+		if len(value) > 8 && !looksLikeFilePath(value) && !looksLikeBackendName(value) {
+			return "field name suggests secret (" + keyword + ")"
 		}
 	}
 
 	return ""
-}
-
-// sanitise returns the first 4 chars of s followed by "****".
-func sanitise(s string) string {
-	if len(s) <= 4 {
-		return "****"
-	}
-	return s[:4] + "****"
 }
 
 // looksLikeFilePath returns true for values that look like filesystem paths.

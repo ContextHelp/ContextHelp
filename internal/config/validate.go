@@ -515,15 +515,23 @@ func validateEndpointURL(raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		return fmt.Errorf("empty URL (each entry needs a base URL like http://127.0.0.1:8080)")
 	}
+	// The message quotes the URL with any embedded credential masked;
+	// url.Parse's own error repeats the raw URL, so only its cause is
+	// kept.
+	shown := RedactDSN(raw)
 	u, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("invalid URL %q: %w", raw, err)
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			err = uerr.Err
+		}
+		return fmt.Errorf("invalid URL %q: %w", shown, err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("invalid URL %q: scheme must be http or https", raw)
+		return fmt.Errorf("invalid URL %q: scheme must be http or https", shown)
 	}
 	if u.Host == "" {
-		return fmt.Errorf("invalid URL %q: missing host", raw)
+		return fmt.Errorf("invalid URL %q: missing host", shown)
 	}
 	return nil
 }

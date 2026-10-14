@@ -202,6 +202,11 @@ regexes = [
   # postgres://ctxt:<password>@db.internal:5432/ctxt. Anchored to the
   # password slot: a real password elsewhere in the DSN still matches.
   '''^postgres(?:ql)?://[^:@/\s]+:<[a-z][a-z0-9_-]*>@''',
+
+  # Postgres DSN whose password slot is all asterisks: the redaction mask
+  # `ctxt config show` prints (postgres://jad:****@db/ctxt). Anchored to the
+  # password slot like the placeholder rule above.
+  '''^postgres(?:ql)?://[^:@/\s]+:\*+@''',
 ]
 
 # Commits to exclude from scanning (if any)

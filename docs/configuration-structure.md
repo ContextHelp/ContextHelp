@@ -245,7 +245,7 @@ with every key the binaries act on, commented out with its default:
 ```bash
 ctxt config path                    # highest-precedence existing file
 ctxt config show                    # merged config (files + env + -c)
-ctxt config show --format json      # full tree
+ctxt config show --format json      # full tree, credentials redacted
 ctxt config validate                # every validation error, unknown-key warnings, plaintext-secret scan
 ctxt config validate --check-secrets=false  # validation errors + unknown-key warnings only
 ctxt config doctor                  # schema, secrets, permissions, deprecated keys

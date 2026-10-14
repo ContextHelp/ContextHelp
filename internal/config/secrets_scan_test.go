@@ -9,50 +9,52 @@ import (
 
 func TestScanSecretsFindsPlaintext(t *testing.T) {
 	cases := []struct {
-		name       string
-		mutate     func(*Config)
-		wantField  string
-		wantInHint string
+		name      string
+		mutate    func(*Config)
+		wantField string
+		// wantHint is the RedactSecret mask: the hint never shows the
+		// value's prefix, which identifies the key type.
+		wantHint string
 	}{
 		{
 			name: "openai sk- key in S3 access_key",
 			mutate: func(c *Config) {
 				c.Storage.Blob.S3.AccessKey = "sk-supersecretapikey1234"
 			},
-			wantField:  "storage.blob.s3.access_key",
-			wantInHint: "sk-s",
+			wantField: "storage.blob.s3.access_key",
+			wantHint:  "****1234",
 		},
 		{
 			name: "anthropic sk-ant- key",
 			mutate: func(c *Config) {
 				c.Storage.Blob.S3.SecretKey = "sk-ant-api123456789abcdef"
 			},
-			wantField:  "storage.blob.s3.secret_key",
-			wantInHint: "sk-a",
+			wantField: "storage.blob.s3.secret_key",
+			wantHint:  "****cdef",
 		},
 		{
 			name: "JWT token (eyJ prefix)",
 			mutate: func(c *Config) {
 				c.Storage.Blob.S3.AccessKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" // gitleaks:allow test vector
 			},
-			wantField:  "storage.blob.s3.access_key",
-			wantInHint: "eyJh",
+			wantField: "storage.blob.s3.access_key",
+			wantHint:  "****VCJ9",
 		},
 		{
 			name: "GitHub PAT ghp_ prefix",
 			mutate: func(c *Config) {
 				c.Storage.Blob.S3.AccessKey = "ghp_16C7e42F292c6912E7710c838347Ae178B4a" // gitleaks:allow test vector
 			},
-			wantField:  "storage.blob.s3.access_key",
-			wantInHint: "ghp_",
+			wantField: "storage.blob.s3.access_key",
+			wantHint:  "****8B4a",
 		},
 		{
 			name: "field named secret_key with long value",
 			mutate: func(c *Config) {
 				c.Storage.Blob.S3.SecretKey = "myVeryLongPlaintextSecretValueHere"
 			},
-			wantField:  "storage.blob.s3.secret_key",
-			wantInHint: "myVe",
+			wantField: "storage.blob.s3.secret_key",
+			wantHint:  "****Here",
 		},
 	}
 
@@ -67,7 +69,7 @@ func TestScanSecretsFindsPlaintext(t *testing.T) {
 			for _, w := range warnings {
 				if w.Field == tc.wantField {
 					found = true
-					assert.Contains(t, w.Hint, tc.wantInHint)
+					assert.Equal(t, tc.wantHint, w.Hint)
 					assert.NotEmpty(t, w.Reason)
 				}
 			}
@@ -132,10 +134,4 @@ func TestScanSecretsCleanConfig(t *testing.T) {
 	}
 	warnings := ScanSecrets(cfg)
 	assert.Empty(t, warnings, "clean config should produce no warnings; got %v", warnings)
-}
-
-func TestSanitise(t *testing.T) {
-	assert.Equal(t, "sk-s****", sanitise("sk-supersecret"))
-	assert.Equal(t, "****", sanitise("abc"))
-	assert.Equal(t, "abcd****", sanitise("abcdefgh"))
 }

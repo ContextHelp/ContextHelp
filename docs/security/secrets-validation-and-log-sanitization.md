@@ -7,6 +7,7 @@ In short:
 
 - `ctxt config validate` and `ctxt config doctor` scan the effective
   configuration for values that look like plaintext secrets.
+- `ctxt config show` redacts every credential, in every `--format`.
 - `ctxt config doctor` warns when the config file is group- or
   world-readable and `--fix` sets it to `0600`.
 - There is **no log sanitization**. Logs are not scanned or redacted, and
@@ -37,8 +38,8 @@ The field-name rule skips values that look like paths (start with `/`,
 scan; the validator rejects them separately, because config files never
 expand env vars.
 
-Each finding names the field, a hint (first 4 characters followed by
-`****`, never the full value) and the reason:
+Each finding names the field, a hint (the value redacted as `config show`
+redacts it, see below) and the reason:
 
 ```bash
 # Validation plus the secret scan (--check-secrets is on by default).
@@ -62,6 +63,36 @@ external tool:
 ```bash
 gitleaks detect --source ~/.config/contexthelp/ --no-git --verbose --redact
 ```
+
+---
+
+## Config output redaction
+
+`ctxt config show` prints a redacted copy of the effective config, in the
+default view and every `--format` (`json`, `yaml`, ...). The secret-scan
+hints of `config validate` and `config doctor`, and the URL quoted in a
+`server.url` / `server.urls` load error, use the same masks:
+
+| Value | Shown as |
+|---|---|
+| Credential of 16 or more characters | `****` and its last 4 characters (`****9f2c`) |
+| Shorter credential | `****` |
+| Unset credential | empty, as before |
+| Password inside a URL or connection string | masked in place: `postgres://jad:****@db/ctxt`, `password=****` |
+
+Credentials are the tokens (`server.token`, `server.urls[].token`,
+`server.auth.static.tokens[].token`, `federation.token`,
+`federations[].token`), the S3 keys (`storage.blob.s3.access_key`,
+`secret_key`), the audit and security-alert webhook URLs, and plugin
+`config` values under a key containing `token`, `password`, `secret` or
+`key`. Connection strings and URLs (`storage.path`, endpoints, registry
+and federation URLs) keep everything but an embedded password or
+secret-named parameter.
+
+The `secret` struct tag on the config fields (`internal/config/redact.go`)
+is the list: a new field whose name contains `token`, `password`,
+`secret` or `key` fails the tests until it is tagged. There is no flag to
+print credentials; read them from the config file itself.
 
 ---
 
