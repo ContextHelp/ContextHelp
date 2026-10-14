@@ -103,6 +103,7 @@ config. An empty value is ignored (the lower layer stays in effect).
 | `CTXT_BLOB_S3_REGION` | `storage.blob.s3.region` | `us-east-1` |
 | `CTXT_BLOB_S3_BUCKET` | `storage.blob.s3.bucket` | _(empty)_ |
 | `CTXT_BLOB_S3_PREFIX` | `storage.blob.s3.prefix` | _(empty)_ |
+| `CTXT_BLOB_S3_USE_PATH_STYLE` | `storage.blob.s3.use_path_style` | `false` |
 | `CTXT_BLOB_S3_ACCESS_KEY` | `storage.blob.s3.access_key` | _(empty)_ |
 | `CTXT_BLOB_S3_SECRET_KEY` | `storage.blob.s3.secret_key` | _(empty)_ |
 | `CH_SERVER_PORT` | `server.port` | `8080` |

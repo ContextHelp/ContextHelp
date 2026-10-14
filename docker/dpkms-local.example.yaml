@@ -22,7 +22,14 @@
 # OPENROUTER_API_KEY=), which docker-compose.yml passes to dpkms.
 #
 # S3-compatible blob store instead of the ctxt_blobs volume. The keys
-# are secrets: keep this file readable by uid 1000 only.
+# are secrets: keep this file readable by uid 1000 only. Compose never
+# passes them, so they are set here or not at all. The non-secret S3
+# settings (endpoint, region, bucket, prefix, use_path_style) can come
+# from the compose env file instead: CTXT_BLOB_S3_ENDPOINT=,
+# CTXT_BLOB_S3_REGION=, CTXT_BLOB_S3_BUCKET=, CTXT_BLOB_S3_PREFIX= and
+# CTXT_BLOB_S3_USE_PATH_STYLE=, which docker-compose.yml passes to
+# dpkms. One set there overrides the value here; left unset, this
+# file's value stays.
 #storage:
 #  blob:
 #    backend: s3
@@ -31,6 +38,7 @@
 #      region: us-east-1
 #      bucket: ctxt-blobs
 #      prefix: dpkms/
+#      use_path_style: false
 #      access_key: change-me
 #      secret_key: change-me
 #
